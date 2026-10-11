@@ -34,12 +34,8 @@ export const zh = {
   tooSmall: "窗口太窄，放不下再分一块。",
   copy: "复制",
   paste: "粘贴",
-  /** A conversation's own flow board. The name stays put while the board changes jobs. */
+  /** A conversation's one job tab: its tickets, flow and spec. The name stays put while it changes jobs. */
   flowOf: (name: string) => `${name}流程`,
-  /** The tickets' board of a conversation's job, a tab of its own beside the flow. */
-  boardOf: (name: string) => `${name}看板`,
-  /** The spec of a conversation's job, a tab of its own beside the flow. */
-  specOf: (name: string) => `${name}要点`,
   /** A conversation's own artifact preview. The name stays put while the file changes. */
   artifactsOf: (name: string) => `${name}的产物`,
 };
@@ -76,7 +72,5 @@ export const en: CopyShape<typeof zh> = {
   copy: "Copy",
   paste: "Paste",
   flowOf: (name: string) => `${name} flow`,
-  boardOf: (name: string) => `${name} board`,
-  specOf: (name: string) => `${name} plan`,
   artifactsOf: (name: string) => `${name}'s artifacts`,
 };

@@ -191,7 +191,7 @@ test('a conversation tab offers its header\'s actions, each on that tab\'s own c
 
   // The group's tab is not the one in front; its settings bring it forward and open over it.
   click(host.querySelector('[data-tab="t-g"] .wb-tab-more'));
-  expect(actions()).toEqual([t.top.pin, t.plan.segmentTrace, t.plan.segmentBoard, t.plan.segmentSpec, t.top.groupSettings]);
+  expect(actions()).toEqual([t.top.pin, t.plan.segmentTrace, t.top.groupSettings]);
   click(menu()!.querySelector('[data-action="settings"]'));
   await settle();
   expect(host.querySelector('[data-tab="t-g"] [role="tab"]')?.getAttribute('aria-selected')).toBe('true');
@@ -204,7 +204,7 @@ test('a conversation tab offers its header\'s actions, each on that tab\'s own c
 
   // Pinning from a right-click on the direct tab pins that conversation, and the menu then says so.
   rightClick(host.querySelector('[data-tab="t-d"] [role="tab"]'));
-  expect(actions()).toEqual([t.top.pin, t.plan.segmentTrace, t.plan.segmentBoard, t.plan.segmentSpec, t.top.botSettings]);
+  expect(actions()).toEqual([t.top.pin, t.plan.segmentTrace, t.top.botSettings]);
   expect(menu()!.querySelector('[data-split]')).not.toBeNull();
   click(menu()!.querySelector('[data-action="pin"]'));
   expect(JSON.parse(localStorage.getItem(PINNED_STORAGE_KEY) ?? '[]')).toEqual(['d1']);
@@ -245,21 +245,14 @@ test('a conversation’s flow board and artifact preview are named after the con
   await settle();
   const labels = [...host.querySelectorAll('.wb-tab-button')].map((tab) => tab.textContent?.trim());
   const t = copyFor('zh');
+  // The board and plan tabs saved before a job was one tab (ADR 0086) are that one flow tab now.
   expect(labels).toEqual([
     'Researcher',
     t.pane.flowOf('Researcher'),
     t.pane.artifactsOf('Researcher'),
     t.pane.flowOf('视频组'),
-    t.pane.boardOf('Researcher'),
-    t.pane.specOf('Researcher'),
   ]);
-  // Each view of the flow wears the picture its switch shows.
-  expect([...host.querySelectorAll('.pane-tab-icon[data-kind="trace"]')].map((icon) => icon.getAttribute('data-view'))).toEqual([
-    'trace',
-    'trace',
-    'board',
-    'spec',
-  ]);
+  expect(host.querySelectorAll('.pane-tab-icon[data-kind="trace"]')).toHaveLength(2);
   // Switching the file the preview shows does not rename its tab.
   const titles = () => [...host.querySelectorAll('.wb-tab-button')].map((tab) => tab.textContent?.trim());
   const before = titles();
@@ -408,7 +401,7 @@ test('each conversation’s flow board tab comes back where it was left when bro
   expect(camera()).toBe(left);
 });
 
-test('a conversation tab’s menu opens its job’s trace, board and plan, each a tab of its own', async () => {
+test('a conversation tab’s menu opens its job as one tab, beside the conversation, and asking again brings it forward', async () => {
   localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
     version: 1,
     root: makeLeaf('a', [{ id: 't-chat', kind: 'chat', params: { sessionId: 'direct-1' } }]),
@@ -472,39 +465,28 @@ test('a conversation tab’s menu opens its job’s trace, board and plan, each 
   const tabs = () => [...host.querySelectorAll('.wb-tab-button')].map((tab) => tab.textContent?.trim());
   const inFront = () => [...host.querySelectorAll('.wb-tab-button[aria-selected="true"]')].map((tab) => tab.textContent?.trim());
 
-  // Straight to the board: no trace opened first. By default it opens in a column beside the
-  // conversation, which stays in front where it was.
-  pick('board');
-  await until('.ticket-row');
-  expect(tabs()).toEqual(['Researcher', t.pane.boardOf('Researcher')]);
-  expect(inFront()).toEqual(['Researcher', t.pane.boardOf('Researcher')]);
-  // A board's tab opens on the board opened out over the rail and the trace; a wide job has no switch.
-  expect(host.querySelector('.job-pane')?.classList.contains('board-open')).toBe(true);
-  expect(host.querySelector('.trace-views')).toBeNull();
-
-  // The other two join the board in that column, rather than dividing the window again.
-  pick('spec');
-  await until('.plan-spec');
+  // By default it opens in a column beside the conversation, which stays in front where it was.
   pick('trace');
-  for (let i = 0; i < 40 && tabs().length < 4; i += 1) await settle();
-  expect(tabs()).toEqual(['Researcher', t.pane.boardOf('Researcher'), t.pane.specOf('Researcher'), t.pane.flowOf('Researcher')]);
-
-  // Asking for the board again brings its tab forward rather than a second one.
-  pick('board');
-  await until('.job-pane.board-open');
-  expect(tabs()).toHaveLength(4);
-  expect(inFront()).toEqual(['Researcher', t.pane.boardOf('Researcher')]);
+  await until('.job-pane');
+  expect(tabs()).toEqual(['Researcher', t.pane.flowOf('Researcher')]);
+  expect(inFront()).toEqual(['Researcher', t.pane.flowOf('Researcher')]);
+  // A wide job is the rail, the flow and the inspector side by side: no switch between them.
+  expect(host.querySelector('.trace-views')).toBeNull();
+  // Asking again brings that tab forward rather than a second one.
+  pick('trace');
+  await settle();
+  expect(tabs()).toHaveLength(2);
   const saved = JSON.parse(localStorage.getItem('real-bot-workbench-layout')!);
   type Saved = { type: string; axis?: string; tabs?: { kind: string; params: Record<string, string> }[]; children?: Saved[] };
   expect(saved.root.type).toBe('branch');
   expect(saved.root.axis).toBe('row');
   expect((saved.root.children as Saved[]).map((leaf) => leaf.tabs!.map((tab) => [tab.kind, tab.params.view ?? null]))).toEqual([
     [['chat', null]],
-    [['trace', 'board'], ['trace', 'spec'], ['trace', null]],
+    [['trace', null]],
   ]);
 });
 
-test('a row’s right-click in the sidebar opens that conversation’s trace, board or plan', async () => {
+test('a row’s right-click in the sidebar opens that conversation’s flow', async () => {
   const group = aGroup({ id: 'g1', name: 'Alpha group' });
   localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
     version: 1,
@@ -523,10 +505,10 @@ test('a row’s right-click in the sidebar opens that conversation’s trace, bo
   const row = [...host.querySelectorAll<HTMLElement>('button.row')].find((el) => el.textContent?.includes('Alpha group'))!;
   row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: 40, clientY: 80 }));
   flushSync();
-  click(document.querySelector('.session-context-menu [data-job-view="spec"]'));
+  click(document.querySelector('.session-context-menu [data-job-view="trace"]'));
   await settle();
   expect(runtime.calls.filter((call) => call.name === 'openTrace').map((call) => call.args)).toEqual([
-    [null, null, { view: 'spec', sessionId: 'g1' }],
+    [null, null, { sessionId: 'g1' }],
   ]);
   // On a wide window the pane on screen keeps its conversation.
   expect(runtime.calls.some((call) => call.name === 'selectSession')).toBe(false);

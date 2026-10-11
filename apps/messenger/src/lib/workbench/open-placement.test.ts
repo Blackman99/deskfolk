@@ -32,8 +32,6 @@ test("the defaults keep the conversation in view: its things beside it, terminal
     chat: "replace",
     "bot-bot": "side-right",
     trace: "side-right",
-    board: "side-right",
-    spec: "side-right",
     preview: "side-right",
     workspace: "side-right",
     terminal: "side-down",
@@ -61,14 +59,14 @@ test("a kind or a choice this build does not know, or a broken value, falls back
   expect(loadOpenPlacements()).toEqual(OPEN_PLACEMENT_DEFAULTS);
 });
 
-test("a Bot↔Bot direct and each of a job's views are kinds of their own", () => {
+test("a Bot↔Bot direct is a kind of its own; a job is one kind, whatever a saved tab asked to open on", () => {
   const groupOf = (id: string) => (id === "bb" ? "bot-bot" : id === "g" ? "group" : null);
   expect(openKindOf({ kind: "chat", sessionId: "bb" }, groupOf)).toBe("bot-bot");
   expect(openKindOf({ kind: "chat", sessionId: "g" }, groupOf)).toBe("chat");
   expect(openKindOf({ kind: "chat", sessionId: "gone" }, groupOf)).toBe("chat");
   expect(openKindOf({ kind: "trace", sessionId: "g", taskId: null }, groupOf)).toBe("trace");
-  expect(openKindOf({ kind: "trace", sessionId: "g", taskId: null, view: "board" }, groupOf)).toBe("board");
-  expect(openKindOf({ kind: "trace", sessionId: "g", taskId: null, view: "spec" }, groupOf)).toBe("spec");
+  expect(openKindOf({ kind: "trace", sessionId: "g", taskId: null, view: "board" }, groupOf)).toBe("trace");
+  expect(openKindOf({ kind: "trace", sessionId: "g", taskId: null, view: "spec" }, groupOf)).toBe("trace");
   expect(openKindOf({ kind: "terminal", terminalId: null }, groupOf)).toBe("terminal");
   expect(openKindOf({ kind: "preview", sessionId: "g", relpath: "a", attachmentId: null }, groupOf)).toBe("preview");
 });

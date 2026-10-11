@@ -402,28 +402,24 @@ test("another conversation's board is its own pane", () => {
 const view = (sessionId: string, taskId: string | null, which: "trace" | "board" | "spec") =>
   ({ kind: "trace", sessionId, taskId, view: which }) as const;
 
-test("each view of a conversation's flow is a tab of its own, beside the one that asked", () => {
+test("a conversation has one flow tab: asked for as a board or a plan, the flow tab comes forward", () => {
   const layout = layoutOf(makeBranch("r", "row", [
     makeLeaf("a", [tabFor(chat("s1"), "t-chat")]),
     makeLeaf("b", [tabFor(trace("s1", "job-1"), "t-trace")]),
-  ]), "b");
-  const withBoard = openContent(layout, view("s1", "job-1", "board"), ids);
-  const tabs = leafById(withBoard, "b")!.tabs;
-  expect(tabs.map((tab) => [tab.id, tab.params.view])).toEqual([
-    ["t-trace", undefined],
-    [tabs[1]!.id, "board"],
-  ]);
-  expect(leafById(withBoard, "b")!.activeTabId).toBe(tabs[1]!.id);
-  const withSpec = openContent(withBoard, view("s1", "job-1", "spec"), ids);
-  expect(leafById(withSpec, "b")!.tabs.map((tab) => tab.params.view ?? "trace")).toEqual(["trace", "board", "spec"]);
-  assertInvariants(withSpec);
+  ]), "a");
+  for (const which of ["board", "spec"] as const) {
+    const next = openContent(layout, view("s1", "job-1", which), ids);
+    expect(leafById(next, "b")!.tabs.map((tab) => tab.id)).toEqual(["t-trace"]);
+    expect(next.focus.leafId).toBe("b");
+    assertInvariants(next);
+  }
 });
 
-test("a message's card turns the trace's own tab and leaves the board and the spec where they are", () => {
+test("a message's card turns the conversation's one flow tab, whatever an old tab of it was saved on", () => {
   const layout = layoutOf(makeBranch("r", "row", [
-    makeLeaf("a", [tabFor(view("s1", "job-1", "board"), "t-board"), tabFor(view("s1", "job-1", "spec"), "t-spec")]),
-    makeLeaf("b", [tabFor(trace("s1", "job-1"), "t-trace")]),
-  ]), "a");
+    makeLeaf("a", [tabFor(view("s1", "job-1", "board"), "t-board")]),
+    makeLeaf("b", [tabFor(chat("s1"), "t-chat")]),
+  ]), "b");
   const next = openContent(layout, {
     kind: "trace",
     sessionId: "s1",
@@ -431,30 +427,27 @@ test("a message's card turns the trace's own tab and leaves the board and the sp
     focus: { messageId: "m9", turnId: "turn-9" },
     focusNonce: 3,
   }, ids);
-  expect(leafById(next, "b")!.tabs[0]!.params.taskId).toBe("job-2");
-  expect(leafById(next, "a")!.tabs.map((tab) => tab.params.taskId)).toEqual(["job-1", "job-1"]);
-  expect(next.focus.leafId).toBe("b");
+  const params = leafById(next, "a")!.tabs[0]!.params;
+  expect(params.taskId).toBe("job-2");
+  expect(params.view).toBeUndefined();
+  expect(params.focusMessageId).toBe("m9");
+  expect(tiledLeaves(next.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
+  expect(next.focus.leafId).toBe("a");
 });
 
-test("a view asked for on the job it is on comes forward as it is; another job, or a ticket, turns it", () => {
+test("the flow asked for on the job it is on comes forward as it is; another job, or a ticket, turns it", () => {
   const layout = layoutOf(makeBranch("r", "row", [
-    makeLeaf("a", [tabFor(trace("s1", "job-1"), "t-trace")]),
-    makeLeaf("b", [tabFor({ ...view("s1", "job-1", "board"), ticket: "tk-1", askNonce: 4 }, "t-board")]),
+    makeLeaf("a", [tabFor(chat("s1"), "t-chat")]),
+    makeLeaf("b", [tabFor({ ...trace("s1", "job-1"), ticket: "tk-1", askNonce: 4 }, "t-trace")]),
   ]), "a");
-  const shown = openContent(layout, view("s1", "job-1", "board"), ids);
-  expect(leafById(shown, "b")!.tabs[0]!.params).toEqual({
-    sessionId: "s1",
-    taskId: "job-1",
-    view: "board",
-    askTicket: "tk-1",
-    askNonce: "4",
-  });
+  const shown = openContent(layout, trace("s1", "job-1"), ids);
+  expect(leafById(shown, "b")!.tabs[0]!.params).toEqual({ sessionId: "s1", taskId: "job-1", askTicket: "tk-1", askNonce: "4" });
   expect(shown.focus.leafId).toBe("b");
 
-  const turned = openContent(layout, view("s1", "job-2", "board"), ids);
-  expect(leafById(turned, "b")!.tabs[0]!.params).toEqual({ sessionId: "s1", taskId: "job-2", view: "board" });
+  const turned = openContent(layout, trace("s1", "job-2"), ids);
+  expect(leafById(turned, "b")!.tabs[0]!.params).toEqual({ sessionId: "s1", taskId: "job-2" });
 
-  const asked = openContent(layout, { ...view("s1", "job-1", "board"), ticket: "tk-2", askNonce: 5 }, ids);
+  const asked = openContent(layout, { ...trace("s1", "job-1"), ticket: "tk-2", askNonce: 5 }, ids);
   expect(leafById(asked, "b")!.tabs[0]!.params.askTicket).toBe("tk-2");
   expect(tiledLeaves(asked.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
 });
@@ -477,15 +470,15 @@ test("a layout saved with two previews of one conversation keeps the one nearest
   expect(dropDuplicateBoundTabs(next, ids.id)).toBe(next);
 });
 
-test("one tab of each view of a conversation's flow survives the clean-up", () => {
+test("a layout saved with a trace, a board and a plan tab of one conversation keeps the one nearest the keyboard", () => {
   const layout = layoutOf(makeBranch("r", "row", [
-    makeLeaf("a", [tabFor(trace("s1", "job-1"), "t-trace"), tabFor(view("s1", "job-1", "board"), "t-board")]),
-    makeLeaf("b", [tabFor(view("s1", "job-1", "spec"), "t-spec"), tabFor(view("s1", "job-2", "board"), "t-board-2")]),
+    makeLeaf("a", [tabFor(chat("s1"), "t-chat"), tabFor(view("s1", "job-1", "board"), "t-board")]),
+    makeLeaf("b", [tabFor(trace("s1", "job-1"), "t-trace"), tabFor(view("s1", "job-1", "spec"), "t-spec"), tabFor(trace("s2", "job-9"), "t-other")]),
   ]), "a");
   const next = dropDuplicateBoundTabs(layout, ids.id);
   expect(tiledLeaves(next.root).map((leaf) => leaf.tabs.map((tab) => tab.id))).toEqual([
-    ["t-trace", "t-board"],
-    ["t-spec"],
+    ["t-chat", "t-board"],
+    ["t-other"],
   ]);
   assertInvariants(next);
 });
@@ -536,16 +529,16 @@ test("a split with no room, or from a floating pane, is a new tab where the keyb
 });
 
 test("the pane on that side takes it; from that pane, it stays there; only a single pane is split", () => {
-  // Three files and the job's board in a row from the conversation: one column beside it, not four.
+  // A file and two flows in a row from the conversation: one column beside it, not three.
   let layout = layoutOf(makeLeaf("a", [tabFor(chat("s1"), "t-a")]));
   layout = openContent(layout, preview("s1", "a.md"), placed("side-right"));
   expect(shape(layout)).toEqual({ row: [["chat"], ["preview"]] });
   const side = layout.focus.leafId;
-  // Back in the conversation, the board goes to the column already beside it.
-  layout = openContent({ ...layout, focus: { zone: "tiled", leafId: "a" } }, { kind: "trace", sessionId: "s1", taskId: "j", view: "board" }, placed("side-right"));
+  // Back in the conversation, the job's flow goes to the column already beside it.
+  layout = openContent({ ...layout, focus: { zone: "tiled", leafId: "a" } }, { kind: "trace", sessionId: "s1", taskId: "j" }, placed("side-right"));
   expect(layout.focus.leafId).toBe(side);
-  // From the column itself, the spec stays in it.
-  layout = openContent(layout, { kind: "trace", sessionId: "s1", taskId: "j", view: "spec" }, placed("side-right"));
+  // From the column itself, another conversation's flow stays in it.
+  layout = openContent(layout, { kind: "trace", sessionId: "s2", taskId: "k" }, placed("side-right"));
   expect(shape(layout)).toEqual({ row: [["chat"], ["preview", "trace", "trace"]] });
   assertInvariants(layout);
 });
@@ -605,11 +598,11 @@ test("what is already open is only brought forward, whatever its placement says"
   expect(shape(chats)).toEqual({ row: [["chat"], ["preview"]] });
 });
 
-test("a replace only takes the same kind of window: the board never takes the trace's place", () => {
-  const trace = { kind: "trace", sessionId: "s1", taskId: "j", view: "trace" } as const;
+test("a replace only takes the same kind of window: another conversation's flow takes the flow's place", () => {
+  const trace = { kind: "trace", sessionId: "s1", taskId: "j" } as const;
   const layout = layoutOf(makeLeaf("a", [tabFor(trace, "t-trace")]));
-  const next = openContent(layout, { ...trace, sessionId: "s2", view: "board" }, { ...ids, placement: "replace" });
-  expect(leafById(next, "a")!.tabs.map((tab) => tab.params.view ?? "trace")).toEqual(["trace", "board"]);
+  const next = openContent(layout, { ...trace, sessionId: "s2" }, { ...ids, placement: "replace" });
+  expect(leafById(next, "a")!.tabs.map((tab) => [tab.kind, tab.params.sessionId])).toEqual([["trace", "s2"]]);
   // A conversation and a Bot↔Bot direct are two kinds when the shell can tell them apart.
   const directs = layoutOf(makeLeaf("a", [tabFor(chat("bb"), "t-bb")]));
   const kindOf = (content: Parameters<PlaceContext["kindOf"]>[0]) =>

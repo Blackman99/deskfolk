@@ -37,7 +37,6 @@
 	import { queuedLine as queuedLineOf, type QueuedLine } from './queued-line.ts';
 	import { extractAssociatedFiles } from './message-context-menu.ts';
 	import { handedOverPaths } from '../overlays/artifacts.ts';
-	import type { TraceViewKind } from '../overlays/trace-view.ts';
 	import { messageDisplayBody } from './message-body.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
@@ -842,22 +841,17 @@
 		copyText(id);
 	}
 
-	/** Open this message's job with the board already on its card. */
 	/**
-	 * One view of the job a message is in. The trace lands on the message's card; the board picks
-	 * the ticket the message was filed under; the plan is the job's.
+	 * The job a message is in, as its one tab (ADR 0086): the flow lands on the message's card and the
+	 * ticket it was filed under is picked.
 	 */
-	function showMessageTrace(message: Message, view: TraceViewKind = 'trace'): void {
+	function showMessageTrace(message: Message): void {
 		// A line in no job: its own flow, what it was read as and whom it woke (ADR 0083).
 		if (!message.task_id) {
-			if (view === 'trace') runtime.openTrace(null, null, { line: message.id });
+			runtime.openTrace(null, null, { line: message.id });
 			return;
 		}
-		if (view === 'trace') {
-			runtime.openTrace(message.task_id, { messageId: message.id, turnId: message.turn_id });
-			return;
-		}
-		runtime.openTrace(message.task_id, null, { view, ticket: message.ticket_id ?? null });
+		runtime.openTrace(message.task_id, { messageId: message.id, turnId: message.turn_id }, { ticket: message.ticket_id ?? null });
 	}
 
 	/** What the transcript's rows read from the stage, as one object; see transcript-stage.ts. */
@@ -1088,7 +1082,7 @@
 			onReply={() => startQuoteReply(activeMenu.message)}
 			onCopy={(text) => copyMessageBody(activeMenu.message.id, text)}
 			onOpenFileTree={(path) => handleOpenFileTree(path, activeMenu.message)}
-			onShowTrace={(view) => showMessageTrace(activeMenu.message, view)}
+			onShowTrace={() => showMessageTrace(activeMenu.message)}
 			onCopyId={() => handleCopyMessageId(activeMenu.message.id)}
 			onReaction={(emoji) => void runtime.toggleReaction(activeMenu.message.id, emoji)}
 			onAttribution={!fileDrop && attributable(activeMenu.message) && connected && !lockedComposer

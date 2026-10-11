@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { Message } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import type { TraceViewKind } from '../overlays/trace-view.ts';
 	import {
 		computeContextMenuPosition,
 		deriveMessageContextMenu
@@ -35,8 +34,8 @@
 		onReply: () => void;
 		onCopy: (text: string) => void;
 		onOpenFileTree: (path: string | null) => void;
-		/** Open one view of the message's job: its trace on the message's card, its board, its plan. */
-		onShowTrace: (view: TraceViewKind) => void;
+		/** Open the message's job on its card, the ticket it was filed under picked; or a line's own flow. */
+		onShowTrace: () => void;
 		onCopyId: () => void;
 		onReaction: (emoji: string) => void;
 		/** Present when this line can be filed somewhere else. */
@@ -57,9 +56,6 @@
 	const data = $derived(deriveMessageContextMenu(message, { lockedComposer }));
 
 	const QUICK_EMOJIS = ['👍', '❤️', '🎉', '🚀', '👀'];
-	const JOB_VIEWS: readonly TraceViewKind[] = ['trace', 'board', 'spec'];
-	/** A line in no job has its own flow and nothing else (ADR 0083). */
-	const LINE_VIEWS: readonly TraceViewKind[] = ['trace'];
 
 	$effect(() => {
 		if (menuEl) {
@@ -306,40 +302,26 @@
 	</button>
 
 	{#if data.canShowTrace || data.canShowLine}
-		<!-- The job this line is in, a view at a time: each opens as a tab of its own on a wide window.
-			A line in no job has only its own flow (ADR 0083). -->
-		{#each data.canShowTrace ? JOB_VIEWS : LINE_VIEWS as view (view)}
-			<button
-				type="button"
-				class="msg-context-menu-item"
-				role="menuitem"
-				data-job-view={view}
-				onclick={() => {
-					onShowTrace(view);
-					onClose();
-				}}
-			>
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					{#if view === 'board'}
-						<rect x="3" y="3" width="5" height="18" rx="1"></rect>
-						<rect x="10" y="3" width="5" height="12" rx="1"></rect>
-						<rect x="17" y="3" width="4" height="8" rx="1"></rect>
-					{:else if view === 'spec'}
-						<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-						<polyline points="14 2 14 8 20 8"></polyline>
-						<line x1="16" y1="13" x2="8" y2="13"></line>
-						<line x1="16" y1="17" x2="8" y2="17"></line>
-					{:else}
-						<rect x="8" y="2" width="8" height="6" rx="1.5"></rect>
-						<path d="M12 8v3"></path>
-						<path d="M5.5 14v-3h13v3"></path>
-						<rect x="2" y="14" width="7" height="6" rx="1.5"></rect>
-						<rect x="15" y="14" width="7" height="6" rx="1.5"></rect>
-					{/if}
-				</svg>
-				<span>{t.chat.jobView[view]}</span>
-			</button>
-		{/each}
+		<!-- The job this line is in, as one tab (ADR 0086), on this line's card; a line in no job has its own flow (ADR 0083). -->
+		<button
+			type="button"
+			class="msg-context-menu-item"
+			role="menuitem"
+			data-job-view="trace"
+			onclick={() => {
+				onShowTrace();
+				onClose();
+			}}
+		>
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<rect x="8" y="2" width="8" height="6" rx="1.5"></rect>
+				<path d="M12 8v3"></path>
+				<path d="M5.5 14v-3h13v3"></path>
+				<rect x="2" y="14" width="7" height="6" rx="1.5"></rect>
+				<rect x="15" y="14" width="7" height="6" rx="1.5"></rect>
+			</svg>
+			<span>{t.chat.jobView.trace}</span>
+		</button>
 	{/if}
 
 	{#if data.associatedFiles.length > 1}

@@ -10,7 +10,6 @@
  * ever moved to make room, and nothing is opened or split that the choice did not ask for.
  */
 import type { Axis, FloatFrame, NodeId, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
-import type { TraceViewKind } from "../overlays/trace-view.ts";
 import type { Direction } from "./layout-geometry.ts";
 import type { OpenPlacement } from "./open-placement.ts";
 import { SPLIT_TOWARDS } from "./workbench-commands.ts";
@@ -95,14 +94,13 @@ export type PlaceContext = {
   holdsEdit: (tabId: string) => boolean;
   /**
    * Which kind of window this is, as the settings list them, so a replace only takes the same
-   * kind: a conversation not a Bot↔Bot direct, the board not the trace.
+   * kind: a conversation not a Bot↔Bot direct.
    */
   kindOf: (content: PaneContent) => string;
 };
 
-/** Without the conversations' kinds to hand: a tab's kind, and for the flow, which of its views. */
-const tabKindOf = (content: PaneContent): string =>
-  content.kind === "trace" ? `trace:${content.view ?? "trace"}` : content.kind;
+/** Without the conversations' kinds to hand: a tab's kind. */
+const tabKindOf = (content: PaneContent): string => content.kind;
 
 const NO_PLACE: PlaceContext = {
   neighbour: () => null,
@@ -133,9 +131,9 @@ const SINGLE_INSTANCE = new Set<PaneContent["kind"]>(["routines", "spend", "usag
  *
  * A conversation's preview and its flow board are bound to it. Whatever inside it asks for a file
  * or a job — a message, the preview's own file tree, a card on the board — the pane it already has
- * turns to that, rather than a second one opening beside it. Each conversation keeps its own. The
- * flow is three views, each a tab of its own, so a conversation has one of each: one trace, one
- * board of tickets, one spec.
+ * turns to that, rather than a second one opening beside it. Each conversation keeps its own. A
+ * job is one tab (ADR 0086): its tickets, its trace and its spec are parts of that tab, so a
+ * conversation has one flow tab, whatever a tab saved before that asked to open on.
  */
 const ONE_PER_SESSION = new Set<PaneContent["kind"]>(["preview", "trace"]);
 
@@ -143,26 +141,13 @@ function boundSession(content: PaneContent): string | null {
   return "sessionId" in content ? content.sessionId : null;
 }
 
-/** Which of a job's views a flow tab is; the same for every other kind. */
-function boundView(content: PaneContent): TraceViewKind | null {
-  return content.kind === "trace" ? (content.view ?? "trace") : null;
-}
-
-/**
- * The pane holding this conversation's one tab of this kind, the focused pane first. For the flow,
- * `view` says which of its three tabs; left out, the trace.
- */
-export function findBound(
-  layout: WorkbenchLayout,
-  kind: PaneContent["kind"],
-  sessionId: string | null,
-  view: TraceViewKind | null = kind === "trace" ? "trace" : null,
-): Located | null {
+/** The pane holding this conversation's one tab of this kind, the focused pane first. */
+export function findBound(layout: WorkbenchLayout, kind: PaneContent["kind"], sessionId: string | null): Located | null {
   for (const leaf of focusedFirst(layout)) {
     for (const tab of leaf.tabs) {
       if (tab.kind !== kind) continue;
       const its = contentOfTab(tab);
-      if (its && boundSession(its) === sessionId && boundView(its) === view) return { leafId: leaf.id, tab };
+      if (its && boundSession(its) === sessionId) return { leafId: leaf.id, tab };
     }
   }
   return null;
@@ -181,7 +166,7 @@ function retarget(layout: WorkbenchLayout, at: Located, content: PaneContent | n
 export function existingTarget(layout: WorkbenchLayout, content: PaneContent): Located | null {
   if (SINGLE_INSTANCE.has(content.kind)) return findKind(layout, content.kind);
   if (ONE_PER_SESSION.has(content.kind)) {
-    return findBound(layout, content.kind, boundSession(content), boundView(content));
+    return findBound(layout, content.kind, boundSession(content));
   }
   return null;
 }
@@ -382,7 +367,7 @@ export function settingsSide(layout: WorkbenchLayout): { sessionId: string; botI
 }
 
 /**
- * Holds a layout to one preview per conversation, and one tab of each view of its flow.
+ * Holds a layout to one preview and one flow tab per conversation.
  *
  * Opening never makes a second one, but a layout saved before that rule can carry several. The
  * one nearest the keyboard stays — the focused pane first, then reading order — and the rest
@@ -396,7 +381,7 @@ export function dropDuplicateBoundTabs(layout: WorkbenchLayout, id: () => string
       if (!ONE_PER_SESSION.has(tab.kind as PaneContent["kind"])) continue;
       const its = contentOfTab(tab);
       if (!its) continue;
-      const key = `${its.kind}:${boundSession(its) ?? ""}:${boundView(its) ?? ""}`;
+      const key = `${its.kind}:${boundSession(its) ?? ""}`;
       if (seen.has(key)) extra.push({ leafId: leaf.id, tab });
       else seen.add(key);
     }

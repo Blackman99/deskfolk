@@ -1,8 +1,8 @@
 /**
  * Where each kind of window opens on the workbench when it is not open yet.
  *
- * Something already on screen is only brought forward — a conversation's one preview, one trace,
- * board and spec, the one calendar and ledger turn or come forward where they are — so this only
+ * Something already on screen is only brought forward — a conversation's one preview and one
+ * flow, the one calendar and ledger turn or come forward where they are — so this only
  * ever decides where a new tab goes: beside the one in front, over it, in a pane split off in some
  * direction, in the pane already there on that side, or floating. The choice is per browser, like
  * the layout it shapes (ADR 0025): it lives in this machine's storage, not the daemon.
@@ -15,15 +15,13 @@ import type { PaneContent } from "./pane-content.ts";
 
 /**
  * The kinds of window, as the settings list them. Conversations split in two: a Bot↔Bot direct is
- * mostly opened from a card in your own conversation, to read beside it. The job's three views are
- * three kinds, since each is a tab of its own.
+ * mostly opened from a card in your own conversation, to read beside it. A job is one tab, its
+ * tickets and spec parts of it (ADR 0086), so it is one kind.
  */
 export type OpenKind =
   | "chat"
   | "bot-bot"
   | "trace"
-  | "board"
-  | "spec"
   | "preview"
   | "workspace"
   | "terminal"
@@ -36,8 +34,6 @@ export const OPEN_KINDS: readonly OpenKind[] = [
   "chat",
   "bot-bot",
   "trace",
-  "board",
-  "spec",
   "preview",
   "workspace",
   "terminal",
@@ -99,8 +95,6 @@ export const OPEN_PLACEMENT_DEFAULTS: Readonly<Record<OpenKind, OpenPlacement>> 
   chat: "replace",
   "bot-bot": "side-right",
   trace: "side-right",
-  board: "side-right",
-  spec: "side-right",
   preview: "side-right",
   workspace: "side-right",
   terminal: "side-down",
@@ -119,8 +113,6 @@ export function openKindOf(content: PaneContent, groupOf: (sessionId: string) =>
   switch (content.kind) {
     case "chat":
       return groupOf(content.sessionId) === "bot-bot" ? "bot-bot" : "chat";
-    case "trace":
-      return content.view ?? "trace";
     default:
       return content.kind;
   }

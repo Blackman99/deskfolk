@@ -31,14 +31,14 @@ export type PaneContent =
       /** A line of yours filed under no job, drawn as a flow of its own (ADR 0083). */
       line?: string | null;
       /**
-       * Which view of the job this tab is: its trace, its board of tickets or its spec. Each is a
-       * tab of its own; left out, it is the trace, which every flow tab was before.
+       * What a tab saved before a job was one tab (ADR 0086) asked to open on: the board opened out,
+       * or the spec held to its ticket. Left out, the job opens as it was left.
        */
       view?: TraceViewKind;
       /** The message a "show this job" asked to land on, and which request it was. */
       focus?: TraceFocus | null;
       focusNonce?: number | null;
-      /** What another view of the job asked this one to show — a ticket, a column — and which request. */
+      /** What this tab was asked to show — a ticket to pick, a column to let through — and which request. */
       ticket?: string | null;
       column?: TicketStatus | null;
       askNonce?: number | null;

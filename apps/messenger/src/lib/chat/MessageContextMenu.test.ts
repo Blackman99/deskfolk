@@ -63,8 +63,8 @@ function openMessageMenu(
     onOpenFileTree: (path: string | null) => {
       calls.openFileTree.push(path);
     },
-    onShowTrace: (view: string) => {
-      calls.showTrace.push(view);
+    onShowTrace: () => {
+      calls.showTrace.push("trace");
     },
     onCopyId: () => {
       calls.copyId += 1;
@@ -184,25 +184,16 @@ test("编辑 is offered only where the stage passes it, right after 回复, and 
   close();
 });
 
-test("a line in a job opens that job's trace, board or plan, each its own item", () => {
+test("a line in a job opens that job's one flow tab, a single item (ADR 0086)", () => {
   const { host, calls, close } = openMessageMenu(createTestMessage({ task_id: "task-1" }));
-  expect([...host.querySelectorAll("[data-job-view]")].map((row) => row.textContent?.trim())).toEqual([
-    t.chat.jobView.trace,
-    t.chat.jobView.board,
-    t.chat.jobView.spec,
-  ]);
-  click(buttonByText(host, t.chat.jobView.board));
-  expect(calls.showTrace).toEqual(["board"]);
+  expect([...host.querySelectorAll("[data-job-view]")].map((row) => row.textContent?.trim())).toEqual([t.chat.jobView.trace]);
+  click(buttonByText(host, t.chat.jobView.trace));
+  expect(calls.showTrace).toEqual(["trace"]);
   expect(calls.close).toBe(1);
   close();
-  const again = openMessageMenu(createTestMessage({ task_id: "task-1" }));
-  click(buttonByText(again.host, t.chat.jobView.spec));
-  click(buttonByText(again.host, t.chat.jobView.trace));
-  expect(again.calls.showTrace).toEqual(["spec", "trace"]);
-  again.close();
 });
 
-test("a line in no job opens its own flow, and has no board or plan to open (ADR 0083)", () => {
+test("a line in no job opens its own flow (ADR 0083)", () => {
   const { host, calls, close } = openMessageMenu(createTestMessage({ task_id: null }));
   expect([...host.querySelectorAll("[data-job-view]")].map((row) => row.getAttribute("data-job-view"))).toEqual(["trace"]);
   click(buttonByText(host, t.chat.jobView.trace));

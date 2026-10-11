@@ -35,8 +35,6 @@ test("every kind of window is a row with where it opens, the defaults first", ()
     t.openPlacement.placements["side-right"],
     t.openPlacement.placements["side-right"],
     t.openPlacement.placements["side-right"],
-    t.openPlacement.placements["side-right"],
-    t.openPlacement.placements["side-right"],
     t.openPlacement.placements["side-down"],
     t.openPlacement.placements.tab,
     t.openPlacement.placements.tab,

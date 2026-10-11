@@ -51,3 +51,9 @@ Status: implemented 2026-10-10, desktop workbench only. Amends one rule of [ADR 
 - 按入口分别设（例如从通知打开的会话和从侧栏打开的不一样）：先按窗口种类够不够用。/ Per entry point, rather than per kind.
 - 按住修饰键临时换一种打开方式（例如 ⌘ 点击开到旁边）。/ A modifier key for a one-off placement.
 - 让旧深链也走窗格。/ Routing the legacy deep links through panes.
+
+## 2026-10-12 补记：流程只算一种 / The flow is one kind
+
+[ADR 0086](0086-a-job-is-one-tab.md) 把一件事的流程、看板和要点做成了一个标签，第 2 条的十种窗口里看板、要点两种去掉，流程是一种：消息和会话菜单里只有「流程」，一条会话只有一个流程标签。设置里以前给看板、要点选过的打开方式读的时候丢掉；以前存下的看板、要点标签再要一次就是那一个流程标签。第 4 条的「流程、看板、要点各是一类」不再成立。
+
+[ADR 0086](0086-a-job-is-one-tab.md) made a job's flow, board and plan one tab, so decision 2's kinds lose the board and the plan and the flow is one kind: the message and conversation menus have "Flow" only, and a conversation has one flow tab. A placement chosen for the board or the plan before is dropped when read; a board or plan tab saved before is, asked for again, the one flow tab. Decision 4's "the trace, board and plan are one kind each" no longer holds.

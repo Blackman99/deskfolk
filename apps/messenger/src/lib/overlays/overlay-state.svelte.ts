@@ -8,15 +8,14 @@ import type { Snapshot } from "../snapshot.ts";
 import { usageWidget } from "../usage/usage-widget.svelte.ts";
 import type { PaneContent } from "../workbench/pane-content.ts";
 import type { TraceFocus } from "./task-trace.ts";
-import { saveTraceView, type TraceViewKind } from "./trace-view.ts";
 
 /** Which view of a job to open, for which conversation, and a ticket for the board to pick. */
 export type TraceOpenOptions = {
-  view?: TraceViewKind;
   /** A line filed under no job, opened as a flow of its own (ADR 0083). */
   line?: string | null;
   /** The conversation whose job it is; the one on screen when left out. */
   sessionId?: string;
+  /** The ticket to pick as it opens: the one the message asking for its card was filed under. */
   ticket?: string | null;
 };
 
@@ -293,29 +292,25 @@ export class OverlayState {
    * `taskId` null opens whatever job this session touched most recently.
    * `focus` is the message whose card the board should move to.
    *
-   * On a wide window each view of the job is a tab of its own, and `view` says which one opens —
-   * the board with `ticket` picked when there is one. On a phone the job is one page, opened on
-   * that view, and that is the view it opens on next time too.
+   * On a wide window the job is the conversation's one flow tab (ADR 0086), `ticket` picked in it
+   * when there is one; on a phone it is one page over the conversation.
    */
   openTrace(taskId: string | null = null, focus: TraceFocus | null = null, opts: TraceOpenOptions = {}): void {
     const sessionId = opts.sessionId ?? this.host.selectedId;
     if (!sessionId) return;
     const line = opts.line ?? null;
-    const view = focus || line ? "trace" : (opts.view ?? "trace");
     const token = focus ? (this.traceFocusToken += 1) : 0;
-    const ticket = view === "board" ? (opts.ticket ?? null) : null;
+    const ticket = line ? null : (opts.ticket ?? null);
     if (this.toPane({
       kind: "trace",
       sessionId,
       taskId,
       ...(line ? { line } : {}),
-      view,
       focus,
       focusNonce: token || null,
       ticket,
       askNonce: ticket ? Date.now() : null,
     })) return;
-    if (opts.view) saveTraceView(view);
     this.host.closeSheets();
     this.threadOpen = false;
     this.routinesOpen = false;

@@ -39,7 +39,7 @@ function open(
       calls.delete += 1;
       handlers.onDelete?.();
     },
-    onShowJobView: (view: string) => calls.jobViews.push(view),
+    onShowJobView: () => calls.jobViews.push("trace"),
   });
   return { ...view, calls };
 }
@@ -84,16 +84,12 @@ test("delete on a bot-bot direct stays disabled", () => {
   close();
 });
 
-test("a Bot's and a group's row open the latest job's trace, board or plan", () => {
+test("a Bot's and a group's row open the latest job's one flow tab (ADR 0086)", () => {
   for (const session of [aDirect(), aGroup()]) {
     const { host, calls, close } = open(session, [aBot({ id: "bot-1" }), aBot({ id: "bot-2" })]);
-    expect([...host.querySelectorAll("[data-job-view]")].map((row) => row.textContent?.trim())).toEqual([
-      t.plan.segmentTrace,
-      t.plan.segmentBoard,
-      t.plan.segmentSpec,
-    ]);
-    click(host.querySelector('[data-job-view="board"]'));
-    expect(calls.jobViews).toEqual(["board"]);
+    expect([...host.querySelectorAll("[data-job-view]")].map((row) => row.textContent?.trim())).toEqual([t.plan.segmentTrace]);
+    click(host.querySelector('[data-job-view="trace"]'));
+    expect(calls.jobViews).toEqual(["trace"]);
     expect(calls.close).toBe(1);
     close();
   }
