@@ -252,6 +252,12 @@ describe("aggregate", () => {
     expect(agg.by_cell["solo · bare"]).toMatchObject({ runs: 1 });
   });
 
+  test("by_playbook groups runs by the engine they ran under; one written before engines ran all on", () => {
+    const agg = aggregate([run({ score: 1 }), run({ playbook: "video", score: 1 }), run({ playbook: "video", outcome: "timeout", score: null })]);
+    expect(agg.by_playbook["all-on"]).toMatchObject({ runs: 1, completed: 1 });
+    expect(agg.by_playbook.video).toMatchObject({ runs: 2, completed: 1 });
+  });
+
   test("spend_by_kind sums stats.spend_by_kind across runs", () => {
     const a = run({ stats: { ...run().stats, spend_by_kind: { turn: { rows: 2, input_tokens: 100, output_tokens: 10, cost_usd: 0.01 } } } });
     const b = run({ run: 2, stats: { ...run().stats, spend_by_kind: { turn: { rows: 1, input_tokens: 50, output_tokens: 5, cost_usd: null } } } });

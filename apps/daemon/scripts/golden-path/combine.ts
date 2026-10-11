@@ -1,12 +1,12 @@
 /**
  * Combines several golden-path `results.json` files into one comparison: rows grouped by
- * (model, setup, ablation[, task]), a Wilson interval on the completion rate, and deltas against
- * the same model+setup(+task)'s "none" ablation row. Pure — `scripts/golden-path-combine.ts` is
+ * (model, setup, engine, ablation[, task]), a Wilson interval on the completion rate, and deltas against
+ * the same model+setup(+task)+engine's "none" ablation row (an engine's own against all steps on). Pure — `scripts/golden-path-combine.ts` is
  * the thin CLI that reads files from disk and calls this.
  */
 import { basename, dirname } from "node:path";
 import type { SideCall } from "../../src/ablation";
-import { bucketOf, classifyFailure, formatDuration, isCompleted, type FailureKind, type RunResult } from "./report";
+import { bucketOf, classifyFailure, formatDuration, isCompleted, playbookOf, type FailureKind, type RunResult } from "./report";
 
 export type ResultsMeta = {
   model: string;
@@ -64,6 +64,7 @@ function normalizeRun(raw: Record<string, unknown>, minPass: number, path: strin
     },
     ended_stalled: (raw.ended_stalled as boolean | undefined) ?? false,
     ablation: (raw.ablation as string | undefined) ?? "none",
+    playbook: (raw.playbook as string | undefined) ?? "all-on",
     ablated: (raw.ablated as SideCall[] | undefined) ?? [],
     ablation_leaks: (raw.ablation_leaks as string[] | undefined) ?? [],
   } as RunResult;
@@ -92,6 +93,8 @@ export type ComparisonRow = {
   model: string;
   setup: string;
   ablation: string;
+  /** The engine the runs ran under (ADR 0085); `all-on` for every step on, as before engines. */
+  playbook: string;
   /** Only set when `--by-task`. */
   task: string | null;
   runs: number;
@@ -105,7 +108,10 @@ export type ComparisonRow = {
   /** Share of this group's spend that was not a `turn` bucket (organize, closing check, route pick, …); null with no cost data. */
   side_call_cost_share: number | null;
   failures: Partial<Record<FailureKind, number>>;
-  /** vs. this model+setup(+task)'s "none" ablation row; null for the "none" row itself, or when there is no baseline to compare against. */
+  /**
+   * vs. this model+setup(+task)+engine's "none" ablation row; a "none" row of an engine is set
+   * against the all-on "none" row (as before engines). Null for that row, or with no baseline.
+   */
   delta_rate: number | null;
   delta_cost_usd: number | null;
 };
@@ -153,14 +159,14 @@ function sideCallCostShare(runs: readonly RunResult[]): number | null {
 }
 
 /**
- * Groups the runs of every file by (model, setup, ablation[, task]), de-duping by
+ * Groups the runs of every file by (model, setup, engine, ablation[, task]), de-duping by
  * `(results directory, run_dir)` so the same output folder read twice (e.g. via both a bare
  * directory and its `results.json`) counts once. With `minPass`, completion and failure are
  * re-derived at that pass mark instead of trusting each run's own `completed`/`failure`.
  */
 export function combine(files: readonly { path: string; data: ResultsFile }[], opts: { byTask?: boolean; minPass?: number } = {}): CombineResult {
   const warnings = metaWarnings(files);
-  const groups = new Map<string, { model: string; setup: string; ablation: string; task: string | null; runs: RunResult[] }>();
+  const groups = new Map<string, { model: string; setup: string; ablation: string; playbook: string; task: string | null; runs: RunResult[] }>();
   const seenRuns = new Set<string>();
   for (const file of files) {
     const dir = resultsDir(file.path);
@@ -175,8 +181,9 @@ export function combine(files: readonly { path: string; data: ResultsFile }[], o
       const effective: RunResult =
         opts.minPass !== undefined ? { ...run, completed: isCompleted(run, minPass), failure: classifyFailure(run, minPass) } : run;
       const task = opts.byTask ? effective.task : null;
-      const key = [model, effective.setup, effective.ablation, task ?? ""].join("\u0000");
-      const group = groups.get(key) ?? { model, setup: effective.setup, ablation: effective.ablation, task, runs: [] };
+      const playbook = playbookOf(effective);
+      const key = [model, effective.setup, playbook, effective.ablation, task ?? ""].join("\u0000");
+      const group = groups.get(key) ?? { model, setup: effective.setup, ablation: effective.ablation, playbook, task, runs: [] };
       group.runs.push(effective);
       groups.set(key, group);
     }
@@ -184,10 +191,11 @@ export function combine(files: readonly { path: string; data: ResultsFile }[], o
   const rows: ComparisonRow[] = [...groups.values()].map((group) => {
     const b = bucketOf(group.runs);
     return {
-      key: `${group.model} · ${group.setup} · ${group.ablation}${group.task ? ` · ${group.task}` : ""}`,
+      key: `${group.model} · ${group.setup}${group.playbook === "all-on" ? "" : ` · ${group.playbook}`} · ${group.ablation}${group.task ? ` · ${group.task}` : ""}`,
       model: group.model,
       setup: group.setup,
       ablation: group.ablation,
+      playbook: group.playbook,
       task: group.task,
       runs: b.runs,
       completed: b.completed,
@@ -204,8 +212,10 @@ export function combine(files: readonly { path: string; data: ResultsFile }[], o
     };
   });
   for (const row of rows) {
-    if (row.ablation === "none") continue;
-    const baseline = rows.find((other) => other.model === row.model && other.setup === row.setup && other.task === row.task && other.ablation === "none");
+    if (row.ablation === "none" && row.playbook === "all-on") continue;
+    const against = row.ablation === "none" ? "all-on" : row.playbook;
+    const baseline = rows.find((other) => other.model === row.model && other.setup === row.setup && other.task === row.task
+      && other.playbook === against && other.ablation === "none");
     if (!baseline) continue;
     row.delta_rate = row.rate - baseline.rate;
     row.delta_cost_usd = row.mean_cost_usd !== null && baseline.mean_cost_usd !== null ? row.mean_cost_usd - baseline.mean_cost_usd : null;
@@ -226,12 +236,12 @@ export function formatComparison(result: CombineResult): string {
     lines.push("## 警告", "", ...result.warnings.map((warning) => `- ⚠️ ${warning}`), "");
   }
   lines.push(
-    "| 模型 | 组班 | 消融 | 任务 | 完成 | 完成率 | 95% 区间 | Δ完成率 | 平均花费 | Δ花费 | 旁支花费占比 | 平均覆盖率 | 平均介入 | 平均用时 |",
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+    "| 模型 | 组班 | 引擎 | 消融 | 任务 | 完成 | 完成率 | 95% 区间 | Δ完成率 | 平均花费 | Δ花费 | 旁支花费占比 | 平均覆盖率 | 平均介入 | 平均用时 |",
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
   );
   for (const row of result.rows) {
     lines.push(
-      `| ${row.model} | ${row.setup} | ${row.ablation} | ${row.task ?? "（全部）"} | ${row.completed} / ${row.runs} | ${percent(row.rate)} | ${percent(row.wilson.low)}–${percent(row.wilson.high)} | ${pp(row.delta_rate)} | ${usd(row.mean_cost_usd)} | ${deltaUsd(row.delta_cost_usd)} | ${percent(row.side_call_cost_share)} | ${percent(row.mean_score)} | ${row.mean_interventions.toFixed(1)} | ${formatDuration(row.mean_wall_ms)} |`,
+      `| ${row.model} | ${row.setup} | ${row.playbook} | ${row.ablation} | ${row.task ?? "（全部）"} | ${row.completed} / ${row.runs} | ${percent(row.rate)} | ${percent(row.wilson.low)}–${percent(row.wilson.high)} | ${pp(row.delta_rate)} | ${usd(row.mean_cost_usd)} | ${deltaUsd(row.delta_cost_usd)} | ${percent(row.side_call_cost_share)} | ${percent(row.mean_score)} | ${row.mean_interventions.toFixed(1)} | ${formatDuration(row.mean_wall_ms)} |`,
     );
   }
   if (result.rows.length === 0) lines.push("（没有可比的运行）");

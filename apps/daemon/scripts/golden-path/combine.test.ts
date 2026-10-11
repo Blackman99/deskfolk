@@ -169,6 +169,25 @@ describe("combine", () => {
     expect(noneRow.delta_rate).toBeNull();
   });
 
+  test("runs under an engine are rows of their own, set against all steps on; a result from before engines reads as all on", () => {
+    const before = resultsFile([run({ score: 1, run_dir: "runs/a1" }), run({ run: 2, score: 1, run_dir: "runs/a2" })]);
+    const general = resultsFile([
+      run({ playbook: "general", score: 1, run_dir: "runs/g1", stats: { ...run().stats, cost_usd: 0.005 } }),
+      run({ run: 2, playbook: "general", outcome: "timeout", score: null, run_dir: "runs/g2", stats: { ...run().stats, cost_usd: 0.005 } }),
+    ]);
+    const result = combine([
+      { path: "/out/before/results.json", data: before },
+      { path: "/out/general/results.json", data: general },
+    ]);
+    const allOn = result.rows.find((row) => row.playbook === "all-on")!;
+    const generalRow = result.rows.find((row) => row.playbook === "general")!;
+    expect(allOn).toMatchObject({ rate: 1, delta_rate: null });
+    expect(generalRow.rate).toBe(0.5);
+    expect(generalRow.delta_rate).toBeCloseTo(-0.5);
+    expect(generalRow.delta_cost_usd).toBeCloseTo(-0.005);
+    expect(formatComparison(result)).toContain("| model-a | manual | general | none |");
+  });
+
   test("--by-task splits rows by task; without it, tasks are merged under task: null", () => {
     const data = resultsFile([run({ task: "research" }), run({ run: 2, task: "small-tool" })]);
     const merged = combine([{ path: "/out/results.json", data }]);
@@ -231,9 +250,9 @@ describe("formatComparison", () => {
     expect(text).toStartWith("# 黄金路径对比\n");
     expect(text).toContain("## 警告");
     expect(text).toContain("judge_model");
-    expect(text).toContain("| 模型 | 组班 | 消融 |");
-    expect(text).toContain("model-a | manual | none |");
-    expect(text).toContain("model-a | manual | bare |");
+    expect(text).toContain("| 模型 | 组班 | 引擎 | 消融 |");
+    expect(text).toContain("model-a | manual | all-on | none |");
+    expect(text).toContain("model-a | manual | all-on | bare |");
     expect(text.endsWith("\n")).toBe(true);
   });
 

@@ -118,6 +118,11 @@ export type RunResult = {
   ended_stalled: boolean;
   /** `ablationLabel` of the switches this run turned off; "none" when none were. */
   ablation: string;
+  /**
+   * The engine the run's conversations ran under (ADR 0085): a built-in's id, or `all-on` for every
+   * step on as before engines. Absent from results written before engines, which ran all on.
+   */
+  playbook?: string;
   /** The switches this run turned off, in `SIDE_CALLS` order. */
   ablated: SideCall[];
   /** Rows that turned up in `spend` for a call this run's ablation switched off (see `ablationLeaks`). */
@@ -209,6 +214,11 @@ export function ablationLeaks(ablated: readonly SideCall[], spendByKind: Record<
 const DEFAULT_MIN_PASS = 0.8;
 const EMPTY_SPEND_BY_KIND: Record<string, SpendBucketStats> = {};
 
+/** The engine a run ran under; a result from before engines ran every step on. */
+export function playbookOf(run: RunResult): string {
+  return run.playbook ?? "all-on";
+}
+
 export function ablationOf(run: RunResult): string {
   return run.ablation ?? "none";
 }
@@ -274,6 +284,8 @@ export type Aggregate = {
   by_setup: Record<string, Bucket>;
   by_task: Record<string, Bucket>;
   by_ablation: Record<string, Bucket>;
+  /** By the engine runs ran under (ADR 0085). */
+  by_playbook: Record<string, Bucket>;
   /** Keyed `${setup} · ${ablation}`. */
   by_cell: Record<string, Bucket>;
   outcomes: Record<RunOutcome, number>;
@@ -336,6 +348,7 @@ export function aggregate(all: readonly RunResult[]): Aggregate {
     by_setup: groupBy(runs, (run) => run.setup),
     by_task: groupBy(runs, (run) => run.task),
     by_ablation: groupBy(runs, (run) => ablationOf(run)),
+    by_playbook: groupBy(runs, (run) => playbookOf(run)),
     by_cell: groupBy(runs, (run) => `${run.setup} · ${ablationOf(run)}`),
     outcomes,
     interventions: {
@@ -429,6 +442,7 @@ export function formatSummary(input: { meta: SummaryMeta; aggregate: Aggregate; 
   const { meta, aggregate: agg, runs } = input;
   const setupsSeen = [...new Set(runs.map((run) => run.setup))];
   const ablationsSeen = [...new Set(runs.map((run) => ablationOf(run)))];
+  const playbooksSeen = [...new Set(runs.map((run) => playbookOf(run)))];
   const lines: string[] = [
     `# 黄金路径基准 — ${meta.model}`,
     "",
@@ -440,6 +454,9 @@ export function formatSummary(input: { meta: SummaryMeta; aggregate: Aggregate; 
   ];
   if (ablationsSeen.length > 1 || ablationsSeen.some((label) => label !== "none")) {
     lines.push(`- 消融：${ablationsSeen.join("、")}`);
+  }
+  if (playbooksSeen.length > 1 || playbooksSeen.some((label) => label !== "all-on")) {
+    lines.push(`- 引擎：${playbooksSeen.join("、")}`);
   }
   lines.push(
     "",
@@ -455,6 +472,9 @@ export function formatSummary(input: { meta: SummaryMeta; aggregate: Aggregate; 
   lines.push(...bucketRows("组班方式", agg.by_setup), "", ...bucketRows("任务", agg.by_task), "");
   if (Object.keys(agg.by_ablation).length > 1) {
     lines.push(...bucketRows("消融", agg.by_ablation), "");
+  }
+  if (Object.keys(agg.by_playbook).length > 1) {
+    lines.push(...bucketRows("引擎", agg.by_playbook), "");
   }
   lines.push("### 花费构成", "", ...spendRows(agg.spend_by_kind), "");
   lines.push(

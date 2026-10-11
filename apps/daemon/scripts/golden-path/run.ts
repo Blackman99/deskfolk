@@ -14,13 +14,13 @@ import { Database } from "bun:sqlite";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
-import { USER_MEMBER, type Approval, type Message } from "@real-bot/protocol";
+import { BUILTIN_PLAYBOOK_IDS, builtinPlaybook, playbookDefaults, USER_MEMBER, type Approval, type BuiltinPlaybookId, type Message } from "@real-bot/protocol";
 import { ablationLabel, ablationList, type Ablation } from "../../src/ablation";
 import { deliveryExcerpt } from "../../src/closing-check";
 import type { CompletionsClient } from "../../src/completions";
 import { stateDbPath } from "../../src/descriptor";
 import { COVERAGE_EXCERPT_LIMIT, goalCoveragePayload, type CoveragePayload } from "../../src/goal-coverage-eval";
-import { ORGANIZER_SETTLE_TIMEOUT_MS, SETTLE_QUIET_MS } from "../../src/organizer";
+import { ORGANIZER_SETTLE_TIMEOUT_MS } from "../../src/organizer";
 import { startRuntime, type RuntimeHandle } from "../../src/runtime";
 import { memoryKeyStore } from "../../src/secrets";
 import type { Store } from "../../src/store";
@@ -44,6 +44,7 @@ import {
 import { dueSteps, resolveBotDirects, scriptClock, scriptDueBeforeDeadline } from "./script";
 import { settleVerdict, type PlanSettleState, type SettleSnapshot, type SettleTiming } from "./settle";
 import { seedDir, type GoldenTask, type LoadedTaskSet, type ScriptStep, type Setup } from "./tasks";
+import { everyStepOn } from "../../src/test-kit/playbook";
 
 /** `mcp-fixture.ts` lives beside the engine, not beside this script. */
 const MCP_FIXTURE = resolve(import.meta.dir, "..", "..", "src", "mcp-fixture.ts");
@@ -52,7 +53,7 @@ const MCP_FIXTURE = resolve(import.meta.dir, "..", "..", "src", "mcp-fixture.ts"
 export const TIMING: Omit<SettleTiming, "settleFiles"> = {
   quietMs: 15_000,
   stableMs: 5_000,
-  settleQuietMs: SETTLE_QUIET_MS,
+  settleQuietMs: playbookDefaults().settle.params.quiet_s! * 1000,
   settleGraceMs: 3_000,
   organizerTimeoutMs: ORGANIZER_SETTLE_TIMEOUT_MS + 15_000,
 };
@@ -783,19 +784,33 @@ const EMPTY_STATS: RunStats = {
   thinking_levels: {},
 };
 
+/** The engines a run can be told to use: the built-ins, or every step on as before engines. */
+export const RUN_PLAYBOOKS = ["all-on", ...BUILTIN_PLAYBOOK_IDS] as const;
+
+/** Sets the fresh data folder's default engine (ADR 0085); `all-on` turns 通用's off steps back on. */
+function usePlaybook(store: Store, playbook: string): void {
+  if (playbook === "all-on") {
+    everyStepOn(store);
+    return;
+  }
+  store.patchSettingsSync({ default_playbook: playbook });
+}
+
 export async function runOnce(input: {
   loaded: LoadedTaskSet;
   task: GoldenTask;
   setup: Setup;
   ablation: Ablation;
+  /** The engine the run's conversations run under (ADR 0085): a built-in's id, or `all-on` (every step on, as before engines). */
+  playbook: string;
   index: number;
   outDir: string;
   opts: RunOptions;
 }): Promise<RunResult> {
-  const { loaded, task, setup, ablation, index, outDir, opts } = input;
+  const { loaded, task, setup, ablation, playbook, index, outDir, opts } = input;
   // Existing layout when nothing is ablated (`runs/<task>--<setup>--<n>`); ablated runs get the
   // label folded in before the run number (`runs/<task>--<setup>--<label>--<n>`).
-  const ablationSuffix = ablationLabel(ablation) === "none" ? "" : `--${ablationLabel(ablation)}`;
+  const ablationSuffix = `${playbook === "all-on" ? "" : `--${playbook}`}${ablationLabel(ablation) === "none" ? "" : `--${ablationLabel(ablation)}`}`;
   const label = `${task.id}/${setup}${ablationSuffix}#${index}`;
   const runDir = join(outDir, "runs", `${task.id}--${setup}${ablationSuffix}--${index}`);
   const dataDir = join(runDir, "data");
@@ -816,10 +831,13 @@ export async function runOnce(input: {
   let handle: RuntimeHandle | null = null;
   // `organize-settle` off: a plan counts as settled once its timer and grace pass, without
   // waiting on an `organize` row or the organizer's own timeout (settle.ts's `settleFiles`).
-  const timing: SettleTiming = { ...TIMING, settleFiles: !ablation.has("organize-settle") };
+  // The settle waits as long as the run's engine has it (ADR 0085).
+  const engine = playbook === "all-on" ? playbookDefaults() : builtinPlaybook(playbook as BuiltinPlaybookId);
+  const timing: SettleTiming = { ...TIMING, settleQuietMs: engine.settle.params.quiet_s! * 1000, settleFiles: !ablation.has("organize-settle") && engine.settle.on };
   try {
     // Scheduler on: it is what fires the check-backs Bots book, and seeing a job through relies on them.
     handle = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: memoryKeyStore(), schedule: true, supervisor: "none", ablation });
+    usePlaybook(handle.store, playbook);
     const api = apiFor(handle);
     await configure(api, workspace, opts);
     await registerMcp(api, task, opts);
@@ -940,6 +958,7 @@ export async function runOnce(input: {
     key_leak: keyLeak,
     ended_stalled: collected?.endedStalled ?? false,
     ablation: ablationLabel(ablation),
+    playbook,
     ablated,
     ablation_leaks: ablationLeaks(ablated, stats.spend_by_kind),
     attribution,

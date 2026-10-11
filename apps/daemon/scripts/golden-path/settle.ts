@@ -54,7 +54,7 @@ export type SettleSnapshot = {
 export type SettleTiming = {
   quietMs: number;
   stableMs: number;
-  /** The organizer's quiet time after a plan's last turn (SETTLE_QUIET_MS). */
+  /** The organizer's quiet time after a plan's last turn: the run's engine's settle.quiet_s (ADR 0085). */
   settleQuietMs: number;
   /** Slack after the settle timer, for the call to start and the reconcile to run. */
   settleGraceMs: number;

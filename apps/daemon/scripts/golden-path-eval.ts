@@ -4,7 +4,7 @@
  *
  *   REAL_BOT_EVAL_API_KEY=sk-… bun scripts/golden-path-eval.ts \
  *     --base-url https://api.example.com/v1 --model team-model [--judge-model judge-model] \
- *     [--only research,small-tool] [--setup manual|coordinator|solo|both|all] [--ablate spec]… \
+ *     [--only research,small-tool] [--setup manual|coordinator|solo|both|all] [--playbook id]… [--ablate spec]… \
  *     [--runs 1] [--timeout-min 30] \
  *     [--approvals deny|allow-once] [--min-pass 0.8] [--min-rate 0.7] [--price 0.5,2] [--out dir]
  *
@@ -29,7 +29,7 @@ import { ablationLabel, ablationList, AblationError, NO_ABLATION, parseAblation,
 import { createCompletionsClient } from "../src/completions";
 import { scrubbedEnv } from "./golden-path/env";
 import { aggregate, formatDuration, formatSummary, type RunResult, type SummaryMeta } from "./golden-path/report";
-import { runOnce, type RunOptions } from "./golden-path/run";
+import { RUN_PLAYBOOKS, runOnce, type RunOptions } from "./golden-path/run";
 import { loadTaskSet, parseSetups, requireSetups, selectTasks, type Setup } from "./golden-path/tasks";
 
 type Options = {
@@ -41,6 +41,8 @@ type Options = {
   only: string[] | null;
   setups: Setup[];
   ablations: Ablation[];
+  /** Engines to run under (ADR 0085): `all-on` (every step on, as before engines) or a built-in's id. */
+  playbooks: string[];
   runs: number;
   timeoutMin: number;
   judgeTimeoutMs: number;
@@ -75,7 +77,9 @@ Optional:
                           (none | organizer | calls | nudges | bare | organize-message |
                            organize-settle | closing-check | route-pick | review | learning |
                            judgement | plan-nudge | direct-report); default: one condition, none
-  --runs <n>              runs per task × setup × ablation (default 1)
+  --playbook <id>         repeatable: the engine runs use (ADR 0085): all-on (default: every step on, as
+                          before engines), general, video or coding
+  --runs <n>              runs per task × setup × engine × ablation (default 1)
   --timeout-min <n>       wall clock per run from your first message (default 30)
   --judge-timeout-ms <n>  judge first-byte timeout (default 120000)
   --approvals <how>       deny | allow-once — how approval cards are answered (default deny); counted either way
@@ -101,6 +105,7 @@ function parseArgs(argv: string[]): Options {
     only: null,
     setups: parseSetups("both"),
     ablations: [NO_ABLATION],
+    playbooks: ["all-on"],
     runs: 1,
     timeoutMin: 30,
     judgeTimeoutMs: 120_000,
@@ -124,6 +129,7 @@ function parseArgs(argv: string[]): Options {
     return n;
   };
   let ablateGiven = false;
+  let playbookGiven = false;
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]!;
     switch (flag) {
@@ -163,6 +169,16 @@ function parseArgs(argv: string[]): Options {
         } catch (error) {
           throw error instanceof AblationError ? new Error(`--ablate: ${error.message}`) : error;
         }
+        break;
+      }
+      case "--playbook": {
+        const value = next(flag, i++);
+        if (!(RUN_PLAYBOOKS as readonly string[]).includes(value)) throw new Error(`--playbook must be one of ${RUN_PLAYBOOKS.join(", ")}`);
+        if (!playbookGiven) {
+          opts.playbooks = [];
+          playbookGiven = true;
+        }
+        if (!opts.playbooks.includes(value)) opts.playbooks.push(value);
         break;
       }
       case "--runs": {
@@ -278,19 +294,21 @@ async function main(): Promise<number> {
   requireSetups(tasks, opts.setups);
   // Run index outermost, then task, then setup, then ablation: interleaved, so an interrupt after a
   // handful of runs still leaves a spread across every cell instead of finishing one cell first.
-  const matrix: Array<{ task: (typeof tasks)[number]; setup: Setup; ablation: Ablation; index: number }> = [];
+  const matrix: Array<{ task: (typeof tasks)[number]; setup: Setup; ablation: Ablation; playbook: string; index: number }> = [];
   for (let i = 1; i <= opts.runs; i += 1) {
     for (const task of tasks) {
       for (const setup of opts.setups) {
-        for (const ablation of opts.ablations) {
-          matrix.push({ task, setup, ablation, index: i });
+        for (const playbook of opts.playbooks) {
+          for (const ablation of opts.ablations) {
+            matrix.push({ task, setup, ablation, playbook, index: i });
+          }
         }
       }
     }
   }
   if (opts.list) {
     process.stdout.write(
-      `${tasks.length} task(s) × ${opts.setups.length} setup(s) × ${opts.ablations.length} ablation(s) × ${opts.runs} run(s) = ${matrix.length} run(s)\n`,
+      `${tasks.length} task(s) × ${opts.setups.length} setup(s) × ${opts.playbooks.length} engine(s) × ${opts.ablations.length} ablation(s) × ${opts.runs} run(s) = ${matrix.length} run(s)\n`,
     );
     for (const task of tasks) {
       const manual = task.setups.manual;
@@ -397,7 +415,7 @@ async function main(): Promise<number> {
   process.stderr.write(`golden-path-eval: ${matrix.length} run(s) on ${opts.model} → ${outDir}\n`);
   for (const cell of matrix) {
     if (aborting) break;
-    const result = await runOnce({ loaded, task: cell.task, setup: cell.setup, ablation: cell.ablation, index: cell.index, outDir, opts: runOptions });
+    const result = await runOnce({ loaded, task: cell.task, setup: cell.setup, ablation: cell.ablation, playbook: cell.playbook, index: cell.index, outDir, opts: runOptions });
     results.push(result);
     write();
     const score = result.score === null ? "not judged" : `coverage ${Math.round(result.score * 100)}%`;
