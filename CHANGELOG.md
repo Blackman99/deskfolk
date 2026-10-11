@@ -50,6 +50,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - The sample's cost so far and the rough sum for the rest, which its card used to show, now come to the Bot with its hand-over, for it to tell you.
 - On the board, a ticket waiting on you reads "Waiting on your word: say it is fine, or what to fix". Cards already out still take a press.
 
+### The site and docs catch up with engines and Roles
+
+- The About page's first promise is now "Your words are never lost": kept word for word, out of Bots' reach, and the rules and done-when you write on the flow board are only ever added to; the site's page description (the text in search results and link previews) likewise says "the rules you write are only ever added to" in place of "requirements are only ever added". The scribe, which writes requirements down from every line you send, is an engine step the default general engine leaves off; the About page, the roadmap, the glossary and the behavior notes say so, and the same for retrospectives and reflection.
+- The About page, the roadmap and the glossary describe what you can change as three things: the engine (which of the app's own steps run, with what numbers), Roles (each step's model and prompts) and the built-in prompts, with the skeleton still in code. The About page puts Roles under Tools → Roles. The roadmap calls the data folder's level "kernel level 8", so it no longer shares a name with engines, and its first-run item describes today's choice of a way of working and Bot templates.
+
 ## 0.1.0-rc.17 — 2026-10-11
 
 Signed and notarized macOS rc, with an experimental, still unsigned Windows installer beside the `.dmg`s.
