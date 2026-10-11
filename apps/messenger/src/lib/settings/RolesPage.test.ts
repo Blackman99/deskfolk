@@ -8,6 +8,7 @@ import { copyFor } from "../copy.ts";
 import { aProvider, fakeRuntime } from "../test-fixtures.ts";
 import { click, render } from "../test-render.ts";
 import RolesPage from "./RolesPage.svelte";
+import { closeMessageText, messageTextOpen } from "../chat/message-text-pages.ts";
 import { noBuiltinModels } from "./builtin-models.ts";
 
 const t = copyFor("zh");
@@ -175,6 +176,32 @@ test("as a page, Back steps out of a prompt, then a call, then the page", async 
     expect(left).toBe(0);
     click(host.querySelector(".roles-page-back"));
     expect(left).toBe(1);
+  } finally {
+    close();
+    window.matchMedia = previous;
+  }
+});
+
+test("on a phone, the system's Back steps out of a call's page before it leaves the page", async () => {
+  const previous = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === "(max-width: 720px)", media: query, onchange: null,
+    addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  let left = 0;
+  const { host, close } = open({ host: "page", onBack: () => (left += 1) });
+  try {
+    await sleep(10);
+    flushSync();
+    // On the map, Back is the shell's: it leaves the page, which is in the URL.
+    expect(messageTextOpen()).toBe(false);
+    click(node(host, "reader"));
+    expect(messageTextOpen()).toBe(true);
+    expect(closeMessageText()).toBe(true);
+    flushSync();
+    expect(host.querySelector(".roles-page-title")?.textContent).toBe(t.routing.tab);
+    expect(messageTextOpen()).toBe(false);
+    expect(left).toBe(0);
   } finally {
     close();
     window.matchMedia = previous;

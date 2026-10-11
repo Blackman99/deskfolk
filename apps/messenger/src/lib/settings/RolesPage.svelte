@@ -2,6 +2,7 @@
 	import type { PromptSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import { holdBack } from '../chat/message-text-pages.ts';
 	import RoutingTab from './RoutingTab.svelte';
 
 	/**
@@ -46,6 +47,13 @@
 		if (roles?.backFromEditor() || roles?.backFromSection()) return;
 		onBack?.();
 	}
+
+	// The phone's own Back takes the same steps: while a call's page or the editor is open, it steps
+	// out of that rather than leaving the page, which is in the URL (the shell's list-page layer).
+	$effect(() => {
+		if (host !== 'page' || !roles?.deep()) return;
+		return holdBack(() => back());
+	});
 </script>
 
 <div class="roles-page" class:is-page={host === 'page'} data-roles-page>

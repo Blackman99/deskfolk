@@ -108,6 +108,11 @@
 		return phone.current && opened ? nameOf(selected) : null;
 	}
 
+	/** A call's page on a phone, or the prompt editor, is open: Back has a step to take in here first. */
+	export function deep(): boolean {
+		return open !== null || (phone.current && opened);
+	}
+
 	/** Back on a phone from a call's page goes to the map. */
 	export function backFromSection(): boolean {
 		if (!phone.current || !opened) return false;
