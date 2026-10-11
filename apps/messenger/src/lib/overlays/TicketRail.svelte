@@ -61,9 +61,13 @@
 		return actorName(actor, botsById, youLabel, deletedLabel);
 	}
 
-	/** A Bot's colour on a lane is its avatar's, so a mark reads as the face on its card. */
+	/**
+	 * A Bot's colour on a lane is its avatar's — the ink of its letter, deep enough to read as a mark
+	 * a couple of pixels wide — so a mark reads as the face on its card.
+	 */
 	function colourOf(actor: string): string {
-		return actorFace(actor, botsById, youLabel, deletedLabel).palette?.bg ?? 'var(--muted-light)';
+		const palette = actorFace(actor, botsById, youLabel, deletedLabel).palette;
+		return palette?.text ?? palette?.border ?? 'var(--muted-light)';
 	}
 
 	/** Where on the lane a press landed, from 0 to 1; null when it was not on the lane. */

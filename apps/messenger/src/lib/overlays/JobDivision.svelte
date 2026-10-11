@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Bot } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import { actorFace, actorName, ticketTag } from './plan-board.ts';
+	import { actorFace, actorName, ticketRuns } from './plan-board.ts';
 	import type { DivisionRow } from './ticket-lanes.ts';
 
 	/**
@@ -25,7 +25,7 @@
 	const c = $derived(t.plan.job.division);
 
 	function tags(seqs: readonly number[]): string {
-		return seqs.length > 0 ? seqs.map((seq) => `#${ticketTag(seq)}`).join(' ') : c.none;
+		return seqs.length > 0 ? ticketRuns(seqs) : c.none;
 	}
 </script>
 
@@ -119,7 +119,8 @@
 		font-weight: 500;
 	}
 
-	.job-division-table td:last-child {
+	/* Ticket numbers and what came of the turns wrap; the name and the count stay on their line. */
+	.job-division-table td {
 		white-space: normal;
 	}
 

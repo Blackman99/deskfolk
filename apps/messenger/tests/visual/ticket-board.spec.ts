@@ -69,6 +69,24 @@ test('webkit: a wide job shows the rail, the trace and the inspector side by sid
     await expect(page.locator('.trace-stage')).toBeVisible();
     expect(await cameraOf(page)).toBe(moved);
 
+    // Medium: the rail and the trace side by side, the inspector over the trace's right edge for a pick.
+    await page.setViewportSize({ width: 800, height: 800 });
+    await expect(page.locator('.job-pane.is-medium')).toHaveCount(1);
+    await expect(page.locator('.job-inspector')).toHaveCount(0);
+    const mRail = await box('.job-rail');
+    const mFlow = await box('.job-flow');
+    expect(mRail.x + mRail.width).toBeLessThanOrEqual(mFlow.x + 1);
+    await page.locator('[data-rail-ticket="tk-2"]').click();
+    const over = await box('.job-inspector');
+    expect(over.x).toBeGreaterThan(mFlow.x);
+    expect(over.x + over.width).toBeLessThanOrEqual(mFlow.x + mFlow.width + 1);
+    // The minimap stands clear of it, on its left.
+    const dock = await box('.trace-minimap-dock');
+    expect(dock.x + dock.width).toBeLessThanOrEqual(over.x + 1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    await page.locator(".insp-icon[aria-label='不再选中这个任务']").click();
+    await expect(page.locator('.job-inspector')).toHaveCount(0);
+
     // Narrow: the switch takes a row of its own under the title, and the parts are one at a time.
     await page.setViewportSize({ width: 390, height: 800 });
     await expect(page.getByRole('tab')).toHaveText([/任务\s*15/, /流程/, /要点/]);

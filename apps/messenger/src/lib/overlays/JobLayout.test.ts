@@ -438,3 +438,42 @@ test("the title row says how many things need you, and takes you to the whole jo
   expect(quiet.host.querySelector(".job-chip.is-attention")).toBeNull();
   quiet.close();
 });
+
+test("medium, the rail and the trace sit side by side and the inspector comes over the trace for a pick or the spec", async () => {
+  const view = open({ pane: true, width: 800 });
+  await until(view.host, ".rail-row");
+  expect(view.host.querySelector(".job-pane")?.classList.contains("is-medium")).toBe(true);
+  expect(view.host.querySelector(".trace-views")).toBeNull();
+  // Nothing picked, nothing over the trace.
+  expect(view.host.querySelector(".job-inspector")).toBeNull();
+  // A ticket picked comes up over it, and its ✕ puts it away.
+  click(rowOf(view.host, "分镜草图"));
+  expect(inspector(view.host)).toBe("ticket");
+  click(view.host.querySelector(`.insp-icon[aria-label='${t.plan.job.unpick}']`));
+  expect(view.host.querySelector(".job-inspector")).toBeNull();
+  // The title row's 要点 brings the spec over it; Escape puts it away.
+  const toggle = view.host.querySelector<HTMLButtonElement>(".job-chip.is-toggle")!;
+  expect(toggle.textContent).toBe(t.plan.segmentSpec);
+  click(toggle);
+  expect(inspector(view.host)).toBe("spec");
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  flushSync();
+  expect(view.host.querySelector(".job-inspector")).toBeNull();
+  // With a ticket picked, 要点 holds the spec to it.
+  click(rowOf(view.host, "分镜草图"));
+  click(toggle);
+  expect(inspector(view.host)).toBe("spec");
+  expect(view.host.querySelector(".insp-back")?.textContent?.trim()).toBe(t.plan.job.backToTicket("#01"));
+  view.close();
+});
+
+test("the width decides the layout: narrow below 520, medium below 1080, wide from there", async () => {
+  for (const [width, expected] of [[430, "is-narrow"], [580, "is-medium"], [800, "is-medium"], [1280, null]] as const) {
+    const view = open({ pane: true, width });
+    await until(view.host, ".job-pane");
+    const pane = view.host.querySelector(".job-pane")!;
+    expect([pane.classList.contains("is-narrow") ? "is-narrow" : pane.classList.contains("is-medium") ? "is-medium" : null]).toEqual([expected]);
+    view.close();
+  }
+});

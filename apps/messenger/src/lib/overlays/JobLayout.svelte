@@ -17,7 +17,7 @@
 	import { engineOffSteps, sessionEngine, sessionsOnEngine } from './job-engine.ts';
 	import { attentionCount, planAttention } from './plan-attention.ts';
 	import { Playbooks, playbookName } from '../settings/playbooks.svelte.ts';
-	import { jobRailWidth, jobInspectorWidth, JOB_NARROW_BELOW } from './job-layout.ts';
+	import { jobInspectorWidth, jobLayoutMode, jobRailWidth } from './job-layout.ts';
 	import { actorName, firstPreviewable, ticketArtifactAttachments } from './plan-board.ts';
 	import { TicketEdits } from './ticket-edits.svelte.ts';
 	import { divisionOf, ticketLanes, type LaneMark } from './ticket-lanes.ts';
@@ -90,6 +90,8 @@
 		) => void;
 		/** Roles, on the engine the job runs under. Left out, the job names its engine without a way there. */
 		onOpenRoles?: (playbookId: string) => void;
+		/** A width to lay out by instead of measuring one: stories and tests. */
+		width?: number;
 	}
 
 	let {
@@ -120,7 +122,8 @@
 		onLift,
 		controlsDisabled = false,
 		onOpenArtifact,
-		onOpenRoles
+		onOpenRoles,
+		width: fixedWidth
 	}: Props = $props();
 
 	let traceView = $state<TraceView>();
@@ -153,9 +156,14 @@
 		if (job.detail) edits.loadModels();
 	});
 
-	/** Its own width once measured; before that a page is narrow and a pane is not. */
-	let width = $state(0);
-	const narrow = $derived(width > 0 ? width < JOB_NARROW_BELOW : host === 'page');
+	/** Its own width once measured; before that a page is narrow and a pane is wide. */
+	let measuredWidth = $state(0);
+	const width = $derived(fixedWidth ?? measuredWidth);
+	const mode = $derived(jobLayoutMode(width, host));
+	const narrow = $derived(mode === 'narrow');
+	const medium = $derived(mode === 'medium');
+	/** Medium: the spec over the trace's right edge, asked for from the title row's 要点. */
+	let specOpen = $state(false);
 	/** Narrow, the part on screen: the tickets, the trace or the spec. Remembered per browser. */
 	let segment = $state<TraceViewKind>(untrack(() => view ?? (focus ? 'trace' : loadTraceView())));
 	/** The board of five columns in place of the rail and the trace. */
@@ -204,9 +212,10 @@
 	});
 	const ticketPicked = $derived(job.selectedTicket !== null && Boolean(job.detail?.tickets.some((row) => row.id === job.selectedTicket)));
 	/**
-	 * What the inspector shows. Wide: a step, else the ticket, else the spec. Narrow, the part on
-	 * screen decides: a step over the trace, the ticket over the rail, and the spec as the spec's
-	 * part — held to the picked ticket when its 「在要点里看」 brought you there.
+	 * What the inspector shows. Wide: a step, else the ticket, else the spec. Medium the same, except
+	 * that with nothing picked the spec waits to be asked for. Narrow, the part on screen decides: a
+	 * step over the trace, the ticket over the rail, and the spec as the spec's part — held to the
+	 * picked ticket when its 「在要点里看」 brought you there.
 	 */
 	const inspectorView = $derived.by<InspectorView | null>(() => {
 		if (narrow) {
@@ -215,6 +224,10 @@
 			return job.detail ? 'spec' : null;
 		}
 		if (stepGroup) return 'step';
+		if (medium) {
+			if (ticketPicked && !specHeld) return 'ticket';
+			return job.detail && (specOpen || specHeld) ? 'spec' : null;
+		}
 		if (ticketPicked && !specHeld) return 'ticket';
 		return job.detail ? 'spec' : null;
 	});
@@ -248,6 +261,18 @@
 			},
 			cancel: false
 		});
+	}
+
+	/** Medium, the title row's 要点: the spec over the trace (held to the picked ticket), or put away. */
+	function toggleSpec(): void {
+		if (inspectorView === 'spec') {
+			specOpen = false;
+			specHeld = false;
+			return;
+		}
+		job.openStep = null;
+		if (ticketPicked) specHeld = true;
+		else specOpen = true;
 	}
 
 	function chooseSegment(next: TraceViewKind): void {
@@ -308,6 +333,7 @@
 		job.openStep = null;
 		pickTicket(null);
 		if (narrow) chooseSegment('spec');
+		if (medium) specOpen = true;
 	}
 
 	/** A ticket named in the spec: picked, and the inspector turns to it. */
@@ -420,7 +446,15 @@
 				job.openStep = null;
 				return;
 			}
-			if (!job.selectedTicket) return;
+			if (!job.selectedTicket) {
+				// Medium, the spec over the trace is the last thing Escape puts away.
+				if (!medium || (!specOpen && !specHeld)) return;
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				specOpen = false;
+				specHeld = false;
+				return;
+			}
 			event.preventDefault();
 			event.stopImmediatePropagation();
 			job.selectedTicket = null;
@@ -498,6 +532,7 @@
 	class="job-pane"
 	class:is-page={host === 'page'}
 	class:is-narrow={narrow}
+	class:is-medium={medium}
 	class:is-resizing={resizing}
 	class:has-rail={hasTickets && lanes !== null}
 	class:has-inspector={inspectorView !== null}
@@ -507,7 +542,7 @@
 	data-view={narrow ? segmentShown : 'all'}
 	style:--job-rail-width="{railWidth}px"
 	style:--job-inspector-width="{inspectorWidth}px"
-	bind:clientWidth={width}
+	bind:clientWidth={measuredWidth}
 >
 	<JobHeader
 		bind:this={header}
@@ -527,6 +562,9 @@
 		{onClose}
 	>
 		{#snippet end()}
+			{#if medium && job.detail}
+				<button type="button" class="job-chip is-toggle" aria-pressed={inspectorView === 'spec'} onclick={toggleSpec}>{t.plan.segmentSpec}</button>
+			{/if}
 			{#if attention > 0}
 				<button type="button" class="job-chip is-attention" onclick={showWholeJob}>{t.plan.job.attention(attention)}</button>
 			{/if}
@@ -648,6 +686,7 @@
 					bind:specHeld
 					bind:expanded={inspectorExpanded}
 					canExpand={!narrow}
+					onClose={medium ? () => { specOpen = false; specHeld = false; } : undefined}
 					{callEditor}
 					{onJump}
 					onOpenArtifacts={openTicketArtifacts}
@@ -820,6 +859,46 @@
 	}
 
 	/*
+	 * Medium: the rail and the trace side by side; the inspector lies over the trace's right edge,
+	 * above the tools' row, while something is picked or the spec was asked for. The minimap moves
+	 * to its left, as it once did for a step's panel.
+	 */
+	.job-pane.is-medium .job-body {
+		grid-template-columns: var(--job-rail-width) minmax(0, 1fr);
+		grid-template-areas: 'rail flow';
+	}
+
+	.job-pane.is-medium:not(.has-rail) .job-body {
+		grid-template-columns: 0 minmax(0, 1fr);
+	}
+
+	.job-pane.is-medium .job-inspector {
+		grid-area: auto;
+		position: absolute;
+		z-index: 5;
+		top: 10px;
+		right: 10px;
+		bottom: 56px;
+		width: min(var(--job-inspector-width), calc(100% - 40px));
+		overflow: hidden;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-lg);
+	}
+
+	.job-pane.is-medium.inspector-wide .job-inspector {
+		inset: 0;
+		width: auto;
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+	}
+
+	.job-pane.is-medium.has-inspector :global(.trace-minimap-dock) {
+		right: calc(min(var(--job-inspector-width), 100% - 40px) + 20px);
+	}
+
+	/*
 	 * Narrow: one part at a time, each with the whole body, the others hidden where they are. A
 	 * ticket or a step picked comes up as a sheet over the bottom of the part it was picked in.
 	 */
@@ -870,6 +949,12 @@
 
 	.job-chip:disabled {
 		cursor: default;
+	}
+
+	.job-chip.is-toggle[aria-pressed='true'] {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+		color: var(--accent);
 	}
 
 	.job-chip.is-attention {

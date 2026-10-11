@@ -209,6 +209,8 @@ export function open(opts: {
   raw?: (id: string) => string | null;
   /** The engines the daemon lists; left out, a daemon that predates engines. */
   playbooks?: PlaybookList;
+  /** The width the job lays out by, instead of measuring (happy-dom measures nothing). */
+  width?: number;
 } = {}) {
   const jumps: Array<[string, string]> = [];
   const settled: string[] = [];
@@ -294,6 +296,7 @@ export function open(opts: {
     },
     onOpenRoles: (id: string) => rolesOpened.push(id),
     ...(opts.view || opts.askToken ? { view: opts.view ?? null, ask: opts.ask ?? null, askToken: opts.askToken ?? 0 } : {}),
+    ...(opts.width ? { width: opts.width } : {}),
   });
   const view = render(opts.pane ? JobLayout : TaskTraceView, props as never);
   return { ...view, props, jumps, asked, settled, opened, patched, shown, edited, fetchedRuns, rolesOpened, closed: () => closed };

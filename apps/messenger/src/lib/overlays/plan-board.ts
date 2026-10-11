@@ -41,6 +41,19 @@ export function ticketTag(seq: number): string {
   return String(seq).padStart(2, "0");
 }
 
+/** Ticket numbers in order, a run of three or more as a range: 「#01–#14」 rather than fourteen tags. */
+export function ticketRuns(seqs: readonly number[]): string {
+  const runs: string[] = [];
+  for (let i = 0; i < seqs.length; ) {
+    let j = i;
+    while (j + 1 < seqs.length && seqs[j + 1] === seqs[j]! + 1) j += 1;
+    if (j - i >= 2) runs.push(`#${ticketTag(seqs[i]!)}–#${ticketTag(seqs[j]!)}`);
+    else for (let k = i; k <= j; k += 1) runs.push(`#${ticketTag(seqs[k]!)}`);
+    i = j + 1;
+  }
+  return runs.join(" ");
+}
+
 /** The tickets one waits for, by their tags (「#02、#03」); null for none. */
 export function dependsTags(ticket: { depends_on?: string[] }, tickets: readonly { id: string; seq: number }[]): string | null {
   const tags = (ticket.depends_on ?? []).flatMap((id) => {

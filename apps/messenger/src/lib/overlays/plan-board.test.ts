@@ -26,6 +26,7 @@ import {
   ticketArtifactAttachments,
   ticketBinding,
   ticketObligations,
+  ticketRuns,
   ticketTag,
   totalTicketCount,
   completionPercentage,
@@ -97,6 +98,13 @@ test("ticketTag pads to two digits", () => {
   expect(ticketTag(9)).toBe("09");
   expect(ticketTag(12)).toBe("12");
   expect(ticketTag(123)).toBe("123");
+});
+
+test("ticketRuns folds a run of three or more into a range and keeps the rest as tags", () => {
+  expect(ticketRuns([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])).toBe("#01–#14");
+  expect(ticketRuns([1, 2, 4, 5, 6, 9])).toBe("#01 #02 #04–#06 #09");
+  expect(ticketRuns([3])).toBe("#03");
+  expect(ticketRuns([])).toBe("");
 });
 
 test("planTitle is the job's name, else its goal, else the dir", () => {
