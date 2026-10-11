@@ -182,8 +182,8 @@ export const ASK_USER: ToolDef = {
 export const CHECK_BACK: ToolDef = {
   name: "check_back",
   description: {
-    zh: "约自己稍后在本会话回看一次。到点后你会被一条「回看：<note>」的系统行叫醒，沿用这件事的工作目录；那一轮的局面里有这件事最初的要求、已交出的文件和经过。用在交接出去之后、或在等一个不由你掌控的结果时；note 写清回看时要核对什么、没动静该怎么办。一个会话里同时只有一次待回看，再约就是替换。这不是日程，只响一次。不要为了等而每几分钟约一次；要立刻让别人做事，用 send_message 点名。",
-    en: "Book a check-back with yourself in this session. When it is due you are woken by a system line \"Check-back: <note>\", in the same job's work dir, and that turn's situation block carries the job's opening request, the files handed over and who did what. Use it after a handoff, or while waiting for a result you do not control; put in note what to verify and what to do if nothing has moved. One pending check-back per session; booking another replaces it. It is not a routine and fires once. Do not book one every few minutes just to wait; to get someone moving now, mention them with send_message.",
+    zh: "约自己稍后在本会话回看一次。到点后你会被一条「回看：<note>」的系统行叫醒，沿用这件事的工作目录；那一轮的局面里有这件事最初的要求、已交出的文件和经过。用在交接出去之后、或在等一个不由你掌控的结果时；note 写清回看时要核对什么、没动静该怎么办。一个会话里同时只有一次待回看，再约就是替换。这不是日程，只响一次。不要为了等而每几分钟约一次；要立刻让别人做事，用 send_message 点名。等用户回话（看用户对某版的意见、等用户回答、等用户放行）不用约：用户一开口就会叫醒你，这件任务在等用户时约不上。",
+    en: "Book a check-back with yourself in this session. When it is due you are woken by a system line \"Check-back: <note>\", in the same job's work dir, and that turn's situation block carries the job's opening request, the files handed over and who did what. Use it after a handoff, or while waiting for a result you do not control; put in note what to verify and what to do if nothing has moved. One pending check-back per session; booking another replaces it. It is not a routine and fires once. Do not book one every few minutes just to wait; to get someone moving now, mention them with send_message. Do not book one to wait for the user (their opinion of a version, their answer, their go-ahead): what they say next wakes you, and while the ticket waits on them a booking is refused.",
   },
   properties: {
     after_minutes: {

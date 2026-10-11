@@ -63,6 +63,7 @@ export function createFire(deps: FireDeps): Fire {
   function fireCheckBack(id: string, now: Date = new Date()): Turn | null {
     if (admission?.draining) return null;
     if (store.voidRetiredCallBack(id)) return null;
+    if (store.voidWaitingOnYou(id)) return null;
     if (setAsideIfHeld(id)) return null;
     const result = store.transaction(() => {
       const claimed = store.claimCheckBack(id, now);

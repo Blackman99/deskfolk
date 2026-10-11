@@ -538,6 +538,7 @@ export class Store {
   readonly listPendingCheckBacks = this.bind(checkBacks.listPendingCheckBacks);
   readonly bookPlanNudge = this.bind(checkBacks.bookPlanNudge);
   readonly voidRetiredCallBack = this.bind(checkBacks.voidRetiredCallBack);
+  readonly voidWaitingOnYou = this.bind(checkBacks.voidWaitingOnYou);
   readonly lastPlanNudge = this.bind(checkBacks.lastPlanNudge);
   readonly planNudgesSince = this.bind(checkBacks.planNudgesSince);
   readonly pendingPlanCheckBacks = this.bind(checkBacks.pendingPlanCheckBacks);

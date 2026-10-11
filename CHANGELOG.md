@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### No check-backs to wait for you
+
+- A Bot can no longer book a check-back on a ticket that waits on you (your answer, your word on a hand-over, a capability ceiling card), and one that comes due while it does is dropped instead of waking it: what you say next wakes it anyway. On the MV, 13 of 22 check-backs the director booked woke to nothing new after some 53 hops each, mostly to see what you thought of a version. A stop of yours still sets check-backs aside until you lift it.
+
 ### Your send-backs count towards the capability ceiling
 
 - A send-back of yours now counts towards the capability ceiling whether or not it names a requirement, on a card or by finding fault in what you say. Three in a row stop the work and ask you how to go on ("you sent it back 3 times in a row"), and the producer is not woken to try a fourth time. Before, only checks and reviews counted: the MV's ticket 09 was sent back eight times and only stopped at the seventh hand-over. Undoing a rework takes it out of the count and takes down the card it put up.

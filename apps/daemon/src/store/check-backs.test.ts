@@ -394,3 +394,35 @@ describe("the app's call-backs to a plan", () => {
     store.close();
   });
 });
+
+test("from level 6 a check-back is not booked on a ticket that waits on you, and one coming due while it does is voided; another ticket still books", () => {
+  const store = new Store();
+  try {
+    store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', '8')");
+    const director = store.createBot({ name: "Director", duties: "film", boundaries: "none" }).bot;
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" }).bot;
+    const group = store.createGroup({ name: "MV", members: [director.id, writer.id] });
+    const plan = store.openTask({ sessionId: group.id, title: "MV" });
+    const faces = store.createTicket({ taskId: plan.id, title: "09 角色", worker: director.id });
+    const titles = store.createTicket({ taskId: plan.id, title: "10 片头", worker: director.id });
+    const trigger = store.postMessage(group.id, { body: "做角色" });
+    const turn = store.createTurn({ sessionId: group.id, botId: director.id, triggerMessageId: trigger.id, taskId: plan.id, ticketId: faces.id });
+    const booked = store.scheduleCheckBack({ botId: director.id, sessionId: group.id, turnId: turn.id, note: "看看渲染好了没", afterMinutes: 10 }).row;
+
+    // Its work now waits on your answer: the ball is yours.
+    store.db.run(`UPDATE work_items SET state = 'blocked', waiting_on = '{"kind":"user","ref":"ask-1"}' WHERE id = ?`, [turn.work_item_id ?? ""]);
+    expect(store.ballHolder({ ticketId: faces.id })).toMatchObject({ kind: "user", reason: "ask" });
+    expect(() => store.scheduleCheckBack({ botId: director.id, sessionId: group.id, turnId: turn.id, note: "看用户对 v3 的意见", afterMinutes: 15 }))
+      .toThrow("waits on the user");
+    expect(store.voidWaitingOnYou(booked.id)).toBe(true);
+    expect(store.getCheckBack(booked.id).voided_at).not.toBeNull();
+    expect(store.listWorkEvents({ kind: "check_back.voided" })).toMatchObject([{ actor: "app", ticket_id: faces.id, payload: { check_back_id: booked.id, reason: "waits_on_you", on: "ask" } }]);
+
+    store.setTurnStatus(turn.id, "completed");
+    const other = store.createTurn({ sessionId: group.id, botId: director.id, triggerMessageId: trigger.id, taskId: plan.id, ticketId: titles.id });
+    const kept = store.scheduleCheckBack({ botId: director.id, sessionId: group.id, turnId: other.id, note: "看看片头渲染", afterMinutes: 10 }).row;
+    expect(store.voidWaitingOnYou(kept.id)).toBe(false);
+  } finally {
+    store.close();
+  }
+});

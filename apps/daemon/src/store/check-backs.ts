@@ -17,6 +17,8 @@ import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
 import { suspendHeldCheckBacks } from "./holds";
+import { ballHolder, type BallHolder } from "./supervisor";
+import { recordWorkEvent } from "./work-events";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { aliveBot, isPresent, sessionRow, type StoreContext } from "./shared";
 
@@ -97,9 +99,15 @@ export function scheduleCheckBack(
     );
   }
   const at = input.now ?? new Date();
+  const work = input.turnId ? ctx.db.query<{ task_id: string | null; ticket_id: string | null }, [string]>("SELECT task_id, ticket_id FROM turns WHERE id = ?").get(input.turnId) : null;
   // From level 6 (ADR 0047) waiting on the clock is for real waits, not polling: at least five
   // minutes, at most six bookings an hour, and never to look in on a job the daemon already polls.
   if (jobsOn(ctx)) {
+    // Nor to wait on you: what you say next about the ticket wakes the Bot anyway.
+    const yours = work?.ticket_id ? waitsOnYou(ctx, work.ticket_id) : null;
+    if (yours) {
+      throw new HttpError(409, "ball_is_yours", `this ticket waits on the user (${yours}); what they say next about it wakes you, so no check-back is needed to look for their answer`);
+    }
     if (minutes < JOB_LEVEL_CHECK_BACK_MIN_MINUTES) {
       throw new HttpError(422, "invalid_args", `after_minutes must be at least ${JOB_LEVEL_CHECK_BACK_MIN_MINUTES}: shorter waits are polling, and the app polls jobs itself`);
     }
@@ -110,7 +118,6 @@ export function scheduleCheckBack(
     // Per work item (bot × plan × ticket, §2.8): another job of the same Bot books on its own budget.
     // A booking a stop of yours suspended is not counted against it.
     const hourAgo = new Date(at.getTime() - 60 * 60_000).toISOString();
-    const work = input.turnId ? ctx.db.query<{ task_id: string | null; ticket_id: string | null }, [string]>("SELECT task_id, ticket_id FROM turns WHERE id = ?").get(input.turnId) : null;
     const booked = ctx.db.query<{ n: number }, [string, string, string | null, string | null]>(`SELECT COUNT(*) AS n FROM check_backs WHERE bot_id = ? AND created_at > ?
       AND task_id IS ? AND ticket_id IS ? AND (cause = 'self' OR cause IS NULL) AND kind IS NULL AND suspended_at IS NULL`)
       .get(input.botId, hourAgo, work?.task_id ?? null, work?.ticket_id ?? null)!.n;
@@ -127,6 +134,39 @@ export function scheduleCheckBack(
     due: new Date(at.getTime() + minutes * 60_000),
     cause: "self",
   });
+}
+
+/**
+ * What a ticket waits on you for, when it does: your answer to a question, your word on a hand-over,
+ * a ceiling card, or work blocked on you. A stop of yours is not this: the bookings a stop covers are
+ * set aside for the lift (ADR 0071). On the MV's ticket 09, 13 of 22 check-backs the director booked
+ * to look for your opinion woke to nothing new, some 53 hops each (2026-10-08 → 10-11).
+ */
+function waitsOnYou(ctx: StoreContext, ticketId: string): string | null {
+  let holder: BallHolder;
+  try {
+    holder = ballHolder(ctx, { ticketId });
+  } catch {
+    return null;
+  }
+  return holder.kind === "user" && (WAITS_ON_YOU as readonly string[]).includes(holder.reason) ? holder.reason : null;
+}
+const WAITS_ON_YOU = ["ask", "blocked", "review", "ceiling"] as const;
+
+/**
+ * A Bot's own check-back that comes due while its ticket waits on you is voided instead of firing:
+ * your next word about it is what wakes the Bot. From level 6, as the booking rule. True when it was.
+ */
+export function voidWaitingOnYou(ctx: StoreContext, id: string, now: string = isoNow()): boolean {
+  if (!jobsOn(ctx)) return false;
+  const row = ctx.db.query<CheckBack, [string]>(`SELECT * FROM check_backs WHERE id = ? AND fired_at IS NULL AND voided_at IS NULL
+    AND kind IS NULL AND COALESCE(cause, 'self') = 'self'`).get(id);
+  const reason = row?.ticket_id ? waitsOnYou(ctx, row.ticket_id) : null;
+  if (!row || !reason) return false;
+  ctx.db.run("UPDATE check_backs SET voided_at = ?, suspended_at = NULL WHERE id = ?", [now, id]);
+  recordWorkEvent(ctx, { kind: "check_back.voided", actor: "app", botId: row.bot_id, taskId: row.task_id, ticketId: row.ticket_id,
+    payload: { check_back_id: id, reason: "waits_on_you", on: reason, note: row.note } });
+  return true;
 }
 
 /** From level 6 (ADR 0047): the shortest wait a Bot may book on the clock, and how many it may book an hour. */
