@@ -653,6 +653,7 @@ export class MessengerRuntime {
   speedTest(providerId: string, model: string): Promise<{ ok: true; speed: ModelSpeed } | { ok: false; error: string }> { return this.adminMutations.speedTest(providerId, model); }
   createBot(body: CreateBotRequest): Promise<ApiError | null> { return this.adminMutations.createBot(body); }
   createGroup(body: CreateGroupRequest): Promise<ApiError | null> { return this.adminMutations.createGroup(body); }
+  createTeam(input: Parameters<AdminMutations["createTeam"]>[0]): ReturnType<AdminMutations["createTeam"]> { return this.adminMutations.createTeam(input); }
   createSkill(body: CreateSkillRequest): Promise<ApiError | null> { return this.adminMutations.createSkill(body); }
   patchSkill(id: string, body: PatchSkillRequest): Promise<ApiError | null> { return this.adminMutations.patchSkill(id, body); }
   deleteSkill(id: string): Promise<ApiError | null> { return this.adminMutations.deleteSkill(id); }

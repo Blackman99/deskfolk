@@ -33,6 +33,7 @@ import { ticketStagesStory } from './ticket-stages-story.ts';
 import { ticketBoardStory } from './ticket-board-story.ts';
 import Shell from '../../src/lib/Shell.svelte';
 import Onboarding from '../../src/lib/Onboarding.svelte';
+import TeamStep from '../../src/lib/onboarding/TeamStep.svelte';
 import DangerDialog from '../../src/lib/overlays/DangerDialog.svelte';
 import GroupPane from '../../src/lib/panels/GroupPane.svelte';
 import ProfilePane from '../../src/lib/panels/ProfilePane.svelte';
@@ -447,6 +448,21 @@ const playbookList = (): PlaybookList => {
 	return { default_id: 'video', items: [item('general'), item('video', { v: 1, steps: { settle: { params: { quiet_s: 90 } } } }), item('coding')] };
 };
 const playbooksClient = { listPlaybooks: async () => playbookList() };
+
+function teamStepStory() {
+	return {
+		component: TeamStep as never,
+		props: { runtime: fakeRuntime({ ...world, bots: [] }), t, base: {}, ondone: () => {} },
+		afterMount(host: HTMLElement) {
+			host.style.padding = '24px';
+			host.style.boxSizing = 'border-box';
+			host.querySelector<HTMLButtonElement>('[data-team-way="video"]')?.click();
+			flushSync();
+			host.querySelector<HTMLButtonElement>('[data-team-template="director"] .team-edit')?.click();
+			flushSync();
+		}
+	};
+}
 
 /** Roles (ADR 0082): the calls' prompts, a ladder for the Bot's turn, and Claude Code signed in. */
 const routingClient = {
@@ -1068,6 +1084,24 @@ const defs: Record<StoryName, Story> = {
 			onClose: () => {}
 		}
 	},
+	// A template picked (ADR 0085): the draft filled in from it, and its engine for the new direct.
+	'create-bot-sheet-template': {
+		component: CreateBotSheet as never,
+		props: {
+			runtime: fakeRuntime(world, { client: { ...playbooksClient, agents: async () => ({ items: [], custom_agents: [] }) } }),
+			t,
+			onClose: () => {}
+		},
+		async afterMount(host: HTMLElement) {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			flushSync();
+			host.querySelector<HTMLButtonElement>('[data-bot-template="developer"]')?.click();
+			flushSync();
+		}
+	},
+	// First launch's last step (ADR 0085): the video way picked, its templates ticked, the director open.
+	'onboarding-team': teamStepStory(),
+	'onboarding-team-narrow': teamStepStory(),
 	'group-pane': {
 		component: GroupPane as never,
 		props: {

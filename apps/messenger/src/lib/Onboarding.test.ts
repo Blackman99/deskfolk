@@ -168,7 +168,7 @@ for (const probed of [false, true]) {
     expect(next.disabled).toBe(false);
     click(next);
     await settle();
-    expect(host.querySelector('#onboarding-bot-name')).not.toBeNull();
+    expect(host.querySelector('[data-team-step]')).not.toBeNull();
     expect(calls.filter((call) => call.name === 'createProvider')).toHaveLength(1);
     expect(calls.find((call) => call.name === 'createProvider')?.args[0]).toMatchObject({
       default_model: 'custom-model', models: [{ name: 'custom-model' }],
@@ -194,7 +194,7 @@ test('clearing all models blocks completion and bulk selection repairs the defau
   expect(runtime.endpointDefaultModel).toBe('gpt-4o-mini');
   click(buttonByText(host, `${t.onboarding.step3Next} →`));
   await settle();
-  expect(host.querySelector('#onboarding-bot-name')).not.toBeNull();
+  expect(host.querySelector('[data-team-step]')).not.toBeNull();
 });
 
 test('going back and clearing a completed connection invalidates forward navigation', async () => {
@@ -231,35 +231,51 @@ for (const mode of ['hosted', 'remote'] as const) {
     click(buttonByText(host, 'gpt-4o'));
     click(buttonByText(host, `${t.onboarding.step3Next} →`));
     await settle();
-    expect(host.querySelector('#onboarding-bot-name')).not.toBeNull();
+    expect(host.querySelector('[data-team-step]')).not.toBeNull();
     expect(calls.some((call) => call.name === 'patchSettings')).toBe(false);
     expect(calls.filter((call) => call.name === 'createProvider')).toHaveLength(1);
   });
 }
 
-test('the first Bot cannot be created with blank required fields and recovers after correction', async () => {
+test('the first Bots come from the templates of the way picked; a ticked draft left blank holds them back until it is filled in', async () => {
   const { host, calls } = open();
   click(step(host, t.onboarding.step3Title));
   click(buttonByText(host, `${t.onboarding.step3Next} →`));
   await settle();
-  const create = buttonByText(host, `${t.onboarding.createBot} ✓`);
-  expect(create.disabled).toBe(false);
-  for (const [id, value] of [
-    ['onboarding-bot-name', 'Fixture Bot'],
-    ['onboarding-bot-duties', 'Do the work'],
-    ['onboarding-bot-boundaries', 'Ask before deleting'],
-  ] as const) {
-    fill(host.querySelector(`#${id}`), '   ');
-    expect(create.disabled).toBe(true);
-    click(create);
-    await settle();
-    expect(calls.some((call) => call.name === 'createBot')).toBe(false);
-    fill(host.querySelector(`#${id}`), value);
-    expect(create.disabled).toBe(false);
-  }
-  click(buttonByText(host, `${t.onboarding.createBot} ✓`));
+  // 通用 to begin with, its assistant ticked: one Bot, its direct.
+  expect(host.querySelector('[data-team-way="general"]')?.getAttribute('aria-checked')).toBe('true');
+  expect([...host.querySelectorAll<HTMLInputElement>('[data-team-pick]')].filter((box) => box.checked).map((box) => box.dataset.teamPick)).toEqual(['assistant']);
+  expect(buttonByText(host, `${t.templates.create(1)} ✓`).disabled).toBe(false);
+  // 视频: the director, the writer and the subtitle editor ticked, the reviewer not.
+  click(host.querySelector('[data-team-way="video"]'));
+  flushSync();
+  expect([...host.querySelectorAll<HTMLInputElement>('[data-team-pick]')].map((box) => [box.dataset.teamPick, box.checked])).toEqual([
+    ['director', true], ['writer', true], ['subtitler', true], ['reviewer', false],
+  ]);
+  click(host.querySelector('[data-team-template="director"] .team-edit'));
+  flushSync();
+  fill(host.querySelector('[data-team-name="director"]'), '   ');
+  // A ticked draft without a name holds the button back and says why under the field.
+  expect(buttonByText(host, `${t.templates.create(3)} ✓`).disabled).toBe(true);
+  expect(host.textContent).toContain(t.sidebar.nameEmpty);
+  click(host.querySelector('[data-team-template="director"] .team-edit'));
+  flushSync();
+  expect(host.querySelector('[data-team-template="director"]')?.textContent).toContain(t.templates.incomplete);
+  // Unticked, it is not made and holds nothing back.
+  click(host.querySelector('[data-team-pick="director"]'));
+  flushSync();
+  expect(buttonByText(host, `${t.templates.create(2)} ✓`).disabled).toBe(false);
+  click(host.querySelector('[data-team-pick="director"]'));
+  click(host.querySelector('[data-team-template="director"] .team-edit'));
+  flushSync();
+  fill(host.querySelector('[data-team-name="director"]'), '导演');
+  expect(calls.some((call) => call.name === 'createTeam')).toBe(false);
+  click(buttonByText(host, `${t.templates.create(3)} ✓`));
   await settle();
-  expect(calls.filter((call) => call.name === 'createBot')).toHaveLength(1);
+  const team = calls.filter((call) => call.name === 'createTeam').map((call) => call.args[0] as { members: Array<{ body: { name: string } }>; playbookId: string; groupName: string; lead: number });
+  expect(team).toHaveLength(1);
+  expect(team[0]!.members.map((member) => member.body.name)).toEqual(['导演', t.templates.templates.writer!.name, t.templates.templates.subtitler!.name]);
+  expect(team[0]).toMatchObject({ playbookId: 'video', groupName: t.templates.groupName.video, lead: 0 });
 });
 
 test('workspace persistence errors return to the failed step without saving the provider', async () => {
@@ -279,7 +295,7 @@ test('workspace persistence errors return to the failed step without saving the 
   click(step(host, t.onboarding.step3Title));
   click(buttonByText(host, `${t.onboarding.step3Next} →`));
   await settle();
-  expect(host.querySelector('#onboarding-bot-name')).not.toBeNull();
+  expect(host.querySelector('[data-team-step]')).not.toBeNull();
   expect(providerSaves).toBe(1);
 });
 
@@ -333,9 +349,9 @@ test('on Claude Code, saving puts every built-in call on the Claude model, saves
   ]);
   expect(calls.some((call) => call.name === 'createProvider' || call.name === 'patchProvider')).toBe(false);
   expect(host.textContent).toContain(t.onboarding.botClaudeHint);
-  click(buttonByText(host, `${t.onboarding.createBot} ✓`));
+  click(buttonByText(host, `${t.templates.create(1)} ✓`));
   await settle();
-  const created = calls.filter((call) => call.name === 'createBot').map((call) => call.args[0]);
+  const created = calls.filter((call) => call.name === 'createTeam').map((call) => (call.args[0] as { members: Array<{ body: unknown }> }).members[0]!.body);
   expect(created).toHaveLength(1);
   expect(created[0]).toMatchObject({ runner: 'claude_code', agent_config_dir: null });
 });
@@ -397,9 +413,9 @@ test('on another local agent, saving puts every built-in call on its model and t
     judgement: choice, reflection: choice, retrospective: choice, compaction: choice } });
   expect(calls.some((call) => call.name === 'createProvider' || call.name === 'patchProvider')).toBe(false);
   expect(host.textContent).toContain(t.onboarding.botAgentHint.replace('{agent}', 'Codex'));
-  click(buttonByText(host, `${t.onboarding.createBot} ✓`));
+  click(buttonByText(host, `${t.templates.create(1)} ✓`));
   await settle();
-  const created = calls.filter((call) => call.name === 'createBot').map((call) => call.args[0]);
+  const created = calls.filter((call) => call.name === 'createTeam').map((call) => (call.args[0] as { members: Array<{ body: unknown }> }).members[0]!.body);
   expect(created[0]).toMatchObject({ runner: 'codex' });
   expect(created[0]).not.toHaveProperty('agent_config_dir');
 });

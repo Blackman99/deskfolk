@@ -12,6 +12,8 @@ export const STORY_SIZES = {
 	// The same sheet with its member list open: a floating layer no other shot reaches.
 	'create-group-picker': { width: 560, height: 620 },
 	'create-bot-sheet': { width: 340, height: 720 },
+	// A template picked: the chips on top, the engine row at the foot.
+	'create-bot-sheet-template': { width: 340, height: 1100 },
 	'group-pane': { width: 420, height: 900 },
 	'group-pane-section': { width: 420, height: 900 },
 	'group-pane-engine': { width: 420, height: 900 },
@@ -24,6 +26,9 @@ export const STORY_SIZES = {
 	'routine-editor-narrow': { width: 390, height: 1100 },
 	'routine-empty': { width: 390, height: 440 },
 	onboarding: { width: 900, height: 720 },
+	// The last step on its own: a way of working and its templates, one open to edit.
+	'onboarding-team': { width: 760, height: 900 },
+	'onboarding-team-narrow': { width: 390, height: 1200 },
 	sidebar: { width: 300, height: 820 },
 	// The row under an open context menu: a rule that used to live in the last file imported,
 	// so its cascade position was doing work that scoping has to reproduce.

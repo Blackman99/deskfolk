@@ -1,6 +1,5 @@
 <script lang="ts">
 	import BrandMark from './BrandMark.svelte';
-	import AvatarEditor from './AvatarEditor.svelte';
 	import { COPY, JAIL_COPY } from './copy.ts';
 	import Select from './Select.svelte';
 	import ModelPicker from './ModelPicker.svelte';
@@ -24,13 +23,8 @@
 		planCreateProvider,
 		type ProviderFieldErrors
 	} from './settings/provider-form.ts';
-	import {
-		botNameErrorCopy,
-		mapCreateBotError,
-		planCreateBot,
-		type CreateBotDraft,
-		type CreateBotFieldErrors
-	} from './panels/create-form.ts';
+	import type { CreateBotDraft } from './panels/create-form.ts';
+	import TeamStep from './onboarding/TeamStep.svelte';
 	import {
 		BUILTIN_MODEL_ROLES,
 		connectorById,
@@ -636,58 +630,25 @@
 		return false;
 	}
 
-	let botDraft = $state<CreateBotDraft>({ name: '', duties: '', boundaries: '', avatar: '', model: '' });
-	let botErrors = $state<CreateBotFieldErrors>({});
-	let botFailed = $state(false);
-	let creatingBot = $state(false);
-	const botPlan = $derived(planCreateBot(botDraft));
+	/** What every Bot made at the end runs on: on Claude Code alone, or another agent, its runner (ADR 0078, 0079). */
+	let teamBase = $state<Partial<CreateBotDraft>>({});
+	let teamStep = $state<TeamStep>();
+	let teamCount = $state(0);
+	let teamReady = $state(false);
+	let teamBusy = $state(false);
 
 	/**
-	 * A suggested first teammate, filled in so one click makes it. No model: it runs on the default
-	 * model just chosen, and the profile can pin another later.
+	 * The last step (ADR 0085): a way of working and the first Bots, from templates ready for it. No
+	 * model: they run on the default model just chosen, and each profile can pin another later.
 	 */
 	function enterBotStep(): void {
-		botDraft = {
-			name: t.onboarding.botNameSuggested,
-			duties: t.onboarding.botDutiesSuggested,
-			boundaries: t.onboarding.botBoundariesSuggested,
-			avatar: '',
-			model: '',
-			// On Claude Code alone the first Bot is a Claude Agent, on the account chosen for setup.
+		teamBase = {
+			// On Claude Code alone the Bots are Claude Agents, on the account chosen for setup.
 			...(connectMode === 'claude'
 				? pickedOther ? { runner: runnerValueOf(pickedOther, picked.customId) } : { runner: 'claude_code', agentConfigDir: claudeConfigDir }
 				: {})
 		};
-		botErrors = {};
-		botFailed = false;
 		currentStep = 4;
-	}
-
-	function onBotInput(): void {
-		botErrors = {};
-		botFailed = false;
-	}
-
-	async function createFirstBot(): Promise<void> {
-		if (creatingBot) return;
-		botFailed = false;
-		botErrors = {};
-		const plan = botPlan;
-		if (!plan.ok) {
-			botErrors = plan.errors;
-			return;
-		}
-		creatingBot = true;
-		const error = await runtime.createBot(plan.body);
-		creatingBot = false;
-		// Made: the runtime has already opened the new Bot's direct, which is where the wizard lets go to.
-		if (!error) {
-			holding = false;
-			return;
-		}
-		const mapped = mapCreateBotError(error.status, error.message);
-		if ('top' in mapped) botFailed = true;
-		else botErrors = mapped;
 	}
 </script>
 
@@ -1195,55 +1156,26 @@
 					</div>
 				</div>
 			{:else if currentStep === 4}
-				<!-- Step 4: First Bot -->
+				<!-- Step 4: a way of working and the first Bots (ADR 0085) -->
 				<div class="step-pane">
 					<div class="step-pane-header">
 						<h2 class="step-pane-title">{t.onboarding.stepBot}</h2>
 						<p class="step-pane-desc">{t.onboarding.botDesc}</p>
 					</div>
 
-					{#if botFailed}
-						<p class="field-error">{t.sidebar.saveFailed}</p>
+					<TeamStep bind:this={teamStep} bind:count={teamCount} bind:ready={teamReady} bind:busy={teamBusy} {runtime} {t} base={teamBase} ondone={() => (holding = false)} />
+					{#if teamBase.runner}
+						<p class="muted field-hint">{teamBase.runner === 'claude_code' ? t.onboarding.botClaudeHint : t.onboarding.botAgentHint.replace('{agent}', pickedLabel)}</p>
+					{:else}
+						<p class="muted field-hint">{t.onboarding.botModelHint}</p>
 					{/if}
-
-					<div class="modal-section">
-						<span class="field-head">{t.sidebar.botAvatar}</span>
-						<AvatarEditor bind:avatar={botDraft.avatar} name={botDraft.name} {t} onchange={onBotInput} />
-					</div>
-
-					<div class="modal-section">
-						<label for="onboarding-bot-name">{t.sidebar.botName}</label>
-						<input id="onboarding-bot-name" type="text" bind:value={botDraft.name} oninput={onBotInput} />
-						{#if botErrors.name}
-							<p class="field-error">{botNameErrorCopy(botErrors.name, t.sidebar)}</p>
-						{/if}
-					</div>
-
-					<div class="modal-section">
-						<label for="onboarding-bot-duties">{t.sidebar.botDuties}</label>
-						<textarea id="onboarding-bot-duties" rows="3" bind:value={botDraft.duties} oninput={onBotInput}></textarea>
-						{#if botErrors.duties}
-							<p class="field-error">{t.sidebar.dutiesEmpty}</p>
-						{/if}
-					</div>
-
-					<div class="modal-section">
-						<label for="onboarding-bot-boundaries">{t.sidebar.botBoundaries}</label>
-						<textarea id="onboarding-bot-boundaries" rows="2" bind:value={botDraft.boundaries} oninput={onBotInput}></textarea>
-						{#if botErrors.boundaries}
-							<p class="field-error">{t.sidebar.boundariesEmpty}</p>
-						{:else}
-							<p class="muted field-hint">{botDraft.runner === 'claude_code' ? t.onboarding.botClaudeHint
-								: botDraft.runner && pickedOther ? t.onboarding.botAgentHint.replace('{agent}', pickedLabel) : t.onboarding.botModelHint}</p>
-						{/if}
-					</div>
 
 					<div class="step-nav-footer">
 						<button type="button" class="btn-step-secondary" onclick={() => (holding = false)}>
 							{t.onboarding.skipBot}
 						</button>
-						<button type="button" class="btn-step-primary" disabled={creatingBot || !botPlan.ok} onclick={createFirstBot}>
-							{t.onboarding.createBot} ✓
+						<button type="button" class="btn-step-primary" disabled={teamBusy || !teamReady} data-team-create onclick={() => void teamStep?.create()}>
+							{t.templates.create(teamCount)} ✓
 						</button>
 					</div>
 				</div>
@@ -1337,10 +1269,7 @@
 	 */
 	#onboarding-provider-name,
 	#onboarding-endpoint,
-	#onboarding-endpoint-key,
-	#onboarding-bot-name,
-	#onboarding-bot-duties,
-	#onboarding-bot-boundaries {
+	#onboarding-endpoint-key {
 		width: 100%;
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
@@ -1357,21 +1286,12 @@
 
 	#onboarding-provider-name:focus,
 	#onboarding-endpoint:focus,
-	#onboarding-endpoint-key:focus,
-	#onboarding-bot-name:focus,
-	#onboarding-bot-duties:focus,
-	#onboarding-bot-boundaries:focus {
+	#onboarding-endpoint-key:focus {
 		border-color: var(--accent);
 		box-shadow: 0 0 0 3px var(--accent-glow);
 	}
 
-	#onboarding-bot-duties,
-	#onboarding-bot-boundaries {
-		min-height: 60px;
-		resize: vertical;
-		font-family: inherit;
-		line-height: 1.45;
-	}
+
 
 	.onboarding-title {
 		margin: 0;

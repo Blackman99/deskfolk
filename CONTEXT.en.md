@@ -12,6 +12,10 @@ A single-person agent collaboration app running locally on macOS (with Windows a
 A persistent teammate with a name, a role, and boundaries. It has its own 1:1 session and profile, and it does not disappear when a task ends. When it hits an obstacle, it first investigates on its own, tries the means available, and verifies against the original goal; it does not hand technical work it can finish itself to the user, and asks for help only with permissions, credentials, information, or decisions that only the user has. Trying things on its own is still bound by approvals, denials, Stop, and the boundaries of its profile, and it does not blindly repeat actions that have side effects. It says only what matters: a sentence whose removal or addition changes nothing in what it means to convey is filler, and it leaves it out (opening acknowledgements, restating the request, self-praise, sign-offs, ending by asking you to confirm or to say if anything should change); long content you asked for is written in full.
 _Avoid_: Agent, child agent, subagent, assistant, Endpoint, "Got it!", "So sorry", "Thanks for the correction", "Let me know if you need anything"
 
+**Bot template**:
+A ready draft of a teammate for one of the built-in engines: a name, duties and boundaries, drawn from the Bots used most so far, the boundaries carrying what the records taught (the Video Director hands over and waits for you rather than booking check-backs to ask your view; the Translator gives the translation in its reply; the Reviewer speaks only when asked) (ADR 0085). General has Assistant, Translator and Researcher; Video has Video Director, Story Writer, Subtitle Editor and Reviewer; Coding has Developer, Frontend Engineer, Backend Engineer and Designer. Only a start: each can be changed before it is made, and once made it is an ordinary Bot with no tie to its template. On first launch with an empty roster the wizard's last step picks a way of working (an engine) and makes the templates ticked; the new-Bot sheet offers them too.
+_Avoid_: changing Bots already made when a template changes, a template choosing a Bot's model, first launch changing Settings' default engine
+
 **Roster**:
 The set of all Bots on this machine. There is no limit on how many there are, and anyone can create one. A Bot is not a security boundary. In the app, the roster is a single row of letter tiles at the top of the sidebar, not a grid of cards, and it does not include you.
 _Avoid_: team account, tenant, seat, roster cards, putting you in the roster row
@@ -255,7 +259,7 @@ One way a Bot can run: each of its turns is run by an agent program you installe
 _Avoid_: an agent as a completion endpoint, signing in to an agent inside the app, rewriting an agent's config file, reading an agent's tokens, a Bot switching its own runner, pretending to hand over without the tools
 
 **Setup wizard**:
-The empty state of Settings: it is complete once the workspace path is set and there is either a usable endpoint (its URL and a saved key; an address on this computer needs no key) or a signed-in local agent on this computer with the built-in calls on its models (ADR 0078, ADR 0079). It has no route of its own; it slides out over the sidebar only and does not take over the main transcript.
+The empty state of Settings: it is complete once the workspace path is set and there is either a usable endpoint (its URL and a saved key; an address on this computer needs no key) or a signed-in local agent on this computer with the built-in calls on its models (ADR 0078, ADR 0079). With an empty roster it has one more step: a way of working (an engine) and the first Bots (Bot templates), with a group on that engine when there are two or more (ADR 0085); the step can be skipped. It has no route of its own; it slides out over the sidebar only and does not take over the main transcript.
 _Avoid_: /setup, full-screen onboarding, making Settings the main transcript
 
 **MCP**:

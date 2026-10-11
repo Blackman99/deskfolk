@@ -15,8 +15,8 @@ const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0)) close(); });
 
 /**
- * The first-run wizard ends on the first Bot. Saving the endpoint completes setup, which is what
- * takes the wizard down, so it holds itself up across that save for its last step.
+ * The first-run wizard ends on the first Bots, from templates. Saving the endpoint completes setup,
+ * which is what takes the wizard down, so it holds itself up across that save for its last step.
  */
 function firstRunRuntime(snapshot: Partial<ReturnType<typeof emptySnapshot>> = {}, stubs: Record<string, unknown> = {}) {
   const runtime = reactive(fakeRuntime({
@@ -43,14 +43,14 @@ function saveSetup(host: HTMLElement, label: string) {
   click(buttonByText(host, label));
 }
 
-test('saving setup on an empty roster leads to the first Bot, and making it opens the app on its direct', async () => {
+test('saving setup on an empty roster leads to the first Bots, and making them opens the app', async () => {
   const zh = copyFor('zh');
-  const created: unknown[] = [];
+  const made: Array<{ members: Array<{ body: unknown }>; playbookId: string }> = [];
   const runtime = firstRunRuntime({}, {
-    createBot: async (body: unknown) => {
-      created.push(body);
-      runtime.snapshot.bots = [aBot({ id: 'first', name: zh.onboarding.botNameSuggested })];
-      return null;
+    createTeam: async (input: { members: Array<{ body: unknown }>; playbookId: string }) => {
+      made.push(input);
+      runtime.snapshot.bots = [aBot({ id: 'first', name: zh.templates.templates.assistant!.name })];
+      return { failed: null, error: null, groupFailed: false };
     },
   });
   const { host, close } = render(Shell, { runtime }); cleanups.push(close);
@@ -60,7 +60,7 @@ test('saving setup on an empty roster leads to the first Bot, and making it open
   expect(runtime.snapshot.settings.wizard_complete).toBe(true);
   expect(host.querySelector('.onboarding-screen')).not.toBeNull();
   expect(host.querySelector('.shell')).toBeNull();
-  expect(host.querySelector<HTMLInputElement>('#onboarding-bot-name')?.value).toBe(zh.onboarding.botNameSuggested);
+  expect(host.querySelector('[data-team-step]')).not.toBeNull();
   // The steps behind it are done and no longer open; so is the skip-setup link.
   const steps = [...host.querySelectorAll<HTMLButtonElement>('.step-bar-item')];
   expect(steps).toHaveLength(4);
@@ -68,14 +68,17 @@ test('saving setup on an empty roster leads to the first Bot, and making it open
   expect(steps[3]!.classList.contains('is-active')).toBe(true);
   expect(host.textContent).not.toContain(zh.onboarding.skip);
 
-  fill(host.querySelector('#onboarding-bot-name'), '阿福');
-  click(buttonByText(host, `${zh.onboarding.createBot} ✓`));
+  click(host.querySelector('[data-team-template="assistant"] .team-edit'));
+  flushSync();
+  fill(host.querySelector('[data-team-name="assistant"]'), '阿福');
+  click(buttonByText(host, `${zh.templates.create(1)} ✓`));
   await settle();
-  expect(created).toHaveLength(1);
-  expect(created[0]).toMatchObject({
+  expect(made).toHaveLength(1);
+  expect(made[0]!.playbookId).toBe('general');
+  expect(made[0]!.members[0]!.body).toMatchObject({
     name: '阿福',
-    duties: zh.onboarding.botDutiesSuggested,
-    boundaries: zh.onboarding.botBoundariesSuggested,
+    duties: zh.templates.templates.assistant!.duties,
+    boundaries: zh.templates.templates.assistant!.boundaries,
     model: null,
   });
   expect(host.querySelector('.onboarding-screen')).toBeNull();
@@ -84,29 +87,31 @@ test('saving setup on an empty roster leads to the first Bot, and making it open
 
 test('the first-Bot step can be skipped into the app', async () => {
   const zh = copyFor('zh');
-  let created = 0;
-  const runtime = firstRunRuntime({}, { createBot: async () => { created++; return null; } });
+  let made = 0;
+  const runtime = firstRunRuntime({}, { createTeam: async () => { made++; return { failed: null, error: null, groupFailed: false }; } });
   const { host, close } = render(Shell, { runtime }); cleanups.push(close);
   saveSetup(host, `${zh.onboarding.step3Next} →`);
   await settle();
   click(buttonByText(host, zh.onboarding.skipBot));
   expect(host.querySelector('.onboarding-screen')).toBeNull();
   expect(host.querySelector('.shell')).not.toBeNull();
-  expect(created).toBe(0);
+  expect(made).toBe(0);
 });
 
-test('a refused first Bot keeps the wizard up with the reason on the field', async () => {
+test('a refused first Bot keeps the wizard up with the reason on its field', async () => {
   const zh = copyFor('zh');
   const runtime = firstRunRuntime({}, {
-    createBot: async () => new ApiError(409, 'conflict', 'that name is already used'),
+    createTeam: async () => ({ failed: 0, error: new ApiError(409, 'conflict', 'that name is already used'), groupFailed: false }),
   });
   const { host, close } = render(Shell, { runtime }); cleanups.push(close);
   saveSetup(host, `${zh.onboarding.step3Next} →`);
   await settle();
-  click(buttonByText(host, `${zh.onboarding.createBot} ✓`));
+  click(buttonByText(host, `${zh.templates.create(1)} ✓`));
   await settle();
   expect(host.querySelector('.onboarding-screen')).not.toBeNull();
   expect(host.textContent).toContain(zh.sidebar.nameConflict);
+  expect(host.textContent).toContain(zh.templates.failed(zh.templates.templates.assistant!.name));
+  expect(host.querySelector('[data-team-name="assistant"]')).not.toBeNull();
 });
 
 test('with Bots already on the roster, saving setup goes straight into the app', async () => {
@@ -129,7 +134,7 @@ test('a failed setup save lets go of the wizard, so it leaves once setup is comp
   saveSetup(host, `${zh.onboarding.step3Next} →`);
   await settle();
   expect(host.textContent).toContain(zh.settings.saveFailed);
-  expect(host.querySelector('#onboarding-bot-name')).toBeNull();
+  expect(host.querySelector('[data-team-step]')).toBeNull();
   // Setup finished elsewhere (another window, the phone): nothing holds this wizard up any more.
   runtime.snapshot.settings.wizard_complete = true;
   flushSync();

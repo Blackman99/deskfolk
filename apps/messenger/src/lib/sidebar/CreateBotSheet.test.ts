@@ -247,3 +247,45 @@ test("on another agent the model is one it lists, its default, or a name typed i
   expect(zcode.host.querySelector(".mp-empty")?.textContent).toContain(t.modelPicker.noModels);
   zcode.close();
 });
+
+/** ADR 0085: a template fills the draft and picks its engine for the new direct; the Mac's engines are listed. */
+test("a template fills the new Bot and its engine; the engine goes with the request", async () => {
+  const { emptyPlaybookDiff, resolvePlaybook } = await import("@real-bot/protocol");
+  const engine = (id: "general" | "video" | "coding") => ({ id, builtin: true, base_id: id, name: null, revision: 0, revision_id: null, diff: emptyPlaybookDiff(), resolved: resolvePlaybook(id, null), updated_at: null });
+  const runtime = fakeRuntime({ providers: [aProvider({ key_set: true })] });
+  (runtime as unknown as { client: unknown }).client = {
+    agents: async () => ({ items: [], custom_agents: [] }),
+    listPlaybooks: async () => ({ default_id: "general", items: [engine("general"), engine("video"), engine("coding")] }),
+  };
+  const view = render(CreateBotSheet, { runtime, bots: [], t, onClose: () => {} });
+  await settle();
+  expect(view.host.querySelector("[data-bot-engine]")?.textContent).toContain("跟默认（通用）");
+  click(view.host.querySelector('[data-bot-template="director"]'));
+  await settle();
+  expect(view.host.querySelector<HTMLInputElement>("#bot-name")?.value).toBe(t.templates.templates.director!.name);
+  expect(view.host.querySelector<HTMLTextAreaElement>("#bot-boundaries")?.value).toBe(t.templates.templates.director!.boundaries);
+  expect(view.host.querySelector("#bot-engine")?.textContent?.trim()).toBe("视频");
+  click([...view.host.querySelectorAll("button")].find((b) => b.textContent === t.sidebar.create));
+  await settle();
+  const created = (runtime as unknown as { calls: Array<{ name: string; args: unknown[] }> }).calls.filter((call) => call.name === "createBot");
+  expect(created[0]?.args[0]).toMatchObject({ name: t.templates.templates.director!.name, playbook_id: "video" });
+  // A template of the default engine follows the default rather than naming it.
+  click(view.host.querySelector('[data-bot-template="assistant"]'));
+  await settle();
+  expect(view.host.querySelector("#bot-engine")?.textContent?.trim()).toBe("跟默认（通用）");
+  view.close();
+});
+
+test("where the Mac has no engines, the sheet has no engine row and sends none", async () => {
+  const runtime = fakeRuntime({ providers: [aProvider({ key_set: true })] });
+  (runtime as unknown as { client: unknown }).client = { agents: async () => ({ items: [], custom_agents: [] }), listPlaybooks: async () => { throw new Error("404"); } };
+  const view = render(CreateBotSheet, { runtime, bots: [], t, onClose: () => {} });
+  await settle();
+  expect(view.host.querySelector("[data-bot-engine]")).toBeNull();
+  click(view.host.querySelector('[data-bot-template="writer"]'));
+  click([...view.host.querySelectorAll("button")].find((b) => b.textContent === t.sidebar.create));
+  await settle();
+  const created = (runtime as unknown as { calls: Array<{ name: string; args: unknown[] }> }).calls.filter((call) => call.name === "createBot");
+  expect(created[0]?.args[0]).not.toHaveProperty("playbook_id");
+  view.close();
+});

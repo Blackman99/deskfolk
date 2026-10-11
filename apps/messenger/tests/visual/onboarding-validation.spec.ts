@@ -17,7 +17,7 @@ for (const [engineName, engine] of [['chromium', chromium], ['webkit', webkit]] 
         const workspaceNext = page.getByRole('button', { name: `${t.onboarding.step1Next} →`, exact: true });
         const providerNext = page.getByRole('button', { name: `${t.onboarding.step2Next} →`, exact: true });
         const modelsNext = page.getByRole('button', { name: `${t.onboarding.step3Next} →`, exact: true });
-        const createBot = page.getByRole('button', { name: `${t.onboarding.createBot} ✓`, exact: true });
+        const createBot = page.locator('[data-team-create]');
         const modelsTab = page.locator('.step-bar-item').filter({ hasText: t.onboarding.step3Title });
 
         await expect(workspaceNext).toBeDisabled();
@@ -67,16 +67,19 @@ for (const [engineName, engine] of [['chromium', chromium], ['webkit', webkit]] 
         await expect(modelsNext).toBeEnabled();
         await modelsNext.click();
 
+        // The last step: General and its assistant ticked to begin with.
         await expect(createBot).toBeEnabled();
-        await page.locator('#onboarding-bot-name').fill(' ');
+        await expect(createBot).toHaveText(`${t.templates.create(1)} ✓`);
+        const assistant = page.locator('[data-team-template="assistant"]');
+        await assistant.locator('.team-edit').click();
+        await page.locator('[data-team-name="assistant"]').fill(' ');
         await expect(createBot).toBeDisabled();
-        await page.locator('#onboarding-bot-duties').fill(' ');
-        await page.locator('#onboarding-bot-boundaries').fill(' ');
-        await page.locator('#onboarding-bot-name').fill('Fixture Bot');
+        await expect(assistant.locator('.field-error')).toHaveText(t.sidebar.nameEmpty);
+        await page.locator('[data-team-name="assistant"]').fill('Fixture Bot');
+        await expect(createBot).toBeEnabled();
+        await page.locator('[data-team-pick="assistant"]').uncheck();
         await expect(createBot).toBeDisabled();
-        await page.locator('#onboarding-bot-duties').fill('Do the work');
-        await expect(createBot).toBeDisabled();
-        await page.locator('#onboarding-bot-boundaries').fill('Ask before deleting');
+        await page.locator('[data-team-pick="assistant"]').check();
         await expect(createBot).toBeEnabled();
         await createBot.click();
         await expect(page.locator('.onboarding-screen')).toHaveCount(0);

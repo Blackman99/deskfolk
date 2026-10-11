@@ -22,6 +22,9 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import { agentBlocker, agentLabelOf, agentStatusOf, parseRunnerValue, runnerOptions, setupRunnerOf } from '../runner-choice.ts';
+	import { BUILTIN_PLAYBOOK_IDS } from '@real-bot/protocol';
+	import { templatesFor, type BotTemplate, type BotTemplateId } from '../bot-templates.ts';
+	import { playbookName, Playbooks } from '../settings/playbooks.svelte.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -53,6 +56,7 @@
 	onMount(() => {
 		const client = runtime.client;
 		if (!client) return;
+		void playbooks.load();
 		void (async () => {
 			try {
 				agents = await client.agents();
@@ -70,6 +74,28 @@
 	const agentBlocked = $derived(agentBlocker(agentStatus));
 	let errors = $state<CreateBotFieldErrors>({});
 	let failed = $state(false);
+
+	/**
+	 * Bot templates and the engine of the new Bot's direct (ADR 0085). A template fills the name,
+	 * duties and boundaries and picks its engine; the engine row is not there where the Mac has none.
+	 */
+	const playbooks = new Playbooks(() => runtime.client);
+	let template = $state<BotTemplateId | null>(null);
+	let playbookId = $state('');
+	const engineOptions = $derived([
+		{ value: '', label: t.playbooks.followDefault(playbookName(playbooks.find(playbooks.defaultId), t.playbooks.builtin)) },
+		...playbooks.items.map((item) => ({ value: item.id, label: playbookName(item, t.playbooks.builtin) }))
+	]);
+
+	function useTemplate(picked: BotTemplate): void {
+		const text = t.templates.templates[picked.id]!;
+		draft.name = text.name;
+		draft.duties = text.duties;
+		draft.boundaries = text.boundaries;
+		template = picked.id;
+		playbookId = picked.playbook === playbooks.defaultId ? '' : picked.playbook;
+		onInput();
+	}
 
 	const providers = $derived(runtime.snapshot.providers);
 	const endpointModels = $derived(endpointModelPicker(providers, t));
@@ -112,7 +138,7 @@
 			errors = plan.errors;
 			return;
 		}
-		const error = await runtime.createBot(plan.body);
+		const error = await runtime.createBot(playbookId && playbooks.list ? { ...plan.body, playbook_id: playbookId } : plan.body);
 		if (!error) return;
 		const mapped = mapCreateBotError(error.status, error.message);
 		if ('top' in mapped) failed = true;
@@ -152,6 +178,26 @@
 			{#if failed}
 				<p class="field-error">{t.sidebar.saveFailed}</p>
 			{/if}
+			<div class="modal-section" data-bot-templates>
+				<span class="field-head">{t.templates.fromTemplate}</span>
+				<div class="template-rows">
+					{#each BUILTIN_PLAYBOOK_IDS as way (way)}
+						<span class="template-way">{t.playbooks.builtin[way]}</span>
+						<span class="template-chips">
+							{#each templatesFor(way) as item (item.id)}
+								<button
+									type="button"
+									class="btn-chip"
+									class:active={template === item.id}
+									aria-pressed={template === item.id}
+									data-bot-template={item.id}
+									onclick={() => useTemplate(item)}
+								>{t.templates.templates[item.id]!.name}</button>
+							{/each}
+						</span>
+					{/each}
+				</div>
+			</div>
 			<div class="modal-section">
 				<span class="field-head">{t.sidebar.botAvatar}</span>
 				<AvatarEditor bind:avatar={draft.avatar} name={draft.name} {t} onchange={onInput} />
@@ -272,6 +318,13 @@
 				{/if}
 			</div>
 			{/if}
+			{#if playbooks.list}
+				<div class="modal-section" data-bot-engine>
+					<label for="bot-engine">{t.playbooks.label}</label>
+					<Select id="bot-engine" bind:value={playbookId} options={engineOptions} />
+					<p class="muted field-hint">{t.templates.engineHint}</p>
+				</div>
+			{/if}
 		</div>
 		<div class="modal-foot actions">
 			<button type="button" onclick={() => void save()}>{t.sidebar.create}</button>
@@ -294,6 +347,25 @@
 
 	.create-bot-modal :global(.modal-body) :global(textarea) {
 		min-height: 72px;
+	}
+
+	/* One row per engine: its name, then its templates. */
+	.template-rows {
+		display: grid;
+		grid-template-columns: max-content minmax(0, 1fr);
+		align-items: center;
+		gap: 6px 10px;
+	}
+
+	.template-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.template-way {
+		color: var(--muted);
+		font-size: 12px;
 	}
 
 	/* A page has the whole width; 24px of gutter on a phone is half a field. */

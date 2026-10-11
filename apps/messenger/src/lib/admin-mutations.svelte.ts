@@ -45,6 +45,9 @@ export interface AdminMutationsHost {
   markDisconnected(): void;
 }
 
+/** A Bot of first launch's team: the request, and once made, the Bot and its direct. */
+export type TeamMember = { body: CreateBotRequest; made: { botId: string; directId: string } | null };
+
 /**
  * Every write the settings, Bot, group, skill, routine, memory, provider and MCP sheets make, the
  * retry of a request a dropped link left unconfirmed, and the one mapping from a write's failure
@@ -135,6 +138,41 @@ export class AdminMutations {
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);
+    }
+  }
+
+  /**
+   * First launch's team (ADR 0085): each member not made yet is made in turn, its direct on
+   * `playbookId`, and marked made; with two or more, a group of them on it too, `lead` its confirmed
+   * lead. Stops at the first Bot that fails, keeping the ones made, so trying again makes only the
+   * rest. Lands in the group, or the one Bot's direct.
+   */
+  async createTeam(input: { members: TeamMember[]; playbookId: string; groupName: string; lead: number }): Promise<{ failed: number | null; error: ApiError | null; groupFailed: boolean }> {
+    const api = this.host.api;
+    if (!api) return { failed: null, error: null, groupFailed: false };
+    for (const [index, member] of input.members.entries()) {
+      if (member.made) continue;
+      try {
+        const created = await api.createBot({ ...member.body, playbook_id: input.playbookId });
+        member.made = { botId: created.bot.id, directId: created.direct_session.id };
+      } catch (error) {
+        return { failed: index, error: this.sheetFailure(error, api), groupFailed: false };
+      }
+    }
+    if (this.host.api !== api) return { failed: null, error: null, groupFailed: false };
+    const made = input.members.map((member) => member.made!);
+    if (made.length === 1) {
+      await this.host.selectSession(made[0]!.directId);
+      return { failed: null, error: null, groupFailed: false };
+    }
+    try {
+      const group = await api.createGroup({ name: input.groupName, members: made.map((bot) => bot.botId), playbook_id: input.playbookId });
+      await api.confirmGroupLead(group.id, made[input.lead]?.botId ?? made[0]!.botId).catch(() => null);
+      await this.host.selectSession(group.id);
+      return { failed: null, error: null, groupFailed: false };
+    } catch {
+      await this.host.selectSession(made[0]!.directId);
+      return { failed: null, error: null, groupFailed: true };
     }
   }
 
