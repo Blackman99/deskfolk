@@ -18,6 +18,7 @@
  */
 import dagre from "@dagrejs/dagre";
 import { USER_MEMBER, traceNodeSaidNothing, type TaskTrace, type TaskTraceNode, type TurnStatus } from "@real-bot/protocol";
+import { attachSteps, type StepAttachment, type TraceStepGroup } from "./trace-steps.ts";
 
 /** Stages past this stop drawing connectors and say who woke them in words. */
 export const TRACE_EDGE_LIMIT = 40;
@@ -27,6 +28,15 @@ export type TraceBox = { width: number; height: number };
 
 export type TracePlacement = {
   node: TaskTraceNode;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+/** Where one of the app's calls sits (ADR 0083): a smaller card among the turns. */
+export type TraceStepPlacement = {
+  group: TraceStepGroup;
   x: number;
   y: number;
   width: number;
@@ -61,10 +71,15 @@ export type TraceRound = {
   ticketIds: string[];
   /** Something in it is still going or waiting on you. */
   live: boolean;
+  /** The app's calls in it, and how many of those went wrong or said no (ADR 0083). */
+  steps: number;
+  anomalies: number;
 };
 
 export type TraceFlow = {
   placements: TracePlacement[];
+  /** The app's calls, placed among the cards of their rounds. */
+  steps: TraceStepPlacement[];
   edges: TraceEdge[];
   /** Top to bottom, in the order they started. */
   rounds: TraceRound[];
@@ -76,6 +91,9 @@ export type TraceFlow = {
 
 export const TRACE_CARD_WIDTH = 248;
 export const TRACE_CARD_FALLBACK_HEIGHT = 92;
+/** A step is a line or two, narrower than a card so the turns still read as the board's main things. */
+export const TRACE_STEP_WIDTH = 208;
+export const TRACE_STEP_FALLBACK_HEIGHT = 44;
 /** Wider than a card, so a folded round has room for its line and its tickets. */
 export const TRACE_ROUND_WIDTH = 320;
 export const TRACE_ROUND_HEIGHT = 34;
@@ -171,22 +189,43 @@ export function defaultFolded(
 export function traceFlow(
   trace: TaskTrace,
   boxes: ReadonlyMap<string, TraceBox> = new Map(),
-  options: { folded?: ReadonlySet<string> } = {},
+  options: { folded?: ReadonlySet<string>; showSteps?: boolean } = {},
 ): TraceFlow {
   const byId = new Map(trace.nodes.map((node) => [node.turn_id, node]));
-  const wakerOf = (node: TaskTraceNode) => wakerOn(node, byId);
+  const attached: StepAttachment = options.showSteps === false || !trace.steps?.length
+    ? { groups: [], parent: new Map() }
+    : attachSteps(trace.nodes, trace.steps);
+  // A turn hangs from the step that came between it and the card that woke it, when there is one.
+  const parentOf = (id: string): string | null => {
+    const hung = attached.parent.get(id);
+    if (hung) return hung;
+    const node = byId.get(id);
+    return node ? wakerOn(node, byId) : null;
+  };
   const grouped = traceRounds(trace.nodes);
+  const rootOf = new Map<string, string>();
+  for (const { root, members } of grouped) for (const node of members) rootOf.set(node.turn_id, root);
+  // A step is in the round of the card it hangs from, however many steps it hangs below.
+  const stepsOf = new Map<string, TraceStepGroup[]>();
+  for (const group of attached.groups) {
+    let at: string | null = group.id;
+    for (let hops = 0; at && !rootOf.has(at) && hops < 64; hops++) at = attached.parent.get(at) ?? null;
+    const root = at ? rootOf.get(at) : undefined;
+    if (root) stepsOf.set(root, [...(stepsOf.get(root) ?? []), group]);
+  }
   const headed = grouped.length > 1;
   const folded = options.folded ?? new Set<string>();
 
   // Each round on its own, then every round's first card on one line down the board.
   const laidRounds = grouped.map(({ root, members }) => {
     const shut = headed && folded.has(root);
+    const steps = stepsOf.get(root) ?? [];
     return {
       root,
       members,
+      steps,
       folded: shut,
-      laid: shut ? null : layRound(root, members, wakerOf, boxes, trace.session_id),
+      laid: shut ? null : layRound(root, members, steps, parentOf, boxes, trace.session_id),
     };
   });
   const half = headed ? TRACE_ROUND_WIDTH / 2 : 0;
@@ -195,9 +234,10 @@ export function traceFlow(
   const spine = MARGIN + left;
 
   const at = new Map<string, TracePlacement>();
+  const stepAt = new Map<string, TraceStepPlacement>();
   const bands: TraceRound[] = [];
   let top = MARGIN;
-  laidRounds.forEach(({ root, members, folded: shut, laid }, index) => {
+  laidRounds.forEach(({ root, members, steps, folded: shut, laid }, index) => {
     if (index > 0) top += shut && laidRounds[index - 1]!.folded ? FOLDED_GAP : ROUND_GAP;
     const bandTop = top;
     const header = headed
@@ -212,6 +252,9 @@ export function traceFlow(
           x: Math.round(placement.x + dx),
           y: Math.round(placement.y + top),
         });
+      }
+      for (const placement of laid.steps) {
+        stepAt.set(placement.group.id, { ...placement, x: Math.round(placement.x + dx), y: Math.round(placement.y + top) });
       }
       top += laid.height;
     }
@@ -230,20 +273,24 @@ export function traceFlow(
       files: members.reduce((sum, node) => sum + node.artifacts.length, 0),
       ticketIds,
       live: members.some((node) => LIVE.has(node.status)),
+      steps: steps.reduce((sum, group) => sum + group.steps.length, 0),
+      anomalies: steps.filter((group) => group.anomalous).length,
     });
   });
 
   const edges: TraceEdge[] = [];
-  for (const node of trace.nodes) {
-    const from = wakerOf(node);
-    const fromBox = from ? at.get(from) : undefined;
-    const toBox = at.get(node.turn_id);
+  const boxOf = (id: string) => at.get(id) ?? stepAt.get(id);
+  for (const id of [...trace.nodes.map((node) => node.turn_id), ...attached.groups.map((group) => group.id)]) {
+    const from = parentOf(id);
+    const fromBox = from ? boxOf(from) : undefined;
+    const toBox = boxOf(id);
     if (!from || !fromBox || !toBox) continue;
-    edges.push({ from, to: node.turn_id, path: edgePath(fromBox, toBox) });
+    edges.push({ from, to: id, path: edgePath(fromBox, toBox) });
   }
   const placements = trace.nodes.flatMap((node) => at.get(node.turn_id) ?? []);
   return {
     placements,
+    steps: attached.groups.flatMap((group) => stepAt.get(group.id) ?? []),
     edges,
     rounds: bands,
     spine: Math.round(spine),
@@ -255,6 +302,7 @@ export function traceFlow(
 type LaidRound = {
   root: string;
   placements: TracePlacement[];
+  steps: TraceStepPlacement[];
   /** The centre of the round's first card, where it meets the spine. */
   anchor: number;
   minX: number;
@@ -275,46 +323,56 @@ type LaidRound = {
 function layRound(
   root: string,
   members: TaskTraceNode[],
-  wakerOf: (node: TaskTraceNode) => string | null,
+  steps: TraceStepGroup[],
+  parentOf: (id: string) => string | null,
   boxes: ReadonlyMap<string, TraceBox>,
   home: string | null,
 ): LaidRound {
   const graph = new dagre.graphlib.Graph();
   graph.setGraph({ rankdir: "TB", ranksep: RANK_GAP, nodesep: NODE_GAP, marginx: 0, marginy: 0 });
   graph.setDefaultEdgeLabel(() => ({}));
-  for (const node of members) {
-    const box = boxes.get(node.turn_id);
-    graph.setNode(node.turn_id, {
-      width: box?.width || TRACE_CARD_WIDTH,
-      height: box?.height || estimateHeight(node, home),
-    });
+  // Cards and steps go in together in the order they happened: with reordering off, that order is
+  // the order along each rank.
+  const items = [
+    ...members.map((node) => ({ id: node.turn_id, at: node.created_at, node, group: null })),
+    ...steps.map((group) => ({ id: group.id, at: group.created_at, node: null, group })),
+  ].sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
+  const inRound = new Set(items.map((item) => item.id));
+  for (const item of items) {
+    const box = boxes.get(item.id);
+    graph.setNode(item.id, item.node
+      ? { width: box?.width || TRACE_CARD_WIDTH, height: box?.height || estimateHeight(item.node, home) }
+      : { width: box?.width || TRACE_STEP_WIDTH, height: box?.height || TRACE_STEP_FALLBACK_HEIGHT });
   }
-  for (const node of members) {
-    const from = wakerOf(node);
-    if (from) graph.setEdge(from, node.turn_id);
+  for (const item of items) {
+    const from = parentOf(item.id);
+    if (from && inRound.has(from)) graph.setEdge(from, item.id);
   }
   dagre.layout(graph, { disableOptimalOrderHeuristic: true });
 
   type Laid = { x: number; y: number; width: number; height: number };
-  const laid = members.map((node) => ({ node, box: graph.node(node.turn_id) as Laid }));
+  const laid = items.map((item) => ({ item, box: graph.node(item.id) as Laid }));
   // dagre centres every card on its rank; a row of cards reads better sharing a top edge.
   const rankHeight = new Map<number, number>();
   for (const { box } of laid) rankHeight.set(box.y, Math.max(rankHeight.get(box.y) ?? 0, box.height));
-  const placements = laid.map(({ node, box }) => ({
-    node,
+  const place = (box: Laid) => ({
     x: box.x - box.width / 2,
     y: box.y - rankHeight.get(box.y)! / 2,
     width: Math.round(box.width),
     height: Math.round(box.height),
-  }));
+  });
+  const placements = laid.flatMap(({ item, box }) => (item.node ? [{ node: item.node, ...place(box) }] : []));
+  const stepPlacements = laid.flatMap(({ item, box }) => (item.group ? [{ group: item.group, ...place(box) }] : []));
+  const all = [...placements, ...stepPlacements];
   const first = placements.find((placement) => placement.node.turn_id === root) ?? placements[0]!;
   return {
     root,
     placements,
+    steps: stepPlacements,
     anchor: first.x + first.width / 2,
-    minX: Math.min(...placements.map((placement) => placement.x)),
-    maxX: Math.max(...placements.map((placement) => placement.x + placement.width)),
-    height: Math.max(...placements.map((placement) => placement.y + placement.height)),
+    minX: Math.min(...all.map((placement) => placement.x)),
+    maxX: Math.max(...all.map((placement) => placement.x + placement.width)),
+    height: Math.max(...all.map((placement) => placement.y + placement.height)),
   };
 }
 
@@ -342,7 +400,7 @@ function estimateHeight(node: TaskTraceNode, home: string | null): number {
 }
 
 /** Bottom of the waking card to the top of the woken one, bent so a fan-out reads as a fan. */
-function edgePath(from: TracePlacement, to: TracePlacement): string {
+function edgePath(from: TraceBox & { x: number; y: number }, to: TraceBox & { x: number; y: number }): string {
   const x1 = from.x + from.width / 2;
   const y1 = from.y + from.height;
   const x2 = to.x + to.width / 2;

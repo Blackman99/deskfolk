@@ -58,6 +58,8 @@
 
 	const QUICK_EMOJIS = ['👍', '❤️', '🎉', '🚀', '👀'];
 	const JOB_VIEWS: readonly TraceViewKind[] = ['trace', 'board', 'spec'];
+	/** A line in no job has its own flow and nothing else (ADR 0083). */
+	const LINE_VIEWS: readonly TraceViewKind[] = ['trace'];
 
 	$effect(() => {
 		if (menuEl) {
@@ -303,9 +305,10 @@
 		<span>{t.chat.openAssociatedFileTree}</span>
 	</button>
 
-	{#if data.canShowTrace}
-		<!-- The job this line is in, a view at a time: each opens as a tab of its own on a wide window. -->
-		{#each JOB_VIEWS as view (view)}
+	{#if data.canShowTrace || data.canShowLine}
+		<!-- The job this line is in, a view at a time: each opens as a tab of its own on a wide window.
+			A line in no job has only its own flow (ADR 0083). -->
+		{#each data.canShowTrace ? JOB_VIEWS : LINE_VIEWS as view (view)}
 			<button
 				type="button"
 				class="msg-context-menu-item"

@@ -225,6 +225,11 @@
 		if (!target.prompt) runtime.promptsTarget = null;
 	});
 
+	// A step's 「改这个调用」 on the flow (ADR 0083): Roles, at that call.
+	$effect(() => {
+		if (runtime.settingsOpen && runtime.rolesTarget) openSettingsTab('routing');
+	});
+
 	function settingsTabLabel(tab: SettingsTab): string {
 		return tab === 'general'
 			? t.settings.tabGeneral

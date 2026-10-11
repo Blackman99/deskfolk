@@ -339,6 +339,20 @@ test("the board turns to another job of the same conversation", () => {
   expect(next.focus.leafId).toBe("b");
 });
 
+test("a line's own flow and a job's are different boards: asking for one turns the tab to it", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-chat")]),
+    makeLeaf("b", [tabFor(trace("s1", "job-1"), "t-trace")]),
+  ]), "a");
+  const toLine = openContent(layout, { ...trace("s1", null), line: "m-9" }, ids);
+  expect(leafById(toLine, "b")!.tabs[0]!.params).toEqual({ sessionId: "s1", line: "m-9" });
+  // The conversation's flow asked for with no job in mind goes back to its jobs.
+  const back = openContent(toLine, trace("s1", null), ids);
+  expect(leafById(back, "b")!.tabs[0]!.params).toEqual({ sessionId: "s1" });
+  // The same line asked for again is only brought forward.
+  expect(openContent(toLine, { ...trace("s1", null), line: "m-9" }, ids)).toEqual(toLine);
+});
+
 test("asking for a message's card turns the board and keeps the request", () => {
   const layout = layoutOf(makeBranch("r", "row", [
     makeLeaf("a", [tabFor(chat("s1"), "t-chat")]),

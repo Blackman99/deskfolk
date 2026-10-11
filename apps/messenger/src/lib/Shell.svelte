@@ -1257,6 +1257,8 @@
 			<TaskTraceView
 				api={runtime.client}
 				taskId={runtime.traceTaskId || null}
+				line={runtime.traceLine}
+				onEditCall={(role) => runtime.openRoles(role)}
 				focus={runtime.traceFocus}
 				focusToken={runtime.traceFocusToken}
 				sessionId={runtime.traceSessionId || selected.id}

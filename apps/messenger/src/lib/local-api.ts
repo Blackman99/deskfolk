@@ -1,4 +1,6 @@
 import type {
+  CallRun,
+  LineTrace,
   RemoteScreenIceServer,
   RemoteScreenStatus,
   ClearSessionRequest,
@@ -330,6 +332,16 @@ export class LocalApi extends ApiBase<PendingRequest> {
 
   async taskTrace(taskId: string, signal?: AbortSignal): Promise<TaskTrace> {
     return this.get<TaskTrace>(`/v1/tasks/${encodeURIComponent(taskId)}/trace`, signal);
+  }
+
+  /** One line filed under no job, as a flow of its own (ADR 0083). */
+  async lineTrace(messageId: string, signal?: AbortSignal): Promise<LineTrace> {
+    return this.get<LineTrace>(`/v1/messages/${encodeURIComponent(messageId)}/trace`, signal);
+  }
+
+  /** One use of a built-in call with the model's answer, for a step opened on the flow. */
+  async callRun(id: string, signal?: AbortSignal): Promise<CallRun> {
+    return this.get<CallRun>(`/v1/call-runs/${encodeURIComponent(id)}`, signal);
   }
 
   /** Your own Claude Code as the daemon finds it (ADR 0061); a phone reaches the same routes over the relay. */

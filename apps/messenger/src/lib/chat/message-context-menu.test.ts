@@ -140,5 +140,12 @@ describe("deriveMessageContextMenu", () => {
   test("a message that belongs to a job can open its trace", () => {
     const msg = createMessage({ body: "Plain text", task_id: "task-1" });
     expect(deriveMessageContextMenu(msg).canShowTrace).toBe(true);
+    expect(deriveMessageContextMenu(msg).canShowLine).toBe(false);
+  });
+
+  test("a line in no job opens its own flow instead; the app's own lines do not", () => {
+    expect(deriveMessageContextMenu(createMessage({ kind: "user", task_id: null })).canShowLine).toBe(true);
+    expect(deriveMessageContextMenu(createMessage({ kind: "bot", task_id: null })).canShowLine).toBe(true);
+    expect(deriveMessageContextMenu(createMessage({ kind: "system", task_id: null })).canShowLine).toBe(false);
   });
 });

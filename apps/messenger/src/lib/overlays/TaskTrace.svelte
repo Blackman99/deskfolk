@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Attachment, Bot, Hold, Provider, SessionSummary } from '@real-bot/protocol';
+	import type { Attachment, Bot, BuiltinModelRole, Hold, Provider, SessionSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
@@ -16,6 +16,9 @@
 	interface Props {
 		api: MessengerApi | null;
 		taskId: string | null;
+		/** A line filed under no job, as its own board (ADR 0083). */
+		line?: string | null;
+		onEditCall?: (role: BuiltinModelRole) => void;
 		focus?: import('./task-trace.ts').TraceFocus | null;
 		focusToken?: number;
 		sessionId: string;
@@ -48,6 +51,8 @@
 	let {
 		api,
 		taskId,
+		line = null,
+		onEditCall,
 		focus = null,
 		focusToken = 0,
 		sessionId,
@@ -84,6 +89,8 @@
 		host="page"
 		{api}
 		{taskId}
+		{line}
+		{onEditCall}
 		{focus}
 		{focusToken}
 		{sessionId}

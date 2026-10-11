@@ -1,4 +1,6 @@
 import type {
+  CallRun,
+  LineTrace,
   AgentStatus,
   AgentsStatusResponse,
   AgentUsageResponse,
@@ -507,6 +509,16 @@ export class RemoteApi extends ApiBase<PendingRemote> {
 
   async taskTrace(taskId: string): Promise<TaskTrace> {
     return this.get<TaskTrace>(`/v1/tasks/${encodeURIComponent(taskId)}/trace`);
+  }
+
+  /** One line filed under no job, as a flow of its own (ADR 0083). */
+  async lineTrace(messageId: string): Promise<LineTrace> {
+    return this.get<LineTrace>(`/v1/messages/${encodeURIComponent(messageId)}/trace`);
+  }
+
+  /** One use of a built-in call with the model's answer, for a step opened on the flow. */
+  async callRun(id: string): Promise<CallRun> {
+    return this.get<CallRun>(`/v1/call-runs/${encodeURIComponent(id)}`);
   }
 
   /** Your Claude Code as the Mac finds it (ADR 0061): seen and set up from the phone too. */

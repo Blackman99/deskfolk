@@ -28,6 +28,8 @@ export type PaneContent =
       kind: "trace";
       sessionId: string;
       taskId: string | null;
+      /** A line of yours filed under no job, drawn as a flow of its own (ADR 0083). */
+      line?: string | null;
       /**
        * Which view of the job this tab is: its trace, its board of tickets or its spec. Each is a
        * tab of its own; left out, it is the trace, which every flow tab was before.
@@ -93,6 +95,7 @@ export function contentToParams(content: PaneContent): Record<string, string> {
     case "trace": {
       const params: Record<string, string> = { sessionId: content.sessionId };
       if (content.taskId) params.taskId = content.taskId;
+      if (content.line) params.line = content.line;
       // The trace is what a tab without a view has always been, so it is not written.
       if (content.view && content.view !== "trace") params.view = content.view;
       if (content.focus) {
@@ -240,6 +243,7 @@ function traceContent(sessionId: string, p: Record<string, string>): PaneContent
     kind: "trace",
     sessionId,
     taskId: p.taskId ?? null,
+    ...(p.line ? { line: p.line } : {}),
     view: traceViewOf(p.view),
     focus: p.focusMessageId ? { messageId: p.focusMessageId, turnId: p.focusTurnId ?? null } : null,
     focusNonce: nonceOf(p.focusNonce),

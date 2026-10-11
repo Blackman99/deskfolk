@@ -24,6 +24,7 @@ import * as controlText from "./copy/control.ts";
 import * as threadText from "./copy/thread.ts";
 import * as routesText from "./copy/routes.ts";
 import * as traceText from "./copy/trace.ts";
+import * as traceStepsText from "./copy/trace-steps.ts";
 import * as planText from "./copy/plan.ts";
 import * as detailText from "./copy/detail.ts";
 import * as onboardingText from "./copy/onboarding.ts";
@@ -72,6 +73,7 @@ const zh = {
   thread: threadText.zh,
   routes: routesText.zh,
   trace: traceText.zh,
+  traceSteps: traceStepsText.zh,
   plan: planText.zh,
   detail: detailText.zh,
   onboarding: onboardingText.zh,
@@ -115,6 +117,7 @@ const en: CopyShape<typeof zh> = {
   thread: threadText.en,
   routes: routesText.en,
   trace: traceText.en,
+  traceSteps: traceStepsText.en,
   plan: planText.en,
   detail: detailText.en,
   onboarding: onboardingText.en,

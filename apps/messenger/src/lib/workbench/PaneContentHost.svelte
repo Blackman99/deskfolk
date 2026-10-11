@@ -223,6 +223,12 @@
 		if (!boardTask) return;
 		return runtime.watchTrace(boardTask);
 	});
+	/** A line's own board stays current with its conversation (ADR 0083). */
+	const boardLineSession = $derived(content?.kind === 'trace' && content.line ? content.sessionId : null);
+	$effect(() => {
+		if (!boardLineSession) return;
+		return runtime.watchLineBoard(boardLineSession);
+	});
 
 	/**
 	 * The sidebar slides over the transcript with a scrim, inside this pane only: the tab strip and
@@ -333,6 +339,8 @@
 			<TraceView
 				api={runtime.client}
 				taskId={content.taskId}
+				line={content.line ?? null}
+				onEditCall={(role) => runtime.openRoles(role)}
 				focus={content.focus ?? null}
 				focusToken={content.focusNonce ?? 0}
 				sessionId={content.sessionId}

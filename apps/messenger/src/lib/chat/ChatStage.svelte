@@ -848,7 +848,11 @@
 	 * the ticket the message was filed under; the plan is the job's.
 	 */
 	function showMessageTrace(message: Message, view: TraceViewKind = 'trace'): void {
-		if (!message.task_id) return;
+		// A line in no job: its own flow, what it was read as and whom it woke (ADR 0083).
+		if (!message.task_id) {
+			if (view === 'trace') runtime.openTrace(null, null, { line: message.id });
+			return;
+		}
 		if (view === 'trace') {
 			runtime.openTrace(message.task_id, { messageId: message.id, turnId: message.turn_id });
 			return;

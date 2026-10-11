@@ -215,8 +215,11 @@ export function openContent(
 /** A flow tab asked for with nothing to move to: no card, no ticket, and no job or the one it is on. */
 function keepsJob(existing: Located, content: PaneContent): boolean {
   if (content.kind !== "trace" || content.focus || content.askNonce) return false;
-  if (!content.taskId) return true;
   const its = contentOfTab(existing.tab);
+  // A line's own board (ADR 0083) and a job's are not the same board: switching between them moves it.
+  if ((its?.kind === "trace" ? its.line ?? null : null) !== (content.line ?? null)) return false;
+  if (content.line) return true;
+  if (!content.taskId) return true;
   return its?.kind === "trace" && its.taskId === content.taskId;
 }
 

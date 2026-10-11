@@ -2,6 +2,7 @@
 	import {
 		type Attachment,
 		type Bot,
+		type BuiltinModelRole,
 		type Hold,
 		type PlanStatus,
 		type Provider,
@@ -30,6 +31,9 @@
 	import TraceMinimap, { type MinimapTone } from './TraceMinimap.svelte';
 	import TraceRound from './TraceRound.svelte';
 	import TraceRouteDetail from './TraceRouteDetail.svelte';
+	import TraceStepCard from './TraceStepCard.svelte';
+	import TraceStepDetail from './TraceStepDetail.svelte';
+	import { anomalousCards, lineBoard, loadTraceSteps, saveTraceSteps } from './trace-steps.ts';
 	import { loadTraceMinimap, saveTraceMinimap } from './trace-minimap.ts';
 	import {
 		askSpent,
@@ -71,6 +75,7 @@
 		traceRounds,
 		wokenByName,
 		TRACE_CARD_WIDTH,
+		TRACE_STEP_WIDTH,
 		TRACE_ZOOM_MAX,
 		TRACE_ZOOM_MIN,
 		type RouteHighlight,
@@ -86,6 +91,13 @@
 		api: MessengerApi | null;
 		/** The job to open on. Null asks the session for its most recent one. */
 		taskId: string | null;
+		/**
+		 * A line of yours filed under no job, drawn as a flow of its own (ADR 0083): the board is that
+		 * line's, with no job to switch to and no board or spec of tickets.
+		 */
+		line?: string | null;
+		/** Opens a built-in call where its model and prompts are set, from a step's 「改这个调用」. */
+		onEditCall?: (role: BuiltinModelRole) => void;
 		/** The message whose card to centre. A new `focusToken` is a new request to move. */
 		focus?: TraceFocus | null;
 		focusToken?: number;
@@ -141,6 +153,8 @@
 	let {
 		api,
 		taskId,
+		line = null,
+		onEditCall,
 		focus = null,
 		focusToken = 0,
 		sessionId,
@@ -202,6 +216,11 @@
 	let openRoute = $state<string | null>(null);
 	/** Which kind of model trouble the board is lighting up, if any. */
 	let highlight = $state<RouteHighlight | null>(null);
+	/** The app's own calls on the board (ADR 0083): drawn unless you hid them, one opened at a time. */
+	let showSteps = $state(loadTraceSteps());
+	let openStep = $state<string | null>(null);
+	/** The steps that went wrong lit, the rest of the board dimmed. */
+	let stepsLit = $state(false);
 	let loadSeq = 0;
 
 	const shown = $derived(trace ? filterTrace(trace, notableOnly) : null);
@@ -222,6 +241,8 @@
 	 * while anything in it is still going, holds the card a message asked for, or holds a card a
 	 * ticket or a highlight is lighting — folding those away would hide the answer to the question.
 	 */
+	/** The cards something that went wrong hangs under: lit, their rounds stay open. */
+	const anomalous = $derived(shown && showSteps ? anomalousCards(shown.nodes, shown.steps ?? []) : new Set<string>());
 	const folded = $derived.by(() => {
 		const asked = focus && shown ? focusNode(shown.nodes, focus)?.turn_id ?? null : null;
 		const next = defaultFolded(
@@ -229,7 +250,8 @@
 			(node) =>
 				node.turn_id === asked ||
 				(selectedTicket !== null && node.ticket_id === selectedTicket) ||
-				highlightOf(node, lighting) === 'lit'
+				highlightOf(node, lighting) === 'lit' ||
+				(stepsLit && anomalous.has(node.turn_id))
 		);
 		for (const [root, shut] of Object.entries(foldChoice)) {
 			if (shut) next.add(root);
@@ -237,7 +259,8 @@
 		}
 		return next;
 	});
-	const flow = $derived(shown ? traceFlow(shown, new Map(Object.entries(boxes)), { folded }) : null);
+	const flow = $derived(shown ? traceFlow(shown, new Map(Object.entries(boxes)), { folded, showSteps }) : null);
+	const anomalyCount = $derived(flow?.rounds.reduce((sum, round) => sum + round.anomalies, 0) ?? 0);
 	/**
 	 * The board inside a fixed viewport: no scrollbars, it is dragged.
 	 *
@@ -479,7 +502,9 @@
 		return () => clearInterval(timer);
 	});
 	const changeLine = $derived(detail ? lastChangeLabel(detail, nowMs, t.plan) : null);
-	const heading = $derived(trace ? `${t.trace.title} · ${planTitle(detail ?? trace)}` : t.trace.title);
+	const heading = $derived(
+		line ? `${t.traceSteps.lineTitle} · ${trace?.title ?? ''}` : trace ? `${t.trace.title} · ${planTitle(detail ?? trace)}` : t.trace.title
+	);
 	/**
 	 * What keeps the job parked on the board: its own parking, and any stop over it that waits to be
 	 * lifted — on a Bot's work in it, on the conversation it belongs to, on everything. A stop for now
@@ -611,8 +636,27 @@
 		return focusedTurn === node.turn_id ? 'focus' : null;
 	}
 
+	function toggleSteps(): void {
+		showSteps = !showSteps;
+		saveTraceSteps(showSteps);
+		if (!showSteps) {
+			openStep = null;
+			stepsLit = false;
+		}
+	}
+
+	function toggleStepsLit(): void {
+		stepsLit = !stepsLit;
+		if (stepsLit) {
+			highlight = null;
+			selectedTicket = null;
+			foldChoice = {};
+		}
+	}
+
 	function toggleHighlight(kind: RouteHighlight): void {
 		highlight = lighting === kind ? null : kind;
+		if (highlight) stepsLit = false;
 		if (highlight) selectedTicket = null;
 		if (highlight) foldChoice = {};
 	}
@@ -701,6 +745,23 @@
 		loading = true;
 		failed = false;
 		const session = sessionId;
+		if (line) {
+			// One line's own board: no jobs to switch between, no plan behind it.
+			try {
+				const board = lineBoard(await api.lineTrace(line));
+				if (seq !== loadSeq) return;
+				jobs = [];
+				detail = null;
+				currentId = null;
+				boardSession = session;
+				trace = board;
+			} catch {
+				if (seq === loadSeq) failed = true;
+			} finally {
+				if (seq === loadSeq) loading = false;
+			}
+			return;
+		}
 		try {
 			const listed = await api.sessionTasks(session);
 			if (seq !== loadSeq) return;
@@ -764,10 +825,11 @@
 				jobSwitcher?.focusTrigger();
 				return;
 			}
-			if (openRoute) {
+			if (openRoute || openStep) {
 				event.preventDefault();
 				event.stopImmediatePropagation();
 				openRoute = null;
+				openStep = null;
 				return;
 			}
 			if (!selectedTicket) return;
@@ -881,16 +943,21 @@
 	<div class="trace-top">
 		<header class="trace-header">
 			<div class="trace-titles">
-				<TraceJobSwitcher
-					bind:this={jobSwitcher}
-					{jobs}
-					{currentId}
-					{heading}
-					{t}
-					bind:open={switcherOpen}
-					onSelectJob={selectJob}
-				/>
-				{#if trace}
+				{#if line}
+					<!-- One line's own board: nothing to switch to. -->
+					<h2 class="trace-line-title" title={trace?.title}>{heading}</h2>
+				{:else}
+					<TraceJobSwitcher
+						bind:this={jobSwitcher}
+						{jobs}
+						{currentId}
+						{heading}
+						{t}
+						bind:open={switcherOpen}
+						onSelectJob={selectJob}
+					/>
+				{/if}
+				{#if trace && !line}
 					<span class="trace-meta">
 						<span class="plan-status is-{planStatus}">{t.plan.status[planStatus]}</span>
 						{#if detail?.dormant_since}
@@ -1004,6 +1071,18 @@
 							<span class="mono">{highlightCounts.blamed}</span>
 						</button>
 					{/if}
+					{#if trace.steps?.length}
+						<button type="button" class="trace-highlight" aria-pressed={showSteps} title={t.traceSteps.showHint} data-steps-toggle onclick={toggleSteps}>
+							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="19" r="2"></circle><path d="M12 7v10"></path><rect x="15" y="10" width="6" height="4" rx="1"></rect><path d="M12 12h3"></path></svg>
+							<span>{showSteps ? t.traceSteps.hide : t.traceSteps.show}</span>
+						</button>
+					{/if}
+					{#if showSteps && anomalyCount > 0}
+						<button type="button" class="trace-highlight is-blamed" aria-pressed={stepsLit} data-steps-lit onclick={toggleStepsLit}>
+							<span>{t.traceSteps.anomalies}</span>
+							<span class="mono">{anomalyCount}</span>
+						</button>
+					{/if}
 				</div>
 				<div class="trace-zoom">
 					<button
@@ -1094,6 +1173,32 @@
 								<TraceRound {round} {t} {ticketsById} {nameOf} onToggle={() => toggleRound(round.root)} />
 							{/if}
 						{/each}
+						{#each flow.steps as placement (placement.group.id)}
+							<div
+								class="trace-slot"
+								style="left: {placement.x}px; top: {placement.y}px; width: {TRACE_STEP_WIDTH}px;"
+								use:measured={placement.group.id}
+							>
+								<TraceStepCard
+									group={placement.group}
+									{t}
+									open={openStep === placement.group.id}
+									lit={stepsLit && placement.group.anomalous}
+									dim={(stepsLit && !placement.group.anomalous) || lighting !== null || selectedTicket !== null}
+									onToggle={() => (openStep = openStep === placement.group.id ? null : placement.group.id)}
+								/>
+								{#if openStep === placement.group.id}
+									<TraceStepDetail
+										group={placement.group}
+										{t}
+										fetchRun={api ? (id) => api!.callRun(id) : undefined}
+										{onJump}
+										{onEditCall}
+										onClose={() => (openStep = null)}
+									/>
+								{/if}
+							</div>
+						{/each}
 						{#each flow.placements as placement (placement.node.turn_id)}
 							{@const node = placement.node}
 							{@const litKind = highlightOf(node, lighting)}
@@ -1111,7 +1216,7 @@
 									focused={focusedTurn === node.turn_id}
 									lit={litKind === 'lit' || ticketLight === 'lit'}
 									litBlamed={litKind === 'lit' && lighting === 'blamed'}
-									dim={litKind === 'dim' || ticketLight === 'dim'}
+									dim={litKind === 'dim' || ticketLight === 'dim' || stepsLit}
 									name={nameOf(node.actor)}
 									avatar={avatarOf(node.actor)}
 									ticket={ticketOf(node)}
@@ -1441,6 +1546,14 @@
 	}
 
 	/* The title takes what is left: on a narrow host it never pushes the stop and close buttons onto a row of their own. */
+	/* A line's own board has no switcher: its heading is the line, clipped to one row. */
+	.trace-line-title {
+		margin: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
 	.trace-titles {
 		flex: 1 1 0;
 		min-width: 0;

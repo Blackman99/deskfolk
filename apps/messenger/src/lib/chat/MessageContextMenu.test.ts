@@ -202,8 +202,10 @@ test("a line in a job opens that job's trace, board or plan, each its own item",
   again.close();
 });
 
-test("a line in no job has no job to open", () => {
-  const { host, close } = openMessageMenu(createTestMessage({ task_id: null }));
-  expect(host.querySelector("[data-job-view]")).toBeNull();
+test("a line in no job opens its own flow, and has no board or plan to open (ADR 0083)", () => {
+  const { host, calls, close } = openMessageMenu(createTestMessage({ task_id: null }));
+  expect([...host.querySelectorAll("[data-job-view]")].map((row) => row.getAttribute("data-job-view"))).toEqual(["trace"]);
+  click(buttonByText(host, t.chat.jobView.trace));
+  expect(calls.showTrace).toEqual(["trace"]);
   close();
 });

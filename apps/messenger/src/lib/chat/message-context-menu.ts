@@ -106,6 +106,8 @@ export type MessageContextMenuData = {
   canOpenFileTree: boolean;
   /** A message that belongs to a job can open that job's trace. */
   canShowTrace: boolean;
+  /** A line filed under no job opens its own flow instead (ADR 0083): no board, no spec. */
+  canShowLine: boolean;
   targetPath: string | null;
 };
 
@@ -128,6 +130,7 @@ export function deriveMessageContextMenu(
     associatedFiles,
     canOpenFileTree,
     canShowTrace: Boolean(message.task_id),
+    canShowLine: !message.task_id && (message.kind === "user" || message.kind === "bot"),
     targetPath,
   };
 }

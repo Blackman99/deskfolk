@@ -1,4 +1,4 @@
-import type { Attachment } from "@real-bot/protocol";
+import type { Attachment, BuiltinModelRole } from "@real-bot/protocol";
 import type { MessengerApi } from "../messenger-api.ts";
 import type { SessionView } from "../session-view.svelte.ts";
 import type { UrlOverlay } from "../session-url.ts";
@@ -13,6 +13,8 @@ import { saveTraceView, type TraceViewKind } from "./trace-view.ts";
 /** Which view of a job to open, for which conversation, and a ticket for the board to pick. */
 export type TraceOpenOptions = {
   view?: TraceViewKind;
+  /** A line filed under no job, opened as a flow of its own (ADR 0083). */
+  line?: string | null;
   /** The conversation whose job it is; the one on screen when left out. */
   sessionId?: string;
   ticket?: string | null;
@@ -73,6 +75,10 @@ export class OverlayState {
    * still moves there. The header's board has neither.
    */
   traceFocus = $state<TraceFocus | null>(null);
+  /** The line whose own flow the phone's trace page shows (ADR 0083); null for a job's. */
+  traceLine = $state<string | null>(null);
+  /** A call the Roles page should open on, from a step's 「改这个调用」 (ADR 0083). */
+  rolesTarget = $state<{ role: BuiltinModelRole | null } | null>(null);
   traceFocusToken = $state(0);
   profileBotId = $state<string | null>(null);
   profileRoutineId = $state<string | null>(null);
@@ -254,6 +260,23 @@ export class OverlayState {
     };
   }
 
+  /** Keep a line's own board current with its conversation (ADR 0083). Returns the function that stops watching. */
+  watchLineBoard(sessionId: string): () => void {
+    return this.watchTrace(`line:${sessionId}`);
+  }
+
+  /** A line's own board of this conversation is on screen. */
+  lineBoardShows(sessionId: string | null | undefined): boolean {
+    if (!sessionId) return false;
+    return (this.traceOpen && this.traceLine !== null && this.traceSessionId === sessionId) || this.traceWatchers.has(`line:${sessionId}`);
+  }
+
+  /** The Roles page, at one call when a step asked for it (ADR 0083). */
+  openRoles(role: BuiltinModelRole | null = null): void {
+    if (!this.settingsOpen) this.host.openSettings();
+    this.rolesTarget = { role };
+  }
+
   boardShows(taskId: string | null | undefined): boolean {
     if (!taskId) return false;
     return (this.traceOpen && taskId === this.traceTaskId) || this.traceWatchers.has(taskId);
@@ -270,13 +293,15 @@ export class OverlayState {
   openTrace(taskId: string | null = null, focus: TraceFocus | null = null, opts: TraceOpenOptions = {}): void {
     const sessionId = opts.sessionId ?? this.host.selectedId;
     if (!sessionId) return;
-    const view = focus ? "trace" : (opts.view ?? "trace");
+    const line = opts.line ?? null;
+    const view = focus || line ? "trace" : (opts.view ?? "trace");
     const token = focus ? (this.traceFocusToken += 1) : 0;
     const ticket = view === "board" ? (opts.ticket ?? null) : null;
     if (this.toPane({
       kind: "trace",
       sessionId,
       taskId,
+      ...(line ? { line } : {}),
       view,
       focus,
       focusNonce: token || null,
@@ -293,6 +318,7 @@ export class OverlayState {
     this.listPage = null;
     this.traceSessionId = sessionId;
     this.traceTaskId = taskId ?? "";
+    this.traceLine = line;
     this.traceFocus = focus;
     this.traceFocusToken = token;
   }
@@ -304,6 +330,7 @@ export class OverlayState {
   private clearTrace(): void {
     this.traceTaskId = null;
     this.traceSessionId = null;
+    this.traceLine = null;
     this.traceFocus = null;
   }
 
@@ -536,6 +563,8 @@ export class OverlayState {
       this.listPage = null;
       this.traceSessionId = this.traceSessionId ?? this.host.selectedId;
       this.traceTaskId = overlay.taskId ?? "";
+      // The address names a job's board; a line's own board is only kept while no job is named.
+      if (overlay.taskId) this.traceLine = null;
       return;
     }
     if (overlay.kind === "routines") {

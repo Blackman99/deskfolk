@@ -137,6 +137,17 @@
 		runtime.promptsTarget = null;
 	});
 
+	// Sent here from a step on the flow (ADR 0083): that call, picked.
+	$effect(() => {
+		const target = runtime.rolesTarget;
+		if (!target) return;
+		runtime.rolesTarget = null;
+		if (target.role) {
+			selected = target.role;
+			if (phone.current) opened = true;
+		}
+	});
+
 	// Under the editor, its call: where closing it, or Back on a phone, lands.
 	$effect(() => {
 		if (!focusEditor || !open || !openItem) return;

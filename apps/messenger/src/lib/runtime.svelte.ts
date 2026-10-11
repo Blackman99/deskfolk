@@ -1,6 +1,7 @@
 import type {
   ApiFormat,
   Attachment,
+  BuiltinModelRole,
   ClientEvent,
   SequencedEvent,
   CreateBotRequest,
@@ -555,6 +556,9 @@ export class MessengerRuntime {
   get traceSessionId(): string | null { return this.overlayState.traceSessionId; }
   set traceSessionId(value: string | null) { this.overlayState.traceSessionId = value; }
   get traceFocus(): TraceFocus | null { return this.overlayState.traceFocus; }
+  get traceLine(): string | null { return this.overlayState.traceLine; }
+  get rolesTarget(): { role: BuiltinModelRole | null } | null { return this.overlayState.rolesTarget; }
+  set rolesTarget(value: { role: BuiltinModelRole | null } | null) { this.overlayState.rolesTarget = value; }
   set traceFocus(value: TraceFocus | null) { this.overlayState.traceFocus = value; }
   get traceFocusToken(): number { return this.overlayState.traceFocusToken; }
   set traceFocusToken(value: number) { this.overlayState.traceFocusToken = value; }
@@ -594,6 +598,8 @@ export class MessengerRuntime {
   openListPage(page: "usage" | "archived"): void { this.overlayState.openListPage(page); }
   closeListPage(): void { this.overlayState.closeListPage(); }
   watchTrace(taskId: string): () => void { return this.overlayState.watchTrace(taskId); }
+  watchLineBoard(sessionId: string): () => void { return this.overlayState.watchLineBoard(sessionId); }
+  openRoles(role: BuiltinModelRole | null = null): void { this.overlayState.openRoles(role); }
   openTrace(taskId: string | null = null, focus: TraceFocus | null = null, opts: TraceOpenOptions = {}): void { this.overlayState.openTrace(taskId, focus, opts); }
   closeTrace(): void { this.overlayState.closeTrace(); }
   get traceOpen(): boolean { return this.overlayState.traceOpen; }
@@ -1286,6 +1292,15 @@ export class MessengerRuntime {
       if (this.boardShows(event.task_id)) this.traceReload += 1;
     }
     if ((event.event === "message.created" || event.event === "message.upsert") && this.boardShows(event.task_id)) {
+      this.traceReload += 1;
+    }
+    // A use of one of the app's own calls is a step on the board it is about (ADR 0083); a line's own
+    // board follows its conversation's turns, words and calls.
+    if (event.event === "call_run.created" && (this.boardShows(event.task_id) || this.overlayState.lineBoardShows(event.session_id))) {
+      this.traceReload += 1;
+    }
+    if ((event.event === "turn.upsert" || event.event === "message.created") && !this.boardShows(event.task_id)
+      && this.overlayState.lineBoardShows(event.session_id)) {
       this.traceReload += 1;
     }
     // The organizer's filing and your own edits: the plan's spec and tickets are part of the picture.

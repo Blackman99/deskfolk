@@ -4,7 +4,7 @@
  */
 import { readFileSync } from "node:fs";
 import { flushSync } from "svelte";
-import { USER_MEMBER, type AcceptanceCheck, type Hold, type PlanRequirement, type RouteRecord, type SessionTaskSummary, type TaskDetail, type TaskTrace } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheck, type Hold, type LineTrace, type PlanRequirement, type RouteRecord, type SessionTaskSummary, type TaskDetail, type TaskTrace } from "@real-bot/protocol";
 import { mockMonacoCss } from "../test-mocks.ts";
 
 mockMonacoCss();
@@ -202,6 +202,9 @@ export function open(opts: {
   askToken?: number;
   /** The jobs the session lists, newest first; the two stock ones by default. */
   jobs?: SessionTaskSummary[];
+  /** A line's own board (ADR 0083) instead of a job's, and what its endpoint answers. */
+  line?: string | null;
+  lineTrace?: LineTrace;
 } = {}) {
   const jumps: Array<[string, string]> = [];
   const settled: string[] = [];
@@ -210,7 +213,15 @@ export function open(opts: {
   let closed = 0;
   const asked: string[] = [];
   const shown: Array<[TraceViewKind, string | null, TraceViewAsk]> = [];
+  const edited: string[] = [];
+  const fetchedRuns: string[] = [];
   const api = {
+    lineTrace: async (id: string) => opts.lineTrace ?? { message_id: id, session_id: opts.sessionId ?? "group-1", nodes: [], steps: [] },
+    callRun: async (id: string) => {
+      fetchedRuns.push(id);
+      const step = [...(opts.trace?.steps ?? []), ...(opts.lineTrace?.steps ?? [])].find((row) => row.id === id);
+      return { ...step, raw: `原始回答 ${id}` };
+    },
     sessionTasks: async (sessionId: string) => {
       asked.push(sessionId);
       if (sessionId === "direct-9") return [job({ id: "task-9", title: "另一件事" })];
@@ -256,6 +267,8 @@ export function open(opts: {
     reloadToken: 0,
     onClose: () => (closed += 1),
     onJump: (sessionId: string, messageId: string) => jumps.push([sessionId, messageId]),
+    onEditCall: (role: string) => edited.push(role),
+    line: opts.line ?? null,
     onTask: (taskId: string) => {
       settled.push(taskId);
       // What a pane does: the tab records the job on screen, which comes back as the prop.
@@ -274,7 +287,7 @@ export function open(opts: {
       : {}),
   });
   const view = render(opts.pane ? TraceView : TaskTraceView, props as never);
-  return { ...view, props, jumps, asked, settled, opened, patched, shown, closed: () => closed };
+  return { ...view, props, jumps, asked, settled, opened, patched, shown, edited, fetchedRuns, closed: () => closed };
 }
 
 /** Let a press's awaits (the panel swap, the scroll after it) run out, then flush what they changed. */
