@@ -23,6 +23,7 @@
 	import { holdLabel } from '../sidebar/holds-list.ts';
 	import { formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
 	import StopMenu from '../chat/StopMenu.svelte';
+	import { holdBack } from '../chat/message-text-pages.ts';
 	import { planStopItems, type StopChoice } from '../chat/stop-menu.ts';
 	import PlanSpecPanel from './PlanSpecPanel.svelte';
 	import TicketList from './TicketList.svelte';
@@ -452,6 +453,24 @@
 			for (const [id, element] of canvas.slots) if (element.isConnected) canvas.recordBox(id, element);
 		});
 		return () => cancelAnimationFrame(frame);
+	});
+	/** The step whose panel is open, while the board still draws it. */
+	const openStepGroup = $derived(openStep ? (flow?.steps.find((row) => row.group.id === openStep)?.group ?? null) : null);
+	// A step's panel lies over the board's right edge, or over its bottom when the board is narrow.
+	// The card it is about slides out from under it once, as it opens.
+	$effect(() => {
+		const id = openStep;
+		if (!id) return;
+		void tick().then(() => {
+			const card = canvas.slots.get(id);
+			const panel = canvas.viewportEl?.parentElement?.querySelector<HTMLElement>('.trace-step-detail');
+			if (openStep === id && card && panel) canvas.uncover(card, panel);
+		});
+	});
+	// On a phone Back puts a step's panel away before it leaves the board.
+	$effect(() => {
+		if (host !== 'page' || !openStep) return;
+		return holdBack(() => (openStep = null));
 	});
 	const byId = $derived(new Map((shown?.nodes ?? []).map((node) => [node.turn_id, node])));
 	/** The card this opening was asked to land on, while that request is the one on screen. */
@@ -1038,7 +1057,7 @@
 	-->
 	<div class="trace-body">
 		{#if drawsTrace}
-		<div class="trace-stage trace-view" class:is-on={viewShown === 'trace'} inert={viewShown !== 'trace'}>
+		<div class="trace-stage trace-view" class:is-on={viewShown === 'trace'} class:has-step-panel={openStepGroup !== null} inert={viewShown !== 'trace'}>
 		{#if trace && trace.nodes.length > 0}
 			<div class="trace-tools">
 				<div class="trace-tools-start">
@@ -1187,16 +1206,6 @@
 									dim={(stepsLit && !placement.group.anomalous) || lighting !== null || selectedTicket !== null}
 									onToggle={() => (openStep = openStep === placement.group.id ? null : placement.group.id)}
 								/>
-								{#if openStep === placement.group.id}
-									<TraceStepDetail
-										group={placement.group}
-										{t}
-										fetchRun={api ? (id) => api!.callRun(id) : undefined}
-										{onJump}
-										{onEditCall}
-										onClose={() => (openStep = null)}
-									/>
-								{/if}
 							</div>
 						{/each}
 						{#each flow.placements as placement (placement.node.turn_id)}
@@ -1257,6 +1266,17 @@
 					onWheel={canvas.onWheel}
 				/>
 			</div>
+		{/if}
+		{#if openStepGroup}
+			<!-- Beside the board, not under its card: an answer needs more than a card's width. -->
+			<TraceStepDetail
+				group={openStepGroup}
+				{t}
+				fetchRun={api ? (id) => api!.callRun(id) : undefined}
+				{onJump}
+				{onEditCall}
+				onClose={() => (openStep = null)}
+			/>
 		{/if}
 		</div>
 		{/if}
@@ -1478,9 +1498,10 @@
 		pointer-events: none;
 	}
 
-	/* The picture: the trace's view, under the tools and the minimap that float over it. */
+	/* The picture: the trace's view, under the tools, the minimap and a step's panel that float over it. */
 	.trace-stage {
 		overflow: hidden;
+		--trace-panel-width: min(400px, calc(100% - 20px));
 	}
 
 	/* The spec reads as a page: it scrolls, the rest of the pane stays put. */
@@ -1850,6 +1871,13 @@
 		z-index: 1;
 		right: 10px;
 		bottom: 46px;
+	}
+
+	/* A step's panel takes the right edge, so the minimap sits beside it; on a phone it is a sheet. */
+	@container trace (min-width: 561px) {
+		.trace-stage.has-step-panel .trace-minimap-dock {
+			right: calc(var(--trace-panel-width) + 20px);
+		}
 	}
 
 	/* A canvas the size dagre measured, with the cards placed on it and the edges beneath. */

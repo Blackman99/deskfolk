@@ -12,6 +12,7 @@ import { forgetTraceSteps } from "./trace-steps.ts";
 import { click } from "../test-render.ts";
 import { settle } from "../test-async.ts";
 import { forgetStored } from "../storage.ts";
+import { closeMessageText } from "../chat/message-text-pages.ts";
 import { THEME_STORAGE_KEY, themeManager } from "../theme.ts";
 import { open, picture, until } from "./task-trace-test-kit.ts";
 
@@ -81,12 +82,16 @@ test("your line's reading and filing sit between it and the turn it woke, each s
   view.close();
 });
 
-test("a step opens in place with its model, prompt and time, fetches its answer, and opens its call to change", async () => {
+test("a step opens in a panel beside the board with its model, prompt and time, fetches its answer, and opens its call to change", async () => {
   const view = open({ trace: stepped(), pane: true });
   await until(view.host, ".trace-step");
   click(stepCards(view.host)[0]);
   await settle();
   const detail = view.host.querySelector(".trace-step-detail")!;
+  // Over the stage, not in the card's slot on the board, which keeps its size.
+  expect(view.host.querySelector(".trace-flow .trace-step-detail")).toBeNull();
+  expect(detail.parentElement?.classList.contains("has-step-panel")).toBe(true);
+  expect(stepCards(view.host)[0]!.classList.contains("is-open")).toBe(true);
   expect([...detail.querySelectorAll(".trace-step-chip")].map((chip) => chip.textContent?.trim())).toEqual(["haiku-4.6", "思考 minimal", "提示词 · 默认", "2.3 秒"]);
   const raw = detail.querySelector<HTMLDetailsElement>(".trace-step-raw")!;
   raw.open = true;
@@ -98,6 +103,24 @@ test("a step opens in place with its model, prompt and time, fetches its answer,
   expect(view.jumps).toEqual([["group-1", "m1"]]);
   click(detail.querySelector("[data-edit-call]"));
   expect(view.edited).toEqual(["reader"]);
+  view.close();
+});
+
+test("another step takes the panel over, and on a phone Back puts it away before leaving the board", async () => {
+  const view = open({ trace: stepped() });
+  await until(view.host, ".trace-step");
+  click(stepCards(view.host)[0]);
+  await settle();
+  click(stepCards(view.host)[1]);
+  await settle();
+  expect(view.host.querySelectorAll(".trace-step-detail").length).toBe(1);
+  expect(view.host.querySelector(".trace-step-detail-title")?.textContent).toBe("归档");
+  expect(closeMessageText()).toBe(true);
+  await settle();
+  expect(view.host.querySelector(".trace-step-detail")).toBeNull();
+  expect(view.closed()).toBe(0);
+  // Put away, it holds Back no longer: the next one is the board's.
+  expect(closeMessageText()).toBe(false);
   view.close();
 });
 

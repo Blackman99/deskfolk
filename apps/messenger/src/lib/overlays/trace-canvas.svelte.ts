@@ -34,6 +34,7 @@ import {
   openView,
   pinchSpan,
   placedFocusOf,
+  uncoverShift,
   zoomAt,
   type KeptBoard,
   type TraceBox,
@@ -302,6 +303,19 @@ export class TraceCanvas {
     }
     this.stopGlide();
     this.settle(next);
+  }
+
+  /**
+   * A step's panel opened over the view: the card it is about slides out from under it. Opening
+   * the step chose this view, as a press on the minimap does, so a measurement leaves it be.
+   */
+  uncover(card: HTMLElement, cover: HTMLElement): void {
+    if (!this.viewportEl) return;
+    const { dx, dy } = uncoverShift(card.getBoundingClientRect(), this.viewportEl.getBoundingClientRect(), cover.getBoundingClientRect());
+    if (!dx && !dy) return;
+    this.userMoved = true;
+    this.openedView = null;
+    this.glideTo({ ...this.view, x: this.view.x + dx, y: this.view.y + dy });
   }
 
   /** The zoom buttons zoom about the middle of the view. */

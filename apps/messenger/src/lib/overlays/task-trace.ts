@@ -593,6 +593,24 @@ export function centerOnNode(
   };
 }
 
+type ScreenBox = { left: number; top: number; right: number; bottom: number };
+
+/**
+ * How far to slide the board so a card comes out from under what lies over the view — a step's
+ * panel on its right edge, or its sheet over the bottom on a narrow board — in screen pixels, which
+ * is what the view's offset is in. Nothing when the card is clear already, and never so far that
+ * its own start leaves the view.
+ */
+export function uncoverShift(card: ScreenBox, viewport: ScreenBox, cover: ScreenBox): { dx: number; dy: number } {
+  const margin = 12;
+  if (cover.left > viewport.left + 1) {
+    const over = card.right - (cover.left - margin);
+    return { dx: over > 0 ? -Math.min(over, Math.max(0, card.left - (viewport.left + margin))) : 0, dy: 0 };
+  }
+  const over = card.bottom - (cover.top - margin);
+  return { dx: 0, dy: over > 0 ? -Math.min(over, Math.max(0, card.top - (viewport.top + margin))) : 0 };
+}
+
 /**
  * A focus that arrived while the board was fitted is done once the card has been centred.
  *

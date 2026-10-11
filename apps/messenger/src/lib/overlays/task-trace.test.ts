@@ -8,6 +8,7 @@ import {
   TRACE_ZOOM_MIN,
   centerOnNode,
   clampZoom,
+  uncoverShift,
   filterTrace,
   fitView,
   focusMoveDue,
@@ -210,6 +211,19 @@ test("centring a card puts its middle in the middle of the viewport", () => {
   const small = centerOnNode(card, { width: 600, height: 400 }, 0.01);
   expect(small.scale).toBe(TRACE_ZOOM_MIN);
   expect(small.x + (card.x + card.width / 2) * small.scale).toBeCloseTo(300, 0);
+});
+
+test("a card under a step's panel slides out from under it, only as far as its own start allows", () => {
+  const viewport = { left: 0, top: 0, right: 1000, bottom: 700 };
+  const panel = { left: 590, top: 10, right: 990, bottom: 644 };
+  // Its right edge 60px under the panel: 72px left, so it clears by the margin.
+  expect(uncoverShift({ left: 440, top: 100, right: 650, bottom: 180 }, viewport, panel)).toEqual({ dx: -72, dy: 0 });
+  // Clear already, or the view's start reached first.
+  expect(uncoverShift({ left: 100, top: 100, right: 300, bottom: 180 }, viewport, panel)).toEqual({ dx: 0, dy: 0 });
+  expect(uncoverShift({ left: 40, top: 100, right: 900, bottom: 180 }, viewport, panel)).toEqual({ dx: -28, dy: 0 });
+  // A phone's sheet over the bottom: up instead.
+  const sheet = { left: 0, top: 420, right: 1000, bottom: 700 };
+  expect(uncoverShift({ left: 40, top: 380, right: 250, bottom: 460 }, viewport, sheet)).toEqual({ dx: 0, dy: -52 });
 });
 
 test("a message lands on its own card, and a line you sent does not land on the Bot it woke", () => {

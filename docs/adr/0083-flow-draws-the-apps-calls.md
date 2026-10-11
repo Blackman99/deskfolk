@@ -32,3 +32,9 @@ The direction set earlier in the same discussion: Roles (ADR 0082) is the templa
 - **一个旧 bug 没动 / An old bug left alone.** 判断下场没写成行时，花费行的 `judgement_id` 记的是一个不存在的 id（`participation.ts` 的 `bill(pending.id)`）。调用记录直接记花费行的 id，不靠它连。/ When a judgement row is not written, its spend row's `judgement_id` names an id with no row (`bill(pending.id)` in `participation.ts`). Call records keep the spend row's own id and do not join on it.
 - **照样片的提示词 / The standard check's prompt.** 照样片的判定调用还没把提示词引用传给端点；它的调用记录写着提示词 id，不带版本。/ The standard check's judge does not yet pass its prompt reference to the endpoint; its records name the prompt id without a version.
 - **取代 / Supersedes.** ADR 0082 第 2、4 条里「设置里的一页」和侧栏计数的位置，由第 5 条取代；分工图本身照旧。/ ADR 0082's decisions 2 and 4, as to the page being in Settings and where its count sits, are superseded by decision 5; the map itself stands.
+
+## 2026-10-11 补记：环节在面板里打开 / A step opens in a panel
+
+第 3 条里「点开就地看」改了：点开的一步不再挂在它的卡片下面（卡片一栏宽 208px，原始回答挤在里面，要在两个方向上滚才看得全），而是在流程右侧的面板里，宽 400px，高到工具条为止；手机宽度上是从底部拉起的面板，返回键先收起它。面板盖住了那一步的卡片时，画布滑开到卡片露出来。原始回答是 JSON 时画成可折叠的树。卡片的模型选择仍旧在卡片下面展开。
+
+Decision 3's "opens in place" changed: an opened step no longer hangs under its card (a column 208px wide, where the raw answer had to be scrolled both ways to be read) but shows in a panel over the flow's right edge, 400px wide, down to the tools at most; as narrow as a phone it is a sheet from the bottom, which Back puts away first. When the panel covers the step's card, the board slides until the card is clear. A raw answer that is JSON is drawn as a tree you can fold. A card's model choice still unfolds under the card.

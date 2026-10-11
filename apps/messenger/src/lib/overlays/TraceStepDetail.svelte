@@ -46,7 +46,7 @@
 	$effect(() => themeManager.subscribe(() => (theme = themeManager.resolved)));
 </script>
 
-<!-- Unfolded under its step, the way a turn's model choice is under its card. -->
+<!-- A panel over the board's right edge, or a sheet over its bottom on a phone (TraceView places it). -->
 <section class="trace-step-detail" aria-label={stepTitle(step, t)}>
 	<header class="trace-step-detail-head">
 		<span class="trace-step-detail-title">{stepTitle(step, t)}</span>
@@ -118,16 +118,45 @@
 </section>
 
 <style>
+	/*
+	 * Over the board's right edge, from the top down to the tools at most, scrolling inside. On a
+	 * narrow board a sheet over the bottom of a set height, so opening it moves its card once and
+	 * an answer arriving does not cover the card again.
+	 */
 	.trace-step-detail {
+		position: absolute;
+		z-index: 2;
+		top: 10px;
+		right: 10px;
+		width: var(--trace-panel-width, 400px);
+		max-height: calc(100% - 56px);
+		box-sizing: border-box;
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		margin-top: 6px;
-		padding: 8px 10px;
+		padding: 10px 12px;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		background: var(--pane);
+		box-shadow: var(--shadow-lg);
 		font-size: 12px;
+	}
+
+	@container trace (max-width: 560px) {
+		.trace-step-detail {
+			top: auto;
+			right: 0;
+			bottom: 0;
+			left: 0;
+			width: auto;
+			height: 60%;
+			max-height: none;
+			padding-bottom: calc(10px + env(safe-area-inset-bottom));
+			border-width: 1px 0 0;
+			border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+		}
 	}
 
 	.trace-step-detail-head {
@@ -234,7 +263,6 @@
 	}
 
 	.trace-step-raw pre {
-		max-height: 220px;
 		margin: 4px 0 0;
 		padding: 6px 8px;
 		overflow: auto;
@@ -252,7 +280,6 @@
 	}
 
 	.trace-step-json :global(.view-struct) {
-		max-height: 220px;
 		margin: 4px 0 0;
 		padding: 6px 8px;
 		border-radius: var(--radius-sm);
@@ -260,11 +287,13 @@
 	}
 
 	/*
-	 * The pane is a column wide: a string wraps under its key rather than running off the side, and
-	 * a folded value stays the one line it is, cut at the edge, until it is unfolded.
+	 * Nothing scrolls sideways, inside a panel that scrolls down: a string wraps under its key, a
+	 * line still too long breaks where it must, and a folded value stays the one line it is, cut
+	 * at the edge, until it is unfolded.
 	 */
 	.trace-step-json :global(.view-struct .entry-line) {
 		white-space: normal;
+		overflow-wrap: anywhere;
 	}
 
 	.trace-step-json :global(.view-struct .value:not(.struct-expand-value) > .string) {
