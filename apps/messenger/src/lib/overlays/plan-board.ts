@@ -41,6 +41,15 @@ export function ticketTag(seq: number): string {
   return String(seq).padStart(2, "0");
 }
 
+/** The tickets one waits for, by their tags (「#02、#03」); null for none. */
+export function dependsTags(ticket: { depends_on?: string[] }, tickets: readonly { id: string; seq: number }[]): string | null {
+  const tags = (ticket.depends_on ?? []).flatMap((id) => {
+    const other = tickets.find((row) => row.id === id);
+    return other ? [`#${ticketTag(other.seq)}`] : [];
+  });
+  return tags.length > 0 ? tags.join("、") : null;
+}
+
 /**
  * What a job is called on the board: its name — the one its tags and every Bot's picture use, and
  * that you can change in its 要点 — else its goal, else the work dir. The goal came first while a

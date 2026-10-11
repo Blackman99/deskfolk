@@ -1,13 +1,9 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { isTicketAgentModel, type AgentsStatusResponse, type Bot, type BotRunner, type ClaudeCodeStatus, type Provider, type TaskDetail, type TaskTraceNode, type Ticket, type TicketModel, type TicketStatus, type TicketWithArtifacts } from '@real-bot/protocol';
+	import type { Bot, Provider, TaskDetail, TaskTraceNode, Ticket, TicketStatus, TicketWithArtifacts } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import Select from '../Select.svelte';
-	import ModelPicker from '../ModelPicker.svelte';
-	import { findPicked, type PickerData } from '../model-picker.ts';
-	import { agentPickerSources, claudePickerSource, endpointPickerSources } from '../model-picker-sources.ts';
-	import { claudeReady } from '../settings/claude-agent.ts';
 	import {
 		TICKET_STATUS_ORDER,
 		actorFace,
@@ -15,17 +11,18 @@
 		boardState,
 		completionPercentage,
 		countedTicketCount,
+		dependsTags,
 		latestTurnOfTicket,
 		openTicketCount,
 		parkedTicketCount,
-		ticketObligations,
 		ticketTag,
-		totalTicketCount,
-		type TicketObligations
+		totalTicketCount
 	} from './plan-board.ts';
-	import { boardColumns, enqueueMove, nextQueuedMove } from './ticket-board.ts';
+	import { boardColumns } from './ticket-board.ts';
 	import { beginCardDrag, type CardDrag } from './ticket-board-drag.ts';
-	import { badgeOf, describeCheck } from './acceptance-checks.ts';
+	import { TicketEdits } from './ticket-edits.svelte.ts';
+	import TicketDepends from './TicketDepends.svelte';
+	import TicketDetail from './TicketDetail.svelte';
 
 	interface Props {
 		api: MessengerApi | null;
@@ -76,22 +73,17 @@
 	const tickets = $derived([...detail.tickets].sort((a, b) => a.seq - b.seq));
 	const statusOptions = TICKET_STATUS_ORDER.map((status) => ({ value: status, label: t.plan.ticketStatus[status] }));
 
-	/** The card whose patch is on its way, so its own controls wait. Reviewer, model and depends edits set it too. */
-	let patchingId = $state<string | null>(null);
-	/**
-	 * Requests on their way, of any kind. The plan's revision is one number for every card, so a
-	 * queued move goes out only when none is: sent beside another, one of the two would be refused.
-	 */
-	let requestsOut = 0;
-	let errorId = $state<string | null>(null);
-	/** Where a card should go, until its own request comes back. A reload of the plan does not clear it. */
-	let pending = $state<Map<string, TicketStatus>>(new Map());
-	/** Where a card is drawn while its move has not come back. Separate from `pending`, cleared per card. */
-	let optimistic = $state<Map<string, TicketStatus>>(new Map());
-	/** A hand-over still waiting (submitted, in review) asked before the move goes out. */
-	let confirming = $state<{ id: string; status: TicketStatus } | null>(null);
-	/** Set when a 409 drops the queue, until the next move that lands or the plan changes. */
-	let conflictNote = $state(false);
+	/** Status moves and the picked ticket's settings, through the plan's one queue of edits. */
+	const edits = new TicketEdits({
+		api: () => api,
+		detail: () => detail,
+		t: () => t,
+		providers: () => providers,
+		onPatched: (ticket) => onPatched(ticket),
+		onConflict: () => onConflict(),
+		cardHasFocus,
+		keepFocus
+	});
 	/** The card under the pointer, once the press has travelled far enough to be a drag. */
 	let drag = $state<CardDrag | null>(null);
 	/** The column elements, so a lit column can be scrolled into view. */
@@ -108,7 +100,7 @@
 	const settledChip = $derived(boardSettled === 'dormant' ? t.plan.dormant : boardSettled === 'parked' ? t.plan.status.parked : t.plan.status.done);
 	/** The hint says tickets are left open, so it waits for one to be. */
 	const hasOpenCards = $derived(tickets.some((row) => row.status === 'todo' || row.status === 'doing' || row.status === 'review'));
-	const columns = $derived(boardColumns(tickets, optimistic));
+	const columns = $derived(boardColumns(tickets, edits.optimistic));
 
 	$effect(() => {
 		if (statusFilter === 'all') return;
@@ -124,7 +116,7 @@
 			return;
 		}
 		conflictFor = id;
-		conflictNote = false;
+		edits.conflictNote = false;
 	});
 
 	/**
@@ -149,61 +141,8 @@
 		return t.plan.ticketStatus[ticket.status];
 	}
 
-	/** What every ticket meets from the spec, in words: 「验收 4 条、规则 13 条、你的要求 20 条」. */
-	function planWideLine(owes: TicketObligations): string {
-		const links = t.plan.links;
-		const parts: string[] = [];
-		if (owes.acceptance > 0) parts.push(links.acceptanceCount(owes.acceptance));
-		if (owes.rules > 0) parts.push(links.rulesCount(owes.rules));
-		if (owes.planRequirements > 0) parts.push(links.requirementsCount(owes.planRequirements));
-		return parts.length > 0 ? links.planWide(parts.join(links.join)) : links.planWideNone;
-	}
-
 	function select(ticketId: string): void {
 		onSelect(selectedId === ticketId ? null : ticketId);
-	}
-
-	function errorStatus(err: unknown): number | undefined {
-		if (err && typeof err === 'object' && 'status' in err) {
-			const status = (err as { status?: unknown }).status;
-			return typeof status === 'number' ? status : undefined;
-		}
-		return undefined;
-	}
-
-	/** Who may review a ticket (ADR 0046, from level 5): a Bot of the plan's conversation, never the one on it. */
-	function reviewerOptions(ticket: TicketWithArtifacts): Array<{ value: string; label: string }> {
-		const owner = ticket.owner_bot_id ?? ticket.worker;
-		const able = new Set(detail.reviewer_ids ?? []);
-		const options = bots.filter((bot) => able.has(bot.id) && bot.id !== owner).map((bot) => ({ value: bot.id, label: bot.name }));
-		// The one set now stays readable by name even once it left the plan's conversation.
-		const current = ticket.reviewer_bot_id;
-		if (current && !options.some((option) => option.value === current)) {
-			options.push({ value: current, label: actorName(current, botsById, youLabel, deletedLabel) });
-		}
-		return options;
-	}
-
-	async function changeReviewer(ticket: TicketWithArtifacts, reviewer: string): Promise<void> {
-		if (!api || reviewer === (ticket.reviewer_bot_id ?? '')) return;
-		patchingId = ticket.id;
-		requestsOut += 1;
-		errorId = null;
-		try {
-			const result = await api.patchTicket(ticket.id, { reviewer_bot_id: reviewer || null, if_revision: detail.revision });
-			onPatched(result);
-		} catch (err) {
-			if (errorStatus(err) === 409) {
-				onConflict();
-			} else {
-				errorId = ticket.id;
-			}
-		} finally {
-			requestsOut -= 1;
-			patchingId = null;
-		}
-		// A status move queued while this was on its way waits for it.
-		void pump();
 	}
 
 	/** Who an open ticket waits on (ADR 0045, from level 4), in the board's words. */
@@ -223,139 +162,18 @@
 		return label ?? null;
 	}
 
-	/** The tickets this one waits for, by their tags (「#02、#03」); null for none. */
-	function dependsTags(ticket: TicketWithArtifacts): string | null {
-		const tags = (ticket.depends_on ?? []).flatMap((id) => {
-			const other = detail.tickets.find((row) => row.id === id);
-			return other ? [`#${ticketTag(other.seq)}`] : [];
-		});
-		return tags.length > 0 ? tags.join('、') : null;
-	}
-
 	function dependsLabel(ticket: TicketWithArtifacts): string | null {
-		const tags = dependsTags(ticket);
+		const tags = dependsTags(ticket, detail.tickets);
 		return tags ? t.plan.dependsOn(tags) : null;
 	}
 
 
 	let dependsOpen = $state<string | null>(null);
 
-	/** Whether `other` already waits on `ticket`, directly or through others: choosing it would make a loop. */
-	function wouldLoop(ticket: TicketWithArtifacts, other: TicketWithArtifacts): boolean {
-		const byId = new Map(detail.tickets.map((row) => [row.id, row] as const));
-		const seen = new Set<string>();
-		const stack = [...(other.depends_on ?? [])];
-		while (stack.length > 0) {
-			const id = stack.pop()!;
-			if (id === ticket.id) return true;
-			if (seen.has(id)) continue;
-			seen.add(id);
-			stack.push(...(byId.get(id)?.depends_on ?? []));
-		}
-		return false;
-	}
-
-	async function toggleDepends(ticket: TicketWithArtifacts, otherId: string): Promise<void> {
-		if (!api) return;
-		const current = ticket.depends_on ?? [];
-		const next = current.includes(otherId) ? current.filter((id) => id !== otherId) : [...current, otherId];
-		patchingId = ticket.id;
-		requestsOut += 1;
-		errorId = null;
-		try {
-			const result = await api.patchTicket(ticket.id, { depends_on: next, if_revision: detail.revision });
-			onPatched(result);
-		} catch (err) {
-			if (errorStatus(err) === 409) {
-				onConflict();
-			} else {
-				errorId = ticket.id;
-			}
-		} finally {
-			requestsOut -= 1;
-			patchingId = null;
-		}
-		// A status move queued while this was on its way waits for it.
-		void pump();
-	}
-
 	/** Your local agents, asked once the board offers a ticket's model: their models can be a ticket's too (ADR 0079). */
-	let agents = $state<AgentsStatusResponse | null>(null);
-	let claude = $state<ClaudeCodeStatus | null>(null);
-	let askedAgents = false;
 	$effect(() => {
-		if (!api || !detail.routing_on || askedAgents) return;
-		askedAgents = true;
-		void api.agents?.().then((list) => (agents = list), () => undefined);
-		void api.claudeCode?.().then((status) => (claude = status), () => undefined);
+		edits.loadModels();
 	});
-
-	/** A ticket's model as the picker holds it: which endpoint's or which agent's, and its name. */
-	function modelKey(model: TicketModel): string {
-		return JSON.stringify(isTicketAgentModel(model)
-			? { runner: model.runner, model: model.model, ...(model.custom_id ? { custom_id: model.custom_id } : {}) }
-			: { provider_id: model.provider_id, model: model.model });
-	}
-
-	/**
-	 * The models a ticket can be given (ADR 0049, level 7): every model an endpoint lists, Claude
-	 * Code's when it is signed in, and those of your other local agents (ADR 0079), which then run
-	 * the ticket's turns.
-	 */
-	const modelData = $derived<PickerData>({
-		specials: [{ value: '', label: t.plan.modelOwn }],
-		sources: [
-			...endpointPickerSources(providers, t, (provider_id, model) => modelKey({ provider_id, model })),
-			...(claudeReady(claude) ? [claudePickerSource(t, (model) => modelKey({ runner: 'claude_code', model, effort: null, config_dir: null }))] : []),
-			...agentPickerSources(agents, t, (runner, model, customId) => modelKey({ runner, model, effort: null, config_dir: null, ...(customId ? { custom_id: customId } : {}) }), { typed: true })
-		]
-	});
-
-	/** The same, with the ticket's own model on top when nothing lists it any more, so it reads as its name. */
-	function modelDataFor(ticket: TicketWithArtifacts): PickerData {
-		const value = modelValue(ticket);
-		if (!value || findPicked(modelData, value) || !ticket.model_override) return modelData;
-		return { ...modelData, specials: [...modelData.specials, { value, label: ticket.model_override.model, hint: t.plan.modelUnlisted }] };
-	}
-
-	/** The picked ticket has a menu to show below it: a reviewer (level 5), a model (level 7) or what it waits for (level 4). */
-	const hasSettings = $derived(
-		Boolean(detail.submissions_on) || (Boolean(detail.routing_on) && modelData.sources.length > 0) || (Boolean(detail.supervision_on) && detail.tickets.length > 1)
-	);
-
-	function modelValue(ticket: TicketWithArtifacts): string {
-		return ticket.model_override ? modelKey(ticket.model_override) : '';
-	}
-
-	/** What a picked value asks the daemon for: an endpoint's model, or an agent's at its default effort and account. */
-	function modelOf(value: string): TicketModel {
-		const parsed = JSON.parse(value) as { provider_id?: string; runner?: BotRunner; model: string; custom_id?: string };
-		return parsed.runner
-			? { runner: parsed.runner, model: parsed.model, effort: null, config_dir: null, ...(parsed.custom_id ? { custom_id: parsed.custom_id } : {}) }
-			: { provider_id: parsed.provider_id!, model: parsed.model };
-	}
-
-	async function changeModel(ticket: TicketWithArtifacts, value: string): Promise<void> {
-		if (!api || value === modelValue(ticket)) return;
-		patchingId = ticket.id;
-		requestsOut += 1;
-		errorId = null;
-		try {
-			const result = await api.patchTicket(ticket.id, { model_override: value ? modelOf(value) : null, if_revision: detail.revision });
-			onPatched(result);
-		} catch (err) {
-			if (errorStatus(err) === 409) {
-				onConflict();
-			} else {
-				errorId = ticket.id;
-			}
-		} finally {
-			requestsOut -= 1;
-			patchingId = null;
-		}
-		// A status move queued while this was on its way waits for it.
-		void pump();
-	}
 
 	/**
 	 * Making this ticket the job's sample (ADR 0060) is offered where a sample matters — a large job, or
@@ -364,116 +182,6 @@
 	function canMakeSample(ticket: TicketWithArtifacts): boolean {
 		if (ticket.sample || ticket.status === 'done' || ticket.status === 'parked' || ticket.stage === 'approved') return false;
 		return detail.scale?.value === 'large' || detail.tickets.some((row) => row.sample);
-	}
-
-	async function makeSample(ticket: TicketWithArtifacts): Promise<void> {
-		if (!api) return;
-		patchingId = ticket.id;
-		requestsOut += 1;
-		errorId = null;
-		try {
-			const result = await api.patchTicket(ticket.id, { sample: true, if_revision: detail.revision });
-			onPatched(result);
-		} catch (err) {
-			if (errorStatus(err) === 409) {
-				onConflict();
-			} else {
-				errorId = ticket.id;
-			}
-		} finally {
-			requestsOut -= 1;
-			patchingId = null;
-		}
-		// A status move queued while this was on its way waits for it.
-		void pump();
-	}
-
-	/** A stage a hand-over is still waiting in (ADR 0046). Moving it drops that hand-over, so it asks first. */
-	function awaitingReview(ticket: TicketWithArtifacts): boolean {
-		return ticket.stage === 'submitted' || ticket.stage === 'in_review';
-	}
-
-	/**
-	 * Send the next queued move, one at a time: the plan's revision is one number for every card,
-	 * so a second request sent before the first comes back is refused.
-	 */
-	async function pump(): Promise<void> {
-		if (requestsOut > 0) return;
-		const next = nextQueuedMove(pending, detail.tickets, null);
-		if (!next || !api) return;
-		const ticket = detail.tickets.find((row) => row.id === next.id);
-		if (!ticket) {
-			pending = new Map([...pending].filter(([id]) => id !== next.id));
-			optimistic = new Map([...optimistic].filter(([id]) => id !== next.id));
-			return;
-		}
-		patchingId = next.id;
-		requestsOut += 1;
-		errorId = null;
-		try {
-			const result = await api.patchTicket(next.id, { status: next.status, if_revision: detail.revision });
-			pending = settled(pending, next);
-			optimistic = settled(optimistic, next);
-			conflictNote = false;
-			onPatched(result);
-		} catch (err) {
-			pending = settled(pending, next);
-			if (errorStatus(err) === 409) {
-				// The conflict line says it for every card; 「保存失败」 would say it twice.
-				pending = new Map();
-				optimistic = new Map();
-				confirming = null;
-				conflictNote = true;
-				onConflict();
-			} else {
-				const focused = cardHasFocus(next.id);
-				optimistic = settled(optimistic, next);
-				// Set after the card is back in its own column, so the note is not left on the node that unmounted.
-				errorId = next.id;
-				if (focused) void keepFocus(next.id);
-			}
-		} finally {
-			requestsOut -= 1;
-			// Another edit may have taken patchingId meanwhile; it frees it itself.
-			if (patchingId === next.id) patchingId = null;
-		}
-		void pump();
-	}
-
-	/** The map without this move — unless the card was moved again meanwhile: that later move stays. */
-	function settled(map: ReadonlyMap<string, TicketStatus>, move: { id: string; status: TicketStatus }): Map<string, TicketStatus> {
-		const next = new Map(map);
-		if (next.get(move.id) === move.status) next.delete(move.id);
-		return next;
-	}
-
-	/** A status from the menu or a drop. A card still in review asks before it is queued. */
-	function requestStatus(ticket: TicketWithArtifacts, status: TicketStatus): void {
-		if (!api || status === columnOfTicket(ticket)) return;
-		conflictNote = false;
-		if (awaitingReview(ticket)) {
-			confirming = { id: ticket.id, status };
-			return;
-		}
-		queueMove(ticket.id, status);
-	}
-
-	function columnOfTicket(ticket: TicketWithArtifacts): TicketStatus {
-		return optimistic.get(ticket.id) ?? ticket.status;
-	}
-
-	function queueMove(ticketId: string, status: TicketStatus): void {
-		const focused = cardHasFocus(ticketId);
-		confirming = confirming?.id === ticketId ? null : confirming;
-		pending = enqueueMove(pending, ticketId, status);
-		optimistic = enqueueMove(optimistic, ticketId, status);
-		errorId = errorId === ticketId ? null : errorId;
-		if (focused) void keepFocus(ticketId);
-		void pump();
-	}
-
-	function keepCard(ticketId: string): void {
-		if (confirming?.id === ticketId) confirming = null;
 	}
 
 	function cardRow(ticketId: string): HTMLElement | null {
@@ -501,25 +209,21 @@
 		cardRow(ticketId)?.querySelector<HTMLElement>('.ticket-main')?.focus();
 	}
 
-	async function changeStatus(ticket: TicketWithArtifacts, status: string): Promise<void> {
-		requestStatus(ticket, status as TicketStatus);
-	}
-
 	/** A press on the card. Touch scrolls the board; it does not drag. */
 	function pressCard(event: PointerEvent, ticket: TicketWithArtifacts): void {
 		if (!api) return;
 		beginCardDrag(event, ticket.id, {
-			from: () => columnOfTicket(ticket),
-			busy: () => patchingId === ticket.id,
+			from: () => edits.columnOfTicket(ticket),
+			busy: () => edits.patchingId === ticket.id,
 			onDrag: (next) => (drag = next),
-			onDrop: (status) => requestStatus(ticket, status)
+			onDrop: (status) => edits.requestStatus(ticket, status)
 		});
 	}
 
 	/** Left and right move the focus to the neighbouring column. They do not change a status. */
 	function moveFocus(event: KeyboardEvent, ticket: TicketWithArtifacts): void {
 		if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-		const drawn = columnOfTicket(ticket);
+		const drawn = edits.columnOfTicket(ticket);
 		const index = TICKET_STATUS_ORDER.indexOf(drawn);
 		const next = TICKET_STATUS_ORDER[index + (event.key === 'ArrowRight' ? 1 : -1)];
 		if (!next) return;
@@ -566,7 +270,7 @@
 		{#if tickets.length > 0}
 			<p class="ticket-list-hint">{t.plan.links.ticketsHint}</p>
 		{/if}
-		{#if conflictNote}
+		{#if edits.conflictNote}
 			<p class="ticket-board-conflict">{t.plan.board.conflictDropped}</p>
 		{/if}
 	</div>
@@ -608,7 +312,7 @@
 				<!-- A press on the card drags it; from the keyboard the status menu moves it. -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
-					class="ticket-row is-{columnOfTicket(ticket)}"
+					class="ticket-row is-{edits.columnOfTicket(ticket)}"
 					class:is-selected={picked}
 					class:is-dragging={drag?.ticketId === ticket.id}
 					data-ticket-id={ticket.id}
@@ -632,8 +336,8 @@
 								options={statusOptionsFor(ticket)}
 								size="sm"
 								ariaLabel={t.plan.changeStatus}
-								disabled={patchingId === ticket.id}
-								onchange={(value) => changeStatus(ticket, value)}
+								disabled={edits.patchingId === ticket.id}
+								onchange={(value) => edits.changeStatus(ticket, value)}
 							/>
 						{:else}
 							<span class="ticket-status is-{ticket.status}">{stageLabel(ticket)}</span>
@@ -724,7 +428,7 @@
 								</button>
 							{/if}
 							{#if sampleable}
-								<button type="button" class="ticket-jump ticket-make-sample" title={t.plan.makeSampleHint} disabled={patchingId === ticket.id} onclick={() => makeSample(ticket)}>
+								<button type="button" class="ticket-jump ticket-make-sample" title={t.plan.makeSampleHint} disabled={edits.patchingId === ticket.id} onclick={() => edits.makeSample(ticket)}>
 									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 										<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
 									</svg>
@@ -734,115 +438,21 @@
 						</div>
 					{/if}
 					{#if picked}
-						{@const owes = ticketObligations(detail, ticket.id)}
-						<!-- What the picked ticket answers to: the spec, as every ticket does, and what is held to it alone. -->
-						<div class="ticket-owes" role="group" aria-label={t.plan.links.heldTo}>
-							<div class="ticket-owes-head">
-								<span class="ticket-owes-title">{t.plan.links.heldTo}</span>
-								{#if onShowSpec}
-									<button type="button" class="ticket-owes-spec" onclick={onShowSpec}>
-										<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-											<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-											<polyline points="14 2 14 8 20 8"></polyline>
-										</svg>
-										<span>{t.plan.links.showSpec}</span>
-									</button>
-								{/if}
-							</div>
-							<p class="ticket-owes-plan">{planWideLine(owes)}</p>
-							{#if owes.requirements.length > 0 || owes.checks.length > 0}
-								<span class="ticket-owes-sub">{t.plan.links.onlyThis}</span>
-								<ul class="ticket-owes-list">
-									{#each owes.requirements as entry (entry.id)}
-										<li><span class="ticket-owes-seq mono">R-{entry.seq}</span><span class="ticket-owes-text">「{entry.quote}」</span></li>
-									{/each}
-									{#each owes.checks as check (check.id)}
-										{@const badge = badgeOf(check)}
-										<li><span class="ticket-owes-check is-{badge}">{t.plan.checks.status[badge]}</span><span class="ticket-owes-text">{describeCheck(check, t)}</span></li>
-									{/each}
-								</ul>
-							{/if}
-						</div>
-						{#if api && hasSettings}
-							<!-- Who reviews it, the model it runs on, what it waits for: set on the picked ticket only, label beside menu. -->
-							<div class="ticket-settings">
-								{#if detail.submissions_on}
-									<span class="ticket-setting-label">{t.plan.reviewer}</span>
-									<div class="ticket-select-wrap ticket-reviewer-wrap">
-										<Select
-											value={ticket.reviewer_bot_id ?? ''}
-											options={reviewerOptions(ticket)}
-											emptyLabel={t.plan.noReviewer}
-											size="sm"
-											ariaLabel={t.plan.reviewer}
-											disabled={patchingId === ticket.id}
-											onchange={(value) => changeReviewer(ticket, value)}
-										/>
-									</div>
-								{/if}
-								{#if detail.routing_on && modelData.sources.length > 0}
-									<span class="ticket-setting-label">{t.plan.modelShort}</span>
-									<div class="ticket-select-wrap ticket-model-wrap">
-										<ModelPicker
-											value={modelValue(ticket)}
-											data={modelDataFor(ticket)}
-											{t}
-											size="sm"
-											ariaLabel={t.plan.modelOverride}
-											title={t.plan.modelOverride}
-											disabled={patchingId === ticket.id}
-											onchange={(value) => changeModel(ticket, value)}
-										/>
-									</div>
-								{/if}
-								{#if detail.supervision_on && detail.tickets.length > 1}
-									<span class="ticket-setting-label">{t.plan.editDepends}</span>
-									<button
-										type="button"
-										class="ticket-depends-toggle"
-										aria-expanded={dependsOpen === ticket.id}
-										title={t.plan.dependsHint}
-										onclick={() => (dependsOpen = dependsOpen === ticket.id ? null : ticket.id)}
-									>
-										<span class="ticket-depends-value">{dependsTags(ticket) ?? t.plan.dependsNothing}</span>
-										<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-											<polyline points="6 9 12 15 18 9"></polyline>
-										</svg>
-									</button>
-								{/if}
-							</div>
-						{/if}
+						<TicketDetail {api} {detail} {ticket} {t} {bots} {youLabel} {deletedLabel} {edits} {onShowSpec} bind:dependsOpen />
 					{/if}
 					{#if dependsOpen === ticket.id}
-						<div class="ticket-depends-editor" role="group" aria-label={t.plan.dependsHint}>
-							<span class="ticket-depends-hint">{t.plan.dependsHint}</span>
-							{#each detail.tickets.filter((other) => other.id !== ticket.id) as other (other.id)}
-								{@const chosen = (ticket.depends_on ?? []).includes(other.id)}
-								{@const loops = !chosen && wouldLoop(ticket, other)}
-								{@const parked = !chosen && other.status === 'parked'}
-								<label class="ticket-depends-option" class:is-loop={loops || parked} title={loops ? t.plan.dependsLoop : parked ? t.plan.dependsParked : undefined}>
-									<input
-										type="checkbox"
-										checked={chosen}
-										disabled={patchingId === ticket.id || loops || parked}
-										onchange={() => toggleDepends(ticket, other.id)}
-									/>
-									<span class="mono">{ticketTag(other.seq)}</span>
-									<span class="ticket-depends-title">{other.title}</span>
-								</label>
-							{/each}
-						</div>
+						<TicketDepends {detail} {ticket} {t} {edits} />
 					{/if}
-					{#if confirming?.id === ticket.id}
-						<div class="ticket-confirm" role="group" aria-label={t.plan.board.pendingMove(t.plan.ticketStatus[confirming.status])}>
-							<p>{t.plan.board.pendingMove(t.plan.ticketStatus[confirming.status])}</p>
+					{#if edits.confirming?.id === ticket.id}
+						<div class="ticket-confirm" role="group" aria-label={t.plan.board.pendingMove(t.plan.ticketStatus[edits.confirming.status])}>
+							<p>{t.plan.board.pendingMove(t.plan.ticketStatus[edits.confirming.status])}</p>
 							<div class="ticket-confirm-actions">
-								<button type="button" class="ticket-confirm-go" onclick={() => confirming && queueMove(ticket.id, confirming.status)}>{t.plan.board.moveAnyway}</button>
-								<button type="button" class="ticket-confirm-keep" onclick={() => keepCard(ticket.id)}>{t.plan.board.keep}</button>
+								<button type="button" class="ticket-confirm-go" onclick={() => edits.confirming && edits.queueMove(ticket.id, edits.confirming.status)}>{t.plan.board.moveAnyway}</button>
+								<button type="button" class="ticket-confirm-keep" onclick={() => edits.keepCard(ticket.id)}>{t.plan.board.keep}</button>
 							</div>
 						</div>
 					{/if}
-					{#if errorId === ticket.id}
+					{#if edits.errorId === ticket.id}
 						<p class="ticket-error">{t.plan.saveFailed}</p>
 					{/if}
 				</div>
@@ -1339,85 +949,6 @@
 		color: var(--muted);
 	}
 
-	.ticket-depends-toggle {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 6px;
-		width: 100%;
-		min-width: 0;
-		padding: 3px 8px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		background: var(--input-bg);
-		color: var(--ink);
-		font: inherit;
-		font-size: 12px;
-		line-height: 18px;
-		text-align: left;
-		cursor: pointer;
-	}
-
-	.ticket-depends-toggle svg {
-		flex: none;
-		color: var(--muted);
-		transition: transform 0.2s ease;
-	}
-
-	.ticket-depends-toggle:hover,
-	.ticket-depends-toggle[aria-expanded='true'] {
-		border-color: var(--accent-border);
-	}
-
-	.ticket-depends-toggle[aria-expanded='true'] svg {
-		transform: rotate(180deg);
-		color: var(--accent);
-	}
-
-	.ticket-depends-value {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.ticket-depends-editor {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		width: 100%;
-		box-sizing: border-box;
-		padding: 6px 8px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		background: var(--chip);
-	}
-
-	.ticket-depends-hint {
-		font-size: 11px;
-		color: var(--muted);
-	}
-
-	.ticket-depends-option {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 12px;
-		color: var(--ink-secondary);
-		min-width: 0;
-	}
-
-	.ticket-depends-option.is-loop {
-		opacity: 0.55;
-	}
-
-	.ticket-depends-title {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
 	.ticket-spec {
 		margin: 0;
 		box-sizing: border-box;
@@ -1472,33 +1003,6 @@
 	.ticket-jump:hover {
 		background: var(--accent-tint);
 		color: var(--accent);
-	}
-
-	/* The picked ticket's settings: a short label, then its menu, in two aligned columns. */
-	.ticket-settings {
-		display: grid;
-		grid-template-columns: auto minmax(0, 1fr);
-		align-items: center;
-		gap: 5px 10px;
-		min-width: 0;
-	}
-
-	.ticket-setting-label {
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--muted);
-		white-space: nowrap;
-	}
-
-	.ticket-select-wrap {
-		min-width: 0;
-	}
-
-	.ticket-settings :global(.real-select-trigger) {
-		padding: 3px 8px;
-		font-size: 12px;
-		line-height: 18px;
-		box-shadow: none;
 	}
 
 	.ticket-list-hint {
@@ -1662,127 +1166,6 @@
 		transform: translate(-16px, -12px);
 	}
 
-	/* The picked ticket's obligations: the spec it meets with every ticket, and what is its alone. */
-	.ticket-owes {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		padding: 7px 9px;
-		border: 1px solid var(--accent-border);
-		border-radius: var(--radius-sm);
-		background: var(--accent-tint);
-		font-size: 11.5px;
-		color: var(--ink-secondary);
-		min-width: 0;
-	}
-
-	.ticket-owes-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 6px;
-	}
-
-	.ticket-owes-title {
-		font-size: 11px;
-		font-weight: 700;
-		color: var(--accent);
-	}
-
-	.ticket-owes-spec {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		border: 1px solid var(--accent-border);
-		border-radius: var(--radius-sm);
-		background: var(--pane);
-		color: var(--accent);
-		font-size: 11px;
-		font-weight: 500;
-		line-height: 1;
-		padding: 4px 7px;
-		min-height: 22px;
-		cursor: pointer;
-	}
-
-	.ticket-owes-spec:hover {
-		background: var(--accent);
-		border-color: var(--accent);
-		color: var(--on-accent);
-	}
-
-	.ticket-owes-plan {
-		margin: 0;
-		line-height: 1.45;
-		overflow-wrap: anywhere;
-	}
-
-	.ticket-owes-sub {
-		margin-top: 2px;
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--muted);
-	}
-
-	.ticket-owes-list {
-		display: flex;
-		flex-direction: column;
-		gap: 3px;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-	}
-
-	.ticket-owes-list li {
-		display: flex;
-		align-items: baseline;
-		gap: 5px;
-		min-width: 0;
-	}
-
-	.ticket-owes-seq {
-		flex: none;
-		font-size: 10px;
-		font-weight: 700;
-		color: var(--muted);
-	}
-
-	.ticket-owes-text {
-		min-width: 0;
-		overflow-wrap: anywhere;
-	}
-
-	.ticket-owes-check {
-		flex: none;
-		padding: 0 6px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-full);
-		background: var(--chip);
-		color: var(--muted);
-		font-size: 10px;
-		font-weight: 600;
-		line-height: 15px;
-	}
-
-	.ticket-owes-check.is-pass {
-		border-color: var(--ok-line);
-		background: var(--ok-bg);
-		color: var(--ok-text);
-	}
-
-	.ticket-owes-check.is-fail {
-		border-color: var(--danger-line);
-		background: var(--danger-bg);
-		color: var(--danger-text);
-	}
-
-	.ticket-owes-check.is-blocked,
-	.ticket-owes-check.is-error {
-		border-color: var(--warn-line);
-		background: var(--warn-bg);
-		color: var(--warn-text);
-	}
-
 	.ticket-error {
 		margin: 0;
 		font-size: 11px;
@@ -1816,12 +1199,6 @@
 			min-height: 32px;
 			padding: 5px 6px;
 			font-size: 12px;
-		}
-
-		.ticket-settings :global(.real-select-trigger),
-		.ticket-depends-toggle {
-			min-height: 34px;
-			font-size: 13px;
 		}
 	}
 </style>
