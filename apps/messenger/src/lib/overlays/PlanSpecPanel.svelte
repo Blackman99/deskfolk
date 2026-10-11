@@ -21,11 +21,11 @@
 		checksByItem,
 		checksForLine,
 		derivedChecks,
-		failingChecks,
 		firstReason,
 		orphanChecks,
 		sampleChecks
 	} from './acceptance-checks.ts';
+	import { planAttention } from './plan-attention.ts';
 	import AcceptanceCheckRow from './AcceptanceCheckRow.svelte';
 	import AcceptanceCheckForm from './AcceptanceCheckForm.svelte';
 	import PlanRequirements from './PlanRequirements.svelte';
@@ -110,17 +110,12 @@
 	const checksTotal = $derived(checkSummary(checks));
 	const anyCheckRunning = $derived(checks.some((check) => check.running));
 
-	/**
-	 * What needs you, said once, under the goal: the checks that failed, what is written up as
-	 * blocked, and your requirements waiting for your word. On 2026-10-09 the one failed sample
-	 * check sat as the first of eleven like-sized pills and nothing on the page said to look there.
-	 */
+	/** What needs you, said once, under the goal (`plan-attention.ts`). */
 	const ATTENTION_CHECKS = 3;
-	const failing = $derived(bySeverity(failingChecks(checks), ticketSeq));
-	const waitingRequirements = $derived(
-		(detail.requirements ?? []).filter((entry) => !entry.excluded && (entry.status === 'proposed' || entry.status === 'unverified' || entry.withdraw_proposed)).length
-	);
-	const needsYou = $derived(failing.length > 0 || (detail.spec?.progress.blocked.length ?? 0) > 0 || waitingRequirements > 0);
+	const attention = $derived(planAttention(detail));
+	const failing = $derived(attention.failing);
+	const waitingRequirements = $derived(attention.waitingRequirements);
+	const needsYou = $derived(attention.needsYou);
 	let sectionEl = $state<HTMLElement | null>(null);
 
 	function showWaitingRequirements(): void {
