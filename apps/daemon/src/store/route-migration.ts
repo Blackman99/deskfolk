@@ -76,11 +76,16 @@ function legacyDatedDirName(input: { title: string; id: string; at: Date; suffix
 
 function backfillTaskAttribution(db: Database): void {
   type Pending = { id: string; session_id: string; created_at: string; waker: string | null; body: string };
+  // A turn of the work-item engine with no job is meant to have none: a desk turn answers where it
+  // was asked, a read-only one answers you (ADR 0040 P4b, ADR 0057). Run on every start, this pass
+  // gave each of them a job of its own, closed and delivered — 34 one-line "jobs" such as
+  // 「Stepfun 是哪个公司的产品」 by 2026-10-11, two of them retrospected as deliveries.
+  const modes = Boolean(db.query("SELECT 1 FROM pragma_table_info('turns') WHERE name = 'mode'").get());
   const pending = db
     .query<Pending, []>(
       `SELECT t.id, t.session_id, t.created_at, m.turn_id AS waker, m.body AS body
        FROM turns t JOIN messages m ON m.id = t.trigger_message_id
-       WHERE t.task_id IS NULL
+       WHERE t.task_id IS NULL${modes ? " AND IFNULL(t.mode, 'work') NOT IN ('desk', 'readonly')" : ""}
        ORDER BY t.created_at ASC, t.id ASC`,
     )
     .all();

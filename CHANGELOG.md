@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A question you ask opens no job
+
+- A turn that answers where you asked (a question, a look-up, a translation) keeps no job of its own. Each time the app started, an old migration gave every such turn a job, closed and delivered at once: by 2026-10-11 there were 34 one-line "jobs" such as "Which company makes Stepfun", and two were even reviewed as deliveries. Jobs made this way before the fix are left as they are.
+
 ### No check-backs to wait for you
 
 - A Bot can no longer book a check-back on a ticket that waits on you (your answer, your word on a hand-over, a capability ceiling card), and one that comes due while it does is dropped instead of waking it: what you say next wakes it anyway. On the MV, 13 of 22 check-backs the director booked woke to nothing new after some 53 hops each, mostly to see what you thought of a version. A stop of yours still sets check-backs aside until you lift it.
