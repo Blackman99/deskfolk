@@ -47,6 +47,7 @@
 		onStop?: (choice: import('../chat/stop-menu.ts').StopChoice) => Promise<unknown> | void;
 		onLift?: (hold: Hold) => Promise<unknown> | void;
 		controlsDisabled?: boolean;
+		onOpenRoles?: (playbookId: string) => void;
 	}
 
 	let {
@@ -73,7 +74,8 @@
 		holds = null,
 		onStop,
 		onLift,
-		controlsDisabled = false
+		controlsDisabled = false,
+		onOpenRoles
 	}: Props = $props();
 
 </script>
@@ -112,6 +114,7 @@
 		{onStop}
 		{onLift}
 		{controlsDisabled}
+		{onOpenRoles}
 	/>
 </div>
 

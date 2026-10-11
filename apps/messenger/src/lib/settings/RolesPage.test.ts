@@ -238,6 +238,18 @@ test("a Mac older than engines shows every step running and nothing of engines t
   close();
 });
 
+test("asked for an engine — from a job's title row — it shows that engine, not the default (ADR 0086)", async () => {
+  const server = engineServer(engines({}, "general"));
+  const runtime = fakeRuntime({ providers: [aProvider()] });
+  runtime.client = quietClient(server.api) as never;
+  runtime.rolesTarget = { role: null, playbook: "video" };
+  const view = render(RolesPage, { runtime, t });
+  await settle();
+  expect(view.host.querySelector('[data-playbook-chip="video"]')?.getAttribute("aria-selected")).toBe("true");
+  expect(runtime.rolesTarget).toBeNull();
+  view.close();
+});
+
 test("asked for a call — by a card about one of its prompts — it opens there", async () => {
   const runtime = fakeRuntime({ providers: [aProvider()] });
   runtime.client = quietClient() as never;

@@ -345,6 +345,7 @@
 				onStop={(choice) => runtime.stopScope(choice.scope, choice.id, content.sessionId)}
 				onLift={(hold) => runtime.liftHold(hold.id)}
 				controlsDisabled={runtime.connection !== 'connected'}
+				onOpenRoles={(id) => runtime.openRoles(null, id)}
 			>
 				{#snippet callEditor(role)}
 					{#await import('../settings/CallEditor.svelte') then { default: CallEditor }}

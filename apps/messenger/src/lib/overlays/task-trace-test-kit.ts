@@ -4,7 +4,7 @@
  */
 import { readFileSync } from "node:fs";
 import { createRawSnippet, flushSync } from "svelte";
-import { USER_MEMBER, type AcceptanceCheck, type Hold, type LineTrace, type PlanRequirement, type RouteRecord, type SessionTaskSummary, type TaskDetail, type TaskTrace } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheck, type Hold, type LineTrace, type PlanRequirement, type PlaybookList, type RouteRecord, type SessionTaskSummary, type TaskDetail, type TaskTrace } from "@real-bot/protocol";
 import { mockMonacoCss } from "../test-mocks.ts";
 
 mockMonacoCss();
@@ -207,6 +207,8 @@ export function open(opts: {
   lineTrace?: LineTrace;
   /** What a step's call answered; a line of text naming the step by default. */
   raw?: (id: string) => string | null;
+  /** The engines the daemon lists; left out, a daemon that predates engines. */
+  playbooks?: PlaybookList;
 } = {}) {
   const jumps: Array<[string, string]> = [];
   const settled: string[] = [];
@@ -217,7 +219,12 @@ export function open(opts: {
   const shown: Array<[TraceViewKind, string | null, TraceViewAsk]> = [];
   const edited: string[] = [];
   const fetchedRuns: string[] = [];
+  const rolesOpened: string[] = [];
   const api = {
+    listPlaybooks: async () => {
+      if (!opts.playbooks) throw Object.assign(new Error("not found"), { status: 404 });
+      return opts.playbooks;
+    },
     lineTrace: async (id: string) => opts.lineTrace ?? { message_id: id, session_id: opts.sessionId ?? "group-1", nodes: [], steps: [] },
     callRun: async (id: string) => {
       fetchedRuns.push(id);
@@ -285,10 +292,11 @@ export function open(opts: {
     onOpenArtifact: (relpath: string, _att?: unknown, messageId?: string | null, forceTree?: boolean, taskId?: string | null, siblings?: unknown[] | null) => {
       opened.push({ relpath, messageId, forceTree, taskId, siblings: siblings?.length ?? 0 });
     },
+    onOpenRoles: (id: string) => rolesOpened.push(id),
     ...(opts.view || opts.askToken ? { view: opts.view ?? null, ask: opts.ask ?? null, askToken: opts.askToken ?? 0 } : {}),
   });
   const view = render(opts.pane ? JobLayout : TaskTraceView, props as never);
-  return { ...view, props, jumps, asked, settled, opened, patched, shown, edited, fetchedRuns, closed: () => closed };
+  return { ...view, props, jumps, asked, settled, opened, patched, shown, edited, fetchedRuns, rolesOpened, closed: () => closed };
 }
 
 /** Let a press's awaits (the panel swap, the scroll after it) run out, then flush what they changed. */

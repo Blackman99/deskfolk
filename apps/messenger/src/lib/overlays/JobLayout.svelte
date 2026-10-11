@@ -9,15 +9,18 @@
 	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
 	import JobHeader from './JobHeader.svelte';
-	import JobInspector, { type InspectorView } from './JobInspector.svelte';
+	import JobInspector, { type InspectorEngine, type InspectorView } from './JobInspector.svelte';
 	import TicketList from './TicketList.svelte';
 	import TicketRail from './TicketRail.svelte';
 	import TraceView from './TraceView.svelte';
 	import { JobState } from './job-state.svelte.ts';
+	import { engineOffSteps, sessionEngine, sessionsOnEngine } from './job-engine.ts';
+	import { attentionCount, planAttention } from './plan-attention.ts';
+	import { Playbooks, playbookName } from '../settings/playbooks.svelte.ts';
 	import { jobRailWidth, jobInspectorWidth, JOB_NARROW_BELOW } from './job-layout.ts';
 	import { actorName, firstPreviewable, ticketArtifactAttachments } from './plan-board.ts';
 	import { TicketEdits } from './ticket-edits.svelte.ts';
-	import { ticketLanes, type LaneMark } from './ticket-lanes.ts';
+	import { divisionOf, ticketLanes, type LaneMark } from './ticket-lanes.ts';
 	import { attachSteps } from './trace-steps.ts';
 	import { askSpent, loadTraceView, saveTraceView, spendAsk, type TraceViewAsk, type TraceViewKind } from './trace-view.ts';
 	import type { TraceFocus } from './task-trace.ts';
@@ -85,6 +88,8 @@
 			taskId?: string | null,
 			siblings?: Attachment[] | null
 		) => void;
+		/** Roles, on the engine the job runs under. Left out, the job names its engine without a way there. */
+		onOpenRoles?: (playbookId: string) => void;
 	}
 
 	let {
@@ -114,7 +119,8 @@
 		onStop,
 		onLift,
 		controlsDisabled = false,
-		onOpenArtifact
+		onOpenArtifact,
+		onOpenRoles
 	}: Props = $props();
 
 	let traceView = $state<TraceView>();
@@ -162,6 +168,33 @@
 	let statusFilter = $state<TicketStatus | 'all'>('all');
 
 	const hasTickets = $derived((job.detail?.tickets.length ?? 0) > 0);
+	/** Who does what in the job: each Bot's tickets as written down beside the turns it ran. */
+	const division = $derived(job.detail && job.trace ? divisionOf(job.trace.nodes, job.detail.tickets) : []);
+	/** What in the plan needs you, said in the title row too. */
+	const attention = $derived(job.detail ? attentionCount(planAttention(job.detail)) : 0);
+
+	/** The engines, read once per daemon, so the job can say which one its own calls run under. */
+	const playbooks = new Playbooks(() => api);
+	let playbooksFor: MessengerApi | null = null;
+	$effect(() => {
+		const client = api;
+		if (!client || client === playbooksFor) return;
+		playbooksFor = client;
+		untrack(() => void playbooks.load());
+	});
+	const engine = $derived.by<InspectorEngine | null>(() => {
+		if (!job.detail || !playbooks.list) return null;
+		const known = (id: string) => Boolean(playbooks.find(id));
+		const { id, why } = sessionEngine(sessions, job.detail.session_id, playbooks.defaultId, known);
+		const item = playbooks.find(id);
+		return {
+			name: playbookName(item, t.playbooks.builtin) || id,
+			why,
+			off: engineOffSteps(item).map((step) => t.playbooks.steps[step]?.name ?? step),
+			sessions: sessionsOnEngine(sessions, id, playbooks.defaultId, known),
+			onOpen: onOpenRoles ? () => onOpenRoles(id) : undefined
+		};
+	});
 	const lanes = $derived(job.detail && job.trace ? ticketLanes(job.trace.nodes, job.detail.tickets) : null);
 	const stepGroup = $derived.by(() => {
 		const id = job.openStep;
@@ -268,6 +301,13 @@
 		inspectorExpanded = false;
 		if (narrow) chooseSegment('trace');
 		void tick().then(() => traceView?.showTicket(id));
+	}
+
+	/** The title row's 「需要你看」: the whole job's plan in the inspector, where what needs you is said. */
+	function showWholeJob(): void {
+		job.openStep = null;
+		pickTicket(null);
+		if (narrow) chooseSegment('spec');
 	}
 
 	/** A ticket named in the spec: picked, and the inspector turns to it. */
@@ -486,6 +526,14 @@
 		{controlsDisabled}
 		{onClose}
 	>
+		{#snippet end()}
+			{#if attention > 0}
+				<button type="button" class="job-chip is-attention" onclick={showWholeJob}>{t.plan.job.attention(attention)}</button>
+			{/if}
+			{#if engine}
+				<button type="button" class="job-chip" title={t.plan.job.engine.title} disabled={!engine.onOpen} onclick={() => engine?.onOpen?.()}>{t.plan.job.engine.chip(engine.name)}</button>
+			{/if}
+		{/snippet}
 		{#snippet middle()}
 			{#if job.detail && narrow}
 				<!-- Narrow, the job's three parts one at a time; on a narrow host the switch takes a row of its own. -->
@@ -606,6 +654,9 @@
 					onShowInTrace={showInTrace}
 					onShowTickets={showTickets}
 					onShowTicket={showTicketFromSpec}
+					{lanes}
+					{division}
+					{engine}
 				/>
 			</aside>
 		{/if}
@@ -797,6 +848,35 @@
 		border-top: 1px solid var(--line);
 		border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 		box-shadow: var(--shadow-lg);
+	}
+
+	/* What the title row says of the job beside its stop menu: what needs you, and its engine. */
+	.job-chip {
+		padding: 2px 9px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-full);
+		background: var(--chip);
+		color: var(--ink-secondary);
+		font: inherit;
+		font-size: 11.5px;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.job-chip:hover:not(:disabled) {
+		border-color: var(--line-hover);
+		color: var(--ink);
+	}
+
+	.job-chip:disabled {
+		cursor: default;
+	}
+
+	.job-chip.is-attention {
+		border-color: var(--warn-line);
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		font-weight: 600;
 	}
 
 	/*

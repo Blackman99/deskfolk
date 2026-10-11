@@ -4,7 +4,8 @@
 	import type { MessengerApi } from '../messenger-api.ts';
 	import Select from '../Select.svelte';
 	import ModelPicker from '../ModelPicker.svelte';
-	import { actorName, dependsTags, ticketObligations, type TicketObligations } from './plan-board.ts';
+	import { actorFace, actorName, dependsTags, ticketObligations, type TicketObligations } from './plan-board.ts';
+	import { reviewerHint } from './ticket-lanes.ts';
 	import { badgeOf, describeCheck } from './acceptance-checks.ts';
 	import type { TicketEdits } from './ticket-edits.svelte.ts';
 
@@ -26,6 +27,12 @@
 		onShowSpec?: () => void;
 		/** The ticket whose list of what it waits for is open. */
 		dependsOpen: string | null;
+		/**
+		 * Who actually ran the ticket's turns, and how many (ADR 0086), where the inspector shows it:
+		 * said under the settings, with a press to make the Bot that has been reviewing it in all but
+		 * name its reviewer. Left out on the board.
+		 */
+		ranBy?: ReadonlyMap<string, number> | null;
 	}
 
 	let {
@@ -38,11 +45,17 @@
 		deletedLabel,
 		edits,
 		onShowSpec,
-		dependsOpen = $bindable()
+		dependsOpen = $bindable(),
+		ranBy = null
 	}: Props = $props();
 
 	const botsById = $derived(new Map(bots.map((bot) => [bot.id, bot] as const)));
 	const owes = $derived(ticketObligations(detail, ticket.id));
+	const ran = $derived(ranBy ? [...ranBy].sort((a, b) => b[1] - a[1]) : []);
+	/** Offered only where reviews are on (level 5) and the Bot may review it. */
+	const hint = $derived(
+		ranBy && api && detail.submissions_on ? reviewerHint(ticket, ranBy, new Set(reviewerOptions(ticket).map((option) => option.value))) : null
+	);
 
 	/** What every ticket meets from the spec, in words: 「验收 4 条、规则 13 条、你的要求 20 条」. */
 	function planWideLine(owes: TicketObligations): string {
@@ -145,8 +158,114 @@
 		{/if}
 	</div>
 {/if}
+{#if ranBy}
+	<!-- Who ran it beside who is written down for it: the division as it happened. -->
+	<div class="ticket-ran">
+		<span class="ticket-setting-label">{t.plan.job.ran}</span>
+		<span class="ticket-ran-list">
+			{#each ran as [bot, turns] (bot)}
+				{@const face = actorFace(bot, botsById, youLabel, deletedLabel)}
+				<span class="ticket-ran-who" data-ran-bot={bot}>
+					<span class="ticket-ran-face" style:background={face.palette?.bg} style:color={face.palette?.text} style:border-color={face.palette?.border}>
+						{#if face.src}<img src={face.src} alt="" />{:else}{face.letter}{/if}
+					</span>
+					{actorName(bot, botsById, youLabel, deletedLabel)} <b class="mono">{turns}</b>
+				</span>
+			{:else}
+				<span class="ticket-ran-none">{t.plan.job.ranNone}</span>
+			{/each}
+		</span>
+	</div>
+	{#if hint}
+		{@const name = actorName(hint.bot, botsById, youLabel, deletedLabel)}
+		<div class="ticket-reviewer-hint">
+			<span>{t.plan.job.reviewerHint(name, hint.turns)}</span>
+			<button type="button" class="ticket-reviewer-hint-go" disabled={edits.patchingId === ticket.id} onclick={() => edits.changeReviewer(ticket, hint.bot)}>
+				{t.plan.job.makeReviewer(name)}
+			</button>
+		</div>
+	{/if}
+{/if}
 
 <style>
+	.ticket-ran {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: baseline;
+		gap: 5px 10px;
+		min-width: 0;
+		font-size: 12px;
+	}
+
+	.ticket-ran-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 3px 12px;
+		min-width: 0;
+	}
+
+	.ticket-ran-who {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		white-space: nowrap;
+	}
+
+	.ticket-ran-face {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 15px;
+		height: 15px;
+		box-sizing: border-box;
+		overflow: hidden;
+		border: 1px solid var(--line);
+		border-radius: 50%;
+		font-size: 9px;
+		font-weight: 700;
+	}
+
+	.ticket-ran-face img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.ticket-ran-none {
+		color: var(--muted);
+	}
+
+	/* A suggestion in the inspector, nothing more: not a line in the conversation, not a card. */
+	.ticket-reviewer-hint {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 6px;
+		padding: 7px 9px;
+		border-radius: var(--radius-sm);
+		background: var(--warn-bg);
+		color: var(--ink-secondary);
+		font-size: 11.5px;
+		line-height: 1.45;
+	}
+
+	.ticket-reviewer-hint-go {
+		padding: 2px 8px;
+		border: 1px solid var(--accent-border);
+		border-radius: var(--radius-sm);
+		background: var(--pane);
+		color: var(--accent);
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.ticket-reviewer-hint-go:hover:not(:disabled) {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--on-accent);
+	}
+
 	.ticket-depends-toggle {
 		display: flex;
 		align-items: center;

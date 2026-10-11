@@ -183,6 +183,8 @@
 		const target = runtime.rolesTarget;
 		if (!target) return;
 		runtime.rolesTarget = null;
+		// Sent from a job's title row: that job's engine shown.
+		if (target.playbook) shown = target.playbook;
 		if (target.role) {
 			selected = stepOfRole(target.role);
 			if (narrow) opened = true;

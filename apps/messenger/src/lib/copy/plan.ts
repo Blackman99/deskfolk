@@ -223,7 +223,39 @@ export const zh = {
     expand: "展开详情",
     collapse: "收起详情",
     resizeRail: "拖动改任务栏的宽度",
-    resizeInspector: "拖动改详情栏的宽度"
+    resizeInspector: "拖动改详情栏的宽度",
+    /** Who owns, reviews and actually ran what in the job, beside who is written down (ADR 0086). */
+    attention: (n: number) => `需要你看 ${n}`,
+    ranInstead: (bots: string) => `实际：${bots}`,
+    ranAlso: (bots: string) => `还有 ${bots}`,
+    ran: "实际跑的",
+    ranNone: "还没有轮",
+    reviewerHint: (bot: string, turns: number) => `${bot} 在这个任务上跑了 ${turns} 轮，不是负责人也不是审查者。`,
+    makeReviewer: (bot: string) => `设 ${bot} 为审查者`,
+    division: {
+      title: "这件事的分工",
+      bot: "Bot",
+      owns: "负责",
+      reviews: "审查",
+      turns: "实际跑的轮",
+      onOthers: (n: number) => `${n} 在别人的任务上`,
+      loose: (n: number) => `${n} 没归任务`,
+      none: "—",
+      idle: "名下有任务，在这件事里一轮没跑",
+      idleNote: "负责人是整理器开任务时按「流程与分工」先填的，不是谁实际在做。"
+    },
+    engine: {
+      title: "应用的分工",
+      chip: (name: string) => `引擎：${name}`,
+      own: "这个会话自己选的",
+      inherited: "跟着它所在的会话",
+      fallback: "会话没选，用默认",
+      gone: "这件事的会话已删，按默认",
+      off: (steps: string) => `这套引擎没开：${steps}`,
+      allOn: "这套引擎的环节都开着",
+      sessions: (n: number) => `用它的会话 ${n} 个`,
+      open: "在分工页打开"
+    }
   },
   /** The five columns, and a move that waits because a hand-over is still open. */
   board: {
@@ -585,7 +617,38 @@ export const en: CopyShape<typeof zh> = {
     expand: "Widen the details",
     collapse: "Narrow the details",
     resizeRail: "Drag to resize the tickets",
-    resizeInspector: "Drag to resize the details"
+    resizeInspector: "Drag to resize the details",
+    attention: (n: number) => `${n} need${n === 1 ? "s" : ""} you`,
+    ranInstead: (bots: string) => `Actually: ${bots}`,
+    ranAlso: (bots: string) => `Also ${bots}`,
+    ran: "Actually ran",
+    ranNone: "No turns yet",
+    reviewerHint: (bot: string, turns: number) => `${bot} ran ${turns} of this ticket's turns and is neither its owner nor its reviewer.`,
+    makeReviewer: (bot: string) => `Make ${bot} the reviewer`,
+    division: {
+      title: "Who does what in this job",
+      bot: "Bot",
+      owns: "Owns",
+      reviews: "Reviews",
+      turns: "Turns run",
+      onOthers: (n: number) => `${n} on others' tickets`,
+      loose: (n: number) => `${n} under no ticket`,
+      none: "—",
+      idle: "Owns tickets and ran none of this job",
+      idleNote: "Owners are filled in by the organizer from the plan's process when it opens tickets, not from who works them."
+    },
+    engine: {
+      title: "The app's own steps",
+      chip: (name: string) => `Engine: ${name}`,
+      own: "Chosen for this conversation",
+      inherited: "From the conversation it came from",
+      fallback: "The conversation names none: the default",
+      gone: "The job's conversation is gone: the default",
+      off: (steps: string) => `Off in this engine: ${steps}`,
+      allOn: "Every step of this engine is on",
+      sessions: (n: number) => `${n} conversation${n === 1 ? "" : "s"} use it`,
+      open: "Open in Roles"
+    }
   },
   /** The five columns, and a move that waits because a hand-over is still open. */
   board: {

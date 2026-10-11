@@ -43,7 +43,8 @@ export interface OverlayStateHost {
 }
 
 /** What Roles is asked to show: a call, picked as its step (ADR 0085). */
-export type RolesTarget = { role: BuiltinModelRole | null };
+/** Where Roles opens: on one call, and on one engine (a job's, from its title row). */
+export type RolesTarget = { role: BuiltinModelRole | null; playbook?: string };
 
 /**
  * Which sheet, page or pane is open over or beside the chat — settings, the new-Bot and new-group
@@ -277,8 +278,8 @@ export class OverlayState {
    * The Roles page (ADR 0083), at one call when a step asked for it: a tab on the workbench, else a
    * page in place of the list.
    */
-  openRoles(role: BuiltinModelRole | null = null): void {
-    this.rolesTarget = { role };
+  openRoles(role: BuiltinModelRole | null = null, playbook: string | null = null): void {
+    this.rolesTarget = { role, ...(playbook ? { playbook } : {}) };
     if (this.toPane({ kind: "roles" })) return;
     this.openListPage("roles");
   }

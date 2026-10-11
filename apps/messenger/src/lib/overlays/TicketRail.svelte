@@ -17,6 +17,7 @@
 		laneMarkWidth,
 		laneX,
 		nearestMark,
+		ranBesides,
 		ticketOwner,
 		type LaneMark,
 		type TicketLanes
@@ -156,6 +157,8 @@
 			{@const marks = lanes.byTicket.get(ticket.id) ?? []}
 			{@const owner = ticketOwner(ticket)}
 			{@const face = owner ? actorFace(owner, botsById, youLabel, deletedLabel) : null}
+			{@const reviewer = ticket.reviewer_bot_id ? actorFace(ticket.reviewer_bot_id, botsById, youLabel, deletedLabel) : null}
+			{@const besides = ranBesides(ticket, lanes.ranBy.get(ticket.id))}
 			<li>
 				<button
 					type="button"
@@ -179,9 +182,26 @@
 								{#if face.src}<img src={face.src} alt="" />{:else}{face.letter}{/if}
 							</span>
 						{/if}
+						{#if ticket.reviewer_bot_id && reviewer}
+							<span
+								class="rail-avatar is-reviewer"
+								title={t.plan.reviewedBy(nameOf(ticket.reviewer_bot_id))}
+								style:background={reviewer.palette?.bg}
+								style:color={reviewer.palette?.text}
+								style:border-color={reviewer.palette?.border}
+							>
+								{#if reviewer.src}<img src={reviewer.src} alt="" />{:else}{reviewer.letter}{/if}
+							</span>
+						{/if}
 						<span class="rail-stage is-{ticket.status}">{stageLabel(ticket, t)}</span>
 						<span class="rail-count mono" title={t.plan.job.turns(marks.length)}>{marks.length}</span>
 					</span>
+					{#if besides}
+						<!-- Who works it, where that is not its owner alone: the record and the work, side by side. -->
+						<span class="rail-besides" data-rail-besides={besides.kind}>
+							{(besides.kind === 'instead' ? t.plan.job.ranInstead : t.plan.job.ranAlso)(besides.bots.map(nameOf).join('、'))}
+						</span>
+					{/if}
 					{@render lane(marks, t.plan.job.turns(marks.length))}
 				</button>
 			</li>
@@ -388,6 +408,24 @@
 		font-weight: 700;
 		line-height: 1;
 		user-select: none;
+	}
+
+	/* The reviewer beside the owner, a size down. */
+	.rail-avatar.is-reviewer {
+		width: 13px;
+		height: 13px;
+		margin-left: -3px;
+		font-size: 8px;
+	}
+
+	.rail-besides {
+		display: block;
+		margin-top: -2px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 11px;
+		color: var(--warn-text);
 	}
 
 	.rail-avatar img {

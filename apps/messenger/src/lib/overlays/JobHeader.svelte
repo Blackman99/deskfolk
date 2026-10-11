@@ -39,6 +39,8 @@
 		/** Absent in a pane: a pane is closed by its own tab, not by a button inside the content. */
 		onClose?: () => void;
 		middle?: Snippet;
+		/** What the row says of the job beside its stop menu. */
+		end?: Snippet;
 	}
 
 	let {
@@ -56,7 +58,8 @@
 		onLift,
 		controlsDisabled = false,
 		onClose,
-		middle
+		middle,
+		end
 	}: Props = $props();
 
 	/** So the board's Escape listener can put focus back on the trigger once it closes the switcher. */
@@ -174,6 +177,7 @@
 		</div>
 		{@render middle?.()}
 		<div class="trace-header-end">
+			{@render end?.()}
 			{#if stopItems.length > 0 && onStop}
 				<StopMenu items={stopItems} {t} placement="below" size="sm" label={t.control.stop} disabled={controlsDisabled} onPick={(item) => onStop(item.choice)} />
 			{/if}

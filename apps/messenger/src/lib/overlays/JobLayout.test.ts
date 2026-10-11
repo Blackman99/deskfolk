@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { flushSync } from "svelte";
-import type { AcceptanceCheck, PlanRequirement, TaskDetail } from "@real-bot/protocol";
+import { builtinPlaybook, type AcceptanceCheck, type PlanRequirement, type Playbook, type TaskDetail, type TaskTrace } from "@real-bot/protocol";
 import { mockMonacoCss } from "../test-mocks.ts";
 
 mockMonacoCss();
@@ -10,7 +10,7 @@ import { forgetSpentAsks, forgetTraceView, loadTraceView, saveTraceView } from "
 import { forgetKeptBoards } from "./task-trace.ts";
 import { click } from "../test-render.ts";
 import { settle } from "../test-async.ts";
-import { detail, job, open, until } from "./task-trace-test-kit.ts";
+import { detail, job, open, picture, until } from "./task-trace-test-kit.ts";
 
 const t = copyFor("zh");
 
@@ -344,4 +344,97 @@ test("narrow, a plan with no tickets has no tickets to switch to, and a part lef
   expect(viewTabs(view.host).map((tab) => tab.textContent?.trim())).toEqual([t.plan.segmentTrace, t.plan.segmentSpec]);
   expect(viewOn(view.host)).toBe("trace");
   view.close();
+});
+
+/** 制片 (bot-1) working 分镜师's ticket 01 turn after turn, the way 审片员 worked 视频导演's on 2026-10-11. */
+function reviewedInAllButName(): TaskTrace {
+  const trace = picture();
+  const at = (i: number) => new Date(Date.parse("2026-09-22T00:00:03.000Z") + i * 60_000).toISOString();
+  for (let i = 0; i < 5; i += 1) {
+    trace.nodes.push({ ...trace.nodes[2]!, turn_id: `t-review-${i}`, actor: "bot-1", status: "completed", ticket_id: "tk-1", created_at: at(i), artifacts: [], approval: null });
+  }
+  return trace;
+}
+
+test("the whole job's view says who does what: each Bot's tickets as written down beside the turns it ran", async () => {
+  const view = open({ pane: true });
+  await until(view.host, ".job-division");
+  const rows = [...view.host.querySelectorAll<HTMLElement>(".job-division tbody tr")];
+  expect(rows.map((row) => [...row.querySelectorAll("th, td")].map((cell) => cell.textContent?.replace(/\s+/g, " ").trim()))).toEqual([
+    ["制片", "—", "—", `1 ${t.plan.job.division.loose(1)}`],
+    ["分镜师", "#01", "—", "1"],
+  ]);
+  expect(view.host.querySelector(".job-division .job-block-note")).toBeNull();
+  view.close();
+});
+
+test("a ticket worked by a Bot besides its owner says so on the rail, and the inspector offers that Bot as its reviewer", async () => {
+  const view = open({ pane: true, trace: reviewedInAllButName(), detail: detail({ submissions_on: true, reviewer_ids: ["bot-1", "bot-2"] }) });
+  await until(view.host, ".rail-row");
+  expect(rowOf(view.host, "分镜草图").querySelector(".rail-besides")?.textContent?.trim()).toBe(t.plan.job.ranAlso("制片"));
+  click(rowOf(view.host, "分镜草图"));
+  expect([...view.host.querySelectorAll(".job-inspector [data-ran-bot]")].map((who) => who.textContent?.replace(/\s+/g, " ").trim())).toEqual(["制片 5", "分镜师 1"]);
+  const hint = view.host.querySelector(".job-inspector .ticket-reviewer-hint")!;
+  expect(hint.textContent).toContain(t.plan.job.reviewerHint("制片", 5));
+  click(hint.querySelector("button"));
+  await settle();
+  expect(view.patched).toEqual([["tk-1", { reviewer_bot_id: "bot-1", if_revision: 2 }]]);
+  view.close();
+});
+
+test("no reviewer is offered where reviews are off, or for fewer than five turns", async () => {
+  const off = open({ pane: true, trace: reviewedInAllButName() });
+  await until(off.host, ".rail-row");
+  click(rowOf(off.host, "分镜草图"));
+  expect(off.host.querySelector(".job-inspector [data-ran-bot]")).not.toBeNull();
+  expect(off.host.querySelector(".ticket-reviewer-hint")).toBeNull();
+  off.close();
+  const few = open({ pane: true, detail: detail({ submissions_on: true, reviewer_ids: ["bot-1", "bot-2"] }) });
+  await until(few.host, ".rail-row");
+  click(rowOf(few.host, "分镜草图"));
+  expect(few.host.querySelector(".ticket-reviewer-hint")).toBeNull();
+  few.close();
+});
+
+test("the job names the engine its own calls run under, what it leaves off, and opens Roles on it", async () => {
+  const general: Playbook = { id: "general", builtin: true, base_id: "general", name: null, revision: 0, revision_id: null, diff: { v: 1, steps: {} }, resolved: builtinPlaybook("general"), updated_at: null };
+  const view = open({ pane: true, playbooks: { default_id: "general", items: [general] } });
+  await until(view.host, ".job-engine");
+  const block = view.host.querySelector(".job-engine")!;
+  expect(block.querySelector(".job-engine-chip")?.textContent).toBe(t.plan.job.engine.chip(t.playbooks.builtin.general));
+  expect(block.querySelector(".job-engine-why")?.textContent).toBe(t.plan.job.engine.fallback);
+  expect(block.querySelector(".job-block-note")?.textContent).toBe(
+    `${t.plan.job.engine.off([t.playbooks.steps.scribe!.name, t.playbooks.steps.retrospective!.name, t.playbooks.steps.reflection!.name].join("、"))} · ${t.plan.job.engine.sessions(2)}`,
+  );
+  // The title row says it too, and both open Roles on it.
+  click([...view.host.querySelectorAll<HTMLButtonElement>(".job-chip")].find((chip) => chip.textContent === t.plan.job.engine.chip(t.playbooks.builtin.general)));
+  click(block.querySelector(".job-engine-open"));
+  expect(view.rolesOpened).toEqual(["general", "general"]);
+  view.close();
+  // A daemon older than engines: nothing is said of one.
+  const old = open({ pane: true });
+  await until(old.host, ".job-division");
+  expect(old.host.querySelector(".job-engine")).toBeNull();
+  old.close();
+});
+
+test("the title row says how many things need you, and takes you to the whole job's plan", async () => {
+  const failing = detail({
+    checks: [aTicketCheck({ last_run: { id: "run-1", check_id: "check-1", task_id: "task-1", cause: "settle", started_at: "2026-09-22T00:00:00.000Z", finished_at: "2026-09-22T00:00:01.000Z", outcome: "fail", exit_code: 1, detail: "没找到", output: null } })],
+  });
+  const view = open({ pane: true, detail: failing });
+  await until(view.host, ".rail-row");
+  const chip = [...view.host.querySelectorAll<HTMLButtonElement>(".job-chip.is-attention")];
+  expect(chip.map((button) => button.textContent)).toEqual([t.plan.job.attention(1)]);
+  click(rowOf(view.host, "分镜草图"));
+  expect(inspector(view.host)).toBe("ticket");
+  click(chip[0]);
+  await settle();
+  expect(inspector(view.host)).toBe("spec");
+  expect(view.host.querySelector(".rail-row.is-picked")).toBeNull();
+  view.close();
+  const quiet = open({ pane: true });
+  await until(quiet.host, ".rail-row");
+  expect(quiet.host.querySelector(".job-chip.is-attention")).toBeNull();
+  quiet.close();
 });

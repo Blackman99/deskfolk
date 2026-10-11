@@ -601,7 +601,7 @@ export class MessengerRuntime {
   closeListPage(): void { this.overlayState.closeListPage(); }
   watchTrace(taskId: string): () => void { return this.overlayState.watchTrace(taskId); }
   watchLineBoard(sessionId: string): () => void { return this.overlayState.watchLineBoard(sessionId); }
-  openRoles(role: BuiltinModelRole | null = null): void { this.overlayState.openRoles(role); }
+  openRoles(role: BuiltinModelRole | null = null, playbook: string | null = null): void { this.overlayState.openRoles(role, playbook); }
   openTrace(taskId: string | null = null, focus: TraceFocus | null = null, opts: TraceOpenOptions = {}): void { this.overlayState.openTrace(taskId, focus, opts); }
   closeTrace(): void { this.overlayState.closeTrace(); }
   get traceOpen(): boolean { return this.overlayState.traceOpen; }

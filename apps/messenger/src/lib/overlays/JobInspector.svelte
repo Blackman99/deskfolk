@@ -5,6 +5,9 @@
 	 * The host says which, since on a narrow job the switch above decides it.
 	 */
 	export type InspectorView = 'step' | 'ticket' | 'spec';
+
+	/** The engine the job's own calls run under, as the whole job's view says it. */
+	export type InspectorEngine = { name: string; why: JobEngineWhy; off: string[]; sessions: number; onOpen?: () => void };
 </script>
 
 <script lang="ts">
@@ -18,6 +21,10 @@
 	import TicketDepends from './TicketDepends.svelte';
 	import TicketDetail from './TicketDetail.svelte';
 	import TraceStepDetail from './TraceStepDetail.svelte';
+	import JobDivision from './JobDivision.svelte';
+	import JobEngine from './JobEngine.svelte';
+	import type { JobEngineWhy } from './job-engine.ts';
+	import type { DivisionRow, TicketLanes } from './ticket-lanes.ts';
 	import type { JobState } from './job-state.svelte.ts';
 	import { actorName, latestTurnOfTicket, ticketTag } from './plan-board.ts';
 	import type { TicketEdits } from './ticket-edits.svelte.ts';
@@ -50,6 +57,11 @@
 		onShowTickets: (status: TicketStatus | 'all') => void;
 		/** A ticket named in the spec: picked, and shown in place of the spec. */
 		onShowTicket: (ticketId: string) => void;
+		/** The job's lanes, for who actually ran each ticket. */
+		lanes?: TicketLanes | null;
+		/** Who does what in the job, above its plan. */
+		division?: readonly DivisionRow[];
+		engine?: InspectorEngine | null;
 	}
 
 	let {
@@ -71,7 +83,10 @@
 		onOpenArtifacts,
 		onShowInTrace,
 		onShowTickets,
-		onShowTicket
+		onShowTicket,
+		lanes = null,
+		division = [],
+		engine = null
 	}: Props = $props();
 
 	const botsById = $derived(new Map(bots.map((bot) => [bot.id, bot] as const)));
@@ -166,7 +181,19 @@
 				{/if}
 			</div>
 			<div class="insp-ticket">
-				<TicketDetail {api} {detail} {ticket} {t} {bots} {youLabel} {deletedLabel} {edits} onShowSpec={() => (specHeld = true)} bind:dependsOpen />
+				<TicketDetail
+					{api}
+					{detail}
+					{ticket}
+					{t}
+					{bots}
+					{youLabel}
+					{deletedLabel}
+					{edits}
+					onShowSpec={() => (specHeld = true)}
+					bind:dependsOpen
+					ranBy={lanes?.ranBy.get(ticket.id) ?? null}
+				/>
 				{#if dependsOpen === ticket.id}
 					<TicketDepends {detail} {ticket} {t} {edits} />
 				{/if}
@@ -187,6 +214,15 @@
 			{@render widen()}
 		</header>
 		<div class="insp-body is-spec">
+			{#if !held && (division.length > 0 || engine)}
+				<!-- Who does what: the Bots on the job's tickets, then the app's own steps. -->
+				<div class="insp-job">
+					<JobDivision rows={division} {bots} {youLabel} {deletedLabel} {t} />
+					{#if engine}
+						<JobEngine name={engine.name} why={engine.why} off={engine.off} sessions={engine.sessions} {t} onOpen={engine.onOpen} />
+					{/if}
+				</div>
+			{/if}
 			<PlanSpecPanel
 				{api}
 				detail={job.detail}
@@ -312,6 +348,14 @@
 	.insp-body.is-spec {
 		display: block;
 		padding: 0;
+	}
+
+	.insp-job {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		padding: 12px 16px;
+		border-bottom: 1px solid var(--line-subtle);
 	}
 
 	/* The status menu as wide as what it says, as on the board's card. */

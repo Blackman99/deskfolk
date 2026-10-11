@@ -1256,6 +1256,7 @@
 				onStop={(choice) => runtime.stopScope(choice.scope, choice.id, runtime.traceSessionId || selected.id)}
 				onLift={(hold) => runtime.liftHold(hold.id)}
 				controlsDisabled={runtime.connection !== 'connected'}
+				onOpenRoles={(id) => runtime.openRoles(null, id)}
 				onTask={(id) => {
 					if (runtime.traceTaskId !== id) runtime.traceTaskId = id;
 				}}
