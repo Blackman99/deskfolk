@@ -454,6 +454,8 @@ export class Store {
   readonly tasksClosedBefore = this.bind(tasks.tasksClosedBefore);
   readonly taskArtifacts = this.bind(tasks.taskArtifacts);
   readonly taskTrace = this.bind(taskTraces.taskTrace);
+  readonly lineTrace = this.bind(taskTraces.lineTrace);
+  readonly boardSteps = this.bind(taskTraces.boardSteps);
   readonly sessionTasks = this.bind(tasks.sessionTasks);
   readonly sessionCurrentTask = this.bind(tasks.sessionCurrentTask);
   readonly sessionRecentTasks = this.bind(tasks.sessionRecentTasks);

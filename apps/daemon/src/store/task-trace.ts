@@ -1,7 +1,9 @@
 /** A job's flow board read model: its turns, messages, files and approvals in order. */
-import { INTERRUPT_NOTE_BODY, USER_MEMBER, type TaskTrace, type TaskTraceDecision, type TaskTraceNode, type TurnStatus } from "@real-bot/protocol";
+import { INTERRUPT_NOTE_BODY, USER_MEMBER, type LineTrace, type TaskTrace, type TaskTraceDecision, type TaskTraceNode, type TraceStep, type TurnStatus } from "@real-bot/protocol";
 import { askAnswerText, readAskAnswer } from "../ask";
 import type { StoreContext } from "./shared";
+import { traceSteps } from "./call-runs";
+import { getMessage } from "./messages";
 import { getTask, isReservedTaskPath, oneLine } from "./tasks";
 
 type TraceTurnRow = {
@@ -60,6 +62,67 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
     closed_at: task.closed_at,
     nodes: traceNodes(ctx, { kind: "task", taskId, dir: task.dir }),
   };
+}
+
+/** How deep a line's board follows Bots waking Bots, and how many turns it draws at most. */
+const LINE_DEPTH = 40;
+const LINE_TURNS = 300;
+
+/**
+ * One line of yours as a board of its own (ADR 0083), for a line filed under no job: the turns it
+ * woke and, in turn, the ones those woke, with the app's calls about any of them. A Bot's line
+ * stands for the line of yours its turn started from.
+ */
+export function lineTrace(ctx: StoreContext, messageId: string): LineTrace {
+  let line = getMessage(ctx, messageId);
+  for (let hops = 0; line.author !== USER_MEMBER && line.turn_id && hops < LINE_DEPTH; hops++) {
+    const trigger = ctx.db.query<{ trigger_message_id: string }, [string]>("SELECT trigger_message_id FROM turns WHERE id = ?").get(line.turn_id);
+    if (!trigger) break;
+    line = getMessage(ctx, trigger.trigger_message_id);
+  }
+  const turnIds = ctx.db
+    .query<{ id: string }, [string, number, number]>(
+      `WITH RECURSIVE woke(id, depth) AS (
+         SELECT id, 0 FROM turns WHERE trigger_message_id = ?
+         UNION
+         SELECT t.id, woke.depth + 1 FROM turns t
+         JOIN messages m ON m.id = t.trigger_message_id
+         JOIN woke ON m.turn_id = woke.id
+         WHERE woke.depth < ?
+       )
+       SELECT DISTINCT id FROM woke LIMIT ?`,
+    )
+    .all(line.id, LINE_DEPTH, LINE_TURNS)
+    .map((row) => row.id);
+  const nodes = traceNodes(ctx, { kind: "turns", turnIds });
+  // A line that woke nobody (every Bot passed, or it only said stop) is still its own card.
+  if (line.author === USER_MEMBER && !nodes.some((node) => node.turn_id === `user:${line.id}`)) {
+    nodes.unshift({
+      turn_id: `user:${line.id}`,
+      session_id: line.session_id,
+      actor: USER_MEMBER,
+      status: "completed",
+      woken_by_turn_id: null,
+      woken_elsewhere: null,
+      trigger_message_id: line.id,
+      focus_message_id: line.id,
+      summary: oneLine(line.body),
+      created_at: line.created_at,
+      artifacts: line.attachments.map((file) => ({ path: file.workspace_relpath, message_id: line.id, attachment_id: file.id })),
+      ask: null,
+      approval: null,
+      passed: passersByMessage(ctx, [line.id]).get(line.id) ?? 0,
+      ticket_id: null,
+    });
+  }
+  return { message_id: line.id, session_id: line.session_id, nodes, steps: boardSteps(ctx, null, nodes) };
+}
+
+/** The app's calls a board shows (ADR 0083): the job's own, and the ones about its lines and turns. */
+export function boardSteps(ctx: StoreContext, taskId: string | null, nodes: readonly TaskTraceNode[]): TraceStep[] {
+  const lines = nodes.filter((node) => node.turn_id.startsWith("user:")).map((node) => node.trigger_message_id);
+  const turns = nodes.filter((node) => node.actor !== USER_MEMBER).map((node) => node.turn_id);
+  return traceSteps(ctx, { taskId, messageIds: lines, turnIds: turns });
 }
 
 /**

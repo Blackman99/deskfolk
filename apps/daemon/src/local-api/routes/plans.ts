@@ -1,4 +1,4 @@
-import type { CreateHoldRequest, PatchAcceptanceCheckRequest, PatchTaskSpecRequest, PatchTicketRequest, RequirementActionRequest, RunAcceptanceChecksRequest, TurnCommandsResponse } from "@real-bot/protocol";
+import type { CreateHoldRequest, PatchAcceptanceCheckRequest, PatchTaskSpecRequest, PatchTicketRequest, RequirementActionRequest, RunAcceptanceChecksRequest, TaskTraceNode, TurnCommandsResponse } from "@real-bot/protocol";
 import { HttpError } from "../../errors";
 import { jsonResponse, matchPath } from "../../http";
 import { isUlid } from "../../ids";
@@ -34,44 +34,58 @@ export function planRoutes(ctx: RouteCtx): Response | Promise<Response> | null {
     return jsonResponse(body, 200, null);
   }
 
+  /** A board's cards as the window reads them: files still there, a live turn's sentence, the job's model choices. */
+  const boardNodes = (nodes: TaskTraceNode[], taskId: string | null) => {
+    // Each card carries the model choice its turn ran on, so the board is where it is read.
+    const records = new Map(taskId ? store.listTaskRoutes(taskId).map((record) => [record.turn_id, record]) : []);
+    const reviews = new Map(taskId ? store.listTaskReviews(taskId).map((row) => [row.turn_id, reviewOut(store, row)]) : []);
+    const learnings = new Map(taskId ? store.listTaskLearnings(taskId).map((row) => [row.chain_id, learningOut(store, row)]) : []);
+    const marking = store.learningOn();
+    // A card's files open the preview as its tree; one deleted since must not come back there.
+    const cited = new Set(nodes.flatMap((node) => node.artifacts.map((file) => file.path)));
+    const gone = store.transaction(() => new Set([...cited].filter((file) => !store.citedPathExists(file))));
+    return nodes.map((node) => {
+      const record = records.get(node.turn_id);
+      const routed = {
+        ...node,
+        artifacts: node.artifacts.map((file) => ({ ...file, exists: !gone.has(file.path) })),
+        route: record
+          ? {
+              record,
+              review: reviews.get(node.turn_id) ?? null,
+              // A chain is named after the turn that started it; its note belongs there.
+              learning: record.chain_id === record.turn_id ? (learnings.get(record.chain_id) ?? null) : null,
+              ...(marking ? { marked_model: store.turnMarkedModel(node.turn_id) } : {}),
+            }
+          : null,
+      };
+      // A live turn's sentence lives in the engine, not the row, the same way a session's turns do.
+      if (node.status !== "running") return routed;
+      const live = engine.partialText(node.turn_id)?.replace(/\s+/g, " ").trim();
+      return live ? { ...routed, summary: [...live].slice(0, 80).join("") } : routed;
+    });
+  };
+
   params = matchPath(path, "/v1/tasks/:id/trace");
   if (params && method === "GET") {
     const trace = store.taskTrace(params.id!);
-    // Each card carries the model choice its turn ran on, so the board is where it is read.
-    const records = new Map(store.listTaskRoutes(params.id!).map((record) => [record.turn_id, record]));
-    const reviews = new Map(store.listTaskReviews(params.id!).map((row) => [row.turn_id, reviewOut(store, row)]));
-    const learnings = new Map(store.listTaskLearnings(params.id!).map((row) => [row.chain_id, learningOut(store, row)]));
-    const marking = store.learningOn();
-    // A card's files open the preview as its tree; one deleted since must not come back there.
-    const cited = new Set(trace.nodes.flatMap((node) => node.artifacts.map((file) => file.path)));
-    const gone = store.transaction(() => new Set([...cited].filter((file) => !store.citedPathExists(file))));
-    return jsonResponse(
-      {
-        ...trace,
-        nodes: trace.nodes.map((node) => {
-          const record = records.get(node.turn_id);
-          const routed = {
-            ...node,
-            artifacts: node.artifacts.map((file) => ({ ...file, exists: !gone.has(file.path) })),
-            route: record
-              ? {
-                  record,
-                  review: reviews.get(node.turn_id) ?? null,
-                  // A chain is named after the turn that started it; its note belongs there.
-                  learning: record.chain_id === record.turn_id ? (learnings.get(record.chain_id) ?? null) : null,
-                  ...(marking ? { marked_model: store.turnMarkedModel(node.turn_id) } : {}),
-                }
-              : null,
-          };
-          // A live turn's sentence lives in the engine, not the row, the same way a session's turns do.
-          if (node.status !== "running") return routed;
-          const live = engine.partialText(node.turn_id)?.replace(/\s+/g, " ").trim();
-          return live ? { ...routed, summary: [...live].slice(0, 80).join("") } : routed;
-        }),
-      },
-      200,
-      null,
-    );
+    // The app's own calls on the job (ADR 0083), beside the cards: what reads the trace to a model reads the cards only.
+    return jsonResponse({ ...trace, nodes: boardNodes(trace.nodes, trace.id), steps: store.boardSteps(trace.id, trace.nodes) }, 200, null);
+  }
+
+  params = matchPath(path, "/v1/messages/:id/trace");
+  if (params && method === "GET") {
+    // One line as a board of its own (ADR 0083), for a line filed under no job.
+    const line = store.lineTrace(params.id!);
+    return jsonResponse({ ...line, nodes: boardNodes(line.nodes, null) }, 200, null);
+  }
+
+  params = matchPath(path, "/v1/call-runs/:id");
+  if (params && method === "GET") {
+    // One use of a built-in call, the model's answer included, for a step opened on the board.
+    const run = store.getCallRun(params.id!);
+    if (!run) throw new HttpError(404, "not_found", "no such call run");
+    return jsonResponse(run, 200, null);
   }
 
   params = matchPath(path, "/v1/sessions/:id/tasks");

@@ -70,6 +70,8 @@ get("tasks/:id/artifacts");
 get("annotations", { relpath: v => typeof v === "string" && v.length <= 4096, session_id: id, target_session_id: id, message_id: id, target_message_id: id, status: one("draft", "open", "resolved") });
 get("annotations/:id"); get("annotations/:id/crop");
 get("tasks/:id/(trace|tickets|spec-revisions)");
+// ADR 0083: one line's own flow, and a step's whole answer when it is opened.
+get("messages/:id/trace"); get("call-runs/:id");
 // The command card under a finished turn's reply.
 get("turns/:id/commands");
 get("sessions/:id/tasks");

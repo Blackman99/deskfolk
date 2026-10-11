@@ -1,4 +1,5 @@
 import { isBotRunner, type BotRunner } from "./bots.ts";
+import type { TraceStep } from "./call-runs.ts";
 import type { AcceptanceCheck } from "./checks.ts";
 import { USER_MEMBER } from "./constants.ts";
 import type { Hold } from "./holds.ts";
@@ -290,6 +291,23 @@ export type TaskTrace = {
   session_id: string | null;
   closed_at: string | null;
   nodes: TaskTraceNode[];
+  /**
+   * The app's own calls on this job (ADR 0083): readings, filings, the scribe, judgements, the
+   * picture judge, the organizer, compactions, reflections and retrospectives, oldest first. Beside
+   * the cards rather than among them: what reads the trace back to a model reads `nodes` only.
+   */
+  steps?: TraceStep[];
+};
+
+/**
+ * One line of yours as a flow of its own (ADR 0083), for a line filed under no job: the line, the
+ * turns it woke and what those woke in turn, and the app's calls about any of them.
+ */
+export type LineTrace = {
+  message_id: string;
+  session_id: string;
+  nodes: TaskTraceNode[];
+  steps: TraceStep[];
 };
 
 /** One row of the switcher: a plan this session took part in. */
