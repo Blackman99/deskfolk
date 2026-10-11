@@ -21,6 +21,7 @@
 	import { boardColumns } from './ticket-board.ts';
 	import { beginCardDrag, type CardDrag } from './ticket-board-drag.ts';
 	import { TicketEdits } from './ticket-edits.svelte.ts';
+	import { ballLabel, canMakeSample, isDropped, stageLabel, statusOptionsFor } from './ticket-labels.ts';
 	import TicketDepends from './TicketDepends.svelte';
 	import TicketDetail from './TicketDetail.svelte';
 
@@ -71,7 +72,6 @@
 
 	const botsById = $derived(new Map(bots.map((bot) => [bot.id, bot] as const)));
 	const tickets = $derived([...detail.tickets].sort((a, b) => a.seq - b.seq));
-	const statusOptions = TICKET_STATUS_ORDER.map((status) => ({ value: status, label: t.plan.ticketStatus[status] }));
 
 	/** Status moves and the picked ticket's settings, through the plan's one queue of edits. */
 	const edits = new TicketEdits({
@@ -119,47 +119,8 @@
 		edits.conflictNote = false;
 	});
 
-	/**
-	 * The status menu, its current entry named as the row reads (a stage in its place: 审查中, 返工), so
-	 * the menu's face is the one label the row has.
-	 */
-	function statusOptionsFor(ticket: TicketWithArtifacts): Array<{ value: string; label: string }> {
-		const current = stageLabel(ticket);
-		return statusOptions.map((option) => (option.value === ticket.status ? { ...option, label: current } : option));
-	}
-
-	/** Dropped by its lead (作废): parked with a reason. A ticket you set aside on the board has none and stays 搁置. */
-	function isDropped(ticket: TicketWithArtifacts): boolean {
-		return ticket.status === 'parked' && ticket.dropped_why != null;
-	}
-
-	/** A stage the status alone does not say (ADR 0046) shows in its place: 审查中, 返工, 已交付, 已通过, 作废. */
-	function stageLabel(ticket: TicketWithArtifacts): string {
-		if (isDropped(ticket)) return t.plan.ticketDropped;
-		const stage = ticket.stage;
-		if (stage === 'submitted' || stage === 'in_review' || stage === 'rework' || stage === 'approved') return t.plan.ticketStage[stage];
-		return t.plan.ticketStatus[ticket.status];
-	}
-
 	function select(ticketId: string): void {
 		onSelect(selectedId === ticketId ? null : ticketId);
-	}
-
-	/** Who an open ticket waits on (ADR 0045, from level 4), in the board's words. */
-	function ballLabel(ticket: TicketWithArtifacts): string | null {
-		const ball = ticket.ball;
-		if (!ball) return null;
-		// Waiting for another ticket (ADR 0060): which one, and whether it is the sample you approve.
-		if (ball.kind === 'app' && ball.reason === 'waits' && ball.waits_for) {
-			const other = detail.tickets.find((row) => row.id === ball.waits_for);
-			return other ? t.plan.ballWaits(`#${ticketTag(other.seq)}`, Boolean(other.sample)) : null;
-		}
-		// Below level 5 a ticket waiting on you is one to mark done on the board, not an approval card.
-		const key = ball.kind === 'user' && ball.reason === 'review' && !detail.submissions_on ? 'acceptance'
-			: ball.kind === 'app' || ball.kind === 'user' ? (ball.reason ?? '') : ball.kind;
-		const label = t.plan.ball[key];
-		if (typeof label === 'function') return label(actorName(ball.bot_id ?? '', botsById, youLabel, deletedLabel));
-		return label ?? null;
 	}
 
 	function dependsLabel(ticket: TicketWithArtifacts): string | null {
@@ -174,15 +135,6 @@
 	$effect(() => {
 		edits.loadModels();
 	});
-
-	/**
-	 * Making this ticket the job's sample (ADR 0060) is offered where a sample matters — a large job, or
-	 * one that has one — on a ticket still being made: not the sample already, not through, not parked.
-	 */
-	function canMakeSample(ticket: TicketWithArtifacts): boolean {
-		if (ticket.sample || ticket.status === 'done' || ticket.status === 'parked' || ticket.stage === 'approved') return false;
-		return detail.scale?.value === 'large' || detail.tickets.some((row) => row.sample);
-	}
 
 	function cardRow(ticketId: string): HTMLElement | null {
 		return rootEl?.querySelector<HTMLElement>(`[data-ticket-id="${ticketId}"]`) ?? null;
@@ -303,12 +255,12 @@
 				{@const face = actorFace(ticket.worker ?? '', botsById, youLabel, deletedLabel)}
 				{@const node = latestTurnOfTicket(nodes, ticket.id)}
 				{@const picked = ticket.id === selectedId}
-				{@const ball = ballLabel(ticket)}
+				{@const ball = ballLabel(ticket, detail, t, (id) => actorName(id, botsById, youLabel, deletedLabel))}
 				<!-- A closed ticket waits on nothing and nobody is still on it: 「已通过 · 设计师在做 · 要等 #02」 read as contradictory (2026-10-03). -->
 				{@const closed = ticket.status === 'done' || ticket.status === 'parked'}
 				{@const waits = closed ? null : dependsLabel(ticket)}
 				<!-- Making a ticket the sample is offered on the picked card, where its other actions are. -->
-				{@const sampleable = Boolean(api) && picked && canMakeSample(ticket)}
+				{@const sampleable = Boolean(api) && picked && canMakeSample(ticket, detail)}
 				<!-- A press on the card drags it; from the keyboard the status menu moves it. -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
@@ -333,14 +285,14 @@
 							<Select
 								class="ticket-status is-{ticket.status}"
 								value={ticket.status}
-								options={statusOptionsFor(ticket)}
+								options={statusOptionsFor(ticket, t)}
 								size="sm"
 								ariaLabel={t.plan.changeStatus}
 								disabled={edits.patchingId === ticket.id}
 								onchange={(value) => edits.changeStatus(ticket, value)}
 							/>
 						{:else}
-							<span class="ticket-status is-{ticket.status}">{stageLabel(ticket)}</span>
+							<span class="ticket-status is-{ticket.status}">{stageLabel(ticket, t)}</span>
 						{/if}
 					</div>
 					<!-- The rest of the card picks it too, as the title does; the title is the control a keyboard reaches. -->
