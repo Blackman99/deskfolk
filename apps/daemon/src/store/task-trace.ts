@@ -52,26 +52,55 @@ type TraceApprovalRow = {
  */
 export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
   const task = getTask(ctx, taskId);
+  return {
+    id: task.id,
+    dir: task.dir,
+    title: task.title,
+    session_id: task.session_id,
+    closed_at: task.closed_at,
+    nodes: traceNodes(ctx, { kind: "task", taskId, dir: task.dir }),
+  };
+}
+
+/**
+ * Which turns a board draws: a job's, or a given set (one line's, ADR 0083). Each query below
+ * narrows by the scope's own clause; a job's are the ones it always was.
+ */
+type TraceScope = { kind: "task"; taskId: string; dir: string } | { kind: "turns"; turnIds: readonly string[] };
+
+/** The scope's clause on a turns table: `prefix` is its alias with the dot, or nothing. */
+function turnsIn(scope: TraceScope, prefix: string): { sql: string; args: string[] } {
+  if (scope.kind === "task") return { sql: `${prefix}task_id = ?`, args: [scope.taskId] };
+  const ids = scope.turnIds.length > 0 ? [...scope.turnIds] : [""];
+  return { sql: `${prefix}id IN (${ids.map(() => "?").join(", ")})`, args: ids };
+}
+
+/** The cards of a board, oldest first. */
+export function traceNodes(ctx: StoreContext, scope: TraceScope): TaskTraceNode[] {
+  const byTurn = turnsIn(scope, "t.");
   const turns = ctx.db
-    .query<TraceTurnRow, [string]>(
+    .query<TraceTurnRow, string[]>(
       `SELECT t.id, t.session_id, t.bot_id, t.status, t.trigger_message_id, t.partial_text, t.ticket_id, t.created_at,
               m.body AS trigger_body, m.created_at AS trigger_created_at,
               m.turn_id AS trigger_turn_id, m.author AS trigger_author, m.kind AS trigger_kind
        FROM turns t
        JOIN messages m ON m.id = t.trigger_message_id
-       WHERE t.task_id = ?
+       WHERE ${byTurn.sql}
        ORDER BY t.created_at ASC, t.id ASC`,
     )
-    .all(taskId);
+    .all(...byTurn.args);
   const turnIds = new Set(turns.map((turn) => turn.id));
 
+  // A job's words are its messages; a set of turns' are the ones those turns wrote.
+  const ids = scope.kind === "turns" && scope.turnIds.length > 0 ? [...scope.turnIds] : [""];
+  const bySpoken = scope.kind === "task" ? { sql: "task_id = ?", args: [scope.taskId] } : { sql: `turn_id IN (${ids.map(() => "?").join(", ")})`, args: ids };
   const spoken = ctx.db
-    .query<TraceMessageRow, [string]>(
+    .query<TraceMessageRow, string[]>(
       `SELECT id, turn_id, kind, body, created_at FROM messages
-       WHERE task_id = ? AND turn_id IS NOT NULL AND kind IN ('bot', 'ask', 'system')
+       WHERE ${bySpoken.sql} AND turn_id IS NOT NULL AND kind IN ('bot', 'ask', 'system')
        ORDER BY created_at ASC, id ASC`,
     )
-    .all(taskId);
+    .all(...bySpoken.args);
   // A reply in several parts often ends on its files alone: the card says the last part with words
   // in it (IG MV, 2026-10-08: nine cards drew blank, seven of them over words the Bot had said).
   const lastWord = new Map<string, TraceMessageRow>();
@@ -91,30 +120,31 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
   }
 
   const attachments = ctx.db
-    .query<TraceAttachmentRow, [string]>(
+    .query<TraceAttachmentRow, string[]>(
       // Keyed off this plan's turns rather than the message's own plan: a message written before
       // plans existed carries none, and its files would vanish from the card that produced them.
       `SELECT a.id, a.message_id, m.turn_id AS turn_id, a.workspace_relpath AS path, a.created_at
        FROM attachments a
        JOIN messages m ON m.id = a.message_id
        JOIN turns t ON t.id = m.turn_id
-       WHERE t.task_id = ?
+       WHERE ${byTurn.sql}
        ORDER BY a.created_at ASC, a.id ASC`,
     )
-    .all(taskId);
+    .all(...byTurn.args);
   const filesByTurn = new Map<string, TaskTraceNode["artifacts"]>();
   // What you attached to the message that opened a stage belongs on your card, not on nobody's.
+  const byOwnTurn = turnsIn(scope, "");
   const yourFiles = ctx.db
-    .query<TraceAttachmentRow, [string]>(
+    .query<TraceAttachmentRow, string[]>(
       `SELECT a.id, a.message_id, m.turn_id AS turn_id, a.workspace_relpath AS path, a.created_at
        FROM attachments a
        JOIN messages m ON m.id = a.message_id
        WHERE m.turn_id IS NULL AND m.id IN (
-         SELECT trigger_message_id FROM turns WHERE task_id = ?
+         SELECT trigger_message_id FROM turns WHERE ${byOwnTurn.sql}
        )
        ORDER BY a.created_at ASC, a.id ASC`,
     )
-    .all(taskId);
+    .all(...byOwnTurn.args);
   const filesByMessage = new Map<string, TaskTraceNode["artifacts"]>();
   for (const row of yourFiles) {
     const list = filesByMessage.get(row.message_id) ?? [];
@@ -124,7 +154,7 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
   }
   for (const row of attachments) {
     if (!turnIds.has(row.turn_id)) continue;
-    if (isReservedTaskPath(task.dir, row.path)) continue;
+    if (scope.kind === "task" && isReservedTaskPath(scope.dir, row.path)) continue;
     const list = filesByTurn.get(row.turn_id) ?? [];
     if (list.some((file) => file.path === row.path)) continue;
     list.push({ path: row.path, message_id: row.message_id, attachment_id: row.id });
@@ -132,14 +162,14 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
   }
 
   const approvals = ctx.db
-    .query<TraceApprovalRow, [string]>(
+    .query<TraceApprovalRow, string[]>(
       `SELECT a.turn_id, a.message_id, a.summary
        FROM approvals a
        JOIN turns t ON t.id = a.turn_id
-       WHERE t.task_id = ? AND a.status = 'pending' AND t.status = 'waiting_approval'
+       WHERE ${byTurn.sql} AND a.status = 'pending' AND t.status = 'waiting_approval'
        ORDER BY a.created_at ASC`,
     )
-    .all(taskId);
+    .all(...byTurn.args);
   const approvalByTurn = new Map<string, TraceApprovalRow>();
   for (const row of approvals) if (!approvalByTurn.has(row.turn_id)) approvalByTurn.set(row.turn_id, row);
 
@@ -221,16 +251,10 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
       ticket_id: turn.ticket_id ?? null,
     });
   }
-  nodes.push(...decisionNodes(ctx, taskId, turnIds, nodes));
+  // Your decisions are a job's: a line's own board has none.
+  if (scope.kind === "task") nodes.push(...decisionNodes(ctx, scope.taskId, turnIds, nodes));
   nodes.sort((a, b) => a.created_at.localeCompare(b.created_at) || a.turn_id.localeCompare(b.turn_id));
-  return {
-    id: task.id,
-    dir: task.dir,
-    title: task.title,
-    session_id: task.session_id,
-    closed_at: task.closed_at,
-    nodes,
-  };
+  return nodes;
 }
 
 function parse(raw: string | null): Record<string, unknown> {
