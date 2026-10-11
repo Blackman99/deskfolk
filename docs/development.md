@@ -470,6 +470,16 @@ Bot 在正文里按它壳的视角写路径（刚 `echo ... > sales.csv` 之后�
 - **开库合并**：`reconcilePrompts` 在 `runtime.ts` 启动、`/v1/capabilities/raise` 抬级别之后和 `scripts/check-db.ts`（在库的副本上）各跑一次；改了某段默认的措辞，用过它的人下次开库会被合并或标冲突，提交前跑一次 `check:db` 看看会怎样。
 - **本机接口**：`GET /v1/prompts`、`GET|PUT /v1/prompts/:id/:locale`、`POST …/reset`、`POST …/keep-mine`、`GET /v1/prompt-revisions?approval_id=`、`POST /v1/prompt-revisions/:id/(undo|restore)`，都登记在手机白名单里；Bot 的工具是 `list_prompts` / `read_prompt` / `edit_prompt` / `reset_prompt`（`prompt-tools.ts`），改动走批准卡 `prompt-edit`，不进 `ALLOWED_KIND_KEYS`。
 
+## 引擎
+
+应用自己的环节在一个会话里怎么跑（[ADR 0085](adr/0085-engines.md)）：
+
+- **目录和内置**：`packages/protocol/src/playbooks.ts` 的 `PLAYBOOK_STEPS` 是全部环节（挂在哪、对应哪个内置调用、能不能关、带哪些数和范围；默认值就是原来代码里的常量），`BUILTIN_PLAYBOOKS` 是通用、视频、代码各自对默认的差别。`resolvePlaybook` / `validatePlaybookDiff` / `compactPlaybookDiff` 是纯函数，信使和守护进程共用。原来的常量（`SCRIBE_ADDS_MAX`、`TURN_HOP_LIMIT`、`CEILING_STREAK`……）现在从 `playbookDefaults()` 取，照旧导出给测试。
+- **存和查**：`store/playbooks.ts`。`playbooks` 一行是一个引擎的差别（内置的第一次改时才有行；自定义的带 `base_id` 和名字），`playbook_revisions` 只增不删。`playbookFor({ sessionId, taskId, turnId })` 解出这一次照哪个引擎：事所在的会话 → 它所在的会话（线程和 Bot 之间的私聊顺着来源走）→ 设置的 `default_playbook` → 通用；每次都现查，没有缓存。`recordCallRun` 自己盖上引擎和版本。
+- **接到环节上**：能关的环节在原来的 `ablation.has(...)` 旁边多问一句 `store.playbookStepOn(scope, step)`（ablation 照旧压过引擎）；数在原来读常量的地方改成 `playbookFor(...).resolved.<step>.params.<key>`，跳数节奏每跳读一次。加一个环节：在目录里登记，读它的地方按上面接，`playbooks.test.ts` 的目录检查会核对默认在范围内。
+- **测试**：通用默认关着书记员、完工复盘和反思。测这几样、或像场景和本机接口的测试那样跑整条流水线的，先 `everyStepOn(store)`（`test-kit/playbook.ts`），场景和本机接口的测试台已经调了。
+- **本机接口**：`GET|POST /v1/playbooks`、`GET|PUT|PATCH|DELETE /v1/playbooks/:id`、`GET /v1/playbooks/:id/revisions`、`POST /v1/playbooks/:id/reset`、`PUT /v1/sessions/:id/playbook`，`POST /v1/bots`、`POST /v1/sessions` 收 `playbook_id`，设置收 `default_playbook`，都登记在手机白名单里（`local-api/routes/playbooks.ts`、`remote/routes.ts`）；改动由日志触发 `playbook.changed`。
+
 ## 本机记录查询
 
 Bot 的 `describe_data` / `query_data` / `read_data_log`（`data-tools.ts`，[ADR 0065](adr/0065-bots-read-this-machines-records.md)）读数据目录里的 `state.sqlite`（`store.filename`；内存库没有文件，工具回 `unavailable`）和两份日志。三个都在 `NO_EFFECT_TOOLS` 里：叫停中、只读段里也能用，不出批准卡。

@@ -78,6 +78,7 @@ export type SessionUpsertInput = {
   archived_at?: string | null;
   origin_session_id: string | null;
   origin_message_id: string | null;
+  playbook_id?: string | null;
   created_at: string;
   updated_at: string;
   participants: { member: string; joined_at: string; left_at: string | null }[];
@@ -94,6 +95,7 @@ export function sessionUpsertFields(session: SessionUpsertInput) {
     archived_at: session.archived_at ?? null,
     origin_session_id: session.origin_session_id,
     origin_message_id: session.origin_message_id,
+    playbook_id: session.playbook_id ?? null,
     created_at: session.created_at,
     updated_at: session.updated_at,
     participants: session.participants,

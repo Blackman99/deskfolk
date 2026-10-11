@@ -86,6 +86,17 @@ get("prompt-revisions", { approval_id: id }, ["approval_id"]);
 add("PUT", prompt, { text: string, if_revision: nullable(string), edit_session: string }, ["text", "if_revision"]);
 add("POST", `${prompt}/(reset|keep-mine)`, { if_revision: nullable(string) }, ["if_revision"]);
 add("POST", "prompt-revisions/:id/(undo|restore)", {});
+// Engines (ADR 0085): read, change as a difference from the built-in, reset a step, make your own,
+// rename or remove it, and a conversation's engine. The daemon checks a difference's shape.
+const playbook = "playbooks/(?:general|video|coding|[0-9A-HJKMNP-TV-Z]{26})";
+const playbookDiff: Check = v => !!v && typeof v === "object" && !Array.isArray(v) && JSON.stringify(v).length <= 8000;
+get("playbooks"); get(playbook); get(`${playbook}/revisions`);
+add("POST", "playbooks", { from: string, name: string }, ["from", "name"]);
+add("PUT", playbook, { diff: playbookDiff, if_revision: nullable(string) }, ["diff"]);
+add("POST", `${playbook}/reset`, { step: nullable(string), if_revision: nullable(string) });
+add("PATCH", playbook, { name: string, if_revision: nullable(string) }, ["name"], true);
+add("DELETE", playbook);
+add("PUT", "sessions/:id/playbook", { playbook_id: nullable(string) }, ["playbook_id"]);
 // Changing a line of yours after it went out, and what it said before (ADR 0063).
 add("PATCH", "messages/:id", { body: string }, ["body"]);
 // ADR 0069: take back a line no Bot has read yet, or have the working Bot read it now.
@@ -196,13 +207,13 @@ get("notifications/:id");
 get("notification-policy");
 get("notification-device");
 add("POST", "models/probe", { endpoint_base_url: string, endpoint_api_key: string, api_format: apiFormat, provider_id: id });
-add("POST", "bots", bot, ["name", "duties", "boundaries"]);
+add("POST", "bots", { ...bot, playbook_id: nullable(string) }, ["name", "duties", "boundaries"]);
 add("POST", "providers", provider, ["name", "base_url"]);
 add("POST", "providers/:id/speed-test", { model: string }, ["model"]);
 add("POST", "mcp-servers", mcp, ["name"]);
 add("POST", "skills", { ...skill, bot_id: id }, ["bot_id", "name", "description", "body"]);
 add("POST", "routines", { ...routine, bot_id: id }, ["bot_id", "title", "instruction", "schedule"]);
-add("POST", "sessions", { name: string, members: list(id) }, ["name", "members"]);
+add("POST", "sessions", { name: string, members: list(id), playbook_id: nullable(string) }, ["name", "members"]);
 add("POST", "allow-rules", { kind_key: string, scope: string }, ["kind_key", "scope"]);
 add("POST", "turns/:id/mark-model"); add("DELETE", "turns/:id/mark-model");
 add("PATCH", "lessons/:id", { status: one("active", "retired"), action: one("warn", "block"), text: string }, [], true);
@@ -245,7 +256,7 @@ add("PATCH", "settings", { endpoint_base_url: string, endpoint_api_key: string, 
   // An older window's organizer (ADR 0075): an endpoint's only; builtin_models takes a Claude model too (ADR 0077).
   organizer_model: nullable(object({ provider_id: id, model: string }, ["provider_id", "model"])),
   builtin_models: object(Object.fromEntries(BUILTIN_MODEL_ROLES.map((role) => [role, sideModel]))),
-  launch_at_login: bool, locale: one("en", "zh"), theme: one("system", "light", "dark"),
+  launch_at_login: bool, locale: one("en", "zh"), theme: one("system", "light", "dark"), default_playbook: string,
   if_revision: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 }, [], true);
 // The speech endpoint (ADR 0073): set up like the settings, under their revision; a transcription
 // carries its recording as base64, bounded under the link's one-megabyte message.

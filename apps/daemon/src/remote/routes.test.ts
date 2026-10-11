@@ -365,3 +365,26 @@ test("the phone saves any built-in call's model (ADR 0077) as an endpoint's, a C
     expect(() => validateBusiness(patch(bad))).toThrow();
   }
 });
+
+test("engines from the phone: read, change, reset, make, rename and remove one, and choose a conversation's", () => {
+  const ok = (request: Omit<RemoteRequest, "v" | "id">) => expect(() => validateBusiness({ v: 1, id, ...request })).not.toThrow();
+  const bad = (request: Omit<RemoteRequest, "v" | "id">) => expect(() => validateBusiness({ v: 1, id, ...request })).toThrow();
+  ok({ method: "GET", path: "/v1/playbooks" });
+  for (const engine of ["general", "video", "coding", id]) {
+    ok({ method: "GET", path: `/v1/playbooks/${engine}` });
+    ok({ method: "GET", path: `/v1/playbooks/${engine}/revisions` });
+    ok({ method: "PUT", path: `/v1/playbooks/${engine}`, body: { diff: { v: 1, steps: { scribe: { on: false } } }, if_revision: null } });
+    ok({ method: "POST", path: `/v1/playbooks/${engine}/reset`, body: { step: "scribe", if_revision: null } });
+  }
+  bad({ method: "GET", path: "/v1/playbooks/anything" });
+  bad({ method: "PUT", path: "/v1/playbooks/video", body: { diff: [] } });
+  ok({ method: "POST", path: "/v1/playbooks", body: { from: "video", name: "MV 专用" } });
+  ok({ method: "PATCH", path: `/v1/playbooks/${id}`, body: { name: "MV", if_revision: "r1" } });
+  ok({ method: "DELETE", path: `/v1/playbooks/${id}` });
+  ok({ method: "PUT", path: `/v1/sessions/${id}/playbook`, body: { playbook_id: "video" } });
+  ok({ method: "PUT", path: `/v1/sessions/${id}/playbook`, body: { playbook_id: null } });
+  bad({ method: "PUT", path: `/v1/sessions/${id}/playbook`, body: {} });
+  ok({ method: "POST", path: "/v1/bots", body: { name: "导演", duties: "出片", boundaries: "x", playbook_id: "video" } });
+  ok({ method: "POST", path: "/v1/sessions", body: { name: "视频制作", members: [id], playbook_id: "video" } });
+  ok({ method: "PATCH", path: "/v1/settings", body: { default_playbook: "coding" } });
+});

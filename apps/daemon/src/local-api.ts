@@ -17,6 +17,7 @@ import { configRoutes } from "./local-api/routes/config";
 import { messageRoutes } from "./local-api/routes/messages";
 import { notificationRoutes } from "./local-api/routes/notifications";
 import { planRoutes } from "./local-api/routes/plans";
+import { playbookRoutes } from "./local-api/routes/playbooks";
 import { qualityAndPromptRoutes } from "./local-api/routes/quality-and-prompts";
 import { speechRoutes } from "./local-api/routes/speech";
 import { systemRoutes } from "./local-api/routes/system";
@@ -847,6 +848,7 @@ function dispatch(
   // Each group answers only the paths it owns and returns null for the rest; the groups keep the
   // order their checks had when this was one function, so the first match still wins.
   const routed = systemRoutes(ctx)
+    ?? playbookRoutes(ctx)
     ?? botAndSessionRoutes(ctx)
     ?? planRoutes(ctx)
     ?? qualityAndPromptRoutes(ctx)
