@@ -76,6 +76,7 @@
 		{items}
 		loadFailed={failed}
 		openTab={() => runtime.openPromptSettings(null)}
+		ownBack={host !== 'page'}
 	/>
 </div>
 

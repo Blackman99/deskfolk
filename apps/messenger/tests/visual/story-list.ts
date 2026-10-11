@@ -82,6 +82,7 @@ export const STORY_SIZES = {
 	'settings-prompts-narrow': { width: 390, height: 844 },
 	'roles': { width: 1000, height: 720 },
 	'roles-narrow': { width: 390, height: 844 },
+	'roles-narrow-tab': { width: 1000, height: 720 },
 	'settings-about': { width: 1000, height: 720 },
 	// The remote access tab before the Mac has a relay, with the deploy-your-own guide unfolded.
 	'settings-remote-guide': { width: 1000, height: 900 },

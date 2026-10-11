@@ -42,8 +42,9 @@ const ROUND_GAP = 26;
 const PAD = 16;
 /** How far right of the spine a step hangs when the round does not fit across. */
 const INDENT = 26;
-/** How wide a step hung down the spine grows with the room it has. */
+/** How wide a step hung down the spine grows with the room it has, and how far it gives way. */
 const SPINE_STEP_MAX = 320;
+const SPINE_STEP_MIN = 150;
 
 export type PlaybookCard = {
   id: string;
@@ -74,7 +75,7 @@ const elbow = (x1: number, y1: number, x2: number, y2: number): string => `M ${x
 
 /** The map for a canvas `available` px wide. */
 export function layPlaybookFlow(available: number): PlaybookLayout {
-  const width = Math.max(available, ROOT_W + 2 * PAD, STEP_W + INDENT + 2 * PAD);
+  const width = Math.max(available, ROOT_W + 2 * PAD, SPINE_STEP_MIN + INDENT + 2 * PAD);
   const inner = width - 2 * PAD;
   const across = Math.max(1, Math.floor((inner + GAP_X) / (STEP_W + GAP_X)));
   const fans = PLAYBOOK_ROUNDS.every((round) => round.steps.length <= across);
@@ -113,7 +114,7 @@ export function layPlaybookFlow(available: number): PlaybookLayout {
       y -= GAP_Y - ROW_GAP;
       for (const step of round.steps) {
         const x = PAD + INDENT;
-        cards.push({ id: step, node: step, hook: round.hook, kind: "step", x, y, w: Math.max(STEP_W, Math.min(SPINE_STEP_MAX, width - PAD - x)), h: STEP_H });
+        cards.push({ id: step, node: step, hook: round.hook, kind: "step", x, y, w: Math.max(SPINE_STEP_MIN, Math.min(SPINE_STEP_MAX, width - PAD - x)), h: STEP_H });
         edges.push({ from: root.id, to: step, d: elbow(spine, root.y + rootH, x, y + STEP_H / 2) });
         y += STEP_H + ROW_GAP;
       }

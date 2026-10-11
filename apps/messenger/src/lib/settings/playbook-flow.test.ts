@@ -12,7 +12,7 @@ test("every step is in one round, under the thing that sets it off, and ↑ ↓ 
 });
 
 test("wide, a round's steps fan out in a row under its root; narrow, they hang down a spine — nothing overlaps either way", () => {
-  for (const width of [1100, 390]) {
+  for (const width of [1100, 390, 228]) {
     const layout = layPlaybookFlow(width);
     const boxes = layout.cards;
     for (const [i, a] of boxes.entries()) {
@@ -32,6 +32,8 @@ test("wide, a round's steps fan out in a row under its root; narrow, they hang d
   const hung = narrow.cards.filter((card) => card.hook === "turn" && card.kind === "step");
   expect(new Set(hung.map((card) => card.x)).size).toBe(1);
   expect(hung[0]!.w).toBeGreaterThanOrEqual(STEP_W);
+  // As narrow as the list's place beside a wide window, the map still fits without scrolling across.
+  expect(layPlaybookFlow(228).width).toBe(228);
   // The turn's root is the Bot's turn itself, to be picked; the others are labels.
   expect(narrow.cards.find((card) => card.hook === "turn" && card.kind === "root")).toMatchObject({ id: "turn", node: "turn" });
   expect(narrow.cards.find((card) => card.hook === "line" && card.kind === "root")).toMatchObject({ node: null });

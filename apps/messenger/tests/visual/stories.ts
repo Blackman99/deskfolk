@@ -1369,6 +1369,21 @@ const defs: Record<StoryName, Story> = {
 		props: { runtime: fakeRuntime(routingWorld, { client: routingClient }), t, host: 'page' },
 		afterMount: routingNode()
 	},
+	// A wide window, Roles narrow all the same: a split tab, or the list's place. It goes by its own
+	// width — the map alone, its steps hung down the spine — and a step opens as a page with a way back.
+	'roles-narrow-tab': {
+		component: RolesPage as never,
+		props: { runtime: fakeRuntime(routingWorld, { client: routingClient }), t },
+		async afterMount(host: HTMLElement) {
+			host.style.width = '300px';
+			host.style.height = '100dvh';
+			host.style.display = 'flex';
+			await routingNode()(host);
+			host.querySelector<HTMLButtonElement>('[data-playbook-node="settle"]')?.click();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			flushSync();
+		}
+	},
 	// On a phone, Prompts is a list of its groups, each saying how many it holds and how many are edited.
 	'settings-prompts-narrow': {
 		component: SettingsModal as never,

@@ -30,8 +30,9 @@
 	 * drawn as the flow board draws a job — the things that set the app's own steps off, each step a
 	 * card — and the step picked beside it: whether it runs in that engine and with what numbers, and
 	 * for a step that makes one of the app's calls, that call's model and prompts. The two scroll on
-	 * their own, so a pick changes what is beside the map and moves nothing. A phone shows the map
-	 * alone and opens a step as a page of its own; a prompt opens in the same editor as on Prompts.
+	 * their own, so a pick changes what is beside the map and moves nothing. Where it is narrow — a
+	 * phone, a narrow tab, or in place of the list beside a wide window — it shows the map alone and
+	 * opens a step as a page of its own; a prompt opens in the same editor as on Prompts.
 	 */
 	interface Props {
 		runtime: MessengerRuntime;
@@ -45,12 +46,17 @@
 		openTab: (tab: 'prompts') => void;
 		/** What the dialog says over any page: pending credentials, a failed save, setup not done. */
 		notices?: Snippet;
+		/** Nothing above it has a way back (a tab on the workbench): a step's page carries its own. */
+		ownBack?: boolean;
 	}
 
-	let { runtime, t, snapshot, items, loadFailed = false, closeSettings, openTab, notices }: Props = $props();
+	let { runtime, t, snapshot, items, loadFailed = false, closeSettings, openTab, notices, ownBack = false }: Props = $props();
 	const c = $derived(t.routing);
 	const ui = $derived<Locale>(snapshot.settings.locale === 'en' ? 'en' : 'zh');
 	const phone = new MediaQuery('(max-width: 720px)');
+	/** Its own width once measured, so a narrow tab or the list's place is narrow whatever the window. */
+	let width = $state(0);
+	const narrow = $derived(width > 0 ? width <= 720 : phone.current);
 	const providers = $derived(snapshot.providers);
 	const botNames = $derived(new Map(snapshot.bots.map((bot) => [bot.id, bot.name])));
 
@@ -112,7 +118,7 @@
 
 	function pick(node: PlaybookNodeId): void {
 		selected = node;
-		if (!phone.current) {
+		if (!narrow) {
 			// Another call's page starts at its top; the map stays where it was. WebKit leaves focus
 			// where it was on a click, so the picked node takes it, for ↑ and ↓ to go on from there.
 			if (detailScroll) detailScroll.scrollTop = 0;
@@ -125,7 +131,7 @@
 
 	/** On a wide window ↑ and ↓ walk the map's calls in its order, picking each as it goes. */
 	function onMapKeydown(event: KeyboardEvent): void {
-		if (phone.current || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return;
+		if (narrow || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return;
 		const at = order.indexOf(selected);
 		const next = order[Math.min(order.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)))]!;
 		event.preventDefault();
@@ -135,17 +141,17 @@
 
 	/** The open call's name for the page head on a phone; null on the map, and on a wide window. */
 	export function sectionTitle(): string | null {
-		return phone.current && opened ? nameOf(selected) : null;
+		return narrow && opened ? nameOf(selected) : null;
 	}
 
 	/** A call's page on a phone, or the prompt editor, is open: Back has a step to take in here first. */
 	export function deep(): boolean {
-		return open !== null || (phone.current && opened);
+		return open !== null || (narrow && opened);
 	}
 
 	/** Back on a phone from a call's page goes to the map. */
 	export function backFromSection(): boolean {
-		if (!phone.current || !opened) return false;
+		if (!narrow || !opened) return false;
 		opened = false;
 		return true;
 	}
@@ -179,7 +185,7 @@
 		runtime.rolesTarget = null;
 		if (target.role) {
 			selected = stepOfRole(target.role);
-			if (phone.current) opened = true;
+			if (narrow) opened = true;
 		}
 	});
 
@@ -305,12 +311,15 @@
 	{/if}
 {/snippet}
 
-<div class="routing-tab">
-	{#if phone.current}
+<div class="routing-tab" class:is-narrow={narrow} bind:clientWidth={width}>
+	{#if narrow}
 		<div class="routing-scroll" role="region" aria-label={c.tab} bind:this={scroller}>
 			{@render notices?.()}
 			{#if opened}
 				<div class="routing-subpage">
+					{#if ownBack}
+						<button type="button" class="routing-link routing-back" data-routing-back onclick={() => backFromSection()}>‹ {c.backToMap}</button>
+					{/if}
 					{@render detail()}
 				</div>
 			{:else}
@@ -476,6 +485,15 @@
 
 	.routing-link:hover {
 		text-decoration: underline;
+	}
+
+	.routing-back {
+		margin-bottom: 12px;
+	}
+
+	/* Narrow by its own width too: a narrow tab, or the list's place beside a wide window. */
+	.routing-tab.is-narrow .routing-scroll {
+		padding: 14px 16px 20px;
 	}
 
 	@media (max-width: 720px) {

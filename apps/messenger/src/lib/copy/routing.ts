@@ -2,6 +2,7 @@ import type { CopyShape } from "./shape.ts";
 
 export const zh = {
   tab: "分工",
+  backToMap: "回到图上",
   intro: "应用自己的环节按什么时候跑排成一张图。选一个，看它在这个引擎里跑不跑、带什么数；会调模型的，还能设模型、改提示词。",
   model: "模型",
   prompts: "提示词",
@@ -29,6 +30,7 @@ export const zh = {
 
 export const en: CopyShape<typeof zh> = {
   tab: "Roles",
+  backToMap: "Back to the map",
   intro: "The app's own steps, mapped by when they run. Pick one to see whether it runs in this engine and with what numbers; one that calls a model also has its model and prompts.",
   model: "Model",
   prompts: "Prompts",
