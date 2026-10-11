@@ -119,6 +119,10 @@
 		{#if step.ms !== null}
 			<span class="trace-step-chip mono">{t.traceSteps.took(step.ms)}</span>
 		{/if}
+		{#if step.playbook_id}
+			<!-- The engine it ran under, and how many times that engine had been changed then (ADR 0085). -->
+			<span class="trace-step-chip" data-step-engine={step.playbook_id}>{t.playbooks.inForce(t.playbooks.builtin[step.playbook_id] ?? t.playbooks.custom, step.playbook_revision ?? 0)}</span>
+		{/if}
 	</div>
 	{#if step.cached}
 		<p class="trace-step-detail-note">{t.traceSteps.cached}</p>

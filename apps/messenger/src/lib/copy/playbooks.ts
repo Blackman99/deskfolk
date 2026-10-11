@@ -82,6 +82,7 @@ export const zh = {
   offShort: "已关",
   inForce: (name: string, revision: number) => (revision > 0 ? `引擎 ${name} · 第 ${revision} 版` : `引擎 ${name}`),
   followDefault: (name: string) => `跟默认（${name}）`,
+  custom: "自定义",
   pickerHint: "这个对话里应用自己的环节怎么跑。在「分工」页上看和改。",
 };
 
@@ -165,5 +166,6 @@ export const en: CopyShape<typeof zh> = {
   offShort: "Off",
   inForce: (name: string, revision: number) => (revision > 0 ? `Engine ${name} · revision ${revision}` : `Engine ${name}`),
   followDefault: (name: string) => `Follow the default (${name})`,
+  custom: "custom",
   pickerHint: "How the app's own steps run in this conversation. Seen and changed on Roles.",
 };

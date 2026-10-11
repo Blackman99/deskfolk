@@ -14,6 +14,7 @@ export const STORY_SIZES = {
 	'create-bot-sheet': { width: 340, height: 720 },
 	'group-pane': { width: 420, height: 900 },
 	'group-pane-section': { width: 420, height: 900 },
+	'group-pane-engine': { width: 420, height: 900 },
 	'profile-pane': { width: 420, height: 1100 },
 	'profile-pane-section': { width: 420, height: 1100 },
 	// Past the 680px breakpoint, so the list and its inline editor get the drawer layout; the

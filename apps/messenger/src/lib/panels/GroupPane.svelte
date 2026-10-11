@@ -3,6 +3,7 @@
 	import { USER_MEMBER, type SessionSummary } from '@real-bot/protocol';
 	import Select from '../Select.svelte';
 	import SettingsSubject from './SettingsSubject.svelte';
+	import PlaybookPicker from './PlaybookPicker.svelte';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import type { Copy } from '../copy.ts';
 	import {
@@ -422,6 +423,9 @@
 						<span>{t.sidebar.archive}</span>
 					</button>
 				{/if}
+			</div>
+			<div class="mt-4 pt-4 playbook-row">
+				<PlaybookPicker {runtime} sessionId={selected.id} {t} />
 			</div>
 		</div>
 	</div>
@@ -936,5 +940,9 @@
 				transition: none;
 			}
 		}
+	}
+
+	.playbook-row {
+		border-top: 1px solid var(--line);
 	}
 </style>

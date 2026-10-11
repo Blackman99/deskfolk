@@ -1086,6 +1086,30 @@ const defs: Record<StoryName, Story> = {
 			onClearHistory: () => {}
 		}
 	},
+	// A group's actions on a phone, its engine chosen among them (ADR 0085).
+	'group-pane-engine': {
+		component: GroupPane as never,
+		props: {
+			runtime: fakeRuntime({ bots, sessions: [{ ...aGroup(), playbook_id: 'video' }] }, { client: playbooksClient }),
+			selected: aGroup(),
+			t,
+			detail: reactive({
+				sessionId: 'sess-1',
+				name: '视频全流程制作组',
+				nameError: undefined,
+				failed: false,
+				pullPick: ''
+			}),
+			onOpenProfile: () => {},
+			onDeleteGroup: () => {},
+			onClearHistory: () => {}
+		},
+		async afterMount(host) {
+			[...host.querySelectorAll<HTMLButtonElement>('.group-section-btn')][1]?.click();
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			flushSync();
+		}
+	},
 	'group-pane-section': {
 		component: GroupPane as never,
 		props: {

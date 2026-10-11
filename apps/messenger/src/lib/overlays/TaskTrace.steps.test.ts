@@ -140,6 +140,18 @@ test("Escape in a picker opened from the call's settings is the picker's; elsewh
   view.close();
 });
 
+test("an opened step names the engine it ran under and its revision (ADR 0085)", async () => {
+  const trace = stepped();
+  trace.steps = trace.steps!.map((step, i) => (i === 0 ? { ...step, playbook_id: "video", playbook_revision: 2 } : step));
+  const view = open({ trace, pane: true });
+  await until(view.host, ".trace-step");
+  click(stepCards(view.host)[0]);
+  await settle();
+  const detail = view.host.querySelector(".trace-step-detail")!;
+  expect(detail.querySelector("[data-step-engine]")?.textContent).toBe("引擎 视频 · 第 2 版");
+  view.close();
+});
+
 test("another step takes the panel over, and on a phone Back puts it away before leaving the board", async () => {
   const view = open({ trace: stepped() });
   await until(view.host, ".trace-step");

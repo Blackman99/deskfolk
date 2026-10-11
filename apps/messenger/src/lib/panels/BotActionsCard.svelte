@@ -2,8 +2,9 @@
 	import type { Bot } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import PlaybookPicker from './PlaybookPicker.svelte';
 
-	/** The actions tab: archive, the session mute, and the danger zone. */
+	/** The actions tab: archive, the session mute, the direct's engine (ADR 0085), and the danger zone. */
 	type Props = {
 		runtime: MessengerRuntime;
 		bot: Bot;
@@ -55,6 +56,11 @@
 					}}
 				/>
 			</div>
+			{#if selectedKind === 'you-bot'}
+				<div class="mt-4 pt-4 playbook-row">
+					<PlaybookPicker {runtime} sessionId={runtime.selectedId} {t} />
+				</div>
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -97,7 +103,8 @@
 </div>
 
 <style>
-	.session-mute-row {
+	.session-mute-row,
+	.playbook-row {
 		border-top: 1px solid var(--line);
 	}
 </style>
