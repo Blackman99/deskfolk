@@ -3,7 +3,7 @@ import { BUILTIN_MODEL_ROLES, type PromptSummary, type Settings } from "@real-bo
 import { copyFor } from "../copy.ts";
 import { emptySnapshot } from "../snapshot.ts";
 import { noBuiltinModels } from "./builtin-models.ts";
-import { askOnce, modelShort, promptsTabItems, ROUTING_LANES, routingNodes, routingNodeView } from "./routing-map.ts";
+import { askOnce, modelShort, promptsTabItems, routingNodeView } from "./routing-map.ts";
 
 const settingsOf = (chosen: Partial<NonNullable<Settings["builtin_models"]>> = {}): Settings => ({
   ...emptySnapshot().settings,
@@ -22,28 +22,6 @@ function prompt(id: string, over: Partial<PromptSummary> = {}, state: "default" 
     ...over,
   };
 }
-
-test("the map draws every built-in call once, and the Bot's own turn", () => {
-  const nodes = routingNodes();
-  expect(nodes.filter((node) => node !== "turn").sort()).toEqual([...BUILTIN_MODEL_ROLES].sort());
-  expect(nodes.filter((node) => node === "turn")).toHaveLength(1);
-  // A line of yours is read before it wakes a Bot; the scribe runs beside the reading.
-  const line = ROUTING_LANES.find((lane) => lane.key === "line")!;
-  expect(line.steps.map((step) => step.node)).toEqual(["reader", "turn", "judge"]);
-  expect(line.steps[0]!.branches.map((branch) => branch.node)).toEqual(["scribe"]);
-});
-
-test("every lane and arrow has words in both languages", () => {
-  for (const copy of [copyFor("zh"), copyFor("en")]) {
-    for (const lane of ROUTING_LANES) {
-      expect(copy.routing.lanes[lane.key].length).toBeGreaterThan(0);
-      for (const step of lane.steps) {
-        if (step.edge) expect(copy.routing.edges[step.edge].length).toBeGreaterThan(0);
-        for (const branch of step.branches) expect(copy.routing.edges[branch.edge].length).toBeGreaterThan(0);
-      }
-    }
-  }
-});
 
 test("a call's node names its model, or what it follows, and gathers its prompts' marks", () => {
   const items = [

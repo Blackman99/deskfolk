@@ -328,7 +328,7 @@
 		<div class="routing-split">
 			<!-- ↑ and ↓ from a focused node bubble up here; the nodes themselves are the buttons. -->
 			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-			<div class="routing-map-col" role="region" aria-label={c.mapLabel} onkeydown={onMapKeydown} bind:this={mapCol}>
+			<div class="routing-map-col" role="region" aria-label={t.playbooks.title} onkeydown={onMapKeydown} bind:this={mapCol}>
 				{@render map(selected)}
 			</div>
 			<div class="routing-detail-col" role="region" aria-label={nameOf(selected)} aria-live="polite" bind:this={detailScroll}>
