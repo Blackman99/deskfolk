@@ -1,10 +1,11 @@
 /** The rework ceiling: a ticket that keeps failing the same way stops and asks you. */
-import { USER_MEMBER, type Message } from "@real-bot/protocol";
+import { playbookDefaults, USER_MEMBER, type Message } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow } from "../ids";
 import { queueInboxItem, refreshHeldInbox } from "./inbox";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
 import { createNotification, updateNotificationActionState } from "./notifications";
+import { playbookFor } from "./playbooks";
 import { waiveRequirement } from "./requirements";
 import { localeOf } from "./settings";
 import type { StoreContext } from "./shared";
@@ -13,10 +14,10 @@ import { setTicketStage, settlePlanStage, stagedTicket } from "./ticket-stage";
 import { recordWorkEvent } from "./work-events";
 import { queueWork } from "./work-items";
 
-/** The capability ceiling (§6.6): this many hand-overs in a row failing the same requirement… */
-export const CEILING_STREAK = 3;
+/** The capability ceiling (§6.6): this many hand-overs in a row failing the same requirement… (unless the job's engine says otherwise, ADR 0085) */
+export const CEILING_STREAK = playbookDefaults().ceiling.params.streak!;
 /** …or more hand-overs than this since you last answered about it. */
-export const CEILING_ATTEMPTS = 6;
+export const CEILING_ATTEMPTS = playbookDefaults().ceiling.params.attempts!;
 /**
  * The failure a send-back of yours is, when it names no requirement: on the card (退回) or by what
  * you said about the work (ADR 0070/0084). The MV's ticket 09 was sent back eight times this way and
@@ -108,6 +109,7 @@ export const NO_CEILING: CeilingOutcome = { cards: [], stuck: [], all: false };
  */
 export function checkCeiling(ctx: StoreContext, submission: Submission, now: string, opts: { sentBack?: string } = {}): CeilingOutcome {
   const byComplaint = (id: string) => id === opts.sentBack || sentBackByComplaint(ctx, id);
+  const { streak, attempts } = playbookFor(ctx, { taskId: submission.task_id }).resolved.ceiling.params;
   const cards: Message[] = [];
   const stuck: Array<string | null> = [];
   const units: Array<string | null> = submission.part_keys.length > 0 ? submission.part_keys : [null];
@@ -131,13 +133,13 @@ export function checkCeiling(ctx: StoreContext, submission: Submission, now: str
         if (!failureKeys(ctx, row, byComplaint).has(key)) break;
         times += 1;
       }
-      if (times >= CEILING_STREAK) {
+      if (times >= streak!) {
         hit = { reason: "streak", key, label, times };
         break;
       }
     }
     const failures = decided.filter((row) => row.state !== "approved" || byComplaint(row.id)).length;
-    if (!hit && failures > CEILING_ATTEMPTS) hit = { reason: "attempts", times: failures };
+    if (!hit && failures > attempts!) hit = { reason: "attempts", times: failures };
     if (!hit) continue;
     stuck.push(partKey);
     if (partKey) {

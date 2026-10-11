@@ -399,3 +399,11 @@ test("a ledger from before retrospectives is widened to bill them, its rows kept
   expect(reopened.db.query("SELECT id, purpose FROM spend ORDER BY id").all()).toEqual([{ id: "new", purpose: "retrospect" }, { id: "old", purpose: "reader" }]);
   expect(reopened.db.query<{ sql: string }, []>("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'spend'").get()!.sql).toContain("'retrospect'");
 });
+
+test("a delivery whose engine runs no retrospective is set aside for good, without a call", () => {
+  const f = fixture();
+  f.store.setSessionPlaybook(f.room.id, "coding");
+  f.store.savePlaybook("coding", { diff: { steps: { retrospective: { on: false } } } });
+  expect(f.store.claimDueRetrospective(minutes(RETRO_QUIET_MS / 60_000 + 1, f.deliveredAt))).toBeNull();
+  expect(f.store.db.query("SELECT bot_id, state, note FROM retrospectives").all()).toEqual([{ bot_id: f.maker.id, state: "skipped", note: "playbook_off" }]);
+});

@@ -77,7 +77,9 @@ export const PLAYBOOK_STEPS: readonly PlaybookStepSpec[] = [
       { key: "pickups_per_hour", unit: "count", min: 1, max: 12, step: 1, default: 3 },
     ],
   },
-  { id: "checks", hook: "handed_in", role: "judge", switchable: true, params: [] },
+  // Not switchable: a hand-over bound to a check of yours waits for it to run, so checks that never
+  // ran would hold every such hand-over for good.
+  { id: "checks", hook: "handed_in", role: "judge", switchable: false, params: [] },
   { id: "escalation", hook: "handed_in", role: null, switchable: true, params: [{ key: "after_failures", unit: "count", min: 1, max: 10, step: 1, default: 2 }] },
   {
     id: "ceiling", hook: "handed_in", role: null, switchable: false, params: [

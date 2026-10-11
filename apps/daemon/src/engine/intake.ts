@@ -11,6 +11,8 @@
  * behind it once per line. Shutting down, nobody waits.
  */
 
+import { playbookDefaults } from "@real-bot/protocol";
+
 export type IntakePlace = {
   /** Settles once the line ahead has been routed, or the wait has lasted the ceiling, or the daemon drains. */
   ready: Promise<void>;
@@ -22,11 +24,12 @@ export type IntakePlace = {
  * How long a line waits for the one before it. Reading and filing a line give up after 20 s each
  * (`reader.ts`), and the two run at once; this leaves room for both and for a slow route behind them.
  */
-export const INTAKE_CAP_MS = 45_000;
+export const INTAKE_CAP_MS = playbookDefaults().intake.params.cap_s! * 1000;
 
 type Entry = { started: Promise<void>; done: Promise<void> };
 
-export function createIntake(opts: { capMs: number; draining?: () => boolean }): { enter: (sessionId: string) => IntakePlace } {
+/** `capMs` may depend on the conversation: its engine's intake.cap_s (ADR 0085). */
+export function createIntake(opts: { capMs: number | ((sessionId: string) => number); draining?: () => boolean }): { enter: (sessionId: string) => IntakePlace } {
   const tails = new Map<string, Entry>();
 
   function enter(sessionId: string): IntakePlace {
@@ -48,7 +51,7 @@ export function createIntake(opts: { capMs: number; draining?: () => boolean }):
     const ready = (async () => {
       if (ahead && !opts.draining?.()) {
         await ahead.started;
-        const cap = ceiling(opts.capMs, opts.draining);
+        const cap = ceiling(typeof opts.capMs === "number" ? opts.capMs : opts.capMs(sessionId), opts.draining);
         try {
           await Promise.race([ahead.done, cap.reached]);
         } finally {

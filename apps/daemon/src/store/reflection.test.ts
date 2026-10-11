@@ -215,3 +215,11 @@ test("events waiting on a stop do not crowd out another Bot's", () => {
     payload: { submission_id: "sub-1", part_key: null } });
   expect(f.store.claimDueReflection()).toMatchObject({ event: "ceiling", botId: f.maker.id });
 });
+
+test("a miss on a job whose engine runs no reflection is set aside", () => {
+  const f = fixture();
+  f.store.savePlaybook("general", { diff: { steps: { reflection: { on: false } } } });
+  f.miss();
+  expect(f.store.claimDueReflection()).toBeNull();
+  expect(f.store.db.query("SELECT state, note FROM reflections").all()).toEqual([{ state: "skipped", note: "playbook_off" }]);
+});

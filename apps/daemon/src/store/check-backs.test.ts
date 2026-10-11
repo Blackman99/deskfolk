@@ -426,3 +426,23 @@ test("from level 6 a check-back is not booked on a ticket that waits on you, and
     store.close();
   }
 });
+
+test("from level 6 the shortest wait and the hourly count are the conversation's engine's", () => {
+  const store = new Store();
+  try {
+    store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', '8')");
+    const director = store.createBot({ name: "Director", duties: "film", boundaries: "none" }).bot;
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" }).bot;
+    const group = store.createGroup({ name: "MV", members: [director.id, writer.id], playbook_id: "video" });
+    store.savePlaybook("video", { diff: { steps: { check_backs: { params: { min_minutes: 15, per_hour: 1 } } } } });
+    const plan = store.openTask({ sessionId: group.id, title: "MV" });
+    const ticket = store.createTicket({ taskId: plan.id, title: "09 角色", worker: director.id });
+    const trigger = store.postMessage(group.id, { body: "做角色" });
+    const turn = store.createTurn({ sessionId: group.id, botId: director.id, triggerMessageId: trigger.id, taskId: plan.id, ticketId: ticket.id });
+    expect(() => store.scheduleCheckBack({ botId: director.id, sessionId: group.id, turnId: turn.id, note: "看看渲染", afterMinutes: 10 })).toThrow("at least 15");
+    store.scheduleCheckBack({ botId: director.id, sessionId: group.id, turnId: turn.id, note: "看看渲染", afterMinutes: 15 });
+    expect(() => store.scheduleCheckBack({ botId: director.id, sessionId: group.id, turnId: turn.id, note: "再看看", afterMinutes: 20 })).toThrow("already booked 1");
+  } finally {
+    store.close();
+  }
+});

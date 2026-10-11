@@ -7,7 +7,7 @@
  * keeps a timer or starts a turn: the engine runs {@link supervisorTick} on the scheduler's tick,
  * publishes the lines it wrote, continues the segments it names and dispatches what it queued.
  */
-import { isContinuableNote, USER_MEMBER, type Message, type SupervisorControl, type SupervisorNoticeCode } from "@real-bot/protocol";
+import { isContinuableNote, playbookDefaults, USER_MEMBER, type Message, type SupervisorControl, type SupervisorNoticeCode } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoPlus, ulid } from "../ids";
 import { supervisorNoticeBody, type RestartArrangement } from "../prompts/control-copy";
@@ -15,6 +15,7 @@ import { supervisorJobLabel, supervisorWakeNote } from "../prompts/transcript-co
 import { PROGRESS_KINDS } from "./end-contract";
 import { holdsCovering } from "./holds";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
+import { playbookFor } from "./playbooks";
 import { createNotification, updateNotificationActionState } from "./notifications";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { localeOf } from "./settings";
@@ -31,14 +32,14 @@ import { confirmedLeadsOf, conversationFor, eligibleInJob, jobConversations, spo
 import { projectInsertedWorkEvent, recordWorkEvent } from "./work-events";
 import { queueWork } from "./work-items";
 
-/** A ticket left with no live segment, wait or queued line this long is called back to. */
-export const ORPHAN_QUIET_MS = 2 * 60_000;
+/** A ticket left with no live segment, wait or queued line this long is called back to, unless its engine says otherwise (ADR 0085). */
+export const ORPHAN_QUIET_MS = playbookDefaults().pickup.params.orphan_quiet_min! * 60_000;
 /** …this long when a Bot had the last word, after yours, in a conversation you are in (ADR 0039's ten minutes, generalized). */
 export const ORPHAN_QUIET_AFTER_BOT_MS = 10 * 60_000;
 /** Call-backs to one ticket between two of its progress events. */
 export const ORPHAN_WAKES_PER_PROGRESS = 2;
-/** Automatic pick-ups of one work item within an hour (interruptions, failures, broken waits, restarts). */
-export const PICKUPS_PER_HOUR = 3;
+/** Automatic pick-ups of one work item within an hour (interruptions, failures, broken waits, restarts), unless its engine says otherwise. */
+export const PICKUPS_PER_HOUR = playbookDefaults().pickup.params.pickups_per_hour!;
 /** How long a crashed daemon must run before work a restart cut off picks up. */
 export const RESTART_STABLE_MS = 60_000;
 /** How long a development daemon must run without starting again before work a restart cut off picks up: saves come in bursts. */
@@ -625,7 +626,7 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
       continue;
     }
     const recent = pickupsInHour(ctx, work.id, now);
-    if (recent.length >= PICKUPS_PER_HOUR) {
+    if (recent.length >= playbookFor(ctx, { taskId, sessionId: work.home_session_id }).resolved.pickup.params.pickups_per_hour!) {
       result.deferred.push({ workItemId: work.id, reason: "retry_budget" });
       notice(ctx, result, { key: `retry_budget:${work.id}:${recent[0]!.id}`, code: "retry_budget", taskId, ticketId: work.ticket_id,
         workItemId: work.id, botId: work.bot_id, places: [...spokenFor(ctx, taskId, work.bot_id), work.session_id, work.home_session_id, segment?.session_id],
@@ -701,7 +702,7 @@ function quietDeadline(ctx: StoreContext, ticket: TicketRow): { since: number; d
     UNION ALL SELECT t.last_activity_at FROM turns t WHERE t.task_id = ?1
     UNION ALL SELECT w.at FROM work_events w WHERE w.task_id = ?1 AND w.kind NOT LIKE 'supervisor.%' AND w.kind <> 'wake.suppressed')`).get(ticket.task_id)?.at;
   let since = Math.max(Date.parse(ticket.created_at), activity ? Date.parse(activity) : 0);
-  let delay = ORPHAN_QUIET_MS;
+  let delay = playbookFor(ctx, { taskId: ticket.task_id }).resolved.pickup.params.orphan_quiet_min! * 60_000;
   const latest = ctx.db.query<{ session_id: string; kind: string; created_at: string }, [string, string]>(`SELECT m.session_id, m.kind, m.created_at
     FROM messages m JOIN sessions s ON s.id = m.session_id AND s.archived_at IS NULL
     JOIN session_participants you ON you.session_id = m.session_id AND you.member = ?2 AND you.left_at IS NULL

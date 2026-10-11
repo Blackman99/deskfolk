@@ -27,6 +27,15 @@ test("a turn is asked every 40 hops whether it is getting anywhere, and past 160
   expect(lastHopNote("zh")).toContain(`${TURN_HOP_LIMIT} 跳上限`);
 });
 
+test("an engine's pacing moves both numbers, and the notes say its limit", () => {
+  const pace = { checkInHops: 20, hopLimit: 60 };
+  expect(turnPace(21, pace)).toBe("check_in");
+  expect(turnPace(41, pace)).toBe("check_in");
+  expect(turnPace(61, pace)).toBe("last");
+  expect(checkInNote("zh", 20, 60)).toContain("到 60 跳会收起工具");
+  expect(lastHopNote("en", 60)).toContain("reached 60 tool calls");
+});
+
 const closes: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (closes.length) await closes.pop()!();

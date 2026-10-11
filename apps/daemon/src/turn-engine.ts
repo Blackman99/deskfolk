@@ -29,7 +29,7 @@ import { createSubmissions } from "./engine/submissions";
 import { createRequirementCards } from "./engine/requirement-cards";
 import { createDirectReport } from "./engine/direct-report";
 import { createFire } from "./engine/fire";
-import { createIntake, INTAKE_CAP_MS } from "./engine/intake";
+import { createIntake } from "./engine/intake";
 import { createLifecycle } from "./engine/lifecycle";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
 import { CLAUDE_BUILTIN_SLOTS, createClaudeJudge, eitherJudge } from "./claude-code/reading";
@@ -356,7 +356,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     ...(options.readerTimeoutMs !== undefined ? { timeoutMs: options.readerTimeoutMs } : {}),
   });
   // 连发 (ADR 0063): each conversation's lines of yours, routed in the order they came.
-  const intake = createIntake({ capMs: options.intakeCapMs ?? INTAKE_CAP_MS, draining: () => Boolean(options.admission?.draining) });
+  const intake = createIntake({
+    capMs: options.intakeCapMs ?? ((sessionId) => store.playbookParam({ sessionId }, "intake", "cap_s") * 1000),
+    draining: () => Boolean(options.admission?.draining),
+  });
 
   /** What the line says now; null once it is gone (a cleared conversation). */
   function bodyNow(messageId: string): string | null {

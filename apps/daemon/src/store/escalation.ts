@@ -5,13 +5,15 @@
  * (ADR 0054), never on its own guess of which model is stronger, and never moves a thinking level you
  * pinned. With no rung left, you are told once.
  */
+import { playbookDefaults } from "@real-bot/protocol";
 import { isoNow } from "../ids";
+import { playbookFor } from "./playbooks";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import type { StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 
-/** Failed hand-overs in a row, since the last step up, that take a job one level higher. */
-export const ESCALATE_AFTER_FAILURES = 2;
+/** Failed hand-overs in a row, since the last step up, that take a job one level higher, unless its engine says otherwise (ADR 0085). */
+export const ESCALATE_AFTER_FAILURES = playbookDefaults().escalation.params.after_failures!;
 
 function on(ctx: StoreContext): boolean {
   try {
@@ -28,6 +30,10 @@ export function workEscalation(ctx: StoreContext, workItemId: string): number {
 /** After a hand-over of `workItemId` failed (its checks, a review's reject, your send-back): one step up once enough failed in a row. */
 export function noteHandOverFailed(ctx: StoreContext, workItemId: string | null, now: string = isoNow()): void {
   if (!workItemId || !on(ctx)) return;
+  // The job's engine may not step up at all, or only after more failures (ADR 0085).
+  const job = ctx.db.query<{ task_id: string | null; session_id: string | null }, [string]>("SELECT task_id, home_session_id AS session_id FROM work_items WHERE id = ?").get(workItemId);
+  const engine = playbookFor(ctx, { taskId: job?.task_id ?? null, sessionId: job?.session_id ?? null }).resolved.escalation;
+  if (!engine.on) return;
   // Counted since its last step from hand-overs: a step trouble inside a turn made does not start the count again.
   const since = ctx.db.query<{ at: string }, [string]>(`SELECT at FROM work_events WHERE kind IN ('model.escalated', 'model.escalation_reset')
     AND json_extract(payload, '$.work_item_id') = ? AND json_extract(payload, '$.reason') IS NULL ORDER BY seq DESC LIMIT 1`).get(workItemId)?.at ?? "";
@@ -39,7 +45,7 @@ export function noteHandOverFailed(ctx: StoreContext, workItemId: string | null,
     if (state === "approved") break;
     failed += 1;
   }
-  if (failed < ESCALATE_AFTER_FAILURES) return;
+  if (failed < engine.params.after_failures!) return;
   const before = workEscalation(ctx, workItemId);
   ctx.db.run("UPDATE work_items SET escalation = ? WHERE id = ?", [before + 1, workItemId]);
   const row = ctx.db.query<{ bot_id: string; task_id: string | null; ticket_id: string | null }, [string]>("SELECT bot_id, task_id, ticket_id FROM work_items WHERE id = ?").get(workItemId);
@@ -62,6 +68,7 @@ export function stepUpForTrouble(ctx: StoreContext, turnId: string, reason: Turn
   const turn = ctx.db.query<{ work_item_id: string | null; bot_id: string; task_id: string | null; ticket_id: string | null; pinned: string | null }, [string]>(
     `SELECT t.work_item_id, t.bot_id, t.task_id, t.ticket_id, b.thinking_level AS pinned FROM turns t JOIN bots b ON b.id = t.bot_id WHERE t.id = ?`).get(turnId);
   if (!turn?.work_item_id || turn.pinned) return false;
+  if (!playbookFor(ctx, { turnId, taskId: turn.task_id }).resolved.escalation.on) return false;
   const since = ctx.db.query<{ at: string | null }, [string, string]>(`SELECT MAX(at) AS at FROM (
       SELECT created_at AS at FROM submissions WHERE work_item_id = ? AND origin <> 'organizer'
       UNION ALL SELECT at FROM work_events WHERE kind = 'model.escalation_reset' AND json_extract(payload, '$.work_item_id') = ?)`)

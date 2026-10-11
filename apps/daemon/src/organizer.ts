@@ -122,7 +122,10 @@ export type OrganizerDeps = {
    */
   recordSpend: (input: { sessionId: string; target: OrganizerRouting | LocalAgentTarget; usage: MappedUsage | null; responded: boolean; claudeUsage?: ClaudeReadingUsage | null }) => string | null;
   draining: () => boolean;
-  /** How long a plan has to be quiet after its last turn before it is filed. Tests shorten it. */
+  /**
+   * How long a plan has to be quiet after its last turn before it is filed, so a fan-out is filed
+   * once: the engine's settle.quiet_s (ADR 0085) unless given. Tests shorten it.
+   */
   settleQuietMs?: number;
   /** Where a filing that came to nothing says why. Defaults to stderr. */
   log?: (line: string) => void;
@@ -186,8 +189,6 @@ export const ORGANIZER_SETTLE_TIMEOUT_MS = 120_000;
  * at `high` little room above its thinking. A cap, not a spend.
  */
 export const ORGANIZER_MAX_TOKENS = 16_384;
-/** Quiet time after a plan's last turn before it is filed, so a fan-out is filed once. */
-export const SETTLE_QUIET_MS = 30_000;
 /** Whether the plan and its tickets are rendered into the workspace. */
 export const MIRROR_FILES = true;
 /** Turns of the plan the organizer sees as "so far". */
@@ -555,8 +556,10 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
   }
 
   async function settlePlan(taskId: string, opts?: { evidence?: boolean }): Promise<boolean> {
-    // Off, the quiet timer still runs and `onQuiet` still reconciles the plan: only the filing is skipped.
+    // Off — the benchmark's switch, or the engine's (ADR 0085) — the quiet timer still runs and
+    // `onQuiet` still reconciles the plan: only the filing is skipped.
     if (deps.draining() || ablation.has("organize-settle") || inFlight.has(taskId)) return false;
+    if (!store.playbookStepOn({ taskId }, "settle")) return false;
     let task: Task;
     try {
       task = store.getTask(taskId);
@@ -688,7 +691,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         .then(() => {
           if (!stopped && !deps.draining() && (stopsSeen.get(taskId) ?? 0) === stops) deps.onQuiet?.(taskId);
         });
-    }, deps.settleQuietMs ?? SETTLE_QUIET_MS);
+    }, deps.settleQuietMs ?? store.playbookParam({ taskId }, "settle", "quiet_s") * 1000);
     timer.unref?.();
     settleTimers.set(taskId, timer);
   }

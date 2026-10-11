@@ -693,6 +693,20 @@ for (const via of ["reply", "send_message"] as const) for (const cited of [false
   });
 }
 
+test("under an engine with the settle off, a quiet plan is not filed", async () => {
+  const h = await harness(twoTickets);
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  h.store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+  h.store.savePlaybook("general", { diff: { steps: { settle: { on: false } } } });
+  const trigger = h.store.insertMessage({ sessionId: writer.direct_session.id, kind: "user", author: "user", body: "写一份周报" });
+  const done = h.completed();
+  await h.engine.handleInboundMessage(trigger, { fromUser: true });
+  await done;
+  // Well past the 20 ms settle quiet.
+  await Bun.sleep(150);
+  expect(h.organized.map((payload) => payload.mode)).toEqual(["message"]);
+});
+
 test("a Stop is not a plan going quiet: nothing is settled and nobody is called back", async () => {
   // On 09-29 two Stops ended a plan's turns, the settle that followed put its shot back in progress,
   // and the call-back after it had the Bot submit that shot (ADR 0040 P1).

@@ -140,7 +140,9 @@ export function createScribe(deps: ScribeDeps): Scribe {
     // answer is in the work log as `scribe.answer`, which a restart keeps).
     if (read.has(quote.id) || store.quoteScribed(quote.id)) return;
     read.add(quote.id);
-    if (ablation.has("scribe")) return capture(quote, handedOver);
+    // Off — the benchmark's switch, or the engine's (ADR 0085) — what you said is kept as a
+    // complaint only when it finds fault with work handed over; nothing else goes into the ledger.
+    if (ablation.has("scribe") || !store.playbookStepOn({ sessionId: quote.session_id, taskId: task.id }, "scribe")) return capture(quote, handedOver);
     const routing = await deps.routing().catch(() => null);
     if (mine !== generation) return;
     if (!routing) return capture(quote, handedOver);
@@ -266,7 +268,7 @@ export function createScribe(deps: ScribeDeps): Scribe {
     if (deps.draining()) return;
     const earlier = store.editEarlierEntries(edit.message_id);
     editsRead.add(editId);
-    if (earlier.length === 0 || ablation.has("scribe")) return;
+    if (earlier.length === 0 || ablation.has("scribe") || !store.playbookStepOn({ sessionId, taskId: task.id }, "scribe")) return;
     const routing = await deps.routing().catch(() => null);
     if (mine !== generation || !routing) return;
     const payload = scribeEditPayload(store, { edit: { before: edit.body_before, after: edit.body_after, at: edit.created_at }, sessionId, task, earlier });

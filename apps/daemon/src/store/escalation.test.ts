@@ -126,3 +126,20 @@ test("a step trouble inside a turn made does not start the count of failed hand-
   handOver(f, 2, "fail");
   expect(f.store.workEscalation(work)).toBe(2);
 });
+
+test("the job's engine decides: off, no hand-over failure or trouble steps it up; with a higher count, it waits for that many", () => {
+  const f = fixture();
+  const work = f.turn.work_item_id!;
+  f.store.savePlaybook("general", { diff: { steps: { escalation: { on: false } } } });
+  for (let n = 1; n <= 4; n++) handOver(f, n, "fail");
+  expect(f.store.workEscalation(work)).toBe(0);
+  expect(f.store.stepUpForTrouble(f.turn.id, "tool_failures")).toBe(false);
+
+  const g = fixture();
+  g.store.savePlaybook("general", { diff: { steps: { escalation: { params: { after_failures: 3 } } } } });
+  handOver(g, 1, "fail");
+  handOver(g, 2, "fail");
+  expect(g.store.workEscalation(g.turn.work_item_id!)).toBe(0);
+  handOver(g, 3, "fail");
+  expect(g.store.workEscalation(g.turn.work_item_id!)).toBe(1);
+});

@@ -122,6 +122,16 @@ test("with no model set it makes no call and files nothing but the fallback capt
   expect(h.store.listWorkEvents({ kind: "scribe.answer" })).toEqual([]);
 });
 
+test("under an engine with the scribe off it makes no call: only a complaint is kept, as the fallback capture keeps it", async () => {
+  const h = harness(() => judged("{}"));
+  h.store.setSessionPlaybook(h.direct, "coding");
+  h.store.savePlaybook("coding", { diff: { steps: { scribe: { on: false } } } });
+  await h.say("前三镜背景严重跳跃，太假了").noted;
+  await h.say("第四镜加一个特写").noted;
+  expect(h.requests).toEqual([]);
+  expect(h.store.listRequirements()).toMatchObject([{ quote: "前三镜背景严重跳跃，太假了", status: "proposed", added_by: "capture" }]);
+});
+
 test("a failed, cut-off, unreadable or empty answer files nothing but the fallback capture, and says which it was", async () => {
   const answers: JudgeResult[] = [
     judged(null, { failKind: "unreachable" }),

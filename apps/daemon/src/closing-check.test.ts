@@ -146,6 +146,19 @@ describe("closing check: failing acceptance checks", () => {
     }
   });
 
+  test("under an engine with the closing check off, a delivery goes through unread", async () => {
+    const h = closingHarness();
+    try {
+      const { plan, turn, session } = job(h);
+      h.store.createCheckByUser(plan.id, { item: "交出 report.md", kind: "exists", path: "report.md" });
+      h.store.savePlaybook("general", { diff: { steps: { closing: { on: false } } } });
+      const note = await h.closing.closingCheck(turn.id, makeLive(), turn, { body: "写好了，见 report.md", paths: ["report.md"], sessionId: session });
+      expect(note).toBeNull();
+    } finally {
+      h.close();
+    }
+  });
+
   test("a pure 'still working' reply is not checked against the plan's file checks", async () => {
     const h = closingHarness();
     try {

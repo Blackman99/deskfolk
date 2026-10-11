@@ -12,11 +12,12 @@
  * does that when the scheduler finds a due row.
  */
 import { jobsOn, pendingJobNamed } from "./external-jobs";
-import { looksLikeWorkspacePath, USER_MEMBER } from "@real-bot/protocol";
+import { looksLikeWorkspacePath, playbookDefaults, USER_MEMBER } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
 import { suspendHeldCheckBacks } from "./holds";
+import { playbookFor } from "./playbooks";
 import { ballHolder, type BallHolder } from "./supervisor";
 import { recordWorkEvent } from "./work-events";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
@@ -108,8 +109,10 @@ export function scheduleCheckBack(
     if (yours) {
       throw new HttpError(409, "ball_is_yours", `this ticket waits on the user (${yours}); what they say next about it wakes you, so no check-back is needed to look for their answer`);
     }
-    if (minutes < JOB_LEVEL_CHECK_BACK_MIN_MINUTES) {
-      throw new HttpError(422, "invalid_args", `after_minutes must be at least ${JOB_LEVEL_CHECK_BACK_MIN_MINUTES}: shorter waits are polling, and the app polls jobs itself`);
+    // How short and how often, as the conversation's engine has it (ADR 0085).
+    const limits = playbookFor(ctx, { sessionId: input.sessionId, taskId: work?.task_id ?? null, turnId: input.turnId }).resolved.check_backs.params;
+    if (minutes < limits.min_minutes!) {
+      throw new HttpError(422, "invalid_args", `after_minutes must be at least ${limits.min_minutes}: shorter waits are polling, and the app polls jobs itself`);
     }
     const job = pendingJobNamed(ctx, note);
     if (job) {
@@ -121,7 +124,7 @@ export function scheduleCheckBack(
     const booked = ctx.db.query<{ n: number }, [string, string, string | null, string | null]>(`SELECT COUNT(*) AS n FROM check_backs WHERE bot_id = ? AND created_at > ?
       AND task_id IS ? AND ticket_id IS ? AND (cause = 'self' OR cause IS NULL) AND kind IS NULL AND suspended_at IS NULL`)
       .get(input.botId, hourAgo, work?.task_id ?? null, work?.ticket_id ?? null)!.n;
-    if (booked >= JOB_LEVEL_CHECK_BACKS_PER_HOUR) {
+    if (booked >= limits.per_hour!) {
       throw new HttpError(429, "too_many_check_backs", `you already booked ${booked} check-backs in the last hour; wait for what you are waiting on to come back instead`);
     }
   }
@@ -170,8 +173,8 @@ export function voidWaitingOnYou(ctx: StoreContext, id: string, now: string = is
 }
 
 /** From level 6 (ADR 0047): the shortest wait a Bot may book on the clock, and how many it may book an hour. */
-export const JOB_LEVEL_CHECK_BACK_MIN_MINUTES = 5;
-export const JOB_LEVEL_CHECK_BACKS_PER_HOUR = 6;
+export const JOB_LEVEL_CHECK_BACK_MIN_MINUTES = playbookDefaults().check_backs.params.min_minutes!;
+export const JOB_LEVEL_CHECK_BACKS_PER_HOUR = playbookDefaults().check_backs.params.per_hour!;
 
 /**
  * The app's check-back for a Bot whose Bot↔Bot direct went quiet: due now, in the session the

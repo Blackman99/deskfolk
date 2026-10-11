@@ -18,10 +18,12 @@
  * which the scribe filed nothing for, is kept whole as a proposed entry, so a complaint is not lost
  * to a model that failed or saw nothing in it.
  */
+import { playbookDefaults } from "@real-bot/protocol";
 import { soundsLikeComplaint } from "../complaint-words";
 import { dimensionValueJson, readDimensionSpans, readDimensions } from "../quote-dimensions";
 import { findWords, quoteWords } from "../quote-words";
 import { takeCodePoints } from "../text";
+import { playbookParam } from "./playbooks";
 import type { UserQuote } from "./quotes";
 import {
   addRequirement,
@@ -48,8 +50,8 @@ export const SCRIBE_WRITER = "scribe";
 /** Who wrote an entry the fallback capture kept. */
 export const CAPTURE_WRITER = "capture";
 
-/** New entries one line may bring: a line lists a few requirements, not dozens. */
-export const SCRIBE_ADDS_MAX = 8;
+/** New entries one line may bring unless its engine says otherwise (ADR 0085): a line lists a few requirements, not dozens. */
+export const SCRIBE_ADDS_MAX = playbookDefaults().scribe.params.adds_max!;
 /**
  * The fewest units (as {@link quoteWords} counts them) the words of a new entry or a proposed
  * replacement may be, or the whole line when it is shorter: one character of the line is in the
@@ -252,6 +254,7 @@ export function applyScribePatch(
     });
 
     let adds = 0;
+    const addsMax = playbookParam(ctx, { taskId }, "scribe", "adds_max");
     // Read once and kept up to date as entries are added: the adds of one answer are weighed against each other too.
     const openHere = requirementsBearingOn(ctx, taskId, ["open"]);
     patch.adds.forEach((raw, index) => {
@@ -261,7 +264,7 @@ export function applyScribePatch(
       const words = findWords(said, quote.body);
       if (!words) return reject("add", index, "quote_not_in_line");
       if (tooShort(words)) return reject("add", index, "quote_too_short");
-      if (adds >= SCRIBE_ADDS_MAX) return reject("add", index, "too_many");
+      if (adds >= addsMax) return reject("add", index, "too_many");
       const category = text(item.category, CATEGORY_MAX);
       const { scope, scopeId } = addScope(item, { ticketIds, ticketId: quote.ticket_id, taskId, sessionId: task.session_id });
       // The same words already stand as an open entry bearing on the plan that holds at least as

@@ -1450,6 +1450,17 @@ test("a hand-over a newer one replaced, or a reviewer's reject on no requirement
   expect(ceilingCards(g)).toEqual([]);
 });
 
+test("the job's engine sets the ceiling: with a streak of two, two failures in a row ask you", () => {
+  const f = fixture();
+  f.store.savePlaybook("general", { diff: { steps: { ceiling: { params: { streak: 2 } } } } });
+  const produced = segment(f);
+  const check = gate(f, "fail");
+  shotHandOver(f, produced.id, check.id, "fail", 1);
+  expect(ceilingCards(f)).toEqual([]);
+  shotHandOver(f, produced.id, check.id, "fail", 2);
+  expect(ceilingCards(f)[0]!.body).toContain("连续 2 次没过");
+});
+
 test("a requirement a review failed three times in a row offers to relax it; relaxing waives it for the plan", () => {
   const f = fixture();
   f.store.patchTicketByUser(f.ticket.id, { reviewerBotId: f.reviewer.id });

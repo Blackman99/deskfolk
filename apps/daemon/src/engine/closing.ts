@@ -151,6 +151,8 @@ export function createClosing(deps: ClosingDeps): Closing {
   ): Promise<string | null> {
     if (ablation.has("closing-check")) return null;
     if (live.closingChecked) return null;
+    // Off in its engine (ADR 0085): a reply that promises more, or one handing over files, goes through unread.
+    if (!store.playbookStepOn({ turnId, sessionId: input.sessionId }, "closing")) return null;
     if (admission?.draining) return null;
     let userPresent = false;
     try {

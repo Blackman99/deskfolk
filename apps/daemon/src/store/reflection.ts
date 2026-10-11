@@ -15,6 +15,7 @@ import type { Database } from "bun:sqlite";
 import { USER_MEMBER, type AcceptanceCheckInput, type Message } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, isoPlus, ulid } from "../ids";
+import { playbookStepOn } from "./playbooks";
 import { createCheckByUser } from "./acceptance-checks";
 import { holdsCovering } from "./holds";
 import type { Lesson } from "./lessons";
@@ -118,6 +119,11 @@ export function claimDueReflection(ctx: StoreContext, now: string = isoNow()): D
     for (const event of candidates) {
       // Under a stop it waits: it runs once the stop is lifted.
       if (holdsCovering(ctx, { botId: event.bot_id, taskId: event.task_id, ticketId: event.ticket_id }).length > 0) continue;
+      // Its engine runs none (ADR 0085).
+      if (!playbookStepOn(ctx, { taskId: event.task_id }, "reflection")) {
+        skip(event, "playbook_off");
+        continue;
+      }
       // One reflection on this ticket by this Bot a day is enough; one that failed does not count.
       const recent = ctx.db.query("SELECT 1 FROM reflections WHERE bot_id = ? AND ticket_id = ? AND state IN ('pending', 'done') AND created_at > ?")
         .get(event.bot_id, event.ticket_id, isoPlus(now, -REFLECT_GAP_MS));

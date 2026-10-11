@@ -23,6 +23,7 @@ import { USER_MEMBER, type Retrospective, type RetrospectiveChange, type Retrosp
 import { HttpError } from "../errors";
 import { isoNow, isoPlus, ulid } from "../ids";
 import { codePointCount } from "../text";
+import { playbookStepOn } from "./playbooks";
 import { holdsCovering } from "./holds";
 import { MEMORY_MAX_PER_BOT, MEMORY_ROWS_PER_BOT, parseMemoryBody, parseMemorySubject } from "./memories";
 import { learningOn } from "./quality";
@@ -273,6 +274,11 @@ export function claimDueRetrospective(ctx: StoreContext, now: string = isoNow())
         }
         // Under a stop it waits: it runs once the stop is lifted.
         if (holdsCovering(ctx, { botId, taskId: plan.id }).length > 0) continue;
+        // Its engine runs none (ADR 0085): passed over for good, as a delivery with no maker left is.
+        if (!playbookStepOn(ctx, { taskId: plan.id }, "retrospective")) {
+          skip(plan.id, botId, plan.delivered_at, "playbook_off");
+          continue;
+        }
         const looked = ctx.db.query<{ delivered_at: string }, [string, string]>(
           "SELECT delivered_at FROM retrospectives WHERE task_id = ? AND bot_id = ? AND state = 'done' ORDER BY delivered_at DESC LIMIT 1").get(plan.id, botId);
         const signals = troubleSignals(ctx, plan.id, botId, looked?.delivered_at ?? null);

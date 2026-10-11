@@ -65,7 +65,7 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
         return;
       }
       store.touchTurn(turnId);
-      const pace = notePace(live, target);
+      const pace = notePace(turnId, live, target);
       readInbox(turnId, live, current, target);
       const listed = mcp ? await mcp.listForTurn() : { tools: [], guides: [] };
       if (!active(turnId, live)) return;
@@ -207,13 +207,15 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
    * A long run of tool calls is asked, now and then, whether it is getting anywhere; past the
    * limit the tools go and the next reply is the turn's last (see turn-pace.ts).
    */
-  function notePace(live: Live, target: ResolvedTarget): TurnPace {
-    const pace = turnPace(live.hops);
+  function notePace(turnId: string, live: Live, target: ResolvedTarget): TurnPace {
+    // Its engine's numbers (ADR 0085), read each hop: a change made while the turn runs applies from the next.
+    const { check_in_hops: checkInHops, hop_limit: hopLimit } = store.playbookFor({ turnId }).resolved.pacing.params;
+    const pace = turnPace(live.hops, { checkInHops: checkInHops!, hopLimit: hopLimit! });
     if (pace === "check_in") {
-      live.loop.push({ role: "user", content: checkInNote(target.locale, live.hops - 1) });
+      live.loop.push({ role: "user", content: checkInNote(target.locale, live.hops - 1, hopLimit) });
     } else if (pace === "last" && !live.lastHopNoted) {
       live.lastHopNoted = true;
-      live.loop.push({ role: "user", content: lastHopNote(target.locale) });
+      live.loop.push({ role: "user", content: lastHopNote(target.locale, hopLimit) });
     }
     return pace;
   }
