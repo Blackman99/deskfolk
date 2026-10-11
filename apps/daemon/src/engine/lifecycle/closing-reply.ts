@@ -22,7 +22,7 @@ export function createClosingReply(deps: LifecycleDeps, endings: TurnEndings) {
   async function readLastWord(turnId: string, turn: Turn, closing: string): Promise<{ said: string; later: string | null } | undefined> {
     const said = store.segmentLastWord(turnId, closing);
     if (!said?.trim()) return undefined;
-    return { said, later: (await readBotLine(said, turn.session_id, { answering: store.segmentAnswering(turnId) })).later };
+    return { said, later: (await readBotLine(said, turn.session_id, { answering: store.segmentAnswering(turnId), turnId })).later };
   }
 
   /** Whether a closing reply hands over a file of the segment's ticket: one it wrote, or one its words cite. */
@@ -53,7 +53,7 @@ export function createClosingReply(deps: LifecycleDeps, endings: TurnEndings) {
     current: Turn,
     content: string,
   ): Promise<{ kind: "bounce"; note: string } | { kind: "ended" } | { kind: "inactive" }> {
-    const closer = await readsAsNoWork(content, (text) => readBotLine(text, current.session_id, { answering: store.segmentAnswering(turnId) }));
+    const closer = await readsAsNoWork(content, (text) => readBotLine(text, current.session_id, { answering: store.segmentAnswering(turnId), turnId }));
     if (!active(turnId, live)) return { kind: "inactive" };
     const rawBody = closer ? "" : content;
     // A delivery to the user goes out only after one look at what the job asked for. The note

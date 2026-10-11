@@ -67,6 +67,10 @@ test("a delivered plan is looked back on by the Bot that made it; its conclusion
   expect(committed.some((event) => event.event === "task.upsert" && event.id === plan.id && (event.retrospectives ?? []).some((row) => row.state === "done"))).toBe(true);
   expect(committed.some((event) => event.event === "memory.upsert" && event.retrospective?.id === retrospective!.id)).toBe(true);
   expect(committed.some((event) => event.event === "skill.upsert" && event.id === skill.id && event.retrospective?.id === retrospective!.id)).toBe(true);
+  // On the job's flow as a step, saying what it found and changed (ADR 0083).
+  expect(h.store.traceSteps({ taskId: plan.id, messageIds: [], turnIds: [] }).filter((step) => step.role === "retrospective")).toMatchObject([
+    { prompt_id: "call.retrospective", bot_id: director!.id, outcome: "ok", verdict: { kind: "retrospective", changes: 2, summary: "改编动漫先定画风" } },
+  ]);
   // A second tick looks back on nothing more.
   h.tick(new Date());
   await h.waitIdle();
@@ -93,4 +97,5 @@ test("an answer cut off mid-way writes nothing, and the retrospective says it fa
   expect(h.judgeCalls("retrospect")).toHaveLength(1);
   expect(h.store.listMemories(director!.id)).toEqual([]);
   expect(h.store.taskDetail(plan.id, () => true).retrospectives).toEqual([expect.objectContaining({ state: "failed", note: "truncated", changes: [] })]);
+  expect(h.store.traceSteps({ taskId: plan.id, messageIds: [], turnIds: [] })).toMatchObject([{ role: "retrospective", outcome: "failed", fail_kind: "truncated", verdict: null }]);
 });

@@ -11,7 +11,8 @@ import { inboxLabel } from "../../store";
 import { heardNote } from "../../turn-inbox";
 import { readOnlyTools } from "../tools";
 import type { Live, ResolvedTarget, SpendOwner } from "../types";
-import { summarizeLoop } from "../compaction";
+import { summarizeLoop, type CompactionRun } from "../compaction";
+import { runOn } from "../builtin-models";
 import { editedToolDescription, promptPage } from "../../prompts/book";
 import { codePointCount, takeCodePoints } from "../../text";
 import type { LifecycleDeps } from "../lifecycle";
@@ -504,7 +505,14 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
     let summary: string | null;
     try {
       const chosen = (await deps.builtinTarget?.("compaction").catch(() => null)) ?? null;
-      summary = await summarizeLoop({ completions, recordResponseSpend, recordClaudeSpend: deps.recordClaudeSpend, callOf, claudeJudge: deps.builtinClaude }, {
+      // Its call record (ADR 0083): on the turn, saying how much of the loop it kept.
+      const recordRun = (run: CompactionRun) => store.recordCallRun({
+        role: "compaction", prompt: run.prompt, sessionId: current.session_id, messageId: current.trigger_message_id, turnId,
+        taskId: current.task_id, ticketId: current.ticket_id, botId: current.bot_id, ...runOn(run.target),
+        outcome: run.ok ? "ok" : "failed", failKind: run.failKind, raw: run.raw, spendId: run.spendId, ms: run.ms,
+        verdict: { kind: "compaction", hops: hopsIn(plan.old) + hopsIn(plan.tail), kept_hops: hopsIn(plan.tail) },
+      });
+      summary = await summarizeLoop({ completions, recordResponseSpend, recordClaudeSpend: deps.recordClaudeSpend, callOf, claudeJudge: deps.builtinClaude, recordRun }, {
         turnId,
         target,
         chosen,

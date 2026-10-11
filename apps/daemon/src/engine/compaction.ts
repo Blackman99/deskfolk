@@ -20,6 +20,19 @@ export type SummarizeDeps = {
   recordClaudeSpend?: SpendTracker["recordClaudeSpend"];
   callOf: SpendTracker["callOf"];
   claudeJudge?: ClaudeJudge | null;
+  /** Writes the summary call's record (ADR 0083) once it is over, both tries counted as one use. */
+  recordRun?: (run: CompactionRun) => void;
+};
+
+/** How a compaction's summary call went, for its call record. */
+export type CompactionRun = {
+  prompt: { id: string; revision_id: string | null; locale: string };
+  target: BuiltinTarget;
+  ok: boolean;
+  failKind: string | null;
+  raw: string | null;
+  spendId: string | null;
+  ms: number;
 };
 
 export type SummarizeInput = {
@@ -46,11 +59,22 @@ const bytesOf = (text: string): number => Buffer.byteLength(text, "utf8");
  */
 export async function summarizeLoop(deps: SummarizeDeps, input: SummarizeInput): Promise<string | null> {
   const prompt = input.page.resolve("call.compact");
+  const target = input.chosen ?? { ...input.target, thinkingLevel: null };
+  const started = Date.now();
+  let spendId: string | null = null;
+  const done = (summary: string | null, failKind: string | null, raw: string | null): string | null => {
+    try {
+      deps.recordRun?.({ prompt: prompt.ref, target, ok: summary !== null, failKind: summary === null ? failKind ?? "empty" : null, raw, spendId, ms: Date.now() - started });
+    } catch {
+      // the call record is a record
+    }
+    return summary;
+  };
   let budget = input.plan.inputBytes - bytesOf(prompt.text);
   for (let attempt = 0; attempt < 2; attempt++) {
     const record = writeOutLoop(input.plan.old, budget, input.locale, input.earlier);
     // The turn's own model thinks as it likes here, as before; one you chose is told how hard.
-    const result = await sideJudge(deps, input.chosen ?? { ...input.target, thinkingLevel: null }, {
+    const result = await sideJudge(deps, target, {
       prompt: prompt.ref,
       messages: [
         { role: "system", content: prompt.text },
@@ -61,10 +85,10 @@ export async function summarizeLoop(deps: SummarizeDeps, input: SummarizeInput):
       maxTokens: COMPACT_MAX_TOKENS,
     });
     try {
-      recordSideSpend(
+      spendId = recordSideSpend(
         { callOf: deps.callOf, recordResponseSpend: deps.recordResponseSpend, recordClaudeSpend: deps.recordClaudeSpend ?? (() => null) },
         { kind: "turn", purpose: "compact", owner: input.owner, turnId: input.turnId, target: input.chosen ?? input.target, ...spentOf(result) },
-      );
+      )?.id ?? spendId;
     } catch {
       // the ledger is best effort
     }
@@ -75,7 +99,7 @@ export async function summarizeLoop(deps: SummarizeDeps, input: SummarizeInput):
     }
     // A summary cut off at its cap is still most of one; the Bot can read the files for the rest.
     const summary = result.failKind === null ? (result.content ?? "").trim() : "";
-    return summary || null;
+    return done(summary || null, result.failKind, result.content ?? null);
   }
-  return null;
+  return done(null, "context_full", null);
 }

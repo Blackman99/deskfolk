@@ -17,8 +17,9 @@
  */
 import { NO_ABLATION, type Ablation } from "./ablation";
 import type { ClaudeJudge, LocalAgentTarget, ClaudeReadingUsage } from "./claude-code/reading";
+import type { CallRunVerdict } from "@real-bot/protocol";
 import type { CompletionsClient, MappedUsage } from "./completions";
-import { sideJudge, type SideAnswer } from "./engine/builtin-models";
+import { runOn, sideJudge, type SideAnswer } from "./engine/builtin-models";
 import type { UserLineReading } from "./line-reading";
 import type { OrganizerRouting } from "./organizer";
 import { parseScribeAnswer, scribeEditPayload, scribePayload, type ScribePayload } from "./prompts/scribe";
@@ -37,7 +38,8 @@ export type ScribeDeps = {
   routing: () => Promise<OrganizerRouting | LocalAgentTarget | null>;
   /** Runs the call when the scribe's model is a Claude model of yours (ADR 0077). */
   claudeJudge?: ClaudeJudge | null;
-  recordSpend: (input: { sessionId: string; target: OrganizerRouting | LocalAgentTarget; usage: MappedUsage | null; responded: boolean; claudeUsage?: ClaudeReadingUsage | null }) => void;
+  /** Bills the call; the ledger row's id, for the call record (ADR 0083), or null when nothing was billed. */
+  recordSpend: (input: { sessionId: string; target: OrganizerRouting | LocalAgentTarget; usage: MappedUsage | null; responded: boolean; claudeUsage?: ClaudeReadingUsage | null }) => { id: string } | null | void;
   draining: () => boolean;
   /** Where a line that came to nothing says why. Defaults to stderr. */
   log?: (line: string) => void;
@@ -146,14 +148,17 @@ export function createScribe(deps: ScribeDeps): Scribe {
     const answer = await ask({ routing, payload, sessionId: quote.session_id, taskId: task.id, mine, about: { quote: quote.id } });
     if (!answer) return;
     const { patch, fail } = answer;
+    const about = { messageId: quote.message_id, taskId: task.id, sessionId: quote.session_id };
     if (!patch) {
+      answer.record(about, { kind: "scribe", added: 0, changed: 0 });
       log(`[scribe] quote ${quote.id}: ${fail ? `the call failed (${fail})` : "the answer did not read as a patch"}, nothing filed`);
       return capture(quote, handedOver);
     }
     // Read again: what you said may have been erased, or filed elsewhere, while the call was out.
     const now = store.getQuote(quote.id);
-    if (!now || now.redacted_at || now.task_id !== quote.task_id) return;
+    if (!now || now.redacted_at || now.task_id !== quote.task_id) return answer.record(about, { kind: "scribe", added: 0, changed: 0 });
     const outcome = store.applyScribePatch({ quote: now, offered: offered.map((entry) => entry.id), patch });
+    answer.record(about, { kind: "scribe", added: outcome.added.length, changed: outcome.raised.length + outcome.proposed.length });
     if (!landed(outcome)) return capture(now, handedOver);
     deps.onFiled?.(now, outcome);
   }
@@ -169,8 +174,15 @@ export function createScribe(deps: ScribeDeps): Scribe {
     taskId: string;
     mine: number;
     about: { quote: string } | { edit: string };
-  }): Promise<{ patch: ReturnType<typeof parseScribeAnswer>; fail: string | null } | null> {
+  }): Promise<{
+    patch: ReturnType<typeof parseScribeAnswer>;
+    fail: string | null;
+    /** Writes this call's record (ADR 0083) once what it came to is known. */
+    record: (about: { messageId: string | null; taskId: string; sessionId: string | null }, verdict: CallRunVerdict) => void;
+  } | null> {
     const { routing } = input;
+    const started = Date.now();
+    let spendId: string | null = null;
     const prompt = promptPage(store, "zh").resolve("call.scribe");
     const controller = new AbortController();
     inFlight.add(controller);
@@ -195,13 +207,13 @@ export function createScribe(deps: ScribeDeps): Scribe {
     if (input.mine !== generation) return null;
     if (result && input.sessionId) {
       try {
-        deps.recordSpend({
+        spendId = deps.recordSpend({
           sessionId: input.sessionId,
           target: routing,
           usage: result.usage,
           responded: result.failKind === null || result.failKind === "incomplete",
           claudeUsage: result.claudeUsage ?? null,
-        });
+        })?.id ?? null;
       } catch {
         // the ledger of spend is best-effort; the answer still counts
       }
@@ -224,7 +236,17 @@ export function createScribe(deps: ScribeDeps): Scribe {
       sessionId: input.sessionId,
       payload: { ...input.about, model: routing.model, fail: fail ?? (patch ? null : "unreadable"), raw: result?.content ?? null },
     });
-    return { patch, fail };
+    const ms = Date.now() - started;
+    const record = (about: { messageId: string | null; taskId: string; sessionId: string | null }, verdict: CallRunVerdict) => {
+      try {
+        store.recordCallRun({ role: "scribe", prompt: prompt.ref, sessionId: about.sessionId, messageId: about.messageId, taskId: about.taskId,
+          ...runOn(routing), outcome: fail ? "failed" : patch ? "ok" : "unreadable", failKind: fail ?? (patch ? null : "unreadable"),
+          verdict, raw: result?.content ?? null, spendId, ms });
+      } catch {
+        // the call record is a record; what was filed stands
+      }
+    };
+    return { patch, fail, record };
   }
 
   /** One edit of yours, read for the entries it took back (see `noteEdit`). */
@@ -249,6 +271,7 @@ export function createScribe(deps: ScribeDeps): Scribe {
     if (mine !== generation || !routing) return;
     const payload = scribeEditPayload(store, { edit: { before: edit.body_before, after: edit.body_after, at: edit.created_at }, sessionId, task, earlier });
     const answer = await ask({ routing, payload, sessionId, taskId: task.id, mine, about: { edit: editId } });
+    if (answer) answer.record({ messageId: edit.message_id, taskId: task.id, sessionId }, { kind: "scribe", added: 0, changed: answer.patch?.withdraws?.length ?? 0 });
     if (!answer?.patch) {
       if (answer) log(`[scribe] edit ${editId}: ${answer.fail ? `the call failed (${answer.fail})` : "the answer did not read as a patch"}, nothing marked`);
       return;

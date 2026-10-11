@@ -1763,3 +1763,22 @@ describe("a group plan with everything handed over while its progress still list
     expect(stalled()).toHaveLength(1);
   });
 });
+
+test("each organizer call leaves a call record: the line it filed, where it landed, and how a call that came to nothing ended", async () => {
+  const cut = { ...judged('{"decision":"new","plan":{"goal":"写周报"}}'), truncated: true };
+  const h = bareOrganizer([judged(JSON.stringify({ decision: "new", plan: { goal: "写一份周报" }, tickets: [] })), cut]);
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const line = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "写一份周报" });
+  const filed = await h.organizer.organizeMessage(line);
+  const second = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "二" });
+  await h.organizer.organizeMessage(second);
+  const runs = h.store.traceSteps({ messageIds: [line.id, second.id], turnIds: [] });
+  const run = h.store.organizerRunsForTask(filed.taskId!).find((row) => row.message_id === line.id);
+  expect(runs).toMatchObject([
+    { role: "organizer", prompt_id: "call.organizer", message_id: line.id, task_id: filed.taskId, session_id: session, outcome: "ok",
+      verdict: { kind: "organizer", mode: "message", decision: "new", applied: true, reject_reason: null, organizer_run_id: run!.id } },
+    { role: "organizer", message_id: second.id, outcome: "unreadable", fail_kind: "truncated",
+      verdict: { kind: "organizer", decision: null, applied: false } },
+  ]);
+});

@@ -30,7 +30,7 @@ export function createScaleWatch(deps: ScaleWatchDeps): ScaleWatch {
   async function read(taskId: string, key: string, facts: { segments: number; handedBack: number } | null): Promise<void> {
     const input = store.scaleInputs(taskId);
     if (!input || input.said.length === 0) return;
-    const reading = await deps.reader.scale({ key, sessionId: input.sessionId, title: input.title, goal: input.goal, said: input.said, facts });
+    const reading = await deps.reader.scale({ key, taskId, sessionId: input.sessionId, title: input.title, goal: input.goal, said: input.said, facts });
     if (reading.source === "model" && reading.large) {
       store.markPlanScale({ taskId, value: "large", by: facts ? "signal" : "reader", why: reading.quote, unit: reading.unit });
     } else if (reading.source === "unread" && facts) {

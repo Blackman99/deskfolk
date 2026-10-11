@@ -227,3 +227,55 @@ test("no word list stands in for where a line belongs: with no model, a failed c
   }
 });
 
+
+/** The reader's call records (ADR 0083), oldest first. */
+function runs(store: Store) {
+  return store.db.query<{ id: string }, []>(`SELECT id FROM call_runs WHERE role = 'reader' ORDER BY created_at, id`).all()
+    .map((row) => store.getCallRun(row.id)!);
+}
+
+test("every reading leaves a call record: the line, the prompt and model it ran with, how it came out and what it read", async () => {
+  const h = harness(() => judged(STOP));
+  const line = h.store.postMessage(h.direct, { body: "先别搞了，收手吧" });
+  await h.reader.userLine(line);
+  await h.reader.userLine(line);
+  expect(runs(h.store)).toMatchObject([{
+    prompt_id: "call.read_user_line",
+    session_id: h.direct,
+    message_id: line.id,
+    provider_id: "p",
+    model: "reader-model",
+    outcome: "ok",
+    fail_kind: null,
+    verdict: { kind: "user_line", control: "stop", control_only: true, status_only: false, objections: [], by_words: false },
+    raw: STOP,
+    cached: false,
+  }]);
+  // The same line asked about again is the same use, not another.
+  expect(runs(h.store)).toHaveLength(1);
+  expect(runs(h.store)[0]!.ms).toBeGreaterThanOrEqual(0);
+
+  const odd = harness(() => judged("I think the user wants the Bots to stop."));
+  const second = odd.store.postMessage(odd.direct, { body: "C07 太假了" });
+  await odd.reader.userLine(second);
+  expect(runs(odd.store)).toMatchObject([{ outcome: "unreadable", fail_kind: "unreadable", verdict: { kind: "user_line", by_words: true } }]);
+
+  const none = harness(() => judged(STOP), { routing: null });
+  await none.reader.userLine(none.store.postMessage(none.direct, { body: "停" }));
+  expect(runs(none.store)).toMatchObject([{ outcome: "failed", fail_kind: "no_model", model: null, prompt_id: "call.read_user_line" }]);
+});
+
+test("a Bot's words read again in another turn are one call and two uses, each on its turn", async () => {
+  const answer = JSON.stringify({ later: null, claims_verified: false, no_work: true, bare_status: false });
+  const h = harness(() => judged(answer));
+  const body = "没有别的要做了。";
+  await h.reader.botLine(body, h.direct, { turnId: "turn-1" });
+  await h.reader.botLine(body, h.direct, { turnId: "turn-2" });
+  // The second use is written once the cached reading resolves.
+  await Bun.sleep(0);
+  expect(h.requests).toHaveLength(1);
+  expect(runs(h.store)).toMatchObject([
+    { turn_id: "turn-1", cached: false, verdict: { kind: "bot_line", no_work: true } },
+    { turn_id: "turn-2", cached: true, verdict: { kind: "bot_line", no_work: true }, model: null },
+  ]);
+});

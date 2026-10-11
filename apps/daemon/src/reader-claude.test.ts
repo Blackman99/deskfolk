@@ -38,7 +38,7 @@ function harness(answer: (input: Parameters<ClaudeJudge>[0]) => ClaudeReadingAns
     store,
     completions,
     routing: async () => ({ kind: "claude_code", model: "haiku", configDir: "/opt/claude-b" }),
-    recordSpend: () => endpointCalls.push("endpoint spend"),
+    recordSpend: () => void endpointCalls.push("endpoint spend"),
     ...(opts.judge === false ? {} : {
       claudeJudge: async (input) => {
         inputs.push(input);

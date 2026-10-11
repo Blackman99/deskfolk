@@ -354,3 +354,21 @@ test("an edit of a line whose words stand behind nothing makes no call", async (
   expect(h.requests.filter((request) => h.payloadOf(request).edit)).toHaveLength(0);
   expect(h.requests.length - before).toBeLessThanOrEqual(1);
 });
+
+test("each scribe call leaves a call record on your line and the job, saying how many entries it wrote", async () => {
+  const answers: JudgeResult[] = [
+    judged(JSON.stringify({ adds: [{ quote: "C09 的脚不能穿地", restated: "C09 脚不穿地", category: "穿模", scope_hint: "plan" }], raises: [], supersedes: [] })),
+    judged(null, { failKind: "unreachable" }),
+  ];
+  const h = harness(() => answers.shift()!);
+  const { line } = h.say("C09 的脚不能穿地");
+  await h.scribe.noteLine(line.id, null);
+  const { line: second, noted } = h.say("节奏不对");
+  await noted;
+  const runs = h.store.traceSteps({ taskId: h.planId, messageIds: [], turnIds: [] });
+  expect(runs).toMatchObject([
+    { role: "scribe", prompt_id: "call.scribe", message_id: line.id, task_id: h.planId, session_id: h.direct, model: "scribe-model",
+      outcome: "ok", verdict: { kind: "scribe", added: 1, changed: 0 } },
+    { role: "scribe", message_id: second.id, outcome: "failed", fail_kind: "unreachable", verdict: { kind: "scribe", added: 0, changed: 0 } },
+  ]);
+});

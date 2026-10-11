@@ -59,6 +59,7 @@ import * as messageWithdraw from "./message-withdraw";
 import { migrateSchema } from "./migrate";
 import * as notifications from "./notifications";
 import * as organizerRuns from "./organizer-runs";
+import * as callRuns from "./call-runs";
 import * as providers from "./providers";
 import * as quotes from "./quotes";
 import * as requirements from "./requirements";
@@ -500,6 +501,9 @@ export class Store {
   // Organizer runs (ADR 0040 P0 observability) ----------------------------------------------
   readonly recordOrganizerRun = this.bind(organizerRuns.recordOrganizerRun);
   readonly organizerRunsForTask = this.bind(organizerRuns.organizerRunsForTask);
+  readonly recordCallRun = this.bind(callRuns.recordCallRun);
+  readonly getCallRun = this.bind(callRuns.getCallRun);
+  readonly traceSteps = this.bind(callRuns.traceSteps);
 
   // Acceptance checks (可执行验收) ----------------------------------------------------------
   readonly getCheck = this.bind(acceptanceChecks.getCheck);

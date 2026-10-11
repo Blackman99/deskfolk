@@ -7,6 +7,7 @@
  */
 import {
   USER_MEMBER,
+  type CallRunOutcome,
   type ClientEvent,
   type Message,
   type PendingJudgement,
@@ -26,7 +27,7 @@ import { sessionUpsertFields } from "../session-events";
 import type { Store } from "../store";
 import { ENGINE_LEVELS } from "../store/schema-gate";
 import type { HeardItem } from "../turn-inbox";
-import { recordSideSpend, sideJudge, spentOf, type BuiltinTarget, type BuiltinTargetOf } from "./builtin-models";
+import { recordSideSpend, runOn, sideJudge, spentOf, type BuiltinTarget, type BuiltinTargetOf } from "./builtin-models";
 import { mayWake, wakeOn, type WakeCause } from "./control";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
@@ -405,6 +406,40 @@ export function createParticipation(deps: ParticipationDeps): Participation {
     }
   }
 
+  /** A judgement's call record (ADR 0083): the line, the Bot, the model it ran on and what it decided. */
+  function recordJudgementRun(input: {
+    message: Message;
+    botId: string;
+    target: BuiltinTarget | null;
+    prompt: { id: string; revision_id: string | null; locale: string } | null;
+    outcome: CallRunOutcome;
+    failKind: string | null;
+    decision: "join" | "pass";
+    reason: string | null;
+    raw: string | null;
+    spendId: string | null;
+    ms: number | null;
+  }): void {
+    try {
+      store.recordCallRun({
+        role: "judgement",
+        prompt: input.prompt ?? { id: "call.judgement", revision_id: null, locale: "zh" },
+        sessionId: input.message.session_id,
+        messageId: input.message.id,
+        botId: input.botId,
+        ...runOn(input.target),
+        outcome: input.outcome,
+        failKind: input.failKind,
+        verdict: { kind: "judgement", decision: input.decision, reason: input.reason },
+        raw: input.raw,
+        spendId: input.spendId,
+        ms: input.ms,
+      });
+    } catch {
+      // the call record is a record; the judgement stands
+    }
+  }
+
   async function judge(
     botId: string,
     message: Message,
@@ -460,6 +495,7 @@ export function createParticipation(deps: ParticipationDeps): Participation {
             decision: "pass",
             error: "endpoint_error",
           });
+          recordJudgementRun({ message, botId, target: null, prompt: null, outcome: "failed", failKind: "no_model", decision: "pass", reason: null, raw: null, spendId: null, ms: null });
           finish(row);
           publish({ event: "judgement.created", occurred_at: occurred(), ...row });
         } catch {
@@ -481,6 +517,7 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       }
       const owned = spendOwner(message.session_id, botId);
       const prompt = promptPage(store, "zh").resolve("call.judgement");
+      const started = Date.now();
       const result = await sideJudge({ completions, claudeJudge: deps.claudeJudge }, target, {
         prompt: prompt.ref,
         messages: [
@@ -535,7 +572,13 @@ export function createParticipation(deps: ParticipationDeps): Participation {
         bill(pending.id);
         return;
       }
-      bill(row.id);
+      const billed = bill(row.id);
+      recordJudgementRun({
+        message, botId, target, prompt: prompt.ref,
+        outcome: error === null ? "ok" : error === "invalid_output" ? "unreadable" : "failed",
+        failKind: error === null ? null : result.failKind ?? error,
+        decision, reason, raw: result.content ?? null, spendId: billed?.id ?? null, ms: Date.now() - started,
+      });
       if (decision === "join") startTurn(message.session_id, botId, message, "redirect", { cause: causeOf(message) });
       finish(row);
       publish({ event: "judgement.created", occurred_at: occurred(), ...row });

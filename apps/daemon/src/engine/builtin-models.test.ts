@@ -291,6 +291,10 @@ test("in the engine, the composer's suggestions run on the model chosen for them
     expect(seen).toEqual([choose ? { model: "strong-model", baseUrl: "http://127.0.0.1:2/v1", thinkingLevel: "none" } : DEFAULT_RAN]);
     expect(h.store.db.query("SELECT kind, model FROM spend WHERE kind = 'composer_suggest'").all())
       .toEqual([{ kind: "composer_suggest", model: choose ? "strong-model" : "scenario" }]);
+    // A press of ✨ is a use of the composer call, kept on the conversation (ADR 0083).
+    const composed = h.store.db.query<{ session_id: string; model: string; spend_id: string | null }, []>(
+      "SELECT session_id, model, spend_id FROM call_runs WHERE role = 'composer'").all();
+    expect(composed).toEqual([{ session_id: group, model: choose ? "strong-model" : "scenario", spend_id: expect.any(String) }]);
   }
 });
 

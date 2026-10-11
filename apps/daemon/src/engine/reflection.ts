@@ -11,7 +11,7 @@ import type { ClaudeJudge } from "../claude-code/reading";
 import type { CompletionsClient } from "../completions";
 import { reflectionPayload } from "../prompts/reflection";
 import type { Store } from "../store";
-import { recordSideSpend, sideJudge, spentOf, type BuiltinTargetOf } from "./builtin-models";
+import { recordSideSpend, runOn, sideJudge, spentOf, type BuiltinTargetOf } from "./builtin-models";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
 import { promptPage } from "../prompts/book";
@@ -51,6 +51,8 @@ export function createReflector(deps: {
       if (target) {
         const locale = deps.store.settingsCached().locale === "en" ? "en" : "zh";
         const prompt = promptPage(deps.store, locale).resolve("call.reflection");
+        const started = Date.now();
+        let spendId: string | null = null;
         const result = await sideJudge(deps, own ? { ...own, thinkingLevel: null } : target, {
           prompt: prompt.ref,
           messages: [
@@ -61,21 +63,35 @@ export function createReflector(deps: {
           timeoutMs: REFLECT_TIMEOUT_MS,
           maxTokens: 800,
         });
+        const session = deps.store.db.query<{ session_id: string | null }, [string]>("SELECT session_id FROM tasks WHERE id = ?").get(due.taskId)?.session_id ?? null;
         try {
-          const session = deps.store.db.query<{ session_id: string | null }, [string]>("SELECT session_id FROM tasks WHERE id = ?").get(due.taskId)?.session_id;
-          recordSideSpend(deps.spend, {
+          spendId = recordSideSpend(deps.spend, {
             kind: "organize",
             purpose: "reflect",
             owner: deps.spend.spendOwner(session ?? "", due.botId),
             target,
             ...spentOf(result),
-          });
+          })?.id ?? null;
         } catch {
           // the ledger is best effort
         }
         if (!result.failKind || result.failKind === "incomplete") outcome = parseReflection(result.content ?? "");
         if (!result.failKind && !result.truncated && outcome?.kind === "none" && outcome.reason === "unreadable") {
           deps.store.notePromptParseFailure({ prompt: prompt.ref.id, locale: prompt.ref.locale, revision: prompt.ref.revision_id, reason: "unreadable", taskId: due.taskId, botId: due.botId });
+        }
+        // Its call record (ADR 0083): on the job and ticket, as the Bot it reflected for.
+        const unreadable = outcome?.kind === "none" && outcome.reason === "unreadable";
+        try {
+          deps.store.recordCallRun({
+            role: "reflection", prompt: prompt.ref, sessionId: session, taskId: due.taskId, ticketId: due.ticketId, botId: due.botId,
+            ...runOn(own ? { ...own, thinkingLevel: null } : target),
+            outcome: !outcome ? "failed" : unreadable ? "unreadable" : "ok",
+            failKind: !outcome ? result.failKind ?? "call_error" : unreadable ? "unreadable" : null,
+            verdict: outcome ? { kind: "reflection", proposed: outcome.kind !== "none", note: outcome.kind === "checklist" ? outcome.text : outcome.kind === "none" ? outcome.reason : null } : null,
+            raw: result.content ?? null, spendId, ms: Date.now() - started,
+          });
+        } catch {
+          // the call record is a record
         }
       }
     } catch {

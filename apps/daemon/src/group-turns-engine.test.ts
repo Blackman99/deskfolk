@@ -95,6 +95,9 @@ describe("turn engine on the local API", () => {
     expect((listedGroup?.pending_judgements ?? []).length).toBeGreaterThan(0);
     releaseJudgements?.();
     await waitFor(sub.events, (e) => e.event === "judgement.created" && e.decision === "join");
+    // Each judgement is a use of the judgement call, on the flow board beside the line (ADR 0083).
+    const judged = h.store.traceSteps({ messageIds: [String(started.message_id)], turnIds: [] }).filter((step) => step.role === "judgement");
+    expect(judged[0]).toMatchObject({ session_id: group.id, model: "test-model", outcome: "ok", verdict: { kind: "judgement", decision: "join", reason: "duties" } });
     await waitFor(
       sub.events,
       (e) => e.event === "turn.upsert" && e.status === "running" && e.session_id === group.id,

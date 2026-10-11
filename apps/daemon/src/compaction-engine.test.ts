@@ -82,6 +82,11 @@ test("over the model's context mid-turn, the older hops are condensed and the ho
   expect(h.store.db.query("SELECT kind, purpose, turn_id FROM spend WHERE purpose = 'compact'").all()).toEqual([
     { kind: "turn", purpose: "compact", turn_id: turn.id },
   ]);
+  // On the flow board as a step of the turn, saying how much of the loop it kept (ADR 0083).
+  const [run] = h.store.traceSteps({ messageIds: [], turnIds: [turn.id] }).filter((step) => step.role === "compaction");
+  expect(run).toMatchObject({ prompt_id: "call.compact", turn_id: turn.id, bot_id: alpha.id, outcome: "ok", verdict: { kind: "compaction" } });
+  const verdict = run!.verdict as { hops: number; kept_hops: number };
+  expect(verdict.kept_hops).toBeLessThan(verdict.hops);
 });
 
 test("over the context again before a hop went through, the turn fails as it did before", async () => {
@@ -108,6 +113,7 @@ test("no summary to go on with (the call failed or said nothing): the turn fails
   expect(h.judgeCalls("compact")).toHaveLength(1);
   expect(h.hops(alpha)).toHaveLength(READS + 1);
   expect(lines(h, dm, "system")).toEqual([completionFailBody("zh", "context_full")]);
+  expect(h.store.traceSteps({ messageIds: [], turnIds: [h.turns(alpha)[0]!.id] })).toMatchObject([{ role: "compaction", outcome: "failed" }]);
 });
 
 test("the compaction runs on your text when you edited it (ADR 0064)", async () => {

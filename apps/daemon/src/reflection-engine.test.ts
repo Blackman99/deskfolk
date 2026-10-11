@@ -33,6 +33,9 @@ test("a review miss becomes the reviewer's checklist item only once you adopt it
   h.tick(new Date());
   await h.waitIdle();
   expect(h.judgeCalls("reflect")).toHaveLength(1);
+  expect(h.store.traceSteps({ taskId: plan.id, messageIds: [], turnIds: [] }).filter((step) => step.role === "reflection")).toMatchObject([
+    { prompt_id: "call.reflection", ticket_id: ticket.id, bot_id: reviewer!.id, outcome: "ok", verdict: { kind: "reflection", proposed: true, note: ITEM } },
+  ]);
   const cardId = h.store.db.query<{ id: string }, [string]>("SELECT id FROM messages WHERE session_id = ? AND json_extract(control, '$.kind') = 'lesson'").get(room)?.id;
   const card = cardId ? h.store.getMessage(cardId) : null;
   expect(card?.body).toContain(ITEM);

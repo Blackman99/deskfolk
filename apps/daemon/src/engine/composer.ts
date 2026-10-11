@@ -4,7 +4,7 @@
  * Nothing here posts to the transcript — a suggestion is only ever shown in the composer, and
  * typing again aborts the request before it is used.
  */
-import { USER_MEMBER, type ComposerSuggestion } from "@real-bot/protocol";
+import { USER_MEMBER, type CallRunOutcome, type ComposerSuggestion } from "@real-bot/protocol";
 import { composerAnswerReadable, parseComposerSuggestions } from "../composer-suggestions";
 import type { ClaudeJudge } from "../claude-code/reading";
 import type { CompletionsClient } from "../completions";
@@ -12,7 +12,7 @@ import { assembleComposerSuggestUser } from "../context/judgement";
 import { resolveCompletionTarget } from "../models";
 import { promptPage } from "../prompts/book";
 import type { Store } from "../store";
-import { recordSideSpend, sideJudge, spentOf, type BuiltinTarget, type BuiltinTargetOf } from "./builtin-models";
+import { recordSideSpend, runOn, sideJudge, spentOf, type BuiltinTarget, type BuiltinTargetOf } from "./builtin-models";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
 import type { Creds } from "./types";
@@ -89,6 +89,17 @@ export function createComposer(deps: ComposerDeps): Composer {
       return [];
     }
     const prompt = promptPage(store, "zh").resolve("call.composer");
+    const started = Date.now();
+    let spendId: string | null = null;
+    // Its call record (ADR 0083): the conversation only, since a suggestion is about no line yet.
+    const recordRun = (outcome: CallRunOutcome, failKind: string | null, suggestions: number, raw: string | null) => {
+      try {
+        store.recordCallRun({ role: "composer", prompt: prompt.ref, sessionId, ...runOn(target), outcome, failKind,
+          verdict: { kind: "composer", suggestions }, raw, spendId, ms: Date.now() - started });
+      } catch {
+        // the call record is a record; the suggestions stand
+      }
+    };
     let result;
     try {
       result = await sideJudge({ completions, claudeJudge: deps.claudeJudge }, target, {
@@ -103,21 +114,29 @@ export function createComposer(deps: ComposerDeps): Composer {
         timeoutMs: 20_000,
       });
     } catch {
+      recordRun("failed", "call_error", 0, null);
       return [];
     }
     // Typing again aborts the request, but a body that already came back was paid for.
-    recordSideSpend(
+    spendId = recordSideSpend(
       {
         callOf: ({ providerId, providerName, model, thinkingLevel }) => ({ providerId, providerName, model, thinkingLevel }),
         recordResponseSpend,
         recordClaudeSpend: deps.recordClaudeSpend ?? (() => null),
       },
       { kind: "composer_suggest", owner: owned, target, ...spentOf(result) },
-    );
-    if (signal.aborted) return [];
-    if (result.failKind || result.hadToolCalls) return [];
+    )?.id ?? null;
+    if (signal.aborted) {
+      recordRun("failed", "aborted", 0, result.content ?? null);
+      return [];
+    }
+    if (result.failKind || result.hadToolCalls) {
+      recordRun("failed", result.failKind ?? "tool_calls", 0, result.content ?? null);
+      return [];
+    }
     if (!composerAnswerReadable(result.content ?? "")) {
       store.notePromptParseFailure({ prompt: prompt.ref.id, locale: prompt.ref.locale, revision: prompt.ref.revision_id, reason: "unreadable", sessionId });
+      recordRun("unreadable", "unreadable", 0, result.content ?? null);
       return [];
     }
     const roster = store
@@ -130,7 +149,9 @@ export function createComposer(deps: ComposerDeps): Composer {
         }
       })
       .filter((name): name is string => Boolean(name));
-    return parseComposerSuggestions(result.content ?? "", roster);
+    const suggestions = parseComposerSuggestions(result.content ?? "", roster);
+    recordRun("ok", null, suggestions.length, result.content ?? null);
+    return suggestions;
   }
 
   return { suggestComposer };

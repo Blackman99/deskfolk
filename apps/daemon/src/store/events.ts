@@ -16,6 +16,7 @@ import { listSkills, withLearning as skillWithLearning } from "./skills";
 import { toBot, type BotRow, type StoreContext } from "./shared";
 import { getTurn } from "./turns";
 import { getHold } from "./holds";
+import { getCallRun } from "./call-runs";
 import { GATE_SETTING_KEYS } from "./schema-gate";
 import { groupLeadState } from "./group-leads";
 import { getDelegationView } from "./delegation-view";
@@ -101,6 +102,10 @@ export function installChangeJournal(ctx: StoreContext): void {
       WHEN NEW.state <> 'skipped'
       BEGIN INSERT INTO event_changes VALUES ('tasks', NEW.task_id, 'UPDATE', NEW.task_id); END`);
   }
+  // A use of one of the app's own calls (ADR 0083) is written once and never changed; pruning old
+  // rows is no news to anyone, so only an insert is a change.
+  ctx.db.exec(`CREATE TEMP TRIGGER event_call_runs_INSERT AFTER INSERT ON main.call_runs
+    BEGIN INSERT INTO event_changes VALUES ('call_runs', NEW.id, 'INSERT', NEW.session_id); END`);
   // Built-in prompts (ADR 0064) have no id column: an edit, a merge, a reset or a conflict marked is
   // one change to that prompt in that language.
   for (const table of ["prompt_overrides", "prompt_revisions"]) {
@@ -286,6 +291,14 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
       }
       case "spend_repriced": {
         out.push({ event: "spend.repriced", occurred_at });
+        break;
+      }
+      case "call_runs": {
+        const run = getCallRun(ctx, id);
+        if (run) {
+          out.push({ event: "call_run.created", occurred_at, id: run.id, role: run.role, session_id: run.session_id,
+            message_id: run.message_id, turn_id: run.turn_id, task_id: run.task_id });
+        }
         break;
       }
       case "judgements": {

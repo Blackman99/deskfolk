@@ -230,7 +230,11 @@ export async function readsAsNoWork(body: string, read: (body: string) => Promis
 }
 
 /** What a Bot's line answers, for reading it: the line that opened its segment and the mail it read there. */
-export type BotLineContext = { answering?: string | null };
+export type BotLineContext = {
+  answering?: string | null;
+  /** The turn the line was said in, for the reading's call record (ADR 0083); not part of what is read. */
+  turnId?: string | null;
+};
 
 /** A Bot's line read by the word lists only: what a module built without the reader (a test) reads with. */
 export function readBotLineByWords(body: string, _sessionId?: string | null, context?: BotLineContext): Promise<BotLineReading> {

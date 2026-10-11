@@ -364,7 +364,7 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
     } catch {
       sessionId = null;
     }
-    if (!isAnswerText(text, await deps.readBotLine(text.trim(), sessionId, { answering: store.segmentAnswering(turnId) }))) {
+    if (!isAnswerText(text, await deps.readBotLine(text.trim(), sessionId, { answering: store.segmentAnswering(turnId), turnId }))) {
       throw new HttpError(422, "not_an_answer", notAnAnswerMessage(store.settingsCached().locale === "en"));
     }
     let prepared;

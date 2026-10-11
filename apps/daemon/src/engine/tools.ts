@@ -178,7 +178,7 @@ export function createTools(deps: ToolsDeps): Tools {
    * only asks their OK to go on (ADR 0058). Undefined for any other call.
    */
   async function readForCall(turn: Turn, name: string, args: Record<string, unknown>): Promise<ToolCtx["read"]> {
-    const read = (text: string, context?: BotLineContext) => (deps.readBotLine ?? readBotLineByWords)(text, turn.session_id, context);
+    const read = (text: string, context?: BotLineContext) => (deps.readBotLine ?? readBotLineByWords)(text, turn.session_id, { ...context, turnId: turn.id });
     // Read with what the segment answers, as every reading of its lines is: one reading per line.
     const answering = () => ({ answering: store.segmentAnswering(turn.id) });
     if (name === "send_message" && typeof args.body === "string") return { noWork: await readsAsNoWork(args.body, (text) => read(text, answering())) };

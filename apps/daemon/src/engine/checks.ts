@@ -111,7 +111,9 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
     return check.cwd ?? ".";
   }
 
-  async function evaluateOne(check: AcceptanceCheck, root: string | null, signal: AbortSignal, task: Task, seen: { vision: boolean }): Promise<CheckVerdict> {
+  async function evaluateOne(check: AcceptanceCheck, root: string | null, signal: AbortSignal, task: Task, seen: { vision: boolean }, runId: string): Promise<CheckVerdict> {
+    // The job and run a judge's calls are for, on their call records (ADR 0083).
+    const about = { taskId: task.id, checkRunId: runId };
     const resolved: AcceptanceCheck = check.kind === "command" ? { ...check, cwd: effectiveCwd(check) } : check;
     const locale = store.settingsCached().locale;
     if (check.standard_of) {
@@ -122,7 +124,7 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
           const refusal = store.visionRefusal(task.id);
           if (refusal) throw new Error(refusal);
         }
-        return judgeStandard(evidence, ...rest);
+        return judgeStandard(evidence, rest[0], rest[1], about);
       };
       const standard: StandardDeps = {
         sides: store.standardSides(check.id), judge, rules: parsePlanSpec(task.spec)?.rules ?? [], sessionId: task.session_id,
@@ -143,7 +145,7 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
           const refusal = store.visionRefusal(task.id);
           if (refusal) throw new Error(refusal);
         }
-        return judgeContinuity(evidence, ...rest);
+        return judgeContinuity(evidence, rest[0], rest[1], rest[2], rest[3], about);
       };
       const continuity: SeamsEvalDeps = {
         planDir: task.dir,
@@ -217,7 +219,7 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
         let verdict: CheckVerdict;
         const seen = { vision: false };
         try {
-          verdict = await evaluateOne(check, root, controller.signal, task, seen);
+          verdict = await evaluateOne(check, root, controller.signal, task, seen, runId);
         } catch (error) {
           verdict = { outcome: "error", exitCode: null, detail: error instanceof Error ? error.message : "check failed", output: null };
         }

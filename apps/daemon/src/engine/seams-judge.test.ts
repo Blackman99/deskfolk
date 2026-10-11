@@ -85,3 +85,36 @@ test("the judges ask for a model by what they send, and a chosen model is told h
   await standard([{ kind: "text", text: "样片的文字" }], "对照样片", session);
   expect(sent.slice(5).map((request) => "thinkingLevel" in request)).toEqual([false, false]);
 });
+
+/** Each judge call is a use of the picture judge (ADR 0083), on its job and check run. */
+test("each judge call leaves a call record on its job and check run, with what it judged", async () => {
+  const store = new Store();
+  closes.push(() => store.close());
+  const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+  const session = writer.direct_session.id;
+  const answers = [
+    '{"pairs":[{"n":1,"ok":true,"issues":[]},{"n":2,"ok":false,"issues":["光线跳了"]}]}',
+    "看不出来",
+    '{"ok":true,"issues":[]}',
+  ];
+  const completions = {
+    async judge() {
+      return { content: answers.shift()!, toolCalls: [], hadToolCalls: false, failKind: null, usage: null };
+    },
+  } as unknown as CompletionsClient;
+  const deps = {
+    completions,
+    store,
+    routing: async () => ({ baseUrl: "http://127.0.0.1:1/v1", apiKey: "k", apiFormat: "openai" as const, workspaceId: null, providerId: "p", providerName: "P", model: "seer", thinkingLevel: null }),
+    spend: createSpend({ store, publishSpend: () => {} }),
+  };
+  const about = { taskId: "job-1", checkRunId: "run-1" };
+  await createSeamsJudge(deps)([{ kind: "image", n: 1, dataUri: "data:image/png;base64,AA==" }], [], "前后连贯", "zh", session, about);
+  await createSeamsJudge(deps)([{ kind: "digest", text: "第一章：…" }], [], "前后连贯", "zh", session, about);
+  await createStandardJudge(deps)([{ kind: "text", text: "样片" }], "对照样片", session, about);
+  expect(store.traceSteps({ taskId: "job-1", messageIds: [], turnIds: [] })).toMatchObject([
+    { role: "judge", prompt_id: "call.seams_image", check_run_id: "run-1", model: "seer", outcome: "ok", verdict: { kind: "judge", mode: "image", passed: false, note: "1/2" } },
+    { role: "judge", prompt_id: "call.seams_digest", outcome: "unreadable", verdict: null },
+    { role: "judge", prompt_id: "call.standard", outcome: "ok", verdict: { kind: "judge", mode: "standard", passed: true, note: null } },
+  ]);
+});

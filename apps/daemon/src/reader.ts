@@ -19,7 +19,7 @@
  * organizer's are, with its own purpose. Nothing here writes state but those two rows.
  */
 import { createHash } from "node:crypto";
-import { USER_MEMBER, type Message } from "@real-bot/protocol";
+import { USER_MEMBER, type CallRunVerdict, type Message } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "./ablation";
 import type { ClaudeJudge, LocalAgentTarget, ClaudeReadingAnswer, ClaudeReadingUsage } from "./claude-code/reading";
 import type { CompletionsClient, JudgeResult, MappedUsage } from "./completions";
@@ -46,6 +46,7 @@ import {
   userLinePayload,
 } from "./prompts/reader";
 import { promptPage } from "./prompts/book";
+import { runOn } from "./engine/builtin-models";
 import { isStatusQuestion, statusQuestionShape } from "./status-question";
 import type { Store } from "./store";
 
@@ -75,10 +76,11 @@ export type ReaderDeps = {
    * of yours waits on the reading before it wakes anyone.
    */
   routing: () => Promise<OrganizerRouting | LocalAgentTarget | null>;
-  recordSpend: (input: { sessionId: string; target: OrganizerRouting; usage: MappedUsage | null; responded: boolean }) => void;
+  /** Bills the call; the ledger row's id, for the call record (ADR 0083), or null when nothing was billed. */
+  recordSpend: (input: { sessionId: string; target: OrganizerRouting; usage: MappedUsage | null; responded: boolean }) => { id: string } | null | void;
   /** One tool-less Claude Code call for a reading, when you chose a Claude model for it; none, and such a reading is `claude_unavailable`. */
   claudeJudge?: ClaudeJudge;
-  recordClaudeSpend?: (input: { sessionId: string; model: string; usage: ClaudeReadingUsage; providerName?: string }) => void;
+  recordClaudeSpend?: (input: { sessionId: string; model: string; usage: ClaudeReadingUsage; providerName?: string }) => { id: string } | null | void;
   draining: () => boolean;
   /** Benchmark switches (see `ablation.ts`): `reader` makes no call, as if it had failed. */
   ablation?: Ablation;
@@ -105,7 +107,7 @@ export type Reader = {
    * asks, the facts of how it has gone — once per `key`. Never rejects; what no model could read
    * comes back `unread`.
    */
-  scale: (input: { key: string; sessionId: string | null; title: string; goal: string | null; said: readonly string[];
+  scale: (input: { key: string; taskId?: string | null; sessionId: string | null; title: string; goal: string | null; said: readonly string[];
     facts?: { segments: number; handedBack: number } | null }) => Promise<ScaleReading>;
   /**
    * A line of yours was changed (ADR 0063): what it was read as, and which job it was read to be
@@ -121,6 +123,11 @@ type Asked<T> = {
   kind: "user_line" | "bot_line" | "filing" | "scale";
   sessionId: string | null;
   messageId: string | null;
+  /** What the call record (ADR 0083) also ties the reading to: a Bot line's turn, a job's size. */
+  turnId?: string | null;
+  taskId?: string | null;
+  /** The reading as the flow board says it. */
+  verdict: (reading: T) => CallRunVerdict;
   /** The built-in prompt the reading is asked with (ADR 0064): yours when you edited it. */
   prompt: "call.read_user_line" | "call.read_bot_line" | "call.read_filing" | "call.read_scale";
   payload: unknown;
@@ -130,6 +137,28 @@ type Asked<T> = {
   /** How the log line ends when the fallback stands in. */
   fallbackNote: string;
 };
+
+/** A reading of your line as its call record says it (ADR 0083). */
+function userLineVerdict(reading: UserLineReading): CallRunVerdict {
+  return { kind: "user_line", control: reading.control, control_only: reading.controlOnly, status_only: reading.statusOnly,
+    objections: reading.objections, by_words: reading.source !== "model" };
+}
+
+/** A reading of a Bot's line as its call record says it. */
+function botLineVerdict(reading: BotLineReading): CallRunVerdict {
+  return { kind: "bot_line", later: reading.later, claims_verified: reading.claimsVerified, no_work: reading.noWork,
+    bare_status: reading.bareStatus, go_ahead: reading.goAhead, by_words: reading.source !== "model" };
+}
+
+function filingVerdict(reading: FilingReading): CallRunVerdict {
+  const unique = (ids: Array<string | null>) => [...new Set(ids.filter((id): id is string => id !== null))];
+  return { kind: "filing", about: reading.about, task_ids: unique(reading.targets.map((target) => target.taskId)),
+    ticket_ids: unique(reading.targets.map((target) => target.ticketId)) };
+}
+
+function scaleVerdict(reading: ScaleReading): CallRunVerdict {
+  return { kind: "scale", large: reading.large, quote: reading.quote, unit: reading.unit };
+}
 
 export function createReader(deps: ReaderDeps): Reader {
   const { store } = deps;
@@ -149,7 +178,32 @@ export function createReader(deps: ReaderDeps): Reader {
     return made;
   }
 
-  function record<T extends { source: string }>(asked: Asked<T>, reading: T, fields: { model: string | null; fail: string | null; raw: string | null }): void {
+  function record<T extends { source: string }>(
+    asked: Asked<T>,
+    reading: T,
+    fields: { model: string | null; fail: string | null; raw: string | null },
+    call: { target: OrganizerRouting | LocalAgentTarget | null; promptRef: { id: string; revision_id: string | null; locale: string } | null; spendId: string | null; ms: number | null } = { target: null, promptRef: null, spendId: null, ms: null },
+  ): void {
+    try {
+      store.recordCallRun({
+        role: "reader",
+        prompt: call.promptRef ?? { id: asked.prompt, revision_id: null, locale: "zh" },
+        sessionId: asked.sessionId,
+        messageId: asked.messageId,
+        turnId: asked.turnId ?? null,
+        taskId: asked.taskId ?? null,
+        ...runOn(call.target),
+        ...(call.target ? {} : { model: fields.model }),
+        outcome: fields.fail === null ? "ok" : fields.fail === "unreadable" || fields.fail === "truncated" ? "unreadable" : "failed",
+        failKind: fields.fail,
+        verdict: asked.verdict(reading),
+        raw: fields.raw,
+        spendId: call.spendId,
+        ms: call.ms,
+      });
+    } catch {
+      // the call record is a record; the reading still counts
+    }
     try {
       store.recordWorkEvent({
         kind: "reader.answer",
@@ -171,9 +225,11 @@ export function createReader(deps: ReaderDeps): Reader {
   }
 
   async function read<T extends { source: string }>(asked: Asked<T>): Promise<T> {
+    const started = Date.now();
+    let call: Parameters<typeof record>[3] = { target: null, promptRef: null, spendId: null, ms: null };
     const byWords = (fail: string, model: string | null, raw: string | null): T => {
       const reading = asked.fallback();
-      record(asked, reading, { model, fail, raw });
+      record(asked, reading, { model, fail, raw }, call);
       return reading;
     };
     if (ablation.has("reader")) return byWords("ablated", null, null);
@@ -184,6 +240,7 @@ export function createReader(deps: ReaderDeps): Reader {
     const endpoint = "kind" in routing ? null : routing;
     if (claude && !deps.claudeJudge) return byWords("claude_unavailable", claude.model, null);
     const prompt = promptPage(store, "zh").resolve(asked.prompt);
+    call = { target: routing, promptRef: prompt.ref, spendId: null, ms: null };
     const controller = new AbortController();
     inFlight.add(controller);
     // The whole wait, a slot included: the call's own timer only starts once it has one.
@@ -221,15 +278,15 @@ export function createReader(deps: ReaderDeps): Reader {
     }
     if (result && endpoint && asked.sessionId) {
       try {
-        deps.recordSpend({ sessionId: asked.sessionId, target: endpoint, usage: result.usage,
-          responded: result.failKind === null || result.failKind === "incomplete" });
+        call.spendId = deps.recordSpend({ sessionId: asked.sessionId, target: endpoint, usage: result.usage,
+          responded: result.failKind === null || result.failKind === "incomplete" })?.id ?? null;
       } catch {
         // the ledger of spend is best-effort
       }
     }
     if (claude && answered?.usage && asked.sessionId && deps.recordClaudeSpend) {
       try {
-        deps.recordClaudeSpend({ sessionId: asked.sessionId, model: claude.model, usage: answered.usage, ...(claude.kind === "agent" ? { providerName: claude.label } : {}) });
+        call.spendId = deps.recordClaudeSpend({ sessionId: asked.sessionId, model: claude.model, usage: answered.usage, ...(claude.kind === "agent" ? { providerName: claude.label } : {}) })?.id ?? null;
       } catch {
         // the ledger of spend is best-effort
       }
@@ -240,6 +297,7 @@ export function createReader(deps: ReaderDeps): Reader {
           : result!.failKind && result!.failKind !== "incomplete" ? result!.failKind
             : null;
     const raw = answered?.content ?? result?.content ?? null;
+    call.ms = Date.now() - started;
     const reading = fail ? null : asked.parse(raw ?? "");
     if (!reading) {
       const why = fail ?? (result?.truncated ? "truncated" : "unreadable");
@@ -249,7 +307,7 @@ export function createReader(deps: ReaderDeps): Reader {
       log(`[reader] ${asked.kind} ${asked.messageId ?? asked.key}: ${why}, ${asked.fallbackNote}`);
       return byWords(why, routing.model, raw);
     }
-    record(asked, reading, { model: routing.model, fail: null, raw });
+    record(asked, reading, { model: routing.model, fail: null, raw }, call);
     return reading;
   }
 
@@ -293,6 +351,7 @@ export function createReader(deps: ReaderDeps): Reader {
         sessionId: message.session_id,
         messageId: message.id,
         prompt: "call.read_user_line",
+        verdict: userLineVerdict,
         payload: userLinePayload({ body: message.body, where, replyingTo, recent }),
         // Only a line of the shape a status question has is read as one, however the model read its words.
         parse: (raw) => {
@@ -312,6 +371,7 @@ export function createReader(deps: ReaderDeps): Reader {
       sessionId,
       messageId: null,
       prompt: "call.read_user_line",
+      verdict: userLineVerdict,
       payload: userLinePayload({ body, where: "direct", replyingTo: null, recent: [] }),
       parse: (raw) => parseUserLineAnswer(raw, body),
       fallback: () => userLineByWords(body, { statusQuestion: false }),
@@ -324,7 +384,9 @@ export function createReader(deps: ReaderDeps): Reader {
     const hash = createHash("sha256").update(body);
     if (answering) hash.update("\u0000").update(answering);
     const key = `bot:${hash.digest("hex")}`;
-    return remember(key, () => {
+    const turnId = context?.turnId ?? null;
+    const known = body.trim() !== "" && cache.has(key);
+    const reading = remember(key, () => {
       // Nothing to read: no call for it.
       if (!body.trim()) return Promise.resolve(botLineByWords(body));
       return read({
@@ -332,6 +394,8 @@ export function createReader(deps: ReaderDeps): Reader {
         kind: "bot_line",
         sessionId,
         messageId: null,
+        turnId,
+        verdict: botLineVerdict,
         prompt: "call.read_bot_line",
         payload: botLinePayload(body, answering),
         parse: (raw) => parseBotLineAnswer(raw, body, answering),
@@ -339,6 +403,19 @@ export function createReader(deps: ReaderDeps): Reader {
         fallbackNote: "read by the word lists",
       });
     });
+    // The same words read again in a turn: no second call, but a use of the reading all the same,
+    // so the flow shows it where it was applied (ADR 0083).
+    if (known && turnId) {
+      void reading.then((read) => {
+        try {
+          store.recordCallRun({ role: "reader", prompt: { id: "call.read_bot_line", revision_id: null, locale: "zh" }, sessionId, turnId,
+            outcome: "ok", verdict: botLineVerdict(read), cached: true });
+        } catch {
+          // the call record is a record; the reading still counts
+        }
+      });
+    }
+    return reading;
   }
 
   function filing(message: Message): Promise<FilingReading | null> {
@@ -357,6 +434,7 @@ export function createReader(deps: ReaderDeps): Reader {
         sessionId: message.session_id,
         messageId: message.id,
         prompt: "call.read_filing",
+        verdict: filingVerdict,
         payload,
         parse: (raw) => parseFilingAnswer(raw, refs),
         // No word list guesses where a line goes: the Bot chooses at its desk.
@@ -372,6 +450,8 @@ export function createReader(deps: ReaderDeps): Reader {
       kind: "scale",
       sessionId: input.sessionId,
       messageId: null,
+      taskId: input.taskId ?? null,
+      verdict: scaleVerdict,
       prompt: "call.read_scale",
       payload: scalePayload(input),
       parse: (raw) => parseScaleAnswer(raw, input.said),

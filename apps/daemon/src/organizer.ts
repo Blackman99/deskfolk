@@ -29,7 +29,7 @@ import { describeCheck } from "./acceptance-eval";
 import type { ClaudeJudge, LocalAgentTarget, ClaudeReadingUsage } from "./claude-code/reading";
 import type { CompletionsClient, MappedUsage } from "./completions";
 import { HttpError } from "./errors";
-import { sideJudge } from "./engine/builtin-models";
+import { runOn, sideJudge } from "./engine/builtin-models";
 import { atomicWrite } from "./file-integrity";
 import { organizerPayload, parseOrganizerResult } from "./prompts/organizer";
 import { promptPage } from "./prompts/book";
@@ -56,6 +56,8 @@ type PendingOrganizerRun = {
   candidatesApply: OrganizerRun["candidates_apply"];
   candidatesAtParse: OrganizerRun["candidates_at_parse"];
   downgradeReason: string | null;
+  /** What the call record (ADR 0083) keeps beside the run: the prompt, the model, when it started, and a settle's last turn. */
+  meta: { prompt: { id: string; revision_id: string | null; locale: string }; target: OrganizerRouting | LocalAgentTarget; started: number; turnId: string | null };
 };
 
 /** Records one organizer run. Best-effort, like the spend ledger: a write that fails does not undo the filing it describes. */
@@ -64,10 +66,32 @@ function finishOrganizerRun(
   pending: PendingOrganizerRun,
   outcome: { applied: boolean; rejectReason: string | null; held: string[] | null; appliedTaskId: string | null; appliedTicketId: string | null },
 ): void {
+  const { meta, ...run } = pending;
+  let runId: string | null = null;
   try {
-    store.recordOrganizerRun({ ...pending, ...outcome });
+    runId = store.recordOrganizerRun({ ...run, ...outcome }).id;
   } catch {
     // observability only; the filing it describes already happened (or didn't) either way
+  }
+  try {
+    store.recordCallRun({
+      role: "organizer",
+      prompt: meta.prompt,
+      sessionId: run.sessionId,
+      messageId: run.messageId,
+      turnId: meta.turnId,
+      taskId: outcome.appliedTaskId ?? run.taskId,
+      ticketId: outcome.appliedTicketId,
+      ...runOn(meta.target),
+      outcome: run.failKind === null ? "ok" : run.failKind === "unparseable" || run.failKind === "truncated" ? "unreadable" : "failed",
+      failKind: run.failKind,
+      verdict: { kind: "organizer", mode: run.mode, decision: run.decision, applied: outcome.applied, reject_reason: outcome.rejectReason, organizer_run_id: runId },
+      raw: run.rawAnswer,
+      spendId: run.spendId,
+      ms: Date.now() - meta.started,
+    });
+  } catch {
+    // the call record is a record too
   }
 }
 
@@ -280,7 +304,10 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     });
     // Which filing this was, for the line that says why it came to nothing.
     const what = input.mode === "message" ? `message ${input.message?.id}` : `plan ${input.current?.id}`;
+    // Your version of the organizer's prompt when you edited it (ADR 0064); its answer format stays fixed.
+    const prompt = promptPage(store, "zh").resolve("call.organizer");
     const base = {
+      meta: { prompt: prompt.ref, target: routing, started: Date.now(), turnId: null as string | null },
       sessionId: input.sessionId,
       taskId: input.current?.id ?? null,
       mode: input.mode,
@@ -291,8 +318,6 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         existing_check_ids: payload.current_plan?.checks.map((check) => check.id) ?? [],
       },
     };
-    // Your version of the organizer's prompt when you edited it (ADR 0064); its answer format stays fixed.
-    const prompt = promptPage(store, "zh").resolve("call.organizer");
     let result;
     try {
       // Only the organizer's model you chose (ADR 0075, 0077) is told how hard to think; the default one thinks as it likes.
@@ -574,6 +599,8 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         const lastTurn = store.db
           .query<{ id: string }, [string]>(`SELECT id FROM turns WHERE task_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`)
           .get(taskId);
+        // The settle hangs off the turn it came after on the flow board (ADR 0083).
+        pending.meta.turnId = lastTurn?.id ?? null;
         // A settle files what the Bots handed over; putting a parked plan back to work is yours to say.
         // Under holds, a hold keeps the plan you stopped parked whatever the settle says.
         const reopens = !holdsOn() && task.status === "parked" && parsed.spec.status === "active";

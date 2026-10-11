@@ -1,5 +1,6 @@
 import type { AllowRule, Approval, McpServer, Memory, Routine, Skill } from "./admin.ts";
 import type { Bot } from "./bots.ts";
+import type { BuiltinModelRole } from "./models.ts";
 import type { Locale, USER_MEMBER } from "./constants.ts";
 import type { Hold } from "./holds.ts";
 import type { FilingState, Message, MessageFiling } from "./messages.ts";
@@ -66,6 +67,17 @@ export type ClientEvent =
     }
   | ({ event: "judgement.started"; occurred_at: string } & PendingJudgement)
   | ({ event: "judgement.created"; occurred_at: string } & Judgement)
+  /** One of the app's own calls was used (ADR 0083): a flow board showing its job, line or turn reloads. */
+  | {
+      event: "call_run.created";
+      occurred_at: string;
+      id: string;
+      role: BuiltinModelRole;
+      session_id: string | null;
+      message_id: string | null;
+      turn_id: string | null;
+      task_id: string | null;
+    }
   | {
       event: "judgement.ended";
       occurred_at: string;

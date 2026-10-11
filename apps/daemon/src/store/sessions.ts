@@ -348,6 +348,7 @@ export function deleteSession(ctx: StoreContext, id: string, opts: { eraseQuotes
     // Unlike spend (a ledger, kept on purpose), the organizer's run log is a per-session diagnostic
     // like the rows above it: raw answers can paraphrase what you said, so it goes with the session.
     ctx.db.run(`DELETE FROM organizer_runs WHERE session_id = ?`, [id]);
+    ctx.db.run(`DELETE FROM call_runs WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM notifications WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM session_notification_preferences WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM check_backs WHERE session_id = ?`, [id]);
@@ -466,6 +467,7 @@ export function clearSessionMessages(ctx: StoreContext, id: string, opts: { eras
     // Unlike spend (a ledger, kept on purpose), the organizer's run log is a per-session diagnostic
     // like the rows above it: raw answers can paraphrase what you said, so it goes with the history.
     ctx.db.run(`DELETE FROM organizer_runs WHERE session_id = ?`, [id]);
+    ctx.db.run(`DELETE FROM call_runs WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM notifications WHERE session_id = ?`, [id]);
     // The jobs end with the history, so nobody comes back to them later.
     voidCheckBacks(ctx, { sessionId: id }, now);

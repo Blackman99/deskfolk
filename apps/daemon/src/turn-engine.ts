@@ -338,7 +338,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     // Billed as the organizer's kind (no Bot asked for it), with its own purpose.
     recordSpend({ sessionId, target, usage, responded }) {
-      spend.recordResponseSpend({
+      return spend.recordResponseSpend({
         kind: "organize",
         purpose: "reader",
         owner: spend.spendOwner(sessionId, null),
@@ -349,7 +349,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     claudeJudge: eitherJudge(createClaudeJudge({ claudeCode: options.claudeCode }), otherAgents),
     recordClaudeSpend({ sessionId, model, usage, providerName }) {
-      spend.recordClaudeSpend({ kind: "organize", purpose: "reader", owner: spend.spendOwner(sessionId, null), model, usage, ...(providerName ? { providerName } : {}) });
+      return spend.recordClaudeSpend({ kind: "organize", purpose: "reader", owner: spend.spendOwner(sessionId, null), model, usage, ...(providerName ? { providerName } : {}) });
     },
     draining: () => Boolean(options.admission?.draining),
     ablation,
@@ -395,7 +395,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     // Billed as the organizer's kind (no Bot asked for either), with its own purpose so the spend
     // view shows it apart (ADR 0042).
     recordSpend({ sessionId, target, ...spent }) {
-      recordSideSpend(spend, { kind: "organize", purpose: "scribe", owner: spend.spendOwner(sessionId, null), target, ...spent });
+      return recordSideSpend(spend, { kind: "organize", purpose: "scribe", owner: spend.spendOwner(sessionId, null), target, ...spent });
     },
     draining: () => Boolean(options.admission?.draining),
     readQuote,

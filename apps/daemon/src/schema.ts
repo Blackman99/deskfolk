@@ -1137,6 +1137,45 @@ CREATE INDEX IF NOT EXISTS organizer_runs_applied_task ON organizer_runs (applie
 CREATE INDEX IF NOT EXISTS organizer_runs_resume_named ON organizer_runs (json_extract(candidates_apply, '$.resume_plan_id'));
 CREATE INDEX IF NOT EXISTS organizer_runs_join_named ON organizer_runs (json_extract(candidates_apply, '$.join_plan_id'));
 
+-- One use of one of the app's own model calls (ADR 0083): a reading, a filing, the scribe, a
+-- judgement, the organizer, the composer, a compaction, the picture judge, a reflection or a
+-- retrospective — which call (role, prompt id and revision), what it was about (message, turn,
+-- job, ticket, Bot), the model it ran on, how it came out and what it concluded (verdict JSON), with
+-- the model's answer clipped. The flow board draws them as the steps between your line and the
+-- turns it woke. A reading served from the reader's cache is a row of its own (cached = 1). No
+-- foreign keys, like organizer_runs; deleting or clearing a session removes its rows (raw answers
+-- can paraphrase what you said), and each session keeps its newest CALL_RUNS_KEPT_PER_SESSION.
+CREATE TABLE IF NOT EXISTS call_runs (
+  id TEXT PRIMARY KEY,
+  role TEXT NOT NULL,
+  prompt_id TEXT,
+  prompt_revision TEXT,
+  prompt_locale TEXT,
+  session_id TEXT,
+  message_id TEXT,
+  turn_id TEXT,
+  task_id TEXT,
+  ticket_id TEXT,
+  bot_id TEXT,
+  check_run_id TEXT,
+  provider_id TEXT,
+  model TEXT,
+  thinking_level TEXT,
+  outcome TEXT NOT NULL CHECK (outcome IN ('ok', 'failed', 'unreadable')),
+  fail_kind TEXT,
+  verdict TEXT,
+  raw TEXT,
+  cached INTEGER NOT NULL DEFAULT 0,
+  spend_id TEXT,
+  ms INTEGER,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS call_runs_session ON call_runs (session_id, created_at, id);
+CREATE INDEX IF NOT EXISTS call_runs_task ON call_runs (task_id, created_at);
+CREATE INDEX IF NOT EXISTS call_runs_message ON call_runs (message_id);
+CREATE INDEX IF NOT EXISTS call_runs_turn ON call_runs (turn_id);
+
 CREATE TABLE IF NOT EXISTS notification_counters (
   name TEXT PRIMARY KEY,
   val INTEGER NOT NULL

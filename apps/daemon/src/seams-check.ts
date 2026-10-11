@@ -61,7 +61,12 @@ export type JudgeSeams = (
   item: string,
   locale: Locale,
   sessionId: string | null,
+  /** What the call record (ADR 0083) ties the call to; filled in by the plan's checks. */
+  about?: JudgeAbout,
 ) => Promise<string>;
+
+/** The job and check run a judge's call is for, for its call record (ADR 0083). */
+export type JudgeAbout = { taskId: string | null; checkRunId: string | null };
 
 export type SeamsDeps = {
   judge: JudgeSeams;

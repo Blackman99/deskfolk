@@ -17,7 +17,7 @@ import { join } from "node:path";
 import type { AcceptanceCheck, Locale } from "@real-bot/protocol";
 import type { CheckVerdict } from "./acceptance-eval";
 import { fill } from "./prompts/fill";
-import { resolveFfmpegBins, runProcess, seamsRulesText } from "./seams-check";
+import { resolveFfmpegBins, runProcess, seamsRulesText, type JudgeAbout } from "./seams-check";
 import { ENV_WHITELIST } from "./terminal-env";
 import { classifyPath } from "./workspace-paths";
 import type { PromptRef } from "./prompts/registry";
@@ -26,7 +26,7 @@ import { sayIn } from "./text";
 export type StandardEvidence = { kind: "text"; text: string } | { kind: "image"; label: string; dataUri: string };
 
 /** Asks a model to compare: the system prompt is {@link standardJudgePrompt}; returns its raw answer. */
-export type JudgeStandard = (evidence: StandardEvidence[], system: string, sessionId: string | null) => Promise<string>;
+export type JudgeStandard = (evidence: StandardEvidence[], system: string, sessionId: string | null, about?: JudgeAbout) => Promise<string>;
 
 /** The two hand-overs compared: the sample's approved one and the unit's latest, as workspace paths. */
 export type StandardSides = {

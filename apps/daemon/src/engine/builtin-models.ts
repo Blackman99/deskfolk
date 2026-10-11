@@ -15,10 +15,22 @@ import type { ClaudeJudge, ClaudePromptBlock, ClaudeReadingUsage, LocalAgentTarg
 import type { ChatMessage, CompletionsClient, JudgeRequest, JudgeResult, MappedUsage } from "../completions";
 import type { Store } from "../store";
 import type { SpendTracker } from "./spend";
-import type { Creds, EndpointTarget, SpendOwner } from "./types";
+import type { CallTarget, Creds, EndpointTarget, SpendOwner } from "./types";
 
 /** Where a built-in call runs: an endpoint's model, or a model of one of your local agents (ADR 0061, ADR 0079). */
 export type BuiltinTarget = EndpointTarget | LocalAgentTarget;
+
+/**
+ * The provider, model and thinking a call ran on, as its call record keeps them (ADR 0083): an
+ * endpoint's by its id, a local agent's by its runner, its effort as the thinking.
+ */
+export function runOn(target: CallTarget | LocalAgentTarget | null): { providerId: string | null; model: string | null; thinkingLevel: string | null } {
+  if (!target) return { providerId: null, model: null, thinkingLevel: null };
+  if ("kind" in target) {
+    return { providerId: target.kind === "agent" ? `agent:${target.runner}` : "claude_code", model: target.model, thinkingLevel: target.effort ?? null };
+  }
+  return { providerId: target.providerId, model: target.model, thinkingLevel: target.thinkingLevel };
+}
 
 /** A local agent's target, Claude Code's or another's: not an endpoint. */
 export function isClaudeTarget(target: BuiltinTarget): target is LocalAgentTarget {

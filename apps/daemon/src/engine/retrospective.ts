@@ -12,7 +12,7 @@ import type { CompletionsClient } from "../completions";
 import { retrospectivePayload } from "../prompts/retrospective";
 import { promptPage, type PromptUse } from "../prompts/book";
 import type { Store } from "../store";
-import { recordSideSpend, sideJudge, spentOf, type BuiltinTargetOf } from "./builtin-models";
+import { recordSideSpend, runOn, sideJudge, spentOf, type BuiltinTarget, type BuiltinTargetOf } from "./builtin-models";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
 
@@ -48,6 +48,9 @@ export function createRetrospector(deps: {
     let failed: string | null = "no_model";
     let prompt: PromptUse | null = null;
     let cut = false;
+    let ranOn: BuiltinTarget | null = null;
+    let spendId: string | null = null;
+    const started = Date.now();
     try {
       // The model you chose for retrospectives, told how hard to think (ADR 0077); else the Bot's
       // own, which thinks as it likes, as before.
@@ -57,7 +60,8 @@ export function createRetrospector(deps: {
         model = target.model;
         const locale = deps.store.settingsCached().locale === "en" ? "en" : "zh";
         prompt = promptPage(deps.store, locale).resolve("call.retrospective");
-        const result = await sideJudge(deps, own ? { ...own, thinkingLevel: null } : target, {
+        ranOn = own ? { ...own, thinkingLevel: null } : target;
+        const result = await sideJudge(deps, ranOn, {
           prompt: prompt.ref,
           messages: [
             { role: "system", content: prompt.text },
@@ -68,13 +72,13 @@ export function createRetrospector(deps: {
           maxTokens: RETROSPECT_MAX_TOKENS,
         });
         try {
-          recordSideSpend(deps.spend, {
+          spendId = recordSideSpend(deps.spend, {
             kind: "organize",
             purpose: "retrospect",
             owner: deps.spend.spendOwner(due.sessionId ?? "", due.botId),
             target,
             ...spentOf(result),
-          });
+          })?.id ?? null;
         } catch {
           // the ledger is best effort
         }
@@ -94,6 +98,20 @@ export function createRetrospector(deps: {
       deps.store.recordRetrospective(due, outcome, { model, note: failed ?? (outcome ? null : "unreadable"), raw: content || null });
     } catch {
       // left pending; the next claim fails it as interrupted
+    }
+    // Its call record (ADR 0083): on the job, as the Bot that looked back; none when no model ran.
+    if (prompt) {
+      try {
+        deps.store.recordCallRun({
+          role: "retrospective", prompt: prompt.ref, sessionId: due.sessionId, taskId: due.taskId, botId: due.botId, ...runOn(ranOn),
+          outcome: failed ? "failed" : outcome ? "ok" : "unreadable", failKind: failed ?? (outcome ? null : cut ? "truncated" : "unreadable"),
+          verdict: outcome ? { kind: "retrospective", findings: outcome.pitfalls.length + outcome.rework_causes.length + outcome.keep.length,
+            changes: outcome.memory.length + outcome.skills.length, summary: outcome.summary || null } : null,
+          raw: content || null, spendId, ms: Date.now() - started,
+        });
+      } catch {
+        // the call record is a record
+      }
     }
   }
 
