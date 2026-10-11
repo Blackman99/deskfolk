@@ -182,6 +182,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   origin_session_id TEXT,
   origin_message_id TEXT,
   thread_task_id TEXT,
+  -- The engine it runs (ADR 0085); null follows Settings' default_playbook.
+  playbook_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -1168,6 +1170,9 @@ CREATE TABLE IF NOT EXISTS call_runs (
   cached INTEGER NOT NULL DEFAULT 0,
   spend_id TEXT,
   ms INTEGER,
+  -- The engine it ran under and its revision then (ADR 0085).
+  playbook_id TEXT,
+  playbook_revision INTEGER,
   created_at TEXT NOT NULL
 );
 
@@ -1175,6 +1180,38 @@ CREATE INDEX IF NOT EXISTS call_runs_session ON call_runs (session_id, created_a
 CREATE INDEX IF NOT EXISTS call_runs_task ON call_runs (task_id, created_at);
 CREATE INDEX IF NOT EXISTS call_runs_message ON call_runs (message_id);
 CREATE INDEX IF NOT EXISTS call_runs_turn ON call_runs (turn_id);
+
+-- 引擎 (Playbook, ADR 0085): what you changed from a built-in engine (a built-in's own row, made on
+-- its first change), or a custom engine based on one. The built-ins themselves are code.
+CREATE TABLE IF NOT EXISTS playbooks (
+  id TEXT PRIMARY KEY,
+  base_id TEXT NOT NULL,
+  name TEXT,
+  diff TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT
+);
+
+-- Every change to an engine, never rewritten: who (you, the app, or a Bot whose proposal you let
+-- through) and what it was before and after.
+CREATE TABLE IF NOT EXISTS playbook_revisions (
+  id TEXT PRIMARY KEY,
+  playbook_id TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  op TEXT NOT NULL CHECK (op IN ('create', 'edit', 'reset', 'rename', 'delete')),
+  actor TEXT NOT NULL,
+  bot_id TEXT,
+  turn_id TEXT,
+  approval_id TEXT,
+  message_id TEXT,
+  reason TEXT,
+  before TEXT,
+  after TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS playbook_revisions_playbook ON playbook_revisions (playbook_id, revision);
 
 CREATE TABLE IF NOT EXISTS notification_counters (
   name TEXT PRIMARY KEY,

@@ -50,6 +50,11 @@ export type Session = {
   origin_session_id: string | null;
   /** The message that opened this session; the entry point to it hangs under that message. */
   origin_message_id: string | null;
+  /**
+   * The engine it runs (ADR 0085); null follows Settings' default. Absent from a daemon older than
+   * that ADR. A Bot↔Bot direct or a job's thread runs the engine of the conversation it came from.
+   */
+  playbook_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -146,6 +151,8 @@ export type SessionDetail = Session & {
 export type CreateGroupRequest = {
   name: string;
   members: string[];
+  /** The engine it runs (ADR 0085); omitted or null follows Settings' default. */
+  playbook_id?: string | null;
 };
 
 /**

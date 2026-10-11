@@ -9,6 +9,7 @@ import {
   type SessionWaitingOnYou,
   type Turn,
 } from "@real-bot/protocol";
+import { incomingPlaybookId } from "./playbooks";
 import { forgetLessonSources } from "./lessons";
 import { forgetQualitySources } from "./quality";
 import { HttpError } from "../errors";
@@ -237,12 +238,13 @@ export function createGroup(ctx: StoreContext, input: CreateGroupRequest): Sessi
   if (bots.length < 2) {
     throw new HttpError(422, "invalid_args", "a group needs at least two bots");
   }
+  const playbookId = incomingPlaybookId(ctx, input.playbook_id);
   const now = isoNow();
   const sessionId = ulid();
   ctx.db.transaction(() => {
     ctx.db.run(
-      `INSERT INTO sessions (id, kind, name, last_read_at, created_at, updated_at) VALUES (?, 'group', ?, ?, ?, ?)`,
-      [sessionId, name, now, now, now],
+      `INSERT INTO sessions (id, kind, name, last_read_at, playbook_id, created_at, updated_at) VALUES (?, 'group', ?, ?, ?, ?, ?)`,
+      [sessionId, name, now, playbookId, now, now],
     );
     ctx.db.run(
       `INSERT INTO session_participants (session_id, member, joined_at, left_at) VALUES (?, ?, ?, NULL)`,

@@ -20,6 +20,7 @@ import { migrateModelDefaults } from "./model-defaults";
 import { migrateNotifications } from "./notification-migration";
 import { migrateAcceptanceCheckKinds, migrateDerivedChecks, migrateNullableTaskSession, migratePlans, migrateRequirements, migrateTaskBriefs } from "./plan-migration";
 import { REQUIREMENT_CARD_TRIGGERS, settleAnsweredLegacyCards } from "./plan-requirements";
+import { migratePlaybooks } from "./playbook-migration";
 import { migratePrompts } from "./prompts";
 import { migrateQuality } from "./quality";
 import { QUOTE_TRIGGERS } from "./quotes";
@@ -357,6 +358,8 @@ export function migrateSchema(db: Database): void {
   migrateNullableTaskSession(db);
   // Every stop of yours is a stop for now (ADR 0071).
   migrateStopsForNow(db);
+  // A conversation's engine and a call's (ADR 0085).
+  migratePlaybooks(db);
   // Made again on every open rather than if missing, so the triggers are always this build's own.
   // Last, after every column they read (tasks.dormant_since comes in migratePlans).
   for (const trigger of [...HELD_TURN_TRIGGERS, ...QUOTE_TRIGGERS, ...REQUIREMENT_TRIGGERS, ...DORMANT_PLAN_TRIGGERS, ...SUBMISSION_TRIGGERS, ...WORK_QUESTION_TRIGGERS, ...REQUIREMENT_CARD_TRIGGERS]) {

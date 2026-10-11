@@ -408,6 +408,8 @@ export type CreateBotRequest = {
   agent_effort?: string | null;
   agent_config_dir?: string | null;
   agent_custom_id?: string | null;
+  /** The engine of the direct it opens with you (ADR 0085); omitted or null follows Settings' default. */
+  playbook_id?: string | null;
 };
 
 export type PatchBotRequest = {

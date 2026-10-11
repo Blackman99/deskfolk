@@ -38,6 +38,7 @@ import {
 import { listedConfigDir } from "./claude-code";
 import { listedAgentConfigDir, listedCustomAgent } from "./agents";
 import { hydrateSpeechKey, speechSettings } from "./speech";
+import { defaultPlaybookId, setDefaultPlaybook } from "./playbooks";
 import { createProviderSync, listProviders, patchProviderSync, providersCached } from "./providers";
 import {
   type ProviderRow,
@@ -107,6 +108,7 @@ export function settingsCached(ctx: StoreContext): Settings {
     organizer_model,
     builtin_models,
     speech: speechSettings(ctx),
+    default_playbook: defaultPlaybookId(ctx),
     launch_at_login,
     locale,
     theme,
@@ -260,6 +262,7 @@ export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Reco
       key !== "organizer_model" &&
       key !== "builtin_models" &&
       key !== "launch_at_login" &&
+      key !== "default_playbook" &&
       key !== "locale" &&
       key !== "theme"
     ) {
@@ -270,6 +273,7 @@ export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Reco
     if ("workspace_path" in patch) {
       setSetting(ctx, "workspace_path", resolveWorkspacePath(patch.workspace_path));
     }
+    if ("default_playbook" in patch) setDefaultPlaybook(ctx, patch.default_playbook);
     if ("launch_at_login" in patch) {
       if (typeof patch.launch_at_login !== "boolean") {
         throw new HttpError(422, "invalid_args", "launch_at_login must be a boolean");

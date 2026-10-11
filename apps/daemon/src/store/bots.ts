@@ -18,6 +18,7 @@ import {
 import { normalizeConfigDir } from "../claude-code/account";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
+import { incomingPlaybookId } from "./playbooks";
 import { customAgent, listedAgentConfigDir, listedCustomAgent } from "./agents";
 import { claudeOnlyAccount } from "./settings";
 import {
@@ -151,6 +152,9 @@ export function createBot(
     resolveIncomingThinkingLevel(ctx, input.thinking_level, model, providerId) ??
     defaultThinkingLevelFor(ctx, model, providerId);
   assertNameFree(ctx, name);
+  // The engine of its direct with you (ADR 0085) is yours to choose, as its runner is.
+  const playbookId = incomingPlaybookId(ctx, input.playbook_id);
+  if (playbookId && actor !== USER_MEMBER) throw new HttpError(403, "forbidden", "only the user chooses a conversation's engine");
   const now = isoNow();
   const botId = ulid();
   const sessionId = ulid();
@@ -167,8 +171,8 @@ export function createBot(
       [revisionId, botId, name, duties, boundaries, avatar, actor, now],
     );
     ctx.db.run(
-      `INSERT INTO sessions (id, kind, name, last_read_at, created_at, updated_at) VALUES (?, 'direct', NULL, ?, ?, ?)`,
-      [sessionId, now, now, now],
+      `INSERT INTO sessions (id, kind, name, last_read_at, playbook_id, created_at, updated_at) VALUES (?, 'direct', NULL, ?, ?, ?, ?)`,
+      [sessionId, now, playbookId, now, now],
     );
     ctx.db.run(
       `INSERT INTO session_participants (session_id, member, joined_at, left_at) VALUES (?, ?, ?, NULL)`,

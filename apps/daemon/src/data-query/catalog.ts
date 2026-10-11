@@ -38,6 +38,7 @@ export const TABLE_NOTES: Readonly<Record<string, Line>> = {
   shared_skills: { zh: "你共享给所有 Bot 的项目技能。", en: "Project skills shared with every Bot." },
   organizer_runs: { zh: "整理跳每一次调模型：原始答案、决定、落没落地、没落地的原因。", en: "Organizer calls: raw answer, decision, whether it landed and why not." },
   call_runs: { zh: "应用自己的每一次模型调用（ADR 0083）：role 是哪个调用（reader / organizer / scribe / judgement / judge / composer / compaction / reflection / retrospective），关于哪句话（message_id）、哪一轮、哪件事，用的提示词版本和模型，outcome（ok / failed / unreadable）、verdict（结论 JSON）、raw（原始回答）。", en: "Each of the app's own model calls (ADR 0083): role, the message / turn / job it was about, prompt revision and model, outcome (ok / failed / unreadable), verdict (JSON), raw answer." },
+  playbooks: { zh: "引擎（ADR 0085）：对内置引擎的改动，或自定义引擎。", en: "Engines (ADR 0085): changes to a built-in, or custom ones." },
   judgements: { zh: "群里没点名时每个 Bot 的下场 / 旁观判断和理由。", en: "Join / pass judgements on unmentioned group lines, with reasons." },
   spend: { zh: "花费账本，每次端点调用一行：kind / purpose、模型、token、实报或估算的金额。", en: "Spend ledger, one row per endpoint call: kind / purpose, model, tokens (cached_tokens), cost." },
   approvals: { zh: "批准卡：kind_key、要做的事（summary / target）、status（pending / allowed_once / denied / voided）。", en: "Approval cards: kind_key, summary, target, status (pending / allowed_once / denied / voided)." },

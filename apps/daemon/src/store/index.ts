@@ -61,6 +61,7 @@ import { migrateSchema } from "./migrate";
 import * as notifications from "./notifications";
 import * as organizerRuns from "./organizer-runs";
 import * as callRuns from "./call-runs";
+import * as playbooks from "./playbooks";
 import * as providers from "./providers";
 import * as quotes from "./quotes";
 import * as requirements from "./requirements";
@@ -508,6 +509,18 @@ export class Store {
   readonly recordCallRun = this.bind(callRuns.recordCallRun);
   readonly getCallRun = this.bind(callRuns.getCallRun);
   readonly traceSteps = this.bind(callRuns.traceSteps);
+  readonly listPlaybooks = this.bind(playbooks.listPlaybooks);
+  readonly getPlaybook = this.bind(playbooks.getPlaybook);
+  readonly playbookFor = this.bind(playbooks.playbookFor);
+  readonly playbookStepOn = this.bind(playbooks.playbookStepOn);
+  readonly playbookParam = this.bind(playbooks.playbookParam);
+  readonly savePlaybook = this.bind(playbooks.savePlaybook);
+  readonly resetPlaybook = this.bind(playbooks.resetPlaybook);
+  readonly createPlaybook = this.bind(playbooks.createPlaybook);
+  readonly renamePlaybook = this.bind(playbooks.renamePlaybook);
+  readonly deletePlaybook = this.bind(playbooks.deletePlaybook);
+  readonly listPlaybookRevisions = this.bind(playbooks.listPlaybookRevisions);
+  readonly setSessionPlaybook = this.bind(playbooks.setSessionPlaybook);
 
   // Acceptance checks (可执行验收) ----------------------------------------------------------
   readonly getCheck = this.bind(acceptanceChecks.getCheck);

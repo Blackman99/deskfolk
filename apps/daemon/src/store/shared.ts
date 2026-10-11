@@ -151,6 +151,7 @@ export type SessionRow = {
   archived_at: string | null;
   origin_session_id: string | null;
   origin_message_id: string | null;
+  playbook_id?: string | null;
   created_at: string;
   updated_at: string;
 };

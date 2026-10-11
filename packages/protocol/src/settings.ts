@@ -36,6 +36,11 @@ export type Settings = {
    * `PATCH /v1/speech`; null until one is set up, absent from a daemon older than that ADR.
    */
   speech?: SpeechSettings | null;
+  /**
+   * The engine a conversation runs unless it names its own (ADR 0085): a built-in's id or a custom
+   * engine's. Absent from a daemon older than that ADR.
+   */
+  default_playbook?: string;
   launch_at_login: boolean;
   locale: Locale;
   theme: Theme;
@@ -55,6 +60,8 @@ export type SettingsPatch = {
   organizer_model?: ReaderEndpointModel | null;
   /** The calls named are set; null runs one as before you chose (ADR 0077). */
   builtin_models?: Partial<Record<BuiltinModelRole, ReaderModel | null>>;
+  /** The engine conversations run unless they name one (ADR 0085). */
+  default_playbook?: string;
   launch_at_login?: boolean;
   locale?: Locale;
   theme?: Theme;

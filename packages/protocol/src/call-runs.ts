@@ -84,6 +84,9 @@ export type CallRun = {
   spend_id: string | null;
   /** How long it took, the wait for a slot included; null when no call went out. */
   ms: number | null;
+  /** The engine it ran under and how many times that engine had been changed (ADR 0085); absent before it. */
+  playbook_id?: string | null;
+  playbook_revision?: number | null;
   created_at: string;
 };
 

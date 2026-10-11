@@ -6,6 +6,7 @@
  */
 import type { BuiltinModelRole, CallRun, CallRunOutcome, CallRunVerdict, TraceStep } from "@real-bot/protocol";
 import { isoNow, ulid } from "../ids";
+import { playbookFor } from "./playbooks";
 import { type StoreContext } from "./shared";
 
 /**
@@ -80,18 +81,22 @@ export function recordCallRun(ctx: StoreContext, input: CallRunInput): CallRun {
     ms: input.ms === undefined || input.ms === null ? null : Math.max(0, Math.round(input.ms)),
     created_at: at.toISOString(),
   };
+  // The engine it ran under (ADR 0085), as it stood when the call was written.
+  const engine = playbookFor(ctx, { sessionId: row.session_id, taskId: row.task_id, turnId: row.turn_id });
+  row.playbook_id = engine.id;
+  row.playbook_revision = engine.revision;
   ctx.db.run(
     `INSERT INTO call_runs (
        id, role, prompt_id, prompt_revision, prompt_locale, session_id, message_id, turn_id, task_id,
        ticket_id, bot_id, check_run_id, provider_id, model, thinking_level, outcome, fail_kind,
-       verdict, raw, cached, spend_id, ms, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       verdict, raw, cached, spend_id, ms, playbook_id, playbook_revision, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.id, row.role, row.prompt_id, row.prompt_revision, row.prompt_locale, row.session_id,
       row.message_id, row.turn_id, row.task_id, row.ticket_id, row.bot_id, row.check_run_id,
       row.provider_id, row.model, row.thinking_level, row.outcome, row.fail_kind,
       row.verdict ? JSON.stringify(row.verdict) : null, row.raw, row.cached ? 1 : 0, row.spend_id,
-      row.ms, row.created_at,
+      row.ms, row.playbook_id, row.playbook_revision, row.created_at,
     ],
   );
   if (row.session_id) pruneCallRuns(ctx, row.session_id);

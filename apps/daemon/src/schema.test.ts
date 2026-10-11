@@ -62,6 +62,8 @@ describe("schema", () => {
       "notifications",
       "organizer_runs",
       "pending_keys",
+      "playbook_revisions",
+      "playbooks",
       "profile_revisions",
       "prompt_overrides",
       "prompt_revisions",

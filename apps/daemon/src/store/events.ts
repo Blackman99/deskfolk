@@ -1,4 +1,5 @@
 import type { ClientEvent, Judgement, Locale, Spend } from "@real-bot/protocol";
+import { defaultPlaybookId } from "./playbooks";
 import { listApprovals, listAllowRules } from "./approvals";
 import { isBotOnlyLine } from "./check-backs";
 import { taskDetail } from "./plan-spec";
@@ -106,6 +107,11 @@ export function installChangeJournal(ctx: StoreContext): void {
   // rows is no news to anyone, so only an insert is a change.
   ctx.db.exec(`CREATE TEMP TRIGGER event_call_runs_INSERT AFTER INSERT ON main.call_runs
     BEGIN INSERT INTO event_changes VALUES ('call_runs', NEW.id, 'INSERT', NEW.session_id); END`);
+  // An engine (ADR 0085) changed, made or removed: one change to it, whatever the revision was.
+  for (const op of ["INSERT", "UPDATE"]) {
+    ctx.db.exec(`CREATE TEMP TRIGGER event_playbooks_${op} AFTER ${op} ON main.playbooks
+      BEGIN INSERT INTO event_changes VALUES ('playbooks', NEW.id, '${op}', NULL); END`);
+  }
   // Built-in prompts (ADR 0064) have no id column: an edit, a merge, a reset or a conflict marked is
   // one change to that prompt in that language.
   for (const table of ["prompt_overrides", "prompt_revisions"]) {
@@ -204,6 +210,9 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
   for (const { entity, id } of unique.values()) {
     switch (entity) {
       case "settings": break;
+      case "playbooks":
+        out.push({ event: "playbook.changed", occurred_at, id, default_id: defaultPlaybookId(ctx) });
+        break;
       case "prompts": {
         const at = id.lastIndexOf(":");
         out.push({ event: "prompt.changed", occurred_at, id: id.slice(0, at), locale: id.slice(at + 1) as Locale });

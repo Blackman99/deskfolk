@@ -17,6 +17,8 @@ export type ClientEvent =
   | { event: "credential_operations.changed"; occurred_at: string; items: CredentialOperation[] }
   /** A built-in prompt changed (ADR 0064): reload it where it is shown. */
   | { event: "prompt.changed"; occurred_at: string; id: string; locale: Locale }
+  /** An engine was changed, made or removed, or the default moved (ADR 0085): reload the engines. */
+  | { event: "playbook.changed"; occurred_at: string; id: string; default_id: string }
   | ({ event: "settings.changed"; occurred_at: string } & Settings)
   | ({ event: "bot.upsert"; occurred_at: string } & Bot & { deleted_at: string | null })
   | ({ event: "session.upsert"; occurred_at: string } & SessionSummary)
