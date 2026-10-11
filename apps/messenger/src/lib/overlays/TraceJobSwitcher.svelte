@@ -185,7 +185,7 @@
 {/if}
 
 <style>
-	/* `.trace-titles` is the header's own wrapper, in TraceView; the h2 it sizes renders here. */
+	/* `.trace-titles` is the header's own wrapper, in JobHeader; the h2 it sizes renders here. */
 	:global(.trace-titles) h2 {
 		margin: 0;
 		font-size: 14px;
