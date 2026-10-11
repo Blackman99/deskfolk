@@ -59,7 +59,7 @@ test("a line is read by Claude with the prompt and payload an endpoint would get
   const h = harness(() => ({ content: STOP, usage: USAGE, fail: null }));
   const line = h.store.postMessage(h.direct, { body: "先别搞了，收手吧" });
   const reading = await h.reader.userLine(line);
-  expect(reading).toEqual({ source: "model", control: "stop", controlOnly: true, statusOnly: false, objections: [] });
+  expect(reading).toEqual({ source: "model", control: "stop", controlOnly: true, statusOnly: false, objections: [], passes: [] });
   expect(h.endpointCalls).toEqual([]);
   expect(h.inputs).toHaveLength(1);
   expect(h.inputs[0]!.target).toEqual({ kind: "claude_code", model: "haiku", configDir: "/opt/claude-b" });

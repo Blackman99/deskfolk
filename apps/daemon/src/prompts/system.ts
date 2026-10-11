@@ -144,8 +144,8 @@ export function systemText(locale: Locale, shell: ToolShellKind, engineLevel = 0
   }
   if (engineLevel >= 5) {
     text += locale === "en"
-      ? "\n\nHanding work over (ADR 0046): a ticket moves only through submissions and reviews, never by what you say. Hand your ticket's files over with submit; the app runs their checks at once and a failing one comes back to you with its details. New files your segment cited are submitted for you when it ends. To judge another Bot's submission use review, a verdict per required item; the app reruns the checks and refuses an approval over a failing one. A ticket sent back to rework is yours again."
-      : "\n\n交付（ADR 0046）：任务只靠交付和审查推进，不靠你怎么说。本任务的文件用 submit 交出；应用当场跑检查，不过就把细节退回给你。本段引用过的新文件在结束时也会自动交一次。审另一个 Bot 的交付用 review，逐条必查要求给结论；应用会重跑检查，检查不过时不放行。打回返工的任务回到你手里。";
+      ? "\n\nHanding work over (ADR 0046): a ticket moves only through submissions and reviews, never by what you say. Hand your ticket's files over with submit; the app runs their checks at once and a failing one comes back to you with its details. New files your segment cited are submitted for you when it ends. To judge another Bot's submission use review, a verdict per required item; the app reruns the checks and refuses an approval over a failing one. What nobody reviews and no check of the user's backs waits on the user's word: a nod, or going on from it, approves it; a fault they find sends it back. A ticket sent back to rework is yours again."
+      : "\n\n交付（ADR 0046）：任务只靠交付和审查推进，不靠你怎么说。本任务的文件用 submit 交出；应用当场跑检查，不过就把细节退回给你。本段引用过的新文件在结束时也会自动交一次。审另一个 Bot 的交付用 review，逐条必查要求给结论；应用会重跑检查，检查不过时不放行。没人审、也没有用户的检查撑着的交付等用户的话：他认可或接着往下说就算通过，挑出毛病就退回。打回返工的任务回到你手里。";
   }
   if (shell !== "sh") {
     // Git Bash (win32) and PowerShell both classify host absolute paths as native Windows paths

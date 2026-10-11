@@ -65,7 +65,7 @@ function text(value: unknown): string | undefined {
 /** Who an approval event says let it through. */
 function approver(event: EventRow, payload: Record<string, unknown>, pressed: ReadonlySet<string>): HandOverDecider {
   const id = typeof payload.submission_id === "string" ? payload.submission_id : null;
-  // A reviewer's approve that put it on your card, then your 放行: yours.
+  // A reviewer's approve that left it to you, then your 放行 (said, or pressed on an older card): yours.
   if (payload.by === "user" || event.actor === USER_MEMBER || (id !== null && pressed.has(id))) return "user";
   return event.kind === "review.recorded" ? "reviewer" : "app";
 }
@@ -107,8 +107,8 @@ export function ticketHandOvers(ctx: StoreContext, taskId: string): Map<string, 
     } else if (row.state === "checks_failed") {
       outcome.decided_by = "app";
     } else if ((row.state === "submitted" || row.state === "in_review") && row.awaiting) {
-      const awaiting = parse(row.awaiting);
-      if (typeof awaiting.message_id === "string") outcome.waiting_on_user = true;
+      // Waiting on your word (ADR 0084), or on a card an older build put up.
+      outcome.waiting_on_user = true;
     }
     out.set(ticketId, outcome);
   }

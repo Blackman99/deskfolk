@@ -38,6 +38,7 @@ import type { OrganizerRouting } from "./organizer";
 import {
   botLinePayload,
   filingPayload,
+  handedOverRefs,
   parseBotLineAnswer,
   parseFilingAnswer,
   parseUserLineAnswer,
@@ -141,7 +142,7 @@ type Asked<T> = {
 /** A reading of your line as its call record says it (ADR 0083). */
 function userLineVerdict(reading: UserLineReading): CallRunVerdict {
   return { kind: "user_line", control: reading.control, control_only: reading.controlOnly, status_only: reading.statusOnly,
-    objections: reading.objections, by_words: reading.source !== "model" };
+    objections: reading.objections, passes: reading.passes, by_words: reading.source !== "model" };
 }
 
 /** A reading of a Bot's line as its call record says it. */
@@ -345,6 +346,14 @@ export function createReader(deps: ReaderDeps): Reader {
         .all(message.session_id, message.created_at, message.id, RECENT_LINES)
         .reverse()
         .map((line) => ({ author: authorOf(line), text: line.body }));
+      // The hand-overs waiting on your word where you said it (ADR 0084): the reading names those it lets through.
+      let handedOver: ReturnType<Store["waitingOnYourWord"]> = [];
+      try {
+        handedOver = store.waitingOnYourWord({ sessionId: message.session_id, before: message.created_at });
+      } catch {
+        handedOver = [];
+      }
+      const refs = handedOverRefs(handedOver.map((row) => row.submission_id));
       return read({
         key: `user:${message.id}`,
         kind: "user_line",
@@ -352,10 +361,10 @@ export function createReader(deps: ReaderDeps): Reader {
         messageId: message.id,
         prompt: "call.read_user_line",
         verdict: userLineVerdict,
-        payload: userLinePayload({ body: message.body, where, replyingTo, recent }),
+        payload: userLinePayload({ body: message.body, where, replyingTo, recent, handedOver }),
         // Only a line of the shape a status question has is read as one, however the model read its words.
         parse: (raw) => {
-          const reading = parseUserLineAnswer(raw, message.body);
+          const reading = parseUserLineAnswer(raw, message.body, refs);
           return reading && { ...reading, statusOnly: reading.statusOnly && statusQuestionShape(message) };
         },
         fallback: () => userLineByWords(message.body, { statusQuestion: isStatusQuestion(message) }),

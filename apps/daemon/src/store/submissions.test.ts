@@ -8,7 +8,6 @@ import { ENGINE_LEVELS } from "./schema-gate";
 import { createHold, liftHold } from "./holds";
 import { checkLines } from "./submission-rows";
 import { setTicketStage, settlePlanStage } from "./ticket-stage";
-import { REST_SETTLE_MS } from "./hand-over-rest";
 import { superviseSubmissions, UNREVIEWED_AFTER_MS } from "./submissions";
 
 const stores: Store[] = [];
@@ -109,7 +108,7 @@ function onModel(f: Fixture, turnId: string, model: string) {
 /** A submission of the master, checked, waiting with its reviewer (or with none). */
 /**
  * A master handed over after an earlier segment on the job, as a master is: not made in one go, so
- * with nothing of yours behind it, it comes to your card.
+ * with nothing of yours behind it, it waits on your word (ADR 0084).
  */
 function handedOver(f: Fixture, opts: { reviewer?: boolean; model?: string } = {}) {
   if (opts.reviewer) f.store.patchTicketByUser(f.ticket.id, { reviewerBotId: f.reviewer.id });
@@ -118,7 +117,6 @@ function handedOver(f: Fixture, opts: { reviewer?: boolean; model?: string } = {
   if (opts.model) onModel(f, produced.id, opts.model);
   const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/EP01_MASTER.mp4`, HASH_A]])!;
   f.store.settleSubmissionChecks(submission.id);
-  // The segment that made it is over: a card waits for its Bot to stop (ADR 0058 §16).
   f.store.setTurnStatus(produced.id, "completed");
   return { produced, submission };
 }
@@ -309,7 +307,7 @@ test("a review: required items (raised twice, about the picture) need a pass wit
   expect(f.store.db.query("SELECT wakes, source FROM inbox_items WHERE bot_id = ? AND source = 'review'").all(f.producer.id)).toEqual([{ wakes: 0, source: "review" }]);
 });
 
-test("a same-model pass on what you raised twice, with no passing check behind it, waits on your one 放行 card, the measurement on it", () => {
+test("a same-model pass on what you raised twice, with no passing check behind it, waits on your word — no card — and your 放行 in words takes it as met", () => {
   const f = fixture();
   const { submission } = handedOver(f, { reviewer: true, model: "same-model" });
   const said = requirement(f, "R-9", { times: 2 });
@@ -321,29 +319,28 @@ test("a same-model pass on what you raised twice, with no passing check behind i
   expect(result).toMatchObject({ ok: false, code: "awaiting_user" });
   if (result.ok || result.code !== "awaiting_user") throw new Error("expected to wait on you");
   expect(result.reasons.join(" ")).toContain("107.00 秒，要时长 108–132 秒");
-  const card = result.card!;
-  expect(card.control).toEqual({ kind: "review_item", submission_id: submission.id, task_id: f.plan.id, ticket_id: f.ticket.id,
-    requirement_ids: ["R-9"], check_ids: [], offer: ["approve", "reject"] });
-  // The reviewer's word, what you said twice and what the app measured on it, all on the one card.
-  expect(card.body).toContain("Reviewer审过了，判通过");
-  expect(card.body).toContain("放行就算这几条做到了：\n- 「要求 R-9」（你说过 2 次）——应用量到：「时长约 2 分钟」：不通过——107.00 秒，要时长 108–132 秒（用户还没确认）");
-  expect(card.body).toEndWith("看过之后，放行或者退回。");
-  // The ball is yours; the producer is told nothing, and nothing asks it to recut.
-  expect(f.store.ballHolder({ ticketId: f.ticket.id })).toEqual({ kind: "user", reason: "review", ref: card.id });
+  expect(result.reasons.join(" ")).toContain("waiting on the user's word");
+  // No card and no notification (ADR 0084): the ball is yours, and the hand-over waits on what you
+  // say about it, the reviewer's verdict and what you said twice kept with it. Nothing asks the producer to recut.
+  expect(reviewCards(f)).toBe(0);
+  expect(f.store.db.query("SELECT COUNT(*) AS n FROM notifications WHERE semantic_key LIKE 'review_item:%'").get()).toEqual({ n: 0 });
+  expect(f.store.ballHolder({ ticketId: f.ticket.id })).toEqual({ kind: "user", reason: "review", ref: f.ticket.id });
   expect(f.store.db.query("SELECT COUNT(*) AS n FROM inbox_items WHERE bot_id = ? AND source = 'review'").get(f.producer.id)).toEqual({ n: 0 });
-  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "in_review", awaiting: { kind: "approval", requirement_ids: ["R-9"], message_id: card.id } });
-  expect(f.store.db.query("SELECT kind, action_state FROM notifications WHERE semantic_key = ?").get(`review_item:${card.id}`)).toEqual({ kind: "ask", action_state: "open" });
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "in_review",
+    awaiting: { kind: "approval", requirement_ids: ["R-9"], message_id: null, review: { outcome: "approve", same_model: true } } });
+  expect(f.store.listWorkEvents({ kind: "submission.awaiting_word" }).map((event) => event.payload)).toMatchObject([{ submission_id: submission.id, requirement_ids: ["R-9"], reviewed: true }]);
   // A second review of it is not taken while it waits on you.
   expect(() => f.store.reviewSubmission({ turnId: reviewing.id, outcome: "approve" })).toThrow("waits on the user");
 
-  // 放行 takes what you said twice as met, and the reviewer's approve with it.
-  const answered = f.store.answerReviewCard(card.id, "approve");
-  expect(answered.submission).toMatchObject({ state: "approved", awaiting: null, reviews: [{ same_model: true, outcome: "approve" }] });
-  expect(answered.message.control).toMatchObject({ acted: ["approve"] });
+  // Your word lets it through: what you said twice taken as met, the reviewer's approve with it, and your line says so.
+  const { line, lines } = letThrough(f, [submission.id], "可以，就这样");
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "approved", awaiting: null, reviews: [{ same_model: true, outcome: "approve" }] });
   expect(ticketRow(f)).toEqual({ status: "done", stage: "approved" });
-  expect(f.store.db.query("SELECT action_state FROM notifications WHERE semantic_key = ?").get(`review_item:${card.id}`)).toEqual({ action_state: "resolved" });
-  expect(() => f.store.answerReviewCard(card.id, "reject")).toThrow("no longer offers");
-  expect(reviewCards(f)).toBe(1);
+  expect(lines.map((message) => message.control)).toEqual([{ kind: "passed", submission_ids: [submission.id], message_id: line.id, offer: [],
+    result: "已放行：EP01 的任务 01「06 母带」。" }]);
+  expect(f.store.listWorkEvents({ kind: "submission.approved" }).map((event) => ({ actor: event.actor, ...event.payload })))
+    .toMatchObject([{ actor: "user", submission_id: submission.id, by: "user", message_id: line.id }]);
+  expect(reviewCards(f)).toBe(0);
 });
 test("a required-items card from before keeps its buttons: removing the item stops requiring it here; a passing check behind it needs no card at all", () => {
   const f = fixture();
@@ -452,41 +449,35 @@ test("from level 8 a gate that fails at the tick, not at hand-over, is filed onc
   expect(f.store.listQualityEvents().map((row) => [row.kind, row.category, row.bot_id, row.submission_id])).toEqual([["checks_failed", "unclear", f.producer.id, submission.id]]);
 });
 
-test("with no reviewer, a required item nothing backs comes to your 放行 card even past a passing check of yours; dropping it on the board lets the next tick approve", () => {
+test("with no reviewer, a required item nothing backs waits on your word even past a passing check of yours; dropping it on the board lets the next tick approve", () => {
   const f = fixture();
   const { submission } = handedOver(f);
   gate(f, "pass");
   requirement(f, "R-picture", { category: "画面" });
   const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
-  expect(tick.moved).toMatchObject([{ id: submission.id, state: "submitted", awaiting: { kind: "approval", requirement_ids: ["R-picture"], review: null } }]);
-  expect(tick.messages).toHaveLength(1);
-  const card = tick.messages[0]!;
-  expect(card.control).toMatchObject({ kind: "review_item", requirement_ids: ["R-picture"], offer: ["approve", "reject"] });
-  expect(card.body).toContain("你确认过的检查都过了，但它们管不到下面这几条，所以要你来定。\n放行就算这几条做到了：\n- 「要求 R-picture」（关于画面）");
-  // The next tick asks nothing new.
-  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000)).messages).toEqual([]);
+  expect(tick.moved).toMatchObject([{ id: submission.id, state: "submitted", awaiting: { kind: "approval", requirement_ids: ["R-picture"], review: null, message_id: null } }]);
+  // The next tick asks nothing either.
+  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000))).toMatchObject({ moved: [] });
   expect(f.store.db.query("SELECT COUNT(*) AS n FROM inbox_items WHERE bot_id = ?").get(f.producer.id)).toEqual({ n: 0 });
-  // You drop the requirement on the board, not on the card: your check backs the rest, so the next
-  // tick lets it through, and the card says so in place of its buttons.
+  // You drop the requirement on the board: your check backs the rest, so the next tick lets it through.
   f.store.waiveRequirement("R-picture", { taskId: f.plan.id });
   const next = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 3_000));
-  expect(next).toMatchObject({ moved: [{ id: submission.id, state: "approved" }], messages: [] });
-  expect(f.store.getMessage(card.id).control).toMatchObject({ kind: "review_item", offer: [], result: "已放行。" });
+  expect(next).toMatchObject({ moved: [{ id: submission.id, state: "approved" }] });
 
-  // With nothing of yours behind it, dropping the item leaves the same card waiting on your press.
+  // With nothing of yours behind it, dropping the item leaves it waiting on your word.
   const g = fixture();
   const loose = handedOver(g);
   requirement(g, "R-picture", { category: "画面" });
-  const [asked] = superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
-  expect(asked!.body).toContain("没有审查者，也没有你确认过的检查替你把关");
+  superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   g.store.waiveRequirement("R-picture", { taskId: g.plan.id });
-  expect(superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 2_000))).toMatchObject({ moved: [], messages: [] });
-  expect(g.store.getSubmission(loose.submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval", message_id: asked!.id } });
-  expect(g.store.answerReviewCard(asked!.id, "approve").submission.state).toBe("approved");
-  expect(reviewCards(g)).toBe(1);
+  expect(superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 2_000))).toMatchObject({ moved: [] });
+  expect(g.store.getSubmission(loose.submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval", message_id: null } });
+  letThrough(g, [loose.submission.id]);
+  expect(g.store.getSubmission(loose.submission.id).state).toBe("approved");
+  expect(reviewCards(f) + reviewCards(g)).toBe(0);
 });
 
-test("a hand-over waits on you on one card: what nothing backs is listed on 放行/退回, and a line read while it waits adds no card", () => {
+test("a hand-over waits on your word once: what nothing backs is kept with it, a line read while it waits changes nothing, and your word takes it as met", () => {
   // 2026-10-07 19:37: one hand-over of 「生成一张猫坐在阳台的图片」 asked three times in 26 s — your opening
   // line (about the picture) on a card of its own, then 「把猫改成橘猫」, said while it waited and read
   // after the first card, on another, then 放行 on a third. Each was pressed within seven seconds.
@@ -494,76 +485,23 @@ test("a hand-over waits on you on one card: what nothing backs is listed on 放�
   const { submission } = handedOver(f);
   requirement(f, "R-cat", { category: "画面内容" });
   requirement(f, "R-said", { times: 2 });
-  const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
-  expect(tick.messages).toHaveLength(1);
-  const card = tick.messages[0]!;
-  expect(card.control).toEqual({ kind: "review_item", submission_id: submission.id, task_id: f.plan.id, ticket_id: f.ticket.id,
-    requirement_ids: ["R-cat", "R-said"], check_ids: [], offer: ["approve", "reject"] });
-  expect(card.body).toBe([
-    "EP01 的任务 01「06 母带」交上来了（EP01_MASTER.mp4）。没有审查者，也没有你确认过的检查替你把关，所以要你来定。",
-    "放行就算这几条做到了：",
-    "- 「要求 R-cat」（关于画面）",
-    "- 「要求 R-said」（你说过 2 次）",
-    "看过之后，放行或者退回。",
-  ].join("\n"));
-  expect(f.store.getSubmission(submission.id)).toMatchObject({ awaiting: { kind: "approval", requirement_ids: ["R-cat", "R-said"], message_id: card.id } });
-  // Another line about the picture, read while the card waits: the card stands, nothing more asks.
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ awaiting: { kind: "approval", requirement_ids: ["R-cat", "R-said"], message_id: null } });
+  // Another line about the picture, read while it waits: nothing more is asked or recorded.
   requirement(f, "R-orange", { category: "画面内容" });
-  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000))).toMatchObject({ moved: [], messages: [] });
-  // 放行 lets it through.
-  expect(f.store.answerReviewCard(card.id, "approve").submission).toMatchObject({ state: "approved", awaiting: null });
+  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000))).toMatchObject({ moved: [] });
+  expect(f.store.listWorkEvents({ kind: "submission.awaiting_word" })).toHaveLength(1);
+  // Your word lets it through, logged as yours with the line, not as the app approving on its own.
+  const { line } = letThrough(f, [submission.id]);
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "approved", awaiting: null });
   expect(ticketRow(f)).toEqual({ status: "done", stage: "approved" });
-  expect(reviewCards(f)).toBe(1);
-  // The press is logged as yours, not as the app approving on its own (every 放行 read "no_reviewer"
-  // on the dev DB until 2026-10-10, so nothing could tell your approvals apart).
+  expect(reviewCards(f)).toBe(0);
   expect(f.store.listWorkEvents({ kind: "submission.approved" }).map((event) => ({ actor: event.actor, ...event.payload })))
-    .toMatchObject([{ actor: "user", submission_id: submission.id, by: "user" }]);
+    .toMatchObject([{ actor: "user", submission_id: submission.id, by: "user", message_id: line.id }]);
   expect(f.store.listWorkEvents({ kind: "ticket.stage_changed" }).filter((event) => event.payload.after === "approved")
     .map((event) => ({ actor: event.actor, source: event.payload.source }))).toEqual([{ actor: "user", source: "user" }]);
 });
 
-test("a card put up long after its hand-over, with newer files from its Bot since, says which version it is", () => {
-  // IG MV, 2026-10-09: the 2D cut handed over at 00:39 waited three hours for its card, which came up
-  // 16 s under the Bot's new 3D sample shot; 放行 was pressed on the old cut.
-  const f = fixture();
-  const { submission } = handedOver(f);
-  const later3d = segment(f);
-  f.store.insertMessage({ sessionId: f.room.id, turnId: later3d.id, kind: "bot", author: f.producer.id, body: "先做了一条 3D 样镜",
-    paths: [`${f.plan.dir}/3d/ning_gank/master.mp4`] });
-  f.store.setTurnStatus(later3d.id, "completed");
-  const handed = new Date(submission.created_at);
-  const clock = `${String(handed.getHours()).padStart(2, "0")}:${String(handed.getMinutes()).padStart(2, "0")}`;
-  const [card] = superviseSubmissions(f.ctx, later(3 * 3_600_000)).messages;
-  expect(card!.body.split("\n")[0]).toBe(`这是 ${clock} 交的那一版；之后 Director 又发了 1 个文件（最近：master.mp4），不在这次放行里。`);
-
-  // Put up soon after, or with nothing newer since: no such line.
-  const g = fixture();
-  handedOver(g);
-  const [prompt] = superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
-  expect(prompt!.body).not.toContain("交的那一版");
-});
-
-test("an item that only repeats the job's name is not listed again on the card; one with a measurement on it is", () => {
-  const f = fixture();
-  handedOver(f);
-  for (const [id, quote] of [["R-job", "EP01"], ["R-ticket", "06 母带"]] as const) {
-    requirement(f, id, { category: "画面" });
-    f.store.db.run("UPDATE requirements SET quote = ? WHERE id = ?", [quote, id]);
-  }
-  const [card] = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
-  // Both are still what 放行 takes as met; the words just do not say the job's name a third time.
-  expect(card!.control).toMatchObject({ requirement_ids: ["R-job", "R-ticket"], offer: ["approve", "reject"] });
-  expect(card!.body).not.toContain("放行就算这几条做到了");
-  expect(card!.body).toBe("EP01 的任务 01「06 母带」交上来了（EP01_MASTER.mp4）。没有审查者，也没有你确认过的检查替你把关，所以要你来定。\n看过之后，放行或者退回。");
-
-  const g = fixture();
-  handedOver(g);
-  const named = requirement(g, "R-job", { category: "画面" });
-  g.store.db.run("UPDATE requirements SET quote = 'EP01' WHERE id = 'R-job'");
-  run(g, proposal(g, named.quote).id, "fail", "107.00 秒，要时长 108–132 秒");
-  const [measured] = superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
-  expect(measured!.body).toContain("- 「EP01」（关于画面）——应用量到：「时长约 2 分钟」：不通过——107.00 秒，要时长 108–132 秒（用户还没确认）");
-});
 test("nothing is approved under a stop of yours over the job, nor in a dormant plan", () => {
   const f = fixture();
   const { submission } = handedOver(f);
@@ -574,8 +512,8 @@ test("nothing is approved under a stop of yours over the job, nor in a dormant p
   f.store.db.run("UPDATE tasks SET dormant_since = ? WHERE id = ?", [isoNow(), f.plan.id]);
   expect(superviseSubmissions(f.ctx, due).moved).toEqual([]);
   f.store.db.run("UPDATE tasks SET dormant_since = NULL WHERE id = ?", [f.plan.id]);
-  // No active gate backs this file hand-over, so it waits on your approve/reject card rather than
-  // approving itself — the point here is that it is taken up at all once free.
+  // No active gate backs this file hand-over, so it waits on your word rather than approving
+  // itself — the point here is that it is taken up at all once free.
   expect(superviseSubmissions(f.ctx, due).moved).toMatchObject([{ id: submission.id, state: "submitted", awaiting: { kind: "approval" } }]);
 });
 
@@ -676,7 +614,7 @@ function organizerSettlesDone(f: Fixture, ticketId: string) {
     source: { messageId: null, turnId: null, messageBody: "" }, settle: true });
 }
 
-test("the organizer's done on a ticket nothing was handed over on goes the no-reviewer way — checks, one card naming an unbacked required item, never straight to approved", () => {
+test("the organizer's done on a ticket nothing was handed over on goes the no-reviewer way — checks, then your word, never straight to approved", () => {
   const f = fixture();
   const settleDone = (ticketId: string) => organizerSettlesDone(f, ticketId);
   settleDone(f.ticket.id);
@@ -686,23 +624,20 @@ test("the organizer's done on a ticket nothing was handed over on goes the no-re
   // Said again, nothing more is made.
   settleDone(f.ticket.id);
   expect(f.store.listSubmissions({ ticketId: f.ticket.id })).toHaveLength(1);
-  // A required item about the picture with nothing behind it: the next tick asks you, with no
-  // reviewer to ask instead — on the one card an organizer's reading always gets, the item listed.
+  // A required item about the picture with nothing behind it: the next tick leaves it waiting on
+  // your word, with no reviewer to ask instead, the item kept with it.
   requirement(f, "R-picture", { category: "画面" });
-  const tick = superviseSubmissions(f.ctx, later(1_000));
-  expect(tick.messages).toHaveLength(1);
+  superviseSubmissions(f.ctx, later(1_000));
   expect(f.store.getSubmission(reading!.id)).toMatchObject({ state: "submitted", awaiting: { requirement_ids: ["R-picture"], review: null, kind: "approval" } });
-  expect(tick.messages[0]!.control).toMatchObject({ kind: "review_item", requirement_ids: ["R-picture"], check_ids: [], offer: ["approve", "reject"] });
-  expect(tick.messages[0]!.body).toContain("整理跳认为这张任务做完了。\n放行就算这几条做到了：\n- 「要求 R-picture」（关于画面）");
   // Dropping the item does not let an organizer's reading through by itself: nobody made it.
   f.store.waiveRequirement("R-picture", { taskId: f.plan.id });
   expect(superviseSubmissions(f.ctx, later(2_000)).moved).toEqual([]);
   expect(ticketRow(f)).toEqual({ status: "review", stage: "submitted" });
-  expect(f.store.answerReviewCard(tick.messages[0]!.id, "approve").submission.state).toBe("approved");
+  letThrough(f, [reading!.id]);
+  expect(f.store.getSubmission(reading!.id).state).toBe("approved");
   expect(ticketRow(f)).toEqual({ status: "done", stage: "approved" });
-  expect(reviewCards(f)).toBe(1);
 
-  // Nothing required and no reviewer: still a card, not an automatic approval — a failing gate sends it back instead.
+  // Nothing required and no reviewer: still your word, not an automatic approval — a failing gate sends it back instead.
   const g = fixture();
   gate(g, "fail");
   organizerSettlesDone(g, g.ticket.id);
@@ -714,19 +649,16 @@ test("the organizer's done on a ticket nothing was handed over on goes the no-re
   expect(superviseSubmissions(g.ctx, later(2_000)).moved).toMatchObject([{ id: graded!.id, state: "checks_failed" }]);
   expect(g.store.db.query("SELECT status, stage FROM tickets WHERE id = ?").get(g.ticket.id)).toEqual({ status: "doing", stage: "rework" });
 
-  // Passing, nothing required: a card asks you to approve it, not an automatic approval.
+  // Passing, nothing required: it waits on your word, not an automatic approval, and a fault you
+  // find sends it to rework like any other; the producer is a Bot, so it is woken.
   const i = fixture();
   organizerSettlesDone(i, i.ticket.id);
   const [clean] = i.store.listSubmissions({ ticketId: i.ticket.id });
-  const cleanTick = superviseSubmissions(i.ctx, later(1_000));
-  expect(cleanTick.messages).toHaveLength(1);
-  expect(i.store.getSubmission(clean!.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval", message_id: cleanTick.messages[0]!.id } });
-  expect(cleanTick.messages[0]!.control).toMatchObject({ offer: ["approve", "reject"] });
-  expect(cleanTick.messages[0]!.body).toContain("整理跳认为这张任务做完了");
-  // The next tick asks nothing new: the same card stands, waiting on you alone.
-  expect(superviseSubmissions(i.ctx, later(2_000)).messages).toEqual([]);
-  // 退回 sends it to rework like any other reject; the producer is a Bot, so it is woken.
-  expect(i.store.answerReviewCard(cleanTick.messages[0]!.id, "reject").submission.state).toBe("rejected");
+  superviseSubmissions(i.ctx, later(1_000));
+  expect(i.store.getSubmission(clean!.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval", message_id: null } });
+  expect(superviseSubmissions(i.ctx, later(2_000))).toMatchObject({ moved: [] });
+  i.store.noteComplaint(said(i, "还没做完，不对").id, objecting("还没做完，不对"));
+  expect(i.store.getSubmission(clean!.id).state).toBe("superseded");
   expect(i.store.db.query("SELECT status, stage FROM tickets WHERE id = ?").get(i.ticket.id)).toEqual({ status: "doing", stage: "rework" });
   expect(i.store.db.query("SELECT COUNT(*) AS n FROM inbox_items WHERE bot_id = ? AND source = 'review'").get(i.producer.id)).toEqual({ n: 1 });
 
@@ -735,6 +667,7 @@ test("the organizer's done on a ticket nothing was handed over on goes the no-re
   const { submission } = handedOver(h);
   organizerSettlesDone(h, h.ticket.id);
   expect(h.store.listSubmissions({ ticketId: h.ticket.id }).map((row) => row.id)).toEqual([submission.id]);
+  expect(reviewCards(f) + reviewCards(g) + reviewCards(i)).toBe(0);
 });
 
 test("an organizer's reading is sent to the ticket's reviewer once it has one, not approved on the no-reviewer path", () => {
@@ -752,13 +685,13 @@ test("an organizer's reading is sent to the ticket's reviewer once it has one, n
   expect(asked[0]!.body_snapshot).toContain("整理跳认为这张任务做完了");
   const reviewing = segment(f, f.reviewer.id);
   // The reviewer's clean approve still does not approve it: nobody made the
-  // organizer's reading, so it waits on your card too, with the reviewer's verdict shown there.
+  // organizer's reading, so it waits on your word too, with the reviewer's verdict kept with it.
   const result = f.store.reviewSubmission({ turnId: reviewing.id, submissionId: reading!.id, outcome: "approve" });
   expect(result).toMatchObject({ ok: false, code: "awaiting_user" });
   if (result.ok || result.code !== "awaiting_user") throw new Error("expected to wait on you");
   expect(f.store.getSubmission(reading!.id)).toMatchObject({ state: "in_review", awaiting: { kind: "approval", review: { outcome: "approve", reviewer_bot_id: f.reviewer.id } } });
-  expect(result.card?.control).toMatchObject({ offer: ["approve", "reject"] });
-  expect(f.store.answerReviewCard(result.card!.id, "approve").submission.state).toBe("approved");
+  letThrough(f, [reading!.id]);
+  expect(f.store.getSubmission(reading!.id)).toMatchObject({ state: "approved", reviews: [{ outcome: "approve", reviewer_bot_id: f.reviewer.id }] });
   expect(ticketRow(f)).toEqual({ status: "done", stage: "approved" });
 });
 
@@ -797,13 +730,14 @@ test("words handed over in place of a file — the producer's, on a ticket no fi
   expect(f.store.prepareSubmission({ turnId: turn.id, origin: "answer", artifacts: [], content: "  " })).toBeNull();
   f.store.settleSubmissionChecks(answered.submission.id);
   f.store.setTurnStatus(turn.id, "completed");
-  // With no reviewer, an answer still waits on your approve/reject card: never approved on its own.
+  // With no reviewer, an answer still waits on your word: never approved on its own. A reading of
+  // your next line is shown what it handed over.
   const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   expect(tick.moved).toMatchObject([{ id: answered.submission.id, state: "submitted", awaiting: { kind: "approval" } }]);
-  const card = tick.messages[0]!;
-  expect(card.control).toMatchObject({ offer: ["approve", "reject"] });
-  expect(card.body).toContain("三个选题：雪原、灯塔、潮汐");
-  expect(f.store.answerReviewCard(card.id, "approve").submission.state).toBe("approved");
+  expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() })).toMatchObject([{ submission_id: answered.submission.id, bot: "Director",
+    job: "EP01", ticket: "06 母带", what: "「三个选题：雪原、灯塔、潮汐」", sample: false }]);
+  letThrough(f, [answered.submission.id]);
+  expect(f.store.getSubmission(answered.submission.id).state).toBe("approved");
 
   // A ticket a file was handed over on is not closed by words.
   const g = fixture();
@@ -827,7 +761,7 @@ test("the review request for an answer names the words themselves, not an empty 
   expect(body).not.toContain("：。");
 });
 
-test("a passing check from your words, not confirmed, backs nothing — the 放行 card shows what it measured, and nothing approves on it", () => {
+test("a passing check from your words, not confirmed, backs nothing — the hand-over waits on your word, and nothing approves on it", () => {
   const f = fixture();
   const { submission } = handedOver(f, { reviewer: true, model: "same-model" });
   const said = requirement(f, "R-misread", { times: 2 });
@@ -839,17 +773,15 @@ test("a passing check from your words, not confirmed, backs nothing — the 放�
   const result = f.store.reviewSubmission({ turnId: reviewing.id, outcome: "approve", verdicts: [{ requirement_id: "R-misread", verdict: "pass", evidence: ["约 2 分钟"] }] });
   expect(result).toMatchObject({ ok: false, code: "awaiting_user" });
   if (result.ok || result.code !== "awaiting_user") throw new Error("expected to wait on you");
-  expect(result.card!.control).toMatchObject({ requirement_ids: ["R-misread"], check_ids: [], offer: ["approve", "reject"] });
-  expect(result.card!.body).toContain("「时长约 2 分钟」：通过——90.00 秒（用户还没确认）");
-  expect(f.store.getSubmission(submission.id).state).toBe("in_review");
+  expect(result.reasons.join(" ")).toContain('"时长约 2 分钟": pass — 90.00 秒 (not confirmed by the user)');
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "in_review", awaiting: { kind: "approval", requirement_ids: ["R-misread"], check_ids: [] } });
 
-  // With no reviewer, the same: a card, not an approval.
+  // With no reviewer, the same: waiting on your word, not an approval.
   const g = fixture();
   const loose = handedOver(g);
   const quote = requirement(g, "R-misread", { times: 2 });
   run(g, proposal(g, quote.quote).id, "pass", "90.00 秒");
-  const tick = superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
-  expect(tick.messages).toHaveLength(1);
+  superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   expect(g.store.getSubmission(loose.submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval", requirement_ids: ["R-misread"] } });
 });
 test("a gate that has not finished running by the tick is waited for, not read as a failure", () => {
@@ -905,7 +837,7 @@ test("the board offers as reviewers only the Bots of the plan's conversation", (
   expect(f.store.taskDetail(f.plan.id, () => true).reviewer_ids?.sort()).toEqual([f.producer.id, f.reviewer.id].sort());
 });
 
-test("a reviewer's approve of a hand-over nothing of yours backs waits on your card unless it is on another model and gives evidence", () => {
+test("a reviewer's approve of a hand-over nothing of yours backs waits on your word unless it is on another model and gives evidence", () => {
   const onLook = (id: string) => [{ requirement_id: id, verdict: "pass", evidence: ["看过母带第 3 秒的画面"] }];
   const cases = [
     { name: "same model, with evidence", reviewerModel: "m-1", verdicts: "real", backing: null, approves: false },
@@ -936,11 +868,7 @@ test("a reviewer's approve of a hand-over nothing of yours backs waits on your c
     expect({ name: c.name, result }).toMatchObject({ name: c.name, result: { ok: false, code: "awaiting_user" } });
     expect(after.awaiting).toMatchObject({ kind: "approval", review: { reviewer_bot_id: f.reviewer.id, same_model: c.reviewerModel !== "m-2" } });
     expect(ticketRow(f).stage).not.toBe("approved");
-    const card = f.store.getMessage(after.awaiting!.message_id!);
-    expect(card.control).toMatchObject({ kind: "review_item", offer: ["approve", "reject"] });
-    expect(card.body).toContain("Reviewer");
-    expect(card.body).toContain("EP01_MASTER.mp4");
-    if (!c.reviewerModel) expect(card.body).toContain("有一方的模型不明，按同一个模型算");
+    expect({ name: c.name, message: after.awaiting!.message_id, cards: reviewCards(f) }).toEqual({ name: c.name, message: null, cards: 0 });
   }
 });
 
@@ -968,7 +896,7 @@ function inOneGo(f: Fixture, sha256: string = HASH_A) {
 const reviewCards = (f: Fixture) => f.store.db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM messages
   WHERE json_valid(control) AND json_extract(control, '$.kind') = 'review_item'`).get()!.n;
 
-test("with no reviewer, a hand-over made in one go — one ticket, one segment, never on your card — is approved at the tick with no card", () => {
+test("with no reviewer, a hand-over made in one go — one ticket, one segment, never on a card — is approved at the tick, waiting on nothing", () => {
   const f = fixture();
   const { submission } = inOneGo(f);
   // Your next line starts a segment while it waits: that does not count against it.
@@ -995,8 +923,7 @@ test("made in one go, it goes through at the tick even with what you said about 
   const { submission } = inOneGo(f);
   segment(f);
   requirement(f, "R-orange", { category: "画面内容" });
-  const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
-  expect(tick.messages).toEqual([]);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "approved", awaiting: null });
   expect(f.store.listWorkEvents({ kind: "submission.approved" }).map((event) => event.payload)).toMatchObject([{ submission_id: submission.id, by: "one_go" }]);
   expect(reviewCards(f)).toBe(0);
@@ -1026,28 +953,31 @@ function ends(f: Fixture, turn: { id: string; work_item_id?: string | null }) {
   if (turn.work_item_id) f.store.db.run("UPDATE work_items SET state = 'idle' WHERE id = ?", [turn.work_item_id]);
 }
 
-test("a line of yours while a hand-over waits, which its Bot is at work on, holds it: no card meanwhile, and nothing newer puts it to you once that work is done", () => {
+test("a line of yours while a hand-over waits, which its Bot is at work on, keeps your words off it: what the Bot makes of the line is what you look at next", () => {
   // 2026-10-07: 「把猫改成橘猫」 came 14 s after a picture was handed over; 7 s later a card asked you to
   // let the old picture through while the Bot was already making the orange one.
   const f = fixture();
   const submission = waiting(f);
   const { turn } = saidMore(f);
-  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000))).toMatchObject({ moved: [], messages: [] });
-  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "submitted", awaiting: null });
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval", message_id: null } });
+  // While it works on your line, a nod of yours is not about this one.
+  expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() })).toEqual([]);
+  expect(letThrough(f, [submission.id]).lines).toEqual([]);
+  expect(f.store.getSubmission(submission.id).state).toBe("submitted");
   // It asked you something about the change: still its work on your line.
   f.store.setTurnStatus(turn.id, "completed");
   f.store.db.run("UPDATE work_items SET state = 'blocked' WHERE id = ?", [turn.work_item_id ?? null]);
-  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000)).messages).toEqual([]);
-  expect(reviewCards(f)).toBe(0);
-  // Done, with nothing newer handed over: this one is put to you after all.
+  expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() })).toEqual([]);
+  // Done, with nothing newer handed over: this one is what your word is about again.
   ends(f, turn);
-  const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 3_000));
-  expect(tick.messages).toHaveLength(1);
-  expect(tick.messages[0]!.control).toMatchObject({ submission_id: submission.id, offer: ["approve", "reject"] });
-  expect(reviewCards(f)).toBe(1);
+  expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() }).map((row) => row.submission_id)).toEqual([submission.id]);
+  letThrough(f, [submission.id]);
+  expect(f.store.getSubmission(submission.id).state).toBe("approved");
+  expect(reviewCards(f)).toBe(0);
 });
 
-test("what its Bot hands over for your line supersedes the held hand-over, and only that one is put to you", () => {
+test("what its Bot hands over for your line supersedes the one waiting, and only that one waits on your word", () => {
   const f = fixture();
   const submission = waiting(f);
   const { turn } = saidMore(f);
@@ -1056,40 +986,16 @@ test("what its Bot hands over for your line supersedes the held hand-over, and o
   f.store.settleSubmissionChecks(newer.id);
   ends(f, turn);
   expect(f.store.getSubmission(submission.id).state).toBe("superseded");
-  const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 30_000));
-  expect(tick.messages.map((card) => card.control)).toMatchObject([{ submission_id: newer.id, offer: ["approve", "reject"] }]);
-  expect(reviewCards(f)).toBe(1);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 30_000));
+  expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() }).map((row) => row.submission_id)).toEqual([newer.id]);
+  // A word naming the old one moves nothing.
+  expect(letThrough(f, [submission.id]).lines).toEqual([]);
+  expect(f.store.getSubmission(newer.id).state).toBe("submitted");
+  expect(reviewCards(f)).toBe(0);
 });
 
-test("a card already up comes down when you say more and its Bot goes to work on that, at once; with nothing newer, one card asks again", () => {
-  const f = fixture();
-  const submission = waiting(f);
-  const [card] = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
-  expect(card!.control).toMatchObject({ offer: ["approve", "reject"] });
-  const { line, turn } = saidMore(f);
-  // From the line's arrival, not the next tick.
-  expect(f.store.holdForYourLine(line.id).map((message) => message.id)).toEqual([card!.id]);
-  expect(f.store.getMessage(card!.id).control).toMatchObject({ offer: [], result: "你又说了这件事，等Director按你说的做完再问你。" });
-  expect(f.store.db.query("SELECT action_state FROM notifications WHERE semantic_key = ?").get(`review_item:${card!.id}`)).toEqual({ action_state: "resolved" });
-  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval", message_id: null, held: true } });
-  expect(() => f.store.answerReviewCard(card!.id, "approve")).toThrow();
-  // Said again, nothing more comes down; while it works, the ticks change nothing.
-  expect(f.store.holdForYourLine(line.id)).toEqual([]);
-  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000))).toMatchObject({ moved: [], messages: [] });
-  // Done, with nothing newer: the same hand-over on one new card, and 放行 lets it through.
-  ends(f, turn);
-  const again = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 3_000)).messages;
-  expect(again.map((message) => message.control)).toMatchObject([{ submission_id: submission.id, offer: ["approve", "reject"] }]);
-  // It says why the same hand-over is back.
-  expect(again[0]!.body).toStartWith("Director这次没交新的一版。\nEP01 的任务 01「06 母带」交上来了（EP01_MASTER.mp4）。");
-  const after = f.store.getSubmission(submission.id).awaiting!;
-  expect(after).toMatchObject({ kind: "approval", message_id: again[0]!.id });
-  expect(after.held).toBeUndefined();
-  expect(f.store.answerReviewCard(again[0]!.id, "approve").submission.state).toBe("approved");
-});
-
-test("not held: a line about another ticket, one another Bot is at work on, a segment that only reads, or a 放行 you already pressed", () => {
-  const cases: Array<[string, (f: Fixture) => { line: { id: string } }]> = [
+test("not kept off your word: a line about another ticket, one another Bot is at work on, or a segment that only reads", () => {
+  const cases: Array<[string, (f: Fixture) => unknown]> = [
     ["another ticket", (f) => saidMore(f, { ticketId: f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id }).id })],
     ["another Bot at work", (f) => saidMore(f, { botId: f.reviewer.id })],
     ["only reads", (f) => saidMore(f, { body: "母带多长？", mode: "readonly" })],
@@ -1097,28 +1003,57 @@ test("not held: a line about another ticket, one another Bot is at work on, a se
   for (const [name, say] of cases) {
     const f = fixture();
     const submission = waiting(f);
-    const [card] = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
-    const { line } = say(f);
-    expect({ name, taken: f.store.holdForYourLine(line.id) }).toEqual({ name, taken: [] });
-    expect({ name, ...f.store.getSubmission(submission.id).awaiting }).toMatchObject({ name, message_id: card!.id });
+    superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+    say(f);
+    expect({ name, shown: f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() }).map((row) => row.submission_id) }).toEqual({ name, shown: [submission.id] });
   }
-  // A 放行 waiting on a gate that had not run: your press stands.
+});
+
+/** A 放行/退回 card an older build put up for a hand-over waiting on you (ADR 0084 puts up none). */
+function oldCard(f: Fixture, submissionId: string) {
+  const card = f.store.insertMessage({ sessionId: f.room.id, kind: "system", author: "user", body: "EP01 的任务 01「06 母带」交上来了。看过之后，放行或者退回。", hiddenFromBots: true,
+    control: { kind: "review_item", submission_id: submissionId, task_id: f.plan.id, ticket_id: f.ticket.id, requirement_ids: [], check_ids: [], offer: ["approve", "reject"] } });
+  const awaiting = f.store.getSubmission(submissionId).awaiting;
+  f.store.db.run("UPDATE submissions SET awaiting = ? WHERE id = ?", [JSON.stringify({ requirement_ids: [], check_ids: [], review: null, at: isoNow(), kind: "approval",
+    ...awaiting, message_id: card.id }), submissionId]);
+  return card;
+}
+
+test("a card an older build put up still answers its press: 放行 waits on a gate that had not run and resolves as yours; 退回 sends it back", () => {
   const g = fixture();
   const submission = waiting(g);
-  const [card] = superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
+  superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  const card = oldCard(g, submission.id);
   const now = isoNow();
   g.store.db.run(`INSERT INTO acceptance_checks (id, task_id, ticket_id, item, kind, path, source, created_at, updated_at, defined_at)
     VALUES ('late-gate', ?, ?, '母带存在', 'exists', ?, 'user', ?, ?, ?)`, [g.plan.id, g.ticket.id, `${g.ticket.dir}/EP01_MASTER.mp4`, now, now, now]);
   g.store.beginCheckRun("late-gate", "settle");
-  expect(g.store.answerReviewCard(card!.id, "approve").checkIds).toEqual(["late-gate"]);
-  const { line } = saidMore(g);
-  expect(g.store.holdForYourLine(line.id)).toEqual([]);
+  expect(g.store.answerReviewCard(card.id, "approve").checkIds).toEqual(["late-gate"]);
+  // Your press stands: a word of yours is no longer about it.
+  expect(g.store.waitingOnYourWord({ sessionId: g.room.id, before: isoNow() })).toEqual([]);
   expect(superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 2_000)).toRun).toEqual([{ taskId: g.plan.id, checkIds: ["late-gate"] }]);
   run(g, "late-gate", "pass");
   superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 3_000));
   expect(g.store.getSubmission(submission.id).state).toBe("approved");
   // Resolved by the supervisor's tick, but it was your press that let it through.
   expect(g.store.listWorkEvents({ kind: "submission.approved" }).at(-1)).toMatchObject({ actor: "user", payload: { submission_id: submission.id, by: "user" } });
+  expect(g.store.getMessage(card.id).control).toMatchObject({ acted: ["approve"] });
+
+  const h = fixture();
+  const sent = waiting(h);
+  superviseSubmissions(h.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  const asked = oldCard(h, sent.id);
+  expect(h.store.answerReviewCard(asked.id, "reject", { note: "太短" }).submission.state).toBe("rejected");
+  expect(h.store.db.query("SELECT status, stage FROM tickets WHERE id = ?").get(h.ticket.id)).toEqual({ status: "doing", stage: "rework" });
+
+  // Your word lets one through too, and the card says so in place of its buttons.
+  const i = fixture();
+  const said = waiting(i);
+  superviseSubmissions(i.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  const up = oldCard(i, said.id);
+  letThrough(i, [said.id]);
+  expect(i.store.getMessage(up.id).control).toMatchObject({ offer: [], result: "已放行。" });
+  expect(i.store.db.query("SELECT action_state FROM notifications WHERE semantic_key = ?").get(`review_item:${up.id}`) ?? null).toBeNull();
 });
 
 /** The segment ends at `at`, as its row says. */
@@ -1127,114 +1062,52 @@ function endedAt(f: Fixture, turnId: string, at: string) {
   f.store.db.run("UPDATE turns SET updated_at = ? WHERE id = ?", [at, turnId]);
 }
 
-test("a hand-over comes to your card only once its Bot has stopped working on the job: gone on to the next ticket, waiting on its own render, woken again, or still for less than a tick", () => {
-  // 2026-10-08: 视频导演 reworked the sample segment after segment, each ending to wait for its video
-  // jobs, and each ending's files came to a 放行 card while it went on.
-  const f = fixture();
-  const next = f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id });
-  const { submission } = handedOver(f);
-  const at = (ms: number) => later(UNREVIEWED_AFTER_MS + ms);
-  // Gone straight on to the next ticket of the job: no card while that runs.
-  const onNext = segment(f, f.producer.id, next.id);
-  expect(superviseSubmissions(f.ctx, at(1_000))).toMatchObject({ moved: [], messages: [] });
-  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "submitted", awaiting: null });
-  // It ends to wait for a render of its own: still at work.
-  f.store.registerJob({ server: "media", submitTool: "submit_video", checkTool: "check_video", idParam: "id", requestId: "r-1", digest: "d-1",
-    taskId: f.plan.id, ticketId: next.id, partNo: null, botId: f.producer.id, workItemId: onNext.work_item_id, turnId: onNext.id, sessionId: f.room.id });
-  endedAt(f, onNext.id, at(0));
-  expect(superviseSubmissions(f.ctx, at(60_000)).messages).toEqual([]);
-  // The render is in, and its result is about to wake the Bot: still at work.
-  f.store.db.run("UPDATE external_jobs SET state = 'completed' WHERE request_id = 'r-1'");
-  const result = f.store.queueInboxItem({ botId: f.producer.id, sessionId: f.room.id, turnId: null, workItemId: onNext.work_item_id, taskId: f.plan.id,
-    ticketId: next.id, messageId: null, author: "app", body: "（应用）作业完成了", source: "job", kind: "result", priority: 2, now: at(60_500) });
-  expect(superviseSubmissions(f.ctx, at(61_000)).messages).toEqual([]);
-  // It wakes on that and ends again: one tick still holds the card, then it is put to you.
-  f.store.db.run("UPDATE inbox_items SET state = 'delivered' WHERE id = ?", [result.id]);
-  const woken = segment(f, f.producer.id, next.id);
-  endedAt(f, woken.id, at(100_000));
-  expect(superviseSubmissions(f.ctx, at(100_000 + REST_SETTLE_MS - 1_000)).messages).toEqual([]);
-  const tick = superviseSubmissions(f.ctx, at(100_000 + REST_SETTLE_MS + 1_000));
-  expect(tick.messages.map((card) => card.control)).toMatchObject([{ submission_id: submission.id, offer: ["approve", "reject"] }]);
-  // The work log says once why it waited.
-  expect(f.store.db.query("SELECT COUNT(*) AS n FROM work_events WHERE kind = 'submission.card_deferred'").get()).toEqual({ n: 1 });
-});
-
-test("a Bot waiting on your answer, a segment that only reads, another Bot at work, or what has sat in its queue for long does not hold the card", () => {
-  const cases: Array<[string, (f: Fixture, ticketId: string) => void]> = [
-    ["asks you", (f, ticketId) => { f.store.db.run("UPDATE turns SET status = 'waiting_ask' WHERE id = ?", [segment(f, f.producer.id, ticketId).id]); }],
-    // 2026-10-08: a send-back of 视频导演's second part sat queued for over an hour behind work that needed attention.
-    ["queued long ago", (f, ticketId) => {
-      f.store.queueInboxItem({ botId: f.producer.id, sessionId: f.room.id, turnId: null, taskId: f.plan.id, ticketId, messageId: null, author: "app",
-        body: "（应用）用户把交付退回重做了。", source: "review", kind: "result", priority: 2, now: new Date(Date.parse(isoNow()) - 60 * 60_000).toISOString() });
-    }],
-    ["only reads", (f, ticketId) => { f.store.db.run("UPDATE turns SET mode = 'readonly' WHERE id = ?", [segment(f, f.producer.id, ticketId).id]); }],
-    ["another Bot", (f, ticketId) => { segment(f, f.reviewer.id, ticketId); }],
-  ];
-  for (const [name, arrange] of cases) {
-    const f = fixture();
-    const next = f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id });
-    const { submission } = handedOver(f);
-    arrange(f, next.id);
-    const cards = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages.map((card) => card.control);
-    expect({ name, cards }).toMatchObject({ name, cards: [{ submission_id: submission.id }] });
-  }
-});
-
-test("a large job's sample comes to your card once its own ticket is still, while its Bot goes on with the rest", () => {
+test("a large job's sample waits on your word while its Bot goes on with the rest, and a reading is told it is the sample", () => {
   const f = fixture();
   f.store.db.run("UPDATE tickets SET sample = 1 WHERE id = ?", [f.ticket.id]);
   const next = f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id });
   const { submission } = handedOver(f);
-  // Preparing the next part does not hold the sample everything else waits on.
+  // Preparing the next part does not keep the sample, which everything else waits on, from your word.
   segment(f, f.producer.id, next.id);
-  const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
-  expect(tick.messages.map((card) => card.control)).toMatchObject([{ submission_id: submission.id, offer: ["approve", "reject"] }]);
-  // A segment still on the sample itself does.
-  const g = fixture();
-  g.store.db.run("UPDATE tickets SET sample = 1 WHERE id = ?", [g.ticket.id]);
-  handedOver(g);
-  segment(g);
-  expect(superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages).toEqual([]);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval" } });
+  expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() })).toMatchObject([{ submission_id: submission.id, sample: true }]);
+  expect(reviewCards(f)).toBe(0);
 });
 
-test("what its Bot hands over while still at work supersedes the hand-over before any card, and only the last is put to you", () => {
+test("what its Bot hands over next supersedes the one waiting on your word, and only the last is shown to a reading", () => {
   const f = fixture();
   const { submission } = handedOver(f);
   const again = segment(f);
-  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages).toEqual([]);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   const { submission: newer } = submit(f, again.id, [[`${f.ticket.dir}/EP01_MASTER.mp4`, HASH_B]])!;
   f.store.settleSubmissionChecks(newer.id);
   f.store.setTurnStatus(again.id, "completed");
-  expect(f.store.getSubmission(submission.id).state).toBe("superseded");
-  const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 30_000));
-  expect(tick.messages.map((card) => card.control)).toMatchObject([{ submission_id: newer.id }]);
-  expect(reviewCards(f)).toBe(1);
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "superseded", awaiting: null });
+  expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() }).map((row) => row.submission_id)).toEqual([newer.id]);
+  expect(reviewCards(f)).toBe(0);
 });
 
-test("your line about a hand-over, heard in its Bot's segment on another ticket of the job, holds it while that work goes on", () => {
-  // 2026-10-08: your line about 视频导演's second part reached the segment re-rendering the sample, and
-  // the second part's card came back 12 s after it was taken down.
+test("your line about a hand-over, heard in its Bot's segment on another ticket of the job, keeps your words off it while that work goes on", () => {
+  // 2026-10-08: your line about 视频导演's second part reached the segment re-rendering the sample.
   const f = fixture();
   const other = f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id });
   const submission = waiting(f);
-  const [card] = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   const busy = segment(f, f.producer.id, other.id);
   const line = f.store.postMessage(f.room.id, { body: "人物形象还是尽量遵循原人物" });
   f.store.fileMessage(line.id, { explicit: [{ taskId: f.plan.id, ticketId: f.ticket.id }] });
   f.store.queueInboxItem({ botId: f.producer.id, sessionId: f.room.id, turnId: busy.id, taskId: f.plan.id, ticketId: f.ticket.id, messageId: line.id,
     author: "user", body: line.body, source: "user", kind: "change", priority: 1 });
-  expect(f.store.holdForYourLine(line.id).map((message) => message.id)).toEqual([card!.id]);
-  // It hears the line there, then asks you something about it: nothing of it runs, but it is still
-  // its work on your line.
+  expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() })).toEqual([]);
+  // It hears the line there, then asks you something about it: nothing of it runs, but it is still its work on your line.
   f.store.db.run("UPDATE inbox_items SET state = 'delivered', delivered_turn_id = ? WHERE message_id = ?", [busy.id, line.id]);
   f.store.setTurnStatus(busy.id, "completed");
   f.store.db.run("UPDATE work_items SET state = 'blocked' WHERE id = ?", [busy.work_item_id]);
-  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 60_000)).messages).toEqual([]);
-  expect(f.store.getSubmission(submission.id).awaiting).toMatchObject({ message_id: null, held: true });
-  // Answered and done, with nothing newer: the same hand-over on one new card.
+  expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() })).toEqual([]);
+  // Answered and done, with nothing newer: the same hand-over is what your word is about.
   f.store.db.run("UPDATE work_items SET state = 'idle' WHERE id = ?", [busy.work_item_id]);
-  const again = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 61_000)).messages;
-  expect(again.map((message) => message.control)).toMatchObject([{ submission_id: submission.id, offer: ["approve", "reject"] }]);
+  expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() }).map((row) => row.submission_id)).toEqual([submission.id]);
 });
 
 test("made in one go, a hand-over is approved at the tick even while its Bot is at work on a line of yours said since", () => {
@@ -1246,23 +1119,23 @@ test("made in one go, a hand-over is approved at the tick even while its Bot is 
   expect(reviewCards(f)).toBe(0);
 });
 
-/** The job's first hand-over, made after another segment on it, so it comes to your card; `answer` is your press. */
-function cardedFirst(f: Fixture, answer: "approve" | "reject") {
+/** The job's first hand-over, made after another segment on it, so it waits on your word; `answer` is what you say. */
+function waitedFirst(f: Fixture, answer: "approve" | "reject") {
   const earlier = segment(f);
   f.store.setTurnStatus(earlier.id, "completed");
   const { submission } = inOneGo(f);
   superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
-  const card = f.store.db.query<{ id: string }, []>(`SELECT id FROM messages WHERE json_valid(control) AND json_extract(control, '$.kind') = 'review_item'`).get()!;
-  f.store.answerReviewCard(card.id, answer);
+  if (answer === "approve") letThrough(f, [submission.id]);
+  else f.store.noteComplaint(said(f, "头像太糊了").id, objecting("头像太糊了"));
   superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000));
   return submission;
 }
 
-test("once a hand-over of the job is approved, what one segment hands over next goes through at the tick, card before or not", () => {
+test("once a hand-over of the job is approved, what one segment hands over next goes through at the tick, however the first was let through", () => {
   // 2026-10-07: each follow-up question on a one-ticket job came back as a 放行 card, five in half an
   // hour, all let through, because the job's first hand-over had come to your card.
   const f = fixture();
-  expect(f.store.getSubmission(cardedFirst(f, "approve").id).state).toBe("approved");
+  expect(f.store.getSubmission(waitedFirst(f, "approve").id).state).toBe("approved");
   const next = segment(f);
   const { submission } = submit(f, next.id, [[`${f.ticket.dir}/compare.mp4`, HASH_B]])!;
   f.store.settleSubmissionChecks(submission.id);
@@ -1270,12 +1143,12 @@ test("once a hand-over of the job is approved, what one segment hands over next 
   superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 3_000));
   expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "approved", awaiting: null });
   expect(f.store.listWorkEvents({ kind: "submission.approved" }).map((event) => event.payload).at(-1)).toMatchObject({ submission_id: submission.id, by: "one_go" });
-  expect(reviewCards(f)).toBe(1);
+  expect(reviewCards(f)).toBe(0);
 });
 
-test("a job whose hand-over you sent back on its card keeps its card for the next one", () => {
+test("a job whose hand-over you sent back keeps waiting on your word for the next one", () => {
   const f = fixture();
-  expect(f.store.getSubmission(cardedFirst(f, "reject").id).state).toBe("rejected");
+  expect(f.store.getSubmission(waitedFirst(f, "reject").id).state).toBe("superseded");
   const next = segment(f);
   // The rework wake the rejection queued is what this segment heard.
   f.store.db.run("UPDATE inbox_items SET state = 'delivered', delivered_turn_id = ? WHERE bot_id = ? AND state = 'queued'", [next.id, f.producer.id]);
@@ -1286,7 +1159,7 @@ test("a job whose hand-over you sent back on its card keeps its card for the nex
   expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval" } });
 });
 
-test("not in one go — a second ticket, words handed over, or a job once on your card — it comes to your card", () => {
+test("not in one go — a second ticket, words handed over, or a job once on a card of yours — it waits on your word", () => {
   const cases: Array<[string, (f: Fixture) => void]> = [
     ["second ticket", (f) => { f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id }); }],
     ["once on your card", (f) => {
@@ -1331,6 +1204,12 @@ function said(f: Fixture, body: string, target: { partKey?: string; parentId?: s
   const line = f.store.postMessage(f.room.id, { body, parent_id: target.parentId ?? null });
   f.store.fileMessage(line.id, { explicit: [{ taskId: f.plan.id, ticketId: f.ticket.id, ...(target.partKey ? { partKey: target.partKey } : {}) }] });
   return line;
+}
+
+/** Your line in the room that the reader read as letting these hand-overs through (ADR 0084). */
+function letThrough(f: Fixture, submissionIds: string[], body = "可以") {
+  const line = said(f, body);
+  return { line, ...f.store.passByYourWord(line.id, { passes: submissionIds, source: "model" }) };
 }
 
 const reworkCardsOf = (f: Fixture) => f.store.db.query<{ id: string }, []>("SELECT id FROM messages WHERE kind = 'system' AND json_extract(control, '$.kind') = 'rework' ORDER BY created_at, rowid")
@@ -1670,4 +1549,73 @@ test("handing in files that all sit in one of its own tickets' folders puts a se
   expect(handed.submission.ticket_id).toBe(f.ticket.id);
   expect(f.store.getTurn(whole.id).ticket_id).toBe(f.ticket.id);
   expect(f.store.listWorkEvents({ kind: "work.bound" }).map((event) => event.payload)).toMatchObject([{ by: "write", path: `${f.ticket.dir}/master.mp4` }]);
+});
+
+test("your word lets through only what waits where you say it: the job's conversations, and your direct with the Bot that made it", () => {
+  const f = fixture();
+  const submission = waiting(f);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  // Your direct with the Bot that made it, once you have spoken about the job there.
+  const direct = f.store.createDirect("user", f.producer.id);
+  const there = f.store.postMessage(direct.id, { body: "母带那边怎么样" });
+  f.store.fileMessage(there.id, { explicit: [{ taskId: f.plan.id }] });
+  expect(f.store.waitingOnYourWord({ sessionId: direct.id, before: isoNow() }).map((row) => row.submission_id)).toEqual([submission.id]);
+  // Your direct with another Bot, or a group the job was never spoken of in: nothing there.
+  const elsewhere = f.store.createDirect("user", f.reviewer.id);
+  const other = f.store.createGroup({ name: "Other", members: [f.producer.id, f.reviewer.id] });
+  for (const sessionId of [elsewhere.id, other.id]) expect(f.store.waitingOnYourWord({ sessionId, before: isoNow() })).toEqual([]);
+  const away = f.store.postMessage(elsewhere.id, { body: "可以" });
+  expect(f.store.passByYourWord(away.id, { passes: [submission.id], source: "model" }).lines).toEqual([]);
+  // Nor before it was handed over, nor on the word lists' reading.
+  expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: "2000-01-01T00:00:00.000Z" })).toEqual([]);
+  const words = said(f, "可以");
+  expect(f.store.passByYourWord(words.id, { passes: [submission.id], source: "words" }).lines).toEqual([]);
+  expect(f.store.getSubmission(submission.id).state).toBe("submitted");
+  // Said where it waits, it goes through.
+  const ok = f.store.postMessage(direct.id, { body: "可以，就用这版" });
+  expect(f.store.passByYourWord(ok.id, { passes: [submission.id], source: "model" }).lines.map((line) => line.control?.kind)).toEqual(["passed"]);
+  expect(f.store.getSubmission(submission.id).state).toBe("approved");
+});
+
+test("let through by your word with a gate not run yet, it waits for the gate; a gate that fails sends it back, and your line says which", () => {
+  const f = fixture();
+  const submission = waiting(f);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  const now = isoNow();
+  f.store.db.run(`INSERT INTO acceptance_checks (id, task_id, ticket_id, item, kind, path, source, created_at, updated_at, defined_at)
+    VALUES ('late-gate', ?, ?, '母带存在', 'exists', ?, 'user', ?, ?, ?)`, [f.plan.id, f.ticket.id, `${f.ticket.dir}/EP01_MASTER.mp4`, now, now, now]);
+  f.store.beginCheckRun("late-gate", "settle");
+  const { line, lines, toRun } = letThrough(f, [submission.id]);
+  expect(toRun.map((row) => ({ id: row.submission.id, checkIds: row.checkIds }))).toEqual([{ id: submission.id, checkIds: ["late-gate"] }]);
+  expect(lines[0]!.control).toMatchObject({ kind: "passed", result: "等检查跑完再放行：EP01 的任务 01「06 母带」。" });
+  expect(f.store.getSubmission(submission.id).awaiting).toMatchObject({ pending: true, line_id: line.id });
+  // Nothing else of yours is about it meanwhile.
+  expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() })).toEqual([]);
+  run(f, "late-gate", "pass");
+  f.store.takeUpPendingApproval(submission.id);
+  expect(f.store.getSubmission(submission.id).state).toBe("approved");
+  expect(f.store.getMessage(line.id).control).toMatchObject({ kind: "passed", result: "已放行：EP01 的任务 01「06 母带」。" });
+  expect(f.store.listWorkEvents({ kind: "submission.approved" }).at(-1)).toMatchObject({ actor: "user", payload: { by: "user", message_id: line.id } });
+
+  const g = fixture();
+  const failing = waiting(g);
+  superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  gate(g, "fail");
+  const back = letThrough(g, [failing.id]);
+  expect(g.store.getSubmission(failing.id).state).toBe("checks_failed");
+  expect(g.store.getMessage(back.line.id).control).toMatchObject({ kind: "passed", result: "检查没过，已退回：EP01 的任务 01「06 母带」（「母带存在」：不通过）。" });
+  expect(g.store.db.query("SELECT COUNT(*) AS n FROM inbox_items WHERE bot_id = ? AND source = 'review'").get(g.producer.id)).toEqual({ n: 1 });
+});
+
+test("a line that sends one hand-over back keeps that mark; the ones it lets through still go through", () => {
+  const f = fixture();
+  const submission = waiting(f);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  const line = said(f, "母带太短了，不对");
+  const [marked] = f.store.noteComplaint(line.id, objecting("母带太短了，不对"));
+  expect(marked!.control).toMatchObject({ kind: "rework" });
+  // What it sent back no longer waits to be let through.
+  expect(f.store.passByYourWord(line.id, { passes: [submission.id], source: "model" }).lines).toEqual([]);
+  expect(f.store.getSubmission(submission.id).state).toBe("superseded");
+  expect(f.store.getMessage(line.id).control).toMatchObject({ kind: "rework" });
 });

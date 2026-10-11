@@ -332,7 +332,8 @@ function parse(raw: string | null): Record<string, unknown> {
 /**
  * Your decisions on this job as cards of yours (2026-10-10): each answer to a Bot's question, each
  * 放行 and 退回 of a hand-over (from its card: only your press marks one; the work log called every
- * 放行 the app's until then), and each line of yours that put a ticket back to rework, hung under the
+ * 放行 the app's until then), each line of yours that put a ticket back to rework, and each that let
+ * a hand-over through (ADR 0084, from the approval it logged with the line), hung under the
  * card of the turn it answers. Before, the trace showed only the lines that woke a turn: on the IG MV
  * job four answers and fourteen card presses — the points the job turned on — were nowhere on it.
  * A rework line that already has its card (it woke a turn) is marked on that card instead.
@@ -429,6 +430,24 @@ function decisionNodes(ctx: StoreContext, taskId: string, turnIds: ReadonlySet<s
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
     out.push(card({ id: messageId, sessionId: line.session_id, at: event.at, summary: oneLine(line.body), answers: latest?.turn_id ?? null,
       ticketId: event.ticket_id, decision: { kind: "rework" } }));
+  }
+
+  // Lines of yours the reader read as letting a hand-over through (ADR 0084): your 放行, said.
+  for (const event of events) {
+    if (event.kind !== "submission.approved") continue;
+    const payload = parse(event.payload);
+    const messageId = typeof payload.message_id === "string" ? payload.message_id : null;
+    const id = typeof payload.submission_id === "string" ? payload.submission_id : null;
+    if (payload.by !== "user" || !messageId || !id) continue;
+    const existing = cards.find((node) => node.turn_id === `user:${messageId}`) ?? out.find((node) => node.turn_id === `decision:${messageId}`);
+    if (existing) {
+      existing.decision ??= { kind: "approve", submission_id: id };
+      continue;
+    }
+    const line = ctx.db.query<{ session_id: string; body: string }, [string]>("SELECT session_id, body FROM messages WHERE id = ?").get(messageId);
+    if (!line) continue;
+    out.push(card({ id: messageId, sessionId: line.session_id, at: event.at, summary: oneLine(line.body), answers: submissions.get(id)?.turn_id ?? null,
+      ticketId: event.ticket_id, decision: { kind: "approve", submission_id: id } }));
   }
   return out;
 }

@@ -11,7 +11,7 @@ export const zh = {
   agentNote: (agent: string) => `选 ${agent} 的模型，每调用一次就用掉一点你在 ${agent} 上的额度。`,
   failed: "没存上，再试一次",
   roles: {
-    reader: { name: "读句", hint: "你和 Bot 的每句话先用它读一遍：是不是叫停或继续、是不是只问进度、在挑哪处交付的毛病、Bot 是不是说着还在做就收尾了。读不了时退回固定词表。你的话要等它读完才叫醒 Bot，选个快的。" },
+    reader: { name: "读句", hint: "你和 Bot 的每句话先用它读一遍：是不是叫停或继续、是不是只问进度、在挑哪处交付的毛病还是放行了它、Bot 是不是说着还在做就收尾了。读不了时退回固定词表。你的话要等它读完才叫醒 Bot，选个快的。" },
     organizer: { name: "整理器", hint: "把这件事整理成看板上的任务和要点里的进展。要读整份规划、写回整份规划，用强模型；在 opus 上一次整理大约输入 20k、输出 6k token。" },
     scribe: { name: "书记员", hint: "把你的话记成要点里的要求。每句话都跑，Bot 不等它。" },
     judge: { name: "看图判定", hint: "对照样片、检查前后衔接。端点上的模型没标「能看图」时，看图仍用默认模型；Claude 模型都能看图。" },
@@ -31,7 +31,7 @@ export const en: CopyShape<typeof zh> = {
   agentNote: (agent: string) => `A ${agent} model spends a little of your usage on ${agent} on each call.`,
   failed: "Not saved; try again",
   roles: {
-    reader: { name: "Reading lines", hint: "Every line you and the Bots write is read with it first: whether it tells the Bots to stop or go on, whether it only asks where the work stands, what it objects to in delivered work, whether a Bot is ending while saying it is still at it. When it cannot read, the fixed word lists do. Your line wakes no Bot until it is read, so pick a fast one." },
+    reader: { name: "Reading lines", hint: "Every line you and the Bots write is read with it first: whether it tells the Bots to stop or go on, whether it only asks where the work stands, what it objects to in delivered work or lets through, whether a Bot is ending while saying it is still at it. When it cannot read, the fixed word lists do. Your line wakes no Bot until it is read, so pick a fast one." },
     organizer: { name: "Organizer", hint: "Turns the job into the board's tasks and the plan's progress. It reads and writes back the whole plan, so use a strong model; on Opus one settle is about 20k tokens in and 6k out." },
     scribe: { name: "Scribe", hint: "Writes your lines down as the plan's requirements. It runs on every line; no Bot waits for it." },
     judge: { name: "Picture checks", hint: "Checks against the sample and between parts. An endpoint's model not marked as reading images leaves the pictures on the default model; every Claude model reads them." },

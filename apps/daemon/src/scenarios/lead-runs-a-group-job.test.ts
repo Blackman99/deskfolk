@@ -3,7 +3,7 @@
  * You ask 海报组 for a poster with three slogans; 设计师, the lead you confirmed, lays the job out
  * with `plan_items` — the slogans for 文案, reviewed by itself; the poster its own, after the
  * slogans — and delegates the slogans. 文案 submits, 设计师 approves, and since both run on the same
- * model the approval waits on your 放行. What went wrong, end to end:
+ * model the approval waits on your 放行 (said since ADR 0084). What went wrong, end to end:
  *
  * - The desk's first effect opened the job with a ticket of its own name, 01 「做一张咖啡店开业海报，
  *   竖版，配三句宣传语」, owned by 设计师: next to the lead's two tickets it was a third nobody would
@@ -17,6 +17,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { confirmGroupLead } from "../store/group-leads";
 import { call, createScenario, fileUnder, requestText, say, tool, writeFile, type Scenario } from "../test-kit/scenario";
+import { letThroughByWord } from "../test-kit/your-word";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -77,14 +78,18 @@ test("you approve the slogans, and the lead goes straight on to its poster", asy
   expect(desk).toContain("各自做什么：@文案：写宣传语。");
   expect(desk).toContain("你是用户在这个群里确认的负责人：要别人做的部分，先用 plan_items 拆成任务");
 
-  // Same model for both: the approval waits on your 放行.
-  const card = h.messages(room).find((message) => message.control?.kind === "review_item")!;
-  expect(card).toBeDefined();
+  // Same model for both: the approval waits on your word — no card (ADR 0084).
+  expect(h.messages(room).filter((message) => message.control?.kind === "review_item")).toEqual([]);
+  const [slogans] = h.store.listSubmissions({ ticketId: ticketId("三句宣传语")! });
+  expect(slogans).toMatchObject({ state: "in_review", awaiting: { kind: "approval" } });
   const delegation = h.store.db.query<{ status: string }, []>("SELECT status FROM delegations").get()!;
   expect(delegation.status).toBe("open");
 
-  h.engine.control(card.id, { action: "approve" });
+  // You say it is fine: the reader reads your line as your 放行.
+  h.judge("read_filing").reply(fileUnder(undefined, { ticket: "三句宣传语" }));
+  const nod = h.postUser(room, "@设计师 可以");
   await h.waitIdle({ timeoutMs: 15_000 });
+  expect(h.store.getMessage(nod.id).control).toMatchObject({ kind: "passed", submission_ids: [slogans!.id] });
 
   // The delegation is answered with the approved hand-over, and the lead goes on with its poster at once.
   expect(h.store.db.query<{ status: string }, []>("SELECT status FROM delegations").get()!.status).toBe("replied");
@@ -260,7 +265,7 @@ test("a lead woken at the job's level that draws in its own ticket's folder hand
 
   h.postUser(room, "做一张咖啡店开业海报，竖版，配三句宣传语");
   await h.waitIdle({ timeoutMs: 15_000 });
-  h.engine.control(h.messages(room).find((message) => message.control?.kind === "review_item")!.id, { action: "approve" });
+  letThroughByWord(h, room, ticketId("三句宣传语")!);
   await h.waitIdle({ timeoutMs: 15_000 });
 
   const drawing = h.turns(designer!).at(-1)!;
@@ -359,7 +364,7 @@ test("a lead woken at the job's level whose approved command draws in its own ti
 
   h.postUser(room, "做一张咖啡店开业海报，竖版，配三句宣传语");
   await h.waitIdle({ timeoutMs: 15_000 });
-  h.engine.control(h.messages(room).find((message) => message.control?.kind === "review_item")!.id, { action: "approve" });
+  letThroughByWord(h, room, ticketId("三句宣传语")!);
   await h.waitFor(() => Boolean(h.store.db.query("SELECT 1 FROM approvals WHERE status = 'pending'").get()), { what: "the render to ask for approval" });
   const approval = h.store.db.query<{ id: string }, []>("SELECT id FROM approvals WHERE status = 'pending'").get()!;
   h.engine.resolveApproval(approval.id, "allow_once");

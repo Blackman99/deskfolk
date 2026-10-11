@@ -290,7 +290,7 @@ export function planItems(ctx: StoreContext, input: { turnId: string; items: unk
       if (stage === "dropped" || dropped.some((row) => row.ticket_id === ticket.id)) continue;
       if (stage === "approved") throw new HttpError(409, "conflict", `drop ${index + 1}: ticket ${String(ticket.seq).padStart(2, "0")} "${ticket.title}" is approved; the user reopens it on the board`);
       if (stage === "submitted" || stage === "in_review" || ctx.db.query("SELECT 1 FROM submissions WHERE ticket_id = ? AND state IN ('checking', 'submitted', 'in_review')").get(ticket.id)) {
-        throw new HttpError(409, "conflict", `drop ${index + 1}: ticket ${String(ticket.seq).padStart(2, "0")} "${ticket.title}" has a hand-over waiting on review or the user's card; wait for it, or ask the user to send it back`);
+        throw new HttpError(409, "conflict", `drop ${index + 1}: ticket ${String(ticket.seq).padStart(2, "0")} "${ticket.title}" has a hand-over waiting on review or on the user's word; wait for it, or ask the user to send it back`);
       }
       const waitedOnBy = before.filter((row) => row.id !== ticket.id && (row.depends_on ?? []).includes(ticket.id)).map((row) => row.seq);
       dropTicket(ctx, { taskId, ticketId: ticket.id, why: drop.reason, byBot: turn.bot_id, turnId: input.turnId, lift: false, now });

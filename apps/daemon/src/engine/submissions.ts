@@ -72,11 +72,11 @@ export type Submissions = {
    */
   answer: (turnId: string, text: string) => Promise<SettledSubmission | null>;
   /**
-   * A line of yours, once filed (or refiled, or once the scribe made entries of it): a complaint
-   * about work handed over or approved asks whether to send it back to rework (§6.6). Read as
-   * `reading` says, else once it is read. Never throws.
+   * A line of yours, once filed (or refiled): a complaint about work handed over or approved sends
+   * it back to rework (§6.6, ADR 0070), and the hand-overs waiting on you that it lets through are
+   * let through (ADR 0084). Read as `reading` says, else once it is read. Never throws.
    */
-  noteComplaint: (messageId: string, opts?: { reading?: UserLineReading }) => void;
+  noteYourWord: (messageId: string, opts?: { reading?: UserLineReading }) => void;
   /** Your answer on a rework card: send it back, leave it, or undo. */
   answerRework: (message: Message, input: { action: unknown }) => ControlActionResult;
   /** Your answer on a ceiling card. */
@@ -85,8 +85,8 @@ export type Submissions = {
 
 /**
  * `end_turn(done, answer)`'s text must be more than one bare character — not a real content floor:
- * an `answer` hand-over always ends on your approve/reject card, so that card is the safeguard and a
- * short real deliverable (a title, a slogan) must reach it. The claim/ack/promise/question filters
+ * an `answer` hand-over always waits on your word (ADR 0084), so you are the safeguard and a short
+ * real deliverable (a title, a slogan) must reach you. The claim/ack/promise/question filters
  * below do the actual work.
  */
 const ANSWER_TEXT_MIN_CODE_POINTS = 2;
@@ -102,7 +102,7 @@ const ANSWER_TEXT_MIN_CODE_POINTS = 2;
  * its own. `isBareRemark` (no-work.ts) does not fit here and is deliberately left out: its "no file,
  * code or link" shape is exactly what a real text answer ("海边的灯塔", an outline, a paragraph of
  * copy) looks like, so it would reject one wholesale. A padded ack that slips past this is not a
- * bypass: it still lands on your approve/reject card like any other.
+ * bypass: it still waits on your word like any other.
  */
 export function isAnswerText(text: string, reading: BotLineReading): boolean {
   const body = text.trim();
@@ -244,8 +244,10 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
           notEnded = error instanceof Error ? error.message : String(error);
         }
       }
+      // The sample of a large job: what it took and what the rest would, for the Bot to tell you as it shows it to you.
+      const sample = store.sampleReport(settled.submission.ticket_id, lang);
       return { ok: true, data: { submission_id: settled.submission.id, state: settled.state, reviewer: settled.reviewer, checks: lines,
-        ...(ended ? { ended: true } : {}), ...(notEnded ? { not_ended: notEnded } : {}) }, emitted };
+        ...(sample ? { sample } : {}), ...(ended ? { ended: true } : {}), ...(notEnded ? { not_ended: notEnded } : {}) }, emitted };
     } catch (error) {
       return failure(error);
     }
@@ -268,8 +270,7 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
       const result = store.reviewSubmission({ turnId, submissionId: target.id, verdicts: args.verdicts, outcome: args.outcome, note: args.note, checks });
       dispatchQueued();
       if (!result.ok && result.code === "awaiting_user") {
-        if (result.card) publishMessage(result.card);
-        return { ok: false, error: { code: result.code, message: `approval of submission ${result.submission.id} waits on the user: ${result.reasons.join(" | ")}. A card asks the user to approve it or send it back; there is nothing more for you to do on this submission — end your turn.` },
+        return { ok: false, error: { code: result.code, message: `approval of submission ${result.submission.id} waits on the user: ${result.reasons.join(" | ")}. What the user says about it next lets it through or sends it back; there is nothing more for you to do on this submission — end your turn.` },
           data: { submission_id: result.submission.id, waiting_on: "user" }, emitted: [] };
       }
       if (!result.ok) {
@@ -378,21 +379,38 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
     return settle(prepared.submission);
   }
 
-  function noteComplaint(messageId: string, opts: { reading?: UserLineReading } = {}): void {
+  function noteYourWord(messageId: string, opts: { reading?: UserLineReading } = {}): void {
     if (!on()) return;
     const note = (reading: UserLineReading): void => {
       try {
+        // A fault found first: what it sends back is no longer waiting to be let through.
         const objecting = { clauses: reading.objections, source: reading.source };
         const changed = store.noteComplaint(messageId, { objecting });
         for (const line of changed) publishMessage(line);
-        if (changed.length === 0) return;
-        const sent = store.db.query<{ task_id: string | null; ticket_id: string | null; producer: string | null }, [string]>(`SELECT task_id, ticket_id,
-          json_extract(payload, '$.producer') AS producer FROM work_events WHERE kind = 'complaint.rework'
-          AND json_extract(payload, '$.message_id') = ? AND json_extract(payload, '$.by') = 'reading'`).all(messageId);
-        for (const row of sent) if (row.producer && row.task_id) deps.liftOnSendBack?.(changed[0]!, row.producer, row.task_id, row.ticket_id);
-        dispatchQueued();
+        if (changed.length > 0) {
+          const sent = store.db.query<{ task_id: string | null; ticket_id: string | null; producer: string | null }, [string]>(`SELECT task_id, ticket_id,
+            json_extract(payload, '$.producer') AS producer FROM work_events WHERE kind = 'complaint.rework'
+            AND json_extract(payload, '$.message_id') = ? AND json_extract(payload, '$.by') = 'reading'`).all(messageId);
+          for (const row of sent) if (row.producer && row.task_id) deps.liftOnSendBack?.(changed[0]!, row.producer, row.task_id, row.ticket_id);
+        }
+        const passed = store.passByYourWord(messageId, { passes: reading.passes, source: reading.source });
+        for (const line of passed.lines) publishMessage(line);
+        // Let through while a gate had not run yet: run it, then resolve your word — never read as a failure.
+        for (const { submission } of passed.toRun) {
+          void track((async () => {
+            try {
+              await runBound(submission, isoNow());
+              store.takeUpPendingApproval(submission.id);
+              publishMessage(store.getMessage(messageId));
+            } catch (error) {
+              log(`[submissions] ${submission.id}: could not let it through after its checks: ${error instanceof Error ? error.message : String(error)}`);
+            }
+            dispatchQueued();
+          })());
+        }
+        if (changed.length > 0 || passed.lines.length > 0) dispatchQueued();
       } catch (error) {
-        log(`[submissions] line ${messageId}: could not read it as a complaint: ${error instanceof Error ? error.message : String(error)}`);
+        log(`[submissions] line ${messageId}: could not read it for a send-back or a 放行: ${error instanceof Error ? error.message : String(error)}`);
       }
     };
     if (opts.reading) return note(opts.reading);
@@ -418,5 +436,5 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
     return { made: [], lifted: [] };
   }
 
-  return { submit, review, implicit, act, answer, noteComplaint, answerRework, answerCeiling };
+  return { submit, review, implicit, act, answer, noteYourWord, answerRework, answerCeiling };
 }

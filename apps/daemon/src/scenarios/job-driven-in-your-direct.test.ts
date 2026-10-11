@@ -73,7 +73,7 @@ test("work a restart cut off is told where you last spoke about its job", async 
   expect(notice!.control).toMatchObject({ notes: [h.messages(dm).find((message) => message.body === "中断")!.id] });
 });
 
-test("a hand-over you are waiting on in your direct comes up there; another Bot's goes to the group, not into this direct", async () => {
+test("a hand-over waiting on you is yours to nod to in your direct with the Bot that made it; another Bot's only in the group, not in this direct", async () => {
   const h = await createScenario({ learning: true });
   open.push(h);
   const { director, writer, room, plan, dm } = wentOnInYourDirect(h);
@@ -92,10 +92,12 @@ test("a hand-over you are waiting on in your direct comes up there; another Bot'
   h.tick(new Date(Date.now() + 60_000));
   await h.waitIdle();
 
-  const cards = (session: string) => h.messages(session).filter((message) => message.control?.kind === "review_item")
-    .map((message) => (message.control?.kind === "review_item" ? message.control.ticket_id : null));
-  expect(cards(dm)).toEqual([shots.id]);
-  expect(cards(room)).toEqual([script.id]);
+  // No card in either (ADR 0084): your word decides, where you can say it to the Bot that made it.
+  expect(h.messages(dm).concat(h.messages(room)).filter((message) => message.control?.kind === "review_item")).toEqual([]);
+  const waiting = (session: string) => h.store.waitingOnYourWord({ sessionId: session, before: new Date().toISOString() })
+    .map((row) => h.store.getSubmission(row.submission_id).ticket_id).sort();
+  expect(waiting(dm)).toEqual([shots.id]);
+  expect(waiting(room)).toEqual([shots.id, script.id].sort());
 });
 
 test("a complaint sends work back on your line, where you said it, and no card comes up anywhere", async () => {
@@ -118,7 +120,8 @@ test("a complaint sends work back on your line, where you said it, and no card c
 
 test("work you send back from your direct with the Bot that made it is redone there", async () => {
   // Real-model run, 2026-10-04: 「第二句换成更有画面感的」 said to 文案 in your direct, 转回返工 pressed there,
-  // and 文案 redid the slogans in the group the job began in; the new version landed there.
+  // and 文案 redid the slogans in the group the job began in; the new version landed there. Since
+  // ADR 0070 and 0084 you send it back by saying so there.
   const h = await createScenario({ learning: true });
   open.push(h);
   const { director, room, plan, dm } = wentOnInYourDirect(h);
@@ -145,11 +148,11 @@ test("work you send back from your direct with the Bot that made it is redone th
   await h.waitIdle();
   h.tick(new Date(Date.now() + 60_000));
   await h.waitIdle();
-  const card = h.messages(dm).find((message) => message.control?.kind === "review_item")!;
   const before = h.turns(director).length;
 
-  h.engine.control(card.id, { action: "reject", note: "城市破坏还不够" });
+  const complaint = h.postUser(dm, "城市破坏不对，重做");
   await h.waitIdle();
+  expect(h.store.getMessage(complaint.id).control).toMatchObject({ kind: "rework", ticket_id: shots.id });
 
   expect(h.store.db.query("SELECT home_session_id FROM work_items WHERE id = ?").get(there.work_item_id!)).toEqual({ home_session_id: room });
   const redo = h.turns(director).slice(before);

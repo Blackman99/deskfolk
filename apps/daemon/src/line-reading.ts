@@ -1,6 +1,7 @@
 /**
  * 读句: what a line means, as the app acts on it (ADR 0055). Whether a line of yours tells the Bots
- * to stop or go on, only asks where the work stands, or objects to what was handed over; whether a
+ * to stop or go on, only asks where the work stands, objects to what was handed over or lets it
+ * through (ADR 0084); whether a
  * Bot's line says the work is still going, claims a run, has nothing in it, is a bare status, or only
  * asks the user's OK to go on (ADR 0058).
  * And which job a line of yours is about (ADR 0057) — that one has no word lists behind it.
@@ -39,6 +40,11 @@ export type UserLineReading = {
   statusOnly: boolean;
   /** The clauses, in the line's own words, that object to the work as it stands now; empty when none does. */
   objections: string[];
+  /**
+   * The hand-overs waiting on you that the line lets through (ADR 0084), by submission id, of those
+   * the reading was shown. Only a model reads this: the word lists never let anything through.
+   */
+  passes: string[];
 };
 
 /** What a Bot's line says, for the app to act on. */
@@ -94,6 +100,7 @@ export function userLineByWords(body: string, opts: { statusQuestion: boolean })
     controlOnly: false,
     statusOnly: opts.statusQuestion,
     objections: clausesOf(body).filter(clauseObjects),
+    passes: [],
   };
 }
 
@@ -175,25 +182,32 @@ export function checkFilingReading(answer: Record<string, unknown>, refs: Filing
 
 const CONTROL = ["stop", "go_on", "both", "none"] as const;
 
+/** The hand-overs a reading of your line was shown, by the refs its answer names them with. */
+export type HandedOverRefs = Array<{ ref: string; submissionId: string }>;
+
 /**
  * A model's answer about a line of yours, checked: control one of its four values, flags true only
  * when the answer says so, and each objection kept as the words of the line it quotes (whatever
  * spaces, width or punctuation the model copied them with). An objection the model gave that is not
  * in the line is dropped; if every one was, the whole line stands as the one objection, since the
- * model did say the line objects. Null when the answer is not a reading at all.
+ * model did say the line objects. A hand-over it lets through is one of those it was shown
+ * (`handedOver`), by its ref; any other ref is dropped. Null when the answer is not a reading at all.
  */
-export function checkUserReading(answer: Record<string, unknown>, body: string): UserLineReading | null {
+export function checkUserReading(answer: Record<string, unknown>, body: string, handedOver: HandedOverRefs = []): UserLineReading | null {
   if (!CONTROL.includes(answer.control as (typeof CONTROL)[number])) return null;
   const said = Array.isArray(answer.objections) ? answer.objections.filter((item): item is string => typeof item === "string" && item.trim() !== "") : [];
   const found = [...new Set(said.map((quote) => findWords(quote, body)).filter((words): words is string => words !== null))];
   const objections = found.length > 0 ? found : said.length > 0 && body.trim() ? [body.trim()] : [];
   const control = answer.control as UserLineReading["control"];
+  const named = Array.isArray(answer.passes) ? answer.passes.filter((ref): ref is string => typeof ref === "string") : [];
+  const passes = [...new Set(named.flatMap((ref) => handedOver.filter((row) => row.ref === ref.trim()).map((row) => row.submissionId)))];
   return {
     source: "model",
     control,
     controlOnly: control !== "none" && answer.control_only === true,
     statusOnly: answer.status_only === true,
     objections,
+    passes,
   };
 }
 

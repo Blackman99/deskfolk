@@ -10,7 +10,8 @@ function zhVerdict(verdict: CallRunVerdict): string {
           : verdict.control === "both" ? "读成：停下又继续"
             : verdict.status_only ? "读成：只问进度"
               : verdict.objections.length > 0 ? `读出 ${verdict.objections.length} 处不满`
-                : "读成：普通的一句";
+                : verdict.passes?.length ? `读成：放行 ${verdict.passes.length} 份交付`
+                  : "读成：普通的一句";
       return verdict.by_words ? `${read}（按词表）` : read;
     }
     case "bot_line": {
@@ -66,7 +67,8 @@ function enVerdict(verdict: CallRunVerdict): string {
           : verdict.control === "both" ? "Read as: stop, then go on"
             : verdict.status_only ? "Read as: only asks where it stands"
               : verdict.objections.length > 0 ? `Read ${verdict.objections.length} objection${verdict.objections.length === 1 ? "" : "s"}`
-                : "Read as: an ordinary line";
+                : verdict.passes?.length ? `Read as: lets ${verdict.passes.length} hand-over${verdict.passes.length === 1 ? "" : "s"} through`
+                  : "Read as: an ordinary line";
       return verdict.by_words ? `${read} (word lists)` : read;
     }
     case "bot_line": {

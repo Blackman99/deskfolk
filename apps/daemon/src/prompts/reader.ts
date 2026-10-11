@@ -19,6 +19,7 @@ import {
   type BotLineReading,
   type FilingReading,
   type FilingRefs,
+  type HandedOverRefs,
   type ScaleReading,
   type UserLineReading,
 } from "../line-reading";
@@ -28,9 +29,9 @@ import { fill } from "./fill";
 
 export const READ_USER_LINE_TEMPLATE = `你在替一个多 Bot 协作应用读用户说的一句话，判断应用该怎么处理它。不是回答用户，也不能发言；没有工具。
 
-输入是一个 JSON：said 是这句话；where 是 group（群）或 direct（和一个 Bot 的私聊）；replying_to 是它回复的那句（可能没有）；recent 是这句之前的几句（author 是 user 或 Bot 的名字）。
+输入是一个 JSON：said 是这句话；where 是 group（群）或 direct（和一个 Bot 的私聊）；replying_to 是它回复的那句（可能没有）；recent 是这句之前的几句（author 是 user 或 Bot 的名字）；handed_over（可能没有）是 Bot 已经交到用户面前、正等用户表态的成果：ref 是编号，bot 是谁交的，job 是哪件事，ticket 是其中哪张任务，what 是交了什么，ago 是多久以前交的，sample 为 true 的是一件大活先做的样片。
 
-要判断四件事：
+要判断五件事：
 
 1. control：这句话是不是在要求 Bot 现在停下或继续手头的工作。
    - stop：叫停、暂停、打住、先别做了、别弄了、收手、停掉私聊里的活，或者指出它们还没停（「你私聊里的没停」）。
@@ -40,11 +41,15 @@ export const READ_USER_LINE_TEMPLATE = `你在替一个多 Bot 协作应用读�
 2. control_only：control 不是 none 时，这句话是不是除了这个指令就没别的了（称呼、语气词、「麻烦」「赶紧」这类不算别的）。还带着新的要求、问题或别的内容（「停一下，先把第二集分镜改了」「继续做第二集」）就是 false。
 3. status_only：这句话是不是只在问工作进行到哪了（「怎么样了」「进度呢」「做完了吗」「到哪一步了」），没有别的要求。带着要求、催促做某事、或问的是具体某个东西的细节，就是 false。
 4. objections：这句话里对已经交出来的成果「现在这样」不满意的分句，原样摘自 said（不改写、不拼接，可以只摘一部分）。包括：指出毛病（太假、不对、穿帮、太短、跳帧、和要求对不上）、不满意、要求重做或从头再做、说之前的作废。不算：夸奖（「C07 很好」）；不用重做（「别重做了」「不用从头再做」）；条件（「如果太短就告诉我」）；说的是别的版本或别的时候（「上一版那个问题已经解决了」「下集别这么长」）；提问；客套（「有问题随时找我」）；只是提一个新要求而没说现在的成果哪里不好。没有就输出 []。
+5. passes：handed_over 里哪几份因为这句话算通过了，写它们的 ref。用户不按按钮放行：他对它说的话、或者看过之后接着往下说的话，就是他的表态。
+   - 算通过：认可它（「可以」「不错」「行」「就这样」「通过」「没问题」）；拿它往下用、叫 Bot 做下一步（「发给他们吧」「接着做下一集」「导出成 PDF」）；where 是 direct 时，没对它说什么就说起了别的事（问别的问题、要做另一件活）——东西已经在用户面前，他往下走了。
+   - 不算：objections 里对它的不满（那是返工）；要改它、给它加东西（「把猫改成橘猫」「标题再大一点」——Bot 会交新的一版）；问它本身的情况（「这段多长」「清晰度能到多少」「用的什么模型」）；只问进度、叫停或继续；只是应一声、说要先看看（「收到」「我看看」「等我看完」）；where 是 group 时对别的 Bot 说的、或在说和它无关的事；sample 为 true 的，只有明确认可或叫它往下做才算，说起别的事不算。
+   - 没有 handed_over，或拿不准，就输出 []。
 
 {format}`;
 /** A reading of your line. Fixed: the parser reads it, so an edited prompt keeps it where `{format}` sits (ADR 0064). */
 export const READ_USER_LINE_FORMAT = `只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语：
-{"control": "none", "control_only": false, "status_only": false, "objections": []}`;
+{"control": "none", "control_only": false, "status_only": false, "objections": [], "passes": []}`;
 export const READ_USER_LINE_SYSTEM = fill(READ_USER_LINE_TEMPLATE, { format: READ_USER_LINE_FORMAT });
 
 
@@ -116,25 +121,45 @@ function botText(text: string): string {
   return `${points.slice(0, half).join("")}\n…\n${points.slice(points.length - half).join("")}`;
 }
 
+/** A hand-over waiting on your word, as a reading of your line is shown it (ADR 0084). */
+export type HandedOverLine = { ref: string; bot: string; job: string; ticket: string; what: string; ago: string; sample?: true };
+
 export type UserLinePayload = {
   said: string;
   where: "group" | "direct";
   replying_to?: { author: string; text: string };
   recent: Array<{ author: string; text: string }>;
+  handed_over?: HandedOverLine[];
 };
+
+/** As much of what a hand-over handed over as a reading is shown. */
+const HANDED_OVER_TEXT_MAX = 200;
 
 export function userLinePayload(input: {
   body: string;
   where: "group" | "direct";
   replyingTo: { author: string; text: string } | null;
   recent: Array<{ author: string; text: string }>;
+  handedOver?: Array<{ bot: string; job: string; ticket: string; what: string; sample: boolean; created_at: string }>;
+  now?: number;
 }): UserLinePayload {
+  const now = input.now ?? Date.now();
+  const handed = (input.handedOver ?? []).map((row, at): HandedOverLine => ({
+    ref: `H${at + 1}`, bot: row.bot, job: head(row.job, JOB_TEXT_MAX), ticket: head(row.ticket, JOB_TEXT_MAX), what: head(row.what, HANDED_OVER_TEXT_MAX),
+    ago: agoWords(row.created_at, now), ...(row.sample ? { sample: true as const } : {}),
+  }));
   return {
     said: takeCodePoints(input.body, READ_TEXT_MAX).text,
     where: input.where,
     ...(input.replyingTo ? { replying_to: { author: input.replyingTo.author, text: head(input.replyingTo.text, RECENT_TEXT_MAX) } } : {}),
     recent: input.recent.map((line) => ({ author: line.author, text: head(line.text, RECENT_TEXT_MAX) })),
+    ...(handed.length > 0 ? { handed_over: handed } : {}),
   };
+}
+
+/** The refs a payload's hand-overs go by, for checking the answer (`H1` is the first shown). */
+export function handedOverRefs(submissionIds: readonly string[]): HandedOverRefs {
+  return submissionIds.map((submissionId, at) => ({ ref: `H${at + 1}`, submissionId }));
 }
 
 /** A Bot's line and, when there is one, the line it answers (a translation's source, a request). */
@@ -228,9 +253,9 @@ export function parseFilingAnswer(raw: string, refs: FilingRefs): FilingReading 
 }
 
 /** The answer about a line of yours as a checked reading; null when it is not one. */
-export function parseUserLineAnswer(raw: string, body: string): UserLineReading | null {
+export function parseUserLineAnswer(raw: string, body: string, handedOver: HandedOverRefs = []): UserLineReading | null {
   const parsed = extractJsonObject(raw);
-  return parsed ? checkUserReading(parsed, body) : null;
+  return parsed ? checkUserReading(parsed, body, handedOver) : null;
 }
 
 /** The answer about a Bot's line as a checked reading; null when it is not one. */

@@ -18,6 +18,14 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - Roles is no longer in Settings: open it from Tools (after Terminal), as a tab on a wide window and as a page in place of the list on a phone. "Change this call" on a step of the flow, and a card's "View in Settings" about one of a call's prompts, open it at that call.
 - Settings has no Roles entry any more; which calls you changed and which has a conflict show on the map's nodes. Prompts' "Open Roles" line closes Settings and opens it. "Where windows open" has a Roles row, a new tab by default.
 
+### You let work through by what you say, as you send it back
+
+- A hand-over that needs your 放行 no longer puts up an approve/reject card or a notification ([ADR 0084](docs/adr/0084-you-let-work-through-by-what-you-say.md)). It waits on your word, as a stop now ends on your next word: the Bot tells you what it handed over, and what you say next is read — a nod ("fine", "go with this"), using it or asking for the next step, or in your direct with that Bot moving on to something else, lets it through; finding fault sends it back to rework, as before. Your line then says 「已放行：……」. A large job's sample needs a clear yes.
+- It goes through the way 放行 on a card did: its checks run again and a failing one sends it back; requirements nothing backed count as met; it is logged as yours, and the Plan view shows your line as the decision. Misread? Say what is wrong and it goes back.
+- While the Bot works on something you said about it since ("make the cat orange"), your words are not about the old version; the new one waits on you once handed over. The rules that held a card back while the Bot worked, took it down and put it up again are gone with the card.
+- The sample's cost so far and the rough sum for the rest, which its card used to show, now come to the Bot with its hand-over, for it to tell you.
+- On the board, a ticket waiting on you reads "Waiting on your word: say it is fine, or what to fix". Cards already out still take a press.
+
 ## 0.1.0-rc.17 — 2026-10-11
 
 Signed and notarized macOS rc, with an experimental, still unsigned Windows installer beside the `.dmg`s.

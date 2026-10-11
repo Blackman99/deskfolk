@@ -225,6 +225,20 @@ export type MessageControl =
     }
   | {
       /**
+       * A line of yours that let hand-overs waiting on you through (ADR 0084): the reader read it as
+       * your 放行, as a press on a card used to be. `result` says what came of each — let through,
+       * sent back because a gate failed when it ran, or waiting on a gate first. Nothing to press:
+       * a fault you find later sends the work back like any approved work.
+       */
+      kind: "passed";
+      submission_ids: string[];
+      message_id: string;
+      result?: string;
+      offer: ControlOffer[];
+      acted?: ControlOffer[];
+    }
+  | {
+      /**
        * The capability ceiling (ADR 0046, §6.6): a part (null: the whole ticket) failed the same
        * requirement three hand-overs in a row, or was handed over more than six times. `another_way`
        * and `another_plan` send it back with that direction, `relax` waives `requirement_id` for the

@@ -824,7 +824,6 @@ export function supervisorTick(ctx: StoreContext, input: { now?: string } = {}):
       result.unsupported = SUPERVISOR_UNSUPPORTED_AT_SUBMISSIONS;
       const submissions = superviseSubmissions(ctx, now);
       result.approved = submissions.moved;
-      result.messages.push(...submissions.messages);
       result.checksToRun = submissions.toRun;
     }
     callBackOrphans(ctx, result, now);

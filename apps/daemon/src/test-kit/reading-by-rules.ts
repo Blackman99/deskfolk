@@ -11,11 +11,16 @@ import { readControlLine } from "../control-line";
 import { isoNow } from "../ids";
 import type { Store } from "../store";
 
+/** A line that is nothing but a nod, whoever it is said to: 「可以」「行」「通过」「没问题」「不错」「好的」. */
+const OK_WORDS = /^(可以|行|通过|没问题|不错|好的?|ok)[，。！!,.\s]*$/i;
+
 /** The model's answer to `call.read_user_line` for `payload`, or "" when the payload is not one. */
 export function userLineAnswerByRules(store: Store | null, payload: unknown): string {
-  const fields = (payload ?? {}) as { said?: unknown; where?: unknown };
+  const fields = (payload ?? {}) as { said?: unknown; where?: unknown; handed_over?: Array<{ ref?: unknown }> };
   if (typeof fields.said !== "string") return "";
   const said = fields.said;
+  // A plain nod lets through every hand-over waiting on you that the reading was shown (ADR 0084).
+  const passes = OK_WORDS.test(said.replace(/^(@\S+\s*)+/, "").trim()) ? (fields.handed_over ?? []).map((row) => row.ref).filter((ref): ref is string => typeof ref === "string") : [];
   const reading = readControlLine({
     message: { kind: "user", body: said, session_id: "", created_at: isoNow(), parent_id: null, attachments: [], annotation_source_message_id: null },
     sessionKind: fields.where === "group" ? "group" : "direct",
@@ -24,13 +29,13 @@ export function userLineAnswerByRules(store: Store | null, payload: unknown): st
     // 「没停」 reads as a stop to the model: it says the work has not stopped.
     held: () => true,
   });
-  const answer = { control: "none", control_only: false, status_only: false, objections: clausesOf(said).filter(clauseObjects) };
+  const answer = { control: "none", control_only: false, status_only: false, objections: clausesOf(said).filter(clauseObjects), passes };
   switch (reading.kind) {
     case "stop":
     case "reaffirm":
-      return JSON.stringify({ ...answer, control: "stop", control_only: true, objections: [] });
+      return JSON.stringify({ ...answer, control: "stop", control_only: true, objections: [], passes: [] });
     case "continue":
-      return JSON.stringify({ ...answer, control: "go_on", control_only: true, objections: [] });
+      return JSON.stringify({ ...answer, control: "go_on", control_only: true, objections: [], passes: [] });
     case "possible_control": {
       const stop = reading.offer.includes("stop");
       const goOn = reading.offer.includes("continue");

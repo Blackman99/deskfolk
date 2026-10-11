@@ -131,6 +131,8 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
     if (buttons.length > 0) return { state: "ask", prompt: null, buttons };
     return control.result ? { state: "done", note: control.result } : { state: "none" };
   }
+  // A line of yours the reader read as letting hand-overs through (ADR 0084): what came of it, nothing to press.
+  if (control.kind === "passed") return control.result ? { state: "done", note: control.result } : { state: "none" };
   // A line of yours that reads as a complaint about delivered work (ADR 0046): send it back to rework
   // or leave it; once sent back, undo. Stops play no part.
   if (control.kind === "rework") {

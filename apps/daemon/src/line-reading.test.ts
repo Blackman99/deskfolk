@@ -10,7 +10,7 @@ import { parseBotLineAnswer, parseUserLineAnswer } from "./prompts/reader";
 test("a reading of your line keeps each objection as the line's own words, however the model copied them", () => {
   const body = "这版节奏拖沓，整个推掉吧。片头那段还行";
   const reading = checkUserReading({ control: "none", control_only: false, status_only: false, objections: ["这版节奏拖沓", "整个 推掉吧"] }, body);
-  expect(reading).toEqual({ source: "model", control: "none", controlOnly: false, statusOnly: false, objections: ["这版节奏拖沓", "整个推掉吧"] });
+  expect(reading).toEqual({ source: "model", control: "none", controlOnly: false, statusOnly: false, objections: ["这版节奏拖沓", "整个推掉吧"], passes: [] });
 });
 
 test("an objection that is not in the line is dropped; when none is, the line stands as the one objection", () => {
@@ -80,7 +80,7 @@ test("an answer is read out of prose around it, and anything else is no reading"
 
 test("the word lists' readings: control is left to the rules, the rest as the lists always read it", () => {
   expect(userLineByWords("C07 太假了，重做", { statusQuestion: false })).toEqual({
-    source: "words", control: null, controlOnly: false, statusOnly: false, objections: ["C07 太假了", "重做"],
+    source: "words", control: null, controlOnly: false, statusOnly: false, objections: ["C07 太假了", "重做"], passes: [],
   });
   expect(userLineByWords("怎么样了", { statusQuestion: true }).statusOnly).toBe(true);
   expect(botLineByWords("正在逐对核验 18 张起止帧，结论随后。")).toMatchObject({ source: "words", later: "正在逐对核验 18 张起止帧，结论随后。" });

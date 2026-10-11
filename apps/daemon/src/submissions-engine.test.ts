@@ -30,7 +30,7 @@ function job(h: Scenario) {
 
 /**
  * An earlier segment of the maker's on the job, ended: what it hands over next is not made in one go,
- * so with nothing of yours behind it, it comes to your card.
+ * so with nothing of yours behind it, it waits on your word (ADR 0084).
  */
 function workedOnBefore(h: Scenario, j: ReturnType<typeof job>) {
   const trigger = h.store.insertMessage({ sessionId: j.room, kind: "system", author: j.maker.id, body: "工作" });
@@ -47,10 +47,23 @@ async function ask(h: Scenario, j: ReturnType<typeof job>, body = "@Maker 出分
   await h.waitIdle();
 }
 
+/** Your nod to the maker, filed under the ticket; the maker answers it with `reply` (a bare 「好的」 by default). */
+async function nod(h: Scenario, j: ReturnType<typeof job>, body = "@Maker 可以", reply: Parameters<ReturnType<Scenario["script"]>["reply"]>[0] = say("好的")) {
+  h.script(j.maker).reply(reply);
+  const line = h.store.postMessage(j.room, { body });
+  h.store.fileMessage(line.id, { explicit: [{ taskId: j.plan.id, ticketId: j.ticket.id }] });
+  await h.engine.handleInboundMessage(h.store.getMessage(line.id), { fromUser: true });
+  await h.waitIdle();
+  return h.store.getMessage(line.id);
+}
+
+/** The 放行/退回 cards in a conversation: since ADR 0084 there are none. */
+const cardsIn = (h: Scenario, room: string) => h.messages(room).filter((message) => message.control?.kind === "review_item");
+
 const stageOf = (h: Scenario, ticketId: string) => h.store.db.query<{ stage: string | null; status: string }, [string]>(
   "SELECT stage, status FROM tickets WHERE id = ?").get(ticketId)!;
 
-test("a closing reply that hands a file of the ticket over is an implicit submission; with no reviewer and no active gate, it waits on your approve/reject card", async () => {
+test("a closing reply that hands a file of the ticket over is an implicit submission; with no reviewer and no active gate, it waits on your word, and your nod lets it through", async () => {
   const h = await scenario();
   const j = job(h);
   workedOnBefore(h, j);
@@ -69,24 +82,22 @@ test("a closing reply that hands a file of the ticket over is an implicit submis
 
   h.tick(new Date(Date.now() + 20_000));
   await h.waitIdle();
-  // Nothing active backs this hand-over, so it is never approved on nothing at all: the same card as an answer's or an organizer's, showing the files to open and look.
-  expect(h.store.getSubmission(submission!.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval" } });
+  // Nothing active backs this hand-over, so it is never approved on nothing at all: it waits on your
+  // word, as an answer or an organizer's reading does — no card (ADR 0084): the maker's line showed you the file.
+  expect(h.store.getSubmission(submission!.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval", message_id: null } });
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "submitted", status: "review" });
-  const card = h.messages(j.room).find((message) => message.control?.kind === "review_item")!;
-  expect(card.control).toMatchObject({ offer: ["approve", "reject"] });
-  // Its words name the file; the file itself is on the card, to open.
-  expect(card.body).toContain("board.md");
-  expect(card.attachments.map((attachment) => attachment.workspace_relpath)).toContain(`${j.ticket.dir}/board.md`);
-  h.engine.control(card.id, { action: "approve" });
-  await h.waitIdle();
+  expect(cardsIn(h, j.room)).toEqual([]);
+  // Your nod is read as your 放行, and your line says what it let through.
+  const line = await nod(h, j);
   expect(h.store.getSubmission(submission!.id).state).toBe("approved");
+  expect(line.control).toMatchObject({ kind: "passed", submission_ids: [submission!.id], offer: [], result: "已放行：EP01 的任务 01「Storyboard」。" });
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });
   expect(h.store.getTask(j.plan.id)).toMatchObject({ stage: "delivered", status: "done" });
   // The same bytes handed over again are not a new submission.
   expect(h.store.listSubmissions({ taskId: j.plan.id })).toHaveLength(1);
 });
 
-test("a segment that fails hands over nothing it cited: half-made files never come to your card", async () => {
+test("a segment that fails hands over nothing it cited: half-made files never wait on your word", async () => {
   // 2026-10-08: 视频导演's segment died on an endpoint error mid-rework; the scripts it had cited in its
   // progress lines went to a 放行 card, 15 s after the notice that the work stopped.
   const h = await scenario();
@@ -103,10 +114,10 @@ test("a segment that fails hands over nothing it cited: half-made files never co
   expect(h.store.listSubmissions({ taskId: j.plan.id })).toEqual([]);
   h.tick(new Date(Date.now() + 20_000));
   await h.waitIdle();
-  expect(h.messages(j.room).filter((message) => message.control?.kind === "review_item")).toEqual([]);
+  expect(h.store.listSubmissions({ taskId: j.plan.id })).toEqual([]);
 });
 
-test("what you say while a hand-over waits on your card takes the card down as the maker goes to work on it; what it hands over next is what you are asked about", async () => {
+test("what you say while a hand-over waits on your word is no nod to it: the maker goes to work on your line, and what it hands over next is what waits on you", async () => {
   // 2026-10-07: 「把猫改成橘猫」, said while a picture waited, was followed by a card to let the old picture
   // through while the Bot was already making the orange one.
   const h = await scenario();
@@ -117,27 +128,25 @@ test("what you say while a hand-over waits on your card takes the card down as t
   h.tick(new Date(Date.now() + 20_000));
   await h.waitIdle();
   const [first] = h.store.listSubmissions({ taskId: j.plan.id });
-  const card = h.messages(j.room).find((message) => message.control?.kind === "review_item")!;
-  expect(card.control).toMatchObject({ submission_id: first!.id, offer: ["approve", "reject"] });
+  expect(first).toMatchObject({ state: "submitted", awaiting: { kind: "approval" } });
 
-  // You say what to change instead of pressing anything. While the maker is at it, the card is down.
+  // You say what to change. While the maker is at it, a nod of yours is not about the grey one.
   let whileWorking: unknown = null;
   h.script(j.maker).reply(call(writeFile(`${j.ticket.dir}/cat.png`, "橘猫")), () => {
-    whileWorking = h.store.getMessage(card.id).control;
+    whileWorking = h.store.waitingOnYourWord({ sessionId: j.room, before: new Date().toISOString() });
     return say("改成橘猫了");
   });
   await ask(h, j, "@Maker 把猫改成橘猫");
-  expect(whileWorking).toMatchObject({ offer: [], result: "你又说了这件事，等Maker按你说的做完再问你。" });
-  // The orange one superseded the waiting hand-over; the next tick asks about it, on one card.
+  expect(whileWorking).toEqual([]);
+  // The orange one superseded the waiting hand-over; it is the one your nod lets through.
   const [newer, older] = h.store.listSubmissions({ taskId: j.plan.id });
   expect([older!.id, older!.state, newer!.state]).toEqual([first!.id, "superseded", "submitted"]);
   h.tick(new Date(Date.now() + 40_000));
   await h.waitIdle();
-  const cards = h.messages(j.room).filter((message) => message.control?.kind === "review_item");
-  expect(cards.map((message) => message.control)).toMatchObject([
-    { submission_id: first!.id, offer: [], result: "你又说了这件事，等Maker按你说的做完再问你。" },
-    { submission_id: newer!.id, offer: ["approve", "reject"] },
-  ]);
+  const line = await nod(h, j, "@Maker 不错");
+  expect(line.control).toMatchObject({ kind: "passed", submission_ids: [newer!.id] });
+  expect(h.store.getSubmission(newer!.id).state).toBe("approved");
+  expect(cardsIn(h, j.room)).toEqual([]);
 });
 
 test("a file hand-over with no reviewer still auto-approves when an active gate backs it and it passes", async () => {
@@ -326,7 +335,7 @@ test("a closing reply whose hand-over fails its checks hears why, and the ticket
   expect(heard).toContain("分镜写到第 3 镜");
 });
 
-test("a check you confirm on the board while the hand-over waits on its card runs as a gate; its pass lets the hand-over through at the next tick", async () => {
+test("a check you confirm on the board while the hand-over waits on your word runs as a gate; its pass lets the hand-over through at the next tick", async () => {
   const h = await scenario();
   const j = job(h);
   h.store.patchTicketByUser(j.ticket.id, { reviewerBotId: j.reviewer.id });
@@ -345,27 +354,25 @@ test("a check you confirm on the board while the hand-over waits on its card run
   // Both Bots run on the scenario's one model, and the unconfirmed check measured a failure: the
   // approval waits on you, and the failure held nothing back.
   expect(h.store.listSubmissions({ taskId: j.plan.id })).toMatchObject([{ state: "in_review", checks: [{ check_id: check.id, gate: false, outcome: "fail" }] }]);
-  // One card: 放行 or 退回, what you said twice and the failing measurement on it.
-  const card = h.messages(j.room).find((message) => message.control?.kind === "review_item");
-  expect(card?.control).toMatchObject({ requirement_ids: [entry.id], check_ids: [], offer: ["approve", "reject"] });
-  expect(card?.body).toContain("「写到第 3 镜」：不通过");
+  // No card: it waits on your word, what you said twice kept with it.
+  expect(cardsIn(h, j.room)).toEqual([]);
+  expect(h.store.listSubmissions({ taskId: j.plan.id })).toMatchObject([{ awaiting: { kind: "approval", requirement_ids: [entry.id] } }]);
   // The file it measures is right by the time you confirm the check on the board (you fixed it yourself).
   writeFileSync(join(h.root, j.ticket.dir, "board.md"), "1. 雪原\n2. 塔\n3. 灯");
   h.engine.confirmDerivedCheck(check.id);
   await h.waitIdle();
   expect(h.store.getCheck(check.id)).toMatchObject({ derived_state: "active", last_run: { outcome: "pass" } });
-  // What the card waited on is backed now: the next tick lets it through, and the card says so.
+  // What it waited on is backed now: the next tick lets it through.
   h.tick(new Date(Date.now() + 20_000));
   await h.waitIdle();
   expect(h.store.listSubmissions({ taskId: j.plan.id })).toMatchObject([{ state: "approved", awaiting: null, reviews: [{ same_model: true }] }]);
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });
-  expect(h.store.getMessage(card!.id).control).toMatchObject({ offer: [], result: "已放行。" });
 });
 
 // A real answer, with real content rather than a status line.
 const THREE_TOPICS = "三个选题：一是海洋保护纪录片，聚焦珊瑚礁退化和渔业冲突；二是城市夜生活，记录年轻人深夜故事；三是乡村留守老人日常生活。";
 
-test("a ticket whose work is words closes at level 5 via end_turn(done, answer), waiting on your approve/reject card (no reviewer)", async () => {
+test("a ticket whose work is words closes at level 5 via end_turn(done, answer), waiting on your word (no reviewer)", async () => {
   const h = await scenario();
   const j = job(h);
   h.script(j.maker).reply(call(tool("end_turn", { reason: "done", answer: THREE_TOPICS })));
@@ -376,11 +383,10 @@ test("a ticket whose work is words closes at level 5 via end_turn(done, answer),
   await h.waitIdle();
   // With no reviewer, an answer is never approved on the organizer's — or its own — word alone.
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "submitted", status: "review" });
-  const card = h.messages(j.room).find((message) => message.control?.kind === "review_item");
-  expect(card?.control).toMatchObject({ offer: ["approve", "reject"] });
-  expect(card?.body).toContain(THREE_TOPICS);
-  h.engine.control(card!.id, { action: "approve" });
-  await h.waitIdle();
+  expect(cardsIn(h, j.room)).toEqual([]);
+  // A reading of your next line is shown the words it handed over.
+  expect(h.store.waitingOnYourWord({ sessionId: j.room, before: new Date().toISOString() })).toMatchObject([{ what: `「${THREE_TOPICS}」` }]);
+  await nod(h, j, "@Maker 可以");
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });
   expect(h.store.getTask(j.plan.id)).toMatchObject({ status: "done", stage: "delivered" });
 });
@@ -471,7 +477,7 @@ test("a Bot that did an owned ticket's work is told once to hand it over with su
 // approve the ticket outright, empty verdicts and all.
 const PADDED_CLAIM = "母带已经剪辑完毕并导出了，整体时长和节奏都符合你的要求，可以直接拿去使用了。";
 
-test("a same-model reviewer's clean approve of an answer still waits on your card, with its verdict shown", async () => {
+test("a same-model reviewer's clean approve of an answer still waits on your word, its verdict kept with it", async () => {
   const h = await scenario();
   const j = job(h);
   h.store.patchTicketByUser(j.ticket.id, { reviewerBotId: j.reviewer.id });
@@ -484,17 +490,16 @@ test("a same-model reviewer's clean approve of an answer still waits on your car
   await ask(h, j, "@Maker 交母带");
   expect(results).toMatchObject([{ name: "review", ok: false }]);
   expect(results[0]!.content).toContain("awaiting_user");
-  const card = h.messages(j.room).find((message) => message.control?.kind === "review_item");
-  expect(card?.control).toMatchObject({ offer: ["approve", "reject"] });
-  expect(card?.body).toContain(PADDED_CLAIM);
-  expect(card?.body).toContain("Checker");
+  expect(results[0]!.content).toContain("What the user says about it next lets it through or sends it back");
+  expect(cardsIn(h, j.room)).toEqual([]);
+  expect(h.store.listSubmissions({ taskId: j.plan.id })).toMatchObject([{ state: "in_review", awaiting: { kind: "approval", review: { reviewer_bot_id: j.reviewer.id } } }]);
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "in_review", status: "review" });
-  h.engine.control(card!.id, { action: "approve" });
-  await h.waitIdle();
+  await nod(h, j);
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });
+  expect(h.store.listSubmissions({ taskId: j.plan.id })).toMatchObject([{ state: "approved", reviews: [{ reviewer_bot_id: j.reviewer.id, outcome: "approve" }] }]);
 });
 
-test("organizer done with a reviewer set — its clean approve, with nothing to look at, also waits on your card", async () => {
+test("organizer done with a reviewer set — its clean approve, with nothing to look at, also waits on your word", async () => {
   const h = await scenario();
   const j = job(h);
   h.store.patchTicketByUser(j.ticket.id, { reviewerBotId: j.reviewer.id });
@@ -513,15 +518,14 @@ test("organizer done with a reviewer set — its clean approve, with nothing to 
   // The doubled 。 bug: the organizer's own note already ends in one.
   expect(heard).toContain("整理跳认为这张任务做完了。先看");
   expect(heard).not.toContain("做完了。。");
-  const card = h.messages(j.room).find((message) => message.control?.kind === "review_item");
-  expect(card?.control).toMatchObject({ offer: ["approve", "reject"] });
-  expect(card?.body).not.toContain("做完了。。");
+  expect(cardsIn(h, j.room)).toEqual([]);
+  expect(h.store.listSubmissions({ taskId: j.plan.id })).toMatchObject([{ origin: "organizer", state: "in_review", awaiting: { kind: "approval" } }]);
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "in_review", status: "review" });
 });
 
-// Pressing 放行 while a gate has not run yet must not read the gate as failed, nor say 已放行 for
+// 放行 given while a gate has not run yet must not read the gate as failed, nor say 已放行 for
 // what was sent back.
-test("pressing 放行 while a gate has not run yet waits for it, then resolves — never 已放行 for what failed", async () => {
+test("放行 said while a gate has not run yet waits for it, then resolves — never 已放行 for what failed", async () => {
   const h = await scenario();
   const j = job(h);
   const answer = "三个选题：雪原上的孤灯、海底的旧城、云端的列车。第一个最有画面感，建议先做它。";
@@ -529,22 +533,20 @@ test("pressing 放行 while a gate has not run yet waits for it, then resolves �
   await ask(h, j, "@Maker 交选题");
   h.tick(new Date(Date.now() + 20_000));
   await h.waitIdle();
-  const card = h.messages(j.room).find((message) => message.control?.kind === "review_item")!;
-  expect(card.control).toMatchObject({ offer: ["approve", "reject"] });
-  // A gate added only after the card already waits on you: not run yet when 放行 is pressed.
+  // A gate added only after it already waits on you: not run yet when you nod.
   h.store.createCheckByUser(j.plan.id, { item: "选题文件存在", kind: "exists", path: `${j.ticket.dir}/topics.md`, ticket_id: j.ticket.id });
-  h.engine.control(card.id, { action: "approve" });
-  await h.waitIdle();
-  const after = h.store.getMessage(card.id).control;
-  expect(after).toMatchObject({ acted: ["reject"] });
-  expect((after as { result?: string }).result).toContain("检查没过");
+  // Sent back by the gate, the maker is woken to rework: it answers once more.
+  h.script(j.maker).reply(say("好的"), call(tool("end_turn", { reason: "done" })));
+  const line = await nod(h, j);
+  expect(line.control).toMatchObject({ kind: "passed" });
+  expect((line.control as { result?: string }).result).toStartWith("检查没过，已退回：EP01 的任务 01「Storyboard」");
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "rework", status: "doing" });
   expect(h.store.listSubmissions({ taskId: j.plan.id })).toMatchObject([{ state: "checks_failed" }]);
 });
 
 // A claim refused as an answer must not get through as a file instead: a file hand-over with no
-// reviewer and no checks behind it waits on your card too.
-test("a claim refused as an answer, then written to a throwaway file with no checks, still waits on your card", async () => {
+// reviewer and no checks behind it waits on your word too.
+test("a claim refused as an answer, then written to a throwaway file with no checks, still waits on your word", async () => {
   const h = await scenario();
   const j = job(h);
   workedOnBefore(h, j);
@@ -559,14 +561,12 @@ test("a claim refused as an answer, then written to a throwaway file with no che
   expect(results[0]!.content).not.toContain("submit 交");
   h.tick(new Date(Date.now() + 20_000));
   await h.waitIdle();
-  expect(h.store.listSubmissions({ taskId: j.plan.id })).toMatchObject([{ origin: "submit", state: "submitted" }]);
-  const card = h.messages(j.room).find((message) => message.control?.kind === "review_item");
-  expect(card?.control).toMatchObject({ offer: ["approve", "reject"] });
-  expect(card?.body).toContain("status.md");
+  expect(h.store.listSubmissions({ taskId: j.plan.id })).toMatchObject([{ origin: "submit", state: "submitted", awaiting: { kind: "approval" } }]);
+  expect(h.store.waitingOnYourWord({ sessionId: j.room, before: new Date().toISOString() })).toMatchObject([{ what: "status.md" }]);
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "submitted", status: "review" });
 });
 
-test("放行 pressed while a gate runs, with a passing gate added meanwhile: the card says it waits, a second 放行 is refused, and the tick resolves it", async () => {
+test("放行 said while a passing gate has not run yet: the gate runs, then it goes through, and your line says so", async () => {
   const h = await scenario();
   const j = job(h);
   const answer = "三个选题：雪原上的孤灯、海底的旧城、云端的列车。第一个最有画面感，建议先做它。";
@@ -574,29 +574,19 @@ test("放行 pressed while a gate runs, with a passing gate added meanwhile: the
   await ask(h, j, "@Maker 交选题");
   h.tick(new Date(Date.now() + 20_000));
   await h.waitIdle();
-  const card = h.messages(j.room).find((message) => message.control?.kind === "review_item")!;
   mkdirSync(join(h.root, j.ticket.dir), { recursive: true });
   writeFileSync(join(h.root, j.ticket.dir, "topics.md"), answer);
   h.store.createCheckByUser(j.plan.id, { item: "选题文件存在", kind: "exists", path: `${j.ticket.dir}/topics.md`, ticket_id: j.ticket.id });
-  h.engine.control(card.id, { action: "approve" });
-  // Waiting on the check: only 退回 is left, the card says why, and 放行 again is refused.
-  expect(h.store.getMessage(card.id).control).toMatchObject({ offer: ["reject"], result: "等检查跑完再放行…" });
-  expect(() => h.engine.control(card.id, { action: "approve" })).toThrow();
-  // A second gate the press never saw, added while it waits.
-  h.store.createCheckByUser(j.plan.id, { item: "选题写了三个", kind: "contains", path: `${j.ticket.dir}/topics.md`, pattern: "三个选题", ticket_id: j.ticket.id });
-  await h.waitIdle();
-  expect(h.store.listSubmissions({ taskId: j.plan.id })).toMatchObject([{ state: "submitted", awaiting: { kind: "approval", pending: true } }]);
-  // The tick runs the gate it has not seen run, and the next one resolves the press.
-  h.tick(new Date(Date.now() + 40_000));
-  await h.waitIdle();
-  h.tick(new Date(Date.now() + 60_000));
-  await h.waitIdle();
-  expect(h.store.listSubmissions({ taskId: j.plan.id })).toMatchObject([{ state: "approved", awaiting: null }]);
-  expect(h.store.getMessage(card.id).control).toMatchObject({ offer: [], acted: ["approve"], result: "已放行。" });
+  const [submission] = h.store.listSubmissions({ taskId: j.plan.id });
+  const line = await nod(h, j);
+  expect(h.store.getSubmission(submission!.id)).toMatchObject({ state: "approved", awaiting: null });
+  expect(h.store.getCheck(h.store.listChecks(j.plan.id)[0]!.id)).toMatchObject({ last_run: { outcome: "pass" } });
+  expect(line.control).toMatchObject({ kind: "passed", result: "已放行：EP01 的任务 01「Storyboard」。" });
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });
+  expect(h.store.listWorkEvents({ kind: "submission.approved" }).at(-1)).toMatchObject({ actor: "user", payload: { by: "user", message_id: line.id } });
 });
 
-test("a card a newer hand-over or your board edit took over says so, with no buttons left", async () => {
+test("a card an older build put up, which a newer hand-over or your board edit took over, says so, with no buttons left", async () => {
   const h = await scenario();
   const j = job(h);
   workedOnBefore(h, j);
@@ -604,18 +594,25 @@ test("a card a newer hand-over or your board edit took over says so, with no but
   await ask(h, j, "@Maker 交 v1");
   h.tick(new Date(Date.now() + 20_000));
   await h.waitIdle();
+  /** The card a database from before ADR 0084 still holds for the hand-over waiting now. */
+  const oldCard = () => {
+    const waiting = h.store.listSubmissions({ taskId: j.plan.id }).find((row) => row.awaiting)!;
+    const card = h.store.insertMessage({ sessionId: j.room, kind: "system", author: "user", body: "看过之后，放行或者退回。", hiddenFromBots: true,
+      control: { kind: "review_item", submission_id: waiting.id, task_id: j.plan.id, ticket_id: j.ticket.id, requirement_ids: [], check_ids: [], offer: ["approve", "reject"] } });
+    h.store.db.run("UPDATE submissions SET awaiting = json_set(awaiting, '$.message_id', ?) WHERE id = ?", [card.id, waiting.id]);
+    return card;
+  };
+  const first = oldCard();
   // A newer version no line of yours asked for (another Bot did): it takes the first one's place.
-  // (Asked for by you, the first card came down already, as you spoke: see the test above.)
   h.script(j.maker).reply(call(writeFile(`${j.ticket.dir}/cut.md`, "v2")), call(tool("submit", { artifacts: ["cut.md"] })));
   h.postBot(j.reviewer, j.room, "@Maker 交 v2", { taskId: j.plan.id, ticketId: j.ticket.id });
   await h.waitIdle();
   h.tick(new Date(Date.now() + 40_000));
   await h.waitIdle();
-  const [first, second] = h.messages(j.room).filter((message) => message.control?.kind === "review_item");
-  expect(first!.control).toMatchObject({ offer: [], acted: [], result: "已被新的交付取代。" });
-  expect(second!.control).toMatchObject({ offer: ["approve", "reject"] });
+  expect(h.store.getMessage(first.id).control).toMatchObject({ offer: [], acted: [], result: "已被新的交付取代。" });
+  const second = oldCard();
   h.store.patchTicketByUser(j.ticket.id, { status: "doing" });
-  expect(h.store.getMessage(second!.id).control).toMatchObject({ offer: [], acted: [], result: "你在看板上改了这张任务的状态，这份交付作废了。" });
+  expect(h.store.getMessage(second.id).control).toMatchObject({ offer: [], acted: [], result: "你在看板上改了这张任务的状态，这份交付作废了。" });
   expect(h.store.listSubmissions({ taskId: j.plan.id }).map((submission) => submission.state)).toEqual(["superseded", "superseded"]);
 });
 
@@ -626,9 +623,8 @@ test("your complaint about approved work, read as one, sends it back at once; th
   h.script(j.reviewer).reply(call(tool("review", { outcome: "approve", verdicts: [] })), call(tool("end_turn", { reason: "done" })));
   h.script(j.maker).reply(call(writeFile(`${j.ticket.dir}/board.md`, "1. 雪原\n2. 塔")), call(tool("submit", { artifacts: ["board.md"] })));
   await ask(h, j);
-  const approval = h.messages(j.room).find((message) => message.control?.kind === "review_item")!;
-  h.engine.control(approval.id, { action: "approve" });
-  await h.waitIdle();
+  // Both run on the scenario's one model: the reviewer's approve waits on your word.
+  await nod(h, j);
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });
 
   // The complaint: the maker reworks and hands over again; the reviewer reads its record on the review.

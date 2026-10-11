@@ -23,7 +23,7 @@ export const zh = {
     blocked: "卡住了，在等你",
     held: "你叫停了",
     held_dependency: "它等的任务被叫停了",
-    review: "等你审批",
+    review: "等你一句话：说可以就通过，挑毛病就返工",
     acceptance: "等你验收（在板上标完成）",
     ceiling: "卡在能力天花板，等你决定",
     unclaimed: "没人在做，等你派"
@@ -367,7 +367,7 @@ export const en: CopyShape<typeof zh> = {
     blocked: "Stuck, waiting on you",
     held: "You stopped it",
     held_dependency: "A ticket it waits for is stopped",
-    review: "Waiting on your approval",
+    review: "Waiting on your word: say it is fine, or what to fix",
     acceptance: "Waiting on your acceptance (mark it done on the board)",
     ceiling: "At the capability ceiling, waiting on you",
     unclaimed: "Nobody is on it; yours to hand out"

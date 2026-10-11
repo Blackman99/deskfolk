@@ -260,7 +260,7 @@ export function resample(ctx: StoreContext, input: { taskId: string; to: string;
   if (!target) throw new HttpError(404, "not_found", "ticket not found in this plan");
   if (target.stage === "dropped") throw new HttpError(409, "conflict", `ticket ${nn(target.seq)} is dropped; a dropped ticket cannot be the sample`);
   if (current && ctx.db.query("SELECT 1 FROM submissions WHERE ticket_id = ? AND state IN ('checking', 'submitted', 'in_review')").get(current.id)) {
-    throw new HttpError(409, "conflict", `the current sample, ticket ${nn(current.seq)} "${current.title}", has a hand-over waiting on review or the user's card; change the sample once it is decided`);
+    throw new HttpError(409, "conflict", `the current sample, ticket ${nn(current.seq)} "${current.title}", has a hand-over waiting on review or the user's word; change the sample once it is decided`);
   }
   ctx.db.run("UPDATE tickets SET sample = 0, updated_at = ? WHERE task_id = ? AND sample = 1", [now, input.taskId]);
   ctx.db.run("UPDATE tickets SET sample = 1, updated_at = ? WHERE id = ?", [now, input.to]);
@@ -312,7 +312,7 @@ export type SampleSums = {
   remaining: number;
 };
 
-/** What the sample took, for its card: the sums of its segments, and how many tickets wait for it. */
+/** What the sample took: the sums of its segments, and how many tickets wait for it. */
 export function sampleSums(ctx: StoreContext, sampleId: string): SampleSums {
   const ticket = ctx.db.query<{ task_id: string }, [string]>("SELECT task_id FROM tickets WHERE id = ?").get(sampleId);
   const segments = ctx.db.query<{ created_at: string; updated_at: string }, [string]>(`SELECT created_at, updated_at FROM turns
@@ -326,7 +326,16 @@ export function sampleSums(ctx: StoreContext, sampleId: string): SampleSums {
   return { minutes: Math.round(ms / 60_000), segments: segments.length, modelUsd: usd, externalCalls: external, remaining };
 }
 
-/** The sample card's lines on what it took and what the rest would, at that size. */
+/**
+ * What the sample handed over on `ticketId` took, and what the rest would at that size, in words; null
+ * when it is not a large job's sample. Its Bot hears it with its hand-over, to tell you as it shows
+ * you the sample (ADR 0084: no card says it any more).
+ */
+export function sampleReport(ctx: StoreContext, ticketId: string, locale: "zh" | "en"): string | null {
+  return yoursToApprove(ctx, ticketId) === "sample" ? sampleSumsLines(sampleSums(ctx, ticketId), locale) : null;
+}
+
+/** The lines on what the sample took and what the rest would, at that size. */
 export function sampleSumsLines(sums: SampleSums, locale: "zh" | "en"): string {
   const usd = (value: number) => `$${value < 10 ? value.toFixed(2) : value.toFixed(0)}`;
   // An endpoint that reports no cost leaves the model's share unsaid rather than "$0.00".

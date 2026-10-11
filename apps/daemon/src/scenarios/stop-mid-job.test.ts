@@ -9,7 +9,7 @@
  *   and never heard the change, until the supervisor called it back three minutes later to "answer"
  *   the old request.
  * - 文案 hands the slogans in and 设计师 approves them; both run on the same model, so the approval
- *   waits on your 放行. While the card waited, the supervisor called 文案 back every three minutes:
+ *   waits on your 放行 (a card then; your word since ADR 0084). While it waited, the supervisor called 文案 back every three minutes:
  *   the request it had handed in for still read as one it owed, and it handed the same work in again
  *   each time — five hand-overs in twelve minutes.
  */
@@ -139,9 +139,10 @@ test("while your 放行 waits, nobody is called back to answer the request it an
 
   h.postUser(room, "写三句咖啡店开业宣传语");
   await h.waitIdle({ timeoutMs: 15_000 });
-  expect(h.messages(room).some((message) => message.control?.kind === "review_item")).toBe(true);
+  const [waiting] = h.store.listSubmissions({ ticketId: ticketId("三句宣传语")! });
+  expect(waiting).toMatchObject({ awaiting: { kind: "approval" } });
 
-  // You leave the card for twelve minutes.
+  // You say nothing about it for twelve minutes.
   for (const minutes of [3, 6, 9, 12]) {
     h.tick(new Date(Date.now() + minutes * 60_000));
     await h.waitIdle({ timeoutMs: 15_000 });

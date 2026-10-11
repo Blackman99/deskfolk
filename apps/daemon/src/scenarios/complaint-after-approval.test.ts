@@ -1,6 +1,6 @@
 /**
  * A complaint after you approved the slogans (walked through on 2026-10-04 at engine level 8). The
- * poster group's lead 设计师 laid the job out, 文案 wrote the slogans and you pressed 放行; then you
+ * poster group's lead 设计师 laid the job out, 文案 wrote the slogans and you let them through; then you
  * say 「第三句不好，换一句」. Read as a complaint, the line sends 02 back to rework itself (ADR 0070:
  * it used to ask on a card), and it also wakes the lead, as any line of yours in the group does. The
  * lead was not told — it could hand the fix to 文案 while 文案 was being told the same — and its
@@ -10,6 +10,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { confirmGroupLead } from "../store/group-leads";
 import { call, createScenario, fileUnder, requestText, tool, writeFile, type Scenario } from "../test-kit/scenario";
+import { letThroughByWord } from "../test-kit/your-word";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -53,7 +54,7 @@ test("a complaint about approved work sends it back on your line, the lead is to
   });
   h.postUser(room, "做一张咖啡店开业海报，竖版，配三句宣传语");
   await h.waitIdle({ timeoutMs: 15_000 });
-  h.engine.control(h.messages(room).find((message) => message.control?.kind === "review_item")!.id, { action: "approve" });
+  letThroughByWord(h, room, ticketId("三句宣传语")!);
   await h.waitIdle({ timeoutMs: 15_000 });
 
   const complaint = h.postUser(room, "第三句不好，换一句");

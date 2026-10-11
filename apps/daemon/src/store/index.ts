@@ -38,6 +38,7 @@ import * as submissionEvidence from "./submission-evidence";
 import * as handOverOutcomes from "./hand-over-outcomes";
 import * as editWithdrawals from "./edit-withdrawals";
 import * as rework from "./rework";
+import * as yourWord from "./your-word";
 import * as ceiling from "./ceiling";
 import * as visionCap from "./vision-cap";
 import * as externalJobs from "./external-jobs";
@@ -145,6 +146,7 @@ export { checkLines, gateFailed, inTicketDir, type Submission as StoredSubmissio
 export { ticketStage } from "./ticket-stage";
 export { type HandOverOutcome, type HandOverDecision } from "./hand-over-outcomes";
 export { type SettledSubmission, type ReviewResult } from "./submissions";
+export { type WaitingHandOver } from "./your-word";
 export { jobArgsDigest, promptPartNumber, type ExternalJob, type JobState } from "./external-jobs";
 export type { JobToFile, LineToFile } from "./filing";
 export { ORGANIZER_NEW_TICKETS_MAX, titleKey } from "./plan-spec";
@@ -625,6 +627,8 @@ export class Store {
   readonly requiredReviewItems = this.bind(submissionEvidence.requiredItems);
   readonly answerReviewCard = this.bind(submissions.answerReviewCard);
   readonly noteComplaint = this.bind(rework.noteComplaint);
+  readonly waitingOnYourWord = this.bind(yourWord.waitingOnYourWord);
+  readonly passByYourWord = this.bind(yourWord.passByYourWord);
   readonly answerReworkCard = this.bind(rework.answerReworkCard);
   readonly reviewMisses = this.bind(submissions.reviewMisses);
   readonly answerCeilingCard = this.bind(ceiling.answerCeilingCard);
@@ -716,6 +720,7 @@ export class Store {
   readonly largeJobRefusal = this.bind(largeJobs.largeJobRefusal);
   readonly layoutMissing = this.bind(largeJobs.layoutMissing);
   readonly sampleOf = this.bind(largeJobs.sampleOf);
+  readonly sampleReport = this.bind(largeJobs.sampleReport);
   readonly waitingOn = this.bind(largeJobs.waitingOn);
   readonly signalFacts = this.bind(largeJobs.signalFacts);
   readonly standardSides = this.bind(largeJobs.standardSides);
@@ -729,7 +734,6 @@ export class Store {
   readonly answerModelDefaultCard = this.bind(modelDefaults.answerModelDefaultCard);
   readonly visionRefusal = this.bind(visionCap.visionRefusal);
   readonly takeUpSubmission = this.bind(submissions.takeUpSubmission);
-  readonly holdForYourLine = this.bind(submissions.holdForYourLine);
   readonly takeUpPendingApproval = this.bind(submissions.takeUpPendingApproval);
   readonly handOverHint = this.bind(submissions.handOverHint);
   readonly answerHint = this.bind(submissions.answerHint);

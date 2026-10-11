@@ -140,6 +140,11 @@ test("each step says what it concluded, and how a call that came to nothing ende
   expect(zh.verdict(steps.joined.verdict!)).toBe("接下");
   expect(zh.verdict(steps.passed.verdict!)).toBe("不下场：不是我的");
   expect(zh.verdict({ kind: "user_line", control: "stop", control_only: true, status_only: false, objections: [], by_words: true })).toBe("读成：停下（按词表）");
+  const nod = { kind: "user_line", control: "none", control_only: false, status_only: false, objections: [], passes: ["sub_1", "sub_2"], by_words: false } as const;
+  expect(zh.verdict(nod)).toBe("读成：放行 2 份交付");
+  expect(en.verdict({ ...nod, passes: ["sub_1"] })).toBe("Read as: lets 1 hand-over through");
+  // A record from before passes were read says what it always said.
+  expect(zh.verdict({ ...nod, passes: undefined })).toBe("读成：普通的一句");
   expect(zh.verdict(steps.compacted.verdict!)).toBe("留下 3/12 跳");
   expect(en.verdict(steps.judged.verdict!)).toBe("Failed 1/2");
   expect(zh.failed("timeout")).toBe("没成：超时");

@@ -721,7 +721,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return;
     }
     store.afterCommit(() => void core.track(scribe.noteLine(messageId, scribe.handedOverAt())));
-    store.afterCommit(() => submissions.noteComplaint(messageId));
+    store.afterCommit(() => submissions.noteYourWord(messageId));
     store.afterCommit(() => scaleWatch.noteLine(messageId));
   }
 
@@ -904,8 +904,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
             // make to the line is decided against the rows that leaves (store/message-edits.ts), so
             // every copy written below has the words the line has then.
             filed = store.getMessage(message.id);
-            // A complaint about work handed over or approved sends it back before any turn opens on it (ADR 0070).
-            submissions.noteComplaint(filed.id, reading && filed.body === message.body ? { reading } : {});
+            // A complaint about work handed over or approved sends it back before any turn opens on it
+            // (ADR 0070); what the line lets through of the hand-overs waiting on you goes through (ADR 0084).
+            submissions.noteYourWord(filed.id, reading && filed.body === message.body ? { reading } : {});
           }
           // A Stop you pressed on this job goes once you say something more about it to that Bot,
           // before the line wakes anyone: what you say next is what the Bot goes on from. A go on
@@ -929,9 +930,6 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         } else {
           await core.track(participation.handleParticipation(filed, { fromUser, fork: opts?.fork, opened: routed }));
         }
-        // A hand-over of the job waiting on your card comes down once its Bot is at work on what you
-        // just said: what it makes of the line is what you will be asked about.
-        if (fromUser && store.capabilities().engine_level >= ENGINE_LEVELS.work_items) store.holdForYourLine(filed.id);
         // The stopped work your line did not reach goes on from it, and hears it as work already at the job would have.
         // What a go on lifted is about the job wherever it stopped; what the line lifted otherwise goes
         // on only as far as the line reached (a group's stop, for 「@X 继续」, is X's alone to go on from).

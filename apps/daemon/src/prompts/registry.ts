@@ -207,7 +207,7 @@ const CALL_SLOTS: SlotDef[] = [
   call(
     "call.read_user_line",
     { zh: "读句：你的话", en: "Line reading: your line" },
-    { zh: "读你的一句话：是不是叫停或继续、是不是只问进度、哪几句在挑已交付成果的毛病。", en: "Reads a line of yours: a stop or a go-on, only a status question, which parts object to delivered work." },
+    { zh: "读你的一句话：是不是叫停或继续、是不是只问进度、哪几句在挑已交付成果的毛病、放行了哪几份等你的交付。", en: "Reads a line of yours: a stop or a go-on, only a status question, which parts object to delivered work, which hand-overs waiting on you it lets through." },
     ZH,
     () => READ_USER_LINE_TEMPLATE,
     () => READ_USER_LINE_FORMAT,

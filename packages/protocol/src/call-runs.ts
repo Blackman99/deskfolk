@@ -17,6 +17,8 @@ export type CallRunVerdict =
       control_only: boolean;
       status_only: boolean;
       objections: string[];
+      /** The hand-overs it let through (ADR 0084); absent in records from before. */
+      passes?: string[];
       by_words: boolean;
     }
   | {

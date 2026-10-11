@@ -1,12 +1,14 @@
 /**
  * 退回 on a hand-over's card, saying what to change (2026-10-04). 文案 hands the slogans in, 设计师
- * approves them, and since both run on the same model the approval waits on your 放行. You press
- * 退回 instead. The card's 退回 said nothing more: 文案 was woken with only 「用户把交付 … 退回重做了」
+ * approves them, and since both run on the same model the approval waits on you. You press 退回 on
+ * the card. The card's 退回 said nothing more: 文案 was woken with only 「用户把交付 … 退回重做了」
  * and had to guess what was wrong; what you would have said came, if at all, as a line in the
- * group that woke the lead.
+ * group that woke the lead. Since ADR 0084 no card is put up — the hand-over waits on your word — but
+ * one an older build left still answers 退回 this way, so these tests make one (`oldApprovalCard`).
  */
 import { afterEach, expect, test } from "bun:test";
 import { confirmGroupLead } from "../store/group-leads";
+import { oldApprovalCard, waitingHandOver } from "../test-kit/old-cards";
 import { call, createScenario, requestText, tool, writeFile, type Scenario } from "../test-kit/scenario";
 
 const open: Scenario[] = [];
@@ -45,8 +47,8 @@ async function cardWaitingOnYou() {
   });
   h.postUser(room, "写三句咖啡店开业宣传语");
   await h.waitIdle({ timeoutMs: 15_000 });
-  const card = h.messages(room).find((message) => message.control?.kind === "review_item")!;
-  expect(card.control).toMatchObject({ offer: ["approve", "reject"] });
+  expect(h.messages(room).filter((message) => message.control?.kind === "review_item")).toEqual([]);
+  const card = oldApprovalCard(h.store, waitingHandOver(h.store, h.store.getTicket(ticketId("三句宣传语")!).task_id), room);
   return { h, writer: writer!, card };
 }
 

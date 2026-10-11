@@ -49,11 +49,13 @@ export type SubmissionClaim = { requirement_id: string; claim: string; evidence:
  */
 export type AwaitingYou = {
   requirement_ids: string[]; check_ids: string[]; message_id: string | null; review: ReviewRecord | null; at: string; kind?: "items" | "approval";
-  /** An approval card whose 放行 you already pressed, waiting on a gate that had not run yet: resolves once every gate has, never asks again. */
+  /** A 放行 you already gave, waiting on a gate that had not run yet: resolves once every gate has, never asks again. */
   pending?: boolean;
+  /** The line of yours that let it through (ADR 0084), while `pending`: marked with what came of it. */
+  line_id?: string;
   /**
-   * Its card was taken down: you said more on the job after it was handed over and its Bot went to
-   * work on that. Once that work is done with nothing newer handed over, it is put to you again.
+   * From before ADR 0084: its card was taken down because you said more on the job after it was
+   * handed over and its Bot went to work on that. Read as waiting on your word, like any other.
    */
   held?: boolean;
 };

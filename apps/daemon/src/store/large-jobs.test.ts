@@ -82,17 +82,19 @@ function sheetDone(f: Fixture, sheetId: string) {
   f.store.db.run("UPDATE tickets SET status = 'done', stage = 'approved' WHERE id = ?", [sheetId]);
 }
 
-/** The sample handed over and approved on your card. */
+/** The sample handed over and let through by your word. */
 function sampleApproved(f: Fixture, sampleId: string) {
   const submission = handOver(f, sampleId, f.lead.id, 2);
   superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
-  approveOnCard(f, submission.id);
+  approveByWord(f, submission.id);
 }
 
-function approveOnCard(f: Fixture, submissionId: string) {
-  const card = f.store.getSubmission(submissionId).awaiting?.message_id;
-  if (!card) throw new Error("no card waits on you");
-  f.store.answerReviewCard(card, "approve");
+/** Your line in the job's conversation that the reader read as letting the hand-over through (ADR 0084). */
+function approveByWord(f: Fixture, submissionId: string) {
+  if (f.store.getSubmission(submissionId).awaiting?.kind !== "approval") throw new Error("it does not wait on you");
+  const line = f.store.postMessage(f.room.id, { body: "可以，按这个来" });
+  f.store.fileMessage(line.id, { explicit: [{ taskId: f.plan.id }] });
+  expect(f.store.passByYourWord(line.id, { passes: [submissionId], source: "model" }).lines).toHaveLength(1);
 }
 
 test("a reading only ever finds an unread job large, once; yours stands over it and is the only way back to single", () => {
@@ -162,7 +164,7 @@ test("a ticket that waits for another (not the sample) may start once that one i
   expect(f.store.waitingOn(second!.ticket_id)).toBeNull();
 });
 
-test("the sample comes to you even with a passing check of yours behind it; its card says what it took; approving it holds the rest to it", () => {
+test("the sample waits on your word even with a passing check of yours behind it; its Bot hears what it took; approving it holds the rest to it", () => {
   const f = fixture();
   large(f);
   const { sheet, sample, two, three, cut } = layOut(f);
@@ -174,12 +176,13 @@ test("the sample comes to you even with a passing check of yours behind it; its 
   const waiting = f.store.getSubmission(submission.id);
   expect(waiting.state).toBe("submitted");
   expect(waiting.awaiting?.kind).toBe("approval");
-  const card = f.store.getMessage(waiting.awaiting!.message_id!);
-  expect(card.body).toContain("样片交上来了");
-  expect(card.body).toContain("剩下 3 件");
+  // No card: its Bot hears what it took with its hand-over, and tells you.
+  expect(waiting.awaiting?.message_id).toBeNull();
+  expect(f.store.sampleReport(sample.ticket_id, "zh")).toContain("剩下 3 件");
+  expect(f.store.sampleReport(two.ticket_id, "zh")).toBeNull();
   // Nothing is held to it before you approve it.
   expect(f.store.db.query("SELECT COUNT(*) AS n FROM acceptance_checks WHERE standard_of IS NOT NULL").get()).toEqual({ n: 0 });
-  approveOnCard(f, submission.id);
+  approveByWord(f, submission.id);
   expect(ticket(f, sample.ticket_id).stage).toBe("approved");
   const standards = f.store.db.query<{ ticket_id: string; kind: string; origin: string; source: string; item: string }, [string]>(
     "SELECT ticket_id, kind, origin, source, item FROM acceptance_checks WHERE standard_of = ? ORDER BY ticket_id").all(sample.ticket_id);
@@ -210,14 +213,14 @@ test("a standard check holds a hand-over only once it judged it: not run is wait
   const passed = handOver(f, two.ticket_id, f.lead.id, 5);
   superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   expect(f.store.getSubmission(passed.id).state).toBe("approved");
-  // Unjudged (nothing to compare, no model, the picture budget): holds nothing, backs nothing — your card.
+  // Unjudged (nothing to compare, no model, the picture budget): holds nothing, backs nothing — your word.
   const third = handOver(f, three.ticket_id, f.writer.id, 6, { [standard(three.ticket_id)]: "blocked" });
   expect(third.state).toBe("submitted");
   superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   expect(f.store.getSubmission(third.id).awaiting?.kind).toBe("approval");
 });
 
-test("the last ticket of a large job comes to you, whatever backs it: approving it delivers the job", () => {
+test("the last ticket of a large job waits on your word, whatever backs it: letting it through delivers the job", () => {
   const f = fixture();
   large(f);
   const { sheet, sample, two, three, cut } = layOut(f);
@@ -230,8 +233,7 @@ test("the last ticket of a large job comes to you, whatever backs it: approving 
   superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   const waiting = f.store.getSubmission(last.id);
   expect(waiting.awaiting?.kind).toBe("approval");
-  expect(f.store.getMessage(waiting.awaiting!.message_id!).body).toContain("最后一件");
-  approveOnCard(f, last.id);
+  approveByWord(f, last.id);
   expect(f.store.db.query<{ stage: string }, [string]>("SELECT stage FROM tasks WHERE id = ?").get(f.plan.id)?.stage).toBe("delivered");
 });
 
@@ -274,7 +276,7 @@ test("once what a ticket waits for is through, the supervisor calls its owner at
   void quiet;
 });
 
-test("the sample card's sums leave the model's cost unsaid when the endpoint reports none", async () => {
+test("the sample's sums leave the model's cost unsaid when the endpoint reports none", async () => {
   const { sampleSumsLines } = await import("./large-jobs");
   expect(sampleSumsLines({ minutes: 4, segments: 2, modelUsd: null, externalCalls: 0, remaining: 3 }, "zh"))
     .toBe("样片做了约 4 分钟（2 段）。按样片的规模粗算，剩下 3 件约 12 分钟。");
@@ -348,10 +350,10 @@ test("what cannot be dropped or moved: an approved ticket, one waiting on review
   sheetDone(f, sheet.ticket_id);
   const lead = f.turnOf(f.lead.id);
   expect(() => f.store.planItems({ turnId: lead, items: [], drop: [{ ticket: sheet.ticket_id, reason: "x" }] })).toThrow("approved");
-  // The sample handed over and waiting on your card: it cannot be moved, nor dropped.
+  // The sample handed over and waiting on your word: it cannot be moved, nor dropped.
   handOver(f, sample.ticket_id, f.lead.id, 3);
   const again = f.turnOf(f.lead.id);
-  expect(() => f.store.planItems({ turnId: again, items: [{ title: two.title, owner: "导演", sample: true }] })).toThrow("waiting on review or the user's card");
+  expect(() => f.store.planItems({ turnId: again, items: [{ title: two.title, owner: "导演", sample: true }] })).toThrow("waiting on review or the user's word");
   expect(() => f.store.planItems({ turnId: again, items: [], drop: [{ ticket: sample.ticket_id, reason: "x" }] })).toThrow("waiting on review");
   expect(() => f.store.planItems({ turnId: again, items: [], drop: [{ ticket: "#09", reason: "x" }] })).toThrow("names no ticket");
   expect(() => f.store.planItems({ turnId: again, items: [], drop: [{ ticket: two.title }] })).toThrow("reason is required");

@@ -1,164 +1,78 @@
-/** The approval card a hand-over puts on your line, and letting go of it. */
-import { USER_MEMBER, type Message } from "@real-bot/protocol";
-import { sampleSums, sampleSumsLines, yoursToApprove } from "./large-jobs";
-import { getMessage, insertMessage, setMessageControl } from "./messages";
-import { createNotification, updateNotificationActionState } from "./notifications";
+/**
+ * A hand-over waiting on your word (ADR 0084), the mark on the line of yours that let it through,
+ * and the 放行/退回 cards older builds put up (`review_item`): none is put up any more, but one a
+ * database still holds takes its press, and is let go of when its hand-over moves on.
+ */
+import type { Message } from "@real-bot/protocol";
+import { getMessage, setMessageControl } from "./messages";
+import { updateNotificationActionState } from "./notifications";
 import { localeOf } from "./settings";
 import type { StoreContext } from "./shared";
 import type { UnbackedItem } from "./submission-evidence";
-import { cardPlace, checkLines, fileNames, producerIsBot, truncatedAnswer, type AwaitingYou, type ReviewRecord, type Submission } from "./submission-rows";
+import { checkLines, gateFailed, getSubmission, type AwaitingYou, type ReviewRecord, type Submission } from "./submission-rows";
 import { stagedTicket } from "./ticket-stage";
+import { recordWorkEvent } from "./work-events";
 
 /**
- * The required items nothing backs, as the 放行 card lists them: what each is, why it must be judged,
- * what the app measured on it. One that only repeats the job's or the ticket's name, which the
- * card's first line already gives, with nothing measured on it, is left out of the words.
+ * A hand-over waiting on your word (ADR 0084): no card, no notification. The Bot that made it has
+ * told you what it handed over; what you say next about it is read as letting it through or sending
+ * it back (`passByYourWord`, `noteComplaint`). `review` is a reviewer's clean approve it would
+ * complete, kept with it; `items` the required items nothing backs, which your word letting it
+ * through takes as met. Waiting already, it is left as it is.
  */
-function unbackedLines(items: readonly UnbackedItem[], titles: readonly string[], en: boolean): string[] {
-  const named = new Set(titles.map((title) => title.trim()));
-  const shown = items.filter((item) => item.checks.length > 0 || !named.has(item.quote.trim()));
-  if (shown.length === 0) return [];
-  return [en ? "Approving it counts these as met:" : "放行就算这几条做到了：", ...shown.map((item) => {
-    const measured = item.checks.length > 0 ? (en ? ` — measured: ${checkLines(item.checks, "en").join("; ")}` : `——应用量到：${checkLines(item.checks, "zh").join("；")}`) : "";
-    const why = item.reasons.includes("raised") ? (en ? `you said it ${item.times_raised} times` : `你说过 ${item.times_raised} 次`) : (en ? "about the picture" : "关于画面");
-    return en ? `- "${item.quote}" (${why})${measured}` : `- 「${item.quote}」（${why}）${measured}`;
-  })];
-}
-
-/** The reviewer's verdict, for a card that shows it rather than acting on it: name, model, whether it ran on the producer's own, and its notes. */
-/** Whether both the reviewer's and the producer's models are known: otherwise "the same model" is only how it is counted. */
-function modelKnown(review: ReviewRecord, submission: Pick<Submission, "model">): boolean {
-  return Boolean(review.reviewer_model && submission.model);
-}
-
-/**
- * The reviewer's word on the card, and why it is not enough on its own, in plain words: a reviewer on
- * the producer's own model judging its own kind of work, or one that gave no grounds on what you
- * asked. "设计师（fixture，和生产者同模型）判了通过" read as jargon (2026-10-03).
- */
-function reviewerVerdictLine(ctx: StoreContext, review: ReviewRecord, submission: Pick<Submission, "model" | "origin">, en: boolean): string {
-  const name = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(review.reviewer_bot_id)?.name ?? review.reviewer_bot_id;
-  const model = review.reviewer_model ?? (en ? "an unknown model" : "未知模型");
-  const notes = [review.note, ...review.verdicts.map((v) => `${v.requirement_id}: ${v.verdict}${v.evidence.length > 0 ? ` (${v.evidence.join("; ")})` : ""}`)]
-    .filter((line): line is string => Boolean(line));
-  // A note that ends its own sentence is not given a second full stop (「……12 个字。。」).
-  const closed = (text: string, stop: string) => /[。．.!！?？]$/.test(text) ? text : `${text}${stop}`;
-  const said = en
-    ? closed(`${name} reviewed it and judged it ${review.outcome === "approve" ? "good" : "not good"}${notes.length > 0 ? `: ${notes.join("; ")}` : ""}`, ".")
-    : closed(`${name}审过了，判${review.outcome === "approve" ? "通过" : "不通过"}${notes.length > 0 ? `：${notes.join("；")}` : ""}`, "。");
-  // An answer's words or the organizer's reading are the card's reason already (its first line says so).
-  if (submission.origin === "answer" || submission.origin === "organizer") return said;
-  const why = review.same_model
-    ? modelKnown(review, submission)
-      ? (en ? ` But it runs on the same model as the Bot that made it (${model}), and a model passing its own kind of work does not count, so it is yours to decide.`
-        : `但它和做的 Bot 用的是同一个模型（${model}），同一个模型审自己的活不算数，所以要你来定。`)
-      : (en ? " But one of the two models is not known, so it counts as the same model, and it is yours to decide."
-        : "但有一方的模型不明，按同一个模型算，所以要你来定。")
-    : (en ? " But it gave no grounds on what you asked for, so it is yours to decide." : "但它没在你的要求上给出依据，所以要你来定。");
-  return `${said}${why}`;
-}
-
-/** A card this long after its hand-over says which version it asks about, when its Bot has sent newer files since. */
-export const LATE_CARD_AFTER_MS = 10 * 60_000;
-
-/**
- * Which version a card asks about, when it goes up long after the hand-over and its Bot has sent
- * other files in the job since: when it was handed over, and that the newer files are not in it.
- * IG MV, 2026-10-09: the 2D cut handed over at 00:39 waited three hours for its card (its Bot was at
- * work), which came up 16 s under the Bot's new 3D sample shot — 放行 was pressed on the old cut, and
- * a line about the 3D shot then sent the approved cut back. Times and paths only.
- */
-function olderVersionLine(ctx: StoreContext, submission: Submission, now: string, en: boolean): string | null {
-  if (Date.parse(now) - Date.parse(submission.created_at) < LATE_CARD_AFTER_MS) return null;
-  const handed = new Set(submission.artifacts.map((artifact) => artifact.path));
-  const newer = ctx.db.query<{ path: string }, [string, string, string]>(
-    `SELECT a.workspace_relpath AS path FROM attachments a JOIN messages m ON m.id = a.message_id JOIN turns t ON t.id = m.turn_id
-     WHERE t.task_id = ? AND m.kind = 'bot' AND m.author = ? AND a.created_at > ? ORDER BY a.created_at DESC, a.rowid DESC`,
-  ).all(submission.task_id, submission.bot_id, submission.created_at).map((row) => row.path).filter((path) => !handed.has(path));
-  const files = [...new Set(newer)];
-  if (files.length === 0) return null;
-  const at = new Date(submission.created_at);
-  const today = new Date(now);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const clock = `${pad(at.getHours())}:${pad(at.getMinutes())}`;
-  const when = at.toDateString() === today.toDateString() ? clock : `${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${clock}`;
-  const bot = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(submission.bot_id)?.name ?? submission.bot_id;
-  const latest = files[0]!.split("/").at(-1)!;
-  return en
-    ? `This is the version handed over at ${when}; ${bot} has sent ${files.length} more file${files.length === 1 ? "" : "s"} since (latest: ${latest}), which this approval does not cover.`
-    : `这是 ${when} 交的那一版；之后 ${bot} 又发了 ${files.length} 个文件（最近：${latest}），不在这次放行里。`;
-}
-
-/**
- * The one card a hand-over waits on you with: 放行 or 退回 (ADR 0046, ADR 0058 §13). Shown for an
- * `answer` or `organizer` submission, reviewed or not; for a `submit`/`implicit` file hand-over no
- * active (confirmed) gate backs, when no reviewer judged it, or when the reviewer ran on the
- * producer's own model or gave no evidence; and for one with required items nothing backs (`items`:
- * said twice or more, or about the picture), which it lists with what the app measured on them —
- * 放行 takes them as met. Until 2026-10-07 those items had a card of their own first, and each item
- * read after it another: 「生成一张猫坐在阳台的图片」 asked three times in 26 s, the last time to 放行.
- * `review`, when given, is the reviewer's own clean approve — shown on the card, not acted on; your
- * two buttons are the submission's own outcome (`approve`, `reject` — `answerReviewCard`). `backed`:
- * a gate of yours passed, so only the items are yours to decide.
- */
-export function askApproval(ctx: StoreContext, submission: Submission, now: string, review: ReviewRecord | null = null,
-  opts: { items?: readonly UnbackedItem[]; backed?: boolean } = {}): Message | null {
-  const previous = submission.awaiting;
-  // One card per hand-over: put up again only after the last one came down for a line of yours (`held`).
-  if (previous?.kind === "approval" && !previous.held) return null;
-  if (previous?.message_id) letGoOfCard(ctx, previous.message_id, { reason: "replaced" });
-  const items = opts.items ?? [];
-  const requirementIds = items.map((item) => item.requirement_id).sort();
-  const plan = ctx.db.query<{ session_id: string | null; title: string }, [string]>("SELECT session_id, title FROM tasks WHERE id = ?").get(submission.task_id);
-  const ticket = stagedTicket(ctx, submission.ticket_id);
-  let message: Message | null = null;
-  if (plan?.session_id) {
-    const en = localeOf(ctx) === "en";
-    const number = String(ticket.seq).padStart(2, "0");
-    const verdict = review ? `\n${reviewerVerdictLine(ctx, review, submission, en)}` : "";
-    const yours = submission.origin === "answer" || submission.origin === "organizer" ? null : yoursToApprove(ctx, submission.ticket_id);
-    const head = yours === "sample"
-      ? (en ? `The sample of ${plan.title} is in: ticket ${number} "${ticket.title}" (${fileNames(submission, en)}). It sets the standard for the rest: once you approve it, they start, and each is compared with it when handed over.\n${sampleSumsLines(sampleSums(ctx, ticket.id), "en")}`
-        : `${plan.title} 的样片交上来了：任务 ${number}「${ticket.title}」（${fileNames(submission, en)}）。它定下其余各件的水准：放行后它们才开工，交上来时拿它对照。\n${sampleSumsLines(sampleSums(ctx, ticket.id), "zh")}`)
-      : yours === "last"
-        ? (en ? `The last part of ${plan.title} is in: ticket ${number} "${ticket.title}" (${fileNames(submission, en)}). Approving it delivers the job.`
-          : `${plan.title} 的最后一件交上来了：任务 ${number}「${ticket.title}」（${fileNames(submission, en)}）。放行后整件事就交付了。`)
-      : submission.origin === "answer"
-      ? (en ? `Ticket ${number} "${ticket.title}" of ${plan.title}: the words themselves — "${truncatedAnswer(submission.content ?? "")}"`
-        : `${plan.title} 的任务 ${number}「${ticket.title}」：交的话本身——「${truncatedAnswer(submission.content ?? "")}」`)
-      : submission.origin === "organizer"
-        ? (en ? `Ticket ${number} "${ticket.title}" of ${plan.title}: the organizer read this as done.`
-          : `${plan.title} 的任务 ${number}「${ticket.title}」：整理跳认为这张任务做完了。`)
-        : review
-          ? (en ? `Ticket ${number} "${ticket.title}" of ${plan.title} is in (${fileNames(submission, en)}), and it is yours to decide.`
-            : `${plan.title} 的任务 ${number}「${ticket.title}」交上来了（${fileNames(submission, en)}），等你定。`)
-          : opts.backed && items.length > 0
-            ? (en ? `Ticket ${number} "${ticket.title}" of ${plan.title} is in (${fileNames(submission, en)}). The checks you confirmed passed, but they do not cover what is below, so it is yours to decide.`
-              : `${plan.title} 的任务 ${number}「${ticket.title}」交上来了（${fileNames(submission, en)}）。你确认过的检查都过了，但它们管不到下面这几条，所以要你来定。`)
-            : (en ? `Ticket ${number} "${ticket.title}" of ${plan.title} is in (${fileNames(submission, en)}). Nobody reviews it and no check you confirmed stands behind it, so it is yours to decide.`
-              : `${plan.title} 的任务 ${number}「${ticket.title}」交上来了（${fileNames(submission, en)}）。没有审查者，也没有你确认过的检查替你把关，所以要你来定。`);
-    const tail = en ? "Have a look, then approve it or send it back." : "看过之后，放行或者退回。";
-    // Put to you again after its card came down for a line of yours: why the same hand-over is back.
-    const bot = previous?.held ? ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(submission.bot_id)?.name ?? submission.bot_id : null;
-    const again = bot ? [en ? `${bot} handed over nothing new this time.` : `${bot}这次没交新的一版。`] : [];
-    const older = olderVersionLine(ctx, submission, now, en);
-    const body = [...(older ? [older] : []), ...again, head + verdict, ...unbackedLines(items, [plan.title, ticket.title], en), tail].join("\n");
-    const place = cardPlace(ctx, submission, plan.session_id);
-    const isDirect = ctx.db.query<{ kind: string }, [string]>("SELECT kind FROM sessions WHERE id = ?").get(place)?.kind === "direct"
-      && producerIsBot(ctx, submission);
-    // A file hand-over's card links the files themselves, to open and look.
-    const paths = submission.origin !== "answer" && submission.origin !== "organizer" ? submission.artifacts.map((a) => a.path) : undefined;
-    message = insertMessage(ctx, {
-      sessionId: place, kind: "system", author: isDirect ? submission.bot_id : USER_MEMBER, hiddenFromBots: true, body,
-      ...(paths && paths.length > 0 ? { paths } : {}),
-      control: { kind: "review_item", submission_id: submission.id, task_id: submission.task_id, ticket_id: submission.ticket_id,
-        requirement_ids: requirementIds, check_ids: [], offer: ["approve", "reject"] },
-    });
-    createNotification(ctx, { semantic_key: `review_item:${message.id}`, kind: "ask", session_id: place, message_id: message.id, action_state: "open" });
-  }
-  const awaiting: AwaitingYou = { requirement_ids: requirementIds, check_ids: [], message_id: message?.id ?? null, review, at: now, kind: "approval" };
+export function awaitYourWord(ctx: StoreContext, submission: Submission, now: string, review: ReviewRecord | null, items: readonly UnbackedItem[]): void {
+  if (submission.awaiting?.kind === "approval") return;
+  // A required-items card an older build left up (`kind: "items"`) stays linked, so its press still answers.
+  const awaiting: AwaitingYou = { requirement_ids: items.map((item) => item.requirement_id).sort(), check_ids: [], message_id: submission.awaiting?.message_id ?? null,
+    review, at: now, kind: "approval" };
   ctx.db.run("UPDATE submissions SET awaiting = ?, updated_at = ? WHERE id = ?", [JSON.stringify(awaiting), now, submission.id]);
-  return message;
+  recordWorkEvent(ctx, { kind: "submission.awaiting_word", actor: "app", botId: submission.bot_id, taskId: submission.task_id, ticketId: submission.ticket_id,
+    payload: { submission_id: submission.id, work_item_id: submission.work_item_id, requirement_ids: awaiting.requirement_ids, reviewed: review !== null } });
+}
+
+/**
+ * The mark under a line of yours that let hand-overs through (ADR 0084, `control.kind = "passed"`),
+ * written again from where each of them stands now: let through, sent back because a gate failed
+ * when it ran, or still waiting on a gate before it is let through. A line marked some other way (it
+ * also sent work back) keeps that mark.
+ */
+export function markPassedLine(ctx: StoreContext, lineId: string, submissionIds?: readonly string[]): Message | null {
+  let control: Message["control"];
+  try {
+    control = getMessage(ctx, lineId).control;
+  } catch {
+    return null;
+  }
+  if (control && control.kind !== "passed") return null;
+  const ids = submissionIds ?? (control?.kind === "passed" ? control.submission_ids : []);
+  if (ids.length === 0) return null;
+  const en = localeOf(ctx) === "en";
+  const through: string[] = [];
+  const back: string[] = [];
+  const waiting: string[] = [];
+  for (const id of ids) {
+    let submission: Submission;
+    try {
+      submission = getSubmission(ctx, id);
+    } catch {
+      continue;
+    }
+    const plan = ctx.db.query<{ title: string }, [string]>("SELECT title FROM tasks WHERE id = ?").get(submission.task_id)?.title ?? "";
+    const ticket = stagedTicket(ctx, submission.ticket_id);
+    const number = String(ticket.seq).padStart(2, "0");
+    const label = en ? `ticket ${number} "${ticket.title}" of ${plan}` : `${plan} 的任务 ${number}「${ticket.title}」`;
+    if (submission.state === "approved") through.push(label);
+    else if (submission.state === "checks_failed") back.push(`${label}${en ? ` (${checkLines(submission.checks.filter(gateFailed), "en").join("; ")})` : `（${checkLines(submission.checks.filter(gateFailed), "zh").join("；")}）`}`);
+    else if (submission.awaiting?.pending) waiting.push(label);
+  }
+  const sep = en ? "; " : "；";
+  const result = [
+    through.length > 0 ? (en ? `Approved: ${through.join(sep)}.` : `已放行：${through.join(sep)}。`) : null,
+    back.length > 0 ? (en ? `Its checks failed, so it went back: ${back.join(sep)}.` : `检查没过，已退回：${back.join(sep)}。`) : null,
+    waiting.length > 0 ? (en ? `Approving once its checks have run: ${waiting.join(sep)}.` : `等检查跑完再放行：${waiting.join(sep)}。`) : null,
+  ].filter((line): line is string => line !== null).join(en ? " " : "");
+  if (!result) return null;
+  return setMessageControl(ctx, lineId, { kind: "passed", submission_ids: [...ids], message_id: lineId, offer: [], result });
 }
 
 /** Why a card no longer waits on you, as it then reads in place of its buttons. */

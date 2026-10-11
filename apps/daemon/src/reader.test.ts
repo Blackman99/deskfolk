@@ -60,7 +60,7 @@ test("a line of yours is read once, with the line it answers and the few before 
   const bot = h.store.insertMessage({ sessionId: h.direct, kind: "bot", author: h.director.bot.id, body: "好的，第二集分镜在做" });
   const line = h.store.postMessage(h.direct, { body: "先别搞了，收手吧", parent_id: bot.id });
   const reading = await h.reader.userLine(line);
-  expect(reading).toEqual({ source: "model", control: "stop", controlOnly: true, statusOnly: false, objections: [] });
+  expect(reading).toEqual({ source: "model", control: "stop", controlOnly: true, statusOnly: false, objections: [], passes: [] });
   // Asked again, by the status answer or the rework card: no second call.
   expect(await h.reader.userLine(line)).toBe(reading);
   expect(h.requests).toHaveLength(1);
@@ -92,7 +92,7 @@ test("only a line shaped like a status question reads as one, whatever the model
 test("with no model, a failed call or an answer that is no reading, the word lists read the line and the log says why", async () => {
   const none = harness(() => judged(STOP), { routing: null });
   const line = none.store.postMessage(none.direct, { body: "C07 太假了，重做" });
-  expect(await none.reader.userLine(line)).toEqual({ source: "words", control: null, controlOnly: false, statusOnly: false, objections: ["C07 太假了", "重做"] });
+  expect(await none.reader.userLine(line)).toEqual({ source: "words", control: null, controlOnly: false, statusOnly: false, objections: ["C07 太假了", "重做"], passes: [] });
   expect(none.requests).toHaveLength(0);
   expect(none.answers()).toMatchObject([{ source: "words", fail: "no_model", model: null }]);
 
