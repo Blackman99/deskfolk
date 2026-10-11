@@ -5,7 +5,7 @@
 	import LessonsSettings from './LessonsSettings.svelte';
 	import PromptsSettings from './PromptsSettings.svelte';
 	import { editedCount } from './prompts-view.ts';
-	import { promptsTabItems, routingCounts as countRouting } from './routing-map.ts';
+	import { promptsTabItems } from './routing-map.ts';
 	import AgentsTab from './AgentsTab.svelte';
 	import { type Lesson, type PromptSummary } from '@real-bot/protocol';
 	import { backdropClick } from '../click-outside.ts';
@@ -162,7 +162,6 @@
 	});
 	// The app's own calls' prompts are on Roles with their models (ADR 0082); Prompts counts the rest.
 	const promptCounts = $derived(editedCount(promptsTabItems(promptItems)));
-	const routingCounts = $derived(countRouting(snapshot.settings, promptItems));
 	let providerForm = $state<ProviderForm>();
 
 	export function backFromProviderEditor(): void {
@@ -203,13 +202,13 @@
 		if (!runtime.settingsOpen) mobileSettingsDetail = false;
 	});
 
+	/** Roles is a page of its own (ADR 0083): Prompts' link to it leaves Settings for it. */
+	function openRoles(): void {
+		closeSettings();
+		runtime.openRoles();
+	}
+
 	function openSettingsTab(tab: SettingsTab): void {
-		// Roles is a page of its own now (ADR 0083): its entry here only points there.
-		if (tab === 'routing') {
-			closeSettings();
-			runtime.openRoles();
-			return;
-		}
 		activeSettingsTab = tab;
 		mobileSettingsDetail = typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches;
 	}
@@ -240,8 +239,6 @@
 				? t.settings.tabBehavior
 			: tab === 'models'
 				? t.settings.tabModels
-			: tab === 'routing'
-				? t.routing.tab
 				: tab === 'agents'
 					? t.settings.tabAgents
 				: tab === 'mcp'
@@ -439,7 +436,6 @@
 				{generalHasError}
 				{modelsHasError}
 				{promptCounts}
-				{routingCounts}
 				{lessonsTabVisible}
 				{remoteTabVisible}
 				{behaviorTabVisible}
@@ -514,7 +510,7 @@
 				{:else if activeSettingsTab === 'mcp'}
 					<McpSettings bind:this={mcpSettings} {runtime} {t} {closeSettings} />
 				{:else if activeSettingsTab === 'prompts'}
-					<PromptsSettings bind:this={promptsSettings} {runtime} {t} items={promptItems} loadFailed={promptsFailed} {closeSettings} openRouting={() => openSettingsTab('routing')} notices={settingsNotices} />
+					<PromptsSettings bind:this={promptsSettings} {runtime} {t} items={promptItems} loadFailed={promptsFailed} {closeSettings} openRouting={openRoles} notices={settingsNotices} />
 				{:else if activeSettingsTab === 'notifications'}
 					<NotificationSettings {runtime} {t} />
 				{:else if activeSettingsTab === 'lessons' && lessonsTabVisible}

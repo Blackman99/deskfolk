@@ -16,7 +16,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 ### Roles is a page of its own
 
 - Roles is no longer in Settings: open it from Tools (after Terminal), as a tab on a wide window and as a page in place of the list on a phone. "Change this call" on a step of the flow, and a card's "View in Settings" about one of a call's prompts, open it at that call.
-- Settings keeps a Roles entry that closes Settings and opens Roles, still showing how many calls you changed and the conflict colour. "Where windows open" has a Roles row, a new tab by default.
+- Settings has no Roles entry any more; which calls you changed and which has a conflict show on the map's nodes. Prompts' "Open Roles" line closes Settings and opens it. "Where windows open" has a Roles row, a new tab by default.
 
 ## 0.1.0-rc.17 — 2026-10-11
 

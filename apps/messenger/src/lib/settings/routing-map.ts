@@ -120,19 +120,3 @@ export function routingNodeView(role: BuiltinModelRole, settings: Settings, item
   };
 }
 
-/**
- * The page's mark in the settings list: how many calls you changed (a model of their own, or an
- * edited prompt), and whether a prompt of theirs has a newer default it did not merge with.
- */
-export function routingCounts(settings: Settings, items: readonly PromptSummary[]): { changed: number; conflict: boolean } {
-  const { chosen, roles } = builtinModelsOf(settings);
-  const changed = new Set<BuiltinModelRole>(roles.filter((role) => (chosen[role] ?? null) !== null));
-  let conflict = false;
-  for (const item of items) {
-    if (!item.role) continue;
-    const counted = editedCount([item]);
-    if (counted.edited > 0) changed.add(item.role);
-    conflict ||= counted.conflict;
-  }
-  return { changed: changed.size, conflict };
-}

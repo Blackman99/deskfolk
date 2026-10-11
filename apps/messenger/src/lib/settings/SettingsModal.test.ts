@@ -169,21 +169,15 @@ const callPrompts = () => [
   { ...promptRow("call.read_bot_line", "call"), role: "reader" },
 ];
 
-test("Roles is a page of its own: Settings keeps a pointer after Models, with how many calls you changed (ADR 0083)", async () => {
-  const provider = aProvider();
+test("Roles is a page of its own: Settings has no entry for it, and Prompts' link leaves Settings for it (ADR 0083)", async () => {
   const { host, runtime, close } = open({
-    providers: [provider],
-    builtinModels: { ...noBuiltinModels(), scribe: { provider_id: provider.id, model: "grok-4.6" } },
+    providers: [aProvider()],
     client: { listLessons: async () => [], listPrompts: async () => callPrompts(), claudeCode: async () => { throw new Error("404"); }, modelLadder: async () => ({ items: [], available: false }), agents: async () => { throw new Error("404"); } },
   });
   await sleep(10);
   flushSync();
   const tabs = [...host.querySelectorAll<HTMLButtonElement>(".settings-tab-btn")].map((tab) => tab.getAttribute("data-settings-tab"));
-  expect(tabs.indexOf("routing")).toBe(tabs.indexOf("models") + 1);
-  // Two calls changed: the scribe's model and the organizer's prompt.
-  expect(host.querySelector('[data-settings-tab="routing"] .tab-count')?.textContent).toBe("2");
-  click(host.querySelector('[data-settings-tab="routing"]'));
-  expect(runtime.calls.filter((call) => call.name === "openRoles")).toEqual([{ name: "openRoles", args: [] }]);
+  expect(tabs).not.toContain("routing");
   expect(host.querySelector("[data-routing-map]")).toBeNull();
   // Prompts keeps only what no call owns, counts only that, and points to Roles for the rest.
   click(host.querySelector('[data-settings-tab="prompts"]'));
@@ -191,7 +185,7 @@ test("Roles is a page of its own: Settings keeps a pointer after Models, with ho
   expect(host.querySelector('[data-prompt="turn.system"]')).toBeTruthy();
   expect(host.querySelector('[data-settings-tab="prompts"] .tab-count')).toBeNull();
   click(host.querySelector("[data-prompts-moved] button"));
-  expect(runtime.calls.filter((call) => call.name === "openRoles")).toHaveLength(2);
+  expect(runtime.calls.filter((call) => call.name === "openRoles")).toEqual([{ name: "openRoles", args: [] }]);
   close();
 });
 
@@ -648,8 +642,7 @@ test("mobile history back unwinds editors and categories before leaving settings
         return handled;
       };
       expect(back()).toBe(false);
-      // Roles is a page of its own (ADR 0083): its entry here leaves settings rather than opening a page.
-      for (const tab of host.querySelectorAll<HTMLButtonElement>('.settings-tab-btn:not([data-settings-tab="routing"])')) {
+      for (const tab of host.querySelectorAll<HTMLButtonElement>(".settings-tab-btn")) {
         click(tab);
         expect(back()).toBe(true);
         expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeNull();

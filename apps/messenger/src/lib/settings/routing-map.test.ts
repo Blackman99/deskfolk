@@ -3,7 +3,7 @@ import { BUILTIN_MODEL_ROLES, type PromptSummary, type Settings } from "@real-bo
 import { copyFor } from "../copy.ts";
 import { emptySnapshot } from "../snapshot.ts";
 import { noBuiltinModels } from "./builtin-models.ts";
-import { askOnce, modelShort, promptsTabItems, ROUTING_LANES, routingCounts, routingNodes, routingNodeView } from "./routing-map.ts";
+import { askOnce, modelShort, promptsTabItems, ROUTING_LANES, routingNodes, routingNodeView } from "./routing-map.ts";
 
 const settingsOf = (chosen: Partial<NonNullable<Settings["builtin_models"]>> = {}): Settings => ({
   ...emptySnapshot().settings,
@@ -65,18 +65,6 @@ test("an older daemon only lets reading and organizing be chosen", () => {
   expect(routingNodeView("reader", legacy as Settings, []).choosable).toBe(true);
   expect(routingNodeView("organizer", legacy as Settings, []).choosable).toBe(true);
   expect(routingNodeView("scribe", legacy as Settings, []).choosable).toBe(false);
-});
-
-test("the page's count is the calls you changed, a model or a prompt, each once; a conflict marks it", () => {
-  const items = [
-    prompt("call.organizer", { role: "organizer" }, "edited"),
-    prompt("call.read_user_line", { role: "reader" }, "edited"),
-    prompt("call.read_bot_line", { role: "reader" }, "edited"),
-    prompt("turn.system", {}, "conflict"),
-  ];
-  expect(routingCounts(settingsOf(), [])).toEqual({ changed: 0, conflict: false });
-  expect(routingCounts(settingsOf({ organizer: { provider_id: "p1", model: "m" }, composer: { provider_id: "p1", model: "m" } }), items)).toEqual({ changed: 3, conflict: false });
-  expect(routingCounts(settingsOf(), [prompt("call.scribe", { role: "scribe" }, "conflict")])).toEqual({ changed: 1, conflict: true });
 });
 
 test("Prompts keeps what no call owns, so a daemon that names no call keeps them all there", () => {
