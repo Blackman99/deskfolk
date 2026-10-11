@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Your send-backs count towards the capability ceiling
+
+- A send-back of yours now counts towards the capability ceiling whether or not it names a requirement, on a card or by finding fault in what you say. Three in a row stop the work and ask you how to go on ("you sent it back 3 times in a row"), and the producer is not woken to try a fourth time. Before, only checks and reviews counted: the MV's ticket 09 was sent back eight times and only stopped at the seventh hand-over. Undoing a rework takes it out of the count and takes down the card it put up.
+
 ### The flow draws the app's own calls
 
 - A round of the flow is no longer only who woke whom ([ADR 0083](docs/adr/0083-flow-draws-the-apps-calls.md)). The app's own calls are drawn as steps: under a line of yours come its reading, where it belongs, the scribe and filing, then the turns it woke; on a group line naming nobody each Bot's judgement is a step, and a Bot that took it up hangs from its own; a turn's compactions, readings of its words and the settle after it hang under that turn; the picture judge, reflections and retrospectives hang under the last card before them.

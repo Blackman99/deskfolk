@@ -17,6 +17,12 @@ import { queueWork } from "./work-items";
 export const CEILING_STREAK = 3;
 /** …or more hand-overs than this since you last answered about it. */
 export const CEILING_ATTEMPTS = 6;
+/**
+ * The failure a send-back of yours is, when it names no requirement: on the card (退回) or by what
+ * you said about the work (ADR 0070/0084). The MV's ticket 09 was sent back eight times this way and
+ * never reached the streak, which counted only gates and reviewers (2026-10-11).
+ */
+export const SENT_BACK_BY_YOU = "you";
 
 export type CeilingAction = "another_way" | "another_plan" | "relax" | "accept";
 const CEILING_ACTIONS: readonly CeilingAction[] = ["another_way", "another_plan", "relax", "accept"];
@@ -53,8 +59,22 @@ function requirementOfCheck(ctx: StoreContext, checkId: string): { id: string; q
     WHERE c.id = ? AND c.quote_id IS NOT NULL ORDER BY r.created_at LIMIT 1`).get(checkId) ?? null;
 }
 
-/** What a decided hand-over failed, keyed by the requirement it is about (a check on none: `check:<id>`), each with a label for the card. */
-function failureKeys(ctx: StoreContext, submission: Submission): Map<string, string> {
+/**
+ * A hand-over a complaint of yours sent back (store/rework.ts), the complaint not undone: superseded
+ * while it waited on you, or approved and then found wanting.
+ */
+function sentBackByComplaint(ctx: StoreContext, submissionId: string): boolean {
+  return Boolean(ctx.db.query(`SELECT 1 FROM work_events WHERE kind = 'complaint.rework' AND json_extract(payload, '$.sent_back') = ?
+    AND json_extract(payload, '$.undone') IS NULL`).get(submissionId));
+}
+
+/** Whether you sent a hand-over back: on the card, or by what you said about it (`byComplaint`). */
+function sentBackByYou(submission: Submission, byComplaint: (id: string) => boolean): boolean {
+  return (submission.state === "rejected" && !submission.reviews.some((review) => review.outcome === "reject")) || byComplaint(submission.id);
+}
+
+/** What a decided hand-over failed, keyed by the requirement it is about (a check on none: `check:<id>`; your send-back on none: {@link SENT_BACK_BY_YOU}), each with a label for the card. */
+function failureKeys(ctx: StoreContext, submission: Submission, byComplaint: (id: string) => boolean): Map<string, string> {
   const keys = new Map<string, string>();
   for (const check of submission.checks) {
     if (!gateFailed(check) || check.outcome === "not_run") continue;
@@ -69,6 +89,7 @@ function failureKeys(ctx: StoreContext, submission: Submission): Map<string, str
       if (quote !== undefined) keys.set(verdict.requirement_id, quote);
     }
   }
+  if (keys.size === 0 && sentBackByYou(submission, byComplaint)) keys.set(SENT_BACK_BY_YOU, "");
   return keys;
 }
 
@@ -82,9 +103,11 @@ export const NO_CEILING: CeilingOutcome = { cards: [], stuck: [], all: false };
  * ticket — that has now failed the same requirement on {@link CEILING_STREAK} hand-overs in a row, or
  * been handed over more than {@link CEILING_ATTEMPTS} times, since your last answer about it, hits the
  * capability ceiling (§6.6): a part is blocked, nothing more is handed over for it, the ball is yours,
- * and a card asks how to go on. Once per unit while its card waits.
+ * and a card asks how to go on. Once per unit while its card waits. `sentBack` names the hand-over a
+ * complaint of yours is sending back as this runs, before its work event is written.
  */
-export function checkCeiling(ctx: StoreContext, submission: Submission, now: string): CeilingOutcome {
+export function checkCeiling(ctx: StoreContext, submission: Submission, now: string, opts: { sentBack?: string } = {}): CeilingOutcome {
+  const byComplaint = (id: string) => id === opts.sentBack || sentBackByComplaint(ctx, id);
   const cards: Message[] = [];
   const stuck: Array<string | null> = [];
   const units: Array<string | null> = submission.part_keys.length > 0 ? submission.part_keys : [null];
@@ -94,16 +117,18 @@ export function checkCeiling(ctx: StoreContext, submission: Submission, now: str
       continue;
     }
     const since = ceilingSince(ctx, submission.ticket_id, partKey);
-    // A part counts the hand-overs of it; the whole ticket counts only those of no part.
+    // A part counts the hand-overs of it; the whole ticket counts only those of no part. A hand-over
+    // superseded by a newer one does not count, one your complaint sent back does.
     const covering = ctx.db.query<SubmissionRow, [string, string]>(`SELECT * FROM submissions WHERE ticket_id = ? AND created_at > ?
-      AND state <> 'superseded' ORDER BY created_at DESC, rowid DESC`).all(submission.ticket_id, since).map(toSubmission)
+      ORDER BY created_at DESC, rowid DESC`).all(submission.ticket_id, since).map(toSubmission)
+      .filter((row) => row.state !== "superseded" || byComplaint(row.id))
       .filter((row) => partKey === null ? row.part_keys.length === 0 : row.part_keys.includes(partKey));
-    const decided = covering.filter((row) => row.state === "checks_failed" || row.state === "rejected" || row.state === "approved");
+    const decided = covering.filter((row) => row.state === "checks_failed" || row.state === "rejected" || row.state === "approved" || row.state === "superseded");
     let hit: CeilingHit | null = null;
-    for (const [key, label] of decided[0] ? failureKeys(ctx, decided[0]) : new Map<string, string>()) {
+    for (const [key, label] of decided[0] ? failureKeys(ctx, decided[0], byComplaint) : new Map<string, string>()) {
       let times = 0;
       for (const row of decided) {
-        if (!failureKeys(ctx, row).has(key)) break;
+        if (!failureKeys(ctx, row, byComplaint).has(key)) break;
         times += 1;
       }
       if (times >= CEILING_STREAK) {
@@ -111,7 +136,7 @@ export function checkCeiling(ctx: StoreContext, submission: Submission, now: str
         break;
       }
     }
-    const failures = decided.filter((row) => row.state !== "approved").length;
+    const failures = decided.filter((row) => row.state !== "approved" || byComplaint(row.id)).length;
     if (!hit && failures > CEILING_ATTEMPTS) hit = { reason: "attempts", times: failures };
     if (!hit) continue;
     stuck.push(partKey);
@@ -129,6 +154,15 @@ export function checkCeiling(ctx: StoreContext, submission: Submission, now: str
       payload: { part_key: partKey, submission_id: submission.id, card_id: card?.id ?? null, at: now, ...hit } });
   }
   return { cards, stuck, all: stuck.length === units.length };
+}
+
+/** What the producer is told besides what failed, once units of it are at the ceiling; empty when none is. */
+export function ceilingNote(en: boolean, ceiling: CeilingOutcome): string {
+  const stuck = ceiling.stuck.map((unit) => unit ?? (en ? "the ticket" : "这张任务"));
+  if (stuck.length === 0) return "";
+  return en
+    ? ` ${stuck.join(", ")} hit the capability ceiling: the user is being asked how to go on${ceiling.all ? ", so do not hand it over again until they answer." : "; leave those until they answer."}`
+    : ` ${stuck.join("、")}到了能力天花板：应用在问用户怎么办${ceiling.all ? "，用户选之前别再交。" : "，用户选之前别动这几个。"}`;
 }
 
 /** Whether a unit already waits on an open ceiling card: its own, or (for a part) the whole ticket's. */
@@ -155,6 +189,16 @@ export function closeCeilingCards(ctx: StoreContext, ticketId: string, why: stri
   }
 }
 
+/** These ceiling cards, those still asking, stop asking: what put them up was taken back. */
+export function closeCeilingCardsById(ctx: StoreContext, ids: readonly string[], why: string): void {
+  for (const id of ids) {
+    const control = getMessage(ctx, id).control;
+    if (control?.kind !== "ceiling" || (control.acted ?? []).length > 0 || control.offer.length === 0) continue;
+    setMessageControl(ctx, id, { ...control, offer: [], result: why });
+    updateNotificationActionState(ctx, `ceiling:${id}`, "resolved", "closed", true);
+  }
+}
+
 function ceilingCard(ctx: StoreContext, submission: Submission, partKey: string | null, hit: CeilingHit): Message | null {
   const plan = ctx.db.query<{ session_id: string | null; title: string }, [string]>("SELECT session_id, title FROM tasks WHERE id = ?").get(submission.task_id);
   if (!plan?.session_id) return null;
@@ -162,10 +206,12 @@ function ceilingCard(ctx: StoreContext, submission: Submission, partKey: string 
   const en = localeOf(ctx) === "en";
   const number = String(ticket.seq).padStart(2, "0");
   const unit = partKey ? (en ? ` part ${partKey}` : `分件 ${partKey} `) : "";
-  const why = hit.reason === "streak"
+  const why = hit.reason === "streak" && hit.key === SENT_BACK_BY_YOU
+    ? (en ? `you sent it back ${hit.times} times in a row` : `你连续退回了 ${hit.times} 次`)
+    : hit.reason === "streak"
     ? (en ? `"${hit.label}" failed ${hit.times} hand-overs in a row` : `「${hit.label}」连续 ${hit.times} 次没过`)
     : (en ? `${hit.times} hand-overs failed` : `已经交了 ${hit.times} 次都没过`);
-  const requirementId = hit.reason === "streak" && !hit.key.startsWith("check:") ? hit.key : null;
+  const requirementId = hit.reason === "streak" && !hit.key.startsWith("check:") && hit.key !== SENT_BACK_BY_YOU ? hit.key : null;
   const place = cardPlace(ctx, submission, plan.session_id);
   const message = insertMessage(ctx, {
     sessionId: place, kind: "system", author: USER_MEMBER, hiddenFromBots: true,

@@ -77,7 +77,7 @@ From engine level 5, the mark a review gets when it approved a hand-over and you
 _Avoid_: treating misses as a score to punish a Bot, counting your Send back on a card as a miss, keeping a miss after you undid the complaint
 
 **Capability ceiling**:
-From engine level 5, a part (else the whole ticket) that, since you last answered a ceiling card about it, failed the same requirement three hand-overs in a row or failed more than six hand-overs stops and asks you: the part reads Blocked, nothing more is handed over for it, the ball is yours and the supervisor wakes nobody for it; the card offers Another way, Change the plan, Relax this requirement (pressing it confirms the requirement no longer holds) and Take it as it is. Details: [Behavior · Review](docs/behavior.en.md#review).
+From engine level 5, a part (else the whole ticket) that, since you last answered a ceiling card about it, failed the same requirement three hand-overs in a row, was sent back by you three times in a row (on a card, or by finding fault in what you said, tied to no requirement), or failed more than six hand-overs stops and asks you: the part reads Blocked, nothing more is handed over for it, the ball is yours and the supervisor wakes nobody for it; the card offers Another way, Change the plan, Relax this requirement (pressing it confirms the requirement no longer holds) and Take it as it is. Details: [Behavior · Review](docs/behavior.en.md#review).
 _Avoid_: letting a Bot try the same way again once stuck, relaxing a requirement without asking you, treating a stuck part as a parked plan
 
 **External job**:

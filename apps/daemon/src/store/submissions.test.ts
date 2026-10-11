@@ -1398,6 +1398,58 @@ test("the same check failing three hand-overs in a row blocks the part, refuses 
   expect(f.store.db.query("SELECT stage FROM ticket_parts").get()).toEqual({ stage: "rework" });
 });
 
+test("your send-backs count towards the ceiling, on the card or by what you say: three in a row ask you, and undoing the last takes its card down", () => {
+  const f = fixture();
+  // The MV's ticket 09 (2026-10-11): sent back eight times, none tied to a requirement, and the streak never formed.
+  const first = handedOver(f).submission;
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  f.store.answerReviewCard(oldCard(f, first.id).id, "reject", { note: "人物不像" });
+  handedOver(f);
+  f.store.noteComplaint(said(f, "还是不像").id, objecting("还是不像"));
+  expect(ceilingCards(f)).toEqual([]);
+  handedOver(f);
+  const third = said(f, "脸还是假人偶");
+  f.store.noteComplaint(third.id, objecting("脸还是假人偶"));
+  const [card] = ceilingCards(f);
+  expect(card!.control).toMatchObject({ kind: "ceiling", part_key: null, requirement_id: null, offer: ["another_way", "another_plan", "accept"] });
+  expect(card!.body).toContain("你连续退回了 3 次");
+  expect(f.store.ballHolder({ ticketId: f.ticket.id })).toMatchObject({ kind: "user", reason: "ceiling", ref: card!.id });
+  // The producer only hears that you are asked: it is not woken to try a fourth time.
+  const told = f.store.db.query<{ body: string; wakes: number }, [string]>("SELECT body_snapshot AS body, wakes FROM inbox_items WHERE bot_id = ? ORDER BY seq DESC LIMIT 1").get(f.producer.id)!;
+  expect(told).toMatchObject({ wakes: 0, body: expect.stringContaining("能力天花板") });
+
+  // Taken back, the last send-back no longer counts, and its card stops asking.
+  f.store.answerReworkCard(third.id, "undo");
+  expect(f.store.getMessage(card!.id).control).toMatchObject({ offer: [], result: "你撤销了返工，不再问了。" });
+  expect(f.store.ballHolder({ ticketId: f.ticket.id })).not.toMatchObject({ reason: "ceiling" });
+});
+
+test("a hand-over a newer one replaced, or a reviewer's reject on no requirement, is not a send-back of yours", () => {
+  const f = fixture();
+  for (let n = 1; n <= 3; n++) {
+    const produced = segment(f);
+    const { submission } = submitShot(f, produced.id, 1, `${n}`.padStart(64, "0"))!;
+    f.store.settleSubmissionChecks(submission.id);
+    f.store.setTurnStatus(produced.id, "completed");
+  }
+  expect(f.store.db.query("SELECT COUNT(*) AS n FROM submissions WHERE state = 'superseded'").get()).toEqual({ n: 2 });
+  expect(ceilingCards(f)).toEqual([]);
+
+  const g = fixture();
+  g.store.patchTicketByUser(g.ticket.id, { reviewerBotId: g.reviewer.id });
+  for (let n = 1; n <= 3; n++) {
+    const produced = segment(g);
+    const { submission } = submitShot(g, produced.id, 1, `${n}`.padStart(64, "0"))!;
+    g.store.settleSubmissionChecks(submission.id);
+    g.store.setTurnStatus(produced.id, "completed");
+    const reviewing = segment(g, g.reviewer.id);
+    g.store.reviewSubmission({ turnId: reviewing.id, outcome: "reject", note: "再看看", verdicts: [] });
+    g.store.setTurnStatus(reviewing.id, "completed");
+  }
+  expect(g.store.db.query("SELECT COUNT(*) AS n FROM submissions WHERE state = 'rejected'").get()).toEqual({ n: 3 });
+  expect(ceilingCards(g)).toEqual([]);
+});
+
 test("a requirement a review failed three times in a row offers to relax it; relaxing waives it for the plan", () => {
   const f = fixture();
   f.store.patchTicketByUser(f.ticket.id, { reviewerBotId: f.reviewer.id });

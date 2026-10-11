@@ -21,7 +21,7 @@
 import { CONTROL_NOTE_MAX, USER_MEMBER, type Message } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, isoPlus, ulid } from "../ids";
-import { ceilingCardOf, checkCeiling, closeCeilingCards, NO_CEILING, openCeiling, type CeilingOutcome } from "./ceiling";
+import { ceilingCardOf, ceilingNote, checkCeiling, closeCeilingCards, NO_CEILING, openCeiling, type CeilingOutcome } from "./ceiling";
 import { deliverDelegations } from "./delegations";
 import { confirmDerivedCheck } from "./derived-checks";
 import { noteHandOverFailed, resetEscalation } from "./escalation";
@@ -409,10 +409,7 @@ function tellAfterFailure(ctx: StoreContext, submission: Submission, said: { wha
   const sessionId = yourDirectWith(ctx, answeredIn, submission.bot_id) ?? producerSession(ctx, submission);
   if (!sessionId) return;
   const en = localeOf(ctx) === "en";
-  const stuck = ceiling.stuck.map((unit) => unit ?? (en ? "the ticket" : "这张任务"));
-  const note = stuck.length === 0 ? "" : en
-    ? ` ${stuck.join(", ")} hit the capability ceiling: the user is being asked how to go on${ceiling.all ? ", so do not hand it over again until they answer." : "; leave those until they answer."}`
-    : ` ${stuck.join("、")}到了能力天花板：应用在问用户怎么办${ceiling.all ? "，用户选之前别再交。" : "，用户选之前别动这几个。"}`;
+  const note = ceilingNote(en, ceiling);
   if (ceiling.all) {
     if (submission.work_item_id) {
       queueInboxItem(ctx, { botId: submission.bot_id, sessionId, turnId: null, workItemId: submission.work_item_id, taskId: submission.task_id,

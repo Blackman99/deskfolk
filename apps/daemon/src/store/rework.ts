@@ -3,6 +3,7 @@ import { USER_MEMBER, type Message } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow } from "../ids";
 import type { ReadingSource } from "../line-reading";
+import { ceilingNote, checkCeiling, closeCeilingCardsById, NO_CEILING } from "./ceiling";
 import { queueInboxItem, refreshHeldInbox } from "./inbox";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
 import { createNotification, updateNotificationActionState } from "./notifications";
@@ -169,20 +170,30 @@ function sendBack(ctx: StoreContext, input: { ticketId: string; partKeys: readon
   }
   setTicketStage(ctx, { ticketId: ticket.id, stage: "rework", source: "user", now });
   if (planStage === "delivered") reopenPlan(ctx, ticket.task_id, now);
-  // Its producer hears it and goes back to work on it.
+  // The hand-over you found wanting — the newest still waiting, else the one approved — is a
+  // send-back of yours, counted towards the ceiling as 退回 on its card always was (store/ceiling.ts).
+  const sentBack = open.at(-1) ?? approved ?? null;
+  const ceiling = sentBack ? checkCeiling(ctx, sentBack, now, { sentBack: sentBack.id }) : NO_CEILING;
+  // Its producer hears it and goes back to work on it — or, at the ceiling, only hears that you are asked.
   const producer = ticket.owner_bot_id ?? ticket.worker;
   let producerInbox: number | null = null;
   if (producer && plan.session_id && ctx.db.query("SELECT 1 FROM bots WHERE id = ? AND deleted_at IS NULL").get(producer)) {
     const what = partKeys.length > 0 ? (en ? ` (${partKeys.join(", ")})` : `（${partKeys.join("、")}）`) : "";
-    producerInbox = queueWork(ctx, { botId: producer, sessionId: yourDirectWith(ctx, input.sessionId, producer) ?? plan.session_id, taskId: ticket.task_id, ticketId: ticket.id, messageId: null, author: "app",
-      body: en ? `(app) The user sent ticket "${ticket.title}"${what} back to rework, saying: "${excerpt}". Fix that and hand it over again.`
-        : `（应用）用户把任务「${ticket.title}」${what}转回返工了，用户说：「${excerpt}」。按这个改好再交。`,
-      source: "review", kind: "change", priority: 2, notice: false }).inbox.seq;
+    const told = en ? `(app) The user sent ticket "${ticket.title}"${what} back to rework, saying: "${excerpt}".` : `（应用）用户把任务「${ticket.title}」${what}转回返工了，用户说：「${excerpt}」。`;
+    const sessionId = yourDirectWith(ctx, input.sessionId, producer) ?? plan.session_id;
+    if (ceiling.all && sentBack?.work_item_id) {
+      producerInbox = queueInboxItem(ctx, { botId: producer, sessionId, turnId: null, workItemId: sentBack.work_item_id, taskId: ticket.task_id, ticketId: ticket.id,
+        messageId: null, author: "app", body: `${told}${ceilingNote(en, ceiling)}`, source: "review", kind: "result", priority: 2, wakes: false, now }).seq;
+    } else {
+      producerInbox = queueWork(ctx, { botId: producer, sessionId, taskId: ticket.task_id, ticketId: ticket.id, messageId: null, author: "app",
+        body: `${told}${en ? " Fix that and hand it over again." : "按这个改好再交。"}${ceilingNote(en, ceiling)}`,
+        source: "review", kind: "change", priority: 2, notice: false }).inbox.seq;
+    }
     refreshHeldInbox(ctx, { botId: producer });
   }
   recordWorkEvent(ctx, { kind: "complaint.rework", actor: USER_MEMBER, taskId: ticket.task_id, ticketId: ticket.id,
     payload: { message_id: input.messageId, card_id: input.refId, by: input.by, parts: partKeys, before, misses, superseded: open.map((submission) => submission.id),
-      producer: producer ?? null, producer_inbox: producerInbox } });
+      sent_back: sentBack?.id ?? null, ceiling_cards: ceiling.cards.map((card) => card.id), producer: producer ?? null, producer_inbox: producerInbox } });
 }
 
 /**
@@ -231,7 +242,7 @@ function undoRework(ctx: StoreContext, cardId: string, control: Extract<Message[
   const event = ctx.db.query<{ at: string; payload: string }, [string]>(`SELECT at, payload FROM work_events WHERE kind = 'complaint.rework'
     AND json_extract(payload, '$.card_id') = ? ORDER BY rowid DESC LIMIT 1`).get(cardId);
   if (!event) throw new HttpError(409, "conflict", "there is nothing left to undo");
-  const payload = JSON.parse(event.payload) as { message_id: string; before: ReworkBefore; superseded: string[]; producer?: string | null; producer_inbox?: number | null };
+  const payload = JSON.parse(event.payload) as { message_id: string; before: ReworkBefore; superseded: string[]; ceiling_cards?: string[]; producer?: string | null; producer_inbox?: number | null };
   const newer = ctx.db.query("SELECT 1 FROM submissions WHERE ticket_id = ? AND created_at > ? AND id NOT IN (SELECT value FROM json_each(?))")
     .get(control.ticket_id, event.at, JSON.stringify(payload.superseded));
   if (newer || ticketStage(stagedTicket(ctx, control.ticket_id)) !== "rework") {
@@ -242,8 +253,12 @@ function undoRework(ctx: StoreContext, cardId: string, control: Extract<Message[
     ctx.db.run("UPDATE submissions SET state = ?, awaiting = NULL, updated_at = ? WHERE id = ? AND state = 'superseded'", [submission.state, now, submission.id]);
   }
   for (const part of before.parts) {
-    ctx.db.run("UPDATE ticket_parts SET stage = ? WHERE ticket_id = ? AND key = ? AND stage = 'rework'", [part.stage, control.ticket_id, part.key]);
+    ctx.db.run("UPDATE ticket_parts SET stage = ? WHERE ticket_id = ? AND key = ? AND stage IN ('rework', 'blocked')", [part.stage, control.ticket_id, part.key]);
   }
+  // A send-back taken back no longer counts towards the ceiling, and the card it put up stops asking.
+  ctx.db.run(`UPDATE work_events SET payload = json_set(payload, '$.undone', ?) WHERE kind = 'complaint.rework'
+    AND json_extract(payload, '$.card_id') = ? AND json_extract(payload, '$.undone') IS NULL`, [now, cardId]);
+  closeCeilingCardsById(ctx, payload.ceiling_cards ?? [], localeOf(ctx) === "en" ? "You took back the rework, so this is no longer asked." : "你撤销了返工，不再问了。");
   setTicketStage(ctx, { ticketId: control.ticket_id, stage: before.ticket_stage, source: "user", now });
   if (before.plan_stage === "delivered") settlePlanStage(ctx, control.task_id, now);
   ctx.db.run(`UPDATE work_events SET payload = json_set(payload, '$.undone', ?) WHERE kind = 'review.miss'
