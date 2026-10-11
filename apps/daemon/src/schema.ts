@@ -456,7 +456,8 @@ CREATE TABLE IF NOT EXISTS approvals (
   target TEXT,
   created_at TEXT NOT NULL,
   resolved_at TEXT,
-  requires_api_key INTEGER NOT NULL DEFAULT 0
+  requires_api_key INTEGER NOT NULL DEFAULT 0,
+  allow_scope TEXT
 );
 
 CREATE TABLE IF NOT EXISTS allow_rules (

@@ -256,6 +256,36 @@ describe("file tools and workspace shell on the local API", () => {
     sub.close();
   });
 
+  test("Always allow on an outside write covers its folder: the next write and a read there ask nothing (ADR 0087)", async () => {
+    const outsideDir = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-out-")));
+    workspaces.push(outsideDir);
+    const first = join(outsideDir, "a.md");
+    const second = join(outsideDir, "b.md");
+    let hop = 0;
+    const fixture = await startFixture(() => {
+      hop += 1;
+      if (hop === 1) return sse(toolCallChunks("call_a", "write_file", JSON.stringify({ path: first, content: "one" })));
+      if (hop === 2) return sse(toolCallChunks("call_b", "write_file", JSON.stringify({ path: second, content: "two" })));
+      if (hop === 3) return sse(toolCallChunks("call_r", "read_file", JSON.stringify({ path: first })));
+      return sse(textChunks("both written"));
+    });
+    const h = await startApi();
+    const { sessionId } = await createWriterIn(h, fixture.origin);
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, { method: "POST", headers: auth(h), body: JSON.stringify({ body: "write two files outside" }) });
+    const card = await waitFor(sub.events, (e) => e.event === "approval.upsert" && e.status === "pending");
+    expect(card.target).toBe(first);
+    expect(card.allow_scope).toBe(outsideDir);
+    const resolved = await fetch(`${h.origin}/v1/approvals/${card.id}/resolve`, { method: "POST", headers: auth(h), body: JSON.stringify({ action: "always_allow" }) });
+    expect(resolved.status).toBe(200);
+    await waitFor(sub.events, (e) => e.event === "message.created" && e.kind === "bot" && e.body === "both written");
+    expect(readFileSync(first, "utf8")).toBe("one");
+    expect(readFileSync(second, "utf8")).toBe("two");
+    expect(sub.events.filter((e) => e.event === "approval.upsert" && e.status === "pending")).toHaveLength(1);
+    expect(h.store.listAllowRules().map((r) => [r.kind_key, r.scope])).toEqual([["outside-write", outsideDir]]);
+    sub.close();
+  });
+
   test("a Bot's prompt edit waits on its card; once allowed, the next hop reads the new System text (ADR 0064)", async () => {
     let hop = 0;
     const systems: string[] = [];

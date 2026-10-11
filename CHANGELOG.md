@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Always allow outside the workspace covers the whole project
+
+- Always allow on a card to read or write outside the workspace now covers the project the path is in — the nearest folder above it with a `.git` — or, with none, the folder it is in ([ADR 0087](docs/adr/0087-always-allow-covers-the-project.md)). Before, it covered only the card's own file, so a Bot editing another project asked again for every file. Your home folder, anything above it, a disk's root and the folders right under one are never covered this way: a card there still covers its path alone.
+- The card says what it covers, under its buttons ("Always allow covers all of …: no Bot asks again to read or write in it."). Allow once still lets through only the one call.
+- Where you let Bots write, they may also read without asking.
+- Settings › General lists every Always allow under the workspace card — what it lets Bots do and where — each with Remove. Rules saved before keep working.
+
 ### A job is one tab: tickets, flow and inspector
 
 - A job's flow tab now has three parts side by side ([ADR 0086](docs/adr/0086-a-job-is-one-tab.md)): the tickets' rail on the left, the flow in the middle and the inspector on the right. They are one job with one pick: switching the job switches all three, and a ticket picked on the rail lights its cards on the flow and turns the inspector to it. Both dividers can be dragged, and the widths are kept on this Mac.

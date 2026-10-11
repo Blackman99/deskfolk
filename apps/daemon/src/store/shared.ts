@@ -305,6 +305,7 @@ export type ApprovalRow = {
   created_at: string;
   resolved_at: string | null;
   requires_api_key?: number | boolean | null;
+  allow_scope?: string | null;
 };
 
 export type McpRow = {
@@ -435,6 +436,7 @@ export function toApproval(row: ApprovalRow): Approval {
     created_at: row.created_at,
     resolved_at: row.resolved_at,
     requires_api_key: Boolean(row.requires_api_key),
+    allow_scope: row.allow_scope ?? null,
   };
 }
 

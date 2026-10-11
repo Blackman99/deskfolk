@@ -2,6 +2,7 @@
 	/** A request waiting on your approval in the transcript, with the key it may need and its buttons. */
 	import PromptEditCard from './PromptEditCard.svelte';
 	import {
+		alwaysAllowFolder,
 		approvalForMessage,
 		approvalNeedsSecret,
 		approvalSecretRequired,
@@ -129,6 +130,10 @@
 						>{t.stream.deny}</button
 					>
 				</div>
+				{@const folder = alwaysAllowFolder(card)}
+				{#if folder}
+					<p class="always-allow-scope">{t.stream.alwaysAllowCovers(folder, card.kind_key === 'outside-write')}</p>
+				{/if}
 			{:else if card}
 				<p class="muted">{approvalStatusCopy(card.status)}</p>
 			{/if}
@@ -211,6 +216,14 @@
 		font-size: var(--text-caption);
 		font-weight: 650;
 		margin-bottom: 6px;
+	}
+
+	.always-allow-scope {
+		margin: 8px 0 0;
+		font-size: var(--text-caption);
+		line-height: 1.45;
+		color: var(--muted);
+		overflow-wrap: anywhere;
 	}
 
 	.approval-key {

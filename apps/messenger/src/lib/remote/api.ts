@@ -668,6 +668,9 @@ export class RemoteApi extends ApiBase<PendingRemote> {
   async deleteMemory(id: string): Promise<void> {
     await this.request<void>("DELETE", `/v1/memories/${id}`, this.revisionBody("memories", id));
   }
+  async deleteAllowRule(id: string): Promise<void> {
+    await this.request<void>("DELETE", `/v1/allow-rules/${encodeURIComponent(id)}`, this.revisionBody("allow-rules", id));
+  }
 
   // Annotations ----------------------------------------------------------------------------
   async listAnnotations(filter: AnnotationFilter & { target_session_id?: string } = {}): Promise<Annotation[]> {

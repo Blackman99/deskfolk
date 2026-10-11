@@ -1,6 +1,7 @@
 import type { Approval } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
+import { isWithinPath } from "../workspace-paths";
 import {
   createNotification,
   markNotificationRead,
@@ -62,17 +63,29 @@ export function deleteAllowRule(ctx: StoreContext, id: string): void {
   if (!deleted) throw new HttpError(404, "not_found", "allow rule not found");
 }
 
+/**
+ * Whether a rule covers this call: its scope is `*`, the target, or a folder the target is in. What
+ * you let a Bot write there it may read there too (ADR 0087).
+ */
 export function matchesAllowRule(ctx: StoreContext, kind_key: string, target: string): boolean {
+  const kinds = kind_key === "outside-read" ? ["outside-read", "outside-write"] : [kind_key];
   const rules = listAllowRules(ctx);
   for (const rule of rules) {
-    if (rule.kind_key !== kind_key) continue;
+    if (!kinds.includes(rule.kind_key)) continue;
     if (rule.scope === "*") return true;
     if (kind_key === "unconstrained-shell") continue;
     if (target === rule.scope || target.startsWith(rule.scope.endsWith("/") ? rule.scope : `${rule.scope}/`)) {
       return true;
     }
+    if (process.platform === "win32" && isWithinPath(rule.scope, target, "win32")) return true;
   }
   return false;
+}
+
+/** The scope an Always allow on this card writes: what you named, else what the card proposed, else its target. */
+export function alwaysAllowScope(row: { kind_key: string | null; target: string | null; allow_scope?: string | null }, scope?: string): string {
+  if (row.kind_key === "unconstrained-shell") return "*";
+  return scope ?? row.allow_scope ?? row.target ?? "*";
 }
 
 export function insertApproval(
@@ -84,6 +97,8 @@ export function insertApproval(
     summary: string;
     target: string;
     requires_api_key?: boolean;
+    /** What Always allow would cover (ADR 0087); absent for kinds that are not about a path. */
+    allow_scope?: string | null;
   },
 ): Approval {
   const now = isoNow();
@@ -98,10 +113,11 @@ export function insertApproval(
     created_at: now,
     resolved_at: null,
     requires_api_key: Boolean(input.requires_api_key),
+    allow_scope: input.allow_scope ?? null,
   };
   ctx.db.run(
-    `INSERT INTO approvals (id, turn_id, message_id, status, kind_key, summary, target, created_at, resolved_at, requires_api_key)
-     VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, NULL, ?)`,
+    `INSERT INTO approvals (id, turn_id, message_id, status, kind_key, summary, target, created_at, resolved_at, requires_api_key, allow_scope)
+     VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, NULL, ?, ?)`,
     [
       row.id,
       row.turn_id,
@@ -111,6 +127,7 @@ export function insertApproval(
       row.target,
       row.created_at,
       row.requires_api_key ? 1 : 0,
+      row.allow_scope ?? null,
     ],
   );
   const turn = ctx.db
@@ -161,8 +178,7 @@ export function resolveApproval(
       if (!row.kind_key || !ALLOWED_KIND_KEYS.has(row.kind_key)) {
         throw new HttpError(422, "invalid_args", "this kind cannot be Always allow");
       }
-      const nextScope =
-        row.kind_key === "unconstrained-shell" ? "*" : (scope ?? row.target ?? "*");
+      const nextScope = alwaysAllowScope(row, scope);
       if (row.kind_key === "unconstrained-shell" && scope && scope !== "*") {
         throw new HttpError(422, "invalid_args", "unconstrained-shell scope must be *");
       }

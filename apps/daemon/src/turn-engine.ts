@@ -56,6 +56,7 @@ import { createRetrospector } from "./engine/retrospective";
 import type { TurnAdmission } from "./quiesce";
 import type { Store, UserQuote } from "./store";
 import type { EditMessageResult } from "./store/message-edits";
+import { alwaysAllowScope } from "./store/approvals";
 import { ENGINE_LEVELS } from "./store/schema-gate";
 import type { TurnExecution } from "./store/routing";
 import { dropToolResults } from "./tool-results";
@@ -1047,7 +1048,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const row = store.resolveApproval(id, action, scope);
       publish({ event: "approval.upsert", occurred_at: core.occurred(), ...row });
       if (action === "always_allow" && row.kind_key) {
-        const nextScope = row.kind_key === "unconstrained-shell" ? "*" : (scope ?? row.target ?? "*");
+        const nextScope = alwaysAllowScope(row, scope);
         const match = store.listAllowRules().find((r) => r.kind_key === row.kind_key && r.scope === nextScope);
         if (match) publish({ event: "allow_rule.upsert", occurred_at: core.occurred(), ...match });
       }

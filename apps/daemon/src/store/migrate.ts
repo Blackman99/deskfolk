@@ -226,6 +226,9 @@ export function migrateSchema(db: Database): void {
   if (!approvalCols.includes("requires_api_key")) {
     db.run(`ALTER TABLE approvals ADD COLUMN requires_api_key INTEGER NOT NULL DEFAULT 0`);
   }
+  if (!approvalCols.includes("allow_scope")) {
+    db.run(`ALTER TABLE approvals ADD COLUMN allow_scope TEXT`);
+  }
   if (!tables.includes("skills")) {
     db.run(`
       CREATE TABLE IF NOT EXISTS skills (

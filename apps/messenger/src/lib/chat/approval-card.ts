@@ -12,6 +12,15 @@ export function canAlwaysAllow(kindKey: string | null | undefined): boolean {
   return kindKey != null && ALWAYS_ALLOW_KINDS.has(kindKey);
 }
 
+/**
+ * The folder an Always allow on this card covers when that is more than the card's own path: the
+ * project or folder the daemon proposed (ADR 0087). Null when it is just the path.
+ */
+export function alwaysAllowFolder(card: Pick<Approval, "kind_key" | "target" | "allow_scope">): string | null {
+  if (!canAlwaysAllow(card.kind_key) || !card.allow_scope) return null;
+  return card.allow_scope === card.target ? null : card.allow_scope;
+}
+
 /** A Bot's proposed change to a built-in prompt (ADR 0064): never Always-allowed, shown as a diff. */
 export function isPromptEdit(kindKey: string | null | undefined): boolean {
   return kindKey === "prompt-edit";

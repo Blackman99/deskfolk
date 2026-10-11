@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import type { Approval, Message } from "@real-bot/protocol";
+import { copyFor } from "../copy.ts";
 import {
+  alwaysAllowFolder,
   approvalForMessage,
   approvalNeedsSecret,
   approvalSecretRequired,
@@ -116,4 +118,16 @@ test("adding a local model server offers the key field without requiring it (ADR
   expect(approvalSecretRequired(local)).toBe(false);
   const cloud = approval({ id: "a-cloud", kind_key: "endpoint-add", target: "https://api.example.com/v1", requires_api_key: true });
   expect(approvalSecretRequired(cloud)).toBe(true);
+});
+
+test("a card outside the workspace names the folder its Always allow covers, when that is more than its path (ADR 0087)", () => {
+  const write = approval({ id: "w", target: "/Users/me/p/src/a.ts", allow_scope: "/Users/me/p" });
+  expect(alwaysAllowFolder(write)).toBe("/Users/me/p");
+  // Just the path (home, a root's child), an old card with no proposal, a kind that never is a folder.
+  expect(alwaysAllowFolder(approval({ id: "n", target: "/Users/me/notes.txt", allow_scope: "/Users/me/notes.txt" }))).toBeNull();
+  expect(alwaysAllowFolder(approval({ id: "o", target: "/tmp/x" }))).toBeNull();
+  expect(alwaysAllowFolder(approval({ id: "e", kind_key: "endpoint-add", target: "https://a", allow_scope: "https://" }))).toBeNull();
+  const t = copyFor("zh");
+  expect(t.stream.alwaysAllowCovers("/Users/me/p", true)).toContain("读写");
+  expect(t.stream.alwaysAllowCovers("/Users/me/p", false)).not.toContain("读写");
 });

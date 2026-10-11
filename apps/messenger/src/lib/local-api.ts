@@ -532,6 +532,11 @@ export class LocalApi extends ApiBase<PendingRequest> {
     await this.request<void>("DELETE", `/v1/memories/${id}`);
   }
 
+  /** An Always allow taken back: the next card of that kind there asks again. */
+  async deleteAllowRule(id: string): Promise<void> {
+    await this.request<void>("DELETE", `/v1/allow-rules/${encodeURIComponent(id)}`);
+  }
+
   // Annotations ----------------------------------------------------------------------------
   listAnnotations(filter: AnnotationFilter & { target_session_id?: string } = {}, signal?: AbortSignal): Promise<Annotation[]> {
     return listAnnotations(this, filter, signal);

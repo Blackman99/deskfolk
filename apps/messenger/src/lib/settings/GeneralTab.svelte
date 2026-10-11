@@ -2,6 +2,7 @@
 	import SettingsCard from './SettingsCard.svelte';
 	import SettingsCardHeader from './SettingsCardHeader.svelte';
 	import WorkspacePicker from './WorkspacePicker.svelte';
+	import AllowRulesCard from './AllowRulesCard.svelte';
 	import SettingsRow from './SettingsRow.svelte';
 	import SettingsSwitch from './SettingsSwitch.svelte';
 	import { JAIL_COPY, type Copy } from '../copy.ts';
@@ -142,6 +143,10 @@
 			</div>
 		</div>
 	</SettingsCard>
+	{#if runtime.client}
+		{@const client = runtime.client}
+		<AllowRulesCard rules={snapshot.allowRules} {t} onRemove={(id) => client.deleteAllowRule(id)} />
+	{/if}
 	<!-- Preferences: one page with the workspace, which alone used to fill a tab of its own. -->
 	<SettingsCard class="settings-card-preferences">
 		<SettingsCardHeader title={t.settings.sectionPreferences} subtitle={t.settings.preferencesSubtitle}>

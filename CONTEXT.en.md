@@ -287,8 +287,8 @@ A lightweight acknowledgment of a message, picked from a fixed set of emoji; cus
 _Avoid_: emoji as approval, custom emoji, ✅/❌ as allow or deny
 
 **Always allow**:
-A saved roster-level rule (kind key + scope): from then on, dangerous actions of the same kind go through without asking. It exists alongside "Allow once". Some kinds always require approval and can't be made Always allow (a Bot changing a built-in prompt, for one).
-_Avoid_: allow everything, bypass, per-Bot rule
+A saved roster-level rule (kind key + scope): from then on, dangerous actions of the same kind go through without asking. It exists alongside "Allow once". On a card to read or write outside the workspace, the scope is the project the path is in (the nearest folder above it holding a `.git`), or else the folder it is in; your home, anything above it, a disk's root and the folders right under one never are — a card there covers its path alone. When the scope is wider than the path, the card says what it covers. Where Bots may write they may read. Settings › General lists every rule, each removable ([ADR 0087](docs/adr/0087-always-allow-covers-the-project.md)). Some kinds always require approval and can't be made Always allow (a Bot changing a built-in prompt, for one).
+_Avoid_: allow everything, bypass, per-Bot rule, a rule for the card's one file, allowing your whole home folder, rules saved out of sight
 
 **Search**:
 Lookup across Bots, groups, files and routines that jumps back to the spot in the original session. In v1 it is a local search on this Mac, not another Bot.

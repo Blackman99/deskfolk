@@ -25,6 +25,8 @@ export const zh = {
   approval: "批准",
   allowOnce: "允许一次",
   alwaysAllow: "Always allow",
+  /** Under a card whose Always allow reaches past its own path (ADR 0087). */
+  alwaysAllowCovers: (folder: string, writes: boolean) => `Always allow 放行整个 ${folder}：以后所有 Bot 在里面${writes ? "读写" : "读"}都不再问。`,
   deny: "拒绝",
   allowed: "已允许",
   denied: "已拒绝",
@@ -274,6 +276,7 @@ export const en: CopyShape<typeof zh> = {
   approval: "approval",
   allowOnce: "Allow once",
   alwaysAllow: "Always allow",
+  alwaysAllowCovers: (folder: string, writes: boolean) => `Always allow covers all of ${folder}: no Bot asks again to ${writes ? "read or write" : "read"} in it.`,
   deny: "Deny",
   allowed: "Allowed",
   denied: "Denied",

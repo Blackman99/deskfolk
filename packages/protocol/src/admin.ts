@@ -15,6 +15,12 @@ export type Approval = {
   resolved_at: string | null;
   /** True when allow_once must include api_key (endpoint-add, HTTP mcp-add, or an edit with no key yet). */
   requires_api_key: boolean;
+  /**
+   * What Always allow on this card covers when the resolve names no scope: for a path outside the
+   * workspace, its project (the nearest folder holding `.git`) or its folder (ADR 0087). Absent or
+   * null: the target itself.
+   */
+  allow_scope?: string | null;
 };
 
 export type ResolveApprovalRequest = {
