@@ -4,12 +4,12 @@
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
-	import TraceView from './TraceView.svelte';
+	import JobLayout from './JobLayout.svelte';
 
 	/**
 	 * The narrow host for the board: a page that fills the screen, with Back to step out of it.
 	 *
-	 * On a wide window the same `TraceView` is a pane instead. The board used to carry its own
+	 * On a wide window the same `JobLayout` is a pane instead. The board used to carry its own
 	 * floating window here — drag the title bar, pull a corner, remember the frame — and that is
 	 * gone: a pane that should float is dragged out by its tab, and the workbench owns the one
 	 * implementation of a floating frame.
@@ -86,7 +86,7 @@
 	aria-label={t.trace.title}
 	tabindex="-1"
 >
-	<TraceView
+	<JobLayout
 		host="page"
 		{api}
 		{taskId}

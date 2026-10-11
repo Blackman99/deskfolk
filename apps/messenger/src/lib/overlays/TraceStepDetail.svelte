@@ -78,7 +78,7 @@
 	$effect(() => themeManager.subscribe(() => (theme = themeManager.resolved)));
 </script>
 
-<!-- A panel over the board's right edge, or a sheet over its bottom on a phone (TraceView places it). -->
+<!-- The inspector beside the board, or its sheet over the board's bottom on a narrow job (JobLayout places it). -->
 <section class="trace-step-detail" aria-label={stepTitle(step, t)} bind:this={panelEl}>
 	<header class="trace-step-detail-head">
 		<span class="trace-step-detail-title">{stepTitle(step, t)}</span>
@@ -164,44 +164,22 @@
 
 <style>
 	/*
-	 * Over the board's right edge, from the top down to the tools at most, scrolling inside. On a
-	 * narrow board a sheet over the bottom of a set height, so opening it moves its card once and
-	 * an answer arriving does not cover the card again.
+	 * The whole of the inspector beside the board (ADR 0086), from its top down, scrolling inside; on
+	 * a narrow job the inspector is a sheet over the board's bottom of a set height, so opening it
+	 * moves its card once and an answer arriving does not cover the card again.
 	 */
 	.trace-step-detail {
-		position: absolute;
-		z-index: 2;
-		top: 10px;
-		right: 10px;
-		width: var(--trace-panel-width, 400px);
-		max-height: calc(100% - 56px);
+		flex: 1;
+		min-height: 0;
 		box-sizing: border-box;
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		padding: 10px 12px;
+		padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
 		overflow-y: auto;
 		overscroll-behavior: contain;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
 		background: var(--pane);
-		box-shadow: var(--shadow-lg);
 		font-size: 12px;
-	}
-
-	@container trace (max-width: 560px) {
-		.trace-step-detail {
-			top: auto;
-			right: 0;
-			bottom: 0;
-			left: 0;
-			width: auto;
-			height: 60%;
-			max-height: none;
-			padding-bottom: calc(10px + env(safe-area-inset-bottom));
-			border-width: 1px 0 0;
-			border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-		}
 	}
 
 	.trace-step-detail-head {

@@ -1,13 +1,14 @@
 /**
- * The flow pane with a plan of five tickets, one of each status, so the board's columns can be
- * seen across — on a wide window behind the Board button, and on a narrow one behind the Tickets
- * tab. The trace and the plan are fixtures; nothing is fetched.
+ * A job's tab with a plan of fifteen tickets, one of each status and ten more to do, so the rail can
+ * be seen beside the trace and the board's columns across once it is opened out — on a wide window
+ * all at once, on a narrow one behind the switch. The trace and the plan are fixtures; nothing is
+ * fetched.
  */
 import type { TaskDetail, TaskTrace, TicketWithArtifacts } from '@real-bot/protocol';
 import { USER_MEMBER } from '@real-bot/protocol';
 import { aBot, aGroup } from '../../src/lib/test-fixtures.ts';
 import { copyFor } from '../../src/lib/copy.ts';
-import TraceView from '../../src/lib/overlays/TraceView.svelte';
+import JobLayout from '../../src/lib/overlays/JobLayout.svelte';
 
 function ticket(over: Partial<TicketWithArtifacts>): TicketWithArtifacts {
   return {
@@ -95,7 +96,7 @@ export function ticketBoardStory() {
     },
   };
   return {
-    component: TraceView as never,
+    component: JobLayout as never,
     props: {
       api, taskId: 'task-1', sessionId: 'group-1', activeSessionId: 'group-1', sessions: [aGroup({ id: 'group-1', name: '制作组' })],
       bots: [aBot({ id: 'bot-1', name: '制片' }), aBot({ id: 'bot-2', name: '分镜师' })], youLabel: '你', deletedLabel: '已删除',

@@ -5,10 +5,9 @@
 	import type { Attachment } from '@real-bot/protocol';
 	import type { WorkbenchTab } from './layout-types.ts';
 	import { contentOfTab, type PaneContent } from './pane-content.ts';
-	import type { TraceViewAsk, TraceViewKind } from '../overlays/trace-view.ts';
 	import ChatStage from '../chat/ChatStage.svelte';
-	// RoutineCalendar.svelte (svelte5plus-calendar), TraceView.svelte (the flow board, plus
-	// @dagrejs/dagre) and ArtifactPreview.svelte are loaded lazily below, in the branch that
+	// RoutineCalendar.svelte (svelte5plus-calendar), JobLayout.svelte (a job's flow, tickets and
+	// spec, plus @dagrejs/dagre) and ArtifactPreview.svelte are loaded lazily below, in the branch that
 	// mounts each one: this is a tab's content switch, so exactly one of these is ever on screen
 	// at a time, and static imports here would pull all three into every page's bundle even
 	// though a tab defaults to a chat. Mirrors the same lazy-mount pattern used for the narrow
@@ -179,27 +178,6 @@
 		onUpdateContent?.({ ...content, taskId });
 	}
 
-	/**
-	 * Another view of the job on this tab: its own tab, turned to this job and asked to show what was
-	 * pressed. The request's time tells it apart from the one the tab already acted on.
-	 */
-	function showTraceView(view: TraceViewKind, taskId: string | null, ask: TraceViewAsk): void {
-		if (content?.kind !== 'trace') return;
-		const nonce = Date.now();
-		const asks = Boolean(ask.ticket || ask.column);
-		onOpenContent?.({
-			kind: 'trace',
-			sessionId: content.sessionId,
-			taskId,
-			view,
-			focus: ask.focus ?? null,
-			focusNonce: ask.focus ? nonce : null,
-			ticket: ask.ticket ?? null,
-			column: ask.column ?? null,
-			askNonce: asks ? nonce : null
-		});
-	}
-
 	let previewPane = $state<PreviewHandle | null>(null);
 	$effect(() => {
 		const id = tab.id;
@@ -339,8 +317,8 @@
 		come back to.
 	-->
 	{#key tab.id}
-		{#await import('../overlays/TraceView.svelte') then { default: TraceView }}
-			<TraceView
+		{#await import('../overlays/JobLayout.svelte') then { default: JobLayout }}
+			<JobLayout
 				api={runtime.client}
 				taskId={content.taskId}
 				line={content.line ?? null}
@@ -358,10 +336,9 @@
 				reloadToken={runtime.traceReload}
 				{onJump}
 				onTask={traceTask}
-				fixedView={content.view ?? 'trace'}
+				view={content.view ?? null}
 				ask={{ ticket: content.ticket ?? null, column: content.column ?? null }}
 				askToken={content.askNonce ?? 0}
-				onShowView={showTraceView}
 				onOpenArtifact={(relpath, att, messageId, forceTree, taskId, siblings) =>
 					onOpenArtifact(relpath, att, messageId, forceTree, taskId, siblings, content.sessionId)}
 				holds={snapshot.holdsOn ? snapshot.holds : null}
@@ -374,7 +351,7 @@
 						<CallEditor {runtime} {t} {role} />
 					{/await}
 				{/snippet}
-			</TraceView>
+			</JobLayout>
 		{/await}
 	{/key}
 {:else if content.kind === 'preview'}

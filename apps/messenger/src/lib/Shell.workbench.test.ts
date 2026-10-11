@@ -478,20 +478,20 @@ test('a conversation tab’s menu opens its job’s trace, board and plan, each 
   await until('.ticket-row');
   expect(tabs()).toEqual(['Researcher', t.pane.boardOf('Researcher')]);
   expect(inFront()).toEqual(['Researcher', t.pane.boardOf('Researcher')]);
-  expect(host.querySelector('.trace-pane')?.getAttribute('data-view')).toBe('board');
-  // A tab is one view: no switch to the others.
+  // A board's tab opens on the board opened out over the rail and the trace; a wide job has no switch.
+  expect(host.querySelector('.job-pane')?.classList.contains('board-open')).toBe(true);
   expect(host.querySelector('.trace-views')).toBeNull();
 
   // The other two join the board in that column, rather than dividing the window again.
   pick('spec');
   await until('.plan-spec');
   pick('trace');
-  await until('.trace-pane[data-view="trace"]');
+  for (let i = 0; i < 40 && tabs().length < 4; i += 1) await settle();
   expect(tabs()).toEqual(['Researcher', t.pane.boardOf('Researcher'), t.pane.specOf('Researcher'), t.pane.flowOf('Researcher')]);
 
   // Asking for the board again brings its tab forward rather than a second one.
   pick('board');
-  await until('.trace-pane[data-view="board"]');
+  await until('.job-pane.board-open');
   expect(tabs()).toHaveLength(4);
   expect(inFront()).toEqual(['Researcher', t.pane.boardOf('Researcher')]);
   const saved = JSON.parse(localStorage.getItem('real-bot-workbench-layout')!);

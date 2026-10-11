@@ -9,7 +9,7 @@ import { mockMonacoCss } from "../test-mocks.ts";
 
 mockMonacoCss();
 const { default: TaskTraceView } = await import("./TaskTrace.svelte");
-const { default: TraceView } = await import("./TraceView.svelte");
+const { default: JobLayout } = await import("./JobLayout.svelte");
 import { copyFor } from "../copy.ts";
 import { forgetTraceMinimap, loadTraceMinimap } from "./trace-minimap.ts";
 import { forgetSpentAsks, forgetTraceView, loadTraceView, saveTraceView, type TraceViewAsk, type TraceViewKind } from "./trace-view.ts";
@@ -194,10 +194,10 @@ export function open(opts: {
   detail?: TaskDetail | false;
   focus?: { messageId: string; turnId: string | null } | null;
   focusToken?: number;
-  /** Mount the board itself, the way a pane does, instead of the phone's page around it. */
+  /** Mount the job itself, the way a pane does — wide, three parts beside each other — instead of the phone's page around it. */
   pane?: boolean;
-  /** The one view a tab shows. */
-  fixedView?: TraceViewKind;
+  /** What a tab saved before the job was one tab asks to open on. */
+  view?: TraceViewKind;
   ask?: TraceViewAsk | null;
   askToken?: number;
   /** The jobs the session lists, newest first; the two stock ones by default. */
@@ -285,16 +285,9 @@ export function open(opts: {
     onOpenArtifact: (relpath: string, _att?: unknown, messageId?: string | null, forceTree?: boolean, taskId?: string | null, siblings?: unknown[] | null) => {
       opened.push({ relpath, messageId, forceTree, taskId, siblings: siblings?.length ?? 0 });
     },
-    ...(opts.fixedView
-      ? {
-          fixedView: opts.fixedView,
-          ask: opts.ask ?? null,
-          askToken: opts.askToken ?? 0,
-          onShowView: (next: TraceViewKind, taskId: string | null, wanted: TraceViewAsk) => shown.push([next, taskId, wanted]),
-        }
-      : {}),
+    ...(opts.view || opts.askToken ? { view: opts.view ?? null, ask: opts.ask ?? null, askToken: opts.askToken ?? 0 } : {}),
   });
-  const view = render(opts.pane ? TraceView : TaskTraceView, props as never);
+  const view = render(opts.pane ? JobLayout : TaskTraceView, props as never);
   return { ...view, props, jumps, asked, settled, opened, patched, shown, edited, fetchedRuns, closed: () => closed };
 }
 

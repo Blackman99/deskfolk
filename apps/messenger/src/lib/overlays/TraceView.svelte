@@ -1,46 +1,21 @@
 <script lang="ts">
-	import {
-		type Attachment,
-		type Bot,
-		type BuiltinModelRole,
-		type Hold,
-		type Provider,
-		type SessionSummary,
-		type TaskTraceNode,
-		type Ticket,
-		type TicketStatus,
-		type TicketWithArtifacts
-	} from '@real-bot/protocol';
-	import { onMount, tick, untrack, type Snippet } from 'svelte';
+	import type { Attachment, Bot, Provider, SessionSummary, TaskTraceNode, Ticket } from '@real-bot/protocol';
+	import { tick, untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
-	import { holdBack } from '../chat/message-text-pages.ts';
-	import type { StopChoice } from '../chat/stop-menu.ts';
-	import PlanSpecPanel from './PlanSpecPanel.svelte';
-	import TicketList from './TicketList.svelte';
 	import TraceCard from './TraceCard.svelte';
-	import JobHeader from './JobHeader.svelte';
 	import TraceMinimap, { type MinimapTone } from './TraceMinimap.svelte';
 	import TraceRound from './TraceRound.svelte';
 	import TraceRouteDetail from './TraceRouteDetail.svelte';
 	import TraceStepCard from './TraceStepCard.svelte';
-	import TraceStepDetail from './TraceStepDetail.svelte';
 	import { anomalousCards, loadTraceSteps, saveTraceSteps } from './trace-steps.ts';
 	import { loadTraceMinimap, saveTraceMinimap } from './trace-minimap.ts';
-	import {
-		askSpent,
-		loadTraceView,
-		saveTraceView,
-		spendAsk,
-		type TraceViewAsk,
-		type TraceViewKind
-	} from './trace-view.ts';
-	import { actorFace, actorName, firstPreviewable, latestTurnOfTicket, ticketArtifactAttachments } from './plan-board.ts';
+	import { actorFace, actorName, firstPreviewable, latestTurnOfTicket } from './plan-board.ts';
 	import { routeCardRow, type RouteLogRow } from './route-log.ts';
 	import { TraceCanvas } from './trace-canvas.svelte.ts';
-	import { JobState } from './job-state.svelte.ts';
+	import type { JobState } from './job-state.svelte.ts';
 	import {
 		clampZoom,
 		defaultFolded,
@@ -66,20 +41,16 @@
 	} from './task-trace.ts';
 
 	/**
-	 * The board itself, filling whatever it is put in. A pane on a wide window, a page on a phone;
-	 * nothing in here knows which, and nothing in here places or sizes itself.
+	 * The job's trace on its canvas, filling whatever it is put in. The job it draws — its trace,
+	 * its plan, the ticket and step picked in it — is the `JobState` it is handed, shared with the
+	 * rail and the inspector beside it; what is only the picture's — the camera, the folds, the
+	 * measured cards, the highlights — is its own.
 	 */
 	interface Props {
 		api: MessengerApi | null;
-		/** The job to open on. Null asks the session for its most recent one. */
+		job: JobState;
+		/** The job asked for from outside; a card it asks for waits for that job to be on screen. */
 		taskId: string | null;
-		/**
-		 * A line of yours filed under no job, drawn as a flow of its own (ADR 0083): the board is that
-		 * line's, with no job to switch to and no board or spec of tickets.
-		 */
-		line?: string | null;
-		/** A built-in call's model and prompts, changed in a step's panel by its 「改这个调用」. */
-		callEditor?: Snippet<[BuiltinModelRole]>;
 		/** The message whose card to centre. A new `focusToken` is a new request to move. */
 		focus?: TraceFocus | null;
 		focusToken?: number;
@@ -92,36 +63,8 @@
 		providers?: readonly Provider[];
 		youLabel: string;
 		deletedLabel: string;
-		workspacePath: string | null;
 		t: Copy;
-		reloadToken: number;
-		/** A page fills the screen and has its own close button; a pane is closed by its tab. */
-		host?: 'pane' | 'page';
-		/** Absent in a pane: a pane is closed by its own tab, not by a button inside the content. */
-		onClose?: () => void;
 		onJump: (sessionId: string, messageId: string) => void;
-		/** The job actually on screen, so the address follows the switcher. */
-		onTask?: (taskId: string) => void;
-		/**
-		 * The one view this copy shows, where each view of the job is a tab of its own (a pane on a
-		 * wide window, opened from a message's or a conversation's menu). It has no switch; its links
-		 * to the other views bring up their tabs through `onShowView`. Left out — the phone's page —
-		 * the switch changes what this copy shows, and the choice is remembered.
-		 */
-		fixedView?: TraceViewKind | null;
-		/** What another view of the job asked this one to show. A new `askToken` is a new request. */
-		ask?: TraceViewAsk | null;
-		askToken?: number;
-		/** Bring up another view of this job, with what it should show there. */
-		onShowView?: (view: TraceViewKind, taskId: string | null, ask: TraceViewAsk) => void;
-		/** Your stops in force; null where the daemon has none, and the board then offers no stop. */
-		holds?: readonly Hold[] | null;
-		/** A choice from the board's stop menu: this job, or every Bot. Resolves to a refusal to show, or nothing. */
-		onStop?: (choice: StopChoice) => Promise<unknown> | void;
-		/** Resolves to a refusal to show, or nothing. */
-		onLift?: (hold: Hold) => Promise<unknown> | void;
-		/** The daemon is out of reach: the stop menu and the lifts show but cannot be pressed. */
-		controlsDisabled?: boolean;
 		onOpenArtifact?: (
 			relpath: string,
 			att?: Attachment,
@@ -134,9 +77,8 @@
 
 	let {
 		api,
+		job,
 		taskId,
-		line = null,
-		callEditor,
 		focus = null,
 		focusToken = 0,
 		sessionId,
@@ -146,40 +88,12 @@
 		providers = [],
 		youLabel,
 		deletedLabel,
-		workspacePath,
 		t,
-		reloadToken,
-		host = 'pane',
-		onClose,
 		onJump,
-		onTask,
-		fixedView = null,
-		ask = null,
-		askToken = 0,
-		onShowView,
-		onOpenArtifact,
-		holds = null,
-		onStop,
-		onLift,
-		controlsDisabled = false
+		onOpenArtifact
 	}: Props = $props();
 
 	let notableOnly = $state(false);
-	let switcherOpen = $state(false);
-	/** The title row, so the board's Escape listener can put focus back on the switcher's trigger once it closes it. */
-	let header = $state<JobHeader>();
-	/**
-	 * What fills the pane: the trace, the tickets' board or the spec — one at a time, each with the
-	 * whole pane, at every width. On the page the choice outlives it; a page opened on a message's
-	 * card opens on the trace, whatever was left. A tab is one view for good.
-	 */
-	let view = $state<TraceViewKind>(untrack(() => fixedView ?? (focus ? 'trace' : loadTraceView())));
-	/** Which views this copy draws: all three on the page, its own one in a tab. */
-	const drawsTrace = $derived(!fixedView || fixedView === 'trace');
-	/** The board's column the spec asked to bring into view; 'all' lights none. */
-	let ticketFilter = $state<TicketStatus | 'all'>('all');
-	/** The board view, so a ticket shown from the spec can be scrolled to. */
-	let boardEl = $state<HTMLElement>();
 	/** The minimap in the corner, until you put it away; per-browser, like the view. */
 	let minimapShown = $state(loadTraceMinimap());
 	/** The card whose model choice is unfolded under it. One at a time. */
@@ -190,15 +104,6 @@
 	let showSteps = $state(loadTraceSteps());
 	/** The steps that went wrong lit, the rest of the board dimmed. */
 	let stepsLit = $state(false);
-
-	const job = new JobState({
-		api: () => api,
-		sessionId: () => sessionId,
-		taskId: () => taskId,
-		line: () => line,
-		onTask: (id) => onTask?.(id),
-		onSwitch: switchBoard
-	});
 
 	const shown = $derived(job.trace ? filterTrace(job.trace, notableOnly) : null);
 	/**
@@ -279,52 +184,9 @@
 			const asked = focus && shown ? focusNode(shown.nodes, focus) : null;
 			const root = asked ? rounds.find((round) => round.members.includes(asked))?.root : undefined;
 			if (root && foldChoice[root]) foldChoice = { ...foldChoice, [root]: false };
-			// The card is on the trace: a page left on the board or the spec turns back to it. Not
-			// remembered — the view you chose is still the one the next plan opens on. A tab of the
-			// board or the spec is never asked: a card's request goes to the trace's own tab.
-			if (focus && !fixedView) view = 'trace';
 			canvas.syncFocusToken();
 		});
 	});
-
-	/**
-	 * What another view asked of this tab, until its job is the one on screen. A request is acted on
-	 * once: the tab brought forward again still carries it, and acting on it again would take back
-	 * whatever you picked since. Ahead of the camera's own effect: the ticket is lit, and its rounds
-	 * opened, before the trace places the card that came with the request.
-	 */
-	let pendingAsk = $state<TraceViewAsk | null>(null);
-	let seenAsk = 0;
-	$effect(() => {
-		const token = askToken;
-		if (!fixedView || !token || token === seenAsk) return;
-		seenAsk = token;
-		untrack(() => {
-			if (askSpent(sessionId, fixedView, token)) return;
-			spendAsk(sessionId, fixedView, token);
-			pendingAsk = ask;
-		});
-	});
-	$effect(() => {
-		const wanted = pendingAsk;
-		if (!wanted || job.loading || !job.detail || (taskId !== null && job.currentId !== taskId)) return;
-		pendingAsk = null;
-		untrack(() => {
-			if (wanted.column) ticketFilter = wanted.column;
-			if (!wanted.ticket || !ticketsById.has(wanted.ticket)) return;
-			// The trace's card comes with the request as its focus; lighting the ticket is the rest.
-			if (fixedView === 'board') void revealTicket(wanted.ticket);
-			else selectTicket(wanted.ticket);
-		});
-	});
-
-	/**
-	 * Where this copy keeps what it was left on. A board or a spec in a tab of its own keeps its
-	 * picked ticket and column apart from the trace's tab, which keeps a camera besides.
-	 */
-	function memoryOf(session: string): string {
-		return drawsTrace ? session : `${session}#${fixedView}`;
-	}
 
 	/**
 	 * Keep this job's board as it is, for when it comes back: its tab brought forward again (a tab
@@ -332,8 +194,8 @@
 	 * trace's camera is only worth keeping once it has been placed.
 	 */
 	function keepThisBoard(): void {
-		if (!job.currentId || !job.boardSession || (drawsTrace && canvas.fitted !== job.currentId)) return;
-		keepBoard(memoryOf(job.boardSession), job.currentId, {
+		if (!job.currentId || !job.boardSession || canvas.fitted !== job.currentId) return;
+		keepBoard(job.boardSession, job.currentId, {
 			...canvas.leaving(),
 			boxes: $state.snapshot(boxes),
 			foldChoice: $state.snapshot(foldChoice),
@@ -426,21 +288,21 @@
 	});
 	/** The step whose panel is open, while the board still draws it. */
 	const openStepGroup = $derived(job.openStep ? (flow?.steps.find((row) => row.group.id === job.openStep)?.group ?? null) : null);
-	// A step's panel lies over the board's right edge, or over its bottom when the board is narrow.
-	// The card it is about slides out from under it once, as it opens.
+	// A step's panel sits beside the board on a wide job, and over the board's bottom as a sheet on a
+	// narrow one. Where it lies over the board, the card it is about slides out from under it once.
 	$effect(() => {
 		const id = job.openStep;
 		if (!id) return;
 		void tick().then(() => {
 			const card = canvas.slots.get(id);
-			const panel = canvas.viewportEl?.parentElement?.querySelector<HTMLElement>('.trace-step-detail');
-			if (job.openStep === id && card && panel) canvas.uncover(card, panel);
+			const viewport = canvas.viewportEl;
+			const panel = viewport?.closest('.job-pane')?.querySelector<HTMLElement>('.trace-step-detail');
+			if (job.openStep !== id || !card || !panel || !viewport) return;
+			const cover = panel.getBoundingClientRect();
+			const view = viewport.getBoundingClientRect();
+			const overlaps = cover.left < view.right && cover.right > view.left && cover.top < view.bottom && cover.bottom > view.top;
+			if (overlaps) canvas.uncover(card, panel);
 		});
-	});
-	// On a phone Back puts a step's panel away before it leaves the board.
-	$effect(() => {
-		if (host !== 'page' || !job.openStep) return;
-		return holdBack(() => (job.openStep = null));
 	});
 	const byId = $derived(new Map((shown?.nodes ?? []).map((node) => [node.turn_id, node])));
 	/** The card this opening was asked to land on, while that request is the one on screen. */
@@ -476,15 +338,6 @@
 	);
 	const lighting = $derived(highlight && highlightCounts[highlight] > 0 ? highlight : null);
 	const ticketsById = $derived(new Map((job.detail?.tickets ?? []).map((ticket) => [ticket.id, ticket])));
-	/** A board of no tickets says nothing; it comes with the first ticket. */
-	const hasTickets = $derived((job.detail?.tickets.length ?? 0) > 0);
-	/**
-	 * Without a plan there is only the trace; without tickets, no board. Either falls back to the
-	 * trace on the page. A tab stays what it is, and says so when there is nothing for it yet.
-	 */
-	const viewShown = $derived<TraceViewKind>(
-		fixedView ?? (!job.detail || (view === 'board' && !hasTickets) ? 'trace' : view)
-	);
 	/** The ticket a card worked in, as `01`; nothing on your own card and on turns filed under none. */
 	function ticketOf(node: TaskTraceNode): Ticket | null {
 		return node.ticket_id ? (ticketsById.get(node.ticket_id) ?? null) : null;
@@ -505,61 +358,36 @@
 	}
 
 	/**
-	 * A view picked in the switch, or reached from another view. On the page it is remembered: the
-	 * next plan opens on it, and the trace keeps its camera while it is away — it is only hidden,
-	 * never resized — so coming back finds it where it was. In a tab, a link to another view brings
-	 * up that view's own tab, carrying what it should show; true when the view is this one, to go
-	 * on with here.
+	 * A ticket seen where its work happened: picked — its rounds lit and open — and the board slides
+	 * to the newest card made for it.
 	 */
-	function chooseView(next: TraceViewKind, wanted: TraceViewAsk = {}): boolean {
-		if (fixedView) {
-			if (next !== fixedView) onShowView?.(next, job.currentId ?? taskId, wanted);
-			return next === fixedView;
-		}
-		view = next;
-		saveTraceView(next);
-		return true;
-	}
-
-	/**
-	 * A line of the spec held to one ticket, or the picked ticket's own strip, shows that ticket: it
-	 * is picked — its cards light on the trace — and the board comes up with its card in view.
-	 */
-	async function showTicket(id: string): Promise<void> {
-		if (!chooseView('board', { ticket: id })) return;
-		await revealTicket(id);
-	}
-
-	/** The ticket picked on the board, its column let through, its card scrolled into view. */
-	async function revealTicket(id: string): Promise<void> {
-		selectTicket(id);
-		const ticket = ticketsById.get(id);
-		if (ticketFilter !== 'all' && ticket?.status !== ticketFilter) ticketFilter = 'all';
-		await tick();
-		const row = [...(boardEl?.querySelectorAll<HTMLElement>('.ticket-row') ?? [])].find((el) => el.dataset.ticketId === id);
-		row?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-	}
-
-	/** The spec's ticket states bring the board up on that column. */
-	function showTickets(status: TicketStatus | 'all'): void {
-		if (!chooseView('board', { column: status === 'all' ? null : status })) return;
-		ticketFilter = status;
-	}
-
-	/**
-	 * A ticket picked on the board, seen where its work happened: the trace comes up with its rounds
-	 * lit and open, and slides to the newest card made for it.
-	 */
-	async function showInTrace(id: string): Promise<void> {
+	export async function showTicket(id: string): Promise<void> {
 		const latest = latestTurnOfTicket(shown?.nodes ?? [], id);
-		const card = latest ? { messageId: latest.focus_message_id, turnId: latest.turn_id } : null;
-		if (!chooseView('trace', { ticket: id, focus: card })) return;
 		selectTicket(id);
 		await tick();
-		const placed = latest ? flow?.placements.find((placement) => placement.node.turn_id === latest.turn_id) : undefined;
+		if (latest) slideTo(latest.turn_id);
+	}
+
+	/** One card, asked for from beside the board (a mark on the rail): its round opened, the board slid to it. */
+	export async function showCard(turnId: string): Promise<void> {
+		const root = rounds.find((round) => round.members.some((node) => node.turn_id === turnId))?.root;
+		if (root && folded.has(root)) foldChoice = { ...foldChoice, [root]: false };
+		await tick();
+		slideTo(turnId);
+	}
+
+	function slideTo(turnId: string): void {
+		const placed = flow?.placements.find((placement) => placement.node.turn_id === turnId);
 		if (!placed) return;
 		const height = boxes[placed.node.turn_id]?.height ?? 0;
 		canvas.centreOn({ x: placed.x + TRACE_CARD_WIDTH / 2, y: placed.y + height / 2 }, true);
+	}
+
+	/** Escape, from the job around the board: an unfolded model choice closes first. True when one did. */
+	export function closeRoute(): boolean {
+		if (!openRoute) return false;
+		openRoute = null;
+		return true;
 	}
 
 	function toggleMinimap(): void {
@@ -602,12 +430,6 @@
 		if (highlight) foldChoice = {};
 	}
 
-	function openTicketArtifacts(ticket: TicketWithArtifacts): void {
-		const siblings = ticketArtifactAttachments(ticket);
-		const target = firstPreviewable(siblings);
-		if (!target || !onOpenArtifact) return;
-		onOpenArtifact(target.workspace_relpath, target, target.message_id, true, job.currentId ?? taskId, siblings);
-	}
 	const routeInput = $derived({
 		bots,
 		providers,
@@ -654,95 +476,17 @@
 	 * Another job is about to be on screen: keep this one's board as it is, to come back to, and take
 	 * the next one up as it was left, or fresh. A refresh of the same plan keeps what you unfolded and lit.
 	 */
-	function switchBoard(session: string, next: string | null): void {
+	export function switchBoard(session: string, next: string | null): void {
 		keepThisBoard();
-		const kept = keptBoard(memoryOf(session), next);
+		const kept = keptBoard(session, next);
 		openRoute = kept?.openRoute ?? null;
 		job.selectedTicket = kept?.selectedTicket ?? null;
-		ticketFilter = 'all';
 		foldChoice = kept?.foldChoice ?? {};
 		if (kept) {
 			notableOnly = kept.notableOnly;
 			highlight = kept.highlight;
 		}
 	}
-
-	function selectJob(id: string): void {
-		switcherOpen = false;
-		job.selectJob(id);
-	}
-
-	onMount(() => {
-		void job.load(taskId);
-		/**
-		 * One Escape, one step out: the switcher, then an unfolded model choice, then a lit ticket,
-		 * then the board.
-		 *
-		 * All of it in a single capture listener, because two listeners racing to answer the same
-		 * key is decided by which mounted first — and the shell's own Escape, which closes the
-		 * board, is a window listener that was there before this pane existed.
-		 */
-		function onKey(event: KeyboardEvent): void {
-			if (event.key !== 'Escape') return;
-			if (switcherOpen) {
-				event.preventDefault();
-				event.stopImmediatePropagation();
-				switcherOpen = false;
-				header?.focusSwitcher();
-				return;
-			}
-			// A model picker opened from a step's panel, or a prompt's editor over the window, answers its own Escape.
-			if ((event.target as Element | null)?.closest?.('.mp-panel, .mp-sheet-layer') || document.querySelector('.prompt-editor-backdrop')) return;
-			if (openRoute || job.openStep) {
-				event.preventDefault();
-				event.stopImmediatePropagation();
-				openRoute = null;
-				job.openStep = null;
-				return;
-			}
-			if (!job.selectedTicket) return;
-			event.preventDefault();
-			event.stopImmediatePropagation();
-			job.selectedTicket = null;
-		}
-		window.addEventListener('keydown', onKey, true);
-		return () => {
-			window.removeEventListener('keydown', onKey, true);
-		};
-	});
-
-	/**
-	 * A live plan reloads on every turn, message, filing and ticket move. A fan-out lands several of
-	 * those within a frame; one read a moment later shows all of them.
-	 */
-	$effect(() => {
-		void reloadToken;
-		if (reloadToken === 0) return;
-		const timer = setTimeout(() => void job.load(job.currentId ?? taskId), 150);
-		return () => clearTimeout(timer);
-	});
-
-	/**
-	 * Pointed at another job from outside — a card, a link, the conversation's own button. The
-	 * job picked in here comes back through `onTask` and lands as the same value, so it is not
-	 * fetched twice.
-	 */
-	let requestedTask = untrack(() => taskId);
-	$effect(() => {
-		const next = taskId;
-		if (next === requestedTask) return;
-		requestedTask = next;
-		if (next && next !== untrack(() => job.currentId)) untrack(() => void job.load(next));
-	});
-
-	/** A different conversation shows that conversation's job. */
-	let loadedFor = sessionId;
-	$effect(() => {
-		const next = sessionId;
-		if (next === loadedFor) return;
-		loadedFor = next;
-		untrack(() => void job.load(null));
-	});
 
 	function openCard(node: TaskTraceNode): void {
 		const messageId = node.approval?.message_id ?? node.ask?.message_id ?? node.focus_message_id;
@@ -774,91 +518,9 @@
 	}
 </script>
 
-{#snippet specIcon()}
-	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-		<polyline points="14 2 14 8 20 8"></polyline>
-		<line x1="16" y1="13" x2="8" y2="13"></line>
-		<line x1="16" y1="17" x2="8" y2="17"></line>
-	</svg>
-{/snippet}
-
-{#snippet ticketsIcon()}
-	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		<path d="M9 11l3 3L22 4"></path>
-		<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-	</svg>
-{/snippet}
-
-{#snippet traceIcon()}
-	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		<rect x="9" y="3" width="6" height="5" rx="1"></rect>
-		<rect x="3" y="16" width="6" height="5" rx="1"></rect>
-		<rect x="15" y="16" width="6" height="5" rx="1"></rect>
-		<path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"></path>
-	</svg>
-{/snippet}
-
-{#snippet boardIcon()}
-	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		<rect x="3" y="3" width="5" height="18" rx="1"></rect>
-		<rect x="10" y="3" width="5" height="12" rx="1"></rect>
-		<rect x="17" y="3" width="4" height="8" rx="1"></rect>
-	</svg>
-{/snippet}
-
-<div class="trace-pane" class:is-page={host === 'page'} data-view={viewShown}>
-	<JobHeader
-		bind:this={header}
-		{job}
-		{line}
-		{t}
-		place={tracePlace}
-		{bots}
-		{sessions}
-		{deletedLabel}
-		bind:switcherOpen
-		onSelectJob={selectJob}
-		{holds}
-		{onStop}
-		{onLift}
-		{controlsDisabled}
-		{onClose}
-	>
-		{#snippet middle()}
-				{#if job.detail && !fixedView}
-					<!--
-						The three views of the job, each with the whole page. On a narrow host the switch takes a
-						row of its own. A tab is one view and has none: each view is a tab of its own.
-					-->
-					<div class="trace-views" role="tablist" aria-label={t.plan.views}>
-						<button type="button" role="tab" class="trace-view-tab" aria-selected={viewShown === 'trace'} onclick={() => chooseView('trace')}>
-							{@render traceIcon()}
-							<span>{t.plan.segmentTrace}</span>
-						</button>
-						{#if hasTickets}
-							<button type="button" role="tab" class="trace-view-tab" aria-selected={viewShown === 'board'} onclick={() => chooseView('board')}>
-								{@render boardIcon()}
-								<span>{t.plan.segmentBoard}</span>
-								<span class="trace-view-count mono">{job.detail.tickets.length}</span>
-							</button>
-						{/if}
-						<button type="button" role="tab" class="trace-view-tab" aria-selected={viewShown === 'spec'} onclick={() => chooseView('spec')}>
-							{@render specIcon()}
-							<span>{t.plan.segmentSpec}</span>
-						</button>
-					</div>
-				{/if}
-		{/snippet}
-	</JobHeader>
-	<!--
-		On the page all three views stay mounted while the plan is on screen, so an edit half-typed in
-		the spec survives a look at the board. The one not shown is hidden in place, never resized, so
-		the trace keeps its camera while you are away from it. A tab draws its own view only.
-	-->
+<div class="trace-pane">
 	<div class="trace-body">
-		{#if drawsTrace}
-		<div class="trace-stage trace-view" class:is-on={viewShown === 'trace'} class:has-step-panel={openStepGroup !== null} inert={viewShown !== 'trace'}>
+		<div class="trace-stage">
 		{#if job.trace && job.trace.nodes.length > 0}
 			<div class="trace-tools">
 				<div class="trace-tools-start">
@@ -1068,77 +730,7 @@
 				/>
 			</div>
 		{/if}
-		{#if openStepGroup}
-			<!-- Beside the board, not under its card: an answer needs more than a card's width. -->
-			<TraceStepDetail
-				group={openStepGroup}
-				{t}
-				fetchRun={api ? (id) => api!.callRun(id) : undefined}
-				{onJump}
-				{callEditor}
-				onClose={() => (job.openStep = null)}
-			/>
-		{/if}
 		</div>
-		{/if}
-		{#if !drawsTrace && !job.detail}
-			<!-- A tab of the board or the spec before its plan is here, or on a job without one. -->
-			<div class="trace-view trace-plan-state is-on">
-				{#if job.loading}
-					<p class="trace-empty">{t.trace.loading}</p>
-				{:else if job.failed}
-					<p class="trace-empty">
-						{t.trace.failed}
-						<button type="button" onclick={() => void job.load(job.currentId ?? taskId)}>{t.trace.retry}</button>
-					</p>
-				{:else}
-					<p class="trace-empty">{t.trace.none}</p>
-				{/if}
-			</div>
-		{/if}
-		{#if job.detail}
-			{#if !fixedView || fixedView === 'spec'}
-			<div class="trace-view trace-spec-view" class:is-on={viewShown === 'spec'} inert={viewShown !== 'spec'}>
-				<PlanSpecPanel
-					{api}
-					detail={job.detail}
-					{t}
-					onSaved={(next) => (job.detail = next)}
-					onConflict={() => job.reloadPlan()}
-					{onJump}
-					selectedTicket={job.selectedTicket}
-					onShowTicket={(id) => void showTicket(id)}
-					onClearTicket={() => selectTicket(null)}
-					onShowTickets={showTickets}
-					{bots}
-					{deletedLabel}
-				/>
-			</div>
-			{/if}
-			{#if fixedView ? fixedView === 'board' : hasTickets}
-				<div class="trace-view trace-board-view" class:is-on={viewShown === 'board'} inert={viewShown !== 'board'} bind:this={boardEl}>
-					<TicketList
-						{api}
-						detail={job.detail}
-						{providers}
-						nodes={shown?.nodes ?? []}
-						{bots}
-						{youLabel}
-						{deletedLabel}
-						{t}
-						selectedId={job.selectedTicket}
-						onSelect={selectTicket}
-						{onJump}
-						onOpenArtifacts={openTicketArtifacts}
-						onPatched={(ticket) => job.ticketPatched(ticket)}
-						onConflict={() => job.reloadPlan()}
-						bind:statusFilter={ticketFilter}
-						onShowSpec={() => chooseView('spec', { ticket: job.selectedTicket })}
-						onShowInTrace={(id) => void showInTrace(id)}
-					/>
-				</div>
-			{/if}
-		{/if}
 	</div>
 </div>
 
@@ -1160,127 +752,14 @@
 		container: trace / inline-size;
 	}
 
-	/*
-	 * The three views of the job: one segmented switch, the view on screen raised out of the track.
-	 * Teal is reserved for what you act on, so the raised tab is ink on the pane, not teal.
-	 */
-	.trace-views {
-		flex: none;
-		display: inline-flex;
-		align-items: center;
-		gap: 2px;
-		padding: 3px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-full);
-		background: var(--chip);
-	}
-
-	.trace-view-tab {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 5px;
-		min-width: 0;
-		min-height: 28px;
-		padding: 3px 12px;
-		border: 0;
-		border-radius: var(--radius-full);
-		background: transparent;
-		color: var(--muted);
-		font: 600 12px/1.2 var(--font);
-		cursor: pointer;
-		user-select: none;
-		transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-	}
-
-	.trace-view-tab:hover {
-		color: var(--ink);
-	}
-
-	.trace-view-tab[aria-selected='true'] {
-		background: var(--pane);
-		color: var(--ink);
-		box-shadow: var(--shadow-xs);
-	}
-
-	.trace-view-tab:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 1px;
-	}
-
-	.trace-view-count {
-		padding: 0 5px;
-		border-radius: var(--radius-full);
-		background: var(--line-subtle);
-		color: var(--muted);
-		font-size: 10px;
-		font-weight: 700;
-		line-height: 15px;
-	}
-
-	.trace-view-tab[aria-selected='true'] .trace-view-count {
-		background: var(--accent-tint);
-		color: var(--accent);
-	}
-
-	/*
-	 * Each view has the whole body. The ones not on screen are hidden where they are, at full size:
-	 * the trace's camera never sees its viewport shrink to nothing and grow back, so it is where you
-	 * left it, and a column the spec asked for can be scrolled to before the board comes up.
-	 */
-	.trace-view {
+	/* The picture: the trace's view, under the tools and the minimap that float over it. */
+	.trace-stage {
 		position: absolute;
 		inset: 0;
 		min-width: 0;
 		min-height: 0;
-	}
-
-	.trace-view:not(.is-on) {
-		visibility: hidden;
-		pointer-events: none;
-	}
-
-	/* The picture: the trace's view, under the tools, the minimap and a step's panel that float over it. */
-	.trace-stage {
 		overflow: hidden;
-		--trace-panel-width: min(400px, calc(100% - 20px));
 	}
-
-	/* The spec reads as a page: it scrolls, the rest of the pane stays put. */
-	.trace-spec-view {
-		overflow-y: auto;
-		overscroll-behavior: contain;
-		-webkit-overflow-scrolling: touch;
-		background: var(--pane);
-	}
-
-	/* The board scrolls inside its columns and sideways, never as a whole. */
-	.trace-board-view {
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		background: var(--pane);
-	}
-
-	/*
-	 * Narrow by the board's own width, not the window's: a narrow pane is a phone. There the switch
-	 * leaves the title row for a row of its own, each view an equal share of it.
-	 */
-	@container trace (max-width: 720px) {
-		.trace-views {
-			order: 3;
-			flex: 1 0 100%;
-			display: flex;
-			max-width: 480px;
-		}
-
-		.trace-view-tab {
-			flex: 1 1 0;
-			min-height: 32px;
-			font-size: 13px;
-		}
-	}
-
 
 	/*
 	 * The grips draw nothing. A corner mark is clutter on a window that is mostly picture, and the
@@ -1497,13 +976,6 @@
 		bottom: 46px;
 	}
 
-	/* A step's panel takes the right edge, so the minimap sits beside it; on a phone it is a sheet. */
-	@container trace (min-width: 561px) {
-		.trace-stage.has-step-panel .trace-minimap-dock {
-			right: calc(var(--trace-panel-width) + 20px);
-		}
-	}
-
 	/* A canvas the size dagre measured, with the cards placed on it and the edges beneath. */
 	.trace-flow {
 		position: absolute;
@@ -1537,11 +1009,6 @@
 		flex-direction: column;
 		align-items: stretch;
 		gap: 8px;
-	}
-
-	/* Where a tab's board or spec says there is nothing for it yet, in from the edge as the trace's is. */
-	.trace-plan-state {
-		padding: 0 16px;
 	}
 
 	.trace-empty {

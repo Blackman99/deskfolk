@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import type { Bot, Provider, TaskDetail, TaskTraceNode, Ticket, TicketStatus, TicketWithArtifacts } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
@@ -22,6 +22,7 @@
 	import { beginCardDrag, type CardDrag } from './ticket-board-drag.ts';
 	import { TicketEdits } from './ticket-edits.svelte.ts';
 	import { ballLabel, canMakeSample, isDropped, stageLabel, statusOptionsFor } from './ticket-labels.ts';
+	import TicketConfirm from './TicketConfirm.svelte';
 	import TicketDepends from './TicketDepends.svelte';
 	import TicketDetail from './TicketDetail.svelte';
 
@@ -48,6 +49,10 @@
 		onShowSpec?: () => void;
 		/** Show the picked ticket's work on the trace: its rounds lit, its newest card in view. */
 		onShowInTrace?: (ticketId: string) => void;
+		/** The job's one queue of ticket edits, shared with the inspector; left out, the board keeps its own. */
+		edits?: TicketEdits;
+		/** Whether the picked card unfolds what it answers to and its settings; off where the inspector shows them. */
+		details?: boolean;
 	}
 
 	let {
@@ -67,23 +72,26 @@
 		onConflict,
 		statusFilter = $bindable('all'),
 		onShowSpec,
-		onShowInTrace
+		onShowInTrace,
+		edits: sharedEdits,
+		details = true
 	}: Props = $props();
 
 	const botsById = $derived(new Map(bots.map((bot) => [bot.id, bot] as const)));
 	const tickets = $derived([...detail.tickets].sort((a, b) => a.seq - b.seq));
 
 	/** Status moves and the picked ticket's settings, through the plan's one queue of edits. */
-	const edits = new TicketEdits({
-		api: () => api,
-		detail: () => detail,
-		t: () => t,
-		providers: () => providers,
-		onPatched: (ticket) => onPatched(ticket),
-		onConflict: () => onConflict(),
-		cardHasFocus,
-		keepFocus
-	});
+	const edits =
+		untrack(() => sharedEdits) ??
+		new TicketEdits({
+			api: () => api,
+			detail: () => detail,
+			t: () => t,
+			providers: () => providers,
+			onPatched: (ticket) => onPatched(ticket),
+			onConflict: () => onConflict()
+		});
+	$effect(() => edits.attachFocus({ cardHasFocus, keepFocus }));
 	/** The card under the pointer, once the press has travelled far enough to be a drag. */
 	let drag = $state<CardDrag | null>(null);
 	/** The column elements, so a lit column can be scrolled into view. */
@@ -389,24 +397,13 @@
 							{/if}
 						</div>
 					{/if}
-					{#if picked}
+					{#if details && picked}
 						<TicketDetail {api} {detail} {ticket} {t} {bots} {youLabel} {deletedLabel} {edits} {onShowSpec} bind:dependsOpen />
 					{/if}
-					{#if dependsOpen === ticket.id}
+					{#if details && dependsOpen === ticket.id}
 						<TicketDepends {detail} {ticket} {t} {edits} />
 					{/if}
-					{#if edits.confirming?.id === ticket.id}
-						<div class="ticket-confirm" role="group" aria-label={t.plan.board.pendingMove(t.plan.ticketStatus[edits.confirming.status])}>
-							<p>{t.plan.board.pendingMove(t.plan.ticketStatus[edits.confirming.status])}</p>
-							<div class="ticket-confirm-actions">
-								<button type="button" class="ticket-confirm-go" onclick={() => edits.confirming && edits.queueMove(ticket.id, edits.confirming.status)}>{t.plan.board.moveAnyway}</button>
-								<button type="button" class="ticket-confirm-keep" onclick={() => edits.keepCard(ticket.id)}>{t.plan.board.keep}</button>
-							</div>
-						</div>
-					{/if}
-					{#if edits.errorId === ticket.id}
-						<p class="ticket-error">{t.plan.saveFailed}</p>
-					{/if}
+					<TicketConfirm {ticket} {t} {edits} />
 				</div>
 						{/each}
 					</div>
@@ -1056,44 +1053,6 @@
 		color: var(--muted-light);
 	}
 
-	.ticket-confirm {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		padding: 6px 8px;
-		border-radius: var(--radius-sm);
-		background: var(--warn-bg);
-		color: var(--warn-text);
-		font-size: 11px;
-		line-height: 1.45;
-	}
-
-	.ticket-confirm p {
-		margin: 0;
-	}
-
-	.ticket-confirm-actions {
-		display: flex;
-		gap: 8px;
-	}
-
-	.ticket-confirm-go,
-	.ticket-confirm-keep {
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		background: var(--pane);
-		padding: 2px 8px;
-		font: inherit;
-		font-size: 11px;
-		cursor: pointer;
-	}
-
-	.ticket-confirm-go {
-		border-color: var(--warn-line);
-		color: var(--warn-text);
-		font-weight: 600;
-	}
-
 	.ticket-row.is-dragging {
 		opacity: 0.45;
 	}
@@ -1116,13 +1075,6 @@
 		color: var(--ink);
 		pointer-events: none;
 		transform: translate(-16px, -12px);
-	}
-
-	.ticket-error {
-		margin: 0;
-		font-size: 11px;
-		color: var(--danger-text);
-		overflow-wrap: anywhere;
 	}
 
 	/* Mobile screen adaptations: bigger targets, same layout. */

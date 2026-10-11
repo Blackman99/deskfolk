@@ -249,12 +249,10 @@
 		color: var(--muted);
 	}
 
-	/* Narrow by the board's own width, not the window's: a narrow pane is a phone. */
-	@container trace (max-width: 720px) {
-		.trace-header {
-			flex-wrap: wrap;
-			row-gap: 10px;
-		}
+	/* The switch a narrow job puts in the row takes a row of its own under the title. */
+	.trace-header {
+		flex-wrap: wrap;
+		row-gap: 10px;
 	}
 
 	.trace-header {

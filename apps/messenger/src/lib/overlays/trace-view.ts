@@ -3,13 +3,11 @@ import { forgetStored, readStored, writeStored } from "../storage.ts";
 import type { TraceFocus } from "./task-trace.ts";
 
 /**
- * What fills the flow pane: the trace, the board of tickets, or the spec. One at a time, each with
- * the whole pane — none of them is a strip beside another.
- *
- * On a wide window each view is a tab of its own, so they can sit side by side, float, or be closed
- * one by one. On a phone the job is one page and its switch picks the view; that choice is the
- * viewer's and outlives the page, per-browser like the minimap. A message asking for its card is
- * the one thing that brings the trace back by itself.
+ * The parts of a job's one tab (ADR 0086): its tickets (`board`: the rail, or the board opened out),
+ * its trace, and its spec. A wide job has all three side by side; a narrow one — a phone, a narrow
+ * pane — has one at a time behind the switch in its title row, and that choice is the viewer's and
+ * outlives the page, per-browser like the minimap. A message asking for its card is the one thing
+ * that brings the trace back by itself.
  */
 export type TraceViewKind = "trace" | "board" | "spec";
 
@@ -36,9 +34,8 @@ export function traceViewOf(raw: string | null | undefined): TraceViewKind {
 }
 
 /**
- * What one view of a job asks another to show as it brings it up: the spec's ticket number brings
- * the board up on that card, the board's 「在流程里看」 the trace on its newest round. With each
- * view its own tab, the request travels with the tab rather than as state the views share.
+ * What a tab was asked to show as it is brought up: a ticket to pick, a column to let through, a
+ * card to land on. The request travels with the tab, and is acted on once.
  */
 export type TraceViewAsk = {
   /** The ticket to pick: lit on the trace, in view on the board, held to on the spec. */

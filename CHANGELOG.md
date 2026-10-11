@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A job is one tab: tickets, flow and inspector
+
+- A job's flow tab now has three parts side by side ([ADR 0086](docs/adr/0086-a-job-is-one-tab.md)): the tickets' rail on the left, the flow in the middle and the inspector on the right. They are one job with one pick: switching the job switches all three, and a ticket picked on the rail lights its cards on the flow and turns the inspector to it. Both dividers can be dragged, and the widths are kept on this Mac.
+- The rail has a row per ticket: its number, title, its owner's face, its status and how many turns, with a small lane under it. Every row shares one axis, so you can see when work landed on a ticket, who did it, where it was stopped and how long the job sat still (a silence of over half an hour folds into a thin bar). The first row is your lines, the last the turns filed under no ticket. Pressing a lane slides the flow to the card nearest the press.
+- The board is the rail opened out: the button on the rail's head opens the board of five columns over the rail and the flow, where cards are dragged between columns as before; a card picked on the board no longer unfolds under itself, its details are in the inspector.
+- The inspector shows an opened step first (the panel that used to lie over the flow's right edge), then the picked ticket: its status menu, who has the ball, its description and files, "See it on the trace", what it has to meet, and its reviewer, model and dependencies. With nothing picked it is the whole job's plan; "See in the plan" turns it to the plan read against the ticket, and a status pressed in the plan lets only that status through on the rail. One press widens the inspector over the whole tab, the plan laid out in its two columns.
+- Narrow (a phone, a narrow pane, an iPad upright, under 900px) it is one part at a time: a switch under the title — Tickets, Trace, Plan — and a ticket picked or a step opened comes up as a sheet from the bottom, which Back on a phone puts away first. The phone's former "Board" part is now "Tickets".
+
 ### Engines: how the app's own steps run, chosen per conversation
 
 - An engine says which of the app's own steps run in a conversation and with what numbers ([ADR 0085](docs/adr/0085-engines.md)): the scribe, the closing check, the settle, model escalation, retrospectives and reflections can be off, and the intake ceiling, hop pacing, the settle's quiet time, check-back spacing, the supervisor's pick-ups and the capability ceiling have numbers of their own. Rules the app stands on (stops, filing before waking) are not in it, and reading, judgement, compaction and the acceptance checks always run.

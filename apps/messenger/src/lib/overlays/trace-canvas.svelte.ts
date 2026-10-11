@@ -15,9 +15,9 @@
  * Everything about the job itself — its trace, its rounds, its folds — stays the component's own
  * state; this class only ever reads that through the getters it was built with, so it keeps
  * working across a reload of the same job or a switch to another one without being told. What it
- * does NOT own: the component keeps the one Escape listener, the fold/unfold-a-round arithmetic
- * (that also touches which rounds are folded, not just the camera) and the focus-token effect
- * (that also unfolds a round) — see TraceView.svelte for why.
+ * does NOT own: the component keeps the fold/unfold-a-round arithmetic (that also touches which
+ * rounds are folded, not just the camera) and the focus-token effect (that also unfolds a round) —
+ * see TraceView.svelte for why — and the job around it (JobLayout.svelte) the one Escape listener.
  */
 import { prefersReducedMotion } from "../reduced-motion.ts";
 import { deferWhileDragging } from "../workbench/pane-resize.svelte.ts";

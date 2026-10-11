@@ -44,3 +44,9 @@ Decision 3's "opens in place" changed: an opened step no longer hangs under its 
 第 5 条里「环节上的「改这个调用」打开它并选中那个调用」改了：要改一个调用就得离开流程、去分工页，再回来找原来那一步。现在「改这个调用」在环节的面板里展开这个调用自己的设置，和分工页里那个调用的是同一块（模型、它的提示词），提示词在盖住整个窗口的编辑器里打开；改的是调用本身，之后每一次都照新的跑。分工页照旧从工具菜单打开，卡片上的「在设置里看」照旧打开分工页。
 
 Decision 5's "Change this call on a step opens Roles at that call" changed: changing a call meant leaving the flow for Roles and finding the step again afterwards. "Change this call" now unfolds the call's own settings in the step's panel, the same block as that call's on Roles (its model, its prompts), a prompt opening in its editor over the whole window; it changes the call itself, for every later use. Roles still opens from Tools, and a card's "View in Settings" still opens Roles.
+
+## 2026-10-12 补记：环节在详情栏里 / A step opens in the inspector
+
+[ADR 0086](0086-a-job-is-one-tab.md) 把一件事做成一个标签之后，打开的环节不再浮在流程右侧，而是在流程旁边的详情栏里，占满那一栏、自己滚动；窄的时候详情栏是从底部拉起的面板，返回键先收起它。面板压住那一步的卡片时（只有窄的时候会），画布照旧滑开到卡片露出来。
+
+After [ADR 0086](0086-a-job-is-one-tab.md) made a job one tab, an opened step no longer lies over the flow's right edge but fills the inspector beside the flow, scrolling inside; narrow, the inspector is the sheet from the bottom, which Back puts away first. Where the sheet covers the step's card (only narrow), the board still slides until the card is clear.

@@ -83,15 +83,15 @@ test("your line's reading and filing sit between it and the turn it woke, each s
   view.close();
 });
 
-test("a step opens in a panel beside the board with its model, prompt and time, fetches its answer, and opens its call to change", async () => {
+test("a step opens in the inspector beside the board with its model, prompt and time, fetches its answer, and opens its call to change", async () => {
   const view = open({ trace: stepped(), pane: true });
   await until(view.host, ".trace-step");
   click(stepCards(view.host)[0]);
   await settle();
   const detail = view.host.querySelector(".trace-step-detail")!;
-  // Over the stage, not in the card's slot on the board, which keeps its size.
+  // In the inspector beside the board (ADR 0086), not in the card's slot, which keeps its size.
   expect(view.host.querySelector(".trace-flow .trace-step-detail")).toBeNull();
-  expect(detail.parentElement?.classList.contains("has-step-panel")).toBe(true);
+  expect(detail.closest(".job-inspector-inner")?.getAttribute("data-inspector")).toBe("step");
   expect(stepCards(view.host)[0]!.classList.contains("is-open")).toBe(true);
   expect([...detail.querySelectorAll(".trace-step-chip")].map((chip) => chip.textContent?.trim())).toEqual(["haiku-4.6", "思考 minimal", "提示词 · 默认", "2.3 秒"]);
   // The answer is open and fetched without being asked for.

@@ -4,8 +4,8 @@
  * for every ticket, so every edit goes out through the one queue here, one request at a time; two
  * places editing the same plan share one of these.
  *
- * What it does not own is the keyboard: the board says where a card's focus is and puts it back
- * once the card has mounted again in its new column.
+ * What it does not own is the keyboard: the board, while it is on screen, says where a card's focus
+ * is and puts it back once the card has mounted again in its new column (`attachFocus`).
  */
 import {
   isTicketAgentModel,
@@ -34,6 +34,10 @@ export type TicketEditsHost = {
   providers: () => readonly Provider[];
   onPatched: (ticket: Ticket) => void;
   onConflict: () => void;
+};
+
+/** Where the board's keyboard is, card by card. */
+export type TicketFocus = {
   /** Whether the keyboard is on this ticket's card. */
   cardHasFocus: (ticketId: string) => boolean;
   /** Put the keyboard back on the card once it has mounted again, unless something else took it. */
@@ -122,9 +126,26 @@ export class TicketEdits {
   });
 
   readonly #host: TicketEditsHost;
+  #focus: TicketFocus | null = null;
 
   constructor(host: TicketEditsHost) {
     this.#host = host;
+  }
+
+  /** The board on screen says where its cards' focus is; the returned call takes that back. */
+  attachFocus(focus: TicketFocus): () => void {
+    this.#focus = focus;
+    return () => {
+      if (this.#focus === focus) this.#focus = null;
+    };
+  }
+
+  #cardHasFocus(ticketId: string): boolean {
+    return this.#focus?.cardHasFocus(ticketId) ?? false;
+  }
+
+  #keepFocus(ticketId: string): void {
+    void this.#focus?.keepFocus(ticketId);
   }
 
   /** Ask once for the local agents and Claude Code, when the plan offers a ticket's model. */
@@ -276,11 +297,11 @@ export class TicketEdits {
         this.conflictNote = true;
         this.#host.onConflict();
       } else {
-        const focused = this.#host.cardHasFocus(next.id);
+        const focused = this.#cardHasFocus(next.id);
         this.optimistic = settled(this.optimistic, next);
         // Set after the card is back in its own column, so the note is not left on the node that unmounted.
         this.errorId = next.id;
-        if (focused) void this.#host.keepFocus(next.id);
+        if (focused) this.#keepFocus(next.id);
       }
     } finally {
       this.#requestsOut -= 1;
@@ -306,12 +327,12 @@ export class TicketEdits {
   }
 
   queueMove(ticketId: string, status: TicketStatus): void {
-    const focused = this.#host.cardHasFocus(ticketId);
+    const focused = this.#cardHasFocus(ticketId);
     this.confirming = this.confirming?.id === ticketId ? null : this.confirming;
     this.pending = enqueueMove(this.pending, ticketId, status);
     this.optimistic = enqueueMove(this.optimistic, ticketId, status);
     this.errorId = this.errorId === ticketId ? null : this.errorId;
-    if (focused) void this.#host.keepFocus(ticketId);
+    if (focused) this.#keepFocus(ticketId);
     void this.pump();
   }
 
