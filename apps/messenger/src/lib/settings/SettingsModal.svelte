@@ -4,7 +4,6 @@
 	import McpSettings from './McpSettings.svelte';
 	import LessonsSettings from './LessonsSettings.svelte';
 	import PromptsSettings from './PromptsSettings.svelte';
-	import RoutingTab from './RoutingTab.svelte';
 	import { editedCount } from './prompts-view.ts';
 	import { promptsTabItems, routingCounts as countRouting } from './routing-map.ts';
 	import AgentsTab from './AgentsTab.svelte';
@@ -126,7 +125,6 @@
 
 	let mcpSettings = $state<McpSettings>();
 	let modelsTab = $state<ModelsTab>();
-	let routingTab = $state<RoutingTab>();
 	let agentsTab = $state<AgentsTab>();
 
 	// Lessons the app learned (ADR 0050, engine level 8): the tab is there once there is one.
@@ -192,9 +190,7 @@
 		}
 		if (mcpSettings?.backFromEditor()) return true;
 		if (promptsSettings?.backFromEditor()) return true;
-		if (routingTab?.backFromEditor()) return true;
 		if (activeSettingsTab === 'models' && modelsTab?.backFromSection()) return true;
-		if (activeSettingsTab === 'routing' && routingTab?.backFromSection()) return true;
 		if (activeSettingsTab === 'agents' && agentsTab?.backFromSection()) return true;
 		if (activeSettingsTab === 'prompts' && promptsSettings?.backFromSection()) return true;
 		if (!mobileSettingsDetail) return false;
@@ -208,6 +204,12 @@
 	});
 
 	function openSettingsTab(tab: SettingsTab): void {
+		// Roles is a page of its own now (ADR 0083): its entry here only points there.
+		if (tab === 'routing') {
+			closeSettings();
+			runtime.openRoles();
+			return;
+		}
 		activeSettingsTab = tab;
 		mobileSettingsDetail = typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches;
 	}
@@ -220,14 +222,15 @@
 		if (!runtime.settingsOpen || !target) return;
 		const id = target.prompt?.id;
 		if (id?.startsWith('call.') && promptItems.length === 0 && !promptsFailed) return;
-		const owned = id ? promptItems.some((item) => item.id === id && item.role) : false;
-		openSettingsTab(owned ? 'routing' : 'prompts');
+		const role = id ? (promptItems.find((item) => item.id === id)?.role ?? null) : null;
+		if (role) {
+			// The call's own page opens the prompt, at its history, from the target left in place.
+			closeSettings();
+			runtime.openRoles(role);
+			return;
+		}
+		openSettingsTab('prompts');
 		if (!target.prompt) runtime.promptsTarget = null;
-	});
-
-	// A step's 「改这个调用」 on the flow (ADR 0083): Roles, at that call.
-	$effect(() => {
-		if (runtime.settingsOpen && runtime.rolesTarget) openSettingsTab('routing');
 	});
 
 	function settingsTabLabel(tab: SettingsTab): string {
@@ -257,8 +260,6 @@
 	const mainTitle = $derived(
 		(activeSettingsTab === 'models'
 			? modelsTab?.sectionTitle()
-			: activeSettingsTab === 'routing'
-				? routingTab?.sectionTitle()
 			: activeSettingsTab === 'agents'
 				? agentsTab?.sectionTitle()
 				: activeSettingsTab === 'prompts'
@@ -467,9 +468,9 @@
 					>✕</button>
 				</div>
 
-			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'} class:is-prompts={activeSettingsTab === 'prompts'} class:is-models={activeSettingsTab === 'models' || activeSettingsTab === 'routing'}>
-				<!-- Models, Roles and Prompts scroll their own page, so they show these there. -->
-				{#if activeSettingsTab !== 'models' && activeSettingsTab !== 'prompts' && activeSettingsTab !== 'routing'}{@render settingsNotices()}{/if}
+			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'} class:is-prompts={activeSettingsTab === 'prompts'} class:is-models={activeSettingsTab === 'models'}>
+				<!-- Models and Prompts scroll their own page, so they show these there. -->
+				{#if activeSettingsTab !== 'models' && activeSettingsTab !== 'prompts'}{@render settingsNotices()}{/if}
 
 				{#if activeSettingsTab === 'general'}
 					<GeneralTab
@@ -505,18 +506,6 @@
 							/>
 						{/snippet}
 					</ModelsTab>
-				{:else if activeSettingsTab === 'routing'}
-					<RoutingTab
-						bind:this={routingTab}
-						{runtime}
-						{t}
-						{snapshot}
-						items={promptItems}
-						loadFailed={promptsFailed}
-						{closeSettings}
-						openTab={(tab) => openSettingsTab(tab)}
-						notices={settingsNotices}
-					/>
 				{:else if activeSettingsTab === 'agents'}
 					<!-- Agents that run a Bot's turns themselves (ADR 0061, ADR 0079): one line each, opened one at a time. -->
 					<div class="settings-tab-pane">

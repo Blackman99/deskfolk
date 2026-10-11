@@ -6,7 +6,17 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+### The flow draws the app's own calls
+
+- A round of the flow is no longer only who woke whom ([ADR 0083](docs/adr/0083-flow-draws-the-apps-calls.md)). The app's own calls are drawn as steps: under a line of yours come its reading, where it belongs, the scribe and filing, then the turns it woke; on a group line naming nobody each Bot's judgement is a step, and a Bot that took it up hangs from its own; a turn's compactions, readings of its words and the settle after it hang under that turn; the picture judge, reflections and retrospectives hang under the last card before them.
+- Each step says what it concluded (read as stop; goes on with this job; stays out: not mine; failed 1/2) and opens in place with the model, thinking, whether the prompt was the default or your edit, the time taken and the raw answer, with "Jump to the line" and "Change this call". A round's header counts its steps and the ones that went wrong; those are drawn in the warning colour, and the toolbar can light them or hide every step with one press.
+- A line filed under no job has "Flow" in its right-click menu too: what that line was read as, who judged what, and whom it woke.
+- Each use of one of the app's own calls leaves a call record: the prompt version and model it ran with, the line and turn it was about, its conclusion and raw answer. Records go with a deleted or cleared conversation, each conversation keeps its newest 2000, and Bots can read them as a record. Rounds from before this have no records and show their cards only.
+
+### Roles is a page of its own
+
+- Roles is no longer in Settings: open it from Tools (after Terminal), as a tab on a wide window and as a page in place of the list on a phone. "Change this call" on a step of the flow, and a card's "View in Settings" about one of a call's prompts, open it at that call.
+- Settings keeps a Roles entry that closes Settings and opens Roles, still showing how many calls you changed and the conflict colour. "Where windows open" has a Roles row, a new tab by default.
 
 ## 0.1.0-rc.17 — 2026-10-11
 

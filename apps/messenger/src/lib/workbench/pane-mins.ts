@@ -28,6 +28,8 @@ export const PANE_MINS = {
   routines: { width: 520, height: 420 },
   spend: { width: 280, height: 220 },
   usage: { width: 280, height: 220 },
+  /** The map alone below the two-column width; a call then opens as its own page. */
+  roles: { width: 300, height: 260 },
 } as const satisfies Record<string, PaneMin>;
 
 export type PaneKind = keyof typeof PANE_MINS;

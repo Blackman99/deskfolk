@@ -304,6 +304,10 @@
 	{#await import('../usage/UsageTab.svelte') then { default: UsageTab }}
 		<UsageTab {runtime} {t} />
 	{/await}
+{:else if content.kind === 'roles'}
+	{#await import('../settings/RolesPage.svelte') then { default: RolesPage }}
+		<RolesPage {runtime} {t} />
+	{/await}
 {:else if content.kind === 'terminal'}
 	<TerminalView
 		api={runtime.client}

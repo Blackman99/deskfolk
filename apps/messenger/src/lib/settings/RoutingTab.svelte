@@ -14,7 +14,7 @@
 	import { askOnce, ROUTING_LANES, routingNodes, routingNodeView, type RoutingNodeId } from './routing-map.ts';
 
 	/**
-	 * Settings › Roles (ADR 0082): the app's own calls on a map of where they run, and the one picked
+	 * Roles (ADR 0082; its own page since ADR 0083, see RolesPage): the app's own calls on a map of where they run, and the one picked
 	 * with its model and its prompts beside it, each in a scroll of its own, so a pick changes what is
 	 * beside the map and moves nothing. A phone shows the map alone and opens a call as a page of its
 	 * own; a prompt opens in the same editor as on Settings › Prompts.

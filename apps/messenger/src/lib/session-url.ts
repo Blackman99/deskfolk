@@ -27,6 +27,8 @@ export const OVERLAY_SCREEN = "screen";
 /** A phone's pages in place of the conversation list: usage and the archived conversations. */
 export const OVERLAY_USAGE = "usage";
 export const OVERLAY_ARCHIVED = "archived";
+/** Roles (ADR 0083) as a page where there is no workbench to hold its tab. */
+export const OVERLAY_ROLES = "roles";
 
 export type UrlOverlay =
   | { kind: "none" }
@@ -40,7 +42,8 @@ export type UrlOverlay =
   | { kind: "terminal" }
   | { kind: "screen" }
   | { kind: "usage" }
-  | { kind: "archived" };
+  | { kind: "archived" }
+  | { kind: "roles" };
 
 export type UrlView = {
   selectedId: string | null;
@@ -81,6 +84,7 @@ export function overlayFromUrl(url: URL, remote = false): UrlOverlay {
   if (raw === OVERLAY_SCREEN) return remote ? { kind: "screen" } : { kind: "none" };
   if (raw === OVERLAY_USAGE) return { kind: "usage" };
   if (raw === OVERLAY_ARCHIVED) return { kind: "archived" };
+  if (raw === OVERLAY_ROLES) return { kind: "roles" };
   return { kind: "none" };
 }
 
@@ -110,7 +114,7 @@ export function overlayFromFlags(flags: {
   /** Optional for the same reason. Absent means the remote screen page is closed. */
   screenOpen?: boolean;
   /** Optional for the same reason. Absent means no phone page is over the conversation list. */
-  listPage?: "usage" | "archived" | null;
+  listPage?: "usage" | "archived" | "roles" | null;
 }): UrlOverlay {
   if (flags.settingsOpen) return { kind: "settings" };
   if (flags.sessionSettingsOpen) {
@@ -176,7 +180,7 @@ export function sessionUrl(current: URL, view: UrlView, remote = false): string 
 
   // The calendar, the ledger, the phone's terminal and the remote screen each replace the main column. A
   // preview beside one, or over it on a phone, would cover that page, so it does not carry a file.
-  const roster = view.overlay.kind === "routines" || view.overlay.kind === "spend" || view.overlay.kind === "terminal" || view.overlay.kind === "screen" || view.overlay.kind === "usage" || view.overlay.kind === "archived";
+  const roster = view.overlay.kind === "routines" || view.overlay.kind === "spend" || view.overlay.kind === "terminal" || view.overlay.kind === "screen" || view.overlay.kind === "usage" || view.overlay.kind === "archived" || view.overlay.kind === "roles";
   if (remote) {
     next.searchParams.delete(PREVIEW_PARAM);
     next.searchParams.delete(WORKSPACE_FILE_PARAM);
@@ -255,6 +259,9 @@ function writeOverlay(url: URL, overlay: UrlOverlay): void {
   if (overlay.kind === "archived") {
     url.searchParams.set(OVERLAY_PARAM, OVERLAY_ARCHIVED);
   }
+  if (overlay.kind === "roles") {
+    url.searchParams.set(OVERLAY_PARAM, OVERLAY_ROLES);
+  }
 }
 
 function sameSearch(a: URL, b: URL): boolean {
@@ -313,7 +320,7 @@ export function overlayApply(
 }
 
 function resolveOverlay(wanted: UrlOverlay, ctx: OverlayContext): UrlOverlay | "wait" {
-  if (wanted.kind === "none" || wanted.kind === "settings" || wanted.kind === "routines" || wanted.kind === "spend" || wanted.kind === "terminal" || wanted.kind === "screen" || wanted.kind === "usage" || wanted.kind === "archived") return wanted;
+  if (wanted.kind === "none" || wanted.kind === "settings" || wanted.kind === "routines" || wanted.kind === "spend" || wanted.kind === "terminal" || wanted.kind === "screen" || wanted.kind === "usage" || wanted.kind === "archived" || wanted.kind === "roles") return wanted;
   if (wanted.kind === "workspace") {
     if (!ctx.snapshotReady) return "wait";
     if (!ctx.hasWorkspacePath) return { kind: "none" };

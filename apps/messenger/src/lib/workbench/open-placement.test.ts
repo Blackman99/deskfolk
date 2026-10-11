@@ -40,6 +40,7 @@ test("the defaults keep the conversation in view: its things beside it, terminal
     routines: "tab",
     spend: "tab",
     usage: "tab",
+    roles: "tab",
   });
 });
 

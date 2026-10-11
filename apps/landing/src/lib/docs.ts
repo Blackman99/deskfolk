@@ -127,6 +127,7 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Default model',
     'Built-in models',
     'Model choice log',
+    'Call record',
     'MCP',
     '向导',
     'Routine',

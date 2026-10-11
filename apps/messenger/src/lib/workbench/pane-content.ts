@@ -53,7 +53,9 @@ export type PaneContent =
   /** One ledger. Like the calendar, asking for it again focuses the pane that already has it. */
   | { kind: "spend" }
   /** Every agent's usage (ADR 0080). One, like the ledger; never in the URL. */
-  | { kind: "usage" };
+  | { kind: "usage" }
+  /** Roles (ADR 0082, a page of its own since ADR 0083): the app's own calls, their models and prompts. One. */
+  | { kind: "roles" };
 
 export type PaneKind = PaneContent["kind"];
 export type ChatContent = Extract<PaneContent, { kind: "chat" }>;
@@ -68,6 +70,7 @@ export const PANE_KINDS: readonly PaneKind[] = [
   "routines",
   "spend",
   "usage",
+  "roles",
 ];
 
 export const PANE_KIND_SET: ReadonlySet<string> = new Set(PANE_KINDS);
@@ -119,6 +122,7 @@ export function contentToParams(content: PaneContent): Record<string, string> {
     case "routines":
     case "spend":
     case "usage":
+    case "roles":
       return {};
   }
 }
@@ -152,6 +156,8 @@ export function contentOfTab(tab: WorkbenchTab): PaneContent | null {
       return { kind: "spend" };
     case "usage":
       return { kind: "usage" };
+    case "roles":
+      return { kind: "roles" };
     default:
       return null;
   }

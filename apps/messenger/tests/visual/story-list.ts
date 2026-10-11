@@ -56,9 +56,9 @@ export const STORY_SIZES = {
 	'settings-general': { width: 1000, height: 720 },
 	'settings-open-placement': { width: 1000, height: 820 },
 	'settings-providers': { width: 1000, height: 720 },
-	'settings-routing-ladder': { width: 1000, height: 720 },
-	'settings-routing-ladder-claude': { width: 1000, height: 720 },
-	'settings-routing-ladder-claude-narrow': { width: 390, height: 844 },
+	'roles-ladder': { width: 1000, height: 720 },
+	'roles-ladder-claude': { width: 1000, height: 720 },
+	'roles-ladder-claude-narrow': { width: 390, height: 844 },
 	'settings-models-speech': { width: 1000, height: 720 },
 	'settings-models-narrow': { width: 390, height: 844 },
 	// The two-level model picker (endpoints, Claude, every local agent): sources and models, a search, the phone's sheet.
@@ -74,8 +74,8 @@ export const STORY_SIZES = {
 	'settings-mcp': { width: 1000, height: 720 },
 	'settings-prompts': { width: 1000, height: 720 },
 	'settings-prompts-narrow': { width: 390, height: 844 },
-	'settings-routing': { width: 1000, height: 720 },
-	'settings-routing-narrow': { width: 390, height: 844 },
+	'roles': { width: 1000, height: 720 },
+	'roles-narrow': { width: 390, height: 844 },
 	'settings-about': { width: 1000, height: 720 },
 	// The remote access tab before the Mac has a relay, with the deploy-your-own guide unfolded.
 	'settings-remote-guide': { width: 1000, height: 900 },

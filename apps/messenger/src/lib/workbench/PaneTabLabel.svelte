@@ -40,6 +40,13 @@
 				{:else if kind === 'usage'}
 					<path d="M12 14l4-4"></path>
 					<path d="M3.34 19a10 10 0 1 1 17.32 0"></path>
+				{:else if kind === 'roles'}
+					<circle cx="5" cy="6" r="2"></circle>
+					<circle cx="19" cy="6" r="2"></circle>
+					<circle cx="12" cy="18" r="2"></circle>
+					<path d="M7 6h10"></path>
+					<path d="M6 8l5 8"></path>
+					<path d="M18 8l-5 8"></path>
 				{:else if kind === 'trace' && traceView === 'board'}
 					<rect x="3" y="3" width="5" height="18" rx="1"></rect>
 					<rect x="10" y="3" width="5" height="12" rx="1"></rect>

@@ -29,7 +29,8 @@ export type OpenKind =
   | "terminal"
   | "routines"
   | "spend"
-  | "usage";
+  | "usage"
+  | "roles";
 
 export const OPEN_KINDS: readonly OpenKind[] = [
   "chat",
@@ -43,6 +44,7 @@ export const OPEN_KINDS: readonly OpenKind[] = [
   "routines",
   "spend",
   "usage",
+  "roles",
 ];
 
 /**
@@ -105,6 +107,7 @@ export const OPEN_PLACEMENT_DEFAULTS: Readonly<Record<OpenKind, OpenPlacement>> 
   routines: "tab",
   spend: "tab",
   usage: "tab",
+  roles: "tab",
 };
 
 export function isOpenPlacement(value: unknown): value is OpenPlacement {

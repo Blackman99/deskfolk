@@ -16,6 +16,7 @@ export const zh = {
     routines: { name: "日程", hint: "工具里的「日程」" },
     spend: { name: "花费", hint: "工具里的「花费」、菜单栏 视图 › 花费" },
     usage: { name: "用量", hint: "工具里的「用量」、菜单栏图标里的「查看全部用量…」" },
+    roles: { name: "分工", hint: "工具里的「分工」、流程里一个环节的「改这个调用」" },
   },
   groups: { tabs: "标签页", split: "分屏：新开一块", side: "相邻窗格：有就放进去，没有再分出", float: "浮窗" },
   placements: {
@@ -54,6 +55,7 @@ export const en: CopyShape<typeof zh> = {
     routines: { name: "Calendar", hint: "Calendar in Tools" },
     spend: { name: "Spend", hint: "Spend in Tools, and View › Spend in the menu bar" },
     usage: { name: "Usage", hint: "Usage in Tools, and “Show all usage…” in the menu bar icon's menu" },
+    roles: { name: "Roles", hint: "Roles in Tools, and “Change this call” on a step of the flow" },
   },
   groups: { tabs: "Tabs", split: "Split: a new pane", side: "Neighbouring pane: into it, or split one off", float: "Floating" },
   placements: {

@@ -51,6 +51,7 @@ import GlobalSearch from '../../src/lib/search/GlobalSearch.svelte';
 import ChatHeader from '../../src/lib/chat/ChatHeader.svelte';
 import ChatStage from '../../src/lib/chat/ChatStage.svelte';
 import SettingsModal from '../../src/lib/settings/SettingsModal.svelte';
+import RolesPage from '../../src/lib/settings/RolesPage.svelte';
 import { noBuiltinModels } from '../../src/lib/settings/builtin-models.ts';
 import { updateChecker } from '../../src/lib/update-checker.svelte.ts';
 import ArtifactPreview from '../../src/lib/overlays/ArtifactPreview.svelte';
@@ -450,7 +451,6 @@ const routingClient = {
 
 /** Roles once the prompts have come in, a call picked when named. */
 const routingNode = (node?: string) => async (host: HTMLElement) => {
-	settingsTab('routing')(host);
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	flushSync();
 	if (node) host.querySelector<HTMLButtonElement>(`[data-routing-node="${node}"]`)?.click();
@@ -1210,20 +1210,20 @@ const defs: Record<StoryName, Story> = {
 	},
 	'settings-providers': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('models') },
 	// The model ladder, on Roles' Bot turn, on an engine level that has one.
-	'settings-routing-ladder': {
-		component: SettingsModal as never,
-		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClient }) }),
+	'roles-ladder': {
+		component: RolesPage as never,
+		props: { runtime: fakeRuntime(world, { client: ladderClient }), t },
 		afterMount: routingNode('turn')
 	},
 	// Claude models on the ladder (ADR 0076): each Claude rung picks its effort and, with two accounts, its account.
-	'settings-routing-ladder-claude': {
-		component: SettingsModal as never,
-		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClaudeClient }) }),
+	'roles-ladder-claude': {
+		component: RolesPage as never,
+		props: { runtime: fakeRuntime(world, { client: ladderClaudeClient }), t },
 		afterMount: routingNode('turn')
 	},
-	'settings-routing-ladder-claude-narrow': {
-		component: SettingsModal as never,
-		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClaudeClient }) }),
+	'roles-ladder-claude-narrow': {
+		component: RolesPage as never,
+		props: { runtime: fakeRuntime(world, { client: ladderClaudeClient }), t, host: 'page' },
 		afterMount: routingNode('turn')
 	},
 	// Speech recognition's own tab, set up and ready: no title of its own under the tab, its switch first.
@@ -1288,16 +1288,16 @@ const defs: Record<StoryName, Story> = {
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: promptsClient }) }),
 		afterMount: promptsSection('turn')
 	},
-	// Roles (ADR 0082): the map of the app's own calls, two of them with a model of their own, the organizer picked and its page brought into view.
-	'settings-routing': {
-		component: SettingsModal as never,
-		props: settingsProps({ runtime: fakeRuntime(routingWorld, { settingsOpen: true, client: routingClient }) }),
+	// Roles (ADR 0082, a page of its own since ADR 0083): the map of the app's own calls, two of them with a model of their own, the organizer picked and its page brought into view.
+	'roles': {
+		component: RolesPage as never,
+		props: { runtime: fakeRuntime(routingWorld, { client: routingClient }), t },
 		afterMount: routingNode('organizer')
 	},
-	// On a phone, Roles is the map alone, top to bottom; a call opens as a page of its own.
-	'settings-routing-narrow': {
-		component: SettingsModal as never,
-		props: settingsProps({ runtime: fakeRuntime(routingWorld, { settingsOpen: true, client: routingClient }) }),
+	// On a phone, Roles is a page in place of the list: the map alone, top to bottom; a call opens as a page of its own.
+	'roles-narrow': {
+		component: RolesPage as never,
+		props: { runtime: fakeRuntime(routingWorld, { client: routingClient }), t, host: 'page' },
 		afterMount: routingNode()
 	},
 	// On a phone, Prompts is a list of its groups, each saying how many it holds and how many are edited.

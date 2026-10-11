@@ -22,6 +22,7 @@
 	import PinnedRoster from './PinnedRoster.svelte';
 	import SidebarFoot from './SidebarFoot.svelte';
 	import UsagePage from '../usage/UsagePage.svelte';
+	import RolesPage from '../settings/RolesPage.svelte';
 	import { usageWidget } from '../usage/usage-widget.svelte.ts';
 	import CreateFab from './CreateFab.svelte';
 	import WorkingFilter from './WorkingFilter.svelte';
@@ -171,6 +172,8 @@
 	const viewingArchived = $derived(phone ? runtime.listPage === 'archived' : archivedInList);
 	/** A phone's usage page (ADR 0080), opened from Tools; wider windows have the usage tab instead. */
 	const viewingUsage = $derived(phone && runtime.listPage === 'usage');
+	/** Roles (ADR 0083) where there is no workbench to hold its tab: a page in place of the list. */
+	const viewingRoles = $derived(runtime.listPage === 'roles');
 
 	function openArchived(): void {
 		if (phone) runtime.openListPage('archived');
@@ -295,7 +298,9 @@
 	/>
 	{/if}
 	<div class="side-body relative flex-1 min-h-0 flex flex-col">
-	{#if phone && viewingUsage}
+	{#if viewingRoles}
+		<RolesPage {runtime} {t} host="page" onBack={() => runtime.closeListPage()} />
+	{:else if phone && viewingUsage}
 		<UsagePage {runtime} {t} onBack={() => runtime.closeListPage()} />
 	{:else}
 	{#if phone && viewingArchived}
@@ -522,6 +527,7 @@
 			routines: !workbench && runtime.routinesOpen,
 			spend: !workbench && runtime.spendOpen,
 			usage: phone ? viewingUsage : !workbench && usageWidget.open,
+			roles: viewingRoles,
 			terminal: !workbench && runtime.terminalOpen,
 			screen: runtime.screenOpen,
 			archived: viewingArchived
@@ -532,6 +538,7 @@
 			if (!phone) return runtime.openUsage();
 			runtime.openListPage('usage');
 		}}
+		onOpenRoles={() => runtime.openRoles()}
 		onOpenTerminal={() => (workbench ? onNewTerminal() : runtime.openTerminal())}
 		onOpenScreen={runtime.screenOffered ? () => runtime.openRemoteScreen() : null}
 		screenHost={runtime.screenHost}
@@ -562,7 +569,7 @@
 	The headers' buttons are 22px targets at the top of a screen you hold from the bottom, and
 	there are two of them saying the same kind of thing; this asks which once, where your thumb is.
 -->
-{#if phone && !selected && !searchOpen && !viewingArchived && !viewingUsage && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen && !runtime.terminalOpen && !runtime.screenOpen}
+{#if phone && !selected && !searchOpen && !viewingArchived && !viewingUsage && !viewingRoles && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen && !runtime.terminalOpen && !runtime.screenOpen}
 	<CreateFab {t} bind:createMenuOpen bind:wrapEl={fabEl} {onCreateBot} {onCreateGroup} />
 {/if}
 

@@ -139,47 +139,11 @@ test("before setup is done, its banner shows on Models too, inside the page unde
   expect(host.querySelector(".models-scroll > .wizard-banner")).toBeTruthy();
   click(host.querySelector('[data-section="speech"]'));
   expect(host.querySelector(".models-scroll > .wizard-banner")).toBeTruthy();
-  // Roles shows it once too, over its map.
-  click(host.querySelector<HTMLButtonElement>('[data-settings-tab="routing"]'));
-  expect(host.querySelectorAll(".wizard-banner")).toHaveLength(1);
-  expect(host.querySelector(".routing-top > .wizard-banner")).toBeTruthy();
   // Prompts shows it once too, over its search and tabs.
   click(host.querySelector<HTMLButtonElement>('[data-settings-tab="prompts"]'));
   expect(host.querySelectorAll(".wizard-banner")).toHaveLength(1);
   expect(host.querySelector(".prompts-top > .wizard-banner")).toBeTruthy();
   close();
-});
-
-function openTurn(host: HTMLElement): void {
-  click(host.querySelector<HTMLButtonElement>('[data-settings-tab="routing"]'));
-  click(host.querySelector<HTMLButtonElement>('[data-routing-node="turn"]'));
-}
-
-test("the model ladder is set on Roles, on a Bot's turn; the turn's node names its rungs", async () => {
-  const { host, close } = open({ client: ladderClient() });
-  openTurn(host);
-  await sleep(0);
-  flushSync();
-  expect(host.querySelector('[data-routing-node="turn"]')?.textContent).toContain(t.routing.turn.ladder("gemini-3.8-flash → grok-4.6"));
-  const part = host.querySelector('[data-routing-detail="turn"] [data-routing-part="ladder"]')!;
-  expect(part.textContent).toContain(t.modelLadder.hint);
-  expect([...part.querySelectorAll(".ladder-name")].map((el) => el.textContent)).toEqual(["gemini-3.8-flash", "grok-4.6"]);
-  close();
-  // An engine level without a ladder says so, and so does a ladder with no endpoint to order.
-  const off = open();
-  openTurn(off.host);
-  await sleep(0);
-  flushSync();
-  expect(off.host.querySelector("[data-model-ladder]")).toBeNull();
-  expect(off.host.querySelector('[data-routing-part="ladder"]')?.textContent).toContain(t.routing.turn.ladderOff);
-  off.close();
-  const bare = open({ providers: [], client: ladderClient() });
-  openTurn(bare.host);
-  await sleep(0);
-  flushSync();
-  expect(bare.host.querySelector("[data-model-ladder]")).toBeNull();
-  expect(bare.host.querySelector('[data-routing-part="ladder"]')?.textContent).toContain(t.routing.turn.ladderNoEndpoint);
-  bare.close();
 });
 
 test("with or without an endpoint, speech recognition is beside the endpoints", async () => {
@@ -198,27 +162,6 @@ test("with or without an endpoint, speech recognition is beside the endpoints", 
   empty.close();
 });
 
-function openRouting(host: HTMLElement): void {
-  click(host.querySelector<HTMLButtonElement>('[data-settings-tab="routing"]'));
-}
-const node = (host: HTMLElement, id: string) => host.querySelector<HTMLButtonElement>(`[data-routing-node="${id}"]`);
-
-test("set up on a local agent with no endpoint, each call's model is there to change on Roles; with neither, only its prompts", async () => {
-  const choice = { runner: "codex", model: "gpt-5.6", config_dir: null };
-  const { host, close } = open({ providers: [], builtinModels: { reader: choice, organizer: choice, scribe: choice, judge: choice, composer: choice, judgement: choice, reflection: choice, retrospective: choice, compaction: choice } });
-  openRouting(host);
-  await sleep(0);
-  flushSync();
-  expect(node(host, "reader")?.textContent).toContain("gpt-5.6 · Codex");
-  expect(host.querySelector('[data-routing-detail="reader"] [data-side-model="reader"]')).toBeTruthy();
-  close();
-  const none = open({ providers: [] });
-  openRouting(none.host);
-  expect(none.host.querySelector("[data-side-model]")).toBeNull();
-  expect(none.host.querySelector('[data-routing-part="model"]')?.textContent).toContain(t.routing.noEndpoint);
-  none.close();
-});
-
 const callPrompts = () => [
   promptRow("turn.system", "turn"),
   { ...promptRow("call.organizer", "call", "edited"), role: "organizer" },
@@ -226,9 +169,9 @@ const callPrompts = () => [
   { ...promptRow("call.read_bot_line", "call"), role: "reader" },
 ];
 
-test("Roles sits after Models: a map of the app's own calls, each with its model and its prompts under it", async () => {
+test("Roles is a page of its own: Settings keeps a pointer after Models, with how many calls you changed (ADR 0083)", async () => {
   const provider = aProvider();
-  const { host, close } = open({
+  const { host, runtime, close } = open({
     providers: [provider],
     builtinModels: { ...noBuiltinModels(), scribe: { provider_id: provider.id, model: "grok-4.6" } },
     client: { listLessons: async () => [], listPrompts: async () => callPrompts(), claudeCode: async () => { throw new Error("404"); }, modelLadder: async () => ({ items: [], available: false }), agents: async () => { throw new Error("404"); } },
@@ -239,43 +182,20 @@ test("Roles sits after Models: a map of the app's own calls, each with its model
   expect(tabs.indexOf("routing")).toBe(tabs.indexOf("models") + 1);
   // Two calls changed: the scribe's model and the organizer's prompt.
   expect(host.querySelector('[data-settings-tab="routing"] .tab-count')?.textContent).toBe("2");
-  openRouting(host);
-  expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.routing.tab);
-  expect([...host.querySelectorAll("[data-routing-lane]")].map((el) => el.getAttribute("data-routing-lane"))).toEqual(["line", "group", "accepted", "overturned", "compose"]);
-  expect(host.querySelectorAll("[data-routing-node]")).toHaveLength(10);
-  expect(node(host, "scribe")?.textContent).toContain("grok-4.6");
-  expect(node(host, "composer")?.textContent).toContain(t.routing.follows.default);
-  expect(node(host, "compaction")?.textContent).toContain(t.routing.follows.bot);
-  // Reading is picked first: its model and its two prompts.
-  expect(node(host, "reader")?.getAttribute("aria-pressed")).toBe("true");
-  expect([...host.querySelectorAll('[data-routing-detail="reader"] [data-prompt]')].map((el) => el.getAttribute("data-prompt"))).toEqual(["call.read_user_line", "call.read_bot_line"]);
-  click(node(host, "organizer"));
-  expect(host.querySelector('[data-routing-detail="organizer"] [data-side-model="organizer"]')).toBeTruthy();
-  // The call sits beside the map: the map and the call each scroll on their own, and ↓ walks on to the next call.
-  expect(host.querySelector(".routing-map-col [data-routing-map]")).toBeTruthy();
-  expect(host.querySelector(".routing-detail-col [data-routing-detail]")).toBeTruthy();
-  node(host, "organizer")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
-  flushSync();
-  expect(node(host, "judge")?.getAttribute("aria-pressed")).toBe("true");
-  expect(host.querySelector('[data-routing-detail="judge"]')).toBeTruthy();
-  node(host, "judge")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
-  flushSync();
-  expect(host.querySelector('[data-routing-detail="organizer"] [data-prompt="call.organizer"] .prompts-chip')).toBeTruthy();
-  // The Bot's own turn is set elsewhere, and says where.
-  click(node(host, "turn"));
-  expect(host.querySelector('[data-routing-detail="turn"]')?.textContent).toContain(t.routing.turn.hint);
-  click(host.querySelector('[data-routing-link="prompts"]'));
-  expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabPrompts);
+  click(host.querySelector('[data-settings-tab="routing"]'));
+  expect(runtime.calls.filter((call) => call.name === "openRoles")).toEqual([{ name: "openRoles", args: [] }]);
+  expect(host.querySelector("[data-routing-map]")).toBeNull();
   // Prompts keeps only what no call owns, counts only that, and points to Roles for the rest.
+  click(host.querySelector('[data-settings-tab="prompts"]'));
   expect(host.querySelector('[data-prompt="call.organizer"]')).toBeNull();
   expect(host.querySelector('[data-prompt="turn.system"]')).toBeTruthy();
   expect(host.querySelector('[data-settings-tab="prompts"] .tab-count')).toBeNull();
   click(host.querySelector("[data-prompts-moved] button"));
-  expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.routing.tab);
+  expect(runtime.calls.filter((call) => call.name === "openRoles")).toHaveLength(2);
   close();
 });
 
-test("a card about one of the calls' prompts opens Roles at that call, with the prompt's history open", async () => {
+test("a card about one of the calls' prompts opens Roles at that call, leaving the prompt for it to open", async () => {
   const client = {
     listPrompts: () => new Promise((resolve) => setTimeout(() => resolve(callPrompts()), 20)),
     listLessons: async () => [],
@@ -284,14 +204,12 @@ test("a card about one of the calls' prompts opens Roles at that call, with the 
     claudeCode: async () => { throw new Error("404"); },
     agents: async () => { throw new Error("404"); },
   };
-  const { host, runtime, close } = open({ client, promptsTarget: { prompt: { id: "call.organizer", locale: "zh", revisionId: "rev-1" } } });
+  const target = { prompt: { id: "call.organizer", locale: "zh", revisionId: "rev-1" } };
+  const { runtime, close } = open({ client, promptsTarget: target });
   await sleep(60);
   flushSync();
-  expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.routing.tab);
-  expect(runtime.promptsTarget).toBeNull();
-  expect(node(host, "organizer")?.getAttribute("aria-pressed")).toBe("true");
-  expect(document.querySelector(".prompt-editor-modal h2")?.textContent).toBe("标题 call.organizer");
-  expect(document.activeElement?.classList.contains("prompt-editor-backdrop")).toBe(true);
+  expect(runtime.calls.filter((call) => call.name === "openRoles")).toEqual([{ name: "openRoles", args: ["organizer"] }]);
+  expect(runtime.promptsTarget).toEqual(target);
   close();
 });
 
@@ -637,54 +555,6 @@ test("on a phone, Models lists its sections with what each is set to, and opens 
   });
 });
 
-test("on a phone, Roles is the map alone; a call opens as a page of its own, and Back walks out to the map, then settings", async () => {
-  await withMobileViewport(async () => {
-    const runtime = fakeRuntime({ providers: [aProvider()] });
-    runtime.settingsOpen = true;
-    runtime.client = { listLessons: async () => [], listPrompts: async () => callPrompts(), getPrompt: () => new Promise(() => {}), modelLadder: async () => ({ items: [], available: false }), claudeCode: async () => { throw new Error("404"); }, agents: async () => { throw new Error("404"); } } as never;
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    const app = mount(SettingsModal, { target: host, props: {
-      runtime, t, saveFailed: false, providerEditor: null,
-      confirmingProvider: false, confirmingIndependent: false,
-      patchImmediate: async () => true, openDeleteProviderConfirm: () => {},
-      closeSettings: () => {},
-    } });
-    flushSync();
-    try {
-      const title = () => host.querySelector(".settings-main-title")?.textContent;
-      openRouting(host);
-      await sleep(10);
-      flushSync();
-      expect(host.querySelector(".routing-map.is-vertical")).toBeTruthy();
-      expect(host.querySelector("[data-routing-detail]")).toBeNull();
-      click(node(host, "reader"));
-      expect(title()).toContain(t.builtinModels.roles.reader.name);
-      expect(host.querySelector("[data-routing-map]")).toBeNull();
-      click(host.querySelector('[data-prompt="call.read_user_line"]'));
-      await sleep(10);
-      flushSync();
-      expect(document.querySelector(".prompt-editor-modal")).toBeTruthy();
-      // Back: out of the prompt, then the call, then Roles.
-      expect(app.backWithinSettings()).toBe(true);
-      await sleep(10);
-      flushSync();
-      expect(document.querySelector(".prompt-editor-modal")).toBeNull();
-      expect(title()).toContain(t.builtinModels.roles.reader.name);
-      click(host.querySelector(".settings-mobile-back"));
-      expect(title()).toContain(t.routing.tab);
-      expect(host.querySelector("[data-routing-map]")).toBeTruthy();
-      expect(app.backWithinSettings()).toBe(true);
-      flushSync();
-      expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeNull();
-    } finally {
-      void unmount(app);
-      flushSync();
-      host.remove();
-    }
-  });
-});
-
 test("on a phone with no endpoint yet, Models lists the endpoints and speech recognition", () => {
   withMobileViewport(() => {
     const { host, close } = open({ providers: [] });
@@ -778,7 +648,8 @@ test("mobile history back unwinds editors and categories before leaving settings
         return handled;
       };
       expect(back()).toBe(false);
-      for (const tab of host.querySelectorAll<HTMLButtonElement>(".settings-tab-btn")) {
+      // Roles is a page of its own (ADR 0083): its entry here leaves settings rather than opening a page.
+      for (const tab of host.querySelectorAll<HTMLButtonElement>('.settings-tab-btn:not([data-settings-tab="routing"])')) {
         click(tab);
         expect(back()).toBe(true);
         expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeNull();

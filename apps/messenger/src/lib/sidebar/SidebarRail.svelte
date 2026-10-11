@@ -319,6 +319,7 @@
 	{onOpenRoutines}
 	{onOpenSpend}
 	onOpenUsage={() => runtime.openUsage()}
+	onOpenRoles={() => runtime.openRoles()}
 	onOpenTerminal={() => (workbench ? onNewTerminal() : runtime.openTerminal())}
 	{onOpenArchived}
 />

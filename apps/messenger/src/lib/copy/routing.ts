@@ -2,6 +2,7 @@ import type { CopyShape } from "./shape.ts";
 
 export const zh = {
   tab: "分工",
+  elsewhere: "在单独的分工页里打开（工具 → 分工）",
   intro: "应用自己发起的每个模型调用，按什么时候跑排成一张图。选一个，设它用哪个模型、改它照哪几段提示词。",
   mapLabel: "调用分工图",
   lanes: {
@@ -45,6 +46,7 @@ export const zh = {
 
 export const en: CopyShape<typeof zh> = {
   tab: "Roles",
+  elsewhere: "Opens on its own Roles page (Tools → Roles)",
   intro: "Every model call the app makes on its own, mapped by when it runs. Pick one to set its model and edit the prompts it runs with.",
   mapLabel: "Map of the app's calls",
   lanes: {

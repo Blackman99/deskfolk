@@ -396,7 +396,7 @@ test('desktop footer exposes three labelled entries and dispatches each tool', (
     click(footer[1]);
     const items = [...host.querySelectorAll('.tools-menu-item')];
     expect(items.map((item) => item.textContent?.trim())).toEqual([
-      t.routines.title, spendCopyFor('zh').open, t.usage.open, t.terminal.newTab, t.sidebar.archivedSessions,
+      t.routines.title, spendCopyFor('zh').open, t.usage.open, t.terminal.newTab, t.routing.tab, t.sidebar.archivedSessions,
     ]);
     expect(host.querySelector('[role="separator"]')).not.toBeNull();
     click(items[index]);
@@ -433,12 +433,12 @@ test('desktop tools support arrows, Home, End, Escape, Tab and outside dismissal
   const items = [...host.querySelectorAll<HTMLButtonElement>('.tools-menu-item')];
   expect(document.activeElement).toBe(items[0]);
   press(items[0], 'ArrowUp');
-  expect(document.activeElement).toBe(items[4]);
-  press(items[4], 'ArrowDown');
+  expect(document.activeElement).toBe(items[5]);
+  press(items[5], 'ArrowDown');
   expect(document.activeElement).toBe(items[0]);
   press(items[0], 'End');
-  expect(document.activeElement).toBe(items[4]);
-  press(items[4], 'Home');
+  expect(document.activeElement).toBe(items[5]);
+  press(items[5], 'Home');
   expect(document.activeElement).toBe(items[0]);
   press(items[0], 'Escape');
   expect(host.querySelector('.tools-menu')).toBeNull();
@@ -559,7 +559,8 @@ test("on a phone the calendar and the terminal live behind one button", () => {
     expect(items.indexOf(spendCopyFor("zh").open)).toBe(1);
     expect(items.indexOf(t.usage.open)).toBe(2);
     expect(items.indexOf(t.terminal.title)).toBe(3);
-    expect(items.indexOf(t.sidebar.archivedSessions)).toBe(4);
+    expect(items.indexOf(t.routing.tab)).toBe(4);
+    expect(items.indexOf(t.sidebar.archivedSessions)).toBe(5);
 
     const terminalItem = [...host.querySelectorAll<HTMLButtonElement>('.tools-menu-item')].find((item) => item.textContent?.includes(t.terminal.title));
     click(terminalItem);
@@ -765,5 +766,17 @@ test("the archived list has no working filter", () => {
   expect(host.querySelector(".working-filter")).toBeNull();
   click(host.querySelector(".btn-back-sessions"));
   expect(toggle()).not.toBeNull();
+  close();
+});
+
+test("Tools opens Roles (ADR 0083); with no workbench to hold its tab, it is a page in place of the list", () => {
+  const { host, runtime, close } = open([], null, true);
+  click(host.querySelector('.tools-entry'));
+  click(host.querySelector('[data-tools-roles]'));
+  flushSync(() => { runtime.listPage = 'roles'; });
+  expect(host.querySelector('[data-roles-page]')).not.toBeNull();
+  click(host.querySelector('.roles-page-back'));
+  // Read once, at the end: the fixture's call list is a copy taken when first read.
+  expect(runtime.calls.map((call) => call.name).filter((name) => name === 'openRoles' || name === 'closeListPage')).toEqual(['openRoles', 'closeListPage']);
   close();
 });

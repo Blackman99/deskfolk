@@ -51,3 +51,33 @@ test("on a phone the job is one page, opened on the view asked for", () => {
   runtime.openTrace("task-1");
   expect(loadTraceView()).toBe("spec");
 });
+
+test("a line in no job opens its own flow: a tab on a wide window, the trace page on a phone (ADR 0083)", () => {
+  const wide = aRuntime();
+  const opened: PaneContent[] = [];
+  wide.paneOpener = (content) => opened.push(content);
+  wide.openTrace(null, null, { line: "m-9", view: "board" });
+  expect(opened).toMatchObject([{ kind: "trace", sessionId: "direct-1", taskId: null, line: "m-9", view: "trace" }]);
+
+  const phone = aRuntime();
+  phone.openTrace(null, null, { line: "m-9" });
+  expect([phone.traceOpen, phone.traceLine]).toEqual([true, "m-9"]);
+  // A job's board asked for afterwards is that job's, not the line's.
+  phone.closeTrace();
+  expect(phone.traceLine).toBeNull();
+});
+
+test("Roles opens as a tab at the call asked for, or as a page where there is no workbench (ADR 0083)", () => {
+  const wide = aRuntime();
+  const opened: PaneContent[] = [];
+  wide.paneOpener = (content) => opened.push(content);
+  wide.openRoles("judgement");
+  expect(opened).toEqual([{ kind: "roles" }]);
+  expect(wide.rolesTarget).toEqual({ role: "judgement" });
+  expect(wide.listPage).toBeNull();
+
+  const phone = aRuntime();
+  phone.openRoles();
+  expect(phone.listPage).toBe("roles");
+  expect(phone.rolesTarget).toEqual({ role: null });
+});

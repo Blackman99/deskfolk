@@ -223,9 +223,9 @@ export class OverlayState {
    * A phone's page in place of the conversation list — usage or the archived conversations. A page
    * in the URL like the remote screen, so the phone's Back walks out of it to the list.
    */
-  listPage = $state<"usage" | "archived" | null>(null);
+  listPage = $state<"usage" | "archived" | "roles" | null>(null);
 
-  openListPage(page: "usage" | "archived"): void {
+  openListPage(page: "usage" | "archived" | "roles"): void {
     this.settingsOpen = false;
     this.createBotOpen = false;
     this.createGroupOpen = false;
@@ -271,10 +271,14 @@ export class OverlayState {
     return (this.traceOpen && this.traceLine !== null && this.traceSessionId === sessionId) || this.traceWatchers.has(`line:${sessionId}`);
   }
 
-  /** The Roles page, at one call when a step asked for it (ADR 0083). */
+  /**
+   * The Roles page (ADR 0083), at one call when a step asked for it: a tab on the workbench, else a
+   * page in place of the list.
+   */
   openRoles(role: BuiltinModelRole | null = null): void {
-    if (!this.settingsOpen) this.host.openSettings();
     this.rolesTarget = { role };
+    if (this.toPane({ kind: "roles" })) return;
+    this.openListPage("roles");
   }
 
   boardShows(taskId: string | null | undefined): boolean {
@@ -628,7 +632,7 @@ export class OverlayState {
       this.host.openRemoteScreen();
       return;
     }
-    if (overlay.kind === "usage" || overlay.kind === "archived") {
+    if (overlay.kind === "usage" || overlay.kind === "archived" || overlay.kind === "roles") {
       this.openListPage(overlay.kind);
       return;
     }

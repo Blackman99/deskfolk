@@ -493,6 +493,11 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
       calls.push({ name: "watchTrace", args });
       return () => {};
     },
+    watchLineBoard: (...args: unknown[]) => {
+      calls.push({ name: "watchLineBoard", args });
+      return () => {};
+    },
+    openRoles: record("openRoles"),
     openTrace: record("openTrace"),
     closeTrace: record("closeTrace"),
     openTerminal: record("openTerminal"),
@@ -501,11 +506,11 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     openRemoteScreen: record("openRemoteScreen"),
     closeRemoteScreen: record("closeRemoteScreen"),
     // Written through `this`, so a `reactive()` copy (called through its proxy) re-renders.
-    openListPage(this: { listPage: "usage" | "archived" | null }, page: "usage" | "archived") {
+    openListPage(this: { listPage: "usage" | "archived" | "roles" | null }, page: "usage" | "archived" | "roles") {
       calls.push({ name: "openListPage", args: [page] });
       this.listPage = page;
     },
-    closeListPage(this: { listPage: "usage" | "archived" | null }) {
+    closeListPage(this: { listPage: "usage" | "archived" | "roles" | null }) {
       calls.push({ name: "closeListPage", args: [] });
       this.listPage = null;
     },
@@ -546,6 +551,8 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     traceOpen: false,
     traceTaskId: null,
     traceSessionId: null,
+    traceLine: null,
+    rolesTarget: null,
     routinesOpen: false,
     spendOpen: false,
     spendRevision: 0,

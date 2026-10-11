@@ -593,9 +593,9 @@ export class MessengerRuntime {
   set screenOpen(value: boolean) { this.overlayState.screenOpen = value; }
   openRemoteScreen(): void { this.overlayState.openRemoteScreen(); }
   closeRemoteScreen(): void { this.overlayState.closeRemoteScreen(); }
-  get listPage(): "usage" | "archived" | null { return this.overlayState.listPage; }
-  set listPage(value: "usage" | "archived" | null) { this.overlayState.listPage = value; }
-  openListPage(page: "usage" | "archived"): void { this.overlayState.openListPage(page); }
+  get listPage(): "usage" | "archived" | "roles" | null { return this.overlayState.listPage; }
+  set listPage(value: "usage" | "archived" | "roles" | null) { this.overlayState.listPage = value; }
+  openListPage(page: "usage" | "archived" | "roles"): void { this.overlayState.openListPage(page); }
   closeListPage(): void { this.overlayState.closeListPage(); }
   watchTrace(taskId: string): () => void { return this.overlayState.watchTrace(taskId); }
   watchLineBoard(sessionId: string): () => void { return this.overlayState.watchLineBoard(sessionId); }

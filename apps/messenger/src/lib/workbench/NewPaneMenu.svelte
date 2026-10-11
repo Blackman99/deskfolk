@@ -102,6 +102,25 @@
 	</span>
 	<span class="wb-menu-name">{t.usage.title}</span>
 </button>
+<button
+	type="button"
+	class="wb-menu-row"
+	role="menuitem"
+	data-new-pane="roles"
+	onclick={() => workbench.openInPane(leafId, { kind: 'roles' })}
+>
+	<span class="wb-menu-mark is-quiet" aria-hidden="true">
+		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<circle cx="5" cy="6" r="2"></circle>
+			<circle cx="19" cy="6" r="2"></circle>
+			<circle cx="12" cy="18" r="2"></circle>
+			<path d="M7 6h10"></path>
+			<path d="M6 8l5 8"></path>
+			<path d="M18 8l-5 8"></path>
+		</svg>
+	</span>
+	<span class="wb-menu-name">{t.routing.tab}</span>
+</button>
 <div class="wb-menu-section" role="presentation">{t.pane.runningTerminals}</div>
 {#each listed as row (row.id)}
 	<button

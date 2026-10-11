@@ -144,12 +144,12 @@ test("the rail's footer is the list's — workspace, tools, settings — as icon
   expect(view.tools).toEqual(["workspace"]);
   expect(view.settings()).toBe(1);
   // The menu opens off the tools button with the list's four items, and each one dispatches and closes it.
-  for (const [index, name] of [[0, "routines"], [1, "spend"], [3, "terminal"], [4, "archived"]] as const) {
+  for (const [index, name] of [[0, "routines"], [1, "spend"], [3, "terminal"], [5, "archived"]] as const) {
     click(tools);
     expect(tools.getAttribute("aria-expanded")).toBe("true");
     const items = [...view.host.querySelectorAll<HTMLButtonElement>(".tools-menu-item")];
     // Labels follow the snapshot's locale (the fixture's is zh); the archived count rides on its item.
-    expect(items.map((item) => item.querySelector("span")?.textContent)).toEqual([t.routines.title, spendCopyFor("zh").open, t.usage.open, t.terminal.newTab, t.sidebar.archivedSessions]);
+    expect(items.map((item) => item.querySelector("span")?.textContent)).toEqual([t.routines.title, spendCopyFor("zh").open, t.usage.open, t.terminal.newTab, t.routing.tab, t.sidebar.archivedSessions]);
     expect(view.host.querySelector(".tools-menu-badge")?.textContent).toBe("1");
     expect(document.activeElement).toBe(items[0]);
     click(items[index]);

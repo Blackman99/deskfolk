@@ -35,11 +35,13 @@
 		focusLast?: boolean;
 		archivedCount: number;
 		/** What is on screen now, for the phone's pages. */
-		current?: { routines?: boolean; spend?: boolean; usage?: boolean; terminal?: boolean; screen?: boolean; archived?: boolean };
+		current?: { routines?: boolean; spend?: boolean; usage?: boolean; roles?: boolean; terminal?: boolean; screen?: boolean; archived?: boolean };
 		onOpenRoutines: () => void;
 		onOpenSpend: () => void;
 		/** Every agent's usage (ADR 0080): the floating widget's panel, or a phone's page. */
 		onOpenUsage?: (() => void) | null;
+		/** Roles (ADR 0083): the app's own calls, their models and prompts, as a page of its own. */
+		onOpenRoles?: (() => void) | null;
 		onOpenTerminal: () => void;
 		/** The remote screen; null where this is not a phone on a Mac that offers it. */
 		onOpenScreen?: (() => void) | null;
@@ -62,6 +64,7 @@
 		onOpenRoutines,
 		onOpenSpend,
 		onOpenUsage = null,
+		onOpenRoles = null,
 		onOpenTerminal,
 		onOpenScreen = null,
 		screenHost = 'mac',
@@ -231,6 +234,26 @@
 					<line x1="12" y1="17" x2="12" y2="21"></line>
 				</svg>
 				<span>{screenCopy(t, screenHost).title}</span>
+			</button>
+		{/if}
+		{#if onOpenRoles}
+			<button
+				type="button"
+				class="tools-menu-item"
+				role="menuitem"
+				aria-current={current.roles ? 'true' : undefined}
+				data-tools-roles
+				onclick={() => choose(onOpenRoles)}
+			>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<circle cx="5" cy="6" r="2"></circle>
+					<circle cx="19" cy="6" r="2"></circle>
+					<circle cx="12" cy="18" r="2"></circle>
+					<path d="M7 6h10"></path>
+					<path d="M6 8l5 8"></path>
+					<path d="M18 8l-5 8"></path>
+				</svg>
+				<span>{t.routing.tab}</span>
 			</button>
 		{/if}
 		<div class="tools-menu-divider" role="separator"></div>

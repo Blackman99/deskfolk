@@ -258,6 +258,8 @@ export class ShellWorkbench {
         return spendCopyFor(this.getRuntime().snapshot.settings.locale === "en" ? "en" : "zh").title;
       case "usage":
         return t.usage.title;
+      case "roles":
+        return t.routing.tab;
       case "trace": {
         const name = this.sessionName(content.sessionId);
         if (content.view === "board") return t.pane.boardOf(name);
