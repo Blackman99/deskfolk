@@ -23,7 +23,8 @@
 	let picked = $state<string | null>(null);
 	const step = $derived<TraceStep>(group.steps.find((row) => row.id === picked) ?? group.steps.at(-1)!);
 
-	let rawOpen = $state(false);
+	/** Open from the start: the panel has the room. Folded, it stays folded from step to step. */
+	let rawOpen = $state(true);
 	let raw = $state<{ id: string; text: string | null } | null>(null);
 	let rawFailed = $state(false);
 	$effect(() => {

@@ -93,9 +93,8 @@ test("a step opens in a panel beside the board with its model, prompt and time, 
   expect(detail.parentElement?.classList.contains("has-step-panel")).toBe(true);
   expect(stepCards(view.host)[0]!.classList.contains("is-open")).toBe(true);
   expect([...detail.querySelectorAll(".trace-step-chip")].map((chip) => chip.textContent?.trim())).toEqual(["haiku-4.6", "思考 minimal", "提示词 · 默认", "2.3 秒"]);
-  const raw = detail.querySelector<HTMLDetailsElement>(".trace-step-raw")!;
-  raw.open = true;
-  raw.dispatchEvent(new Event("toggle"));
+  // The answer is open and fetched without being asked for.
+  expect(detail.querySelector<HTMLDetailsElement>(".trace-step-raw")!.open).toBe(true);
   await until(view.host, ".trace-step-raw pre");
   expect(view.host.querySelector(".trace-step-raw pre")?.textContent).toBe("原始回答 s1");
   expect(view.fetchedRuns).toEqual(["s1"]);
@@ -115,6 +114,16 @@ test("another step takes the panel over, and on a phone Back puts it away before
   await settle();
   expect(view.host.querySelectorAll(".trace-step-detail").length).toBe(1);
   expect(view.host.querySelector(".trace-step-detail-title")?.textContent).toBe("归档");
+  // Folded on one step, the answer stays folded on the next, and is not fetched for it.
+  const raw = view.host.querySelector<HTMLDetailsElement>(".trace-step-raw")!;
+  raw.open = false;
+  raw.dispatchEvent(new Event("toggle"));
+  await settle();
+  click(stepCards(view.host)[0]);
+  await settle();
+  expect(view.host.querySelector(".trace-step-detail-title")?.textContent).toBe("读你的话");
+  expect(view.host.querySelector<HTMLDetailsElement>(".trace-step-raw")?.open).toBe(false);
+  expect(view.fetchedRuns).toEqual(["s1", "s2"]);
   expect(closeMessageText()).toBe(true);
   await settle();
   expect(view.host.querySelector(".trace-step-detail")).toBeNull();
