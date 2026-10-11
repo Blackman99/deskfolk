@@ -10,6 +10,7 @@ import { parseScribeAnswer, SCRIBE_SYSTEM, type ScribePayload } from "./prompts/
 import { createScribe, SCRIBE_MAX_TOKENS } from "./scribe";
 import { Store } from "./store";
 import { call, createScenario, say as reply, tool, type Scenario } from "./test-kit/scenario";
+import { everyStepOn } from "./test-kit/playbook";
 
 const stores: Store[] = [];
 const scenarios: Scenario[] = [];
@@ -30,6 +31,7 @@ function judged(content: string | null, over: Partial<JudgeResult> = {}): JudgeR
  */
 function harness(answer: (request: JudgeRequest) => JudgeResult | Promise<JudgeResult>, opts: { routing?: OrganizerRouting | null } = {}) {
   const store = new Store();
+  everyStepOn(store);
   stores.push(store);
   const director = store.createBot({ name: "视频导演", duties: "出片", boundaries: "none" });
   const direct = director.direct_session.id;

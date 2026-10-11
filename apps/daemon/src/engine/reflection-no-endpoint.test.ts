@@ -9,12 +9,14 @@ import { ENGINE_LEVELS } from "../store/schema-gate";
 import type { ClaudeJudge } from "../claude-code/reading";
 import { createReflector } from "./reflection";
 import type { BuiltinTarget } from "./builtin-models";
+import { everyStepOn } from "../test-kit/playbook";
 
 const stores: Store[] = [];
 afterEach(() => { for (const store of stores.splice(0)) store.close(); });
 
 function dueReflection() {
   const store = new Store();
+  everyStepOn(store);
   stores.push(store);
   store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', ?)", [String(ENGINE_LEVELS.learning)]);
   const maker = store.createBot({ name: "视频导演", duties: "出片", boundaries: "none" }).bot;

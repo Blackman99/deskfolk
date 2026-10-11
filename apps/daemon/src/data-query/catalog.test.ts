@@ -32,7 +32,7 @@ const READ_AS_THEY_ARE = [
   "notification_delivery_items", "notification_policy", "notification_retention_notice", "notifications",
   "providers", "reactions", "request_meta", "requirement_exclusions", "requirement_mentions", "route_feedback",
   "route_learned", "route_learnings", "route_reviews", "session_notification_preferences", "settings",
-  "user_quote_filings", "work_items",
+  "playbook_revisions", "user_quote_filings", "work_items",
 ];
 
 test("every table is described, denied, or read as it is: a new one is decided before a Bot can read it", () => {

@@ -121,11 +121,31 @@ export function emptyPlaybookDiff(): PlaybookDiff {
   return { v: 1, steps: {} };
 }
 
-/** The three built-in engines, each as what it changes from the defaults above. */
+/**
+ * The three built-in engines, each as what it changes from the defaults above, tuned on the usage
+ * history to 2026-10-11 (ADR 0085 has the numbers):
+ * - 通用 (general), the default: no scribe, no retrospective, no reflection — nothing kept or
+ *   proposed behind your back. Most lines there are a question and its answer: the scribe came back
+ *   empty on 30% of them, and of 15 retrospectives two looked back on one-line "jobs" a migration had
+ *   made of questions. The settle stays: it is what keeps a job's board true.
+ * - 视频 (video): the scribe stays (79 calls, 109 entries), the settle waits a minute so a fan-out of
+ *   shots is filed once, check-backs are 15 minutes apart and three an hour (13 of 22 woke to nothing
+ *   new, some 53 hops each), no model escalation (it only raised Claude Code's effort, and the
+ *   send-backs were about likeness), and the ceiling's backstop comes a hand-over sooner.
+ * - 代码 (coding): the scribe off (one entry from two calls); the rest as before, the data being thin.
+ */
 export const BUILTIN_PLAYBOOKS: Record<BuiltinPlaybookId, PlaybookDiff> = {
-  general: emptyPlaybookDiff(),
-  video: emptyPlaybookDiff(),
-  coding: emptyPlaybookDiff(),
+  general: { v: 1, steps: { scribe: { on: false }, retrospective: { on: false }, reflection: { on: false } } },
+  video: {
+    v: 1,
+    steps: {
+      settle: { params: { quiet_s: 60 } },
+      check_backs: { params: { min_minutes: 15, per_hour: 3 } },
+      escalation: { on: false },
+      ceiling: { params: { attempts: 5 } },
+    },
+  },
+  coding: { v: 1, steps: { scribe: { on: false } } },
 };
 
 /** What every step runs with before any engine changes it. */

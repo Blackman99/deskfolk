@@ -126,6 +126,7 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Model',
     'Default model',
     'Built-in models',
+    'Engine',
     'Model choice log',
     'Call record',
     'MCP',

@@ -36,6 +36,7 @@ import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 import { until } from "./test-kit/until";
 import { createTurnEngine } from "./turn-engine";
+import { everyStepOn } from "./test-kit/playbook";
 
 function say(content: string): CompletionOk {
   return { ok: true, content, toolCalls: [], finishReason: "stop", hadChoices: true, usage: null, missingReason: null };
@@ -103,6 +104,7 @@ function engineHarness(opts: {
 }) {
   const root = mkdtempSync(join(tmpdir(), "ablation-"));
   const store = new Store({ endpointKey: memoryKeyStore() });
+  everyStepOn(store);
   const handlers = opts.handlers ?? {};
   const calls: string[] = [];
   const organizerPayloads: OrganizerPayload[] = [];
@@ -604,6 +606,7 @@ describe("engine/chains.ts: review / learning", () => {
 function relayHarness(reply: (trigger: string) => string | { handoff: string }, ablation?: Ablation) {
   const root = mkdtempSync(join(tmpdir(), "ablation-direct-report-"));
   const store = new Store({ endpointKey: memoryKeyStore() });
+  everyStepOn(store);
   const shown: ClientEvent[] = [];
   const engine = createTurnEngine({
     store,
@@ -709,6 +712,7 @@ describe("local-api.ts: threads ablation into the engine it builds", () => {
   test("route-pick off, passed through createLocalApi (no engine given), skips the routing-agent call", async () => {
     const root = mkdtempSync(join(tmpdir(), "ablation-local-api-"));
     const store = new Store({ endpointKey: memoryKeyStore() });
+    everyStepOn(store);
     const calls: string[] = [];
     const events: ClientEvent[] = [];
     store.onCommit((event) => events.push(event));

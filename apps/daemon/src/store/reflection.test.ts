@@ -6,12 +6,14 @@ import { isoNow } from "../ids";
 import { Store } from ".";
 import { parseReflection } from "./reflection";
 import { ENGINE_LEVELS } from "./schema-gate";
+import { everyStepOn } from "../test-kit/playbook";
 
 const stores: Store[] = [];
 afterEach(() => { for (const store of stores.splice(0)) store.close(); });
 
 function fixture(level: number = ENGINE_LEVELS.learning) {
   const store = new Store();
+  everyStepOn(store);
   stores.push(store);
   store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', ?)", [String(level)]);
   const maker = store.createBot({ name: "视频导演", duties: "出片", boundaries: "none" }).bot;

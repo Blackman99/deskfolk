@@ -7,6 +7,7 @@ import { Store } from "../store";
 import type { TurnEngine } from "../turn-engine";
 import type { SharedInstall } from "../store/schema-gate";
 import type { TrashMover } from "../workspace-trash";
+import { everyStepOn } from "./playbook";
 
 export type Harness = {
   origin: string;
@@ -45,6 +46,8 @@ export async function startLocalApi(
 ): Promise<Harness> {
   const token = opts.token ?? "test-token";
   const store = opts.store ?? new Store({ endpointKey: memoryKeyStore(opts.key ?? null) });
+  // The whole pipeline, as before engines: 通用 leaves the scribe and the look-backs off (ADR 0085).
+  if (!opts.store) everyStepOn(store);
   const api = createLocalApi({
     store,
     token,

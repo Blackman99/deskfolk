@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Engines: how the app's own steps run, chosen per conversation
+
+- An engine says which of the app's own steps run in a conversation and with what numbers ([ADR 0085](docs/adr/0085-engines.md)): the scribe, the closing check, the settle, model escalation, retrospectives and reflections can be off, and the intake ceiling, hop pacing, the settle's quiet time, check-back spacing, the supervisor's pick-ups and the capability ceiling have numbers of their own. Rules the app stands on (stops, filing before waking) are not in it, and reading, judgement, compaction and the acceptance checks always run.
+- Three are built in, tuned on your conversations so far. General is the default: no scribe, no retrospective, no reflection, so nothing is written down, remembered or proposed behind your back. Video keeps the scribe, settles a minute after the work goes quiet, spaces a Bot's own check-backs 15 minutes apart and three an hour, does not step the model up, and asks you after five failed hand-overs. Coding has no scribe.
+- After this update every conversation that names no engine runs General, so the scribe, retrospectives and reflections stop there. Choose Video or Coding for a conversation that should keep them, or switch them on in General.
+- What you change keeps only what differs from the built-in, so the rest follows new defaults; every change is kept in the engine's history, and you can make your own engine from any of them. A call about a job runs under the engine of the job's conversation, and each call record says which engine and revision it ran under.
+
 ### A question you ask opens no job
 
 - A turn that answers where you asked (a question, a look-up, a translation) keeps no job of its own. Each time the app started, an old migration gave every such turn a job, closed and delivered at once: by 2026-10-11 there were 34 one-line "jobs" such as "Which company makes Stepfun", and two were even reviewed as deliveries. Jobs made this way before the fix are left as they are.

@@ -56,9 +56,9 @@ describe("engines", () => {
 
   test("a custom engine starts from another's changes, can be renamed, and once removed its conversations follow the default", () => {
     const { store, group } = fixture();
-    store.savePlaybook("video", { diff: { steps: { escalation: { on: false } } } });
+    store.savePlaybook("video", { diff: { steps: { scribe: { on: false } } } });
     const mine = store.createPlaybook({ from: "video", name: "  我的 视频 " });
-    expect(mine).toMatchObject({ builtin: false, base_id: "video", name: "我的 视频", revision: 1, diff: { steps: { escalation: { on: false } } } });
+    expect(mine).toMatchObject({ builtin: false, base_id: "video", name: "我的 视频", revision: 1, diff: { steps: { scribe: { on: false } } } });
     expect(store.renamePlaybook(mine.id, { name: "MV 专用", ifRevision: mine.revision_id })).toMatchObject({ name: "MV 专用", revision: 2 });
     expect(() => store.renamePlaybook("video", { name: "x" })).toThrow("keeps its name");
     store.setSessionPlaybook(group.id, mine.id);
@@ -111,7 +111,7 @@ describe("engines", () => {
     const { store } = fixture();
     const events: ClientEvent[] = [];
     store.onCommit((event) => events.push(event));
-    store.savePlaybook("coding", { diff: { steps: { scribe: { on: false } } } });
+    store.savePlaybook("coding", { diff: { steps: { reflection: { on: false } } } });
     expect(events.filter((event) => event.event === "playbook.changed")).toEqual([
       { event: "playbook.changed", occurred_at: expect.any(String), id: "coding", default_id: "general" },
     ]);

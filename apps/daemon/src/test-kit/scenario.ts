@@ -78,6 +78,7 @@ import { ENGINE_LEVELS, SCHEMA_LEVEL } from "../store/schema-gate";
 import type { TurnRun } from "../store/turn-runs";
 import { createTurnEngine, type TurnEngine } from "../turn-engine";
 import type { WakeWatch } from "../wake";
+import { everyStepOn } from "./playbook";
 
 /** The media server's name, so its tools are `mcp_media_submit_video` and so on. */
 export const MEDIA_SERVER = "media";
@@ -551,6 +552,8 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
   // One key store for every store this scenario opens, as the keychain outlives a restart.
   const keys = memoryKeyStore();
   let store = new Store({ ...(dbFile ? { filename: dbFile } : {}), endpointKey: keys });
+  // The whole pipeline, as before engines: 通用 leaves the scribe and the look-backs off (ADR 0085).
+  everyStepOn(store);
   await store.patchSettings({
     workspace_path: root,
     endpoint_base_url: "http://127.0.0.1:1/v1",

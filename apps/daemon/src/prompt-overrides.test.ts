@@ -11,6 +11,7 @@ import { savePromptText } from "./prompts/book";
 import { SCRIBE_FORMAT } from "./prompts/scribe";
 import { createScribe } from "./scribe";
 import { Store } from "./store";
+import { everyStepOn } from "./test-kit/playbook";
 
 const stores: Store[] = [];
 afterEach(() => {
@@ -25,6 +26,7 @@ function judged(content: string | null): JudgeResult {
 
 test("a Bot's turn sends your System section and your section notes", () => {
   const store = new Store();
+  everyStepOn(store);
   stores.push(store);
   const bot = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
   const session = bot.direct_session.id;
@@ -44,6 +46,7 @@ test("a Bot's turn sends your System section and your section notes", () => {
 
 test("an app call sends your instructions with its format, names the revision, and an unreadable answer counts against it", async () => {
   const store = new Store();
+  everyStepOn(store);
   stores.push(store);
   const director = store.createBot({ name: "视频导演", duties: "出片", boundaries: "none" });
   const direct = director.direct_session.id;
