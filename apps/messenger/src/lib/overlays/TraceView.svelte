@@ -7,9 +7,6 @@
 		type PlanStatus,
 		type Provider,
 		type SessionSummary,
-		type SessionTaskSummary,
-		type TaskDetail,
-		type TaskTrace,
 		type TaskTraceNode,
 		type Ticket,
 		type TicketStatus,
@@ -34,7 +31,7 @@
 	import TraceRouteDetail from './TraceRouteDetail.svelte';
 	import TraceStepCard from './TraceStepCard.svelte';
 	import TraceStepDetail from './TraceStepDetail.svelte';
-	import { anomalousCards, lineBoard, loadTraceSteps, saveTraceSteps } from './trace-steps.ts';
+	import { anomalousCards, loadTraceSteps, saveTraceSteps } from './trace-steps.ts';
 	import { loadTraceMinimap, saveTraceMinimap } from './trace-minimap.ts';
 	import {
 		askSpent,
@@ -48,7 +45,6 @@
 		actorFace,
 		actorName,
 		countedTicketCount,
-		defaultJob,
 		firstPreviewable,
 		latestTurnOfTicket,
 		openTicketCount,
@@ -60,6 +56,7 @@
 	import { lastChangeLabel } from './plan-requirements.ts';
 	import { routeCardRow, type RouteLogRow } from './route-log.ts';
 	import { TraceCanvas } from './trace-canvas.svelte.ts';
+	import { JobState } from './job-state.svelte.ts';
 	import {
 		clampZoom,
 		defaultFolded,
@@ -183,22 +180,10 @@
 		controlsDisabled = false
 	}: Props = $props();
 
-	let jobs = $state<SessionTaskSummary[]>([]);
-	let trace = $state<TaskTrace | null>(null);
-	let currentId = $state<string | null>(null);
-	let loading = $state(true);
-	let failed = $state(false);
 	let notableOnly = $state(false);
 	let switcherOpen = $state(false);
 	/** So the board's Escape listener can put focus back on the trigger once it closes the switcher. */
 	let jobSwitcher = $state<TraceJobSwitcher>();
-	/**
-	 * The plan behind the trace: its spec, revision and tickets. Null until it arrives, and null
-	 * for good on a daemon that predates plans — the tree still draws, without the panel and rail.
-	 */
-	let detail = $state<TaskDetail | null>(null);
-	/** The ticket whose cards are lit; the rest of the board dims. One at a time, like a highlight. */
-	let selectedTicket = $state<string | null>(null);
 	/**
 	 * What fills the pane: the trace, the tickets' board or the spec — one at a time, each with the
 	 * whole pane, at every width. On the page the choice outlives it; a page opened on a message's
@@ -219,12 +204,19 @@
 	let highlight = $state<RouteHighlight | null>(null);
 	/** The app's own calls on the board (ADR 0083): drawn unless you hid them, one opened at a time. */
 	let showSteps = $state(loadTraceSteps());
-	let openStep = $state<string | null>(null);
 	/** The steps that went wrong lit, the rest of the board dimmed. */
 	let stepsLit = $state(false);
-	let loadSeq = 0;
 
-	const shown = $derived(trace ? filterTrace(trace, notableOnly) : null);
+	const job = new JobState({
+		api: () => api,
+		sessionId: () => sessionId,
+		taskId: () => taskId,
+		line: () => line,
+		onTask: (id) => onTask?.(id),
+		onSwitch: switchBoard
+	});
+
+	const shown = $derived(job.trace ? filterTrace(job.trace, notableOnly) : null);
 	/**
 	 * What each card measured to. Cards differ in height — a summary runs long, a file list is
 	 * taller, an opened file taller still — so the layout is fed the real boxes and redone when
@@ -250,7 +242,7 @@
 			rounds,
 			(node) =>
 				node.turn_id === asked ||
-				(selectedTicket !== null && node.ticket_id === selectedTicket) ||
+				(job.selectedTicket !== null && node.ticket_id === job.selectedTicket) ||
 				highlightOf(node, lighting) === 'lit' ||
 				(stepsLit && anomalous.has(node.turn_id))
 		);
@@ -273,7 +265,7 @@
 	const canvas = new TraceCanvas(sessionId, taskId, {
 		sessionId: () => sessionId,
 		flow: () => flow,
-		currentId: () => currentId,
+		currentId: () => job.currentId,
 		focus: () => focus,
 		focusToken: () => focusToken,
 		boxes: () => boxes,
@@ -331,7 +323,7 @@
 	});
 	$effect(() => {
 		const wanted = pendingAsk;
-		if (!wanted || loading || !detail || (taskId !== null && currentId !== taskId)) return;
+		if (!wanted || job.loading || !job.detail || (taskId !== null && job.currentId !== taskId)) return;
 		pendingAsk = null;
 		untrack(() => {
 			if (wanted.column) ticketFilter = wanted.column;
@@ -341,12 +333,6 @@
 			else selectTicket(wanted.ticket);
 		});
 	});
-
-	/**
-	 * The conversation the job on screen was listed for. It is the key the board is kept under, and
-	 * by the time a different conversation's job is being loaded the prop already names that one.
-	 */
-	let boardSession: string | null = null;
 
 	/**
 	 * Where this copy keeps what it was left on. A board or a spec in a tab of its own keeps its
@@ -362,13 +348,13 @@
 	 * trace's camera is only worth keeping once it has been placed.
 	 */
 	function keepThisBoard(): void {
-		if (!currentId || !boardSession || (drawsTrace && canvas.fitted !== currentId)) return;
-		keepBoard(memoryOf(boardSession), currentId, {
+		if (!job.currentId || !job.boardSession || (drawsTrace && canvas.fitted !== job.currentId)) return;
+		keepBoard(memoryOf(job.boardSession), job.currentId, {
 			...canvas.leaving(),
 			boxes: $state.snapshot(boxes),
 			foldChoice: $state.snapshot(foldChoice),
 			notableOnly,
-			selectedTicket,
+			selectedTicket: job.selectedTicket,
 			highlight,
 			openRoute
 		});
@@ -409,20 +395,20 @@
 		// is yours, until another message asks. The card's first real measurement still counts
 		// as that opening, so the move lands on the card you see, not the guess that preceded it.
 		const width = flow?.width ?? 0;
-		const id = currentId;
+		const id = job.currentId;
 		const token = focusToken;
 		const asked = focus;
 		const drift = canvas.focusDrifted();
 		if (!width || !id || !canvas.viewportEl) return;
 		// The board keeps the previous job on screen, where it was, until the next one arrives.
 		// Placing before that would put the next job's view on the previous job's picture.
-		if (trace?.id !== id) return;
+		if (job.trace?.id !== id) return;
 		// Nor until the job this message belongs to arrives: that would spend the request on the
 		// wrong picture.
-		if (asked && taskId && trace?.id !== taskId && focusMoveDue(token, canvas.placedFocus)) return;
+		if (asked && taskId && job.trace?.id !== taskId && focusMoveDue(token, canvas.placedFocus)) return;
 		// A job whose board you have been on comes back where you left it, not opened afresh. Only a
 		// message asking for a card it has not moved for yet moves it on from there.
-		if (canvas.fitted !== id) untrack(() => canvas.resume(keptBoard(boardSession ?? sessionId, id), id));
+		if (canvas.fitted !== id) untrack(() => canvas.resume(keptBoard(job.boardSession ?? sessionId, id), id));
 		if (asked && (focusMoveDue(token, canvas.placedFocus) || (drift && !untrack(() => canvas.userMoved)))) {
 			const centred = untrack(() => canvas.focusBoard());
 			if (canvas.placedFocus !== token) return;
@@ -455,22 +441,22 @@
 		return () => cancelAnimationFrame(frame);
 	});
 	/** The step whose panel is open, while the board still draws it. */
-	const openStepGroup = $derived(openStep ? (flow?.steps.find((row) => row.group.id === openStep)?.group ?? null) : null);
+	const openStepGroup = $derived(job.openStep ? (flow?.steps.find((row) => row.group.id === job.openStep)?.group ?? null) : null);
 	// A step's panel lies over the board's right edge, or over its bottom when the board is narrow.
 	// The card it is about slides out from under it once, as it opens.
 	$effect(() => {
-		const id = openStep;
+		const id = job.openStep;
 		if (!id) return;
 		void tick().then(() => {
 			const card = canvas.slots.get(id);
 			const panel = canvas.viewportEl?.parentElement?.querySelector<HTMLElement>('.trace-step-detail');
-			if (openStep === id && card && panel) canvas.uncover(card, panel);
+			if (job.openStep === id && card && panel) canvas.uncover(card, panel);
 		});
 	});
 	// On a phone Back puts a step's panel away before it leaves the board.
 	$effect(() => {
-		if (host !== 'page' || !openStep) return;
-		return holdBack(() => (openStep = null));
+		if (host !== 'page' || !job.openStep) return;
+		return holdBack(() => (job.openStep = null));
 	});
 	const byId = $derived(new Map((shown?.nodes ?? []).map((node) => [node.turn_id, node])));
 	/** The card this opening was asked to land on, while that request is the one on screen. */
@@ -488,41 +474,41 @@
 	 */
 	let measuredJob: string | null = null;
 	$effect(() => {
-		const id = trace?.id ?? null;
+		const id = job.trace?.id ?? null;
 		if (id === measuredJob) return;
 		measuredJob = id;
 		// A job whose board was left starts from what its cards measured then, so the board it comes
 		// back to is laid out as it was left, not from the fallback height for a frame.
-		boxes = { ...(untrack(() => keptBoard(boardSession ?? sessionId, id)?.boxes) ?? {}) };
+		boxes = { ...(untrack(() => keptBoard(job.boardSession ?? sessionId, id)?.boxes) ?? {}) };
 	});
 	const botsById = $derived(new Map(bots.map((bot) => [bot.id, bot])));
 	const sessionsById = $derived(new Map(sessions.map((session) => [session.id, session])));
 
 	/** How many cards each highlight would light. A chip with nothing to show is not offered. */
 	const highlightCounts = $derived(
-		trace ? routeHighlightCounts(trace.nodes) : { feedback: 0, blamed: 0 }
+		job.trace ? routeHighlightCounts(job.trace.nodes) : { feedback: 0, blamed: 0 }
 	);
 	const lighting = $derived(highlight && highlightCounts[highlight] > 0 ? highlight : null);
-	const ticketsById = $derived(new Map((detail?.tickets ?? []).map((ticket) => [ticket.id, ticket])));
+	const ticketsById = $derived(new Map((job.detail?.tickets ?? []).map((ticket) => [ticket.id, ticket])));
 	/** A board of no tickets says nothing; it comes with the first ticket. */
-	const hasTickets = $derived((detail?.tickets.length ?? 0) > 0);
+	const hasTickets = $derived((job.detail?.tickets.length ?? 0) > 0);
 	/**
 	 * Without a plan there is only the trace; without tickets, no board. Either falls back to the
 	 * trace on the page. A tab stays what it is, and says so when there is nothing for it yet.
 	 */
 	const viewShown = $derived<TraceViewKind>(
-		fixedView ?? (!detail || (view === 'board' && !hasTickets) ? 'trace' : view)
+		fixedView ?? (!job.detail || (view === 'board' && !hasTickets) ? 'trace' : view)
 	);
-	const planStatus = $derived<PlanStatus>(detail?.status ?? (trace?.closed_at ? 'done' : 'active'));
+	const planStatus = $derived<PlanStatus>(job.detail?.status ?? (job.trace?.closed_at ? 'done' : 'active'));
 	/** 「上次变化 X 前」 ages while the board is open, so the clock it reads ticks now and then. */
 	let nowMs = $state(Date.now());
 	$effect(() => {
 		const timer = setInterval(() => (nowMs = Date.now()), 30_000);
 		return () => clearInterval(timer);
 	});
-	const changeLine = $derived(detail ? lastChangeLabel(detail, nowMs, t.plan) : null);
+	const changeLine = $derived(job.detail ? lastChangeLabel(job.detail, nowMs, t.plan) : null);
 	const heading = $derived(
-		line ? `${t.traceSteps.lineTitle} · ${trace?.title ?? ''}` : trace ? `${t.trace.title} · ${planTitle(detail ?? trace)}` : t.trace.title
+		line ? `${t.traceSteps.lineTitle} · ${job.trace?.title ?? ''}` : job.trace ? `${t.trace.title} · ${planTitle(job.detail ?? job.trace)}` : t.trace.title
 	);
 	/**
 	 * What keeps the job parked on the board: its own parking, and any stop over it that waits to be
@@ -531,19 +517,19 @@
 	 * stop made anywhere shows at once.
 	 */
 	const boardHolds = $derived.by(() => {
-		if (!holds || !currentId) return [];
-		const home = detail?.session_id ?? trace?.session_id ?? null;
+		if (!holds || !job.currentId) return [];
+		const home = job.detail?.session_id ?? job.trace?.session_id ?? null;
 		return holds.filter(
 			(hold) =>
 				(hold.scope === 'plan' || !hold.lift_on_next_user_message) &&
 				(hold.scope === 'global' ||
-					(hold.scope === 'plan' && hold.scope_id === currentId) ||
-					(hold.scope === 'bot_plan' && hold.scope_id?.endsWith(`:${currentId}`)) ||
+					(hold.scope === 'plan' && hold.scope_id === job.currentId) ||
+					(hold.scope === 'bot_plan' && hold.scope_id?.endsWith(`:${job.currentId}`)) ||
 					(hold.scope === 'session' && home !== null && hold.scope_id === home))
 		);
 	});
 	const stopItems = $derived(
-		holds && currentId && onStop ? planStopItems({ taskId: currentId, title: trace ? planTitle(detail ?? trace) : null, holds, t: t.control }) : []
+		holds && job.currentId && onStop ? planStopItems({ taskId: job.currentId, title: job.trace ? planTitle(job.detail ?? job.trace) : null, holds, t: t.control }) : []
 	);
 
 	/** The stop whose lift was refused, said on its chip until you try again. */
@@ -570,13 +556,13 @@
 
 	/** Lit when the selected ticket is this card's; dim when a ticket is selected and it is not. */
 	function ticketLightOf(node: TaskTraceNode): 'lit' | 'dim' | null {
-		if (!selectedTicket) return null;
-		return node.ticket_id === selectedTicket ? 'lit' : 'dim';
+		if (!job.selectedTicket) return null;
+		return node.ticket_id === job.selectedTicket ? 'lit' : 'dim';
 	}
 
 	/** A ticket and a model highlight both light cards; showing both at once would say nothing. */
 	function selectTicket(id: string | null): void {
-		selectedTicket = id;
+		job.selectedTicket = id;
 		if (id) highlight = null;
 		// What is lit has to be on the board: rounds you folded give way to it.
 		if (id) foldChoice = {};
@@ -591,7 +577,7 @@
 	 */
 	function chooseView(next: TraceViewKind, wanted: TraceViewAsk = {}): boolean {
 		if (fixedView) {
-			if (next !== fixedView) onShowView?.(next, currentId ?? taskId, wanted);
+			if (next !== fixedView) onShowView?.(next, job.currentId ?? taskId, wanted);
 			return next === fixedView;
 		}
 		view = next;
@@ -659,7 +645,7 @@
 		showSteps = !showSteps;
 		saveTraceSteps(showSteps);
 		if (!showSteps) {
-			openStep = null;
+			job.openStep = null;
 			stepsLit = false;
 		}
 	}
@@ -668,7 +654,7 @@
 		stepsLit = !stepsLit;
 		if (stepsLit) {
 			highlight = null;
-			selectedTicket = null;
+			job.selectedTicket = null;
 			foldChoice = {};
 		}
 	}
@@ -676,32 +662,15 @@
 	function toggleHighlight(kind: RouteHighlight): void {
 		highlight = lighting === kind ? null : kind;
 		if (highlight) stepsLit = false;
-		if (highlight) selectedTicket = null;
+		if (highlight) job.selectedTicket = null;
 		if (highlight) foldChoice = {};
-	}
-
-	/** A ticket you moved comes back alone; the plan's counts and revision moved with it. */
-	function ticketPatched(ticket: Ticket): void {
-		if (!detail) return;
-		detail = {
-			...detail,
-			revision: detail.revision + 1,
-			revision_actor: 'user',
-			tickets: detail.tickets.map((row) => (row.id === ticket.id ? { ...row, ...ticket } : row))
-		};
-		void reloadPlan();
-	}
-
-	/** The plan changed under an edit, or a ticket moved: read it again, the tree with it. */
-	function reloadPlan(): void {
-		void load(currentId ?? taskId);
 	}
 
 	function openTicketArtifacts(ticket: TicketWithArtifacts): void {
 		const siblings = ticketArtifactAttachments(ticket);
 		const target = firstPreviewable(siblings);
 		if (!target || !onOpenArtifact) return;
-		onOpenArtifact(target.workspace_relpath, target, target.message_id, true, currentId ?? taskId, siblings);
+		onOpenArtifact(target.workspace_relpath, target, target.message_id, true, job.currentId ?? taskId, siblings);
 	}
 	const routeInput = $derived({
 		bots,
@@ -745,88 +714,30 @@
 		return t.trace.sessionDirect(sessionTitle(session, botsById, { deleted: deletedLabel, archived: deletedLabel, fileDrop: t.sidebar.fileDrop }));
 	}
 
-	/** The plan behind a trace; none from a daemon that predates plans, and none is not a failure. */
-	async function readDetail(id: string): Promise<TaskDetail | null> {
-		try {
-			return await api!.taskDetail(id);
-		} catch {
-			return null;
-		}
-	}
-
-	async function load(id: string | null): Promise<void> {
-		const seq = ++loadSeq;
-		if (!api) {
-			loading = false;
-			failed = true;
-			return;
-		}
-		loading = true;
-		failed = false;
-		const session = sessionId;
-		if (line) {
-			// One line's own board: no jobs to switch between, no plan behind it.
-			try {
-				const board = lineBoard(await api.lineTrace(line));
-				if (seq !== loadSeq) return;
-				jobs = [];
-				detail = null;
-				currentId = null;
-				boardSession = session;
-				trace = board;
-			} catch {
-				if (seq === loadSeq) failed = true;
-			} finally {
-				if (seq === loadSeq) loading = false;
-			}
-			return;
-		}
-		try {
-			const listed = await api.sessionTasks(session);
-			if (seq !== loadSeq) return;
-			jobs = listed;
-			// With none asked for, the newest job that was work: a question and its answer is not what you came back to.
-			const next = id && listed.some((job) => job.id === id) ? id : (defaultJob(listed)?.id ?? null);
-			// A refresh of the same plan keeps what you unfolded and lit. Switching plans leaves this
-			// one as it is, to come back to, and takes the next one up as it was left, or fresh.
-			if (next !== currentId) {
-				keepThisBoard();
-				const kept = keptBoard(memoryOf(session), next);
-				openRoute = kept?.openRoute ?? null;
-				selectedTicket = kept?.selectedTicket ?? null;
-				ticketFilter = 'all';
-				foldChoice = kept?.foldChoice ?? {};
-				if (kept) {
-					notableOnly = kept.notableOnly;
-					highlight = kept.highlight;
-				}
-			}
-			currentId = next;
-			boardSession = session;
-			if (next) onTask?.(next);
-			// The tree and the plan, together. A daemon that predates plans answers the second with a
-			// 404, and the board is then the tree alone — as it was.
-			const [nextTrace, nextDetail] = next ? await Promise.all([api.taskTrace(next), readDetail(next)]) : [null, null];
-			if (seq !== loadSeq) return;
-			trace = nextTrace;
-			detail = nextDetail;
-			if (next && !trace) failed = true;
-		} catch {
-			if (seq !== loadSeq) return;
-			failed = true;
-		} finally {
-			if (seq === loadSeq) loading = false;
+	/**
+	 * Another job is about to be on screen: keep this one's board as it is, to come back to, and take
+	 * the next one up as it was left, or fresh. A refresh of the same plan keeps what you unfolded and lit.
+	 */
+	function switchBoard(session: string, next: string | null): void {
+		keepThisBoard();
+		const kept = keptBoard(memoryOf(session), next);
+		openRoute = kept?.openRoute ?? null;
+		job.selectedTicket = kept?.selectedTicket ?? null;
+		ticketFilter = 'all';
+		foldChoice = kept?.foldChoice ?? {};
+		if (kept) {
+			notableOnly = kept.notableOnly;
+			highlight = kept.highlight;
 		}
 	}
 
 	function selectJob(id: string): void {
 		switcherOpen = false;
-		if (id === currentId) return;
-		void load(id);
+		job.selectJob(id);
 	}
 
 	onMount(() => {
-		void load(taskId);
+		void job.load(taskId);
 		/**
 		 * One Escape, one step out: the switcher, then an unfolded model choice, then a lit ticket,
 		 * then the board.
@@ -846,17 +757,17 @@
 			}
 			// A model picker opened from a step's panel, or a prompt's editor over the window, answers its own Escape.
 			if ((event.target as Element | null)?.closest?.('.mp-panel, .mp-sheet-layer') || document.querySelector('.prompt-editor-backdrop')) return;
-			if (openRoute || openStep) {
+			if (openRoute || job.openStep) {
 				event.preventDefault();
 				event.stopImmediatePropagation();
 				openRoute = null;
-				openStep = null;
+				job.openStep = null;
 				return;
 			}
-			if (!selectedTicket) return;
+			if (!job.selectedTicket) return;
 			event.preventDefault();
 			event.stopImmediatePropagation();
-			selectedTicket = null;
+			job.selectedTicket = null;
 		}
 		window.addEventListener('keydown', onKey, true);
 		return () => {
@@ -871,7 +782,7 @@
 	$effect(() => {
 		void reloadToken;
 		if (reloadToken === 0) return;
-		const timer = setTimeout(() => void load(currentId ?? taskId), 150);
+		const timer = setTimeout(() => void job.load(job.currentId ?? taskId), 150);
 		return () => clearTimeout(timer);
 	});
 
@@ -885,7 +796,7 @@
 		const next = taskId;
 		if (next === requestedTask) return;
 		requestedTask = next;
-		if (next && next !== untrack(() => currentId)) untrack(() => void load(next));
+		if (next && next !== untrack(() => job.currentId)) untrack(() => void job.load(next));
 	});
 
 	/** A different conversation shows that conversation's job. */
@@ -894,7 +805,7 @@
 		const next = sessionId;
 		if (next === loadedFor) return;
 		loadedFor = next;
-		untrack(() => void load(null));
+		untrack(() => void job.load(null));
 	});
 
 	function openCard(node: TaskTraceNode): void {
@@ -921,7 +832,7 @@
 			target,
 			node.focus_message_id || node.trigger_message_id,
 			isBundle,
-			currentId ?? taskId,
+			job.currentId ?? taskId,
 			siblings
 		);
 	}
@@ -966,33 +877,33 @@
 			<div class="trace-titles">
 				{#if line}
 					<!-- One line's own board: nothing to switch to. -->
-					<h2 class="trace-line-title" title={trace?.title}>{heading}</h2>
+					<h2 class="trace-line-title" title={job.trace?.title}>{heading}</h2>
 				{:else}
 					<TraceJobSwitcher
 						bind:this={jobSwitcher}
-						{jobs}
-						{currentId}
+						jobs={job.jobs}
+						currentId={job.currentId}
 						{heading}
 						{t}
 						bind:open={switcherOpen}
 						onSelectJob={selectJob}
 					/>
 				{/if}
-				{#if trace && !line}
+				{#if job.trace && !line}
 					<span class="trace-meta">
 						<span class="plan-status is-{planStatus}">{t.plan.status[planStatus]}</span>
-						{#if detail?.dormant_since}
+						{#if job.detail?.dormant_since}
 							<span class="plan-status is-dormant" title={t.plan.dormantHint}>{t.plan.dormant}</span>
 						{/if}
-						{#if detail?.kind} · {detail.kind}{/if}
-						{#if detail && totalTicketCount(detail.ticket_counts) > 0}
-							 · {t.plan.ticketCounts(openTicketCount(detail.ticket_counts), countedTicketCount(detail.ticket_counts), parkedTicketCount(detail.ticket_counts))}
+						{#if job.detail?.kind} · {job.detail.kind}{/if}
+						{#if job.detail && totalTicketCount(job.detail.ticket_counts) > 0}
+							 · {t.plan.ticketCounts(openTicketCount(job.detail.ticket_counts), countedTicketCount(job.detail.ticket_counts), parkedTicketCount(job.detail.ticket_counts))}
 						{/if}
-						{#if trace.session_id} · {placeOf({ session_id: trace.session_id })}{/if}
-						 · <span class="mono">{trace.dir}</span>
+						{#if job.trace.session_id} · {placeOf({ session_id: job.trace.session_id })}{/if}
+						 · <span class="mono">{job.trace.dir}</span>
 					</span>
 					{#if changeLine}
-						<span class="trace-change" title={detail?.last_change ? formatFullTimestamp(detail.last_change.at) : undefined}>{changeLine}</span>
+						<span class="trace-change" title={job.detail?.last_change ? formatFullTimestamp(job.detail.last_change.at) : undefined}>{changeLine}</span>
 					{/if}
 					{#if boardHolds.length > 0}
 						<ul class="trace-holds" aria-label={t.control.holdsTitle}>
@@ -1014,7 +925,7 @@
 					{/if}
 				{/if}
 			</div>
-			{#if detail && !fixedView}
+			{#if job.detail && !fixedView}
 				<!--
 					The three views of the job, each with the whole page. On a narrow host the switch takes a
 					row of its own. A tab is one view and has none: each view is a tab of its own.
@@ -1028,7 +939,7 @@
 						<button type="button" role="tab" class="trace-view-tab" aria-selected={viewShown === 'board'} onclick={() => chooseView('board')}>
 							{@render boardIcon()}
 							<span>{t.plan.segmentBoard}</span>
-							<span class="trace-view-count mono">{detail.tickets.length}</span>
+							<span class="trace-view-count mono">{job.detail.tickets.length}</span>
 						</button>
 					{/if}
 					<button type="button" role="tab" class="trace-view-tab" aria-selected={viewShown === 'spec'} onclick={() => chooseView('spec')}>
@@ -1060,7 +971,7 @@
 	<div class="trace-body">
 		{#if drawsTrace}
 		<div class="trace-stage trace-view" class:is-on={viewShown === 'trace'} class:has-step-panel={openStepGroup !== null} inert={viewShown !== 'trace'}>
-		{#if trace && trace.nodes.length > 0}
+		{#if job.trace && job.trace.nodes.length > 0}
 			<div class="trace-tools">
 				<div class="trace-tools-start">
 					<label class="trace-filter" title={t.trace.filter}>
@@ -1092,7 +1003,7 @@
 							<span class="mono">{highlightCounts.blamed}</span>
 						</button>
 					{/if}
-					{#if trace.steps?.length}
+					{#if job.trace.steps?.length}
 						<button type="button" class="trace-highlight" aria-pressed={showSteps} title={t.traceSteps.showHint} data-steps-toggle onclick={toggleSteps}>
 							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="19" r="2"></circle><path d="M12 7v10"></path><rect x="15" y="10" width="6" height="4" rx="1"></rect><path d="M12 12h3"></path></svg>
 							<span>{showSteps ? t.traceSteps.hide : t.traceSteps.show}</span>
@@ -1162,12 +1073,12 @@
 			use:gestures
 			use:watchViewport
 		>
-				{#if loading && !trace}
+				{#if job.loading && !job.trace}
 					<p class="trace-empty">{t.trace.loading}</p>
-				{:else if failed}
+				{:else if job.failed}
 					<p class="trace-empty">
 						{t.trace.failed}
-						<button type="button" onclick={() => void load(currentId ?? taskId)}>{t.trace.retry}</button>
+						<button type="button" onclick={() => void job.load(job.currentId ?? taskId)}>{t.trace.retry}</button>
 					</p>
 				{:else if !flow || flow.rounds.length === 0}
 					<p class="trace-empty">{t.trace.none}</p>
@@ -1203,10 +1114,10 @@
 								<TraceStepCard
 									group={placement.group}
 									{t}
-									open={openStep === placement.group.id}
+									open={job.openStep === placement.group.id}
 									lit={stepsLit && placement.group.anomalous}
-									dim={(stepsLit && !placement.group.anomalous) || lighting !== null || selectedTicket !== null}
-									onToggle={() => (openStep = openStep === placement.group.id ? null : placement.group.id)}
+									dim={(stepsLit && !placement.group.anomalous) || lighting !== null || job.selectedTicket !== null}
+									onToggle={() => (job.openStep = job.openStep === placement.group.id ? null : placement.group.id)}
 								/>
 							</div>
 						{/each}
@@ -1255,7 +1166,7 @@
 					</div>
 				{/if}
 		</div>
-		{#if minimapShown && flow && flow.rounds.length > 0 && !failed && !(loading && !trace)}
+		{#if minimapShown && flow && flow.rounds.length > 0 && !job.failed && !(job.loading && !job.trace)}
 			<!-- Over the corner, above the zoom: the board's ways around sit together. -->
 			<div class="trace-minimap-dock">
 				<TraceMinimap
@@ -1277,37 +1188,37 @@
 				fetchRun={api ? (id) => api!.callRun(id) : undefined}
 				{onJump}
 				{callEditor}
-				onClose={() => (openStep = null)}
+				onClose={() => (job.openStep = null)}
 			/>
 		{/if}
 		</div>
 		{/if}
-		{#if !drawsTrace && !detail}
+		{#if !drawsTrace && !job.detail}
 			<!-- A tab of the board or the spec before its plan is here, or on a job without one. -->
 			<div class="trace-view trace-plan-state is-on">
-				{#if loading}
+				{#if job.loading}
 					<p class="trace-empty">{t.trace.loading}</p>
-				{:else if failed}
+				{:else if job.failed}
 					<p class="trace-empty">
 						{t.trace.failed}
-						<button type="button" onclick={() => void load(currentId ?? taskId)}>{t.trace.retry}</button>
+						<button type="button" onclick={() => void job.load(job.currentId ?? taskId)}>{t.trace.retry}</button>
 					</p>
 				{:else}
 					<p class="trace-empty">{t.trace.none}</p>
 				{/if}
 			</div>
 		{/if}
-		{#if detail}
+		{#if job.detail}
 			{#if !fixedView || fixedView === 'spec'}
 			<div class="trace-view trace-spec-view" class:is-on={viewShown === 'spec'} inert={viewShown !== 'spec'}>
 				<PlanSpecPanel
 					{api}
-					{detail}
+					detail={job.detail}
 					{t}
-					onSaved={(next) => (detail = next)}
-					onConflict={reloadPlan}
+					onSaved={(next) => (job.detail = next)}
+					onConflict={() => job.reloadPlan()}
 					{onJump}
-					{selectedTicket}
+					selectedTicket={job.selectedTicket}
 					onShowTicket={(id) => void showTicket(id)}
 					onClearTicket={() => selectTicket(null)}
 					onShowTickets={showTickets}
@@ -1320,21 +1231,21 @@
 				<div class="trace-view trace-board-view" class:is-on={viewShown === 'board'} inert={viewShown !== 'board'} bind:this={boardEl}>
 					<TicketList
 						{api}
-						{detail}
+						detail={job.detail}
 						{providers}
 						nodes={shown?.nodes ?? []}
 						{bots}
 						{youLabel}
 						{deletedLabel}
 						{t}
-						selectedId={selectedTicket}
+						selectedId={job.selectedTicket}
 						onSelect={selectTicket}
 						{onJump}
 						onOpenArtifacts={openTicketArtifacts}
-						onPatched={ticketPatched}
-						onConflict={reloadPlan}
+						onPatched={(ticket) => job.ticketPatched(ticket)}
+						onConflict={() => job.reloadPlan()}
 						bind:statusFilter={ticketFilter}
-						onShowSpec={() => chooseView('spec', { ticket: selectedTicket })}
+						onShowSpec={() => chooseView('spec', { ticket: job.selectedTicket })}
 						onShowInTrace={(id) => void showInTrace(id)}
 					/>
 				</div>
