@@ -15,7 +15,7 @@
 		type TicketStatus,
 		type TicketWithArtifacts
 	} from '@real-bot/protocol';
-	import { onMount, tick, untrack } from 'svelte';
+	import { onMount, tick, untrack, type Snippet } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
@@ -97,8 +97,8 @@
 		 * line's, with no job to switch to and no board or spec of tickets.
 		 */
 		line?: string | null;
-		/** Opens a built-in call where its model and prompts are set, from a step's 「改这个调用」. */
-		onEditCall?: (role: BuiltinModelRole) => void;
+		/** A built-in call's model and prompts, changed in a step's panel by its 「改这个调用」. */
+		callEditor?: Snippet<[BuiltinModelRole]>;
 		/** The message whose card to centre. A new `focusToken` is a new request to move. */
 		focus?: TraceFocus | null;
 		focusToken?: number;
@@ -155,7 +155,7 @@
 		api,
 		taskId,
 		line = null,
-		onEditCall,
+		callEditor,
 		focus = null,
 		focusToken = 0,
 		sessionId,
@@ -844,6 +844,8 @@
 				jobSwitcher?.focusTrigger();
 				return;
 			}
+			// A model picker opened from a step's panel, or a prompt's editor over the window, answers its own Escape.
+			if ((event.target as Element | null)?.closest?.('.mp-panel, .mp-sheet-layer') || document.querySelector('.prompt-editor-backdrop')) return;
 			if (openRoute || openStep) {
 				event.preventDefault();
 				event.stopImmediatePropagation();
@@ -1274,7 +1276,7 @@
 				{t}
 				fetchRun={api ? (id) => api!.callRun(id) : undefined}
 				{onJump}
-				{onEditCall}
+				{callEditor}
 				onClose={() => (openStep = null)}
 			/>
 		{/if}

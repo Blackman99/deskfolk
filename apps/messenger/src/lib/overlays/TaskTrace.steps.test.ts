@@ -13,6 +13,7 @@ import { click } from "../test-render.ts";
 import { settle } from "../test-async.ts";
 import { forgetStored } from "../storage.ts";
 import { closeMessageText } from "../chat/message-text-pages.ts";
+import { copyFor } from "../copy.ts";
 import { THEME_STORAGE_KEY, themeManager } from "../theme.ts";
 import { open, picture, until } from "./task-trace-test-kit.ts";
 
@@ -100,8 +101,42 @@ test("a step opens in a panel beside the board with its model, prompt and time, 
   expect(view.fetchedRuns).toEqual(["s1"]);
   click([...detail.querySelectorAll("button")].find((button) => button.textContent === "跳到这句"));
   expect(view.jumps).toEqual([["group-1", "m1"]]);
-  click(detail.querySelector("[data-edit-call]"));
+  // The call's own settings unfold in the panel, and fold away again: Roles is not opened for it.
+  const edit = detail.querySelector<HTMLButtonElement>("[data-edit-call]")!;
+  expect(edit.getAttribute("aria-expanded")).toBe("false");
+  click(edit);
+  await settle();
+  expect(detail.querySelector(".zz-call-editor")?.textContent).toBe("readerpicker");
+  expect(edit.getAttribute("aria-expanded")).toBe("true");
+  expect(edit.textContent?.trim()).toBe("收起调用设置");
+  expect(detail.querySelector(".trace-step-call .trace-step-detail-note")?.textContent).toBe(`改的是「${copyFor("zh").builtinModels.roles.reader.name}」这个调用本身：之后每一次都照新的跑，已经跑过的不变。`);
   expect(view.edited).toEqual(["reader"]);
+  click(edit);
+  await settle();
+  expect(detail.querySelector(".zz-call-editor")).toBeNull();
+  view.close();
+});
+
+test("Escape in a picker opened from the call's settings is the picker's; elsewhere it puts the panel away", async () => {
+  const view = open({ trace: stepped(), pane: true });
+  await until(view.host, ".trace-step");
+  click(stepCards(view.host)[0]);
+  await settle();
+  click(view.host.querySelector("[data-edit-call]"));
+  await settle();
+  const picker = view.host.querySelector<HTMLButtonElement>(".zz-call-editor .mp-panel button")!;
+  picker.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await settle();
+  expect(view.host.querySelector(".trace-step-detail")).not.toBeNull();
+  // A prompt's editor over the window answers it too, wherever the keyboard is.
+  const editor = document.body.appendChild(Object.assign(document.createElement("div"), { className: "prompt-editor-backdrop" }));
+  document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await settle();
+  expect(view.host.querySelector(".trace-step-detail")).not.toBeNull();
+  editor.remove();
+  document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await settle();
+  expect(view.host.querySelector(".trace-step-detail")).toBeNull();
   view.close();
 });
 

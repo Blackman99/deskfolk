@@ -1258,7 +1258,6 @@
 				api={runtime.client}
 				taskId={runtime.traceTaskId || null}
 				line={runtime.traceLine}
-				onEditCall={(role) => runtime.openRoles(role)}
 				focus={runtime.traceFocus}
 				focusToken={runtime.traceFocusToken}
 				sessionId={runtime.traceSessionId || selected.id}
@@ -1281,7 +1280,13 @@
 				onTask={(id) => {
 					if (runtime.traceTaskId !== id) runtime.traceTaskId = id;
 				}}
-			/>
+			>
+				{#snippet callEditor(role)}
+					{#await import('./settings/CallEditor.svelte') then { default: CallEditor }}
+						<CallEditor {runtime} {t} {role} />
+					{/await}
+				{/snippet}
+			</TaskTraceView>
 		{/await}
 	{/if}
 	{#if runtime.workspaceOpen}

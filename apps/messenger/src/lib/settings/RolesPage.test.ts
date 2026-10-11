@@ -1,6 +1,6 @@
 /**
- * Roles as a page of its own (ADR 0083; the map itself is ADR 0082's): opened from Tools or from a
- * step on the flow, at the call it was asked for, reading the built-in prompts itself.
+ * Roles as a page of its own (ADR 0083; the map itself is ADR 0082's): opened from Tools or by a
+ * card about a call's prompt, at the call it was asked for, reading the built-in prompts itself.
  */
 import { expect, test } from "bun:test";
 import { flushSync } from "svelte";
@@ -123,7 +123,7 @@ test("set up on a local agent with no endpoint, each call's model is there to ch
   none.close();
 });
 
-test("asked for a call — from a step on the flow, or a card about one of its prompts — it opens there", async () => {
+test("asked for a call — by a card about one of its prompts — it opens there", async () => {
   const runtime = fakeRuntime({ providers: [aProvider()] });
   runtime.client = quietClient() as never;
   runtime.rolesTarget = { role: "judgement" };

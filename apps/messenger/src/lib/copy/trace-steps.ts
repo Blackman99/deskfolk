@@ -188,6 +188,8 @@ export const zh = {
   rawFailed: "取不到原始回答",
   jump: "跳到这句",
   edit: "改这个调用",
+  editHide: "收起调用设置",
+  editNote: (call: string) => `改的是「${call}」这个调用本身：之后每一次都照新的跑，已经跑过的不变。`,
   close: "收起",
   useOf: (index: number, count: number) => `第 ${index}/${count} 次`,
 };
@@ -228,6 +230,8 @@ export const en: CopyShape<typeof zh> = {
   rawFailed: "Couldn’t fetch the raw answer",
   jump: "Jump to the line",
   edit: "Change this call",
+  editHide: "Hide the call's settings",
+  editNote: (call: string) => `This changes the ${call} call itself: every later use runs with it; the ones already run stay as they were.`,
   close: "Put away",
   useOf: (index: number, count: number) => `Use ${index} of ${count}`,
 };

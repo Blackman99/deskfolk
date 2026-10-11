@@ -77,7 +77,7 @@ export class OverlayState {
   traceFocus = $state<TraceFocus | null>(null);
   /** The line whose own flow the phone's trace page shows (ADR 0083); null for a job's. */
   traceLine = $state<string | null>(null);
-  /** A call the Roles page should open on, from a step's 「改这个调用」 (ADR 0083). */
+  /** A call the Roles page should open on: a card's 「在设置里看」 about one of its prompts. */
   rolesTarget = $state<{ role: BuiltinModelRole | null } | null>(null);
   traceFocusToken = $state(0);
   profileBotId = $state<string | null>(null);

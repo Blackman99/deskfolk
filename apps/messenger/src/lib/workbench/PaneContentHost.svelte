@@ -344,7 +344,6 @@
 				api={runtime.client}
 				taskId={content.taskId}
 				line={content.line ?? null}
-				onEditCall={(role) => runtime.openRoles(role)}
 				focus={content.focus ?? null}
 				focusToken={content.focusNonce ?? 0}
 				sessionId={content.sessionId}
@@ -369,7 +368,13 @@
 				onStop={(choice) => runtime.stopScope(choice.scope, choice.id, content.sessionId)}
 				onLift={(hold) => runtime.liftHold(hold.id)}
 				controlsDisabled={runtime.connection !== 'connected'}
-			/>
+			>
+				{#snippet callEditor(role)}
+					{#await import('../settings/CallEditor.svelte') then { default: CallEditor }}
+						<CallEditor {runtime} {t} {role} />
+					{/await}
+				{/snippet}
+			</TraceView>
 		{/await}
 	{/key}
 {:else if content.kind === 'preview'}

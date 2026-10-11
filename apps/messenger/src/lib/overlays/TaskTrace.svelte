@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import type { Attachment, Bot, BuiltinModelRole, Hold, Provider, SessionSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
@@ -18,7 +19,7 @@
 		taskId: string | null;
 		/** A line filed under no job, as its own board (ADR 0083). */
 		line?: string | null;
-		onEditCall?: (role: BuiltinModelRole) => void;
+		callEditor?: Snippet<[BuiltinModelRole]>;
 		focus?: import('./task-trace.ts').TraceFocus | null;
 		focusToken?: number;
 		sessionId: string;
@@ -52,7 +53,7 @@
 		api,
 		taskId,
 		line = null,
-		onEditCall,
+		callEditor,
 		focus = null,
 		focusToken = 0,
 		sessionId,
@@ -90,7 +91,7 @@
 		{api}
 		{taskId}
 		{line}
-		{onEditCall}
+		{callEditor}
 		{focus}
 		{focusToken}
 		{sessionId}

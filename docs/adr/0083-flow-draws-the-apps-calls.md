@@ -38,3 +38,9 @@ The direction set earlier in the same discussion: Roles (ADR 0082) is the templa
 第 3 条里「点开就地看」改了：点开的一步不再挂在它的卡片下面（卡片一栏宽 208px，原始回答挤在里面，要在两个方向上滚才看得全），而是在流程右侧的面板里，宽 400px，高到工具条为止；手机宽度上是从底部拉起的面板，返回键先收起它。面板盖住了那一步的卡片时，画布滑开到卡片露出来。原始回答是 JSON 时画成可折叠的树。卡片的模型选择仍旧在卡片下面展开。
 
 Decision 3's "opens in place" changed: an opened step no longer hangs under its card (a column 208px wide, where the raw answer had to be scrolled both ways to be read) but shows in a panel over the flow's right edge, 400px wide, down to the tools at most; as narrow as a phone it is a sheet from the bottom, which Back puts away first. When the panel covers the step's card, the board slides until the card is clear. A raw answer that is JSON is drawn as a tree you can fold. A card's model choice still unfolds under the card.
+
+## 2026-10-11 补记：在面板里改调用 / A call is changed in the step's panel
+
+第 5 条里「环节上的「改这个调用」打开它并选中那个调用」改了：要改一个调用就得离开流程、去分工页，再回来找原来那一步。现在「改这个调用」在环节的面板里展开这个调用自己的设置，和分工页里那个调用的是同一块（模型、它的提示词），提示词在盖住整个窗口的编辑器里打开；改的是调用本身，之后每一次都照新的跑。分工页照旧从工具菜单打开，卡片上的「在设置里看」照旧打开分工页。
+
+Decision 5's "Change this call on a step opens Roles at that call" changed: changing a call meant leaving the flow for Roles and finding the step again afterwards. "Change this call" now unfolds the call's own settings in the step's panel, the same block as that call's on Roles (its model, its prompts), a prompt opening in its editor over the whole window; it changes the call itself, for every later use. Roles still opens from Tools, and a card's "View in Settings" still opens Roles.

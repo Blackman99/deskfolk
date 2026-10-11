@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import type { BuiltinModelRole, CallRun, TraceStep } from '@real-bot/protocol';
 	import { JsonViewer } from 'svelte-json-discovery';
 	import type { Copy } from '../copy.ts';
@@ -12,12 +13,42 @@
 		/** The whole use, the model's answer included; absent where nothing can fetch it. */
 		fetchRun?: (id: string) => Promise<CallRun>;
 		onJump: (sessionId: string, messageId: string) => void;
-		/** Opens the call on the Roles page, where its model and prompts are set. */
-		onEditCall?: (role: BuiltinModelRole) => void;
+		/** The call itself — its model and prompts — to change here; the host renders it. */
+		callEditor?: Snippet<[BuiltinModelRole]>;
 		onClose: () => void;
 	}
 
-	let { group, t, fetchRun, onJump, onEditCall, onClose }: Props = $props();
+	let { group, t, fetchRun, onJump, callEditor, onClose }: Props = $props();
+
+	/** The call's settings unfolded under the step; they stay unfolded from step to step. */
+	let editing = $state(false);
+	let panelEl = $state<HTMLElement>();
+	let callEl = $state<HTMLElement>();
+
+	/**
+	 * Unfolded, the panel scrolls to the call's settings. They load in after the press (the editor,
+	 * then the prompts), so it keeps them at its top while they grow, until your own wheel or touch.
+	 */
+	$effect(() => {
+		const panel = panelEl;
+		const call = callEl;
+		if (!editing || !panel || !call) return;
+		const align = () => (panel.scrollTop = call.offsetTop - 10);
+		align();
+		if (typeof ResizeObserver === 'undefined') return;
+		const observer = new ResizeObserver(align);
+		observer.observe(call);
+		const stop = () => observer.disconnect();
+		const timer = setTimeout(stop, 1500);
+		panel.addEventListener('wheel', stop, { passive: true });
+		panel.addEventListener('touchstart', stop, { passive: true });
+		return () => {
+			stop();
+			clearTimeout(timer);
+			panel.removeEventListener('wheel', stop);
+			panel.removeEventListener('touchstart', stop);
+		};
+	});
 
 	/** Which use is shown, when the step stands for several; the newest to start with. */
 	let picked = $state<string | null>(null);
@@ -48,7 +79,7 @@
 </script>
 
 <!-- A panel over the board's right edge, or a sheet over its bottom on a phone (TraceView places it). -->
-<section class="trace-step-detail" aria-label={stepTitle(step, t)}>
+<section class="trace-step-detail" aria-label={stepTitle(step, t)} bind:this={panelEl}>
 	<header class="trace-step-detail-head">
 		<span class="trace-step-detail-title">{stepTitle(step, t)}</span>
 		<span class="trace-step-detail-time mono" title={formatFullTimestamp(step.created_at)}>{formatMessageTime(step.created_at)}</span>
@@ -112,10 +143,19 @@
 		{#if step.message_id && step.session_id}
 			<button type="button" onclick={() => onJump(step.session_id!, step.message_id!)}>{t.traceSteps.jump}</button>
 		{/if}
-		{#if onEditCall}
-			<button type="button" data-edit-call={step.role} onclick={() => onEditCall(step.role)}>{t.traceSteps.edit}</button>
+		{#if callEditor}
+			<button type="button" data-edit-call={step.role} aria-expanded={editing} onclick={() => (editing = !editing)}>
+				{editing ? t.traceSteps.editHide : t.traceSteps.edit}
+			</button>
 		{/if}
 	</div>
+	{#if editing && callEditor}
+		<div class="trace-step-call" bind:this={callEl}>
+			<!-- Named here: on a narrow board the call's own card leaves its name to a page head. -->
+			<p class="trace-step-detail-note">{t.traceSteps.editNote(t.builtinModels.roles[step.role].name)}</p>
+			{@render callEditor(step.role)}
+		</div>
+	{/if}
 </section>
 
 <style>
@@ -326,5 +366,14 @@
 
 	.trace-step-actions button:hover {
 		background: var(--accent-tint);
+	}
+
+	/* The call's own settings, under what this use of it did. */
+	.trace-step-call {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding-top: 10px;
+		border-top: 1px solid var(--line);
 	}
 </style>

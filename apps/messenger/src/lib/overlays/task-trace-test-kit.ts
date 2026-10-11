@@ -3,7 +3,7 @@
  * `open`, which renders the board or its pane with the host's callbacks recorded.
  */
 import { readFileSync } from "node:fs";
-import { flushSync } from "svelte";
+import { createRawSnippet, flushSync } from "svelte";
 import { USER_MEMBER, type AcceptanceCheck, type Hold, type LineTrace, type PlanRequirement, type RouteRecord, type SessionTaskSummary, type TaskDetail, type TaskTrace } from "@real-bot/protocol";
 import { mockMonacoCss } from "../test-mocks.ts";
 
@@ -269,7 +269,13 @@ export function open(opts: {
     reloadToken: 0,
     onClose: () => (closed += 1),
     onJump: (sessionId: string, messageId: string) => jumps.push([sessionId, messageId]),
-    onEditCall: (role: string) => edited.push(role),
+    // What a host puts in a step's panel: the call's settings, with a picker that answers its own Escape.
+    callEditor: createRawSnippet((role: () => string) => ({
+      render: () => {
+        edited.push(role());
+        return `<div class="zz-call-editor">${role()}<div class="mp-panel"><button type="button">picker</button></div></div>`;
+      },
+    })),
     line: opts.line ?? null,
     onTask: (taskId: string) => {
       settled.push(taskId);

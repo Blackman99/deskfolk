@@ -7,8 +7,8 @@
 
 	/**
 	 * Roles (分工, ADR 0082) as a page of its own (ADR 0083): the map of the app's own calls with the
-	 * picked one's model and prompts, opened from Tools or from a step on the flow — a tab on a wide
-	 * window, a page in place of the list on a phone. It reads the built-in prompts itself, as
+	 * picked one's model and prompts, opened from Tools or by a card about a call's prompt — a tab on
+	 * a wide window, a page in place of the list on a phone. It reads the built-in prompts itself, as
 	 * Settings does, again whenever one changes.
 	 */
 	interface Props {

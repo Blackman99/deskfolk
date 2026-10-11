@@ -142,7 +142,7 @@
 		runtime.promptsTarget = null;
 	});
 
-	// Sent here from a step on the flow (ADR 0083): that call, picked.
+	// Sent here for one call — a card's 「在设置里看」 about one of its prompts: that call, picked.
 	$effect(() => {
 		const target = runtime.rolesTarget;
 		if (!target) return;
