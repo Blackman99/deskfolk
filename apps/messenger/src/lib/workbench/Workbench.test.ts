@@ -6,7 +6,7 @@ import Workbench from "./Workbench.svelte";
 import { copyFor } from "../copy.ts";
 import { click, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
-import type { MinSizeLookup, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
+import { WB_SASH_PX, type MinSizeLookup, type WorkbenchLayout, type WorkbenchTab } from "./layout-types.ts";
 import { makeBranch, makeLeaf, tiledLeaves } from "./layout-tree.ts";
 const t = copyFor("zh");
 const flatMins: MinSizeLookup = () => ({ width: 100, height: 100 });
@@ -422,7 +422,7 @@ test("a divider drag resizes every pane on the branch and commits when the point
     sash.dispatchEvent(new PointerEvent("pointermove", { ...pointer, clientX: 460 }));
     flushSync();
     expect(state.seen).toHaveLength(0);
-    const tracks = branch.style.gridTemplateColumns.split(" ").filter((part) => part.endsWith("px") && part !== "8px");
+    const tracks = branch.style.gridTemplateColumns.split(" ").filter((part) => part.endsWith("px") && part !== `${WB_SASH_PX}px`);
     expect(tracks).toHaveLength(2);
     expect(tracks[0]).not.toBe(tracks[1]);
     for (const content of contents) expect(content.style.width).toBe("");
@@ -475,11 +475,12 @@ test("a divider drag after the workbench changed width, and not the window, foll
     const branch = host.querySelector("[data-branch]") as HTMLElement;
     const tracks = branch.style.gridTemplateColumns
       .split(" ")
-      .filter((part) => part.endsWith("px") && part !== "8px")
+      .filter((part) => part.endsWith("px") && part !== `${WB_SASH_PX}px`)
       .map((part) => Number.parseFloat(part));
     expect(tracks).toHaveLength(2);
-    expect(tracks[0]! + tracks[1]!).toBeCloseTo(1000 - 8);
-    expect(tracks[0]!).toBeCloseTo(496 + 2);
+    expect(tracks[0]! + tracks[1]!).toBeCloseTo(1000 - WB_SASH_PX);
+    // 999px between the two panes, shared as 500 and 499.
+    expect(tracks[0]!).toBeCloseTo(500 + 2);
     sash.dispatchEvent(new PointerEvent("pointerup", { ...pointer, clientX: 502 }));
     flushSync();
   } finally {

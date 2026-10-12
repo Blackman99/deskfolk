@@ -241,11 +241,12 @@
 	let inspectorPreferred = $state(inspectorWidthStore.load());
 	const railWidth = $derived(railWidthStore.clamp(railPreferred, width || Number.POSITIVE_INFINITY));
 	const inspectorWidth = $derived(inspectorWidthStore.clamp(inspectorPreferred, width || Number.POSITIVE_INFINITY));
-	let resizing = $state(false);
+	/** Which edge is in hand: it keeps its tint while the pointer runs off it. */
+	let resizing = $state<'rail' | 'inspector' | null>(null);
 
 	function startResize(event: PointerEvent, which: 'rail' | 'inspector'): void {
 		event.preventDefault();
-		resizing = true;
+		resizing = which;
 		const originX = event.clientX;
 		const originW = which === 'rail' ? railWidth : inspectorWidth;
 		trackPointerDrag(window, {
@@ -255,7 +256,7 @@
 				else inspectorPreferred = inspectorWidthStore.clamp(originW - delta, width);
 			},
 			end: () => {
-				resizing = false;
+				resizing = null;
 				if (which === 'rail') railWidthStore.save(railPreferred);
 				else inspectorWidthStore.save(inspectorPreferred);
 			},
@@ -533,7 +534,7 @@
 	class:is-page={host === 'page'}
 	class:is-narrow={narrow}
 	class:is-medium={medium}
-	class:is-resizing={resizing}
+	class:is-resizing={resizing !== null}
 	class:has-rail={hasTickets && lanes !== null}
 	class:has-inspector={inspectorView !== null}
 	class:has-sheet={sheet}
@@ -613,7 +614,7 @@
 					onExpand={() => (boardOpen = true)}
 				/>
 				{#if !narrow}
-					<button type="button" class="job-split is-rail" aria-label={t.plan.job.resizeRail} onpointerdown={(event) => startResize(event, 'rail')}></button>
+					<button type="button" class="split-handle job-split is-rail" class:is-active={resizing === 'rail'} aria-label={t.plan.job.resizeRail} onpointerdown={(event) => startResize(event, 'rail')}></button>
 				{/if}
 			</section>
 		{/if}
@@ -670,7 +671,7 @@
 		{#if inspectorView !== null}
 			<aside class="job-part job-inspector" class:is-on={segmentShown === 'spec'} class:is-sheet={sheet} aria-label={t.plan.job.inspector}>
 				{#if !narrow}
-					<button type="button" class="job-split is-inspector" aria-label={t.plan.job.resizeInspector} onpointerdown={(event) => startResize(event, 'inspector')}></button>
+					<button type="button" class="split-handle job-split is-inspector" class:is-active={resizing === 'inspector'} aria-label={t.plan.job.resizeInspector} onpointerdown={(event) => startResize(event, 'inspector')}></button>
 				{/if}
 				<JobInspector
 					{api}
@@ -831,31 +832,22 @@
 		pointer-events: none;
 	}
 
-	/* A grip on the column's edge, drawn as nothing: the cursor says the edge can be pulled. */
+	/* The grip (`.split-handle`) lies over the border the column already draws on that edge. */
 	.job-split {
 		position: absolute;
-		z-index: 4;
 		top: 0;
 		bottom: 0;
-		width: 7px;
-		padding: 0;
-		border: 0;
+		width: 1px;
 		background: transparent;
-		cursor: col-resize;
 	}
 
+	/* Past the padding edge, an absolute child's zero, by the border's one pixel. */
 	.job-split.is-rail {
-		right: -4px;
+		right: -1px;
 	}
 
 	.job-split.is-inspector {
-		left: -4px;
-	}
-
-	.job-split:hover,
-	.job-split:focus-visible {
-		background: var(--accent-border);
-		outline: none;
+		left: -1px;
 	}
 
 	/*

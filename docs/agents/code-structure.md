@@ -48,7 +48,7 @@
   - **信使：工具函数**
     - 本地存储：`storage.ts` 的 `readStored` / `writeStored` / `forgetStored`；记住拖动宽度的 `persistedWidth`。
     - 小工具：`is-record.ts`、`locale-tag.ts`、`clipboard.ts` 的 `copyText`、`spend-format.ts`。
-    - 交互：`pointer-drag.ts`（拖动改宽高）、`dismissable-menu.ts`（右键菜单的收起）、`menu-roving.ts`（菜单方向键）、`autosave.svelte.ts`（边输边存）。
+    - 交互：`pointer-drag.ts`（拖动改宽高）、`styles/shared.css` 的 `.split-handle`（拖动的分隔条长什么样：1px 细线、两侧 3px 的抓手、悬停和拖动时的浅色带）、`dismissable-menu.ts`（右键菜单的收起）、`menu-roving.ts`（菜单方向键）、`autosave.svelte.ts`（边输边存）。
   - **信使：组件**
     - `Switch.svelte`。
     - 设置页：`settings/SettingsSwitch`、`SettingsRow`、`SettingsCard`、`SettingsCardHeader`、`SettingsSubpageButton`、`AutosaveState`；分块标签和手机列表 `SettingsSectionTabs`、`SettingsSectionList`。

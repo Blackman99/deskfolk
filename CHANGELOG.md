@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Every divider you drag works like the flow tab's
+
+- The edges you drag to resize — the sidebar's, the file preview's, the file list's inside a preview, and the dividers between workbench panes — now look and work like the rail's and the inspector's edges in a job's flow tab. At rest each is a one-pixel line, with no gutter taking room. A press within three pixels either side of the line still catches it. On it, focused or while dragging, a band of light accent appears over those seven pixels, and it stays while you drag even when the pointer runs past the edge.
+- Panes on the workbench meet at that line instead of an 8px gutter, so each pane gets a few pixels more. The diamond where dividers cross is unchanged.
+
 ### Always allow outside the workspace covers the whole project
 
 - Always allow on a card to read or write outside the workspace now covers the project the path is in — the nearest folder above it with a `.git` — or, with none, the folder it is in ([ADR 0087](docs/adr/0087-always-allow-covers-the-project.md)). Before, it covered only the card's own file, so a Bot editing another project asked again for every file. Your home folder, anything above it, a disk's root and the folders right under one are never covered this way: a card there still covers its path alone.

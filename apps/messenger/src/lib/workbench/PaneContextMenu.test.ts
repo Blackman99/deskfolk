@@ -352,11 +352,11 @@ test("right-clicking a tab floats that tab alone; the pane keeps its other tabs"
     expect(floatingTabs(state.layout)).toEqual([["t3"]]);
     expect(state.layout.focus).toEqual({ zone: "floating", leafId: state.layout.floating[0]!.leaf.id });
     expect(tiledLeaves(state.layout.root).map((leaf) => leaf.tabs.map((tab) => tab.id))).toEqual([["t1"], ["t2"]]);
-    // From the right-hand column of a 1200-wide workbench: 596 across, 80% of it centred on it.
+    // From the right-hand column of a 1200-wide workbench: 599 across, 80% of it centred on it.
     const frame = state.layout.floating[0]!.frame;
-    expect(frame.width).toBe(Math.round(596 * 0.8));
+    expect(frame.width).toBe(Math.round(599 * 0.8));
     expect(frame.height).toBe(640);
-    expect(Math.abs(frame.x + frame.width / 2 - (604 + 596 / 2))).toBeLessThanOrEqual(1);
+    expect(Math.abs(frame.x + frame.width / 2 - (601 + 599 / 2))).toBeLessThanOrEqual(1);
     expect(host.querySelector('.wb-float [data-body="t3"]')).not.toBeNull();
   } finally {
     close();

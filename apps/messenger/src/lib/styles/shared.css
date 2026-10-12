@@ -1,7 +1,8 @@
 /*
  * The few classes more than one pane puts on its own elements: the field error line, the avatar
- * image, the chip button, the sheet close, and the modal frame that the settings modal, the
- * create-Bot sheet, the endpoint editor and the confirm dialog all share.
+ * image, the chip button, the sheet close, the modal frame that the settings modal, the
+ * create-Bot sheet, the endpoint editor and the confirm dialog all share, and the divider that is
+ * dragged to resize two columns.
  *
  * Only the shared thing itself lives here — `.modal-body` and its generic states, never
  * `.modal-body .provider-card` or `.modal-dialog.settings-modal`, which belong to the pane that
@@ -307,4 +308,52 @@ img[src*="mask_folk_"] {
   letter-spacing: -0.3px;
   line-height: 1;
   user-select: none;
+}
+
+/*
+ * A divider dragged to resize the two sides of it: the list's edge, the preview's, the file
+ * tree's, the workbench's panes, a job's rail and inspector. All of them the way a job's tab drew
+ * its own first (ADR 0086): at rest only the hairline between the two sides, no gutter taking
+ * room; three pixels either side of the line are the grip, so a line one pixel wide can still be
+ * aimed at; on it, focused or in hand (`.is-active`, since the pointer leaves the grip while it
+ * drags), those seven pixels take the accent's tint.
+ *
+ * The element is the line. A host lays it as a one-pixel track between the two sides, or, where
+ * a side already draws that edge as its border, places it over the border and makes it
+ * transparent. `.is-rows` is a line across, dragged up and down. Where the drag is wired, what it
+ * measures and where the grip hides on a phone stay with the host.
+ */
+.split-handle {
+  position: relative;
+  z-index: 4;
+  padding: 0;
+  border: 0;
+  background: var(--line);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.split-handle.is-rows {
+  cursor: row-resize;
+}
+
+.split-handle::before {
+  content: "";
+  position: absolute;
+  inset: 0 -3px;
+  transition: background-color 0.15s ease;
+}
+
+.split-handle.is-rows::before {
+  inset: -3px 0;
+}
+
+.split-handle:hover::before,
+.split-handle:focus-visible::before,
+.split-handle.is-active::before {
+  background: var(--accent-border);
+}
+
+.split-handle:focus-visible {
+  outline: none;
 }

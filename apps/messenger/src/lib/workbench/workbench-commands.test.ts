@@ -169,7 +169,7 @@ test("the keyboard moves the divider the focused pane sits against", () => {
   ], [0.5, 0.5]), "a");
   const wider = applyCommand(layout, { kind: "resize", dir: "right", px: WB_KEY_RESIZE_PX }, ctx(), split);
   const geo = computeGeometry(wider, viewport, flatMins);
-  expect(geo.leaves.get("a")!.width).toBe(512);
+  expect(geo.leaves.get("a")!.width).toBe(516);
 
   // The outside edge of the layout has no divider to move.
   expect(applyCommand(layout, { kind: "resize", dir: "left", px: WB_KEY_RESIZE_PX }, ctx(), split)).toBe(layout);

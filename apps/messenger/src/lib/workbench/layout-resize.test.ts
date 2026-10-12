@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { BranchNode, MinSizeLookup, Rect, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
+import { WB_SASH_PX, type BranchNode, type MinSizeLookup, type Rect, type WorkbenchLayout, type WorkbenchTab } from "./layout-types.ts";
 import { makeBranch, makeLeaf, nodeAt, findPath, tiledLeaves } from "./layout-tree.ts";
 import { computeGeometry } from "./layout-geometry.ts";
 import {
@@ -54,9 +54,9 @@ test("dragging a divider moves exactly the two panes it is between", () => {
 
   const next = resizeSash(layout, drag, 100);
   const widths = widthsOf(next);
-  expect(widths.a).toBe(596);
-  expect(widths.b).toBe(396);
-  expect(widths.a! + widths.b!).toBe(viewport.width - 8);
+  expect(widths.a).toBe(600);
+  expect(widths.b).toBe(399);
+  expect(widths.a! + widths.b!).toBe(viewport.width - WB_SASH_PX);
 });
 
 test("a three-pane row moves only the pair either side of the divider", () => {
@@ -79,13 +79,14 @@ test("a divider stops at the minimum rather than squeezing a pane away", () => {
   const layout = twoColumns();
   const geo = computeGeometry(layout, viewport, flatMins);
   const drag = beginSashDrag(layout, geo, "r#1", flatMins)!;
-  // 100px floor each, 992px to share: the divider can travel 396 either way, no further.
-  expect(drag.range.hi).toBe(396);
-  expect(drag.range.lo).toBe(-396);
+  // 100px floor each, 999px to share as 500 and 499: the divider can travel 399 right and 400
+  // left, no further.
+  expect(drag.range.hi).toBe(399);
+  expect(drag.range.lo).toBe(-400);
 
   const shoved = widthsOf(resizeSash(layout, drag, 5000));
   expect(shoved.b).toBe(100);
-  expect(shoved.a).toBe(892);
+  expect(shoved.a).toBe(899);
 });
 
 test("clampToRange keeps a delta inside what the drag allows", () => {
@@ -104,14 +105,14 @@ test("a junction drag moves the bar across and every stem along, independently",
   const next = resizeJunction(layout, drag, { across: 120, along: -80 });
 
   // Across: the columns changed width, by the amount asked for.
-  expect(weightsOf(next, "r")).toEqual([0.6210, 0.3790]);
+  expect(weightsOf(next, "r")).toEqual([0.6206, 0.3794]);
   // Along: BOTH stems moved the same number of pixels, so the cross is still a cross.
   expect(weightsOf(next, "cl")).toEqual(weightsOf(next, "cr"));
   const heights = heightsOf(next);
-  expect(heights.a).toBe(316);
-  expect(heights.c).toBe(316);
+  expect(heights.a).toBe(320);
+  expect(heights.c).toBe(320);
   // And the two axes did not interfere: widths are untouched by the vertical motion.
-  expect(heights.a! + heights.b!).toBe(viewport.height - 8);
+  expect(heights.a! + heights.b!).toBe(viewport.height - WB_SASH_PX);
 });
 
 test("moving only one axis leaves the other exactly where it was", () => {
@@ -119,12 +120,13 @@ test("moving only one axis leaves the other exactly where it was", () => {
   const geo = computeGeometry(layout, viewport, flatMins);
   const drag = beginJunctionDrag(layout, geo, geo.junctions[0]!.id, flatMins)!;
 
+  // In pixels, not weights: 799px of height is shared as 400 and 399, and a drag writes the
+  // shares back from those, so the weights move in the fourth decimal while nothing on screen does.
   const acrossOnly = resizeJunction(layout, drag, { across: 90, along: 0 });
-  expect(weightsOf(acrossOnly, "cl")).toEqual([0.5, 0.5]);
-  expect(weightsOf(acrossOnly, "cr")).toEqual([0.5, 0.5]);
+  expect(heightsOf(acrossOnly)).toEqual(heightsOf(layout));
 
   const alongOnly = resizeJunction(layout, drag, { across: 0, along: 70 });
-  expect(weightsOf(alongOnly, "r")).toEqual([0.5, 0.5]);
+  expect(widthsOf(alongOnly)).toEqual(widthsOf(layout));
 });
 
 test("a cross stays rigid: when one stem hits its minimum they all stop", () => {
@@ -139,19 +141,19 @@ test("a cross stays rigid: when one stem hits its minimum they all stop", () => 
   expect(junction.stems).toHaveLength(2);
 
   const drag = beginJunctionDrag(layout, geo, junction.id, tallFloor)!;
-  // The left column could give up 296px; the right one only 46. The pair may move 46.
-  expect(drag.stems[0]!.range.hi).toBe(296);
-  expect(drag.stems[1]!.range.hi).toBe(46);
-  expect(drag.stemRange.hi).toBe(46);
+  // The left column could give up 299px; the right one only 49. The pair may move 49.
+  expect(drag.stems[0]!.range.hi).toBe(299);
+  expect(drag.stems[1]!.range.hi).toBe(49);
+  expect(drag.stemRange.hi).toBe(49);
   expect(drag.stemRange.hi).toBeLessThan(drag.bar.range.hi);
 
   const shoved = resizeJunction(layout, drag, { across: 0, along: 5000 });
   const geoAfter = computeGeometry(shoved, viewport, tallFloor);
   const height = (id: string) => geoAfter.leaves.get(id)!.height;
   expect(height("d")).toBe(350);
-  // Both stems moved by the same 46px, so they are still in line — the cross survived.
-  expect(height("a")).toBe(442);
-  expect(height("c")).toBe(442);
+  // Both stems moved by the same 49px, so they are still in line — the cross survived.
+  expect(height("a")).toBe(449);
+  expect(height("c")).toBe(449);
   expect(height("b")).toBe(350);
 });
 
@@ -165,8 +167,8 @@ test("a T-junction drags on both axes through the same code path", () => {
   expect(drag.stems).toHaveLength(1);
 
   const next = resizeJunction(layout, drag, { across: -50, along: 40 });
-  expect(widthsOf(next).a).toBe(446);
-  expect(heightsOf(next).a).toBe(436);
+  expect(widthsOf(next).a).toBe(450);
+  expect(heightsOf(next).a).toBe(440);
 });
 
 test("equalise gives a branch back even shares and is a no-op when it already has them", () => {
@@ -183,6 +185,6 @@ test("the keyboard moves a divider the same way the pointer does", () => {
   const layout = twoColumns();
   const geo = computeGeometry(layout, viewport, flatMins);
   const nudged = nudgeSash(layout, geo, "r#1", flatMins, 16);
-  expect(widthsOf(nudged).a).toBe(512);
+  expect(widthsOf(nudged).a).toBe(516);
   expect(nudgeSash(layout, geo, "missing#1", flatMins, 16)).toBe(layout);
 });

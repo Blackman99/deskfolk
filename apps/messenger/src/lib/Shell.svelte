@@ -1056,7 +1056,8 @@
 	{/if}
 	<button
 		type="button"
-		class="sidebar-split"
+		class="split-handle sidebar-split"
+		class:is-active={sidebarDragging}
 		aria-label={t.sidebar.resize}
 		onpointerdown={startSidebarResize}
 	></button>
@@ -1389,31 +1390,6 @@
 		background: var(--row-hover);
 	}
 
-	.sidebar-split {
-		width: 8px;
-		padding: 0;
-		border: 0;
-		cursor: col-resize;
-		position: relative;
-		background: var(--sidebar-bg);
-		z-index: 4;
-		touch-action: none;
-	}
-
-	.sidebar-split::before {
-		content: "";
-		position: absolute;
-		inset: 0 3px;
-		background: var(--line);
-		border-radius: var(--radius-full);
-	}
-
-	.sidebar-split:hover::before,
-	.shell.is-sidebar-dragging .sidebar-split::before {
-		background: var(--accent);
-		inset: 0 2px;
-	}
-
 	/* The rail has its own edge and nothing to drag. */
 	.shell.is-sidebar-collapsed .sidebar-split {
 		visibility: hidden;
@@ -1492,7 +1468,7 @@
 	.shell {
 		height: 100%;
 		display: grid;
-		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 8px) minmax(0, 1fr) 0fr;
+		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 1px) minmax(0, 1fr) 0fr;
 		background: var(--bg);
 		color: var(--ink);
 		position: relative;
@@ -1500,15 +1476,15 @@
 	}
 
 	.shell.is-thread {
-		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 8px) minmax(0, 1fr) 320px;
+		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 1px) minmax(0, 1fr) 320px;
 	}
 
 	.shell.is-preview {
-		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 8px) minmax(0, 1fr) 8px var(--preview-width, 420px) 0fr;
+		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 1px) minmax(0, 1fr) 1px var(--preview-width, 420px) 0fr;
 	}
 
 	.shell.is-preview.is-thread {
-		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 8px) minmax(0, 1fr) 8px var(--preview-width, 420px) 320px;
+		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 1px) minmax(0, 1fr) 1px var(--preview-width, 420px) 320px;
 	}
 
 	/*
@@ -1521,11 +1497,11 @@
 	@media (min-width: 681px) {
 		.shell.is-layered.is-preview,
 		.shell.is-layered.is-preview.is-thread {
-			grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 8px) minmax(0, 1fr) 0fr;
+			grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 1px) minmax(0, 1fr) 0fr;
 		}
 
 		.shell.is-layered.is-preview.is-thread {
-			grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 8px) minmax(0, 1fr) 320px;
+			grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 1px) minmax(0, 1fr) 320px;
 		}
 
 		/* Without this the thread would sit in the sixth column the rules above just removed. */

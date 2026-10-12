@@ -30,7 +30,8 @@
 	{#if wide}
 		<button
 			type="button"
-			class="preview-split"
+			class="split-handle preview-split"
+			class:is-active={artifact.previewDragging}
 			aria-label={t.stream.artifactResize}
 			onpointerdown={artifact.startPreviewResize}
 		></button>
@@ -83,29 +84,3 @@
 		/>
 	{/await}
 {/if}
-
-<style>
-	.preview-split {
-		width: 8px;
-		padding: 0;
-		border: 0;
-		cursor: col-resize;
-		position: relative;
-		background: transparent;
-		z-index: 2;
-	}
-
-	.preview-split::before {
-		content: "";
-		position: absolute;
-		inset: 0 3px;
-		background: var(--line);
-		border-radius: var(--radius-full);
-	}
-
-	.preview-split:hover::before,
-	:global(.shell.is-preview-dragging) .preview-split::before {
-		background: var(--accent);
-		inset: 0 2px;
-	}
-</style>

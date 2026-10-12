@@ -633,7 +633,8 @@
 			{/key}
 			<button
 				type="button"
-				class="artifact-tree-split"
+				class="split-handle artifact-tree-split"
+				class:is-active={treeDragging}
 				aria-label={t.stream.artifactTreeResize}
 				onpointerdown={startTreeResize}
 			></button>
@@ -822,31 +823,19 @@
 	.artifact-pane-main.has-tree {
 		display: grid;
 		grid-template-rows: minmax(0, 1fr);
-		grid-template-columns: var(--artifact-tree-width, 168px) 8px minmax(0, 1fr);
+		grid-template-columns: var(--artifact-tree-width, 168px) 0 minmax(0, 1fr);
 	}
 
+	/* The grip (`.split-handle`) takes no track: it lies over the tree's own right border. */
 	.artifact-tree-split {
-		width: 8px;
-		padding: 0;
-		border: 0;
-		cursor: col-resize;
-		position: relative;
+		width: 1px;
+		margin-left: -1px;
 		background: transparent;
-		z-index: 2;
 	}
 
-	.artifact-tree-split::before {
-		content: "";
-		position: absolute;
-		inset: 0 3px;
-		background: var(--line);
-		border-radius: var(--radius-full);
-	}
-
-	.artifact-tree-split:hover::before,
-	.artifact-pane.is-tree-dragging .artifact-tree-split::before {
-		background: var(--accent);
-		inset: 0 2px;
+	.artifact-pane.is-tree-dragging {
+		cursor: col-resize;
+		user-select: none;
 	}
 
 	@media (max-width: 680px) {

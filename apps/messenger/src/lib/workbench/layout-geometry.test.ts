@@ -103,8 +103,8 @@ test("one pane fills the viewport and has no dividers", () => {
 test("the track template carries both the minimum and the share", () => {
   const branch = makeBranch("r", "row", [makeLeaf("a"), makeLeaf("b")], [0.25, 0.75]);
   expect(trackTemplate(branch, [360, 600])).toBe(
-    "minmax(min(360px, max(0px, calc(37.500000% - 3.000000px))), 250.000fr) 8px " +
-    "minmax(min(600px, max(0px, calc(62.500000% - 5.000000px))), 750.000fr)",
+    "minmax(min(360px, max(0px, calc(37.500000% - 0.375000px))), 250.000fr) 1px " +
+    "minmax(min(600px, max(0px, calc(62.500000% - 0.625000px))), 750.000fr)",
   );
 });
 
@@ -157,7 +157,8 @@ test("a T-junction has one bar and one stem", () => {
   const junction = geo.junctions[0]!;
   expect(junction.bar.axis).toBe("row");
   expect(junction.stems).toHaveLength(1);
-  expect(junction.point.x).toBeCloseTo(500, 0);
+  // On the divider's line, just past the left half.
+  expect(junction.point.x).toBe(geo.leaves.get("a")!.width + WB_SASH_PX / 2);
 });
 
 test("two columns split at the same height make one cross, not two handles", () => {
@@ -183,8 +184,8 @@ test("a divider meeting another at its very end is not a junction", () => {
   // The outer row's sash runs the full height, so the inner column's sash at the top edge is the
   // boundary of the whole layout, not a point anyone can drag in two directions.
   const sashes: SashRect[] = [
-    { id: "bar#1", branchId: "bar", index: 1, axis: "row", rect: { x: 500, y: 0, width: 8, height: 800 } },
-    { id: "stem#1", branchId: "stem", index: 1, axis: "column", rect: { x: 0, y: 0, width: 500, height: 8 } },
+    { id: "bar#1", branchId: "bar", index: 1, axis: "row", rect: { x: 500, y: 0, width: WB_SASH_PX, height: 800 } },
+    { id: "stem#1", branchId: "stem", index: 1, axis: "column", rect: { x: 0, y: 0, width: 500, height: WB_SASH_PX } },
   ];
   expect(findJunctions(sashes)).toEqual([]);
 });

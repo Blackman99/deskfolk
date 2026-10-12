@@ -838,10 +838,9 @@
 		min-height: 0;
 		overflow: hidden;
 		/*
-		 * The gutter colour, owned here rather than inherited. Panes paint themselves `--pane`,
-		 * so whatever shows between them is the seam — and if that is left to whatever happens to
-		 * be behind the workbench, the seam is invisible wherever the host is also `--pane`,
-		 * which is exactly what the main column is.
+		 * The ground, owned here rather than inherited from a host that is `--pane` too, so a
+		 * place no pane covers never passes for one. The seam between two panes is not this: it
+		 * is the divider's own line (`.split-handle`), which a one-pixel track holds.
 		 */
 		background: var(--bg);
 	}

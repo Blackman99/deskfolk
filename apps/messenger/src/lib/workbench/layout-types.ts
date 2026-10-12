@@ -99,5 +99,5 @@ export type MinSizeLookup = (tab: WorkbenchTab | null) => PaneMin;
 
 export const WORKBENCH_LAYOUT_VERSION = 1;
 
-/** Thickness of a divider, matching the existing `.sidebar-split` / `.preview-split` handles. */
-export const WB_SASH_PX = 8;
+/** Thickness of a divider: the hairline of `.split-handle`, as the sidebar's and the preview's edges are. */
+export const WB_SASH_PX = 1;

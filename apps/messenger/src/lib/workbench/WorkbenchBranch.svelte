@@ -76,8 +76,9 @@
 	<!--
 		One grid per division. `minmax(<min>px, <w>fr)` is the fractional model with a floor, and
 		the browser's own "find the size of an fr" loop is exactly the water-filling that
-		`allocate()` reproduces for the handles. The dividers are real tracks, not an overlay, so
-		they can never sit on top of content.
+		`allocate()` reproduces for the handles. The dividers are real tracks, not an overlay: each
+		is the one-pixel seam between two panes (`.split-handle`), and only its grip reaches three
+		pixels into each, so the line can be aimed at without a gutter taking room.
 	-->
 	<div
 		class="wb-branch"
@@ -90,8 +91,8 @@
 			{#if index > 0}
 				<button
 					type="button"
-					class="wb-sash"
-					class:is-vertical={row}
+					class="split-handle wb-sash"
+					class:is-rows={!row}
 					class:is-active={rest.draggingSash === `${node.id}#${index}`}
 					data-sash={`${node.id}#${index}`}
 					aria-label={t.pane.resize}
@@ -142,49 +143,5 @@
 	.wb-branch.is-col {
 		grid-template-rows: var(--wb-tracks);
 		grid-template-columns: minmax(0, 1fr);
-	}
-	/*
-	 * The same grab bar the sidebar split has: a gutter the width of the track, with a rounded
-	 * line down the middle that thickens and takes the accent when you are on it. A one-pixel
-	 * hairline between two panes of the same colour is not something anyone can aim at.
-	 */
-	.wb-sash {
-		position: relative;
-		padding: 0;
-		border: 0;
-		background: var(--bg);
-		cursor: row-resize;
-		touch-action: none;
-		z-index: 2;
-	}
-	.wb-sash.is-vertical {
-		cursor: col-resize;
-	}
-	.wb-sash::before {
-		content: '';
-		position: absolute;
-		background: var(--line);
-		border-radius: var(--radius-full);
-	}
-	.wb-sash.is-vertical::before {
-		inset: 0 3px;
-	}
-	.wb-sash:not(.is-vertical)::before {
-		inset: 3px 0;
-	}
-	.wb-sash:hover::before,
-	.wb-sash:focus-visible::before,
-	.wb-sash.is-active::before {
-		background: var(--accent);
-	}
-	.wb-sash.is-vertical:hover::before,
-	.wb-sash.is-vertical:focus-visible::before,
-	.wb-sash.is-vertical.is-active::before {
-		inset: 0 2px;
-	}
-	.wb-sash:not(.is-vertical):hover::before,
-	.wb-sash:not(.is-vertical):focus-visible::before,
-	.wb-sash:not(.is-vertical).is-active::before {
-		inset: 2px 0;
 	}
 </style>
