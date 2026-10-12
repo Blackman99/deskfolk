@@ -9,76 +9,76 @@
           "speed": 1.5
         },
         {
-          "seconds": 6.4,
+          "seconds": 10.7,
           "speed": 1
         },
         {
-          "seconds": 10,
-          "speed": 3
-        },
-        {
-          "seconds": 9.4,
-          "speed": 2.5
-        },
-        {
-          "seconds": 8.6,
-          "speed": 3
-        },
-        {
-          "seconds": 9,
+          "seconds": 9.5,
           "speed": 4.5
         },
         {
-          "seconds": 10,
-          "speed": 37
-        },
-        {
-          "seconds": 2.1,
-          "speed": 1
-        },
-        {
-          "seconds": 9.3,
-          "speed": 5.5
-        }
-      ]
-    },
-    "zh-dark": {
-      "steps": [
-        {
           "seconds": 8.6,
-          "speed": 2
-        },
-        {
-          "seconds": 8.6,
-          "speed": 1
+          "speed": 3
         },
         {
           "seconds": 9.8,
           "speed": 3.5
         },
         {
-          "seconds": 9.3,
-          "speed": 3
+          "seconds": 9.5,
+          "speed": 4.5
         },
         {
-          "seconds": 9.3,
-          "speed": 3
-        },
-        {
-          "seconds": 9.1,
-          "speed": 4
-        },
-        {
-          "seconds": 9.9,
-          "speed": 39.5
+          "seconds": 10,
+          "speed": 33.5
         },
         {
           "seconds": 2.1,
           "speed": 1
         },
         {
-          "seconds": 9.3,
-          "speed": 5.5
+          "seconds": 9.5,
+          "speed": 4.5
+        }
+      ]
+    },
+    "zh-dark": {
+      "steps": [
+        {
+          "seconds": 10,
+          "speed": 1.5
+        },
+        {
+          "seconds": 10.7,
+          "speed": 1
+        },
+        {
+          "seconds": 9.6,
+          "speed": 6.5
+        },
+        {
+          "seconds": 9.1,
+          "speed": 4
+        },
+        {
+          "seconds": 10.7,
+          "speed": 1
+        },
+        {
+          "seconds": 10,
+          "speed": 4.5
+        },
+        {
+          "seconds": 10,
+          "speed": 40.5
+        },
+        {
+          "seconds": 2.1,
+          "speed": 1
+        },
+        {
+          "seconds": 10,
+          "speed": 6
         }
       ]
     },
@@ -90,35 +90,35 @@
         },
         {
           "seconds": 8.6,
-          "speed": 1
+          "speed": 1.5
         },
         {
-          "seconds": 10,
-          "speed": 3
+          "seconds": 9,
+          "speed": 4.5
         },
         {
-          "seconds": 9.2,
-          "speed": 3.5
+          "seconds": 9.4,
+          "speed": 2.5
         },
         {
-          "seconds": 10,
-          "speed": 7.5
+          "seconds": 9.3,
+          "speed": 6
         },
         {
-          "seconds": 9.6,
-          "speed": 10
-        },
-        {
-          "seconds": 10,
-          "speed": 39.5
+          "seconds": 9,
+          "speed": 4.5
         },
         {
           "seconds": 9.9,
-          "speed": 12.5
+          "speed": 34.5
         },
         {
-          "seconds": 9.5,
-          "speed": 4.5
+          "seconds": 2.1,
+          "speed": 1
+        },
+        {
+          "seconds": 9.1,
+          "speed": 4
         }
       ]
     },
@@ -130,35 +130,35 @@
         },
         {
           "seconds": 8.6,
-          "speed": 1
-        },
-        {
-          "seconds": 10,
-          "speed": 3
-        },
-        {
-          "seconds": 9.3,
-          "speed": 3
-        },
-        {
-          "seconds": 9.9,
-          "speed": 5
-        },
-        {
-          "seconds": 9.9,
-          "speed": 10
-        },
-        {
-          "seconds": 10,
-          "speed": 65
-        },
-        {
-          "seconds": 10,
           "speed": 1.5
         },
         {
-          "seconds": 9.8,
+          "seconds": 9.1,
+          "speed": 4
+        },
+        {
+          "seconds": 9.2,
           "speed": 3.5
+        },
+        {
+          "seconds": 10,
+          "speed": 6
+        },
+        {
+          "seconds": 9.7,
+          "speed": 11.5
+        },
+        {
+          "seconds": 10,
+          "speed": 38
+        },
+        {
+          "seconds": 2.1,
+          "speed": 1
+        },
+        {
+          "seconds": 9.1,
+          "speed": 4
         }
       ]
     }

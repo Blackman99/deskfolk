@@ -139,7 +139,7 @@ const zh: Dict = {
     copied: '已复制'
   },
   demo: {
-    stillLabel: 'Deskfolk 窗口：左边是群聊「发布」，下面是这件事的流程图，右边在播放做好的宣传短片',
+    stillLabel: 'Deskfolk 窗口：左上是群聊「发布」，右上在播放做好的宣传短片，下面是这件事的看板和要点',
     steps: [
       {
         title: '先选工作区和模型端点',
@@ -148,21 +148,21 @@ const zh: Dict = {
         callout: '密钥只在这一格里填，交给系统保管，不进聊天。'
       },
       {
-        title: '第一个 Bot：制片',
+        title: '选「视频」，第一个 Bot：制片',
         body:
-          '向导的最后一步就是它：名字、职责、边界已经按通用助手填好，可以直接创建，也可以改成你要的样子。这里改成「制片」：开工前把活拆成任务、每张的审查者设成审片，交付前自己先核对；边界是只在工作区里动手、你说停就停。创建后它的私聊随即打开。这一步也能跳过，之后随时在名册里建。',
-        callout: '向导最后一步：名字、职责、边界，建好就能私聊。'
+          '向导的最后一步先选工作方式：选「视频」，应用自己的环节就按做片子的方式跑（书记员把你的要求记下来，镜头交齐、静下来一分钟再整理）。为它备好的 Bot 模板里只留「视频导演」，改成「制片」：开工前把活拆成任务、每张的审查者设成审片，交付前自己先核对；边界是只在工作区里动手、你说停就停。创建后它的私聊随即打开，用的就是视频引擎。',
+        callout: '向导最后一步：选「视频」，从模板建出制片。'
       },
       {
         title: '一句话，要来审片',
         body:
-          '在私聊里说一句：建一个「审片」，逐条对照你的要求审视频和文案，看帧、核对时长和分辨率，带依据地判通过或打回，只审不改；再建群「发布」把两个都拉进来。创建 Bot、建群、改端点和 MCP，都是对话里的一句话。审片用的是另一个模型，判通过的不是制片自己那个模型。',
-        callout: '一句话，它建好审片和群「发布」。'
+          '在私聊里说一句：建一个「审片」，逐条对照你的要求审视频和文案，看帧、核对时长和分辨率，带依据地判通过或打回，只审不改；再建群「发布」把两个都拉进来。创建 Bot、建群、改端点和 MCP，都是对话里的一句话。审片用的是另一个模型，判通过的不是制片自己那个模型。Bot 建的群跟着默认的通用引擎，这件活是片子，所以在群组设置里把引擎选成「视频」。',
+        callout: '一句话，它建好审片和群「发布」；引擎选「视频」。'
       },
       {
         title: '交出去，它先拆成任务',
         body:
-          '在群里交代这件事：给「晨光」手冲壶做一支 6 秒、1080×1920 的宣传短片，片尾带品牌 logo，再配一句主标语。制片是这个群的负责人，先把活拆成任务，每张都写明谁来做、谁来审。把流程图拖到会话下面，右边就是任务清单：谁在做、球在谁手里、谁来审，一眼看清。',
+          '在群里交代这件事：给「晨光」手冲壶做一支 6 秒、1080×1920 的宣传短片，片尾带品牌 logo，再配一句主标语。制片是这个群的负责人，先把活拆成任务，每张都写明谁来做、谁来审。把这件事的流程拖到会话下面：左边一列是任务，每行有谁来做、谁来审，中间是流程图，右边是整件事的要点和分工，标题行写着它跑在「视频」引擎上。',
         callout: '每张任务都写明谁来做、谁来审。'
       },
       {
@@ -180,7 +180,7 @@ const zh: Dict = {
       {
         title: '要点由你来定；先停一下，再说一句就接着做',
         body:
-          '回来打开「要点」：应用把你的话整理成要求，每条都站在你的原话上、只增不删；你说的时长 6 秒和分辨率 1080×1920 成了两条检查提议，点「确认」它们才成为门禁。然后在群里说「先停一下」，叫停当场生效；再说「片尾的 logo 再大一点」，制片就从你这句接着做，这句话也记成一条新要求。',
+          '回来把右边的要点展开：应用把你的话整理成要求，每条都站在你的原话上、只增不删；你说的时长 6 秒和分辨率 1080×1920 成了两条检查提议，点「确认」它们才成为门禁。然后在群里说「先停一下」，叫停当场生效；再说「片尾的 logo 再大一点」，制片就从你这句接着做，这句话也记成一条新要求。',
         callout: '叫停是「先停一下」：你再说一句，它就从那句接着做。'
       },
       {
@@ -192,7 +192,7 @@ const zh: Dict = {
       {
         title: '回来，看结果',
         body:
-          '问一句「怎么样了」，回你的是制片自己：成片在哪、审片怎么判的，应用不替它插话。看板在会话下面，成片在旁边窗格里播放：每张任务过了哪些检查、谁审的、谁放行的，都在上面。',
+          '问一句「怎么样了」，回你的是制片自己：成片在哪、审片怎么判的，应用不替它插话。会话下面的任务展开成看板，成片在旁边窗格里播放；点一张任务，右边就是它过了哪些检查、谁审的、谁放行的。',
         callout: '问一句「怎么样了」，制片自己回你。'
       }
     ]
@@ -221,7 +221,7 @@ const zh: Dict = {
     title: 'Deskfolk — 交出去，离开，回来看结果',
     description:
       'macOS 本机的 agent 协作应用（Windows 为预览版）：把多天、多步、要返工的活交给 Bot，你可以离开。模型负责干活，应用负责当真：你的原话原样存档、你写下的规则只增不删，任务要过应用自己跑的检查和有依据的审查才算做完，叫停是只有你能解除的状态，停在半路有监督器去追，只在需要你时才找你。这些规矩写在代码里；挂在上面的工作方式能换、能改：应用自己的哪些环节跑、带什么数是引擎，内置通用、视频、代码三套，按对话选；每个环节用哪个模型、哪段提示词在分工页上设；Bot 怎么干活写在应用自带的提示词里，也可以让 Bot 查本机记录、拿依据提改动，在批准卡上由你放行。会话和文件在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。面向会自己配模型端点的独立开发者与小工作室。MIT 开源，Alpha 阶段。',
-    imageAlt: 'Deskfolk：一个窗口里并排着群聊、这件事的流程图和做好的宣传短片'
+    imageAlt: 'Deskfolk：一个窗口里摆着群聊、做好的宣传短片和这件事的看板'
   },
   docs: {
     onThisPage: '本页',
@@ -347,7 +347,7 @@ const en: Dict = {
     copied: 'Copied'
   },
   demo: {
-    stillLabel: 'The Deskfolk window: the Launch group on the left with its flow below, and the finished promo film playing on the right',
+    stillLabel: 'The Deskfolk window: the Launch group at the top left, the finished promo film playing beside it, and the job’s board and plan below',
     steps: [
       {
         title: 'Set the workspace and a model endpoint',
@@ -356,21 +356,21 @@ const en: Dict = {
         callout: 'The key goes in this one field, into the system\'s credential store, never the chat.'
       },
       {
-        title: 'The first Bot: the Producer',
+        title: 'Pick Video; the first Bot: the Producer',
         body:
-          'It is the wizard\'s last step: name, duties and boundaries come filled in for a general assistant, to create as is or make your own. Here it becomes the Producer: before starting, it lays the job out in tickets with the Reviewer on each, and checks its own work before handing it in; it stays in the workspace and stops when you say so. On create, its direct chat opens. You can skip the step and add Bots from the roster any time.',
-        callout: 'The wizard’s last step: name, duties, boundaries, and it’s ready to chat.'
+          'The wizard\'s last step picks a way of working: Video, so the app\'s own steps run the way a film needs (the scribe writes your asks down, and the plan is tidied once the shots are in and it has been quiet a minute). Of the Bot templates ready for it, only the Video director stays, made into the Producer: before starting, it lays the job out in tickets with the Reviewer on each, and checks its own work before handing it in; it stays in the workspace and stops when you say so. On create, its direct chat opens, on the video engine.',
+        callout: 'The wizard’s last step: pick Video, and make the Producer from a template.'
       },
       {
         title: 'One line brings in a Reviewer',
         body:
-          'In the direct chat, one line: make a Reviewer that checks videos and copy against your asks item by item, looks at frames, checks length and size, and passes or sends back with evidence, never editing; then make a group called “Launch” with both. Creating Bots and groups, or changing endpoints and MCP, is one sentence in a chat. The Reviewer runs on another model, so a pass is not the Producer’s own model grading itself.',
-        callout: 'One line, and it makes the Reviewer and the “Launch” group.'
+          'In the direct chat, one line: make a Reviewer that checks videos and copy against your asks item by item, looks at frames, checks length and size, and passes or sends back with evidence, never editing; then make a group called “Launch” with both. Creating Bots and groups, or changing endpoints and MCP, is one sentence in a chat. The Reviewer runs on another model, so a pass is not the Producer’s own model grading itself. A group a Bot makes follows the default engine, General; this job is a film, so in Group settings its engine becomes Video.',
+        callout: 'One line makes the Reviewer and the “Launch” group; its engine: Video.'
       },
       {
         title: 'Hand it off: it lays out tickets',
         body:
-          'In the group, hand over the job: a 6-second, 1080×1920 promo film for the “Dawn” kettle, ending on the brand logo, plus a tagline. The Producer leads the group, so it lays the job out in tickets first, each naming who makes it and who reviews it. Drag the flow under the chat and the tickets sit beside it: who is on it, whose turn it is, who reviews.',
+          'In the group, hand over the job: a 6-second, 1080×1920 promo film for the “Dawn” kettle, ending on the brand logo, plus a tagline. The Producer leads the group, so it lays the job out in tickets first, each naming who makes it and who reviews it. Drag the job’s flow under the chat: the tickets run down its left side, each with who makes it and who reviews it, the flow sits in the middle, and the whole job’s plan and who does what on the right; its title row says it runs on the Video engine.',
         callout: 'Every ticket names who makes it and who reviews it.'
       },
       {
@@ -388,7 +388,7 @@ const en: Dict = {
       {
         title: 'You define done; a stop is for now',
         body:
-          'Back at your desk, open the Plan: the app writes your words up as asks, each standing on what you said and only ever added to; the length and size you gave become two proposed checks, which gate the work only once you confirm them. Then say “Pause.” in the group and the work stops at once; say “Make the logo at the end bigger.” and the Producer goes on from that line, which is kept as a new ask.',
+          'Back at your desk, widen the plan on the right: the app writes your words up as asks, each standing on what you said and only ever added to; the length and size you gave become two proposed checks, which gate the work only once you confirm them. Then say “Pause.” in the group and the work stops at once; say “Make the logo at the end bigger.” and the Producer goes on from that line, which is kept as a new ask.',
         callout: 'A stop is for now: your next word sets it going again.'
       },
       {
@@ -400,7 +400,7 @@ const en: Dict = {
       {
         title: 'Return to results',
         body:
-          'Ask “How is it going?” and the Producer answers itself: where the film is and how the Reviewer ruled, with no app voice in between. The board sits under the chat and the film plays beside it: every ticket’s checks, reviewer and approval are on it.',
+          'Ask “How is it going?” and the Producer answers itself: where the film is and how the Reviewer ruled, with no app voice in between. Under the chat the tickets open out into the board, and the film plays beside it; pick a ticket and the right side shows its checks, its reviewer and who approved it.',
         callout: 'Ask “How is it going?” and the Producer answers.'
       }
     ]
@@ -429,7 +429,7 @@ const en: Dict = {
     title: 'Deskfolk — Hand it off, walk away, return to results',
     description:
       'A local agent app for macOS (Windows in preview): hand Bots the multi-day, multi-step jobs that need rework, and walk away. The model does the work; the app holds it to account: your words are kept as you said them, the rules you write are only ever added to, a job is done only after checks the app runs itself and a review backed by evidence, a stop is a state only you can lift, a supervisor chases stalls, and the app comes to you only when it needs you. Those rules are code; the way of working hung on them is yours to choose and change: an engine says which of the app\'s own steps run and with what numbers (general, video and coding built in, chosen per conversation), Roles sets each step\'s model and prompts, and how Bots work is written in prompts the app ships — change them yourself, or let a Bot propose a change, backed by this machine\'s records, that you let through on its approval card. Chats and files stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. For solo developers and small studios who bring their own model endpoint. MIT, alpha.',
-    imageAlt: 'Deskfolk: a group chat, the job’s flow and the finished promo film side by side in one window'
+    imageAlt: 'Deskfolk: a group chat, the finished promo film and the job’s board in one window'
   },
   docs: {
     onThisPage: 'On this page',

@@ -79,7 +79,7 @@ const LANDING_PORT = 5288;
 const DESKTOP = { width: 1600, height: 1000 };
 const PHONE = { width: 390, height: 844 };
 
-/** `--until n`: stop before step n + 1, to try the early steps without calling a model. */
+/** `--until n`: stop before step n + 1, to try the early steps without calling a model (or, filmed live, fewer). */
 class Stop extends Error {}
 
 const children: ChildProcess[] = [];
@@ -366,10 +366,32 @@ async function film(appUrl: string, api: Api) {
   const tag = `deskfolk-live-${lang}-${theme}`;
   const silentPath = path.join(outDir, `${tag}.silent.mp4`);
   await recorder.start(silentPath, 1920, 1080, SCALE);
+  // `--until n`: the film stops before step n + 1, its partial recording kept, nothing scored.
+  const stage: Stage = opts.until
+    ? {
+        ...run.stage,
+        scene: async (n) => {
+          if (n > Number(opts.until)) throw new Stop();
+          await run.stage.scene(n);
+        }
+      }
+    : run.stage;
   let timeline;
   try {
     await run.intro();
-    await playStory(run.stage);
+    const stopped = await playStory(stage).then(
+      () => false,
+      (e) => {
+        if (e instanceof Stop) return true;
+        throw e;
+      }
+    );
+    if (stopped) {
+      await page.screenshot({ path: path.join(logDir, 'last.png') }).catch(() => {});
+      const partial = await recorder.stop();
+      log(`stopped before step ${Number(opts.until) + 1}, recorded ${partial.seconds.toFixed(1)} s`);
+      return;
+    }
     timeline = await run.outro();
     const lost = await reloaded();
     if (lost) throw new Error(`the ${lost} frame reloaded mid-recording (run the replay once to settle Vite's dependency cache)`);

@@ -33,7 +33,7 @@
   </tr>
   <tr>
     <td width="50%"><img alt="做完有定义：检查、审查和你的放行" src="docs/assets/app-zh-done.jpg"><br><sub>做完有定义：检查、审查和你的放行</sub></td>
-    <td width="50%"><img alt="回来看结果：会话、流程图、成品并排" src="docs/assets/app-zh-desk.jpg"><br><sub>回来看结果：会话、流程图、成品并排</sub></td>
+    <td width="50%"><img alt="回来看结果：会话、成品、看板摆在一起" src="docs/assets/app-zh-desk.jpg"><br><sub>回来看结果：会话、成品、看板摆在一起</sub></td>
   </tr>
 </table>
 

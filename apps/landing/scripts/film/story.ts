@@ -1,7 +1,8 @@
 /**
- * The promo's story, played on the real messenger against the isolated demo daemon: you hand a
- * 6-second promo film and its tagline to a Producer, which brings in a Reviewer,
- * and walk away; your numbers become checks the app runs, a stop holds until you lift it, and what
+ * The promo's story, played on the real messenger against the isolated demo daemon: first launch
+ * on the video engine makes a Producer from its director template, you hand it a 6-second promo
+ * film and its tagline, it brings in a Reviewer and a group you put on the video engine too,
+ * and you walk away; your numbers become checks the app runs, a stop holds until you lift it, and what
  * is handed over moves only on those checks and the Reviewer's evidence. The same steps run for the
  * shoot (real models, recorded) and for every replay (the tape answers), so a replay reaches the
  * same states in the same order. Every wait reads the daemon's state (tickets' stages, the ball on
@@ -29,6 +30,8 @@ export type StoryText = {
   stop: string;
   change: string;
   go: string;
+  /** Your word on a hand-over that waits on you (ADR 0084): it lets it through, as 放行 on a card did. */
+  pass: string;
   status: string;
 };
 
@@ -56,6 +59,7 @@ export const TEXT: Record<Lang, StoryText> = {
     stop: '先停一下',
     change: '片尾的 logo 再大一点。',
     go: '继续',
+    pass: '可以，就用这版。',
     status: '怎么样了'
   },
   en: {
@@ -79,6 +83,7 @@ export const TEXT: Record<Lang, StoryText> = {
     stop: 'Pause.',
     change: 'Make the logo at the end bigger.',
     go: 'Continue.',
+    pass: 'Looks good, go with this one.',
     status: 'How is it going?'
   }
 };
@@ -239,8 +244,8 @@ export async function playStory(s: Stage): Promise<void> {
   await s.click(app.getByRole('option', { name: t.defaultModel, exact: true }));
   await s.hold(400);
   await s.click(app.locator('.onboarding-card .btn-step-primary'));
-  // Saving setup on an empty roster leads on to the wizard's last step, the first Bot.
-  await app.locator('#onboarding-bot-name').waitFor({ timeout: 30_000 });
+  // Saving setup on an empty roster leads on to the wizard's last step: a way of working and the first Bots.
+  await app.locator('[data-team-step]').waitFor({ timeout: 30_000 });
   await s.focus(null);
 
   // Off camera: the image and video server, as it would already be in a lived-in setup.
@@ -252,14 +257,29 @@ export async function playStory(s: Stage): Promise<void> {
     await sleep(500);
   }
 
-  /* 2 · The first Bot, the Producer, made in the wizard's last step over the suggested one */
+  /*
+   * 2 · The way of working, video, and the first Bot: its director template made into the Producer.
+   * Only the one Bot: it brings in the Reviewer itself in step 3. Its direct runs the video engine.
+   */
   await s.scene(2);
   const card = app.locator('.onboarding-card');
   await s.focus(card);
-  await s.type(app.locator('#onboarding-bot-name'), t.producer.name);
-  await s.type(app.locator('#onboarding-bot-duties'), t.producer.duties);
-  await s.type(app.locator('#onboarding-bot-boundaries'), t.producer.boundaries);
-  await s.click(card.locator('.step-nav-footer .btn-step-primary'));
+  await s.click(app.locator('[data-team-way="video"]'));
+  await app.locator('[data-team-template="director"]').waitFor({ timeout: 10_000 });
+  await s.hold(600);
+  for (const id of ['writer', 'subtitler', 'reviewer']) {
+    const pick = app.locator(`[data-team-pick="${id}"]`);
+    if ((await pick.count()) && (await pick.isChecked())) await s.click(pick);
+  }
+  const director = app.locator('[data-team-template="director"]');
+  await s.click(director.locator('.team-edit'));
+  await s.type(app.locator('[data-team-name="director"]'), t.producer.name);
+  const fields = director.locator('.team-fields textarea');
+  await s.type(fields.nth(0), t.producer.duties);
+  await s.type(fields.nth(1), t.producer.boundaries);
+  await s.click(director.locator('.team-edit'));
+  await s.hold(500);
+  await s.click(app.locator('[data-team-create]'));
   await app.locator('.onboarding-screen').waitFor({ state: 'detached', timeout: 30_000 });
   await s.focus(null);
 
@@ -283,6 +303,39 @@ export async function playStory(s: Stage): Promise<void> {
   await s.api('PUT', `/v1/sessions/${group.id}/lead`, { bot_id: producer.id, confirmed: true });
   const groupRow = app.locator('.groups .row', { hasText: t.groupName }).first();
   await groupRow.waitFor({ timeout: 60_000 });
+  // A group a Bot makes follows the default engine, general. This job is a film: in the group's
+  // actions it goes on video, before the goal is said, so the scribe writes your asks down from it.
+  const engineOf = async () => (await sessions()).find((x: any) => x.id === group.id)?.playbook_id ?? null;
+  await s.attempt('group engine', async () => {
+    await s.click(groupRow);
+    await composer().waitFor();
+    // Group settings: a side of the conversation's pane, toggled from its tab's menu.
+    const groupTab = app
+      .locator('.wb-tab', { hasText: t.groupName })
+      .filter({ hasNot: app.locator('.wb-tab-icon[data-kind="trace"]') })
+      .first();
+    const toggleSettings = async () => {
+      await s.hover(groupTab);
+      await s.click(groupTab.locator('.wb-tab-more'));
+      await s.click(app.locator('[data-testid="wb-context-menu"] [data-action="settings"]'));
+    };
+    await toggleSettings();
+    const picker = app.locator('.pane-side [data-playbook-picker]').first();
+    await picker.waitFor({ timeout: 10_000 });
+    await s.focus(picker);
+    await s.hold(600);
+    await s.click(picker.locator('button').first());
+    await s.click(app.getByRole('option', { name: re('^视频$', '^Video$') }).first());
+    await until('the group on video', async () => (await engineOf()) === 'video', 10_000, 300);
+    await s.hold(900);
+    await s.focus(null);
+    await toggleSettings();
+    await picker.waitFor({ state: 'hidden', timeout: 10_000 });
+  });
+  if ((await engineOf()) !== 'video') {
+    s.log('putting the group on video off camera');
+    await s.api('PUT', `/v1/sessions/${group.id}/playbook`, { playbook_id: 'video' });
+  }
 
   /* 4 · The job goes to the group: the Producer lays it out in tickets, the Reviewer on each */
   await s.scene(4);
@@ -295,10 +348,8 @@ export async function playStory(s: Stage): Promise<void> {
 
   const tab = (name: RegExp) => app.locator('.wb-tab', { hasText: name }).first();
   const paneOf = (el: Locator) => app.locator('.wb-leaf').filter({ has: el }).first();
-  /** A view of the job (trace, board or plan), told by its tab's icon: the titles differ by language. */
-  const traceTab = (view?: string) =>
-    app.locator('.wb-tab').filter({ has: app.locator(`.wb-tab-icon[data-kind="trace"]${view ? `[data-view="${view}"]` : ''}`) }).first();
-  const flowTab = () => traceTab();
+  /** The job's one tab (ADR 0086), told by its icon: the titles differ by language. */
+  const flowTab = () => app.locator('.wb-tab').filter({ has: app.locator('.wb-tab-icon[data-kind="trace"]') }).first();
   const artifactTab = () => tab(re('的产物', 'artifacts'));
   const chatTab = () =>
     app
@@ -306,43 +357,32 @@ export async function playStory(s: Stage): Promise<void> {
       .filter({ hasNot: app.locator('.wb-tab-icon[data-kind="trace"]') })
       .filter({ hasNotText: re('的产物', 'artifacts') })
       .first();
-  const board = () => app.locator('.trace-pane').first();
   /**
-   * The job's board or plan. Each view of a job is a tab of its own, opened from the conversation
-   * tab's menu; a pane that shows one already switches with its view tabs, if it has them.
+   * The job's tab: the rail of tickets, the flow and the inspector side by side, laid out by its own
+   * width (ADR 0086). The inspector shows the whole job's plan while nothing is picked.
    */
-  const boardTab = async (name: RegExp) => {
-    const segment = board().locator('.trace-view-tab').filter({ hasText: name }).first();
-    if (await segment.count()) {
-      if ((await segment.getAttribute('aria-selected')) !== 'true') await s.click(segment);
-      return;
-    }
-    const view = /看板|Board|任务|Tickets/.test(name.source) ? 'board' : 'spec';
-    const open = traceTab(view);
-    if (await open.count()) {
-      await s.click(open.locator('.wb-tab-button').first());
-      return;
-    }
-    await s.hover(chatTab());
-    await s.click(chatTab().locator('.wb-tab-more'));
-    await s.click(app.locator(`[data-testid="wb-context-menu"] [data-action="${view}"]`));
+  const job = () => app.locator('.job-pane').first();
+  const inspector = () => job().locator('.job-inspector').first();
+  /** The inspector's widen button: the plan over the whole tab, in its two columns. */
+  const widen = () => inspector().locator('.insp-head .insp-icon[aria-pressed]').first();
+  const setWide = async (on: boolean) => {
+    const button = widen();
+    if (!(await button.count())) return;
+    if (((await button.getAttribute('aria-pressed')) === 'true') !== on) await s.click(button);
   };
-
-  await s.attempt('board', async () => {
-    await s.hover(chatTab());
-    await s.click(chatTab().locator('.wb-tab-more'));
-    await s.click(app.locator('[data-testid="wb-context-menu"] [data-action="board"]'));
-    await board().waitFor({ timeout: 20_000 });
-    await s.hold(700);
-    await s.drag(flowTab().locator('.wb-tab-button').first(), paneOf(chatTab()), 'south');
-    await app.locator('.wb-leaf').nth(1).waitFor({ timeout: 10_000 });
-    // The tickets it laid out, the Reviewer on each
-    const rows = board().locator('.ticket-row');
-    await rows.first().waitFor({ timeout: 60_000 });
-    await s.focus(rows.first().locator('xpath=..'));
-    await s.hold(2200);
-    await s.focus(null);
-  });
+  /**
+   * The whole job's plan: standing in the inspector on a wide tab with nothing picked; a medium tab
+   * asks for it from its title row, a narrow one shows it as its third part.
+   */
+  const showPlan = async () => {
+    const plan = job().locator('.job-inspector-inner[data-inspector="spec"]');
+    if (!(await plan.count())) {
+      const toggle = job().locator('.job-chip.is-toggle');
+      if (await toggle.count()) await s.click(toggle.first());
+      else await s.click(job().locator('.trace-view-tab').last());
+    }
+    await plan.first().waitFor({ timeout: 10_000 });
+  };
 
   // Off camera: the Reviewer on every ticket the Producer left without one, as soon as the tickets
   // exist and before anything is handed over, so a replay reaches the same reviews.
@@ -361,6 +401,29 @@ export async function playStory(s: Stage): Promise<void> {
       await sleep(300);
     }
   })();
+
+  await s.attempt('job tab', async () => {
+    await s.hover(chatTab());
+    await s.click(chatTab().locator('.wb-tab-more'));
+    await s.click(app.locator('[data-testid="wb-context-menu"] [data-action="trace"]'));
+    await job().waitFor({ timeout: 20_000 });
+    await s.hold(700);
+    await s.drag(flowTab().locator('.wb-tab-button').first(), paneOf(chatTab()), 'south');
+    await app.locator('.wb-leaf').nth(1).waitFor({ timeout: 10_000 });
+    // The tickets it laid out on the rail, who makes each and the Reviewer on it
+    const rail = job().locator('.ticket-rail');
+    await rail.locator('.rail-row').first().waitFor({ timeout: 60_000 });
+    await rail.locator('.rail-avatar.is-reviewer').first().waitFor({ timeout: 15_000 }).catch(() => {});
+    await s.focus(rail);
+    await s.hold(2200);
+    // The engine the job runs on, in its title row
+    const engine = job().locator('.job-chip[title]').first();
+    if (await engine.count()) {
+      await s.focus(engine);
+      await s.hold(1100);
+    }
+    await s.focus(null);
+  });
 
   /* 5 · Outside the workspace, it asks first; then your asks, written up, and what counts as done */
   const approval = app.locator('.msg.is-approval').filter({ has: app.locator('.approval-acts button') }).first();
@@ -420,20 +483,21 @@ export async function playStory(s: Stage): Promise<void> {
     45 * 60_000
   );
   await s.attempt('asks and checks', async () => {
-    await boardTab(re('要点', 'Plan'));
+    await showPlan();
+    await setWide(true);
     // Your requirements, each on your own words
-    const asks = board().locator('.plan-req').first();
+    const asks = job().locator('.plan-req').first();
     await asks.waitFor({ timeout: 30_000 });
     await s.focus(asks.locator('xpath=..'));
     await s.hold(2200);
     for (let i = 0; i < 4; i++) {
-      const proposed = board().locator('.plan-spec-checks-orphans .check-pill').filter({ has: app.locator('.check-pill-label') });
+      const proposed = job().locator('.plan-spec-checks-orphans .check-pill').filter({ has: app.locator('.check-pill-label') });
       const pills = await proposed.all();
       let confirmed = false;
       for (const pill of pills) {
         await s.focus(pill);
         await s.click(pill);
-        const confirm = board().locator('.check-confirm').first();
+        const confirm = job().locator('.check-confirm').first();
         if (await confirm.isVisible().catch(() => false)) {
           await s.click(confirm);
           await s.hold(700);
@@ -454,13 +518,33 @@ export async function playStory(s: Stage): Promise<void> {
   watching = false;
   await reviewerWatch;
   await nameReviewer();
-  /** Hand-overs waiting on your card, released off camera (step 8 presses them on camera). */
-  const releaseCards = async () => {
-    for (const m of await groupLines(group.id)) {
-      if (m.control?.kind !== 'review_item' || m.control?.acted?.length || !(m.control?.offer ?? []).includes('approve')) continue;
-      s.log(`releasing ${m.id} off camera`);
-      await s.api('POST', `/v1/messages/${m.id}/control`, { action: 'approve' }).catch(() => {});
+  /**
+   * Hand-overs waiting on your word (ADR 0084): no card, no notification; what you say next about
+   * one lets it through. Said on camera, in the group. Still waiting two minutes after you said it,
+   * it is said once more, then approved on the board off camera.
+   */
+  const submissionsOf = async () => items(await s.api('GET', `/v1/tasks/${plan.id}/submissions`));
+  const awaitingWord = async () =>
+    (await submissionsOf()).filter((sub: any) => sub.awaiting?.kind === 'approval' && !['approved', 'rejected', 'superseded'].includes(sub.state));
+  const passedAt = new Map<string, number[]>();
+  const passWaiting = async () => {
+    const waiting = await awaitingWord();
+    const due = waiting.filter((sub: any) => {
+      const said = passedAt.get(sub.id) ?? [];
+      return said.length === 0 || (said.length < 3 && Date.now() - said.at(-1)! > 2 * 60_000);
+    });
+    if (due.length === 0) return;
+    const said = passedAt.get(due[0].id) ?? [];
+    if (said.length < 2) {
+      await follow();
+      await s.type(composer(), t.pass);
+      await s.press(composer(), 'Enter');
+    } else {
+      s.log(`approving ticket ${due[0].ticket_id} on the board off camera`);
+      await s.api('PATCH', `/v1/tickets/${due[0].ticket_id}`, { status: 'approved' }).catch(() => {});
     }
+    for (const sub of due) passedAt.set(sub.id, [...(passedAt.get(sub.id) ?? []), Date.now()]);
+    await sleep(1500);
   };
   // Your stop and change land on work at rest: every ticket through, nobody at work, no render out.
   // Said while a turn runs, they race it, and a replay (answers far faster than a model) would have
@@ -468,7 +552,7 @@ export async function playStory(s: Stage): Promise<void> {
   let restSince = 0;
   await until('the work at rest', async () => {
     await unblock(true);
-    await releaseCards();
+    await passWaiting();
     const tickets = (await detail(plan.id)).tickets ?? [];
     const through = tickets.length > 0 && tickets.every((x: any) => ['approved', 'done', 'dropped'].includes(stageOf(x)));
     const busy = (await sessions()).some((x: any) => (x.live_turns ?? []).length > 0);
@@ -482,7 +566,16 @@ export async function playStory(s: Stage): Promise<void> {
   const standing = new Set((await holdsInForce()).map((h: any) => h.id));
   await s.type(composer(), t.stop);
   await s.press(composer(), 'Enter');
-  const stop = await until('the stop in force', async () => (await holdsInForce()).find((h: any) => !standing.has(h.id)), 60_000, 500);
+  const freshStop = async () => (await holdsInForce()).find((h: any) => !standing.has(h.id));
+  const stop = await until('the stop in force', freshStop, 30_000, 500).catch(() => null);
+  if (!stop) {
+    // The reader did not read your line in time, so it went to the Bot as any line (ADR 0070): the
+    // stop is placed off camera once the Bot has answered, as the Stop button would place it.
+    await until('nobody at work', async () => !(await sessions()).some((x: any) => (x.live_turns ?? []).length > 0), 3 * 60_000, 1000).catch(() => {});
+    s.log('placing the stop off camera');
+    await s.api('POST', '/v1/holds', { scope: 'session', scope_id: group.id });
+    await until('the stop in force', freshStop, 10_000, 500);
+  }
   await s.hold(1600);
   await s.type(composer(), t.change);
   await s.press(composer(), 'Enter');
@@ -492,52 +585,32 @@ export async function playStory(s: Stage): Promise<void> {
     30_000,
     500
   );
-  // Your change sets the Producer going again (a stop is for now): let it get to a resting point.
-  await s.idle(5 * 60_000, { approve: false }).catch(() => s.log('still at work after your change'));
+  // Your change sets the Producer going again (a stop is for now): let it get to a resting point,
+  // its approvals given off camera (left waiting, a command outside the workspace stalls it here).
+  await s.idle(5 * 60_000).catch(() => s.log('still at work after your change'));
   // The render still out when you stopped finishes while the stop holds, and the app keeps its
   // result until you go on. Both shoots had it so, by seconds; waiting makes it the order a replay
   // keeps too, whatever its pace.
   await until('the render in', async () => !renderOut(plan.id), 10 * 60_000, 1000).catch(() => {});
   await s.hold(1200);
 
-  /* 8 · Done has a definition: checks the app runs, a review with evidence, your release */
+  /* 8 · Done has a definition: checks the app runs, a review with evidence, your word */
   await s.scene(8);
   const seenFailed = new Set<string>();
-  const pressed = new Set<string>();
   await until(
     'every ticket through',
     async () => {
       await unblock(true);
-      // A hand-over that lands on your card (a text answer always does): released on camera.
-      const page = await s.api('GET', `/v1/sessions/${group.id}/messages?limit=60`);
-      for (const m of items(page.items ? page : { items: page.messages ?? page })) {
-        if (m.control?.kind !== 'review_item' || pressed.has(m.id) || m.control?.acted?.length) continue;
-        if (!(m.control?.offer ?? []).includes('approve')) continue;
-        pressed.add(m.id);
-        const release = app.locator(`[data-message-id="${m.id}"] .control-actions button`, { hasText: re('^放行$', '^Approve$') }).first();
-        await follow();
-        const onCamera = (await release.count()) > 0;
-        if (onCamera) {
-          await s.focus(release);
-          await s.hold(700);
-          await s.click(release).catch(() => {});
-          await s.focus(null);
-        }
-        await sleep(1500);
-        const now = (await groupLines(group.id)).find((x: any) => x.id === m.id);
-        if (!now?.control?.acted?.length) {
-          s.log(`releasing ${m.id} off camera`);
-          await s.api('POST', `/v1/messages/${m.id}/control`, { action: 'approve' }).catch(() => {});
-        }
-      }
+      // A hand-over that waits on you (a text answer always does): your word, on camera.
+      await passWaiting();
       // A hand-over the checks sent back: the board shows which one failed.
-      for (const sub of items(await s.api('GET', `/v1/tasks/${plan.id}/submissions`))) {
+      for (const sub of await submissionsOf()) {
         if (sub.state !== 'checks_failed' || seenFailed.has(sub.id)) continue;
         seenFailed.add(sub.id);
         await s.attempt('failed check', async () => {
-          await boardTab(re('要点', 'Plan'));
-          const failing = board().locator('.check-pill.is-fail').first();
-          await s.focus((await failing.count()) ? failing : board());
+          await showPlan();
+          const failing = job().locator('.check-pill.is-fail').first();
+          await s.focus((await failing.count()) ? failing : inspector());
           await s.hold(2400);
           await s.focus(null);
         });
@@ -546,10 +619,10 @@ export async function playStory(s: Stage): Promise<void> {
       const tickets = (await detail(plan.id)).tickets ?? [];
       const through = tickets.length > 0 && tickets.every((x: any) => ['approved', 'done', 'dropped'].includes(stageOf(x)));
       // Your change: a hand-over made after it, approved, with nothing still being checked or reviewed.
-      const subs = items(await s.api('GET', `/v1/tasks/${plan.id}/submissions`));
+      const subs = await submissionsOf();
       const open = subs.some((sub: any) => ['checking', 'submitted', 'in_review'].includes(sub.state));
-      // And no card still waiting on you: coming back, the work is settled.
-      const waiting = (await groupLines(group.id)).some((m: any) => m.control?.kind === 'review_item' && !m.control?.acted?.length && (m.control?.offer ?? []).includes('approve'));
+      // And nothing still waiting on your word: coming back, the work is settled.
+      const waiting = (await awaitingWord()).length > 0;
       return through && !open && !waiting && subs.some((sub: any) => sub.created_at > changedAt && sub.state === 'approved');
     },
     90 * 60_000,
@@ -587,14 +660,15 @@ export async function playStory(s: Stage): Promise<void> {
   await s.hold(2600);
   await s.attempt('artifact pane', async () => {
     await follow();
-    // The film the Producer delivered, in the job's own folder (work/<job>/launch/…): a link to it in
-    // a message (`artifact:` + the path URI-encoded, its folders in the text but out of sight), or the
-    // chip of a message that hands over that one file (two or more fold into a bundle).
+    // The film the Producer delivered, in the job's own folder (work/<job>/launch/…): the hand-over's
+    // chip when it handed over that one file, its bundle when it handed over two or more (the paths
+    // in its title), else a link to it in a message (`artifact:` + the path URI-encoded, its folders
+    // in the text but out of sight). The hand-over first: a path a reply writes is read from the
+    // workspace's root, and the Bot's own folder may not be there.
     const film = /\.(mp4|mov|webm)$/;
-    // The hand-over's chip first: a path written in a reply may name a copy that is not there.
-    const chip = app.locator('.attachment-file-btn[title*="launch/"]', { has: app.locator('.file-title', { hasText: film }) }).last();
-    const video = (await chip.count())
-      ? chip
+    const handedOver = app.locator('.attachment-file-btn[title*="launch/"][title$=".mp4"], .attachment-bundle-btn[title*="launch/"][title*=".mp4"]').last();
+    const video = (await handedOver.count())
+      ? handedOver
       : app.locator('[data-message-id] a.md-artifact-link[href*="launch%2F"]', { hasText: film }).last();
     if (!(await video.count())) {
       s.log('no link to a film in launch/ in the chat');
@@ -602,12 +676,24 @@ export async function playStory(s: Stage): Promise<void> {
     }
     await s.focus(video);
     await s.click(video);
-    await app.locator('.artifact-pane').waitFor({ timeout: 20_000 });
+    const pane = app.locator('.artifact-pane');
+    await pane.waitFor({ timeout: 20_000 });
+    // A bundle opens on its first file: the film is picked in its tree if that was another.
+    if (!(await pane.locator('video').first().waitFor({ timeout: 3000 }).then(() => true, () => false))) {
+      const row = pane.getByText(film).first();
+      if (await row.count()) await s.click(row);
+    }
     await s.focus(null);
     await s.hold(700);
     await s.drag(artifactTab().locator('.wb-tab-button').first(), paneOf(chatTab()), 'east');
     await app.locator('.wb-leaf').nth(2).waitFor({ timeout: 10_000 });
-    await boardTab(re('看板', 'Board'));
+    // The board: the rail opened out over the rail and the flow, every ticket through.
+    await setWide(false);
+    const expand = job().locator('.rail-expand').first();
+    if (await expand.count()) {
+      await s.click(expand);
+      await job().locator('.job-board').waitFor({ timeout: 10_000 });
+    }
     const player = app.locator('.artifact-pane video').first();
     if (await player.count()) {
       await s.focus(player);

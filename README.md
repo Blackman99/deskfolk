@@ -33,7 +33,7 @@
   </tr>
   <tr>
     <td width="50%"><img alt="Done has a definition: checks, a review, your OK" src="docs/assets/app-en-done.jpg"><br><sub>Done has a definition: checks, a review, your OK</sub></td>
-    <td width="50%"><img alt="Come back to results: chat, flow board and the work, side by side" src="docs/assets/app-en-desk.jpg"><br><sub>Come back to results: chat, flow board and the work, side by side</sub></td>
+    <td width="50%"><img alt="Come back to results: the chat, the work and the board together" src="docs/assets/app-en-desk.jpg"><br><sub>Come back to results: the chat, the work and the board together</sub></td>
   </tr>
 </table>
 
