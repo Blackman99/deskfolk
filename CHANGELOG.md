@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A phone's composer shows only the buttons you can press
+
+- On a phone, or wherever a conversation is as narrow as one, the row round the input no longer draws buttons that can do nothing right then: ✨ is gone while a reply is still coming, and Send, greyed with nothing to send, gives its place to Stop, the stop menu or ✨. A direct whose Bot was at work showed attach, the microphone, a greyed ✨, Stop and a greyed Send round an input left with less than half the row; it now shows attach, the microphone and Stop, and Send comes back beside Stop once you type, a little further from it than before. With nothing else to press — offline, or while your last line is still being read — the greyed Send stays. Wider windows are unchanged.
+- A tap on Stop or ✨ within 0.6 s of a send no longer counts: with Send gone once the box empties, it is most likely the second tap of a double tap landing on what slid into Send's place.
+
 ### Local-agent Bots go on after a cut, and say where they stand at the step limit
 
 - A Bot run by Claude Agent or another local agent now picks its job up again by itself after a failure, or after a restart that came between two commands, as Bots on the app's own loop do. Before, every command it had run counted as an external call with no known outcome, so each cut waited for you to press Continue. A restart in the middle of a command still waits for you: that command may have done half its work.

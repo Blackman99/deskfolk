@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { speechReady, type SessionSummary } from '@real-bot/protocol';
-	import { composerAction, composerLocked, lockedReason } from './composer-mode.ts';
+	import { composerAction, composerLocked, justSent, lockedReason } from './composer-mode.ts';
 	import { keyboardInset } from './composer-inset.ts';
 	import {
 		composerImeOnEnd,
@@ -233,6 +233,10 @@
 	);
 	/** Drafted while a reply is still coming, they would be about the past the moment it landed. */
 	const suggestWaiting = $derived(Boolean(liveTurn) || pendingHere.length > 0);
+	/** Nothing a press could do now; drafts on the way or out can always be put away. */
+	const suggestBlocked = $derived(
+		!view?.suggestionsLoading && !suggestionsShown && (!connected || suggestWaiting || Boolean(view?.sending))
+	);
 	const suggestTitle = $derived(
 		view?.suggestionsLoading
 			? t.composer.suggestStop
@@ -250,8 +254,29 @@
 			runtime.dismissComposerSuggestions(selected.id);
 			return;
 		}
+		if (justSent(sentAt, performance.now())) return;
 		void runtime.suggestComposer(selected.id);
 	}
+
+	/** When a line last went out from here, for `justSent`. */
+	let sentAt: number | null = null;
+
+	function stopDirect(): void {
+		if (justSent(sentAt, performance.now())) return;
+		void runtime.stopTurn(selected?.id);
+	}
+
+	/**
+	 * Send greyed with nothing to send steps aside, where the composer is narrow, for whatever can be
+	 * pressed instead: Stop, the stop menu, or ✨. With nothing else there it stays, so the row always
+	 * shows where sending happens.
+	 */
+	const sendStepsAside = $derived(
+		primaryAction.kind === 'send' &&
+			!hasContent &&
+			!view?.sending &&
+			(directStop || stopItems.length > 0 || (canSuggest && !suggestBlocked))
+	);
 
 	/** "Nothing to suggest" answers the press; it is not worth keeping on screen. */
 	$effect(() => {
@@ -413,6 +438,7 @@
 		const staged = [...attachments.pendingAttachments];
 		const stagedPaths = [...attachments.pendingPaths];
 		if (!(await onSend(staged.map((a) => a.file), stagedPaths.map((row) => row.path)))) return;
+		sentAt = performance.now();
 		for (const a of [...staged, ...stagedPaths]) {
 			if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
 		}
@@ -564,12 +590,12 @@
 				type="button"
 				class="suggest-btn"
 				class:is-active={suggestionsShown}
-				class:steps-aside={hasContent}
+				class:steps-aside={hasContent || suggestBlocked}
 				title={suggestTitle}
 				aria-label={suggestTitle}
 				aria-pressed={suggestionsShown}
 				aria-busy={view?.suggestionsLoading ? true : undefined}
-				disabled={!view?.suggestionsLoading && !suggestionsShown && (!connected || suggestWaiting || view?.sending)}
+				disabled={suggestBlocked}
 				onclick={toggleSuggestions}
 			>
 				{#if view?.suggestionsLoading}
@@ -587,9 +613,10 @@
 			{connected}
 			{primaryAction}
 			{directStop}
+			stepsAside={sendStepsAside}
 			sending={view?.sending}
 			upload={view?.upload}
-			onStop={() => void runtime.stopTurn(selected?.id)}
+			onStop={stopDirect}
 			onSend={() => void send()}
 		/>
 	</div>
@@ -928,8 +955,10 @@
 		}
 
 		/*
-		 * With an empty input ✨ sits in room the placeholder does not use; once there is something
-		 * to send it gives that room to the text, and send is never next to a button you meant.
+		 * The row draws only what a press can do now; there is no hover here to say why a greyed
+		 * button waits. With an empty input ✨ sits in room the placeholder does not use, where send
+		 * would be; once there is something to send, or while a reply is still coming, it gives that
+		 * room back, and send is never next to a button you meant.
 		 */
 		.suggest-btn.steps-aside {
 			display: none;
@@ -938,7 +967,7 @@
 		/*
 		 * A thumb, on a screen whose edges may curve away: a quad-curved phone reports no safe area
 		 * for its curves, so the bar keeps its own margin from all three edges, and the buttons are
-		 * big enough to hit with ✨ held apart from send.
+		 * big enough to hit.
 		 */
 		@media (pointer: coarse) {
 			.composer-card {
@@ -950,10 +979,6 @@
 				width: 40px;
 				height: 40px;
 				flex-basis: 40px;
-			}
-
-			.composer .suggest-btn {
-				margin-right: 4px;
 			}
 		}
 	}

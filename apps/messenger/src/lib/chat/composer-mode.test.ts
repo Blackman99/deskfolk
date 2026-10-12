@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Bot, SessionSummary } from "@real-bot/protocol";
-import { composerAction, composerLocked, composerMode, lockedReason } from "./composer-mode.ts";
+import { composerAction, composerLocked, composerMode, justSent, lockedReason, SEND_SETTLE_MS } from "./composer-mode.ts";
 import { aBot, aBotDirect, aDirect, aGroup } from "../test-fixtures.ts";
 
 const writer: Bot = {
@@ -180,4 +180,11 @@ test("a direct's Send stays open while your last line is read, once the daemon t
   expect(composerAction({ ...ready, pendingJudgement: true })).toEqual({ kind: "send", disabled: true });
   // Nothing to send is still nothing to send.
   expect(composerAction({ ...ready, pendingJudgement: true, linesInOrder: true, hasContent: false })).toEqual({ kind: "send", disabled: true });
+});
+
+test("a tap is the send's own press again only until the send has settled", () => {
+  expect(justSent(null, 0)).toBe(false);
+  expect(justSent(1000, 1000)).toBe(true);
+  expect(justSent(1000, 1000 + SEND_SETTLE_MS - 1)).toBe(true);
+  expect(justSent(1000, 1000 + SEND_SETTLE_MS)).toBe(false);
 });

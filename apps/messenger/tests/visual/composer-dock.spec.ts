@@ -75,9 +75,10 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 		/*
 		 * On a phone (2026-09-24): a quad-curved screen curves away under the bar's corners and
 		 * reports no safe area for it, and ✨ right beside the attachment button was two 34px targets
-		 * 38px apart under one thumb. ✨ sits by send now and steps aside once there is text.
+		 * 38px apart under one thumb. ✨ sits on the far side of the input, in send's place while
+		 * there is nothing to send (2026-10-12), and gives that place to send once there is text.
 		 */
-		test('on a touch screen the bar keeps clear of curved edges and the buttons clear of each other', async ({ baseURL }) => {
+		test('on a touch screen the bar keeps clear of curved edges, and ✨ and send take turns in one place', async ({ baseURL }) => {
 			const browser = await engine.launch();
 			const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
 			const page = await context.newPage();
@@ -85,31 +86,66 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			await page.waitForSelector('html[data-ready="yes"]');
 			expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
 			const box = async (selector: string) => (await page.locator(selector).boundingBox())!;
-			const [bar, attach, suggest, send, editor] = await Promise.all(
-				['.composer', '.attach-btn', '.suggest-btn', '.composer-action', '.composer-editor-wrap'].map(box)
+			// Greyed with nothing to send, send is not drawn: ✨ can be pressed instead.
+			await expect(page.locator('.composer-action')).toBeHidden();
+			const [bar, attach, suggest, editor] = await Promise.all(
+				['.composer', '.attach-btn', '.suggest-btn', '.composer-editor-wrap'].map(box)
 			);
-			for (const target of [attach, suggest, send]) {
+			for (const target of [attach, suggest]) {
 				expect(target.width).toBeGreaterThanOrEqual(40);
 				expect(target.height).toBeGreaterThanOrEqual(40);
 				expect(bar.y + bar.height - (target.y + target.height)).toBeGreaterThanOrEqual(12);
 			}
 			expect(attach.x).toBeGreaterThanOrEqual(16);
-			expect(390 - (send.x + send.width)).toBeGreaterThanOrEqual(16);
-			// One on each side of the input; ✨ and send far enough apart for a thumb.
+			expect(390 - (suggest.x + suggest.width)).toBeGreaterThanOrEqual(16);
+			// One on each side of the input.
 			expect(attach.x + attach.width).toBeLessThan(editor.x + 1);
 			expect(suggest.x).toBeGreaterThan(editor.x + editor.width - 1);
-			expect(send.x - (suggest.x + suggest.width)).toBeGreaterThanOrEqual(8);
 
 			await page.locator('.suggest-btn').tap();
 			const firstChip = page.locator('.suggest-chip').first();
 			await expect(firstChip).toBeVisible();
 			expect((await firstChip.boundingBox())!.x).toBeGreaterThanOrEqual(16);
 
-			// Typing takes ✨'s room: send is then never beside a button you meant instead.
+			// Typing: send takes ✨'s place, so the two are never side by side.
 			await page.locator('.composer-input').click();
 			await page.keyboard.type('先看第三场');
 			await expect(page.locator('.suggest-btn')).toBeHidden();
-			expect((await box('.composer-editor-wrap')).width).toBeGreaterThanOrEqual(editor.width + 40);
+			const send = await box('.composer-action');
+			expect(send.width).toBeGreaterThanOrEqual(40);
+			expect(Math.abs(send.x - suggest.x)).toBeLessThanOrEqual(1);
+			expect(Math.abs((await box('.composer-editor-wrap')).width - editor.width)).toBeLessThanOrEqual(1);
+			await browser.close();
+		});
+
+		/*
+		 * The phone shot of 2026-10-12: a direct whose Bot worked had attach, mic, a greyed ✨, Stop
+		 * and a greyed send round an input left with 40% of the row. Only what can be pressed is drawn.
+		 */
+		test('a direct whose Bot works shows Stop in send\'s place, and send beside it once there is text', async ({ baseURL }) => {
+			const browser = await engine.launch();
+			const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+			const page = await context.newPage();
+			await page.goto(`${baseURL}index.html?story=chat-stage-narrow-working`);
+			await page.waitForSelector('html[data-ready="yes"]');
+			const box = async (selector: string) => (await page.locator(selector).boundingBox())!;
+			await expect(page.locator('.suggest-btn')).toBeHidden();
+			await expect(page.locator('.composer-action.send')).toBeHidden();
+			const stop = await box('.composer-action.stop');
+			expect(stop.width).toBeGreaterThanOrEqual(40);
+			expect(390 - (stop.x + stop.width)).toBeGreaterThanOrEqual(16);
+			const editor = await box('.composer-editor-wrap');
+			// Attach on the left, the microphone and Stop on the right: the input has the rest of the row.
+			await expect(page.locator('.voice-btn')).toBeVisible();
+			expect(editor.width).toBeGreaterThanOrEqual(390 - 2 * 16 - 3 * 40 - 3 * 8 - 1);
+
+			await page.locator('.composer-input').click();
+			await page.keyboard.type('换成对 KT 那一局');
+			const send = await box('.composer-action.send');
+			const stopNow = await box('.composer-action.stop');
+			expect(Math.abs(send.x - stop.x)).toBeLessThanOrEqual(1);
+			expect(send.x - (stopNow.x + stopNow.width)).toBeGreaterThanOrEqual(8);
+			await expect(page.locator('.suggest-btn')).toBeHidden();
 			await browser.close();
 		});
 

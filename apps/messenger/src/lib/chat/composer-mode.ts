@@ -70,3 +70,14 @@ export function composerLocked(
 ): boolean {
   return lockedReason(session, bots) !== null;
 }
+
+/**
+ * Where the composer is as narrow as a phone, Send with nothing to send steps aside, so once a line
+ * goes out whatever takes its place — Stop, ✨ — lands under the thumb that just sent it. A tap this
+ * soon after a send is that same press again, not a stop or a request for drafts.
+ */
+export const SEND_SETTLE_MS = 600;
+
+export function justSent(sentAt: number | null, now: number): boolean {
+  return sentAt !== null && now - sentAt < SEND_SETTLE_MS;
+}

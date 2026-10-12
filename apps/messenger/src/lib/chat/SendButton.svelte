@@ -9,6 +9,8 @@
 		primaryAction: ComposerAction;
 		/** A direct's one Stop, beside Send while its Bot has a turn going here. */
 		directStop: boolean;
+		/** Greyed with nothing to send while something else can be pressed: gone where the composer is narrow. */
+		stepsAside: boolean;
 		/** A send from this conversation is in flight. */
 		sending: boolean | undefined;
 		/** The files of the send in flight and how many of their bytes have gone out. */
@@ -17,7 +19,7 @@
 		onSend: () => void;
 	};
 
-	let { t, connected, primaryAction, directStop, sending, upload, onStop, onSend }: Props = $props();
+	let { t, connected, primaryAction, directStop, stepsAside, sending, upload, onStop, onSend }: Props = $props();
 
 	/**
 	 * A send the Mac next door answers at once shows nothing. One still on its way after this long —
@@ -65,6 +67,7 @@
 	class:send={primaryAction.kind === 'send'}
 	class:stop={primaryAction.kind === 'stop'}
 	class:is-sending={primaryAction.kind === 'send' && sendingShown}
+	class:steps-aside={stepsAside}
 	disabled={primaryAction.disabled}
 	aria-busy={primaryAction.kind === 'send' && sendingShown ? 'true' : undefined}
 	aria-label={primaryAction.kind === 'stop' ? t.composer.stopGeneration : sendingShown ? t.composer.sending : t.composer.send}
@@ -187,6 +190,16 @@
 				height: 40px;
 				flex-basis: 40px;
 			}
+
+			/* Stop and send side by side under one thumb: held a little further apart. */
+			.composer-action.stop + .composer-action.send {
+				margin-left: 4px;
+			}
+		}
+
+		/* A thumb's row holds no button that does nothing: Stop or ✨ takes the place. */
+		:global(.composer) .composer-action.steps-aside {
+			display: none;
 		}
 	}
 

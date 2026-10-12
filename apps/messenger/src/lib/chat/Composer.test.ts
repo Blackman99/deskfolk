@@ -7,6 +7,7 @@ import { reactive } from "../test-reactive.svelte.ts";
 import { buttonByText, click, render } from "../test-render.ts";
 import { pressWorkspacePaths, type WorkspaceDragItem } from "../workspace-drag.svelte.ts";
 import Composer from "./Composer.svelte";
+import { SEND_SETTLE_MS } from "./composer-mode.ts";
 import { settle } from "../test-async.ts";
 
 const t = copyFor("zh");
@@ -729,6 +730,102 @@ test("a direct's Stop is never a second one: where Stop already replaces Send th
     expect(none.host.querySelector(".composer-action.stop")).toBeNull();
     expect(none.host.querySelector(".stop-menu-trigger")).toBeNull();
     none.close();
+  }
+});
+
+/**
+ * On a phone (2026-10-12) a direct whose Bot worked had five controls round the input: attach, mic,
+ * ✨ greyed while the reply came, Stop, and Send greyed with nothing to send. Where the composer is
+ * narrow, a greyed Send steps aside for whatever can be pressed instead, and ✨ steps aside while it
+ * cannot draft; with nothing else to press, Send stays as the one sign of where sending happens.
+ */
+test("a greyed Send steps aside for Stop, the stop menu or ✨, and ✨ for a reply still coming", () => {
+  const selected = aDirect();
+  const working = [aTurn({ session_id: selected.id, bot_id: "bot-1" })];
+  const render_ = (session: typeof selected, over: Parameters<typeof fakeRuntime>[0], draft = "") => {
+    const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [session], holdsOn: true, turnInbox: true, linesInOrder: true, ...over }));
+    runtime.selectedId = session.id;
+    runtime.draft = draft;
+    const view = render(Composer, { runtime, t, selected: session, onSend: async () => true, onPickPrompt: () => {} });
+    const aside = (selector: string) => view.host.querySelector(selector)?.classList.contains("steps-aside") ?? null;
+    return { runtime, view, aside };
+  };
+
+  // Nothing typed, nothing running: ✨ holds the place.
+  const idle = render_(selected, {});
+  expect(idle.aside(".suggest-btn")).toBe(false);
+  expect(idle.aside(".composer-action.send")).toBe(true);
+  idle.runtime.draft = "先看第三场";
+  flushSync();
+  expect(idle.aside(".suggest-btn")).toBe(true);
+  expect(idle.aside(".composer-action.send")).toBe(false);
+  idle.view.close();
+
+  // Its Bot at work: Stop holds it, and ✨, which cannot draft now, is not drawn either.
+  const busy = render_(selected, { turns: working });
+  expect(busy.aside(".composer-action.stop")).toBe(false);
+  expect(busy.aside(".composer-action.send")).toBe(true);
+  expect(busy.aside(".suggest-btn")).toBe(true);
+  // Something typed: both Stop and Send can be pressed, so both are there.
+  busy.runtime.draft = "换成对 KT 那一局";
+  flushSync();
+  expect(busy.aside(".composer-action.stop")).toBe(false);
+  expect(busy.aside(".composer-action.send")).toBe(false);
+  busy.view.close();
+
+  // A group's stop menu holds it the same way.
+  const group = aGroup();
+  const team = render_(group, { turns: [aTurn({ session_id: group.id, bot_id: "bot-1", task_id: "task-1" })] });
+  expect(team.view.host.querySelector(".stop-menu-trigger")).not.toBeNull();
+  expect(team.aside(".composer-action.send")).toBe(true);
+  team.view.close();
+
+  // Nothing else to press — offline, or still reading your last line — and Send stays, greyed.
+  const offline = render_(selected, {});
+  offline.runtime.connection = "disconnected";
+  flushSync();
+  expect(offline.aside(".suggest-btn")).toBe(true);
+  expect(offline.aside(".composer-action.send")).toBe(false);
+  offline.view.close();
+  const reading = render_(selected, {
+    pendingJudgements: [{ id: "pj-1", session_id: selected.id, message_id: "m-1", bot_id: "bot-1", stage: "organizing" as const, created_at: "t" }],
+  });
+  expect(reading.aside(".composer-action.send")).toBe(false);
+  reading.view.close();
+});
+
+/**
+ * With Send stepped aside, the Stop beside it slides into its place the moment a line goes out, so
+ * a double tap on Send would stop the Bot it was talking to.
+ */
+test("a tap on Stop right after a send is the same press again, not a stop", async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const selected = aDirect();
+  const turns = [aTurn({ id: "turn-7", session_id: selected.id, bot_id: "bot-1" })];
+  const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected], turns, holdsOn: true, turnInbox: true, linesInOrder: true }));
+  runtime.selectedId = selected.id;
+  runtime.draft = "换成对 KT 那一局";
+  const view = render(Composer, {
+    runtime,
+    t,
+    selected,
+    onSend: async () => {
+      runtime.draft = "";
+      return true;
+    },
+    onPickPrompt: () => {},
+  });
+  try {
+    click(view.host.querySelector(".composer-action.send"));
+    await settle();
+    expect(view.host.querySelector(".composer-action.send")?.classList.contains("steps-aside")).toBe(true);
+    click(view.host.querySelector(".composer-action.stop"));
+    await new Promise((resolve) => setTimeout(resolve, SEND_SETTLE_MS + 20));
+    click(view.host.querySelector(".composer-action.stop"));
+    // Read only now (reading the calls freezes them): the first tap stopped nothing, the later one did.
+    expect(runtime.calls.filter((call) => call.name === "stopTurn")).toHaveLength(1);
+  } finally {
+    view.close();
   }
 });
 

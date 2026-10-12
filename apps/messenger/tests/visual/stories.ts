@@ -701,6 +701,27 @@ const dockedRuntime: ReturnType<typeof fakeRuntime> = fakeRuntime(
 	}
 );
 
+/**
+ * A direct at a phone's width while its Bot works and you can still write to it, the microphone on:
+ * Stop holds Send's place until there is something to send. No baseline; the docked composer's
+ * spec measures it.
+ */
+const workingDirectRuntime = fakeRuntime(
+	{
+		...world,
+		settings: {
+			...settings,
+			speech: { enabled: true, preset: 'groq', format: 'openai', base_url: 'https://api.groq.com/openai/v1', model: 'whisper-large-v3-turbo', language: null, key_provider_id: null, key_set: true }
+		},
+		messages: [aMessage({ id: 'dm-1', session_id: 'direct-1', body: '换成对 KT 那一局的镜头。' })],
+		turns: [aTurn({ id: 'turn-dm', status: 'running', bot_id: 'bot-1', session_id: 'direct-1', trigger_message_id: 'dm-1' })],
+		holdsOn: true,
+		turnInbox: true,
+		linesInOrder: true
+	},
+	{ selectedId: 'direct-1' }
+);
+
 /** Every kind of source a model picker shows: built-in connectors, Custom, Claude, each local agent — OpenCode's hundreds grouped. */
 function pickerStoryData() {
 	const agent = (runner: string, label: string, models: Array<{ id: string; name?: string }>, extra: Record<string, unknown> = {}) => ({
@@ -1566,6 +1587,16 @@ function ticket23dStoryRuntime() {
 }
 
 export const rc11Stories = {
+  'chat-stage-narrow-working': {
+    component: ChatStage as never,
+    props: { runtime: workingDirectRuntime, t, selected: direct, onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {} },
+    width: 390, height: 844,
+    afterMount(host: HTMLElement) {
+      host.style.display = 'flex';
+      host.style.flexDirection = 'column';
+      host.style.container = 'conversation / inline-size';
+    },
+  },
   'work-question': workQuestionStory('zh'),
   'work-question-en': workQuestionStory('en'),
   'ticket24a': delegationStory('zh'),
