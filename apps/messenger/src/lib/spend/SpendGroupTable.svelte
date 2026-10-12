@@ -342,26 +342,23 @@
 	 * picks it, the same as its name does.
 	 */
 	@container spend (max-width: 620px) {
+		/*
+		 * The title takes its own line. Under it, one row: the switch, as big as the trend card's, then
+		 * the sort at the row's end, the same height as the switch. Short of room, the sort wraps right.
+		 */
 		.distribution-head {
-			flex-direction: column;
-			align-items: stretch;
+			gap: 10px 8px;
 		}
 
-		.dimension-tabs {
-			display: flex;
-		}
-
-		.dimension-tabs button {
-			flex: 1;
-			min-height: 32px;
-			font-size: 13px;
+		.distribution-head .section-head-title {
+			flex: 1 0 100%;
 		}
 
 		.compact-sort {
 			display: flex;
 			align-items: center;
-			justify-content: flex-end;
 			gap: 4px;
+			margin-left: auto;
 		}
 
 		.compact-sort label {
