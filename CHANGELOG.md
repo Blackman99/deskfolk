@@ -6,7 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+### Local-agent Bots go on after a cut, and say where they stand at the step limit
+
+- A Bot run by Claude Agent or another local agent now picks its job up again by itself after a failure, or after a restart that came between two commands, as Bots on the app's own loop do. Before, every command it had run counted as an external call with no known outcome, so each cut waited for you to press Continue. A restart in the middle of a command still waits for you: that command may have done half its work.
+- A Claude Agent session now follows its engine's hop limit (160 by default, 200 in the video engine; set on the engine's page). There its tools are taken away and its next answer is the turn's reply: what is done and what is not. Before, a fixed 200 steps ended the turn mid-work as "It stopped making progress", with no word on where it stood. A session that keeps calling tools 40 steps past the limit still fails as stuck, and now says so ([ADR 0061](docs/adr/0061-claude-agent-runner.md), [ADR 0085](docs/adr/0085-engines.md)).
 
 ## 0.1.0-rc.18 — 2026-10-12
 

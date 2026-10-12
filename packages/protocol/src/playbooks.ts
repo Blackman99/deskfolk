@@ -131,7 +131,9 @@ export function emptyPlaybookDiff(): PlaybookDiff {
  * - 视频 (video): the scribe stays (79 calls, 109 entries), the settle waits a minute so a fan-out of
  *   shots is filed once, check-backs are 15 minutes apart and three an hour (13 of 22 woke to nothing
  *   new, some 53 hops each), no model escalation (it only raised Claude Code's effort, and the
- *   send-backs were about likeness), and the ceiling's backstop comes a hand-over sooner.
+ *   send-backs were about likeness), and the ceiling's backstop comes a hand-over sooner. Its
+ *   tools go at 200 hops, not 160 (2026-10-12): 视频导演's Claude Agent segments ran 190–200
+ *   productive steps, under a fixed 200 before Claude Agent followed the engine.
  * - 代码 (coding): the scribe off (one entry from two calls); the rest as before, the data being thin.
  */
 export const BUILTIN_PLAYBOOKS: Record<BuiltinPlaybookId, PlaybookDiff> = {
@@ -143,6 +145,7 @@ export const BUILTIN_PLAYBOOKS: Record<BuiltinPlaybookId, PlaybookDiff> = {
       check_backs: { params: { min_minutes: 15, per_hour: 3 } },
       escalation: { on: false },
       ceiling: { params: { attempts: 5 } },
+      pacing: { params: { hop_limit: 200 } },
     },
   },
   coding: { v: 1, steps: { scribe: { on: false } } },

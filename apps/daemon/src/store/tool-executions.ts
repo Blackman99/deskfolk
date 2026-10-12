@@ -51,19 +51,34 @@ export function executionRecoveryFacts(ctx: StoreContext, filter: ToolExecutionF
   const uncertain = executions.filter((execution) => execution.side_effect === 1 && (execution.finished_at === null || execution.outcome === "unknown"));
   // Old turn_runs have no tool_call_id or side-effect bit. Complete receipt counts can account
   // for newly instrumented calls, not prove an old success was idempotent or an external job exists.
-  const runs = ctx.db.query<LegacyAmbiguousExecution, [string | null, string | null]>(`SELECT r.id, r.turn_id, r.tool, r.created_at
+  const runs = ctx.db.query<LegacyAmbiguousExecution & { tool_call_id: string | null }, [string | null, string | null]>(`SELECT r.id, r.turn_id, r.tool, r.created_at, r.tool_call_id
     FROM turn_runs r JOIN turns t ON t.id = r.turn_id
     WHERE (?1 IS NULL OR r.turn_id = ?1) AND (?2 IS NULL OR t.work_item_id = ?2)
       AND (r.tool = 'shell' OR r.tool GLOB 'mcp_*') ORDER BY r.created_at, r.rowid`).all(...filterOf(filter));
+  // A run that names its call is accounted for by that call's own receipt, pending or unknown ones
+  // included (they are in `uncertain`). Counting by clock cannot do it: the agent runners record the
+  // run a millisecond before they close its receipt, so every Claude Code shell read as ambiguous
+  // and no cut or failed segment of a Claude Agent Bot was ever picked up by itself (2026-10-12).
+  // In a turn the ledger covers, a named run with no receipt is a call that never needed one: a
+  // read-only MCP call (视频导演's check_video polls) or a shell refused before it ran.
+  const named = new Map(executions.map((execution) => [`${execution.turn_id}\u0000${execution.tool_call_id}`, execution]));
+  const ledgered = new Set(executions.map((execution) => execution.turn_id));
+  const claimed = new Set<string>();
+  const unnamed = runs.filter((run) => {
+    if (!run.tool_call_id) return true;
+    const execution = named.get(`${run.turn_id}\u0000${run.tool_call_id}`);
+    if (execution) claimed.add(execution.id);
+    return !execution && !ledgered.has(run.turn_id);
+  });
   const legacyAmbiguous: LegacyAmbiguousExecution[] = [];
   const counted = new Map<string, number>();
-  for (const run of runs) {
+  for (const run of unnamed) {
     const key = `${run.turn_id}\u0000${run.tool}`;
     const ordinal = (counted.get(key) ?? 0) + 1;
     counted.set(key, ordinal);
-    const completed = executions.filter((execution) => execution.turn_id === run.turn_id && execution.tool === run.tool
+    const completed = executions.filter((execution) => !claimed.has(execution.id) && execution.turn_id === run.turn_id && execution.tool === run.tool
       && execution.side_effect === 1 && execution.finished_at !== null && execution.finished_at <= run.created_at).length;
-    if (ordinal > completed) legacyAmbiguous.push(run);
+    if (ordinal > completed) legacyAmbiguous.push({ id: run.id, turn_id: run.turn_id, tool: run.tool, created_at: run.created_at });
   }
   return { executions, pending, uncertain, legacyAmbiguous, hasUncertainEffects: uncertain.length > 0 || legacyAmbiguous.length > 0,
     coverage: legacyAmbiguous.length ? executions.length ? "partial" : "legacy" : executions.length ? "ledger" : "none" };

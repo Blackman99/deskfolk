@@ -93,6 +93,32 @@ test("historical shell and MCP runs without complete ledger coverage remain ambi
   expect(f.api.executionRecoveryFacts(f.ctx, { turnId: f.turn.id }).legacyAmbiguous).toMatchObject([{ tool: "mcp_submit" }]);
 });
 
+test("a run that names its call is accounted for by that call's receipt, not by the clock", async () => {
+  const f = await fixture();
+  // As the agent runners write it: the run a moment before its receipt closes.
+  f.api.beginToolExecution(f.ctx, { turnId: f.turn.id, toolCallId: "toolu_1", tool: "shell", sideEffect: true, now: START });
+  f.store.recordTurnRun({ turnId: f.turn.id, tool: "shell", command: "blender -b", exitCode: 0, ok: true, toolCallId: "toolu_1",
+    now: new Date("2026-10-01T08:01:00.000Z") });
+  f.api.finishToolExecution(f.ctx, { turnId: f.turn.id, toolCallId: "toolu_1", outcome: "succeeded", now: "2026-10-01T08:01:00.002Z" });
+  expect(f.api.executionRecoveryFacts(f.ctx, { turnId: f.turn.id })).toMatchObject({ legacyAmbiguous: [], uncertain: [], hasUncertainEffects: false, coverage: "ledger" });
+  // Its receipt still open (cut mid-command): uncertain through the receipt, not twice through the run.
+  f.api.beginToolExecution(f.ctx, { turnId: f.turn.id, toolCallId: "toolu_2", tool: "shell", sideEffect: true, now: "2026-10-01T08:02:00.000Z" });
+  f.store.recordTurnRun({ turnId: f.turn.id, tool: "shell", command: "ffmpeg", exitCode: null, ok: false, toolCallId: "toolu_2",
+    now: new Date("2026-10-01T08:03:00.000Z") });
+  expect(f.api.executionRecoveryFacts(f.ctx, { turnId: f.turn.id })).toMatchObject({ legacyAmbiguous: [], uncertain: [{ tool_call_id: "toolu_2" }], hasUncertainEffects: true });
+  // In a turn the ledger covers, a named run with no receipt needed none: a read-only MCP poll.
+  f.store.recordTurnRun({ turnId: f.turn.id, tool: "mcp_westlake_cpa_check_video", command: "{}", exitCode: null, ok: true, toolCallId: "toolu_3",
+    now: new Date("2026-10-01T08:04:00.000Z") });
+  expect(f.api.executionRecoveryFacts(f.ctx, { turnId: f.turn.id }).legacyAmbiguous).toEqual([]);
+  // A turn with no receipt at all predates the ledger (or ran below it): its named runs are counted as before.
+  const elder = f.store.createBot({ name: "Elder", duties: "work", boundaries: "none" });
+  const asked = f.store.postMessage(elder.direct_session.id, { body: "Older work" });
+  const other = f.store.createTurn({ sessionId: asked.session_id, botId: elder.bot.id, triggerMessageId: asked.id });
+  f.store.recordTurnRun({ turnId: other.id, tool: "shell", command: "ls", exitCode: 0, ok: true, toolCallId: "no-receipt",
+    now: new Date("2026-10-01T08:05:00.000Z") });
+  expect(f.api.executionRecoveryFacts(f.ctx, { turnId: other.id }).legacyAmbiguous).toMatchObject([{ tool: "shell" }]);
+});
+
 test("begin refuses a held, terminal, mismatched or dormant actor without persisting a start", async () => {
   const f = await fixture();
   const input = { turnId: f.turn.id, toolCallId: "refused-start", tool: "shell", sideEffect: true, now: START };

@@ -51,7 +51,7 @@ import { ENGINE_LEVELS } from "../store/schema-gate";
 import { heardNote } from "../turn-inbox";
 import { classifyPath } from "../workspace-paths";
 import { producedPaths, snapshotWorkDir } from "../workspace-tools";
-import { emptyReplyNote } from "../turn-pace";
+import { emptyReplyNote, lastHopNote } from "../turn-pace";
 import { readOnlyTools, type Tools } from "./tools";
 import type { Live } from "./types";
 import type { Chains } from "./chains";
@@ -79,8 +79,14 @@ export type AgentQuery = (params: { prompt: AsyncIterable<SDKUserMessage>; optio
 
 /** Claude Agent turns running at once, across every Bot; the next waits for a slot. */
 export const AGENT_SLOTS = 3;
-/** A backstop over Claude Code's own loop; the app's hop ceiling plus the steps it allows past it. */
-export const AGENT_MAX_TURNS = 200;
+/**
+ * How many of Claude Code's own turns a session gets past its engine's hop limit (ADR 0085). At the
+ * limit its tools are taken away, as on the app's own loop, so its next answer is the reply; this
+ * is the backstop for a session that keeps calling them anyway. Before 2026-10-12 a fixed 200 was the
+ * only ceiling: 视频导演 reached it mid-render on three long segments in two days, each a failure
+ * reading 「卡住了」 with no word on where the work stood.
+ */
+export const AGENT_TURNS_PAST_LIMIT = 40;
 /** How long an in-process MCP call (an ask, an approval) may wait. */
 const DESKFOLK_TOOL_TIMEOUT_MS = 24 * 60 * 60_000;
 /** How long the session gets to wind down once its segment is over. */
@@ -412,6 +418,8 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
   ): Promise<void> {
     const locale = live.locale ?? "zh";
     const en = locale === "en";
+    // Its engine's hop limit, read at each call as the app's loop reads it at each hop.
+    const hopLimit = () => store.playbookFor({ turnId }).resolved.pacing.params.hop_limit!;
     const sessionId = current.session_id;
     const level = store.capabilities().engine_level;
     let triggerBody = "";
@@ -539,6 +547,9 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       const id = toolUseId ?? raw.tool_use_id;
       const deny = (reason: string): HookJSONOutput => ({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } });
       store.touchTurn(turnId);
+      // Past the hop limit every tool is refused with the app loop's last-hop note: what comes next is the reply.
+      const limit = hopLimit();
+      if (live.hops > limit) return deny(lastHopNote(locale, limit));
       if (raw.tool_name.startsWith(`mcp__${AGENT_MCP_SERVER}__`)) {
         // The app gates its own tools itself. A subagent may only look, never speak or end for the Bot.
         const name = raw.tool_name.slice(`mcp__${AGENT_MCP_SERVER}__`.length);
@@ -858,7 +869,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       // shadow the permission callback for them (the SDK warns), and the app gates them itself.
       disallowedTools: ["AskUserQuestion"],
       systemPrompt: { type: "preset", preset: "claude_code", append },
-      maxTurns: AGENT_MAX_TURNS,
+      maxTurns: hopLimit() + AGENT_TURNS_PAST_LIMIT,
       ...(settings.model ? { model: settings.model } : {}),
       ...(settings.effort ? { effort: settings.effort as ClaudeEffort } : {}),
       hooks,
@@ -993,7 +1004,9 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
             state.failure = { kind: "agent_limit", detail: state.limit.reset };
           }
           if (message.subtype !== "success") {
-            if (message.subtype === "error_max_turns") state.failure = { kind: "stuck" };
+            if (message.subtype === "error_max_turns") {
+              state.failure = { kind: "stuck", detail: en ? `still calling tools after they were taken away at ${hopLimit()}` : `到 ${hopLimit()} 步收起工具后还在调工具` };
+            }
             else state.failure ??= { kind: "agent_exited", detail: message.errors?.[0] ?? null };
             end();
             return;
