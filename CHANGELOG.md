@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.18 — 2026-10-12
+
+Signed and notarized macOS rc, with an experimental, still unsigned Windows installer beside the `.dmg`s.
+
 ### Every divider you drag works like the flow tab's
 
 - The edges you drag to resize — the sidebar's, the file preview's, the file list's inside a preview, and the dividers between workbench panes — now look and work like the rail's and the inspector's edges in a job's flow tab. At rest each is a one-pixel line, with no gutter taking room. A press within three pixels either side of the line still catches it. On it, focused or while dragging, a band of light accent appears over those seven pixels, and it stays while you drag even when the pointer runs past the edge.
