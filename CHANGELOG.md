@@ -10,6 +10,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - The edges you drag to resize — the sidebar's, the file preview's, the file list's inside a preview, and the dividers between workbench panes — now look and work like the rail's and the inspector's edges in a job's flow tab. At rest each is a one-pixel line, with no gutter taking room. A press within three pixels either side of the line still catches it. On it, focused or while dragging, a band of light accent appears over those seven pixels, and it stays while you drag even when the pointer runs past the edge.
 - Panes on the workbench meet at that line instead of an 8px gutter, so each pane gets a few pixels more. The diamond where dividers cross is unchanged.
+- The frame round the current pane, tiled or floating, is drawn in that same light accent instead of the full accent.
 
 ### Always allow outside the workspace covers the whole project
 

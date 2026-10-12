@@ -542,14 +542,15 @@
 	 * Drawn as a layer over the content, not as the pane's own outline or border: the strip and
 	 * the chat header both paint a background right up to the pane's edge, and an outline on the
 	 * pane sits under them. Over the pane's own layers (its settings scrim is 30) and under the
-	 * floating panes (40 and up), which draw their own.
+	 * floating panes (40 and up), which draw their own. The tint a divider takes in hand
+	 * (`.split-handle`), so the frame and the edges round it read as one family.
 	 */
 	.wb-leaf.is-framed::after {
 		content: '';
 		position: absolute;
 		inset: 0;
 		z-index: 35;
-		box-shadow: inset 0 0 0 1px var(--accent);
+		box-shadow: inset 0 0 0 1px var(--accent-border);
 		pointer-events: none;
 	}
 	/*

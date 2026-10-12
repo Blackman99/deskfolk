@@ -219,15 +219,15 @@
 		outline: 1px solid var(--line);
 		outline-offset: -1px;
 	}
-	/* A layer over the content for the same reason a tiled pane's frame is (see WorkbenchLeaf):
-	   the pane inside paints right up to the edge and would cover an outline. */
+	/* A layer over the content for the same reason a tiled pane's frame is (see WorkbenchLeaf),
+	   in the same tint: the pane inside paints right up to the edge and would cover an outline. */
 	.wb-float.is-focused::after {
 		content: '';
 		position: absolute;
 		inset: 0;
 		z-index: 35;
 		border-radius: inherit;
-		box-shadow: inset 0 0 0 1px var(--accent);
+		box-shadow: inset 0 0 0 1px var(--accent-border);
 		pointer-events: none;
 	}
 	.wb-float :global(.wb-leaf) {
