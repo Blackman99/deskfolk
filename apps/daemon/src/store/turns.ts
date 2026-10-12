@@ -655,3 +655,13 @@ export function pendingInterruptSet(ctx: StoreContext): Set<string> {
 export function writePendingInterrupts(ctx: StoreContext, set: Set<string>): void {
   setSetting(ctx, "_pending_interrupt_bots", JSON.stringify([...set]));
 }
+
+/**
+ * Whether work is under way that should keep a Mac on power out of idle sleep (`keep-awake.ts`): a turn
+ * running now, or a render the daemon is still polling for a Bot. A turn waiting on your answer or
+ * approval is not: nothing moves until you are back.
+ */
+export function workUnderWay(ctx: StoreContext): boolean {
+  if (ctx.db.query(`SELECT 1 FROM turns WHERE status = 'running' LIMIT 1`).get()) return true;
+  return Boolean(ctx.db.query(`SELECT 1 FROM external_jobs WHERE state = 'pending' LIMIT 1`).get());
+}

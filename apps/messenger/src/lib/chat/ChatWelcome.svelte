@@ -5,7 +5,7 @@
 	import type { Copy } from '../copy.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { SessionGroup } from '../sidebar/session-groups.ts';
-	import { getStarterOptions } from './starter-prompts.ts';
+	import { getStarterOptions, handOffStarter } from './starter-prompts.ts';
 
 	type Props = {
 		t: Copy;
@@ -37,14 +37,18 @@
 		selectedKind === 'group' ? t.top.groupSettings : t.top.botSettings
 	);
 
+	// The hand-off comes first: the first thing to try is handing work off, not asking a question.
 	const starterOptions = $derived(
 		selectedPeerBot
-			? getStarterOptions({
-					name: selectedPeerBot.name,
-					duties: selectedPeerBot.duties,
-					boundaries: selectedPeerBot.boundaries,
-					locale
-				})
+			? [
+					handOffStarter(locale),
+					...getStarterOptions({
+						name: selectedPeerBot.name,
+						duties: selectedPeerBot.duties,
+						boundaries: selectedPeerBot.boundaries,
+						locale
+					})
+				]
 			: []
 	);
 </script>
@@ -96,6 +100,7 @@
 					<button
 						type="button"
 						class="starter-chip"
+						class:is-hand-off={starter.id === 'hand-off'}
 						disabled={lockedComposer}
 						onclick={() => pickStarterPrompt(starter.prompt)}
 					>
@@ -228,6 +233,11 @@
 		transition: 0.15s ease;
 		transition-property: var(--transition-props);
 		box-shadow: var(--shadow-xs);
+	}
+
+	.starter-chip.is-hand-off {
+		border-color: var(--accent);
+		font-weight: 550;
 	}
 
 	.starter-chip:hover {

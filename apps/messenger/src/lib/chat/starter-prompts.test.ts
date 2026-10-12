@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   detectDutyIcon,
   getStarterOptions,
+  handOffStarter,
   parseDutyItems,
 } from "./starter-prompts.ts";
 
@@ -143,4 +144,14 @@ test("Completely empty input falls back to standard generic prompts", () => {
   expect(options[0].label).toBe("你可以帮我做什么？");
   expect(options[1].label).toBe("查看当前工作区有哪些文件");
   expect(options[2].label).toBe("开始一个新任务");
+});
+
+test("the hand-off starter asks for a brief now and a morning routine, in the app's language", () => {
+  const zh = handOffStarter("zh");
+  expect(zh).toMatchObject({ id: "hand-off", label: "交出去，明早看结果" });
+  expect(zh.prompt).toContain("briefs/");
+  expect(zh.prompt).toContain("每天早上 9 点的日程");
+  const en = handOffStarter("en");
+  expect(en.label).toBe("Hand it off, see it tomorrow morning");
+  expect(en.prompt).toContain("routine at 9 every morning");
 });

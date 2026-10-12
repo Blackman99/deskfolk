@@ -43,6 +43,8 @@ export type LocalApiOptions = {
   mcp?: McpHost;
   /** Skip the calendar ticker (tests that drive `engine.fireRoutine` themselves). */
   schedule?: boolean;
+  /** Keep a Mac on power out of idle sleep while work is under way (`keep-awake.ts`); only the daemon's own entry sets it. */
+  keepAwake?: boolean;
   now?: () => Date;
   canonicalEncoder?: CanonicalEncoder;
   admission?: TurnAdmission;

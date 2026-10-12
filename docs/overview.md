@@ -16,7 +16,7 @@ The model does the work; the app holds it to account: where a job stands is deci
 ## Who it's for
 
 - **For** solo developers, technical individuals and small studios who already use a local agent such as Claude Code or Codex, or can set up a model endpoint and API key themselves, with multi-day, multi-step work that needs rework and can't be watched all the time: a multi-episode AI video (shots, renders, review, rework), a daily news brief on a routine, a launch kit. The built-in video engine is tuned on the record of exactly this kind of work; the coding engine has little record behind it yet, so its numbers are still the old defaults. One Bot on its own will do, and a team of Bots is for work that really splits.
-- **Not yet for** a one-off question or a job done in half an hour (one Bot is plenty, and lighter tools exist); several people sharing one setup, Linux, work that has to carry on while the Mac sleeps, or anyone with neither a local agent nor a model endpoint of their own. Windows is an experimental preview: each release carries an unsigned installer, and some features are not there yet — see [Get it](#get-it).
+- **Not yet for** a one-off question or a job done in half an hour (one Bot is plenty, and lighter tools exist); several people sharing one setup, Linux, work that has to carry on while the Mac sleeps (on power, while work runs, the app keeps the Mac from idle sleep; closing the lid or running on battery still puts it to sleep), or anyone with neither a local agent nor a model endpoint of their own. Windows is an experimental preview: each release carries an unsigned installer, and some features are not there yet — see [Get it](#get-it).
 
 ## What it does
 
@@ -65,6 +65,8 @@ pnpm dev
 For long jobs on a source build (a multi-shot video, say), run `pnpm dev:steady` instead of `pnpm dev`: the daemon does not restart when the code changes or you `git pull`, so turns in progress are not interrupted.
 
 First run: the setup wizard walks you through picking a workspace folder, connecting a model, then a way of working (General, Video or Coding) and the Bot templates ready for it, made together, with a group when there are two or more; then let them hire the rest. A model is either an endpoint and key (a preset or an address of your own) or a local agent already installed and signed in on this computer (Claude Code, Codex, Grok…): with that, no endpoint is needed, the Bots made run on that agent and the app's own calls run on its model ([ADR 0078](adr/0078-setup-on-claude-code.md), [ADR 0079](adr/0079-local-agents.md)). Anthropic, Xiaomi MiMo, Qwen (Alibaba Cloud Model Studio) and DeepSeek are built in: pick one and paste a key, and the app finds which of the vendor's plans it belongs to. A personal Anthropic key not scoped to a workspace also needs the workspace ID (`wrkspc_…`, from Console → Settings → Workspaces); see [ADR 0072](adr/0072-built-in-connectors.md).
+
+Once they are made, open your direct with a Bot: its first starter is "🌙 Hand it off, see it tomorrow morning". Pressing it fills the composer with one line asking the Bot to look through the workspace now, write a one-page brief into `briefs/`, and set up a routine at 9 every morning that writes a fresh one. Read it, send it, and come back in the morning to a brief already there.
 
 ### Local models
 

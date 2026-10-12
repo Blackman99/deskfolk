@@ -370,3 +370,27 @@ export function getStarterOptions(input: StarterPromptInput): StarterOption[] {
     },
   ];
 }
+
+/**
+ * The first starter in a direct: a job to hand off and come back to, not a question (ROADMAP item
+ * 3). The Bot writes a brief of the workspace now and sets up a routine that writes the next one
+ * every morning, so tomorrow there is something waiting. It only fills the draft; you send it.
+ */
+export function handOffStarter(locale: "zh" | "en" | string): StarterOption {
+  if (locale === "en") {
+    return {
+      id: "hand-off",
+      icon: "🌙",
+      label: "Hand it off, see it tomorrow morning",
+      prompt:
+        "Look through the current workspace — what is in it, what changed lately, and the three things most worth doing next — and write it up as a one-page brief in a briefs/ folder in the workspace. Then set up a routine at 9 every morning that writes a fresh brief the same way. Tell me where the file is when you are done; I will be back tomorrow morning.",
+    };
+  }
+  return {
+    id: "hand-off",
+    icon: "🌙",
+    label: "交出去，明早看结果",
+    prompt:
+      "先把当前工作区看一遍：里面有什么、最近改了什么、接下来最值得做的三件事，写成一页简报，存到工作区的 briefs/ 文件夹里。再建一个每天早上 9 点的日程，每天照这样写一份新的。做完告诉我文件在哪，明早我回来看。",
+  };
+}

@@ -31,6 +31,7 @@ import type { PtySignal } from "./pty";
 import { Quiesce, TurnAdmission } from "./quiesce";
 import { requestDigest, validateRequestPath } from "./request-digest";
 import { startScheduler } from "./scheduler";
+import { keepAwake } from "./keep-awake";
 import { EventStream } from "./session-events";
 import type { AttachmentInput } from "./store";
 import type { FileCommit } from "./store/files";
@@ -255,6 +256,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
           store: options.store,
           engine,
           now: options.now,
+          keepAwake: options.keepAwake ? keepAwake() : undefined,
         });
   const quiesce = new Quiesce(options.store, engine, options.admission!, scheduler);
 

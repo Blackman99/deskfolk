@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Hand off the first job and come back to it in the morning; on power, a Mac with work running does not doze off
+
+- An empty direct with a Bot now opens its starters with "🌙 Hand it off, see it tomorrow morning": it fills the composer with one line asking the Bot to look through the workspace now, write a one-page brief into `briefs/`, and set up a routine at 9 every morning that writes a fresh one. Before, the starters were questions such as "introduce your duties", so the first thing tried was always a small one.
+- On power, while a turn runs or a render is awaited, the daemon holds the Mac out of idle sleep (`caffeinate -s`, tied to the daemon) and lets go once the work stops; the display still goes dark. On battery, with the lid closed or after Sleep from the menu, the Mac still sleeps. The glossary had long said the daemon held off idle sleep on power; it did not until now. Not on Windows yet.
+
 ### A daily spend cap: every Bot stops once the day has cost that much
 
 - The spend view's Overview opens with a Daily cap: enter a USD amount, and once the calls since local midnight have cost that much, reported or estimated, the app stops every Bot — live turns end at once, and routines, check-backs and the supervisor's call-backs are held. None by default; clear it, or press No cap, for none ([ADR 0088](docs/adr/0088-a-daily-spend-cap.md)).

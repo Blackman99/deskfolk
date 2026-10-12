@@ -42,6 +42,8 @@ export type RuntimeOptions = {
   /** Which endpoints are model servers on this computer or network (ADR 0067); tests with a fake cloud on 127.0.0.1 turn it off. */
   localEndpoint?: (baseUrl: string) => boolean;
   schedule?: boolean;
+  /** Keep a Mac on power out of idle sleep while work is under way; main.ts sets it, tests and fixtures do not. */
+  keepAwake?: boolean;
   onQuit?: () => void;
   exitProcess?: boolean;
   desktopRemoteChannel?: boolean;
@@ -316,6 +318,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       completions: options.completions,
       localEndpoint: options.localEndpoint,
       schedule: options.schedule,
+      keepAwake: options.keepAwake,
       ablation: options.ablation,
       agentQuery: options.agentQuery,
       installedApp,

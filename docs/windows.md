@@ -39,6 +39,7 @@ The other local agents ([how they work](behavior.en.md#local-agents)) can be pic
 ## Not there yet
 
 - The optional independent runtime (off by default on the Mac too).
+- Holding off idle sleep while work runs (the Mac does it on power).
 - Downloading and installing an update inside the app: a new version still means a manual download in the browser.
 - Desktop notifications and the icon badge.
 - Image thumbnails. Images sent to a model are not affected.

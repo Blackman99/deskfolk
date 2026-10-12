@@ -61,6 +61,7 @@ try {
     bind: LOCAL_API_BIND,
     endpointKey: bunKeyStore,
     exitProcess: true,
+    keepAwake: true,
     desktopRemoteChannel: process.argv.includes("--desktop-remote-channel"),
     supervisor: standalone ? "standalone" : process.argv.includes("--desktop-remote-channel") ? "window" : "none",
   });

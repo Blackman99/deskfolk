@@ -1,6 +1,7 @@
 import type { TurnEngine } from "./turn-engine";
 import type { Store } from "./store";
 import { processWake, type WakeWatch } from "./wake";
+import type { KeepAwake } from "./keep-awake";
 
 const TICK_MS = 15_000;
 
@@ -17,6 +18,8 @@ export type SchedulerOptions = {
   intervalMs?: number;
   now?: () => Date;
   wake?: WakeWatch;
+  /** Holds a Mac on power out of idle sleep while work is under way; only the daemon itself passes one. */
+  keepAwake?: KeepAwake;
 };
 
 export function startScheduler(options: SchedulerOptions): Scheduler {
@@ -27,6 +30,11 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
   let paused = false;
   function tick(at: Date = now()): void {
     if (paused) return;
+    try {
+      options.keepAwake?.update(options.store.workUnderWay());
+    } catch {
+      // a closed store keeps whatever it held until stop()
+    }
     try {
       options.engine.sweepStalledTurns(at);
     } catch {
@@ -98,6 +106,7 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
     resume() { paused = false; },
     stop() {
       clearInterval(timer);
+      options.keepAwake?.stop();
     },
   };
 }
