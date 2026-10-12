@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import type { SpendTotals } from '@real-bot/protocol';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { formatTokens, formatUsd } from '../spend-format.ts';
 	import { spendCopyFor, type SpendCopy } from './spend-copy.ts';
@@ -87,15 +86,6 @@
 		const text = formatUsd(ticks);
 		return estimated ? `${text} ${copy.estimated}` : text;
 	}
-
-	function tokenMetrics(row: Pick<SpendTotals, 'input_tokens' | 'cached_tokens' | 'output_tokens' | 'reasoning_tokens'>) {
-		return [
-			{ label: copy.input, value: row.input_tokens },
-			{ label: copy.cached, value: row.cached_tokens },
-			{ label: copy.output, value: row.output_tokens },
-			{ label: copy.reasoning, value: row.reasoning_tokens },
-		];
-	}
 </script>
 
 <section class="spend" aria-label={copy.title} data-spend-view>
@@ -133,13 +123,13 @@
 			</div>
 		{:else}
 			{#if section === 'overview'}
-				<SpendSummary {copy} {locale} totals={ledger.summary.totals} {num} {money} {tokenMetrics} />
+				<SpendSummary {copy} {locale} totals={ledger.summary.totals} {num} {money} />
 
-				<SpendCategories {copy} {locale} {timeZone} {ledger} categories={ledger.summary.categories} {num} {money} />
+				<SpendCategories {copy} {locale} {timeZone} {ledger} categories={ledger.summary.categories} {num} />
 
-				<SpendGroupTable {copy} {ledger} {num} {money} {tokenMetrics} {onOpenSession} />
+				<SpendGroupTable {copy} {ledger} {num} {onOpenSession} />
 			{:else}
-				<SpendDetailTable {copy} {locale} {timeZone} {ledger} {num} {tokenMetrics} {onOpenTrigger} />
+				<SpendDetailTable {copy} {locale} {timeZone} {ledger} {num} {onOpenTrigger} />
 			{/if}
 		{/if}
 		<QualityReport {api} {locale} {revision} />
@@ -179,19 +169,119 @@
 		overflow-y: auto;
 		overflow-x: hidden;
 		overscroll-behavior: contain;
-		padding: 20px 24px;
+		padding: 20px 24px 28px;
 		display: flex;
 		flex-direction: column;
-		gap: 20px;
+		gap: 16px;
 	}
 
-	.spend-scroll > * {
+	/* Every section is a child component: without :global a section with overflow hidden shrinks to its border. */
+	.spend-scroll > :global(*) {
 		flex-shrink: 0;
 		min-width: 0;
 	}
 
-	.quiet {
-		min-height: 38px;
+	/*
+	 * The ledger's shared parts. Each section is its own component; these are drawn the same in all of them.
+	 * `:where` keeps them at one class's weight, so a section's own rule for one of them wins.
+	 */
+	:where(.spend) :global(.surface) {
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		overflow: hidden;
+		min-width: 0;
+	}
+
+	:where(.spend) :global(.section-head) {
+		padding: 14px 18px;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 8px 12px;
+	}
+
+	:where(.spend) :global(.section-head-title) {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	:where(.spend) :global(.section-head h2) {
+		margin: 0;
+		font-size: 14px;
+		line-height: 1.4;
+		font-weight: 650;
+		letter-spacing: -0.01em;
+		color: var(--ink);
+	}
+
+	:where(.spend) :global(.section-hint) {
+		margin: 0;
+		color: var(--muted);
+		font-size: 12px;
+	}
+
+	:where(.spend) :global(.segmented) {
+		display: inline-flex;
+		gap: 2px;
+		padding: 2px;
+		background: var(--line-subtle);
+		border-radius: var(--radius-sm);
+	}
+
+	:where(.spend) :global(.segmented button) {
+		border: 0;
+		background: transparent;
+		border-radius: var(--radius-xs);
+		color: var(--muted);
+		min-height: 26px;
+		padding: 2px 12px;
+		font: inherit;
+		font-size: 12px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
+	}
+
+	:where(.spend) :global(.segmented button:hover:not([aria-pressed='true'])) {
+		color: var(--ink);
+	}
+
+	:where(.spend) :global(.segmented button[aria-pressed='true']) {
+		background: var(--pane);
+		color: var(--ink);
+		box-shadow: var(--shadow-xs);
+		font-weight: 600;
+	}
+
+	:where(.spend) :global(.text-action) {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-height: 28px;
+		border: 0;
+		background: transparent;
+		padding: 0 4px;
+		font: inherit;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--accent);
+		cursor: pointer;
+		text-align: left;
+		transition: opacity 0.15s ease;
+	}
+
+	:where(.spend) :global(.text-action:hover:not(:disabled)) {
+		opacity: 0.8;
+		text-decoration: underline;
+	}
+
+	:where(.spend) :global(.quiet) {
+		min-height: 36px;
 		padding: 0 16px;
 		border: 1px solid var(--line);
 		border-radius: var(--radius-sm);
@@ -209,9 +299,75 @@
 		transition-property: var(--transition-props);
 	}
 
-	.quiet:hover:not(:disabled) {
+	:where(.spend) :global(.quiet:hover:not(:disabled)) {
 		background: var(--line-subtle);
 		border-color: var(--line-hover);
+	}
+
+	/* A bare icon at the end of a row: open the session, open the message. */
+	:where(.spend) :global(.row-icon) {
+		position: relative;
+		z-index: 1;
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
+	}
+
+	/* Only a real pointer hovers: on a phone a tapped icon would keep the hover after the finger lifts. */
+	@media (hover: hover) {
+		:where(.spend) :global(.row-icon:hover) {
+			background: var(--line-subtle);
+			color: var(--accent);
+		}
+	}
+
+	:where(.spend) :global(.num) {
+		font-variant-numeric: tabular-nums;
+	}
+
+	:where(.spend) :global(.deleted) {
+		display: inline-block;
+		padding: 0 5px;
+		font-size: 10px;
+		font-weight: 500;
+		line-height: 16px;
+		color: var(--muted);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-xs);
+		white-space: nowrap;
+	}
+
+	:where(.spend) :global(.sr) {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	:where(.spend) :global(:is(button, summary, select, input):focus-visible) {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+
+	:where(.spend) :global(button:disabled) {
+		opacity: 0.5;
+		cursor: default;
 	}
 
 	.empty-state, .loading-state, .status-box {
@@ -274,16 +430,6 @@
 		to { transform: rotate(360deg); }
 	}
 
-	button:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-
 	@media (prefers-reduced-motion: reduce) {
 		.loading-mark {
 			animation: none;
@@ -292,8 +438,20 @@
 
 	@container spend (max-width: 620px) {
 		.spend-scroll {
-			padding: 14px max(12px, env(safe-area-inset-left, 0px)) max(24px, calc(16px + env(safe-area-inset-bottom, 0px))) max(12px, env(safe-area-inset-right, 0px));
-			gap: 16px;
+			padding: 12px max(12px, env(safe-area-inset-left, 0px)) max(24px, calc(16px + env(safe-area-inset-bottom, 0px))) max(12px, env(safe-area-inset-right, 0px));
+			gap: 12px;
+		}
+
+		:where(.spend) :global(.section-head) {
+			padding: 12px 14px;
+		}
+	}
+
+	/* A finger needs a bigger target than a pointer; the width alone does not say which one this is. */
+	@media (pointer: coarse) {
+		:where(.spend) :global(.row-icon) {
+			width: 40px;
+			height: 40px;
 		}
 	}
 </style>

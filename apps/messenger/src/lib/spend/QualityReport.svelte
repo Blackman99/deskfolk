@@ -61,16 +61,16 @@
 				<tbody>
 					{#each rows as row (`${row.bot_id}|${row.model}|${row.plan_kind}`)}
 						<tr>
-							<td>{row.bot_name ?? copy.deleted}</td>
-							<td class="mono">{row.model ?? copy.none}</td>
-							<td>{row.plan_kind ?? copy.none}</td>
-							<td class="num">{row.hand_overs}</td>
-							<td class="num">{row.approved}</td>
-							<td class="num" title={copy.turnedBackTitle}>{row.review_rejected} · {row.user_rejected} · {row.checks_failed}</td>
-							<td class="num">{row.complaints}</td>
-							<td class="num">{row.failure_shapes}</td>
-							<td class="num">{row.review_misses}</td>
-							<td class="num">{usd(row.cost_per_approved)}</td>
+							<td class="who">{row.bot_name ?? copy.deleted}</td>
+							<td class="mono what">{row.model ?? copy.none}</td>
+							<td class="what">{row.plan_kind ?? copy.none}</td>
+							<td class="num" data-label={copy.handOvers}>{row.hand_overs}</td>
+							<td class="num" data-label={copy.approved}>{row.approved}</td>
+							<td class="num" data-label={copy.turnedBack} title={copy.turnedBackTitle}>{row.review_rejected} · {row.user_rejected} · {row.checks_failed}</td>
+							<td class="num" data-label={copy.complaints}>{row.complaints}</td>
+							<td class="num" data-label={copy.shapes}>{row.failure_shapes}</td>
+							<td class="num" data-label={copy.misses}>{row.review_misses}</td>
+							<td class="num cost" data-label={copy.perApproved}>{usd(row.cost_per_approved)}</td>
 						</tr>
 					{/each}
 				</tbody>
@@ -81,16 +81,16 @@
 
 <style>
 	.quality-surface {
+		flex-shrink: 0;
 		background: var(--pane);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
-		box-shadow: var(--shadow-xs);
 		min-width: 0;
 		overflow: hidden;
 	}
 
 	.quality-head {
-		padding: 16px 20px 8px;
+		padding: 14px 18px 8px;
 	}
 
 	.quality-head h2 {
@@ -142,5 +142,70 @@
 
 	.quality-table .mono {
 		font-family: var(--font-mono, ui-monospace, monospace);
+	}
+
+	/* Narrow: one Bot × model × plan kind per row, its counts wrapped under it, each named. */
+	@container spend (max-width: 620px) {
+		.quality-head {
+			padding: 12px 14px 6px;
+		}
+
+		.quality-table-wrap {
+			padding: 0 0 4px;
+		}
+
+		.quality-table, .quality-table tbody {
+			display: block;
+		}
+
+		.quality-table thead {
+			display: none;
+		}
+
+		.quality-table tr {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: baseline;
+			gap: 2px 12px;
+			padding: 10px 14px;
+			border-top: 1px solid var(--line-subtle);
+		}
+
+		.quality-table td {
+			padding: 0;
+			border: 0;
+			white-space: normal;
+		}
+
+		.quality-table .who {
+			font-weight: 600;
+			color: var(--ink);
+			font-size: 13px;
+		}
+
+		.quality-table .what {
+			color: var(--muted);
+		}
+
+		/* A line break between the names and the counts. */
+		.quality-table tr::before {
+			content: '';
+			order: 1;
+			flex-basis: 100%;
+		}
+
+		.quality-table td.num {
+			order: 2;
+		}
+
+		.quality-table td[data-label]::before {
+			content: attr(data-label) ' ';
+			color: var(--muted);
+		}
+
+		.quality-table .cost {
+			font-weight: 600;
+			color: var(--ink);
+		}
 	}
 </style>

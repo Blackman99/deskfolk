@@ -75,6 +75,15 @@
 	});
 
 	const tokenScale = $derived(spendTrendMax(buckets, 'total_tokens'));
+	/**
+	 * Money is two plots on one scale, never one sum. A side with no amount on any day in the range
+	 * is not drawn as an empty plot beside the other; with nothing on either side both stay.
+	 */
+	const moneyPlots = $derived.by(() => {
+		const reported = buckets.some((bucket) => bucket.reported_usd_ticks != null);
+		const estimated = buckets.some((bucket) => bucket.estimated_usd_ticks != null);
+		return { reported: reported || !estimated, estimated: estimated || !reported };
+	});
 	const moneyScale = $derived(Math.max(spendTrendMax(buckets, 'reported_usd_ticks'), spendTrendMax(buckets, 'estimated_usd_ticks')));
 
 	const labelIndexes = $derived.by(() => {
@@ -254,9 +263,13 @@
 		{#if metric === 'tokens'}
 			{@render plot('total_tokens', tokenScale, '', 'tokens')}
 		{:else}
-			<div class="money">
-				{@render plot('reported_usd_ticks', moneyScale, copy.reportedStack, 'reported')}
-				{@render plot('estimated_usd_ticks', moneyScale, copy.estimatedStack, 'estimated', true)}
+			<div class="money" class:is-pair={moneyPlots.reported && moneyPlots.estimated}>
+				{#if moneyPlots.reported}
+					{@render plot('reported_usd_ticks', moneyScale, copy.reportedStack, 'reported')}
+				{/if}
+				{#if moneyPlots.estimated}
+					{@render plot('estimated_usd_ticks', moneyScale, copy.estimatedStack, 'estimated', true)}
+				{/if}
 			</div>
 		{/if}
 
@@ -529,14 +542,12 @@
 	}
 
 	.readout {
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		background: var(--pane);
-		padding: 12px 14px;
-		box-shadow: var(--shadow-sm);
+		border-radius: var(--radius-sm);
+		background: var(--line-subtle);
+		padding: 10px 12px;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 6px;
 		font-size: 12px;
 	}
 
@@ -545,8 +556,6 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
-		padding-bottom: 6px;
-		border-bottom: 1px solid var(--line-subtle);
 	}
 
 	.readout-date {
@@ -563,9 +572,9 @@
 		margin: 0;
 		padding: 0;
 		list-style: none;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+		gap: 4px 20px;
 	}
 
 	.readout-row {
@@ -589,7 +598,7 @@
 	}
 
 	@container spend-trend (min-width: 560px) {
-		.money {
+		.money.is-pair {
 			display: grid;
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 			align-items: start;
@@ -597,6 +606,10 @@
 
 		.axis-label {
 			font-size: 11px;
+		}
+
+		.bars, .y-axis {
+			height: 210px;
 		}
 	}
 

@@ -24,7 +24,6 @@ export type SpendCopy = {
   sort: string;
   ascending: string;
   descending: string;
-  inspect: string;
   openTrigger: string;
   detailHint: string;
   loadedCalls: (n: number) => string;
@@ -48,6 +47,16 @@ export type SpendCopy = {
   output: string;
   reasoning: string;
   totalTokens: string;
+  /** A token count with its unit, for a row's muted second line. */
+  tokens: (count: string) => string;
+  /** Input's cached part, under the input figure: cached tokens are inside input. */
+  cachedWithin: (count: string) => string;
+  /** Output's reasoning part, under the output figure: reasoning tokens are inside output. */
+  reasoningWithin: (count: string) => string;
+  /** A call's input and output, under its total. */
+  inOut: (input: string, output: string) => string;
+  /** What the category bars are measured in. */
+  barsByTokens: string;
   calls: string;
   reported: string;
   estimated: string;
@@ -114,7 +123,6 @@ const zh: SpendCopy = {
   sort: "排序",
   ascending: "升序",
   descending: "降序",
-  inspect: "查看用量分项",
   openTrigger: "查看触发消息",
   detailHint: "逐次查看调用的归属、用量和金额",
   loadedCalls: (n) => `已载入 ${n.toLocaleString('zh-CN')} 次调用`,
@@ -138,6 +146,11 @@ const zh: SpendCopy = {
   output: "输出",
   reasoning: "推理",
   totalTokens: "总 token",
+  tokens: (count) => `${count} token`,
+  cachedWithin: (count) => `其中缓存 ${count}`,
+  reasoningWithin: (count) => `其中推理 ${count}`,
+  inOut: (input, output) => `入 ${input} · 出 ${output}`,
+  barsByTokens: "条长按总 token",
   calls: "调用",
   reported: "实报",
   estimated: "估算",
@@ -217,7 +230,6 @@ const en: SpendCopy = {
   sort: "Sort",
   ascending: "Ascending",
   descending: "Descending",
-  inspect: "View token breakdown",
   openTrigger: "View trigger message",
   detailHint: "Inspect the attribution, usage and amount of each call",
   loadedCalls: (n) => `${n.toLocaleString('en-US')} calls loaded`,
@@ -241,6 +253,11 @@ const en: SpendCopy = {
   output: "Output",
   reasoning: "Reasoning",
   totalTokens: "Total tokens",
+  tokens: (count) => `${count} tokens`,
+  cachedWithin: (count) => `incl. ${count} cached`,
+  reasoningWithin: (count) => `incl. ${count} reasoning`,
+  inOut: (input, output) => `in ${input} · out ${output}`,
+  barsByTokens: "Bars show total tokens",
   calls: "Calls",
   reported: "Reported",
   estimated: "Estimated",

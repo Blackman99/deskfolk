@@ -681,6 +681,59 @@ test("an estimate shows its explanation and coverage, and a missing one says why
   }
 });
 
+test("a range priced only by estimate shows that one amount, with no reported side, column, or empty category", async () => {
+  const { api, calls } = fakeApi();
+  const view = render(SpendView, { api: api as never, locale: "zh", timeZone: "UTC", storage: storage() });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    const flash = group({ id: "model-2", name: "flash", provider_id: "prov-1", provider_name: "Anthropic", model: "flash", calls: 3, total_tokens: 300, estimated_usd_ticks: 7_000_000_000 });
+    for (const call of calls) {
+      call.settled = true;
+      if (call.path.startsWith("summary")) {
+        const summary = summaryFor(call.path === "summary:day" ? "day" : "model", [flash]);
+        summary.totals = totals({ calls: 3, total_tokens: 300, estimated_usd_ticks: 7_000_000_000, estimated_calls: 3 });
+        summary.categories = [
+          category("turn", { calls: 3, total_tokens: 300, estimated_usd_ticks: 7_000_000_000 }),
+          category("judgement", { calls: 0, total_tokens: null }),
+        ];
+        call.resolve(summary);
+      } else call.resolve({ items: [], next: null });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect([...view.host.querySelectorAll(".money-summary strong")].map((node) => node.textContent?.trim())).toEqual(["$0.70"]);
+    expect(view.host.querySelector(".money-summary")?.textContent).not.toContain(copy.reported);
+    const headers = [...view.host.querySelectorAll(".dimension-table th")].map((th) => th.textContent?.trim() ?? "");
+    expect(headers.some((text) => text.startsWith(copy.estimated))).toBe(true);
+    expect(headers.some((text) => text.startsWith(copy.reported))).toBe(false);
+    const rows = [...view.host.querySelectorAll(".category-item")];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.textContent).toContain(copy.category.turn);
+    expect(rows[0]?.textContent).toContain("$0.70");
+    expect(rows[0]?.textContent).not.toContain(copy.dash);
+  } finally {
+    view.close();
+  }
+});
+
+test("call details sit under one heading per local day", async () => {
+  const { host, calls, close } = await mount();
+  try {
+    openDetails(host);
+    expect(host.querySelectorAll(".detail-table .day-row")).toHaveLength(1);
+    click([...host.querySelectorAll("button")].find((button) => button.textContent === copy.loadMore));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    calls.find((call) => call.path === "page:cursor-2")?.resolve({ items: [detail({ id: "row-3", created_at: "2026-09-23T01:00:00.000Z" })], next: null });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const days = [...host.querySelectorAll(".detail-table .day-row")];
+    expect(days).toHaveLength(2);
+    expect(days[1]?.textContent).toContain("9月23日");
+    const stamp = host.querySelector('time[datetime="2026-09-23T01:00:00.000Z"]');
+    expect(stamp?.closest("tbody")).toBe(days[1]?.closest("tbody"));
+  } finally {
+    close();
+  }
+});
+
 test("the trend is its own component, and switching to money does not add the two amounts", async () => {
   const { host, close } = await mount();
   try {
@@ -847,7 +900,7 @@ test("partial usage is not described as a missing rate, and a known gap still is
     expect(view.host.textContent).not.toContain(copy.estimateUnconfigured);
     expect(view.host.textContent).not.toContain(copy.estimateIncompleteUsage);
     openDetails(view.host);
-    const cell = [...view.host.querySelectorAll(".detail-table td")].find((node) => node.getAttribute("title"));
+    const cell = view.host.querySelector(".detail-table td.detail-amount");
     expect(cell?.getAttribute("title")).toBe(copy.estimateIncompleteUsage);
     expect(view.host.textContent).not.toMatch(/\$\d+\.\d+.*\$\d+\.\d+/);
   } finally {

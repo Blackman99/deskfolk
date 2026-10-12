@@ -134,7 +134,8 @@
 		flex: none;
 		padding: 16px 24px 0;
 		background: var(--pane);
-		border-bottom: 1px solid var(--line);
+		/* A shadow, not a border: the header scrolls, and a border would clip the active tab's underline. */
+		box-shadow: inset 0 -1px 0 var(--line);
 		z-index: 2;
 		position: relative;
 		max-height: 58%;
@@ -397,35 +398,32 @@
 		color: var(--ink);
 	}
 
+	/* The two sections are underline tabs resting on the header's bottom rule, as on a phone. */
 	.spend-navigation {
-		margin-top: 14px;
+		margin-top: 10px;
 		display: flex;
-		align-items: center;
+		align-items: flex-end;
 		justify-content: space-between;
 		gap: 16px;
-		border-top: 1px solid var(--line-subtle);
-		padding-top: 4px;
 	}
 
 	.view-tabs {
 		display: inline-flex;
-		gap: 4px;
-		padding: 3px;
-		background: var(--line-subtle);
-		border-radius: var(--radius-sm);
+		gap: 22px;
 	}
 
 	.tab-btn {
 		border: 0;
+		border-bottom: 2px solid transparent;
 		background: transparent;
 		color: var(--muted);
-		min-height: 32px;
-		padding: 4px 16px;
-		border-radius: var(--radius-xs);
+		min-height: 36px;
+		padding: 8px 2px 7px;
+		font: inherit;
 		font-size: 13px;
 		font-weight: 550;
 		cursor: pointer;
-		transition: 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+		transition: 0.15s ease;
 		transition-property: var(--transition-props);
 	}
 
@@ -434,42 +432,26 @@
 	}
 
 	.tab-btn.is-active {
-		background: var(--pane);
 		color: var(--ink);
-		box-shadow: var(--shadow-xs);
+		border-bottom-color: var(--accent);
 		font-weight: 600;
 	}
 
+	.tab-btn:focus-visible {
+		outline-offset: -2px;
+	}
+
 	.update-status {
+		align-self: center;
 		font-size: 11px;
 		color: var(--muted);
 	}
 
-	.sr {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0 0 0 0);
-		white-space: nowrap;
-		border: 0;
-	}
 
 	@keyframes spin {
 		to { transform: rotate(360deg); }
 	}
 
-	button:focus-visible, select:focus-visible, input:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
 
 	@media (prefers-reduced-motion: reduce) {
 		.icon-button.refresh.is-spinning :global(svg) {
@@ -485,8 +467,6 @@
 	@container spend (max-width: 620px) {
 		.spend-head {
 			padding: max(6px, env(safe-area-inset-top, 0px)) max(6px, env(safe-area-inset-right, 0px)) 0 max(6px, env(safe-area-inset-left, 0px));
-			border-bottom: 0;
-			box-shadow: inset 0 -1px 0 var(--line);
 		}
 
 		.spend-toolbar {
@@ -562,17 +542,12 @@
 		.spend-navigation {
 			position: relative;
 			margin-top: 2px;
-			padding-top: 0;
-			border-top: 0;
 		}
 
 		.view-tabs {
 			flex: 1;
 			display: flex;
 			gap: 0;
-			padding: 0;
-			background: transparent;
-			border-radius: 0;
 		}
 
 		.tab-btn {
@@ -582,22 +557,13 @@
 			align-items: center;
 			justify-content: center;
 			padding: 10px 8px 8px;
-			border-bottom: 2px solid transparent;
-			border-radius: 0;
 			color: var(--ink-secondary);
 			font-size: 14px;
 			font-weight: 500;
 		}
 
 		.tab-btn.is-active {
-			background: transparent;
-			box-shadow: none;
 			color: var(--accent);
-			border-bottom-color: var(--accent);
-		}
-
-		.tab-btn:focus-visible {
-			outline-offset: -2px;
 		}
 
 		/* The refresh note must not take width from the tabs. */
@@ -614,8 +580,8 @@
 		}
 
 		.custom-date-inputs {
-			flex-direction: column;
-			align-items: stretch;
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 			gap: 8px;
 		}
 
@@ -632,7 +598,11 @@
 		.date input {
 			width: 100%;
 			box-sizing: border-box;
-			height: 44px;
+			height: 40px;
+		}
+
+		.custom-dates {
+			margin: 8px 0 10px;
 		}
 	}
 

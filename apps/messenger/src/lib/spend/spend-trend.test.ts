@@ -300,6 +300,26 @@ test("hover and arrow keys reveal the bucket, and a new scope clears it", () => 
   }
 });
 
+test("money draws only the side the range has an amount on, not an empty plot beside it", () => {
+  const days = [
+    day("2026-09-01", {
+      calls: 1,
+      reported_usd_ticks: null,
+      estimated_usd_ticks: 5_000_000_000,
+      categories: [category("turn", { calls: 1, reported_usd_ticks: null, estimated_usd_ticks: 5_000_000_000 })],
+    }),
+    day("2026-09-02", { calls: 0, categories: [] }),
+  ];
+  const { host, close } = mount({ days, metric: "money", locale: "zh" });
+  try {
+    const plots = host.querySelectorAll("[data-plot]");
+    expect(plots).toHaveLength(1);
+    expect(plots[0]?.getAttribute("aria-label")).toBe(copy.estimatedStack);
+  } finally {
+    close();
+  }
+});
+
 test("money draws two labeled plots on one scale and never adds them", () => {
   const days = [
     day("2026-09-01", {

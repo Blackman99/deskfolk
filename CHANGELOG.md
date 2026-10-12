@@ -6,6 +6,15 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The spend page, laid out again: no more stack of tall cards on a phone
+
+- The biggest figure is now what was spent, not tokens. When everything is estimated and nothing reported, only the estimate is shown, without a "Reported —" beside it; when there is both, the two stand side by side and are never added. Categories, the model / session / Bot breakdown and the call details do the same: each row shows the amount it has, and an estimate is marked "Estimated". When nothing in the range was reported, the breakdown loses its column of dashes and the money trend draws the estimated plot alone.
+- Tokens read "Input (incl. cached)" and "Output (incl. reasoning)": cached tokens are part of input and reasoning part of output, and the four side-by-side boxes looked as if they added up.
+- A category with no calls is no longer listed. Each category is one row with its amount on the right, and its calls, tokens and a share bar under it. In a wide window the categories sit beside the daily trend at about its height, so there is no empty block under the chart any more.
+- On a phone, or in a pane narrower than 620px, the breakdown and the call details are lists of one- and two-line rows: a model takes about 60px instead of about 220px, a call about 56px instead of about 280px. Tapping anywhere on a row filters by it or opens the message that set the call off. Call details are grouped by day under a date heading.
+- In a wide window, Overview and Call details are underline tabs under the title; a call's input and output sit under its token total, and the way to the message that set it off is an arrow at the row's end.
+- The quality report, squeezed to a single line and impossible to see, shows again, and on a phone it is one row per entry. The ✕ on a filter chip was drawn crooked and now is not.
+
 ### A phone's composer shows only the buttons you can press
 
 - On a phone, or wherever a conversation is as narrow as one, the row round the input no longer draws buttons that can do nothing right then: ✨ is gone while a reply is still coming, and Send, greyed with nothing to send, gives its place to Stop, the stop menu or ✨. A direct whose Bot was at work showed attach, the microphone, a greyed ✨, Stop and a greyed Send round an input left with less than half the row; it now shows attach, the microphone and Stop, and Send comes back beside Stop once you type, a little further from it than before. With nothing else to press — offline, or while your last line is still being read — the greyed Send stays. Wider windows are unchanged.
