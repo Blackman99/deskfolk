@@ -138,7 +138,8 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Built-in prompt',
     'Completion',
     'Context window',
-    'Spend'
+    'Spend',
+    'Spend cap'
   ],
   safety: [
     'Approval',

@@ -66,6 +66,23 @@ test("a stop you dropped a job with sits above the list with its lift; a plan pa
   }
 });
 
+test("the spend cap's stop sits above the list, says what today cost against the cap, and lifts like any", () => {
+  // ADR 0088: the app's stop on every Bot once the day's spend reached your cap; only the Lift ends it.
+  const holds = [
+    aHold({ id: "h-cap", scope: "global", scope_id: null, source: "spend_cap", lift_on_next_user_message: false, effect: { spend_cap: { cap_usd: 5, spent_usd: 5.31 } } }),
+  ];
+  const { host, pressed, close } = open({ holds, holdsOn: true });
+  try {
+    const rows = [...host.querySelectorAll(".holds-row")];
+    expect(rows.map((row) => row.querySelector(".holds-label")?.textContent)).toEqual(["今日花费到上限 $5.00"]);
+    expect(rows[0]!.querySelector(".holds-tag")).toBeNull();
+    click(rows[0]!.querySelector(".holds-lift"));
+    expect(pressed).toEqual([["liftHold", "h-cap"]]);
+  } finally {
+    close();
+  }
+});
+
 test("a stop for now is never listed and marks no row: your next line is the end of it", () => {
   // ADR 0081: a stop is just a stop, as anywhere else; there is nothing to press to go on.
   const holds = [

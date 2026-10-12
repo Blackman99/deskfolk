@@ -7,8 +7,14 @@ export type QualityCopy = {
   complaints: string; shapes: string; misses: string; perApproved: string; deleted: string; none: string; turnedBackTitle: string;
 };
 
+/** The day's spend cap on the overview (ADR 0088). */
+export type SpendCapCopy = {
+  title: string; hint: string; off: string; inputLabel: string; clear: string; failed: string; invalid: string;
+};
+
 export type SpendCopy = {
   quality: QualityCopy;
+  cap: SpendCapCopy;
   subtitle: string;
   overview: string;
   period: string;
@@ -107,6 +113,15 @@ const zh: SpendCopy = {
     hint: "按 Bot、模型、规划类型：交付的结果，以及每个通过的交付花了多少。这里不改 Bot 跑在哪个模型上——要改，钉一个模型。",
     bot: "Bot", model: "模型", kind: "规划类型", handOvers: "交付", approved: "通过", turnedBack: "打回", complaints: "投诉", shapes: "回复失败",
     misses: "误放行", perApproved: "每次通过", deleted: "已删除的 Bot", none: "—", turnedBackTitle: "审查打回 · 你退回 · 检查没过",
+  },
+  cap: {
+    title: "每日上限",
+    hint: "今天花到这个数，就停下所有 Bot，等你在侧栏解除。",
+    off: "不设",
+    inputLabel: "每日花费上限（美元）",
+    clear: "不设上限",
+    failed: "没存上，再试一次",
+    invalid: "填一个大于 0 的数，或者清空",
   },
   subtitle: "用量与调用成本",
   overview: "概览",
@@ -214,6 +229,15 @@ const en: SpendCopy = {
     hint: "Per Bot, model and kind of plan: how hand-overs fared and what an approved one cost. Nothing here changes what a Bot runs on — pin a model for that.",
     bot: "Bot", model: "Model", kind: "Plan kind", handOvers: "Hand-overs", approved: "Approved", turnedBack: "Turned back", complaints: "Complaints",
     shapes: "Failed replies", misses: "Review misses", perApproved: "Per approval", deleted: "Deleted Bot", none: "—", turnedBackTitle: "By a reviewer · by you · by checks",
+  },
+  cap: {
+    title: "Daily cap",
+    hint: "Once today costs this much, every Bot stops until you lift it in the sidebar.",
+    off: "None",
+    inputLabel: "Daily spend cap (USD)",
+    clear: "No cap",
+    failed: "Not saved, try again",
+    invalid: "Enter a number above 0, or clear it",
   },
   subtitle: "Usage and call costs",
   overview: "Overview",

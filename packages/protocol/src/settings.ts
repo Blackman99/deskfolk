@@ -41,6 +41,12 @@ export type Settings = {
    * engine's. Absent from a daemon older than that ADR.
    */
   default_playbook?: string;
+  /**
+   * The day's spend cap in USD (ADR 0088): once the calls made since local midnight cost this much,
+   * reported or estimated, the app stops every Bot. Null is no cap; absent from a daemon older than
+   * that ADR.
+   */
+  spend_cap_usd?: number | null;
   launch_at_login: boolean;
   locale: Locale;
   theme: Theme;
@@ -62,6 +68,8 @@ export type SettingsPatch = {
   builtin_models?: Partial<Record<BuiltinModelRole, ReaderModel | null>>;
   /** The engine conversations run unless they name one (ADR 0085). */
   default_playbook?: string;
+  /** A positive number of USD, or null for no cap (ADR 0088). */
+  spend_cap_usd?: number | null;
   launch_at_login?: boolean;
   locale?: Locale;
   theme?: Theme;

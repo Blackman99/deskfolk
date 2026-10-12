@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A daily spend cap: every Bot stops once the day has cost that much
+
+- The spend view's Overview opens with a Daily cap: enter a USD amount, and once the calls since local midnight have cost that much, reported or estimated, the app stops every Bot — live turns end at once, and routines, check-backs and the supervisor's call-backs are held. None by default; clear it, or press No cap, for none ([ADR 0088](docs/adr/0088-a-daily-spend-cap.md)).
+- The stop is the app's own and does not end with your next line: it is listed under Stopped in the sidebar with the cap, and only Lift lets the Bots go. After a Lift nothing more is stopped that day; a new cap or the next day counts afresh.
+- Calls with no price do not count; a local agent's runs count at the price it estimates, subscription or not. The daemon looks every 15 seconds, so it can be up to 15 seconds late.
+- An older database rebuilds its holds table once on first open, so it can keep this kind of stop; an older build honours it as any stop.
+
 ### The README and the site say you can start without an API key
 
 - The top of the README lists the ways in: the Claude Code, Codex, Grok, OpenCode, Antigravity or ZCode installed and signed in on this computer, or any ACP agent, picked in the wizard with no API key; or OpenAI, Anthropic, Xiaomi MiMo, Qwen, DeepSeek, OpenRouter or a compatible address, or Ollama, LM Studio and llama.cpp on your machine. Before, the top named none of them, and only the middle of the overview's "First run" paragraph mentioned Claude Code.

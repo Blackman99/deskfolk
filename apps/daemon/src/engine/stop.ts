@@ -136,6 +136,8 @@ export type Stop = {
   stopByButton: (turnId: string) => Turn | null;
   /** `POST /v1/holds`: the hold, and the live turns it covers ended; with a conversation, its receipt there. */
   hold: (input: HoldRequest) => Hold;
+  /** The spend cap's stop on every Bot (ADR 0088), waiting for your Lift. */
+  holdForSpendCap: () => Hold;
   /**
    * `POST /v1/messages/:id/control`: a button on a line `control` marks, carried out. Refused unless
    * the line offers it; a line already pressed on does nothing more (a second tap, a retry).
@@ -163,7 +165,7 @@ export function createStop(deps: StopDeps): Stop {
   const goOn = createStopGoOn(deps, reach, words, answers);
   const buttons = createStopButtons(deps, reach, carry, answers, goOn);
   const { on, holdsToLift, stopsAbout, stopsOnBots, stopBefore, scopeHolds } = reach;
-  const { stopByLine, stopByButton, hold, enforce } = carry;
+  const { stopByLine, stopByButton, hold, holdForSpendCap, enforce } = carry;
   const { heldLinesFor } = answers;
   const { liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnFromYourLine, lift } = goOn;
   const { act } = buttons;
@@ -267,6 +269,6 @@ export function createStop(deps: StopDeps): Stop {
     store.transaction(() => store.setMessageControl(message.id, { kind: "possible_control", offer, scopes }));
   }
 
-  return { on, readLine, liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnWithLine, goOnFromYourLine, stopByButton, hold, act, lift, enforce, heldLines: heldLinesFor };
+  return { on, readLine, liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnWithLine, goOnFromYourLine, stopByButton, hold, holdForSpendCap, act, lift, enforce, heldLines: heldLinesFor };
 }
 

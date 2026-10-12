@@ -527,7 +527,8 @@ CREATE TABLE IF NOT EXISTS holds (
   scope_id TEXT,
   action TEXT NOT NULL DEFAULT 'pause' CHECK (action IN ('pause', 'cancel')),
   cascade INTEGER NOT NULL DEFAULT 1,
-  source TEXT NOT NULL CHECK (source IN ('user_text', 'user_button', 'legacy', 'migration')),
+  -- 'spend_cap': the app's stop when the day's spend reached your cap (ADR 0088).
+  source TEXT NOT NULL CHECK (source IN ('user_text', 'user_button', 'legacy', 'migration', 'spend_cap')),
   source_message_id TEXT,
   lift_on_next_user_message INTEGER NOT NULL DEFAULT 0,
   targets TEXT NOT NULL DEFAULT '[]',

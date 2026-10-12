@@ -32,6 +32,13 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
     } catch {
       // a closed store must not stall the routines below
     }
+    // The spend cap (ADR 0088) before anything below can start a turn: once today has cost what you
+    // set, its stop holds the routines, check-backs and pick-ups this tick would otherwise fire.
+    try {
+      options.engine.capSpend(at);
+    } catch (error) {
+      console.error("[spend cap] check failed", error);
+    }
     // The supervisor (ADR 0045) before the appointments below: its state is all in the database,
     // so a tick it misses is made up by the next.
     try {

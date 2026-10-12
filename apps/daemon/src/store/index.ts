@@ -41,6 +41,7 @@ import * as rework from "./rework";
 import * as yourWord from "./your-word";
 import * as ceiling from "./ceiling";
 import * as visionCap from "./vision-cap";
+import * as spendCap from "./spend-cap";
 import * as externalJobs from "./external-jobs";
 import * as modelDefaults from "./model-defaults";
 import * as modelLadder from "./model-ladder";
@@ -747,6 +748,8 @@ export class Store {
   });
   readonly answerModelDefaultCard = this.bind(modelDefaults.answerModelDefaultCard);
   readonly visionRefusal = this.bind(visionCap.visionRefusal);
+  readonly spendCapDue = this.bind(spendCap.spendCapDue);
+  readonly noteSpendCapTrip = this.bind(spendCap.noteSpendCapTrip);
   readonly takeUpSubmission = this.bind(submissions.takeUpSubmission);
   readonly takeUpPendingApproval = this.bind(submissions.takeUpPendingApproval);
   readonly handOverHint = this.bind(submissions.handOverHint);

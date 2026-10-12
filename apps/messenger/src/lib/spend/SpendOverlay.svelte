@@ -11,6 +11,8 @@
 		api={runtime.client}
 		revision={runtime.spendRevision}
 		locale={runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh'}
+		capUsd={runtime.snapshot.settings.spend_cap_usd ?? null}
+		onSetCap={(usd) => runtime.patchSettings({ spend_cap_usd: usd })}
 		{backLabel}
 		onClose={() => runtime.closeSpend()}
 		onOpenSession={(sessionId) => void runtime.openChat(sessionId)}

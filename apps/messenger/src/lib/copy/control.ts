@@ -110,6 +110,8 @@ export const zh = {
   holdsTitle: "叫停中",
   lift: "解除",
   dropped: "作废",
+  /** The spend cap's stop (ADR 0088), short enough for the sidebar's row: the bar above says every Bot stopped. */
+  spendCap: (cap: string) => `今日花费到上限 ${cap}`,
   scope: {
     global: "所有 Bot 的工作",
     bot: (who: string) => `${who}的全部工作`,
@@ -228,6 +230,7 @@ export const en: CopyShape<typeof zh> = {
   holdsTitle: "Stopped",
   lift: "Lift",
   dropped: "Dropped",
+  spendCap: (cap: string) => `Daily cap ${cap} reached`,
   scope: {
     global: "Every Bot’s work",
     bot: (who: string) => `All of ${who}’s work`,

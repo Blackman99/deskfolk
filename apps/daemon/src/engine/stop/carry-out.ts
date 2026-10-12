@@ -143,6 +143,19 @@ export function createStopCarryOut(deps: StopDeps, reach: StopReach, words: Stop
     return made[0]!;
   }
 
+  /**
+   * The spend cap's stop (ADR 0088): one hold on everything, made by the app, that no line of yours
+   * lifts — only your Lift in the bar above the list does. Every live turn it covers ends as at any
+   * stop. No receipt: it is said in no conversation, and the bar says it.
+   */
+  function holdForSpendCap(): Hold {
+    const { made } = carryOut(
+      () => [store.createHold({ scope: "global", source: "spend_cap", liftOnNextUserMessage: false, targets: [] })],
+      { in: null, scopes: lineScopes("global", null) },
+    );
+    return made[0]!;
+  }
+
   function enforce(): void {
     if (!on()) return;
     const ended = store.transaction(() => endCovered(null));
@@ -282,7 +295,7 @@ export function createStopCarryOut(deps: StopDeps, reach: StopReach, words: Stop
     });
   }
 
-  return { stopByLine, holdOn, carryOut, stopByButton, hold, enforce, endViolations, splitHold };
+  return { stopByLine, holdOn, carryOut, stopByButton, hold, holdForSpendCap, enforce, endViolations, splitHold };
 }
 
 export type StopCarryOut = ReturnType<typeof createStopCarryOut>;

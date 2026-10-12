@@ -42,6 +42,8 @@ export type HoldEffect = {
   answered_lines?: AnsweredLine[];
   /** On lifting: the turns opened on lines of yours it had turned into read-only answers. */
   taken_up_turns?: string[];
+  /** A `spend_cap` hold's cap, and what the day had cost when it stopped the Bots (ADR 0088). */
+  spend_cap?: { cap_usd: number; spent_usd: number };
   /**
    * The Bots your word released from it, a stop over more than one of them (ADR 0071): a line said
    * to the Bot, a change to your line, 直接插入, 退回. It no longer holds their work, and still
@@ -75,8 +77,11 @@ export type Hold = {
   action: "pause" | "cancel";
   /** Whether it reaches the work a Bot handed on, as well as the Bot's own. */
   cascade: boolean;
-  /** `legacy`: a plan parked before holds existed, taken over as one. */
-  source: "user_text" | "user_button" | "legacy" | "migration";
+  /**
+   * `legacy`: a plan parked before holds existed, taken over as one. `spend_cap`: the app stopped
+   * every Bot when the day's spend reached the cap you set (ADR 0088); it waits for your Lift.
+   */
+  source: "user_text" | "user_button" | "legacy" | "migration" | "spend_cap";
   source_message_id: string | null;
   /**
    * Set on the hold a Stop makes, and on one a group's stop menu makes: your next line about it (in

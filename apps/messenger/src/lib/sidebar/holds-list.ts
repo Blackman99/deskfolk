@@ -1,15 +1,19 @@
 import type { Bot, Hold, SessionSummary } from "@real-bot/protocol";
 import type { Copy } from "../copy.ts";
 import { sessionTitle, type RosterLabels } from "./session-title.ts";
+import { formatUsd, TICKS_IN_USD } from "../spend-format.ts";
 
 /**
  * Your stops as the list shows them: only those that wait for you to lift them, the ones you dropped
- * a job with by a button. A stop for now is never listed (ADR 0081): it ends with your next line, as
- * a stop does anywhere else. A plan parked before holds existed, taken over as one, is shown where it
- * lives — parked on the board — and not here.
+ * a job with by a button, and the spend cap's (ADR 0088), which only your Lift ends. A stop for now
+ * is never listed (ADR 0081): it ends with your next line, as a stop does anywhere else. A plan
+ * parked before holds existed, taken over as one, is shown where it lives — parked on the board —
+ * and not here.
  */
 export function listedHolds(holds: readonly Hold[]): Hold[] {
-  return holds.filter((hold) => (hold.source === "user_text" || hold.source === "user_button") && !hold.lift_on_next_user_message);
+  return holds.filter(
+    (hold) => hold.source === "spend_cap" || ((hold.source === "user_text" || hold.source === "user_button") && !hold.lift_on_next_user_message),
+  );
 }
 
 /** A stop in words, from the snapshot alone: whose work, which conversation, which job. */
@@ -18,6 +22,8 @@ export function holdLabel(
   ctx: { bots: ReadonlyMap<string, Bot>; sessions: ReadonlyMap<string, SessionSummary>; roster: RosterLabels; t: Copy["control"] },
 ): string {
   const { t } = ctx;
+  const cap = hold.source === "spend_cap" ? hold.effect.spend_cap : undefined;
+  if (cap) return t.spendCap(formatUsd(Math.round(cap.cap_usd * TICKS_IN_USD)));
   const botName = (id: string | undefined) => (id ? (ctx.bots.get(id)?.name ?? ctx.roster.deleted) : ctx.roster.deleted);
   return scopeLabel(hold, ctx, botName);
 }

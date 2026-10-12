@@ -28,6 +28,7 @@ import { createDerivedChecks } from "./engine/derived-checks";
 import { createSubmissions } from "./engine/submissions";
 import { createRequirementCards } from "./engine/requirement-cards";
 import { createDirectReport } from "./engine/direct-report";
+import { createSpendCapWatch } from "./engine/spend-cap";
 import { createFire } from "./engine/fire";
 import { createIntake } from "./engine/intake";
 import { createLifecycle } from "./engine/lifecycle";
@@ -165,6 +166,8 @@ export type TurnEngine = {
    * supervisor's level and while draining.
    */
   supervise: (now?: Date) => void;
+  /** The day's spend cap (ADR 0088), from the scheduler's tick: stops every Bot once today has cost what you set. */
+  capSpend: (now?: Date) => void;
   /** One round of the external-job poller (ADR 0047), from the scheduler's tick: off below level 6. */
   pollJobs: (now?: Date) => void;
   /** Runs the next due reflection (ADR 0051, level 8), one at a time. */
@@ -656,6 +659,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     redeliver: (message) => store.afterCommit(() => void core.track(engine.handleInboundMessage(message, { fromUser: true, ordinary: true }))),
     wakes: participation.botsToWake,
   });
+  const capSpend = createSpendCapWatch({ store, stops });
 
   const restart = createRestart({
     store,
@@ -1000,6 +1004,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     retrospect(at = new Date()) {
       if (options.admission?.draining) return;
       retrospector.retrospect(at);
+    },
+    capSpend(at = new Date()) {
+      if (options.admission?.draining) return;
+      capSpend(at);
     },
     supervise(at = new Date()) {
       if (store.capabilities().engine_level < ENGINE_LEVELS.supervision || options.admission?.draining) return;

@@ -257,6 +257,8 @@ add("PATCH", "settings", { endpoint_base_url: string, endpoint_api_key: string, 
   organizer_model: nullable(object({ provider_id: id, model: string }, ["provider_id", "model"])),
   builtin_models: object(Object.fromEntries(BUILTIN_MODEL_ROLES.map((role) => [role, sideModel]))),
   launch_at_login: bool, locale: one("en", "zh"), theme: one("system", "light", "dark"), default_playbook: string,
+  // The day's spend cap (ADR 0088): USD, or null for none.
+  spend_cap_usd: nullable(positive),
   if_revision: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 }, [], true);
 // The speech endpoint (ADR 0073): set up like the settings, under their revision; a transcription
 // carries its recording as base64, bounded under the link's one-megabyte message.

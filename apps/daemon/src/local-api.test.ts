@@ -265,6 +265,7 @@ describe("empty roster and settings", () => {
       builtin_models: { reader: null, organizer: null, scribe: null, judge: null, composer: null, judgement: null, reflection: null, retrospective: null, compaction: null },
       speech: null,
       default_playbook: "general",
+      spend_cap_usd: null,
       launch_at_login: true,
       locale: "zh",
       theme: "system",

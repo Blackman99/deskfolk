@@ -6,6 +6,7 @@
 import type { Database } from "bun:sqlite";
 import { ulid } from "../ids";
 import { migrateAgentRunners } from "./agent-runner-migration";
+import { migrateHoldSources } from "./hold-source-migration";
 import { migrateDelegations } from "./delegation-migration";
 import { migrateEndReasons } from "./end-reason-migration";
 import { migrateExternalJobs, migrateStrayExternalJobs } from "./external-jobs-migration";
@@ -359,6 +360,8 @@ export function migrateSchema(db: Database): void {
   // After every column tasks gains above (the rebuild copies the table as it then stands), and
   // before the triggers below, which are made again over the rebuilt table.
   migrateNullableTaskSession(db);
+  // The spend cap's stop (ADR 0088): a CHECK on holds.source SQLite cannot widen in place.
+  migrateHoldSources(db);
   // Every stop of yours is a stop for now (ADR 0071).
   migrateStopsForNow(db);
   // A conversation's engine and a call's (ADR 0085).

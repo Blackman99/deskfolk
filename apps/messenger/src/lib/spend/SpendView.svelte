@@ -10,6 +10,7 @@
 	import SpendHeader from './SpendHeader.svelte';
 	import SpendIcon from './SpendIcon.svelte';
 	import SpendSummary from './SpendSummary.svelte';
+	import SpendCap from './SpendCap.svelte';
 	import { SpendLedger } from './spend-ledger.svelte.ts';
 
 	/** The spend ledger fills its host. Width comes from the container, not the window. */
@@ -31,6 +32,10 @@
 		/** The narrow page's way out. A desktop pane leaves this unset and has no back button. */
 		onClose?: () => void;
 		backLabel?: string;
+		/** The day's spend cap (ADR 0088), in USD; null is none. */
+		capUsd?: number | null;
+		/** Sets the cap; left out, the overview has no cap card. Resolves to a refusal or nothing. */
+		onSetCap?: (usd: number | null) => Promise<unknown>;
 	}
 
 	let {
@@ -43,7 +48,9 @@
 		onOpenSession,
 		onOpenTrigger,
 		onClose,
-		backLabel = ''
+		backLabel = '',
+		capUsd = null,
+		onSetCap
 	}: Props = $props();
 
 	const copy: SpendCopy = $derived(spendCopyFor(locale));
@@ -99,6 +106,9 @@
 		aria-label={section === 'overview' ? copy.overview : copy.details}
 		aria-busy={ledger.loading}
 	>
+		{#if section === 'overview' && onSetCap}
+			<SpendCap {copy} {capUsd} {onSetCap} />
+		{/if}
 		{#if ledger.failed}
 			<div class="status-box" role="alert">
 				<div class="status-icon-wrap is-error">
