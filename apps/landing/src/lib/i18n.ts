@@ -126,7 +126,7 @@ const zh: Dict = {
   hero: {
     headline: '交出去，离开，回来看结果。',
     headlineLines: ['交出去，离开，', '回来看结果。'],
-    subhead: '多天、多步、要返工的活交给 Bot；Bot 说做完的，应用先核过。面向自带模型端点的独立开发者和小工作室。',
+    subhead: '多天、多步、要返工的活交给 Bot；Bot 说做完的，应用先核过。面向已在用本机 Agent 或自带模型端点的独立开发者和小工作室。',
     trustLabel: '模型负责干活，应用负责当真',
     trust: [
       { label: '你的原话不会丢。', body: '原话原样存档、Bot 改不了，你写下的规则只增不删（以前丢过 15 条规则）。' },
@@ -220,7 +220,7 @@ const zh: Dict = {
   seo: {
     title: 'Deskfolk — 交出去，离开，回来看结果',
     description:
-      'macOS 本机的 agent 协作应用（Windows 为预览版）：把多天、多步、要返工的活交给 Bot，你可以离开。模型负责干活，应用负责当真：你的原话原样存档、你写下的规则只增不删，任务要过应用自己跑的检查和有依据的审查才算做完，叫停是只有你能解除的状态，停在半路有监督器去追，只在需要你时才找你。这些规矩写在代码里；挂在上面的工作方式能换、能改：应用自己的哪些环节跑、带什么数是引擎，内置通用、视频、代码三套，按对话选；每个环节用哪个模型、哪段提示词在分工页上设；Bot 怎么干活写在应用自带的提示词里，也可以让 Bot 查本机记录、拿依据提改动，在批准卡上由你放行。会话和文件在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。面向会自己配模型端点的独立开发者与小工作室。MIT 开源，Alpha 阶段。',
+      'macOS 本机的 agent 协作应用（Windows 为预览版）：把多天、多步、要返工的活交给 Bot，你可以离开。模型负责干活，应用负责当真：你的原话原样存档、你写下的规则只增不删，任务要过应用自己跑的检查和有依据的审查才算做完，叫停是只有你能解除的状态，停在半路有监督器去追，只在需要你时才找你。这些规矩写在代码里；挂在上面的工作方式能换、能改：应用自己的哪些环节跑、带什么数是引擎，内置通用、视频、代码三套，按对话选；每个环节用哪个模型、哪段提示词在分工页上设；Bot 怎么干活写在应用自带的提示词里，也可以让 Bot 查本机记录、拿依据提改动，在批准卡上由你放行。会话和文件在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。面向已在用 Claude Code、Codex 这类本机 Agent，或会自己配模型端点的独立开发者与小工作室。MIT 开源，Alpha 阶段。',
     imageAlt: 'Deskfolk：一个窗口里摆着群聊、做好的宣传短片和这件事的看板'
   },
   docs: {
@@ -334,7 +334,7 @@ const en: Dict = {
   hero: {
     headline: 'Hand it off. Walk away. Return to results.',
     headlineLines: ['Hand it off.', 'Walk away.', 'Return to results.'],
-    subhead: 'Multi-day, multi-step jobs that need rework go to Bots; when a Bot says done, the app checks first. Bring your own model endpoint.',
+    subhead: 'Multi-day, multi-step jobs that need rework go to Bots; when a Bot says done, the app checks first. Bring your local agent or model endpoint.',
     trustLabel: 'The model does the work; the app holds it to account',
     trust: [
       { label: 'Your words are never lost.', body: 'Kept word for word; rules you write are only added to (15 were once lost).' },
@@ -428,7 +428,7 @@ const en: Dict = {
   seo: {
     title: 'Deskfolk — Hand it off, walk away, return to results',
     description:
-      'A local agent app for macOS (Windows in preview): hand Bots the multi-day, multi-step jobs that need rework, and walk away. The model does the work; the app holds it to account: your words are kept as you said them, the rules you write are only ever added to, a job is done only after checks the app runs itself and a review backed by evidence, a stop is a state only you can lift, a supervisor chases stalls, and the app comes to you only when it needs you. Those rules are code; the way of working hung on them is yours to choose and change: an engine says which of the app\'s own steps run and with what numbers (general, video and coding built in, chosen per conversation), Roles sets each step\'s model and prompts, and how Bots work is written in prompts the app ships — change them yourself, or let a Bot propose a change, backed by this machine\'s records, that you let through on its approval card. Chats and files stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. For solo developers and small studios who bring their own model endpoint. MIT, alpha.',
+      'A local agent app for macOS (Windows in preview): hand Bots the multi-day, multi-step jobs that need rework, and walk away. The model does the work; the app holds it to account: your words are kept as you said them, the rules you write are only ever added to, a job is done only after checks the app runs itself and a review backed by evidence, a stop is a state only you can lift, a supervisor chases stalls, and the app comes to you only when it needs you. Those rules are code; the way of working hung on them is yours to choose and change: an engine says which of the app\'s own steps run and with what numbers (general, video and coding built in, chosen per conversation), Roles sets each step\'s model and prompts, and how Bots work is written in prompts the app ships — change them yourself, or let a Bot propose a change, backed by this machine\'s records, that you let through on its approval card. Chats and files stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. For solo developers and small studios who already use a local agent such as Claude Code or Codex, or bring their own model endpoint. MIT, alpha.',
     imageAlt: 'Deskfolk: a group chat, the finished promo film and the job’s board in one window'
   },
   docs: {

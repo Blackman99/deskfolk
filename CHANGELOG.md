@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The README and the site say you can start without an API key
+
+- The top of the README lists the ways in: the Claude Code, Codex, Grok, OpenCode, Antigravity or ZCode installed and signed in on this computer, or any ACP agent, picked in the wizard with no API key; or OpenAI, Anthropic, Xiaomi MiMo, Qwen, DeepSeek, OpenRouter or a compatible address, or Ollama, LM Studio and llama.cpp on your machine. Before, the top named none of them, and only the middle of the overview's "First run" paragraph mentioned Claude Code.
+- The overview's "Get it" opens with "What you need", any one of three; "Who it's for", the roadmap and the site's hero and page description now address people who already use a local agent or set up their own endpoint, not only the latter.
+- The roadmap no longer says signing and notarization wait for a Developer ID certificate: builds are signed and notarized from 0.1.0-rc.16.
+
 ### The spend page, laid out again: no more stack of tall cards on a phone
 
 - The biggest figure is now what was spent, not tokens. When everything is estimated and nothing reported, only the estimate is shown, without a "Reported —" beside it; when there is both, the two stand side by side and are never added. Categories, the model / session / Bot breakdown and the call details do the same: each row shows the amount it has, and an estimate is marked "Estimated". When nothing in the range was reported, the breakdown loses its column of dashes and the money trend draws the estimated plot alone.

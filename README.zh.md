@@ -12,6 +12,8 @@
 
 <p align="center">多天、多步、要返工的活交给 Bot；Bot 说做完的，应用先核过。</p>
 
+<p align="center">不一定要 API key：这台电脑上装好并登录的 <b>Claude Code、Codex、Grok、OpenCode、Antigravity、ZCode</b>，或任何讲 ACP 的 Agent，在向导里选它就能开始，用的是你自己的登录。<br>也可以接 <b>OpenAI、Anthropic、小米 MiMo、千问、DeepSeek、OpenRouter</b> 或任意 OpenAI / Anthropic 兼容地址，或本机的 <b>Ollama、LM Studio、llama.cpp</b>。</p>
+
 <p align="center">
   <a href="https://blackman99.github.io/deskfolk/zh"><b>官网</b></a> ·
   <a href="https://github.com/Blackman99/deskfolk/releases/latest"><b>下载 Alpha</b></a> ·

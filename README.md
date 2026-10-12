@@ -12,6 +12,8 @@
 
 <p align="center">Multi-day, multi-step jobs that need rework go to Bots; when a Bot says done, the app checks first.</p>
 
+<p align="center">No API key needed: pick the <b>Claude Code, Codex, Grok, OpenCode, Antigravity or ZCode</b> you have signed in on this computer, or any ACP agent, in the setup wizard, and Bots run on your own sign-in.<br>Or connect <b>OpenAI, Anthropic, Xiaomi MiMo, Qwen, DeepSeek, OpenRouter</b> or any OpenAI- or Anthropic-compatible address, or <b>Ollama, LM Studio and llama.cpp</b> on your machine.</p>
+
 <p align="center">
   <a href="https://blackman99.github.io/deskfolk/"><b>Website</b></a> ·
   <a href="https://github.com/Blackman99/deskfolk/releases/latest"><b>Download alpha</b></a> ·
