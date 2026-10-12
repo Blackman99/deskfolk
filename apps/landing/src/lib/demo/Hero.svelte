@@ -139,7 +139,7 @@
       <div class="actions">
         <a class="btn btn-primary" href={LATEST_RELEASE_URL} target="_blank" rel="noreferrer">{t.home.download}</a>
         <button type="button" class="film" onclick={() => film?.open()}>
-          <img src="{base}/media/mascots-thumb.jpg" alt="" width="64" height="36" />
+          <img src="{base}/media/reel-thumb.jpg" alt="" width="64" height="36" />
           <span>{t.home.film}</span>
           <span class="len">{t.home.filmDuration}</span>
         </button>
@@ -184,7 +184,7 @@
 
 <VideoDialog
   bind:this={film}
-  src="{base}/media/deskfolk-mascots-{lang}.mp4"
+  src="{base}/media/deskfolk-reel-{lang}.mp4"
   width={1920}
   height={1080}
   title={t.home.filmTitle}

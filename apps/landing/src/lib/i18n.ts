@@ -208,7 +208,7 @@ const zh: Dict = {
     film: '看短片',
     filmDuration: '0:30',
     filmTitle: 'Deskfolk 短片',
-    filmDescription: '吉祥物麻薯（你）把活交给布丁（你的 Bot）；布丁接着干，要动工作区以外的东西先停下来问你；你离开，回来时活做完了，也查过了。',
+    filmDescription: '麻薯（你）一句话把活交给制片布丁：它拆成任务、写明谁做谁审；工作区外先问你；你走开，应用替你盯着；说停就停，下一句接着做；交上来的先过你确认过的检查，审片带依据判；回来看结果。',
     note: 'macOS 已公证，Windows 预览版',
     close: '关闭'
   },
@@ -416,7 +416,7 @@ const en: Dict = {
     film: 'Watch the film',
     filmDuration: '0:30',
     filmTitle: 'The Deskfolk film',
-    filmDescription: 'Mochi (you) hands Pudding (your Bot) a job; Pudding takes it from there and stops to ask before touching anything outside the workspace; you walk away and come back to work that is done, and checked.',
+    filmDescription: 'Mochi (you) hands the job to Pudding, the Producer, in one line: it lays out tickets naming who makes and who reviews each; it asks before leaving the workspace; you walk away while the app keeps watch; say stop and it stops, your next line sets it going; what it hands in must pass the checks you confirmed, and the Reviewer rules with evidence; you come back to results.',
     note: 'macOS notarized, Windows preview',
     close: 'Close'
   },

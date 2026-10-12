@@ -1,14 +1,18 @@
-"""The README cover for the mascot film: its poster frame at 1600x900 with a play button under the two
-and the running time, in the style of the earlier promo's cover.
+"""A README cover: a film's poster frame at 1600x900 with a play button and the running time, in the style
+of the earlier promo's cover. Made for the mascot film (its frame at 27.4 s, the button under the two);
+the reel passes its own frame and a spot clear of faces and text.
 
-Run: python3 cover.py FILM.mp4 OUT.jpg   (needs Pillow and ffmpeg)
+Run: python3 cover.py FILM.mp4 OUT.jpg [--at SECONDS] [--button X,Y]   (needs Pillow and ffmpeg; X,Y in the 1600x900 cover)
 """
 import subprocess, sys
 from PIL import Image, ImageDraw, ImageFont
 
 film, out = sys.argv[1], sys.argv[2]
+opt = lambda k, d: sys.argv[sys.argv.index(k) + 1] if k in sys.argv else d
+AT = opt('--at', '27.4')
+BX, BY = (int(v) for v in opt('--button', '800,745').split(','))
 W, H, SS = 1600, 900, 3
-raw = subprocess.run(['ffmpeg', '-v', 'error', '-ss', '27.4', '-i', film, '-frames:v', '1', '-vf', f'scale={W}:{H}:flags=lanczos',
+raw = subprocess.run(['ffmpeg', '-v', 'error', '-ss', AT, '-i', film, '-frames:v', '1', '-vf', f'scale={W}:{H}:flags=lanczos',
                       '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], capture_output=True, check=True).stdout
 im = Image.frombytes('RGB', (W, H), raw).convert('RGBA')
 dur = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', film],
@@ -16,7 +20,7 @@ dur = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=d
 
 layer = Image.new('RGBA', (W * SS, H * SS), (0, 0, 0, 0))
 d = ImageDraw.Draw(layer)
-cx, cy, r = 800 * SS, 745 * SS, 64 * SS  # under the mascots, over the bubble's foot
+cx, cy, r = BX * SS, BY * SS, 64 * SS  # the mascot film: under the mascots, over the bubble's foot
 d.ellipse((cx - r + 8 * SS, cy - r + 12 * SS, cx + r + 8 * SS, cy + r + 12 * SS), fill=(0, 0, 0, 50))
 d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(247, 250, 250, 245))
 t = r * 0.42

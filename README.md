@@ -1,9 +1,9 @@
 <p align="center">
-  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-mascots-en.mp4">
-    <img alt="Watch the Deskfolk film (0:30): the mascots Mochi (you) and Pudding (your Bot). Mochi hands Pudding a job; Pudding takes it from there and stops to ask before touching anything outside the workspace; you walk away and come back to work that is done, and checked." src="docs/assets/mascots.jpg">
+  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-reel-en.mp4">
+    <img alt="Watch the Deskfolk film (0:30): Mochi (you) hands the job to Pudding, the Producer, in one line; it lays out tickets naming who makes and who reviews each; it stops to ask before touching anything outside the workspace; you walk away while the app watches the render; say stop and it stops, your next line sets it going; the film it hands in must pass the checks you confirmed, is sent back when the length is wrong, and the Reviewer passes it with evidence; you come back to results." src="docs/assets/reel-en.jpg">
   </a>
   <br>
-  <sub>Also in <a href="https://blackman99.github.io/deskfolk/media/deskfolk-mascots-zh.mp4">中文</a></sub>
+  <sub>Also in <a href="https://blackman99.github.io/deskfolk/media/deskfolk-reel-zh.mp4">中文</a></sub>
 </p>
 
 <h1 align="center">Deskfolk</h1>

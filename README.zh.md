@@ -1,9 +1,9 @@
 <p align="center">
-  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-mascots-zh.mp4">
-    <img alt="观看 Deskfolk 宣传片（0:30）：吉祥物麻薯（你）把活交给布丁（你的 Bot）；布丁接着干，要动工作区以外的东西先停下来问你；你离开，回来时活做完了，也查过了。" src="docs/assets/mascots.jpg">
+  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-reel-zh.mp4">
+    <img alt="观看 Deskfolk 短片（0:30）：麻薯（你）一句话把活交给制片布丁，它拆成任务、写明谁做谁审；要动工作区以外的东西先停下来问你；你走开，应用替你盯着渲染；说停就停，下一句接着做；交上来的片子先过你确认过的检查，时长不对就退回，审片带依据判通过；回来就看到结果。" src="docs/assets/reel-zh.jpg">
   </a>
   <br>
-  <sub>另有 <a href="https://blackman99.github.io/deskfolk/media/deskfolk-mascots-en.mp4">English</a> 版</sub>
+  <sub>另有 <a href="https://blackman99.github.io/deskfolk/media/deskfolk-reel-en.mp4">English</a> 版</sub>
 </p>
 
 <h1 align="center">Deskfolk</h1>
