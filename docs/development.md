@@ -156,6 +156,9 @@ Bot 资料中的 `RoutineCard.svelte` 读取 `snapshot.routines`，只提供现�
 - **状态**：空闲不画任何标记（侧栏行、头像点都不画）；工作中是强调色，等你批准是警示色，等你回答是紫，失败 / 中断是红。有新版本的点是强调色，不是红：更新不是错误。批注的三种状态各一个颜色（`AnnotationList.svelte` 的 `--annot-state`）：待处理是强调色，和文件上画的标记一致；已处理是 `--ok`；草稿是 `--muted`、虚线。列表里「选中」靠形态区分（浮起的标签、描边的卡片），不再用强调色的字，免得和待处理撞色。
 - **标识与空状态**：界面里的 Deskfolk 标识一律用 `src/lib/BrandMark.svelte`，颜色走 `--brand-*`，暗色下气泡提亮一档；不要再复制 SVG。任何「这里还什么都没有」的地方用 `src/lib/EmptyState.svelte`：淡化的标识（`BrandMark variant="art"`，颜色走 `--art-*`）、标题、一句该做什么、可选的按钮，`badge` 放一个说明缺的是什么的小图标。「思考中」是两个叠着的圆轮流放大（`ReplyingIndicator.svelte`），不是三个跳点。
 - **动效**：系统要求减少动效时，`base.css` 末尾的全局规则让所有动画和过渡一帧走完、停在终点（`animationend` 照常触发）；组件里不必再各写一段。
+- **时长、缓动和焦点环**：`tokens.css` 里 `--dur-fast` / `--dur-base` / `--dur-slow`（120 / 180 / 260ms）和一条 `--ease-out`（缓出，不回弹）。按下、悬停用 fast，出现、移入位置用 base，面板和消息落定用 slow；新写的不再抄 `cubic-bezier(...)` 字面值。键盘焦点统一用 `box-shadow: var(--focus-ring)`（先一道表面色的缝，再一圈强调色），`base.css` 的全局 `:focus-visible` 已经是它；旧组件里的 2px outline 在改到那个组件时换掉。
+- **按钮和图标**：新界面用 `Button.svelte`（`variant` 为 `primary` / `secondary` / `ghost` / `danger` / `danger-soft`，`size` 为 `sm` 28 / `md` 32 / `lg` 40px）、`IconButton.svelte`（必须给 `label`，它同时是读屏名和 tooltip；24 / 28 / 32 / 40px，触屏不小于 40）和 `Icon.svelte`（`icons.ts` 里具名的描边图标，24 格、2 宽）。哪个是主按钮由 `variant` 说，不靠在 DOM 里排第几。已有的几十种按钮类不做全量替换，改到哪个组件换哪个。
+- **底部提示**：`toast.svelte.ts` 的 `showToast(text, { tone, action })`，由 Shell 里的 `ToastHost.svelte` 画在窗口底部居中，一次一条，新的替换旧的。只给屏幕上别处看不到结果的操作用（菜单已关的复制、写进文件的保存）；就地已有反馈的（指针所在的复制按钮变成「✓ 已复制」）不再弹。
 
 搬完了：全局表从 1052 条降到 134 条。
 

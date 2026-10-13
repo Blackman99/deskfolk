@@ -194,7 +194,7 @@ export class ChatScroll {
       isNearBottom(root.scrollHeight, root.scrollTop, root.clientHeight));
   };
 
-  jumpToIndexMark = async (mark: IndexMark): Promise<void> => {
+  jumpToIndexMark = async (mark: Pick<IndexMark, "id">): Promise<void> => {
     const sessionId = this.deps.selected()?.id;
     const sequence = ++this.indexJumpSequence;
     this.cancelJumpToBottom();

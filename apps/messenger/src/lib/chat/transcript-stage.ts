@@ -44,6 +44,8 @@ export type TranscriptStage = {
   readonly versionsShown: Record<string, VersionsShown>;
   readonly editErrorText: string | null;
   readonly nowMs: number;
+  /** Rows that have just arrived, by `transcriptItemKey`; they rise into place. */
+  readonly arriving: ReadonlySet<string>;
 
   approvalKeys: Record<string, string>;
   approvalKeyErrors: Record<string, boolean>;

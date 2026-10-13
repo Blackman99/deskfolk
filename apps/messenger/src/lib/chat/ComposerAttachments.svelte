@@ -38,11 +38,11 @@
 				type="button"
 				class="attachment-delete-btn"
 				title={t.composer.removeAttachment}
-				aria-label="Remove attachment {att.name}"
+				aria-label="{t.composer.removeAttachment} {att.name}"
 				disabled={sending}
 				onclick={() => onRemoveAttachment(att.id)}
 			>
-				<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
 			</button>
 		</div>
 	{/each}
@@ -67,7 +67,7 @@
 				disabled={sending}
 				onclick={() => onRemovePath(ref.id)}
 			>
-				<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
 			</button>
 		</div>
 	{/each}
@@ -126,22 +126,43 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 18px;
-		height: 18px;
+		width: 24px;
+		height: 24px;
 		border-radius: 50%;
 		border: none;
-		background: rgba(18, 28, 32, 0.08);
+		background: color-mix(in srgb, var(--ink) 8%, transparent);
 		color: var(--muted);
 		cursor: pointer;
 		padding: 0;
 		flex-shrink: 0;
-		transition: 0.12s ease;
+		transition-duration: var(--dur-fast);
+		transition-timing-function: var(--ease-out);
 		transition-property: var(--transition-props);
 	}
 
 	.attachment-delete-btn:hover:not(:disabled) {
 		background: var(--danger);
-		color: #ffffff;
+		color: var(--on-danger);
+	}
+
+	.attachment-delete-btn:active:not(:disabled) {
+		transform: scale(0.9);
+	}
+
+	/* A file added to the message pops into the row rather than appearing all at once. */
+	.composer-attachment-item {
+		animation: attachment-in var(--dur-base) var(--ease-out);
+	}
+
+	@keyframes attachment-in {
+		from {
+			opacity: 0;
+			transform: scale(0.94);
+		}
+		to {
+			opacity: 1;
+			transform: none;
+		}
 	}
 
 	/* On its way to the Mac: the chip stays as the sign of it, and cannot be taken back. */

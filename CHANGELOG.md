@@ -6,6 +6,16 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The chat says what waits on you, and new lines rise into place
+
+- An approval still waiting on you has a warn-tinted head with a shield, "Waiting for your approval", and a soft ring round the card; Allow once is the one filled button, Always allow sits beside it, Deny is the quiet way out. A question still waiting has a purple "Waiting for your answer" and ring. Once answered, both settle into a plain card with the outcome.
+- When an approval or a question here is scrolled out of sight, a chip over the composer says so ("1 approval waiting ↓") and brings the card back with one click.
+- A conversation opened with unread lines draws a "New" line above the first one someone else sent since you last read it; it stays while the conversation is open.
+- A message that just came in rises into place. History, earlier messages loaded above, and a reply taking over its working bubble do not move.
+- The hover bar over a message is larger and offers 👍 ❤️ 🎉 to react with one click, beside Reply, Copy and a ⋯ that opens the full menu.
+- Send turning into Stop turns its glyph in place; the mention list fades in and shows its keys (↑↓, Enter, Esc); an attachment's remove button is 24px, and a file added pops into the row.
+- Copying from the message menu, and copying a message ID, now confirm with "Copied" at the bottom of the window.
+- Keyboard focus shows one clear ring everywhere (a gap in the surface colour, then the accent) instead of a faint glow.
 ### Hand off the first job and come back to it in the morning; on power, a Mac with work running does not doze off
 
 - An empty direct with a Bot now opens its starters with "🌙 Hand it off, see it tomorrow morning": it fills the composer with one line asking the Bot to look through the workspace now, write a one-page brief into `briefs/`, and set up a routine at 9 every morning that writes a fresh one. Before, the starters were questions such as "introduce your duties", so the first thing tried was always a small one.

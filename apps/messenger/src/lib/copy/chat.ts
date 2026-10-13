@@ -17,6 +17,9 @@ export const zh = {
   selectTextHint: "长按文字开始选择，拖动两端调整范围。",
   copyMessageId: "复制消息 ID",
   copied: "已复制",
+  /** The hover bar's quick reactions and its way into the full menu. */
+  reactWith: (emoji: string) => `回应 ${emoji}`,
+  moreActions: "更多操作",
   copyCode: "复制代码",
   commandActivity: "命令执行",
   /** The folded line over a reply's commands, and how many of them failed. */
@@ -115,6 +118,8 @@ export const zh = {
   sendHint: "Enter ↵ 发送 · Shift+Enter 换行",
   sendHintShortcut: "发送（Enter）",
   mentionTooltip: "提及 Bot (@)",
+  /** Under the mention list: the keys that move, pick and close it. */
+  mentionKeys: { move: "选择", pick: "点名", close: "关闭" },
   suggestNext: "建议下一步",
   forkTooltip: "开启后发送将分叉新轮次，不改道进行中的任务",
   forkBadge: "分叉",
@@ -141,6 +146,8 @@ export const en: CopyShape<typeof zh> = {
   selectTextHint: "Touch and hold to start selecting; drag either end to adjust.",
   copyMessageId: "Copy message ID",
   copied: "Copied",
+  reactWith: (emoji: string) => `React with ${emoji}`,
+  moreActions: "More actions",
   copyCode: "Copy code",
   commandActivity: "Commands",
   commandCount: (count: number) => (count === 1 ? "1 command" : `${count} commands`),
@@ -230,6 +237,7 @@ export const en: CopyShape<typeof zh> = {
   sendHint: "Enter to send · Shift+Enter for newline",
   sendHintShortcut: "Send (Enter)",
   mentionTooltip: "Mention a bot (@)",
+  mentionKeys: { move: "Move", pick: "Pick", close: "Close" },
   suggestNext: "Suggested next",
   forkTooltip: "When enabled, send will fork a new turn without redirecting live work",
   forkBadge: "Fork",

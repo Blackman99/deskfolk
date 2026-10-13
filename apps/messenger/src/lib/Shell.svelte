@@ -10,6 +10,7 @@
 	import { copyFor } from './copy.ts';
 	import ImageCopy from './ImageCopy.svelte';
 	import WorkspaceDragGhost from './WorkspaceDragGhost.svelte';
+	import ToastHost from './ToastHost.svelte';
 	import { dangerCopy, shouldDropConfirm } from './overlays/danger-confirm.ts';
 	import { ShellDangerConfirm } from './overlays/danger-confirm.svelte.ts';
 	import type { ProviderEditorState } from './settings/provider-form.ts';
@@ -988,6 +989,7 @@
 {:else}
 <ImageCopy {t} />
 <WorkspaceDragGhost />
+<ToastHost />
 {#if searchOpen}
 	<GlobalSearch bind:this={searchDialog} {runtime} {t} opener={searchOpener} onClose={closeGlobalSearch} onSelect={selectSearchHit} />
 {/if}

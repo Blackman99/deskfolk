@@ -1587,6 +1587,42 @@ function ticket23dStoryRuntime() {
 }
 
 export const rc11Stories = {
+  // A conversation with an approval and a question still waiting on you: their cards' waiting state.
+  'chat-stage-waiting': {
+    component: ChatStage as never,
+    props: {
+      runtime: fakeRuntime(
+        {
+          ...world,
+          messages: [
+            ...messages,
+            aMessage({
+              id: 'msg-ask', kind: 'ask', author: 'bot-1', turn_id: 'turn-ask', body: '封面用哪种风格？',
+              created_at: '2026-09-19T02:00:10.000Z',
+              ask: { options: [{ label: '实拍截帧' }, { label: '插画' }, { label: '文字海报' }], multi_select: false },
+            }),
+            aMessage({
+              id: 'msg-appr', kind: 'approval', author: 'bot-2', turn_id: 'turn-appr',
+              body: '想运行一条命令：ffmpeg -i raw/ep12.mov out/ep12.mp4', created_at: '2026-09-19T02:00:12.000Z',
+            }),
+          ],
+          turns: [
+            ...turns,
+            aTurn({ id: 'turn-ask', status: 'waiting_ask', bot_id: 'bot-1', pending_ask_id: 'msg-ask' } as never),
+            aTurn({ id: 'turn-appr', status: 'waiting_approval', bot_id: 'bot-2' }),
+          ],
+          approvals: [anApproval({ id: 'appr-w', message_id: 'msg-appr', turn_id: 'turn-appr', kind_key: 'shell' })],
+        },
+        {
+          selectedId: 'sess-1',
+          notificationCapabilities: { inbox_v1: false, bounded_read_v1: false, pending_ask_v1: true, policy_v1: false, push_settings_v2: false },
+        },
+      ),
+      t, selected: group, onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+    },
+    width: 900, height: 820,
+    afterMount(host: HTMLElement) { document.body.style.width = '100vw'; document.body.style.height = '100dvh'; host.style.width = '100vw'; host.style.height = '100dvh'; host.style.display = 'flex'; host.style.flexDirection = 'column'; },
+  },
   'chat-stage-narrow-working': {
     component: ChatStage as never,
     props: { runtime: workingDirectRuntime, t, selected: direct, onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {} },

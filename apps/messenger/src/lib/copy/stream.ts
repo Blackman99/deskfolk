@@ -23,6 +23,18 @@ export const zh = {
   askAnswered: "已回答",
   askYourAnswer: "你的回答",
   approval: "批准",
+  /** The head of an approval card that is still waiting on you. */
+  waitingApproval: "等你批准",
+  /** The head of a question card that is still waiting on your answer. */
+  waitingAnswer: "等你回答",
+  /** The chip above the composer while a waiting card is scrolled out of sight. */
+  waitingJump: {
+    approvals: (n: number) => `${n} 件等你批准`,
+    asks: (n: number) => `${n} 个问题等你回答`,
+    both: (n: number) => `${n} 件等你处理`,
+  },
+  /** The line above the first message that came in since you last read this conversation. */
+  newMessages: "新消息",
   allowOnce: "允许一次",
   alwaysAllow: "Always allow",
   /** Under a card whose Always allow reaches past its own path (ADR 0087). */
@@ -274,6 +286,14 @@ export const en: CopyShape<typeof zh> = {
   askAnswered: "Answered",
   askYourAnswer: "Your answer",
   approval: "approval",
+  waitingApproval: "Waiting for your approval",
+  waitingAnswer: "Waiting for your answer",
+  waitingJump: {
+    approvals: (n: number) => (n === 1 ? "1 approval waiting" : `${n} approvals waiting`),
+    asks: (n: number) => (n === 1 ? "1 question waiting" : `${n} questions waiting`),
+    both: (n: number) => `${n} waiting on you`,
+  },
+  newMessages: "New",
   allowOnce: "Allow once",
   alwaysAllow: "Always allow",
   alwaysAllowCovers: (folder: string, writes: boolean) => `Always allow covers all of ${folder}: no Bot asks again to ${writes ? "read or write" : "read"} in it.`,

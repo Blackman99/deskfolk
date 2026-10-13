@@ -11,6 +11,8 @@
 	import AnnotationCards from '../annotations/AnnotationCards.svelte';
 	import QuoteRef from './QuoteRef.svelte';
 	import ReactionRow from './ReactionRow.svelte';
+	import Icon from '../Icon.svelte';
+	import { QUICK_REACTIONS } from './quick-reactions.ts';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import {
 		calculateBotDuration,
@@ -146,6 +148,7 @@
 				<div
 					class="msg-segment flex flex-col relative w-fit max-w-full"
 					class:is-streaming={item.type === 'streaming'}
+					class:is-arriving={stage.arriving.has(transcriptItemKey(item))}
 					data-message-id={item.type === 'message' ? item.message.id : undefined}
 					class:is-search-hit={item.type === 'message' &&
 						stage.highlightedId === item.message.id}
@@ -240,6 +243,18 @@
 							<div class="who">{stage.who(item.message)}</div>
 							<div class="msg-toolbar">
 								<div class="msg-toolbar-pill">
+									{#if !stage.lockedComposer}
+										{#each QUICK_REACTIONS as emoji (emoji)}
+											<button
+												type="button"
+												class="act-react"
+												title={emoji}
+												aria-label={t.chat.reactWith(emoji)}
+												onclick={() => void runtime.toggleReaction(item.message.id, emoji)}
+											>{emoji}</button>
+										{/each}
+										<span class="act-sep" aria-hidden="true"></span>
+									{/if}
 									{#if quietFoot}
 										<span class="msg-when is-peek">
 											{#if duration}
@@ -270,6 +285,15 @@
 										{:else}
 											<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
 										{/if}
+									</button>
+									<button
+										type="button"
+										class="act-more"
+										title={t.chat.moreActions}
+										aria-label={t.chat.moreActions}
+										onclick={(e) => stage.handleMessageContextMenu(e, item.message)}
+									>
+										<Icon name="more" size={15} />
 									</button>
 								</div>
 							</div>
@@ -586,7 +610,7 @@
 	   bubble narrower than the pill the strip grows to fit, away from the avatar rather than over it. */
 	.msg-toolbar {
 		position: absolute;
-		top: -14px;
+		top: -18px;
 		left: 8px;
 		width: calc(100% - 16px);
 		min-width: max-content;
@@ -603,14 +627,14 @@
 	.msg-toolbar-pill {
 		display: flex;
 		align-items: center;
-		gap: 2px;
-		padding: 2px 5px;
+		gap: 1px;
+		padding: 3px;
 		/* Shrunk to a one-word bubble, "✓ 已复制" used to break after every character. */
 		white-space: nowrap;
 		background: var(--pane);
 		border: 1px solid var(--line);
-		border-radius: var(--radius-full);
-		box-shadow: 0 3px 10px rgba(18, 28, 32, 0.08);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-md);
 		pointer-events: none;
 	}
 
@@ -625,21 +649,61 @@
 		pointer-events: auto;
 	}
 
-	.act-btn {
-		padding: 3px 6px;
+	.act-btn,
+	.act-more,
+	.act-react {
+		min-width: 28px;
+		height: 28px;
+		padding: 0 7px;
 		color: var(--muted);
-		border-radius: var(--radius-xs);
+		border-radius: 7px;
 		display: flex;
 		align-items: center;
+		justify-content: center;
 		gap: 4px;
 		cursor: pointer;
-		transition: 0.12s ease;
+		transition-duration: var(--dur-fast);
+		transition-timing-function: var(--ease-out);
 		transition-property: var(--transition-props);
 	}
 
-	.act-btn:hover {
-		color: var(--accent);
-		background: var(--line-subtle);
+	.act-btn:hover,
+	.act-more:hover {
+		color: var(--ink);
+		background: var(--row-hover);
+	}
+
+	.act-btn:active,
+	.act-more:active {
+		transform: scale(0.92);
+	}
+
+	/* A quick reaction: the emoji itself, which grows a little under the pointer. */
+	.act-react {
+		padding: 0;
+		font-size: 15px;
+		line-height: 1;
+	}
+
+	.act-react:hover {
+		background: var(--row-hover);
+		transform: scale(1.15);
+	}
+
+	.act-react:active {
+		transform: scale(0.95);
+	}
+
+	.act-btn :global(svg) {
+		width: 15px;
+		height: 15px;
+	}
+
+	.act-sep {
+		width: 1px;
+		height: 16px;
+		margin: 0 3px;
+		background: var(--line);
 	}
 
 	/* Hide duplicate .who when .msg-header is available */
@@ -931,6 +995,22 @@
 		   keeps it. */
 		.msg-toolbar {
 			display: none;
+		}
+	}
+
+	/* A row that has just arrived rises into place; history and a reply replacing its working bubble do not. */
+	.is-arriving {
+		animation: msg-arrive var(--dur-slow) var(--ease-out) both;
+	}
+
+	@keyframes msg-arrive {
+		from {
+			opacity: 0;
+			transform: translateY(8px);
+		}
+		to {
+			opacity: 1;
+			transform: none;
 		}
 	}
 </style>

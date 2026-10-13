@@ -50,6 +50,7 @@
     - 小工具：`is-record.ts`、`locale-tag.ts`、`clipboard.ts` 的 `copyText`、`spend-format.ts`。
     - 交互：`pointer-drag.ts`（拖动改宽高）、`styles/shared.css` 的 `.split-handle`（拖动的分隔条长什么样：1px 细线、两侧 3px 的抓手、悬停和拖动时的浅色带）、`dismissable-menu.ts`（右键菜单的收起）、`menu-roving.ts`（菜单方向键）、`autosave.svelte.ts`（边输边存）。
   - **信使：组件**
+    - `Button.svelte`、`IconButton.svelte`、`Icon.svelte`（图标表在 `icons.ts`）；底部提示 `toast.svelte.ts` 的 `showToast`。
     - `Switch.svelte`。
     - 设置页：`settings/SettingsSwitch`、`SettingsRow`、`SettingsCard`、`SettingsCardHeader`、`SettingsSubpageButton`、`AutosaveState`；分块标签和手机列表 `SettingsSectionTabs`、`SettingsSectionList`。
     - 提示词：`settings/PromptEditorPage`（编辑页，宽窗弹窗、手机内页）、`PromptRowList`（一行一条，带状态和读不懂次数），提示词页和「分工」页共用；`prompts-view.ts` 的 `promptChip`。

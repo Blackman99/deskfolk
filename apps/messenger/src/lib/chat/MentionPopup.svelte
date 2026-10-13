@@ -19,7 +19,7 @@
 	tabindex="-1"
 	onmousedown={(e) => e.preventDefault()}
 >
-	<div class="autocomplete-header text-11 font-semibold uppercase text-muted pt-3 px-5 pb-2 tracking-[0.04em]">{t.chat.mentionTooltip}</div>
+	<div class="autocomplete-header text-12 font-semibold text-muted pt-3 px-5 pb-2">{t.chat.mentionTooltip}</div>
 	{#each mentions.mentionCandidates as cand, idx (cand.id)}
 		{@const pal = !cand.isEveryone ? botAvatarColor(cand.id) : null}
 		<button
@@ -48,6 +48,9 @@
 			</div>
 		</button>
 	{/each}
+	<div class="autocomplete-keys" aria-hidden="true">
+		<span class="key">↑↓</span>{t.chat.mentionKeys.move}<span class="key">Enter</span>{t.chat.mentionKeys.pick}<span class="key">Esc</span>{t.chat.mentionKeys.close}
+	</div>
 </div>
 
 <style>
@@ -62,7 +65,9 @@
 		background: var(--pane);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-lg);
-		box-shadow: 0 10px 30px rgba(18, 28, 32, 0.12), 0 1px 3px rgba(18, 28, 32, 0.08);
+		box-shadow: var(--shadow-menu);
+		transform-origin: bottom left;
+		animation: mention-in var(--dur-base) var(--ease-out);
 		padding: 6px;
 		z-index: 100;
 		display: flex;
@@ -101,6 +106,48 @@
 		font-weight: 700;
 		flex-shrink: 0;
 		border: 1px solid var(--line);
+	}
+
+	.autocomplete-keys {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 4px;
+		padding: 6px 10px 4px;
+		border-top: 1px solid var(--line-subtle);
+		font-size: var(--text-micro);
+		color: var(--muted);
+	}
+
+	.autocomplete-keys .key {
+		padding: 0 5px;
+		border-radius: var(--radius-xs);
+		background: var(--pane);
+		box-shadow: inset 0 0 0 1px var(--line), 0 1px 0 var(--line);
+		font-family: var(--mono);
+		line-height: 17px;
+	}
+
+	.autocomplete-keys .key:not(:first-child) {
+		margin-left: 6px;
+	}
+
+	@keyframes mention-in {
+		from {
+			opacity: 0;
+			transform: translateY(4px) scale(0.98);
+		}
+		to {
+			opacity: 1;
+			transform: none;
+		}
+	}
+
+	/* A touch screen has no keys to point at. */
+	@media (pointer: coarse) {
+		.autocomplete-keys {
+			display: none;
+		}
 	}
 
 	.autocomplete-avatar.is-everyone {

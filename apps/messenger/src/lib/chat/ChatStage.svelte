@@ -41,6 +41,10 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
 	import { composeTranscript, isLiveStatus } from './transcript.ts';
+	import { ArrivalTracker } from './arrivals.ts';
+	import WaitingJump from './WaitingJump.svelte';
+	import { waitingCards } from './waiting.ts';
+	import { ReadMark } from './read-mark.ts';
 	import { windowedItems } from './history-window.ts';
 	import { INDEX_MIN_MARKS, messageIndexMarks } from './message-index.ts';
 	import MessageIndex from './MessageIndex.svelte';
@@ -50,6 +54,7 @@
 		TRANSCRIPT_VISIBLE_MS
 	} from '../notifications/reading.ts';
 	import { copyText } from '../clipboard.ts';
+	import { showToast } from '../toast.svelte.ts';
 	import { ChatScroll } from './chat-scroll.svelte.ts';
 	import ChatWelcome from './ChatWelcome.svelte';
 	import TranscriptAsk from './TranscriptAsk.svelte';
@@ -289,6 +294,19 @@
 					snapshot.pendingJudgements,
 				).filter((item) => item.type !== 'message' || !linkedDelegationMessages.has(item.message.id))
 			: []
+	);
+
+	/** Rows that have just arrived, so only they rise into place (see arrivals.ts). */
+	const arrivals = new ArrivalTracker();
+	const arriving = $derived(arrivals.observe(selected?.id ?? null, stream));
+
+	/** The message the "New" line goes above, settled when the conversation opens (see read-mark.ts). */
+	const readMark = new ReadMark();
+	const newMarkId = $derived(readMark.observe(selected?.id ?? null, selected?.last_read_at, stream));
+
+	/** Approvals and questions here still waiting on you, for the chip that jumps back to them. */
+	const waiting = $derived(
+		waitingCards(stream, snapshot.approvals, snapshot.turns, runtime.notificationCapabilities.pending_ask_v1)
 	);
 
 	/**
@@ -745,6 +763,8 @@
 		copyText(text);
 		copiedMessageId = id;
 		const target = event?.currentTarget as HTMLElement | undefined;
+		// From the menu, which has closed by now: nothing on screen would say it worked.
+		if (!target) showToast(t.chat.copied);
 		if (target) {
 			target.classList.add('is-copied');
 			setTimeout(() => {
@@ -839,6 +859,7 @@
 
 	function handleCopyMessageId(id: string): void {
 		copyText(id);
+		showToast(t.chat.copied);
 	}
 
 	/**
@@ -882,6 +903,7 @@
 		get versionsShown() { return versionsShown; },
 		get editErrorText() { return editErrorText; },
 		get nowMs() { return nowMs; },
+		get arriving() { return arriving; },
 		get approvalKeys() { return approvalKeys; },
 		set approvalKeys(value) { approvalKeys = value; },
 		get approvalKeyErrors() { return approvalKeyErrors; },
@@ -986,6 +1008,12 @@
 				</div>
 			{/if}
 
+			{#if newMarkId && group.items.some((item) => item.type === 'message' && item.message.id === newMarkId)}
+				<div class="new-divider" role="separator" aria-label={t.stream.newMessages}>
+					<span>{t.stream.newMessages}</span>
+				</div>
+			{/if}
+
 			{#if group.kind === 'replying'}
 				{@const block = group.items[0]}
 				{#if block.type === 'replying'}
@@ -1033,6 +1061,10 @@
 		/>
 		{/key}
 	{/if}
+
+	<div class="waiting-jump-slot">
+		<WaitingJump root={scroll.streamContainer} {waiting} {t} onJump={(id) => void scroll.jumpToIndexMark({ id })} />
+	</div>
 
 	<Composer
 		bind:this={composer}
@@ -1236,5 +1268,34 @@
 		.history-spinner {
 			animation: none;
 		}
+	}
+
+	/* Centred over the composer, clear of the jump-to-latest button at its right. */
+	.waiting-jump-slot {
+		position: absolute;
+		left: 50%;
+		bottom: calc(var(--composer-height, 140px) + var(--keyboard-inset, 0px) + 10px);
+		z-index: 4;
+		transform: translateX(-50%);
+		pointer-events: none;
+	}
+
+	/* Above the first message that came in since you last read here, for as long as the conversation stays open. */
+	.new-divider {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin: 6px 0 2px;
+		color: var(--accent);
+		font-size: var(--text-micro);
+		font-weight: 650;
+	}
+
+	.new-divider::before,
+	.new-divider::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background: var(--accent-border);
 	}
 </style>

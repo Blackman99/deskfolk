@@ -74,7 +74,7 @@ input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  box-shadow: var(--focus-ring);
   border-color: var(--accent) !important;
 }
 

@@ -55,6 +55,7 @@
 		class="msg-wrap is-bot is-system-row"
 		data-message-id={singleMsg.message.id}
 		class:is-search-hit={stage.highlightedId === singleMsg.message.id}
+		class:is-arriving={stage.arriving.has(singleMsg.message.id)}
 		class:is-selected={stage.selectedMessageId === singleMsg.message.id}
 		onmousedown={stage.handleMessageMouseDown}
 		ontouchstart={stage.handleMessageTouchStart}
@@ -586,6 +587,22 @@
 
 		.msg {
 			padding: 9px 12px;
+		}
+	}
+
+	/* A row that has just arrived rises into place; history and a reply replacing its working bubble do not. */
+	.is-arriving {
+		animation: msg-arrive var(--dur-slow) var(--ease-out) both;
+	}
+
+	@keyframes msg-arrive {
+		from {
+			opacity: 0;
+			transform: translateY(8px);
+		}
+		to {
+			opacity: 1;
+			transform: none;
 		}
 	}
 </style>

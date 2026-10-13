@@ -1,6 +1,7 @@
 <script lang="ts">
 	/** A Bot's question for you in the transcript: its card, with the answer form. */
 	import AskCard from './AskCard.svelte';
+	import Icon from '../Icon.svelte';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import { formatFullTimestamp, formatMessageTime, type TranscriptGroup } from './chat-view.ts';
 	import type { Copy } from '../copy.ts';
@@ -24,12 +25,14 @@
 {#if singleMsg.type === 'message'}
 	{@const askBot = stage.botsById.get(singleMsg.message.author)}
 	{@const pal = botAvatarColor(singleMsg.message.author)}
+	{@const waiting = !singleMsg.message.ask_answer && isPendingAsk(singleMsg.message, stage.snapshot.turns, runtime.notificationCapabilities.pending_ask_v1)}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="msg-wrap is-bot"
 		data-message-id={singleMsg.message.id}
 		class:is-search-hit={stage.highlightedId === singleMsg.message.id}
+		class:is-arriving={stage.arriving.has(singleMsg.message.id)}
 		class:is-selected={stage.selectedMessageId === singleMsg.message.id}
 		onmousedown={stage.handleMessageMouseDown}
 		ontouchstart={stage.handleMessageTouchStart}
@@ -75,8 +78,10 @@
 					{formatMessageTime(singleMsg.message.created_at)}
 				</span>
 			</div>
-			<article class="msg is-ask">
-				<div class="who">{t.stream.ask} · {stage.who(singleMsg.message)}</div>
+			<article class="msg is-ask" class:is-waiting={waiting}>
+				<div class="who">
+					{#if waiting}<Icon name="help-circle" size={14} />{t.stream.waitingAnswer}{:else}{t.stream.ask} · {stage.who(singleMsg.message)}{/if}
+				</div>
 				<div class="body">{singleMsg.message.body}</div>
 				<AskCard
 					message={singleMsg.message}
@@ -269,18 +274,43 @@
 	.msg.is-ask {
 		width: min(100%, 440px);
 		background: var(--pane);
-		border: 1px solid var(--accent-border);
+		border: 1px solid var(--line);
 		max-width: 480px;
-		box-shadow: var(--shadow-sm);
+		box-shadow: var(--shadow-xs);
 		border-radius: var(--radius-lg);
 		padding: 14px 16px;
+		transition-duration: var(--dur-slow);
+		transition-timing-function: var(--ease-out);
+		transition-property: var(--transition-props);
+	}
+
+	/* Waiting on your answer: the question's purple, as on its row in the sidebar. */
+	.msg.is-ask.is-waiting {
+		border-color: var(--purple-line);
+		box-shadow:
+			0 0 0 3px color-mix(in srgb, var(--purple) 10%, transparent),
+			var(--shadow-sm);
 	}
 
 	.msg.is-ask .who {
-		color: var(--accent);
+		color: var(--muted);
 		display: flex;
 		align-items: center;
 		gap: 6px;
+		font-size: var(--text-caption);
+		font-weight: 650;
+		letter-spacing: 0;
+	}
+
+	.msg.is-ask.is-waiting .who {
+		align-self: flex-start;
+		width: fit-content;
+		margin-bottom: 8px;
+		padding: 2px 9px 2px 7px;
+		border-radius: var(--radius-full);
+		background: var(--purple-bg);
+		box-shadow: inset 0 0 0 1px var(--purple-line);
+		color: var(--purple-text);
 	}
 
 	.msg-wrap.is-search-hit {
@@ -363,6 +393,22 @@
 
 		.msg {
 			padding: 9px 12px;
+		}
+	}
+
+	/* A row that has just arrived rises into place; history and a reply replacing its working bubble do not. */
+	.is-arriving {
+		animation: msg-arrive var(--dur-slow) var(--ease-out) both;
+	}
+
+	@keyframes msg-arrive {
+		from {
+			opacity: 0;
+			transform: translateY(8px);
+		}
+		to {
+			opacity: 1;
+			transform: none;
 		}
 	}
 </style>

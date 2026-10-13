@@ -1,6 +1,8 @@
 <script lang="ts">
 	/** A request waiting on your approval in the transcript, with the key it may need and its buttons. */
 	import PromptEditCard from './PromptEditCard.svelte';
+	import Button from '../Button.svelte';
+	import Icon from '../Icon.svelte';
 	import {
 		alwaysAllowFolder,
 		approvalForMessage,
@@ -62,13 +64,21 @@
 
 {#if singleMsg.type === 'message'}
 	{@const card = approvalForMessage(stage.snapshot.approvals, singleMsg.message)}
+	{@const pending = card?.status === 'pending'}
 	<div
 		class="msg-wrap is-card-wrap"
 		data-message-id={singleMsg.message.id}
 		class:is-search-hit={stage.highlightedId === singleMsg.message.id}
+		class:is-arriving={stage.arriving.has(singleMsg.message.id)}
 	>
-		<article class="msg is-approval">
-			<div class="who">{t.stream.approval} · {stage.who(singleMsg.message)}</div>
+		<article class="msg is-approval" class:is-pending={pending}>
+			<!-- The head says whose request it is, and while it waits, that it waits on you. -->
+			<div class="who approval-head">
+				{#if pending}<Icon name="shield-check" size={14} />{/if}
+				<span class="approval-label">{pending ? t.stream.waitingApproval : t.stream.approval}</span>
+				<span class="approval-who">{stage.who(singleMsg.message)}</span>
+			</div>
+			<div class="approval-main">
 			{#if isPromptEdit(card?.kind_key)}
 				<!-- A Bot's change to a built-in prompt (ADR 0064): the change itself, and once allowed, its Undo. -->
 				<PromptEditCard body={singleMsg.message.body} {t} approval={card ?? null} api={runtime.client} onOpenSettings={(target) => runtime.openPromptSettings(target)} />
@@ -111,23 +121,16 @@
 					</label>
 				{/if}
 				<div class="approval-acts flex gap-4 mt-7 flex-wrap">
-					<button
-						type="button"
-						onclick={() => void resolveApprovalCard(card, 'allow_once')}
-						>{t.stream.allowOnce}</button
+					<Button variant="primary" icon="check" onclick={() => void resolveApprovalCard(card, 'allow_once')}
+						>{t.stream.allowOnce}</Button
 					>
 					{#if canAlwaysAllow(card.kind_key)}
-						<button
-							type="button"
-							onclick={() => void resolveApprovalCard(card, 'always_allow')}
-							>{t.stream.alwaysAllow}</button
+						<Button variant="secondary" onclick={() => void resolveApprovalCard(card, 'always_allow')}
+							>{t.stream.alwaysAllow}</Button
 						>
 					{/if}
-					<button
-						type="button"
-						class="deny"
-						onclick={() => void resolveApprovalCard(card, 'deny')}
-						>{t.stream.deny}</button
+					<Button variant="ghost" class="deny" onclick={() => void resolveApprovalCard(card, 'deny')}
+						>{t.stream.deny}</Button
 					>
 				</div>
 				{@const folder = alwaysAllowFolder(card)}
@@ -135,8 +138,12 @@
 					<p class="always-allow-scope">{t.stream.alwaysAllowCovers(folder, card.kind_key === 'outside-write')}</p>
 				{/if}
 			{:else if card}
-				<p class="muted">{approvalStatusCopy(card.status)}</p>
+				<p class="muted approval-status">
+					{#if card.status === 'allowed_once'}<Icon name="check" size={14} />{:else if card.status === 'denied'}<Icon name="x" size={14} />{/if}
+					{approvalStatusCopy(card.status)}
+				</p>
 			{/if}
+			</div>
 		</article>
 	</div>
 {/if}
@@ -199,23 +206,72 @@
 		font-size: 14px;
 	}
 
-	/* Approval Card */
+	/*
+	 * Approval Card. Waiting on you, it says so twice over: a warn-tinted head with the shield, and a
+	 * soft warn ring round the card. Once answered it settles into a plain card with its outcome.
+	 */
 	.msg.is-approval {
 		align-self: stretch;
 		max-width: none;
+		padding: 0;
+		overflow: hidden;
 		background: var(--pane);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-lg);
-		padding: 16px 18px;
-		box-shadow: var(--shadow-sm);
+		box-shadow: var(--shadow-xs);
+		transition-duration: var(--dur-slow);
+		transition-timing-function: var(--ease-out);
+		transition-property: var(--transition-props);
 	}
 
-	/* The card is plain; what says it is waiting on you is this label in the warn colour. */
-	.msg.is-approval .who {
-		color: var(--warn-text);
+	.msg.is-approval.is-pending {
+		border-color: var(--warn-line);
+		box-shadow:
+			0 0 0 3px color-mix(in srgb, var(--warn) 10%, transparent),
+			var(--shadow-sm);
+	}
+
+	.msg.is-approval .approval-head {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin: 0;
+		padding: 9px 16px;
+		border-bottom: 1px solid var(--line-subtle);
+		background: var(--line-subtle);
+		color: var(--muted);
 		font-size: var(--text-caption);
 		font-weight: 650;
-		margin-bottom: 6px;
+		letter-spacing: 0;
+	}
+
+	.msg.is-approval.is-pending .approval-head {
+		background: var(--warn-bg);
+		border-bottom-color: var(--warn-line);
+		color: var(--warn-text);
+	}
+
+	.approval-who {
+		color: var(--ink-secondary);
+		font-weight: 500;
+	}
+
+	.approval-who::before {
+		content: '·';
+		margin-right: 6px;
+		color: var(--muted-light);
+	}
+
+	.approval-main {
+		padding: 12px 16px 14px;
+	}
+
+	.approval-status {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin: 10px 0 0;
+		font-size: var(--text-small);
 	}
 
 	.always-allow-scope {
@@ -268,34 +324,6 @@
 		color: var(--danger);
 	}
 
-	.approval-acts :global(button) {
-		background: var(--accent);
-		color: var(--on-accent);
-		border: 1px solid transparent;
-		border-radius: var(--radius-sm);
-		padding: 7px 14px;
-		font-size: 13px;
-		font-weight: 600;
-		box-shadow: var(--shadow-xs);
-		transition: 0.15s ease;
-		transition-property: var(--transition-props);
-	}
-
-	.approval-acts :global(button:hover) {
-		background: var(--accent-hover);
-	}
-
-	.approval-acts :global(.deny) {
-		background: var(--btn-secondary-bg);
-		color: var(--danger);
-		border: 1px solid var(--danger-line);
-	}
-
-	.approval-acts :global(.deny:hover) {
-		background: var(--danger-bg);
-		border-color: var(--danger);
-	}
-
 	.msg-wrap.is-search-hit {
 		scroll-margin-top: 28px;
 		scroll-margin-bottom: 28px;
@@ -329,6 +357,22 @@
 	@container conversation (max-width: 680px) {
 		.msg {
 			padding: 9px 12px;
+		}
+	}
+
+	/* A row that has just arrived rises into place; history and a reply replacing its working bubble do not. */
+	.is-arriving {
+		animation: msg-arrive var(--dur-slow) var(--ease-out) both;
+	}
+
+	@keyframes msg-arrive {
+		from {
+			opacity: 0;
+			transform: translateY(8px);
+		}
+		to {
+			opacity: 1;
+			transform: none;
 		}
 	}
 </style>

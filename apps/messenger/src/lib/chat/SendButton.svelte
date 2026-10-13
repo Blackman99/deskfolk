@@ -109,11 +109,33 @@
 		border: 1px solid transparent;
 		border-radius: 50%;
 		margin-bottom: 0;
-		transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+		transition:
+			background-color var(--dur-base) var(--ease-out),
+			color var(--dur-base) var(--ease-out),
+			transform var(--dur-fast) var(--ease-out);
 	}
 
 	.composer-action:active:not(:disabled) {
-		transform: scale(0.96);
+		transform: scale(0.92);
+	}
+
+	/*
+	 * Send turning into Stop (and back) swaps the glyph: the new one turns in from a little smaller,
+	 * so the change reads as the same button changing its job rather than a different button.
+	 */
+	.composer-action > svg:not(.send-spinner):not(.send-progress) {
+		animation: action-glyph-in var(--dur-base) var(--ease-out);
+	}
+
+	@keyframes action-glyph-in {
+		from {
+			opacity: 0;
+			transform: scale(0.55) rotate(-60deg);
+		}
+		to {
+			opacity: 1;
+			transform: none;
+		}
 	}
 
 	.composer-action.send {
@@ -167,8 +189,8 @@
 	}
 
 	.composer-action:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
+		outline: none;
+		box-shadow: var(--focus-ring);
 	}
 
 	@keyframes suggestSpin {
