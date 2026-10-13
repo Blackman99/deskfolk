@@ -6,6 +6,9 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A Bot that hands over a ticket is called to the next one again
+
+- A Bot that handed over one ticket of a job and stopped could be left there until you spoke: results of generation jobs that came back just before its segment moved to a ticket stayed queued on work nothing would run again, and the app took them for work the Bot still had in line on the whole job, so it never called the Bot to the job's next ticket. Work a segment leaves with mail still in line now stays open, so the mail is heard in a later segment, and mail already stranded that way no longer keeps the Bot from being called back.
 ### On a phone, holding a message opens a sheet sized for a thumb
 
 - A long-press on a message now opens its actions as a sheet across the bottom: the five quick reactions as 48px round buttons, then Reply, Copy, Select text and the rest as 48px rows, over a dimmed transcript that closes it when tapped. Before, the same menu opened as a small popover at the finger, with 28px reactions. A wider touch screen gets the sheet up to 560px wide, centred.

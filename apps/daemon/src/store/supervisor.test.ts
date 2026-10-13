@@ -648,6 +648,34 @@ test("idle work with mail in line is queued again, so the mail is dispatched", (
   expect(f.store.dispatchableWork().map((work) => work.id)).toEqual([turn.work_item_id]);
 });
 
+test("a segment that narrows to a ticket leaves its job's mail in line, and the mail is dispatched once it ends", () => {
+  // IG MV, 2026-10-09 00:25: three video results came back to the director's job-level work, a write
+  // bound the segment to a ticket eight seconds later, and the closed work kept the results for good.
+  const f = fixture();
+  const turn = segment(f, { ticketId: null });
+  const result = f.store.queueWork({ botId: f.owner.id, sessionId: f.room.id, taskId: f.plan.id, ticketId: null, messageId: null, author: "app",
+    body: "（应用）作业 v1 完成了：status: done", source: "job", kind: "result", priority: 2, notice: false });
+  expect(result.workItem.id).toBe(turn.work_item_id);
+  f.store.workOn({ turnId: turn.id, plan: f.plan.id, ticket: f.ticket.id });
+  expect(f.store.getTurn(turn.id).work_item_id).not.toBe(turn.work_item_id);
+  expect(state(f, turn.work_item_id)).not.toBe("closed");
+  f.store.setTurnStatus(turn.id, "completed");
+  f.store.supervisorTick({ now: at(MIN) });
+  expect(f.store.dispatchableWork().map((work) => work.id)).toContain(turn.work_item_id);
+});
+
+test("mail left on closed work keeps nobody from being called to the job's next ticket", () => {
+  // IG MV, 2026-10-13: mail stranded on closed work since 10-09 counted as the director's mail in line
+  // on the whole job, so nothing called it to the next ticket after each hand-over.
+  const f = fixture();
+  const turn = segment(f, { ticketId: null });
+  f.store.queueWork({ botId: f.owner.id, sessionId: f.room.id, taskId: f.plan.id, ticketId: null, messageId: null, author: "app",
+    body: "（应用）作业 v1 完成了：status: done", source: "job", kind: "result", priority: 2, notice: false });
+  f.store.setTurnStatus(turn.id, "completed");
+  f.store.db.run("UPDATE work_items SET state = 'closed', closed_at = ? WHERE id = ?", [at(0), turn.work_item_id]);
+  expect(f.store.supervisorTick({ now: at(2 * MIN) }).wakes).toMatchObject([{ ticketId: f.ticket.id, botId: f.owner.id, cause: "orphan" }]);
+});
+
 test("work that needs attention with mail in line is picked up all the same", () => {
   // Real-model run, 2026-10-04: a review request was queued on the reviewer's work, the segment
   // dispatched for it failed at once, and the mail in line kept the failed work from being picked

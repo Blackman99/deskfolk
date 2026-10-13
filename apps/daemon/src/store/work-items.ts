@@ -252,7 +252,13 @@ function settleWorkItems(ctx: StoreContext, only: { workItemId?: string; desksOn
     RETURNING id`).all(now, only.workItemId ?? null, only.desksOnly ? 1 : 0).length;
 }
 
-/** Marks a work item closed once no live turn still runs it. */
+/**
+ * Marks a work item closed once no live turn still runs it. One with mail still in line is left
+ * idle instead, so the supervisor queues it again and the mail is dispatched: closed, nothing ever
+ * reads it. On IG MV (2026-10-09 00:25) three video results came back to the director's job-level
+ * work, a write bound the segment to a ticket eight seconds later, and the results stayed queued on
+ * the closed work for good — never heard, and counted as the director's mail in line on the job.
+ */
 export function closeWorkItemIfIdle(ctx: StoreContext, id: string | null): void {
   if (!id) return;
   const live = ctx.db
@@ -261,5 +267,10 @@ export function closeWorkItemIfIdle(ctx: StoreContext, id: string | null): void 
     )
     .get(id)!.n;
   if (live > 0) return;
-  ctx.db.run(`UPDATE work_items SET state = 'closed', closed_at = ?, updated_at = ? WHERE id = ? AND state <> 'closed'`, [isoNow(), isoNow(), id]);
+  const now = isoNow();
+  if (ctx.db.query("SELECT 1 FROM inbox_items WHERE work_item_id = ? AND state IN ('queued', 'held') LIMIT 1").get(id)) {
+    ctx.db.run(`UPDATE work_items SET state = 'idle', updated_at = ? WHERE id = ? AND state = 'running'`, [now, id]);
+    return;
+  }
+  ctx.db.run(`UPDATE work_items SET state = 'closed', closed_at = ?, updated_at = ? WHERE id = ? AND state <> 'closed'`, [now, now, id]);
 }

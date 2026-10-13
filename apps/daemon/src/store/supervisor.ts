@@ -568,12 +568,16 @@ function pickupsInHour(ctx: StoreContext, workItemId: string, now: string): Arra
  * idle. Its work that needs attention counts anywhere in the job: a Bot has one live segment per job (I1b), so a call to
  * another ticket would take the place of work a restart or a failure cut off — on 2026-10-04 one two minutes after a
  * development restart had the Bot redraw the cut ticket's frames under the next ticket while the notice said it would wait.
+ * Mail left on closed work is not in line: nothing dispatches it. Three video results stranded that way on 2026-10-09 kept
+ * the IG MV director from being called to any ticket of the job after that: on 2026-10-13 it handed its tickets over one per
+ * segment and nothing called it to the next until you spoke.
  */
 function engaged(ctx: StoreContext, botId: string, taskId: string, ticketId: string | null, exceptWork: string | null): boolean {
   if (ctx.db.query(`SELECT 1 FROM turns WHERE bot_id = ? AND task_id = ? AND status IN ${LIVE_TURN_STATUSES} AND IFNULL(mode, 'work') <> 'readonly'`)
     .get(botId, taskId)) return true;
-  if (ctx.db.query(`SELECT 1 FROM inbox_items WHERE bot_id = ?1 AND task_id = ?2 AND (ticket_id IS ?3 OR ticket_id IS NULL)
-    AND state IN ('queued', 'held')`).get(botId, taskId, ticketId)) return true;
+  if (ctx.db.query(`SELECT 1 FROM inbox_items i WHERE i.bot_id = ?1 AND i.task_id = ?2 AND (i.ticket_id IS ?3 OR i.ticket_id IS NULL)
+    AND i.state IN ('queued', 'held')
+    AND NOT EXISTS (SELECT 1 FROM work_items w WHERE w.id = i.work_item_id AND w.state = 'closed')`).get(botId, taskId, ticketId)) return true;
   if (ctx.db.query(`SELECT 1 FROM check_backs WHERE bot_id = ?1 AND task_id = ?2 AND (ticket_id IS ?3 OR ticket_id IS NULL)
     AND fired_at IS NULL AND (voided_at IS NULL OR suspended_at IS NOT NULL)`).get(botId, taskId, ticketId)) return true;
   return Boolean(ctx.db.query(`SELECT 1 FROM work_items WHERE bot_id = ?1 AND task_id = ?2 AND id IS NOT ?4 AND (state = 'needs_attention'
