@@ -22,7 +22,8 @@
 		onReaction,
 		onAttribution,
 		onSelectText,
-		onEdit
+		onEdit,
+		sheet = false
 		}: {
 		message: Message;
 		x: number;
@@ -47,6 +48,11 @@
 		 * so copying part of the message needs the text on a page of its own.
 		 */
 		onSelectText?: () => void;
+		/**
+		 * Opened by a touch: drawn as a sheet across the bottom, with emoji and rows a thumb can
+		 * hit, instead of a small menu at the finger.
+		 */
+		sheet?: boolean;
 	} = $props();
 
 	let menuEl = $state<HTMLElement | null>(null);
@@ -58,7 +64,7 @@
 	const QUICK_EMOJIS = ['👍', '❤️', '🎉', '🚀', '👀'];
 
 	$effect(() => {
-		if (menuEl) {
+		if (menuEl && !sheet) {
 			const rect = menuEl.getBoundingClientRect();
 			adjustedPos = computeContextMenuPosition(
 				x,
@@ -157,11 +163,16 @@
 	});
 </script>
 
+{#if sheet}
+	<!-- Behind the sheet: a tap here lands outside the menu, which closes it. -->
+	<div class="msg-sheet-scrim" aria-hidden="true"></div>
+{/if}
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	bind:this={menuEl}
 	class="msg-context-menu"
-	style="left: {pos.x}px; top: {pos.y}px;"
+	class:is-sheet={sheet}
+	style={sheet ? undefined : `left: ${pos.x}px; top: ${pos.y}px;`}
 	role="menu"
 	tabindex="-1"
 	oncontextmenu={(e) => {
@@ -171,6 +182,7 @@
 	onclick={(e) => e.stopPropagation()}
 	onpointerdown={(e) => e.stopPropagation()}
 >
+	{#if sheet}<span class="msg-sheet-grabber" aria-hidden="true"></span>{/if}
 	<div class="msg-reaction-row flex items-center justify-between px-1 py-[3px]">
 		{#each QUICK_EMOJIS as emoji}
 			<button
@@ -478,6 +490,91 @@
 	.subitem-bullet {
 		font-weight: 700;
 		opacity: 0.6;
+	}
+
+	/* A touch's sheet: across the bottom, rows and emoji sized for a thumb. */
+	.msg-sheet-scrim {
+		position: fixed;
+		inset: 0;
+		z-index: 999;
+		background: var(--modal-backdrop);
+		animation: msg-sheet-fade var(--dur-base) ease-out;
+	}
+
+	.msg-context-menu.is-sheet {
+		left: 0;
+		right: 0;
+		bottom: 0;
+		top: auto;
+		margin: 0 auto;
+		min-width: 0;
+		max-width: 560px;
+		gap: 4px;
+		padding: 8px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+		border-radius: 20px 20px 0 0;
+		border-bottom: 0;
+		box-shadow: var(--shadow-lg);
+		animation: msg-sheet-up var(--dur-slow) var(--ease-out);
+	}
+
+	.msg-sheet-grabber {
+		align-self: center;
+		width: 36px;
+		height: 5px;
+		margin: 0 0 8px;
+		border-radius: var(--radius-full);
+		background: var(--line);
+	}
+
+	.is-sheet .msg-reaction-row {
+		padding: 2px 2px 10px;
+	}
+
+	.is-sheet .msg-reaction-btn {
+		width: 48px;
+		height: 48px;
+		font-size: 24px;
+		border-radius: var(--radius-full);
+		background: var(--line-subtle);
+	}
+
+	.is-sheet .msg-reaction-btn:active {
+		transform: scale(0.92);
+	}
+
+	.is-sheet .msg-context-menu-item {
+		min-height: 48px;
+		gap: 14px;
+		padding: 0 14px;
+		font-size: 16px;
+		border-radius: var(--radius-md);
+	}
+
+	.is-sheet .msg-context-menu-item :global(svg) {
+		width: 20px;
+		height: 20px;
+	}
+
+	.is-sheet .msg-context-menu-item:active:not(:disabled) {
+		background: var(--row-hover);
+	}
+
+	@keyframes msg-sheet-up {
+		from {
+			transform: translateY(100%);
+		}
+		to {
+			transform: none;
+		}
+	}
+
+	@keyframes msg-sheet-fade {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
 	}
 
 	@keyframes context-menu-in {

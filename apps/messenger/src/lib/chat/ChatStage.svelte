@@ -1134,6 +1134,7 @@
 				: undefined}
 			onSelectText={activeMenu.touch ? () => { textSheetId = activeMenu.message.id; } : undefined}
 			onEdit={editable(activeMenu.message) ? () => startEdit(activeMenu.message) : undefined}
+			sheet={activeMenu.touch}
 			/>
 	{/if}
 	{#if textSheetMessage}

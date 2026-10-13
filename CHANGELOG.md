@@ -6,6 +6,9 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### On a phone, holding a message opens a sheet sized for a thumb
+
+- A long-press on a message now opens its actions as a sheet across the bottom: the five quick reactions as 48px round buttons, then Reply, Copy, Select text and the rest as 48px rows, over a dimmed transcript that closes it when tapped. Before, the same menu opened as a small popover at the finger, with 28px reactions. A wider touch screen gets the sheet up to 560px wide, centred.
 ### Losing the connection keeps your place; menus and choices look finished
 
 - Once the app has been connected, losing the connection no longer swaps the whole window for a "can't reach the runtime" screen: the window stays where it was, faded and not clickable, under a banner at the top that says it is reconnecting or offers Retry. Coming back, the window is rebuilt as before. The first connection still shows the centred screen.
