@@ -66,6 +66,8 @@
 		onCreateGroup: () => void;
 		/** Puts the list away. Only where it can be: the desktop workbench, which has a way back. */
 		onCollapse?: () => void;
+		/** A press on a conversation that may become a drag into the workbench: only where there is one. */
+		onDragSession?: (event: PointerEvent, session: SessionSummary) => void;
 	};
 
 	let {
@@ -89,7 +91,8 @@
 		onOpenSettings,
 		onCreateBot,
 		onCreateGroup,
-		onCollapse
+		onCollapse,
+		onDragSession
 	}: Props = $props();
 
 	/** A row that moves up the list (a new message) slides there instead of jumping. */
@@ -208,6 +211,10 @@
 		}
 	}
 
+	function pressOf(session: SessionSummary): ((event: PointerEvent) => void) | undefined {
+		return onDragSession ? (event) => onDragSession(event, session) : undefined;
+	}
+
 	function titleOf(session: SessionSummary): string {
 		return sessionTitle(session, botsById, rosterLabels);
 	}
@@ -305,6 +312,7 @@
 		{unreadOf}
 		{titleOf}
 		{archivedSuffix}
+		{onDragSession}
 	/>
 	{/if}
 	<div class="side-body relative flex-1 min-h-0 flex flex-col">
@@ -358,6 +366,7 @@
 							botStatus={botStatusOf}
 							onSelect={() => void runtime.selectSession(session.id)}
 							onContextMenu={(e) => onOpenContextMenu(e, session)}
+							onPointerDown={pressOf(session)}
 						/>
 					</div>
 				{/each}
@@ -385,6 +394,7 @@
 					botStatus={botStatusOf}
 					onSelect={() => void runtime.selectSession(fileDrop.id)}
 					onContextMenu={(e) => onOpenContextMenu(e, fileDrop)}
+					onPointerDown={pressOf(fileDrop)}
 				/>
 			{/if}
 			{#if !workingIds || groupRows.length > 0}
@@ -413,6 +423,7 @@
 						botStatus={botStatusOf}
 						onSelect={() => void runtime.selectSession(session.id)}
 						onContextMenu={(e) => onOpenContextMenu(e, session)}
+						onPointerDown={pressOf(session)}
 						pinned={isSessionPinned(pinnedSessionIds, session.id)}
 						onTogglePin={onTogglePin ? () => onTogglePin(session.id) : undefined}
 					/>
@@ -442,6 +453,7 @@
 						botStatus={botStatusOf}
 						onSelect={() => void runtime.selectSession(session.id)}
 						onContextMenu={(e) => onOpenContextMenu(e, session)}
+						onPointerDown={pressOf(session)}
 						pinned={isSessionPinned(pinnedSessionIds, session.id)}
 						onTogglePin={onTogglePin ? () => onTogglePin(session.id) : undefined}
 					/>
@@ -481,6 +493,7 @@
 						botStatus={botStatusOf}
 						onSelect={() => void runtime.selectSession(session.id)}
 						onContextMenu={(e) => onOpenContextMenu(e, session)}
+						onPointerDown={pressOf(session)}
 					/>
 					{#if source.kind === 'session'}
 						{@const sourceTitle = titleOf(source.session)}

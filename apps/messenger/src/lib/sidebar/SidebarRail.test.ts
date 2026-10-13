@@ -40,6 +40,8 @@ function open(selectedId: string | null = null, workspacePath: string | null = n
   let searches = 0;
   /** Every footer action the rail dispatched, in order. */
   const tools: string[] = [];
+  /** The avatars pressed, which may become drags into the workbench. */
+  const presses: string[] = [];
   const view = render(SidebarRail, {
     runtime,
     t,
@@ -56,8 +58,9 @@ function open(selectedId: string | null = null, workspacePath: string | null = n
     onOpenArchived: () => tools.push("archived"),
     onOpenSettings: () => (settings += 1),
     onOpenSearch: () => (searches += 1),
+    onDragSession: (_e: PointerEvent, session: SessionSummary) => presses.push(session.id),
   });
-  return { ...view, runtime, menus, tools, expanded: () => expanded, settings: () => settings, searches: () => searches };
+  return { ...view, runtime, menus, tools, presses, expanded: () => expanded, settings: () => settings, searches: () => searches };
 }
 
 const item = (host: HTMLElement, id: string) => host.querySelector(`.rail-item[data-session="${id}"]`) as HTMLElement | null;
@@ -414,4 +417,13 @@ test("a rail folded with the filter on opens filtered, with every working direct
   expect(view.host.querySelector(".rail-divider")).toBeNull();
   view.close();
   window.localStorage.removeItem(WORKING_ONLY_KEY);
+});
+
+test("pressing an avatar hands it on, so it can be dragged into the workbench", () => {
+  const view = open();
+  view.host
+    .querySelector('[data-session="sess-1"]')!
+    .dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+  expect(view.presses).toEqual(["sess-1"]);
+  view.close();
 });

@@ -3,6 +3,7 @@ import type { PaneMin, Rect, WorkbenchLayout, WorkbenchTab } from "./layout-type
 import { assertInvariants, leafById, makeBranch, makeLeaf, tiledLeaves } from "./layout-tree.ts";
 import {
   applyDrop,
+  beginIncomingDrag,
   beginLeafDrag,
   beginTabDrag,
   dockFloating,
@@ -189,4 +190,56 @@ test("docking a pane that is not floating, or nowhere, changes nothing", () => {
   const id = floated.floating[0]!.leaf.id;
   expect(dockFloating(floated, id, { kind: "none" }, ctx())).toBe(floated);
   expect(dockFloating(floated, id, { kind: "float", point: { x: 1, y: 1 } }, ctx())).toBe(floated);
+});
+
+test("a tab from outside the workbench lands where it is dropped: a group, a strip position, an edge", () => {
+  const fresh = beginIncomingDrag({ tab: aTab("new") }, { x: 0, y: 0 });
+  expect(fresh.kind).toBe("new");
+
+  const centred = applyDrop(twoPanes(), fresh, { kind: "centre", leafId: "b" }, ctx());
+  expect(leafById(centred, "b")!.tabs.map((tab) => tab.id)).toEqual(["t3", "new"]);
+  expect(leafById(centred, "b")!.activeTabId).toBe("new");
+  expect(centred.focus.leafId).toBe("b");
+  // Nothing left anywhere: the panes it did not go to are as they were.
+  expect(leafById(centred, "a")!.tabs.map((tab) => tab.id)).toEqual(["t1", "t2"]);
+
+  const placed = applyDrop(twoPanes(), fresh, { kind: "tabstrip", leafId: "a", index: 1 }, ctx());
+  expect(leafById(placed, "a")!.tabs.map((tab) => tab.id)).toEqual(["t1", "new", "t2"]);
+  expect(leafById(placed, "a")!.activeTabId).toBe("new");
+
+  const split = applyDrop(twoPanes(), fresh, { kind: "edge", leafId: "b", side: "south" }, ctx());
+  const leaves = tiledLeaves(split.root);
+  expect(leaves.map((leaf) => leaf.tabs.map((tab) => tab.id))).toEqual([["t1", "t2"], ["t3"], ["new"]]);
+  expect(split.focus.leafId).toBe(leaves[2]!.id);
+  for (const layout of [centred, placed, split]) assertInvariants(layout);
+});
+
+test("a tab from outside the workbench floats where it is dropped with the modifier held", () => {
+  const point = { x: 500, y: 400 };
+  const floated = applyDrop(twoPanes(), beginIncomingDrag({ tab: aTab("new") }, point), { kind: "float", point }, ctx());
+  expect(floated.floating).toHaveLength(1);
+  const pane = floated.floating[0]!;
+  expect(pane.leaf.tabs.map((tab) => tab.id)).toEqual(["new"]);
+  expect(floated.focus.leafId).toBe(pane.leaf.id);
+  // A little smaller than the rect it was sized from, centred on the pointer.
+  expect(pane.frame).toEqual({ x: 300, y: 240, width: 400, height: 320 });
+  assertInvariants(floated);
+});
+
+test("a tab from outside dropped on nothing, or on a pane that is not there, changes nothing", () => {
+  const layout = twoPanes();
+  const fresh = beginIncomingDrag({ tab: aTab("new") }, { x: 0, y: 0 });
+  expect(applyDrop(layout, fresh, { kind: "none" }, ctx())).toBe(layout);
+  expect(applyDrop(layout, fresh, { kind: "centre", leafId: "gone" }, ctx())).toBe(layout);
+  expect(applyDrop(layout, fresh, { kind: "edge", leafId: "gone", side: "east" }, ctx())).toBe(layout);
+});
+
+test("a tab already in the workbench, pulled in from outside, moves the way dragging it by its strip does", () => {
+  const drag = beginIncomingDrag({ leafId: "a", tabId: "t1" }, { x: 0, y: 0 });
+  expect(drag).toEqual(beginTabDrag("a", "t1", { x: 0, y: 0 }));
+  const moved = applyDrop(twoPanes(), drag, { kind: "edge", leafId: "b", side: "east" }, ctx());
+  expect(tiledLeaves(moved.root).map((leaf) => leaf.tabs.map((tab) => tab.id))).toEqual([["t2"], ["t3"], ["t1"]]);
+  // Back into its own group: nothing moves.
+  const layout = twoPanes();
+  expect(applyDrop(layout, drag, { kind: "centre", leafId: "a" }, ctx())).toBe(layout);
 });

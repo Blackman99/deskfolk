@@ -7,6 +7,7 @@ import { paneMin } from "./pane-mins.ts";
 import type { PlaceContext } from "./pane-open.ts";
 import {
   activeSessionId,
+  chatDragSource,
   closeChatSide,
   dropDuplicateBoundTabs,
   existingTarget,
@@ -611,3 +612,14 @@ test("a replace only takes the same kind of window: another conversation's flow 
   expect(leafById(kept, "a")!.tabs.map((tab) => tab.params.sessionId)).toEqual(["bb", "s1"]);
 });
 
+test("dragging a conversation in carries the tab it already has, wherever that is, else a new one", () => {
+  const open = tabFor({ kind: "chat", sessionId: "s1", side: null }, "c1");
+  const layout: WorkbenchLayout = {
+    ...layoutOf(makeLeaf("a", [tabFor({ kind: "workspace", selected: null }, "w1")])),
+    floating: [{ leaf: makeLeaf("f", [open]), frame: { x: 0, y: 0, width: 400, height: 300 } }],
+  };
+  expect(chatDragSource(layout, "s1", ids.id)).toEqual({ leafId: "f", tabId: "c1" });
+
+  const fresh = chatDragSource(layout, "s2", () => "n1");
+  expect(fresh).toEqual({ tab: tabFor({ kind: "chat", sessionId: "s2", side: null }, "n1") });
+});

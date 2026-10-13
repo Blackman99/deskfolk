@@ -780,3 +780,49 @@ test("Tools opens Roles (ADR 0083); with no workbench to hold its tab, it is a p
   expect(runtime.calls.map((call) => call.name).filter((name) => name === 'openRoles' || name === 'closeListPage')).toEqual(['openRoles', 'closeListPage']);
   close();
 });
+
+test("a press on any conversation, pins included, is handed on so it can be dragged into the workbench", () => {
+  const presses: string[] = [];
+  const runtime = fakeRuntime({
+    bots: [aBot({ id: "bot-1", name: "Writer" }), aBot({ id: "bot-2", name: "Researcher" })],
+    sessions: [aGroup({ id: "sess-1", name: "视频组" }), aGroup({ id: "sess-2", name: "剪辑组" }), aBotDirect()],
+  });
+  const props = {
+    runtime,
+    t,
+    selected: null,
+    pinnedSessionIds: ["sess-2"],
+    workspaceOpen: false,
+    contextMenuSessionId: null,
+    onOpenContextMenu: () => {},
+    onToggleWorkspace: () => {},
+    onOpenRoutines: () => {},
+    onOpenSpend: () => {},
+    workbench: true,
+    onNewTerminal: () => {},
+    onOpenSettings: () => {},
+    onCreateBot: () => {},
+    onCreateGroup: () => {},
+    onOpenSearch: () => {},
+  };
+  const view = render(Sidebar, {
+    ...props,
+    onDragSession: (event: PointerEvent, session: { id: string }) => {
+      expect(event.type).toBe("pointerdown");
+      presses.push(session.id);
+    },
+  });
+  const pressOn = (el: Element | null) => el?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+  pressOn(view.host.querySelector(".pinned-session-btn"));
+  for (const row of view.host.querySelectorAll(".row")) pressOn(row);
+  expect(presses).toEqual(["sess-2", "sess-1", "botbot-1"]);
+  // A press is all it hands on: picking the row is still its click.
+  expect(runtime.calls.filter((call) => call.name === "selectSession")).toHaveLength(0);
+  view.close();
+
+  // Without a workbench to drop into, nobody is asked.
+  const plain = render(Sidebar, props);
+  for (const row of plain.host.querySelectorAll(".row")) pressOn(row);
+  expect(presses).toHaveLength(3);
+  plain.close();
+});

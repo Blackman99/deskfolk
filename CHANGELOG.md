@@ -6,6 +6,9 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Drag a conversation from the sidebar into the workbench
+
+- A conversation in the sidebar — any row of the list, a pinned avatar, an avatar on the folded rail — can now be dragged into the workbench: onto the middle of a pane it opens as a new tab there, onto a tab strip at the pointer's position, onto a pane's edge in a pane split off there, and let go with ⌥ held it floats. A conversation that already has a tab moves that tab instead of opening a second one. Its name follows the pointer and the drop shows the same marks as dragging a tab; let go outside the workbench and nothing changes, and a plain click still opens it where Where windows open says.
 ### A message's hover actions no longer cover its first line
 
 - The bar of quick reactions and actions that shows over a message under the pointer is smaller (24px buttons, 30px tall instead of 36px) and stands on the message's top edge instead of over its first line: above your bubble's words, and above a Bot's reply — for its first part, in the empty end of the name line. Leaving the message, the bar can still be reached while it fades, so a pointer heading for it on a slant gets there.

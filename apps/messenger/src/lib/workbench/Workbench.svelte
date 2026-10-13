@@ -22,9 +22,11 @@
 		type SashDrag
 	} from './layout-resize.ts';
 	import {
+		activateTab,
 		closeLeaf,
 		closeTabs,
 		findPath,
+		findTab,
 		focusLeaf,
 		leafById,
 		nodeAt,
@@ -44,10 +46,12 @@
 	} from './drop-zones.ts';
 	import {
 		applyDrop,
+		beginIncomingDrag,
 		beginLeafDrag,
 		beginTabDrag,
 		dockFloating,
 		passedThreshold,
+		type IncomingTab,
 		type PaneDrag
 	} from './tab-drag.ts';
 	import { WB_FALLBACK_MIN } from './pane-mins.ts';
@@ -57,7 +61,7 @@
 	import WorkbenchFloat from './WorkbenchFloat.svelte';
 	import WorkbenchLeaf from './WorkbenchLeaf.svelte';
 	import PaneContextMenu from './PaneContextMenu.svelte';
-	import { trackPointerDrag } from '../pointer-drag.ts';
+	import { swallowNextClick, trackPointerDrag } from '../pointer-drag.ts';
 	import { paneEditAt, type PaneEdit } from './pane-edit.ts';
 
 	type Props = {
@@ -124,7 +128,8 @@
 	let dropZone = $state<DropZone>({ kind: 'none' });
 	/** Every pane's tab row, measured when a drag starts: where each tab is, which the geometry cannot say. */
 	let tabRows = $state.raw<ReadonlyMap<string, TabRow>>(new Map());
-	let ghost = $state<{ x: number; y: number; label: string } | null>(null);
+	/** `fixed`: placed against the window, for a drag that starts outside the workbench and has to show over the list. */
+	let ghost = $state<{ x: number; y: number; label: string; fixed: boolean } | null>(null);
 	let nextId = 0;
 	const freshId = () => `wb-${Date.now().toString(36)}-${++nextId}`;
 
@@ -141,7 +146,7 @@
 	 */
 	const onTabGap = $derived(dropZone.kind === 'tabstrip' && tabRows.has(dropZone.leafId));
 	const idleGap = $derived(
-		onTabGap && paneDrag
+		onTabGap && paneDrag && paneDrag.kind !== 'new'
 			? isNoOpDrop(
 					layout,
 					{
@@ -340,8 +345,15 @@
 	/**
 	 * Dragging a tab, or a whole group by its strip. Pointer events throughout: HTML5 drag and
 	 * drop has no pointer capture and gives coarse coordinates in this webview.
+	 *
+	 * `outside`: the press is on something outside the workbench, a row in the list. It is heard on
+	 * the window, since the next snapshot can redraw that row under the pointer and a detached
+	 * element hears nothing more. It may not select the list's text on its way across, nor start
+	 * the webview's own drag of the avatar picture it was pressed on — once that starts, the page
+	 * hears no more of the pointer. And the click its release fires on the row is swallowed, or it
+	 * would open the conversation again.
 	 */
-	function startPaneDrag(event: PointerEvent, drag: PaneDrag, label: string): void {
+	function startPaneDrag(event: PointerEvent, drag: PaneDrag, label: string, outside = false): void {
 		if (event.button !== 0) return;
 		const target = event.currentTarget as HTMLElement;
 		const pointerId = event.pointerId;
@@ -350,6 +362,11 @@
 		let float = false;
 		/** The frame loop that scrolls a row while the pointer rests near its end. */
 		let scrolling = 0;
+		const noDefault = (nativeEvent: Event) => nativeEvent.preventDefault();
+		if (outside) {
+			document.addEventListener('selectstart', noDefault, true);
+			document.addEventListener('dragstart', noDefault, true);
+		}
 
 		const locate = () => {
 			// Alt turns any position into a float: there is one window, so "drop outside it" is
@@ -386,37 +403,73 @@
 				paneDrag = current;
 				dragging = true;
 				dragGate.begin();
-				target.setPointerCapture(pointerId);
+				try {
+					target.setPointerCapture(pointerId);
+				} catch {
+					// Gone from the page already: the moves still reach the window an outside drag listens on.
+				}
 				tabRows = measureRows();
 			}
 			locate();
-			ghost = { x: point.x, y: point.y, label };
+			ghost = outside
+				? { x: moveEvent.clientX, y: moveEvent.clientY, label, fixed: true }
+				: { x: point.x, y: point.y, label, fixed: false };
 			if (!scrolling && typeof requestAnimationFrame === 'function') scrolling = requestAnimationFrame(scrollRow);
 		};
 		const finish = (endEvent: PointerEvent) => {
+			if (outside) {
+				document.removeEventListener('selectstart', noDefault, true);
+				document.removeEventListener('dragstart', noDefault, true);
+			}
 			if (scrolling) cancelAnimationFrame(scrolling);
 			scrolling = 0;
 			if (!current.started) return;
+			if (outside) swallowNextClick();
 			const zone = endEvent.type === 'pointercancel' ? ({ kind: 'none' } as DropZone) : dropZone;
-			const sourceRect = geometry?.leaves.get(current.leafId);
-			const moved = leafById(layout, current.leafId);
+			// A new tab floats the size one torn out of the pane in front would.
+			const sourceRect = geometry?.leaves.get(current.kind === 'new' ? layout.focus.leafId : current.leafId);
+			const moved = current.kind === 'new' ? null : leafById(layout, current.leafId);
 			const tabId = current.kind === 'tab' ? current.tabId : null;
-			const floatMin = tabId ? mins(moved?.tabs.find((tab) => tab.id === tabId) ?? null) : minOf(moved);
+			const floatMin =
+				current.kind === 'new'
+					? mins(current.tab)
+					: tabId
+						? mins(moved?.tabs.find((tab) => tab.id === tabId) ?? null)
+						: minOf(moved);
 			paneDrag = null;
 			dropZone = { kind: 'none' };
 			tabRows = new Map();
 			ghost = null;
 			dragging = false;
 			dragGate.end();
-			const next = applyDrop(layout, current, zone, {
+			let next = applyDrop(layout, current, zone, {
 				node: freshId,
 				viewport,
 				floatMin,
 				sourceRect
 			});
+			// Let go anywhere in the workbench, the tab comes to the front where it now is — even back
+			// where it was — as the click on its row would have brought it.
+			if (outside && tabId && zone.kind !== 'none') next = inFront(next, tabId);
 			if (next !== layout) onLayout(next);
 		};
-		trackPointerDrag(target, { move, end: finish });
+		trackPointerDrag(outside ? window : target, { move, end: finish });
+	}
+
+	/**
+	 * A drag that starts outside the workbench: a conversation pulled in from the list. The tab it
+	 * already has moves as if dragged by its own strip, since a conversation is one tab; with none,
+	 * a new one is made where it is let go. Let go anywhere but the workbench, nothing changes.
+	 * Touch is left alone, to scroll the list.
+	 */
+	export function dragIn(event: PointerEvent, from: IncomingTab, label: string): void {
+		if (!wide || event.pointerType === 'touch') return;
+		startPaneDrag(event, beginIncomingDrag(from, pointFrom(event)), label, true);
+	}
+
+	function inFront(at: WorkbenchLayout, tabId: string): WorkbenchLayout {
+		const found = findTab(at, tabId);
+		return found ? activateTab(focusLeaf(at, found.leaf.id), found.leaf.id, tabId) : at;
 	}
 
 	function pointFrom(event: PointerEvent): { x: number; y: number } {
@@ -799,7 +852,11 @@
 					></div>
 				{/if}
 				{#if ghost}
-					<div class="wb-ghost" style:transform={`translate3d(${ghost.x + 12}px, ${ghost.y + 12}px, 0)`}>
+					<div
+						class="wb-ghost"
+						class:is-fixed={ghost.fixed}
+						style:transform={`translate3d(${ghost.x + 12}px, ${ghost.y + 12}px, 0)`}
+					>
 						{ghost.label}
 					</div>
 				{/if}
@@ -928,5 +985,8 @@
 		box-shadow: 0 4px 12px rgb(0 0 0 / 0.2);
 		pointer-events: none;
 		white-space: nowrap;
+	}
+	.wb-ghost.is-fixed {
+		position: fixed;
 	}
 </style>

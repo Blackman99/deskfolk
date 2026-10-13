@@ -201,6 +201,7 @@
 	/** The phone's floating + menu, held here for the same reasons. */
 	let createMenuOpen = $state(false);
 	let sidebar = $state<Sidebar>();
+	let workbenchView = $state<Workbench>();
 	let mobileSettingsDetail = $state(false);
 	let settingsModal = $state<SettingsModal>();
 	/**
@@ -654,6 +655,11 @@
 		return sessionTitle(session, botsById, rosterLabels);
 	}
 
+	/** A conversation pulled out of the list onto the workbench: a pane, an edge to split, a tab strip. */
+	function dragSession(event: PointerEvent, session: SessionSummary): void {
+		workbenchView?.dragIn(event, workbench.sessionDragSource(session.id), titleOf(session));
+	}
+
 
 
 	function openBot(bot: Bot): void {
@@ -1040,6 +1046,7 @@
 			onNewTerminal={() => void workbench.openNewTerminal(null)}
 			onOpenArchived={openArchivedFromRail}
 			onOpenSettings={() => runtime.openSettings()}
+			onDragSession={wide ? dragSession : undefined}
 		/>
 	{:else}
 		<Sidebar
@@ -1065,6 +1072,7 @@
 			onCreateBot={openCreateBot}
 			onCreateGroup={openCreateGroup}
 			onCollapse={sidebarColumn ? toggleSidebar : undefined}
+			onDragSession={wide ? dragSession : undefined}
 		/>
 	{/if}
 	<button
@@ -1077,6 +1085,7 @@
 	<section class="main flex flex-col min-w-0 min-h-0 bg-pane relative">
 		{#if wide}
 			<Workbench
+				bind:this={workbenchView}
 				layout={workbench.layout}
 				mins={paneMin}
 				{t}

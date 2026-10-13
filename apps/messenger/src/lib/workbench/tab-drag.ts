@@ -37,7 +37,24 @@ export type LeafDrag = {
   started: boolean;
 };
 
-export type PaneDrag = TabDrag | LeafDrag;
+/**
+ * A tab that is in no pane yet — a conversation pulled in from the list — made where it is let
+ * go. It has nowhere to leave, so no drop of it is a no-op but one on nothing.
+ */
+export type NewTabDrag = {
+  kind: "new";
+  tab: WorkbenchTab;
+  origin: Point;
+  started: boolean;
+};
+
+export type PaneDrag = TabDrag | LeafDrag | NewTabDrag;
+
+/**
+ * What a drag that starts outside the workbench carries: a tab already in it, which then moves
+ * the way dragging it by its own strip would, or a new one.
+ */
+export type IncomingTab = { leafId: NodeId; tabId: TabId } | { tab: WorkbenchTab };
 
 export function beginTabDrag(leafId: NodeId, tabId: TabId, origin: Point): TabDrag {
   return { kind: "tab", leafId, tabId, origin, started: false };
@@ -45,6 +62,11 @@ export function beginTabDrag(leafId: NodeId, tabId: TabId, origin: Point): TabDr
 
 export function beginLeafDrag(leafId: NodeId, origin: Point): LeafDrag {
   return { kind: "leaf", leafId, origin, started: false };
+}
+
+export function beginIncomingDrag(from: IncomingTab, origin: Point): TabDrag | NewTabDrag {
+  if ("tab" in from) return { kind: "new", tab: from.tab, origin, started: false };
+  return beginTabDrag(from.leafId, from.tabId, origin);
 }
 
 /** Whether the pointer has moved far enough to mean a drag. A click on a tab still just selects. */
@@ -65,7 +87,7 @@ export type DropContext = DropIds & {
   sourceRect?: Rect;
 };
 
-function tabsOf(layout: WorkbenchLayout, drag: PaneDrag): WorkbenchTab[] {
+function tabsOf(layout: WorkbenchLayout, drag: TabDrag | LeafDrag): WorkbenchTab[] {
   const leaf = leafById(layout, drag.leafId);
   if (!leaf) return [];
   if (drag.kind === "leaf") return leaf.tabs;
@@ -74,7 +96,7 @@ function tabsOf(layout: WorkbenchLayout, drag: PaneDrag): WorkbenchTab[] {
 }
 
 /** Take the dragged tabs out of where they were. May remove the pane they left empty. */
-function detach(layout: WorkbenchLayout, drag: PaneDrag, ids: DropIds): WorkbenchLayout {
+function detach(layout: WorkbenchLayout, drag: TabDrag | LeafDrag, ids: DropIds): WorkbenchLayout {
   const moving = tabsOf(layout, drag);
   let next = layout;
   for (const tab of moving) next = closeTab(next, drag.leafId, tab.id, ids.node());
@@ -93,6 +115,7 @@ export function applyDrop(
   zone: DropZone,
   ctx: DropContext,
 ): WorkbenchLayout {
+  if (drag.kind === "new") return placeTabs(layout, [drag.tab], zone, ctx) ?? layout;
   const leaf = leafById(layout, drag.leafId);
   if (!leaf) return layout;
   const moving = tabsOf(layout, drag);

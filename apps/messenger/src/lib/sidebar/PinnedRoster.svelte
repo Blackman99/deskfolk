@@ -24,6 +24,8 @@
 		unreadOf: (session: SessionSummary) => number;
 		titleOf: (session: SessionSummary) => string;
 		archivedSuffix: (session: SessionSummary) => string;
+		/** A press on a pin that may become a drag into the workbench: only where there is one. */
+		onDragSession?: (event: PointerEvent, session: SessionSummary) => void;
 	};
 
 	let {
@@ -37,7 +39,8 @@
 		statusOf,
 		unreadOf,
 		titleOf,
-		archivedSuffix
+		archivedSuffix,
+		onDragSession
 	}: Props = $props();
 
 	let pinnedExpanded = $state(false);
@@ -58,6 +61,7 @@
 					class:is-unread={pUnread > 0}
 					onclick={() => void runtime.selectSession(pSession.id)}
 					oncontextmenu={(e) => onOpenContextMenu(e, pSession)}
+					onpointerdown={onDragSession ? (e) => onDragSession(e, pSession) : undefined}
 				>
 					<span class="pinned-avatar-wrap relative flex items-center justify-center w-17 h-17 shrink-0">
 						{#if isFileDropSession(pSession)}

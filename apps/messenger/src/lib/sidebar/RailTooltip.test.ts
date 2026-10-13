@@ -133,3 +133,26 @@ test("a touch never opens a tip, a click and a scroll close one, and unmount dro
   expect(again.clicks()).toBe(1);
   again.close();
 });
+
+test("a press that turns into a drag closes the tip the press opened, and is passed on", () => {
+  const presses: string[] = [];
+  const view = render(RailTooltip, {
+    label: "Video crew",
+    describedBy: "rail-tip-spec",
+    class: "rail-item",
+    onpointerdown: (event: PointerEvent) => presses.push(event.pointerType),
+    children: glyph,
+  });
+  const button = view.host.querySelector("button")!;
+  button.dispatchEvent(pointer("pointerdown", "mouse"));
+  expect(presses).toEqual(["mouse"]);
+  // The press focuses the control, and focus shows the tip at once.
+  button.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+  flushSync();
+  expect(tip()).not.toBeNull();
+  // Past the drag threshold the drag takes the pointer: no click will come to close the tip.
+  button.dispatchEvent(pointer("gotpointercapture", "mouse"));
+  flushSync();
+  expect(tip()).toBeNull();
+  view.close();
+});

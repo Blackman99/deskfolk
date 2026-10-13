@@ -34,6 +34,7 @@ import { paneMin, WB_FALLBACK_MIN } from "./pane-mins.ts";
 import type { FloatFrame, Rect, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
 import {
   activeSessionId,
+  chatDragSource,
   dropDuplicateBoundTabs,
   existingTarget,
   findKind,
@@ -46,6 +47,7 @@ import { clampFrame, frameForOpen, stepPastFloats } from "./float-frame.ts";
 import { loadFloatFrames, openKindOf, rememberFloatFrame } from "./open-placement.ts";
 import { openPlacements } from "./open-placement-store.svelte.ts";
 import type { PreviewHandle } from "./preview-context.ts";
+import type { IncomingTab } from "./tab-drag.ts";
 import {
   MENU_COMMANDS,
   applyCommand,
@@ -287,6 +289,9 @@ export class ShellWorkbench {
     }
     return { ...content, side: { kind: "settings", botId: null } };
   };
+
+  /** A conversation pulled out of the list: its tab, where it has one, else a new tab for it. */
+  sessionDragSource = (sessionId: string): IncomingTab => chatDragSource(this.layout, sessionId, this.freshPaneId);
 
   trackPreviewPane = (tabId: string, pane: PreviewHandle | null): void => {
     if (pane) this.previewPanes.set(tabId, pane);

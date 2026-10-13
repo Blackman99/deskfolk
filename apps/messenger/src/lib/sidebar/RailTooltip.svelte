@@ -19,6 +19,7 @@
 		onclick?: (e: MouseEvent) => void;
 		oncontextmenu?: (e: MouseEvent) => void;
 		onkeydown?: (e: KeyboardEvent) => void;
+		onpointerdown?: (e: PointerEvent) => void;
 		children: Snippet;
 		/** Extra attributes (`aria-current`, `data-session`, …) land on the button. */
 		[key: string]: unknown;
@@ -33,6 +34,7 @@
 		onclick,
 		oncontextmenu,
 		onkeydown,
+		onpointerdown,
 		children,
 		...rest
 	}: Props = $props();
@@ -194,6 +196,12 @@
 			clearTimer();
 			open = false;
 		}
+		onpointerdown?.(e);
+	}
+
+	/** A press that becomes a drag takes the pointer: the tip goes then, as the click would have closed it. */
+	function onCapture(): void {
+		hide();
 	}
 
 	function onKeyDown(e: KeyboardEvent): void {
@@ -293,6 +301,7 @@
 	aria-disabled={enabled ? undefined : 'true'}
 	{...rest}
 	onpointerdown={onPointerDown}
+	ongotpointercapture={onCapture}
 	onfocusin={onFocusIn}
 	onfocusout={onFocusOut}
 	onkeydown={onKeyDown}

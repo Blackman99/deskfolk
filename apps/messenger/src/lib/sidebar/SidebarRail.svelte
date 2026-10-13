@@ -43,6 +43,8 @@
 		onOpenSettings: () => void;
 		/** The folded list has no search field; this opens the same search the field does. */
 		onOpenSearch: () => void;
+		/** A press on an avatar that may become a drag into the workbench: only where there is one. */
+		onDragSession?: (event: PointerEvent, session: SessionSummary) => void;
 	};
 
 	let {
@@ -61,7 +63,8 @@
 		onNewTerminal,
 		onOpenArchived,
 		onOpenSettings,
-		onOpenSearch
+		onOpenSearch,
+		onDragSession
 	}: Props = $props();
 
 	const snapshot = $derived(runtime.snapshot);
@@ -226,6 +229,7 @@
 					aria-current={runtime.selectedId === session.id ? 'true' : undefined}
 					onclick={() => void runtime.selectSession(session.id)}
 					oncontextmenu={(e) => onOpenContextMenu(e, session)}
+					onpointerdown={onDragSession ? (e: PointerEvent) => onDragSession(e, session) : undefined}
 				>
 					{#if isFileDropSession(session)}
 						<span class="row-avatar size-md" aria-hidden="true">

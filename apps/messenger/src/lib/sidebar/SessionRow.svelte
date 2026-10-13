@@ -33,6 +33,8 @@
 		botStatus: (botId: string) => SessionStatusResult | undefined;
 		onSelect: () => void;
 		onContextMenu: (e: MouseEvent) => void;
+		/** A press that may become a drag into the workbench: only where there is one. */
+		onPointerDown?: (e: PointerEvent) => void;
 		/** Whether the row is pinned; with `onTogglePin`, the row offers pin and ⋯ under the pointer. */
 		pinned?: boolean;
 		onTogglePin?: () => void;
@@ -55,6 +57,7 @@
 		botStatus,
 		onSelect,
 		onContextMenu,
+		onPointerDown,
 		pinned = false,
 		onTogglePin
 	}: Props = $props();
@@ -75,6 +78,7 @@
 	class:is-unread={unread > 0}
 	onclick={onSelect}
 	oncontextmenu={onContextMenu}
+	onpointerdown={onPointerDown}
 >
 	{#if fileDrop}
 		<span class="row-avatar size-md" aria-hidden="true">

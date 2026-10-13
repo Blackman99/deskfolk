@@ -12,6 +12,7 @@
 import type { Axis, FloatFrame, NodeId, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
 import type { Direction } from "./layout-geometry.ts";
 import type { OpenPlacement } from "./open-placement.ts";
+import type { IncomingTab } from "./tab-drag.ts";
 import { SPLIT_TOWARDS } from "./workbench-commands.ts";
 import {
   activateTab,
@@ -389,6 +390,16 @@ export function dropDuplicateBoundTabs(layout: WorkbenchLayout, id: () => string
   let next = layout;
   for (const at of extra) next = closeTab(next, at.leafId, at.tab.id, id());
   return next;
+}
+
+/**
+ * What dragging a conversation into the workbench carries: the tab it already has — a
+ * conversation is one tab, so that one moves — or a new one, made where it is let go.
+ */
+export function chatDragSource(layout: WorkbenchLayout, sessionId: string, id: () => string): IncomingTab {
+  const at = findBound(layout, "chat", sessionId);
+  if (at) return { leafId: at.leafId, tabId: at.tab.id };
+  return { tab: tabFor({ kind: "chat", sessionId, side: null }, id()) };
 }
 
 /** The conversation the focused pane is showing, which is the one Stop and the URL follow. */
