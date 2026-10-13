@@ -1208,29 +1208,6 @@
 			onCreateBot={openCreateBot}
 		/>
 		</div>
-		{:else if wide}
-		<!--
-			The empty column is the desktop's "pick a session". A phone's home screen is the
-			roster, and mounting this beside the page that is walking out flashes it through.
-		-->
-		<ChatHeader
-			{runtime}
-			{t}
-			{selected}
-			{pinnedSessionIds}
-			onTogglePin={togglePin}
-			onToggleSessionSettings={toggleSessionSettings}
-			onCreateBot={openCreateBot}
-			onShowOnboarding={() => (dismissedOnboarding = false)}
-		/>
-		<ChatStage
-			{runtime}
-			{t}
-			{selected}
-			onOpenProfile={openProfile}
-			onOpenArtifact={artifact.openArtifactPath}
-			onCreateBot={openCreateBot}
-		/>
 		{/if}
 	</section>
 	<ShellPreview {runtime} {t} {wide} {locale} {botsById} {artifact} bind:previewPane />
