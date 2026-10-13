@@ -103,21 +103,7 @@ export function applyDrop(
     return layout;
   }
 
-  if (zone.kind === "float") {
-    const frame: FloatFrame = frameForTearOut(
-      ctx.sourceRect ?? { x: 0, y: 0, width: ctx.floatMin.width, height: ctx.floatMin.height },
-      zone.point,
-      ctx.floatMin,
-      ctx.viewport,
-    );
-    const detached = detach(layout, drag, ctx);
-    const id = ctx.node();
-    const floated: WorkbenchLayout = {
-      ...detached,
-      floating: [...detached.floating, { leaf: makeLeaf(id, moving), frame }],
-    };
-    return focusLeaf(floated, id);
-  }
+  if (zone.kind === "float") return placeTabs(detach(layout, drag, ctx), moving, zone, ctx) ?? layout;
 
   if (zone.kind === "none") return layout;
 
@@ -129,19 +115,49 @@ export function applyDrop(
     return reorderTab(layout, drag.leafId, drag.tabId, gap > from ? gap - 1 : gap);
   }
 
-  const detached = detach(layout, drag, ctx);
+  return placeTabs(detach(layout, drag, ctx), moving, zone, ctx) ?? layout;
+}
+
+/**
+ * Put tabs that are in no pane at a drop zone: floating, into a pane's group, onto its strip at a
+ * position, or in a pane split off one of its edges. Null where there is nowhere to put them —
+ * no zone, or a pane that is not there.
+ */
+function placeTabs(
+  layout: WorkbenchLayout,
+  moving: WorkbenchTab[],
+  zone: DropZone,
+  ctx: DropContext,
+): WorkbenchLayout | null {
+  if (zone.kind === "none") return null;
+
+  if (zone.kind === "float") {
+    const frame: FloatFrame = frameForTearOut(
+      ctx.sourceRect ?? { x: 0, y: 0, width: ctx.floatMin.width, height: ctx.floatMin.height },
+      zone.point,
+      ctx.floatMin,
+      ctx.viewport,
+    );
+    const id = ctx.node();
+    const floated: WorkbenchLayout = {
+      ...layout,
+      floating: [...layout.floating, { leaf: makeLeaf(id, moving), frame }],
+    };
+    return focusLeaf(floated, id);
+  }
+
   // The pane being dropped on may have gone when the source pane closed behind the drag.
-  if (!leafById(detached, zone.leafId)) return layout;
+  if (!leafById(layout, zone.leafId)) return null;
 
   if (zone.kind === "centre") {
-    let next = detached;
+    let next = layout;
     for (const tab of moving) next = addTab(next, zone.leafId, tab);
     return focusLeaf(next, zone.leafId);
   }
 
   if (zone.kind === "tabstrip") {
-    const at = stripIndex(zone.index, leafById(detached, zone.leafId)!.tabs.length);
-    let next = detached;
+    const at = stripIndex(zone.index, leafById(layout, zone.leafId)!.tabs.length);
+    let next = layout;
     moving.forEach((tab, offset) => {
       next = addTab(next, zone.leafId, tab, at + offset);
     });
@@ -150,7 +166,7 @@ export function applyDrop(
 
   const { axis, side } = sideToSplit(zone.side);
   const id = ctx.node();
-  return splitLeaf(detached, zone.leafId, axis, side, moving, { leaf: id, branch: ctx.node() });
+  return splitLeaf(layout, zone.leafId, axis, side, moving, { leaf: id, branch: ctx.node() });
 }
 
 /** Put a floating pane back into the tiled tree at a drop zone. */

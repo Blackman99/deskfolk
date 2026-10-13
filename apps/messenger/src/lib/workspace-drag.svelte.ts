@@ -8,6 +8,8 @@
  * under the pointer gets what was dragged, if it takes it right then.
  */
 
+import { swallowNextClick } from "./pointer-drag.ts";
+
 /** One dragged row: a workspace-relative path, and whether it is a folder. */
 export type WorkspaceDragItem = { path: string; isDir: boolean };
 
@@ -156,14 +158,4 @@ export function ghostPlacement(
   const x = pointer.x + GAP + size.width > viewport.width - EDGE ? pointer.x - GAP - size.width : pointer.x + GAP;
   const y = pointer.y + GAP + size.height > viewport.height - EDGE ? pointer.y - GAP - size.height : pointer.y + GAP;
   return { x: Math.max(EDGE, x), y: Math.max(EDGE, y) };
-}
-
-/** The click a release fires after a drag, which would open the row that was dragged. */
-function swallowNextClick(): void {
-  const swallow = (e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-  window.addEventListener("click", swallow, { capture: true, once: true });
-  setTimeout(() => window.removeEventListener("click", swallow, { capture: true }), 0);
 }

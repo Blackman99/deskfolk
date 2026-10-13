@@ -22,3 +22,13 @@ export function trackPointerDrag(
   target.addEventListener("pointerup", finish);
   if (cancel) target.addEventListener("pointercancel", finish);
 }
+
+/** The click a release fires after a drag, which would open the row that was dragged. */
+export function swallowNextClick(): void {
+  const swallow = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  window.addEventListener("click", swallow, { capture: true, once: true });
+  setTimeout(() => window.removeEventListener("click", swallow, { capture: true }), 0);
+}
