@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Empty places say what to do next
+
+- An empty pane offers New bot and New group above its list of what can be opened; a pane that has lost its conversation offers New bot too.
+- A direct's starters are cards: the icon in a tile, then what it asks. The first, the hand-off, is ringed in the accent; under the pointer a card lifts a little. A conversation with no Bot to greet shows the faded mark instead of a grey circle, and the file drop's mark is a file in the accent tint.
+- While a conversation's history comes over the relay, the transcript shows shimmering shapes of the messages to come instead of a spinner.
+- The first run's team step shows each Bot's portrait, ticks it from anywhere on its face and name, and rings a ticked Bot and the chosen way of working in the accent. Steps slide in from the right going on and from the left going back.
 ### A conversation pane has a header again, and the sidebar answers the pointer
 
 - On a wide window a conversation's pane has a header above the transcript: the portrait, the name, what is going on there ("Thinking", "Waiting for approval") and who is in it or the Bot's model, a pill per approval or question waiting on you that scrolls to the card, and pin, Flow and settings. They are the tab's own actions, which its ⋯ and right-click keep offering. Before, the tab was the header and these hid behind a ⋯ that showed only on hover. The phone keeps its own header.

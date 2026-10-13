@@ -64,6 +64,14 @@
 	const workspaceReadOnly = $derived(runtime.hosted || runtime.remote);
 
 	let currentStep = $state<1 | 2 | 3 | 4>(1);
+	/** Which way the last step change went, so the next pane slides in from that side. */
+	let stepDirection = $state<'forward' | 'back'>('forward');
+	let lastStep: number = 1;
+	$effect.pre(() => {
+		const step = currentStep;
+		stepDirection = step >= lastStep ? 'forward' : 'back';
+		lastStep = step;
+	});
 	/** Nobody on the roster yet: saving setup leads on to the first Bot instead of into the app. */
 	const rosterEmpty = $derived(snapshot.bots.every((bot) => bot.archived_at));
 	/** Setup is saved and behind the user; its steps no longer open. */
@@ -727,7 +735,7 @@
 		{/if}
 
 		<!-- Step Content -->
-		<div class="onboarding-step-content flex flex-col">
+		<div class="onboarding-step-content flex flex-col" data-step-direction={stepDirection}>
 			{#if currentStep === 1}
 				<!-- Step 1: Workspace -->
 				<div class="step-pane">
@@ -1402,7 +1410,34 @@
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
-		animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+		/* Next arrives from the right, Back from the left: the wizard reads as pages turning. */
+		animation: step-in var(--dur-slow) var(--ease-out);
+	}
+
+	.onboarding-step-content[data-step-direction='back'] .step-pane {
+		animation-name: step-in-back;
+	}
+
+	@keyframes step-in {
+		from {
+			opacity: 0;
+			transform: translateX(16px);
+		}
+		to {
+			opacity: 1;
+			transform: none;
+		}
+	}
+
+	@keyframes step-in-back {
+		from {
+			opacity: 0;
+			transform: translateX(-16px);
+		}
+		to {
+			opacity: 1;
+			transform: none;
+		}
 	}
 
 	.step-pane-header {

@@ -1587,6 +1587,13 @@ function ticket23dStoryRuntime() {
 }
 
 export const rc11Stories = {
+  // An empty direct: the Bot's welcome and its starters.
+  'chat-welcome': {
+    component: ChatStage as never,
+    props: { runtime: fakeRuntime(world, { selectedId: 'direct-1' }), t, selected: direct, onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {} },
+    width: 900, height: 820,
+    afterMount(host: HTMLElement) { document.body.style.width = '100vw'; document.body.style.height = '100dvh'; host.style.width = '100vw'; host.style.height = '100dvh'; host.style.display = 'flex'; host.style.flexDirection = 'column'; },
+  },
   // A conversation with an approval and a question still waiting on you: their cards' waiting state.
   'chat-stage-waiting': {
     component: ChatStage as never,

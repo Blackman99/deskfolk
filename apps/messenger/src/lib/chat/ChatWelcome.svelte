@@ -6,6 +6,7 @@
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { SessionGroup } from '../sidebar/session-groups.ts';
 	import { getStarterOptions, handOffStarter } from './starter-prompts.ts';
+	import BrandMark from '../BrandMark.svelte';
 
 	type Props = {
 		t: Copy;
@@ -104,35 +105,35 @@
 						disabled={lockedComposer}
 						onclick={() => pickStarterPrompt(starter.prompt)}
 					>
-						{starter.icon} {starter.label}
+						<span class="starter-icon" aria-hidden="true">{starter.icon}</span>
+						<span class="starter-label">{starter.label}</span>
 					</button>
 				{/each}
 			</div>
 		{/if}
 	{:else}
-		<div class="empty-icon" aria-hidden="true">
-			<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<circle cx="12" cy="12" r="10"></circle>
-				<line x1="8" y1="12" x2="16" y2="12"></line>
-			</svg>
-		</div>
+		<div class="welcome-mark" aria-hidden="true"><BrandMark variant="art" size={64} /></div>
 		<h2>{titleOf(selected)}</h2>
 	{/if}
 	<p class="muted">{t.stream.empty}</p>
 </div>
 
 <style>
+	/* The file drop's own mark: a file in the accent tint, as on its row in the sidebar. */
 	.empty-icon {
 		width: 60px;
 		height: 60px;
-		border-radius: 50%;
-		background: var(--line-subtle);
-		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		background: var(--accent-tint);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		color: var(--muted-light);
+		color: var(--accent);
 		margin-bottom: 14px;
+	}
+
+	.welcome-mark {
+		margin-bottom: 10px;
 	}
 
 	/* A quiet tag beside the name: the accent is kept for what you can act on. */
@@ -184,8 +185,8 @@
 	}
 
 	.welcome-identity-btn:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
+		outline: none;
+		box-shadow: var(--focus-ring);
 	}
 
 	.welcome-avatar {
@@ -221,30 +222,69 @@
 		width: 100%;
 	}
 
+	/*
+	 * A starter is a card: its icon in a tile, then what it asks. Under the pointer it lifts a
+	 * little, the way something you can pick up does; the hand-off, first, is ringed in the accent.
+	 */
 	.starter-chip {
-		padding: 9px 14px;
-		border-radius: var(--radius-md);
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 10px 14px 10px 10px;
+		border-radius: var(--radius-lg);
 		background: var(--pane);
 		border: 1px solid var(--line);
 		color: var(--ink);
 		font-size: 13px;
 		text-align: left;
 		cursor: pointer;
-		transition: 0.15s ease;
-		transition-property: var(--transition-props);
 		box-shadow: var(--shadow-xs);
+		transition-duration: var(--dur-base);
+		transition-timing-function: var(--ease-out);
+		transition-property: var(--transition-props);
+	}
+
+	.starter-icon {
+		flex: none;
+		width: 32px;
+		height: 32px;
+		border-radius: var(--radius-md);
+		display: grid;
+		place-items: center;
+		background: var(--line-subtle);
+		font-size: 16px;
+		line-height: 1;
+	}
+
+	.starter-label {
+		min-width: 0;
+		line-height: 1.4;
 	}
 
 	.starter-chip.is-hand-off {
-		border-color: var(--accent);
-		font-weight: 550;
+		border-color: var(--accent-border);
+		box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-xs);
+		font-weight: 600;
 	}
 
-	.starter-chip:hover {
-		border-color: var(--accent);
+	.starter-chip.is-hand-off .starter-icon {
 		background: var(--accent-tint);
-		color: var(--accent);
-		transform: translateX(3px);
+	}
+
+	.starter-chip:hover:not(:disabled) {
+		border-color: var(--accent-border);
+		box-shadow: var(--shadow-md);
+		transform: translateY(-2px);
+	}
+
+	.starter-chip:active:not(:disabled) {
+		transform: translateY(0) scale(0.99);
+		transition-duration: var(--dur-fast);
+	}
+
+	.starter-chip:focus-visible {
+		outline: none;
+		box-shadow: var(--focus-ring);
 	}
 
 	.starter-chip:disabled {

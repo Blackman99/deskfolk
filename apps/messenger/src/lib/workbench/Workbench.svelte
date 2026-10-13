@@ -85,6 +85,8 @@
 		onClosePane?: (leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
 		emptyActions?: Snippet<[string]>;
+		/** Under an empty pane's title: the ways to start something new. */
+		emptyLead?: Snippet<[string]>;
 		/** The strip's + menu. A second argument is the text typed into its filter. */
 		menuActions?: Snippet<[string, string]>;
 		/** What a tab offers for what it shows: under its ⋯, and first in a right-click on it. */
@@ -108,6 +110,7 @@
 		onClosePane,
 		onMenu,
 		emptyActions,
+		emptyLead,
 		menuActions,
 		tabActions
 	}: Props = $props();
@@ -700,6 +703,7 @@
 				onClosePane={soloLeaf && closable(soloLeaf.id) ? closePane : undefined}
 				{onMenu}
 				{emptyActions}
+				{emptyLead}
 				{menuActions}
 				{tabActions}
 			/>
@@ -730,6 +734,7 @@
 			}}
 			{onMenu}
 			{emptyActions}
+			{emptyLead}
 			{menuActions}
 			{tabActions}
 		/>
@@ -758,6 +763,7 @@
 				{onDock}
 				{onMenu}
 				{emptyActions}
+				{emptyLead}
 				{menuActions}
 				{tabActions}
 			/>

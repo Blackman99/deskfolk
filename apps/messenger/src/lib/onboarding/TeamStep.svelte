@@ -5,6 +5,8 @@
 	import { templatesFor, type BotTemplateId } from '../bot-templates.ts';
 	import { botNameErrorCopy, mapCreateBotError, planCreateBot, type CreateBotDraft, type CreateBotFieldErrors } from '../panels/create-form.ts';
 	import type { TeamMember } from '../admin-mutations.svelte.ts';
+	import { botAvatarColor } from '../avatar.ts';
+	import { rosterLetter } from '../sidebar/roster-letter.ts';
 
 	/**
 	 * First launch's last step (ADR 0085): a way of working — an engine — and the first Bots, from
@@ -149,9 +151,13 @@
 		<p class="team-hint">{c.teamHint}</p>
 		<ul class="team-list">
 			{#each picks as pick (pick.id)}
+				{@const pal = botAvatarColor(pick.id)}
 				<li class="team-bot" class:is-on={pick.on} data-team-template={pick.id}>
 					<div class="team-bot-row">
+						<!-- The whole face and name tick the box, not only the box. -->
+						<label class="team-bot-pick">
 						<input type="checkbox" bind:checked={pick.on} disabled={busy || pick.made !== null} aria-label={pick.name} data-team-pick={pick.id} />
+						<span class="team-avatar" aria-hidden="true" style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};">{rosterLetter(pick.name)}</span>
 						<div class="team-bot-text">
 							<span class="team-bot-name">
 								{pick.name}
@@ -164,6 +170,7 @@
 								<span class="team-bot-duties">{pick.duties.split('\n')[0]}</span>
 							{/if}
 						</div>
+						</label>
 						<button type="button" class="team-edit" disabled={busy || pick.made !== null} aria-expanded={editing === pick.id} onclick={() => (editing = editing === pick.id ? null : pick.id)}>
 							{editing === pick.id ? c.done : c.edit}
 						</button>
@@ -243,15 +250,33 @@
 		text-align: left;
 		padding: 12px 14px;
 		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
+		border-radius: var(--radius-lg);
 		background: var(--pane);
 		color: var(--ink);
 		cursor: pointer;
+		box-shadow: var(--shadow-xs);
+		transition-duration: var(--dur-base);
+		transition-timing-function: var(--ease-out);
+		transition-property: var(--transition-props);
 	}
 
-	.team-way.is-active {
+	.team-way:hover:not(:disabled) {
+		border-color: var(--line-hover);
+		box-shadow: var(--shadow-md);
+		transform: translateY(-1px);
+	}
+
+	.team-way.is-active,
+	.team-way.is-active:hover {
 		border-color: var(--accent);
-		box-shadow: 0 0 0 1px var(--accent);
+		background: color-mix(in srgb, var(--accent-tint) 55%, var(--pane));
+		box-shadow: 0 0 0 3px var(--accent-glow);
+		transform: none;
+	}
+
+	.team-way:focus-visible {
+		outline: none;
+		box-shadow: var(--focus-ring);
 	}
 
 	.team-way-label {
@@ -277,18 +302,61 @@
 	.team-bot {
 		padding: 10px 12px;
 		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
+		border-radius: var(--radius-lg);
 		background: var(--pane);
+		box-shadow: var(--shadow-xs);
+		transition-duration: var(--dur-base);
+		transition-timing-function: var(--ease-out);
+		transition-property: var(--transition-props);
 	}
 
-	.team-bot.is-on {
-		border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+	.team-bot:hover {
+		border-color: var(--line-hover);
+		box-shadow: var(--shadow-sm);
+	}
+
+	/* Ticked: the accent ring and a breath of its tint, so the picked team reads at a glance. */
+	.team-bot.is-on,
+	.team-bot.is-on:hover {
+		border-color: var(--accent);
+		background: color-mix(in srgb, var(--accent-tint) 45%, var(--pane));
+		box-shadow: 0 0 0 3px var(--accent-glow);
 	}
 
 	.team-bot-row {
 		display: flex;
 		align-items: center;
 		gap: 10px;
+	}
+
+	.team-bot-pick {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		cursor: pointer;
+	}
+
+	.team-bot-pick input {
+		flex: none;
+		width: 18px;
+		height: 18px;
+		margin: 0;
+		accent-color: var(--accent);
+		cursor: pointer;
+	}
+
+	.team-avatar {
+		flex: none;
+		width: 36px;
+		height: 36px;
+		border-radius: 50%;
+		border: 1px solid;
+		display: grid;
+		place-items: center;
+		font-size: 14px;
+		font-weight: 700;
 	}
 
 	.team-bot-text {
@@ -335,12 +403,20 @@
 
 	.team-edit {
 		flex: none;
-		padding: 0;
+		height: 28px;
+		padding: 0 10px;
 		border: 0;
+		border-radius: 7px;
 		background: none;
 		color: var(--accent);
 		font-size: 12px;
+		font-weight: 600;
 		cursor: pointer;
+		transition: background-color var(--dur-fast) var(--ease-out);
+	}
+
+	.team-edit:hover:not(:disabled) {
+		background: var(--accent-tint);
 	}
 
 	.team-edit:disabled {
@@ -391,7 +467,7 @@
 	.team-fields input:focus,
 	.team-fields textarea:focus {
 		border-color: var(--accent);
-		box-shadow: 0 0 0 3px var(--accent-glow);
+		box-shadow: 0 0 0 3px var(--glow, var(--accent-glow));
 	}
 
 	@media (max-width: 520px) {

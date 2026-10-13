@@ -30,6 +30,7 @@
 		onStripPointerDown?: (event: PointerEvent, leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
 		emptyActions?: Snippet<[string]>;
+		emptyLead?: Snippet<[string]>;
 		menuActions?: Snippet<[string, string]>;
 		tabActions?: (leafId: string, tab: WorkbenchTab) => TabAction[];
 	};
@@ -69,6 +70,7 @@
 		onStripPointerDown={rest.onStripPointerDown}
 		onMenu={rest.onMenu}
 		emptyActions={rest.emptyActions}
+		emptyLead={rest.emptyLead}
 		menuActions={rest.menuActions}
 		tabActions={rest.tabActions}
 	/>
@@ -120,6 +122,7 @@
 				onStripPointerDown={rest.onStripPointerDown}
 				onMenu={rest.onMenu}
 				emptyActions={rest.emptyActions}
+				emptyLead={rest.emptyLead}
 				menuActions={rest.menuActions}
 				tabActions={rest.tabActions}
 			/>

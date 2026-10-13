@@ -16,6 +16,7 @@
 	import { indexBotDmsByOrigin } from './bot-dm-entries.ts';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import EmptyState from '../EmptyState.svelte';
+	import Button from '../Button.svelte';
 	import {
 		buildMessageLookup,
 		formatDateDivider,
@@ -978,15 +979,26 @@
 		{/if}
 	{/if}
 	{#if !selected}
-		<EmptyState title={t.top.pickSession} hint={t.top.pickSessionHint} />
+		<EmptyState title={t.top.pickSession} hint={t.top.pickSessionHint}>
+			<Button variant="primary" icon="user-plus" onclick={onCreateBot}>{t.sidebar.addBot}</Button>
+		</EmptyState>
 	{:else if stream.length === 0 && view?.historyLoading}
 		<!-- A remote transcript arrives over the relay; saying so beats an empty room that fills
 		     without warning. -->
-		<div class="history-loading m-auto flex flex-col items-center gap-3 text-center py-20" role="status">
-			<svg class="history-spinner" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-				<path d="M12 3a9 9 0 1 0 9 9" />
-			</svg>
-			<p class="muted">{t.stream.loadingHistory}</p>
+		<div class="history-loading w-full flex flex-col gap-9 py-10" role="status">
+			<!-- Shaped like what is coming: two replies and a line of yours, shimmering in place. -->
+			{#each [0.9, 0.62] as width, i (i)}
+				<div class="history-sk-row" aria-hidden="true">
+					<span class="history-sk history-sk-avatar"></span>
+					<span class="flex flex-col gap-4 flex-1 pt-2">
+						<span class="history-sk" style="width: 22%; height: 10px"></span>
+						<span class="history-sk" style="width: {width * 100}%; height: 10px"></span>
+						<span class="history-sk" style="width: {width * 70}%; height: 10px"></span>
+					</span>
+				</div>
+			{/each}
+			<span class="history-sk history-sk-mine" aria-hidden="true"></span>
+			<p class="muted text-12 text-center">{t.stream.loadingHistory}</p>
 		</div>
 	{:else if stream.length === 0 && delegations.length === 0}
 		<ChatWelcome {t} {selected} {selectedKind} {selectedPeerBot} {locale} {fileDrop} {lockedComposer} {onOpenProfile} {pickStarterPrompt} {titleOf} />
@@ -1250,23 +1262,39 @@
 	}
 
 	/* The seams of the mounted window: what it is waiting for, and how to reach further back. */
-	.history-spinner {
-		color: var(--muted);
-		animation: historySpin 0.9s linear infinite;
+	.history-sk-row {
+		display: flex;
+		gap: 12px;
 	}
 
-	@keyframes historySpin {
+	.history-sk {
+		display: block;
+		border-radius: var(--radius-sm);
+		background: linear-gradient(90deg, var(--line-subtle) 0%, var(--line) 45%, var(--line-subtle) 90%);
+		background-size: 200% 100%;
+		animation: history-shimmer 1.4s linear infinite;
+	}
+
+	.history-sk-avatar {
+		flex: none;
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+	}
+
+	.history-sk-mine {
+		align-self: flex-end;
+		width: 40%;
+		height: 36px;
+		border-radius: var(--radius-lg) var(--radius-lg) var(--radius-xs) var(--radius-lg);
+	}
+
+	@keyframes history-shimmer {
 		from {
-			transform: rotate(0deg);
+			background-position: 100% 0;
 		}
 		to {
-			transform: rotate(360deg);
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.history-spinner {
-			animation: none;
+			background-position: -100% 0;
 		}
 	}
 

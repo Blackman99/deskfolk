@@ -73,6 +73,8 @@
 		settingsSide: Snippet<[string, string | null]>;
 		/** The conversation's header, above its transcript: the host's, since its actions are the tab's. */
 		chatBar?: Snippet<[WorkbenchTab, string]>;
+		/** Start a new Bot, from a conversation that offers it. */
+		onCreateBot?: () => void;
 	}
 
 	let {
@@ -90,7 +92,8 @@
 		onJump,
 		onCloseSide,
 		settingsSide,
-		chatBar
+		chatBar,
+		onCreateBot = () => {}
 	}: Props = $props();
 
 	const content = $derived(contentOfTab(tab));
@@ -238,9 +241,7 @@
 					onOpenProfile={(botId) => onOpenProfile(botId, content.sessionId)}
 					onOpenArtifact={(relpath, att, messageId, forceTree) =>
 						onOpenArtifact(relpath, att, messageId, forceTree, null, null, content.sessionId)}
-					onCreateBot={() => {
-						/* The empty roster's "create a Bot" lives on the phone header, not in a pane. */
-					}}
+					{onCreateBot}
 				/>
 			</div>
 			{#if side}

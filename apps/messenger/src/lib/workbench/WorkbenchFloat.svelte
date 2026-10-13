@@ -30,6 +30,7 @@
 		onDock?: (leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
 		emptyActions?: Snippet<[string]>;
+		emptyLead?: Snippet<[string]>;
 		menuActions?: Snippet<[string, string]>;
 		tabActions?: (leafId: string, tab: WorkbenchTab) => TabAction[];
 	};
@@ -56,6 +57,7 @@
 		onDock,
 		onMenu,
 		emptyActions,
+		emptyLead,
 		menuActions,
 		tabActions
 	}: Props = $props();
@@ -182,6 +184,7 @@
 		}}
 		{onMenu}
 		{emptyActions}
+		{emptyLead}
 		{menuActions}
 		{tabActions}
 	/>

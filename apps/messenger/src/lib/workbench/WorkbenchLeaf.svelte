@@ -33,6 +33,8 @@
 		onMenu?: (event: MouseEvent, leafId: string) => void;
 		/** What an empty pane offers to fill itself with. */
 		emptyActions?: Snippet<[string]>;
+		/** Under an empty pane's title, before its list: the ways to start something new. */
+		emptyLead?: Snippet<[string]>;
 		/**
 		 * The same offer, shaped for the strip's menu: a fixed-width list rather than a wrapping
 		 * row of chips, so a long history of shells does not stretch it across the window.
@@ -63,6 +65,7 @@
 		onStripPointerDown,
 		onMenu,
 		emptyActions,
+		emptyLead,
 		menuActions,
 		tabActions
 	}: Props = $props();
@@ -475,6 +478,9 @@
 					<p class="wb-empty-title">{t.pane.empty}</p>
 					<p class="wb-empty-hint">{menuActions || emptyActions ? t.pane.emptyPick : t.pane.emptyHint}</p>
 				</div>
+				{#if emptyLead}
+					<div class="wb-empty-lead">{@render emptyLead(leaf.id)}</div>
+				{/if}
 				{#if menuActions}
 					<!-- The + menu's own list and filter, set down in the pane: one look for one offer. -->
 					<div
@@ -957,6 +963,13 @@
 		padding: 24px 16px;
 		text-align: center;
 	}
+	.wb-empty-lead {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 8px;
+	}
+
 	.wb-empty-head {
 		display: flex;
 		flex-direction: column;

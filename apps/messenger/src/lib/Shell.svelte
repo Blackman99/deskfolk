@@ -11,6 +11,7 @@
 	import ImageCopy from './ImageCopy.svelte';
 	import WorkspaceDragGhost from './WorkspaceDragGhost.svelte';
 	import ToastHost from './ToastHost.svelte';
+	import Button from './Button.svelte';
 	import { dangerCopy, shouldDropConfirm } from './overlays/danger-confirm.ts';
 	import { ShellDangerConfirm } from './overlays/danger-confirm.svelte.ts';
 	import type { ProviderEditorState } from './settings/provider-form.ts';
@@ -1108,6 +1109,7 @@
 						onCloseSide={closePaneSide}
 						settingsSide={paneSettings}
 						chatBar={paneChatBar}
+						onCreateBot={openCreateBot}
 					/>
 				{/snippet}
 				{#snippet tabLabel(tab: WorkbenchTab)}
@@ -1121,6 +1123,11 @@
 							title={workbench.paneTitle(tab)}
 						/>
 					{/if}
+				{/snippet}
+				{#snippet emptyLead()}
+					<!-- An empty pane is also where something new starts: a Bot, a group. -->
+					<Button variant="primary" icon="user-plus" onclick={openCreateBot}>{t.sidebar.addBot}</Button>
+					<Button variant="secondary" icon="users" onclick={openCreateGroup}>{t.sidebar.addGroup}</Button>
 				{/snippet}
 				{#snippet emptyActions(leafId: string)}
 					<button type="button" class="pane-open" onclick={() => void workbench.openNewTerminal(leafId)}>
