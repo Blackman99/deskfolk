@@ -180,7 +180,7 @@
 											aria-label={t.chat.moreActions}
 											onclick={(e) => stage.handleMessageContextMenu(e, item.message)}
 										>
-											<Icon name="more" size={15} />
+											<Icon name="more" size={14} />
 										</button>
 									</div>
 								</div>
@@ -606,20 +606,26 @@
 	}
 
 	/* Message Toolbar on Hover. The strip spans the bubble and the pill sits in its far corner; on a
-	   bubble narrower than the pill the strip grows to fit, away from the avatar rather than over it. */
+	   bubble narrower than the pill the strip grows to fit, away from the avatar rather than over it.
+	   It stands on the message's top edge rather than over its first line, which it used to cover. */
 	.msg-toolbar {
 		position: absolute;
-		top: -18px;
+		bottom: 100%;
 		left: 8px;
 		width: calc(100% - 16px);
 		min-width: max-content;
 		display: flex;
 		justify-content: flex-end;
 		opacity: 0;
+		/* Off the message the pill still answers the pointer while it fades: a pointer heading for it
+		   from the words leaves the message on the way, and used to find it gone. */
+		visibility: hidden;
 		transform: translateY(2px);
 		pointer-events: none;
-		transition: 0.15s ease;
-		transition-property: var(--transition-props);
+		transition:
+			opacity 0.2s ease,
+			transform 0.2s ease,
+			visibility 0s linear 0.2s;
 		z-index: 10;
 	}
 
@@ -627,28 +633,39 @@
 		display: flex;
 		align-items: center;
 		gap: 1px;
-		padding: 3px;
+		padding: 2px;
 		/* Shrunk to a one-word bubble, "✓ 已复制" used to break after every character. */
 		white-space: nowrap;
 		background: var(--pane);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-md);
-		pointer-events: none;
+		pointer-events: auto;
 	}
 
 	.msg:hover .msg-toolbar,
 	.msg-segment:hover .msg-toolbar {
 		opacity: 1;
+		visibility: visible;
 		transform: translateY(0);
+		transition:
+			opacity 0.15s ease,
+			transform 0.15s ease,
+			visibility 0s;
 	}
 
-	.msg:hover .msg-toolbar-pill,
-	.msg-segment:hover .msg-toolbar-pill {
-		pointer-events: auto;
+	/* Without the fade the pill would be gone at once yet still take clicks; it stays whole instead. */
+	@media (prefers-reduced-motion: reduce) {
+		.msg-toolbar {
+			transition:
+				opacity 0s 0.2s,
+				visibility 0s 0.2s;
+		}
 	}
 
+	/* Your bubble has room above its words, so the pill steps a little onto it and stays attached. */
 	.msg-wrap.is-user .msg-toolbar {
+		bottom: calc(100% - 4px);
 		left: auto;
 		right: 8px;
 		justify-content: flex-start;
@@ -657,9 +674,9 @@
 	.act-btn,
 	.act-more,
 	.act-react {
-		min-width: 28px;
-		height: 28px;
-		padding: 0 7px;
+		min-width: 24px;
+		height: 24px;
+		padding: 0 5px;
 		color: var(--muted);
 		border-radius: 7px;
 		display: flex;
@@ -686,7 +703,7 @@
 	/* A quick reaction: the emoji itself, which grows a little under the pointer. */
 	.act-react {
 		padding: 0;
-		font-size: 15px;
+		font-size: 14px;
 		line-height: 1;
 	}
 
@@ -700,13 +717,13 @@
 	}
 
 	.act-btn :global(svg) {
-		width: 15px;
-		height: 15px;
+		width: 14px;
+		height: 14px;
 	}
 
 	.act-sep {
 		width: 1px;
-		height: 16px;
+		height: 14px;
 		margin: 0 3px;
 		background: var(--line);
 	}

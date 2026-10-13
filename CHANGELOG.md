@@ -6,6 +6,9 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A message's hover actions no longer cover its first line
+
+- The bar of quick reactions and actions that shows over a message under the pointer is smaller (24px buttons, 30px tall instead of 36px) and stands on the message's top edge instead of over its first line: above your bubble's words, and above a Bot's reply — for its first part, in the empty end of the name line. Leaving the message, the bar can still be reached while it fades, so a pointer heading for it on a slant gets there.
 ### A Bot that hands over a ticket is called to the next one again
 
 - A Bot that handed over one ticket of a job and stopped could be left there until you spoke: results of generation jobs that came back just before its segment moved to a ticket stayed queued on work nothing would run again, and the app took them for work the Bot still had in line on the whole job, so it never called the Bot to the job's next ticket. Work a segment leaves with mail still in line now stays open, so the mail is heard in a later segment, and mail already stranded that way no longer keeps the Bot from being called back.
