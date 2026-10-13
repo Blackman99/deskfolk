@@ -134,6 +134,7 @@
 
 <style>
 	.artifact-tree-menu {
+		animation: menuIn var(--dur-base) var(--ease-out);
 		position: fixed;
 		z-index: 1000;
 		min-width: 196px;

@@ -135,6 +135,20 @@
   border-color: var(--danger);
 }
 
+/*
+ * A menu opening: it fades in over --dur-base. Opacity only, never a transform: these menus
+ * measure themselves with getBoundingClientRect to stay on screen, and a menu caught mid-scale
+ * measures smaller and lands a few pixels off.
+ */
+@keyframes menuIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @keyframes popoverIn {
   from {
     transform: translateY(-6px);
@@ -183,11 +197,10 @@
   border-top-right-radius: calc(var(--radius-lg) - 1px);
 }
 
+/* Sentence case at the caption size: uppercase with tracking does nothing for Chinese. */
 .panel-card-title {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: var(--text-caption);
+  font-weight: 650;
   color: var(--muted);
 }
 

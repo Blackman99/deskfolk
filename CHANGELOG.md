@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Losing the connection keeps your place; menus and choices look finished
+
+- Once the app has been connected, losing the connection no longer swaps the whole window for a "can't reach the runtime" screen: the window stays where it was, faded and not clickable, under a banner at the top that says it is reconnecting or offers Retry. Coming back, the window is rebuilt as before. The first connection still shows the centred screen.
+- Menus that used to appear all at once (Stop, the tools menu, the + menu, a picture's menu, the workspace tree's and the terminal's) now fade in.
+- Settings' sidebar lifts the open page off the list as a card, as the session sidebar does.
+- Choice chips (templates, API format, thinking levels) are pills in the body font instead of small monospace tags; a model's own name keeps its monospace.
+- Card titles in Bot and group settings are sentence case instead of letter-spaced capitals.
 ### Empty places say what to do next
 
 - An empty pane offers New bot and New group above its list of what can be opened; a pane that has lost its conversation offers New bot too.

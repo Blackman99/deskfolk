@@ -1396,6 +1396,7 @@
 	}
 
 	.terminal-menu {
+		animation: menuIn var(--dur-base) var(--ease-out);
 		position: absolute;
 		top: calc(100% + 4px);
 		right: 0;

@@ -803,6 +803,7 @@
 	 * panes (z 40 and up) while staying under the window menus (1000).
 	 */
 	.wb-new-menu {
+		animation: menuIn var(--dur-base) var(--ease-out);
 		position: fixed;
 		z-index: 500;
 		display: flex;

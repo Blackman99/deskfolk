@@ -165,6 +165,7 @@
 	}
 
 	.stop-menu-list {
+		animation: menuIn var(--dur-base) var(--ease-out);
 		position: absolute;
 		right: 0;
 		bottom: calc(100% + 6px);

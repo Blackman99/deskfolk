@@ -270,9 +270,30 @@ const runtime = new MessengerRuntime();
 	const connectingCopy = $derived(
 		runtime.hostUnreachable === 'host' ? copy.disconnected.connectingHost : copy.disconnected.connecting
 	);
+
+	/*
+	 * Once the shell has been up, losing the connection no longer swaps it for a blank screen: it
+	 * stays where it was, faded and inert, under a banner that says what is going on. Coming back,
+	 * it mounts afresh, exactly as it did when it had been taken away, so everything that
+	 * re-attaches on mount (terminals, streams, history) does so as before. Before the first
+	 * connection there is nothing to keep, and the centred screen still answers.
+	 */
+	let shellShown = $state(false);
+	let shellGeneration = $state(0);
+	let wasConnected = false;
+	$effect(() => {
+		const connected = runtime.connection === 'connected';
+		untrack(() => {
+			if (connected && !wasConnected && shellShown) shellGeneration += 1;
+			if (connected) shellShown = true;
+		});
+		wasConnected = connected;
+	});
+	const offline = $derived(runtime.connection !== 'connected');
+	const keepShell = $derived(shellShown && !showPairing && runtime.tabRole !== 'standby');
 </script>
 
-{#if runtime.connection !== 'connected'}
+{#if offline && !keepShell}
 	{#if showPairing}
 		<PairingScreen {runtime} t={copy} />
 	{:else if runtime.tabRole === 'standby'}
@@ -315,8 +336,20 @@ const runtime = new MessengerRuntime();
 		</main>
 	{/if}
 {:else}
+	{#if offline}
+		<div class="offline-veil" aria-hidden="true"></div>
+		<div class="offline-banner" role="status" data-testid={runtime.connection === 'connecting' ? 'connecting' : 'unreachable'}>
+			{#if runtime.connection === 'connecting'}<span class="offline-spinner" aria-hidden="true"></span>{/if}
+			<span class="offline-text">{runtime.connection === 'connecting' ? connectingCopy : disconnectedCopy}</span>
+			{#if runtime.connection !== 'connecting'}
+				<button type="button" class="offline-retry" data-testid="retry-connection" onclick={() => runtime.retryConnection()}>
+					{copy.disconnected.retry}
+				</button>
+			{/if}
+		</div>
+	{/if}
 	{#if runtime.draftReconnect && !runtime.draftReconnect.confirm}
-		<div class="draft-reconnect" role="status">
+		<div class="draft-reconnect" class:is-offline={offline} role="status">
 			<p>{copy.remote.draftConfirm}</p>
 			<div class="disconnected-actions">
 				<button type="button" onclick={() => runtime.confirmDraftReconnect()}>{copy.remote.draftSend}</button>
@@ -324,7 +357,11 @@ const runtime = new MessengerRuntime();
 			</div>
 		</div>
 	{/if}
-	<Shell bind:this={shell} {runtime} />
+	<div class="shell-host" inert={offline}>
+		{#key shellGeneration}
+			<Shell bind:this={shell} {runtime} />
+		{/key}
+	</div>
 {/if}
 
 <style>
@@ -401,6 +438,106 @@ const runtime = new MessengerRuntime();
 	@media (prefers-reduced-motion: reduce) {
 		.disconnected.is-connecting::after {
 			animation: none;
+		}
+	}
+
+	/* The shell stays laid out exactly as before; this box only carries `inert` while offline. */
+	.shell-host {
+		display: contents;
+	}
+
+	/* Over the inert shell: it fades back so the banner reads first, and nothing under it takes a click. */
+	.offline-veil {
+		position: fixed;
+		inset: 0;
+		z-index: 900;
+		background: color-mix(in srgb, var(--bg) 45%, transparent);
+		-webkit-backdrop-filter: saturate(0.6);
+		backdrop-filter: saturate(0.6);
+		animation: offline-in var(--dur-slow) var(--ease-out);
+	}
+
+	.offline-banner {
+		position: fixed;
+		top: calc(env(safe-area-inset-top, 0px) + 10px);
+		left: 50%;
+		z-index: 901;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		max-width: min(560px, calc(100% - 24px));
+		min-height: 44px;
+		padding: 6px 6px 6px 16px;
+		border-radius: var(--radius-full);
+		background: var(--pane);
+		box-shadow: inset 0 0 0 1px var(--warn-line), var(--shadow-lg);
+		color: var(--ink);
+		font-size: var(--text-small);
+		font-weight: 600;
+		transform: translateX(-50%);
+		animation: offline-banner-in var(--dur-slow) var(--ease-out);
+	}
+
+	.offline-text {
+		min-width: 0;
+	}
+
+	.offline-spinner {
+		flex: none;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		border: 2px solid var(--line);
+		border-top-color: var(--accent);
+		animation: spin 1s linear infinite;
+	}
+
+	.offline-retry {
+		flex: none;
+		height: 32px;
+		padding: 0 14px;
+		border-radius: var(--radius-full);
+		background: var(--accent);
+		color: var(--on-accent);
+		font-weight: 600;
+		transition: background-color var(--dur-base) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+	}
+
+	.offline-retry:hover {
+		background: var(--accent-hover);
+	}
+
+	.offline-retry:active {
+		transform: scale(0.97);
+	}
+
+	/* Without a spinner the banner waits for Retry; give its line the room the spinner had. */
+	.offline-banner:not(:has(.offline-spinner)) {
+		padding-left: 18px;
+	}
+
+	.draft-reconnect.is-offline {
+		top: calc(env(safe-area-inset-top, 0px) + 64px);
+		z-index: 902;
+	}
+
+	@keyframes offline-in {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+
+	@keyframes offline-banner-in {
+		from {
+			opacity: 0;
+			transform: translate(-50%, -8px);
+		}
+		to {
+			opacity: 1;
+			transform: translate(-50%, 0);
 		}
 	}
 </style>

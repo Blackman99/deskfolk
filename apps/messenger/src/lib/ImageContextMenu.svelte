@@ -92,6 +92,7 @@
 
 <style>
 	.image-context-menu {
+		animation: menuIn var(--dur-base) var(--ease-out);
 		position: fixed;
 		z-index: 1400;
 		min-width: 148px;

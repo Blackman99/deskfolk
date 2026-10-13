@@ -279,6 +279,7 @@
 
 <style>
 	.tools-menu {
+		animation: menuIn var(--dur-base) var(--ease-out);
 		position: fixed;
 		z-index: 100;
 		display: flex;
