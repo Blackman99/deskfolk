@@ -71,6 +71,8 @@
 		 * draft and armed confirms it holds, which is also why only one conversation has them open.
 		 */
 		settingsSide: Snippet<[string, string | null]>;
+		/** The conversation's header, above its transcript: the host's, since its actions are the tab's. */
+		chatBar?: Snippet<[WorkbenchTab, string]>;
 	}
 
 	let {
@@ -87,7 +89,8 @@
 		onPreviewPane,
 		onJump,
 		onCloseSide,
-		settingsSide
+		settingsSide,
+		chatBar
 	}: Props = $props();
 
 	const content = $derived(contentOfTab(tab));
@@ -227,7 +230,7 @@
 	{#if session}
 		<div class="pane-chat">
 			<div class="pane-conversation">
-				<!-- The tab above is this conversation's header: avatar, name, and the ⋯. -->
+				{@render chatBar?.(tab, leafId)}
 				<ChatStage
 					{runtime}
 					{t}

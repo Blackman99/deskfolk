@@ -19,6 +19,10 @@
 	import ToolsMenu from './ToolsMenu.svelte';
 	import ToolsToggle from './ToolsToggle.svelte';
 	import SessionRow from './SessionRow.svelte';
+	import { flip } from 'svelte/animate';
+	import { cubicOut } from 'svelte/easing';
+	import { prefersReducedMotion } from '../reduced-motion.ts';
+	import { isSessionPinned } from './pinned-sessions.ts';
 	import PinnedRoster from './PinnedRoster.svelte';
 	import SidebarFoot from './SidebarFoot.svelte';
 	import UsagePage from '../usage/UsagePage.svelte';
@@ -45,6 +49,8 @@
 		/** Marks the row the context menu belongs to. */
 		contextMenuSessionId: string | null;
 		onOpenContextMenu: (e: MouseEvent, session: SessionSummary) => void;
+		/** Pin or unpin a conversation from its row, without opening its menu. */
+		onTogglePin?: (sessionId: string) => void;
 		onToggleWorkspace: () => void;
 		onOpenRoutines: () => void;
 		onOpenSpend: () => void;
@@ -74,6 +80,7 @@
 		workspaceOpen,
 		contextMenuSessionId,
 		onOpenContextMenu,
+		onTogglePin,
 		onToggleWorkspace,
 		onOpenRoutines,
 		onOpenSpend,
@@ -84,6 +91,9 @@
 		onCreateGroup,
 		onCollapse
 	}: Props = $props();
+
+	/** A row that moves up the list (a new message) slides there instead of jumping. */
+	const rowFlip = () => ({ duration: prefersReducedMotion() ? 0 : 240, easing: cubicOut });
 
 	const snapshot = $derived(runtime.snapshot);
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
@@ -332,22 +342,24 @@
 				{#each archivedSessions as session (session.id)}
 					{@const status = statusOf(session)}
 					{@const unread = unreadOf(session)}
-					<SessionRow
-						{session}
-						{t}
-						on={runtime.selectedId === session.id}
-						contextOpen={contextMenuSessionId === session.id}
-						archived
-						title="{titleOf(session)}{archivedSuffix(session)}"
-						time={timeOf(session)}
-						{status}
-						preview={previewOf(session) || t.sidebar.noMessages}
-						{unread}
-						bots={botsById}
-						botStatus={botStatusOf}
-						onSelect={() => void runtime.selectSession(session.id)}
-						onContextMenu={(e) => onOpenContextMenu(e, session)}
-					/>
+					<div class="row-flip" animate:flip={rowFlip()}>
+						<SessionRow
+							{session}
+							{t}
+							on={runtime.selectedId === session.id}
+							contextOpen={contextMenuSessionId === session.id}
+							archived
+							title="{titleOf(session)}{archivedSuffix(session)}"
+							time={timeOf(session)}
+							{status}
+							preview={previewOf(session) || t.sidebar.noMessages}
+							{unread}
+							bots={botsById}
+							botStatus={botStatusOf}
+							onSelect={() => void runtime.selectSession(session.id)}
+							onContextMenu={(e) => onOpenContextMenu(e, session)}
+						/>
+					</div>
 				{/each}
 			{/if}
 		{:else}
@@ -386,21 +398,25 @@
 			{#each groupRows as session (session.id)}
 				{@const status = statusOf(session)}
 				{@const unread = unreadOf(session)}
-				<SessionRow
-					{session}
-					{t}
-					on={runtime.selectedId === session.id}
-					contextOpen={contextMenuSessionId === session.id}
-					title={titleOf(session)}
-					time={timeOf(session)}
-					{status}
-					preview={previewOf(session) || t.sidebar.noMessages}
-					{unread}
-					bots={botsById}
-					botStatus={botStatusOf}
-					onSelect={() => void runtime.selectSession(session.id)}
-					onContextMenu={(e) => onOpenContextMenu(e, session)}
-				/>
+				<div class="row-flip" animate:flip={rowFlip()}>
+					<SessionRow
+						{session}
+						{t}
+						on={runtime.selectedId === session.id}
+						contextOpen={contextMenuSessionId === session.id}
+						title={titleOf(session)}
+						time={timeOf(session)}
+						{status}
+						preview={previewOf(session) || t.sidebar.noMessages}
+						{unread}
+						bots={botsById}
+						botStatus={botStatusOf}
+						onSelect={() => void runtime.selectSession(session.id)}
+						onContextMenu={(e) => onOpenContextMenu(e, session)}
+						pinned={isSessionPinned(pinnedSessionIds, session.id)}
+						onTogglePin={onTogglePin ? () => onTogglePin(session.id) : undefined}
+					/>
+				</div>
 			{/each}
 			{#if !workingIds || youBotRows.length > 0}
 				<div class="ghead">
@@ -411,21 +427,25 @@
 			{#each youBotRows as session (session.id)}
 				{@const status = statusOf(session)}
 				{@const unread = unreadOf(session)}
-				<SessionRow
-					{session}
-					{t}
-					on={runtime.selectedId === session.id}
-					contextOpen={contextMenuSessionId === session.id}
-					title="{titleOf(session)}{archivedSuffix(session)}"
-					time={timeOf(session)}
-					{status}
-					preview={previewOf(session) || t.sidebar.noMessages}
-					{unread}
-					bots={botsById}
-					botStatus={botStatusOf}
-					onSelect={() => void runtime.selectSession(session.id)}
-					onContextMenu={(e) => onOpenContextMenu(e, session)}
-				/>
+				<div class="row-flip" animate:flip={rowFlip()}>
+					<SessionRow
+						{session}
+						{t}
+						on={runtime.selectedId === session.id}
+						contextOpen={contextMenuSessionId === session.id}
+						title="{titleOf(session)}{archivedSuffix(session)}"
+						time={timeOf(session)}
+						{status}
+						preview={previewOf(session) || t.sidebar.noMessages}
+						{unread}
+						bots={botsById}
+						botStatus={botStatusOf}
+						onSelect={() => void runtime.selectSession(session.id)}
+						onContextMenu={(e) => onOpenContextMenu(e, session)}
+						pinned={isSessionPinned(pinnedSessionIds, session.id)}
+						onTogglePin={onTogglePin ? () => onTogglePin(session.id) : undefined}
+					/>
+				</div>
 			{/each}
 			{#if !workingIds || botBotVisible.length > 0}
 				<div class="ghead">
@@ -446,7 +466,7 @@
 			{#each botBotVisible as session (session.id)}
 				{@const status = statusOf(session)}
 				{@const source = resolveBotDmOrigin(session, sessionsById)}
-				<div class="row-stack" class:is-on={runtime.selectedId === session.id}>
+				<div class="row-stack" class:is-on={runtime.selectedId === session.id} animate:flip={rowFlip()}>
 					<SessionRow
 						{session}
 						{t}

@@ -85,6 +85,7 @@
 	import ChatHeader from './chat/ChatHeader.svelte';
 	import ChatTabLabel from './chat/ChatTabLabel.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
+	import PaneChatBar from './chat/PaneChatBar.svelte';
 	import { trackPointerDrag } from './pointer-drag.ts';
 	import UsageWidget from './usage/UsageWidget.svelte';
 	// SettingsModal.svelte (with its tabs, provider/MCP/notification sub-panels and editor flyout) is
@@ -734,7 +735,7 @@
 	}
 
 	/**
-	 * What a conversation's tab offers: the actions its header used to hold, under the tab's ⋯
+	 * What a conversation's tab offers: in the pane's header above the transcript, under the tab's ⋯
 	 * while the pointer is on the tab, and first in a right-click on the tab. Each acts on that
 	 * tab's own conversation, which need not be the one in front: settings bring the tab forward
 	 * first, since they slide over its transcript.
@@ -918,6 +919,14 @@
 />
 
 <!-- The pictures of a conversation tab's actions, the same ones its header draws. -->
+{#snippet paneChatBar(tab: WorkbenchTab, leafId: string)}
+	{@const barContent = contentOfTab(tab)}
+	{@const barSession = barContent?.kind === 'chat' ? sessionsById.get(barContent.sessionId) : undefined}
+	{#if barSession}
+		<PaneChatBar {runtime} {t} session={barSession} actions={chatTabActions(leafId, tab)} />
+	{/if}
+{/snippet}
+
 {#snippet pinIcon()}
 	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 		<line x1="12" y1="17" x2="12" y2="22"></line>
@@ -1045,6 +1054,7 @@
 			workspaceOpen={runtime.workspaceOpen}
 			contextMenuSessionId={sessionMenu.contextMenu?.session.id ?? null}
 			onOpenContextMenu={sessionMenu.openContextMenu}
+			onTogglePin={sessionMenu.handleMenuTogglePin}
 			onToggleWorkspace={artifact.toggleWorkspaceExplorer}
 			onOpenRoutines={artifact.openRoutinesFromUi}
 			onOpenSpend={artifact.openSpendFromUi}
@@ -1097,6 +1107,7 @@
 						onJump={jumpToTrace}
 						onCloseSide={closePaneSide}
 						settingsSide={paneSettings}
+						chatBar={paneChatBar}
 					/>
 				{/snippet}
 				{#snippet tabLabel(tab: WorkbenchTab)}

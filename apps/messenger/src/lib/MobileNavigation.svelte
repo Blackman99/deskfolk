@@ -38,8 +38,11 @@
 			grid-template-columns: repeat(3, minmax(0, 1fr));
 			height: calc(60px + env(safe-area-inset-bottom));
 			padding: 3px 12px calc(3px + env(safe-area-inset-bottom));
-			border-top: 1px solid var(--line);
-			background: var(--pane);
+			border-top: 1px solid var(--line-subtle);
+			/* Frosted, so the list scrolling under it stays faintly there instead of being cut off. */
+			background: color-mix(in srgb, var(--pane) 82%, transparent);
+			-webkit-backdrop-filter: blur(20px) saturate(1.6);
+			backdrop-filter: blur(20px) saturate(1.6);
 		}
 		button {
 			display: flex;
@@ -59,9 +62,10 @@
 		}
 		button.is-active { color: var(--accent); font-weight: 650; }
 		button.is-active svg { fill: var(--accent-tint); }
-		button:active { background: var(--row-hover); }
-		button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+		button { transition: color var(--dur-base) var(--ease-out), background-color var(--dur-base) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
+		button:active { background: var(--row-hover); transform: scale(0.96); }
+		button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 		.navigation-icon { position: relative; display: flex; }
-		.navigation-update { position: absolute; top: -1px; right: -5px; width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
+		.navigation-update { position: absolute; top: -1px; right: -5px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 	}
 </style>

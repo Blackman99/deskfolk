@@ -4,6 +4,7 @@
 	import type { Copy } from '../copy.ts';
 	import PaneContextMenu from './PaneContextMenu.svelte';
 	import BrandMark from '../BrandMark.svelte';
+	import Icon from '../Icon.svelte';
 
 	type Props = {
 		leaf: LeafNode;
@@ -361,7 +362,7 @@
 						onclick={(event) => {
 							event.stopPropagation();
 							onCloseTab(leaf.id, tab.id);
-						}}>×</button
+						}}><Icon name="x" size={12} /></button
 					>
 				</div>
 			{/each}
@@ -377,7 +378,7 @@
 				aria-controls={newTabOpen ? `wb-new-${leaf.id}` : undefined}
 				title={t.pane.newTab}
 				onclick={toggleNewTab}
-				onkeydown={onNewTabKey}>＋</button
+				onkeydown={onNewTabKey}><Icon name="plus" size={14} /></button
 			>
 		{/if}
 		{#if onMenu}
@@ -386,7 +387,7 @@
 				class="wb-pane-menu"
 				aria-haspopup="menu"
 				aria-label={t.pane.title}
-				onclick={(event) => onMenu(event, leaf.id)}>⋯</button
+				onclick={(event) => onMenu(event, leaf.id)}><Icon name="more" size={14} /></button
 			>
 		{/if}
 		{#if leaf.tabs.length === 0 && onClosePane}
@@ -398,7 +399,7 @@
 				onclick={(event) => {
 					event.stopPropagation();
 					onClosePane?.(leaf.id);
-				}}>×</button
+				}}><Icon name="x" size={12} /></button
 			>
 		{/if}
 		{#if newTabOpen && canOpen}
@@ -711,6 +712,8 @@
 		opacity: 0.45;
 	}
 	.wb-tab-close {
+		display: inline-grid;
+		place-items: center;
 		width: 18px;
 		height: 18px;
 		flex: 0 0 auto;
@@ -763,6 +766,8 @@
 	.wb-new-tab,
 	.wb-pane-menu,
 	.wb-pane-close {
+		display: inline-grid;
+		place-items: center;
 		flex: 0 0 auto;
 		width: 24px;
 		height: 24px;

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Bot, SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
+	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
 	import { unreadBadge } from './unread.ts';
 	import type { SessionStatusResult } from './session-status.ts';
@@ -32,6 +33,9 @@
 		botStatus: (botId: string) => SessionStatusResult | undefined;
 		onSelect: () => void;
 		onContextMenu: (e: MouseEvent) => void;
+		/** Whether the row is pinned; with `onTogglePin`, the row offers pin and ⋯ under the pointer. */
+		pinned?: boolean;
+		onTogglePin?: () => void;
 	};
 
 	let {
@@ -50,9 +54,18 @@
 		bots,
 		botStatus,
 		onSelect,
-		onContextMenu
+		onContextMenu,
+		pinned = false,
+		onTogglePin
 	}: Props = $props();
 </script>
+
+<!--
+	Under the pointer a row offers its two most used actions without a right-click: pin, and ⋯ for
+	the rest of its menu (archiving a direct archives its Bot, so that stays one step further away).
+	They sit beside the row's button, never inside it: a button in a button is not a button.
+-->
+<div class="row-shell" class:has-actions={Boolean(onTogglePin)}>
 
 <button
 	type="button"
@@ -91,6 +104,31 @@
 		<span class="unread-dot" title={t.sidebar.unread}>{unreadBadge(unread)}</span>
 	{/if}
 </button>
+{#if onTogglePin}
+	<div class="row-actions">
+		<button
+			type="button"
+			class="row-act"
+			class:is-on={pinned}
+			aria-pressed={pinned}
+			title={pinned ? t.sidebar.unpin : t.sidebar.pin}
+			aria-label={pinned ? t.sidebar.unpin : t.sidebar.pin}
+			onclick={onTogglePin}
+		>
+			<Icon name="pin" size={14} />
+		</button>
+		<button
+			type="button"
+			class="row-act"
+			title={t.chat.moreActions}
+			aria-label={t.chat.moreActions}
+			onclick={onContextMenu}
+		>
+			<Icon name="more" size={14} />
+		</button>
+	</div>
+{/if}
+</div>
 
 
 <style>
@@ -113,7 +151,8 @@
 		border: 1px solid transparent;
 		background: transparent;
 		color: inherit;
-		transition: 0.12s ease;
+		transition-duration: var(--dur-base);
+		transition-timing-function: var(--ease-out);
 		transition-property: var(--transition-props);
 	}
 
@@ -121,13 +160,21 @@
 		background: var(--row-hover);
 	}
 
-	.row.is-on:hover {
-		background: var(--accent-tint);
+	/* A pressed row gives a little, so a click reads as landing. */
+	.row:active {
+		transform: scale(0.985);
+		transition-duration: var(--dur-fast);
 	}
 
-	/* The tint alone marks the open conversation; an outline on top of it was one signal too many. */
-	.row.is-on {
-		background: var(--accent-tint);
+	/*
+	 * The open conversation is lifted off the list: the pane's own white with a hairline and a soft
+	 * shadow, as if it were the card the pane on the right is showing. Shape, not colour, says which.
+	 */
+	.row.is-on,
+	.row.is-on:hover {
+		background: var(--pane);
+		border-color: var(--line);
+		box-shadow: var(--shadow-sm);
 	}
 
 	/* Ring colors according to active / hover / container contexts */
@@ -136,11 +183,85 @@
 	}
 
 	.row:hover :global(.row-avatar) {
-		--avatar-ring: var(--accent-tint);
+		--avatar-ring: var(--sidebar-bg);
 	}
 
 	.row.is-on :global(.row-avatar) {
-		--avatar-ring: var(--accent-tint);
+		--avatar-ring: var(--pane);
+	}
+
+	.row-shell {
+		position: relative;
+	}
+
+	.row-actions {
+		position: absolute;
+		top: 50%;
+		right: 8px;
+		display: flex;
+		gap: 2px;
+		padding: 2px;
+		border-radius: 9px;
+		background: var(--pane);
+		box-shadow: inset 0 0 0 1px var(--line), var(--shadow-md);
+		opacity: 0;
+		transform: translate(4px, -50%);
+		pointer-events: none;
+		transition-duration: var(--dur-base);
+		transition-timing-function: var(--ease-out);
+		transition-property: opacity, transform;
+	}
+
+	.row-act {
+		display: grid;
+		place-items: center;
+		width: 26px;
+		height: 26px;
+		border-radius: 7px;
+		color: var(--muted);
+		transition-duration: var(--dur-fast);
+		transition-timing-function: var(--ease-out);
+		transition-property: var(--transition-props);
+	}
+
+	.row-act:hover {
+		background: var(--row-hover);
+		color: var(--ink);
+	}
+
+	.row-act:active {
+		transform: scale(0.9);
+	}
+
+	.row-act.is-on {
+		color: var(--accent);
+	}
+
+	.row-act:focus-visible {
+		outline: none;
+		box-shadow: var(--focus-ring);
+	}
+
+	.row-time,
+	.unread-dot {
+		transition: opacity var(--dur-base) var(--ease-out);
+	}
+
+	/* Only where there is a pointer to hover with; a phone keeps its long-press menu. */
+	@media (hover: hover) and (min-width: 681px) {
+		.row-shell.has-actions:hover .row-actions,
+		.row-shell.has-actions:focus-within .row-actions {
+			opacity: 1;
+			transform: translate(0, -50%);
+			pointer-events: auto;
+		}
+
+		.row-shell.has-actions:hover .row-time,
+		.row-shell.has-actions:hover .unread-dot,
+		.row-shell.has-actions:focus-within .row-time,
+		.row-shell.has-actions:focus-within .unread-dot {
+			opacity: 0;
+		}
 	}
 
 	.row.is-on :global(.row-avatar) :global(.slot-overflow) {
@@ -353,7 +474,7 @@
 			position: relative;
 		}
 
-		:global(.row) + .row::before {
+		:global(.row-flip + .row-flip) .row::before {
 			content: '';
 			position: absolute;
 			left: 74px;

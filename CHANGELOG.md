@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A conversation pane has a header again, and the sidebar answers the pointer
+
+- On a wide window a conversation's pane has a header above the transcript: the portrait, the name, what is going on there ("Thinking", "Waiting for approval") and who is in it or the Bot's model, a pill per approval or question waiting on you that scrolls to the card, and pin, Flow and settings. They are the tab's own actions, which its ⋯ and right-click keep offering. Before, the tab was the header and these hid behind a ⋯ that showed only on hover. The phone keeps its own header.
+- Under the pointer a sidebar row offers pin and ⋯ (the rest of its menu) in place of its time. A pressed row gives a little, and the open conversation is lifted off the list as a card rather than tinted.
+- A row that moves up the list, because something new came in, slides there instead of jumping.
+- A pinned conversation that is working shows the accent dot, as everywhere else, instead of green.
+- The tab strip's ×, + and ⋯ are drawn icons rather than text characters.
+- On a phone the bottom bar is frosted, its update dot is the accent rather than red (an update is not an error), and the conversation's ⋯ menu drops in.
 ### The chat says what waits on you, and new lines rise into place
 
 - An approval still waiting on you has a warn-tinted head with a shield, "Waiting for your approval", and a soft ring round the card; Allow once is the one filled button, Always allow sits beside it, Deny is the quiet way out. A question still waiting has a purple "Waiting for your answer" and ring. Once answered, both settle into a plain card with the outcome.

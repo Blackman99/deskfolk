@@ -258,9 +258,10 @@
 		width: 9px;
 		height: 9px;
 		border-radius: 50%;
-		background: var(--ok);
+		/* Working is the accent everywhere: the row, the portrait dot and this. Green means done. */
+		background: var(--accent);
 		border: 2px solid var(--sidebar-bg);
-		box-shadow: 0 0 6px var(--ok);
+		box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent);
 		animation: pulse-dot 1.4s ease-in-out infinite;
 		z-index: 2;
 	}

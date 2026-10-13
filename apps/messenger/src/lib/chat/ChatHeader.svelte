@@ -560,6 +560,19 @@
 		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-lg);
 		z-index: 20;
+		transform-origin: top right;
+		animation: header-menu-in var(--dur-base) var(--ease-out);
+	}
+
+	@keyframes header-menu-in {
+		from {
+			opacity: 0;
+			transform: translateY(-4px) scale(0.97);
+		}
+		to {
+			opacity: 1;
+			transform: none;
+		}
 	}
 
 	.mobile-actions-menu button {

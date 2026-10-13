@@ -28,3 +28,23 @@ export function waitingCards(
   }
   return out;
 }
+
+/**
+ * The same, read straight from the snapshot for one conversation: for a pane's header, which has
+ * no transcript of its own to read.
+ */
+export function waitingInSession(
+  messages: readonly Message[],
+  approvals: readonly Approval[],
+  turns: readonly Turn[],
+  sessionId: string,
+  pendingAskCapable: boolean | undefined,
+): Waiting[] {
+  const items: TranscriptItem[] = [];
+  for (const message of messages) {
+    if (message.session_id === sessionId && (message.kind === "approval" || message.kind === "ask")) {
+      items.push({ type: "message", message });
+    }
+  }
+  return waitingCards(items, approvals, turns, pendingAskCapable);
+}
