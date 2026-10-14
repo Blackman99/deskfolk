@@ -699,7 +699,8 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
         try {
           const message = item.message_id ? store.getMessage(item.message_id) : store.getMessage(current.trigger_message_id);
           return [{ seq: item.seq, message, item: { author: item.author, body: item.body_snapshot, checkBack: item.source === "timer",
-            ...(item.said_in ? { where: item.said_in } : {}) } }];
+            ...(item.said_in ? { where: item.said_in } : {}),
+            ...(item.reply_in ? { replyIn: item.reply_in } : {}) } }];
         } catch {
           return [];
         }

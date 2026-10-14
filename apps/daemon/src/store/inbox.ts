@@ -46,6 +46,11 @@ export type InboxItem = {
   disposed_at: string | null;
   /** The change of yours this row tells its Bot of (`message_edits.id`, ADR 0063); null on every other row. */
   edit_id?: string | null;
+  /**
+   * Your line said to this Bot in another conversation (`said_in`) and heard by its turn on the job
+   * here: that conversation's id, to answer you there. Null on every other row.
+   */
+  reply_in?: string | null;
 };
 
 /** As much of a Bot's word on what it did with a line as is kept. */
@@ -102,6 +107,8 @@ export function queueInboxItem(
     author: string;
     body: string;
     saidIn?: string | null;
+    /** The conversation the line is to be answered in, when it was said to this Bot elsewhere. */
+    replyIn?: string | null;
     source: InboxSource;
     kind: InboxKind;
     priority: number;
@@ -113,15 +120,21 @@ export function queueInboxItem(
   if (input.messageId) {
     const existing = ctx.db.query<InboxItem, Array<string | null>>(`SELECT * FROM inbox_items WHERE bot_id = ?
       AND message_id = ? AND turn_id IS ? AND task_id IS ? AND ticket_id IS ? AND source = ?
-      AND state IN ('queued','held','delivered') ORDER BY seq LIMIT 1`).get(input.botId, input.messageId,
+      AND state IN ('queued','held','delivered') ORDER BY reply_in IS NULL, seq LIMIT 1`).get(input.botId, input.messageId,
         input.turnId, input.taskId, input.ticketId, input.source);
-    if (existing) return existing;
+    // The job's turn elsewhere may hear your line before the line is routed to this Bot: learning
+    // then that it was said to this Bot marks the row. Read already, the line comes once more with the mark.
+    if (existing && input.replyIn && !existing.reply_in && existing.state !== "delivered") {
+      return ctx.db.query<InboxItem, [string, number]>(`UPDATE inbox_items SET reply_in = ? WHERE seq = ? RETURNING *`)
+        .get(input.replyIn, existing.seq)!;
+    }
+    if (existing && !(input.replyIn && !existing.reply_in)) return existing;
   }
   return ctx.db
     .query<InboxItem, Array<string | number | null>>(
       `INSERT INTO inbox_items (id, bot_id, session_id, turn_id, task_id, ticket_id, message_id, author, body_snapshot, said_in,
-         source, kind, priority, state, possible_control, created_at, work_item_id, wakes, source_turn_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?) RETURNING *`,
+         source, kind, priority, state, possible_control, created_at, work_item_id, wakes, source_turn_id, reply_in)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?) RETURNING *`,
     )
     .get(
       ulid(Date.parse(now)),
@@ -142,6 +155,7 @@ export function queueInboxItem(
       input.workItemId ?? null,
       input.wakes === false ? 0 : 1,
       input.sourceTurnId ?? null,
+      input.replyIn ?? null,
     )!;
 }
 

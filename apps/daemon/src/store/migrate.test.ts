@@ -386,6 +386,31 @@ describe("a database an earlier build created", () => {
     }
   });
 
+  test("an inbox from before a line had a conversation to be answered in gets the column, and its rows are kept", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
+    const file = join(dir, "state.sqlite");
+    try {
+      let store = new Store({ filename: file });
+      const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const direct = writer.direct_session.id;
+      const line = store.postMessage(direct, { body: "标题短一点" });
+      const turn = store.createTurn({ sessionId: direct, botId: writer.bot.id, triggerMessageId: line.id });
+      const item = store.queueInboxItem({ botId: writer.bot.id, sessionId: direct, turnId: turn.id, taskId: null, ticketId: null,
+        messageId: line.id, author: "user", body: line.body, source: "user", kind: "change", priority: 1 });
+      store.close();
+      const old = new Database(file, { strict: true });
+      old.run("ALTER TABLE inbox_items DROP COLUMN reply_in");
+      old.close();
+
+      store = new Store({ filename: file });
+      expect(store.db.query<{ name: string }, []>("PRAGMA table_info(inbox_items)").all().map((row) => row.name)).toContain("reply_in");
+      expect(store.getInboxItem(item.seq)).toMatchObject({ body_snapshot: "标题短一点", reply_in: null });
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a database from before your words were kept gets what its transcript still holds, once, and the ledger's triggers", () => {
     const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
     const file = join(dir, "state.sqlite");

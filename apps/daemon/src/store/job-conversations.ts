@@ -63,13 +63,20 @@ export function confirmedLeadsOf(ctx: Pick<StoreContext, "db">, conversations: J
 }
 
 /**
- * Where to wake a Bot on this job when it has no work item to say: the first of the job's
- * conversations it is a member of, where you spoke about the job last first, then its home; null
- * when it is in none. Waking it in the home it is no member of opens nothing, and the call-back
- * sits queued for good (2026-10-03).
+ * Where to wake a Bot on this job when it has no work item to say: where it last worked on the job,
+ * then the job's conversations, where you spoke about the job last first, then its home — the first
+ * it is still a member of; null when it is in none. Waking it in the home it is no member of opens
+ * nothing, and the call-back sits queued for good (2026-10-03). Where you spoke last alone moved a
+ * job's next tickets into a group whose lines about it the Bot had heard in its direct, where the
+ * job was being done (2026-10-14).
  */
 export function conversationFor(ctx: Pick<StoreContext, "db">, botId: string, taskId: string, conversations = jobConversations(ctx, taskId)): string | null {
-  for (const sessionId of [...conversations.spoken, ...(conversations.home ? [conversations.home] : [])]) {
+  // A conversation with you: a Bot pair's thread it last worked in is no place to pick the job up.
+  const worked = ctx.db.query<{ session_id: string }, [string, string]>(`SELECT t.session_id FROM turns t
+    WHERE t.bot_id = ? AND t.task_id = ? AND IFNULL(t.mode, 'work') = 'work' AND EXISTS (SELECT 1 FROM session_participants u
+      WHERE u.session_id = t.session_id AND u.member = 'user' AND u.left_at IS NULL)
+    ORDER BY t.created_at DESC, t.id DESC LIMIT 1`).get(botId, taskId)?.session_id;
+  for (const sessionId of [...(worked ? [worked] : []), ...conversations.spoken, ...(conversations.home ? [conversations.home] : [])]) {
     if (ctx.db.query(`SELECT 1 FROM sessions s JOIN session_participants p ON p.session_id = s.id AND p.member = ? AND p.left_at IS NULL
       WHERE s.id = ? AND s.archived_at IS NULL`).get(botId, sessionId)) return sessionId;
   }

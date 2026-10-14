@@ -12,6 +12,7 @@ import { migrateEndReasons } from "./end-reason-migration";
 import { migrateExternalJobs, migrateStrayExternalJobs } from "./external-jobs-migration";
 import { migrateFiling } from "./filing-migration";
 import { HELD_TURN_TRIGGERS, migrateStopsForNow } from "./holds";
+import { migrateInboxReplyIn } from "./inbox-migration";
 import { migrateLargeJobs } from "./large-job-migration";
 import { migrateLessons } from "./lessons";
 import { migrateMessageEdits } from "./message-edits";
@@ -299,6 +300,7 @@ export function migrateSchema(db: Database): void {
   migrateMessageControl(db);
   migrateMessageEdits(db);
   migrateMessageWithdraw(db);
+  migrateInboxReplyIn(db);
   if (!tables.includes("terminals")) {
     db.run(`
       CREATE TABLE IF NOT EXISTS terminals (

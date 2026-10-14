@@ -182,7 +182,7 @@ function quoteChange(ctx: StoreContext, row: MessageRow, body: string, now: stri
 }
 
 type UnreadItem = { seq: number; bot_id: string; body_snapshot: string; edit_id: string | null };
-type Reader = { botId: string; turnId: string | null; saidIn: string | null; sessionId: string | null };
+type Reader = { botId: string; turnId: string | null; saidIn: string | null; sessionId: string | null; replyIn?: string | null };
 type LiveTurn = { id: string; session_id: string; work_item_id: string | null; task_id: string | null; ticket_id: string | null };
 type Route = {
   turnId: string | null;
@@ -229,7 +229,7 @@ function tellReaders(ctx: StoreContext, line: MessageRow, edit: MessageEdit): nu
     // An item read: the line, heard where the Bot was working, or a note about it.
     ...ctx.db
       .query<Reader, [string]>(
-        `SELECT bot_id AS botId, delivered_turn_id AS turnId, said_in AS saidIn, session_id AS sessionId
+        `SELECT bot_id AS botId, delivered_turn_id AS turnId, said_in AS saidIn, session_id AS sessionId, reply_in AS replyIn
          FROM inbox_items WHERE message_id = ? AND state IN ${READ} ORDER BY seq`,
       )
       .all(line.id),
@@ -258,8 +258,8 @@ function tellReaders(ctx: StoreContext, line: MessageRow, edit: MessageEdit): nu
     // as the answer, and a stop would drop it rather than hold it.
     ctx.db.run(
       `INSERT INTO inbox_items (id, bot_id, work_item_id, session_id, turn_id, task_id, ticket_id, message_id, author,
-         body_snapshot, said_in, source, kind, priority, wakes, state, possible_control, created_at, edit_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'user', ?, ?, 'user', 'change', 1, 1, ?, 0, ?, ?)`,
+         body_snapshot, said_in, source, kind, priority, wakes, state, possible_control, created_at, edit_id, reply_in)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'user', ?, ?, 'user', 'change', 1, 1, ?, 0, ?, ?, ?)`,
       [
         ulid(Date.parse(now)),
         reader.botId,
@@ -274,6 +274,8 @@ function tellReaders(ctx: StoreContext, line: MessageRow, edit: MessageEdit): nu
         route.held ? "held" : "queued",
         now,
         edit.id,
+        // Said to it over there: the change is answered there too.
+        reader.sessionId === route.sessionId ? reader.replyIn ?? null : null,
       ],
     );
   }

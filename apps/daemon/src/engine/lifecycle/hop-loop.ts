@@ -227,12 +227,18 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
     const cached = new Set(live.inbox.flatMap((entry) => entry.seq === undefined ? [] : [entry.seq]));
     const queued = store.queuedForTurn(turnId);
     const stillQueued = new Set(queued.map((item) => item.seq));
-    live.inbox = live.inbox.filter((entry) => entry.seq === undefined || stillQueued.has(entry.seq));
+    // A line the job's turn heard across and then again as said to this Bot is one row, read once.
+    const seen = new Set<number>();
+    live.inbox = live.inbox.filter((entry) => entry.seq === undefined || (stillQueued.has(entry.seq) && !seen.has(entry.seq) && Boolean(seen.add(entry.seq))));
     // A line you changed before this turn read it reads as it now does (ADR 0063): the rows hold the words.
     const words = new Map(queued.map((item) => [item.seq, item.body_snapshot] as const));
+    // And it reads as said to this Bot once the row says so, which routing may learn after the turn had it.
+    const replyIn = new Map(queued.flatMap((item) => item.reply_in ? [[item.seq, item.reply_in] as const] : []));
     for (const entry of live.inbox) {
       const now = entry.seq === undefined ? undefined : words.get(entry.seq);
       if (now !== undefined && now !== entry.item.body) entry.item = { ...entry.item, body: now };
+      const there = entry.seq === undefined ? undefined : replyIn.get(entry.seq);
+      if (there !== undefined && there !== entry.item.replyIn) entry.item = { ...entry.item, replyIn: there };
     }
     for (const item of queued) {
       if (cached.has(item.seq)) continue;
@@ -240,7 +246,8 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
       try { message = item.message_id ? store.getMessage(item.message_id) : store.getMessage(current.trigger_message_id); }
       catch { continue; }
       live.inbox.push({ seq: item.seq, message, item: { author: item.author, body: item.body_snapshot,
-        checkBack: item.source === "timer", ...(item.said_in ? { where: item.said_in } : {}) } });
+        checkBack: item.source === "timer", ...(item.said_in ? { where: item.said_in } : {}),
+        ...(item.reply_in ? { replyIn: item.reply_in } : {}) } });
     }
     // What was said to this Bot since the last hop, read out now: the turn goes on with it.
     // What was said to this Bot since the last hop. The tool loop delivers at the end of a hop, so

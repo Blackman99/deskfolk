@@ -25,6 +25,11 @@ export type HeardItem = {
   tag?: string;
   /** Where it was said, when that is not the hearing turn's session. */
   where?: string;
+  /**
+   * The id of that conversation when the line was said there to this Bot, for it to answer: nobody
+   * there answers in its place while its turn on the job runs here.
+   */
+  replyIn?: string;
 };
 
 /** How much of each heard line goes into the note; the whole line is in the transcript anyway. */
@@ -45,7 +50,10 @@ function heardLine(item: HeardItem, en: boolean): string {
   const body = clip(item.body, HEARD_BODY_MAX);
   if (item.checkBack) return en ? `[Your check-back] ${tag}${body}` : `【你约的回看】${tag}${body}`;
   const where = item.where ? (en ? `, in ${item.where}` : `，在${item.where}里`) : "";
-  return `【${item.author}${where}】${tag}${body}`;
+  const toYou = item.replyIn
+    ? (en ? `, said to you — reply there with session_id ${item.replyIn}` : `，对你说的，回话发到 session_id ${item.replyIn}`)
+    : "";
+  return `【${item.author}${where}${toYou}】${tag}${body}`;
 }
 
 /**
@@ -70,6 +78,13 @@ export function heardNote(locale: Locale, items: readonly (HeardItem & { label?:
   const deal = en
     ? "Say what you did with each line of the user's, by its id, in end_turn's inbox: adopted, answered, declined (say why), or deferred."
     : "用户的话逐条处置：照改 / 已回答 / 不采纳并说明理由（写进 end_turn 的 inbox，带上每条的 id）。";
+  // Said to this Bot over there, while its turn on the job runs here: nobody there answers it, and
+  // the turn's own closing reply goes here, not there (2026-10-14, 「@创意导演 你呢」 went unanswered).
+  const answerThere = items.some((item) => item.replyIn)
+    ? en
+      ? "A line marked \"said to you\" was said for you to answer in that conversation, and nobody there answers it for you: answer it there with send_message and its session_id; that does not end this segment."
+      : "标着「对你说的」的那句，是在那个会话里要你回答的，那边没有别人替你回：用 send_message 带上它的 session_id 在那边回答它；这不会结束这一段。"
+    : null;
   // 直接插入 (ADR 0069): the step it was on was stopped for these, so say so — it just saw its call
   // refused "by the user", which is not a no to the work.
   if (en) {
@@ -78,6 +93,7 @@ export function heardNote(locale: Locale, items: readonly (HeardItem & { label?:
         ? `(App note) ${items.length} line${items.length === 1 ? "" : "s"} came in, and the user asked for them to be read now: the step you were on was stopped for that, not refused. A command that was running did not finish; run it again if you still need it.`
         : `(App note) ${items.length} line${items.length === 1 ? "" : "s"} came in. This turn was not interrupted.`,
       ...lines,
+      ...(answerThere ? [answerThere] : []),
       deal,
     ].join("\n");
   }
@@ -86,6 +102,7 @@ export function heardNote(locale: Locale, items: readonly (HeardItem & { label?:
       ? `（应用提示）收件 ${items.length} 条，用户要你马上读：刚才那一步是为这个停下的，不是用户拒绝了它。正在跑的命令没跑完，还需要的话重跑。`
       : `（应用提示）收件 ${items.length} 条（这一段没有被打断）：`,
     ...lines,
+    ...(answerThere ? [answerThere] : []),
     deal,
   ].join("\n");
 }

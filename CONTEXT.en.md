@@ -275,7 +275,7 @@ A Bot's choice to join in or sit out on an unaddressed user line in an old group
 _Avoid_: a segment for every bystander, joining on failure, judging every Bot line again, every group must judge
 
 **Mention**:
-A way to name a group message's recipients: one Bot or all present Bots, bypassing participation judgement but not holds, attribution or execution slots. If that Bot is already working on the same plan, the mention makes the existing segment hear the line, not redirect. Details: [Behavior · Mention](docs/behavior.en.md#mention).
+A way to name a group message's recipients: one Bot or all present Bots, bypassing participation judgement but not holds, attribution or execution slots. If that Bot is already working on the same plan, the mention makes the existing segment hear the line, not redirect; when that segment runs in another conversation, the Bot answers you here, where you named it. Details: [Behavior · Mention](docs/behavior.en.md#mention).
 _Avoid_: mention means pause, a group mention cloning itself, mention bypassing a hold, a name in a path is a recipient
 
 **Thread**:

@@ -32,6 +32,19 @@ describe("what a heard line says about itself", () => {
     const en = heardNote("en", [{ author: "Researcher", body: "the API is ready", checkBack: false }]);
     expect(en.toLowerCase()).not.toContain("carry on");
     expect(en).not.toContain("do not stop the work in hand");
+    // Nor when a line said to it elsewhere asks for an answer over there.
+    const toYou = { author: "user", body: "你呢", checkBack: false, where: "群「视频制作」", replyIn: "S1" };
+    for (const phrase of ["接着干", "不要为了回复停下"]) expect(heardNote("zh", [toYou])).not.toContain(phrase);
+    expect(heardNote("en", [toYou]).toLowerCase()).not.toMatch(/carry on|keep working/);
+  });
+
+  test("a line said to this Bot in another conversation is marked, with where to answer it", () => {
+    const line = { author: "user", body: "and you?", checkBack: false, where: 'group "Video"', replyIn: "S1", label: "U7" };
+    const en = heardNote("en", [line]);
+    expect(en).toContain('\n[U7 user, in group "Video", said to you — reply there with session_id S1] and you?\n');
+    expect(en).toContain("answer it there with send_message and its session_id; that does not end this segment.");
+    // Only then: a line heard from elsewhere without the mark is answered over there.
+    expect(heardNote("en", [{ ...line, replyIn: undefined }])).not.toContain("said to you");
   });
 
   test("a redirect says which job the old turn was on, and unread lines keep their tags", () => {

@@ -4,7 +4,7 @@ import { sessionLabel } from "../../context";
 import { planTagger } from "../../context/transcript";
 import { ENGINE_LEVELS } from "../../store/schema-gate";
 import { recordHeard } from "../inbox-record";
-import { mayWake } from "../control";
+import { mayWake, type WakeCause } from "../control";
 import type { Live, InboxEntry } from "../types";
 import type { LifecycleDeps } from "../lifecycle";
 
@@ -13,7 +13,8 @@ export function createHearing(deps: LifecycleDeps) {
 
   /**
    * Puts a line into a live turn's inbox: tagged with the plan it is about, and with where it was
-   * said when that is another conversation.
+   * said when that is another conversation. A line of yours that woke this Bot there (`user_line`)
+   * was said to it, and only it answers it: the row keeps that conversation, to answer you in.
    */
   function hearIn(
     turn: Turn,
@@ -21,6 +22,7 @@ export function createHearing(deps: LifecycleDeps) {
     trigger: Message,
     entry: Omit<InboxEntry, "message">,
     about: { taskId: string | null; ticketId: string | null },
+    cause?: WakeCause,
   ): void {
     if (live && answersAsk(turn, live, trigger)) return;
     const locale = store.settingsCached().locale;
@@ -34,9 +36,10 @@ export function createHearing(deps: LifecycleDeps) {
         author = trigger.author;
       }
     }
+    const toYou = cause === "user_line" && trigger.kind === "user" && trigger.author === USER_MEMBER && trigger.session_id !== turn.session_id;
     const heard = recordHeard(store, turn, {
       ...entry,
-      item: { ...entry.item, author, tag: tag || undefined, where },
+      item: { ...entry.item, author, tag: tag || undefined, where, ...(toYou ? { replyIn: trigger.session_id } : {}) },
       message: trigger,
       ...(trigger.session_id === turn.session_id ? {} : { elsewhere: true }),
     });

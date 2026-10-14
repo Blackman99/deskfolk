@@ -773,7 +773,11 @@ CREATE TABLE IF NOT EXISTS inbox_items (
   disposed_at TEXT,
   -- The change of yours (message_edits.id) this item tells a Bot of: you changed a line it had
   -- already read (ADR 0063). Null on every other item.
-  edit_id TEXT
+  edit_id TEXT,
+  -- Your line said to this Bot in another conversation (said_in) while its turn on that job runs
+  -- here: the conversation to answer you in, where nobody else will. Null when it was said here, or
+  -- reached this Bot only because it is about the same job.
+  reply_in TEXT
 );
 
 CREATE INDEX IF NOT EXISTS inbox_items_waiting ON inbox_items (bot_id, session_id, state);

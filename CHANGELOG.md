@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A Bot you @ in a group while it works on that job elsewhere answers you there
+
+- When you named a Bot in a group (or asked the group something it was judged to answer) while it was working on that same job in your direct, the line went into its running turn in the direct, and the Bot was told someone in the group would answer — so nobody did. Such a line now reaches that turn marked as said to it, with where to answer, and the Bot answers you in the group without stopping the work in hand. A line that reaches it only because it is about the same job, said to someone else, still gets no reply from it there.
+
+### A job's next part is picked up where its Bot was doing the job
+
+- When a part of a job sat untouched, the app woke its Bot in the last conversation you had mentioned the job in. One question in a group about a job a Bot was doing in your direct was enough to move the job's remaining parts into that group, while its reminders to itself still came in the direct. The Bot is now woken where it last worked on the job (a conversation you are in), and only a Bot that has not worked on it yet is woken where you last mentioned it. Parts already moved before this change stay where they are.
+
 ### The home page's "Walk away." clip no longer sits on an empty desktop
 
 - The home page's second clip showed about nine seconds of an empty desktop while the render ran, sped up but still with nothing moving. It now keeps a second and a half of that stillness and plays at normal speed, so the window hiding to the tray and coming back can be followed, and ends a moment after the window is back; the clip is about 5 seconds instead of 9–10. The same recording is cut again; the other two clips and the still are unchanged.

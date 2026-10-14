@@ -50,6 +50,7 @@ export function recordHeard(
     author: entry.item.author,
     body: entry.item.body,
     saidIn: entry.item.where ?? null,
+    replyIn: entry.item.replyIn ?? null,
     source,
     kind: inboxKindOf(entry.item.body, entry.item.checkBack),
     priority: inboxPriorityOf(source),

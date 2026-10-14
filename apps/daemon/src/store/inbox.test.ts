@@ -108,4 +108,25 @@ describe("inbox items", () => {
     expect(kept.message_id).toBeNull();
     expect(kept.state).toBe("queued");
   });
+
+  test("learning that a line was said to this Bot marks its row; one already read comes once more, marked", () => {
+    const { store, turn } = fixture();
+    const again = (item: { message_id: string | null; body_snapshot: string }, replyIn?: string) => store.queueInboxItem({
+      botId: turn.bot_id, sessionId: turn.session_id, turnId: turn.id, taskId: null, ticketId: null,
+      messageId: item.message_id, author: "user", body: item.body_snapshot, source: "user", kind: "question", priority: 1,
+      ...(replyIn ? { replyIn } : {}),
+    });
+    // Waiting: the same row, now marked; asked once more unmarked, it stays as it is.
+    const waiting = queue(store, turn, "你呢", { kind: "question" });
+    expect(waiting.reply_in).toBeNull();
+    expect(again(waiting, "S-room")).toMatchObject({ seq: waiting.seq, reply_in: "S-room" });
+    expect(again(waiting)).toMatchObject({ seq: waiting.seq, reply_in: "S-room" });
+    // Read before the mark: a new row carries it, and is read in its turn.
+    const read = queue(store, turn, "你们都记下来了吗", { kind: "question" });
+    store.deliverInboxItems([read.seq], turn.id, 1);
+    const marked = again(read, "S-room");
+    expect(marked.seq).not.toBe(read.seq);
+    expect([marked.state, marked.reply_in]).toEqual(["queued", "S-room"]);
+    expect(again(read, "S-room").seq).toBe(marked.seq);
+  });
 });

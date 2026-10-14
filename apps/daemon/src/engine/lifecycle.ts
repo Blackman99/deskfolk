@@ -224,7 +224,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         const onPlan = store.listLiveTurns({ botId }).find((row) => row.task_id === landing.taskId && row.mode !== "readonly");
         const live = onPlan ? lives.get(onPlan.id) : undefined;
         if (onPlan && live && !live.abort.signal.aborted && store.turnHeldBy(onPlan.id).length === 0) {
-          hearIn(onPlan, live, trigger, { item: { author: "", body: trigger.body, checkBack: false } }, landing);
+          hearIn(onPlan, live, trigger, { item: { author: "", body: trigger.body, checkBack: false } }, landing, opts.cause);
           return onPlan;
         }
       } else {
@@ -363,7 +363,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       const onPlan = store.listLiveTurns({ botId }).find((row) => row.task_id === about.taskId && row.mode !== "readonly");
       const living = onPlan ? lives.get(onPlan.id) : undefined;
       if (onPlan && living && !living.abort.signal.aborted && store.turnHeldBy(onPlan.id).length === 0) {
-        hearIn(onPlan, living, trigger, entry, about);
+        hearIn(onPlan, living, trigger, entry, about, cause);
         return onPlan;
       }
     }
