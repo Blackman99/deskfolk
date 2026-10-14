@@ -27,7 +27,7 @@ import type {
 import { RemoteApi, type DurablePendingRequest } from "../remote/api.ts";
 import { loadEnrollment, type StoredEnrollment } from "../remote/idb.ts";
 import { HOSTED_MESSENGER } from "../remote/mode.ts";
-import type { Connection, DraftReconnect, HostUnreachable } from "../runtime.svelte.ts";
+import type { Connection, HostUnreachable } from "../runtime.svelte.ts";
 import type { SessionView } from "../session-view.svelte.ts";
 import { fromRuntimeSnapshot, type Snapshot } from "../snapshot.ts";
 
@@ -71,14 +71,12 @@ export interface ConnectionLoopHost {
   connectionSeq: number;
   snapshot: Snapshot;
   selectedId: string | null;
-  readonly draft: string;
   readonly views: Map<string, SessionView>;
   endpointKey: string;
   pendingMutation: { id: string; code: string } | null;
   durablePending: DurablePendingRequest[];
   hostUnreachable: HostUnreachable;
   enrolled: boolean;
-  draftReconnect: DraftReconnect;
   uvReady: boolean;
   remoteStatus: RuntimeSnapshot["remoteStatus"] | null;
   readonly tabRole: TabRole;
@@ -121,7 +119,6 @@ export interface ConnectionLoopHost {
     endpoint_default_model: string | null;
   }): void;
   ingest(event: ClientEvent, frame?: SequencedEvent): void;
-  sessionView(id: string): SessionView;
   selectSession(id: string, opts?: { messageId?: string; preservePage?: boolean }): Promise<void>;
   acceptEphemeral(value: unknown): value is StreamFrame | ToolFrame;
   clearBoundedReads(): void;
@@ -254,12 +251,6 @@ export class ConnectionLoop {
     this.remoteRetryMs = nextRemoteRetry(this.remoteRetryMs);
   }
 
-  private rememberDraftOnDisconnect(): void {
-    const id = this.host.selectedId;
-    const draft = this.host.draft.trim();
-    if (id && draft && !this.host.draftReconnect) this.host.draftReconnect = { sessionId: id, draft, confirm: false };
-  }
-
   async installSnapshot(api: MessengerApi, sync: EventSync, snapshot: RuntimeSnapshot): Promise<void> {
     if (this.host.stopped || this.host.api !== api || this.host.sync !== sync) return;
     if (api instanceof RemoteApi) api.observeSnapshot(snapshot);
@@ -303,9 +294,6 @@ export class ConnectionLoop {
       view.focusedTurnId = null;
       view.pendingFocusTrigger = null;
     }
-    // Back into the conversation it was written in, whichever pane has the keyboard now.
-    const kept = this.host.draftReconnect;
-    if (kept && !kept.confirm) this.host.sessionView(kept.sessionId).draft = kept.draft;
     const selected = this.host.selectedId;
     if (selected && this.host.snapshot.sessions.some((s) => s.id === selected)) {
       void this.host.selectSession(selected, { preservePage: true });
@@ -410,8 +398,6 @@ export class ConnectionLoop {
         view.detailLoaded = false;
       }
     }
-    const kept = this.host.draftReconnect;
-    if (kept && !kept.confirm) this.host.sessionView(kept.sessionId).draft = kept.draft;
     const selected = this.host.selectedId;
     if (selected && this.host.snapshot.sessions.some((s) => s.id === selected)) {
       if (!this.host.views.get(selected)?.detailLoaded) void this.host.selectSession(selected, { preservePage: true });
@@ -482,7 +468,6 @@ export class ConnectionLoop {
         views: new Map([...this.host.views.values()].map((view) => [view, { detailLoaded: view.detailLoaded, messageNext: view.messageNext }])),
       };
     }
-    this.rememberDraftOnDisconnect();
     this.host.clearBoundedReads();
     // A step that ended while the link was down would read as running forever.
     this.host.turnActivity.clear();

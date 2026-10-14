@@ -10,7 +10,7 @@ import {
   recordAskError,
 } from "../notifications/ask-state.ts";
 import type { AskDraftRecord, NotificationCapabilities, SendAskResult } from "../notifications/types.ts";
-import type { Connection, DraftReconnect } from "../runtime.svelte.ts";
+import type { Connection } from "../runtime.svelte.ts";
 import type { SessionView } from "../session-view.svelte.ts";
 import { applyEvent, type Snapshot } from "../snapshot.ts";
 import { stopTarget } from "./transcript.ts";
@@ -18,15 +18,14 @@ import { stopTarget } from "./transcript.ts";
 /**
  * What this sub-store reaches back into the runtime for, read at call time: the client and the
  * connection an action rides on, the conversation it is about and its view, the snapshot a reply
- * goes into, a draft kept across a dropped link, the turn a sent line wakes, the request a dropped
- * link left unconfirmed, what the Mac says it supports, and the moves a refusal or a drop needs.
+ * goes into, the turn a sent line wakes, the request a dropped link left unconfirmed, what the Mac
+ * says it supports, and the moves a refusal or a drop needs.
  */
 export interface ChatActionsHost {
   readonly api: MessengerApi | null;
   readonly connection: Connection;
   readonly selectedId: string | null;
   snapshot: Snapshot;
-  draftReconnect: DraftReconnect;
   readonly notificationCapabilities: NotificationCapabilities;
   viewFor(sessionId: string | null | undefined): SessionView | null;
   claimFocus(sessionId: string, triggerMessageId: string, turnId?: string): void;
@@ -61,8 +60,6 @@ export class ChatActions {
     const hasAttachments = Boolean(opts?.attachments && opts.attachments.length > 0);
     const hasPaths = Boolean(opts?.paths && opts.paths.length > 0);
     if (!api || !id || (!body && !hasAttachments && !hasPaths) || view.sending) return false;
-    const kept = this.host.draftReconnect;
-    if (kept && !kept.confirm && kept.sessionId === id) return false;
     const parentId = view.replyingToId;
     view.sending = true;
     view.upload = null;
@@ -74,7 +71,6 @@ export class ChatActions {
         parentId,
         ...(hasAttachments ? { onUploadProgress: (progress: FileProgress) => { view.upload = { files, loaded: progress.loaded }; } } : {}),
       });
-      if (this.host.draftReconnect?.confirm && this.host.draftReconnect.sessionId === id) this.host.draftReconnect = null;
       if (this.host.api !== api) return true;
       view.draft = "";
       view.replyingToId = null;

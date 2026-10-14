@@ -456,8 +456,8 @@ for (const operation of ['create', 'patch', 'delete'] as const) for (const rejec
   expect(runtime.snapshot.routines[0]!.title).toBe('Current');
 });
 
-test("unsent in-memory drafts require confirm after reconnect and are not sent automatically", async () => {
-  const { runtime } = await connected();
+test("an unsent draft stays in its composer across a dropped link, and sends without asking first", async () => {
+  const { runtime, initial } = await connected();
   await until(() => runtime.connection === "connected");
   // A draft belongs to a conversation, so there has to be one open to have typed into.
   runtime.selectedId = "direct-1";
@@ -465,13 +465,21 @@ test("unsent in-memory drafts require confirm after reconnect and are not sent a
   Socket.current.close();
   // A dropped socket is not yet "unreachable": the page says it is reconnecting.
   await until(() => runtime.connection !== "connected");
-  // Kept with the conversation it was typed in, so it goes back there and nowhere else.
-  expect(runtime.draftReconnect).toEqual({ sessionId: "direct-1", draft: "keep this", confirm: false });
-  runtime.confirmDraftReconnect();
-  expect(runtime.draftReconnect?.confirm).toBe(true);
-  runtime.discardDraftReconnect();
-  expect(runtime.draft).toBe("");
-  expect(runtime.draftReconnect).toBeNull();
+  expect(runtime.draft).toBe("keep this");
+  await reconnect(runtime, initial, async () => ({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] }));
+  expect(runtime.sessionView("direct-1").draft).toBe("keep this");
+  const bodies: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    if (init?.method === "POST" && String(url).includes("/messages")) {
+      bodies.push(JSON.parse(String(init.body)).body);
+      return Response.json(aMessage({ id: "sent-1", session_id: "direct-1" }));
+    }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  // Sending it is just sending it: nothing to confirm or discard on the way back.
+  expect(await runtime.send({ sessionId: "direct-1" })).toBe(true);
+  expect(bodies).toEqual(["keep this"]);
+  expect(runtime.sessionView("direct-1").draft).toBe("");
 });
 
 test("runtime subscribes before reading snapshot and preserves events arriving during HTTP", async () => {
@@ -1412,20 +1420,29 @@ test("a new message drops the chips drafted for what came before, in front or no
   expect(front.composerSuggestions).toEqual([]);
 });
 
-test("a draft kept across a dropped link goes back to the conversation it was typed in", async () => {
+test("a draft stays as it was left in its own conversation, however many times the link drops", async () => {
   const { runtime, initial } = await connected();
   await until(() => runtime.connection === "connected");
   runtime.selectedId = "direct-1";
   runtime.draft = "keep this";
   Socket.current.close();
   await until(() => runtime.connection !== "connected");
-  runtime.sessionView("direct-1").draft = "";
   // The keyboard moved to another conversation while the link was down.
   runtime.selectedId = "group-1";
   await reconnect(runtime, initial, async () => ({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] }));
   expect(runtime.sessionView("direct-1").draft).toBe("keep this");
   expect(runtime.sessionView("group-1").draft).toBe("");
-  runtime.discardDraftReconnect();
+  // Rewritten after the link came back: the next drop keeps the new words, not the old ones.
+  runtime.sessionView("direct-1").draft = "rewritten";
+  Socket.current.close();
+  await until(() => runtime.connection !== "connected");
+  await reconnect(runtime, initial, async () => ({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] }));
+  expect(runtime.sessionView("direct-1").draft).toBe("rewritten");
+  // Cleared by hand, it stays cleared.
+  runtime.sessionView("direct-1").draft = "";
+  Socket.current.close();
+  await until(() => runtime.connection !== "connected");
+  await reconnect(runtime, initial, async () => ({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] }));
   expect(runtime.sessionView("direct-1").draft).toBe("");
 });
 

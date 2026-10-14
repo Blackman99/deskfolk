@@ -326,13 +326,6 @@ const runtime = new MessengerRuntime();
 					{copy.disconnected.retry}
 				</button>
 			</div>
-			{#if runtime.draftReconnect && !runtime.draftReconnect.confirm}
-				<p class="disconnected-hint">{copy.remote.draftConfirm}</p>
-				<div class="disconnected-actions">
-					<button type="button" onclick={() => runtime.confirmDraftReconnect()}>{copy.remote.draftSend}</button>
-					<button type="button" onclick={() => runtime.discardDraftReconnect()}>{copy.remote.draftDiscard}</button>
-				</div>
-			{/if}
 		</main>
 	{/if}
 {:else}
@@ -346,15 +339,6 @@ const runtime = new MessengerRuntime();
 					{copy.disconnected.retry}
 				</button>
 			{/if}
-		</div>
-	{/if}
-	{#if runtime.draftReconnect && !runtime.draftReconnect.confirm}
-		<div class="draft-reconnect" class:is-offline={offline} role="status">
-			<p>{copy.remote.draftConfirm}</p>
-			<div class="disconnected-actions">
-				<button type="button" onclick={() => runtime.confirmDraftReconnect()}>{copy.remote.draftSend}</button>
-				<button type="button" onclick={() => runtime.discardDraftReconnect()}>{copy.remote.draftDiscard}</button>
-			</div>
 		</div>
 	{/if}
 	<div class="shell-host" inert={offline}>
@@ -390,19 +374,6 @@ const runtime = new MessengerRuntime();
 	.disconnected-actions {
 		display: flex;
 		gap: 8px;
-	}
-	.draft-reconnect {
-		position: fixed;
-		top: 12px;
-		left: 50%;
-		transform: translateX(-50%);
-		z-index: 80;
-		background: var(--pane);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-lg);
-		padding: 12px 16px;
-		box-shadow: var(--shadow-menu);
-		max-width: min(420px, calc(100% - 24px));
 	}
 	.disconnected-actions button {
 		min-height: 44px;
@@ -514,11 +485,6 @@ const runtime = new MessengerRuntime();
 	/* Without a spinner the banner waits for Retry; give its line the room the spinner had. */
 	.offline-banner:not(:has(.offline-spinner)) {
 		padding-left: 18px;
-	}
-
-	.draft-reconnect.is-offline {
-		top: calc(env(safe-area-inset-top, 0px) + 64px);
-		z-index: 902;
 	}
 
 	@keyframes offline-in {

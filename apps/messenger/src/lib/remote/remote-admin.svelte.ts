@@ -2,8 +2,7 @@ import type { RuntimeSnapshot } from "@real-bot/protocol";
 import { ApiError } from "../api.ts";
 import type { LocalApi } from "../local-api.ts";
 import type { MessengerApi } from "../messenger-api.ts";
-import type { SessionView } from "../session-view.svelte.ts";
-import type { DraftReconnect, HostPairing, HostUnreachable } from "../runtime.svelte.ts";
+import type { HostPairing, HostUnreachable } from "../runtime.svelte.ts";
 import { RemoteApi, type RemoteDeviceRow, type RemoteDiagnostics, type RemoteMaintenanceStatus } from "./api.ts";
 import { confirmPairing, initializeHost, listHostDevices, openPairing, readPairing, removeHostDevice, type HostDevice,
   type HostRelay } from "./pairing-host.ts";
@@ -15,15 +14,13 @@ const HOST_PAIRING_POLL_MS = 3000;
 /**
  * What this sub-store reaches back into the runtime for, read at call time: the client a
  * privileged call rides on, whether this page is the remote side of the link at all, whether the
- * page has been torn down, restarting the connection loop after a QR pairing, and the view a
- * discarded draft is cleared from.
+ * page has been torn down, and restarting the connection loop after a QR pairing.
  */
 export interface RemoteAdminHost {
   readonly api: MessengerApi | null;
   readonly remote: boolean;
   readonly stopped: boolean;
   start(): void;
-  sessionView(id: string): SessionView;
 }
 
 /**
@@ -48,7 +45,6 @@ export class RemoteAdmin {
   hostSetupError = $state<string | null>(null);
   enrolled = $state(false);
   hostUnreachable = $state<HostUnreachable>("runtime");
-  draftReconnect = $state<DraftReconnect>(null);
   remoteStatus = $state<RuntimeSnapshot["remoteStatus"] | null>(null);
   uvReady = $state(false);
   uvError = $state<string | null>(null);
@@ -76,16 +72,6 @@ export class RemoteAdmin {
     } finally {
       this.pairingBusy = false;
     }
-  }
-
-  confirmDraftReconnect(): void {
-    this.draftReconnect = this.draftReconnect ? { ...this.draftReconnect, confirm: true } : null;
-  }
-
-  discardDraftReconnect(): void {
-    const kept = this.draftReconnect;
-    if (kept) this.host.sessionView(kept.sessionId).draft = "";
-    this.draftReconnect = null;
   }
 
   async registerUv(): Promise<boolean> {

@@ -99,8 +99,6 @@ export { nextRemoteRetry } from "./connection/connection-loop.svelte.ts";
  */
 export type Connection = "connecting" | "connected" | "disconnected";
 export type HostUnreachable = "runtime" | "host";
-/** A draft kept across a dropped connection, and the conversation it was being written in. */
-export type DraftReconnect = { sessionId: string; draft: string; confirm: boolean } | null;
 
 export type HostPairing =
   | null
@@ -182,7 +180,6 @@ export class MessengerRuntime {
       get remote() { return runtime.remote; },
       get stopped() { return runtime.stopped; },
       start: () => runtime.start(),
-      sessionView: (id) => runtime.sessionView(id),
     };
   }
 
@@ -227,9 +224,6 @@ export class MessengerRuntime {
       get enrolled() { return runtime.enrolled; },
       set enrolled(value) { runtime.enrolled = value; },
       get tabRole() { return runtime.tabRole; },
-      get draft() { return runtime.draft; },
-      get draftReconnect() { return runtime.draftReconnect; },
-      set draftReconnect(value) { runtime.draftReconnect = value; },
       get sync() { return runtime.sync; },
       set sync(value) { runtime.sync = value; },
       get delegationSnapshotEpoch() { return runtime.delegationSnapshotEpoch; },
@@ -437,7 +431,7 @@ export class MessengerRuntime {
   endpointModelsText = $state("");
   endpointDefaultModel = $state("");
   hosted = HOSTED_MESSENGER;
-  // --- Forwarded to `remoteAdmin` (pairing, host pairing/devices, draft-reconnect, maintenance). ---
+  // --- Forwarded to `remoteAdmin` (pairing, host pairing/devices, maintenance). ---
   get pairing(): PairingProgress { return this.remoteAdmin.pairing; }
   set pairing(value: PairingProgress) { this.remoteAdmin.pairing = value; }
   get pairingBusy(): boolean { return this.remoteAdmin.pairingBusy; }
@@ -463,8 +457,6 @@ export class MessengerRuntime {
   set enrolled(value: boolean) { this.remoteAdmin.enrolled = value; }
   get hostUnreachable(): HostUnreachable { return this.remoteAdmin.hostUnreachable; }
   set hostUnreachable(value: HostUnreachable) { this.remoteAdmin.hostUnreachable = value; }
-  get draftReconnect(): DraftReconnect { return this.remoteAdmin.draftReconnect; }
-  set draftReconnect(value: DraftReconnect) { this.remoteAdmin.draftReconnect = value; }
   get remoteStatus(): RuntimeSnapshot["remoteStatus"] | null { return this.remoteAdmin.remoteStatus; }
   set remoteStatus(value: RuntimeSnapshot["remoteStatus"] | null) { this.remoteAdmin.remoteStatus = value; }
   get uvReady(): boolean { return this.remoteAdmin.uvReady; }
@@ -1069,14 +1061,6 @@ export class MessengerRuntime {
 
   async submitPairing(raw: string): Promise<PairingProgress> {
     return this.remoteAdmin.submitPairing(raw);
-  }
-
-  confirmDraftReconnect(): void {
-    this.remoteAdmin.confirmDraftReconnect();
-  }
-
-  discardDraftReconnect(): void {
-    this.remoteAdmin.discardDraftReconnect();
   }
 
   async registerUv(): Promise<boolean> {
