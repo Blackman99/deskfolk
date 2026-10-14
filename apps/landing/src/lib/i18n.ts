@@ -199,9 +199,9 @@ const zh: Dict = {
   },
   home: {
     beats: [
-      { line: '交出去。', caption: '一句话交代，它先拆成任务：每张写明谁来做、谁来审。' },
+      { line: '交出去。', caption: '一句话交代，它拆成任务；每一轮在做哪张、为什么，都画在流程图上。' },
       { line: '离开。', caption: '关窗走开，应用替你盯着渲染。' },
-      { line: '回来看结果。', caption: '检查跑过、审查带依据放行，才算做完；Bot 说的不算。' }
+      { line: '回来看结果。', caption: '成片归在这件事、这张任务下，就在窗格里播；过了哪些检查，点开就看到。' }
     ],
     stageLabel: 'Deskfolk 真实界面演示',
     download: '下载 Alpha',
@@ -220,7 +220,7 @@ const zh: Dict = {
   seo: {
     title: 'Deskfolk — 交出去，离开，回来看结果',
     description:
-      'macOS 本机的 agent 协作应用（Windows 为预览版）：把多天、多步、要返工的活交给 Bot，你可以离开。模型负责干活，应用负责当真：你的原话原样存档、你写下的规则只增不删，任务要过应用自己跑的检查和有依据的审查才算做完，叫停是只有你能解除的状态，停在半路有监督器去追，只在需要你时才找你。这些规矩写在代码里；挂在上面的工作方式能换、能改：应用自己的哪些环节跑、带什么数是引擎，内置通用、视频、代码三套，按对话选；每个环节用哪个模型、哪段提示词在分工页上设；Bot 怎么干活写在应用自带的提示词里，也可以让 Bot 查本机记录、拿依据提改动，在批准卡上由你放行。会话和文件在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。面向已在用 Claude Code、Codex 这类本机 Agent，或会自己配模型端点的独立开发者与小工作室。MIT 开源，Alpha 阶段。',
+      'macOS 本机的 agent 协作应用（Windows 为预览版）：把多天、多步、要返工的活交给 Bot，你可以离开。产物按事和任务归好，图、音视频、PDF、Office、网页在应用里直接打开、直接批注；每一轮在做哪张任务、用了哪个模型、为什么，都画在这件事的流程图上；你接受的活交付之后，出过错的 Bot 自己复盘，把坑写进自己的记忆和技能，下次照做。模型负责干活，应用负责当真：你的原话原样存档、你写下的规则只增不删，任务要过应用自己跑的检查和有依据的审查才算做完，叫停是只有你能解除的状态，停在半路有监督器去追，只在需要你时才找你。这些规矩写在代码里；挂在上面的工作方式能换、能改：应用自己的哪些环节跑、带什么数是引擎，内置通用、视频、代码三套，按对话选；每个环节用哪个模型、哪段提示词在分工页上设；Bot 怎么干活写在应用自带的提示词里，也可以让 Bot 查本机记录、拿依据提改动，在批准卡上由你放行。会话和文件在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。面向已在用 Claude Code、Codex 这类本机 Agent，或会自己配模型端点的独立开发者与小工作室。MIT 开源，Alpha 阶段。',
     imageAlt: 'Deskfolk：一个窗口里摆着群聊、做好的宣传短片和这件事的看板'
   },
   docs: {
@@ -257,8 +257,8 @@ const zh: Dict = {
       },
       overview: {
         title: '介绍与安装',
-        blurb: '它为什么可托付、适合谁、能做什么；下载、从源码启动、用本地模型，以及哪些已接入、哪些不做。',
-        intro: 'Deskfolk 把多天、多步、要返工的活交给 Bot，Bot 说做完的由应用先核过。这一页讲它凭什么可以托付、适合谁、能做什么，怎么装，以及现在哪些已经接入、哪些不做。'
+        blurb: '它解决什么、为什么可托付、适合谁、能做什么；下载、从源码启动、用本地模型，以及哪些已接入、哪些不做。',
+        intro: 'Deskfolk 把多天、多步、要返工的活交给 Bot：产物在应用里直接打开，每一步看得见，Bot 越用越会做；Bot 说做完的由应用先核过。这一页讲它解决什么、凭什么可以托付、适合谁、能做什么，怎么装，以及现在哪些已经接入、哪些不做。'
       },
       gatekeeper: {
         title: 'macOS 首次打开',
@@ -407,9 +407,9 @@ const en: Dict = {
   },
   home: {
     beats: [
-      { line: 'Hand it off.', caption: 'One line, and it lays out tickets: who makes each, who reviews it.' },
+      { line: 'Hand it off.', caption: 'One line, and it lays out tickets; which one each turn works on, and why, is drawn on the flow.' },
       { line: 'Walk away.', caption: 'Close the window; the app keeps an eye on the render.' },
-      { line: 'Return to results.', caption: 'Done means the checks ran and a review passed it with evidence; a Bot’s word moves nothing.' }
+      { line: 'Return to results.', caption: 'The film is kept under its job and ticket and plays in a pane; the checks it passed are a click away.' }
     ],
     stageLabel: 'Deskfolk, the real app',
     download: 'Download alpha',
@@ -428,7 +428,7 @@ const en: Dict = {
   seo: {
     title: 'Deskfolk — Hand it off, walk away, return to results',
     description:
-      'A local agent app for macOS (Windows in preview): hand Bots the multi-day, multi-step jobs that need rework, and walk away. The model does the work; the app holds it to account: your words are kept as you said them, the rules you write are only ever added to, a job is done only after checks the app runs itself and a review backed by evidence, a stop is a state only you can lift, a supervisor chases stalls, and the app comes to you only when it needs you. Those rules are code; the way of working hung on them is yours to choose and change: an engine says which of the app\'s own steps run and with what numbers (general, video and coding built in, chosen per conversation), Roles sets each step\'s model and prompts, and how Bots work is written in prompts the app ships — change them yourself, or let a Bot propose a change, backed by this machine\'s records, that you let through on its approval card. Chats and files stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. For solo developers and small studios who already use a local agent such as Claude Code or Codex, or bring their own model endpoint. MIT, alpha.',
+      'A local agent app for macOS (Windows in preview): hand Bots the multi-day, multi-step jobs that need rework, and walk away. Files are kept by job and ticket and open right in the app — images, audio and video, PDF, Office, web pages — ready to annotate; which ticket every turn works on, the model it ran on and why are drawn on the job\'s flow; and once you accept a delivery, each Bot that tripped up looks back and writes what it learned into its own memories and skills. The model does the work; the app holds it to account: your words are kept as you said them, the rules you write are only ever added to, a job is done only after checks the app runs itself and a review backed by evidence, a stop is a state only you can lift, a supervisor chases stalls, and the app comes to you only when it needs you. Those rules are code; the way of working hung on them is yours to choose and change: an engine says which of the app\'s own steps run and with what numbers (general, video and coding built in, chosen per conversation), Roles sets each step\'s model and prompts, and how Bots work is written in prompts the app ships — change them yourself, or let a Bot propose a change, backed by this machine\'s records, that you let through on its approval card. Chats and files stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. For solo developers and small studios who already use a local agent such as Claude Code or Codex, or bring their own model endpoint. MIT, alpha.',
     imageAlt: 'Deskfolk: a group chat, the finished promo film and the job’s board in one window'
   },
   docs: {
@@ -465,8 +465,8 @@ const en: Dict = {
       },
       overview: {
         title: 'About and install',
-        blurb: 'Why it can be trusted with a job, who it is for, what it does; download, run from source, local models, and what is live and what is not.',
-        intro: 'Deskfolk hands multi-day, multi-step jobs that need rework to Bots, and checks first when a Bot says done. This page covers why you can hand it over, who it is for, what it does, how to install it, and what is live today and what is not.'
+        blurb: 'What it fixes, why it can be trusted with a job, who it is for, what it does; download, run from source, local models, and what is live and what is not.',
+        intro: 'Deskfolk hands multi-day, multi-step jobs that need rework to Bots: files open in place, every step shows, Bots get better with use, and the app checks first when a Bot says done. This page covers what it fixes, why you can hand it over, who it is for, what it does, how to install it, and what is live today and what is not.'
       },
       gatekeeper: {
         title: 'First launch on macOS',

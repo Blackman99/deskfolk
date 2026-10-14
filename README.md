@@ -10,7 +10,7 @@
 
 <p align="center">Hand it off. Walk away. Return to results.</p>
 
-<p align="center">Multi-day, multi-step jobs that need rework go to Bots; when a Bot says done, the app checks first.</p>
+<p align="center">Files are kept by job and ticket, and played, read and annotated right in the app; every turn is on the flow, with the ticket it works on and why; after a delivery, Bots look back and do better next time.<br>Multi-day, multi-step jobs that need rework are safe to hand off too: when a Bot says done, the app checks first.</p>
 
 <p align="center">No API key needed: pick the <b>Claude Code, Codex, Grok, OpenCode, Antigravity or ZCode</b> you have signed in on this computer, or any ACP agent, in the setup wizard, and Bots run on your own sign-in.<br>Or connect <b>OpenAI, Anthropic, Xiaomi MiMo, Qwen, DeepSeek, OpenRouter</b> or any OpenAI- or Anthropic-compatible address, or <b>Ollama, LM Studio and llama.cpp</b> on your machine.</p>
 

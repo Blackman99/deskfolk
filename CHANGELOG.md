@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The README, the site and the overview lead with three things
+
+- The README's subhead, the captions of the home page's three clips, the page description, the start of "About and install", and the line under the name in Settings → About now lead with the three things Deskfolk fixes: files kept by job and ticket, opened and annotated in the app; every turn on the flow, with the ticket it works on and why; Bots that look back after a delivery and get better with use. The overview gives each one a real case from another tool. The four guarantees stay, after them, as why you can hand a job over; the home page's clips, headline and share image are unchanged.
+- The roadmap takes keeping, previewing and annotating files out of "everything around it is in maintenance": like the flow and retrospectives, it is core.
+
 ### The default General engine looks back after a delivery too
 
 - Once a job you accepted is delivered, each Bot that handed something over in it and had something go wrong reads the job's record and works where it tripped up, and what made you send work back, into its own memories and skills. This used to run only in the Video and Coding engines, with the default General engine leaving it off; all three run it now, a fresh install included. The scribe and reflection stay off in General.

@@ -365,9 +365,9 @@ test("about card and update chrome are locked in both locales", () => {
   expect(COPY.zh.settings.tabAbout).toBe("关于");
   expect(COPY.en.settings.tabAbout).toBe("About");
   // The line under the name is the README's, word for word.
-  expect(COPY.zh.settings.aboutDescription).toBe("多天、多步、要返工的活交给 Bot；Bot 说做完的，应用先核过。");
+  expect(COPY.zh.settings.aboutDescription).toBe("产物点开就看，每一步看得见，Bot 越用越会做；Bot 说做完的，应用先核过。");
   expect(COPY.en.settings.aboutDescription).toBe(
-    "Multi-day, multi-step jobs that need rework go to Bots; when a Bot says done, the app checks first.",
+    "Files open in place, every step shows, and Bots get better with use; when a Bot says done, the app checks first.",
   );
   expect(COPY.zh.settings.version("0.1.0")).toBe("版本 0.1.0");
   expect(COPY.en.settings.version("0.1.0")).toBe("Version 0.1.0");
