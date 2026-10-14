@@ -372,6 +372,41 @@ test("end_turn through the deskfolk tools ends the segment silently; Claude Code
   expect(h.seen.closed).toBe(true);
 });
 
+test("a question you take a while to answer keeps the segment: Claude Code's heartbeat meanwhile ends nothing", async () => {
+  let heartbeat!: () => void;
+  const beaten = new Promise<void>((resolve) => { heartbeat = resolve; });
+  let answer = "";
+  let after: ToolUse | null = null;
+  const h = await harness(async function* ({ deskfolk, useTool, root }) {
+    const asked = deskfolk.call("ask_user", { question: "片头用蓝色还是绿色？", options: [{ label: "蓝色" }, { label: "绿色" }] });
+    for (let i = 0; i < 100 && h.store.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM turns WHERE status = 'waiting_ask'").get()!.n === 0; i++) await Bun.sleep(10);
+    // Past 30 s of a tool call Claude Code reports it is still running, while the card waits on you (2026-10-14).
+    yield { type: "tool_progress", tool_use_id: "toolu_ask", tool_name: "mcp__deskfolk__ask_user", parent_tool_use_id: null,
+      elapsed_time_seconds: 30, heartbeat: true, uuid: crypto.randomUUID(), session_id: "s" } as unknown as SDKMessage;
+    heartbeat();
+    answer = (await asked).text;
+    after = await useTool("Read", { file_path: join(root, "notes.md") });
+    yield result("按蓝色做了片头。");
+  });
+  const done = h.post("做个片头");
+  let askId: string | null = null;
+  for (let i = 0; i < 100 && !askId; i++) {
+    await Bun.sleep(10);
+    askId = h.store.db.query<{ id: string }, []>("SELECT id FROM messages WHERE kind = 'ask'").get()?.id ?? null;
+  }
+  expect(askId).not.toBeNull();
+  await beaten;
+  await Bun.sleep(20);
+  h.engine.replyAsk(askId!, h.session, { selected: ["蓝色"] });
+  await done;
+  expect(answer).toContain("蓝色");
+  expect(after!.allowed).toBe(true);
+  expect(h.lines("bot")).toEqual(["按蓝色做了片头。"]);
+  expect(h.lines("system")).toEqual([]);
+  const route = h.store.db.query<{ outcome: string; fail_kind: string | null }, []>("SELECT outcome, fail_kind FROM turn_route_decisions").get();
+  expect(route).toEqual({ outcome: "completed", fail_kind: null });
+});
+
 test("an empty closing reply is answered with one note, and the next reply goes out", async () => {
   const h = await harness(async function* ({ next }) {
     yield result("");

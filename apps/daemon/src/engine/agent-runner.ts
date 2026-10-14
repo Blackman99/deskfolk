@@ -894,7 +894,10 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       session = query({ prompt: input.iterable, options, deskfolk: bridge });
       for await (const message of session) {
         store.touchTurn(turnId);
-        if (!active(turnId, live) && !state.ended) {
+        // A card waiting on you is still the segment's: Claude Code reports a call still running
+        // every 30 s, and ending on that refused all it did after your answer and failed the turn
+        // as 端点出错 (2026-10-14).
+        if (!state.ended && (live.abort.signal.aborted || lives.get(turnId) !== live || !isLive(turnId))) {
           end();
           continue;
         }

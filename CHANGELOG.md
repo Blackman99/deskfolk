@@ -6,6 +6,9 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A Claude Agent Bot's question no longer ends its turn as "Endpoint error" when you take a while to answer
+
+- When a Bot run by Claude Code asked you something and you answered after more than about 30 seconds, the turn ended as "Endpoint error" right after your answer: whatever the Bot tried next was refused, and its closing reply was dropped. Claude Code reports a call that is still running every 30 seconds, and the app took that report, arriving while the question waited on you, for the end of the turn. A question or an approval card now waits as long as you take, and the Bot goes on from your answer.
 ### Drag a conversation from the sidebar into the workbench
 
 - A conversation in the sidebar — any row of the list, a pinned avatar, an avatar on the folded rail — can now be dragged into the workbench: onto the middle of a pane it opens as a new tab there, onto a tab strip at the pointer's position, onto a pane's edge in a pane split off there, and let go with ⌥ held it floats. A conversation that already has a tab moves that tab instead of opening a second one. Its name follows the pointer and the drop shows the same marks as dragging a tab; let go outside the workbench and nothing changes, and a plain click still opens it where Where windows open says.
