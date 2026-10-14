@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The home page's "Walk away." clip no longer sits on an empty desktop
+
+- The home page's second clip showed about nine seconds of an empty desktop while the render ran, sped up but still with nothing moving. It now keeps a second and a half of that stillness and plays at normal speed, so the window hiding to the tray and coming back can be followed, and ends a moment after the window is back; the clip is about 5 seconds instead of 9–10. The same recording is cut again; the other two clips and the still are unchanged.
+
 ### Letting work through or sending it back no longer adds a line to the conversation
 
 - When a line of yours is read as letting a hand-over through, or as finding fault and sending it back to rework, it no longer carries a grey line under it ("Approved: …", "Sent back to rework: …", nor "Its checks failed, so it went back: …" or "Approving once its checks have run: …"). These are the app's judgments on your behalf; they still take effect, and the job's flow shows them: the line is an approve or rework decision card there; when its checks sent it back, the ticket is back in rework and the Bot that made it is told. The line keeps its attribution tag as any other.
