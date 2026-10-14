@@ -15,8 +15,13 @@ export function messageFilings(message: AttributedMessage): Filing[] {
   return message.task_id ? [{ task_id: message.task_id, ticket_id: message.ticket_id ?? null, part_key: null }] : [];
 }
 
-/** A line of yours or a Bot's that can be filed; the app's own control lines are not. */
+/**
+ * A line of yours or a Bot's that can be filed; the app's own control lines are not. A line of
+ * yours the reader read as letting work through or sending it back keeps its mark (`passed`,
+ * `rework`) unseen, and is filed like any other line of yours.
+ */
 export function attributable(message: AttributedMessage): boolean {
+  if (message.kind === "user" && (message.control?.kind === "passed" || message.control?.kind === "rework")) return true;
   return !message.control && (message.kind === "user" || message.kind === "bot");
 }
 

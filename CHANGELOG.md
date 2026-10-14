@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Letting work through or sending it back no longer adds a line to the conversation
+
+- When a line of yours is read as letting a hand-over through, or as finding fault and sending it back to rework, it no longer carries a grey line under it ("Approved: …", "Sent back to rework: …", nor "Its checks failed, so it went back: …" or "Approving once its checks have run: …"). These are the app's judgments on your behalf; they still take effect, and the job's flow shows them: the line is an approve or rework decision card there; when its checks sent it back, the ticket is back in rework and the Bot that made it is told. The line keeps its attribution tag as any other.
+- The rework line's Undo went with it. A misreading now has no undo: the ticket stays in rework and it counts as one send-back of yours; to have the same version handed back, tell the Bot that made it. Buttons on older "send it back to rework?" cards still work.
+
 ### A Claude Agent Bot's question no longer ends its turn as "Endpoint error" when you take a while to answer
 
 - When a Bot run by Claude Code asked you something and you answered after more than about 30 seconds, the turn ended as "Endpoint error" right after your answer: whatever the Bot tried next was refused, and its closing reply was dropped. Claude Code reports a call that is still running every 30 seconds, and the app took that report, arriving while the question waited on you, for the end of the turn. A question or an approval card now waits as long as you take, and the Bot goes on from your answer.

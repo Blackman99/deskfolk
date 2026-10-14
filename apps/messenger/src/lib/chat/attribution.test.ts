@@ -34,6 +34,10 @@ test("only your lines and a Bot's are filed; the app's control lines are not", (
   expect(attributable(aMessage({ kind: "bot" }))).toBe(true);
   expect(attributable(aMessage({ kind: "user", control: { kind: "status_answer" } as never }))).toBe(false);
   expect(attributable(aMessage({ kind: "system" }))).toBe(false);
+  // The reader's unseen mark on a line of yours leaves it a line of yours; an old rework card is still the app's.
+  expect(attributable(aMessage({ kind: "user", control: { kind: "passed", submission_ids: ["s-1"], message_id: "m", offer: [] } }))).toBe(true);
+  expect(attributable(aMessage({ kind: "user", control: { kind: "rework", task_id: "p", ticket_id: "t", part_keys: [], message_id: "m", offer: ["undo"] } }))).toBe(true);
+  expect(attributable(aMessage({ kind: "system", control: { kind: "rework", task_id: "p", ticket_id: "t", part_keys: [], message_id: "u", offer: ["rework", "dismiss"] } }))).toBe(false);
 });
 
 test("the key of a filing ignores order, and tells jobs, tickets and parts apart", () => {

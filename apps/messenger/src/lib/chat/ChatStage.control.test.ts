@@ -138,17 +138,23 @@ test("your line that might have meant a stop asks under it, on its side", () => 
   }
 });
 
-test("your line that sent work back says so under it, on its side, with an undo (ADR 0070)", () => {
+test("what the reader made of your line — work let through or sent back — is not said under it, and the line keeps its tag (2026-10-14)", () => {
   const session = aDirect();
-  const line = aMessage({ id: "line", session_id: session.id, body: "背景太暗了", control: { kind: "rework", task_id: "job", ticket_id: "ticket", part_keys: [],
-    message_id: "line", offer: ["undo"], result: "已转回返工：头像 的任务 01「头像」。" } });
-  const { host, runtime, close } = stage(session, { messages: [line], holdsOn: true });
+  const back = aMessage({ id: "back", session_id: session.id, body: "背景太暗了", created_at: "2026-10-14T02:00:00.000Z",
+    filings: [{ task_id: "job", ticket_id: null, part_key: null }],
+    control: { kind: "rework", task_id: "job", ticket_id: "ticket", part_keys: [], message_id: "back", offer: ["undo"], result: "已转回返工：头像 的任务 01「头像」。" } });
+  const nod = aMessage({ id: "nod", session_id: session.id, body: "可以，做个分享版", created_at: "2026-10-14T02:01:00.000Z",
+    filings: [{ task_id: "other", ticket_id: null, part_key: null }],
+    control: { kind: "passed", submission_ids: ["s-1"], message_id: "nod", offer: [], result: "已放行：头像 的任务 01「头像」。" } });
+  const { host, close } = stage(session, { messages: [back, nod], holdsOn: true });
   try {
-    const bar = host.querySelector('[data-message-id="line"] .control-actions')!;
-    expect(bar.classList.contains("is-end")).toBe(true);
-    expect(bar.textContent).toContain("已转回返工：头像 的任务 01「头像」。");
-    click(buttonByText(bar as HTMLElement, "撤销"));
-    expect(runtime.calls.filter((call) => call.name === "controlAction").map((call) => call.args)).toEqual([["line", "undo", undefined]]);
+    for (const id of ["back", "nod"]) {
+      const row = host.querySelector(`[data-message-id="${id}"]`)!;
+      expect(row.querySelector(".control-actions")).toBeNull();
+      expect(row.querySelector(".attribution-chip")).not.toBeNull();
+    }
+    expect(host.textContent).not.toContain("已转回返工");
+    expect(host.textContent).not.toContain("已放行");
   } finally {
     close();
   }

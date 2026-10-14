@@ -261,7 +261,7 @@
 									{/if}
 								</div>
 							{/if}
-							{#if !stage.fileDrop && !item.message.control && stage.attributionChips.has(item.message.id)}
+							{#if !stage.fileDrop && stage.attributionChips.has(item.message.id)}
 								<MessageAttribution
 									message={item.message} {t}
 									plans={runtime.attributionPlans[item.message.session_id] ?? []}
@@ -269,7 +269,8 @@
 									onOpen={() => { stage.attributionEditId = item.message.id; }}
 								/>
 							{/if}
-							{#if (item.message.control?.kind === 'possible_control' || item.message.control?.kind === 'rework' || item.message.control?.kind === 'passed') && !stage.lockedComposer}
+							<!-- What the reader made of your line — let work through (`passed`) or sent it back (`rework`) — is not said under it (2026-10-14): the job's flow shows it. -->
+							{#if item.message.control?.kind === 'possible_control' && !stage.lockedComposer}
 								<ControlActions
 									control={item.message.control}
 									holds={stage.snapshot.holds}
