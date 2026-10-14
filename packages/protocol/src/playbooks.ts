@@ -124,10 +124,11 @@ export function emptyPlaybookDiff(): PlaybookDiff {
 /**
  * The three built-in engines, each as what it changes from the defaults above, tuned on the usage
  * history to 2026-10-11 (ADR 0085 has the numbers):
- * - 通用 (general), the default: no scribe, no retrospective, no reflection — nothing kept or
+ * - 通用 (general), the default: no scribe, no reflection — no requirement written down and no card
  *   proposed behind your back. Most lines there are a question and its answer: the scribe came back
- *   empty on 30% of them, and of 15 retrospectives two looked back on one-line "jobs" a migration had
- *   made of questions. The settle stays: it is what keeps a job's board true.
+ *   empty on 30% of them. The retrospective runs (from 2026-10-14): Bots that learn from a delivery
+ *   are part of what the app promises, so a fresh install has them; the two of 15 that looked back on
+ *   one-line "jobs" were a migration's, made once. The settle stays: it is what keeps a job's board true.
  * - 视频 (video): the scribe stays (79 calls, 109 entries), the settle waits a minute so a fan-out of
  *   shots is filed once, check-backs are 15 minutes apart and three an hour (13 of 22 woke to nothing
  *   new, some 53 hops each), no model escalation (it only raised Claude Code's effort, and the
@@ -137,7 +138,7 @@ export function emptyPlaybookDiff(): PlaybookDiff {
  * - 代码 (coding): the scribe off (one entry from two calls); the rest as before, the data being thin.
  */
 export const BUILTIN_PLAYBOOKS: Record<BuiltinPlaybookId, PlaybookDiff> = {
-  general: { v: 1, steps: { scribe: { on: false }, retrospective: { on: false }, reflection: { on: false } } },
+  general: { v: 1, steps: { scribe: { on: false }, reflection: { on: false } } },
   video: {
     v: 1,
     steps: {

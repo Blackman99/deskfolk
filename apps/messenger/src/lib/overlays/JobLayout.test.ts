@@ -404,7 +404,7 @@ test("the job names the engine its own calls run under, what it leaves off, and 
   expect(block.querySelector(".job-engine-chip")?.textContent).toBe(t.plan.job.engine.chip(t.playbooks.builtin.general));
   expect(block.querySelector(".job-engine-why")?.textContent).toBe(t.plan.job.engine.fallback);
   expect(block.querySelector(".job-block-note")?.textContent).toBe(
-    `${t.plan.job.engine.off([t.playbooks.steps.scribe!.name, t.playbooks.steps.retrospective!.name, t.playbooks.steps.reflection!.name].join("、"))} · ${t.plan.job.engine.sessions(2)}`,
+    `${t.plan.job.engine.off([t.playbooks.steps.scribe!.name, t.playbooks.steps.reflection!.name].join("、"))} · ${t.plan.job.engine.sessions(2)}`,
   );
   // The title row says it too, and both open Roles on it.
   click([...view.host.querySelectorAll<HTMLButtonElement>(".job-chip")].find((chip) => chip.textContent === t.plan.job.engine.chip(t.playbooks.builtin.general)));

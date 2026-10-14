@@ -7,7 +7,7 @@ export const zh = {
   label: "引擎",
   builtin: { general: "通用", video: "视频", coding: "代码" } as Record<string, string>,
   builtinHint: {
-    general: "默认。不要书记员、完工复盘和反思：不在你背后记要求、改记忆、出提议。",
+    general: "默认。不要书记员和反思：不在你背后记要求、出提议；交付之后照样复盘。",
     video: "做片子：留着书记员，整理等静下来一分钟，回看间隔长一些，不升级模型，交了 5 次没过就问你。",
     coding: "写代码：不要书记员，其余照默认。",
   } as Record<string, string>,
@@ -91,7 +91,7 @@ export const en: CopyShape<typeof zh> = {
   label: "Engine",
   builtin: { general: "General", video: "Video", coding: "Coding" },
   builtinHint: {
-    general: "The default. No scribe, retrospective or reflection: nothing written down, remembered or proposed behind your back.",
+    general: "The default. No scribe or reflection: nothing written down or proposed behind your back; Bots still look back after a delivery.",
     video: "For films: keeps the scribe, settles a minute after the work goes quiet, spaces check-backs out, does not step the model up, and asks you after five failed hand-overs.",
     coding: "For code: no scribe; the rest at the defaults.",
   },

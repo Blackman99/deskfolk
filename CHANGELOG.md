@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The default General engine looks back after a delivery too
+
+- Once a job you accepted is delivered, each Bot that handed something over in it and had something go wrong reads the job's record and works where it tripped up, and what made you send work back, into its own memories and skills. This used to run only in the Video and Coding engines, with the default General engine leaving it off; all three run it now, a fresh install included. The scribe and reflection stay off in General.
+- After the update, conversations on General (including those that name no engine) look back from their next delivery; engines you built on General follow it unless you changed this step. Deliveries passed over before because their engine ran none are not looked back on. To keep it off, switch off Retrospective for General under Tools → Roles.
+
 ### A Bot you @ in a group while it works on that job elsewhere answers you there
 
 - When you named a Bot in a group (or asked the group something it was judged to answer) while it was working on that same job in your direct, the line went into its running turn in the direct, and the Bot was told someone in the group would answer — so nobody did. Such a line now reaches that turn marked as said to it, with where to answer, and the Bot answers you in the group without stopping the work in hand. A line that reaches it only because it is about the same job, said to someone else, still gets no reply from it there.

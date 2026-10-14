@@ -28,7 +28,7 @@ test("the conversations on an engine leave the archived out and count those that
 });
 
 test("an engine's steps switched off are named in Roles' order; a step that cannot be switched is never off", () => {
-  expect(engineOffSteps({ resolved: builtinPlaybook("general") })).toEqual(["scribe", "retrospective", "reflection"]);
+  expect(engineOffSteps({ resolved: builtinPlaybook("general") })).toEqual(["scribe", "reflection"]);
   expect(engineOffSteps({ resolved: builtinPlaybook("video") })).toEqual(["escalation"]);
   expect(engineOffSteps(undefined)).toEqual([]);
 });
