@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { runCollabTool } from "./collab-tools";
 import { Store } from "./store";
-import { call, createScenario, endTurn, READ_AS_NEW, requestText, writeFile } from "./test-kit/scenario";
+import { call, createScenario, endTurn, READ_AS_NEW, requestText, tool, writeFile } from "./test-kit/scenario";
 import { assembleTurnMessages } from "./context";
 
 const stores: Store[] = [];
@@ -482,7 +482,46 @@ test("among several jobs with no reading to go by, the first effect waits for th
     await h.waitIdle();
 
     expect(h.toolCalls(bot!, "write_file").map((row) => row.result)).toEqual([{ ok: false, error: "needs_filing" }]);
-    expect(requestText(h.hops(bot!)[1]!.request)).toContain("or {new:{title, quote_message_id}} quoting the user's line when it is about none of them");
+    expect(requestText(h.hops(bot!)[1]!.request)).toContain("or {new:{title}} to open one for the user's line when it is about none of them");
+  } finally { await h.close(); }
+});
+
+// A Bot is shown no message ids. On 2026-10-14, with the reading down, 通识's look-up was refused among
+// three jobs, its new job then quoted an id it could not know, and the second refusal cut it off.
+test("among several jobs with no reading, a new job named by its title alone opens for the line and the refused effect runs", async () => {
+  const h = await createScenario({ workItems: true, locale: "en" });
+  try {
+    const [bot] = h.createBots("Writer");
+    const direct = h.direct(bot!);
+    for (const title of ["Report", "Website", "Music"]) h.store.openTask({ sessionId: direct, title });
+    h.judge("read_filing").reply({ about: "unclear" });
+    h.script(bot!).reply(call(writeFile("x.md", "x")),
+      call(tool("work_on", { plan: { new: { title: "Payoneer and Stripe" } } }), writeFile("x.md", "x")), call(endTurn()));
+    const line = h.postUser(direct, "Can Payoneer and Stripe work together?");
+    await h.waitIdle();
+
+    expect(h.toolCalls(bot!, "write_file").map((row) => row.result?.ok)).toEqual([false, true]);
+    const filed = h.store.filingsOfMessage(line.id);
+    expect(filed).toHaveLength(1);
+    expect(h.store.getTask(filed[0]!.taskId).title).toBe("Payoneer and Stripe");
+    expect(h.turns(bot!).map((turn) => turn.end_reason)).not.toContain("needs_attention");
+  } finally { await h.close(); }
+});
+
+test("a new job quoting an id that is not a line of the conversation is still refused, and counts", async () => {
+  const h = await createScenario({ workItems: true, locale: "en" });
+  try {
+    const [bot] = h.createBots("Writer");
+    const direct = h.direct(bot!);
+    for (const title of ["Report", "Website"]) h.store.openTask({ sessionId: direct, title });
+    h.judge("read_filing").reply({ about: "unclear" });
+    h.script(bot!).reply(call(tool("work_on", { plan: { new: { title: "Poem", quote_message_id: "01NOTALINE" } } })), call(endTurn()));
+    h.postUser(direct, "Write me a poem");
+    await h.waitIdle();
+
+    expect(h.toolCalls(bot!, "work_on").map((row) => row.result?.ok)).toEqual([false]);
+    expect(h.turns(bot!)[0]!.task_id).toBeNull();
+    expect(h.store.filingBudget(h.turns(bot!)[0]!.id)).toBe(1);
   } finally { await h.close(); }
 });
 

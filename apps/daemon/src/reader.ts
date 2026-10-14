@@ -297,7 +297,8 @@ export function createReader(deps: ReaderDeps): Reader {
         : answered ? answered.fail
           : result!.failKind && result!.failKind !== "incomplete" ? result!.failKind
             : null;
-    const raw = answered?.content ?? result?.content ?? null;
+    // A Claude Code error's own words stand as the answer that came back; a failed call's is never parsed.
+    const raw = answered?.content ?? answered?.error ?? result?.content ?? null;
     call.ms = Date.now() - started;
     const reading = fail ? null : asked.parse(raw ?? "");
     if (!reading) {

@@ -113,18 +113,18 @@ export function situationUserMessage(
     // of these jobs: the first effect opens one for it.
     const request = store.originalUserRequest(turnId);
     if (request && store.lineReadInPlace(request.id)) job.push(locale === "en"
-      ? "The app read the user's line as something done right here, the reply saying how it went (a question, a look-up, a setting, a small action): your calls open no job. If it turns out to be work with something to hand over, open one with work_on({new}) quoting the user first."
-      : "应用读出这句话是当场做完、在回复里说清楚就行的事（问题、查询、改设置、小操作）：你的调用不会开新事。做下去发现要交出成果的，先 work_on({new}) 引用用户原话开一件。");
+      ? "The app read the user's line as something done right here, the reply saying how it went (a question, a look-up, a setting, a small action): your calls open no job. If it turns out to be work with something to hand over, open one for it with work_on({new:{title}}) first."
+      : "应用读出这句话是当场做完、在回复里说清楚就行的事（问题、查询、改设置、小操作）：你的调用不会开新事。做下去发现要交出成果的，先用 work_on({new:{title}}) 为它开一件。");
     else if (candidates.length > 0 && request && store.lineReadAsNew(request.id)) job.push(locale === "en"
       ? "The app read the user's line as about none of these jobs: your first effect opens a new job for it. If it is about one of them after all, choose that one with work_on first."
       : "应用读出这句话不是在说上面哪一件：第一次有副作用的调用会为它新开一件事；其实是在说其中某件的话，先用 work_on 选它。");
     else if (candidates.length === 1) job.push(locale === "en"
-      ? "The first effect defaults to that job; if unrelated, use work_on({new}) and quote the user first."
-      : "第一次副作用默认归到这件事；不相干就先 work_on({new}) 引用用户原话。" );
+      ? "The first effect defaults to that job; if unrelated, open one for the line with work_on({new:{title}}) first."
+      : "第一次副作用默认归到这件事；不相干就先用 work_on({new:{title}}) 为这句话新开一件。" );
     else if (candidates.length === 0) job.push(locale === "en"
       ? "No captured candidates: a user's first effect opens one visible job and a produce ticket."
       : "没有候选：用户请求的第一次副作用会可见地新开一件事与产出任务。" );
-    else job.push(locale === "en" ? "Choose with work_on before any effect; an ambiguous effect is refused." : "先 work_on 选定再动手；未选归属的副作用会被拒绝。");
+    else job.push(locale === "en" ? "Choose with work_on before any effect, or open one with work_on({new:{title}}) when the line is about none of them; an ambiguous effect is refused." : "先 work_on 选定再动手，都不是就用 work_on({new:{title}}) 新开一件；未选归属的副作用会被拒绝。");
   }
   // A read-only turn opens on the stop over it and what it may do, before anything else (ADR 0040).
   const held = readOnlyHeld(store, turnId, locale);

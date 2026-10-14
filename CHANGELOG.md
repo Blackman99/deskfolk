@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A Bot that cannot tell which job your line is about can open a new one for it
+
+- When the app could not read which job a line of yours was about and the conversation had several, a Bot whose first step had an effect (even a look-up with a command) was told to pick one of the jobs or open a new one by quoting your line's message id — an id it is never shown. It guessed, was refused again, and the line got only 「这句话需要先选归属，尚未执行有副作用的工具」 ("This line needs a job selected"). On 2026-10-14 「stripe 在国内怎么开通绑定」 and 「Payoneer + Stripe 能通吗」 in 通识's direct both ended that way. A new job named by its title alone now opens for the line that started the turn, and the refused call goes ahead; an id that is not a line of yours in the conversation is still refused.
+- When a reading on your Claude Code fails with a reason, such as the plan's session limit ("You've hit your session limit · resets 11:10pm"), the flow's step now shows that sentence as its raw answer instead of nothing.
+
 ### A file a Bot only linked can be annotated
 
 - A video a Bot cut with a command and only linked in its reply ("Done: the whole MV is cut, [master.mp4](…)") could not be annotated: there was no "Annotate here" under the player and nothing said why. Annotations hang on the message that handed a file over, and only an attachment or an `附件：` line counted. When no Bot message handed the file over, the annotation now goes to the latest Bot message in the conversation that links it, one in the same job first. A handover still comes first: a reviewer linking a file another Bot attached does not take its annotations. A file no Bot handed over or linked still cannot be annotated, and the annotation list says so.

@@ -636,7 +636,7 @@ export function createTools(deps: ToolsDeps): Tools {
       const readNew = trigger.kind === "user" && store.lineReadAsNew(trigger.id);
       if (candidates.length > 1 && !readNew) {
         store.noteFilingBounce(turn.id);
-        return { ok: false, result: toolFail("needs_filing", `Choose a job with work_on before this call: one of ${candidates.join(", ")}, or {new:{title, quote_message_id}} quoting the user's line when it is about none of them`) };
+        return { ok: false, result: toolFail("needs_filing", `Choose a job with work_on before this call: one of ${candidates.join(", ")}, or {new:{title}} to open one for the user's line when it is about none of them`) };
       }
       if (candidates.length === 0 && trigger.kind !== "user") {
         return { ok: false, result: toolFail("needs_filing", "Only a user request can open a new job; choose a candidate with work_on") };

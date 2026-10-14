@@ -67,6 +67,11 @@ test("Claude Code missing, or the account signed out, is claude_unavailable with
 
   const errored = fakeQuery(() => [{ type: "result", subtype: "error_during_execution", is_error: true, usage: { input_tokens: 5, output_tokens: 0 }, total_cost_usd: 0 } as unknown as SDKMessage]);
   expect(await createClaudeJudge({ claudeCode: probeOf(status), query: errored })(asked)).toMatchObject({ content: null, fail: "claude_failed" });
+  // The account's session limit, as Claude Code 2.1.299 reports it: a "success" whose result is the error.
+  const limited = fakeQuery(() => [{ type: "result", subtype: "success", is_error: true, api_error_status: 429,
+    result: "You've hit your session limit · resets 11:10pm (Asia/Shanghai)", usage: { input_tokens: 0, output_tokens: 0 }, total_cost_usd: 0 } as unknown as SDKMessage]);
+  expect(await createClaudeJudge({ claudeCode: probeOf(status), query: limited })(asked)).toMatchObject({
+    content: null, fail: "claude_failed", error: "You've hit your session limit · resets 11:10pm (Asia/Shanghai)" });
   const none = fakeQuery(() => []);
   expect(await createClaudeJudge({ claudeCode: probeOf(status), query: none })(asked)).toEqual({ content: null, usage: null, fail: "claude_failed" });
   const throws = fakeQuery(() => { throw new Error("spawn failed"); });

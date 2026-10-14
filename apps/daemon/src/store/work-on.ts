@@ -81,9 +81,14 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
       }
       taskId = task.id;
     } else if (fresh) {
-      quote = typeof fresh.quote_message_id === "string" ? getMessage(ctx, fresh.quote_message_id) : null;
+      // No id named: the line that opened the segment. A Bot is shown no message ids, so it could not
+      // quote one: on 2026-10-14, with the reading down, 通识 had a look-up refused among three jobs,
+      // then a guessed id refused, and 「Payoneer + Stripe 能通吗」 got the desk's cut-off line.
+      const named = fresh.quote_message_id;
+      quote = named === undefined || named === null || named === "" ? trigger
+        : typeof named === "string" ? getMessage(ctx, named) : null;
       if (!quote || quote.kind !== "user" || quote.author !== "user" || quote.session_id !== trigger.session_id) {
-        throw new HttpError(422, "invalid_args", "a new job quotes a user line from this turn's conversation");
+        throw new HttpError(422, "invalid_args", "a new job quotes a user line from this turn's conversation: leave out quote_message_id to quote the line that opened this turn");
       }
       const used = ctx.db.query<{ n: number }, [string]>("SELECT work_dir_changes AS n FROM turns WHERE id = ?").get(turn.id)?.n ?? 0;
       const ran = Boolean(ctx.db.query("SELECT 1 FROM turn_runs WHERE turn_id = ? LIMIT 1").get(turn.id));
@@ -95,7 +100,7 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
       // A new job in a conversation puts its older jobs nobody is on to sleep (ADR 0040 §2.6 ②).
       updatePlanDormancy(ctx, { newTaskId: taskId });
     } else {
-      throw new HttpError(422, "invalid_args", "plan is a candidate job id or {new:{title, quote_message_id}}");
+      throw new HttpError(422, "invalid_args", "plan is a candidate job id or {new:{title}}");
     }
 
     let ticketId: string | null = null;

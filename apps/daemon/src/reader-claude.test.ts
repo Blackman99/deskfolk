@@ -88,6 +88,10 @@ test("a Claude error, an answer that is no reading and a reading past its time e
   expect(failed.answers()).toMatchObject([{ fail: "claude_failed", model: "haiku" }]);
   // What it spent before failing is still spent.
   expect(failed.claudeSpent).toHaveLength(1);
+  // Claude Code's own words for the error are what came back, so the flow's step says why.
+  const limited = harness(() => ({ content: null, usage: USAGE, fail: "claude_failed", error: "You've hit your session limit · resets 11:10pm" }));
+  await limited.reader.userLine(limited.store.postMessage(limited.direct, { body: "停一下" }));
+  expect(limited.answers()).toMatchObject([{ source: "words", fail: "claude_failed", raw: "You've hit your session limit · resets 11:10pm" }]);
 
   const threw = harness(() => { throw new Error("boom"); });
   await threw.reader.userLine(threw.store.postMessage(threw.direct, { body: "停一下" }));

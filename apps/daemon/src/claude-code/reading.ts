@@ -54,6 +54,8 @@ export type ClaudeReadingAnswer = {
   usage: ClaudeReadingUsage | null;
   /** `claude_unavailable`: Claude Code is not installed or not signed in; `claude_failed`: it errored or said nothing. */
   fail: "claude_unavailable" | "claude_failed" | null;
+  /** What Claude Code said when it errored, as its result came back ("You've hit your session limit · resets 11:10pm"). */
+  error?: string;
 };
 
 export type ClaudeJudge = (input: { target: LocalAgentTarget; system: string; prompt: string | ClaudePromptBlock[]; signal: AbortSignal }) => Promise<ClaudeReadingAnswer>;
@@ -200,9 +202,12 @@ export function createClaudeJudge(deps: ClaudeReadingDeps): ClaudeJudge {
       for await (const message of session) {
         if (message.type !== "result") continue;
         const usage = usageOf(message);
-        answer = message.subtype === "success" && !message.is_error && typeof message.result === "string" && message.result.trim()
-          ? { content: message.result, usage, fail: null }
-          : { content: null, usage, fail: "claude_failed" };
+        // An error result carries its reason, which is otherwise lost: on 2026-10-14 every reading failed
+        // for two hours on the account's session limit, and only running claude by hand said so.
+        const said = "result" in message && typeof message.result === "string" && message.result.trim() ? message.result : null;
+        answer = message.subtype === "success" && !message.is_error && said
+          ? { content: said, usage, fail: null }
+          : { content: null, usage, fail: "claude_failed", ...(message.is_error && said ? { error: said } : {}) };
       }
       return answer;
     } catch {
