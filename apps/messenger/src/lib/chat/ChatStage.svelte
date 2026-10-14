@@ -9,8 +9,6 @@
 	import { copyableImageAt } from '../image-context.ts';
 	import { desktopPlatform } from '../platform.ts';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
-	import AttributionDialog from './AttributionDialog.svelte';
-	import { attributable, attributionChipIds, planUsage } from './attribution.ts';
 	import DelegationRecords from './DelegationRecords.svelte';
 	import { annotationsByMessage } from '../annotations/model.ts';
 	import { indexBotDmsByOrigin } from './bot-dm-entries.ts';
@@ -100,15 +98,13 @@
 	const workQuestionContextKey = $derived(snapshot.messages
 		.filter((row) => row.session_id === stageSessionId && row.control?.kind === 'work_question')
 		.map((row) => `${row.id}:${row.control?.kind === 'work_question' ? row.control.task_id : ''}`).join('|'));
-	// The list loads from one of the conversation's lines: opened before its lines have arrived, it
-	// waits for them (2026-10-03: a conversation reopened read 「一件事」 on every tag until a reload).
-	const hasLines = $derived(snapshot.messages.some((row) => row.session_id === stageSessionId && (row.kind === 'user' || row.kind === 'bot')));
+	// A Bot's question about a job names the job and its ticket: the names load with the question.
+	// Where a line is filed is not shown in the conversation; the job's flow shows it (2026-10-14).
 	$effect(() => {
 		const id = stageSessionId;
 		const questions = workQuestionContextKey;
-		const ready = hasLines;
-		if (id && connected && !fileDrop && (ready || questions)) void untrack(() => {
-			const question = questions ? snapshot.messages.find((row) => row.session_id === id && row.control?.kind === 'work_question') : undefined;
+		if (id && connected && !fileDrop && questions) void untrack(() => {
+			const question = snapshot.messages.find((row) => row.session_id === id && row.control?.kind === 'work_question');
 			void runtime.loadAttributionPlans(id, question?.id);
 		});
 	});
@@ -143,11 +139,6 @@
 	const botDmIndex = $derived(
 		indexBotDmsByOrigin(snapshot.sessions, selected?.id ?? null, snapshot.turns, botsById)
 	);
-	/** Which line's filing is being changed, in the dialog; its tag and its menu both open it. */
-	let attributionEditId = $state<string | null>(null);
-	const attributionTarget = $derived(attributionEditId ? (snapshot.messages.find((row) => row.id === attributionEditId) ?? null) : null);
-	/** Only the first line of a run about the same job shows its tag; the rest are still changeable from their menu. */
-	const attributionChips = $derived(attributionChipIds(snapshot.messages.filter((row) => row.session_id === selected?.id)));
 	// Keyed by the message that carries them; a separate collection, so a batch's cards never
 	// touch the memoized message wrappers.
 	const annotationIndex = $derived(annotationsByMessage(snapshot.annotations));
@@ -899,7 +890,6 @@
 		get commandHosts() { return commandHosts; },
 		get annotationIndex() { return annotationIndex; },
 		get botDmIndex() { return botDmIndex; },
-		get attributionChips() { return attributionChips; },
 		get cardErrors() { return cardErrors; },
 		get versionsShown() { return versionsShown; },
 		get editErrorText() { return editErrorText; },
@@ -909,8 +899,6 @@
 		set approvalKeys(value) { approvalKeys = value; },
 		get approvalKeyErrors() { return approvalKeyErrors; },
 		set approvalKeyErrors(value) { approvalKeyErrors = value; },
-		get attributionEditId() { return attributionEditId; },
-		set attributionEditId(value) { attributionEditId = value; },
 		get openStepsTurn() { return openStepsTurn; },
 		set openStepsTurn(value) { openStepsTurn = value; },
 		get onOpenProfile() { return onOpenProfile; },
@@ -1129,9 +1117,6 @@
 			onShowTrace={() => showMessageTrace(activeMenu.message)}
 			onCopyId={() => handleCopyMessageId(activeMenu.message.id)}
 			onReaction={(emoji) => void runtime.toggleReaction(activeMenu.message.id, emoji)}
-			onAttribution={!fileDrop && attributable(activeMenu.message) && connected && !lockedComposer
-				? () => { attributionEditId = activeMenu.message.id; }
-				: undefined}
 			onSelectText={activeMenu.touch ? () => { textSheetId = activeMenu.message.id; } : undefined}
 			onEdit={editable(activeMenu.message) ? () => startEdit(activeMenu.message) : undefined}
 			sheet={activeMenu.touch}
@@ -1166,22 +1151,6 @@
 				<div class="whitespace-pre-wrap">{shown.body}</div>
 			{/if}
 		</MessageTextSheet>
-	{/if}
-	{#if attributionTarget}
-		{@const target = attributionTarget}
-		<AttributionDialog
-			message={target} {t}
-			plans={runtime.attributionPlans[target.session_id] ?? []}
-			{locale}
-			lastUsed={planUsage(snapshot.messages.filter((row) => row.session_id === target.session_id))}
-			disabled={!connected || lockedComposer}
-			loading={runtime.attributionLoading[target.session_id] ?? false}
-			loadError={runtime.attributionLoadError[target.session_id] ?? false}
-			onLoad={() => runtime.loadAttributionPlans(target.session_id, target.id)}
-			onSave={(filings) => runtime.patchMessageAttribution(target.id, filings)}
-			onNewJob={() => runtime.newJobFromMessage(target.id)}
-			onClose={() => { attributionEditId = null; }}
-		/>
 	{/if}
 </div>
 

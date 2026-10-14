@@ -58,6 +58,20 @@ describe("call runs", () => {
     store.close();
   });
 
+  test("on a board, a reading of where your line goes names its jobs and tickets as they are called now", () => {
+    const { store, sessionId, line } = seeded();
+    const job = store.openTask({ sessionId, title: "宣传片" });
+    const ticket = store.createTicket({ taskId: job.id, title: "剪辑", status: "doing" });
+    const run = store.recordCallRun({ role: "reader", prompt: { id: "call.read_filing", revision_id: null, locale: "zh" }, sessionId, messageId: line.id,
+      outcome: "ok", verdict: { kind: "filing", about: "jobs", task_ids: [job.id, "gone"], ticket_ids: [ticket.id] } });
+    store.db.run("UPDATE tasks SET title = '宣传片 v2' WHERE id = ?", [job.id]);
+    const [step] = store.traceSteps({ messageIds: [line.id], turnIds: [] });
+    expect(step!.verdict).toEqual({ kind: "filing", about: "jobs", task_ids: [job.id, "gone"], ticket_ids: [ticket.id], titles: { [job.id]: "宣传片 v2", [ticket.id]: "剪辑" } });
+    // The call's own record keeps what was read, not the names.
+    expect(store.getCallRun(run.id)!.verdict).toEqual({ kind: "filing", about: "jobs", task_ids: [job.id, "gone"], ticket_ids: [ticket.id] });
+    store.close();
+  });
+
   test("each session keeps its newest runs, and deleting or clearing a session takes its runs with it", () => {
     const { store, sessionId, line } = seeded();
     const other = store.createBot({ name: "Editor", duties: "edit", boundaries: "none" }).direct_session.id;

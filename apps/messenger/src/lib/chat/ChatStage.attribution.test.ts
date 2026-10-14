@@ -1,133 +1,44 @@
 import { expect, test } from "bun:test";
+import { flushSync, tick } from "svelte";
 import { copyFor } from "../copy.ts";
 import { aBot, aDirect, aMessage, fakeRuntime } from "../test-fixtures.ts";
-import { flushSync, tick } from "svelte";
-import { buttonByText, click, fill, render } from "../test-render.ts";
-import { reactive } from "../test-reactive.svelte.ts";
+import { render } from "../test-render.ts";
 import ChatStage from "./ChatStage.svelte";
 
 const filed = (id: string, session: string, at: string, filings: { task_id: string; part_key?: string | null }[], over = {}) =>
-  Object.assign(aMessage({ id, session_id: session, created_at: `2026-10-02T00:00:${at}.000Z`, ...over }), {
+  Object.assign(aMessage({ id, session_id: session, created_at: `2026-10-14T00:00:${at}.000Z`, ...over }), {
     filing_state: filings.length ? "filed" : "undetermined",
     filings: filings.map((row) => ({ ticket_id: null, part_key: null, ...row })),
   });
 
-test("actual transcript tags the first line of each run, shows nothing on app control lines, and says 「一件事」 for a job not loaded", () => {
+// Where a line is filed is the app's own (2026-10-14): the conversation does not show it and offers
+// no way to change it; a line's flow is where it is seen.
+test("no line says where it is filed, and its menu offers no way to change it, only its flow", async () => {
   const session = aDirect();
   const messages = [
-    filed("user", session.id, "01", [{ task_id: "plan-a", part_key: "Shot 01–03" }, { task_id: "plan-b" }]),
-    filed("same", session.id, "02", [{ task_id: "plan-a", part_key: "Shot 01–03" }, { task_id: "plan-b" }], { kind: "bot", author: "bot-1" }),
-    filed("bot", session.id, "03", [], { kind: "bot", author: "bot-1" }),
-    aMessage({ id: "control", session_id: session.id, created_at: "2026-10-02T00:00:04.000Z", control: { kind: "status_answer" } }),
+    filed("mine", session.id, "01", [{ task_id: "plan-a", part_key: "Shot 01" }]),
+    filed("theirs", session.id, "02", [], { kind: "bot", author: "bot-1" }),
   ];
   const runtime = fakeRuntime({ bots: [aBot()], sessions: [session], messages }, { selectedId: session.id });
-  const { host, close } = render(ChatStage, {
-    runtime, t: copyFor("zh"), selected: session,
-    onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
-  });
-  try {
-    const chip = (id: string) => host.querySelector(`[data-message-id="${id}"] .attribution-chip`);
-    expect(chip("user")?.textContent).toContain("一件事");
-    expect(chip("user")?.textContent).toContain("另 1 件");
-    expect(chip("user")?.textContent).not.toContain("plan-a");
-    expect(chip("same")).toBeNull();
-    expect(chip("bot")?.textContent?.replace(/\s+/g, " ").trim()).toBe("未归属 · 选择归属");
-    expect(host.querySelector('[data-message-id="control"] .attribution-chip')).toBeNull();
-    expect(host.querySelector(".attribution-modal")).toBeNull();
-  } finally { close(); }
-});
-
-for (const remote of [false, true]) {
-  test(`actual ${remote ? "phone" : "local"} ChatStage changes attribution in a dialog and saves it through runtime`, async () => {
-    const session = aDirect();
-    const runtime = fakeRuntime({ bots: [aBot()], sessions: [session], messages: [aMessage({ session_id: session.id })] }, { selectedId: session.id, remote });
-    runtime.attributionPlans = { [session.id]: [{ id: "plan-a", title: "EP01", tickets: [{ id: "ticket-a", title: "剪辑" }] }] };
-    const { host, close } = render(ChatStage, { runtime, t: copyFor("en"), selected: session, onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {} });
-    try {
-      click(host.querySelector(".attribution-chip"));
-      expect(host.querySelector(".attribution-modal")).not.toBeNull();
-      expect(host.querySelector(".message-attribution form")).toBeNull();
-      click(buttonByText(host, "Show 1 other jobs"));
-      click(host.querySelector('input[value="plan-a"]'));
-      const ticket = host.querySelector<HTMLSelectElement>('select[aria-label="Ticket · EP01"]')!;
-      ticket.value = "ticket-a"; ticket.dispatchEvent(new Event("change", { bubbles: true })); flushSync();
-      click(buttonByText(host, "Set a part"));
-      fill(host.querySelector('input[aria-label="Part · EP01"]'), "Shot 01");
-      click(buttonByText(host, "Save"));
-      await Promise.resolve(); await Promise.resolve(); flushSync();
-      expect(runtime.calls).toContainEqual({ name: "patchMessageAttribution", args: ["msg-1", [{ plan_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 01" }]] });
-      expect(runtime.calls.some((call) => call.name === "loadAttributionPlans" && call.args[0] === session.id)).toBe(true);
-      expect(host.querySelector(".attribution-modal")).toBeNull();
-    } finally { close(); }
-  });
-}
-
-test("a line whose tag a run hides can still be changed from its right-click menu", async () => {
-  const session = aDirect();
-  const messages = [
-    filed("first", session.id, "01", [{ task_id: "plan-a" }]),
-    filed("second", session.id, "02", [{ task_id: "plan-a" }]),
-  ];
-  const runtime = fakeRuntime({ bots: [aBot()], sessions: [session], messages }, { selectedId: session.id });
-  runtime.attributionPlans = { [session.id]: [{ id: "plan-a", title: "EP01", tickets: [] }, { id: "plan-b", title: "海报", tickets: [] }] };
+  runtime.attributionPlans = { [session.id]: [{ id: "plan-a", title: "EP01", tickets: [] }] };
   const { host, close } = render(ChatStage, { runtime, t: copyFor("zh"), selected: session, onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {} });
   try {
-    expect(host.querySelector('[data-message-id="second"] .attribution-chip')).toBeNull();
-    const second = host.querySelector('[data-message-id="second"]')!;
-    second.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
-    flushSync();
-    click(buttonByText(host, "改归属…"));
-    expect(host.querySelector(".msg-context-menu")).toBeNull();
-    expect(host.querySelector(".attribution-modal")).not.toBeNull();
-    expect(host.querySelector<HTMLInputElement>('input[value="plan-a"]')?.checked).toBe(true);
-    click(buttonByText(host, "显示其他 1 件"));
-    click(host.querySelector('input[value="plan-b"]'));
-    click(buttonByText(host, "保存"));
-    await Promise.resolve(); await Promise.resolve(); flushSync();
-    expect(runtime.calls).toContainEqual({ name: "patchMessageAttribution", args: ["second", [{ plan_id: "plan-a" }, { plan_id: "plan-b" }]] });
-  } finally { close(); }
-});
-
-test("a line of yours glued to the wrong job can be made a new job of its own; a Bot's line cannot", async () => {
-  const session = aDirect();
-  const messages = [
-    filed("mine", session.id, "01", [{ task_id: "plan-a" }]),
-    filed("theirs", session.id, "02", [{ task_id: "plan-b" }], { kind: "bot", author: "bot-1" }),
-  ];
-  const runtime = fakeRuntime({ bots: [aBot()], sessions: [session], messages }, { selectedId: session.id });
-  runtime.attributionPlans = { [session.id]: [{ id: "plan-a", title: "sleep 120", tickets: [] }, { id: "plan-b", title: "海报", tickets: [] }] };
-  const { host, close } = render(ChatStage, { runtime, t: copyFor("zh"), selected: session, onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {} });
-  try {
-    click(host.querySelector('[data-message-id="mine"] .attribution-chip'));
-    const modal = () => host.querySelector(".attribution-modal")!;
-    const newJob = () => modal().querySelector<HTMLInputElement>(".plan-row.new-job input");
-    expect(modal().querySelector(".plan-row.new-job")?.textContent).toContain("新开一件事");
-    click(newJob());
-    // Chosen, it stands alone: the old job is let go of.
-    expect(modal().querySelector('input[value="plan-a"]:checked')).toBeNull();
-    expect(newJob()?.checked).toBe(true);
-    click(buttonByText(host, "保存"));
-    await Promise.resolve(); await Promise.resolve(); flushSync();
-    expect(runtime.calls).toContainEqual({ name: "newJobFromMessage", args: ["mine"] });
-    expect(runtime.calls.some((call) => call.name === "patchMessageAttribution")).toBe(false);
+    await tick(); flushSync();
+    for (const id of ["mine", "theirs"]) {
+      const row = host.querySelector(`[data-message-id="${id}"]`)!;
+      expect(row.querySelector(".attribution-chip, .message-attribution")).toBeNull();
+      expect(row.textContent).not.toContain("EP01");
+      expect(row.textContent).not.toContain("归属");
+      row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      flushSync();
+      const menu = host.querySelector(".msg-context-menu")!;
+      expect(menu.textContent).not.toContain("归属");
+      expect(menu.querySelector('[data-job-view="trace"]')).not.toBeNull();
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      flushSync();
+    }
     expect(host.querySelector(".attribution-modal")).toBeNull();
-
-    click(host.querySelector('[data-message-id="theirs"] .attribution-chip'));
-    expect(modal().querySelector(".plan-row.new-job")).toBeNull();
-  } finally { close(); }
-});
-
-test("a conversation opened before its lines arrive loads its jobs once they do, so its tags name them", async () => {
-  // 2026-10-03: reopening a group read 「一件事」 on every tag until a reload.
-  const session = aDirect();
-  const line = filed("line", session.id, "01", [{ task_id: "plan-a" }]);
-  // The real load needs one of the conversation's lines to ask from: one made before they arrive does nothing.
-  const linesWhenLoaded: number[] = [];
-  const runtime = reactive(fakeRuntime({ bots: [aBot()], sessions: [session], messages: [] }, { selectedId: session.id,
-    loadAttributionPlans: async () => { linesWhenLoaded.push(runtime.snapshot.messages.length); } }));
-  const { close } = render(ChatStage, { runtime, t: copyFor("zh"), selected: session, onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {} });
-  try {
-    runtime.snapshot = { ...runtime.snapshot, messages: [line] }; flushSync(); await tick();
-    expect(linesWhenLoaded).toEqual([1]);
+    // Nothing in this conversation names a job, so its job list is never asked for.
+    expect(runtime.calls.some((call) => call.name === "loadAttributionPlans")).toBe(false);
   } finally { close(); }
 });

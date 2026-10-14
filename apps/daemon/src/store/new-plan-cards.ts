@@ -1,6 +1,6 @@
 /**
  * New-plan receipts live on messages; no separate card table or whole-plan merge. The app no longer
- * puts one up (ADR 0058, 2026-10-06): the tag under your line already names the job it opened, and
+ * puts one up (ADR 0058, 2026-10-06): your line's flow names the job it opened (ADR 0089), and
  * none of the four ever posted was pressed. Cards already out keep their buttons.
  */
 import type { ControlActionResult, Hold, Message } from "@real-bot/protocol";

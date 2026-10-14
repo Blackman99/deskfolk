@@ -436,10 +436,10 @@ test("a Bot message ends on one line with its commands, its tag and its time; a 
     // Nothing about when it came is left at the top.
     const wrap = reply.closest(".msg-wrap")!;
     expect(wrap.querySelector(".msg-header .msg-time")).toBeNull();
-    // The commands, the tag and the time share the commands' line.
+    // The commands and the time share the commands' line; where the reply is filed is not shown.
     const head = reply.querySelector(".msg-foot .command-head")!;
     expect(head.querySelector(".command-summary")?.textContent?.replace(/\s+/g, " ").trim()).toBe("1 条命令");
-    expect(head.querySelector(".attribution-chip")).not.toBeNull();
+    expect(reply.querySelector(".attribution-chip")).toBeNull();
     expect(head.querySelector(".msg-time")?.textContent?.trim()).toMatch(/^\d{1,2}:\d{2}$/);
     // On the right, the time last: how long it took comes before it.
     expect(head.querySelector(".msg-when")?.lastElementChild?.classList.contains("msg-time")).toBe(true);

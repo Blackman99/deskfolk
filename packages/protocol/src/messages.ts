@@ -39,15 +39,6 @@ export type RenamePlanRequest = { title: string };
 /** `PATCH /v1/tasks/:id` with your word on the job's size (ADR 0060): `single` and nothing reads it as large again. */
 export type SetPlanScaleRequest = { scale: "large" | "single" };
 
-export type PatchMessageAttributionRequest = {
-  filings: Array<{ plan_id: string; ticket_id?: string | null; part_key?: string | null }>;
-};
-
-/** 「新开一件事」: a line of yours opens a job of its own (named after it, or `title`) and is filed there. */
-export type NewJobFromLineRequest = {
-  new_plan: { title?: string | null };
-};
-
 export type Message = {
   id: string;
   session_id: string;

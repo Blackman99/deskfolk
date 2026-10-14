@@ -162,53 +162,10 @@ export function messageRoutes(ctx: RouteCtx): Response | Promise<Response> | nul
     return jsonResponse(engine.control(params.id!, { action: body.action, taskId: body.task_id, note: body.note }), 200, null);
   }
 
-  // Move a line to another job (ADR 0040 §8.5). The inbox items it already reached move with it.
+  // The jobs a Bot's question about a job is named from. Where a line is filed is the app's own:
+  // no client changes it (2026-10-14); a line's flow shows it.
   params = matchPath(path, "/v1/messages/:id/attribution");
   if (params && method === "GET") return jsonResponse(attributionOptions(store, params.id!), 200, null);
-  if (params && method === "PATCH") {
-    const body = input.body;
-    if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(422, "invalid_args", "an attribution object is required");
-    // 「新开一件事」: the line opens a job of its own and is filed there.
-    if (Object.hasOwn(body, "new_plan")) {
-      const fresh = (body as { new_plan: unknown }).new_plan;
-      if (Object.keys(body).length !== 1 || !fresh || typeof fresh !== "object" || Array.isArray(fresh)
-        || Object.keys(fresh).some((key) => key !== "title")
-        || ((fresh as { title?: unknown }).title !== undefined && (fresh as { title?: unknown }).title !== null
-          && (typeof (fresh as { title?: unknown }).title !== "string" || ((fresh as { title: string }).title).length > 200))) {
-        throw new HttpError(422, "invalid_args", "new_plan is {title?}");
-      }
-      const opened = store.newJobFromLine(params.id!, { title: (fresh as { title?: string | null }).title ?? null, userActionId: scope?.requestId ?? ulid() });
-      engine.noteFiled(opened.id);
-      store.afterCommit(() => engine.dispatchQueuedWork());
-      publish({ event: "attribution.changed", occurred_at: occurred(), message_id: opened.id, session_id: opened.session_id,
-        filing_state: opened.filing_state ?? "filed", filings: opened.filings ?? [] });
-      return jsonResponse(opened, 200, null);
-    }
-    const multi = Object.hasOwn(body, "filings");
-    if (multi && Object.keys(body).length !== 1) throw new HttpError(422, "invalid_args", "choose filings or one plan_id");
-    const targets = multi ? (body as { filings: unknown }).filings : [body];
-    if (!Array.isArray(targets) || targets.length > 100) throw new HttpError(422, "invalid_args", "filings must be a list of at most 100 targets");
-    const filings = targets.map((target) => {
-      if (!target || typeof target !== "object" || Array.isArray(target)
-        || Object.keys(target).some((key) => !["plan_id", "ticket_id", "part_key"].includes(key))) {
-        throw new HttpError(422, "invalid_args", "invalid attribution target");
-      }
-      const { plan_id, ticket_id, part_key } = target as { plan_id?: unknown; ticket_id?: unknown; part_key?: unknown };
-      if (typeof plan_id !== "string" || !plan_id
-        || (ticket_id !== undefined && ticket_id !== null && (typeof ticket_id !== "string" || !ticket_id))
-        || (part_key !== undefined && part_key !== null && (typeof part_key !== "string" || !part_key || part_key.length > 200))) {
-        throw new HttpError(422, "invalid_args", "plan_id, ticket_id and part_key must name a target");
-      }
-      return { taskId: plan_id, ticketId: ticket_id as string | null | undefined, partKey: part_key as string | null | undefined };
-    });
-    store.getMessage(params.id!);
-    const moved = store.refileMessage(params.id!, { filings, userActionId: scope?.requestId ?? ulid() });
-    // A line that was on no job has one now: the scribe reads it against it.
-    if (filings.length > 0) engine.noteFiled(moved.id);
-    publish({ event: "attribution.changed", occurred_at: occurred(), message_id: moved.id, session_id: moved.session_id,
-      filing_state: moved.filing_state ?? (filings.length ? "filed" : "none"), filings: moved.filings ?? [] });
-    return jsonResponse(moved, 200, null);
-  }
 
   // Change a line of yours after it went out (ADR 0063): the words it shows, and what each Bot hears
   // of it, decided in this one write; the Bots told of it start once it is in.

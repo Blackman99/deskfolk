@@ -103,10 +103,6 @@ add("PATCH", "messages/:id", { body: string }, ["body"]);
 add("POST", "messages/:id/(withdraw|insert)", {});
 get("messages/:id/versions");
 add("PUT", "sessions/:id/lead", { bot_id: nullable(id), confirmed: one(true) }, ["bot_id", "confirmed"]);
-const partKey: Check = v => typeof v === "string" && v.length > 0 && v.length <= 200;
-const attribution = { plan_id: id, ticket_id: nullable(id), part_key: nullable(partKey) };
-add("PATCH", "messages/:id/attribution", { ...attribution, filings: v => Array.isArray(v) && v.length <= 100 && v.every(object(attribution, ["plan_id"])),
-  new_plan: object({ title: nullable(v => typeof v === "string" && v.length <= 200) }) });
 const planStatus: Check = one("active", "done", "parked");
 const ticketStatus: Check = one("todo", "doing", "review", "done", "parked");
 const specLines: Check = list((v) => typeof v === "string" && v.length <= 400);
@@ -310,14 +306,6 @@ export function validateBusiness(request: RemoteRequest): void {
       (route.patch && !Object.keys(request.body ?? {}).some(k => k !== "if_revision")) ||
       (request.ifMatch !== undefined && !(request.method === "PUT" && request.path === "/v1/workspace/file"))) {
       throw new HttpError(422, "invalid_args", "invalid remote properties");
-    }
-    if (request.method === "PATCH" && /^\/v1\/messages\/[^/]+\/attribution$/.test(request.path)) {
-      const body = request.body ?? {};
-      const multi = Object.hasOwn(body, "filings");
-      const fresh = Object.hasOwn(body, "new_plan");
-      if (((multi || fresh) && Object.keys(body).length !== 1) || (!multi && !fresh && !Object.hasOwn(body, "plan_id"))) {
-        throw new HttpError(422, "invalid_args", "choose filings, one plan_id or new_plan");
-      }
     }
     // A job's PATCH is its new name or its size, one at a time (ADR 0060).
     if (request.method === "PATCH" && /^\/v1\/tasks\/[^/]+$/.test(request.path) && Object.keys(request.body ?? {}).length !== 1) {

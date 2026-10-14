@@ -54,7 +54,10 @@ export function markNeedsAttention(ctx: StoreContext, turnId: string, locale: "e
     recordWorkEvent(ctx, { kind: "work.needs_attention", actor: "app", botId: turn.bot_id, turnId,
       payload: { reason: "filing_budget", candidates: deskCandidateIds(ctx, turnId) } });
     return insertMessage(ctx, { sessionId: turn.session_id, turnId, kind: "system", author: turn.bot_id,
-      body: locale === "en" ? "This line needs a job selected before work can proceed." : "这句话需要先选归属，尚未执行有副作用的工具。",
+      // Where a line goes is the app's own (2026-10-14): nothing to pick, so it says what stopped and how to go on.
+      body: locale === "en"
+        ? "Could not tell which job this line is about, so nothing was done (no tool with side effects ran); say which job to go on."
+        : "没分清这句话是哪件事的，还没动手（有副作用的工具一个都没执行）；说一下是哪件事再继续。",
       hiddenFromBots: true });
   });
 }

@@ -1,6 +1,22 @@
 import type { CallRunVerdict } from "@real-bot/protocol";
 import type { CopyShape } from "./shape.ts";
 
+/**
+ * The jobs a reading filed your line under, by name — and the tickets, under one job — when the
+ * board named them all; otherwise null, and the step counts them. The flow is where a line's filing
+ * is seen (2026-10-14).
+ */
+function filedUnder(verdict: Extract<CallRunVerdict, { kind: "filing" }>, joiner: string): string | null {
+  const titles = verdict.titles;
+  if (!titles || verdict.task_ids.length === 0) return null;
+  const jobs = verdict.task_ids.map((id) => titles[id]);
+  if (jobs.some((title) => !title)) return null;
+  const tickets = verdict.ticket_ids.map((id) => titles[id]).filter((title): title is string => Boolean(title));
+  // A ticket named as its job is (the one a new job opens with) is not said twice.
+  const shown = tickets.filter((title) => title.trim() !== jobs[0]!.trim());
+  return jobs.length === 1 && shown.length > 0 ? `${jobs[0]} › ${shown.join(joiner)}` : jobs.join(joiner);
+}
+
 /** What one of the app's calls concluded, as a step on the flow board says it (ADR 0083). */
 function zhVerdict(verdict: CallRunVerdict): string {
   switch (verdict.kind) {
@@ -23,11 +39,13 @@ function zhVerdict(verdict: CallRunVerdict): string {
                 : "没什么要处理的";
       return verdict.by_words ? `${read}（按词表）` : read;
     }
-    case "filing":
-      return verdict.about === "jobs" ? (verdict.task_ids.length > 1 ? `归到 ${verdict.task_ids.length} 件事` : "归到一件事")
+    case "filing": {
+      const named = filedUnder(verdict, "、");
+      return verdict.about === "jobs" ? (named ? `归到：${named}` : verdict.task_ids.length > 1 ? `归到 ${verdict.task_ids.length} 件事` : "归到一件事")
         : verdict.about === "new" ? "是新的一件事"
           : verdict.about === "in_place" ? "就地办，不开事"
             : "说不清归哪件";
+    }
     case "scale":
       return verdict.large ? `是大活${verdict.unit ? `：按「${verdict.unit}」拆` : ""}` : "不是大活";
     case "scribe":
@@ -80,11 +98,13 @@ function enVerdict(verdict: CallRunVerdict): string {
                 : "Nothing to act on";
       return verdict.by_words ? `${read} (word lists)` : read;
     }
-    case "filing":
-      return verdict.about === "jobs" ? (verdict.task_ids.length > 1 ? `Filed under ${verdict.task_ids.length} jobs` : "Filed under a job")
+    case "filing": {
+      const named = filedUnder(verdict, ", ");
+      return verdict.about === "jobs" ? (named ? `Filed under: ${named}` : verdict.task_ids.length > 1 ? `Filed under ${verdict.task_ids.length} jobs` : "Filed under a job")
         : verdict.about === "new" ? "New work"
           : verdict.about === "in_place" ? "Done in place, no job"
             : "Unclear which job";
+    }
     case "scale":
       return verdict.large ? `A large job${verdict.unit ? `, by the ${verdict.unit}` : ""}` : "Not a large job";
     case "scribe":

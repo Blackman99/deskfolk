@@ -7,7 +7,6 @@
 	import { whenVisible } from '../when-visible.ts';
 	import type { CommandRow } from './command-activity.ts';
 	import BotDmEntry from './BotDmEntry.svelte';
-	import MessageAttribution from './MessageAttribution.svelte';
 	import AnnotationCards from '../annotations/AnnotationCards.svelte';
 	import QuoteRef from './QuoteRef.svelte';
 	import ReactionRow from './ReactionRow.svelte';
@@ -231,14 +230,13 @@
 							{/if}
 						</article>
 					{:else if item.type === 'message'}
-						{@const tagged = !stage.fileDrop && item.message.kind === 'bot' && !item.message.control && stage.attributionChips.has(item.message.id)}
 						{@const ranIn = item.message.turn_id && stage.commandHosts.has(item.message.id) ? item.message.turn_id : null}
 						{@const duration = calculateBotDuration(item.message, stage.snapshot.messages, stage.snapshot.turns, stage.messageLookup)}
 						<!--
 							A part before the last whose end would hold nothing but its time gives that line up: the
 							time shows with the hover actions, so the parts of one reply sit close together.
 						-->
-						{@const quietFoot = idx < group.items.length - 1 && !tagged && !(ranIn && runtime.commandsOf(ranIn).length)}
+						{@const quietFoot = idx < group.items.length - 1 && !(ranIn && runtime.commandsOf(ranIn).length)}
 						<article class="msg is-reply">
 							<div class="who">{stage.who(item.message)}</div>
 							<div class="msg-toolbar">
@@ -333,14 +331,6 @@
 							{/if}
 						</article>
 						{#snippet tail()}
-							{#if tagged}
-								<MessageAttribution
-									message={item.message} {t}
-									plans={runtime.attributionPlans[item.message.session_id] ?? []}
-									disabled={!stage.connected || stage.lockedComposer}
-									onOpen={() => { stage.attributionEditId = item.message.id; }}
-								/>
-							{/if}
 							<!-- On the right: how long it took, then when it came, last. -->
 							<span class="msg-when">
 								{#if duration}
@@ -806,11 +796,6 @@
 	}
 
 	.msg-foot :global(.command-activity) {
-		margin-top: 0;
-	}
-
-	/* The tag's own spacing was for a line of its own. */
-	.msg-foot :global(.message-attribution) {
 		margin-top: 0;
 	}
 

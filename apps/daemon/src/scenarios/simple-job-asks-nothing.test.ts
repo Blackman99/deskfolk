@@ -45,7 +45,7 @@ test("a job opened, made and handed over in one go: no 新开 card, no 放行 ca
   const { h, direct } = await avatar();
   const plan = h.store.db.query<{ id: string; title: string }, []>("SELECT id, title FROM tasks").get()!;
   expect(plan.title).toBe(REQUEST);
-  // The tag under your line names the job; nothing else in the conversation repeats it.
+  // Filed under the job, seen in its flow (ADR 0089); nothing in the conversation repeats it.
   expect(h.store.getMessage(h.messages(direct).find((message) => message.kind === "user")!.id).filings).toMatchObject([{ task_id: plan.id }]);
   expect(cards(h, direct)).toEqual([]);
   const [submission] = h.store.listSubmissions({ taskId: plan.id });

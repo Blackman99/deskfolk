@@ -2,7 +2,6 @@ import type { Locale } from "@real-bot/protocol";
 import type { CopyShape } from "./copy/shape.ts";
 import * as delegationText from "./copy/delegation.ts";
 import * as groupLeadText from "./copy/group-lead.ts";
-import * as attributionText from "./copy/attribution.ts";
 import * as routinesText from "./copy/routines.ts";
 import * as calendarText from "./copy/calendar.ts";
 import * as commonText from "./copy/common.ts";
@@ -53,7 +52,6 @@ export const JAIL_COPY = {
 const zh = {
   delegation: delegationText.zh,
   groupLead: groupLeadText.zh,
-  attribution: attributionText.zh,
   routines: routinesText.zh,
   calendar: calendarText.zh,
   common: commonText.zh,
@@ -99,7 +97,6 @@ const zh = {
 const en: CopyShape<typeof zh> = {
   delegation: delegationText.en,
   groupLead: groupLeadText.en,
-  attribution: attributionText.en,
   routines: routinesText.en,
   calendar: calendarText.en,
   common: commonText.en,

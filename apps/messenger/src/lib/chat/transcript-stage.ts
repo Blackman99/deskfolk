@@ -39,7 +39,6 @@ export type TranscriptStage = {
   readonly commandHosts: Set<string>;
   readonly annotationIndex: Map<string, Annotation[]>;
   readonly botDmIndex: BotDmIndex;
-  readonly attributionChips: Set<string>;
   readonly cardErrors: Record<string, string>;
   readonly versionsShown: Record<string, VersionsShown>;
   readonly editErrorText: string | null;
@@ -49,7 +48,6 @@ export type TranscriptStage = {
 
   approvalKeys: Record<string, string>;
   approvalKeyErrors: Record<string, boolean>;
-  attributionEditId: string | null;
   openStepsTurn: string | null;
 
   readonly onOpenProfile: (botId: string) => void;

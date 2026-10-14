@@ -1,34 +1,30 @@
-import type { Message, MessageVersion, PatchMessageAttributionRequest, WorkAnswerResult } from "@real-bot/protocol";
+import type { Message, MessageVersion, WorkAnswerResult } from "@real-bot/protocol";
 import { ApiError } from "../api.ts";
 import type { MessengerApi } from "../messenger-api.ts";
 import type { Connection } from "../runtime.svelte.ts";
 import type { SessionView } from "../session-view.svelte.ts";
 import { applyEvent, type Snapshot } from "../snapshot.ts";
-import type { AttributedMessage } from "./attribution.ts";
 
 /**
  * What this sub-store reaches back into the runtime for, read at call time: the client and the
  * connection a write rides on, the view of the conversation a line is open in, the snapshot a
- * write's reply goes into, the trace a refiled line reloads, the job list a new job loads, the
- * failure mapping every sheet shares, and `cancelEdit` as the runtime answers to it.
+ * write's reply goes into, the failure mapping every sheet shares, and `cancelEdit` as the runtime
+ * answers to it.
  */
 export interface MessageEditsHost {
   readonly api: MessengerApi | null;
   readonly connection: Connection;
   snapshot: Snapshot;
-  traceReload: number;
   viewFor(sessionId: string | null | undefined): SessionView | null;
   cancelEdit(sessionId: string): void;
   sheetFailure(error: unknown, api: MessengerApi): ApiError | null;
-  loadAttributionFor(message: AttributedMessage & { id: string; session_id: string }): void;
 }
 
 /**
- * Changing a line you sent and reading what it said before (ADR 0063), refiling a line under
- * another job or a new one, and answering a durable work question — the writes whose replies race
- * the sequenced stream, with the counters that let a newer event win. `MessengerRuntime.ingest`
- * bumps those counters; the runtime forwards every field and method here under the same names,
- * and this reaches back in through {@link MessageEditsHost}.
+ * Changing a line you sent and reading what it said before (ADR 0063), and answering a durable
+ * work question — the writes whose replies race the sequenced stream, with the counters that let a
+ * newer event win. `MessengerRuntime.ingest` bumps those counters; the runtime forwards every field
+ * and method here under the same names, and this reaches back in through {@link MessageEditsHost}.
  */
 export class MessageEdits {
   constructor(private readonly host: MessageEditsHost) {}
@@ -213,47 +209,6 @@ export class MessageEdits {
       return versions;
     } catch {
       return null;
-    }
-  }
-
-  /** Refile only after an acknowledged write; a refusal never changes the shown selection. */
-  async patchMessageAttribution(id: string, filings: PatchMessageAttributionRequest["filings"]): Promise<ApiError | null> {
-    const api = this.host.api;
-    if (!api || this.host.connection !== "connected") return new ApiError(0, "disconnected", "Attribution not saved");
-    const revision = this.attributionRevision.get(id) ?? 0;
-    const snapshotRevision = this.messageSnapshotRevision;
-    const invalidationSeq = this.messageInvalidationSeq;
-    try {
-      const message = await api.patchMessageAttribution(id, filings);
-      if (this.host.api !== api) return new ApiError(0, "disconnected", "Attribution result unconfirmed");
-      // The sequenced stream is newer than an in-flight, unsequenced HTTP response.
-      if ((this.attributionRevision.get(id) ?? 0) === revision && this.messageSnapshotRevision === snapshotRevision &&
-          (this.messageSessionInvalidated.get(message.session_id) ?? 0) <= invalidationSeq) {
-        this.host.snapshot = applyEvent(this.host.snapshot, { ...message, event: "message.upsert", occurred_at: new Date().toISOString() });
-      }
-      this.host.traceReload += 1;
-      return null;
-    } catch (error) {
-      return this.host.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Attribution result unconfirmed");
-    }
-  }
-
-  /**
-   * 「新开一件事」: a line of yours opens a job of its own and is filed there (the Bots that read it
-   * start on it there). The message comes back as it now stands, and the job's name loads with it.
-   */
-  async newJobFromMessage(id: string): Promise<ApiError | null> {
-    const api = this.host.api;
-    if (!api || this.host.connection !== "connected") return new ApiError(0, "disconnected", "Attribution not saved");
-    try {
-      const message = await api.newJobFromMessage(id);
-      if (this.host.api !== api) return new ApiError(0, "disconnected", "Attribution result unconfirmed");
-      this.host.snapshot = applyEvent(this.host.snapshot, { ...message, event: "message.upsert", occurred_at: new Date().toISOString() });
-      this.host.loadAttributionFor(message);
-      this.host.traceReload += 1;
-      return null;
-    } catch (error) {
-      return this.host.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Attribution result unconfirmed");
     }
   }
 

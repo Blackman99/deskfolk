@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Where a line is filed is the app's own, seen in the flow
+
+- Lines no longer carry a tag saying which job they are filed under ("EP01 › Cut", "Unfiled · Choose"), and their menu no longer has "Change attribution…": the dialog that moved a line to another job, to none, or to "A new job" is gone. Which job a line is about is the app's own call — what the line points at, else a model's reading, else the Bot's choice at its desk — and it still takes effect.
+- To see it, open "This job's flow" from the line's menu: a filed line opens its job's flow with the line and its ticket picked, a line in no job its own flow. The flow's filing step now names the jobs and tickets it read, by their current names ("Filed under: Promo › Cut"), where it used to say only "Filed under a job".
+- A wrong filing is put right in words: quote a line of the right job (a quote carries its filing), or stop and say it again; if the same misreading keeps coming, tune the filing prompt on the Roles page. The API that changed a filing (`PATCH /v1/messages/:id/attribution`) is gone too, locally and over the relay.
+- When a Bot at its desk twice fails to tell which job a line is about, its notice no longer says the line "needs a job selected": it says it could not tell, did nothing yet, and to say which job to go on.
+
 ### Dialogs close softly; one switch, one way menus appear
 
 - Dialogs vanished the instant they closed. They now fade out with their backdrop; on a phone a dialog that is a page walks back out the way it came. With reduced motion they still close at once.
@@ -73,7 +80,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ### Letting work through or sending it back no longer adds a line to the conversation
 
-- When a line of yours is read as letting a hand-over through, or as finding fault and sending it back to rework, it no longer carries a grey line under it ("Approved: …", "Sent back to rework: …", nor "Its checks failed, so it went back: …" or "Approving once its checks have run: …"). These are the app's judgments on your behalf; they still take effect, and the job's flow shows them: the line is an approve or rework decision card there; when its checks sent it back, the ticket is back in rework and the Bot that made it is told. The line keeps its attribution tag as any other.
+- When a line of yours is read as letting a hand-over through, or as finding fault and sending it back to rework, it no longer carries a grey line under it ("Approved: …", "Sent back to rework: …", nor "Its checks failed, so it went back: …" or "Approving once its checks have run: …"). These are the app's judgments on your behalf; they still take effect, and the job's flow shows them: the line is an approve or rework decision card there; when its checks sent it back, the ticket is back in rework and the Bot that made it is told.
 - The rework line's Undo went with it. A misreading now has no undo: the ticket stays in rework and it counts as one send-back of yours; to have the same version handed back, tell the Bot that made it. Buttons on older "send it back to rework?" cards still work.
 
 ### What you typed stays in the composer when the link comes back, with nothing to confirm

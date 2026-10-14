@@ -5,7 +5,6 @@
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
 	import BotDmEntry from './BotDmEntry.svelte';
 	import ControlActions from './ControlActions.svelte';
-	import MessageAttribution from './MessageAttribution.svelte';
 	import AnnotationCards from '../annotations/AnnotationCards.svelte';
 	import MessageEditor from './MessageEditor.svelte';
 	import QuoteRef from './QuoteRef.svelte';
@@ -260,14 +259,6 @@
 										{/each}
 									{/if}
 								</div>
-							{/if}
-							{#if !stage.fileDrop && stage.attributionChips.has(item.message.id)}
-								<MessageAttribution
-									message={item.message} {t}
-									plans={runtime.attributionPlans[item.message.session_id] ?? []}
-									disabled={!stage.connected || stage.lockedComposer}
-									onOpen={() => { stage.attributionEditId = item.message.id; }}
-								/>
 							{/if}
 							<!-- What the reader made of your line — let work through (`passed`) or sent it back (`rework`) — is not said under it (2026-10-14): the job's flow shows it. -->
 							{#if item.message.control?.kind === 'possible_control' && !stage.lockedComposer}

@@ -146,6 +146,14 @@ test("each step says what it concluded, and how a call that came to nothing ende
   // A record from before passes were read says what it always said.
   expect(zh.verdict({ ...nod, passes: undefined })).toBe("读成：普通的一句");
   expect(zh.verdict(steps.compacted.verdict!)).toBe("留下 3/12 跳");
+  // Where your line was filed is seen here, by name (2026-10-14); a job the board could not name is counted.
+  const filing = { kind: "filing", about: "jobs", task_ids: ["j1"], ticket_ids: ["t1"], titles: { j1: "宣传片", t1: "剪辑" } } as const;
+  expect(zh.verdict(filing)).toBe("归到：宣传片 › 剪辑");
+  expect(en.verdict(filing)).toBe("Filed under: 宣传片 › 剪辑");
+  expect(zh.verdict({ ...filing, titles: { j1: "宣传片", t1: "宣传片" } })).toBe("归到：宣传片");
+  expect(zh.verdict({ ...filing, task_ids: ["j1", "j2"], titles: { j1: "宣传片", j2: "海报", t1: "剪辑" } })).toBe("归到：宣传片、海报");
+  expect(zh.verdict({ ...filing, task_ids: ["j1", "j2"], titles: { j1: "宣传片" } })).toBe("归到 2 件事");
+  expect(zh.verdict({ ...filing, titles: undefined })).toBe("归到一件事");
   expect(en.verdict(steps.judged.verdict!)).toBe("Failed 1/2");
   expect(zh.failed("timeout")).toBe("没成：超时");
   expect(en.failed("something_new")).toBe("Did not work: something_new");

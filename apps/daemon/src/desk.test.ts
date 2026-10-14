@@ -53,7 +53,7 @@ test("work_on opens the quoted request and binds its produce ticket in one opera
   expect(store.getTicket(bound.ticket_id!).worker).toBe(ctx.botId);
   expect(store.getTask(bound.task_id!).brief).toBe("Write a report");
   expect(store.getMessage(line.id).task_id).toBe(bound.task_id);
-  // The tag under your line names the job; no 「新开」 card repeats it (ADR 0058, 2026-10-06).
+  // Your line's flow names the job; no 「新开」 card repeats it (ADR 0058, 2026-10-06; ADR 0089).
   expect(result.emitted.some((entry) => entry.kind === "message")).toBe(false);
 });
 

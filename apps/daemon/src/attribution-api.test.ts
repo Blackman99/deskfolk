@@ -26,35 +26,22 @@ function start() {
   return { store, request, session, a, b, ticket, message, events, api, origin };
 }
 
-test("an authenticated correction replaces multiple filings and returns the full message for every client", async () => {
+// Where a line is filed is the app's own (2026-10-14): read by a model or chosen by the Bot at its
+// desk, seen in the line's flow, and changed by no client.
+test("no client can change where a line is filed, nor open a job from it", async () => {
   const h = start();
-  const before = h.api.syncCursor();
-  const response = await h.request(h.message.id, { filings: [{ plan_id: h.a.id }, { plan_id: h.b.id, ticket_id: h.ticket.id }] });
-  expect(response.status).toBe(200);
-  const moved = await response.json();
-  expect(moved).toMatchObject({ id: h.message.id, session_id: h.session, body: h.message.body, filing_state: "filed", task_id: h.a.id });
-  expect(moved.filings).toMatchObject([
-    { task_id: h.a.id, ticket_id: null, part_key: null },
-    { task_id: h.b.id, ticket_id: h.ticket.id, part_key: null },
-  ]);
-  expect(h.events.filter((event) => event.event === "attribution.changed")).toMatchObject([
-    { message_id: h.message.id, session_id: h.session, filing_state: "filed", filings: moved.filings },
-  ]);
-  expect(h.events.filter((event) => event.event === "message.upsert" && event.id === h.message.id).at(-1)).toMatchObject({ filings: moved.filings });
-  const catchup = await fetch(`${h.origin}/v1/events/catchup?event_instance_id=${before.event_instance_id}&after_seq=${before.watermark_seq}`, { headers: { Authorization: "Bearer filing-test" } });
-  expect(catchup.status).toBe(200);
-  const replay = await catchup.json() as { events: Array<{ payload: ClientEvent }> };
-  expect(replay.events.map((frame) => frame.payload).filter((event) => event.event === "attribution.changed")).toMatchObject([
-    { message_id: h.message.id, filing_state: "filed", filings: moved.filings },
-  ]);
-  expect(h.store.listWorkEvents({ kind: "attribution.changed" })).toHaveLength(1);
-  expect(h.store.listWorkEvents({ kind: "attribution.changed" })[0]!.payload).toMatchObject({ user_action_id: expect.any(String) });
-  const cleared = await h.request(h.message.id, { filings: [] });
-  expect(cleared.status).toBe(200);
-  expect(await cleared.json()).toMatchObject({ id: h.message.id, task_id: null, ticket_id: null, filing_state: "none", filings: [] });
+  const before = h.store.getMessage(h.message.id);
+  for (const body of [{ filings: [{ plan_id: h.a.id }] }, { filings: [] }, { plan_id: h.b.id }, { new_plan: {} }]) {
+    const response = await h.request(h.message.id, body);
+    expect(response.status).toBe(404);
+  }
+  expect(h.store.getMessage(h.message.id)).toEqual(before);
+  expect(h.store.listWorkEvents({ kind: "attribution.changed" })).toEqual([]);
+  expect(h.events.filter((event) => event.event === "attribution.changed")).toEqual([]);
+  expect(h.store.db.query<{ id: string }, []>("SELECT id FROM tasks").all().map((row) => row.id).sort()).toEqual([h.a.id, h.b.id].sort());
 });
 
-test("correcting a delivered line keeps its read audit and durably queues the correction under holds", async () => {
+test("refiling a delivered line (a new-job card's merge) keeps its read audit and durably queues the correction under holds", () => {
   const h = start();
   h.store.raiseEngineLevel(null);
   h.store.refileMessage(h.message.id, { filings: [{ taskId: h.a.id }], userActionId: "setup" });
@@ -64,8 +51,7 @@ test("correcting a delivered line keeps its read audit and durably queues the co
     messageId: h.message.id, author: "user", body: h.message.body, source: "user", kind: "change", priority: 1 });
   h.store.db.run("UPDATE inbox_items SET state = 'delivered', delivered_turn_id = ?, delivered_hop = 2 WHERE seq = ?", [turn.id, item.seq]);
   const hold = h.store.createHold({ scope: "plan", scopeId: h.b.id, source: "user_button" });
-  const response = await h.request(h.message.id, { filings: [{ plan_id: h.b.id, ticket_id: h.ticket.id }] });
-  expect(response.status).toBe(200);
+  h.store.refileMessage(h.message.id, { filings: [{ taskId: h.b.id, ticketId: h.ticket.id }], userActionId: "merge" });
   expect(h.store.getInboxItem(item.seq)).toMatchObject({ state: "delivered", task_id: h.a.id, delivered_turn_id: turn.id, delivered_hop: 2 });
   expect(h.store.db.query("SELECT task_id, ticket_id, state, body_snapshot FROM inbox_items WHERE message_id = ? AND source = 'system'").all(h.message.id)).toEqual([
     { task_id: h.b.id, ticket_id: h.ticket.id, state: "held", body_snapshot: `这句改归到 Second：${h.message.body}` },
@@ -75,7 +61,7 @@ test("correcting a delivered line keeps its read audit and durably queues the co
   expect(h.store.getHold(hold.id).lifted_at).toBeNull();
 });
 
-test("moving a source requirement invalidates both the old and new plan boards", async () => {
+test("refiling a source requirement's line invalidates both the old and new plan boards", () => {
   const h = start();
   const source = h.store.postMessage(h.session, { body: "The background must stay consistent" });
   h.store.refileMessage(source.id, { filings: [{ taskId: h.a.id }], userActionId: "setup" });
@@ -85,8 +71,7 @@ test("moving a source requirement invalidates both the old and new plan boards",
     VALUES ('moving-req', 'plan', ?, 'The background must stay consistent', 'message', ?, 'open',
       '2026-01-01', 'capture', '2026-01-01', '2026-01-01', ?)`, [h.a.id, quote.id, h.a.id]));
   h.events.length = 0;
-  const moved = await h.request(source.id, { filings: [{ plan_id: h.b.id }] });
-  expect(moved.status).toBe(200);
+  h.store.refileMessage(source.id, { filings: [{ taskId: h.b.id }], userActionId: "merge" });
   expect(h.store.db.query("SELECT origin_task_id, scope_id FROM requirements WHERE id = 'moving-req'").get()).toEqual({ origin_task_id: h.b.id, scope_id: h.b.id });
   const boards = h.events.filter((event) => event.event === "task.upsert");
   expect(boards.map((event) => event.id).sort()).toEqual([h.a.id, h.b.id].sort());
@@ -94,7 +79,7 @@ test("moving a source requirement invalidates both the old and new plan boards",
   expect(boards.find((event) => event.id === h.b.id)?.requirements?.some((row) => row.id === "moving-req")).toBe(true);
 });
 
-test("manual correction can choose untouched or dormant plans from another conversation without waking them", async () => {
+test("the job list holds untouched or dormant plans from another conversation, and reading it wakes none", async () => {
   const h = start();
   const other = h.store.createBot({ name: "Other", duties: "work", boundaries: "stay" });
   const elsewhere = h.store.openTask({ sessionId: other.direct_session.id, title: "Not seen here" });
@@ -119,58 +104,4 @@ test("a dropped ticket is not offered, unless the line is filed there now", asyn
   h.store.db.run("INSERT INTO message_filings (message_id, task_id, ticket_id, filed_by, strength, is_primary, created_at) VALUES (?, ?, ?, 'user', 'user', 1, ?)",
     [h.message.id, h.b.id, dropped.id, "2026-10-04T00:00:00.000Z"]);
   expect(await choices()).toEqual([h.ticket.id, dropped.id]);
-});
-
-test("invalid corrections are refused atomically, including a ticket from another plan", async () => {
-  const h = start();
-  for (const body of [null, [], {}, { filings: "all" }, { filings: [], plan_id: h.a.id },
-    { filings: [{ plan_id: 1 }] }, { filings: [{ plan_id: h.a.id, strength: "locked" }] },
-    { filings: [{ plan_id: h.a.id, ticket_id: h.ticket.id }] },
-    { filings: [{ plan_id: h.b.id, ticket_id: h.ticket.id, part_key: "not-a-part" }] },
-    { filings: [{ plan_id: h.a.id }], user_action_id: "fake" },
-  ]) {
-    const response = await h.request(h.message.id, body);
-    expect(response.status).toBe(422);
-    expect(h.store.getMessage(h.message.id).task_id).toBeNull();
-    expect(h.store.listWorkEvents({ kind: "attribution.changed" })).toEqual([]);
-  }
-  expect((await h.request(h.message.id, { plan_id: h.b.id, ticket_id: h.ticket.id })).status).toBe(200);
-  expect((await h.request("01ARZ3NDEKTSV4RRFFQ69G5FAV", { filings: [] })).status).toBe(404);
-});
-
-test("a correction that files a line hands it to the scribe; one that unfiles it does not", async () => {
-  const h = start();
-  const noted: string[] = [];
-  h.api.engine.noteFiled = (messageId) => { noted.push(messageId); };
-  expect((await h.request(h.message.id, { filings: [] })).status).toBe(200);
-  expect(noted).toEqual([]);
-  expect((await h.request(h.message.id, { plan_id: h.a.id })).status).toBe(200);
-  expect(noted).toEqual([h.message.id]);
-});
-
-test("「新开一件事」: your line opens a job of its own, named after it, with a ticket, and is filed there", async () => {
-  const h = start();
-  const response = await h.request(h.message.id, { new_plan: {} });
-  expect(response.status).toBe(200);
-  const moved = await response.json();
-  const plan = h.store.getTask(moved.task_id);
-  expect(plan).toMatchObject({ title: "Both jobs should follow this", session_id: h.session });
-  expect(plan.id).not.toBe(h.a.id);
-  const [ticket] = h.store.listTickets(plan.id);
-  expect(ticket).toMatchObject({ title: "Both jobs should follow this", spec: "Both jobs should follow this", owner_bot_id: h.store.listBots()[0]!.id });
-  expect(moved.filings).toMatchObject([{ task_id: plan.id, ticket_id: ticket!.id, part_key: null }]);
-  expect(h.events.filter((event) => event.event === "attribution.changed").at(-1)).toMatchObject({ message_id: h.message.id, filings: moved.filings });
-  // Named as you say, when you name it.
-  const named = await h.request(h.message.id, { new_plan: { title: "海报" } });
-  expect(h.store.getTask((await named.json()).task_id).title).toBe("海报");
-});
-
-test("「新开一件事」 takes only a line of yours, and nothing beside it", async () => {
-  const h = start();
-  const bots = h.store.listBots();
-  const said = h.store.insertMessage({ sessionId: h.session, kind: "bot", author: bots[0]!.id, body: "I will do it" });
-  expect((await h.request(said.id, { new_plan: {} })).status).toBe(422);
-  expect((await h.request(h.message.id, { new_plan: {}, filings: [] })).status).toBe(422);
-  expect((await h.request(h.message.id, { new_plan: { title: 3 } })).status).toBe(422);
-  expect((await h.request(h.message.id, { new_plan: { why: "x" } })).status).toBe(422);
 });

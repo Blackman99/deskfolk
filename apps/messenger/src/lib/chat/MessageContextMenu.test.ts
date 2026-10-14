@@ -27,14 +27,12 @@ function openMessageMenu(
   message: Message,
   opts: {
     lockedComposer?: boolean;
-    attribution?: boolean;
     selectText?: boolean;
     edit?: boolean;
   } = {},
 ) {
   const calls = {
     edit: 0,
-    attribution: 0,
     selectText: 0,
     close: 0,
     reply: 0,
@@ -72,7 +70,6 @@ function openMessageMenu(
     onReaction: (emoji: string) => {
       calls.reaction.push(emoji);
     },
-    ...(opts.attribution ? { onAttribution: () => { calls.attribution += 1; } } : {}),
     ...(opts.selectText ? { onSelectText: () => { calls.selectText += 1; } } : {}),
     ...(opts.edit ? { onEdit: () => { calls.edit += 1; } } : {}),
   });
@@ -138,15 +135,11 @@ test("open file tree is disabled when message has no associated files", () => {
   close();
 });
 
-test("a line that can be filed offers 「改归属…」, which opens the attribution dialog and closes the menu; a line that cannot has no such item", () => {
-  const withIt = openMessageMenu(createTestMessage(), { attribution: true });
-  click(buttonByText(withIt.host, t.attribution.menuItem));
-  expect(withIt.calls.attribution).toBe(1);
-  expect(withIt.calls.close).toBe(1);
-  withIt.close();
-  const without = openMessageMenu(createTestMessage());
-  expect([...without.host.querySelectorAll("button")].some((b) => b.textContent?.trim() === t.attribution.menuItem)).toBe(false);
-  without.close();
+test("where a line is filed is the app's own: its menu offers no way to change it, only its flow", () => {
+  const { host, close } = openMessageMenu(createTestMessage());
+  expect([...host.querySelectorAll("button")].some((b) => /归属/.test(b.textContent ?? ""))).toBe(false);
+  expect(host.querySelector('[data-job-view="trace"]')).not.toBeNull();
+  close();
 });
 
 test("a menu opened by a touch offers 「选择文本」 under copy, which opens the text and closes the menu; one opened by a mouse does not", () => {

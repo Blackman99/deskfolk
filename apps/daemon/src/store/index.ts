@@ -115,7 +115,6 @@ import * as prompts from "./prompts";
 import * as sharedSkills from "./shared-skills";
 import * as planItemsModule from "./plan-items";
 import * as largeJobs from "./large-jobs";
-import * as newJobModule from "./new-job-from-line";
 
 export { HttpError } from "../errors";
 export { isReservedTaskPath, localDate, BRIEF_MAX, PLAN_MAP_FILE, RESERVED_SUBDIRS, TICKET_FILE, WORK_ROOT } from "./tasks";
@@ -741,11 +740,6 @@ export class Store {
   readonly standardSides = this.bind(largeJobs.standardSides);
   readonly scaleInputs = this.bind(largeJobs.scaleInputs);
   readonly signalledPlans = this.bind(largeJobs.signalledPlans);
-  /** 「新开一件事」: the line opens a job of its own and is filed there; the message as it now stands. */
-  readonly newJobFromLine = (messageId: string, input: { title?: string | null; userActionId: string }) => this.transaction(() => {
-    newJobModule.newJobFromLine(this.ctx, messageId, input);
-    return messages.getMessage(this.ctx, messageId);
-  });
   readonly answerModelDefaultCard = this.bind(modelDefaults.answerModelDefaultCard);
   readonly visionRefusal = this.bind(visionCap.visionRefusal);
   readonly spendCapDue = this.bind(spendCap.spendCapDue);

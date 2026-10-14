@@ -61,6 +61,8 @@ One more default, read before 6–8 (rule 9): in your direct with a Bot, a line 
 
 ## 2026-10-03 补记：用一句话新开一件事 / A new job from a line
 
+> 2026-10-14 起手动改归属（标签、弹窗、「新开一件事」和 `PATCH`）都已去掉，归属只在流程里看，见 [ADR 0089](0089-filing-is-seen-in-the-flow.md)。 / Since 2026-10-14 changing a filing by hand (the tag, the dialog, "A new job" and the `PATCH`) is gone; a filing is seen in the flow, see [ADR 0089](0089-filing-is-seen-in-the-flow.md).
+
 你手动改归属原来只能选已有的事：一句新需求被默认归到旧事上（规则 6），你只能叫停再说一遍。现在你的话可以「新开一件事」：用这句话开一件新事（名字照这句话、去掉点名，带一张同名产出任务，私聊里交给那个 Bot），再按你的纠正改归过去；`PATCH /v1/messages/:id/attribution {new_plan:{title?}}`，只收你自己的话。另外，任何纠正之后，还在跑、读过这句话、却在别的事上（或还在桌面上）的那一段会收到一条应用提示，说这句改归到了哪里、别再按它动手；原来纠正只送到新目标，旧的那一段照旧在错的事里做完。读过它的 Bot 在新目标上另开一段，规则不变。
 
 Your manual correction could only pick a job that existed, so a new request filed under an old job by default (rule 6) could only be stopped and said again. A line of yours can now be made "a new job": a job opened from it (named after it without the Bots it names, with a ticket of the same name, the direct's Bot on it) and the line filed there as your correction; `PATCH /v1/messages/:id/attribution {new_plan:{title?}}`, for your own lines only. And after any correction, a segment still running that read the line on another job (or at its desk) gets an app note saying where the line went and not to act on it there; before, the correction only reached the new target and the old segment finished the line in the wrong job. The Bots that read it still start on it in a segment of their own on the new target.

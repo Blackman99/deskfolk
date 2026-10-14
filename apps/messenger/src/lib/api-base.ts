@@ -29,9 +29,7 @@ import type {
   MessageVersionsResponse,
   ModelLadderResponse,
   ModelLadderRung,
-  NewJobFromLineRequest,
   PatchAcceptanceCheckRequest,
-  PatchMessageAttributionRequest,
   PatchTaskSpecRequest,
   PatchTicketRequest,
   Playbook,
@@ -642,14 +640,6 @@ export abstract class ApiBase<Row extends PendingRow> {
 
   messageVersions(id: string): Promise<MessageVersionsResponse> {
     return this.get<MessageVersionsResponse>(`/v1/messages/${encodeURIComponent(id)}/versions`);
-  }
-
-  patchMessageAttribution(id: string, filings: PatchMessageAttributionRequest["filings"]): Promise<Message> {
-    return this.patch<Message>(`/v1/messages/${encodeURIComponent(id)}/attribution`, { filings });
-  }
-
-  newJobFromMessage(id: string): Promise<Message> {
-    return this.patch<Message>(`/v1/messages/${encodeURIComponent(id)}/attribution`, { new_plan: {} } satisfies NewJobFromLineRequest);
   }
 
   answerWorkQuestion(id: string, body: string): Promise<WorkAnswerResult> {

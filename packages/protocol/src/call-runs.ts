@@ -30,7 +30,17 @@ export type CallRunVerdict =
       go_ahead: boolean;
       by_words: boolean;
     }
-  | { kind: "filing"; about: "jobs" | "new" | "in_place" | "unclear"; task_ids: string[]; ticket_ids: string[] }
+  | {
+      kind: "filing";
+      about: "jobs" | "new" | "in_place" | "unclear";
+      task_ids: string[];
+      ticket_ids: string[];
+      /**
+       * On a board, the jobs and tickets it named, by id, as they are called now: the flow is where
+       * a line's filing is seen (2026-10-14). Absent from the call's own record.
+       */
+      titles?: Record<string, string>;
+    }
   | { kind: "scale"; large: boolean; quote: string | null; unit: string | null }
   | { kind: "scribe"; added: number; changed: number }
   | {

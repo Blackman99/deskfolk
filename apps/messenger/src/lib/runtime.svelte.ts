@@ -32,12 +32,11 @@ import type {
   PatchAnnotationRequest,
   Message,
   MessageVersion,
-  PatchMessageAttributionRequest,
   GroupLeadState,
   WorkAnswerResult,
 } from "@real-bot/protocol";
 import type { ApiError } from "./api.ts";
-import type { AttributedMessage, AttributionPlan } from "./chat/attribution.ts";
+import type { AttributionPlan } from "./chat/attribution.ts";
 import type { CommandActivity, CommandRow } from "./chat/command-activity.ts";
 import type { TurnActivity, ToolStep } from "./chat/turn-activity.ts";
 import { classifySession, isFileDropSession } from "./sidebar/session-groups.ts";
@@ -284,8 +283,6 @@ export class MessengerRuntime {
       get historyLoading() { return runtime.historyLoading; },
       set historyLoading(value) { runtime.historyLoading = value; },
       get profileBotId() { return runtime.profileBotId; },
-      get traceReload() { return runtime.traceReload; },
-      set traceReload(value) { runtime.traceReload = value; },
       get workspacePath() { return runtime.workspacePath; },
       closeSessionSettings: () => runtime.closeSessionSettings(),
       refreshTerminals: () => runtime.refreshTerminals(),
@@ -331,7 +328,6 @@ export class MessengerRuntime {
       loadAttributionPlans: (sessionId, messageId) => runtime.loadAttributionPlans(sessionId, messageId),
       viewFor: (sessionId) => runtime.viewFor(sessionId),
       cancelEdit: (sessionId) => runtime.cancelEdit(sessionId),
-      loadAttributionFor: (message) => runtime.loadAttributionFor(message),
       noteAnnotationWrite: (id) => runtime.noteAnnotationWrite(id),
       claimFocus: (sessionId, triggerMessageId, turnId) => runtime.claimFocus(sessionId, triggerMessageId, turnId),
       keepUnknownRequest: (error, api) => runtime.adminMutations.keepUnknownRequest(error, api),
@@ -748,8 +744,6 @@ export class MessengerRuntime {
   refillLine(sessionId: string, message: Message, opts?: { append?: boolean }): boolean { return this.messageEdits.refill(sessionId, message, opts); }
   insertLine(sessionId: string, message: Message): Promise<boolean> { return this.messageEdits.insertLine(sessionId, message); }
   messageVersions(id: string, editedAt: string): Promise<MessageVersion[] | null> { return this.messageEdits.messageVersions(id, editedAt); }
-  patchMessageAttribution(id: string, filings: PatchMessageAttributionRequest["filings"]): Promise<ApiError | null> { return this.messageEdits.patchMessageAttribution(id, filings); }
-  newJobFromMessage(id: string): Promise<ApiError | null> { return this.messageEdits.newJobFromMessage(id); }
   answerWorkQuestion(id: string, body: string): Promise<WorkAnswerResult | ApiError> { return this.messageEdits.answerWorkQuestion(id, body); }
 
   // --- Forwarded to `chatActivity` (live commands, kept commands, tool steps, streams). ---
@@ -842,7 +836,6 @@ export class MessengerRuntime {
   private get delegationEventRevisions(): Map<string, number> { return this.threadState.delegationEventRevisions; }
   private get groupLeadSeq(): Map<string, number> { return this.threadState.groupLeadSeq; }
   private get groupLeadRevision(): Map<string, number> { return this.threadState.groupLeadRevision; }
-  private loadAttributionFor(message: AttributedMessage & { id: string; session_id: string }): void { this.threadState.loadAttributionFor(message); }
   private renameAttributionPlan(id: string, title: string): void { this.threadState.renameAttributionPlan(id, title); }
   private get attributionRevision(): Map<string, number> { return this.messageEdits.attributionRevision; }
   private get messageInvalidationSeq(): number { return this.messageEdits.messageInvalidationSeq; }
@@ -1236,7 +1229,6 @@ export class MessengerRuntime {
         if (this.attributionPlans[event.session_id]) void this.loadAttributionPlans(event.session_id);
       }
     }
-    if (event.event === "message.created" || event.event === "message.upsert") this.loadAttributionFor(event);
     let next = applyEvent(this.snapshot, event);
     this.snapshot = next;
     if (event.event === "annotation.upsert" || event.event === "annotation.removed") this.noteAnnotationWrite(event.id);

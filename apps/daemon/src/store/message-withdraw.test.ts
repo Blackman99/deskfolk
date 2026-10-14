@@ -168,12 +168,11 @@ describe("what cannot be taken back", () => {
     expect(refusal(() => withdraw(store, line.id))).toEqual({ status: 422, code: "not_withdrawable" });
   });
 
-  test("a line taken back is not changed, refiled or opened as a job: you send it again instead", () => {
+  test("a line taken back is not changed or refiled: you send it again instead", () => {
     const { store, line, job } = waiting();
     withdraw(store, line.id);
     expect(refusal(() => store.editMessage(line.id, { body: "第三镜换成雨夜", userActionId: "edit" }))?.code).toBe("not_editable");
     expect(refusal(() => store.refileMessage(line.id, { filings: [{ taskId: job.id }], userActionId: "refile" }))?.code).toBe("withdrawn");
-    expect(refusal(() => store.newJobFromLine(line.id, { userActionId: "new" }))?.code).toBe("withdrawn");
   });
 });
 

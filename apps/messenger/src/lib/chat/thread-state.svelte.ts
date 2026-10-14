@@ -3,7 +3,7 @@ import { ApiError } from "../api.ts";
 import type { MessengerApi } from "../messenger-api.ts";
 import type { Connection } from "../runtime.svelte.ts";
 import type { Snapshot } from "../snapshot.ts";
-import { attributable, messageFilings, type AttributedMessage, type AttributionPlan } from "./attribution.ts";
+import type { AttributionPlan } from "./attribution.ts";
 
 /**
  * What this sub-store reaches back into the runtime for, read at call time: the client and the
@@ -130,7 +130,7 @@ export class ThreadState {
   attributionLoadError = $state<Record<string, boolean>>({});
   private readonly attributionLoadSeq = new Map<string, number>();
 
-  /** Manual choices include untouched and dormant plans, not just routing candidates. */
+  /** Every job in the workspace with its tickets, by name: what a Bot's question about a job is named from. */
   async loadAttributionPlans(sessionId: string, messageId?: string): Promise<void> {
     const api = this.host.api;
     const message = messageId ?? this.host.snapshot.messages.find((row) => row.session_id === sessionId && (row.kind === "user" || row.kind === "bot" || row.control?.kind === "work_question"))?.id;
@@ -148,27 +148,6 @@ export class ThreadState {
     } finally {
       if (this.attributionLoadSeq.get(sessionId) === seq) this.attributionLoading = { ...this.attributionLoading, [sessionId]: false };
     }
-  }
-
-  /** Jobs a reload of a conversation's list was already asked for: one the list still lacks is not asked about again. */
-  private readonly attributionAsked = new Map<string, Set<string>>();
-
-  /**
-   * A tag names its job from its conversation's list, loaded when the conversation opened: the
-   * first line of a conversation that had none (2026-10-03, the first line in a new group), or a
-   * line on a job opened since, read 「一件事」 until a reload. A line on a job the list lacks loads
-   * the list again, from that line, once per job.
-   */
-  loadAttributionFor(message: AttributedMessage & { id: string; session_id: string }): void {
-    if (!attributable(message)) return;
-    const plans = this.attributionPlans[message.session_id];
-    const missing = messageFilings(message).map((row) => row.task_id).filter((id) => !plans?.some((plan) => plan.id === id));
-    const asked = this.attributionAsked.get(message.session_id) ?? new Set<string>();
-    const fresh = missing.filter((id) => !asked.has(id));
-    if (fresh.length === 0) return;
-    for (const id of fresh) asked.add(id);
-    this.attributionAsked.set(message.session_id, asked);
-    void this.host.loadAttributionPlans(message.session_id, message.id);
   }
 
   renameAttributionPlan(id: string, title: string): void {

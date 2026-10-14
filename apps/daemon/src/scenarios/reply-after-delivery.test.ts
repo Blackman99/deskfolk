@@ -99,8 +99,7 @@ test("your complaint right after the routine's brief is filed under the brief's 
   expect(turn).toMatchObject({ trigger_message_id: complaint.id, task_id: standing.id, ticket_id: today.id });
   // Nothing of it reaches the address job.
   expect(h.store.filingsOfMessage(complaint.id).some((f) => f.taskId === address.id)).toBe(false);
-  // The tag under it names the brief's job (not 「一件事」), and you can file a line there by hand,
-  // today's run first.
+  // The jobs a question card names list the brief's job by its title (not 「一件事」), today's run first.
   const listed = attributionOptions(h.store, complaint.id).items.find((plan) => plan.id === standing.id);
   expect(listed).toMatchObject({ title: "每日AI重点新闻简报" });
   expect(listed!.tickets[0]).toEqual({ id: today.id, title: today.title });

@@ -22,7 +22,7 @@ test("filing state reads its rejection budget and records an attention outcome w
   store.noteFilingBounce(turn.id);
   expect(store.filingBudget(turn.id)).toBe(2);
   const notice = store.markNeedsAttention(turn.id, "en");
-  expect(notice.body).toBe("This line needs a job selected before work can proceed.");
+  expect(notice.body).toBe("Could not tell which job this line is about, so nothing was done (no tool with side effects ran); say which job to go on.");
   expect(store.getTurn(turn.id).end_reason).toBe("needs_attention");
   expect(store.getTurn(turn.id).work_item_id).not.toBeNull();
 });

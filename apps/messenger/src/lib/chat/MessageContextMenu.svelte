@@ -21,7 +21,6 @@
 		onShowTrace,
 		onCopyId,
 		onReaction,
-		onAttribution,
 		onSelectText,
 		onEdit,
 		sheet = false
@@ -40,8 +39,6 @@
 		onShowTrace: () => void;
 		onCopyId: () => void;
 		onReaction: (emoji: string) => void;
-		/** Present when this line can be filed somewhere else. */
-		onAttribution?: () => void;
 		/** Present when this is a line of yours that can still be changed (ADR 0063). */
 		onEdit?: () => void;
 		/**
@@ -232,21 +229,6 @@
 				<span>{t.chat.editMessage}</span>
 			</button>
 		{/if}
-
-		{#if onAttribution}
-		<button
-			type="button"
-			class="msg-context-menu-item"
-			role="menuitem"
-			onclick={() => {
-				onAttribution();
-				onClose();
-			}}
-		>
-			<Icon name="tag" />
-			<span>{t.attribution.menuItem}</span>
-		</button>
-	{/if}
 
 	<button
 		type="button"

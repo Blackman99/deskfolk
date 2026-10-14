@@ -138,7 +138,7 @@ test("your line that might have meant a stop asks under it, on its side", () => 
   }
 });
 
-test("what the reader made of your line — work let through or sent back — is not said under it, and the line keeps its tag (2026-10-14)", () => {
+test("what the reader made of your line — work let through or sent back — is not said under it, nor where the line is filed (2026-10-14)", () => {
   const session = aDirect();
   const back = aMessage({ id: "back", session_id: session.id, body: "背景太暗了", created_at: "2026-10-14T02:00:00.000Z",
     filings: [{ task_id: "job", ticket_id: null, part_key: null }],
@@ -151,7 +151,7 @@ test("what the reader made of your line — work let through or sent back — is
     for (const id of ["back", "nod"]) {
       const row = host.querySelector(`[data-message-id="${id}"]`)!;
       expect(row.querySelector(".control-actions")).toBeNull();
-      expect(row.querySelector(".attribution-chip")).not.toBeNull();
+      expect(row.querySelector(".attribution-chip")).toBeNull();
     }
     expect(host.textContent).not.toContain("已转回返工");
     expect(host.textContent).not.toContain("已放行");

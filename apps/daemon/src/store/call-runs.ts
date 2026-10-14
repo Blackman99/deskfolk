@@ -154,8 +154,40 @@ export function traceSteps(
       ).all(...chunk));
     }
   }
-  return [...byId.values()]
+  const steps = [...byId.values()]
     .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
     .slice(-STEPS_MAX)
     .map(toStep);
+  return withFilingTitles(ctx, steps);
+}
+
+/**
+ * A reading of where your line goes names its jobs and tickets on the board, as they are called now
+ * (a job is renamed as it settles). The flow is the one place a line's filing is seen; the
+ * conversation does not show it (2026-10-14).
+ */
+function withFilingTitles(ctx: StoreContext, steps: TraceStep[]): TraceStep[] {
+  const taskIds = new Set<string>();
+  const ticketIds = new Set<string>();
+  for (const step of steps) {
+    if (step.verdict?.kind !== "filing") continue;
+    for (const id of step.verdict.task_ids) taskIds.add(id);
+    for (const id of step.verdict.ticket_ids) ticketIds.add(id);
+  }
+  if (taskIds.size === 0 && ticketIds.size === 0) return steps;
+  const titles = new Map<string, string>();
+  for (const [table, ids] of [["tasks", [...taskIds]], ["tickets", [...ticketIds]]] as const) {
+    for (let at = 0; at < ids.length; at += 400) {
+      const chunk = ids.slice(at, at + 400);
+      for (const row of ctx.db.query<{ id: string; title: string }, string[]>(
+        `SELECT id, title FROM ${table} WHERE id IN (${chunk.map(() => "?").join(", ")})`,
+      ).all(...chunk)) titles.set(row.id, row.title);
+    }
+  }
+  return steps.map((step) => {
+    if (step.verdict?.kind !== "filing") return step;
+    const named = [...step.verdict.task_ids, ...step.verdict.ticket_ids].filter((id) => titles.has(id));
+    if (named.length === 0) return step;
+    return { ...step, verdict: { ...step.verdict, titles: Object.fromEntries(named.map((id) => [id, titles.get(id)!])) } };
+  });
 }
