@@ -4,6 +4,7 @@
 	import Select from '../Select.svelte';
 	import SettingsSubject from './SettingsSubject.svelte';
 	import PlaybookPicker from './PlaybookPicker.svelte';
+	import SessionMuteRow from './SessionMuteRow.svelte';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import type { Copy } from '../copy.ts';
 	import {
@@ -332,17 +333,6 @@
 				</div>
 			{/if}
 		</div>
-
-		<div class="form-group session-notifications-group mt-4 pt-4">
-			<label class="flex items-center justify-between cursor-pointer">
-				<span class="text-13 text-ink font-medium">{t.notifications.sessionMute}</span>
-				<input
-					type="checkbox"
-					checked={runtime.isSessionMuted(selected.id)}
-					onchange={(e) => void runtime.setSessionMuted(selected.id, (e.currentTarget as HTMLInputElement).checked)}
-				/>
-			</label>
-		</div>
 	</div>
 {:else if selectedKind === 'bot-bot' && shows('members')}
 	<div class="panel-card group-members-card">
@@ -423,6 +413,9 @@
 						<span>{t.sidebar.archive}</span>
 					</button>
 				{/if}
+			</div>
+			<div class="mt-4 pt-4 session-mute-row">
+				<SessionMuteRow {runtime} sessionId={selected.id} {t} />
 			</div>
 			<div class="mt-4 pt-4 playbook-row">
 				<PlaybookPicker {runtime} sessionId={selected.id} {t} />
@@ -722,10 +715,6 @@
 		cursor: not-allowed;
 	}
 
-	.session-notifications-group {
-		border-top: 1px solid var(--line);
-	}
-
 	/* Pull in section */
 	.pull-in-section {
 		margin-top: 12px;
@@ -942,6 +931,7 @@
 		}
 	}
 
+	.session-mute-row,
 	.playbook-row {
 		border-top: 1px solid var(--line);
 	}

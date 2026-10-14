@@ -3,6 +3,7 @@
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import PlaybookPicker from './PlaybookPicker.svelte';
+	import SessionMuteRow from './SessionMuteRow.svelte';
 
 	/** The actions tab: archive, the session mute, the direct's engine (ADR 0085), and the danger zone. */
 	type Props = {
@@ -42,19 +43,8 @@
 			{/if}
 		</div>
 		{#if runtime.selectedId}
-			<div class="action-list-row session-mute-row mt-4 pt-4">
-				<div class="action-list-info">
-					<span class="action-list-title">{t.notifications.sessionMute}</span>
-				</div>
-				<input
-					type="checkbox"
-					checked={runtime.isSessionMuted(runtime.selectedId)}
-					onchange={(e) => {
-						if (runtime.selectedId) {
-							void runtime.setSessionMuted(runtime.selectedId, (e.currentTarget as HTMLInputElement).checked);
-						}
-					}}
-				/>
+			<div class="mt-4 pt-4 session-mute-row">
+				<SessionMuteRow {runtime} sessionId={runtime.selectedId} {t} />
 			</div>
 			{#if selectedKind === 'you-bot'}
 				<div class="mt-4 pt-4 playbook-row">

@@ -37,6 +37,17 @@ test("shows the group's members", () => {
   close();
 });
 
+/** The mute is a notification setting of the conversation, so it sits with archive and the engine. */
+test("the mute is a switch row among the group's actions, not under its members", () => {
+  const { host, runtime, close } = open(aDraft());
+  const row = host.querySelector("[data-session-mute]");
+  expect(row?.closest(".group-members-card")).toBeNull();
+  expect(row?.textContent).toContain(t.notifications.sessionMuteBody);
+  click(row?.querySelector(".switch-toggle input"));
+  expect(runtime.calls.find((c) => c.name === "setSessionMuted")?.args).toEqual(["sess-1", true]);
+  close();
+});
+
 /** Three Bots in: a group is allowed to drop to two, so removal is only offered above that. */
 function aThreeBotGroup() {
   const base = aGroup();

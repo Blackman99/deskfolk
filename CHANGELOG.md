@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### "Mute regular replies" is a switch among a conversation's actions
+
+- In a group's settings, "Mute regular replies" was a bare checkbox stuck to the edge of the Members card, with no word on what it does. It is now a row of the Actions card, between Archive and Engine, with a switch and one line saying what it keeps quiet: replies and routine results stop sending system notifications, while approvals, questions and failures still do. A Bot's Actions tab in your direct shows the same row with the same switch in place of its checkbox. What muting does is unchanged.
+
 ### The README, the site and the overview lead with three things
 
 - The README's subhead, the captions of the home page's three clips, the page description, the start of "About and install", and the line under the name in Settings → About now lead with the three things Deskfolk fixes: files kept by job and ticket, opened and annotated in the app; every turn on the flow, with the ticket it works on and why; Bots that look back after a delivery and get better with use. The overview gives each one a real case from another tool. The four guarantees stay, after them, as why you can hand a job over; the home page's clips, headline and share image are unchanged.
