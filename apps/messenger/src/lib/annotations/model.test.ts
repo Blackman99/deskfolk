@@ -162,6 +162,27 @@ test("the message the preview was opened from is the target only for a path it h
   expect(targetFor(messages, "work/review.md", undefined, scope)?.messageId).toBe("m-b");
 });
 
+test("a file no Bot handed over goes to the Bot message that linked it, and a handover still comes first", () => {
+  // The cut was made by a command, so nothing attached it: the reply only links it.
+  const cut = aMessage({ id: "m-cut", kind: "bot", author: "bot-a", session_id: "sess-1", task_id: "task-1", created_at: "2026-09-23T00:00:00.000Z", body: "Done: the whole MV is cut, [work/mv/master.mp4](work/mv/master.mp4). It runs 156 s." });
+  // A later report of the same Bot links it again, from inside a link's text and as `<path>`.
+  const recheck = aMessage({ id: "m-recheck", kind: "bot", author: "bot-a", session_id: "sess-1", task_id: "task-1", created_at: "2026-09-23T00:01:00.000Z", body: "Re-ran the check on [the cut](<./work/mv/master.mp4>): 0 fail." });
+  // Named in prose, in backticks or inside a code fence: not a link.
+  const named = aMessage({ id: "m-named", kind: "bot", author: "bot-b", session_id: "sess-1", task_id: "task-1", created_at: "2026-09-23T00:02:00.000Z", body: "I watched work/mv/master.mp4 and `work/mv/master.mp4`.\n```\n[x](work/mv/master.mp4)\n```" });
+  const scope = { sessionId: "sess-1", taskId: "task-1" };
+  expect(deliveryFor([cut, named], "work/mv/master.mp4", scope)?.id).toBe("m-cut");
+  expect(deliveryFor([cut, recheck, named], "work/mv/master.mp4", scope)?.id).toBe("m-recheck");
+  expect(targetFor([cut, recheck, named], "work/mv/master.mp4", undefined, scope)?.messageId).toBe("m-recheck");
+  // Opened from the reply that linked it: that reply.
+  expect(targetFor([cut, recheck, named], "work/mv/master.mp4", cut, scope)).toEqual({ messageId: "m-cut", sessionId: "sess-1", turnId: null, botId: "bot-a" });
+  expect(targetFor([named], "work/mv/master.mp4", named, scope)).toBeNull();
+  // Another Bot's review links a file this one attached: the annotation still goes to whoever handed it over.
+  const handed = aMessage({ id: "m-handed", kind: "bot", author: "bot-a", session_id: "sess-1", task_id: "task-1", created_at: "2026-09-23T00:00:00.000Z", attachments: [anAttachment({ message_id: "m-handed", workspace_relpath: "work/report.md" })] });
+  const review = aMessage({ id: "m-review", kind: "bot", author: "bot-r", session_id: "sess-1", task_id: "task-1", created_at: "2026-09-23T00:05:00.000Z", body: "Reviewed [work/report.md](work/report.md): two gaps." });
+  expect(deliveryFor([handed, review], "work/report.md", scope)?.id).toBe("m-handed");
+  expect(targetFor([handed, review], "work/report.md", review, scope)?.messageId).toBe("m-handed");
+});
+
 test("the gate picks the adapter for the view, needs a target, and refuses unsaved text", () => {
   const target = { messageId: "m1", sessionId: "s1", turnId: null, botId: "bot-1" };
   expect(annotateGate({ target, kind: "text", sourceMode: true, dirty: false })).toEqual({ ok: true, adapter: "text" });

@@ -5,6 +5,7 @@
 import {
   USER_MEMBER,
   describeAnchor,
+  normalizeCitedPath,
   type Annotation,
   type AnnotationLocale,
   type AnnotationStatus,
@@ -216,21 +217,34 @@ export function targetFromMessage(message: Message | null | undefined): Annotati
   return { messageId: message.id, sessionId: message.session_id, turnId: message.turn_id, botId: message.author };
 }
 
+type CitesPath = (message: Message, relpath: string) => boolean;
+
 /**
  * 挂到谁：在文件树里切到别的路径、或从工作区查看器打开的文件，挂到这件事里（没有的话就在整个会话里找）
- * 最近一条引用了这个路径的 Bot 消息。从没被 Bot 消息引用过的文件找不到该找谁。
+ * 最近一条交出了这个路径的 Bot 消息；没有哪条交出过，就照同样的顺序找在正文里链接了它的。Bot 用命令做出来
+ * 的文件不一定作为附件交出（剪好的成片只在回复里给了个链接），给你链接的那条回复就是交给你看的那一条。
+ * 两样都没有的文件找不到该找谁。
  */
 export function deliveryFor(
   messages: readonly Message[],
   relpath: string,
   scope: { sessionId: string | null; taskId?: string | null },
 ): Message | null {
+  return latestCiting(messages, relpath, scope, handsOver) ?? latestCiting(messages, relpath, scope, linksTo);
+}
+
+function latestCiting(
+  messages: readonly Message[],
+  relpath: string,
+  scope: { sessionId: string | null; taskId?: string | null },
+  citesPath: CitesPath,
+): Message | null {
   if (!scope.sessionId) return null;
   const cites = (message: Message): boolean =>
     message.kind === "bot" &&
     message.author !== USER_MEMBER &&
     message.session_id === scope.sessionId &&
-    handsOver(message, relpath);
+    citesPath(message, relpath);
   const later = (a: Message, b: Message): number => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1);
   const citing = messages.filter(cites).sort(later);
   if (scope.taskId) {
@@ -245,10 +259,26 @@ function handsOver(message: Message, relpath: string): boolean {
   return handedOverPaths(message.body ?? "", message.attachments.map((row) => row.workspace_relpath)).includes(relpath);
 }
 
+const MD_LINK = /\[(?:[^\]]*)\]\((<[^>]+>|[^)\s]+)\)/g;
+const FENCE = /```[\s\S]*?```|~~~[\s\S]*?~~~/g;
+
+/**
+ * Whether a message links this path in its words: `[…](path)` outside a code fence, the shape the
+ * daemon writes a cited file in. A path merely named in prose or in backticks does not count.
+ */
+function linksTo(message: Message, relpath: string): boolean {
+  const prose = (message.body ?? "").replace(FENCE, "");
+  for (const match of prose.matchAll(MD_LINK)) {
+    if (normalizeCitedPath(match[1]!) === relpath) return true;
+  }
+  return false;
+}
+
 /**
  * 挂到谁，给预览上的这个路径：打开预览的那条消息自己交出了这个路径，就挂它；否则（在文件树里切到了
  * 别的 Bot 交出的文件、你自己上传的文件）按 `deliveryFor` 找——同一会话里最近交出它的 Bot 消息，先找
- * 那件事里的。没有哪条 Bot 消息交出过的文件没有去处。
+ * 那件事里的。没有哪条交出过，再照这个顺序看链接了它的：先是打开预览的那条，再是最近的。交出的总比只
+ * 链接的先：评审 Bot 链接了别人交出的文件，批注仍回到交出它的那位。两样都没有的文件没有去处。
  */
 export function targetFor(
   messages: readonly Message[],
@@ -256,8 +286,12 @@ export function targetFor(
   owner: Message | null | undefined,
   scope: { sessionId: string | null; taskId?: string | null },
 ): AnnotationTarget | null {
-  const own = owner && handsOver(owner, relpath) ? targetFromMessage(owner) : null;
-  return own ?? targetFromMessage(deliveryFor(messages, relpath, scope));
+  for (const cites of [handsOver, linksTo]) {
+    const own = owner && cites(owner, relpath) ? targetFromMessage(owner) : null;
+    const found = own ?? targetFromMessage(latestCiting(messages, relpath, scope, cites));
+    if (found) return found;
+  }
+  return null;
 }
 
 /** Which anchor adapter the view on screen uses; null for a kind nothing can be annotated on. */

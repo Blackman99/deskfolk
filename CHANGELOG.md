@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A file a Bot only linked can be annotated
+
+- A video a Bot cut with a command and only linked in its reply ("Done: the whole MV is cut, [master.mp4](…)") could not be annotated: there was no "Annotate here" under the player and nothing said why. Annotations hang on the message that handed a file over, and only an attachment or an `附件：` line counted. When no Bot message handed the file over, the annotation now goes to the latest Bot message in the conversation that links it, one in the same job first. A handover still comes first: a reviewer linking a file another Bot attached does not take its annotations. A file no Bot handed over or linked still cannot be annotated, and the annotation list says so.
+
 ### "Mute regular replies" is a switch among a conversation's actions
 
 - In a group's settings, "Mute regular replies" was a bare checkbox stuck to the edge of the Members card, with no word on what it does. It is now a row of the Actions card, between Archive and Engine, with a switch and one line saying what it keeps quiet: replies and routine results stop sending system notifications, while approvals, questions and failures still do. A Bot's Actions tab in your direct shows the same row with the same switch in place of its checkbox. What muting does is unchanged.
