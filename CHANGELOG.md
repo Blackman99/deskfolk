@@ -14,6 +14,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - A usage ball tucked at the window's edge shows an 8px tab in the gutter instead of half a ball over a pane's header.
 - Pointing at the sidebar's edge, or between two panes, draws a thin line in the accent to drag (on the pane's edge beside the sidebar, midway between two panes) instead of filling the gutter with a bar.
 - Dragging a pane by the empty part of its tab bar shows that every tab goes with it: all of them fade where they were, and the chip following the pointer reads "Whole pane · N tabs" instead of the name of the tab in front.
+- In light mode the box that marks where a dragged tab or pane will land is see-through, as it already was in dark mode, so the pane under it still shows.
 
 ### Where a line is filed is the app's own, seen in the flow
 

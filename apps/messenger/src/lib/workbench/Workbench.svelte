@@ -976,9 +976,14 @@
 			transition: none;
 		}
 	}
+	/*
+	 * See-through in both themes, so the pane it is about to land on still shows under it. Light
+	 * `--accent-tint` is a solid colour and hid that pane; this is the dark tint's own 14%, so
+	 * dark mode looks as it did.
+	 */
 	.wb-drop {
 		position: absolute;
-		background: var(--accent-tint);
+		background: color-mix(in srgb, var(--accent) 14%, transparent);
 		outline: 2px solid var(--accent);
 		outline-offset: -2px;
 		border-radius: var(--radius-sm);
