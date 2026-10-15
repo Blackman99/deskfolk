@@ -2,10 +2,11 @@ import { untrack } from "svelte";
 import type { Attachment, TaskArtifacts } from "@real-bot/protocol";
 import type { Copy } from "../copy.ts";
 import type { MessengerApi } from "../messenger-api.ts";
-import { absWorkspacePath, terminalDirFor } from "./artifacts.ts";
+import { absWorkspacePath, artifactKind, terminalDirFor } from "./artifacts.ts";
 import {
   buildCitedPathTree,
   buildTaskArtifactTree,
+  graftDirListings,
   isUnderAny,
   mergeWorkspaceChildren,
   removeTreePaths,
@@ -47,6 +48,13 @@ export class ArtifactTreeSource {
   loadedTaskClient: MessengerApi | null = null;
   taskTreeAbort: AbortController | null = null;
 
+  /** Cited paths the Mac was asked about: a folder, or not one. */
+  dirProbe = $state(new Map<string, "dir" | "file">());
+  /** What is in each cited path that turned out to be a folder, one level down. */
+  citedListings = $state(new Map<string, ArtifactTreeNode[]>());
+  #probing = new Set<string>();
+  #probeClient: MessengerApi | null = null;
+
   /** What this entry handed over, less what the Mac already knows is deleted: the tree is for opening files. */
   ownPaths = $derived.by(() =>
     this.#h.siblings()
@@ -59,14 +67,18 @@ export class ArtifactTreeSource {
    * marked — falling back to this step's alone when the pull failed.
    */
   citedTree = $derived(
-    this.taskArtifacts
-      ? buildTaskArtifactTree(
-          this.taskArtifacts.dir,
-          this.taskArtifacts.items.map((row) => row.path),
-          this.ownPaths
-        )
-      : buildCitedPathTree(this.ownPaths)
+    graftDirListings(
+      this.taskArtifacts
+        ? buildTaskArtifactTree(
+            this.taskArtifacts.dir,
+            this.taskArtifacts.items.map((row) => row.path),
+            this.ownPaths
+          )
+        : buildCitedPathTree(this.ownPaths),
+      this.citedListings
+    )
   );
+
   workspaceTree = $state<ArtifactTreeNode[]>([]);
   loadedDirs = $state(new Set<string>());
   loadingDirs = $state(new Set<string>());
@@ -149,7 +161,62 @@ export class ArtifactTreeSource {
           if (!controller.signal.aborted) this.taskTreeLoading = false;
         });
     });
+
+    /*
+     * A cited path may be a folder: a folder attachment, or a link a Bot wrote as
+     * `voice_samples/ja/`. Nothing in the message says what is in it, and the tree built from the
+     * message made it a leaf, so the pane showed the bare word "Folder". The Mac is asked once per
+     * path (a listing comes back; a file answers 422) and a folder's entries are grafted into the
+     * tree. Only paths that may be folders are asked: rows marked `is_dir`, and the path on
+     * screen when its name says nothing about its type and no attachment says it is a file (a
+     * link's row is a `virtual-` one). Opening a subfolder from the tree makes it the path on
+     * screen, so it is asked in turn.
+     */
+    $effect(() => {
+      const client = this.#h.api();
+      if (this.#h.mode() === "workspace" || !client) return;
+      const candidates = new Set<string>();
+      for (const row of this.#h.siblings()) {
+        if (row.is_dir && row.exists !== false) candidates.add(dirKey(row.workspace_relpath));
+      }
+      const relpath = this.#h.relpath();
+      const own = relpath ? this.#h.siblings().find((row) => dirKey(row.workspace_relpath) === dirKey(relpath)) : undefined;
+      const aFile = own !== undefined && !own.is_dir && !own.id.startsWith("virtual-");
+      if (relpath && !aFile && artifactKind(relpath) === "file") candidates.add(dirKey(relpath));
+      untrack(() => {
+        // A reconnect hands over a new client, and what it answered belongs to the old one.
+        if (client !== this.#probeClient) {
+          this.#probeClient = client;
+          this.#probing = new Set();
+          this.dirProbe = new Map();
+          this.citedListings = new Map();
+        }
+        for (const path of candidates) if (path) void this.probeDir(client, path);
+      });
+    });
   }
+
+  /** Asks the Mac whether a cited path is a folder, and what is in it when it is. */
+  async probeDir(client: MessengerApi, path: string): Promise<void> {
+    if (this.dirProbe.has(path) || this.#probing.has(path)) return;
+    this.#probing.add(path);
+    try {
+      const page = await client.workspaceTree(path);
+      if (client !== this.#probeClient) return;
+      this.dirProbe = new Map(this.dirProbe).set(path, "dir");
+      this.citedListings = new Map(this.citedListings).set(path, workspaceEntriesToNodes(page.items));
+    } catch {
+      if (client === this.#probeClient) this.dirProbe = new Map(this.dirProbe).set(path, "file");
+    } finally {
+      this.#probing.delete(path);
+    }
+  }
+
+  /** Whether the Mac said this cited path is a folder. */
+  isDir = (path: string): boolean => this.dirProbe.get(dirKey(path)) === "dir";
+
+  /** What is in a cited folder, once the Mac listed it. */
+  listingOf = (path: string): ArtifactTreeNode[] | null => this.citedListings.get(dirKey(path)) ?? null;
 
   /**
    * Same story as the job's files above: the explorer threw its listing away and re-read the
@@ -254,4 +321,9 @@ export class ArtifactTreeSource {
     }
     if (this.#h.relpath() && isUnderAny(this.#h.relpath(), paths)) this.#h.showGone();
   }
+}
+
+/** A folder's path as the tree keys it: a link may end in a slash (`voice_samples/ja/`), a node never does. */
+function dirKey(path: string): string {
+  return path.trim().replace(/\/+$/, "");
 }

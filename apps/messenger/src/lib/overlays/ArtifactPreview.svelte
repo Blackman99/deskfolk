@@ -26,6 +26,7 @@
 		artifactByteSource,
 		artifactKind,
 		isInAppPreviewKind,
+		type ArtifactKind,
 	} from './artifacts.ts';
 	import type { ArtifactTreeNode } from './artifact-tree.ts';
 	import ArtifactTree from './ArtifactTree.svelte';
@@ -209,10 +210,7 @@
 		return onPaneResize(el, apply);
 	});
 	let resolvedTheme = $state(themeManager.resolved);
-	let kind = $derived(
-		artifactKind(attachment?.original_filename ?? relpath, { isDir: attachment?.is_dir === true })
-	);
-	const treeSrc = new ArtifactTreeSource({
+	const treeSrc: ArtifactTreeSource = new ArtifactTreeSource({
 		api: () => api,
 		mode: () => mode,
 		taskId: () => taskId,
@@ -224,6 +222,12 @@
 		onOpenTerminal: () => onOpenTerminal,
 		showGone: () => loader.showGone()
 	});
+	// A cited path the Mac listed is a folder too: a link can name one (`voice_samples/ja/`).
+	let kind: ArtifactKind = $derived(
+		artifactKind(attachment?.original_filename ?? relpath, {
+			isDir: attachment?.is_dir === true || (mode !== 'workspace' && treeSrc.isDir(relpath))
+		})
+	);
 
 	let showTree = $derived(
 		!noTree &&
@@ -644,7 +648,7 @@
 				onclick={() => (treeOpen = false)}
 			></button>
 		{/if}
-		<ArtifactBody {t} {locale} {bots} {api} {relpath} {attachment} {mode} {kind} {sourceMode} {gate} {wrap} {resolvedTheme} {loadMonaco} {byteSource} {titleName} {opensOnDisk} {drawnRows} {viewAnnotations} {annot} {loader} {treeSrc} bind:editor bind:pdfViewer onEditorDirty={(next) => (editorDirty = next)} {enlarge} {openMarkdownPath} {openOnDisk} />
+		<ArtifactBody {t} {locale} {bots} {api} {relpath} {attachment} {mode} {kind} {sourceMode} {gate} {wrap} {resolvedTheme} {loadMonaco} {byteSource} {titleName} {opensOnDisk} {drawnRows} {viewAnnotations} {annot} {loader} {treeSrc} dirEntries={kind === 'directory' && mode !== 'workspace' ? treeSrc.listingOf(relpath) : null} onOpenEntry={selectNode} bind:editor bind:pdfViewer onEditorDirty={(next) => (editorDirty = next)} {enlarge} {openMarkdownPath} {openOnDisk} />
 	</div>
 	{#if mode !== 'workspace'}
 		{#each annot.annotDrafts as group (group.sessionId)}

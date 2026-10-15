@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  graftDirListings,
   buildCitedPathTree,
   buildTaskArtifactTree,
   citedBundleName,
@@ -178,4 +179,19 @@ test("removeTreePaths drops a trashed row and everything inside a trashed folder
   expect(collectTreePaths(removeTreePaths(tree, ["docs"]))).toEqual(["docs-old", "docs-old/c.md", "top.md"]);
   expect(isUnderAny("docs-old/c.md", ["docs"])).toBe(false);
   expect(isUnderAny("docs/deep/b.md", ["docs"])).toBe(true);
+});
+
+test('a cited path the Mac lists as a folder holds what is in it', () => {
+	const tree = buildCitedPathTree(['work/ja', 'work/ja/keep/deep.txt']);
+	const listed = new Map([['work/ja', [
+		{ name: 'a.wav', path: 'work/ja/a.wav', kind: 'file' as const },
+		{ name: 'keep', path: 'work/ja/keep', kind: 'dir' as const, children: [] },
+	]]]);
+	const grafted = graftDirListings(tree, listed);
+	const ja = grafted[0]!.children![0]!;
+	expect(ja.kind).toBe('dir');
+	expect(ja.children!.map((node) => node.name)).toEqual(['a.wav', 'keep']);
+	// The deeper path the message cited keeps its own subtree over the listing's empty folder.
+	expect(ja.children![1]!.children!.map((node) => node.name)).toEqual(['deep.txt']);
+	expect(graftDirListings(tree, new Map())).toBe(tree);
 });

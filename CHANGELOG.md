@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A folder a message links to opens with what is in it
+
+- A Bot's reply that linked a folder ("samples are in [voice_samples/ja/](…), I picked 7") opened the files pane on a single row named `ja` and "This kind of file can't be previewed": the pane built its tree from the paths the message named and took every one for a file. It now asks the Mac whether a cited path is a folder; a folder shows up in the tree with what is in it, open, and its page lists the files to click. A file attachment whose type the name doesn't tell is still treated as a file.
+
 ### A file in a message shows what it is, a folder as a folder
 
 - A file or folder named in a message was teal text behind the same small page icon whatever it was, so a folder such as `voice_samples/ja/` looked like a file and a sound like a document. Each is now a small chip in the accent's light tint, as the design draws it, led by its kind's icon from the app's one set: a folder for a path ending in `/`, a picture, a note for audio, video, a page for PDFs, Word files and plain text, a table for sheets and CSV, a screen for slides, Markdown, code, and a box for archives. The tree beside a preview and the attachment chips use the same choice of icon, so plain text, CSV and archives get theirs there too. On your own bubble the chip is white on the accent. A link to a picture still opens as its thumbnail card.

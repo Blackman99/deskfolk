@@ -38,6 +38,28 @@ export function mergeWorkspaceChildren(
   });
 }
 
+/**
+ * Puts each listed folder's entries under its node. A cited path is a leaf until the Mac says it is
+ * a folder (a message can name `voice_samples/ja/`); listed, it turns into a folder holding what is
+ * in it, alongside any deeper paths the message cited under it, which keep their own subtrees.
+ */
+export function graftDirListings(
+  nodes: readonly ArtifactTreeNode[],
+  listings: ReadonlyMap<string, readonly ArtifactTreeNode[]>,
+): ArtifactTreeNode[] {
+  if (listings.size === 0) return nodes as ArtifactTreeNode[];
+  return nodes.map((node) => {
+    const listed = listings.get(node.path);
+    if (!listed) return node.children ? { ...node, children: graftDirListings(node.children, listings) } : node;
+    const merged = new Map<string, ArtifactTreeNode>(listed.map((child) => [child.path, child]));
+    for (const child of node.children ?? []) {
+      const known = merged.get(child.path);
+      merged.set(child.path, known && !child.children?.length ? known : child);
+    }
+    return { ...node, kind: "dir", children: graftDirListings([...merged.values()], listings) };
+  });
+}
+
 function splitRel(path: string): string[] {
   const trimmed = path.trim();
   if (!trimmed || trimmed.startsWith("/") || trimmed.includes("://")) return [];

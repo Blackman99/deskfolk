@@ -156,3 +156,51 @@ test('task replacement ignores stale results and preserves the empty picker', as
 		expect(host.querySelector('.artifact-tree')?.textContent).toContain(t.stream.artifactTreeEmpty);
 	} finally { close(); }
 });
+
+test('a folder a message cites lists what is in it, in the tree and on its page', async () => {
+	const asked: string[] = [];
+	const dir = 'work/mv/voice_samples/ja';
+	const { host, close } = render(ArtifactPreview, {
+		attachment: null, relpath: dir,
+		siblings: [{ id: `virtual-m-${dir}/`, message_id: 'm', workspace_relpath: `${dir}/`, original_filename: 'ja', created_at: '' }],
+		api: {
+			kind: 'remote',
+			workspaceTree: (path: string) => {
+				asked.push(path);
+				return path === dir
+					? Promise.resolve({ path, truncated: false, items: [
+						{ name: 'a.wav', path: `${dir}/a.wav`, kind: 'file' },
+						{ name: 'b.wav', path: `${dir}/b.wav`, kind: 'file' },
+					] })
+					: Promise.reject(new Error('path is not a directory'));
+			},
+		} as never,
+		workspacePath: '/workspace', t, mode: 'cited', onClose() {}, onSelect() {},
+	});
+	try {
+		await settle();
+		expect(asked).toEqual([dir]);
+		const rows = [...host.querySelectorAll('.artifact-tree-row')].map((row) => row.textContent?.trim());
+		expect(rows).toContain('a.wav');
+		expect(rows).toContain('b.wav');
+		const entries = [...host.querySelectorAll('.artifact-dir-entry')].map((row) => row.textContent?.trim());
+		expect(entries).toEqual(['a.wav', 'b.wav']);
+		expect(host.textContent).not.toContain(t.stream.artifactUnsupported);
+	} finally { close(); }
+});
+
+test('a cited file whose name says what it is is never asked about', async () => {
+	let calls = 0;
+	const { host, close } = render(ArtifactPreview, {
+		attachment: null, relpath: 'work/Makefile',
+		siblings: [{ id: 'x', message_id: 'm', workspace_relpath: 'work/Makefile', original_filename: 'Makefile', created_at: '' }],
+		api: { kind: 'remote', workspaceTree: () => { calls += 1; return Promise.reject(new Error('path is not a directory')); } } as never,
+		workspacePath: '/workspace', t, mode: 'cited', onClose() {}, onSelect() {},
+	});
+	try {
+		await settle();
+		await settle();
+		expect(calls).toBe(0);
+		expect(host.querySelector('.artifact-dir-list')).toBeNull();
+	} finally { close(); }
+});

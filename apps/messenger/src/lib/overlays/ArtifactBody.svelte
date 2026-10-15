@@ -36,6 +36,9 @@
 	import type { ArtifactAnnotations } from './artifact-annotations.svelte.ts';
 	import type { ArtifactLoader } from './artifact-loader.svelte.ts';
 	import type { ArtifactTreeSource } from './artifact-tree-source.svelte.ts';
+	import type { ArtifactTreeNode } from './artifact-tree.ts';
+	import FileIcon from './FileIcon.svelte';
+	import { fileIconFor } from './file-icon.ts';
 	import type { ComponentProps } from 'svelte';
 
 	interface Props {
@@ -66,6 +69,9 @@
 		enlarge: (image: string, own: boolean, picture: Element | null | undefined) => void;
 		openMarkdownPath: (path: string) => void;
 		openOnDisk: (path: string, reveal: boolean) => Promise<void>;
+		/** A cited folder's entries, once the Mac listed it; the folder's page lists them. */
+		dirEntries?: ArtifactTreeNode[] | null;
+		onOpenEntry?: (node: ArtifactTreeNode) => void;
 	}
 
 	let {
@@ -95,7 +101,9 @@
 		onEditorDirty,
 		enlarge,
 		openMarkdownPath,
-		openOnDisk
+		openOnDisk,
+		dirEntries = null,
+		onOpenEntry
 	}: Props = $props();
 </script>
 
@@ -149,7 +157,20 @@
 			{:else if mode === 'workspace' && !relpath}
 				<p class="muted">{t.stream.workspacePickFile}</p>
 			{:else if kind === "directory"}
-				<p class="muted">{mode === 'workspace' ? t.stream.workspaceEmpty : t.stream.artifactDirectory}</p>
+				{#if dirEntries && dirEntries.length > 0}
+					<ul class="artifact-dir-list" aria-label={titleName}>
+						{#each dirEntries as entry (entry.path)}
+							<li>
+								<button type="button" class="artifact-dir-entry" onclick={() => onOpenEntry?.(entry)}>
+									<FileIcon icon={fileIconFor(entry.path, { isDir: entry.kind === 'dir' })} />
+									<span class="artifact-dir-name">{entry.name}</span>
+								</button>
+							</li>
+						{/each}
+					</ul>
+				{:else}
+					<p class="muted">{mode === 'workspace' ? t.stream.workspaceEmpty : t.stream.artifactDirectory}</p>
+				{/if}
 			{:else if sourceMode}
 				{#if loader.text !== null}
 					<ArtifactCodeEditor
@@ -344,6 +365,45 @@
 </div>
 
 <style>
+	/* A cited folder's page: what is in it, one row each, opened like a row of the tree. */
+	.artifact-dir-list {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		max-width: 640px;
+		margin: 0;
+		padding: 16px;
+		list-style: none;
+	}
+
+	.artifact-dir-entry {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		min-height: 36px;
+		padding: 6px 10px;
+		border: 0;
+		border-radius: var(--radius-md);
+		background: transparent;
+		color: var(--ink);
+		font: inherit;
+		font-size: var(--text-small);
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.artifact-dir-entry:hover {
+		background: var(--row-hover);
+	}
+
+	.artifact-dir-name {
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
 	.artifact-pane-body {
 		position: relative;
 		overflow: hidden;
