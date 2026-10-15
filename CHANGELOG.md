@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### One ground under the sidebar and the tabs; the pane is the card
+
+- After today's round the sidebar's footer and pinned row still had bands of their own, and the tabs sat on a grey strip inside the content card, so the two sides never read as one ground with a card laid on it. Wider than a phone, the sidebar is now one surface: no band under the footer or the pinned row, and the search is a tinted well. The tabs are pills on that same ground, the open one in the card's colour, and each pane's content is the card under them, with a gutter between panes when the workbench is split. A floating pane keeps its own frame.
+- Wider than a phone the composer is two rows, as the design draws it: the text on top, attach on the left and voice, suggest and send on the right below it. With nothing to send, the send button is in the accent's tint rather than grey.
+- The selected item in Settings, in a Bot's profile and among the sidebar's Workspace, Tools and Settings is marked by the accent's tint, with its name and icon in the accent. The solid icons that marked some of them and not others are gone.
+- A usage ball tucked at the window's edge shows an 8px tab in the gutter instead of half a ball over a pane's header.
+
 ### Where a line is filed is the app's own, seen in the flow
 
 - Lines no longer carry a tag saying which job they are filed under ("EP01 › Cut", "Unfiled · Choose"), and their menu no longer has "Change attribution…": the dialog that moved a line to another job, to none, or to "A new job" is gone. Which job a line is about is the app's own call — what the line points at, else a model's reading, else the Bot's choice at its desk — and it still takes effect.
@@ -37,7 +44,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ### One set of icons, drawn with one pen
 
-- The app's icons were about 400 drawings pasted by hand into 135 files, at seven sizes from 11 to 18 px and ten stroke widths, so a 13 px close button looked hairline next to a heavier 18 px icon in the same row. Every icon now comes from one set of 143 names, stroked with the same 1.6 px pen at any size, at five sizes by role: 12 inside text and chips, 16 in lists, menus and buttons, 20 in toolbars, the composer and pane headers, 24 in the phone's tab bar, 32 for empty states. The selected item of a set — the settings page you are on, the phone's current tab, an open Workspace, Tools or Settings, a Bot profile's current tab, a pinned conversation — draws its icon solid.
+- The app's icons were about 400 drawings pasted by hand into 135 files, at seven sizes from 11 to 18 px and ten stroke widths, so a 13 px close button looked hairline next to a heavier 18 px icon in the same row. Every icon now comes from one set of 143 names, stroked with the same 1.6 px pen at any size, at five sizes by role: 12 inside text and chips, 16 in lists, menus and buttons, 20 in toolbars, the composer and pane headers, 24 in the phone's tab bar, 32 for empty states. A pinned conversation, the default model and the phone's current tab draw their icon solid.
 
 ### Usage shows what is used
 

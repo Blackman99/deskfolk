@@ -902,6 +902,49 @@
 	 * The keyboard inset and the safe area are zero outside a phone. With the keyboard up the home
 	 * indicator is under it, so the bar does not keep its inset above the keys.
 	 */
+	/*
+	 * Wider than a phone, the composer is two rows, the way the design draws it: the text on top,
+	 * its tools under it — attach on the left, voice, suggest and send on the right. Only the
+	 * row wraps; the markup and its order stay what the phone's one row uses.
+	 */
+	@container conversation (min-width: 681px) {
+		.composer-card-shell {
+			border-radius: 18px;
+		}
+
+		.composer-card-shell::before {
+			border-radius: 26px;
+		}
+
+		.composer-card {
+			border-radius: 18px;
+			padding: 8px 8px 6px;
+		}
+
+		.composer-row {
+			flex-wrap: wrap;
+			align-items: center;
+			row-gap: 2px;
+		}
+
+		.composer-row > :global(.composer-editor-wrap) {
+			order: -1;
+			flex: 1 0 100%;
+		}
+
+		.composer-card .composer-row :global(.composer-input) {
+			padding: 6px 10px 2px;
+		}
+
+		.composer-card .composer-row :global(.composer-input.is-empty::before) {
+			left: 10px;
+		}
+
+		.attach-btn {
+			margin-right: auto;
+		}
+	}
+
 	@container conversation (max-width: 680px) {
 		.composer {
 			position: relative;

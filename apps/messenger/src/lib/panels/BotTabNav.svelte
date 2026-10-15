@@ -27,7 +27,7 @@
 		class:is-active={activeTab === 'basics'}
 		onclick={() => switchTab('basics')}
 	>
-		<Icon name="user" filled={activeTab === 'basics'} class="tab-icon" />
+		<Icon name="user" class="tab-icon" />
 		<span class="tab-name">{t.detail.botTabBasics}</span>
 		{#if basicsHasError}
 			<span class="tab-badge-error" aria-label="error">!</span>
@@ -43,7 +43,7 @@
 		class:is-active={activeTab === 'skills'}
 		onclick={() => switchTab('skills')}
 	>
-		<Icon name="zap" filled={activeTab === 'skills'} class="tab-icon" />
+		<Icon name="zap" class="tab-icon" />
 		<span class="tab-name">{t.detail.botTabSkills}</span>
 		{#if profileSkills.length > 0}
 			<span class="tab-count">{profileSkills.length}</span>
@@ -59,7 +59,7 @@
 		class:is-active={activeTab === 'routines'}
 		onclick={() => switchTab('routines')}
 	>
-		<Icon name="calendar" filled={activeTab === 'routines'} class="tab-icon" />
+		<Icon name="calendar" class="tab-icon" />
 		<span class="tab-name">{t.detail.botTabRoutines}</span>
 		{#if routineCount > 0}
 			<span class="tab-count">{routineCount}</span>
@@ -75,7 +75,7 @@
 		class:is-active={activeTab === 'memory'}
 		onclick={() => switchTab('memory')}
 	>
-		<Icon name="book" filled={activeTab === 'memory'} class="tab-icon" />
+		<Icon name="book" class="tab-icon" />
 		<span class="tab-name">{t.detail.botTabMemory}</span>
 		{#if profileMemories.length > 0}
 			<span class="tab-count">{profileMemories.length}</span>
@@ -91,7 +91,7 @@
 		class:is-active={activeTab === 'actions'}
 		onclick={() => switchTab('actions')}
 	>
-		<Icon name="settings" filled={activeTab === 'actions'} class="tab-icon" />
+		<Icon name="settings" class="tab-icon" />
 		<span class="tab-name">{t.detail.botTabActions}</span>
 		<span class="tab-chevron" aria-hidden="true"></span>
 	</button>

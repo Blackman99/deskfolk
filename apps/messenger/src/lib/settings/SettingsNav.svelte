@@ -65,7 +65,7 @@
 			data-settings-tab="general"
 			onclick={() => openSettingsTab('general')}
 		>
-			<Icon name="settings" filled={activeSettingsTab === 'general'} class="tab-icon" />
+			<Icon name="settings" class="tab-icon" />
 			<span class="tab-name">{t.settings.tabGeneral}</span>
 			{#if generalHasError}
 				<span class="tab-badge-error" aria-label="error">!</span>
@@ -80,7 +80,7 @@
 				data-settings-tab="behavior"
 				onclick={() => openSettingsTab('behavior')}
 			>
-				<Icon name="layout" filled={activeSettingsTab === 'behavior'} class="tab-icon" />
+				<Icon name="layout" class="tab-icon" />
 				<span class="tab-name">{t.settings.tabBehavior}</span>
 			</button>
 		{/if}
@@ -93,7 +93,7 @@
 			data-settings-tab="models"
 			onclick={() => openSettingsTab('models')}
 		>
-			<Icon name="box" filled={activeSettingsTab === 'models'} class="tab-icon" />
+			<Icon name="box" class="tab-icon" />
 			<span class="tab-name">{t.settings.tabModels}</span>
 			{#if modelsHasError}
 				<span class="tab-badge-error" aria-label="error">!</span>
@@ -109,7 +109,7 @@
 			data-settings-tab="agents"
 			onclick={() => openSettingsTab('agents')}
 		>
-			<Icon name="terminal-square" filled={activeSettingsTab === 'agents'} class="tab-icon" />
+			<Icon name="terminal-square" class="tab-icon" />
 			<span class="tab-name">{t.settings.tabAgents}</span>
 		</button>
 
@@ -120,7 +120,7 @@
 			data-settings-tab="mcp"
 			onclick={() => openSettingsTab('mcp')}
 		>
-			<Icon name="server" filled={activeSettingsTab === 'mcp'} class="tab-icon" />
+			<Icon name="server" class="tab-icon" />
 			<span class="tab-name">{t.settings.tabMcp}</span>
 			{#if snapshot.mcpServers.length > 0}
 				<span class="tab-count text-11 font-semibold py-[1px] px-3 rounded-full bg-chip text-ink-secondary">{snapshot.mcpServers.length}</span>
@@ -134,7 +134,7 @@
 			data-settings-tab="prompts"
 			onclick={() => openSettingsTab('prompts')}
 		>
-			<Icon name="type" filled={activeSettingsTab === 'prompts'} class="tab-icon" />
+			<Icon name="type" class="tab-icon" />
 			<span class="tab-name">{t.settings.tabPrompts}</span>
 			{#if promptCounts.edited > 0}
 				<span class="tab-count text-11 font-semibold py-[1px] px-3 rounded-full bg-chip text-ink-secondary" class:is-warn={promptCounts.conflict}>{promptCounts.edited}</span>
@@ -148,7 +148,7 @@
 			data-settings-tab="notifications"
 			onclick={() => openSettingsTab('notifications')}
 		>
-			<Icon name="bell" filled={activeSettingsTab === 'notifications'} class="tab-icon" />
+			<Icon name="bell" class="tab-icon" />
 			<span class="tab-name">{t.settings.tabNotifications}</span>
 		</button>
 
@@ -160,7 +160,7 @@
 				data-settings-tab="lessons"
 				onclick={() => openSettingsTab('lessons')}
 			>
-				<Icon name="book-open" filled={activeSettingsTab === 'lessons'} class="tab-icon" />
+				<Icon name="book-open" class="tab-icon" />
 				<span class="tab-name">{t.settings.tabLessons}</span>
 			</button>
 		{/if}
@@ -173,7 +173,7 @@
 				data-settings-tab="remote"
 				onclick={() => openSettingsTab('remote')}
 			>
-				<Icon name="smartphone" filled={activeSettingsTab === 'remote'} class="tab-icon" />
+				<Icon name="smartphone" class="tab-icon" />
 				<span class="tab-name">{t.settings.tabRemote}</span>
 			</button>
 		{/if}
@@ -186,7 +186,7 @@
 			onclick={() => openSettingsTab('about')}
 			title={updateChecker.updateVisible ? `${t.settings.tabAbout} · ${t.sidebar.updateAvailable}` : t.settings.tabAbout}
 		>
-			<Icon name="info" filled={activeSettingsTab === 'about'} class="tab-icon" />
+			<Icon name="info" class="tab-icon" />
 			<span class="tab-name">{t.settings.tabAbout}</span>
 			{#if updateChecker.updateVisible}
 				<span class="tab-badge-dot" aria-label={t.sidebar.updateAvailable}></span>
@@ -296,15 +296,14 @@
 	}
 
 	/*
-	 * The open page is lifted off the list, as the open conversation is in the sidebar: the pane's
-	 * own white with a hairline and a soft shadow. The frame the generic
-	 * `.settings-tab-btn.is-active` draws for the row of tabs is replaced here.
+	 * The open page is marked the way every selected item of a set is: the accent's tint behind
+	 * it, its name and its icon in the accent. The icon only changes colour; no item lacks it.
 	 */
 	.settings-sidebar .settings-tab-btn.is-active {
-		color: var(--ink);
-		background: var(--pane);
-		border-color: var(--line);
-		box-shadow: var(--shadow-sm);
+		color: var(--accent);
+		background: var(--accent-tint);
+		border-color: transparent;
+		box-shadow: none;
 		font-weight: 600;
 	}
 
@@ -315,7 +314,7 @@
 
 	.settings-sidebar .settings-tab-btn.is-active :global(.tab-icon) {
 		opacity: 1;
-		stroke: var(--accent);
+		color: var(--accent);
 	}
 
 	.settings-sidebar .settings-tab-btn .tab-name {
@@ -362,10 +361,10 @@
 
 	.settings-tab-btn.is-active {
 		color: var(--accent);
-		background: var(--pane);
-		border-color: var(--line);
+		background: var(--accent-tint);
+		border-color: transparent;
 		font-weight: 600;
-		box-shadow: var(--shadow-xs);
+		box-shadow: none;
 	}
 
 	.settings-tab-btn :global(.tab-icon) {
@@ -375,7 +374,7 @@
 
 	.settings-tab-btn.is-active :global(.tab-icon) {
 		opacity: 1;
-		stroke: var(--accent);
+		color: var(--accent);
 	}
 
 	.tab-badge-error {

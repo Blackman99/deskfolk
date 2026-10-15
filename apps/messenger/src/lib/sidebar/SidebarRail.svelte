@@ -253,7 +253,7 @@
 			aria-expanded={workspaceOpen}
 			onclick={onToggleWorkspace}
 		>
-			<Icon name="folder" filled={workspaceOpen} />
+			<Icon name="folder" />
 		</RailTooltip>
 		<RailTooltip
 			bind:this={toolsTip}
@@ -266,7 +266,7 @@
 			onkeydown={onToolsKeyDown}
 			onclick={() => (toolsMenuOpen = !toolsMenuOpen)}
 		>
-			<Icon name="grid" filled={toolsMenuOpen} />
+			<Icon name="grid" />
 		</RailTooltip>
 		<RailTooltip
 			class="rail-action rail-settings {runtime.settingsOpen ? 'is-active' : ''}"
@@ -274,7 +274,7 @@
 			describedBy="rail-tip-settings"
 			onclick={onOpenSettings}
 		>
-			<Icon name="settings" filled={runtime.settingsOpen} />
+			<Icon name="settings" />
 			{#if updateChecker.updateVisible}
 				<span class="rail-update-dot" aria-hidden="true"></span>
 			{/if}

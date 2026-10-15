@@ -81,7 +81,7 @@
 		disabled={!workspacePath}
 		onclick={() => onToggleWorkspace()}
 	>
-		<Icon name="folder" filled={workspaceOpen} />
+		<Icon name="folder" />
 		<span class="foot-label">{t.sidebar.workspace}</span>
 	</button>
 	<ToolsToggle {t} phone={false} bind:open={toolsMenuOpen} bind:focusLast={toolsFocusLast} bind:buttonEl={toolsToggleBtnEl} />
@@ -93,7 +93,7 @@
 		aria-label={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
 		onclick={onOpenSettings}
 	>
-		<Icon name="settings" filled={runtime.settingsOpen} />
+		<Icon name="settings" />
 		<span class="foot-label">{t.sidebar.settings}</span>
 		{#if updateChecker.updateVisible}
 			<span class="foot-badge is-dot" aria-hidden="true"></span>
@@ -115,6 +115,19 @@
 		-webkit-backdrop-filter: blur(12px);
 		position: relative;
 		z-index: 20;
+	}
+
+	/*
+	 * Beside the content card the sidebar is one surface with the window's ground: the footer
+	 * keeps no band, line or blur of its own.
+	 */
+	@media (min-width: 681px) {
+		.foot {
+			border-top: 0;
+			background: transparent;
+			backdrop-filter: none;
+			-webkit-backdrop-filter: none;
+		}
 	}
 
 	.foot-action {

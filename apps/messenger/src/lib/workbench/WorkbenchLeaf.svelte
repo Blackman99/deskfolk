@@ -1011,4 +1011,70 @@
 		gap: 8px;
 		justify-content: center;
 	}
+
+	/*
+	 * Beside the phone layout a docked pane is a card on the window's ground (the shell's): the
+	 * strip and its tabs sit on the ground, the body is the card. Tabs are pills — the active one
+	 * the card's colour with an edge, the others bare text — and, as above, activating one changes
+	 * its colours, never its box. 4px around each body is the gutter: 8px at the window's edge,
+	 * 9 between two panes with the one-pixel seam. A floating pane keeps its own frame and a band
+	 * under its tabs (WorkbenchFloat).
+	 */
+	@media (min-width: 681px) {
+		.wb-leaf {
+			overflow: visible;
+			background: transparent;
+		}
+		.wb-strip {
+			align-items: center;
+			height: 40px;
+			background: transparent;
+		}
+		.wb-tabs {
+			align-items: center;
+		}
+		.wb-tab {
+			--wb-tab-surface: var(--sidebar-bg);
+			border-radius: var(--radius-sm);
+		}
+		.wb-tab::after,
+		.wb-tab.is-active .wb-tab-flare {
+			display: none;
+		}
+		.wb-tab.is-active {
+			--wb-tab-surface: var(--pane);
+			background: var(--pane);
+			box-shadow: var(--shadow-pane);
+		}
+		.wb-body {
+			margin: 0 4px 4px;
+			border-radius: var(--radius-lg);
+			background: var(--pane);
+			box-shadow: var(--shadow-pane);
+		}
+		.wb-leaf.is-framed::after {
+			display: none;
+		}
+		.wb-leaf.is-framed > .wb-body::after {
+			content: '';
+			position: absolute;
+			inset: 0;
+			z-index: 35;
+			border-radius: inherit;
+			box-shadow: inset 0 0 0 1px var(--accent-border);
+			pointer-events: none;
+		}
+		:global(.wb-float) .wb-leaf {
+			overflow: hidden;
+			border-radius: inherit;
+		}
+		:global(.wb-float) .wb-strip {
+			background: var(--sidebar-bg);
+		}
+		:global(.wb-float) .wb-body {
+			margin: 0;
+			border-radius: 0;
+			box-shadow: none;
+		}
+	}
 </style>

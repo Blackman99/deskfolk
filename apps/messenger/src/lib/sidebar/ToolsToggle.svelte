@@ -39,7 +39,7 @@
 	onkeydown={onToolsToggleKeyDown}
 	onclick={() => (open = !open)}
 >
-	<Icon name="grid" filled={open} />
+	<Icon name="grid" />
 	{#if !phone}
 		<span class="foot-label">{t.sidebar.tools}</span>
 		<Icon name="chevron-up" size={12} class="tools-chevron" />

@@ -905,6 +905,19 @@
 		box-shadow: 0 0 0 3px var(--accent-glow);
 	}
 
+	/* On the ground beside the content card the search is a tinted well, not a white field. */
+	@media (min-width: 681px) {
+		.search:not(:focus) {
+			border-color: transparent;
+			background: color-mix(in srgb, var(--ink) 5.5%, transparent);
+			box-shadow: none;
+		}
+
+		.search-trigger:hover:not(:focus) {
+			background: color-mix(in srgb, var(--ink) 8%, transparent);
+		}
+	}
+
 
 	@media (max-width: 680px) {
 	.side {

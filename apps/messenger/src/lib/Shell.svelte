@@ -1409,6 +1409,20 @@
 			border-left: 0;
 		}
 
+		/* With the workbench each pane is its own card (WorkbenchLeaf); the column is ground. */
+		.shell:not(.is-layered) .main {
+			margin: 0 4px 4px 0;
+			border-radius: 0;
+			overflow: visible;
+			background: transparent;
+			box-shadow: none;
+		}
+
+		/* On macOS the tabs' centre line meets the traffic lights' (the sidebar's top row, 26pt). */
+		:global(:root[data-chrome='mac']) .shell:not(.is-layered) .main {
+			margin-top: 6px;
+		}
+
 		/* The card's edge is the line now; the handle stays, unseen until it is hovered. */
 		.sidebar-split {
 			background: transparent;

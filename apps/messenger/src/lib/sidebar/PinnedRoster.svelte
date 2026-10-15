@@ -127,6 +127,15 @@
 		-webkit-backdrop-filter: blur(12px);
 	}
 
+	@media (min-width: 681px) {
+		.roster-panel {
+			border-bottom: 0;
+			background: transparent;
+			backdrop-filter: none;
+			-webkit-backdrop-filter: none;
+		}
+	}
+
 	.roster {
 		display: flex;
 		align-items: flex-start;

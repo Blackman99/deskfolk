@@ -9,8 +9,9 @@
  * not an icon: the brand mark, the folk avatar, provider and agent logos, progress rings and
  * drawn diagrams.
  *
- * `FILLED` holds the solid twin of an icon, drawn for the selected item of a set (the open tab,
- * the current settings page, a pinned row), so selection reads by shape and not only by colour.
+ * `FILLED` holds the solid twin of an icon, for a state the icon itself shows (a pinned
+ * conversation, the default model) and the phone's current tab. A selected item of a set is
+ * marked by colour, not by a solid twin: the accent's tint behind it, the accent on its icon.
  */
 export type IconShape =
 	| { p: string; evenodd?: true }
@@ -193,7 +194,7 @@ export const ICONS = {
 export type IconName = keyof typeof ICONS;
 
 /**
- * The solid twin of an icon, for the selected item of a set. Shapes are filled and stroked with
+ * The solid twin of an icon, for a state it shows (see above). Shapes are filled and stroked with
  * the same pen, so the solid one keeps the outline's silhouette; an `evenodd` shape cuts a hole.
  */
 export const FILLED: Partial<Record<IconName, IconShape[]>> = {

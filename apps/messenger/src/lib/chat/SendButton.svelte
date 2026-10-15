@@ -157,9 +157,10 @@
 		background: var(--ink-secondary);
 	}
 
+	/* Nothing to send yet: the send button in the accent's tint, so it still reads as send. */
 	.composer-action:disabled {
-		background: var(--chip);
-		color: var(--muted);
+		background: var(--accent-tint);
+		color: color-mix(in srgb, var(--accent) 55%, transparent);
 		cursor: not-allowed;
 	}
 

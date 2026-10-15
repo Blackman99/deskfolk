@@ -85,7 +85,9 @@
 	const upward = $derived(top + SLOT / 2 > viewH / 2);
 	/** Cards open toward the middle of the window. */
 	const cardLeftward = $derived(left + SLOT / 2 > viewW / 2);
-	const shift = $derived(!tucked ? 0 : docked === 'right' ? SLOT / 2 : -SLOT / 2);
+	/** Tucked, only this much of the ball stays in the window: a tab in the gutter beside the content. */
+	const TUCK_SHOWN = 8;
+	const shift = $derived(!tucked ? 0 : docked === 'right' ? SLOT - TUCK_SHOWN : TUCK_SHOWN - SLOT);
 	const columnH = $derived(SLOT + agents.length * SLOT + 4);
 	const shownAgent = $derived(expanded ? (agents.find((agent) => key(agent) === (pinnedAgent ?? active)) ?? null) : null);
 
@@ -510,23 +512,28 @@
 	}
 
 	/*
-	 * Tucked, half the ball is off the window: the ring shrinks into the half that shows, so the
-	 * edge holds a small whole ring on a tab rather than half a ring cut by the frame.
+	 * Tucked, only an 8px tab of the ball stays in the window, in the gutter beside the content
+	 * card, so it never covers a pane's header. The ring would be cut by the frame there: the tab
+	 * carries the level in its own tint instead, and the ring comes back as the ball comes out.
 	 */
 	.usage-ball-ring {
-		transition: transform 0.22s ease 0.1s;
+		transition: opacity 0.18s ease 0.1s;
 	}
 
-	[data-dock='right'].is-tucked .usage-ball-ring {
-		transform: translateX(-11px) scale(0.6);
+	.is-tucked .usage-ball-ring {
+		opacity: 0;
 	}
 
-	[data-dock='left'].is-tucked .usage-ball-ring {
-		transform: translateX(11px) scale(0.6);
+	.is-tucked .usage-shell {
+		background: color-mix(in srgb, var(--accent) 14%, var(--pane));
 	}
 
-	.is-expanded .usage-ball-ring {
-		transition: transform 0.2s ease;
+	.is-tucked .usage-shell.is-warn {
+		background: color-mix(in srgb, var(--warn) 22%, var(--pane));
+	}
+
+	.is-tucked .usage-shell.is-danger {
+		background: color-mix(in srgb, var(--danger) 22%, var(--pane));
 	}
 
 	.usage-ball-ring.is-warn {

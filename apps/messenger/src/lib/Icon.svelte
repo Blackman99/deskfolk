@@ -10,7 +10,7 @@
 		name: IconName;
 		/** Edge length in px, one of `ICON_SIZES` by role. */
 		size?: IconSize;
-		/** Draw the solid twin, for the selected item of a set; icons without one stay outlined. */
+		/** Draw the solid twin, for a state the icon shows (pinned, default); icons without one stay outlined. */
 		filled?: boolean;
 		/** Read out when the icon carries meaning on its own; without it the icon is hidden from readers. */
 		label?: string;
