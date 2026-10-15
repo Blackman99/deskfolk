@@ -37,7 +37,7 @@ jobs:
           BASE_PATH: /${{ github.event.repository.name }}
         run: pnpm --filter @real-bot/landing build
 
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: apps/landing/build
 
