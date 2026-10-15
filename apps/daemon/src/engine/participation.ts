@@ -1,6 +1,6 @@
 /**
  * Who a message wakes. A direct wakes the other side, except a Bot's nod to a nod in a Bot↔Bot
- * direct (see `isNodToANod`); a group reads its `@mentions` against the roster and, naming no one,
+ * direct (see `isNodToANod`) and a Bot's words in a pair's delegation thread, which are notes; a group reads its `@mentions` against the roster and, naming no one,
  * treats a user line as a floor open to everyone present — the focused Bot hears it, the rest judge
  * whether it is theirs to join. `pendingJudges` tracks a judgement from the moment it is announced
  * to the moment it lands, so the sidebar can show a Bot as still deciding.
@@ -192,8 +192,11 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       const bots = store.presentBotIds(session.id);
       const target = bots.find((id) => id !== message.author);
       if (!target) return;
+      // A pair's delegation thread carries the work's requests and results; its plain words wake
+      // nobody (ADR 0044). A direct a Bot opened with create_direct is to talk something over, so
+      // there every line wakes the other side, as below the delegation level (ADR 0091).
       if (!opts.fromUser && message.kind === "bot" && store.capabilities().engine_level >= ENGINE_LEVELS.delegation
-        && !store.isPresent(session.id, USER_MEMBER)) {
+        && !store.isPresent(session.id, USER_MEMBER) && store.isPairThread(session.id)) {
         store.recordPeerNote(message, target);
         return;
       }

@@ -9,7 +9,6 @@
 	import { formatShortcut } from '../keymap.ts';
 	import { searchShortcutLabel } from '../search/shortcuts.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
-	import { recentBotDms } from './bot-dm-source.ts';
 	import RailTooltip from './RailTooltip.svelte';
 	import { groupSessions, isFileDropSession, isSessionArchived } from './session-groups.ts';
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
@@ -98,16 +97,16 @@
 	);
 	const listed = $derived(onlyWorking(grouped, workingIds, runtime.selectedId));
 
-	/** The list's sections, empty ones dropped so no two dividers meet. */
+	/**
+	 * The list's sections, empty ones dropped so no two dividers meet. A Bot↔Bot direct is not one:
+	 * it opens from the message it hangs under, in a popup (ADR 0091).
+	 */
 	const sections = $derived(
 		[
 			listed.pinned,
 			listed.fileDrop ? [listed.fileDrop] : [],
 			listed.groups,
-			listed.youBot,
-			workingIds
-				? recentBotDms(listed.botBot, { expanded: true })
-				: recentBotDms(listed.botBot, { keepId: runtime.selectedId })
+			listed.youBot
 		].filter((section) => section.length > 0)
 	);
 

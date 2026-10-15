@@ -4,6 +4,7 @@ import {
   type ClientEvent,
   type SequencedEvent,
   type SessionDetail,
+  type SessionSummary,
 } from "@real-bot/protocol";
 import { ApiError } from "../api.ts";
 import type { EventSync } from "../event-sync.ts";
@@ -11,6 +12,7 @@ import type { MessengerApi } from "../messenger-api.ts";
 import type { NotificationCapabilities } from "../notifications/types.ts";
 import type { SessionView } from "../session-view.svelte.ts";
 import { collectUntilMessage } from "../sidebar/search-jump.ts";
+import { classifySession } from "../sidebar/session-groups.ts";
 import type { Snapshot } from "../snapshot.ts";
 import type { PaneContent } from "../workbench/pane-content.ts";
 
@@ -77,6 +79,12 @@ export class SessionHistory {
 
   sessionLoad = Promise.resolve();
 
+  /**
+   * The Bot↔Bot direct open in its popup over the conversation you are in, or null (ADR 0091). It is
+   * read there and nowhere else: never the selection, a pane or a row of the list.
+   */
+  botDmSessionId = $state<string | null>(null);
+
   /** A ledger or search link can outlive the conversation it names. */
   async openChat(id: string, opts?: { messageId?: string }): Promise<void> {
     if (!this.host.snapshot.sessions.some((session) => session.id === id)) return;
@@ -84,6 +92,11 @@ export class SessionHistory {
   }
 
   async selectSession(id: string, opts?: { messageId?: string; preservePage?: boolean }): Promise<void> {
+    // Every way to a Bot↔Bot direct — its entry under a message, search, a notification, a link —
+    // opens its popup instead; going anywhere else puts the popup away.
+    const target = this.host.snapshot.sessions.find((session) => session.id === id);
+    if (target && classifySession(target) === "bot-bot") return this.openBotDm(target, opts);
+    this.botDmSessionId = null;
     const previousId = this.host.selectedId;
     const previousSpend = this.host.spendOpen;
     const previousTerminal = this.host.terminalOpen;
@@ -203,6 +216,86 @@ export class SessionHistory {
     await this.sessionLoad;
   }
 
+  closeBotDm(): void {
+    this.botDmSessionId = null;
+  }
+
+  /**
+   * The popup over the conversation on screen. Opened with nothing under it — a link, or a
+   * notification on a window just opened — the conversation it came from goes under it first.
+   */
+  private async openBotDm(session: SessionSummary, opts?: { messageId?: string }): Promise<void> {
+    const origin = session.origin_session_id;
+    if (!this.host.selectedId && origin && this.host.snapshot.sessions.some((row) => row.id === origin)) {
+      await this.host.selectSession(origin, session.origin_message_id ? { messageId: session.origin_message_id } : undefined);
+    }
+    this.botDmSessionId = session.id;
+    await this.peekSession(session.id, opts);
+  }
+
+  /**
+   * A conversation's history read beside the one selected, for its popup: the same read as a
+   * selection, without moving the selection, a pane, the address or a page, and without marking it
+   * read (a Bot↔Bot direct has nothing of yours to read).
+   */
+  private async peekSession(id: string, opts?: { messageId?: string }): Promise<void> {
+    const api = this.host.api;
+    const sync = this.host.sync;
+    const view = this.host.sessionView(id);
+    const connection = this.host.connectionSeq;
+    const selection = ++view.loadSeq;
+    const messageId = opts?.messageId;
+    this.host.setHighlightedMessage(messageId ?? null, id);
+    if (!api || !sync) return;
+    view.historyLoading = true;
+    const stale = () => this.host.api !== api || this.host.sync !== sync ||
+      this.host.connectionSeq !== connection || selection !== view.loadSeq;
+    this.sessionLoad = this.sessionLoad.catch(() => {}).then(async () => {
+      if (stale()) return;
+      sync.pause();
+      let readingDetail = true;
+      try {
+        const detail = await api.sessionSnapshot(id);
+        readingDetail = false;
+        if (this.host.api !== api || this.host.sync !== sync) return;
+        const ready = await sync.waitThrough(detail);
+        if (this.host.api !== api || this.host.sync !== sync) return;
+        if (!ready) throw new Error("event instance changed");
+        const frames = sync.install();
+        if (!frames) throw new Error("event gap");
+        for (const frame of frames) this.host.ingest(frame.payload, frame);
+        if (stale()) return;
+        this.applySessionDetail(id, detail.session, detail.judgements, view);
+        void this.host.loadAnnotations({ session_id: id });
+        void this.host.loadAnnotations({ target_session_id: id });
+        for (const frame of frames) {
+          if (frame.event_instance_id !== detail.event_instance_id) throw new Error("event instance changed");
+          if (frame.seq > detail.watermark_seq) this.host.ingest(frame.payload, frame);
+        }
+        if (messageId) {
+          const revision = view.revision;
+          await this.ensureMessageLoaded(id, messageId, view);
+          if (stale() || revision !== view.revision) return;
+          this.host.setHighlightedMessage(messageId, id);
+        }
+      } catch (error) {
+        if (this.host.api !== api || this.host.sync !== sync) return;
+        if (readingDetail && error instanceof ApiError && error.status === 404 && error.code === "not_found") {
+          // Gone meanwhile: the stream goes on, and the popup with nothing to show closes.
+          const frames = sync.install();
+          if (!frames) { this.host.markDisconnected(); return; }
+          for (const frame of frames) this.host.ingest(frame.payload, frame);
+          if (this.botDmSessionId === id) this.botDmSessionId = null;
+          return;
+        }
+        this.host.markDisconnected();
+      } finally {
+        if (selection === view.loadSeq && this.host.connectionSeq === connection) view.historyLoading = false;
+      }
+    });
+    await this.sessionLoad;
+  }
+
   /** The transcript holds everything that was fetched for it, and the Mac has more behind it. */
   get hasOlderMessages(): boolean {
     return this.sessionMessageNext !== null;
@@ -253,7 +346,8 @@ export class SessionHistory {
     }
   }
 
-  private async ensureMessageLoaded(sessionId: string, messageId: string): Promise<void> {
+  /** With `detached`, for a popup's conversation: its own cursor, whatever is selected. */
+  private async ensureMessageLoaded(sessionId: string, messageId: string, detached?: SessionView): Promise<void> {
     const api = this.host.api;
     const sync = this.host.sync;
     const view = this.host.sessionView(sessionId);
@@ -267,23 +361,31 @@ export class SessionHistory {
       loaded,
       messageId,
       (cursor) => api.messages(sessionId, { cursor }),
-      this.sessionMessageNext,
+      detached ? detached.messageNext : this.sessionMessageNext,
     );
-    if (this.host.selectedId !== sessionId || this.host.api !== api || this.host.sync !== sync ||
+    if ((!detached && this.host.selectedId !== sessionId) || this.host.api !== api || this.host.sync !== sync ||
       this.host.connectionSeq !== connection || view.loadSeq !== selection || view.revision !== revision) return;
-    this.sessionMessageNext = result.next;
+    if (detached) detached.messageNext = result.next;
+    else this.sessionMessageNext = result.next;
     const current = new Map(this.host.snapshot.messages.map((message) => [message.id, message]));
     for (const message of result.messages) if (!current.has(message.id)) current.set(message.id, message);
     this.host.snapshot = { ...this.host.snapshot, messages: [...current.values()] };
   }
 
+  /** With `detached`, for a popup's conversation: its own view takes the cursor, not the selection's. */
   private applySessionDetail(
     id: string,
     detail: SessionDetail,
     judgements: Snapshot["judgements"],
+    detached?: SessionView,
   ): void {
-    this.sessionDetailId = id;
-    this.sessionMessageNext = detail.messages.next ?? null;
+    if (detached) {
+      detached.detailLoaded = true;
+      detached.messageNext = detail.messages.next ?? null;
+    } else {
+      this.sessionDetailId = id;
+      this.sessionMessageNext = detail.messages.next ?? null;
+    }
     this.host.snapshot = {
       ...this.host.snapshot,
       sessions: this.host.snapshot.sessions.map((s) =>

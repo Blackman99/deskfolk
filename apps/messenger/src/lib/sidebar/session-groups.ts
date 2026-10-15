@@ -76,11 +76,12 @@ export function groupSessions(
       continue;
     }
 
-    if (pinSet.has(session.id)) {
+    const kind = classifySession(session);
+    // A Bot↔Bot direct is never a row of the list, pinned or not: it opens from its message (ADR 0091).
+    if (pinSet.has(session.id) && kind !== "bot-bot") {
       pinned.push(session);
       continue;
     }
-    const kind = classifySession(session);
     if (kind === "group") groups.push(session);
     else if (kind === "you-bot") youBot.push(session);
     else botBot.push(session);

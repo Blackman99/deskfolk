@@ -6,7 +6,6 @@ import { aBot, aBotDirect, aDirect, aGroup, aMessage, anApproval, aTurn, fakeRun
 import { spendCopyFor } from "../spend/spend-copy.ts";
 import { updateChecker } from "../update-checker.svelte.ts";
 import { click, press, render } from "../test-render.ts";
-import { BOT_DM_VISIBLE } from "./bot-dm-source.ts";
 import SidebarRail from "./SidebarRail.svelte";
 
 const t = copyFor("en");
@@ -80,8 +79,9 @@ test("folded on a tablet's remote connection, which has no workbench, the tools 
 test("the rail keeps the list's order and sections, avatars only, and leaves out what the list leaves out", () => {
   const view = open("direct-1");
   const ids = [...view.host.querySelectorAll<HTMLElement>(".rail-item")].map((el) => el.dataset.session);
-  expect(ids).toEqual(["direct-pin", FILE_DROP_SESSION_ID, "sess-1", "direct-1", "botbot-1"]);
-  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(4);
+  // No Bot↔Bot direct: it opens from its message, in a popup (ADR 0091).
+  expect(ids).toEqual(["direct-pin", FILE_DROP_SESSION_ID, "sess-1", "direct-1"]);
+  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(3);
   expect(item(view.host, "sess-old")).toBeNull();
   // Names live in the styled tip, not a native title; nothing but the picture is drawn.
   expect(item(view.host, "sess-1")?.hasAttribute("title")).toBe(false);
@@ -94,9 +94,9 @@ test("the rail keeps the list's order and sections, avatars only, and leaves out
 test("a pinned file drop sits with the pins, still drawn as the file drop", () => {
   const view = open(null, null, ["direct-pin", FILE_DROP_SESSION_ID]);
   const ids = [...view.host.querySelectorAll<HTMLElement>(".rail-item")].map((el) => el.dataset.session);
-  expect(ids).toEqual(["direct-pin", FILE_DROP_SESSION_ID, "sess-1", "direct-1", "botbot-1"]);
-  // Pins, groups, you↔Bot, Bot↔Bot: the file drop's own section is gone.
-  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(3);
+  expect(ids).toEqual(["direct-pin", FILE_DROP_SESSION_ID, "sess-1", "direct-1"]);
+  // Pins, groups, you↔Bot: the file drop's own section is gone.
+  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(2);
   expect(item(view.host, FILE_DROP_SESSION_ID)?.querySelector(".rail-file-drop")).not.toBeNull();
   view.close();
 });
@@ -364,7 +364,7 @@ test("the rail has the list's working filter, keeps the pins, and flips the same
   expect(toggle.getAttribute("aria-label")).toBe(t.sidebar.workingOnly);
   expect(toggle.getAttribute("aria-pressed")).toBe("false");
   expect(toggle.hasAttribute("title")).toBe(false);
-  // A Bot↔Bot direct shows no unread in the list, so its unread must not bring it back here.
+  // A Bot↔Bot direct is not in the list, so its unread must not bring it here.
   view.runtime.snapshot.sessions.find((s) => s.id === "botbot-1")!.unread_count = 3;
 
   click(toggle);
@@ -381,18 +381,21 @@ test("the rail has the list's working filter, keeps the pins, and flips the same
   toggle.blur();
 
   click(toggle);
-  expect(railIds(view.host)).toEqual(["direct-pin", FILE_DROP_SESSION_ID, "sess-1", "direct-1", "botbot-1"]);
+  expect(railIds(view.host)).toEqual(["direct-pin", FILE_DROP_SESSION_ID, "sess-1", "direct-1"]);
   expect(window.localStorage.getItem(WORKING_ONLY_KEY)).toBeNull();
   view.close();
 });
 
-test("a rail folded with the filter on opens filtered, with every working direct past the cap", () => {
+test("a rail folded with the filter on opens filtered, and a working Bot↔Bot direct is still not in it", () => {
   window.localStorage.setItem(WORKING_ONLY_KEY, "1");
-  const directs = Array.from({ length: BOT_DM_VISIBLE + 2 }, (_, i) => aBotDirect({ id: `d-${i}` }));
+  const directs = Array.from({ length: 7 }, (_, i) => aBotDirect({ id: `d-${i}` }));
   const runtime = fakeRuntime({
     bots: [aBot({ id: "bot-1", name: "Writer" }), aBot({ id: "bot-2", name: "Researcher" })],
     sessions: [aGroup({ id: "sess-1", name: "Video crew" }), aDirect({ id: "direct-1" }), ...directs],
-    turns: directs.map((d, i) => aTurn({ id: `turn-${i}`, session_id: d.id, status: "running" })),
+    turns: [
+      ...directs.map((d, i) => aTurn({ id: `turn-${i}`, session_id: d.id, status: "running" })),
+      aTurn({ id: "turn-w", session_id: "direct-1", status: "running" }),
+    ],
   });
   const view = render(SidebarRail, {
     runtime,
@@ -412,8 +415,7 @@ test("a rail folded with the filter on opens filtered, with every working direct
     onOpenSearch: () => {},
   });
   expect(view.host.querySelector(".rail-working")?.getAttribute("aria-pressed")).toBe("true");
-  expect(railIds(view.host)).toHaveLength(BOT_DM_VISIBLE + 2);
-  expect(railIds(view.host)).not.toContain("sess-1");
+  expect(railIds(view.host)).toEqual(["direct-1"]);
   expect(view.host.querySelector(".rail-divider")).toBeNull();
   view.close();
   window.localStorage.removeItem(WORKING_ONLY_KEY);

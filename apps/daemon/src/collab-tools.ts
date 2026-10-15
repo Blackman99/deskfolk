@@ -124,7 +124,6 @@ export async function runCollabTool(
       case "create_group":
         return createGroup(ctx, args);
       case "create_direct":
-        if (ctx.store.capabilities().engine_level >= 3) return fail("use_delegate", "to ask a teammate to work, use delegate");
         return createDirect(ctx, args);
       case "delegate":
         // Never a filing refusal: at the desk delegate binds the segment before it runs, so what it

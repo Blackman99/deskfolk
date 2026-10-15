@@ -29,6 +29,14 @@ export function saidInSegment(ctx: StoreContext, turnId: string, body: string): 
   return Boolean(ctx.db.query(`SELECT 1 FROM messages WHERE turn_id = ? AND kind = 'bot' AND trim(body) = ? LIMIT 1`).get(turnId, words));
 }
 
+/**
+ * A Bot pair's delegation thread (ADR 0044): plain words there are notes, never a wake. A direct a
+ * Bot opened itself with create_direct is not one, and its lines wake the other side (ADR 0091).
+ */
+export function isPairThread(ctx: StoreContext, sessionId: string): boolean {
+  return Boolean(ctx.db.query("SELECT 1 FROM sessions WHERE id = ? AND thread_task_id IS NOT NULL").get(sessionId));
+}
+
 export function recordPeerNote(ctx: StoreContext, message: Message, toBotId: string): InboxItem {
   return ctx.commit(() => {
     const session = ctx.db.query<{ kind: string; thread_task_id: string | null }, [string]>("SELECT kind, thread_task_id FROM sessions WHERE id = ?").get(message.session_id);

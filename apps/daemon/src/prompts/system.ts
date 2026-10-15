@@ -131,9 +131,11 @@ export function systemText(locale: Locale, shell: ToolShellKind, engineLevel = 0
         ? "Your reply to the user is the text of your last step, the one that calls no tool: it goes out once it passes the closing check, and ends the segment. Text written in the same step as tool calls (beside end_turn or submit too) is only shown while you work and is never sent, and end_turn's note and answer never show as a reply. send_message posts progress without ending the segment. For both:"
         : "你给用户的回复，就是最后一步不调用任何工具时写的文字：过了收尾检查就发出，并结束本段。和工具调用写在同一步的文字（写在 end_turn、submit 旁边的也一样）只在你干活时显示，不会发出；end_turn 的 note、answer 也不会作为回复出现。send_message 只发进度，不结束本段。对这两者：");
     text = text.replace(locale === "en" ? "@Name in the body forces that teammate to take the floor" : "正文里的 @Name 会让对方必须下场",
-      locale === "en" ? "In a group, @Name wakes that teammate; in a Bot pair's thread, use delegate for new work rather than @" : "群里 @Name 叫醒队友；Bot 对线程里要它动手用 delegate，不用 @");
+      locale === "en" ? "In a group, @Name wakes that teammate; in a Bot pair's delegation thread, use delegate for new work rather than @" : "群里 @Name 叫醒队友；委派线程里要它动手用 delegate，不用 @");
     text = text.replace(locale === "en" ? "In a Bot↔Bot direct every line you post wakes the other Bot:" : "Bot↔Bot 私聊里你发的每句话都会叫醒对方：",
-      locale === "en" ? "Plain words in a Bot pair's thread never wake the other Bot:" : "Bot 对线程里普通发言从不叫醒对方：");
+      locale === "en"
+        ? "Plain words in a Bot pair's delegation thread never wake the other Bot. In a direct you opened with create_direct every line you post wakes the other Bot:"
+        : "委派线程里普通发言从不叫醒对方；你用 create_direct 开的私聊里，你发的每句话都会叫醒对方：");
     const oldWait = locale === "en" ? "After a handoff, or while waiting for a result you do not control," : "交接出去、或在等一个不由你掌控的结果时，";
     text = text.split("\n\n").map((paragraph) => paragraph.startsWith(oldWait)
       ? (locale === "en" ? "Use delegate for another Bot's work. The app keeps a real delegation wait; an answer, or a review of something not handed over with submit, is returned with end_turn(reason:'answered',answer:...); words posted in the thread are not a reply. A timer check_back is for an independent later check and cannot replace a delegation wait." : "队友的工作用 delegate 委派，应用持久等它交回；回答，或对没用 submit 交出的东西的审查结论，用 end_turn(reason:'answered',answer:...) 交回；线程里发的话不算交回。check_back 定时回看用于独立的稍后检查，不会替代委派等待。")

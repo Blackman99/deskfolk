@@ -53,6 +53,7 @@
 	import DangerDialog from './overlays/DangerDialog.svelte';
 	import CreateBotSheet from './sidebar/CreateBotSheet.svelte';
 	import CreateGroupSheet from './sidebar/CreateGroupSheet.svelte';
+	import BotDmDialog from './chat/BotDmDialog.svelte';
 	import SessionSettingsDrawer from './panels/SessionSettingsDrawer.svelte';
 	import type { GroupDetailDraft } from './panels/group-edit.ts';
 	import Sidebar from './sidebar/Sidebar.svelte';
@@ -267,6 +268,7 @@
 			providerEditor: providerEditor !== null,
 			confirmingIndependent: danger.confirmingIndependent,
 			searchOpen,
+			botDmOpen: botDmSession !== null,
 			settingsOpen: runtime.settingsOpen,
 			sessionSettingsOpen: runtime.sessionSettingsOpen,
 			terminalOpen: runtime.terminalOpen,
@@ -308,6 +310,10 @@
 				return true;
 			case 'search':
 				return closeGlobalSearch();
+			case 'bot-dm':
+				// In no URL: the conversation it came from is under it.
+				runtime.closeBotDm();
+				return true;
 			case 'settings':
 				// Only its inner pages are ours to unwind; settings itself is an entry in history.
 				return settingsModal?.backWithinSettings() ?? false;
@@ -516,6 +522,26 @@
 	let composer = $state<{ focus: () => void } | null>(null);
 	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
 	const selectedKind = $derived(selected ? classifySession(selected) : null);
+	/** The Bot↔Bot direct read in its popup over the conversation on screen (ADR 0091). */
+	const botDmSession = $derived(
+		runtime.botDmSessionId ? (snapshot.sessions.find((row) => row.id === runtime.botDmSessionId) ?? null) : null
+	);
+	/**
+	 * What opens from inside that popup — a flow, a file, a Bot's page, the workspace — opens where it
+	 * always does, under the popup, so the popup steps aside for it. On the workbench the pane
+	 * opener does the same for everything that opens into a pane.
+	 */
+	let openUnderBotDm = '';
+	$effect(() => {
+		const opened = [runtime.traceOpen, artifact.artifactPreview !== null, runtime.sessionSettingsOpen, runtime.workspaceOpen]
+			.map((on) => (on ? '1' : '0'))
+			.join('');
+		const before = openUnderBotDm;
+		openUnderBotDm = opened;
+		if (untrack(() => runtime.botDmSessionId) && [...opened].some((bit, i) => bit === '1' && before[i] === '0')) {
+			runtime.closeBotDm();
+		}
+	});
 	const selectedPeer = $derived(selected ? youBotPeer(selected) : null);
 	const selectedPeerBot = $derived(
 		selectedPeer ? (botsById.get(selectedPeer) ?? null) : null
@@ -859,6 +885,10 @@
 			} else if (danger.confirmingIndependent) {
 				e.stopPropagation();
 
+			} else if (botDmSession) {
+				// Focus outside the popup; inside, the popup takes its own Escape. A menu open in it
+				// closes first, on its own window listener.
+				if (!document.querySelector('[role="menu"]')) runtime.closeBotDm();
 			} else if (runtime.settingsOpen) {
 				closeSettings();
 			} else if (runtime.sessionSettingsOpen && nestedProfile) {
@@ -1335,6 +1365,25 @@
 			{t}
 			onClose={() => (runtime.createGroupOpen = false)}
 		/>
+	{/if}
+	{#if botDmSession}
+		{#key botDmSession.id}
+			<BotDmDialog
+				{runtime}
+				{t}
+				session={botDmSession}
+				onClose={() => runtime.closeBotDm()}
+				onOpenProfile={(botId) => {
+					runtime.closeBotDm();
+					openProfile(botId);
+				}}
+				onOpenArtifact={(relpath, att, messageId, forceTree) => {
+					runtime.closeBotDm();
+					artifact.openArtifactPath(relpath, att, messageId, forceTree);
+				}}
+				onCreateBot={openCreateBot}
+			/>
+		{/key}
 	{/if}
 
 	{#if sessionMenu.contextMenu}

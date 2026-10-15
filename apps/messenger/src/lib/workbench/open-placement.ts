@@ -7,20 +7,18 @@
  * direction, in the pane already there on that side, or floating. The choice is per browser, like
  * the layout it shapes (ADR 0025): it lives in this machine's storage, not the daemon.
  */
-import type { SessionGroup } from "../sidebar/session-groups.ts";
 import { forgetStored, readStored, writeStored } from "../storage.ts";
 import { isFrame } from "./float-frame.ts";
 import type { FloatFrame } from "./layout-types.ts";
 import type { PaneContent } from "./pane-content.ts";
 
 /**
- * The kinds of window, as the settings list them. Conversations split in two: a Bot↔Bot direct is
- * mostly opened from a card in your own conversation, to read beside it. A job is one tab, its
- * tickets and spec parts of it (ADR 0086), so it is one kind.
+ * The kinds of window, as the settings list them. A Bot↔Bot direct is none: it opens in a popup over
+ * the conversation it came from (ADR 0091). A job is one tab, its tickets and spec parts of it
+ * (ADR 0086), so it is one kind.
  */
 export type OpenKind =
   | "chat"
-  | "bot-bot"
   | "trace"
   | "preview"
   | "workspace"
@@ -32,7 +30,6 @@ export type OpenKind =
 
 export const OPEN_KINDS: readonly OpenKind[] = [
   "chat",
-  "bot-bot",
   "trace",
   "preview",
   "workspace",
@@ -87,13 +84,12 @@ const KIND_SET: ReadonlySet<string> = new Set(OPEN_KINDS);
 /**
  * What a new install does. Going through conversations one after another replaces the one you are
  * reading instead of piling up tabs; what belongs to a conversation — its files, its job's views,
- * a direct between its Bots, the workspace — opens in a column beside it, so reading it never hides
+ * the workspace — opens in a column beside it, so reading it never hides
  * the conversation; a terminal goes under, as in an editor; the calendar, the ledger and the usage
  * are big enough to want a pane to themselves.
  */
 export const OPEN_PLACEMENT_DEFAULTS: Readonly<Record<OpenKind, OpenPlacement>> = {
   chat: "replace",
-  "bot-bot": "side-right",
   trace: "side-right",
   preview: "side-right",
   workspace: "side-right",
@@ -108,14 +104,9 @@ export function isOpenPlacement(value: unknown): value is OpenPlacement {
   return typeof value === "string" && PLACEMENT_SET.has(value);
 }
 
-/** Which kind of window this content is, for its placement. `groupOf` reads a conversation's kind. */
-export function openKindOf(content: PaneContent, groupOf: (sessionId: string) => SessionGroup | null): OpenKind {
-  switch (content.kind) {
-    case "chat":
-      return groupOf(content.sessionId) === "bot-bot" ? "bot-bot" : "chat";
-    default:
-      return content.kind;
-  }
+/** Which kind of window this content is, for its placement. */
+export function openKindOf(content: PaneContent): OpenKind {
+  return content.kind;
 }
 
 const STORAGE_KEY = "real-bot-open-placement";

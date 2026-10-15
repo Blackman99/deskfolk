@@ -29,6 +29,8 @@ const STORAGE_KEY = "real-bot-workbench-layout";
 /** What the runtime still knows about, so a layout can drop what has gone away. */
 export type LiveRefs = {
   sessionIds: ReadonlySet<string>;
+  /** Bot↔Bot directs: read in their popup over the conversation they came from, never as a conversation tab (ADR 0091). */
+  botDirectIds?: ReadonlySet<string>;
   /**
    * Null until the terminal list has been read. Terminals are not in the snapshot, so before that
    * read every terminal tab would look like it names a dead session and a restart would lose them.
@@ -173,6 +175,7 @@ function tabIsLive(tab: WorkbenchTab, live: LiveRefs): boolean {
   if (!live.knownKinds.has(tab.kind)) return false;
   const sessionId = tab.params.sessionId;
   if (sessionId !== undefined && !live.sessionIds.has(sessionId)) return false;
+  if (tab.kind === "chat" && sessionId !== undefined && live.botDirectIds?.has(sessionId)) return false;
   const terminalId = tab.params.terminalId;
   if (terminalId !== undefined && live.terminalIds && !live.terminalIds.has(terminalId)) return false;
   return true;

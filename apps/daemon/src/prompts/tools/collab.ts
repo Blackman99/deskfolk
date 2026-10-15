@@ -110,8 +110,8 @@ export const CREATE_GROUP: ToolDef = {
 export const CREATE_DIRECT: ToolDef = {
   name: "create_direct",
   description: {
-    zh: "与另一个 Bot 新开一条私聊，把一件事单独谈完。每次调用都新开一条：叫醒你这一轮的那条消息就是它的来源，入口挂在那条消息下面，不接在上次跟这个 Bot 的私聊后面。同一轮里对同一个 Bot 再调一次仍是这一条。对方看不到你这边的会话，开场消息必须自带背景和要办的事。用户不在这条私聊里，只能看不能发言：不要在里面问用户，要问就回到用户在场的会话。",
-    en: "Open a new direct with another Bot to settle one thing there. Every call opens a new one: the message that woke this turn is its source, the entry point hangs under that message, and it does not continue the last direct you had with that Bot. Calling again for the same Bot in the same turn returns the same one. They cannot see the session you are in, so your opening message must carry the background and the request. The user is not in this direct and can only read it: never ask the user anything there; go back to a session they belong to.",
+    zh: "与另一个 Bot 新开一条私聊，把一件事单独谈完：告诉它一件事、和它商量，不派活。要它交东西、审查或回答用 delegate；要几个 Bot 一起谈、用户也在场，用 create_group。私聊里你发的每句话都会叫醒对方。每次调用都新开一条：叫醒你这一轮的那条消息就是它的来源，入口挂在那条消息下面，不接在上次跟这个 Bot 的私聊后面。同一轮里对同一个 Bot 再调一次仍是这一条。对方看不到你这边的会话，开场消息必须自带背景和要办的事。用户不在这条私聊里，只能看不能发言：不要在里面问用户，要问就回到用户在场的会话。",
+    en: "Open a new direct with another Bot to settle one thing there: to tell it something or talk it over, not to give it work. For a deliverable, a review or an answer use delegate; for several Bots at once, with the user there too, use create_group. Every line you post in the direct wakes the other Bot. Every call opens a new one: the message that woke this turn is its source, the entry point hangs under that message, and it does not continue the last direct you had with that Bot. Calling again for the same Bot in the same turn returns the same one. They cannot see the session you are in, so your opening message must carry the background and the request. The user is not in this direct and can only read it: never ask the user anything there; go back to a session they belong to.",
   },
   properties: {
     name: { type: "string", description: { zh: "对方 Bot 的名字。", en: "The other Bot's name." } },

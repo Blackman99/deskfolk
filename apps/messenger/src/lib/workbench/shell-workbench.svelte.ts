@@ -132,6 +132,8 @@ export class ShellWorkbench {
       const runtime = this.getRuntime();
       const live = {
         sessionIds: new Set(runtime.snapshot.sessions.map((row) => row.id)),
+        // A Bot↔Bot direct is read in its popup, never in a tab: one a saved layout kept goes (ADR 0091).
+        botDirectIds: new Set(runtime.snapshot.sessions.filter((row) => classifySession(row) === "bot-bot").map((row) => row.id)),
         terminalIds: runtime.terminalsLoaded ? new Set(runtime.terminals.map((row) => row.id)) : null,
         knownKinds: PANE_KIND_SET,
       };
@@ -173,6 +175,8 @@ export class ShellWorkbench {
       }
       runtime.paneOpener = (content) => {
         untrack(() => {
+          // A pane opens under a Bot↔Bot direct's popup, so the popup steps aside for it (ADR 0091).
+          runtime.closeBotDm();
           // "The terminal", asked for without naming one, is the one you have if there is one.
           if (content.kind === "terminal" && !content.terminalId) void this.showTerminal();
           else this.openGuarded(this.ownSettings(content));
@@ -352,11 +356,7 @@ export class ShellWorkbench {
     place: this.placeContext(),
   });
 
-  private openKind = (content: PaneContent) =>
-    openKindOf(content, (sessionId) => {
-      const session = this.getSessionsById().get(sessionId);
-      return session ? classifySession(session) : null;
-    });
+  private openKind = (content: PaneContent) => openKindOf(content);
 
   private placeContext(): PlaceContext {
     // The workbench's measured box; before it has one, the shell's; before that (the shell's width

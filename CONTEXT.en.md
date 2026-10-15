@@ -33,11 +33,11 @@ A one-to-one conversation between you and a Bot or between two Bots; your direct
 _Avoid_: mixing unrelated jobs in one collaboration direct, user as a speaker in a Bot↔Bot direct, every private line must wake the other side
 
 **Session**:
-The conversation container of a direct or a group. Messages, turns, judgements, and spend all belong to it. A Bot↔Bot direct is also a session; you are not a participant in it, and you can open it to read but cannot post.
+The conversation container of a direct or a group. Messages, turns, judgements, and spend all belong to it. A Bot↔Bot direct is also a session; you are not a participant in it, and you can read it in a popup but cannot post; the sidebar does not list it.
 _Avoid_: channel, room, treating a thread as a session
 
 **Origin**:
-The message a Bot↔Bot direct was opened from: the message that woke the opening Bot for the turn in which it opened the direct. The direct's entry hangs under that message, and the direct's row in the sidebar also shows its origin and can be clicked to go back to it. Once the origin session is cleared or deleted, the direct has no origin and can still be read as usual.
+The message a Bot↔Bot direct was opened from: the message that woke the opening Bot for the turn in which it opened the direct. The direct's entry hangs under that message and is the only way in: it pops the direct up over the conversation on screen, and the popup shows its origin and can be clicked to go back to it. Once the origin session is cleared or deleted, the direct has no origin and can still be read as usual.
 _Avoid_: parent session, thread, taking the Bot's own line "I'll go ask X" as the origin
 
 **Handoff**:

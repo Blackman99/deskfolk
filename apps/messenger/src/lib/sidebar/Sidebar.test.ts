@@ -6,7 +6,6 @@ import { aBot, aBotDirect, aDirect, aGroup, aMessage, aRoutine, aTurn, anApprova
 import type { Snapshot } from "../snapshot.ts";
 import { click, press, render } from "../test-render.ts";
 import Sidebar from "./Sidebar.svelte";
-import { BOT_DM_VISIBLE } from "./bot-dm-source.ts";
 import { updateChecker } from "../update-checker.svelte.ts";
 
 import { flushSync } from 'svelte';
@@ -90,70 +89,18 @@ test("a pinned file drop is listed with the pins only, under its own mark", () =
   view.close();
 });
 
-test("only the most recent directs are listed, with the rest behind a toggle", () => {
+/** ADR 0091: a Bot↔Bot direct opens from the message it hangs under, in a popup; the list has none. */
+test("Bot↔Bot directs are not listed, however many there are, and have no heading", () => {
   const { host, close } = open(botDms(7));
-  expect(host.querySelectorAll(".row-stack")).toHaveLength(BOT_DM_VISIBLE);
-  const more = host.querySelector(".ghead-more") as HTMLButtonElement;
-  expect(more.textContent?.trim()).toBe(t.sidebar.botBotMore(2));
-  click(more);
-  expect(host.querySelectorAll(".row-stack")).toHaveLength(7);
+  expect(host.querySelectorAll(".row-stack, .row-source, .ghead-more")).toHaveLength(0);
+  expect([...host.querySelectorAll(".ghead")].some((el) => el.textContent?.includes(t.sidebar.botBot))).toBe(false);
+  expect([...host.querySelectorAll(".row .t")].map((el) => el.textContent?.trim())).toEqual(["视频组"]);
   close();
 });
 
-test("a handful of directs need no toggle", () => {
-  const { host, close } = open(botDms(3));
-  expect(host.querySelector(".ghead-more")).toBeNull();
-  close();
-});
-
-/** The row and its source line are two separate targets; neither should fire the other. */
-test("the source line jumps to the triggering message, the row opens the direct", () => {
-  const { host, runtime, close } = open(botDms(1));
-  click(host.querySelector(".row-source"));
-  expect(runtime.calls.filter((c) => c.name === "selectSession")).toHaveLength(1);
-  expect(runtime.calls[0].args).toEqual(["sess-1", { messageId: "msg-1" }]);
-
-  click(host.querySelector(".row-stack .row"));
-  const selects = runtime.calls.filter((c) => c.name === "selectSession");
-  expect(selects).toHaveLength(2);
-  expect(selects[1].args).toEqual(["d-01"]);
-  close();
-});
-
-test("the source line names where the direct came from", () => {
-  const { host, close } = open(botDms(1));
-  expect(host.querySelector(".row-source-text")?.textContent).toBe(
-    t.sidebar.botBotSource("视频组"),
-  );
-  close();
-});
-
-test("a direct opened before sources were recorded says so instead of offering a dead link", () => {
-  const { host, close } = open([
-    aBotDirect({ id: "d-legacy", origin_session_id: null, origin_message_id: null }),
-  ]);
-  const source = host.querySelector(".row-source") as HTMLElement;
-  expect(source.tagName).toBe("SPAN");
-  expect(source.textContent?.trim()).toBe(t.sidebar.botBotSourceUnknown);
-  close();
-});
-
-test("a direct whose source session is gone says so", () => {
-  const { host, close } = open([aBotDirect({ id: "d-orphan", origin_session_id: "deleted" })]);
-  const source = host.querySelector(".row-source") as HTMLElement;
-  expect(source.tagName).toBe("SPAN");
-  expect(source.textContent?.trim()).toBe(t.sidebar.botBotSourceMissing);
-  close();
-});
-
-/** Otherwise the one you are reading disappears from the sidebar while you read it. */
-test("the open direct stays listed even when it falls past the cap", () => {
-  const { host, close } = open(botDms(7), "d-01");
-  const ids = [...host.querySelectorAll(".row-stack")].map((el) =>
-    el.querySelector(".t")?.textContent,
-  );
-  expect(ids).toHaveLength(BOT_DM_VISIBLE + 1);
-  expect(host.querySelector(".row-stack.is-on")).toBeTruthy();
+test("a Bot↔Bot direct pinned before stays out of the pins too", () => {
+  const { host, close } = open(botDms(1), null, false, [], ["d-01"]);
+  expect(host.textContent).not.toContain("Writer ↔ Researcher");
   close();
 });
 
@@ -180,14 +127,6 @@ test("a failed conversation shows that state on its row", () => {
   const row = [...host.querySelectorAll(".row")].find((el) => el.textContent?.includes("Writer"));
   expect(row?.querySelector(".row-status")?.className).toContain("is-failed");
   expect(row?.textContent).toContain(t.sidebar.statusFailed);
-  close();
-});
-
-test("Bot to Bot rows carry no unread badge", () => {
-  const { host, close } = open([
-    aBotDirect({ id: "d-01", last_message: aMessage({ author: "bot-1" }) }),
-  ]);
-  expect(host.querySelector(".row-stack .unread-dot")).toBeNull();
   close();
 });
 
@@ -636,15 +575,16 @@ test("the working filter lists only the rows a Bot is at work in, and remembers 
   expect(toggle().getAttribute("aria-pressed")).toBe("false");
   expect(titles()).toContain("文案组");
   expect(titles()).toContain("Researcher");
-  expect(host.querySelectorAll(".row-stack")).toHaveLength(BOT_DM_VISIBLE);
+  expect(host.querySelectorAll(".row-stack")).toHaveLength(0);
 
   click(toggle());
   expect(toggle().getAttribute("aria-pressed")).toBe("true");
   expect(toggle().title).toBe(t.sidebar.workingOnlyOff);
-  // Thinking counts, and so does a turn stopped on your approval; a finished turn does not.
-  expect(titles()).toEqual(["视频组", "Writer", "Writer ↔ Researcher"]);
+  // Thinking counts, and so does a turn stopped on your approval; a finished turn does not. A
+  // Bot↔Bot direct at work is not listed either: its card under the message shows it (ADR 0091).
+  expect(titles()).toEqual(["视频组", "Writer"]);
   // The file drop never has a Bot at work, so its section goes; the rest keep their headings.
-  expect(heads()).toEqual([t.sidebar.groups, t.sidebar.youBot, t.sidebar.botBot]);
+  expect(heads()).toEqual([t.sidebar.groups, t.sidebar.youBot]);
   expect(host.querySelector(".ghead-more")).toBeNull();
   expect(host.querySelector(".working-empty-hint")).toBeNull();
   expect(window.localStorage.getItem(WORKING_ONLY_KEY)).toBe("1");
@@ -652,7 +592,7 @@ test("the working filter lists only the rows a Bot is at work in, and remembers 
   click(toggle());
   expect(titles()).toContain("文案组");
   expect(heads()[0]).toBe(t.sidebar.fileDrop);
-  expect(host.querySelectorAll(".row-stack")).toHaveLength(BOT_DM_VISIBLE);
+  expect(host.querySelectorAll(".row-stack")).toHaveLength(0);
   expect(window.localStorage.getItem(WORKING_ONLY_KEY)).toBeNull();
   close();
 });
@@ -815,7 +755,8 @@ test("a press on any conversation, pins included, is handed on so it can be drag
   const pressOn = (el: Element | null) => el?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
   pressOn(view.host.querySelector(".pinned-session-btn"));
   for (const row of view.host.querySelectorAll(".row")) pressOn(row);
-  expect(presses).toEqual(["sess-2", "sess-1", "botbot-1"]);
+  // A Bot↔Bot direct has no row to press (ADR 0091).
+  expect(presses).toEqual(["sess-2", "sess-1"]);
   // A press is all it hands on: picking the row is still its click.
   expect(runtime.calls.filter((call) => call.name === "selectSession")).toHaveLength(0);
   view.close();
@@ -823,6 +764,6 @@ test("a press on any conversation, pins included, is handed on so it can be drag
   // Without a workbench to drop into, nobody is asked.
   const plain = render(Sidebar, props);
   for (const row of plain.host.querySelectorAll(".row")) pressOn(row);
-  expect(presses).toHaveLength(3);
+  expect(presses).toHaveLength(2);
   plain.close();
 });

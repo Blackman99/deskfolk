@@ -624,6 +624,9 @@ export class MessengerRuntime {
   // --- Forwarded to `sessionHistory` (selecting a conversation and paging its history). ---
   openChat(id: string, opts?: { messageId?: string }): Promise<void> { return this.sessionHistory.openChat(id, opts); }
   selectSession(id: string, opts?: { messageId?: string; preservePage?: boolean }): Promise<void> { return this.sessionHistory.selectSession(id, opts); }
+  /** The Bot↔Bot direct open in its popup, or null (ADR 0091). Opened through `selectSession`. */
+  get botDmSessionId(): string | null { return this.sessionHistory.botDmSessionId; }
+  closeBotDm(): void { this.sessionHistory.closeBotDm(); }
   get hasOlderMessages(): boolean { return this.sessionHistory.hasOlderMessages; }
   loadOlderMessages(sessionId?: string): Promise<void> { return this.sessionHistory.loadOlderMessages(sessionId); }
   markSessionRead(id: string): Promise<void> { return this.sessionHistory.markSessionRead(id); }

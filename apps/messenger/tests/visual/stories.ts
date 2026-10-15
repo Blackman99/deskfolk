@@ -39,6 +39,7 @@ import GroupPane from '../../src/lib/panels/GroupPane.svelte';
 import ProfilePane from '../../src/lib/panels/ProfilePane.svelte';
 import RoutineCard from '../../src/lib/panels/RoutineCard.svelte';
 import CreateGroupSheet from '../../src/lib/sidebar/CreateGroupSheet.svelte';
+import BotDmDialog from '../../src/lib/chat/BotDmDialog.svelte';
 import CreateBotSheet from '../../src/lib/sidebar/CreateBotSheet.svelte';
 import SessionContextMenu from '../../src/lib/sidebar/SessionContextMenu.svelte';
 import Sidebar from '../../src/lib/sidebar/Sidebar.svelte';
@@ -190,7 +191,7 @@ const segmentsWorld = {
 
 /**
  * Bot↔Bot directs opened from `msg-1`, kept out of `world` so every other baseline stays put.
- * Seven of them, so the sidebar has to cap the list and offer the rest.
+ * Seven of them, so the entry under the message folds the rest into +N.
  */
 const botDirects = ['01', '02', '03', '04', '05', '06', '07'].map((n, i) =>
 	aBotDirect({
@@ -213,6 +214,24 @@ const botDirects = ['01', '02', '03', '04', '05', '06', '07'].map((n, i) =>
 	})
 );
 const botDmWorld = { ...world, sessions: [...sessions, ...botDirects] };
+/** The first of them with its own lines, read in its popup. */
+const botDmDialogWorld = {
+	...botDmWorld,
+	messages: [
+		...(world.messages ?? []),
+		aMessage({ id: 'dm-1', session_id: 'botbot-01', kind: 'bot', author: 'bot-1', body: '分镜要点整理好了，放在 `notes/分镜要点.md`。你做 MV 时镜长别等分，CV 不低于 0.75。', created_at: '2026-09-19T01:10:00.000Z' }),
+		aMessage({ id: 'dm-2', session_id: 'botbot-01', kind: 'bot', author: 'bot-2', body: '收到。我在《风来过》上量了一下，CV 0.34，确实太齐了，下一版按这个改。', created_at: '2026-09-19T01:12:00.000Z' })
+	]
+};
+const botDmDialogProps = () => ({
+	runtime: fakeRuntime(botDmDialogWorld, { selectedId: 'sess-1' }),
+	t,
+	session: botDirects[0],
+	onClose: () => {},
+	onOpenProfile: () => {},
+	onOpenArtifact: () => {},
+	onCreateBot: () => {}
+});
 
 /**
  * The preview reads bytes through the local API. A tiny PNG keeps the shot off Monaco, which
@@ -954,27 +973,6 @@ const defs: Record<StoryName, Story> = {
 			onNewTerminal: () => {}
 		}
 	},
-	'sidebar-botdm': {
-		component: Sidebar as never,
-		props: {
-			onOpenSearch: () => {},
-			runtime: fakeRuntime(botDmWorld, { selectedId: 'botbot-06' }),
-			t,
-			selected: botDirects[5],
-			pinnedSessionIds: [],
-			workspaceOpen: false,
-			contextMenuSessionId: null,
-			onOpenContextMenu: () => {},
-			onToggleWorkspace: () => {},
-			onOpenRoutines: () => {},
-			onOpenSpend: () => {},
-			onOpenSettings: () => {},
-			onCreateBot: () => {},
-			onCreateGroup: () => {},
-			onOpenArtifact: () => {},
-			onNewTerminal: () => {}
-		}
-	},
 	'chat-header': {
 		component: ChatHeader as never,
 		props: {
@@ -1009,6 +1007,14 @@ const defs: Record<StoryName, Story> = {
 			onOpenArtifact: () => {},
 			onCreateBot: () => {}
 		}
+	},
+	'bot-dm-dialog': {
+		component: BotDmDialog as never,
+		props: botDmDialogProps()
+	},
+	'bot-dm-dialog-narrow': {
+		component: BotDmDialog as never,
+		props: botDmDialogProps()
 	},
 	'chat-stage-segments': {
 		component: ChatStage as never,

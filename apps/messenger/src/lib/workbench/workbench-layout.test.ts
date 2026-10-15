@@ -18,7 +18,8 @@ function live(overrides: Partial<LiveRefs> = {}): LiveRefs {
   return {
     sessionIds: overrides.sessionIds ?? new Set(["s1", "s2"]),
     terminalIds: "terminalIds" in overrides ? (overrides.terminalIds ?? null) : new Set(["term1"]),
-    knownKinds: overrides.knownKinds ?? new Set(["chat", "terminal", "workspace", "routines"]),
+    knownKinds: overrides.knownKinds ?? new Set(["chat", "terminal", "workspace", "routines", "preview"]),
+    ...(overrides.botDirectIds ? { botDirectIds: overrides.botDirectIds } : {}),
   };
 }
 
@@ -131,6 +132,14 @@ test("tabs for conversations and terminals that are gone are dropped", () => {
   const layout = layoutOf(makeLeaf("a", [chatTab("t1", "s1"), chatTab("t2", "deleted"), termTab("t3", "dead")]));
   const healed = healLayout(layout, live(), viewport, floatMin, "fresh");
   expect(tiledLeaves(healed.root)[0]!.tabs.map((tab) => tab.id)).toEqual(["t1"]);
+  assertInvariants(healed);
+});
+
+test("a Bot↔Bot direct kept as a conversation tab goes; a file opened from it stays (ADR 0091)", () => {
+  const preview = { id: "t3", kind: "preview", params: { sessionId: "s2", relpath: "notes.md" } } as unknown as ReturnType<typeof chatTab>;
+  const layout = layoutOf(makeLeaf("a", [chatTab("t1", "s1"), chatTab("t2", "s2"), preview]));
+  const healed = healLayout(layout, live({ botDirectIds: new Set(["s2"]) }), viewport, floatMin, "fresh");
+  expect(tiledLeaves(healed.root)[0]!.tabs.map((tab) => tab.id)).toEqual(["t1", "t3"]);
   assertInvariants(healed);
 });
 

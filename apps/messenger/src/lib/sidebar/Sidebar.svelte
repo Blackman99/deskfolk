@@ -7,8 +7,7 @@
 	import { isOutside } from '../click-outside.ts';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { groupSessions, isFileDropSession, isSessionArchived, youBotPeer } from './session-groups.ts';
-	import { BOT_DM_VISIBLE, recentBotDms, resolveBotDmOrigin } from './bot-dm-source.ts';
+	import { classifySession, groupSessions, isFileDropSession, isSessionArchived, youBotPeer } from './session-groups.ts';
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
 	import HoldsBar from './HoldsBar.svelte';
 	import { holdLabel, listedHolds } from './holds-list.ts';
@@ -138,30 +137,22 @@
 	const fileDrop = $derived(listed.fileDrop);
 	const groupRows = $derived(listed.groups);
 	const youBotRows = $derived(listed.youBot);
-	let botBotExpanded = $state(false);
-	/** Filtered, every working direct is listed: the cap is for idle history, not for live work. */
-	const botBotVisible = $derived(
-		workingIds
-			? recentBotDms(listed.botBot, { expanded: true })
-			: recentBotDms(grouped.botBot, {
-					keepId: runtime.selectedId,
-					expanded: botBotExpanded
-				})
-	);
+	// A Bot↔Bot direct is not listed: it opens from the message it hangs under, in a popup (ADR 0091).
 	const nothingWorking = $derived(
-		workingIds !== null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0 && botBotVisible.length === 0
+		workingIds !== null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0
 	);
-	/** No conversation at all yet, unfiltered: the list says how to start one instead of three bare headers. */
+	/** No conversation at all yet, unfiltered: the list says how to start one instead of bare headers. */
 	const rosterEmpty = $derived(
-		workingIds === null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0 && botBotVisible.length === 0
+		workingIds === null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0
 	);
 	const archivedSessions = $derived(
 		snapshot.sessions.filter((session) => isSessionArchived(session, botsById))
 	);
+	// A Bot↔Bot direct pinned before ADR 0091 stays out too: it opens only from its message.
 	const pinnedSessions = $derived(
 		pinnedSessionIds
 			.map((id) => sessionsById.get(id))
-			.filter((session): session is SessionSummary => Boolean(session))
+			.filter((session): session is SessionSummary => Boolean(session) && classifySession(session!) !== 'bot-bot')
 	);
 	const pinnedWorking = $derived(workingIds !== null && pinnedSessions.some((session) => workingIds.has(session.id)));
 
@@ -458,68 +449,6 @@
 					/>
 				</div>
 			{/each}
-			{#if !workingIds || botBotVisible.length > 0}
-				<div class="ghead">
-					<span>{t.sidebar.botBot}</span>
-					{#if !workingIds && grouped.botBot.length > BOT_DM_VISIBLE}
-						<button
-							type="button"
-							class="ghead-more"
-							onclick={() => (botBotExpanded = !botBotExpanded)}
-						>
-							{botBotExpanded
-								? t.sidebar.collapse
-								: t.sidebar.botBotMore(grouped.botBot.length - BOT_DM_VISIBLE)}
-						</button>
-					{/if}
-				</div>
-			{/if}
-			{#each botBotVisible as session (session.id)}
-				{@const status = statusOf(session)}
-				{@const source = resolveBotDmOrigin(session, sessionsById)}
-				<div class="row-stack" class:is-on={runtime.selectedId === session.id} animate:flip={rowFlip()}>
-					<SessionRow
-						{session}
-						{t}
-						on={runtime.selectedId === session.id}
-						contextOpen={contextMenuSessionId === session.id}
-						title={titleOf(session)}
-						time={timeOf(session)}
-						{status}
-						preview={previewOf(session) || t.sidebar.noMessages}
-						unread={0}
-						bots={botsById}
-						botStatus={botStatusOf}
-						onSelect={() => void runtime.selectSession(session.id)}
-						onContextMenu={(e) => onOpenContextMenu(e, session)}
-						onPointerDown={pressOf(session)}
-					/>
-					{#if source.kind === 'session'}
-						{@const sourceTitle = titleOf(source.session)}
-						<button
-							type="button"
-							class="row-source"
-							title={source.root
-								? t.sidebar.botBotSourceRoot(sourceTitle, titleOf(source.root))
-								: t.sidebar.botBotSource(sourceTitle)}
-							onclick={() =>
-								void runtime.selectSession(
-									source.session.id,
-									source.messageId ? { messageId: source.messageId } : undefined
-								)}
-						>
-							<span class="row-source-glyph" aria-hidden="true">{source.depth > 0 ? '↳' : '↰'}</span>
-							<span class="row-source-text">{t.sidebar.botBotSource(sourceTitle)}</span>
-						</button>
-					{:else}
-						<span class="row-source is-static">
-							{source.kind === 'missing'
-								? t.sidebar.botBotSourceMissing
-								: t.sidebar.botBotSourceUnknown}
-						</span>
-					{/if}
-				</div>
-			{/each}
 			{#if nothingWorking}
 				<p class="working-empty-hint">{pinnedWorking ? t.sidebar.workingEmptyPinned : t.sidebar.workingEmpty}</p>
 			{/if}
@@ -790,86 +719,6 @@
 		color: var(--accent);
 	}
 
-	/* Only the Bot↔Bot rows stack: a row plus the source line under it. */
-	.row-stack {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.row-stack :global(.row) {
-		margin-bottom: 0;
-	}
-
-	.row-source {
-		/* 10px row padding + 40px avatar + 10px gap: lines up under the title. */
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		margin: 0 10px 2px 60px;
-		padding: 2px 6px;
-		border: 0;
-		border-radius: var(--radius-sm);
-		background: transparent;
-		color: var(--muted);
-		font-size: 11px;
-		line-height: 1.3;
-		text-align: left;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	button.row-source {
-		cursor: pointer;
-	}
-
-	button.row-source:hover {
-		background: var(--line-subtle);
-		color: var(--accent);
-	}
-
-	button.row-source:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 1px;
-	}
-
-	.row-source.is-static {
-		opacity: 0.7;
-	}
-
-	.row-source-glyph {
-		flex-shrink: 0;
-		opacity: 0.8;
-	}
-
-	.row-source-text {
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.ghead-more {
-		border: 0;
-		background: transparent;
-		color: var(--muted);
-		font-size: 10px;
-		font-weight: 600;
-		letter-spacing: 0.02em;
-		text-transform: none;
-		padding: 2px 6px;
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-	}
-
-	.ghead-more:hover {
-		background: var(--line-subtle);
-		color: var(--accent);
-	}
-
-	.ghead-more:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 1px;
-	}
-
 	.btn-back-sessions {
 		font-size: 11px;
 		font-weight: 500;
@@ -945,11 +794,6 @@
 		/* Creating is the floating + now, so the headers are labels. */
 		.ghead :global(.add) {
 			display: none;
-		}
-
-		/* The source line belongs under the title, and the phone's avatar column is wider. */
-		.row-source {
-			margin: 0 14px 2px 74px;
 		}
 
 		/*

@@ -17,7 +17,9 @@
  *   first three, which run with holds on (`holds: true`), as a daemon does once no installed app
  *   older than the version gate shares its database.
  * - ADR 0040 P1 (a Stop no longer ends in a settle, so nothing calls the plan back): the fourth.
- * - ADR 0040 P4c (a line in a Bot↔Bot thread wakes nobody): the last, for when nobody is held.
+ * - ADR 0040 P4c (a line in a Bot↔Bot thread wakes nobody): the last, for when nobody is held. Since
+ *   ADR 0091 that holds for a pair's delegation thread only; a direct a Bot opened itself with
+ *   create_direct wakes the other side again, and only the nod-to-a-nod rule stops the trading.
  *
  * Every wake a hold turns away is on the work log as `wake.suppressed` (`suppressedWakes()`, each
  * wake path's own test in wake-gate.test.ts); the first and third tests check the ones here. The
@@ -237,9 +239,11 @@ test.failing("in a Bot↔Bot direct an acknowledgement wakes nobody, even with n
   expect(woken.map((turn) => h.store.getMessage(turn.trigger_message_id).body)).toEqual([]);
 });
 
-// ADR 0040 P4c (engine level 3): a line in a Bot↔Bot direct wakes nobody — the opening as much as the
-// acknowledgement — so the loop has nothing to run on; work between Bots goes through a delegation.
-test("from level 3 a line in a Bot↔Bot direct wakes nobody, the opening or an acknowledgement", async () => {
+// ADR 0040 P4c (engine level 3) made every line in a Bot↔Bot direct wake nobody. ADR 0091 keeps that
+// for a pair's delegation thread and gives back the direct a Bot opens itself: there the opening
+// wakes the other Bot, as it did here on 2026-09-29, and an acknowledgement answering it with no
+// command behind either line is a nod to a nod, which wakes nobody.
+test("from level 3, in a direct a Bot opened itself, the opening wakes the other Bot and a bare acknowledgement wakes nobody", async () => {
   const h = await scenario({ delegation: true });
   const { director, reviewer } = videoTeam(h);
   const thread = h.botDirect(director, reviewer);
@@ -250,6 +254,10 @@ test("from level 3 a line in a Bot↔Bot direct wakes nobody, the opening or an 
   h.postUser(reviewerDm, "跟视频导演说一声，Shot 12 先不开");
   await h.waitIdle();
 
-  expect(h.messages(thread).map(({ author, body }) => ({ author, body }))).toEqual([{ author: reviewer.id, body: "用户叫停了，Shot 12 先不开" }]);
-  expect([...h.turns(director), ...h.turns(reviewer)].filter((turn) => turn.session_id === thread)).toEqual([]);
+  expect(h.messages(thread).map(({ author, body }) => ({ author, body }))).toEqual([
+    { author: reviewer.id, body: "用户叫停了，Shot 12 先不开" },
+    { author: director.id, body: "停工已对齐，Shot 12 不开。" },
+  ]);
+  expect(h.turns(director).filter((turn) => turn.session_id === thread)).toHaveLength(1);
+  expect(h.turns(reviewer).filter((turn) => turn.session_id === thread)).toEqual([]);
 });

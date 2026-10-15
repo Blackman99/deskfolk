@@ -127,6 +127,7 @@ function layers(over: Partial<LayerState> = {}): LayerState {
     providerEditor: false,
     confirmingIndependent: false,
     searchOpen: false,
+    botDmOpen: false,
     settingsOpen: false,
     sessionSettingsOpen: false,
     toolsMenuOpen: false,
@@ -142,6 +143,14 @@ function layers(over: Partial<LayerState> = {}): LayerState {
     ...over,
   };
 }
+
+test("a Bot↔Bot direct's popup closes on Back before the conversation under it, after what was opened inside it", () => {
+  expect(topLayer(layers({ botDmOpen: true, threadOpen: true }))).toBe("bot-dm");
+  expect(topLayer(layers({ botDmOpen: true, sessionSettingsOpen: true }))).toBe("bot-dm");
+  expect(topLayer(layers({ botDmOpen: true, imageOpen: true }))).toBe("image");
+  expect(topLayer(layers({ botDmOpen: true, messageTextOpen: true }))).toBe("message-text");
+  expect(topLayer(layers({ botDmOpen: true, dangerConfirm: true }))).toBe("danger");
+});
 
 test("the phone terminal page is a screen of its own, and Back leaves it to history", () => {
   const terminal: UrlView = { ...roster, overlay: { kind: "terminal" } };

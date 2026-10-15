@@ -1,0 +1,33 @@
+# Bot 私聊回来了，在弹窗里看 / Bot↔Bot directs are back, read in a popup
+
+Status: implemented 2026-10-15. Supersedes, for the direct a Bot opens itself, decision 3 of [ADR 0044](0044-delegation-and-end-contract.md) ("3 级不提供 create_direct，直接调用也拒绝" and "普通发言、收尾和点名在场对方都是 `peer_note`、`wakes=0`"); a pair's delegation thread keeps both. Brings back [ADR 0020](0020-bot-direct-per-trigger.md)'s fresh direct per trigger at every engine level. Takes Bot↔Bot directs out of [ADR 0025](0025-desktop-pane-workbench.md)'s workbench: no tab, no placement setting.
+
+## 背景 / Context
+
+2026-10-15 你让视频导演把分镜学习的总结分享给其他做视频的 Bot。它建了一个群：引擎 3 级起工具单里没有 `create_direct`，`send_message` 只能发到它在场的会话，`delegate` 要对方已经在这件工作的会话里、而且是派活等交回。只是「告诉对方一件事」，私聊走不通，能叫醒人的只剩群里点名。你问为什么拿掉、要加回来；同时说左侧不要再列 Bot 与 Bot 的私聊，只能从原始对话里触发它的地方进去，看的方式改成弹窗看那一次对话。
+
+On 2026-10-15 you asked 视频导演 to share its storyboard notes with the other video Bots, and it made a group: from engine level 3 the tool list had no `create_direct`, `send_message` only reaches sessions the Bot is in, and `delegate` needs the other Bot in the work's conversation already and is for handing work over and waiting for it back. To just tell another Bot something there was no private way; a mention in a group was the only line that wakes anyone. You asked why it was taken away and to bring it back, and said the sidebar should no longer list Bot↔Bot directs: they open only from the place in the original conversation that started them, as a popup showing that one exchange.
+
+## 决定 / Decisions
+
+1. **`create_direct` 回到每个引擎级别 / `create_direct` is back at every engine level.** `builtinTools` 不再在 3 级以上拿掉它，执行时也不再回 `use_delegate`。工具说明写清三选一：告诉对方一件事、和它商量，用 `create_direct`；要它交东西、审查或回答，用 `delegate`；要几个 Bot 一起谈、你也在场，用 `create_group`。 / `builtinTools` no longer drops it from level 3 up, and calling it no longer answers `use_delegate`. Its description names the three ways: tell or talk something over → `create_direct`; a deliverable, a review or an answer → `delegate`; several Bots at once, with you there → `create_group`.
+
+2. **自己开的私聊每句都叫醒对方 / In a direct a Bot opened itself, every line wakes the other side.** 委派线程有 `sessions.thread_task_id`，里面的普通发言照旧只是 `peer_note`，不叫醒（ADR 0044）。`create_direct` 开的私聊没有它（`store.isPairThread`），Bot 的一句话就像 3 级以前那样叫醒对方：对方正在干这件事就进它的收件，不然开一轮。防空转靠 2026-09-29 留下的两样：「点头回点头」不叫醒（`isNodToANod`：两句都是短句、两轮都没跑命令），以及提示词让只剩回执时用 `end_turn`。3 级提示词的两处替换跟着改：「委派线程里普通发言从不叫醒对方；你用 create_direct 开的私聊里，你发的每句话都会叫醒对方」。 / A delegation thread has `sessions.thread_task_id`, and its plain words stay `peer_note`s that wake nobody (ADR 0044). A direct opened with `create_direct` has none (`store.isPairThread`), so a Bot's line there wakes the other side as below level 3: into its inbox if it is at work on the job, else a new turn. What keeps two Bots from trading receipts is what 2026-09-29 left: a nod to a nod wakes nobody (`isNodToANod`: two bare remarks, neither turn ran a command), and the prompt's "call end_turn when all that is left is a receipt". The level-3 prompt's two rewrites now say "Plain words in a Bot pair's delegation thread never wake the other Bot. In a direct you opened with create_direct every line you post wakes the other Bot".
+
+3. **左侧不列 / Not in the list.** 侧栏和收起后的窄栏都没有「Bot ↔ Bot」一段了；以前钉住的 Bot 私聊也不再出现在钉住的一排里。设置里「窗口打开方式」去掉「Bot ↔ Bot 私聊」一项（存过的选择读到就丢）；工作台存着的 Bot 私聊会话标签在下一次快照时去掉。 / The sidebar and the collapsed rail lose their Bot ↔ Bot section, and a Bot↔Bot direct pinned before is left out of the pins. "Where windows open" loses its Bot ↔ Bot row (a kept choice is dropped on read), and a Bot↔Bot conversation tab a saved layout kept goes at the next snapshot.
+
+4. **从触发它的那句话进去，在弹窗里看 / Opened from the line that started it, in a popup.** 入口还是挂在那句话下面的「开了私聊」卡片。点开不再切会话、不开标签，而是在当前会话上面弹出这条私聊（`BotDmDialog`）：标题是两个 Bot，下面一行「来自 …」点了回到那句话（嵌套的私聊回到上一层私聊），里面是这条私聊自己的对话，照旧只读。手机上它是一页，返回键先关它。搜索、通知、链接点到 Bot 私聊也一样弹出；没有会话在屏幕上时（比如从链接打开），先把它来自的会话放到下面。在弹窗里打开文件、Bot 资料或流程，弹窗先收起，东西照常在原来的位置打开。 / The way in is still the "opened a direct" card under the line. Clicking it no longer moves the selection or opens a tab: the direct pops up over the conversation on screen (`BotDmDialog`), titled with its two Bots, a "From …" line under that which goes back to the line (or, for a direct opened from another direct, to that one), and the direct's own transcript, read-only as always. On a phone it is a page, and Back closes it first. A search hit, a notification or a link that names a Bot↔Bot direct opens the same popup; with no conversation on screen (a link, say) the one it came from goes under it first. A file, a Bot's profile or a flow opened from inside puts the popup away and opens where it always does.
+
+## 取舍 / Trade-offs
+
+- **空转的口子又开了一点 / The trading gap opens a little again.** 一句回执前面跑过命令，就不算「点头回点头」，会叫醒对方（f-a-stop 里 0 级那条 `test.failing` 记着这个缺口）。现在只在 Bot 自己开的私聊里有，委派线程不受影响。 / A receipt from a turn that ran a command is no nod, so it wakes the other side (level 0's `test.failing` in f-a-stop records the gap). It is now open only in directs a Bot opened itself; delegation threads are untouched.
+- **你插不上话 / You cannot speak there.** Bot 之间的私聊你只能看；发给两个 Bot 就是两条私聊。几个 Bot 都要听、或者你要参与，提示词仍让它建群。 / You can only read a Bot↔Bot direct, and two Bots means two directs; for several Bots, or with you in it, the prompt still says make a group.
+- **委派线程不是「那一次」/ A delegation thread is not "that one time".** 委派线程按一对 Bot × 一件事复用，入口只挂在第一次委派的那句话下面，弹窗里是整条线程。 / A delegation thread is reused per Bot pair × job: its card hangs under the line of the first delegation only, and the popup shows the whole thread.
+- **少了一处看状态的地方 / One less place to see status.** 侧栏原来能看到 Bot 私聊在忙、等审批；现在看那句话下面卡片上的状态点和状态字。 / The sidebar used to show a Bot↔Bot direct as busy or waiting for approval; now the card under the line shows it.
+- **不做的 / Not done.** 来源会话那一行汇总子私聊的状态；弹窗里的前进后退。 / Rolling a direct's status up onto its source conversation's row; back and forward inside the popup.
+
+## 实现 / Implementation
+
+守护进程：`prompts/builtin-tools.ts`（不再过滤，`send_message` 的 3 级说明）、`collab-tools.ts`（不再拒绝）、`prompts/tools/collab.ts`（`create_direct` 说明）、`prompts/system.ts`（3 级替换）、`store/peer-notes.ts` 的 `isPairThread`、`engine/participation.ts`（只在委派线程记 `peer_note`）。测试：`bot-direct-wakes.test.ts`、`prompts/delegation.test.ts`、`scenarios/f-a-stop.test.ts`。
+
+信使：`chat/session-history.svelte.ts`（`selectSession` 遇到 Bot 私聊改开弹窗，`peekSession` 在不改选中的情况下读它的历史，`botDmSessionId`）、`chat/BotDmDialog.svelte`、`Shell.svelte`（挂弹窗、Esc、返回键、打开别的东西时收起）、`mobile-route.ts` 的 `bot-dm` 层、`sidebar/Sidebar.svelte` 和 `SidebarRail.svelte`（去掉那一段）、`sidebar/session-groups.ts`（钉住的不算）、`sidebar/bot-dm-source.ts`（只留来源）、`workbench/open-placement.ts`（去掉这一类）、`workbench/workbench-layout.ts` 和 `shell-workbench.svelte.ts`（去掉旧标签，开窗格时收起弹窗）。

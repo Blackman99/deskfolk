@@ -424,6 +424,12 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     restoreSession: record("restoreSession"),
     clearSessionHistory: record("clearSessionHistory"),
     selectSession: record("selectSession"),
+    // The Bot↔Bot direct's popup (ADR 0091). Not recorded: every pane that opens puts it away, and
+    // tests that list the calls an action makes would all grow by one.
+    botDmSessionId: null,
+    closeBotDm(this: { botDmSessionId: string | null }) {
+      this.botDmSessionId = null;
+    },
     send: record("send"),
     sendAsk: record("sendAsk"),
     answerWorkQuestion: record("answerWorkQuestion"),

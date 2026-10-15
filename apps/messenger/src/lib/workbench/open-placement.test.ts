@@ -30,7 +30,6 @@ test("every kind of window has a default, and every choice sits under one headin
 test("the defaults keep the conversation in view: its things beside it, terminals under it", () => {
   expect(OPEN_PLACEMENT_DEFAULTS).toEqual({
     chat: "replace",
-    "bot-bot": "side-right",
     trace: "side-right",
     preview: "side-right",
     workspace: "side-right",
@@ -59,16 +58,19 @@ test("a kind or a choice this build does not know, or a broken value, falls back
   expect(loadOpenPlacements()).toEqual(OPEN_PLACEMENT_DEFAULTS);
 });
 
-test("a Bot↔Bot direct is a kind of its own; a job is one kind, whatever a saved tab asked to open on", () => {
-  const groupOf = (id: string) => (id === "bb" ? "bot-bot" : id === "g" ? "group" : null);
-  expect(openKindOf({ kind: "chat", sessionId: "bb" }, groupOf)).toBe("bot-bot");
-  expect(openKindOf({ kind: "chat", sessionId: "g" }, groupOf)).toBe("chat");
-  expect(openKindOf({ kind: "chat", sessionId: "gone" }, groupOf)).toBe("chat");
-  expect(openKindOf({ kind: "trace", sessionId: "g", taskId: null }, groupOf)).toBe("trace");
-  expect(openKindOf({ kind: "trace", sessionId: "g", taskId: null, view: "board" }, groupOf)).toBe("trace");
-  expect(openKindOf({ kind: "trace", sessionId: "g", taskId: null, view: "spec" }, groupOf)).toBe("trace");
-  expect(openKindOf({ kind: "terminal", terminalId: null }, groupOf)).toBe("terminal");
-  expect(openKindOf({ kind: "preview", sessionId: "g", relpath: "a", attachmentId: null }, groupOf)).toBe("preview");
+test("a job is one kind, whatever a saved tab asked to open on; a Bot↔Bot direct is no kind (it opens in a popup)", () => {
+  expect(OPEN_KINDS).not.toContain("bot-bot");
+  expect(openKindOf({ kind: "chat", sessionId: "g" })).toBe("chat");
+  expect(openKindOf({ kind: "trace", sessionId: "g", taskId: null })).toBe("trace");
+  expect(openKindOf({ kind: "trace", sessionId: "g", taskId: null, view: "board" })).toBe("trace");
+  expect(openKindOf({ kind: "trace", sessionId: "g", taskId: null, view: "spec" })).toBe("trace");
+  expect(openKindOf({ kind: "terminal", terminalId: null })).toBe("terminal");
+  expect(openKindOf({ kind: "preview", sessionId: "g", relpath: "a", attachmentId: null })).toBe("preview");
+});
+
+test("a Bot↔Bot direct kept from an older build falls back to nothing", () => {
+  window.localStorage.setItem("real-bot-open-placement", JSON.stringify({ "bot-bot": "float" }));
+  expect(loadOpenPlacements()).toEqual(OPEN_PLACEMENT_DEFAULTS);
 });
 
 test("the shared value is what the next open reads, and back to defaults clears it", () => {

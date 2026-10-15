@@ -35,9 +35,6 @@ export const STORY_SIZES = {
 	'sidebar-context': { width: 300, height: 820 },
 	// No conversation yet: the list's empty state with its two ways to start one.
 	'sidebar-empty': { width: 300, height: 820 },
-	// Bot↔Bot directs: capped list with a source line under each row, and the entry point the
-	// transcript hangs under the message that set them off. Neither appears in any other shot.
-	'sidebar-botdm': { width: 300, height: 820 },
 	// The list folded to its rail, with the footer's tools menu flown out beside it: the only shot
 	// of the rail's icon footer and of a menu placed to the side of its button.
 	'sidebar-rail': { width: 300, height: 820 },
@@ -45,7 +42,11 @@ export const STORY_SIZES = {
 	'search-dialog-narrow': { width: 390, height: 844 },
 	'chat-header': { width: 900, height: 120 },
 	'chat-stage': { width: 900, height: 820 },
+	// Bot↔Bot directs: the entry point the transcript hangs under the message that set them off,
+	// and one of them read in its popup over that conversation (ADR 0091) — a page on a phone.
 	'chat-stage-botdm': { width: 900, height: 820 },
+	'bot-dm-dialog': { width: 1000, height: 820 },
+	'bot-dm-dialog-narrow': { width: 390, height: 844 },
 	// One Bot reply in three parts, stacked under one header with no labels or rules between them.
 	'chat-stage-segments': { width: 900, height: 820 },
 	// A conversation as narrow as a phone docks its composer across the bottom instead of floating it.

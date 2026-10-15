@@ -6,7 +6,6 @@ export const zh = {
   subtitle: "宽窗口里，一种窗口还没开着时放在哪。已经开着的只会切过去，不会再开一个。",
   kinds: {
     chat: { name: "会话", hint: "你和 Bot、群、文件：侧栏、搜索、通知里点开的" },
-    "bot-bot": { name: "Bot ↔ Bot 私聊", hint: "侧栏和消息里「开了私聊」点开的" },
     trace: { name: "流程", hint: "消息、会话的右键菜单和标签 ⋯ 里的「流程」" },
     preview: { name: "产物", hint: "附件、消息里的文件链接、流程卡片和任务上的文件" },
     workspace: { name: "工作区", hint: "侧栏底部的「工作区」、⌘O" },
@@ -35,7 +34,7 @@ export const zh = {
   reset: "恢复默认",
   floatMemory: "设成浮窗的，再打开时回到你上次拖到的位置和大小；恢复默认也会忘掉这些位置。",
   notListed:
-    "不在这里的：会话设置和 Bot 资料是会话标签里的侧栏；设置、搜索、新建 Bot 和群这些是弹窗；从某块窗格的「＋」或空窗格里挑的，就放进那一块。",
+    "不在这里的：会话设置和 Bot 资料是会话标签里的侧栏；设置、搜索、新建 Bot 和群、消息下「开了私聊」里的 Bot ↔ Bot 私聊这些是弹窗；从某块窗格的「＋」或空窗格里挑的，就放进那一块。",
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -43,7 +42,6 @@ export const en: CopyShape<typeof zh> = {
   subtitle: "On a wide window, where a kind of window goes when it is not open yet. One that is open is only brought forward, never opened twice.",
   kinds: {
     chat: { name: "Conversation", hint: "You and a Bot, groups, files: from the sidebar, search and notifications" },
-    "bot-bot": { name: "Bot ↔ Bot direct", hint: "From the sidebar and a message's “opened a direct”" },
     trace: { name: "Trace", hint: "Trace in a message's or a conversation's menu and a tab's ⋯" },
     preview: { name: "Artifacts", hint: "Attachments, file links in messages, files on cards and tickets" },
     workspace: { name: "Workspace", hint: "Workspace at the foot of the sidebar, ⌘O" },
@@ -72,5 +70,5 @@ export const en: CopyShape<typeof zh> = {
   reset: "Back to defaults",
   floatMemory: "A kind set to float opens where you last moved and sized it; back to defaults forgets those places too.",
   notListed:
-    "Not here: a conversation's settings and a Bot's profile slide out inside its tab; settings, search, new Bot and new group are dialogs; what you pick from a pane's + or an empty pane goes into that pane.",
+    "Not here: a conversation's settings and a Bot's profile slide out inside its tab; settings, search, new Bot, new group and a Bot ↔ Bot direct from a message's “opened directs” are dialogs; what you pick from a pane's + or an empty pane goes into that pane.",
 };

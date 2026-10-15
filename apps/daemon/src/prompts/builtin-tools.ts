@@ -94,8 +94,8 @@ export const TOOLS: ToolDef[] = [
 /** What send_message and end_turn say from level 3 (ADR 0044): segments end only through end_turn. */
 const LEVEL3_DESCRIPTIONS: Record<string, Localized> = {
   send_message: {
-    en: "Post progress without ending this segment. At most three progress lines to the user; answers to a quoted user question do not count. Group mentions may wake a teammate, but plain words and @ in a Bot pair's thread never wake anyone. To give another teammate work use delegate. Keep working after sending; finish with a reply that calls no tool, which is your reply to the user, or with end_turn(reason) when there is nothing to say.",
-    zh: "发送进度，不结束本段。对用户最多三条进度，引用回复用户提问不计数。群里点名可叫醒；Bot 对线程里普通发言和 @ 从不叫醒。要让队友干活用 delegate。发送后接着干；做完时用一段不调工具的回复收尾，那就是给用户的回复，没话可说时才用 end_turn(reason)。",
+    en: "Post progress without ending this segment. At most three progress lines to the user; answers to a quoted user question do not count. Group mentions may wake a teammate, and every line in a direct opened with create_direct wakes the other Bot, but plain words and @ in a Bot pair's delegation thread never wake anyone. To give another teammate work use delegate. Keep working after sending; finish with a reply that calls no tool, which is your reply to the user, or with end_turn(reason) when there is nothing to say.",
+    zh: "发送进度，不结束本段。对用户最多三条进度，引用回复用户提问不计数。群里点名可叫醒；create_direct 开的私聊里每句都叫醒对方；委派线程里普通发言和 @ 从不叫醒。要让队友干活用 delegate。发送后接着干；做完时用一段不调工具的回复收尾，那就是给用户的回复，没话可说时才用 end_turn(reason)。",
   },
   end_turn: {
     en: "End this segment without posting anything. To reply to the user, do not use it: write a reply that calls no tool, which ends the segment by itself; words written beside end_turn are never sent. Reasons: done, answered, nothing_new, blocked or gave_up. done cannot claim an unfinished obligation away; blocked is only for what the user alone can give, never for an OK to go on with work they asked for: needs_from_user is required and reaches the user as a question. Waiting on another Bot is not blocked: delegate to it, or end with nothing_new. gave_up requires note. Answer a request for an answer, or for a review with nothing submitted to review, with reason answered and your reply in answer: what you post in the thread does not reach the Bot that asked. Record every user inbox disposition; a refused ending returns a bounded correction instead of ending.",
@@ -145,7 +145,7 @@ export function toolDescription(name: string, locale: Locale, env: { level: numb
 export function builtinTools(locale: Locale, engineLevel = 0, edited?: (name: string) => string | undefined): ChatTool[] {
   // Level 5 (ADR 0046): work is handed over with submit and judged with review.
   // plan_items (ADR 0053): the lead lays the plan out as tickets, owners, reviewers, dependencies and parts.
-  const defs = engineLevel >= 3 ? [...TOOLS.filter((tool) => tool.name !== "create_direct"), DELEGATE, ...(engineLevel >= 5 ? [SUBMIT, REVIEW, PLAN_ITEMS] : [])] : TOOLS;
+  const defs = engineLevel >= 3 ? [...TOOLS, DELEGATE, ...(engineLevel >= 5 ? [SUBMIT, REVIEW, PLAN_ITEMS] : [])] : TOOLS;
   const tools = toChatTools(defs, locale);
   if (engineLevel >= 3) {
     for (const tool of tools) {

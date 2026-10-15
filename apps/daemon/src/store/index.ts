@@ -765,6 +765,7 @@ export class Store {
   readonly refuseSupervisorPickup = this.bind(supervisor.refuseSupervisorPickup);
   readonly recordArtifactProgress = this.bind(supervisor.recordArtifactProgress);
   readonly recordPeerNote = this.bind(peerNotes.recordPeerNote);
+  readonly isPairThread = this.bind(peerNotes.isPairThread);
   readonly progressMessagesSent = this.bind(peerNotes.progressMessagesSent);
   readonly uncitedTurnPaths = this.bind(peerNotes.uncitedTurnPaths);
   readonly saidInSegment = this.bind(peerNotes.saidInSegment);

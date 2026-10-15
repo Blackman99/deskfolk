@@ -134,6 +134,7 @@ export type BackLayer =
   | "provider-editor"
   | "independent-confirm"
   | "search"
+  | "bot-dm"
   | "settings"
   | "session-settings"
   | "terminal"
@@ -157,6 +158,7 @@ export type LayerState = {
   providerEditor: boolean;
   confirmingIndependent: boolean;
   searchOpen: boolean;
+  botDmOpen: boolean;
   settingsOpen: boolean;
   sessionSettingsOpen: boolean;
   terminalOpen: boolean;
@@ -188,6 +190,9 @@ const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   ["independent-confirm", "confirmingIndependent"],
   // Global search is an app-owned modal; Back closes it before navigating the page underneath.
   ["search", "searchOpen"],
+  // A Bot↔Bot direct's popup lies over the conversation it came from, in no URL (ADR 0091): Back
+  // puts it away there. A picture or a message's text opened inside it is over it, so goes first.
+  ["bot-dm", "botDmOpen"],
   ["settings", "settingsOpen"],
   ["session-settings", "sessionSettingsOpen"],
   // A history entry, like the calendar. The page's button closes it, and Back walks the URL.

@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Bots can open a direct with another Bot again, and you read it in a popup
+
+- A Bot can again open a direct with another Bot to tell it something or talk it over. Since engine level 3 (2026-10-01) the only private way between two Bots was a delegation, which is for handing work over and waiting for it back, so a Bot asked to share its notes with the other video Bots made a group instead. Every line in such a direct wakes the other Bot; two bare receipts in a row still wake nobody. Delegations keep their own thread, whose plain words wake nobody, as before.
+- The sidebar and the folded rail no longer list Bot↔Bot directs, and the workbench no longer opens them as tabs (the Bot ↔ Bot row is gone from Where windows open). A direct opens from the "opened directs" card under the line that started it, as a popup over your conversation: its two Bots, a "From …" line that takes you back to that line, and the direct's own conversation. Escape, ✕ or, on a phone, Back closes it. Search hits, notifications and links to a direct open the same popup.
+
 ### The conversation in a flow runs straight down, not off to the bottom right
 
 - In a job where Bots went back and forth many times, each turn on the flow stood one place to the right of the one before, so the board ran diagonally down and to the right, and the later it got the further you had to drag sideways. A turn's own steps (reading its scale, reading a Bot's words…) went to the left of the turn it woke, and a card stood over the middle of that row. The next turn now stands right under the one before, so the conversation reads down one line. Steps sit on either side, and other Bots the same card woke stand beside it in the order they were woken, and the whole board is a good deal narrower.
