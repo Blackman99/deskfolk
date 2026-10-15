@@ -882,14 +882,25 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     let stop = MenuItem::with_id(app, "stop", "全部停下", false, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &stop, &quit])?;
-    let icon = app
-        .default_window_icon()
-        .cloned()
-        .expect("default window icon");
+    // On macOS the menu bar takes the mark in one ink (scripts/app-icon/tray.py) and tints it like
+    // its own items; the app icon's rendered mascots would only blur at 22pt. Elsewhere the tray
+    // shows the window icon.
+    #[cfg(target_os = "macos")]
+    let (icon, template) = (
+        tauri::image::Image::new_owned(include_bytes!("tray-template.rgba").to_vec(), 44, 44),
+        true,
+    );
+    #[cfg(not(target_os = "macos"))]
+    let (icon, template) = (
+        app.default_window_icon()
+            .cloned()
+            .expect("default window icon"),
+        false,
+    );
 
     TrayIconBuilder::with_id(usage_tray::TRAY_ID)
         .icon(icon)
-        .icon_as_template(false)
+        .icon_as_template(template)
         .tooltip("Deskfolk")
         .menu(&menu)
         .show_menu_on_left_click(false)
