@@ -291,7 +291,7 @@
 
 	.ask-reply input:focus {
 		background: var(--input-bg);
-		border-color: var(--accent);
+		border-color: var(--field-focus-border);
 	}
 
 	.ask-send {

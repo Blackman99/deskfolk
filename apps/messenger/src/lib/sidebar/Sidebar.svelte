@@ -901,8 +901,8 @@
 
 	.search:focus {
 		background: var(--input-bg);
-		border-color: var(--accent);
-		box-shadow: 0 0 0 3px var(--accent-glow);
+		border-color: var(--field-focus-border);
+		box-shadow: var(--field-focus-ring);
 	}
 
 	/* On the ground beside the content card the search is a tinted well, not a white field. */

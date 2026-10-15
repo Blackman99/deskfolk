@@ -200,9 +200,9 @@
 	}
 
 	:global(.sheet) .group-identity-name:focus {
-		border-color: var(--accent);
+		border-color: var(--field-focus-border);
 		background: var(--input-bg);
-		box-shadow: 0 0 0 3px var(--accent-glow);
+		box-shadow: var(--field-focus-ring);
 		outline: none;
 	}
 

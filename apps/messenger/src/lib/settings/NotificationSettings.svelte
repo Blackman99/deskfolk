@@ -1001,8 +1001,8 @@
 
 	.time-picker:focus {
 		outline: none;
-		border-color: var(--accent);
-		box-shadow: 0 0 0 2px var(--accent-tint);
+		border-color: var(--field-focus-border);
+		box-shadow: var(--field-focus-ring);
 	}
 
 	.time-range-separator {
@@ -1144,8 +1144,8 @@
 
 	.settings-select:focus {
 		outline: none;
-		border-color: var(--accent);
-		box-shadow: 0 0 0 2px var(--accent-tint);
+		border-color: var(--field-focus-border);
+		box-shadow: var(--field-focus-ring);
 	}
 
 	/* Test Row */

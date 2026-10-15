@@ -225,11 +225,20 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius-sm);
 		background: var(--pane);
-		transition: border-color 0.15s ease;
+		transition: border-color 0.15s ease, box-shadow 0.15s ease;
 	}
 
 	.period-control:hover {
 		border-color: var(--line-hover);
+	}
+
+	.period-control:focus-within {
+		border-color: var(--field-focus-border);
+		box-shadow: var(--field-focus-ring);
+	}
+
+	.period-control select:focus-visible {
+		box-shadow: none;
 	}
 
 	.period-control select {
@@ -311,7 +320,7 @@
 	}
 
 	.date input:focus {
-		border-color: var(--accent);
+		border-color: var(--field-focus-border);
 		outline: none;
 	}
 

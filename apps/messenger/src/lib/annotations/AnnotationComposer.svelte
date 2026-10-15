@@ -68,7 +68,7 @@
 	}
 	.annot-composer-input:focus {
 		outline: none;
-		border-color: var(--accent);
+		border-color: var(--field-focus-border);
 	}
 	.annot-composer-error {
 		color: var(--danger);

@@ -814,8 +814,8 @@
 	}
 
 	.roster-filter-trigger[aria-expanded='true'] {
-		border-color: var(--accent);
-		box-shadow: 0 0 0 3px var(--accent-glow);
+		border-color: var(--field-focus-border);
+		box-shadow: var(--field-focus-ring);
 	}
 
 	.roster-filter-count {
@@ -874,8 +874,9 @@
 	.roster-filter-search:focus,
 	.roster-filter-search:focus-visible {
 		outline: none;
-		box-shadow: inset 0 -2px 0 var(--accent);
-		border-color: transparent !important;
+		box-shadow: none;
+		/* Only the bottom edge has a width: the underline itself turns to the accent. */
+		border-color: var(--field-focus-border) !important;
 	}
 
 	.roster-filter-list {

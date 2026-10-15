@@ -195,7 +195,7 @@
 
 	.control-note-input:focus {
 		outline: none;
-		border-color: var(--accent-border);
+		border-color: var(--field-focus-border);
 	}
 
 	.control-note-actions {

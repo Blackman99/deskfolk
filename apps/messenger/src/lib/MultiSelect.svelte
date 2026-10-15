@@ -349,8 +349,8 @@
 
 	.multi-select.is-open .multi-select-field,
 	.multi-select-field:focus-within {
-		border-color: var(--accent);
-		box-shadow: 0 0 0 3px var(--accent-glow);
+		border-color: var(--field-focus-border);
+		box-shadow: var(--field-focus-ring);
 	}
 
 	.multi-select.has-error .multi-select-field {

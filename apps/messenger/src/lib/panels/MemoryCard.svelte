@@ -686,7 +686,7 @@
 
 	.memory-form-card input:focus,
 	.memory-form-card textarea:focus {
-		border-color: var(--accent);
+		border-color: var(--field-focus-border);
 		outline: none;
 	}
 

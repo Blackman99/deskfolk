@@ -745,9 +745,9 @@
 		border-color: var(--line-hover);
 	}
 
+	/* A card this size needs no halo: the hairline turning to the accent is the whole change. */
 	.composer-card:focus-within {
-		border-color: var(--accent-border);
-		box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-raised);
+		border-color: var(--field-focus-border);
 	}
 
 	/* A drag out of the file tree is on its way: the card says it would take it, and more so under the pointer. */
@@ -960,7 +960,7 @@
 		}
 
 		.composer:focus-within {
-			border-top-color: var(--accent-border);
+			border-top-color: var(--field-focus-border);
 		}
 
 		.composer-dock {

@@ -370,7 +370,7 @@
 		border: 0;
 	}
 
-	:where(.spend) :global(:is(button, summary, select, input):focus-visible) {
+	:where(.spend) :global(:is(button, summary):focus-visible) {
 		outline: 2px solid var(--accent);
 		outline-offset: 2px;
 	}

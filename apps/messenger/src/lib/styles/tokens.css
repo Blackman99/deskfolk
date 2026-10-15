@@ -185,6 +185,13 @@
    * filled button as well as on a bare one, which the old soft glow did not.
    */
   --focus-ring: 0 0 0 2px var(--pane), 0 0 0 4px color-mix(in srgb, var(--accent) 60%, transparent);
+  /*
+   * A text field you are typing in: its edge turns to a hairline of the accent, with a halo so
+   * faint it reads as light, not as a second border. Text fields match `:focus-visible` on a
+   * click too, so the keyboard ring above would wrap every field you click in a thick band.
+   */
+  --field-focus-border: color-mix(in srgb, var(--accent) 70%, var(--line));
+  --field-focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent);
 
   --shadow-xs: 0 1px 2px rgba(18, 28, 32, 0.04);
   --shadow-sm: 0 2px 4px rgba(18, 28, 32, 0.05);
@@ -261,6 +268,8 @@ body.dark,
   --accent-tint: rgba(69, 176, 195, 0.14);
   --accent-border: rgba(69, 176, 195, 0.35);
   --accent-glow: rgba(69, 176, 195, 0.22);
+  /* Over the dark surfaces the halo needs a little more of the accent to show at all. */
+  --field-focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent);
   --on-accent: #06181c;
   --mustard: #f5c065;
   --mustard-tint: rgba(240, 171, 61, 0.14);

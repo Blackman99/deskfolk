@@ -207,7 +207,7 @@
 	.search-glyph { display: flex; color: var(--muted); }
 	.global-search-input { flex: 1; min-width: 0; width: 100%; padding: 9px 0; border: 0; box-shadow: none; outline: none; background: transparent; color: var(--ink); font: inherit; font-size: 16px; }
 	.global-search-input::placeholder { color: var(--muted); }
-	.search-head:focus-within { box-shadow: inset 0 -2px var(--accent-border); }
+	.search-head:focus-within { border-bottom-color: var(--field-focus-border); }
 	.search-clear, .search-cancel { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; min-height: 36px; padding: 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; }
 	.search-clear:hover, .search-cancel:hover { background: var(--row-hover); color: var(--ink); }
 	kbd { font-family: var(--font); font-size: 11px; padding: 1px 4px; border: 1px solid var(--line); border-radius: var(--radius-xs); color: var(--muted); }

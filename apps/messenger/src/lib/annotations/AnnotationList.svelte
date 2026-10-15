@@ -514,7 +514,7 @@
 	}
 	.annot-textarea:focus {
 		outline: none;
-		border-color: var(--accent);
+		border-color: var(--field-focus-border);
 	}
 	.annot-btn {
 		display: inline-flex;

@@ -85,7 +85,6 @@
 	.work-question-note, .work-question-error { margin: 0; font-size: var(--text-caption); line-height: 1.5; color: var(--muted); }
 	.work-question-error { color: var(--danger-text); }
 	textarea { width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--ink); background: var(--pane); font: inherit; font-size: var(--text-body); line-height: 1.5; }
-	textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 	button { justify-self: start; min-height: 32px; padding: 0 12px; border: 1px solid var(--accent-border); border-radius: var(--radius-sm); color: var(--accent); background: var(--accent-tint); cursor: pointer; font-size: var(--text-caption); font-weight: 500; }
 	button:disabled, textarea:disabled { opacity: 0.6; cursor: default; }
 	@media (pointer: coarse) { button { min-height: 44px; } }

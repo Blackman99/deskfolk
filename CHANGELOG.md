@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A field you type in lights its edge, not a thick band
+
+- Clicking into a text field wrapped it in a thick ring. In the dark theme the composer got a dim teal band about 4px wide, and a field with no style of its own got the keyboard ring meant for buttons, wider still. Every field you type in (the composer, the sidebar search, and the fields in Settings, dialogs, panels, the spend view and the PDF viewer) now shows focus the same way: its edge turns to a 1px line of the accent, with a halo so faint it reads as light. The composer is large enough to need no halo at all. Buttons, switches and checkboxes keep the keyboard ring.
+
 ### One ground under the sidebar and the tabs; the pane is the card
 
 - After today's round the sidebar's footer and pinned row still had bands of their own, and the tabs sat on a grey strip inside the content card, so the two sides never read as one ground with a card laid on it. Wider than a phone, the sidebar is now one surface: no band under the footer or the pinned row, and the search is a tinted well. The tabs are pills on that same ground, the open one in the card's colour, and each pane's content is the card under them, with a gutter between panes when the workbench is split. A floating pane keeps its own frame.

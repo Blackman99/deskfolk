@@ -118,7 +118,12 @@
 	}
 
 	.cap-field:focus-within {
-		border-color: var(--accent);
+		border-color: var(--field-focus-border);
+		box-shadow: var(--field-focus-ring);
+	}
+
+	.cap-field input:focus-visible {
+		box-shadow: none;
 	}
 
 	.cap-field.is-invalid {

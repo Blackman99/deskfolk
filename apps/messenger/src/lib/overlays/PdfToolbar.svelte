@@ -158,11 +158,6 @@
 		min-width: 120px;
 	}
 
-	.pdf-zoom:focus-visible, .pdf-page-input:focus-visible, .pdf-find-input:focus-visible {
-		outline: 2px solid var(--accent-border);
-		outline-offset: 0;
-	}
-
 	.pdf-page-total,
 	.pdf-find-count {
 		color: var(--muted);

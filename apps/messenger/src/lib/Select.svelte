@@ -478,8 +478,8 @@
 	.real-select.is-open .real-select-trigger,
 	.real-select-trigger:focus-visible {
 		outline: none;
-		border-color: var(--accent);
-		box-shadow: 0 0 0 3px var(--accent-glow);
+		border-color: var(--field-focus-border);
+		box-shadow: var(--field-focus-ring);
 		background-color: var(--input-bg);
 	}
 

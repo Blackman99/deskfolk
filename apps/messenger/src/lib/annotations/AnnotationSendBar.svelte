@@ -93,7 +93,7 @@
 	}
 	.annot-send-input:focus {
 		outline: none;
-		border-color: var(--accent);
+		border-color: var(--field-focus-border);
 	}
 	.annot-send-btn {
 		min-height: 32px;

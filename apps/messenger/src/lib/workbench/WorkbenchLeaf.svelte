@@ -848,7 +848,7 @@
 		appearance: none;
 	}
 	.wb-new-query:focus-within {
-		box-shadow: inset 0 0 0 1px var(--accent-border);
+		box-shadow: inset 0 0 0 1px var(--field-focus-border);
 		color: var(--accent);
 	}
 	/* The field's own ring would stack on the bar's. The bar is what shows focus. */

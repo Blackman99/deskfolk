@@ -127,11 +127,6 @@
 		overflow-wrap: anywhere;
 	}
 
-	.msg-editor-field:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 1px;
-	}
-
 	.msg-editor-error {
 		margin: 0;
 		font-size: var(--text-caption);

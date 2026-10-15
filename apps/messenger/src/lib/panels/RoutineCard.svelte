@@ -582,7 +582,7 @@
 	.routine-form-card input:not([type='checkbox']):not([type='radio']),
 	.routine-form-card textarea { padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--input-bg); width: 100%; min-height: 44px; box-sizing: border-box; font-size: 14px; color: var(--ink); transition: border-color 0.15s, box-shadow 0.15s; }
 	.routine-form-card input:not([type='checkbox']):not([type='radio']):focus,
-	.routine-form-card textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-glow); }
+	.routine-form-card textarea:focus { border-color: var(--field-focus-border); outline: none; box-shadow: var(--field-focus-ring); }
 	.routine-form-card textarea { min-height: 100px; resize: vertical; line-height: 1.5; font-family: inherit; }
 
 	.routine-page { display: none; }

@@ -1195,6 +1195,15 @@
 		box-shadow: var(--shadow-md);
 	}
 
+	.terminal-find:focus-within {
+		border-color: var(--field-focus-border);
+		box-shadow: var(--field-focus-ring), var(--shadow-md);
+	}
+
+	.terminal-find input:focus-visible {
+		box-shadow: none;
+	}
+
 	.terminal-find input {
 		width: 180px;
 		min-width: 0;

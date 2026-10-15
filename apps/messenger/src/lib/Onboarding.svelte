@@ -1295,8 +1295,8 @@
 	#onboarding-provider-name:focus,
 	#onboarding-endpoint:focus,
 	#onboarding-endpoint-key:focus {
-		border-color: var(--accent);
-		box-shadow: 0 0 0 3px var(--accent-glow);
+		border-color: var(--field-focus-border);
+		box-shadow: var(--field-focus-ring);
 	}
 
 

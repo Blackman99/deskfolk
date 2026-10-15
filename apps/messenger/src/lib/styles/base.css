@@ -80,12 +80,19 @@ summary {
 }
 
 button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
+input:where([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="reset"], [type="color"], [type="file"]):focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
   border-color: var(--accent) !important;
+}
+
+/* A field you type in shows focus on its own edge; see `--field-focus-border` in tokens.css. */
+input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="reset"], [type="color"], [type="file"])):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: var(--field-focus-ring);
+  border-color: var(--field-focus-border) !important;
 }
 
 .mono {

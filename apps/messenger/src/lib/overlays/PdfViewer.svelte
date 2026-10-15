@@ -673,11 +673,6 @@
 		max-width: 60vw;
 	}
 
-	.pdf-password-input:focus-visible {
-		outline: 2px solid var(--accent-border);
-		outline-offset: 0;
-	}
-
 	.pdf-scroll {
 		position: relative;
 		flex: 1;
