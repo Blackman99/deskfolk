@@ -56,7 +56,8 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 				await expect.poll(() => shownLabels(footer), { message: `${width}px` }).toEqual(words ? 3 : 0);
 			}
 			await toggle.click();
-			await expect(menu.getByRole('menuitem')).toHaveText(['Routines', 'Spend', 'Usage', 'New terminal', 'Archived sessions']);
+			// The story has no workbench, so the tools are named as the pages they open (`pages`), and Roles is one (ADR 0083).
+			await expect(menu.getByRole('menuitem')).toHaveText(['Routine calendar', 'Spend', 'Usage', 'Terminal', 'Roles', 'Archived sessions']);
 			await expect(menu.getByRole('menuitem').first()).toBeFocused();
 			await page.keyboard.press('End');
 			await expect(menu.getByRole('menuitem').last()).toBeFocused();
@@ -77,16 +78,25 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			await page.setViewportSize({ width: 390, height: 844 });
 			await expect(footer).toHaveCount(0);
 			await toggle.click();
-			await expect(menu.getByRole('menuitem')).toHaveText(['Routine calendar', 'Spend', 'Usage', 'Terminal', 'Archived sessions']);
-			const box = await menu.boundingBox();
-			expect(box!.x).toBeGreaterThanOrEqual(0);
-			expect(box!.x + box!.width).toBeLessThanOrEqual(390);
-			await menu.getByRole('menuitem', { name: 'Archived sessions' }).click();
-			await expect(page.locator('.archived-empty-hint')).toBeVisible();
-			await page.getByRole('button', { name: 'Back to sessions' }).click();
+			// On a phone the tools come up as a sheet from the bottom, as wide as the screen.
+			const sheet = page.locator('.bottom-sheet-layer [role="menu"]');
+			await expect(menu).toHaveCount(0);
+			await expect(sheet.getByRole('menuitem')).toHaveText(['Routine calendar', 'Spend', 'Usage', 'Terminal', 'Roles', 'Archived sessions']);
+			// Once it has slid up: its foot on the screen's, across the whole width.
+			const panel = page.locator('.bottom-sheet-panel');
+			await expect.poll(async () => {
+				const box = await panel.boundingBox();
+				return [box!.x, box!.width, Math.round(box!.y + box!.height)];
+			}).toEqual([0, 390, 844]);
+			// A phone's archive is a page in the URL (`runtime.openListPage`), which this story's runtime
+			// does not draw; what is left to see here is that choosing puts the sheet away.
+			await sheet.getByRole('menuitem', { name: 'Archived sessions' }).click();
+			await expect(sheet).toHaveCount(0);
 			await toggle.click();
+			await expect(sheet).toHaveCount(1);
 			await page.setViewportSize({ width: 1000, height: 820 });
 			await expect(menu).toHaveCount(0);
+			await expect(sheet).toHaveCount(0);
 			await expect(footer.locator('button')).toHaveCount(3);
 		} finally {
 			await browser.close();
