@@ -41,6 +41,8 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			expect(out.table).toContain('<th align="left">a</th>');
 			expect(out.code).toMatch(/<pre><code class="language-ts">/);
 			expect(out.artifact).toContain('class="md-artifact-link"');
+			// The file's icon is added after the sanitizer, so it survives where a written <svg> does not.
+			expect(out.artifact).toMatch(/<a [^>]*class="md-artifact-link"[^>]*><svg class="md-artifact-icon"[^>]*data-icon="image"/);
 			for (const [name, html] of Object.entries(out)) {
 				expect(html, name).not.toMatch(/<script|<img|<svg><g|<math|onerror|onclick|onload|onmouseover|javascript:|style=|class="evil"/i);
 			}

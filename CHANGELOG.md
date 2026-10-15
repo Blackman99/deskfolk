@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A file in a message shows what it is, a folder as a folder
+
+- A file or folder named in a message was teal text behind the same small page icon whatever it was, so a folder such as `voice_samples/ja/` looked like a file and a sound like a document. Each is now a small chip in the accent's light tint, as the design draws it, led by its kind's icon from the app's one set: a folder for a path ending in `/`, a picture, a note for audio, video, a page for PDFs, Word files and plain text, a table for sheets and CSV, a screen for slides, Markdown, code, and a box for archives. The tree beside a preview and the attachment chips use the same choice of icon, so plain text, CSV and archives get theirs there too. On your own bubble the chip is white on the accent. A link to a picture still opens as its thumbnail card.
+
 ### A field you type in lights its edge, not a thick band
 
 - Clicking into a text field wrapped it in a thick ring. In the dark theme the composer got a dim teal band about 4px wide, and a field with no style of its own got the keyboard ring meant for buttons, wider still. Every field you type in (the composer, the sidebar search, and the fields in Settings, dialogs, panels, the spend view and the PDF viewer) now shows focus the same way: its edge turns to a 1px line of the accent, with a halo so faint it reads as light. The composer is large enough to need no halo at all. Buttons, switches and checkboxes keep the keyboard ring.

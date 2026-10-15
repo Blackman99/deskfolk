@@ -319,41 +319,55 @@
 		white-space: nowrap;
 	}
 
-	/* A file reads as a name with its icon; the underline only comes with the pointer. */
+	/*
+	 * A file is a chip: its kind's icon and its name on a light wash of the accent, the way the design
+	 * draws it. Inline rather than inline-flex, so a long name still wraps (each piece keeps its own
+	 * rounded box) and the padding leaves the line height alone.
+	 */
 	.md-body :global(a.md-artifact-link) {
 		color: var(--accent);
-		font-weight: 500;
 		text-decoration: none;
-		text-underline-offset: 2px;
 		cursor: pointer;
 		word-break: break-word;
 	}
 
-	.md-body :global(a.md-artifact-link:hover) {
+	.md-body :global(a.md-artifact-link:not(.md-artifact-image)) {
+		padding: 2px 7px;
+		margin: 0 1px;
+		border-radius: var(--radius-sm);
+		background: color-mix(in srgb, var(--accent) 7%, transparent);
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 17%, transparent);
 		color: var(--accent-hover);
-		text-decoration: underline;
+		font-size: 0.93em;
+		-webkit-box-decoration-break: clone;
+		box-decoration-break: clone;
+		transition: 0.15s ease;
+		transition-property: background-color, box-shadow;
 	}
 
-	.md-body :global(a.md-artifact-link:not(.md-artifact-image))::before {
-		content: '';
+	.md-body :global(a.md-artifact-link:not(.md-artifact-image):hover) {
+		background: var(--accent-tint);
+		box-shadow: inset 0 0 0 1px var(--accent-border);
+	}
+
+	.md-body :global(.md-artifact-icon) {
 		display: inline-block;
-		width: 11px;
-		height: 11px;
-		margin-right: 3px;
-		vertical-align: -1px;
-		background-color: currentColor;
-		-webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3C/svg%3E");
-		mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3C/svg%3E");
-		-webkit-mask-repeat: no-repeat;
-		mask-repeat: no-repeat;
-		-webkit-mask-size: contain;
-		mask-size: contain;
-		opacity: 0.75;
-		transition: opacity 0.15s ease;
+		margin-right: 4px;
+		vertical-align: -1.5px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.6;
+		stroke-linecap: round;
+		stroke-linejoin: round;
 	}
 
-	.md-body :global(a.md-artifact-link:not(.md-artifact-image):hover)::before {
-		opacity: 1;
+	.md-body :global(.md-artifact-icon > *) {
+		vector-effect: non-scaling-stroke;
+	}
+
+	/* A picture shows itself in its card instead. */
+	.md-body :global(a.md-artifact-image .md-artifact-icon) {
+		display: none;
 	}
 
 	.md-body :global(a.md-artifact-image) {
@@ -622,11 +636,24 @@
 	}
 
 	.md-body.is-inverted :global(a),
-	.md-body.is-inverted :global(a.md-external-link),
-	/* White on your own bubble has no colour to set it apart, so it keeps the underline. */
-	.md-body.is-inverted :global(a.md-artifact-link) {
+	.md-body.is-inverted :global(a.md-external-link) {
 		color: #ffffff;
 		text-decoration: underline;
+	}
+
+	/* On your own bubble a file is a white chip, like a mention there. */
+	.md-body.is-inverted :global(a.md-artifact-link) {
+		color: #ffffff;
+		text-decoration: none;
+	}
+
+	.md-body.is-inverted :global(a.md-artifact-link:not(.md-artifact-image)) {
+		background: rgba(255, 255, 255, 0.18);
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+	}
+
+	.md-body.is-inverted :global(a.md-artifact-link:not(.md-artifact-image):hover) {
+		background: rgba(255, 255, 255, 0.28);
 	}
 
 	.md-body.is-inverted :global(a.md-artifact-image) {

@@ -8,6 +8,8 @@ import {
   looksLikeWorkspaceHref,
   parseArtifactHref,
 } from "./overlays/artifacts.ts";
+import { fileGlyph } from "./overlays/file-icon.ts";
+import { iconShapes } from "./icons.ts";
 import {
   BOT_HREF_SCHEME,
   decorateMentionChips,
@@ -198,10 +200,55 @@ function handleAnchor(el: Element, policy: SanitizePolicy): void {
     setTitle(originalTitle ?? href);
   }
   enforceTagPolicy(el, policy);
-  // After the policy pass, which would unwrap the span: nothing walks this link's children again.
-  if (artifactPath && shortenPathLabel(el, artifactPath) && !el.hasAttribute("title")) {
+  // After the policy pass, which would unwrap the span and the icon: nothing walks this link's
+  // children again.
+  if (!artifactPath) return;
+  if (shortenPathLabel(el, artifactPath) && !el.hasAttribute("title")) {
     el.setAttribute("title", artifactPath);
   }
+  el.prepend(fileIconSvg(el.ownerDocument, artifactPath));
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/**
+ * The icon a file link starts with, from the app's one set (`icons.ts`): a folder for a path that
+ * ends in `/`, a note for a sound, a frame for a picture, a table for a sheet. An element rather
+ * than CSS, so any icon of the set can stand there. It holds no text, so the rendered characters
+ * still pair with the source and copying the line copies only the name.
+ */
+function fileIconSvg(doc: Document, path: string): Element {
+  const name = fileGlyph(path, { isDir: path.endsWith("/") });
+  const svg = doc.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "md-artifact-icon");
+  svg.setAttribute("width", "12");
+  svg.setAttribute("height", "12");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("data-icon", name);
+  for (const shape of iconShapes(name).shapes) {
+    let part: Element;
+    if ("p" in shape) {
+      part = doc.createElementNS(SVG_NS, "path");
+      part.setAttribute("d", shape.p);
+    } else if ("c" in shape) {
+      part = doc.createElementNS(SVG_NS, "circle");
+      const [cx, cy, r] = shape.c;
+      part.setAttribute("cx", String(cx));
+      part.setAttribute("cy", String(cy));
+      part.setAttribute("r", String(r));
+    } else {
+      part = doc.createElementNS(SVG_NS, "rect");
+      const [x, y, width, height, rx] = shape.r;
+      part.setAttribute("x", String(x));
+      part.setAttribute("y", String(y));
+      part.setAttribute("width", String(width));
+      part.setAttribute("height", String(height));
+      part.setAttribute("rx", String(rx));
+    }
+    svg.append(part);
+  }
+  return svg;
 }
 
 /**

@@ -184,9 +184,33 @@ test("javascript:, data:, and vbscript: hrefs are dropped, leaving plain text", 
 
 test("artifact: links survive sanitizing with the artifact-link class", () => {
   const html = renderMarkdown("见 [核边数据.txt](inbox/核边数据.txt)");
-  expect(html).toBe(
+  expect(html.replace(/<svg class="md-artifact-icon"[\s\S]*?<\/svg>/, "")).toBe(
     '<p>见 <a href="artifact:inbox%2F%E6%A0%B8%E8%BE%B9%E6%95%B0%E6%8D%AE.txt" class="md-artifact-link">核边数据.txt</a></p>\n',
   );
+});
+
+test("a file link starts with its kind's icon, and a path ending in / is a folder", () => {
+  const host = document.createElement("div");
+  host.innerHTML = renderMarkdown(
+    "样音在 [voice_samples/ja/](work/mv/voice_samples/ja/)：[少女](work/mv/voice_samples/ja/少女.wav)、" +
+      "[分数](work/mv/scores.csv)、[成片](work/mv/cut.mp4)、[模型](work/mv/model.bin)，全部在 [work/mv/scratch/mimo_ja/](work/mv/scratch/mimo_ja/)",
+  );
+  const links = [...host.querySelectorAll("a.md-artifact-link")];
+  expect(links.map((a) => a.firstElementChild?.getAttribute("data-icon"))).toEqual([
+    "folder",
+    "music",
+    "table",
+    "video",
+    "file",
+    "folder",
+  ]);
+  const icon = links[0]?.querySelector("svg.md-artifact-icon");
+  expect(icon?.getAttribute("aria-hidden")).toBe("true");
+  expect(icon?.children.length).toBeGreaterThan(0);
+  // The icon carries no text: the link still reads as its label, and a path keeps its hidden folders.
+  expect(links[0]?.textContent).toBe("voice_samples/ja/");
+  expect(links[5]?.textContent).toBe("work/mv/scratch/mimo_ja/");
+  expect(links[5]?.querySelector(".md-path-dir")?.textContent).toBe("work/mv/scratch/");
 });
 
 test("bot: links survive sanitizing with the mention-chip class", () => {
