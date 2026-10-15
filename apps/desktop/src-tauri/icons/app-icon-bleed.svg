@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    The phone's home-screen icon: the art of app-icon.svg full bleed, with no corners, margins or
+    shadow, since the phone masks it. The pair stays inside the central 80% a maskable icon may be
+    cut to. Exported to the messenger's static icon-512, icon-192 and apple-touch-icon by
+    scripts/app-icon/build.sh. No double hyphens in comments.
+  -->
+  <defs>
+    <radialGradient id="tile" cx=".5" cy=".18" r=".95">
+      <stop offset="0" stop-color="#2c98ac"/>
+      <stop offset=".55" stop-color="#146a7c"/>
+      <stop offset="1" stop-color="#0a3f4a"/>
+    </radialGradient>
+    <radialGradient id="mochi" cx=".36" cy=".3" r=".8">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".55" stop-color="#eef3f4"/>
+      <stop offset="1" stop-color="#b9c9ce"/>
+    </radialGradient>
+    <radialGradient id="pudding" cx=".36" cy=".3" r=".8">
+      <stop offset="0" stop-color="#ffd98c"/>
+      <stop offset=".5" stop-color="#f0ab3d"/>
+      <stop offset="1" stop-color="#b8700f"/>
+    </radialGradient>
+    <radialGradient id="ground" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#03181d" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#03181d" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g transform="scale(4)">
+    <rect x="0" y="0" width="256" height="256" fill="url(#tile)"/>
+    <ellipse cx="128" cy="206" rx="92" ry="14" fill="url(#ground)"/>
+    <circle cx="98" cy="140" r="58" fill="url(#mochi)"/>
+    <ellipse cx="86" cy="134" rx="4.6" ry="6.4" fill="#1d2a2f"/>
+    <ellipse cx="108" cy="134" rx="4.6" ry="6.4" fill="#1d2a2f"/>
+    <ellipse cx="80" cy="108" rx="14" ry="8" fill="#fff" opacity=".7" transform="rotate(-25 80 108)"/>
+    <circle cx="160" cy="146" r="60" fill="url(#pudding)" stroke="#11596a" stroke-width="9"/>
+    <ellipse cx="149" cy="140" rx="4.8" ry="6.6" fill="#3d2804"/>
+    <ellipse cx="172" cy="140" rx="4.8" ry="6.6" fill="#3d2804"/>
+    <path d="M152 156q8 6 16 0" fill="none" stroke="#3d2804" stroke-width="3" stroke-linecap="round"/>
+    <ellipse cx="141" cy="112" rx="15" ry="8" fill="#fff" opacity=".45" transform="rotate(-25 141 112)"/>
+  </g>
+</svg>

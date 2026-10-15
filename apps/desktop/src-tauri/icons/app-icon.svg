@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    Deskfolk app icon source. The mark's two teammates as round characters: Mochi (white, you)
+    and Pudding (mustard, your Bot), Pudding ringed in the tile's teal so it cuts into Mochi the
+    way the mark draws it, both with eyes, standing on a soft contact shadow. macOS geometry: an
+    824 tile centred on the 1024 canvas, radius 185, transparent margins with the icon's own drop
+    shadow. The art is drawn on a 256 grid and scaled onto the tile. Regenerate the platform set
+    with the Tauri CLI icon command; see docs/development.md. No double hyphens in comments.
+  -->
+  <defs>
+    <radialGradient id="tile" cx=".5" cy=".18" r=".95">
+      <stop offset="0" stop-color="#2c98ac"/>
+      <stop offset=".55" stop-color="#146a7c"/>
+      <stop offset="1" stop-color="#0a3f4a"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".55"/>
+      <stop offset=".35" stop-color="#fff" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="mochi" cx=".36" cy=".3" r=".8">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".55" stop-color="#eef3f4"/>
+      <stop offset="1" stop-color="#b9c9ce"/>
+    </radialGradient>
+    <radialGradient id="pudding" cx=".36" cy=".3" r=".8">
+      <stop offset="0" stop-color="#ffd98c"/>
+      <stop offset=".5" stop-color="#f0ab3d"/>
+      <stop offset="1" stop-color="#b8700f"/>
+    </radialGradient>
+    <radialGradient id="ground" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#03181d" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#03181d" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="drop" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+  </defs>
+  <rect x="100" y="112" width="824" height="824" rx="185" fill="#04181d" opacity=".32" filter="url(#drop)"/>
+  <g transform="translate(100 100) scale(3.21875)">
+    <rect x="0" y="0" width="256" height="256" rx="57.5" fill="url(#tile)"/>
+    <ellipse cx="128" cy="206" rx="92" ry="14" fill="url(#ground)"/>
+    <circle cx="98" cy="140" r="58" fill="url(#mochi)"/>
+    <ellipse cx="86" cy="134" rx="4.6" ry="6.4" fill="#1d2a2f"/>
+    <ellipse cx="108" cy="134" rx="4.6" ry="6.4" fill="#1d2a2f"/>
+    <ellipse cx="80" cy="108" rx="14" ry="8" fill="#fff" opacity=".7" transform="rotate(-25 80 108)"/>
+    <circle cx="160" cy="146" r="60" fill="url(#pudding)" stroke="#11596a" stroke-width="9"/>
+    <ellipse cx="149" cy="140" rx="4.8" ry="6.6" fill="#3d2804"/>
+    <ellipse cx="172" cy="140" rx="4.8" ry="6.6" fill="#3d2804"/>
+    <path d="M152 156q8 6 16 0" fill="none" stroke="#3d2804" stroke-width="3" stroke-linecap="round"/>
+    <ellipse cx="141" cy="112" rx="15" ry="8" fill="#fff" opacity=".45" transform="rotate(-25 141 112)"/>
+    <rect x="1" y="1" width="254" height="254" rx="56.5" fill="none" stroke="url(#rim)" stroke-width="2"/>
+  </g>
+</svg>

@@ -45,7 +45,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ### Mochi and Pudding are the app icon
 
-- The app icon was two flat discs on a teal square that read as a lens or a switch rather than the mark's two teammates. It is now Mochi and Pudding themselves, rendered from the promo film's 3D rigs: side by side on the teal tile, Pudding waving, still recognisable at Dock size. The phone's home-screen icon is the same picture. The menu bar shows the mark in one ink instead of the colour icon, tinted by macOS like its own items. The mark inside the app and the favicon stay flat.
+- The app icon was two flat discs on a teal square that read as a lens or a switch rather than the mark's two teammates. It is now Mochi and Pudding themselves, as the design draws them: two round, lit teammates overlapping like the mark, Pudding ringed in teal and cutting into Mochi, with eyes and a smile, on a soft shadow on the teal tile, still recognisable at Dock size. The phone's home-screen icon is the same picture. The menu bar shows the mark in one ink instead of the colour icon, tinted by macOS like its own items. The mark inside the app and the favicon stay flat.
 
 ### One set of icons, drawn with one pen
 
