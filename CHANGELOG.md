@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Bots look like Bots, and the chrome steps back
+
+- A Bot's picture is a rounded square wherever it appears: the list, the conversation header, messages, question cards, the @ list, group members. You, and a group's stacked members, stay round; the folk mascot keeps no frame.
+- The line under the composer saying "Enter to send · Shift+Enter for newline" is gone (the send button's tooltip says it). It still shows when it says something about now: a Bot is working, or Send waits for its reply. The composer floats on a softer shadow with a lit top edge.
+- The message index beside a conversation is faint until pointed at, with only the mark for where you are at full strength. A usage ball docked at the window's edge shows a small whole ring on its tab instead of half a ring cut by the frame.
+- Settings › General lists the Always allow rules as rows of the card instead of a card per rule; Remove shows when you point at a rule.
+
 ### On a Mac the window is one piece of glass
 
 - The desktop window had the system's grey title bar above the app, a line between the sidebar and the conversation, and the conversation flush against both. On macOS the title bar is gone: the traffic lights sit at the start of the sidebar's top row, the sidebar and the frame around the content are the window's own translucent sidebar material (it follows the app's light or dark theme, not only the system's), and the conversation lies on it as a card with rounded corners and a soft shadow. Drag the window by the sidebar's top row or the frame around the card. On Windows and in a browser the content is the same card on the sidebar's colour. On a Mac the window is at least 720px wide.

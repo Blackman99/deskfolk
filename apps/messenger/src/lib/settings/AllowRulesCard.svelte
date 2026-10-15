@@ -98,18 +98,39 @@
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		border-top: 1px solid var(--line-subtle);
 	}
 
+	/*
+	 * Rows of the card, not cards of their own: a hairline between them, and Remove keeps out of
+	 * the way until the row is pointed at (always there on a touch screen).
+	 */
 	.allow-rule-list li {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 12px;
-		padding: 10px 12px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		background: var(--sidebar-bg);
+		min-height: 48px;
+		padding: 8px 2px;
+		border-bottom: 1px solid var(--line-subtle);
+	}
+
+	.allow-rule-list li:last-child {
+		border-bottom: 0;
+		padding-bottom: 0;
+	}
+
+	@media (hover: hover) {
+		.allow-rule-list button {
+			opacity: 0;
+			transition: opacity var(--dur-fast) var(--ease-out);
+		}
+
+		.allow-rule-list li:hover button,
+		.allow-rule-list li:focus-within button,
+		.allow-rule-list button:disabled {
+			opacity: 1;
+		}
 	}
 
 	.allow-rule-copy {

@@ -98,7 +98,7 @@
 	.autocomplete-avatar {
 		width: 26px;
 		height: 26px;
-		border-radius: 50%;
+		border-radius: var(--radius-bot);
 		display: flex;
 		align-items: center;
 		justify-content: center;

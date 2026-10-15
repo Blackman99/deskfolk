@@ -624,7 +624,7 @@
 <ScrollBottomButton shown={showScrollBottom} {t} {onScrollToBottom} />
 </div>
 {#if !lockedComposer}
-	<div class="composer-hint" id="composer-hint">
+	<div class="composer-hint" class:is-quiet={composerHint === t.chat.sendHint} id="composer-hint">
 		<span class="composer-frost-shell composer-hint-shell">
 			<span class="send-shortcut-hint">{composerHint}</span>
 		</span>
@@ -730,7 +730,7 @@
 		background: var(--input-bg);
 		border: 1px solid var(--line);
 		border-radius: 24px;
-		box-shadow: var(--shadow-md);
+		box-shadow: var(--shadow-raised);
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
@@ -747,7 +747,7 @@
 
 	.composer-card:focus-within {
 		border-color: var(--accent-border);
-		box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-md);
+		box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-raised);
 	}
 
 	/* A drag out of the file tree is on its way: the card says it would take it, and more so under the pointer. */
@@ -758,7 +758,7 @@
 
 	.composer-card.is-drop-over {
 		border-style: solid;
-		box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-md);
+		box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-raised);
 	}
 
 	.composer-drop-hint {
@@ -858,6 +858,22 @@
 		text-align: center;
 		line-height: 14px;
 		pointer-events: none;
+	}
+
+	/*
+	 * How to send and break a line is on the send button's tooltip; a line under every composer
+	 * saying it again was noise. It stays for readers (the editor's description) and shows only
+	 * when it says something about now: a Bot is working, or Send waits for its reply.
+	 */
+	.composer-hint.is-quiet {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		min-height: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 
 	.composer-hint-shell {

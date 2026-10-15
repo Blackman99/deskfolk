@@ -178,8 +178,15 @@
 		height: 2px;
 		border-radius: 2px;
 		background: var(--muted-light);
-		transition: width 100ms ease, background 100ms ease;
+		transition: width 100ms ease, background 100ms ease, opacity 160ms ease;
 		pointer-events: none;
+	}
+	/*
+	 * At rest the strip stays a whisper beside the reading, with only the mark for where you are at
+	 * full strength; pointed at or reached by the keyboard, every mark comes up.
+	 */
+	.message-index:not(:hover):not(:focus-within) .index-entry:not(.is-active) .message-index-mark {
+		opacity: 0.4;
 	}
 	.is-you .message-index-mark { background: color-mix(in srgb, var(--accent) 55%, transparent); }
 	.is-active .message-index-mark { background: var(--ink-secondary); width: 12px; }

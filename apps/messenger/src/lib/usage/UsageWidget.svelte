@@ -509,6 +509,26 @@
 		cursor: grabbing;
 	}
 
+	/*
+	 * Tucked, half the ball is off the window: the ring shrinks into the half that shows, so the
+	 * edge holds a small whole ring on a tab rather than half a ring cut by the frame.
+	 */
+	.usage-ball-ring {
+		transition: transform 0.22s ease 0.1s;
+	}
+
+	[data-dock='right'].is-tucked .usage-ball-ring {
+		transform: translateX(-11px) scale(0.6);
+	}
+
+	[data-dock='left'].is-tucked .usage-ball-ring {
+		transform: translateX(11px) scale(0.6);
+	}
+
+	.is-expanded .usage-ball-ring {
+		transition: transform 0.2s ease;
+	}
+
 	.usage-ball-ring.is-warn {
 		color: var(--warn);
 	}

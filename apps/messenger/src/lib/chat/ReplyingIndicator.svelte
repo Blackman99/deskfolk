@@ -206,7 +206,7 @@
 	.attached-replying-avatar {
 		width: 18px;
 		height: 18px;
-		border-radius: 50%;
+		border-radius: var(--radius-bot);
 		display: flex;
 		align-items: center;
 		justify-content: center;

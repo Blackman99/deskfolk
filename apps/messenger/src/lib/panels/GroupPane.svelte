@@ -523,7 +523,7 @@
 	.member-avatar-mini {
 		width: 32px;
 		height: 32px;
-		border-radius: 50%;
+		border-radius: var(--radius-bot);
 		display: flex;
 		align-items: center;
 		justify-content: center;

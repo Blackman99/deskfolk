@@ -295,6 +295,16 @@ img[src*="mask_folk_"] {
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
+/*
+ * One Bot is a rounded square, the way an app sits in a Dock; you stay a circle (Mochi's), and a
+ * group's overlapping members stay circles so the stack reads as heads. A folk avatar has no
+ * frame at all (above).
+ */
+.row-avatar.layout-single:not(.is-group),
+.row-avatar.layout-single:not(.is-group) .row-avatar-bot {
+  border-radius: var(--radius-bot);
+}
+
 /* Fallback empty group */
 .row-avatar.is-group.layout-empty {
   background: var(--chip);

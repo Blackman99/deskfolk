@@ -190,7 +190,7 @@
 	.welcome-avatar {
 		width: 58px;
 		height: 58px;
-		border-radius: 50%;
+		border-radius: var(--radius-bot);
 		display: flex;
 		align-items: center;
 		justify-content: center;
