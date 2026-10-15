@@ -19,6 +19,8 @@
 	interface Props {
 		/** The heading, and the sheet's name for a screen reader. None: just the grip. */
 		title?: string | null;
+		/** The sheet's name for a screen reader when it has no heading (a picture's one-line menu). */
+		label?: string | null;
 		/** The close button's and the backdrop's name. */
 		closeLabel: string;
 		onClose: () => void;
@@ -27,7 +29,7 @@
 		children: Snippet;
 	}
 
-	let { title = null, closeLabel, onClose, class: className = '', children }: Props = $props();
+	let { title = null, label = null, closeLabel, onClose, class: className = '', children }: Props = $props();
 
 	let layerEl = $state<HTMLDivElement | null>(null);
 	let sheetEl = $state<HTMLDivElement | null>(null);
@@ -70,7 +72,7 @@
 
 <div bind:this={layerEl} class="bottom-sheet-layer" onkeydown={onKeydown} role="presentation">
 	<button type="button" class="bottom-sheet-backdrop" aria-label={closeLabel} tabindex="-1" onclick={() => onClose()}></button>
-	<div bind:this={sheetEl} class="bottom-sheet-panel {className}" role="dialog" aria-modal="true" aria-label={title ?? undefined} tabindex="-1">
+	<div bind:this={sheetEl} class="bottom-sheet-panel {className}" role="dialog" aria-modal="true" aria-label={title ?? label ?? undefined} tabindex="-1">
 		<div class="bottom-sheet-grip" aria-hidden="true"></div>
 		{#if title}
 			<header class="bottom-sheet-head">

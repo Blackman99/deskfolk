@@ -81,7 +81,7 @@
 {/snippet}
 
 {#if phone.current}
-	<BottomSheet closeLabel={t.common.close} {onClose}>
+	<BottomSheet label={t.common.copyImage} closeLabel={t.common.close} {onClose}>
 		<div class="image-context-sheet" role="menu" tabindex="-1" aria-label={t.common.copyImage} data-testid="image-context-menu">
 			{@render entries(true)}
 		</div>

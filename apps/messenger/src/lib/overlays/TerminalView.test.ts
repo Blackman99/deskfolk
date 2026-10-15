@@ -783,3 +783,36 @@ test("the pane tells the daemon its colours on attach and when the theme changes
     else root.setAttribute("data-theme", before);
   }
 });
+
+test("on a phone the session list and ⋯ come up as sheets from the bottom, and ending still asks first", async () => {
+  const realMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query.includes("max-width"), media: query, onchange: null, addListener() {}, removeListener() {},
+    addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  const closedIds: string[] = [];
+  const { view } = mountPhone([older, newer], { closeTerminal: async (id: string) => { closedIds.push(id); } });
+  try {
+    await settle();
+    const sheet = () => view.host.querySelector(".bottom-sheet-layer");
+    click(view.host.querySelector(".terminal-title"));
+    expect(sheet()?.querySelector(".bottom-sheet-title")?.textContent).toBe(t.terminal.sessions);
+    expect([...sheet()!.querySelectorAll(".terminal-sessions.is-sheet .terminal-tab-name")].map((el) => el.textContent)).toEqual(["real-bot", "real-bot 2"]);
+    click(sheet()!.querySelector(".terminal-tab"));
+    await settle();
+    expect(sheet()).toBeNull();
+    expect(view.host.querySelector(".terminal-title-text")?.textContent).toBe("real-bot");
+
+    click(view.host.querySelector(".terminal-more > .terminal-icon"));
+    expect(sheet()?.querySelector(".bottom-sheet-title")?.textContent).toBe(t.terminal.more);
+    click([...sheet()!.querySelectorAll(".terminal-menu button")].find((b) => b.textContent?.trim() === t.terminal.end));
+    expect(sheet()?.querySelector(".terminal-confirm")?.textContent).toBe(t.terminal.endConfirm);
+    click(sheet()!.querySelector(".terminal-menu-confirm .is-armed"));
+    await settle();
+    expect(closedIds).toEqual(["term-old"]);
+    expect(sheet()).toBeNull();
+  } finally {
+    view.close();
+    window.matchMedia = realMatchMedia;
+  }
+});
