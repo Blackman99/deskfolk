@@ -109,9 +109,12 @@ jobs:
 
       # Report-only: most of the daemon suite still assumes POSIX (paths, signals, process
       # groups). We want to see how much of it already passes on Windows, not block the job on it.
+      # Its own limit too: on a slow runner it ran past 31 minutes (19.5 the day before), and the
+      # job's 40 then cancelled the whole job, gating steps and all (2026-10-15).
       - name: Daemon tests (informational — many are still POSIX-only)
         if: success() || failure()
         continue-on-error: true
+        timeout-minutes: 28
         run: pnpm --filter @real-bot/daemon test
 
   bundle:
