@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { modalOut } from '../modal-motion.ts';
 	import { tick } from 'svelte';
 	import type { McpServer } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
@@ -311,6 +312,7 @@
 {#if editor}
 	<div
 		class="modal-backdrop mcp-editor-backdrop z-[110]"
+		out:modalOut={{ instant: true }}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="mcp-editor-title"

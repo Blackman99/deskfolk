@@ -2,6 +2,7 @@
 	import Icon from '../Icon.svelte';
 	import { untrack } from 'svelte';
 	import { pageSlide } from '../mobile-page-slide.ts';
+	import { modalOut } from '../modal-motion.ts';
 	import McpSettings from './McpSettings.svelte';
 	import LessonsSettings from './LessonsSettings.svelte';
 	import PromptsSettings from './PromptsSettings.svelte';
@@ -417,7 +418,7 @@
 		aria-modal="true"
 		tabindex="-1"
 		in:pageSlide={{ instant: true }}
-		out:pageSlide={{ instant: true }}
+		out:modalOut={{ instant: true }}
 		onmousedowncapture={settingsBackdrop.press}
 		onclick={(e) => {
 			if (settingsBackdrop.isOutside(e) && !providerEditor && !confirmingProvider && !confirmingIndependent)

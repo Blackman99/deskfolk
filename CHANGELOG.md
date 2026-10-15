@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Dialogs close softly; one switch, one way menus appear
+
+- Dialogs vanished the instant they closed. They now fade out with their backdrop; on a phone a dialog that is a page walks back out the way it came. With reduced motion they still close at once.
+- The panels and Settings drew two different switches (44×24 and 40×22). There is one now, 40×22.
+- Every menu appears the same way, with a short fade. The conversation, message, pane and + menus used a small zoom, which measured the menu a few pixels short as it placed itself.
+- Settings › Notifications lists the kinds of events as rows of the card instead of a grid of boxed tiles inside it.
+
 ### Bots look like Bots, and the chrome steps back
 
 - A Bot's picture is a rounded square wherever it appears: the list, the conversation header, messages, question cards, the @ list, group members. You, and a group's stacked members, stay round; the folk mascot keeps no frame.

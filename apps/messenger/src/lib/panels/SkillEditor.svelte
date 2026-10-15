@@ -8,6 +8,7 @@
 	import RequiredStar from './RequiredStar.svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
+	import { modalOut } from '../modal-motion.ts';
 	import type { Copy } from '../copy.ts';
 	import type { SkillDraft, SkillFieldErrors } from './create-form.ts';
 
@@ -59,7 +60,8 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="modal-backdrop skill-modal-backdrop page-on-phone"
-		transition:pageSlide={{ instant: !onPhone() }}
+		in:pageSlide={{ instant: !onPhone() }}
+		out:modalOut={{ instant: !onPhone() }}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="skill-modal-title"

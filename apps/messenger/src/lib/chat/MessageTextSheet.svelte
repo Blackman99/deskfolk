@@ -4,6 +4,7 @@
 	import { backdropClick } from '../click-outside.ts';
 	import type { Copy } from '../copy.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
+	import { modalOut } from '../modal-motion.ts';
 	import { holdBack } from './message-text-pages.ts';
 
 	/**
@@ -46,7 +47,8 @@
 <div
 	bind:this={root}
 	class="modal-backdrop page-on-phone"
-	transition:pageSlide
+	in:pageSlide
+	out:modalOut
 	role="dialog"
 	aria-modal="true"
 	aria-labelledby="message-text-title"

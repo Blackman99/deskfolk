@@ -52,7 +52,7 @@
   - **信使：组件**
     - `Button.svelte`、`IconButton.svelte`、`Icon.svelte`（图标表在 `icons.ts`）；底部提示 `toast.svelte.ts` 的 `showToast`。
     - `Switch.svelte`。
-    - 设置页：`settings/SettingsSwitch`、`SettingsRow`、`SettingsCard`、`SettingsCardHeader`、`SettingsSubpageButton`、`AutosaveState`；分块标签和手机列表 `SettingsSectionTabs`、`SettingsSectionList`。
+    - 设置页：`SettingsRow`、`SettingsCard`、`SettingsCardHeader`、`SettingsSubpageButton`、`AutosaveState`；分块标签和手机列表 `SettingsSectionTabs`、`SettingsSectionList`。
     - 提示词：`settings/PromptEditorPage`（编辑页，宽窗弹窗、手机内页）、`PromptRowList`（一行一条，带状态和读不懂次数），提示词页和「分工」页共用；`prompts-view.ts` 的 `promptChip`。
     - 内置调用：`settings/SideModelCard`（一个调用的模型选择器）、`settings/CallEditor`（一个调用的模型和提示词，在流程环节的面板里就地改，提示词编辑器挂到 body）、`builtin-models.ts` 的 `builtinModelsOf` / `builtinPatch`；`routing-map.ts` 的 `routingNodeView`、`promptsTabItems`、`askOnce`（整页只问一次状态）。
     - 编辑页：`panels/EditorOwnerBadge`、`EditorSwitchRow`、`RequiredStar`。

@@ -318,7 +318,7 @@
 		box-shadow: var(--shadow-menu);
 		user-select: none;
 		outline: none;
-		animation: wb-context-in 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+		animation: menuIn var(--dur-base) var(--ease-out);
 	}
 	.wb-context-item {
 		display: flex;
@@ -383,16 +383,6 @@
 		height: 1px;
 		margin: 3px 8px;
 		background: var(--line-subtle);
-	}
-	@keyframes wb-context-in {
-		from {
-			opacity: 0;
-			transform: scale(0.96) translateY(-4px);
-		}
-		to {
-			opacity: 1;
-			transform: scale(1) translateY(0);
-		}
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.wb-context-menu {

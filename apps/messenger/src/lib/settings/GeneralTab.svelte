@@ -5,7 +5,7 @@
 	import WorkspacePicker from './WorkspacePicker.svelte';
 	import AllowRulesCard from './AllowRulesCard.svelte';
 	import SettingsRow from './SettingsRow.svelte';
-	import SettingsSwitch from './SettingsSwitch.svelte';
+	import Switch from '../Switch.svelte';
 	import { JAIL_COPY, type Copy } from '../copy.ts';
 	import { themeManager } from '../theme.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -217,7 +217,7 @@
 
 			<!-- Launch at login Row -->
 			<SettingsRow title={t.settings.launch} titleId="launch-setting-label" desc={t.settings.launchDesc}>
-				<SettingsSwitch class="relative inline-flex items-center cursor-pointer select-none" for="launch-at-login-toggle" labelledby="launch-setting-label">
+				<Switch class="relative inline-flex items-center cursor-pointer select-none" for="launch-at-login-toggle" labelledby="launch-setting-label">
 					<input
 						id="launch-at-login-toggle"
 						type="checkbox"
@@ -225,7 +225,7 @@
 						onchange={(ev) =>
 							void onLaunchAtLogin((ev.currentTarget as HTMLInputElement).checked)}
 					/>
-				</SettingsSwitch>
+				</Switch>
 			</SettingsRow>
 
 			<SettingsRow title={t.settings.independentRuntime} titleId="independent-runtime-label" desc={t.settings.independentRuntimeDesc}>
@@ -234,7 +234,7 @@
 						<span class="settings-row-desc" data-independent-reason>{independentReason(independent)}</span>
 					{/if}
 				{/snippet}
-				<SettingsSwitch
+				<Switch
 					class="relative inline-flex items-center select-none"
 					disabled={!independent.available}
 					for="independent-runtime-toggle"
@@ -251,7 +251,7 @@
 							requestIndependent(next);
 						}}
 					/>
-				</SettingsSwitch>
+				</Switch>
 			</SettingsRow>
 		</div>
 	</SettingsCard>

@@ -22,6 +22,7 @@
 	} from '../panels/create-form.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
+	import { modalOut } from '../modal-motion.ts';
 	import { agentBlocker, agentLabelOf, agentStatusOf, parseRunnerValue, runnerOptions, setupRunnerOf } from '../runner-choice.ts';
 	import { BUILTIN_PLAYBOOK_IDS } from '@real-bot/protocol';
 	import { templatesFor, type BotTemplate, type BotTemplateId } from '../bot-templates.ts';
@@ -150,7 +151,8 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	class="modal-backdrop page-on-phone"
-	transition:pageSlide
+	in:pageSlide
+	out:modalOut
 	role="dialog"
 	aria-modal="true"
 	tabindex="-1"

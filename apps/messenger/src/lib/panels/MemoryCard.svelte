@@ -5,6 +5,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { DangerAction } from '../overlays/danger-confirm.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
+	import { modalOut } from '../modal-motion.ts';
 	import SettingsSubject from './SettingsSubject.svelte';
 	import Switch from '../Switch.svelte';
 	import EditorOwnerBadge from './EditorOwnerBadge.svelte';
@@ -269,7 +270,8 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="modal-backdrop memory-modal-backdrop page-on-phone"
-		transition:pageSlide={{ instant: !onPhone() }}
+		in:pageSlide={{ instant: !onPhone() }}
+		out:modalOut={{ instant: !onPhone() }}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="memory-modal-title"

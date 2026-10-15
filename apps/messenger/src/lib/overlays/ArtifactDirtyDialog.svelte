@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { modalOut } from '../modal-motion.ts';
 	import type { Copy } from '../copy.ts';
 
 	interface Props {
@@ -12,7 +13,7 @@
 	let { t, saving, onCancel, onDiscard, onSave }: Props = $props();
 </script>
 
-<div class="modal-backdrop confirm-backdrop" role="presentation">
+<div class="modal-backdrop confirm-backdrop" role="presentation" out:modalOut={{ instant: true }}>
 	<div class="modal-dialog confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="artifact-dirty-title">
 		<div class="modal-body">
 			<h3 id="artifact-dirty-title">{t.stream.artifactDirtyTitle}</h3>

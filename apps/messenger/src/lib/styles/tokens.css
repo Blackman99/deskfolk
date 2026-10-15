@@ -211,6 +211,8 @@
   --code-bg: #1b2428;
   --code-header-bg: #162024;
   --row-hover: rgba(18, 28, 32, 0.05);
+  /* The switch's thumb (`Switch.svelte`). */
+  --switch-thumb: #ffffff;
 }
 
 /*

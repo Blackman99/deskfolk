@@ -2,7 +2,7 @@
 	import Icon from '../Icon.svelte';
 	import { onMount, untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
-	import SettingsSwitch from './SettingsSwitch.svelte';
+	import Switch from '../Switch.svelte';
 	import { ApiError } from '../api.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { classifyPushHealth, closeCopyKey } from '../notifications/tab-owner.ts';
@@ -305,14 +305,14 @@
 						</div>
 					</div>
 					<div class="category-action">
-						<SettingsSwitch tag="span" disabled={policyLoading}>
+						<Switch tag="span" disabled={policyLoading}>
 							<input
 								type="checkbox"
 								checked={cat.checked}
 								disabled={policyLoading}
 								onchange={() => void toggleCategory(cat.key)}
 							/>
-						</SettingsSwitch>
+						</Switch>
 					</div>
 				</label>
 			{/each}
@@ -348,14 +348,14 @@
 						</span>
 					</div>
 					<div class="settings-row-action">
-						<SettingsSwitch tag="span" disabled={policyLoading}>
+						<Switch tag="span" disabled={policyLoading}>
 							<input
 								type="checkbox"
 								checked={policy?.quiet_hours.enabled ?? false}
 								disabled={policyLoading}
 								onchange={() => void toggleQuietHours()}
 							/>
-						</SettingsSwitch>
+						</Switch>
 					</div>
 				</label>
 			</div>
@@ -451,14 +451,14 @@
 							</span>
 						</div>
 						<div class="settings-row-action">
-							<SettingsSwitch tag="span" disabled={deviceLoading}>
+							<Switch tag="span" disabled={deviceLoading}>
 								<input
 									type="checkbox"
 									checked={device?.enabled ?? false}
 									disabled={deviceLoading}
 									onchange={(event) => void handleDeviceToggle(event)}
 								/>
-							</SettingsSwitch>
+							</Switch>
 						</div>
 					</label>
 				</div>
@@ -515,14 +515,14 @@
 								</span>
 							</div>
 							<div class="settings-row-action">
-								<SettingsSwitch tag="span" disabled={deviceLoading}>
+								<Switch tag="span" disabled={deviceLoading}>
 									<input
 										type="checkbox"
 										checked={device?.enabled ?? false}
 										disabled={deviceLoading}
 										onchange={(event) => void handleDeviceToggle(event)}
 									/>
-								</SettingsSwitch>
+								</Switch>
 							</div>
 						</label>
 					</div>
@@ -600,13 +600,13 @@
 							</span>
 						</div>
 						<div class="settings-row-action">
-							<SettingsSwitch tag="span">
+							<Switch tag="span">
 								<input
 									type="checkbox"
 									checked={device.badge}
 									onchange={(e) => void runtime.patchNotificationDevice({ badge: (e.currentTarget as HTMLInputElement).checked })}
 								/>
-							</SettingsSwitch>
+							</Switch>
 						</div>
 					</label>
 				</div>
@@ -748,15 +748,28 @@
 		container: categories / inline-size;
 	}
 
+	/*
+	 * Rows of the card, not tiles inside it: a hairline under each, none under the last row, and
+	 * the pointer's row lifts on the row colour.
+	 */
 	.category-grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 10px;
+		gap: 0 20px;
+		border-top: 1px solid var(--line-subtle);
+	}
+
+	.category-grid > .category-toggle-item:nth-last-child(-n + 2) {
+		border-bottom-color: transparent;
 	}
 
 	@container categories (max-width: 480px) {
 		.category-grid {
 			grid-template-columns: minmax(0, 1fr);
+		}
+
+		.category-grid > .category-toggle-item:nth-last-child(2) {
+			border-bottom-color: var(--line-subtle);
 		}
 	}
 
@@ -765,10 +778,9 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 12px;
-		padding: 12px 14px;
-		border-radius: var(--radius-md);
-		background: var(--sidebar-bg);
-		border: 1px solid var(--line);
+		min-height: 56px;
+		padding: 8px 6px;
+		border-bottom: 1px solid var(--line-subtle);
 		cursor: pointer;
 		user-select: none;
 		transition: border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
@@ -778,14 +790,7 @@
 	}
 
 	.category-toggle-item:hover {
-		border-color: var(--accent-border);
-		background: var(--pane);
-		box-shadow: var(--shadow-xs);
-	}
-
-	.category-toggle-item.is-checked {
-		background: var(--pane);
-		border-color: var(--line);
+		background: var(--row-hover);
 	}
 
 	.category-main {
@@ -916,7 +921,7 @@
 	}
 
 	/*
-	 * Switch Toggle (macOS / iOS style): `SettingsSwitch`. Here it is a span inside a row label, so
+	 * Switch Toggle (macOS / iOS style): `Switch`. Here it is a span inside a row label, so
 	 * it lays itself out and shows the hand (and, dimmed, not-allowed) on its own.
 	 */
 	.notification-settings :global(.switch-toggle) {
@@ -1215,12 +1220,8 @@
 			gap: 12px;
 		}
 
-		.category-grid {
-			gap: 8px;
-		}
-
 		.category-toggle-item {
-			padding: 10px 12px;
+			padding: 8px 4px;
 			min-height: 52px;
 		}
 

@@ -24,7 +24,7 @@
 <script lang="ts">
 	import type { RemoteScreenStatus } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import SettingsSwitch from './SettingsSwitch.svelte';
+	import Switch from '../Switch.svelte';
 	import type { LocalApi } from '../local-api.ts';
 	import { desktopPlatform } from '../platform.ts';
 	import { isTauri, readTauriInternals } from '../tauri.ts';
@@ -125,7 +125,7 @@
 			<span class="settings-row-desc">{t.screen.macToggleDesc}</span>
 		</div>
 		<div class="settings-row-action">
-			<SettingsSwitch class="relative inline-flex items-center cursor-pointer select-none" for="remote-screen-toggle" labelledby="remote-screen-label">
+			<Switch class="relative inline-flex items-center cursor-pointer select-none" for="remote-screen-toggle" labelledby="remote-screen-label">
 				<input
 					id="remote-screen-toggle"
 					type="checkbox"
@@ -138,7 +138,7 @@
 						void update({ enabled });
 					}}
 				/>
-			</SettingsSwitch>
+			</Switch>
 		</div>
 	</div>
 	{#if failed}
@@ -239,7 +239,7 @@
 		flex-shrink: 0;
 	}
 
-	/* `SettingsSwitch`, dimmed here by its checkbox's `disabled` rather than by `is-disabled`. */
+	/* `Switch`, dimmed here by its checkbox's `disabled` rather than by `is-disabled`. */
 	.remote-screen-settings :global(.switch-toggle input:disabled + .switch-track) {
 		opacity: 0.55;
 		cursor: not-allowed;

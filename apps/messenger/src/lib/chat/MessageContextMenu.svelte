@@ -364,7 +364,7 @@
 		flex-direction: column;
 		gap: 2px;
 		user-select: none;
-		animation: context-menu-in 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+		animation: menuIn var(--dur-base) var(--ease-out);
 	}
 
 	.msg-reaction-row {
@@ -549,14 +549,4 @@
 		}
 	}
 
-	@keyframes context-menu-in {
-		from {
-			opacity: 0;
-			transform: scale(0.96) translateY(-2px);
-		}
-		to {
-			opacity: 1;
-			transform: scale(1) translateY(0);
-		}
-	}
 </style>

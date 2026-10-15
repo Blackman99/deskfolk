@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { modalOut } from '../modal-motion.ts';
 	import Icon from '../Icon.svelte';
 	import type { Locale, PromptSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
@@ -47,6 +48,7 @@
 
 <div
 	class="modal-backdrop prompt-editor-backdrop z-[110]"
+	out:modalOut={{ instant: true }}
 	role="dialog"
 	aria-modal="true"
 	aria-labelledby="prompt-editor-title"

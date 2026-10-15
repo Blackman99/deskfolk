@@ -124,7 +124,7 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-lg);
-		animation: sidebarMenuIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+		animation: menuIn var(--dur-base) var(--ease-out);
 		transform-origin: bottom right;
 	}
 
@@ -153,14 +153,4 @@
 		color: var(--muted);
 	}
 
-	@keyframes sidebarMenuIn {
-		from {
-		opacity: 0;
-		transform: scale(0.96) translateY(4px);
-		}
-		to {
-		opacity: 1;
-		transform: scale(1) translateY(0);
-		}
-	}
 </style>

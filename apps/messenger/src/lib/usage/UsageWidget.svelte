@@ -696,6 +696,7 @@
 		border-radius: var(--radius-md);
 		background: var(--pane);
 		box-shadow: var(--shadow-menu);
+		animation: menuIn var(--dur-base) var(--ease-out);
 	}
 
 	.usage-menu-item {

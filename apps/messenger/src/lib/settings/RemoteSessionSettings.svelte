@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Copy } from '../copy.ts';
 	import SettingsRow from './SettingsRow.svelte';
-	import SettingsSwitch from './SettingsSwitch.svelte';
+	import Switch from '../Switch.svelte';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 
 	type Props = {
@@ -93,7 +93,7 @@
 	{/if}
 </div>
 <SettingsRow title={t.remote.push} titleId="push-setting-label" desc={t.remote.pushDesc}>
-	<SettingsSwitch class="relative inline-flex items-center cursor-pointer select-none" for="remote-push-toggle" labelledby="push-setting-label">
+	<Switch class="relative inline-flex items-center cursor-pointer select-none" for="remote-push-toggle" labelledby="push-setting-label">
 		<input
 			id="remote-push-toggle"
 			type="checkbox"
@@ -107,7 +107,7 @@ input.checked = runtime.pushEnabled;
 void runtime.setPushEnabled(enabled);
 }}
 		/>
-	</SettingsSwitch>
+	</Switch>
 </SettingsRow>
 {#if runtime.pushPermission === 'denied'}
 	<p class="muted">{t.remote.pushDenied}</p>

@@ -7,6 +7,7 @@
 	import type { MessengerApi } from '../messenger-api.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
+	import { modalOut } from '../modal-motion.ts';
 	import DangerDialog from '../overlays/DangerDialog.svelte';
 	import SettingsSubject from './SettingsSubject.svelte';
 	import Switch from '../Switch.svelte';
@@ -298,7 +299,8 @@
 	<form
 		class="routine-page"
 		bind:this={editorEl}
-		transition:pageSlide={{ instant: !onPhone() }}
+		in:pageSlide={{ instant: !onPhone() }}
+		out:modalOut={{ instant: !onPhone() }}
 		aria-label={baseline ? t.routines.edit : t.routines.add}
 		onsubmit={(event) => { event.preventDefault(); void save(); }}
 		novalidate

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { modalOut } from '../modal-motion.ts';
 	import Icon from '../Icon.svelte';
   import { onMount, untrack } from 'svelte';
   import { backdropClick } from '../click-outside.ts';
@@ -168,7 +169,8 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
   class="modal-backdrop page-on-phone"
-  transition:pageSlide
+  in:pageSlide
+  out:modalOut
   role="dialog"
   aria-modal="true"
   aria-labelledby="attribution-title"

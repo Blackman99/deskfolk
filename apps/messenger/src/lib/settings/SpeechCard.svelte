@@ -27,7 +27,7 @@
 	import { speechServiceSource } from '../model-source.ts';
 	import { Autosave } from '../autosave.svelte.ts';
 	import AutosaveState from './AutosaveState.svelte';
-	import SettingsSwitch from './SettingsSwitch.svelte';
+	import Switch from '../Switch.svelte';
 
 	/**
 	 * The speech endpoint the composer's microphone sends to (ADR 0073). Picking a service fills in
@@ -139,7 +139,7 @@
 	{#if speech}
 		<div class="speech-head">
 			<span class="speech-head-title">{s.enabled}</span>
-			<SettingsSwitch tag="label" class="speech-switch">
+			<Switch tag="label" class="speech-switch">
 				<input
 					type="checkbox"
 					aria-label={s.enabled}
@@ -147,7 +147,7 @@
 					disabled={autosave.saving}
 					onchange={(event) => void save({ enabled: event.currentTarget.checked })}
 				/>
-			</SettingsSwitch>
+			</Switch>
 		</div>
 	{/if}
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { modalOut } from '../modal-motion.ts';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { IndependentStatus } from './independent-runtime.ts';
@@ -32,6 +33,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="modal-backdrop confirm-backdrop z-[120]"
+		out:modalOut={{ instant: true }}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="independent-runtime-confirm-title"

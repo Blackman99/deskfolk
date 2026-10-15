@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { modalOut } from '../modal-motion.ts';
 	import type { Snippet } from 'svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import AutosaveState from './AutosaveState.svelte';
@@ -58,6 +59,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="modal-backdrop provider-editor-backdrop z-[110]"
+		out:modalOut={{ instant: true }}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"

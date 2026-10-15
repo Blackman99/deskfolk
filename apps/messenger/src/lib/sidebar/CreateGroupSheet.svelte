@@ -13,6 +13,7 @@
 	import { rosterLetter } from './roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
+	import { modalOut } from '../modal-motion.ts';
 	import type { NormalizedSelectOption, SelectOption } from '../select-options.ts';
 
 	type Props = {
@@ -87,7 +88,8 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	class="modal-backdrop page-on-phone"
-	transition:pageSlide
+	in:pageSlide
+	out:modalOut
 	role="dialog"
 	aria-modal="true"
 	tabindex="-1"
