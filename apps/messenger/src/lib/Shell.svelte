@@ -1428,6 +1428,15 @@
 			background: transparent;
 		}
 
+		/*
+		 * Beside the workbench the sidebar's rows stop 8px short of the handle and the card starts
+		 * 4px after it; two pixels to the left puts the handle's line (and its grip) midway between
+		 * them. The layered card sits 8px off, so its handle is already in the middle.
+		 */
+		.shell:not(.is-layered) .sidebar-split {
+			left: -2px;
+		}
+
 		:global(:root[data-chrome='mac']) .shell {
 			background: color-mix(in srgb, var(--sidebar-bg) 55%, transparent);
 		}
