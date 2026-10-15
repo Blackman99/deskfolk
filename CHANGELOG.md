@@ -12,6 +12,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - Wider than a phone the composer is two rows, as the design draws it: the text on top, attach on the left and voice, suggest and send on the right below it. With nothing to send, the send button is in the accent's tint rather than grey.
 - The selected item in Settings, in a Bot's profile and among the sidebar's Workspace, Tools and Settings is marked by the accent's tint, with its name and icon in the accent. The solid icons that marked some of them and not others are gone.
 - A usage ball tucked at the window's edge shows an 8px tab in the gutter instead of half a ball over a pane's header.
+- Pointing at the sidebar's edge, or between two panes, draws a thin line in the accent to drag instead of filling the gutter with a bar.
 
 ### Where a line is filed is the app's own, seen in the flow
 

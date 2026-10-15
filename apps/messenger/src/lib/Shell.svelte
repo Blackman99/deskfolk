@@ -1067,7 +1067,7 @@
 	{/if}
 	<button
 		type="button"
-		class="split-handle sidebar-split"
+		class="split-handle sidebar-split is-gutter"
 		class:is-active={sidebarDragging}
 		aria-label={t.sidebar.resize}
 		onpointerdown={startSidebarResize}

@@ -93,7 +93,7 @@
 			{#if index > 0}
 				<button
 					type="button"
-					class="split-handle wb-sash"
+					class="split-handle wb-sash is-gutter"
 					class:is-rows={!row}
 					class:is-active={rest.draggingSash === `${node.id}#${index}`}
 					data-sash={`${node.id}#${index}`}

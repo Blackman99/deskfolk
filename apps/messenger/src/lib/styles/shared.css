@@ -376,3 +376,46 @@ img[src*="mask_folk_"] {
 .split-handle:focus-visible {
   outline: none;
 }
+
+/*
+ * A divider in a gutter rather than on a seam (`.is-gutter`): the sidebar's edge and the space
+ * between two workbench cards, beside the phone layout. There is no line at rest, and painting
+ * the whole grip would fill the gutter with a bar; the grip stays seven pixels to aim at, and
+ * pointed at, focused or in hand it draws a two-pixel line in the accent, short of either end.
+ */
+@media (min-width: 681px) {
+  .split-handle.is-gutter:hover::before,
+  .split-handle.is-gutter:focus-visible::before,
+  .split-handle.is-gutter.is-active::before {
+    background: transparent;
+  }
+
+  .split-handle.is-gutter::after {
+    content: "";
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    left: 50%;
+    width: 2px;
+    margin-left: -1px;
+    border-radius: 1px;
+    pointer-events: none;
+    transition: background-color 0.15s ease;
+  }
+
+  .split-handle.is-gutter.is-rows::after {
+    top: 50%;
+    bottom: auto;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    height: 2px;
+    margin: -1px 0 0;
+  }
+
+  .split-handle.is-gutter:hover::after,
+  .split-handle.is-gutter:focus-visible::after,
+  .split-handle.is-gutter.is-active::after {
+    background: var(--accent);
+  }
+}
