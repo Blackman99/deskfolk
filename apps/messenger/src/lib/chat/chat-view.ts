@@ -9,7 +9,7 @@ import {
   type Reaction,
   type Turn,
 } from "@real-bot/protocol";
-import { formatSpan } from "./duration.ts";
+import { formatSpan, type SpanPart } from "./duration.ts";
 import { isLiveStatus } from "./transcript.ts";
 import type { TranscriptItem } from "./transcript.ts";
 
@@ -49,13 +49,16 @@ export type ReactionGroup = {
   userReacted: boolean;
 };
 
-/** Formats duration in milliseconds into a concise readable string, e.g. "1.2s", "45.0s", "1m 12s", "2h 5m", "3d 1h" */
-export function formatDurationMs(ms: number): string {
-  if (ms < 0) return "0.0s";
+/**
+ * Formats duration in milliseconds into a concise readable string, e.g. "1.2s", "45.0s", "1m 12s",
+ * "2h 5m", "3d 1h"; with the copy's `spanPart`, the way the language says it ("5 分 9 秒").
+ */
+export function formatDurationMs(ms: number, part?: SpanPart): string {
   if (ms < 60000) {
-    return `${(ms / 1000).toFixed(1)}s`;
+    const seconds = (Math.max(0, ms) / 1000).toFixed(1);
+    return part ? part(seconds, "s") : `${seconds}s`;
   }
-  return formatSpan(Math.round(ms / 1000));
+  return formatSpan(Math.round(ms / 1000), " ", part);
 }
 
 /**
@@ -137,11 +140,10 @@ export function calculateBotDuration(
 }
 
 /** Formats a live timer from an ISO start timestamp to current time */
-export function formatLiveDuration(startedAt: string, nowMs: number = Date.now()): string {
+export function formatLiveDuration(startedAt: string, nowMs: number = Date.now(), part?: SpanPart): string {
   const startMs = new Date(startedAt).getTime();
-  if (isNaN(startMs)) return "0.0s";
-  const elapsed = Math.max(0, nowMs - startMs);
-  return formatDurationMs(elapsed);
+  const elapsed = isNaN(startMs) ? 0 : Math.max(0, nowMs - startMs);
+  return formatDurationMs(elapsed, part);
 }
 
 /** Formats ISO timestamp into local HH:mm (e.g. 14:05) */

@@ -93,7 +93,7 @@
 		<!-- A line of text that opens, the same folded or open: only the list under it is a card. -->
 		<div class="command-head">
 		<button type="button" class="command-summary" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
-			<Icon name="terminal-square" class="command-summary-icon" />
+			<Icon name="terminal" class="command-summary-icon" />
 			<span class="command-count">{t.chat.commandCount(done.length)}</span>
 			{#if failed > 0}
 				<span class="command-failed">· {t.chat.commandsFailed(failed)}</span>
@@ -197,7 +197,6 @@
 	}
 
 	.command-count {
-		font-weight: 500;
 		white-space: nowrap;
 	}
 

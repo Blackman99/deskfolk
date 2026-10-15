@@ -15,6 +15,7 @@
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import {
 		calculateBotDuration,
+		formatDurationMs,
 		formatFullTimestamp,
 		formatLiveDuration,
 		formatMessageTime,
@@ -211,9 +212,9 @@
 								{:else}
 									<span class="stream-step" aria-live="off">{said ? t.stream.streaming : stage.statusLabels.running}</span>
 								{/if}
-								<span class="duration-badge mono">
+								<span class="duration-badge">
 									<Icon name="clock" size={12} />
-									{formatLiveDuration(item.turn.created_at, stage.nowMs)}
+									{formatLiveDuration(item.turn.created_at, stage.nowMs, t.chat.spanPart)}
 								</span>
 							</div>
 							{#if stage.openStepsTurn === item.turn.id}
@@ -232,6 +233,7 @@
 					{:else if item.type === 'message'}
 						{@const ranIn = item.message.turn_id && stage.commandHosts.has(item.message.id) ? item.message.turn_id : null}
 						{@const duration = calculateBotDuration(item.message, stage.snapshot.messages, stage.snapshot.turns, stage.messageLookup)}
+						{@const took = duration ? formatDurationMs(duration.ms, t.chat.spanPart) : null}
 						<!--
 							A part before the last whose end would hold nothing but its time gives that line up: the
 							time shows with the hover actions, so the parts of one reply sit close together.
@@ -255,10 +257,11 @@
 									{/if}
 									{#if quietFoot}
 										<span class="msg-when is-peek">
-											{#if duration}
-												<span class="duration-badge mono" title={t.chat.replyTime(duration.formatted)}>{duration.formatted}</span>
+											{#if took}
+												<span class="duration-badge" title={t.chat.replyTime(took)}>{took}</span>
+												<span class="msg-when-sep" aria-hidden="true">·</span>
 											{/if}
-											<span class="msg-time mono" title={formatFullTimestamp(item.message.created_at)}>{formatMessageTime(item.message.created_at)}</span>
+											<span class="msg-time" title={formatFullTimestamp(item.message.created_at)}>{formatMessageTime(item.message.created_at)}</span>
 										</span>
 									{/if}
 									{#if canQuoteReply(item.message) && !stage.lockedComposer}
@@ -331,15 +334,16 @@
 							{/if}
 						</article>
 						{#snippet tail()}
-							<!-- On the right: how long it took, then when it came, last. -->
+							<!-- On the right: how long it took, then when it came, last, a faint dot between. -->
 							<span class="msg-when">
-								{#if duration}
-									<span class="duration-badge mono" title={t.chat.replyTime(duration.formatted)}>
+								{#if took}
+									<span class="duration-badge" title={t.chat.replyTime(took)}>
 										<Icon name="clock" size={12} />
-										{duration.formatted}
+										{took}
 									</span>
+									<span class="msg-when-sep" aria-hidden="true">·</span>
 								{/if}
-								<span class="msg-time mono" title={formatFullTimestamp(item.message.created_at)}>
+								<span class="msg-time" title={formatFullTimestamp(item.message.created_at)}>
 									{formatMessageTime(item.message.created_at)}
 								</span>
 							</span>
@@ -533,21 +537,30 @@
 		color: var(--muted);
 	}
 
+	/* How long a reply took and when it came: the text's face with even digits, as the design draws it. */
 	.msg-time {
-		font-size: 11px;
+		font-size: 12px;
 		color: var(--muted);
-		margin-left: 2px;
+		font-variant-numeric: tabular-nums;
 	}
 
-	/* Bot Duration & Response Time Badge */
 	.duration-badge {
 		display: inline-flex;
 		align-items: center;
-		gap: 3px;
-		font-size: 11px;
+		gap: 6px;
+		font-size: 12px;
 		font-weight: 400;
 		color: var(--muted);
-		letter-spacing: -0.01em;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.msg-when-sep {
+		color: var(--line-hover);
+	}
+
+	/* The dark theme's line colour all but vanishes on its ground. */
+	:global([data-theme='dark']) .msg-when-sep {
+		color: var(--muted-light);
 	}
 
 	.msg-wrap.is-group .msg-segment:not(:first-child) .msg:not(.is-you) {
@@ -768,7 +781,7 @@
 
 	/* A Bot message's last line: its commands, its tag, its time and how long it took. */
 	.msg-foot {
-		margin-top: 6px;
+		margin-top: 12px;
 	}
 
 	.msg-foot-line {
@@ -784,7 +797,7 @@
 		display: inline-flex;
 		flex-shrink: 0;
 		align-items: center;
-		gap: 8px;
+		gap: 6px;
 		margin-left: auto;
 		white-space: nowrap;
 	}

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A reply's last line reads as the design draws it
+
+- The line under a reply had a boxed terminal icon, a bold "8 commands" and the reply time and clock in a monospaced face ("5m 9s 16:38"). It now has the plain terminal prompt icon, the count in normal weight, and the time in the text's own face with even digits, at 12px. In Chinese the reply time reads "5 分 9 秒" (English keeps "5m 9s"), and a faint "·" stands between it and the clock time. The line sits 12px under the reply instead of 6px. The live timer on a working reply speaks the same way.
+
 ### A folder a message links to opens with what is in it
 
 - A Bot's reply that linked a folder ("samples are in [voice_samples/ja/](…), I picked 7") opened the files pane on a single row named `ja` and "This kind of file can't be previewed": the pane built its tree from the paths the message named and took every one for a file. It now asks the Mac whether a cited path is a folder; a folder shows up in the tree with what is in it, open, and its page lists the files to click. A file attachment whose type the name doesn't tell is still treated as a file.

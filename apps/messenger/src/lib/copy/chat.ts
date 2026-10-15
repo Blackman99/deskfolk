@@ -1,3 +1,4 @@
+import type { SpanUnit } from "../chat/duration.ts";
 import type { CopyShape } from "./shape.ts";
 
 export const zh = {
@@ -104,6 +105,9 @@ export const zh = {
   replyTo: (name: string) => `回复 ${name}`,
   replyToDeleted: "回复已删除的 Bot",
   replyTime: (time: string) => `耗时 ${time}`,
+  /** One part of how long a reply took, said in words: "5 分 9 秒", "1 小时 29 分", "12.3 秒". */
+  spanPart: (count: string, unit: SpanUnit) =>
+    `${count} ${{ y: "年", mo: "个月", w: "周", d: "天", h: "小时", m: "分", s: "秒" }[unit]}`,
   replyPrompt: "发消息给",
   openAssociatedFileTree: "打开关联的文件树",
   noAssociatedFiles: "无关联文件",
@@ -224,6 +228,7 @@ export const en: CopyShape<typeof zh> = {
   replyTo: (name: string) => `Replying to ${name}`,
   replyToDeleted: "Replying to a deleted Bot",
   replyTime: (time: string) => `${time}`,
+  spanPart: (count: string, unit: SpanUnit) => `${count}${unit}`,
   replyPrompt: "Message",
   openAssociatedFileTree: "Open associated file tree",
   noAssociatedFiles: "No associated files",

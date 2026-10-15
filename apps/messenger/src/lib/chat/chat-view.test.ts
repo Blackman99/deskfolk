@@ -20,6 +20,7 @@ import {
   restartAnnounced,
 } from "./chat-view.ts";
 import type { TranscriptItem } from "./transcript.ts";
+import { COPY } from "../copy.ts";
 
 describe("chat-view helpers", () => {
   test("formatDurationMs formats seconds and minutes correctly", () => {
@@ -37,6 +38,20 @@ describe("chat-view helpers", () => {
     expect(formatDurationMs(10 * 86_400_000)).toBe("1w 3d");
     expect(formatDurationMs(45 * 86_400_000)).toBe("1mo 2w");
     expect(formatDurationMs(400 * 86_400_000)).toBe("1y 1mo");
+  });
+
+  test("formatDurationMs says a span the way the copy does: 5 分 9 秒 in Chinese, 5m 9s in English", () => {
+    const zh = COPY.zh.chat.spanPart;
+    const en = COPY.en.chat.spanPart;
+    expect(formatDurationMs(309_000, zh)).toBe("5 分 9 秒");
+    expect(formatDurationMs(12_340, zh)).toBe("12.3 秒");
+    expect(formatDurationMs(89 * 60_000, zh)).toBe("1 小时 29 分");
+    expect(formatDurationMs(50 * 3_600_000, zh)).toBe("2 天 2 小时");
+    expect(formatDurationMs(45 * 86_400_000, zh)).toBe("1 个月 2 周");
+    expect(formatDurationMs(309_000, en)).toBe("5m 9s");
+    expect(formatDurationMs(12_340, en)).toBe("12.3s");
+    expect(formatLiveDuration("2026-09-19T02:00:00.000Z", Date.parse("2026-09-19T02:05:09.000Z"), zh)).toBe("5 分 9 秒");
+    expect(formatLiveDuration("not a date", 0, zh)).toBe("0.0 秒");
   });
 
   test("calculateBotDuration computes duration from turn and trigger", () => {
