@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HttpError } from "./errors";
-import { listWorkspaceDir, locateWorkspaceFile, writeWorkspaceFile, WORKSPACE_LIST_LIMIT } from "./workspace-browse";
+import { listCitedDir, listWorkspaceDir, locateCitedFile, locateWorkspaceFile, writeWorkspaceFile, WORKSPACE_LIST_LIMIT } from "./workspace-browse";
 
 const dirs: string[] = [];
 
@@ -106,4 +106,59 @@ test("locateWorkspaceFile serves files larger than the UTF-8 write cap", () => {
     expect((error as HttpError).code).toBe("too_large");
     expect((error as HttpError).status).toBe(422);
   }
+});
+
+function statusOf(run: () => unknown): number | null {
+  try {
+    run();
+    return null;
+  } catch (error) {
+    return error instanceof HttpError ? error.status : -1;
+  }
+}
+
+test("a folder elsewhere on the Mac lists by its absolute path, with absolute entries", () => {
+  const root = ws();
+  const outside = realpathSync(ws());
+  mkdirSync(join(outside, "site"));
+  writeFileSync(join(outside, "index.html"), "<p>hi</p>");
+  writeFileSync(join(outside, ".env"), "SECRET=1");
+  const page = listCitedDir(root, outside);
+  expect(page.path).toBe(outside);
+  expect(page.items.map((row) => `${row.kind}:${row.path}`)).toEqual([`dir:${join(outside, "site")}`, `file:${join(outside, "index.html")}`]);
+  // Without a workspace too: the path says where it is.
+  expect(listCitedDir(null, outside).items).toHaveLength(2);
+  // Written relative, a path is the workspace's, and leaving it is still an escape.
+  expect(statusOf(() => listCitedDir(root, "../x"))).toBe(422);
+  expect(statusOf(() => listCitedDir(null, "src"))).toBe(422);
+  expect(statusOf(() => listCitedDir(root, join(outside, "index.html")))).toBe(422);
+  expect(statusOf(() => listCitedDir(root, join(outside, "gone")))).toBe(404);
+});
+
+test("an absolute path into the workspace keeps the workspace's rules", () => {
+  const root = realpathSync(ws());
+  mkdirSync(join(root, "src"));
+  writeFileSync(join(root, "src", "app.ts"), "export {}\n");
+  writeFileSync(join(root, "src", ".hidden"), "x");
+  expect(listCitedDir(root, join(root, "src")).items.map((row) => row.path)).toEqual([join(root, "src", "app.ts")]);
+  expect(locateCitedFile(root, join(root, "src", "app.ts"))).toMatchObject({ abs: join(root, "src", "app.ts"), name: "app.ts" });
+});
+
+test("a file elsewhere on the Mac reads by its absolute path or from ~", () => {
+  const root = ws();
+  const home = realpathSync(ws());
+  mkdirSync(join(home, "projects"));
+  writeFileSync(join(home, "projects", "notes.md"), "# notes\n");
+  expect(locateCitedFile(root, join(home, "projects", "notes.md"))).toEqual({ abs: join(home, "projects", "notes.md"), name: "notes.md", mime: "text/markdown" });
+  expect(locateCitedFile(root, "~/projects/notes.md", { home }).abs).toBe(join(home, "projects", "notes.md"));
+  // A folder named from ~ answers with where it is, so the window can open it on the Mac.
+  const page = listCitedDir(root, "~/projects", { home });
+  expect(page.path).toBe(join(home, "projects"));
+  expect(page.items.map((row) => row.path)).toEqual([join(home, "projects", "notes.md")]);
+  expect(statusOf(() => locateCitedFile(root, "~/projects", { home }))).toBe(422);
+  expect(statusOf(() => locateCitedFile(root, "~/projects/gone.md", { home }))).toBe(404);
+  expect(statusOf(() => locateCitedFile(root, "../projects/notes.md", { home }))).toBe(422);
+  // Saving stays inside the workspace.
+  expect(statusOf(() => writeWorkspaceFile(root, join(home, "projects", "notes.md"), "x"))).toBe(422);
+  expect(readFileSync(join(home, "projects", "notes.md"), "utf8")).toBe("# notes\n");
 });

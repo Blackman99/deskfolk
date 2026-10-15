@@ -195,6 +195,9 @@ test("the gate picks the adapter for the view, needs a target, and refuses unsav
   expect(annotateGate({ target, kind: "video", sourceMode: false, dirty: false })).toEqual({ ok: true, adapter: "media" });
   expect(annotateGate({ target, kind: "directory", sourceMode: false, dirty: false })).toEqual({ ok: false, reason: "kind" });
   expect(annotateGate({ target: null, kind: "text", sourceMode: true, dirty: false })).toEqual({ ok: false, reason: "no-target" });
+  // A file opened from elsewhere on the Mac has nobody to hand a note to.
+  expect(annotateGate({ target, kind: "text", sourceMode: true, dirty: false, outside: true })).toEqual({ ok: false, reason: "outside" });
+  expect(annotateGate({ target, kind: "directory", sourceMode: false, dirty: false, outside: true })).toEqual({ ok: false, reason: "kind" });
   expect(annotateGate({ target, kind: "text", sourceMode: true, dirty: true })).toEqual({ ok: false, reason: "dirty" });
   expect(annotateGate({ target, kind: "markdown", sourceMode: false, dirty: true })).toEqual({ ok: false, reason: "dirty" });
   // An image has no editor to be dirty in.

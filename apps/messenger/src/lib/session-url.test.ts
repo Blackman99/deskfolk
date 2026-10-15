@@ -5,6 +5,7 @@ import {
   overlayFromUrl,
   previewFromUrl,
   attachmentFromUrl,
+  sanitizeCitedPreviewPath,
   sanitizePreviewPath,
   selectionFromUrl,
   sessionFromUrl,
@@ -140,6 +141,19 @@ test("sanitizePreviewPath rejects escapes and empty values", () => {
   expect(sanitizePreviewPath("/etc/passwd")).toBeNull();
   expect(sanitizePreviewPath("https://example.com/a")).toBeNull();
   expect(sanitizePreviewPath("../secret")).toBeNull();
+});
+
+test("a preview keeps a path elsewhere on the Mac as written, and never one that climbs", () => {
+  expect(sanitizeCitedPreviewPath("/Users/me/curio/index.html")).toBe("/Users/me/curio/index.html");
+  expect(sanitizeCitedPreviewPath("~/my-projects/curio/")).toBe("~/my-projects/curio");
+  expect(sanitizeCitedPreviewPath("C:\\notes\\a.md")).toBe("C:\\notes\\a.md");
+  expect(sanitizeCitedPreviewPath("/")).toBe("/");
+  expect(sanitizeCitedPreviewPath(" ./out/a.html ")).toBe("out/a.html");
+  expect(sanitizeCitedPreviewPath("/Users/me/../other/a.md")).toBeNull();
+  expect(sanitizeCitedPreviewPath("../secret")).toBeNull();
+  expect(sanitizeCitedPreviewPath("https://example.com/a")).toBeNull();
+  const url = sessionUrl(at("?s=s1"), view({ selectedId: "s1", previewRelpath: "/Users/me/curio/index.html" }));
+  expect(previewFromUrl(new URL(url!, "http://localhost:5173/"))).toBe("/Users/me/curio/index.html");
 });
 
 test("overlayFromFlags prefers settings, then the drawer, then workspace", () => {

@@ -10,10 +10,11 @@
 import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import { targetFor } from "../annotations/model.ts";
 import type { MessengerRuntime } from "../runtime.svelte.ts";
-import { sanitizePreviewPath } from "../session-url.ts";
+import { sanitizeCitedPreviewPath, sanitizePreviewPath } from "../session-url.ts";
 import { findAttachmentById, findAttachmentByPath, siblingsForPath } from "./artifact-lookup.ts";
 import { clampPreviewWidth, loadPreviewWidth, savePreviewWidth } from "./preview-width.ts";
 import { trackPointerDrag } from "../pointer-drag.ts";
+import { baseName } from "../paths.ts";
 
 /** What the shell binds the workspace explorer and the preview to: both can ask before they close. */
 type PaneHandle = {
@@ -31,6 +32,9 @@ export type ShellArtifactDeps = {
   workspacePane: () => PaneHandle | null;
   previewPane: () => PaneHandle | null;
 };
+
+/** The stand-in row for a file on screen that no attachment backs (as `preview-context.ts` names it). */
+const ON_SCREEN = "virtual-preview-";
 
 export class ShellArtifact {
   private readonly getRuntime: () => MessengerRuntime;
@@ -119,7 +123,7 @@ export class ShellArtifact {
         kind: "preview",
         // Whose preview this is decides which pane turns: every conversation has one.
         sessionId: sessionId ?? owner?.session_id ?? selected?.id ?? null,
-        relpath: sanitizePreviewPath(relpath),
+        relpath: sanitizeCitedPreviewPath(relpath),
         attachmentId: att?.id ?? null,
         messageId: sourceMessageId,
         taskId: taskId ?? null,
@@ -129,17 +133,38 @@ export class ShellArtifact {
       return;
     }
     if (runtime.hosted) {
-      // A remote URL never carries a file path, so the preview goes by attachment id.
+      // A remote URL never carries a file path, so the preview goes by attachment id. A path no
+      // attachment backs — a link, or a file elsewhere on the Mac — goes by the row the tree
+      // lists for it, or a stand-in beside those rows, as a workbench tab does: going by an
+      // attachment alone, pressing it opened nothing.
+      const sourceMessageId = messageId ?? att?.message_id ?? null;
+      const found = att ?? findAttachmentByPath(snapshot.messages, relpath);
+      const path = found ? null : sanitizeCitedPreviewPath(relpath);
+      // The stand-in is for the file on screen only; the next file never inherits it.
+      let rows = siblings?.filter((r) => !r.id.startsWith(ON_SCREEN)) ?? null;
+      let row: Attachment | null = found;
+      if (path) {
+        rows = rows ?? siblingsForPath(snapshot.messages, path, null, sourceMessageId);
+        row = rows.find((r) => r.workspace_relpath === path) ?? null;
+        if (!row) {
+          const owner = snapshot.messages.find((message) => message.id === sourceMessageId);
+          row = {
+            id: `${ON_SCREEN}${path}`, message_id: sourceMessageId ?? "",
+            workspace_relpath: path, original_filename: baseName(path) || path, created_at: owner?.created_at ?? "",
+          };
+          rows = [...rows, row];
+        }
+      }
       runtime.previewRelpath = null;
-      runtime.previewAttachmentId = att?.id ?? findAttachmentByPath(snapshot.messages, relpath)?.id ?? null;
-      runtime.previewMessageId = messageId ?? att?.message_id ?? null;
+      runtime.previewAttachmentId = row?.id ?? null;
+      runtime.previewMessageId = sourceMessageId;
       runtime.forceArtifactTree = forceTree;
       runtime.previewTaskId = taskId ?? null;
-      runtime.previewSiblings = siblings ?? null;
+      runtime.previewSiblings = rows;
       return;
     }
     runtime.previewAttachmentId = null;
-    runtime.previewRelpath = sanitizePreviewPath(relpath);
+    runtime.previewRelpath = sanitizeCitedPreviewPath(relpath);
     runtime.previewMessageId = messageId ?? att?.message_id ?? null;
     runtime.forceArtifactTree = forceTree;
     runtime.previewTaskId = taskId ?? null;

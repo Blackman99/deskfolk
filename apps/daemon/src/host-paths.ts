@@ -56,6 +56,26 @@ function assertHostReadable(abs: string, fs: HostFs = {}): string {
   return resolved;
 }
 
+/**
+ * A file on this machine named by its absolute path, for reading: the same symlink walk, never in
+ * another user's home, and a folder is not a file.
+ */
+export function locateHostFile(input: string, fs: HostFs = {}): string {
+  const platform = platformOf(fs);
+  const resolved = resolveHostPath(input, fs);
+  if (isForeignHome(resolved, currentHome(fs), platform)) {
+    throw new HttpError(403, "host_permission", permissionMessage(platform));
+  }
+  let st;
+  try {
+    st = (fs.stat ?? statSync)(resolved);
+  } catch (error) {
+    throw hostFsError(error, platform, "could not read file");
+  }
+  if (st.isDirectory()) throw new HttpError(422, "invalid_args", "path is a directory");
+  return resolved;
+}
+
 export function listHostDir(input: string, fs: HostFs = {}): HostTreePage {
   const platform = platformOf(fs);
   const resolved = assertHostReadable(resolveHostPath(input, fs), fs);
@@ -152,11 +172,11 @@ function isDenied(error: unknown): boolean {
   return code === "EACCES" || code === "EPERM" || code === "EAUTH";
 }
 
-function hostFsError(error: unknown, platform: NodeJS.Platform): HttpError {
+function hostFsError(error: unknown, platform: NodeJS.Platform, fallback = "could not list directory"): HttpError {
   if (error instanceof HttpError) return error;
   if (isDenied(error)) return new HttpError(403, "host_permission", permissionMessage(platform));
   if (error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "ENOENT") {
     return new HttpError(404, "not_found", "path not found");
   }
-  return new HttpError(422, "invalid_args", "could not list directory");
+  return new HttpError(422, "invalid_args", fallback);
 }

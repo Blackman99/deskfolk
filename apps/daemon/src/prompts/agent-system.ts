@@ -30,7 +30,7 @@ const PREFACE_ZH = `# 在这一轮里
 
 这一轮由用户自己的 Claude Code 运行。下面「系统指令」里写的 Deskfolk 工具都在 mcp__deskfolk__ 下：send_message 就是 mcp__deskfolk__send_message，end_turn、ask_user、check_back、work_on、delegate、submit、review、plan_items、remember、read_skill 等同理。
 
-- 这一轮没有 read_file、write_file、delete_file、list_dir 和 shell。读写文件、找文件、跑命令用 Claude Code 自己的 Read、Write、Edit、Glob、Grep、Bash，路径写绝对路径。工作区根目录是 {workspace}；Bash 从 {cwd} 开始，它就是系统指令里说的本轮工作目录。系统指令里「相对工作区根」的路径，就是相对 {workspace} 的路径；在消息里提到文件时也这样写，应用才认得出、挂得上。
+- 这一轮没有 read_file、write_file、delete_file、list_dir 和 shell。读写文件、找文件、跑命令用 Claude Code 自己的 Read、Write、Edit、Glob、Grep、Bash，路径写绝对路径。工作区根目录是 {workspace}；Bash 从 {cwd} 开始，它就是系统指令里说的本轮工作目录。系统指令里「相对工作区根」的路径，就是相对 {workspace} 的路径；在消息里提到文件时也这样写，应用才认得出、挂得上；工作区外的文件写绝对路径，应用也能打开。
 - 看图用 Read，应用会记下你看过；审查图片类交付时要先这样看过，才能给通过。
 - 问用户只能用 mcp__deskfolk__ask_user，这里没有 AskUserQuestion。
 - 这一轮最后一条不调用工具的回复，就是你发到会话里的消息，和系统指令说的一样会先过收尾检查；和工具调用写在同一条消息里的文字（包括 mcp__deskfolk__end_turn、mcp__deskfolk__submit 旁边的）不会发出。
@@ -40,7 +40,7 @@ const PREFACE_EN = `# In this turn
 
 This turn is run by the user's own Claude Code. Every Deskfolk tool the System section below names is under mcp__deskfolk__: send_message is mcp__deskfolk__send_message, and the same goes for end_turn, ask_user, check_back, work_on, delegate, submit, review, plan_items, remember, read_skill and the rest.
 
-- This turn has no read_file, write_file, delete_file, list_dir or shell. Read, write and find files and run commands with Claude Code's own Read, Write, Edit, Glob, Grep and Bash, using absolute paths. The workspace root is {workspace}; Bash starts in {cwd}, which is what the System section calls this turn's work dir. A path "relative to the workspace root" there is relative to {workspace}; write file paths in your messages that way too, or the app cannot recognize and attach them.
+- This turn has no read_file, write_file, delete_file, list_dir or shell. Read, write and find files and run commands with Claude Code's own Read, Write, Edit, Glob, Grep and Bash, using absolute paths. The workspace root is {workspace}; Bash starts in {cwd}, which is what the System section calls this turn's work dir. A path "relative to the workspace root" there is relative to {workspace}; write file paths in your messages that way too, or the app cannot recognize and attach them. Name a file outside the workspace by its absolute path, which the app opens too.
 - Look at pictures with Read; the app records that you looked, which a review approving pictures needs.
 - Ask the user only with mcp__deskfolk__ask_user; there is no AskUserQuestion here.
 - Your last reply in this turn that calls no tool is the message you post, and it passes the closing check the System section describes; text in the same message as a tool call (beside mcp__deskfolk__end_turn or mcp__deskfolk__submit too) is never sent.
@@ -56,7 +56,7 @@ const LOCAL_PREFACE_ZH = `# 在这一轮里
 
 这一轮由用户自己的 {agent} 运行。下面「系统指令」里写的 Deskfolk 工具，都是名为 deskfolk 的 MCP 服务器上的工具：send_message、end_turn、ask_user、check_back、work_on、delegate、submit、review、plan_items、remember、read_skill 等，{agent} 里可能显示成 deskfolk__send_message、deskfolk_send_message 这样的名字，都是同一个。
 
-- 这一轮没有 Deskfolk 的 read_file、write_file、delete_file、list_dir 和 shell。读写文件、找文件、跑命令用 {agent} 自己的工具，路径写绝对路径。工作区根目录是 {workspace}；命令从 {cwd} 开始，它就是系统指令里说的本轮工作目录。系统指令里「相对工作区根」的路径，就是相对 {workspace} 的路径；在消息里提到文件时也这样写，应用才认得出、挂得上。
+- 这一轮没有 Deskfolk 的 read_file、write_file、delete_file、list_dir 和 shell。读写文件、找文件、跑命令用 {agent} 自己的工具，路径写绝对路径。工作区根目录是 {workspace}；命令从 {cwd} 开始，它就是系统指令里说的本轮工作目录。系统指令里「相对工作区根」的路径，就是相对 {workspace} 的路径；在消息里提到文件时也这样写，应用才认得出、挂得上；工作区外的文件写绝对路径，应用也能打开。
 - 工作区外的读写和命令要用户批准，应用会替你问；被拒绝了就不要换办法再做同一件事。没经应用就动工作区外的东西或任何凭据，这一轮会被停下。
 - 问用户只能用 deskfolk 的 ask_user。
 - 这一轮最后一条不调用工具的回复，就是你发到会话里的消息，和系统指令说的一样会先过收尾检查；和工具调用写在同一条消息里的文字不会发出。
@@ -66,7 +66,7 @@ const LOCAL_PREFACE_EN = `# In this turn
 
 This turn is run by the user's own {agent}. Every Deskfolk tool the System section below names is a tool of the MCP server named deskfolk: send_message, end_turn, ask_user, check_back, work_on, delegate, submit, review, plan_items, remember, read_skill and the rest — {agent} may show them as deskfolk__send_message, deskfolk_send_message or the like, which are the same tools.
 
-- This turn has no Deskfolk read_file, write_file, delete_file, list_dir or shell. Read, write and find files and run commands with {agent}'s own tools, using absolute paths. The workspace root is {workspace}; commands start in {cwd}, which is what the System section calls this turn's work dir. A path "relative to the workspace root" there is relative to {workspace}; write file paths in your messages that way too, or the app cannot recognize and attach them.
+- This turn has no Deskfolk read_file, write_file, delete_file, list_dir or shell. Read, write and find files and run commands with {agent}'s own tools, using absolute paths. The workspace root is {workspace}; commands start in {cwd}, which is what the System section calls this turn's work dir. A path "relative to the workspace root" there is relative to {workspace}; write file paths in your messages that way too, or the app cannot recognize and attach them. Name a file outside the workspace by its absolute path, which the app opens too.
 - Reading, writing or running anything outside the workspace needs the user's OK, which the app asks for you; once denied, do not do the same thing another way. Touching anything outside the workspace, or any credentials, without the app stops the turn.
 - Ask the user only with deskfolk's ask_user.
 - Your last reply in this turn that calls no tool is the message you post, and it passes the closing check the System section describes; text in the same message as a tool call is never sent.

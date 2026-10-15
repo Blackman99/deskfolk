@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Files and folders outside the workspace open too
+
+- The workspace bounds where Bots work, not what you can open. A message that named `~/my-projects/curio` or `/Users/you/site/index.html` showed a link that failed when pressed (or no link at all for a path starting with `/`). Such a path now opens like any other: a folder lists what is in it, and its files open in the preview. Routes such as `/sidebar` or `/tasks/{id}` stay plain text.
+- On the phone, a link to a file the message did not attach (any file outside the workspace, and a workspace file named only in the text) opens too; pressing it used to do nothing.
+- A file from outside the workspace is read-only here: the source view takes no typing, it has no annotation bar, and the tree's menu does not offer Move to Trash. Show in Finder, Copy absolute path and opening a terminal there work as for workspace files.
+- A Bot run by your own Claude Code or another local agent is now told to name a file outside the workspace by its absolute path, so the app can open it.
+
 ### A busy daemon no longer freezes the window
 
 - Every 5 seconds, and whenever the window gained or lost focus, the window told the daemon where you were looking and waited for its answer on the thread that draws the window and handles every click. While the daemon was slow to answer, for instance in the middle of a long conversation, the window stopped responding for up to 3 seconds each time, which reads as frozen. The report now goes from a thread of its own, and only the newest one is sent once the daemon is free again.

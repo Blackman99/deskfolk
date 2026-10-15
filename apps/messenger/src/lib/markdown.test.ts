@@ -65,6 +65,13 @@ test("backticks and extraPaths become clickable artifact links", () => {
   expect(html).toContain('href="artifact:notes%2Fa.txt"');
 });
 
+test("a path elsewhere on the Mac links like a workspace one; a route stays text", () => {
+  const html = renderMarkdown("克隆到了 [~/my-projects/curio](~/my-projects/curio)，截图 `/Users/me/shots/hall.png`，页面 [首页](/Users/me/curio/index.html)，路由 `/sidebar` 和 [x](/sidebar)");
+  const hrefs = [...html.matchAll(/href="([^"]+)"/g)].map((match) => parseArtifactHref(match[1]!));
+  expect(hrefs).toEqual(["~/my-projects/curio", "/Users/me/shots/hall.png", "/Users/me/curio/index.html"]);
+  expect(html).toContain("<code>/sidebar</code>");
+});
+
 test("fenced code is not turned into artifact links", () => {
   const html = renderMarkdown("```\nreport.md\n```", { extraPaths: ["report.md"] });
   expect(html).toContain("<pre>");

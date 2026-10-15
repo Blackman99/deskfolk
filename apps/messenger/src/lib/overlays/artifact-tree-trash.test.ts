@@ -193,3 +193,38 @@ test('no Move to Trash without a client that can ask for it', async () => {
 		expect(dialog()).toBeNull();
 	} finally { close(); }
 });
+
+test('a row from elsewhere on the Mac copies its absolute path, and has no workspace path or Trash', async () => {
+	const asked: string[][] = [];
+	const outside = '/Users/you/curio/notes.md';
+	const { host, close } = render(ArtifactPreview, {
+		attachment: null, relpath: outside,
+		siblings: [
+			{ id: 'virtual-m-o', message_id: 'm', workspace_relpath: outside, original_filename: 'notes.md', created_at: '' },
+			{ id: 'att-1', message_id: 'm', workspace_relpath: 'docs/a.md', original_filename: 'a.md', created_at: '' },
+		],
+		api: {
+			kind: 'remote',
+			workspaceTree: async () => { throw new Error('path is not a directory'); },
+			getWorkspaceFileBlob: async () => new Blob(['# notes\n'], { type: 'text/markdown' }),
+			trashWorkspacePaths: async (paths: string[]) => { asked.push(paths); return { trashed: paths, failed: [] }; },
+		} as never,
+		workspacePath: '/Users/you/work', t, mode: 'cited', onClose() {}, onSelect() {},
+	});
+	try {
+		await settle();
+		const menu = menuOn(host, outside);
+		expect(menu.querySelector('[data-copy-abs-path]')).not.toBeNull();
+		expect(menu.querySelector('[data-copy-path]')).toBeNull();
+		expect(menu.querySelector('[data-trash]')).toBeNull();
+		press(row(host, outside), 'Backspace', { metaKey: true });
+		press(menu, 'Escape');
+		expect(dialog()).toBeNull();
+		expect(asked).toEqual([]);
+		// A workspace row beside it keeps both.
+		const inside = menuOn(host, 'docs/a.md');
+		expect(inside.querySelector('[data-copy-path]')).not.toBeNull();
+		expect(inside.querySelector('[data-trash]')).not.toBeNull();
+		press(inside, 'Escape');
+	} finally { close(); }
+});

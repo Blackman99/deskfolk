@@ -44,6 +44,8 @@
 		onPickAnnotation?: (id: string) => void;
 		/** Test seam: how Monaco is loaded; happy-dom cannot run the real one. */
 		loadMonaco?: () => Promise<MonacoApi>;
+		/** A file that cannot be saved from here (one elsewhere on the Mac): read, never typed into. */
+		readOnly?: boolean;
 	}
 
 	let {
@@ -60,6 +62,7 @@
 		onAnnotate,
 		onPickAnnotation,
 		loadMonaco = ensureMonaco,
+		readOnly = false,
 	}: Props = $props();
 	/**
 	 * The file, compared by value. A conversation's preview hands `path` down as a field of the
@@ -232,7 +235,7 @@
 					value: doc,
 					language: 'plaintext',
 					theme: monacoThemeName(themeManager.resolved),
-					readOnly: false,
+					readOnly: untrack(() => readOnly),
 					wordWrap: wrapOn ? 'on' : 'off',
 					// The column for annotation marks, only while the file has some: a file nobody
 					// annotated keeps its code where it always was.
@@ -387,6 +390,11 @@
 	$effect(() => {
 		const marks = annotations.length > 0;
 		editor?.updateOptions({ glyphMargin: marks });
+	});
+
+	$effect(() => {
+		const locked = readOnly;
+		editor?.updateOptions({ readOnly: locked });
 	});
 
 	// A new `code` (the file read again) replaces a buffer with nothing unsaved in it. Only a new

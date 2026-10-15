@@ -162,9 +162,11 @@ function fakeEditor(initial: string, fold: (text: string) => string = (text) => 
 
 function fakeMonaco(opts: { foldLineEndings?: boolean } = {}) {
   const editors: FakeEditor[] = [];
+  const inits: Array<{ value: string; readOnly?: boolean }> = [];
   const monaco = {
     editor: {
-      create(_el: HTMLElement, init: { value: string }) {
+      create(_el: HTMLElement, init: { value: string; readOnly?: boolean }) {
+        inits.push(init);
         // Monaco folds a buffer's mixed or lone-CR line endings when it builds or refills the model.
         const editor = fakeEditor(init.value, opts.foldLineEndings ? (text) => text.replace(/\r\n?/g, "\n") : undefined);
         editors.push(editor);
@@ -179,7 +181,7 @@ function fakeMonaco(opts: { foldLineEndings?: boolean } = {}) {
       MouseTargetType: { GUTTER_GLYPH_MARGIN: 2, GUTTER_LINE_NUMBERS: 3, CONTENT_TEXT: 6 },
     },
   };
-  return { editors, loadMonaco: async () => monaco as never };
+  return { editors, inits, loadMonaco: async () => monaco as never };
 }
 
 type Open = {
@@ -473,6 +475,28 @@ test("an edit carried Source → Rendered → Source is still unsaved: no annota
   click(buttonByText(document.body, t.stream.artifactDiscard));
   expect(closed).toBe(1);
   expect(editors[1]!.getValue()).toBe(DISK);
+});
+
+test("a file opened from elsewhere on the Mac reads, but takes no edit and no note", async () => {
+  const { editors, inits, loadMonaco } = fakeMonaco();
+  const { host } = open({ relpath: "/Users/me/notes/plan.md", body: "# 计划\n", type: "text/markdown", loadMonaco });
+  await settle();
+  expect(host.textContent).toContain("计划");
+  expect(host.querySelector("[data-annotation-toggle]")).toBeNull();
+  click(buttonByText(host, t.stream.artifactSource));
+  await settle();
+  expect(editors).toHaveLength(1);
+  expect(inits[0]!.readOnly).toBe(true);
+  expect(hint(host)).toBeNull();
+  expect(host.querySelector("[data-annotation-toggle]")).toBeNull();
+
+  // The same file under the workspace root is the workspace's own.
+  const inside = open({ relpath: "/w/notes/plan.md", body: "# 计划\n", type: "text/markdown", loadMonaco });
+  await settle();
+  click(buttonByText(inside.host, t.stream.artifactSource));
+  await settle();
+  expect(inits[1]!.readOnly).toBe(false);
+  expect(hint(inside.host)).toBe("");
 });
 
 test("closing from the rendered view with an edit carried over from Source saves that edit", async () => {

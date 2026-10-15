@@ -11,7 +11,7 @@ import { parseImageVariant } from "../../image-variant";
 import { readLocalModels } from "../../local-model";
 import { probeEndpointModels, withLocalFacts } from "../../probe-models";
 import { resolveApiFormat, resolveWorkspaceId } from "../../store/shared";
-import { listWorkspaceDir, locateWorkspaceFile, writeWorkspaceFile } from "../../workspace-browse";
+import { listCitedDir, locateCitedFile, writeWorkspaceFile } from "../../workspace-browse";
 import { trashWorkspacePaths } from "../../workspace-trash";
 import { fileResponse, occurred, publishBotModelChanges } from "../helpers";
 import type { RouteCtx } from "../route-ctx";
@@ -145,11 +145,11 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
     return store.settings().then((value) => jsonResponse(value, 200, null));
   }
 
+  // Both read a workspace path, or a path elsewhere on this Mac written absolute: the workspace
+  // bounds where Bots work, not what you can open. Writes and the Trash stay inside it.
   if (method === "GET" && path === "/v1/workspace/tree") {
-    const root = store.workspacePath();
-    if (!root) throw new HttpError(422, "invalid_args", "workspace is not set");
     const rel = url.searchParams.get("path") ?? "";
-    return jsonResponse(listWorkspaceDir(root, rel), 200, null);
+    return jsonResponse(listCitedDir(store.workspacePath(), rel), 200, null);
   }
 
   if (method === "GET" && path === "/v1/host/tree") {
@@ -158,15 +158,13 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
   }
 
   if (method === "GET" && path === "/v1/workspace/file") {
-    const root = store.workspacePath();
-    if (!root) throw new HttpError(422, "invalid_args", "workspace is not set");
     const rel = url.searchParams.get("path") ?? "";
     const variant = parseImageVariant(url.searchParams.get("size"));
-    const located = locateWorkspaceFile(root, rel);
+    const located = locateCitedFile(store.workspacePath(), rel);
     if (!existsSync(located.abs)) {
       throw new HttpError(404, "not_found", "path not found");
     }
-    return fileResponse(located.abs, located.mime, located.rel.split("/").pop() ?? located.rel, variant, url.searchParams.get("range") ?? request.headers.get("Range"));
+    return fileResponse(located.abs, located.mime, located.name, variant, url.searchParams.get("range") ?? request.headers.get("Range"));
   }
 
   if (method === "PUT" && path === "/v1/workspace/file") {

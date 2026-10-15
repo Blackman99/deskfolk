@@ -323,7 +323,7 @@ Needs approval before it runs: reading or changing anything outside the workspac
 _Avoid_: gate, ConsentGate
 
 **Outside the workspace**:
-A path that, after `realpath`, does not fall under the workspace root prefix. A symlink inside the workspace follows its target: if the target is outside the workspace, so is the symlink.
+A path that, after `realpath`, does not fall under the workspace root prefix. A symlink inside the workspace follows its target: if the target is outside the workspace, so is the symlink. It bounds Bots: you opening a file or folder outside the workspace from a message needs no approval, and is read-only ([ADR 0090](docs/adr/0090-the-workspace-bounds-bots-not-you.md)).
 _Avoid_: string prefix only, judging by inode / hard link
 
 **Workspace shell**:
@@ -373,7 +373,7 @@ _Avoid_: bypassing same-plan uniqueness, opening a turn bypasses a hold, group m
 _Avoid_: @-mentioning without joining the group, implicitly creating a Bot for an unknown name
 
 **Artifact**:
-A workspace-relative path, or an `http`/`https` link, referenced in a message; the file itself lives in the workspace (or at the remote URL), and files written during a turn appear in its final message automatically (not those the turn deleted again). Opening one shows it in the preview panel to the right of the chat (image / audio and video / PDF / text / single-file HTML / Word / Excel / PowerPoint); other kinds offer a download or opening with the default app. In a handoff, the path goes into the message to the other party, with no separate kind; artifacts inside the workspace can be annotated (see "Annotation"). Details: [Behavior · Artifact](docs/behavior.en.md#artifact).
+A workspace-relative path, a file or folder on this machine written as an absolute path (outside the workspace too, read-only), or an `http`/`https` link, referenced in a message; the file itself lives in the workspace, elsewhere on the machine (or at the remote URL), and files written during a turn appear in its final message automatically (not those the turn deleted again). Opening one shows it in the preview panel to the right of the chat (image / audio and video / PDF / text / single-file HTML / Word / Excel / PowerPoint); other kinds offer a download or opening with the default app. In a handoff, the path goes into the message to the other party, with no separate kind; artifacts inside the workspace can be annotated (see "Annotation"). Details: [Behavior · Artifact](docs/behavior.en.md#artifact).
 _Avoid_: asset library, Artifact table, snapshot copy, per-Bot artifact folder, `@file`
 
 **Annotation**:

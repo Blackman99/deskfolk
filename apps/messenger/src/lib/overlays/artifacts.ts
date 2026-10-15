@@ -4,7 +4,7 @@ import {
   looksLikeWorkspacePath,
   withoutAttachmentDeclarations,
 } from "@real-bot/protocol";
-import { joinHostPath } from "../paths.ts";
+import { hostSeparator, isAbsoluteHostPath, joinHostPath } from "../paths.ts";
 
 export { extensionOf };
 
@@ -259,9 +259,10 @@ export function artifactByteSource(opts: {
   return "workspace";
 }
 
+/** A file link: a workspace path, or one elsewhere on the Mac written absolute (`/Users/me/x`, `~/x`). */
 export function looksLikeWorkspaceHref(href: string): boolean {
   const path = href.trim();
-  if (path.startsWith("/") || path.startsWith("#") || path.startsWith("?")) return false;
+  if (path.startsWith("#") || path.startsWith("?")) return false;
   return looksLikeWorkspacePath(path);
 }
 
@@ -292,16 +293,46 @@ function decodePercentPath(path: string): string {
   return current;
 }
 
-/** Join a workspace-relative `/`-path onto an absolute workspace root, in the root's own separator. */
-export function absWorkspacePath(root: string, rel: string): string | null {
-  return joinHostPath(root, rel);
+/**
+ * A cited path that says where it is on the Mac itself — `/Users/me/x`, `~/x`, `C:\x` — rather
+ * than a workspace path. The workspace bounds where Bots work, not what you can open, so such a
+ * path opens wherever it is.
+ */
+export function isHostCitedPath(path: string): boolean {
+  const trimmed = path.trim();
+  return isAbsoluteHostPath(trimmed) || /^~[\\/]/.test(trimmed);
+}
+
+/**
+ * Where a cited path sits on the Mac: a workspace path joined onto the root in the root's own
+ * separator, an absolute one as written, one from `~` under the Mac's home once that is known.
+ */
+export function absWorkspacePath(root: string | null, path: string, home: string | null = null): string | null {
+  const trimmed = path.trim();
+  if (/^~[\\/]/.test(trimmed)) return home ? joinHostPath(home, trimmed.slice(2) || ".") : null;
+  if (isAbsoluteHostPath(trimmed)) return trimmed;
+  return root ? joinHostPath(root, trimmed) : null;
+}
+
+/** Whether a cited path is the workspace's: written relative, or absolute under its root. */
+export function citedInWorkspace(root: string | null, path: string, home: string | null = null): boolean {
+  if (!isHostCitedPath(path)) return true;
+  const abs = absWorkspacePath(root, path, home);
+  if (!root || !abs) return false;
+  const sep = hostSeparator(root);
+  const base = root.endsWith(sep) ? root.slice(0, -1) : root;
+  return abs === base || abs.startsWith(`${base}${sep}`);
 }
 
 /** Where a terminal opened on a tree row starts: the folder itself, or the one a file sits in. */
-export function terminalDirFor(root: string, path: string, kind: "file" | "dir"): string | null {
-  if (kind === "dir") return absWorkspacePath(root, path);
-  const slash = path.lastIndexOf("/");
-  return absWorkspacePath(root, slash > 0 ? path.slice(0, slash) : ".");
+export function terminalDirFor(root: string | null, path: string, kind: "file" | "dir", home: string | null = null): string | null {
+  const abs = absWorkspacePath(root, path, home);
+  if (!abs || kind === "dir") return abs;
+  const at = Math.max(abs.lastIndexOf("/"), abs.lastIndexOf("\\"));
+  if (at <= 0) return abs.slice(0, 1) === "/" ? "/" : abs;
+  const parent = abs.slice(0, at);
+  // `C:\x.md` sits in `C:\`, not in `C:`.
+  return /^[A-Za-z]:$/.test(parent) ? `${parent}${abs[at]}` : parent;
 }
 
 export function bodyMentionsPath(body: string, path: string): boolean {

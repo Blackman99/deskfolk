@@ -204,3 +204,38 @@ test('a cited file whose name says what it is is never asked about', async () =>
 		expect(host.querySelector('.artifact-dir-list')).toBeNull();
 	} finally { close(); }
 });
+
+test('a folder elsewhere on the Mac, cited from ~, lists what is in it and opens its entries by that spelling', async () => {
+	const asked: string[] = [];
+	const picked: string[] = [];
+	const dir = '~/my-projects/curio';
+	const { host, close } = render(ArtifactPreview, {
+		attachment: null, relpath: dir,
+		siblings: [{ id: 'att-1', message_id: 'm', workspace_relpath: 'work/shots/hall.png', original_filename: 'hall.png', created_at: '' }],
+		api: {
+			kind: 'remote',
+			workspaceTree: (path: string) => {
+				asked.push(path);
+				// The Mac answers from where the folder really is.
+				if (path === '~') return Promise.resolve({ path: '/Users/me', truncated: false, items: [] });
+				return path === dir
+					? Promise.resolve({ path: '/Users/me/my-projects/curio', truncated: false, items: [
+						{ name: 'lumen-landing', path: '/Users/me/my-projects/curio/lumen-landing', kind: 'dir' },
+						{ name: 'demos.json', path: '/Users/me/my-projects/curio/demos.json', kind: 'file' },
+					] })
+					: Promise.reject(new Error('path is not a directory'));
+			},
+		} as never,
+		workspacePath: '/workspace', t, mode: 'cited', onClose() {},
+		onSelect(row: { workspace_relpath: string }) { picked.push(row.workspace_relpath); },
+	});
+	try {
+		await settle();
+		expect(asked.sort()).toEqual(['~', dir]);
+		const entries = [...host.querySelectorAll('.artifact-dir-entry')];
+		// Each entry leads with its kind's glyph (a JSON file's is `{}`); the name ends the row.
+		expect(entries.map((row) => row.textContent?.trim().split(/\s+/).pop())).toEqual(['lumen-landing', 'demos.json']);
+		click(entries[1]!);
+		expect(picked).toEqual([`${dir}/demos.json`]);
+	} finally { close(); }
+});

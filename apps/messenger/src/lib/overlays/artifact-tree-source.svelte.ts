@@ -2,7 +2,7 @@ import { untrack } from "svelte";
 import type { Attachment, TaskArtifacts } from "@real-bot/protocol";
 import type { Copy } from "../copy.ts";
 import type { MessengerApi } from "../messenger-api.ts";
-import { absWorkspacePath, artifactKind, terminalDirFor } from "./artifacts.ts";
+import { absWorkspacePath, artifactKind, citedInWorkspace, isHostCitedPath, terminalDirFor } from "./artifacts.ts";
 import {
   buildCitedPathTree,
   buildTaskArtifactTree,
@@ -54,6 +54,9 @@ export class ArtifactTreeSource {
   citedListings = $state(new Map<string, ArtifactTreeNode[]>());
   #probing = new Set<string>();
   #probeClient: MessengerApi | null = null;
+  /** The Mac's home as it names it, asked for once a path cited from `~` needs a place on disk. */
+  home = $state<string | null>(null);
+  #homeClient: MessengerApi | null = null;
 
   /** What this entry handed over, less what the Mac already knows is deleted: the tree is for opening files. */
   ownPaths = $derived.by(() =>
@@ -90,15 +93,22 @@ export class ArtifactTreeSource {
   loadedWorkspaceKey: string | null | undefined = undefined;
   loadedWorkspaceClient: MessengerApi | null = null;
 
-  /** Where the rows the menu acts on sit on the machine, one a line; unknown until the workspace root is. */
+  /** Where the rows the menu acts on sit on the machine, one a line; unknown until the workspace root (or the home, for `~`) is. */
   treeMenuAbsPaths = $derived.by(() => {
-    if (!this.treeMenu || !this.#h.workspacePath()) return null;
-    const root = this.#h.workspacePath()!;
-    const paths = this.treeMenu.targets.map((node) => absWorkspacePath(root, node.path));
+    if (!this.treeMenu) return null;
+    const paths = this.treeMenu.targets.map((node) => absWorkspacePath(this.#h.workspacePath(), node.path, this.home));
     return paths.every((path) => path !== null) ? paths.join("\n") : null;
   });
   /** Anything that reaches the Mac can move files to its Trash; a stand-in client without the call cannot. */
   canTrash = $derived.by(() => typeof this.#h.api()?.trashWorkspacePaths === "function");
+  /**
+   * Whether every row the menu acts on is the workspace's. A file opened from elsewhere on the Mac
+   * has no workspace path to copy, and the Trash takes workspace files only.
+   */
+  treeMenuInWorkspace = $derived.by(() =>
+    Boolean(this.treeMenu?.targets.every((node) => citedInWorkspace(this.#h.workspacePath(), node.path, this.home)))
+  );
+  treeMenuCanTrash = $derived.by(() => this.canTrash && this.treeMenuInWorkspace);
 
   trashCopy = $derived.by(() => {
     if (!this.trashAsk) return null;
@@ -121,7 +131,7 @@ export class ArtifactTreeSource {
   });
   /** The folder a terminal opened from that row starts in: the row itself, or a file's own folder. */
   treeMenuTerminalDir = $derived.by(() =>
-    this.treeMenu && this.#h.workspacePath() && this.#h.onOpenTerminal() ? terminalDirFor(this.#h.workspacePath()!, this.treeMenu.node.path, this.treeMenu.node.kind) : null
+    this.treeMenu && this.#h.onOpenTerminal() ? terminalDirFor(this.#h.workspacePath(), this.treeMenu.node.path, this.treeMenu.node.kind, this.home) : null
   );
 
   constructor(host: ArtifactTreeSourceHost) {
@@ -194,6 +204,26 @@ export class ArtifactTreeSource {
         for (const path of candidates) if (path) void this.probeDir(client, path);
       });
     });
+
+    // A path cited from `~` opens, reveals and starts a terminal on the Mac only by its full spelling.
+    $effect(() => {
+      const client = this.#h.api();
+      if (!client || client === this.#homeClient) return;
+      const relpath = this.#h.relpath();
+      const fromHome = [relpath, ...this.ownPaths].some((path) => /^~[\\/]/.test(path.trim()));
+      if (!fromHome) return;
+      untrack(() => {
+        this.#homeClient = client;
+        this.home = null;
+        client.workspaceTree("~")
+          .then((page) => {
+            if (client === this.#homeClient) this.home = page.path;
+          })
+          .catch(() => {
+            // Unknown, the rows from `~` keep their open and copy-name entries and lose the rest.
+          });
+      });
+    });
   }
 
   /** Asks the Mac whether a cited path is a folder, and what is in it when it is. */
@@ -204,7 +234,11 @@ export class ArtifactTreeSource {
       const page = await client.workspaceTree(path);
       if (client !== this.#probeClient) return;
       this.dirProbe = new Map(this.dirProbe).set(path, "dir");
-      this.citedListings = new Map(this.citedListings).set(path, workspaceEntriesToNodes(page.items));
+      // A folder elsewhere on the Mac comes back spelled from its real place; its entries keep the
+      // spelling it was cited by (`~/x/…`), as a workspace folder's do, so the rows line up.
+      const sep = path.includes("\\") && !path.includes("/") ? "\\" : "/";
+      const items = isHostCitedPath(path) ? page.items.map((row) => ({ ...row, path: `${path}${sep}${row.name}` })) : page.items;
+      this.citedListings = new Map(this.citedListings).set(path, workspaceEntriesToNodes(items));
     } catch {
       if (client === this.#probeClient) this.dirProbe = new Map(this.dirProbe).set(path, "file");
     } finally {
@@ -280,6 +314,7 @@ export class ArtifactTreeSource {
 
   askTrash = (nodes: ArtifactTreeNode[]): void => {
     if (!this.canTrash || nodes.length === 0) return;
+    if (!nodes.every((node) => citedInWorkspace(this.#h.workspacePath(), node.path, this.home))) return;
     this.trashAsk = { nodes, busy: false, failed: null };
   };
 

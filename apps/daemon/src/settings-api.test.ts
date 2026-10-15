@@ -103,7 +103,7 @@ describe("empty roster and settings", () => {
     rmSync(workspace, { recursive: true, force: true });
   });
 
-  test("workspace tree and file are read-only inside the jail", async () => {
+  test("workspace tree and file read inside the jail, and elsewhere by an absolute path", async () => {
     const h = await start();
     const unset = await fetch(`${h.origin}/v1/workspace/tree`, { headers: auth(h) });
     expect(unset.status).toBe(422);
@@ -159,6 +159,25 @@ describe("empty roster and settings", () => {
       headers: auth(h),
     });
     expect(dirFile.status).toBe(422);
+
+    // Written absolute, a file or folder elsewhere on the Mac opens where it is; saving there does not.
+    const elsewhere = mkdtempSync(join(tmpdir(), "real-bot-elsewhere-"));
+    writeFileSync(join(elsewhere, "notes.md"), "# elsewhere\n");
+    const outsideFile = await fetch(`${h.origin}/v1/workspace/file?path=${encodeURIComponent(join(elsewhere, "notes.md"))}`, {
+      headers: auth(h),
+    });
+    expect(outsideFile.status).toBe(200);
+    expect(await outsideFile.text()).toBe("# elsewhere\n");
+    const outsideTree = await fetch(`${h.origin}/v1/workspace/tree?path=${encodeURIComponent(elsewhere)}`, { headers: auth(h) });
+    expect((await outsideTree.json() as { items: Array<{ name: string }> }).items.map((row) => row.name)).toEqual(["notes.md"]);
+    const putElsewhere = await fetch(`${h.origin}/v1/workspace/file`, {
+      method: "PUT",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ path: join(elsewhere, "notes.md"), content: "x" }),
+    });
+    expect(putElsewhere.status).toBe(422);
+    expect(readFileSync(join(elsewhere, "notes.md"), "utf8")).toBe("# elsewhere\n");
+    rmSync(elsewhere, { recursive: true, force: true });
 
     const put = await fetch(`${h.origin}/v1/workspace/file`, {
       method: "PUT",

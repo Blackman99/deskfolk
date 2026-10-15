@@ -40,8 +40,30 @@ test("buildCitedPathTree nests workspace-relative paths and sorts dirs first", (
 });
 
 test("buildCitedPathTree drops duplicates, escapes, and empty segments", () => {
-  const tree = buildCitedPathTree(["a/b.ts", "a/b.ts", "../secret", "/abs.ts", ".", ""]);
+  const tree = buildCitedPathTree(["a/b.ts", "a/b.ts", "../secret", ".", ""]);
   expect(collectTreePaths(tree)).toEqual(["a", "a/b.ts"]);
+});
+
+test("a path elsewhere on the Mac is a row of its own, holding what was cited inside it", () => {
+  const tree = buildCitedPathTree([
+    "out/a.md",
+    "~/my-projects/curio/lumen-landing/index.html",
+    "~/my-projects/curio/",
+    "/tmp/shot.png",
+    "/tmp/shot.png",
+    "C:\\notes\\b.md",
+  ]);
+  expect(tree.map((node) => [node.name, node.path, node.kind])).toEqual([
+    ["curio", "~/my-projects/curio", "dir"],
+    ["out", "out", "dir"],
+    ["b.md", "C:\\notes\\b.md", "file"],
+    ["shot.png", "/tmp/shot.png", "file"],
+  ]);
+  expect(collectTreePaths(tree.slice(0, 1))).toEqual([
+    "~/my-projects/curio",
+    "~/my-projects/curio/lumen-landing",
+    "~/my-projects/curio/lumen-landing/index.html",
+  ]);
 });
 
 test("a nested file keeps an ancestor that was also cited as a path", () => {
@@ -194,4 +216,15 @@ test('a cited path the Mac lists as a folder holds what is in it', () => {
 	// The deeper path the message cited keeps its own subtree over the listing's empty folder.
 	expect(ja.children![1]!.children!.map((node) => node.name)).toEqual(['deep.txt']);
 	expect(graftDirListings(tree, new Map())).toBe(tree);
+});
+
+test('a folder elsewhere on the Mac takes its listing under the spelling it was cited by', () => {
+	const tree = buildCitedPathTree(['~/my-projects/curio']);
+	const listed = new Map([['~/my-projects/curio', [
+		{ name: 'demos.json', path: '~/my-projects/curio/demos.json', kind: 'file' as const },
+		{ name: 'lumen-landing', path: '~/my-projects/curio/lumen-landing', kind: 'dir' as const, children: [] },
+	]]]);
+	const curio = graftDirListings(tree, listed)[0]!;
+	expect(curio.kind).toBe('dir');
+	expect(curio.children!.map((node) => node.path)).toEqual(['~/my-projects/curio/demos.json', '~/my-projects/curio/lumen-landing']);
 });

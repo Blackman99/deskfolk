@@ -317,15 +317,17 @@ export const ADAPTER_ANCHOR_KIND = {
   media: "media_time",
 } as const satisfies Record<AnnotationAdapter, Annotation["anchor_kind"]>;
 
-export type AnnotateGate = { ok: true; adapter: AnnotationAdapter } | { ok: false; reason: "no-target" | "dirty" | "kind" };
+export type AnnotateGate = { ok: true; adapter: AnnotationAdapter } | { ok: false; reason: "no-target" | "dirty" | "kind" | "outside" };
 
 /**
  * Whether the preview on screen can take a new annotation, and if not, why. Unsaved edits block
  * every text-backed view: an anchor must point at text that is on disk.
  */
-export function annotateGate(input: { target: AnnotationTarget | null; kind: ArtifactKind; sourceMode: boolean; dirty: boolean }): AnnotateGate {
+export function annotateGate(input: { target: AnnotationTarget | null; kind: ArtifactKind; sourceMode: boolean; dirty: boolean; outside?: boolean }): AnnotateGate {
   const adapter = adapterFor(input.kind, input.sourceMode);
   if (!adapter) return { ok: false, reason: "kind" };
+  // A file opened from elsewhere on the Mac: a note on it has no Bot that could act on it.
+  if (input.outside) return { ok: false, reason: "outside" };
   if (!input.target) return { ok: false, reason: "no-target" };
   const textBacked = input.kind === "text" || input.kind === "markdown" || input.kind === "html";
   if (input.dirty && textBacked) return { ok: false, reason: "dirty" };

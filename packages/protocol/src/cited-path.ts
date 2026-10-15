@@ -185,9 +185,19 @@ function hasScheme(path: string): boolean {
 }
 
 /**
- * True for a relative workspace path: has a slash, or a known filename suffix; and for a Windows
- * host path. Backslashes alone only count with a known suffix or a leading `.\` / `..\`, so a
- * registry key or an escape in prose stays text.
+ * `/Users/me/site/index.html`, `/tmp/out/`: a POSIX absolute path, which can name a place outside
+ * the workspace as well as in it. A route (`/sidebar`), a template (`/tasks/{id}`), a regex
+ * (`/\s+/g`) or a `//` comment is not one: it takes two names at least, and no pattern characters.
+ */
+function looksLikePosixAbsolutePath(path: string): boolean {
+  if (path.startsWith("//") || /[\\{}<>*?|\s]/.test(path)) return false;
+  return path.split("/").filter(Boolean).length >= 2;
+}
+
+/**
+ * True for a relative workspace path: has a slash, or a known filename suffix; and for a host
+ * absolute path, Windows or POSIX. Backslashes alone only count with a known suffix or a leading
+ * `.\` / `..\`, so a registry key or an escape in prose stays text.
  */
 export function looksLikeWorkspacePath(raw: string): boolean {
   const path = normalizeCitedPath(raw);
@@ -195,6 +205,7 @@ export function looksLikeWorkspacePath(raw: string): boolean {
   if (hasScheme(path)) return false;
   if (path.startsWith("@")) return false;
   if (WINDOWS_ABSOLUTE.test(path)) return true;
+  if (path.startsWith("/")) return looksLikePosixAbsolutePath(path);
   const ext = extensionOf(path);
   const known = Boolean(ext) && KNOWN_EXT.has(ext);
   const written = citedAsWritten(raw);

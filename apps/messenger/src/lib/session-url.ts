@@ -5,6 +5,8 @@
  * fallback: `/s/<id>` would 404 the moment the window reloaded, while
  * `index.html?s=<id>&p=<relpath>&o=settings` is always the file on disk.
  */
+import { isAbsoluteHostPath } from "./paths.ts";
+
 export const SESSION_PARAM = "s";
 export const PREVIEW_PARAM = "p";
 export const OVERLAY_PARAM = "o";
@@ -57,7 +59,7 @@ export function sessionFromUrl(url: URL): string | null {
 }
 
 export function previewFromUrl(url: URL): string | null {
-  return sanitizePreviewPath(url.searchParams.get(PREVIEW_PARAM));
+  return sanitizeCitedPreviewPath(url.searchParams.get(PREVIEW_PARAM));
 }
 
 export function attachmentFromUrl(url: URL): string | null {
@@ -162,6 +164,20 @@ export function sanitizePreviewPath(raw: string | null | undefined): string | nu
   return parts.length === 0 ? null : parts.join("/");
 }
 
+/**
+ * The file a preview shows: a workspace path as {@link sanitizePreviewPath} keeps it, or one a
+ * message wrote as where it is on the Mac (`/Users/me/x`, `~/x`, `C:\x`), kept as written — the
+ * workspace bounds where Bots work, not what you can open. Neither may climb with `..`.
+ */
+export function sanitizeCitedPreviewPath(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const path = raw.trim();
+  if (!isAbsoluteHostPath(path) && !/^~[\\/]/.test(path)) return sanitizePreviewPath(path);
+  if (path.includes("://") || /[\x00-\x1f\x7f]/.test(path) || path.split(/[\\/]/).includes("..")) return null;
+  // A folder may be cited with a trailing slash; `/` and `C:\` keep theirs.
+  return path.replace(/(?<=[^\\/:])[\\/]+$/, "");
+}
+
 export function sanitizeBotId(raw: string | null | undefined): string | null {
   if (raw == null) return null;
   const id = raw.trim();
@@ -190,7 +206,7 @@ export function sessionUrl(current: URL, view: UrlView, remote = false): string 
     next.searchParams.delete(ATTACHMENT_PARAM);
   } else {
     next.searchParams.delete(ATTACHMENT_PARAM);
-    const preview = sanitizePreviewPath(view.previewRelpath);
+    const preview = sanitizeCitedPreviewPath(view.previewRelpath);
     if (preview) next.searchParams.set(PREVIEW_PARAM, preview);
     else next.searchParams.delete(PREVIEW_PARAM);
   }

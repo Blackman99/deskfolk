@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { closeSync, existsSync, ftruncateSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { closeSync, existsSync, ftruncateSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { base64url, canonicalBytes, canonicalHash, canonicalize, DeviceSession, fromBase64url, generateIdentity, requestDigest,
@@ -890,6 +890,14 @@ test("actual relay + native confirmation fixture + signed mailbox grant + Noise 
   expect(jsonFile.body).toBeNull();
   expect(jsonFile.file).toEqual({ streamId: 0, size: 13, bytes: base64url(Buffer.from('{"file":true}')) });
   expect(new TextDecoder().decode(fromBase64url(jsonFile.file.bytes))).toBe('{"file":true}');
+  // A file and a folder elsewhere on the Mac, named by their absolute path, reach the phone too.
+  const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-remote-elsewhere-")));
+  writeFileSync(join(elsewhere, "notes.json"), '{"far":1}');
+  const far = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/file", query: { path: join(elsewhere, "notes.json") } });
+  expect(new TextDecoder().decode(fromBase64url(far.file.bytes))).toBe('{"far":1}');
+  const farTree = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/tree", query: { path: elsewhere } });
+  expect(farTree.body.items.map((row: { path: string }) => row.path)).toEqual([join(elsewhere, "notes.json")]);
+  rmSync(elsewhere, { recursive: true, force: true });
   c.socket.close();
 }, 15_000);
 

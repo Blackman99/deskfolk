@@ -26,6 +26,15 @@ describe("looksLikeWorkspacePath", () => {
     expect(looksLikeWorkspacePath("artifact:out/a.png")).toBe(false);
     expect(looksLikeWorkspacePath("@开发")).toBe(false);
   });
+
+  test("a POSIX absolute path or one from ~ is a path, wherever it is; routes, templates and regexes are not", () => {
+    for (const path of ["/Users/me/curio/index.html", "/Users/me/curio", "/tmp/out/", "~/my-projects/curio", "~/a.md"]) {
+      expect([path, looksLikeWorkspacePath(path)]).toEqual([path, true]);
+    }
+    for (const path of ["/sidebar", "/api/v1/tasks/{task_id}", "/\\s+/g", "//cdn.example/x.js", "/", "/a b/c"]) {
+      expect([path, looksLikeWorkspacePath(path)]).toEqual([path, false]);
+    }
+  });
 });
 
 describe("normalizeCitedPath", () => {

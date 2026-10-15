@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, posix } from "node:path";
+import { join, posix, win32 } from "node:path";
 import { HttpError } from "./errors";
-import { classifyPath } from "./workspace-paths";
+import { listHostDir, locateHostFile, type HostFs } from "./host-paths";
+import { classifyPath, expandHome, isAbsoluteHostPath, nodePathHost } from "./workspace-paths";
 import { attachmentMime } from "./artifact-mime";
 import { atomicWrite, fileEtag, withFileLock } from "./file-integrity";
 
@@ -22,6 +23,49 @@ export type WorkspaceTreePage = {
   truncated: boolean;
   items: WorkspaceTreeEntry[];
 };
+
+/**
+ * A path the file routes were given that is written absolute (`/x`, `~/x`, `C:\x`) and is not in
+ * the workspace: a place elsewhere on this machine, read where it is. The workspace bounds where
+ * Bots work, not what you can open. A relative path stays the workspace's, so `../x` is still an
+ * escape; an absolute path into the workspace keeps the workspace's own rules.
+ */
+function outsideAbsolute(root: string | null, input: string, fs: HostFs): string | null {
+  const home = fs.home;
+  const expanded = expandHome(input.trim(), home ? { ...nodePathHost, homedir: () => home } : nodePathHost);
+  if (!isAbsoluteHostPath(expanded)) return null;
+  if (root) {
+    try {
+      if (classifyPath(root, expanded).zone === "inside") return null;
+    } catch {
+      // Unresolvable against the workspace: read as a host path, which reports why.
+    }
+  }
+  return expanded;
+}
+
+/** `GET /v1/workspace/tree`: a workspace folder, or a folder elsewhere named by its absolute path. */
+export function listCitedDir(root: string | null, input: string, fs: HostFs = {}): WorkspaceTreePage {
+  const outside = outsideAbsolute(root, input, fs);
+  if (outside) {
+    const page = listHostDir(outside, fs);
+    return { path: page.path, truncated: page.truncated, items: page.items };
+  }
+  if (!root) throw new HttpError(422, "invalid_args", "workspace is not set");
+  return listWorkspaceDir(root, input);
+}
+
+/** `GET /v1/workspace/file`: a workspace file, or a file elsewhere named by its absolute path. */
+export function locateCitedFile(root: string | null, input: string, fs: HostFs = {}): { abs: string; name: string; mime: string } {
+  const outside = outsideAbsolute(root, input, fs);
+  if (outside) {
+    const name = (process.platform === "win32" ? win32 : posix).basename(outside);
+    return { abs: locateHostFile(outside, fs), name, mime: attachmentMime(name) };
+  }
+  if (!root) throw new HttpError(422, "invalid_args", "workspace is not set");
+  const located = locateWorkspaceFile(root, input);
+  return { abs: located.abs, name: located.rel.split("/").pop() ?? located.rel, mime: located.mime };
+}
 
 export function listWorkspaceDir(root: string, relInput: string): WorkspaceTreePage {
   const classified = classifyWorkspaceRel(root, relInput);

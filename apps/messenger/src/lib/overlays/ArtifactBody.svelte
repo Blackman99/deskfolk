@@ -72,6 +72,8 @@
 		/** A cited folder's entries, once the Mac listed it; the folder's page lists them. */
 		dirEntries?: ArtifactTreeNode[] | null;
 		onOpenEntry?: (node: ArtifactTreeNode) => void;
+		/** Whether this file can be saved from here; one elsewhere on the Mac is only read. */
+		inWorkspace?: boolean;
 	}
 
 	let {
@@ -103,7 +105,8 @@
 		openMarkdownPath,
 		openOnDisk,
 		dirEntries = null,
-		onOpenEntry
+		onOpenEntry,
+		inWorkspace = true
 	}: Props = $props();
 </script>
 
@@ -188,6 +191,7 @@
 						onAnnotate={annot.offerAnnotation}
 						onPickAnnotation={annot.pickAnnotation}
 						{loadMonaco}
+						readOnly={!inWorkspace}
 					/>
 				{/if}
 			{:else if kind === "image" || kind === "svg"}

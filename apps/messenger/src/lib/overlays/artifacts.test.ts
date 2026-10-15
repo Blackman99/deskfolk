@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import {
   absWorkspacePath,
   artifactByteSource,
+  citedInWorkspace,
+  isHostCitedPath,
   artifactHref,
   artifactKind,
   bodyMentionsPath,
@@ -55,7 +57,10 @@ test("looksLikeWorkspaceHref accepts relative files and rejects urls", () => {
   expect(looksLikeWorkspaceHref("out/mock.png")).toBe(true);
   expect(looksLikeWorkspaceHref("report.md")).toBe(true);
   expect(looksLikeWorkspaceHref("https://example.com/spec")).toBe(false);
-  expect(looksLikeWorkspaceHref("/etc/passwd")).toBe(false);
+  // Elsewhere on the Mac is a file too; a route is not.
+  expect(looksLikeWorkspaceHref("/Users/me/curio/index.html")).toBe(true);
+  expect(looksLikeWorkspaceHref("~/my-projects/curio")).toBe(true);
+  expect(looksLikeWorkspaceHref("/sidebar")).toBe(false);
   expect(looksLikeWorkspaceHref("#heading")).toBe(false);
   expect(looksLikeWorkspaceHref("v1.2")).toBe(false);
 });
@@ -143,7 +148,30 @@ test("absWorkspacePath joins inside the root and rejects escapes", () => {
   expect(absWorkspacePath("/Users/me/ws", "out/mock.png")).toBe("/Users/me/ws/out/mock.png");
   expect(absWorkspacePath("/Users/me/ws", "../secret.txt")).toBeNull();
   expect(absWorkspacePath("/Users/me/ws", "a/../../secret.txt")).toBeNull();
-  expect(absWorkspacePath("/Users/me/ws", "/etc/passwd")).toBeNull();
+});
+
+test("a path written absolute is where it says, and one from ~ waits for the Mac's home", () => {
+  expect(absWorkspacePath("/Users/me/ws", "/etc/hosts")).toBe("/etc/hosts");
+  expect(absWorkspacePath(null, "/Users/me/curio/index.html")).toBe("/Users/me/curio/index.html");
+  expect(absWorkspacePath("/Users/me/ws", "~/my-projects/curio")).toBeNull();
+  expect(absWorkspacePath("/Users/me/ws", "~/my-projects/curio", "/Users/me")).toBe("/Users/me/my-projects/curio");
+  expect(absWorkspacePath(null, "out/mock.png")).toBeNull();
+  expect(absWorkspacePath("C:\\ws", "D:\\notes\\a.md")).toBe("D:\\notes\\a.md");
+  for (const path of ["/Users/me/x", "~/x", "C:\\x"]) expect([path, isHostCitedPath(path)]).toEqual([path, true]);
+  for (const path of ["out/x", "~x", "x.md"]) expect([path, isHostCitedPath(path)]).toEqual([path, false]);
+});
+
+test("citedInWorkspace: relative paths and absolute ones under the root; the rest is elsewhere", () => {
+  expect(citedInWorkspace("/Users/me/ws", "out/a.md")).toBe(true);
+  expect(citedInWorkspace("/Users/me/ws", "/Users/me/ws/out/a.md")).toBe(true);
+  expect(citedInWorkspace("/Users/me/ws/", "/Users/me/ws")).toBe(true);
+  expect(citedInWorkspace("/Users/me/ws", "/Users/me/ws2/a.md")).toBe(false);
+  expect(citedInWorkspace("/Users/me/ws", "/tmp/a.md")).toBe(false);
+  expect(citedInWorkspace(null, "/tmp/a.md")).toBe(false);
+  // Under ~ it is known once the home is.
+  expect(citedInWorkspace("/Users/me/ws", "~/ws/a.md")).toBe(false);
+  expect(citedInWorkspace("/Users/me/ws", "~/ws/a.md", "/Users/me")).toBe(true);
+  expect(citedInWorkspace("C:\\ws", "C:\\ws\\a.md")).toBe(true);
 });
 
 test("absWorkspacePath joins a Windows root with backslashes", () => {
@@ -156,6 +184,12 @@ test("terminalDirFor opens a folder in itself and a file in the folder that hold
   expect(terminalDirFor("/Users/me/ws/", "out/assets/logo.png", "file")).toBe("/Users/me/ws/out/assets");
   expect(terminalDirFor("/Users/me/ws", "README.md", "file")).toBe("/Users/me/ws");
   expect(terminalDirFor("/Users/me/ws", "../elsewhere", "dir")).toBeNull();
+  expect(terminalDirFor("/Users/me/ws", "/Users/me/curio/index.html", "file")).toBe("/Users/me/curio");
+  expect(terminalDirFor(null, "/Users/me/curio", "dir")).toBe("/Users/me/curio");
+  expect(terminalDirFor(null, "/notes.md", "file")).toBe("/");
+  expect(terminalDirFor(null, "~/curio/a.md", "file")).toBeNull();
+  expect(terminalDirFor(null, "~/curio/a.md", "file", "/Users/me")).toBe("/Users/me/curio");
+  expect(terminalDirFor(null, "C:\\notes.md", "file")).toBe("C:\\");
 });
 
 test("terminalDirFor joins onto a Windows root with backslashes", () => {

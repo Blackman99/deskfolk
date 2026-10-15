@@ -1,3 +1,6 @@
+import { baseName } from "../paths.ts";
+import { isHostCitedPath } from "./artifacts.ts";
+
 export type ArtifactTreeNode = {
   name: string;
   path: string;
@@ -94,38 +97,70 @@ function freeze(node: MutableNode): ArtifactTreeNode {
   return { name: node.name, path: node.path, kind: "dir", children };
 }
 
-/** Nest cited workspace-relative paths. Duplicate paths collapse; files win over empty dirs of the same name. */
+/** Puts `parts` under `level`, spelling each node's path from `prefix` with `sep`. */
+function place(level: Map<string, MutableNode>, prefix: string, parts: readonly string[], sep: string): void {
+  for (let i = 0; i < parts.length; i++) {
+    const name = parts[i]!;
+    prefix = prefix ? `${prefix}${sep}${name}` : name;
+    const isLast = i === parts.length - 1;
+    const existing = level.get(name);
+    if (isLast) {
+      if (existing?.kind === "dir") break;
+      if (!existing) level.set(name, { name, path: prefix, kind: "file" });
+      break;
+    }
+    if (!existing) {
+      const dir: MutableNode = { name, path: prefix, kind: "dir", children: new Map() };
+      level.set(name, dir);
+      level = dir.children!;
+      continue;
+    }
+    if (existing.kind === "file") {
+      existing.kind = "dir";
+      existing.children = new Map();
+    }
+    existing.children ??= new Map();
+    level = existing.children;
+  }
+}
+
+/**
+ * Nest cited paths. Duplicate paths collapse; files win over empty dirs of the same name. A path
+ * that says where it is on the Mac (`~/my-projects/curio`, `/tmp/out.png`) is a row of its own at
+ * the top, named by its last name, and holds what else was cited inside it.
+ */
 export function buildCitedPathTree(paths: readonly string[]): ArtifactTreeNode[] {
   const root = new Map<string, MutableNode>();
+  const hosts: string[] = [];
 
   for (const raw of paths) {
+    if (isHostCitedPath(raw)) {
+      // A folder may be cited with a trailing slash, a node never has one; `/` and `C:\` keep theirs.
+      const path = raw.trim().replace(/(?<=[^\\/:])[\\/]+$/, "");
+      if (!hosts.includes(path)) hosts.push(path);
+      continue;
+    }
     const parts = splitRel(raw);
     if (parts.length === 0) continue;
-    let level = root;
-    let prefix = "";
-    for (let i = 0; i < parts.length; i++) {
-      const name = parts[i]!;
-      prefix = prefix ? `${prefix}/${name}` : name;
-      const isLast = i === parts.length - 1;
-      const existing = level.get(name);
-      if (isLast) {
-        if (existing?.kind === "dir") break;
-        if (!existing) level.set(name, { name, path: prefix, kind: "file" });
-        break;
-      }
-      if (!existing) {
-        const dir: MutableNode = { name, path: prefix, kind: "dir", children: new Map() };
-        level.set(name, dir);
-        level = dir.children!;
-        continue;
-      }
-      if (existing.kind === "file") {
-        existing.kind = "dir";
-        existing.children = new Map();
-      }
-      existing.children ??= new Map();
-      level = existing.children;
+    place(root, "", parts, "/");
+  }
+
+  // Shortest first, so a cited folder is in place before what was cited inside it.
+  const hostRoots: MutableNode[] = [];
+  for (const path of [...hosts].sort((a, b) => a.length - b.length)) {
+    const holder = hostRoots
+      .filter((node) => path.startsWith(`${node.path}/`) || path.startsWith(`${node.path}\\`))
+      .sort((a, b) => b.path.length - a.path.length)[0];
+    if (!holder) {
+      const node: MutableNode = { name: baseName(path) || path, path, kind: "file" };
+      hostRoots.push(node);
+      root.set(path, node);
+      continue;
     }
+    holder.kind = "dir";
+    holder.children ??= new Map();
+    const sep = path[holder.path.length]!;
+    place(holder.children, holder.path, path.slice(holder.path.length + 1).split(/[\\/]/).filter(Boolean), sep);
   }
 
   return sortNodes([...root.values()].map(freeze));

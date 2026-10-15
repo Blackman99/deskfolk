@@ -25,6 +25,7 @@
 		absWorkspacePath,
 		artifactByteSource,
 		artifactKind,
+		citedInWorkspace,
 		isInAppPreviewKind,
 		type ArtifactKind,
 	} from './artifacts.ts';
@@ -256,7 +257,9 @@
 	let downloadKey = $derived(`${byteSource}:${attachment?.id ?? ''}:${relpath}`);
 	// The rendered view can hold an unsaved buffer carried over from the source view; the dirty
 	// prompt's Save must be able to write it.
-	let canSave = $derived(Boolean(api && relpath && canShowSource && loader.text !== null && (sourceMode || loader.text !== loader.diskText)));
+	/** A file opened from elsewhere on the Mac reads like any other, but saving and notes stay in the workspace. */
+	const inWorkspace = $derived(citedInWorkspace(workspacePath, relpath, treeSrc.home));
+	let canSave = $derived(Boolean(api && relpath && inWorkspace && canShowSource && loader.text !== null && (sourceMode || loader.text !== loader.diskText)));
 	/**
 	 * Unsaved: what is on screen differs from what is on disk — the editor's buffer in the source
 	 * view, the text the rendered view shows otherwise. Not the editor's flag alone: a new editor
@@ -265,7 +268,7 @@
 	const dirty = $derived(
 		sourceMode && editor ? editorDirty : loader.text !== null && loader.diskText !== null && loader.text !== loader.diskText
 	);
-	const gate = $derived(annotateGate({ target: mode === 'workspace' ? null : target, kind, sourceMode, dirty }));
+	const gate = $derived(annotateGate({ target: mode === 'workspace' ? null : target, kind, sourceMode, dirty, outside: !inWorkspace }));
 	/** The adapter drawing this view's annotations, whether or not new ones can be made here. */
 	const viewAdapter = $derived(adapterFor(kind, sourceMode));
 	/** The rows drawn on the file: resolved ones stay off it unless asked back or being gone to. */
@@ -289,7 +292,7 @@
 	 * The rendered/source switch shares the row.
 	 */
 	const showAnnotToggle = $derived(
-		mode !== 'workspace' && (annot.fileAnnotations.length > 0 || gate.ok || gate.reason !== 'kind')
+		mode !== 'workspace' && (annot.fileAnnotations.length > 0 || gate.ok || (gate.reason !== 'kind' && gate.reason !== 'outside'))
 	);
 	const showAnnotMode = $derived(mode !== 'workspace' && needsMode && gate.ok);
 	const annotHint = $derived<'' | 'dirty' | 'no-target' | 'streamed' | null>(
@@ -346,7 +349,7 @@
 	 * the old toolbar's job.
 	 */
 	async function openOnDisk(path: string, reveal: boolean): Promise<void> {
-		const abs = workspacePath ? absWorkspacePath(workspacePath, path) : null;
+		const abs = absWorkspacePath(workspacePath, path, treeSrc.home);
 		if (!abs || remoteClient) {
 			loader.openHint = true;
 			return;
@@ -648,7 +651,7 @@
 				onclick={() => (treeOpen = false)}
 			></button>
 		{/if}
-		<ArtifactBody {t} {locale} {bots} {api} {relpath} {attachment} {mode} {kind} {sourceMode} {gate} {wrap} {resolvedTheme} {loadMonaco} {byteSource} {titleName} {opensOnDisk} {drawnRows} {viewAnnotations} {annot} {loader} {treeSrc} dirEntries={kind === 'directory' && mode !== 'workspace' ? treeSrc.listingOf(relpath) : null} onOpenEntry={selectNode} bind:editor bind:pdfViewer onEditorDirty={(next) => (editorDirty = next)} {enlarge} {openMarkdownPath} {openOnDisk} />
+		<ArtifactBody {t} {locale} {bots} {api} {relpath} {attachment} {mode} {kind} {sourceMode} {gate} {wrap} {resolvedTheme} {loadMonaco} {byteSource} {titleName} {opensOnDisk} {drawnRows} {viewAnnotations} {annot} {loader} {treeSrc} dirEntries={kind === 'directory' && mode !== 'workspace' ? treeSrc.listingOf(relpath) : null} onOpenEntry={selectNode} bind:editor bind:pdfViewer onEditorDirty={(next) => (editorDirty = next)} {enlarge} {openMarkdownPath} {openOnDisk} {inWorkspace} />
 	</div>
 	{#if mode !== 'workspace'}
 		{#each annot.annotDrafts as group (group.sessionId)}
@@ -672,10 +675,10 @@
 		onOpen={() => void openOnDisk(treeSrc.treeMenu?.node.path ?? '', false)}
 		onReveal={() => void openOnDisk(treeSrc.treeMenu?.node.path ?? '', true)}
 		onOpenTerminal={treeSrc.treeMenuTerminalDir && onOpenTerminal ? () => onOpenTerminal(treeSrc.treeMenuTerminalDir!) : undefined}
-		onCopyPath={() => copyText(treeSrc.treeMenu?.targets.map((node) => node.path).join('\n') ?? '')}
+		onCopyPath={treeSrc.treeMenuInWorkspace ? () => copyText(treeSrc.treeMenu?.targets.map((node) => node.path).join('\n') ?? '') : undefined}
 		onCopyAbsPath={treeSrc.treeMenuAbsPaths ? () => copyText(treeSrc.treeMenuAbsPaths!) : undefined}
 		count={treeSrc.treeMenu.targets.length}
-		onTrash={treeSrc.canTrash ? () => treeSrc.askTrash(treeSrc.treeMenu?.targets ?? []) : undefined}
+		onTrash={treeSrc.treeMenuCanTrash ? () => treeSrc.askTrash(treeSrc.treeMenu?.targets ?? []) : undefined}
 		onClose={() => (treeSrc.treeMenu = null)}
 	/>
 {/if}

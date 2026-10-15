@@ -323,7 +323,7 @@ _Avoid_: 隐藏即暂停（归档不等于 Stop）
 _Avoid_: 闸门, ConsentGate
 
 **工作区外（Outside the workspace）**：
-路径 `realpath` 之后不落在工作区根前缀下。工作区内的 symlink 跟目标走：目标在区外就是区外。
+路径 `realpath` 之后不落在工作区根前缀下。工作区内的 symlink 跟目标走：目标在区外就是区外。它框的是 Bot：你自己从消息里打开工作区外的文件或文件夹不用批准，只读（[ADR 0090](docs/adr/0090-the-workspace-bounds-bots-not-you.md)）。
 _Avoid_: 只做字符串前缀, 按 inode / 硬链接判定
 
 **工作区壳（Workspace shell）**：
@@ -373,7 +373,7 @@ _Avoid_: 同规划绕过唯一执行, 手动开一轮就绕过叫停, 群点名�
 _Avoid_: @ 了却不进群, 未知名隐式建 Bot
 
 **产物（Artifact）**：
-一条消息里引用的工作区相对路径，或 `http`/`https` 链接；文件本体在工作区（或远端 URL）上，本轮写入的区内文件会自动出现在最终消息里（这一轮又删掉的除外）。点开后在聊天右侧预览面板查看（图 / 音视频 / PDF / 文本 / 单文件 HTML / Word / Excel / PowerPoint），其它种类给下载或用系统默认应用打开。交接时把路径写进给对方的那条消息，不另建种类；区内的产物可以批注（见「批注」）。细节见[行为说明·产物](docs/behavior.md#artifact)。
+一条消息里引用的工作区相对路径、写成绝对路径的本机文件或文件夹（可以在工作区外，只读），或 `http`/`https` 链接；文件本体在工作区、本机别处（或远端 URL）上，本轮写入的区内文件会自动出现在最终消息里（这一轮又删掉的除外）。点开后在聊天右侧预览面板查看（图 / 音视频 / PDF / 文本 / 单文件 HTML / Word / Excel / PowerPoint），其它种类给下载或用系统默认应用打开。交接时把路径写进给对方的那条消息，不另建种类；区内的产物可以批注（见「批注」）。细节见[行为说明·产物](docs/behavior.md#artifact)。
 _Avoid_: 资产库, Artifact 表, 快照副本, 每 Bot 产物目录, `@文件`
 
 **批注（Annotation）**：
