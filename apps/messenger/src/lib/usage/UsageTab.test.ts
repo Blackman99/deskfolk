@@ -43,7 +43,7 @@ test("the tab lays out a card per account, each window a bar, the agents with to
   const cards = [...view.host.querySelectorAll(".usage-board-account")];
   expect(cards.map((card) => text(card.querySelector(".usage-account-plan")))).toEqual(["Pro", "Team"]);
   const first = [...cards[0]!.querySelectorAll(".usage-meter")];
-  expect(first.map((gauge) => text(gauge.querySelector(".usage-percent")))).toEqual(["剩94%", "剩3%", "剩96%"]);
+  expect(first.map((gauge) => text(gauge.querySelector(".usage-percent")))).toEqual(["已用6%", "已用97%", "已用4%"]);
   expect(cards[0]!.querySelector(".usage-gauge")).toBeNull();
   // A model's window on one line: its model, then the length.
   expect(first.map((gauge) => text(gauge.querySelector(".usage-gauge-span")))).toEqual(["5 小时", "7 天", "7 天"]);

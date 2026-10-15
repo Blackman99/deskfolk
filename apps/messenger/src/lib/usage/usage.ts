@@ -25,23 +25,23 @@ export function usageWindowsSorted(windows: UsageWindow[]): UsageWindow[] {
   return [...windows].sort((a, b) => rank(a) - rank(b) || (a.minutes ?? Infinity) - (b.minutes ?? Infinity));
 }
 
-/** The window with the least left, which the pill's ring and the menu bar's show. */
+/** The window most used, which the pill's ring and the menu bar's show. */
 export function usageTightest(windows: UsageWindow[]): UsageWindow | null {
   let tightest: UsageWindow | null = null;
   for (const window of windows) if (!tightest || window.percent > tightest.percent) tightest = window;
   return tightest;
 }
 
-/** How much of a window is left, from how much is used. */
-export function usageLeft(percentUsed: number): number {
-  return Math.min(100, Math.max(0, 100 - percentUsed));
+/** How much of a window is used, kept to 0–100: what a ring or a bar is filled with. */
+export function usageUsed(percentUsed: number): number {
+  return Math.min(100, Math.max(0, percentUsed));
 }
 
-/** What is left, said: whole percent rounded down, so a window in use never reads 100%; `<1%` for a sliver. */
-export function usageLeftText(percentUsed: number): string {
-  const left = usageLeft(percentUsed);
-  if (left > 0 && left < 1) return "<1%";
-  return `${Math.floor(left)}%`;
+/** What is used, said: whole percent rounded down, so a window not yet spent never reads 100%; `<1%` for a sliver, so one in use never reads 0%. */
+export function usageUsedText(percentUsed: number): string {
+  const used = usageUsed(percentUsed);
+  if (used > 0 && used < 1) return "<1%";
+  return `${Math.floor(used)}%`;
 }
 
 /** How full a window is, for its colour: worth a look from three quarters, nearly gone from nine tenths. */
@@ -180,16 +180,16 @@ export function usageMeterEntries(agents: ReadonlyArray<UsageAgent>): UsageMeter
   return out;
 }
 
-/** An account's windows in one short line, as the menu bar and Settings say them: `5h 62% · 7d 81%`. */
+/** An account's windows in one short line, as the menu bar and Settings say them: `5h 38% · 7d 19%` used. */
 export function usageSummary(account: UsageAccount, t: Copy): string {
   const plan = usageWindowsSorted(account.windows).filter((window) => window.model === null);
-  if (plan.length > 0) return plan.map((window) => `${usageSpan(window.minutes, t, true)} ${usageLeftText(window.percent)}`).join(" · ");
+  if (plan.length > 0) return plan.map((window) => `${usageSpan(window.minutes, t, true)} ${usageUsedText(window.percent)}`).join(" · ");
   // Only per-model windows (Antigravity's model groups): each group by its tightest window.
   const groups = [...new Set(account.windows.map((window) => window.model))];
   return groups
     .map((model) => {
       const tightest = usageTightest(account.windows.filter((window) => window.model === model))!;
-      return `${model} ${usageLeftText(tightest.percent)}`;
+      return `${model} ${usageUsedText(tightest.percent)}`;
     })
     .join(" · ");
 }

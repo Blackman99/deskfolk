@@ -6,7 +6,7 @@
 
 	/**
 	 * One account's usage in a line (ADR 0080), as the menu bar says it: a ring for its tightest
-	 * window, then what is left of the plan's 5-hour and 7-day windows; or why there are none. The
+	 * window, then what is used of the plan's 5-hour and 7-day windows; or why there are none. The
 	 * whole of it is in the usage widget.
 	 */
 	interface Props {

@@ -1,10 +1,10 @@
 <script lang="ts">
 	import type { UsageWindow } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import { usageLeft, usageLeftText, usageLevel, usageResetShort, usageResetText, usageSpan } from './usage.ts';
+	import { usageLevel, usageResetShort, usageResetText, usageSpan, usageUsed, usageUsedText } from './usage.ts';
 
 	/**
-	 * One window as a dial on the usage tab: a ring as full as what is left, the number inside it,
+	 * One window as a dial on the usage tab: a ring as full as what is used, the number inside it,
 	 * then the window's length, its model when it is a model's own, and when it starts over.
 	 */
 	interface Props {
@@ -25,11 +25,11 @@
 	<span class="usage-gauge-dial">
 		<svg width="76" height="76" viewBox="0 0 76 76" aria-hidden="true">
 			<circle cx="38" cy="38" r={R} fill="none" stroke="var(--line)" stroke-width="6" />
-			<circle class="usage-gauge-arc" cx="38" cy="38" r={R} fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset={100 - usageLeft(window.percent)} transform="rotate(-90 38 38)" />
+			<circle class="usage-gauge-arc" cx="38" cy="38" r={R} fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset={100 - usageUsed(window.percent)} transform="rotate(-90 38 38)" />
 		</svg>
 		<span class="usage-gauge-value">
-			<span class="usage-percent">{usageLeftText(window.percent)}</span>
-			<span class="usage-gauge-unit">{t.usage.leftLabel}</span>
+			<span class="usage-percent">{usageUsedText(window.percent)}</span>
+			<span class="usage-gauge-unit">{t.usage.usedLabel}</span>
 		</span>
 	</span>
 	<!-- "Fable · 7 天" on one line when it fits; a long model name wraps, the length stays whole. -->

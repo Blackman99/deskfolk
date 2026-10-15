@@ -69,7 +69,7 @@ test("under each account something runs on, one line of its usage; the whole of 
   await sleep(0);
   const line = shown.host.querySelector("[data-claude-account] [data-claude-card-usage]");
   // The plan's own windows, shortest first; the ring is the tightest window, the model's own.
-  expect(line?.textContent?.replace(/\s+/g, " ").trim()).toBe("5h 82% · 7d 60%");
+  expect(line?.textContent?.replace(/\s+/g, " ").trim()).toBe("5h 18% · 7d 40%");
   expect(line?.querySelector(".usage-ring")?.classList.contains("is-danger")).toBe(true);
   shown.close();
 
@@ -150,8 +150,8 @@ test("with Bots on two accounts each account's usage line sits in that account's
   await sleep(0);
   const ownGroup = view.host.querySelector("[data-claude-account]")!;
   const teamGroup = view.host.querySelector('[data-claude-account-dir="/Users/you/.claude-b"]')!;
-  expect(ownGroup.querySelector("[data-usage-line]")?.textContent?.trim()).toBe("5h 82%");
-  expect(teamGroup.querySelector("[data-usage-line]")?.textContent?.trim()).toBe("5h 40%");
+  expect(ownGroup.querySelector("[data-usage-line]")?.textContent?.trim()).toBe("5h 18%");
+  expect(teamGroup.querySelector("[data-usage-line]")?.textContent?.trim()).toBe("5h 60%");
   view.close();
 });
 

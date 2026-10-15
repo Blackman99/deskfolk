@@ -7,12 +7,12 @@
 	import AgentLogo from '../settings/AgentLogo.svelte';
 	import UsageAgentSection from './UsageAgentSection.svelte';
 	import { usageFeedOf } from './usage-feed.svelte.ts';
-	import { usageCheckedTime, usageLatestCheck, usageLeft, usageLeftText, usageLevel, usageTightest } from './usage.ts';
+	import { usageCheckedTime, usageLatestCheck, usageLevel, usageTightest, usageUsed, usageUsedText } from './usage.ts';
 	import { usageDrop, usageWidget } from './usage-widget.svelte.ts';
 
 	/**
 	 * Every agent's usage as a small ball over the main window (ADR 0080). Its ring is as full as what
-	 * is left of the tightest window of all. Pointed at, the ball morphs into a column of the agents,
+	 * is used of the tightest window of all. Pointed at, the ball morphs into a column of the agents,
 	 * each ringed by its own tightest window (a dashed ring: today's records only); pointing at one
 	 * morphs a card out of it with every account of that agent. Dragged anywhere; dropped by the left
 	 * or right edge it docks there, half tucked away. Clicks pin it open (touch, or to keep it), its
@@ -341,7 +341,7 @@
 				<svg class="usage-ball-ring is-{usageLevel(worst)}" width="40" height="40" viewBox="0 0 28 28" aria-hidden="true">
 					<circle cx="14" cy="14" r="12" fill="none" stroke="var(--line)" stroke-width="2.5" />
 					{#if anyWindow}
-						<circle cx="14" cy="14" r="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset={100 - usageLeft(worst)} transform="rotate(-90 14 14)" />
+						<circle cx="14" cy="14" r="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset={100 - usageUsed(worst)} transform="rotate(-90 14 14)" />
 					{/if}
 					<path d="M14 15.5l3-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
 					<path d="M8.6 18.5a6 6 0 1 1 10.8 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
@@ -356,7 +356,7 @@
 							class="usage-bubble is-{tightest ? usageLevel(tightest.percent) : 'today'}"
 							class:is-active={shownAgent !== null && key(shownAgent) === key(agent)}
 							data-usage-bubble={key(agent)}
-							aria-label={`${agent.runner === 'claude_code' ? 'Claude' : agent.label}${tightest ? ` ${t.usage.left(usageLeftText(tightest.percent))}` : ''}`}
+							aria-label={`${agent.runner === 'claude_code' ? 'Claude' : agent.label}${tightest ? ` ${t.usage.used(usageUsedText(tightest.percent))}` : ''}`}
 							tabindex={expanded ? 0 : -1}
 							onpointerenter={() => pointAt(agent)}
 							onfocus={() => pointAt(agent)}
@@ -365,7 +365,7 @@
 							<svg class="usage-bubble-ring" width="42" height="42" viewBox="0 0 32 32" aria-hidden="true">
 								{#if tightest}
 									<circle cx="16" cy="16" r="14.5" fill="none" stroke="var(--line)" stroke-width="2" />
-									<circle cx="16" cy="16" r="14.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset={100 - usageLeft(tightest.percent)} transform="rotate(-90 16 16)" />
+									<circle cx="16" cy="16" r="14.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset={100 - usageUsed(tightest.percent)} transform="rotate(-90 16 16)" />
 								{:else}
 									<circle cx="16" cy="16" r="14.5" fill="none" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="3 3" />
 								{/if}

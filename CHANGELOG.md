@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Usage shows what is used
+
+- The usage widget, its cards, the usage tab, the phone's usage page, the line under each account in Settings › Agents and the menu bar all said how much of each plan window was left ("81% left"). They now say how much is used ("19% used"; the one-line summaries keep bare numbers, "5h 38% · 7d 19%"), and rings and bars fill as a window is used, so a full one is spent. A window not yet spent never reads 100%, and one just touched reads "<1%", not 0%. Amber from three quarters used and red from nine tenths, as before.
+
 ### A Bot that cannot tell which job your line is about can open a new one for it
 
 - When the app could not read which job a line of yours was about and the conversation had several, a Bot whose first step had an effect (even a look-up with a command) was told to pick one of the jobs or open a new one by quoting your line's message id — an id it is never shown. It guessed, was refused again, and the line got only 「这句话需要先选归属，尚未执行有副作用的工具」 ("This line needs a job selected"). On 2026-10-14 「stripe 在国内怎么开通绑定」 and 「Payoneer + Stripe 能通吗」 in 通识's direct both ended that way. A new job named by its title alone now opens for the line that started the turn, and the refused call goes ahead; an id that is not a line of yours in the conversation is still refused.

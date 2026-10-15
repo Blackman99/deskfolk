@@ -66,7 +66,7 @@ test("a ball by default; pointed at, it opens into a column of the agents, each 
   const bubbles = [...view.host.querySelectorAll<HTMLElement>("[data-usage-bubble]")];
   expect(bubbles.map((bubble) => bubble.dataset.usageBubble)).toEqual(["claude_code:", "codex:", "grok:"]);
   expect(bubbles.map((bubble) => [...bubble.classList].find((name) => name.startsWith("is-")))).toEqual(["is-normal", "is-danger", "is-today"]);
-  expect(bubbles.map((bubble) => bubble.getAttribute("aria-label"))).toEqual(["Claude 剩55%", "Codex 剩8%", "Grok"]);
+  expect(bubbles.map((bubble) => bubble.getAttribute("aria-label"))).toEqual(["Claude 已用45%", "Codex 已用92%", "Grok"]);
   hover(widget);
   expect(widget.dataset.expanded).toBe("yes");
   expect(widget.dataset.tucked).toBe("no");
@@ -83,7 +83,7 @@ test("pointing at an agent opens its card with every account; another agent's re
   expect(card.dataset.usageCard).toBe("claude_code:");
   const rows = [...card.querySelectorAll(".usage-row")];
   expect(rows.map((row) => text(row.querySelector(".usage-name")))).toEqual(["5 小时", "7 天", "Opus · 7 天"]);
-  expect(rows.map((row) => text(row.querySelector(".usage-percent")))).toEqual(["剩62%", "剩81%", "剩55%"]);
+  expect(rows.map((row) => text(row.querySelector(".usage-percent")))).toEqual(["已用38%", "已用19%", "已用45%"]);
   expect(text(card.querySelector(".usage-account-plan"))).toBe("Max");
   expect(text(card.querySelector(".usage-account-who"))).toBe("a@example.com");
   // One account: no box around it.

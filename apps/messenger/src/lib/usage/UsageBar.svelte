@@ -1,11 +1,11 @@
 <script lang="ts">
 	import type { UsageWindow } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import { usageLeft, usageLeftText, usageLevel, usageResetShort, usageResetText, usageSpan } from './usage.ts';
+	import { usageLevel, usageResetShort, usageResetText, usageSpan, usageUsed, usageUsedText } from './usage.ts';
 
 	/**
 	 * One window as a bar on the desktop's usage tab: its name ("Fable · 7 天"; a long model name
-	 * wraps, the length stays whole), when it starts over, what is left, and a bar of it.
+	 * wraps, the length stays whole), when it starts over, what is used, and a bar of it.
 	 */
 	interface Props {
 		window: UsageWindow;
@@ -34,13 +34,13 @@
 			{resetShort}
 		{/if}
 	</span>
-	<span class="usage-percent">{t.usage.left(usageLeftText(window.percent))}</span>
-	<!-- Filled with what is left, so an empty bar is a window spent. -->
-	<span class="usage-meter-bar" aria-hidden="true"><span style:width="{usageLeft(window.percent)}%"></span></span>
+	<span class="usage-percent">{t.usage.used(usageUsedText(window.percent))}</span>
+	<!-- Filled with what is used, so a full bar is a window spent. -->
+	<span class="usage-meter-bar" aria-hidden="true"><span style:width="{usageUsed(window.percent)}%"></span></span>
 </li>
 
 <style>
-	/* Name, when it starts over, what is left; the bar under all three. */
+	/* Name, when it starts over, what is used; the bar under all three. */
 	.usage-meter {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) auto auto;

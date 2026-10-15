@@ -6,13 +6,13 @@ import {
   usageAccountName,
   usageCreditsText,
   usageFromLegacy,
-  usageLeftText,
   usageLevel,
   usageMeterEntries,
   usageResetText,
   usageSpan,
   usageSummary,
   usageTokenText,
+  usageUsedText,
   usageWindowLabel,
   usageWindowsSorted,
 } from "./usage.ts";
@@ -42,7 +42,7 @@ test("the plan's windows come shortest first, each model's after them; the summa
     { minutes: 300, model: null, percent: 38.6, resets_at: null },
   ];
   expect(usageWindowsSorted(windows).map((window) => window.model ?? window.minutes)).toEqual([300, 10_080, "Opus"]);
-  expect(usageSummary(account({ windows }), t)).toBe("5h 61% · 7d 81%");
+  expect(usageSummary(account({ windows }), t)).toBe("5h 38% · 7d 19%");
   // Only model groups (Antigravity): each group's windows together, and the summary by group.
   const groups = [
     { minutes: 10_080, model: "Gemini Models", percent: 2, resets_at: null },
@@ -53,11 +53,11 @@ test("the plan's windows come shortest first, each model's after them; the summa
   expect(usageWindowsSorted(groups).map((window) => `${window.model} ${window.minutes}`)).toEqual([
     "Gemini Models 300", "Gemini Models 10080", "Claude and GPT models 300", "Claude and GPT models 10080",
   ]);
-  expect(usageSummary(account({ windows: groups }), t)).toBe("Gemini Models 97% · Claude and GPT models 87%");
+  expect(usageSummary(account({ windows: groups }), t)).toBe("Gemini Models 3% · Claude and GPT models 13%");
 });
 
-test("what is left reads rounded down, a sliver as <1%; levels from three quarters and nine tenths", () => {
-  expect([18.4, 99.5, 100, 0].map(usageLeftText)).toEqual(["81%", "<1%", "0%", "100%"]);
+test("what is used reads rounded down, a sliver as <1%; levels from three quarters and nine tenths", () => {
+  expect([18.4, 99.5, 100, 0, 0.4, 104].map(usageUsedText)).toEqual(["18%", "99%", "100%", "0%", "<1%", "100%"]);
   expect([74, 75, 89, 90].map(usageLevel)).toEqual(["normal", "warn", "warn", "danger"]);
   expect([950, 12_345, 999_950, 1_234_567].map(usageTokenText)).toEqual(["950", "12.3k", "1M", "1.2M"]);
   expect(["62453.8865125000", "12", "unlimited"].map((credits) => usageCreditsText(credits, "en-US"))).toEqual(["62,453.89", "12", "unlimited"]);

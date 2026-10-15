@@ -6,18 +6,18 @@
 		usageAccountNote,
 		usageAccountShortName,
 		usageCreditsText,
-		usageLeft,
-		usageLeftText,
 		usageLevel,
 		usageResetText,
 		usageTokenText,
+		usageUsed,
+		usageUsedText,
 		usageWindowLabel,
 		usageWindowsSorted
 	} from './usage.ts';
 
 	/**
 	 * One agent's usage (ADR 0080): its name with its day here, then each account with every window,
-	 * what is left and when it starts over. The phone's page lists one per agent; the widget shows
+	 * what is used and when it starts over. The phone's page lists one per agent; the widget shows
 	 * the one you point at.
 	 */
 	interface Props {
@@ -62,9 +62,9 @@
 						<li class="usage-row is-{usageLevel(window.percent)}" data-usage-window={window.model ?? window.minutes ?? ''}>
 							<span class="usage-name">{usageWindowLabel(window, t)}</span>
 							<span class="usage-reset">{reset ?? ''}</span>
-							<span class="usage-percent">{t.usage.left(usageLeftText(window.percent))}</span>
-							<!-- Filled with what is left, so an empty bar is a window spent. -->
-							<span class="usage-bar" aria-hidden="true"><span style:width="{usageLeft(window.percent)}%"></span></span>
+							<span class="usage-percent">{t.usage.used(usageUsedText(window.percent))}</span>
+							<!-- Filled with what is used, so a full bar is a window spent. -->
+							<span class="usage-bar" aria-hidden="true"><span style:width="{usageUsed(window.percent)}%"></span></span>
 						</li>
 					{/each}
 				</ul>
@@ -178,7 +178,7 @@
 		font-size: 12px;
 	}
 
-	/* Name, when it starts over, what is left; the bar under all three. */
+	/* Name, when it starts over, what is used; the bar under all three. */
 	.usage-row {
 		display: grid;
 		grid-template-columns: max-content minmax(0, 1fr) max-content;
