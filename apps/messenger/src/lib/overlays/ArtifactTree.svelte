@@ -36,15 +36,20 @@
 		emptyLabel: string;
 		retryLabel: string;
 		onRetry?: () => void;
+		/**
+		 * The folders folded shut, and the lazily listed ones opened. Bind them to keep them while
+		 * the tree is put away: on a phone it lives in a sheet that goes when you pick a file.
+		 */
+		collapsed?: Set<string>;
+		expandedLazy?: Set<string>;
 	}
 
 	let {
 		nodes, selected, label, onSelect, onContextMenu, onTrash, dragLabel, lazyDirs = false, loadedDirs, onExpandDir, truncatedLabel,
 		loadingDirs, failedDirs, loading = false, failed = false,
 		loadingLabel, failedLabel, emptyLabel, retryLabel, onRetry,
+		collapsed = $bindable(new Set<string>()), expandedLazy = $bindable(new Set<string>()),
 	}: Props = $props();
-	let collapsed = $state(new Set<string>());
-	let expandedLazy = $state(new Set<string>());
 	/**
 	 * Rows picked with ⌘/Ctrl or Shift. Empty means the file on screen is the one highlighted, as
 	 * before there was more than one to pick; a plain click goes back to that.

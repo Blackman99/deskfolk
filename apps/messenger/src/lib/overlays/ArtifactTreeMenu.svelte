@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { MediaQuery } from 'svelte/reactivity';
+	import BottomSheet from '../BottomSheet.svelte';
+	import { PHONE_SHEET_QUERY } from '../bottom-sheet.ts';
 	import type { Copy } from '../copy.ts';
 	import { computeContextMenuPosition } from '../sidebar/session-context-menu.ts';
 	import { dismissOnOutside } from '../dismissable-menu.ts';
@@ -24,11 +27,15 @@
 		count?: number;
 		/** Asks to move the rows to the Mac's Trash; absent where nothing can reach the Mac. */
 		onTrash?: () => void;
+		/** The row's name, for a phone's sheet; none when the menu acts on several. */
+		title?: string | null;
 		onClose: () => void;
 	};
 
-	let { x, y, t, onOpen, onReveal, onOpenTerminal, onCopyPath, onCopyAbsPath, count = 1, onTrash, onClose }: Props = $props();
+	let { x, y, t, onOpen, onReveal, onOpenTerminal, onCopyPath, onCopyAbsPath, count = 1, onTrash, title = null, onClose }: Props = $props();
 	const single = $derived(count <= 1);
+	/** A long press on a phone opens it as a sheet from the bottom (`BottomSheet`), which closes itself. */
+	const phone = new MediaQuery(PHONE_SHEET_QUERY);
 
 	let menuEl = $state<HTMLDivElement>();
 	let placed = $state<{ x: number; y: number } | null>(null);
@@ -80,57 +87,69 @@
 	}
 </script>
 
-<div
-	bind:this={menuEl}
-	class="artifact-tree-menu"
-	style:left={`${pos.x}px`}
-	style:top={`${pos.y}px`}
-	role="menu"
-	tabindex="-1"
-	aria-label={t.stream.artifactTree}
-	data-testid="artifact-tree-menu"
-	use:portal
-	onkeydown={onKey}
-	oncontextmenu={(event) => {
-		event.preventDefault();
-		event.stopPropagation();
-	}}
->
+{#snippet entries(inSheet: boolean)}
 	{#if single}
-		<button type="button" class="artifact-tree-menu-item" role="menuitem" data-open onclick={() => pick(onOpen)}>
+		<button type="button" class={['artifact-tree-menu-item', { 'sheet-item': inSheet }]} role="menuitem" data-open onclick={() => pick(onOpen)}>
 			{t.stream.artifactOpenSystem}
 		</button>
-		<button type="button" class="artifact-tree-menu-item" role="menuitem" data-reveal onclick={() => pick(onReveal)}>
+		<button type="button" class={['artifact-tree-menu-item', { 'sheet-item': inSheet }]} role="menuitem" data-reveal onclick={() => pick(onReveal)}>
 			{t.stream.artifactReveal}
 		</button>
 		{#if onOpenTerminal}
-			<button type="button" class="artifact-tree-menu-item" role="menuitem" data-open-terminal onclick={() => pick(onOpenTerminal)}>
+			<button type="button" class={['artifact-tree-menu-item', { 'sheet-item': inSheet }]} role="menuitem" data-open-terminal onclick={() => pick(onOpenTerminal)}>
 				{t.stream.artifactOpenTerminal}
 			</button>
 		{/if}
 		{#if onCopyPath || onCopyAbsPath}
-			<div class="artifact-tree-menu-divider" role="separator"></div>
+			<div class={inSheet ? 'sheet-separator' : 'artifact-tree-menu-divider'} role="separator"></div>
 		{/if}
 	{/if}
 	{#if onCopyPath}
-		<button type="button" class="artifact-tree-menu-item" role="menuitem" data-copy-path onclick={() => pick(onCopyPath)}>
+		<button type="button" class={['artifact-tree-menu-item', { 'sheet-item': inSheet }]} role="menuitem" data-copy-path onclick={() => pick(onCopyPath)}>
 			{t.stream.artifactCopyPath}
 		</button>
 	{/if}
 	{#if onCopyAbsPath}
-		<button type="button" class="artifact-tree-menu-item" role="menuitem" data-copy-abs-path onclick={() => pick(onCopyAbsPath)}>
+		<button type="button" class={['artifact-tree-menu-item', { 'sheet-item': inSheet }]} role="menuitem" data-copy-abs-path onclick={() => pick(onCopyAbsPath)}>
 			{t.stream.artifactCopyAbsPath}
 		</button>
 	{/if}
 	{#if onTrash}
 		{#if onCopyPath || onCopyAbsPath || single}
-			<div class="artifact-tree-menu-divider" role="separator"></div>
+			<div class={inSheet ? 'sheet-separator' : 'artifact-tree-menu-divider'} role="separator"></div>
 		{/if}
-		<button type="button" class="artifact-tree-menu-item is-danger" role="menuitem" data-trash onclick={() => pick(onTrash)}>
+		<button type="button" class={['artifact-tree-menu-item', 'is-danger', { 'sheet-item': inSheet }]} role="menuitem" data-trash onclick={() => pick(onTrash)}>
 			{single ? t.stream.artifactTrash : t.stream.artifactTrashCount(count)}
 		</button>
 	{/if}
-</div>
+{/snippet}
+
+{#if phone.current}
+	<BottomSheet {title} closeLabel={t.common.close} {onClose}>
+		<div class="artifact-tree-sheet" role="menu" tabindex="-1" aria-label={title ?? t.stream.artifactTree} data-testid="artifact-tree-menu">
+			{@render entries(true)}
+		</div>
+	</BottomSheet>
+{:else}
+	<div
+		bind:this={menuEl}
+		class="artifact-tree-menu"
+		style:left={`${pos.x}px`}
+		style:top={`${pos.y}px`}
+		role="menu"
+		tabindex="-1"
+		aria-label={t.stream.artifactTree}
+		data-testid="artifact-tree-menu"
+		use:portal
+		onkeydown={onKey}
+		oncontextmenu={(event) => {
+			event.preventDefault();
+			event.stopPropagation();
+		}}
+	>
+		{@render entries(false)}
+	</div>
+{/if}
 
 <style>
 	.artifact-tree-menu {

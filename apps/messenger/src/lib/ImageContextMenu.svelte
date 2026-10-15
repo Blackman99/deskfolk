@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { MediaQuery } from 'svelte/reactivity';
+	import BottomSheet from './BottomSheet.svelte';
+	import { PHONE_SHEET_QUERY } from './bottom-sheet.ts';
 	import type { Copy } from './copy.ts';
 	import { copyRenderedImage } from './clipboard.ts';
 	import { computeContextMenuPosition } from './sidebar/session-context-menu.ts';
@@ -19,6 +22,8 @@
 	const pos = $derived(placed ?? { x, y });
 	let failed = $state(false);
 	let copying = $state(false);
+	/** A long press on a phone opens it as a sheet from the bottom (`BottomSheet`), which closes itself. */
+	const phone = new MediaQuery(PHONE_SHEET_QUERY);
 
 	/** A floating pane's transform would pin `fixed` to the pane, and the pane clips overflow. */
 	function portal(node: HTMLElement) {
@@ -63,32 +68,44 @@
 	}
 </script>
 
-<div
-	bind:this={menuEl}
-	class="image-context-menu"
-	style:left={`${pos.x}px`}
-	style:top={`${pos.y}px`}
-	role="menu"
-	tabindex="-1"
-	aria-label={t.common.copyImage}
-	data-testid="image-context-menu"
-	use:portal
-	onkeydown={onKey}
-	oncontextmenu={(event) => {
-		event.preventDefault();
-		event.stopPropagation();
-	}}
->
+{#snippet entries(inSheet: boolean)}
 	<button
 		type="button"
-		class="image-context-item"
+		class={['image-context-item', { 'sheet-item': inSheet }]}
 		role="menuitem"
 		disabled={copying}
 		onclick={copy}
 	>
 		{failed ? t.common.copyImageFailed : t.common.copyImage}
 	</button>
-</div>
+{/snippet}
+
+{#if phone.current}
+	<BottomSheet closeLabel={t.common.close} {onClose}>
+		<div class="image-context-sheet" role="menu" tabindex="-1" aria-label={t.common.copyImage} data-testid="image-context-menu">
+			{@render entries(true)}
+		</div>
+	</BottomSheet>
+{:else}
+	<div
+		bind:this={menuEl}
+		class="image-context-menu"
+		style:left={`${pos.x}px`}
+		style:top={`${pos.y}px`}
+		role="menu"
+		tabindex="-1"
+		aria-label={t.common.copyImage}
+		data-testid="image-context-menu"
+		use:portal
+		onkeydown={onKey}
+		oncontextmenu={(event) => {
+			event.preventDefault();
+			event.stopPropagation();
+		}}
+	>
+		{@render entries(false)}
+	</div>
+{/if}
 
 <style>
 	.image-context-menu {

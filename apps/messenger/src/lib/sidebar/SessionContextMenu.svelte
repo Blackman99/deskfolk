@@ -1,8 +1,12 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import type { Bot, SessionSummary } from '@real-bot/protocol';
+	import BottomSheet from '../BottomSheet.svelte';
+	import { PHONE_SHEET_QUERY } from '../bottom-sheet.ts';
 	import type { Copy } from '../copy.ts';
 	import { computeContextMenuPosition, deriveSessionContextMenu } from './session-context-menu.ts';
+	import { sessionTitle } from './session-title.ts';
 
 	let {
 		session,
@@ -41,9 +45,15 @@
 	const pos = $derived(adjustedPos ?? { x, y });
 
 	const data = $derived(deriveSessionContextMenu(session, isPinned, botsById));
+	/**
+	 * A long press on a phone opens it as a sheet from the bottom (`BottomSheet`), named after the
+	 * conversation, rather than a menu where the finger was. The sheet closes itself.
+	 */
+	const phone = new MediaQuery(PHONE_SHEET_QUERY);
+	const title = $derived(sessionTitle(session, botsById, { deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop }));
 
 	$effect(() => {
-		if (menuEl) {
+		if (menuEl && !phone.current) {
 			const rect = menuEl.getBoundingClientRect();
 			adjustedPos = computeContextMenuPosition(
 				x,
@@ -60,6 +70,7 @@
 	});
 
 	$effect(() => {
+		if (phone.current) return;
 		let cleanup: (() => void) | null = null;
 		const timer = setTimeout(() => {
 			function onPointerDown(e: PointerEvent) {
@@ -98,23 +109,10 @@
 	});
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<div
-	bind:this={menuEl}
-	class="session-context-menu"
-	style="left: {pos.x}px; top: {pos.y}px;"
-	role="menu"
-	tabindex="-1"
-	oncontextmenu={(e) => {
-		e.preventDefault();
-		e.stopPropagation();
-	}}
-	onclick={(e) => e.stopPropagation()}
-	onpointerdown={(e) => e.stopPropagation()}
->
+{#snippet items(inSheet: boolean)}
 	<button
 		type="button"
-		class="session-context-menu-item"
+		class={['session-context-menu-item', { 'sheet-item': inSheet }]}
 		role="menuitem"
 		onclick={() => {
 			onTogglePin();
@@ -133,7 +131,7 @@
 	{#if data.canViewInfo}
 	<button
 		type="button"
-		class="session-context-menu-item"
+		class={['session-context-menu-item', { 'sheet-item': inSheet }]}
 		role="menuitem"
 		onclick={() => {
 			onViewInfo();
@@ -146,11 +144,11 @@
 	{/if}
 
 	{#if data.canShowJob && onShowJobView}
-		<div class="session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2" role="separator"></div>
+		<div class={inSheet ? 'sheet-separator' : 'session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2'} role="separator"></div>
 		<!-- The latest job's one tab: its tickets, flow and spec (ADR 0086). -->
 		<button
 			type="button"
-			class="session-context-menu-item"
+			class={['session-context-menu-item', { 'sheet-item': inSheet }]}
 			role="menuitem"
 			data-job-view="trace"
 			onclick={() => {
@@ -163,11 +161,11 @@
 		</button>
 	{/if}
 
-	<div class="session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2" role="separator"></div>
+	<div class={inSheet ? 'sheet-separator' : 'session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2'} role="separator"></div>
 
 	<button
 		type="button"
-		class="session-context-menu-item"
+		class={['session-context-menu-item', { 'sheet-item': inSheet }]}
 		role="menuitem"
 		onclick={() => {
 			onClearHistory();
@@ -180,7 +178,7 @@
 
 	<button
 		type="button"
-		class="session-context-menu-item"
+		class={['session-context-menu-item', { 'sheet-item': inSheet }]}
 		role="menuitem"
 		disabled={!data.archive.enabled}
 		onclick={() => {
@@ -199,11 +197,11 @@
 		{/if}
 	</button>
 
-	<div class="session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2" role="separator"></div>
+	<div class={inSheet ? 'sheet-separator' : 'session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2'} role="separator"></div>
 
 	<button
 		type="button"
-		class="session-context-menu-item is-danger"
+		class={['session-context-menu-item', 'is-danger', { 'sheet-item': inSheet }]}
 		role="menuitem"
 		disabled={!data.delete.enabled}
 		onclick={() => {
@@ -216,7 +214,44 @@
 		<Icon name="trash" />
 		<span>{t.sidebar.delete}</span>
 	</button>
-</div>
+{/snippet}
+
+{#if phone.current}
+	<BottomSheet {title} closeLabel={t.common.close} onClose={onClose}>
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div
+			class="session-context-sheet"
+			role="menu"
+			tabindex="-1"
+			aria-label={title}
+			oncontextmenu={(e) => {
+				e.preventDefault();
+				e.stopPropagation();
+			}}
+			onclick={(e) => e.stopPropagation()}
+			onpointerdown={(e) => e.stopPropagation()}
+		>
+			{@render items(true)}
+		</div>
+	</BottomSheet>
+{:else}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		bind:this={menuEl}
+		class="session-context-menu"
+		style="left: {pos.x}px; top: {pos.y}px;"
+		role="menu"
+		tabindex="-1"
+		oncontextmenu={(e) => {
+			e.preventDefault();
+			e.stopPropagation();
+		}}
+		onclick={(e) => e.stopPropagation()}
+		onpointerdown={(e) => e.stopPropagation()}
+	>
+		{@render items(false)}
+	</div>
+{/if}
 
 <style>
 	.session-context-menu {

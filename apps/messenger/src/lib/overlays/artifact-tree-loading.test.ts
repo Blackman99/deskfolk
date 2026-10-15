@@ -274,3 +274,46 @@ test('reopened on a file inside the folder a link opened, the tree still lists t
 		expect(rows).toEqual(['curio', 'lumen-landing', 'index.html', 'demos.json']);
 	} finally { close(); }
 });
+
+test('on a phone the file list comes up as a sheet, goes when a file is picked, and keeps the folders opened in it', async () => {
+	const realMatchMedia = window.matchMedia;
+	window.matchMedia = ((query: string) => ({
+		matches: query.includes('max-width'), media: query, onchange: null, addListener() {}, removeListener() {},
+		addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,
+	})) as typeof window.matchMedia;
+	const picked: string[] = [];
+	const { host, close } = render(ArtifactPreview, {
+		attachment: null, relpath: '', siblings: [],
+		api: {
+			kind: 'remote',
+			workspaceTree: (path: string) => Promise.resolve(path === ''
+				? page([{ name: 'docs', path: 'docs', kind: 'dir' }, { name: 'a.md', path: 'a.md', kind: 'file' }])
+				: page([{ name: 'b.md', path: 'docs/b.md', kind: 'file' }])),
+		} as never,
+		workspacePath: '/workspace', t, mode: 'workspace', onClose() {}, onSelect() {},
+		onSelectWorkspacePath: (path: string) => picked.push(path),
+	});
+	const sheet = () => host.querySelector<HTMLElement>('.bottom-sheet-layer');
+	const row = (name: string) => [...(sheet()?.querySelectorAll('.artifact-tree-name') ?? [])].find((el) => el.textContent?.trim() === name)?.closest('.artifact-tree-row') ?? null;
+	try {
+		await settle();
+		// Not over the file: the list is in no sheet until the button asks for it.
+		expect(host.querySelector('.artifact-pane-main .artifact-tree')).toBeNull();
+		expect(sheet()).toBeNull();
+		click(host.querySelector('.artifact-picker-btn'));
+		flushSync();
+		expect(sheet()?.querySelector('.bottom-sheet-title')?.textContent).toBe(t.stream.workspaceExplorer);
+		click(row('docs'));
+		await settle();
+		click(row('b.md'));
+		flushSync();
+		expect(picked).toEqual(['docs/b.md']);
+		expect(sheet()).toBeNull();
+		click(host.querySelector('.artifact-picker-btn'));
+		flushSync();
+		expect(row('b.md')).not.toBeNull();
+	} finally {
+		close();
+		window.matchMedia = realMatchMedia;
+	}
+});

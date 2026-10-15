@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import BottomSheet from '../BottomSheet.svelte';
 	import type {
 		Annotation,
 		Attachment,
@@ -45,7 +47,7 @@
 		saveArtifactTreeWidth,
 	} from './artifact-tree-width.ts';
 	import { themeManager } from '../theme.ts';
-	import { onDestroy, type ComponentProps } from 'svelte';
+	import { onDestroy, untrack, type ComponentProps } from 'svelte';
 	import { ArtifactAnnotations } from './artifact-annotations.svelte.ts';
 	import { ArtifactLoader } from './artifact-loader.svelte.ts';
 	import { ArtifactTreeSource } from './artifact-tree-source.svelte.ts';
@@ -196,6 +198,22 @@
 	let treeDragging = $state(false);
 	/** Phone only: the list drops down over the top of the preview, which stays put. */
 	let treeOpen = $state(false);
+	/**
+	 * As narrow as the pane stacks (680px, where the list button shows), the list opens as a sheet
+	 * from the bottom (`BottomSheet`) rather than dropping over the file. The sheet goes when a
+	 * file is picked, so the folders opened in it are kept here; a new listing starts them over,
+	 * as the `{#key}` around the tree does.
+	 */
+	const stacked = new MediaQuery('(max-width: 680px)');
+	let treeCollapsed = $state(new Set<string>());
+	let treeExpanded = $state(new Set<string>());
+	$effect(() => {
+		void treeSrc.treeGeneration;
+		untrack(() => {
+			treeCollapsed = new Set();
+			treeExpanded = new Set();
+		});
+	});
 	const treeLabel = $derived(mode === 'workspace' ? t.stream.workspaceExplorer : t.stream.artifactTree);
 	let paneEl = $state<HTMLElement | null>(null);
 	let paneWidth = $state(Number.POSITIVE_INFINITY);
@@ -546,6 +564,35 @@
 	}
 </script>
 
+{#snippet treeView()}
+	{#key treeSrc.treeGeneration}
+	<ArtifactTree
+		nodes={treeSrc.tree}
+		selected={relpath}
+		label={mode === 'workspace' ? t.stream.workspaceExplorer : t.stream.artifactTree}
+		onSelect={selectNode}
+		onContextMenu={treeSrc.openTreeMenu}
+		onTrash={treeSrc.canTrash ? treeSrc.askTrash : undefined}
+		dragLabel={t.stream.dragItems}
+		lazyDirs={mode === 'workspace'}
+		loadedDirs={treeSrc.loadedDirs}
+		onExpandDir={(path) => void treeSrc.loadWorkspaceDir(path)}
+		truncatedLabel={t.stream.workspaceTruncated}
+		loadingDirs={treeSrc.loadingDirs}
+		failedDirs={treeSrc.failedDirs}
+		loading={mode === 'workspace' ? treeSrc.loadingDirs.has('.') : treeSrc.taskTreeLoading}
+		failed={mode === 'workspace' ? treeSrc.failedDirs.has('.') : treeSrc.taskTreeFailed}
+		loadingLabel={t.stream.artifactTreeLoading}
+		failedLabel={t.stream.artifactTreeFailed}
+		emptyLabel={mode === 'workspace' ? t.stream.workspaceEmpty : t.stream.artifactTreeEmpty}
+		retryLabel={t.disconnected.retry}
+		onRetry={() => { if (mode === 'workspace') void treeSrc.loadWorkspaceDir('.'); else treeSrc.taskTreeRetry += 1; }}
+		bind:collapsed={treeCollapsed}
+		bind:expandedLazy={treeExpanded}
+	/>
+	{/key}
+{/snippet}
+
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <aside
 	class="artifact-pane"
@@ -604,51 +651,24 @@
 				<Icon name="chevron-down" class={['artifact-picker-chevron', { 'is-open': treeOpen }]} />
 			</button>
 		</div>
+		{#if treeOpen && stacked.current}
+			<BottomSheet title={treeLabel} closeLabel={t.common.close} onClose={() => (treeOpen = false)} class="artifact-tree-sheet-panel">
+				{@render treeView()}
+			</BottomSheet>
+		{/if}
 	{/if}
 	<div
 		class="artifact-pane-main flex-1 min-h-0 min-w-0 flex"
-		class:has-tree={showTree}
-		data-tree-open={treeOpen}
+		class:has-tree={showTree && !stacked.current}
 	>
-		{#if showTree}
-			{#key treeSrc.treeGeneration}
-			<ArtifactTree
-				nodes={treeSrc.tree}
-				selected={relpath}
-				label={mode === 'workspace' ? t.stream.workspaceExplorer : t.stream.artifactTree}
-				onSelect={selectNode}
-				onContextMenu={treeSrc.openTreeMenu}
-				onTrash={treeSrc.canTrash ? treeSrc.askTrash : undefined}
-				dragLabel={t.stream.dragItems}
-				lazyDirs={mode === 'workspace'}
-				loadedDirs={treeSrc.loadedDirs}
-				onExpandDir={(path) => void treeSrc.loadWorkspaceDir(path)}
-				truncatedLabel={t.stream.workspaceTruncated}
-				loadingDirs={treeSrc.loadingDirs}
-				failedDirs={treeSrc.failedDirs}
-				loading={mode === 'workspace' ? treeSrc.loadingDirs.has('.') : treeSrc.taskTreeLoading}
-				failed={mode === 'workspace' ? treeSrc.failedDirs.has('.') : treeSrc.taskTreeFailed}
-				loadingLabel={t.stream.artifactTreeLoading}
-				failedLabel={t.stream.artifactTreeFailed}
-				emptyLabel={mode === 'workspace' ? t.stream.workspaceEmpty : t.stream.artifactTreeEmpty}
-				retryLabel={t.disconnected.retry}
-				onRetry={() => { if (mode === 'workspace') void treeSrc.loadWorkspaceDir('.'); else treeSrc.taskTreeRetry += 1; }}
-			/>
-			{/key}
+		{#if showTree && !stacked.current}
+			{@render treeView()}
 			<button
 				type="button"
 				class="split-handle artifact-tree-split"
 				class:is-active={treeDragging}
 				aria-label={t.stream.artifactTreeResize}
 				onpointerdown={startTreeResize}
-			></button>
-		{/if}
-		{#if treeOpen}
-			<button
-				type="button"
-				class="artifact-picker-scrim"
-				aria-label={t.common.close}
-				onclick={() => (treeOpen = false)}
 			></button>
 		{/if}
 		<ArtifactBody {t} {locale} {bots} {api} {relpath} {attachment} {mode} {kind} {sourceMode} {gate} {wrap} {resolvedTheme} {loadMonaco} {byteSource} {titleName} {opensOnDisk} {drawnRows} {viewAnnotations} {annot} {loader} {treeSrc} dirEntries={kind === 'directory' && mode !== 'workspace' ? treeSrc.listingOf(relpath) : null} onOpenEntry={selectNode} bind:editor bind:pdfViewer onEditorDirty={(next) => (editorDirty = next)} {enlarge} {openMarkdownPath} {openOnDisk} {inWorkspace} />
@@ -678,6 +698,7 @@
 		onCopyPath={treeSrc.treeMenuInWorkspace ? () => copyText(treeSrc.treeMenu?.targets.map((node) => node.path).join('\n') ?? '') : undefined}
 		onCopyAbsPath={treeSrc.treeMenuAbsPaths ? () => copyText(treeSrc.treeMenuAbsPaths!) : undefined}
 		count={treeSrc.treeMenu.targets.length}
+		title={treeSrc.treeMenu.targets.length > 1 ? null : treeSrc.treeMenu.node.name}
 		onTrash={treeSrc.treeMenuCanTrash ? () => treeSrc.askTrash(treeSrc.treeMenu?.targets ?? []) : undefined}
 		onClose={() => (treeSrc.treeMenu = null)}
 	/>
@@ -720,8 +741,7 @@
 	}
 
 	/* Desktop shows the tree beside the file, so it needs no picker above it. */
-	.artifact-picker,
-	.artifact-picker-scrim {
+	.artifact-picker {
 		display: none;
 	}
 
@@ -912,45 +932,25 @@
 			transform: rotate(180deg);
 		}
 
-		.artifact-pane-main.has-tree {
-			position: relative;
-			display: block;
-		}
-
-		.artifact-pane-main :global(.artifact-tree) {
-			position: absolute;
-			inset-inline: 0;
-			top: 0;
-			z-index: 5;
-			display: none;
-			/* The list is worth more than the sliver of file behind it: it runs as far as the
-			   bottom of the sheet, and only stops early when it has nothing more to show. */
-			max-height: 100%;
-			overscroll-behavior: contain;
-			width: auto;
-			max-width: none;
-			border-right: 0;
-			border-bottom: 1px solid var(--line);
-			background: var(--pane);
-			box-shadow: 0 18px 28px -18px rgba(8, 12, 14, 0.65);
-		}
-
-		.artifact-pane-main[data-tree-open='true'] :global(.artifact-tree) {
-			display: block;
-		}
-
-		.artifact-picker-scrim {
-			display: block;
-			position: absolute;
-			inset: 0;
-			z-index: 4;
-			background: transparent;
-			border: 0;
-		}
-
 		/* Dragging a divider is a mouse idea. */
 		.artifact-tree-split {
 			display: none;
 		}
+	}
+
+	/* On a phone the list is a sheet from the bottom (`BottomSheet`); the sheet is its box. */
+	:global(.artifact-tree-sheet-panel) :global(.artifact-tree) {
+		width: auto;
+		max-width: none;
+		overflow: visible;
+		padding: 0;
+		border: 0;
+		background: transparent;
+	}
+
+	/* Rows a thumb can hit; three classes, so it outweighs the tree's own row size. */
+	:global(.artifact-tree-sheet-panel .artifact-tree .artifact-tree-row) {
+		min-height: 44px;
+		font-size: 14px;
 	}
 </style>

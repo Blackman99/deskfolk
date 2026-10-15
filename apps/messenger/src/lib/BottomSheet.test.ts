@@ -6,6 +6,10 @@ import Select from "./Select.svelte";
 import StopMenu from "./chat/StopMenu.svelte";
 import ToolsMenu from "./sidebar/ToolsMenu.svelte";
 import TraceJobSwitcher from "./overlays/TraceJobSwitcher.svelte";
+import SessionContextMenu from "./sidebar/SessionContextMenu.svelte";
+import ArtifactTreeMenu from "./overlays/ArtifactTreeMenu.svelte";
+import ImageContextMenu from "./ImageContextMenu.svelte";
+import { aGroup } from "./test-fixtures.ts";
 import { closeMessageText, messageTextOpen } from "./chat/message-text-pages.ts";
 import { copyFor } from "./copy.ts";
 import { reactive } from "./test-reactive.svelte.ts";
@@ -180,4 +184,38 @@ test("on a phone the jobs of a conversation come up as a sheet", () => {
   expect(rows.map((row) => row.querySelector(".trace-job-title")?.textContent)).toEqual(["做片头", "配字幕"]);
   click(rows[1]);
   expect(picked).toEqual(["j2"]);
+});
+
+test("on a phone a long press on a conversation brings its menu up as a sheet named after it", () => {
+  asPhone(true);
+  const calls: string[] = [];
+  const { host } = mount(SessionContextMenu, {
+    session: aGroup({ id: "g1", name: "做视频的 Bot" }), botsById: new Map(), isPinned: false, x: 10, y: 10, t,
+    onClose: () => calls.push("close"), onTogglePin: () => calls.push("pin"), onViewInfo: () => calls.push("info"),
+    onClearHistory: () => calls.push("clear"), onToggleArchive: () => calls.push("archive"), onDelete: () => calls.push("delete"),
+  });
+  flushSync();
+  expect(host.querySelector(".session-context-menu")).toBeNull();
+  expect(sheet(host)?.querySelector(".bottom-sheet-title")?.textContent).toBe("做视频的 Bot");
+  click(sheet(host)!.querySelector('[role="menuitem"]'));
+  expect(calls).toEqual(["pin", "close"]);
+});
+
+test("on a phone the file tree's menu and the image menu come up as sheets", () => {
+  asPhone(true);
+  const calls: string[] = [];
+  const tree = mount(ArtifactTreeMenu, {
+    x: 0, y: 0, t, title: "notes.md", onOpen: () => calls.push("open"), onReveal: () => calls.push("reveal"),
+    onCopyPath: () => calls.push("copy"), onClose: () => calls.push("close"),
+  });
+  flushSync();
+  expect(document.querySelector(".artifact-tree-menu")).toBeNull();
+  expect(sheet(tree.host)?.querySelector(".bottom-sheet-title")?.textContent).toBe("notes.md");
+  click(sheet(tree.host)!.querySelector("[data-copy-path]"));
+  expect(calls).toEqual(["copy", "close"]);
+
+  const image = mount(ImageContextMenu, { src: "data:image/png;base64,", x: 0, y: 0, t, onClose: () => {} });
+  flushSync();
+  expect(document.querySelector(".image-context-menu")).toBeNull();
+  expect(sheet(image.host)?.querySelector('[role="menuitem"]')?.textContent?.trim()).toBe(t.common.copyImage);
 });

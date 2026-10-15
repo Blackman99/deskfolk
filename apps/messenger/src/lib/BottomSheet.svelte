@@ -246,6 +246,11 @@
 		font-weight: 600;
 	}
 
+	/* What cannot be taken back, in every sheet: Delete, Move to Trash. */
+	.bottom-sheet-layer .bottom-sheet-body :global(.sheet-item.is-danger:not(:disabled)) {
+		color: var(--danger);
+	}
+
 	.bottom-sheet-layer .bottom-sheet-body :global(.sheet-item svg) {
 		flex: none;
 		width: 20px;
