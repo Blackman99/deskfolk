@@ -598,6 +598,7 @@ describe("I9: the open entries never shrink", () => {
     // The runs reach every kind of outcome, numbers proposed against entries of another category among them.
     if (process.env.I9_COUNTS) console.log("I9", JSON.stringify(counts));
     for (const count of Object.values(counts)) expect(count).toBeGreaterThan(0);
-    // 1,500 answers, each a write whose plan's board is read back for its event: seconds, not the default five.
-  }, 30_000);
+    // 1,500 answers, each a write whose plan's board is read back for its event: seconds, not the default
+    // five; about 12 s on a Mac here, 22 s on CI's Linux and over 30 s on the macOS release runner.
+  }, 120_000);
 });

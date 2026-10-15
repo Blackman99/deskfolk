@@ -398,8 +398,22 @@ describe("a database an earlier build created", () => {
       const item = store.queueInboxItem({ botId: writer.bot.id, sessionId: direct, turnId: turn.id, taskId: null, ticketId: null,
         messageId: line.id, author: "user", body: line.body, source: "user", kind: "change", priority: 1 });
       store.close();
+      // Rebuilt without the column rather than `DROP COLUMN reply_in`: an older SQLite (3.50 does, 3.54
+      // does not; the macOS release runner's does) cuts a dropped last column back to the nearest
+      // comma, one inside the comment above it too, and the table's text then ends in that comment.
       const old = new Database(file, { strict: true });
-      old.run("ALTER TABLE inbox_items DROP COLUMN reply_in");
+      const { sql } = old.query<{ sql: string }, []>("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'inbox_items'").get()!;
+      const indexes = old.query<{ sql: string }, []>("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'inbox_items' AND sql IS NOT NULL").all();
+      const columns = old.query<{ name: string }, []>("PRAGMA table_info(inbox_items)").all()
+        .map((row) => row.name).filter((name) => name !== "reply_in").join(", ");
+      old.transaction(() => {
+        old.run(sql.replace("inbox_items", "inbox_items_before").replace(/,(\s*--.*\n)*\s*reply_in TEXT/, ""));
+        old.run(`INSERT INTO inbox_items_before (${columns}) SELECT ${columns} FROM inbox_items`);
+        old.run("DROP TABLE inbox_items");
+        old.run("ALTER TABLE inbox_items_before RENAME TO inbox_items");
+        for (const index of indexes) old.run(index.sql);
+      })();
+      expect(old.query<{ name: string }, []>("PRAGMA table_info(inbox_items)").all().map((row) => row.name)).not.toContain("reply_in");
       old.close();
 
       store = new Store({ filename: file });
