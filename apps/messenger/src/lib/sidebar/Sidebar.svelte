@@ -729,9 +729,9 @@
 		user-select: none;
 	}
 
-	/* On macOS the shell's ground (the window's material) shows through. */
+	/* Beside the content card the shell's ground shows through (the window's material on macOS). */
 	@media (min-width: 681px) {
-		:global(:root[data-chrome='mac']) .side {
+		.side {
 			background: transparent;
 		}
 	}

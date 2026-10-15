@@ -185,6 +185,14 @@
 		--avatar-ring: var(--sidebar-bg);
 	}
 
+	/* On the shell's ground the ring that cuts the status dot out is the ground's colour. */
+	@media (min-width: 681px) {
+		.row :global(.row-avatar),
+		.row:hover :global(.row-avatar) {
+			--avatar-ring: var(--ground);
+		}
+	}
+
 	.row.is-on :global(.row-avatar) {
 		--avatar-ring: var(--pane);
 	}

@@ -462,6 +462,12 @@
 		--avatar-ring: var(--sidebar-bg);
 	}
 
+	@media (min-width: 681px) {
+		.rail :global(.rail-item .row-avatar) {
+			--avatar-ring: var(--ground);
+		}
+	}
+
 	.rail :global(.rail-item:hover) {
 		background: var(--row-hover);
 	}

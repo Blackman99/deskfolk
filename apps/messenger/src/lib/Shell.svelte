@@ -1394,7 +1394,7 @@
 	 */
 	@media (min-width: 681px) {
 		.shell {
-			background: var(--sidebar-bg);
+			background: var(--ground);
 		}
 
 		.main,
@@ -1442,7 +1442,7 @@
 		}
 
 		:global(:root[data-chrome='mac']) .shell {
-			background: color-mix(in srgb, var(--sidebar-bg) 55%, transparent);
+			background: color-mix(in srgb, var(--ground) var(--ground-tint), transparent);
 		}
 	}
 

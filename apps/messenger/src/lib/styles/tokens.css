@@ -8,6 +8,13 @@
   --bg: #eef1f2;
   --pane: #ffffff;
   --sidebar-bg: #f7f9f9;
+  /*
+   * The ground the content cards lie on beside the phone layout (`Shell.svelte`): the sidebar and
+   * the gutter around the cards. `--ground-tint` is how much of it covers the window's material on
+   * macOS. Light keeps the sidebar's colour; dark goes well under `--pane`, or the cards vanish.
+   */
+  --ground: var(--sidebar-bg);
+  --ground-tint: 55%;
   --ink: #121c20;
   --ink-secondary: #37444a;
   --muted: #5f6d74;
@@ -232,6 +239,8 @@ body.dark,
   --bg: #0f1416;
   --pane: #192125;
   --sidebar-bg: #13191c;
+  --ground: #06090a;
+  --ground-tint: 82%;
   --ink: #eef2f3;
   --ink-secondary: #c5cfd3;
   --muted: #8b989e;
@@ -344,7 +353,7 @@ body.dark,
   --shadow-sheet-end: -16px 0 40px -6px rgba(0, 0, 0, 0.75);
   --shadow-menu: 0 12px 30px -4px rgba(0, 0, 0, 0.6), 0 4px 12px -2px rgba(0, 0, 0, 0.45);
   --shadow-card: 0 0 0 0.5px rgba(255, 255, 255, 0.09), 0 1px 3px rgba(0, 0, 0, 0.4), 0 12px 32px -12px rgba(0, 0, 0, 0.55);
-  --shadow-pane: 0 0 0 0.5px rgba(255, 255, 255, 0.09), 0 1px 3px rgba(0, 0, 0, 0.45);
+  --shadow-pane: 0 0 0 0.5px rgba(255, 255, 255, 0.11), 0 1px 3px rgba(0, 0, 0, 0.5);
   --shadow-raised: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 28px -12px rgba(0, 0, 0, 0.6);
 
   /* Components & Controls */
