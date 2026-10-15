@@ -10,7 +10,7 @@
 	import { promptsTabItems } from './routing-map.ts';
 	import SettingsSectionList from './SettingsSectionList.svelte';
 	import SettingsSectionTabs from './SettingsSectionTabs.svelte';
-	import { editedCount, firstLocale, groupPrompts, promptChip, type PromptView } from './prompts-view.ts';
+	import { editedCount, firstLocale, groupPrompts, promptChip, toolsByKind, type PromptView } from './prompts-view.ts';
 
 	/**
 	 * Settings › Prompts, by group as Models is by section: a wide window shows the groups as tabs
@@ -164,30 +164,43 @@
 	/>
 {/snippet}
 
-<!-- A group's prompts: one line each, or for the tool descriptions, their names in a grid. -->
+<!--
+	A group's prompts: one line each, or for the tool descriptions, their names in a grid under the
+	name of what they are for.
+-->
 {#snippet groupBody(group: PromptGroup, list: PromptSummary[])}
 	{#if group === 'tool'}
 		<p class="prompts-group-note">{c.toolsNote}</p>
-		<ul class="prompts-tools">
-			{#each list as item (item.id)}
-				{@const chip = chipOf(item)}
-				<li>
-					<button
-						type="button"
-						class="prompts-tool"
-						data-prompt={item.id}
-						title={chip.tone === 'default' ? undefined : chip.label}
-						onclick={(event) => void openEditor(item, event)}
-					>
-						<span class="prompts-tool-name">{item.title[ui]}</span>
-						{#if chip.tone !== 'default'}
-							<span class="prompts-dot is-{chip.tone}" aria-hidden="true"></span>
-							<span class="sr-only">{chip.label}</span>
-						{/if}
-					</button>
-				</li>
+		<div class="prompts-tools">
+			{#each toolsByKind(list) as row (row.kind ?? '')}
+				{@const heading = row.kind ? `prompts-tool-kind-${row.kind}` : undefined}
+				<section class="prompts-tool-kind" data-tool-kind={row.kind} aria-labelledby={heading}>
+					{#if row.kind}
+						<h5 class="prompts-tool-kind-title" id={heading}>{c.toolKinds[row.kind]}</h5>
+					{/if}
+					<ul class="prompts-tool-grid">
+						{#each row.items as item (item.id)}
+							{@const chip = chipOf(item)}
+							<li>
+								<button
+									type="button"
+									class="prompts-tool"
+									data-prompt={item.id}
+									title={chip.tone === 'default' ? undefined : chip.label}
+									onclick={(event) => void openEditor(item, event)}
+								>
+									<span class="prompts-tool-name">{item.title[ui]}</span>
+									{#if chip.tone !== 'default'}
+										<span class="prompts-dot is-{chip.tone}" aria-hidden="true"></span>
+										<span class="sr-only">{chip.label}</span>
+									{/if}
+								</button>
+							</li>
+						{/each}
+					</ul>
+				</section>
 			{/each}
-		</ul>
+		</div>
 	{:else}
 		<PromptRowList items={list} {ui} {botNames} {t} onopen={(item, event) => void openEditor(item, event)} />
 	{/if}
@@ -466,18 +479,46 @@
 		color: var(--muted);
 	}
 
-	/* Tool descriptions: fifty names that all mean "what this tool is for", so names only, in a grid. */
+	/*
+	 * Tool descriptions: fifty names that all mean "what this tool is for", so names only, in a grid
+	 * under the name of what they are for.
+	 */
 	.prompts-tools {
-		list-style: none;
-		margin: 0;
-		padding: 6px;
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-		gap: 2px;
+		display: flex;
+		flex-direction: column;
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		background: var(--pane);
 		box-shadow: var(--shadow-xs);
+	}
+
+	.prompts-tool-kind {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 6px;
+	}
+
+	.prompts-tool-kind + .prompts-tool-kind {
+		border-top: 1px solid var(--line);
+	}
+
+	.prompts-tool-kind-title {
+		margin: 0;
+		padding: 2px 8px 0;
+		font-size: 12px;
+		font-weight: 500;
+		line-height: 1.5;
+		color: var(--muted);
+	}
+
+	.prompts-tool-grid {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+		gap: 2px;
 	}
 
 	.prompts-tool {
@@ -542,7 +583,7 @@
 			animation: prompt-subpage-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 		}
 
-		.prompts-tools {
+		.prompts-tool-grid {
 			grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
 		}
 

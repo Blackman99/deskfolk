@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Tool descriptions are grouped by what the tools are for
+
+- Settings › Prompts › Tool descriptions used to be fifty-odd tool names in one grid, so finding a tool's description meant reading through the names. They now come under nine headings by what the tools are for: files and commands; speaking and ending turns; plans and hand-overs; roster and conversations; profile, skills and memory; routines; annotations; endpoints, models and MCP; prompts and records. A search or the Edited filter keeps the same headings, showing only those with a tool left. The same on a phone.
+
 ### On a phone, every dropdown comes up from the bottom
 
 - On a phone, a dropdown used to hang under its button, often half off the screen, with rows too small to hit. They now rise from the bottom of the screen with a title and a close button and 48px rows, and a tap on the dimmed page behind, the ✕ or Back puts them away. This covers every select field (such as a Bot's "Runs on" in its settings), picking members for a new group, the stop menu, the conversation header's ⋯, the new button, the tools menu, switching jobs on a flow, the calendar's roster filter, and the terminal page's session list and ⋯. So do the menus a long press brings up on a conversation, a picture or a file in the tree: a conversation's is titled with its name, and Delete and Move to Trash are in red. The preview's file list no longer drops over the file either: it rises from the bottom and goes once you pick a file, and the folders you opened are still open next time. Picking members and filtering the roster have a search box of their own in the sheet, and the keyboard does not come up until you tap it. Windows wider than 720px keep the dropdowns.

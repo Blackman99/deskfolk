@@ -92,6 +92,35 @@ test("the edited filter keeps only what changed, tools included, and is gone whe
   plain.close();
 });
 
+test("the tool descriptions are listed by what the tools are for, in a fixed order; an older daemon's in one grid", () => {
+  const tool = (name: string, kind: PromptSummary["tool_kind"], state: "default" | "edited" = "default") => ({ ...item(`tool.${name}`, "tool", state), tool_kind: kind });
+  const tools = [tool("read_file", "files"), tool("send_message", "talk"), tool("list_routines", "routines"), tool("shell", "files", "edited"), tool("remember", "self")];
+  const kinds = (host: HTMLElement) =>
+    [...host.querySelectorAll<HTMLElement>(".prompts-tool-kind")].map((el) => [el.querySelector(".prompts-tool-kind-title")?.textContent ?? null, [...el.querySelectorAll("[data-prompt]")].map((b) => b.getAttribute("data-prompt"))]);
+  const { host, close } = render(PromptsSettings, { runtime: fakeRuntime(), t, items: [item("turn.memory", "turn"), ...tools] });
+  click(tab(host, "tool"));
+  // By kind in their order, not the registry's; within one, the registry's.
+  expect(kinds(host)).toEqual([
+    [t.prompts.toolKinds.files, ["tool.read_file", "tool.shell"]],
+    [t.prompts.toolKinds.talk, ["tool.send_message"]],
+    [t.prompts.toolKinds.self, ["tool.remember"]],
+    [t.prompts.toolKinds.routines, ["tool.list_routines"]],
+  ]);
+  // Each kind names its tools for a screen reader; the note is said once over all of them.
+  const files = host.querySelector<HTMLElement>('[data-tool-kind="files"]')!;
+  expect(host.querySelector(`#${files.getAttribute("aria-labelledby")}`)?.textContent).toBe(t.prompts.toolKinds.files);
+  expect(host.querySelectorAll(".prompts-group-note")).toHaveLength(1);
+  // The edited filter keeps a kind only while one of its tools is edited.
+  click(host.querySelector('[data-prompts-filter="edited"]'));
+  expect(kinds(host)).toEqual([[t.prompts.toolKinds.files, ["tool.shell"]]]);
+  close();
+
+  // A daemon from before the kinds sends none: the names come in one grid, under no heading.
+  const older = render(PromptsSettings, { runtime: fakeRuntime(), t, items: [item("tool.shell", "tool"), item("tool.send_message", "tool")] });
+  expect(kinds(older.host)).toEqual([[null, ["tool.shell", "tool.send_message"]]]);
+  older.close();
+});
+
 test("a lone group needs no tabs", () => {
   const { host, close } = render(PromptsSettings, { runtime: fakeRuntime(), t, items: [item("turn.memory", "turn")] });
   expect(host.querySelector(".section-tabs")).toBeNull();

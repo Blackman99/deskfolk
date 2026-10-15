@@ -1,4 +1,4 @@
-import type { DiffLine, Locale, PromptGroup, PromptLocaleState, PromptRevision, PromptSummary } from '@real-bot/protocol';
+import { TOOL_KINDS, type DiffLine, type Locale, type PromptGroup, type PromptLocaleState, type PromptRevision, type PromptSummary, type ToolKind } from '@real-bot/protocol';
 import type { Copy } from '../copy.ts';
 
 type PromptsCopy = Copy['prompts'];
@@ -33,6 +33,17 @@ export function groupPrompts(items: readonly PromptSummary[], query: string, onl
 			(!q || [item.id, item.title.zh, item.title.en, item.summary.zh, item.summary.en].some((text) => text.toLowerCase().includes(q)))
 	);
 	return PROMPT_GROUPS.map((group) => ({ group, items: hits.filter((item) => item.group === group) })).filter((row) => row.items.length > 0);
+}
+
+/**
+ * Tool descriptions by what each tool is for, in `TOOL_KINDS`' order, each keeping the registry's
+ * order; those a daemon from before it sends with no kind come last, under no heading.
+ */
+export function toolsByKind(items: readonly PromptSummary[]): Array<{ kind: ToolKind | null; items: PromptSummary[] }> {
+	const known = new Set<string>(TOOL_KINDS);
+	const rows: Array<{ kind: ToolKind | null; items: PromptSummary[] }> = TOOL_KINDS.map((kind) => ({ kind, items: items.filter((item) => item.tool_kind === kind) }));
+	rows.push({ kind: null, items: items.filter((item) => !item.tool_kind || !known.has(item.tool_kind)) });
+	return rows.filter((row) => row.items.length > 0);
 }
 
 /** One prompt's state across its languages: a conflict in any, else an edit in any, else the default. */

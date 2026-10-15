@@ -459,6 +459,33 @@ const promptsClient = {
 	]
 };
 
+/** Every app tool, by what it is for, in the registry's order within each (builtin-tools.ts). */
+const toolsByKind: Record<string, string[]> = {
+	files: ['read_file', 'write_file', 'delete_file', 'list_dir', 'shell'],
+	talk: ['send_message', 'ask_user', 'check_back', 'end_turn'],
+	work: ['work_on', 'delegate', 'submit', 'review', 'plan_items'],
+	roster: ['create_bot', 'list_bots', 'list_sessions', 'create_group', 'create_direct', 'add_member', 'remove_member'],
+	self: ['update_profile', 'list_skills', 'read_skill', 'create_skill', 'update_skill', 'delete_skill', 'remember', 'forget'],
+	routines: ['list_routines', 'create_routine', 'update_routine', 'delete_routine'],
+	annotations: ['list_annotations', 'resolve_annotation'],
+	setup: ['list_endpoints', 'add_endpoint', 'update_endpoint', 'delete_endpoint', 'measure_model', 'update_model_settings', 'list_mcp_servers', 'add_mcp_server', 'update_mcp_server', 'delete_mcp_server'],
+	prompts: ['list_prompts', 'read_prompt', 'edit_prompt', 'reset_prompt', 'describe_data', 'query_data', 'read_data_log']
+};
+
+/** The tool descriptions, each saying what its tool is for: one you edited, one in conflict with a newer default. */
+const toolsClient = {
+	listLessons: async () => [],
+	listPrompts: async () => [
+		aPrompt('turn.system', 'turn', '系统指令', '每个 Bot 每一跳都读的工作守则：遇到障碍怎么办、怎么交接、怎么说话、批准和边界。'),
+		...Object.entries(toolsByKind).flatMap(([kind, names]) =>
+			names.map((name) => ({
+				...aPrompt(`tool.${name}`, 'tool', name, '', [promptState(name === 'shell' ? 'conflict' : name === 'remember' ? 'edited' : 'default')]),
+				tool_kind: kind
+			}))
+		)
+	]
+};
+
 /** The engines (ADR 0085): 视频 the default, its settle waiting a little longer than built in. */
 const playbookList = (): PlaybookList => {
 	const item = (id: BuiltinPlaybookId, diff: PlaybookDiff = emptyPlaybookDiff()): Playbook => ({
@@ -1433,6 +1460,18 @@ const defs: Record<StoryName, Story> = {
 		component: SettingsModal as never,
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: promptsClient }) }),
 		afterMount: promptsSection()
+	},
+	// The tool descriptions under what they are for: files and commands first, prompts and records last.
+	'settings-prompts-tools': {
+		component: SettingsModal as never,
+		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: toolsClient }) }),
+		afterMount: promptsSection('tool')
+	},
+	// On a phone, the same page, two names to a row.
+	'settings-prompts-tools-narrow': {
+		component: SettingsModal as never,
+		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: toolsClient }) }),
+		afterMount: promptsSection('tool')
 	},
 	// The remote access tab before the Mac has a relay, with the deploy-your-own guide unfolded.
 	'settings-remote-guide': {
