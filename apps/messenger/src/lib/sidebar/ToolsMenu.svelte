@@ -1,6 +1,9 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
 	import { untrack } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import BottomSheet from '../BottomSheet.svelte';
+	import { PHONE_SHEET_QUERY } from '../bottom-sheet.ts';
 	import { isOutside } from '../click-outside.ts';
 	import { roveFocus } from '../menu-roving.ts';
 	import { screenCopy, type Copy } from '../copy.ts';
@@ -11,7 +14,8 @@
 	 * and — after a line — the archived sessions. One
 	 * menu for every button that opens it: the list's footer, the phone's search row, and the rail
 	 * the list folds into. The button stays with its owner; this hangs off it, walks with the arrow
-	 * keys, closes on Escape, Tab or a click elsewhere, and hands focus back to the button.
+	 * keys, closes on Escape, Tab or a click elsewhere, and hands focus back to the button. As narrow
+	 * as a phone it is a sheet from the bottom (`BottomSheet`) instead.
 	 */
 	type Props = {
 		t: Copy;
@@ -74,9 +78,10 @@
 
 	const spendCopy = $derived(spendCopyFor(locale));
 	let menuEl = $state<HTMLElement | null>(null);
+	const sheet = new MediaQuery(PHONE_SHEET_QUERY);
 
 	function place(): void {
-		if (!open || !menuEl || !anchor) return;
+		if (!open || !menuEl || !anchor || sheet.current) return;
 		const a = anchor.getBoundingClientRect();
 		const m = menuEl.getBoundingClientRect();
 		const margin = 8;
@@ -99,7 +104,7 @@
 	}
 
 	$effect(() => {
-		if (open && menuEl) {
+		if (open && menuEl && !sheet.current) {
 			place();
 			const items = itemsOf();
 			// Read untracked: clearing it here must not run this again and move focus back to the first.
@@ -110,7 +115,7 @@
 	});
 
 	$effect(() => {
-		if (!open || !anchor || !menuEl) return;
+		if (!open || !anchor || !menuEl || sheet.current) return;
 		const observer = new ResizeObserver(place);
 		observer.observe(anchor);
 		observer.observe(menuEl);
@@ -124,7 +129,7 @@
 
 	function close(): void {
 		open = false;
-		anchor?.focus();
+		if (!sheet.current) anchor?.focus();
 	}
 
 	function choose(action: () => void): void {
@@ -148,13 +153,105 @@
 	 * is in the DOM: with nothing to be outside of, it is not an outside click.
 	 */
 	function onWindowClick(e: MouseEvent): void {
-		if (open && menuEl && anchor && isOutside(e.target as Node | null, menuEl, anchor)) open = false;
+		// A sheet closes by its own backdrop, close button, Back or Escape.
+		if (open && !sheet.current && menuEl && anchor && isOutside(e.target as Node | null, menuEl, anchor)) open = false;
 	}
 </script>
 
 <svelte:window onclick={onWindowClick} onresize={place} />
 
-{#if open}
+{#snippet entries(inSheet: boolean)}
+	<button
+		type="button"
+		class={['tools-menu-item', { 'sheet-item': inSheet }]}
+		role="menuitem"
+		aria-current={current.routines ? 'true' : undefined}
+		onclick={() => choose(onOpenRoutines)}
+	>
+		<Icon name="calendar" />
+		<span>{pages ? t.calendar.open : t.routines.title}</span>
+	</button>
+	<button
+		type="button"
+		class={['tools-menu-item', { 'sheet-item': inSheet }]}
+		role="menuitem"
+		aria-current={current.spend ? 'true' : undefined}
+		onclick={() => choose(onOpenSpend)}
+	>
+		<Icon name="dollar" />
+		<span>{spendCopy.open}</span>
+	</button>
+	{#if onOpenUsage}
+		<button
+			type="button"
+			class={['tools-menu-item', { 'sheet-item': inSheet }]}
+			role="menuitem"
+			aria-current={current.usage ? 'true' : undefined}
+			data-tools-usage
+			onclick={() => choose(onOpenUsage)}
+		>
+			<Icon name="gauge" />
+			<span>{t.usage.open}</span>
+		</button>
+	{/if}
+	<button
+		type="button"
+		class={['tools-menu-item', { 'sheet-item': inSheet }]}
+		role="menuitem"
+		aria-current={current.terminal ? 'true' : undefined}
+		onclick={() => choose(onOpenTerminal)}
+	>
+		<Icon name="terminal" />
+		<span>{pages ? t.terminal.title : t.terminal.newTab}</span>
+	</button>
+	{#if onOpenScreen}
+		<button
+			type="button"
+			class={['tools-menu-item', { 'sheet-item': inSheet }]}
+			role="menuitem"
+			aria-current={current.screen ? 'true' : undefined}
+			onclick={() => choose(onOpenScreen)}
+		>
+			<Icon name="monitor" />
+			<span>{screenCopy(t, screenHost).title}</span>
+		</button>
+	{/if}
+	{#if onOpenRoles}
+		<button
+			type="button"
+			class={['tools-menu-item', { 'sheet-item': inSheet }]}
+			role="menuitem"
+			aria-current={current.roles ? 'true' : undefined}
+			data-tools-roles
+			onclick={() => choose(onOpenRoles)}
+		>
+			<Icon name="nodes" />
+			<span>{t.routing.tab}</span>
+		</button>
+	{/if}
+	<div class={inSheet ? 'sheet-separator' : 'tools-menu-divider'} role="separator"></div>
+	<button
+		type="button"
+		class={['tools-menu-item', 'tools-menu-archived', { 'sheet-item': inSheet }]}
+		role="menuitem"
+		aria-current={current.archived ? 'true' : undefined}
+		onclick={() => choose(onOpenArchived)}
+	>
+		<Icon name="archive" />
+		<span>{t.sidebar.archivedSessions}</span>
+		{#if archivedCount > 0}
+			<span class="tools-menu-badge">{archivedCount}</span>
+		{/if}
+	</button>
+{/snippet}
+
+{#if open && sheet.current}
+	<BottomSheet title={t.sidebar.tools} closeLabel={t.common.close} onClose={close}>
+		<div bind:this={menuEl} id="sidebar-tools-menu" aria-label={t.sidebar.tools} role="menu" tabindex="-1" onkeydown={onMenuKeyDown}>
+			{@render entries(true)}
+		</div>
+	</BottomSheet>
+{:else if open}
 	<div
 		bind:this={menuEl}
 		id="sidebar-tools-menu"
@@ -164,88 +261,7 @@
 		tabindex="-1"
 		onkeydown={onMenuKeyDown}
 	>
-		<button
-			type="button"
-			class="tools-menu-item"
-			role="menuitem"
-			aria-current={current.routines ? 'true' : undefined}
-			onclick={() => choose(onOpenRoutines)}
-		>
-			<Icon name="calendar" />
-			<span>{pages ? t.calendar.open : t.routines.title}</span>
-		</button>
-		<button
-			type="button"
-			class="tools-menu-item"
-			role="menuitem"
-			aria-current={current.spend ? 'true' : undefined}
-			onclick={() => choose(onOpenSpend)}
-		>
-			<Icon name="dollar" />
-			<span>{spendCopy.open}</span>
-		</button>
-		{#if onOpenUsage}
-			<button
-				type="button"
-				class="tools-menu-item"
-				role="menuitem"
-				aria-current={current.usage ? 'true' : undefined}
-				data-tools-usage
-				onclick={() => choose(onOpenUsage)}
-			>
-				<Icon name="gauge" />
-				<span>{t.usage.open}</span>
-			</button>
-		{/if}
-		<button
-			type="button"
-			class="tools-menu-item"
-			role="menuitem"
-			aria-current={current.terminal ? 'true' : undefined}
-			onclick={() => choose(onOpenTerminal)}
-		>
-			<Icon name="terminal" />
-			<span>{pages ? t.terminal.title : t.terminal.newTab}</span>
-		</button>
-		{#if onOpenScreen}
-			<button
-				type="button"
-				class="tools-menu-item"
-				role="menuitem"
-				aria-current={current.screen ? 'true' : undefined}
-				onclick={() => choose(onOpenScreen)}
-			>
-				<Icon name="monitor" />
-				<span>{screenCopy(t, screenHost).title}</span>
-			</button>
-		{/if}
-		{#if onOpenRoles}
-			<button
-				type="button"
-				class="tools-menu-item"
-				role="menuitem"
-				aria-current={current.roles ? 'true' : undefined}
-				data-tools-roles
-				onclick={() => choose(onOpenRoles)}
-			>
-				<Icon name="nodes" />
-				<span>{t.routing.tab}</span>
-			</button>
-		{/if}
-		<div class="tools-menu-divider" role="separator"></div>
-		<button
-			type="button"
-			class="tools-menu-item tools-menu-archived"
-			role="menuitem"
-			aria-current={current.archived ? 'true' : undefined}
-			onclick={() => choose(onOpenArchived)}
-		>
-			<Icon name="archive" />
-			<span>{t.sidebar.archivedSessions}</span>
-			{#if archivedCount > 0}
-				<span class="tools-menu-badge">{archivedCount}</span>
-			{/if}
-		</button>
+		{@render entries(false)}
 	</div>
 {/if}
 

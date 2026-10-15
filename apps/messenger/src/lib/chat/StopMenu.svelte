@@ -1,6 +1,9 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
 	import { tick } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import BottomSheet from '../BottomSheet.svelte';
+	import { PHONE_SHEET_QUERY } from '../bottom-sheet.ts';
 	import { isOutside } from '../click-outside.ts';
 	import { roveFocus } from '../menu-roving.ts';
 	import type { Copy } from '../copy.ts';
@@ -11,7 +14,7 @@
 	 * — this Bot, this job, every Bot. The choices come from `stop-menu.ts`; picking one hands it to
 	 * the owner, which makes the stop, and a refusal it hands back is said by the button until your
 	 * next click. Arrow keys walk it, Escape or a click elsewhere closes it and gives focus back to the
-	 * button.
+	 * button. On a phone the choices open as a sheet from the bottom (`BottomSheet`).
 	 */
 	type Props = {
 		items: readonly StopMenuItem[];
@@ -33,22 +36,23 @@
 	let failed = $state(false);
 	let trigger = $state<HTMLButtonElement | null>(null);
 	let menu = $state<HTMLElement | null>(null);
+	const phone = new MediaQuery(PHONE_SHEET_QUERY);
 
 	function entries(): HTMLButtonElement[] {
-		return Array.from(menu?.querySelectorAll<HTMLButtonElement>('.stop-menu-item') ?? []);
+		return Array.from(menu?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
 	}
 
 	async function toggle(): Promise<void> {
 		open = !open;
 		failed = false;
-		if (!open) return;
+		if (!open || phone.current) return;
 		await tick();
 		entries()[0]?.focus();
 	}
 
 	function close(): void {
 		open = false;
-		trigger?.focus();
+		if (!phone.current) trigger?.focus();
 	}
 
 	/** The click that picked: it reaches the window after the refusal may already be in. */
@@ -78,7 +82,8 @@
 	function onWindowClick(e: MouseEvent): void {
 		// The note sits where the menu was, over whatever is below it: any later click puts it away.
 		if (e !== pickedWith) failed = false;
-		if (open && menu && trigger && isOutside(e.target as Node | null, menu, trigger)) open = false;
+		// A sheet closes by its own backdrop, close button, Back or Escape.
+		if (open && !phone.current && menu && trigger && isOutside(e.target as Node | null, menu, trigger)) open = false;
 	}
 
 	// Nothing left to choose (it was all stopped meanwhile): the menu goes with it.
@@ -107,7 +112,18 @@
 		{#if label}<span>{label}</span>{/if}
 		<Icon name={placement === 'below' ? 'chevron-down' : 'chevron-up'} size={12} />
 	</button>
-	{#if open}
+	{#if open && phone.current}
+		<BottomSheet title={t.control.menu} closeLabel={t.common.close} onClose={close}>
+			<div bind:this={menu} role="menu" tabindex="-1" aria-label={t.control.menu} onkeydown={onKeyDown}>
+				{#each items as item (item.key)}
+					<button type="button" role="menuitem" class="sheet-item" onclick={(e) => void pick(item, e)}>
+						<Icon name="stop" size={16} />
+						<span class="sheet-item-label">{item.label}</span>
+					</button>
+				{/each}
+			</div>
+		</BottomSheet>
+	{:else if open}
 		<div bind:this={menu} class="stop-menu-list" role="menu" tabindex="-1" aria-label={t.control.menu} onkeydown={onKeyDown}>
 			{#each items as item (item.key)}
 				<button type="button" role="menuitem" class="stop-menu-item" onclick={(e) => void pick(item, e)}>{item.label}</button>

@@ -1,6 +1,9 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
 	import { tick } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import BottomSheet from '../BottomSheet.svelte';
+	import { PHONE_SHEET_QUERY } from '../bottom-sheet.ts';
 	import { Calendar, type CalendarEvent, type CalendarSource, type EventInstance } from './calendar-entry.ts';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import type { Copy } from '../copy.ts';
@@ -19,6 +22,8 @@
 	let hidden = $state<ReadonlySet<string>>(new Set());
 	let showInfo = $state(false);
 	let filterOpen = $state(false);
+	/** On a phone the roster filter opens as a sheet from the bottom (`BottomSheet`). */
+	const phone = new MediaQuery(PHONE_SHEET_QUERY);
 	let filterQuery = $state('');
 	let filterHighlight = $state(0);
 	let filterRoot = $state<HTMLDivElement | null>(null);
@@ -145,7 +150,8 @@
 		filterOpen = true;
 		filterQuery = '';
 		filterHighlight = 0;
-		void tick().then(() => filterSearchEl?.focus());
+		// On a phone the keyboard would come up over the list before you chose to type.
+		if (!phone.current) void tick().then(() => filterSearchEl?.focus());
 	}
 
 	function onFilterKeydown(event: KeyboardEvent): void {
@@ -198,6 +204,69 @@
 		return end;
 	}
 </script>
+
+{#snippet filterBody()}
+	<input
+		bind:this={filterSearchEl}
+		bind:value={filterQuery}
+		class="roster-filter-search"
+		type="search"
+		placeholder={t.calendar.filterSearch}
+		aria-label={t.calendar.filterSearch}
+		aria-autocomplete="list"
+		aria-controls="roster-filter-list"
+		aria-activedescendant={filterActiveId ? `roster-filter-opt-${filterActiveId}` : undefined}
+		autocomplete="off"
+		spellcheck="false"
+		oninput={() => (filterHighlight = 0)}
+		onkeydown={onFilterKeydown}
+	/>
+	<ul id="roster-filter-list" class="roster-filter-list" role="listbox" aria-multiselectable="true" aria-label={t.calendar.filter}>
+		{#if listedSources.length === 0}
+			<li class="roster-filter-empty" role="presentation">{t.calendar.filterNoMatch}</li>
+		{:else}
+			{#each listedSources as source, idx (source.id)}
+				{@const bot = botsById.get(source.id)}
+				<li>
+					<button
+						type="button"
+						id={`roster-filter-opt-${source.id}`}
+						class="roster-filter-option"
+						class:is-selected={source.visible}
+						class:is-highlighted={idx === filterActiveIndex}
+						role="option"
+						aria-selected={source.visible}
+						title={source.visible ? `${t.calendar.filterHide} ${source.name}` : `${t.calendar.filterShow} ${source.name}`}
+						tabindex={-1}
+						onmousedown={(event) => event.preventDefault()}
+						onclick={() => toggleSource(source.id)}
+						onmouseenter={() => (filterHighlight = idx)}
+					>
+						<span class="roster-filter-box" aria-hidden="true">
+							{#if source.visible}
+								<Icon name="check" size={12} />
+							{/if}
+						</span>
+						{#if bot}
+							<span class="bot-face" style:background={botAvatarColor(bot.id).bg} style:color={botAvatarColor(bot.id).text}>
+								{#if avatarSrc(bot.avatar)}
+									<img src={avatarSrc(bot.avatar)} alt="" />
+								{:else}
+									{rosterLetter(bot.name)}
+								{/if}
+							</span>
+						{/if}
+						<span class="roster-filter-name">{source.name}</span>
+						{#if bot?.duties?.trim()}
+							<span class="roster-filter-hint">{bot.duties}</span>
+						{/if}
+						<span class="roster-filter-swatch" style:background={source.color} aria-hidden="true"></span>
+					</button>
+				</li>
+			{/each}
+		{/if}
+	</ul>
+{/snippet}
 
 <svelte:window
 	onkeydowncapture={(event) => {
@@ -311,68 +380,13 @@
 						{t.calendar.filterReset}
 					</button>
 				{/if}
-				{#if filterOpen}
+				{#if filterOpen && phone.current}
+					<BottomSheet title={t.calendar.filter} closeLabel={t.common.close} onClose={closeFilter} class="roster-filter-sheet">
+						{@render filterBody()}
+					</BottomSheet>
+				{:else if filterOpen}
 					<div class="roster-filter-menu">
-						<input
-							bind:this={filterSearchEl}
-							bind:value={filterQuery}
-							class="roster-filter-search"
-							type="search"
-							placeholder={t.calendar.filterSearch}
-							aria-label={t.calendar.filterSearch}
-							aria-autocomplete="list"
-							aria-controls="roster-filter-list"
-							aria-activedescendant={filterActiveId ? `roster-filter-opt-${filterActiveId}` : undefined}
-							autocomplete="off"
-							spellcheck="false"
-							oninput={() => (filterHighlight = 0)}
-							onkeydown={onFilterKeydown}
-						/>
-						<ul id="roster-filter-list" class="roster-filter-list" role="listbox" aria-multiselectable="true" aria-label={t.calendar.filter}>
-							{#if listedSources.length === 0}
-								<li class="roster-filter-empty" role="presentation">{t.calendar.filterNoMatch}</li>
-							{:else}
-								{#each listedSources as source, idx (source.id)}
-									{@const bot = botsById.get(source.id)}
-									<li>
-										<button
-											type="button"
-											id={`roster-filter-opt-${source.id}`}
-											class="roster-filter-option"
-											class:is-selected={source.visible}
-											class:is-highlighted={idx === filterActiveIndex}
-											role="option"
-											aria-selected={source.visible}
-											title={source.visible ? `${t.calendar.filterHide} ${source.name}` : `${t.calendar.filterShow} ${source.name}`}
-											tabindex={-1}
-											onmousedown={(event) => event.preventDefault()}
-											onclick={() => toggleSource(source.id)}
-											onmouseenter={() => (filterHighlight = idx)}
-										>
-											<span class="roster-filter-box" aria-hidden="true">
-												{#if source.visible}
-													<Icon name="check" size={12} />
-												{/if}
-											</span>
-											{#if bot}
-												<span class="bot-face" style:background={botAvatarColor(bot.id).bg} style:color={botAvatarColor(bot.id).text}>
-													{#if avatarSrc(bot.avatar)}
-														<img src={avatarSrc(bot.avatar)} alt="" />
-													{:else}
-														{rosterLetter(bot.name)}
-													{/if}
-												</span>
-											{/if}
-											<span class="roster-filter-name">{source.name}</span>
-											{#if bot?.duties?.trim()}
-												<span class="roster-filter-hint">{bot.duties}</span>
-											{/if}
-											<span class="roster-filter-swatch" style:background={source.color} aria-hidden="true"></span>
-										</button>
-									</li>
-								{/each}
-							{/if}
-						</ul>
+						{@render filterBody()}
 					</div>
 				{/if}
 			</div>
@@ -1699,5 +1713,43 @@
 			min-height: 44px;
 		}
 
+	}
+
+	/* On a phone's sheet: a search box like any field, the whole list, and rows for a thumb. */
+	:global(.roster-filter-sheet) .roster-filter-search {
+		height: 40px;
+		margin-bottom: 6px;
+		padding: 0 12px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--input-bg);
+		font-size: 16px;
+	}
+
+	:global(.roster-filter-sheet) .roster-filter-search:focus,
+	:global(.roster-filter-sheet) .roster-filter-search:focus-visible {
+		box-shadow: var(--field-focus-ring);
+	}
+
+	:global(.roster-filter-sheet) .roster-filter-list {
+		max-height: none;
+		padding: 0;
+		overflow: visible;
+	}
+
+	:global(.roster-filter-sheet) .roster-filter-option {
+		gap: 12px;
+		min-height: 48px;
+		padding: 8px 12px;
+		border-radius: var(--radius-md);
+		font-size: 15px;
+	}
+
+	:global(.roster-filter-sheet) .roster-filter-option.is-highlighted {
+		background: transparent;
+	}
+
+	:global(.roster-filter-sheet) .roster-filter-option:active {
+		background: var(--line-subtle);
 	}
 </style>

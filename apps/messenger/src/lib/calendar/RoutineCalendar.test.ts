@@ -156,14 +156,16 @@ for (const width of [390, 1280]) test(`routine details stay centered and scroll 
   }
 });
 
-for (const width of [390, 1280]) test(`roster filter stays a closed dropdown at ${width}px`, () => {
+for (const width of [390, 1280]) test(`roster filter starts closed at ${width}px, and opens as a sheet on a phone`, () => {
   const viewport = (window as unknown as { happyDOM: { setViewport: (size: { width: number; height: number }) => void } }).happyDOM;
   viewport.setViewport({ width, height: 844 });
   const runtime = reactive(fakeRuntime({ bots: [aBot(), aBot({ id: "bot-2", name: "Idle" })], routines: [aRoutine()] }));
   const { host, close } = render(RoutineCalendar, { runtime, t });
+  // A phone's list is a sheet from the bottom; a desktop's drops down under the button.
+  const menu = width <= 720 ? '.roster-filter-sheet' : '.roster-filter-menu';
   try {
     const trigger = host.querySelector<HTMLButtonElement>('.roster-filter-trigger')!;
-    expect(host.querySelector('.roster-filter-menu')).toBeNull();
+    expect(host.querySelector(menu)).toBeNull();
     expect(host.querySelector('.calendar-sources')).toBeNull();
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     expect(trigger.textContent).toContain(t.calendar.filterAll);
@@ -174,12 +176,13 @@ for (const width of [390, 1280]) test(`roster filter stays a closed dropdown at 
     }
     click(trigger);
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
-    expect(host.querySelector('.roster-filter-menu')).not.toBeNull();
+    expect(host.querySelector(menu)).not.toBeNull();
+    expect(host.querySelector(width <= 720 ? '.roster-filter-menu' : '.roster-filter-sheet')).toBeNull();
     expect(host.querySelectorAll('.roster-filter-option')).toHaveLength(1);
     click(host.querySelector('.roster-filter-option'));
     expect(trigger.textContent).toContain('0/1');
     click(trigger);
-    expect(host.querySelector('.roster-filter-menu')).toBeNull();
+    expect(host.querySelector(menu)).toBeNull();
     expect(trigger.textContent).toContain('0/1');
     click(host.querySelector('.filter-reset-btn'));
     expect(trigger.textContent).toContain(t.calendar.filterAll);

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### On a phone, every dropdown comes up from the bottom
+
+- On a phone, a dropdown used to hang under its button, often half off the screen, with rows too small to hit. They now rise from the bottom of the screen with a title and a close button and 48px rows, and a tap on the dimmed page behind, the ✕ or Back puts them away. This covers every select field (such as a Bot's "Runs on" in its settings), picking members for a new group, the stop menu, the conversation header's ⋯, the new button, the tools menu, switching jobs on a flow, the calendar's roster filter, and the terminal page's session list and ⋯. Picking members and filtering the roster have a search box of their own in the sheet, and the keyboard does not come up until you tap it. Windows wider than 720px keep the dropdowns.
+
 ### Bots can open a direct with another Bot again, and you read it in a popup
 
 - A Bot can again open a direct with another Bot to tell it something or talk it over. Since engine level 3 (2026-10-01) the only private way between two Bots was a delegation, which is for handing work over and waiting for it back, so a Bot asked to share its notes with the other video Bots made a group instead. Every line in such a direct wakes the other Bot; two bare receipts in a row still wake nobody. Delegations keep their own thread, whose plain words wake nobody, as before.

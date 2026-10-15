@@ -148,7 +148,8 @@ async function withPhone(run: (grow: () => void) => void | Promise<void>): Promi
     onchange: null,
     addListener: () => {},
     removeListener: () => {},
-    addEventListener: (_: string, fn: (ev: MediaQueryListEvent) => void) => void listeners.add(fn),
+    // Only the width the sidebar switches at changes here; other queries (a sheet's) stay put.
+    addEventListener: (_: string, fn: (ev: MediaQueryListEvent) => void) => void (query === "(max-width: 680px)" && listeners.add(fn)),
     removeEventListener: (_: string, fn: (ev: MediaQueryListEvent) => void) => void listeners.delete(fn),
     dispatchEvent: () => false,
   })) as typeof window.matchMedia;

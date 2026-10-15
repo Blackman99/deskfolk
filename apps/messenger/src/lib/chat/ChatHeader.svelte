@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
+	import BottomSheet from '../BottomSheet.svelte';
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import FolkAvatar from '../FolkAvatar.svelte';
@@ -263,25 +264,30 @@
 			>
 				<Icon name="more" size={20} />
 			</button>
+			<!-- The button is there only on a phone's header, so its menu is always a sheet from the bottom. -->
 			{#if mobileActionsOpen}
-				<div class="mobile-actions-menu">
-					<button
-						type="button"
-						class:is-active={isSessionPinned(pinnedSessionIds, selected.id)}
-						onclick={() => runMobileAction(() => onTogglePin(selected.id))}
-					>
-						<Icon name="pin" />
-						<span>{isSessionPinned(pinnedSessionIds, selected.id) ? t.top.unpin : t.top.pin}</span>
-					</button>
-					<button type="button" class:is-active={runtime.traceOpen} onclick={() => runMobileAction(() => (runtime.traceOpen ? runtime.closeTrace() : runtime.openTrace(null)))}>
-						<Icon name="hierarchy" />
-						<span>{t.trace.topAction}</span>
-					</button>
-					<button type="button" class:is-active={settingsOpen} onclick={() => runMobileAction(onToggleSessionSettings)}>
-						<Icon name="settings" />
-						<span>{sessionSettingsLabel}</span>
-					</button>
-				</div>
+				<BottomSheet title={t.top.moreActions} closeLabel={t.common.close} onClose={closeMobileActions}>
+					<div class="mobile-actions-menu" role="menu" aria-label={t.top.moreActions}>
+						<button
+							type="button"
+							role="menuitem"
+							class="sheet-item"
+							class:is-active={isSessionPinned(pinnedSessionIds, selected.id)}
+							onclick={() => runMobileAction(() => onTogglePin(selected.id))}
+						>
+							<Icon name="pin" />
+							<span class="sheet-item-label">{isSessionPinned(pinnedSessionIds, selected.id) ? t.top.unpin : t.top.pin}</span>
+						</button>
+						<button type="button" role="menuitem" class="sheet-item" class:is-active={runtime.traceOpen} onclick={() => runMobileAction(() => (runtime.traceOpen ? runtime.closeTrace() : runtime.openTrace(null)))}>
+							<Icon name="hierarchy" />
+							<span class="sheet-item-label">{t.trace.topAction}</span>
+						</button>
+						<button type="button" role="menuitem" class="sheet-item" class:is-active={settingsOpen} onclick={() => runMobileAction(onToggleSessionSettings)}>
+							<Icon name="settings" />
+							<span class="sheet-item-label">{sessionSettingsLabel}</span>
+						</button>
+					</div>
+				</BottomSheet>
 			{/if}
 		</div>
 		{/if}
@@ -515,58 +521,6 @@
 		color: var(--accent);
 	}
 
-	.mobile-actions-menu {
-		position: absolute;
-		top: calc(100% + 8px);
-		right: 0;
-		width: max-content;
-		min-width: 180px;
-		padding: 6px;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		background: var(--pane);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		box-shadow: var(--shadow-lg);
-		z-index: 20;
-		transform-origin: top right;
-		animation: header-menu-in var(--dur-base) var(--ease-out);
-	}
-
-	@keyframes header-menu-in {
-		from {
-			opacity: 0;
-			transform: translateY(-4px) scale(0.97);
-		}
-		to {
-			opacity: 1;
-			transform: none;
-		}
-	}
-
-	.mobile-actions-menu button {
-		min-height: 40px;
-		padding: 0 10px;
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		border: 0;
-		border-radius: var(--radius-sm);
-		background: transparent;
-		color: var(--ink-secondary);
-		font-size: 13px;
-		font-weight: 600;
-		text-align: left;
-	}
-
-	.mobile-actions-menu button:hover,
-	.mobile-actions-menu button.is-active {
-		background: var(--accent-tint);
-		color: var(--accent);
-	}
-
-
 	.empty-roster {
 		border: 0;
 		background: transparent;
@@ -692,11 +646,6 @@
 		.top-identity-btn:focus-visible {
 			outline: 2px solid var(--accent);
 			outline-offset: -3px;
-		}
-
-		.mobile-actions-menu {
-			top: 100%;
-			right: 8px;
 		}
 
 		.top-avatar,

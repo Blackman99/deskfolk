@@ -439,8 +439,8 @@
 				header?.focusSwitcher();
 				return;
 			}
-			// A model picker opened from a step's panel, or a prompt's editor over the window, answers its own Escape.
-			if ((event.target as Element | null)?.closest?.('.mp-panel, .mp-sheet-layer') || document.querySelector('.prompt-editor-backdrop')) return;
+			// A model picker opened from a step's panel, a phone's sheet, or a prompt's editor over the window, answers its own Escape.
+			if ((event.target as Element | null)?.closest?.('.mp-panel, .mp-sheet-layer, .bottom-sheet-layer') || document.querySelector('.prompt-editor-backdrop')) return;
 			const closedRoute = traceView?.closeRoute() ?? false;
 			if (closedRoute || job.openStep) {
 				event.preventDefault();

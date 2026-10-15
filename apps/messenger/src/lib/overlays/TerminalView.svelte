@@ -1,6 +1,9 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
 	import { onDestroy, onMount } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import BottomSheet from '../BottomSheet.svelte';
+	import { PHONE_SHEET_QUERY } from '../bottom-sheet.ts';
 	import type { Terminal as TerminalRow, StreamFrame, TerminalScreenSnapshot } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { onPaneResize } from '../workbench/pane-resize.svelte.ts';
@@ -90,6 +93,8 @@
 	/** The phone page's two menus: the session list under the title, and ⋯. */
 	let switcherOpen = $state(false);
 	let moreOpen = $state(false);
+	/** On a phone the session list and ⋯ open as sheets from the bottom (`BottomSheet`). */
+	const phone = new MediaQuery(PHONE_SHEET_QUERY);
 	/** The bar's Ctrl: on for the next key, from the bar or the software keyboard, then off. */
 	let ctrlArmed = $state(false);
 	/** Whether the shell has the keyboard. On a phone that is whether the software keyboard is up. */
@@ -778,6 +783,69 @@
 	});
 </script>
 
+{#snippet sessionRows()}
+	{#each ordered as row (row.id)}
+		{@const label = statusLabel(row, t)}
+		<button
+			type="button"
+			role="menuitemradio"
+			aria-checked={row.id === activeId}
+			class="terminal-tab"
+			class:is-active={row.id === activeId}
+			class:is-done={row.status !== 'live'}
+			title={row.cwd}
+			onclick={() => {
+				switcherOpen = false;
+				void activate(row.id);
+			}}
+		>
+			<span class="terminal-tab-name">{names.get(row.id) ?? row.title}</span>
+			<span class="terminal-tab-where">{tildePath(row.cwd)}{#if label} · {label}{/if}</span>
+		</button>
+	{/each}
+{/snippet}
+
+{#snippet moreEntries(active: TerminalRow)}
+	{#if active.status === 'live'}
+		<button type="button" role="menuitem" onclick={() => fromMenu(() => void stop())}>{t.terminal.stop}</button>
+	{/if}
+	<button type="button" role="menuitem" onclick={() => fromMenu(openFind)}>{t.terminal.find}</button>
+	<button type="button" role="menuitem" onclick={() => fromMenu(() => runShortcut('clear'))}>{t.terminal.clear}</button>
+	<!-- Stays open: text size is something you step until it looks right. -->
+	<div class="terminal-menu-font" role="group" aria-label={t.terminal.fontSize}>
+		<span>{t.terminal.fontSize}</span>
+		<button type="button" aria-label={t.terminal.fontSmaller} title={t.terminal.fontSmaller} onclick={() => terminalFontSize.step(-1)}>A−</button>
+		<span class="terminal-menu-font-size">{terminalFontSize.current}</span>
+		<button type="button" aria-label={t.terminal.fontBigger} title={t.terminal.fontBigger} onclick={() => terminalFontSize.step(1)}>A+</button>
+	</div>
+	<div class="terminal-menu-sep" role="separator"></div>
+	{#if endConfirmId === active.id}
+		<p class="terminal-confirm">{t.terminal.endConfirm}</p>
+		<div class="terminal-menu-confirm">
+			<button type="button" onclick={closeMore}>{t.detail.cancel}</button>
+			<button
+				type="button"
+				class="terminal-end is-armed"
+				onclick={() => {
+					const id = active.id;
+					closeMore();
+					void close(id);
+				}}>{t.terminal.end}</button
+			>
+		</div>
+	{:else}
+		<button
+			type="button"
+			role="menuitem"
+			class="terminal-end"
+			onclick={() => {
+				if (active.status === 'live') endConfirmId = active.id;
+				else fromMenu(() => void close(active.id));
+			}}>{t.terminal.end}</button
+		>
+	{/if}
+{/snippet}
+
 <svelte:window onclickcapture={onWindowClick} />
 
 <div
@@ -822,27 +890,15 @@
 						</span>
 					{/if}
 				</button>
-				{#if switcherOpen}
+				{#if switcherOpen && phone.current}
+					<BottomSheet title={t.terminal.sessions} closeLabel={t.common.close} onClose={() => (switcherOpen = false)}>
+						<div class="terminal-menu terminal-sessions is-sheet" role="menu" aria-label={t.terminal.sessions}>
+							{@render sessionRows()}
+						</div>
+					</BottomSheet>
+				{:else if switcherOpen}
 					<div class="terminal-menu terminal-sessions" role="menu" aria-label={t.terminal.sessions}>
-						{#each ordered as row (row.id)}
-							{@const label = statusLabel(row, t)}
-							<button
-								type="button"
-								role="menuitemradio"
-								aria-checked={row.id === activeId}
-								class="terminal-tab"
-								class:is-active={row.id === activeId}
-								class:is-done={row.status !== 'live'}
-								title={row.cwd}
-								onclick={() => {
-									switcherOpen = false;
-									void activate(row.id);
-								}}
-							>
-								<span class="terminal-tab-name">{names.get(row.id) ?? row.title}</span>
-								<span class="terminal-tab-where">{tildePath(row.cwd)}{#if label} · {label}{/if}</span>
-							</button>
-						{/each}
+						{@render sessionRows()}
 					</div>
 				{/if}
 			</div>
@@ -878,46 +934,15 @@
 					>
 						<Icon name="more" size={20} />
 					</button>
-					{#if moreOpen}
-						<div class="terminal-menu" role="menu" aria-label={t.terminal.more}>
-							{#if active.status === 'live'}
-								<button type="button" role="menuitem" onclick={() => fromMenu(() => void stop())}>{t.terminal.stop}</button>
-							{/if}
-							<button type="button" role="menuitem" onclick={() => fromMenu(openFind)}>{t.terminal.find}</button>
-							<button type="button" role="menuitem" onclick={() => fromMenu(() => runShortcut('clear'))}>{t.terminal.clear}</button>
-							<!-- Stays open: text size is something you step until it looks right. -->
-							<div class="terminal-menu-font" role="group" aria-label={t.terminal.fontSize}>
-								<span>{t.terminal.fontSize}</span>
-								<button type="button" aria-label={t.terminal.fontSmaller} title={t.terminal.fontSmaller} onclick={() => terminalFontSize.step(-1)}>A−</button>
-								<span class="terminal-menu-font-size">{terminalFontSize.current}</span>
-								<button type="button" aria-label={t.terminal.fontBigger} title={t.terminal.fontBigger} onclick={() => terminalFontSize.step(1)}>A+</button>
+					{#if moreOpen && phone.current}
+						<BottomSheet title={t.terminal.more} closeLabel={t.common.close} onClose={closeMore}>
+							<div class="terminal-menu is-sheet" role="menu" aria-label={t.terminal.more}>
+								{@render moreEntries(active)}
 							</div>
-							<div class="terminal-menu-sep" role="separator"></div>
-							{#if endConfirmId === active.id}
-								<p class="terminal-confirm">{t.terminal.endConfirm}</p>
-								<div class="terminal-menu-confirm">
-									<button type="button" onclick={closeMore}>{t.detail.cancel}</button>
-									<button
-										type="button"
-										class="terminal-end is-armed"
-										onclick={() => {
-											const id = active.id;
-											closeMore();
-											void close(id);
-										}}>{t.terminal.end}</button
-									>
-								</div>
-							{:else}
-								<button
-									type="button"
-									role="menuitem"
-									class="terminal-end"
-									onclick={() => {
-										if (active.status === 'live') endConfirmId = active.id;
-										else fromMenu(() => void close(active.id));
-									}}>{t.terminal.end}</button
-								>
-							{/if}
+						</BottomSheet>
+					{:else if moreOpen}
+						<div class="terminal-menu" role="menu" aria-label={t.terminal.more}>
+							{@render moreEntries(active)}
 						</div>
 					{/if}
 				</div>
@@ -1415,6 +1440,19 @@
 		border-radius: var(--radius-md);
 		background: var(--pane);
 		box-shadow: var(--shadow-lg);
+	}
+
+	/* In a phone's sheet: the same rows, the sheet is the box. */
+	.terminal-menu.is-sheet {
+		position: static;
+		width: auto;
+		max-height: none;
+		overflow: visible;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		box-shadow: none;
+		animation: none;
 	}
 
 	.terminal-sessions {

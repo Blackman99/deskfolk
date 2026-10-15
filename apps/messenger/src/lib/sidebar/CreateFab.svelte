@@ -1,11 +1,13 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
+	import BottomSheet from '../BottomSheet.svelte';
 	import type { Copy } from '../copy.ts';
 
 	/**
 	 * Creating on a phone: one button that floats over the list rather than a + in each group header.
 	 * The headers' buttons are 22px targets at the top of a screen you hold from the bottom, and
-	 * there are two of them saying the same kind of thing; this asks which once, where your thumb is.
+	 * there are two of them saying the same kind of thing; this asks which once, where your thumb is,
+	 * in a sheet from the bottom.
 	 */
 	type Props = {
 		t: Copy;
@@ -22,32 +24,34 @@
 
 <div class="fab-wrap" bind:this={wrapEl}>
 	{#if createMenuOpen}
-		<div class="fab-menu" role="menu">
-			<button
-				type="button"
-				class="fab-menu-item"
-				role="menuitem"
-				onclick={() => {
-					createMenuOpen = false;
-					onCreateBot();
-				}}
-			>
-				<Icon name="bot" />
-				<span>{t.sidebar.addBot}</span>
-			</button>
-			<button
-				type="button"
-				class="fab-menu-item"
-				role="menuitem"
-				onclick={() => {
-					createMenuOpen = false;
-					onCreateGroup();
-				}}
-			>
-				<Icon name="users" />
-				<span>{t.sidebar.addGroup}</span>
-			</button>
-		</div>
+		<BottomSheet title={t.sidebar.createMenu} closeLabel={t.common.close} onClose={() => (createMenuOpen = false)}>
+			<div class="fab-menu" role="menu" aria-label={t.sidebar.createMenu}>
+				<button
+					type="button"
+					class="fab-menu-item sheet-item"
+					role="menuitem"
+					onclick={() => {
+						createMenuOpen = false;
+						onCreateBot();
+					}}
+				>
+					<Icon name="bot" />
+					<span class="sheet-item-label">{t.sidebar.addBot}</span>
+				</button>
+				<button
+					type="button"
+					class="fab-menu-item sheet-item"
+					role="menuitem"
+					onclick={() => {
+						createMenuOpen = false;
+						onCreateGroup();
+					}}
+				>
+					<Icon name="users" />
+					<span class="sheet-item-label">{t.sidebar.addGroup}</span>
+				</button>
+			</div>
+		</BottomSheet>
 	{/if}
 	<button
 		type="button"
@@ -114,43 +118,7 @@
 		box-shadow: var(--shadow-lg), 0 0 0 3px var(--accent-glow);
 	}
 
-	.fab-menu {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		padding: 4px;
-		min-width: 152px;
-		background: var(--pane);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		box-shadow: var(--shadow-lg);
-		animation: menuIn var(--dur-base) var(--ease-out);
-		transform-origin: bottom right;
-	}
-
-	.fab-menu-item {
-		display: flex;
-		align-items: center;
-		gap: 9px;
-		min-height: 42px;
-		padding: 0 12px;
-		border: 0;
-		border-radius: var(--radius-sm);
-		background: transparent;
-		color: var(--ink);
-		font-size: 14px;
-		text-align: left;
-		cursor: pointer;
-	}
-
-	.fab-menu-item:active {
-		background: var(--line-subtle);
-		color: var(--accent);
-	}
-
 	.fab-menu-item :global(.icon) {
-		flex-shrink: 0;
 		color: var(--muted);
 	}
-
 </style>

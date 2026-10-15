@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { MediaQuery } from 'svelte/reactivity';
+	import BottomSheet from './BottomSheet.svelte';
 	import Icon from './Icon.svelte';
+	import { PHONE_SHEET_QUERY, labelFor, pageCloseLabel } from './bottom-sheet.ts';
 	import {
 		findNextEnabledIndex,
 		findOptionByPrefix,
@@ -25,6 +28,10 @@
 		clearable?: boolean;
 		class?: string;
 		ariaLabel?: string;
+		/** The sheet's heading on a phone; else the name, the field's `<label>`, or the placeholder. */
+		title?: string;
+		/** The phone sheet's close button; else the page's own language says it. */
+		closeLabel?: string;
 		onchange?: (value: string) => void;
 	}
 
@@ -42,8 +49,21 @@
 		clearable = false,
 		class: className = '',
 		ariaLabel,
+		title,
+		closeLabel,
 		onchange
 	}: Props = $props();
+
+	/** On a phone the choices open as a sheet from the bottom (`BottomSheet`), not under the field. */
+	const phone = new MediaQuery(PHONE_SHEET_QUERY);
+	let sheetListEl = $state<HTMLUListElement | null>(null);
+	let sheetTitle = $state<string | null>(null);
+	let sheetCloseLabel = $state('');
+
+	/** What the field is called where it is: its own name, else the `<label>` that points at it. */
+	function nameOnPage(): string | null {
+		return title || ariaLabel || labelFor(id) || placeholder || null;
+	}
 
 	let isOpen = $state(false);
 	let highlightedIndex = $state(-1);
@@ -173,12 +193,18 @@
 
 	function scrollToOption(index: number) {
 		const option = index >= 0 ? optionEls[index] : null;
-		if (menuEl && option) menuEl.scrollTop = menuScrollTopFor(menuEl, option);
+		const list = menuEl ?? sheetListEl?.closest<HTMLElement>('.bottom-sheet-body') ?? null;
+		if (list && option) list.scrollTop = menuScrollTopFor(list, option);
 	}
 
 	function open() {
 		if (disabled || isOpen) return;
-		updatePlacement();
+		if (phone.current) {
+			sheetTitle = nameOnPage();
+			sheetCloseLabel = closeLabel ?? pageCloseLabel();
+		} else {
+			updatePlacement();
+		}
 		isOpen = true;
 		const idx = normalizedOptions.findIndex((opt) => opt.value === value);
 		highlightedIndex = idx >= 0 ? idx : findNextEnabledIndex(normalizedOptions, -1, 1);
@@ -206,7 +232,8 @@
 		const changed = value !== opt.value;
 		value = opt.value;
 		close();
-		triggerEl?.focus();
+		// A phone has no focus ring to put back, and focusing the field can scroll the page under it.
+		if (!phone.current) triggerEl?.focus();
 		if (changed && onchange) {
 			onchange(opt.value);
 		}
@@ -383,7 +410,63 @@
 		</div>
 	</button>
 
-	{#if isOpen}
+	{#snippet optionRows()}
+		{#if normalizedOptions.length === 0}
+			<li class="real-select-empty py-5 px-6 text-13 text-muted text-center" role="presentation">
+				暂无选项
+			</li>
+		{:else}
+			{#each normalizedOptions as opt, idx (opt.value + ':' + opt.label)}
+				{#if opt.group && opt.group !== normalizedOptions[idx - 1]?.group}
+					<li class="real-select-group" role="presentation">{opt.group}</li>
+				{/if}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<li
+					bind:this={optionEls[idx]}
+					id={`${listboxId}-opt-${idx}`}
+					class="real-select-option {opt.value === value ? 'is-selected' : ''} {highlightedIndex === idx ? 'is-highlighted' : ''} {opt.disabled ? 'is-disabled' : ''}"
+					role="option"
+					aria-selected={opt.value === value}
+					aria-disabled={opt.disabled}
+					onclick={() => selectOption(opt)}
+					onmouseenter={() => {
+						if (!opt.disabled) highlightedIndex = idx;
+					}}
+				>
+					{#if opt.source}
+						<ModelSourceMark source={opt.source} />
+					{/if}
+					<span class="real-select-option-label flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+						{opt.label}
+						{#if opt.hint}
+							<span class="real-select-option-hint inline-block ml-3 text-11 text-muted font-normal">{opt.hint}</span>
+						{/if}
+					</span>
+
+					{#if opt.value === value}
+						<span class="real-select-check inline-flex items-center justify-center text-accent shrink-0" aria-hidden="true">
+							<Icon name="check" size={12} />
+						</span>
+					{/if}
+				</li>
+			{/each}
+		{/if}
+	{/snippet}
+
+	{#if isOpen && phone.current}
+		<BottomSheet title={sheetTitle} closeLabel={sheetCloseLabel} onClose={close}>
+			<ul
+				bind:this={sheetListEl}
+				id={listboxId}
+				class="real-select-sheet-list"
+				role="listbox"
+				tabindex="-1"
+				aria-label={sheetTitle ?? undefined}
+			>
+				{@render optionRows()}
+			</ul>
+		</BottomSheet>
+	{:else if isOpen}
 		<ul
 			bind:this={menuEl}
 			id={listboxId}
@@ -392,46 +475,7 @@
 			tabindex="-1"
 			aria-activedescendant={highlightedIndex >= 0 ? `${listboxId}-opt-${highlightedIndex}` : undefined}
 		>
-			{#if normalizedOptions.length === 0}
-				<li class="real-select-empty py-5 px-6 text-13 text-muted text-center" role="presentation">
-					暂无选项
-				</li>
-			{:else}
-				{#each normalizedOptions as opt, idx (opt.value + ':' + opt.label)}
-					{#if opt.group && opt.group !== normalizedOptions[idx - 1]?.group}
-						<li class="real-select-group" role="presentation">{opt.group}</li>
-					{/if}
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<li
-						bind:this={optionEls[idx]}
-						id={`${listboxId}-opt-${idx}`}
-						class="real-select-option {opt.value === value ? 'is-selected' : ''} {highlightedIndex === idx ? 'is-highlighted' : ''} {opt.disabled ? 'is-disabled' : ''}"
-						role="option"
-						aria-selected={opt.value === value}
-						aria-disabled={opt.disabled}
-						onclick={() => selectOption(opt)}
-						onmouseenter={() => {
-							if (!opt.disabled) highlightedIndex = idx;
-						}}
-					>
-						{#if opt.source}
-							<ModelSourceMark source={opt.source} />
-						{/if}
-						<span class="real-select-option-label flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-							{opt.label}
-							{#if opt.hint}
-								<span class="real-select-option-hint inline-block ml-3 text-11 text-muted font-normal">{opt.hint}</span>
-							{/if}
-						</span>
-
-						{#if opt.value === value}
-							<span class="real-select-check inline-flex items-center justify-center text-accent shrink-0" aria-hidden="true">
-								<Icon name="check" size={12} />
-							</span>
-						{/if}
-					</li>
-				{/each}
-			{/if}
+			{@render optionRows()}
 		</ul>
 	{/if}
 </div>
@@ -652,5 +696,43 @@
 	.real-select-option.is-disabled {
 		opacity: 0.45;
 		cursor: not-allowed;
+	}
+
+	/* On a phone's sheet: rows for a thumb. */
+	.real-select-sheet-list {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		outline: none;
+	}
+
+	.real-select-sheet-list .real-select-option {
+		min-height: 48px;
+		padding: 10px 12px;
+		border-radius: var(--radius-md);
+		font-size: 15px;
+	}
+
+	.real-select-sheet-list .real-select-option.is-highlighted:not(.is-selected) {
+		background-color: transparent;
+	}
+
+	.real-select-sheet-list .real-select-option:active:not(.is-disabled) {
+		background-color: var(--line-subtle);
+	}
+
+	.real-select-sheet-list .real-select-check :global(svg) {
+		width: 16px;
+		height: 16px;
+	}
+
+	.real-select-sheet-list .real-select-group {
+		padding: 12px 12px 4px;
+		font-size: 12px;
+	}
+
+	.real-select-sheet-list .real-select-empty {
+		padding: 24px 12px;
+		font-size: 14px;
 	}
 </style>

@@ -1,5 +1,8 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import BottomSheet from '../BottomSheet.svelte';
+	import { PHONE_SHEET_QUERY } from '../bottom-sheet.ts';
 	import type { PlanStatus, SessionTaskSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { isOutside } from '../click-outside.ts';
@@ -19,6 +22,8 @@
 
 	let titleMenuEl = $state<HTMLDivElement | null>(null);
 	let titleTriggerEl = $state<HTMLButtonElement | null>(null);
+	/** On a phone the jobs open as a sheet from the bottom (`BottomSheet`). */
+	const phone = new MediaQuery(PHONE_SHEET_QUERY);
 
 	/**
 	 * The jobs that were one question and its answer fold into a row of their own, so the jobs that
@@ -78,7 +83,7 @@
 	});
 
 	$effect(() => {
-		if (open) {
+		if (open && !phone.current) {
 			const activeBtn = titleMenuEl?.querySelector<HTMLButtonElement>('.trace-job.is-current');
 			activeBtn?.focus();
 		}
@@ -101,7 +106,7 @@
 		aria-selected={job.id === currentId}
 		onclick={() => {
 			onSelectJob(job.id);
-			titleTriggerEl?.focus();
+			if (!phone.current) titleTriggerEl?.focus();
 		}}
 	>
 		<span class="trace-job-check" aria-hidden="true">
@@ -120,6 +125,27 @@
 	</button>
 {/snippet}
 
+{#snippet jobList()}
+	{#each listed as job (job.id)}
+		{@render jobRow(job)}
+	{/each}
+	{#if folded.length > 0}
+		<button type="button" class="trace-job is-fold" aria-expanded={foldOpen} onclick={() => (foldOpen = !foldOpen)}>
+			<span class="trace-job-check" aria-hidden="true">
+				<Icon name="chevron-right" size={12} class={['trace-job-fold-arrow', { 'is-open': foldOpen }]} />
+			</span>
+			<div class="trace-job-info">
+				<span class="trace-job-title">{t.plan.oneShotJobs(folded.length)}</span>
+			</div>
+		</button>
+		{#if foldOpen}
+			{#each folded as job (job.id)}
+				{@render jobRow(job)}
+			{/each}
+		{/if}
+	{/if}
+{/snippet}
+
 {#if jobs.length > 1}
 	<div class="trace-title-select" bind:this={titleMenuEl}>
 		<button
@@ -134,7 +160,13 @@
 			<h2>{heading}</h2>
 			<Icon name="chevron-down" size={12} class={['trace-title-arrow', { 'is-open': open }]} />
 		</button>
-		{#if open}
+		{#if open && phone.current}
+			<BottomSheet title={t.trace.title} closeLabel={t.common.close} onClose={() => (open = false)}>
+				<div class="trace-switcher-sheet" role="listbox" tabindex="-1" aria-label={t.trace.title} onkeydown={onMenuKeydown}>
+					{@render jobList()}
+				</div>
+			</BottomSheet>
+		{:else if open}
 			<div
 				class="trace-switcher-popover"
 				role="listbox"
@@ -142,24 +174,7 @@
 				aria-label={t.trace.title}
 				onkeydown={onMenuKeydown}
 			>
-				{#each listed as job (job.id)}
-					{@render jobRow(job)}
-				{/each}
-				{#if folded.length > 0}
-					<button type="button" class="trace-job is-fold" aria-expanded={foldOpen} onclick={() => (foldOpen = !foldOpen)}>
-						<span class="trace-job-check" aria-hidden="true">
-							<Icon name="chevron-right" size={12} class={['trace-job-fold-arrow', { 'is-open': foldOpen }]} />
-						</span>
-						<div class="trace-job-info">
-							<span class="trace-job-title">{t.plan.oneShotJobs(folded.length)}</span>
-						</div>
-					</button>
-					{#if foldOpen}
-						{#each folded as job (job.id)}
-							{@render jobRow(job)}
-						{/each}
-					{/if}
-				{/if}
+				{@render jobList()}
 			</div>
 		{/if}
 	</div>
@@ -357,5 +372,28 @@
 		border-color: var(--ok-line);
 		background: var(--ok-bg);
 		color: var(--ok-text);
+	}
+
+	/* On a phone's sheet: rows for a thumb. */
+	.trace-switcher-sheet {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		outline: none;
+	}
+
+	.trace-switcher-sheet .trace-job {
+		gap: 12px;
+		min-height: 56px;
+		padding: 10px 12px;
+		border-radius: var(--radius-md);
+	}
+
+	.trace-switcher-sheet .trace-job-title {
+		font-size: 15px;
+	}
+
+	.trace-switcher-sheet .trace-job-check {
+		margin-top: 2px;
 	}
 </style>

@@ -1,6 +1,9 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import type { Snippet } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import BottomSheet from './BottomSheet.svelte';
+	import { PHONE_SHEET_QUERY, labelFor, pageCloseLabel } from './bottom-sheet.ts';
 	import {
 		filterOptions,
 		findNextEnabledIndex,
@@ -70,6 +73,15 @@
 	let menuEl = $state<HTMLUListElement | null>(null);
 	let optionEls = $state<(HTMLLIElement | null)[]>([]);
 
+	/**
+	 * On a phone the list opens as a sheet from the bottom with a search box of its own: typing in
+	 * the field would bring the keyboard up over the list. The chips stay in the field.
+	 */
+	const phone = new MediaQuery(PHONE_SHEET_QUERY);
+	let sheetListEl = $state<HTMLUListElement | null>(null);
+	let sheetTitle = $state<string | null>(null);
+	let sheetCloseLabel = $state('');
+
 	const listboxId = $derived(id ? `${id}-listbox` : 'multi-select-listbox');
 	const normalizedOptions = $derived(normalizeOptions(options));
 	const visibleOptions = $derived(filterOptions(normalizedOptions, query));
@@ -98,7 +110,12 @@
 
 	function open(): void {
 		if (disabled || isOpen) return;
-		updatePlacement();
+		if (phone.current) {
+			sheetTitle = ariaLabel || labelFor(id) || placeholder || null;
+			sheetCloseLabel = pageCloseLabel();
+		} else {
+			updatePlacement();
+		}
 		isOpen = true;
 		highlightedIndex = findNextEnabledIndex(visibleOptions, -1, 1);
 	}
@@ -120,7 +137,7 @@
 		commit(toggleValue(values, option.value));
 		// A group takes several members, so the list stays open and the query stays put: one
 		// search, several ticks.
-		inputEl?.focus();
+		if (!phone.current) inputEl?.focus();
 	}
 
 	function remove(value: string): void {
@@ -133,6 +150,12 @@
 		if (disabled) return;
 		// A click on a chip's ✕ is that chip's business, not the field's.
 		if ((e.target as HTMLElement).closest('.multi-select-chip-remove')) return;
+		if (phone.current) {
+			// The sheet has the search box; focusing this one would only bring the keyboard up.
+			e.preventDefault();
+			open();
+			return;
+		}
 		if (!isOpen) open();
 		inputEl?.focus();
 	}
@@ -144,7 +167,8 @@
 
 	function scrollToOption(index: number): void {
 		const option = index >= 0 ? optionEls[index] : null;
-		if (menuEl && option) menuEl.scrollTop = menuScrollTopFor(menuEl, option);
+		const list = menuEl ?? sheetListEl?.closest<HTMLElement>('.bottom-sheet-body') ?? null;
+		if (list && option) list.scrollTop = menuScrollTopFor(list, option);
 	}
 
 	function move(direction: 1 | -1): void {
@@ -269,7 +293,72 @@
 		</span>
 	</div>
 
-	{#if isOpen}
+	{#snippet optionRows()}
+		{#if visibleOptions.length === 0}
+			<li class="multi-select-empty" role="presentation">
+				{normalizedOptions.length === 0 ? emptyLabel : noMatchLabel}
+			</li>
+		{:else}
+			{#each visibleOptions as option, idx (option.value)}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<li
+					bind:this={optionEls[idx]}
+					id={`${listboxId}-opt-${idx}`}
+					class="multi-select-option {values.includes(option.value) ? 'is-selected' : ''} {highlightedIndex ===
+					idx
+						? 'is-highlighted'
+						: ''} {option.disabled ? 'is-disabled' : ''}"
+					role="option"
+					aria-selected={values.includes(option.value)}
+					aria-disabled={option.disabled}
+					onclick={() => toggle(option)}
+					onmouseenter={() => {
+						if (!option.disabled) highlightedIndex = idx;
+					}}
+				>
+					<span class="multi-select-box" aria-hidden="true">
+						{#if values.includes(option.value)}
+							<Icon name="check" size={12} />
+						{/if}
+					</span>
+					{#if media}
+						<span class="multi-select-option-media">{@render media(option, 'option')}</span>
+					{/if}
+					<span class="multi-select-option-label">{option.label}</span>
+					{#if option.hint}
+						<span class="multi-select-option-hint">{option.hint}</span>
+					{/if}
+				</li>
+			{/each}
+		{/if}
+	{/snippet}
+
+	{#if isOpen && phone.current}
+		<BottomSheet title={sheetTitle} closeLabel={sheetCloseLabel} onClose={close} class="multi-select-sheet">
+			<input
+				bind:value={query}
+				type="search"
+				class="multi-select-sheet-search"
+				autocomplete="off"
+				aria-controls={listboxId}
+				aria-label={searchPlaceholder || placeholder || sheetTitle || undefined}
+				placeholder={searchPlaceholder || placeholder}
+				{disabled}
+				oninput={onQueryInput}
+			/>
+			<ul
+				bind:this={sheetListEl}
+				id={listboxId}
+				class="multi-select-sheet-list"
+				role="listbox"
+				aria-multiselectable="true"
+				aria-label={sheetTitle ?? undefined}
+				tabindex="-1"
+			>
+				{@render optionRows()}
+			</ul>
+		</BottomSheet>
+	{:else if isOpen}
 		<ul
 			bind:this={menuEl}
 			id={listboxId}
@@ -278,43 +367,7 @@
 			aria-multiselectable="true"
 			tabindex="-1"
 		>
-			{#if visibleOptions.length === 0}
-				<li class="multi-select-empty" role="presentation">
-					{normalizedOptions.length === 0 ? emptyLabel : noMatchLabel}
-				</li>
-			{:else}
-				{#each visibleOptions as option, idx (option.value)}
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<li
-						bind:this={optionEls[idx]}
-						id={`${listboxId}-opt-${idx}`}
-						class="multi-select-option {values.includes(option.value) ? 'is-selected' : ''} {highlightedIndex ===
-						idx
-							? 'is-highlighted'
-							: ''} {option.disabled ? 'is-disabled' : ''}"
-						role="option"
-						aria-selected={values.includes(option.value)}
-						aria-disabled={option.disabled}
-						onclick={() => toggle(option)}
-						onmouseenter={() => {
-							if (!option.disabled) highlightedIndex = idx;
-						}}
-					>
-						<span class="multi-select-box" aria-hidden="true">
-							{#if values.includes(option.value)}
-								<Icon name="check" size={12} />
-							{/if}
-						</span>
-						{#if media}
-							<span class="multi-select-option-media">{@render media(option, 'option')}</span>
-						{/if}
-						<span class="multi-select-option-label">{option.label}</span>
-						{#if option.hint}
-							<span class="multi-select-option-hint">{option.hint}</span>
-						{/if}
-					</li>
-				{/each}
-			{/if}
+			{@render optionRows()}
 		</ul>
 	{/if}
 </div>
@@ -578,5 +631,54 @@
 		font-size: 11px;
 		font-weight: 400;
 		color: var(--muted);
+	}
+
+	/* On a phone's sheet: its own search box, and rows for a thumb. */
+	.multi-select .multi-select-sheet-search {
+		display: block;
+		width: 100%;
+		height: 40px;
+		margin: 0 0 6px;
+		padding: 0 12px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--input-bg);
+		box-shadow: none;
+		color: var(--ink);
+		font-family: inherit;
+		font-size: 16px;
+		box-sizing: border-box;
+	}
+
+	.multi-select .multi-select-sheet-search:focus {
+		outline: none;
+		border-color: var(--field-focus-border);
+		box-shadow: var(--field-focus-ring);
+	}
+
+	.multi-select-sheet-list {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		outline: none;
+	}
+
+	.multi-select-sheet-list .multi-select-option {
+		min-height: 48px;
+		padding: 8px 12px;
+		font-size: 15px;
+	}
+
+	.multi-select-sheet-list .multi-select-option.is-highlighted {
+		background: transparent;
+	}
+
+	.multi-select-sheet-list .multi-select-option:active:not(.is-disabled) {
+		background: var(--line-subtle);
+	}
+
+	.multi-select-sheet-list .multi-select-empty {
+		padding: 24px 12px;
+		font-size: 14px;
 	}
 </style>
