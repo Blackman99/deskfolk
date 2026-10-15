@@ -119,6 +119,53 @@ pub struct NotificationPresenceRequest<'a> {
     pub at_latest: bool,
 }
 
+/// One report of where the window is, waiting for the thread that posts it.
+pub struct PresenceJob {
+    pub endpoint: crate::LocalApiEndpoint,
+    pub visible: bool,
+    pub focused: bool,
+    pub session_id: Option<String>,
+    pub at_latest: bool,
+}
+
+/// Presence goes to the daemon from a thread of its own. `report_notification_view` is a sync
+/// command, so Tauri runs it on the main thread: posting from there held the whole window for as
+/// long as the daemon took to answer, up to the 3 s timeout, and the messenger reports every 5 s
+/// and on every focus change. A daemon busy with a long conversation left the window frozen most
+/// of the time. The daemon keeps only the newest presence per window, so a report still waiting
+/// when a newer one comes is dropped.
+pub struct PresenceQueue(std::sync::mpsc::Sender<PresenceJob>);
+
+impl PresenceQueue {
+    fn new(instance_id: String) -> Self {
+        let (sender, jobs) = std::sync::mpsc::channel::<PresenceJob>();
+        let _ = std::thread::Builder::new()
+            .name("presence".into())
+            .spawn(move || {
+                while let Ok(mut job) = jobs.recv() {
+                    while let Ok(newer) = jobs.try_recv() {
+                        job = newer;
+                    }
+                    let _ = post_presence(
+                        &job.endpoint,
+                        &NotificationPresenceRequest {
+                            instance_id: &instance_id,
+                            visible: job.visible,
+                            focused: job.focused,
+                            session_id: job.session_id.as_deref(),
+                            at_latest: job.at_latest,
+                        },
+                    );
+                }
+            });
+        Self(sender)
+    }
+
+    pub fn send(&self, job: PresenceJob) {
+        let _ = self.0.send(job);
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NotificationDeviceResponse {
     pub enabled: bool,
@@ -234,13 +281,13 @@ fn fallback_random_128_hex() -> String {
 
 pub struct NotificationState {
     pub owner_id: String,
-    pub instance_id: String,
     pub intent_buffer: Arc<Mutex<Option<NotificationIntent>>>,
     pub last_cleanup_revision: AtomicU64,
     pub last_attention_count: AtomicU32,
     pub current_badge_label: Mutex<Option<String>>,
     pub quitting: AtomicBool,
     pub adapter: Arc<dyn NotificationAdapter>,
+    pub presence: PresenceQueue,
 }
 
 impl NotificationState {
@@ -253,7 +300,7 @@ impl NotificationState {
 
         Self {
             owner_id: generate_random_128_hex(),
-            instance_id: generate_random_128_hex(),
+            presence: PresenceQueue::new(generate_random_128_hex()),
             intent_buffer: Arc::new(Mutex::new(None)),
             last_cleanup_revision: AtomicU64::new(0),
             last_attention_count: AtomicU32::new(0),
@@ -267,7 +314,7 @@ impl NotificationState {
     pub fn with_adapter(adapter: Arc<dyn NotificationAdapter>) -> Self {
         Self {
             owner_id: "test-owner-128bit-hex".to_string(),
-            instance_id: "test-instance-id".to_string(),
+            presence: PresenceQueue::new("test-instance-id".to_string()),
             intent_buffer: Arc::new(Mutex::new(None)),
             last_cleanup_revision: AtomicU64::new(0),
             last_attention_count: AtomicU32::new(0),
@@ -805,15 +852,15 @@ pub fn report_notification_view(
         .ok()
         .and_then(|guard| crate::read_endpoint(&guard));
 
-    if let Some(ep) = endpoint {
-        let presence_req = NotificationPresenceRequest {
-            instance_id: &state.instance_id,
+    // Never post from here: this runs on the main thread (see `PresenceQueue`).
+    if let Some(endpoint) = endpoint {
+        state.presence.send(PresenceJob {
+            endpoint,
             visible: effective_visible,
             focused: effective_focused,
-            session_id: report.session_id.as_deref(),
+            session_id: report.session_id,
             at_latest: report.at_latest.unwrap_or(false),
-        };
-        let _ = post_presence(&ep, &presence_req);
+        });
     }
 
     Ok(NativeFocusFacts {
@@ -1192,6 +1239,75 @@ mod tests {
             },
         );
         assert!(presence.is_ok());
+    }
+
+    /// The command that reports presence runs on the main thread, so handing a report over must
+    /// not wait on the daemon; while the daemon sits on one, the newest of those behind it goes next.
+    #[test]
+    fn presence_reports_never_wait_on_a_busy_daemon() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind port");
+        let port = listener.local_addr().unwrap().port();
+        let bodies = Arc::new(Mutex::new(Vec::<String>::new()));
+        let seen = bodies.clone();
+        std::thread::spawn(move || {
+            for (index, stream) in listener.incoming().enumerate() {
+                let Ok(mut stream) = stream else { break };
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut content_length = 0;
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).is_err() || line == "\r\n" || line.is_empty() {
+                        break;
+                    }
+                    if let Some(value) = line.to_lowercase().strip_prefix("content-length:") {
+                        content_length = value.trim().parse().unwrap_or(0);
+                    }
+                }
+                let mut body = vec![0; content_length];
+                reader.read_exact(&mut body).unwrap();
+                seen.lock().unwrap().push(String::from_utf8(body).unwrap());
+                if index == 0 {
+                    std::thread::sleep(Duration::from_millis(1500));
+                }
+                let _ = stream.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n");
+            }
+        });
+        let endpoint = crate::LocalApiEndpoint {
+            origin: format!("http://127.0.0.1:{port}"),
+            token: "test-token".to_string(),
+        };
+        let queue = PresenceQueue::new("inst-1".to_string());
+        let job = |session: &str| PresenceJob {
+            endpoint: endpoint.clone(),
+            visible: true,
+            focused: true,
+            session_id: Some(session.to_string()),
+            at_latest: true,
+        };
+        let started = std::time::Instant::now();
+        queue.send(job("first"));
+        std::thread::sleep(Duration::from_millis(200));
+        queue.send(job("second"));
+        queue.send(job("third"));
+        assert!(
+            started.elapsed() < Duration::from_millis(500),
+            "sending waited on the daemon"
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while bodies.lock().unwrap().len() < 2 && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        let sessions: Vec<String> = bodies
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|body| {
+                let value: serde_json::Value = serde_json::from_str(body).unwrap();
+                value["session_id"].as_str().unwrap().to_string()
+            })
+            .collect();
+        assert_eq!(sessions, vec!["first", "third"]);
     }
 
     #[test]

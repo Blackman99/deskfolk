@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A busy daemon no longer freezes the window
+
+- Every 5 seconds, and whenever the window gained or lost focus, the window told the daemon where you were looking and waited for its answer on the thread that draws the window and handles every click. While the daemon was slow to answer, for instance in the middle of a long conversation, the window stopped responding for up to 3 seconds each time, which reads as frozen. The report now goes from a thread of its own, and only the newest one is sent once the daemon is free again.
+
 ### A reply's last line reads as the design draws it
 
 - The line under a reply had a boxed terminal icon, a bold "8 commands" and the reply time and clock in a monospaced face ("5m 9s 16:38"). It now has the plain terminal prompt icon, the count in normal weight, and the time in the text's own face with even digits, at 12px. In Chinese the reply time reads "5 分 9 秒" (English keeps "5m 9s"), and a faint "·" stands between it and the clock time. The line sits 12px under the reply instead of 6px. The live timer on a working reply speaks the same way.
