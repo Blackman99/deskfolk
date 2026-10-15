@@ -38,7 +38,11 @@ export function previewContext(content: Extract<PaneContent, { kind: 'preview' }
   const relpath = content.relpath ?? attachment?.workspace_relpath ?? '';
   // Only a tab the flow chart opened lists the job; one opened from a message lists that message.
   const taskId = content.taskId ?? null;
-  /** What the source handed over, and all a tab keeps: never the stand-in below. */
+  /**
+   * What the source handed over, with the path the tab was opened on when that was not among it
+   * (`withOpenedPath`), and all a tab keeps: never the stand-in below, which moves with the file
+   * on screen.
+   */
   const handedOver = [...siblings];
   // A lone file keeps its row in the tree. A job's tree already lists what the job cited, and a
   // stand-in there would mark whatever is on screen as handed over by this message.

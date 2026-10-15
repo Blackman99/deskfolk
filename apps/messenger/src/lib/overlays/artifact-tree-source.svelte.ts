@@ -177,7 +177,8 @@ export class ArtifactTreeSource {
      * `voice_samples/ja/`. Nothing in the message says what is in it, and the tree built from the
      * message made it a leaf, so the pane showed the bare word "Folder". The Mac is asked once per
      * path (a listing comes back; a file answers 422) and a folder's entries are grafted into the
-     * tree. Only paths that may be folders are asked: rows marked `is_dir`, and the path on
+     * tree. Only paths that may be folders are asked: rows marked `is_dir`, rows the path on
+     * screen sits inside (the folder a link opened, walked into, then reopened), and the path on
      * screen when its name says nothing about its type and no attachment says it is a file (a
      * link's row is a `virtual-` one). Opening a subfolder from the tree makes it the path on
      * screen, so it is asked in turn.
@@ -186,10 +187,12 @@ export class ArtifactTreeSource {
       const client = this.#h.api();
       if (this.#h.mode() === "workspace" || !client) return;
       const candidates = new Set<string>();
-      for (const row of this.#h.siblings()) {
-        if (row.is_dir && row.exists !== false) candidates.add(dirKey(row.workspace_relpath));
-      }
       const relpath = this.#h.relpath();
+      for (const row of this.#h.siblings()) {
+        if (row.exists === false) continue;
+        const path = dirKey(row.workspace_relpath);
+        if (row.is_dir || (relpath && holds(path, dirKey(relpath)))) candidates.add(path);
+      }
       const own = relpath ? this.#h.siblings().find((row) => dirKey(row.workspace_relpath) === dirKey(relpath)) : undefined;
       const aFile = own !== undefined && !own.is_dir && !own.id.startsWith("virtual-");
       if (relpath && !aFile && artifactKind(relpath) === "file") candidates.add(dirKey(relpath));
@@ -361,4 +364,9 @@ export class ArtifactTreeSource {
 /** A folder's path as the tree keys it: a link may end in a slash (`voice_samples/ja/`), a node never does. */
 function dirKey(path: string): string {
   return path.trim().replace(/\/+$/, "");
+}
+
+/** Whether `path` lies inside `dir`, in either separator: one elsewhere on the Mac may be `C:\x`. */
+function holds(dir: string, path: string): boolean {
+  return dir !== "" && (path.startsWith(`${dir}/`) || path.startsWith(`${dir}\\`));
 }

@@ -239,3 +239,38 @@ test('a folder elsewhere on the Mac, cited from ~, lists what is in it and opens
 		expect(picked).toEqual([`${dir}/demos.json`]);
 	} finally { close(); }
 });
+
+test('reopened on a file inside the folder a link opened, the tree still lists that folder', async () => {
+	const asked: string[] = [];
+	const dir = '~/my-projects/curio';
+	const file = `${dir}/lumen-landing/index.html`;
+	const { host, close } = render(ArtifactPreview, {
+		attachment: null, relpath: file,
+		// What a tab keeps: the link pressed, and the stand-in for the file on screen.
+		siblings: [
+			{ id: `virtual-m-${dir}`, message_id: 'm', workspace_relpath: dir, original_filename: 'curio', created_at: '' },
+			{ id: `virtual-preview-${file}`, message_id: 'm', workspace_relpath: file, original_filename: 'index.html', created_at: '' },
+		],
+		api: {
+			kind: 'remote',
+			workspaceTree: (path: string) => {
+				asked.push(path);
+				if (path === '~') return Promise.resolve({ path: '/Users/me', truncated: false, items: [] });
+				return path === dir
+					? Promise.resolve({ path: '/Users/me/my-projects/curio', truncated: false, items: [
+						{ name: 'lumen-landing', path: '/Users/me/my-projects/curio/lumen-landing', kind: 'dir' },
+						{ name: 'demos.json', path: '/Users/me/my-projects/curio/demos.json', kind: 'file' },
+					] })
+					: Promise.reject(new Error('path is not a directory'));
+			},
+		} as never,
+		workspacePath: '/workspace', t, mode: 'cited', onClose() {}, onSelect() {},
+	});
+	try {
+		await settle();
+		// The folder the file sits in is asked once; the file, named as one, is not.
+		expect(asked.sort()).toEqual(['~', dir]);
+		const rows = [...host.querySelectorAll('.artifact-tree-row')].map((row) => row.textContent?.trim().split(/\s+/).pop());
+		expect(rows).toEqual(['curio', 'lumen-landing', 'index.html', 'demos.json']);
+	} finally { close(); }
+});

@@ -11,7 +11,7 @@ import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import { targetFor } from "../annotations/model.ts";
 import type { MessengerRuntime } from "../runtime.svelte.ts";
 import { sanitizeCitedPreviewPath, sanitizePreviewPath } from "../session-url.ts";
-import { findAttachmentById, findAttachmentByPath, siblingsForPath } from "./artifact-lookup.ts";
+import { findAttachmentById, findAttachmentByPath, siblingsForPath, withOpenedPath } from "./artifact-lookup.ts";
 import { clampPreviewWidth, loadPreviewWidth, savePreviewWidth } from "./preview-width.ts";
 import { trackPointerDrag } from "../pointer-drag.ts";
 import { baseName } from "../paths.ts";
@@ -119,16 +119,20 @@ export class ShellArtifact {
     if (runtime.paneOpener) {
       const sourceMessageId = messageId ?? att?.message_id ?? null;
       const owner = snapshot.messages.find((row) => row.id === sourceMessageId);
+      const path = sanitizeCitedPreviewPath(relpath);
+      const rows = siblings ?? siblingsForPath(snapshot.messages, relpath, att, sourceMessageId, runtime.previewSiblings);
       runtime.paneOpener({
         kind: "preview",
         // Whose preview this is decides which pane turns: every conversation has one.
         sessionId: sessionId ?? owner?.session_id ?? selected?.id ?? null,
-        relpath: sanitizeCitedPreviewPath(relpath),
+        relpath: path,
         attachmentId: att?.id ?? null,
         messageId: sourceMessageId,
         taskId: taskId ?? null,
         forceTree,
-        siblings: siblings ?? siblingsForPath(snapshot.messages, relpath, att, sourceMessageId, runtime.previewSiblings),
+        // Opened afresh, the path pressed stays in the tree while you walk from it. A job's tree
+        // lists what the job cited; a row of this message's there would be marked as handed over.
+        siblings: siblings || taskId ? rows : withOpenedPath(rows, path, sourceMessageId, owner?.created_at),
       });
       return;
     }
@@ -138,16 +142,23 @@ export class ShellArtifact {
       // lists for it, or a stand-in beside those rows, as a workbench tab does: going by an
       // attachment alone, pressing it opened nothing.
       const sourceMessageId = messageId ?? att?.message_id ?? null;
-      const found = att ?? findAttachmentByPath(snapshot.messages, relpath);
+      // A row the tree made up for an entry it lists has no id, and the stand-in goes with the
+      // file it stood in for: neither is an attachment to go by, so the path is looked up afresh.
+      const given = att?.id && !att.id.startsWith(ON_SCREEN) ? att : null;
+      const found = given ?? findAttachmentByPath(snapshot.messages, relpath);
       const path = found ? null : sanitizeCitedPreviewPath(relpath);
       // The stand-in is for the file on screen only; the next file never inherits it.
       let rows = siblings?.filter((r) => !r.id.startsWith(ON_SCREEN)) ?? null;
       let row: Attachment | null = found;
       if (path) {
-        rows = rows ?? siblingsForPath(snapshot.messages, path, null, sourceMessageId);
+        const owner = snapshot.messages.find((message) => message.id === sourceMessageId);
+        // Opened afresh, the path pressed is one of the rows, so the tree keeps it while you walk from it.
+        if (!rows) {
+          rows = siblingsForPath(snapshot.messages, path, null, sourceMessageId);
+          if (!taskId) rows = withOpenedPath(rows, path, sourceMessageId, owner?.created_at);
+        }
         row = rows.find((r) => r.workspace_relpath === path) ?? null;
         if (!row) {
-          const owner = snapshot.messages.find((message) => message.id === sourceMessageId);
           row = {
             id: `${ON_SCREEN}${path}`, message_id: sourceMessageId ?? "",
             workspace_relpath: path, original_filename: baseName(path) || path, created_at: owner?.created_at ?? "",

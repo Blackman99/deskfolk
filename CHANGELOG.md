@@ -6,7 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+### The tree keeps the folder a link opened while you walk inside it
+
+- If a message linked a folder outside the workspace, such as `~/my-projects/curio`, and you opened a subfolder from the tree on the left, the tree turned into that subfolder alone. Opening a file then removed the tree and left only that file's preview. The tree now keeps the folder you opened as its root: subfolders expand where they are, and opening a file changes only the preview. Workspace paths behave the same way: after opening a file from a link in the text, opening another file that message handed over no longer folds the tree away. A tab reopened after a restart still lists that folder.
+- On the phone, opening a file from inside such a folder closed the preview. The file now opens.
 
 ## 0.1.0-rc.19 — 2026-10-15
 

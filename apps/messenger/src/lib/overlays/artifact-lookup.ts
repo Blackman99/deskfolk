@@ -6,6 +6,7 @@
  * itself.
  */
 import type { Attachment, Message } from "@real-bot/protocol";
+import { baseName } from "../paths.ts";
 import { handedOverPaths } from "./artifacts.ts";
 
 export function findAttachmentByPath(messages: readonly Message[], relpath: string): Attachment | null {
@@ -70,4 +71,25 @@ export function siblingsForPath(
     }
   }
   return att ? [att] : [];
+}
+
+/**
+ * The rows a preview opened on `path` keeps: what its source handed over, and the path itself
+ * when it is not among them — a link in the text, a search hit. Walking the tree from there
+ * leaves the tree as it was. Only the stand-in for the file on screen moves with each click, and
+ * a path elsewhere on the Mac has no folder above it in the tree, so a link to `~/x/curio` read
+ * as the tree turning into the subfolder you opened, then vanishing at the first file.
+ */
+export function withOpenedPath(
+  rows: readonly Attachment[],
+  path: string | null,
+  messageId: string | null,
+  createdAt = "",
+): Attachment[] {
+  const key = (p: string) => p.trim().replace(/(?<=[^\\/:])[\\/]+$/, "");
+  if (!path || rows.some((row) => key(row.workspace_relpath) === key(path))) return [...rows];
+  return [...rows, {
+    id: `virtual-${messageId ?? "opened"}-${path}`, message_id: messageId ?? "",
+    workspace_relpath: path, original_filename: baseName(path) || path, created_at: createdAt,
+  }];
 }
