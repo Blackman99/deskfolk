@@ -51,7 +51,10 @@ export const STORY_SIZES = {
 	'chat-stage-segments': { width: 900, height: 820 },
 	// A conversation as narrow as a phone docks its composer across the bottom instead of floating it.
 	'chat-stage-narrow': { width: 390, height: 844 },
-	'context-menu': { width: 340, height: 420 },
+	// A conversation's right-click menu on a desktop: wider than a phone, or it is the sheet below.
+	'context-menu': { width: 760, height: 420 },
+	// The same menu on a phone, from a long press: a sheet from the bottom, named after the conversation.
+	'context-menu-narrow': { width: 390, height: 640 },
 	'artifact-preview': { width: 900, height: 640 },
 	'artifact-code': { width: 700, height: 420 },
 	// Annotations: the preview with its list column, a draft waiting in the send bar, and marks drawn

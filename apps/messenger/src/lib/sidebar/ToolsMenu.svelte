@@ -1,9 +1,7 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
 	import { untrack } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
 	import BottomSheet from '../BottomSheet.svelte';
-	import { PHONE_SHEET_QUERY } from '../bottom-sheet.ts';
 	import { isOutside } from '../click-outside.ts';
 	import { roveFocus } from '../menu-roving.ts';
 	import { screenCopy, type Copy } from '../copy.ts';
@@ -14,13 +12,14 @@
 	 * and — after a line — the archived sessions. One
 	 * menu for every button that opens it: the list's footer, the phone's search row, and the rail
 	 * the list folds into. The button stays with its owner; this hangs off it, walks with the arrow
-	 * keys, closes on Escape, Tab or a click elsewhere, and hands focus back to the button. As narrow
-	 * as a phone it is a sheet from the bottom (`BottomSheet`) instead.
+	 * keys, closes on Escape, Tab or a click elsewhere, and hands focus back to the button. On a
+	 * phone (`phone`) it is a sheet from the bottom (`BottomSheet`) instead; the desktop's folded
+	 * rail keeps its flyout, however narrow the window.
 	 */
 	type Props = {
 		t: Copy;
 		locale: 'zh' | 'en';
-		/** Hangs under its button on a phone, over it elsewhere. */
+		/** A sheet from the bottom on a phone, over its button elsewhere. */
 		phone: boolean;
 		/**
 		 * The tools open pages, not workbench tabs, so the labels name the page rather than the tab.
@@ -32,7 +31,7 @@
 		anchor: HTMLElement | null;
 		open: boolean;
 		/**
-		 * Where it goes: stacked over the anchor (under it on a phone), or `flyout` — out to the side,
+		 * Where it goes: stacked over the anchor, or `flyout` — out to the side,
 		 * bottoms aligned — for a rail whose own buttons it must not cover.
 		 */
 		placement?: 'stack' | 'flyout';
@@ -78,10 +77,9 @@
 
 	const spendCopy = $derived(spendCopyFor(locale));
 	let menuEl = $state<HTMLElement | null>(null);
-	const sheet = new MediaQuery(PHONE_SHEET_QUERY);
 
 	function place(): void {
-		if (!open || !menuEl || !anchor || sheet.current) return;
+		if (!open || !menuEl || !anchor || phone) return;
 		const a = anchor.getBoundingClientRect();
 		const m = menuEl.getBoundingClientRect();
 		const margin = 8;
@@ -94,9 +92,7 @@
 		} else {
 			const above = a.top - m.height - 6;
 			const below = a.bottom + 6;
-			const preferred = phone ? below : above;
-			const fallback = phone ? above : below;
-			top = preferred >= margin && preferred + m.height <= window.innerHeight - margin ? preferred : fallback;
+			top = above >= margin && above + m.height <= window.innerHeight - margin ? above : below;
 			left = a.left;
 		}
 		menuEl.style.left = `${Math.max(margin, Math.min(left, window.innerWidth - m.width - margin))}px`;
@@ -104,7 +100,7 @@
 	}
 
 	$effect(() => {
-		if (open && menuEl && !sheet.current) {
+		if (open && menuEl && !phone) {
 			place();
 			const items = itemsOf();
 			// Read untracked: clearing it here must not run this again and move focus back to the first.
@@ -115,7 +111,7 @@
 	});
 
 	$effect(() => {
-		if (!open || !anchor || !menuEl || sheet.current) return;
+		if (!open || !anchor || !menuEl || phone) return;
 		const observer = new ResizeObserver(place);
 		observer.observe(anchor);
 		observer.observe(menuEl);
@@ -129,7 +125,7 @@
 
 	function close(): void {
 		open = false;
-		if (!sheet.current) anchor?.focus();
+		if (!phone) anchor?.focus();
 	}
 
 	function choose(action: () => void): void {
@@ -154,7 +150,7 @@
 	 */
 	function onWindowClick(e: MouseEvent): void {
 		// A sheet closes by its own backdrop, close button, Back or Escape.
-		if (open && !sheet.current && menuEl && anchor && isOutside(e.target as Node | null, menuEl, anchor)) open = false;
+		if (open && !phone && menuEl && anchor && isOutside(e.target as Node | null, menuEl, anchor)) open = false;
 	}
 </script>
 
@@ -245,7 +241,7 @@
 	</button>
 {/snippet}
 
-{#if open && sheet.current}
+{#if open && phone}
 	<BottomSheet title={t.sidebar.tools} closeLabel={t.common.close} onClose={close}>
 		<div bind:this={menuEl} id="sidebar-tools-menu" aria-label={t.sidebar.tools} role="menu" tabindex="-1" onkeydown={onMenuKeyDown}>
 			{@render entries(true)}

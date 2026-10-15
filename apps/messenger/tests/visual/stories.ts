@@ -1061,6 +1061,23 @@ const defs: Record<StoryName, Story> = {
 			onDelete: () => {}
 		}
 	},
+	'context-menu-narrow': {
+		component: SessionContextMenu as never,
+		props: {
+			session: group,
+			botsById,
+			isPinned: false,
+			x: 16,
+			y: 16,
+			t,
+			onClose: () => {},
+			onTogglePin: () => {},
+			onViewInfo: () => {},
+			onClearHistory: () => {},
+			onToggleArchive: () => {},
+			onDelete: () => {}
+		}
+	},
 	'danger-dialog-narrow': {
 		component: DangerDialog as never,
 		props: {
