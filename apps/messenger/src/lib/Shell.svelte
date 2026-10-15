@@ -1429,12 +1429,16 @@
 		}
 
 		/*
-		 * Beside the workbench the sidebar's rows stop 8px short of the handle and the card starts
-		 * 4px after it; two pixels to the left puts the handle's line (and its grip) midway between
-		 * them. The layered card sits 8px off, so its handle is already in the middle.
+		 * The sidebar has no edge of its own; where it meets the content is the card's edge, so the
+		 * handle's line (and its grip) is drawn on the card's first column of pixels: one past the
+		 * handle for the layered card, five beside the workbench, whose card is 4px into the column.
 		 */
+		.sidebar-split {
+			left: 1px;
+		}
+
 		.shell:not(.is-layered) .sidebar-split {
-			left: -2px;
+			left: 5px;
 		}
 
 		:global(:root[data-chrome='mac']) .shell {
