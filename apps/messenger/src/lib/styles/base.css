@@ -14,6 +14,16 @@
   scrollbar-color: var(--line) transparent;
 }
 
+/*
+ * On macOS the window's sidebar material sits behind a transparent webview (`window-chrome.ts`).
+ * While the shell is up the page itself is clear and the shell paints its own tinted ground over
+ * the material; onboarding and the connection screens keep the solid one.
+ */
+:root[data-chrome="mac"]:has(.shell),
+:root[data-chrome="mac"]:has(.shell) body {
+  background: transparent;
+}
+
 html,
 body {
   margin: 0;

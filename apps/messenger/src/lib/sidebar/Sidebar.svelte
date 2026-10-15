@@ -2,6 +2,7 @@
 	import Icon from '../Icon.svelte';
 	import type { Hold, SessionSummary } from '@real-bot/protocol';
 	import BrandMark from '../BrandMark.svelte';
+	import { dragRegion } from '../window-chrome.ts';
 	import EmptyState from '../EmptyState.svelte';
 	import { isOutside } from '../click-outside.ts';
 	import type { Copy } from '../copy.ts';
@@ -289,9 +290,9 @@
 <aside class="side">
 	<!-- The mark heads the list on a wider window; a phone's top bar is the page title instead. -->
 	{#if !phone}
-		<div class="brand-row">
+		<div class="brand-row" data-tauri-drag-region={dragRegion}>
 			<BrandMark size={22} />
-			<span class="brand-name">Deskfolk</span>
+			<span class="brand-name" data-tauri-drag-region={dragRegion}>Deskfolk</span>
 			{#if !viewingArchived}<WorkingFilter {t} {workingOnly} {toggleWorkingOnly} />{/if}
 			{#if onCollapse}{@render collapseButton()}{/if}
 		</div>
@@ -616,6 +617,11 @@
 		flex-shrink: 0;
 	}
 
+	/* On macOS the window's traffic lights take the start of the row (`window-chrome.ts`). */
+	:global(:root[data-chrome='mac']) .brand-row {
+		padding-left: 84px;
+	}
+
 	.brand-name {
 		flex: 1;
 		min-width: 0;
@@ -721,6 +727,13 @@
 		min-width: 0;
 		position: relative;
 		user-select: none;
+	}
+
+	/* On macOS the shell's ground (the window's material) shows through. */
+	@media (min-width: 681px) {
+		:global(:root[data-chrome='mac']) .side {
+			background: transparent;
+		}
 	}
 
 	.search-icon-badge {

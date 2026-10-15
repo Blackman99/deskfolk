@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### On a Mac the window is one piece of glass
+
+- The desktop window had the system's grey title bar above the app, a line between the sidebar and the conversation, and the conversation flush against both. On macOS the title bar is gone: the traffic lights sit at the start of the sidebar's top row, the sidebar and the frame around the content are the window's own translucent sidebar material (it follows the app's light or dark theme, not only the system's), and the conversation lies on it as a card with rounded corners and a soft shadow. Drag the window by the sidebar's top row or the frame around the card. On Windows and in a browser the content is the same card on the sidebar's colour. On a Mac the window is at least 720px wide.
+
 ### Mochi and Pudding are the app icon
 
 - The app icon was two flat discs on a teal square that read as a lens or a switch rather than the mark's two teammates. It is now Mochi and Pudding themselves, rendered from the promo film's 3D rigs: side by side on the teal tile, Pudding waving, still recognisable at Dock size. The phone's home-screen icon is the same picture. The menu bar shows the mark in one ink instead of the colour icon, tinted by macOS like its own items. The mark inside the app and the favicon stay flat.

@@ -41,6 +41,7 @@
 	import SessionContextMenu from './sidebar/SessionContextMenu.svelte';
 	import WorkspaceExplorer from './overlays/WorkspaceExplorer.svelte';
 	import ShellPreview from './overlays/ShellPreview.svelte';
+	import { dragRegion, WINDOW_CHROME } from './window-chrome.ts';
 	import {
 		clampSidebarWidth,
 		loadSidebarCollapsed,
@@ -449,6 +450,8 @@
 	let narrow = $state(false);
 	$effect(() => watchNarrow((value) => (narrow = value)));
 	const wide = $derived(isWorkbenchSurface(narrow));
+	// On macOS the window's traffic lights sit at the top of the rail, and need 70px of it.
+	const railWidth = WINDOW_CHROME === 'mac' ? SIDEBAR_RAIL + 12 : SIDEBAR_RAIL;
 	/**
 	 * The session list folded down to a rail of avatars. Anywhere the list is a column of the shell
 	 * it can fold: the desktop workbench, and the paired client on a tablet, which keeps the columns
@@ -1011,7 +1014,8 @@
 	class:is-sidebar-collapsed={sidebarHidden}
 	bind:this={shellEl}
 	style:--preview-width="{artifact.previewWidth}px"
-	style:--sidebar-width="{sidebarHidden ? SIDEBAR_RAIL : sidebarWidth}px"
+	style:--sidebar-width="{sidebarHidden ? railWidth : sidebarWidth}px"
+	data-tauri-drag-region={dragRegion}
 	style:--sidebar-split={sidebarHidden ? '0px' : undefined}
 >
 	{#if sidebarHidden}
@@ -1380,6 +1384,39 @@
 	}
 	.pane-open:not(:disabled):hover {
 		background: var(--row-hover);
+	}
+
+	/*
+	 * Beside the phone layout the content is a card on the window's ground: the sidebar and the
+	 * gutter around the card share one colour, and the pane lies on it as a sheet instead of a
+	 * column ruled off by a line. On macOS that ground is the window's sidebar material, lightly
+	 * tinted, behind a transparent page (`window-chrome.ts`); the gutter also drags the window.
+	 */
+	@media (min-width: 681px) {
+		.shell {
+			background: var(--sidebar-bg);
+		}
+
+		.main,
+		.thread {
+			margin: 8px 8px 8px 0;
+			border-radius: var(--radius-lg);
+			overflow: hidden;
+			box-shadow: var(--shadow-card);
+		}
+
+		.thread {
+			border-left: 0;
+		}
+
+		/* The card's edge is the line now; the handle stays, unseen until it is hovered. */
+		.sidebar-split {
+			background: transparent;
+		}
+
+		:global(:root[data-chrome='mac']) .shell {
+			background: color-mix(in srgb, var(--sidebar-bg) 55%, transparent);
+		}
 	}
 
 	/* The rail has its own edge and nothing to drag. */

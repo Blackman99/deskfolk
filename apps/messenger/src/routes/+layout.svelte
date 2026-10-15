@@ -10,6 +10,7 @@
 	import { applyPlatformAttribute } from '$lib/platform';
 	import { applyThemeToDocument, themeManager } from '$lib/theme';
 	import { HOSTED_MESSENGER } from '$lib/remote/mode';
+	import { applyWindowChromeAttribute, syncWindowTheme, WINDOW_CHROME } from '$lib/window-chrome';
 	import '$lib/styles/index.css';
 
 	let { children } = $props();
@@ -21,6 +22,8 @@
 	// Once, at startup — `base.css` keys a rule off `:root[data-platform="windows"]`, and
 	// shortcut labels and terminal keys read it through `desktopPlatform()` on their own.
 	applyPlatformAttribute();
+	// Also once: on macOS the page draws the window's frame (`window-chrome.css`).
+	applyWindowChromeAttribute();
 	// Before the first render too: `tokens.css` keys dark mode off `data-theme` alone, and a
 	// system-dark window would otherwise draw its first frame light.
 	applyThemeToDocument(themeManager.resolved, themeManager.preference);
@@ -30,6 +33,14 @@
 
 	onMount(() => {
 		const stopTheme = themeManager.init();
+		if (WINDOW_CHROME === 'mac') {
+			syncWindowTheme(themeManager.resolved);
+			const stopSync = themeManager.subscribe(() => syncWindowTheme(themeManager.resolved));
+			return () => {
+				stopSync();
+				stopTheme();
+			};
+		}
 		if (!HOSTED_MESSENGER) return stopTheme;
 		if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js');
 		const stopUpdates = updates.start();

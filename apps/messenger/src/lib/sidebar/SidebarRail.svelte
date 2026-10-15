@@ -3,6 +3,7 @@
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import BrandMark from '../BrandMark.svelte';
+	import { dragRegion } from '../window-chrome.ts';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { formatShortcut } from '../keymap.ts';
@@ -174,7 +175,7 @@
 	);
 </script>
 
-<nav class="rail" aria-label={t.sidebar.sessions}>
+<nav class="rail" aria-label={t.sidebar.sessions} data-tauri-drag-region={dragRegion}>
 	<span class="rail-brand"><BrandMark size={26} /></span>
 	<RailTooltip
 		class="rail-action rail-expand"
@@ -320,6 +321,26 @@
 		background: var(--sidebar-bg);
 		border-right: 1px solid var(--line);
 		user-select: none;
+	}
+
+	/* Beside the content card the rail is part of the ground, with no edge of its own. */
+	@media (min-width: 681px) {
+		.rail {
+			background: transparent;
+			border-right: 0;
+		}
+	}
+
+	/*
+	 * On macOS the traffic lights sit at the top of the rail (`window-chrome.ts`), which is 12px
+	 * wider there to hold them; the mark gives them its place.
+	 */
+	:global(:root[data-chrome='mac']) .rail {
+		padding: 40px 0 0 6px;
+	}
+
+	:global(:root[data-chrome='mac']) .rail-brand {
+		display: none;
 	}
 
 	.rail-list {
