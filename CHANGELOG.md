@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.19 — 2026-10-15
+
+Signed and notarized macOS rc, with an experimental, still unsigned Windows installer beside the `.dmg`s.
+
 ### Files and folders outside the workspace open too
 
 - The workspace bounds where Bots work, not what you can open. A message that named `~/my-projects/curio` or `/Users/you/site/index.html` showed a link that failed when pressed (or no link at all for a path starting with `/`). Such a path now opens like any other: a folder lists what is in it, and its files open in the preview. Routes such as `/sidebar` or `/tasks/{id}` stay plain text.
