@@ -16,6 +16,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - Dragging a pane by the empty part of its tab bar shows that every tab goes with it: all of them fade where they were, and the chip following the pointer reads "Whole pane · N tabs" instead of the name of the tab in front.
 - In light mode the box that marks where a dragged tab or pane will land is see-through, as it already was in dark mode, so the pane under it still shows.
 - In the dark theme the ground under the sidebar and the tabs is near black, well under the cards; it was almost the cards' own colour, so the two sides could not be told apart.
+- On Windows and in a browser the sidebar and the space around the cards are that ground too, as on macOS; a later rule had kept them the grey of the old layout there.
 
 ### Where a line is filed is the app's own, seen in the flow
 

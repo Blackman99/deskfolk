@@ -1525,7 +1525,6 @@
 		height: 100%;
 		display: grid;
 		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 1px) minmax(0, 1fr) 0fr;
-		background: var(--bg);
 		color: var(--ink);
 		position: relative;
 		transition: grid-template-columns 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1595,6 +1594,11 @@
 		.shell.is-preview,
 		.shell.is-preview.is-thread {
 			grid-template-columns: 1fr;
+		}
+
+		/* The phone's ground. Wider, the shell is the sidebar's ground (the card block above). */
+		.shell {
+			background: var(--bg);
 		}
 
 		/*
