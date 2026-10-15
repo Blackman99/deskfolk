@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Bot, SessionSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { computeContextMenuPosition, deriveSessionContextMenu } from './session-context-menu.ts';
@@ -121,16 +122,10 @@
 		}}
 	>
 		{#if data.isPinned}
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<line x1="12" y1="17" x2="12" y2="22"></line>
-				<path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V6a3 3 0 0 0-6 0v4.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z"></path>
-			</svg>
+			<Icon name="pin" filled />
 			<span>{t.sidebar.unpin}</span>
 		{:else}
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<line x1="12" y1="17" x2="12" y2="22"></line>
-				<path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V6a3 3 0 0 0-6 0v4.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z"></path>
-			</svg>
+			<Icon name="pin" />
 			<span>{t.sidebar.pin}</span>
 		{/if}
 	</button>
@@ -145,11 +140,7 @@
 			onClose();
 		}}
 	>
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<circle cx="12" cy="12" r="10"></circle>
-			<line x1="12" y1="16" x2="12" y2="12"></line>
-			<line x1="12" y1="8" x2="12.01" y2="8"></line>
-		</svg>
+		<Icon name="info" />
 		<span>{t.sidebar.viewInfo}</span>
 	</button>
 	{/if}
@@ -167,13 +158,7 @@
 				onClose();
 			}}
 		>
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<rect x="8" y="2" width="8" height="6" rx="1.5"></rect>
-				<path d="M12 8v3"></path>
-				<path d="M5.5 14v-3h13v3"></path>
-				<rect x="2" y="14" width="7" height="6" rx="1.5"></rect>
-				<rect x="15" y="14" width="7" height="6" rx="1.5"></rect>
-			</svg>
+			<Icon name="hierarchy" />
 			<span>{t.plan.segmentTrace}</span>
 		</button>
 	{/if}
@@ -189,10 +174,7 @@
 			onClose();
 		}}
 	>
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<polyline points="1 4 1 10 7 10"></polyline>
-			<path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-		</svg>
+		<Icon name="rotate-ccw" />
 		<span>{t.sidebar.clearHistory}</span>
 	</button>
 
@@ -209,17 +191,10 @@
 		}}
 	>
 		{#if data.archive.isArchived}
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<polyline points="1 4 1 10 7 10"></polyline>
-				<path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-			</svg>
+			<Icon name="rotate-ccw" />
 			<span>{t.sidebar.unarchive}</span>
 		{:else}
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<polyline points="21 8 21 21 3 21 3 8"></polyline>
-				<rect x="1" y="3" width="22" height="5"></rect>
-				<line x1="10" y1="12" x2="14" y2="12"></line>
-			</svg>
+			<Icon name="archive" />
 			<span>{t.sidebar.archive}</span>
 		{/if}
 	</button>
@@ -238,10 +213,7 @@
 			}
 		}}
 	>
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<polyline points="3 6 5 6 21 6"></polyline>
-			<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-		</svg>
+		<Icon name="trash" />
 		<span>{t.sidebar.delete}</span>
 	</button>
 </div>
@@ -281,7 +253,7 @@
 		transition: background 0.12s ease, color 0.12s ease;
 	}
 
-	.session-context-menu-item svg {
+	.session-context-menu-item :global(.icon) {
 		flex-shrink: 0;
 		opacity: 0.75;
 		transition: opacity 0.12s ease;
@@ -292,7 +264,7 @@
 		color: var(--accent);
 	}
 
-	.session-context-menu-item:hover:not(:disabled) svg {
+	.session-context-menu-item:hover:not(:disabled) :global(.icon) {
 		opacity: 1;
 		stroke: var(--accent);
 	}
@@ -302,7 +274,7 @@
 		color: var(--danger);
 	}
 
-	.session-context-menu-item.is-danger:hover:not(:disabled) svg {
+	.session-context-menu-item.is-danger:hover:not(:disabled) :global(.icon) {
 		opacity: 1;
 		stroke: var(--danger);
 	}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { endpointSource } from '../model-source.ts';
 	import MemoryCard from './MemoryCard.svelte';
 	import RoutineCard from './RoutineCard.svelte';
@@ -472,7 +473,7 @@
 			aria-label={t.detail.backToSections}
 			onclick={() => backFromDetail()}
 		>
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+			<Icon name="chevron-left" size={20} />
 		</button>
 		<div class="bot-detail-heading">
 			<div class="bot-detail-title-row">
@@ -493,7 +494,7 @@
 				class="bot-detail-action"
 				onclick={openAddSkill}
 			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+				<Icon name="plus" />
 				<span>{t.sidebar.skillAdd}</span>
 			</button>
 		{:else if activeTab === 'routines'}
@@ -503,7 +504,7 @@
 				disabled={!routineCard?.canAdd()}
 				onclick={() => routineCard?.addRoutine()}
 			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+				<Icon name="plus" />
 				<span>{t.routines.add}</span>
 			</button>
 		{/if}
@@ -512,7 +513,7 @@
 <div class="panel-scroll-content profile-pane-scroll flex-1 overflow-y-auto pt-8 px-9 pb-12 flex flex-col gap-8">
 {#if profileFailed}
 	<div class="panel-alert is-error">
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+		<Icon name="alert-circle" />
 		<span>{t.sidebar.saveFailed}</span>
 	</div>
 {/if}

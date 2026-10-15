@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import type { Terminal as TerminalRow, StreamFrame, TerminalScreenSnapshot } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
@@ -792,7 +793,7 @@
 				the title is the switch between them.
 			-->
 			<button type="button" class="terminal-icon terminal-back" aria-label={t.common.back} title={t.common.back} onclick={onClose}>
-				<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<Icon name="chevron-left" size={20} />
 			</button>
 			<div class="terminal-switch">
 				<button
@@ -811,7 +812,7 @@
 						<span class="terminal-title-text">{active ? (names.get(active.id) ?? active.title) : t.terminal.title}</span>
 						{#if ordered.length > 1}
 							<span class="terminal-title-count">{ordered.length}</span>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+							<Icon name="chevron-down" />
 						{/if}
 					</span>
 					{#if active}
@@ -857,7 +858,7 @@
 					void create();
 				}}
 			>
-				<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+				<Icon name="plus" size={20} />
 			</button>
 			{#if active}
 				<div class="terminal-more">
@@ -875,7 +876,7 @@
 							else moreOpen = true;
 						}}
 					>
-						<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>
+						<Icon name="more" size={20} />
 					</button>
 					{#if moreOpen}
 						<div class="terminal-menu" role="menu" aria-label={t.terminal.more}>
@@ -1055,13 +1056,9 @@
 							onclick={() => clickKey(key)}
 						>
 							{#if key.kind === 'paste'}
-								<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path></svg>
+								<Icon name="clipboard" size={20} />
 							{:else if key.kind === 'keyboard'}
-								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<rect x="2" y="4" width="20" height="12" rx="2"></rect>
-									<path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M7 12h10"></path>
-									{#if keyboardUp}<polyline points="9 19 12 22 15 19"></polyline>{:else}<polyline points="9 22 12 19 15 22"></polyline>{/if}
-								</svg>
+								<Icon name={keyboardUp ? 'keyboard-hide' : 'keyboard-show'} size={20} />
 							{:else}
 								{key.label}
 							{/if}
@@ -1379,7 +1376,7 @@
 		text-align: center;
 	}
 
-	.terminal-title-name svg {
+	.terminal-title-name :global(.icon) {
 		flex: 0 0 auto;
 		color: var(--muted);
 	}

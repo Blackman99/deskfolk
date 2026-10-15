@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { AcceptanceCheck, Bot, TaskDetail, TaskSpecRevision, TicketStatus } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
@@ -325,12 +326,7 @@
 
 {#snippet title()}
 	<div class="plan-spec-title-wrap">
-		<svg class="plan-spec-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-			<polyline points="14 2 14 8 20 8"></polyline>
-			<line x1="16" y1="13" x2="8" y2="13"></line>
-			<line x1="16" y1="17" x2="8" y2="17"></line>
-		</svg>
+		<Icon name="file-text" class="plan-spec-title-icon" />
 		<h3 class="plan-spec-title">{t.plan.spec.title}</h3>
 	</div>
 {/snippet}
@@ -342,10 +338,7 @@
 			<span class="plan-spec-name-label">{t.plan.spec.name}</span>
 			{#if api && editing !== 'title'}
 				<button type="button" class="plan-spec-edit-btn" onclick={startEditTitle} title={t.plan.spec.nameHint}>
-					<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<path d="M12 20h9"></path>
-						<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-					</svg>
+					<Icon name="edit" size={12} />
 					<span>{t.plan.edit}</span>
 				</button>
 			{/if}
@@ -434,10 +427,7 @@
 				{/if}
 				{#if onClearTicket}
 					<button type="button" class="plan-spec-focus-clear" aria-label={t.plan.links.clearFocus} title={t.plan.links.clearFocus} onclick={onClearTicket}>
-						<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<line x1="18" y1="6" x2="6" y2="18"></line>
-							<line x1="6" y1="6" x2="18" y2="18"></line>
-						</svg>
+						<Icon name="x" size={12} />
 					</button>
 				{/if}
 			</div>
@@ -457,19 +447,12 @@
 			<div class="plan-spec-goal">
 				<div class="plan-spec-goal-top">
 					<div class="plan-spec-goal-badge">
-						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<circle cx="12" cy="12" r="10"></circle>
-							<circle cx="12" cy="12" r="6"></circle>
-							<circle cx="12" cy="12" r="2"></circle>
-						</svg>
+						<Icon name="target" size={12} />
 						<span class="plan-spec-goal-label">{t.plan.spec.goal}</span>
 					</div>
 					{#if api && editing !== 'goal'}
 						<button type="button" class="plan-spec-edit-btn" onclick={startEditGoal} title={t.plan.edit}>
-							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<path d="M12 20h9"></path>
-								<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-							</svg>
+							<Icon name="edit" size={12} />
 							<span>{t.plan.edit}</span>
 						</button>
 					{/if}
@@ -497,11 +480,7 @@
 					aria-label={t.plan.spec.attention}
 				>
 					<h4 class="plan-spec-attention-title">
-						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-							<line x1="12" y1="9" x2="12" y2="13"></line>
-							<line x1="12" y1="17" x2="12.01" y2="17"></line>
-						</svg>
+						<Icon name="alert-triangle" size={12} />
 						<span>{t.plan.spec.attention}</span>
 					</h4>
 					<ul class="plan-spec-attention-list">
@@ -570,21 +549,11 @@
 							<div class="plan-spec-list-head">
 								<div class="plan-spec-list-meta">
 									{#if field === 'acceptance'}
-										<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-											<polyline points="9 11 12 14 22 4"></polyline>
-											<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-										</svg>
+										<Icon name="check-square" size={12} class="plan-spec-field-icon" />
 									{:else if field === 'rules'}
-										<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-											<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-										</svg>
+										<Icon name="shield" size={12} class="plan-spec-field-icon" />
 									{:else}
-										<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-											<line x1="6" y1="3" x2="6" y2="15"></line>
-											<circle cx="18" cy="6" r="3"></circle>
-											<circle cx="6" cy="18" r="3"></circle>
-											<path d="M18 9a9 9 0 0 1-9 9"></path>
-										</svg>
+										<Icon name="git-branch" size={12} class="plan-spec-field-icon" />
 									{/if}
 									<span class="plan-spec-list-label">{fieldLabel(field)}</span>
 									{#if count > 0}
@@ -607,10 +576,7 @@
 									{/if}
 									{#if api && editing !== field}
 										<button type="button" class="plan-spec-edit-btn" onclick={() => startEditField(field)} title={t.plan.edit}>
-											<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-												<path d="M12 20h9"></path>
-												<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-											</svg>
+											<Icon name="edit" size={12} />
 											<span>{t.plan.edit}</span>
 										</button>
 									{/if}
@@ -726,19 +692,14 @@
 												onclick={() => (doneOpen = !doneShown)}
 											>
 												{@render head()}
-												<svg class="plan-spec-fold-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-													<polyline points="6 9 12 15 18 9"></polyline>
-												</svg>
+												<Icon name="chevron-down" size={12} class="plan-spec-fold-chevron" />
 											</button>
 										{:else}
 											<div class="plan-spec-list-meta">{@render head()}</div>
 										{/if}
 										{#if api && editing !== field}
 											<button type="button" class="plan-spec-edit-btn" onclick={() => startEditField(field)} title={t.plan.edit}>
-												<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-													<path d="M12 20h9"></path>
-													<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-												</svg>
+												<Icon name="edit" size={12} />
 												<span>{t.plan.edit}</span>
 											</button>
 										{/if}
@@ -785,11 +746,7 @@
 					</div>
 					{#if api}
 						<button type="button" class="plan-spec-history-toggle" aria-expanded={historyOpen} onclick={toggleHistory}>
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<circle cx="12" cy="12" r="10"></circle>
-								<polyline points="12 6 12 12 14 14"></polyline>
-								<path d="M3.05 11a9 9 0 0 1 .5-2m-.5 2H7"></path>
-							</svg>
+							<Icon name="history" size={12} />
 							<span>{t.plan.history}</span>
 						</button>
 					{/if}
@@ -818,10 +775,7 @@
 													class="plan-spec-revision-jump"
 													onclick={() => onJump(rev.session_id!, rev.source_message_id!)}
 												>
-													<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-														<polyline points="15 3 21 3 21 9"></polyline>
-														<line x1="10" y1="14" x2="21" y2="3"></line>
-													</svg>
+													<Icon name="arrow-up-right" size={12} />
 													<span>{t.plan.jumpToMessage}</span>
 												</button>
 											{/if}
@@ -972,7 +926,7 @@
 		min-width: 0;
 	}
 
-	.plan-spec-title-icon {
+	.plan-spec-title-wrap :global(.plan-spec-title-icon) {
 		flex: none;
 		color: var(--accent);
 	}
@@ -1294,7 +1248,7 @@
 	}
 
 	.plan-spec-list.is-bare .plan-spec-list-label,
-	.plan-spec-list.is-bare .plan-spec-field-icon,
+	.plan-spec-list.is-bare :global(.plan-spec-field-icon),
 	.plan-spec-list.is-bare .plan-spec-status-dot {
 		opacity: 0.7;
 	}
@@ -1318,14 +1272,14 @@
 		background: var(--line-subtle);
 	}
 
-	.plan-spec-fold-chevron {
+	.plan-spec-fold-btn :global(.plan-spec-fold-chevron) {
 		flex: none;
 		color: var(--muted);
 		transform: rotate(-90deg);
 		transition: transform 0.15s ease;
 	}
 
-	.plan-spec-fold-btn[aria-expanded='true'] .plan-spec-fold-chevron {
+	.plan-spec-fold-btn[aria-expanded='true'] :global(.plan-spec-fold-chevron) {
 		transform: none;
 	}
 
@@ -1365,7 +1319,7 @@
 		min-width: 0;
 	}
 
-	.plan-spec-field-icon {
+	.plan-spec-list-meta :global(.plan-spec-field-icon) {
 		flex: none;
 		color: var(--muted);
 	}

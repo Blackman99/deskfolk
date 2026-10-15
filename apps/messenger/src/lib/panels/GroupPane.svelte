@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { untrack } from 'svelte';
 	import { USER_MEMBER, type SessionSummary } from '@real-bot/protocol';
 	import Select from '../Select.svelte';
@@ -153,20 +154,20 @@
 	<!-- Phone only: the sections as a list. Wider windows show them all at once, as before. -->
 	<nav class="group-sections" aria-label={selected.kind === 'group' ? t.detail.titleGroup : t.detail.titleBot}>
 		<button type="button" class="group-section-btn" onclick={() => openSection('members')}>
-			<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+			<Icon name="user" size={20} class="section-icon" />
 			<span class="section-name">{t.detail.members}</span>
 			<span class="section-count">{selected.kind === 'group' ? groupPresent.length + 1 : groupPresent.length}</span>
 			<span class="section-chevron" aria-hidden="true"></span>
 		</button>
 		{#if selected.kind === 'group'}
 			<button type="button" class="group-section-btn" onclick={() => openSection('actions')}>
-				<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+				<Icon name="archive" size={20} class="section-icon" />
 				<span class="section-name">{t.detail.sessionActions}</span>
 				<span class="section-chevron" aria-hidden="true"></span>
 			</button>
 		{/if}
 		<button type="button" class="group-section-btn is-danger" onclick={() => openSection('danger')}>
-			<svg class="section-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+			<Icon name="alert-triangle" size={20} class="section-icon" />
 			<span class="section-name">{t.detail.dangerZone}</span>
 			<span class="section-chevron" aria-hidden="true"></span>
 		</button>
@@ -180,7 +181,7 @@
 				aria-label={t.detail.backToSections}
 				onclick={() => backFromDetail()}
 			>
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<Icon name="chevron-left" size={20} />
 			</button>
 			<div class="group-detail-heading">
 				<h3 class="group-detail-title">{sectionLabel(activeSection)}</h3>
@@ -192,7 +193,7 @@
 
 {#if selected.kind === 'group' && detail.failed}
 	<div class="panel-alert is-error">
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+		<Icon name="alert-circle" />
 		<span>{t.detail.saveFailed}</span>
 	</div>
 {/if}
@@ -286,7 +287,7 @@
 									title={!groupCanRemove ? (locale === 'zh' ? '群内至少需保留 2 个 Bot' : 'Keep at least 2 bots') : t.detail.remove}
 									onclick={() => void removeMember(botId)}
 								>
-									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+									<Icon name="x" size={12} />
 									<span>{t.detail.remove}</span>
 								</button>
 							</div>
@@ -326,7 +327,7 @@
 							disabled={!detail.pullPick}
 							onclick={() => void pullInMember()}
 						>
-							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+							<Icon name="plus" size={12} />
 							<span>{t.detail.pullIn}</span>
 						</button>
 					</div>
@@ -404,12 +405,12 @@
 				</div>
 				{#if selected.archived_at}
 					<button type="button" class="btn-secondary action-btn" onclick={() => void runtime.restoreSession(selected.id)}>
-						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+						<Icon name="rotate-ccw" />
 						<span>{t.sidebar.restore}</span>
 					</button>
 				{:else}
 					<button type="button" class="btn-secondary action-btn" onclick={() => void runtime.archiveSession(selected.id)}>
-						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+						<Icon name="archive" />
 						<span>{t.sidebar.archive}</span>
 					</button>
 				{/if}
@@ -442,7 +443,7 @@
 					class="btn-secondary btn-history-clear action-btn"
 					onclick={onClearHistory}
 				>
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+					<Icon name="rotate-ccw" />
 					<span>{t.detail.clearHistory}</span>
 				</button>
 			</div>
@@ -454,7 +455,7 @@
 						<span class="action-list-desc">{locale === 'zh' ? '永久解散此群组并删除记录，名册上的 Bot 保留' : 'Permanently delete this group; member bots remain'}</span>
 					</div>
 					<button type="button" class="deny action-btn" onclick={onDeleteGroup}>
-						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+						<Icon name="trash" />
 						<span>{t.detail.deleteGroup}</span>
 					</button>
 				</div>
@@ -834,12 +835,12 @@
 			background: var(--row-hover);
 		}
 
-		.group-section-btn .section-icon {
+		.group-section-btn :global(.section-icon) {
 			color: var(--muted);
 			flex-shrink: 0;
 		}
 
-		.group-section-btn.is-danger .section-icon {
+		.group-section-btn.is-danger :global(.section-icon) {
 			color: var(--danger);
 		}
 

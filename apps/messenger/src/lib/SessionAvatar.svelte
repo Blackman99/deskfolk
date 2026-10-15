@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from './Icon.svelte';
 	import type { Bot, SessionSummary } from '@real-bot/protocol';
 	import { botAvatarColor, compositeAvatarLayout, isFolkAvatar, sessionAvatars } from './avatar.ts';
 	import FolkAvatar from './FolkAvatar.svelte';
@@ -50,11 +51,7 @@
 >
 	{#if plan.layout === 'empty'}
 		<span class="row-avatar-bot is-empty">
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-				<circle cx="9" cy="7" r="4" />
-				<path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-			</svg>
+			<Icon name="users" size={20} />
 		</span>
 	{:else}
 		{#each plan.visible as avatar, i (avatar.id)}

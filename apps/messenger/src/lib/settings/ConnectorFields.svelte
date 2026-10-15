@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { connectorById, connectorFor, type ConnectorId } from '@real-bot/protocol';
 	import ConnectorLogo from './ConnectorLogo.svelte';
 	import WorkspaceField from './WorkspaceField.svelte';
@@ -104,7 +105,7 @@
 		<div class="models-fetch-tip" role="alert">{fetchError}</div>
 	{:else if plan && draft.availableModels.length > 0}
 		<span class="connector-status-line is-ok">
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+			<Icon name="check" size={12} />
 			{several ? t.connectors.detected(planName(plan.id), draft.availableModels.length) : t.connectors.verified(draft.availableModels.length)}
 		</span>
 	{:else if !keySet && draft.apiKey.trim().length === 0}

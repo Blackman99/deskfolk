@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { onMount, untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import SettingsSwitch from './SettingsSwitch.svelte';
@@ -257,40 +258,17 @@
 
 {#snippet categoryIcon(key: keyof NotificationPolicyCategories)}
 	{#if key === 'approval'}
-		<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-			<polyline points="9 12 11 14 15 10"></polyline>
-		</svg>
+		<Icon name="shield-check" />
 	{:else if key === 'ask'}
-		<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<circle cx="12" cy="12" r="10"></circle>
-			<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-			<line x1="12" y1="17" x2="12.01" y2="17"></line>
-		</svg>
+		<Icon name="help-circle" />
 	{:else if key === 'failure'}
-		<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<circle cx="12" cy="12" r="10"></circle>
-			<line x1="12" y1="8" x2="12" y2="12"></line>
-			<line x1="12" y1="16" x2="12.01" y2="16"></line>
-		</svg>
+		<Icon name="alert-circle" />
 	{:else if key === 'interrupted'}
-		<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<circle cx="12" cy="12" r="10"></circle>
-			<line x1="10" y1="15" x2="10" y2="9"></line>
-			<line x1="14" y1="15" x2="14" y2="9"></line>
-		</svg>
+		<Icon name="pause-circle" />
 	{:else if key === 'reply'}
-		<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-		</svg>
+		<Icon name="message" />
 	{:else if key === 'routine_result'}
-		<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-			<line x1="16" y1="2" x2="16" y2="6"></line>
-			<line x1="8" y1="2" x2="8" y2="6"></line>
-			<line x1="3" y1="10" x2="21" y2="10"></line>
-			<polyline points="9 16 11 18 15 14"></polyline>
-		</svg>
+		<Icon name="calendar-check" />
 	{/if}
 {/snippet}
 
@@ -300,12 +278,7 @@
 		<div class="settings-card-header">
 			<div class="settings-card-header-main">
 				<div class="settings-header-icon-wrap" aria-hidden="true">
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<rect x="3" y="3" width="7" height="7"></rect>
-						<rect x="14" y="3" width="7" height="7"></rect>
-						<rect x="14" y="14" width="7" height="7"></rect>
-						<rect x="3" y="14" width="7" height="7"></rect>
-					</svg>
+					<Icon name="grid" />
 				</div>
 				<div>
 					<h3 class="settings-card-title">{t.notifications.sectionCategories}</h3>
@@ -351,9 +324,7 @@
 		<div class="settings-card-header">
 			<div class="settings-card-header-main">
 				<div class="settings-header-icon-wrap" aria-hidden="true">
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-					</svg>
+					<Icon name="moon" />
 				</div>
 				<div>
 					<h3 class="settings-card-title">{t.notifications.quietHours}</h3>
@@ -395,10 +366,7 @@
 						<div class="time-picker-card">
 							<span class="time-picker-label">{t.notifications.quietHoursStart}</span>
 							<div class="time-picker-input-wrap">
-								<svg class="time-picker-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<circle cx="12" cy="12" r="10"></circle>
-									<polyline points="12 6 12 12 16 14"></polyline>
-								</svg>
+								<Icon name="clock" class="time-picker-icon" />
 								<input
 									id="quiet-hours-start"
 									type="time"
@@ -411,19 +379,13 @@
 
 						<div class="time-range-separator" aria-hidden="true">
 							<span class="time-separator-text">至</span>
-							<svg class="time-separator-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<line x1="5" y1="12" x2="19" y2="12"></line>
-								<polyline points="12 5 19 12 12 19"></polyline>
-							</svg>
+							<Icon name="arrow-right" class="time-separator-icon" />
 						</div>
 
 						<div class="time-picker-card">
 							<span class="time-picker-label">{t.notifications.quietHoursEnd}</span>
 							<div class="time-picker-input-wrap">
-								<svg class="time-picker-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<circle cx="12" cy="12" r="10"></circle>
-									<polyline points="12 6 12 12 16 14"></polyline>
-								</svg>
+								<Icon name="clock" class="time-picker-icon" />
 								<input
 									id="quiet-hours-end"
 									type="time"
@@ -437,11 +399,7 @@
 
 					{#if policy.quiet_hours.time_zone}
 						<div class="timezone-badge">
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<circle cx="12" cy="12" r="10"></circle>
-								<line x1="2" y1="12" x2="22" y2="12"></line>
-								<path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-							</svg>
+							<Icon name="globe" size={12} />
 							<span class="timezone-label">{t.notifications.quietHoursTimeZone}:</span>
 							<span class="timezone-value font-mono">{policy.quiet_hours.time_zone}</span>
 						</div>
@@ -449,11 +407,7 @@
 
 					{#if quietHoursError}
 						<div class="quiet-hours-error-alert" role="alert">
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<circle cx="12" cy="12" r="10"></circle>
-								<line x1="12" y1="8" x2="12" y2="12"></line>
-								<line x1="12" y1="16" x2="12.01" y2="16"></line>
-							</svg>
+							<Icon name="alert-circle" />
 							<span>{quietHoursError}</span>
 						</div>
 					{/if}
@@ -467,10 +421,7 @@
 		<div class="settings-card-header">
 			<div class="settings-card-header-main">
 				<div class="settings-header-icon-wrap" aria-hidden="true">
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-						<path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-					</svg>
+					<Icon name="bell" />
 				</div>
 				<div>
 					<h3 class="settings-card-title">{t.notifications.deviceNotifications}</h3>
@@ -486,11 +437,7 @@
 			{#if runtime.isDesktopShell}
 				{#if runtime.pushPermission === 'denied'}
 					<div class="health-notice is-danger" role="alert">
-						<svg class="notice-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<circle cx="12" cy="12" r="10"></circle>
-							<line x1="12" y1="8" x2="12" y2="12"></line>
-							<line x1="12" y1="16" x2="12.01" y2="16"></line>
-						</svg>
+						<Icon name="alert-circle" class="notice-icon" />
 						<span>{t.notifications.permissionDenied}</span>
 					</div>
 				{/if}
@@ -518,56 +465,33 @@
 			{:else}
 				{#if pushHealth === 'unsupported'}
 					<div class="health-notice is-muted">
-						<svg class="notice-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<circle cx="12" cy="12" r="10"></circle>
-							<line x1="12" y1="8" x2="12" y2="12"></line>
-							<line x1="12" y1="16" x2="12.01" y2="16"></line>
-						</svg>
+						<Icon name="alert-circle" class="notice-icon" />
 						<span>{t.notifications.pushUnsupported}</span>
 					</div>
 				{:else if pushHealth === 'install_required'}
 					<div class="health-notice is-info">
-						<svg class="notice-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<path d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1"></path>
-							<polyline points="16 12 12 8 8 12"></polyline>
-							<line x1="12" y1="8" x2="12" y2="21"></line>
-						</svg>
+						<Icon name="upload" class="notice-icon" />
 						<span>{t.notifications.iosInstallRequired}</span>
 					</div>
 				{:else if pushHealth === 'denied'}
 					<div class="health-notice is-danger" role="alert">
-						<svg class="notice-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<circle cx="12" cy="12" r="10"></circle>
-							<line x1="12" y1="8" x2="12" y2="12"></line>
-							<line x1="12" y1="16" x2="12.01" y2="16"></line>
-						</svg>
+						<Icon name="alert-circle" class="notice-icon" />
 						<span>{t.notifications.permissionDenied}</span>
 					</div>
 				{:else if pushHealth === 'gated'}
 					<div class="health-notice is-warn">
-						<svg class="notice-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-							<line x1="12" y1="9" x2="12" y2="13"></line>
-							<line x1="12" y1="17" x2="12.01" y2="17"></line>
-						</svg>
+						<Icon name="alert-triangle" class="notice-icon" />
 						<span>{t.notifications.remoteGated}</span>
 					</div>
 				{:else if pushHealth === 'paused_upgrade'}
 					<div class="health-notice is-muted">
-						<svg class="notice-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<circle cx="12" cy="12" r="10"></circle>
-							<polyline points="12 6 12 12 16 14"></polyline>
-						</svg>
+						<Icon name="clock" class="notice-icon" />
 						<span>{t.notifications.pushUpgrading}</span>
 					</div>
 				{:else if pushHealth === 'needs_repair'}
 					<div class="health-notice is-repair">
 						<div class="notice-main">
-							<svg class="notice-icon text-warning" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-								<line x1="12" y1="9" x2="12" y2="13"></line>
-								<line x1="12" y1="17" x2="12.01" y2="17"></line>
-							</svg>
+							<Icon name="alert-triangle" class="notice-icon text-warning" />
 							<span class="text-13 text-warning font-medium">{t.notifications.needsRepair}</span>
 						</div>
 						<button
@@ -613,11 +537,7 @@
 
 				{#if disableFeedback}
 					<div class="health-notice is-warn feedback-msg">
-						<svg class="notice-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-							<line x1="12" y1="9" x2="12" y2="13"></line>
-							<line x1="12" y1="17" x2="12.01" y2="17"></line>
-						</svg>
+						<Icon name="alert-triangle" class="notice-icon" />
 						<span>{disableFeedback}</span>
 					</div>
 				{/if}
@@ -700,25 +620,17 @@
 					onclick={() => void handleSendTest()}
 				>
 					{#if testBusy}
-						<svg class="animate-spin test-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="10"></circle>
-						</svg>
+						<Icon name="spinner" class="animate-spin test-icon" />
 						<span>{t.notifications.testSubmitting}</span>
 					{:else}
-						<svg class="test-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<line x1="22" y1="2" x2="11" y2="13"></line>
-							<polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-						</svg>
+						<Icon name="send" class="test-icon" />
 						<span>{t.notifications.sendTest}</span>
 					{/if}
 				</button>
 
 				{#if testFeedback}
 					<div class="test-feedback" role="status">
-						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<circle cx="12" cy="12" r="10"></circle>
-							<polyline points="9 12 11 14 15 10"></polyline>
-						</svg>
+						<Icon name="check-circle" />
 						<span>{testFeedback}</span>
 					</div>
 				{:else if usesNativeTestGate && !runtime.nativeCapabilities.native_delivery_v1}
@@ -1061,7 +973,7 @@
 		align-items: center;
 	}
 
-	.time-picker-icon {
+	.time-picker-input-wrap :global(.time-picker-icon) {
 		position: absolute;
 		left: 10px;
 		color: var(--muted);
@@ -1103,7 +1015,7 @@
 		font-weight: 500;
 	}
 
-	.time-separator-icon {
+	.time-range-separator :global(.time-separator-icon) {
 		display: none;
 	}
 
@@ -1155,7 +1067,7 @@
 		box-sizing: border-box;
 	}
 
-	.health-notice .notice-icon {
+	.health-notice :global(.notice-icon) {
 		flex-shrink: 0;
 	}
 
@@ -1272,7 +1184,7 @@
 		cursor: not-allowed;
 	}
 
-	.test-icon {
+	.btn-send-test :global(.test-icon) {
 		flex-shrink: 0;
 	}
 

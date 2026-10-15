@@ -16,6 +16,7 @@
 </script>
 
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Annotation, Attachment } from '@real-bot/protocol';
 	import { describeAnchor } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
@@ -112,11 +113,7 @@
 				disabled={loader.originalProgress !== null}
 				onclick={() => loader.loadOriginal()}
 			>
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<rect x="3" y="3" width="18" height="18" rx="2"></rect>
-					<circle cx="9" cy="9" r="2"></circle>
-					<path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path>
-				</svg>
+				<Icon name="image" />
 				{loader.originalProgress ? t.stream.imageOriginalLoading(loader.originalBytes) : t.stream.imageOriginal(formatFileSize(loader.reducedFrom))}
 			</button>
 		{/if}
@@ -390,7 +387,7 @@
 		box-shadow: var(--shadow-xs);
 	}
 
-	.artifact-original-toggle svg {
+	.artifact-original-toggle :global(.icon) {
 		flex-shrink: 0;
 	}
 
@@ -596,11 +593,6 @@
 			top: 10px;
 			height: 36px;
 			padding: 0 14px 0 12px;
-		}
-
-		.artifact-original-toggle svg {
-			width: 16px;
-			height: 16px;
 		}
 
 		/* The main area is a block here (the tree floats over it), so the file and its list take

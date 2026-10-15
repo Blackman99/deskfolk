@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Locale, PromptSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -59,7 +60,7 @@
 	<div class="modal-dialog prompt-editor-modal settings-subpage">
 		<div class="modal-head settings-subpage-head">
 			<button type="button" class="settings-subpage-back" aria-label={c.back} onclick={() => onclose()}>
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<Icon name="chevron-left" size={20} />
 			</button>
 			<div class="prompt-editor-heading">
 				<h2 id="prompt-editor-title">{item.title[ui]}</h2>

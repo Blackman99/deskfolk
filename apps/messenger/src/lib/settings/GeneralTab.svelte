@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import SettingsCard from './SettingsCard.svelte';
 	import SettingsCardHeader from './SettingsCardHeader.svelte';
 	import WorkspacePicker from './WorkspacePicker.svelte';
@@ -69,9 +70,7 @@
 		<SettingsCardHeader title={t.settings.sectionWorkspace} subtitle={t.settings.workspaceSubtitle}>
 			{#snippet icon()}
 				<div class="settings-header-icon-wrap" aria-hidden="true">
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-					</svg>
+					<Icon name="folder" />
 				</div>
 			{/snippet}
 			{#snippet end()}
@@ -117,11 +116,7 @@
 
 			{#if fieldErrors.workspace}
 				<div class="field-error-alert" role="alert">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<circle cx="12" cy="12" r="10"></circle>
-						<line x1="12" y1="8" x2="12" y2="12"></line>
-						<line x1="12" y1="16" x2="12.01" y2="16"></line>
-					</svg>
+					<Icon name="alert-circle" />
 					<span>
 						{fieldCopy(
 							fieldErrors.workspace,
@@ -133,9 +128,7 @@
 			{/if}
 
 			<div class="workspace-jail-callout">
-				<svg class="jail-callout-icon shrink-0 text-muted mt-1" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-				</svg>
+				<Icon name="shield" class="jail-callout-icon shrink-0 text-muted mt-1" />
 				<div class="jail-callout-content flex flex-col gap-[3px] min-w-0">
 					<span class="jail-callout-title text-12 font-semibold text-ink-secondary">{t.settings.workspaceSecurityBoundary}</span>
 					<p class="jail-callout-text m-0 text-12 leading-[1.45] text-muted">{JAIL_COPY[locale]}</p>
@@ -152,17 +145,7 @@
 		<SettingsCardHeader title={t.settings.sectionPreferences} subtitle={t.settings.preferencesSubtitle}>
 			{#snippet icon()}
 				<div class="settings-header-icon-wrap" aria-hidden="true">
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<line x1="4" y1="21" x2="4" y2="14"></line>
-						<line x1="4" y1="10" x2="4" y2="3"></line>
-						<line x1="12" y1="21" x2="12" y2="12"></line>
-						<line x1="12" y1="8" x2="12" y2="3"></line>
-						<line x1="20" y1="21" x2="20" y2="16"></line>
-						<line x1="20" y1="12" x2="20" y2="3"></line>
-						<line x1="1" y1="14" x2="7" y2="14"></line>
-						<line x1="9" y1="8" x2="15" y2="8"></line>
-						<line x1="17" y1="16" x2="23" y2="16"></line>
-					</svg>
+					<Icon name="sliders" />
 				</div>
 			{/snippet}
 		</SettingsCardHeader>
@@ -180,11 +163,7 @@
 							void patchImmediate({ theme: 'system' });
 						}}
 					>
-						<svg class="segmented-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<rect x="2" y="3" width="20" height="14" rx="2"></rect>
-							<line x1="8" y1="21" x2="16" y2="21"></line>
-							<line x1="12" y1="17" x2="12" y2="21"></line>
-						</svg>
+						<Icon name="monitor" class="segmented-icon" />
 						<span>{t.settings.themeSystem}</span>
 					</button>
 					<button
@@ -196,17 +175,7 @@
 							void patchImmediate({ theme: 'light' });
 						}}
 					>
-						<svg class="segmented-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<circle cx="12" cy="12" r="5"></circle>
-							<line x1="12" y1="1" x2="12" y2="3"></line>
-							<line x1="12" y1="21" x2="12" y2="23"></line>
-							<line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-							<line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-							<line x1="1" y1="12" x2="3" y2="12"></line>
-							<line x1="21" y1="12" x2="23" y2="12"></line>
-							<line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-							<line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-						</svg>
+						<Icon name="sun" class="segmented-icon" />
 						<span>{t.settings.themeLight}</span>
 					</button>
 					<button
@@ -218,9 +187,7 @@
 							void patchImmediate({ theme: 'dark' });
 						}}
 					>
-						<svg class="segmented-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-						</svg>
+						<Icon name="moon" class="segmented-icon" />
 						<span>{t.settings.themeDark}</span>
 					</button>
 				</div>
@@ -430,7 +397,7 @@
 		box-shadow: var(--shadow-xs);
 	}
 
-	.segmented-icon {
+	.segmented-control :global(.segmented-icon) {
 		flex-shrink: 0;
 	}
 

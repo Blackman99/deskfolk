@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Provider, TaskTraceNode } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { formatDurationMs, formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
@@ -46,7 +47,7 @@
 		<span class="trace-route-title">{t.routes.cardTitle}</span>
 		<span class="trace-route-outcome is-{route.outcome}">{route.outcomeLabel}</span>
 		<button type="button" class="trace-route-close" title={t.trace.outputClose} aria-label={t.trace.outputClose} onclick={onClose}>
-			<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+			<Icon name="x" size={12} />
 		</button>
 	</header>
 	<div class="trace-route-chips">

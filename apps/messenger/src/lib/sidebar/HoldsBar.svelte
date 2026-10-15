@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Hold } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
@@ -38,7 +39,7 @@
 {#if holds.length > 0}
 	<section class="holds" aria-label={t.control.holdsTitle}>
 		<div class="holds-head">
-			<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
+			<Icon name="pause" size={12} />
 			<span>{t.control.holdsTitle}</span>
 			<span class="holds-count">{holds.length}</span>
 		</div>

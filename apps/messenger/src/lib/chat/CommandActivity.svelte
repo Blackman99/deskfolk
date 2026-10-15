@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Snippet } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import { formatDuration, type CommandRow } from './command-activity.ts';
@@ -67,13 +68,13 @@
 </script>
 
 {#snippet chevron(cls: string)}
-	<svg class={cls} width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4l4 4-4 4"></path></svg>
+	<Icon name="chevron-right" size={12} class={cls} />
 {/snippet}
 
 {#snippet line(row: CommandRow, openable: boolean)}
 	{@const parts = splitProgram(commandLine(row.command ?? row.name))}
 	<span class="command-mark" aria-hidden="true">
-		{#if isFailed(row)}<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"></path></svg>{:else}<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3L13 4.5"></path></svg>{/if}
+		{#if isFailed(row)}<Icon name="x" size={12} />{:else}<Icon name="check" size={12} />{/if}
 	</span>
 	<span class="command-text mono"><span class="command-program">{parts.program}</span>{parts.rest}</span>
 	<span class="command-meta mono">
@@ -92,7 +93,7 @@
 		<!-- A line of text that opens, the same folded or open: only the list under it is a card. -->
 		<div class="command-head">
 		<button type="button" class="command-summary" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
-			<svg class="command-summary-icon" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2.25"></rect><path d="M4.75 6.25l2 1.75-2 1.75M8.5 10h2.75"></path></svg>
+			<Icon name="terminal-square" class="command-summary-icon" />
 			<span class="command-count">{t.chat.commandCount(done.length)}</span>
 			{#if failed > 0}
 				<span class="command-failed">· {t.chat.commandsFailed(failed)}</span>
@@ -191,7 +192,7 @@
 		outline-offset: 2px;
 	}
 
-	.command-summary-icon {
+	.command-summary :global(.command-summary-icon) {
 		flex-shrink: 0;
 	}
 

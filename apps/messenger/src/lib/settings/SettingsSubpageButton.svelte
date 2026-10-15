@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	/**
 	 * The two buttons of a settings subpage's head that only a phone shows: Back, and ✕ (which on a
 	 * wide window is the editor's own dismiss button, so this one stays hidden there). What each
@@ -19,7 +20,7 @@
 
 {#if kind === 'back'}
 	<button type="button" class="settings-subpage-back" aria-label={label} {disabled} {onclick}>
-		<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+		<Icon name="chevron-left" size={20} />
 	</button>
 {:else}
 	<button type="button" class="modal-close settings-subpage-close" aria-label={label} {title} {disabled} {onclick}>✕</button>

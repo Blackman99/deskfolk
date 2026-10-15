@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { tick } from 'svelte';
 	import { speechReady, type SessionSummary } from '@real-bot/protocol';
 	import { composerAction, composerLocked, justSent, lockedReason } from './composer-mode.ts';
@@ -515,7 +516,7 @@
 	{/if}
 	{#if lockedComposer}
 		<div class="composer-locked-message flex items-center justify-center gap-4 py-1 px-0 text-muted text-13 font-medium">
-			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+			<Icon name="lock" />
 			<span>{lockedNotice}</span>
 		</div>
 	{/if}
@@ -554,9 +555,7 @@
 			disabled={!connected || !selected || lockedComposer || view?.sending}
 			onclick={attachments.openFilePicker}
 		>
-			<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-			</svg>
+			<Icon name="paperclip" size={20} />
 		</button>
 		<input
 			type="file"
@@ -599,9 +598,9 @@
 				onclick={toggleSuggestions}
 			>
 				{#if view?.suggestionsLoading}
-					<svg class="suggest-spinner" aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"></path></svg>
+					<Icon name="spinner" class="suggest-spinner" />
 				{:else}
-					<svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"></path><path d="M20 3v4"></path><path d="M22 5h-4"></path></svg>
+					<Icon name="sparkles" />
 				{/if}
 			</button>
 		{/if}
@@ -835,7 +834,7 @@
 		background: var(--accent-tint);
 	}
 
-	.suggest-spinner {
+	.suggest-btn :global(.suggest-spinner) {
 		animation: suggestSpin 0.9s linear infinite;
 	}
 
@@ -990,7 +989,7 @@
 			transition: none;
 		}
 
-		.suggest-spinner {
+		.suggest-btn :global(.suggest-spinner) {
 			animation: none;
 		}
 	}

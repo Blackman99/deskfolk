@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Bot, TaskDetail, TicketWithArtifacts } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
@@ -87,10 +88,7 @@
 		<span class="ticket-owes-title">{t.plan.links.heldTo}</span>
 		{#if onShowSpec}
 			<button type="button" class="ticket-owes-spec" onclick={onShowSpec}>
-				<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-					<polyline points="14 2 14 8 20 8"></polyline>
-				</svg>
+				<Icon name="file" size={12} />
 				<span>{t.plan.links.showSpec}</span>
 			</button>
 		{/if}
@@ -151,9 +149,7 @@
 				onclick={() => (dependsOpen = dependsOpen === ticket.id ? null : ticket.id)}
 			>
 				<span class="ticket-depends-value">{dependsTags(ticket, detail.tickets) ?? t.plan.dependsNothing}</span>
-				<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<polyline points="6 9 12 15 18 9"></polyline>
-				</svg>
+				<Icon name="chevron-down" size={12} />
 			</button>
 		{/if}
 	</div>
@@ -285,7 +281,7 @@
 		cursor: pointer;
 	}
 
-	.ticket-depends-toggle svg {
+	.ticket-depends-toggle :global(.icon) {
 		flex: none;
 		color: var(--muted);
 		transition: transform 0.2s ease;
@@ -296,7 +292,7 @@
 		border-color: var(--accent-border);
 	}
 
-	.ticket-depends-toggle[aria-expanded='true'] svg {
+	.ticket-depends-toggle[aria-expanded='true'] :global(.icon) {
 		transform: rotate(180deg);
 		color: var(--accent);
 	}

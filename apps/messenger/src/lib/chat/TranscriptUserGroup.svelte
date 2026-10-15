@@ -146,7 +146,7 @@
 												title={t.chat.replyMessage}
 												onclick={() => stage.startQuoteReply(item.message)}
 											>
-												<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+												<Icon name="reply" />
 											</button>
 										{/if}
 										{#if stage.editable(item.message)}
@@ -157,7 +157,7 @@
 												aria-label={t.chat.editThisLine}
 												onclick={() => stage.startEdit(item.message)}
 											>
-												<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+												<Icon name="edit" />
 											</button>
 										{/if}
 										<button
@@ -170,7 +170,7 @@
 											{#if stage.copiedMessageId === item.message.id}
 												<span class="copied-badge text-11 font-semibold text-ok">✓ {t.chat.copied}</span>
 											{:else}
-												<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+												<Icon name="copy" />
 											{/if}
 										</button>
 										<button
@@ -180,7 +180,7 @@
 											aria-label={t.chat.moreActions}
 											onclick={(e) => stage.handleMessageContextMenu(e, item.message)}
 										>
-											<Icon name="more" size={14} />
+											<Icon name="more" />
 										</button>
 									</div>
 								</div>

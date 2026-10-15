@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type {
 		Annotation,
 		Attachment,
@@ -555,9 +556,7 @@
 	-->
 	<header class="artifact-pane-head" class:has-download={canDownload}>
 		<button type="button" class="artifact-back" aria-label={t.common.back} onclick={() => requestClose()}>
-			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-				<polyline points="15 18 9 12 15 6"></polyline>
-			</svg>
+			<Icon name="chevron-left" size={20} />
 		</button>
 		<h2 class:is-dirty={dirty} title={titleName}>{titleName}</h2>
 		{#if canDownload}
@@ -595,9 +594,7 @@
 				onclick={() => (treeOpen = !treeOpen)}
 			>
 				<span class="truncate">{treeLabel}</span>
-				<svg class="artifact-picker-chevron" class:is-open={treeOpen} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<polyline points="6 9 12 15 18 9"></polyline>
-				</svg>
+				<Icon name="chevron-down" class={['artifact-picker-chevron', { 'is-open': treeOpen }]} />
 			</button>
 		</div>
 	{/if}
@@ -898,13 +895,13 @@
 			background: var(--chip);
 		}
 
-		.artifact-picker-chevron {
+		.artifact-picker-btn :global(.artifact-picker-chevron) {
 			flex-shrink: 0;
 			color: var(--ink-secondary);
 			transition: transform 0.15s ease;
 		}
 
-		.artifact-picker-chevron.is-open {
+		.artifact-picker-btn :global(.artifact-picker-chevron.is-open) {
 			transform: rotate(180deg);
 		}
 

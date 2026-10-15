@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Bot, Memory } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -136,10 +137,7 @@
 		{#if memories.length === 0}
 			<div class="memory-empty-card">
 				<div class="memory-empty-icon" aria-hidden="true">
-					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-						<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-					</svg>
+					<Icon name="book" size={32} />
 				</div>
 				<p class="memory-empty">{t.sidebar.memoriesEmpty}</p>
 			</div>
@@ -188,7 +186,7 @@
 								title={t.sidebar.memoryEdit}
 								aria-label={t.sidebar.memoryEdit}
 							>
-								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+								<Icon name="edit" />
 							</button>
 							<button
 								type="button"
@@ -200,7 +198,7 @@
 								title={t.sidebar.memoryDelete}
 								aria-label={t.sidebar.memoryDelete}
 							>
-								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path></svg>
+								<Icon name="trash" />
 							</button>
 						</div>
 						<div class="memory-mobile-toggle">
@@ -234,7 +232,7 @@
 									jump(origin.session.id, origin.messageId);
 								}}
 							>
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="origin-icon" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+								<Icon name="message" size={12} class="origin-icon" />
 								<span>{t.sidebar.memoryFormedIn(origin.label)}</span>
 							</button>
 						{:else}
@@ -302,7 +300,7 @@
 					disabled={busy}
 					onclick={closeEdit}
 				>
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+					<Icon name="chevron-left" size={20} />
 				</button>
 				<div class="modal-head-titles">
 					<h2 id="memory-modal-title">{t.sidebar.memoryEdit}</h2>
@@ -375,9 +373,9 @@
 										jump(origin.session.id, origin.messageId);
 									}}
 								>
-									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+									<Icon name="message" />
 									<span>{t.sidebar.memoryFormedIn(origin.label)}</span>
-									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="arrow-icon"><polyline points="9 18 15 12 9 6"></polyline></svg>
+									<Icon name="chevron-right" size={12} class="arrow-icon" />
 								</button>
 							{:else}
 								<div class="memory-origin-missing-pill">
@@ -386,7 +384,7 @@
 							{/if}
 							{#if editingMemory.learning}
 								<div class="memory-learning-pill">
-									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+									<Icon name="clock" size={12} />
 									<span>
 										{editingMemory.learning.later === 0
 											? t.sidebar.learningNoneYet
@@ -429,10 +427,7 @@
 								confirmDelete(m);
 							}}
 						>
-							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<polyline points="3 6 5 6 21 6"></polyline>
-								<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-							</svg>
+							<Icon name="trash" />
 							<span>{t.sidebar.memoryDelete}</span>
 						</button>
 					</div>
@@ -720,7 +715,7 @@
 		color: var(--accent);
 	}
 
-	.memory-origin-action-btn .arrow-icon {
+	.memory-origin-action-btn :global(.arrow-icon) {
 		margin-left: auto;
 		opacity: 0.6;
 	}

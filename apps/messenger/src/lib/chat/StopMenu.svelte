@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { tick } from 'svelte';
 	import { isOutside } from '../click-outside.ts';
 	import { roveFocus } from '../menu-roving.ts';
@@ -102,9 +103,9 @@
 		disabled={disabled || items.length === 0}
 		onclick={() => void toggle()}
 	>
-		<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+		<Icon name="stop" size={12} />
 		{#if label}<span>{label}</span>{/if}
-		<svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points={placement === 'below' ? '6 9 12 15 18 9' : '6 15 12 9 18 15'}></polyline></svg>
+		<Icon name={placement === 'below' ? 'chevron-down' : 'chevron-up'} size={12} />
 	</button>
 	{#if open}
 		<div bind:this={menu} class="stop-menu-list" role="menu" tabindex="-1" aria-label={t.control.menu} onkeydown={onKeyDown}>

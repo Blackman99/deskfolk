@@ -33,7 +33,7 @@
 		...rest
 	}: Props = $props();
 
-	const iconSize = $derived(size === 'lg' ? 16 : 14);
+	const iconSize = $derived(size === 'lg' ? 20 : 16);
 </script>
 
 <button {type} class="ui-btn is-{variant} is-{size} {className}" {...rest}>

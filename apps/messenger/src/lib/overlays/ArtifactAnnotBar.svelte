@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Attachment } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
@@ -79,16 +80,10 @@
 				onclick={toggleSource}
 			>
 				{#if showSource}
-					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path>
-						<circle cx="12" cy="12" r="3"></circle>
-					</svg>
+					<Icon name="eye" size={12} />
 					{t.stream.artifactRendered}
 				{:else}
-					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<polyline points="16 18 22 12 16 6"></polyline>
-						<polyline points="8 6 2 12 8 18"></polyline>
-					</svg>
+					<Icon name="code" size={12} />
 					{t.stream.artifactSource}
 				{/if}
 			</button>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Axis, TabAction, TabCloseScope, TabClosing } from './layout-types.ts';
 	import type { Direction } from './layout-geometry.ts';
 	import type { Copy } from '../copy.ts';
@@ -237,18 +238,12 @@
 			disabled={!editing.canCopy}
 			onclick={() => pick(editing.onCopy)}
 		>
-			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<rect x="8.5" y="8.5" width="11" height="11" rx="2"></rect>
-				<path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"></path>
-			</svg>
+			<Icon name="copy" class="wb-context-icon" />
 			<span class="wb-context-label">{t.pane.copy}</span>
 			<span class="wb-context-keys" aria-hidden="true">{formatShortcut(['mod', 'C'])}</span>
 		</button>
 		<button type="button" class="wb-context-item" role="menuitem" data-edit="paste" onclick={() => pick(editing.onPaste)}>
-			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<rect x="5.5" y="5.5" width="13" height="15" rx="2"></rect>
-				<path d="M9.5 5.5V4.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1"></path>
-			</svg>
+			<Icon name="clipboard" class="wb-context-icon" />
 			<span class="wb-context-label">{t.pane.paste}</span>
 			<span class="wb-context-keys" aria-hidden="true">{formatShortcut(['mod', 'V'])}</span>
 		</button>
@@ -269,18 +264,7 @@
 				title={reason ?? undefined}
 				onclick={() => pick(() => split(item.dir))}
 			>
-				<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-					<rect x="3.5" y="4.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>
-					{#if item.dir === 'up'}
-						<path d="M5 6h14v5.5H5z" fill="currentColor" opacity="0.45"></path>
-					{:else if item.dir === 'down'}
-						<path d="M5 12.5h14V18H5z" fill="currentColor" opacity="0.45"></path>
-					{:else if item.dir === 'left'}
-						<path d="M5 6h6.25v12H5z" fill="currentColor" opacity="0.45"></path>
-					{:else}
-						<path d="M12.75 6H19v12h-6.25z" fill="currentColor" opacity="0.45"></path>
-					{/if}
-				</svg>
+				<Icon name={`split-${item.dir}`} class="wb-context-icon" />
 				<span class="wb-context-label">{item.label}</span>
 				{#if item.keys}
 					<span class="wb-context-keys" aria-hidden="true">{item.keys}</span>
@@ -292,10 +276,7 @@
 		{@const dock = onDock}
 		<div class="wb-context-divider" role="separator"></div>
 		<button type="button" class="wb-context-item" role="menuitem" data-dock onclick={() => pick(dock)}>
-			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect>
-				<path d="M12 8v6m-3-3 3 3 3-3"></path>
-			</svg>
+			<Icon name="panel-arrow-down" class="wb-context-icon" />
 			<span class="wb-context-label">{t.pane.dock}</span>
 		</button>
 	{/if}
@@ -305,10 +286,7 @@
 			<div class="wb-context-divider" role="separator"></div>
 		{/if}
 		<button type="button" class="wb-context-item" role="menuitem" data-float-tab onclick={() => pick(float)}>
-			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<rect x="3.5" y="4.5" width="17" height="15" rx="2" opacity="0.45"></rect>
-				<rect x="8" y="8" width="10" height="8" rx="1.5" fill="currentColor"></rect>
-			</svg>
+			<Icon name="panel-inset" class="wb-context-icon" />
 			<span class="wb-context-label">{t.pane.floatTab}</span>
 		</button>
 	{/if}
@@ -318,9 +296,7 @@
 			<div class="wb-context-divider" role="separator"></div>
 		{/if}
 		<button type="button" class="wb-context-item" role="menuitem" data-close-pane onclick={() => pick(closePane)}>
-			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-				<path d="m6 6 12 12M6 18 18 6"></path>
-			</svg>
+			<Icon name="x" class="wb-context-icon" />
 			<span class="wb-context-label">{t.pane.close}</span>
 		</button>
 	{/if}
@@ -362,7 +338,7 @@
 			background 0.12s ease,
 			color 0.12s ease;
 	}
-	.wb-context-icon {
+	.wb-context-item :global(.wb-context-icon) {
 		flex-shrink: 0;
 		opacity: 0.75;
 	}
@@ -371,8 +347,8 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 14px;
-		height: 14px;
+		width: 16px;
+		height: 16px;
 	}
 	.wb-context-item.is-active {
 		color: var(--accent);
@@ -395,8 +371,8 @@
 		outline: none;
 		box-shadow: none;
 	}
-	.wb-context-item:hover:not(:disabled) .wb-context-icon,
-	.wb-context-item:focus-visible .wb-context-icon {
+	.wb-context-item:hover:not(:disabled) :global(.wb-context-icon),
+	.wb-context-item:focus-visible :global(.wb-context-icon) {
 		opacity: 1;
 	}
 	.wb-context-item:disabled {

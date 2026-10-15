@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Message } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import {
@@ -213,10 +214,7 @@
 			}
 		}}
 	>
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<polyline points="9 17 4 12 9 7"></polyline>
-			<path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
-		</svg>
+		<Icon name="reply" />
 		<span>{t.chat.replyMessage}</span>
 		</button>
 
@@ -230,10 +228,7 @@
 					onClose();
 				}}
 			>
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M12 20h9"></path>
-					<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
-				</svg>
+				<Icon name="edit" />
 				<span>{t.chat.editMessage}</span>
 			</button>
 		{/if}
@@ -248,10 +243,7 @@
 				onClose();
 			}}
 		>
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
-				<circle cx="7" cy="7" r="1.5"></circle>
-			</svg>
+			<Icon name="tag" />
 			<span>{t.attribution.menuItem}</span>
 		</button>
 	{/if}
@@ -268,10 +260,7 @@
 			}
 		}}
 	>
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-			<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-		</svg>
+		<Icon name="copy" />
 		<span>{t.chat.copyMessage}</span>
 	</button>
 
@@ -285,11 +274,7 @@
 				onClose();
 			}}
 		>
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M17 22h-1a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4h1"></path>
-				<path d="M7 22h1a4 4 0 0 0 4-4v-1"></path>
-				<path d="M7 2h1a4 4 0 0 1 4 4v1"></path>
-			</svg>
+			<Icon name="text-cursor" />
 			<span>{t.chat.selectText}</span>
 		</button>
 	{/if}
@@ -307,9 +292,7 @@
 		}}
 		title={!data.canOpenFileTree ? t.chat.noAssociatedFiles : (data.targetPath ?? '')}
 	>
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-		</svg>
+		<Icon name="folder" />
 		<span>{t.chat.openAssociatedFileTree}</span>
 	</button>
 
@@ -325,13 +308,7 @@
 				onClose();
 			}}
 		>
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<rect x="8" y="2" width="8" height="6" rx="1.5"></rect>
-				<path d="M12 8v3"></path>
-				<path d="M5.5 14v-3h13v3"></path>
-				<rect x="2" y="14" width="7" height="6" rx="1.5"></rect>
-				<rect x="15" y="14" width="7" height="6" rx="1.5"></rect>
-			</svg>
+			<Icon name="hierarchy" />
 			<span>{t.chat.jobView.trace}</span>
 		</button>
 	{/if}
@@ -367,12 +344,7 @@
 			onClose();
 		}}
 	>
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<line x1="4" y1="9" x2="20" y2="9"></line>
-			<line x1="4" y1="15" x2="20" y2="15"></line>
-			<line x1="10" y1="3" x2="8" y2="21"></line>
-			<line x1="16" y1="3" x2="14" y2="21"></line>
-		</svg>
+		<Icon name="hash" />
 		<span>{t.chat.copyMessageId}</span>
 	</button>
 </div>
@@ -442,7 +414,7 @@
 		transition: background 0.12s ease, color 0.12s ease;
 	}
 
-	.msg-context-menu-item svg {
+	.msg-context-menu-item :global(.icon) {
 		flex-shrink: 0;
 		opacity: 0.75;
 		transition: opacity 0.12s ease;
@@ -453,7 +425,7 @@
 		color: var(--accent);
 	}
 
-	.msg-context-menu-item:hover:not(:disabled) svg {
+	.msg-context-menu-item:hover:not(:disabled) :global(.icon) {
 		opacity: 1;
 		stroke: var(--accent);
 	}

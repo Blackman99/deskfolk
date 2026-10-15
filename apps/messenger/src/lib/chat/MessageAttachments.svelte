@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Attachment } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
@@ -135,7 +136,7 @@
 		title={rows.map((row) => row.workspace_relpath).join("\n")}
 	>
 		<div class="file-icon-box text-accent flex items-center" aria-hidden="true">
-			<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+			<Icon name="folder" size={20} />
 		</div>
 		<div class="file-meta-col flex flex-col min-w-0 max-w-[170px]">
 			<span class="file-title text-12 font-semibold overflow-hidden text-ellipsis whitespace-nowrap">{bundle ?? t.stream.artifactBundle}</span>
@@ -172,7 +173,7 @@
 						</span>
 					{:else}
 						<div class="file-icon-box flex items-center">
-							<FileIcon icon={fileIconFor(att.workspace_relpath, { isDir: att.is_dir })} size={18} />
+							<FileIcon icon={fileIconFor(att.workspace_relpath, { isDir: att.is_dir })} size={16} />
 						</div>
 					{/if}
 					<div class="file-meta-col flex flex-col min-w-0 max-w-[170px]">

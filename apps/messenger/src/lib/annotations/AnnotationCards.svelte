@@ -34,7 +34,7 @@
 		<div class="annot-card" data-annotation-id={row.id} class:is-resolved={row.status === 'resolved'}>
 			<button type="button" class="annot-card-main min-w-0 text-left" onclick={() => onOpen(row)} title={t.chat.annotationOpenFile}>
 				<span class="annot-card-file flex items-center gap-4 min-w-0">
-					<FileIcon icon={fileIconFor(row.relpath)} size={14} />
+					<FileIcon icon={fileIconFor(row.relpath)} size={16} />
 					<span class="mono text-11 truncate">{row.relpath}</span>
 					<span class="annot-card-pos text-11 truncate">· {positionLabel(row, locale)}</span>
 				</span>

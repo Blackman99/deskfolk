@@ -4,6 +4,7 @@
 	import type { Locale, PromptGroup, PromptSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import Icon from '../Icon.svelte';
 	import PromptEditorPage from './PromptEditorPage.svelte';
 	import PromptRowList from './PromptRowList.svelte';
 	import { promptsTabItems } from './routing-map.ts';
@@ -157,22 +158,10 @@
 </script>
 
 {#snippet icon(of: PromptGroup, size: number)}
-	<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		{#if of === 'turn'}
-			<polyline points="17 1 21 5 17 9"></polyline>
-			<path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
-			<polyline points="7 23 3 19 7 15"></polyline>
-			<path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
-		{:else if of === 'agent'}
-			<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-			<polyline points="7 9 10 12 7 15"></polyline>
-			<line x1="12" y1="15" x2="17" y2="15"></line>
-		{:else if of === 'call'}
-			<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-		{:else}
-			<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
-		{/if}
-	</svg>
+	<Icon
+		name={of === 'turn' ? 'repeat' : of === 'agent' ? 'terminal-square' : of === 'call' ? 'zap' : 'wrench'}
+		size={size <= 12 ? 12 : size <= 17 ? 16 : 20}
+	/>
 {/snippet}
 
 <!-- A group's prompts: one line each, or for the tool descriptions, their names in a grid. -->

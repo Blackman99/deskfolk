@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { tick } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import type { FieldErrorKind } from './wizard-save.ts';
@@ -547,7 +548,7 @@
 			{#if showToolbar}
 				<div class="model-picker-toolbar">
 					<div class="model-search-field">
-					<svg class="model-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
+					<Icon name="search" size={20} class="model-search-icon" />
 					<input
 						type="search"
 						class="model-picker-search"
@@ -704,7 +705,7 @@
 	.model-picker-head { display: inline-flex; align-items: center; }
 	.model-search-field { display: flex; align-items: center; flex: 1; min-width: 0; }
 	.model-filter-actions { display: flex; align-items: center; gap: 6px; }
-	.model-search-icon, .model-search-clear, .model-total-count, .model-attrs-label, .model-selection-hint { display: none; }
+	.model-search-field :global(.model-search-icon), .model-search-clear, .model-total-count, .model-attrs-label, .model-selection-hint { display: none; }
 	.model-manual-feedback { margin: 0; padding: 8px; font-size: 12px; color: var(--ink-secondary); overflow-wrap: anywhere; }
 	.model-attributes-page { position: fixed; inset: calc(56px + env(safe-area-inset-top)) 0 calc(52px + env(safe-area-inset-bottom)); z-index: 1; overflow-y: auto; overscroll-behavior: contain; padding: 20px 16px 32px; background: var(--sidebar-bg); }
 	.model-attributes-name { margin: 0 0 8px; font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
@@ -1018,7 +1019,7 @@
 		.model-picker.has-error .model-picker-list { outline: 1px solid var(--danger); }
 		.model-picker-toolbar { flex-direction: column; align-items: stretch; gap: 12px; padding: 0 0 12px; border: 0; }
 		.model-search-field { position: relative; min-height: 48px; }
-		.model-search-icon { display: block; position: absolute; left: 14px; color: var(--muted); pointer-events: none; }
+		.model-search-field :global(.model-search-icon) { display: block; position: absolute; left: 14px; color: var(--muted); pointer-events: none; }
 		:global(.modal-body) .model-picker-search { width: 100%; height: 48px; padding: 0 44px 0 42px; background: var(--pane); border-radius: var(--radius-md); font-size: 16px; }
 		.model-picker-search::-webkit-search-cancel-button { -webkit-appearance: none; }
 		.model-search-clear { display: flex; align-items: center; justify-content: center; position: absolute; right: 2px; width: 44px; height: 44px; border: 0; background: transparent; color: var(--muted); font-size: 22px; }

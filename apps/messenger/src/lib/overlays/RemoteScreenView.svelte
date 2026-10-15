@@ -23,6 +23,7 @@
 </script>
 
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { onMount } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import { ApiError } from '../api.ts';
@@ -591,7 +592,7 @@
 <div class="screen-pane">
 	<header class="screen-head">
 		<button type="button" class="screen-icon screen-back" aria-label={t.common.back} title={t.common.back} onclick={onClose}>
-			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+			<Icon name="chevron-left" size={20} />
 		</button>
 		<div class="screen-title">
 			<span>{t.screen.title}</span>
@@ -715,10 +716,7 @@
 			onmousedown={(event) => event.preventDefault()}
 		>
 			<button type="button" class="screen-key is-action" aria-pressed={keyboardUp} aria-label={t.screen.keyboard} onclick={toggleKeyboard}>
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<rect x="2" y="4" width="20" height="12" rx="2"></rect>
-					<path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M7 12h10"></path>
-				</svg>
+				<Icon name="keyboard" size={20} />
 			</button>
 			{#each modifiers as modifier (modifier.id)}
 				<button

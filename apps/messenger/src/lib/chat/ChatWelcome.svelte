@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	/** What an empty conversation shows: the file drop, the Bot of a direct with its starters, or the conversation's name. */
 	import type { Bot, SessionSummary } from '@real-bot/protocol';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
@@ -57,10 +58,7 @@
 <div class="empty-chat-welcome m-auto flex flex-col items-center text-center py-16 px-10 max-w-[460px]">
 	{#if fileDrop}
 		<div class="empty-icon" aria-hidden="true">
-			<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-				<polyline points="14 2 14 8 20 8"></polyline>
-			</svg>
+			<Icon name="file" size={32} />
 		</div>
 		<h2>{t.sidebar.fileDrop}</h2>
 		<p class="muted">{t.sidebar.fileDropEmpty}</p>

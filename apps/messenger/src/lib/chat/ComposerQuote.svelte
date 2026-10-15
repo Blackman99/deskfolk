@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { USER_MEMBER, type Bot, type Message } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { quotePreview, quotedBotName } from './quote-reply.ts';
@@ -31,7 +32,7 @@
 		aria-label={t.chat.cancelReply}
 		onclick={onCancel}
 	>
-		<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+		<Icon name="x" size={12} />
 	</button>
 </div>
 

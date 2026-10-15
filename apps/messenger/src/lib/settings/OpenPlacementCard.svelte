@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import SettingsCard from './SettingsCard.svelte';
 	import SettingsCardHeader from './SettingsCardHeader.svelte';
 	import SettingsRow from './SettingsRow.svelte';
@@ -41,11 +42,7 @@
 	<SettingsCardHeader title={t.openPlacement.title} subtitle={t.openPlacement.subtitle}>
 		{#snippet icon()}
 			<div class="open-placement-icon" aria-hidden="true">
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<rect x="3" y="4" width="18" height="16" rx="2"></rect>
-					<line x1="12" y1="4" x2="12" y2="20"></line>
-					<line x1="12" y1="12" x2="21" y2="12"></line>
-				</svg>
+				<Icon name="layout" />
 			</div>
 		{/snippet}
 		{#snippet end()}

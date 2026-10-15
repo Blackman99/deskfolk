@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
 
 	/**
@@ -31,12 +32,7 @@
 					onCreateBot();
 				}}
 			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<rect x="4" y="8" width="16" height="12" rx="3"></rect>
-					<path d="M12 8V4"></path>
-					<circle cx="9" cy="14" r="1"></circle>
-					<circle cx="15" cy="14" r="1"></circle>
-				</svg>
+				<Icon name="bot" />
 				<span>{t.sidebar.addBot}</span>
 			</button>
 			<button
@@ -48,11 +44,7 @@
 					onCreateGroup();
 				}}
 			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-					<circle cx="9" cy="7" r="4"></circle>
-					<path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
-				</svg>
+				<Icon name="users" />
 				<span>{t.sidebar.addGroup}</span>
 			</button>
 		</div>
@@ -66,9 +58,7 @@
 		aria-label={t.sidebar.createMenu}
 		onclick={() => (createMenuOpen = !createMenuOpen)}
 	>
-		<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-			<path d="M12 5v14M5 12h14"></path>
-		</svg>
+		<Icon name="plus" size={24} />
 	</button>
 </div>
 
@@ -158,7 +148,7 @@
 		color: var(--accent);
 	}
 
-	.fab-menu-item svg {
+	.fab-menu-item :global(.icon) {
 		flex-shrink: 0;
 		color: var(--muted);
 	}

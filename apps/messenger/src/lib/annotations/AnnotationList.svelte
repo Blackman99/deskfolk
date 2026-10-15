@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { ANNOTATION_BODY_MAX, type Annotation } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import EmptyState from '../EmptyState.svelte';
@@ -84,10 +85,7 @@
 			<h3 class="annot-list-title text-13 font-semibold m-0">{t.stream.annotationsCount(annotations.length)}</h3>
 			{#if onClose}
 				<button type="button" class="annot-list-close" title={t.common.close} aria-label={t.common.close} onclick={onClose}>
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<line x1="18" y1="6" x2="6" y2="18"></line>
-						<line x1="6" y1="6" x2="18" y2="18"></line>
-					</svg>
+					<Icon name="x" />
 				</button>
 			{/if}
 		</header>
@@ -120,9 +118,7 @@
 		<div class="annot-empty">
 			<EmptyState size="inline" level={3} title={empty.title} hint={empty.hint}>
 				{#snippet badge()}
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-					</svg>
+					<Icon name="message" />
 				{/snippet}
 			</EmptyState>
 		</div>
@@ -139,32 +135,15 @@
 									{markNumber(row)}
 								</span>
 								{#if row.anchor_kind === 'image_region'}
-									<svg class="annot-kind-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<rect x="3" y="3" width="18" height="18" rx="2"></rect>
-										<circle cx="9" cy="9" r="2"></circle>
-										<path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path>
-									</svg>
+									<Icon name="image" size={12} class="annot-kind-icon" />
 								{:else if row.anchor_kind === 'text_range'}
-									<svg class="annot-kind-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<line x1="4" y1="6" x2="20" y2="6"></line>
-										<line x1="4" y1="12" x2="14" y2="12"></line>
-										<line x1="4" y1="18" x2="18" y2="18"></line>
-									</svg>
+									<Icon name="lines" size={12} class="annot-kind-icon" />
 								{:else if row.anchor_kind === 'pdf_region'}
-									<svg class="annot-kind-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-										<polyline points="14 2 14 8 20 8"></polyline>
-									</svg>
+									<Icon name="file" size={12} class="annot-kind-icon" />
 								{:else if row.anchor_kind === 'html_element'}
-									<svg class="annot-kind-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<polyline points="16 18 22 12 16 6"></polyline>
-										<polyline points="8 6 2 12 8 18"></polyline>
-									</svg>
+									<Icon name="code" size={12} class="annot-kind-icon" />
 								{:else if row.anchor_kind === 'media_time'}
-									<svg class="annot-kind-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<circle cx="12" cy="12" r="10"></circle>
-										<polyline points="12 6 12 12 16 14"></polyline>
-									</svg>
+									<Icon name="clock" size={12} class="annot-kind-icon" />
 								{/if}
 								<span class="annot-item-pos mono text-11 truncate" title={positionLabel(row, locale)}>{compactPositionLabel(row, locale)}</span>
 							</div>
@@ -189,54 +168,34 @@
 					{/if}
 					{#if stale}
 						<div class="annot-stale-banner flex items-center gap-4 text-11">
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
-								<line x1="12" y1="9" x2="12" y2="13"></line>
-								<line x1="12" y1="17" x2="12.01" y2="17"></line>
-							</svg>
+							<Icon name="alert-triangle" size={12} />
 							<span class="annot-stale-text">{stale}</span>
 						</div>
 					{/if}
 					{#if row.status === 'resolved' && (resolver || row.resolved_note)}
 						<div class="annot-item-note text-11 flex items-start gap-4">
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="flex-shrink-0 mt-2">
-								<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-								<polyline points="22 4 12 14.01 9 11.01"></polyline>
-							</svg>
+							<Icon name="check-circle" size={12} class="flex-shrink-0 mt-2" />
 							<span class="annot-note-text">{#if resolver}{t.stream.annotationResolvedBy(resolver)}{/if}{#if row.resolved_note}{resolver ? '：' : ''}{row.resolved_note}{/if}</span>
 						</div>
 					{/if}
 					<div class="annot-item-actions flex items-center justify-end gap-4">
 						{#if row.status === 'draft'}
 							<button type="button" class="artifact-tool-btn annot-btn" onclick={() => startEdit(row)} disabled={busy}>
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-									<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-								</svg>
+								<Icon name="edit" size={12} />
 								<span>{t.stream.annotationEdit}</span>
 							</button>
 							<button type="button" class="artifact-tool-btn annot-btn is-danger" onclick={() => onDelete(row)} disabled={busy}>
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<polyline points="3 6 5 6 21 6"></polyline>
-									<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-								</svg>
+								<Icon name="trash" size={12} />
 								<span>{t.stream.annotationDelete}</span>
 							</button>
 						{:else if row.status === 'open'}
 							<button type="button" class="artifact-tool-btn annot-btn annot-btn-resolve" onclick={() => onToggleStatus(row, 'resolved')} disabled={busy}>
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<polyline points="20 6 9 17 4 12"></polyline>
-								</svg>
+								<Icon name="check" size={12} />
 								<span>{t.stream.annotationResolve}</span>
 							</button>
 						{:else}
 							<button type="button" class="artifact-tool-btn annot-btn annot-btn-reopen" onclick={() => onToggleStatus(row, 'open')} disabled={busy}>
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
-									<path d="M21 3v5h-5"></path>
-									<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
-									<path d="M3 21v-5h5"></path>
-								</svg>
+								<Icon name="refresh" size={12} />
 								<span>{t.stream.annotationReopen}</span>
 							</button>
 						{/if}
@@ -470,7 +429,7 @@
 		background: var(--input-bg);
 		color: var(--muted);
 	}
-	.annot-kind-icon {
+	.annot-item-target :global(.annot-kind-icon) {
 		flex-shrink: 0;
 		color: var(--muted);
 	}
@@ -528,7 +487,7 @@
 		color: var(--ink-secondary);
 		line-height: 1.45;
 	}
-	.annot-item-note svg {
+	.annot-item-note :global(.icon) {
 		color: var(--ok);
 	}
 	.annot-note-text {

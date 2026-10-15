@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Bot, TaskDetail, TicketStatus, TicketWithArtifacts } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import {
@@ -133,11 +134,7 @@
 			<span class="rail-done mono" class:is-done={done === 100}>{done}%</span>
 		{/if}
 		<button type="button" class="rail-expand" title={t.plan.job.expandBoard} aria-label={t.plan.job.expandBoard} onclick={onExpand}>
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<rect x="3" y="3" width="5" height="18" rx="1"></rect>
-				<rect x="10" y="3" width="5" height="12" rx="1"></rect>
-				<rect x="17" y="3" width="4" height="8" rx="1"></rect>
-			</svg>
+			<Icon name="kanban" />
 		</button>
 	</header>
 	{#if statusFilter !== 'all'}

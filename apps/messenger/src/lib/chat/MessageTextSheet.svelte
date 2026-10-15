@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { onMount, type Snippet } from 'svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import type { Copy } from '../copy.ts';
@@ -64,7 +65,7 @@
 	<div class="modal-dialog message-text-dialog">
 		<div class="modal-head">
 			<button type="button" class="modal-back" aria-label={t.common.back} onclick={onClose}>
-				<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<Icon name="chevron-left" />
 			</button>
 			<div class="modal-head-titles">
 				<h2 id="message-text-title">{t.chat.selectText}</h2>

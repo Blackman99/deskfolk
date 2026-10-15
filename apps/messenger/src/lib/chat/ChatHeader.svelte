@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import FolkAvatar from '../FolkAvatar.svelte';
@@ -124,15 +125,12 @@
 				aria-label={t.sidebar.backToSessions}
 				onclick={() => (runtime.selectedId = null)}
 			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<Icon name="chevron-left" size={20} />
 			</button>
 			{#if fileDrop}
 				<div class="top-file-identity">
 					<span class="top-avatar file-drop-mark" aria-hidden="true">
-						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-							<polyline points="14 2 14 8 20 8"></polyline>
-						</svg>
+						<Icon name="file" size={20} />
 					</span>
 					<span class="top-titles flex flex-col min-w-0 gap-1">
 						<span class="top-title-text" role="heading" aria-level="1">{t.sidebar.fileDrop}</span>
@@ -225,10 +223,7 @@
 				title={isSessionPinned(pinnedSessionIds, selected.id) ? t.top.unpin : t.top.pin}
 				onclick={() => onTogglePin(selected.id)}
 			>
-				<svg width="13" height="13" viewBox="0 0 24 24" fill={isSessionPinned(pinnedSessionIds, selected.id) ? "currentColor" : "none"} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<line x1="12" y1="17" x2="12" y2="22"></line>
-					<path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V6a3 3 0 0 0-6 0v4.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z"></path>
-				</svg>
+				<Icon name="pin" />
 				<span>{isSessionPinned(pinnedSessionIds, selected.id) ? t.top.pinned : t.top.pin}</span>
 			</button>
 			<button
@@ -238,13 +233,7 @@
 				title={t.trace.title}
 				onclick={() => (runtime.traceOpen ? runtime.closeTrace() : runtime.openTrace(null))}
 			>
-				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<rect x="8" y="2" width="8" height="6" rx="1.5"></rect>
-					<path d="M12 8v3"></path>
-					<path d="M5.5 14v-3h13v3"></path>
-					<rect x="2" y="14" width="7" height="6" rx="1.5"></rect>
-					<rect x="15" y="14" width="7" height="6" rx="1.5"></rect>
-				</svg>
+				<Icon name="hierarchy" />
 				<span>{t.trace.topAction}</span>
 			</button>
 			<button
@@ -255,10 +244,7 @@
 				aria-expanded={settingsOpen}
 				onclick={onToggleSessionSettings}
 			>
-				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<circle cx="12" cy="12" r="3"></circle>
-					<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-				</svg>
+				<Icon name="settings" />
 				<span>{sessionSettingsLabel}</span>
 			</button>
 		</div>
@@ -275,11 +261,7 @@
 				aria-expanded={mobileActionsOpen}
 				onclick={() => (mobileActionsOpen = !mobileActionsOpen)}
 			>
-				<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-					<circle cx="5" cy="12" r="1.8"></circle>
-					<circle cx="12" cy="12" r="1.8"></circle>
-					<circle cx="19" cy="12" r="1.8"></circle>
-				</svg>
+				<Icon name="more" size={20} />
 			</button>
 			{#if mobileActionsOpen}
 				<div class="mobile-actions-menu">
@@ -288,27 +270,15 @@
 						class:is-active={isSessionPinned(pinnedSessionIds, selected.id)}
 						onclick={() => runMobileAction(() => onTogglePin(selected.id))}
 					>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill={isSessionPinned(pinnedSessionIds, selected.id) ? "currentColor" : "none"} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<line x1="12" y1="17" x2="12" y2="22"></line>
-							<path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.89A2 2 0 0 1 15 10.77V6a3 3 0 0 0-6 0v4.77a2 2 0 0 1-1.11 1.79l-1.78.89A2 2 0 0 0 5 15.24Z"></path>
-						</svg>
+						<Icon name="pin" />
 						<span>{isSessionPinned(pinnedSessionIds, selected.id) ? t.top.unpin : t.top.pin}</span>
 					</button>
 					<button type="button" class:is-active={runtime.traceOpen} onclick={() => runMobileAction(() => (runtime.traceOpen ? runtime.closeTrace() : runtime.openTrace(null)))}>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<rect x="8" y="2" width="8" height="6" rx="1.5"></rect>
-							<path d="M12 8v3"></path>
-							<path d="M5.5 14v-3h13v3"></path>
-							<rect x="2" y="14" width="7" height="6" rx="1.5"></rect>
-							<rect x="15" y="14" width="7" height="6" rx="1.5"></rect>
-						</svg>
+						<Icon name="hierarchy" />
 						<span>{t.trace.topAction}</span>
 					</button>
 					<button type="button" class:is-active={settingsOpen} onclick={() => runMobileAction(onToggleSessionSettings)}>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<circle cx="12" cy="12" r="3"></circle>
-							<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09A1.65 1.65 0 0 0 19.4 15z"></path>
-						</svg>
+						<Icon name="settings" />
 						<span>{sessionSettingsLabel}</span>
 					</button>
 				</div>
@@ -707,12 +677,6 @@
 			background: transparent;
 			box-shadow: none;
 			color: var(--ink-secondary);
-		}
-
-		.btn-mobile-back svg,
-		.btn-mobile-actions svg {
-			width: 22px;
-			height: 22px;
 		}
 
 		.btn-mobile-back:hover,

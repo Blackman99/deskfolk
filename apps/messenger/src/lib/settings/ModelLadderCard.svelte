@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import {
 		AGENT_KINDS,
 		CLAUDE_MODEL_ALIASES,
@@ -284,7 +285,7 @@
 								onpointerdown={(event) => press(event, index)}
 								onkeydown={(event) => void key_(event, index)}
 							>
-								<svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true"><circle cx="2.5" cy="3" r="1.4" /><circle cx="7.5" cy="3" r="1.4" /><circle cx="2.5" cy="8" r="1.4" /><circle cx="7.5" cy="8" r="1.4" /><circle cx="2.5" cy="13" r="1.4" /><circle cx="7.5" cy="13" r="1.4" /></svg>
+								<Icon name="grip" size={12} />
 							</button>
 						</div>
 					</li>
@@ -531,7 +532,7 @@
 		touch-action: none;
 	}
 
-	.ladder-grip svg {
+	.ladder-grip :global(.icon) {
 		fill: currentColor;
 	}
 

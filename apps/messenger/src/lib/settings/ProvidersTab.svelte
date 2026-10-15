@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { connectorFor, isLocalEndpoint } from '@real-bot/protocol';
 	import ConnectorLogo from './ConnectorLogo.svelte';
 	import ModelPicker from '../ModelPicker.svelte';
@@ -43,7 +44,7 @@
 	<div class="provider-list-head flex items-start justify-between gap-6">
 		<p class="muted">{t.settings.providersHint}</p>
 		<button type="button" class="btn-provider-add" onclick={openAddProvider}>
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+			<Icon name="plus" size={12} />
 			<span>{t.settings.providerAdd}</span>
 		</button>
 	</div>
@@ -80,7 +81,7 @@
 								{/if}
 								{#if isDefault}
 									<span class="provider-badge-default" title={t.settings.providerDefault}>
-										<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+										<Icon name="star" size={12} filled />
 										<span>{t.settings.providerDefault}</span>
 									</span>
 								{/if}
@@ -103,7 +104,7 @@
 								onclick={() => void setDefaultProvider(provider.id)}
 								title={t.settings.providerSetDefault}
 							>
-								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+								<Icon name="star" size={12} />
 								<span>{t.settings.providerSetDefault}</span>
 							</button>
 						{/if}
@@ -114,7 +115,7 @@
 							onclick={() => openEditProvider(provider.id)}
 							title={t.settings.providerConnection}
 						>
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+							<Icon name="link" size={12} />
 							<span>{t.settings.providerConnection}</span>
 						</button>
 						<button
@@ -124,7 +125,7 @@
 							onclick={() => openDeleteProviderConfirm(provider.id)}
 							title={t.settings.providerDelete}
 						>
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+							<Icon name="trash" size={12} />
 						</button>
 					</div>
 				</div>
@@ -154,7 +155,7 @@
 					>
 						<span>{t.settings.providerModels}</span>
 						<span class="provider-model-manage-count">{t.settings.modelsEnabledCount(provider.models.length)}</span>
-						<svg class="provider-manage-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+						<Icon name="chevron-right" class="provider-manage-chevron" />
 					</button>
 				</div>
 			</div>
@@ -439,7 +440,7 @@
 		.provider-list-head { flex-direction: column; gap: 16px; }
 		.provider-list-head .muted { font-size: 14px; line-height: 1.6; }
 		.btn-provider-add { width: 100%; min-height: 48px; justify-content: center; padding: 10px 16px; border: 1px solid var(--accent-border); border-radius: var(--radius-md); background: var(--accent-tint); font-size: 15px; }
-		.btn-provider-add svg { width: 18px; height: 18px; }
+		.btn-provider-add :global(.icon) { width: 16px; height: 16px; }
 		.provider-card-list { gap: 20px; }
 		.provider-card, .provider-card.is-default { position: relative; gap: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--pane); box-shadow: none; overflow: hidden; }
 		.provider-card-head { display: contents; }
@@ -452,7 +453,7 @@
 		.provider-card-acts { order: 3; gap: 0; border-top: 1px solid var(--line); }
 		.btn-provider-action { flex: 1; justify-content: center; gap: 6px; min-height: 48px; padding: 8px; border: 0; border-radius: 0; background: transparent; font-size: 13px; }
 		.btn-provider-action + .btn-provider-action { border-left: 1px solid var(--line); }
-		.btn-provider-action svg { width: 16px; height: 16px; }
+		.btn-provider-action :global(.icon) { width: 16px; height: 16px; }
 		.btn-provider-action.btn-provider-delete { flex: 0 0 52px; min-height: 48px; padding: 8px; border-left: 1px solid var(--line); }
 		/* The default model on top, the way into the list under it; the picker opens as a sheet. */
 		.provider-model-rail { flex-direction: column; align-items: stretch; gap: 0; padding: 0; border-top: none; }
@@ -462,6 +463,6 @@
 		.provider-model-rail :global(.provider-default-select .real-select-trigger) { min-height: 48px; padding: 10px 12px; font-size: 16px; }
 		.provider-model-manage { flex: none; gap: 8px; margin-left: 0; min-height: 56px; padding: 12px 16px; border-top: 1px solid var(--line-subtle); border-radius: 0; font-size: 15px; color: var(--ink); }
 		.provider-model-manage-count { margin-left: auto; font-size: 12px; }
-		.provider-manage-chevron { width: 18px; height: 18px; flex-shrink: 0; color: var(--muted); }
+		.provider-model-manage :global(.provider-manage-chevron) { width: 20px; height: 20px; flex-shrink: 0; color: var(--muted); }
 	}
 </style>

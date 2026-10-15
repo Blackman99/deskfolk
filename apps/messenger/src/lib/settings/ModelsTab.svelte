@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import Icon from '../Icon.svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -86,18 +87,7 @@
 </script>
 
 {#snippet icon(of: ModelsSection, size: number)}
-	<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		{#if of === 'endpoints'}
-			<path d="M12 22v-5"></path>
-			<path d="M9 8V2"></path>
-			<path d="M15 8V2"></path>
-			<path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"></path>
-		{:else}
-			<rect x="9" y="2" width="6" height="12" rx="3"></rect>
-			<path d="M19 10v1a7 7 0 0 1-14 0v-1"></path>
-			<line x1="12" y1="18" x2="12" y2="22"></line>
-		{/if}
-	</svg>
+	<Icon name={of === 'endpoints' ? 'plug' : 'mic'} size={size >= 18 ? 20 : 16} />
 {/snippet}
 
 <div class="models-tab">

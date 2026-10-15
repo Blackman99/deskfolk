@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from './Icon.svelte';
 	import {
 		findNextEnabledIndex,
 		findOptionByPrefix,
@@ -373,16 +374,11 @@
 					}}
 					title="清除"
 				>
-					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<line x1="18" y1="6" x2="6" y2="18"></line>
-						<line x1="6" y1="6" x2="18" y2="18"></line>
-					</svg>
+					<Icon name="x" size={12} />
 				</span>
 			{/if}
 			<span class="real-select-arrow" aria-hidden="true">
-				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<polyline points="6 9 12 15 18 9"></polyline>
-				</svg>
+				<Icon name="chevron-down" size={12} />
 			</span>
 		</div>
 	</button>
@@ -430,9 +426,7 @@
 
 						{#if opt.value === value}
 							<span class="real-select-check inline-flex items-center justify-center text-accent shrink-0" aria-hidden="true">
-								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-									<polyline points="20 6 9 17 4 12"></polyline>
-								</svg>
+								<Icon name="check" size={12} />
 							</span>
 						{/if}
 					</li>

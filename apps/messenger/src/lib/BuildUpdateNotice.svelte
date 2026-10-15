@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from './Icon.svelte';
 	import type { Copy } from './copy.ts';
 	import type { BuildUpdates } from './build-version.svelte.ts';
 
@@ -24,9 +25,7 @@
 			data-testid="build-update-dismiss"
 			onclick={() => updates.dismiss()}
 		>
-			<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-				<path d="m3.5 3.5 7 7M10.5 3.5l-7 7" />
-			</svg>
+			<Icon name="x" />
 		</button>
 	</div>
 {/if}

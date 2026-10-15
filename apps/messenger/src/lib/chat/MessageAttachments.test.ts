@@ -188,9 +188,9 @@ test("a chip's icon follows the file's extension", () => {
     const glyphs = [...host.querySelectorAll(".attachment-file-btn .file-glyph")];
     expect(glyphs).toHaveLength(3);
     // The video's camera, JSON's braces, Markdown's own mark: three different glyphs.
-    expect(glyphs[0]!.querySelector("svg path")?.getAttribute("d")).toBe("m16 10 6-3v10l-6-3z");
+    expect(glyphs[0]!.querySelector("svg")?.getAttribute("data-icon")).toBe("video");
     expect(glyphs[1]!.textContent?.trim()).toBe("{}");
-    expect(glyphs[2]!.querySelector("svg path")?.getAttribute("d")).toBe("M3 5h18v14H3z");
+    expect(glyphs[2]!.querySelector("svg")?.getAttribute("data-icon")).toBe("markdown");
   } finally {
     close();
   }

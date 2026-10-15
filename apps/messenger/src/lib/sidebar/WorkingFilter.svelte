@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
 
 	/** The list's "only what is working or unread" switch. Beside the mark, or beside the search on a phone. */
@@ -20,9 +21,7 @@
 	aria-pressed={workingOnly}
 	onclick={toggleWorkingOnly}
 >
-	<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		<path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-	</svg>
+	<Icon name="activity" />
 </button>
 
 <style>

@@ -26,7 +26,7 @@
 		...rest
 	}: Props = $props();
 
-	const iconSize = $derived(size === 'lg' ? 20 : size === 'xs' ? 14 : 16);
+	const iconSize = $derived(size === 'lg' ? 20 : 16);
 </script>
 
 <button

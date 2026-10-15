@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { UsageWindow } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { usageLevel, usageResetShort, usageResetText, usageSpan, usageUsed, usageUsedText } from './usage.ts';
@@ -27,10 +28,7 @@
 	<span class="usage-reset" title={reset ?? undefined}>
 		{#if resetShort}
 			<!-- A turning arrow: when it starts over. -->
-			<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<path d="M3 12a9 9 0 1 0 3-6.7"></path>
-				<polyline points="3 4 3 9 8 9"></polyline>
-			</svg>
+			<Icon name="rotate-ccw" size={12} />
 			{resetShort}
 		{/if}
 	</span>
@@ -79,7 +77,7 @@
 		white-space: nowrap;
 	}
 
-	.usage-reset svg {
+	.usage-reset :global(.icon) {
 		flex: none;
 	}
 

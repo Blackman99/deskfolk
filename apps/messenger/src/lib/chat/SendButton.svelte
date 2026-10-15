@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { ComposerAction } from './composer-mode.ts';
 	import type { SessionView } from '../session-view.svelte.ts';
@@ -58,7 +59,7 @@
 		title={t.composer.stopGeneration}
 		onclick={() => void onStop()}
 	>
-		<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+		<Icon name="stop" />
 	</button>
 {/if}
 <button
@@ -75,7 +76,7 @@
 	onclick={() => primaryAction.kind === 'stop' ? void onStop() : void onSend()}
 >
 	{#if primaryAction.kind === 'stop'}
-		<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+		<Icon name="stop" />
 	{:else if sendingShown && uploadFraction !== null}
 		<svg class="send-progress" aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none">
 			<circle class="send-progress-track" cx="10" cy="10" r={RING_RADIUS} stroke-width="2"></circle>
@@ -91,9 +92,9 @@
 			></circle>
 		</svg>
 	{:else if sendingShown}
-		<svg class="send-spinner" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"></path></svg>
+		<Icon name="spinner" class="send-spinner" />
 	{:else}
-		<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m-6 6 6-6 6 6"></path></svg>
+		<Icon name="arrow-up" />
 	{/if}
 </button>
 
@@ -123,7 +124,7 @@
 	 * Send turning into Stop (and back) swaps the glyph: the new one turns in from a little smaller,
 	 * so the change reads as the same button changing its job rather than a different button.
 	 */
-	.composer-action > svg:not(.send-spinner):not(.send-progress) {
+	.composer-action > :global(.icon:not(.send-spinner)) {
 		animation: action-glyph-in var(--dur-base) var(--ease-out);
 	}
 
@@ -169,7 +170,7 @@
 		cursor: progress;
 	}
 
-	.send-spinner {
+	.composer-action :global(.send-spinner) {
 		animation: suggestSpin 0.9s linear infinite;
 	}
 
@@ -230,7 +231,7 @@
 			transition: none;
 		}
 
-		.send-spinner {
+		.composer-action :global(.send-spinner) {
 			animation: none;
 		}
 

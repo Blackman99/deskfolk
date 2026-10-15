@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Attachment } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -75,7 +76,7 @@
 			<FileIcon icon={fileIconFor(shownPath, { isDir: shownAttachment?.is_dir === true })} size={16} />
 			<span class="msg-file-name" title={shownPath}>{name}</span>
 			<button type="button" class="msg-file-close" aria-label={t.common.close} onclick={close}>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+				<Icon name="x" />
 			</button>
 		</header>
 		<div class="msg-file-body">

@@ -85,7 +85,7 @@
 		class:is-ask={approvals === 0}
 		onclick={() => onJump(hidden.items[0].id)}
 	>
-		<Icon name={approvals ? 'shield-check' : 'help-circle'} size={14} />
+		<Icon name={approvals ? 'shield-check' : 'help-circle'} size={12} />
 		<span>{label}</span>
 		<Icon name={hidden.above ? 'arrow-up' : 'arrow-down'} size={12} />
 	</button>

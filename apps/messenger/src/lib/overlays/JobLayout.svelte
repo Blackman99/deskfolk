@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Attachment, Bot, BuiltinModelRole, Hold, Provider, SessionSummary, TicketStatus, TicketWithArtifacts } from '@real-bot/protocol';
 	import { onMount, tick, untrack, type Snippet } from 'svelte';
 	import type { Copy } from '../copy.ts';
@@ -501,32 +502,15 @@
 </script>
 
 {#snippet specIcon()}
-	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-		<polyline points="14 2 14 8 20 8"></polyline>
-		<line x1="16" y1="13" x2="8" y2="13"></line>
-		<line x1="16" y1="17" x2="8" y2="17"></line>
-	</svg>
+	<Icon name="file-text" size={12} />
 {/snippet}
 
 {#snippet traceIcon()}
-	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		<rect x="9" y="3" width="6" height="5" rx="1"></rect>
-		<rect x="3" y="16" width="6" height="5" rx="1"></rect>
-		<rect x="15" y="16" width="6" height="5" rx="1"></rect>
-		<path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"></path>
-	</svg>
+	<Icon name="hierarchy" size={12} />
 {/snippet}
 
 {#snippet tasksIcon()}
-	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		<line x1="9" y1="6" x2="20" y2="6"></line>
-		<line x1="9" y1="12" x2="20" y2="12"></line>
-		<line x1="9" y1="18" x2="20" y2="18"></line>
-		<circle cx="4.5" cy="6" r="1"></circle>
-		<circle cx="4.5" cy="12" r="1"></circle>
-		<circle cx="4.5" cy="18" r="1"></circle>
-	</svg>
+	<Icon name="list" size={12} />
 {/snippet}
 
 <div

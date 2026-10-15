@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Attachment, Bot, Provider, SessionSummary, TaskTraceNode, Ticket } from '@real-bot/protocol';
 	import { tick, untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
@@ -536,7 +537,7 @@
 							aria-pressed={lighting === 'feedback'}
 							onclick={() => toggleHighlight('feedback')}
 						>
-							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+							<Icon name="message" size={12} />
 							<span>{t.routes.filterFeedback}</span>
 							<span class="mono">{highlightCounts.feedback}</span>
 						</button>
@@ -548,14 +549,14 @@
 							aria-pressed={lighting === 'blamed'}
 							onclick={() => toggleHighlight('blamed')}
 						>
-							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+							<Icon name="alert-triangle" size={12} />
 							<span>{t.routes.filterBlamed}</span>
 							<span class="mono">{highlightCounts.blamed}</span>
 						</button>
 					{/if}
 					{#if job.trace.steps?.length}
 						<button type="button" class="trace-highlight" aria-pressed={showSteps} title={t.traceSteps.showHint} data-steps-toggle onclick={toggleSteps}>
-							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="19" r="2"></circle><path d="M12 7v10"></path><rect x="15" y="10" width="6" height="4" rx="1"></rect><path d="M12 12h3"></path></svg>
+							<Icon name="trace-step" size={12} />
 							<span>{showSteps ? t.traceSteps.hide : t.traceSteps.show}</span>
 						</button>
 					{/if}
@@ -588,13 +589,7 @@
 					>+</button>
 					<span class="trace-zoom-rule" aria-hidden="true"></span>
 					<button type="button" class="trace-zoom-fit" aria-label={t.trace.zoomFit} title={t.trace.zoomFit} onclick={() => canvas.fitBoard()}>
-						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
-							<path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
-							<path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
-							<path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
-							<rect x="7" y="8" width="10" height="8" rx="1.5"></rect>
-						</svg>
+						<Icon name="fit" />
 					</button>
 					<button
 						type="button"
@@ -604,10 +599,7 @@
 						aria-pressed={minimapShown}
 						onclick={toggleMinimap}
 					>
-						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<rect x="3" y="3" width="18" height="18" rx="2"></rect>
-							<rect x="12" y="12" width="6" height="6" rx="1"></rect>
-						</svg>
+						<Icon name="minimap" />
 					</button>
 				</div>
 			</div>

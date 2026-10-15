@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { ZOOM_PRESETS, zoomIn, zoomMenuValue, zoomOut, zoomPercent } from '../annotations/pdf-region.ts';
 	import type { PdfFind } from './pdf-find.svelte.ts';
 	import type { PdfPages } from './pdf-pages.svelte.ts';
@@ -61,10 +62,7 @@
 		onclick={() => (find.findOpen ? find.closeFind() : find.openFind())}
 		data-pdf-find-toggle
 	>
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-			<circle cx="11" cy="11" r="7"></circle>
-			<line x1="20" y1="20" x2="16.2" y2="16.2"></line>
-		</svg>
+		<Icon name="search" />
 	</button>
 </div>
 {#if find.findOpen}
@@ -82,10 +80,10 @@
 		/>
 		<span class="pdf-find-count text-12" aria-live="polite">{find.findStatus}</span>
 		<button type="button" class="pdf-tool" title={labels.findPrev} aria-label={labels.findPrev} disabled={find.matches.length === 0} onclick={() => find.stepFind(-1)}>
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"></polyline></svg>
+			<Icon name="chevron-up" />
 		</button>
 		<button type="button" class="pdf-tool" title={labels.findNext} aria-label={labels.findNext} disabled={find.matches.length === 0} onclick={() => find.stepFind(1)}>
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+			<Icon name="chevron-down" />
 		</button>
 		<button type="button" class="pdf-tool" title={labels.findClose} aria-label={labels.findClose} onclick={() => find.closeFind()}>✕</button>
 	</div>

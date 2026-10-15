@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { tick } from 'svelte';
 	import { Calendar, type CalendarEvent, type CalendarSource, type EventInstance } from './calendar-entry.ts';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
@@ -223,9 +224,7 @@
 				title={t.common.back}
 				onclick={() => runtime.closeRoutines()}
 			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<polyline points="15 18 9 12 15 6"></polyline>
-				</svg>
+				<Icon name="chevron-left" />
 				<span>{t.common.back}</span>
 			</button>
 			<span class="head-divider" aria-hidden="true"></span>
@@ -248,11 +247,7 @@
 				aria-expanded={showInfo}
 				onclick={() => (showInfo = !showInfo)}
 			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<circle cx="12" cy="12" r="10"></circle>
-					<line x1="12" y1="16" x2="12" y2="12"></line>
-					<line x1="12" y1="8" x2="12.01" y2="8"></line>
-				</svg>
+				<Icon name="info" />
 				<span>{locale === 'en' ? 'Rules' : '规则'}</span>
 			</button>
 		</div>
@@ -262,18 +257,11 @@
 		<div class="calendar-info-banner">
 			<div class="info-banner-header">
 				<span class="info-banner-badge">
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<circle cx="12" cy="12" r="10"></circle>
-						<line x1="12" y1="16" x2="12" y2="12"></line>
-						<line x1="12" y1="8" x2="12.01" y2="8"></line>
-					</svg>
+					<Icon name="info" />
 					{locale === 'en' ? 'Schedule Rules & Availability' : '日程展开与运行规则'}
 				</span>
 				<button type="button" class="info-banner-close" aria-label={t.common.close} onclick={() => (showInfo = false)}>
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<line x1="18" y1="6" x2="6" y2="18"></line>
-						<line x1="6" y1="6" x2="18" y2="18"></line>
-					</svg>
+					<Icon name="x" />
 				</button>
 			</div>
 			<div class="info-banner-grid">
@@ -313,14 +301,10 @@
 					aria-controls="roster-filter-list"
 					onclick={toggleFilter}
 				>
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-					</svg>
+					<Icon name="funnel" />
 					<span>{t.calendar.filter}</span>
 					<span class="roster-filter-count">{filterSummary}</span>
-					<svg class="roster-filter-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<polyline points="6 9 12 15 18 9"></polyline>
-					</svg>
+					<Icon name="chevron-down" size={12} class="roster-filter-chevron" />
 				</button>
 				{#if hidden.size > 0}
 					<button type="button" class="filter-reset-btn" onclick={showAllSources}>
@@ -367,9 +351,7 @@
 										>
 											<span class="roster-filter-box" aria-hidden="true">
 												{#if source.visible}
-													<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
-														<polyline points="20 6 9 17 4 12"></polyline>
-													</svg>
+													<Icon name="check" size={12} />
 												{/if}
 											</span>
 											{#if bot}
@@ -525,10 +507,7 @@
 							</div>
 						</div>
 						<button type="button" class="detail-icon-close" aria-label={t.common.close} onclick={() => (openRoutineId = null)}>
-							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<line x1="18" y1="6" x2="6" y2="18"></line>
-								<line x1="6" y1="6" x2="18" y2="18"></line>
-							</svg>
+							<Icon name="x" />
 						</button>
 					</div>
 
@@ -536,10 +515,7 @@
 
 					<div class="detail-tags-row">
 						<span class="detail-tag is-schedule">
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<circle cx="12" cy="12" r="10"></circle>
-								<polyline points="12 6 12 12 16 14"></polyline>
-							</svg>
+							<Icon name="clock" size={12} />
 							{routineScheduleLabel(openRoutine.schedule, t)}
 						</span>
 						<span class="detail-tag" class:is-active={openRoutine.enabled} class:is-paused={!openRoutine.enabled}>
@@ -548,9 +524,7 @@
 						</span>
 						{#if openWasDue}
 							<span class="detail-tag is-fired">
-								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<polyline points="20 6 9 17 4 12"></polyline>
-								</svg>
+								<Icon name="check" size={12} />
 								{t.calendar.lastFired}
 							</span>
 						{/if}
@@ -854,12 +828,12 @@
 		font-weight: 650;
 	}
 
-	.roster-filter-chevron {
+	.roster-filter-trigger :global(.roster-filter-chevron) {
 		color: var(--muted);
 		transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	.roster-filter-trigger[aria-expanded='true'] .roster-filter-chevron {
+	.roster-filter-trigger[aria-expanded='true'] :global(.roster-filter-chevron) {
 		transform: rotate(180deg);
 		color: var(--accent);
 	}

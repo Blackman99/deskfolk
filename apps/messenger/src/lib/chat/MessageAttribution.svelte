@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
   import type { Copy } from '../copy.ts';
   import { filingLabel, filingParts, messageFilings, type AttributedMessage, type AttributionPlan } from './attribution.ts';
 
@@ -36,7 +37,7 @@
     title={`${full}\n${t.attribution.chipHint}`}
     onclick={onOpen}
   >
-    <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><circle cx="7" cy="7" r="1.5"></circle></svg>
+    <Icon name="tag" size={12} />
     {#if first}
       <span class="plan">{first.plan ?? t.attribution.unknownPlan}</span>
       {#if detail}<span class="detail">› {detail}</span>{/if}
@@ -51,7 +52,7 @@
 <style>
   .message-attribution { display: flex; margin-top: 4px; max-width: 100%; font-size: var(--text-caption); }
   .attribution-chip { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: min(100%, 440px); min-height: 22px; padding: 0 8px; background: transparent; color: var(--muted); border: 1px solid var(--line-subtle); border-radius: var(--radius-full); font: inherit; cursor: pointer; transition: color .15s ease, border-color .15s ease, background-color .15s ease; }
-  .attribution-chip svg { flex: none; }
+  .attribution-chip :global(.icon) { flex: none; }
   .attribution-chip:hover:not(:disabled), .attribution-chip:focus-visible { color: var(--accent); border-color: var(--accent-border); background: var(--accent-tint); }
   .attribution-chip:disabled { cursor: default; opacity: .6; }
   .plan, .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

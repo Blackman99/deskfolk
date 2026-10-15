@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { pickWorkspaceFolder, workspacePickerAvailable, type HostTreePage } from './pick-workspace.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 
@@ -114,9 +115,7 @@
 		disabled={busy}
 		onclick={() => void choose()}
 	>
-		<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-		</svg>
+		<Icon name="folder" />
 		<span class="mono">{display || emptyLabel}</span>
 	</button>
 	<button
@@ -182,7 +181,7 @@
 		transition-property: var(--transition-props);
 	}
 
-	.workspace-picker-path svg {
+	.workspace-picker-path :global(.icon) {
 		flex-shrink: 0;
 		color: var(--muted);
 	}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	/** A line from the app or about a turn (a stop, a failure, a hand-over's card) in the transcript. */
 	import MessageAttachments from './MessageAttachments.svelte';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
@@ -135,17 +136,11 @@
 				<div class="system-msg-content flex items-center gap-2">
 					{#if isUnreachable}
 						<span class="system-msg-icon is-unreachable" aria-hidden="true">
-							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<circle cx="12" cy="12" r="10" />
-								<line x1="12" y1="8" x2="12" y2="12" />
-								<line x1="12" y1="16" x2="12.01" y2="16" />
-							</svg>
+							<Icon name="alert-circle" />
 						</span>
 					{:else if isInterrupt}
 						<span class="system-msg-icon is-interrupt" aria-hidden="true">
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<rect x="6" y="6" width="12" height="12" rx="2" />
-							</svg>
+							<Icon name="square" size={12} />
 						</span>
 					{/if}
 					<span class="body">{singleMsg.message.body}</span>
@@ -184,9 +179,7 @@
 							onmousedown={(e) => e.stopPropagation()}
 							onclick={() => void runtime.continueInterrupt(singleMsg.message.id, stage.selected?.id)}
 						>
-							<svg class="continue-icon" viewBox="0 0 24 24" width="11" height="11" fill="currentColor">
-								<polygon points="6 4 20 12 6 20 6 4" />
-							</svg>
+							<Icon name="play" size={12} class="continue-icon" />
 							<span>{t.stream.continueInterrupt}</span>
 						</button>
 					</div>
@@ -497,7 +490,7 @@
 		cursor: default;
 	}
 
-	.btn-continue-turn .continue-icon {
+	.btn-continue-turn :global(.continue-icon) {
 		flex-shrink: 0;
 	}
 

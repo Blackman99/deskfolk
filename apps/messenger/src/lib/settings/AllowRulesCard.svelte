@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	/**
 	 * Where you pressed Always allow (ADR 0087): one row per rule, what it lets every Bot do and
 	 * where, each one removable. A removed rule asks again on the next card there.
@@ -42,10 +43,7 @@
 	<SettingsCardHeader title={t.settings.allowRulesTitle} subtitle={t.settings.allowRulesSubtitle}>
 		{#snippet icon()}
 			<div class="settings-header-icon-wrap" aria-hidden="true">
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-					<polyline points="9 12 11 14 15 10"></polyline>
-				</svg>
+				<Icon name="shield-check" />
 			</div>
 		{/snippet}
 	</SettingsCardHeader>

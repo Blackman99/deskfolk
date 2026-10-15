@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	/**
 	 * Download for a file seen remotely. Its bytes cross only when asked for, unless the whole file
 	 * is already here, and leaving the file cancels them, as it cancels a preview's read. On a phone
@@ -104,7 +105,7 @@
 		{:else if busy}
 			<span class="file-download-ring" aria-hidden="true"></span>
 		{:else}
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>
+			<Icon name="download" size={20} />
 		{/if}
 	</button>
 {:else}
@@ -201,11 +202,6 @@
 		background: transparent;
 		color: var(--ink-secondary);
 		cursor: pointer;
-	}
-
-	.file-download-icon svg {
-		width: var(--file-download-glyph, 20px);
-		height: var(--file-download-glyph, 20px);
 	}
 
 	.file-download-icon:hover:not(:disabled),

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Bot } from '@real-bot/protocol';
 	import { backdropClick } from '../click-outside.ts';
 	import MultiSelect from '../MultiSelect.svelte';
@@ -106,7 +107,7 @@
 				aria-label={t.common.back}
 				onclick={onClose}
 			>
-				<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<Icon name="chevron-left" />
 			</button>
 			<h2>{t.sidebar.addGroup}</h2>
 			<button type="button" class="modal-close" title={t.common.close} onclick={onClose}>✕</button>

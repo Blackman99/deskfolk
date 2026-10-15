@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { untrack } from 'svelte';
 	import { isOutside } from '../click-outside.ts';
 	import { roveFocus } from '../menu-roving.ts';
@@ -170,12 +171,7 @@
 			aria-current={current.routines ? 'true' : undefined}
 			onclick={() => choose(onOpenRoutines)}
 		>
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<rect x="3" y="4" width="18" height="17" rx="2"></rect>
-				<line x1="3" y1="9" x2="21" y2="9"></line>
-				<line x1="8" y1="2" x2="8" y2="6"></line>
-				<line x1="16" y1="2" x2="16" y2="6"></line>
-			</svg>
+			<Icon name="calendar" />
 			<span>{pages ? t.calendar.open : t.routines.title}</span>
 		</button>
 		<button
@@ -185,10 +181,7 @@
 			aria-current={current.spend ? 'true' : undefined}
 			onclick={() => choose(onOpenSpend)}
 		>
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<line x1="12" y1="1" x2="12" y2="23"></line>
-				<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-			</svg>
+			<Icon name="dollar" />
 			<span>{spendCopy.open}</span>
 		</button>
 		{#if onOpenUsage}
@@ -200,10 +193,7 @@
 				data-tools-usage
 				onclick={() => choose(onOpenUsage)}
 			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<path d="M12 14l4-4"></path>
-					<path d="M3.34 19a10 10 0 1 1 17.32 0"></path>
-				</svg>
+				<Icon name="gauge" />
 				<span>{t.usage.open}</span>
 			</button>
 		{/if}
@@ -214,10 +204,7 @@
 			aria-current={current.terminal ? 'true' : undefined}
 			onclick={() => choose(onOpenTerminal)}
 		>
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<polyline points="4 17 10 11 4 5"></polyline>
-				<line x1="12" y1="19" x2="20" y2="19"></line>
-			</svg>
+			<Icon name="terminal" />
 			<span>{pages ? t.terminal.title : t.terminal.newTab}</span>
 		</button>
 		{#if onOpenScreen}
@@ -228,11 +215,7 @@
 				aria-current={current.screen ? 'true' : undefined}
 				onclick={() => choose(onOpenScreen)}
 			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<rect x="2" y="3" width="20" height="14" rx="2"></rect>
-					<line x1="8" y1="21" x2="16" y2="21"></line>
-					<line x1="12" y1="17" x2="12" y2="21"></line>
-				</svg>
+				<Icon name="monitor" />
 				<span>{screenCopy(t, screenHost).title}</span>
 			</button>
 		{/if}
@@ -245,14 +228,7 @@
 				data-tools-roles
 				onclick={() => choose(onOpenRoles)}
 			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<circle cx="5" cy="6" r="2"></circle>
-					<circle cx="19" cy="6" r="2"></circle>
-					<circle cx="12" cy="18" r="2"></circle>
-					<path d="M7 6h10"></path>
-					<path d="M6 8l5 8"></path>
-					<path d="M18 8l-5 8"></path>
-				</svg>
+				<Icon name="nodes" />
 				<span>{t.routing.tab}</span>
 			</button>
 		{/if}
@@ -264,11 +240,7 @@
 			aria-current={current.archived ? 'true' : undefined}
 			onclick={() => choose(onOpenArchived)}
 		>
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<polyline points="21 8 21 21 3 21 3 8"></polyline>
-				<rect x="1" y="3" width="22" height="5"></rect>
-				<line x1="10" y1="12" x2="14" y2="12"></line>
-			</svg>
+			<Icon name="archive" />
 			<span>{t.sidebar.archivedSessions}</span>
 			{#if archivedCount > 0}
 				<span class="tools-menu-badge">{archivedCount}</span>
@@ -323,7 +295,7 @@
 		cursor: default;
 	}
 
-	.tools-menu-item svg {
+	.tools-menu-item :global(.icon) {
 		flex-shrink: 0;
 		color: var(--muted);
 	}

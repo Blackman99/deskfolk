@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Skill } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import Switch from '../Switch.svelte';
@@ -40,10 +41,7 @@
 			title={t.sidebar.skillAdd}
 			aria-label={t.sidebar.skillAdd}
 		>
-			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<line x1="12" y1="5" x2="12" y2="19"></line>
-				<line x1="5" y1="12" x2="19" y2="12"></line>
-			</svg>
+			<Icon name="plus" size={12} />
 			<span>{t.sidebar.skillAdd}</span>
 		</button>
 	</div>
@@ -54,16 +52,11 @@
 		{#if profileSkills.length === 0}
 			<div class="skill-empty-card">
 				<div class="skill-empty-icon" aria-hidden="true">
-					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-					</svg>
+					<Icon name="zap" size={32} />
 				</div>
 				<p class="skill-empty-text">{t.sidebar.skillsEmpty}</p>
 				<button type="button" class="btn-primary skill-empty-add-btn" onclick={openAddSkill}>
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<line x1="12" y1="5" x2="12" y2="19"></line>
-						<line x1="5" y1="12" x2="19" y2="12"></line>
-					</svg>
+					<Icon name="plus" size={12} />
 					<span>{t.sidebar.skillAdd}</span>
 				</button>
 			</div>
@@ -77,9 +70,7 @@
 					onclick={() => openEditSkill(skill.id)}
 				>
 					<div class="skill-row-icon" class:is-disabled={!skill.enabled}>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-						</svg>
+						<Icon name="zap" />
 					</div>
 					<div class="skill-row-content">
 						<div class="skill-row-title-line">
@@ -121,9 +112,7 @@
 						title={t.sidebar.skillEdit}
 						onclick={() => openEditSkill(skill.id)}
 					>
-						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-						</svg>
+						<Icon name="edit" />
 					</button>
 					<button
 						type="button"
@@ -132,10 +121,7 @@
 						title={t.sidebar.skillDelete}
 						onclick={() => openDeleteSkillConfirm(skill.id)}
 					>
-						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<polyline points="3 6 5 6 21 6"></polyline>
-							<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-						</svg>
+						<Icon name="trash" />
 					</button>
 				</div>
 				<div class="skill-mobile-toggle">
@@ -443,9 +429,9 @@
 			border-radius: var(--radius-md);
 		}
 
-		.skill-row-icon svg {
-			width: 18px;
-			height: 18px;
+		.skill-row-icon :global(.icon) {
+			width: 20px;
+			height: 20px;
 		}
 
 		.skill-name {

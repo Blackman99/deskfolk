@@ -350,11 +350,7 @@
 								toggleMore(tab.id, event.currentTarget);
 							}}
 						>
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-								<circle cx="5" cy="12" r="2"></circle>
-								<circle cx="12" cy="12" r="2"></circle>
-								<circle cx="19" cy="12" r="2"></circle>
-							</svg>
+							<Icon name="more" size={12} />
 						</button>
 					{/if}
 					<button
@@ -381,7 +377,7 @@
 				aria-controls={newTabOpen ? `wb-new-${leaf.id}` : undefined}
 				title={t.pane.newTab}
 				onclick={toggleNewTab}
-				onkeydown={onNewTabKey}><Icon name="plus" size={14} /></button
+				onkeydown={onNewTabKey}><Icon name="plus" /></button
 			>
 		{/if}
 		{#if onMenu}
@@ -390,7 +386,7 @@
 				class="wb-pane-menu"
 				aria-haspopup="menu"
 				aria-label={t.pane.title}
-				onclick={(event) => onMenu(event, leaf.id)}><Icon name="more" size={14} /></button
+				onclick={(event) => onMenu(event, leaf.id)}><Icon name="more" /></button
 			>
 		{/if}
 		{#if leaf.tabs.length === 0 && onClosePane}
@@ -418,10 +414,7 @@
 				onkeydown={onMenuKey}
 			>
 				<label class="wb-new-query">
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-						<circle cx="11" cy="11" r="7"></circle>
-						<line x1="16.5" y1="16.5" x2="21" y2="21"></line>
-					</svg>
+					<Icon name="search" />
 					<input
 						bind:this={newTabQuery}
 						type="search"
@@ -492,10 +485,7 @@
 						onkeydown={(event) => onMenuKey(event, emptyList, emptyQuery)}
 					>
 						<label class="wb-new-query">
-							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-								<circle cx="11" cy="11" r="7"></circle>
-								<line x1="16.5" y1="16.5" x2="21" y2="21"></line>
-							</svg>
+							<Icon name="search" />
 							<input
 								bind:this={emptyQuery}
 								type="search"
@@ -834,7 +824,7 @@
 		color: var(--muted);
 		box-shadow: inset 0 0 0 1px var(--line);
 	}
-	.wb-new-query svg {
+	.wb-new-query :global(.icon) {
 		flex: 0 0 auto;
 	}
 	.wb-new-query input {

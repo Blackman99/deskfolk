@@ -74,7 +74,7 @@
 		<article class="msg is-approval" class:is-pending={pending}>
 			<!-- The head says whose request it is, and while it waits, that it waits on you. -->
 			<div class="who approval-head">
-				{#if pending}<Icon name="shield-check" size={14} />{/if}
+				{#if pending}<Icon name="shield-check" size={12} />{/if}
 				<span class="approval-label">{pending ? t.stream.waitingApproval : t.stream.approval}</span>
 				<span class="approval-who">{stage.who(singleMsg.message)}</span>
 			</div>
@@ -139,7 +139,7 @@
 				{/if}
 			{:else if card}
 				<p class="muted approval-status">
-					{#if card.status === 'allowed_once'}<Icon name="check" size={14} />{:else if card.status === 'denied'}<Icon name="x" size={14} />{/if}
+					{#if card.status === 'allowed_once'}<Icon name="check" size={12} />{:else if card.status === 'denied'}<Icon name="x" size={12} />{/if}
 					{approvalStatusCopy(card.status)}
 				</p>
 			{/if}

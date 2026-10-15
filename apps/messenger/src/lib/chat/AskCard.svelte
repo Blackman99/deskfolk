@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Message } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { AskDraftRecord } from '../notifications/types.ts';
@@ -79,9 +80,7 @@
 					<span class="ask-mark" class:is-radio={!multi} aria-hidden="true">
 						{#if on}
 							{#if multi}
-								<svg viewBox="0 0 12 12" width="10" height="10">
-									<path d="M2.5 6.2 5 8.6 9.5 3.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-								</svg>
+								<Icon name="check" size={12} />
 							{:else}
 								<span class="ask-dot"></span>
 							{/if}

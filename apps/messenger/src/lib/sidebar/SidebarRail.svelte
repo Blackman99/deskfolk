@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import BrandMark from '../BrandMark.svelte';
@@ -182,11 +183,7 @@
 		aria-expanded="false"
 		onclick={onExpand}
 	>
-		<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<rect x="3" y="3" width="18" height="18" rx="2"></rect>
-			<path d="M9 3v18"></path>
-			<path d="m14 9 3 3-3 3"></path>
-		</svg>
+		<Icon name="sidebar-open" />
 	</RailTooltip>
 	<RailTooltip
 		class="rail-action rail-search"
@@ -194,10 +191,7 @@
 		describedBy="rail-tip-search"
 		onclick={onOpenSearch}
 	>
-		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<circle cx="11" cy="11" r="8"></circle>
-			<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-		</svg>
+		<Icon name="search" />
 	</RailTooltip>
 	<RailTooltip
 		class="rail-action rail-working {workingOnly ? 'is-active' : ''}"
@@ -207,9 +201,7 @@
 		aria-pressed={workingOnly}
 		onclick={toggleWorkingOnly}
 	>
-		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-		</svg>
+		<Icon name="activity" />
 	</RailTooltip>
 	<div class="rail-list">
 		{#each sections as section, index (index)}
@@ -234,12 +226,7 @@
 					{#if isFileDropSession(session)}
 						<span class="row-avatar size-md" aria-hidden="true">
 							<span class="row-avatar-bot rail-file-drop">
-								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-									<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-									<polyline points="14 2 14 8 20 8"></polyline>
-									<line x1="12" y1="18" x2="12" y2="12"></line>
-									<polyline points="9 15 12 18 15 15"></polyline>
-								</svg>
+								<Icon name="file-down" />
 							</span>
 						</span>
 					{:else}
@@ -265,9 +252,7 @@
 			aria-expanded={workspaceOpen}
 			onclick={onToggleWorkspace}
 		>
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-			</svg>
+			<Icon name="folder" filled={workspaceOpen} />
 		</RailTooltip>
 		<RailTooltip
 			bind:this={toolsTip}
@@ -280,12 +265,7 @@
 			onkeydown={onToolsKeyDown}
 			onclick={() => (toolsMenuOpen = !toolsMenuOpen)}
 		>
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
-				<rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
-				<rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
-				<rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
-			</svg>
+			<Icon name="grid" filled={toolsMenuOpen} />
 		</RailTooltip>
 		<RailTooltip
 			class="rail-action rail-settings {runtime.settingsOpen ? 'is-active' : ''}"
@@ -293,10 +273,7 @@
 			describedBy="rail-tip-settings"
 			onclick={onOpenSettings}
 		>
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<circle cx="12" cy="12" r="3"></circle>
-				<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-			</svg>
+			<Icon name="settings" filled={runtime.settingsOpen} />
 			{#if updateChecker.updateVisible}
 				<span class="rail-update-dot" aria-hidden="true"></span>
 			{/if}

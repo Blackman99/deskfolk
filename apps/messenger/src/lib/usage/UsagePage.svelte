@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { localeTag } from '../locale-tag.ts';
@@ -33,9 +34,7 @@
 
 <div class="usage-page-head">
 	<button type="button" class="usage-page-back" title={t.usage.back} aria-label={t.usage.back} onclick={onBack}>
-		<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<polyline points="15 18 9 12 15 6"></polyline>
-		</svg>
+		<Icon name="chevron-left" size={20} />
 	</button>
 	<h2 class="usage-page-title">{t.usage.title}</h2>
 	<div class="usage-page-spacer" aria-hidden="true"></div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import type { Attachment } from '@real-bot/protocol';
 	import { originalSizeForBlob } from '../api.ts';
@@ -611,12 +612,12 @@
 			{#if saving}
 				<span class="msg-image-save-ring" aria-hidden="true"></span>
 			{:else}
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>
+				<Icon name="download" />
 			{/if}
 		</button>
 	{/if}
 	<button type="button" class="msg-image-close" aria-label={t.common.close} onclick={requestClose}>
-		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+		<Icon name="x" />
 	</button>
 	{#if offerOriginal !== null && shown}
 		<button

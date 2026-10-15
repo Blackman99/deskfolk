@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { USER_MEMBER, type TaskTraceNode, type Ticket } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { buildCitedPathTree, citedBundleName, countCitedFiles } from './artifact-tree.ts';
@@ -136,22 +137,22 @@
 				<span class="trace-route-flags">
 					{#if route.review?.blamedModel}
 						<span class="trace-route-flag is-blamed" title={t.routes.filterBlamed}>
-							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+							<Icon name="alert-triangle" size={12} />
 						</span>
 					{/if}
 					{#if route.feedback.length > 0}
 						<span class="trace-route-flag is-feedback" title={t.routes.feedbackCount(route.feedback.length)}>
-							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+							<Icon name="message" size={12} />
 							<span class="mono">{route.feedback.length}</span>
 						</span>
 					{/if}
 					{#if route.failReason}
 						<span class="trace-route-flag is-failed" title={route.failReason}>
-							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+							<Icon name="alert-circle" size={12} />
 						</span>
 					{/if}
 				</span>
-				<svg class="trace-route-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+				<Icon name="chevron-down" size={12} class="trace-route-caret" />
 			</button>
 		</div>
 	{/if}
@@ -169,14 +170,9 @@
 			>
 				<div class="file-icon-box text-accent flex items-center" aria-hidden="true">
 					{#if isBundle}
-						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-						</svg>
+						<Icon name="folder" />
 					{:else}
-						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-							<polyline points="14 2 14 8 20 8"></polyline>
-						</svg>
+						<Icon name="file" />
 					{/if}
 				</div>
 				<div class="file-meta-col flex flex-col min-w-0 flex-1">
@@ -462,13 +458,13 @@
 	.trace-route-flag.is-feedback { color: var(--accent); }
 	.trace-route-flag.is-failed { color: var(--danger-text); }
 
-	.trace-route-caret {
+	.trace-route-btn :global(.trace-route-caret) {
 		flex: none;
 		color: var(--muted);
 		transition: transform 0.15s ease;
 	}
 
-	.trace-route-btn.is-open .trace-route-caret {
+	.trace-route-btn.is-open :global(.trace-route-caret) {
 		transform: rotate(180deg);
 	}
 

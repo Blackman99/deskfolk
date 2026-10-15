@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Bot } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -32,12 +33,12 @@
 			</div>
 			{#if bot.archived_at}
 				<button type="button" class="btn-secondary action-btn" onclick={() => void restoreProfile()}>
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+					<Icon name="rotate-ccw" />
 					<span>{t.sidebar.restore}</span>
 				</button>
 			{:else}
 				<button type="button" class="btn-secondary action-btn" onclick={() => void archiveProfile()}>
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+					<Icon name="archive" />
 					<span>{t.sidebar.archive}</span>
 				</button>
 			{/if}
@@ -72,7 +73,7 @@
 						class="btn-secondary btn-history-clear action-btn"
 						onclick={onClearHistory}
 					>
-						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+						<Icon name="rotate-ccw" />
 						<span>{t.detail.clearHistory}</span>
 					</button>
 				</div>
@@ -84,7 +85,7 @@
 					<span class="action-list-desc">{t.sidebar.deleteBody}</span>
 				</div>
 				<button type="button" class="deny action-btn" onclick={onDeleteBot}>
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+					<Icon name="trash" />
 					<span>{t.sidebar.delete}</span>
 				</button>
 			</div>

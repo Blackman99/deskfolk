@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { spendCopyFor } from '../spend/spend-copy.ts';
@@ -35,10 +36,7 @@
 	onclick={() => void workbench.openNewTerminal(leafId)}
 >
 	<span class="wb-menu-mark" aria-hidden="true">
-		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<polyline points="4 17 10 11 4 5"></polyline>
-			<line x1="12" y1="19" x2="20" y2="19"></line>
-		</svg>
+		<Icon name="terminal" />
 	</span>
 	<span class="wb-menu-name">{t.terminal.newTab}</span>
 </button>
@@ -50,11 +48,7 @@
 	onclick={() => workbench.openInPane(leafId, { kind: 'workspace', selected: null })}
 >
 	<span class="wb-menu-mark is-quiet" aria-hidden="true">
-		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<path d="M3 7.5 12 3l9 4.5-9 4.5L3 7.5Z"></path>
-			<path d="M3 12l9 4.5 9-4.5"></path>
-			<path d="M3 16.5 12 21l9-4.5"></path>
-		</svg>
+		<Icon name="layers" />
 	</span>
 	<span class="wb-menu-name">{t.sidebar.workspace}</span>
 </button>
@@ -65,12 +59,7 @@
 	onclick={() => workbench.openInPane(leafId, { kind: 'routines' })}
 >
 	<span class="wb-menu-mark is-quiet" aria-hidden="true">
-		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<rect x="3" y="5" width="18" height="16" rx="2"></rect>
-			<line x1="3" y1="10" x2="21" y2="10"></line>
-			<line x1="8" y1="3" x2="8" y2="7"></line>
-			<line x1="16" y1="3" x2="16" y2="7"></line>
-		</svg>
+		<Icon name="calendar" />
 	</span>
 	<span class="wb-menu-name">{t.routines.title}</span>
 </button>
@@ -81,10 +70,7 @@
 	onclick={() => workbench.openInPane(leafId, { kind: 'spend' })}
 >
 	<span class="wb-menu-mark is-quiet" aria-hidden="true">
-		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<line x1="12" y1="1" x2="12" y2="23"></line>
-			<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-		</svg>
+		<Icon name="dollar" />
 	</span>
 	<span class="wb-menu-name">{spendCopyFor(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh').title}</span>
 </button>
@@ -95,10 +81,7 @@
 	onclick={() => workbench.openInPane(leafId, { kind: 'usage' })}
 >
 	<span class="wb-menu-mark is-quiet" aria-hidden="true">
-		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<path d="M12 14l4-4"></path>
-			<path d="M3.34 19a10 10 0 1 1 17.32 0"></path>
-		</svg>
+		<Icon name="gauge" />
 	</span>
 	<span class="wb-menu-name">{t.usage.title}</span>
 </button>
@@ -110,14 +93,7 @@
 	onclick={() => workbench.openInPane(leafId, { kind: 'roles' })}
 >
 	<span class="wb-menu-mark is-quiet" aria-hidden="true">
-		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<circle cx="5" cy="6" r="2"></circle>
-			<circle cx="19" cy="6" r="2"></circle>
-			<circle cx="12" cy="18" r="2"></circle>
-			<path d="M7 6h10"></path>
-			<path d="M6 8l5 8"></path>
-			<path d="M18 8l-5 8"></path>
-		</svg>
+		<Icon name="nodes" />
 	</span>
 	<span class="wb-menu-name">{t.routing.tab}</span>
 </button>
@@ -131,10 +107,7 @@
 		onclick={() => workbench.openInPane(leafId, { kind: 'terminal', terminalId: row.id })}
 	>
 		<span class="wb-menu-mark is-quiet" aria-hidden="true">
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<polyline points="4 17 10 11 4 5"></polyline>
-				<line x1="12" y1="19" x2="20" y2="19"></line>
-			</svg>
+			<Icon name="terminal" />
 		</span>
 		<span class="wb-menu-copy">
 			<span class="wb-menu-name">{workbench.terminalName(row)}</span>

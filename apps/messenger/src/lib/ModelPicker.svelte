@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from './Icon.svelte';
 	import { tick } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import type { Copy } from './copy.ts';
@@ -389,7 +390,7 @@
 			{/if}
 		</span>
 		<span class="real-select-arrow" aria-hidden="true">
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+			<Icon name="chevron-down" size={12} />
 		</span>
 	</button>
 
@@ -423,14 +424,14 @@
 				{#if row.detail}<span class="mp-row-detail">{row.detail}</span>{/if}
 			</span>
 			{#if row.value === value}
-				<svg class="mp-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+				<Icon name="check" class="mp-check" />
 			{/if}
 		</li>
 	{/snippet}
 
 	{#snippet searchField(placeholderText: string)}
 		<div class="mp-search">
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+			<Icon name="search" />
 			<input
 				bind:this={searchEl}
 				bind:value={query}
@@ -552,13 +553,13 @@
 				<header class="mp-sheet-head">
 					{#if sheetDepth > 0}
 						<button type="button" class="mp-sheet-icon" aria-label={t.modelPicker.back} onclick={sheetBack}>
-							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+							<Icon name="chevron-left" size={20} />
 						</button>
 					{/if}
 					{#if sheetAt?.mark && sheetGroup === null}<ModelSourceMark source={sheetAt.mark} tile />{/if}
 					<h2 class="mp-sheet-title">{sheetTitle}</h2>
 					<button type="button" class="mp-sheet-icon" aria-label={t.modelPicker.close} onclick={() => close()}>
-						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+						<Icon name="x" size={20} />
 					</button>
 				</header>
 				{@render searchField(sheetAt ? t.modelPicker.searchIn(sheetGroupAt?.label ?? sheetAt.label) : t.modelPicker.search)}
@@ -579,7 +580,7 @@
 												<span class="mp-row-label">{source.label}</span>
 												<span class="mp-row-detail">{source.note ?? t.modelPicker.count(sourceCount(source))}{#if picked?.source?.key === source.key}{' · '}{picked.row.label}{/if}</span>
 											</span>
-											<svg class="mp-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+											<Icon name="chevron-right" class="mp-chevron" />
 										</button>
 									</li>
 								{/each}
@@ -598,7 +599,7 @@
 												<span class="mp-row-label">{group.label ?? sheetAt.label}</span>
 												<span class="mp-row-detail">{t.modelPicker.count(group.rows.length)}{#if picked?.group?.key === group.key && picked.source?.key === sheetAt.key}{' · '}{picked.row.label}{/if}</span>
 											</span>
-											<svg class="mp-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+											<Icon name="chevron-right" class="mp-chevron" />
 										</button>
 									</li>
 								{/each}
@@ -963,7 +964,7 @@
 		color: var(--muted);
 	}
 
-	.mp-check {
+	:global(.icon.mp-check) {
 		flex: none;
 		color: var(--accent);
 	}
@@ -1171,7 +1172,7 @@
 		height: 28px;
 	}
 
-	.mp-chevron {
+	:global(.icon.mp-chevron) {
 		flex: none;
 		color: var(--muted);
 	}

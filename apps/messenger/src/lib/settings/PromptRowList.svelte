@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import type { Locale, PromptSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
@@ -37,7 +38,7 @@
 					{#if failures > 0}
 						<span class="prompts-chip is-warn">{c.parseFailures(failures)}</span>
 					{/if}
-					<svg class="prompts-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+					<Icon name="chevron-right" class="prompts-chevron" />
 				</span>
 			</button>
 		</li>
@@ -122,13 +123,13 @@
 		gap: 6px;
 	}
 
-	.prompts-chevron {
+	.prompts-row :global(.prompts-chevron) {
 		flex: none;
 		color: var(--muted);
 		opacity: 0.6;
 	}
 
-	.prompts-row:hover .prompts-chevron {
+	.prompts-row:hover :global(.prompts-chevron) {
 		opacity: 1;
 	}
 

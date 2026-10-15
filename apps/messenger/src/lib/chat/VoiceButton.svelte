@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { ComposerVoice } from './composer-voice.svelte.ts';
 
@@ -29,11 +30,11 @@
 	onclick={() => void voice.toggle()}
 >
 	{#if voice.phase === 'transcribing'}
-		<svg class="voice-spinner" aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"></path></svg>
+		<Icon name="spinner" class="voice-spinner" />
 	{:else if listening}
-		<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.5"></rect></svg>
+		<Icon name="stop" />
 	{:else}
-		<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><line x1="12" y1="18" x2="12" y2="22"></line></svg>
+		<Icon name="mic" size={20} />
 	{/if}
 </button>
 
@@ -99,7 +100,7 @@
 		pointer-events: none;
 	}
 
-	.voice-spinner {
+	.voice-btn :global(.voice-spinner) {
 		animation: voiceSpin 0.9s linear infinite;
 	}
 
@@ -125,7 +126,7 @@
 			transition: none;
 		}
 
-		.voice-spinner {
+		.voice-btn :global(.voice-spinner) {
 			animation: none;
 		}
 	}

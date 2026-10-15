@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { tick, untrack } from 'svelte';
 	import type { Bot, Routine } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
@@ -195,7 +196,7 @@
 <section class="routine-section" aria-label={t.routines.title}>
 	{#if routines.length > 0}
 		<div class="routine-mobile-zone-hint">
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+			<Icon name="clock" />
 			<span>{t.routines.zone}</span>
 		</div>
 	{/if}
@@ -204,15 +205,10 @@
 		<div class="routine-empty-card">
 			<EmptyState size="inline" level={3} title={t.routines.empty} hint={t.routines.emptyHint}>
 				{#snippet badge()}
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<rect x="3" y="4" width="18" height="18" rx="2"></rect>
-						<line x1="16" y1="2" x2="16" y2="6"></line>
-						<line x1="8" y1="2" x2="8" y2="6"></line>
-						<line x1="3" y1="10" x2="21" y2="10"></line>
-					</svg>
+					<Icon name="calendar" />
 				{/snippet}
 				<button type="button" class="btn-primary routine-empty-btn" disabled={disabled} onclick={() => open()}>
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+					<Icon name="plus" size={12} />
 					<span>{t.routines.add}</span>
 				</button>
 			</EmptyState>
@@ -233,7 +229,7 @@
 								{/if}
 							</span>
 							<span class="routine-copy-sub">
-								<svg class="routine-sub-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+								<Icon name="repeat" size={12} class="routine-sub-icon" />
 								<span>{routineRepeatLabel(row.schedule, t)}</span>
 							</span>
 						</span>
@@ -252,7 +248,7 @@
 						/>
 					</Switch>
 					<button type="button" class="routine-remove" disabled={disabled} title={t.routines.remove} aria-label={`${t.routines.remove}: ${row.title}`} onclick={() => { deleting = row; failure = ''; }}>
-						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+						<Icon name="trash" />
 					</button>
 				</li>
 				{#if editing === row.id && !onPhone()}
@@ -265,7 +261,7 @@
 		{@render inlineEditor()}
 	{:else if routines.length > 0}
 		<button type="button" class="routine-add" disabled={disabled} onclick={() => open()}>
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+			<Icon name="plus" size={12} />
 			<span>{t.routines.add}</span>
 		</button>
 	{/if}
@@ -278,7 +274,7 @@
 	{#if notice && !editing}<p class="routine-hint" role="status">{notice}</p>{/if}
 
 	<div class="routine-notes">
-		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+		<Icon name="info" />
 		<div>
 			<p>{t.routines.zone}</p>
 			<p>{t.routines.availability}</p>
@@ -309,7 +305,7 @@
 	>
 		<div class="routine-page-head">
 			<button type="button" class="routine-page-back" aria-label={t.common.back} disabled={busy} onclick={close}>
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+				<Icon name="chevron-left" size={20} />
 			</button>
 			<div class="routine-page-titles">
 				<h3 tabindex="-1">{baseline ? t.routines.edit : t.routines.add}</h3>
@@ -374,12 +370,12 @@
 			<div class="routine-seg" role="radiogroup" aria-label={t.routines.frequency}>
 				<label class:is-on={draft.kind === 'daily'}>
 					<input type="radio" name="routine-frequency" value="daily" bind:group={draft.kind} />
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+					<Icon name="clock" />
 					<span>{t.routines.daily}</span>
 				</label>
 				<label class:is-on={draft.kind === 'weekly'}>
 					<input type="radio" name="routine-frequency" value="weekly" bind:group={draft.kind} />
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+					<Icon name="calendar" />
 					<span>{t.routines.weekly}</span>
 				</label>
 			</div>
@@ -418,7 +414,7 @@
 			<div class="routine-time-row">
 				<div class="routine-time-info">
 					<label for="routine-time" class="routine-card-title routine-time-title">
-						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+						<Icon name="clock" />
 						<span>{t.routines.time}</span>
 					</label>
 					<span class="routine-time-zone-hint">{t.routines.zone}</span>
@@ -459,7 +455,7 @@
 
 	<!-- Group 5: 运行环境提示 -->
 	<div class="routine-notice-card">
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+		<Icon name="info" />
 		<p>{t.routines.availability}</p>
 	</div>
 
@@ -472,10 +468,7 @@
 				disabled={disabled}
 				onclick={() => { deleting = baseline; failure = ''; }}
 			>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<polyline points="3 6 5 6 21 6"></polyline>
-					<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-				</svg>
+				<Icon name="trash" />
 				<span>{t.routines.remove}</span>
 			</button>
 		</div>
@@ -509,7 +502,7 @@
 	.routine-badge-paused { flex-shrink: 0; font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: var(--radius-full); background: var(--sidebar-bg); border: 1px solid var(--line); color: var(--muted); line-height: 1.3; }
 	.routine-copy-sub { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--muted); font-size: 12px; }
 	.routine-copy-sub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.routine-sub-icon { opacity: 0.7; flex-shrink: 0; }
+	.routine-copy-sub :global(.routine-sub-icon) { opacity: 0.7; flex-shrink: 0; }
 	.routine-row :global(.routine-toggle) { flex-shrink: 0; }
 	.routine-remove { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--muted); cursor: pointer; transition: color 0.15s, background-color 0.15s; }
 	.routine-remove:hover:not(:disabled) { color: var(--danger-text); background: var(--danger-bg); }
@@ -520,7 +513,7 @@
 	.routine-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 	.routine-notes { display: flex; align-items: flex-start; gap: 8px; padding: 2px 4px 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
-	.routine-notes svg { flex-shrink: 0; margin-top: 3px; opacity: 0.8; }
+	.routine-notes :global(.icon) { flex-shrink: 0; margin-top: 3px; opacity: 0.8; }
 	.routine-notes p { margin: 0; }
 
 	/* An edit hangs off its row, so the two read as one open card. */
@@ -568,7 +561,7 @@
 	.routine-status-card { padding: 12px 14px; }
 	.routine-status-card :global(.editor-switch-row) { min-height: 44px; }
 	.routine-notice-card { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--sidebar-bg); border: 1px solid var(--line-subtle, var(--line)); color: var(--muted); font-size: 12px; line-height: 1.5; }
-	.routine-notice-card svg { flex-shrink: 0; margin-top: 1px; }
+	.routine-notice-card :global(.icon) { flex-shrink: 0; margin-top: 1px; }
 	.routine-notice-card p { margin: 0; }
 
 	.routine-danger-card { padding: 4px 0; }

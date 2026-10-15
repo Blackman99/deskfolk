@@ -48,6 +48,7 @@
 
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
+	import Icon from '../Icon.svelte';
 	import { holdFullscreenPreview } from '../overlays/fullscreen-preview.ts';
 	import type { Annotation, HtmlElementAnchor } from '@real-bot/protocol';
 	import { HTML_PREVIEW_SANDBOX, htmlPreviewBlob, pageCspNonce } from '../overlays/artifacts.ts';
@@ -546,18 +547,7 @@
 					data-viewport-device={option}
 					onclick={() => pickDevice(option)}
 				>
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						{#if option === 'desktop'}
-							<rect x="4" y="4" width="16" height="11" rx="1.5"></rect>
-							<path d="M2 19h20"></path>
-						{:else if option === 'tablet'}
-							<rect x="5" y="2" width="14" height="20" rx="2"></rect>
-							<path d="M11 18h2"></path>
-						{:else}
-							<rect x="7" y="2" width="10" height="20" rx="2.5"></rect>
-							<path d="M11 5h2"></path>
-						{/if}
-					</svg>
+					<Icon name={option === 'desktop' ? 'monitor' : option === 'tablet' ? 'tablet' : 'smartphone'} size={16} />
 					<span class="html-viewport-name">{labels.viewport[option]}</span>
 				</button>
 			{/each}
@@ -575,19 +565,7 @@
 				data-html-enlarge
 				onclick={() => (enlarged = !enlarged)}
 			>
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					{#if enlarged}
-						<path d="M9 4v5H4"></path>
-						<path d="M15 4v5h5"></path>
-						<path d="M9 20v-5H4"></path>
-						<path d="M15 20v-5h5"></path>
-					{:else}
-						<path d="M4 9V4h5"></path>
-						<path d="M20 9V4h-5"></path>
-						<path d="M4 15v5h5"></path>
-						<path d="M20 15v5h-5"></path>
-					{/if}
-				</svg>
+				<Icon name={enlarged ? 'minimize' : 'maximize'} size={16} />
 			</button>
 		</div>
 	</div>
@@ -891,7 +869,7 @@
 		line-height: 1;
 		cursor: pointer;
 	}
-	.html-viewport-option svg {
+	.html-viewport-option :global(.icon) {
 		flex: none;
 	}
 	.html-viewport-option:hover {

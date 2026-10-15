@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import SettingsCard from './SettingsCard.svelte';
 	import BrandMark from '../BrandMark.svelte';
 	import type { Copy } from '../copy.ts';
@@ -50,10 +51,7 @@
 						onclick={() => void updateChecker.checkNow()}
 					>
 						{#if updateChecker.status === 'checking'}
-							<svg class="spin-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-								<circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
-								<path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"></path>
-							</svg>
+							<Icon name="spinner" class="spin-icon" />
 						{/if}
 						<span>{updateChecker.status === 'checking' ? t.settings.checkingUpdates : t.settings.checkUpdates}</span>
 					</button>
@@ -227,7 +225,7 @@
 		cursor: not-allowed;
 	}
 
-	.spin-icon {
+	.btn-check-update :global(.spin-icon) {
 		animation: spin 1s linear infinite;
 	}
 

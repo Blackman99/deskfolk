@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	/** Which Bot an editor sheet's item belongs to: the skill, memory and routine sheets all show it. */
 	interface Props {
 		name: string;
@@ -10,10 +11,7 @@
 </script>
 
 <span class="editor-owner-badge" {title}>
-	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-		<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-		<circle cx="12" cy="7" r="4"></circle>
-	</svg>
+	<Icon name="user" size={12} />
 	<span>{name}</span>
 </span>
 

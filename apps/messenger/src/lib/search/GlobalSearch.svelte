@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { tick } from 'svelte';
 	import type { SearchHit, SearchKind } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
@@ -113,18 +114,8 @@
 	}
 </script>
 
-{#snippet glyph(kind: SearchKind | 'search')}
-	<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		{#if kind === 'search'}
-			<circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m16 16 4.5 4.5"></path>
-		{:else if kind === 'file'}
-			<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path>
-		{:else if kind === 'routine'}
-			<rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 11h18M8 15h3"></path>
-		{:else}
-			<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-2 2V11.5a9.5 9.5 0 0 1 19 0Z"></path><path d="M7 10h10M7 14h6"></path>
-		{/if}
-	</svg>
+{#snippet glyph(kind: SearchKind | 'search', size: 12 | 20 | 24 = 20)}
+	<Icon name={kind === 'search' ? 'search' : kind === 'file' ? 'file' : kind === 'routine' ? 'calendar' : 'message-lines'} {size} />
 {/snippet}
 
 <dialog
@@ -157,7 +148,7 @@
 			/>
 			{#if runtime.searchQuery}
 				<button class="search-clear" type="button" aria-label={t.sidebar.searchClear} onclick={() => { void runtime.runSearch(''); input?.focus(); }}>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+					<Icon name="x" />
 				</button>
 			{/if}
 			<button type="button" class="search-cancel" onclick={onClose}>{t.sidebar.searchCancel}<kbd>Esc</kbd></button>
@@ -172,8 +163,8 @@
 				{#if !connected}<p>{t.sidebar.searchOffline}</p>
 				{:else if runtime.searchLoading}<p class="search-working"><span class="search-spinner" aria-hidden="true"></span>{t.sidebar.searchLoading}</p>
 				{:else if runtime.searchError}<p>{t.sidebar.searchFailed}</p><button class="search-retry" type="button" onclick={() => void runtime.runSearch(runtime.searchQuery)}>{t.sidebar.searchRetry}</button>
-				{:else if !queried}<div class="search-intro">{@render glyph('search')}<p>{t.sidebar.searchIntro}</p><span>{t.sidebar.searchHint}</span></div>
-				{:else if hits.length === 0}<EmptyState size="inline" level={3} title={t.sidebar.searchNoResults} hint={t.sidebar.searchTryAnother}>{#snippet badge()}{@render glyph('search')}{/snippet}</EmptyState>
+				{:else if !queried}<div class="search-intro">{@render glyph('search', 24)}<p>{t.sidebar.searchIntro}</p><span>{t.sidebar.searchHint}</span></div>
+				{:else if hits.length === 0}<EmptyState size="inline" level={3} title={t.sidebar.searchNoResults} hint={t.sidebar.searchTryAnother}>{#snippet badge()}{@render glyph('search', 12)}{/snippet}</EmptyState>
 				{:else}<span class="search-count">{t.sidebar.searchResults(hits.length)}</span>{/if}
 			</div>
 			<div id={`${id}-results`} class="search-results" role="listbox" aria-label={t.sidebar.globalSearch} aria-busy={runtime.searchLoading}>
@@ -229,8 +220,7 @@
 	.search-state > p { margin: 40px 16px 8px; }
 	.search-state > span:not(.search-count) { display: block; margin: 0 16px 32px; font-size: 12px; }
 	.search-intro { padding: 32px 16px 28px; }
-	.search-intro :global(svg) { width: 28px; height: 28px; color: var(--muted); }
-	.search-state :global(.empty-badge svg) { width: 13px; height: 13px; }
+	.search-intro :global(.icon) { color: var(--muted); }
 	.search-intro p { margin: 14px 0 6px; color: var(--ink-secondary); font-size: 14px; }
 	.search-intro span { font-size: 12px; }
 	.search-count { display: block; padding: 12px 10px 6px; text-align: left; font-size: 11px; }

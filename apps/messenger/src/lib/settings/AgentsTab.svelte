@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import type { AgentStatus, AgentsStatusResponse, Bot, BotRunner, ClaudeCodeStatus } from '@real-bot/protocol';
@@ -218,9 +219,7 @@
 			{#if withState}
 				<span class="agent-row-state is-{row.state}"><span class="agent-row-dot" aria-hidden="true"></span>{t.agents.list.state[row.state]}</span>
 			{/if}
-			<svg class="agent-row-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				{#if phone.current}<polyline points="9 18 15 12 9 6"></polyline>{:else}<polyline points="6 9 12 15 18 9"></polyline>{/if}
-			</svg>
+			<Icon name={phone.current ? 'chevron-right' : 'chevron-down'} class="agent-row-chevron" />
 		</button>
 		{#if open && !phone.current}
 			<div class="agent-row-body">{@render detail(row)}</div>
@@ -266,7 +265,7 @@
 			{/if}
 			{#if missingRows.length > 0}
 				<button type="button" class="agents-missing-toggle" aria-expanded={missingShown} onclick={() => (missingShown = !missingShown)} data-agents-missing-toggle>
-					<svg class="agent-row-chevron" class:is-open={missingShown} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+					<Icon name="chevron-right" class={['agent-row-chevron', { 'is-open': missingShown }]} />
 					{t.agents.list.missingGroup(missingRows.length)}
 				</button>
 				{#if missingShown}
@@ -419,18 +418,18 @@
 		background: var(--warn);
 	}
 
-	.agent-row-chevron {
+	.agent-row :global(.agent-row-chevron),
+	.agents-missing-toggle :global(.agent-row-chevron) {
 		flex: none;
 		color: var(--muted);
 		transition: transform 0.18s ease;
 	}
 
-	.agent-row.is-open .agent-row-chevron,
-	.agent-row-chevron.is-open {
+	.agent-row.is-open :global(.agent-row-chevron) {
 		transform: rotate(180deg);
 	}
 
-	.agents-missing-toggle .agent-row-chevron.is-open {
+	.agents-missing-toggle :global(.agent-row-chevron.is-open) {
 		transform: rotate(90deg);
 	}
 
@@ -484,7 +483,8 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.agent-row-chevron {
+		.agent-row :global(.agent-row-chevron),
+		.agents-missing-toggle :global(.agent-row-chevron) {
 			transition: none;
 		}
 	}

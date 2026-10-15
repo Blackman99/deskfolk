@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from './Icon.svelte';
 	import type { ModelSource } from './model-source.ts';
 	import ConnectorLogo from './settings/ConnectorLogo.svelte';
 	import ClaudeSpark from './settings/ClaudeSpark.svelte';
@@ -24,7 +25,7 @@
 		<AgentLogo runner={source.runner} size={16} />
 	{:else if tile}
 		<span class="model-source-tile">
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"></rect><rect x="3" y="13" width="18" height="7" rx="2"></rect><line x1="7" y1="7.5" x2="7.01" y2="7.5"></line><line x1="7" y1="16.5" x2="7.01" y2="16.5"></line></svg>
+			<Icon name="server" />
 		</span>
 	{:else}
 		<!-- Drawn, not written: an option's text stays the model's name, for type-to-find and copying. -->
@@ -57,7 +58,7 @@
 		color: var(--ink-secondary);
 	}
 
-	.model-source-tile svg {
+	.model-source-tile :global(.icon) {
 		width: 100%;
 		height: 100%;
 	}

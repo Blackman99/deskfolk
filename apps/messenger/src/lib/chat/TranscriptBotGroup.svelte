@@ -213,7 +213,7 @@
 									<span class="stream-step" aria-live="off">{said ? t.stream.streaming : stage.statusLabels.running}</span>
 								{/if}
 								<span class="duration-badge mono">
-									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+									<Icon name="clock" size={12} />
 									{formatLiveDuration(item.turn.created_at, stage.nowMs)}
 								</span>
 							</div>
@@ -270,7 +270,7 @@
 											title={t.chat.replyMessage}
 											onclick={() => stage.startQuoteReply(item.message)}
 										>
-											<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+											<Icon name="reply" />
 										</button>
 									{/if}
 									<button
@@ -283,7 +283,7 @@
 										{#if stage.copiedMessageId === item.message.id}
 											<span class="copied-badge text-11 font-semibold text-ok">✓ {t.chat.copied}</span>
 										{:else}
-											<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+											<Icon name="copy" />
 										{/if}
 									</button>
 									<button
@@ -293,7 +293,7 @@
 										aria-label={t.chat.moreActions}
 										onclick={(e) => stage.handleMessageContextMenu(e, item.message)}
 									>
-										<Icon name="more" size={14} />
+										<Icon name="more" />
 									</button>
 								</div>
 							</div>
@@ -345,7 +345,7 @@
 							<span class="msg-when">
 								{#if duration}
 									<span class="duration-badge mono" title={t.chat.replyTime(duration.formatted)}>
-										<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+										<Icon name="clock" size={12} />
 										{duration.formatted}
 									</span>
 								{/if}

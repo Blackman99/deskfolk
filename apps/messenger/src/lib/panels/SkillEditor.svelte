@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Bot } from '@real-bot/protocol';
 	import SettingsSubject from './SettingsSubject.svelte';
 	import Switch from '../Switch.svelte';
@@ -84,7 +85,7 @@
 					disabled={skillBusy}
 					onclick={closeSkillEditor}
 				>
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+					<Icon name="chevron-left" size={20} />
 				</button>
 				<div class="modal-head-titles">
 					<h2 id="skill-modal-title">
@@ -104,11 +105,7 @@
 			<div class="modal-body skill-modal-body">
 				{#if skillFailed}
 					<div class="panel-alert is-error" role="alert">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<circle cx="12" cy="12" r="10"></circle>
-							<line x1="12" y1="8" x2="12" y2="12"></line>
-							<line x1="12" y1="16" x2="12.01" y2="16"></line>
-						</svg>
+						<Icon name="alert-circle" />
 						<span>{t.sidebar.saveFailed}</span>
 					</div>
 				{/if}
@@ -219,10 +216,7 @@
 							disabled={skillBusy}
 							onclick={() => openDeleteSkillConfirm(skillEditor as string)}
 						>
-							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-								<polyline points="3 6 5 6 21 6"></polyline>
-								<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-							</svg>
+							<Icon name="trash" />
 							<span>{t.sidebar.skillDelete}</span>
 						</button>
 					</div>
@@ -239,10 +233,7 @@
 								disabled={skillBusy}
 								onclick={() => openDeleteSkillConfirm(skillEditor as string)}
 							>
-								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-									<polyline points="3 6 5 6 21 6"></polyline>
-									<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-								</svg>
+								<Icon name="trash" />
 								<span>{t.sidebar.skillDelete}</span>
 							</button>
 						{/if}

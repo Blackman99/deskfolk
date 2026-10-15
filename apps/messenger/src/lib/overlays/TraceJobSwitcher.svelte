@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { PlanStatus, SessionTaskSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { isOutside } from '../click-outside.ts';
@@ -105,9 +106,7 @@
 	>
 		<span class="trace-job-check" aria-hidden="true">
 			{#if job.id === currentId}
-				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-					<polyline points="20 6 9 17 4 12"></polyline>
-				</svg>
+				<Icon name="check" size={12} />
 			{/if}
 		</span>
 		<div class="trace-job-info">
@@ -133,21 +132,7 @@
 			title={heading}
 		>
 			<h2>{heading}</h2>
-			<svg
-				class="trace-title-arrow"
-				class:is-open={open}
-				width="12"
-				height="12"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"
-			>
-				<polyline points="6 9 12 15 18 9"></polyline>
-			</svg>
+			<Icon name="chevron-down" size={12} class={['trace-title-arrow', { 'is-open': open }]} />
 		</button>
 		{#if open}
 			<div
@@ -163,9 +148,7 @@
 				{#if folded.length > 0}
 					<button type="button" class="trace-job is-fold" aria-expanded={foldOpen} onclick={() => (foldOpen = !foldOpen)}>
 						<span class="trace-job-check" aria-hidden="true">
-							<svg class="trace-job-fold-arrow" class:is-open={foldOpen} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-								<polyline points="9 6 15 12 9 18"></polyline>
-							</svg>
+							<Icon name="chevron-right" size={12} class={['trace-job-fold-arrow', { 'is-open': foldOpen }]} />
 						</span>
 						<div class="trace-job-info">
 							<span class="trace-job-title">{t.plan.oneShotJobs(folded.length)}</span>
@@ -231,13 +214,13 @@
 		outline-offset: 1px;
 	}
 
-	.trace-title-arrow {
+	:global(.icon.trace-title-arrow) {
 		flex: none;
 		color: var(--muted);
 		transition: transform 0.2s ease;
 	}
 
-	.trace-title-arrow.is-open {
+	:global(.icon.trace-title-arrow.is-open) {
 		transform: rotate(180deg);
 	}
 
@@ -295,11 +278,11 @@
 		color: var(--muted);
 	}
 
-	.trace-job-fold-arrow {
+	:global(.icon.trace-job-fold-arrow) {
 		transition: transform 0.15s ease;
 	}
 
-	.trace-job-fold-arrow.is-open {
+	:global(.icon.trace-job-fold-arrow.is-open) {
 		transform: rotate(90deg);
 	}
 

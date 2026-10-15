@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Hold, SessionSummary } from '@real-bot/protocol';
 	import BrandMark from '../BrandMark.svelte';
 	import EmptyState from '../EmptyState.svelte';
@@ -281,10 +282,7 @@
 
 {#snippet searchGlyph()}
 	<span class="search-icon-badge absolute left-5 text-muted-light pointer-events-none flex items-center justify-center" aria-hidden="true">
-		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<circle cx="11" cy="11" r="8"></circle>
-			<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-		</svg>
+		<Icon name="search" />
 	</span>
 {/snippet}
 
@@ -589,11 +587,7 @@
 		aria-expanded="true"
 		onclick={onCollapse}
 	>
-		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<rect x="3" y="3" width="18" height="18" rx="2"></rect>
-			<path d="M9 3v18"></path>
-			<path d="m16 15-3-3 3-3"></path>
-		</svg>
+		<Icon name="sidebar-close" />
 	</button>
 {/snippet}
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { tick, untrack } from 'svelte';
 	import type { Bot, Provider, TaskDetail, TaskTraceNode, Ticket, TicketStatus, TicketWithArtifacts } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
@@ -200,10 +201,7 @@
 	<div class="ticket-list-header-group">
 		<div class="ticket-list-head">
 			<div class="ticket-list-title-wrap">
-				<svg class="ticket-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<path d="M9 11l3 3L22 4"></path>
-					<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-				</svg>
+				<Icon name="check-square" class="ticket-title-icon" />
 				<span class="ticket-list-title">{t.plan.tickets}</span>
 				{#if boardSettled}
 					<span class="ticket-settled-chip is-{boardSettled}">{settledChip}</span>
@@ -326,10 +324,7 @@
 									</span>
 								{:else}
 									<span class="ticket-avatar is-nobody" aria-hidden="true">
-										<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-											<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-											<circle cx="12" cy="7" r="4"></circle>
-										</svg>
+										<Icon name="user" size={12} />
 									</span>
 								{/if}
 								<span class="ticket-who-text">
@@ -359,39 +354,26 @@
 						<div class="ticket-links">
 							{#if ticket.artifacts.length > 0}
 								<button type="button" class="ticket-artifacts" onclick={() => onOpenArtifacts(ticket)}>
-									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-										<polyline points="14 2 14 8 20 8"></polyline>
-									</svg>
+									<Icon name="file" size={12} />
 									<span>{t.plan.artifacts(ticket.artifacts.length)}</span>
 								</button>
 							{/if}
 							{#if node}
 								<button type="button" class="ticket-jump" onclick={() => onJump(node.session_id, node.focus_message_id)}>
-									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<polyline points="9 10 4 15 9 20"></polyline>
-										<path d="M20 4v7a4 4 0 0 1-4 4H4"></path>
-									</svg>
+									<Icon name="corner-down-left" size={12} />
 									<span>{t.plan.jumpToTurn}</span>
 								</button>
 							{/if}
 							{#if picked && node && onShowInTrace}
 								<!-- The board hides the trace; this brings it back on the picked ticket's rounds. -->
 								<button type="button" class="ticket-jump ticket-show-trace" onclick={() => onShowInTrace(ticket.id)}>
-									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<rect x="9" y="3" width="6" height="5" rx="1"></rect>
-										<rect x="3" y="16" width="6" height="5" rx="1"></rect>
-										<rect x="15" y="16" width="6" height="5" rx="1"></rect>
-										<path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"></path>
-									</svg>
+									<Icon name="hierarchy" size={12} />
 									<span>{t.plan.links.showInTrace}</span>
 								</button>
 							{/if}
 							{#if sampleable}
 								<button type="button" class="ticket-jump ticket-make-sample" title={t.plan.makeSampleHint} disabled={edits.patchingId === ticket.id} onclick={() => edits.makeSample(ticket)}>
-									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-									</svg>
+									<Icon name="star" size={12} />
 									<span>{t.plan.makeSample}</span>
 								</button>
 							{/if}
@@ -459,7 +441,7 @@
 		gap: 6px;
 	}
 
-	.ticket-title-icon {
+	.ticket-list-title-wrap :global(.ticket-title-icon) {
 		color: var(--accent);
 		flex: none;
 	}

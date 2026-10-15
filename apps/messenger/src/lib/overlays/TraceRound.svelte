@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Ticket } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { formatFullTimestamp } from '../chat/chat-view.ts';
@@ -27,7 +28,7 @@
 	title={round.folded ? t.trace.roundUnfold : t.trace.roundFold}
 	onclick={onToggle}
 >
-	<svg class="trace-round-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"></polyline></svg>
+	<Icon name="chevron-right" size={12} class="trace-round-caret" />
 	{#if round.folded}
 		<span class="trace-round-said"><span class="trace-round-who">{nameOf(round.node.actor)}</span>{round.node.summary}</span>
 	{/if}
@@ -96,13 +97,13 @@
 		background: var(--pane);
 	}
 
-	.trace-round-caret {
+	.trace-round :global(.trace-round-caret) {
 		flex: none;
 		transform: rotate(90deg);
 		transition: transform 0.15s ease;
 	}
 
-	.trace-round.is-folded .trace-round-caret {
+	.trace-round.is-folded :global(.trace-round-caret) {
 		transform: none;
 	}
 

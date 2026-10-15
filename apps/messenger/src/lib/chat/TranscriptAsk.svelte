@@ -80,7 +80,7 @@
 			</div>
 			<article class="msg is-ask" class:is-waiting={waiting}>
 				<div class="who">
-					{#if waiting}<Icon name="help-circle" size={14} />{t.stream.waitingAnswer}{:else}{t.stream.ask} · {stage.who(singleMsg.message)}{/if}
+					{#if waiting}<Icon name="help-circle" size={12} />{t.stream.waitingAnswer}{:else}{t.stream.ask} · {stage.who(singleMsg.message)}{/if}
 				</div>
 				<div class="body">{singleMsg.message.body}</div>
 				<AskCard

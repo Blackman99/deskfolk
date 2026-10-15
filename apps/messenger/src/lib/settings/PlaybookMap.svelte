@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { playbookStep, type PlaybookResolved, type PlaybookStepId } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
+	import Icon from '../Icon.svelte';
 	import { layPlaybookFlow, paramText, stepDiffers, stepRole, type PlaybookCard, type PlaybookNodeId } from './playbook-flow.ts';
 	import type { RoutingNodeView } from './routing-map.ts';
 
@@ -107,11 +108,7 @@
 							<span class="playbook-card-mark" role="img" aria-label={c.changed} title={c.changed} data-differs></span>
 						{/if}
 						{#if !spec.switchable}
-							<svg class="playbook-card-lock" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={c.locked}>
-								<title>{c.locked}</title>
-								<rect x="5" y="11" width="14" height="10" rx="2"></rect>
-								<path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
-							</svg>
+							<Icon name="lock" size={12} class="playbook-card-lock" label={c.locked} title={c.locked} />
 						{/if}
 					</span>
 					<span class="playbook-card-said">{said(step)}</span>
@@ -256,7 +253,7 @@
 		background: var(--accent);
 	}
 
-	.playbook-card-lock {
+	.playbook-card :global(.playbook-card-lock) {
 		flex: none;
 		color: var(--muted);
 	}

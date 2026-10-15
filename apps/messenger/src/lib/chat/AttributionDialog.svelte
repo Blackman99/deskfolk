@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
   import { onMount, untrack } from 'svelte';
   import { backdropClick } from '../click-outside.ts';
   import type { Copy } from '../copy.ts';
@@ -179,7 +180,7 @@
   <form class="modal-dialog attribution-modal" onsubmit={(event) => { event.preventDefault(); void save(); }}>
     <div class="modal-head">
       <button type="button" class="modal-back" aria-label={t.common.back} onclick={dismiss}>
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        <Icon name="chevron-left" />
       </button>
       <h2 id="attribution-title">{t.attribution.title}</h2>
       <button type="button" class="modal-close" title={t.common.close} onclick={dismiss}>✕</button>
@@ -191,10 +192,7 @@
     </div>
     <fieldset bind:this={bodyEl} class="modal-body attribution-body" disabled={disabled || pending}>
       <div class="search-wrap">
-        <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
+        <Icon name="search" class="search-icon" />
         <input
           bind:this={searchEl}
           bind:value={query}
@@ -207,10 +205,7 @@
         />
         {#if query}
           <button type="button" class="search-clear" aria-label={t.common.close} onclick={() => { query = ''; searchEl?.focus(); }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
+            <Icon name="x" size={12} />
           </button>
         {/if}
       </div>
@@ -231,10 +226,7 @@
           {@render newJobRow()}
         {:else if ranked.chosen.length === 0}
           <div class="empty-unfiled">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
-            </svg>
+            <Icon name="ban" />
             <p class="note">{t.attribution.unfiled}</p>
           </div>
         {/if}
@@ -254,9 +246,7 @@
                             {#if entry.ticket_id && !plan.tickets.some((ticket) => ticket.id === entry.ticket_id)}<option value={entry.ticket_id}>{t.attribution.unknownPlan}</option>{/if}
                             {#each plan.tickets as ticket (ticket.id)}<option value={ticket.id}>{ticket.title}</option>{/each}
                           </select>
-                          <svg class="select-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polyline points="6 9 12 15 18 9"></polyline>
-                          </svg>
+                          <Icon name="chevron-down" size={12} class="select-arrow" />
                         </div>
                       </label>
                       {#if draft.filter((item) => item.plan_id === plan.id).length > 1}
@@ -312,10 +302,7 @@
 
       {#if searching && ranked.here.length === 0 && ranked.others.length === 0}
         <div class="empty-unfiled">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
+          <Icon name="search" />
           <p class="note">{t.attribution.noMatch}</p>
         </div>
       {/if}
@@ -384,7 +371,7 @@
     display: flex;
     align-items: center;
   }
-  .search-icon {
+  .search-wrap :global(.search-icon) {
     position: absolute;
     left: 11px;
     pointer-events: none;
@@ -642,7 +629,7 @@
     box-shadow: 0 0 0 2px var(--accent-glow);
     outline: none;
   }
-  .select-arrow {
+  .filing-select :global(.select-arrow) {
     position: absolute;
     right: 8px;
     top: 50%;

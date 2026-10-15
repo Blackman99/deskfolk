@@ -17,7 +17,7 @@
 			onpointerenter={() => toasts.hold()}
 			onpointerleave={() => toasts.release()}
 		>
-			<Icon name={toast.tone === 'error' ? 'alert-circle' : 'check'} size={14} class="toast-icon" />
+			<Icon name={toast.tone === 'error' ? 'alert-circle' : 'check'} size={16} class="toast-icon" />
 			<span class="toast-text">{toast.text}</span>
 			{#if toast.action}
 				<button

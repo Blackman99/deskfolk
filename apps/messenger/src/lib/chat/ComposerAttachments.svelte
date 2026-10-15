@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import { formatFileSize } from './attachments.ts';
 	import type { Copy } from '../copy.ts';
 	import type { StagedAttachment, StagedWorkspacePath } from '../session-view.svelte.ts';
@@ -27,7 +28,7 @@
 				<img src={att.previewUrl} alt={att.name} class="attachment-preview-img" data-copy-image />
 			{:else}
 				<div class="attachment-file-icon">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+					<Icon name="file" />
 				</div>
 			{/if}
 			<div class="attachment-meta flex flex-col min-w-0 flex-1">
@@ -42,7 +43,7 @@
 				disabled={sending}
 				onclick={() => onRemoveAttachment(att.id)}
 			>
-				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+				<Icon name="x" size={12} />
 			</button>
 		</div>
 	{/each}
@@ -67,7 +68,7 @@
 				disabled={sending}
 				onclick={() => onRemovePath(ref.id)}
 			>
-				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+				<Icon name="x" size={12} />
 			</button>
 		</div>
 	{/each}

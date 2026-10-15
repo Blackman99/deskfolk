@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import type { Copy } from '../copy.ts';
@@ -65,10 +66,7 @@
 <span class="chat-tab" title={`${title}${archived}\n${detail}`}>
 	{#if fileDrop}
 		<span class="wb-tab-icon chat-tab-avatar is-file" aria-hidden="true">
-			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-				<polyline points="14 2 14 8 20 8"></polyline>
-			</svg>
+			<Icon name="file" size={12} />
 		</span>
 	{:else}
 		<span class="wb-tab-icon chat-tab-avatar" aria-hidden="true">

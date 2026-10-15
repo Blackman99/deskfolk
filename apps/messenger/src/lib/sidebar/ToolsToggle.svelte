@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
 
 	/**
@@ -38,15 +39,10 @@
 	onkeydown={onToolsToggleKeyDown}
 	onclick={() => (open = !open)}
 >
-	<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		<rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
-		<rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
-		<rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
-		<rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
-	</svg>
+	<Icon name="grid" filled={open} />
 	{#if !phone}
 		<span class="foot-label">{t.sidebar.tools}</span>
-		<svg class="tools-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 15 6-6 6 6"></path></svg>
+		<Icon name="chevron-up" size={12} class="tools-chevron" />
 	{/if}
 </button>
 
@@ -71,7 +67,7 @@
 		flex-shrink: 0;
 	}
 
-	.tools-chevron {
+	.tools-entry :global(.tools-chevron) {
 		opacity: 0.65;
 	}
 
@@ -86,7 +82,7 @@
 			gap: 4px;
 		}
 
-		.tools-chevron {
+		.tools-entry :global(.tools-chevron) {
 			display: none;
 		}
 	}
@@ -97,7 +93,7 @@
 	 */
 	@container sidebar-footer (max-width: 223px) {
 		.foot-label,
-		.tools-chevron {
+		.tools-entry :global(.tools-chevron) {
 			display: none;
 		}
 
@@ -107,7 +103,7 @@
 	}
 
 	:global(.foot.is-compact) .foot-label,
-	:global(.foot.is-compact) .tools-chevron {
+	:global(.foot.is-compact) .tools-entry :global(.tools-chevron) {
 		display: none;
 	}
 

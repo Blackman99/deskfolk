@@ -11,6 +11,7 @@
 </script>
 
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Snippet } from 'svelte';
 	import type { Bot, BuiltinModelRole, TaskTraceNode, TicketStatus, TicketWithArtifacts } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
@@ -113,13 +114,7 @@
 			aria-pressed={expanded}
 			onclick={() => (expanded = !expanded)}
 		>
-			<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				{#if expanded}
-					<polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line>
-				{:else}
-					<polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line>
-				{/if}
-			</svg>
+			<Icon name={expanded ? 'minimize' : 'maximize'} size={12} />
 		</button>
 	{/if}
 {/snippet}
@@ -142,7 +137,7 @@
 			<h3 class="insp-title" title={ticket.title}>{ticket.title}</h3>
 			{@render widen()}
 			<button type="button" class="insp-icon" title={t.plan.job.unpick} aria-label={t.plan.job.unpick} onclick={() => (job.selectedTicket = null)}>
-				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+				<Icon name="x" size={12} />
 			</button>
 		</header>
 		<div class="insp-body">
@@ -208,7 +203,7 @@
 		<header class="insp-head">
 			{#if held}
 				<button type="button" class="insp-back" onclick={() => (specHeld = false)}>
-					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+					<Icon name="chevron-left" size={12} />
 					<span>{t.plan.job.backToTicket(`#${ticketTag(held.seq)}`)}</span>
 				</button>
 			{:else}
@@ -217,7 +212,7 @@
 			{@render widen()}
 			{#if onClose}
 				<button type="button" class="insp-icon" title={t.common.close} aria-label={t.common.close} onclick={onClose}>
-					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+					<Icon name="x" size={12} />
 				</button>
 			{/if}
 		</header>

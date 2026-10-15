@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { Memory, Skill } from '@real-bot/protocol';
 
@@ -26,10 +27,7 @@
 		class:is-active={activeTab === 'basics'}
 		onclick={() => switchTab('basics')}
 	>
-		<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-			<circle cx="12" cy="7" r="4"></circle>
-		</svg>
+		<Icon name="user" filled={activeTab === 'basics'} class="tab-icon" />
 		<span class="tab-name">{t.detail.botTabBasics}</span>
 		{#if basicsHasError}
 			<span class="tab-badge-error" aria-label="error">!</span>
@@ -45,9 +43,7 @@
 		class:is-active={activeTab === 'skills'}
 		onclick={() => switchTab('skills')}
 	>
-		<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-		</svg>
+		<Icon name="zap" filled={activeTab === 'skills'} class="tab-icon" />
 		<span class="tab-name">{t.detail.botTabSkills}</span>
 		{#if profileSkills.length > 0}
 			<span class="tab-count">{profileSkills.length}</span>
@@ -63,12 +59,7 @@
 		class:is-active={activeTab === 'routines'}
 		onclick={() => switchTab('routines')}
 	>
-		<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<rect x="3" y="4" width="18" height="18" rx="2"></rect>
-			<line x1="16" y1="2" x2="16" y2="6"></line>
-			<line x1="8" y1="2" x2="8" y2="6"></line>
-			<line x1="3" y1="10" x2="21" y2="10"></line>
-		</svg>
+		<Icon name="calendar" filled={activeTab === 'routines'} class="tab-icon" />
 		<span class="tab-name">{t.detail.botTabRoutines}</span>
 		{#if routineCount > 0}
 			<span class="tab-count">{routineCount}</span>
@@ -84,10 +75,7 @@
 		class:is-active={activeTab === 'memory'}
 		onclick={() => switchTab('memory')}
 	>
-		<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-			<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-		</svg>
+		<Icon name="book" filled={activeTab === 'memory'} class="tab-icon" />
 		<span class="tab-name">{t.detail.botTabMemory}</span>
 		{#if profileMemories.length > 0}
 			<span class="tab-count">{profileMemories.length}</span>
@@ -103,10 +91,7 @@
 		class:is-active={activeTab === 'actions'}
 		onclick={() => switchTab('actions')}
 	>
-		<svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<circle cx="12" cy="12" r="3"></circle>
-			<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-		</svg>
+		<Icon name="settings" filled={activeTab === 'actions'} class="tab-icon" />
 		<span class="tab-name">{t.detail.botTabActions}</span>
 		<span class="tab-chevron" aria-hidden="true"></span>
 	</button>
@@ -162,13 +147,13 @@
 		box-shadow: none;
 	}
 
-	.bot-tab-btn .tab-icon {
+	.bot-tab-btn :global(.tab-icon) {
 		color: var(--muted);
 		flex-shrink: 0;
 		transition: color 0.15s ease;
 	}
 
-	.bot-tab-btn.is-active .tab-icon {
+	.bot-tab-btn.is-active :global(.tab-icon) {
 		color: var(--accent);
 	}
 
@@ -269,10 +254,10 @@
 			background: var(--row-hover);
 		}
 
-		.bot-tab-btn .tab-icon,
-		.bot-tab-btn.is-active .tab-icon {
-			width: 19px;
-			height: 19px;
+		.bot-tab-btn :global(.tab-icon),
+		.bot-tab-btn.is-active :global(.tab-icon) {
+			width: 20px;
+			height: 20px;
 			color: var(--muted);
 		}
 

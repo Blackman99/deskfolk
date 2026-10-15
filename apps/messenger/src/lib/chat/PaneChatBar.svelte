@@ -112,13 +112,13 @@
 			<div class="bar-waiting">
 				{#if approvals.length > 0}
 					<button type="button" class="bar-pill is-approval" onclick={() => jump(approvals[0].id)}>
-						<Icon name="shield-check" size={13} />
+						<Icon name="shield-check" size={12} />
 						{t.stream.waitingJump.approvals(approvals.length)}
 					</button>
 				{/if}
 				{#if asks.length > 0}
 					<button type="button" class="bar-pill is-ask" onclick={() => jump(asks[0].id)}>
-						<Icon name="help-circle" size={13} />
+						<Icon name="help-circle" size={12} />
 						{t.stream.waitingJump.asks(asks.length)}
 					</button>
 				{/if}

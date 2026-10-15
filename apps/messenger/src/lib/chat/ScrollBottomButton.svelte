@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
 
 	type Props = {
@@ -20,7 +21,7 @@
 		aria-label={t.chat.scrollToBottom}
 		onclick={() => onScrollToBottom?.()}
 	>
-		<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+		<Icon name="chevron-down" />
 	</button>
 </div>
 

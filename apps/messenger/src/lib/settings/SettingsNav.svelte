@@ -3,6 +3,7 @@
 </script>
 
 <script lang="ts">
+	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { Snapshot } from '../snapshot.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
@@ -40,10 +41,7 @@
 <aside class="settings-sidebar">
 	<div class="settings-sidebar-head">
 		<div class="settings-head-left flex items-center gap-5">
-			<svg class="settings-head-icon text-muted shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<circle cx="12" cy="12" r="3"></circle>
-				<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-			</svg>
+			<Icon name="settings" size={20} class="settings-head-icon text-muted shrink-0" />
 			<h2>{t.settings.title}</h2>
 		</div>
 		<div class="settings-sidebar-actions">
@@ -67,10 +65,7 @@
 			data-settings-tab="general"
 			onclick={() => openSettingsTab('general')}
 		>
-			<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<circle cx="12" cy="12" r="3"></circle>
-				<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-			</svg>
+			<Icon name="settings" filled={activeSettingsTab === 'general'} class="tab-icon" />
 			<span class="tab-name">{t.settings.tabGeneral}</span>
 			{#if generalHasError}
 				<span class="tab-badge-error" aria-label="error">!</span>
@@ -85,11 +80,7 @@
 				data-settings-tab="behavior"
 				onclick={() => openSettingsTab('behavior')}
 			>
-				<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<rect x="3" y="4" width="18" height="16" rx="2"></rect>
-					<line x1="12" y1="4" x2="12" y2="20"></line>
-					<line x1="12" y1="12" x2="21" y2="12"></line>
-				</svg>
+				<Icon name="layout" filled={activeSettingsTab === 'behavior'} class="tab-icon" />
 				<span class="tab-name">{t.settings.tabBehavior}</span>
 			</button>
 		{/if}
@@ -102,11 +93,7 @@
 			data-settings-tab="models"
 			onclick={() => openSettingsTab('models')}
 		>
-			<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-				<polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-				<line x1="12" y1="22.08" x2="12" y2="12"></line>
-			</svg>
+			<Icon name="box" filled={activeSettingsTab === 'models'} class="tab-icon" />
 			<span class="tab-name">{t.settings.tabModels}</span>
 			{#if modelsHasError}
 				<span class="tab-badge-error" aria-label="error">!</span>
@@ -122,11 +109,7 @@
 			data-settings-tab="agents"
 			onclick={() => openSettingsTab('agents')}
 		>
-			<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-				<polyline points="7 9 10 12 7 15"></polyline>
-				<line x1="12" y1="15" x2="17" y2="15"></line>
-			</svg>
+			<Icon name="terminal-square" filled={activeSettingsTab === 'agents'} class="tab-icon" />
 			<span class="tab-name">{t.settings.tabAgents}</span>
 		</button>
 
@@ -137,12 +120,7 @@
 			data-settings-tab="mcp"
 			onclick={() => openSettingsTab('mcp')}
 		>
-			<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-				<rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-				<line x1="6" y1="6" x2="6.01" y2="6"></line>
-				<line x1="6" y1="18" x2="6.01" y2="18"></line>
-			</svg>
+			<Icon name="server" filled={activeSettingsTab === 'mcp'} class="tab-icon" />
 			<span class="tab-name">{t.settings.tabMcp}</span>
 			{#if snapshot.mcpServers.length > 0}
 				<span class="tab-count text-11 font-semibold py-[1px] px-3 rounded-full bg-chip text-ink-secondary">{snapshot.mcpServers.length}</span>
@@ -156,11 +134,7 @@
 			data-settings-tab="prompts"
 			onclick={() => openSettingsTab('prompts')}
 		>
-			<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<path d="M4 7V4h16v3"></path>
-				<line x1="9" y1="20" x2="15" y2="20"></line>
-				<line x1="12" y1="4" x2="12" y2="20"></line>
-			</svg>
+			<Icon name="type" filled={activeSettingsTab === 'prompts'} class="tab-icon" />
 			<span class="tab-name">{t.settings.tabPrompts}</span>
 			{#if promptCounts.edited > 0}
 				<span class="tab-count text-11 font-semibold py-[1px] px-3 rounded-full bg-chip text-ink-secondary" class:is-warn={promptCounts.conflict}>{promptCounts.edited}</span>
@@ -174,10 +148,7 @@
 			data-settings-tab="notifications"
 			onclick={() => openSettingsTab('notifications')}
 		>
-			<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-				<path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-			</svg>
+			<Icon name="bell" filled={activeSettingsTab === 'notifications'} class="tab-icon" />
 			<span class="tab-name">{t.settings.tabNotifications}</span>
 		</button>
 
@@ -189,10 +160,7 @@
 				data-settings-tab="lessons"
 				onclick={() => openSettingsTab('lessons')}
 			>
-				<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-					<path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-				</svg>
+				<Icon name="book-open" filled={activeSettingsTab === 'lessons'} class="tab-icon" />
 				<span class="tab-name">{t.settings.tabLessons}</span>
 			</button>
 		{/if}
@@ -205,10 +173,7 @@
 				data-settings-tab="remote"
 				onclick={() => openSettingsTab('remote')}
 			>
-				<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
-					<line x1="12" y1="18" x2="12.01" y2="18"></line>
-				</svg>
+				<Icon name="smartphone" filled={activeSettingsTab === 'remote'} class="tab-icon" />
 				<span class="tab-name">{t.settings.tabRemote}</span>
 			</button>
 		{/if}
@@ -221,11 +186,7 @@
 			onclick={() => openSettingsTab('about')}
 			title={updateChecker.updateVisible ? `${t.settings.tabAbout} · ${t.sidebar.updateAvailable}` : t.settings.tabAbout}
 		>
-			<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<circle cx="12" cy="12" r="10"></circle>
-				<line x1="12" y1="16" x2="12" y2="12"></line>
-				<line x1="12" y1="8" x2="12.01" y2="8"></line>
-			</svg>
+			<Icon name="info" filled={activeSettingsTab === 'about'} class="tab-icon" />
 			<span class="tab-name">{t.settings.tabAbout}</span>
 			{#if updateChecker.updateVisible}
 				<span class="tab-badge-dot" aria-label={t.sidebar.updateAvailable}></span>
@@ -347,12 +308,12 @@
 		font-weight: 600;
 	}
 
-	.settings-sidebar .settings-tab-btn .tab-icon {
+	.settings-sidebar .settings-tab-btn :global(.tab-icon) {
 		opacity: 0.75;
 		flex-shrink: 0;
 	}
 
-	.settings-sidebar .settings-tab-btn.is-active .tab-icon {
+	.settings-sidebar .settings-tab-btn.is-active :global(.tab-icon) {
 		opacity: 1;
 		stroke: var(--accent);
 	}
@@ -407,12 +368,12 @@
 		box-shadow: var(--shadow-xs);
 	}
 
-	.settings-tab-btn .tab-icon {
+	.settings-tab-btn :global(.tab-icon) {
 		opacity: 0.7;
 		flex-shrink: 0;
 	}
 
-	.settings-tab-btn.is-active .tab-icon {
+	.settings-tab-btn.is-active :global(.tab-icon) {
 		opacity: 1;
 		stroke: var(--accent);
 	}
@@ -481,7 +442,7 @@
 			font-size: 18px;
 		}
 
-		.settings-head-icon {
+		.settings-sidebar-head :global(.settings-head-icon) {
 			display: none;
 		}
 
@@ -548,11 +509,11 @@
 			background: var(--row-hover);
 		}
 
-		.settings-sidebar .settings-tab-btn .tab-icon,
-		.settings-sidebar .settings-tab-btn.is-active .tab-icon {
+		.settings-sidebar .settings-tab-btn :global(.tab-icon),
+		.settings-sidebar .settings-tab-btn.is-active :global(.tab-icon) {
 			display: block;
-			width: 19px;
-			height: 19px;
+			width: 20px;
+			height: 20px;
 			opacity: 0.78;
 			stroke: currentColor;
 		}
@@ -591,7 +552,7 @@
 	}
 
 	@media (max-width: 540px) {
-	.settings-tab-btn .tab-icon {
+	.settings-tab-btn :global(.tab-icon) {
 	display: none;
 	}
 	}
