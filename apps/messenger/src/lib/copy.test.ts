@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
-import { COPY, JAIL_COPY, copyFor } from "./copy.ts";
+import { COPY, WORKSPACE_COPY, copyFor } from "./copy.ts";
 
-test("jail copy is the locked 26 sentences", () => {
-  expect(JAIL_COPY.zh).toBe(
-    "工作区壳把当前目录放在工作区并在启动前检查看得见的路径，不是操作系统囚笼。",
+test("the workspace is where Bots' work is kept, not a permission boundary (ADR 0092)", () => {
+  expect(WORKSPACE_COPY.zh).toBe(
+    "工作区是所有 Bot 的产出集中存放、统一管理的地方，不是权限边界：Bot 能做什么由权限模式决定。",
   );
-  expect(JAIL_COPY.en).toBe(
-    "The workspace shell puts the current directory in the workspace and checks paths visible in the command before start; it is not an operating-system jail.",
+  expect(WORKSPACE_COPY.en).toBe(
+    "The workspace is where every Bot's work is kept and managed together, not a permission boundary: what a Bot may do is set by its permission mode.",
   );
 });
 
@@ -467,8 +467,8 @@ test("live-turn chrome lives on stream and composer, with interpolating redirect
   expect(COPY.en.stream.approval).toBe("approval");
   expect(COPY.zh.stream.allowOnce).toBe("允许一次");
   expect(COPY.en.stream.allowOnce).toBe("Allow once");
-  expect(COPY.zh.stream.alwaysAllow).toBe("Always allow");
-  expect(COPY.en.stream.alwaysAllow).toBe("Always allow");
+  expect(COPY.zh.permissions.allowFromNow).toBe("以后都直接干");
+  expect(COPY.en.permissions.allowFromNow).toBe("Allow from now on");
   expect(COPY.zh.stream.deny).toBe("拒绝");
   expect(COPY.en.stream.deny).toBe("Deny");
   expect(COPY.zh.stream.mcpAuthHintAdd).toBe(

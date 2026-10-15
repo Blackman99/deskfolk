@@ -18,6 +18,7 @@ import {
   isWorkspaceId,
   isBotRunner,
   isAgentEffort,
+  isPermissionMode,
   type ApiFormat,
   type Approval,
   type Bot,
@@ -136,6 +137,7 @@ export type BotRow = {
   agent_effort: string | null;
   agent_config_dir: string | null;
   agent_custom_id?: string | null;
+  permission_mode?: string | null;
   archived_at: string | null;
   deleted_at: string | null;
   created_at: string;
@@ -305,7 +307,6 @@ export type ApprovalRow = {
   created_at: string;
   resolved_at: string | null;
   requires_api_key?: number | boolean | null;
-  allow_scope?: string | null;
 };
 
 export type McpRow = {
@@ -335,13 +336,6 @@ export const KNOWN_SETTING_KEYS = [
   "locale",
   "theme",
 ] as const;
-
-export const ALLOWED_KIND_KEYS = new Set([
-  "outside-read",
-  "outside-write",
-  "unconstrained-shell",
-  "outbound-http",
-]);
 
 // ---------------------------------------------------------------------------
 // Settings primitives
@@ -436,7 +430,6 @@ export function toApproval(row: ApprovalRow): Approval {
     created_at: row.created_at,
     resolved_at: row.resolved_at,
     requires_api_key: Boolean(row.requires_api_key),
-    allow_scope: row.allow_scope ?? null,
   };
 }
 
@@ -468,6 +461,7 @@ export function toBot(row: BotRow): Bot {
       : (isAgentEffort("claude_code", row.agent_effort) ? row.agent_effort : null),
     agent_config_dir: row.agent_config_dir ?? null,
     agent_custom_id: row.runner === "custom" ? row.agent_custom_id ?? null : null,
+    permission_mode: isPermissionMode(row.permission_mode) ? row.permission_mode : null,
     archived_at: row.archived_at,
     created_at: row.created_at,
     updated_at: row.updated_at,

@@ -7,7 +7,7 @@ import type { Store } from "../store";
 import { resolveApiFormat, resolveWorkspaceId } from "../store/shared";
 import { toolFail as fail } from "../tool-result";
 import { optionalString, requireString } from "./args";
-import { assertActive, mutateConfiguration } from "./guards";
+import { assertActive, mutateConfiguration, setupVerdict } from "./guards";
 import { botPinEmits, snapshotBotPins } from "./roster";
 
 const DEFAULT_ENDPOINT_GUARD =
@@ -145,7 +145,8 @@ export async function addEndpoint(ctx: ToolCtx, args: Record<string, unknown>): 
   const workspaceId = args.workspace_id === undefined ? null : resolveWorkspaceId(args.workspace_id);
   const models = args.models === undefined ? undefined : args.models;
   const defaultModel = optionalString(args.default_model);
-  if (!ctx.approved) {
+  // Its key is pasted on the card, so one that needs a key puts one up in every mode.
+  if (!ctx.approved && (setupVerdict(ctx) === "ask" || !isLocalEndpoint(baseUrl))) {
     const catalog = models === undefined ? [] : normalizeModelCatalog(models);
     return {
       ok: false,
@@ -201,17 +202,18 @@ export async function updateEndpoint(ctx: ToolCtx, args: Record<string, unknown>
   if (connectionChanging && isDefault) {
     return fail("failed", DEFAULT_ENDPOINT_GUARD);
   }
-  if (connectionChanging && !ctx.approved) {
+  const target = nextUrl ?? current.base_url ?? "";
+  const needsKey = !current.key_set && !isLocalEndpoint(target);
+  if (connectionChanging && !ctx.approved && (setupVerdict(ctx) === "ask" || needsKey)) {
     const catalog =
       args.models !== undefined ? normalizeModelCatalog(args.models) : current.model_catalog;
-    const target = nextUrl ?? current.base_url ?? "";
     return {
       ok: false,
       waitApproval: {
         kind_key: "endpoint-edit",
         target,
         summary: endpointEditSummary(nextName ?? current.name, target, nextFormat ?? current.api_format ?? "openai", nextWorkspace !== undefined ? nextWorkspace : current.workspace_id ?? null, catalog.map((row) => row.name)),
-        requiresApiKey: !current.key_set && !isLocalEndpoint(target),
+        requiresApiKey: needsKey,
         run: (opts) =>
           runCollabTool({ ...ctx, approved: true, approvalApiKey: opts?.api_key }, "update_endpoint", args),
       },

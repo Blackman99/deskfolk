@@ -26,7 +26,7 @@ export type Interventions = {
   /** approvals + asks + stalls: the times the human had to act. */
   total: number;
   approvals: number;
-  /** Approval cards by kind key (`outbound-network`, `unconstrained-shell`, …). */
+  /** Approval cards by kind key (`file-write`, `shell`, `mcp-add`, …). */
   approval_kinds: Record<string, number>;
   asks: number;
   stalls: number;

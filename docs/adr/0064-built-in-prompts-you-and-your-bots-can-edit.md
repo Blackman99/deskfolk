@@ -2,6 +2,8 @@
 
 Status: implemented 2026-10-06, at no engine level: a build that does not know the new tables never reads them and runs its own defaults. It narrows [ADR 0012](0012-judgement-system-prompt.md) (the judgement prompt holds no `{`, now checked on the filled text).
 
+部分被 [ADR 0092](0092-permission-modes.md) 取代（2026-10-16）：Bot 改内置提示词是一次改配置，权限模式是「全部允许」的 Bot 直接改、不出卡，「只读」的被拒；其余模式照旧出卡。修订照记，照样能撤销。 / Superseded in part by ADR 0092 (2026-10-16): a Bot's prompt edit is a setup change, applied with no card under allow_all and refused read-only; other modes still card it. Every revision is still recorded and undoable.
+
 你说的是（2026-10-06）：「应用内置提示词支持 Bot 以及应用设置里更改……应用应当成为一个我作为开发者总结出来的工作方式模板，这些其实就是现在的内置提示词 + 应用层 UI 壳，使用者可以在应用内指挥 Bot 进行任何修改达到他们的工作预期。」在这之前，应用写给模型的每一段话——每一轮的系统指令、技能 / 记忆 / MCP 段的开头、工具说明、整理跳和读句这些应用自己的调用——都是代码里的中英常量，没有一处能改；有三处还靠对原文做 `.replace()` 打补丁（引擎级别、Windows 的 shell、叫停之后的整理跳），测试和演示带靠全文相等认出是哪一次调用。
 
 You put it this way (2026-10-06): the app's built-in prompts should be editable by Bots and in the app's settings; the app should be a template of the way of working you, its developer, settled on — the built-in prompts plus the app's UI shell — and whoever uses it directs Bots in the app to change whatever they need. Until now every text the app sends a model — the System section of every turn, the notes that open the Skills, Memory and MCP sections, the tool descriptions, the organizer's and the line readings' own calls — was a constant in code, none of it editable; three were patched with `.replace()` on their own text (by engine level, for a Windows shell, for the organizer once holds exist), and tests and demo tapes told calls apart by their whole text.

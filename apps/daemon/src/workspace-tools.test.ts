@@ -155,7 +155,7 @@ describe("workspace tools", () => {
     close();
   });
 
-  test.skipIf(process.platform === "win32")("a command that reaches outside, once let through, runs in the work dir it makes", async () => {
+  test.skipIf(process.platform === "win32")("a command waiting on its card under ask_first, once let through, runs in the work dir it makes", async () => {
     const brand = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-brand-")));
     dirs.push(brand);
     writeFileSync(join(brand, "logo.png"), "png");
@@ -163,12 +163,13 @@ describe("workspace tools", () => {
     // With the work dir implied, and named as the cwd (Bots do both).
     for (const cwd of [undefined, workDir]) {
       const { store, root, close } = await storeWithWorkspace();
+      store.patchSettingsSync({ permission_mode: "ask_first" });
       const signal = new AbortController().signal;
       const asked = await runWorkspaceTool({ store, signal, workDir }, "shell", {
         command: `mkdir -p launch && cp ${join(brand, "logo.png")} launch/logo.png`,
         ...(cwd ? { cwd } : {}),
       });
-      expect(asked.waitApproval?.kind_key).toBe("unconstrained-shell");
+      expect(asked.waitApproval?.kind_key).toBe("shell");
       // Nothing is made while it waits on you.
       expect(existsSync(join(root, workDir))).toBe(false);
       const ran = await asked.waitApproval!.run();
@@ -323,8 +324,8 @@ describe("workspace tools", () => {
 
   /**
    * ADR 0040 P1, fixture F-g: the 2026-09-28 incident (a `grep -r` under $HOME hit the shell's
-   * timeout) went through the ordinary outside-workspace approval flow first, and once that was
-   * granted it walked the whole home folder. Now it never reaches that flow at all.
+   * timeout) went through the ordinary approval flow first, and once that was granted it walked the
+   * whole home folder. Now it never reaches that flow at all, whatever the permission mode.
    *
    * POSIX only, like the guard itself (`toolShell().kind === "sh"`, which win32 never returns).
    */
@@ -344,9 +345,9 @@ describe("workspace tools", () => {
 
   // A short shellTimeoutMs bounds what a regression here could do: without it, a guard that
   // stopped firing would let this really walk the machine's home folder for up to SHELL_TIMEOUT_MS.
-  test.skipIf(process.platform === "win32")("the refusal holds even with an always-allow rule for unconstrained shells", async () => {
+  test.skipIf(process.platform === "win32")("the refusal holds in allow_all too", async () => {
     const { store, close } = await storeWithWorkspace();
-    store.createAllowRule("unconstrained-shell", "*");
+    store.patchSettingsSync({ permission_mode: "allow_all" });
     const got = await runWorkspaceTool({ store, signal: new AbortController().signal, shellTimeoutMs: 150 }, "shell", {
       command: `cd ~ && grep -r "x" .`,
     });
@@ -356,18 +357,31 @@ describe("workspace tools", () => {
     close();
   });
 
-  test("Always allow outside-write with a matching prefix writes without a card", async () => {
-    const { store, close } = await storeWithWorkspace();
+  test("the permission mode, not the workspace, decides a write: auto writes anywhere, ask_first asks, read-only refuses (ADR 0092)", async () => {
+    const { store, root, close } = await storeWithWorkspace();
     const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-allow-")));
     dirs.push(elsewhere);
-    store.createAllowRule("outside-write", elsewhere);
-    const got = await runWorkspaceTool({ store, signal: new AbortController().signal }, "write_file", {
-      path: join(elsewhere, "a.md"),
-      content: "allowed",
-    });
+    const signal = new AbortController().signal;
+    const got = await runWorkspaceTool({ store, signal }, "write_file", { path: join(elsewhere, "a.md"), content: "allowed" });
     expect(got.ok).toBe(true);
     expect(got.waitApproval).toBeUndefined();
     expect(readFileSync(join(elsewhere, "a.md"), "utf8")).toBe("allowed");
+    // A Bot's own mode wins over the app's.
+    const { bot } = store.createBot({ name: "Careful", duties: "d", boundaries: "b", permission_mode: "ask_first" });
+    for (const path of ["in.md", join(elsewhere, "b.md")]) {
+      const asked = await runWorkspaceTool({ store, signal, botId: bot.id }, "write_file", { path, content: "x" });
+      expect(asked.waitApproval?.kind_key).toBe("file-write");
+      expect(existsSync(path === "in.md" ? join(root, "in.md") : path)).toBe(false);
+      const deleting = await runWorkspaceTool({ store, signal, botId: bot.id }, "delete_file", { path: join(elsewhere, "a.md") });
+      expect(deleting.waitApproval?.kind_key).toBe("file-write");
+    }
+    store.patchBot(bot.id, { permission_mode: "read_only" });
+    const refused = await runWorkspaceTool({ store, signal, botId: bot.id }, "shell", { command: "echo hi" });
+    expect(refused.error?.code).toBe("refused");
+    expect(refused.waitApproval).toBeUndefined();
+    // Reading asks nothing in any mode.
+    const read = await runWorkspaceTool({ store, signal, botId: bot.id }, "read_file", { path: join(elsewhere, "a.md") });
+    expect(read.ok).toBe(true);
     close();
   });
 });

@@ -3,10 +3,11 @@
 	import SettingsCard from './SettingsCard.svelte';
 	import SettingsCardHeader from './SettingsCardHeader.svelte';
 	import WorkspacePicker from './WorkspacePicker.svelte';
-	import AllowRulesCard from './AllowRulesCard.svelte';
+	import PermissionModeCard from './PermissionModeCard.svelte';
 	import SettingsRow from './SettingsRow.svelte';
 	import Switch from '../Switch.svelte';
-	import { JAIL_COPY, type Copy } from '../copy.ts';
+	import { WORKSPACE_COPY, type Copy } from '../copy.ts';
+	import { DEFAULT_PERMISSION_MODE } from '@real-bot/protocol';
 	import { themeManager } from '../theme.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { Snapshot } from '../snapshot.ts';
@@ -130,16 +131,18 @@
 			<div class="workspace-jail-callout">
 				<Icon name="shield" class="jail-callout-icon shrink-0 text-muted mt-1" />
 				<div class="jail-callout-content flex flex-col gap-[3px] min-w-0">
-					<span class="jail-callout-title text-12 font-semibold text-ink-secondary">{t.settings.workspaceSecurityBoundary}</span>
-					<p class="jail-callout-text m-0 text-12 leading-[1.45] text-muted">{JAIL_COPY[locale]}</p>
+					<span class="jail-callout-title text-12 font-semibold text-ink-secondary">{t.settings.workspaceRole}</span>
+					<p class="jail-callout-text m-0 text-12 leading-[1.45] text-muted">{WORKSPACE_COPY[locale]}</p>
 				</div>
 			</div>
 		</div>
 	</SettingsCard>
-	{#if runtime.client}
-		{@const client = runtime.client}
-		<AllowRulesCard rules={snapshot.allowRules} {t} onRemove={(id) => client.deleteAllowRule(id)} />
-	{/if}
+	<PermissionModeCard
+		{t}
+		mode={snapshot.settings.permission_mode ?? DEFAULT_PERMISSION_MODE}
+		bots={snapshot.bots}
+		onChoose={async (mode) => (await runtime.patchSettings({ permission_mode: mode })) === null}
+	/>
 	<!-- Preferences: one page with the workspace, which alone used to fill a tab of its own. -->
 	<SettingsCard class="settings-card-preferences">
 		<SettingsCardHeader title={t.settings.sectionPreferences} subtitle={t.settings.preferencesSubtitle}>

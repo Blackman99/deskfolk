@@ -4,7 +4,7 @@ import { emptyResponse, jsonResponse, matchPath } from "../../http";
 import { occurred, spendFilterFrom } from "../helpers";
 import type { RouteCtx } from "../route-ctx";
 
-/** Local API routes: approvals, allow rules, MCP servers, skills, memories, routines, spend and search. */
+/** Local API routes: approvals, MCP servers, skills, memories, routines, spend and search. */
 export function configRoutes(ctx: RouteCtx): Response | Promise<Response> | null {
   const { url, publish, engine, input, store, method, path } = ctx;
   let params: ReturnType<typeof matchPath>;
@@ -14,41 +14,22 @@ export function configRoutes(ctx: RouteCtx): Response | Promise<Response> | null
   }
   params = matchPath(path, "/v1/approvals/:id/resolve");
   if (params && method === "POST") {
-    const body = (input.body) as { action?: string; scope?: string; api_key?: string };
+    const body = (input.body) as { action?: string; api_key?: string };
     if (
       body.action !== "allow_once" &&
-      body.action !== "deny" &&
-      body.action !== "always_allow"
+      body.action !== "allow_from_now" &&
+      body.action !== "deny"
     ) {
-      throw new HttpError(422, "invalid_args", "action must be allow_once, deny, or always_allow");
+      throw new HttpError(422, "invalid_args", "action must be allow_once, allow_from_now, or deny");
     }
     if (body.api_key !== undefined && typeof body.api_key !== "string") {
       throw new HttpError(422, "invalid_args", "api_key must be a string");
     }
     return jsonResponse(
-      engine.resolveApproval(params.id!, body.action, body.scope, body.api_key),
+      engine.resolveApproval(params.id!, body.action, body.api_key),
       200,
       null,
     );
-  }
-
-  if (method === "GET" && path === "/v1/allow-rules") {
-    return jsonResponse({ items: store.listAllowRules() }, 200, null);
-  }
-  if (method === "POST" && path === "/v1/allow-rules") {
-    const body = (input.body) as { kind_key?: string; scope?: string };
-    if (!body.kind_key || !body.scope) {
-      throw new HttpError(422, "invalid_args", "kind_key and scope are required");
-    }
-    const rule = store.createAllowRule(body.kind_key, body.scope);
-    publish({ event: "allow_rule.upsert", occurred_at: occurred(), ...rule });
-    return jsonResponse(rule, 201, null);
-  }
-  params = matchPath(path, "/v1/allow-rules/:id");
-  if (params && method === "DELETE") {
-    store.deleteAllowRule(params.id!);
-    publish({ event: "allow_rule.removed", occurred_at: occurred(), id: params.id! });
-    return emptyResponse(204, null);
   }
 
   if (method === "GET" && path === "/v1/mcp-servers") {

@@ -878,7 +878,7 @@ test("memory.upsert replaces by id and keeps the newest first", () => {
 });
 
 test("holds: the snapshot says whether stops can be made, and hold.upsert keeps the list of those in force", () => {
-  const base = { event_instance_id: "a".repeat(32), watermark_seq: 0, settings: emptySnapshot().settings, bots: [], sessions: [], approvals: [], mcpServers: [], providers: [], skills: [], memories: [], routines: [], allowRules: [] };
+  const base = { event_instance_id: "a".repeat(32), watermark_seq: 0, settings: emptySnapshot().settings, bots: [], sessions: [], approvals: [], mcpServers: [], providers: [], skills: [], memories: [], routines: [] };
   expect(fromRuntimeSnapshot(base)).toMatchObject({ holds: [], holdsOn: false, turnInbox: false });
   expect(fromRuntimeSnapshot({ ...base, turnInbox: true }).turnInbox).toBe(true);
   const older = aHold({ id: "hold-0" });
@@ -894,7 +894,7 @@ test("holds: the snapshot says whether stops can be made, and hold.upsert keeps 
 });
 
 test("the snapshot says whether your lines are taken in order and can be changed, and a change replaces the line (ADR 0063)", () => {
-  const base = { event_instance_id: "a".repeat(32), watermark_seq: 0, settings: emptySnapshot().settings, bots: [], sessions: [], approvals: [], mcpServers: [], providers: [], skills: [], memories: [], routines: [], allowRules: [] };
+  const base = { event_instance_id: "a".repeat(32), watermark_seq: 0, settings: emptySnapshot().settings, bots: [], sessions: [], approvals: [], mcpServers: [], providers: [], skills: [], memories: [], routines: [] };
   expect(fromRuntimeSnapshot(base)).toMatchObject({ linesInOrder: false, messageEdits: false });
   let snapshot = fromRuntimeSnapshot({ ...base, linesInOrder: true, messageEdits: true });
   expect(snapshot).toMatchObject({ linesInOrder: true, messageEdits: true });

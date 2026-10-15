@@ -1,57 +1,79 @@
 import { describe, expect, test } from "bun:test";
+import { HttpError } from "../errors";
 import { Store } from "./index";
 
-describe("Always allow rules (ADR 0087)", () => {
-  function card(store: Store, kind_key: string, target: string, allow_scope?: string | null) {
-    const writer = store.createBot({ name: `Writer ${target}`, duties: "write", boundaries: "none" });
+describe("permission modes (ADR 0092)", () => {
+  function card(store: Store, kind_key: string, target: string) {
+    const writer = store.createBot({ name: `Writer ${kind_key} ${target}`, duties: "write", boundaries: "none" });
     const trigger = store.postMessage(writer.direct_session.id, { body: "write file" });
     const turn = store.createTurn({ sessionId: writer.direct_session.id, botId: writer.bot.id, triggerMessageId: trigger.id });
-    return store.insertApproval({ turnId: turn.id, messageId: null, kind_key, summary: `${kind_key} ${target}`, target, allow_scope });
+    return { bot: writer.bot, approval: store.insertApproval({ turnId: turn.id, messageId: null, kind_key, summary: `${kind_key} ${target}`, target }) };
   }
 
-  test("Always allow writes the scope the card proposed; a scope you name wins", () => {
+  test("a Bot without its own mode runs in the app's, auto until you choose one", () => {
     const store = new Store();
     try {
-      const a = card(store, "outside-write", "/Users/me/p/src/a.ts", "/Users/me/p");
-      expect(a.allow_scope).toBe("/Users/me/p");
-      store.resolveApproval(a.id, "always_allow");
-      const b = card(store, "outside-read", "/Users/me/q/b.md", "/Users/me/q");
-      store.resolveApproval(b.id, "always_allow", "/Users/me/q/b.md");
-      // An old card, from before cards proposed a scope: its target.
-      const c = card(store, "outside-read", "/Users/me/r/c.md");
-      expect(c.allow_scope).toBeNull();
-      store.resolveApproval(c.id, "always_allow");
-      expect(store.listAllowRules().map((r) => [r.kind_key, r.scope])).toEqual([
-        ["outside-write", "/Users/me/p"],
-        ["outside-read", "/Users/me/q/b.md"],
-        ["outside-read", "/Users/me/r/c.md"],
-      ]);
+      const { bot } = card(store, "file-write", "/Users/me/p/a.ts");
+      expect(store.appPermissionMode()).toBe("auto");
+      expect(store.permissionModeFor(bot.id)).toBe("auto");
+      store.patchSettingsSync({ permission_mode: "ask_first" });
+      expect(store.settingsCached().permission_mode).toBe("ask_first");
+      expect(store.permissionModeFor(bot.id)).toBe("ask_first");
+      store.patchBot(bot.id, { permission_mode: "allow_all" });
+      expect(store.permissionModeFor(bot.id)).toBe("allow_all");
+      expect(store.getBot(bot.id).permission_mode).toBe("allow_all");
+      store.patchBot(bot.id, { permission_mode: null });
+      expect(store.permissionModeFor(bot.id)).toBe("ask_first");
+      expect(() => store.patchSettingsSync({ permission_mode: "bypass" as never })).toThrow(HttpError);
     } finally {
       store.close();
     }
   });
 
-  test("a folder rule covers what is in it, not a sibling that shares its name's start", () => {
+  test("only you set a mode: a Bot sets neither its own nor one for a Bot it hires", () => {
     const store = new Store();
     try {
-      store.createAllowRule("outside-write", "/Users/me/p");
-      expect(store.matchesAllowRule("outside-write", "/Users/me/p")).toBe(true);
-      expect(store.matchesAllowRule("outside-write", "/Users/me/p/.changeset/x.md")).toBe(true);
-      expect(store.matchesAllowRule("outside-write", "/Users/me/p2/x.md")).toBe(false);
-      expect(store.matchesAllowRule("outside-write", "/Users/me/x.md")).toBe(false);
+      const { bot } = card(store, "file-write", "/Users/me/p/a.ts");
+      expect(() => store.patchBot(bot.id, { permission_mode: "allow_all" }, bot.id)).toThrow("only the user can choose a bot's permission mode");
+      expect(() => store.createBot({ name: "Hire", duties: "d", boundaries: "b", permission_mode: "allow_all" }, bot.id)).toThrow("only the user can choose a bot's permission mode");
+      // Sent back unchanged with the rest of its profile, it is no change.
+      store.patchBot(bot.id, { permission_mode: "ask_first" });
+      expect(store.patchBot(bot.id, { duties: "write more", permission_mode: "ask_first" }, bot.id).duties).toBe("write more");
     } finally {
       store.close();
     }
   });
 
-  test("what you let a Bot write somewhere it may read there; reading does not let it write", () => {
+  test("allowing from now on moves the card's Bot to the mode in which the kind no longer asks", () => {
     const store = new Store();
     try {
-      store.createAllowRule("outside-write", "/Users/me/p");
-      store.createAllowRule("outside-read", "/Users/me/docs");
-      expect(store.matchesAllowRule("outside-read", "/Users/me/p/README.md")).toBe(true);
-      expect(store.matchesAllowRule("outside-write", "/Users/me/docs/a.md")).toBe(false);
-      expect(store.matchesAllowRule("unconstrained-shell", "/Users/me/p")).toBe(false);
+      store.patchSettingsSync({ permission_mode: "ask_first" });
+      const change = card(store, "file-write", "/Users/me/p/a.ts");
+      const resolved = store.resolveApproval(change.approval.id, "allow_from_now");
+      expect(resolved.status).toBe("allowed_once");
+      expect(store.getBot(change.bot.id).permission_mode).toBe("auto");
+
+      const setup = card(store, "mcp-add", "npx server");
+      store.resolveApproval(setup.approval.id, "allow_from_now");
+      expect(store.getBot(setup.bot.id).permission_mode).toBe("allow_all");
+
+      // Allowing once leaves the mode where it was.
+      const once = card(store, "shell", "/Users/me/p");
+      store.resolveApproval(once.approval.id, "allow_once");
+      expect(store.getBot(once.bot.id).permission_mode).toBeNull();
+    } finally {
+      store.close();
+    }
+  });
+
+  test("a mode already wide enough is not narrowed by allowing from now on", () => {
+    const store = new Store();
+    try {
+      const { bot, approval } = card(store, "file-write", "/Users/me/p/a.ts");
+      // Moved meanwhile, while the card waited.
+      store.patchBot(bot.id, { permission_mode: "allow_all" });
+      store.resolveApproval(approval.id, "allow_from_now");
+      expect(store.getBot(bot.id).permission_mode).toBe("allow_all");
     } finally {
       store.close();
     }

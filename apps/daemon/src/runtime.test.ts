@@ -333,6 +333,7 @@ describe("local API runtime", () => {
       speech: null,
       default_playbook: "general",
       spend_cap_usd: null,
+      permission_mode: "auto",
       launch_at_login: true,
       locale: "zh",
       theme: "system",

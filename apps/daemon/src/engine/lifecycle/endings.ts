@@ -10,7 +10,7 @@ import type { LifecycleDeps } from "../lifecycle";
 
 /**
  * Local agent failures only the user can clear (ADR 0061, ADR 0079): the supervisor does not retry
- * them. A turn stopped for acting outside the workspace unasked is yours to look at, not to repeat.
+ * them. A turn stopped for doing unasked what needed your OK is yours to look at, not to repeat.
  */
 const USER_FIX_FAILS: ReadonlySet<FailKind> = new Set<FailKind>(["agent_missing", "agent_signed_out", "agent_limit", "agent_unguarded"]);
 

@@ -1,5 +1,5 @@
 /** The situation message: where the turn stands, who is on the team, what is held. */
-import { USER_MEMBER, type Locale, type Message } from "@real-bot/protocol";
+import { USER_MEMBER, type Locale, type Message, type PermissionMode } from "@real-bot/protocol";
 import { homedir } from "node:os";
 import { join as joinPath } from "node:path";
 import type { ChatMessage } from "../completions";
@@ -91,6 +91,7 @@ export function situationUserMessage(
       : `工作区根在这台机器上是 ${asFolder(root)}，~ 是 ${homedir()}；要写宿主路径就照这两个写，不要猜。`
     : null;
   const dirLines = [rootLine, workDirLine].filter((line): line is string => !!line);
+  const modeLines = permissionLines(store.permissionModeFor(selfBotId), locale);
   const facts = taskId
     ? planFacts(store, { taskId, ticketId, turnId, triggerMessageId, botId: selfBotId, sessionId, locale })
     : null;
@@ -129,7 +130,7 @@ export function situationUserMessage(
   // A read-only turn opens on the stop over it and what it may do, before anything else (ADR 0040).
   const held = readOnlyHeld(store, turnId, locale);
   if (sessionKind !== "group") {
-    const lines = [...held, ...job, ...dirLines];
+    const lines = [...held, ...job, ...modeLines, ...dirLines];
     return lines.length > 0 ? { role: "user", content: `${SITUATION_HEADING}\n\n${lines.join("\n")}` } : null;
   }
   let trigger: Message;
@@ -173,9 +174,25 @@ export function situationUserMessage(
       : group.latest_user
         ? `用户最近一条：${group.latest_user}`
         : "用户最近一条：（无）";
-  const lines = [...held, membersLine, ...team, seatLine, wakerLine, latestLine, ...job];
+  const lines = [...held, membersLine, ...team, seatLine, wakerLine, latestLine, ...job, ...modeLines];
   lines.push(...dirLines);
   return { role: "user", content: `${SITUATION_HEADING}\n\n${lines.join("\n")}` };
+}
+
+/**
+ * The Bot's permission mode when it changes how the Bot works (ADR 0092): read-only refuses every
+ * change and ask-first puts up a card for each. Under auto and allow_all the few cards come and go
+ * without the Bot planning around them, so nothing is said.
+ */
+function permissionLines(mode: PermissionMode, locale: Locale): string[] {
+  const en = locale === "en";
+  if (mode === "read_only") return [en
+    ? "Your permission mode: read-only. You may read files and look things up; writing or deleting files, running commands and changing the app's setup are refused. Put what you would change in your reply for the user to decide."
+    : "你的权限模式：只读。可以读文件、查资料；写、删文件，跑命令，改应用配置都会被拒绝。要改的写进回复里，由用户决定。"];
+  if (mode === "ask_first") return [en
+    ? "Your permission mode: ask first. Every file write or delete, every command and every change to the app's setup waits for the user's OK on a card: think before acting, and do in one command what one command can do."
+    : "你的权限模式：改动先问。每次写、删文件，跑命令，改应用配置都要等用户在批准卡上同意：先想清楚再动手，一条命令能办完的不要拆成几条。"];
+  return [];
 }
 
 /** How much of a Bot's duties the line naming what each one does quotes. */

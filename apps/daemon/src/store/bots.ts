@@ -8,9 +8,11 @@ import {
   isAgentModelName,
   isBotRunner,
   isClaudeModelName,
+  isPermissionMode,
   type Bot,
   type BotRunner,
   type CreateBotRequest,
+  type PermissionMode,
   type ProfileRevision,
   type SessionDetail,
   type ThinkingLevel,
@@ -19,6 +21,7 @@ import { normalizeConfigDir } from "../claude-code/account";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { incomingPlaybookId } from "./playbooks";
+import { incomingPermissionMode } from "./permissions";
 import { customAgent, listedAgentConfigDir, listedCustomAgent } from "./agents";
 import { claudeOnlyAccount } from "./settings";
 import {
@@ -119,6 +122,13 @@ function assertRunnerActor(actor: string, changed: boolean): void {
   }
 }
 
+/** What a Bot may do without asking is yours to say (ADR 0092): no Bot sets its own mode or another's. */
+function assertPermissionActor(actor: string, changed: boolean): void {
+  if (changed && actor !== USER_MEMBER) {
+    throw new HttpError(403, "forbidden", "only the user can choose a bot's permission mode");
+  }
+}
+
 export function createBot(
   ctx: StoreContext,
   input: CreateBotRequest,
@@ -138,6 +148,8 @@ export function createBot(
   const askedConfigDir = incomingAgentConfigDir(ctx, asked, input.agent_config_dir);
   assertRunnerActor(actor, askedConfigDir !== null);
   const agentCustomId = incomingCustomId(ctx, asked, input.agent_custom_id);
+  const permissionMode = incomingPermissionMode(input.permission_mode);
+  assertPermissionActor(actor, permissionMode !== null);
   // Set up on Claude Code alone (ADR 0078): with no endpoint, a Bot made without saying what runs it
   // — a teammate another Bot hires included — is a Claude Agent on the account the app's own calls
   // use; on the app's own runner it could not take a single turn. You set that up, so a Bot asking
@@ -161,9 +173,9 @@ export function createBot(
   const revisionId = ulid();
   ctx.db.transaction(() => {
     ctx.db.run(
-      `INSERT INTO bots (id, name, duties, boundaries, avatar, model, provider_id, thinking_level, runner, agent_model, agent_effort, agent_config_dir, agent_custom_id, archived_at, deleted_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
-      [botId, name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, agentConfigDir, runner === "custom" ? (agentCustomId ?? setupCustomId) : null, now, now],
+      `INSERT INTO bots (id, name, duties, boundaries, avatar, model, provider_id, thinking_level, runner, agent_model, agent_effort, agent_config_dir, agent_custom_id, permission_mode, archived_at, deleted_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+      [botId, name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, agentConfigDir, runner === "custom" ? (agentCustomId ?? setupCustomId) : null, permissionMode, now, now],
     );
     ctx.db.run(
       `INSERT INTO profile_revisions (id, bot_id, name, duties, boundaries, avatar, actor, message_id, created_at)
@@ -205,6 +217,7 @@ export function patchBot(
     agent_effort?: string | null;
     agent_config_dir?: string | null;
     agent_custom_id?: string | null;
+    permission_mode?: PermissionMode | null;
   },
   actor: string = USER_MEMBER,
 ): Bot {
@@ -246,6 +259,10 @@ export function patchBot(
     : "agent_custom_id" in patch && patch.agent_custom_id !== storedCustom ? incomingCustomId(ctx, runner, patch.agent_custom_id)
     : storedCustom ?? incomingCustomId(ctx, runner, patch.agent_custom_id);
   assertRunnerActor(actor, agentCustomId !== (row.agent_custom_id ?? null));
+  // Sent back unchanged with the rest of the profile, it is no change.
+  const storedMode = isPermissionMode(row.permission_mode) ? row.permission_mode : null;
+  const permissionMode = "permission_mode" in patch ? incomingPermissionMode(patch.permission_mode) : storedMode;
+  assertPermissionActor(actor, permissionMode !== storedMode);
   // The pin it already has, sent back with the rest of the profile (the Bot panel sends it whole, and
   // without the endpoint when it does not know it), is no change. From level 7 a pin outlives its
   // model leaving every list (ADR 0048), and checking it against the lists again here refused every
@@ -271,8 +288,8 @@ export function patchBot(
   const now = isoNow();
   ctx.db.transaction(() => {
     ctx.db.run(
-      `UPDATE bots SET name = ?, duties = ?, boundaries = ?, avatar = ?, model = ?, provider_id = ?, thinking_level = ?, runner = ?, agent_model = ?, agent_effort = ?, agent_config_dir = ?, agent_custom_id = ?, updated_at = ? WHERE id = ?`,
-      [name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, agentConfigDir, agentCustomId, now, id],
+      `UPDATE bots SET name = ?, duties = ?, boundaries = ?, avatar = ?, model = ?, provider_id = ?, thinking_level = ?, runner = ?, agent_model = ?, agent_effort = ?, agent_config_dir = ?, agent_custom_id = ?, permission_mode = ?, updated_at = ? WHERE id = ?`,
+      [name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, agentConfigDir, agentCustomId, permissionMode, now, id],
     );
     ctx.db.run(
       `INSERT INTO profile_revisions (id, bot_id, name, duties, boundaries, avatar, actor, message_id, created_at)

@@ -695,7 +695,7 @@ test("route contracts reject unknown fields and wrong types across every mutatio
     ["POST", "/v1/sessions", { name: "n", members: [id] }], ["POST", `/v1/sessions/${id}/messages`, { body: "b" }],
     ["POST", `/v1/sessions/${id}/members`, { bot_id: id }], ["POST", `/v1/sessions/${id}/read`, {}],
     ["POST", `/v1/approvals/${id}/resolve`, { action: "deny" }], ["POST", `/v1/credential-operations/${id}/resolve`, { action: "cancel" }],
-    ["POST", "/v1/allow-rules", { kind_key: "k", scope: "s" }], ["POST", "/v1/models/probe", {}],
+    ["POST", "/v1/models/probe", {}],
     ["PUT", "/v1/workspace/file", { path: "x", content: "y" }], ["POST", "/v1/workspace/trash", { paths: ["x"] }],
     ["PUT", `/v1/messages/${id}/reactions`, { emoji: "x" }],
     ["DELETE", `/v1/bots/${id}`, { if_revision: "r" }], ["PATCH", "/v1/settings", { theme: "dark", if_revision: 1 }],

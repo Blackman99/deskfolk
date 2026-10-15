@@ -1,6 +1,6 @@
 <script lang="ts">
 	import BrandMark from './BrandMark.svelte';
-	import { COPY, JAIL_COPY } from './copy.ts';
+	import { COPY, WORKSPACE_COPY } from './copy.ts';
 	import Select from './Select.svelte';
 	import ModelPicker from './ModelPicker.svelte';
 	import WorkspacePicker from './settings/WorkspacePicker.svelte';
@@ -777,7 +777,7 @@
 						>
 							{t.onboarding.useDefaultWorkspace}
 						</button>
-						<p class="jail mt-3 mx-0 mb-0 text-12 text-muted leading-[1.45] bg-line-subtle py-3 px-4 rounded-sm">{JAIL_COPY[locale]}</p>
+						<p class="jail mt-3 mx-0 mb-0 text-12 text-muted leading-[1.45] bg-line-subtle py-3 px-4 rounded-sm">{WORKSPACE_COPY[locale]}</p>
 						{#if fieldErrors.workspace}
 							<p class="field-error">
 								{fieldCopy(

@@ -33,8 +33,8 @@ export const FAIL_REASON = {
   agent_exited: { zh: "Claude Code 中途退出了", en: "Claude Code exited mid-turn" },
   // ADR 0079: a local agent that ran a call the app never saw, out of the workspace or on credentials.
   agent_unguarded: {
-    zh: "本机 Agent 没先问就动了工作区外的东西或凭据，这一轮已停下",
-    en: "The local agent acted outside the workspace or on credentials without asking, so the turn was stopped",
+    zh: "本机 Agent 没先问就做了要批准的事，或动了凭据，这一轮已停下",
+    en: "The local agent did something that needed your OK, or touched credentials, without asking, so the turn was stopped",
   },
 } as const;
 
@@ -51,8 +51,8 @@ const AGENT_FAIL_REASON: Partial<Record<FailKind, { zh: (agent: string) => strin
   agent_limit: { zh: (agent) => `${agent} 的用量额度用完了`, en: (agent) => `${agent} usage limit reached` },
   agent_exited: { zh: (agent) => `${agent} 中途退出了`, en: (agent) => `${agent} exited mid-turn` },
   agent_unguarded: {
-    zh: (agent) => `${agent} 没先问就动了工作区外的东西或凭据，这一轮已停下`,
-    en: (agent) => `${agent} acted outside the workspace or on credentials without asking, so the turn was stopped`,
+    zh: (agent) => `${agent} 没先问就做了要批准的事，或动了凭据，这一轮已停下`,
+    en: (agent) => `${agent} did something that needed your OK, or touched credentials, without asking, so the turn was stopped`,
   },
 };
 

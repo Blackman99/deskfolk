@@ -1,6 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
 import { runCollabTool, type ToolCtx } from "./collab-tools";
-import { HttpError } from "./errors";
 import { savePromptText } from "./prompts/book";
 import { applyPromptEdits, PROMPT_EDIT_KIND, promptReach } from "./prompt-tools";
 import { slotDef } from "./prompts/registry";
@@ -51,7 +50,7 @@ test("list and read are free; read shows the editable part, the fixed format and
   expect((await runCollabTool(ctx, "read_prompt", { id: "nope" })).error?.code).toBe("not_found");
 });
 
-test("an edit waits for your approval card, never Always-allowed, and records who, why and through which card", async () => {
+test("an edit waits for your approval card and records who, why and through which card", async () => {
   const { store, bot, turn, ctx } = setup();
   const edits = [{ after: "Claim only what you ran:", add: " Paste the command output you relied on." }];
   const proposed = await runCollabTool(ctx, "edit_prompt", { id: "turn.system", edits, reason: "Three hand-overs last week claimed tests passed with no output." });
@@ -62,9 +61,7 @@ test("an edit waits for your approval card, never Always-allowed, and records wh
   expect(card.summary).toContain("@@ Change 1 · add after “Claim only what you ran:”\n+  Paste the command output you relied on.");
   expect(store.promptOverride("turn.system", "en")).toBeNull();
 
-  // The card itself: Always allow is refused for this kind.
   const approval = store.insertApproval({ turnId: turn.id, messageId: null, kind_key: card.kind_key, summary: card.summary, target: card.target });
-  expect(() => store.resolveApproval(approval.id, "always_allow", "*")).toThrow(HttpError);
 
   const done = await card.run({ approval_id: approval.id, message_id: "01J00000000000000000000000" });
   expect(done).toMatchObject({ ok: true, data: { id: "turn.system", locale: "en", state: "edited" } });
@@ -74,6 +71,23 @@ test("an edit waits for your approval card, never Always-allowed, and records wh
     message_id: "01J00000000000000000000000", reason: "Three hand-overs last week claimed tests passed with no output.",
   });
   expect(store.promptRevisionByApproval(approval.id)!.id).toBe(store.promptHead("turn.system", "en")!.id);
+});
+
+test("a change to the app's setup goes by the Bot's permission mode: applied in allow_all, refused read-only (ADR 0092)", async () => {
+  const { store, bot, ctx } = setup();
+  const edits = [{ after: "Claim only what you ran:", add: " Paste the command output you relied on." }];
+  store.patchBot(bot.id, { permission_mode: "read_only" });
+  const refused = await runCollabTool(ctx, "edit_prompt", { id: "turn.system", edits, reason: "Proof." });
+  expect(refused.error?.code).toBe("refused");
+  expect(refused.error?.message).toContain("read-only");
+  expect(store.promptOverride("turn.system", "en")).toBeNull();
+  // Auto still asks: a change to every Bot's instructions is a change to the app's setup.
+  store.patchBot(bot.id, { permission_mode: "auto" });
+  expect((await runCollabTool(ctx, "edit_prompt", { id: "turn.system", edits, reason: "Proof." })).waitApproval?.kind_key).toBe(PROMPT_EDIT_KIND);
+  store.patchBot(bot.id, { permission_mode: "allow_all" });
+  const applied = await runCollabTool(ctx, "edit_prompt", { id: "turn.system", edits, reason: "Proof." });
+  expect(applied).toMatchObject({ ok: true, data: { id: "turn.system", state: "edited" } });
+  expect(store.promptHead("turn.system", "en")).toMatchObject({ actor: "bot", bot_id: bot.id, approval_id: null, reason: "Proof." });
 });
 
 test("an edit that no longer fits once you allow it is refused, not forced", async () => {

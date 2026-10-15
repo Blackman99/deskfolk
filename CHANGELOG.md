@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Permission modes: one for the app, one per Bot if you like, and the workspace is no longer a permission line
+
+- What a Bot may do without asking you is now one of four permission modes, chosen in Settings › General: **Read-only** (reads files and looks things up; writes no files, runs no commands, changes no setup), **Ask first** (every file write, command and setup change waits for your card), **Auto**, the default (writes files and runs commands; adding or changing MCP servers, endpoints or built-in prompts waits for your card) and **Allow all** (asks nothing). A Bot's panel can give that Bot its own mode, or let it follow the app's; only you can change either.
+- Whether a path is in the workspace no longer decides anything: a Bot in Auto writes in a repository outside the workspace without a card, and one in Ask first asks for writes inside it too. The workspace is where every Bot's work is kept together.
+- Always allow is gone, with its list in Settings. A card now offers Allow once, **Allow from now on** and Deny; Allow from now on lets the call through and moves that Bot to the mode in which that kind of call no longer asks (Auto, or Allow all for a setup change), and the line under the buttons says which. Rules you saved no longer apply.
+- In every mode, Allow all included, Bots still cannot read your local agents' sign-ins and never search your whole home folder; a card asking for a key you have to paste still comes up.
+
 ### Tool descriptions are grouped by what the tools are for
 
 - Settings › Prompts › Tool descriptions used to be fifty-odd tool names in one grid, so finding a tool's description meant reading through the names. They now come under nine headings by what the tools are for: files and commands; speaking and ending turns; plans and hand-overs; roster and conversations; profile, skills and memory; routines; annotations; endpoints, models and MCP; prompts and records. A search or the Edited filter keeps the same headings, showing only those with a tool left. The same on a phone.

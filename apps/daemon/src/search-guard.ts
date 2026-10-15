@@ -11,8 +11,8 @@
  * {@link BOUNDED_DEPTH_MAX}) does not walk the tree and is let through. A
  * command this cannot parse — a pipe, a subshell, a backtick, `eval` — is left alone; if it then
  * runs long and times out, that is left for a later phase's failure-signature lesson, not caught
- * by this guard. It never grants a bypass: not the `force` a normal approval takes, not an
- * always-allow rule for `unconstrained-shell` — this refusal is unconditional.
+ * by this guard. It never grants a bypass: not the `force` a normal approval takes, not the
+ * `allow_all` permission mode (ADR 0092) — this refusal is unconditional.
  *
  * POSIX only (`toolShell().kind === "sh"`): the guarded tools (`grep`, `rg`, `find`, `du`, `ls`) are
  * Unix ones, and Windows' own path syntax needs its own walk if this is ever extended there.

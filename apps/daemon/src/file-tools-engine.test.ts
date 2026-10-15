@@ -17,7 +17,7 @@ describe("file tools and workspace shell on the local API", () => {
     }
   });
 
-  async function createWriterIn(h: Harness, fixtureOrigin: string): Promise<{
+  async function createWriterIn(h: Harness, fixtureOrigin: string, permissionMode?: string): Promise<{
     botId: string;
     sessionId: string;
     workspace: string;
@@ -42,6 +42,7 @@ describe("file tools and workspace shell on the local API", () => {
         name: "Writer",
         duties: "write the report",
         boundaries: "stay in the workspace",
+        ...(permissionMode ? { permission_mode: permissionMode } : {}),
       }),
     });
     expect(created.status).toBe(201);
@@ -178,7 +179,46 @@ describe("file tools and workspace shell on the local API", () => {
     sub.close();
   });
 
-  test("write_file outside the workspace parks waiting_approval and does not write the file", async () => {
+  test("in auto, write_file outside the workspace lands without a card (ADR 0092)", async () => {
+    const outsideDir = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-out-")));
+    workspaces.push(outsideDir);
+    const outsidePath = join(outsideDir, "notes.md");
+    let hop = 0;
+    const fixture = await startFixture(() => {
+      hop += 1;
+      if (hop === 1) return sse(toolCallChunks("call_out", "write_file", JSON.stringify({ path: outsidePath, content: "kept" })));
+      return sse(textChunks("written outside"));
+    });
+    const h = await startApi();
+    const { sessionId } = await createWriterIn(h, fixture.origin);
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, { method: "POST", headers: auth(h), body: JSON.stringify({ body: "write outside" }) });
+    await waitFor(sub.events, (e) => e.event === "message.created" && e.kind === "bot" && e.body === "written outside");
+    expect(readFileSync(outsidePath, "utf8")).toBe("kept");
+    expect(sub.events.some((e) => e.event === "approval.upsert")).toBe(false);
+    sub.close();
+  });
+
+  test("read-only, a write is refused before anything is written, with no card", async () => {
+    let hop = 0;
+    const fixture = await startFixture(({ body }) => {
+      hop += 1;
+      if (hop === 1) return sse(toolCallChunks("call_w", "write_file", JSON.stringify({ path: "a.md", content: "no" })));
+      const messages = body.messages as Array<{ role: string; content?: string }>;
+      expect(messages.some((m) => m.role === "tool" && String(m.content).includes('"code":"refused"') && String(m.content).includes("read-only"))).toBe(true);
+      return sse(textChunks("could not write"));
+    });
+    const h = await startApi();
+    const { sessionId, workspace } = await createWriterIn(h, fixture.origin, "read_only");
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, { method: "POST", headers: auth(h), body: JSON.stringify({ body: "write a.md" }) });
+    await waitFor(sub.events, (e) => e.event === "message.created" && e.kind === "bot" && e.body === "could not write");
+    expect(existsSync(join(workspace, "a.md"))).toBe(false);
+    expect(sub.events.some((e) => e.event === "approval.upsert")).toBe(false);
+    sub.close();
+  });
+
+  test("ask_first, a write outside the workspace parks waiting_approval and does not write the file", async () => {
     const outsideDir = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-out-")));
     workspaces.push(outsideDir);
     const outsidePath = join(outsideDir, "secret.md");
@@ -186,7 +226,7 @@ describe("file tools and workspace shell on the local API", () => {
       sse(toolCallChunks("call_out", "write_file", JSON.stringify({ path: outsidePath, content: "leak" }))),
     );
     const h = await startApi();
-    const { sessionId, workspace } = await createWriterIn(h, fixture.origin);
+    const { sessionId, workspace } = await createWriterIn(h, fixture.origin, "ask_first");
     const sub = await subscribe(h);
     await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
       method: "POST",
@@ -204,17 +244,17 @@ describe("file tools and workspace shell on the local API", () => {
     expect(card.turn_id).toBe(waiting.id);
     const approvalEvent = await waitFor(sub.events, (e) => e.event === "approval.upsert");
     expect(approvalEvent.status).toBe("pending");
-    expect(approvalEvent.kind_key).toBe("outside-write");
+    expect(approvalEvent.kind_key).toBe("file-write");
     expect(existsSync(outsidePath)).toBe(false);
     expect(existsSync(join(workspace, "secret.md"))).toBe(false);
     const pending = await fetch(`${h.origin}/v1/approvals?status=pending`, { headers: auth(h) });
     const listed = (await pending.json()) as { items: Array<{ kind_key: string; target: string }> };
     expect(listed.items).toHaveLength(1);
-    expect(listed.items[0]!.kind_key).toBe("outside-write");
+    expect(listed.items[0]!.kind_key).toBe("file-write");
     sub.close();
   });
 
-  test("allow_once on an outside write then writes the file and finishes the turn", async () => {
+  test("ask_first, allow_once on a write then writes the file and finishes the turn", async () => {
     const outsideDir = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-out-")));
     workspaces.push(outsideDir);
     const outsidePath = join(outsideDir, "secret.md");
@@ -231,7 +271,7 @@ describe("file tools and workspace shell on the local API", () => {
       return sse(textChunks("done outside"));
     });
     const h = await startApi();
-    const { sessionId } = await createWriterIn(h, fixture.origin);
+    const { sessionId } = await createWriterIn(h, fixture.origin, "ask_first");
     const sub = await subscribe(h);
     await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
       method: "POST",
@@ -256,7 +296,7 @@ describe("file tools and workspace shell on the local API", () => {
     sub.close();
   });
 
-  test("Always allow on an outside write covers its folder: the next write and a read there ask nothing (ADR 0087)", async () => {
+  test("allowing from now on moves the Bot to auto: its next write and a read ask nothing (ADR 0092)", async () => {
     const outsideDir = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-out-")));
     workspaces.push(outsideDir);
     const first = join(outsideDir, "a.md");
@@ -270,19 +310,20 @@ describe("file tools and workspace shell on the local API", () => {
       return sse(textChunks("both written"));
     });
     const h = await startApi();
-    const { sessionId } = await createWriterIn(h, fixture.origin);
+    const { botId, sessionId } = await createWriterIn(h, fixture.origin, "ask_first");
     const sub = await subscribe(h);
     await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, { method: "POST", headers: auth(h), body: JSON.stringify({ body: "write two files outside" }) });
     const card = await waitFor(sub.events, (e) => e.event === "approval.upsert" && e.status === "pending");
     expect(card.target).toBe(first);
-    expect(card.allow_scope).toBe(outsideDir);
-    const resolved = await fetch(`${h.origin}/v1/approvals/${card.id}/resolve`, { method: "POST", headers: auth(h), body: JSON.stringify({ action: "always_allow" }) });
+    const resolved = await fetch(`${h.origin}/v1/approvals/${card.id}/resolve`, { method: "POST", headers: auth(h), body: JSON.stringify({ action: "allow_from_now" }) });
     expect(resolved.status).toBe(200);
+    const moved = await waitFor(sub.events, (e) => e.event === "bot.upsert" && e.id === botId && e.permission_mode === "auto");
+    expect(moved.permission_mode).toBe("auto");
     await waitFor(sub.events, (e) => e.event === "message.created" && e.kind === "bot" && e.body === "both written");
     expect(readFileSync(first, "utf8")).toBe("one");
     expect(readFileSync(second, "utf8")).toBe("two");
     expect(sub.events.filter((e) => e.event === "approval.upsert" && e.status === "pending")).toHaveLength(1);
-    expect(h.store.listAllowRules().map((r) => [r.kind_key, r.scope])).toEqual([["outside-write", outsideDir]]);
+    expect(h.store.getBot(botId).permission_mode).toBe("auto");
     sub.close();
   });
 
@@ -308,9 +349,6 @@ describe("file tools and workspace shell on the local API", () => {
     await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, { method: "POST", headers: auth(h), body: JSON.stringify({ body: "让每个 Bot 交付时都附上命令输出" }) });
     const approvalEvent = await waitFor(sub.events, (e) => e.event === "approval.upsert" && e.status === "pending");
     expect(approvalEvent.kind_key).toBe("prompt-edit");
-    // Never Always-allowed: every Bot reads this text.
-    const always = await fetch(`${h.origin}/v1/approvals/${approvalEvent.id}/resolve`, { method: "POST", headers: auth(h), body: JSON.stringify({ action: "always_allow" }) });
-    expect(always.status).toBe(422);
     const resolved = await fetch(`${h.origin}/v1/approvals/${approvalEvent.id}/resolve`, { method: "POST", headers: auth(h), body: JSON.stringify({ action: "allow_once" }) });
     expect(resolved.status).toBe(200);
     await waitFor(sub.events, (e) => e.event === "message.created" && e.kind === "bot" && e.body === "改好了");
@@ -321,7 +359,7 @@ describe("file tools and workspace shell on the local API", () => {
     sub.close();
   });
 
-  test("a jailed shell runs immediately and returns stdout", async () => {
+  test("in auto, a shell runs immediately and returns stdout", async () => {
     let hop = 0;
     const fixture = await startFixture(({ body }) => {
       hop += 1;
@@ -350,25 +388,26 @@ describe("file tools and workspace shell on the local API", () => {
     sub.close();
   });
 
-  test("a visible outside path in shell parks unconstrained-shell and does not run", async () => {
+  test("ask_first, any shell parks as shell and does not run", async () => {
     const fixture = await startFixture(() =>
-      sse(toolCallChunks("call_sh", "shell", '{"command":"cat /etc/passwd"}')),
+      sse(toolCallChunks("call_sh", "shell", '{"command":"echo hello > made.txt"}')),
     );
     const h = await startApi();
-    const { sessionId } = await createWriterIn(h, fixture.origin);
+    const { sessionId } = await createWriterIn(h, fixture.origin, "ask_first");
     const sub = await subscribe(h);
     await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
       method: "POST",
       headers: auth(h),
-      body: JSON.stringify({ body: "cat passwd" }),
+      body: JSON.stringify({ body: "make a file" }),
     });
     await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "waiting_approval");
     const approvalEvent = await waitFor(sub.events, (e) => e.event === "approval.upsert");
-    expect(approvalEvent.kind_key).toBe("unconstrained-shell");
+    expect(approvalEvent.kind_key).toBe("shell");
+    expect(approvalEvent.summary).toBe("shell echo hello > made.txt");
     sub.close();
   });
 
-  test("deny on an outside write returns denied and does not write the file", async () => {
+  test("ask_first, deny on a write returns denied and does not write the file", async () => {
     const outsideDir = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-deny-")));
     workspaces.push(outsideDir);
     const outsidePath = join(outsideDir, "secret.md");
@@ -386,7 +425,7 @@ describe("file tools and workspace shell on the local API", () => {
       return sse(textChunks("denied it"));
     });
     const h = await startApi();
-    const { sessionId } = await createWriterIn(h, fixture.origin);
+    const { sessionId } = await createWriterIn(h, fixture.origin, "ask_first");
     const sub = await subscribe(h);
     await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
       method: "POST",

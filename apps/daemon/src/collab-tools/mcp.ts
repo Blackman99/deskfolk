@@ -3,7 +3,7 @@ import type { McpHeader, McpServer, McpTransport } from "@real-bot/protocol";
 import { runCollabTool, type ToolCtx, type ToolResult } from "../collab-tools";
 import { HttpError } from "../errors";
 import { optionalString, optionalStringArray, requireString } from "./args";
-import { mutateConfiguration } from "./guards";
+import { mutateConfiguration, setupVerdict } from "./guards";
 
 export async function listMcpServers(ctx: ToolCtx): Promise<ToolResult> {
   const servers = await ctx.store.listMcpServersHydrated();
@@ -20,7 +20,8 @@ export async function addMcpServer(ctx: ToolCtx, args: Record<string, unknown>):
   const name = requireString(args.name, "name");
   const parsed = parseMcpToolSpec(args);
   const enabled = args.enabled === undefined ? true : Boolean(args.enabled);
-  if (!ctx.approved) {
+  // An HTTP server's Authorization is pasted on the card, so it puts one up in every mode.
+  if (!ctx.approved && (setupVerdict(ctx) === "ask" || parsed.spec.transport === "http")) {
     return {
       ok: false,
       waitApproval: {
@@ -86,21 +87,22 @@ export async function updateMcpServer(ctx: ToolCtx, args: Record<string, unknown
     url: nextUrl,
     headers: nextHeaders,
   });
-  if (connectionChanging && !ctx.approved) {
-    const nextSpec: McpToolSpec = {
-      transport: nextTransport ?? current.transport,
-      command: nextCommand ?? current.command,
-      args: nextArgs ?? current.args,
-      url: nextUrl ?? current.url,
-      headers: nextHeaders ?? current.headers,
-    };
+  const nextSpec: McpToolSpec = {
+    transport: nextTransport ?? current.transport,
+    command: nextCommand ?? current.command,
+    args: nextArgs ?? current.args,
+    url: nextUrl ?? current.url,
+    headers: nextHeaders ?? current.headers,
+  };
+  const needsAuth = nextSpec.transport === "http" && !current.auth_set;
+  if (connectionChanging && !ctx.approved && (setupVerdict(ctx) === "ask" || needsAuth)) {
     return {
       ok: false,
       waitApproval: {
         kind_key: "mcp-edit",
         target: mcpTarget(nextSpec),
         summary: mcpEditSummary(nextName ?? current.name, nextSpec),
-        requiresApiKey: nextSpec.transport === "http" && !current.auth_set,
+        requiresApiKey: needsAuth,
         run: (opts) =>
           runCollabTool(
             {

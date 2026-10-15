@@ -2,7 +2,7 @@
  * A Claude Agent turn (ADR 0061): the turn of a Bot whose runner is `claude_code`, worked by the
  * user's own installed and signed-in Claude Code through the Agent SDK instead of the app's hop
  * loop. One Deskfolk turn is one fresh Claude Code session in the turn's work dir. Claude Code works
- * with its own tools; the app wraps them in what every turn has — the workspace boundary and your
+ * with its own tools; the app wraps them in what every turn has — the Bot's permission mode and your
  * approvals, holds and Stop, the effect gate and its records — and offers its own collaboration
  * tools (`mcp__deskfolk__*`) through `executeTools`, so endings, hand-overs, reviews and delegation
  * mean what they mean for any Bot. A closing reply goes through the same `settleClosingReply` the
@@ -38,6 +38,7 @@ import { tildeDir } from "../claude-code/account";
 import { accountOf, claudeChildEnv } from "../claude-code/status";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
 import { AGENT_READONLY_TOOLS, AGENT_WORK_TOOLS, appToolName, decideAgentCall } from "../claude-code/policy";
+import { READ_ONLY_REFUSAL, changeVerdict } from "../permission-gate";
 import { assembleAgentTurnInput } from "../context";
 import { memoryDigest } from "../context/memory-digest";
 import type { ToolCall } from "../completions";
@@ -565,7 +566,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
         mode: current.mode === "readonly" ? "readonly" : current.mode === "desk" ? "desk" : "work",
         workspace: root,
         configDirs: store.claudeCodeConfigDirs(),
-        allowed: (kind, target) => store.matchesAllowRule(kind, target),
+        permission: store.permissionModeFor(current.bot_id),
       });
       if (decision.kind === "deny") return deny(decision.reason);
       let context: string | undefined;
@@ -795,8 +796,18 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       if (state.ended || !active(turnId, live)) return { behavior: "deny", message: en ? "this segment has ended" : "这一段已经结束了", interrupt: true };
       const id = options.toolUseID;
       const entry = pending.get(id);
+      // Claude Code asked on its own (a protected file, say): a change, as the Bot's mode has it (ADR 0092).
+      if (!entry?.approval) {
+        const verdict = changeVerdict(store.permissionModeFor(current.bot_id));
+        if (verdict === "refuse") return { behavior: "deny", message: READ_ONLY_REFUSAL };
+        if (verdict === "allow") {
+          if (entry?.effect && !beginEffect(id, entry.appName)) return { behavior: "deny", message: en ? "this work is held or no longer yours to do" : "这件事被停住了，或者已经不归你做" };
+          startFrame(id, toolName, toolInput, entry?.appName ?? appToolName(toolName));
+          return { behavior: "allow", updatedInput: toolInput };
+        }
+      }
       const approval = entry?.approval ?? {
-        // Claude Code asked on its own (a protected file, say): your card says what it wants.
+        // Your card says what it wants.
         kind_key: "agent-permission",
         target: options.blockedPath ?? toolName,
         summary: `${toolName} ${clip(options.title ?? options.description ?? JSON.stringify(toolInput), 300)}`,

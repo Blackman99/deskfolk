@@ -6,9 +6,9 @@
  */
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ClientEvent } from "@real-bot/protocol";
+import type { ClientEvent, PermissionMode } from "@real-bot/protocol";
 import type { CompletionOk, JudgeResult } from "./completions";
 import { codexDriver } from "./engine/agent/drivers/codex";
 import { memoryKeyStore } from "./secrets";
@@ -33,7 +33,7 @@ type Step = Record<string, unknown>;
 type Script = { signedOut?: boolean; model?: string; mcpServers?: Array<{ name: string; pluginId?: string }>; rejectMcp?: string[]; turns: Step[][] };
 type Entry = Record<string, unknown>;
 
-async function harness(script: Script) {
+async function harness(script: Script, opts: { permissionMode?: PermissionMode } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-codex-")));
   const logFile = join(root, ".fake-codex.log");
   const store = new Store({ endpointKey: memoryKeyStore() });
@@ -74,7 +74,7 @@ async function harness(script: Script) {
     store.close();
     rmSync(root, { recursive: true, force: true });
   });
-  const bot = store.createBot({ name: "Coder", duties: "write code", boundaries: "stay in the workspace", runner: "codex" });
+  const bot = store.createBot({ name: "Coder", duties: "write code", boundaries: "stay in the workspace", runner: "codex", permission_mode: opts.permissionMode ?? null });
   const session = bot.direct_session.id;
   const completed = () => new Promise<void>((resolve) => completedWaiters.push(resolve));
   const post = async (body: string) => {
@@ -171,11 +171,19 @@ test("a command inside the turn's work dir is let through without a card, and is
   expect(h.startedFrames()).toEqual(["shell"]);
 });
 
-test("a command reading outside the workspace waits for your card, and a refusal reaches Codex as a decline", async () => {
-  const h = await harness({ turns: [[{ command: "cat /etc/hosts" }, { say: "没读成" }]] });
+test("in auto a command reading outside the workspace is let through with no card (ADR 0092)", async () => {
+  const h = await harness({ turns: [[{ command: "cat /etc/hosts" }, { say: "读到了" }]] });
+  await h.post("看看 hosts");
+  expect(h.approvals()).toBe(0);
+  expect(h.seen().find((entry) => entry.asked)).toMatchObject({ asked: "cat /etc/hosts", answer: { decision: "accept" } });
+  expect(h.lines("bot")).toEqual(["读到了"]);
+});
+
+test("ask_first, a command waits for your card, and a refusal reaches Codex as a decline", async () => {
+  const h = await harness({ turns: [[{ command: "cat /etc/hosts" }, { say: "没读成" }]] }, { permissionMode: "ask_first" });
   const done = h.post("看看 hosts");
   const card = await h.pendingApproval();
-  expect(card?.kind_key).toBe("unconstrained-shell");
+  expect(card?.kind_key).toBe("shell");
   expect(card?.summary).toContain("cat /etc/hosts");
   h.engine.resolveApproval(card!.id, "deny");
   await done;
@@ -187,10 +195,10 @@ test("a command reading outside the workspace waits for your card, and a refusal
 });
 
 test("the same command runs once you allow it", async () => {
-  const h = await harness({ turns: [[{ command: "cat /etc/hosts" }, { say: "读到了" }]] });
+  const h = await harness({ turns: [[{ command: "cat /etc/hosts" }, { say: "读到了" }]] }, { permissionMode: "ask_first" });
   const done = h.post("看看 hosts");
   const card = await h.pendingApproval();
-  expect(card?.kind_key).toBe("unconstrained-shell");
+  expect(card?.kind_key).toBe("shell");
   h.engine.resolveApproval(card!.id, "allow_once");
   await done;
   expect(h.seen().find((entry) => entry.asked)).toMatchObject({ answer: { decision: "accept" } });
@@ -212,13 +220,13 @@ test("a file change inside the work dir is let through, written, and recorded as
   expect(h.startedTargets()[0]).toMatch(/^work\/.+\/notes\/plan\.md$/);
 });
 
-test("a file change outside the workspace waits for your card, and a refusal means it is never written", async () => {
+test("ask_first, a file change waits for your card, and a refusal means it is never written", async () => {
   const outside = realpathSync(mkdtempSync(join(tmpdir(), "agent-outside-")));
   const target = join(outside, "x.txt");
-  const h = await harness({ turns: [[{ fileChange: target }, { say: "没写成" }]] });
+  const h = await harness({ turns: [[{ fileChange: target }, { say: "没写成" }]] }, { permissionMode: "ask_first" });
   const done = h.post("在外面写个文件");
   const card = await h.pendingApproval();
-  expect(card?.kind_key).toBe("outside-write");
+  expect(card?.kind_key).toBe("file-write");
   h.engine.resolveApproval(card!.id, "deny");
   await done;
   expect(existsSync(target)).toBe(false);
@@ -228,14 +236,14 @@ test("a file change outside the workspace waits for your card, and a refusal mea
 
 // The request names only the item's id; the item, with its paths, may come in the same read
 // (a pipe the daemon was too busy to read). It is noted at once, so the card is never skipped.
-test("a file change outside the workspace still waits for your card when its request is read together with its item/started", async () => {
+test("ask_first, a file change still waits for your card when its request is read together with its item/started", async () => {
   const outside = realpathSync(mkdtempSync(join(tmpdir(), "agent-outside-")));
   const target = join(outside, "x.txt");
-  const h = await harness({ turns: [[{ fileChange: target, burst: true }, { say: "写了" }]] });
+  const h = await harness({ turns: [[{ fileChange: target, burst: true }, { say: "写了" }]] }, { permissionMode: "ask_first" });
   try {
     const done = h.post("在外面写个文件");
     const card = await h.cardOrEnd(done);
-    expect(card?.kind_key).toBe("outside-write");
+    expect(card?.kind_key).toBe("file-write");
     h.engine.resolveApproval(card!.id, "deny");
     await done;
     expect(existsSync(target)).toBe(false);
@@ -276,9 +284,9 @@ test("a limit Codex reported as an error notice, its info a one-key object, is t
   expect(h.failKind()).toBe("agent_limit");
 });
 
-test("a command Codex ran on its own out of the workspace, with no approval asked, stops the turn as unguarded", async () => {
-  const h = await harness({ turns: [[{ unasked: `cat ${join(homedir(), ".ssh", "known_hosts")}` }, { say: "看完了" }]] });
-  await h.post("看看 ssh");
+test("a command Codex ran on its own that its mode would have asked about, with no approval asked, stops the turn as unguarded", async () => {
+  const h = await harness({ turns: [[{ unasked: "echo hi" }, { say: "看完了" }]] }, { permissionMode: "ask_first" });
+  await h.post("跑一下");
   expect(h.lines("bot")).toEqual([]);
   expect(h.failKind()).toBe("agent_unguarded");
   expect(h.lines("system").join("\n")).toContain("Codex");

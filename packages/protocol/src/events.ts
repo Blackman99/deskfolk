@@ -1,4 +1,4 @@
-import type { AllowRule, Approval, McpServer, Memory, Routine, Skill } from "./admin.ts";
+import type { Approval, McpServer, Memory, Routine, Skill } from "./admin.ts";
 import type { Bot } from "./bots.ts";
 import type { BuiltinModelRole } from "./models.ts";
 import type { Locale, USER_MEMBER } from "./constants.ts";
@@ -102,8 +102,6 @@ export type ClientEvent =
   | { event: "mcp.removed"; occurred_at: string; id: string }
   | ({ event: "provider.upsert"; occurred_at: string } & Provider)
   | { event: "provider.removed"; occurred_at: string; id: string }
-  | ({ event: "allow_rule.upsert"; occurred_at: string } & AllowRule)
-  | { event: "allow_rule.removed"; occurred_at: string; id: string }
   | ({ event: "annotation.upsert"; occurred_at: string } & import("./annotations.ts").Annotation)
   | { event: "annotation.removed"; occurred_at: string; id: string }
   | ({ event: "notification.upsert"; occurred_at: string } & import("./notifications.ts").NotificationItem)

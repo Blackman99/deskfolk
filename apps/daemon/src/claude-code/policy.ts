@@ -1,13 +1,15 @@
 /**
  * The app's rules for a Claude Agent turn's own tool calls (ADR 0061), decided before Claude Code
- * runs them: the same workspace boundary every Bot has (inside runs, crossing out waits for your
- * OK unless an always-allow rule covers it), the same recursive-search refusal, nothing outside a
- * short list of Claude Code's tools, nothing in the background, and never Claude Code's own
- * credentials. Pure: everything it needs is passed in, so the rules are tested on their own — the
- * Windows ones too, on a fake disk (`host`).
+ * runs them: the permission mode every Bot has (ADR 0092: reads run, a write or a command runs,
+ * waits for your OK or is refused as the mode says, wherever it lands), the same recursive-search
+ * refusal, nothing outside a short list of Claude Code's tools, nothing in the background, and
+ * never Claude Code's own credentials. Pure: everything it needs is passed in, so the rules are
+ * tested on their own — the Windows ones too, on a fake disk (`host`).
  */
 import { existsSync } from "node:fs";
 import { posix, win32 } from "node:path";
+import type { PermissionMode } from "@real-bot/protocol";
+import { FILE_WRITE_KIND, READ_ONLY_REFUSAL, SHELL_KIND, changeVerdict } from "../permission-gate";
 import { isAgentCredentialPath, touchesAgentCredentials } from "../engine/agent/credentials";
 import { recursiveSearchGuard, searchGuardMessage } from "../search-guard";
 import { classifyPath, classifyShell, isAbsoluteHostPath, isWithinPath, nodePathHost, workspaceRelative, type PathHost } from "../workspace-paths";
@@ -43,8 +45,8 @@ export type AgentCall = {
   home?: string;
   /** Your Claude accounts' config directories listed in Settings: as off limits as `~/.claude`. */
   configDirs?: string[];
-  /** Whether an always-allow rule you made covers this kind of call there. */
-  allowed: (kind: string, target: string) => boolean;
+  /** The Bot's permission mode (ADR 0092): whether a write or a command runs, asks or is refused. */
+  permission: PermissionMode;
   /** Whether a path exists; the disk's own when absent. */
   exists?: (path: string) => boolean;
   /** The file system and its rules; this machine's when absent. */
@@ -55,6 +57,21 @@ export type AgentDecision =
   | { kind: "allow"; effect: boolean; appName: string; target?: string }
   | { kind: "deny"; reason: string }
   | { kind: "ask"; effect: boolean; appName: string; approval: { kind_key: string; target: string; summary: string } };
+
+/**
+ * A change — a write or a command — as the Bot's permission mode has it (ADR 0092): `allow` as
+ * given, a card with `approval`, or the read-only refusal.
+ */
+export function gateChange(
+  mode: PermissionMode,
+  allow: Extract<AgentDecision, { kind: "allow" }>,
+  approval: { kind_key: string; target: string; summary: string },
+): AgentDecision {
+  const verdict = changeVerdict(mode);
+  if (verdict === "allow") return allow;
+  if (verdict === "refuse") return { kind: "deny", reason: READ_ONLY_REFUSAL };
+  return { kind: "ask", effect: allow.effect, appName: allow.appName, approval };
+}
 
 /** What to do with one call. `effect` calls also pass the app's effect gate before they run. */
 export function decideAgentCall(call: AgentCall): AgentDecision {
@@ -90,9 +107,8 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
     if (hit) return { kind: "deny", reason: searchGuardMessage(hit) };
     // Claude Code's Bash on Windows is Git Bash, so `/c/Users/…` is read as Git Bash reads it.
     const classified = classifyShell(call.workspace, command, call.cwd, host, platform === "win32" ? "bash" : undefined);
-    if (classified.kind === "jailed") return { kind: "allow", effect: true, appName, target: command };
-    if (call.allowed("unconstrained-shell", classified.cwdAbs)) return { kind: "allow", effect: true, appName, target: command };
-    return { kind: "ask", effect: true, appName, approval: { kind_key: "unconstrained-shell", target: classified.cwdAbs, summary: `unconstrained-shell ${command}` } };
+    return gateChange(call.permission, { kind: "allow", effect: true, appName, target: command },
+      { kind_key: SHELL_KIND, target: classified.cwdAbs, summary: `${SHELL_KIND} ${command}` });
   }
 
   const raw = pathOf(call);
@@ -119,16 +135,12 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   if (classified.zone !== "inside" && (WRITES.has(call.tool) || READS.has(call.tool)) && top && !(call.exists ?? existsSync)(`/${top}`)) {
     return { kind: "deny", reason: `${abs} does not exist and is not in the workspace. The workspace root is ${call.workspace} and this call's directory is ${call.cwd}: put a workspace path after the root and use the absolute path.` };
   }
+  const target = classified.zone === "inside" ? classified.rel : classified.abs;
   if (WRITES.has(call.tool)) {
-    if (classified.zone === "inside") return { kind: "allow", effect: true, appName, target: classified.rel };
-    if (call.allowed("outside-write", classified.abs)) return { kind: "allow", effect: true, appName, target: classified.abs };
-    return { kind: "ask", effect: true, appName, approval: { kind_key: "outside-write", target: classified.abs, summary: `outside-write ${classified.abs}` } };
+    return gateChange(call.permission, { kind: "allow", effect: true, appName, target },
+      { kind_key: FILE_WRITE_KIND, target: classified.abs, summary: `${FILE_WRITE_KIND} ${classified.abs}` });
   }
-  if (READS.has(call.tool)) {
-    if (classified.zone === "inside") return { kind: "allow", effect: false, appName, target: classified.rel };
-    if (call.allowed("outside-read", classified.abs)) return { kind: "allow", effect: false, appName, target: classified.abs };
-    return { kind: "ask", effect: false, appName, approval: { kind_key: "outside-read", target: classified.abs, summary: `outside-read ${classified.abs}` } };
-  }
+  if (READS.has(call.tool)) return { kind: "allow", effect: false, appName, target };
   return { kind: "deny", reason: `${call.tool} is not available in a Deskfolk turn` };
 }
 

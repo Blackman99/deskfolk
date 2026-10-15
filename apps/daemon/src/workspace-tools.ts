@@ -18,6 +18,7 @@ import { commandSignature, recursiveSearchGuard, searchGuardMessage } from "./se
 import { isReservedTaskPath, type Store } from "./store";
 import { skipName } from "./workspace-browse";
 import { classifyPath, classifyShell } from "./workspace-paths";
+import { FILE_WRITE_KIND, READ_ONLY_REFUSAL, SHELL_KIND, changeVerdict } from "./permission-gate";
 import { COMMAND_STREAM_BYTES } from "./streams";
 import { LOOP_PICTURE_BYTES_MAX, pictureMime } from "./loop-pictures";
 import { visionImage } from "./vision-image";
@@ -54,6 +55,8 @@ export function isWorkspaceTool(name: string): name is WorkspaceToolName {
 export type WorkspaceToolCtx = {
   store: Store;
   signal: AbortSignal;
+  /** Whose call it is: its permission mode decides a change (ADR 0092). Absent: the app's mode. */
+  botId?: string | null;
   /**
    * This turn's work dir, workspace-relative. It is where a `shell` with no `cwd` runs, which is
    * what keeps downloads, renders and script output out of the workspace root without the model
@@ -107,13 +110,13 @@ export async function runWorkspaceTool(
     if (!root) return fail("failed", "workspace is not set");
     switch (name) {
       case "read_file":
-        return readFile(root, args, opts, ctx);
+        return readFile(root, args, ctx);
       case "write_file":
         return writeFile(root, args, opts, ctx);
       case "delete_file":
         return deleteFile(root, args, opts, ctx);
       case "list_dir":
-        return listDir(root, args, opts, ctx);
+        return listDir(root, args, ctx);
       case "shell":
         // Awaited here, so a refusal it throws before it spawns (its effect evidence, say) is a tool error.
         return await runShell(root, args, opts, ctx);
@@ -129,15 +132,10 @@ export async function runWorkspaceTool(
 function readFile(
   root: string,
   args: Record<string, unknown>,
-  opts: { approved?: boolean },
   ctx: WorkspaceToolCtx,
 ): ToolResult {
   const input = requireString(args.path, "path");
   const classified = classifyPath(root, input);
-  if (classified.zone === "outside") {
-    const pending = needsApproval(opts, "outside-read", classified.abs, `outside-read ${classified.abs}`, ctx, "read_file", args);
-    if (pending) return pending;
-  }
   if (ctx.signal.aborted) return fail("failed", "interrupted");
   try {
     const st = statSync(classified.abs);
@@ -188,23 +186,14 @@ function writeFile(
   const input = requireString(args.path, "path");
   const content = requireString(args.content, "content");
   const classified = classifyPath(root, input);
-  if (classified.zone === "outside") {
-    const pending = needsApproval(
-      opts,
-      "outside-write",
-      classified.abs,
-      `outside-write ${classified.abs}`,
-      ctx,
-      "write_file",
-      args,
-    );
-    if (pending) return pending;
-  }
-  if (ctx.signal.aborted) return fail("failed", "interrupted");
   const abs = classified.abs;
   if (existsAsDir(abs)) return fail("failed", "path is a directory");
   const stray = classified.zone === "inside" ? strayTicketFolder(root, classified.rel, ctx) : null;
   if (stray) return fail("invalid_args", stray);
+  // Asked only once the write is one that can happen: a card for a mistake asks you about nothing.
+  const pending = gateChange(opts, FILE_WRITE_KIND, abs, `${FILE_WRITE_KIND} ${abs}`, ctx, "write_file", args);
+  if (pending) return pending;
+  if (ctx.signal.aborted) return fail("failed", "interrupted");
   ctx.onEffectStart?.("write_file");
   try {
     mkdirSync(dirname(abs), { recursive: true });
@@ -244,18 +233,8 @@ function deleteFile(
   const input = requireString(args.path, "path");
   const recursive = args.recursive === true;
   const classified = classifyPath(root, input);
-  if (classified.zone === "outside") {
-    const pending = needsApproval(
-      opts,
-      "outside-write",
-      classified.abs,
-      `outside-write ${classified.abs}`,
-      ctx,
-      "delete_file",
-      args,
-    );
-    if (pending) return pending;
-  }
+  const pending = gateChange(opts, FILE_WRITE_KIND, classified.abs, `${FILE_WRITE_KIND} ${classified.abs}`, ctx, "delete_file", args);
+  if (pending) return pending;
   if (ctx.signal.aborted) return fail("failed", "interrupted");
   try {
     return withFileLock(classified.abs, () => {
@@ -282,16 +261,11 @@ function deleteFile(
 function listDir(
   root: string,
   args: Record<string, unknown>,
-  opts: { approved?: boolean },
   ctx: WorkspaceToolCtx,
 ): ToolResult {
   const input = optionalString(args.path) ?? ".";
   const recursive = args.recursive === true;
   const classified = classifyPath(root, input);
-  if (classified.zone === "outside") {
-    const pending = needsApproval(opts, "outside-read", classified.abs, `outside-read ${classified.abs}`, ctx, "list_dir", args);
-    if (pending) return pending;
-  }
   if (ctx.signal.aborted) return fail("failed", "interrupted");
   try {
     const st = statSync(classified.abs);
@@ -319,12 +293,12 @@ async function runShell(
   const command = requireString(args.command, "command");
   const explicitCwd = optionalString(args.cwd);
   const cwd = explicitCwd ?? ctx.workDir ?? ".";
-  // The approval gate reads paths the way the shell that runs them will: Git Bash's `/c/x` is
-  // `C:\x`, PowerShell's is `C:\c\x`.
+  // Its cwd and the search guard read paths the way the shell that runs them will: Git Bash's
+  // `/c/x` is `C:\x`, PowerShell's is `C:\c\x`.
   const shell = toolShell();
   const classified = classifyShell(root, command, cwd, undefined, shell.kind);
-  // Ahead of approval and of any always-allow rule (ADR 0040 P1, fixture F-g): a recursive search
-  // rooted at the whole home folder or at `/` is refused before it runs, not after it is granted.
+  // Ahead of approval and of every permission mode, allow_all too (ADR 0040 P1, fixture F-g): a
+  // recursive search rooted at the whole home folder or at `/` is refused before it runs.
   if (shell.kind === "sh") {
     const hit = recursiveSearchGuard(root, command, classified.cwdAbs);
     if (hit) return fail("refused", searchGuardMessage(hit));
@@ -347,18 +321,8 @@ async function runShell(
       lesson = { signature: kind.signature, head: kind.head, place: kind.place, botId, overriding: check.overriding };
     }
   }
-  if (classified.kind === "unconstrained") {
-    const pending = needsApproval(
-      opts,
-      "unconstrained-shell",
-      classified.cwdAbs,
-      `unconstrained-shell ${command}`,
-      ctx,
-      "shell",
-      args,
-    );
-    if (pending) return pending;
-  }
+  const pending = gateChange(opts, SHELL_KIND, classified.cwdAbs, `${SHELL_KIND} ${command}`, ctx, "shell", args);
+  if (pending) return pending;
   // The work dir is created here rather than up front: a turn that only talks should not leave an
   // empty folder behind, but a cwd that does not exist fails the spawn. A command run in it gets it,
   // whether it names it as its cwd or not, and one that reaches outside gets it once you let it
@@ -565,7 +529,11 @@ function collectEntries(
   return out;
 }
 
-function needsApproval(
+/**
+ * What this Bot's permission mode says about a change (ADR 0092), wherever it lands: nothing when
+ * it goes ahead, a refusal for a read-only Bot, else the card it waits on.
+ */
+function gateChange(
   opts: { approved?: boolean },
   kind_key: string,
   target: string,
@@ -575,7 +543,9 @@ function needsApproval(
   args: Record<string, unknown>,
 ): ToolResult | null {
   if (opts.approved) return null;
-  if (ctx.store.matchesAllowRule(kind_key, target)) return null;
+  const verdict = changeVerdict(ctx.store.permissionModeFor(ctx.botId));
+  if (verdict === "allow") return null;
+  if (verdict === "refuse") return fail("refused", READ_ONLY_REFUSAL);
   return {
     ok: false,
     waitApproval: {

@@ -2,16 +2,18 @@
  * The app's rules for a local agent's own calls (ADR 0079), whichever agent makes them: each
  * agent's tools are first told as one of a few app actions — read a file, list or search, write
  * one, run a command, fetch from the web, something else — and then decided exactly as a Claude
- * Agent turn's are (ADR 0061, `claude-code/policy.ts`): inside the workspace runs, crossing out
- * waits for your OK unless an always-allow rule covers it, the same recursive-search refusal,
- * nothing in the background, and never any agent's own credentials. Pure, like Claude's.
+ * Agent turn's are (ADR 0061, `claude-code/policy.ts`): reads run, a write or a command goes as the
+ * Bot's permission mode says (ADR 0092), the same recursive-search refusal, nothing in the
+ * background, and never any agent's own credentials. Pure, like Claude's.
  */
 import { existsSync } from "node:fs";
 import { posix } from "node:path";
 import { recursiveSearchGuard, searchGuardMessage } from "../../search-guard";
 import { classifyPath, classifyShell, nodePathHost, type PathHost } from "../../workspace-paths";
-import { anchorAt, expandHome, gitBashToWindows, type AgentDecision } from "../../claude-code/policy";
-import { isAgentCredentialPath, isAgentOwnReadable, touchesAgentCredentials } from "./credentials";
+import type { PermissionMode } from "@real-bot/protocol";
+import { anchorAt, expandHome, gateChange, gitBashToWindows, type AgentDecision } from "../../claude-code/policy";
+import { FILE_WRITE_KIND, SHELL_KIND } from "../../permission-gate";
+import { isAgentCredentialPath, touchesAgentCredentials } from "./credentials";
 
 /** What a call of an agent's own does, as the app counts it. */
 export type AppActionName = "shell" | "write_file" | "read_file" | "list_dir" | "web" | "other";
@@ -35,8 +37,8 @@ export type ActionContext = {
   home?: string;
   /** Your accounts' config directories listed in Settings, of every agent. */
   configDirs?: string[];
-  /** Whether an always-allow rule you made covers this kind of call there. */
-  allowed: (kind: string, target: string) => boolean;
+  /** The Bot's permission mode (ADR 0092): whether a write or a command runs, asks or is refused. */
+  permission: PermissionMode;
   exists?: (path: string) => boolean;
   host?: PathHost;
 };
@@ -60,15 +62,14 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
     const hit = recursiveSearchGuard(ctx.workspace, command, action.cwd, host);
     if (hit) return { kind: "deny", reason: searchGuardMessage(hit) };
     const classified = classifyShell(ctx.workspace, command, action.cwd, host, platform === "win32" ? "bash" : undefined);
-    if (classified.kind === "jailed") return { kind: "allow", effect: true, appName, target: command };
-    if (ctx.allowed("unconstrained-shell", classified.cwdAbs)) return { kind: "allow", effect: true, appName, target: command };
-    return { kind: "ask", effect: true, appName, approval: { kind_key: "unconstrained-shell", target: classified.cwdAbs, summary: `unconstrained-shell ${command}` } };
+    return gateChange(ctx.permission, { kind: "allow", effect: true, appName, target: command },
+      { kind_key: SHELL_KIND, target: classified.cwdAbs, summary: `${SHELL_KIND} ${command}` });
   }
   if (appName === "web" || appName === "other") return { kind: "allow", effect: false, appName };
 
   const writes = appName === "write_file";
   const named = action.paths.length > 0 ? action.paths : [action.cwd];
-  let decision: AgentDecision | null = null;
+  const targets: Array<{ shown: string; abs: string }> = [];
   for (const raw of named) {
     const abs = anchorAt(action.cwd, expandHome(raw, home, platform), platform);
     const spellings = [abs, ...(platform === "win32" ? [gitBashToWindows(raw)].filter((path): path is string => path !== null) : [])];
@@ -83,16 +84,14 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
     if (classified.zone !== "inside" && top && !(ctx.exists ?? existsSync)(`/${top}`)) {
       return { kind: "deny", reason: `${abs} does not exist and is not in the workspace. The workspace root is ${ctx.workspace} and this call's directory is ${action.cwd}: put a workspace path after the root and use the absolute path.` };
     }
-    let one: AgentDecision;
-    if (classified.zone === "inside") one = { kind: "allow", effect: writes, appName, target: classified.rel };
-    else if (!writes && isAgentOwnReadable(classified.abs, home, platform)) one = { kind: "allow", effect: false, appName, target: classified.abs };
-    else if (ctx.allowed(writes ? "outside-write" : "outside-read", classified.abs)) one = { kind: "allow", effect: writes, appName, target: classified.abs };
-    else one = { kind: "ask", effect: writes, appName, approval: { kind_key: writes ? "outside-write" : "outside-read", target: classified.abs, summary: `${writes ? "outside-write" : "outside-read"} ${classified.abs}` } };
-    // The first path that needs your OK decides; one inside never outweighs one outside.
-    if (one.kind === "ask") return one;
-    decision ??= one;
+    targets.push({ shown: classified.zone === "inside" ? classified.rel : classified.abs, abs: classified.abs });
   }
-  return decision ?? { kind: "allow", effect: writes, appName };
+  const target = targets[0]?.shown;
+  const allow: Extract<AgentDecision, { kind: "allow" }> = { kind: "allow", effect: writes, appName, ...(target !== undefined ? { target } : {}) };
+  if (!writes) return allow;
+  // One card for the whole change, naming every file in it.
+  const files = targets.map((one) => one.abs).join(", ");
+  return gateChange(ctx.permission, allow, { kind_key: FILE_WRITE_KIND, target: targets[0]?.abs ?? action.cwd, summary: `${FILE_WRITE_KIND} ${files || action.cwd}` });
 }
 
 /**

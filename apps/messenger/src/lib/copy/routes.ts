@@ -92,7 +92,7 @@ export const zh = {
     agent_signed_out: "本机 Agent 没通过认证",
     agent_limit: "本机 Agent 的用量额度用完了",
     agent_exited: "本机 Agent 中途退出了",
-    agent_unguarded: "本机 Agent 没先问就动了工作区外的东西或凭据，这一轮已停下"
+    agent_unguarded: "本机 Agent 没先问就做了要批准的事，或动了凭据，这一轮已停下"
   }
 };
 
@@ -189,6 +189,6 @@ export const en: CopyShape<typeof zh> = {
     agent_signed_out: "Your local agent could not authenticate",
     agent_limit: "The local agent's usage limit was reached",
     agent_exited: "The local agent exited mid-turn",
-    agent_unguarded: "The local agent acted outside the workspace or on credentials without asking, so the turn was stopped"
+    agent_unguarded: "The local agent did something that needed your OK, or touched credentials, without asking, so the turn was stopped"
   }
 };

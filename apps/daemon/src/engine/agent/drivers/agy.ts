@@ -6,8 +6,9 @@
  * Print mode has no way for the app to come in before a call: no permission callback, no
  * per-session MCP. So it runs with `agy`'s own terminal sandbox (`--sandbox`, which keeps its
  * commands' reads out of `~/.ssh` and the like), every call it reports is checked as it starts,
- * and one outside the workspace or on credentials stops the turn. Nor can it reach the app's own
- * tools: an Antigravity Bot answers with its closing reply, nothing more. Its tool permission is
+ * and one its permission mode would have asked about or refused (ADR 0092), or one on credentials,
+ * stops the turn. Nor can it reach the app's own tools: an Antigravity Bot answers with its
+ * closing reply, nothing more. Its tool permission is
  * the one you set for `agy` (`toolPermission` in its settings), which the app does not change.
  */
 import type { ChildProcess } from "node:child_process";

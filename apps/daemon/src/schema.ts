@@ -151,6 +151,7 @@ CREATE TABLE IF NOT EXISTS bots (
   agent_effort TEXT,
   agent_config_dir TEXT,
   agent_custom_id TEXT,
+  permission_mode TEXT,
   archived_at TEXT,
   deleted_at TEXT,
   created_at TEXT NOT NULL,
@@ -457,9 +458,12 @@ CREATE TABLE IF NOT EXISTS approvals (
   created_at TEXT NOT NULL,
   resolved_at TEXT,
   requires_api_key INTEGER NOT NULL DEFAULT 0,
+  -- What an Always allow on the card would have covered (ADR 0087); unused since ADR 0092.
   allow_scope TEXT
 );
 
+-- Always allow rules (ADR 0087). Since ADR 0092 permission modes decide and nothing reads these;
+-- the rows stay as the record of what you once let through.
 CREATE TABLE IF NOT EXISTS allow_rules (
   id TEXT PRIMARY KEY,
   kind_key TEXT NOT NULL,

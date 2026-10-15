@@ -1,12 +1,13 @@
 /**
  * A Bot's built-in prompt tools (ADR 0064). Listing and reading are free. An edit or a reset is a
- * proposal: it is checked against the text as it stands, shown on an approval card with what changes,
- * and applied only when you allow it — re-applied to the text as it stands then, so a prompt changed
- * while the card waited is not overwritten. It is never Always-allowed (`prompt-edit` is not in
- * ALLOWED_KIND_KEYS): every Bot reads these, so each change is yours to let through.
+ * change to the app's setup (ADR 0092): checked against the text as it stands, then, unless the Bot's
+ * permission mode is allow_all, shown on an approval card with what changes and applied only when you
+ * allow it — re-applied to the text as it stands then, so a prompt changed while the card waited is
+ * not overwritten. A read-only Bot is refused. Every revision is recorded and can be undone.
  */
 import type { Locale } from "@real-bot/protocol";
 import { runCollabTool, type ToolCtx, type ToolResult } from "./collab-tools";
+import { setupVerdict } from "./collab-tools/guards";
 import { toolFail as fail } from "./tool-result";
 import { HttpError } from "./errors";
 import { hostPromptEnv, promptProblemsError, promptSlot, resetPromptText, savePromptText } from "./prompts/book";
@@ -310,7 +311,7 @@ export function editPrompt(ctx: ToolCtx, args: Record<string, unknown>): ToolRes
   }
   const checked = validatePromptText(slot, locale, applied.text, defaultText);
   if (!checked.ok) throw promptProblemsError(checked.problems);
-  if (!ctx.approved) {
+  if (!ctx.approved && setupVerdict(ctx) === "ask") {
     return {
       ok: false,
       waitApproval: {
@@ -335,7 +336,7 @@ export function resetPrompt(ctx: ToolCtx, args: Record<string, unknown>): ToolRe
   const locale = pickLocale(ctx, slot, args.locale);
   const reason = requireReason(args.reason);
   if (!ctx.store.promptOverride(slot.id, locale)) return fail("no_change", "it is already the default");
-  if (!ctx.approved) {
+  if (!ctx.approved && setupVerdict(ctx) === "ask") {
     return {
       ok: false,
       waitApproval: {

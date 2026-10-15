@@ -35,7 +35,7 @@ xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"
 
 越过 Gatekeeper 不等于应用内权限全开。在 Deskfolk 里：
 
-- 新建模型端点 / MCP、工作区外读写、出站网络都会停在**批准卡**上。
+- 新建模型端点 / MCP、改内置提示词会停在**批准卡**上；写文件、跑命令要不要问看 Bot 的权限模式（[ADR 0092](adr/0092-permission-modes.md)）。
 - 高成本或不可逆的工具调用需要你明确放行——Bot 不会在未批准时静默「稍后发送」或空转烧额度。
 - API 密钥进钥匙串，不进聊天。
 

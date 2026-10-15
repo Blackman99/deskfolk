@@ -1,5 +1,6 @@
 import type { Locale, Theme } from "./constants.ts";
 import type { BuiltinModelRole, BuiltinModels, EndpointModel, EndpointModelInput, ReaderEndpointModel, ReaderModel } from "./models.ts";
+import type { PermissionMode } from "./permissions.ts";
 import type { SpeechSettings } from "./speech.ts";
 
 export type Settings = {
@@ -47,6 +48,11 @@ export type Settings = {
    * that ADR.
    */
   spend_cap_usd?: number | null;
+  /**
+   * The permission mode every Bot without its own runs in (ADR 0092). Absent from a daemon older
+   * than that ADR.
+   */
+  permission_mode?: PermissionMode;
   launch_at_login: boolean;
   locale: Locale;
   theme: Theme;
@@ -70,6 +76,8 @@ export type SettingsPatch = {
   default_playbook?: string;
   /** A positive number of USD, or null for no cap (ADR 0088). */
   spend_cap_usd?: number | null;
+  /** The app's permission mode (ADR 0092); only you set it. */
+  permission_mode?: PermissionMode;
   launch_at_login?: boolean;
   locale?: Locale;
   theme?: Theme;

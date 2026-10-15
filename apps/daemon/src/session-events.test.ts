@@ -129,17 +129,17 @@ describe("commit / subscribe / snapshot barrier", () => {
       seen.push(event.event);
     });
     await h.store.receipts.execute(scope, "fixture", "POST", "/fixture", {}, async () => () => {
-      h.store.transaction(() => h.store.createAllowRule("outside-read", "/fixture"));
-      h.store.afterCommit(() => { expect(seen).toEqual(["allow_rule.upsert"]); seen.push("effect"); });
+      h.store.transaction(() => h.store.patchSettingsSync({ theme: "dark" }));
+      h.store.afterCommit(() => { expect(seen).toEqual(["settings.changed"]); seen.push("effect"); });
       return { status: 204, body: null };
     }, []);
-    expect(seen).toEqual(["allow_rule.upsert", "effect"]);
+    expect(seen).toEqual(["settings.changed", "effect"]);
     await h.store.receipts.execute(scope, "fixture", "POST", "/fixture", {}, async () => { throw new Error("replayed business"); }, []);
     expect(() => h.store.transaction(() => {
-      h.store.createAllowRule("outside-read", "/rolled-back");
+      h.store.patchSettingsSync({ theme: "light" });
       throw new Error("rollback");
     })).toThrow("rollback");
-    expect(seen).toEqual(["allow_rule.upsert", "effect"]);
+    expect(seen).toEqual(["settings.changed", "effect"]);
     expect(h.store.db.query("SELECT * FROM event_changes").all()).toEqual([]);
   });
 
@@ -271,15 +271,15 @@ describe("commit / subscribe / snapshot barrier", () => {
     const pending = h.get<RuntimeSnapshot>("/v1/snapshot");
     await entered.promise;
     const routine = h.store.createRoutine({ bot_id: bot.id, title: "during read", instruction: "fixture", schedule: { kind: "daily", time: "09:00" } });
-    const rule = h.store.createAllowRule("outside-read", "/fixture");
+    h.store.patchSettingsSync({ permission_mode: "ask_first" });
     release.resolve();
     const snapshot = await pending;
     expect(snapshot.routines.map((r) => r.id)).toContain(routine.id);
-    expect(snapshot.allowRules.map((r) => r.id)).toContain(rule.id);
+    expect(snapshot.settings.permission_mode).toBe("ask_first");
     h.store.patchRoutine(routine.id, { title: "after watermark" });
-    h.store.deleteAllowRule(rule.id);
+    h.store.patchSettingsSync({ permission_mode: "allow_all" });
     const caught = await h.get<{ events: SequencedEvent[] }>(`/v1/events/catchup?event_instance_id=${snapshot.event_instance_id}&after_seq=${snapshot.watermark_seq}`);
-    expect(caught.events.map((e) => e.payload.event)).toEqual(["routine.upsert", "allow_rule.removed"]);
+    expect(caught.events.map((e) => e.payload.event)).toEqual(["routine.upsert", "settings.changed"]);
     expect(caught.events[0]!.seq).toBe(snapshot.watermark_seq + 1);
     client.ws.close();
   });
@@ -306,18 +306,18 @@ describe("commit / subscribe / snapshot barrier", () => {
     const message = h.store.postMessage(created.direct_session.id, { body: "fixture" });
     const turn = h.store.createTurn({ sessionId: created.direct_session.id, botId: created.bot.id, triggerMessageId: message.id });
     h.store.setTurnPartial(turn.id, "partial once");
-    const approval = h.store.insertApproval({ turnId: turn.id, messageId: null, kind_key: "outside-read", summary: "fixture", target: "/fixture" });
-    h.store.resolveApproval(approval.id, "always_allow");
+    const approval = h.store.insertApproval({ turnId: turn.id, messageId: null, kind_key: "file-write", summary: "fixture", target: "/fixture" });
+    h.store.resolveApproval(approval.id, "allow_once");
     h.store.putReaction(message.id, "👍");
     const detail = await h.get<SessionSnapshot>(`/v1/sessions/${created.direct_session.id}/snapshot`);
     expect(detail.session.turns[0]!.partial_text).toBe("partial once");
     expect(detail.session.messages.items[0]!.reactions).toHaveLength(1);
     const snapshot = await h.get<RuntimeSnapshot>("/v1/snapshot");
     expect(snapshot.sessions[0]!.live_turns![0]!.partial_text).toBe("partial once");
-    expect(snapshot.allowRules).toHaveLength(1);
+    expect(snapshot.approvals.map((row) => row.status)).toEqual(["allowed_once"]);
     const caught = await h.get<{ events: SequencedEvent[] }>(`/v1/events/catchup?event_instance_id=${start.event_instance_id}&after_seq=${start.watermark_seq}`);
     expect(caught.events.some((e) => e.payload.event === "bot.upsert")).toBe(false);
-    expect(caught.events.some((e) => e.payload.event === "allow_rule.upsert")).toBe(true);
+    expect(caught.events.some((e) => e.payload.event === "approval.upsert" && e.payload.status === "allowed_once")).toBe(true);
     expect(caught.events.some((e) => e.payload.event === "turn.upsert" && e.payload.partial_text === "partial once")).toBe(true);
     h.store.stopTurn(turn.id);
     expect((await h.get<SessionSnapshot>(`/v1/sessions/${created.direct_session.id}/snapshot`)).session.turns).toEqual([]);
@@ -423,7 +423,7 @@ describe("commit / subscribe / snapshot barrier", () => {
     const event = removed("legacy");
     h.api.publish(event);
     expect(await legacyFrame.promise).toEqual(event);
-    h.store.createAllowRule("outside-read", "/fixture");
+    h.store.patchSettingsSync({ theme: "dark" });
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
     expect(a.frames.filter((f) => f.type === "event")).toEqual(b.frames.filter((f) => f.type === "event"));
     expect(a.frames.filter((f) => f.type === "event")).toHaveLength(1);

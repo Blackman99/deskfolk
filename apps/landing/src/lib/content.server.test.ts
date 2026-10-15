@@ -39,7 +39,7 @@ test('term targets send glossary hashes to the topic page', () => {
   const targets = getTermTargets();
   expect(targets[termAnchorId('Bot')]).toBe('/manifesto/people');
   expect(targets[termAnchorId('群（Group）')]).toBe('/manifesto/conversations');
-  expect(targets[termAnchorId('Always allow')]).toBe('/manifesto/safety');
+  expect(targets[termAnchorId('Permission mode')]).toBe('/manifesto/safety');
   expect(targets['term-handoff']).toBe('/manifesto/collaboration');
 });
 

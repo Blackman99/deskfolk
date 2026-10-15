@@ -296,7 +296,7 @@ const zh: Dict = {
       workspace: { title: '工作区', blurb: '共享目录、产物、附件、搜索。' },
       runtime: { title: '运行时', blurb: '窗与窗格、守护进程、托盘、终端、本机接口。' },
       models: { title: '模型与工具', blurb: '端点、MCP、日程、技能、上下文与花费。' },
-      safety: { title: '批准与边界', blurb: '危险动作、壳、Always allow。' },
+      safety: { title: '批准与边界', blurb: '权限模式、危险动作、壳。' },
       roadmap: {
         title: '路线图',
         blurb: '建设方向，不是交付时间表。',
@@ -504,7 +504,7 @@ const en: Dict = {
       workspace: { title: 'Workspace', blurb: 'Shared folder, artifacts, attachments, search.' },
       runtime: { title: 'Runtime', blurb: 'Window and panes, daemon, tray, terminal, local API.' },
       models: { title: 'Models and tools', blurb: 'Endpoints, MCP, routines, skills, context, spend.' },
-      safety: { title: 'Approval and bounds', blurb: 'Dangerous actions, shells, Always allow.' },
+      safety: { title: 'Approval and bounds', blurb: 'Permission modes, dangerous actions, shells.' },
       roadmap: {
         title: 'Roadmap',
         blurb: 'Direction, not a delivery schedule.',

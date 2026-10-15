@@ -10,16 +10,23 @@ const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-policy-")));
 const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), "agent-policy-out-")));
 const hosts = join(elsewhere, "hosts");
 const home = "/Users/someone";
-const base: Omit<AgentCall, "tool" | "input"> = { cwd: root, mode: "work", workspace: root, home, allowed: () => false };
+const base: Omit<AgentCall, "tool" | "input"> = { cwd: root, mode: "work", workspace: root, home, permission: "auto" };
 // These read this machine's disk with POSIX paths; the Windows rules have their own tests below,
 // on a fake Windows disk, which run everywhere.
 const posixTest = test.skipIf(process.platform === "win32");
 
-posixTest("inside the workspace a write runs and counts as an effect; outside it asks as outside-write", () => {
+posixTest("a write counts as an effect and runs, asks or is refused by the Bot's permission mode, in the workspace or not", () => {
   expect(decideAgentCall({ ...base, tool: "Write", input: { file_path: join(root, "a.md") } })).toEqual({ kind: "allow", effect: true, appName: "write_file", target: "a.md" });
-  const outside = decideAgentCall({ ...base, tool: "Edit", input: { file_path: hosts } });
-  expect(outside.kind).toBe("ask");
-  if (outside.kind === "ask") expect(outside.approval).toEqual({ kind_key: "outside-write", target: hosts, summary: `outside-write ${hosts}` });
+  expect(decideAgentCall({ ...base, tool: "Edit", input: { file_path: hosts } })).toEqual({ kind: "allow", effect: true, appName: "write_file", target: hosts });
+  expect(decideAgentCall({ ...base, permission: "allow_all", tool: "Edit", input: { file_path: hosts } }).kind).toBe("allow");
+  for (const file_path of [join(root, "a.md"), hosts]) {
+    const asked = decideAgentCall({ ...base, permission: "ask_first", tool: "Edit", input: { file_path } });
+    expect(asked.kind).toBe("ask");
+    if (asked.kind === "ask") expect(asked.approval).toEqual({ kind_key: "file-write", target: file_path, summary: `file-write ${file_path}` });
+    const refused = decideAgentCall({ ...base, permission: "read_only", tool: "Edit", input: { file_path } });
+    expect(refused.kind).toBe("deny");
+    if (refused.kind === "deny") expect(refused.reason).toContain("read-only");
+  }
 });
 
 posixTest("a workspace path written as if the workspace were / is refused with where the workspace is, not put on a card", () => {
@@ -29,24 +36,27 @@ posixTest("a workspace path written as if the workspace were / is refused with w
     expect(call.kind).toBe("deny");
     if (call.kind === "deny") expect(call.reason).toContain(`The workspace root is ${root}`);
   }
-  // A real place outside still asks.
-  expect(decideAgentCall({ ...base, exists, tool: "Read", input: { file_path: hosts } }).kind).toBe("ask");
+  // A real place outside is read.
+  expect(decideAgentCall({ ...base, exists, tool: "Read", input: { file_path: hosts } }).kind).toBe("allow");
 });
 
-posixTest("an always-allow rule you made lets the same kind of call through without a card", () => {
-  const call = decideAgentCall({ ...base, allowed: (kind) => kind === "outside-read", tool: "Read", input: { file_path: hosts } });
-  expect(call).toEqual({ kind: "allow", effect: false, appName: "read_file", target: hosts });
+posixTest("reading runs in every mode, wherever the file is", () => {
+  for (const permission of ["read_only", "ask_first", "auto", "allow_all"] as const) {
+    expect(decideAgentCall({ ...base, permission, tool: "Read", input: { file_path: hosts } })).toEqual({ kind: "allow", effect: false, appName: "read_file", target: hosts });
+  }
 });
 
-posixTest("a command that stays in the workspace runs; one that reaches out asks as unconstrained-shell", () => {
+posixTest("a command runs wherever it reaches in auto, asks under ask_first and is refused under read_only", () => {
   expect(decideAgentCall({ ...base, tool: "Bash", input: { command: "ls -la" } }).kind).toBe("allow");
-  const out = decideAgentCall({ ...base, tool: "Bash", input: { command: "cat /etc/hosts" } });
-  expect(out.kind).toBe("ask");
-  if (out.kind === "ask") expect(out.approval.kind_key).toBe("unconstrained-shell");
+  expect(decideAgentCall({ ...base, tool: "Bash", input: { command: "cat /etc/hosts" } }).kind).toBe("allow");
+  const asked = decideAgentCall({ ...base, permission: "ask_first", tool: "Bash", input: { command: "ls -la" } });
+  expect(asked.kind).toBe("ask");
+  if (asked.kind === "ask") expect(asked.approval).toEqual({ kind_key: "shell", target: root, summary: "shell ls -la" });
+  expect(decideAgentCall({ ...base, permission: "read_only", tool: "Bash", input: { command: "ls -la" } }).kind).toBe("deny");
 });
 
-posixTest("a recursive search over the home folder is refused, as for every Bot", () => {
-  const call = decideAgentCall({ ...base, home: root, tool: "Bash", input: { command: "grep -r secret ~" } });
+posixTest("a recursive search over the home folder is refused, as for every Bot, in allow_all too", () => {
+  const call = decideAgentCall({ ...base, permission: "allow_all", home: root, tool: "Bash", input: { command: "grep -r secret ~" } });
   expect(call.kind).toBe("deny");
 });
 
@@ -57,9 +67,11 @@ posixTest("the config directories of your other Claude accounts are as off limit
     expect(call.kind).toBe("deny");
     if (call.kind === "deny") expect(call.reason).toContain("credentials");
   }
-  // Not listed, it is any other folder outside the workspace. The fake home's top folder is a disk
-  // one here: Linux has no /Users, and a path under a missing top is refused before anyone is asked.
-  expect(decideAgentCall({ ...base, exists: () => true, tool: "Read", input: { file_path: `${home}/cc-work/.claude.json` } }).kind).toBe("ask");
+  // Off limits in allow_all too: that is a refusal, not an approval.
+  expect(decideAgentCall({ ...base, permission: "allow_all", configDirs, tool: "Read", input: { file_path: `${home}/cc-work/.claude.json` } }).kind).toBe("deny");
+  // Not listed, it is any other folder. The fake home's top folder is a disk one here: Linux has no
+  // /Users, and a path under a missing top is refused before anyone is asked.
+  expect(decideAgentCall({ ...base, exists: () => true, tool: "Read", input: { file_path: `${home}/cc-work/.claude.json` } }).kind).toBe("allow");
   for (const command of ["cat ~/cc-work/.claude.json", "ls $HOME/cc-work", "cp ${HOME}/cc-work/x .", `tar cf - ${home}/cc-work`, "cat /opt/claude-acct/.claude.json"]) {
     expect(touchesClaudeCredentials(command, home, "darwin", configDirs)).toBe(true);
   }
@@ -132,7 +144,7 @@ const winHost = windowsHost({
   [`${WIN_HOME}\\Documents`]: "dir",
   "C:\\Windows\\System32\\drivers\\etc\\hosts": "file",
 });
-const winBase: Omit<AgentCall, "tool" | "input"> = { cwd: WIN_WS, mode: "work", workspace: WIN_WS, home: WIN_HOME, allowed: () => false, host: winHost };
+const winBase: Omit<AgentCall, "tool" | "input"> = { cwd: WIN_WS, mode: "work", workspace: WIN_WS, home: WIN_HOME, permission: "auto", host: winHost };
 
 test("on Windows, Claude Code's own credentials are never reachable, however the path is spelled", () => {
   for (const file_path of [
@@ -165,13 +177,14 @@ test("on Windows, Claude Code's own credentials are never reachable, however the
   expect(isClaudeCredentialPath(`${WIN_HOME}\\projects\\.claude-notes`, WIN_HOME, "win32")).toBe(false);
 });
 
-test("on Windows, inside the workspace runs, outside asks, and a path with no drive is refused with where the workspace is", () => {
+test("on Windows, a write runs or asks by the mode wherever it lands, and a path with no drive is refused with where the workspace is", () => {
   expect(decideAgentCall({ ...winBase, tool: "Write", input: { file_path: `${WIN_WS}\\notes\\a.md` } }))
     .toEqual({ kind: "allow", effect: true, appName: "write_file", target: "notes/a.md" });
-  const outside = decideAgentCall({ ...winBase, tool: "Write", input: { file_path: `${WIN_HOME}\\Documents\\x.md` } });
-  expect(outside.kind).toBe("ask");
-  if (outside.kind === "ask") expect(outside.approval).toMatchObject({ kind_key: "outside-write", target: `${WIN_HOME}\\Documents\\x.md` });
-  expect(decideAgentCall({ ...winBase, tool: "Read", input: { file_path: "C:\\Windows\\System32\\drivers\\etc\\hosts" } }).kind).toBe("ask");
+  expect(decideAgentCall({ ...winBase, tool: "Write", input: { file_path: `${WIN_HOME}\\Documents\\x.md` } }).kind).toBe("allow");
+  const asked = decideAgentCall({ ...winBase, permission: "ask_first", tool: "Write", input: { file_path: `${WIN_HOME}\\Documents\\x.md` } });
+  expect(asked.kind).toBe("ask");
+  if (asked.kind === "ask") expect(asked.approval).toMatchObject({ kind_key: "file-write", target: `${WIN_HOME}\\Documents\\x.md` });
+  expect(decideAgentCall({ ...winBase, permission: "read_only", tool: "Read", input: { file_path: "C:\\Windows\\System32\\drivers\\etc\\hosts" } }).kind).toBe("allow");
   for (const file_path of ["/work/job-x/a.md", "\\notes.md", "/c/Users/Someone/ws/a.md"]) {
     const call = decideAgentCall({ ...winBase, tool: "Write", input: { file_path } });
     expect([file_path, call.kind]).toEqual([file_path, "deny"]);
@@ -179,9 +192,10 @@ test("on Windows, inside the workspace runs, outside asks, and a path with no dr
   }
 });
 
-test("on Windows, Claude Code's Bash is Git Bash: /c/… paths are read the way it reads them", () => {
+test("on Windows, Claude Code's Bash is Git Bash: a command runs or asks by the mode, its card naming where it runs", () => {
   expect(decideAgentCall({ ...winBase, tool: "Bash", input: { command: "ls -la notes" } }).kind).toBe("allow");
-  const out = decideAgentCall({ ...winBase, tool: "Bash", input: { command: "cat /c/Users/Someone/Documents/x.md" } });
-  expect(out.kind).toBe("ask");
-  if (out.kind === "ask") expect(out.approval.kind_key).toBe("unconstrained-shell");
+  expect(decideAgentCall({ ...winBase, tool: "Bash", input: { command: "cat /c/Users/Someone/Documents/x.md" } }).kind).toBe("allow");
+  const asked = decideAgentCall({ ...winBase, permission: "ask_first", tool: "Bash", input: { command: "cat /c/Users/Someone/Documents/x.md" } });
+  expect(asked.kind).toBe("ask");
+  if (asked.kind === "ask") expect(asked.approval).toMatchObject({ kind_key: "shell", target: WIN_WS });
 });

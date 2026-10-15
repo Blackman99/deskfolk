@@ -103,7 +103,7 @@ describe("update_profile", () => {
     store.close();
   });
 
-  test("avatar_path outside the workspace parks for outside-read approval", async () => {
+  test("avatar_path outside the workspace is read with no card, in read-only too: no mode stops a read (ADR 0092)", async () => {
     const workspace = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-avatar-ws-")));
     const outside = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-avatar-out-")));
     dirs.push(workspace, outside);
@@ -111,16 +111,15 @@ describe("update_profile", () => {
     writeFileSync(outsideFile, PNG_1X1);
     const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
     await store.patchSettings({ workspace_path: workspace });
-    const created = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const created = store.createBot({ name: "Writer", duties: "write", boundaries: "stay", permission_mode: "read_only" });
     const result = await runCollabTool(
       ctxFor(store, created.bot.id, created.direct_session.id),
       "update_profile",
       { avatar_path: outsideFile },
     );
-    expect(result.ok).toBe(false);
-    expect(result.waitApproval?.kind_key).toBe("outside-read");
-    expect(result.waitApproval?.target).toBe(outsideFile);
-    expect(store.getBot(created.bot.id).avatar?.startsWith("<svg")).toBe(true);
+    expect(result.ok).toBe(true);
+    expect(result.waitApproval).toBeUndefined();
+    expect(store.getBot(created.bot.id).avatar).toBe(`data:image/png;base64,${PNG_1X1.toString("base64")}`);
     store.close();
   });
 

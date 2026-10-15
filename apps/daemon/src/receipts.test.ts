@@ -205,8 +205,6 @@ test("all CRUD mutation families use stable receipts", async () => {
   const routine = await replay("POST", "/v1/routines", { bot_id: bot, title: "test", instruction: "test", schedule: { kind: "daily", time: "09:00" }, enabled: false });
   await replay("PATCH", `/v1/routines/${routine.id}`, { title: "changed" });
   await replay("DELETE", `/v1/routines/${routine.id}`);
-  const rule = await replay("POST", "/v1/allow-rules", { kind_key: "outside-read", scope: "/fixture" });
-  await replay("DELETE", `/v1/allow-rules/${rule.id}`);
   const provider = await replay("POST", "/v1/providers", { name: "fixture", base_url: "https://example.invalid", api_key: "fake" });
   await replay("PATCH", `/v1/providers/${provider.id}`, { name: "changed", api_key: "new-fake" });
   await replay("DELETE", `/v1/providers/${provider.id}`);

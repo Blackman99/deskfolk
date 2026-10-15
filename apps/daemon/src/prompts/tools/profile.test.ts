@@ -9,8 +9,8 @@ describe("updateProfileTool", () => {
   test("sh's avatar_path description is byte-identical to the original POSIX text", () => {
     const tool = updateProfileTool("sh");
     expect(tool.properties.avatar_path?.description).toEqual({
-      zh: "工作区相对 POSIX，或宿主绝对路径，指向一张 PNG / JPEG / GIF / WebP。区内直接执行；区外会停下来等用户批准。拒绝后工具结果是 denied。",
-      en: "Workspace-relative POSIX, or a host absolute path, to a PNG / JPEG / GIF / WebP. Runs immediately inside the workspace; outside, it pauses for the user's approval. A denial comes back as denied.",
+      zh: "工作区相对 POSIX，或宿主绝对路径，指向一张 PNG / JPEG / GIF / WebP。读不用批准，路径在哪都行。",
+      en: "Workspace-relative POSIX, or a host absolute path, to a PNG / JPEG / GIF / WebP. Reading never waits for approval, wherever the path is.",
     });
   });
 

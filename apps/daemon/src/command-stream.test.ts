@@ -106,13 +106,15 @@ test("streaming changes nothing about what a shell is", async () => {
   );
   expect(stdin.data?.stdout).toContain("EOF_REACHED");
 
-  // Still classified per spawn: a command that reaches outside still waits for approval.
-  const outside = await runWorkspaceTool(
+  // Still decided per spawn: under ask_first a command still waits for approval (ADR 0092).
+  store.patchSettingsSync({ permission_mode: "ask_first" });
+  const asked = await runWorkspaceTool(
     { store, signal, stream: streams, streamId: "TURN:call_6" },
     "shell",
     { command: `cat ${join(root, "..", "escape.txt")}`, cwd: "." },
   );
-  expect(outside.waitApproval?.kind_key).toBe("unconstrained-shell");
+  expect(asked.waitApproval?.kind_key).toBe("shell");
+  store.patchSettingsSync({ permission_mode: "auto" });
 
   // Files a command produced are still attributed to it.
   const produced = await runWorkspaceTool(

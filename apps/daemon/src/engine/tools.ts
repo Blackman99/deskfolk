@@ -5,7 +5,6 @@
  * a delivered message both cite.
  */
 import type { AskAnswer, ClientEvent, McpServer, Message, ModelSpeed, Turn } from "@real-bot/protocol";
-import { proposedAllowScope } from "../allow-scope";
 import { askAnswerText } from "../ask";
 import { runCollabTool, type ToolCtx, type ToolResult } from "../collab-tools";
 import { toolFail } from "../tool-result";
@@ -713,7 +712,7 @@ export function createTools(deps: ToolsDeps): Tools {
       const streamId = callId ? `${turn.id}:${callId}` : undefined;
       return isWorkspaceTool(name)
         ? await runWorkspaceTool(
-            { store, signal: live.abort.signal, workDir: live.workDir, stream: streams, streamId, wake,
+            { store, signal: live.abort.signal, botId: turn.bot_id, workDir: live.workDir, stream: streams, streamId, wake,
               ...(deps.shellTimeoutMs !== undefined ? { shellTimeoutMs: deps.shellTimeoutMs } : {}),
               turnId: turn.id, toolCallId: callId,
                onEffectStart: callId && store.capabilities().engine_level >= ENGINE_LEVELS.supervision
@@ -905,8 +904,6 @@ export function createTools(deps: ToolsDeps): Tools {
     toolCallId: string,
   ): Promise<ToolResult | null> {
     const turnId = turn.id;
-    // Read before the transaction: it looks at the disk for the project a path outside is in.
-    const allowScope = proposedAllowScope(waitApproval.kind_key, waitApproval.target);
     const { card, approval, waiting } = store.transaction(() => {
       const card = store.insertMessage({
         sessionId: turn.session_id,
@@ -923,7 +920,6 @@ export function createTools(deps: ToolsDeps): Tools {
         summary: waitApproval.summary,
         target: waitApproval.target,
         requires_api_key: Boolean(waitApproval.requiresApiKey),
-        allow_scope: allowScope,
       });
       const waiting = store.setTurnStatus(turnId, "waiting_approval");
       return { card, approval, waiting };

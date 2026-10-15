@@ -60,7 +60,7 @@ test('termKey prefers the English parenthetical', () => {
   expect(termKey('名册（Roster）')).toBe('Roster');
   expect(termKey('窗口（App window）')).toBe('App window');
   expect(termKey('用户')).toBe('用户');
-  expect(termKey('Always allow')).toBe('Always allow');
+  expect(termKey('MCP')).toBe('MCP');
   // The English edition's names for the two terms CONTEXT.md writes in Chinese alone.
   expect(termKey('User')).toBe('用户');
   expect(termKey('Setup wizard')).toBe('向导');
@@ -87,7 +87,7 @@ test('term anchors come from the English name, the same in both editions', () =>
   expect(termAnchorId('User')).toBe('term-user');
   expect(termAnchorId('向导')).toBe('term-setup-wizard');
   expect(termAnchorId('Setup wizard')).toBe('term-setup-wizard');
-  expect(termAnchorId('Always allow')).toBe('term-always-allow');
+  expect(termAnchorId('Permission mode')).toBe('term-permission-mode');
   // What links from before the rename carry.
   expect(legacyTermAnchorId('交接（Handoff）')).toBe('term-交接handoff');
   expect(legacyTermAnchorId('Bot')).toBe('term-bot');

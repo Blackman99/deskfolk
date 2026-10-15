@@ -143,11 +143,10 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
   ],
   safety: [
     'Approval',
-    'Always allow',
+    'Permission mode',
     'Dangerous action',
     'Outside the workspace',
-    'Workspace shell',
-    'Unconstrained shell'
+    'Bot shell'
   ]
 };
 

@@ -9,6 +9,7 @@ import {
   type Message,
   type ModelSpeed,
   type PendingJudgement,
+  type ResolveApprovalAction,
   type RestartCause,
   type Turn,
 } from "@real-bot/protocol";
@@ -57,7 +58,6 @@ import { createRetrospector } from "./engine/retrospective";
 import type { TurnAdmission } from "./quiesce";
 import type { Store, UserQuote } from "./store";
 import type { EditMessageResult } from "./store/message-edits";
-import { alwaysAllowScope } from "./store/approvals";
 import { ENGINE_LEVELS } from "./store/schema-gate";
 import type { TurnExecution } from "./store/routing";
 import { dropToolResults } from "./tool-results";
@@ -95,12 +95,8 @@ export type TurnEngine = {
    * ones it offered; returns the question as it now reads.
    */
   replyAsk: (askId: string, sessionId: string, answer: { selected?: unknown; custom?: unknown }) => Message;
-  resolveApproval: (
-    id: string,
-    action: "allow_once" | "deny" | "always_allow",
-    scope?: string,
-    apiKey?: string,
-  ) => unknown;
+  /** `allow_from_now` also moves the card's Bot to the mode that lets this kind through (ADR 0092). */
+  resolveApproval: (id: string, action: ResolveApprovalAction, apiKey?: string) => unknown;
   /**
    * Ends a live turn. `button`: your Stop on its card, which from the engine level that brings holds
    * is a hold on this Bot's work in the plan that your next line about it lifts (ADR 0040 P2), so
@@ -1040,25 +1036,24 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     fireCheckBack: fire.fireCheckBack,
     measureModel: measureEndpointModel,
     assertAskPending,
-    resolveApproval(id, action, scope, apiKey) {
+    resolveApproval(id, action, apiKey) {
       const rowForGate = store.getApproval(id);
       const liveForGate = core.lives.get(rowForGate.turn_id);
       const requiresKey =
         Boolean(rowForGate.requires_api_key) ||
         (liveForGate?.approval?.id === id && Boolean(liveForGate.approval.requiresApiKey));
       if (
-        action === "allow_once" &&
+        action !== "deny" &&
         requiresKey &&
         !(typeof apiKey === "string" && apiKey.trim().length > 0)
       ) {
         throw new HttpError(422, "invalid_args", "api_key is required");
       }
-      const row = store.resolveApproval(id, action, scope);
+      const row = store.resolveApproval(id, action);
       publish({ event: "approval.upsert", occurred_at: core.occurred(), ...row });
-      if (action === "always_allow" && row.kind_key) {
-        const nextScope = alwaysAllowScope(row, scope);
-        const match = store.listAllowRules().find((r) => r.kind_key === row.kind_key && r.scope === nextScope);
-        if (match) publish({ event: "allow_rule.upsert", occurred_at: core.occurred(), ...match });
+      if (action === "allow_from_now") {
+        const botId = store.getTurn(row.turn_id).bot_id;
+        publish({ event: "bot.upsert", occurred_at: core.occurred(), ...store.getBot(botId), deleted_at: null });
       }
       store.afterCommit(() => {
         const live = core.lives.get(row.turn_id);

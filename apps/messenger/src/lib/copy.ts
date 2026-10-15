@@ -42,11 +42,12 @@ import * as speechText from "./copy/speech.ts";
 import * as lessonsText from "./copy/lessons.ts";
 import * as promptsText from "./copy/prompts.ts";
 import * as notificationsText from "./copy/notifications.ts";
+import * as permissionsText from "./copy/permissions.ts";
 
-/** Locked in 设置里「壳不是囚笼」写哪一句. Do not paraphrase. */
-export const JAIL_COPY = {
-  zh: "工作区壳把当前目录放在工作区并在启动前检查看得见的路径，不是操作系统囚笼。",
-  en: "The workspace shell puts the current directory in the workspace and checks paths visible in the command before start; it is not an operating-system jail.",
+/** What the workspace is for (ADR 0092): where Bots' work is kept together, not a permission boundary. */
+export const WORKSPACE_COPY = {
+  zh: "工作区是所有 Bot 的产出集中存放、统一管理的地方，不是权限边界：Bot 能做什么由权限模式决定。",
+  en: "The workspace is where every Bot's work is kept and managed together, not a permission boundary: what a Bot may do is set by its permission mode.",
 } as const;
 
 const zh = {
@@ -92,6 +93,7 @@ const zh = {
   lessons: lessonsText.zh,
   prompts: promptsText.zh,
   notifications: notificationsText.zh,
+  permissions: permissionsText.zh,
 };
 
 const en: CopyShape<typeof zh> = {
@@ -137,6 +139,7 @@ const en: CopyShape<typeof zh> = {
   lessons: lessonsText.en,
   prompts: promptsText.en,
   notifications: notificationsText.en,
+  permissions: permissionsText.en,
 };
 
 export const COPY = { zh, en };

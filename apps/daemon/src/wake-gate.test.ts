@@ -659,6 +659,8 @@ describe("a turn a hold covers makes no call with an effect", () => {
   test("a call waiting on your approval does not run once a hold covers its turn, even if you allow it", async () => {
     const h = await scenario();
     const { director, reviewer } = videoTeam(h);
+    // Its writes wait on a card (ADR 0092).
+    h.store.patchBot(director.id, { permission_mode: "ask_first" });
     const thread = h.botDirect(director, reviewer);
     const outside = join(h.root, "..", `outside-${crypto.randomUUID()}.txt`);
     h.script(director, thread).reply(call(writeFile(outside, "Shot 12")), call(endTurn()));

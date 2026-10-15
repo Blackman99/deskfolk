@@ -1,14 +1,13 @@
 <script lang="ts">
 	/** A request waiting on your approval in the transcript, with the key it may need and its buttons. */
+	import { modeAllowing, type ResolveApprovalAction } from '@real-bot/protocol';
 	import PromptEditCard from './PromptEditCard.svelte';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
 	import {
-		alwaysAllowFolder,
 		approvalForMessage,
 		approvalNeedsSecret,
 		approvalSecretRequired,
-		canAlwaysAllow,
 		isPromptEdit,
 		isHttpMcpApproval
 	} from './approval-card.ts';
@@ -33,9 +32,9 @@
 		kind_key: string | null;
 		target: string | null;
 		requires_api_key: boolean;
-	}, action: 'allow_once' | 'deny' | 'always_allow'): Promise<void> {
+	}, action: ResolveApprovalAction): Promise<void> {
 		const key = stage.approvalKeys[card.id] ?? '';
-		if (action === 'allow_once' && approvalSecretRequired(card) && key.trim().length === 0) {
+		if (action !== 'deny' && approvalSecretRequired(card) && key.trim().length === 0) {
 			stage.approvalKeyErrors = { ...stage.approvalKeyErrors, [card.id]: true };
 			return;
 		}
@@ -124,19 +123,16 @@
 					<Button variant="primary" icon="check" onclick={() => void resolveApprovalCard(card, 'allow_once')}
 						>{t.stream.allowOnce}</Button
 					>
-					{#if canAlwaysAllow(card.kind_key)}
-						<Button variant="secondary" onclick={() => void resolveApprovalCard(card, 'always_allow')}
-							>{t.stream.alwaysAllow}</Button
-						>
-					{/if}
+					<!-- Allowed from now on (ADR 0092): this Bot moves to the mode in which this kind no longer asks. -->
+					<Button variant="secondary" onclick={() => void resolveApprovalCard(card, 'allow_from_now')}
+						>{t.permissions.allowFromNow}</Button
+					>
 					<Button variant="ghost" class="deny" onclick={() => void resolveApprovalCard(card, 'deny')}
 						>{t.stream.deny}</Button
 					>
 				</div>
-				{@const folder = alwaysAllowFolder(card)}
-				{#if folder}
-					<p class="always-allow-scope">{t.stream.alwaysAllowCovers(folder, card.kind_key === 'outside-write')}</p>
-				{/if}
+				{@const nextMode = modeAllowing(card.kind_key)}
+				<p class="allow-from-now-note">{t.permissions.allowFromNowCovers(stage.who(singleMsg.message), t.permissions.modes[nextMode], t.permissions.descriptions[nextMode])}</p>
 			{:else if card}
 				<p class="muted approval-status">
 					{#if card.status === 'allowed_once'}<Icon name="check" size={12} />{:else if card.status === 'denied'}<Icon name="x" size={12} />{/if}
@@ -274,7 +270,7 @@
 		font-size: var(--text-small);
 	}
 
-	.always-allow-scope {
+	.allow-from-now-note {
 		margin: 8px 0 0;
 		font-size: var(--text-caption);
 		line-height: 1.45;

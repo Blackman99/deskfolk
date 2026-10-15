@@ -1,7 +1,7 @@
 /** Tools over the Bot roster: create, list, and a Bot's own profile and pins. */
 import { BORING_AVATAR_VARIANTS, generateBoringAvatar, type ThinkingLevel } from "@real-bot/protocol";
 import { avatarMimeFromPath, rasterFileToAvatarDataUri } from "../avatar-image";
-import { runCollabTool, type ToolCtx, type ToolResult } from "../collab-tools";
+import type { ToolCtx, ToolResult } from "../collab-tools";
 import { HttpError } from "../errors";
 import type { Store } from "../store";
 import { normalizeOptionalId } from "../store/shared";
@@ -140,7 +140,7 @@ export async function updateProfile(ctx: ToolCtx, args: Record<string, unknown>)
     });
   } else if (avatarPath !== undefined) {
     if (avatarPath.trim().length === 0) return fail("invalid_args", "avatar_path is required");
-    const resolved = await resolveAvatarPath(ctx, avatarPath.trim(), args);
+    const resolved = await resolveAvatarPath(ctx, avatarPath.trim());
     assertActive(ctx);
     if (!resolved.ok) return resolved.result;
     patch.avatar = resolved.dataUri;
@@ -165,7 +165,6 @@ export async function updateProfile(ctx: ToolCtx, args: Record<string, unknown>)
 async function resolveAvatarPath(
   ctx: ToolCtx,
   input: string,
-  args: Record<string, unknown>,
 ): Promise<{ ok: true; dataUri: string } | { ok: false; result: ToolResult }> {
   const root = ctx.store.workspacePath();
   if (!root) return { ok: false, result: fail("failed", "workspace is not set") };
@@ -176,23 +175,7 @@ async function resolveAvatarPath(
       result: fail("not_text", "avatar_path must be a PNG, JPEG, GIF, or WebP image"),
     };
   }
-  if (classified.zone === "outside") {
-    if (!ctx.approved && !ctx.store.matchesAllowRule("outside-read", classified.abs)) {
-      return {
-        ok: false,
-        result: {
-          ok: false,
-          waitApproval: {
-            kind_key: "outside-read",
-            target: classified.abs,
-            summary: `outside-read ${classified.abs}`,
-            run: () => runCollabTool({ ...ctx, approved: true }, "update_profile", args),
-          },
-          emitted: [],
-        },
-      };
-    }
-  }
+  // Reading a picture from anywhere asks nothing (ADR 0092): no mode stops a read.
   const encoded = rasterFileToAvatarDataUri(classified.abs);
   if (!encoded.ok) return { ok: false, result: fail(encoded.code, encoded.message) };
   return { ok: true, dataUri: encoded.dataUri };

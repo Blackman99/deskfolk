@@ -265,7 +265,6 @@ export class RemoteApi extends ApiBase<PendingRemote> {
     for (const row of snapshot.skills) note("skills", row.id, row.updated_at);
     for (const row of snapshot.memories) note("memories", row.id, row.updated_at);
     for (const row of snapshot.routines) note("routines", row.id, row.updated_at);
-    for (const row of snapshot.allowRules) note("allow-rules", row.id, row.created_at);
     if ("annotations" in snapshot) this.noteAnnotations(snapshot.annotations);
   }
   /**
@@ -667,9 +666,6 @@ export class RemoteApi extends ApiBase<PendingRemote> {
   }
   async deleteMemory(id: string): Promise<void> {
     await this.request<void>("DELETE", `/v1/memories/${id}`, this.revisionBody("memories", id));
-  }
-  async deleteAllowRule(id: string): Promise<void> {
-    await this.request<void>("DELETE", `/v1/allow-rules/${encodeURIComponent(id)}`, this.revisionBody("allow-rules", id));
   }
 
   // Annotations ----------------------------------------------------------------------------

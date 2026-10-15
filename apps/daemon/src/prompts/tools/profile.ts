@@ -5,14 +5,14 @@ import { toolShell, type ToolShellKind } from "../../platform";
 function avatarPathDescription(shell: ToolShellKind): Localized {
   if (shell === "sh") {
     return {
-      zh: "工作区相对 POSIX，或宿主绝对路径，指向一张 PNG / JPEG / GIF / WebP。区内直接执行；区外会停下来等用户批准。拒绝后工具结果是 denied。",
-      en: "Workspace-relative POSIX, or a host absolute path, to a PNG / JPEG / GIF / WebP. Runs immediately inside the workspace; outside, it pauses for the user's approval. A denial comes back as denied.",
+      zh: "工作区相对 POSIX，或宿主绝对路径，指向一张 PNG / JPEG / GIF / WebP。读不用批准，路径在哪都行。",
+      en: "Workspace-relative POSIX, or a host absolute path, to a PNG / JPEG / GIF / WebP. Reading never waits for approval, wherever the path is.",
     };
   }
   // Only "bash" (Git Bash) and "powershell" ever come back from toolShell() on win32.
   return {
-    zh: "工作区相对路径（用 `/` 分隔），或宿主绝对路径（原生 Windows 路径，如 `C:\\Users\\me\\avatar.png`），指向一张 PNG / JPEG / GIF / WebP。区内直接执行；区外会停下来等用户批准。拒绝后工具结果是 denied。",
-    en: "A workspace-relative path (`/`-separated), or a host absolute path (a native Windows path, e.g. `C:\\Users\\me\\avatar.png`), to a PNG / JPEG / GIF / WebP. Runs immediately inside the workspace; outside, it pauses for the user's approval. A denial comes back as denied.",
+    zh: "工作区相对路径（用 `/` 分隔），或宿主绝对路径（原生 Windows 路径，如 `C:\\Users\\me\\avatar.png`），指向一张 PNG / JPEG / GIF / WebP。读不用批准，路径在哪都行。",
+    en: "A workspace-relative path (`/`-separated), or a host absolute path (a native Windows path, e.g. `C:\\Users\\me\\avatar.png`), to a PNG / JPEG / GIF / WebP. Reading never waits for approval, wherever the path is.",
   };
 }
 

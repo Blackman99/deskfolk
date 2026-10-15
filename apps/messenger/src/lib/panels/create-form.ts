@@ -4,6 +4,7 @@ import {
   isAgentEffort,
   isAgentModelName,
   isClaudeModelName,
+  isPermissionMode,
   isThinkingLevel,
   sortThinkingLevels,
   type AgentsStatusResponse,
@@ -37,6 +38,8 @@ export type CreateBotDraft = {
   agentEffort?: string;
   /** The account on that agent (a listed config directory); `''` the daemon's own environment. Omit to leave it out. */
   agentConfigDir?: string;
+  /** Its own permission mode (ADR 0092); `''` follows the app's. Omit to leave it out. */
+  permissionMode?: string;
 };
 
 export type CreateBotFieldErrors = {
@@ -126,6 +129,7 @@ export function planCreateBot(
   if (agentModel !== undefined) body.agent_model = agentModel.length > 0 ? agentModel : null;
   if (agentEffort !== undefined) body.agent_effort = agentEffort && isAgentEffort(agentRunner, agentEffort) ? agentEffort : null;
   if (draft.agentConfigDir !== undefined) body.agent_config_dir = draft.agentConfigDir.trim() || null;
+  if (draft.permissionMode !== undefined) body.permission_mode = isPermissionMode(draft.permissionMode) ? draft.permissionMode : null;
   return {
     ok: true,
     body,

@@ -2,6 +2,8 @@
 
 Status: implemented 2026-10-12. Changes the scope [危险动作矩阵](../../CONTEXT.md) gives an Always allow on a card for a path outside the workspace; nothing else about approval cards changes.
 
+被 [ADR 0092](0092-permission-modes.md) 取代（2026-10-16）：Always allow 和它的规则列表都去掉了，卡上换成「以后都直接干」，把这个 Bot 改到不再问这类调用的权限模式；已存的规则不再生效。 / Superseded by ADR 0092 (2026-10-16): Always allow and its list are gone; the card offers "allow from now on", which moves the Bot to a permission mode that no longer asks about that kind; rules already saved no longer apply.
+
 工作区外读写的批准卡上按 Always allow，原来存下的范围就是卡上那个路径。规则按前缀匹配，但卡上从来只是一个文件，所以它只放行那一个文件：2026-10-11 夜里「开发助手」（Claude Code）改 `~/my-projects/sveltepress`，`Navbar.svelte` 出卡、你按 Always allow，`Sidebar.svelte` 又出卡、又按，`.changeset/full-width-section-tabs.md` 再出卡——三张卡，同一个项目。你说：「当前 Bot 想在工作空间外的地方读写文件审批太多了。」
 
 An Always allow on a card to read or write outside the workspace used to save the card's own path as its scope. Rules match by prefix, but a card names one file, so the rule let through that file alone: on the night of 2026-10-11 「开发助手」 (Claude Code) worked in `~/my-projects/sveltepress` — `Navbar.svelte` put up a card and you pressed Always allow, `Sidebar.svelte` put up another and you pressed it again, then `.changeset/full-width-section-tabs.md` — three cards for one project. You said: 「当前 Bot 想在工作空间外的地方读写文件审批太多了。」

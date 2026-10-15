@@ -1,4 +1,4 @@
-import { ANNOTATION_REMOTE_CROP_BASE64_MAX, BOT_RUNNERS, BUILTIN_MODEL_ROLES, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
+import { ANNOTATION_REMOTE_CROP_BASE64_MAX, BOT_RUNNERS, BUILTIN_MODEL_ROLES, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, PERMISSION_MODES, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
 import type { RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 import { isUlid } from "../ids";
@@ -23,8 +23,9 @@ const schedule: Check = v => object({ kind: one("daily"), time: string }, ["kind
 // A local agent's effort level: a short word; the daemon checks it against the runner's own list (ADR 0079).
 const effort: Check = v => typeof v === "string" && /^[a-z]{2,12}$/.test(v);
 const runner = one(...BOT_RUNNERS);
+const permissionMode = one(...PERMISSION_MODES);
 const bot = { name: string, duties: string, boundaries: string, avatar: nullable(string), model: nullable(string), provider_id: nullable(id), thinking_level: nullable(string), runner: nullable(runner), agent_model: nullable(string),
-  agent_effort: nullable(effort), agent_config_dir: nullable(string), agent_custom_id: nullable(string) };
+  agent_effort: nullable(effort), agent_config_dir: nullable(string), agent_custom_id: nullable(string), permission_mode: nullable(permissionMode) };
 const apiFormat = one("openai", "anthropic");
 const provider = { name: string, base_url: string, api_format: apiFormat, api_key: string, models, available_models: list(string), default_model: nullable(string) };
 const mcp = { name: string, transport: one("stdio", "http"), command: string, args: list(string), url: string,
@@ -40,7 +41,7 @@ function add(method: Route["method"], pattern: string, body?: Fields, required?:
   routes.push({ method, path: path(pattern), body, required, patch });
 }
 function get(pattern: string, query?: Fields, queryRequired?: string[]): void { routes.push({ method: "GET", path: path(pattern), query, queryRequired }); }
-get("(snapshot|settings|providers|bots|sessions|allow-rules|mcp-servers|skills|memories|routines|credential-operations|capabilities)");
+get("(snapshot|settings|providers|bots|sessions|mcp-servers|skills|memories|routines|credential-operations|capabilities)");
 get("(providers|bots|sessions|attachments|requests|tasks)/:id");
 get("sessions/:id/(judgements|routes|composer-suggestions)");
 // ADR 0050: quality events, the report and lessons; marking a turn's trouble as the model's.
@@ -210,7 +211,6 @@ add("POST", "mcp-servers", mcp, ["name"]);
 add("POST", "skills", { ...skill, bot_id: id }, ["bot_id", "name", "description", "body"]);
 add("POST", "routines", { ...routine, bot_id: id }, ["bot_id", "title", "instruction", "schedule"]);
 add("POST", "sessions", { name: string, members: list(id), playbook_id: nullable(string) }, ["name", "members"]);
-add("POST", "allow-rules", { kind_key: string, scope: string }, ["kind_key", "scope"]);
 add("POST", "turns/:id/mark-model"); add("DELETE", "turns/:id/mark-model");
 add("PATCH", "lessons/:id", { status: one("active", "retired"), action: one("warn", "block"), text: string }, [], true);
 get("model-ladder"); add("PUT", "model-ladder", { items: list(v => object({ provider_id: id, model: string }, ["provider_id", "model"])(v) ||
@@ -235,7 +235,7 @@ add("DELETE", "annotations/:id", revision);
 add("POST", "sessions/:id/read", { through_message_id: id });
 add("POST", "sessions/:id/(archive|restore)", revision); add("POST", "bots/:id/(archive|restore)", revision);
 add("POST", "sessions/:id/clear", { ...revision, erase_quotes: bool });
-add("POST", "approvals/:id/resolve", { action: one("allow_once", "deny", "always_allow"), scope: string, api_key: string }, ["action"]);
+add("POST", "approvals/:id/resolve", { action: one("allow_once", "allow_from_now", "deny"), api_key: string }, ["action"]);
 add("POST", "credential-operations/:id/resolve", { action: one("repair", "cancel"), value: string }, ["action"]);
 add("POST", "notifications/read", { ids: list(id), through_ordinal: v => typeof v === "number" && Number.isInteger(v) && v >= 0, filter: one("all") });
 add("POST", "notifications/retention-notice/read", {});
@@ -255,6 +255,8 @@ add("PATCH", "settings", { endpoint_base_url: string, endpoint_api_key: string, 
   launch_at_login: bool, locale: one("en", "zh"), theme: one("system", "light", "dark"), default_playbook: string,
   // The day's spend cap (ADR 0088): USD, or null for none.
   spend_cap_usd: nullable(positive),
+  // The app's permission mode (ADR 0092).
+  permission_mode: permissionMode,
   if_revision: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 }, [], true);
 // The speech endpoint (ADR 0073): set up like the settings, under their revision; a transcription
 // carries its recording as base64, bounded under the link's one-megabyte message.
@@ -264,7 +266,7 @@ add("POST", "speech/transcribe", { audio: v => typeof v === "string" && v.length
 for (const [name, fields] of Object.entries({ bots: bot, providers: provider, "mcp-servers": mcp, skills: skill, routines: routine,
   memories: { subject: string, body: string, enabled: bool }, sessions: { name: string } } as Record<string, Fields>)) add("PATCH", `${name}/:id`, { ...fields, ...revision }, [], true);
 add("DELETE", "sessions/:id", { ...revision, erase_quotes: bool });
-add("DELETE", "(bots|providers|mcp-servers|skills|memories|routines|allow-rules)/:id", revision);
+add("DELETE", "(bots|providers|mcp-servers|skills|memories|routines)/:id", revision);
 add("DELETE", "sessions/:id/messages", { ...revision, erase_quotes: bool });
 add("DELETE", "sessions/:id/members", { ...revision, bot_id: id }, ["bot_id"]);
 for (const method of ["PUT", "DELETE"] as const) add(method, "messages/:id/reactions", { emoji: string }, ["emoji"]);

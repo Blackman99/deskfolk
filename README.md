@@ -30,7 +30,7 @@
 
 <table>
   <tr>
-    <td width="50%"><img alt="Anything outside the workspace asks you first" src="docs/assets/app-en-ask.jpg"><br><sub>Anything outside the workspace asks you first</sub></td>
+    <td width="50%"><img alt="It asks you first, as much as its permission mode says" src="docs/assets/app-en-ask.jpg"><br><sub>It asks you first, as much as its permission mode says</sub></td>
     <td width="50%"><img alt="Stop means stop, until you lift it" src="docs/assets/app-en-stop.jpg"><br><sub>Stop means stop, until you lift it</sub></td>
   </tr>
   <tr>

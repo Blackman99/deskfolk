@@ -121,6 +121,8 @@ export function migrateSchema(db: Database): void {
   if (!botCols.includes("agent_config_dir")) db.run(`ALTER TABLE bots ADD COLUMN agent_config_dir TEXT`);
   // Which of your own ACP agents runs it, for `runner = 'custom'` (ADR 0079).
   if (!botCols.includes("agent_custom_id")) db.run(`ALTER TABLE bots ADD COLUMN agent_custom_id TEXT`);
+  // Its own permission mode (ADR 0092): NULL follows the app's.
+  if (!botCols.includes("permission_mode")) db.run(`ALTER TABLE bots ADD COLUMN permission_mode TEXT`);
   // A table made before ADR 0079 only lets Claude Code run a Bot (a CHECK SQLite cannot change in place).
   migrateAgentRunners(db);
   const revCols = db

@@ -27,17 +27,24 @@ export function pathDesc(shell: ToolShellKind = toolShell().kind): Localized {
 
 export const PATH_DESC: Localized = pathDesc();
 
+/** A write or delete: the Bot's permission mode decides, not the workspace (ADR 0092). */
 export const FILE_TAIL = {
-  zh: "区内直接执行；区外会停下来等用户批准。拒绝后工具结果是 denied。",
-  en: "Runs immediately inside the workspace; outside, it pauses for the user's approval. A denial comes back as denied.",
+  zh: "要不要等用户批准看你的权限模式（自动、全部允许下直接执行，改动先问下等批准，只读下被拒），和路径在不在工作区里无关。拒绝后工具结果是 denied。",
+  en: "Whether it waits for the user's approval is set by your permission mode (runs at once under auto and allow all, waits under ask first, refused read-only), wherever the path is. A denial comes back as denied.",
+} as const;
+
+/** A read never waits, in any permission mode (ADR 0092). */
+export const READ_TAIL = {
+  zh: "读不用批准，路径在哪都行。",
+  en: "Reading never waits for approval, wherever the path is.",
 } as const;
 
 export function readFileTool(shell: ToolShellKind = toolShell().kind): ToolDef {
   return {
     name: "read_file",
     description: {
-      zh: `读取 UTF-8 文本；PNG / JPEG / GIF / WebP 图片会作为图像附在这批工具结果之后给你看。${FILE_TAIL.zh}`,
-      en: `Read UTF-8 text; a PNG / JPEG / GIF / WebP picture is shown to you as an image after this batch of tool results. ${FILE_TAIL.en}`,
+      zh: `读取 UTF-8 文本；PNG / JPEG / GIF / WebP 图片会作为图像附在这批工具结果之后给你看。${READ_TAIL.zh}`,
+      en: `Read UTF-8 text; a PNG / JPEG / GIF / WebP picture is shown to you as an image after this batch of tool results. ${READ_TAIL.en}`,
     },
     properties: {
       path: { type: "string", description: pathDesc(shell) },
@@ -93,8 +100,8 @@ export function listDirTool(shell: ToolShellKind = toolShell().kind): ToolDef {
   return {
     name: "list_dir",
     description: {
-      zh: `列出目录条目。${FILE_TAIL.zh}`,
-      en: `List directory entries. ${FILE_TAIL.en}`,
+      zh: `列出目录条目。${READ_TAIL.zh}`,
+      en: `List directory entries. ${READ_TAIL.en}`,
     },
     properties: {
       path: {
@@ -117,19 +124,19 @@ export const LIST_DIR: ToolDef = listDirTool();
 function shellDescription(shell: ToolShellKind): Localized {
   if (shell === "sh") {
     return {
-      zh: "在工作区执行一条命令，默认在本轮工作目录里。cwd 在区内且命令里看得见的路径不越界则直接执行；否则停下来等用户批准。拒绝后工具结果是 denied。不能传「无约束」开关。",
-      en: "Run a command in the workspace, by default in this turn's work dir. Runs immediately when cwd is inside and no visible path in the command crosses out; otherwise it pauses for the user's approval. A denial comes back as denied. There is no unconstrained flag you can pass.",
+      zh: "在工作区执行一条命令，默认在本轮工作目录里。要不要等用户批准看你的权限模式，和命令碰到哪些路径无关。拒绝后工具结果是 denied。",
+      en: "Run a command in the workspace, by default in this turn's work dir. Whether it waits for the user's approval is set by your permission mode, not by the paths the command touches. A denial comes back as denied.",
     };
   }
   if (shell === "bash") {
     return {
-      zh: "在工作区执行一条命令（Git Bash，bash 语法），默认在本轮工作目录里。cwd 在区内且命令里看得见的路径不越界则直接执行；否则停下来等用户批准。拒绝后工具结果是 denied。不能传「无约束」开关。",
-      en: "Run a command in the workspace (Git Bash, bash syntax), by default in this turn's work dir. Runs immediately when cwd is inside and no visible path in the command crosses out; otherwise it pauses for the user's approval. A denial comes back as denied. There is no unconstrained flag you can pass.",
+      zh: "在工作区执行一条命令（Git Bash，bash 语法），默认在本轮工作目录里。要不要等用户批准看你的权限模式，和命令碰到哪些路径无关。拒绝后工具结果是 denied。",
+      en: "Run a command in the workspace (Git Bash, bash syntax), by default in this turn's work dir. Whether it waits for the user's approval is set by your permission mode, not by the paths the command touches. A denial comes back as denied.",
     };
   }
   return {
-    zh: "在工作区执行一条命令（PowerShell 语法），默认在本轮工作目录里。没有 timeout 包装器：要限时或放后台运行，用 Start-Process 或后台任务（Job）并自己控制时长。cwd 在区内且命令里看得见的路径不越界则直接执行；否则停下来等用户批准。拒绝后工具结果是 denied。不能传「无约束」开关。",
-    en: "Run a command in the workspace (PowerShell syntax), by default in this turn's work dir. There is no timeout wrapper: for a time limit or to run in the background, use Start-Process or a background job and control the duration yourself. Runs immediately when cwd is inside and no visible path in the command crosses out; otherwise it pauses for the user's approval. A denial comes back as denied. There is no unconstrained flag you can pass.",
+    zh: "在工作区执行一条命令（PowerShell 语法），默认在本轮工作目录里。没有 timeout 包装器：要限时或放后台运行，用 Start-Process 或后台任务（Job）并自己控制时长。要不要等用户批准看你的权限模式，和命令碰到哪些路径无关。拒绝后工具结果是 denied。",
+    en: "Run a command in the workspace (PowerShell syntax), by default in this turn's work dir. There is no timeout wrapper: for a time limit or to run in the background, use Start-Process or a background job and control the duration yourself. Whether it waits for the user's approval is set by your permission mode, not by the paths the command touches. A denial comes back as denied.",
   };
 }
 

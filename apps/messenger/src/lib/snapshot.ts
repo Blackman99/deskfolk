@@ -4,7 +4,6 @@ import {
   isHiddenTranscriptKind,
   type Annotation,
   type Approval,
-  type AllowRule,
   type Routine,
   type RuntimeSnapshot,
   type Bot,
@@ -36,7 +35,6 @@ export type Snapshot = {
   skills: Skill[];
   memories: Memory[];
   routines: Routine[];
-  allowRules: AllowRule[];
   messages: Message[];
   turns: Turn[];
   judgements: Judgement[];
@@ -93,7 +91,6 @@ export function emptySnapshot(): Snapshot {
     skills: [],
     memories: [],
     routines: [],
-    allowRules: [],
     messages: [],
     turns: [],
     judgements: [],
@@ -381,12 +378,6 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
     }
     case "routine.removed":
       return { ...snapshot, routines: snapshot.routines.filter((row) => row.id !== event.id) };
-    case "allow_rule.upsert": {
-      const { event: _e, occurred_at: _at, ...row } = event;
-      return { ...snapshot, allowRules: upsert(snapshot.allowRules, row) };
-    }
-    case "allow_rule.removed":
-      return { ...snapshot, allowRules: snapshot.allowRules.filter((row) => row.id !== event.id) };
     case "memory.removed": {
       return { ...snapshot, memories: snapshot.memories.filter((m) => m.id !== event.id) };
     }

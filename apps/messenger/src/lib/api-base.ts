@@ -1,6 +1,5 @@
 import type {
   AcceptanceCheckInput,
-  AllowRule,
   AnswerAskRequest,
   ApiFormat,
   Approval,
@@ -187,10 +186,6 @@ export abstract class ApiBase<Row extends PendingRow> {
 
   async deleteRoutine(id: string, ifRevision: string): Promise<void> {
     await this.request<void>("DELETE", `/v1/routines/${encodeURIComponent(id)}`, { if_revision: ifRevision });
-  }
-
-  async allowRules(): Promise<AllowRule[]> {
-    return (await this.get<ListPage<AllowRule>>("/v1/allow-rules")).items;
   }
 
   async settings(): Promise<Settings> {

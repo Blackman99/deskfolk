@@ -74,10 +74,9 @@ export function checkRevision(store: Store, request: Request, url: URL, body: Re
   } else {
     const parts = url.pathname.split("/");
     const tables: Record<string, string> = { bots: "bots", skills: "skills", memories: "memories", routines: "routines", providers: "providers", "mcp-servers": "mcp_servers", sessions: "sessions", annotations: "annotations", checks: "acceptance_checks" };
-    const table = parts[2] === "allow-rules" && destructive ? "allow_rules" : tables[parts[2] ?? ""];
+    const table = tables[parts[2] ?? ""];
     if (!table || !parts[3]) return;
-    const revisionColumn = table === "allow_rules" ? "created_at" : "updated_at";
-    const row = store.db.query<{ updated_at: string }, [string]>(`SELECT ${revisionColumn} AS updated_at FROM ${table} WHERE id = ?`).get(decodeURIComponent(parts[3]));
+    const row = store.db.query<{ updated_at: string }, [string]>(`SELECT updated_at FROM ${table} WHERE id = ?`).get(decodeURIComponent(parts[3]));
     if (!row) throw new HttpError(404, "not_found", "entity not found");
     if (typeof revision !== "string" || revision !== row.updated_at) throw new HttpError(409, "conflict", "entity revision changed");
   }

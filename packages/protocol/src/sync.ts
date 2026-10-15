@@ -1,4 +1,4 @@
-import type { AllowRule, Approval, McpServer, Memory, Routine, Skill } from "./admin.ts";
+import type { Approval, McpServer, Memory, Routine, Skill } from "./admin.ts";
 import type { Bot } from "./bots.ts";
 import type { ClientEvent } from "./events.ts";
 import type { Hold } from "./holds.ts";
@@ -61,7 +61,6 @@ export type RuntimeSnapshot = EventCursor & {
   skills: Skill[];
   memories: Memory[];
   routines: Routine[];
-  allowRules: AllowRule[];
   notificationSummary?: import("./notifications.ts").NotificationSummary;
   notificationPolicy?: import("./notifications.ts").NotificationPolicy;
   notificationCapabilities?: import("./notifications.ts").NotificationCapabilities;

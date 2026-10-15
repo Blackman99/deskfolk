@@ -16,6 +16,8 @@ export type ProfileFields = {
   agentEffort?: string;
   /** The account it runs on (a config directory listed in Settings); `''` the daemon's own environment. */
   agentConfigDir?: string;
+  /** Its own permission mode (ADR 0092); `''` follows the app's. Absent from a daemon older than that. */
+  permissionMode?: string;
 };
 
 /** Raw comparison: any keystroke counts, so a bot.upsert never clobbers text being typed. */
@@ -30,7 +32,8 @@ export function profileDraftDirty(draft: ProfileFields, baseline: ProfileFields)
     (draft.runner ?? "") !== (baseline.runner ?? "") ||
     (draft.agentModel ?? "") !== (baseline.agentModel ?? "") ||
     (draft.agentEffort ?? "") !== (baseline.agentEffort ?? "") ||
-    (draft.agentConfigDir ?? "") !== (baseline.agentConfigDir ?? "")
+    (draft.agentConfigDir ?? "") !== (baseline.agentConfigDir ?? "") ||
+    (draft.permissionMode ?? "") !== (baseline.permissionMode ?? "")
   );
 }
 
@@ -46,7 +49,8 @@ export function profileContentEqual(a: ProfileFields, b: ProfileFields): boolean
     (a.runner ?? "") === (b.runner ?? "") &&
     (a.agentModel ?? "").trim() === (b.agentModel ?? "").trim() &&
     (a.agentEffort ?? "") === (b.agentEffort ?? "") &&
-    (a.agentConfigDir ?? "") === (b.agentConfigDir ?? "")
+    (a.agentConfigDir ?? "") === (b.agentConfigDir ?? "") &&
+    (a.permissionMode ?? "") === (b.permissionMode ?? "")
   );
 }
 

@@ -334,6 +334,8 @@ test("a lead woken at the job's level whose approved command draws in its own ti
   const h = await createScenario({ learning: true });
   open.push(h);
   const [designer, writer] = h.createBots({ name: "设计师", duties: "海报和视觉；拆活、派活、审稿" }, { name: "文案", duties: "写宣传语" });
+  // Its commands wait on your card, as the real one's did then (ADR 0092).
+  h.store.patchBot(designer!.id, { permission_mode: "ask_first" });
   const room = h.group("海报组", [designer!, writer!]);
   confirmGroupLead(h.store, room, designer!.id);
   const ticketId = (title: string) => h.store.db.query<{ id: string }, [string]>("SELECT id FROM tickets WHERE title = ?").get(title)?.id ?? null;

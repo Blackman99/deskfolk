@@ -262,7 +262,7 @@ test("force during an approved configuration hydration prevents its write and la
   const entered = deferred<void>();
   const mock = spyOn(h.store, "listProviders").mockImplementation(async () => { entered.resolve(); await held.promise; return original(); });
   cleanup.push(() => { held.resolve(); mock.mockRestore(); });
-  h.engine.resolveApproval(approval.id, "allow_once", undefined, "fixture-never");
+  h.engine.resolveApproval(approval.id, "allow_once", "fixture-never");
   await bounded(entered.promise);
   expect(h.quiesce.force().remaining).toEqual([turn.id]);
   await Bun.sleep(1);

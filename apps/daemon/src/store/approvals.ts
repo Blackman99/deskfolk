@@ -1,92 +1,17 @@
-import type { Approval } from "@real-bot/protocol";
+import { modeAllowing, permissionClassOf, permissionVerdict, type Approval, type ResolveApprovalAction } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
-import { isWithinPath } from "../workspace-paths";
 import {
   createNotification,
   markNotificationRead,
   updateNotificationActionState,
 } from "./notifications";
+import { permissionModeFor } from "./permissions";
 import {
-  ALLOWED_KIND_KEYS,
-  requireNonEmpty,
   toApproval,
   type ApprovalRow,
   type StoreContext,
 } from "./shared";
-
-export function listAllowRules(ctx: StoreContext) {
-  return ctx.db
-    .query<{ id: string; kind_key: string; scope: string; created_at: string }, []>(
-      `SELECT * FROM allow_rules ORDER BY created_at ASC`,
-    )
-    .all();
-}
-
-export function createAllowRule(ctx: StoreContext, kind_key: string, scope: string) {
-  if (!ALLOWED_KIND_KEYS.has(kind_key)) {
-    throw new HttpError(422, "invalid_args", "this kind cannot be Always allow");
-  }
-  const nextScope = requireNonEmpty("scope", scope);
-  if (kind_key === "unconstrained-shell" && nextScope !== "*") {
-    throw new HttpError(422, "invalid_args", "unconstrained-shell scope must be *");
-  }
-  const existing = ctx.db
-    .query<{ id: string }, [string, string]>(
-      `SELECT id FROM allow_rules WHERE kind_key = ? AND scope = ?`,
-    )
-    .get(kind_key, nextScope);
-  if (existing) {
-    return ctx.db
-      .query<{ id: string; kind_key: string; scope: string; created_at: string }, [string]>(
-        `SELECT * FROM allow_rules WHERE id = ?`,
-      )
-      .get(existing.id)!;
-  }
-  const row = {
-    id: ulid(),
-    kind_key,
-    scope: nextScope,
-    created_at: isoNow(),
-  };
-  ctx.db.run(`INSERT INTO allow_rules (id, kind_key, scope, created_at) VALUES (?, ?, ?, ?)`, [
-    row.id,
-    row.kind_key,
-    row.scope,
-    row.created_at,
-  ]);
-  return row;
-}
-
-export function deleteAllowRule(ctx: StoreContext, id: string): void {
-  const deleted = ctx.db.query("DELETE FROM allow_rules WHERE id = ? RETURNING id").get(id);
-  if (!deleted) throw new HttpError(404, "not_found", "allow rule not found");
-}
-
-/**
- * Whether a rule covers this call: its scope is `*`, the target, or a folder the target is in. What
- * you let a Bot write there it may read there too (ADR 0087).
- */
-export function matchesAllowRule(ctx: StoreContext, kind_key: string, target: string): boolean {
-  const kinds = kind_key === "outside-read" ? ["outside-read", "outside-write"] : [kind_key];
-  const rules = listAllowRules(ctx);
-  for (const rule of rules) {
-    if (!kinds.includes(rule.kind_key)) continue;
-    if (rule.scope === "*") return true;
-    if (kind_key === "unconstrained-shell") continue;
-    if (target === rule.scope || target.startsWith(rule.scope.endsWith("/") ? rule.scope : `${rule.scope}/`)) {
-      return true;
-    }
-    if (process.platform === "win32" && isWithinPath(rule.scope, target, "win32")) return true;
-  }
-  return false;
-}
-
-/** The scope an Always allow on this card writes: what you named, else what the card proposed, else its target. */
-export function alwaysAllowScope(row: { kind_key: string | null; target: string | null; allow_scope?: string | null }, scope?: string): string {
-  if (row.kind_key === "unconstrained-shell") return "*";
-  return scope ?? row.allow_scope ?? row.target ?? "*";
-}
 
 export function insertApproval(
   ctx: StoreContext,
@@ -97,8 +22,6 @@ export function insertApproval(
     summary: string;
     target: string;
     requires_api_key?: boolean;
-    /** What Always allow would cover (ADR 0087); absent for kinds that are not about a path. */
-    allow_scope?: string | null;
   },
 ): Approval {
   const now = isoNow();
@@ -113,11 +36,10 @@ export function insertApproval(
     created_at: now,
     resolved_at: null,
     requires_api_key: Boolean(input.requires_api_key),
-    allow_scope: input.allow_scope ?? null,
   };
   ctx.db.run(
-    `INSERT INTO approvals (id, turn_id, message_id, status, kind_key, summary, target, created_at, resolved_at, requires_api_key, allow_scope)
-     VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, NULL, ?, ?)`,
+    `INSERT INTO approvals (id, turn_id, message_id, status, kind_key, summary, target, created_at, resolved_at, requires_api_key)
+     VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, NULL, ?)`,
     [
       row.id,
       row.turn_id,
@@ -127,7 +49,6 @@ export function insertApproval(
       row.target,
       row.created_at,
       row.requires_api_key ? 1 : 0,
-      row.allow_scope ?? null,
     ],
   );
   const turn = ctx.db
@@ -162,27 +83,22 @@ export function listApprovals(ctx: StoreContext, status?: string) {
   return ctx.db.query<ApprovalRow, []>(sql).all().map(toApproval);
 }
 
-export function resolveApproval(
-  ctx: StoreContext,
-  id: string,
-  action: "allow_once" | "deny" | "always_allow",
-  scope?: string,
-) {
+export function resolveApproval(ctx: StoreContext, id: string, action: ResolveApprovalAction) {
   return ctx.tx.run(() => {
     const row = ctx.db.query<ApprovalRow, [string]>(`SELECT * FROM approvals WHERE id = ?`).get(id);
     if (!row) throw new HttpError(404, "not_found", "approval not found");
     if (row.status !== "pending") {
       throw new HttpError(409, "conflict", "approval is no longer pending");
     }
-    if (action === "always_allow") {
-      if (!row.kind_key || !ALLOWED_KIND_KEYS.has(row.kind_key)) {
-        throw new HttpError(422, "invalid_args", "this kind cannot be Always allow");
+    // Allowed from now on (ADR 0092): its Bot moves to the mode in which this kind no longer asks,
+    // unless you already moved it to one meanwhile.
+    if (action === "allow_from_now") {
+      const botId = ctx.db
+        .query<{ bot_id: string }, [string]>("SELECT bot_id FROM turns WHERE id = ?")
+        .get(row.turn_id)?.bot_id;
+      if (botId && permissionVerdict(permissionModeFor(ctx, botId), permissionClassOf(row.kind_key)) !== "allow") {
+        ctx.db.run(`UPDATE bots SET permission_mode = ?, updated_at = ? WHERE id = ?`, [modeAllowing(row.kind_key), isoNow(), botId]);
       }
-      const nextScope = alwaysAllowScope(row, scope);
-      if (row.kind_key === "unconstrained-shell" && scope && scope !== "*") {
-        throw new HttpError(422, "invalid_args", "unconstrained-shell scope must be *");
-      }
-      createAllowRule(ctx, row.kind_key, nextScope);
     }
     const now = isoNow();
     const status = action === "deny" ? "denied" : "allowed_once";

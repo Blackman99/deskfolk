@@ -42,6 +42,7 @@ import * as yourWord from "./your-word";
 import * as ceiling from "./ceiling";
 import * as visionCap from "./vision-cap";
 import * as spendCap from "./spend-cap";
+import * as permissions from "./permissions";
 import * as externalJobs from "./external-jobs";
 import * as modelDefaults from "./model-defaults";
 import * as modelLadder from "./model-ladder";
@@ -377,7 +378,7 @@ export class Store {
       providers: providers.providersCached(this.ctx),
       skills: skills.listSkills(this.ctx).map((skill) => skills.withLearning(this.ctx, skill)),
       memories: memories.listMemories(this.ctx).map((memory) => memories.withLearning(this.ctx, memory)),
-      routines: this.listRoutines(), allowRules: this.listAllowRules(),
+      routines: this.listRoutines(),
       // Only once holds are on: a client reads the field's presence as "stops can be made here".
       ...(readEngineLevel(this.db) >= ENGINE_LEVELS.holds ? { holds: holds.listHolds(this.ctx, { inForce: true }) } : {}),
       // A line of yours in a direct reaches the working Bot at its next step, so the composer stays
@@ -924,10 +925,9 @@ export class Store {
   readonly getApproval = this.bind(approvals.getApproval);
   readonly listApprovals = this.bind(approvals.listApprovals);
   readonly resolveApproval = this.bind(approvals.resolveApproval);
-  readonly listAllowRules = this.bind(approvals.listAllowRules);
-  readonly createAllowRule = this.bind(approvals.createAllowRule);
-  readonly deleteAllowRule = this.bind(approvals.deleteAllowRule);
-  readonly matchesAllowRule = this.bind(approvals.matchesAllowRule);
+  /** The mode a Bot's calls are decided by (ADR 0092): its own, else the app's. */
+  readonly permissionModeFor = this.bind(permissions.permissionModeFor);
+  readonly appPermissionMode = this.bind(permissions.appPermissionMode);
 
   // Spend & judgements ---------------------------------------------------------------------
   readonly insertSpend = this.bind(spend.insertSpend);

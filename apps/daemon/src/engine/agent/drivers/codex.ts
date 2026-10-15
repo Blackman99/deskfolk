@@ -6,8 +6,8 @@
  *
  * Every command and file change waits for the app: the thread runs with a read-only sandbox and
  * approval `untrusted` (measured 2026-10-10 with 0.153.4: every command, reads included, and every
- * file change asked first, and ran as approved), and the app answers by its rules — a card where a
- * call crosses out of the workspace. The app's own tools are Codex dynamic tools, called back over
+ * file change asked first, and ran as approved), and the app answers by its rules — the Bot's
+ * permission mode (ADR 0092), a card where the mode asks. The app's own tools are Codex dynamic tools, called back over
  * the same connection. What is yours in `~/.codex` that would otherwise join a Bot's turn — your MCP
  * servers, hooks, memories, plugins, apps, notifications, AGENTS.md — is switched off for the thread
  * only, in its `config`; nothing is written there.

@@ -126,7 +126,7 @@ test("an endpoint added in place waits on its card, then lands, with no job", as
   h.postUser(session, "加一个小米的端点");
   await h.waitFor(() => Boolean(h.store.db.query("SELECT 1 FROM approvals WHERE status = 'pending'").get()), { what: "the endpoint's card" });
   const card = h.store.db.query<{ id: string }, []>("SELECT id FROM approvals WHERE status = 'pending'").get()!;
-  h.engine.resolveApproval(card.id, "allow_once", undefined, "sk-mimo");
+  h.engine.resolveApproval(card.id, "allow_once", "sk-mimo");
   await h.waitIdle();
 
   expect(h.toolCalls(bot, "add_endpoint").map((row) => row.result?.ok)).toEqual([true]);

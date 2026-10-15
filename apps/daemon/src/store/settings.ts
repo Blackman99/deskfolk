@@ -40,6 +40,7 @@ import { listedAgentConfigDir, listedCustomAgent } from "./agents";
 import { hydrateSpeechKey, speechSettings } from "./speech";
 import { defaultPlaybookId, setDefaultPlaybook } from "./playbooks";
 import { setSpendCapUsd, spendCapUsd } from "./spend-cap";
+import { appPermissionMode, setAppPermissionMode } from "./permissions";
 import { createProviderSync, listProviders, patchProviderSync, providersCached } from "./providers";
 import {
   type ProviderRow,
@@ -111,6 +112,7 @@ export function settingsCached(ctx: StoreContext): Settings {
     speech: speechSettings(ctx),
     default_playbook: defaultPlaybookId(ctx),
     spend_cap_usd: spendCapUsd(ctx),
+    permission_mode: appPermissionMode(ctx),
     launch_at_login,
     locale,
     theme,
@@ -266,6 +268,7 @@ export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Reco
       key !== "launch_at_login" &&
       key !== "default_playbook" &&
       key !== "spend_cap_usd" &&
+      key !== "permission_mode" &&
       key !== "locale" &&
       key !== "theme"
     ) {
@@ -278,6 +281,7 @@ export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Reco
     }
     if ("default_playbook" in patch) setDefaultPlaybook(ctx, patch.default_playbook);
     if ("spend_cap_usd" in patch) setSpendCapUsd(ctx, patch.spend_cap_usd);
+    if ("permission_mode" in patch) setAppPermissionMode(ctx, patch.permission_mode);
     if ("launch_at_login" in patch) {
       if (typeof patch.launch_at_login !== "boolean") {
         throw new HttpError(422, "invalid_args", "launch_at_login must be a boolean");

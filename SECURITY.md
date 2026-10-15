@@ -49,8 +49,8 @@ Optional Web Push is Mac-outbound only. VAPID private material is the credential
 ## 信任与执行边界
 
 - **Bot 之间不隔离。** 所有 Bot 共用工作区和已启用的 MCP 工具；Bot 人设不是权限边界。
-- **工作区 shell 不是操作系统沙箱。** 路径检查和批准是应用层约束，不能保证任意子进程无法访问区外资源。Windows 上命令在 Git Bash（找不到时是 PowerShell）里跑，区外检查也认 `C:\`、`C:/`、`..\`、`%USERPROFILE%`、`$env:`、别的盘符和网络共享，认不准的写法按区外处理；同样不是沙箱。
-- 工作区内文件操作可直接执行；区外文件访问、无约束 shell、新端点 / 端点 URL 变更、新 MCP / 连接变更等动作按应用规则请求批准。
+- **工作区不是权限边界，Bot 的 shell 也不是操作系统沙箱。** Bot 能做什么由权限模式决定（只读 / 改动先问 / 自动 / 全部允许，应用一个默认、每个 Bot 可另选，[ADR 0092](docs/adr/0092-permission-modes.md)）：默认「自动」下 Bot 写文件、跑命令不再问，不论在不在工作区里；新端点 / 端点 URL 变更、新 MCP / 连接变更、改内置提示词仍请求批准；「全部允许」下什么都不问。批准是应用层约束，命令一旦放行就能访问当前用户能访问的一切。
+- 任何模式下都直接拒绝：读或改本机 Agent 的登录凭据、递归搜索整个家目录或 `/`、Claude Code 的后台任务。
 - **信任 MCP 是安装 / 配置时的决定。** 已配置、启用且连接成功的工具对所有 Bot 可用，调用不再逐次批准。只安装可信程序和服务，使用最小权限的凭据。
 - 模型输出、工具结果和外部内容可能包含错误或提示注入；检查结果和危险动作仍然重要。
 - **HTML 预览会跑脚本。** 工作区单文件 HTML 在侧栏 iframe 里以 `allow-scripts`、无 `allow-same-origin` 执行，便于设计稿动效；脚本不能读信使页面或本机 token，外链仍受窗口 CSP 限制。不要把不可信 HTML 当隔离执行环境。
@@ -81,6 +81,6 @@ SQLite、附件与工具结果没有应用层加密承诺；依赖本机账户�
 
 Deskfolk is WIP for local experimentation on macOS (Windows is an experimental preview, without remote access), with no stable-version security support or response-time guarantee. Report vulnerabilities through GitHub **Security → Report a vulnerability** when enabled. If unavailable, open an Issue requesting a private contact channel **without disclosing vulnerability details**. Maintainers must enable private reporting before public release; no dedicated security email is currently designated.
 
-Local execution does not mean offline or sandboxed execution. Remote model and MCP requests may transmit data, local MCP processes may access the network, all Bots share tools and files, and configured MCP calls are not individually approved. The workspace shell is not an OS sandbox. Single-file HTML preview runs scripts in an opaque-origin iframe (`allow-scripts`, no `allow-same-origin`) and is not an isolated execution environment. Stop and approval cannot undo completed effects or costs.
+Local execution does not mean offline or sandboxed execution. Remote model and MCP requests may transmit data, local MCP processes may access the network, all Bots share tools and files, and configured MCP calls are not individually approved. The workspace is not a permission boundary and a Bot's shell is not an OS sandbox: what a Bot may do is set by its permission mode (read-only, ask first, auto by default, allow all; per app and per Bot, ADR 0092), and under auto it writes files and runs commands anywhere your account can without asking. A Bot never reads a local agent's sign-in or recursively searches your whole home folder, in any mode. Single-file HTML preview runs scripts in an opaque-origin iframe (`allow-scripts`, no `allow-same-origin`) and is not an isolated execution environment. Stop and approval cannot undo completed effects or costs.
 
 State and local tokens live in the application support directory, provider and HTTP MCP credentials use the macOS Keychain (Credential Manager on Windows), and attachments and full tool results live in the selected workspace. There is no application-level encryption guarantee for these data files. `REAL_BOT_DATA_DIR` does not isolate Keychain / Credential Manager credentials or change the API port. On Windows the data folder is `%LOCALAPPDATA%\real-bot`, protected by that folder's per-user access control rather than mode bits, and the workspace shell runs in Git Bash or PowerShell; its outside-the-workspace check also covers drive letters, `..\`, `%VAR%`, `$env:` and network shares, and treats forms it cannot place as outside. Keep development services local, redact diagnostics, and rotate any exposed credentials immediately.

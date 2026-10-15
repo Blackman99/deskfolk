@@ -5,9 +5,9 @@
  */
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BotRunner, ClientEvent } from "@real-bot/protocol";
+import type { BotRunner, ClientEvent, PermissionMode } from "@real-bot/protocol";
 import type { CompletionOk, JudgeResult } from "./completions";
 import { handleAgentMcp, isAgentMcpPath, mountedAgentMcp, setAgentMcpPort } from "./agent-mcp/bridge";
 import { acpDriver } from "./engine/agent/drivers/acp";
@@ -44,7 +44,7 @@ afterEach(async () => {
 
 type Step = Record<string, unknown>;
 
-async function harness(prompts: Step[][], opts: { runner?: BotRunner; http?: boolean; newSession?: { fail: { code: number; message: string } }; missing?: string; appLoop?: boolean } = {}) {
+async function harness(prompts: Step[][], opts: { runner?: BotRunner; http?: boolean; newSession?: { fail: { code: number; message: string } }; missing?: string; appLoop?: boolean; permissionMode?: PermissionMode } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-external-")));
   const logFile = join(root, ".fake-acp.log");
   const store = new Store({ endpointKey: memoryKeyStore() });
@@ -88,8 +88,8 @@ async function harness(prompts: Step[][], opts: { runner?: BotRunner; http?: boo
     rmSync(root, { recursive: true, force: true });
   });
   const bot = opts.appLoop
-    ? store.createBot({ name: "Coder", duties: "write code", boundaries: "stay in the workspace" })
-    : store.createBot({ name: "Coder", duties: "write code", boundaries: "stay in the workspace", runner, agent_model: "grok-fake" });
+    ? store.createBot({ name: "Coder", duties: "write code", boundaries: "stay in the workspace", permission_mode: opts.permissionMode ?? null })
+    : store.createBot({ name: "Coder", duties: "write code", boundaries: "stay in the workspace", runner, agent_model: "grok-fake", permission_mode: opts.permissionMode ?? null });
   const session = bot.direct_session.id;
   const completed = () => new Promise<void>((resolve) => completedWaiters.push(resolve));
   const post = async (body: string) => {
@@ -146,16 +146,12 @@ test("the app reads and writes inside the workspace for the agent, and records t
   expect(frames).toEqual(["write_file", "read_file"]);
 });
 
-test("a read outside the workspace waits for your approval card, and the file reaches the agent once you allow it", async () => {
+test("a read outside the workspace reaches the agent with no card, read-only too: no mode stops a read (ADR 0092)", async () => {
   const outside = realpathSync(mkdtempSync(join(tmpdir(), "agent-outside-")));
   writeFileSync(join(outside, "notes.txt"), "outside notes");
-  const h = await harness([[{ read: join(outside, "notes.txt") }, { say: "读到了" }]]);
-  const done = h.post("看看外面那个文件");
-  const card = await h.pendingApproval();
-  expect(card?.kind_key).toBe("outside-read");
-  expect(card?.summary).toContain(join(outside, "notes.txt"));
-  h.engine.resolveApproval(card!.id, "allow_once");
-  await done;
+  const h = await harness([[{ read: join(outside, "notes.txt") }, { say: "读到了" }]], { permissionMode: "read_only" });
+  await h.post("看看外面那个文件");
+  expect(h.store.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM approvals").get()!.n).toBe(0);
   expect(h.seen().find((entry) => entry.read)?.content).toBe("outside notes");
   expect(h.lines("bot")).toEqual(["读到了"]);
   rmSync(outside, { recursive: true, force: true });
@@ -165,21 +161,18 @@ test("a read the app carried out for the agent counts as asked, even with anothe
   const outside = realpathSync(mkdtempSync(join(tmpdir(), "agent-outside-")));
   writeFileSync(join(outside, "hosts"), "## hosts");
   const h = await harness([[{ sideRead: join(outside, "hosts") }, { say: "第一行是 ##" }]]);
-  const done = h.post("看看 hosts");
-  const card = await h.pendingApproval();
-  h.engine.resolveApproval(card!.id, "allow_once");
-  await done;
+  await h.post("看看 hosts");
   expect(h.lines("bot")).toEqual(["第一行是 ##"]);
   expect(h.lines("system")).toEqual([]);
   rmSync(outside, { recursive: true, force: true });
 });
 
-test("a denied write outside the workspace never happens, and the agent hears why", async () => {
+test("ask_first, a denied write never happens, and the agent hears why", async () => {
   const outside = realpathSync(mkdtempSync(join(tmpdir(), "agent-outside-")));
-  const h = await harness([[{ write: { path: join(outside, "x.txt"), content: "nope" } }, { say: "没写成" }]]);
+  const h = await harness([[{ write: { path: join(outside, "x.txt"), content: "nope" } }, { say: "没写成" }]], { permissionMode: "ask_first" });
   const done = h.post("在外面写个文件");
   const card = await h.pendingApproval();
-  expect(card?.kind_key).toBe("outside-write");
+  expect(card?.kind_key).toBe("file-write");
   h.engine.resolveApproval(card!.id, "deny");
   await done;
   expect(existsSync(join(outside, "x.txt"))).toBe(false);
@@ -208,9 +201,9 @@ test("a call the agent asks permission for is answered by the app's rules: insid
   expect(h.lines("bot")).toEqual(["列好了"]);
 });
 
-test("a call the agent ran on its own out of the workspace stops the turn as unguarded", async () => {
-  const h = await harness([[{ unasked: { kind: "read", title: "Read known_hosts", locations: [{ path: join(homedir(), ".ssh", "known_hosts") }] } }, { say: "看完了" }]]);
-  await h.post("看看 ssh");
+test("a call the agent ran on its own that its mode would have asked about stops the turn as unguarded", async () => {
+  const h = await harness([[{ unasked: { kind: "edit", title: "Edit notes", locations: [{ path: join(tmpdir(), "agent-unasked-notes.md") }] } }, { say: "改完了" }]], { permissionMode: "ask_first" });
+  await h.post("改改笔记");
   expect(h.lines("bot")).toEqual([]);
   const failure = h.lines("system").join("\n");
   expect(failure).toContain("Grok");

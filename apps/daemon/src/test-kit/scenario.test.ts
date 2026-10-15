@@ -307,6 +307,8 @@ test("two turns of one Bot opened on the same words fail the scenario instead of
 test("a call turned away before it ran is not a side effect", async () => {
   const h = await scenario();
   const [alpha] = h.createBots("Alpha");
+  // Its writes wait on a card (ADR 0092).
+  h.store.patchBot(alpha!.id, { permission_mode: "ask_first" });
   const dm = h.direct(alpha!);
   const outside = join(tmpdir(), `scenario-outside-${crypto.randomUUID()}.txt`);
   h.script(alpha!, dm).reply(

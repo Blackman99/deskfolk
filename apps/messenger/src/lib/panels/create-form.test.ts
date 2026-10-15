@@ -408,3 +408,13 @@ test("an agent that lists nothing, is not found, or cannot be asked still takes 
   // One removed from Settings: still a source to type into, under its kind's name.
   expect(agentModelPicker(agents(), t, "custom", "acp-gone", "").sources[0]).toMatchObject({ key: "agent:custom:acp-gone", label: AGENT_KINDS.custom.label });
 });
+
+test("a Bot's own permission mode rides along; blank follows the app's, and left out it is not sent (ADR 0092)", () => {
+  const base = { name: "Writer", duties: "write", boundaries: "stay", model: "" };
+  const own = planCreateBot({ ...base, permissionMode: "ask_first" });
+  expect(own.ok && own.body.permission_mode).toBe("ask_first");
+  const follow = planCreateBot({ ...base, permissionMode: "" });
+  expect(follow.ok && follow.body.permission_mode).toBeNull();
+  const absent = planCreateBot(base);
+  expect(absent.ok && "permission_mode" in absent.body).toBe(false);
+});

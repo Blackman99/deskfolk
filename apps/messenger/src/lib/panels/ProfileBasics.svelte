@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { AGENT_KINDS, isAgentEffort, type AgentsStatusResponse, type ClaudeCodeStatus } from '@real-bot/protocol';
+	import { AGENT_KINDS, DEFAULT_PERMISSION_MODE, PERMISSION_MODES, isAgentEffort, isPermissionMode, type AgentsStatusResponse, type ClaudeCodeStatus } from '@real-bot/protocol';
 	import { claudeAccountLabel, claudeAccountOf, claudeAgentBlocker, claudeAgentPaysPerToken } from '../settings/claude-agent.ts';
 	import AvatarEditor from '../AvatarEditor.svelte';
 	import ModelPicker from '../ModelPicker.svelte';
@@ -70,6 +70,20 @@
 	const profileThinkingOptions = $derived(
 		pinnableThinkingLevels(profileDraft.model, snapshot.providers)
 	);
+
+	// Its own permission mode, or the app's (ADR 0092). Only you set it; a Bot never does.
+	const appPermissionMode = $derived(snapshot.settings.permission_mode ?? DEFAULT_PERMISSION_MODE);
+	const permissionChoices = $derived([
+		{ value: '', label: t.permissions.follow(t.permissions.modes[appPermissionMode]) },
+		...PERMISSION_MODES.map((mode) => ({ value: mode, label: t.permissions.modes[mode] }))
+	]);
+	const effectivePermission = $derived(isPermissionMode(profileDraft.permissionMode) ? profileDraft.permissionMode : appPermissionMode);
+
+	function onPermissionChange(value: string): void {
+		if ((profileDraft.permissionMode ?? '') === value) return;
+		profileDraft.permissionMode = value;
+		onProfilePick();
+	}
 
 	const runnerChoices = $derived(runnerOptions(t, agents, profileDraft.runner ?? ''));
 	const runnerPick = $derived(parseRunnerValue(profileDraft.runner));
@@ -219,6 +233,21 @@
 				<p class="field-error">{t.sidebar.boundariesEmpty}</p>
 			{/if}
 		</div>
+
+		{#if profileDraft.permissionMode !== undefined}
+		<div class="form-group">
+			<label for="profile-permission">{t.permissions.botLabel}</label>
+			<Select
+				id="profile-permission"
+				value={profileDraft.permissionMode}
+				options={permissionChoices}
+				onchange={onPermissionChange}
+			/>
+			<p class="muted field-hint" data-permission-hint>
+				{profileDraft.permissionMode ? t.permissions.descriptions[effectivePermission] : t.permissions.followHint(t.permissions.descriptions[effectivePermission])}
+			</p>
+		</div>
+		{/if}
 
 		<div class="form-group">
 			<label for="profile-runner">{t.sidebar.botRunner}</label>

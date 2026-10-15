@@ -132,24 +132,20 @@ describe("snapshot event barrier", () => {
     }
     expect(api.parseSyncFrame(JSON.stringify(event(1)))).toEqual(event(1));
   });
-  test("routine/allow-rule snapshots and live changes are idempotent; absolute partials never append twice", () => {
+  test("routine snapshots and live changes are idempotent; absolute partials never append twice", () => {
     const routine = { id: "r", bot_id: "b", title: "before", instruction: "fixture", schedule: { kind: "daily" as const, time: "09:00" }, enabled: true, last_fired_for_due_at: null, created_at: "now", updated_at: "now" };
-    const rule = { id: "a", kind_key: "outside-read", scope: "/fixture", created_at: "now" };
     const base = emptySnapshot();
-    let snapshot = fromRuntimeSnapshot({ ...base, ...cursor(), routines: [routine], allowRules: [rule] });
+    let snapshot = fromRuntimeSnapshot({ ...base, ...cursor(), routines: [routine] });
     snapshot = applyEvent(snapshot, { ...routine, event: "routine.upsert", occurred_at: "now", title: "after" });
-    snapshot = applyEvent(snapshot, { ...rule, event: "allow_rule.upsert", occurred_at: "now", scope: "/next" });
+    snapshot = applyEvent(snapshot, { ...routine, event: "routine.upsert", occurred_at: "now", title: "after" });
+    expect(snapshot.routines).toHaveLength(1);
     expect(snapshot.routines[0]!.title).toBe("after");
-    expect(snapshot.allowRules).toHaveLength(1);
-    expect(snapshot.allowRules[0]!.scope).toBe("/next");
     const turn = { id: "t", session_id: "s", bot_id: "b", trigger_message_id: "m", status: "running" as const, partial_text: "once", created_at: "now", updated_at: "now", last_activity_at: "now" };
     const upsert = { ...turn, event: "turn.upsert" as const, occurred_at: "now" };
     snapshot = applyEvent(applyEvent(snapshot, upsert), upsert);
     expect(snapshot.turns[0]!.partial_text).toBe("once");
     snapshot = applyEvent(snapshot, { event: "routine.removed", occurred_at: "now", id: "r" });
-    snapshot = applyEvent(snapshot, { event: "allow_rule.removed", occurred_at: "now", id: "a" });
     expect(snapshot.routines).toEqual([]);
-    expect(snapshot.allowRules).toEqual([]);
   });
 });
 

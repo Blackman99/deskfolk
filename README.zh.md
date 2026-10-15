@@ -30,7 +30,7 @@
 
 <table>
   <tr>
-    <td width="50%"><img alt="工作区外的动作，先问你" src="docs/assets/app-zh-ask.jpg"><br><sub>工作区外的动作，先问你</sub></td>
+    <td width="50%"><img alt="要不要先问你，按权限模式来" src="docs/assets/app-zh-ask.jpg"><br><sub>要不要先问你，按权限模式来</sub></td>
     <td width="50%"><img alt="说停就停，只有你能解除" src="docs/assets/app-zh-stop.jpg"><br><sub>说停就停，只有你能解除</sub></td>
   </tr>
   <tr>

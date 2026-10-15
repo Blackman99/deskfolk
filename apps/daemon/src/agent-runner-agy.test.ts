@@ -8,7 +8,7 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ClientEvent } from "@real-bot/protocol";
+import type { ClientEvent, PermissionMode } from "@real-bot/protocol";
 import type { CompletionOk, JudgeResult } from "./completions";
 import { agyDriver } from "./engine/agent/drivers/agy";
 import { memoryKeyStore } from "./secrets";
@@ -33,7 +33,7 @@ type Step = Record<string, unknown>;
 type Entry = Record<string, unknown>;
 type InputLine = { event: string; message: { role: string; content: Array<{ type: string; text?: string }> } };
 
-async function harness(prompts: Step[][]) {
+async function harness(prompts: Step[][], opts: { permissionMode?: PermissionMode } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-agy-")));
   const logFile = join(root, ".fake-agy.log");
   const store = new Store({ endpointKey: memoryKeyStore() });
@@ -74,7 +74,7 @@ async function harness(prompts: Step[][]) {
     store.close();
     rmSync(root, { recursive: true, force: true });
   });
-  const bot = store.createBot({ name: "Coder", duties: "write code", boundaries: "stay in the workspace", runner: "antigravity" });
+  const bot = store.createBot({ name: "Coder", duties: "write code", boundaries: "stay in the workspace", runner: "antigravity", permission_mode: opts.permissionMode ?? null });
   const session = bot.direct_session.id;
   const completed = () => new Promise<void>((resolve) => completedWaiters.push(resolve));
   const post = async (body: string) => {
@@ -147,9 +147,17 @@ test("a run_command inside the work dir is fine, and is on the turn's record", a
   expect(h.startedFrames()).toEqual(["shell"]);
 });
 
-test("a run_command that reads outside the workspace stops the turn as unguarded", async () => {
+test("in auto a run_command reaching outside the workspace is fine (ADR 0092)", async () => {
   const h = await harness([[{ tool: { name: "run_command", parameters: { CommandLine: "cat ~/.ssh/known_hosts" }, output: "" } }, { say: "看完了" }]]);
   await h.post("看看 ssh");
+  expect(h.lines("bot")).toEqual(["看完了"]);
+  expect(h.failKind()).toBeUndefined();
+  expect(h.approvals()).toBe(0);
+});
+
+test("under ask_first agy cannot be asked first, so any run_command stops the turn as unguarded", async () => {
+  const h = await harness([[{ tool: { name: "run_command", parameters: { CommandLine: "echo hi", Cwd: "@CWD" }, output: "hi\n" } }, { say: "跑完了" }]], { permissionMode: "ask_first" });
+  await h.post("跑一下");
   expect(h.lines("bot")).toEqual([]);
   expect(h.failKind()).toBe("agent_unguarded");
   expect(h.lines("system").join("\n")).toContain("Antigravity");
@@ -162,9 +170,9 @@ test("a view_file of another agent's credentials stops the turn too", async () =
   expect(h.failKind()).toBe("agent_unguarded");
 });
 
-test("a write_to_file outside the workspace is not waited on: agy never asked, so the turn stops", async () => {
+test("read-only, a write_to_file is not waited on: agy never asked, so the turn stops", async () => {
   const outside = realpathSync(mkdtempSync(join(tmpdir(), "agent-outside-")));
-  const h = await harness([[{ tool: { name: "write_to_file", parameters: { TargetFile: join(outside, "x.txt") }, output: "" } }, { say: "写了" }]]);
+  const h = await harness([[{ tool: { name: "write_to_file", parameters: { TargetFile: join(outside, "x.txt") }, output: "" } }, { say: "写了" }]], { permissionMode: "read_only" });
   await h.post("在外面写个文件");
   expect(h.lines("bot")).toEqual([]);
   expect(h.failKind()).toBe("agent_unguarded");

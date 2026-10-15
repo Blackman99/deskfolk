@@ -2,14 +2,14 @@
  * A turn run by one of your local agents other than Claude Code (ADR 0079): Codex, Grok, OpenCode,
  * ZCode, Antigravity or an ACP agent of your own. One Deskfolk turn is one fresh session of
  * the agent in the turn's work dir, as for a Claude Agent turn (ADR 0061), and wrapped in the same
- * things: the workspace boundary and your approvals, holds and Stop, the effect ledger and its
+ * things: the Bot's permission mode and your approvals, holds and Stop, the effect ledger and its
  * records, the app's own tools, the closing reply with its bounces. The driver (`drivers/*`) speaks
  * the agent's protocol; everything here is the same for every agent.
  *
  * The boundary, as you chose it (2026-10-10): every call the agent asks about or has the app carry
  * out is decided before it runs (`gate`); a call the app only hears of after it ran is checked
- * then, and one that crossed out of the workspace or touched an agent's credentials stops the turn
- * (`agent_unguarded`).
+ * then, and one its permission mode would have asked about or refused (ADR 0092), or one that touched
+ * an agent's credentials, stops the turn (`agent_unguarded`).
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -276,7 +276,7 @@ export async function runExternalSession(input: {
     mode: current.mode === "readonly" ? "readonly" as const : current.mode === "desk" ? "desk" as const : "work" as const,
     workspace: root,
     configDirs: store.allAgentConfigDirs(),
-    allowed: (kind: string, target: string) => store.matchesAllowRule(kind, target),
+    permission: store.permissionModeFor(current.bot_id),
   });
 
   /** What the app decides about one call before it runs: the same rules and card as Claude Agent's. */
@@ -333,7 +333,7 @@ export async function runExternalSession(input: {
     return { kind: "allow" };
   };
 
-  /** A call the app only hears of as it runs: checked now; one that crossed out unasked stops the turn. */
+  /** A call the app only hears of as it runs: checked now; one that needed your OK and ran unasked stops the turn. */
   const audit = (callId: string, action: AppAction): boolean => {
     if (pending.has(callId)) return true;
     const decision = decideAction(action, policyContext());

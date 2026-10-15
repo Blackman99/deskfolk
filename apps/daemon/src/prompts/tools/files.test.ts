@@ -52,8 +52,8 @@ describe("shellTool", () => {
   test("sh matches today's shell tool description and cwd property exactly", () => {
     const tool = shellTool("sh");
     expect(tool.description).toEqual({
-      zh: "在工作区执行一条命令，默认在本轮工作目录里。cwd 在区内且命令里看得见的路径不越界则直接执行；否则停下来等用户批准。拒绝后工具结果是 denied。不能传「无约束」开关。",
-      en: "Run a command in the workspace, by default in this turn's work dir. Runs immediately when cwd is inside and no visible path in the command crosses out; otherwise it pauses for the user's approval. A denial comes back as denied. There is no unconstrained flag you can pass.",
+      zh: "在工作区执行一条命令，默认在本轮工作目录里。要不要等用户批准看你的权限模式，和命令碰到哪些路径无关。拒绝后工具结果是 denied。",
+      en: "Run a command in the workspace, by default in this turn's work dir. Whether it waits for the user's approval is set by your permission mode, not by the paths the command touches. A denial comes back as denied.",
     });
     expect(tool.properties.cwd?.description).toEqual({
       zh: "工作区相对的当前目录。省略则为本轮工作目录（局面块里那一行）。`.` 是工作区根。开头的 `/` 不是工作区根。",
@@ -79,12 +79,13 @@ describe("shellTool", () => {
     expect(tool.description.zh).toContain("Start-Process");
   });
 
-  test("every shell kind still pauses for approval and forbids an unconstrained flag", () => {
+  test("every shell kind says its approval follows the permission mode, not the paths (ADR 0092)", () => {
     for (const shell of ["sh", "bash", "powershell"] as const) {
       const tool = shellTool(shell);
+      expect(tool.description.zh).toContain("权限模式");
       expect(tool.description.zh).toContain("denied");
+      expect(tool.description.en).toContain("permission mode");
       expect(tool.description.en).toContain("denied");
-      expect(tool.description.en).toContain("no unconstrained flag");
     }
   });
 });

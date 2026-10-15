@@ -13,28 +13,20 @@ export type Approval = {
   target: string | null;
   created_at: string;
   resolved_at: string | null;
-  /** True when allow_once must include api_key (endpoint-add, HTTP mcp-add, or an edit with no key yet). */
+  /** True when allowing must include api_key (endpoint-add, HTTP mcp-add, or an edit with no key yet). */
   requires_api_key: boolean;
-  /**
-   * What Always allow on this card covers when the resolve names no scope: for a path outside the
-   * workspace, its project (the nearest folder holding `.git`) or its folder (ADR 0087). Absent or
-   * null: the target itself.
-   */
-  allow_scope?: string | null;
 };
+
+/**
+ * `allow_from_now` lets this call through and moves its Bot to the mode in which this kind no longer
+ * asks (`modeAllowing`, ADR 0092).
+ */
+export type ResolveApprovalAction = "allow_once" | "allow_from_now" | "deny";
 
 export type ResolveApprovalRequest = {
-  action: "allow_once" | "deny" | "always_allow";
-  scope?: string;
+  action: ResolveApprovalAction;
   /** Written only to the keychain for endpoint-add / endpoint-edit / HTTP MCP auth. Never echoed. */
   api_key?: string;
-};
-
-export type AllowRule = {
-  id: string;
-  kind_key: string;
-  scope: string;
-  created_at: string;
 };
 
 export type McpToolCatalogEntry = {

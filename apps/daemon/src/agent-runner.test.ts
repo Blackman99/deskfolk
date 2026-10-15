@@ -143,7 +143,7 @@ afterEach(async () => {
   while (closes.length) await closes.pop()!();
 });
 
-async function harness(script: Script, opts: { status?: ClaudeCodeStatus; runner?: "claude_code" | null; configDir?: string } = {}) {
+async function harness(script: Script, opts: { status?: ClaudeCodeStatus; runner?: "claude_code" | null; configDir?: string; permissionMode?: "read_only" | "ask_first" | "auto" | "allow_all" } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-runner-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
   const events: ClientEvent[] = [];
@@ -181,7 +181,7 @@ async function harness(script: Script, opts: { status?: ClaudeCodeStatus; runner
   });
   if (opts.configDir) store.setClaudeCodeConfigDirs([opts.configDir]);
   const bot = store.createBot({ name: "Coder", duties: "write code", boundaries: "stay in the workspace", runner: opts.runner === undefined ? "claude_code" : opts.runner, agent_model: "sonnet",
-    agent_config_dir: opts.configDir ?? null });
+    agent_config_dir: opts.configDir ?? null, permission_mode: opts.permissionMode ?? null });
   const session = bot.direct_session.id;
   const completed = () => new Promise<void>((resolve) => completedWaiters.push(resolve));
   const post = async (body: string) => {
@@ -262,13 +262,48 @@ test("a write inside the workspace runs without asking and is cited with the rep
   expect(tools.map((event) => `${event.name}:${event.phase}`)).toEqual(["write_file:started", "write_file:exited"]);
 });
 
-test("a write outside the workspace waits for your approval, and a denial reaches Claude Code", async () => {
+test("in auto a write outside the workspace runs with no card, and Claude Code asking on its own is answered by the mode (ADR 0092)", async () => {
+  const outside = realpathSync(mkdtempSync(join(tmpdir(), "agent-outside-")));
+  let own: { behavior: string; message?: string } | null = null;
+  const h = await harness(async function* ({ useTool, options }) {
+    const used = await useTool("Write", { file_path: join(outside, "z.txt"), content: "z" }, () => writeFileSync(join(outside, "z.txt"), "z"));
+    // A protected path Claude Code asks about itself, past the app's own allow.
+    own = await options.canUseTool!("Edit", { file_path: join(outside, ".git", "config") }, { signal: new AbortController().signal, toolUseID: "toolu_own", requestId: "toolu_own", blockedPath: join(outside, ".git", "config") } as never) as { behavior: string };
+    yield result(used.allowed ? "写了" : "没写成");
+  });
+  await h.post("写到外面去");
+  expect(readFileSync(join(outside, "z.txt"), "utf8")).toBe("z");
+  expect(own!.behavior).toBe("allow");
+  expect(h.store.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM approvals").get()!.n).toBe(0);
+  expect(h.lines("bot")).toEqual(["写了"]);
+  rmSync(outside, { recursive: true, force: true });
+});
+
+test("read-only, a write and Claude Code's own question are refused with no card", async () => {
+  const outside = realpathSync(mkdtempSync(join(tmpdir(), "agent-outside-")));
+  let used: { allowed: boolean; reason?: string } | null = null;
+  let own: { behavior: string; message?: string } | null = null;
+  const h = await harness(async function* ({ useTool, options }) {
+    used = await useTool("Write", { file_path: join(outside, "r.txt"), content: "r" }, () => writeFileSync(join(outside, "r.txt"), "r"));
+    own = await options.canUseTool!("Edit", { file_path: join(outside, ".git", "config") }, { signal: new AbortController().signal, toolUseID: "toolu_own", requestId: "toolu_own" } as never) as { behavior: string; message?: string };
+    yield result("没写成");
+  }, { permissionMode: "read_only" });
+  await h.post("写到外面去");
+  expect(used!.allowed).toBe(false);
+  expect(used!.reason).toContain("read-only");
+  expect(own!.behavior).toBe("deny");
+  expect(existsSync(join(outside, "r.txt"))).toBe(false);
+  expect(h.store.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM approvals").get()!.n).toBe(0);
+  rmSync(outside, { recursive: true, force: true });
+});
+
+test("ask_first, a write waits for your approval, and a denial reaches Claude Code", async () => {
   const outside = realpathSync(mkdtempSync(join(tmpdir(), "agent-outside-")));
   let verdict: { allowed: boolean; reason?: string } | null = null;
   const h = await harness(async function* ({ useTool }) {
     verdict = await useTool("Write", { file_path: join(outside, "x.txt"), content: "x" }, () => writeFileSync(join(outside, "x.txt"), "x"));
     yield result(verdict.allowed ? "写了" : "没写成");
-  });
+  }, { permissionMode: "ask_first" });
   const done = h.post("写到外面去");
   // The card is up and the turn waits on it.
   let approvalId: string | null = null;
@@ -278,7 +313,7 @@ test("a write outside the workspace waits for your approval, and a denial reache
   }
   expect(approvalId).not.toBeNull();
   const approval = h.store.db.query<{ kind_key: string; summary: string }, [string]>("SELECT kind_key, summary FROM approvals WHERE id = ?").get(approvalId!);
-  expect(approval!.kind_key).toBe("outside-write");
+  expect(approval!.kind_key).toBe("file-write");
   expect(approval!.summary).toContain(join(outside, "x.txt"));
   h.engine.resolveApproval(approvalId!, "deny");
   await done;
@@ -289,12 +324,12 @@ test("a write outside the workspace waits for your approval, and a denial reache
   rmSync(outside, { recursive: true, force: true });
 });
 
-test("an approved write outside the workspace runs", async () => {
+test("ask_first, an approved write runs", async () => {
   const outside = realpathSync(mkdtempSync(join(tmpdir(), "agent-outside-")));
   const h = await harness(async function* ({ useTool }) {
     const used = await useTool("Write", { file_path: join(outside, "y.txt"), content: "y" }, () => writeFileSync(join(outside, "y.txt"), "y"));
     yield result(used.allowed ? "写了" : "没写成");
-  });
+  }, { permissionMode: "ask_first" });
   const done = h.post("写到外面去");
   let approvalId: string | null = null;
   for (let i = 0; i < 100 && !approvalId; i++) {

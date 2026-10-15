@@ -1,6 +1,6 @@
 import type { ClientEvent, Judgement, Locale, Spend } from "@real-bot/protocol";
 import { defaultPlaybookId } from "./playbooks";
-import { listApprovals, listAllowRules } from "./approvals";
+import { listApprovals } from "./approvals";
 import { isBotOnlyLine } from "./check-backs";
 import { taskDetail } from "./plan-spec";
 import { listCredentialOperations } from "./credentials";
@@ -28,7 +28,7 @@ type Change = { entity: string; id: string; op: string; session_id: string | nul
 /** TEMP triggers follow nested domain writes and roll back with the business transaction. */
 export function installChangeJournal(ctx: StoreContext): void {
   ctx.db.exec(`CREATE TEMP TABLE event_changes (entity TEXT, id TEXT, op TEXT, session_id TEXT)`);
-  const tables = ["settings", "bots", "sessions", "messages", "turns", "approvals", "mcp_servers", "providers", "skills", "memories", "routines", "allow_rules", "spend", "judgements", "notifications", "annotations", "tasks", "tickets", "holds"];
+  const tables = ["settings", "bots", "sessions", "messages", "turns", "approvals", "mcp_servers", "providers", "skills", "memories", "routines", "spend", "judgements", "notifications", "annotations", "tasks", "tickets", "holds"];
   for (const table of tables) {
     for (const op of ["INSERT", "UPDATE", "DELETE"]) {
       if (table === "spend" && op === "UPDATE") continue;
@@ -286,11 +286,6 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
       case "routines": {
         const row = listRoutines(ctx).find((r) => r.id === id);
         out.push(row ? { event: "routine.upsert", occurred_at, ...row } : { event: "routine.removed", occurred_at, id });
-        break;
-      }
-      case "allow_rules": {
-        const row = listAllowRules(ctx).find((r) => r.id === id);
-        out.push(row ? { event: "allow_rule.upsert", occurred_at, ...row } : { event: "allow_rule.removed", occurred_at, id });
         break;
       }
       case "spend": {

@@ -112,7 +112,9 @@
 			agentModel: row.agent_model ?? '',
 			agentEffort: row.agent_effort ?? '',
 			// Left out of the save for a daemon that has no accounts, which would refuse the field.
-			agentConfigDir: row.agent_config_dir === undefined ? undefined : (row.agent_config_dir ?? '')
+			agentConfigDir: row.agent_config_dir === undefined ? undefined : (row.agent_config_dir ?? ''),
+			// Likewise for a daemon from before permission modes (ADR 0092).
+			permissionMode: row.permission_mode === undefined ? undefined : (row.permission_mode ?? '')
 		};
 	}
 
@@ -198,7 +200,8 @@
 			runner: runnerValueOf(live.runner, live.agent_custom_id),
 			agentModel: live.agent_model ?? '',
 			agentEffort: live.agent_effort ?? '',
-			agentConfigDir: live.agent_config_dir === undefined ? undefined : (live.agent_config_dir ?? '')
+			agentConfigDir: live.agent_config_dir === undefined ? undefined : (live.agent_config_dir ?? ''),
+			permissionMode: live.permission_mode === undefined ? undefined : (live.permission_mode ?? '')
 		};
 		const next = reconcileProfileDraft(profileDraft, profileBaseline, incoming);
 		if (profileDraftDirty(profileDraft, next.draft)) profileDraft = next.draft;

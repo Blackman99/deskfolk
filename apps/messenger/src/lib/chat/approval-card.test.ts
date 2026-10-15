@@ -2,11 +2,9 @@ import { expect, test } from "bun:test";
 import type { Approval, Message } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import {
-  alwaysAllowFolder,
   approvalForMessage,
   approvalNeedsSecret,
   approvalSecretRequired,
-  canAlwaysAllow,
   isPendingApproval,
   needsEndpointKey,
 } from "./approval-card.ts";
@@ -16,8 +14,8 @@ function approval(partial: Partial<Approval> & Pick<Approval, "id">): Approval {
     turn_id: "turn-1",
     message_id: "appr-msg",
     status: "pending",
-    kind_key: "outside-write",
-    summary: "outside-write /tmp/x",
+    kind_key: "file-write",
+    summary: "file-write /tmp/x",
     target: "/tmp/x",
     created_at: "t",
     resolved_at: null,
@@ -34,7 +32,7 @@ function message(partial: Partial<Message> = {}): Message {
     parent_id: null,
     kind: "approval",
     author: "writer",
-    body: "outside-write /tmp/x",
+    body: "file-write /tmp/x",
     source_turn_id: null,
     created_at: "t",
     attachments: [],
@@ -42,22 +40,6 @@ function message(partial: Partial<Message> = {}): Message {
     ...partial,
   };
 }
-
-test("Always allow is offered for outside read/write, unconstrained shell, and reserved outbound http", () => {
-  expect(canAlwaysAllow("outside-read")).toBe(true);
-  expect(canAlwaysAllow("outside-write")).toBe(true);
-  expect(canAlwaysAllow("unconstrained-shell")).toBe(true);
-  expect(canAlwaysAllow("outbound-http")).toBe(true);
-});
-
-test("Always allow is not offered for must-approve MCP or endpoint kinds or a missing key", () => {
-  expect(canAlwaysAllow("mcp-add")).toBe(false);
-  expect(canAlwaysAllow("mcp-edit")).toBe(false);
-  expect(canAlwaysAllow("endpoint-add")).toBe(false);
-  expect(canAlwaysAllow("endpoint-edit")).toBe(false);
-  expect(canAlwaysAllow(null)).toBe(false);
-  expect(canAlwaysAllow(undefined)).toBe(false);
-});
 
 test("approvalForMessage matches the card message, then the turn", () => {
   const card = message();
@@ -120,14 +102,10 @@ test("adding a local model server offers the key field without requiring it (ADR
   expect(approvalSecretRequired(cloud)).toBe(true);
 });
 
-test("a card outside the workspace names the folder its Always allow covers, when that is more than its path (ADR 0087)", () => {
-  const write = approval({ id: "w", target: "/Users/me/p/src/a.ts", allow_scope: "/Users/me/p" });
-  expect(alwaysAllowFolder(write)).toBe("/Users/me/p");
-  // Just the path (home, a root's child), an old card with no proposal, a kind that never is a folder.
-  expect(alwaysAllowFolder(approval({ id: "n", target: "/Users/me/notes.txt", allow_scope: "/Users/me/notes.txt" }))).toBeNull();
-  expect(alwaysAllowFolder(approval({ id: "o", target: "/tmp/x" }))).toBeNull();
-  expect(alwaysAllowFolder(approval({ id: "e", kind_key: "endpoint-add", target: "https://a", allow_scope: "https://" }))).toBeNull();
+test("allowing from now on names the mode the card's Bot moves to (ADR 0092)", () => {
   const t = copyFor("zh");
-  expect(t.stream.alwaysAllowCovers("/Users/me/p", true)).toContain("读写");
-  expect(t.stream.alwaysAllowCovers("/Users/me/p", false)).not.toContain("读写");
+  expect(t.permissions.allowFromNowCovers("开发助手", t.permissions.modes.auto, t.permissions.descriptions.auto))
+    .toBe("开发助手 改成「自动」：写文件、跑命令直接做；加改 MCP、端点和内置提示词先问你。");
+  const en = copyFor("en");
+  expect(en.permissions.allowFromNowCovers("Coder", en.permissions.modes.allow_all, en.permissions.descriptions.allow_all)).toBe("Coder moves to Allow all: Asks nothing.");
 });

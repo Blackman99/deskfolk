@@ -60,7 +60,7 @@ describe("prompts", () => {
     expect(text).toContain("图片、视频等能力以 MCP 的实际工具为准");
     expect(text).toContain("默认端点不能改 URL 或密钥，也不能删除");
     expect(text).toContain("转录里若有「改不了头像」或「不能改名字」是过时的");
-    expect(text.endsWith("区内。")).toBe(true);
+    expect(text.endsWith("也不能放宽权限模式。")).toBe(true);
   });
 
   // ADR 0040 P1: this sentence used to say that a request to continue, or pointing out something
@@ -82,7 +82,7 @@ describe("prompts", () => {
     for (const rule of ["用户会在你交出的产物上写批注", "改了的用 resolve_annotation 标成已处理并写一句怎么改的", "不同意或做不到的，在回复里说明原因、不要标已处理", "不要默默跳过", "list_annotations 查还没处理完的批注", "每条有 id、交给哪个 Bot、路径", "交给你的批注逐条处理", "交给别的 Bot 的留给那个 Bot：可以提一句", "交给已删除的 Bot 的没人接，归这条消息叫醒的你处理"]) {
       expect(zh).toContain(rule);
     }
-    expect(zh.endsWith("区内。")).toBe(true);
+    expect(zh.endsWith("也不能放宽权限模式。")).toBe(true);
     const en = turnSystemPrompt({ ...profile, locale: "en" });
     for (const rule of ["The user annotates the artifacts you hand over", "call resolve_annotation with one sentence on what changed", "leave it pending", "never skip one silently", "list_annotations finds the ones still pending", "each with an id, the Bot it is for, a path", "Handle the ones for you one by one", "Leave the ones for another Bot to that Bot: you may mention them", "The ones for a deleted Bot have no one else to take them"]) {
       expect(en).toContain(rule);
@@ -150,7 +150,7 @@ describe("prompts", () => {
     expect(en).toContain("Get straight to it: the first sentence is the content or the conclusion itself");
     expect(en).toContain("long content the user asked for (an article, a script, a plan) is written in full");
     // The product rules still close the block.
-    expect(zh.endsWith("区内。")).toBe(true);
+    expect(zh.endsWith("也不能放宽权限模式。")).toBe(true);
   });
 
   test("communication tools leave recoverable technical work to the Bot", () => {
@@ -435,7 +435,7 @@ describe("prompts", () => {
     expect(names.slice(0, 5)).toEqual(["read_file", "write_file", "delete_file", "list_dir", "shell"]);
     const write = tools.find((t) => t.function.name === "write_file")!;
     expect(write.function.description).toBe(
-      "写入或新建 UTF-8 文本（整文件覆盖，中间目录按需创建）。区内直接执行；区外会停下来等用户批准。拒绝后工具结果是 denied。",
+      "写入或新建 UTF-8 文本（整文件覆盖，中间目录按需创建）。要不要等用户批准看你的权限模式（自动、全部允许下直接执行，改动先问下等批准，只读下被拒），和路径在不在工作区里无关。拒绝后工具结果是 denied。",
     );
     expect((write.function.parameters.properties.path as { description: string }).description).toBe(
       "工作区相对 POSIX，或宿主绝对路径。`.` 是工作区根。开头的 `/` 不是工作区根。",

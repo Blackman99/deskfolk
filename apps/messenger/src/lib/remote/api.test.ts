@@ -615,7 +615,7 @@ test("a list that was on its way does not take a row back past the revision an e
   // The event lands first: the runtime hands its snapshot over as it does after every ingest.
   api.observeSnapshot({
     settings: { settings_rev: 1 }, bots: [], sessions: [], providers: [], mcpServers: [], skills: [], memories: [],
-    routines: [], allowRules: [], annotations: [fresh],
+    routines: [], annotations: [fresh],
   } as unknown as Snapshot);
   answerList();
   await listing;
