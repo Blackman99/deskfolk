@@ -1,8 +1,8 @@
-//! What is left of your plans at the top of the menu bar menu (ADR 0061, ADR 0079, ADR 0080): one
+//! What is used of your plans at the top of the menu bar menu (ADR 0061, ADR 0079, ADR 0080): one
 //! line per account, read from the one `GET /v1/usage` the usage widget reads, asked once a minute
 //! while the daemon is up. The daemon keeps each answer for five minutes, so this starts at most
 //! one `claude` per five minutes, and none at all until something runs on Claude Agent. An account
-//! with plan windows gets its agent's mark inside a ring as full as what is left of its tightest
+//! with plan windows gets its agent's mark inside a ring as full as what is used of its tightest
 //! window, and the 5-hour and 7-day numbers beside its name; one signed out, or one that could not
 //! be read, says so beside its mark;
 //! agents that only report today's records, connected or in use, share one line. At most eight lines, then "查看全部用量…",
@@ -82,10 +82,10 @@ pub struct UsageWindow {
 /// One row of the usage part of the menu.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Entry {
-    /// An account and how much is left of its tightest window: its agent's mark in a ring as full as that.
+    /// An account and how much is used of its tightest window: its agent's mark in a ring as full as that.
     Line {
         text: String,
-        left: f64,
+        used: f64,
         level: Level,
         runner: String,
     },
@@ -185,13 +185,13 @@ fn icon_of(entry: &Entry) -> Option<Image<'static>> {
 fn icon_rgba(entry: &Entry) -> Option<Vec<u8>> {
     match entry {
         Entry::Line {
-            left,
+            used,
             level,
             runner,
             ..
         } => Some(match logo_of(runner) {
-            Some(logo) => logo_in_ring_rgba(Some((*left, *level)), logo),
-            None => ring_rgba(*left, *level),
+            Some(logo) => logo_in_ring_rgba(Some((*used, *level)), logo),
+            None => ring_rgba(*used, *level),
         }),
         Entry::AgentNote { runner, .. } => logo_of(runner).map(|logo| logo_in_ring_rgba(None, logo)),
         Entry::Note(_) | Entry::All => None,
@@ -382,13 +382,13 @@ pub fn usage_entries(usage: &UsageResponse) -> Vec<Entry> {
                                 .filter(|w| w.model.as_deref() == Some(*model))
                                 .map(|w| w.percent)
                                 .fold(f64::MIN, f64::max);
-                            format!("{model} {}", left_text(used))
+                            format!("{model} {}", used_text(used))
                         })
                         .collect()
                 } else {
                     shown
                         .iter()
-                        .map(|w| format!("{} {}", window_span(w.minutes), left_text(w.percent)))
+                        .map(|w| format!("{} {}", window_span(w.minutes), used_text(w.percent)))
                         .collect()
                 };
                 let text = if summary.is_empty() {
@@ -398,7 +398,7 @@ pub fn usage_entries(usage: &UsageResponse) -> Vec<Entry> {
                 };
                 lines.push(Entry::Line {
                     text,
-                    left: (100.0 - tightest).clamp(0.0, 100.0),
+                    used: tightest.clamp(0.0, 100.0),
                     level: level_of(tightest),
                     runner: agent.runner.clone(),
                 });
@@ -477,7 +477,7 @@ fn level_of(used: f64) -> Level {
     }
 }
 
-/// A ring filled clockwise from twelve o'clock as far as `left` percent, the rest a faint track,
+/// A ring filled clockwise from twelve o'clock as far as `used` percent, the rest a faint track,
 /// as 36 px RGBA. The colours read on a light and a dark menu alike: a menu icon cannot be a
 /// template image here, so it does not take the menu's own colour.
 /// Each agent's mark, cut round, as raw RGBA at `LOGO_PX`: rendered once from the messenger's
@@ -497,12 +497,12 @@ fn logo_of(runner: &str) -> Option<&'static [u8]> {
     })
 }
 
-/// An agent's mark in the middle of the icon, inside a thin ring as full as what is left (`ring`),
+/// An agent's mark in the middle of the icon, inside a thin ring as full as what is used (`ring`),
 /// or alone when there is no window to show.
 fn logo_in_ring_rgba(ring: Option<(f64, Level)>, logo: &[u8]) -> Vec<u8> {
     let size = ICON_PX as usize;
     let mut rgba = match ring {
-        Some((left, level)) => ring_pixels(left, level, 17.5, 15.0),
+        Some((used, level)) => ring_pixels(used, level, 17.5, 15.0),
         None => vec![0u8; size * size * 4],
     };
     let offset = (size - LOGO_PX) / 2;
@@ -527,12 +527,12 @@ fn logo_in_ring_rgba(ring: Option<(f64, Level)>, logo: &[u8]) -> Vec<u8> {
     rgba
 }
 
-fn ring_rgba(left: f64, level: Level) -> Vec<u8> {
-    ring_pixels(left, level, 13.0, 9.0)
+fn ring_rgba(used: f64, level: Level) -> Vec<u8> {
+    ring_pixels(used, level, 13.0, 9.0)
 }
 
-/// A ring between `outer` and `inner` radii, the part as full as `left` solid, the rest faint.
-fn ring_pixels(left: f64, level: Level, outer: f64, inner: f64) -> Vec<u8> {
+/// A ring between `outer` and `inner` radii, the part as full as `used` solid, the rest faint.
+fn ring_pixels(used: f64, level: Level, outer: f64, inner: f64) -> Vec<u8> {
     let (r, g, b) = match level {
         Level::Normal => (0x8b, 0x98, 0x9e),
         Level::Warn => (0xf5, 0x9e, 0x0b),
@@ -540,7 +540,7 @@ fn ring_pixels(left: f64, level: Level, outer: f64, inner: f64) -> Vec<u8> {
     };
     let size = ICON_PX as usize;
     let center = size as f64 / 2.0;
-    let sweep = left.clamp(0.0, 100.0) / 100.0 * TAU;
+    let sweep = used.clamp(0.0, 100.0) / 100.0 * TAU;
     let mut rgba = vec![0u8; size * size * 4];
     for y in 0..size {
         for x in 0..size {
@@ -575,14 +575,14 @@ fn ring_pixels(left: f64, level: Level, outer: f64, inner: f64) -> Vec<u8> {
     rgba
 }
 
-/// What is left of a window from how much is used: rounded down, so a window in use never reads
-/// 100%, and `<1%` for a sliver.
-fn left_text(used: f64) -> String {
-    let left = (100.0 - used).clamp(0.0, 100.0);
-    if left > 0.0 && left < 1.0 {
+/// What is used of a window: rounded down, so a window not yet spent never reads 100%, and `<1%`
+/// for a sliver, so one in use never reads 0%.
+fn used_text(used: f64) -> String {
+    let used = used.clamp(0.0, 100.0);
+    if used > 0.0 && used < 1.0 {
         return "<1%".to_string();
     }
-    format!("{}%", left.floor() as i64)
+    format!("{}%", used.floor() as i64)
 }
 
 /// `pro` or `claude max` as Claude names the plan: `Pro`, `Max`.
@@ -631,11 +631,11 @@ mod tests {
         // Shortest window first; Opus's own window is not in the text, but it is the tightest ring.
         assert_eq!(
             texts(&entries),
-            vec!["[ring] Claude Max · a@x.com　5h 62% · 7d 81%", "[all]"]
+            vec!["[ring] Claude Max · a@x.com　5h 38% · 7d 19%", "[all]"]
         );
         match &entries[0] {
-            Entry::Line { left, level, .. } => {
-                assert_eq!(*left, 4.0);
+            Entry::Line { used, level, .. } => {
+                assert_eq!(*used, 96.0);
                 assert_eq!(*level, Level::Danger);
             }
             other => panic!("{other:?}"),
@@ -646,7 +646,7 @@ mod tests {
     fn claude_without_email_names_its_directory() {
         let answer = usage(
             r#"{"agents":[{"runner":"claude_code","label":"Claude Agent","today":{"turns":0,"tokens":0,"estimated_usd":0},"accounts":[
-              {"config_dir":"/Users/a/.claude-b","email":null,"available":true,"plan":null,"windows":[{"minutes":300,"model":null,"percent":99.6}]}]}]}"#,
+              {"config_dir":"/Users/a/.claude-b","email":null,"available":true,"plan":null,"windows":[{"minutes":300,"model":null,"percent":0.4}]}]}]}"#,
         );
         assert_eq!(
             texts(&usage_entries(&answer)),
@@ -662,7 +662,7 @@ mod tests {
         );
         assert_eq!(
             texts(&usage_entries(&one)),
-            vec!["[ring] Codex Plus　5h 87% · 30d 20%", "[all]"]
+            vec!["[ring] Codex Plus　5h 12% · 30d 80%", "[all]"]
         );
         let two = usage(
             r#"{"agents":[{"runner":"codex","label":"Codex","accounts":[
@@ -672,7 +672,7 @@ mod tests {
         assert_eq!(
             texts(&usage_entries(&two)),
             vec![
-                "[ring] Codex Plus · .codex　5h 90%",
+                "[ring] Codex Plus · .codex　5h 10%",
                 "[ring] Codex Pro · .codex-work　5h 50%",
                 "[all]"
             ]
@@ -741,7 +741,7 @@ mod tests {
         );
         assert_eq!(
             texts(&usage_entries(&answer)),
-            vec!["[ring] Antigravity　Gemini Models 97% · Claude and GPT models 87%", "[all]"]
+            vec!["[ring] Antigravity　Gemini Models 3% · Claude and GPT models 13%", "[all]"]
         );
     }
 
@@ -785,7 +785,7 @@ mod tests {
     }
 
     #[test]
-    fn the_ring_is_as_full_as_what_is_left() {
+    fn the_ring_is_as_full_as_what_is_used() {
         let alpha = |rgba: &[u8], x: usize, y: usize| rgba[(y * 36 + x) * 4 + 3];
         // Twelve o'clock, three, six and nine, on the ring's middle.
         let full = ring_rgba(100.0, Level::Normal);
