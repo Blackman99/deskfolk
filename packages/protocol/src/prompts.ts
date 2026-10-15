@@ -7,6 +7,13 @@ import type { BuiltinModelRole } from "./models.ts";
 
 /** Where a prompt sits: every turn, the Claude Agent preface, tool descriptions, the app's own calls. */
 export type PromptGroup = "turn" | "agent" | "tool" | "call";
+/**
+ * What a tool is for, in the order the tool descriptions are listed by: files and commands, speaking
+ * and ending turns, plans and hand-overs, the roster and conversations, a Bot's own profile, skills
+ * and memory, routines, annotations, endpoints and MCP, and prompts and records.
+ */
+export const TOOL_KINDS = ["files", "talk", "work", "roster", "self", "routines", "annotations", "setup", "prompts"] as const;
+export type ToolKind = (typeof TOOL_KINDS)[number];
 /** Shipped as is; edited; edited, and a newer default did not merge with it (yours stays in force). */
 export type PromptState = "default" | "edited" | "conflict";
 export type PromptActor = "user" | "bot" | "app";
@@ -36,6 +43,8 @@ export type PromptSummary = {
    * from before it sends none.
    */
   role?: BuiltinModelRole;
+  /** For a tool description, what the tool is for; a daemon from before it sends none. */
+  tool_kind?: ToolKind;
   locales: PromptLocaleState[];
 };
 

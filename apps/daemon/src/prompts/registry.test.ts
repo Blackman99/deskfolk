@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { BUILTIN_MODEL_ROLES, type Locale } from "@real-bot/protocol";
+import { BUILTIN_MODEL_ROLES, TOOL_KINDS, type Locale } from "@real-bot/protocol";
 import type { ToolShellKind } from "../platform";
 import { seamsJudgePrompt, seamsRulesText } from "../seams-check";
 import { standardJudgePrompt } from "../standard-check";
 import { AGENT_PREFACE } from "./agent-system";
 import { editedToolDescription, promptPage, turnPromptTexts, type PromptOverrideRow } from "./book";
-import { builtinTools, toolDescription } from "./builtin-tools";
+import { ALL_TOOL_DEFS, builtinTools, toolDescription, toolKind } from "./builtin-tools";
 import { COMPOSER_SUGGEST_SYSTEM } from "./composer-suggestions";
 import { fill, placeholderCounts, PLACEHOLDERS } from "./fill";
 import { JUDGEMENT_SYSTEM } from "./judgement";
@@ -27,6 +27,13 @@ describe("the slots", () => {
   test("each of the app's own calls names the built-in call it runs in, and every built-in call has one", () => {
     for (const slot of SLOTS) expect(slot.role !== undefined).toBe(slot.group === "call");
     for (const role of BUILTIN_MODEL_ROLES) expect(SLOTS.some((slot) => slot.role === role)).toBe(true);
+  });
+
+  test("each tool description says what its tool is for, and every kind has a tool", () => {
+    for (const slot of SLOTS) expect(slot.toolKind !== undefined).toBe(slot.group === "tool");
+    for (const tool of ALL_TOOL_DEFS) expect(TOOL_KINDS).toContain(toolKind(tool.name)!);
+    for (const kind of TOOL_KINDS) expect(SLOTS.some((slot) => slot.toolKind === kind)).toBe(true);
+    expect(toolKind("no_such_tool")).toBeUndefined();
   });
 
   test("each has a unique id, a group, its languages and a title and summary in both", () => {

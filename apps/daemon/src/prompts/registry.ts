@@ -9,13 +9,13 @@
  * built; what you write replaces that rendered text whole. The texts themselves stay in their own
  * modules; this one only lists them.
  */
-import type { BuiltinModelRole, Locale } from "@real-bot/protocol";
+import type { BuiltinModelRole, Locale, ToolKind } from "@real-bot/protocol";
 import type { ToolShellKind } from "../platform";
 import { ENGINE_LEVELS } from "../store/schema-gate";
 import { seamsJudgeFormat, seamsJudgeTemplate, type SeamJudgeMode } from "../seams-check";
 import { standardJudgeFormat, standardJudgeTemplate } from "../standard-check";
 import { AGENT_PREFACE } from "./agent-system";
-import { ALL_TOOL_DEFS, toolDescription } from "./builtin-tools";
+import { ALL_TOOL_DEFS, toolDescription, toolKind } from "./builtin-tools";
 import { COMPACT_TEMPLATE } from "./compaction";
 import { COMPOSER_SUGGEST_FORMAT, COMPOSER_SUGGEST_TEMPLATE } from "./composer-suggestions";
 import type { Placeholder } from "./fill";
@@ -66,6 +66,8 @@ export type SlotDef = {
   defaultText: (locale: Locale, env: PromptEnv) => string;
   /** For one of the app's own calls, the built-in call whose model it runs on (ADR 0077, ADR 0082). */
   role?: BuiltinModelRole;
+  /** For a tool description, what the tool is for: the heading it is listed under in settings. */
+  toolKind?: ToolKind;
 };
 
 export const PLACEHOLDER_MEANING: Record<Placeholder, Localized> = {
@@ -191,6 +193,7 @@ const TOOL_SLOTS: SlotDef[] = ALL_TOOL_DEFS.map((tool) => ({
   locales: BOTH,
   title: { zh: tool.name, en: tool.name },
   summary: { zh: "模型看到的这个工具是做什么的；参数的说明不在这里。", en: "What the model is told this tool does; its parameters are described elsewhere." },
+  toolKind: toolKind(tool.name),
   placeholders: [],
   defaultText: (l: Locale, env: PromptEnv) => toolDescription(tool.name, l, env),
 }));

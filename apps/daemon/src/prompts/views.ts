@@ -38,6 +38,7 @@ function summaryOf(store: Store, slot: SlotDef, rows: Map<string, PromptOverride
     title: slot.title,
     summary: slot.summary,
     ...(slot.role ? { role: slot.role } : {}),
+    ...(slot.toolKind ? { tool_kind: slot.toolKind } : {}),
     locales: slot.locales.map((locale) => localeState(store, slot, locale, rows.get(`${slot.id}\u0000${locale}`) ?? null)),
   };
 }

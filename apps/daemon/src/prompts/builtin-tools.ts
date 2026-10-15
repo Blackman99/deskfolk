@@ -1,4 +1,4 @@
-import type { Locale } from "@real-bot/protocol";
+import type { Locale, ToolKind } from "@real-bot/protocol";
 import type { ToolShellKind } from "../platform";
 import type { ChatTool, Localized, ToolDef } from "./tool-schema";
 import { toChatTools } from "./tool-schema";
@@ -90,6 +90,42 @@ export const TOOLS: ToolDef[] = [
   QUERY_DATA,
   READ_DATA_LOG,
 ];
+
+/**
+ * What each tool is for, as Settings › Prompts lists the tool descriptions (by `TOOL_KINDS`); the model
+ * still sees them in `TOOLS`' order.
+ */
+const TOOLS_BY_KIND: Record<ToolKind, readonly ToolDef[]> = {
+  files: [READ_FILE, WRITE_FILE, DELETE_FILE, LIST_DIR, SHELL],
+  talk: [SEND_MESSAGE, ASK_USER, CHECK_BACK, END_TURN],
+  work: [WORK_ON, DELEGATE, SUBMIT, REVIEW, PLAN_ITEMS],
+  roster: [CREATE_BOT, LIST_BOTS, LIST_SESSIONS, CREATE_GROUP, CREATE_DIRECT, ADD_MEMBER, REMOVE_MEMBER],
+  self: [UPDATE_PROFILE, LIST_SKILLS, READ_SKILL, CREATE_SKILL, UPDATE_SKILL, DELETE_SKILL, REMEMBER, FORGET],
+  routines: [LIST_ROUTINES, CREATE_ROUTINE, UPDATE_ROUTINE, DELETE_ROUTINE],
+  annotations: [LIST_ANNOTATIONS, RESOLVE_ANNOTATION],
+  setup: [
+    LIST_ENDPOINTS,
+    ADD_ENDPOINT,
+    UPDATE_ENDPOINT,
+    DELETE_ENDPOINT,
+    MEASURE_MODEL,
+    UPDATE_MODEL_SETTINGS,
+    LIST_MCP_SERVERS,
+    ADD_MCP_SERVER,
+    UPDATE_MCP_SERVER,
+    DELETE_MCP_SERVER,
+  ],
+  prompts: [LIST_PROMPTS, READ_PROMPT, EDIT_PROMPT, RESET_PROMPT, DESCRIBE_DATA, QUERY_DATA, READ_DATA_LOG],
+};
+
+const KIND_OF: ReadonlyMap<string, ToolKind> = new Map(
+  (Object.entries(TOOLS_BY_KIND) as Array<[ToolKind, readonly ToolDef[]]>).flatMap(([kind, defs]) => defs.map((def) => [def.name, kind] as const))
+);
+
+/** What a tool is for; undefined for a name that is not one of the app's tools. */
+export function toolKind(name: string): ToolKind | undefined {
+  return KIND_OF.get(name);
+}
 
 /** What send_message and end_turn say from level 3 (ADR 0044): segments end only through end_turn. */
 const LEVEL3_DESCRIPTIONS: Record<string, Localized> = {

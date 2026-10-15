@@ -24,6 +24,10 @@ test("the prompts API lists every built-in prompt, edits one, guards edits by th
     expect(list.items.find((item) => item.id === "call.seams_text")!.role).toBe("judge");
     expect("role" in system).toBe(false);
     expect(list.items.some((item) => item.id === "tool.send_message")).toBe(true);
+    // Each tool description says what its tool is for, which settings lists them under; the others say none.
+    expect(list.items.find((item) => item.id === "tool.send_message")!.tool_kind).toBe("talk");
+    expect(list.items.filter((item) => item.group === "tool").every((item) => item.tool_kind !== undefined)).toBe(true);
+    expect("tool_kind" in system).toBe(false);
 
     const before = (await (await request("GET", "/prompts/turn.memory/en")).json()) as PromptDetail;
     expect(before).toMatchObject({ id: "turn.memory", locale: "en", base_text: null, head_revision_id: null, format: null, revisions: [] });
