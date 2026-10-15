@@ -131,6 +131,12 @@
 {/if}
 
 <style>
+	/* Between two cards the gutter is the seam: no line of its own, only the grip's tint on hover. */
+	@media (min-width: 681px) {
+		.wb-sash {
+			background: transparent;
+		}
+	}
 	.wb-branch {
 		display: grid;
 		min-width: 0;

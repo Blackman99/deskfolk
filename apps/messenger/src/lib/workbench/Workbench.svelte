@@ -907,6 +907,16 @@
 		 */
 		background: var(--bg);
 	}
+	/*
+	 * Beside the phone layout the ground is the shell's — the sidebar's colour, or the window's
+	 * material on macOS — and each pane is a card on it (WorkbenchLeaf). The root paints nothing
+	 * there, or it lays a second, opaque ground between the sidebar and the tabs.
+	 */
+	@media (min-width: 681px) {
+		.wb-root {
+			background: transparent;
+		}
+	}
 	/* While a divider is moving, nothing inside a pane may swallow the pointer — an editor or a
 	   terminal would otherwise take it the moment the cursor crossed into one. */
 	.wb-root.is-dragging :global(.wb-body) {
