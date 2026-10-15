@@ -28,15 +28,32 @@
   <a href="https://github.com/Blackman99/deskfolk/releases/latest"><img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-f0ab3d.svg"></a>
 </p>
 
-<table>
-  <tr>
-    <td width="50%"><img alt="Anything outside the workspace asks you first" src="docs/assets/app-en-ask.jpg"><br><sub>Anything outside the workspace asks you first</sub></td>
-    <td width="50%"><img alt="Stop means stop, until you lift it" src="docs/assets/app-en-stop.jpg"><br><sub>Stop means stop, until you lift it</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img alt="Done has a definition: checks, a review, your OK" src="docs/assets/app-en-done.jpg"><br><sub>Done has a definition: checks, a review, your OK</sub></td>
-    <td width="50%"><img alt="Come back to results: the chat, the work and the board together" src="docs/assets/app-en-desk.jpg"><br><sub>Come back to results: the chat, the work and the board together</sub></td>
-  </tr>
-</table>
+<p align="center">
+  <img alt="Anything outside the workspace asks you first" src="docs/assets/app-en-ask.jpg"><br>
+  <sub>Anything outside the workspace asks you first</sub>
+</p>
+
+<p align="center">
+  <img alt="Say stop and it stops; your next line sets it going" src="docs/assets/app-en-stop.jpg"><br>
+  <sub>Say stop and it stops; your next line sets it going</sub>
+</p>
+
+<p align="center">
+  <img alt="Done has a definition: checks, a review, your OK" src="docs/assets/app-en-done.jpg"><br>
+  <sub>Done has a definition: checks, a review, your OK</sub>
+</p>
+
+<p align="center">
+  <img alt="Come back to results: the chat, the work and the board together" src="docs/assets/app-en-desk.jpg"><br>
+  <sub>Come back to results: the chat, the work and the board together</sub>
+</p>
+
+<p align="center">
+  <img width="24%" alt="On the phone: your conversations" src="docs/assets/phone-en-list.jpg">
+  <img width="24%" alt="On the phone: the Producer's answer, the film in it" src="docs/assets/phone-en-chat.jpg">
+  <img width="24%" alt="On the phone: the job's goal, who makes and who reviews, its checks" src="docs/assets/phone-en-job.jpg">
+  <img width="24%" alt="On the phone: the film" src="docs/assets/phone-en-film.jpg"><br>
+  <sub>On your phone too: the conversations, the answer, the job's checks, the film</sub>
+</p>
 
 <p align="center"><sub><a href="docs/overview.md">About and install</a> · <a href="ROADMAP.en.md">Roadmap</a> · <a href="docs/development.md">Development</a> · <a href="CONTRIBUTING.md">Contributing</a> · <a href="SECURITY.md">Security</a> · MIT</sub></p>

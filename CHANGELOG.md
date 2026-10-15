@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The README's pictures stand one to a row, with the phone beside them
+
+- The README's four screenshots each take a full row now instead of a two-by-two table, and under them four phone screenshots stand side by side: the conversations, the Producer's answer with the film in it, the job's checks, the film. They, the home page's three clips, its first-screen still and the share images are re-filmed on today's look (one ground under the sidebar and the tabs with the pane as the card, file chips, a reply's last line). The stop screenshot's caption reads "your next line sets it going", as the app now does.
+
 ### The README's film draws today's app
 
 - The README's 30-second film and the site's "Watch the film" draw the app as it looks today: the two-row composer, the approval card's waiting header and buttons, file chips in a reply with its last line, and tabs as pills over the card.

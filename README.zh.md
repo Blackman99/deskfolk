@@ -28,15 +28,32 @@
   <a href="https://github.com/Blackman99/deskfolk/releases/latest"><img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-f0ab3d.svg"></a>
 </p>
 
-<table>
-  <tr>
-    <td width="50%"><img alt="工作区外的动作，先问你" src="docs/assets/app-zh-ask.jpg"><br><sub>工作区外的动作，先问你</sub></td>
-    <td width="50%"><img alt="说停就停，只有你能解除" src="docs/assets/app-zh-stop.jpg"><br><sub>说停就停，只有你能解除</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img alt="做完有定义：检查、审查和你的放行" src="docs/assets/app-zh-done.jpg"><br><sub>做完有定义：检查、审查和你的放行</sub></td>
-    <td width="50%"><img alt="回来看结果：会话、成品、看板摆在一起" src="docs/assets/app-zh-desk.jpg"><br><sub>回来看结果：会话、成品、看板摆在一起</sub></td>
-  </tr>
-</table>
+<p align="center">
+  <img alt="工作区外的动作，先问你" src="docs/assets/app-zh-ask.jpg"><br>
+  <sub>工作区外的动作，先问你</sub>
+</p>
+
+<p align="center">
+  <img alt="说停就停，下一句接着做" src="docs/assets/app-zh-stop.jpg"><br>
+  <sub>说停就停，下一句接着做</sub>
+</p>
+
+<p align="center">
+  <img alt="做完有定义：检查、审查和你的放行" src="docs/assets/app-zh-done.jpg"><br>
+  <sub>做完有定义：检查、审查和你的放行</sub>
+</p>
+
+<p align="center">
+  <img alt="回来看结果：会话、成品、看板摆在一起" src="docs/assets/app-zh-desk.jpg"><br>
+  <sub>回来看结果：会话、成品、看板摆在一起</sub>
+</p>
+
+<p align="center">
+  <img width="24%" alt="手机上：会话列表" src="docs/assets/phone-zh-list.jpg">
+  <img width="24%" alt="手机上：制片的回答，成片就在里面" src="docs/assets/phone-zh-chat.jpg">
+  <img width="24%" alt="手机上：这件事的目标、谁做谁审、检查" src="docs/assets/phone-zh-job.jpg">
+  <img width="24%" alt="手机上：成片" src="docs/assets/phone-zh-film.jpg"><br>
+  <sub>手机上也一样：会话、回答、这件事的检查、成片</sub>
+</p>
 
 <p align="center"><sub><a href="docs/overview.zh.md">介绍与安装</a> · <a href="ROADMAP.md">路线图</a> · <a href="docs/development.md">开发说明</a> · <a href="CONTRIBUTING.md">参与贡献</a> · <a href="SECURITY.md">安全说明</a> · MIT</sub></p>
