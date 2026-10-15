@@ -14,15 +14,49 @@ const FPS = 30;
 const GY = 905; // the ground line the cast stands on
 let SP = null; // sprites.json: frames per move, and where the feet are in a frame
 
-// ---------------------------------------------------------------- icons
+// ---------------------------------------------------------------- scale and icons
+// The app's surfaces are drawn at K times their size in the app (a 14 px line is 32 px here); the window you come
+// back to at 23 s shows a whole tab, so it is drawn smaller, at KW. film.css carries the same two numbers (--k, --kw).
+const K = 2.3, KW = 1.8;
+// The app's one icon set (apps/messenger/src/lib/icons.ts), the shapes this film draws, copied as they are. The app
+// strokes every icon with a 1.6 px pen at its role size (12, 16, 20, 24); drawn at role × scale, that pen is
+// 38.4 / role units of the 24-unit grid, so every icon on a surface has the same weight as in the app.
+const SHIELD = 'M12 21.5s7.5-3.6 7.5-9.5V5.5L12 2.5l-7.5 3V12c0 5.9 7.5 9.5 7.5 9.5z';
+const BOX = 'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z';
+const ICONS = {
+  x: [{ p: 'M6 6l12 12M18 6 6 18' }],
+  plus: [{ p: 'M12 5v14M5 12h14' }],
+  check: [{ p: 'm5 12.5 4.5 4.5L19 7.5' }],
+  'arrow-up': [{ p: 'M12 19V5M6 11l6-6 6 6' }],
+  'check-square': [{ p: 'm9 11 3 3 9-9' }, { p: 'M20 12v6.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5v-11A2.5 2.5 0 0 1 6.5 5H15' }],
+  'shield-check': [{ p: SHIELD }, { p: 'm9 12 2 2 4-4' }],
+  clock: [{ c: [12, 12, 8.5] }, { p: 'M12 7.5V12l3 2' }],
+  play: [{ p: 'M7 4.8v14.4a1 1 0 0 0 1.5.86l12-7.2a1 1 0 0 0 0-1.72l-12-7.2A1 1 0 0 0 7 4.8z' }],
+  pause: [{ r: [6, 5, 4, 14, 1] }, { r: [14, 5, 4, 14, 1] }],
+  video: [{ r: [2.5, 6, 13.5, 12, 2.5] }, { p: 'm16 10.5 5.5-3v9l-5.5-3z' }],
+  sparkles: [
+    { p: 'M9.9 15.5a2 2 0 0 0-1.4-1.4l-6.1-1.6a.5.5 0 0 1 0-1l6.1-1.6a2 2 0 0 0 1.4-1.4l1.6-6.1a.5.5 0 0 1 1 0l1.6 6.1a2 2 0 0 0 1.4 1.4l6.1 1.6a.5.5 0 0 1 0 1l-6.1 1.6a2 2 0 0 0-1.4 1.4l-1.6 6.1a.5.5 0 0 1-1 0z' },
+    { p: 'M20 3v4M22 5h-4' }
+  ],
+  mic: [{ r: [9, 2.5, 6, 11.5, 3] }, { p: 'M19 10v1a7 7 0 0 1-14 0v-1M12 18v3.5' }],
+  paperclip: [{ p: 'm21.4 11.05-9.2 9.2a6 6 0 0 1-8.5-8.5l8.6-8.6a4 4 0 1 1 5.7 5.7l-8.6 8.6a2 2 0 0 1-2.8-2.8l8.5-8.5' }],
+  package: [{ p: BOX }, { p: 'm3.3 7 8.7 5 8.7-5M12 22V12' }, { p: 'm7.5 4.3 9 5.1' }],
+  terminal: [{ p: 'm5 8 4 4-4 4M12 16h7' }],
+  hierarchy: [{ r: [8, 2.5, 8, 6, 1.5] }, { p: 'M12 8.5v3M5.5 14v-2.5h13V14' }, { r: [2, 14, 7, 6, 1.5] }, { r: [15, 14, 7, 6, 1.5] }]
+};
+const FILLED = new Set(['play', 'pause']); // drawn solid in the app (`{ fill: true }`)
+/** An icon of the set at `role` px in the app, drawn at role × k; `fit` fills its box instead (the pen stays the role's). */
+function ic(name, role, k = K, fit = false) {
+  const px = fit ? '100%' : +(role * k).toFixed(2);
+  const shapes = ICONS[name].map(s => s.p ? `<path d="${s.p}"/>` : s.c ? `<circle cx="${s.c[0]}" cy="${s.c[1]}" r="${s.c[2]}"/>`
+    : `<rect x="${s.r[0]}" y="${s.r[1]}" width="${s.r[2]}" height="${s.r[3]}" rx="${s.r[4]}"/>`).join('');
+  const paint = FILLED.has(name) ? 'fill="currentColor" stroke="none"'
+    : `fill="none" stroke="currentColor" stroke-width="${(38.4 / role).toFixed(3)}" stroke-linecap="round" stroke-linejoin="round"`;
+  return `<svg class="glyph" width="${px}" height="${px}" viewBox="0 0 24 24" ${paint} aria-hidden="true">${shapes}</svg>`;
+}
 const I = {
-  clip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/></svg>',
-  send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>',
-  check: '<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 12.5l4.2 4.2L18.5 7.8"/></svg>',
-  x: '<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M7.5 7.5l9 9M16.5 7.5l-9 9"/></svg>',
-  ticket: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>',
-  pause: '<svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor"><rect x="6" y="5" width="4.2" height="14" rx="1.2"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.2"/></svg>',
-  play: '<svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>',
+  // the end card's download arrow is the site's, not the app's: kept as it was
+  cta: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>',
   pointer: '<svg viewBox="0 0 22 30" width="44" height="60"><path d="M2.5 2.2v21.6l5.6-5.5 3.6 8.7 3.6-1.5-3.5-8.6h7.8z" fill="#111" stroke="#fff" stroke-width="1.9" stroke-linejoin="round"/></svg>'
 };
 function markSVG(size, opts = {}) {
@@ -30,10 +64,10 @@ function markSVG(size, opts = {}) {
   return `<svg class="mark" width="${size}" height="${size}" viewBox="0 0 64 64"><path d="M22 6h20a16 16 0 0 1 16 16v14a16 16 0 0 1-16 16H24.5L11 61.5c-1.2 1-2.9.1-2.7-1.4L9.6 50A16 16 0 0 1 6 40V22A16 16 0 0 1 22 6Z" fill="${b}"/>` +
     `<circle class="mf" cx="25" cy="29" r="10.5" fill="${f}"/><circle class="mm" cx="39.5" cy="29" r="10.5" fill="${m}" stroke="${b}" stroke-width="3"/></svg>`;
 }
-const spinner = (size, t) => `<svg class="spin" width="${size}" height="${size}" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="var(--accent-b)" stroke-width="2.6"/><path d="M12 3a9 9 0 0 1 9 9" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" transform="rotate(${((t * 540) % 360).toFixed(0)} 12 12)"/></svg>`;
-const icon = (kind, size) => `<span style="width:${size}px;height:${size}px;display:inline-flex;border-radius:50%;padding:${Math.round(size * 0.18)}px;background:${kind === 'ok' ? 'var(--ok)' : 'var(--danger)'};color:#fff">${kind === 'ok' ? I.check : I.x}</span>`;
-// a mascot's face, cropped from its first idle frame, for the app's avatars
-const face = (who, size) => `<span class="face" style="width:${size}px;height:${size}px;background-image:url(/sprites/${who}/idle/0001.png);background-size:${size * 2.15}px;background-position:50% 64%"></span>`;
+const spinner = (size, t) => `<svg class="spin" width="${size}" height="${size}" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="var(--accent-b)" stroke-width="2.4"/><path d="M12 3a9 9 0 0 1 9 9" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" transform="rotate(${((t * 540) % 360).toFixed(0)} 12 12)"/></svg>`;
+// a mascot's face, cropped from its first idle frame, for the app's avatars: `bot` draws one Bot's picture as the app
+// does since 9ef9e1d7, a rounded square (--radius-bot); a ticket's avatar and a group's stacked faces stay round
+const face = (who, size, bot = false) => `<span class="face${bot ? ' bot' : ''}" style="width:${size}px;height:${size}px;background-image:url(/sprites/${who}/idle/0001.png);background-size:${size * 2.15}px;background-position:50% 64%"></span>`;
 const kettle = n => `/assets/kettle/${String(clamp(n, 1, 181)).padStart(4, '0')}.jpg`;
 const setHTML = (el, html) => { if (el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; } };
 
@@ -84,10 +118,14 @@ function build() {
   R.cast = { mochi: new Actor('mochi'), pudding: new Actor('pudding'), reviewer: new Actor('reviewer') };
 
   // composer, and your lines once sent
+  // wider than a phone the app's composer is two rows (Composer.svelte): the text on top, attach on the left and
+  // voice, suggest and send on the right under it
   R.comp = h('div', 'abs composer', null, stage);
-  h('span', 'clip', I.clip, R.comp);
-  R.compTxt = h('span', 'txt', '', R.comp);
-  R.compSend = h('span', 'send', I.send, R.comp);
+  R.compTxt = h('div', 'txt', '', R.comp);
+  h('span', 'cb attach', ic('paperclip', 20), R.comp);
+  h('span', 'cb', ic('mic', 20), R.comp);
+  h('span', 'cb', ic('sparkles', 16), R.comp);
+  R.compSend = h('span', 'cb send', ic('arrow-up', 16), R.comp);
   R.bubble = h('div', 'abs bubble-you', S.request, stage);
   R.stopB = h('div', 'abs bubble-you', S.stopLine, stage);
   R.changeB = h('div', 'abs bubble-you', S.changeLine, stage);
@@ -98,7 +136,7 @@ function build() {
   const jh = h('div', 'job-head', null, R.job);
   R.jobTitle = h('div', 'job-title', S.job, jh);
   h('div', 'job-sub', `<span class="pill run">${S.running}</span><span class="pill quiet">${S.engine}</span>`, jh);
-  h('div', 'abs', `<span style="color:var(--accent);display:inline-flex;font-size:30px">${I.ticket}</span><b style="font-size:28px">${S.tickets}</b>`, R.job).setAttribute('style', 'left:40px;top:182px;display:flex;align-items:center;gap:12px');
+  h('div', 'abs', `<span style="color:var(--accent);display:inline-flex">${ic('check-square', 16)}</span><b style="font-size:28px">${S.tickets}</b>`, R.job).setAttribute('style', 'left:40px;top:180px;display:flex;align-items:center;gap:12px');
   R.rows = [['01', S.t1], ['02', S.t2]].map(([no, ti], i) => {
     const [name, file] = ti.split(' ');
     const r = h('div', 'trow', `<span class="no">${no}</span><span class="ti">${name}<span class="f">${file}</span></span>` +
@@ -116,13 +154,17 @@ function build() {
   css(R.logoFly, { padding: '14px 18px' });
   R.intent = h('div', 'abs', null, stage);
   css(R.intent, { height: 0, borderTop: '5px dashed var(--warn)' });
-  R.appr = h('div', 'abs approval', null, stage);
-  R.apprLab = h('div', 'lab', '', R.appr);
-  h('div', 'tgt', `<span style="color:var(--muted)">unconstrained-shell</span> ${S.approvalCmd}`, R.appr);
-  const bt = h('div', 'btns', null, R.appr); R.apprBtns = bt;
-  R.bAllow = h('span', 'btn primary', S.allowOnce, bt);
-  h('span', 'btn', S.always, bt);
-  h('span', 'btn danger', S.deny, bt);
+  // the approval card as the app draws it (TranscriptApproval.svelte): the head says whose request it is and, while it
+  // waits, that it waits on you; the body is the request as the Bot's tool put it
+  R.appr = h('div', 'abs approval waiting', null, stage);
+  R.apprHead = h('div', 'head', '', R.appr);
+  const am = h('div', 'main', `<div class="body">unconstrained-shell ${S.approvalCmd}</div>`, R.appr);
+  const acts = h('div', 'acts', null, am);
+  R.apprBtns = h('div', 'btns', null, acts);
+  R.bAllow = h('span', 'btn primary', `${ic('check', 16)}${S.allowOnce}`, R.apprBtns);
+  h('span', 'btn secondary', S.always, R.apprBtns);
+  h('span', 'btn ghost', S.deny, R.apprBtns);
+  R.apprStatus = h('div', 'status', `${ic('check', 12)}<span>${S.allowed}</span>`, acts);
 
   // the render the app watches
   R.render = h('div', 'abs render', null, stage);
@@ -137,16 +179,17 @@ function build() {
   // the stop
   R.hold = h('div', 'abs hold', null, stage);
   css(R.hold, { width: 560, height: 470 });
-  R.holdIcon = h('div', 'abs over', I.pause, stage);
+  R.holdIcon = h('div', 'abs over', ic('pause', 24, K, true), stage);
   css(R.holdIcon, { width: 120, height: 120, color: 'var(--accent)' });
-  R.receipt = h('div', 'abs appline', `${markSVG(54)}<div><div class="who" style="font-size:30px">${S.stopped}</div><div style="font-size:24px;color:var(--muted)">${S.stoppedSub}</div></div>`, stage);
+  R.receipt = h('div', 'abs appline', `${markSVG(54)}<div><div class="who" style="font-size:30px">${S.stopped}</div><div style="font-size:24px;color:var(--muted);white-space:normal;max-width:560px">${S.stoppedSub}</div></div>`, stage);
   R.lifted = h('div', 'abs stamp', S.lifted, stage);
   css(R.lifted, { color: 'var(--ok-text)', borderColor: 'var(--ok)', background: 'var(--ok-bg)' });
   R.goesOn = h('div', 'abs appline over', `${markSVG(40)}<span class="who">${S.goesOn}</span>`, stage);
 
   // done has a definition
   R.say = h('div', 'abs say', S.claim, stage);
-  R.chip = h('div', 'abs filechip', '', stage);
+  // the hand-in: the film as a file in a message (a video gets the chip, not a thumbnail)
+  R.chip = h('div', 'abs filechip fly', `${ic('video', 12)}<span>dawn_final.mp4</span>`, stage);
   R.checks = h('div', 'abs checks', null, stage);
   css(R.checks, { width: 790 });
   R.checksHd = h('div', 'hd', `<span>${S.checksTitle}</span><span class="pill quiet" style="font-size:20px">${S.confirmed}</span><span class="sum"></span>`, R.checks);
@@ -156,35 +199,40 @@ function build() {
   css(R.back, { color: 'var(--danger-text)', borderColor: 'var(--danger)', background: 'var(--danger-bg)' });
   R.review = h('div', 'abs pane', null, stage);
   css(R.review, { width: 790, padding: '24px 30px' });
-  h('div', null, `${face('reviewer', 44)}<b style="font-size:28px">${S.review}</b>`, R.review).setAttribute('style', 'display:flex;align-items:center;gap:14px');
+  h('div', null, `${face('reviewer', 44, true)}<b style="font-size:28px">${S.review}</b>`, R.review).setAttribute('style', 'display:flex;align-items:center;gap:14px');
   const strip = h('div', 'strip', [[30, '1.0s'], [120, '4.0s'], [165, '5.5s']].map(([n, l]) => `<span class="fr" style="width:116px;height:206px;background-image:url(${kettle(n)})"><b>${l}</b></span>`).join(''), R.review);
   css(strip, { marginTop: '18px' });
-  R.evs = [S.ev1, S.ev2].map(e => h('div', 'abs ev', `<span style="width:22px;height:22px;display:inline-block;flex:none">${I.check}</span><span>${e}</span>`, R.review));
+  R.evs = [S.ev1, S.ev2].map(e => h('div', 'abs ev', `<span style="display:inline-flex;flex:none;padding-top:3px">${ic('check', 12, 1.8)}</span><span>${e}</span>`, R.review));
   R.evs.forEach(e => css(e, { width: 340, whiteSpace: 'normal', alignItems: 'flex-start' }));
-  R.verdict = h('div', 'abs appline', `<span style="width:42px;height:42px;display:inline-flex;border-radius:50%;padding:8px;background:var(--ok);color:#fff">${I.check}</span><span class="who" style="color:var(--ok-text)">${S.verdict}</span>`, stage);
+  R.verdict = h('div', 'abs appline', `<span class="dot" style="width:42px;height:42px;background:var(--ok)">${ic('check', 12)}</span><span class="who" style="color:var(--ok-text)">${S.verdict}</span>`, stage);
 
-  // coming back: the conversation, the film and the board in one window
-  R.win = h('div', 'abs', null, stage);
-  css(R.win, { width: 1300, height: 720 });
-  R.winTabs = h('div', 'abs', `<span class="win-tab">${face('pudding', 26)}${S.tabChat}</span><span class="win-tab">${S.tabFilm}</span><span class="win-tab" style="color:var(--accent)">${S.tabFlow}</span>`, R.win);
-  css(R.winTabs, { left: 24, top: 0, display: 'flex', gap: '8px' });
-  R.winBody = h('div', 'abs pane', null, R.win);
-  css(R.winBody, { top: 46, width: 1300, height: 674, borderRadius: '0 22px 22px 22px', overflow: 'hidden' });
+  // coming back: the conversation, the film and the board in one tab. The strip lies on the window's ground with the
+  // tabs as pills, the open one in the card's colour; the content is the card under them
+  R.win = h('div', 'abs win', null, stage);
+  css(R.win, { width: 1320, height: 760 });
+  const group = `<span style="position:relative;width:${20 * KW}px;height:${20 * KW}px;display:inline-block">` +
+    `<span style="position:absolute;left:0;top:0">${face('reviewer', 13 * KW)}</span><span style="position:absolute;right:0;bottom:0;border-radius:50%;box-shadow:0 0 0 ${1.5 * KW}px var(--ground)">${face('pudding', 13 * KW)}</span></span>`;
+  const tab = (pic, name, on) => `<span class="win-tab${on ? ' on' : ''}"><span class="ti">${pic}</span>${name}<span class="x">${ic('x', 12, KW)}</span></span>`;
+  R.winTabs = h('div', 'strip-row', tab(group, S.tabChat) + tab(ic('package', 16, KW), S.tabFilm) + tab(ic('hierarchy', 16, KW), S.tabFlow, true) +
+    `<span class="new">${ic('plus', 16, KW)}</span>`, R.win);
+  R.winBody = h('div', 'card', null, R.win);
   R.ask = h('div', 'abs bubble-you', S.statusLine, R.winBody);
-  css(R.ask, { fontSize: 28, padding: '16px 24px' });
-  R.answer = h('div', 'abs', `<div style="display:flex;align-items:center;gap:12px;font-size:24px">${face('pudding', 44)}<b>${S.producer}</b><span class="pill quiet" style="font-size:17px;padding:1px 10px">Bot</span></div><div style="margin-top:10px;font-size:27px;line-height:1.45;width:560px;white-space:normal">${S.answer}</div>`, R.winBody);
+  // the Producer's reply: its picture, name and tag, the words with the film as a file chip, and the reply's last line
+  R.answer = h('div', 'abs reply', `${face('pudding', 32 * KW, true)}<div style="width:540px"><div class="name">${S.producer}<span class="bot-badge">Bot</span></div>` +
+    `<div class="words">${S.answer[0]}<span class="filechip">${ic('video', 12, KW)}<span>dawn_final.mp4</span></span>${S.answer[1]}</div>` +
+    `<div class="foot"><span>${ic('terminal', 12, KW)}${S.cmds}</span><span class="when">${ic('clock', 12, KW)}${S.took}<span class="sep">·</span>${S.clock}</span></div></div>`, R.winBody);
   R.film = h('div', 'abs', '<img style="width:100%;height:100%;object-fit:cover;border-radius:16px;display:block">', R.winBody);
-  css(R.film, { width: 270, height: 480, borderRadius: '16px', boxShadow: '0 20px 50px -24px rgba(18,28,32,.5)' });
+  css(R.film, { width: 260, height: 462, borderRadius: '16px', boxShadow: '0 20px 50px -24px rgba(18,28,32,.5)' });
   R.filmImg = R.film.querySelector('img');
-  R.filmPlay = h('div', 'abs', `<span style="width:30px;height:30px;display:inline-block;color:#fff">${I.play}</span>`, R.film);
-  css(R.filmPlay, { left: 12, bottom: 12, top: 'auto', display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(15,26,30,.55)', borderRadius: '10px', padding: '6px 10px' });
-  R.status = h('div', 'abs', `<div class="pill done" style="font-size:24px"><span style="width:20px;height:20px;display:inline-block">${I.check}</span>${S.done}</div><div class="pill quiet" style="margin-top:14px;font-size:22px">${S.engine}</div><div style="margin-top:18px;font-size:23px;line-height:1.35;color:var(--ok-text);font-weight:650;white-space:normal;width:280px">${S.checksTitle} 2/2</div><div style="margin-top:8px;font-size:23px;line-height:1.35;color:var(--ok-text);font-weight:650;white-space:normal;width:280px">${S.verdict}</div>`, R.winBody);
+  R.filmPlay = h('div', 'abs', `<span style="display:inline-flex;color:#fff">${ic('play', 16, KW)}</span>`, R.film);
+  css(R.filmPlay, { left: 12, bottom: 12, top: 'auto', display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(15,26,30,.55)', borderRadius: '10px', padding: '6px 8px' });
+  R.status = h('div', 'abs', `<div class="pill done" style="font-size:24px">${ic('check', 12, KW)}${S.done}</div><div class="pill quiet" style="margin-top:14px;font-size:22px">${S.engine}</div><div style="margin-top:18px;font-size:23px;line-height:1.35;color:var(--ok-text);font-weight:650;white-space:normal;width:270px">${S.checksTitle} 2/2</div><div style="margin-top:8px;font-size:23px;line-height:1.35;color:var(--ok-text);font-weight:650;white-space:normal;width:270px">${S.verdict}</div>`, R.winBody);
   R.cols = S.col.map((c, i) => {
     const col = h('div', 'col', `<div class="ct">${c} ${i === 3 ? 2 : 0}</div>`, R.winBody);
-    css(col, { left: 30 + i * 312, top: 560, width: 296, height: 140 });
+    css(col, { left: 24 + i * 312, top: 504, width: 300, height: 156 });
     return col;
   });
-  R.kcards = [S.t1, S.t2].map((ti, i) => h('div', 'kcard', `<b>0${i + 1} ${ti.split(' ')[0]}</b><span style="color:var(--ok-text);font-weight:650">✓ ${S.passed}</span>`, R.cols[3]));
+  R.kcards = [S.t1, S.t2].map((ti, i) => h('div', 'kcard', `<b>0${i + 1} ${ti.split(' ')[0]}</b><span style="color:var(--ok-text);font-weight:650;display:inline-flex;align-items:center;gap:6px">${ic('check', 12, 1.6)}${S.passed}</span>`, R.cols[3]));
 
   // headlines
   R.heads = {};
@@ -198,7 +246,7 @@ function build() {
   R.end = h('div', 'abs', null, stage); css(R.end, { width: 1920, height: 1080 }); R.end.style.transformOrigin = '960px 540px';
   R.word = h('div', 'abs word', [...S.word].map(c => `<span class="ch" style="display:inline-block">${c}</span>`).join(''), R.end);
   R.tag = h('div', 'abs tagline', S.tagline, R.end);
-  R.ctaRow = h('div', 'abs', `<span class="cta"><span style="width:38px;height:38px;transform:rotate(180deg);display:inline-block">${I.send}</span>${S.cta}</span><span class="url">${S.url}</span>`, R.end);
+  R.ctaRow = h('div', 'abs', `<span class="cta"><span style="width:38px;height:38px;transform:rotate(180deg);display:inline-block">${I.cta}</span>${S.cta}</span><span class="url">${S.url}</span>`, R.end);
   css(R.ctaRow, { display: 'flex', alignItems: 'center', gap: '36px' });
   R.fine = h('div', 'abs fine', S.fine, R.end);
   R.finer = h('div', 'abs finer', S.finer, R.end);
@@ -220,6 +268,14 @@ function measure() {
   M.wordW = w(R.word); M.wordH = hh(R.word); M.tagW = w(R.tag); M.ctaW = w(R.ctaRow); M.fineW = w(R.fine); M.finerW = w(R.finer);
   M.nameW = {}; for (const k in R.names) M.nameW[k] = w(R.names[k]);
   M.askW = w(R.ask);
+  // your line lifts out of the composer from where its words sit there (poseHand): the words' box in each, untransformed
+  const words = el => { const r = document.createRange(); r.selectNodeContents(el); const a = r.getBoundingClientRect(), b = el.getBoundingClientRect(); return { x: a.left - b.left, y: a.top - b.top }; };
+  const [cx, cw, cb] = COMP_AT.hand;
+  R.comp.style.width = `${cw}px`;
+  setHTML(R.compTxt, S.request);
+  const inComp = words(R.compTxt), compTxt = R.compTxt.getBoundingClientRect(), comp = R.comp.getBoundingClientRect(), inBub = words(R.bubble);
+  M.liftX = cx + compTxt.left - comp.left + inComp.x - inBub.x;
+  M.liftY = cb - R.comp.offsetHeight + compTxt.top - comp.top + inComp.y - inBub.y;
 }
 
 // ---------------------------------------------------------------- helpers
@@ -295,23 +351,31 @@ const COMPOSE = [
   [13.35, 16.6, S.stopLine, 13.55, 13.9, 14.0],
   [13.35, 16.6, S.changeLine, 14.75, 15.75, 16.0]
 ];
+// where the composer stands in each scene: [left, width, bottom]; like the app's it sits on its bottom edge and grows up
+const COMP_AT = { hand: [660, 1100, 935], stop: [600, 640, 935] };
 function poseComposer(t) {
   const first = t < 6;
   const [a, b] = first ? [0.3, 2.3] : [13.35, 16.6];
   if (!show(R.comp, t >= a && t < b)) return;
-  const x = first ? 700 : 680, w = first ? 1110 : 640, y = 718;
+  const [x, w, bottom] = first ? COMP_AT.hand : COMP_AT.stop;
   const ent = E.out4(inv(a, a + 0.3, t)), ex = E.in(inv(b - 0.3, b, t));
-  R.comp.style.transformOrigin = '50% 50%';
-  css(R.comp, { x, y: y + 260 * ex + lerp(60, 0, ent), width: w, opacity: Math.min(ent, 1 - ex) });
-  let txt = '';
+  let txt = '', has = false, focus = false;
   for (const [, , s, ta, tb, send] of COMPOSE.filter(c => (first ? c[0] < 6 : c[0] > 6))) {
+    if (t >= ta - 0.2) focus = true; // you click into it before you type
     if (t >= ta && t < send) {
       const cps = [...s].length / (tb - ta);
       const part = typed(s, t, ta, cps), typing = part.length < [...s].length;
       txt = `${part}${typing || caretOn(t) ? '<span class="caret"></span>' : ''}`;
+      has = part.length > 0;
     }
   }
-  setHTML(R.compTxt, txt || `<span class="ph">${S.composer}</span>`);
+  setHTML(R.compTxt, txt || `${focus && caretOn(t) ? '<span class="caret lead"></span>' : ''}<span class="ph">${S.composer}</span>`);
+  // a field you type in turns its edge to the accent (no halo on the composer); with nothing to send, send is in the tint
+  R.comp.classList.toggle('focus', focus);
+  R.compSend.classList.toggle('off', !has);
+  R.comp.style.width = `${w}px`;
+  R.comp.style.transformOrigin = '50% 50%';
+  css(R.comp, { x, y: bottom - R.comp.offsetHeight + 260 * ex + lerp(60, 0, ent), opacity: Math.min(ent, 1 - ex) });
   const sendAt = first ? [1.85] : [14.0, 16.0];
   css(R.compSend, { s: sendAt.some(s => t > s - 0.04 && t < s + 0.12) ? 0.9 : 1 });
   const r = R.compSend.getBoundingClientRect(); M.sendX = r.left + r.width / 2; M.sendY = r.top + r.height / 2;
@@ -329,7 +393,7 @@ function poseHand(t) {
   }
   // the request lifts out of the composer and flies to the Producer, then becomes the job's title
   if (show(R.bubble, t >= 1.85 && t < 3.6)) {
-    const from = { x: 760, y: 742, s: 1 }, mid = { x: 1500 - M.bubW * 0.5 * 0.62, y: 470, s: 0.62 }, to = { x: 190, y: 330, s: 0.82 };
+    const from = { x: M.liftX, y: M.liftY, s: 1 }, mid = { x: 1500 - M.bubW * 0.5 * 0.62, y: 470, s: 0.62 }, to = { x: 190, y: 330, s: 0.82 };
     let st;
     if (t < 2.75) { const u = E.inOutQuint(inv(1.88, 2.7, t)); st = { x: lerp(from.x, mid.x, u), y: lerp(from.y, mid.y, u) - 160 * Math.sin(u * Math.PI), s: lerp(from.s, mid.s, u), o: 1 }; }
     else if (t < 3.15) st = { ...mid, y: mid.y + 6 * Math.sin((t - 2.75) * 9), o: 1 };
@@ -386,12 +450,16 @@ function poseAsk(t) {
     css(R.intent, { x: 1060, y: 690, width: lerp(0, 105, u), opacity: 1 - o });
   }
   // the approval card, and you let it through once
-  if (popIn(R.appr, t, 6.85, 9.85, { x: 560, y: 300, origin: '50% 100%' })) {
-    const allowed = t >= 8.02;
-    setHTML(R.apprLab, allowed ? `<span style="width:24px;height:24px;display:inline-block;color:var(--ok)">${I.check}</span><span style="color:var(--ok-text)">${S.allowed}</span>`
-      : `<span style="width:12px;height:12px;border-radius:50%;background:var(--warn);display:inline-block"></span>${S.approvalLab}`);
-    R.apprBtns.style.opacity = allowed ? (1 - 0.6 * E.out(inv(8.02, 8.25, t))).toFixed(3) : 1;
-    css(R.bAllow, { s: t > 7.98 && t < 8.12 ? 0.94 : 1 });
+  if (popIn(R.appr, t, 6.85, 9.85, { x: 560, y: 236, origin: '50% 100%' })) {
+    // answered, it settles into a plain card: the head loses the shield and the warn, the buttons give way to the outcome
+    const allowed = t >= 8.02, pressed = t > 7.98 && t < 8.12;
+    R.appr.classList.toggle('waiting', !allowed);
+    setHTML(R.apprHead, allowed ? `<span>${S.approvalLab}</span><span class="whom">${S.producer}</span>`
+      : `${ic('shield-check', 12)}<span>${S.waiting}</span><span class="whom">${S.producer}</span>`);
+    R.apprBtns.style.opacity = (1 - E.out(inv(8.06, 8.26, t))).toFixed(3);
+    R.apprStatus.style.opacity = E.out(inv(8.16, 8.4, t)).toFixed(3);
+    R.bAllow.style.background = pressed ? 'var(--accent-active)' : '';
+    css(R.bAllow, { s: pressed ? 0.95 : 1 });
     const r = R.bAllow.getBoundingClientRect(); M.allowAbs = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   }
   if (t >= 6.9 && t < 10.3) {
@@ -423,7 +491,7 @@ function poseAway(t) {
   const ent = E.out4(inv(10.35, 10.75, t)), ex = E.in(inv(12.9, 13.1, t));
   css(R.render, { x: 540, y: 420 + lerp(40, 0, ent), opacity: Math.min(ent, 1 - ex) });
   const done = t >= 12.25;
-  setHTML(R.renderHd, done ? `<span style="width:38px;height:38px;display:inline-flex;border-radius:50%;padding:7px;background:var(--ok);color:#fff">${I.check}</span><span style="color:var(--ok-text)">${S.rendered}</span>`
+  setHTML(R.renderHd, done ? `<span class="dot" style="width:38px;height:38px;background:var(--ok)">${ic('check', 12)}</span><span style="color:var(--ok-text)">${S.rendered}</span>`
     : `${spinner(38, t)}<span>${S.render}</span>`);
   R.renderBar.style.width = `${(100 * E.inOut(inv(10.5, 12.25, t))).toFixed(1)}%`;
   R.renderBar.style.background = done ? 'var(--ok)' : 'var(--accent)';
@@ -499,17 +567,16 @@ function poseDone(t) {
   }
   // the hand-in: the film flies to the checks; the first comes back
   const first = t < 19.95;
-  setHTML(R.chip, `<span class="thumb" style="background-image:url(${kettle(first ? 40 : 160)})"></span><span>dawn_final.mp4</span><span class="mono" style="font-size:22px;color:var(--muted);font-weight:500">${first ? S.c1fail : S.c1pass}</span>`);
   if (show(R.chip, (t >= 17.3 && t < 19.15) || (t >= 20.2 && t < 23.3))) {
-    const inFrom = { x: 420, y: 640 }, slot = { x: 560, y: 300 };
+    const inFrom = { x: 420, y: 640 }, slot = { x: 560, y: 318 };
     let p;
     if (first) {
-      if (t < 17.85) { const u = E.inOutQuint(inv(17.3, 17.85, t)); p = { x: lerp(inFrom.x, slot.x, u), y: lerp(inFrom.y, slot.y, u) - 140 * Math.sin(u * Math.PI), s: lerp(0.8, 0.9, u) }; }
-      else if (t < 18.75) p = { ...slot, s: 0.9 };
-      else { const u = E.inOutQuint(inv(18.75, 19.1, t)); p = { x: lerp(slot.x, inFrom.x, u), y: lerp(slot.y, inFrom.y, u) - 100 * Math.sin(u * Math.PI), s: lerp(0.9, 0.7, u), o: 1 - E.in(inv(18.95, 19.12, t)) }; }
+      if (t < 17.85) { const u = E.inOutQuint(inv(17.3, 17.85, t)); p = { x: lerp(inFrom.x, slot.x, u), y: lerp(inFrom.y, slot.y, u) - 140 * Math.sin(u * Math.PI), s: lerp(0.9, 1, u) }; }
+      else if (t < 18.75) p = { ...slot, s: 1 };
+      else { const u = E.inOutQuint(inv(18.75, 19.1, t)); p = { x: lerp(slot.x, inFrom.x, u), y: lerp(slot.y, inFrom.y, u) - 100 * Math.sin(u * Math.PI), s: lerp(1, 0.8, u), o: 1 - E.in(inv(18.95, 19.12, t)) }; }
     } else {
       const u = E.inOutQuint(inv(20.2, 20.55, t));
-      p = { x: lerp(inFrom.x, slot.x, u), y: lerp(inFrom.y, slot.y, u) - 140 * Math.sin(u * Math.PI), s: lerp(0.8, 0.9, u), o: 1 - ex };
+      p = { x: lerp(inFrom.x, slot.x, u), y: lerp(inFrom.y, slot.y, u) - 140 * Math.sin(u * Math.PI), s: lerp(0.9, 1, u), o: 1 - ex };
     }
     R.chip.style.transformOrigin = '0 0';
     css(R.chip, { x: p.x, y: p.y, s: p.s, opacity: p.o ?? 1 });
@@ -529,13 +596,13 @@ function poseDone(t) {
     R.crows.forEach((r, i) => {
       const [k, v] = st(i);
       if (k === 'ok') pass++;
-      const ic = r.querySelector('.ic'), val = r.querySelector('.val');
-      setHTML(ic, k === 'run' ? spinner(40, t) : k === 'ok' ? `<span style="width:24px;height:24px;display:block">${I.check}</span>` : k === 'fail' ? `<span style="width:24px;height:24px;display:block">${I.x}</span>` : '');
-      ic.style.background = k === 'ok' ? 'var(--ok)' : k === 'fail' ? 'var(--danger)' : k === 'idle' ? 'var(--chip)' : 'transparent';
+      const dot = r.querySelector('.ic'), val = r.querySelector('.val');
+      setHTML(dot, k === 'run' ? spinner(40, t) : k === 'ok' ? ic('check', 12) : k === 'fail' ? ic('x', 12) : '');
+      dot.style.background = k === 'ok' ? 'var(--ok)' : k === 'fail' ? 'var(--danger)' : k === 'idle' ? 'var(--chip)' : 'transparent';
       val.textContent = v || '';
       val.style.color = k === 'fail' ? 'var(--danger-text)' : 'var(--ok-text)';
       const flip = k === 'ok' || k === 'fail' ? (k === 'fail' ? 18.35 : t > 20.9 ? 20.9 + i * 0.12 : 18.35 + i * 0.15) : null;
-      ic.style.transform = flip !== null ? `scale(${lerp(1.4, 1, E.out(inv(flip, flip + 0.25, t))).toFixed(3)})` : 'none';
+      dot.style.transform = flip !== null ? `scale(${lerp(1.4, 1, E.out(inv(flip, flip + 0.25, t))).toFixed(3)})` : 'none';
     });
     R.sum.textContent = t < 17.9 ? '0/2' : `${pass}/2`;
     R.sum.style.color = pass === 2 ? 'var(--ok-text)' : t >= 18.35 ? 'var(--danger-text)' : 'var(--muted)';
@@ -566,16 +633,16 @@ function poseBack(t) {
   if (!show(R.win, t >= 23.1 && t < 26.9)) return;
   const u = E.out4(inv(23.1, 23.5, t)), ex = E.in(inv(26.35, 26.75, t));
   R.win.style.transformOrigin = '50% 50%';
-  css(R.win, { x: 520, y: 250 + lerp(40, 0, u), s: lerp(0.97, 1, u) * (1 - 0.06 * ex), opacity: Math.min(u, 1 - ex) });
+  css(R.win, { x: 510, y: 228 + lerp(40, 0, u), s: lerp(0.97, 1, u) * (1 - 0.06 * ex), opacity: Math.min(u, 1 - ex) });
   // you ask; the Producer answers itself
   const askIn = E.out4(inv(23.75, 24.0, t));
-  css(R.ask, { x: 620 - M.askW, y: 40 + lerp(20, 0, askIn), opacity: askIn });
+  css(R.ask, { x: 620 - M.askW, y: 30 + lerp(20, 0, askIn), opacity: askIn });
   const ans = E.out4(inv(24.35, 24.65, t));
-  css(R.answer, { x: 34, y: 140 + lerp(20, 0, ans), opacity: ans });
-  css(R.film, { x: 680, y: 40, opacity: E.out(inv(23.45, 23.75, t)) });
+  css(R.answer, { x: 30, y: 122 + lerp(20, 0, ans), opacity: ans });
+  css(R.film, { x: 680, y: 24, opacity: E.out(inv(23.45, 23.75, t)) });
   const src = kettle(Math.floor(((t - 23.45) * 30) % 181) + 1);
   if (R.filmImg.getAttribute('src') !== src) { R.filmImg.setAttribute('src', src); pending.push(R.filmImg.decode().catch(() => {})); }
-  css(R.status, { x: 990, y: 50, opacity: E.out(inv(23.6, 23.9, t)) });
+  css(R.status, { x: 990, y: 34, opacity: E.out(inv(23.6, 23.9, t)) });
   R.cols.forEach((c, i) => { const v = E.out4(inv(23.8 + i * 0.06, 24.1 + i * 0.06, t)); c.style.opacity = v; c.style.transform = `translateY(${lerp(20, 0, v).toFixed(1)}px)`; });
   R.kcards.forEach((k, i) => { const v = E.pop(inv(24.15 + i * 0.15, 24.45 + i * 0.15, t)); k.style.opacity = clamp(v * 2); k.style.transform = `scale(${lerp(0.8, 1, v).toFixed(3)})`; k.style.transformOrigin = '0 0'; });
   // you come back; then all three cheer in front of it

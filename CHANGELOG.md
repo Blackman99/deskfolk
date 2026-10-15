@@ -6,7 +6,9 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+### The README's film draws today's app
+
+- The README's 30-second film and the site's "Watch the film" draw the app as it looks today: the two-row composer, the approval card's waiting header and buttons, file chips in a reply with its last line, and tabs as pills over the card.
 
 ## 0.1.0-rc.19 — 2026-10-15
 
