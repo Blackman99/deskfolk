@@ -28,6 +28,8 @@
 		onClosePane?: (leafId: string) => void;
 		/** The tab being dragged right now, if it is one of these. It stays put, faded. */
 		draggedTab?: string | null;
+		/** The pane being dragged by its strip; if it is this one, every tab stays put, faded. */
+		draggedLeaf?: string | null;
 		onTabPointerDown?: (event: PointerEvent, leafId: string, tabId: string) => void;
 		onStripPointerDown?: (event: PointerEvent, leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
@@ -61,6 +63,7 @@
 		tabFloating,
 		onClosePane,
 		draggedTab = null,
+		draggedLeaf = null,
 		onTabPointerDown,
 		onStripPointerDown,
 		onMenu,
@@ -305,7 +308,7 @@
 					class="wb-tab"
 					role="presentation"
 					class:is-active={tab.id === leaf.activeTabId}
-					class:is-dragged={tab.id === draggedTab}
+					class:is-dragged={tab.id === draggedTab || leaf.id === draggedLeaf}
 					data-tab={tab.id}
 				>
 					{#if tab.id === leaf.activeTabId}

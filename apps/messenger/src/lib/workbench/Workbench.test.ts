@@ -399,6 +399,29 @@ test("no gap is marked where the drop would leave the tab where it is", () => {
   }
 });
 
+test("a pane dragged by its strip shows every tab going with it", () => {
+  const { host, close } = mountWorkbench(layoutOf(makeLeaf("a", [aTab("t1"), aTab("t2"), aTab("t3")])));
+  try {
+    layOutOnePane(host);
+    const strip = host.querySelector(".wb-strip") as HTMLElement;
+    const pointer = { bubbles: true, button: 0, pointerId: 1, clientY: 16 };
+    // Past the last tab, which ends at x 304: the strip's own empty part.
+    strip.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, clientX: 500 }));
+    strip.dispatchEvent(new PointerEvent("pointermove", { ...pointer, clientX: 520 }));
+    flushSync();
+    // All three stay where they are, faded, and the chip says it is the pane, not the tab in front.
+    expect([...host.querySelectorAll(".wb-tab.is-dragged")].map((tab) => tab.getAttribute("data-tab")))
+      .toEqual(["t1", "t2", "t3"]);
+    expect(host.querySelector(".wb-ghost")?.textContent?.trim()).toBe(t.pane.wholePane(3));
+    strip.dispatchEvent(new PointerEvent("pointerup", { ...pointer, clientX: 520 }));
+    flushSync();
+    expect(host.querySelector(".wb-tab.is-dragged")).toBeNull();
+    expect(host.querySelector(".wb-ghost")).toBeNull();
+  } finally {
+    close();
+  }
+});
+
 test("a divider drag resizes every pane on the branch and commits when the pointer is released", () => {
   // happy-dom has no layout, so the viewport is handed its box. The content is not pinned to the
   // size it had: that min-width keeps the grid from giving the other panes their new share, and

@@ -26,6 +26,8 @@
 		draggingSash?: string | null;
 		/** The tab being dragged right now, wherever it is. */
 		draggedTab?: string | null;
+		/** The pane being dragged by its strip right now, every tab with it. */
+		draggedLeaf?: string | null;
 		onTabPointerDown?: (event: PointerEvent, leafId: string, tabId: string) => void;
 		onStripPointerDown?: (event: PointerEvent, leafId: string) => void;
 		onMenu?: (event: MouseEvent, leafId: string) => void;
@@ -66,6 +68,7 @@
 		tabFloating={rest.tabFloating}
 		onClosePane={rest.onClosePane}
 		draggedTab={rest.draggedTab}
+		draggedLeaf={rest.draggedLeaf}
 		onTabPointerDown={rest.onTabPointerDown}
 		onStripPointerDown={rest.onStripPointerDown}
 		onMenu={rest.onMenu}
@@ -118,6 +121,7 @@
 				onSashPointerDown={rest.onSashPointerDown}
 				draggingSash={rest.draggingSash}
 				draggedTab={rest.draggedTab}
+				draggedLeaf={rest.draggedLeaf}
 				onTabPointerDown={rest.onTabPointerDown}
 				onStripPointerDown={rest.onStripPointerDown}
 				onMenu={rest.onMenu}

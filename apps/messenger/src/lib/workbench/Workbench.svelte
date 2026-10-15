@@ -160,6 +160,8 @@
 	);
 	/** The tab being dragged, which stays in its row, faded, until it is let go. */
 	const draggedTab = $derived(paneDrag?.started && paneDrag.kind === 'tab' ? paneDrag.tabId : null);
+	/** A pane dragged by its strip, all its tabs with it: every one of them stays put, faded. */
+	const draggedLeaf = $derived(paneDrag?.started && paneDrag.kind === 'leaf' ? paneDrag.leafId : null);
 	/*
 	 * The floating panes in a fixed document order; `z` alone says which is on top. Drawing them
 	 * in z-order moved a pane's element when a press raised it, in the middle of that press: the
@@ -576,10 +578,14 @@
 		if (next !== layout) onLayout(next);
 	}
 
-	/** What the chip that follows the pointer says. An id would tell nobody anything. */
+	/**
+	 * What the chip that follows the pointer says. An id would tell nobody anything. A pane dragged
+	 * by its strip takes every tab along, so the chip says so rather than naming the one in front.
+	 */
 	function nameOf(leafId: string, tabId: string | null): string {
 		const leaf = tiledLeaves(layout.root).find((candidate) => candidate.id === leafId) ??
 			layout.floating.find((pane) => pane.leaf.id === leafId)?.leaf;
+		if (!tabId && leaf && leaf.tabs.length > 1) return t.pane.wholePane(leaf.tabs.length);
 		const tab = tabId
 			? leaf?.tabs.find((candidate) => candidate.id === tabId)
 			: leaf?.tabs.find((candidate) => candidate.id === leaf.activeTabId);
@@ -779,6 +785,7 @@
 			onSashPointerDown={startSash}
 			{draggingSash}
 			{draggedTab}
+			{draggedLeaf}
 			onTabPointerDown={(event, leafId, tabId) =>
 				startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), nameOf(leafId, tabId))}
 			onStripPointerDown={(event, leafId) => {
