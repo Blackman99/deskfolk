@@ -1,5 +1,6 @@
 import { desktopPlatform } from "./platform.ts";
 import { isTauri, readTauriInternals } from "./tauri.ts";
+import type { Theme } from "@real-bot/protocol";
 import type { ResolvedTheme } from "./theme.ts";
 
 /**
@@ -33,12 +34,21 @@ export function applyWindowChromeAttribute(chrome: WindowChrome = WINDOW_CHROME)
 }
 
 /**
- * Tells the window which theme the page shows, so the sidebar material behind it and the native
- * menus match the app's choice and not the system's (a dark app on a light system would otherwise
- * draw light glass under light text). Outside the desktop window it does nothing.
+ * What the window's own appearance should be for a theme setting: the chosen one when you picked
+ * light or dark, so the sidebar material and the native menus match the app rather than the
+ * system (a dark app on a light system would otherwise draw light glass under light text); and
+ * `null` when the app follows the system. Pinning the window there too broke following: the page
+ * reads the system's theme through the window (`prefers-color-scheme`), so a pinned window never
+ * told it the system had changed.
  */
-export function syncWindowTheme(theme: ResolvedTheme): void {
+export function windowTheme(preference: Theme, resolved: ResolvedTheme): ResolvedTheme | null {
+  return preference === "system" ? null : resolved;
+}
+
+/** Sets the window's appearance (`windowTheme`). Outside the desktop window it does nothing. */
+export function syncWindowTheme(preference: Theme, resolved: ResolvedTheme): void {
   const internals = readTauriInternals();
   if (!internals?.invoke) return;
-  void internals.invoke("plugin:window|set_theme", { label: "main", value: theme }).catch(() => {});
+  const value = windowTheme(preference, resolved);
+  void internals.invoke("plugin:window|set_theme", { label: "main", value }).catch(() => {});
 }

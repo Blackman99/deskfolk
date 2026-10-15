@@ -34,8 +34,8 @@
 	onMount(() => {
 		const stopTheme = themeManager.init();
 		if (WINDOW_CHROME === 'mac') {
-			syncWindowTheme(themeManager.resolved);
-			const stopSync = themeManager.subscribe(() => syncWindowTheme(themeManager.resolved));
+			syncWindowTheme(themeManager.preference, themeManager.resolved);
+			const stopSync = themeManager.subscribe(() => syncWindowTheme(themeManager.preference, themeManager.resolved));
 			return () => {
 				stopSync();
 				stopTheme();
