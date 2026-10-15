@@ -45,6 +45,12 @@ Decision 3's "opens in place" changed: an opened step no longer hangs under its 
 
 Decision 5's "Change this call on a step opens Roles at that call" changed: changing a call meant leaving the flow for Roles and finding the step again afterwards. "Change this call" now unfolds the call's own settings in the step's panel, the same block as that call's on Roles (its model, its prompts), a prompt opening in its editor over the whole window; it changes the call itself, for every later use. Roles still opens from Tools, and a card's "View in Settings" still opens Roles.
 
+## 2026-10-15 补记：对话一路往下 / The conversation runs straight down
+
+第 3 条里环节和卡片一起交给 dagre，排的顺序原来是先后：一轮里或为一轮做的环节总比它叫醒的下一轮早，dagre 又把卡放在它一排孩子的正中，所以下一轮总站在右边，Bot 之间来回几十轮的事一路斜到右下。现在每张卡对着一个孩子（dagre 的 `align: "DL"`），这个孩子是通向轮次最多的那一个：对话从上到下是一条直线，同一张卡叫醒的其他轮次按先后站在它两边，环节站在最外面、分在左右两侧。
+
+Decision 3 hands steps and cards to dagre together, and they went in the order they happened: the steps in or for a turn always came before the turn it woke, and dagre set a card over the middle of its row, so the next turn always stood to the right and a job of dozens of exchanges between Bots ran off down and to the right. Each card now sits over one child (dagre's `align: "DL"`), the one that leads to the most turns: the conversation reads down one line, other turns the same card woke stand beside it in the order they were woken, and steps stand outside them, split to either side.
+
 ## 2026-10-12 补记：环节在详情栏里 / A step opens in the inspector
 
 [ADR 0086](0086-a-job-is-one-tab.md) 把一件事做成一个标签之后，打开的环节不再浮在流程右侧，而是在流程旁边的详情栏里，占满那一栏、自己滚动；窄的时候详情栏是从底部拉起的面板，返回键先收起它。面板压住那一步的卡片时（只有窄的时候会），画布照旧滑开到卡片露出来。

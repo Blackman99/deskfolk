@@ -317,8 +317,13 @@ type LaidRound = {
  * tangled graph and the wrong thing for a round, which is a tree and has nothing to uncross:
  * two Bots woken by the same line of yours would swap places from one render to the next.
  * Putting them back in time order afterwards meant moving whole subtrees sideways, into cards
- * that were already there. With the reordering off, dagre keeps the depth-first order the cards
- * went in — children together, oldest on the left — and places them without overlap itself.
+ * that were already there. With the reordering off, dagre keeps the depth-first order the
+ * children went in (`childOrder`) and places them without overlap itself.
+ *
+ * Each card sits right over one child (`align: "DL"`: its median child, the left of two), not
+ * balanced among them. Balanced, a card sat over the middle of its row, and the turn it woke came
+ * after that turn's own steps, so every turn stood to the right of the one before and a long
+ * conversation ran off down and to the right.
  */
 function layRound(
   root: string,
@@ -329,10 +334,10 @@ function layRound(
   home: string | null,
 ): LaidRound {
   const graph = new dagre.graphlib.Graph();
-  graph.setGraph({ rankdir: "TB", ranksep: RANK_GAP, nodesep: NODE_GAP, marginx: 0, marginy: 0 });
+  graph.setGraph({ rankdir: "TB", ranksep: RANK_GAP, nodesep: NODE_GAP, marginx: 0, marginy: 0, align: "DL" });
   graph.setDefaultEdgeLabel(() => ({}));
-  // Cards and steps go in together in the order they happened: with reordering off, that order is
-  // the order along each rank.
+  // Cards and steps go in together in the order they happened; where each card's children stand
+  // along their rank is `childOrder`'s, by the order their edges go in.
   const items = [
     ...members.map((node) => ({ id: node.turn_id, at: node.created_at, node, group: null })),
     ...steps.map((group) => ({ id: group.id, at: group.created_at, node: null, group })),
@@ -344,9 +349,30 @@ function layRound(
       ? { width: box?.width || TRACE_CARD_WIDTH, height: box?.height || estimateHeight(item.node, home) }
       : { width: box?.width || TRACE_STEP_WIDTH, height: box?.height || TRACE_STEP_FALLBACK_HEIGHT });
   }
+  const children = new Map<string, string[]>();
   for (const item of items) {
     const from = parentOf(item.id);
-    if (from && inRound.has(from)) graph.setEdge(from, item.id);
+    if (from && inRound.has(from)) children.set(from, [...(children.get(from) ?? []), item.id]);
+  }
+  // How many turns each item leads to, itself included: a step that leads to none is a side note.
+  const cards = new Set(members.map((node) => node.turn_id));
+  const turnsBelow = new Map<string, number>();
+  const leadsTo = (id: string): number => {
+    const known = turnsBelow.get(id);
+    if (known !== undefined) return known;
+    turnsBelow.set(id, 0);
+    const count = (cards.has(id) ? 1 : 0) + (children.get(id) ?? []).reduce((sum, child) => sum + leadsTo(child), 0);
+    turnsBelow.set(id, count);
+    return count;
+  };
+  let spacers = 0;
+  const spacer = () => {
+    const id = `spacer:${spacers++}`;
+    graph.setNode(id, { width: 0, height: 0 });
+    return id;
+  };
+  for (const [from, list] of children) {
+    for (const child of childOrder(list, leadsTo, spacer)) graph.setEdge(from, child);
   }
   dagre.layout(graph, { disableOptimalOrderHeuristic: true });
 
@@ -374,6 +400,39 @@ function layRound(
     maxX: Math.max(...all.map((placement) => placement.x + placement.width)),
     height: Math.max(...all.map((placement) => placement.y + placement.height)),
   };
+}
+
+/**
+ * The order a card's children go along their rank, with zero-width spacers that put the right one
+ * under the card: dagre aligns a card on its median child, the left of two (`align: "DL"`).
+ *
+ * The conversation reads straight down. Of the children that lead on to a turn, the one that
+ * leads to the most (the earliest on a tie) goes under the card; the other turns stand beside it in
+ * the order they were woken, and the steps that lead to no turn stand outside those, the earlier
+ * half on the left. A card with only steps under it sits over their middle.
+ */
+export function childOrder(
+  children: readonly string[],
+  leadsTo: (id: string) => number,
+  spacer: () => string,
+): string[] {
+  const pad = (count: number) => Array.from({ length: Math.max(0, count) }, spacer);
+  const onward = children.filter((id) => leadsTo(id) > 0);
+  if (onward.length === 0) {
+    const half = children.length / 2;
+    return Number.isInteger(half) && half > 0
+      ? [...children.slice(0, half), ...pad(1), ...children.slice(half)]
+      : [...children];
+  }
+  const main = onward.reduce((best, id) => (leadsTo(id) > leadsTo(best) ? id : best));
+  const at = children.indexOf(main);
+  const steps = children.filter((id) => leadsTo(id) === 0);
+  const outer = Math.ceil(steps.length / 2);
+  const left = [...steps.slice(0, outer), ...onward.filter((id) => children.indexOf(id) < at)];
+  const right = [...onward.filter((id) => children.indexOf(id) > at), ...steps.slice(outer)];
+  return left.length < right.length
+    ? [...pad(right.length - left.length - 1), ...left, main, ...right]
+    : [...left, main, ...right, ...pad(left.length - right.length)];
 }
 
 /**

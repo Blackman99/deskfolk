@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The conversation in a flow runs straight down, not off to the bottom right
+
+- In a job where Bots went back and forth many times, each turn on the flow stood one place to the right of the one before, so the board ran diagonally down and to the right, and the later it got the further you had to drag sideways. A turn's own steps (reading its scale, reading a Bot's words…) went to the left of the turn it woke, and a card stood over the middle of that row. The next turn now stands right under the one before, so the conversation reads down one line. Steps sit on either side, and other Bots the same card woke stand beside it in the order they were woken, and the whole board is a good deal narrower.
+
 ### The tree keeps the folder a link opened while you walk inside it
 
 - If a message linked a folder outside the workspace, such as `~/my-projects/curio`, and you opened a subfolder from the tree on the left, the tree turned into that subfolder alone. Opening a file then removed the tree and left only that file's preview. The tree now keeps the folder you opened as its root: subfolders expand where they are, and opening a file changes only the preview. Workspace paths behave the same way: after opening a file from a link in the text, opening another file that message handed over no longer folds the tree away. A tab reopened after a restart still lists that folder.

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { USER_MEMBER, type TaskTrace, type TaskTraceNode, type TraceStep } from "@real-bot/protocol";
 import { answerJson, attachSteps, stepAnomalous } from "./trace-steps.ts";
-import { traceFlow } from "./task-trace.ts";
+import { childOrder, traceFlow } from "./task-trace.ts";
 import { copyFor } from "../copy.ts";
 
 function node(over: Partial<TaskTraceNode> = {}): TaskTraceNode {
@@ -170,4 +170,104 @@ test("an answer unfolds as a value only when the whole of it is JSON, fenced or 
   expect(answerJson('"stop"')).toBeNull();
   expect(answerJson("42")).toBeNull();
   expect(answerJson("null")).toBeNull();
+});
+
+/** Every two boxes on the board, cards and steps alike, that share any area. */
+function overlaps(flow: ReturnType<typeof traceFlow>): string[] {
+  const boxes = [
+    ...flow.placements.map((p) => ({ id: p.node.turn_id, ...p })),
+    ...flow.steps.map((p) => ({ id: p.group.id, ...p })),
+  ];
+  const hits: string[] = [];
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i]!;
+      const b = boxes[j]!;
+      if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) hits.push(`${a.id} over ${b.id}`);
+    }
+  }
+  return hits;
+}
+
+test("the conversation runs straight down, with each turn's steps on either side of the turn it woke", () => {
+  // The board a group of three video Bots drew (2026-10-15): every turn's own readings came before
+  // the turn it woke, so each turn stood right of the one before and the job ran off down-right.
+  const turns = [
+    node({ turn_id: "user:m1", actor: USER_MEMBER, created_at: at(0) }),
+    node({ turn_id: "t1", actor: "bot-a", woken_by_turn_id: "user:m1", created_at: at(5) }),
+    node({ turn_id: "t2", actor: "bot-b", woken_by_turn_id: "t1", created_at: at(60) }),
+    // Woken with t2 by the same turn, and nothing follows from it.
+    node({ turn_id: "t2-aside", actor: "bot-c", woken_by_turn_id: "t1", created_at: at(61) }),
+    node({ turn_id: "t3", actor: "bot-a", woken_by_turn_id: "t2", created_at: at(120) }),
+    node({ turn_id: "t4", actor: "bot-b", woken_by_turn_id: "t3", created_at: at(180) }),
+  ];
+  const steps = [
+    step({ message_id: "m1", created_at: at(1) }),
+    step({ role: "compaction", prompt_id: "call.compact", turn_id: "t1", created_at: at(40) }),
+    step({ prompt_id: "call.read_bot_line", turn_id: "t1", created_at: at(50) }),
+    step({ prompt_id: "call.read_bot_line", turn_id: "t2", created_at: at(110) }),
+    step({ prompt_id: "call.read_bot_line", turn_id: "t2-aside", created_at: at(111) }),
+    step({ role: "compaction", prompt_id: "call.compact", turn_id: "t3", created_at: at(150) }),
+    step({ prompt_id: "call.read_bot_line", turn_id: "t3", created_at: at(170) }),
+    step({ prompt_id: "call.read_bot_line", turn_id: "t4", created_at: at(200) }),
+    step({ role: "organizer", prompt_id: "call.organizer", turn_id: "t4", created_at: at(210) }),
+  ];
+  const trace: TaskTrace = { id: "task-1", dir: "work/x", title: "x", session_id: "group-1", closed_at: null, nodes: turns, steps };
+  for (const boxes of [new Map(), new Map(turns.map((row, i) => [row.turn_id, { width: 248, height: 120 + i * 37 }]))]) {
+    const flow = traceFlow(trace, boxes);
+    const centre = (id: string) => {
+      const box = flow.placements.find((p) => p.node.turn_id === id) ?? flow.steps.find((p) => p.group.id === id)!;
+      return box.x + box.width / 2;
+    };
+    for (const id of ["t1", "t2", "t3", "t4"]) expect(centre(id)).toBe(centre("user:m1"));
+    // The two kinds of call under t1 and t3 stand one on each side; the turn woken beside t2 stands right of it.
+    const under = (id: string) => flow.edges.filter((edge) => edge.from === id && edge.to.startsWith("step:")).map((edge) => centre(edge.to));
+    for (const id of ["t1", "t3", "t4"]) expect(under(id).map((x) => Math.sign(x - centre(id))).sort()).toEqual([-1, 1]);
+    expect(centre("t2-aside")).toBeGreaterThan(centre("t2"));
+    expect(overlaps(flow)).toEqual([]);
+  }
+});
+
+test("on a board with steps, nothing overlaps however the turns branch", () => {
+  let seed = 11;
+  const next = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const kinds = [["reader", "call.read_bot_line"], ["compaction", "call.compact"], ["organizer", "call.organizer"]] as const;
+  for (let round = 0; round < 150; round++) {
+    const turns: TaskTraceNode[] = [node({ turn_id: "user:m1", actor: USER_MEMBER, created_at: at(0) })];
+    const steps: TraceStep[] = [];
+    const count = 3 + Math.floor(next() * 24);
+    for (let i = 1; i < count; i++) {
+      const waker = turns[Math.floor(next() * turns.length)]!.turn_id;
+      turns.push(node({ turn_id: `t${i}`, actor: `bot-${i % 3}`, woken_by_turn_id: waker, created_at: at(i * 10 + next() * 5), summary: "字".repeat(Math.floor(next() * 80)) }));
+      for (const [role, prompt] of kinds) {
+        if (next() < 0.5) steps.push(step({ role, prompt_id: prompt, turn_id: `t${i}`, created_at: at(i * 10 + 6 + next() * 3) }));
+      }
+    }
+    const trace: TaskTrace = { id: "task-1", dir: "work/x", title: "x", session_id: "group-1", closed_at: null, nodes: turns, steps };
+    const measured = new Map(turns.map((row) => [row.turn_id, { width: 248, height: 90 + Math.floor(next() * 200) }]));
+    expect(overlaps(traceFlow(trace))).toEqual([]);
+    expect(overlaps(traceFlow(trace, measured))).toEqual([]);
+  }
+});
+
+test("a card's children go along their rank so the one leading on stands under it", () => {
+  const leads: Record<string, number> = { a: 0, b: 0, c: 0, T: 3, U: 1, V: 1 };
+  let n = 0;
+  const order = (children: string[]) => childOrder(children, (id) => leads[id] ?? 0, () => `_${n++}`);
+  // dagre lines a card up with the median of its children, the left one of two.
+  const under = (row: string[]) => row[Math.floor((row.length - 1) / 2)];
+  for (const children of [["a", "b", "T"], ["a", "T"], ["T", "a"], ["T"], ["a", "b", "c", "T"], ["a", "T", "U", "b"], ["U", "a", "b", "T", "V"]]) {
+    n = 0;
+    expect(under(order(children))).toBe("T");
+  }
+  n = 0;
+  // Steps outside, earlier half on the left; other turns beside it in the order they were woken.
+  expect(order(["a", "b", "T"])).toEqual(["a", "T", "b"]);
+  expect(order(["a", "U", "b", "T", "V"])).toEqual(["a", "U", "T", "V", "b"]);
+  // The one leading to the most turns is under the card; on a tie, the earliest.
+  expect(under(order(["U", "V"]))).toBe("U");
+  // Steps alone: the card stands over their middle, a spacer when there is an even number of them.
+  n = 0;
+  expect(order(["a", "b"])).toEqual(["a", "_0", "b"]);
+  expect(order(["a", "b", "c"])).toEqual(["a", "b", "c"]);
 });
