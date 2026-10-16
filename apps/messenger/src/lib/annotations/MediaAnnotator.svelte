@@ -448,9 +448,15 @@
 		min-height: 96px;
 		border-radius: var(--radius-md);
 	}
+	/*
+	 * Each on its own compositing layer. Painted into the pane's shared layer, they went blank in the
+	 * desktop window under load while the chat beside it scrolled or streamed: a WebKit paint drop
+	 * below the composited video, not a DOM change.
+	 */
 	.media-annot-timeline,
 	.media-annot-actions {
 		flex-shrink: 0;
+		will-change: transform;
 	}
 
 	.media-annot-timeline {

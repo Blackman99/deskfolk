@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A video's annotation timeline no longer blinks beside a busy chat
+
+- Under a video in a preview, the annotation timeline and the Annotate here button kept blinking out while a Bot worked or while you scrolled the conversation beside it, most of all when the Mac was busy. Nothing about them changed; the window simply skipped drawing them. They now stay on screen.
+
 ### Permission modes: one for the app, one per Bot if you like, and the workspace is no longer a permission line
 
 - What a Bot may do without asking you is now one of four permission modes, chosen in Settings › General: **Read-only** (reads files and looks things up; writes no files, runs no commands, changes no setup), **Ask first** (every file write, command and setup change waits for your card), **Auto**, the default (writes files and runs commands; adding or changing MCP servers, endpoints or built-in prompts waits for your card) and **Allow all** (asks nothing). A Bot's panel can give that Bot its own mode, or let it follow the app's; only you can change either.
