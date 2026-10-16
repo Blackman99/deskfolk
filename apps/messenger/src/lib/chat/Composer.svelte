@@ -22,7 +22,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { isLiveStatus } from './transcript.ts';
 	import { workspaceDropTarget } from '../workspace-drag.svelte.ts';
-	import { ComposerAttachments } from './composer-attachments.svelte.ts';
+	import { ComposerAttachments, pastedFiles } from './composer-attachments.svelte.ts';
 	import { handleComposerKey, type ComposerKeyContext } from './composer-keys.ts';
 	import { ComposerMentions } from './composer-mentions.svelte.ts';
 	import { ComposerVoice, caretIn, insertHeardAt, spacedHeard } from './composer-voice.svelte.ts';
@@ -330,21 +330,11 @@
 			ev.preventDefault();
 			return;
 		}
-		const items = ev.clipboardData?.items;
-		if (items) {
-			const files: File[] = [];
-			for (let i = 0; i < items.length; i++) {
-				const item = items[i];
-				if (item.kind === 'file' && item.type.startsWith('image/')) {
-					const file = item.getAsFile();
-					if (file) files.push(file);
-				}
-			}
-			if (files.length > 0) {
-				ev.preventDefault();
-				attachments.addFiles(files);
-				return;
-			}
+		const files = pastedFiles(ev.clipboardData);
+		if (files.length > 0) {
+			ev.preventDefault();
+			attachments.addFiles(files);
+			return;
 		}
 
 		ev.preventDefault();

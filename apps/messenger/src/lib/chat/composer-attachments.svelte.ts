@@ -15,6 +15,23 @@ export type ComposerAttachmentsDeps = {
   editorEl: () => HTMLDivElement | null;
 };
 
+/**
+ * The files a paste carries: a screenshot, or anything Finder's Copy put there. Finder hands a
+ * folder over as an empty file with no type, which would go out as nothing, so it is left out.
+ */
+export function pastedFiles(data: DataTransfer | null | undefined): File[] {
+  const files: File[] = [];
+  const items = data?.items;
+  if (!items) return files;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item?.kind !== "file" || item.webkitGetAsEntry?.()?.isDirectory) continue;
+    const file = item.getAsFile();
+    if (file) files.push(file);
+  }
+  return files;
+}
+
 /** Files and workspace paths staged on the conversation, from the picker, a paste, a drop or the file tree. */
 export class ComposerAttachments {
   private readonly deps: ComposerAttachmentsDeps;
@@ -46,7 +63,7 @@ export class ComposerAttachments {
       }
       const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
       let name = file.name;
-      if (!name || name === "image.png" || name === "blob") {
+      if (isImage && (!name || name === "image.png" || name === "blob")) {
         name = `image-${Date.now().toString().slice(-4)}.png`;
       }
       next.push({ id, file, name, size: file.size, isImage, previewUrl });

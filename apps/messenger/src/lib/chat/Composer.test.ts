@@ -344,6 +344,40 @@ test("a phone attaches a film of any size", () => {
   close();
 });
 
+/** What WebKit's paste event carries after a Copy in Finder: one file item each, and no text. */
+function pasteFiles(editor: HTMLElement, entries: { file: File; isDirectory?: boolean }[]): Event {
+  const items = entries.map(({ file, isDirectory = false }) => ({
+    kind: "file",
+    type: file.type,
+    getAsFile: () => file,
+    webkitGetAsEntry: () => ({ isDirectory, isFile: !isDirectory }),
+  }));
+  const ev = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(ev, "clipboardData", { value: { items, types: ["Files"], getData: () => "" } });
+  editor.dispatchEvent(ev);
+  flushSync();
+  return ev;
+}
+
+test("files copied in Finder paste in as attachments, whatever they are, and a folder is left out", () => {
+  const { editor, runtime, close } = open("");
+  const ev = pasteFiles(editor, [
+    { file: new File(["%PDF-1.4"], "report.pdf", { type: "application/pdf" }) },
+    { file: new File(["# notes"], "notes.md", { type: "text/markdown" }) },
+    { file: new File([], "folder", { type: "" }), isDirectory: true },
+    { file: new File(["png"], "shot.png", { type: "image/png" }) },
+  ]);
+  expect(ev.defaultPrevented).toBe(true);
+  const staged = runtime.sessionView(runtime.selectedId!).stagedAttachments;
+  expect(staged.map((row) => [row.name, row.isImage])).toEqual([
+    ["report.pdf", false],
+    ["notes.md", false],
+    ["shot.png", true],
+  ]);
+  expect(editor.textContent).toBe("");
+  close();
+});
+
 function typeAt(editor: HTMLElement): void {
   editor.textContent = "@";
   const range = document.createRange();

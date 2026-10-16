@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Files copied in Finder paste into the message box
+
+- Copy files in Finder and press ⌘V in the message box: each one is attached, whatever it is (a PDF, a document, a spreadsheet, a video), the same as picking it with the paperclip. Before, only pictures came in this way and anything else did nothing.
+- A folder among what you copied is left out, since it can't go along as an attachment.
+
 ### A deleted Bot's name can be used again
 
 - Creating or renaming a Bot with the name of one you had deleted said "That name is already used.", although the deleted Bot is gone from the roster and can no longer be @-mentioned. A deleted Bot no longer holds its name. Two Bots on the roster still cannot share a name, archived ones included, because a name is what @ and other Bots use to reach a Bot.
