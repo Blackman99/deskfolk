@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A deleted Bot's name can be used again
+
+- Creating or renaming a Bot with the name of one you had deleted said "That name is already used.", although the deleted Bot is gone from the roster and can no longer be @-mentioned. A deleted Bot no longer holds its name. Two Bots on the roster still cannot share a name, archived ones included, because a name is what @ and other Bots use to reach a Bot.
+
 ### A video's annotation timeline no longer blinks beside a busy chat
 
 - Under a video in a preview, the annotation timeline and the Annotate here button kept blinking out while a Bot worked or while you scrolled the conversation beside it, most of all when the Mac was busy. Nothing about them changed; the window simply skipped drawing them. They now stay on screen.

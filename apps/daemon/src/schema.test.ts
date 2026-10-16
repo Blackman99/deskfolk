@@ -116,12 +116,19 @@ describe("schema", () => {
     store.close();
   });
 
-  test("alive bot names are unique; deleted names stay taken", () => {
+  test("alive bot names are unique, archived ones included; a deleted Bot's name is free again", () => {
     const store = new Store();
     const a = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
-    expect(() => store.createBot({ name: "Writer", duties: "x", boundaries: "y" })).toThrow();
+    const b = store.createBot({ name: "Editor", duties: "edit", boundaries: "none" });
+    expect(() => store.createBot({ name: "Writer", duties: "x", boundaries: "y" })).toThrow("that name is already used");
+    store.archiveBot(b.bot.id);
+    expect(() => store.createBot({ name: "Editor", duties: "x", boundaries: "y" })).toThrow("that name is already used");
     store.deleteBot(a.bot.id);
-    expect(() => store.createBot({ name: "Writer", duties: "x", boundaries: "y" })).toThrow();
+    const again = store.createBot({ name: "Writer", duties: "x", boundaries: "y" });
+    expect(store.findBotByName("Writer")?.id).toBe(again.bot.id);
+    const renamed = store.createBot({ name: "Reader", duties: "read", boundaries: "none" });
+    store.deleteBot(again.bot.id);
+    expect(store.patchBot(renamed.bot.id, { name: "Writer" }).name).toBe("Writer");
     store.close();
   });
 

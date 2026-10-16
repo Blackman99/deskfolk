@@ -381,7 +381,7 @@ export function aliveBot(ctx: StoreContext, id: string): BotRow {
 
 export function assertNameFree(ctx: StoreContext, name: string): void {
   const taken = ctx.db
-    .query<{ id: string }, [string]>(`SELECT id FROM bots WHERE name = ? LIMIT 1`)
+    .query<{ id: string }, [string]>(`SELECT id FROM bots WHERE name = ? AND deleted_at IS NULL LIMIT 1`)
     .get(name);
   if (taken) throw new HttpError(409, "conflict", "that name is already used");
 }
