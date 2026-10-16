@@ -15,7 +15,6 @@
 	import type { Copy } from '../copy.ts';
 	import MarkdownBody from '../MarkdownBody.svelte';
 	import { canQuoteReply } from './quote-reply.ts';
-	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { transcriptItemKey } from './transcript.ts';
 	import type { TranscriptStage } from './transcript-stage.ts';
@@ -80,7 +79,6 @@
 		<div class="msg-header is-right">
 			{#if isMulti}
 				<span class="segment-count-badge mono">{t.chat.messageCount(group.items.length)}</span>
-				<span class="sender-name">{t.common.you}</span>
 			{:else}
 				{@const single = group.items[0]}
 				{#if single.type === 'message'}
@@ -88,7 +86,6 @@
 						{formatMessageTime(single.message.created_at)}
 					</span>
 				{/if}
-				<span class="sender-name">{t.common.you}</span>
 			{/if}
 		</div>
 		<div class="msg-segments is-user-segments flex flex-col gap-4 w-full">
@@ -311,13 +308,6 @@
 			{/each}
 		</div>
 	</div>
-	{#if stage.showOwnAvatar}
-		<div class="avatar-col">
-			<div class="user-avatar" title={t.common.you}>
-				{rosterLetter(t.common.you)}
-			</div>
-		</div>
-	{/if}
 </div>
 
 <style>
@@ -334,29 +324,6 @@
 		max-width: 80%;
 		align-self: flex-end;
 		justify-content: flex-end;
-	}
-
-	.avatar-col {
-		flex-shrink: 0;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-	}
-
-	.user-avatar {
-		width: 32px;
-		height: 32px;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-weight: 700;
-		font-size: 13px;
-		/* The mark's white teammate: the pane's colour ringed in the accent, not a solid black disc. */
-		background: var(--pane);
-		color: var(--accent);
-		border: 1.5px solid var(--accent);
-		user-select: none;
 	}
 
 	.msg-content {
@@ -378,12 +345,6 @@
 
 	.msg-header.is-right {
 		justify-content: flex-end;
-	}
-
-	.sender-name {
-		font-weight: 650;
-		color: var(--ink);
-		font-size: 13px;
 	}
 
 	.segment-count-badge {
@@ -592,7 +553,7 @@
 		background: var(--you);
 		color: var(--you-text);
 		border: 1px solid transparent;
-		/* The corner nearest your avatar is the mark's bubble tail. */
+		/* The corner toward your side is the mark's bubble tail. */
 		border-radius: var(--radius-lg) var(--radius-xs) var(--radius-lg) var(--radius-lg);
 		box-shadow: var(--shadow-xs);
 	}
@@ -845,13 +806,6 @@
 			min-width: 0;
 		}
 
-		.sender-name {
-			min-width: 0;
-			overflow: hidden;
-			white-space: nowrap;
-			text-overflow: ellipsis;
-		}
-
 		.msg-header .segment-count-badge,
 		.msg-header .msg-time {
 			flex-shrink: 0;
@@ -859,11 +813,6 @@
 
 		.msg-header .msg-time {
 			margin-left: auto;
-		}
-
-		/* Your own portrait next to a name that already says 你 costs 42px of every line. */
-		.msg-wrap.is-user .avatar-col {
-			display: none;
 		}
 
 		.msg {

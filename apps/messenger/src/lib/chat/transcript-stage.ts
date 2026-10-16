@@ -27,7 +27,8 @@ export type TranscriptStage = {
   readonly connected: boolean;
   readonly lockedComposer: boolean;
   readonly fileDrop: boolean;
-  readonly showOwnAvatar: boolean;
+  /** Your direct with one Bot, where a line's side and bubble say who said it: see ChatStage. */
+  readonly sidesSayWho: boolean;
   readonly highlightedId: string | null;
   readonly selectedMessageId: string | null;
   readonly copiedMessageId: string | null;

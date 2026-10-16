@@ -38,30 +38,34 @@
 		ontouchstart={stage.handleMessageTouchStart}
 		oncontextmenu={(e) => stage.handleMessageContextMenu(e, singleMsg.message)}
 	>
-		<div class="avatar-col">
-			{#if askBot}
-				<button
-					type="button"
-					class="bot-avatar is-clickable"
-					style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
-					title={t.top.botSettings}
-					onclick={() => stage.onOpenProfile(askBot.id)}
-				>
-					{#if avatarSrc(askBot.avatar)}
-						<img src={avatarSrc(askBot.avatar)} alt={askBot.name} class="avatar-img" />
-					{:else}
-						{rosterLetter(askBot.name)}
-					{/if}
-				</button>
-			{:else}
-				<div class="bot-avatar" style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};">
-					?
-				</div>
-			{/if}
-		</div>
+		{#if !stage.sidesSayWho}
+			<div class="avatar-col">
+				{#if askBot}
+					<button
+						type="button"
+						class="bot-avatar is-clickable"
+						style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
+						title={t.top.botSettings}
+						onclick={() => stage.onOpenProfile(askBot.id)}
+					>
+						{#if avatarSrc(askBot.avatar)}
+							<img src={avatarSrc(askBot.avatar)} alt={askBot.name} class="avatar-img" />
+						{:else}
+							{rosterLetter(askBot.name)}
+						{/if}
+					</button>
+				{:else}
+					<div class="bot-avatar" style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};">
+						?
+					</div>
+				{/if}
+			</div>
+		{/if}
 		<div class="msg-content">
 			<div class="msg-header">
-				{#if askBot}
+				{#if stage.sidesSayWho}
+					<!-- Your direct: the side says it is the Bot asking. -->
+				{:else if askBot}
 					<button
 						type="button"
 						class="sender-name is-clickable"

@@ -10,12 +10,12 @@ import ChatStage from "./ChatStage.svelte";
 
 const t = copyFor("zh");
 
-for (const [label, session, ownAvatar] of [
+for (const [label, session, marked] of [
   ["user-Bot direct", aDirect(), false],
   ["group", aGroup(), true],
   ["Bot-Bot direct", aBotDirect(), true],
 ] as const) {
-  test(`${label} puts a face beside every other speaker's line, and yours only outside a direct`, () => {
+  test(`${label} ${marked ? "puts a face and name beside each Bot's line" : "leaves who said each line to its side and bubble"}, and none beside yours`, () => {
     const messages = (["user", "bot", "ask", "system"] as const).map((kind, index) => aMessage({
       id: `avatar-${kind}`, session_id: session.id, kind,
       author: kind === "user" ? "user" : "bot-1",
@@ -36,15 +36,23 @@ for (const [label, session, ownAvatar] of [
       for (const message of messages) {
         const row = host.querySelector(`[data-message-id="${message.id}"]`)?.closest(".msg-wrap");
         expect(row).not.toBeNull();
-        expect(Boolean(row?.querySelector(".avatar-col"))).toBe(message.kind === "user" ? ownAvatar : true);
+        expect(Boolean(row?.querySelector(".avatar-col"))).toBe(message.kind === "user" ? false : marked);
+        expect(Boolean(row?.querySelector(".msg-header .sender-name"))).toBe(message.kind === "user" ? false : marked);
+        if (message.kind === "bot" || message.kind === "system") {
+          expect(Boolean(row?.querySelector(".msg-header .bot-badge"))).toBe(marked);
+        }
         expect(row?.textContent).toContain(message.body);
       }
       const streamingRow = host.querySelector(".is-streaming-wrap");
       expect(streamingRow).not.toBeNull();
-      expect(streamingRow?.querySelector(".avatar-col .bot-avatar")).not.toBeNull();
+      expect(Boolean(streamingRow?.querySelector(".avatar-col .bot-avatar"))).toBe(marked);
       expect(streamingRow?.textContent).toContain("Streaming reply");
-      host.querySelector<HTMLButtonElement>(".is-bot .sender-name")?.click();
-      expect(openedProfile).toBe("bot-1");
+      if (marked) {
+        host.querySelector<HTMLButtonElement>(".is-bot .sender-name")?.click();
+        expect(openedProfile).toBe("bot-1");
+      } else {
+        expect(streamingRow?.querySelector(".msg-header")).toBeNull();
+      }
     } finally {
       close();
     }

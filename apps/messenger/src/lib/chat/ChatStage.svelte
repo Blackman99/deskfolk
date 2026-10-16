@@ -118,10 +118,12 @@
 		? snapshot.delegations.filter((row) => row.thread_session_id === stageSessionId) : []);
 	const linkedDelegationMessages = $derived(new Set(delegations.flatMap((row) =>
 		[row.request_message_id, row.result_message_id].filter((id): id is string => id !== null))));
-	// The other side always shows who is talking: in a direct the app's lines sit among the
-	// Bot's, and without the mark beside them a receipt reads as the Bot speaking. Your own side
-	// in a direct is only ever you, so your portrait there would just repeat the 你 above it.
-	const showOwnAvatar = $derived(selectedKind !== 'you-bot');
+	// Your own lines never carry a face or 你: the bubble on the right is only ever yours. In your
+	// direct with a Bot the left is only ever that Bot, whom the conversation's header names, so its
+	// lines carry no face, name or Bot tag either. The app's lines sit on the left among the Bot's,
+	// so they keep Deskfolk's mark and name, or a receipt would read as the Bot speaking. A group
+	// and a Bot ↔ Bot direct have more than one speaker on the left, so theirs keep face and name.
+	const sidesSayWho = $derived(selectedKind === 'you-bot');
 	const selectedPeer = $derived(selected ? youBotPeer(selected) : null);
 	const selectedPeerBot = $derived(selectedPeer ? (botsById.get(selectedPeer) ?? null) : null);
 	const lockedComposer = $derived(composerLocked(selected, botsById));
@@ -878,7 +880,7 @@
 		get connected() { return connected; },
 		get lockedComposer() { return lockedComposer; },
 		get fileDrop() { return fileDrop; },
-		get showOwnAvatar() { return showOwnAvatar; },
+		get sidesSayWho() { return sidesSayWho; },
 		get highlightedId() { return highlightedId; },
 		get selectedMessageId() { return selectedMessageId; },
 		get copiedMessageId() { return copiedMessageId; },

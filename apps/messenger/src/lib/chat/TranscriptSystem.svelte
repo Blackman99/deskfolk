@@ -62,49 +62,53 @@
 		ontouchstart={stage.handleMessageTouchStart}
 		oncontextmenu={(e) => stage.handleMessageContextMenu(e, singleMsg.message)}
 	>
-		<div class="avatar-col">
-			{#if appLine}
-				<div class="app-avatar" aria-hidden="true">
-					<BrandMark size={20} />
-				</div>
-			{:else if sysBot}
-				<button
-					type="button"
-					class="bot-avatar is-clickable"
-					style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
-					title={t.top.botSettings}
-					onclick={() => stage.onOpenProfile(sysBot.id)}
-				>
-					{#if avatarSrc(sysBot.avatar)}
-						<img src={avatarSrc(sysBot.avatar)} alt={sysBot.name} class="avatar-img" />
-					{:else}
-						{rosterLetter(sysBot.name)}
-					{/if}
-				</button>
-			{:else}
-				<div class="bot-avatar" style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};">
-					?
-				</div>
-			{/if}
-		</div>
+		{#if appLine || !stage.sidesSayWho}
+			<div class="avatar-col">
+				{#if appLine}
+					<div class="app-avatar" aria-hidden="true">
+						<BrandMark size={20} />
+					</div>
+				{:else if sysBot}
+					<button
+						type="button"
+						class="bot-avatar is-clickable"
+						style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
+						title={t.top.botSettings}
+						onclick={() => stage.onOpenProfile(sysBot.id)}
+					>
+						{#if avatarSrc(sysBot.avatar)}
+							<img src={avatarSrc(sysBot.avatar)} alt={sysBot.name} class="avatar-img" />
+						{:else}
+							{rosterLetter(sysBot.name)}
+						{/if}
+					</button>
+				{:else}
+					<div class="bot-avatar" style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};">
+						?
+					</div>
+				{/if}
+			</div>
+		{/if}
 		<div class="msg-content">
 			<div class="msg-header">
 				{#if appLine}
 					<span class="sender-name">{t.chat.appName}</span>
 					<span class="app-badge">{t.chat.appBadge}</span>
-				{:else if sysBot}
-					<button
-						type="button"
-						class="sender-name is-clickable"
-						onclick={() => stage.onOpenProfile(sysBot.id)}
-						title={t.top.botSettings}
-					>
-						{stage.who(singleMsg.message)}
-					</button>
+				{:else if stage.sidesSayWho}
+					<!-- Your direct: the side says it is the Bot's line. -->
 				{:else}
-					<span class="sender-name">{stage.who(singleMsg.message)}</span>
-				{/if}
-				{#if !appLine}
+					{#if sysBot}
+						<button
+							type="button"
+							class="sender-name is-clickable"
+							onclick={() => stage.onOpenProfile(sysBot.id)}
+							title={t.top.botSettings}
+						>
+							{stage.who(singleMsg.message)}
+						</button>
+					{:else}
+						<span class="sender-name">{stage.who(singleMsg.message)}</span>
+					{/if}
 					<span class="bot-badge">{t.chat.botBadge}</span>
 				{/if}
 				<span class="msg-time mono" title={formatFullTimestamp(singleMsg.message.created_at)}>

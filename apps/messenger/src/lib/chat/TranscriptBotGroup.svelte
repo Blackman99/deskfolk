@@ -94,52 +94,56 @@
 	class:is-group={isMulti}
 	class:is-streaming-wrap={hasStreaming}
 >
-	<div class="avatar-col">
-		{#if botAuthor}
-			<button
-				type="button"
-				class="bot-avatar is-clickable"
-				class:is-streaming-avatar={hasStreaming}
-				style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
-				title={t.top.botSettings}
-				onclick={() => stage.onOpenProfile(botAuthor.id)}
-			>
-				{#if avatarSrc(botAuthor.avatar)}
-					<img src={avatarSrc(botAuthor.avatar)} alt={botAuthor.name} class="avatar-img" />
-				{:else}
-					{rosterLetter(botAuthor.name)}
-				{/if}
-			</button>
-		{:else}
-			<div
-				class="bot-avatar"
-				class:is-streaming-avatar={hasStreaming}
-				style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
-				title={t.top.deleted}
-			>
-				{rosterLetter('?')}
-			</div>
-		{/if}
-	</div>
-	<div class="msg-content">
-		<div class="msg-header">
+	{#if !stage.sidesSayWho}
+		<div class="avatar-col">
 			{#if botAuthor}
 				<button
 					type="button"
-					class="sender-name is-clickable"
-					onclick={() => stage.onOpenProfile(botAuthor.id)}
+					class="bot-avatar is-clickable"
+					class:is-streaming-avatar={hasStreaming}
+					style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
 					title={t.top.botSettings}
+					onclick={() => stage.onOpenProfile(botAuthor.id)}
 				>
-					{botAuthor.name}
+					{#if avatarSrc(botAuthor.avatar)}
+						<img src={avatarSrc(botAuthor.avatar)} alt={botAuthor.name} class="avatar-img" />
+					{:else}
+						{rosterLetter(botAuthor.name)}
+					{/if}
 				</button>
 			{:else}
-				<span class="sender-name">{stage.whoAuthor(group.author)}</span>
-			{/if}
-			<span class="bot-badge">{t.chat.botBadge}</span>
-			{#if botAuthor?.model}
-				<span class="model-badge mono">{botAuthor.model}</span>
+				<div
+					class="bot-avatar"
+					class:is-streaming-avatar={hasStreaming}
+					style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
+					title={t.top.deleted}
+				>
+					{rosterLetter('?')}
+				</div>
 			{/if}
 		</div>
+	{/if}
+	<div class="msg-content">
+		{#if !stage.sidesSayWho}
+			<div class="msg-header">
+				{#if botAuthor}
+					<button
+						type="button"
+						class="sender-name is-clickable"
+						onclick={() => stage.onOpenProfile(botAuthor.id)}
+						title={t.top.botSettings}
+					>
+						{botAuthor.name}
+					</button>
+				{:else}
+					<span class="sender-name">{stage.whoAuthor(group.author)}</span>
+				{/if}
+				<span class="bot-badge">{t.chat.botBadge}</span>
+				{#if botAuthor?.model}
+					<span class="model-badge mono">{botAuthor.model}</span>
+				{/if}
+			</div>
+		{/if}
 
 		<div class="msg-segments flex flex-col gap-2 w-full">
 			{#each group.items as item, idx (transcriptItemKey(item))}

@@ -11,6 +11,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - Copy files in Finder and press ⌘V in the message box: each one is attached, whatever it is (a PDF, a document, a spreadsheet, a video), the same as picking it with the paperclip. Before, only pictures came in this way and anything else did nothing.
 - A folder among what you copied is left out, since it can't go along as an attachment.
 
+### Who said a line is told by its side, not by a face over it
+
+- Your own lines no longer carry your avatar or "You" over them, in a direct or a group: the bubble on the right is only ever yours. The time stays.
+- In your direct with a Bot, its lines no longer carry its avatar, its name or the "Bot" tag: the left is only ever that Bot, and the conversation's header already names it and its model. A question it asks keeps its "?" and time, an "Interrupted" line its time.
+- The app's own lines in a direct (a receipt, a hand-over waiting for you) still show Deskfolk's mark and name, so they don't read as the Bot talking. In a group and in a Bot ↔ Bot direct, where more than one speaker sits on the left, each Bot's line keeps its avatar, name and tag.
+
 ### A deleted Bot's name can be used again
 
 - Creating or renaming a Bot with the name of one you had deleted said "That name is already used.", although the deleted Bot is gone from the roster and can no longer be @-mentioned. A deleted Bot no longer holds its name. Two Bots on the roster still cannot share a name, archived ones included, because a name is what @ and other Bots use to reach a Bot.
