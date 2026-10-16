@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The way into a Bot ↔ Bot direct sits in the middle under its line
+
+- Under a line that opened a Bot ↔ Bot direct, the chip into that direct and "Show this job" above it are now centred under the line, with room above and below, instead of hugging its left edge where they read as part of the message.
+
 ### Files copied in Finder paste into the message box
 
 - Copy files in Finder and press ⌘V in the message box: each one is attached, whatever it is (a PDF, a document, a spreadsheet, a video), the same as picking it with the paperclip. Before, only pictures came in this way and anything else did nothing.
