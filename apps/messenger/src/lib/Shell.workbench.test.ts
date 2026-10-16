@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { flushSync } from 'svelte';
 import { USER_MEMBER, type TaskTrace } from '@real-bot/protocol';
 import { emptySnapshot } from './snapshot.ts';
-import { aBot, aDirect, aGroup, aMessage, fakeRuntime } from './test-fixtures.ts';
+import { aBot, aBotDirect, aDirect, aGroup, aMessage, fakeRuntime } from './test-fixtures.ts';
 import { reactive } from './test-reactive.svelte.ts';
 import { click, render } from './test-render.ts';
 import { copyFor } from './copy.ts';
@@ -743,3 +743,26 @@ test('a kind set to float opens where you last moved it, after it was closed', a
   expect(saved.floating.map((pane: { frame: unknown }) => pane.frame)).toEqual([{ x: 140, y: 110, width: 500, height: 400 }]);
 });
 
+
+test('a file opened from a Bot↔Bot direct\'s popup opens beside the conversation under it, and the popup stays shut', async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const direct = aBotDirect({ id: 'bb-1', origin_session_id: 'direct-1', origin_message_id: 'line-1' });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ name: 'Researcher' }), aBot({ id: 'bot-2', name: 'Helper' })], sessions: [aDirect(), direct],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: 'direct-1' }));
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  runtime.botDmSessionId = 'bb-1';
+  await settle();
+  runtime.paneOpener?.({ kind: 'preview', sessionId: 'bb-1', relpath: 'work/notes.md', attachmentId: null, messageId: 'dm-1' });
+  await settle();
+  expect(runtime.botDmSessionId).toBeNull();
+  const t = copyFor('en');
+  expect([...host.querySelectorAll('.wb-tab-button')].map((tab) => tab.textContent?.trim()))
+    .toEqual(['Researcher', t.pane.artifactsOf('Researcher')]);
+  // Following the preview tab never selects the direct, which would open its popup again.
+  expect(runtime.calls.filter((call) => call.name === 'selectSession' && call.args[0] === 'bb-1')).toHaveLength(0);
+  localStorage.removeItem('real-bot-workbench-layout');
+});

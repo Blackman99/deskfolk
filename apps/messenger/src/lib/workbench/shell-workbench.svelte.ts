@@ -179,7 +179,7 @@ export class ShellWorkbench {
           runtime.closeBotDm();
           // "The terminal", asked for without naming one, is the one you have if there is one.
           if (content.kind === "terminal" && !content.terminalId) void this.showTerminal();
-          else this.openGuarded(this.ownSettings(content));
+          else this.openGuarded(this.ownSettings(this.underBotDirect(content)));
         });
       };
       return () => {
@@ -231,10 +231,28 @@ export class ShellWorkbench {
       const tab = leaf?.tabs.find((candidate) => candidate.id === leaf.activeTabId);
       untrack(() => {
         runtime.spendOpen = tab?.kind === "spend";
-        if (id && runtime.selectedId !== id) void runtime.selectSession(id, { preservePage: true });
+        // A Bot↔Bot direct is never the selection: selecting it opens its popup again (ADR 0091).
+        if (id && runtime.selectedId !== id && !this.isBotDirect(id)) void runtime.selectSession(id, { preservePage: true });
       });
     });
   }
+
+  private isBotDirect = (sessionId: string): boolean => {
+    const session = this.getRuntime().snapshot.sessions.find((row) => row.id === sessionId);
+    return session ? classifySession(session) === "bot-bot" : false;
+  };
+
+  /**
+   * A file or a flow opened from a Bot↔Bot direct's popup belongs to the conversation under the
+   * popup: a pane of the direct's own would select the direct, and that opens the popup again.
+   */
+  private underBotDirect = (content: PaneContent): PaneContent => {
+    if (content.kind === "chat" || !("sessionId" in content) || !content.sessionId) return content;
+    if (!this.isBotDirect(content.sessionId)) return content;
+    const under = this.getRuntime().selectedId;
+    if (content.kind === "preview") return { ...content, sessionId: under };
+    return under ? { ...content, sessionId: under } : content;
+  };
 
   freshPaneId = (): string => `wb-${Date.now().toString(36)}-${++this.paneSeq}`;
 
