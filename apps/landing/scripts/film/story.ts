@@ -32,6 +32,8 @@ export type StoryText = {
   go: string;
   /** Your word on a hand-over that waits on you (ADR 0084): it lets it through, as 放行 on a card did. */
   pass: string;
+  /** Asked on camera only when your change was made and nothing handed over since (step 8). */
+  handBack: string;
   status: string;
 };
 
@@ -60,6 +62,7 @@ export const TEXT: Record<Lang, StoryText> = {
     change: '片尾的 logo 再大一点。',
     go: '继续',
     pass: '可以，就用这版。',
+    handBack: '改好的这版交上来，让审片再看一眼。',
     status: '怎么样了'
   },
   en: {
@@ -84,6 +87,7 @@ export const TEXT: Record<Lang, StoryText> = {
     change: 'Make the logo at the end bigger.',
     go: 'Continue.',
     pass: 'Looks good, go with this one.',
+    handBack: 'Hand the new cut in so the Reviewer can look again.',
     status: 'How is it going?'
   }
 };
@@ -169,7 +173,13 @@ export async function playStory(s: Stage): Promise<void> {
    */
   const planOf = async (sessionId: string, line: string) => {
     const said = line.replace(/\s+/g, ' ').trim();
-    return items(await s.api('GET', `/v1/sessions/${sessionId}/tasks`)).find((x: any) => x.session_id === sessionId && said.startsWith(x.title)) ?? null;
+    const here = items(await s.api('GET', `/v1/sessions/${sessionId}/tasks`)).filter((x: any) => x.session_id === sessionId);
+    const named = here.find((x: any) => said.startsWith(x.title));
+    if (named) return named;
+    // A lead may name the job itself ("Dawn kettle promo", 2026-10-15): then it is the job your line
+    // is filed under.
+    const yours = (await groupLines(sessionId)).filter((m: any) => m.kind === 'user' && String(m.body).replace(/\s+/g, ' ').trim() === said).at(-1);
+    return (yours?.task_id && here.find((x: any) => x.id === yours.task_id)) || null;
   };
   const detail = async (planId: string) => s.api('GET', `/v1/tasks/${planId}`);
   const holdsInForce = async () => items(await s.api('GET', '/v1/holds'));
@@ -597,6 +607,8 @@ export async function playStory(s: Stage): Promise<void> {
   /* 8 · Done has a definition: checks the app runs, a review with evidence, your word */
   await s.scene(8);
   const seenFailed = new Set<string>();
+  let quietSince = 0;
+  let askedBack = false;
   await until(
     'every ticket through',
     async () => {
@@ -621,6 +633,19 @@ export async function playStory(s: Stage): Promise<void> {
       // Your change: a hand-over made after it, approved, with nothing still being checked or reviewed.
       const subs = await submissionsOf();
       const open = subs.some((sub: any) => ['checking', 'submitted', 'in_review'].includes(sub.state));
+      // Your change made and nothing handed over since, everyone quiet: what was approved is the old
+      // cut. Asked for on camera, once. A change to an approved ticket's work is handed over only when
+      // the Bot hands it over, and on 2026-10-15 a Producer changed the film in launch/ and only
+      // replied (that folder is the job's, not the ticket's, so nothing sent it back).
+      const quiet = !subs.some((sub: any) => sub.created_at > changedAt)
+        && !(await sessions()).some((x: any) => (x.live_turns ?? []).length > 0) && !(await rendering());
+      quietSince = quiet ? quietSince || Date.now() : 0;
+      if (!askedBack && quiet && Date.now() - quietSince > 45_000) {
+        askedBack = true;
+        s.log('nothing handed over after your change: asking for it on camera');
+        await s.type(composer(), t.handBack);
+        await s.press(composer(), 'Enter');
+      }
       // And nothing still waiting on your word: coming back, the work is settled.
       const waiting = (await awaitingWord()).length > 0;
       return through && !open && !waiting && subs.some((sub: any) => sub.created_at > changedAt && sub.state === 'approved');

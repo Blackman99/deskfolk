@@ -35,6 +35,14 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - If a message linked a folder outside the workspace, such as `~/my-projects/curio`, and you opened a subfolder from the tree on the left, the tree turned into that subfolder alone. Opening a file then removed the tree and left only that file's preview. The tree now keeps the folder you opened as its root: subfolders expand where they are, and opening a file changes only the preview. Workspace paths behave the same way: after opening a file from a link in the text, opening another file that message handed over no longer folds the tree away. A tab reopened after a restart still lists that folder.
 - On the phone, opening a file from inside such a folder closed the preview. The file now opens.
 
+### The README's pictures stand one to a row, with the phone beside them
+
+- The README's four screenshots each take a full row now instead of a two-by-two table, and under them four phone screenshots stand side by side: the conversations, the Producer's answer with the film in it, the job's checks, the film. They, the home page's three clips, its first-screen still and the share images are re-filmed on today's look (one ground under the sidebar and the tabs with the pane as the card, file chips, a reply's last line). The stop screenshot's caption reads "your next line sets it going", as the app now does.
+
+### The README's film draws today's app
+
+- The README's 30-second film and the site's "Watch the film" draw the app as it looks today: the two-row composer, the approval card's waiting header and buttons, file chips in a reply with its last line, and tabs as pills over the card.
+
 ## 0.1.0-rc.19 — 2026-10-15
 
 Signed and notarized macOS rc, with an experimental, still unsigned Windows installer beside the `.dmg`s.

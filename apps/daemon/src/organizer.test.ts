@@ -282,7 +282,14 @@ test("a quiet plan runs its stale checks before the settle payload is built, and
   h.events.length = 0;
   const other = h.store.createCheckByUser(plan.id, { item: "另一条", kind: "command", command: "true" });
   await h.engine.runPlanChecks(plan.id, { cause: "edit", checkIds: [other.id] });
-  expect(h.store.getCheck(other.id).last_run).toMatchObject({ outcome: "pass", cause: "edit" });
+  // A settle's own run may still hold the plan (after a settle, checks with no run yet are run, this
+  // new one among them): the edit run then waits behind it and the call returns when that one ends,
+  // with the settle's run as the check's last. The macOS release runner was that slow (2026-10-15).
+  const editRun = () => h.store.db
+    .query<{ outcome: string }, [string]>("SELECT outcome FROM acceptance_check_runs WHERE check_id = ? AND cause = 'edit' AND finished_at IS NOT NULL")
+    .get(other.id);
+  await until(() => editRun() !== null);
+  expect(editRun()).toEqual({ outcome: "pass" });
   const upserts = h.events.filter((event) => event.event === "task.upsert") as Array<{ checks?: Array<{ id: string; last_run: { outcome: string } | null }> }>;
   expect(upserts.length).toBeGreaterThan(0);
   const withResult = upserts.at(-1)!.checks?.find((row) => row.id === other.id);
