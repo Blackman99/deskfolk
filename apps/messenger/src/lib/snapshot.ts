@@ -156,6 +156,10 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
           session.origin_message_id !== undefined
             ? session.origin_message_id
             : (existing?.origin_message_id ?? null),
+        entry_message_id:
+          session.entry_message_id !== undefined
+            ? session.entry_message_id
+            : (existing?.entry_message_id ?? null),
         unread_count:
           session.unread_count !== undefined ? session.unread_count : (existing?.unread_count ?? 0),
         waiting_on_you:

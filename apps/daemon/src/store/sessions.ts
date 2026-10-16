@@ -66,6 +66,29 @@ export function ensureFileDropSession(ctx: StoreContext): SessionDetail {
   return getSession(ctx, FILE_DROP_SESSION_ID);
 }
 
+/**
+ * Where each session's entry point hangs in the conversation it came from. A direct can be opened
+ * off a line the conversation never shows — the app's note to a Bot that a job finished, or a
+ * check-back — and an entry keyed on that line had nothing to hang under (2026-10-16). It falls
+ * back to the last shown line at or before the opener, in the transcript's own order;
+ * `origin_message_id` stays the real opener, which check-backs read.
+ */
+function entryMessageIds(ctx: StoreContext, sessionId?: string): Map<string, string | null> {
+  const rows = ctx.db
+    .query<{ id: string; entry_message_id: string | null }, string[]>(
+      `SELECT s.id AS id,
+         (SELECT m.id FROM messages m
+          WHERE m.session_id = s.origin_session_id
+            AND m.kind != 'profile_change' AND ${notBotOnlyLine("m")}
+            AND (m.created_at < o.created_at OR (m.created_at = o.created_at AND m.id <= o.id))
+          ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS entry_message_id
+       FROM sessions s JOIN messages o ON o.id = s.origin_message_id
+       WHERE s.origin_session_id IS NOT NULL${sessionId ? " AND s.id = ?" : ""}`,
+    )
+    .all(...(sessionId ? [sessionId] : []));
+  return new Map(rows.map((row) => [row.id, row.entry_message_id]));
+}
+
 export function listSessions(ctx: StoreContext): SessionSummary[] {
   const deletedBotIds = new Set(
     ctx.db
@@ -113,6 +136,7 @@ export function listSessions(ctx: StoreContext): SessionSummary[] {
   }
   const unreadBySession = unreadCountsBySession(ctx);
   const waitingBySession = waitingOnYouBySession(ctx);
+  const entries = entryMessageIds(ctx);
   return sessions
     .filter((s) => {
       const parts = bySession.get(s.id) ?? [];
@@ -129,6 +153,7 @@ export function listSessions(ctx: StoreContext): SessionSummary[] {
       ...s,
       last_read_at: s.last_read_at ?? null,
       archived_at: s.archived_at ?? null,
+      entry_message_id: entries.get(s.id) ?? null,
       participants: bySession.get(s.id) ?? [],
       last_message: lastMessagesBySession.get(s.id) ?? null,
       live_turns: liveTurnsBySession.get(s.id) ?? [],
@@ -173,6 +198,7 @@ export function getSession(ctx: StoreContext, id: string, opts: { messageLimit?:
     ...session,
     last_read_at: session.last_read_at ?? null,
     archived_at: session.archived_at ?? null,
+    entry_message_id: entryMessageIds(ctx, id).get(id) ?? null,
     participants,
     messages,
     turns,

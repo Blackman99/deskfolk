@@ -48,8 +48,15 @@ export type Session = {
   archived_at?: string | null;
   /** The session whose message opened this one. Only a Bot↔Bot direct has one. */
   origin_session_id: string | null;
-  /** The message that opened this session; the entry point to it hangs under that message. */
+  /** The message that opened this session. */
   origin_message_id: string | null;
+  /**
+   * The line in the origin conversation the entry point hangs under: the opening message when
+   * the conversation shows it, else the last line it shows before that one — an app note only
+   * the Bot reads (a finished job, a check-back) can open a direct too. Null when nothing shown
+   * comes before it; absent from an older daemon. Read it with `?? origin_message_id`.
+   */
+  entry_message_id?: string | null;
   /**
    * The engine it runs (ADR 0085); null follows Settings' default. Absent from a daemon older than
    * that ADR. A Bot↔Bot direct or a job's thread runs the engine of the conversation it came from.

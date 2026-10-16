@@ -37,7 +37,7 @@ The conversation container of a direct or a group. Messages, turns, judgements, 
 _Avoid_: channel, room, treating a thread as a session
 
 **Origin**:
-The message a Bot↔Bot direct was opened from: the message that woke the opening Bot for the turn in which it opened the direct. The direct's entry hangs under that message and is the only way in: it pops the direct up over the conversation on screen, and the popup shows its origin and can be clicked to go back to it. Once the origin session is cleared or deleted, the direct has no origin and can still be read as usual.
+The message a Bot↔Bot direct was opened from: the message that woke the opening Bot for the turn in which it opened the direct. The direct's entry hangs under that message — or, when the conversation does not show that message (a line only the Bot reads, such as a finished job's note or a check-back), under the last line it shows before it — and is the only way in: it pops the direct up over the conversation on screen, and the popup shows its origin and can be clicked to go back to it. Once the origin session is cleared or deleted, the direct has no origin and can still be read as usual.
 _Avoid_: parent session, thread, taking the Bot's own line "I'll go ask X" as the origin
 
 **Handoff**:

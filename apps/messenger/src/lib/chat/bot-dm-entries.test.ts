@@ -15,6 +15,12 @@ test("directs opened from the same message bucket together, oldest first", () =>
   expect(index.get("msg-1")?.map((s) => s.id)).toEqual(["earlier", "later"]);
 });
 
+/** Opened off a line the transcript never shows (a finished job's note): it hangs under the daemon's entry line. */
+test("a direct hangs under its entry line when the daemon gives one", () => {
+  const index = indexBotDmsByOrigin([withMessage({ origin_message_id: "hidden-note", entry_message_id: "msg-0" })], "sess-1");
+  expect([...index.keys()]).toEqual(["msg-0"]);
+});
+
 test("a direct opened from another session is left out", () => {
   const index = indexBotDmsByOrigin([withMessage({ origin_session_id: "sess-2" })], "sess-1");
   expect(index.size).toBe(0);

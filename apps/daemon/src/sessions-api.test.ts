@@ -414,6 +414,30 @@ describe("a Bot↔Bot direct is view-only", () => {
     expect(listed).toBeDefined();
     expect(listed?.origin_session_id).toBe(group.id);
     expect(listed?.origin_message_id).toBe(trigger.id);
+    expect((listed as { entry_message_id?: string | null }).entry_message_id).toBe(trigger.id);
+  });
+
+  /** 2026-10-16: 视频导演 opened its talks with 审片Bot off a finished job's note, and no entry showed. */
+  test("a direct opened off a line only the Bot reads hangs under the last line you can see", async () => {
+    const h = await start();
+    const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const reviewer = h.store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+    const home = writer.direct_session.id;
+    const shown = h.store.postMessage(home, { body: "make the cut" });
+    const note = h.store.insertMessage({
+      sessionId: home, kind: "system", author: writer.bot.id, body: "job done", botOnly: true,
+    });
+    const direct = h.store.createBotDirect(writer.bot.id, reviewer.bot.id, { sessionId: home, messageId: note.id });
+    h.store.postMessage(home, { body: "later line" });
+
+    const res = await fetch(`${h.origin}/v1/sessions`, { headers: auth(h) });
+    const body = (await res.json()) as {
+      items: Array<{ id: string; origin_message_id: string | null; entry_message_id?: string | null }>;
+    };
+    const listed = body.items.find((s) => s.id === direct.id);
+    expect(listed?.origin_message_id).toBe(note.id);
+    expect(listed?.entry_message_id).toBe(shown.id);
+    expect(h.store.getSession(direct.id).entry_message_id).toBe(shown.id);
   });
 });
 

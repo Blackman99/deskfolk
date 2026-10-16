@@ -1,7 +1,7 @@
 import type { Bot, SessionSummary, Turn } from "@real-bot/protocol";
 import { classifySession, isSessionArchived } from "../sidebar/session-groups.ts";
 
-/** Bot↔Bot directs opened from a session, keyed by the message each one hangs under. */
+/** Bot↔Bot directs opened from a session, keyed by the message each one hangs under (`entry_message_id`). */
 export type BotDmIndex = ReadonlyMap<string, SessionSummary[]>;
 
 /**
@@ -27,13 +27,14 @@ export function indexBotDmsByOrigin(
   if (!originSessionId) return index;
   for (const session of sessions) {
     if (session.origin_session_id !== originSessionId) continue;
-    if (!session.origin_message_id) continue;
+    const entry = session.entry_message_id ?? session.origin_message_id;
+    if (!entry) continue;
     if (classifySession(session) !== "bot-bot") continue;
     if (isSessionArchived(session, botsById)) continue;
     if (!worthShowing(session, turns)) continue;
-    const bucket = index.get(session.origin_message_id);
+    const bucket = index.get(entry);
     if (bucket) bucket.push(session);
-    else index.set(session.origin_message_id, [session]);
+    else index.set(entry, [session]);
   }
   // Oldest first: the order the bot opened them.
   for (const bucket of index.values()) {

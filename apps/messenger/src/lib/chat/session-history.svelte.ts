@@ -227,7 +227,8 @@ export class SessionHistory {
   private async openBotDm(session: SessionSummary, opts?: { messageId?: string }): Promise<void> {
     const origin = session.origin_session_id;
     if (!this.host.selectedId && origin && this.host.snapshot.sessions.some((row) => row.id === origin)) {
-      await this.host.selectSession(origin, session.origin_message_id ? { messageId: session.origin_message_id } : undefined);
+      const entry = session.entry_message_id ?? session.origin_message_id;
+      await this.host.selectSession(origin, entry ? { messageId: entry } : undefined);
     }
     this.botDmSessionId = session.id;
     await this.peekSession(session.id, opts);
@@ -398,6 +399,7 @@ export class SessionHistory {
               archived_at: detail.archived_at ?? s.archived_at ?? null,
               origin_session_id: detail.origin_session_id ?? s.origin_session_id ?? null,
               origin_message_id: detail.origin_message_id ?? s.origin_message_id ?? null,
+              entry_message_id: detail.entry_message_id ?? s.entry_message_id ?? null,
               created_at: detail.created_at,
               updated_at: detail.updated_at,
               participants: detail.participants,

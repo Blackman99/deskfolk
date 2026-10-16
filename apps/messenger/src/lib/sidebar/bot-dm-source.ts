@@ -55,7 +55,7 @@ export function resolveBotDmOrigin(
   return {
     kind: "session",
     session: immediate,
-    messageId: session.origin_message_id,
+    messageId: session.entry_message_id ?? session.origin_message_id,
     depth,
     root: root && root.id !== immediate.id ? root : null,
   };
