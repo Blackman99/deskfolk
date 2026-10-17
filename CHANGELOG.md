@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Bots come back to the conversation to say how their direct went
+
+- Once a Bot ↔ Bot direct a Bot opened itself goes quiet, the Bot that opened it comes back to the conversation it came from and says what the direct came to. At the default engine level this did not happen before: the talk stopped in the direct and you had to open it to see.
+- A Bot opens a direct only from a conversation you are in. Inside a Bot ↔ Bot direct it can no longer open another; it settles things there and the outcome goes back to the original conversation.
+
 ### Long jobs are no longer cut off at a hop limit
 
 - A Bot's turn no longer has its tools taken away after a set number of tool calls in a row (160, or 200 on the video engine), and a Claude Agent Bot no longer fails as "stuck" 40 steps past that. A turn now runs for as long as the work takes and ends when the Bot replies, you stop it, or something fails. Long renders and other long jobs used to stop mid-work on it, even with the limit raised to its maximum of 400.

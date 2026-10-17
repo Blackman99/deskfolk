@@ -149,6 +149,11 @@ export function createGroup(ctx: ToolCtx, args: Record<string, unknown>): ToolRe
 }
 
 export function createDirect(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  // A direct opens from a conversation the user is in, and its outcome is reported back there.
+  // Opened from another Bot-only one, it would report into a room the user only reads.
+  if (!ctx.store.isPresent(ctx.sessionId, USER_MEMBER)) {
+    return fail("not_a_member", "a direct opens only from a session the user is in; finish here, and the outcome is reported back where this one came from");
+  }
   const other = ctx.store.requireBotByName(requireString(args.name, "name"));
   const session = ctx.store.createBotDirect(ctx.botId, other.id, turnOrigin(ctx));
   return {

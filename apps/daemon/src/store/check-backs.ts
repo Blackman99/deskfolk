@@ -319,13 +319,18 @@ function insertCheckBack(
 
 /**
  * From the supervisor's level (ADR 0045) the app's own call-backs of the levels before — a plan
- * nudge, a report-back to the opener of a quiet Bot↔Bot direct — are the supervisor's to make, so
- * one still pending from before is voided instead of firing. True when it was one of those.
+ * nudge, a report-back to the opener of a quiet delegation thread — are the supervisor's to make,
+ * so one still pending from before is voided instead of firing. True when it was one of those. A
+ * report-back from a direct a Bot opened with create_direct is not: nothing else brings that
+ * opener back (ADR 0093).
  */
 export function voidRetiredCallBack(ctx: StoreContext, id: string, now: string = isoNow()): boolean {
   if (readEngineLevel(ctx.db) < ENGINE_LEVELS.supervision) return false;
   return ctx.db.query(`UPDATE check_backs SET voided_at = ?, suspended_at = NULL
-    WHERE id = ? AND fired_at IS NULL AND (kind = ? OR (kind IS NULL AND cause = 'delegation')) RETURNING id`).get(now, id, PLAN_NUDGE) !== null;
+    WHERE id = ? AND fired_at IS NULL AND (kind = ? OR (kind IS NULL AND cause = 'delegation' AND NOT EXISTS (
+      SELECT 1 FROM turns t JOIN sessions s ON s.id = t.session_id
+       WHERE t.id = check_backs.turn_id AND s.kind = 'direct' AND s.thread_task_id IS NULL AND s.origin_session_id = check_backs.session_id)))
+    RETURNING id`).get(now, id, PLAN_NUDGE) !== null;
 }
 
 export function getCheckBack(ctx: StoreContext, id: string): CheckBack {
@@ -540,6 +545,12 @@ export type QuietDirect = {
   peerSpoke: boolean;
   /** The turn that opened the direct was itself woken by a report-back. */
   openedFromReportBack: boolean;
+  /**
+   * The opener's newest turn in the direct, which the report-back hangs on: from the delegation
+   * level a check-back hangs on a turn of its own Bot. Null: the opener never ran there, so what
+   * the other Bot said reached it where it was already at work, or nothing was said.
+   */
+  openerTurnId: string | null;
 };
 
 /**
@@ -598,7 +609,12 @@ export function quietDirect(ctx: StoreContext, directId: string): QuietDirect | 
           .get(direct.origin_message_id),
       )
     : false;
-  return { originSessionId: direct.origin_session_id, openerId: opener, peerId, latest, peerSpoke, openedFromReportBack };
+  const openerTurnId = ctx.db
+    .query<{ id: string }, [string, string]>(
+      `SELECT id FROM turns WHERE session_id = ? AND bot_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+    )
+    .get(directId, opener)?.id ?? null;
+  return { originSessionId: direct.origin_session_id, openerId: opener, peerId, latest, peerSpoke, openedFromReportBack, openerTurnId };
 }
 
 /**

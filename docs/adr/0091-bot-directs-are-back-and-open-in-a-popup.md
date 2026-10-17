@@ -1,6 +1,6 @@
 # Bot 私聊回来了，在弹窗里看 / Bot↔Bot directs are back, read in a popup
 
-Status: implemented 2026-10-15. Supersedes, for the direct a Bot opens itself, decision 3 of [ADR 0044](0044-delegation-and-end-contract.md) ("3 级不提供 create_direct，直接调用也拒绝" and "普通发言、收尾和点名在场对方都是 `peer_note`、`wakes=0`"); a pair's delegation thread keeps both. Brings back [ADR 0020](0020-bot-direct-per-trigger.md)'s fresh direct per trigger at every engine level. Takes Bot↔Bot directs out of [ADR 0025](0025-desktop-pane-workbench.md)'s workbench: no tab, no placement setting.
+Status: implemented 2026-10-15; decision 1 narrowed by [ADR 0093](0093-directs-open-from-your-conversations-and-report-back.md) (only from a session you are in, reported back there). Supersedes, for the direct a Bot opens itself, decision 3 of [ADR 0044](0044-delegation-and-end-contract.md) ("3 级不提供 create_direct，直接调用也拒绝" and "普通发言、收尾和点名在场对方都是 `peer_note`、`wakes=0`"); a pair's delegation thread keeps both. Brings back [ADR 0020](0020-bot-direct-per-trigger.md)'s fresh direct per trigger at every engine level. Takes Bot↔Bot directs out of [ADR 0025](0025-desktop-pane-workbench.md)'s workbench: no tab, no placement setting.
 
 ## 背景 / Context
 

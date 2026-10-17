@@ -4,7 +4,9 @@
  * where it started with what the direct came to — once per stretch of new lines, and never against
  * a direct that a report-back itself opened and the other Bot never answered, since two Bots must
  * not bounce on silence. The quiet clock lives in this process: a restart inside the window drops
- * that one report. Below the supervisor's level only (ADR 0045).
+ * that one report. From the supervisor's level (ADR 0045) a delegation thread is left to the
+ * delegation's answer and the supervisor; a direct opened with create_direct still reports, since
+ * nothing else brings its opener back (ADR 0093).
  */
 import type { Turn } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "../ablation";
@@ -48,13 +50,13 @@ export function createDirectReport(deps: DirectReportDeps): DirectReport {
     if (ablation.has("direct-report")) return;
     let session;
     try {
-      // From the supervisor's level a request's reply, or the supervisor, brings the opener back (ADR 0045).
-      if (store.capabilities().engine_level >= ENGINE_LEVELS.supervision) return;
       session = store.getSession(turn.session_id);
+      if (session.kind !== "direct" || !session.origin_session_id) return;
+      // From the supervisor's level a request's reply, or the supervisor, brings the opener back (ADR 0045).
+      if (retired(session.id)) return;
     } catch {
       return;
     }
-    if (session.kind !== "direct" || !session.origin_session_id) return;
     clearTimeout(directTimers.get(session.id));
     directTimers.delete(session.id);
     if (turn.status !== "completed" || admission?.draining) return;
@@ -83,12 +85,15 @@ export function createDirectReport(deps: DirectReportDeps): DirectReport {
     let booked: CheckBack;
     let held: boolean;
     try {
-      if (store.capabilities().engine_level >= ENGINE_LEVELS.supervision) return;
+      if (retired(directId)) return;
       if (store.listLiveTurns({ sessionId: directId }).length > 0) return;
       if (store.listPendingCheckBacks(directId).length > 0) return;
       const quiet = store.quietDirect(directId);
       if (!quiet?.latest) return;
       if (quiet.openedFromReportBack && !quiet.peerSpoke) return;
+      // From the delegation level a check-back hangs on a turn of its own Bot: the opener's in the direct.
+      const hang = store.capabilities().engine_level >= ENGINE_LEVELS.delegation ? quiet.openerTurnId : lastTurnId;
+      if (!hang) return;
       // Asked of the opener and of the peer's work in the direct, which is what it would be told about.
       const job = store.getTurn(lastTurnId);
       const on = { taskId: job.task_id ?? null, ticketId: job.ticket_id ?? null };
@@ -112,7 +117,7 @@ export function createDirectReport(deps: DirectReportDeps): DirectReport {
       booked = store.bookReportBack({
         botId: quiet.openerId,
         sessionId: quiet.originSessionId,
-        turnId: lastTurnId,
+        turnId: hang,
         note,
       });
     } catch {
@@ -125,6 +130,11 @@ export function createDirectReport(deps: DirectReportDeps): DirectReport {
     } catch {
       // left pending: the scheduler's next tick fires it
     }
+  }
+
+  /** A delegation thread's report is the supervisor's from its level on; a create_direct one's never is. */
+  function retired(directId: string): boolean {
+    return store.capabilities().engine_level >= ENGINE_LEVELS.supervision && store.isPairThread(directId);
   }
 
   function clearTimers(): void {

@@ -35,7 +35,7 @@ ADR 0040 §5 wants "not stopping before done" to rest on facts in the database, 
 
 9. **blocked 的持久提问 / Durable blocked questions.** 4 级起 `end_turn({reason:"blocked", needs_from_user})` 留下一张提问卡（`control.kind = work_question`，在这件事的会话，否则规划的会话，否则你和这个 Bot 的私聊），附一条 `ask` 通知；工作项 `waiting_on = {kind:"user"}`。`POST /v1/messages/:id/work-answer { body }`（本机和远端白名单）写下你的原话：一次，带请求 id，同一请求重发不重复；作为你的一行进这件事的收件，工作项排队、立即派发；叫停覆盖时只被扣住，不解除任何叫停。答过、过时（之后又有新的提问）、来源段还没结束、工作关闭、Bot 归档、会话归档的，一律拒绝。工作项离开「blocked 且等这张卡」（新的提问、别的消息叫醒后的一段结束、关闭）时，卡记下 `superseded_at`、不再给回答框，`ask` 通知作废（`voided`，`superseded`），不再撑着 Dock 角标；由库触发器 `work_question_asks_follow_work` 保证，谁改的工作项都一样，打开时补作废旧版本留下的。3 级以下照旧只发一行文字。
 
-10. **退场 / Retired at level 4.** 规划叫回（`plan-watch` 的对账和 10 分钟计时器）与 report_back（`direct-report` 的 10 秒计时器）在 4 级不再运行；之前订下、还没触发的 `plan_nudge` 和 report-back 回看在触发时作废。观察任务进展（`observeTicket`）各级都保留。0–3 级的路径原样保留。
+10. **退场 / Retired at level 4.** （[ADR 0093](0093-directs-open-from-your-conversations-and-report-back.md) 起，`create_direct` 开的私聊的 report_back 各级都在，只有委派线程的照此退场。/ From ADR 0093 the report-back of a direct opened with `create_direct` runs at every level; only a delegation thread's is retired here.）规划叫回（`plan-watch` 的对账和 10 分钟计时器）与 report_back（`direct-report` 的 10 秒计时器）在 4 级不再运行；之前订下、还没触发的 `plan_nudge` 和 report-back 回看在触发时作废。观察任务进展（`observeTicket`）各级都保留。0–3 级的路径原样保留。
 
 11. **排队顺序 / Queue order.** 排队派发按收件优先级：你的话 1 → 委派结果 2 → 监督器叫醒和委派请求 3 → Bot 自己约的回看和日程 4，同级按先后。
 

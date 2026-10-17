@@ -1,5 +1,5 @@
 /** The transcript window a turn sees, with the pictures it may look at. */
-import type { Attachment, Locale, Message } from "@real-bot/protocol";
+import { USER_MEMBER, type Attachment, type Locale, type Message } from "@real-bot/protocol";
 import { existsSync, statSync } from "node:fs";
 import { annotationContext } from "../annotation-context";
 import { askTranscriptText } from "../ask";
@@ -12,6 +12,9 @@ import { botDisplayName, oneLineClip, PLAN_TAG_TITLE_MAX } from "./common";
 
 const MAIN_LIMIT = 40;
 const BODY_LIMIT = 4000;
+/** How much of a quiet Bot↔Bot direct rides under the report-back that calls its opener home. */
+const REPORTED_DIRECT_LINES = 20;
+const REPORTED_DIRECT_LINE_MAX = 1000;
 
 /** Marks the message that opened this turn. Chinese in every locale, like transcript prefixes. */
 export const TRIGGER_FLAG = "（本轮触发）";
@@ -120,17 +123,38 @@ export function transcriptWindow(
     if (m.kind === "user") annotated.set(m.id, annotationContext(store, m.id, locale));
   }
   const { images, cropsSent } = windowImages(store, unique, input.selfBotId, input.triggerMessageId, annotated, input.loopPictures);
+  const direct = reportedDirect(store, trigger, input.sessionId, locale);
   return unique.map((m) =>
     serializeTranscript(
       store,
       m,
       input.selfBotId,
       input.triggerMessageId,
-      annotated.get(m.id)?.textFor(cropsSent.get(m.id) ?? 0) ?? "",
+      (annotated.get(m.id)?.textFor(cropsSent.get(m.id) ?? 0) ?? "") + (m.id === trigger.id ? direct : ""),
       images.get(m.id) ?? [],
       tag({ taskId: m.task_id ?? null, ticketId: m.ticket_id ?? null }),
     ),
   );
+}
+
+/**
+ * The direct a report-back calls its opener home from (ADR 0093), spelled out under that line: the
+ * opener is woken here to say how the direct came out, and this session's window never shows it.
+ * Empty for any other trigger.
+ */
+function reportedDirect(store: Store, trigger: Message, sessionId: string, locale: Locale): string {
+  if (trigger.kind !== "system" || !trigger.turn_id) return "";
+  try {
+    const directId = store.getTurn(trigger.turn_id).session_id;
+    const direct = store.getSession(directId);
+    if (direct.kind !== "direct" || direct.origin_session_id !== sessionId || store.isPresent(directId, USER_MEMBER)) return "";
+    const lines = store.listMainMessages(directId, REPORTED_DIRECT_LINES).reverse()
+      .map((m) => `${prefix(store, m)}${oneLineClip(m.body, REPORTED_DIRECT_LINE_MAX)}`);
+    if (lines.length === 0) return "";
+    return `\n\n${locale === "en" ? "The direct, latest lines:" : "这条私聊最近的对话："}\n${lines.join("\n")}`;
+  } catch {
+    return "";
+  }
 }
 
 /** One image over this is skipped on its own; it never counts against the window. */

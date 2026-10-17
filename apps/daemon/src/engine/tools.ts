@@ -4,7 +4,7 @@
  * tool actually wrote to the workspace is tracked here too, since that is what a closing check and
  * a delivered message both cite.
  */
-import type { AskAnswer, ClientEvent, McpServer, Message, ModelSpeed, Turn } from "@real-bot/protocol";
+import { USER_MEMBER, type AskAnswer, type ClientEvent, type McpServer, type Message, type ModelSpeed, type Turn } from "@real-bot/protocol";
 import { askAnswerText } from "../ask";
 import { runCollabTool, type ToolCtx, type ToolResult } from "../collab-tools";
 import { toolFail } from "../tool-result";
@@ -621,7 +621,9 @@ export function createTools(deps: ToolsDeps): Tools {
     // Desk segments may read and reply, but choosing a job precedes the first effect — unless your
     // line was read as something done where it was asked (ADR 0057).
     turn = store.getTurn(turn.id);
-    const deskAllowed = NO_EFFECT_TOOLS.has(name) || name === "send_message" || name === "ask_user" || name === "work_on" || live.mcpTools.get(name)?.readOnly === true;
+    // create_direct where the user is not opens nothing (ADR 0093): it goes straight to its refusal.
+    const deskAllowed = NO_EFFECT_TOOLS.has(name) || name === "send_message" || name === "ask_user" || name === "work_on" || live.mcpTools.get(name)?.readOnly === true
+      || (name === "create_direct" && !store.isPresent(turn.session_id, USER_MEMBER));
     const trigger = turn.mode === "desk" && !deskAllowed ? store.originalUserRequest(turn.id) ?? store.getMessage(turn.trigger_message_id) : null;
     // Read as done in place — a question, a look-up, a setting, a small action — its effects run at
     // the desk under the same holds and open no job: nothing would ever be handed over on its ticket.
