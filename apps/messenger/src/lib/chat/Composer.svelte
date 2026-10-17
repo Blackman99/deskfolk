@@ -181,9 +181,9 @@
 	);
 
 	/**
-	 * The line under the box. In a direct whose Bot is at work, or still reading your last line, what
-	 * you send reaches it at its next step; only where Send really waits — an older daemon — does it
-	 * say to wait for the reply.
+	 * The editor's description, for readers only. In a direct whose Bot is at work, or still reading
+	 * your last line, what you send reaches it at its next step; only where Send really waits — an
+	 * older daemon — does it say to wait for the reply.
 	 */
 	const composerHint = $derived.by(() => {
 		if (selected?.kind === 'group' || !(liveTurn || pendingHere.length > 0)) return t.chat.sendHint;
@@ -614,10 +614,8 @@
 <ScrollBottomButton shown={showScrollBottom} {t} {onScrollToBottom} />
 </div>
 {#if !lockedComposer}
-	<div class="composer-hint" class:is-quiet={composerHint === t.chat.sendHint} id="composer-hint">
-		<span class="composer-frost-shell composer-hint-shell">
-			<span class="send-shortcut-hint">{composerHint}</span>
-		</span>
+	<div class="composer-hint" id="composer-hint">
+		<span class="send-shortcut-hint">{composerHint}</span>
 	</div>
 {/if}
 </div>
@@ -658,7 +656,7 @@
 		pointer-events: none;
 	}
 
-	/* Frosted ring hugging chips / card / hint — not a full-width bottom bar.
+	/* Frosted ring hugging chips / card — not a full-width bottom bar.
 	   On the shell so backdrop-filter can see the transcript. */
 	.composer-frost-shell::before {
 		content: "";
@@ -840,47 +838,20 @@
 		outline-offset: 2px;
 	}
 
-	.composer-hint {
-		width: 100%;
-		max-width: var(--chat-max-width);
-		min-height: 14px;
-		margin-top: 8px;
-		text-align: center;
-		line-height: 14px;
-		pointer-events: none;
-	}
-
 	/*
-	 * How to send and break a line is on the send button's tooltip; a line under every composer
-	 * saying it again was noise. It stays for readers (the editor's description) and shows only
-	 * when it says something about now: a Bot is working, or Send waits for its reply.
+	 * How to send is on the send button's tooltip, and a Bot at work reads what you send at its next
+	 * step without being told; a line under the composer saying so was noise. It stays for readers
+	 * only, as the editor's description.
 	 */
-	.composer-hint.is-quiet {
+	.composer-hint {
 		position: absolute;
 		width: 1px;
 		height: 1px;
-		min-height: 0;
 		margin: -1px;
 		overflow: hidden;
 		clip-path: inset(50%);
 		white-space: nowrap;
-	}
-
-	.composer-hint-shell {
-		display: inline-flex;
-		border-radius: var(--radius-full);
-	}
-
-	.composer-hint-shell::before {
-		inset: -4px -10px;
-	}
-
-	.send-shortcut-hint {
-		position: relative;
-		z-index: 1;
-		font-size: 11px;
-		color: var(--muted);
-		opacity: 0.92;
+		pointer-events: none;
 	}
 
 	/*
@@ -996,10 +967,6 @@
 			width: 34px;
 			height: 34px;
 			flex-basis: 34px;
-		}
-
-		.composer-hint {
-			display: none;
 		}
 
 		/*

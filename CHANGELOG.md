@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### No line under the message box while a Bot works
+
+- The line under the message box that said "Enter to send — it reads it at its next step · Shift+Enter for newline" while a Bot was at work is gone, as it already was when no Bot was working. What you send still reaches the Bot at its next step; hovering the send button still says "Send (Enter)".
+
 ### A Bot ↔ Bot direct's popup is taller and wider
 
 - The popup a Bot ↔ Bot direct opens in now runs nearly the window's full height, with a margin above and below. Before it stopped at 860 pixels, a little over half of a large window, and took more scrolling. It is also 900 pixels wide instead of 760, room for the whole conversation column.
