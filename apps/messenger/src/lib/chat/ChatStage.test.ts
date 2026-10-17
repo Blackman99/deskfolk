@@ -42,6 +42,11 @@ for (const [label, session, marked] of [
           expect(Boolean(row?.querySelector(".msg-header .bot-badge"))).toBe(marked);
         }
         expect(row?.textContent).toContain(message.body);
+        if (message.kind === "user") {
+          // Your line's time sits under its bubble, as a Bot's does, not over it.
+          expect(row?.querySelector(".msg-header")).toBeNull();
+          expect(row?.querySelector(".msg.is-you + .msg-foot .msg-time")?.textContent?.trim()).toMatch(/^\d{1,2}:\d{2}$/);
+        }
       }
       const streamingRow = host.querySelector(".is-streaming-wrap");
       expect(streamingRow).not.toBeNull();

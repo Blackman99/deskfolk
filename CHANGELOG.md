@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Your line's time sits under it
+
+- The time you sent a line now shows under its bubble, at its right edge, as a Bot's does, instead of over it. "Edited" sits beside it on the same quiet line. In a run of your lines each one carries its own time underneath.
+
 ### The way into a Bot ↔ Bot direct sits in the middle under its line
 
 - Under a line that opened a Bot ↔ Bot direct, the chip into that direct and "Show this job" above it are now centred under the line, with room above and below, instead of hugging its left edge where they read as part of the message.

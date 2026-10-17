@@ -41,6 +41,17 @@
 	>{t.chat.edited}</button>
 {/snippet}
 
+{#snippet foot(message: Message)}
+	<!-- Under the bubble, as under a Bot's line: when you sent it, then 「已编辑」 where what it said before opens. -->
+	<div class="msg-foot">
+		<span class="msg-time mono" title={formatFullTimestamp(message.created_at)}>{formatMessageTime(message.created_at)}</span>
+		{#if message.edited_at && !message.withdrawn_at}
+			<span class="msg-foot-sep" aria-hidden="true">·</span>
+			{@render editedMark(message)}
+		{/if}
+	</div>
+{/snippet}
+
 {#snippet queuedRow(message: Message)}
 	<!-- Still unread (ADR 0069): where it waits, and what you can do about it before a Bot reads it. -->
 	{@const queued = stage.queuedLine(message)}
@@ -76,18 +87,11 @@
 
 <div class="msg-wrap is-user" class:is-group={isMulti}>
 	<div class="msg-content">
-		<div class="msg-header is-right">
-			{#if isMulti}
+		{#if isMulti}
+			<div class="msg-header is-right">
 				<span class="segment-count-badge mono">{t.chat.messageCount(group.items.length)}</span>
-			{:else}
-				{@const single = group.items[0]}
-				{#if single.type === 'message'}
-					<span class="msg-time mono" title={formatFullTimestamp(single.message.created_at)}>
-						{formatMessageTime(single.message.created_at)}
-					</span>
-				{/if}
-			{/if}
-		</div>
+			</div>
+		{/if}
 		<div class="msg-segments is-user-segments flex flex-col gap-4 w-full">
 			{#each group.items as item (transcriptItemKey(item))}
 				{#if item.type === 'message'}
@@ -103,13 +107,6 @@
 						ontouchstart={stage.handleMessageTouchStart}
 						oncontextmenu={(e) => stage.handleMessageContextMenu(e, item.message)}
 					>
-						{#if isMulti}
-							<div class="segment-meta is-right flex items-center gap-3 mt-[1px] mb-[5px] py-0 px-2 text-11 leading-none">
-								<span class="msg-time mono" title={formatFullTimestamp(item.message.created_at)}>
-									{formatMessageTime(item.message.created_at)}
-								</span>
-							</div>
-						{/if}
 						{#if item.message.withdrawn_at}
 							<!-- Taken back before any Bot read it (ADR 0069): the words wait for you, not for a Bot. -->
 							<div class="msg-withdrawn">
@@ -118,6 +115,7 @@
 									<button type="button" class="msg-line-btn" onclick={() => stage.reEditLine(item.message)}>{t.chat.reEditLine}</button>
 								{/if}
 							</div>
+							{@render foot(item.message)}
 						{:else}
 							<article class="msg is-you" class:is-editing={stage.editingHere(item.message)}>
 								<div class="who">{stage.who(item.message)}</div>
@@ -234,11 +232,8 @@
 									/>
 								{/if}
 							</article>
+							{@render foot(item.message)}
 							{@render queuedRow(item.message)}
-							{#if item.message.edited_at}
-								<!-- Under the bubble, where what it said before opens: the hover bar above it would cover a mark by the time. -->
-								<div class="msg-edited-row">{@render editedMark(item.message)}</div>
-							{/if}
 							{#if stage.versionsShown[item.message.id] && stage.versionsShown[item.message.id]!.at === (item.message.edited_at ?? '')}
 								{@const shown = stage.versionsShown[item.message.id]!}
 								<div class="msg-versions" role="region" aria-label={t.chat.earlierVersions}>
@@ -361,15 +356,23 @@
 	.msg-time {
 		font-size: 11px;
 		color: var(--muted);
-		margin-left: 2px;
 	}
 
-	/* 「已编辑」 under the bubble: as quiet as the time, and it opens what the line said before. */
-	.msg-edited-row {
+	/* The time under the bubble, at its right edge, with 「已编辑」 beside it: as quiet as each other. */
+	.msg-foot {
 		display: flex;
 		justify-content: flex-end;
-		margin-top: 3px;
+		align-items: baseline;
+		gap: 6px;
+		margin-top: 4px;
 		padding: 0 2px;
+		line-height: 1.4;
+	}
+
+	.msg-foot-sep {
+		font-size: 11px;
+		color: var(--muted);
+		opacity: 0.6;
 	}
 
 	.msg-edited {
@@ -523,10 +526,6 @@
 
 	.msg-wrap.is-group .msg-segment:not(:first-child) .msg.is-you {
 		border-radius: var(--radius-lg) var(--radius-md) var(--radius-lg) var(--radius-lg);
-	}
-
-	.segment-meta.is-right {
-		justify-content: flex-end;
 	}
 
 	/* Message Cards */
@@ -806,13 +805,8 @@
 			min-width: 0;
 		}
 
-		.msg-header .segment-count-badge,
-		.msg-header .msg-time {
+		.msg-header .segment-count-badge {
 			flex-shrink: 0;
-		}
-
-		.msg-header .msg-time {
-			margin-left: auto;
 		}
 
 		.msg {
