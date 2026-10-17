@@ -595,6 +595,18 @@ export function backOnBoard(
 /** A Bot's turn that left no part of its own (see `traceNodeSaidNothing`, shared with the organizer). */
 export const saidNothing: (node: TaskTraceNode) => boolean = traceNodeSaidNothing;
 
+/**
+ * What a card is, drawn as its outline so the board reads at a glance: a line of yours that started
+ * work (rounded ends, where a flow starts), a decision of yours (pointed ends), a Bot's turn (a box).
+ * The colour stays the status's, so the two never say the same thing twice.
+ */
+export type TraceNodeShape = "line" | "decision" | "turn";
+
+export function traceNodeShape(node: Pick<TaskTraceNode, "actor" | "decision">): TraceNodeShape {
+  if (node.actor !== USER_MEMBER) return "turn";
+  return node.decision ? "decision" : "line";
+}
+
 /** The message a context-menu "show this job" was opened from. */
 export type TraceFocus = { messageId: string; turnId: string | null };
 

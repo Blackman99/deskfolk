@@ -5,7 +5,7 @@
 
 <script lang="ts">
 	import type { TaskTraceNode } from '@real-bot/protocol';
-	import type { TraceFlow, TraceView } from './task-trace.ts';
+	import { traceNodeShape, type TraceFlow, type TraceView } from './task-trace.ts';
 	import {
 		fromMinimap,
 		minimapFrame,
@@ -53,6 +53,13 @@
 	function drawn(at: MinimapFrame, rect: TraceRect, least = 1.5): TraceRect {
 		const box = onMinimap(at, rect);
 		return { ...box, width: Math.max(least, box.width), height: Math.max(least, box.height) };
+	}
+
+	/** A decision's pointed ends, as on the board, small. */
+	function pointed(box: TraceRect): string {
+		const point = Math.min(box.width / 4, box.height / 2);
+		const { x, y, width: w, height: h } = box;
+		return `${x + point},${y} ${x + w - point},${y} ${x + w},${y + h / 2} ${x + w - point},${y + h} ${x + point},${y + h} ${x},${y + h / 2}`;
 	}
 
 	function local(event: { clientX: number; clientY: number }): { x: number; y: number } {
@@ -146,19 +153,32 @@
 			{#each flow.placements as placement (placement.node.turn_id)}
 				{@const box = drawn(frame, placement)}
 				{@const tone = toneOf(placement.node)}
-				<rect
-					class="minimap-card is-{placement.node.status}"
-					class:is-lit={tone === 'lit'}
-					class:is-blamed={tone === 'blamed'}
-					class:is-dim={tone === 'dim'}
-					class:is-focus={tone === 'focus'}
-					data-turn={placement.node.turn_id}
-					x={box.x}
-					y={box.y}
-					width={box.width}
-					height={box.height}
-					rx="1"
-				/>
+				{@const shape = traceNodeShape(placement.node)}
+				{#if shape === 'decision'}
+					<polygon
+						class="minimap-card is-{placement.node.status}"
+						class:is-lit={tone === 'lit'}
+						class:is-blamed={tone === 'blamed'}
+						class:is-dim={tone === 'dim'}
+						class:is-focus={tone === 'focus'}
+						data-turn={placement.node.turn_id}
+						points={pointed(box)}
+					/>
+				{:else}
+					<rect
+						class="minimap-card is-{placement.node.status}"
+						class:is-lit={tone === 'lit'}
+						class:is-blamed={tone === 'blamed'}
+						class:is-dim={tone === 'dim'}
+						class:is-focus={tone === 'focus'}
+						data-turn={placement.node.turn_id}
+						x={box.x}
+						y={box.y}
+						width={box.width}
+						height={box.height}
+						rx={shape === 'line' ? box.height / 2 : 1}
+					/>
+				{/if}
 			{/each}
 			{#if visible}
 				{@const box = onMinimap(frame, visible)}

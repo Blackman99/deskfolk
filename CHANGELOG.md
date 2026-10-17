@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### What a flow card is, you can tell by its outline
+
+- On a job's flow, a line of yours that started work now has rounded ends, a decision of yours (an answer, a let-through, a send-back, a rework) has pointed ends, and the app's own steps (reading your line, filing it, a judge's verdict) are slanted. A Bot's turn stays a box with its status stripe. The colour still says the status; the outline says what the card is, so the kinds tell apart before you read a word.
+- The minimap draws your lines and decisions in the same outlines, so they still tell apart when the board is zoomed out.
+
 ### A busy Bot says where it is working
 
 - When a Bot's face says it is busy but your direct with it is quiet, its header now says where it is: "Thinking in a direct with Reviewer", "Approval in group "Video crew"". Press it to open that conversation; a Bot↔Bot direct opens in its window. Working in more than one place, it says how many and opens a list, the ones waiting on you first. On a phone the line sits under the name, and the word under the name is the Bot's own state ("Thinking"), not "Idle".

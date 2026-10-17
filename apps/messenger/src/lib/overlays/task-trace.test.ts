@@ -29,6 +29,7 @@ import {
   traceFileIsImage,
   traceFileName,
   traceFlow,
+  traceNodeShape,
   wokenByName,
 } from "./task-trace.ts";
 
@@ -559,4 +560,11 @@ test("a round's time is the clock for today and carries the date before that", (
   expect(roundTime(new Date(2026, 8, 25, 9, 5).toISOString(), now)).toBe("09:05");
   expect(roundTime(new Date(2026, 8, 24, 21, 30).toISOString(), now)).toBe("09-24 21:30");
   expect(roundTime("not a time", now)).toBe("");
+});
+
+test("a card's outline says what it is: your line, your decision, or a Bot's turn", () => {
+  expect(traceNodeShape(node({ actor: USER_MEMBER }))).toBe("line");
+  expect(traceNodeShape(node({ actor: USER_MEMBER, decision: { kind: "approve" } }))).toBe("decision");
+  expect(traceNodeShape(node({ actor: USER_MEMBER, decision: null }))).toBe("line");
+  expect(traceNodeShape(node({ actor: "bot", status: "running" }))).toBe("turn");
 });

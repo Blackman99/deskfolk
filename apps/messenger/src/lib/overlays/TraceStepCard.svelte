@@ -17,7 +17,10 @@
 	const step = $derived(group.steps.at(-1)!);
 </script>
 
-<!-- One of the app's own calls (ADR 0083): smaller than a turn's card, its conclusion on one line. -->
+<!--
+	One of the app's own calls (ADR 0083): smaller than a turn's card, its conclusion on one line, and
+	slanted, so the app's own work reads apart from the Bots' boxes and your lines.
+-->
 <button
 	type="button"
 	class="trace-step is-{step.outcome}"
@@ -31,6 +34,7 @@
 	title={stepSaid(step, t)}
 	onclick={onToggle}
 >
+	<span class="trace-step-shape" aria-hidden="true"><span class="trace-step-outline"></span></span>
 	<span class="trace-step-head">
 		<span class="trace-step-dot" aria-hidden="true"></span>
 		<span class="trace-step-title">{stepTitle(step, t)}</span>
@@ -47,38 +51,68 @@
 
 <style>
 	.trace-step {
+		--slant: 8px;
+		--step-edge: var(--line);
+		--step-fill: var(--pane);
+		position: relative;
+		isolation: isolate;
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
 		gap: 2px;
 		width: 100%;
-		padding: 6px 9px;
-		border: 1px dashed var(--line);
-		border-radius: var(--radius-md);
-		background: var(--pane);
+		padding: 6px calc(var(--slant) + 7px);
+		border: 0;
+		background: transparent;
 		color: inherit;
 		text-align: left;
 		cursor: pointer;
 		transition: opacity 0.15s ease;
 	}
 
+	/* A slanted outline is cut, and a cut box loses its border: the outline is a layer under the text,
+	   inside one that is not cut, so a ring drawn round it is not cut away with it. */
+	.trace-step-shape {
+		position: absolute;
+		inset: 0;
+		z-index: -1;
+	}
+
+	.trace-step-outline,
+	.trace-step-outline::after {
+		position: absolute;
+		clip-path: polygon(var(--slant) 0, 100% 0, calc(100% - var(--slant)) 100%, 0 100%);
+	}
+
+	.trace-step-outline {
+		inset: 0;
+		background: var(--step-edge);
+	}
+
+	/* On the board's own colour: the warning fill is a wash in the dark, and the edge would show through. */
+	.trace-step-outline::after {
+		content: '';
+		inset: 1px;
+		background: linear-gradient(var(--step-fill), var(--step-fill)), var(--pane);
+	}
+
 	.trace-step:hover {
-		background: var(--line-subtle);
+		--step-fill: var(--line-subtle);
 	}
 
 	.trace-step.is-open {
-		border-style: solid;
-		border-color: var(--accent);
+		--step-edge: var(--accent);
 	}
 
 	.trace-step.is-anomalous {
-		border-style: solid;
-		border-color: var(--warn);
-		background: var(--warn-bg);
+		--step-edge: var(--warn);
+		--step-fill: var(--warn-bg);
 	}
 
-	.trace-step.is-lit {
-		box-shadow: 0 0 0 2px var(--warn);
+	/* A ring the outline's shape: four shadows of it. */
+	.trace-step.is-lit .trace-step-shape {
+		filter: drop-shadow(2px 0 0 var(--warn)) drop-shadow(-2px 0 0 var(--warn)) drop-shadow(0 2px 0 var(--warn))
+			drop-shadow(0 -2px 0 var(--warn));
 	}
 
 	.trace-step.is-dim {

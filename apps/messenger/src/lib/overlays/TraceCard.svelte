@@ -5,7 +5,7 @@
 	import { buildCitedPathTree, citedBundleName, countCitedFiles } from './artifact-tree.ts';
 	import { type ActorFace, ticketTag } from './plan-board.ts';
 	import type { RouteLogRow } from './route-log.ts';
-	import { saidNothing, traceFileName } from './task-trace.ts';
+	import { saidNothing, traceFileName, traceNodeShape } from './task-trace.ts';
 
 	interface Props {
 		node: TaskTraceNode;
@@ -55,16 +55,22 @@
 		const bundle = citedBundleName(tree);
 		return { tree, fileCount, bundle };
 	}
+
+	const shape = $derived(traceNodeShape(node));
 </script>
 
 <article
-	class="trace-card is-{node.status}"
+	class="trace-card is-{node.status} is-shape-{shape}"
 	class:is-here={here}
 	class:is-focus={focused}
 	class:is-lit={lit}
 	class:is-lit-blamed={litBlamed}
 	class:is-dim={dim}
 >
+	{#if shape === 'decision'}
+		<!-- Pointed ends can only be cut, and a cut box loses its border and rings: they are drawn here. -->
+		<span class="trace-shape" aria-hidden="true"><span class="trace-shape-fill"></span></span>
+	{/if}
 	<button type="button" class="trace-card-main" onclick={onOpen} title={t.trace.jump}>
 		<span class="trace-card-line">
 			<span
@@ -203,80 +209,163 @@
 		line-height: 15px;
 	}
 
+	/* Each status sets its colours; the outline of the card (its shape) is drawn from them. */
 	.trace-card {
-		border: 1px solid var(--line);
-		border-left: 3px solid var(--muted-light);
+		--card-edge: var(--line);
+		--card-bar: var(--muted-light);
+		--card-fill: var(--pane);
+		--card-ring: none;
+		border: 1px solid var(--card-edge);
+		border-left: 3px solid var(--card-bar);
 		border-radius: var(--radius-md);
-		background: var(--pane);
+		background: var(--card-fill);
+		box-shadow: var(--card-ring);
 		overflow: hidden;
+		transition: opacity 0.15s ease;
 	}
 
 	.trace-card.is-running {
 		/* The solid accent, not `--accent-border`: at 35% that wash is the same grey-teal as a
 		   finished card's line, so the two could not be told apart. */
-		border-color: var(--accent);
-		border-left-color: var(--accent);
-		background: var(--accent-tint);
+		--card-edge: var(--accent);
+		--card-bar: var(--accent);
+		--card-fill: var(--accent-tint);
 	}
 
 	.trace-card.is-waiting_approval {
-		border-color: var(--warn);
-		border-left-color: var(--warn);
-		background: var(--warn-bg);
+		--card-edge: var(--warn);
+		--card-bar: var(--warn);
+		--card-fill: var(--warn-bg);
 	}
 
 	.trace-card.is-waiting_ask {
-		border-color: var(--purple);
-		border-left-color: var(--purple);
-		background: var(--purple-bg);
+		--card-edge: var(--purple);
+		--card-bar: var(--purple);
+		--card-fill: var(--purple-bg);
 	}
 
 	.trace-card.is-completed {
 		/* The solid green, not `--ok-line`. In the dark that line is a 35% wash, and it settles
 		   into the same grey-teal as a live card. */
-		border-color: var(--ok);
-		border-left-color: var(--ok);
-		background: var(--ok-bg);
+		--card-edge: var(--ok);
+		--card-bar: var(--ok);
+		--card-fill: var(--ok-bg);
 	}
 
 	.trace-card.is-redirected {
-		border-color: var(--line);
-		border-left-color: var(--muted);
-		background: var(--chip);
+		--card-edge: var(--line);
+		--card-bar: var(--muted);
+		--card-fill: var(--chip);
 	}
 
 	.trace-card.is-interrupted,
 	.trace-card.is-stopped {
-		border-color: var(--danger);
-		border-left-color: var(--danger);
-		background: var(--danger-bg);
+		--card-edge: var(--danger);
+		--card-bar: var(--danger);
+		--card-fill: var(--danger-bg);
 	}
 
 	/* Where you are, as a ring — but only on a card with no status colour of its own. A finished
 	   card and a live one in the same conversation would otherwise both wear this teal ring, and
 	   in the dark that ring is what you read instead of green against teal. */
 	.trace-card.is-here:not(.is-running):not(.is-waiting_approval):not(.is-waiting_ask):not(.is-completed):not(.is-interrupted):not(.is-stopped) {
-		box-shadow: inset 0 0 0 1px var(--accent);
+		--card-ring: inset 0 0 0 1px var(--accent);
 	}
 
-	.trace-card.is-focus {
-		box-shadow: 0 0 0 2px var(--accent);
+	.trace-card.is-focus,
+	.trace-card.is-lit {
+		--card-ring: 0 0 0 2px var(--accent);
+		--card-ring-color: var(--accent);
 	}
 
-	.trace-card {
-		transition: opacity 0.15s ease;
+	.trace-card.is-lit.is-lit-blamed {
+		--card-ring: 0 0 0 2px var(--warn);
+		--card-ring-color: var(--warn);
 	}
 
 	.trace-card.is-dim {
 		opacity: 0.32;
 	}
 
-	.trace-card.is-lit {
-		box-shadow: 0 0 0 2px var(--accent);
+	/* A line of yours starts a flow: rounded ends, as a flowchart's start is drawn. Its status says
+	   nothing (it was sent), so it wears no stripe either. */
+	.trace-card.is-shape-line {
+		border-left-width: 1px;
+		border-radius: 20px;
 	}
 
-	.trace-card.is-lit.is-lit-blamed {
-		box-shadow: 0 0 0 2px var(--warn);
+	.trace-card.is-shape-line .trace-card-main {
+		padding-inline: 14px;
+	}
+
+	.trace-card.is-shape-line :is(.trace-files, .trace-route-line) {
+		padding-inline: 14px;
+	}
+
+	/* A decision of yours: pointed ends, as a flowchart's decision is drawn, cut to fit a card's text. */
+	.trace-card.is-shape-decision {
+		--point: 12px;
+		position: relative;
+		isolation: isolate;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+		box-shadow: none;
+		overflow: visible;
+	}
+
+	.trace-shape {
+		position: absolute;
+		inset: 0;
+		z-index: -1;
+	}
+
+	/* A cut outline cannot carry a box-shadow, so its ring is four shadows of the outline itself. */
+	.trace-card.is-shape-decision:is(.is-focus, .is-lit) .trace-shape {
+		filter: drop-shadow(2px 0 0 var(--card-ring-color)) drop-shadow(-2px 0 0 var(--card-ring-color))
+			drop-shadow(0 2px 0 var(--card-ring-color)) drop-shadow(0 -2px 0 var(--card-ring-color));
+	}
+
+	.trace-shape-fill,
+	.trace-shape-fill::after {
+		position: absolute;
+		clip-path: polygon(
+			var(--point) 0,
+			calc(100% - var(--point)) 0,
+			100% 50%,
+			calc(100% - var(--point)) 100%,
+			var(--point) 100%,
+			0 50%
+		);
+	}
+
+	.trace-shape-fill {
+		inset: 0;
+		background: var(--card-edge);
+	}
+
+	/* The fills are washes in the dark, and the edge layer under this one would show through: they
+	   sit on the board's own colour, as a plain card's do. */
+	.trace-shape-fill::after {
+		content: '';
+		inset: 1px;
+		background: linear-gradient(var(--card-fill), var(--card-fill)), var(--pane);
+	}
+
+	.trace-card.is-shape-decision:has(.trace-card-main:hover) .trace-shape-fill::after {
+		background: linear-gradient(var(--line-subtle), var(--line-subtle)), linear-gradient(var(--card-fill), var(--card-fill)), var(--pane);
+	}
+
+	.trace-card.is-shape-decision .trace-card-main {
+		padding-inline: calc(var(--point) + 8px);
+	}
+
+	.trace-card.is-shape-decision .trace-card-main:hover {
+		background: transparent;
+	}
+
+	.trace-card.is-shape-decision .trace-files {
+		padding-inline: calc(var(--point) + 8px);
 	}
 
 	.trace-card-main {
