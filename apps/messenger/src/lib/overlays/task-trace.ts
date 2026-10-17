@@ -67,6 +67,13 @@ export type TraceRound = {
   height: number;
   cards: number;
   files: number;
+  /**
+   * Where the round got to: its newest card other than the one it started from, which a folded
+   * round's line names under the line that started it (ADR 0094). Null for a round of one card.
+   */
+  last: TaskTraceNode | null;
+  /** Its turns that were cut or stopped part way. */
+  cut: number;
   /** The tickets its turns worked in, in the order they first did. */
   ticketIds: string[];
   /** Something in it is still going or waiting on you. */
@@ -97,6 +104,8 @@ export const TRACE_STEP_FALLBACK_HEIGHT = 44;
 /** Wider than a card, so a folded round has room for its line and its tickets. */
 export const TRACE_ROUND_WIDTH = 320;
 export const TRACE_ROUND_HEIGHT = 34;
+/** A folded round's line with where it got to under it: two rows. */
+export const TRACE_ROUND_FOLDED_HEIGHT = 52;
 const RANK_GAP = 56;
 const NODE_GAP = 20;
 /** Wider than a rank's gap, so the space between two rounds does not read as a missing edge. */
@@ -248,10 +257,13 @@ export function traceFlow(
   laidRounds.forEach(({ root, members, steps, folded: shut, laid }, index) => {
     if (index > 0) top += shut && laidRounds[index - 1]!.folded ? FOLDED_GAP : ROUND_GAP;
     const bandTop = top;
+    // Members are in the order they happened, so the newest is the last that is not the root.
+    const last = [...members].reverse().find((node) => node.turn_id !== root) ?? null;
+    const headerHeight = shut && last ? TRACE_ROUND_FOLDED_HEIGHT : TRACE_ROUND_HEIGHT;
     const header = headed
-      ? { x: Math.round(spine - half), y: Math.round(top), width: TRACE_ROUND_WIDTH, height: TRACE_ROUND_HEIGHT }
+      ? { x: Math.round(spine - half), y: Math.round(top), width: TRACE_ROUND_WIDTH, height: headerHeight }
       : null;
-    if (header) top += TRACE_ROUND_HEIGHT + (laid ? HEADER_GAP : 0);
+    if (header) top += headerHeight + (laid ? HEADER_GAP : 0);
     if (laid) {
       const dx = spine - laid.anchor;
       for (const placement of laid.placements) {
@@ -279,6 +291,8 @@ export function traceFlow(
       height: Math.round(top - bandTop),
       cards: members.length,
       files: members.reduce((sum, node) => sum + node.artifacts.length, 0),
+      last,
+      cut: members.filter((node) => node.status === "interrupted" || node.status === "stopped").length,
       ticketIds,
       live: members.some((node) => LIVE.has(node.status)),
       steps: steps.reduce((sum, group) => sum + group.steps.length, 0),

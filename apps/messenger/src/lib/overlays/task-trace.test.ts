@@ -22,6 +22,7 @@ import {
   roundTime,
   traceRounds,
   TRACE_ROUND_HEIGHT,
+  TRACE_ROUND_FOLDED_HEIGHT,
   pinchSpan,
   saidNothing,
   TRACE_READABLE_ZOOM,
@@ -509,14 +510,19 @@ test("a folded round is its line alone, and folded lines stack close like a list
   const [a, b, c, d] = folded.rounds;
   expect([a, b, c, d].map((round) => round!.folded)).toEqual([true, true, true, false]);
   // Two folded lines in a row are a few pixels apart; an open round keeps its distance.
-  expect(b!.header!.y - (a!.header!.y + TRACE_ROUND_HEIGHT)).toBeLessThan(12);
-  expect(d!.header!.y - (c!.header!.y + TRACE_ROUND_HEIGHT)).toBeGreaterThan(30);
+  expect(b!.header!.y - (a!.header!.y + a!.header!.height)).toBeLessThan(12);
+  expect(d!.header!.y - (c!.header!.y + c!.header!.height)).toBeGreaterThan(30);
+  // A folded round has a second row for where it got to; an open round's line is one row.
+  expect(a!.header!.height).toBe(TRACE_ROUND_FOLDED_HEIGHT);
+  expect(d!.header!.height).toBe(TRACE_ROUND_HEIGHT);
   // Every line and every round's first card sit on the spine.
   for (const round of folded.rounds) expect(round.header!.x + round.header!.width / 2).toBe(folded.spine);
-  expect(folded.height).toBeLessThan(open.height / 2);
-  // A round's line knows what it stands for.
-  expect(a).toMatchObject({ root: "you-0", cards: 2, files: 0, live: false });
+  // Each folded line is two rows (the line, where it got to), still far shorter than its round.
+  expect(folded.height).toBeLessThan(open.height * 0.55);
+  // A round's line knows what it stands for, and where it got to.
+  expect(a).toMatchObject({ root: "you-0", cards: 2, files: 0, live: false, cut: 0 });
   expect(a!.node.summary).toBe("第 0 句");
+  expect(a!.last?.turn_id).toBe("bot-0");
 });
 
 test("a board of one round has no round lines, and folding it does nothing", () => {
@@ -544,7 +550,22 @@ test("a round's line lists the tickets its turns worked in, and says when someth
   ];
   const [first, second] = traceFlow(trace(nodes)).rounds;
   expect(first).toMatchObject({ ticketIds: ["t2", "t1"], live: true, cards: 4, files: 1 });
-  expect(second).toMatchObject({ ticketIds: [], live: false, cards: 1 });
+  expect(second).toMatchObject({ ticketIds: [], live: false, cards: 1, last: null });
+  // Where the round got to is its newest card, not the deepest; a folded round of one card is one row.
+  expect(first!.last?.turn_id).toBe("c");
+  const folded = traceFlow(trace(nodes), new Map(), { folded: new Set(["you-2"]) }).rounds[1]!;
+  expect(folded.header!.height).toBe(TRACE_ROUND_HEIGHT);
+});
+
+test("a round counts the turns in it that were cut or stopped part way", () => {
+  const nodes = [
+    node({ turn_id: "you", actor: USER_MEMBER, created_at: "2026-09-22T00:00:00.000Z" }),
+    node({ turn_id: "a", woken_by_turn_id: "you", status: "interrupted", created_at: "2026-09-22T00:00:01.000Z" }),
+    node({ turn_id: "b", woken_by_turn_id: "a", status: "stopped", created_at: "2026-09-22T00:00:02.000Z" }),
+    node({ turn_id: "c", woken_by_turn_id: "b", status: "redirected", created_at: "2026-09-22T00:00:03.000Z" }),
+    node({ turn_id: "you-2", actor: USER_MEMBER, created_at: "2026-09-22T00:01:00.000Z" }),
+  ];
+  expect(traceFlow(trace(nodes)).rounds.map((round) => round.cut)).toEqual([2, 0]);
 });
 
 test("a long job folds all but its newest rounds, and never what is still going or what you asked for", () => {

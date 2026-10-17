@@ -75,6 +75,9 @@ test("a long job opens with its older rounds folded to a line each, and a line u
   // Only the newest two rounds are drawn as cards; a folded line says whose line it was.
   expect(view.host.querySelectorAll(".trace-slot")).toHaveLength(4);
   expect(rows()[0]?.querySelector(".trace-round-said")?.textContent).toBe("你第 0 句");
+  // Under it, where the round got to; how many cards it took is in its tooltip.
+  expect(rows()[0]?.querySelector(".trace-round-row.is-outcome .trace-round-said")?.textContent).toBe("制片回第 0 句");
+  expect(rows()[0]?.title).toContain("2 张卡");
   expect(rows()[0]?.getAttribute("aria-expanded")).toBe("false");
 
   click(rows()[0]!);
@@ -112,8 +115,9 @@ test("folding a round keeps its line where you pressed it, and a fold that empti
   };
   const rect = HTMLElement.prototype.getBoundingClientRect;
   HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    // Tall enough for the whole board once its newest round is folded, with every folded line two rows.
     if (this.classList.contains("trace-viewport")) {
-      return { x: 0, y: 0, width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, toJSON() { return {}; } } as DOMRect;
+      return { x: 0, y: 0, width: 800, height: 700, top: 0, left: 0, right: 800, bottom: 700, toJSON() { return {}; } } as DOMRect;
     }
     return rect.call(this);
   };
@@ -156,7 +160,7 @@ test("folding a round keeps its line where you pressed it, and a fold that empti
       flushSync();
       const settled = board();
       expect(settled.y).toBe(12);
-      expect(settled.y + settled.height * settled.scale).toBeLessThanOrEqual(588);
+      expect(settled.y + settled.height * settled.scale).toBeLessThanOrEqual(688);
       expect(onScreen(newest()).x).toBeCloseTo(pressed.x, 6);
       expect(onScreen(newest()).y).toBeGreaterThan(pressed.y);
 
