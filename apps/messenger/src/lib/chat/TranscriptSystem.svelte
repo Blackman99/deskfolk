@@ -111,9 +111,11 @@
 					{/if}
 					<span class="bot-badge">{t.chat.botBadge}</span>
 				{/if}
-				<span class="msg-time mono" title={formatFullTimestamp(singleMsg.message.created_at)}>
-					{formatMessageTime(singleMsg.message.created_at)}
-				</span>
+				{#if !stage.focus}
+					<span class="msg-time mono" title={formatFullTimestamp(singleMsg.message.created_at)}>
+						{formatMessageTime(singleMsg.message.created_at)}
+					</span>
+				{/if}
 			</div>
 			<article
 				class="msg is-system"

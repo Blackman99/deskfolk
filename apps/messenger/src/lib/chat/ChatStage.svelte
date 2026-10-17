@@ -61,6 +61,7 @@
 	import TranscriptSystem from './TranscriptSystem.svelte';
 	import TranscriptUserGroup from './TranscriptUserGroup.svelte';
 	import TranscriptBotGroup from './TranscriptBotGroup.svelte';
+	import { focusMode } from './focus-mode.svelte.ts';
 	import type { TranscriptStage, VersionsShown } from './transcript-stage.ts';
 
 	type Props = {
@@ -881,6 +882,7 @@
 		get lockedComposer() { return lockedComposer; },
 		get fileDrop() { return fileDrop; },
 		get sidesSayWho() { return sidesSayWho; },
+		get focus() { return focusMode.on; },
 		get highlightedId() { return highlightedId; },
 		get selectedMessageId() { return selectedMessageId; },
 		get copiedMessageId() { return copiedMessageId; },

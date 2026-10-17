@@ -29,6 +29,8 @@ export type TranscriptStage = {
   readonly fileDrop: boolean;
   /** Your direct with one Bot, where a line's side and bubble say who said it: see ChatStage. */
   readonly sidesSayWho: boolean;
+  /** Focus mode: rows leave out what is said about a line (times, commands, tags); see focus-mode.svelte.ts. */
+  readonly focus: boolean;
   readonly highlightedId: string | null;
   readonly selectedMessageId: string | null;
   readonly copiedMessageId: string | null;

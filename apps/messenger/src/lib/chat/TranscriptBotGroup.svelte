@@ -138,9 +138,11 @@
 				{:else}
 					<span class="sender-name">{stage.whoAuthor(group.author)}</span>
 				{/if}
-				<span class="bot-badge">{t.chat.botBadge}</span>
-				{#if botAuthor?.model}
-					<span class="model-badge mono">{botAuthor.model}</span>
+				{#if !stage.focus}
+					<span class="bot-badge">{t.chat.botBadge}</span>
+					{#if botAuthor?.model}
+						<span class="model-badge mono">{botAuthor.model}</span>
+					{/if}
 				{/if}
 			</div>
 		{/if}
@@ -189,7 +191,9 @@
 								What it is doing while it does it. Ephemeral: the turn's own record is what
 								survives a reload, so nothing here is stored and nothing enters the transcript.
 							-->
-							<CommandActivity rows={commandRows(item.turn.id)} {t} />
+							{#if !stage.focus}
+								<CommandActivity rows={commandRows(item.turn.id)} {t} />
+							{/if}
 							<!--
 								Where it is and for how long, after all it has said and run — the end of the
 								bubble is where the work is going on. Every running turn has it, whatever runs
@@ -198,7 +202,10 @@
 							-->
 							<div class="stream-foot">
 								<span class="pulse"></span>
-								{#if step}
+								{#if stage.focus}
+									<!-- Focus mode: that it is working, not what at or for how long. -->
+									<span class="stream-step" aria-live="off">{said ? t.stream.streaming : stage.statusLabels.running}</span>
+								{:else if step}
 									{#if opensMore(item.turn.id)}
 										<button
 											type="button"
@@ -216,12 +223,14 @@
 								{:else}
 									<span class="stream-step" aria-live="off">{said ? t.stream.streaming : stage.statusLabels.running}</span>
 								{/if}
-								<span class="duration-badge">
-									<Icon name="clock" size={12} />
-									{formatLiveDuration(item.turn.created_at, stage.nowMs, t.chat.spanPart)}
-								</span>
+								{#if !stage.focus}
+									<span class="duration-badge">
+										<Icon name="clock" size={12} />
+										{formatLiveDuration(item.turn.created_at, stage.nowMs, t.chat.spanPart)}
+									</span>
+								{/if}
 							</div>
-							{#if stage.openStepsTurn === item.turn.id}
+							{#if stage.openStepsTurn === item.turn.id && !stage.focus}
 								{@const rows = liveSteps(item.turn.id)}
 								{#if rows}
 									<TurnStepList
@@ -240,9 +249,10 @@
 						{@const took = duration ? formatDurationMs(duration.ms, t.chat.spanPart) : null}
 						<!--
 							A part before the last whose end would hold nothing but its time gives that line up: the
-							time shows with the hover actions, so the parts of one reply sit close together.
+							time shows with the hover actions, so the parts of one reply sit close together. Focus mode
+							does that for every part, and leaves the commands it ran out.
 						-->
-						{@const quietFoot = idx < group.items.length - 1 && !(ranIn && runtime.commandsOf(ranIn).length)}
+						{@const quietFoot = stage.focus || (idx < group.items.length - 1 && !(ranIn && runtime.commandsOf(ranIn).length))}
 						<article class="msg is-reply">
 							<div class="who">{stage.who(item.message)}</div>
 							<div class="msg-toolbar">
@@ -261,7 +271,7 @@
 									{/if}
 									{#if quietFoot}
 										<span class="msg-when is-peek">
-											{#if took}
+											{#if took && !stage.focus}
 												<span class="duration-badge" title={t.chat.replyTime(took)}>{took}</span>
 												<span class="msg-when-sep" aria-hidden="true">·</span>
 											{/if}
@@ -365,7 +375,7 @@
 								<div class="msg-foot-line">{@render tail()}</div>
 							{/if}
 						</div>
-						{:else if ranIn}
+						{:else if ranIn && !stage.focus}
 							<span use:whenVisible={() => runtime.loadTurnCommands(ranIn)}></span>
 						{/if}
 						<ReactionRow message={item.message} lockedComposer={stage.lockedComposer} {runtime} />
@@ -381,7 +391,7 @@
 								/>
 							</div>
 						{/if}
-						{#if stage.botDmIndex.get(item.message.id)}
+						{#if !stage.focus && stage.botDmIndex.get(item.message.id)}
 							<div class="msg-attached-botdm">
 								<BotDmEntry
 									sessions={stage.botDmIndex.get(item.message.id) ?? []}

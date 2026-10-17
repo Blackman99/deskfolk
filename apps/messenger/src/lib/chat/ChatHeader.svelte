@@ -14,6 +14,7 @@
 	import { botWorkStatus, isWorkingStatus, sidebarStatus } from '../sidebar/session-status.ts';
 	import { sessionPresence, sessionTitle } from '../sidebar/session-title.ts';
 	import BotElsewhere from './BotElsewhere.svelte';
+	import { focusMode } from './focus-mode.svelte.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -251,6 +252,17 @@
 			<button
 				type="button"
 				class="btn-top-action"
+				class:is-active={focusMode.on}
+				aria-pressed={focusMode.on}
+				title={focusMode.on ? t.top.focusOn : t.top.focusOff}
+				onclick={() => focusMode.toggle()}
+			>
+				<Icon name="target" />
+				<span>{t.top.focus}</span>
+			</button>
+			<button
+				type="button"
+				class="btn-top-action"
 				class:is-active={settingsOpen}
 				title={sessionSettingsLabel}
 				aria-expanded={settingsOpen}
@@ -296,6 +308,10 @@
 						<button type="button" role="menuitem" class="sheet-item" class:is-active={settingsOpen} onclick={() => runMobileAction(onToggleSessionSettings)}>
 							<Icon name="settings" />
 							<span class="sheet-item-label">{sessionSettingsLabel}</span>
+						</button>
+						<button type="button" role="menuitemcheckbox" aria-checked={focusMode.on} class="sheet-item" class:is-active={focusMode.on} onclick={() => runMobileAction(() => focusMode.toggle())}>
+							<Icon name="target" />
+							<span class="sheet-item-label">{t.top.focus}</span>
 						</button>
 					</div>
 				</BottomSheet>

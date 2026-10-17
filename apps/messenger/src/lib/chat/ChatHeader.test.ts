@@ -63,7 +63,7 @@ test("mobile actions stay behind one menu trigger", () => {
 
   click(trigger);
   const menu = host.querySelector(".mobile-actions-menu");
-  expect(menu?.querySelectorAll("button")).toHaveLength(3);
+  expect(menu?.querySelectorAll("button")).toHaveLength(4);
   click(menu?.querySelector("button"));
   expect(toggled).toEqual([selected.id]);
   expect(host.querySelector(".mobile-actions-menu")).toBeNull();

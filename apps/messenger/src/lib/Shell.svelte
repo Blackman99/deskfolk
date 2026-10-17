@@ -90,6 +90,7 @@
 	import ChatTabLabel from './chat/ChatTabLabel.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
 	import PaneChatBar from './chat/PaneChatBar.svelte';
+	import { focusMode } from './chat/focus-mode.svelte.ts';
 	import { trackPointerDrag } from './pointer-drag.ts';
 	import UsageWidget from './usage/UsageWidget.svelte';
 	// SettingsModal.svelte (with its tabs, provider/MCP/notification sub-panels and editor flyout) is
@@ -798,6 +799,14 @@
 				icon: traceIcon,
 				run: () => workbench.openGuarded({ kind: 'trace', sessionId: session.id, taskId: null, focus: null, focusNonce: null })
 			},
+			// One switch for every conversation: messages only, without times, commands and tags.
+			{
+				id: 'focus',
+				label: t.top.focusMode,
+				icon: focusIcon,
+				active: focusMode.on,
+				run: () => focusMode.toggle()
+			},
 			{
 				id: 'settings',
 				label: classifySession(session) === 'group' ? t.top.groupSettings : t.top.botSettings,
@@ -976,6 +985,9 @@
 {/snippet}
 {#snippet traceIcon()}
 	<Icon name="hierarchy" />
+{/snippet}
+{#snippet focusIcon()}
+	<Icon name="target" />
 {/snippet}
 {#snippet settingsIcon()}
 	<Icon name="settings" />

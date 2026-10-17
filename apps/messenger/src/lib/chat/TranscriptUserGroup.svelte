@@ -42,14 +42,22 @@
 {/snippet}
 
 {#snippet foot(message: Message)}
-	<!-- Under the bubble, as under a Bot's line: when you sent it, then 「已编辑」 where what it said before opens. -->
-	<div class="msg-foot">
-		<span class="msg-time mono" title={formatFullTimestamp(message.created_at)}>{formatMessageTime(message.created_at)}</span>
-		{#if message.edited_at && !message.withdrawn_at}
-			<span class="msg-foot-sep" aria-hidden="true">·</span>
-			{@render editedMark(message)}
-		{/if}
-	</div>
+	<!--
+		Under the bubble, as under a Bot's line: when you sent it, then 「已编辑」 where what it said before
+		opens. Focus mode keeps only 「已编辑」: it says the words changed.
+	-->
+	{@const edited = Boolean(message.edited_at && !message.withdrawn_at)}
+	{#if !stage.focus || edited}
+		<div class="msg-foot">
+			{#if !stage.focus}
+				<span class="msg-time mono" title={formatFullTimestamp(message.created_at)}>{formatMessageTime(message.created_at)}</span>
+			{/if}
+			{#if edited}
+				{#if !stage.focus}<span class="msg-foot-sep" aria-hidden="true">·</span>{/if}
+				{@render editedMark(message)}
+			{/if}
+		</div>
+	{/if}
 {/snippet}
 
 {#snippet queuedRow(message: Message)}
@@ -87,7 +95,7 @@
 
 <div class="msg-wrap is-user" class:is-group={isMulti}>
 	<div class="msg-content">
-		{#if isMulti}
+		{#if isMulti && !stage.focus}
 			<div class="msg-header is-right">
 				<span class="segment-count-badge mono">{t.chat.messageCount(group.items.length)}</span>
 			</div>
@@ -279,7 +287,7 @@
 							{/if}
 						{/if}
 					</div>
-					{#if !item.message.withdrawn_at && stage.botDmIndex.get(item.message.id)}
+					{#if !item.message.withdrawn_at && !stage.focus && stage.botDmIndex.get(item.message.id)}
 						<!-- Outside the bubble's column, across the whole conversation, so it centres there and not under your words. -->
 						<div class="msg-attached-botdm is-user">
 							<BotDmEntry

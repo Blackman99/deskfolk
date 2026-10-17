@@ -78,9 +78,11 @@
 					<span class="sender-name">{stage.who(singleMsg.message)}</span>
 				{/if}
 				<span class="ask-badge">?</span>
-				<span class="msg-time mono" title={formatFullTimestamp(singleMsg.message.created_at)}>
-					{formatMessageTime(singleMsg.message.created_at)}
-				</span>
+				{#if !stage.focus}
+					<span class="msg-time mono" title={formatFullTimestamp(singleMsg.message.created_at)}>
+						{formatMessageTime(singleMsg.message.created_at)}
+					</span>
+				{/if}
 			</div>
 			<article class="msg is-ask" class:is-waiting={waiting}>
 				<div class="who">
