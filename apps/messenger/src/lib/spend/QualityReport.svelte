@@ -506,14 +506,20 @@
 			padding: 12px 14px 6px;
 		}
 
+		/* Three small tiles to a row; the last row's tiles share it, so no cell stands empty. */
 		.quality-kpis {
-			margin: 4px 14px 10px;
-			grid-template-columns: repeat(2, minmax(0, 1fr));
+			display: flex;
+			flex-wrap: wrap;
+			margin: 4px 14px 8px;
 		}
 
-		/* An odd tile out takes the whole last row, so no empty cell shows. */
-		.quality-kpis div:last-child:nth-child(odd) {
-			grid-column: 1 / -1;
+		.quality-kpis div {
+			flex: 1 1 28%;
+			padding: 8px 10px;
+		}
+
+		.quality-kpis dd {
+			font-size: 16px;
 		}
 
 		.bot-grid {
@@ -524,16 +530,46 @@
 			display: none;
 		}
 
-		/* Name and meter on one line each, the counts wrapped under them, each named. */
+		/*
+		 * Three lines: the name with its rate at the end, the meter across the whole row, then the
+		 * counts, each named. The meter's box steps aside so its bar and its rate take their own places.
+		 */
 		.bot-line {
-			grid-template-columns: repeat(4, minmax(0, auto));
-			justify-content: start;
-			gap: 4px 14px;
+			grid-template-columns: auto auto auto minmax(0, 1fr);
+			grid-template-areas:
+				'name name name rate'
+				'track track track track';
+			gap: 6px 14px;
 			padding: 8px 0 10px;
 		}
 
-		.bot-toggle, .bot-meter {
-			grid-column: 1 / -1;
+		.bot-toggle {
+			grid-area: name;
+			min-height: 32px;
+		}
+
+		.bot-name {
+			flex-direction: row;
+			align-items: baseline;
+			gap: 8px;
+		}
+
+		.bot-sub {
+			white-space: nowrap;
+		}
+
+		.bot-meter {
+			display: contents;
+		}
+
+		.meter-track {
+			grid-area: track;
+		}
+
+		.meter-rate {
+			grid-area: rate;
+			justify-self: end;
+			width: auto;
 		}
 
 		.bot-line .stat {
