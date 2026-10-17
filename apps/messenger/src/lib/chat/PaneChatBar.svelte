@@ -134,7 +134,7 @@
 					type="button"
 					class="bar-action is-{action.id}"
 					class:is-active={action.active}
-					aria-pressed={action.id === 'pin' || action.id === 'focus' ? Boolean(action.active) : undefined}
+					aria-pressed={action.id === 'pin' ? Boolean(action.active) : undefined}
 					title={action.label}
 					aria-label={action.label}
 					onclick={() => action.run()}

@@ -15,10 +15,6 @@ export const zh = {
   pinned: "已置顶",
   unpin: "取消置顶",
   moreActions: "更多会话操作",
-  focus: "专注",
-  focusMode: "专注模式",
-  focusOn: "专注模式：只看消息内容。点一下显示全部信息",
-  focusOff: "专注模式：隐藏时间、耗时、命令和标签，只看消息内容",
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -36,8 +32,4 @@ export const en: CopyShape<typeof zh> = {
   pinned: "Pinned",
   unpin: "Unpin",
   moreActions: "More conversation actions",
-  focus: "Focus",
-  focusMode: "Focus mode",
-  focusOn: "Focus mode: messages only. Click to show everything",
-  focusOff: "Focus mode: hide times, durations, commands and tags; show messages only",
 };

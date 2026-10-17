@@ -9,6 +9,7 @@
 	import { WORKSPACE_COPY, type Copy } from '../copy.ts';
 	import { DEFAULT_PERMISSION_MODE } from '@real-bot/protocol';
 	import { themeManager } from '../theme.ts';
+	import { focusMode } from '../chat/focus-mode.svelte.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { Snapshot } from '../snapshot.ts';
 	import type { FieldErrorKind, SettingsFieldErrors } from './wizard-save.ts';
@@ -216,6 +217,18 @@
 						<span>{t.settings.localeEn}</span>
 					</button>
 				</div>
+			</SettingsRow>
+
+			<!-- Focus mode: one switch for every conversation, kept per browser (chat/focus-mode.svelte.ts). -->
+			<SettingsRow title={t.settings.focusMode} titleId="focus-mode-label" desc={t.settings.focusModeDesc}>
+				<Switch class="relative inline-flex items-center cursor-pointer select-none" for="focus-mode-toggle" labelledby="focus-mode-label">
+					<input
+						id="focus-mode-toggle"
+						type="checkbox"
+						checked={focusMode.on}
+						onchange={(ev) => focusMode.set((ev.currentTarget as HTMLInputElement).checked)}
+					/>
+				</Switch>
 			</SettingsRow>
 
 			<!-- Launch at login Row -->

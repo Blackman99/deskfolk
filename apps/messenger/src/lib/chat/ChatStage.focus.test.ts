@@ -4,7 +4,7 @@ import { copyFor } from "../copy.ts";
 import { aBot, aGroup, aMessage, aTurn, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { click, render } from "../test-render.ts";
-import ChatHeader from "./ChatHeader.svelte";
+import SettingsModal from "../settings/SettingsModal.svelte";
 import ChatStage from "./ChatStage.svelte";
 import { focusMode } from "./focus-mode.svelte.ts";
 import type { ToolStep } from "./turn-activity.ts";
@@ -86,24 +86,22 @@ test("focus mode leaves out times, durations, commands and tags, and keeps what 
   }
 });
 
-test("the header's 专注 switch turns focus mode on and off and keeps the choice", () => {
-  const selected = aGroup();
-  const runtime = reactive(fakeRuntime({ bots: [aBot()], sessions: [selected] }));
-  runtime.selectedId = selected.id;
-  const { host, close } = render(ChatHeader, {
-    runtime, t, selected, pinnedSessionIds: [],
-    onTogglePin: () => {}, onToggleSessionSettings: () => {}, onCreateBot: () => {}, onShowOnboarding: () => {},
+test("Settings › General turns focus mode on and off and keeps the choice", () => {
+  const runtime = reactive(fakeRuntime({}, { settingsOpen: true }));
+  const { host, close } = render(SettingsModal, {
+    runtime, t, saveFailed: false, providerEditor: null, confirmingProvider: false, confirmingIndependent: false,
+    patchImmediate: async () => true, openDeleteProviderConfirm: () => {}, closeSettings: () => {},
   });
   try {
-    const button = () => [...host.querySelectorAll<HTMLButtonElement>(".top-actions .btn-top-action")].find((b) => b.textContent?.trim() === t.top.focus);
-    expect(button()?.getAttribute("aria-pressed")).toBe("false");
-    click(button() ?? null);
+    click(host.querySelector('[data-settings-tab="general"]'));
+    const toggle = () => host.querySelector<HTMLInputElement>("#focus-mode-toggle")!;
+    expect(toggle().checked).toBe(false);
+    click(toggle());
     flushSync();
     expect(focusMode.on).toBe(true);
-    expect(button()?.getAttribute("aria-pressed")).toBe("true");
-    expect(button()?.title).toBe(t.top.focusOn);
+    expect(toggle().checked).toBe(true);
     expect(window.localStorage.getItem("real-bot-chat-focus")).toBe("1");
-    click(button() ?? null);
+    click(toggle());
     flushSync();
     expect(focusMode.on).toBe(false);
     expect(window.localStorage.getItem("real-bot-chat-focus")).toBeNull();
