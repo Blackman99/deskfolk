@@ -128,7 +128,8 @@
 	.bot-dm-dialog {
 		width: 760px;
 		max-width: 92vw;
-		height: min(860px, 86dvh);
+		/* Nearly the window's height: a direct is a transcript read top to bottom, a tall window shows more of it. */
+		height: min(92dvh, calc(100dvh - 48px));
 		min-height: 0;
 		overflow: hidden;
 	}
