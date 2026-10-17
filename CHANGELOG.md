@@ -9,6 +9,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 ### The flow shows first what needs a look
 
 - On a job's flow a finished turn's card is no longer green and no longer says "Done". Colour is left to the cards that need a look: a turn still going (teal), one waiting on you (yellow or purple), one cut or stopped (red). The minimap in the corner follows.
+- A card on the flow no longer repeats what the card before it said. The model line shows only on a Bot's first card and where its model, thinking, endpoint or kind of message changed, or where something came of it (your pushback, a review that blamed the model, a failure); otherwise the model is a small chip on the card's first line, which still opens the same details. The ticket number and the conversation a card happened in ("Direct with …") show only where the work moved there from the card that woke it. A card's summary stops at two lines; hover it for the rest.
 
 ### The spend page reads like a dashboard
 

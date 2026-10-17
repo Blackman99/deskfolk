@@ -29,8 +29,10 @@
 		keepBoard,
 		keptBoard,
 		routeHighlightCounts,
+		routeRepeats,
 		traceFlow,
 		traceRounds,
+		wakerCard,
 		wokenByName,
 		TRACE_CARD_WIDTH,
 		TRACE_STEP_WIDTH,
@@ -339,9 +341,41 @@
 	);
 	const lighting = $derived(highlight && highlightCounts[highlight] > 0 ? highlight : null);
 	const ticketsById = $derived(new Map((job.detail?.tickets ?? []).map((ticket) => [ticket.id, ticket])));
-	/** The ticket a card worked in, as `01`; nothing on your own card and on turns filed under none. */
+	/**
+	 * The ticket a card worked in, as `01`; nothing on your own card and on turns filed under none.
+	 * Said where the work moved into it: a card in the same ticket as the card that woke it leaves it
+	 * to that one, so a run of turns in one ticket names it once (ADR 0094).
+	 */
 	function ticketOf(node: TaskTraceNode): Ticket | null {
-		return node.ticket_id ? (ticketsById.get(node.ticket_id) ?? null) : null;
+		if (!node.ticket_id) return null;
+		const waker = wakerCard(node, byId);
+		if (waker && waker.ticket_id === node.ticket_id) return null;
+		return ticketsById.get(node.ticket_id) ?? null;
+	}
+
+	/**
+	 * Where a card from another conversation happened, said where the work moved there: a direct's
+	 * back and forth names the direct on its first card, not on every one (ADR 0094).
+	 */
+	function placeShownOf(node: TaskTraceNode): string | null {
+		if (node.session_id === shown?.session_id) return null;
+		const waker = wakerCard(node, byId);
+		if (waker && waker.session_id === node.session_id) return null;
+		return placeOf(node);
+	}
+
+	/** The cards whose model line repeats the same Bot's previous one: drawn as a chip instead. */
+	const routeRepeated = $derived(shown ? routeRepeats(shown.nodes) : new Set<string>());
+
+	/** A repeated model choice is a chip, unless something came of it: pushback, blame or a failure. */
+	function routeCompactOf(node: TaskTraceNode, route: RouteLogRow | null): boolean {
+		return (
+			route !== null &&
+			routeRepeated.has(node.turn_id) &&
+			!route.review?.blamedModel &&
+			route.feedback.length === 0 &&
+			!route.failReason
+		);
 	}
 
 	/** Lit when the selected ticket is this card's; dim when a ticket is selected and it is not. */
@@ -685,8 +719,9 @@
 									avatar={avatarOf(node.actor)}
 									ticket={ticketOf(node)}
 									from={node.woken_by_turn_id && byId.has(node.woken_by_turn_id) ? null : wokenByName(node, byId, nameOf)}
-									place={node.session_id !== shown?.session_id ? placeOf(node) : null}
+									place={placeShownOf(node)}
 									{route}
+									routeCompact={routeCompactOf(node, route)}
 									routeOpen={openRoute === node.turn_id}
 									onToggleRoute={() => toggleRoute(node)}
 									onOpen={() => openCard(node)}

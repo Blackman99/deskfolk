@@ -65,6 +65,53 @@ test("each Bot card says which model its turn ran on, and unfolds what came of i
   view.close();
 });
 
+test("a card that runs on as the one before it did says it once: chip for the model, no ticket or place again", async () => {
+  const base = routedPicture();
+  const artistTurn = base.nodes[2]!;
+  const again = (turn: string, from: string, at: string, model: string) => ({
+    ...artistTurn,
+    turn_id: turn,
+    status: "completed" as const,
+    woken_by_turn_id: from,
+    approval: null,
+    artifacts: [],
+    summary: `${turn} 的话`,
+    created_at: at,
+    route: {
+      record: aRecord({ turn_id: turn, session_id: "direct-1", bot_id: "bot-2", model, thinking_level: "medium", signature: "writing", chain_id: turn }),
+      review: null,
+      learning: null,
+    },
+  });
+  const view = open({
+    trace: { ...base, nodes: [...base.nodes, again("t-artist-2", "t-artist", "2026-09-22T00:00:03.000Z", "gemini-3.8"), again("t-artist-3", "t-artist-2", "2026-09-22T00:00:04.000Z", "gemini-3.9")] },
+  });
+  await until(view.host, ".trace-slot");
+  const cardOf = (summary: string) =>
+    [...view.host.querySelectorAll<HTMLElement>(".trace-card")].find((card) => card.querySelector(".trace-summary")?.textContent === summary)!;
+  // The direct and ticket 01 are named where the work moved there, on the first card in them.
+  expect(cardOf("正在画第一格").querySelector(".trace-place")).not.toBeNull();
+  expect(cardOf("正在画第一格").querySelector(".trace-ticket-tag")?.textContent).toBe("01");
+  for (const later of ["t-artist-2 的话", "t-artist-3 的话"]) {
+    expect(cardOf(later).querySelector(".trace-place")).toBeNull();
+    expect(cardOf(later).querySelector(".trace-ticket-tag")).toBeNull();
+  }
+  // The same model choice as the card before is a chip; a changed one is a whole line again.
+  const repeated = cardOf("t-artist-2 的话");
+  expect(repeated.querySelector(".trace-route-line")).toBeNull();
+  const chip = repeated.querySelector<HTMLButtonElement>(".trace-route-chip")!;
+  expect(chip.textContent).toBe("gemini-3.8");
+  expect(chip.closest(".trace-card-main")).toBeNull();
+  expect(cardOf("t-artist-3 的话").querySelector(".trace-route-chip")).toBeNull();
+  expect(cardOf("t-artist-3 的话").querySelector(".trace-route-model")?.textContent).toBe("gemini-3.9");
+  // The chip still opens what came of the turn, under its card.
+  click(chip);
+  flushSync();
+  expect(chip.getAttribute("aria-expanded")).toBe("true");
+  expect(repeated.closest(".trace-slot")?.querySelector(".trace-route")).not.toBeNull();
+  view.close();
+});
+
 test("the toolbar lights the cards you pushed back on, or whose review blamed the model, and dims the rest", async () => {
   const view = open({ trace: routedPicture() });
   await until(view.host, ".trace-slot");

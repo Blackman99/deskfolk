@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { USER_MEMBER, type TaskTrace, type TaskTraceNode } from "@real-bot/protocol";
+import { USER_MEMBER, type RouteRecord, type TaskTrace, type TaskTraceNode } from "@real-bot/protocol";
 import {
   TRACE_CARD_WIDTH,
   TRACE_FIT_MIN,
@@ -30,6 +30,8 @@ import {
   traceFileName,
   traceFlow,
   traceNodeShape,
+  routeRepeats,
+  wakerCard,
   wokenByName,
 } from "./task-trace.ts";
 
@@ -567,4 +569,46 @@ test("a card's outline says what it is: your line, your decision, or a Bot's tur
   expect(traceNodeShape(node({ actor: USER_MEMBER, decision: { kind: "approve" } }))).toBe("decision");
   expect(traceNodeShape(node({ actor: USER_MEMBER, decision: null }))).toBe("line");
   expect(traceNodeShape(node({ actor: "bot", status: "running" }))).toBe("turn");
+});
+
+test("a model line repeats when the same Bot's previous card ran on the same endpoint, model, thinking and kind", () => {
+  const ran = (turn: string, actor: string, at: number, over: Partial<RouteRecord> = {}) =>
+    node({
+      turn_id: turn,
+      actor,
+      created_at: `2026-09-22T00:00:0${at}.000Z`,
+      route: {
+        record: { provider_id: null, model: "opus", thinking_level: "high", signature: "coding", ...over } as RouteRecord,
+        review: null,
+        learning: null,
+      },
+    });
+  const nodes = [
+    // Listed out of order: "previous" is by time.
+    ran("a2", "bot-a", 2),
+    ran("a1", "bot-a", 1),
+    // Another Bot between two of a's cards does not break a's run, and its own first card is new.
+    ran("b1", "bot-b", 3),
+    ran("a3", "bot-a", 4),
+    ran("a4", "bot-a", 5, { model: "sonnet" }),
+    ran("a5", "bot-a", 6, { model: "sonnet", thinking_level: "low" }),
+    ran("a6", "bot-a", 7, { model: "sonnet", thinking_level: "low", provider_id: "cpa" }),
+    ran("a7", "bot-a", 8, { model: "sonnet", thinking_level: "low", provider_id: "cpa", signature: "writing" }),
+    ran("b2", "bot-b", 9),
+    // A card with no model choice (your line) neither repeats nor breaks a run.
+    node({ turn_id: "you", actor: USER_MEMBER, created_at: "2026-09-22T00:00:09.500Z" }),
+  ];
+  expect([...routeRepeats(nodes)].sort()).toEqual(["a2", "a3", "b2"]);
+});
+
+test("the card that woke another is the one on the board, never itself", () => {
+  const you = node({ turn_id: "you", actor: USER_MEMBER });
+  const woken = node({ turn_id: "a", woken_by_turn_id: "you" });
+  const fromAfar = node({ turn_id: "b", woken_by_turn_id: "elsewhere" });
+  const looped = node({ turn_id: "c", woken_by_turn_id: "c" });
+  const byId = new Map([you, woken, fromAfar, looped].map((card) => [card.turn_id, card]));
+  expect(wakerCard(woken, byId)).toBe(you);
+  expect(wakerCard(fromAfar, byId)).toBeNull();
+  expect(wakerCard(looped, byId)).toBeNull();
+  expect(wakerCard(you, byId)).toBeNull();
 });

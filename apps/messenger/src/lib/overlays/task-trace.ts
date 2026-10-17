@@ -140,6 +140,11 @@ function byTime(a: TaskTraceNode, b: TaskTraceNode): number {
 }
 
 /** The card that woke this one, when it is on the board and is not this card. */
+export function wakerCard(node: TaskTraceNode, byId: ReadonlyMap<string, TaskTraceNode>): TaskTraceNode | null {
+  const from = wakerOn(node, byId);
+  return from ? byId.get(from)! : null;
+}
+
 function wakerOn(node: TaskTraceNode, byId: ReadonlyMap<string, TaskTraceNode>): string | null {
   const from = node.woken_by_turn_id;
   return from && from !== node.turn_id && byId.has(from) ? from : null;
@@ -443,9 +448,11 @@ export function childOrder(
  * way, because a card whose size never changes never tells anyone its size again.
  */
 function estimateHeight(node: TaskTraceNode, home: string | null): number {
-  // A turn that said nothing shows one short line in place of the summary.
-  const lines = saidNothing(node) ? 1 : Math.min(4, Math.ceil((node.summary?.length ?? 0) / 22));
+  // A turn that said nothing shows one short line in place of the summary, which stops at two lines.
+  const lines = saidNothing(node) ? 1 : Math.min(2, Math.ceil((node.summary?.length ?? 0) / 22));
   const waiting = node.ask || node.approval || node.decision?.question || node.decision?.result ? 1 : 0;
+  // No model line counted: most cards name their model in a chip on the first line, and only a
+  // Bot's first card or a change has a line of its own.
   return (
     TRACE_CARD_FALLBACK_HEIGHT -
     // Only a card from another conversation names where it happened.
@@ -453,7 +460,6 @@ function estimateHeight(node: TaskTraceNode, home: string | null): number {
     lines * 20 +
     waiting * 20 +
     (node.passed > 0 ? 18 : 0) +
-    (node.route ? 32 : 0) +
     (node.artifacts.length > 0 ? 38 : 0)
   );
 }
@@ -817,6 +823,25 @@ export function routeHighlightCounts(nodes: readonly TaskTraceNode[]): Record<Ro
     feedback: nodes.filter(drewFeedback).length,
     blamed: nodes.filter(blamedTheModel).length,
   };
+}
+
+/**
+ * The cards whose model line would say nothing new: the same Bot's previous card ran on the same
+ * endpoint, model, thinking and kind of message. Those show the model as a chip, and a Bot's first
+ * card or a change gets the whole line (ADR 0094). `nodes` is the board as drawn, so the previous
+ * card is the previous one you can see.
+ */
+export function routeRepeats(nodes: readonly TaskTraceNode[]): Set<string> {
+  const last = new Map<string, string>();
+  const repeats = new Set<string>();
+  for (const node of [...nodes].sort(byTime)) {
+    const record = node.route?.record;
+    if (!record) continue;
+    const key = [record.provider_id ?? "", record.model, record.thinking_level, record.signature].join("\u0000");
+    if (last.get(node.actor) === key) repeats.add(node.turn_id);
+    last.set(node.actor, key);
+  }
+  return repeats;
 }
 
 /** Whether a card is lit, dimmed, or neither because nothing is being looked for. */

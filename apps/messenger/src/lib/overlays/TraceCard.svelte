@@ -23,6 +23,8 @@
 		/** Where a card from another conversation happened; null when it is this job's own. */
 		place: string | null;
 		route: RouteLogRow | null;
+		/** The model choice repeats the same Bot's previous card: a chip on the first line, not a line of its own. */
+		routeCompact?: boolean;
 		routeOpen: boolean;
 		onToggleRoute: () => void;
 		onOpen: () => void;
@@ -43,6 +45,7 @@
 		from,
 		place,
 		route,
+		routeCompact = false,
 		routeOpen,
 		onToggleRoute,
 		onOpen,
@@ -66,6 +69,7 @@
 	class:is-lit={lit}
 	class:is-lit-blamed={litBlamed}
 	class:is-dim={dim}
+	class:has-route-chip={route !== null && routeCompact}
 >
 	{#if shape === 'decision'}
 		<!-- Pointed ends can only be cut, and a cut box loses its border and rings: they are drawn here. -->
@@ -109,7 +113,7 @@
 			<!-- Its summary would be the line that woke it, read as the Bot saying it. -->
 			<span class="trace-silent">{t.trace.silent}</span>
 		{:else if node.summary}
-			<span class="trace-summary">{node.summary}</span>
+			<span class="trace-summary" title={node.summary}>{node.summary}</span>
 		{/if}
 		{#if node.ask}
 			<span class="trace-wait">{t.trace.waitingAsk} · {node.ask.question}</span>
@@ -130,7 +134,18 @@
 			<span class="trace-place">{place}</span>
 		{/if}
 	</button>
-	{#if route}
+	{#if route && routeCompact}
+		<!-- The same model choice as this Bot's card before: named in a chip, which still opens what came
+		     of it. Beside the card's own button, not in it: a button cannot hold another. -->
+		<button
+			type="button"
+			class="trace-route-chip mono"
+			class:is-open={routeOpen}
+			aria-expanded={routeOpen}
+			title={`${route.model} · ${t.routes.thinkingPrefix} ${route.thinkingLabel} · ${route.signatureLabel}\n${t.routes.cardToggle}`}
+			onclick={onToggleRoute}
+		>{route.model}</button>
+	{:else if route}
 		<!-- How this turn ran: the model it was given, and the trouble that came of it. -->
 		<div class="trace-route-line">
 			<button
@@ -214,6 +229,8 @@
 
 	/* Each status sets its colours; the outline of the card (its shape) is drawn from them. */
 	.trace-card {
+		/* The model chip sits on the first line from outside the card's button. */
+		position: relative;
 		--card-edge: var(--line);
 		--card-bar: var(--muted-light);
 		--card-fill: var(--pane);
@@ -466,6 +483,16 @@
 		overflow-wrap: anywhere;
 	}
 
+	/* Two lines; the whole of it is a press away, in the conversation the card jumps to. */
+	.trace-summary {
+		display: -webkit-box;
+		width: 100%;
+		overflow: hidden;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+	}
+
 	.trace-place,
 	.trace-woken,
 	.trace-passed,
@@ -509,6 +536,38 @@
 	.trace-route-btn.is-open {
 		border-color: var(--accent-border);
 		background: var(--accent-tint);
+	}
+
+	/* Room on the first line for the chip, so a long name or a status does not run under it. */
+	.trace-card.has-route-chip .trace-card-line {
+		padding-right: 80px;
+	}
+
+	.trace-route-chip {
+		position: absolute;
+		top: 9px;
+		right: 8px;
+		max-width: 76px;
+		height: 22px;
+		padding: 0 6px;
+		overflow: hidden;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--muted);
+		font-size: 10px;
+		line-height: 22px;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		cursor: pointer;
+		/* Not the buttons' `all`: a positioned button would slide when its card is laid out anew. */
+		transition: background 0.15s ease, color 0.15s ease;
+	}
+
+	.trace-route-chip:hover,
+	.trace-route-chip.is-open {
+		background: var(--chip);
+		color: var(--ink-secondary);
 	}
 
 	.trace-route-model {
