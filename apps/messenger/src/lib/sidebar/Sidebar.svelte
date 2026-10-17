@@ -32,6 +32,7 @@
 	import { usageWidget } from '../usage/usage-widget.svelte.ts';
 	import CreateFab from './CreateFab.svelte';
 	import WorkingFilter from './WorkingFilter.svelte';
+	import FocusToggle from './FocusToggle.svelte';
 	import MobileArchivedHead from './MobileArchivedHead.svelte';
 	import { searchShortcutLabel } from '../search/shortcuts.ts';
 	import { formatShortcut } from '../keymap.ts';
@@ -292,6 +293,7 @@
 			<BrandMark size={22} />
 			<span class="brand-name" data-tauri-drag-region={dragRegion}>Deskfolk</span>
 			{#if !viewingArchived}<WorkingFilter {t} {workingOnly} {toggleWorkingOnly} />{/if}
+			<FocusToggle {t} />
 			{#if onCollapse}{@render collapseButton()}{/if}
 		</div>
 	{/if}
@@ -330,6 +332,7 @@
 				</button>
 			</div>
 			{#if phone && !viewingArchived}<WorkingFilter {t} {workingOnly} {toggleWorkingOnly} />{/if}
+			{#if phone}<FocusToggle {t} />{/if}
 		</div>
 		<HoldsBar holds={myHolds} label={labelOf} {t} disabled={runtime.connection !== 'connected'} onLift={(hold) => runtime.liftHold(hold.id)} />
 	{/if}

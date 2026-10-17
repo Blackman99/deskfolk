@@ -10,6 +10,7 @@ import { updateChecker } from "../update-checker.svelte.ts";
 
 import { flushSync } from 'svelte';
 import { reactive } from '../test-reactive.svelte.ts';
+import { focusMode } from '../chat/focus-mode.svelte.ts';
 
 const t = copyFor("zh");
 
@@ -767,4 +768,23 @@ test("a press on any conversation, pins included, is handed on so it can be drag
   for (const row of plain.host.querySelectorAll(".row")) pressOn(row);
   expect(presses).toHaveLength(2);
   plain.close();
+});
+
+test("the focus switch beside the mark turns focus mode on and off for every conversation", () => {
+  const view = open([aBotDirect()]);
+  try {
+    const button = () => view.host.querySelector<HTMLButtonElement>(".brand-row .focus-toggle");
+    expect(button()?.getAttribute("aria-pressed")).toBe("false");
+    click(button());
+    flushSync();
+    expect(focusMode.on).toBe(true);
+    expect(button()?.getAttribute("aria-pressed")).toBe("true");
+    expect(button()?.title).toBe(t.sidebar.focusModeOff);
+    click(button());
+    flushSync();
+    expect(focusMode.on).toBe(false);
+  } finally {
+    focusMode.set(false);
+    view.close();
+  }
 });
