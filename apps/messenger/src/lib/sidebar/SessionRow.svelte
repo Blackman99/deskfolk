@@ -28,6 +28,8 @@
 		/** The file drop's status has no count beside it. */
 		showCount?: boolean;
 		preview: string;
+		/** In your direct with a Bot that works elsewhere, where: said in place of the last line. */
+		elsewhere?: string | null;
 		unread: number;
 		bots: ReadonlyMap<string, Bot>;
 		botStatus: (botId: string) => SessionStatusResult | undefined;
@@ -52,6 +54,7 @@
 		status,
 		showCount = true,
 		preview,
+		elsewhere = null,
 		unread,
 		bots,
 		botStatus,
@@ -87,7 +90,7 @@
 			</span>
 		</span>
 	{:else}
-		<SessionAvatar {session} {bots} {botStatus} />
+		<SessionAvatar {session} {bots} {botStatus} statusNote={elsewhere} />
 	{/if}
 	<span class="t">{title}</span>
 	<span class="row-time">{time}</span>
@@ -98,7 +101,7 @@
 			<span class="badge">{status.count}</span>
 		{/if}
 	</span>
-	<span class="s">{preview}</span>
+	<span class="s" class:is-elsewhere={Boolean(elsewhere)}>{elsewhere ?? preview}</span>
 	{#if unread > 0}
 		<span class="unread-dot" title={t.sidebar.unread}>{unreadBadge(unread)}</span>
 	{/if}
@@ -305,6 +308,11 @@
 		text-overflow: ellipsis;
 		line-height: 1.4;
 		min-height: 1.4em;
+	}
+
+	/* Its Bot at work in another conversation: said in the working colour, quieter than a status here. */
+	.row :global(.s.is-elsewhere) {
+		color: var(--accent);
 	}
 
 	/* The time beside each name, the way a messenger shows it. */

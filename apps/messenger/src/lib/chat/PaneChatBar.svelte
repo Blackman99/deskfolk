@@ -16,6 +16,7 @@
 	import { sessionPresence, sessionTitle } from '../sidebar/session-title.ts';
 	import type { TabAction } from '../workbench/layout-types.ts';
 	import { waitingInSession } from './waiting.ts';
+	import BotElsewhere from './BotElsewhere.svelte';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -50,10 +51,8 @@
 			rosterLabels
 		)
 	);
-	const peerModel = $derived.by(() => {
-		const peer = kind === 'you-bot' ? youBotPeer(session) : null;
-		return peer ? (botsById.get(peer)?.model ?? null) : null;
-	});
+	const peerId = $derived(kind === 'you-bot' ? youBotPeer(session) : null);
+	const peerModel = $derived(peerId ? (botsById.get(peerId)?.model ?? null) : null);
 
 	const waiting = $derived(
 		waitingInSession(
@@ -107,6 +106,10 @@
 				</span>
 			</span>
 		</button>
+
+		{#if peerId}
+			<BotElsewhere {runtime} {t} botId={peerId} here={session} />
+		{/if}
 
 		{#if approvals.length > 0 || asks.length > 0}
 			<div class="bar-waiting">

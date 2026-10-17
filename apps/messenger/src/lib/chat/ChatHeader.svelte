@@ -13,6 +13,7 @@
 	import { classifySession, isFileDropSession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { botWorkStatus, sidebarStatus } from '../sidebar/session-status.ts';
 	import { sessionPresence, sessionTitle } from '../sidebar/session-title.ts';
+	import BotElsewhere from './BotElsewhere.svelte';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -308,6 +309,12 @@
 			>
 		{/if}
 	{/if}
+	{#if selected && selectedKind === 'you-bot' && selectedPeerBot}
+		<!-- A row of its own under the name and the actions: beside them a phone has no room. -->
+		<div class="top-elsewhere">
+			<BotElsewhere {runtime} {t} botId={selectedPeerBot.id} here={selected} />
+		</div>
+	{/if}
 </header>
 
 <style>
@@ -546,6 +553,7 @@
 	/* Main Header */
 	.top {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
 		gap: 12px;
@@ -613,6 +621,11 @@
 
 		.top-actions {
 			display: none;
+		}
+
+		/* Under the name, its left edge on the avatar's. */
+		.top-elsewhere {
+			padding: 0 12px 10px 54px;
 		}
 
 		.mobile-actions {
@@ -707,5 +720,15 @@
 		font-size: 12px;
 		color: var(--ink-secondary);
 		font-weight: 500;
+	}
+	/* Empty while the Bot works nowhere else, so it takes no room then. */
+	.top-elsewhere {
+		flex-basis: 100%;
+		display: flex;
+		min-width: 0;
+	}
+
+	.top-elsewhere:empty {
+		display: none;
 	}
 </style>

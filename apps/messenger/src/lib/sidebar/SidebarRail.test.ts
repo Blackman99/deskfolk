@@ -255,6 +255,8 @@ test("a conversation's tip waits on hover, is immediate on focus, and names the 
   const focused = tipFor("rail-tip-direct-1")!;
   expect([...focused.querySelectorAll(".rail-tooltip-line")].map((line) => line.textContent)).toEqual([
     "Writer",
+    // Quiet here, its face busy: where it is at work.
+    t.sidebar.elsewhere.at(t.sidebar.elsewhere.group("Video crew"), t.sidebar.statusWaitingApproval),
     `${t.sidebar.unread} 4`,
   ]);
   expect(unread.getAttribute("aria-describedby")).toBe(focused.id);

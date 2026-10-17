@@ -9,6 +9,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { classifySession, groupSessions, isFileDropSession, isSessionArchived, youBotPeer } from './session-groups.ts';
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
+	import { directElsewhere } from './bot-elsewhere.ts';
 	import HoldsBar from './HoldsBar.svelte';
 	import { holdLabel, listedHolds } from './holds-list.ts';
 	import { loadWorkingOnly, onlyWorking, saveWorkingOnly, workingOrUnreadIds } from './working-only.ts';
@@ -221,6 +222,12 @@
 
 	function labelOf(hold: Hold): string {
 		return holdLabel(hold, { bots: botsById, sessions: sessionsById, roster: rosterLabels, t: t.control });
+	}
+
+	/** Your direct's row, quiet here, with its Bot at work in another conversation: where. */
+	function elsewhereOf(session: SessionSummary, status: ReturnType<typeof statusOf>): string | null {
+		if (status.kind !== 'idle') return null;
+		return directElsewhere(session, false, snapshot, botsById, statusLabels, rosterLabels, t.sidebar.elsewhere);
 	}
 
 	function botStatusOf(botId: string) {
@@ -438,6 +445,7 @@
 						time={timeOf(session)}
 						{status}
 						preview={previewOf(session) || t.sidebar.noMessages}
+						elsewhere={elsewhereOf(session, status)}
 						{unread}
 						bots={botsById}
 						botStatus={botStatusOf}

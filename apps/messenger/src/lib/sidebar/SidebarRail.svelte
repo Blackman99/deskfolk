@@ -12,6 +12,7 @@
 	import RailTooltip from './RailTooltip.svelte';
 	import { groupSessions, isFileDropSession, isSessionArchived } from './session-groups.ts';
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
+	import { directElsewhere } from './bot-elsewhere.ts';
 	import { sessionTitle } from './session-title.ts';
 	import { sessionUnreadCount, unreadBadge } from './unread.ts';
 	import ToolsMenu from './ToolsMenu.svelte';
@@ -156,12 +157,16 @@
 	 * The full title, then a short line of whatever the avatar already shows: what is waiting, or
 	 * how many are unread. Idle and a clean badge say nothing more.
 	 */
-	function sessionTip(title: string, status: ReturnType<typeof statusOf>, unread: number): string[] {
+	function sessionTip(session: SessionSummary, title: string, status: ReturnType<typeof statusOf>, unread: number): string[] {
 		const lines = [title];
 		if (status.kind === 'waiting_approval' && status.count) {
 			lines.push(`${status.label} ${status.count}`);
 		} else if (status.kind !== 'idle') {
 			lines.push(status.label);
+		} else {
+			// Your direct, quiet here while its Bot's face says it is busy: where it is.
+			const elsewhere = directElsewhere(session, false, snapshot, botsById, statusLabels, rosterLabels, t.sidebar.elsewhere);
+			if (elsewhere) lines.push(elsewhere);
 		}
 		if (unread > 0) lines.push(`${t.sidebar.unread} ${unread}`);
 		return lines;
@@ -214,7 +219,7 @@
 				{@const unread = sessionUnreadCount(session)}
 				<RailTooltip
 					class="rail-item {runtime.selectedId === session.id ? 'is-on' : ''} {contextMenuSessionId === session.id ? 'is-context-open' : ''}"
-					label={sessionTip(title, status, unread)}
+					label={sessionTip(session, title, status, unread)}
 					name={unread > 0 ? `${title} · ${t.sidebar.unread} ${unread}` : title}
 					describedBy="rail-tip-{session.id}"
 					data-session={session.id}

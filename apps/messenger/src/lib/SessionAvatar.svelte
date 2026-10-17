@@ -13,13 +13,16 @@
 		bots,
 		size = 'md',
 		class: customClass = '',
-		botStatus
+		botStatus,
+		statusNote = null
 	}: {
 		session: SessionSummary;
 		bots: ReadonlyMap<string, Bot>;
 		size?: 'tab' | 'sm' | 'md' | 'top' | 'hero';
 		class?: string;
 		botStatus?: (botId: string) => SessionStatusResult | undefined;
+		/** Where the Bot is at work, said in the dot's tip in place of the bare status. */
+		statusNote?: string | null;
 	} = $props();
 
 	const avatars = $derived(sessionAvatars(session, bots));
@@ -89,7 +92,7 @@
 			<span
 				class="avatar-status-dot is-{statusResult.kind}"
 				class:is-busy={statusResult.isBusy}
-				title="{targetBot?.name ?? 'Bot'}: {statusResult.label}"
+				title="{targetBot?.name ?? 'Bot'}: {statusNote ?? statusResult.label}"
 			></span>
 		{/if}
 	{/if}
