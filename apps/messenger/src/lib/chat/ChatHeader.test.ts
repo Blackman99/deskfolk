@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { FILE_DROP_SESSION_ID, USER_MEMBER } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
-import { aBot, aDirect, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aBotDirect, aDirect, aTurn, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { click, render } from "../test-render.ts";
 import ChatHeader from "./ChatHeader.svelte";
@@ -143,3 +143,30 @@ test("a workbench pane's header shows the settings open in its own tab, not the 
 });
 
 
+
+test("a direct quiet here, its Bot at work elsewhere: not idle under the name, and where under the header", () => {
+  const selected = aDirect();
+  const runtime = fakeRuntime({
+    bots: [aBot({ id: "bot-1", name: "视频导演" }), aBot({ id: "bot-2", name: "审核员" })],
+    sessions: [selected, aBotDirect({ id: "botbot-1" })],
+    turns: [aTurn({ session_id: "botbot-1" })],
+  });
+  const view = render(ChatHeader, {
+    runtime, t, selected, pinnedSessionIds: [],
+    onTogglePin: () => {}, onToggleSessionSettings: () => {}, onCreateBot: () => {}, onShowOnboarding: () => {},
+  });
+  try {
+    expect(view.host.querySelector(".status-indicator")?.textContent?.trim()).toBe(t.sidebar.statusRunning);
+    expect(view.host.querySelector(".status-indicator .status-dot")?.classList.contains("is-busy")).toBe(true);
+    expect(view.host.querySelector(".top-elsewhere .elsewhere-trigger")?.textContent?.trim()).toBe("在和「审核员」私聊 · 思考中");
+  } finally {
+    view.close();
+  }
+});
+
+test("a direct whose Bot works nowhere is idle under the name, with no row under the header", () => {
+  const { host, close } = openHeader();
+  expect(host.querySelector(".status-indicator")?.textContent?.trim()).toBe(t.chat.online);
+  expect(host.querySelector(".elsewhere-trigger")).toBeNull();
+  close();
+});

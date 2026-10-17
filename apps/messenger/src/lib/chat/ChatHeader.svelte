@@ -11,7 +11,7 @@
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { classifySession, isFileDropSession, youBotPeer } from '../sidebar/session-groups.ts';
-	import { botWorkStatus, sidebarStatus } from '../sidebar/session-status.ts';
+	import { botWorkStatus, isWorkingStatus, sidebarStatus } from '../sidebar/session-status.ts';
 	import { sessionPresence, sessionTitle } from '../sidebar/session-title.ts';
 	import BotElsewhere from './BotElsewhere.svelte';
 
@@ -77,6 +77,16 @@
 			: null
 	);
 	const thinkingHere = $derived(Boolean(selectedWork?.isBusy));
+	/**
+	 * What the line under a direct's name says: how it stands here, or, quiet here while its Bot
+	 * works elsewhere, the Bot's own state, as its face shows it. The row under the header says where.
+	 */
+	const directStatus = $derived.by(() => {
+		if (selectedWork && selectedWork.kind !== 'idle') return selectedWork;
+		if (!selectedPeerBot || selectedPeerBot.archived_at) return null;
+		const peer = botStatusOf(selectedPeerBot.id);
+		return isWorkingStatus(peer.kind) ? peer : null;
+	});
 	let mobileActionsOpen = $state(false);
 
 	function closeMobileActions(): void {
@@ -190,8 +200,8 @@
 					<span class="top-subline flex items-center gap-3 text-12 text-muted whitespace-nowrap overflow-hidden text-ellipsis">
 						{#if selectedKind === 'you-bot' && selectedPeerBot}
 							<span class="status-indicator inline-flex items-center gap-2 text-muted font-medium">
-								<span class="status-dot" class:is-busy={thinkingHere}></span>
-								{selectedWork && selectedWork.kind !== 'idle' ? selectedWork.label : t.chat.online}
+								<span class="status-dot" class:is-busy={Boolean(directStatus?.isBusy)}></span>
+								{directStatus?.label ?? t.chat.online}
 							</span>
 							{#if selectedPeerBot.model}
 								<span class="top-model-pill mono" title={selectedPeerBot.model}>{selectedPeerBot.model}</span>

@@ -8,7 +8,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ### A busy Bot says where it is working
 
-- When a Bot's face says it is busy but your direct with it is quiet, its header now says where it is: "Thinking in a direct with Reviewer", "Approval in group "Video crew"". Press it to open that conversation; a Bot↔Bot direct opens in its window. Working in more than one place, it says how many and opens a list, the ones waiting on you first. On a phone the line sits under the name.
+- When a Bot's face says it is busy but your direct with it is quiet, its header now says where it is: "Thinking in a direct with Reviewer", "Approval in group "Video crew"". Press it to open that conversation; a Bot↔Bot direct opens in its window. Working in more than one place, it says how many and opens a list, the ones waiting on you first. On a phone the line sits under the name, and the word under the name is the Bot's own state ("Thinking"), not "Idle".
 - In the list, your direct's row says the same in place of its last line, and the status dot's tip on its avatar too; in the narrow rail it is a line of the conversation's tip.
 
 ### Your line's time sits under it
