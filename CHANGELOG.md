@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The spend page reads like a dashboard
+
+- The top of the spend overview is now a row of tiles: amount, calls, total tokens and cache hit rate, with the daily cap as one more tile in the row. One segmented bar shows how input, cached input, output and reasoning split the tokens. The category card opens with a share bar, and each category shows its share of total tokens; the daily trend and the category card are the same height.
+- Each row of the usage breakdown has a length bar under its name. The first 6 rows show; "Show all" opens the rest.
+- Quality (last 7 days) is grouped by Bot: totals for hand-overs, approval rate, turned back, complaints and cost per approval up top, then one row per Bot with an approved / turned-back bar. Open a Bot to see its model × plan kind lines. The 5 Bots with the most hand-overs show first.
+
 ### Focus mode: just the messages
 
 - A target icon beside the Deskfolk mark at the top of the sidebar (beside the search on a phone) turns on focus mode; the same switch is in Settings › General › Preferences. On, the transcript keeps what was said and what waits on you, and leaves out the rest: times, how long a reply took, the command cards a turn ran, which step a working Bot is on and its timer, the "Bot" and model tags beside a name, the entries into Bot ↔ Bot directs, and the count over a run of your lines. Bubbles, attachments, quotes, reactions, annotations, approval and question cards, and buttons such as Continue and Insert now stay; a working Bot only says "Thinking" or "streaming". Hover a Bot's reply and its time is still in the action bar; a line you edited still says "Edited". The switch covers every conversation and is kept across reloads.

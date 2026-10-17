@@ -87,9 +87,10 @@
 <style>
 	/* The card itself is the ledger's shared `.surface` (SpendView); only its insides are drawn here. */
 	.cap-card {
-		padding: 14px 20px;
+		padding: 14px 16px;
 		display: flex;
 		flex-direction: column;
+		justify-content: center;
 		gap: 8px;
 	}
 
@@ -165,7 +166,7 @@
 	.cap-hint {
 		margin: 0;
 		color: var(--muted);
-		font-size: 12px;
+		font-size: 11.5px;
 		line-height: 1.5;
 	}
 

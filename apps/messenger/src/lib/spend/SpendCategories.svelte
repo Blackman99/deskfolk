@@ -22,10 +22,15 @@
 		categories.filter((row) => row.calls > 0).map((row) => ({ ...row, kinds: row.kinds.filter((kind) => kind.calls > 0) }))
 	);
 
-	const widest = $derived(Math.max(0, ...shown.map((row) => row.total_tokens ?? 0)));
+	const whole = $derived(shown.reduce((sum, row) => sum + (row.total_tokens ?? 0), 0));
 
 	function share(value: number | null): number {
-		return value != null && widest > 0 ? (value / widest) * 100 : 0;
+		return value != null && whole > 0 ? (value / whole) * 100 : 0;
+	}
+
+	function percent(value: number | null): string {
+		const part = share(value);
+		return part >= 10 || part === 0 ? `${Math.round(part)}%` : part >= 0.1 ? `${part.toFixed(1)}%` : '<0.1%';
 	}
 
 	function meta(row: { calls: number; total_tokens: number | null }): string {
@@ -68,6 +73,15 @@
 			</div>
 			<span class="bar-note">{copy.barsByTokens}</span>
 		</div>
+		{#if whole > 0}
+			<div class="share-bar" aria-hidden="true">
+				{#each shown as category (category.category)}
+					{#if share(category.total_tokens) > 0}
+						<span class="is-{category.category}" style:width="{share(category.total_tokens)}%" title="{copy.category[category.category]} {percent(category.total_tokens)}"></span>
+					{/if}
+				{/each}
+			</div>
+		{/if}
 		<ul class="categories">
 			{#each shown as category (category.category)}
 				<li class="category-item">
@@ -96,10 +110,10 @@
 							<span class="kind-toggle-space" aria-hidden="true"></span>
 						{/if}
 					</div>
-					<span class="category-meta num">{meta(category)}</span>
-					<div class="category-track" aria-hidden="true">
-						<span class="is-{category.category}" style:width="{share(category.total_tokens)}%"></span>
-					</div>
+					<span class="category-meta num">
+						<span>{meta(category)}</span>
+						{#if whole > 0}<span class="category-share">{percent(category.total_tokens)}</span>{/if}
+					</span>
 					{#if ledger.expanded[category.category]}
 						<ul class="kinds">
 							{#each category.kinds as kind (kind.kind)}
@@ -158,7 +172,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 3px;
-		padding: 10px 0 12px;
+		padding: 8px 0 9px;
 	}
 
 	.category-item + .category-item {
@@ -223,35 +237,46 @@
 	}
 
 	.category-meta {
+		display: flex;
+		justify-content: space-between;
+		gap: 8px;
+		margin-right: 36px;
 		padding-left: 16px;
 		font-size: 11.5px;
 		color: var(--muted);
 	}
 
-	.category-track {
-		margin: 5px 36px 0 16px;
-		height: 4px;
-		background: var(--line-subtle);
-		border-radius: var(--radius-full);
+	/* Every category's share of the tokens, as one bar; the rows below name each part. */
+	.share-bar {
+		display: flex;
+		gap: 2px;
+		height: 10px;
+		margin: 0 18px 4px;
+		border-radius: 4px;
 		overflow: hidden;
+		background: var(--line-subtle);
 	}
 
-	.category-track span {
+	.share-bar span {
 		display: block;
 		height: 100%;
-		min-width: 2px;
+		min-width: 3px;
 		background: var(--accent);
-		border-radius: inherit;
 		transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	.category-dot.is-judgement, .category-track .is-judgement { background: var(--purple); }
+	.category-share {
+		font-weight: 600;
+		color: var(--ink-secondary);
+	}
 
-	.category-dot.is-decision, .category-track .is-decision { background: var(--ok); }
+	.category-dot.is-judgement, .share-bar .is-judgement { background: var(--purple); }
 
-	.category-dot.is-feedback, .category-track .is-feedback { background: var(--warn); }
+	.category-dot.is-decision, .share-bar .is-decision { background: var(--ok); }
 
-	.category-dot.is-other, .category-track .is-other { background: var(--muted-light); }
+	.category-dot.is-feedback, .share-bar .is-feedback { background: var(--warn); }
+
+	.category-dot.is-other, .share-bar .is-other { background: var(--muted-light); }
 
 	.kinds {
 		margin: 8px 36px 0 16px;
@@ -286,7 +311,7 @@
 	@container spend (min-width: 1000px) {
 		.analysis-grid {
 			grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
-			align-items: start;
+			align-items: stretch;
 		}
 	}
 
@@ -303,6 +328,10 @@
 
 		.categories {
 			padding: 0 14px 6px;
+		}
+
+		.share-bar {
+			margin: 0 14px 4px;
 		}
 	}
 </style>

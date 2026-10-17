@@ -53,6 +53,15 @@
 		return rows;
 	});
 
+	/** The first rows of a long list; the rest wait behind a button. A new dimension starts short again. */
+	const FIRST_ROWS = 6;
+	let showAll = $state(false);
+	$effect(() => {
+		void ledger.view.dimension;
+		showAll = false;
+	});
+	const shownGroups = $derived(showAll ? sortedGroups : sortedGroups.slice(0, FIRST_ROWS));
+
 	/** An amount column no row has a figure in is a column of dashes; it is left out. One stays. */
 	const hasReported = $derived(sortedGroups.some((group) => group.reported_usd_ticks != null));
 	const hasEstimated = $derived(sortedGroups.some((group) => group.estimated_usd_ticks != null));
@@ -168,7 +177,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{#each sortedGroups as group (`${group.id ?? 'null'}-${group.provider_id ?? ''}-${group.model ?? ''}`)}
+				{#each shownGroups as group (`${group.id ?? 'null'}-${group.provider_id ?? ''}-${group.model ?? ''}`)}
 					<tr class:is-deleted={group.deleted} class:is-actionable={ledger.groupsActionable && !ledger.loading}>
 						<td class="group-name-cell">
 							<div class="group-name-wrapper">
@@ -187,6 +196,7 @@
 									<button type="button" class="row-icon open-session-btn" title={copy.openSession} onclick={() => onOpenSession?.(group.id!)}><SpendIcon name="arrow" /><span class="sr">{copy.openSession}</span></button>
 								{/if}
 							</div>
+							<span class="name-bar" aria-hidden="true"><span style:width="{share(group.total_tokens)}%"></span></span>
 						</td>
 						<td class="num group-calls">{formatTokens(group.calls)}</td>
 						<td class="num group-input">{num(group.input_tokens)}</td>
@@ -207,6 +217,13 @@
 			</tbody>
 		</table>
 	</div>
+	{#if sortedGroups.length > FIRST_ROWS}
+		<div class="more-rows">
+			<button type="button" class="text-action" aria-expanded={showAll} onclick={() => (showAll = !showAll)}>
+				{showAll ? copy.showFewerRows : copy.showAllRows(sortedGroups.length)}
+			</button>
+		</div>
+	{/if}
 </section>
 
 <style>
@@ -322,6 +339,36 @@
 
 	.group-amount, .group-meta, .group-bar {
 		display: none;
+	}
+
+	.more-rows {
+		display: flex;
+		justify-content: center;
+		padding: 6px 12px 8px;
+		border-top: 1px solid var(--line-subtle);
+	}
+
+	/* Wide: the row's share of the busiest row's tokens, under its name. Narrow has its own bar. */
+	.name-bar {
+		display: block;
+		max-width: 360px;
+		height: 4px;
+		margin-top: 6px;
+		background: var(--line-subtle);
+		border-radius: var(--radius-full);
+		overflow: hidden;
+	}
+
+	.name-bar span {
+		display: block;
+		height: 100%;
+		min-width: 2px;
+		background: var(--accent);
+		border-radius: inherit;
+	}
+
+	.is-deleted .name-bar span {
+		background: var(--muted-light);
 	}
 
 	.compact-sort {
@@ -442,6 +489,10 @@
 			grid-area: meta;
 			font-size: 11.5px;
 			color: var(--muted);
+		}
+
+		.name-bar {
+			display: none;
 		}
 
 		.dimension-table .group-bar {

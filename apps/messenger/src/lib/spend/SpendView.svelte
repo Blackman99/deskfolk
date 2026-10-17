@@ -106,8 +106,14 @@
 		aria-label={section === 'overview' ? copy.overview : copy.details}
 		aria-busy={ledger.loading}
 	>
-		{#if section === 'overview' && onSetCap}
-			<SpendCap {copy} {capUsd} {onSetCap} />
+		{#snippet cap()}
+			{#if onSetCap}
+				<SpendCap {copy} {capUsd} {onSetCap} />
+			{/if}
+		{/snippet}
+		<!-- With figures to show, the cap is the last tile of the overview's row; without, it stands alone above. -->
+		{#if section === 'overview' && !(ledger.summary && ledger.summary.totals.calls > 0 && !ledger.failed)}
+			{@render cap()}
 		{/if}
 		{#if ledger.failed}
 			<div class="status-box" role="alert">
@@ -133,7 +139,7 @@
 			</div>
 		{:else}
 			{#if section === 'overview'}
-				<SpendSummary {copy} {locale} totals={ledger.summary.totals} {num} {money} />
+				<SpendSummary {copy} {locale} totals={ledger.summary.totals} {num} {money} extra={cap} />
 
 				<SpendCategories {copy} {locale} {timeZone} {ledger} categories={ledger.summary.categories} {num} />
 

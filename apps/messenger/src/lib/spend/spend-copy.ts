@@ -5,6 +5,12 @@ import type { Locale, SpendCategory, SpendLine } from "@real-bot/protocol";
 export type QualityCopy = {
   title: string; hint: string; bot: string; model: string; kind: string; handOvers: string; approved: string; turnedBack: string;
   complaints: string; shapes: string; misses: string; perApproved: string; deleted: string; none: string; turnedBackTitle: string;
+  /** Approved out of handed over, as a share. */
+  approvalRate: string;
+  /** One Bot's row count under its name: its model × plan kind lines. */
+  lines: (n: number) => string;
+  showLines: string; hideLines: string;
+  showAll: (n: number) => string; showFewer: string;
 };
 
 /** The day's spend cap on the overview (ADR 0088). */
@@ -61,6 +67,15 @@ export type SpendCopy = {
   reasoningWithin: (count: string) => string;
   /** A call's input and output, under its total. */
   inOut: (input: string, output: string) => string;
+  /** The bar that splits the range's tokens into cached input, the rest of input, output and its reasoning. */
+  tokenMix: string;
+  /** Input that was not served from cache. */
+  freshInput: string;
+  /** Output other than reasoning. */
+  plainOutput: string;
+  /** Cached tokens as a share of input. */
+  cacheHit: string;
+  cacheHitOf: (cached: string, input: string) => string;
   /** What the category bars are measured in. */
   barsByTokens: string;
   calls: string;
@@ -104,6 +119,9 @@ export type SpendCopy = {
   model: string;
   amount: string;
   loadMore: string;
+  /** A long list shows its first rows; this opens the rest. */
+  showAllRows: (n: number) => string;
+  showFewerRows: string;
   dash: string;
 };
 
@@ -113,6 +131,8 @@ const zh: SpendCopy = {
     hint: "按 Bot、模型、规划类型：交付的结果，以及每个通过的交付花了多少。这里不改 Bot 跑在哪个模型上——要改，钉一个模型。",
     bot: "Bot", model: "模型", kind: "规划类型", handOvers: "交付", approved: "通过", turnedBack: "打回", complaints: "投诉", shapes: "回复失败",
     misses: "误放行", perApproved: "每次通过", deleted: "已删除的 Bot", none: "—", turnedBackTitle: "审查打回 · 你退回 · 检查没过",
+    approvalRate: "通过率", lines: (n) => `${n} 组模型 × 规划`, showLines: "展开明细", hideLines: "收起明细",
+    showAll: (n) => `显示全部 ${n} 个 Bot`, showFewer: "收起",
   },
   cap: {
     title: "每日上限",
@@ -165,7 +185,12 @@ const zh: SpendCopy = {
   cachedWithin: (count) => `其中缓存 ${count}`,
   reasoningWithin: (count) => `其中推理 ${count}`,
   inOut: (input, output) => `入 ${input} · 出 ${output}`,
-  barsByTokens: "条长按总 token",
+  tokenMix: "Token 构成",
+  freshInput: "未缓存输入",
+  plainOutput: "正文输出",
+  cacheHit: "缓存命中",
+  cacheHitOf: (cached, input) => `${cached} / ${input} 输入`,
+  barsByTokens: "占比按总 token",
   calls: "调用",
   reported: "实报",
   estimated: "估算",
@@ -220,6 +245,8 @@ const zh: SpendCopy = {
   model: "模型",
   amount: "金额",
   loadMore: "载入更多调用",
+  showAllRows: (n) => `显示全部 ${n} 项`,
+  showFewerRows: "收起",
   dash: "—",
 };
 
@@ -229,6 +256,8 @@ const en: SpendCopy = {
     hint: "Per Bot, model and kind of plan: how hand-overs fared and what an approved one cost. Nothing here changes what a Bot runs on — pin a model for that.",
     bot: "Bot", model: "Model", kind: "Plan kind", handOvers: "Hand-overs", approved: "Approved", turnedBack: "Turned back", complaints: "Complaints",
     shapes: "Failed replies", misses: "Review misses", perApproved: "Per approval", deleted: "Deleted Bot", none: "—", turnedBackTitle: "By a reviewer · by you · by checks",
+    approvalRate: "Approval rate", lines: (n) => `${n} model × plan ${n === 1 ? "line" : "lines"}`, showLines: "Show lines", hideLines: "Hide lines",
+    showAll: (n) => `Show all ${n} Bots`, showFewer: "Show fewer",
   },
   cap: {
     title: "Daily cap",
@@ -281,7 +310,12 @@ const en: SpendCopy = {
   cachedWithin: (count) => `incl. ${count} cached`,
   reasoningWithin: (count) => `incl. ${count} reasoning`,
   inOut: (input, output) => `in ${input} · out ${output}`,
-  barsByTokens: "Bars show total tokens",
+  tokenMix: "Token mix",
+  freshInput: "Uncached input",
+  plainOutput: "Answer output",
+  cacheHit: "Cache hits",
+  cacheHitOf: (cached, input) => `${cached} of ${input} input`,
+  barsByTokens: "Shares of total tokens",
   calls: "Calls",
   reported: "Reported",
   estimated: "Estimated",
@@ -336,6 +370,8 @@ const en: SpendCopy = {
   model: "Model",
   amount: "Amount",
   loadMore: "Load more calls",
+  showAllRows: (n) => `Show all ${n}`,
+  showFewerRows: "Show fewer",
   dash: "—",
 };
 
