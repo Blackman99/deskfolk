@@ -18,7 +18,7 @@
  */
 import dagre from "@dagrejs/dagre";
 import { USER_MEMBER, traceNodeSaidNothing, type TaskTrace, type TaskTraceNode, type TurnStatus } from "@real-bot/protocol";
-import { attachSteps, type StepAttachment, type TraceStepGroup } from "./trace-steps.ts";
+import { attachSteps, keepAnomalous, type StepAttachment, type StepsShown, type TraceStepGroup } from "./trace-steps.ts";
 
 /** Stages past this stop drawing connectors and say who woke them in words. */
 export const TRACE_EDGE_LIMIT = 40;
@@ -194,12 +194,15 @@ export function defaultFolded(
 export function traceFlow(
   trace: TaskTrace,
   boxes: ReadonlyMap<string, TraceBox> = new Map(),
-  options: { folded?: ReadonlySet<string>; showSteps?: boolean } = {},
+  options: { folded?: ReadonlySet<string>; steps?: StepsShown | "none" } = {},
 ): TraceFlow {
   const byId = new Map(trace.nodes.map((node) => [node.turn_id, node]));
-  const attached: StepAttachment = options.showSteps === false || !trace.steps?.length
+  const steps = options.steps ?? "all";
+  const attached: StepAttachment = steps === "none" || !trace.steps?.length
     ? { groups: [], parent: new Map() }
-    : attachSteps(trace.nodes, trace.steps);
+    : steps === "anomalous"
+      ? keepAnomalous(attachSteps(trace.nodes, trace.steps))
+      : attachSteps(trace.nodes, trace.steps);
   // A turn hangs from the step that came between it and the card that woke it, when there is one.
   const parentOf = (id: string): string | null => {
     const hung = attached.parent.get(id);

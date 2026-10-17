@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { USER_MEMBER, type TaskTrace, type TaskTraceNode, type TraceStep } from "@real-bot/protocol";
-import { answerJson, attachSteps, stepAnomalous } from "./trace-steps.ts";
+import { answerJson, attachSteps, keepAnomalous, stepAnomalous } from "./trace-steps.ts";
 import { childOrder, traceFlow } from "./task-trace.ts";
 import { copyFor } from "../copy.ts";
 
@@ -95,6 +95,28 @@ test("what was asked about your line runs down from it, and the turn it woke han
   expect(groups.some((group) => group.steps.includes(steps.composed))).toBe(false);
 });
 
+test("with only the steps that went wrong kept, what hung from the rest hangs from the nearest one kept", () => {
+  const { line, turn, steps } = scene();
+  // The Bot's judgement failing: kept, and hung past the reading and filing left out, onto your line.
+  const failedJoin = { ...steps.joined, outcome: "failed" as const, fail_kind: "unreadable" as const };
+  const { groups, parent } = keepAnomalous(attachSteps([line, turn], [...Object.values(steps).filter((s) => s !== steps.joined), failedJoin]));
+  const id = (s: TraceStep) => `step:${s.id}`;
+  expect(groups.map((group) => group.id)).toEqual([id(failedJoin), id(steps.judged)]);
+  expect(parent.get(id(failedJoin))).toBe("user:m1");
+  // The turn still hangs from the judgement that was kept.
+  expect(parent.get("turn-1")).toBe(id(failedJoin));
+  expect(parent.get(id(steps.judged))).toBe("turn-1");
+  // Nothing hangs from a step that is no longer there.
+  const gone = new Set([steps.reading, steps.filing, steps.passed, steps.compacted, steps.readOnce].map(id));
+  expect([...parent.values()].some((from) => gone.has(from))).toBe(false);
+  expect([...parent.keys()].some((key) => gone.has(key))).toBe(false);
+
+  // With every step between them left out, the turn hangs from your line again, as with no steps at all.
+  const quiet = keepAnomalous(attachSteps([line, turn], [steps.reading, steps.filing, steps.joined]));
+  expect(quiet.groups).toEqual([]);
+  expect(quiet.parent.get("turn-1")).toBe("user:m1");
+});
+
 test("a step that went wrong or said no is what the round counts", () => {
   const { steps } = scene();
   expect(stepAnomalous(steps.judged)).toBe(true);
@@ -128,7 +150,7 @@ test("on the board, steps are placed in their round with edges through them, and
   expect(flow.rounds[0]).toMatchObject({ steps: 8, anomalies: 1 });
 
   // Hidden, the board is the turns as before.
-  const bare = traceFlow(trace, new Map(), { showSteps: false });
+  const bare = traceFlow(trace, new Map(), { steps: "none" });
   expect(bare.steps).toEqual([]);
   expect(bare.edges.map((edge) => `${edge.from}>${edge.to}`)).toEqual(["user:m1>turn-1"]);
 });

@@ -11,7 +11,7 @@
 	import TraceRound from './TraceRound.svelte';
 	import TraceRouteDetail from './TraceRouteDetail.svelte';
 	import TraceStepCard from './TraceStepCard.svelte';
-	import { anomalousCards, loadTraceSteps, saveTraceSteps } from './trace-steps.ts';
+	import { anomalousCards, loadTraceSteps, saveTraceSteps, type StepsShown } from './trace-steps.ts';
 	import { loadTraceMinimap, saveTraceMinimap } from './trace-minimap.ts';
 	import { actorFace, actorName, firstPreviewable, latestTurnOfTicket } from './plan-board.ts';
 	import { routeCardRow, type RouteLogRow } from './route-log.ts';
@@ -103,8 +103,11 @@
 	let openRoute = $state<string | null>(null);
 	/** Which kind of model trouble the board is lighting up, if any. */
 	let highlight = $state<RouteHighlight | null>(null);
-	/** The app's own calls on the board (ADR 0083): drawn unless you hid them, one opened at a time. */
-	let showSteps = $state(loadTraceSteps());
+	/**
+	 * The app's own calls on the board (ADR 0083): the ones that went wrong or said no, unless you
+	 * asked for all of them (ADR 0094); one opened at a time.
+	 */
+	let stepsChoice = $state(loadTraceSteps());
 	/** The steps that went wrong lit, the rest of the board dimmed. */
 	let stepsLit = $state(false);
 
@@ -127,7 +130,7 @@
 	 * ticket or a highlight is lighting — folding those away would hide the answer to the question.
 	 */
 	/** The cards something that went wrong hangs under: lit, their rounds stay open. */
-	const anomalous = $derived(shown && showSteps ? anomalousCards(shown.nodes, shown.steps ?? []) : new Set<string>());
+	const anomalous = $derived(shown ? anomalousCards(shown.nodes, shown.steps ?? []) : new Set<string>());
 	const folded = $derived.by(() => {
 		const asked = focus && shown ? focusNode(shown.nodes, focus)?.turn_id ?? null : null;
 		const next = defaultFolded(
@@ -144,7 +147,13 @@
 		}
 		return next;
 	});
-	const flow = $derived(shown ? traceFlow(shown, new Map(Object.entries(boxes)), { folded, showSteps }) : null);
+	/**
+	 * A line's own board (a line filed under no job) is its steps — its reading, where it was filed —
+	 * and your card: there they are all drawn, whatever the job boards are set to.
+	 */
+	const isLineBoard = $derived(shown?.id.startsWith('line:') ?? false);
+	const stepsShown = $derived<StepsShown>(isLineBoard ? 'all' : stepsChoice);
+	const flow = $derived(shown ? traceFlow(shown, new Map(Object.entries(boxes)), { folded, steps: stepsShown }) : null);
 	const anomalyCount = $derived(flow?.rounds.reduce((sum, round) => sum + round.anomalies, 0) ?? 0);
 	/**
 	 * The board inside a fixed viewport: no scrollbars, it is dragged.
@@ -441,12 +450,10 @@
 	}
 
 	function toggleSteps(): void {
-		showSteps = !showSteps;
-		saveTraceSteps(showSteps);
-		if (!showSteps) {
-			job.openStep = null;
-			stepsLit = false;
-		}
+		stepsChoice = stepsChoice === 'all' ? 'anomalous' : 'all';
+		saveTraceSteps(stepsChoice);
+		// A step no longer drawn has no card for its panel to be about.
+		if (job.openStep && !flow?.steps.some((row) => row.group.id === job.openStep)) job.openStep = null;
 	}
 
 	function toggleStepsLit(): void {
@@ -588,13 +595,13 @@
 							<span class="mono">{highlightCounts.blamed}</span>
 						</button>
 					{/if}
-					{#if job.trace.steps?.length}
-						<button type="button" class="trace-highlight" aria-pressed={showSteps} title={t.traceSteps.showHint} data-steps-toggle onclick={toggleSteps}>
+					{#if job.trace.steps?.length && !isLineBoard}
+						<button type="button" class="trace-highlight" aria-pressed={stepsShown === 'all'} title={t.traceSteps.showHint} data-steps-toggle onclick={toggleSteps}>
 							<Icon name="trace-step" size={12} />
-							<span>{showSteps ? t.traceSteps.hide : t.traceSteps.show}</span>
+							<span>{stepsShown === 'all' ? t.traceSteps.hide : t.traceSteps.show}</span>
 						</button>
 					{/if}
-					{#if showSteps && anomalyCount > 0}
+					{#if anomalyCount > 0}
 						<button type="button" class="trace-highlight is-blamed" aria-pressed={stepsLit} data-steps-lit onclick={toggleStepsLit}>
 							<span>{t.traceSteps.anomalies}</span>
 							<span class="mono">{anomalyCount}</span>

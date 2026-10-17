@@ -35,6 +35,9 @@ export type StepAttachment = {
   parent: Map<string, string>;
 };
 
+/** Which of the app's calls a board draws: all of them, or only those that went wrong or said no. */
+export type StepsShown = "all" | "anomalous";
+
 /** Steps the board never draws: a ✨ suggestion is about no line yet. */
 const UNDRAWN = new Set(["composer"]);
 /** What is asked about a line of yours before it wakes anyone, in this order when they tie. */
@@ -147,6 +150,23 @@ function byTimeNode(a: TaskTraceNode, b: TaskTraceNode): number {
   return a.created_at.localeCompare(b.created_at) || a.turn_id.localeCompare(b.turn_id);
 }
 
+/**
+ * Only the steps that went wrong or said no (ADR 0094): the reads that came back "still at it" are
+ * most of a long job's steps, and drawn they outweighed its turns. What hung from a step left out
+ * hangs from the nearest step or card above it that stays, or, with none, from the card that woke it.
+ */
+export function keepAnomalous(attached: StepAttachment): StepAttachment {
+  const dropped = new Set(attached.groups.filter((group) => !group.anomalous).map((group) => group.id));
+  const parent = new Map<string, string>();
+  for (const [id, from] of attached.parent) {
+    if (dropped.has(id)) continue;
+    let at: string | null = from;
+    for (let hops = 0; at && dropped.has(at) && hops < 64; hops++) at = attached.parent.get(at) ?? null;
+    if (at && !dropped.has(at)) parent.set(id, at);
+  }
+  return { groups: attached.groups.filter((group) => !dropped.has(group.id)), parent };
+}
+
 /** The cards anything that went wrong hangs under, so lighting those keeps their rounds open. */
 export function anomalousCards(nodes: readonly TaskTraceNode[], steps: readonly TraceStep[]): Set<string> {
   const { groups, parent } = attachSteps(nodes, steps);
@@ -192,15 +212,19 @@ export function lineBoard(line: LineTrace): TaskTrace {
   return { id: `line:${line.message_id}`, dir: "", title: card?.summary ?? "", session_id: line.session_id, closed_at: null, nodes: line.nodes, steps: line.steps };
 }
 
-const SHOWN_KEY = "real-bot-trace-steps";
+/**
+ * A new key: under the old one ("real-bot-trace-steps") every step was drawn unless you hid them,
+ * and a browser that had pressed back to "on" would never have seen the new default.
+ */
+const SHOWN_KEY = "real-bot-trace-steps-all";
 
-/** Whether the board draws the app's calls; on unless you hid them, per browser like the minimap. */
-export function loadTraceSteps(): boolean {
-  return readStored(SHOWN_KEY) !== "off";
+/** Which steps the board draws: the ones that went wrong, unless you asked for all; per browser like the minimap. */
+export function loadTraceSteps(): StepsShown {
+  return readStored(SHOWN_KEY) === "on" ? "all" : "anomalous";
 }
 
-export function saveTraceSteps(shown: boolean): void {
-  writeStored(SHOWN_KEY, shown ? "on" : "off");
+export function saveTraceSteps(shown: StepsShown): void {
+  writeStored(SHOWN_KEY, shown === "all" ? "on" : "off");
 }
 
 export function forgetTraceSteps(): void {

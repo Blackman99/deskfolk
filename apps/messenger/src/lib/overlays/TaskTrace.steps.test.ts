@@ -1,14 +1,14 @@
 /**
  * The app's own calls on the flow board (ADR 0083): drawn as steps between your line and the turns
- * it woke, opened in place with the model, prompt and answer, hidden with one press, the ones that
- * went wrong lit; and a line filed under no job as a board of its own.
+ * it woke, opened in place with the model, prompt and answer; only the ones that went wrong drawn
+ * until you ask for all (ADR 0094), and those lit; and a line filed under no job as a board of its own.
  */
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { TaskTrace, TraceStep } from "@real-bot/protocol";
 import { forgetKeptBoards } from "./task-trace.ts";
 import { forgetTraceMinimap } from "./trace-minimap.ts";
 import { forgetSpentAsks } from "./trace-view.ts";
-import { forgetTraceSteps } from "./trace-steps.ts";
+import { forgetTraceSteps, saveTraceSteps } from "./trace-steps.ts";
 import { click } from "../test-render.ts";
 import { settle } from "../test-async.ts";
 import { forgetStored } from "../storage.ts";
@@ -16,6 +16,9 @@ import { closeMessageText } from "../chat/message-text-pages.ts";
 import { copyFor } from "../copy.ts";
 import { THEME_STORAGE_KEY, themeManager } from "../theme.ts";
 import { open, picture, until } from "./task-trace-test-kit.ts";
+
+// Most of these look at steps that went right, which a board draws once you ask for all of them.
+beforeEach(() => saveTraceSteps("all"));
 
 afterEach(() => {
   forgetKeptBoards();
@@ -207,7 +210,7 @@ test("an answer that is JSON unfolds as a tree, light or dark as the app is", as
   }
 });
 
-test("the steps hide with one press, and the ones that went wrong can be lit", async () => {
+test("all the steps fold back to the ones that went wrong with one press, and those can be lit", async () => {
   const view = open({ trace: stepped(), pane: true });
   await until(view.host, ".trace-step");
   click(view.host.querySelector("[data-steps-lit]"));
@@ -216,12 +219,33 @@ test("the steps hide with one press, and the ones that went wrong can be lit", a
   expect([...view.host.querySelectorAll(".trace-card")].every((card) => card.classList.contains("is-dim"))).toBe(true);
   click(view.host.querySelector("[data-steps-toggle]"));
   await settle();
-  expect(stepCards(view.host)).toEqual([]);
-  expect(view.host.querySelector("[data-steps-lit]")).toBeNull();
+  expect(stepCards(view.host).map((card) => card.dataset.role)).toEqual(["judge"]);
+  expect(view.host.querySelector("[data-steps-lit]")).not.toBeNull();
+  expect(view.host.querySelector("[data-steps-toggle]")?.textContent?.trim()).toBe(copyFor("zh").traceSteps.show);
+  view.close();
+});
+
+test("a board draws only the steps that went wrong until you ask for all, and the reading is one press away", async () => {
+  forgetTraceSteps();
+  const view = open({ trace: stepped(), pane: true });
+  await until(view.host, ".trace-step");
+  expect(stepCards(view.host).map((card) => card.dataset.role)).toEqual(["judge"]);
+  // What went wrong is counted and can be lit with the rest folded away.
+  expect(view.host.querySelector("[data-steps-lit]")?.textContent).toContain("1");
+  // The turns that hung from the reading of your line hang from your line now.
+  expect(view.host.querySelectorAll(".trace-edges path")).toHaveLength(3);
+  const toggle = view.host.querySelector<HTMLButtonElement>("[data-steps-toggle]")!;
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  click(toggle);
+  await settle();
+  expect(stepCards(view.host).map((card) => card.dataset.role)).toEqual(["reader", "organizer", "judge"]);
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
   view.close();
 });
 
 test("a line filed under no job opens as a board of its own, with no jobs to switch to", async () => {
+  // Its steps are what it is: drawn even where a job's board would leave the ones that went right out.
+  forgetTraceSteps();
   const line = picture().nodes[0]!;
   const view = open({
     pane: true,
@@ -234,5 +258,6 @@ test("a line filed under no job opens as a board of its own, with no jobs to swi
   expect(view.host.querySelector(".trace-title-trigger")).toBeNull();
   expect(view.asked).toEqual([]);
   expect(stepCards(view.host)[0]!.querySelector(".trace-step-said")?.textContent).toBe("读成：停下");
+  expect(view.host.querySelector("[data-steps-toggle]")).toBeNull();
   view.close();
 });

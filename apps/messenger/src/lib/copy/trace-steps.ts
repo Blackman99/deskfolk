@@ -174,9 +174,9 @@ const EN_FAIL: Record<string, string> = {
 
 export const zh = {
   lineTitle: "这句话",
-  show: "显示环节",
-  hide: "隐藏环节",
-  showHint: "流程里画出应用自己的调用：读句、归档、书记员、判断下场、看图判定、整理、复盘",
+  show: "显示全部环节",
+  hide: "只留异常环节",
+  showHint: "应用自己的调用（读句、归档、书记员、判断下场、看图判定、整理、复盘）平时只画没成或说「不」的；这里切换画出全部",
   anomalies: "环节有异常",
   anomaliesCount: (count: number) => `${count} 处异常`,
   roundSteps: (count: number) => `${count} 个环节`,
@@ -216,9 +216,9 @@ export const zh = {
 
 export const en: CopyShape<typeof zh> = {
   lineTitle: "This line",
-  show: "Show steps",
-  hide: "Hide steps",
-  showHint: "Draw the app's own calls in the flow: reading, filing, the scribe, joining in, picture checks, the organizer, retrospectives",
+  show: "Show all steps",
+  hide: "Only steps that went wrong",
+  showHint: "The app's own calls (reading, filing, the scribe, joining in, picture checks, the organizer, retrospectives) are drawn only where one went wrong or said no; this draws them all",
   anomalies: "Steps that went wrong",
   anomaliesCount: (count: number) => (count === 1 ? "1 went wrong" : `${count} went wrong`),
   roundSteps: (count: number) => (count === 1 ? "1 step" : `${count} steps`),
