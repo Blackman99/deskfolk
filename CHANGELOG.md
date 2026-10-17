@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Older messages load as you scroll up
+
+- Scrolling to the top of a conversation now brings in the messages before it on its own; the "Load earlier messages" button above the oldest line is gone. While a page is on its way the top says "Loading…", and the line you were reading stays where it was. A conversation too short to fill its pane fills it by itself.
+
 ### No line under the message box while a Bot works
 
 - The line under the message box that said "Enter to send — it reads it at its next step · Shift+Enter for newline" while a Bot was at work is gone, as it already was when no Bot was working. What you send still reaches the Bot at its next step; hovering the send button still says "Send (Enter)".

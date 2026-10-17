@@ -993,11 +993,10 @@
 	{:else if stream.length === 0 && delegations.length === 0}
 		<ChatWelcome {t} {selected} {selectedKind} {selectedPeerBot} {locale} {fileDrop} {lockedComposer} {onOpenProfile} {pickStarterPrompt} {titleOf} />
 	{:else}
-		{#if view?.hasOlderMessages && hiddenOlder === 0}
-			<div class="load-earlier flex justify-center py-3">
-				<button type="button" class="btn-xs" disabled={view?.olderLoading} onclick={() => void scroll.showEarlier()}>
-					{view?.olderLoading ? t.stream.loadingEarlier : t.stream.loadEarlier}
-				</button>
+		<!-- Scrolling to the top fetches the page before it; this only says one is on its way. -->
+		{#if view?.olderLoading && hiddenOlder === 0}
+			<div class="load-earlier flex justify-center py-3 muted text-12" role="status">
+				{t.stream.loadingEarlier}
 			</div>
 		{/if}
 		{#each groupedStream as group, gIdx (group.id)}

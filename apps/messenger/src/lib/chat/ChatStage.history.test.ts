@@ -3,7 +3,7 @@ import { flushSync, tick } from "svelte";
 import { copyFor } from "../copy.ts";
 import { aBot, aGroup, aMessage, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
-import { buttonByText, click, render } from "../test-render.ts";
+import { render } from "../test-render.ts";
 import ChatStage from "./ChatStage.svelte";
 import { HISTORY_WINDOW_INITIAL } from "./history-window.ts";
 
@@ -65,10 +65,30 @@ test("a search hit older than the window is mounted so it can be scrolled to", (
   close();
 });
 
-test("with every loaded message on screen, the button asks the Mac for the page before it", () => {
+function measure(el: HTMLElement, box: { scrollHeight: number; clientHeight: number; scrollTop: number }) {
+  for (const [key, value] of Object.entries(box)) {
+    Object.defineProperty(el, key, { configurable: true, get: () => value, set: () => {} });
+  }
+}
+
+test("with every loaded message on screen, scrolling to the top asks the Mac for the page before it", () => {
   const { host, runtime, close } = stage(history(12), { hasOlderMessages: true });
-  click(buttonByText(host, "Load earlier messages"));
-  expect(runtime.calls.some((c) => c.name === "loadOlderMessages")).toBe(true);
+  expect(host.textContent).not.toContain("Load earlier messages");
+  const stream = host.querySelector<HTMLElement>(".stream")!;
+  measure(stream, { scrollHeight: 2000, clientHeight: 600, scrollTop: 1400 });
+  stream.dispatchEvent(new Event("scroll"));
+  measure(stream, { scrollHeight: 2000, clientHeight: 600, scrollTop: 100 });
+  stream.dispatchEvent(new Event("scroll"));
+  expect(runtime.calls.filter((c) => c.name === "loadOlderMessages").length).toBe(1);
+  close();
+});
+
+test("a transcript shorter than its pane pages back on its own", () => {
+  const { host, runtime, close } = stage(history(12), { hasOlderMessages: true });
+  const stream = host.querySelector<HTMLElement>(".stream")!;
+  measure(stream, { scrollHeight: 400, clientHeight: 600, scrollTop: 0 });
+  window.dispatchEvent(new Event("resize"));
+  expect(runtime.calls.filter((c) => c.name === "loadOlderMessages").length).toBe(1);
   close();
 });
 

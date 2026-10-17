@@ -47,18 +47,18 @@ export class ChatScroll {
   /**
    * Growing the window prepends content, and the browser keeps `scrollTop`, so the view would
    * slide down by whatever was added. Anchoring on the distance to the bottom keeps the message
-   * the person was reading exactly where it was.
+   * the person was reading exactly where it was. The anchor is read after the page arrives: the
+   * person may have kept scrolling while it was on its way.
    */
   showEarlier = async (): Promise<void> => {
+    const view = this.deps.view();
+    if (this.deps.hiddenOlder() === 0) {
+      if (!view?.hasOlderMessages || view.olderLoading) return;
+      await this.deps.runtime().loadOlderMessages(view.sessionId);
+    }
     const el = this.streamContainer;
     const anchor = el ? el.scrollHeight - el.scrollTop : null;
-    this.stickToBottom = false;
-    const view = this.deps.view();
-    if (this.deps.hiddenOlder() > 0) this.historyWindow += HISTORY_WINDOW_STEP;
-    else if (view?.hasOlderMessages) {
-      await this.deps.runtime().loadOlderMessages(view.sessionId);
-      this.historyWindow += HISTORY_WINDOW_STEP;
-    }
+    this.historyWindow += HISTORY_WINDOW_STEP;
     await tick();
     if (el && anchor !== null) {
       this.ignoreStreamScroll = true;
@@ -148,6 +148,9 @@ export class ChatScroll {
       if (this.stickToBottom) this.pinStreamToBottom();
       else this.showScrollBottom = !isNearBottom(outer.scrollHeight, outer.scrollTop, outer.clientHeight);
       this.refreshActiveIndex();
+      // A transcript shorter than its pane cannot be scrolled, so nothing would ever reach the
+      // top to ask for more; it pages back until it fills the pane. A hidden pane measures 0.
+      if (outer.clientHeight > 0 && outer.scrollHeight <= outer.clientHeight) void this.showEarlier();
     };
     // Measuring every mounted bubble on each size change is what makes a divider drag
     // stutter once several transcripts are on screen. One run when the pointer is released.
@@ -232,11 +235,10 @@ export class ChatScroll {
     }
     this.showScrollBottom = !next.stick;
     this.stickToBottom = next.stick;
-    // Already-fetched messages come back seamlessly; a page that needs the Mac waits for the
-    // button, so scrolling never blocks on the network. Only for someone who has actually
-    // scrolled up: a transcript shorter than its pane sits at the top and would otherwise
-    // keep asking for more.
-    if (this.deps.hiddenOlder() > 0 && !next.stick && el.scrollTop < 240) void this.showEarlier();
+    // Nearing the top mounts the next slice, fetching a page from the Mac once every loaded
+    // message is on screen. Only for someone who has actually scrolled up; a transcript shorter
+    // than its pane is handled where the pane is measured.
+    if (!next.stick && el.scrollTop < 240) void this.showEarlier();
   };
 
   onStreamScrollEnd = (): void => {
