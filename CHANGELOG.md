@@ -12,7 +12,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ### The way into a Bot ↔ Bot direct sits in the middle under its line
 
-- Under a line that opened a Bot ↔ Bot direct, the chip into that direct and "Show this job" above it are now centred under the line, with room above and below, instead of hugging its left edge where they read as part of the message.
+- Under a line that opened a Bot ↔ Bot direct, the chip into that direct and "Show this job" now sit side by side on one row, centred in the conversation with room above and below, instead of stacked on two rows hugging the line's edge where they read as part of the message. Under your own line they centre across the conversation too, not under your bubble on the right.
 
 ### Files copied in Finder paste into the message box
 

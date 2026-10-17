@@ -114,13 +114,14 @@
 {/if}
 
 <style>
-	/* The way into a Bot↔Bot direct and the job it belongs to, centred under the line that opened it. */
+	/* The way into a Bot↔Bot direct and the job it belongs to, side by side on one row, centred under the line that opened it. */
 	.bot-dm-block {
 		display: flex;
-		flex-direction: column;
+		flex-wrap: wrap;
 		align-items: center;
+		justify-content: center;
 		align-self: stretch;
-		gap: 4px;
+		gap: 4px 10px;
 		margin-block: 10px;
 	}
 

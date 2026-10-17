@@ -98,7 +98,7 @@
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
-						class="msg-segment is-user-segment flex flex-col relative w-fit max-w-full"
+						class="msg-segment is-user-segment flex flex-col relative w-fit"
 						data-message-id={item.message.id}
 						class:is-search-hit={stage.highlightedId === item.message.id}
 						class:is-arriving={stage.arriving.has(transcriptItemKey(item))}
@@ -277,28 +277,29 @@
 									/>
 								</div>
 							{/if}
-							{#if stage.botDmIndex.get(item.message.id)}
-								<div class="msg-attached-botdm is-user">
-									<BotDmEntry
-										sessions={stage.botDmIndex.get(item.message.id) ?? []}
-										botsById={stage.botsById}
-										turns={stage.snapshot.turns}
-										approvals={stage.snapshot.approvals}
-										pendingJudgements={stage.snapshot.pendingJudgements}
-										isUser={true}
-										statusLabels={stage.statusLabels}
-										rosterLabels={stage.rosterLabels}
-										openedText={t.chat.botDmOpened}
-										onOpen={(id) => void runtime.selectSession(id)}
-										traceLabel={item.message.task_id ? t.chat.showTrace : undefined}
-										onShowTrace={item.message.task_id
-											? () => stage.showMessageTrace(item.message)
-											: undefined}
-									/>
-								</div>
-							{/if}
 						{/if}
 					</div>
+					{#if !item.message.withdrawn_at && stage.botDmIndex.get(item.message.id)}
+						<!-- Outside the bubble's column, across the whole conversation, so it centres there and not under your words. -->
+						<div class="msg-attached-botdm is-user">
+							<BotDmEntry
+								sessions={stage.botDmIndex.get(item.message.id) ?? []}
+								botsById={stage.botsById}
+								turns={stage.snapshot.turns}
+								approvals={stage.snapshot.approvals}
+								pendingJudgements={stage.snapshot.pendingJudgements}
+								isUser={true}
+								statusLabels={stage.statusLabels}
+								rosterLabels={stage.rosterLabels}
+								openedText={t.chat.botDmOpened}
+								onOpen={(id) => void runtime.selectSession(id)}
+								traceLabel={item.message.task_id ? t.chat.showTrace : undefined}
+								onShowTrace={item.message.task_id
+									? () => stage.showMessageTrace(item.message)
+									: undefined}
+							/>
+						</div>
+					{/if}
 				{/if}
 			{/each}
 		</div>
@@ -315,9 +316,8 @@
 		position: relative;
 	}
 
+	/* The run spans the conversation so what hangs under a line can centre in it; your bubbles keep to the right 80%. */
 	.msg-wrap.is-user {
-		max-width: 80%;
-		align-self: flex-end;
 		justify-content: flex-end;
 	}
 
@@ -516,6 +516,7 @@
 
 	.msg-segment.is-user-segment {
 		align-items: flex-end;
+		max-width: 80%;
 	}
 
 	.msg-wrap.is-group .msg-segment:not(:first-child) {
@@ -718,7 +719,7 @@
 	}
 
 	.msg-attached-botdm.is-user {
-		align-items: flex-end;
+		align-self: stretch;
 	}
 
 	.msg-attached-replying {
@@ -787,7 +788,7 @@
 	 * needs — no text selection on long-press, no hover pill — still asks the window.
 	 */
 	@container conversation (max-width: 680px) {
-		.msg-wrap.is-user {
+		.msg-segment.is-user-segment {
 			max-width: 100%;
 		}
 	}
