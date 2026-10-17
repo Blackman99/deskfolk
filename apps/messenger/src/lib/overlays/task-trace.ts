@@ -544,8 +544,11 @@ export function fitView(
   };
 }
 
-/** Below this a card's words are too small to read. */
-export const TRACE_READABLE_ZOOM = 0.6;
+/**
+ * Below this a card's words are too small to read. It was 0.6, where a card's 12px summary came out
+ * at about 7px; at 0.8 it is about 10 (ADR 0094).
+ */
+export const TRACE_READABLE_ZOOM = 0.8;
 
 /**
  * How a board opens: all of it while all of it can still be read, else its newest round.

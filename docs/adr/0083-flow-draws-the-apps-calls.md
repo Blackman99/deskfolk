@@ -56,3 +56,9 @@ Decision 3 hands steps and cards to dagre together, and they went in the order t
 [ADR 0086](0086-a-job-is-one-tab.md) 把一件事做成一个标签之后，打开的环节不再浮在流程右侧，而是在流程旁边的详情栏里，占满那一栏、自己滚动；窄的时候详情栏是从底部拉起的面板，返回键先收起它。面板压住那一步的卡片时（只有窄的时候会），画布照旧滑开到卡片露出来。
 
 After [ADR 0086](0086-a-job-is-one-tab.md) made a job one tab, an opened step no longer lies over the flow's right edge but fills the inspector beside the flow, scrolling inside; narrow, the inspector is the sheet from the bottom, which Back puts away first. Where the sheet covers the step's card (only narrow), the board still slides until the card is clear.
+
+## 2026-10-17 补记：平时只画异常的环节 / Only the steps that went wrong, by default
+
+「环节可以一键隐藏」改了：一件长的活里绝大多数环节是对 Bot 的话的读句，画出来比轮次还多（《明天见》374 个环节对 104 轮）。现在一件事的流程平时只画没成或说「不」的环节，「显示全部环节」画出全部；一句话自己的流程总是画全。见 [ADR 0094](0094-the-flow-puts-the-exceptions-first.md) 第 3 条。
+
+"The steps can be hidden with one press" changed: on a long job most steps are readings of a Bot's words, and drawn they outnumbered the turns (374 steps to 104 turns on 《明天见》). A job's flow now draws only the steps that did not work or said no, and "Show all steps" draws them all; a line's own board always draws them all. See [ADR 0094](0094-the-flow-puts-the-exceptions-first.md) decision 3.
