@@ -70,7 +70,7 @@ export function markWorkDirectoryUsed(ctx: StoreContext, turnId: string): void {
 /**
  * A rejected filing never changes a job, and the desk stops asking after two corrections. Only a desk
  * segment counts: once bound, a refused call is an ordinary failed call the Bot reads and retries (the
- * trouble count and hop limits bound it), not a filing — cutting off a working segment would say it
+ * trouble count bounds it), not a filing — cutting off a working segment would say it
  * still needs a job chosen and has run nothing, after it ran everything.
  */
 export function noteFilingBounce(ctx: StoreContext, turnId: string): number {

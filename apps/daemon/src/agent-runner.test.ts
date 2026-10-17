@@ -6,12 +6,11 @@ import type { HookCallbackMatcher, Options, SDKMessage, SDKUserMessage } from "@
 import type { ClaudeCodeStatus, ClientEvent } from "@real-bot/protocol";
 import type { CompletionOk, JudgeResult } from "./completions";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
-import { AGENT_TURNS_PAST_LIMIT, type AgentQuery, type AgentSession, type AgentToolBridge } from "./engine/agent-runner";
+import type { AgentQuery, AgentSession, AgentToolBridge } from "./engine/agent-runner";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 import { ENGINE_LEVELS, SCHEMA_LEVEL } from "./store/schema-gate";
 import { createTurnEngine } from "./turn-engine";
-import { lastHopNote, TURN_HOP_LIMIT } from "./turn-pace";
 
 function judged(content: string): JudgeResult {
   return { content, toolCalls: [], hadToolCalls: false, usage: null, failKind: null };
@@ -365,33 +364,22 @@ test("a tool outside the short list is refused", async () => {
   expect(verdict!.reason).toContain("not available");
 });
 
-test("past its engine's hop limit every tool is refused with the last-hop note, and the next answer is the reply", async () => {
+test("a long segment keeps its tools to the end: no hop limit and no maxTurns", async () => {
   const verdicts: Array<{ allowed: boolean; reason?: string }> = [];
+  // Past both limits the app had until 2026-10-17 (the video engine's 200, then 40 more).
+  const steps = 250;
   const h = await harness(async function* ({ useTool, root }) {
-    for (let hop = 1; hop <= 21; hop += 1) {
+    for (let hop = 1; hop <= steps; hop += 1) {
       yield assistant(`第 ${hop} 步`);
       verdicts.push(await useTool("Read", { file_path: join(root, "notes.md") }));
     }
-    verdicts.push(await useTool("mcp__deskfolk__submit", { summary: "x" }));
-    yield assistant("做到这里");
-    yield result("渲染做完了三镜，还差两镜。");
+    yield result("五镜都渲染完了。");
   });
-  h.store.savePlaybook("general", { diff: { v: 1, steps: { pacing: { params: { check_in_hops: 10, hop_limit: 20 } } } } });
   await h.post("接着渲染");
-  expect(verdicts.slice(0, 20).every((verdict) => verdict.allowed)).toBe(true);
-  expect(verdicts[20]).toEqual({ allowed: false, reason: lastHopNote("zh", 20) });
-  expect(verdicts[21]!.allowed).toBe(false);
-  expect(h.lines("bot")).toEqual(["渲染做完了三镜，还差两镜。"]);
-  expect(h.seen.options?.maxTurns).toBe(20 + AGENT_TURNS_PAST_LIMIT);
-});
-
-test("a session that keeps calling tools past the backstop fails as stuck, saying where the tools went", async () => {
-  const h = await harness(async function* () {
-    yield { ...(result("", 0) as object), subtype: "error_max_turns", errors: [] } as unknown as SDKMessage;
-  });
-  await h.post("接着做");
-  expect(h.lines("bot")).toEqual([]);
-  expect(h.lines("system").find((body) => body.includes("卡住了"))).toContain(`到 ${TURN_HOP_LIMIT} 步收起工具后还在调工具`);
+  expect(verdicts).toHaveLength(steps);
+  expect(verdicts.every((verdict) => verdict.allowed)).toBe(true);
+  expect(h.lines("bot")).toEqual(["五镜都渲染完了。"]);
+  expect(h.seen.options?.maxTurns).toBeUndefined();
 });
 
 test("end_turn through the deskfolk tools ends the segment silently; Claude Code's later result is dropped", async () => {

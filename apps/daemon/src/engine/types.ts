@@ -86,8 +86,6 @@ export type Live = {
   locale: Locale;
   /** Completion hops this turn has started. Written onto the route row when the turn closes. */
   hops: number;
-  /** The hop limit's note is in the loop: it goes in once, and the tools stay away after it. */
-  lastHopNoted?: boolean;
   /** An empty reply was answered with one note; the next empty one ends the turn as it would. */
   emptyNudged?: boolean;
   /** A completion is in flight. Its own time limit bounds it, so the stale sweep leaves the turn alone meanwhile. */

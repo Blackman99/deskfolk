@@ -11,7 +11,9 @@ import {
   DEFAULT_PLAYBOOK_ID,
   emptyPlaybookDiff,
   isBuiltinPlaybookId,
+  isPlaybookStepId,
   PlaybookDiffError,
+  playbookStep,
   resolvePlaybook,
   validatePlaybookDiff,
   type BuiltinPlaybookId,
@@ -21,6 +23,7 @@ import {
   type PlaybookResolved,
   type PlaybookRevision,
   type PlaybookRevisionOp,
+  type PlaybookStepDiff,
   type PlaybookStepId,
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
@@ -59,10 +62,29 @@ function parseDiff(text: string | null): PlaybookDiff {
   if (!text) return emptyPlaybookDiff();
   try {
     const value = JSON.parse(text) as PlaybookDiff;
-    return value && typeof value === "object" && value.steps ? { v: 1, steps: value.steps } : emptyPlaybookDiff();
+    return value && typeof value === "object" && value.steps ? withoutRetired(value.steps) : emptyPlaybookDiff();
   } catch {
     return emptyPlaybookDiff();
   }
+}
+
+/**
+ * A stored diff without what the engine no longer has, so the API never hands back a number a save
+ * would refuse: diffs saved before 2026-10-17 can hold pacing.hop_limit, retired then. The row keeps
+ * it until the next change and the revisions keep it for good.
+ */
+function withoutRetired(stored: PlaybookDiff["steps"]): PlaybookDiff {
+  const out = emptyPlaybookDiff();
+  for (const [id, change] of Object.entries(stored)) {
+    if (!isPlaybookStepId(id) || !change || typeof change !== "object") continue;
+    const keys = new Set(playbookStep(id).params.map((param) => param.key));
+    const params = Object.fromEntries(Object.entries(change.params ?? {}).filter(([key]) => keys.has(key)));
+    const kept: PlaybookStepDiff = {};
+    if (change.on !== undefined) kept.on = change.on;
+    if (Object.keys(params).length > 0) kept.params = params;
+    if (kept.on !== undefined || kept.params) out.steps[id] = kept;
+  }
+  return out;
 }
 
 function row(ctx: StoreContext, id: string): PlaybookRow | null {

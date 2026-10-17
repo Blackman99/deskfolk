@@ -56,12 +56,9 @@ export const PLAYBOOK_STEPS: readonly PlaybookStepSpec[] = [
   { id: "reader", hook: "line", role: "reader", switchable: false, params: [] },
   { id: "scribe", hook: "line", role: "scribe", switchable: true, params: [{ key: "adds_max", unit: "count", min: 1, max: 20, step: 1, default: 8 }] },
   { id: "judgement", hook: "group", role: "judgement", switchable: false, params: [] },
-  {
-    id: "pacing", hook: "turn", role: null, switchable: false, params: [
-      { key: "check_in_hops", unit: "hops", min: 10, max: 200, step: 5, default: 40 },
-      { key: "hop_limit", unit: "hops", min: 20, max: 400, step: 10, default: 160 },
-    ],
-  },
+  // Only asks: a turn calls tools for as long as it works. Until 2026-10-17 the tools were also taken
+  // away at a hop limit (160, the video engine 200); long jobs ran into it mid-work.
+  { id: "pacing", hook: "turn", role: null, switchable: false, params: [{ key: "check_in_hops", unit: "hops", min: 10, max: 200, step: 5, default: 40 }] },
   { id: "compaction", hook: "turn", role: "compaction", switchable: false, params: [] },
   { id: "closing", hook: "turn", role: null, switchable: true, params: [] },
   { id: "settle", hook: "turn", role: "organizer", switchable: true, params: [{ key: "quiet_s", unit: "s", min: 10, max: 600, step: 10, default: 30 }] },
@@ -132,9 +129,7 @@ export function emptyPlaybookDiff(): PlaybookDiff {
  * - 视频 (video): the scribe stays (79 calls, 109 entries), the settle waits a minute so a fan-out of
  *   shots is filed once, check-backs are 15 minutes apart and three an hour (13 of 22 woke to nothing
  *   new, some 53 hops each), no model escalation (it only raised Claude Code's effort, and the
- *   send-backs were about likeness), and the ceiling's backstop comes a hand-over sooner. Its
- *   tools go at 200 hops, not 160 (2026-10-12): 视频导演's Claude Agent segments ran 190–200
- *   productive steps, under a fixed 200 before Claude Agent followed the engine.
+ *   send-backs were about likeness), and the ceiling's backstop comes a hand-over sooner.
  * - 代码 (coding): the scribe off (one entry from two calls); the rest as before, the data being thin.
  */
 export const BUILTIN_PLAYBOOKS: Record<BuiltinPlaybookId, PlaybookDiff> = {
@@ -146,7 +141,6 @@ export const BUILTIN_PLAYBOOKS: Record<BuiltinPlaybookId, PlaybookDiff> = {
       check_backs: { params: { min_minutes: 15, per_hour: 3 } },
       escalation: { on: false },
       ceiling: { params: { attempts: 5 } },
-      pacing: { params: { hop_limit: 200 } },
     },
   },
   coding: { v: 1, steps: { scribe: { on: false } } },
@@ -168,7 +162,8 @@ function applyDiff(base: PlaybookResolved, diff: PlaybookDiff | null | undefined
     const change = diff?.steps[step.id];
     out[step.id] = {
       on: step.switchable && typeof change?.on === "boolean" ? change.on : from.on,
-      params: { ...from.params, ...(change?.params ?? {}) },
+      // Only the numbers the step still has: a stored diff can name one since retired (pacing.hop_limit).
+      params: { ...from.params, ...Object.fromEntries(Object.entries(change?.params ?? {}).filter(([key]) => key in from.params)) },
     };
   }
   return out;
@@ -188,8 +183,7 @@ export class PlaybookDiffError extends Error {}
 
 /**
  * A diff as the API takes it: known steps only, `on` only on a step that can be switched off, known
- * numbers only, each an integer in its range; the check-in comes before the hop limit. Throws
- * {@link PlaybookDiffError} with what is wrong.
+ * numbers only, each an integer in its range. Throws {@link PlaybookDiffError} with what is wrong.
  */
 export function validatePlaybookDiff(value: unknown, base: BuiltinPlaybookId): PlaybookDiff {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new PlaybookDiffError("diff must be an object");
@@ -224,10 +218,6 @@ export function validatePlaybookDiff(value: unknown, base: BuiltinPlaybookId): P
       if (Object.keys(numbers).length > 0) kept.params = numbers;
     }
     if (kept.on !== undefined || kept.params) out.steps[id] = kept;
-  }
-  const resolved = resolvePlaybook(base, out);
-  if (resolved.pacing.params.check_in_hops! >= resolved.pacing.params.hop_limit!) {
-    throw new PlaybookDiffError("pacing.check_in_hops must be below pacing.hop_limit");
   }
   return compactPlaybookDiff(base, out);
 }

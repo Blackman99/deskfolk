@@ -8,32 +8,29 @@ import type { ChatTool } from "./prompts/tool-schema";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 import { createTurnEngine } from "./turn-engine";
-import { checkInNote, lastHopNote, TURN_CHECK_IN_HOPS, TURN_HOP_LIMIT, turnPace } from "./turn-pace";
+import { checkInNote, TURN_CHECK_IN_HOPS, turnPace } from "./turn-pace";
 
-test("a turn is asked every 40 hops whether it is getting anywhere, and past 160 its tools go", () => {
+test("a turn is asked every 40 hops whether it is getting anywhere, however long it runs", () => {
   expect(turnPace(1)).toBe("go");
   expect(turnPace(TURN_CHECK_IN_HOPS)).toBe("go");
   expect(turnPace(TURN_CHECK_IN_HOPS + 1)).toBe("check_in");
   expect(turnPace(2 * TURN_CHECK_IN_HOPS + 1)).toBe("check_in");
-  expect(turnPace(TURN_HOP_LIMIT)).toBe("go");
-  expect(turnPace(TURN_HOP_LIMIT + 1)).toBe("last");
-  expect(turnPace(TURN_HOP_LIMIT + 2)).toBe("last");
-  // Past the longest real turn seen (a video Bot's 141 polling hops), so real work is not cut off.
-  expect(TURN_HOP_LIMIT).toBeGreaterThan(141);
+  expect(turnPace(1000)).toBe("go");
+  expect(turnPace(25 * TURN_CHECK_IN_HOPS + 1)).toBe("check_in");
   // A check-in cannot ask for a progress message: sending one ends the turn.
   expect(checkInNote("zh", 40)).toContain("40 跳");
   expect(checkInNote("zh", 40)).toContain("不用回应这条");
   expect(checkInNote("en", 40)).toContain("do not answer this note");
-  expect(lastHopNote("zh")).toContain(`${TURN_HOP_LIMIT} 跳上限`);
+  // Nor does it promise an end: the tools are never taken away (2026-10-17).
+  expect(checkInNote("zh", 40)).not.toContain("收起工具");
+  expect(checkInNote("en", 40)).not.toContain("taken away");
 });
 
-test("an engine's pacing moves both numbers, and the notes say its limit", () => {
-  const pace = { checkInHops: 20, hopLimit: 60 };
-  expect(turnPace(21, pace)).toBe("check_in");
-  expect(turnPace(41, pace)).toBe("check_in");
-  expect(turnPace(61, pace)).toBe("last");
-  expect(checkInNote("zh", 20, 60)).toContain("到 60 跳会收起工具");
-  expect(lastHopNote("en", 60)).toContain("reached 60 tool calls");
+test("an engine's pacing moves the check-in", () => {
+  expect(turnPace(21, 20)).toBe("check_in");
+  expect(turnPace(41, 20)).toBe("check_in");
+  expect(turnPace(61, 20)).toBe("check_in");
+  expect(turnPace(62, 20)).toBe("go");
 });
 
 const closes: Array<() => Promise<void>> = [];
@@ -74,7 +71,10 @@ function lastUserLine(request: CompletionRequest): string {
   return typeof last === "string" ? last : "";
 }
 
-test("a turn that never stops calling tools is checked in on, then made to report and end", async () => {
+/** Past both hop limits the app had until 2026-10-17 (160, the video engine 200). */
+const LONG_RUN = 210;
+
+test("a turn that keeps calling tools is checked in on, and keeps its tools until it answers", async () => {
   const root = mkdtempSync(join(tmpdir(), "pace-"));
   const store = new Store({ endpointKey: memoryKeyStore() });
   const requests: CompletionRequest[] = [];
@@ -91,8 +91,9 @@ test("a turn that never stops calling tools is checked in on, then made to repor
       async complete(request: CompletionRequest): Promise<CompletionOk> {
         requests.push(request);
         const base = { ok: true as const, finishReason: "stop", hadChoices: true, usage: null, missingReason: null };
-        // It polls forever, the way the runaway turn kept re-encoding: it only stops when it has to.
-        if (request.tools.length === 0) return { ...base, content: "做完了轮询，卡在视频一直没出来，需要你看一下服务。", toolCalls: [] };
+        // It polls the way a long render does, and answers once the job is through.
+        const polls = requests.filter((r) => r.tools.length > 0).length;
+        if (polls > LONG_RUN) return { ...base, content: "视频出来了，成片在 out/final.mp4。", toolCalls: [] };
         return {
           ...base,
           content: "",
@@ -122,13 +123,13 @@ test("a turn that never stops calling tools is checked in on, then made to repor
   await finished;
 
   const turns = requests.filter((request) => request.messages.some((m) => m.role === "system"));
-  expect(turns).toHaveLength(TURN_HOP_LIMIT + 1);
+  expect(turns).toHaveLength(LONG_RUN + 1);
   expect(lastUserLine(turns[TURN_CHECK_IN_HOPS]!)).toBe(checkInNote("zh", TURN_CHECK_IN_HOPS));
   expect(lastUserLine(turns[2 * TURN_CHECK_IN_HOPS]!)).toBe(checkInNote("zh", 2 * TURN_CHECK_IN_HOPS));
+  expect(lastUserLine(turns[5 * TURN_CHECK_IN_HOPS]!)).toBe(checkInNote("zh", 5 * TURN_CHECK_IN_HOPS));
   expect(lastUserLine(turns[TURN_CHECK_IN_HOPS - 1]!)).not.toContain("应用提示");
-  expect(turns[TURN_HOP_LIMIT - 1]!.tools.length).toBeGreaterThan(0);
-  expect(turns[TURN_HOP_LIMIT]!.tools).toEqual([]);
-  expect(lastUserLine(turns[TURN_HOP_LIMIT]!)).toBe(lastHopNote("zh"));
+  // Every hop is offered its tools, the last one too: the turn ends because it answered.
+  expect(turns.every((turn) => turn.tools.length > 0)).toBe(true);
   const said = store.listMessages(director.direct_session.id).items.filter((m) => m.kind === "bot");
-  expect(said.at(-1)?.body).toContain("卡在视频一直没出来");
+  expect(said.at(-1)?.body).toContain("视频出来了");
 }, 30_000);

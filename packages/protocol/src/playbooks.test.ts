@@ -19,7 +19,6 @@ test("every step is in the catalogue once, each number's default inside its rang
     const resolved = builtinPlaybook(id);
     // A locked step always runs, whatever an engine says.
     for (const step of PLAYBOOK_STEPS) if (!step.switchable) expect(resolved[step.id].on).toBe(true);
-    expect(resolved.pacing.params.check_in_hops! < resolved.pacing.params.hop_limit!).toBe(true);
   }
 });
 
@@ -34,6 +33,8 @@ test("your changes go over the built-in, and only what differs from it is kept",
     .toEqual({ v: 1, steps: {} });
   // An `on` the step cannot take is never read, even in a stored diff.
   expect(resolvePlaybook("general", { v: 1, steps: { reader: { on: false } } }).reader.on).toBe(true);
+  // Nor a number the step no longer has: the hop limit, retired 2026-10-17, stays stored in diffs saved before.
+  expect(resolvePlaybook("general", { v: 1, steps: { pacing: { params: { hop_limit: 400, check_in_hops: 60 } } } }).pacing.params).toEqual({ check_in_hops: 60 });
 });
 
 test("a diff is refused when it names what is not there or a number out of range", () => {

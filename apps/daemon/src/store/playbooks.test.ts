@@ -50,8 +50,22 @@ describe("engines", () => {
     expect(() => store.savePlaybook("general", { diff: { steps: { reader: { on: false } } } })).toThrow("cannot be switched off");
     expect(() => store.savePlaybook("general", { diff: { steps: { settle: { params: { quiet_s: 5 } } } } })).toThrow("from 10 to 600");
     expect(() => store.savePlaybook("general", { diff: { steps: { settle: { params: { loud: 5 } } } } })).toThrow("unknown number loud");
-    expect(() => store.savePlaybook("general", { diff: { steps: { pacing: { params: { check_in_hops: 200, hop_limit: 150 } } } } })).toThrow("below pacing.hop_limit");
+    expect(() => store.savePlaybook("general", { diff: { steps: { pacing: { params: { hop_limit: 400 } } } } })).toThrow("unknown number hop_limit");
     expect(() => store.savePlaybook("nobody", { diff: { steps: {} } })).toThrow("no such engine");
+  });
+
+  test("a hop limit saved before it was retired is not read, not shown, and does not block the next save", () => {
+    const { store, direct } = fixture();
+    const first = store.savePlaybook("general", { diff: { steps: { settle: { params: { quiet_s: 90 } } } } });
+    // What a data folder from before 2026-10-17 holds: the hop limit, turned up to its old maximum.
+    store.db.run("UPDATE playbooks SET diff = ? WHERE id = 'general'", [JSON.stringify({ v: 1, steps: { pacing: { params: { hop_limit: 400 } }, settle: { params: { quiet_s: 90 } } } })]);
+    const read = store.getPlaybook("general");
+    expect(read.diff).toEqual({ v: 1, steps: { settle: { params: { quiet_s: 90 } } } });
+    expect(read.resolved.pacing).toEqual(builtinPlaybook("general").pacing);
+    expect(store.playbookFor({ sessionId: direct.id }).resolved.pacing.params).toEqual({ check_in_hops: 40 });
+    // The panel sends the engine's diff back whole with its change in it.
+    const saved = store.savePlaybook("general", { diff: { ...read.diff, steps: { ...read.diff.steps, pacing: { params: { check_in_hops: 60 } } } }, ifRevision: first.revision_id });
+    expect(saved.diff.steps).toEqual({ settle: { params: { quiet_s: 90 } }, pacing: { params: { check_in_hops: 60 } } });
   });
 
   test("a custom engine starts from another's changes, can be renamed, and once removed its conversations follow the default", () => {

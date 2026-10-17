@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Long jobs are no longer cut off at a hop limit
+
+- A Bot's turn no longer has its tools taken away after a set number of tool calls in a row (160, or 200 on the video engine), and a Claude Agent Bot no longer fails as "stuck" 40 steps past that. A turn now runs for as long as the work takes and ends when the Bot replies, you stop it, or something fails. Long renders and other long jobs used to stop mid-work on it, even with the limit raised to its maximum of 400.
+- Every 40 tool calls the Bot is still asked whether it is getting anywhere. It is only asked: a Bot that is making progress carries on without answering.
+- "Tools taken away at" is gone from Hop pacing on Roles. An engine where you had changed it keeps the rest of its changes and saves as before.
+
 ### What a flow card is, you can tell by its outline
 
 - On a job's flow, a line of yours that started work now has rounded ends, a decision of yours (an answer, a let-through, a send-back, a rework) has pointed ends, and the app's own steps (reading your line, filing it, a judge's verdict) are slanted. A Bot's turn stays a box with its status stripe. The colour still says the status; the outline says what the card is, so the kinds tell apart before you read a word.

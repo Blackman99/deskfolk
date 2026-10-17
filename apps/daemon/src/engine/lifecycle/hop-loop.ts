@@ -6,7 +6,7 @@ import { assembleTurnMessages } from "../../context";
 import { hopLimits, replyFailure, continueNote, type HopLimits } from "../../hop-limits";
 import { builtinTools, contextFullDetail, type ChatTool } from "../../prompts";
 import { promptBytes } from "../../local-model";
-import { turnPace, checkInNote, lastHopNote, emptyReplyNote, type TurnPace } from "../../turn-pace";
+import { turnPace, checkInNote, emptyReplyNote } from "../../turn-pace";
 import { inboxLabel } from "../../store";
 import { heardNote } from "../../turn-inbox";
 import { readOnlyTools } from "../tools";
@@ -65,7 +65,7 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
         return;
       }
       store.touchTurn(turnId);
-      const pace = notePace(turnId, live, target);
+      notePace(turnId, live, target);
       readInbox(turnId, live, current, target);
       const listed = mcp ? await mcp.listForTurn() : { tools: [], guides: [] };
       if (!active(turnId, live)) return;
@@ -80,7 +80,7 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
         mcpGuides: listed.guides,
       });
       let messages = assemble();
-      const tools = offerTools(live, current, target, listed, pace);
+      const tools = offerTools(live, current, target, listed);
       let sentBytes = promptBytes(messages, tools);
       // Near the window the model's entry names, the older hops are condensed before this one goes (ADR 0068).
       if (!live.compacted && nearWindow(sentBytes, store.contextWindowOf(target.baseUrl, target.model), live.bytesPerToken)) {
@@ -204,20 +204,15 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
   }
 
   /**
-   * A long run of tool calls is asked, now and then, whether it is getting anywhere; past the
-   * limit the tools go and the next reply is the turn's last (see turn-pace.ts).
+   * A long run of tool calls is asked, now and then, whether it is getting anywhere; it keeps its
+   * tools for as long as it works (see turn-pace.ts).
    */
-  function notePace(turnId: string, live: Live, target: ResolvedTarget): TurnPace {
-    // Its engine's numbers (ADR 0085), read each hop: a change made while the turn runs applies from the next.
-    const { check_in_hops: checkInHops, hop_limit: hopLimit } = store.playbookFor({ turnId }).resolved.pacing.params;
-    const pace = turnPace(live.hops, { checkInHops: checkInHops!, hopLimit: hopLimit! });
-    if (pace === "check_in") {
-      live.loop.push({ role: "user", content: checkInNote(target.locale, live.hops - 1, hopLimit) });
-    } else if (pace === "last" && !live.lastHopNoted) {
-      live.lastHopNoted = true;
-      live.loop.push({ role: "user", content: lastHopNote(target.locale, hopLimit) });
+  function notePace(turnId: string, live: Live, target: ResolvedTarget): void {
+    // Its engine's number (ADR 0085), read each hop: a change made while the turn runs applies from the next.
+    const checkInHops = store.playbookFor({ turnId }).resolved.pacing.params.check_in_hops!;
+    if (turnPace(live.hops, checkInHops) === "check_in") {
+      live.loop.push({ role: "user", content: checkInNote(target.locale, live.hops - 1) });
     }
-    return pace;
   }
 
   /** Brings the turn's inbox up to its rows and reads out to the loop what arrived since the last hop. */
@@ -271,9 +266,9 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
   }
 
   /** The tools this hop offers, recorded on the live turn with the MCP tools' servers and arguments. */
-  function offerTools(live: Live, current: Turn, target: ResolvedTarget, listed: Listed, pace: TurnPace): ChatTool[] {
+  function offerTools(live: Live, current: Turn, target: ResolvedTarget, listed: Listed): ChatTool[] {
     // Tool descriptions you edited (ADR 0064) replace the shipped ones from this hop on.
-    const offered = pace === "last" ? [] : [...builtinTools(target.locale, store.capabilities().engine_level, editedToolDescription(promptPage(store, target.locale))), ...listed.tools];
+    const offered = [...builtinTools(target.locale, store.capabilities().engine_level, editedToolDescription(promptPage(store, target.locale))), ...listed.tools];
     // A read-only turn is not shown what it may not call (ADR 0040 I3); the gate refuses them anyway.
     const tools = current.mode === "readonly" ? readOnlyTools(offered, listed.guides) : offered;
     live.toolNames = new Set(tools.map((tool) => tool.function.name));
