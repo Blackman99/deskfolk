@@ -1,5 +1,6 @@
 <script lang="ts">
-	import type { QualityReportRow } from '@real-bot/protocol';
+	import type { Bot, QualityReportRow } from '@real-bot/protocol';
+	import SpendBotFace from './SpendBotFace.svelte';
 	import SpendIcon from './SpendIcon.svelte';
 	import { spendCopyFor, type QualityCopy } from './spend-copy.ts';
 
@@ -13,9 +14,11 @@
 		locale?: 'zh' | 'en';
 		/** Bumped with the spend view's own revision, so a new hand-over shows up. */
 		revision?: number;
+		/** The roster's Bot for an id, for its face beside its row. */
+		botOf?: (id: string | null) => Bot | null;
 	}
 
-	let { api, locale = 'zh', revision = 0 }: Props = $props();
+	let { api, locale = 'zh', revision = 0, botOf = () => null }: Props = $props();
 
 	let rows = $state<QualityReportRow[]>([]);
 	let open = $state<Record<string, boolean>>({});
@@ -139,6 +142,7 @@
 							onclick={() => (open[bot.id] = !open[bot.id])}
 						>
 							<span class="bot-chevron" aria-hidden="true"><SpendIcon name="chevron" /></span>
+							<SpendBotFace id={bot.id} name={bot.name} bot={botOf(bot.id)} size={24} />
 							<span class="bot-name">
 								<span class="who">{bot.name ?? copy.deleted}</span>
 								<span class="bot-sub">{copy.lines(bot.lines.length)}</span>
@@ -340,7 +344,7 @@
 	.bot-toggle {
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		gap: 8px;
 		min-width: 0;
 		min-height: 40px;
 		padding: 0;

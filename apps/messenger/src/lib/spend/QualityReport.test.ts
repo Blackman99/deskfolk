@@ -39,3 +39,19 @@ test("the report groups its Bot × model × plan kind rows by Bot, opens one to 
   expect(older.host.querySelector("[data-quality-report]")).toBeNull();
   older.close();
 });
+
+test("each Bot shows its face: the roster's picture, or a deleted Bot's first letter", async () => {
+  const avatar = "data:image/png;base64,AAAA";
+  const bot = { id: "b1", name: "视频导演", avatar } as unknown as import("@real-bot/protocol").Bot;
+  const view = render(QualityReport, {
+    api: { qualityReport: async () => [row({}), row({ bot_id: "gone", bot_name: null, complaints: 1 })] },
+    locale: "zh",
+    botOf: (id: string | null) => (id === "b1" ? bot : null),
+  });
+  await sleep(0);
+  const faces = [...view.host.querySelectorAll("[data-quality-bot] .bot-face")];
+  expect(faces[0]?.querySelector("img")?.getAttribute("src")).toBe(avatar);
+  expect(faces[1]?.classList.contains("is-gone")).toBe(true);
+  expect(faces[1]?.querySelector("img")).toBeNull();
+  view.close();
+});

@@ -13,6 +13,8 @@
 		locale={runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh'}
 		capUsd={runtime.snapshot.settings.spend_cap_usd ?? null}
 		onSetCap={(usd) => runtime.patchSettings({ spend_cap_usd: usd })}
+		bots={runtime.snapshot.bots}
+		providers={runtime.snapshot.providers}
 		{backLabel}
 		onClose={() => runtime.closeSpend()}
 		onOpenSession={(sessionId) => void runtime.openChat(sessionId)}

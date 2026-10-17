@@ -19,6 +19,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - The top of the spend overview is now a row of tiles: amount, calls, total tokens and cache hit rate, with the daily cap as one more tile in the row. One segmented bar shows how input, cached input, output and reasoning split the tokens. The category card opens with a share bar, and each category shows its share of total tokens; the daily trend and the category card are the same height.
 - Each row of the usage breakdown has a length bar under its name. The first 6 rows show; "Show all" opens the rest.
 - Quality (last 7 days) is grouped by Bot: totals for hand-overs, approval rate, turned back, complaints and cost per approval up top, then one row per Bot with an approved / turned-back bar. Open a Bot to see its model × plan kind lines. The 5 Bots with the most hand-overs show first.
+- Every Bot figure carries the Bot's face: the usage breakdown by Bot, each Bot in Quality, and the Bot on each call in Call details. A deleted Bot shows its name's first letter, greyed. By model and in Call details, each model is marked with where it ran: a local agent such as Claude Agent or Codex wears its logo, an endpoint its vendor's, and an endpoint of no known vendor a plain tile.
 
 ### Focus mode: just the messages
 

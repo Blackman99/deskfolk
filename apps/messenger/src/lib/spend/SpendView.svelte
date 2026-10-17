@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import type { Bot, Provider } from '@real-bot/protocol';
+	import type { ModelSource } from '../model-source.ts';
+	import { spendSource } from './spend-source.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { formatTokens, formatUsd } from '../spend-format.ts';
 	import { spendCopyFor, type SpendCopy } from './spend-copy.ts';
@@ -36,6 +39,10 @@
 		capUsd?: number | null;
 		/** Sets the cap; left out, the overview has no cap card. Resolves to a refusal or nothing. */
 		onSetCap?: (usd: number | null) => Promise<unknown>;
+		/** The roster, for each Bot's face beside its figures. */
+		bots?: readonly Bot[];
+		/** The endpoints, for the vendor's logo in front of a model. */
+		providers?: readonly Pick<Provider, 'id' | 'base_url' | 'api_format'>[];
 	}
 
 	let {
@@ -50,8 +57,19 @@
 		onClose,
 		backLabel = '',
 		capUsd = null,
-		onSetCap
+		onSetCap,
+		bots = [],
+		providers = []
 	}: Props = $props();
+
+	function sourceOf(providerId: string | null, providerName: string | null): ModelSource | null {
+		return spendSource(providerId, providerName, providers);
+	}
+
+	const botsById = $derived(new Map(bots.map((bot) => [bot.id, bot] as const)));
+	function botOf(id: string | null | undefined): Bot | null {
+		return id ? (botsById.get(id) ?? null) : null;
+	}
 
 	const copy: SpendCopy = $derived(spendCopyFor(locale));
 	const ledger = new SpendLedger({
@@ -143,12 +161,12 @@
 
 				<SpendCategories {copy} {locale} {timeZone} {ledger} categories={ledger.summary.categories} {num} />
 
-				<SpendGroupTable {copy} {ledger} {num} {onOpenSession} />
+				<SpendGroupTable {copy} {ledger} {num} {onOpenSession} {botOf} {sourceOf} />
 			{:else}
-				<SpendDetailTable {copy} {locale} {timeZone} {ledger} {num} {onOpenTrigger} />
+				<SpendDetailTable {copy} {locale} {timeZone} {ledger} {num} {onOpenTrigger} {botOf} {sourceOf} />
 			{/if}
 		{/if}
-		<QualityReport {api} {locale} {revision} />
+		<QualityReport {api} {locale} {revision} {botOf} />
 	</div>
 </section>
 

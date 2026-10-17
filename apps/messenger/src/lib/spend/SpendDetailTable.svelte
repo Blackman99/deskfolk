@@ -2,7 +2,10 @@
 	import SpendAmount from './SpendAmount.svelte';
 	import SpendIcon from './SpendIcon.svelte';
 	import { SPEND_CATEGORY_OF, spendLineOf } from '@real-bot/protocol';
-	import type { SpendDetail } from '@real-bot/protocol';
+	import type { Bot, SpendDetail } from '@real-bot/protocol';
+	import SpendBotFace from './SpendBotFace.svelte';
+	import ModelSourceMark from '../ModelSourceMark.svelte';
+	import type { ModelSource } from '../model-source.ts';
 	import { localeTag } from '../locale-tag.ts';
 	import type { SpendCopy } from './spend-copy.ts';
 	import type { SpendLedger } from './spend-ledger.svelte.ts';
@@ -16,9 +19,13 @@
 		num: (value: number | null) => string;
 		/** Open the message that woke a turn. */
 		onOpenTrigger?: (sessionId: string, messageId: string) => void;
+		/** The roster's Bot for an id, for its face beside the row's Bot. */
+		botOf?: (id: string | null) => Bot | null;
+		/** Where a model ran, for its agent's or vendor's logo in front of it. */
+		sourceOf?: (providerId: string | null, providerName: string | null) => ModelSource | null;
 	}
 
-	let { copy, locale, timeZone, ledger, num, onOpenTrigger }: Props = $props();
+	let { copy, locale, timeZone, ledger, num, onOpenTrigger, botOf = () => null, sourceOf = () => null }: Props = $props();
 
 	const categoryOf = SPEND_CATEGORY_OF;
 
@@ -135,13 +142,13 @@
 								{#if row.session_deleted}
 									<span class="deleted">{copy.deleted}</span>
 								{/if}
-								<span class="owner-bot">{detailBot(row)}</span>
+								<span class="owner-bot">{#if row.bot_id != null}<SpendBotFace id={row.bot_id} name={row.bot_name} bot={botOf(row.bot_id)} size={14} />{/if}<span class="owner-bot-name">{detailBot(row)}</span></span>
 								{#if row.bot_deleted}
 									<span class="deleted">{copy.deleted}</span>
 								{/if}
 							</td>
 							<td class="detail-model" title={detailModel(row)}>
-								<span class="model-name">{row.model ?? copy.unrecordedModel}</span>
+								<span class="model-name">{#if row.model != null}{@const source = sourceOf(row.provider_id, row.provider_name)}{#if source}<ModelSourceMark {source} tile />{/if}{/if}<span class="model-text">{row.model ?? copy.unrecordedModel}</span></span>
 								{#if row.model != null && row.provider_name}
 									<span class="model-provider">{row.provider_name}</span>
 								{/if}
@@ -284,9 +291,18 @@
 	}
 
 	.owner-bot {
-		display: block;
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		min-width: 0;
 		font-size: 11.5px;
 		color: var(--muted);
+	}
+
+	.owner-bot-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.detail-owner .deleted {
@@ -306,8 +322,17 @@
 	}
 
 	.model-name {
+		display: flex;
+		align-items: center;
+		gap: 5px;
 		font-size: 12px;
 		color: var(--ink-secondary);
+	}
+
+	.model-text {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.model-provider {

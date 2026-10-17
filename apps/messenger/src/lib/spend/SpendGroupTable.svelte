@@ -1,7 +1,10 @@
 <script lang="ts">
 	import SpendAmount from './SpendAmount.svelte';
+	import SpendBotFace from './SpendBotFace.svelte';
+	import ModelSourceMark from '../ModelSourceMark.svelte';
+	import type { ModelSource } from '../model-source.ts';
 	import SpendIcon from './SpendIcon.svelte';
-	import type { SpendGroup } from '@real-bot/protocol';
+	import type { Bot, SpendGroup } from '@real-bot/protocol';
 	import { formatTokens, formatUsd } from '../spend-format.ts';
 	import type { SpendCopy } from './spend-copy.ts';
 	import type { SpendLedger } from './spend-ledger.svelte.ts';
@@ -13,9 +16,13 @@
 		num: (value: number | null) => string;
 		/** Open the conversation this row belongs to. */
 		onOpenSession?: (sessionId: string) => void;
+		/** The roster's Bot for an id, for its face on the Bot dimension. */
+		botOf?: (id: string | null) => Bot | null;
+		/** Where a model ran, for its agent's or vendor's logo on the model dimension. */
+		sourceOf?: (providerId: string | null, providerName: string | null) => ModelSource | null;
 	}
 
-	let { copy, ledger, num, onOpenSession }: Props = $props();
+	let { copy, ledger, num, onOpenSession, botOf = () => null, sourceOf = () => null }: Props = $props();
 
 	const dimensions: SpendDimension[] = ['model', 'session', 'bot'];
 
@@ -181,6 +188,14 @@
 					<tr class:is-deleted={group.deleted} class:is-actionable={ledger.groupsActionable && !ledger.loading}>
 						<td class="group-name-cell">
 							<div class="group-name-wrapper">
+								{#if ledger.shownDimension === 'bot'}
+									<SpendBotFace id={group.id} name={group.name} bot={botOf(group.id)} />
+								{:else if ledger.shownDimension === 'model'}
+									{@const source = sourceOf(group.provider_id, group.provider_name)}
+									{#if source}
+										<ModelSourceMark {source} tile />
+									{/if}
+								{/if}
 								<button
 									type="button"
 									class="group-name"
