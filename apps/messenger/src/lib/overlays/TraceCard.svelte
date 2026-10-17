@@ -92,8 +92,11 @@
 				<span class="trace-ticket-tag mono" title={ticket.title}>{ticketTag(ticket.seq)}</span>
 			{/if}
 			{#if node.actor !== USER_MEMBER}
-				<!-- Your own line has no status worth reading: it was sent. -->
-				<span class="trace-status is-{node.status}">{t.trace.status[node.status]}</span>
+				{#if node.status !== 'completed'}
+					<!-- Your own line has no status worth reading: it was sent. Nor has a finished turn:
+					     it is most of the board, and only the others say what they are. -->
+					<span class="trace-status is-{node.status}">{t.trace.status[node.status]}</span>
+				{/if}
 			{:else if node.decision}
 				<!-- What you decided here: an answer, a 放行 or 退回, a line sending a ticket back. -->
 				<span class="trace-decision is-{node.decision.kind}">{t.trace.decision[node.decision.kind]}</span>
@@ -244,12 +247,13 @@
 		--card-fill: var(--purple-bg);
 	}
 
+	/* A finished turn is most of any job, so it wears no colour: green on nine cards in ten was the
+	   board's ground, and the few that need a look — live, waiting, cut — did not stand out of it
+	   (ADR 0094). Its stripe is the line's grey, quieter than an unknown status's. */
 	.trace-card.is-completed {
-		/* The solid green, not `--ok-line`. In the dark that line is a 35% wash, and it settles
-		   into the same grey-teal as a live card. */
-		--card-edge: var(--ok);
-		--card-bar: var(--ok);
-		--card-fill: var(--ok-bg);
+		--card-edge: var(--line);
+		--card-bar: var(--line);
+		--card-fill: var(--pane);
 	}
 
 	.trace-card.is-redirected {
@@ -265,9 +269,9 @@
 		--card-fill: var(--danger-bg);
 	}
 
-	/* Where you are, as a ring — but only on a card with no status colour of its own. A finished
-	   card and a live one in the same conversation would otherwise both wear this teal ring, and
-	   in the dark that ring is what you read instead of green against teal. */
+	/* Where you are, as a ring — but only on a card with no status of its own. A live card would
+	   otherwise wear the same teal twice, and a finished one is most of the job's own conversation:
+	   ringed, the board would be teal where it was meant to go quiet. */
 	.trace-card.is-here:not(.is-running):not(.is-waiting_approval):not(.is-waiting_ask):not(.is-completed):not(.is-interrupted):not(.is-stopped) {
 		--card-ring: inset 0 0 0 1px var(--accent);
 	}
@@ -434,7 +438,6 @@
 	.trace-status.is-running { color: var(--accent); }
 	.trace-status.is-waiting_approval { color: var(--warn-text); }
 	.trace-status.is-waiting_ask { color: var(--purple); }
-	.trace-status.is-completed { color: var(--ok-text); }
 	.trace-status.is-redirected { color: var(--muted); }
 	.trace-status.is-interrupted,
 	.trace-status.is-stopped { color: var(--danger-text); }

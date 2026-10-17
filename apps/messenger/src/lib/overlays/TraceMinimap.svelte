@@ -220,7 +220,8 @@
 		fill: var(--line-hover);
 	}
 
-	/* Each card in the colour of its status, as the stripe down its left edge is on the board. */
+	/* Each card in the colour of its status, as the stripe down its left edge is on the board; a
+	   finished one, like its card, in none. */
 	.minimap-card {
 		fill: var(--muted-light);
 		fill-opacity: 0.7;
@@ -230,7 +231,6 @@
 	.minimap-card.is-running { fill: var(--accent); }
 	.minimap-card.is-waiting_approval { fill: var(--warn); }
 	.minimap-card.is-waiting_ask { fill: var(--purple); }
-	.minimap-card.is-completed { fill: var(--ok); }
 	.minimap-card.is-redirected { fill: var(--muted); }
 	.minimap-card.is-interrupted,
 	.minimap-card.is-stopped { fill: var(--danger); }

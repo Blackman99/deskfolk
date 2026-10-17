@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The flow shows first what needs a look
+
+- On a job's flow a finished turn's card is no longer green and no longer says "Done". Colour is left to the cards that need a look: a turn still going (teal), one waiting on you (yellow or purple), one cut or stopped (red). The minimap in the corner follows.
+
 ### The spend page reads like a dashboard
 
 - The top of the spend overview is now a row of tiles: amount, calls, total tokens and cache hit rate, with the daily cap as one more tile in the row. One segmented bar shows how input, cached input, output and reasoning split the tokens. The category card opens with a share bar, and each category shows its share of total tokens; the daily trend and the category card are the same height.

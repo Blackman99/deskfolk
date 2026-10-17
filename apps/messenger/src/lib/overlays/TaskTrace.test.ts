@@ -117,15 +117,15 @@ test("the flow runs top to bottom, a card jumps to its turn, and a file hands ov
   expect(view.host.querySelector(".trace-card.is-running .trace-summary")?.textContent).toBe("正在画第一格");
   expect(view.host.querySelector(".trace-card.is-completed")).not.toBeNull();
   expect(view.host.querySelector(".trace-card.is-running")).not.toBeNull();
-  // Dark mode washes a 35% green and a 35% teal into the same grey, so a finished card and a live
-  // one could not be told apart. The border is the solid status colour.
+  // A finished card wears no colour, so a live one stands out of it — in the dark too, where the
+  // live card's border is the solid teal, not a wash that settles into the line's grey.
   const palette = document.createElement("style");
   palette.textContent = readFileSync(new URL("../styles/tokens.css", import.meta.url), "utf8");
   const previousTheme = document.documentElement.getAttribute("data-theme");
   document.head.append(palette);
   document.documentElement.dataset.theme = "dark";
   try {
-    expect(getComputedStyle(view.host.querySelector(".trace-card.is-completed")!).borderTopColor).toBe("#22c55e");
+    expect(getComputedStyle(view.host.querySelector(".trace-card.is-completed")!).borderTopColor).toBe("#2e393e");
     expect(getComputedStyle(view.host.querySelector(".trace-card.is-running")!).borderTopColor).toBe("#45b0c3");
     expect(getComputedStyle(view.host.querySelector(".trace-card.is-running")!).borderLeftColor).toBe("#45b0c3");
   } finally {
@@ -140,8 +140,9 @@ test("the flow runs top to bottom, a card jumps to its turn, and a file hands ov
   const places = [...view.host.querySelectorAll(".trace-place")];
   expect(places).toHaveLength(1);
   expect(places[0]?.closest(".trace-card")?.classList.contains("is-running")).toBe(true);
-  // Your own card carries no status: it was sent.
-  expect(view.host.querySelectorAll(".trace-status")).toHaveLength(2);
+  // Your own card carries no status: it was sent. A finished turn says nothing either; the live one does.
+  expect([...view.host.querySelectorAll(".trace-status")].map((status) => status.textContent)).toEqual([t.trace.status.running]);
+  expect(view.host.querySelector(".trace-card.is-completed .trace-status")).toBeNull();
 
   click(view.host.querySelector(".trace-card.is-running .trace-card-main"));
   expect(view.jumps).toEqual([["direct-1", "m-approval"]]);
