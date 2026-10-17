@@ -126,7 +126,8 @@
 
 <style>
 	.bot-dm-dialog {
-		width: 760px;
+		/* Room for the whole conversation column (--chat-max-width and its gutters); wider is only margin. */
+		width: 900px;
 		max-width: 92vw;
 		/* Nearly the window's height: a direct is a transcript read top to bottom, a tall window shows more of it. */
 		height: min(92dvh, calc(100dvh - 48px));

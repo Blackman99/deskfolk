@@ -6,9 +6,9 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
-### A Bot ↔ Bot direct's popup is taller
+### A Bot ↔ Bot direct's popup is taller and wider
 
-- The popup a Bot ↔ Bot direct opens in now runs nearly the window's full height, with a margin above and below. Before it stopped at 860 pixels, a little over half of a large window, and took more scrolling.
+- The popup a Bot ↔ Bot direct opens in now runs nearly the window's full height, with a margin above and below. Before it stopped at 860 pixels, a little over half of a large window, and took more scrolling. It is also 900 pixels wide instead of 760, room for the whole conversation column.
 
 ### Bots come back to the conversation to say how their direct went
 
