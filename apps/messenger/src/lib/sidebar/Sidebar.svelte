@@ -555,11 +555,23 @@
 		height: 46px;
 		padding: 6px 10px 0 16px;
 		flex-shrink: 0;
+		container: brand-row / inline-size;
 	}
 
 	/* On macOS the window's traffic lights take the start of the row (`window-chrome.ts`). */
 	:global(:root[data-chrome='mac']) .brand-row {
 		padding-left: 84px;
+	}
+
+	/*
+	 * Behind the traffic lights, a list dragged near its narrowest has no room for the mark and its
+	 * three buttons (22 + 3 × 30 + gaps = 136px past the lights' padding): the name has already
+	 * gone, so the mark goes too.
+	 */
+	@container brand-row (max-width: 135px) {
+		:global(:root[data-chrome='mac']) .brand-row > :global(.brand-mark) {
+			display: none;
+		}
 	}
 
 	.brand-name {
