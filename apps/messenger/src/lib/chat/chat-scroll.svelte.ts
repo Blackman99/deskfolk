@@ -48,12 +48,15 @@ export class ChatScroll {
    * Growing the window prepends content, and the browser keeps `scrollTop`, so the view would
    * slide down by whatever was added. Anchoring on the distance to the bottom keeps the message
    * the person was reading exactly where it was. The anchor is read after the page arrives: the
-   * person may have kept scrolling while it was on its way.
+   * person may have kept scrolling while it was on its way. The window is held to what is mounted
+   * meanwhile, or a window wider than the transcript would mount part of the page the moment it
+   * lands, before the anchor is read, and WebKit keeps `scrollTop` at the new content's top.
    */
   showEarlier = async (): Promise<void> => {
     const view = this.deps.view();
     if (this.deps.hiddenOlder() === 0) {
       if (!view?.hasOlderMessages || view.olderLoading) return;
+      this.historyWindow = this.deps.stream().length;
       await this.deps.runtime().loadOlderMessages(view.sessionId);
     }
     const el = this.streamContainer;

@@ -995,10 +995,11 @@
 	{:else if stream.length === 0 && delegations.length === 0}
 		<ChatWelcome {t} {selected} {selectedKind} {selectedPeerBot} {locale} {fileDrop} {lockedComposer} {onOpenProfile} {pickStarterPrompt} {titleOf} />
 	{:else}
-		<!-- Scrolling to the top fetches the page before it; this only says one is on its way. -->
-		{#if view?.olderLoading && hiddenOlder === 0}
+		<!-- Scrolling to the top fetches the page before it; this only says one is on its way. The
+		     row holds its place while anything older is left, so it never shifts the transcript. -->
+		{#if view?.hasOlderMessages || hiddenOlder > 0}
 			<div class="load-earlier flex justify-center py-3 muted text-12" role="status">
-				{t.stream.loadingEarlier}
+				{view?.olderLoading && hiddenOlder === 0 ? t.stream.loadingEarlier : '\u00a0'}
 			</div>
 		{/if}
 		{#each groupedStream as group, gIdx (group.id)}
