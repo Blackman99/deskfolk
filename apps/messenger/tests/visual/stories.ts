@@ -1709,6 +1709,7 @@ export const rc11Stories = {
   'ticket26a-en': ticketStagesStory('en'),
   'ticket26a-tall': ticketStagesStory('zh', true),
   'ticket-board': ticketBoardStory(),
+  'ticket-board-live': ticketBoardStory(true),
 	'onboarding-validation': {
 		component: Shell as never,
 		props: { runtime: onboardingValidationRuntime() },

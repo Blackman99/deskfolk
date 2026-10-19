@@ -93,6 +93,22 @@ test("one message waking two Bots draws as a fan, not as a queue", () => {
   expect(flow.width).toBeGreaterThan(TRACE_CARD_WIDTH);
 });
 
+test("a line into a card still going or waiting carries its status, and draws last", () => {
+  const flow = traceFlow(
+    trace([
+      node({ turn_id: "you", actor: USER_MEMBER }),
+      node({ turn_id: "a", woken_by_turn_id: "you", status: "running" }),
+      node({ turn_id: "b", woken_by_turn_id: "you" }),
+      node({ turn_id: "c", woken_by_turn_id: "b", status: "waiting_approval" }),
+    ]),
+  );
+  expect(flow.edges.map((edge) => `${edge.from}>${edge.to}:${edge.live}`)).toEqual([
+    "you>b:null",
+    "you>a:running",
+    "b>c:waiting_approval",
+  ]);
+});
+
 test("a child sits under the card that woke it, not under whatever came before", () => {
   const flow = traceFlow(
     trace([

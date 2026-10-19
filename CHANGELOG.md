@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The flow shows which lines lead to work still going
+
+- On a job's flow, the line into a card that is still running is now drawn in the accent colour with dashes that move toward the card, and the line into a card waiting on your approval or your answer wears that card's colour, dashed. Finished lines stay plain grey, so you can follow the work down to where it is now. With reduced motion turned on, the dashes stay still.
+
 ### The sidebar's empty space moves the window
 
 - On macOS the empty space in the sidebar under the conversation list now moves the window when you drag it, and so does the space under the avatars when the sidebar is collapsed to its rail. The rows still open on a click, and the list's scrollbar still scrolls.

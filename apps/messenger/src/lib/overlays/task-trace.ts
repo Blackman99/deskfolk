@@ -48,6 +48,11 @@ export type TraceEdge = {
   to: string;
   /** An SVG path from the bottom of the waking card to the top of the woken one. */
   path: string;
+  /**
+   * The woken card's status while it is still going or waiting on you, so the line into it can say
+   * so too; null once it is done, and for a line into the app's calls.
+   */
+  live: TurnStatus | null;
 };
 
 /** One tree of the job: the card that started it and everything it woke, as a band of the board. */
@@ -302,13 +307,17 @@ export function traceFlow(
 
   const edges: TraceEdge[] = [];
   const boxOf = (id: string) => at.get(id) ?? stepAt.get(id);
+  const statusOf = new Map(trace.nodes.map((node) => [node.turn_id, node.status]));
   for (const id of [...trace.nodes.map((node) => node.turn_id), ...attached.groups.map((group) => group.id)]) {
     const from = parentOf(id);
     const fromBox = from ? boxOf(from) : undefined;
     const toBox = boxOf(id);
     if (!from || !fromBox || !toBox) continue;
-    edges.push({ from, to: id, path: edgePath(fromBox, toBox) });
+    const status = statusOf.get(id);
+    edges.push({ from, to: id, path: edgePath(fromBox, toBox), live: status && LIVE.has(status) ? status : null });
   }
+  // The live lines last, so where one crosses a finished line it is the one on top.
+  edges.sort((a, b) => Number(a.live !== null) - Number(b.live !== null));
   const placements = trace.nodes.flatMap((node) => at.get(node.turn_id) ?? []);
   return {
     placements,

@@ -280,3 +280,33 @@ test('webkit: a ticket shows its rounds on the trace from the inspector and from
     await browser.close();
   }
 });
+
+test('webkit: the line into a running card is the accent, dashed, and its dashes flow toward the card', async ({ baseURL }) => {
+  const browser = await webkit.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await page.goto(`${baseURL}index.html?story=ticket-board-live`);
+    const edge = page.locator('.trace-edges path');
+    await expect(edge).toHaveCount(1, { timeout: 5000 });
+    const style = await edge.evaluate((el) => {
+      const css = getComputedStyle(el);
+      const probe = document.createElement('i');
+      probe.style.color = 'var(--accent)';
+      el.closest('.trace-flow')!.appendChild(probe);
+      const accent = getComputedStyle(probe).color;
+      probe.remove();
+      return { stroke: css.stroke, accent, dash: css.strokeDasharray, animation: css.animationName, running: el.classList.contains('is-running') };
+    });
+    expect(style.running).toBe(true);
+    expect(style.stroke).toBe(style.accent);
+    expect(style.dash).not.toBe('none');
+    // Svelte scopes the keyframes' name, so only its tail is ours.
+    expect(style.animation).toMatch(/trace-edge-flow$/);
+    // A finished card's line stays the plain grey, solid and still.
+    await page.goto(`${baseURL}index.html?story=ticket-board`);
+    await expect(edge).toHaveCount(1, { timeout: 5000 });
+    expect(await edge.evaluate((el) => [el.classList.contains('is-live'), getComputedStyle(el).strokeDasharray, getComputedStyle(el).animationName])).toEqual([false, 'none', 'none']);
+  } finally {
+    await browser.close();
+  }
+});

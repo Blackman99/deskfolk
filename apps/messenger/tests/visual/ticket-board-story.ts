@@ -38,7 +38,8 @@ function storyRequirement(over: Record<string, unknown>): unknown {
   };
 }
 
-export function ticketBoardStory() {
+/** `live`: ticket 02's turn is still running, so the line into it on the trace says so. */
+export function ticketBoardStory(live = false) {
   const t = copyFor('zh');
   const tickets = [
     ...STATUSES.map((status, index) => ticket({ id: `tk-${index + 1}`, seq: index + 1, title: `任务 ${index + 1}`, status, worker: index === 1 ? 'bot-2' : null })),
@@ -78,7 +79,7 @@ export function ticketBoardStory() {
       created_at: '2026-09-22T00:00:00.000Z', artifacts: [], ask: null, approval: null, passed: 0,
     }, {
       // A turn worked in ticket 02, so a card picked on the board has rounds to show on the trace.
-      turn_id: 't-2', session_id: 'group-1', actor: 'bot-2', status: 'completed', woken_by_turn_id: 'user:m1',
+      turn_id: 't-2', session_id: 'group-1', actor: 'bot-2', status: live ? 'running' : 'completed', woken_by_turn_id: 'user:m1',
       woken_elsewhere: null, ticket_id: 'tk-2', trigger_message_id: 'm1', focus_message_id: 'm2', summary: '第二段的分镜画好了',
       created_at: '2026-09-22T00:05:00.000Z', artifacts: [], ask: null, approval: null, passed: 0,
     }],

@@ -680,7 +680,7 @@
 							aria-hidden="true"
 						>
 							{#each flow.edges as edge (edge.from + '>' + edge.to)}
-								<path d={edge.path} />
+								<path d={edge.path} class={edge.live ? `is-live is-${edge.live}` : undefined} />
 							{/each}
 						</svg>
 						{#each flow.rounds as round (round.root)}
@@ -1035,6 +1035,40 @@
 		fill: none;
 		stroke: var(--line-hover);
 		stroke-width: 1.5;
+	}
+
+	/* A line into a card still going or waiting on you wears that card's colour, and a running one's
+	   dashes flow toward it, so you can follow the work to where it is now. */
+	.trace-edges path.is-live {
+		stroke-width: 2;
+	}
+
+	.trace-edges path.is-running {
+		stroke: var(--accent);
+		stroke-dasharray: 6 4;
+		animation: trace-edge-flow 0.8s linear infinite;
+	}
+
+	.trace-edges path.is-waiting_approval {
+		stroke: var(--warn);
+		stroke-dasharray: 6 4;
+	}
+
+	.trace-edges path.is-waiting_ask {
+		stroke: var(--purple);
+		stroke-dasharray: 6 4;
+	}
+
+	@keyframes trace-edge-flow {
+		to {
+			stroke-dashoffset: -10;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.trace-edges path.is-running {
+			animation: none;
+		}
 	}
 
 	.trace-slot {
