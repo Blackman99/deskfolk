@@ -20,7 +20,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ### The macOS window shows its frosted glass
 
-- In the dark theme the sidebar is now the window's frosted glass, lighter than the cards, as a dark Finder's sidebar is; what is behind the window shows through as colour. Before, it was near-black and the glass could not be seen. Right of the sidebar, the tab rows and the margins between panes stay one even near-black: glass that clear takes the colour of whatever is behind each part of the window, and two panes' tab rows came out blue and orange. The sidebar's quieter grey text is a step lighter there, so it still reads when a light window is behind.
+- In the dark theme the sidebar is now the window's frosted glass, lighter than the cards, as a dark Finder's sidebar is; what is behind the window shows through as colour. Before, it was near-black and the glass could not be seen. The margins between panes show the glass too. Each pane's tab row is now a solid dark head joined to its card, so the rows match: glass that clear takes the colour of whatever is behind each part of the window, and two panes' tab rows came out blue and orange. The sidebar's quieter grey text is a step lighter there, so it still reads when a light window is behind.
 - In the light theme the sidebar and the margins around the cards now let more of the window's frosted glass through, so what is behind the window shows faintly as colour. The glass also stays when the window is not in front, instead of turning flat grey.
 
 ## 0.1.0 — 2026-10-19

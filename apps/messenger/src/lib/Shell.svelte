@@ -1490,13 +1490,8 @@
 			left: 5px;
 		}
 
-		/* The sidebar's column and the rest cover the glass by their own amounts (`tokens.css`). */
 		:global(:root[data-chrome='mac']) .shell {
-			background: linear-gradient(
-				to right,
-				color-mix(in srgb, var(--ground) var(--ground-tint), transparent) var(--sidebar-width, 260px),
-				color-mix(in srgb, var(--ground) var(--ground-tint-content), transparent) var(--sidebar-width, 260px)
-			);
+			background: color-mix(in srgb, var(--ground) var(--ground-tint), transparent);
 		}
 	}
 
