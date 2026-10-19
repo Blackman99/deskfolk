@@ -13,11 +13,15 @@
    * the gutter around the cards. `--ground-tint` is how much of it covers the window's material on
    * macOS. Light keeps the sidebar's colour at 30%, so the frosted glass shows through. Dark has
    * no middle: the dark glass is lighter than `--pane`, so a ground between the two (about 35–60%)
-   * is the cards' own colour. Off macOS dark goes well under `--pane`; on macOS it covers 20% and
-   * the glass sits above the cards instead, as a dark Finder's sidebar does.
+   * is the cards' own colour. Off macOS dark goes well under `--pane`; on macOS it covers 20% under
+   * the sidebar, so the glass sits above the cards there, as a dark Finder's sidebar does.
+   * `--ground-tint-content` is the same for the gutters right of the sidebar: dark keeps them at
+   * 92%, because glass that clear takes the colour of whatever is behind each part of the window,
+   * and two panes' tab rows came out blue and orange.
    */
   --ground: var(--sidebar-bg);
   --ground-tint: 30%;
+  --ground-tint-content: var(--ground-tint);
   --ink: #121c20;
   --ink-secondary: #37444a;
   --muted: #5f6d74;
@@ -251,6 +255,7 @@ body.dark,
   --sidebar-bg: #13191c;
   --ground: #06090a;
   --ground-tint: 20%;
+  --ground-tint-content: 92%;
   --ink: #eef2f3;
   --ink-secondary: #c5cfd3;
   --muted: #8b989e;
