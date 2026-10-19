@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The sidebar's empty space moves the window
+
+- On macOS the empty space in the sidebar under the conversation list now moves the window when you drag it, and so does the space under the avatars when the sidebar is collapsed to its rail. The rows still open on a click, and the list's scrollbar still scrolls.
+
 ### A long script from a Bot no longer freezes the runtime
 
 - Before a Claude Code Bot's shell command runs, Deskfolk checks which files it reaches. A command carrying a script with many negative values written as `name=-1` made that check take longer with every one of them, and with a few dozen it never finished: the runtime stopped answering and the window and the phone could not reach it until it was restarted. The check now takes one pass however the script is written.

@@ -208,7 +208,8 @@
 	>
 		<Icon name="activity" />
 	</RailTooltip>
-	<div class="rail-list">
+	<!-- It fills the rail below the actions, so its empty space is what moves the window. -->
+	<div class="rail-list" data-tauri-drag-region={dragRegion}>
 		{#each sections as section, index (index)}
 			{#if index > 0}
 				<div class="rail-divider" role="separator"></div>

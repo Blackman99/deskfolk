@@ -2,7 +2,7 @@
 	import Icon from '../Icon.svelte';
 	import type { Hold, SessionSummary } from '@real-bot/protocol';
 	import BrandMark from '../BrandMark.svelte';
-	import { dragRegion } from '../window-chrome.ts';
+	import { dragRegion, scrollbarIsNotDrag } from '../window-chrome.ts';
 	import EmptyState from '../EmptyState.svelte';
 	import { isOutside } from '../click-outside.ts';
 	import type { Copy } from '../copy.ts';
@@ -336,7 +336,8 @@
 		</div>
 		<HoldsBar holds={myHolds} label={labelOf} {t} disabled={runtime.connection !== 'connected'} onLift={(hold) => runtime.liftHold(hold.id)} />
 	{/if}
-	<div class="groups">
+	<!-- The list's empty space moves the window, as the brand row does; its rows keep their clicks. -->
+	<div class="groups" data-tauri-drag-region={dragRegion} use:scrollbarIsNotDrag>
 		{#if viewingArchived}
 			<div class="ghead archived-ghead flex items-center justify-between">
 				<span>{t.sidebar.archivedSessions}</span>

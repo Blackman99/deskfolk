@@ -27,6 +27,27 @@ export const WINDOW_CHROME: WindowChrome = windowChrome();
  */
 export const dragRegion: "" | undefined = WINDOW_CHROME === "mac" ? "" : undefined;
 
+/**
+ * For a drag region that scrolls (the sidebar's list, the rail). A press on its scrollbar lands on
+ * the element itself, which is all Tauri checks, so grabbing the scrollbar moved the window: the
+ * user's window draws classic scrollbars. For that one press the element says it is not a drag
+ * region, and says so again once the event is through; the press itself goes on as before.
+ */
+export function scrollbarIsNotDrag(node: HTMLElement): { destroy(): void } {
+  const onDown = (event: MouseEvent) => {
+    const was = node.getAttribute("data-tauri-drag-region");
+    if (event.target !== node || was === null) return;
+    const box = node.getBoundingClientRect();
+    const x = event.clientX - box.left - node.clientLeft;
+    const y = event.clientY - box.top - node.clientTop;
+    if (x < node.clientWidth && y < node.clientHeight) return;
+    node.setAttribute("data-tauri-drag-region", "false");
+    setTimeout(() => node.setAttribute("data-tauri-drag-region", was));
+  };
+  node.addEventListener("mousedown", onDown);
+  return { destroy: () => node.removeEventListener("mousedown", onDown) };
+}
+
 /** `<html data-chrome="mac|system">`, for `window-chrome.css`. */
 export function applyWindowChromeAttribute(chrome: WindowChrome = WINDOW_CHROME): void {
   if (typeof document === "undefined") return;
