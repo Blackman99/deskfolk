@@ -206,6 +206,15 @@ const n = fs.readFileSync("launch/copy.md", "utf8").split(/\s+/g).length; consol
     const got = classifyShell(root, "echo hi", "/tmp");
     expect(got.kind).toBe("unconstrained");
   });
+
+  test("a script full of negative keyword values is read in one pass", () => {
+    const root = tmp();
+    // Every `=-` once doubled the work: 27 of them took tens of seconds, a Bot's heredoc with more
+    // held the runtime for hours (2026-10-16).
+    const args = Array.from({ length: 27 }, (_, i) => `k${i}=-${i}`).join(",");
+    expect(classifyShell(root, `python3 -c "f(${args})"`).kind).toBe("jailed");
+    expect(classifyShell(root, `python3 -c "f(${args},out='/etc/hosts')"`).kind).toBe("unconstrained");
+  });
 });
 
 describe("classifyPath existence check is not required for the helper itself", () => {

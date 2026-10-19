@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A long script from a Bot no longer freezes the runtime
+
+- Before a Claude Code Bot's shell command runs, Deskfolk checks which files it reaches. A command carrying a script with many negative values written as `name=-1` made that check take longer with every one of them, and with a few dozen it never finished: the runtime stopped answering and the window and the phone could not reach it until it was restarted. The check now takes one pass however the script is written.
+
 ### A pane's tab row says when there are more tabs to scroll to
 
 - When a pane holds more tabs than its strip can show, the row used to end in a tab cut off mid-name, which looked like something broken rather than something to scroll. Each side with more tabs past it now fades out and carries a small round arrow; click it to bring the next tabs into view. Scrolled all the way, that side's fade and arrow go.

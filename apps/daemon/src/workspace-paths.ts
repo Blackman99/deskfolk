@@ -344,32 +344,53 @@ const WEB_URL = /\b(?:https?|wss?|ftp):\/\/[^\s'"`)]*/gi;
  */
 const EMBEDDED_PATH = /(?:^|[=:<>(\[{,;|&'"`])(~\/[^'"`\s);|&<>]+|\/[^'"`\s);|&<>]+|\.\.(?:\/[^'"`\s);|&<>]*)?)/g;
 
+/**
+ * What follows each `=` is a token of its own (`--git-dir=/tmp/x`), looked at once per `=`, the
+ * last value first. A loop, not recursion: a script in one quoted token has hundreds of `=`, and
+ * the glued-option branch used to walk the value after an `=-` (`k=-1`) a second time, so every
+ * `=-` doubled the work. On 2026-10-16 a Bot's Python heredoc never finished being checked and
+ * the runtime stopped answering.
+ */
 function pathCandidates(token: string): string[] {
-  const t = token.replace(/^[`'"]+|[`'"]+$/g, "").replace(WEB_URL, "");
-  const out: string[] = [];
-  const eq = t.indexOf("=");
-  if (eq >= 0 && eq < t.length - 1) {
-    out.push(...pathCandidates(t.slice(eq + 1)));
+  const values: string[] = [];
+  let t = bareToken(token);
+  for (;;) {
+    values.push(t);
+    const eq = t.indexOf("=");
+    if (eq < 0 || eq >= t.length - 1) break;
+    t = bareToken(t.slice(eq + 1));
   }
-  if (
-    t.startsWith("/") ||
-    t.startsWith("~") ||
-    t === "." ||
-    t === ".." ||
-    t.startsWith("./") ||
-    t.startsWith("../")
-  ) {
-    out.push(t);
-  } else if (t.startsWith("-")) {
-    // An option with its value glued on: `-o/tmp/x`, `-I../include`.
-    const rest = t.replace(/^-+[A-Za-z0-9]*/, "");
-    if (rest && rest !== t) out.push(...pathCandidates(rest));
-  } else if (t.includes("/") && RELATIVE_PATH.test(t)) {
-    out.push(t);
-  } else {
-    for (const m of t.matchAll(EMBEDDED_PATH)) out.push(m[1]!);
+  return values.reverse().flatMap((value) => ownPathCandidates(value));
+}
+
+function bareToken(token: string): string {
+  return token.replace(/^[`'"]+|[`'"]+$/g, "").replace(WEB_URL, "");
+}
+
+/** The paths a token names before its first `=`'s value, which {@link pathCandidates} looks at. */
+function ownPathCandidates(token: string): string[] {
+  let t = token;
+  for (;;) {
+    if (
+      t.startsWith("/") ||
+      t.startsWith("~") ||
+      t === "." ||
+      t === ".." ||
+      t.startsWith("./") ||
+      t.startsWith("../")
+    ) {
+      return [t];
+    }
+    if (t.startsWith("-")) {
+      // An option with its value glued on: `-o/tmp/x`, `-I../include`.
+      const rest = t.replace(/^-+[A-Za-z0-9]*/, "");
+      if (!rest || rest === t) return [];
+      t = bareToken(rest);
+      continue;
+    }
+    if (t.includes("/") && RELATIVE_PATH.test(t)) return [t];
+    return Array.from(t.matchAll(EMBEDDED_PATH), (m) => m[1]!);
   }
-  return out;
 }
 
 // Windows ----------------------------------------------------------------------------------------
