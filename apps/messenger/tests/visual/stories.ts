@@ -1636,6 +1636,18 @@ function onboardingValidationRuntime() {
 }
 
 export const rc11Stories = {
+  // A pane over an empty one: the empty card starts at the gutter, not under a strip of nothing.
+  'workbench-split-empty': {
+    component: Workbench as never,
+    props: workbenchProps({
+      version: 1,
+      root: makeBranch('root', 'column', [makeLeaf('p1', [storyTab('wt4', 'preview', 'v_s01_e1.mp4')]), makeLeaf('p2', [])], [0.5, 0.5]),
+      floating: [],
+      focus: { zone: 'tiled', leafId: 'p2' }
+    }),
+    width: 1000, height: 760,
+    afterMount() {},
+  },
   // An empty direct: the Bot's welcome and its starters.
   'chat-welcome': {
     component: ChatStage as never,

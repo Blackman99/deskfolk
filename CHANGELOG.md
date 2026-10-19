@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### An empty pane no longer leaves a band over its card
+
+- In a split, an empty pane put its ⋯ and × on a row of their own above the card, so a strip of bare ground about 40px tall sat between it and the pane next to it. The two buttons now sit in the card's top-right corner and the card starts at the usual gutter.
+
 ### The macOS window shows more of its frosted glass
 
 - In the light theme the sidebar and the margins around the cards now let more of the window's frosted glass through, so what is behind the window shows faintly as colour. The glass also stays when the window is not in front, instead of turning flat grey. The dark theme is unchanged: there the margins have to stay well under the cards, or the two run together.

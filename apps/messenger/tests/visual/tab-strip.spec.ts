@@ -36,5 +36,29 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 				await browser.close();
 			}
 		});
+
+		test('an empty pane under another starts at the gutter, its ⋯ and × in its corner', async ({ baseURL }) => {
+			const browser = await engine.launch();
+			try {
+				const page = await browser.newPage({ viewport: { width: 1000, height: 760 } });
+				await page.goto(`${baseURL}index.html?story=workbench-split-empty`);
+				await page.waitForSelector('html[data-ready="yes"]');
+				await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+				const box = (selector: string) =>
+					page.$eval(selector, (element) => {
+						const r = element.getBoundingClientRect();
+						return { top: r.top, right: r.right, bottom: r.bottom };
+					});
+				const upper = await box('[data-leaf="p1"] > .wb-body');
+				const lower = await box('[data-leaf="p2"] > .wb-body');
+				const close = await box('[data-leaf="p2"] .wb-pane-close');
+				// 4px under the upper card, the one-pixel seam, 4px over the lower one.
+				expect(lower.top - upper.bottom).toBe(9);
+				expect(close.top).toBeGreaterThanOrEqual(lower.top);
+				expect(close.right).toBeLessThanOrEqual(lower.right);
+			} finally {
+				await browser.close();
+			}
+		});
 	});
 }

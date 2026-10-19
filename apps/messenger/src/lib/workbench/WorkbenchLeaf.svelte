@@ -285,6 +285,7 @@
 	class="wb-leaf"
 	class:is-focused={focused}
 	class:is-framed={framed}
+	class:is-empty={leaf.tabs.length === 0}
 	data-leaf={leaf.id}
 	data-testid="wb-leaf"
 >
@@ -1066,6 +1067,33 @@
 			border-radius: inherit;
 			box-shadow: inset 0 0 0 1px var(--accent-border);
 			pointer-events: none;
+		}
+		/*
+		 * An empty pane has no tab to put on the strip, only its ⋯ and ×. A row for those two
+		 * left a band of ground over the card, so they sit in the card's corner instead, and the
+		 * card starts at the gutter like the window's edge. A floating pane keeps its strip: it is
+		 * what the pane is moved by.
+		 */
+		.wb-leaf.is-empty > .wb-strip {
+			position: absolute;
+			top: 4px;
+			right: 4px;
+			height: 32px;
+			padding-right: 4px;
+			z-index: 2;
+		}
+		.wb-leaf.is-empty > .wb-body {
+			margin-top: 4px;
+		}
+		:global(.wb-float) .wb-leaf.is-empty > .wb-strip {
+			position: relative;
+			top: auto;
+			right: auto;
+			height: 40px;
+			padding-right: 0;
+		}
+		:global(.wb-float) .wb-leaf.is-empty > .wb-body {
+			margin-top: 0;
 		}
 		:global(.wb-float) .wb-leaf {
 			overflow: hidden;
