@@ -1,10 +1,20 @@
 # Changelog
 
-All notable changes to Deskfolk are documented in this file. The project is currently **WIP** and has not published a stable release; `Unreleased` does not represent a published release.
+All notable changes to Deskfolk are documented in this file. 0.1.0 is the first stable release; `Unreleased` does not represent a published release.
 
 [简体中文 (Chinese version)](CHANGELOG.zh.md)
 
 ## Unreleased
+
+(none)
+
+## 0.1.0 — 2026-10-19
+
+First stable release: signed and notarized for macOS, with an experimental, still unsigned Windows installer beside the `.dmg`s.
+
+### No longer an alpha
+
+- 0.1.0 is published as a regular release, not a prerelease, so "Download" in the README and on the website now opens it directly instead of the list of releases. An installed rc sees it as an update; once on 0.1.0 the app offers only regular releases, not later rcs. The README and the website no longer say "alpha"; the badge beside the Deskfolk name on the website shows the version.
 
 ### The flow shows first what needs a look
 

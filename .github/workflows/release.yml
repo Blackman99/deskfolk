@@ -164,7 +164,7 @@ jobs:
           releaseName: Deskfolk v__VERSION__
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
-          prerelease: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generateReleaseNotes: false
           uploadUpdaterJson: false
           args: --target ${{ matrix.triple }}
@@ -259,7 +259,7 @@ jobs:
           releaseName: Deskfolk v__VERSION__
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
-          prerelease: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generateReleaseNotes: false
           uploadUpdaterJson: false
           args: --bundles nsis ${{ env.TAURI_SIGNING_ARGS }}

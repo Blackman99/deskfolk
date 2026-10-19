@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="https://blackman99.github.io/deskfolk/zh"><b>官网</b></a> ·
-  <a href="https://github.com/Blackman99/deskfolk/releases/latest"><b>下载 Alpha</b></a> ·
+  <a href="https://github.com/Blackman99/deskfolk/releases/latest"><b>下载</b></a> ·
   <a href="docs/overview.zh.md"><b>介绍与安装</b></a> ·
   <a href="README.md">English</a>
 </p>
@@ -25,7 +25,7 @@
   <a href="https://github.com/Blackman99/deskfolk/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Blackman99/deskfolk/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-146a7c.svg"></a>
   <img alt="Platform: macOS, Windows (preview)" src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20(preview)-0f172a.svg">
-  <a href="https://github.com/Blackman99/deskfolk/releases/latest"><img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-f0ab3d.svg"></a>
+  <a href="https://github.com/Blackman99/deskfolk/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Blackman99/deskfolk?label=release&color=f0ab3d"></a>
 </p>
 
 <p align="center">

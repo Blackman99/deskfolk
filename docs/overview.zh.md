@@ -83,7 +83,7 @@ Ollama、LM Studio、llama.cpp 的 `llama-server` 都能当端点用：向导里
 
 ## 状态
 
-Alpha，macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 是刚起步的实验性预览，还有不少毛边和缺失功能（见上文「获取」）。Linux 暂不支持。远程访问是默认关闭的原型（Windows 上还没在真机试过）：日常功能和 Web Push 已在 Android Chrome 真机上走通；iOS 主屏幕和 WebAuthn 用户验证还没做真机验收，独立安全复核也没有通过；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准，Windows 上用 Windows Hello（[ADR 0033](adr/0033-remote-credentials-in-a-file.md)、[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）。
+macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 是刚起步的实验性预览，还有不少毛边和缺失功能（见上文「获取」）。Linux 暂不支持。远程访问是默认关闭的原型（Windows 上还没在真机试过）：日常功能和 Web Push 已在 Android Chrome 真机上走通；iOS 主屏幕和 WebAuthn 用户验证还没做真机验收，独立安全复核也没有通过；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准，Windows 上用 Windows Hello（[ADR 0033](adr/0033-remote-credentials-in-a-file.md)、[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）。
 
 [哪些已接入、哪些不做](#哪些已经接入哪些还在建哪些不做) · [路线图](../ROADMAP.md) · [领域语言](../CONTEXT.md) · [中继部署](deploy-remote.md)
 
