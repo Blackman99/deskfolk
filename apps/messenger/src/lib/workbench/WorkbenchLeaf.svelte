@@ -1183,8 +1183,9 @@
 		 * a solid dark band joined to the body, and only the gutters between the cards show the
 		 * glass.
 		 */
+		/* 4px above the head too, so a pane under another sits 9px off it, as one beside it does. */
 		:global(:root[data-chrome='mac'][data-theme='dark']) .wb-leaf:not(.is-empty) > .wb-strip {
-			margin: 0 4px;
+			margin: 4px 4px 0;
 			border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 			background: var(--ground);
 		}

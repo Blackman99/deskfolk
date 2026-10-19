@@ -1472,6 +1472,11 @@
 			margin-top: 6px;
 		}
 
+		/* Dark, the panes' tab heads keep 4px above them (WorkbenchLeaf); the lights stay level. */
+		:global(:root[data-chrome='mac'][data-theme='dark']) .shell:not(.is-layered) .main {
+			margin-top: 2px;
+		}
+
 		/* The card's edge is the line now; the handle stays, unseen until it is hovered. */
 		.sidebar-split {
 			background: transparent;
