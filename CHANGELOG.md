@@ -6,7 +6,9 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
-(none)
+### The macOS window shows more of its frosted glass
+
+- In the light theme the sidebar and the margins around the cards now let more of the window's frosted glass through, so what is behind the window shows faintly as colour. The glass also stays when the window is not in front, instead of turning flat grey. The dark theme is unchanged: there the margins have to stay well under the cards, or the two run together.
 
 ## 0.1.0 — 2026-10-19
 
