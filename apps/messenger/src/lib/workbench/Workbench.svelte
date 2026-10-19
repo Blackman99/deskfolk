@@ -800,7 +800,7 @@
 			onTabPointerDown={(event, leafId, tabId) =>
 				startPaneDrag(event, beginTabDrag(leafId, tabId, pointFrom(event)), nameOf(leafId, tabId))}
 			onStripPointerDown={(event, leafId) => {
-				if ((event.target as HTMLElement).closest('.wb-tab, .wb-pane-menu, .wb-pane-close, .wb-new-tab, .wb-new-menu')) return;
+				if ((event.target as HTMLElement).closest('.wb-tab, .wb-tabs-step, .wb-pane-menu, .wb-pane-close, .wb-new-tab, .wb-new-menu')) return;
 				startPaneDrag(event, beginLeafDrag(leafId, pointFrom(event)), nameOf(leafId, null));
 			}}
 			{onMenu}

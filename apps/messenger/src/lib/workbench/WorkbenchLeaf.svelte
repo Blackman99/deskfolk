@@ -250,7 +250,7 @@
 	/*
 	 * A row with more tabs than fit ended in a tab cut off at the edge, which read as the strip
 	 * being broken, not as something to scroll. The edge fades while there is more that way, as
-	 * the composer's suggestion row does. Measured again on scroll, on resize and as tabs come
+	 * the composer's suggestion row does but wider, and an arrow on the fade steps along. Measured again on scroll, on resize and as tabs come
 	 * and go; the fade is a mask, so writing it never moves anything.
 	 */
 	$effect(() => {
@@ -271,6 +271,14 @@
 			observer?.disconnect();
 		};
 	});
+
+	/** Most of a row's width at a time, so the tab cut off at the edge comes fully into view. */
+	function stepTabs(direction: -1 | 1): void {
+		const row = tabRow;
+		if (!row) return;
+		const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+		row.scrollBy({ left: direction * row.clientWidth * 0.7, behavior: still ? 'auto' : 'smooth' });
+	}
 
 	/** A trackpad already scrolls the row sideways; a mouse wheel only turns up and down. */
 	function onTabRowWheel(event: WheelEvent): void {
@@ -328,81 +336,103 @@
 		bind:this={strip}
 		onpointerdown={(event) => onStripPointerDown?.(event, leaf.id)}
 	>
-		<div
-			class="wb-tabs"
-			class:has-more-start={moreStart}
-			class:has-more-end={moreEnd}
-			bind:this={tabRow}
-			onwheel={onTabRowWheel}
-		>
-			{#each leaf.tabs as tab, index (tab.id)}
-				{@const actions = tabActions?.(leaf.id, tab) ?? []}
-				<!-- The close control is a sibling of the tab, never nested inside it: a button
-				     inside a button is invalid and svelte-check's a11y pass says so. -->
-				<div
-					class="wb-tab"
-					role="presentation"
-					class:is-active={tab.id === leaf.activeTabId}
-					class:is-dragged={tab.id === draggedTab || leaf.id === draggedLeaf}
-					data-tab={tab.id}
-				>
-					{#if tab.id === leaf.activeTabId}
-						<span class="wb-tab-flare is-left" aria-hidden="true"></span>
-						<span class="wb-tab-flare is-right" aria-hidden="true"></span>
-					{/if}
-					<button
-						type="button"
-						role="tab"
-						id={`wb-tab-${tab.id}`}
-						class="wb-tab-button"
-						aria-selected={tab.id === leaf.activeTabId}
-						aria-controls={`wb-panel-${leaf.id}`}
-						tabindex={tab.id === leaf.activeTabId ? 0 : -1}
-						onpointerdown={(event) => {
-							onFocus(leaf.id);
-							onTabPointerDown?.(event, leaf.id, tab.id);
-						}}
-						onclick={() => onActivate(leaf.id, tab.id)}
-						onauxclick={(event) => {
-							if (event.button === 1) onCloseTab(leaf.id, tab.id);
-						}}
-						onkeydown={(event) => onTabKey(event, index)}
+		<div class="wb-tabs-frame">
+			<div
+				class="wb-tabs"
+				class:has-more-start={moreStart}
+				class:has-more-end={moreEnd}
+				bind:this={tabRow}
+				onwheel={onTabRowWheel}
+			>
+				{#each leaf.tabs as tab, index (tab.id)}
+					{@const actions = tabActions?.(leaf.id, tab) ?? []}
+					<!-- The close control is a sibling of the tab, never nested inside it: a button
+					     inside a button is invalid and svelte-check's a11y pass says so. -->
+					<div
+						class="wb-tab"
+						role="presentation"
+						class:is-active={tab.id === leaf.activeTabId}
+						class:is-dragged={tab.id === draggedTab || leaf.id === draggedLeaf}
+						data-tab={tab.id}
 					>
-						{@render tabLabel(tab)}
-					</button>
-					{#if actions.length > 0}
-						<!-- Out of the tab order like the close control: from the keyboard the tab's
-						     own context menu key opens the same actions. -->
+						{#if tab.id === leaf.activeTabId}
+							<span class="wb-tab-flare is-left" aria-hidden="true"></span>
+							<span class="wb-tab-flare is-right" aria-hidden="true"></span>
+						{/if}
 						<button
 							type="button"
-							class="wb-tab-more"
-							class:is-open={more?.tabId === tab.id}
+							role="tab"
+							id={`wb-tab-${tab.id}`}
+							class="wb-tab-button"
+							aria-selected={tab.id === leaf.activeTabId}
+							aria-controls={`wb-panel-${leaf.id}`}
+							tabindex={tab.id === leaf.activeTabId ? 0 : -1}
+							onpointerdown={(event) => {
+								onFocus(leaf.id);
+								onTabPointerDown?.(event, leaf.id, tab.id);
+							}}
+							onclick={() => onActivate(leaf.id, tab.id)}
+							onauxclick={(event) => {
+								if (event.button === 1) onCloseTab(leaf.id, tab.id);
+							}}
+							onkeydown={(event) => onTabKey(event, index)}
+						>
+							{@render tabLabel(tab)}
+						</button>
+						{#if actions.length > 0}
+							<!-- Out of the tab order like the close control: from the keyboard the tab's
+							     own context menu key opens the same actions. -->
+							<button
+								type="button"
+								class="wb-tab-more"
+								class:is-open={more?.tabId === tab.id}
+								tabindex="-1"
+								aria-label={t.pane.tabActions}
+								title={t.pane.tabActions}
+								aria-haspopup="menu"
+								aria-expanded={more?.tabId === tab.id}
+								onclick={(event) => {
+									event.stopPropagation();
+									onFocus(leaf.id);
+									toggleMore(tab.id, event.currentTarget);
+								}}
+							>
+								<Icon name="more" size={12} />
+							</button>
+						{/if}
+						<button
+							type="button"
+							class="wb-tab-close"
 							tabindex="-1"
-							aria-label={t.pane.tabActions}
-							title={t.pane.tabActions}
-							aria-haspopup="menu"
-							aria-expanded={more?.tabId === tab.id}
+							aria-label={t.pane.closeTab}
 							onclick={(event) => {
 								event.stopPropagation();
-								onFocus(leaf.id);
-								toggleMore(tab.id, event.currentTarget);
-							}}
+								onCloseTab(leaf.id, tab.id);
+							}}><Icon name="x" size={12} /></button
 						>
-							<Icon name="more" size={12} />
-						</button>
-					{/if}
-					<button
-						type="button"
-						class="wb-tab-close"
-						tabindex="-1"
-						aria-label={t.pane.closeTab}
-						onclick={(event) => {
-							event.stopPropagation();
-							onCloseTab(leaf.id, tab.id);
-						}}><Icon name="x" size={12} /></button
-					>
-				</div>
-			{/each}
+					</div>
+				{/each}
+			</div>
+			{#if moreStart}
+				<button
+					type="button"
+					class="wb-tabs-step is-back"
+					tabindex="-1"
+					aria-label={t.pane.tabsBack}
+					title={t.pane.tabsBack}
+					onclick={() => stepTabs(-1)}><Icon name="chevron-left" size={12} /></button
+				>
+			{/if}
+			{#if moreEnd}
+				<button
+					type="button"
+					class="wb-tabs-step is-forward"
+					tabindex="-1"
+					aria-label={t.pane.tabsForward}
+					title={t.pane.tabsForward}
+					onclick={() => stepTabs(1)}><Icon name="chevron-right" size={12} /></button
+				>
+			{/if}
 		</div>
 		{#if canOpen && leaf.tabs.length > 0}
 			<button
@@ -642,17 +672,49 @@
 	.wb-tabs::-webkit-scrollbar {
 		display: none;
 	}
+	/* Holds the arrows over the row's ends, where scrolling the row cannot carry them off. */
+	.wb-tabs-frame {
+		position: relative;
+		display: flex;
+		align-items: inherit;
+		align-self: stretch;
+		min-width: 0;
+	}
 	.wb-tabs.has-more-end {
-		-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-		mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+		-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+		mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
 	}
 	.wb-tabs.has-more-start {
-		-webkit-mask-image: linear-gradient(to right, transparent, #000 28px);
-		mask-image: linear-gradient(to right, transparent, #000 28px);
+		-webkit-mask-image: linear-gradient(to right, transparent, #000 48px);
+		mask-image: linear-gradient(to right, transparent, #000 48px);
 	}
 	.wb-tabs.has-more-start.has-more-end {
-		-webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
-		mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+		-webkit-mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+		mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+	}
+	.wb-tabs-step {
+		position: absolute;
+		top: 50%;
+		z-index: 1;
+		display: grid;
+		place-items: center;
+		width: 20px;
+		height: 20px;
+		margin-top: -10px;
+		padding: 0;
+		border-radius: 50%;
+		color: var(--ink);
+		background: var(--pane);
+		box-shadow: var(--shadow-pane);
+	}
+	.wb-tabs-step.is-back {
+		left: 6px;
+	}
+	.wb-tabs-step.is-forward {
+		right: 2px;
+	}
+	.wb-tabs-step:hover {
+		color: var(--accent);
 	}
 	/*
 	 * A tab keeps its own width, however many share the strip: squeezing them all cut every name

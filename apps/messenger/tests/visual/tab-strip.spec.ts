@@ -92,7 +92,7 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			}
 		});
 
-		test('a row with more tabs than fit fades at the edge there is more past', async ({ baseURL }) => {
+		test('a row with more tabs than fit fades and shows an arrow at the edge there is more past', async ({ baseURL }) => {
 			const browser = await engine.launch();
 			try {
 				const page = await browser.newPage({ viewport: { width: 520, height: 320 } });
@@ -108,8 +108,13 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 				await row.evaluate((element) => (element.scrollLeft = 0));
 				await expect.poll(fades).toMatchObject({ start: false, end: true });
 				expect((await fades()).mask).toContain('gradient');
+				await expect(page.locator('.wb-tabs-step.is-back')).toHaveCount(0);
+				await page.locator('.wb-tabs-step.is-forward').click();
+				await expect.poll(() => row.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+				await expect(page.locator('.wb-tabs-step.is-back')).toHaveCount(1);
 				await row.evaluate((element) => (element.scrollLeft = element.scrollWidth));
 				await expect.poll(fades).toMatchObject({ start: true, end: false });
+				await expect(page.locator('.wb-tabs-step.is-forward')).toHaveCount(0);
 				await row.evaluate((element) => (element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2));
 				await expect.poll(fades).toMatchObject({ start: true, end: true });
 
@@ -120,6 +125,7 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 				for (const each of await page.locator('.wb-tabs').all()) {
 					expect(await each.evaluate((element) => element.className)).not.toMatch(/has-more/);
 				}
+				await expect(page.locator('.wb-tabs-step')).toHaveCount(0);
 			} finally {
 				await browser.close();
 			}

@@ -68,7 +68,7 @@
 	 * What on the strip is not the title bar: the tabs and the strip's own buttons and menu. A
 	 * press anywhere else on it moves the pane, the way the trace window's header did.
 	 */
-	const NOT_TITLE = '.wb-tab, .wb-pane-menu, .wb-pane-close, .wb-new-tab, .wb-new-menu';
+	const NOT_TITLE = '.wb-tab, .wb-tabs-step, .wb-pane-menu, .wb-pane-close, .wb-new-tab, .wb-new-menu';
 	let frameEl = $state<HTMLDivElement>();
 	/** Held while the pane follows the pointer, for the closed hand. */
 	let moving = $state(false);
@@ -251,7 +251,7 @@
 		cursor: default;
 	}
 	/* However many tabs it holds, some of the bar is left bare to take hold of. */
-	.wb-float :global(.wb-tabs) {
+	.wb-float :global(.wb-tabs-frame) {
 		max-width: calc(100% - 76px);
 	}
 	/*

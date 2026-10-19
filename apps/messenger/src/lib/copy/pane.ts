@@ -27,6 +27,9 @@ export const zh = {
   emptyPick: "从侧栏点一条会话放进来，或者从下面挑一个。",
   tabsIn: "{name} 的标签页",
   newTab: "新建标签页",
+  /** The arrows at a tab row's edges while more tabs are past them. */
+  tabsBack: "看前面的标签页",
+  tabsForward: "看后面的标签页",
   /** The chip that follows a pane dragged by its strip: every tab goes with it. */
   wholePane: (count: number) => `整个窗格 · ${count} 个标签页`,
   runningTerminals: "可接回",
@@ -66,6 +69,8 @@ export const en: CopyShape<typeof zh> = {
   emptyPick: "Open a conversation from the sidebar, or pick one of these.",
   tabsIn: "Tabs in {name}",
   newTab: "New tab",
+  tabsBack: "Earlier tabs",
+  tabsForward: "Later tabs",
   wholePane: (count: number) => `Whole pane · ${count} tabs`,
   runningTerminals: "Reattach",
   noRunningTerminals: "No terminal to reattach",
