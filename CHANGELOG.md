@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The handle where two dividers meet goes with your drag
+
+- Where two pane dividers meet there was a small diamond that stayed in the gutter at rest, read as a stray dot, and stood still when you dragged: its middle sat under the divider, so pressing it dragged that divider instead, and while any divider moved it stayed where the drag began. It now shows only under the pointer, pressing its middle drags both dividers at once, and in hand it follows the pointer.
+
 ### An empty pane no longer leaves a band over its card
 
 - In a split, an empty pane put its ⋯ and × on a row of their own above the card, so a strip of bare ground about 40px tall sat between it and the pane next to it. The two buttons now sit in the card's top-right corner and the card starts at the usual gutter.

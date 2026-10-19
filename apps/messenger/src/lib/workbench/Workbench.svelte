@@ -15,6 +15,7 @@
 	import {
 		beginJunctionDrag,
 		beginSashDrag,
+		clampToRange,
 		resizeJunction,
 		resizeSash,
 		weightsAfterSash,
@@ -124,6 +125,8 @@
 	let dragging = $state(false);
 	/** Which divider is under the pointer right now; it keeps the accent for the whole drag. */
 	let draggingSash = $state<string | null>(null);
+	/** The crossing in hand, which follows the pointer while the others wait for the release. */
+	let draggingJunction = $state<string | null>(null);
 	let paneDrag = $state<PaneDrag | null>(null);
 	let dropZone = $state<DropZone>({ kind: 'none' });
 	/** Every pane's tab row, measured when a drag starts: where each tab is, which the geometry cannot say. */
@@ -314,6 +317,7 @@
 		const originX = event.clientX;
 		const originY = event.clientY;
 		dragging = true;
+		draggingJunction = junctionId;
 		dragGate.begin();
 		const vertical = drag.bar.axis === 'row';
 		const touched = [drag.bar.branchId, ...drag.stems.map((stem) => stem.branchId)];
@@ -327,10 +331,17 @@
 			paint(drag.bar, delta.across);
 			// Every stem takes the same number of pixels, which is what keeps them in line.
 			for (const stem of drag.stems) paint(stem, delta.along);
+			// Placed from the layout, which only changes on release: moved by what the dividers
+			// actually travelled, so it stops with them at a minimum.
+			const across = clampToRange(delta.across, drag.bar.range);
+			const along = clampToRange(delta.along, drag.stemRange);
+			target.style.translate = vertical ? `${across}px ${along}px` : `${along}px ${across}px`;
 		};
 		const finish = (endEvent: PointerEvent) => {
 			clearPaint(touched);
+			target.style.removeProperty('translate');
 			dragging = false;
+			draggingJunction = null;
 			try {
 				const delta = deltaOf(endEvent);
 				if (delta.across !== 0 || delta.along !== 0) {
@@ -833,11 +844,12 @@
 			<!-- Handles and indicators live in one layer above the panes. Anchoring each handle to
 			     a divider's end in CSS would place it exactly, but a cross would then draw two
 			     handles on the same point and need an arbitrary tie-break. -->
-			<div class="wb-overlay" aria-hidden={dragging}>
+			<div class="wb-overlay" class:is-dragging={dragging} aria-hidden={dragging}>
 				{#each geometry.junctions as junction (junction.id)}
 					<button
 						type="button"
 						class="wb-junction"
+						class:is-held={draggingJunction === junction.id}
 						aria-label={t.pane.junction}
 						style:left={`${junction.point.x}px`}
 						style:top={`${junction.point.y}px`}
@@ -935,6 +947,11 @@
 		inset: 0;
 		pointer-events: none;
 	}
+	/* Over the dividers (4): under them, the middle of a crossing took the divider's drag and only
+	   the handle's corners were its own. Under the floating panes (40 and up). */
+	.wb-overlay {
+		z-index: 5;
+	}
 	/* Over the floating panes (40 and up), under an open strip menu (200) and the window's own. */
 	.wb-drag-layer {
 		z-index: 150;
@@ -951,9 +968,8 @@
 		touch-action: none;
 	}
 	/*
-	 * Visible at rest, because a point that drags in two directions is not something to discover
-	 * by sweeping the pointer around. A small diamond sitting on the crossing, taking the accent
-	 * and growing when you are on it.
+	 * A small diamond sitting on the crossing, taking the accent and growing when you are on it.
+	 * On the phone layout's seams it shows at rest too; beside it, only as the gutters do (below).
 	 */
 	.wb-junction::before {
 		content: '';
@@ -968,6 +984,28 @@
 	}
 	.wb-junction:hover::before,
 	.wb-junction:focus-visible::before {
+		inset: 6px;
+		background: var(--accent);
+	}
+	/*
+	 * Beside the phone layout the dividers are gutters with no line at rest (`.is-gutter`), and a
+	 * diamond alone in the gutter read as a stray dot. It shows the way they do: when pointed at
+	 * or focused. The grip keeps its 24px.
+	 */
+	@media (min-width: 681px) {
+		.wb-junction:not(:hover):not(:focus-visible)::before {
+			background: transparent;
+		}
+	}
+	/*
+	 * A drag paints the grid tracks straight from the pointer and writes the layout only on
+	 * release, and the handles are placed from the layout: one left showing stayed where the
+	 * drag began while the dividers moved away from it. The one in hand is moved along.
+	 */
+	.wb-overlay.is-dragging .wb-junction:not(.is-held)::before {
+		background: transparent;
+	}
+	.wb-junction.is-held::before {
 		inset: 6px;
 		background: var(--accent);
 	}

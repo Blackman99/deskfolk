@@ -60,5 +60,36 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 				await browser.close();
 			}
 		});
+
+		test('a junction draws nothing at rest, and its middle drags it with the pointer', async ({ baseURL }) => {
+			const browser = await engine.launch();
+			try {
+				const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+				await page.goto(`${baseURL}index.html?story=workbench`);
+				await page.waitForSelector('html[data-ready="yes"]');
+				const junction = page.locator('.wb-junction').first();
+				const paint = () =>
+					junction.evaluate((element) => getComputedStyle(element, '::before').backgroundColor);
+				expect(await paint()).toBe('rgba(0, 0, 0, 0)');
+				const box = (await junction.boundingBox())!;
+				await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+				await expect.poll(paint).not.toBe('rgba(0, 0, 0, 0)');
+				// Its middle is its own, not the divider's under it, and in hand it goes with the pointer.
+				await page.mouse.down();
+				await page.mouse.move(box.x + box.width / 2 - 60, box.y + box.height / 2 - 40, { steps: 4 });
+				const held = (await junction.boundingBox())!;
+				expect(Math.round(held.x - box.x)).toBe(-60);
+				expect(Math.round(held.y - box.y)).toBe(-40);
+				await expect.poll(paint).not.toBe('rgba(0, 0, 0, 0)');
+				await page.mouse.up();
+				// Released, it is placed from the layout again. The story's `onLayout` keeps nothing,
+				// so that is where it started.
+				const after = (await page.locator('.wb-junction').first().boundingBox())!;
+				expect(Math.round(after.x - box.x)).toBe(0);
+				expect(Math.round(after.y - box.y)).toBe(0);
+			} finally {
+				await browser.close();
+			}
+		});
 	});
 }
