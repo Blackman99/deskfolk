@@ -77,6 +77,9 @@
 	let strip = $state<HTMLDivElement>();
 	/** The row the tabs scroll in, sideways, once they no longer fit. */
 	let tabRow = $state<HTMLDivElement>();
+	/** More tabs past the row's start or end, which the fades at its edges say. */
+	let moreStart = $state(false);
+	let moreEnd = $state(false);
 	let newTabButton = $state<HTMLButtonElement>();
 	let newTabMenu = $state<HTMLDivElement>();
 	let newTabQuery = $state<HTMLInputElement>();
@@ -244,6 +247,31 @@
 		else if (end > row.scrollLeft + row.clientWidth) row.scrollLeft = end - row.clientWidth;
 	});
 
+	/*
+	 * A row with more tabs than fit ended in a tab cut off at the edge, which read as the strip
+	 * being broken, not as something to scroll. The edge fades while there is more that way, as
+	 * the composer's suggestion row does. Measured again on scroll, on resize and as tabs come
+	 * and go; the fade is a mask, so writing it never moves anything.
+	 */
+	$effect(() => {
+		void tabCount;
+		const row = tabRow;
+		if (!row) return;
+		const edges = () => {
+			const max = row.scrollWidth - row.clientWidth;
+			moreStart = row.scrollLeft > 1;
+			moreEnd = row.scrollLeft < max - 1;
+		};
+		edges();
+		row.addEventListener('scroll', edges, { passive: true });
+		const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(edges);
+		observer?.observe(row);
+		return () => {
+			row.removeEventListener('scroll', edges);
+			observer?.disconnect();
+		};
+	});
+
 	/** A trackpad already scrolls the row sideways; a mouse wheel only turns up and down. */
 	function onTabRowWheel(event: WheelEvent): void {
 		const row = event.currentTarget as HTMLElement;
@@ -300,7 +328,13 @@
 		bind:this={strip}
 		onpointerdown={(event) => onStripPointerDown?.(event, leaf.id)}
 	>
-		<div class="wb-tabs" bind:this={tabRow} onwheel={onTabRowWheel}>
+		<div
+			class="wb-tabs"
+			class:has-more-start={moreStart}
+			class:has-more-end={moreEnd}
+			bind:this={tabRow}
+			onwheel={onTabRowWheel}
+		>
 			{#each leaf.tabs as tab, index (tab.id)}
 				{@const actions = tabActions?.(leaf.id, tab) ?? []}
 				<!-- The close control is a sibling of the tab, never nested inside it: a button
@@ -607,6 +641,18 @@
 	}
 	.wb-tabs::-webkit-scrollbar {
 		display: none;
+	}
+	.wb-tabs.has-more-end {
+		-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+		mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+	}
+	.wb-tabs.has-more-start {
+		-webkit-mask-image: linear-gradient(to right, transparent, #000 28px);
+		mask-image: linear-gradient(to right, transparent, #000 28px);
+	}
+	.wb-tabs.has-more-start.has-more-end {
+		-webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+		mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
 	}
 	/*
 	 * A tab keeps its own width, however many share the strip: squeezing them all cut every name

@@ -91,5 +91,38 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 				await browser.close();
 			}
 		});
+
+		test('a row with more tabs than fit fades at the edge there is more past', async ({ baseURL }) => {
+			const browser = await engine.launch();
+			try {
+				const page = await browser.newPage({ viewport: { width: 520, height: 320 } });
+				await page.goto(`${baseURL}index.html?story=workbench-tabs`);
+				await page.waitForSelector('html[data-ready="yes"]');
+				const row = page.locator('.wb-tabs').first();
+				const fades = () =>
+					row.evaluate((element) => ({
+						start: element.classList.contains('has-more-start'),
+						end: element.classList.contains('has-more-end'),
+						mask: getComputedStyle(element).webkitMaskImage || getComputedStyle(element).maskImage
+					}));
+				await row.evaluate((element) => (element.scrollLeft = 0));
+				await expect.poll(fades).toMatchObject({ start: false, end: true });
+				expect((await fades()).mask).toContain('gradient');
+				await row.evaluate((element) => (element.scrollLeft = element.scrollWidth));
+				await expect.poll(fades).toMatchObject({ start: true, end: false });
+				await row.evaluate((element) => (element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2));
+				await expect.poll(fades).toMatchObject({ start: true, end: true });
+
+				// A row that fits fades at neither edge.
+				await page.setViewportSize({ width: 1280, height: 820 });
+				await page.goto(`${baseURL}index.html?story=workbench`);
+				await page.waitForSelector('html[data-ready="yes"]');
+				for (const each of await page.locator('.wb-tabs').all()) {
+					expect(await each.evaluate((element) => element.className)).not.toMatch(/has-more/);
+				}
+			} finally {
+				await browser.close();
+			}
+		});
 	});
 }

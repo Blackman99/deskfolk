@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A pane's tab row says when there are more tabs to scroll to
+
+- When a pane holds more tabs than its strip can show, the row used to end in a tab cut off mid-name, which looked like something broken rather than something to scroll. The edge now fades out on each side that has more tabs past it, and goes back to a plain edge once you have scrolled all the way there.
+
 ### The handle where two dividers meet goes with your drag
 
 - Where two pane dividers meet there was a small diamond that stayed in the gutter at rest, read as a stray dot, and stood still when you dragged: its middle sat under the divider, so pressing it dragged that divider instead, and while any divider moved it stayed where the drag began. It now shows only under the pointer, pressing its middle drags both dividers at once, and in hand it follows the pointer.
