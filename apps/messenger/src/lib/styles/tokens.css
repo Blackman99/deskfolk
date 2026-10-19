@@ -11,8 +11,10 @@
   /*
    * The ground the content cards lie on beside the phone layout (`Shell.svelte`): the sidebar and
    * the gutter around the cards. `--ground-tint` is how much of it covers the window's material on
-   * macOS. Light keeps the sidebar's colour at 30%, so the frosted glass shows through; dark goes
-   * well under `--pane`, or the cards vanish.
+   * macOS. Light keeps the sidebar's colour at 30%, so the frosted glass shows through. Dark has
+   * no middle: the dark glass is lighter than `--pane`, so a ground between the two (about 35–60%)
+   * is the cards' own colour. Off macOS dark goes well under `--pane`; on macOS it covers 20% and
+   * the glass sits above the cards instead, as a dark Finder's sidebar does.
    */
   --ground: var(--sidebar-bg);
   --ground-tint: 30%;
@@ -248,7 +250,7 @@ body.dark,
   --pane: #192125;
   --sidebar-bg: #13191c;
   --ground: #06090a;
-  --ground-tint: 92%;
+  --ground-tint: 20%;
   --ink: #eef2f3;
   --ink-secondary: #c5cfd3;
   --muted: #8b989e;
