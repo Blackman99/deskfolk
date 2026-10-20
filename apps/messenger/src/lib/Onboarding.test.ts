@@ -35,6 +35,10 @@ async function pick(host: HTMLElement, id: string, value: string) {
   click(host.querySelector(`.mp-row[data-value="${value}"]`));
 }
 
+/** What a fixture endpoint lists: five, so the model step shows its filter and bulk buttons. */
+const LISTED = ['gpt-4o', 'gpt-4o-mini', 'deepseek-chat', 'deepseek-reasoner', 'claude-3-5-sonnet'];
+const listing = async () => ({ ok: true, models: LISTED, catalog: [] });
+
 function step(host: HTMLElement, title: string) {
   return [...host.querySelectorAll<HTMLButtonElement>('.step-bar-item')]
     .find((button) => button.textContent?.includes(title));
@@ -177,7 +181,7 @@ for (const probed of [false, true]) {
 }
 
 test('clearing all models blocks completion and bulk selection repairs the default and feedback', async () => {
-  const { host, runtime, calls } = open();
+  const { host, runtime, calls } = open({ probeModels: listing });
   click(step(host, t.onboarding.step3Title));
   await settle();
   click(buttonByText(host, t.settings.modelsDeselectAll));
@@ -216,7 +220,7 @@ test('going back and clearing a completed connection invalidates forward navigat
 
 for (const mode of ['hosted', 'remote'] as const) {
   test(`${mode} skips the host workspace but still validates connection and models`, async () => {
-    const { host, calls } = open({ [mode]: true, workspacePath: '', endpointUrl: 'https://' });
+    const { host, calls } = open({ [mode]: true, workspacePath: '', endpointUrl: 'https://', probeModels: listing });
     expect(host.querySelector('.step-pane-title')?.textContent).toBe(t.onboarding.stepProvider);
     click(step(host, t.onboarding.step3Title));
     expect(fieldErrors(host)).toContain(t.settings.endpointInvalid);
@@ -479,4 +483,24 @@ test('the language switch on the card writes the app language, and the wizard fo
   expect(host.querySelector('.onboarding-title')?.textContent).toBe(en.onboarding.welcome);
   expect(host.querySelector('.step-pane-title')?.textContent).toBe(en.onboarding.stepProvider);
   expect(host.querySelector('[data-locale="en"]')?.getAttribute('aria-pressed')).toBe('true');
+});
+
+test('the model step offers only what the endpoint listed, never names written into the app', async () => {
+  const { host, runtime } = open({ endpointModelsText: '', endpointDefaultModel: '' });
+  click(buttonByText(host, `${t.onboarding.step1Next} →`));
+  click(buttonByText(host, 'OpenAI'));
+  expect(runtime.endpointModelsText).toBe('');
+  expect(runtime.endpointDefaultModel).toBe('');
+  fill(host.querySelector('#onboarding-endpoint-key'), 'fixture-key');
+  click(buttonByText(host, `${t.onboarding.step2Next} →`));
+  await settle();
+  // The endpoint listed nothing: no chips, and Next waits for a model you add.
+  expect(host.querySelectorAll('.model-chip')).toHaveLength(0);
+  const save = buttonByText(host, `${t.onboarding.step3Next} →`);
+  expect(save.disabled).toBe(true);
+  fill(host.querySelector('.custom-model-input'), 'my-model');
+  click(host.querySelector('.btn-add-custom'));
+  expect([...host.querySelectorAll('.model-chip')].map((chip) => chip.textContent?.replace('✓', '').trim())).toEqual(['my-model']);
+  expect(runtime.endpointDefaultModel).toBe('my-model');
+  expect(save.disabled).toBe(false);
 });

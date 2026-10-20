@@ -143,14 +143,11 @@
 	/** What the endpoint actually returned; saved with the endpoint so Settings can show it again. */
 	let probedModels = $state<string[]>([]);
 	let probedCatalog = $state<ProbedModel[]>([]);
-	let availableDiscoveredModels = $state<string[]>([
-		'gpt-4o',
-		'gpt-4o-mini',
-		'deepseek-chat',
-		'deepseek-reasoner',
-		'claude-3-5-sonnet',
-		'llama3'
-	]);
+	/**
+	 * The models to tick: what the endpoint listed, what a preset knows, and what you added. No
+	 * guesses beyond that: a list written in here goes stale (it offered gpt-4o and llama3 long after).
+	 */
+	let availableDiscoveredModels = $state<string[]>([]);
 	let modelFilterQuery = $state('');
 	let showManualModelEdit = $state(false);
 	let customModelInput = $state('');
@@ -199,13 +196,15 @@
 	);
 
 	const PRESETS = [
+		// No model names written in for OpenAI and OpenRouter either: their lists move too fast, and
+		// the key fetches what the account has.
 		{
 			id: 'openai',
 			name: 'OpenAI',
 			url: 'https://api.openai.com/v1',
 			format: 'openai',
-			models: ['gpt-4o', 'gpt-4o-mini'],
-			defaultModel: 'gpt-4o'
+			models: [],
+			defaultModel: ''
 		},
 		{
 			id: 'anthropic',
@@ -246,8 +245,8 @@
 			name: 'OpenRouter',
 			url: 'https://openrouter.ai/api/v1',
 			format: 'openai',
-			models: ['anthropic/claude-3.5-sonnet', 'google/gemini-2.0-flash-001'],
-			defaultModel: 'anthropic/claude-3.5-sonnet'
+			models: [],
+			defaultModel: ''
 		},
 		// Model servers on this computer (ADR 0067): no key, and the list is read from what is
 		// installed rather than guessed — a name the server has not pulled only fails at the first turn.

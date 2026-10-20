@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Setup no longer offers model names it made up
+
+- When an endpoint's model list could not be fetched, the model step listed names written into the app (gpt-4o, claude-3-5-sonnet, llama3 and others), and the OpenAI and OpenRouter presets filled in gpt-4o or claude-3.5-sonnet before the key was in. The step now offers only what the endpoint lists, the models the Anthropic and DeepSeek presets name, and names you add yourself.
+
 ### A new install starts in your computer's language
 
 - On first launch the app, setup included, was always in Chinese whatever language the computer is in, and the language could only be changed in Settings, after setup. A new install now starts in the system's language (Chinese on a Chinese system, English on any other), and the setup card has a 中文 / English switch in its corner. An install that already has its settings keeps its language.

@@ -48,16 +48,20 @@ for (const [engineName, engine] of [['chromium', chromium], ['webkit', webkit]] 
         await expect(providerNext).toBeEnabled();
         await providerNext.click();
 
+        // The fixture endpoint lists nothing, and the app offers no names of its own: add one.
         await expect(modelsNext).toBeDisabled();
-        await page.getByRole('button', { name: 'gpt-4o', exact: true }).click();
+        await expect(page.locator('.model-chip')).toHaveCount(0);
+        await page.locator('.custom-model-input').fill('gpt-4o');
+        await page.locator('.custom-model-input').press('Enter');
         await expect(modelsNext).toBeEnabled();
-        await page.getByRole('button', { name: t.settings.modelsDeselectAll, exact: true }).click();
+        const chip = page.locator('.model-chip', { hasText: 'gpt-4o' });
+        await chip.click();
         await expect(modelsNext).toBeDisabled();
         await page.getByRole('button', { name: `← ${t.onboarding.prevStep}`, exact: true }).click();
         await expect(providerNext).toBeEnabled();
         await providerNext.click();
         await expect(modelsNext).toBeDisabled();
-        await page.getByRole('button', { name: 'gpt-4o', exact: true }).click();
+        await chip.click();
         await expect(modelsNext).toBeEnabled();
         await page.getByRole('button', { name: t.settings.modelsManualToggle, exact: true }).click();
         await page.locator('#endpoint-models').fill('custom-model');
