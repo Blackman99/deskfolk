@@ -57,3 +57,18 @@ test("a command's kind is read from its words, and a call names its file by its 
   expect(fileOfCall("Bash", { command: "cat src/a.ts src/b.svelte | head" })).toBe("b.svelte");
   expect(fileOfCall("Grep", { pattern: "x" })).toBeNull();
 });
+
+test("a cd's target ends at the shell's punctuation, and one that is a variable never becomes part of a path", () => {
+  expect(placeOfCommand("cd apps/messenger; cat src/lib/a.ts", ctx)).toEqual({ zone: "project", path: "apps/messenger/src/lib/a.ts" });
+  expect(placeOfCommand("cd apps/messenger&&ls src/lib", ctx)).toEqual({ zone: "project", path: "apps/messenger/src/lib" });
+  expect(placeOfCommand("(cd apps/daemon) | head", ctx)).toEqual({ zone: "project", path: "apps/daemon" });
+  // `cd $R; ls apps/daemon/src`: the base is wherever $R is, so the path is said under it.
+  expect(placeOfCommand("cd $R; ls apps/daemon/src", ctx)).toEqual({ zone: "outside", path: "$R/apps/daemon/src" });
+  expect(placeOfCommand('cd "$W/apps/messenger" && sed -n 1,9p src/lib/x.ts', ctx)).toEqual({ zone: "outside", path: "$W/apps/messenger/src/lib/x.ts" });
+  expect(placeOfCommand("cd $R && ls", ctx)).toEqual({ zone: "outside", path: "$R" });
+  // An absolute path after it still says where it is.
+  expect(placeOfCommand("cd $R; cat /work/app/docs/a.md", ctx)).toEqual({ zone: "project", path: "docs/a.md" });
+  expect(placeOfCommand("cat apps/$X/a.ts", ctx)).toEqual({ zone: "outside", path: "apps/$X/a.ts" });
+  // A search pattern with slashes is not a path.
+  expect(placeOfCommand('grep -n "test\\|routes/system" src/a.ts', ctx)).toEqual({ zone: "project", path: "src/a.ts" });
+});

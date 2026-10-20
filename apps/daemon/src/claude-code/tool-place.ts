@@ -66,31 +66,49 @@ export function shellActionOf(command: string): AgentShellAction {
 export function placeOfCommand(command: string, ctx: PlaceContext): AgentToolPlace {
   if (TEST.test(command)) return { zone: "check", check: TYPECHECK.test(command) ? "typecheck" : "test" };
   if (GIT.test(command) && !LOOKING.test(command.split("git")[0] ?? "")) return { zone: "git" };
-  let base = ctx.cwd;
-  const cd = /\bcd\s+(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(command);
-  if (cd) base = resolve(cd[1] ?? cd[2] ?? cd[3]!, ctx.cwd, ctx.home);
+  // Where its relative paths are read from: after a `cd`, its target, up to the shell's own
+  // punctuation (`cd x; ls` goes to `x`, not `x;`). A target that is a shell variable leaves the
+  // base unknown: what follows it is somewhere under that variable, never under its name.
+  let base: string | null = ctx.cwd;
+  let baseWord = "";
+  const cd = /\bcd\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|()<>]+))/.exec(command);
+  if (cd) {
+    const target = cd[1] ?? cd[2] ?? cd[3]!;
+    if (target.includes("$")) {
+      base = null;
+      baseWord = target;
+    } else base = resolve(target, ctx.cwd, ctx.home);
+  }
   const named: AgentToolPlace[] = [];
   const keys: string[] = [];
+  // The cd's own target is where the command runs, not a path it names.
+  const cdSpan = cd ? [cd.index, cd.index + cd[0].length] : null;
   for (const match of command.matchAll(TOKEN)) {
     const token = match[1] ?? match[2] ?? match[3];
-    if (!token || token.startsWith("-") || token.includes("://")) continue;
+    if (cdSpan && match.index! >= cdSpan[0] && match.index! < cdSpan[1]) continue;
+    // A URL, or a search pattern (`"a\|b"`): words with slashes that are not paths.
+    if (!token || token.startsWith("-") || token.includes("://") || /[|\\]/.test(token)) continue;
     const fileLike = new RegExp(`\\.${EXT}(:\\d+)?$`).test(token);
     if (!token.includes("/") && !fileLike) continue;
+    const absolute = token.startsWith("/") || token === "~" || token.startsWith("~/");
     let place: AgentToolPlace;
     let key: string;
-    if (token.startsWith("$")) {
+    if (token.includes("$")) {
       // A shell variable: somewhere, but not a place this command's words can say.
       place = { zone: "outside", path: token };
       key = "outside:$";
+    } else if (base === null && !absolute) {
+      place = { zone: "outside", path: `${baseWord}/${token}` };
+      key = `outside:${baseWord}`;
     } else {
-      const abs = resolve(token.replace(/:\d+$/, ""), base, ctx.home);
+      const abs = resolve(token.replace(/:\d+$/, ""), base ?? ctx.cwd, ctx.home);
       place = placeOfPath(abs, ctx);
       key = `${place.zone}:${fileLike ? posix.dirname(abs) : abs}`;
     }
     named.push(place);
     keys.push(key);
   }
-  if (named.length === 0) return placeOfPath(base, ctx);
+  if (named.length === 0) return base === null ? { zone: "outside", path: baseWord } : placeOfPath(base, ctx);
   const counts = new Map<string, number>();
   for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1);
   const top = Math.max(...counts.values());
