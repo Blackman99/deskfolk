@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The traffic lights no longer touch the content when the sidebar is collapsed
+
+- On macOS, with the sidebar collapsed to its rail, the window's green button reached the edge of the content card: on current macOS the three buttons sit further apart than the rail was made for. The rail is now a little wider there, so the buttons sit clear of the card, and the avatars stay centred in it.
+
 ### The flow shows which lines lead to work still going
 
 - On a job's flow, the line into a card that is still running is now drawn in the accent colour with dashes that move toward the card, and the line into a card waiting on your approval or your answer wears that card's colour, dashed. Finished lines stay plain grey, so you can follow the work down to where it is now. With reduced motion turned on, the dashes stay still.

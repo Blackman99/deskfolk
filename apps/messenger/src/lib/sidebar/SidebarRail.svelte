@@ -337,11 +337,11 @@
 	}
 
 	/*
-	 * On macOS the traffic lights sit at the top of the rail (`window-chrome.ts`), which is 12px
-	 * wider there to hold them; the mark gives them its place.
+	 * On macOS the traffic lights sit at the top of the rail (`window-chrome.ts`), which is 20px
+	 * wider there to hold them (Shell); the mark gives them its place, and the list stays centred.
 	 */
 	:global(:root[data-chrome='mac']) .rail {
-		padding: 40px 0 0 6px;
+		padding: 40px 0 0 10px;
 	}
 
 	:global(:root[data-chrome='mac']) .rail-brand {

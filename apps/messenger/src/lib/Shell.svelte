@@ -456,8 +456,12 @@
 	let narrow = $state(false);
 	$effect(() => watchNarrow((value) => (narrow = value)));
 	const wide = $derived(isWorkbenchSurface(narrow));
-	// On macOS the window's traffic lights sit at the top of the rail, and need 70px of it.
-	const railWidth = WINDOW_CHROME === 'mac' ? SIDEBAR_RAIL + 12 : SIDEBAR_RAIL;
+	/*
+	 * On macOS the window's traffic lights sit at the top of the rail. Inset 18px, they end 78px in
+	 * on current macOS (14px buttons 23px apart; 72px on older ones, 20px apart), so the rail gives
+	 * them 84px, 6px past the last one as the open list gives its mark; the card's edge is 4px on.
+	 */
+	const railWidth = WINDOW_CHROME === 'mac' ? SIDEBAR_RAIL + 20 : SIDEBAR_RAIL;
 	/**
 	 * The session list folded down to a rail of avatars. Anywhere the list is a column of the shell
 	 * it can fold: the desktop workbench, and the paired client on a tablet, which keeps the columns
