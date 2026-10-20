@@ -36,6 +36,10 @@ _Avoid_: mixing unrelated jobs in one collaboration direct, user as a speaker in
 You and a local agent (Claude Code for now) in a project directory, as in the agent's own desktop app; no Bot. Start one by picking a directory, or carry on a session you had in a terminal (on a branch of it, the original left as it was). The app keeps only the permission mode and Stop: no jobs, flow, organizing, deliveries, reviews or holds; the agent keeps the history itself, and each run is sent only your new line. The sidebar's Projects section groups them by directory. Details: [Behavior · Project sessions](docs/behavior.en.md#project-sessions), [ADR 0095](docs/adr/0095-project-sessions.md).
 _Avoid_: calling a project session a Bot, jobs or a flow in a project session, typing "stop" as Stop, changing the terminal's original session
 
+**Task map**:
+A project session's agent at work, drawn as a town of the project's folders: the busiest folders a building each, besides the project's root, checks, git, Claude Code's own files and outside the project; the agent is the main character and each subagent it sends out a smaller one, its badge carrying the agent's logo and the step's model. It replays and follows live, describing what happened without judging it. A workbench pane, for project sessions only. Details: [Behavior · Project sessions](docs/behavior.en.md#project-sessions), [ADR 0096](docs/adr/0096-task-map.md).
+_Avoid_: calling the task map a flow, a task map for a Bot's session, live calls moving buildings already laid out
+
 **Session**:
 The conversation container of a direct, a group or a project session. Messages, turns, judgements, and spend all belong to it. A Bot↔Bot direct is also a session; you are not a participant in it, and you can read it in a popup but cannot post; the sidebar does not list it.
 _Avoid_: channel, room, treating a thread as a session
