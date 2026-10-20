@@ -68,7 +68,7 @@ pnpm dev
 
 拿源码版干要跑几个小时的活（比如多镜头视频）时，用 `pnpm dev:steady` 代替 `pnpm dev`：守护进程不会因为改代码或 `git pull` 重启，进行中的轮次不会被打断。
 
-首次使用：启动向导会带你选一个工作区目录、连接模型，再选一种工作方式（通用、视频或代码），从为它备好的 Bot 模板里勾几个一起建好，两个以上还建一个群；之后再让它们把其他队友建出来。模型可以是端点加密钥（预设或自定义地址），也可以直接用这台电脑上装好并登录的本机 Agent（Claude Code、Codex、Grok……）：这样不用端点，建的 Bot 都由这个 Agent 跑，应用自己的调用也走它的模型（[ADR 0078](adr/0078-setup-on-claude-code.md)、[ADR 0079](adr/0079-local-agents.md)）。Anthropic、小米 MiMo、千问（阿里云百炼）、DeepSeek 是内置的：选它、贴上 key，应用会找出这把 key 属于那家的哪个套餐。没限定工作区的 Anthropic 个人 key 还要填 Anthropic 工作区 ID（`wrkspc_…`，在 Console → Settings → Workspaces 里），见 [ADR 0072](adr/0072-built-in-connectors.md)。
+首次使用：启动向导跟着这台电脑的系统语言用中文或英文（右上角能切换，设置里也能改），会带你选一个工作区目录、连接模型，再选一种工作方式（通用、视频或代码），从为它备好的 Bot 模板里勾几个一起建好，两个以上还建一个群；之后再让它们把其他队友建出来。模型可以是端点加密钥（预设或自定义地址），也可以直接用这台电脑上装好并登录的本机 Agent（Claude Code、Codex、Grok……）：这样不用端点，建的 Bot 都由这个 Agent 跑，应用自己的调用也走它的模型（[ADR 0078](adr/0078-setup-on-claude-code.md)、[ADR 0079](adr/0079-local-agents.md)）。Anthropic、小米 MiMo、千问（阿里云百炼）、DeepSeek 是内置的：选它、贴上 key，应用会找出这把 key 属于那家的哪个套餐。没限定工作区的 Anthropic 个人 key 还要填 Anthropic 工作区 ID（`wrkspc_…`，在 Console → Settings → Workspaces 里），见 [ADR 0072](adr/0072-built-in-connectors.md)。
 
 建好之后打开和 Bot 的私聊，第一条起手提示是「🌙 交出去，明早看结果」：点一下就把一句话填进输入框，让 Bot 现在把工作区看一遍、写一页简报放进 `briefs/`，再建一个每天早上 9 点的日程照样写新的。看过再发；明早回来，简报已经在那了。
 

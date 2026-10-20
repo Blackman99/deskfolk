@@ -25,6 +25,7 @@
 	} from './settings/provider-form.ts';
 	import type { CreateBotDraft } from './panels/create-form.ts';
 	import TeamStep from './onboarding/TeamStep.svelte';
+	import LocaleSwitch from './onboarding/LocaleSwitch.svelte';
 	import {
 		BUILTIN_MODEL_ROLES,
 		connectorById,
@@ -662,6 +663,7 @@
 
 <div class="onboarding-screen w-[100vw] h-screen bg-bg flex p-10 overflow-y-auto box-border">
 	<div class="onboarding-card">
+		<LocaleSwitch {runtime} {t} {locale} />
 		<div class="onboarding-hero text-center flex flex-col items-center gap-3">
 			<BrandMark size={52} />
 			<h1 class="onboarding-title">{t.onboarding.welcome}</h1>
@@ -1257,6 +1259,7 @@
 	}
 
 	.onboarding-card {
+		position: relative;
 		margin: auto;
 		width: 620px;
 		max-width: 100%;

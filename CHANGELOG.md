@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A new install starts in your computer's language
+
+- On first launch the app, setup included, was always in Chinese whatever language the computer is in, and the language could only be changed in Settings, after setup. A new install now starts in the system's language (Chinese on a Chinese system, English on any other), and the setup card has a 中文 / English switch in its corner. An install that already has its settings keeps its language.
+
 ### The setup steps describe the workspace and the endpoint as they work now
 
 - The workspace step said Bots' file and shell access stay inside the folder, while the note under it says the workspace is not a permission boundary and that what a Bot may do is set by its permission mode. The step now only says how to pick the folder. The endpoint step spoke of OpenAI-compatible endpoints only; it now names Anthropic-compatible ones too, as the format switch on the same step does.

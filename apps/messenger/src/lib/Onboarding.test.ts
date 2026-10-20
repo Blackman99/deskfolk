@@ -462,3 +462,21 @@ test('on an agent that lists no models, saving waits for a model name typed as t
   const saved = calls.filter((call) => call.name === 'patchSettings').map((call) => call.args[0]).at(-1) as { builtin_models: Record<string, unknown> };
   expect(saved.builtin_models.reader).toEqual({ runner: 'codex', model: 'o5-mini', config_dir: null });
 });
+
+test('the language switch on the card writes the app language, and the wizard follows it where it stands', async () => {
+  const en = copyFor('en');
+  const { host, runtime, calls } = open();
+  click(buttonByText(host, `${t.onboarding.step1Next} →`));
+  expect(host.querySelector('[data-locale="zh"]')?.getAttribute('aria-pressed')).toBe('true');
+  click(host.querySelector('[data-locale="zh"]'));
+  await settle();
+  expect(calls).toEqual([]);
+  click(host.querySelector('[data-locale="en"]'));
+  await settle();
+  expect(calls.map((call) => [call.name, call.args[0]])).toEqual([['patchSettings', { locale: 'en' }]]);
+  runtime.snapshot.settings.locale = 'en';
+  flushSync();
+  expect(host.querySelector('.onboarding-title')?.textContent).toBe(en.onboarding.welcome);
+  expect(host.querySelector('.step-pane-title')?.textContent).toBe(en.onboarding.stepProvider);
+  expect(host.querySelector('[data-locale="en"]')?.getAttribute('aria-pressed')).toBe('true');
+});

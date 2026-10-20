@@ -4,6 +4,7 @@ import { startRuntime } from "./runtime";
 import { bunKeyStore } from "./secrets";
 import { remoteNative } from "./remote-native";
 import { describeError, logStartup, startupLogPath } from "./startup-log";
+import { systemLanguage } from "./system-language";
 
 import { reserveStdout } from "./remote/local-setup";
 
@@ -62,6 +63,7 @@ try {
     endpointKey: bunKeyStore,
     exitProcess: true,
     keepAwake: true,
+    systemLanguage,
     desktopRemoteChannel: process.argv.includes("--desktop-remote-channel"),
     supervisor: standalone ? "standalone" : process.argv.includes("--desktop-remote-channel") ? "window" : "none",
   });

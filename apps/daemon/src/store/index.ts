@@ -94,6 +94,7 @@ import {
   KeyCache,
   defaultProviderId,
   memoryKeyStore,
+  setSetting,
   workspacePath,
   type StoreContext,
   type StoreOptions,
@@ -246,6 +247,11 @@ export class Store {
       legacy: { copiedKey: false },
       commit: (write) => this.commit(write),
     };
+    // A brand new database starts in this computer's language; one that already has settings keeps its own.
+    if (!hasSettingsTable) {
+      const locale = options.firstLocale?.();
+      if (locale) setSetting(this.ctx, "locale", locale);
+    }
     this.previousBootId = turns.swapLastRun(this.ctx, this.bootId);
     this.receipts = new Receipts(this.db, this.ctx.tx, this.ctx.keys, () => files.recoverFiles(this.ctx));
     files.recoverFiles(this.ctx);

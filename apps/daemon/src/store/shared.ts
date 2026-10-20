@@ -38,6 +38,12 @@ import { sha256 } from "../request-digest";
 export type StoreOptions = {
   filename?: string;
   endpointKey?: EndpointKeyStore;
+  /**
+   * What a brand new database's `locale` starts as: the system's language (`system-language.ts`),
+   * asked only when the database is created. Tests leave it out, so a new database starts in 中文
+   * whatever language the machine running them is in.
+   */
+  firstLocale?: () => "zh" | "en" | null;
 };
 
 export type EndpointKeyStore = {

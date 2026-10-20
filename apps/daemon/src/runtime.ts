@@ -44,6 +44,8 @@ export type RuntimeOptions = {
   schedule?: boolean;
   /** Keep a Mac on power out of idle sleep while work is under way; main.ts sets it, tests and fixtures do not. */
   keepAwake?: boolean;
+  /** The language a brand new database starts in (`system-language.ts`); main.ts sets it, tests and fixtures do not. */
+  systemLanguage?: () => "zh" | "en" | null;
   onQuit?: () => void;
   exitProcess?: boolean;
   desktopRemoteChannel?: boolean;
@@ -274,6 +276,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     store = new Store({
       filename: stateDbPath(options.dataDir),
       endpointKey: options.endpointKey ?? bunKeyStore,
+      firstLocale: options.systemLanguage,
     });
     const bootLog = (line: string) => {
       console.error(line);
