@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import type { AgentReplay, AgentReplayCall, AgentToolPlace, ToolFrame } from "@real-bot/protocol";
+import { copyFor } from "../copy.ts";
 import { buildDistricts } from "./districts.ts";
+import { statusText } from "./frame.ts";
 import { AgentCallLog } from "./live.svelte.ts";
 import { fromAgentReplay, mergeLive } from "./map-data.ts";
 import { modelFamily, modelLabel } from "./model-label.ts";
@@ -180,4 +182,10 @@ test("the live log keeps each call's start and end by id, and ignores frames it 
   expect(log.callsOf("proj-1")).toHaveLength(2);
   log.forget("proj-1");
   expect(log.callsOf("proj-1")).toEqual([]);
+});
+
+test("a character that stopped under a minute ago has just stopped, later for how long", () => {
+  const t = copyFor("zh").taskmap;
+  expect(statusText({ status: "idle", idleMin: 0.1 }, t)).toBe(t.status.rested);
+  expect(statusText({ status: "idle", idleMin: 27 }, t)).toBe(t.status.idle(t.minutes(27)));
 });

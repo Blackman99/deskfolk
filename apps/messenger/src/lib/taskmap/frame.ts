@@ -166,7 +166,7 @@ export function spanText(min: number, t: T): string {
 /** A character's status in words, for its plate line and its card. */
 export function statusText(a: Pick<FrameActor, "status" | "idleMin">, t: T): string {
   switch (a.status) {
-    case "idle": return t.status.idle(spanText(a.idleMin, t));
+    case "idle": return a.idleMin < 1 ? t.status.rested : t.status.idle(spanText(a.idleMin, t));
     case "walk": return t.status.walk;
     case "fail": return t.status.fail;
     case "back": return t.status.back;

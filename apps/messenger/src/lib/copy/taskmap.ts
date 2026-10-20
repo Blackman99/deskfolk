@@ -17,7 +17,7 @@ export const zh = {
   placePaths: { root: "项目根目录 · 提问和派分身", check: "测试和类型检查", git: "git", claude_home: "~/.claude* · 会话文件", outside: "项目目录以外", other: "调用少的目录" },
   subagent: (n: number) => `分身 ${n}`,
   mainLane: "主线",
-  status: { work: "工作中", walk: "走动中", idle: (span: string) => `停了 ${span}`, fail: "刚出错", back: "已回来", none: "还没出场", waiting: "在等你" },
+  status: { work: "工作中", walk: "走动中", idle: (span: string) => `停了 ${span}`, fail: "刚出错", back: "已回来", none: "还没出场", waiting: "在等你", rested: "刚停下" },
   minutes: (n: number) => `${n} 分钟`,
   hours: (n: number) => `${n} 小时`,
   verbs: {
@@ -86,7 +86,7 @@ export const en: CopyShape<typeof zh> = {
   placePaths: { root: "The project folder · questions, subagents", check: "Tests and type checks", git: "git", claude_home: "~/.claude* · session files", outside: "Outside the project", other: "Folders it barely touched" },
   subagent: (n: number) => `Subagent ${n}`,
   mainLane: "Main",
-  status: { work: "Working", walk: "Walking", idle: (span: string) => `Idle ${span}`, fail: "Just failed", back: "Back", none: "Not out yet", waiting: "Waiting on you" },
+  status: { work: "Working", walk: "Walking", idle: (span: string) => `Idle ${span}`, fail: "Just failed", back: "Back", none: "Not out yet", waiting: "Waiting on you", rested: "Just stopped" },
   minutes: (n: number) => `${n} min`,
   hours: (n: number) => `${n} h`,
   verbs: {
