@@ -6,6 +6,10 @@
 
 ## Unreleased
 
+### 新 Bot 的职责按行显示
+
+- 和 Bot 的空对话会在建议上方列出它的职责，但几行连成了一段，模板的三条职责读起来像一句话。现在每条职责各占一行。
+
 ### 首次设置不再给出写死的模型名
 
 - 拉不到端点的模型列表时，选模型那一步会列出应用里写死的名字（gpt-4o、claude-3-5-sonnet、llama3 等），OpenAI 和 OpenRouter 预设也会在填 key 之前先填上 gpt-4o 或 claude-3.5-sonnet。现在这一步只列端点给出的模型、Anthropic 和 DeepSeek 预设自带的模型，以及你自己加的名字。

@@ -90,7 +90,7 @@
 		</div>
 		{#if selectedPeerBot.duties}
 			<div class="welcome-duties">
-				<p class="duties-text m-0 text-13 text-ink-secondary leading-normal text-left">{selectedPeerBot.duties}</p>
+				<p class="duties-text m-0 text-13 text-ink-secondary leading-normal text-left whitespace-pre-line">{selectedPeerBot.duties}</p>
 			</div>
 		{/if}
 		{#if starterOptions.length > 0}

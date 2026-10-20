@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A new Bot's duties keep their lines
+
+- An empty conversation with a Bot shows its duties above the suggestions, but ran their lines together, so a template's three duties read as one sentence ("…writes them up as the deliverable Writes scripts and code…"). Each duty now keeps its own line.
+
 ### Setup no longer offers model names it made up
 
 - When an endpoint's model list could not be fetched, the model step listed names written into the app (gpt-4o, claude-3-5-sonnet, llama3 and others), and the OpenAI and OpenRouter presets filled in gpt-4o or claude-3.5-sonnet before the key was in. The step now offers only what the endpoint lists, the models the Anthropic and DeepSeek presets name, and names you add yourself.
