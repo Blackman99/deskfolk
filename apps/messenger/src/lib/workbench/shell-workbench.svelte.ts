@@ -286,6 +286,8 @@ export class ShellWorkbench {
         return t.routing.tab;
       case "trace":
         return t.pane.flowOf(this.sessionName(content.sessionId));
+      case "map":
+        return t.pane.mapOf(this.sessionName(content.sessionId));
       case "preview":
         return content.sessionId ? t.pane.artifactsOf(this.sessionName(content.sessionId)) : t.pane.title;
     }

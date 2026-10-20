@@ -81,6 +81,7 @@ import { RemoteAdmin, type RemoteAdminHost } from "./remote/remote-admin.svelte.
 import { AdminMutations, type AdminMutationsHost } from "./admin-mutations.svelte.ts";
 import { AnnotationStore, type AnnotationStoreHost } from "./annotations/annotation-store.svelte.ts";
 import { ChatActivity, type ChatActivityHost } from "./chat/activity.svelte.ts";
+import type { AgentCallLog } from "./taskmap/live.svelte.ts";
 import { ChatActions, type ChatActionsHost } from "./chat/chat-actions.svelte.ts";
 import { MessageEdits, type MessageEditsHost } from "./chat/message-edits.svelte.ts";
 import { SessionHistory, type SessionHistoryHost } from "./chat/session-history.svelte.ts";
@@ -785,6 +786,7 @@ export class MessengerRuntime {
   stepOf(turnId: string): ToolStep | null { return this.chatActivity.stepOf(turnId); }
   stepsOf(turnId: string): readonly ToolStep[] { return this.chatActivity.stepsOf(turnId); }
   onStream(id: string, sink: (frame: StreamFrame) => void): () => void { return this.chatActivity.onStream(id, sink); }
+  get agentCalls(): AgentCallLog { return this.chatActivity.agentCalls; }
 
   // --- Forwarded to `annotationStore` (annotations). ---
   get annotationFocusId(): string | null { return this.annotationStore.annotationFocusId; }

@@ -30,6 +30,8 @@ export const PANE_MINS = {
   usage: { width: 280, height: 220 },
   /** The map alone below the two-column width; a call then opens as its own page. */
   roles: { width: 300, height: 260 },
+  /** The town, its controls and the timeline under it; the side column folds under the town below 720. */
+  map: { width: 420, height: 360 },
 } as const satisfies Record<string, PaneMin>;
 
 export type PaneKind = keyof typeof PANE_MINS;

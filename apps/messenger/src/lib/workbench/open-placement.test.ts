@@ -38,6 +38,7 @@ test("the defaults keep the conversation in view: its things beside it, terminal
     spend: "tab",
     usage: "tab",
     roles: "tab",
+    map: "side-right",
   });
 });
 

@@ -299,6 +299,15 @@
 	{#await import('../settings/RolesPage.svelte') then { default: RolesPage }}
 		<RolesPage {runtime} {t} />
 	{/await}
+{:else if content.kind === 'map'}
+	<!-- A project session's task map (ADR 0096), loaded when a map tab is first shown. -->
+	{#if session?.kind === 'project'}
+		<div class="pane-map">
+			{#await import('../taskmap/TaskMap.svelte') then { default: TaskMap }}
+				<TaskMap {runtime} {t} {session} />
+			{/await}
+		</div>
+	{/if}
 {:else if content.kind === 'terminal'}
 	<TerminalView
 		api={runtime.client}
@@ -413,6 +422,15 @@
 		min-height: 0;
 		min-width: 0;
 		position: relative;
+	}
+
+	/* The map lays itself out inside the pane (it measures itself), so this only gives it the pane's box. */
+	.pane-map {
+		position: relative;
+		height: 100%;
+		min-height: 0;
+		min-width: 0;
+		overflow: hidden;
 	}
 	.pane-conversation {
 		display: flex;

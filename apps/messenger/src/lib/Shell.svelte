@@ -791,8 +791,10 @@
 		const content = contentOfTab(tab);
 		if (content?.kind !== 'chat') return [];
 		const session = sessionsById.get(content.sessionId);
-		// A project session has no Bot, flow or settings to offer, and is listed under its directory (ADR 0095).
-		if (!session || isFileDropSession(session) || session.kind === 'project') return [];
+		// A project session has no Bot, flow or settings to offer, and is listed under its directory (ADR 0095);
+		// what it has is its task map (ADR 0096).
+		if (session?.kind === 'project') return [{ id: 'map', label: t.taskmap.open, icon: mapIcon, run: () => workbench.openGuarded({ kind: 'map', sessionId: session.id }) }];
+		if (!session || isFileDropSession(session)) return [];
 		const pinned = isSessionPinned(pinnedSessionIds, session.id);
 		return [
 			{
@@ -993,6 +995,9 @@
 {/snippet}
 {#snippet traceIcon()}
 	<Icon name="hierarchy" />
+{/snippet}
+{#snippet mapIcon()}
+	<Icon name="minimap" />
 {/snippet}
 {#snippet settingsIcon()}
 	<Icon name="settings" />
@@ -1426,6 +1431,7 @@
 			onToggleArchive={() => void sessionMenu.handleMenuToggleArchive(activeMenu.session)}
 			onDelete={() => sessionMenu.handleMenuDelete(activeMenu.session)}
 			onShowJobView={() => void sessionMenu.handleMenuShowJobView(activeMenu.session)}
+			onShowMap={runtime.paneOpener ? () => sessionMenu.handleMenuShowMap(activeMenu.session) : undefined}
 		/>
 	{/if}
 

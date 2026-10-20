@@ -21,7 +21,8 @@
 		onClearHistory,
 		onToggleArchive,
 		onDelete,
-		onShowJobView
+		onShowJobView,
+		onShowMap
 	}: {
 		session: SessionSummary;
 		botsById: ReadonlyMap<string, Bot>;
@@ -37,6 +38,8 @@
 		onDelete: () => void;
 		/** Open the conversation's latest job: its one flow tab on a wide window, its page on a phone. */
 		onShowJobView?: () => void;
+		/** Open a project session's task map (ADR 0096); given only where a workbench can hold it. */
+		onShowMap?: () => void;
 	} = $props();
 
 
@@ -160,6 +163,24 @@
 		>
 			<Icon name="hierarchy" />
 			<span>{t.plan.segmentTrace}</span>
+		</button>
+	{/if}
+
+	{#if data.canShowMap && onShowMap}
+		<div class={inSheet ? 'sheet-separator' : 'session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2'} role="separator"></div>
+		<!-- A project session's agent at work, drawn as a town of its folders (ADR 0096). -->
+		<button
+			type="button"
+			class={['session-context-menu-item', { 'sheet-item': inSheet }]}
+			role="menuitem"
+			data-session-map
+			onclick={() => {
+				onShowMap();
+				onClose();
+			}}
+		>
+			<Icon name="minimap" />
+			<span>{t.taskmap.openLong}</span>
 		</button>
 	{/if}
 

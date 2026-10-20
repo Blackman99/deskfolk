@@ -9,6 +9,8 @@ export type SessionContextMenuData = {
   canViewInfo: boolean;
   /** Its jobs' trace, board and plan can be opened from here: every conversation but the file drop. */
   canShowJob: boolean;
+  /** Its task map can be opened from here (ADR 0096): a project session's; absent means none. */
+  canShowMap?: boolean;
   canClearHistory: boolean;
   archive: {
     enabled: boolean;
@@ -41,12 +43,14 @@ export function deriveSessionContextMenu(
   const kind = classifySession(session);
   if (kind === "project") {
     // No Bot, flow or settings here (ADR 0095): clearing starts the agent over, deleting removes it.
+    // Its work can be watched on its task map (ADR 0096).
     return {
       sessionId: session.id,
       isPinned: false,
       canPin: false,
       canViewInfo: false,
       canShowJob: false,
+      canShowMap: true,
       canClearHistory: true,
       archive: { enabled: true, isArchived: Boolean(session.archived_at), botId: null },
       delete: { enabled: true, kind: "project", targetId: session.id },

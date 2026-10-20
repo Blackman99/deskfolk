@@ -30,6 +30,7 @@ const samples: PaneContent[] = [
   { kind: "trace", sessionId: "s1", taskId: "task-1", view: "board" },
   { kind: "trace", sessionId: "s1", taskId: null, line: "m-9" },
   { kind: "roles" },
+  { kind: "map", sessionId: "proj-1" },
   { kind: "trace", sessionId: "s1", taskId: "task-1", view: "board", ticket: "t-3", column: "review", askNonce: 5 },
   { kind: "trace", sessionId: "s1", taskId: "task-1", view: "spec", ticket: "t-3", askNonce: 6 },
   { kind: "terminal", terminalId: "term-1", cwd: "/work/real-bot" },
@@ -90,6 +91,7 @@ test("a pane says which conversation it belongs to, so closing it can release th
   expect(contentSessionId({ kind: "chat", sessionId: "s1", side: { kind: "settings", botId: null } })).toBe("s1");
   expect(contentSessionId({ kind: "terminal", terminalId: "t" })).toBeNull();
   expect(contentSessionId({ kind: "routines" })).toBeNull();
+  expect(contentSessionId({ kind: "map", sessionId: "proj-1" })).toBe("proj-1");
 });
 
 /**

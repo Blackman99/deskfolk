@@ -85,6 +85,13 @@ export class ShellSessionMenu {
     runtime.openTrace(null, null, { sessionId: session.id });
   };
 
+  /** A project session's task map (ADR 0096), in a pane; there is no page of it on a phone yet. */
+  handleMenuShowMap = (session: SessionSummary): void => {
+    const runtime = this.getRuntime();
+    if (session.kind !== "project") return;
+    runtime.paneOpener?.({ kind: "map", sessionId: session.id });
+  };
+
   handleMenuViewInfo = async (session: SessionSummary): Promise<void> => {
     const runtime = this.getRuntime();
     if (isFileDropSession(session)) return;

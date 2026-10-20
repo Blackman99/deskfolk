@@ -178,3 +178,10 @@ test("a project session offers clear, archive and delete, but no pin, info or fl
   expect(data.archive).toEqual({ enabled: true, isArchived: false, botId: null });
   expect(data.delete).toEqual({ enabled: true, kind: "project", targetId: "proj-1" });
 });
+
+test("only a project session offers its task map", async () => {
+  const { aProjectSession } = await import("../test-fixtures.ts");
+  expect(deriveSessionContextMenu(aProjectSession(), false, new Map()).canShowMap).toBe(true);
+  const direct = { ...aProjectSession(), kind: "direct" as const, project_dir: null };
+  expect(deriveSessionContextMenu(direct, false, new Map()).canShowMap).toBeFalsy();
+});

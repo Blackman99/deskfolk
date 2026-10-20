@@ -27,7 +27,8 @@
 		usage: 'gauge',
 		roles: 'nodes',
 		trace: 'hierarchy',
-		preview: 'package'
+		preview: 'package',
+		map: 'minimap'
 	};
 
 	let { kind, title }: Props = $props();

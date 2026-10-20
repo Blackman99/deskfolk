@@ -134,9 +134,10 @@ const SINGLE_INSTANCE = new Set<PaneContent["kind"]>(["routines", "spend", "usag
  * or a job — a message, the preview's own file tree, a card on the board — the pane it already has
  * turns to that, rather than a second one opening beside it. Each conversation keeps its own. A
  * job is one tab (ADR 0086): its tickets, its trace and its spec are parts of that tab, so a
- * conversation has one flow tab, whatever a tab saved before that asked to open on.
+ * conversation has one flow tab, whatever a tab saved before that asked to open on. A project
+ * session has one task map (ADR 0096) the same way.
  */
-const ONE_PER_SESSION = new Set<PaneContent["kind"]>(["preview", "trace"]);
+const ONE_PER_SESSION = new Set<PaneContent["kind"]>(["preview", "trace", "map"]);
 
 function boundSession(content: PaneContent): string | null {
   return "sessionId" in content ? content.sessionId : null;

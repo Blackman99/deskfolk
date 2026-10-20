@@ -39,6 +39,7 @@ test("every kind of window is a row with where it opens, the defaults first", ()
     t.openPlacement.placements.tab,
     t.openPlacement.placements.tab,
     t.openPlacement.placements.tab,
+    t.openPlacement.placements["side-right"],
   ]);
   expect(host.querySelector(".open-placement-changed")).toBeNull();
   expect((host.querySelector(".open-placement-reset") as HTMLButtonElement).disabled).toBe(true);

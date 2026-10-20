@@ -10,6 +10,7 @@ import type {
   ClaudeCodeSessionListing,
   CreateGroupRequest,
   CreateProjectSessionRequest,
+  AgentReplay,
   AgentRun,
   CreateHoldRequest,
   CreateProviderRequest,
@@ -238,6 +239,11 @@ export abstract class ApiBase<Row extends PendingRow> {
   /** The newest run of a project session; the event stream carries only changes after it. */
   async projectRun(sessionId: string): Promise<AgentRun | null> {
     return (await this.get<{ run: AgentRun | null }>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/run`)).run;
+  }
+
+  /** Every tool call a project session's agent made, read back from its own session files (ADR 0095), for the task map. */
+  async projectReplay(sessionId: string): Promise<AgentReplay> {
+    return this.get<AgentReplay>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/replay`);
   }
 
   async answerAgentRun(runId: string, allow: boolean): Promise<AgentRun> {

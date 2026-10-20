@@ -43,6 +43,8 @@ export const zh = {
   flowOf: (name: string) => `${name}流程`,
   /** A conversation's own artifact preview. The name stays put while the file changes. */
   artifactsOf: (name: string) => `${name}的产物`,
+  /** A project session's task map (ADR 0096). */
+  mapOf: (name: string) => `${name}地图`,
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -81,4 +83,5 @@ export const en: CopyShape<typeof zh> = {
   paste: "Paste",
   flowOf: (name: string) => `${name} flow`,
   artifactsOf: (name: string) => `${name}'s artifacts`,
+  mapOf: (name: string) => `${name} map`,
 };

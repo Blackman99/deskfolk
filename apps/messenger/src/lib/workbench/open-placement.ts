@@ -26,7 +26,8 @@ export type OpenKind =
   | "routines"
   | "spend"
   | "usage"
-  | "roles";
+  | "roles"
+  | "map";
 
 export const OPEN_KINDS: readonly OpenKind[] = [
   "chat",
@@ -38,6 +39,7 @@ export const OPEN_KINDS: readonly OpenKind[] = [
   "spend",
   "usage",
   "roles",
+  "map",
 ];
 
 /**
@@ -98,6 +100,8 @@ export const OPEN_PLACEMENT_DEFAULTS: Readonly<Record<OpenKind, OpenPlacement>> 
   spend: "tab",
   usage: "tab",
   roles: "tab",
+  // Like the flow: a project session's map beside the conversation it draws.
+  map: "side-right",
 };
 
 export function isOpenPlacement(value: unknown): value is OpenPlacement {

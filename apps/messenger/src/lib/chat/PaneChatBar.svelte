@@ -151,7 +151,7 @@
 					onclick={() => action.run()}
 				>
 					{#if action.icon}{@render action.icon()}{/if}
-					{#if action.id === 'trace'}<span class="bar-action-label">{action.label}</span>{/if}
+					{#if action.id === 'trace' || action.id === 'map'}<span class="bar-action-label">{action.label}</span>{/if}
 				</button>
 			{/each}
 		</div>

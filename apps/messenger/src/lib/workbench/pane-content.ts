@@ -55,7 +55,9 @@ export type PaneContent =
   /** Every agent's usage (ADR 0080). One, like the ledger; never in the URL. */
   | { kind: "usage" }
   /** Roles (ADR 0082, a page of its own since ADR 0083): the app's own calls, their models and prompts. One. */
-  | { kind: "roles" };
+  | { kind: "roles" }
+  /** A project session's task map (ADR 0096): its agent's work drawn as a town of its folders. One per session. */
+  | { kind: "map"; sessionId: string };
 
 export type PaneKind = PaneContent["kind"];
 export type ChatContent = Extract<PaneContent, { kind: "chat" }>;
@@ -71,6 +73,7 @@ export const PANE_KINDS: readonly PaneKind[] = [
   "spend",
   "usage",
   "roles",
+  "map",
 ];
 
 export const PANE_KIND_SET: ReadonlySet<string> = new Set(PANE_KINDS);
@@ -124,6 +127,8 @@ export function contentToParams(content: PaneContent): Record<string, string> {
     case "usage":
     case "roles":
       return {};
+    case "map":
+      return { sessionId: content.sessionId };
   }
 }
 
@@ -158,6 +163,8 @@ export function contentOfTab(tab: WorkbenchTab): PaneContent | null {
       return { kind: "usage" };
     case "roles":
       return { kind: "roles" };
+    case "map":
+      return p.sessionId ? { kind: "map", sessionId: p.sessionId } : null;
     default:
       return null;
   }
@@ -172,6 +179,7 @@ export function contentSessionId(content: PaneContent): string | null {
   switch (content.kind) {
     case "chat":
     case "trace":
+    case "map":
       return content.sessionId;
     case "preview":
       return content.sessionId;

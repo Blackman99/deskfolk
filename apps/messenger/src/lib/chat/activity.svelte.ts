@@ -2,6 +2,7 @@ import type { StreamFrame, ToolFrame } from "@real-bot/protocol";
 import { parseStreamFrame, parseToolFrame } from "../ephemeral-frames.ts";
 import type { MessengerApi } from "../messenger-api.ts";
 import type { Snapshot } from "../snapshot.ts";
+import { AgentCallLog } from "../taskmap/live.svelte.ts";
 import { CommandActivity, type CommandRow } from "./command-activity.ts";
 import { TurnActivity, type ToolStep } from "./turn-activity.ts";
 
@@ -54,6 +55,9 @@ export class ChatActivity {
    */
   readonly turnActivity = new TurnActivity();
   toolRevision = $state(0);
+
+  /** A project session's tool calls as the task map draws them live (frames carrying `agent_run`). */
+  readonly agentCalls = new AgentCallLog();
 
   /** The commands a finished turn ran, as its reply's card shows them; empty until read. */
   commandsOf(turnId: string): CommandRow[] {
@@ -111,6 +115,7 @@ export class ChatActivity {
     this.activityRevision += 1;
     this.turnActivity.applyTool(tool);
     this.toolRevision += 1;
+    if (tool.agent_run) this.agentCalls.applyTool(tool);
     // A command's bytes are only worth carrying while someone can see them run — and only for
     // the conversation that is open. A phone on a radio should not receive the output of a
     // build happening in a session nobody is looking at.
