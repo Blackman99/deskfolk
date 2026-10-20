@@ -16,8 +16,8 @@ function write(path: string, entries: Array<Record<string, unknown>>): string {
   return path;
 }
 
-const use = (id: string, name: string, input: Record<string, unknown>, at: string, extra: Record<string, unknown> = {}) =>
-  ({ type: "assistant", timestamp: at, cwd: "/work/app", message: { role: "assistant", content: [{ type: "tool_use", id, name, input }] }, ...extra });
+const use = (id: string, name: string, input: Record<string, unknown>, at: string, extra: Record<string, unknown> = {}, model = "claude-opus-5-5") =>
+  ({ type: "assistant", timestamp: at, cwd: "/work/app", message: { role: "assistant", model, content: [{ type: "tool_use", id, name, input }] }, ...extra });
 const result = (id: string, at: string, opts: { error?: boolean; decision?: Record<string, unknown>; content?: unknown } = {}) =>
   ({ type: "user", timestamp: at, message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, is_error: opts.error ?? false, content: opts.content ?? "ok" }] },
     ...(opts.decision ? { permissionDecision: opts.decision } : {}) });
@@ -37,7 +37,7 @@ test("a session's calls, where each worked, whether it went through, how long, a
     use("t4", "AskUserQuestion", { questions: [{ question: "哪种？" }, { question: "放哪？" }] }, "2026-10-20T10:01:00.000Z"),
     result("t4", "2026-10-20T10:03:00.000Z", { content: 'Your questions have been answered: "哪种？"="A (Recommended)", "放哪？"="侧栏". You can now continue.',
       decision: { decision: "accept", source: "user_temporary" } }),
-    use("t5", "Agent", { description: "map the code" }, "2026-10-20T10:04:00.000Z"),
+    use("t5", "Agent", { description: "map the code" }, "2026-10-20T10:04:00.000Z", {}, "<synthetic>"),
     // A copy of an old message with no time: never a call of its own.
     { type: "api-request-blob", message: { role: "assistant", content: [{ type: "tool_use", id: "t9", name: "Read", input: { file_path: "/x" } }] } },
     // The same call written twice counts once.
@@ -46,9 +46,9 @@ test("a session's calls, where each worked, whether it went through, how long, a
   ]);
   mkdirSync(join(root, "s1", "subagents"), { recursive: true });
   write(join(root, "s1", "subagents", "agent-abc.jsonl"), [
-    use("s1", "Grep", { pattern: "login", path: "/work/app/src" }, "2026-10-20T10:04:05.000Z", { agentId: "abc", isSidechain: true }),
+    use("s1", "Grep", { pattern: "login", path: "/work/app/src" }, "2026-10-20T10:04:05.000Z", { agentId: "abc", isSidechain: true }, "claude-haiku-5-5"),
     result("s1", "2026-10-20T10:04:06.000Z"),
-    use("s2", "Read", { file_path: "/work/app/docs/a.md" }, "2026-10-20T10:04:10.000Z", { agentId: "abc", isSidechain: true }),
+    use("s2", "Read", { file_path: "/work/app/docs/a.md" }, "2026-10-20T10:04:10.000Z", { agentId: "abc", isSidechain: true }, "claude-haiku-5-5"),
     result("s2", "2026-10-20T10:04:11.000Z"),
   ]);
   writeFileSync(join(root, "s1", "subagents", "agent-abc.meta.json"), JSON.stringify({ agentType: "Explore", description: "map the code", toolUseId: "t5", model: "haiku" }));
@@ -56,7 +56,9 @@ test("a session's calls, where each worked, whether it went through, how long, a
   const replay = readAgentReplay({ sessionId: "p1", agentFile: file, sourceFile: null, agentSession: "s1", sourceSession: null }, ctx);
   expect(replay.calls.map((call) => call.id)).toEqual(["t1", "t2", "t3", "t4", "t5", "s1", "s2"]);
   expect(replay.calls[0]).toEqual({ id: "t1", at: "2026-10-20T10:00:01.000Z", agent_id: null, tool: "Read", place: { zone: "project", path: "src/login.ts" },
-    file: "login.ts", ok: true, duration_ms: 500, decision: { decision: "accept", source: "config", reason_type: "mode" } });
+    model: "claude-opus-5-5", file: "login.ts", ok: true, duration_ms: 500, decision: { decision: "accept", source: "config", reason_type: "mode" } });
+  // Each call names the model that made it; Claude Code's stand-in lines name none.
+  expect(replay.calls.map((call) => call.model)).toEqual(["claude-opus-5-5", "claude-opus-5-5", "claude-opus-5-5", "claude-opus-5-5", null, "claude-haiku-5-5", "claude-haiku-5-5"]);
   expect(replay.calls[1]).toMatchObject({ place: { zone: "check", check: "test" }, action: "check", ok: false, duration_ms: 10_000, decision: null });
   expect(replay.calls[2]).toMatchObject({ place: { zone: "claude_home" }, decision: { decision: "reject", reason_type: "safetyCheck" } });
   expect(replay.calls[4]).toMatchObject({ tool: "Agent", place: { zone: "none" }, duration_ms: 0 });

@@ -594,7 +594,7 @@ Bot 在哪读到它：每一轮的局面里都有「用户要求」一段，列�
 
 **记录**：每一轮记在 `agent_runs`（状态、等你批准的那一项、正在做什么、出错原因），守护进程重启时还在跑的记作中断。不记进花费表、不算进每日上限：用量算在 Claude 账号上，用量挂件照样看得到。Claude Code 没找到、没登录或目录不在了，这一轮失败，会话里有一条系统行写明原因。右键菜单能清空历史、归档和删除；三样都先 Stop 正在跑的那一轮。清空历史后下一轮从头开一个新会话；删除只去掉应用里的会话和消息，Claude Code 那边的会话文件和目录里的文件都还在。记忆在 Claude Code 自己的会话文件里，那个文件被删，下一轮会因为找不到会话失败。手机经同样的路由（`GET /v1/runtime/claude-code/sessions`、`POST /v1/project-sessions`、`GET /v1/project-sessions/:id/run`、`POST /v1/agent-runs/:id/approve|deny|stop`）。
 
-**给任务地图的**：每个工具调用开始和结束各发一个工具帧（`turn_id` 是这一轮的 id，`agent_run` 写着子代理、地点和成没成），不落库。`GET /v1/project-sessions/:id/replay` 从 Claude Code 自己的会话文件读回整段：每个工具调用的时间、主线还是哪个子代理、地点、成没成、耗时和 Claude Code 记下的放行决定（钩子放行是 `hook`，卡上允许是 `user_temporary`，卡上拒绝是 `user_reject`），子代理，你说的话和你对它提问的回答。地点是项目里的相对路径、项目外的路径（`~/.claude*` 单列）、测试或类型检查、git；命令、文件内容和结果都不带出来。目前只支持 Claude Code。
+**给任务地图的**：每个工具调用开始和结束各发一个工具帧（`turn_id` 是这一轮的 id，`agent_run` 写着子代理、地点、做这一步的模型和成没成），不落库。`GET /v1/project-sessions/:id/replay` 从 Claude Code 自己的会话文件读回整段：每个工具调用的时间、主线还是哪个子代理、地点、做它的模型、成没成、耗时和 Claude Code 记下的放行决定（钩子放行是 `hook`，卡上允许是 `user_temporary`，卡上拒绝是 `user_reject`），子代理，你说的话和你对它提问的回答。地点是项目里的相对路径、项目外的路径（`~/.claude*` 单列）、测试或类型检查、git；命令、文件内容和结果都不带出来。目前只支持 Claude Code。
 
 <a id="hold"></a>
 ## 叫停（Hold）

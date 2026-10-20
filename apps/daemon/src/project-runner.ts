@@ -12,6 +12,7 @@ import type { CanUseTool, HookCallbackMatcher, HookInput, HookJSONOutput, Option
 import type { AgentRun, AgentRunApproval, AgentRunToolInfo, Message, ToolFrame } from "@real-bot/protocol";
 import { homedir } from "node:os";
 import { placeOfCall } from "./claude-code/tool-place";
+import { modelOf } from "./claude-code/replay";
 import { changeVerdict } from "./permission-gate";
 import { accountOf, claudeChildEnv } from "./claude-code/status";
 import { AGENT_WORK_TOOLS, decideAgentCall } from "./claude-code/policy";
@@ -204,6 +205,16 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     const home = homedir();
     /** The calls under way, by id: when each started and where, for its exited frame. */
     const started = new Map<string, { at: number; name: string; info: AgentRunToolInfo }>();
+    /**
+     * Which model makes each call, for the map's logos: by the call's id, from the message that
+     * asked for it (a subagent's too); failing that the agent's last known model, then the run's.
+     */
+    const models = { byCall: new Map<string, string>(), byAgent: new Map<string, string>(), main: null as string | null };
+    const modelFor = (id: string, agentId: string | null): string | null => {
+      const model = models.byCall.get(id) ?? (agentId ? models.byAgent.get(agentId) : models.main) ?? null;
+      if (model && agentId) models.byAgent.set(agentId, model);
+      return model;
+    };
     const deny = (reason: string): HookJSONOutput => ({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } });
     // The app's answer comes before any allow rule in your settings: a hook's decision is final.
     const preToolUse = async (raw: HookInput, toolUseId: string | undefined): Promise<HookJSONOutput> => {
@@ -217,7 +228,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       if (decision.kind === "deny") return deny(decision.reason);
       if (!raw.agent_id) update(live.runId, { activity: activityOf(raw.tool_name, toolInput) });
       const { place, action } = placeOfCall(raw.tool_name, toolInput, { projectDir: project.dir, cwd: raw.cwd || project.dir, home, configDirs });
-      const info: AgentRunToolInfo = { session_id: live.sessionId, agent_id: raw.agent_id ?? null, place, ...(action ? { action } : {}), at: new Date().toISOString() };
+      const info: AgentRunToolInfo = { session_id: live.sessionId, agent_id: raw.agent_id ?? null, place, ...(action ? { action } : {}),
+        model: modelFor(id, raw.agent_id ?? null), at: new Date().toISOString() };
       started.set(id, { at: Date.now(), name: raw.tool_name, info });
       deps.onTool?.({ type: "tool", turn_id: live.runId, id, name: raw.tool_name, phase: "started", target: targetText(place), agent_run: info });
       if (decision.kind === "ask") {
@@ -307,9 +319,17 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
         if (message.type === "system" && message.subtype === "init") {
           const own = (message as { session_id?: string }).session_id;
           if (own) store.recordProjectAgentSession(live.sessionId, own);
+          models.main = modelOf({ model: (message as { model?: string }).model }) ?? models.main;
           continue;
         }
         if (message.type === "assistant") {
+          const model = modelOf(message.message);
+          if (model) {
+            if (!message.parent_tool_use_id) models.main = model;
+            for (const block of Array.isArray(message.message.content) ? message.message.content : []) {
+              if (block.type === "tool_use") models.byCall.set(block.id, model);
+            }
+          }
           if (message.parent_tool_use_id) continue;
           const blocks = Array.isArray(message.message.content) ? message.message.content : [];
           const text = blocks.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");

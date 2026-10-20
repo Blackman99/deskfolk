@@ -32,6 +32,12 @@ function readEntries(path: string): Entry[] {
 
 const str = (value: unknown): string | null => (typeof value === "string" && value.length > 0 ? value : null);
 
+/** The model a message names; Claude Code's own stand-in lines (`<synthetic>`) name none. */
+export function modelOf(message: unknown): string | null {
+  const model = str((message as { model?: unknown } | undefined)?.model);
+  return model && !model.startsWith("<") ? model : null;
+}
+
 function decisionOf(value: unknown): AgentReplayDecision | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
@@ -73,7 +79,7 @@ function callsOf(entries: Entry[], agentId: string | null, ctx: Omit<PlaceContex
       const result = results.get(part.id);
       const done = result?.at ? Date.parse(result.at) : NaN;
       out.push({
-        id: part.id, at, agent_id: agentId ?? str(entry.agentId), tool, place, ...(action ? { action } : {}),
+        id: part.id, at, agent_id: agentId ?? str(entry.agentId), tool, place, ...(action ? { action } : {}), model: modelOf(entry.message),
         file: fileOfCall(tool, input), ok: result?.ok ?? true,
         duration_ms: Number.isFinite(done) ? Math.max(0, done - Date.parse(at)) : 0,
         decision: result?.decision ?? null, input, result: result?.content,

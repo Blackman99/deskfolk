@@ -21,9 +21,10 @@ const signedIn = { path: "/usr/local/bin/claude", version: "2.1.304", logged_in:
 const probe: ClaudeCodeProbe = { last: () => signedIn, current: async () => signedIn, detect: async () => signedIn };
 
 /** What one run of Claude Code does with the lines it is sent: `say` answers each with a result. */
-type Step = (ctx: { line: string; options: Options; useTool: (name: string, input: Record<string, unknown>) => Promise<boolean> }) => Promise<string>;
+type UseTool = (name: string, input: Record<string, unknown>, call?: { id?: string; agentId?: string }) => Promise<boolean>;
+type Step = (ctx: { line: string; options: Options; useTool: UseTool }) => Promise<string>;
 
-function scripted(seen: { options: Options[]; lines: string[]; closed: number }, step: Step, ownSession = "own-1"): ProjectQuery {
+function scripted(seen: { options: Options[]; lines: string[]; closed: number }, step: Step, ownSession = "own-1", preface: (line: string) => SDKMessage[] = () => []): ProjectQuery {
   let tool = 0;
   return ({ prompt, options }) => {
     seen.options.push(options);
@@ -35,16 +36,17 @@ function scripted(seen: { options: Options[]; lines: string[]; closed: number },
       }
       return decision as { hookSpecificOutput?: { permissionDecision?: string } };
     };
-    const useTool = async (name: string, input: Record<string, unknown>) => {
-      const id = `toolu_${++tool}`;
-      const pre = await runHook("PreToolUse", { tool_name: name, tool_input: input, tool_use_id: id }, id);
+    const useTool: UseTool = async (name, input, call = {}) => {
+      const id = call.id ?? `toolu_${++tool}`;
+      const agent = call.agentId ? { agent_id: call.agentId } : {};
+      const pre = await runHook("PreToolUse", { tool_name: name, tool_input: input, tool_use_id: id, ...agent }, id);
       const decision = pre.hookSpecificOutput?.permissionDecision ?? "ask";
       if (decision === "deny") return false;
       if (decision === "ask") {
         const verdict = await options.canUseTool!(name, input, { signal: new AbortController().signal, toolUseID: id, requestId: id } as never);
         if (!verdict || verdict.behavior === "deny") return false;
       }
-      await runHook("PostToolUse", { tool_name: name, tool_input: input, tool_response: "ok", tool_use_id: id }, id);
+      await runHook("PostToolUse", { tool_name: name, tool_input: input, tool_response: "ok", tool_use_id: id, ...agent }, id);
       return true;
     };
     let closed = false;
@@ -54,6 +56,7 @@ function scripted(seen: { options: Options[]; lines: string[]; closed: number },
         if (closed) break;
         const line = String(message.message.content);
         seen.lines.push(line);
+        yield* preface(line);
         const reply = await step({ line, options, useTool });
         yield { type: "result", subtype: "success", result: reply, is_error: false, session_id: ownSession, uuid: crypto.randomUUID() } as unknown as SDKMessage;
       }
@@ -62,11 +65,11 @@ function scripted(seen: { options: Options[]; lines: string[]; closed: number },
   };
 }
 
-function start(step: Step, opts: { ownSession?: string } = {}) {
+function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[] } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "project-session-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
   const seen = { options: [] as Options[], lines: [] as string[], closed: 0 };
-  const api = createLocalApi({ store, token: "project-test", schedule: false, claudeCode: probe, projectQuery: scripted(seen, step, opts.ownSession) });
+  const api = createLocalApi({ store, token: "project-test", schedule: false, claudeCode: probe, projectQuery: scripted(seen, step, opts.ownSession, opts.preface) });
   const events: ClientEvent[] = [];
   api.subscribeSync((frame) => { if (frame.type === "event") events.push(frame.payload); });
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: api.fetch, websocket: api.websocket });
@@ -321,6 +324,30 @@ test("each tool call reaches the windows as a tool frame with where it works, st
   expect(frames[2]!.agent_run).toMatchObject({ place: { zone: "check", check: "test" }, action: "check" });
   expect(frames[3]!.agent_run?.ok).toBe(true);
   expect(typeof frames[3]!.duration_ms).toBe("number");
+  // No message named a model for these calls: the run's own, from its start.
+  expect(frames.map((frame) => frame.agent_run?.model)).toEqual(["claude-sonnet-5", "claude-sonnet-5", "claude-sonnet-5", "claude-sonnet-5"]);
+});
+
+test("a tool frame names the model that asked for the call: a subagent's own, then its last known", async () => {
+  const subagentAsks = (id: string) => ({ type: "assistant", parent_tool_use_id: "toolu_agent", uuid: crypto.randomUUID(), session_id: "own-1",
+    message: { id: `msg_${id}`, role: "assistant", model: "claude-haiku-5-5", content: [{ type: "tool_use", id, name: "Read", input: {} }] } }) as unknown as SDKMessage;
+  const h = start(async ({ useTool, options }) => {
+    await useTool("Read", { file_path: join(options.cwd!, "a.ts") }, { id: "toolu_sub1", agentId: "sub-a" });
+    await useTool("Read", { file_path: join(options.cwd!, "b.ts") }, { id: "toolu_sub2", agentId: "sub-a" });
+    await useTool("Read", { file_path: join(options.cwd!, "c.ts") });
+    return "好";
+  }, { preface: () => [subagentAsks("toolu_sub1")] });
+  const frames: ToolFrame[] = [];
+  h.api.subscribeTools((frame) => frames.push(frame));
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(id, "派个分身看看");
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  const started = frames.filter((frame) => frame.phase === "started");
+  expect(started.map((frame) => [frame.id, frame.agent_run?.agent_id, frame.agent_run?.model])).toEqual([
+    ["toolu_sub1", "sub-a", "claude-haiku-5-5"],
+    ["toolu_sub2", "sub-a", "claude-haiku-5-5"],
+    [started[2]!.id, null, "claude-sonnet-5"],
+  ]);
 });
 
 test("the replay reads the agent's own session file under the session's account", async () => {
@@ -330,7 +357,7 @@ test("the replay reads the agent's own session file under the session's account"
   mkdirSync(join(account, "projects", "-work-app"), { recursive: true });
   writeFileSync(join(account, "projects", "-work-app", "own-9.jsonl"), [
     { type: "user", timestamp: "2026-10-20T10:00:00.000Z", message: { role: "user", content: "看看" } },
-    { type: "assistant", timestamp: "2026-10-20T10:00:01.000Z", cwd: h.dir, message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: { file_path: join(h.dir, "a.ts") } }] } },
+    { type: "assistant", timestamp: "2026-10-20T10:00:01.000Z", cwd: h.dir, message: { role: "assistant", model: "claude-opus-5-5", content: [{ type: "tool_use", id: "t1", name: "Read", input: { file_path: join(h.dir, "a.ts") } }] } },
     { type: "user", timestamp: "2026-10-20T10:00:02.000Z", permissionDecision: { decision: "accept", source: "config", reasonType: "mode" },
       message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "x" }] } },
   ].map((entry) => JSON.stringify(entry)).join("\n"));
@@ -340,7 +367,7 @@ test("the replay reads the agent's own session file under the session's account"
   h.store.recordProjectAgentSession(id, "own-9");
   const replay = (await h.call<AgentReplay>("GET", `/v1/project-sessions/${id}/replay`)).body;
   expect(replay).toMatchObject({ session_id: id, agent_session: "own-9", said: [{ kind: "say", text: "看看" }] });
-  expect(replay.calls).toEqual([{ id: "t1", at: "2026-10-20T10:00:01.000Z", agent_id: null, tool: "Read", place: { zone: "project", path: "a.ts" }, file: "a.ts",
+  expect(replay.calls).toEqual([{ id: "t1", at: "2026-10-20T10:00:01.000Z", agent_id: null, tool: "Read", place: { zone: "project", path: "a.ts" }, model: "claude-opus-5-5", file: "a.ts",
     ok: true, duration_ms: 1000, decision: { decision: "accept", source: "config", reason_type: "mode" } }]);
   const direct = h.store.createBot({ name: "zz-bot", duties: "d", boundaries: "b" }).direct_session;
   expect((await h.call("GET", `/v1/project-sessions/${direct.id}/replay`)).status).toBe(404);

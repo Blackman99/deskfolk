@@ -66,6 +66,8 @@ export type AgentRunToolInfo = {
   agent_id: string | null;
   place: AgentToolPlace;
   action?: AgentShellAction;
+  /** The model that made the call (`claude-opus-5-5`); null when it is not known yet. */
+  model: string | null;
   at: string;
   /** On `exited`: whether the call succeeded. */
   ok?: boolean;
@@ -82,6 +84,8 @@ export type AgentReplayCall = {
   tool: string;
   place: AgentToolPlace;
   action?: AgentShellAction;
+  /** The model that made the call, as its message names it; null when none does. */
+  model: string | null;
   /** The file it names, its last name only; null when it names none. */
   file: string | null;
   ok: boolean;

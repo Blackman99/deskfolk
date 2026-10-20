@@ -9,7 +9,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### Project sessions: talk to Claude Code in a project directory
 
 - A new Projects section in the sidebar holds conversations with your own Claude Code in a project directory, as in its desktop app, with no Bot. Press "+" to start one in a directory you pick, or to carry on a Claude Code session you had in a terminal: what was said shows in the session, and Claude Code remembers all of it, branching off so your terminal's session stays as it was. Each run reads your settings and CLAUDE.md as in the terminal; the app keeps only the permission mode (an approval card under ask first) and Stop. Codex and the other agents are not supported yet.
-- For a task map of the work, each tool call is sent live with where it works, and `GET /v1/project-sessions/:id/replay` reads a session's whole run back from Claude Code's own files: its tool calls, subagents, permission decisions and what you said.
+- For a task map of the work, each tool call is sent live with where it works, and `GET /v1/project-sessions/:id/replay` reads a session's whole run back from Claude Code's own files: its tool calls with the model that made each, subagents, permission decisions and what you said.
 
 ### Every icon-only button has a tooltip
 
