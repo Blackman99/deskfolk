@@ -177,6 +177,22 @@ export function parseDutyItems(duties: string): string[] {
   return [single];
 }
 
+/** Longer than a duty a chip can name: a clause, not an item. */
+function tooLongForChip(item: string): boolean {
+  return isChinese(item) ? item.length > 16 : item.split(/\s+/).length > 6;
+}
+
+/**
+ * Duties written as sentences, as the Bot templates' are (ADR 0085), rather than a list of short
+ * items. Cut into a chip per piece they read as 「开展读工作区里的资料，…」 or "Please assist me with
+ * Reads the material…", so such a Bot gets the starters made from its name instead. The marks are
+ * read on the lines as written: the one-line splitter drops long pieces, colon and all.
+ */
+function readsAsSentences(duties: string, items: string[]): boolean {
+  const lines = duties.split(/\r?\n/).map(cleanPrefix);
+  return lines.some((line) => /[：:。]|\.\s/.test(line)) || items.some(tooLongForChip);
+}
+
 function truncateLabel(text: string, maxLen = 22): string {
   if (text.length <= maxLen) return text;
   return `${text.slice(0, maxLen - 1)}…`;
@@ -208,12 +224,14 @@ function formatDutyItemPrompt(item: string, isZh: boolean): string {
 export function getStarterOptions(input: StarterPromptInput): StarterOption[] {
   const name = input.name?.trim() ?? "";
   const duties = input.duties?.trim() ?? "";
-  const boundaries = input.boundaries?.trim() ?? "";
+  // Its own closing stop would land inside the brackets the prompts quote it in: 「（如：…确认。）？」.
+  const boundaries = (input.boundaries?.trim() ?? "").replace(/[。.]+$/, "");
   const hasChinese =
     isChinese(duties) || isChinese(name) || isChinese(boundaries);
   const isZh = input.locale === "en" ? hasChinese : true;
 
-  const items = parseDutyItems(duties);
+  const parsed = parseDutyItems(duties);
+  const items = readsAsSentences(duties, parsed) ? [] : parsed;
 
   // Scenario 1: Multi-item duties
   if (items.length >= 2) {

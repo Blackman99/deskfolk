@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A Bot made from a template opens with suggestions that read right
+
+- The suggestions in a new Bot's empty conversation were cut out of its duties. That suits a short list like "code review; unit tests", but not duties written as sentences, and every template's are: the first screen after setup offered 「开展读工作区里的资料，…」 or "Please assist me with Reads the material…". Duties that read as sentences now get the suggestions made from the Bot's name instead (introduce yourself, look at the workspace, start a task), and a boundary quoted in a suggestion no longer ends in a stray full stop inside the brackets.
+
 ### The traffic lights no longer touch the content when the sidebar is collapsed
 
 - On macOS, with the sidebar collapsed to its rail, the window's green button reached the edge of the content card: on current macOS the three buttons sit further apart than the rail was made for. The rail is now a little wider there, so the buttons sit clear of the card, and the avatars stay centred in it.

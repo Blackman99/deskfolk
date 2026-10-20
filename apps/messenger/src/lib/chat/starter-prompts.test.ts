@@ -5,6 +5,7 @@ import {
   handOffStarter,
   parseDutyItems,
 } from "./starter-prompts.ts";
+import { COPY } from "../copy.ts";
 
 test("detectDutyIcon maps common keywords to matching icons", () => {
   expect(detectDutyIcon("架构设计")).toBe("📐");
@@ -144,6 +145,44 @@ test("Completely empty input falls back to standard generic prompts", () => {
   expect(options[0].label).toBe("你可以帮我做什么？");
   expect(options[1].label).toBe("查看当前工作区有哪些文件");
   expect(options[2].label).toBe("开始一个新任务");
+});
+
+test("a Bot made from a template gets the starters from its name, not its duties cut into pieces", () => {
+  for (const locale of ["zh", "en"] as const) {
+    for (const [id, template] of Object.entries(COPY[locale].templates.templates)) {
+      const options = getStarterOptions({ ...template, locale });
+      expect({ id, ids: options.map((option) => option.id) }).toEqual({ id, ids: ["intro", "workspace", "task"] });
+      for (const option of options) {
+        expect(option.label).not.toContain("开展");
+        expect(option.prompt).not.toContain("开展");
+        expect(option.prompt).not.toContain("Please assist me with");
+        // A chip cut from the duties would be a piece of them.
+        expect(template.duties).not.toContain(option.label.replace(/…$/, ""));
+      }
+    }
+  }
+});
+
+test("duties read as sentences by a colon, a full stop inside, or a piece too long for a chip", () => {
+  for (const duties of [
+    "做界面：页面、组件和交互",
+    "查证公开信息。先查再答",
+    "读工作区里的资料，把发现和出处记下来\n写脚本和代码，写测试并真的跑一遍",
+    "Checks public facts. Looks before answering",
+    "Reads the material in the workspace and writes it up\nWrites the tests and runs them",
+  ]) {
+    expect(getStarterOptions({ name: "助手", duties, locale: "zh" }).map((option) => option.id)).toEqual(["intro", "workspace", "task"]);
+  }
+  // A one-line list stays a list however long the line, as long as each item is short.
+  const list = getStarterOptions({ name: "前端", duties: "前端开发、组件封装、样式优化、性能调优、单元测试", locale: "zh" });
+  expect(list.map((option) => option.label)).toEqual(["开展前端开发", "开展组件封装", "开展样式优化", "介绍前端的核心职责与工作方式"]);
+});
+
+test("a boundary's own closing stop stays out of the brackets it is quoted in", () => {
+  const [intro] = getStarterOptions({ name: "助理", duties: "", boundaries: "花钱之前先问你。", locale: "zh" });
+  expect(intro!.prompt).toBe("作为助理，请介绍一下你可以帮我做什么，以及你的职责边界（如：花钱之前先问你）？");
+  const [en] = getStarterOptions({ name: "Assistant", duties: "", boundaries: "Asks before spending money.", locale: "en" });
+  expect(en!.prompt).toBe("As Assistant, what can you help me with, and what are your boundaries (Asks before spending money)?");
 });
 
 test("the hand-off starter asks for a brief now and a morning routine, in the app's language", () => {
