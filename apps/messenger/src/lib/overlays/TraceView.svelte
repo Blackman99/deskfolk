@@ -511,7 +511,7 @@
 			const peer = youBotPeer(session);
 			return t.trace.sessionDirect(peer ? nameOf(peer) : deletedLabel);
 		}
-		return t.trace.sessionDirect(sessionTitle(session, botsById, { deleted: deletedLabel, archived: deletedLabel, fileDrop: t.sidebar.fileDrop }));
+		return t.trace.sessionDirect(sessionTitle(session, botsById, { deleted: deletedLabel, archived: deletedLabel, fileDrop: t.sidebar.fileDrop, projectUntitled: t.project.untitled }));
 	}
 
 	/**

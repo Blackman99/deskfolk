@@ -117,6 +117,7 @@ import * as prompts from "./prompts";
 import * as sharedSkills from "./shared-skills";
 import * as planItemsModule from "./plan-items";
 import * as largeJobs from "./large-jobs";
+import * as projectSessions from "./project-sessions";
 
 export { HttpError } from "../errors";
 export { isReservedTaskPath, localDate, BRIEF_MAX, PLAN_MAP_FILE, RESERVED_SUBDIRS, TICKET_FILE, WORK_ROOT } from "./tasks";
@@ -422,6 +423,18 @@ export class Store {
   readonly listBots = this.bind(bots.listBots);
   readonly getBot = this.bind(bots.getBot);
   readonly createBot = this.bind(bots.createBot);
+
+  // Project sessions (ADR 0095) -----------------------------------------------------------
+  readonly createProjectSession = this.bind(projectSessions.createProjectSession);
+  readonly projectOf = this.bind(projectSessions.projectOf);
+  readonly recordProjectAgentSession = this.bind(projectSessions.recordProjectAgentSession);
+  readonly nameProjectSessionIfUnnamed = this.bind(projectSessions.nameProjectSessionIfUnnamed);
+  readonly insertAgentLine = this.bind(projectSessions.insertAgentLine);
+  readonly createAgentRun = this.bind(projectSessions.createAgentRun);
+  readonly getAgentRun = this.bind(projectSessions.getAgentRun);
+  readonly latestAgentRun = this.bind(projectSessions.latestAgentRun);
+  readonly updateAgentRun = this.bind(projectSessions.updateAgentRun);
+  readonly interruptLiveAgentRuns = this.bind(projectSessions.interruptLiveAgentRuns);
   readonly patchBot = this.bind(bots.patchBot);
   readonly archiveBot = this.bind(bots.archiveBot);
   readonly restoreBot = this.bind(bots.restoreBot);

@@ -11,6 +11,7 @@
 	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import { dirDisplay, isLiveRun } from '../sidebar/project-groups.ts';
 	import { classifySession, isFileDropSession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { botWorkStatus, sidebarStatus } from '../sidebar/session-status.ts';
 	import { sessionPresence, sessionTitle } from '../sidebar/session-title.ts';
@@ -30,7 +31,7 @@
 
 	const snapshot = $derived(runtime.snapshot);
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop, projectUntitled: t.project.untitled });
 	const statusLabels = $derived({
 		running: t.sidebar.statusRunning,
 		replying: t.sidebar.statusReplying,
@@ -51,6 +52,7 @@
 			rosterLabels
 		)
 	);
+	const projectLive = $derived(kind === 'project' && isLiveRun(snapshot.agentRuns[session.id]));
 	const peerId = $derived(kind === 'you-bot' ? youBotPeer(session) : null);
 	const peerModel = $derived(peerId ? (botsById.get(peerId)?.model ?? null) : null);
 
@@ -87,10 +89,17 @@
 			disabled={!settingsAction}
 			onclick={() => settingsAction?.run()}
 		>
-			<SessionAvatar {session} bots={botsById} size="top" botStatus={botStatusOf} />
+			{#if kind === 'project'}
+				<span class="bar-folder" aria-hidden="true"><Icon name="folder" size={16} /></span>
+			{:else}
+				<SessionAvatar {session} bots={botsById} size="top" botStatus={botStatusOf} />
+			{/if}
 			<span class="bar-titles">
 				<span class="bar-title" role="heading" aria-level="2">{sessionTitle(session, botsById, rosterLabels)}</span>
 				<span class="bar-meta">
+					{#if projectLive}
+						<span class="bar-status is-running"><span class="bar-pulse"></span>{t.project.live}</span>
+					{/if}
 					{#if work.kind !== 'idle'}
 						<span class="bar-status is-{work.kind}">
 							{#if work.isBusy}<span class="bar-pulse"></span>{/if}
@@ -99,6 +108,8 @@
 					{/if}
 					{#if peerModel}
 						<span class="bar-model mono" title={peerModel}>{peerModel}</span>
+					{:else if kind === 'project'}
+						<span class="bar-presence" title={session.project_dir ?? undefined}>{t.project.agentName} · {dirDisplay(session.project_dir)}</span>
 					{:else if presence && kind !== 'you-bot'}
 						<!-- A direct's presence is "you ↔ the Bot", which the title already says. -->
 						<span class="bar-presence">{presence}</span>
@@ -181,6 +192,17 @@
 	.bar-identity:focus-visible {
 		outline: none;
 		box-shadow: var(--focus-ring);
+	}
+
+	.bar-folder {
+		flex: none;
+		display: grid;
+		place-items: center;
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		background: var(--accent-tint);
+		color: var(--accent);
 	}
 
 	.bar-titles {

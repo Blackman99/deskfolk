@@ -128,7 +128,7 @@
 	const selectedPeer = $derived(selected ? youBotPeer(selected) : null);
 	const selectedPeerBot = $derived(selectedPeer ? (botsById.get(selectedPeer) ?? null) : null);
 	const lockedComposer = $derived(composerLocked(selected, botsById));
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop, projectUntitled: t.project.untitled });
 	const statusLabels = $derived({
 		running: t.sidebar.statusRunning,
 		replying: t.sidebar.statusReplying,

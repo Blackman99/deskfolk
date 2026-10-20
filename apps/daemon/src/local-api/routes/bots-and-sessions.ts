@@ -8,7 +8,7 @@ import type { RouteCtx } from "../route-ctx";
 
 /** Local API routes: Bots, sessions, their messages, clearing and members. */
 export function botAndSessionRoutes(ctx: RouteCtx): Response | Promise<Response> | null {
-  const { url, options, publish, engine, input, store, method, path } = ctx;
+  const { url, options, publish, engine, projects, input, store, method, path } = ctx;
   let params: ReturnType<typeof matchPath>;
 
   if (method === "GET" && path === "/v1/bots") {
@@ -130,6 +130,11 @@ export function botAndSessionRoutes(ctx: RouteCtx): Response | Promise<Response>
     }
     // The file drop is where files arrive on the Mac; what is already in the workspace has no reason to go there.
     if (fileDrop && paths.length > 0) throw new HttpError(422, "invalid_args", "the file drop takes files, not workspace paths");
+    // A project session's line goes to its agent alone (ADR 0095), as plain text for now.
+    const project = !fileDrop && store.projectOf(sessionId) !== null;
+    if (project && (fileInputs.length > 0 || paths.length > 0 || parentId)) {
+      throw new HttpError(422, "invalid_args", "a project session takes plain lines for now");
+    }
     options.admission?.assertNew();
     const message = store.transaction(() => store.postMessage(sessionId, {
       body: bodyText,
@@ -139,7 +144,9 @@ export function botAndSessionRoutes(ctx: RouteCtx): Response | Promise<Response>
     }));
     publish({ event: "message.created", occurred_at: occurred(), ...message });
     // A file dropped here is already in inbox/. Nothing is woken.
-    if (!fileDrop) {
+    if (project) {
+      store.afterCommit(() => { projects.heard(message); });
+    } else if (!fileDrop) {
       store.afterCommit(() => { void engine.handleInboundMessage(message, { fork, fromUser: true }); });
     }
     return jsonResponse(message, 201, null);
@@ -151,6 +158,7 @@ export function botAndSessionRoutes(ctx: RouteCtx): Response | Promise<Response>
     for (const t of liveTurns) {
       engine.stop(t.id, { allowGroup: true });
     }
+    projects.stopSession(params.id!);
     const quoted = eraseQuotes ? plansQuotedIn(store, params.id!) : [];
     const dormant = store.clearSessionMessages(params.id!, { eraseQuotes });
     // Its plans are set aside: what was pending for them would fire into the cleared conversation.
@@ -168,6 +176,7 @@ export function botAndSessionRoutes(ctx: RouteCtx): Response | Promise<Response>
     for (const t of liveTurns) {
       engine.stop(t.id, { allowGroup: true });
     }
+    projects.stopSession(params.id!);
     const quoted = eraseQuotes ? plansQuotedIn(store, params.id!) : [];
     const dormant = store.clearSessionMessages(params.id!, { eraseQuotes });
     // Its plans are set aside: what was pending for them would fire into the cleared conversation.

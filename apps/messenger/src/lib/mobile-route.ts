@@ -130,6 +130,7 @@ export type BackLayer =
   | "create-menu"
   | "danger"
   | "create-bot"
+  | "create-project"
   | "create-group"
   | "provider-editor"
   | "independent-confirm"
@@ -154,6 +155,7 @@ export type LayerState = {
   createMenuOpen: boolean;
   dangerConfirm: boolean;
   createBotOpen: boolean;
+  createProjectOpen: boolean;
   createGroupOpen: boolean;
   providerEditor: boolean;
   confirmingIndependent: boolean;
@@ -185,6 +187,7 @@ const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   ["create-menu", "createMenuOpen"],
   ["danger", "dangerConfirm"],
   ["create-bot", "createBotOpen"],
+  ["create-project", "createProjectOpen"],
   ["create-group", "createGroupOpen"],
   ["provider-editor", "providerEditor"],
   ["independent-confirm", "confirmingIndependent"],

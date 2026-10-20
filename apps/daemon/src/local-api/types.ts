@@ -1,3 +1,4 @@
+import type { ProjectQuery, ProjectRunner } from "../project-runner";
 import type { ClientEvent, RuntimeResponse, RuntimeSnapshot, ToolFrame } from "@real-bot/protocol";
 import type { Ablation } from "../ablation";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
@@ -89,6 +90,8 @@ export type LocalApiOptions = {
   claudeUsage?: ClaudeUsageProbe;
   /** Stands in for the Agent SDK's `query` in tests, so no Claude Code is started. */
   agentQuery?: AgentQuery;
+  /** Project sessions' Claude Code (ADR 0095); a test's stand-in for the SDK's query. */
+  projectQuery?: ProjectQuery;
   /** What the daemon knows of your other local agents (ADR 0079); one is made when absent. */
   agents?: import("../agents/status").AgentProbe;
   /** Their usage; one is made when absent. */
@@ -108,6 +111,8 @@ export type LocalApi = {
   };
   publish: (event: ClientEvent) => void;
   engine: TurnEngine;
+  /** Project sessions' runs (ADR 0095). */
+  projects: ProjectRunner;
   scheduler: Scheduler | null;
   quiesce: Quiesce;
   subscribeSync: EventStream["subscribe"];

@@ -2,6 +2,7 @@ import {
   INTERRUPT_NOTE_BODY,
   USER_MEMBER,
   isHiddenTranscriptKind,
+  type AgentRun,
   type Annotation,
   type Approval,
   type Routine,
@@ -37,6 +38,8 @@ export type Snapshot = {
   routines: Routine[];
   messages: Message[];
   turns: Turn[];
+  /** The newest run of each project session (ADR 0095), by session id: events carry changes, a view loads the rest. */
+  agentRuns: Record<string, AgentRun>;
   judgements: Judgement[];
   pendingJudgements: PendingJudgement[];
   approvals: Approval[];
@@ -93,6 +96,7 @@ export function emptySnapshot(): Snapshot {
     routines: [],
     messages: [],
     turns: [],
+    agentRuns: {},
     judgements: [],
     pendingJudgements: [],
     approvals: [],
@@ -185,8 +189,10 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
       };
     }
     case "session.removed": {
+      const { [event.id]: _run, ...agentRuns } = snapshot.agentRuns;
       return {
         ...snapshot,
+        agentRuns,
         sessions: snapshot.sessions.filter((s) => s.id !== event.id),
         annotations: snapshot.annotations.filter((a) => a.session_id !== event.id && a.target_session_id !== event.id),
         messages: snapshot.messages.filter((m) => m.session_id !== event.id),
@@ -269,6 +275,10 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
             )
           : snapshot.approvals,
       };
+    }
+    case "agent_run.upsert": {
+      const { event: _e, occurred_at: _at, ...run } = event;
+      return { ...snapshot, agentRuns: keepNewestRun(snapshot.agentRuns, run) };
     }
     case "turn.token": {
       return {
@@ -427,6 +437,14 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
     default:
       return snapshot;
   }
+}
+
+/** One run per session: a run replaces the one held when it is the same run or no older. */
+export function keepNewestRun(runs: Record<string, AgentRun>, run: AgentRun): Record<string, AgentRun> {
+  const held = runs[run.session_id];
+  if (held && held.id !== run.id && held.created_at > run.created_at) return runs;
+  if (held && held.id === run.id && held.updated_at > run.updated_at) return runs;
+  return { ...runs, [run.session_id]: run };
 }
 
 function upsert<T extends { id: string }>(list: T[], item: T): T[] {

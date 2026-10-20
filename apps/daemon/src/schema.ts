@@ -175,7 +175,8 @@ CREATE TABLE IF NOT EXISTS profile_revisions (
 
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
-  kind TEXT NOT NULL CHECK (kind IN ('direct', 'group')),
+  -- 'project' (ADR 0095): you and a local agent in a directory, with no Bot.
+  kind TEXT NOT NULL CHECK (kind IN ('direct', 'group', 'project')),
   name TEXT,
   last_read_at TEXT,
   read_through_seq INTEGER NOT NULL DEFAULT 0,
@@ -185,9 +186,33 @@ CREATE TABLE IF NOT EXISTS sessions (
   thread_task_id TEXT,
   -- The engine it runs (ADR 0085); null follows Settings' default_playbook.
   playbook_id TEXT,
+  -- A project session's (ADR 0095): its directory, agent, Claude account directory (null: the
+  -- daemon's own), the agent's own session id once a run has one, and the terminal session it was
+  -- imported from. Null on every other conversation.
+  project_dir TEXT,
+  project_agent TEXT,
+  project_config_dir TEXT,
+  project_agent_session TEXT,
+  project_source TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+-- One run of a project session's agent (ADR 0095): what turns are for a Bot, without a Bot. The
+-- approval it waits on is the run's own (JSON AgentRunApproval); a run still live at boot is
+-- marked interrupted.
+CREATE TABLE IF NOT EXISTS agent_runs (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('running', 'waiting_approval', 'completed', 'failed', 'stopped', 'interrupted')),
+  activity TEXT,
+  partial TEXT,
+  approval TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS agent_runs_session ON agent_runs (session_id, created_at);
 
 -- A shell you opened. The process dies with the daemon; the row is what the next one
 -- starts again, in the same place, so a split layout can put it back where it was.

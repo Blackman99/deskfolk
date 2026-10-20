@@ -31,6 +31,7 @@ describe("schema", () => {
     expect(names).toEqual([
       "acceptance_check_runs",
       "acceptance_checks",
+      "agent_runs",
       "allow_rules",
       "annotations",
       "approvals",

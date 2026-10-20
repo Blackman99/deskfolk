@@ -2,6 +2,7 @@ import { isBotRunner, isLocalEndpoint, LOCAL_API_BIND, type ApiFormat, type Crea
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { CLAUDE_USAGE_REFRESH_MIN_MS } from "../../claude-code/usage";
+import { claudeSessionRoots, listClaudeSessions } from "../../claude-code/sessions";
 import type { OtherRunner } from "../../agents/status";
 import { AGENT_USAGE_REFRESH_MIN_MS } from "../../agents/usage";
 import { HttpError } from "../../errors";
@@ -58,6 +59,12 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
   if (path === "/v1/runtime/claude-code/path" && method === "PUT") {
     store.setClaudeCodePath((input.body as Record<string, unknown>).path ?? null);
     return options.claudeCode!.detect().then((status) => jsonResponse(status, 200, null));
+  }
+  // Your Claude Code sessions that could be carried on here (ADR 0095), newest first, across every
+  // account directory. Reading them opens transcripts only, never a sign-in.
+  if (path === "/v1/runtime/claude-code/sessions" && method === "GET") {
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 40, 1), 200);
+    return jsonResponse({ items: listClaudeSessions(claudeSessionRoots(store.claudeCodeConfigDirs()), { limit }) }, 200, null);
   }
   // The Claude accounts besides the daemon's own environment: the config directories a Bot may
   // run on. The whole list each time; one a Bot or a ladder rung runs on cannot be taken away (409).

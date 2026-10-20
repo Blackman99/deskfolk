@@ -8,7 +8,7 @@ import { MessengerRuntime } from "./runtime.svelte.ts";
 import { LocalApi } from "./local-api.ts";
 import { ApiError } from "./api.ts";
 import { emptySnapshot } from "./snapshot.ts";
-import { aBot, aDirect, aMessage, aRoutine, aTurn } from "./test-fixtures.ts";
+import { aBot, aDirect, aMessage, aProjectSession, aRoutine, aTurn } from "./test-fixtures.ts";
 import { flushSync } from "svelte";
 import RoutineCard from "./panels/RoutineCard.svelte";
 import { copyFor } from "./copy.ts";
@@ -1644,4 +1644,17 @@ test("a finished turn's commands stay for its reply: what this page saw at once,
   runtime.loadTurnCommands("01ARZ3NDEKTSV4RRFFQ69G5FAW");
   await new Promise((resolve) => setTimeout(resolve, 5));
   expect(runtime.commandsOf("01ARZ3NDEKTSV4RRFFQ69G5FAW")).toEqual([]);
+});
+
+test("opening a project session keeps its directory on its row, so the sidebar and header still have it (ADR 0095)", async () => {
+  const project = aProjectSession({ id: "proj-1", project_dir: "/Users/a/proj", project_agent: "claude_code" });
+  const { runtime } = await connected(async () => ({ ...emptySnapshot(), ...cursor, bots: [], sessions: [project] }));
+  await until(() => runtime.connection === "connected");
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    if (String(url).endsWith("/snapshot")) return Response.json({ ...cursor, session: { ...project, participants: [], messages: { items: [], next: null }, turns: [] }, judgements: [] });
+    return Response.json({ run: null });
+  }) as typeof fetch;
+  await runtime.selectSession("proj-1");
+  const row = runtime.snapshot.sessions.find((s) => s.id === "proj-1");
+  expect(row).toMatchObject({ kind: "project", project_dir: "/Users/a/proj", project_agent: "claude_code" });
 });

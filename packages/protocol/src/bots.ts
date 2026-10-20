@@ -401,6 +401,18 @@ export type ProfileRevision = {
   created_at: string;
 };
 
+/** One of your terminal Claude Code sessions, to carry on as a project session (ADR 0095, `GET /v1/runtime/claude-code/sessions`). */
+export type ClaudeCodeSessionListing = {
+  session_id: string;
+  /** The account directory it was found under; null is the daemon's own environment. */
+  config_dir: string | null;
+  title: string;
+  cwd: string | null;
+  git_branch: string | null;
+  modified_at: string;
+  size: number;
+};
+
 export type CreateBotRequest = {
   name: string;
   duties: string;

@@ -15,7 +15,7 @@ import type { RouteCtx } from "../route-ctx";
 
 /** Local API routes: session archive / restore / patch / delete, submissions, delegations, the group lead, message answers, control, attribution, edits, reactions, attachments and annotations. */
 export function messageRoutes(ctx: RouteCtx): Response | Promise<Response> | null {
-  const { request, url, options, publish, engine, input, scope, store, method, path } = ctx;
+  const { request, url, options, publish, engine, projects, input, scope, store, method, path } = ctx;
   let params: ReturnType<typeof matchPath>;
 
   params = matchPath(path, "/v1/sessions/:id/archive");
@@ -24,6 +24,7 @@ export function messageRoutes(ctx: RouteCtx): Response | Promise<Response> | nul
     for (const t of liveTurns) {
       engine.stop(t.id, { allowGroup: true });
     }
+    projects.stopSession(params.id!);
     const session = store.archiveSession(params.id!);
     publish({
       event: "session.upsert",
@@ -69,14 +70,16 @@ export function messageRoutes(ctx: RouteCtx): Response | Promise<Response> | nul
   }
   if (params && method === "DELETE") {
     const session = store.getSession(params.id!);
-    if (session.kind !== "group") {
-      throw new HttpError(422, "invalid_args", "only groups can be deleted");
+    // A project session (ADR 0095) goes too: it has no Bot whose direct it would be.
+    if (session.kind !== "group" && session.kind !== "project") {
+      throw new HttpError(422, "invalid_args", "only groups and project sessions can be deleted");
     }
     const eraseQuotes = eraseQuotesOption(input.body);
     const liveTurns = store.listLiveTurns({ sessionId: params.id! });
     for (const t of liveTurns) {
       engine.stop(t.id, { allowGroup: true });
     }
+    projects.stopSession(params.id!);
     const quoted = eraseQuotes ? plansQuotedIn(store, params.id!) : [];
     const dormant = store.deleteSession(params.id!, { eraseQuotes });
     store.afterCommit(() => engine.forgetPlans(dormant));

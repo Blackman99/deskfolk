@@ -99,3 +99,11 @@ test("clearing a history or deleting a group offers to erase what you said there
     for (const kind of ["bot", "skill", "memory", "provider"] as const) expect(dangerCopy(kind, t).option).toBeUndefined();
   }
 });
+
+test("a project session's delete confirm has its own words and stays bound to that session (ADR 0095)", () => {
+  const sessions = new Map([["proj-1", { kind: "project" }], ["g1", { kind: "group" }]]);
+  expect(visibleDangerKind({ kind: "project", sessionId: "proj-1", source: "menu" }, { selectedId: null, sessions, botIds: new Set() })).toBe("project");
+  expect(visibleDangerKind({ kind: "project", sessionId: "g1", source: "menu" }, { selectedId: null, sessions, botIds: new Set() })).toBeNull();
+  const t = copyFor("zh");
+  expect(dangerCopy("project", t).title).toBe(t.project.deleteTitle);
+});

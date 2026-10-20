@@ -7,7 +7,10 @@ import type {
   ControlActionResult,
   CreateBotRequest,
   CreateBotResponse,
+  ClaudeCodeSessionListing,
   CreateGroupRequest,
+  CreateProjectSessionRequest,
+  AgentRun,
   CreateHoldRequest,
   CreateProviderRequest,
   CreateRoutineRequest,
@@ -219,6 +222,30 @@ export abstract class ApiBase<Row extends PendingRow> {
 
   async createBot(body: CreateBotRequest): Promise<CreateBotResponse> {
     return this.post<CreateBotResponse>("/v1/bots", body);
+  }
+
+  /** Claude Code sessions the Mac holds, newest first (ADR 0095). */
+  async claudeCodeSessions(limit = 40): Promise<ClaudeCodeSessionListing[]> {
+    const page = await this.get<{ items: ClaudeCodeSessionListing[] }>(`/v1/runtime/claude-code/sessions?limit=${limit}`);
+    return page.items;
+  }
+
+  /** A project session (ADR 0095): new in a directory, or carrying a terminal session on. */
+  async createProjectSession(body: CreateProjectSessionRequest): Promise<SessionDetail> {
+    return this.post<SessionDetail>("/v1/project-sessions", body);
+  }
+
+  /** The newest run of a project session; the event stream carries only changes after it. */
+  async projectRun(sessionId: string): Promise<AgentRun | null> {
+    return (await this.get<{ run: AgentRun | null }>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/run`)).run;
+  }
+
+  async answerAgentRun(runId: string, allow: boolean): Promise<AgentRun> {
+    return this.post<AgentRun>(`/v1/agent-runs/${encodeURIComponent(runId)}/${allow ? "approve" : "deny"}`);
+  }
+
+  async stopAgentRun(runId: string): Promise<AgentRun> {
+    return this.post<AgentRun>(`/v1/agent-runs/${encodeURIComponent(runId)}/stop`);
   }
 
   async createGroup(body: CreateGroupRequest): Promise<SessionDetail> {

@@ -4,7 +4,8 @@
  * variable's directory otherwise. On macOS it also names its keychain item after the variable, so
  * setting it to `~/.claude` itself finds no sign-in (checked with Claude Code 2.1.294): the default
  * directory is reached by unsetting the variable, never by naming it. Deskfolk keeps the
- * directories you list and sets or unsets the variable; it never opens what is in them.
+ * directories you list and sets or unsets the variable; of what is in them it reads only the session
+ * transcripts under `projects/`, to carry one on (ADR 0095), never a sign-in or a setting.
  */
 import { homedir } from "node:os";
 import { posix, win32 } from "node:path";

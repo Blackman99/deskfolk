@@ -50,7 +50,7 @@
 	 * conversation, rather than a menu where the finger was. The sheet closes itself.
 	 */
 	const phone = new MediaQuery(PHONE_SHEET_QUERY);
-	const title = $derived(sessionTitle(session, botsById, { deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop }));
+	const title = $derived(sessionTitle(session, botsById, { deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop, projectUntitled: t.project.untitled }));
 
 	$effect(() => {
 		if (menuEl && !phone.current) {
@@ -110,6 +110,7 @@
 </script>
 
 {#snippet items(inSheet: boolean)}
+	{#if data.canPin !== false}
 	<button
 		type="button"
 		class={['session-context-menu-item', { 'sheet-item': inSheet }]}
@@ -127,6 +128,7 @@
 			<span>{t.sidebar.pin}</span>
 		{/if}
 	</button>
+	{/if}
 
 	{#if data.canViewInfo}
 	<button
@@ -163,6 +165,7 @@
 
 	<div class={inSheet ? 'sheet-separator' : 'session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2'} role="separator"></div>
 
+	{#if data.canClearHistory}
 	<button
 		type="button"
 		class={['session-context-menu-item', { 'sheet-item': inSheet }]}
@@ -175,6 +178,7 @@
 		<Icon name="rotate-ccw" />
 		<span>{t.sidebar.clearHistory}</span>
 	</button>
+	{/if}
 
 	<button
 		type="button"

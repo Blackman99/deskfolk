@@ -166,3 +166,15 @@ describe("computeContextMenuPosition", () => {
     expect(pos.y).toBe(800 - 220 - 8);
   });
 });
+
+test("a project session offers clear, archive and delete, but no pin, info or flow", async () => {
+  const { aProjectSession } = await import("../test-fixtures.ts");
+  const data = deriveSessionContextMenu(aProjectSession(), true, new Map());
+  expect(data.canPin).toBe(false);
+  expect(data.isPinned).toBe(false);
+  expect(data.canViewInfo).toBe(false);
+  expect(data.canShowJob).toBe(false);
+  expect(data.canClearHistory).toBe(true);
+  expect(data.archive).toEqual({ enabled: true, isArchived: false, botId: null });
+  expect(data.delete).toEqual({ enabled: true, kind: "project", targetId: "proj-1" });
+});

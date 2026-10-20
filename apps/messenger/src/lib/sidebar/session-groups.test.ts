@@ -56,12 +56,13 @@ test("groupSessions keeps groups first in its buckets, and extracts pinned", () 
   const g = session("g", "group", [{ member: "user" }, { member: "a" }, { member: "b" }]);
   const you = session("d", "direct", [{ member: "user" }, { member: "writer" }]);
   const them = session("bb", "direct", [{ member: "writer" }, { member: "researcher" }]);
-  expect(groupSessions([them, you, g])).toEqual({ pinned: [], groups: [g], youBot: [you], botBot: [them], fileDrop: null });
+  expect(groupSessions([them, you, g])).toEqual({ pinned: [], groups: [g], youBot: [you], botBot: [them], project: [], fileDrop: null });
   expect(groupSessions([them, you, g], ["d"])).toEqual({
     pinned: [you],
     groups: [g],
     youBot: [],
     botBot: [them],
+    project: [],
     fileDrop: null,
   });
 });
@@ -98,6 +99,7 @@ test("groupSessions filters out sessions with deleted bots when aliveBotIds is p
     groups: [g],
     youBot: [you],
     botBot: [],
+    project: [],
     fileDrop: null,
   });
 });

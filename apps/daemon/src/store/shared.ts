@@ -160,6 +160,11 @@ export type SessionRow = {
   origin_session_id: string | null;
   origin_message_id: string | null;
   playbook_id?: string | null;
+  project_dir?: string | null;
+  project_agent?: "claude_code" | null;
+  project_config_dir?: string | null;
+  project_agent_session?: string | null;
+  project_source?: string | null;
   created_at: string;
   updated_at: string;
 };

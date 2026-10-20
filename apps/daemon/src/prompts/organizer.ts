@@ -7,7 +7,7 @@
  *
  * The prompt and the payload live here; the engine-side orchestration is in `organizer.ts`.
  */
-import { USER_MEMBER, type AcceptanceCheckKind, type Message, type TicketStage, type TicketStatus } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheckKind, type Message, type SessionKind, type TicketStage, type TicketStatus } from "@real-bot/protocol";
 import { describeCheck } from "../acceptance-eval";
 import { DERIVED_CHECKS_MAX } from "../derived-checks";
 import { sessionLabel } from "../context";
@@ -128,7 +128,7 @@ export type OrganizerUserLine = { via: "message" | "answer"; at: string; text: s
 
 export type OrganizerPayload = {
   mode: "message" | "settle";
-  session: { id: string; kind: "direct" | "group"; name: string | null; members: string[] };
+  session: { id: string; kind: SessionKind; name: string | null; members: string[] };
   message: { id: string; author: string; body: string; attachments: string[]; truncated?: true } | null;
   current_plan: {
     id: string;

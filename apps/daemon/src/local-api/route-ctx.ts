@@ -1,3 +1,4 @@
+import type { ProjectRunner } from "../project-runner";
 import type { ClientEvent } from "@real-bot/protocol";
 import type { McpHost } from "../mcp-host";
 import { NotificationDeliveryScheduler, PresenceManager } from "../notifications";
@@ -14,6 +15,7 @@ export type RouteCtx = {
   options: LocalApiOptions;
   publish: (event: ClientEvent) => void;
   engine: TurnEngine;
+  projects: ProjectRunner;
   mcp: McpHost;
   input: ParsedMutation;
   scope?: RequestScope;

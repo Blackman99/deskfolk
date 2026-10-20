@@ -4,6 +4,8 @@ import { classifySession, isFileDropSession, youBotPeer } from "./session-groups
 export type SessionContextMenuData = {
   sessionId: string;
   isPinned: boolean;
+  /** A project session is listed under its directory and is never pinned; absent means it can be. */
+  canPin?: boolean;
   canViewInfo: boolean;
   /** Its jobs' trace, board and plan can be opened from here: every conversation but the file drop. */
   canShowJob: boolean;
@@ -15,7 +17,7 @@ export type SessionContextMenuData = {
   };
   delete: {
     enabled: boolean;
-    kind: "group" | "bot" | null;
+    kind: "group" | "bot" | "project" | null;
     targetId: string | null;
   };
 };
@@ -37,6 +39,19 @@ export function deriveSessionContextMenu(
     };
   }
   const kind = classifySession(session);
+  if (kind === "project") {
+    // No Bot, flow or settings here (ADR 0095): clearing starts the agent over, deleting removes it.
+    return {
+      sessionId: session.id,
+      isPinned: false,
+      canPin: false,
+      canViewInfo: false,
+      canShowJob: false,
+      canClearHistory: true,
+      archive: { enabled: true, isArchived: Boolean(session.archived_at), botId: null },
+      delete: { enabled: true, kind: "project", targetId: session.id },
+    };
+  }
   if (kind === "group") {
     const isArchived = Boolean(session.archived_at);
     return {

@@ -21,6 +21,8 @@
 	import ToolsMenu from './ToolsMenu.svelte';
 	import ToolsToggle from './ToolsToggle.svelte';
 	import SessionRow from './SessionRow.svelte';
+	import ProjectSessionRow from './ProjectSessionRow.svelte';
+	import { dirDisplay, groupProjectSessions, isLiveRun, liveRunSessionIds } from './project-groups.ts';
 	import { flip } from 'svelte/animate';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from '../reduced-motion.ts';
@@ -105,7 +107,7 @@
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
 	const sessionsById = $derived(new Map(snapshot.sessions.map((s) => [s.id, s] as const)));
 	const aliveBotIds = $derived(new Set(snapshot.bots.map((b) => b.id)));
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop, projectUntitled: t.project.untitled });
 	const statusLabels = $derived({
 		running: t.sidebar.statusRunning,
 		replying: t.sidebar.statusReplying,
@@ -131,7 +133,7 @@
 	/** Null while the list is unfiltered. */
 	const workingIds = $derived(
 		workingOnly
-			? workingOrUnreadIds(snapshot.sessions, snapshot.turns, snapshot.approvals, snapshot.pendingJudgements)
+			? workingOrUnreadIds(snapshot.sessions, snapshot.turns, snapshot.approvals, snapshot.pendingJudgements, liveRunSessionIds(snapshot.agentRuns))
 			: null
 	);
 	const listed = $derived(onlyWorking(grouped, workingIds, runtime.selectedId));
@@ -140,12 +142,13 @@
 	const groupRows = $derived(listed.groups);
 	const youBotRows = $derived(listed.youBot);
 	// A Bot↔Bot direct is not listed: it opens from the message it hangs under, in a popup (ADR 0091).
+	const projectGroups = $derived(groupProjectSessions(listed.project));
 	const nothingWorking = $derived(
-		workingIds !== null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0
+		workingIds !== null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0 && projectGroups.length === 0
 	);
 	/** No conversation at all yet, unfiltered: the list says how to start one instead of bare headers. */
 	const rosterEmpty = $derived(
-		workingIds === null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0
+		workingIds === null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0 && projectGroups.length === 0
 	);
 	const archivedSessions = $derived(
 		snapshot.sessions.filter((session) => isSessionArchived(session, botsById))
@@ -157,6 +160,18 @@
 			.filter((session): session is SessionSummary => Boolean(session) && classifySession(session!) !== 'bot-bot')
 	);
 	const pinnedWorking = $derived(workingIds !== null && pinnedSessions.some((session) => workingIds.has(session.id)));
+
+	/**
+	 * Which directories of the 「项目」 section are open: every one until you fold it, as in the
+	 * agents' desktop apps — on a phone nothing is selected yet, and folded rows hid every session.
+	 */
+	let openDirs = $state<Record<string, boolean>>({});
+	function dirOpen(dir: string): boolean {
+		return openDirs[dir] ?? true;
+	}
+	function toggleDir(dir: string): void {
+		openDirs = { ...openDirs, [dir]: !dirOpen(dir) };
+	}
 
 	let phone = $state(false);
 	$effect(() => {
@@ -461,6 +476,49 @@
 					/>
 				</div>
 			{/each}
+			{#if !workingIds || projectGroups.length > 0}
+				<div class="ghead">
+					<span>{t.project.section}</span>
+					<button type="button" class="add" title={t.project.add} onclick={() => runtime.openCreateProject()}>+</button>
+				</div>
+			{/if}
+			{#each projectGroups as group (group.dir)}
+				{@const open = dirOpen(group.dir)}
+				{@const dirLive = group.sessions.some((row) => isLiveRun(snapshot.agentRuns[row.id]))}
+				<div class="project-dir" data-project-dir={group.dir}>
+					<button
+						type="button"
+						class="project-dir-head"
+						title={group.dir}
+						aria-expanded={open}
+						aria-label={t.project.toggleDir(group.label)}
+						onclick={() => toggleDir(group.dir)}
+					>
+						<Icon name={open ? 'chevron-down' : 'chevron-right'} size={12} />
+						<Icon name="folder" size={16} />
+						<span class="project-dir-name">{group.label}</span>
+						{#if !open && dirLive}<span class="project-dir-live" aria-hidden="true"></span>{/if}
+					</button>
+					{#if open}
+						<div class="project-sessions">
+							{#each group.sessions as session (session.id)}
+								<ProjectSessionRow
+									{t}
+									on={runtime.selectedId === session.id}
+									contextOpen={contextMenuSessionId === session.id}
+									title={session.name || t.project.untitled}
+									time={timeOf(session)}
+									live={isLiveRun(snapshot.agentRuns[session.id])}
+									unread={unreadOf(session)}
+									onSelect={() => void runtime.selectSession(session.id)}
+									onContextMenu={(e) => onOpenContextMenu(e, session)}
+									onPointerDown={pressOf(session)}
+								/>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			{/each}
 			{#if nothingWorking}
 				<p class="working-empty-hint">{pinnedWorking ? t.sidebar.workingEmptyPinned : t.sidebar.workingEmpty}</p>
 			{/if}
@@ -539,7 +597,7 @@
 	there are two of them saying the same kind of thing; this asks which once, where your thumb is.
 -->
 {#if phone && !selected && !searchOpen && !viewingArchived && !viewingUsage && !viewingRoles && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen && !runtime.terminalOpen && !runtime.screenOpen}
-	<CreateFab {t} bind:createMenuOpen bind:wrapEl={fabEl} {onCreateBot} {onCreateGroup} />
+	<CreateFab {t} bind:createMenuOpen bind:wrapEl={fabEl} {onCreateBot} {onCreateGroup} onCreateProject={() => runtime.openCreateProject()} />
 {/if}
 
 <style>
@@ -752,6 +810,53 @@
 	.ghead :global(.add:hover) {
 		background: var(--line-subtle);
 		color: var(--accent);
+	}
+
+	/* One row per directory, its sessions indented under it. */
+	.project-dir-head {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		width: 100%;
+		min-height: 32px;
+		padding: 4px 10px;
+		border-radius: var(--radius-md);
+		color: var(--ink-secondary);
+		font-size: 13px;
+		font-weight: 600;
+		text-align: left;
+	}
+
+	.project-dir-head:hover {
+		background: var(--row-hover);
+	}
+
+	.project-dir-name {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	/* A folded directory still says that something inside it is at work. */
+	.project-dir-live {
+		flex: none;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--accent);
+	}
+
+	.project-sessions {
+		padding-left: 14px;
+	}
+
+	@media (max-width: 680px) {
+		.project-dir-head {
+			min-height: 44px;
+			padding-left: 14px;
+		}
 	}
 
 	.btn-back-sessions {

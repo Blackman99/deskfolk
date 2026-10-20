@@ -408,6 +408,16 @@ export class SessionHistory {
               unread_count: detail.unread_count ?? s.unread_count ?? 0,
               waiting_on_you: s.waiting_on_you ?? null,
               notification_preference: detail.notification_preference ?? s.notification_preference,
+              // A project session's directory and agent (ADR 0095): the sidebar groups by them, the header shows them.
+              ...(detail.kind === "project"
+                ? {
+                    project_dir: detail.project_dir ?? s.project_dir ?? null,
+                    project_agent: detail.project_agent ?? s.project_agent ?? null,
+                    project_config_dir: detail.project_config_dir ?? s.project_config_dir ?? null,
+                    project_agent_session: detail.project_agent_session ?? s.project_agent_session ?? null,
+                    project_source: detail.project_source ?? s.project_source ?? null,
+                  }
+                : {}),
             }
           : s,
       ),

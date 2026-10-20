@@ -6,6 +6,7 @@ import type {
   SequencedEvent,
   CreateBotRequest,
   CreateGroupRequest,
+  CreateProjectSessionRequest,
   PatchMemoryRequest,
   CreateProviderRequest,
   PatchProviderRequest,
@@ -40,7 +41,7 @@ import type { AttributionPlan } from "./chat/attribution.ts";
 import type { CommandActivity, CommandRow } from "./chat/command-activity.ts";
 import type { TurnActivity, ToolStep } from "./chat/turn-activity.ts";
 import { classifySession, isFileDropSession } from "./sidebar/session-groups.ts";
-import { applyEvent, emptySnapshot, type Snapshot } from "./snapshot.ts";
+import { applyEvent, emptySnapshot, keepNewestRun, type Snapshot } from "./snapshot.ts";
 import type { EventSync } from "./event-sync.ts";
 import { SessionView } from "./session-view.svelte.ts";
 import type { TraceFocus } from "./overlays/task-trace.ts";
@@ -537,6 +538,8 @@ export class MessengerRuntime {
   set settingsOpen(value: boolean) { this.overlayState.settingsOpen = value; }
   get createBotOpen(): boolean { return this.overlayState.createBotOpen; }
   set createBotOpen(value: boolean) { this.overlayState.createBotOpen = value; }
+  get createProjectOpen(): boolean { return this.overlayState.createProjectOpen; }
+  set createProjectOpen(value: boolean) { this.overlayState.createProjectOpen = value; }
   get createGroupOpen(): boolean { return this.overlayState.createGroupOpen; }
   set createGroupOpen(value: boolean) { this.overlayState.createGroupOpen = value; }
   get sessionSettingsOpen(): boolean { return this.overlayState.sessionSettingsOpen; }
@@ -572,6 +575,7 @@ export class MessengerRuntime {
   set previewAttachmentId(value: string | null) { this.overlayState.previewAttachmentId = value; }
   openCreateBot(): void { this.overlayState.openCreateBot(); }
   openCreateGroup(): void { this.overlayState.openCreateGroup(); }
+  openCreateProject(): void { this.overlayState.openCreateProject(); }
   openSessionSettings(): void { this.overlayState.openSessionSettings(); }
   get paneOpener(): ((content: PaneContent) => void) | null { return this.overlayState.paneOpener; }
   set paneOpener(value: ((content: PaneContent) => void) | null) { this.overlayState.paneOpener = value; }
@@ -643,6 +647,25 @@ export class MessengerRuntime {
   ): Promise<{ ok: true } & ProbeModelsResponse | { ok: false; error: string; status?: number }> { return this.adminMutations.probeModels(baseUrl, apiKey, providerId, apiFormat, workspaceId); }
   speedTest(providerId: string, model: string): Promise<{ ok: true; speed: ModelSpeed } | { ok: false; error: string }> { return this.adminMutations.speedTest(providerId, model); }
   createBot(body: CreateBotRequest): Promise<ApiError | null> { return this.adminMutations.createBot(body); }
+  /**
+   * The newest run of a project session, read once when its chat opens: the event stream carries
+   * only what changes after that. A run an event already brought is not replaced by an older one.
+   */
+  async loadProjectRun(sessionId: string): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    try {
+      const run = await api.projectRun(sessionId);
+      if (this.api !== api || !run) return;
+      this.snapshot = { ...this.snapshot, agentRuns: keepNewestRun(this.snapshot.agentRuns, run) };
+    } catch {
+      // A daemon older than ADR 0095, or a link that dropped: the events still arrive.
+    }
+  }
+
+  createProjectSession(body: CreateProjectSessionRequest): Promise<ApiError | null> { return this.adminMutations.createProjectSession(body); }
+  answerAgentRun(runId: string, allow: boolean): Promise<ApiError | null> { return this.adminMutations.answerAgentRun(runId, allow); }
+  stopAgentRun(runId: string): Promise<ApiError | null> { return this.adminMutations.stopAgentRun(runId); }
   createGroup(body: CreateGroupRequest): Promise<ApiError | null> { return this.adminMutations.createGroup(body); }
   createTeam(input: Parameters<AdminMutations["createTeam"]>[0]): ReturnType<AdminMutations["createTeam"]> { return this.adminMutations.createTeam(input); }
   createSkill(body: CreateSkillRequest): Promise<ApiError | null> { return this.adminMutations.createSkill(body); }

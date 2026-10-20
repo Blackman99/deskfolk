@@ -109,7 +109,8 @@ export class ShellSessionMenu {
 
   handleMenuToggleArchive = async (session: SessionSummary): Promise<void> => {
     const runtime = this.getRuntime();
-    if (session.kind === "group") {
+    // A group and a project session are archived themselves; a direct is archived with its Bot.
+    if (session.kind === "group" || session.kind === "project") {
       if (session.archived_at) {
         await runtime.restoreSession(session.id);
       } else {
@@ -137,6 +138,10 @@ export class ShellSessionMenu {
     }
     if (data.delete.kind === "bot" && data.delete.targetId) {
       this.getDanger().openDeleteBotConfirm(data.delete.targetId, "menu");
+      return;
+    }
+    if (data.delete.kind === "project" && data.delete.targetId) {
+      this.getDanger().openDeleteProjectConfirm(data.delete.targetId, "menu");
     }
   };
 }

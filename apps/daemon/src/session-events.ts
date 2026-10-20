@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { CatchupResponse, ClientEvent, EventCursor, SequencedEvent, SyncFrame } from "@real-bot/protocol";
+import type { CatchupResponse, ClientEvent, EventCursor, SequencedEvent, SessionKind, SyncFrame } from "@real-bot/protocol";
 import { displayAvatar } from "./avatar-display";
 
 export const EVENT_RING_COUNT = 2000;
@@ -72,7 +72,7 @@ export class EventStream {
 
 export type SessionUpsertInput = {
   id: string;
-  kind: "direct" | "group";
+  kind: SessionKind;
   name: string | null;
   last_read_at?: string | null;
   archived_at?: string | null;
@@ -80,6 +80,11 @@ export type SessionUpsertInput = {
   origin_message_id: string | null;
   entry_message_id?: string | null;
   playbook_id?: string | null;
+  project_dir?: string | null;
+  project_agent?: "claude_code" | null;
+  project_config_dir?: string | null;
+  project_agent_session?: string | null;
+  project_source?: string | null;
   created_at: string;
   updated_at: string;
   participants: { member: string; joined_at: string; left_at: string | null }[];
@@ -98,6 +103,11 @@ export function sessionUpsertFields(session: SessionUpsertInput) {
     origin_message_id: session.origin_message_id,
     ...(session.entry_message_id !== undefined ? { entry_message_id: session.entry_message_id } : {}),
     playbook_id: session.playbook_id ?? null,
+    // A project session's directory and agent (ADR 0095), so the sidebar can group it.
+    ...(session.kind === "project"
+      ? { project_dir: session.project_dir ?? null, project_agent: session.project_agent ?? null, project_config_dir: session.project_config_dir ?? null,
+          project_agent_session: session.project_agent_session ?? null, project_source: session.project_source ?? null }
+      : {}),
     created_at: session.created_at,
     updated_at: session.updated_at,
     participants: session.participants,

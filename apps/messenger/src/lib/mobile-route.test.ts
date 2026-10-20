@@ -124,6 +124,7 @@ function layers(over: Partial<LayerState> = {}): LayerState {
     dangerConfirm: false,
     createBotOpen: false,
     createGroupOpen: false,
+    createProjectOpen: false,
     providerEditor: false,
     confirmingIndependent: false,
     searchOpen: false,

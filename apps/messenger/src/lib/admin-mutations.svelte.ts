@@ -3,6 +3,7 @@ import type {
   BotRunner,
   CreateBotRequest,
   CreateGroupRequest,
+  CreateProjectSessionRequest,
   CreateProviderRequest,
   CreateRoutineRequest,
   CreateSkillRequest,
@@ -173,6 +174,44 @@ export class AdminMutations {
     } catch {
       await this.host.selectSession(made[0]!.directId);
       return { failed: null, error: null, groupFailed: true };
+    }
+  }
+
+  /** A project session (ADR 0095), new or carrying a terminal session on; lands in it. */
+  async createProjectSession(body: CreateProjectSessionRequest): Promise<ApiError | null> {
+    const api = this.host.api;
+    if (!api) return null;
+    try {
+      const session = await api.createProjectSession(body);
+      if (this.host.api !== api) return null;
+      this.host.closeSheets();
+      await this.host.selectSession(session.id);
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api);
+    }
+  }
+
+  /** Your answer to the approval a run waits on; the run's own event brings the new state. */
+  async answerAgentRun(runId: string, allow: boolean): Promise<ApiError | null> {
+    const api = this.host.api;
+    if (!api) return null;
+    try {
+      await api.answerAgentRun(runId, allow);
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api);
+    }
+  }
+
+  async stopAgentRun(runId: string): Promise<ApiError | null> {
+    const api = this.host.api;
+    if (!api) return null;
+    try {
+      await api.stopAgentRun(runId);
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api);
     }
   }
 

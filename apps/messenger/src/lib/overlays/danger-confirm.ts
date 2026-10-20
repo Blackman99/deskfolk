@@ -3,7 +3,7 @@ import type { Copy } from "../copy.ts";
 /** Async dialog work may update its caller only while this exact confirmation is current. */
 export type DangerAction = (isCurrent: () => boolean) => Promise<void>;
 
-export type DangerKind = "bot" | "group" | "history" | "skill" | "memory" | "provider";
+export type DangerKind = "bot" | "group" | "project" | "history" | "skill" | "memory" | "provider";
 
 /** Drawer/settings confirms go when that surface closes. A sidebar menu confirm does not. */
 export type DangerSource = "drawer" | "menu" | "settings";
@@ -50,6 +50,11 @@ export function visibleDangerKind(
     if (!session || session.kind !== "group") return null;
     return "group";
   }
+  if (confirm.kind === "project") {
+    const id = confirm.sessionId ?? ctx.selectedId;
+    if (!id || ctx.sessions.get(id)?.kind !== "project") return null;
+    return "project";
+  }
   if (confirm.kind === "history") {
     const id = confirm.sessionId ?? ctx.selectedId;
     if (!id || !ctx.sessions.has(id)) return null;
@@ -84,6 +89,13 @@ export function dangerCopy(kind: DangerKind, t: Copy): DangerCopy {
         confirm: t.detail.confirmDeleteGroup,
         cancel: t.detail.cancel,
         option: t.detail.eraseQuotes,
+      };
+    case "project":
+      return {
+        title: t.project.deleteTitle,
+        body: t.project.deleteBody,
+        confirm: t.project.confirmDelete,
+        cancel: t.detail.cancel,
       };
     case "history":
       return {
@@ -126,7 +138,7 @@ export function shouldDropConfirm(
   if (confirm.source === "menu") return false;
   if (event === "settings-closed") return confirm.kind === "provider";
   if (event === "session-settings-closed") {
-    return confirm.kind === "bot" || confirm.kind === "group" || confirm.kind === "history";
+    return confirm.kind === "bot" || confirm.kind === "group" || confirm.kind === "project" || confirm.kind === "history";
   }
-  return confirm.kind === "group" || confirm.kind === "history";
+  return confirm.kind === "group" || confirm.kind === "project" || confirm.kind === "history";
 }

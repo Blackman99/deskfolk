@@ -14,6 +14,7 @@
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
 	import { directElsewhere } from './bot-elsewhere.ts';
 	import { sessionTitle } from './session-title.ts';
+	import { isLiveRun, liveRunSessionIds } from './project-groups.ts';
 	import { sessionUnreadCount, unreadBadge } from './unread.ts';
 	import ToolsMenu from './ToolsMenu.svelte';
 	import { usageWidget } from '../usage/usage-widget.svelte.ts';
@@ -72,7 +73,7 @@
 	const snapshot = $derived(runtime.snapshot);
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
 	const aliveBotIds = $derived(new Set(snapshot.bots.map((b) => b.id)));
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop, projectUntitled: t.project.untitled });
 	const statusLabels = $derived({
 		running: t.sidebar.statusRunning,
 		replying: t.sidebar.statusReplying,
@@ -93,7 +94,7 @@
 	}
 	const workingIds = $derived(
 		workingOnly
-			? workingOrUnreadIds(snapshot.sessions, snapshot.turns, snapshot.approvals, snapshot.pendingJudgements)
+			? workingOrUnreadIds(snapshot.sessions, snapshot.turns, snapshot.approvals, snapshot.pendingJudgements, liveRunSessionIds(snapshot.agentRuns))
 			: null
 	);
 	const listed = $derived(onlyWorking(grouped, workingIds, runtime.selectedId));
@@ -107,7 +108,8 @@
 			listed.pinned,
 			listed.fileDrop ? [listed.fileDrop] : [],
 			listed.groups,
-			listed.youBot
+			listed.youBot,
+			listed.project
 		].filter((section) => section.length > 0)
 	);
 
@@ -168,6 +170,7 @@
 			const elsewhere = directElsewhere(session, false, snapshot, botsById, statusLabels, rosterLabels, t.sidebar.elsewhere);
 			if (elsewhere) lines.push(elsewhere);
 		}
+		if (session.kind === 'project' && isLiveRun(snapshot.agentRuns[session.id])) lines.push(t.project.live);
 		if (unread > 0) lines.push(`${t.sidebar.unread} ${unread}`);
 		return lines;
 	}
@@ -233,6 +236,12 @@
 						<span class="row-avatar size-md" aria-hidden="true">
 							<span class="row-avatar-bot rail-file-drop">
 								<Icon name="file-down" />
+							</span>
+						</span>
+					{:else if session.kind === 'project'}
+						<span class="row-avatar size-md" aria-hidden="true">
+							<span class="row-avatar-bot rail-file-drop">
+								<Icon name="folder" />
 							</span>
 						</span>
 					{:else}

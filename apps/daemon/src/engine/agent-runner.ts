@@ -133,7 +133,7 @@ type AgentSettings = { model: string | null; effort: string | null; configDir: s
 type ModelTotals = { input: number; output: number; cached: number; cost: number };
 
 /** A queue the session reads its user messages from; it stays open until the segment is over. */
-function inputQueue<T>() {
+export function inputQueue<T>() {
   const items: T[] = [];
   let wake: ((result: IteratorResult<T>) => void) | null = null;
   let closed = false;
@@ -179,7 +179,7 @@ function serialQueue() {
   };
 }
 
-function userMessage(content: SDKUserMessage["message"]["content"]): SDKUserMessage {
+export function userMessage(content: SDKUserMessage["message"]["content"]): SDKUserMessage {
   return { type: "user", message: { role: "user", content }, parent_tool_use_id: null };
 }
 
@@ -1107,9 +1107,9 @@ function resetText(resetsAt: number | undefined, locale: "zh" | "en"): string | 
 }
 
 /** Claude Code's error kinds that mean its sign-in did not get through. */
-const SIGNED_OUT_ERRORS = new Set(["authentication_failed", "oauth_org_not_allowed", "verification_required", "cloud_credential_error"]);
+export const SIGNED_OUT_ERRORS = new Set(["authentication_failed", "oauth_org_not_allowed", "verification_required", "cloud_credential_error"]);
 /** Its error kinds that mean the plan's usage or billing stopped the request. */
-const LIMIT_ERRORS = new Set(["rate_limit", "billing_error", "account_on_hold"]);
+export const LIMIT_ERRORS = new Set(["rate_limit", "billing_error", "account_on_hold"]);
 
 function firstLine(text: string): string | null {
   const line = text.trim().split(/\r?\n/).find((part) => part.trim())?.trim();

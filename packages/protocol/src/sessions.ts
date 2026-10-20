@@ -1,8 +1,10 @@
 import type { USER_MEMBER } from "./constants.ts";
 import type { Message } from "./messages.ts";
 import type { ListPage } from "./runtime.ts";
+import type { ProjectAgent } from "./project-sessions.ts";
 
-export type SessionKind = "direct" | "group";
+/** A project session (ADR 0095) is you and a local agent in a directory, with no Bot. */
+export type SessionKind = "direct" | "group" | "project";
 
 /** Evidence proposes a group lead; only a user's explicit confirmation assigns one. */
 export type GroupLeadState = {
@@ -62,6 +64,17 @@ export type Session = {
    * that ADR. A Bot↔Bot direct or a job's thread runs the engine of the conversation it came from.
    */
   playbook_id?: string | null;
+  /**
+   * A project session's (ADR 0095): the directory its agent works in, which agent, the Claude
+   * account directory (null: the daemon's own), the agent's own session id once a run has one, and
+   * the terminal session it was imported from. Null on every other conversation; absent from a
+   * daemon older than that ADR.
+   */
+  project_dir?: string | null;
+  project_agent?: ProjectAgent | null;
+  project_config_dir?: string | null;
+  project_agent_session?: string | null;
+  project_source?: string | null;
   created_at: string;
   updated_at: string;
 };

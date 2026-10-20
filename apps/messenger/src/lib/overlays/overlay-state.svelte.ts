@@ -65,6 +65,8 @@ export class OverlayState {
   previewSiblings = $state<Attachment[] | null>(null);
   settingsOpen = $state(false);
   createBotOpen = $state(false);
+  /** The new project session sheet (ADR 0095). */
+  createProjectOpen = $state(false);
   createGroupOpen = $state(false);
   sessionSettingsOpen = $state(false);
   /** The job whose trace is open. Null while closed; an empty string asks for the session's latest. */
@@ -110,12 +112,20 @@ export class OverlayState {
     this.terminalOpen = false;
     this.screenOpen = false;
     this.listPage = null;
+    this.createProjectOpen = false;
     this.createBotOpen = true;
+  }
+
+  openCreateProject(): void {
+    this.openCreateBot();
+    this.createBotOpen = false;
+    this.createProjectOpen = true;
   }
 
   openCreateGroup(): void {
     this.settingsOpen = false;
     this.createBotOpen = false;
+    this.createProjectOpen = false;
     this.host.closeSessionSettings();
     this.workspaceOpen = false;
     this.routinesOpen = false;
@@ -132,6 +142,7 @@ export class OverlayState {
     this.profileRoutineId = null;
     this.settingsOpen = false;
     this.createBotOpen = false;
+    this.createProjectOpen = false;
     this.createGroupOpen = false;
     this.threadOpen = false;
     this.workspaceOpen = false;
@@ -171,6 +182,7 @@ export class OverlayState {
     if (this.toPane({ kind: "terminal", terminalId: null })) return;
     this.settingsOpen = false;
     this.createBotOpen = false;
+    this.createProjectOpen = false;
     this.createGroupOpen = false;
     this.host.closeSessionSettings();
     this.workspaceOpen = false;
@@ -202,6 +214,7 @@ export class OverlayState {
     if (!this.host.remote) return;
     this.settingsOpen = false;
     this.createBotOpen = false;
+    this.createProjectOpen = false;
     this.createGroupOpen = false;
     this.host.closeSessionSettings();
     this.workspaceOpen = false;
@@ -231,6 +244,7 @@ export class OverlayState {
   openListPage(page: "usage" | "archived" | "roles"): void {
     this.settingsOpen = false;
     this.createBotOpen = false;
+    this.createProjectOpen = false;
     this.createGroupOpen = false;
     this.host.closeSessionSettings();
     this.workspaceOpen = false;
@@ -368,6 +382,7 @@ export class OverlayState {
     this.profileRoutineId = null;
     this.settingsOpen = false;
     this.createBotOpen = false;
+    this.createProjectOpen = false;
     this.createGroupOpen = false;
     this.threadOpen = false;
     this.workspaceOpen = false;
@@ -396,6 +411,7 @@ export class OverlayState {
   /** The settings panel loads its own device list, from wherever it was opened; see the card. */
   openSettings(): void {
     this.createBotOpen = false;
+    this.createProjectOpen = false;
     this.createGroupOpen = false;
     this.host.closeSessionSettings();
     this.workspaceOpen = false;
@@ -439,6 +455,7 @@ export class OverlayState {
     if (this.toPane({ kind: "routines" })) return;
     this.settingsOpen = false;
     this.createBotOpen = false;
+    this.createProjectOpen = false;
     this.createGroupOpen = false;
     this.host.closeSessionSettings();
     this.workspaceOpen = false;
@@ -463,6 +480,7 @@ export class OverlayState {
   openSpend(): void {
     this.settingsOpen = false;
     this.createBotOpen = false;
+    this.createProjectOpen = false;
     this.createGroupOpen = false;
     this.host.closeSessionSettings();
     this.workspaceOpen = false;
@@ -497,6 +515,7 @@ export class OverlayState {
     this.profileNavigation++;
     if (overlay.kind === "settings") {
       this.createBotOpen = false;
+      this.createProjectOpen = false;
       this.createGroupOpen = false;
       this.host.closeSessionSettings();
       this.workspaceOpen = false;
@@ -511,6 +530,7 @@ export class OverlayState {
     if (overlay.kind === "session") {
       this.settingsOpen = false;
       this.createBotOpen = false;
+      this.createProjectOpen = false;
       this.createGroupOpen = false;
       this.threadOpen = false;
       this.workspaceOpen = false;
@@ -526,6 +546,7 @@ export class OverlayState {
     if (overlay.kind === "bot") {
       this.settingsOpen = false;
       this.createBotOpen = false;
+      this.createProjectOpen = false;
       this.createGroupOpen = false;
       this.threadOpen = false;
       this.workspaceOpen = false;
@@ -555,6 +576,7 @@ export class OverlayState {
     if (overlay.kind === "trace") {
       this.settingsOpen = false;
       this.createBotOpen = false;
+      this.createProjectOpen = false;
       this.createGroupOpen = false;
       this.threadOpen = false;
       this.host.closeSessionSettings();
@@ -573,6 +595,7 @@ export class OverlayState {
     if (overlay.kind === "routines") {
       this.settingsOpen = false;
       this.createBotOpen = false;
+      this.createProjectOpen = false;
       this.createGroupOpen = false;
       this.host.closeSessionSettings();
       this.workspaceOpen = false;
@@ -592,6 +615,7 @@ export class OverlayState {
     if (overlay.kind === "spend") {
       this.settingsOpen = false;
       this.createBotOpen = false;
+      this.createProjectOpen = false;
       this.createGroupOpen = false;
       this.host.closeSessionSettings();
       this.workspaceOpen = false;
@@ -611,6 +635,7 @@ export class OverlayState {
     if (overlay.kind === "terminal") {
       this.settingsOpen = false;
       this.createBotOpen = false;
+      this.createProjectOpen = false;
       this.createGroupOpen = false;
       this.host.closeSessionSettings();
       this.workspaceOpen = false;
@@ -649,6 +674,7 @@ export class OverlayState {
   closeSheets(): void {
     this.settingsOpen = false;
     this.createBotOpen = false;
+    this.createProjectOpen = false;
     this.createGroupOpen = false;
     this.host.closeSessionSettings();
     this.clearTrace();

@@ -13,6 +13,7 @@
 	import { classifySession, isFileDropSession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { botWorkStatus, isWorkingStatus, sidebarStatus } from '../sidebar/session-status.ts';
 	import { sessionPresence, sessionTitle } from '../sidebar/session-title.ts';
+	import { dirDisplay } from '../sidebar/project-groups.ts';
 	import BotElsewhere from './BotElsewhere.svelte';
 
 	type Props = {
@@ -48,7 +49,7 @@
 	const snapshot = $derived(runtime.snapshot);
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
 	const visibleBots = $derived(snapshot.bots.filter((b) => !b.archived_at));
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop, projectUntitled: t.project.untitled });
 	const statusLabels = $derived({
 		running: t.sidebar.statusRunning,
 		replying: t.sidebar.statusReplying,
@@ -65,6 +66,8 @@
 		selectedKind === 'group' ? t.top.groupSettings : t.top.botSettings
 	);
 	const fileDrop = $derived(selected ? isFileDropSession(selected) : false);
+	/** A project session (ADR 0095): no Bot to open settings on, no flow, no pin. */
+	const projectSession = $derived(selected?.kind === 'project' ? selected : null);
 	const selectedWork = $derived(
 		selected
 			? sidebarStatus(
@@ -151,6 +154,18 @@
 						</span>
 					</span>
 				</div>
+			{:else if projectSession}
+				<div class="top-file-identity" data-project-identity>
+					<span class="top-avatar file-drop-mark" aria-hidden="true">
+						<Icon name="folder" size={20} />
+					</span>
+					<span class="top-titles flex flex-col min-w-0 gap-1">
+						<span class="top-title-text" role="heading" aria-level="1">{titleOf(projectSession)}{archivedSuffix(projectSession)}</span>
+						<span class="top-subline flex items-center gap-3 text-12 text-muted whitespace-nowrap overflow-hidden text-ellipsis">
+							<span class="meta" title={projectSession.project_dir ?? undefined}>{t.project.agentName} · {dirDisplay(projectSession.project_dir)}</span>
+						</span>
+					</span>
+				</div>
 			{:else}
 			<button
 				type="button"
@@ -226,7 +241,7 @@
 			{/if}
 		</div>
 
-		{#if !fileDrop}
+		{#if !fileDrop && !projectSession}
 		<div class="top-actions flex items-center gap-4 shrink-0">
 			<button
 				type="button"
@@ -262,7 +277,7 @@
 		</div>
 		{/if}
 
-		{#if !fileDrop}
+		{#if !fileDrop && !projectSession}
 		<div class="mobile-actions">
 			<button
 				type="button"

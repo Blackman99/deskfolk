@@ -18,6 +18,7 @@ import { messageRoutes } from "./local-api/routes/messages";
 import { notificationRoutes } from "./local-api/routes/notifications";
 import { planRoutes } from "./local-api/routes/plans";
 import { playbookRoutes } from "./local-api/routes/playbooks";
+import { projectSessionRoutes } from "./local-api/routes/project-sessions";
 import { qualityAndPromptRoutes } from "./local-api/routes/quality-and-prompts";
 import { speechRoutes } from "./local-api/routes/speech";
 import { systemRoutes } from "./local-api/routes/system";
@@ -41,6 +42,7 @@ import { StreamHub, type StreamRead } from "./streams";
 import { ensureZshIntegration } from "./terminal-env";
 import { Terminals } from "./terminals";
 import { createTurnEngine, type TurnEngine } from "./turn-engine";
+import { createProjectRunner, type ProjectRunner } from "./project-runner";
 import { locateWorkspaceFile } from "./workspace-browse";
 export type { LocalApi, LocalApiOptions } from "./local-api/types";
 
@@ -248,6 +250,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       agentQuery: options.agentQuery,
     });
 
+  // A project session's run (ADR 0095) does not outlive the daemon: one still marked live was cut.
+  options.store.interruptLiveAgentRuns();
+  const projects = createProjectRunner({ store: options.store, claudeCode, query: options.projectQuery, onTool: publishTool });
+
   options.beforeScheduler?.(engine);
   const scheduler =
     options.schedule === false
@@ -343,7 +349,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         return () => {
           checkRevision(options.store, request, url, parsed.body, scope);
           const plan: Array<{ name: string; value: string }> = [];
-          const result = options.store.planKeys(plan, () => dispatch(request, url, options, (event) => events.push(event), engine, mcp, parsed, scope, notificationScheduler, presence));
+          const result = options.store.planKeys(plan, () => dispatch(request, url, options, (event) => events.push(event), engine, projects, mcp, parsed, scope, notificationScheduler, presence));
           if (result instanceof Promise) throw new HttpError(422, "not_retryable", "this endpoint cannot use request receipts");
           for (const op of plan) keyOps.push({ ...op, field: op.value === "" ? "" : url.pathname.startsWith("/v1/credential-operations/") ? "value" : url.pathname === "/v1/settings" ? "endpoint_api_key" : url.pathname.startsWith("/v1/mcp-servers") ? "auth" : "api_key" });
           options.store.afterCommit(() => {
@@ -601,7 +607,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       return terminalRoute(request, url, scope);
     }
     const withBody = request.method === "POST" || request.method === "PUT";
-    return dispatch(request, url, options, publish, engine, mcp, { body: withBody ? await readJson(request) as Record<string, unknown> : {}, files: [], multipart: false }, scope, notificationScheduler, presence);
+    return dispatch(request, url, options, publish, engine, projects, mcp, { body: withBody ? await readJson(request) as Record<string, unknown> : {}, files: [], multipart: false }, scope, notificationScheduler, presence);
   }
 
   /**
@@ -786,6 +792,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     quiesce,
     publish,
     engine,
+    projects,
     presence,
     websocket: {
       data: { authed: false },
@@ -837,6 +844,7 @@ function dispatch(
   options: LocalApiOptions,
   publish: (event: ClientEvent) => void,
   engine: TurnEngine,
+  projects: ProjectRunner,
   mcp: McpHost,
   input: ParsedMutation,
   scope?: RequestScope,
@@ -846,10 +854,11 @@ function dispatch(
   const { store, onQuit } = options;
   const method = request.method;
   const path = url.pathname;
-  const ctx: RouteCtx = { request, url, options, publish, engine, mcp, input, scope, notificationScheduler, presence, store, onQuit, method, path };
+  const ctx: RouteCtx = { request, url, options, publish, engine, projects, mcp, input, scope, notificationScheduler, presence, store, onQuit, method, path };
   // Each group answers only the paths it owns and returns null for the rest; the groups keep the
   // order their checks had when this was one function, so the first match still wins.
   const routed = systemRoutes(ctx)
+    ?? projectSessionRoutes(ctx)
     ?? playbookRoutes(ctx)
     ?? botAndSessionRoutes(ctx)
     ?? planRoutes(ctx)

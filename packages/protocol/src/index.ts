@@ -11,6 +11,7 @@ export * from "./holds.ts";
 export * from "./providers.ts";
 export * from "./connectors.ts";
 export * from "./bots.ts";
+export * from "./project-sessions.ts";
 export * from "./sessions.ts";
 export * from "./messages.ts";
 export * from "./control.ts";

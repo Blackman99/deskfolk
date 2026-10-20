@@ -55,6 +55,13 @@ get("claude-usage", { refresh: one("1") });
 get("runtime/claude-code"); add("POST", "runtime/claude-code/detect");
 add("PUT", "runtime/claude-code/path", { path: nullable(string) }, ["path"]);
 add("PUT", "runtime/claude-code/accounts", { config_dirs: list(string) }, ["config_dirs"]);
+// Project sessions (ADR 0095): your terminal Claude Code sessions to carry on, a new or imported
+// session, its newest run, and your answer or Stop on a run.
+get("runtime/claude-code/sessions", { limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) });
+add("POST", "project-sessions", { agent: one("claude_code"), dir: string, config_dir: nullable(string),
+  import: object({ session_id: string, config_dir: nullable(string) }, ["session_id"]) });
+get("project-sessions/:id/(run|replay)");
+add("POST", "agent-runs/:id/(approve|deny|stop)");
 // Your other local agents (ADR 0079), seen and set up from the phone as on the Mac, and their usage.
 get("runtime/agents", { refresh: one("1"), wait: one("1") }); add("POST", "runtime/agents/detect", { runner, custom_id: nullable(string) }, ["runner"]);
 add("PUT", "runtime/agents/path", { runner, path: nullable(string) }, ["runner", "path"]);

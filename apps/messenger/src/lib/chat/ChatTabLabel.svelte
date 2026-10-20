@@ -4,6 +4,7 @@
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import { dirDisplay, isLiveRun } from '../sidebar/project-groups.ts';
 	import { classifySession, isFileDropSession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { botWorkStatus, sidebarStatus } from '../sidebar/session-status.ts';
 	import { sessionPresence } from '../sidebar/session-title.ts';
@@ -24,7 +25,7 @@
 
 	const snapshot = $derived(runtime.snapshot);
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop, projectUntitled: t.project.untitled });
 	const statusLabels = $derived({
 		running: t.sidebar.statusRunning,
 		replying: t.sidebar.statusReplying,
@@ -54,6 +55,7 @@
 	/** What the header's second line says, so a folded header loses nothing. */
 	const detail = $derived.by(() => {
 		if (fileDrop) return t.sidebar.fileDropHint;
+		if (kind === 'project') return dirDisplay(session.project_dir);
 		if (kind === 'you-bot' && peerBot) {
 			const status = work.kind !== 'idle' ? work.label : t.chat.online;
 			return peerBot.model ? `${status} · ${peerBot.model}` : status;
@@ -67,6 +69,13 @@
 	{#if fileDrop}
 		<span class="wb-tab-icon chat-tab-avatar is-file" aria-hidden="true">
 			<Icon name="file" size={12} />
+		</span>
+	{:else if kind === 'project'}
+		<span class="wb-tab-icon chat-tab-avatar is-file" aria-hidden="true">
+			<Icon name="folder" size={12} />
+			{#if isLiveRun(snapshot.agentRuns[session.id])}
+				<span class="avatar-status-dot is-busy"></span>
+			{/if}
 		</span>
 	{:else}
 		<span class="wb-tab-icon chat-tab-avatar" aria-hidden="true">

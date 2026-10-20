@@ -44,7 +44,7 @@
 	const snapshot = $derived(runtime.snapshot);
 	const botsById = $derived(new Map(snapshot.bots.map((bot) => [bot.id, bot] as const)));
 	const sessionsById = $derived(new Map(snapshot.sessions.map((row) => [row.id, row] as const)));
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop, projectUntitled: t.project.untitled });
 	const title = $derived(sessionTitle(session, botsById, rosterLabels));
 	const source = $derived(resolveBotDmOrigin(session, sessionsById));
 

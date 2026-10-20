@@ -189,6 +189,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
         api?.scheduler?.stop();
         // Stop the shells before the store closes. Their rows stay, so the next start puts them back.
         api?.terminals.shutdown();
+        api?.projects.close();
         await api?.engine.close();
         store?.interruptRunningTurns((turnId) => api?.engine.executionOf(turnId) ?? null);
       } catch {

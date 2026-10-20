@@ -160,6 +160,11 @@ export class ShellDangerConfirm {
     this.dangerConfirm = { kind: "group", run: () => this.deleteGroupSession(id), sessionId: id, source, eraseQuotes: false };
   }
 
+  /** A project session (ADR 0095) deletes the way a group does, with its own words. */
+  openDeleteProjectConfirm(sessionId: string, source: DangerSource = "menu"): void {
+    this.dangerConfirm = { kind: "project", run: () => this.deleteGroupSession(sessionId), sessionId, source, eraseQuotes: false };
+  }
+
   openClearHistoryConfirm(sessionId?: string, source: DangerSource = "drawer"): void {
     const id = sessionId ?? this.getSelected()?.id ?? null;
     if (!id) return;

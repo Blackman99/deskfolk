@@ -1,3 +1,4 @@
+import { getAgentRun } from "./project-sessions";
 import type { ClientEvent, Judgement, Locale, Spend } from "@real-bot/protocol";
 import { defaultPlaybookId } from "./playbooks";
 import { listApprovals } from "./approvals";
@@ -28,7 +29,7 @@ type Change = { entity: string; id: string; op: string; session_id: string | nul
 /** TEMP triggers follow nested domain writes and roll back with the business transaction. */
 export function installChangeJournal(ctx: StoreContext): void {
   ctx.db.exec(`CREATE TEMP TABLE event_changes (entity TEXT, id TEXT, op TEXT, session_id TEXT)`);
-  const tables = ["settings", "bots", "sessions", "messages", "turns", "approvals", "mcp_servers", "providers", "skills", "memories", "routines", "spend", "judgements", "notifications", "annotations", "tasks", "tickets", "holds"];
+  const tables = ["settings", "bots", "sessions", "messages", "turns", "approvals", "mcp_servers", "providers", "skills", "memories", "routines", "spend", "judgements", "notifications", "annotations", "tasks", "tickets", "holds", "agent_runs"];
   for (const table of tables) {
     for (const op of ["INSERT", "UPDATE", "DELETE"]) {
       if (table === "spend" && op === "UPDATE") continue;
@@ -37,7 +38,7 @@ export function installChangeJournal(ctx: StoreContext): void {
       // The version gate's rows are not settings anyone edits (see GATE_SETTING_KEYS).
       const when = table === "settings" ? ` WHEN ${row}.key NOT IN (${GATE_SETTING_KEYS.map((key) => `'${key}'`).join(", ")})` : "";
       // A ticket's "session" slot carries its plan, so a removed ticket can still say which board it left.
-      const session = ["messages", "turns", "spend", "judgements", "notifications", "annotations", "tasks"].includes(table)
+      const session = ["messages", "turns", "spend", "judgements", "notifications", "annotations", "tasks", "agent_runs"].includes(table)
         ? `${row}.session_id`
         : table === "tickets"
           ? `${row}.task_id`
@@ -256,6 +257,11 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
       }
       case "turns": {
         if (ctx.db.query("SELECT id FROM turns WHERE id = ?").get(id)) out.push({ event: "turn.upsert", occurred_at, ...getTurn(ctx, id) });
+        break;
+      }
+      // A project session's run (ADR 0095).
+      case "agent_runs": {
+        if (ctx.db.query("SELECT id FROM agent_runs WHERE id = ?").get(id)) out.push({ event: "agent_run.upsert", occurred_at, ...getAgentRun(ctx, id) });
         break;
       }
       case "approvals": {

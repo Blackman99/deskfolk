@@ -1,6 +1,7 @@
 /** Small stand-ins for the runtime and its rows, so a component test says only what it is about. */
 import { CommandActivity } from "./chat/command-activity.ts";
 import type {
+  AgentRun,
   Approval,
   Attachment,
   Bot,
@@ -54,6 +55,44 @@ export function aGroup(over: Partial<SessionSummary> = {}): SessionSummary {
     ],
     ...over,
   } as SessionSummary;
+}
+
+/** A project session (ADR 0095): only you in it, a directory, and no Bot. */
+export function aProjectSession(over: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    id: "proj-1",
+    kind: "project",
+    name: "Fix the login loop",
+    archived_at: null,
+    created_at: "2026-09-19T00:00:00.000Z",
+    updated_at: "2026-09-19T00:00:00.000Z",
+    last_read_at: null,
+    origin_session_id: null,
+    origin_message_id: null,
+    participants: [{ member: USER_MEMBER, joined_at: "2026-09-19T00:00:00.000Z", left_at: null }],
+    project_dir: "/Users/a/proj",
+    project_agent: "claude_code",
+    project_config_dir: null,
+    project_agent_session: null,
+    project_source: null,
+    ...over,
+  } as SessionSummary;
+}
+
+/** One run of a project session. */
+export function anAgentRun(over: Partial<AgentRun> = {}): AgentRun {
+  return {
+    id: "run-1",
+    session_id: "proj-1",
+    status: "running",
+    activity: null,
+    partial: null,
+    approval: null,
+    error: null,
+    created_at: "2026-09-19T01:00:00.000Z",
+    updated_at: "2026-09-19T01:00:00.000Z",
+    ...over,
+  };
 }
 
 export function aDirect(over: Partial<SessionSummary> = {}): SessionSummary {
@@ -486,6 +525,11 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     closeSessionSettings: record("closeSessionSettings"),
     closeProfile: record("closeProfile"),
     openCreateBot: record("openCreateBot"),
+    openCreateProject: record("openCreateProject"),
+    createProjectSession: record("createProjectSession", null),
+    loadProjectRun: record("loadProjectRun"),
+    answerAgentRun: record("answerAgentRun", null),
+    stopAgentRun: record("stopAgentRun", null),
     openCreateGroup: record("openCreateGroup"),
     startTerminal: async (...args: unknown[]) => {
       calls.push({ name: "startTerminal", args });
@@ -537,6 +581,7 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     settingsOpen: false,
     sessionSettingsOpen: false,
     createBotOpen: false,
+    createProjectOpen: false,
     createGroupOpen: false,
     // The real runtime always has one; a stub without it would hide a broken wiring rather than
     // fail on it, and the transcript reads `runtime.activity` while a turn is live.

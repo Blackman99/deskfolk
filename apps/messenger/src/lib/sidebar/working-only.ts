@@ -26,8 +26,11 @@ export function workingOrUnreadIds(
   turns: readonly Turn[],
   approvals: readonly Approval[],
   pendingJudgements: readonly PendingJudgement[] = [],
+  liveRunSessionIds: Iterable<string> = [],
 ): Set<string> {
   const ids = workingSessionIds(sessions, turns, approvals, pendingJudgements);
+  // A project session has no turns: its run says whether the agent is at work.
+  for (const id of liveRunSessionIds) ids.add(id);
   for (const session of sessions) {
     if (classifySession(session) !== "bot-bot" && sessionUnreadCount(session) > 0) ids.add(session.id);
   }
@@ -38,6 +41,7 @@ type Listed = {
   groups: SessionSummary[];
   youBot: SessionSummary[];
   botBot: SessionSummary[];
+  project: SessionSummary[];
   fileDrop: SessionSummary | null;
 };
 
@@ -59,6 +63,7 @@ export function onlyWorking<T extends Listed>(
     groups: grouped.groups.filter(keep),
     youBot: grouped.youBot.filter(keep),
     botBot: grouped.botBot.filter(keep),
+    project: grouped.project.filter(keep),
     fileDrop: grouped.fileDrop && keep(grouped.fileDrop) ? grouped.fileDrop : null,
   };
 }

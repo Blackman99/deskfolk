@@ -17,9 +17,11 @@
 		wrapEl?: HTMLElement | null;
 		onCreateBot: () => void;
 		onCreateGroup: () => void;
+		/** A project session (ADR 0095); left out, the menu has no such entry. */
+		onCreateProject?: () => void;
 	};
 
-	let { t, createMenuOpen = $bindable(false), wrapEl = $bindable(null), onCreateBot, onCreateGroup }: Props = $props();
+	let { t, createMenuOpen = $bindable(false), wrapEl = $bindable(null), onCreateBot, onCreateGroup, onCreateProject }: Props = $props();
 </script>
 
 <div class="fab-wrap" bind:this={wrapEl}>
@@ -50,6 +52,20 @@
 					<Icon name="users" />
 					<span class="sheet-item-label">{t.sidebar.addGroup}</span>
 				</button>
+				{#if onCreateProject}
+					<button
+						type="button"
+						class="fab-menu-item sheet-item"
+						role="menuitem"
+						onclick={() => {
+							createMenuOpen = false;
+							onCreateProject();
+						}}
+					>
+						<Icon name="folder" />
+						<span class="sheet-item-label">{t.project.add}</span>
+					</button>
+				{/if}
 			</div>
 		</BottomSheet>
 	{/if}

@@ -32,8 +32,12 @@ _Avoid_: appointing the top count automatically, a Bot appointing itself, a lead
 A one-to-one conversation between you and a Bot or between two Bots; your direct with a Bot is reused, while the Bots' collaboration direct belongs to the job they are working on. You read a Bot↔Bot direct, not speak as a third participant. Details: [Behavior · Direct](docs/behavior.en.md#direct).
 _Avoid_: mixing unrelated jobs in one collaboration direct, user as a speaker in a Bot↔Bot direct, every private line must wake the other side
 
+**Project session**:
+You and a local agent (Claude Code for now) in a project directory, as in the agent's own desktop app; no Bot. Start one by picking a directory, or carry on a session you had in a terminal (on a branch of it, the original left as it was). The app keeps only the permission mode and Stop: no jobs, flow, organizing, deliveries, reviews or holds; the agent keeps the history itself, and each run is sent only your new line. The sidebar's Projects section groups them by directory. Details: [Behavior · Project sessions](docs/behavior.en.md#project-sessions), [ADR 0095](docs/adr/0095-project-sessions.md).
+_Avoid_: calling a project session a Bot, jobs or a flow in a project session, typing "stop" as Stop, changing the terminal's original session
+
 **Session**:
-The conversation container of a direct or a group. Messages, turns, judgements, and spend all belong to it. A Bot↔Bot direct is also a session; you are not a participant in it, and you can read it in a popup but cannot post; the sidebar does not list it.
+The conversation container of a direct, a group or a project session. Messages, turns, judgements, and spend all belong to it. A Bot↔Bot direct is also a session; you are not a participant in it, and you can read it in a popup but cannot post; the sidebar does not list it.
 _Avoid_: channel, room, treating a thread as a session
 
 **Origin**:

@@ -330,8 +330,9 @@ export function deleteSession(ctx: StoreContext, id: string, opts: { eraseQuotes
   if (id === FILE_DROP_SESSION_ID) {
     throw new HttpError(422, "invalid_args", "the file drop cannot be deleted");
   }
-  if (session.kind !== "group") {
-    throw new HttpError(422, "invalid_args", "only groups can be deleted");
+  // A project session (ADR 0095) goes too: it has no Bot whose direct it would be.
+  if (session.kind !== "group" && session.kind !== "project") {
+    throw new HttpError(422, "invalid_args", "only groups and project sessions can be deleted");
   }
   const now = isoNow();
   return ctx.db.transaction(() => {
@@ -403,6 +404,7 @@ export function deleteSession(ctx: StoreContext, id: string, opts: { eraseQuotes
       `UPDATE memories SET source_session_id = NULL, source_message_id = NULL WHERE source_session_id = ?`,
       [id],
     );
+    ctx.db.run(`DELETE FROM agent_runs WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM session_participants WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM sessions WHERE id = ?`, [id]);
     return dormant;
@@ -509,6 +511,9 @@ export function clearSessionMessages(ctx: StoreContext, id: string, opts: { eras
     ctx.db.run(`UPDATE sessions SET origin_message_id = NULL WHERE origin_session_id = ?`, [id]);
     ctx.db.run(`UPDATE memories SET source_message_id = NULL WHERE source_session_id = ?`, [id]);
     ctx.db.run(`UPDATE sessions SET last_read_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
+    // A project session starts over in its directory (ADR 0095): its agent's next run is a new session.
+    ctx.db.run(`DELETE FROM agent_runs WHERE session_id = ?`, [id]);
+    ctx.db.run(`UPDATE sessions SET project_agent_session = NULL, project_source = NULL WHERE id = ? AND kind = 'project'`, [id]);
     return dormant;
   })();
 }

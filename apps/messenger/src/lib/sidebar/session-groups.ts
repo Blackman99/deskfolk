@@ -1,6 +1,6 @@
 import { FILE_DROP_SESSION_ID, USER_MEMBER, type Bot, type SessionParticipant, type SessionSummary } from "@real-bot/protocol";
 
-export type SessionGroup = "group" | "you-bot" | "bot-bot" | "file-drop";
+export type SessionGroup = "group" | "you-bot" | "bot-bot" | "file-drop" | "project";
 
 /** The remote file drop: you, no Bot, and nothing to wake. */
 export function isFileDropSession(session: Pick<SessionSummary, "id">): boolean {
@@ -19,6 +19,8 @@ export function presentBotIds(session: SessionSummary): string[] {
 export function classifySession(session: SessionSummary): SessionGroup {
   if (isFileDropSession(session)) return "file-drop";
   if (session.kind === "group") return "group";
+  // No Bot in it: you and a local agent in a directory (ADR 0095).
+  if (session.kind === "project") return "project";
   return activeMembers(session.participants).includes(USER_MEMBER) ? "you-bot" : "bot-bot";
 }
 
@@ -46,6 +48,7 @@ export function groupSessions(
   groups: SessionSummary[];
   youBot: SessionSummary[];
   botBot: SessionSummary[];
+  project: SessionSummary[];
   fileDrop: SessionSummary | null;
 } {
   const pinSet = pinnedIds instanceof Set ? pinnedIds : new Set(pinnedIds ?? []);
@@ -53,6 +56,7 @@ export function groupSessions(
   const groups: SessionSummary[] = [];
   const youBot: SessionSummary[] = [];
   const botBot: SessionSummary[] = [];
+  const project: SessionSummary[] = [];
   let fileDrop: SessionSummary | null = null;
 
   for (const session of sessions) {
@@ -78,15 +82,17 @@ export function groupSessions(
 
     const kind = classifySession(session);
     // A Bot↔Bot direct is never a row of the list, pinned or not: it opens from its message (ADR 0091).
-    if (pinSet.has(session.id) && kind !== "bot-bot") {
+    // A project session is listed under its directory, pinned or not.
+    if (pinSet.has(session.id) && kind !== "bot-bot" && kind !== "project") {
       pinned.push(session);
       continue;
     }
     if (kind === "group") groups.push(session);
     else if (kind === "you-bot") youBot.push(session);
+    else if (kind === "project") project.push(session);
     else botBot.push(session);
   }
-  return { pinned, groups, youBot, botBot, fileDrop };
+  return { pinned, groups, youBot, botBot, project, fileDrop };
 }
 
 export function youBotSession(sessions: SessionSummary[], botId: string): SessionSummary | undefined {

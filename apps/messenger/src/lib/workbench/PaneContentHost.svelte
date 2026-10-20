@@ -6,6 +6,7 @@
 	import type { WorkbenchTab } from './layout-types.ts';
 	import { contentOfTab, type PaneContent } from './pane-content.ts';
 	import ChatStage from '../chat/ChatStage.svelte';
+	import ProjectChat from '../chat/ProjectChat.svelte';
 	// RoutineCalendar.svelte (svelte5plus-calendar), JobLayout.svelte (a job's flow, tickets and
 	// spec, plus @dagrejs/dagre) and ArtifactPreview.svelte are loaded lazily below, in the branch that
 	// mounts each one: this is a tab's content switch, so exactly one of these is ever on screen
@@ -234,6 +235,9 @@
 		<div class="pane-chat">
 			<div class="pane-conversation">
 				{@render chatBar?.(tab, leafId)}
+				{#if session.kind === 'project'}
+					<ProjectChat {runtime} {t} selected={session} />
+				{:else}
 				<ChatStage
 					{runtime}
 					{t}
@@ -243,6 +247,7 @@
 						onOpenArtifact(relpath, att, messageId, forceTree, null, null, content.sessionId)}
 					{onCreateBot}
 				/>
+				{/if}
 			</div>
 			{#if side}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->

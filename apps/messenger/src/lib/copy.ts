@@ -43,6 +43,7 @@ import * as lessonsText from "./copy/lessons.ts";
 import * as promptsText from "./copy/prompts.ts";
 import * as notificationsText from "./copy/notifications.ts";
 import * as permissionsText from "./copy/permissions.ts";
+import * as projectText from "./copy/project.ts";
 
 /** What the workspace is for (ADR 0092): where Bots' work is kept together, not a permission boundary. */
 export const WORKSPACE_COPY = {
@@ -94,6 +95,7 @@ const zh = {
   prompts: promptsText.zh,
   notifications: notificationsText.zh,
   permissions: permissionsText.zh,
+  project: projectText.zh,
 };
 
 const en: CopyShape<typeof zh> = {
@@ -140,6 +142,7 @@ const en: CopyShape<typeof zh> = {
   prompts: promptsText.en,
   notifications: notificationsText.en,
   permissions: permissionsText.en,
+  project: projectText.en,
 };
 
 export const COPY = { zh, en };

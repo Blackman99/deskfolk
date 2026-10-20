@@ -3,6 +3,7 @@ import type { Bot } from "./bots.ts";
 import type { ClientEvent } from "./events.ts";
 import type { Hold } from "./holds.ts";
 import type { Provider } from "./providers.ts";
+import type { AgentRunToolInfo } from "./project-sessions.ts";
 import type { Judgement } from "./routing.ts";
 import type { SessionDetail, SessionSummary } from "./sessions.ts";
 import type { Settings } from "./settings.ts";
@@ -141,6 +142,7 @@ export function isNonReceiptPath(path: string): boolean {
  */
 export type ToolFrame = {
   type: "tool";
+  /** The turn's id; for a project session's run (ADR 0095, `agent_run` set) the run's. */
   turn_id: string;
   /** The tool call id; with the turn id it is also the output stream's id. */
   id: string;
@@ -159,6 +161,8 @@ export type ToolFrame = {
   mcp_tool?: string;
   exit_code?: number | null;
   duration_ms?: number;
+  /** A project session's agent at work (ADR 0095): which session, which subagent, and where. */
+  agent_run?: AgentRunToolInfo;
 };
 
 export type StreamFrame = {

@@ -203,7 +203,7 @@ test("creating on a phone is one floating button, asking which once", () => {
 
     click(fab);
     const items = [...host.querySelectorAll('.fab-menu-item')].map((b) => b.textContent?.trim());
-    expect(items).toEqual([t.sidebar.addBot, t.sidebar.addGroup]);
+    expect(items).toEqual([t.sidebar.addBot, t.sidebar.addGroup, t.project.add]);
     expect(fab?.getAttribute('aria-expanded')).toBe('true');
 
     click(host.querySelectorAll('.fab-menu-item')[1]);
@@ -246,7 +246,7 @@ test("the group headers keep their own + on a wider window, and there is no floa
   const { host, created, close } = open([], null, true, []);
   expect(host.querySelector('.fab')).toBeNull();
   const adds = [...host.querySelectorAll<HTMLButtonElement>('.ghead .add')];
-  expect(adds.map((b) => b.title)).toEqual([t.sidebar.addGroup, t.sidebar.addBot]);
+  expect(adds.map((b) => b.title)).toEqual([t.sidebar.addGroup, t.sidebar.addBot, t.project.add]);
   click(adds[0]);
   click(adds[1]);
   expect(created).toEqual(['group', 'bot']);

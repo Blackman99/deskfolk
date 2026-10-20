@@ -52,6 +52,8 @@
 	} from './sidebar/sidebar-width.ts';
 	import DangerDialog from './overlays/DangerDialog.svelte';
 	import CreateBotSheet from './sidebar/CreateBotSheet.svelte';
+	import ProjectSessionSheet from './sidebar/ProjectSessionSheet.svelte';
+	import ProjectChat from './chat/ProjectChat.svelte';
 	import CreateGroupSheet from './sidebar/CreateGroupSheet.svelte';
 	import BotDmDialog from './chat/BotDmDialog.svelte';
 	import SessionSettingsDrawer from './panels/SessionSettingsDrawer.svelte';
@@ -148,7 +150,7 @@
 	let searchOpener = $state<HTMLElement | null>(null);
 
 	function searchBlocked(): boolean {
-		return Boolean(showOnboarding || danger.dangerConfirm || runtime.createBotOpen || runtime.createGroupOpen || providerEditor || danger.confirmingIndependent || document.querySelector('dialog[open], .skill-modal-backdrop, .memory-modal-backdrop'));
+		return Boolean(showOnboarding || danger.dangerConfirm || runtime.createBotOpen || runtime.createGroupOpen || runtime.createProjectOpen || providerEditor || danger.confirmingIndependent || document.querySelector('dialog[open], .skill-modal-backdrop, .memory-modal-backdrop'));
 	}
 
 	function openGlobalSearch(): void {
@@ -265,6 +267,7 @@
 			dangerConfirm: danger.dangerConfirm !== null,
 			createBotOpen: runtime.createBotOpen,
 			createGroupOpen: runtime.createGroupOpen,
+			createProjectOpen: runtime.createProjectOpen,
 			providerEditor: providerEditor !== null,
 			confirmingIndependent: danger.confirmingIndependent,
 			searchOpen,
@@ -299,6 +302,9 @@
 				return true;
 			case 'create-bot':
 				runtime.createBotOpen = false;
+				return true;
+			case 'create-project':
+				runtime.createProjectOpen = false;
 				return true;
 			case 'create-group':
 				runtime.createGroupOpen = false;
@@ -524,7 +530,7 @@
 	const selected = $derived(snapshot.sessions.find((s) => s.id === runtime.selectedId) ?? null);
 	const connected = $derived(runtime.connection === 'connected');
 	let composer = $state<{ focus: () => void } | null>(null);
-	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop });
+	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop, projectUntitled: t.project.untitled });
 	const selectedKind = $derived(selected ? classifySession(selected) : null);
 	/** The Bot↔Bot direct read in its popup over the conversation on screen (ADR 0091). */
 	const botDmSession = $derived(
@@ -785,7 +791,8 @@
 		const content = contentOfTab(tab);
 		if (content?.kind !== 'chat') return [];
 		const session = sessionsById.get(content.sessionId);
-		if (!session || isFileDropSession(session)) return [];
+		// A project session has no Bot, flow or settings to offer, and is listed under its directory (ADR 0095).
+		if (!session || isFileDropSession(session) || session.kind === 'project') return [];
 		const pinned = isSessionPinned(pinnedSessionIds, session.id);
 		return [
 			{
@@ -840,6 +847,10 @@
 		runtime.openCreateBot();
 	}
 
+	function openCreateProject(): void {
+		runtime.openCreateProject();
+	}
+
 	function openCreateGroup(): void {
 		runtime.openCreateGroup();
 	}
@@ -852,7 +863,7 @@
 		!runtime.terminalOpen &&
 		// So is the Mac's screen, with its own key row.
 		!runtime.screenOpen &&
-		!runtime.createBotOpen && !runtime.createGroupOpen && !runtime.sessionSettingsOpen &&
+		!runtime.createBotOpen && !runtime.createGroupOpen && !runtime.createProjectOpen && !runtime.sessionSettingsOpen &&
 		!runtime.profileBotId && !danger.dangerConfirm &&
 		(runtime.settingsOpen ? !mobileSettingsDetail && !providerEditor : runtime.workspaceOpen || (!selected && !artifact.artifactPreview))
 	);
@@ -883,6 +894,8 @@
 				runtime.createBotOpen = false;
 			} else if (runtime.createGroupOpen) {
 				runtime.createGroupOpen = false;
+			} else if (runtime.createProjectOpen) {
+				runtime.createProjectOpen = false;
 			} else if (providerEditor) {
 				e.stopPropagation();
 				settingsModal?.backFromProviderEditor();
@@ -1250,6 +1263,9 @@
 			onCreateBot={openCreateBot}
 			onShowOnboarding={() => (dismissedOnboarding = false)}
 		/>
+		{#if selected?.kind === 'project'}
+			<ProjectChat {runtime} {t} {selected} />
+		{:else}
 		<ChatStage
 			{runtime}
 			{t}
@@ -1258,6 +1274,7 @@
 			onOpenArtifact={artifact.openArtifactPath}
 			onCreateBot={openCreateBot}
 		/>
+		{/if}
 		</div>
 		{/if}
 	</section>
@@ -1361,6 +1378,9 @@
 			{t}
 			onClose={() => (runtime.createBotOpen = false)}
 		/>
+	{/if}
+	{#if runtime.createProjectOpen}
+		<ProjectSessionSheet {runtime} {t} onClose={() => (runtime.createProjectOpen = false)} />
 	{/if}
 	{#if runtime.createGroupOpen}
 		<CreateGroupSheet

@@ -6,6 +6,8 @@ export type RosterLabels = {
   archived: string;
   /** The remote file drop has no Bot to name it. */
   fileDrop?: string;
+  /** A project session has no name until your first line gives it one. */
+  projectUntitled?: string;
 };
 
 export function sessionTitle(
@@ -15,6 +17,7 @@ export function sessionTitle(
 ): string {
   if (isFileDropSession(session)) return labels?.fileDrop ?? "";
   if (session.kind === "group") return session.name ?? "";
+  if (session.kind === "project") return session.name ?? labels?.projectUntitled ?? "";
   const names = activeMembers(session.participants)
     .filter((member) => member !== USER_MEMBER)
     .map((id) => botName(id, bots, labels, false));
@@ -31,6 +34,8 @@ export function sessionPresence(
 ): string {
   const kind = classifySession(session);
   if (kind === "file-drop") return labels?.fileDrop ?? "";
+  // The only one in it is you; the directory is what a project session is about.
+  if (kind === "project") return session.project_dir ?? "";
   const botNames = activeMembers(session.participants)
     .filter((member) => member !== USER_MEMBER)
     .map((id) => botName(id, bots, labels, true));

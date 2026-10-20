@@ -8,6 +8,7 @@ import type { TaskDetail, Ticket } from "./plans.ts";
 import type { Provider } from "./providers.ts";
 import type { Judgement } from "./routing.ts";
 import type { DelegationView, GroupLeadState, PendingJudgement, SessionSummary, Turn } from "./sessions.ts";
+import type { AgentRun } from "./project-sessions.ts";
 import type { Settings } from "./settings.ts";
 import type { Spend } from "./spend.ts";
 import type { CredentialOperation } from "./sync.ts";
@@ -29,6 +30,8 @@ export type ClientEvent =
   | ({ event: "message.created" | "message.upsert"; occurred_at: string } & Message)
   | { event: "attribution.changed"; occurred_at: string; message_id: string; session_id: string; filing_state: FilingState; filings: MessageFiling[] }
   | ({ event: "turn.upsert"; occurred_at: string } & Turn)
+  /** A project session's run changed (ADR 0095): started, waiting on you, doing something new, or over. */
+  | ({ event: "agent_run.upsert"; occurred_at: string } & AgentRun)
   | { event: "turn.token"; occurred_at: string; turn_id: string; session_id: string; text: string }
   | {
       event: "turn.tool";
