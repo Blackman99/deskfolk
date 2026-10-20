@@ -54,9 +54,12 @@ test("a session reads as your prompts and Claude's replies along the chain it en
     claude("sc", "a2", [{ type: "text", text: "子代理的话" }], { isSidechain: true }),
     { type: "system", subtype: "compact_boundary", uuid: "cb", parentUuid: null, logicalParentUuid: "a2", timestamp: at(++seq) },
     user("cs", "cb", "This session is being continued from a previous conversation…", { isCompactSummary: true, isVisibleInTranscriptOnly: true }),
-    user("u2", "cs", [{ type: "text", text: "把测试补上" }]),
+    user("u2", "cs", [{ type: "text", text: "把测试补上" }], { origin: { kind: "human" } }),
     user("m2", "u2", "Caveat: meta", { isMeta: true }),
-    claude("a3", "m2", [{ type: "tool_use", id: "t2", name: "Bash", input: {} }]),
+    // Claude Code's notice that a background task finished: a user line nobody typed, older builds without its origin.
+    user("n2", "m2", "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>", { origin: { kind: "task-notification" } }),
+    user("n3", "n2", "<task-notification>\n<task-id>b2</task-id>\n</task-notification>"),
+    claude("a3", "n3", [{ type: "tool_use", id: "t2", name: "Bash", input: {} }]),
     claude("a4", "a3", [{ type: "text", text: "补好了。" }]),
     { type: "ai-title", aiTitle: "修登录页白屏" },
   ]);

@@ -92,6 +92,9 @@ export function promptText(entry: Entry): string | null {
   if (entry.type !== "user" || entry.isMeta === true || entry.isSidechain === true) return null;
   // The summary a compaction writes reads as a prompt, but nobody typed it.
   if (entry.isCompactSummary === true || entry.isVisibleInTranscriptOnly === true) return null;
+  // Claude Code's own notices (a background task finishing) come as user lines too, from an origin that is not you.
+  const origin = entry.origin as { kind?: unknown } | undefined;
+  if (origin && typeof origin === "object" && origin.kind !== undefined && origin.kind !== "human") return null;
   const message = entry.message as { content?: unknown } | undefined;
   const content = message?.content;
   let text: string;
@@ -102,7 +105,7 @@ export function promptText(entry: Entry): string | null {
   } else return null;
   text = text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
   if (!text) return null;
-  if (/^<(command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|bash-input|bash-stdout|bash-stderr)>/.test(text)) return null;
+  if (/^<(command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|bash-input|bash-stdout|bash-stderr|task-notification)>/.test(text)) return null;
   if (/^\[Request interrupted by user/.test(text)) return null;
   return text;
 }
