@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The setup steps describe the workspace and the endpoint as they work now
+
+- The workspace step said Bots' file and shell access stay inside the folder, while the note under it says the workspace is not a permission boundary and that what a Bot may do is set by its permission mode. The step now only says how to pick the folder. The endpoint step spoke of OpenAI-compatible endpoints only; it now names Anthropic-compatible ones too, as the format switch on the same step does.
+
 ### A Bot made from a template opens with suggestions that read right
 
 - The suggestions in a new Bot's empty conversation were cut out of its duties. That suits a short list like "code review; unit tests", but not duties written as sentences, and every template's are: the first screen after setup offered 「开展读工作区里的资料，…」 or "Please assist me with Reads the material…". Duties that read as sentences now get the suggestions made from the Bot's name instead (introduce yourself, look at the workspace, start a task), and a boundary quoted in a suggestion no longer ends in a stray full stop inside the brackets.
