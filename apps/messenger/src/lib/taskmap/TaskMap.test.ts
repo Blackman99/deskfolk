@@ -116,3 +116,19 @@ test("a new session's first calls lay its town out while they come in", async ()
   expect(plates).toContain("auth");
   close();
 });
+
+test("the ground shows the grabbing hand only while it is being dragged", async () => {
+  const { host, close } = open();
+  await settle();
+  const view = host.querySelector<HTMLElement>(".tm-view")!;
+  const at = (type: string, x: number, buttons: number) =>
+    view.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, button: 0, buttons, clientX: x, clientY: 100 }));
+  at("pointerdown", 100, 1);
+  at("pointermove", 130, 1);
+  await settle();
+  expect(view.classList.contains("is-dragging")).toBe(true);
+  at("pointerup", 130, 0);
+  await settle();
+  expect(view.classList.contains("is-dragging")).toBe(false);
+  close();
+});

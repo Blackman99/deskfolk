@@ -47,6 +47,8 @@
 	type Drag = { id: number; x0: number; y0: number; lx: number; ly: number; moved: boolean; turn: boolean };
 	let drag: Drag | null = null;
 	let dragEnd = 0;
+	// Only what the markup shows is state: the press itself changes on every move.
+	let panning = $state(false);
 
 	function local(e: { clientX: number; clientY: number }): [number, number] {
 		const r = view?.getBoundingClientRect();
@@ -65,7 +67,7 @@
 		const d = drag;
 		if (!d || d.id !== e.pointerId) return;
 		// Released somewhere the map never heard about (a card over it, off the pane): that press is over.
-		if (!e.buttons) { drag = null; onDragging(null); return; }
+		if (!e.buttons) { drag = null; panning = false; onDragging(null); return; }
 		const [x, y] = local(e);
 		if (!d.moved) {
 			if (Math.hypot(x - d.x0, y - d.y0) < 4) return;
@@ -73,6 +75,7 @@
 			d.moved = true;
 			try { view?.setPointerCapture(e.pointerId); } catch { /* the pointer is gone */ }
 			d.lx = x; d.ly = y;
+			panning = !d.turn;
 			onDragging(d.turn);
 		}
 		if (d.turn) onTurn((x - d.lx) * 0.4);
@@ -83,6 +86,7 @@
 	function up(e: PointerEvent): void {
 		const d = drag;
 		drag = null;
+		panning = false;
 		if (!d) return;
 		if (d.moved) { dragEnd = performance.now(); onDragging(null); return; }
 		if (d.turn) return;
@@ -122,7 +126,7 @@
 
 <div
 	class="tm-view"
-	class:is-dragging={drag?.moved && !drag.turn}
+	class:is-dragging={panning}
 	bind:this={view}
 	role="presentation"
 	onpointerdown={down}
