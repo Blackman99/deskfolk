@@ -585,6 +585,7 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     sessionSettingsOpen: false,
     createBotOpen: false,
     createProjectOpen: false,
+    createProjectMode: "new",
     createGroupOpen: false,
     // The real runtime always has one; a stub without it would hide a broken wiring rather than
     // fail on it, and the transcript reads `runtime.activity` while a turn is live.

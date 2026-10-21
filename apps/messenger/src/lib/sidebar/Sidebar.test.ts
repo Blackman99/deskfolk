@@ -203,7 +203,7 @@ test("creating on a phone is one floating button, asking which once", () => {
 
     click(fab);
     const items = [...host.querySelectorAll('.fab-menu-item')].map((b) => b.textContent?.trim());
-    expect(items).toEqual([t.sidebar.addBot, t.sidebar.addGroup, t.project.add]);
+    expect(items).toEqual([t.sidebar.addBot, t.sidebar.addGroup, t.project.newInFolder, t.project.importSession]);
     expect(fab?.getAttribute('aria-expanded')).toBe('true');
 
     click(host.querySelectorAll('.fab-menu-item')[1]);

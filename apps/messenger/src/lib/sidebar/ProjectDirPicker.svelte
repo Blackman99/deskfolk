@@ -10,30 +10,32 @@
 	import { dirDisplay, isAbsoluteDir, listingSpansAccounts, pickerDirs } from './project-groups.ts';
 
 	/**
-	 * The sheet's directories for one agent (ADR 0095), one open at a time: start a session in it,
-	 * or carry on one of the terminal's sessions that ran there. Last, a directory of your own:
-	 * typed or picked on the Mac, browsed on the Mac's disk from a phone, where there is no folder
-	 * dialog and typing a full path is no way to choose one.
+	 * The sheet's directories for one agent (ADR 0095). To start a session (`new`): each directory
+	 * one press away, then a directory of your own — typed or picked on the Mac, browsed on the
+	 * Mac's disk from a phone, where there is no folder dialog and typing a full path is no way to
+	 * choose one. To carry a terminal session on (`import`): the directories that have any, one
+	 * open at a time, with their sessions.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
 		t: Copy;
 		agent: ProjectAgent;
+		mode: 'new' | 'import';
 		/** The terminal sessions the sheet read once; null while they are on the way. */
 		items: ClaudeCodeSessionListing[] | null;
 		/** The app's own sessions, for the directories you have only used here. */
 		sessions: readonly SessionSummary[];
 	};
 
-	let { runtime, t, agent, items, sessions }: Props = $props();
+	let { runtime, t, agent, mode, items, sessions }: Props = $props();
 
 	/** The open directory, or `OTHER` for the typed one. */
 	const OTHER = '\u0000other';
-	const dirs = $derived(pickerDirs(items ?? [], sessions, agent));
+	const dirs = $derived(pickerDirs(items ?? [], sessions, agent).filter((entry) => mode === 'new' || entry.listings.length > 0));
 	const accounts = $derived(listingSpansAccounts(items ?? []));
 	let open = $state<string | null>(null);
 	/** With nothing to list, the typed directory is all there is: open it. */
-	const shown = $derived(open ?? (dirs.length === 0 ? OTHER : null));
+	const shown = $derived(open ?? (mode === 'new' && dirs.length === 0 ? OTHER : null));
 
 	/** How many of a directory's sessions show before you ask for the rest. */
 	const FIRST = 8;
@@ -103,8 +105,27 @@
 {/snippet}
 
 <div class="picker" data-project-dirs>
+	{#if mode === 'new' && shown !== OTHER}
+		{@render startFailure()}
+	{/if}
+	{#if mode === 'import' && items && dirs.length === 0}
+		<p class="muted field-hint">{t.sidebar.importClaudeEmpty}</p>
+	{/if}
 	{#each dirs as entry (entry.dir)}
 		{@const isOpen = shown === entry.dir}
+		{#if mode === 'new'}
+			<!-- One press starts the session there: a directory you have used is a place, not a question. -->
+			<div class="picker-dir" data-picker-dir={entry.dir}>
+				<button type="button" class="picker-head" title={entry.dir} disabled={pending} data-picker-start onclick={() => void start(entry.dir)}>
+					<Icon name="folder" size={16} />
+					<span class="picker-names">
+						<span class="picker-name">{entry.label}</span>
+						<span class="picker-path muted">{tildePath(entry.dir)}</span>
+					</span>
+					<span class="picker-go"><Icon name="plus" size={16} /></span>
+				</button>
+			</div>
+		{:else}
 		<div class="picker-dir" class:is-open={isOpen} data-picker-dir={entry.dir}>
 			<button type="button" class="picker-head" aria-expanded={isOpen} title={entry.dir} onclick={() => toggle(entry.dir)}>
 				<Icon name={isOpen ? 'chevron-down' : 'chevron-right'} size={12} />
@@ -119,10 +140,6 @@
 			</button>
 			{#if isOpen}
 				<div class="picker-body">
-					<div data-project-new>
-						<Button variant="primary" size="sm" icon="plus" disabled={pending} onclick={() => void start(entry.dir)}>{t.project.startHere}</Button>
-						{@render startFailure()}
-					</div>
 					{#if entry.listings.length > 0}
 						<span class="muted field-hint">{t.project.carryHead}</span>
 						<div class="import-list" role="listbox" aria-label={t.sidebar.importClaudeList}>
@@ -165,7 +182,9 @@
 				</div>
 			{/if}
 		</div>
+		{/if}
 	{/each}
+	{#if mode === 'new'}
 	<div class="picker-dir" class:is-open={shown === OTHER} data-picker-other>
 		<button type="button" class="picker-head" aria-expanded={shown === OTHER} onclick={() => toggle(OTHER)}>
 			<Icon name={shown === OTHER ? 'chevron-down' : 'chevron-right'} size={12} />
@@ -225,6 +244,7 @@
 			</div>
 		{/if}
 	</div>
+	{/if}
 </div>
 
 <style>
@@ -279,6 +299,16 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		font-size: 12px;
+	}
+
+	.picker-go {
+		flex: none;
+		display: inline-flex;
+		color: var(--muted);
+	}
+
+	.picker-head:hover .picker-go {
+		color: var(--accent);
 	}
 
 	.picker-count {

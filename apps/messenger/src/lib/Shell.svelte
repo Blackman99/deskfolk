@@ -1389,7 +1389,7 @@
 		/>
 	{/if}
 	{#if runtime.createProjectOpen}
-		<ProjectSessionSheet {runtime} {t} onClose={() => (runtime.createProjectOpen = false)} />
+		<ProjectSessionSheet {runtime} {t} mode={runtime.createProjectMode} onClose={() => (runtime.createProjectOpen = false)} />
 	{/if}
 	{#if runtime.createGroupOpen}
 		<CreateGroupSheet

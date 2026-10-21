@@ -12,16 +12,18 @@
 	import { PROJECT_AGENTS } from './project-groups.ts';
 
 	/**
-	 * Start a project session (ADR 0095): pick the agent, then a directory, and in it start anew or
-	 * carry on a terminal session that ran there. Mounted only while open, so a fresh mount is the reset.
+	 * A project session (ADR 0095), in one of two errands: `new` picks the agent, then a directory
+	 * to start in; `import` picks the agent, then a terminal session to carry on, by the directory
+	 * it ran in. Mounted only while open, so a fresh mount is the reset.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
 		t: Copy;
+		mode?: 'new' | 'import';
 		onClose: () => void;
 	};
 
-	let { runtime, t, onClose }: Props = $props();
+	let { runtime, t, mode = 'new', onClose }: Props = $props();
 	/** A click outside closes the sheet; a text-selection drag that starts inside never does. */
 	const backdrop = backdropClick();
 
@@ -63,12 +65,12 @@
 		if (e.key === 'Escape') onClose();
 	}}
 >
-	<div class="modal-dialog project-session-modal" data-project-sheet>
+	<div class="modal-dialog project-session-modal" data-project-sheet={mode}>
 		<div class="modal-head">
 			<button type="button" class="modal-back" aria-label={t.common.back} title={t.common.back} onclick={onClose}>
 				<Icon name="chevron-left" />
 			</button>
-			<h2>{t.project.add}</h2>
+			<h2>{mode === 'import' ? t.project.importTitle : t.project.newTitle}</h2>
 			<button type="button" class="modal-close" title={t.common.close} onclick={onClose}>✕</button>
 		</div>
 		<div class="modal-body">
@@ -101,7 +103,7 @@
 				<!-- Held until the listing is in: the terminal's directories would otherwise land above the app's under your pointer. -->
 				{#if items || loadFailed}
 					{#key agent}
-						<ProjectDirPicker {runtime} {t} {agent} {items} sessions={runtime.snapshot.sessions} />
+						<ProjectDirPicker {runtime} {t} {agent} {mode} {items} sessions={runtime.snapshot.sessions} />
 					{/key}
 				{/if}
 			</div>

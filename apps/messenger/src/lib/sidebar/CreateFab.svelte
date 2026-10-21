@@ -17,11 +17,12 @@
 		wrapEl?: HTMLElement | null;
 		onCreateBot: () => void;
 		onCreateGroup: () => void;
-		/** A project session (ADR 0095); left out, the menu has no such entry. */
-		onCreateProject?: () => void;
+		/** A project session (ADR 0095): a new one in a folder, or a terminal session carried on; left out, the menu has neither. */
+		onNewProject?: () => void;
+		onImportProject?: () => void;
 	};
 
-	let { t, createMenuOpen = $bindable(false), wrapEl = $bindable(null), onCreateBot, onCreateGroup, onCreateProject }: Props = $props();
+	let { t, createMenuOpen = $bindable(false), wrapEl = $bindable(null), onCreateBot, onCreateGroup, onNewProject, onImportProject }: Props = $props();
 </script>
 
 <div class="fab-wrap" bind:this={wrapEl}>
@@ -52,18 +53,34 @@
 					<Icon name="users" />
 					<span class="sheet-item-label">{t.sidebar.addGroup}</span>
 				</button>
-				{#if onCreateProject}
+				{#if onNewProject}
 					<button
 						type="button"
 						class="fab-menu-item sheet-item"
 						role="menuitem"
+						data-project-add="new"
 						onclick={() => {
 							createMenuOpen = false;
-							onCreateProject();
+							onNewProject();
 						}}
 					>
 						<Icon name="folder" />
-						<span class="sheet-item-label">{t.project.add}</span>
+						<span class="sheet-item-label">{t.project.newInFolder}</span>
+					</button>
+				{/if}
+				{#if onImportProject}
+					<button
+						type="button"
+						class="fab-menu-item sheet-item"
+						role="menuitem"
+						data-project-add="import"
+						onclick={() => {
+							createMenuOpen = false;
+							onImportProject();
+						}}
+					>
+						<Icon name="file-down" />
+						<span class="sheet-item-label">{t.project.importSession}</span>
 					</button>
 				{/if}
 			</div>

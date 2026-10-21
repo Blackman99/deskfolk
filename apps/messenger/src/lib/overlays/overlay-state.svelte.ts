@@ -67,6 +67,8 @@ export class OverlayState {
   createBotOpen = $state(false);
   /** The new project session sheet (ADR 0095). */
   createProjectOpen = $state(false);
+  /** What the project sheet is for (ADR 0095): a new session in a directory, or carrying a terminal session on. */
+  createProjectMode = $state<"new" | "import">("new");
   createGroupOpen = $state(false);
   sessionSettingsOpen = $state(false);
   /** The job whose trace is open. Null while closed; an empty string asks for the session's latest. */
@@ -116,9 +118,10 @@ export class OverlayState {
     this.createBotOpen = true;
   }
 
-  openCreateProject(): void {
+  openCreateProject(mode: "new" | "import" = "new"): void {
     this.openCreateBot();
     this.createBotOpen = false;
+    this.createProjectMode = mode;
     this.createProjectOpen = true;
   }
 

@@ -22,6 +22,8 @@
 	import ToolsToggle from './ToolsToggle.svelte';
 	import SessionRow from './SessionRow.svelte';
 	import ProjectSessionRow from './ProjectSessionRow.svelte';
+	import ProjectAddMenu from './ProjectAddMenu.svelte';
+	import { newProjectIn, newProjectInFolder } from './project-actions.ts';
 	import { dirDisplay, groupProjectSessions, isLiveRun, liveRunSessionIds, projectAgentOf } from './project-groups.ts';
 	import { flip } from 'svelte/animate';
 	import { cubicOut } from 'svelte/easing';
@@ -178,6 +180,9 @@
 	function toggleDir(dir: string): void {
 		openDirs = { ...openDirs, [dir]: !dirOpen(dir) };
 	}
+	/** The section's +: a new session in a folder, or a terminal session carried on (ADR 0095). */
+	let projectMenuOpen = $state(false);
+	let projectAddEl = $state<HTMLButtonElement | null>(null);
 
 	let phone = $state(false);
 	$effect(() => {
@@ -485,26 +490,54 @@
 			{#if !workingIds || projectGroups.length > 0}
 				<div class="ghead">
 					<span>{t.project.section}</span>
-					<button type="button" class="add" title={t.project.add} onclick={() => runtime.openCreateProject()}>+</button>
+					<button
+						bind:this={projectAddEl}
+						type="button"
+						class="add"
+						title={t.project.add}
+						aria-haspopup="menu"
+						aria-expanded={projectMenuOpen}
+						onclick={() => (projectMenuOpen = !projectMenuOpen)}
+					>+</button>
 				</div>
 			{/if}
+			<ProjectAddMenu
+				{t}
+				anchor={projectAddEl}
+				bind:open={projectMenuOpen}
+				onNew={() => void newProjectInFolder(runtime, t)}
+				onImport={() => runtime.openCreateProject('import')}
+			/>
 			{#each projectGroups as group (group.dir)}
 				{@const open = dirOpen(group.dir)}
 				{@const dirLive = group.sessions.some((row) => isLiveRun(snapshot.agentRuns[row.id]))}
 				<div class="project-dir" data-project-dir={group.dir}>
-					<button
-						type="button"
-						class="project-dir-head"
-						title={group.dir}
-						aria-expanded={open}
-						aria-label={t.project.toggleDir(group.label)}
-						onclick={() => toggleDir(group.dir)}
-					>
-						<Icon name={open ? 'chevron-down' : 'chevron-right'} size={12} />
-						<Icon name="folder" size={16} />
-						<span class="project-dir-name">{group.label}</span>
-						{#if !open && dirLive}<span class="project-dir-live" aria-hidden="true"></span>{/if}
-					</button>
+					<div class="project-dir-row">
+						<button
+							type="button"
+							class="project-dir-head"
+							title={group.dir}
+							aria-expanded={open}
+							aria-label={t.project.toggleDir(group.label)}
+							onclick={() => toggleDir(group.dir)}
+						>
+							<Icon name={open ? 'chevron-down' : 'chevron-right'} size={12} />
+							<Icon name="folder" size={16} />
+							<span class="project-dir-name">{group.label}</span>
+							{#if !open && dirLive}<span class="project-dir-live" aria-hidden="true"></span>{/if}
+						</button>
+						<!-- A new session right here, as in the agents' own apps: the directory is already the answer. -->
+						<button
+							type="button"
+							class="project-dir-add"
+							title={t.project.newHere(group.label)}
+							aria-label={t.project.newHere(group.label)}
+							data-project-dir-add
+							onclick={() => void newProjectIn(runtime, group.dir)}
+						>
+							<Icon name="plus" size={16} />
+						</button>
+					</div>
 					{#if open}
 						<div class="project-sessions">
 							{#each group.sessions as session (session.id)}
@@ -607,7 +640,7 @@
 	there are two of them saying the same kind of thing; this asks which once, where your thumb is.
 -->
 {#if phone && !selected && !searchOpen && !viewingArchived && !viewingUsage && !viewingRoles && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen && !runtime.terminalOpen && !runtime.screenOpen}
-	<CreateFab {t} bind:createMenuOpen bind:wrapEl={fabEl} {onCreateBot} {onCreateGroup} onCreateProject={() => runtime.openCreateProject()} />
+	<CreateFab {t} bind:createMenuOpen bind:wrapEl={fabEl} {onCreateBot} {onCreateGroup} onNewProject={() => void newProjectInFolder(runtime, t)} onImportProject={() => runtime.openCreateProject('import')} />
 {/if}
 
 <style>
@@ -822,12 +855,50 @@
 		color: var(--accent);
 	}
 
-	/* One row per directory, its sessions indented under it. */
+	/* One row per directory, its sessions indented under it; its + starts one more there. */
+	.project-dir-row {
+		display: flex;
+		align-items: center;
+	}
+
+	.project-dir-add {
+		flex: none;
+		display: grid;
+		place-items: center;
+		width: 26px;
+		height: 26px;
+		margin-right: 6px;
+		border-radius: var(--radius-sm);
+		color: var(--muted);
+	}
+
+	.project-dir-add:hover {
+		background: var(--line-subtle);
+		color: var(--accent);
+	}
+
+	/* With a pointer it shows on the row it is over; a touch screen has no hover, so it stays. */
+	@media (hover: hover) {
+		.project-dir-add {
+			opacity: 0;
+		}
+
+		.project-dir-row:hover .project-dir-add,
+		.project-dir-add:focus-visible {
+			opacity: 1;
+		}
+	}
+
 	.project-dir-head {
 		display: flex;
 		align-items: center;
 		gap: 6px;
+		flex: 1;
+		min-width: 0;
 		width: 100%;
+		/* A press or a double press opens and folds it; it never selects its name. */
+		user-select: none;
+		-webkit-user-select: none;
 		min-height: 32px;
 		padding: 4px 10px;
 		border-radius: var(--radius-md);
@@ -866,6 +937,11 @@
 		.project-dir-head {
 			min-height: 44px;
 			padding-left: 14px;
+		}
+
+		.project-dir-add {
+			width: 40px;
+			height: 40px;
 		}
 	}
 

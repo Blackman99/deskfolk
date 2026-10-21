@@ -11,11 +11,11 @@ const listing = (session_id: string, cwd: string, minutesAgo: number, config_dir
   session_id, config_dir, title: `title ${session_id}`, cwd, git_branch: null, modified_at: new Date(Date.now() - minutesAgo * 60_000).toISOString(), size: 1,
 });
 
-function open(stubs: Record<string, unknown> = {}, items = [listing("s1", "/Users/a/proj", 1), listing("s2", "/Users/a/other", 2), listing("s3", "/Users/a/proj", 3)]) {
+function open(stubs: Record<string, unknown> = {}, items = [listing("s1", "/Users/a/proj", 1), listing("s2", "/Users/a/other", 2), listing("s3", "/Users/a/proj", 3)], mode: "new" | "import" = "new") {
   // A directory you have only used in the app.
   const runtime = fakeRuntime({ sessions: [aProjectSession({ id: "p1", project_dir: "/Users/a/app-only", updated_at: "2020-01-01T00:00:00.000Z" })] }, stubs);
   (runtime as unknown as { client: unknown }).client = { claudeCodeSessions: async () => items };
-  const view = render(ProjectSessionSheet, { runtime, t, onClose: () => {} });
+  const view = render(ProjectSessionSheet, { runtime, t, mode, onClose: () => {} });
   return { ...view, runtime };
 }
 
@@ -24,34 +24,40 @@ const buttonIn = (root: Element | null | undefined, label: string) =>
   [...(root?.querySelectorAll("button") ?? [])].find((b) => b.textContent?.trim() === label);
 const head = (host: Element, dir: string) => host.querySelector(`[data-picker-dir="${dir}"] .picker-head`);
 
-test("the agent comes first, then each directory once, newest first, folded", async () => {
-  const { host, close } = open();
+test("to start one: the agent first, then each directory once, newest first, one press away", async () => {
+  const { host, runtime, close } = open();
   await settle();
+  expect(host.querySelector("h2")?.textContent).toBe(t.project.newTitle);
   const agents = [...host.querySelectorAll("[data-project-agent]")];
   expect(agents.map((a) => a.getAttribute("data-project-agent"))).toEqual(["claude_code"]);
   expect(agents[0]?.getAttribute("aria-checked")).toBe("true");
   expect(agents[0]?.querySelector("[data-agent-logo]")).not.toBeNull();
   expect(dirNames(host)).toEqual(["proj", "other", "app-only"]);
+  // Nothing to carry on here: that is the other errand.
   expect(host.querySelectorAll("[data-claude-session]")).toHaveLength(0);
-  expect(host.querySelector('[data-picker-dir="/Users/a/proj"] .picker-count')?.textContent).toBe("2");
-  close();
-});
-
-test("opening a directory shows its own sessions only, and 在这里新开 starts one there", async () => {
-  const { host, runtime, close } = open();
-  await settle();
-  click(head(host, "/Users/a/proj"));
-  expect([...host.querySelectorAll("[data-claude-session]")].map((r) => r.getAttribute("data-claude-session"))).toEqual(["s1", "s3"]);
-  // One open at a time.
-  click(head(host, "/Users/a/other"));
-  expect([...host.querySelectorAll("[data-claude-session]")].map((r) => r.getAttribute("data-claude-session"))).toEqual(["s2"]);
-  click(buttonIn(host.querySelector('[data-picker-dir="/Users/a/other"]'), t.project.startHere));
+  click(host.querySelector('[data-picker-dir="/Users/a/other"] [data-picker-start]'));
   expect(runtime.calls.find((c) => c.name === "createProjectSession")?.args).toEqual([{ agent: "claude_code", dir: "/Users/a/other" }]);
   close();
 });
 
+test("to carry one on: only directories with terminal sessions, each opening to its own, one at a time", async () => {
+  const { host, close } = open({}, undefined, "import");
+  await settle();
+  expect(host.querySelector("h2")?.textContent).toBe(t.project.importTitle);
+  // The app-only directory has nothing to carry on; there is no directory of your own to type.
+  expect(dirNames(host)).toEqual(["proj", "other"]);
+  expect(host.querySelector("[data-picker-other]")).toBeNull();
+  expect(host.querySelector("[data-picker-start]")).toBeNull();
+  expect(host.querySelector('[data-picker-dir="/Users/a/proj"] .picker-count')?.textContent).toBe("2");
+  click(head(host, "/Users/a/proj"));
+  expect([...host.querySelectorAll("[data-claude-session]")].map((r) => r.getAttribute("data-claude-session"))).toEqual(["s1", "s3"]);
+  click(head(host, "/Users/a/other"));
+  expect([...host.querySelectorAll("[data-claude-session]")].map((r) => r.getAttribute("data-claude-session"))).toEqual(["s2"]);
+  close();
+});
+
 test("picking a terminal session and pressing 接着聊 carries it on", async () => {
-  const { host, runtime, close } = open();
+  const { host, runtime, close } = open({}, undefined, "import");
   await settle();
   click(head(host, "/Users/a/other"));
   click(host.querySelector('[data-claude-session="s2"]'));
@@ -64,7 +70,7 @@ test("picking a terminal session and pressing 接着聊 carries it on", async ()
 
 test("a directory with many sessions shows the newest first and the rest on asking", async () => {
   const many = Array.from({ length: 11 }, (_, i) => listing(`m${i}`, "/Users/a/big", i));
-  const { host, close } = open({}, many);
+  const { host, close } = open({}, many, "import");
   await settle();
   click(head(host, "/Users/a/big"));
   expect([...host.querySelectorAll("[data-claude-session]")].map((r) => r.getAttribute("data-claude-session"))).toEqual(many.slice(0, 8).map((m) => m.session_id));
@@ -74,12 +80,20 @@ test("a directory with many sessions shows the newest first and the rest on aski
 });
 
 test("a row names its account only when the list holds more than one", async () => {
-  const { host, close } = open({}, [listing("s1", "/Users/a/proj", 1), listing("s2", "/Users/a/proj", 2, "/Users/a/.claude-b")]);
+  const { host, close } = open({}, [listing("s1", "/Users/a/proj", 1), listing("s2", "/Users/a/proj", 2, "/Users/a/.claude-b")], "import");
   await settle();
   click(head(host, "/Users/a/proj"));
   const metas = [...host.querySelectorAll("[data-claude-session] .import-meta")].map((m) => m.textContent);
   expect(metas[0]?.startsWith("~/.claude ·")).toBe(true);
   expect(metas[1]?.startsWith("~/.claude-b ·")).toBe(true);
+  close();
+});
+
+test("nothing in the terminal to carry on says so", async () => {
+  const { host, close } = open({}, [], "import");
+  await settle();
+  expect(host.querySelectorAll("[data-picker-dir]")).toHaveLength(0);
+  expect(host.textContent).toContain(t.sidebar.importClaudeEmpty);
   close();
 });
 
@@ -102,8 +116,7 @@ test("a 422 from the daemon reads as an unusable directory", async () => {
   const failure = Object.assign(new Error("bad"), { status: 422 });
   const { host, close } = open({ createProjectSession: () => Promise.resolve(failure) });
   await settle();
-  click(head(host, "/Users/a/proj"));
-  click(buttonIn(host.querySelector('[data-picker-dir="/Users/a/proj"]'), t.project.startHere));
+  click(host.querySelector('[data-picker-dir="/Users/a/proj"] [data-picker-start]'));
   await settle();
   expect(fieldErrors(host)).toEqual([t.project.dirInvalid]);
   close();
