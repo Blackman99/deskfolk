@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Back on a phone always goes back within the app first
+
+- On a phone, Back left the app instead of closing what was open whenever nothing of the app's was behind the page: a sheet or menu opened on the first page after a fresh load, or a conversation opened straight from a link or a notification. The app now keeps one entry of its own under its first page, so Back there closes the sheet, then the page showing, then the conversation, back to the list; only Back on the list with nothing open leaves the app.
+
 ### Browsing the computer's folders from a phone
 
 - When one folder could not be read, every folder you opened after it still said it could not be read, until you closed the browser. It now says so only for the folder that failed. This is the browser behind Settings' workspace on a phone and a project session's "Another directory…". The chosen folder now reads with home as `~`, and a long path shows its last two names rather than being cut off at the end; the whole path is on hover. The browser also scrolls into view when it opens near the bottom of a sheet.

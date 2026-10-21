@@ -384,6 +384,30 @@
 				return false;
 		}
 	}
+	/**
+	 * Back landed on the floor under the app's first page (`back-floor.ts`): nothing of the app's is
+	 * behind it to walk back to. A layer closes as at any Back; then the screen showing closes to
+	 * the one under it — a page the URL carries, then the conversation — down to the list. False
+	 * only on the list with nothing open: the one Back that leaves the app.
+	 */
+	export function backFromFloor(): boolean {
+		if (backMobileLayer()) return true;
+		if (runtime.settingsOpen) closeSettings();
+		else if (runtime.sessionSettingsOpen && nestedProfile) closeNestedProfile();
+		else if (runtime.sessionSettingsOpen) runtime.closeSessionSettings();
+		else if (runtime.terminalOpen) runtime.closeTerminal();
+		else if (runtime.screenOpen) runtime.closeRemoteScreen();
+		else if (runtime.listPage) runtime.listPage = null;
+		else if (runtime.traceOpen) runtime.closeTrace();
+		else if (runtime.routinesOpen) runtime.closeRoutines();
+		else if (runtime.spendOpen) runtime.closeSpend();
+		else if (runtime.workspaceOpen) runtime.closeWorkspace();
+		else if (artifact.artifactPreview) artifact.closeArtifactPreview();
+		else if (runtime.selectedId) runtime.selectedId = null;
+		else return false;
+		return true;
+	}
+
 	$effect(() => {
 		// A different Bot or session, or a closed drawer: start again at the list of sections.
 		void runtime.profileBotId;

@@ -566,3 +566,36 @@ test('mounted Shell: the floating + is on the list of chats and nowhere else', (
     window.matchMedia = previousMatchMedia;
   }
 });
+
+test("Back on the floor under the first page closes a sheet, then the conversation, and only then leaves", () => {
+  const setViewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport.bind(
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM,
+  );
+  setViewport({ width: 390, height: 844 });
+  const session = aDirect({ id: "bot-1", participants: [
+    { member: "user", joined_at: "now", left_at: null },
+    { member: "bot-1", joined_at: "now", left_at: null },
+  ] });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ id: "bot-1", name: "Alpha" })],
+    sessions: [session],
+    settings: { ...emptySnapshot().settings, locale: "zh", wizard_complete: true, workspace_path: "/fixture" },
+  }));
+  const { app, close } = render(Shell, { runtime });
+  cleanups.push(() => {
+    setViewport({ width: 1024, height: 768 });
+    close();
+  });
+  const floor = (app as unknown as { backFromFloor: () => boolean }).backFromFloor;
+  // A conversation opened from a link, with a sheet over it: nothing of the app's is behind it.
+  runtime.selectedId = session.id;
+  runtime.createProjectOpen = true;
+  flushSync();
+  expect(floor()).toBe(true);
+  expect(runtime.createProjectOpen).toBe(false);
+  expect(runtime.selectedId).toBe(session.id);
+  expect(floor()).toBe(true);
+  expect(runtime.selectedId).toBeNull();
+  // On the list with nothing open, Back is the app's to let go.
+  expect(floor()).toBe(false);
+});
