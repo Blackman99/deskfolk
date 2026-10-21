@@ -6,10 +6,13 @@ export function tildePath(path: string): string {
   return path.replace(/^(?:\/Users|\/home)\/[^/]+(?=\/|$)/, "~").replace(/^[A-Za-z]:[\\/]Users[\\/][^\\/]+(?=[\\/]|$)/, "~");
 }
 
-/** The muted line under a row: where it ran, on which branch, and when it last moved. */
-export function importSubtitle(session: ClaudeCodeSessionListing, nowMs: number, locale: "zh" | "en"): string {
+/**
+ * The muted line under a row in its directory: the account it ran on when the list holds more than
+ * one (`account`, null otherwise), its branch, and when it last moved.
+ */
+export function importSubtitle(session: ClaudeCodeSessionListing, nowMs: number, locale: "zh" | "en", account: string | null = null): string {
   return [
-    session.cwd ? tildePath(session.cwd) : "",
+    account ?? "",
     session.git_branch ?? "",
     formatListTime(session.modified_at, nowMs, locale)
   ]

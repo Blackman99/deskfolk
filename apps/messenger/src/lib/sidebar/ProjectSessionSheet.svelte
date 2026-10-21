@@ -1,21 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { ClaudeCodeSessionListing } from '@real-bot/protocol';
+	import type { ClaudeCodeSessionListing, ProjectAgent } from '@real-bot/protocol';
 	import Icon from '../Icon.svelte';
-	import Button from '../Button.svelte';
+	import AgentLogo from '../settings/AgentLogo.svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import { modalOut } from '../modal-motion.ts';
-	import { pickWorkspaceFolder, workspacePickerAvailable } from '../settings/pick-workspace.ts';
-	import ImportClaudeSession from './ImportClaudeSession.svelte';
-	import { newProjectRequest, tildePath } from './import-claude-session.ts';
-	import { isAbsoluteDir, recentProjectDirs } from './project-groups.ts';
+	import ProjectDirPicker from './ProjectDirPicker.svelte';
+	import { PROJECT_AGENTS } from './project-groups.ts';
 
 	/**
-	 * Start a project session (ADR 0095): in a directory you pick or type, or carrying a terminal
-	 * Claude Code session on. Mounted only while open, so a fresh mount is the reset.
+	 * Start a project session (ADR 0095): pick the agent, then a directory, and in it start anew or
+	 * carry on a terminal session that ran there. Mounted only while open, so a fresh mount is the reset.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -27,14 +25,10 @@
 	/** A click outside closes the sheet; a text-selection drag that starts inside never does. */
 	const backdrop = backdropClick();
 
-	let dir = $state('');
-	let pending = $state(false);
-	let error = $state<'invalid' | 'failed' | null>(null);
-	/** The terminal sessions, read once: the list below and the recent directories above share them. */
+	let agent = $state<ProjectAgent>(PROJECT_AGENTS[0]!);
+	/** The terminal sessions, read once; enough of them that a directory from last week still shows. */
 	let items = $state<ClaudeCodeSessionListing[] | null>(null);
 	let loadFailed = $state(false);
-	const canPick = workspacePickerAvailable();
-	const recent = $derived(items ? recentProjectDirs(items) : []);
 
 	onMount(() => {
 		const client = runtime.client;
@@ -44,38 +38,13 @@
 		}
 		void (async () => {
 			try {
-				items = await client.claudeCodeSessions(40);
+				items = await client.claudeCodeSessions(120);
 			} catch {
 				// The phone, or a daemon older than ADR 0095: it has no list to give.
 				loadFailed = true;
 			}
 		})();
 	});
-
-	async function pick(): Promise<void> {
-		try {
-			const picked = await pickWorkspaceFolder(dir, t.project.pickTitle);
-			if (picked) {
-				dir = picked;
-				error = null;
-			}
-		} catch {
-			error = 'failed';
-		}
-	}
-
-	async function start(): Promise<void> {
-		if (pending) return;
-		if (!isAbsoluteDir(dir)) {
-			error = 'invalid';
-			return;
-		}
-		pending = true;
-		error = null;
-		const failure = await runtime.createProjectSession(newProjectRequest(dir));
-		pending = false;
-		if (failure) error = failure.status === 422 || failure.status === 404 ? 'invalid' : 'failed';
-	}
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -103,56 +72,38 @@
 			<button type="button" class="modal-close" title={t.common.close} onclick={onClose}>✕</button>
 		</div>
 		<div class="modal-body">
-			<div class="modal-section" data-project-new>
-				<span class="field-head">{t.project.newHead}</span>
-				<label for="project-dir">{t.project.dirLabel}</label>
-				<div class="dir-row">
-					<input
-						id="project-dir"
-						type="text"
-						placeholder={t.project.dirPlaceholder}
-						autocomplete="off"
-						spellcheck="false"
-						bind:value={dir}
-						oninput={() => (error = null)}
-						onkeydown={(e) => {
-							if (e.key === 'Enter' && !e.isComposing) void start();
-						}}
-					/>
-					{#if canPick}
-						<Button icon="folder" onclick={() => void pick()}>{t.project.pick}</Button>
-					{/if}
-				</div>
-				{#if recent.length > 0}
-					<div class="recent" data-project-recent>
-						<span class="muted field-hint">{t.project.recent}</span>
-						<span class="recent-chips">
-							{#each recent as path (path)}
-								<button
-									type="button"
-									class="btn-chip recent-chip"
-									class:active={dir === path}
-									title={path}
-									onclick={() => {
-										dir = path;
-										error = null;
-									}}
-								>{tildePath(path)}</button>
-							{/each}
-						</span>
-					</div>
-				{/if}
-				<p class="muted field-hint">{t.project.dirHint}</p>
-				{#if error}
-					<p class="field-error" data-project-error>{error === 'invalid' ? t.project.dirInvalid : t.sidebar.saveFailed}</p>
-				{/if}
-				<div>
-					<Button variant="primary" disabled={pending || !dir.trim()} onclick={() => void start()}>{t.project.start}</Button>
+			<div class="modal-section" data-project-agents>
+				<span class="field-head">{t.project.agentHead}</span>
+				<div class="agent-tiles" role="radiogroup" aria-label={t.project.agentHead}>
+					{#each PROJECT_AGENTS as each (each)}
+						<button
+							type="button"
+							class="agent-tile"
+							class:active={agent === each}
+							role="radio"
+							aria-checked={agent === each}
+							data-project-agent={each}
+							onclick={() => (agent = each)}
+						>
+							<AgentLogo runner={each} size={20} />
+							<span>{t.project.agentName}</span>
+						</button>
+					{/each}
 				</div>
 			</div>
-			<div class="modal-section carry" data-project-import>
-				<span class="field-head">{t.project.carryHead}</span>
-				<ImportClaudeSession {runtime} {t} {items} {loadFailed} />
+			<div class="modal-section dirs">
+				<span class="field-head">{t.project.dirsHead}</span>
+				{#if loadFailed}
+					<p class="field-error" data-import-failed>{t.sidebar.importClaudeFailed}</p>
+				{:else if !items}
+					<p class="muted field-hint">{t.sidebar.importClaudeLoading}</p>
+				{/if}
+				<!-- Held until the listing is in: the terminal's directories would otherwise land above the app's under your pointer. -->
+				{#if items || loadFailed}
+					{#key agent}
+						<ProjectDirPicker {runtime} {t} {agent} {items} sessions={runtime.snapshot.sessions} />
+					{/key}
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -160,55 +111,48 @@
 
 <style>
 	.modal-dialog.project-session-modal {
-		width: 520px;
+		width: 560px;
 		max-width: 95vw;
 		max-height: 88vh;
 	}
 
-	.dir-row {
-		display: flex;
-		gap: 8px;
-		align-items: center;
-	}
-
-	.dir-row :global(input) {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.recent {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		margin-top: 8px;
-	}
-
-	.recent-chips {
+	.agent-tiles {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 6px;
+		gap: 8px;
 	}
 
-	.recent-chip {
-		max-width: 100%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+	.agent-tile {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		min-height: 40px;
+		padding: 6px 14px 6px 8px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+		color: var(--ink);
+		font-size: 13px;
+		font-weight: 600;
 	}
 
-	.carry {
+	.agent-tile:hover {
+		background: var(--row-hover);
+	}
+
+	.agent-tile.active {
+		border-color: var(--accent);
+		background: var(--accent-tint);
+	}
+
+	.dirs {
 		padding-top: 14px;
 		border-top: 1px solid var(--line);
 	}
 
 	@media (max-width: 680px) {
-		.dir-row {
-			flex-direction: column;
-			align-items: stretch;
-		}
-
-		.recent-chip {
-			min-height: 36px;
+		.agent-tile {
+			min-height: 44px;
 		}
 	}
 </style>

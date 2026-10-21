@@ -26,11 +26,13 @@ function open(selected: ReturnType<typeof aProjectSession> | null = null) {
   return { ...view, runtime };
 }
 
-test("the Projects section lists one open row per directory, labelled by its last segment, its sessions newest first", () => {
+test("the Projects section lists one open row per agent and directory, labelled by its last segment with the agent's mark, its sessions newest first", () => {
   const { host, close } = open();
   const dirs = [...host.querySelectorAll("[data-project-dir]")];
   expect(dirs.map((d) => d.querySelector(".project-dir-name")?.textContent)).toEqual(["proj", "other"]);
-  expect(dirs[0]?.querySelector(".project-dir-head")?.getAttribute("title")).toBe("/Users/a/proj");
+  expect(dirs[0]?.querySelector(".project-dir-head")?.getAttribute("title")).toBe("Claude Code · /Users/a/proj");
+  // Each directory row wears its agent's mark, not a folder.
+  expect(dirs.map((d) => d.querySelector(".project-dir-head [data-agent-logo]")?.getAttribute("data-agent-logo"))).toEqual(["claude_code", "claude_code"]);
   const rows = [...dirs[0]!.querySelectorAll("[data-project-session]")];
   expect(rows.map((r) => r.querySelector(".name")?.textContent)).toEqual(["Fix login", t.project.untitled]);
   expect(rows[0]?.querySelector(".project-pulse")).not.toBeNull();

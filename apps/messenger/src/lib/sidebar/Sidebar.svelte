@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
+	import AgentLogo from '../settings/AgentLogo.svelte';
 	import type { Hold, SessionSummary } from '@real-bot/protocol';
 	import BrandMark from '../BrandMark.svelte';
 	import { dragRegion, scrollbarIsNotDrag } from '../window-chrome.ts';
@@ -162,15 +163,16 @@
 	const pinnedWorking = $derived(workingIds !== null && pinnedSessions.some((session) => workingIds.has(session.id)));
 
 	/**
-	 * Which directories of the 「项目」 section are open: every one until you fold it, as in the
-	 * agents' desktop apps — on a phone nothing is selected yet, and folded rows hid every session.
+	 * Which directories of the 「项目」 section are open, by group key (agent and directory): every
+	 * one until you fold it, as in the agents' desktop apps — on a phone nothing is selected yet, and
+	 * folded rows hid every session.
 	 */
 	let openDirs = $state<Record<string, boolean>>({});
-	function dirOpen(dir: string): boolean {
-		return openDirs[dir] ?? true;
+	function dirOpen(key: string): boolean {
+		return openDirs[key] ?? true;
 	}
-	function toggleDir(dir: string): void {
-		openDirs = { ...openDirs, [dir]: !dirOpen(dir) };
+	function toggleDir(key: string): void {
+		openDirs = { ...openDirs, [key]: !dirOpen(key) };
 	}
 
 	let phone = $state(false);
@@ -482,20 +484,20 @@
 					<button type="button" class="add" title={t.project.add} onclick={() => runtime.openCreateProject()}>+</button>
 				</div>
 			{/if}
-			{#each projectGroups as group (group.dir)}
-				{@const open = dirOpen(group.dir)}
+			{#each projectGroups as group (group.key)}
+				{@const open = dirOpen(group.key)}
 				{@const dirLive = group.sessions.some((row) => isLiveRun(snapshot.agentRuns[row.id]))}
 				<div class="project-dir" data-project-dir={group.dir}>
 					<button
 						type="button"
 						class="project-dir-head"
-						title={group.dir}
+						title={`${t.project.agentName} · ${group.dir}`}
 						aria-expanded={open}
 						aria-label={t.project.toggleDir(group.label)}
-						onclick={() => toggleDir(group.dir)}
+						onclick={() => toggleDir(group.key)}
 					>
 						<Icon name={open ? 'chevron-down' : 'chevron-right'} size={12} />
-						<Icon name="folder" size={16} />
+						<AgentLogo runner={group.agent} size={16} />
 						<span class="project-dir-name">{group.label}</span>
 						{#if !open && dirLive}<span class="project-dir-live" aria-hidden="true"></span>{/if}
 					</button>

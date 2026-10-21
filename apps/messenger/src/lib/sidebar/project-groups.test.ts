@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { ClaudeCodeSessionListing } from "@real-bot/protocol";
 import { aProjectSession, anAgentRun } from "../test-fixtures.ts";
 import { classifySession, groupSessions } from "./session-groups.ts";
-import { dirDisplay, groupProjectSessions, isAbsoluteDir, isLiveRun, liveRunSessionIds, projectDirLabel, recentProjectDirs } from "./project-groups.ts";
+import { dirDisplay, groupProjectSessions, isAbsoluteDir, isLiveRun, listingSpansAccounts, liveRunSessionIds, pickerDirs, projectDirLabel } from "./project-groups.ts";
 
 test("a directory is labelled by its last segment, either separator", () => {
   expect(projectDirLabel("/Users/a/proj")).toBe("proj");
@@ -20,6 +20,9 @@ test("project sessions group by directory, directories and sessions newest first
   ];
   const groups = groupProjectSessions(sessions);
   expect(groups.map((g) => g.dir)).toEqual(["/w/b", "/w/a"]);
+  // Each group is one agent's: the row wears its mark.
+  expect(groups.map((g) => g.agent)).toEqual(["claude_code", "claude_code"]);
+  expect(new Set(groups.map((g) => g.key)).size).toBe(2);
   expect(groups.map((g) => g.label)).toEqual(["b", "a"]);
   expect(groups[1]!.sessions.map((s) => s.id)).toEqual(["a2", "a1"]);
 });
@@ -45,13 +48,28 @@ test("a run is live while it works or waits on you", () => {
   expect(liveRunSessionIds({ a: anAgentRun({ session_id: "a" }), b: anAgentRun({ session_id: "b", status: "completed" }) })).toEqual(["a"]);
 });
 
-test("recent directories are each session's cwd once, in order, capped", () => {
-  const listing = (cwd: string | null): ClaudeCodeSessionListing => ({
-    session_id: "s", config_dir: null, title: "", cwd, git_branch: null, modified_at: "t", size: 1,
+test("the sheet's directories: the terminal's and the app's, each once, newest first, with that directory's sessions", () => {
+  const listing = (session_id: string, cwd: string | null, modified_at: string, config_dir: string | null = null): ClaudeCodeSessionListing => ({
+    session_id, config_dir, title: "", cwd, git_branch: null, modified_at, size: 1,
   });
-  const items = [listing("/w/a"), listing(null), listing("/w/b"), listing("/w/a"), listing("/w/c")];
-  expect(recentProjectDirs(items)).toEqual(["/w/a", "/w/b", "/w/c"]);
-  expect(recentProjectDirs(items, 2)).toEqual(["/w/a", "/w/b"]);
+  const items = [
+    listing("s1", "/w/a", "2026-09-19T05:00:00.000Z"),
+    listing("s2", null, "2026-09-19T04:00:00.000Z"),
+    listing("s3", "/w/b", "2026-09-19T03:00:00.000Z"),
+    listing("s4", "/w/a", "2026-09-19T02:00:00.000Z"),
+  ];
+  // A directory used only in the app, and one newer in the app than in the terminal.
+  const sessions = [
+    aProjectSession({ id: "p1", project_dir: "/w/c", updated_at: "2026-09-19T01:00:00.000Z" }),
+    aProjectSession({ id: "p2", project_dir: "/w/b", updated_at: "2026-09-19T06:00:00.000Z" }),
+  ];
+  const dirs = pickerDirs(items, sessions, "claude_code");
+  expect(dirs.map((d) => d.dir)).toEqual(["/w/b", "/w/a", "/w/c"]);
+  expect(dirs.map((d) => d.label)).toEqual(["b", "a", "c"]);
+  expect(dirs.map((d) => d.listings.map((l) => l.session_id))).toEqual([["s3"], ["s1", "s4"], []]);
+  expect(dirs[0]!.latest).toBe("2026-09-19T06:00:00.000Z");
+  expect(listingSpansAccounts(items)).toBe(false);
+  expect(listingSpansAccounts([...items, listing("s5", "/w/a", "t", "/Users/a/.claude-b")])).toBe(true);
 });
 
 test("a typed directory must be absolute; home reads as a tilde", () => {

@@ -22,10 +22,12 @@ test("a new session sends the trimmed directory", () => {
   expect(newProjectRequest("  /Users/a/proj ")).toEqual({ agent: "claude_code", dir: "/Users/a/proj" });
 });
 
-test("home shows as a tilde and the subtitle skips what is missing", () => {
+test("home shows as a tilde; the subtitle names the account only when asked and skips what is missing", () => {
   expect(tildePath("/Users/a/proj")).toBe("~/proj");
   expect(tildePath("/Users/a")).toBe("~");
   expect(tildePath("/opt/x")).toBe("/opt/x");
-  expect(importSubtitle(session, now, "en")).toBe("~/proj · main · 09:05");
+  // The row sits under its directory, so the line leaves the directory out.
+  expect(importSubtitle(session, now, "en")).toBe("main · 09:05");
   expect(importSubtitle({ ...session, cwd: null, git_branch: null }, now, "en")).toBe("09:05");
+  expect(importSubtitle(session, now, "en", "~/.claude-b")).toBe("~/.claude-b · main · 09:05");
 });
