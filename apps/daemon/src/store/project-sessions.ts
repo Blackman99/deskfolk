@@ -52,7 +52,7 @@ export function migrateProjectSessions(db: Database): void {
     }
   }
   const names = db.query<{ name: string }, []>(`PRAGMA table_info(sessions)`).all().map((row) => row.name);
-  for (const name of ["project_dir", "project_agent", "project_config_dir", "project_agent_session", "project_source", "project_model"]) {
+  for (const name of ["project_dir", "project_agent", "project_config_dir", "project_agent_session", "project_source", "project_model", "project_effort"]) {
     if (!names.includes(name)) db.run(`ALTER TABLE sessions ADD COLUMN ${name} TEXT`);
   }
 }
@@ -65,24 +65,31 @@ export type ProjectOf = {
   source: string | null;
   /** The model its runs ask for; null leaves it to the agent's own default (your settings). */
   model: string | null;
+  /** The thinking level its runs ask for; null leaves it to the agent's own default. */
+  effort: string | null;
 };
 
 /** A project session's directory and agent, or null for any other conversation. */
 export function projectOf(ctx: StoreContext, sessionId: string): ProjectOf | null {
   const row = ctx.db
-    .query<{ kind: string; project_dir: string | null; project_agent: string | null; project_config_dir: string | null; project_agent_session: string | null; project_source: string | null; project_model: string | null }, [string]>(
-      `SELECT kind, project_dir, project_agent, project_config_dir, project_agent_session, project_source, project_model FROM sessions WHERE id = ?`,
+    .query<{ kind: string; project_dir: string | null; project_agent: string | null; project_config_dir: string | null; project_agent_session: string | null; project_source: string | null; project_model: string | null; project_effort: string | null }, [string]>(
+      `SELECT kind, project_dir, project_agent, project_config_dir, project_agent_session, project_source, project_model, project_effort FROM sessions WHERE id = ?`,
     )
     .get(sessionId);
   if (!row || row.kind !== "project" || !row.project_dir) return null;
   return { dir: row.project_dir, agent: (row.project_agent ?? "claude_code") as ProjectAgent, configDir: row.project_config_dir,
-    agentSession: row.project_agent_session, source: row.project_source, model: row.project_model };
+    agentSession: row.project_agent_session, source: row.project_source, model: row.project_model,
+    effort: row.project_effort };
 }
 
-/** The model a project session's runs ask for from the next step on; null goes back to the agent's default. */
-export function setProjectModel(ctx: StoreContext, sessionId: string, model: string | null): SessionDetail {
+/**
+ * The model and thinking level a project session's runs ask for from the next step on: a key left
+ * out stays, null goes back to the agent's default.
+ */
+export function tuneProjectSession(ctx: StoreContext, sessionId: string, change: { model?: string | null; effort?: string | null }): SessionDetail {
   if (!projectOf(ctx, sessionId)) throw new HttpError(404, "not_found", "not a project session");
-  ctx.db.run(`UPDATE sessions SET project_model = ? WHERE id = ? AND kind = 'project'`, [model, sessionId]);
+  if (change.model !== undefined) ctx.db.run(`UPDATE sessions SET project_model = ? WHERE id = ? AND kind = 'project'`, [change.model, sessionId]);
+  if (change.effort !== undefined) ctx.db.run(`UPDATE sessions SET project_effort = ? WHERE id = ? AND kind = 'project'`, [change.effort, sessionId]);
   return getSession(ctx, sessionId);
 }
 

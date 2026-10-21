@@ -125,7 +125,7 @@ test("an import is a project session in the session's directory, its history rea
     expect(store.db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM bots`).get()?.n).toBe(0);
     expect(store.db.query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM notifications WHERE session_id = ?`).get(created.id)?.n).toBe(0);
     expect(store.listSessions().find((row) => row.id === created.id)?.unread_count ?? 0).toBe(0);
-    expect(store.projectOf(created.id)).toEqual({ dir: "/work/app", agent: "claude_code", configDir: null, agentSession: null, source: "src", model: null });
+    expect(store.projectOf(created.id)).toEqual({ dir: "/work/app", agent: "claude_code", configDir: null, agentSession: null, source: "src", model: null, effort: null });
   } finally {
     store.close();
   }

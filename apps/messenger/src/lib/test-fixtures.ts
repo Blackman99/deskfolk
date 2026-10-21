@@ -76,6 +76,7 @@ export function aProjectSession(over: Partial<SessionSummary> = {}): SessionSumm
     project_agent_session: null,
     project_source: null,
     project_model: null,
+    project_effort: null,
     ...over,
   } as SessionSummary;
 }
@@ -529,7 +530,7 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     openCreateProject: record("openCreateProject"),
     createProjectSession: record("createProjectSession", null),
     loadProjectRun: record("loadProjectRun"),
-    setProjectModel: record("setProjectModel", null),
+    tuneProjectSession: record("tuneProjectSession", null),
     answerAgentRun: record("answerAgentRun", null),
     stopAgentRun: record("stopAgentRun", null),
     openCreateGroup: record("openCreateGroup"),

@@ -4,6 +4,7 @@ import type {
   CreateBotRequest,
   CreateGroupRequest,
   CreateProjectSessionRequest,
+  PatchProjectSessionRequest,
   CreateProviderRequest,
   CreateRoutineRequest,
   CreateSkillRequest,
@@ -192,12 +193,12 @@ export class AdminMutations {
     }
   }
 
-  /** A project session's model, from the agent's next step on; the session's own event brings it back. */
-  async setProjectModel(sessionId: string, model: string | null): Promise<ApiError | null> {
+  /** A project session's model or thinking level, from the agent's next step on; the session's own event brings it back. */
+  async tuneProjectSession(sessionId: string, change: PatchProjectSessionRequest): Promise<ApiError | null> {
     const api = this.host.api;
     if (!api) return null;
     try {
-      await api.setProjectModel(sessionId, model);
+      await api.tuneProjectSession(sessionId, change);
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);

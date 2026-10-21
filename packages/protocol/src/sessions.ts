@@ -77,6 +77,8 @@ export type Session = {
   project_source?: string | null;
   /** The model its runs ask for (an alias or a full id, as the agent names it); null: the agent's own default. */
   project_model?: string | null;
+  /** The thinking level its runs ask for, one of `CLAUDE_EFFORTS`; null: the agent's own default. */
+  project_effort?: string | null;
   created_at: string;
   updated_at: string;
 };

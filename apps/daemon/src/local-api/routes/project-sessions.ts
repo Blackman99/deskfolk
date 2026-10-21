@@ -1,4 +1,4 @@
-import { isAgentModelName, type CreateProjectSessionRequest } from "@real-bot/protocol";
+import { isAgentModelName, isClaudeEffort, type CreateProjectSessionRequest } from "@real-bot/protocol";
 import { homedir } from "node:os";
 import { readAgentReplay } from "../../claude-code/replay";
 import { claudeSessionRoots, findClaudeSessionFile, readClaudeSession } from "../../claude-code/sessions";
@@ -66,17 +66,26 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
     ), 200, null);
   }
 
-  // The model its runs ask for (an alias or a full id; null: the agent's own default), from the next
-  // step on: a run going now switches too.
+  // The model (an alias or a full id) and the thinking level its runs ask for, each from the next
+  // step on: a run going now switches too. A key left out stays; null is the agent's own default.
   params = matchPath(path, "/v1/project-sessions/:id");
   if (params && method === "PATCH") {
-    const raw = ((input.body ?? {}) as { model?: unknown }).model;
-    const model = typeof raw === "string" ? raw.trim() : raw;
-    if (model !== null && (typeof model !== "string" || !isAgentModelName(model))) {
-      throw new HttpError(422, "invalid_args", "model must be a model name or null");
+    const body = (input.body ?? {}) as { model?: unknown; effort?: unknown };
+    const change: { model?: string | null; effort?: string | null } = {};
+    if (body.model !== undefined) {
+      const model = typeof body.model === "string" ? body.model.trim() : body.model;
+      if (model !== null && (typeof model !== "string" || !isAgentModelName(model))) {
+        throw new HttpError(422, "invalid_args", "model must be a model name or null");
+      }
+      change.model = model;
     }
-    const session = store.setProjectModel(params.id!, model);
-    projects.setModel(params.id!, model);
+    if (body.effort !== undefined) {
+      if (body.effort !== null && !isClaudeEffort(body.effort)) throw new HttpError(422, "invalid_args", "effort must be low, medium, high, xhigh, max or null");
+      change.effort = body.effort;
+    }
+    if (change.model === undefined && change.effort === undefined) throw new HttpError(422, "invalid_args", "model or effort is required");
+    const session = store.tuneProjectSession(params.id!, change);
+    projects.tune(params.id!, change);
     publish({ event: "session.upsert", occurred_at: occurred(), ...sessionUpsertFields(session) });
     return jsonResponse(session, 200, null);
   }

@@ -429,7 +429,7 @@ export class Store {
   readonly createProjectSession = this.bind(projectSessions.createProjectSession);
   readonly projectOf = this.bind(projectSessions.projectOf);
   readonly recordProjectAgentSession = this.bind(projectSessions.recordProjectAgentSession);
-  readonly setProjectModel = this.bind(projectSessions.setProjectModel);
+  readonly tuneProjectSession = this.bind(projectSessions.tuneProjectSession);
   readonly nameProjectSessionIfUnnamed = this.bind(projectSessions.nameProjectSessionIfUnnamed);
   readonly insertAgentLine = this.bind(projectSessions.insertAgentLine);
   readonly createAgentRun = this.bind(projectSessions.createAgentRun);

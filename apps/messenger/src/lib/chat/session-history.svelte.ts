@@ -418,6 +418,7 @@ export class SessionHistory {
                     project_source: detail.project_source ?? s.project_source ?? null,
                     // Null is a choice here (back to the agent's default), not a gap to fill.
                     project_model: detail.project_model !== undefined ? detail.project_model : (s.project_model ?? null),
+                    project_effort: detail.project_effort !== undefined ? detail.project_effort : (s.project_effort ?? null),
                   }
                 : {}),
             }

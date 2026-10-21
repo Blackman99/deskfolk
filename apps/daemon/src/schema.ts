@@ -188,14 +188,15 @@ CREATE TABLE IF NOT EXISTS sessions (
   playbook_id TEXT,
   -- A project session's (ADR 0095): its directory, agent, Claude account directory (null: the
   -- daemon's own), the agent's own session id once a run has one, the terminal session it was
-  -- imported from, and the model its runs ask for (null: the agent's own default). Null on every
-  -- other conversation.
+  -- imported from, and the model and thinking level its runs ask for (null: the agent's own
+  -- default). Null on every other conversation.
   project_dir TEXT,
   project_agent TEXT,
   project_config_dir TEXT,
   project_agent_session TEXT,
   project_source TEXT,
   project_model TEXT,
+  project_effort TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

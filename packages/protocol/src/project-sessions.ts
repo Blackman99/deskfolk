@@ -1,7 +1,9 @@
 /**
  * Project sessions (ADR 0095): you and a local agent in a directory, as in the agents' own desktop
- * apps, with no Bot. The app keeps permissions and Stop; each run of the agent is an `AgentRun`.
+ * apps, with no Bot. The app keeps permissions, the model, the thinking level and Stop; each run
+ * of the agent is an `AgentRun`.
  */
+import type { ClaudeEffort } from "./bots.ts";
 
 export type ProjectAgent = "claude_code";
 
@@ -29,6 +31,17 @@ export type AgentRun = {
  * `POST /v1/project-sessions`: a new session in `dir`, or, with `import`, one carrying on a
  * terminal session (its directory is the session's own; `dir` is then ignored).
  */
+/**
+ * What a project session's runs ask the agent for (ADR 0095), each from its next step on; a key
+ * left out stays as it is, null goes back to the agent's own default (your settings).
+ */
+export type PatchProjectSessionRequest = {
+  /** An alias or a full id, as the agent names it. */
+  model?: string | null;
+  /** One of `CLAUDE_EFFORTS`. */
+  effort?: ClaudeEffort | null;
+};
+
 export type CreateProjectSessionRequest = {
   agent?: ProjectAgent;
   dir?: string;

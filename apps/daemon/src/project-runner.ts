@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import type { CanUseTool, HookCallbackMatcher, HookInput, HookJSONOutput, Options, PermissionResult, SDKMessage, SDKUserMessage, SpawnedProcess, SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
-import type { AgentRun, AgentRunApproval, AgentRunToolInfo, Message, ToolFrame } from "@real-bot/protocol";
+import { isClaudeEffort, type AgentRun, type AgentRunApproval, type AgentRunToolInfo, type ClaudeEffort, type Message, type ToolFrame } from "@real-bot/protocol";
 import { homedir } from "node:os";
 import { placeOfCall } from "./claude-code/tool-place";
 import { modelOf } from "./claude-code/replay";
@@ -29,6 +29,8 @@ export type ProjectQuery = (params: { prompt: AsyncIterable<SDKUserMessage>; opt
   close(): void;
   /** The SDK's own: the model for the steps still to come in this run. */
   setModel?(model?: string): Promise<void>;
+  /** The SDK's own: the session's flag settings, here its thinking level (null: the model's default). */
+  applyFlagSettings?(settings: { effortLevel?: ClaudeEffort | null }): Promise<void>;
 };
 
 export type ProjectRunnerDeps = {
@@ -52,8 +54,11 @@ export type ProjectRunner = {
   stop(runId: string): AgentRun;
   /** Stops the session's live run, if any: its history is being cleared or the session deleted. */
   stopSession(sessionId: string): void;
-  /** The session's model changed: a live run takes it from its next step (null: the agent's default). */
-  setModel(sessionId: string, model: string | null): void;
+  /**
+   * The session's model or thinking level changed: a live run takes it from its next step (null:
+   * the agent's default); a key left out is not touched.
+   */
+  tune(sessionId: string, change: { model?: string | null; effort?: string | null }): void;
   /** Resolves once every run started so far has ended (tests). */
   idle(): Promise<void>;
   close(): void;
@@ -301,8 +306,9 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       settingSources: ["user", "project", "local"],
       persistSession: true,
       ...(resume ? { resume, forkSession: project.agentSession === null } : {}),
-      // The session's own pick; none leaves it to your settings, as in the terminal.
+      // The session's own picks; none leaves them to your settings, as in the terminal.
       ...(project.model ? { model: project.model } : {}),
+      ...(project.effort && isClaudeEffort(project.effort) ? { effort: project.effort } : {}),
       includePartialMessages: false,
       permissionMode: "default",
       tools: [...AGENT_WORK_TOOLS],
@@ -428,11 +434,15 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       const live = lives.get(sessionId);
       if (live && !live.stopped) this.stop(live.runId);
     },
-    setModel(sessionId, model) {
+    tune(sessionId, change) {
       const live = lives.get(sessionId);
-      if (!live || live.stopped || live.closing || !live.query?.setModel) return;
+      if (!live || live.stopped || live.closing || !live.query) return;
       // Best effort: a run that ends meanwhile has nothing to switch, and the next one starts on it.
-      live.query.setModel(model ?? undefined).catch(() => {});
+      if (change.model !== undefined) live.query.setModel?.(change.model ?? undefined).catch(() => {});
+      if (change.effort !== undefined) {
+        const effortLevel = change.effort && isClaudeEffort(change.effort) ? change.effort : null;
+        live.query.applyFlagSettings?.({ effortLevel }).catch(() => {});
+      }
     },
     async idle() {
       while (settling.size > 0) await Promise.all([...settling]);

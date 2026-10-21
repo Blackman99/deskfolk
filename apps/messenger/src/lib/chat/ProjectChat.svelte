@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { CLAUDE_MODEL_ALIASES, isHiddenTranscriptKind, USER_MEMBER, type Message, type SessionSummary } from '@real-bot/protocol';
+	import { CLAUDE_EFFORTS, CLAUDE_MODEL_ALIASES, isHiddenTranscriptKind, USER_MEMBER, type Message, type SessionSummary } from '@real-bot/protocol';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
 	import Select from '../Select.svelte';
@@ -67,11 +67,23 @@
 		if (model && !names.includes(model)) names.push(model);
 		return [{ value: '', label: t.project.modelDefault, source: mark }, ...names.map((name) => ({ value: name, label: name, source: mark }))];
 	});
-	let modelFailed = $state(false);
+	/** The thinking level its runs ask for, the same way: none for what your settings say. */
+	const effort = $derived(selected.project_effort ?? '');
+	const effortOptions = $derived.by((): SelectOption[] => [
+		{ value: '', label: t.project.effortDefault },
+		...CLAUDE_EFFORTS.map((level) => ({ value: level, label: t.sidebar.thinkingLevels[level] }))
+	]);
+	let tuneFailed = $state(false);
 
 	async function pickModel(value: string): Promise<void> {
 		if (value === model) return;
-		modelFailed = (await runtime.setProjectModel(selected.id, value || null)) !== null;
+		tuneFailed = (await runtime.tuneProjectSession(selected.id, { model: value || null })) !== null;
+	}
+
+	async function pickEffort(value: string): Promise<void> {
+		if (value === effort) return;
+		const level = CLAUDE_EFFORTS.find((each) => each === value) ?? null;
+		tuneFailed = (await runtime.tuneProjectSession(selected.id, { effort: level })) !== null;
 	}
 
 	let scroller = $state<HTMLElement | null>(null);
@@ -273,7 +285,7 @@
 	</div>
 
 	<div class="composer">
-		{#if sendFailed || modelFailed}
+		{#if sendFailed || tuneFailed}
 			<p class="field-error">{t.project.actionFailed}</p>
 		{/if}
 		<div class="composer-box">
@@ -307,6 +319,19 @@
 						onchange={(value) => void pickModel(value)}
 					/>
 				</div>
+				<div class="effort" data-project-effort title={effort ? undefined : t.project.effortDefaultHint}>
+					<Select
+						size="sm"
+						placement="top"
+						value={effort}
+						options={effortOptions}
+						ariaLabel={t.project.effortLabel}
+						title={t.project.effortLabel}
+						disabled={!connected}
+						onchange={(value) => void pickEffort(value)}
+					/>
+				</div>
+				<span class="tools-gap"></span>
 				<button
 					type="button"
 					class="send"
@@ -565,14 +590,21 @@
 	.composer-tools {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
+		gap: 6px;
+	}
+
+	.model,
+	.effort {
+		min-width: 0;
+		max-width: 200px;
 	}
 
 	.model {
-		min-width: 0;
-		max-width: 220px;
 		margin-left: -6px;
+	}
+
+	.tools-gap {
+		flex: 1;
 	}
 
 	.send {

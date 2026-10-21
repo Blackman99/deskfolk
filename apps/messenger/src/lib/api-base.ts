@@ -10,6 +10,7 @@ import type {
   ClaudeCodeSessionListing,
   CreateGroupRequest,
   CreateProjectSessionRequest,
+  PatchProjectSessionRequest,
   AgentReplay,
   SessionReplay,
   AgentRun,
@@ -237,9 +238,9 @@ export abstract class ApiBase<Row extends PendingRow> {
     return this.post<SessionDetail>("/v1/project-sessions", body);
   }
 
-  /** The model a project session's runs ask for (ADR 0095); null: the agent's own default. */
-  async setProjectModel(sessionId: string, model: string | null): Promise<SessionDetail> {
-    return this.patch<SessionDetail>(`/v1/project-sessions/${encodeURIComponent(sessionId)}`, { model });
+  /** The model or thinking level a project session's runs ask for (ADR 0095); null: the agent's own default. */
+  async tuneProjectSession(sessionId: string, change: PatchProjectSessionRequest): Promise<SessionDetail> {
+    return this.patch<SessionDetail>(`/v1/project-sessions/${encodeURIComponent(sessionId)}`, change);
   }
 
   /** The newest run of a project session; the event stream carries only changes after it. */

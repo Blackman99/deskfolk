@@ -24,7 +24,7 @@ const probe: ClaudeCodeProbe = { last: () => signedIn, current: async () => sign
 type UseTool = (name: string, input: Record<string, unknown>, call?: { id?: string; agentId?: string }) => Promise<boolean>;
 type Step = (ctx: { line: string; options: Options; useTool: UseTool }) => Promise<string>;
 
-function scripted(seen: { options: Options[]; lines: string[]; closed: number; models: Array<string | null> }, step: Step, ownSession = "own-1", preface: (line: string) => SDKMessage[] = () => []): ProjectQuery {
+function scripted(seen: { options: Options[]; lines: string[]; closed: number; models: Array<string | null>; efforts: Array<string | null> }, step: Step, ownSession = "own-1", preface: (line: string) => SDKMessage[] = () => []): ProjectQuery {
   let tool = 0;
   return ({ prompt, options }) => {
     seen.options.push(options);
@@ -64,6 +64,7 @@ function scripted(seen: { options: Options[]; lines: string[]; closed: number; m
     return Object.assign(generator, {
       close: () => { closed = true; seen.closed += 1; },
       setModel: async (model?: string) => { seen.models.push(model ?? null); },
+      applyFlagSettings: async (settings: { effortLevel?: string | null }) => { seen.efforts.push(settings.effortLevel ?? null); },
     });
   };
 }
@@ -71,7 +72,7 @@ function scripted(seen: { options: Options[]; lines: string[]; closed: number; m
 function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[] } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "project-session-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
-  const seen = { options: [] as Options[], lines: [] as string[], closed: 0, models: [] as Array<string | null> };
+  const seen = { options: [] as Options[], lines: [] as string[], closed: 0, models: [] as Array<string | null>, efforts: [] as Array<string | null> };
   const api = createLocalApi({ store, token: "project-test", schedule: false, claudeCode: probe, projectQuery: scripted(seen, step, opts.ownSession, opts.preface) });
   const events: ClientEvent[] = [];
   api.subscribeSync((frame) => { if (frame.type === "event") events.push(frame.payload); });
@@ -303,6 +304,41 @@ test("you can rename a project session; your first line then no longer names it"
   expect(h.store.getSession(id).name).toBe("登录修复");
 });
 
+test("a session's thinking level: each run asks for it, a run going now switches, and the model is left alone", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const h = start(async ({ line }) => {
+    if (line === "慢一点") await gate;
+    return `答：${line}`;
+  });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { effort: "huge" })).status).toBe(422);
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, {})).status).toBe(422);
+  await h.call("PATCH", `/v1/project-sessions/${id}`, { model: "opus" });
+  const set = await h.call<SessionDetail>("PATCH", `/v1/project-sessions/${id}`, { effort: "high" });
+  expect(set.status).toBe(200);
+  // Setting one leaves the other as it was.
+  expect(set.body).toMatchObject({ project_model: "opus", project_effort: "high" });
+  expect(h.events.some((event) => event.event === "session.upsert" && event.id === id && event.project_effort === "high")).toBe(true);
+  await h.say(id, "第一句");
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(h.seen.options[0]).toMatchObject({ model: "opus", effort: "high" });
+
+  await h.say(id, "慢一点");
+  await h.until(() => h.seen.lines.length === 2);
+  await h.call("PATCH", `/v1/project-sessions/${id}`, { effort: "max" });
+  expect(h.seen.efforts).toEqual(["max"]);
+  expect(h.seen.models).toEqual([]);
+  await h.call("PATCH", `/v1/project-sessions/${id}`, { effort: null });
+  expect(h.seen.efforts).toEqual(["max", null]);
+  release();
+  await h.until(async () => (await h.run(id))?.status === "completed" && h.lines(id).length === 4);
+  await h.say(id, "第三句");
+  await h.until(() => h.seen.options.length === 3);
+  expect(h.seen.options[2]!.effort).toBeUndefined();
+  expect(h.seen.options[2]!.model).toBe("opus");
+});
+
 test("a phone reaches the same routes", () => {
   const id = ulid();
   const ok = (request: Parameters<typeof validateBusiness>[0]) => expect(() => validateBusiness(request)).not.toThrow();
@@ -313,6 +349,10 @@ test("a phone reaches the same routes", () => {
   ok({ v: 1, id, method: "POST", path: `/v1/agent-runs/${ulid()}/stop` });
   ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { model: "opus" } });
   ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { model: null } });
+  ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { effort: "xhigh" } });
+  ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { model: "opus", effort: null } });
+  expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { effort: "huge" } })).toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: {} })).toThrow();
   ok({ v: 1, id, method: "PATCH", path: `/v1/sessions/${ulid()}`, body: { name: "登录修复" } });
   expect(() => validateBusiness({ v: 1, id, method: "POST", path: `/v1/agent-runs/${ulid()}/delete` })).toThrow();
 });

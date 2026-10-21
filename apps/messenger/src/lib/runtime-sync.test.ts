@@ -1647,7 +1647,7 @@ test("a finished turn's commands stay for its reply: what this page saw at once,
 });
 
 test("opening a project session keeps its directory on its row, so the sidebar and header still have it (ADR 0095)", async () => {
-  const project = aProjectSession({ id: "proj-1", project_dir: "/Users/a/proj", project_agent: "claude_code", project_model: "opus" });
+  const project = aProjectSession({ id: "proj-1", project_dir: "/Users/a/proj", project_agent: "claude_code", project_model: "opus", project_effort: "high" });
   const { runtime } = await connected(async () => ({ ...emptySnapshot(), ...cursor, bots: [], sessions: [project] }));
   await until(() => runtime.connection === "connected");
   globalThis.fetch = (async (url: string | URL | Request) => {
@@ -1656,5 +1656,5 @@ test("opening a project session keeps its directory on its row, so the sidebar a
   }) as typeof fetch;
   await runtime.selectSession("proj-1");
   const row = runtime.snapshot.sessions.find((s) => s.id === "proj-1");
-  expect(row).toMatchObject({ kind: "project", project_dir: "/Users/a/proj", project_agent: "claude_code", project_model: "opus" });
+  expect(row).toMatchObject({ kind: "project", project_dir: "/Users/a/proj", project_agent: "claude_code", project_model: "opus", project_effort: "high" });
 });
