@@ -5,7 +5,6 @@
  */
 import { copyFor } from '../../src/lib/copy.ts';
 import type { CharacterLook } from '../../src/lib/taskmap/characters.ts';
-import { FIGURE_PALETTES } from '../../src/lib/taskmap/scene/figures.ts';
 import type { FrameActor } from '../../src/lib/taskmap/frame.ts';
 import type { MomentText } from '../../src/lib/taskmap/moment-text.ts';
 import type { Quest } from '../../src/lib/taskmap/timeline.ts';
@@ -23,8 +22,8 @@ function lead(b: number, short: string, status: FrameActor['status']): FrameActo
 export function taskmapSideStory(said: number, moments: number) {
   const t = copyFor('zh').taskmap;
   const looks: CharacterLook[] = [
-    { name: '视频导演', figure: 'robot', palette: FIGURE_PALETTES[0]!, avatar: null, source: { kind: 'custom', name: 'Claude Agent' } },
-    { name: '审核员', figure: 'cat', palette: FIGURE_PALETTES[1]!, avatar: null, source: { kind: 'custom', name: 'Claude Agent' } },
+    { name: '视频导演', figure: 'pudding', face: { eyes: 'dot', mouth: 'smile' }, avatar: null, source: { kind: 'custom', name: 'Claude Agent' } },
+    { name: '审核员', figure: 'taro', face: { eyes: 'dot', mouth: 'smile' }, avatar: null, source: { kind: 'custom', name: 'Claude Agent' } },
   ];
   const quests: Quest[] = Array.from({ length: said }, (_, i) => ({ kind: 'say', at: i * 60_000, v: i * 10, text: `第 ${i + 1} 句：继续把成片做完` }));
   const lines: (MomentText & { v: number })[] = Array.from({ length: moments }, (_, i) => ({ title: `时刻 ${i + 1}`, sub: '09:04 · 继续', color: '#3aa0a8', v: i * 10 + 5 }));

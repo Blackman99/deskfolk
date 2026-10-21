@@ -105,7 +105,8 @@ export function hull(pts: readonly Vec2[]): Vec2[] {
 
 const rgbCache = new Map<string, readonly [number, number, number]>();
 
-function rgb(hex: string): readonly [number, number, number] {
+/** A `#rrggbb` colour's channels, 0 to 255. */
+export function rgb(hex: string): readonly [number, number, number] {
   let c = rgbCache.get(hex);
   if (!c) {
     c = [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];

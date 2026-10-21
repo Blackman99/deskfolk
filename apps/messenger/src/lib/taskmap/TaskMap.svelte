@@ -13,7 +13,7 @@
 	import { MOMENT_COLOR, momentText } from './moment-text.ts';
 	import { normalizePhi, fitZoom, turnTarget } from './scene/camera.ts';
 	import { buildGround, lightAt, type ModelCache } from './scene/draw.ts';
-	import { drawFigure, figureModel, type DrawnFigure, type FigureModel } from './scene/figures.ts';
+	import { drawFigure, figureTint } from './scene/figures.ts';
 	import { axes, proj, unproj } from './scene/geometry.ts';
 	import { buildTimeline } from './timeline.ts';
 	import MapHud from './MapHud.svelte';
@@ -363,6 +363,9 @@
 			: []
 	);
 
+	// Each character's figure with its face and the avatar on its pin; the hour's light tints them all alike.
+	const figures = $derived(looks.map((look) => ({ ...drawFigure(look.figure, look.face), avatar: look.avatar })));
+
 	// --- One frame of the town ---
 	const cache: ModelCache = new Map();
 	const walk: WalkState = { lastTile: [], until: [] };
@@ -381,7 +384,7 @@
 	const light = $derived.by(() => { const d = new Date(at); return lightAt(d.getHours() + d.getMinutes() / 60); });
 	const frame = $derived(
 		data && tl && districts
-			? buildFrame({ data, map: districts, tl, v: shown, rest, phi, zoom: cam.k, now: performance.now(), speed, light, cache, walk, hover, sel, t: tm, names: bots ? looks.map((l) => l.name) : undefined })
+			? buildFrame({ data, map: districts, tl, v: shown, rest, phi, zoom: cam.k, now: performance.now(), speed, light, cache, walk, hover, sel, t: tm, names: bots ? looks.map((l) => l.name) : undefined, tops: figures.map((f) => f.top) })
 			: null
 	);
 	const walkMs = $derived(turning ? 0 : speed >= 16 ? 220 : 480);
@@ -398,21 +401,6 @@
 	});
 
 	// --- What the cards say ---
-	// Each character's figure in this light: drawn again only when the light has moved on.
-	const figureCache = new Map<string, FigureModel>();
-	const drawn = new Map<string, DrawnFigure>();
-	const figures = $derived.by(() => {
-		const L = light, key = `${L.w.toFixed(2)}:${L.n.toFixed(2)}`;
-		return looks.map((look) => {
-			const id = `${look.figure}:${look.palette.body}:${key}`;
-			let fig = drawn.get(id);
-			if (!fig) {
-				if (drawn.size > 64) drawn.clear();
-				drawn.set(id, (fig = drawFigure(figureModel(look.figure, look.palette, figureCache), L)));
-			}
-			return { ...fig, figure: look.figure, avatar: look.avatar };
-		});
-	});
 	const who = (b: number) => ({ short: bots ? (looks[b]?.name ?? tm.mainLane) : b === 0 ? tm.mainLane : tm.subagent(b), color: colorOf(b) });
 	const sameDay = $derived.by(() => {
 		if (!data?.calls.length) return true;
@@ -481,6 +469,7 @@
 				{frame}
 				logos={looks.map((l) => l.source)}
 				{figures}
+				tint={figureTint(light)}
 				colors={data.characters.map((_, b) => colorOf(b))}
 				{cam}
 				{camMs}

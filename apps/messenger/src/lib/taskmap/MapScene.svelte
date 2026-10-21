@@ -2,7 +2,7 @@
 	import type { Copy } from '../copy.ts';
 	import type { ModelSource } from '../model-source.ts';
 	import type { Frame } from './frame.ts';
-	import type { DrawnFigure, FigureId } from './scene/figures.ts';
+	import { figureOrigin, type DrawnFigure, type FigureImage } from './scene/figures.ts';
 	import MapLogo from './MapLogo.svelte';
 	import { VIEW_H, VIEW_W } from './scene/view.ts';
 
@@ -16,8 +16,10 @@
 		frame: Frame;
 		/** Whose model each character works on, by index: the logo on its badge, its name beside the model in the badge's tooltip. */
 		logos: readonly ModelSource[];
-		/** Each character's figure as drawn in this light, the avatar on its chest, and its colour, by index. */
-		figures: readonly (DrawnFigure & { figure: FigureId; avatar: string | null })[];
+		/** Each character's figure and the avatar on its pin, by index. */
+		figures: readonly (DrawnFigure & { avatar: string | null })[];
+		/** The hour's light on the figures, a colour laid over them, or null by day. */
+		tint: { color: string; alpha: number } | null;
 		colors: readonly string[];
 		cam: { tx: number; ty: number; k: number };
 		/** How long the camera glides to where it is asked (0 while dragging or turning). */
@@ -39,7 +41,7 @@
 	};
 
 	const uid = $props.id();
-	let { frame, logos, figures, colors, cam, camMs, walkMs, sel, hover, follow, labels, t, onPan, onTurn, onZoom, onPick, onHover, onFollow, onDeselect, onDragging }: Props = $props();
+	let { frame, logos, figures, tint, colors, cam, camMs, walkMs, sel, hover, follow, labels, t, onPan, onTurn, onZoom, onPick, onHover, onFollow, onDeselect, onDragging }: Props = $props();
 
 	let view = $state<HTMLDivElement | null>(null);
 	const inv = $derived((1 / cam.k).toFixed(3));
@@ -116,6 +118,10 @@
 	});
 
 	const STATUS_DOT: Record<string, string> = { work: '#16a34a', walk: '#95a2a8', idle: '#c3cfd3', fail: '#dc2626', back: '#16a34a', none: '#c3cfd3' };
+	// A figure is laid out at its size on screen and scaled back by 1/k, a layer of its own (will-change):
+	// left in the world's layer, WebKit would stretch the picture it drew at the zoom the map opened at.
+	// Subagents (scale < 1) shrink about their feet.
+	const figT = (scale: number) => `translate(${(29 * (1 - scale)).toFixed(2)}px, ${(60.16 * (1 - scale)).toFixed(2)}px) scale(${(scale / cam.k).toFixed(4)})`;
 	const badgeT = (side: number, lift: number) => {
 		const up = ((lift * 28) / cam.k).toFixed(1);
 		if (side < 0) return `translate(calc(-100% + 14.5px), calc(-100% - ${up}px)) scale(${inv})`;
@@ -123,6 +129,10 @@
 		return `translate(-50%, calc(-100% - ${up}px)) scale(${inv})`;
 	};
 </script>
+
+{#snippet layer(im: FigureImage, cls = '')}<img class="tm-l {cls}" src={im.href} alt="" style={im.box} />{/snippet}
+<!-- The hour's colour over one picture, masked by it. -->
+{#snippet shade(im: FigureImage)}<i class="tm-tint" style="{im.box};--tm-mask:url({im.href})"></i>{/snippet}
 
 <div
 	class="tm-view"
@@ -136,7 +146,9 @@
 	oncontextmenu={(e) => e.preventDefault()}
 >
 	<div class="tm-world" style:width="{VIEW_W}px" style:height="{VIEW_H}px" style:transform="translate({cam.tx.toFixed(1)}px, {cam.ty.toFixed(1)}px) scale({cam.k.toFixed(3)})" style:transition-duration="{camMs}ms">
-		<svg class="tm-ground" viewBox="0 0 {VIEW_W} {VIEW_H}" style:z-index="1" aria-hidden="true"><path d={frame.ground.shadow} fill="rgba(23,38,42,.13)" /></svg>
+		<svg class="tm-ground" viewBox="0 0 {VIEW_W} {VIEW_H}" style:z-index="1" aria-hidden="true">
+			<path d={frame.ground.shadow} fill="rgba(23,38,42,.13)" />
+		</svg>
 		{#each frame.slabs as slab, i (i)}
 			<svg class="tm-ground" viewBox="0 0 {VIEW_W} {VIEW_H}" style:z-index={slab.z} aria-hidden="true">
 				{#each slab.puffs as puff, j (j)}<ellipse cx={puff.x} cy={puff.y} rx={puff.rx} ry={puff.ry} fill={puff.fill} />{/each}
@@ -214,15 +226,26 @@
 			<div class="tm-actor" style:transform="translate({actor.x}px, {actor.y}px)" style:transition-duration="{walkMs}ms" style:opacity={actor.present ? 1 : 0} style:z-index={actor.z}>
 				<div class="tm-shadow" style:box-shadow={follow === actor.b ? `0 0 0 2px ${colors[actor.b]}` : 'none'}></div>
 				{#if fig}
-					<!-- Its own figure, its face to you, its avatar on its chest; it moves as its status has it. -->
-					<svg class="tm-body tm-figure is-{actor.motion}" data-figure={fig.figure} viewBox="0 0 58 64" style:transform="scale({actor.scale})" aria-hidden="true">
-						{#each fig.faces as f, k (k)}<polygon points={f.pts} fill={f.fill} stroke={f.stroke} stroke-width="0.5" stroke-linejoin="round" />{/each}
-						{#if fig.avatar}
-							<clipPath id="{uid}-plate-{actor.b}"><circle cx={fig.chest[0]} cy={fig.chest[1]} r="4.6" /></clipPath>
-							<circle class="tm-plate-ring" cx={fig.chest[0]} cy={fig.chest[1]} r="5.6" fill="#ffffff" stroke={colors[actor.b]} stroke-width="1" />
-							<image href={fig.avatar} x={fig.chest[0] - 4.6} y={fig.chest[1] - 4.6} width="9.2" height="9.2" clip-path="url(#{uid}-plate-{actor.b})" preserveAspectRatio="xMidYMid slice" />
-						{/if}
-					</svg>
+					<!-- Its own figure, its face to you, its avatar on its pin; it moves as its status has it. -->
+					<div class="tm-body" style:width="{(58 * cam.k).toFixed(1)}px" style:height="{(64 * cam.k).toFixed(1)}px" style:transform={figT(actor.scale)}>
+						<div class="tm-figure is-{actor.motion}" data-figure={fig.figure} style:--tm-blink="{(-1.3 * actor.b).toFixed(1)}s" style:--tm-tint-c={tint?.color} style:--tm-tint-a={tint?.alpha} aria-hidden="true">
+							<div class="tm-fig">
+								{@render layer(fig.body)}
+								{@render layer(fig.eyes, 'tm-fig-eyes')}
+								{@render layer(fig.blink, 'tm-fig-blink')}
+								<div class="tm-fig-mouth" style:transform-origin={figureOrigin(fig.mouthAt)}>{@render layer(fig.mouth)}</div>
+								<div class="tm-fig-talk">{@render layer(fig.talk)}</div>
+								{#if fig.front}{@render layer(fig.front)}{/if}
+								{#if fig.avatar}
+									{@render layer(fig.pin)}
+									<img class="tm-pin-avatar" src={fig.avatar} alt="" style={fig.avatarBox} />
+								{/if}
+								{#if tint}{@render shade(fig.body)}{/if}
+								<div class="tm-fig-arm-l" style:transform-origin={figureOrigin(fig.shoulderL)}>{@render layer(fig.armL)}{#if tint}{@render shade(fig.armL)}{/if}</div>
+								<div class="tm-fig-arm-r" style:transform-origin={figureOrigin(fig.shoulderR)}>{@render layer(fig.armR)}{#if tint}{@render shade(fig.armR)}{/if}</div>
+							</div>
+						</div>
+					</div>
 				{/if}
 				{#if actor.present}
 					<div class="tm-badge is-{actor.side < 0 ? 'l' : actor.side > 0 ? 'r' : 'c'}" style:top="{actor.badgeTop}px" style:border-color={colors[actor.b]} style:transform={badgeT(actor.side, actor.lift)} title={t.ranBy(logos[actor.b]?.name ?? '', actor.modelShort)}>
@@ -272,14 +295,37 @@
 	@keyframes tm-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 	.tm-actor { position: absolute; left: 0; top: 0; width: 58px; height: 64px; transition-property: transform, opacity; transition-timing-function: cubic-bezier(.3, .7, .3, 1); pointer-events: none; }
 	.tm-shadow { position: absolute; left: 12px; top: 55px; width: 34px; height: 8px; border-radius: 50%; background: rgba(23, 38, 42, .25); }
-	.tm-body { position: absolute; left: 0; top: 0; width: 58px; height: 64px; transform-origin: 50% 94%; overflow: visible; }
-	/* Working, a figure bobs; waiting on you, it hops; a failure shakes it once. */
-	.tm-figure.is-running, .tm-figure.is-replying { animation: tm-bob .7s ease-in-out infinite alternate; }
-	.tm-figure.is-waiting { animation: tm-hop 1.1s ease-in-out infinite; }
-	.tm-figure.is-failed { animation: tm-shake .5s ease-in-out 2; }
-	@keyframes tm-bob { from { translate: 0 0; } to { translate: 0 -2.5px; } }
-	@keyframes tm-hop { 0%, 60%, 100% { translate: 0 0; } 30% { translate: 0 -6px; } }
-	@keyframes tm-shake { 0%, 100% { rotate: 0deg; } 25% { rotate: -6deg; } 75% { rotate: 6deg; } }
+	.tm-body { position: absolute; left: 0; top: 0; width: 58px; height: 64px; transform-origin: 0 0; will-change: transform; }
+	.tm-figure, .tm-fig, .tm-fig-mouth, .tm-fig-talk, .tm-fig-arm-l, .tm-fig-arm-r { position: absolute; inset: 0; }
+	.tm-l, .tm-tint, .tm-pin-avatar { position: absolute; display: block; max-width: none; margin: 0; border-radius: 0; pointer-events: none; }
+	.tm-pin-avatar { border-radius: 50%; object-fit: cover; }
+	.tm-tint { background: var(--tm-tint-c); opacity: var(--tm-tint-a); -webkit-mask: var(--tm-mask) 0 0 / 100% 100% no-repeat; mask: var(--tm-mask) 0 0 / 100% 100% no-repeat; }
+	/* Working, a figure bobs with its arms busy; replying, it talks; waiting on you, it hops and waves; a failure shakes it once and leaves it frowning. Every figure blinks now and then, out of step. */
+	.tm-fig { transform-origin: 50% 89%; }
+	.is-running .tm-fig, .is-replying .tm-fig { animation: tm-fig-bob .7s ease-in-out infinite alternate; }
+	.is-waiting .tm-fig { animation: tm-fig-hop 1.1s ease-in-out infinite; }
+	.is-failed .tm-fig { animation: tm-fig-shake .5s ease-in-out 2; }
+	.tm-fig-blink, .tm-fig-talk { opacity: 0; }
+	.tm-fig-eyes { animation: tm-blink-open 5.2s var(--tm-blink) infinite; }
+	.tm-fig-blink { animation: tm-blink-shut 5.2s var(--tm-blink) infinite; }
+	.is-running .tm-fig-arm-l { animation: tm-arm-l .45s ease-in-out infinite alternate; }
+	.is-running .tm-fig-arm-r { animation: tm-arm-r .45s ease-in-out -.22s infinite alternate; }
+	.is-replying .tm-fig-arm-l { animation: tm-arm-l .26s ease-in-out infinite alternate; }
+	.is-replying .tm-fig-arm-r { animation: tm-arm-r .26s ease-in-out -.13s infinite alternate; }
+	.is-replying .tm-fig-mouth { animation: tm-talk-a .34s steps(1) infinite; }
+	.is-replying .tm-fig-talk { animation: tm-talk-b .34s steps(1) infinite; }
+	.is-waiting .tm-fig-arm-r { animation: tm-wave .5s ease-in-out infinite alternate; }
+	.is-failed .tm-fig-mouth { transform: scaleY(-1); }
+	@keyframes tm-blink-open { 0%, 93%, 97%, 100% { opacity: 1; } 94%, 96% { opacity: 0; } }
+	@keyframes tm-blink-shut { 0%, 93%, 97%, 100% { opacity: 0; } 94%, 96% { opacity: 1; } }
+	@keyframes tm-arm-l { from { transform: rotate(0deg); } to { transform: rotate(-22deg); } }
+	@keyframes tm-arm-r { from { transform: rotate(0deg); } to { transform: rotate(22deg); } }
+	@keyframes tm-talk-a { 0% { opacity: 1; } 50% { opacity: 0; } }
+	@keyframes tm-talk-b { 0% { opacity: 0; } 50% { opacity: 1; } }
+	@keyframes tm-wave { from { transform: rotate(-112deg); } to { transform: rotate(-146deg); } }
+	@keyframes tm-fig-bob { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }
+	@keyframes tm-fig-hop { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+	@keyframes tm-fig-shake { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
 	.tm-badge { position: absolute; left: 29px; will-change: transform; display: flex; align-items: center; gap: 4px; height: 26px; box-sizing: border-box; padding: 0 8px 0 2px; background: rgba(255, 255, 255, .96); border: 1.5px solid; border-radius: 999px; box-shadow: 0 1px 3px rgba(18, 28, 32, .18); white-space: nowrap; pointer-events: none; }
 	.tm-badge.is-l { flex-direction: row-reverse; padding: 0 2px 0 8px; transform-origin: calc(100% - 14.5px) 100%; }
 	.tm-badge.is-r { transform-origin: 14.5px 100%; }
@@ -304,7 +350,7 @@
 	@keyframes tm-flutter { 0% { opacity: 0; transform: translate(0, 0) rotate(0); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(12px, -24px) rotate(160deg); } }
 	@keyframes tm-blink { 0%, 100% { opacity: 0; transform: scale(.6); } 40% { opacity: 1; transform: scale(1.6); } }
 	@media (prefers-reduced-motion: reduce) {
-		.tm-fx i, .tm-quest, .tm-figure { animation: none !important; }
+		.tm-fx i, .tm-quest, .tm-figure * { animation: none !important; }
 		.tm-actor, .tm-world { transition: none !important; }
 	}
 </style>

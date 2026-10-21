@@ -4,14 +4,14 @@ import type { Copy } from "../copy.ts";
 import { activeMembers, classifySession } from "../sidebar/session-groups.ts";
 import { agentSource, endpointSource, runnerSource, type ModelSource } from "../model-source.ts";
 import type { MapData } from "./map-data.ts";
-import { assignFigures, type FigureId, type FigurePalette } from "./scene/figures.ts";
+import { assignFigures, figureFace, type FigureFace, type FigureId } from "./scene/figures.ts";
 
 /**
- * How each character of a map looks: its name, its figure (a shape and colour no other character of
- * the map has), the avatar it wears on its chest (a Bot's own; none for an agent, which has its logo
- * on its badge), and whose model it works on.
+ * How each character of a map looks: its name, its figure (one no other character of the map has),
+ * its face (its avatar's, when that is a folk), the avatar on its pin (a Bot's own; none for an
+ * agent, which has its logo on its badge), and whose model it works on.
  */
-export type CharacterLook = { name: string; figure: FigureId; palette: FigurePalette; avatar: string | null; source: ModelSource };
+export type CharacterLook = { name: string; figure: FigureId; face: FigureFace; avatar: string | null; source: ModelSource };
 
 /**
  * Whose model a Bot works on: its local agent's (Claude Agent, Codex…), or its endpoint's vendor,
@@ -23,9 +23,10 @@ export function botSource(bot: Pick<Bot, "runner" | "provider_id" | "name">, pro
   return provider ? endpointSource(provider, t) : { kind: "custom", name: t.connectors.customMark };
 }
 
-/** A Bot's avatar as an image, as the sidebar shows it: its own, or the one its name gives. */
-function avatarOf(avatar: string | null | undefined, name: string): string | null {
-  return avatarSrc(avatar) ?? avatarSrc(generateBoringAvatar({ name }));
+/** A Bot's avatar as an image, as the sidebar shows it (its own, or the one its name gives), and the face it lends a figure. */
+function avatarOf(avatar: string | null | undefined, name: string): { avatar: string | null; face: FigureFace } {
+  const shown = avatarSrc(avatar) ? avatar : generateBoringAvatar({ name });
+  return { avatar: avatarSrc(shown), face: figureFace(shown) };
 }
 
 /**
@@ -40,12 +41,12 @@ export function characterLooks(
   const figures = assignFigures(data.characters.map((c) => c.key));
   if (data.source.kind === "project") {
     const source = agentSource(data.source.agent, input.agentName);
-    return data.characters.map((c, i) => ({ name: i === 0 ? input.agentName : (c.description ?? c.key), ...figures[i]!, avatar: null, source }));
+    return data.characters.map((c, i) => ({ name: i === 0 ? input.agentName : (c.description ?? c.key), figure: figures[i]!, face: figureFace(null), avatar: null, source }));
   }
   return data.characters.map((c, i) => {
     const bot = input.bots.find((b) => b.id === c.key);
-    if (!bot) return { name: c.key.slice(0, 8), ...figures[i]!, avatar: avatarOf(null, c.key), source: { kind: "custom", name: input.t.connectors.customMark } };
-    return { name: bot.name, ...figures[i]!, avatar: avatarOf(bot.avatar, bot.name), source: botSource(bot, input.providers, input.defaultProviderId, input.t) };
+    if (!bot) return { name: c.key.slice(0, 8), figure: figures[i]!, ...avatarOf(null, c.key), source: { kind: "custom", name: input.t.connectors.customMark } };
+    return { name: bot.name, figure: figures[i]!, ...avatarOf(bot.avatar, bot.name), source: botSource(bot, input.providers, input.defaultProviderId, input.t) };
   });
 }
 

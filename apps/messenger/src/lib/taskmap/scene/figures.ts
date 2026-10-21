@@ -1,199 +1,138 @@
 /**
- * The characters of the map (ADR 0097): small figures modelled like its buildings, one shape for
- * each character of a map and a colour of its own, so two Bots never look alike. A figure always
- * turns its face to you (it is drawn at one turn of its own, whatever the map's), and wears its
- * Bot's own avatar on its chest. Parts are in grid units (x, y; a figure is about ±0.15 across) and
- * px (z, up from its feet), with the modeller the buildings use.
+ * The characters of the map (ADR 0097): Pudding and Mochi's own folk, dressed for work. Every
+ * character is the folk avatar's body in a flavour of its own, with what it wears and holds —
+ * Pudding's antenna, Mochi's beanie and mug, headphones and a clipboard, a beret and a brush… —
+ * rendered in Blender from the map's camera (scripts/map-figures), so no two characters of one map
+ * look alike and every one is plainly one of the app's mascots. A figure stacks its layers: body,
+ * face, what sits over the face, the pin with its Bot's avatar, then its arms, which turn about the
+ * shoulders. A Bot whose avatar is a folk wears that folk's eyes and mouth here too. The layers are
+ * HTML images placed in % of the actor box, so the map can lay a figure out at its size on screen.
  */
-import { axes, mix, NIGHT, type Vec2, type Vec3 } from "./geometry.ts";
-import { faceColor, type DrawnFace, type Light } from "./draw.ts";
-import { box, cyl, disc, part, type Decal, type Part } from "./models.ts";
+import { folkHash, folkLook } from "@real-bot/protocol";
+import type { LightLevel } from "./draw.ts";
+import { FIGURE_GEOMETRY, FIGURE_LAYERS, type FigureLayer } from "./figure-assets.ts";
+import { NIGHT, rgb, type Vec2 } from "./geometry.ts";
 
-export const FIGURE_IDS = ["robot", "astronaut", "wizard", "bear", "knight", "tv", "chef", "cat"] as const;
+export const FIGURE_IDS = ["pudding", "mochi", "taro", "sakura", "matcha", "caramel", "sesame", "blueberry"] as const;
 export type FigureId = (typeof FIGURE_IDS)[number];
 
-/** A figure's colours: its body, a darker and a lighter one of the same hue, and a contrast. */
-export type FigurePalette = { body: string; dark: string; light: string; accent: string };
+export type FigureFace = { eyes: "dot" | "happy" | "wink"; mouth: "smile" | "open" | "cat" };
 
-/** Eight hues, apart from each other and from the town's ground; a map gives each character its own. */
-export const FIGURE_PALETTES: readonly FigurePalette[] = [
-  { body: "#2f9e8f", dark: "#1d6b61", light: "#7fd1c4", accent: "#f2c14e" },
-  { body: "#e0674f", dark: "#a8432f", light: "#f3a796", accent: "#2f6fd6" },
-  { body: "#5b5fd1", dark: "#3b3f99", light: "#a5a8f0", accent: "#f08c3c" },
-  { body: "#e3a22b", dark: "#a8731a", light: "#f5d27e", accent: "#5b3fa8" },
-  { body: "#4f9d3a", dark: "#336b25", light: "#9fd38a", accent: "#e0567a" },
-  { body: "#c4498f", dark: "#8c2f63", light: "#eb9cc8", accent: "#2fb3a3" },
-  { body: "#3c93d6", dark: "#24679c", light: "#97c9ef", accent: "#f2c14e" },
-  { body: "#6b7a8f", dark: "#475263", light: "#b4bfcd", accent: "#e8643c" },
-];
-
-const SKIN = "#f1c9a5";
-const INK = "#1c2430";
-const WHITE = "#f4f6f8";
-
-export type FigureModel = { parts: Part[]; chest: Vec3; top: number };
-
-/** A flat detail on the plane y = at, facing you: a disc of `n` points, or a rectangle. */
-function front(at: number, pts: readonly Vec2[], col: string): Part {
-  const v = pts.map(([x, z]): Vec3 => [x, at, z]);
-  const c: Vec3 = [pts.reduce((s, p) => s + p[0], 0) / pts.length, at, pts.reduce((s, p) => s + p[1], 0) / pts.length];
-  const d: Decal = { v, col, n: [0, 1, 0] };
-  return part([], c, Math.min(...pts.map((p) => p[1])), [d]);
-}
-/** A round dot: `r` across in grid units, as tall in px as it is wide on screen. */
-const dot = (at: number, x: number, z: number, r: number, col = INK): Part => front(at, disc(x, z, r, r * 125, 8), col);
-const rect = (at: number, x0: number, x1: number, z0: number, z1: number, col: string): Part => front(at, [[x0, z0], [x1, z0], [x1, z1], [x0, z1]], col);
-/** Two eyes and a small mouth on a face whose front plane is y = at, centred at height z. */
-const eyes = (at: number, z: number, gap = 0.045, col = INK): Part[] => [dot(at, -gap, z, 0.018, col), dot(at, gap, z, 0.018, col)];
-const legs = (col: string): Part[] => [box(-0.1, -0.045, -0.025, 0.045, 0, 9, col), box(0.025, -0.045, 0.1, 0.045, 0, 9, col)];
-
-const MAKERS: Readonly<Record<FigureId, (p: FigurePalette) => FigureModel>> = {
-  // A boxy robot: a screen face and an antenna with a lit tip.
-  robot: (p) => ({
-    parts: [
-      ...legs(p.dark),
-      box(-0.15, -0.09, 0.15, 0.09, 9, 31, p.body, p.light),
-      box(-0.19, -0.04, -0.15, 0.04, 14, 29, p.dark), box(0.15, -0.04, 0.19, 0.04, 14, 29, p.dark),
-      box(-0.12, -0.09, 0.12, 0.09, 32, 51, p.light, p.light),
-      rect(0.093, -0.09, 0.09, 36, 47, "#1f2a3a"),
-      ...eyes(0.096, 42, 0.045, "#6fe3ff"),
-      cyl(0, 0, 0.012, 0.012, 51, 58, p.dark, 4),
-      box(-0.02, -0.02, 0.02, 0.02, 58, 62, p.accent),
-    ],
-    chest: [0, 0.092, 21], top: 62,
-  }),
-  // A space suit: a round helmet with a dark visor and a pack behind.
-  astronaut: (p) => ({
-    parts: [
-      ...legs(mix(WHITE, p.light, 0.45)),
-      box(-0.11, -0.16, 0.11, -0.08, 12, 30, p.dark),
-      cyl(0, 0, 0.15, 0.13, 9, 31, mix(WHITE, p.light, 0.45), 12),
-      cyl(0, 0, 0.13, 0.13, 31, 52, WHITE, 12, 0, WHITE),
-      front(0.131, disc(0, 42, 0.09, 6.5, 10), "#26344d"),
-      dot(0.134, 0.04, 45, 0.016, "#9fd8ff"),
-      box(-0.15, -0.02, 0.15, 0.02, 24, 27, p.body),
-    ],
-    chest: [0, 0.14, 19], top: 52,
-  }),
-  // A wizard: a long robe, a wide brim and a tall pointed hat.
-  wizard: (p) => ({
-    parts: [
-      cyl(0, 0, 0.125, 0.085, 0, 33, p.body, 12),
-      cyl(0, 0, 0.09, 0.09, 33, 45, SKIN, 10),
-      ...eyes(0.092, 39, 0.035),
-      cyl(0, 0, 0.16, 0.16, 45, 47, p.dark, 12),
-      cyl(0, 0, 0.1, 0, 47, 66, p.body, 10),
-      dot(0.06, 0, 55, 0.02, p.accent),
-    ],
-    chest: [0, 0.135, 17], top: 66,
-  }),
-  // A round bear: ears on top and a light snout.
-  bear: (p) => ({
-    parts: [
-      ...legs(p.dark),
-      cyl(0, 0, 0.15, 0.14, 9, 31, p.body, 12),
-      cyl(0, 0, 0.13, 0.12, 31, 49, p.body, 12),
-      cyl(-0.08, 0, 0.04, 0.04, 46, 54, p.dark, 8), cyl(0.08, 0, 0.04, 0.04, 46, 54, p.dark, 8),
-      front(0.123, disc(0, 36, 0.05, 3.6, 8), p.light),
-      dot(0.126, 0, 37.5, 0.014),
-      ...eyes(0.124, 43, 0.05),
-    ],
-    chest: [0, 0.145, 20], top: 54,
-  }),
-  // A knight: steel, a coloured tabard, a slit visor and a plume.
-  knight: (p) => ({
-    parts: [
-      ...legs("#7c8794"),
-      box(-0.14, -0.09, 0.14, 0.09, 9, 31, "#aab4bf", "#c4ccd5"),
-      rect(0.093, -0.08, 0.08, 10, 30, p.body),
-      box(-0.11, -0.09, 0.11, 0.09, 31, 50, "#97a2ae", "#b6bfc9"),
-      rect(0.093, -0.075, 0.075, 40, 43, INK),
-      box(-0.015, -0.08, 0.015, 0.05, 50, 60, p.accent),
-    ],
-    chest: [0, 0.095, 22], top: 60,
-  }),
-  // A television head on a small body, two antennas up.
-  tv: (p) => ({
-    parts: [
-      ...legs(p.dark),
-      box(-0.11, -0.07, 0.11, 0.07, 9, 29, p.body, p.light),
-      box(-0.17, -0.1, 0.17, 0.1, 29, 52, p.dark, p.body),
-      rect(0.103, -0.13, 0.13, 32, 49, p.light),
-      ...eyes(0.106, 42, 0.05),
-      rect(0.106, -0.03, 0.03, 36, 37.5, INK),
-      cyl(-0.07, 0, 0.01, 0.01, 52, 61, INK, 4), cyl(0.07, 0, 0.01, 0.01, 52, 61, INK, 4),
-    ],
-    chest: [0, 0.075, 19], top: 61,
-  }),
-  // A cook: a white coat with buttons and a tall puffed hat.
-  chef: (p) => ({
-    parts: [
-      ...legs(p.dark),
-      cyl(0, 0, 0.15, 0.13, 9, 31, mix(WHITE, p.light, 0.55), 12),
-      dot(0.135, 0, 17, 0.012, p.dark), dot(0.132, 0, 25, 0.012, p.dark),
-      box(-0.15, -0.02, 0.15, 0.02, 29, 31, p.body),
-      cyl(0, 0, 0.1, 0.1, 31, 45, SKIN, 10),
-      ...eyes(0.102, 39, 0.04),
-      cyl(0, 0, 0.1, 0.11, 45, 55, WHITE, 10),
-      cyl(0, 0, 0.125, 0.115, 55, 60, WHITE, 10),
-    ],
-    chest: [0, 0.14, 20], top: 60,
-  }),
-  // A cat: pointed ears and a tail curling up behind.
-  cat: (p) => ({
-    parts: [
-      box(-0.03, -0.2, 0.03, -0.12, 8, 34, p.dark),
-      ...legs(p.dark),
-      cyl(0, 0, 0.14, 0.13, 8, 30, p.body, 12),
-      cyl(0, 0, 0.13, 0.13, 30, 47, p.body, 12),
-      cyl(-0.08, 0, 0.05, 0, 44, 57, p.body, 4, Math.PI / 4), cyl(0.08, 0, 0.05, 0, 44, 57, p.body, 4, Math.PI / 4),
-      front(0.131, disc(0, 35, 0.045, 3, 8), p.light),
-      ...eyes(0.133, 41, 0.05, "#2c7a3a"),
-    ],
-    chest: [0, 0.135, 19], top: 57,
-  }),
-};
-
-/** A figure's model; built once per shape and colour. */
-export function figureModel(id: FigureId, palette: FigurePalette, cache: Map<string, FigureModel>): FigureModel {
-  const key = `${id}:${palette.body}`;
-  let m = cache.get(key);
-  if (!m) cache.set(key, (m = MAKERS[id](palette)));
-  return m;
+/** A folk avatar's eyes and mouth; Pudding's own (dot eyes, a smile) for any other avatar or none. */
+export function figureFace(avatar: string | null | undefined): FigureFace {
+  const hash = folkHash(avatar);
+  if (hash === null) return { eyes: "dot", mouth: "smile" };
+  const { eyes, mouth } = folkLook(hash);
+  return { eyes, mouth };
 }
 
-/** The turn every figure is drawn at: its face to you, a little of its right side showing. */
-export const FIGURE_TURN = -28;
 /**
- * Where a figure's feet are in its own picture box (the front of its footprint reaches a few px
- * lower), and how much smaller it is drawn than a building's grid.
+ * Where a figure stands in its actor box (58 × 64; seen from above, the front of its feet is ~10 px lower),
+ * and the side of the square its picture is drawn in.
  */
 export const FIGURE_FOOT: Vec2 = [29, 57];
-const FIGURE_SCALE = 0.82;
+export const FIGURE_SIZE = 80;
 
-export type DrawnFigure = { faces: DrawnFace[]; chest: Vec2; top: number };
+const S = FIGURE_SIZE;
+const OX = FIGURE_FOOT[0] - FIGURE_GEOMETRY.feet[0] * S;
+const OY = FIGURE_FOOT[1] - FIGURE_GEOMETRY.feet[1] * S;
+const at = ([x, y]: readonly [number, number]): Vec2 => [OX + x * S, OY + y * S];
 
-/** A figure as polygons in its own picture box (feet at FIGURE_FOOT), parts painted back to front. */
-export function drawFigure(model: FigureModel, L: Light): DrawnFigure {
-  const { ex, ey } = axes(FIGURE_TURN);
-  const k = FIGURE_SCALE;
-  const at = (v: Vec3): Vec2 => [FIGURE_FOOT[0] + k * (v[0] * ex[0] + v[1] * ey[0]), FIGURE_FOOT[1] + k * (v[0] * ex[1] + v[1] * ey[1] - v[2])];
-  const order = model.parts.map((pt) => ({ pt, key: pt.c[0] * ex[1] + pt.c[1] * ey[1] + 0.6 * pt.z0 })).sort((a, b) => a.key - b.key);
-  const faces: DrawnFace[] = [];
-  for (const { pt } of order) {
-    for (const f of pt.faces) {
-      const q = f.v.map(at);
-      let area = 0;
-      for (let i = 0; i < q.length; i++) {
-        const a = q[i]!, b = q[(i + 1) % q.length]!;
-        area += a[0] * b[1] - b[0] * a[1];
-      }
-      if (area <= 0.05) continue;
-      const fill = faceColor(f, L, false, false);
-      faces.push({ pts: q.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" "), fill, stroke: mix(fill, NIGHT, 0.3) });
-    }
-  }
-  return { faces, chest: at(model.chest), top: FIGURE_FOOT[1] - k * model.top };
+/** A layer in the actor box (px), and the same as CSS in % of the box (`left`, `top`, `width`, `height`). */
+export type FigureImage = { href: string; x: number; y: number; w: number; h: number; box: string };
+
+/** A figure in its actor box: its layers, where its arms turn and its mouth flips, and its pin. */
+export type DrawnFigure = {
+  figure: FigureId;
+  body: FigureImage;
+  front: FigureImage | null;
+  eyes: FigureImage;
+  blink: FigureImage;
+  mouth: FigureImage;
+  talk: FigureImage;
+  pin: FigureImage;
+  armL: FigureImage;
+  armR: FigureImage;
+  shoulderL: Vec2;
+  shoulderR: Vec2;
+  mouthAt: Vec2;
+  /** The pin's face, where the Bot's avatar goes: its centre and radius, and the avatar's box as CSS. */
+  chest: Vec2;
+  chestR: number;
+  avatarBox: string;
+  /** Where a badge over its head stands: a little above the top of its hat. */
+  top: number;
+};
+
+const hrefs = new Map<FigureLayer, string>();
+
+function image(name: FigureLayer): FigureImage {
+  const layer = FIGURE_LAYERS[name];
+  let href = hrefs.get(name);
+  if (!href) hrefs.set(name, (href = `data:image/webp;base64,${layer.webp}`));
+  const [x, y, w, h] = layer.box;
+  return place(href, OX + x * S, OY + y * S, w * S, h * S);
+}
+
+const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
+function place(href: string, x: number, y: number, w: number, h: number): FigureImage {
+  return { href, x, y, w, h, box: `left:${pct(x, 58)};top:${pct(y, 64)};width:${pct(w, 58)};height:${pct(h, 64)}` };
+}
+
+/** A point of the actor box as a CSS `transform-origin` in % of the box. */
+export const figureOrigin = ([x, y]: Vec2): string => `${pct(x, 58)} ${pct(y, 64)}`;
+
+const drawn = new Map<string, DrawnFigure>();
+
+/** A character's figure with a face; the same picture every time it is asked for. */
+export function drawFigure(figure: FigureId, face: FigureFace): DrawnFigure {
+  const key = `${figure}:${face.eyes}:${face.mouth}`;
+  let d = drawn.get(key);
+  if (d) return d;
+  const front = `${figure}-front`;
+  d = {
+    figure,
+    body: image(`${figure}-body`),
+    front: front in FIGURE_LAYERS ? image(front as FigureLayer) : null,
+    eyes: image(`eyes-${face.eyes}`),
+    blink: image("eyes-closed"),
+    mouth: image(`mouth-${face.mouth}`),
+    talk: image("mouth-open"),
+    pin: image("pin"),
+    armL: image(`${figure}-arm-l`),
+    armR: image(`${figure}-arm-r`),
+    shoulderL: at(FIGURE_GEOMETRY.shoulderL),
+    shoulderR: at(FIGURE_GEOMETRY.shoulderR),
+    mouthAt: at(FIGURE_GEOMETRY.mouth),
+    chest: at(FIGURE_GEOMETRY.pin),
+    chestR: FIGURE_GEOMETRY.pinR * S,
+    avatarBox: (() => {
+      const [cx, cy] = at(FIGURE_GEOMETRY.pin);
+      const r = FIGURE_GEOMETRY.pinR * S;
+      return place("", cx - r, cy - r, 2 * r, 2 * r).box;
+    })(),
+    top: Math.round(OY + FIGURE_GEOMETRY.top[figure] * S - 2),
+  };
+  drawn.set(key, d);
+  return d;
+}
+
+/**
+ * The hour's light on the figures: what `faceColor` does to a building's wall (a little warmer at
+ * golden hour, sunk toward the night colour after dark), as one colour laid over the figure at an
+ * opacity, masked by its own pictures; null by day. Not an SVG filter: WebKit draws a filtered
+ * picture at the zoom it first had and stretches it as the map zooms in.
+ */
+export function figureTint(L: LightLevel): { color: string; alpha: number } | null {
+  if (!L.w && !L.n) return null;
+  const aw = 0.12 * L.w;
+  const an = 0.36 * L.n;
+  // Warm then night: c·k + o, the same as mixing toward o / (1 − k) by 1 − k.
+  const alpha = 1 - (1 - aw) * (1 - an);
+  const warm = rgb("#ffb070");
+  const night = rgb(NIGHT);
+  const color = [0, 1, 2].map((i) => Math.round((warm[i]! * aw * (1 - an) + night[i]! * an) / alpha));
+  return { color: `rgb(${color.join(", ")})`, alpha: Number(alpha.toFixed(4)) };
 }
 
 function hash(s: string): number {
@@ -203,24 +142,17 @@ function hash(s: string): number {
 }
 
 /**
- * Each character's shape and colour, by its key (a Bot's id, a subagent's): the same character
- * always gets the same ones on a map of the same company, and no two characters of one map share
- * a shape or a colour while there are any left.
+ * Each character's figure, by its key (a Bot's id, a subagent's): the same character always gets the
+ * same one on a map of the same company, and no two characters of one map share one while there are
+ * any left.
  */
-export function assignFigures(keys: readonly string[]): { figure: FigureId; palette: FigurePalette }[] {
-  const shapes = new Set<FigureId>();
-  const colours = new Set<number>();
+export function assignFigures(keys: readonly string[]): FigureId[] {
+  const taken = new Set<FigureId>();
   return keys.map((key) => {
-    const h = hash(key);
-    let s = h % FIGURE_IDS.length;
-    for (let i = 0; i < FIGURE_IDS.length && shapes.has(FIGURE_IDS[s]!); i++) s = (s + 1) % FIGURE_IDS.length;
-    if (shapes.size >= FIGURE_IDS.length) shapes.clear();
-    shapes.add(FIGURE_IDS[s]!);
-    let c = Math.floor(h / FIGURE_IDS.length) % FIGURE_PALETTES.length;
-    for (let i = 0; i < FIGURE_PALETTES.length && colours.has(c); i++) c = (c + 1) % FIGURE_PALETTES.length;
-    if (colours.size >= FIGURE_PALETTES.length) colours.clear();
-    colours.add(c);
-    return { figure: FIGURE_IDS[s]!, palette: FIGURE_PALETTES[c]! };
+    let s = hash(key) % FIGURE_IDS.length;
+    for (let i = 0; i < FIGURE_IDS.length && taken.has(FIGURE_IDS[s]!); i++) s = (s + 1) % FIGURE_IDS.length;
+    if (taken.size >= FIGURE_IDS.length) taken.clear();
+    taken.add(FIGURE_IDS[s]!);
+    return FIGURE_IDS[s]!;
   });
 }
-

@@ -113,6 +113,8 @@ export type FrameInput = {
   t: T;
   /** Each character's name where the data has one (a Bot's), in place of 主线 and 分身 N. */
   names?: readonly (string | null)[];
+  /** Where each character's badge stands in its actor box, over the top of its hat (4 px down when not given). */
+  tops?: readonly number[];
 };
 
 /** A call's verb on a plate and a card, from its tool and what its command did. */
@@ -256,7 +258,8 @@ export function buildFrame(input: FrameInput): Frame {
     const d = D[tile]!;
     const door = doors.get(tile) ?? [s.b];
     const slot = door.indexOf(s.b);
-    const off = slot < 0 ? 0 : (slot - (door.length - 1) / 2) * 30;
+    // A figure is ~50 px wide with its arms: neighbours at one door stand 38 px apart, arms just touching.
+    const off = slot < 0 ? 0 : (slot - (door.length - 1) / 2) * 38;
     const [fx, fy] = proj(phi, d.gx + ax.front[0] * 0.47, d.gy + ax.front[1] * 0.47, d.island === "ext" ? LIFT : 0);
     let fails = 0;
     for (let q = 0; q <= s.j; q++) if (!calls[byWho[s.b]![q]!]!.ok) fails++;
@@ -267,7 +270,7 @@ export function buildFrame(input: FrameInput): Frame {
       present: s.out && (s.lead || !!call), walking, busy: s.out && !!call && !walking && idleMin <= 10,
       status, idleMin, verb: call ? verbOf(call, t) : "", file: call?.file ?? null, tile,
       model: call?.model ?? null, modelShort: modelLabel(call?.model), hasModel: !!call?.model, modelFamily: modelFamily(call?.model),
-      motion: MOTION[status], step: s.j + 1, fails, side: 1, lift: 0, badgeTop: Math.round(4 + (1 - scale) * 60), scale,
+      motion: MOTION[status], step: s.j + 1, fails, side: 1, lift: 0, badgeTop: Math.round((input.tops?.[s.b] ?? 4) + (1 - scale) * 60), scale,
     };
   });
   const ground = buildGround(phi);

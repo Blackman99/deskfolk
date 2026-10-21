@@ -192,7 +192,7 @@ test("a Bot conversation's map: its Bots in the workspace, each with its own nam
   const shapes = [...host.querySelectorAll(".tm-figure")].map((el) => el.getAttribute("data-figure"));
   expect(shapes).toHaveLength(2);
   expect(shapes[0]).not.toBe(shapes[1]);
-  expect(host.querySelector(".tm-figure image")?.getAttribute("href")).toBe(avatarSrc(generateBoringAvatar({ name: "导演" })));
+  expect(host.querySelector(".tm-figure .tm-pin-avatar")?.getAttribute("src")).toBe(avatarSrc(generateBoringAvatar({ name: "导演" })));
   expect(host.querySelector(".tm-side .tm-main-logo.is-face img")?.getAttribute("src")).toBe(avatarSrc(generateBoringAvatar({ name: "导演" })));
   // One card for each Bot, not a main line and subagents.
   expect(host.querySelectorAll(".tm-side .tm-main").length).toBe(2);
