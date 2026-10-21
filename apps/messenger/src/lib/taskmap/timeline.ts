@@ -18,8 +18,8 @@ export type Idle = { v0: number; v1: number; t0: number; t1: number };
 
 /** What it was asked: what you said, and how you answered its questions. */
 export type Quest =
-  | { kind: "say"; at: number; v: number; text: string }
-  | { kind: "answer"; at: number; v: number; askedAt: number; questions: string[]; answers: string[]; by: number };
+  | { kind: "say"; at: number; v: number; text: string; sessionId?: string }
+  | { kind: "answer"; at: number; v: number; askedAt: number; questions: string[]; answers: string[]; by: number; sessionId?: string };
 
 /** Moments worth a look, described rather than judged; the copy words them. */
 export type Moment =
@@ -31,7 +31,9 @@ export type Moment =
   | { kind: "approve"; who: number; v: number; v1: number; places: number[]; at: number }
   | { kind: "fail"; who: -1; v: number; v1: number; places: number[]; count: number; byWho: [number, number][] }
   | { kind: "long"; who: number; v: number; v1: number; places: number[]; tool: string; action: AgentShellAction | null; place: AgentToolPlace; ms: number; file: string | null }
-  | { kind: "loop"; who: number; v: number; v1: number; places: [number, number]; from: number; to: number; trips: number };
+  | { kind: "loop"; who: number; v: number; v1: number; places: [number, number]; from: number; to: number; trips: number }
+  /** A plan's Bot working in a conversation for the first time: its first one, or one it moved to. */
+  | { kind: "enter"; who: number; v: number; v1: number; places: number[]; at: number; sessionId: string; first: boolean };
 
 export type Timeline = {
   t0: number;
@@ -92,8 +94,9 @@ export function buildTimeline(data: MapData, map: DistrictMap, track = 996, lane
   const askedBy = (botId: string | undefined) => Math.max(0, botId ? data.characters.findIndex((c) => c.key === botId) : 0);
   const quests: Quest[] = data.said.map((line): Quest => {
     const at = Date.parse(line.at);
-    if (line.kind === "say") return { kind: "say", at, v: vOf(at), text: line.text };
-    return { kind: "answer", at, v: vOf(at), askedAt: Date.parse(line.asked_at), questions: line.questions, answers: line.answers, by: askedBy(line.bot_id) };
+    const where = line.session_id ? { sessionId: line.session_id } : {};
+    if (line.kind === "say") return { kind: "say", at, v: vOf(at), text: line.text, ...where };
+    return { kind: "answer", at, v: vOf(at), askedAt: Date.parse(line.asked_at), questions: line.questions, answers: line.answers, by: askedBy(line.bot_id), ...where };
   }).filter((q) => Number.isFinite(q.at)).sort((a, b) => a.at - b.at);
 
   const root = map.indexOf({ zone: "none" });
@@ -144,6 +147,18 @@ export function buildTimeline(data: MapData, map: DistrictMap, track = 996, lane
     .forEach(([c, i]) => moments.push({ kind: "long", who: c.who, v: v[i]!, v1: v[i]!, places: [placeOf[i]!], tool: c.tool, action: c.action ?? null, place: c.place, ms: c.durationMs, file: c.file }));
 
   data.characters.forEach((ch, who) => { if (ch.lead) moments.push(...loopsOf(calls, placeOf, v, who)); });
+
+  // A plan worked in more than one conversation: where each Bot took it up, and where it moved to.
+  if (data.source.kind === "plan" && data.source.sessions.length > 1) {
+    const seen = new Set<string>();
+    const started = new Set<number>();
+    calls.forEach((c, i) => {
+      if (!c.sessionId || seen.has(`${c.who}:${c.sessionId}`)) return;
+      seen.add(`${c.who}:${c.sessionId}`);
+      moments.push({ kind: "enter", who: c.who, v: v[i]!, v1: v[i]!, places: [placeOf[i]!], at: c.at, sessionId: c.sessionId, first: !started.has(c.who) });
+      started.add(c.who);
+    });
+  }
   moments.sort((a, b) => a.v - b.v);
 
   const n = Math.max(1, data.characters.length);

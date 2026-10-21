@@ -56,8 +56,12 @@ export type PaneContent =
   | { kind: "usage" }
   /** Roles (ADR 0082, a page of its own since ADR 0083): the app's own calls, their models and prompts. One. */
   | { kind: "roles" }
-  /** A project session's task map (ADR 0096): its agent's work drawn as a town of its folders. One per session. */
-  | { kind: "map"; sessionId: string };
+  /**
+   * A conversation's task map (ADR 0096, ADR 0097): a project session's agent at work, or one plan
+   * a Bot conversation took part in, wherever its Bots did it. One per conversation; `taskId` is the
+   * plan, as the flow's tab names its job — null or absent, the conversation's own pick.
+   */
+  | { kind: "map"; sessionId: string; taskId?: string | null };
 
 export type PaneKind = PaneContent["kind"];
 export type ChatContent = Extract<PaneContent, { kind: "chat" }>;
@@ -128,7 +132,7 @@ export function contentToParams(content: PaneContent): Record<string, string> {
     case "roles":
       return {};
     case "map":
-      return { sessionId: content.sessionId };
+      return content.taskId ? { sessionId: content.sessionId, taskId: content.taskId } : { sessionId: content.sessionId };
   }
 }
 
@@ -164,7 +168,7 @@ export function contentOfTab(tab: WorkbenchTab): PaneContent | null {
     case "roles":
       return { kind: "roles" };
     case "map":
-      return p.sessionId ? { kind: "map", sessionId: p.sessionId } : null;
+      return p.sessionId ? { kind: "map", sessionId: p.sessionId, ...(p.taskId ? { taskId: p.taskId } : {}) } : null;
     default:
       return null;
   }

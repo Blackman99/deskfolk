@@ -199,8 +199,15 @@ export function openContent(
   return placeNew(layout, content, opts);
 }
 
-/** A flow tab asked for with nothing to move to: no card, no ticket, and no job or the one it is on. */
+/**
+ * A flow tab asked for with nothing to move to: no card, no ticket, and no job or the one it is on.
+ * A map is the same: no plan in mind, or the one it shows.
+ */
 function keepsJob(existing: Located, content: PaneContent): boolean {
+  if (content.kind === "map") {
+    const its = contentOfTab(existing.tab);
+    return !content.taskId || (its?.kind === "map" && its.taskId === content.taskId);
+  }
   if (content.kind !== "trace" || content.focus || content.askNonce) return false;
   const its = contentOfTab(existing.tab);
   // A line's own board (ADR 0083) and a job's are not the same board: switching between them moves it.

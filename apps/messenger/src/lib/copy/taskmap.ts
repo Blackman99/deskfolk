@@ -58,6 +58,8 @@ export const zh = {
     fail: (n: number) => `工具调用失败 ${n} 次`,
     long: (verb: string, secs: number) => `一次${verb}花了 ${secs} 秒`,
     loop: (mins: number, a: string, b: string, trips: number) => `${mins} 分钟里 ${a} ↔ ${b} 来回 ${trips} 趟`,
+    enterFirst: (who: string, conv: string) => `${who}在${conv}里开始做这件事`,
+    enterMove: (who: string, conv: string) => `${who}转到${conv}里接着做`,
   },
   controls: {
     play: "播放回放", pause: "暂停回放", speed: "速度", toLive: "回到实时",
@@ -79,6 +81,19 @@ export const zh = {
     empty: "这里还没有 Bot 用工具的记录。从这一版起，Bot 每用一次工具，地图上就多一步；之前的工作没有记下地点，画不出来。",
     note: "数据来自应用记下的每次工具调用：地点、模型和结果，不带命令和文件内容；从这一版起才开始记。时间轴已压缩，超过 15 分钟的空档各算 4 秒。",
     truncated: (n: number) => `只画了最近 ${n} 步。`,
+  },
+  /** A plan's map (ADR 0097): this one thing, wherever its Bots did it. */
+  plan: {
+    empty: "这件事还没有 Bot 用工具的记录。从这一版起，Bot 每用一次工具，地图上就多一步；之前的工作没有记下地点，画不出来。",
+    noPlan: "这段对话里还没有一件事，地图画的是它里面的全部工作。",
+    across: (n: number) => `在 ${n} 段对话里`,
+    conv: {
+      group: (name: string) => `群「${name}」`,
+      direct: (name: string) => `和 ${name} 的私聊`,
+      bots: (names: string) => `${names} 的私聊`,
+      yours: "和你的私聊",
+      gone: "另一段对话",
+    },
   },
 };
 
@@ -139,6 +154,8 @@ export const en: CopyShape<typeof zh> = {
     fail: (n: number) => `${n} tool call${n === 1 ? "" : "s"} failed`,
     long: (verb: string, secs: number) => `One ${verb} took ${secs} s`,
     loop: (mins: number, a: string, b: string, trips: number) => `${trips} trips between ${a} and ${b} in ${mins} min`,
+    enterFirst: (who: string, conv: string) => `${who} took this up in ${conv}`,
+    enterMove: (who: string, conv: string) => `${who} carried on in ${conv}`,
   },
   controls: {
     play: "Play", pause: "Pause", speed: "Speed", toLive: "Back to live",
@@ -159,5 +176,17 @@ export const en: CopyShape<typeof zh> = {
     empty: "No Bot has used a tool here since the app began keeping where calls work. From this version each tool call adds a step to the map; earlier work was never placed, so it cannot be drawn.",
     note: "From the app's record of each tool call: where it worked, its model and whether it succeeded — never the commands or the files' contents; kept from this version on. The timeline is squeezed: a gap over 15 minutes takes 4 seconds.",
     truncated: (n: number) => `Only the last ${n} steps are drawn.`,
+  },
+  plan: {
+    empty: "No Bot has used a tool for this plan since the app began keeping where calls work. From this version each tool call adds a step to the map; earlier work was never placed, so it cannot be drawn.",
+    noPlan: "This conversation has no plan yet; the map draws all its work.",
+    across: (n: number) => `in ${n} conversations`,
+    conv: {
+      group: (name: string) => `the group “${name}”`,
+      direct: (name: string) => `your direct with ${name}`,
+      bots: (names: string) => `the direct ${names}`,
+      yours: "its direct with you",
+      gone: "another conversation",
+    },
   },
 };

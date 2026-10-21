@@ -32,13 +32,14 @@ export class AgentCallLog {
     const info = frame.agent_run ?? frame.bot_call;
     if (!info || typeof info.session_id !== "string" || !placeOk(info.place)) return;
     const actor = frame.agent_run ? frame.agent_run.agent_id : frame.bot_call!.bot_id;
+    const taskId = frame.bot_call?.task_id ?? null;
     let calls = this.#bySession.get(info.session_id);
     if (!calls) this.#bySession.set(info.session_id, (calls = new Map()));
     const at = Date.parse(info.at);
     const seen = calls.get(frame.id);
     if (frame.phase === "started") {
       if (seen) return;
-      calls.set(frame.id, { id: frame.id, sessionId: info.session_id, actor, tool: frame.name, info, startedAt: Number.isFinite(at) ? at : Date.now(), running: true, ok: null, durationMs: null });
+      calls.set(frame.id, { id: frame.id, sessionId: info.session_id, actor, turnId: frame.turn_id, taskId, tool: frame.name, info, startedAt: Number.isFinite(at) ? at : Date.now(), running: true, ok: null, durationMs: null });
       if (calls.size > KEEP) calls.delete(calls.keys().next().value!);
     } else {
       const started = seen?.startedAt ?? (Number.isFinite(at) ? at - (frame.duration_ms ?? 0) : Date.now());
@@ -46,6 +47,8 @@ export class AgentCallLog {
         id: frame.id,
         sessionId: info.session_id,
         actor: seen?.actor ?? actor,
+        turnId: frame.turn_id,
+        taskId: seen?.taskId ?? taskId,
         tool: frame.name,
         info: { ...(seen?.info ?? info), ...(info.model ? { model: info.model } : {}) },
         startedAt: started,
@@ -61,6 +64,12 @@ export class AgentCallLog {
   callsOf(sessionId: string): LiveCall[] {
     void this.revision;
     return [...(this.#bySession.get(sessionId)?.values() ?? [])].sort((a, b) => a.startedAt - b.startedAt);
+  }
+
+  /** Every session's calls, oldest first: a plan's map picks its own out of them by their turns. */
+  all(): LiveCall[] {
+    void this.revision;
+    return [...this.#bySession.values()].flatMap((calls) => [...calls.values()]).sort((a, b) => a.startedAt - b.startedAt);
   }
 
   /** Forget a session's calls once a replay holds them (or the connection was lost and the replay is refetched). */

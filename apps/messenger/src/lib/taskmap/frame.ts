@@ -19,6 +19,9 @@ export type FrameActor = {
   key: string;
   /** On the map all along, full size: the agent, or a Bot. */
   lead: boolean;
+  /** The conversation its step at the playhead was in, on a plan's map, and when that step began. */
+  sessionId: string | null;
+  at: number | null;
   short: string;
   /** What the subagent was sent to do; null for the agent. */
   description: string | null;
@@ -259,7 +262,7 @@ export function buildFrame(input: FrameInput): Frame {
     for (let q = 0; q <= s.j; q++) if (!calls[byWho[s.b]![q]!]!.ok) fails++;
     const scale = s.lead ? 1 : 0.78;
     return {
-      b: s.b, key: ch.key, lead: s.lead, short: input.names?.[s.b] ?? (s.b === 0 ? t.mainLane : t.subagent(s.b)), description: ch.description,
+      b: s.b, key: ch.key, lead: s.lead, sessionId: call?.sessionId ?? null, at: call?.at ?? null, short: input.names?.[s.b] ?? (s.b === 0 ? t.mainLane : t.subagent(s.b)), description: ch.description,
       x: Math.round(fx + off - 27.5), y: Math.round(fy - 59.5 + 1), z: 400 + (s.lead ? 10 + s.b : s.b),
       present: s.out && (s.lead || !!call), walking, busy: s.out && !!call && !walking && idleMin <= 10,
       status, idleMin, verb: call ? verbOf(call, t) : "", file: call?.file ?? null, tile,

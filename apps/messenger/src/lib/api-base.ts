@@ -12,6 +12,7 @@ import type {
   CreateProjectSessionRequest,
   PatchProjectSessionRequest,
   AgentReplay,
+  PlanReplay,
   SessionReplay,
   AgentRun,
   CreateHoldRequest,
@@ -251,6 +252,11 @@ export abstract class ApiBase<Row extends PendingRow> {
   /** Every tool call a project session's agent made, read back from its own session files (ADR 0095), for the task map. */
   async projectReplay(sessionId: string): Promise<AgentReplay> {
     return this.get<AgentReplay>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/replay`);
+  }
+
+  /** A plan's tool calls wherever its turns ran, each with where it worked and its conversation (ADR 0097), for the task map. */
+  async planReplay(taskId: string): Promise<PlanReplay> {
+    return this.get<PlanReplay>(`/v1/tasks/${encodeURIComponent(taskId)}/replay`);
   }
 
   /** A Bot conversation's tool calls with where each worked, as the app recorded them (ADR 0097), for the task map. */

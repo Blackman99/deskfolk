@@ -91,6 +91,8 @@
 		) => void;
 		/** Roles, on the engine the job runs under. Left out, the job names its engine without a way there. */
 		onOpenRoles?: (playbookId: string) => void;
+		/** This job's task map (ADR 0097), opened beside the flow; absent where no workbench holds it. */
+		onOpenMap?: (taskId: string) => void;
 		/** A width to lay out by instead of measuring one: stories and tests. */
 		width?: number;
 	}
@@ -124,6 +126,7 @@
 		controlsDisabled = false,
 		onOpenArtifact,
 		onOpenRoles,
+		onOpenMap,
 		width: fixedWidth
 	}: Props = $props();
 
@@ -555,6 +558,10 @@
 			{/if}
 			{#if engine}
 				<button type="button" class="job-chip" title={t.plan.job.engine.title} disabled={!engine.onOpen} onclick={() => engine?.onOpen?.()}>{t.plan.job.engine.chip(engine.name)}</button>
+			{/if}
+			{#if onOpenMap && job.currentId && !line}
+				{@const mapOf = job.currentId}
+				<button type="button" class="job-chip" title={t.taskmap.openLong} onclick={() => onOpenMap(mapOf)}>{t.taskmap.open}</button>
 			{/if}
 		{/snippet}
 		{#snippet middle()}

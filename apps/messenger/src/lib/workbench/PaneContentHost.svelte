@@ -184,6 +184,11 @@
 		if (content?.kind !== 'trace' || content.taskId === taskId) return;
 		onUpdateContent?.({ ...content, taskId });
 	}
+	/** The plan picked on a map, so the tab comes back to it (ADR 0097). */
+	function mapTask(taskId: string): void {
+		if (content?.kind !== 'map' || content.taskId === taskId) return;
+		onUpdateContent?.({ ...content, taskId });
+	}
 
 	let previewPane = $state<PreviewHandle | null>(null);
 	$effect(() => {
@@ -304,7 +309,7 @@
 	{#if session && !isFileDropSession(session)}
 		<div class="pane-map">
 			{#await import('../taskmap/TaskMap.svelte') then { default: TaskMap }}
-				<TaskMap {runtime} {t} {session} />
+				<TaskMap {runtime} {t} {session} taskId={content.taskId ?? null} onTask={mapTask} />
 			{/await}
 		</div>
 	{/if}
@@ -368,6 +373,7 @@
 				onLift={(hold) => runtime.liftHold(hold.id)}
 				controlsDisabled={runtime.connection !== 'connected'}
 				onOpenRoles={(id) => runtime.openRoles(null, id)}
+				onOpenMap={onOpenContent && !content.line ? (taskId) => onOpenContent({ kind: 'map', sessionId: content.sessionId, taskId }) : undefined}
 			>
 				{#snippet callEditor(role)}
 					{#await import('../settings/CallEditor.svelte') then { default: CallEditor }}

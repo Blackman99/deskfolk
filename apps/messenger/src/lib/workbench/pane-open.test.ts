@@ -394,6 +394,19 @@ test("asking for the board with no job in mind shows it on the job it has", () =
   expect(next.focus.leafId).toBe("b");
 });
 
+test("a map asked for with no plan in mind stays on its plan; asked for another, it turns to that one", () => {
+  const map = (taskId: string | null) => ({ kind: "map", sessionId: "s1", ...(taskId ? { taskId } : {}) }) as const;
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-chat")]),
+    makeLeaf("b", [tabFor(map("job-1"), "t-map")]),
+  ]), "a");
+  const kept = openContent(layout, map(null), ids);
+  expect(leafById(kept, "b")!.tabs[0]!.params).toEqual({ sessionId: "s1", taskId: "job-1" });
+  expect(kept.focus.leafId).toBe("b");
+  const turned = openContent(layout, map("job-2"), ids);
+  expect(leafById(turned, "b")!.tabs.map((tab) => tab.params)).toEqual([{ sessionId: "s1", taskId: "job-2" }]);
+});
+
 test("another conversation's board is its own pane", () => {
   const layout = layoutOf(makeLeaf("a", [tabFor(trace("s1", "job-1"), "t-trace")]));
   const next = openContent(layout, trace("s2", "job-9"), ids);

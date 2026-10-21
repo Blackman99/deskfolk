@@ -8,6 +8,7 @@ type T = Copy["taskmap"];
 /** A moment's dot on the timeline and its card: amber for loops and long calls, red for failures and refusals. */
 export const MOMENT_COLOR: Readonly<Record<Moment["kind"], string>> = {
   spawn: "#7d4fa3", ask: "#146a7c", say: "#146a7c", idle: "#95a2a8", reject: "#dc2626", approve: "#16a34a", fail: "#dc2626", long: "#d97706", loop: "#d97706",
+  enter: "#2563eb",
 };
 
 export type MomentText = { title: string; sub: string; color: string };
@@ -20,11 +21,14 @@ function waitText(ms: number, t: T): string {
 }
 
 /**
- * A moment in words. `who` names a character, `place` a district, `when` a clock time, and
- * `sentTo` what a subagent was sent to do (its name when nothing says); the words describe what
- * happened, not whether it was good.
+ * A moment in words. `who` names a character, `place` a district, `when` a clock time, `sentTo`
+ * what a subagent was sent to do (its name when nothing says), and `conv` a conversation; the
+ * words describe what happened, not whether it was good.
  */
-export function momentText(m: Moment, t: T, who: (b: number) => string, place: (q: number) => string, when: (at: number) => string, sentTo: (b: number) => string = who): MomentText {
+export function momentText(
+  m: Moment, t: T, who: (b: number) => string, place: (q: number) => string, when: (at: number) => string,
+  sentTo: (b: number) => string = who, conv: (sessionId: string, who?: number) => string = () => "",
+): MomentText {
   const color = MOMENT_COLOR[m.kind];
   switch (m.kind) {
     case "spawn":
@@ -43,6 +47,8 @@ export function momentText(m: Moment, t: T, who: (b: number) => string, place: (
       return { title: t.moments.fail(m.count), sub: m.byWho.map(([b, n]) => `${who(b)} ${n}`).join(" · "), color };
     case "long":
       return { title: t.moments.long(verbOf({ tool: m.tool, ...(m.action ? { action: m.action } : {}), place: m.place }, t), Math.round(m.ms / 1000)), sub: `${who(m.who)} · ${place(m.places[0] ?? 0)}${m.file ? ` · ${m.file}` : ""}`, color };
+    case "enter":
+      return { title: m.first ? t.moments.enterFirst(who(m.who), conv(m.sessionId, m.who)) : t.moments.enterMove(who(m.who), conv(m.sessionId, m.who)), sub: `${when(m.at)} · ${place(m.places[0] ?? 0)}`, color };
     case "loop":
       return { title: t.moments.loop(Math.max(1, Math.round((m.to - m.from) / 60000)), place(m.places[0]), place(m.places[1]), m.trips), sub: `${when(m.from)}–${when(m.to)}`, color };
   }

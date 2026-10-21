@@ -31,6 +31,7 @@ const samples: PaneContent[] = [
   { kind: "trace", sessionId: "s1", taskId: null, line: "m-9" },
   { kind: "roles" },
   { kind: "map", sessionId: "proj-1" },
+  { kind: "map", sessionId: "g-1", taskId: "task-1" },
   { kind: "trace", sessionId: "s1", taskId: "task-1", view: "board", ticket: "t-3", column: "review", askNonce: 5 },
   { kind: "trace", sessionId: "s1", taskId: "task-1", view: "spec", ticket: "t-3", askNonce: 6 },
   { kind: "terminal", terminalId: "term-1", cwd: "/work/real-bot" },

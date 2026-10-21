@@ -1,6 +1,7 @@
-import { AGENT_KINDS, generateBoringAvatar, type Bot, type Provider } from "@real-bot/protocol";
+import { AGENT_KINDS, generateBoringAvatar, USER_MEMBER, type Bot, type Provider, type SessionSummary } from "@real-bot/protocol";
 import { isFolkAvatar } from "../avatar.ts";
 import type { Copy } from "../copy.ts";
+import { activeMembers, classifySession } from "../sidebar/session-groups.ts";
 import { agentSource, endpointSource, runnerSource, type ModelSource } from "../model-source.ts";
 import type { MapData } from "./map-data.ts";
 
@@ -43,4 +44,20 @@ export function characterLooks(
     if (!bot) return { name: c.key.slice(0, 8), avatar: generateBoringAvatar({ name: c.key }), source: { kind: "custom", name: input.t.connectors.customMark } };
     return { name: bot.name, avatar: figureOf(bot.avatar, bot.name), source: botSource(bot, input.providers, input.defaultProviderId, input.t) };
   });
+}
+
+/**
+ * A conversation as a plan's map names it: a group by its name, your direct by its Bot (or, said of
+ * that Bot itself, as its direct with you), the Bots' own direct by both. One the window does not
+ * hold (deleted, or not listed) is just another one.
+ */
+export function conversationLabel(sessionId: string, sessions: readonly SessionSummary[], bots: readonly Bot[], t: Copy, of?: string): string {
+  const c = t.taskmap.plan.conv;
+  const session = sessions.find((s) => s.id === sessionId);
+  if (!session) return c.gone;
+  if (session.kind === "group") return c.group(session.name ?? "");
+  const members = activeMembers(session.participants).filter((member) => member !== USER_MEMBER);
+  const names = members.map((id) => bots.find((b) => b.id === id)?.name ?? id.slice(0, 8));
+  if (classifySession(session) !== "you-bot") return c.bots(names.join(" ↔ "));
+  return of && members[0] === of ? c.yours : c.direct(names[0] ?? "");
 }

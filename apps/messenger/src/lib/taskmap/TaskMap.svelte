@@ -1,13 +1,15 @@
 <script lang="ts">
-	import type { SessionSummary } from '@real-bot/protocol';
+	import type { SessionSummary, SessionTaskSummary } from '@real-bot/protocol';
 	import { untrack } from 'svelte';
+	import { defaultJob, planTitle } from '../overlays/plan-board.ts';
+	import TraceJobSwitcher from '../overlays/TraceJobSwitcher.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { characterLooks } from './characters.ts';
+	import { characterLooks, conversationLabel } from './characters.ts';
 	import { buildDistricts, type DistrictKind, type DistrictMap } from './districts.ts';
 	import { buildFrame, placeName, timeAt, verbOf, type WalkState } from './frame.ts';
 	import { placeDetail, tripsByPlace } from './inspect.ts';
-	import { fromAgentReplay, fromSessionReplay, mergeLive, type MapCall, type MapData } from './map-data.ts';
+	import { fromAgentReplay, fromPlanReplay, fromSessionReplay, mergeLive, type LiveCall, type MapCall, type MapData } from './map-data.ts';
 	import { MOMENT_COLOR, momentText } from './moment-text.ts';
 	import { normalizePhi, fitZoom, turnTarget } from './scene/camera.ts';
 	import { buildGround, lightAt, type ModelCache } from './scene/draw.ts';
@@ -19,14 +21,23 @@
 	import MapTimeline from './MapTimeline.svelte';
 
 	/**
-	 * A conversation's task map: a project session's agent at work, drawn as a town of the project's
-	 * folders with the subagents it sent out (ADR 0096), or a Bot conversation's Bots at work in the
-	 * workspace (ADR 0097). It reads the work back (from the agent's own files, or from the app's record
-	 * of each Bot call), then follows the tool calls live; the town is laid out once from what it read,
-	 * and what comes after folds into it.
+	 * A task map: a project session's agent at work, drawn as a town of the project's folders with the
+	 * subagents it sent out (ADR 0096), or, from a Bot conversation, one plan (这件事) its Bots worked
+	 * on, wherever they did it — the group, your directs, their directs with each other (ADR 0097). A
+	 * conversation with no plan yet draws its own work. It reads the work back (from the agent's own
+	 * files, or the app's record of each Bot call), then follows the tool calls live; the town is laid
+	 * out once from what it read, and what comes after folds into it.
 	 */
-	type Props = { runtime: MessengerRuntime; t: Copy; session: SessionSummary };
-	let { runtime, t, session }: Props = $props();
+	type Props = {
+		runtime: MessengerRuntime;
+		t: Copy;
+		session: SessionSummary;
+		/** The plan to open on, as the flow's tab does; null or absent: the conversation's own pick. */
+		taskId?: string | null;
+		/** The plan now on the map, so the tab comes back to it. */
+		onTask?: (taskId: string) => void;
+	};
+	let { runtime, t, session, taskId = null, onTask }: Props = $props();
 
 	const bots = $derived(session.kind !== 'project');
 	// A Bot map's places are the workspace's: its root, where messages, questions and plans are made, and what lies outside it.
@@ -46,6 +57,42 @@
 	/** The agent first, then each subagent; the agent wears the app's accent. */
 	const COLORS = ['#146a7c', '#3b5bdb', '#9c36b5', '#2b8a3e', '#c0623a', '#b45309'];
 	const colorOf = (b: number) => COLORS[b % COLORS.length]!;
+
+	// --- Which plan: the one picked here, else the one asked for if the conversation has it, else its newest work ---
+	const sessionId = $derived(session.id);
+	let jobs = $state<SessionTaskSummary[]>([]);
+	let jobsRead = $state(false);
+	let chosenPlan = $state<string | null>(null);
+	let switcherOpen = $state(false);
+	$effect(() => {
+		const id = sessionId;
+		if (!bots) return;
+		untrack(() => {
+			jobs = [];
+			jobsRead = false;
+			chosenPlan = null;
+			const api = runtime.client;
+			if (!api) return;
+			// A daemon that cannot list them (or an older one) leaves the conversation's own map.
+			Promise.resolve().then(() => api.sessionTasks(id)).then((listed) => { if (id === sessionId) jobs = listed; }).catch(() => {}).finally(() => { if (id === sessionId) jobsRead = true; });
+		});
+	});
+	// Asked for another plan (from the flow's 地图): that one, over what was picked here.
+	$effect(() => {
+		void taskId;
+		untrack(() => (chosenPlan = null));
+	});
+	const planId = $derived(
+		bots ? (chosenPlan ?? (taskId && jobs.some((job) => job.id === taskId) ? taskId : (defaultJob(jobs)?.id ?? null))) : null
+	);
+	// What an empty town says: a plan with nothing recorded yet, or a conversation with no plan.
+	const emptyText = $derived(bots && planId ? t.taskmap.plan.empty : tm.empty);
+	function pickPlan(id: string): void {
+		switcherOpen = false;
+		if (id === planId) return;
+		chosenPlan = id;
+		onTask?.(id);
+	}
 
 	// --- What it read, and what has happened since ---
 	let base = $state<MapData | null>(null);
@@ -67,7 +114,13 @@
 		const mine = ++seq;
 		try {
 			let data: MapData;
-			if (bots) {
+			const plan = planId;
+			if (bots && plan) {
+				const replay = await api.planReplay(plan);
+				if (mine !== seq) return;
+				data = fromPlanReplay(replay);
+				truncated = replay.truncated;
+			} else if (bots) {
 				const replay = await api.sessionReplay(session.id);
 				if (mine !== seq) return;
 				data = fromSessionReplay(replay);
@@ -77,7 +130,7 @@
 				if (mine !== seq) return;
 				data = fromAgentReplay(replay, agent);
 			}
-			const merged = mergeLive(data, runtime.agentCalls.callsOf(session.id));
+			const merged = mergeLive(data, untrack(liveOf), belongs);
 			// The town is laid out once; only a session grown half again is laid out anew, between runs.
 			if (!districts || merged.calls.length >= Math.max(laidFrom * 1.5, laidFrom + 4)) lay(merged.calls);
 			base = data;
@@ -90,10 +143,11 @@
 	}
 
 	// The pane hands over a new summary of the conversation on every change to it (each message, each
-	// step of a working Bot); only another conversation is read anew, or the town blinks out each time.
-	const sessionId = $derived(session.id);
+	// step of a working Bot); only another conversation, or another plan, is read anew, or the town
+	// blinks out each time. A Bot conversation waits for its plans to be listed before it reads one.
+	const shownKey = $derived(bots ? (jobsRead ? `${sessionId}:${planId ?? ''}` : null) : sessionId);
 	$effect(() => {
-		void sessionId;
+		if (shownKey === null) return;
 		untrack(() => {
 			base = null;
 			districts = null;
@@ -104,12 +158,22 @@
 	});
 
 	const run = $derived(runtime.snapshot.agentRuns[session.id] ?? null);
-	// A project session runs while its agent's run does; a Bot conversation while any of its turns does.
+	const working = (status: string) => status === 'running' || status === 'waiting_approval' || status === 'waiting_ask';
+	// A project session runs while its agent's run does; a plan while any of its turns does, wherever;
+	// a conversation with no plan while any of its turns does.
 	const liveRun = $derived(
-		bots
-			? runtime.snapshot.turns.some((turn) => turn.session_id === session.id && (turn.status === 'running' || turn.status === 'waiting_approval' || turn.status === 'waiting_ask'))
-			: run?.status === 'running' || run?.status === 'waiting_approval'
+		!bots
+			? run?.status === 'running' || run?.status === 'waiting_approval'
+			: planId
+				? runtime.snapshot.turns.some((turn) => turn.task_id === planId && working(turn.status))
+				: runtime.snapshot.turns.some((turn) => turn.session_id === session.id && working(turn.status))
 	);
+	// Which live calls are this map's: a plan's are its turns' — as the turn says now, so one filed into
+	// the plan mid-turn brings its earlier calls — in any conversation; otherwise the conversation's own.
+	const turnsById = $derived(new Map(runtime.snapshot.turns.map((turn) => [turn.id, turn])));
+	const belongs = (call: LiveCall): boolean =>
+		planId ? (turnsById.get(call.turnId)?.task_id ?? call.taskId) === planId : call.sessionId === session.id;
+	const liveOf = (): LiveCall[] => (planId ? runtime.agentCalls.all() : runtime.agentCalls.callsOf(session.id));
 	// A run that ends has written its calls down; a reconnect may have missed frames.
 	let wasLive = false;
 	$effect(() => {
@@ -120,12 +184,18 @@
 	let lastConnection = untrack(() => runtime.connection);
 	$effect(() => {
 		const c = runtime.connection;
-		if (c === 'connected' && lastConnection !== 'connected') untrack(() => { runtime.agentCalls.forget(session.id); void load(); });
+		if (c === 'connected' && lastConnection !== 'connected') {
+			untrack(() => {
+				const shown = base?.source.kind === 'plan' ? base.source.sessions : [];
+				for (const id of new Set([session.id, ...shown])) runtime.agentCalls.forget(id);
+				void load();
+			});
+		}
 		lastConnection = c;
 	});
 
-	const liveCalls = $derived(runtime.agentCalls.callsOf(session.id));
-	const data = $derived(base ? mergeLive(base, liveCalls) : null);
+	const liveCalls = $derived(liveOf());
+	const data = $derived(base ? mergeLive(base, liveCalls, belongs) : null);
 	// A new session's town is laid out by its first live calls, until one of its folders is a place.
 	$effect(() => {
 		if (!data || !districts || districts.districts.some((d) => d.kind === 'code')) return;
@@ -358,7 +428,7 @@
 		return { name: placeName(d, tm), path: d.kind === 'code' ? tail(full) : full, full, color: d.color, detail: placeDetail(data, tl, trips[sel] ?? [], sel, frame.idx, shown) };
 	});
 	const moments = $derived(
-		tl && data ? tl.moments.map((m) => ({ ...momentText(m, tm, (b) => who(b).short, placeOf, when, (b) => data.characters[b]?.description ?? who(b).short), v: m.v })) : []
+		tl && data ? tl.moments.map((m) => ({ ...momentText(m, tm, (b) => who(b).short, placeOf, when, (b) => data.characters[b]?.description ?? who(b).short, conv), v: m.v })) : []
 	);
 	const lanes = $derived(data ? data.characters.map((_, b) => ({ label: who(b).short, color: colorOf(b) })) : []);
 	const needle = $derived.by(() => { const ax = axes(phi); return (Math.atan2(-(ax.ex[0] + ax.ey[0]), ax.ex[1] + ax.ey[1]) * 180) / Math.PI; });
@@ -370,13 +440,26 @@
 	const regionLabels = $derived({
 		ext: islandLabel('ext', bots ? `${tm.places.service} · ${tm.places.outside}` : `${tm.places.outside} · ${tm.places.claude_home}`),
 		ws: islandLabel('ws', `${tm.places.git} · ${tm.places.other}`),
-		town: `${((bots ? runtime.snapshot.settings.workspace_path : session.project_dir) ?? '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''}/`
+		town: `${((data?.source.kind === 'plan' ? data.source.dir : bots ? runtime.snapshot.settings.workspace_path : session.project_dir) ?? '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''}/`
 	});
 	const wide = $derived(width >= 760);
 	const compact = $derived(size.w < 560 || size.h < 460);
+
+	// --- A plan across conversations: each one named the way the sidebar names it ---
+	const conv = (id: string, b?: number) =>
+		conversationLabel(id, runtime.snapshot.sessions, runtime.snapshot.bots, t, b === undefined ? undefined : data?.characters[b]?.key);
+	const across = $derived(data?.source.kind === 'plan' ? data.source.sessions.length : 0);
+	const shownJob = $derived(jobs.find((job) => job.id === planId) ?? null);
 </script>
 
-<div class="taskmap" class:is-wide={wide} bind:this={rootEl}>
+<div class="taskmap" class:is-wide={wide} class:has-head={bots && jobs.length > 0} bind:this={rootEl}>
+	{#if bots && jobs.length > 0}
+		<!-- Which plan: switched as the flow's tab switches its job. -->
+		<header class="tm-head">
+			<TraceJobSwitcher {jobs} currentId={planId} heading={shownJob ? planTitle(shownJob) : ''} {t} bind:open={switcherOpen} onSelectJob={pickPlan} />
+			{#if across > 1}<span class="tm-head-meta">{tm.plan.across(across)}</span>{/if}
+		</header>
+	{/if}
 	<div class="tm-stage" style:background="linear-gradient(180deg, {frame?.sky.top ?? '#cfe7f2'} 0%, {frame?.sky.bottom ?? '#eef6ec'} 100%)" bind:this={sceneEl}>
 		{#if frame && districts && data}
 			<MapScene
@@ -425,7 +508,7 @@
 				onClosePlace={() => (sel = -1)}
 				onJump={seek}
 			/>
-			{#if data.calls.length === 0}<p class="tm-empty">{tm.empty}</p>{/if}
+			{#if data.calls.length === 0}<p class="tm-empty">{emptyText}</p>{/if}
 		{:else if failed}
 			<p class="tm-empty">{tm.failed(failed)}</p>
 		{:else if loading}
@@ -468,9 +551,12 @@
 				{moments}
 				live={frame?.live ?? -1}
 				{when}
+				{conv}
+				showConv={across > 1}
 				onFollow={toggleFollow}
 				onJump={seek}
 			/>
+			{#if bots && jobsRead && !planId}<p class="tm-note">{tm.plan.noPlan}</p>{/if}
 			<p class="tm-note">{truncated ? `${tm.bots.truncated(data.calls.length)} ` : ''}{tm.note}</p>
 		</aside>
 	{/if}
@@ -484,6 +570,15 @@
 	.taskmap.is-wide .tm-stage { grid-column: 1; grid-row: 1; }
 	.taskmap.is-wide .tm-clock { grid-column: 1; grid-row: 2; }
 	.taskmap.is-wide .tm-aside { grid-column: 2; grid-row: 1 / span 2; overflow-y: auto; border-left: 1px solid var(--line-subtle); }
+	/* A Bot conversation's map has the plan switcher above the town; the side column runs beside both. */
+	.taskmap.has-head { grid-template-rows: auto minmax(220px, 1fr) auto minmax(120px, 38%); }
+	.taskmap.is-wide.has-head { grid-template-rows: auto minmax(0, 1fr) auto; }
+	.taskmap.is-wide.has-head .tm-head { grid-column: 1; grid-row: 1; }
+	.taskmap.is-wide.has-head .tm-stage { grid-row: 2; }
+	.taskmap.is-wide.has-head .tm-clock { grid-row: 3; }
+	.taskmap.is-wide.has-head .tm-aside { grid-row: 1 / span 3; }
+	.tm-head { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px 12px; border-bottom: 1px solid var(--line-subtle); background: var(--pane); }
+	.tm-head-meta { flex: none; font-size: var(--text-small); color: var(--muted); }
 	.tm-aside { padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; }
 	/* Stacked under the town, the cards scroll together rather than each in its own box. */
 	.taskmap:not(.is-wide) .tm-aside { border-top: 1px solid var(--line-subtle); }

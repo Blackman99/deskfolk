@@ -27,19 +27,30 @@
 		moments: readonly (MomentText & { v: number })[];
 		live: number;
 		when: (at: number) => string;
+		/** A conversation by name, and whether to say it: a plan worked in more than one. */
+		conv?: (sessionId: string) => string;
+		showConv?: boolean;
 		onFollow: (b: number) => void;
 		onJump: (v: number) => void;
 	};
 
-	let { t, looks, faces, actors, colors, place, follow, quests, quest, moments, live, when, onFollow, onJump }: Props = $props();
+	let { t, looks, faces, actors, colors, place, follow, quests, quest, moments, live, when, conv = () => '', showConv = false, onFollow, onJump }: Props = $props();
 
 	const leads = $derived(actors.filter((a) => a.lead));
 	const subs = $derived(actors.filter((a) => !a.lead));
-	const forLine = $derived.by(() => {
-		const q = quests[quest];
+	/**
+	 * The line a lead is working for. A project session's agent, the one at the playhead; a Bot, your
+	 * newest line before its step, in the conversation of that step when the plan is in several.
+	 */
+	const forLineOf = (a: FrameActor): string => {
+		let q: Quest | undefined;
+		if (!faces) q = quests[quest];
+		else if (a.at !== null) {
+			for (const line of quests) if (line.at <= a.at && (!showConv || !a.sessionId || line.sessionId === a.sessionId)) q = line;
+		}
 		if (!q) return '';
 		return q.kind === 'say' ? t.forLine(q.text.slice(0, 40)) : t.forAnswer(q.answers.join('；').slice(0, 40));
-	});
+	};
 	const CHIP: Record<string, string> = { work: 'is-work', walk: 'is-walk', idle: 'is-idle', fail: 'is-fail', back: 'is-back', none: 'is-idle' };
 
 	// A long list of what was asked scrolls in its card; the line being worked for is kept in sight,
@@ -69,6 +80,7 @@
 	{#each leads as main (main.key)}
 		{@const look = looks[main.b]}
 		{@const name = look?.name ?? main.short}
+		{@const forLine = forLineOf(main)}
 		<section class="tm-scard">
 			<div class="tm-main">
 				<span class="tm-main-logo" class:is-face={faces} style:box-shadow="0 0 0 2px var(--pane), 0 0 0 3.5px {colors[main.b]}">
@@ -81,7 +93,7 @@
 						<button type="button" class="tm-follow-btn" class:is-on={follow === main.b} aria-pressed={follow === main.b} aria-label={follow === main.b ? t.stopFollowOf(name) : t.followOf(name)} onclick={() => onFollow(main.b)}>{t.follow}</button>
 					</div>
 					<p class="tm-clip">{main.verb ? `${t.at(place(main.tile))} · ${main.verb}${main.file ? ` ${main.file}` : ''}` : t.status.none}</p>
-					<p class="tm-clip tm-muted">{main.b === 0 ? `${forLine}${forLine ? ' · ' : ''}` : ''}{t.stepLine(main.step, main.fails)}</p>
+					<p class="tm-clip tm-muted">{showConv && main.sessionId ? `${conv(main.sessionId)} · ` : ''}{forLine ? `${forLine} · ` : ''}{t.stepLine(main.step, main.fails)}</p>
 					{#if main.hasModel && look}<p class="tm-clip tm-exec"><MapLogo source={look.source} size={12} />{t.ranBy(look.source.name, main.modelShort)}</p>{/if}
 				</div>
 			</div>
@@ -111,7 +123,7 @@
 				{#each quests as q, i (i)}
 					<button type="button" class="tm-item" class:is-now={i === quest} class:is-later={i > quest} onclick={() => onJump(q.v)}>
 						<span class="tm-mono tm-muted">{when(q.at)}</span>
-						<span class="tm-item-text"><b>{q.kind === 'say' ? t.card.you : t.card.answer}</b> {q.kind === 'say' ? q.text : q.answers.join('；')}</span>
+						<span class="tm-item-text"><b>{q.kind === 'say' ? t.card.you : t.card.answer}</b>{#if showConv && q.sessionId}<span class="tm-conv">{conv(q.sessionId)}</span>{/if} {q.kind === 'say' ? q.text : q.answers.join('；')}</span>
 					</button>
 				{/each}
 			</div>
@@ -176,6 +188,7 @@
 	.tm-item:focus-visible, .tm-moment:focus-visible, .tm-follow-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 	.tm-item-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.tm-item-text b { color: var(--accent); }
+	.tm-conv { margin-left: 4px; padding: 0 5px; border-radius: var(--radius-sm); background: var(--chip); color: var(--ink-secondary); font-size: var(--text-micro); }
 	.tm-mdot { width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 5px; }
 	.tm-mtitle { display: block; font-weight: 600; }
 	.tm-msub { display: block; font-size: var(--text-micro); color: var(--muted); }

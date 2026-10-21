@@ -3,15 +3,17 @@ import type {
   AgentReplayDecision,
   AgentShellAction,
   AgentToolPlace,
+  PlanReplay,
   ProjectAgent,
   SessionReplay,
+  SessionReplayCall,
   SessionReplayLine,
 } from "@real-bot/protocol";
 
 /**
- * What the task map draws, whoever's work it is. A project session's replay (ADR 0095) and a Bot
- * conversation's (ADR 0097) are read into it here, and the calls seen live are merged on top; the
- * scene and the timeline only read this.
+ * What the task map draws, whoever's work it is. A project session's replay (ADR 0095), a plan's
+ * across its conversations and a Bot conversation's (ADR 0097) are read into it here, and the calls
+ * seen live are merged on top; the scene and the timeline only read this.
  */
 export type MapCall = {
   /** The tool call's id; a live call and the same call in a later replay share it. */
@@ -30,6 +32,8 @@ export type MapCall = {
   decision: AgentReplayDecision | null;
   /** Seen on the event stream and still going: no result yet. */
   running?: boolean;
+  /** The conversation it was made in, on a plan's map: a plan's work can be in several. */
+  sessionId?: string;
 };
 
 export type MapCharacter = {
@@ -54,6 +58,9 @@ export type LiveCall = {
   sessionId: string;
   /** The subagent (null for the agent itself) or the Bot that made it. */
   actor: string | null;
+  /** Its turn, to tell which plan it is in now; the plan it said at its start, for a turn no longer known. */
+  turnId: string;
+  taskId: string | null;
   tool: string;
   info: { place: AgentToolPlace; action?: AgentShellAction; model: string | null; at: string; ok?: boolean };
   startedAt: number;
@@ -64,11 +71,12 @@ export type LiveCall = {
 
 export type MapData = {
   sessionId: string;
-  /** A project session's agent (for its logo), or a conversation of Bots. */
-  source: { kind: "project"; agent: ProjectAgent } | { kind: "bots" };
+  /** A project session's agent (for its logo), a plan's Bots wherever they worked, or a conversation of Bots. */
+  source: { kind: "project"; agent: ProjectAgent } | { kind: "plan"; taskId: string; title: string; dir: string; sessions: string[] } | { kind: "bots" };
   calls: MapCall[];
   characters: MapCharacter[];
-  said: SessionReplayLine[];
+  /** What you said; a plan's lines also say where. */
+  said: (SessionReplayLine & { session_id?: string })[];
 };
 
 const MAIN = "main";
@@ -133,11 +141,16 @@ export function fromAgentReplay(replay: AgentReplay, agent: ProjectAgent): MapDa
   return { sessionId: replay.session_id, source: { kind: "project", agent }, calls, characters, said: replay.said };
 }
 
-/** A Bot conversation's replay as map data: every Bot a lead, in the order they first worked. */
-export function fromSessionReplay(replay: SessionReplay): MapData {
+/** Bots' calls as map data: every Bot a lead, in the order they first worked. */
+function fromBotCalls(
+  sessionId: string,
+  replay: { calls: (SessionReplayCall & { session_id?: string })[]; bots: string[] },
+  source: MapData["source"],
+  said: MapData["said"],
+): MapData {
   const raw = replay.calls
     .map((c) => ({ c, at: ms(c.at) }))
-    .filter((x): x is { c: SessionReplay["calls"][number]; at: number } => x.at !== null)
+    .filter((x): x is { c: SessionReplayCall & { session_id?: string }; at: number } => x.at !== null)
     .sort((a, b) => a.at - b.at || a.c.id.localeCompare(b.c.id));
   const order = [...replay.bots, ...raw.map((x) => x.c.bot_id).filter((id) => !replay.bots.includes(id))];
   const keys = [...new Set(order)];
@@ -161,25 +174,37 @@ export function fromSessionReplay(replay: SessionReplay): MapData {
       durationMs: c.duration_ms,
       model: c.model,
       decision: c.decision,
+      ...(c.session_id ? { sessionId: c.session_id } : {}),
     };
   });
-  return { sessionId: replay.session_id, source: { kind: "bots" }, calls, characters, said: replay.said };
+  return { sessionId, source, calls, characters, said };
+}
+
+/** A Bot conversation's replay as map data. */
+export function fromSessionReplay(replay: SessionReplay): MapData {
+  return fromBotCalls(replay.session_id, replay, { kind: "bots" }, replay.said);
+}
+
+/** A plan's replay as map data: its Bots wherever they worked, each call with its conversation. */
+export function fromPlanReplay(replay: PlanReplay): MapData {
+  return fromBotCalls(`plan:${replay.task_id}`, replay, { kind: "plan", taskId: replay.task_id, title: replay.title, dir: replay.dir, sessions: replay.sessions }, replay.said);
 }
 
 /**
  * The replay with what has happened since: live calls it does not hold yet are added (a subagent
  * first seen live gets a character with no description until the next replay names it), and a call
- * both hold takes the live result only while the replay has none.
+ * both hold takes the live result only while the replay has none. `belongs` says which live calls
+ * are this map's: by default the ones in its conversation; a plan's map asks of each call's turn.
  */
-export function mergeLive(data: MapData, live: readonly LiveCall[]): MapData {
+export function mergeLive(data: MapData, live: readonly LiveCall[], belongs: (call: LiveCall) => boolean = (call) => call.sessionId === data.sessionId): MapData {
   if (live.length === 0) return data;
   const known = new Set(data.calls.map((c) => c.id));
-  const fresh = live.filter((c) => !known.has(c.id) && c.sessionId === data.sessionId);
+  const fresh = live.filter((c) => !known.has(c.id) && belongs(c));
   if (fresh.length === 0) return data;
   const characters = data.characters.map((c) => ({ ...c }));
   const index = new Map(characters.map((c, i) => [c.key, i]));
   const calls = [...data.calls];
-  const bots = data.source.kind === "bots";
+  const bots = data.source.kind !== "project";
   for (const call of [...fresh].sort((a, b) => a.startedAt - b.startedAt)) {
     const key = call.actor ?? MAIN;
     let who = index.get(key);
@@ -205,6 +230,7 @@ export function mergeLive(data: MapData, live: readonly LiveCall[]): MapData {
       model: call.info.model,
       decision: null,
       ...(call.running ? { running: true } : {}),
+      ...(data.source.kind === "plan" ? { sessionId: call.sessionId } : {}),
     });
   }
   calls.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
