@@ -8,15 +8,12 @@ shadow is not a layer: the messenger draws it, so a hopping folk leaves it on th
 
 Run with Blender 5.2 (headless):
   Blender -b --factory-startup --python render.py -- OUT_DIR
-then `python3 build.py OUT_DIR` writes src/folk-avatar-assets.ts.
+then `python3 build.py OUT_DIR` writes src/folk-avatar-assets.ts. The task map's characters
+(apps/messenger/scripts/map-figures) import `Folk` and `setup_scene` from here, aimed from above.
 """
 import bpy, bmesh, math, os, sys, glob, json
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector, Matrix
-
-argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
-OUT = os.path.abspath(argv[0] if argv else 'folk-layers')
-os.makedirs(OUT, exist_ok=True)
 
 MUSTARD = '#f0ab3d'
 # A shade more orange than the mark's mustard: soft light washes a sphere toward yellow, and this
@@ -254,7 +251,9 @@ class Folk:
                 b.harden_normals = True
 
 
-def setup_scene():
+def setup_scene(el_deg=8, turn_deg=0, frame=FRAME, center_z=CENTER_Z, px=512):
+    """An empty scene with the folk's lights and an orthographic camera `el_deg` above the horizon;
+    `turn_deg` swings camera and lights together about the folk (the avatar is seen from the front)."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
     col = scene.collection
@@ -266,6 +265,10 @@ def setup_scene():
         c = o.constraints.new('TRACK_TO')
         c.target, c.track_axis, c.up_axis = t, 'TRACK_NEGATIVE_Z', 'UP_Y'
 
+    a = math.radians(turn_deg)
+    def turned(p):
+        return (p[0] * math.cos(a) - p[1] * math.sin(a), p[0] * math.sin(a) + p[1] * math.cos(a), p[2])
+
     for name, loc, energy, size, color in [
         ('Key', (-0.6, -1.2, 0.9), 100, 0.9, (1.0, 0.96, 0.9)),
         ('Fill', (1.0, -1.0, 0.35), float(os.environ.get('FOLK_FILL', '70')), 1.0, (0.92, 0.96, 1.0)),
@@ -275,8 +278,8 @@ def setup_scene():
         ld.energy, ld.size, ld.color = energy, size, color
         o = bpy.data.objects.new(name, ld)
         col.objects.link(o)
-        o.location = loc
-        look_at(o, (0, 0, CENTER_Z))
+        o.location = turned(loc)
+        look_at(o, (0, 0, center_z))
 
     world = bpy.data.worlds.new('World')
     scene.world = world
@@ -291,18 +294,19 @@ def setup_scene():
         world.node_tree.links.new(env.outputs['Color'], bg.inputs['Color'])
     bg.inputs['Strength'].default_value = float(os.environ.get('FOLK_WORLD', '0.9'))
 
-    el = math.radians(8)
+    el = math.radians(el_deg)
     cd = bpy.data.cameras.new('Camera')
-    cd.type, cd.ortho_scale = 'ORTHO', FRAME
+    cd.type, cd.ortho_scale = 'ORTHO', frame
     cam = bpy.data.objects.new('Camera', cd)
     col.objects.link(cam)
-    cam.location = (0, -2 * math.cos(el), CENTER_Z + 2 * math.sin(el))
-    look_at(cam, (0, 0, CENTER_Z))
+    x, y, _ = turned((0, -2 * math.cos(el), 0))
+    cam.location = (x, y, center_z + 2 * math.sin(el))
+    look_at(cam, (0, 0, center_z))
     scene.camera = cam
 
     r = scene.render
     r.engine = 'CYCLES'
-    r.resolution_x = r.resolution_y = 512
+    r.resolution_x = r.resolution_y = px
     r.film_transparent = True
     r.image_settings.color_mode = 'RGBA'
     scene.cycles.samples = 256
@@ -332,35 +336,40 @@ def render(name, build, holdout):
     print('rendered', name)
 
 
-LAYERS = [('body', lambda f: f.body(), False)]
-for side, s_ in (('l', -1), ('r', 1)):
-    LAYERS.append((f'arm-{side}', lambda f, s_=s_: (f.body(), f.arm(s_, 'part')), True))
-for style in ('dot', 'happy', 'wink', 'closed'):
-    LAYERS.append((f'eyes-{style}', lambda f, s=style: (f.body(), f.eyes(s)), True))
-for style in ('smile', 'open', 'cat'):
-    LAYERS.append((f'mouth-{style}', lambda f, s=style: (f.body(), f.mouth(s)), True))
-for kind in ('sprout', 'antenna', 'bow', 'headphones'):
-    LAYERS.append((f'acc-{kind}', lambda f, k=kind: (f.body(), f.accessory(k)), True))
+if __name__ == '__main__':
+    argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
+    OUT = os.path.abspath(argv[0] if argv else 'folk-layers')
+    os.makedirs(OUT, exist_ok=True)
 
-only = set(argv[1].split(',')) if len(argv) > 1 else None
-for name, build, holdout in LAYERS:
-    if only is None or name in only:
-        render(name, build, holdout)
+    LAYERS = [('body', lambda f: f.body(), False)]
+    for side, s_ in (('l', -1), ('r', 1)):
+        LAYERS.append((f'arm-{side}', lambda f, s_=s_: (f.body(), f.arm(s_, 'part')), True))
+    for style in ('dot', 'happy', 'wink', 'closed'):
+        LAYERS.append((f'eyes-{style}', lambda f, s=style: (f.body(), f.eyes(s)), True))
+    for style in ('smile', 'open', 'cat'):
+        LAYERS.append((f'mouth-{style}', lambda f, s=style: (f.body(), f.mouth(s)), True))
+    for kind in ('sprout', 'antenna', 'bow', 'headphones'):
+        LAYERS.append((f'acc-{kind}', lambda f, k=kind: (f.body(), f.accessory(k)), True))
 
-# Where the animation pivots sit on the image, as fractions from the top-left corner.
-scene = setup_scene()
-folk = Folk()
-cam = scene.camera
-bpy.context.view_layer.update()
-def at(point):
-    v = world_to_camera_view(scene, cam, point)
-    return [round(v.x, 4), round(1 - v.y, 4)]
-meta = {
-    'shoulder_l': at(folk.shoulder(-1)[0]),
-    'shoulder_r': at(folk.shoulder(1)[0]),
-    'eyes': at(folk.surface_point(folk.dir(0, 0.2))[0]),
-    'head_top': at(folk.c + Vector((0, 0, folk.r * folk.sz))),
-    'feet': at(Vector((0, 0, 0))),
-}
-json.dump(meta, open(os.path.join(OUT, 'meta.json'), 'w'), indent=1)
-print('meta', meta)
+    only = set(argv[1].split(',')) if len(argv) > 1 else None
+    for name, build, holdout in LAYERS:
+        if only is None or name in only:
+            render(name, build, holdout)
+
+    # Where the animation pivots sit on the image, as fractions from the top-left corner.
+    scene = setup_scene()
+    folk = Folk()
+    cam = scene.camera
+    bpy.context.view_layer.update()
+    def at(point):
+        v = world_to_camera_view(scene, cam, point)
+        return [round(v.x, 4), round(1 - v.y, 4)]
+    meta = {
+        'shoulder_l': at(folk.shoulder(-1)[0]),
+        'shoulder_r': at(folk.shoulder(1)[0]),
+        'eyes': at(folk.surface_point(folk.dir(0, 0.2))[0]),
+        'head_top': at(folk.c + Vector((0, 0, folk.r * folk.sz))),
+        'feet': at(Vector((0, 0, 0))),
+    }
+    json.dump(meta, open(os.path.join(OUT, 'meta.json'), 'w'), indent=1)
+    print('meta', meta)
