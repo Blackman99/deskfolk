@@ -299,6 +299,7 @@
 					type="button"
 					class="modal-back"
 					aria-label={t.common.back}
+					title={t.common.back}
 					disabled={busy}
 					onclick={closeEdit}
 				>

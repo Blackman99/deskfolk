@@ -158,6 +158,7 @@
 				type="button"
 				class="sort-dir-btn"
 				aria-label={ledger.view.dir === 'asc' ? copy.ascending : copy.descending}
+				title={ledger.view.dir === 'asc' ? copy.ascending : copy.descending}
 				onclick={() => (ledger.view.dir = ledger.view.dir === 'asc' ? 'desc' : 'asc')}
 			>
 				{ledger.view.dir === 'asc' ? '↑' : '↓'}

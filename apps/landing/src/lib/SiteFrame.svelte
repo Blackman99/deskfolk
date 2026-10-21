@@ -76,6 +76,7 @@
           aria-expanded={menuOpen}
           aria-controls="site-menu"
           aria-label={menuOpen ? t.nav.closeMenu : t.nav.menu}
+          title={menuOpen ? t.nav.closeMenu : t.nav.menu}
           onclick={() => (menuOpen = !menuOpen)}
         >
           {#if menuOpen}

@@ -616,7 +616,7 @@
 			{/if}
 		</button>
 	{/if}
-	<button type="button" class="msg-image-close" aria-label={t.common.close} onclick={requestClose}>
+	<button type="button" class="msg-image-close" aria-label={t.common.close} title={t.common.close} onclick={requestClose}>
 		<Icon name="x" />
 	</button>
 	{#if offerOriginal !== null && shown}

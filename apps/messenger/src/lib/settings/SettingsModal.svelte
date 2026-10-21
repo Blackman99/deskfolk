@@ -450,6 +450,7 @@
 						type="button"
 						class="settings-mobile-back"
 						aria-label={locale === 'en' ? 'Back to settings' : '返回设置'}
+						title={locale === 'en' ? 'Back to settings' : '返回设置'}
 						onclick={() => void backWithinSettings()}
 					>
 						<Icon name="chevron-left" size={20} />

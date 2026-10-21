@@ -107,6 +107,7 @@
 				type="button"
 				class="modal-back"
 				aria-label={t.common.back}
+				title={t.common.back}
 				onclick={onClose}
 			>
 				<Icon name="chevron-left" />

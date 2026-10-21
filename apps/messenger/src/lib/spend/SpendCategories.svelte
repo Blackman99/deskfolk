@@ -100,7 +100,8 @@
 							<button
 								type="button"
 								class="kind-toggle row-icon"
-								aria-label={copy.expand}
+								aria-label={ledger.expanded[category.category] ? copy.collapse : copy.expand}
+								title={ledger.expanded[category.category] ? copy.collapse : copy.expand}
 								aria-expanded={!!ledger.expanded[category.category]}
 								onclick={() => ledger.toggleCategory(category.category)}
 							>

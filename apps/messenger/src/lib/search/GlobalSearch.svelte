@@ -147,7 +147,7 @@
 				oninput={(event) => void runtime.runSearch(event.currentTarget.value)}
 			/>
 			{#if runtime.searchQuery}
-				<button class="search-clear" type="button" aria-label={t.sidebar.searchClear} onclick={() => { void runtime.runSearch(''); input?.focus(); }}>
+				<button class="search-clear" type="button" aria-label={t.sidebar.searchClear} title={t.sidebar.searchClear} onclick={() => { void runtime.runSearch(''); input?.focus(); }}>
 					<Icon name="x" />
 				</button>
 			{/if}

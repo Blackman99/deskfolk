@@ -552,13 +552,13 @@
 				<div class="mp-sheet-grip" aria-hidden="true"></div>
 				<header class="mp-sheet-head">
 					{#if sheetDepth > 0}
-						<button type="button" class="mp-sheet-icon" aria-label={t.modelPicker.back} onclick={sheetBack}>
+						<button type="button" class="mp-sheet-icon" aria-label={t.modelPicker.back} title={t.modelPicker.back} onclick={sheetBack}>
 							<Icon name="chevron-left" size={20} />
 						</button>
 					{/if}
 					{#if sheetAt?.mark && sheetGroup === null}<ModelSourceMark source={sheetAt.mark} tile />{/if}
 					<h2 class="mp-sheet-title">{sheetTitle}</h2>
-					<button type="button" class="mp-sheet-icon" aria-label={t.modelPicker.close} onclick={() => close()}>
+					<button type="button" class="mp-sheet-icon" aria-label={t.modelPicker.close} title={t.modelPicker.close} onclick={() => close()}>
 						<Icon name="x" size={20} />
 					</button>
 				</header>

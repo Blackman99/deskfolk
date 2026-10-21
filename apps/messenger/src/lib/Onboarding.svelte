@@ -1110,7 +1110,7 @@
 											}
 										}}
 									/>
-									<button type="button" class="btn-add-custom" onclick={addCustomModel}>+</button>
+									<button type="button" class="btn-add-custom" aria-label={t.settings.modelsAddCustom} title={t.settings.modelsAddCustom} onclick={addCustomModel}>+</button>
 								</div>
 							</div>
 						{/if}

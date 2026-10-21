@@ -77,7 +77,7 @@
 		{#if title}
 			<header class="bottom-sheet-head">
 				<h2 class="bottom-sheet-title">{title}</h2>
-				<button type="button" class="bottom-sheet-close" aria-label={closeLabel} onclick={() => onClose()}>
+				<button type="button" class="bottom-sheet-close" aria-label={closeLabel} title={closeLabel} onclick={() => onClose()}>
 					<Icon name="x" size={20} />
 				</button>
 			</header>

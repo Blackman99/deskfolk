@@ -240,9 +240,9 @@
 		<div class="office-actions">
 			{#if phase === 'ready' && kind === 'presentation' && slideCount > 0}
 				<div class="office-pages">
-					<button type="button" aria-label={labels.previous} disabled={busy || slideIndex === 0} onclick={() => slide(slideIndex - 1)}>‹</button>
+					<button type="button" aria-label={labels.previous} title={labels.previous} disabled={busy || slideIndex === 0} onclick={() => slide(slideIndex - 1)}>‹</button>
 					<span aria-live="polite">{slideIndex + 1} / {slideCount}</span>
-					<button type="button" aria-label={labels.next} disabled={busy || slideIndex === slideCount - 1} onclick={() => slide(slideIndex + 1)}>›</button>
+					<button type="button" aria-label={labels.next} title={labels.next} disabled={busy || slideIndex === slideCount - 1} onclick={() => slide(slideIndex + 1)}>›</button>
 				</div>
 			{/if}
 			<button

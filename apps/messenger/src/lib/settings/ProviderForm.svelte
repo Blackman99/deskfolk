@@ -557,7 +557,7 @@
 						bind:value={filterQuery}
 					/>
 					{#if filterQuery}
-						<button type="button" class="model-search-clear" aria-label={t.settings.modelsClearSearch} onclick={() => (filterQuery = '')}>×</button>
+						<button type="button" class="model-search-clear" aria-label={t.settings.modelsClearSearch} title={t.settings.modelsClearSearch} onclick={() => (filterQuery = '')}>×</button>
 					{/if}
 					</div>
 					<div class="model-filter-actions">

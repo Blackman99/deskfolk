@@ -329,7 +329,7 @@
 					<Icon name="info" />
 					{locale === 'en' ? 'Schedule Rules & Availability' : '日程展开与运行规则'}
 				</span>
-				<button type="button" class="info-banner-close" aria-label={t.common.close} onclick={() => (showInfo = false)}>
+				<button type="button" class="info-banner-close" aria-label={t.common.close} title={t.common.close} onclick={() => (showInfo = false)}>
 					<Icon name="x" />
 				</button>
 			</div>
@@ -520,7 +520,7 @@
 								{/if}
 							</div>
 						</div>
-						<button type="button" class="detail-icon-close" aria-label={t.common.close} onclick={() => (openRoutineId = null)}>
+						<button type="button" class="detail-icon-close" aria-label={t.common.close} title={t.common.close} onclick={() => (openRoutineId = null)}>
 							<Icon name="x" />
 						</button>
 					</div>

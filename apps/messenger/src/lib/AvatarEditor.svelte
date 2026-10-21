@@ -133,6 +133,7 @@
 				onclick={openFilePicker}
 				disabled={uploading}
 				aria-label={t.sidebar.botAvatarCustom}
+				title={t.sidebar.botAvatarCustom}
 			>
 				{#if currentSrc}
 					<img src={currentSrc} alt={name || 'Bot avatar'} class="avatar-editor-img" />

@@ -335,7 +335,7 @@
 				{#if editor !== 'add'}
 					<AutosaveState {t} saving={autosave.saving} {failed} saved={autosave.savedTick > 0} />
 				{/if}
-				<button type="button" class="modal-close mcp-editor-dismiss" aria-label={t.common.close} disabled={busy} onclick={closeEditor}>✕</button>
+				<button type="button" class="modal-close mcp-editor-dismiss" aria-label={t.common.close} title={t.common.close} disabled={busy} onclick={closeEditor}>✕</button>
 				<!-- ✕ closes this editor; what is under it stays where it was. -->
 				<SettingsSubpageButton kind="close" label={t.common.close} disabled={busy} onclick={closeEditor} />
 			</div>

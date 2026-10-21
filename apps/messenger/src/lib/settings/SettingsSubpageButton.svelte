@@ -7,9 +7,9 @@
 	 */
 	interface Props {
 		kind: 'back' | 'close';
-		/** The `aria-label`. */
+		/** The `aria-label`; the hover text too, unless `title` says otherwise. */
 		label?: string;
-		/** The hover text. */
+		/** The hover text, when it differs from `label`. Either one stands in for the other. */
 		title?: string;
 		disabled?: boolean;
 		onclick: () => void;
@@ -19,11 +19,11 @@
 </script>
 
 {#if kind === 'back'}
-	<button type="button" class="settings-subpage-back" aria-label={label} {disabled} {onclick}>
+	<button type="button" class="settings-subpage-back" aria-label={label ?? title} title={title ?? label} {disabled} {onclick}>
 		<Icon name="chevron-left" size={20} />
 	</button>
 {:else}
-	<button type="button" class="modal-close settings-subpage-close" aria-label={label} {title} {disabled} {onclick}>✕</button>
+	<button type="button" class="modal-close settings-subpage-close" aria-label={label ?? title} title={title ?? label} {disabled} {onclick}>✕</button>
 {/if}
 
 <style>

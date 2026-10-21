@@ -306,7 +306,7 @@
 		novalidate
 	>
 		<div class="routine-page-head">
-			<button type="button" class="routine-page-back" aria-label={t.common.back} disabled={busy} onclick={close}>
+			<button type="button" class="routine-page-back" aria-label={t.common.back} title={t.common.back} disabled={busy} onclick={close}>
 				<Icon name="chevron-left" size={20} />
 			</button>
 			<div class="routine-page-titles">

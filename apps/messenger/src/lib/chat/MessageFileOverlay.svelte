@@ -75,7 +75,7 @@
 		<header class="msg-file-head">
 			<FileIcon icon={fileIconFor(shownPath, { isDir: shownAttachment?.is_dir === true })} size={16} />
 			<span class="msg-file-name" title={shownPath}>{name}</span>
-			<button type="button" class="msg-file-close" aria-label={t.common.close} onclick={close}>
+			<button type="button" class="msg-file-close" aria-label={t.common.close} title={t.common.close} onclick={close}>
 				<Icon name="x" />
 			</button>
 		</header>

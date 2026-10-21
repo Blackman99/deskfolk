@@ -61,14 +61,14 @@
 >
 	<div class="modal-dialog prompt-editor-modal settings-subpage">
 		<div class="modal-head settings-subpage-head">
-			<button type="button" class="settings-subpage-back" aria-label={c.back} onclick={() => onclose()}>
+			<button type="button" class="settings-subpage-back" aria-label={c.back} title={c.back} onclick={() => onclose()}>
 				<Icon name="chevron-left" size={20} />
 			</button>
 			<div class="prompt-editor-heading">
 				<h2 id="prompt-editor-title">{item.title[ui]}</h2>
 				<code class="prompt-editor-id">{item.id}</code>
 			</div>
-			<button type="button" class="modal-close" aria-label={t.common.close} onclick={() => onclose()}>✕</button>
+			<button type="button" class="modal-close" aria-label={t.common.close} title={t.common.close} onclick={() => onclose()}>✕</button>
 		</div>
 		<div class="modal-body prompt-editor-body">
 			{#key `${open.id}:${open.locale}`}

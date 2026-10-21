@@ -179,6 +179,7 @@
 				type="button"
 				class="group-detail-back"
 				aria-label={t.detail.backToSections}
+				title={t.detail.backToSections}
 				onclick={() => backFromDetail()}
 			>
 				<Icon name="chevron-left" size={20} />

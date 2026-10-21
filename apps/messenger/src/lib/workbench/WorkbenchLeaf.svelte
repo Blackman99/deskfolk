@@ -405,6 +405,7 @@
 							class="wb-tab-close"
 							tabindex="-1"
 							aria-label={t.pane.closeTab}
+							title={t.pane.closeTab}
 							onclick={(event) => {
 								event.stopPropagation();
 								onCloseTab(leaf.id, tab.id);
@@ -454,6 +455,7 @@
 				class="wb-pane-menu"
 				aria-haspopup="menu"
 				aria-label={t.pane.title}
+				title={t.pane.title}
 				onclick={(event) => onMenu(event, leaf.id)}><Icon name="more" /></button
 			>
 		{/if}

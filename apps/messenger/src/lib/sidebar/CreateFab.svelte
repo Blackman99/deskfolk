@@ -60,6 +60,7 @@
 		aria-haspopup="menu"
 		aria-expanded={createMenuOpen}
 		aria-label={t.sidebar.createMenu}
+		title={t.sidebar.createMenu}
 		onclick={() => (createMenuOpen = !createMenuOpen)}
 	>
 		<Icon name="plus" size={24} />

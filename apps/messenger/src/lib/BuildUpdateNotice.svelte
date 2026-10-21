@@ -22,6 +22,7 @@
 			type="button"
 			class="build-update-dismiss"
 			aria-label={t.common.close}
+			title={t.common.close}
 			data-testid="build-update-dismiss"
 			onclick={() => updates.dismiss()}
 		>

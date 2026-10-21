@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Every icon-only button has a tooltip
+
+- About thirty buttons that show only an icon said what they do to a screen reader but showed nothing when you held the pointer over them: the back arrows and ✕ on settings pages, editors, sheets and previews, a tab's ✕, the pane's ⋯, the clear buttons in search and the model filter, the slide arrows in a presentation preview, the sort and breakdown arrows on the spend page, the avatar upload and the + of the setup wizard's custom model. Each now shows its name as a tooltip. The spend page's breakdown arrow says "Hide kinds" once it is open instead of "Show kinds" either way, and the setup wizard's + now has a name for a screen reader too. The website's menu button gets a tooltip as well.
+
 ### A new Bot's duties keep their lines
 
 - An empty conversation with a Bot shows its duties above the suggestions, but ran their lines together, so a template's three duties read as one sentence ("…writes them up as the deliverable Writes scripts and code…"). Each duty now keeps its own line.

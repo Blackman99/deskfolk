@@ -715,7 +715,7 @@
 			aria-label={t.screen.keys}
 			onmousedown={(event) => event.preventDefault()}
 		>
-			<button type="button" class="screen-key is-action" aria-pressed={keyboardUp} aria-label={t.screen.keyboard} onclick={toggleKeyboard}>
+			<button type="button" class="screen-key is-action" aria-pressed={keyboardUp} aria-label={t.screen.keyboard} title={t.screen.keyboard} onclick={toggleKeyboard}>
 				<Icon name="keyboard" size={20} />
 			</button>
 			{#each modifiers as modifier (modifier.id)}

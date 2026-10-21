@@ -609,7 +609,7 @@
 		and the file's name. The desktop names the file on its tab and closes it there.
 	-->
 	<header class="artifact-pane-head" class:has-download={canDownload}>
-		<button type="button" class="artifact-back" aria-label={t.common.back} onclick={() => requestClose()}>
+		<button type="button" class="artifact-back" aria-label={t.common.back} title={t.common.back} onclick={() => requestClose()}>
 			<Icon name="chevron-left" size={20} />
 		</button>
 		<h2 class:is-dirty={dirty} title={titleName}>{titleName}</h2>

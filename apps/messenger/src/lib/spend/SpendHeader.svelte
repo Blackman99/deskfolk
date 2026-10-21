@@ -32,7 +32,7 @@
 	<div class="spend-toolbar">
 		<div class="spend-title-area">
 			{#if onClose}
-				<button type="button" class="icon-button back" aria-label={backLabel} onclick={onClose}>
+				<button type="button" class="icon-button back" aria-label={backLabel} title={backLabel} onclick={onClose}>
 					<SpendIcon name="back" />
 				</button>
 			{/if}

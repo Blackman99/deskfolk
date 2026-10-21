@@ -91,7 +91,7 @@
 >
 	<div class="modal-dialog bot-dm-dialog" data-session-id={session.id}>
 		<div class="modal-head">
-			<button type="button" class="modal-back" aria-label={t.common.back} onclick={onClose}>
+			<button type="button" class="modal-back" aria-label={t.common.back} title={t.common.back} onclick={onClose}>
 				<Icon name="chevron-left" />
 			</button>
 			<SessionAvatar {session} bots={botsById} size="sm" />
