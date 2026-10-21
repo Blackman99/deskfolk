@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { AGENT_KINDS, type AgentsStatusResponse, type BotRunner } from "@real-bot/protocol";
+import { AGENT_KINDS, type AgentsStatusResponse, type BotRunner, type ClaudeCodeModel } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { findPicked, sourceRows } from "../model-picker.ts";
 import { aProvider } from "../test-fixtures.ts";
@@ -362,6 +362,18 @@ test("the Claude picker is Claude Code's default above its aliases; a name that 
   const held = claudeModelPicker(t, "claude-opus-4-6");
   expect(held.specials.map((row) => row.value)).toEqual(["", "claude-opus-4-6"]);
   expect(findPicked(held, "claude-opus-4-6")?.source).toBeNull();
+});
+
+test("with Claude Code's own list the Claude picker offers its models by their names, the value beside; a name the list lacks stays a row", () => {
+  const list: ClaudeCodeModel[] = [
+    { value: "default", display_name: "Default (recommended)", description: "Opus 5.5", resolved_model: "claude-opus-5-5", efforts: ["low", "high"] },
+    { value: "opus", display_name: "Opus 5.5", description: "", resolved_model: "claude-opus-5-5", efforts: ["low", "high"] },
+    { value: "claude-haiku-4-5", display_name: "Haiku 4.5", description: "", resolved_model: "claude-haiku-4-5", efforts: [] },
+  ];
+  const data = claudeModelPicker(t, "", list);
+  expect(data.sources.map((source) => sourceRows(source).map((row) => [row.value, row.label, row.detail]))).toEqual([[["opus", "Opus 5.5", "opus"], ["claude-haiku-4-5", "Haiku 4.5", "claude-haiku-4-5"]]]);
+  expect(claudeModelPicker(t, "claude-haiku-4-5", list).specials).toHaveLength(1);
+  expect(claudeModelPicker(t, "fable", list).specials.map((row) => row.value)).toEqual(["", "fable"]);
 });
 
 const agents = (over: Record<string, unknown> = {}): AgentsStatusResponse => ({

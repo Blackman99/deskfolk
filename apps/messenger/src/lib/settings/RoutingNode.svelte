@@ -11,6 +11,7 @@
 		type SettingsPatch
 	} from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
+	import type { MessengerApi } from '../messenger-api.ts';
 	import PromptRowList from './PromptRowList.svelte';
 	import SideModelCard from './SideModelCard.svelte';
 	import { builtinModelsOf, builtinPatch } from './builtin-models.ts';
@@ -35,6 +36,8 @@
 		claudeStatus: (() => Promise<ClaudeCodeStatus>) | null;
 		/** The same for your other local agents. */
 		agents: (() => Promise<AgentsStatusResponse>) | null;
+		/** Asks Claude Code for its own model list (ADR 0095); null offers its aliases. */
+		claudeModels?: Pick<MessengerApi, 'claudeCodeModels'> | null;
 		promptsFailed: boolean;
 		ui: Locale;
 		botNames: ReadonlyMap<string, string>;
@@ -44,7 +47,7 @@
 		headless?: boolean;
 	}
 
-	let { role, view, providers, settings, defaultModel, patch, pickable, claudeStatus, agents, promptsFailed, ui, botNames, onopenprompt, t, headless = false }: Props = $props();
+	let { role, view, providers, settings, defaultModel, patch, pickable, claudeStatus, agents, claudeModels = null, promptsFailed, ui, botNames, onopenprompt, t, headless = false }: Props = $props();
 	const c = $derived(t.routing);
 	const name = $derived(t.builtinModels.roles[role].name);
 	const legacy = $derived(builtinModelsOf(settings).legacy);
@@ -80,6 +83,7 @@
 				failed={t.builtinModels.failed}
 				claude={offersAgents && claudeStatus ? { status: claudeStatus, note: t.builtinModels.claudeNote } : null}
 				agents={offersAgents ? agents : null}
+				{claudeModels}
 				{t}
 			/>
 		{/if}

@@ -1,12 +1,12 @@
 import {
   AGENT_KINDS,
-  CLAUDE_MODEL_ALIASES,
   isAgentModelName,
   type AgentStatus,
   type AgentsStatusResponse,
   type BotRunner,
   type Provider,
 } from "@real-bot/protocol";
+import { claudeModelOptions, type Choice } from "./claude-models.svelte.ts";
 import type { Copy } from "./copy.ts";
 import { groupModels, type PickerRow, type PickerSource } from "./model-picker.ts";
 import { agentSource, claudeAgentSource, endpointSource } from "./model-source.ts";
@@ -47,13 +47,20 @@ export function endpointPickerSources(
     .filter((source) => source.groups.length > 0);
 }
 
-/** Claude Code's models (ADR 0061): the aliases it takes, in the order given. */
-export function claudePickerSource(t: Copy, valueOf: (model: string) => string, models: readonly string[] = CLAUDE_MODEL_ALIASES): PickerSource {
+/**
+ * Claude Code's models (ADR 0061), in the order given: its own list for the account
+ * (`claudeModelOptions`), named as it names them with the value it takes beside, else its aliases.
+ */
+export function claudePickerSource(t: Copy, valueOf: (model: string) => string, models: readonly Choice[] = claudeModelOptions(null)): PickerSource {
   return {
     key: "agent:claude_code",
     label: t.claudeAgent.title,
     mark: claudeAgentSource(t),
-    groups: [{ key: "", label: null, rows: models.map((model) => ({ value: valueOf(model), label: model })) }],
+    groups: [{
+      key: "",
+      label: null,
+      rows: models.map((model) => ({ value: valueOf(model.value), id: model.value, label: model.label, ...(model.label !== model.value ? { detail: model.value } : {}) })),
+    }],
   };
 }
 

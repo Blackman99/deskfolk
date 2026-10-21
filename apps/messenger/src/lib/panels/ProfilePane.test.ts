@@ -545,7 +545,7 @@ function claudeStatus(over: Record<string, unknown> = {}) {
   };
 }
 
-function openOnClaude(bot: ReturnType<typeof aBot>, status: ReturnType<typeof claudeStatus> | null) {
+function openOnClaude(bot: ReturnType<typeof aBot>, status: ReturnType<typeof claudeStatus> | null, client: Record<string, unknown> = {}) {
   const runtime = fakeRuntime({ bots: [bot] });
   runtime.profileBotId = bot.id;
   (runtime as unknown as { client: unknown }).client = {
@@ -553,6 +553,7 @@ function openOnClaude(bot: ReturnType<typeof aBot>, status: ReturnType<typeof cl
       if (!status) throw Object.assign(new Error("not here"), { status: 404 });
       return status;
     },
+    ...client,
   };
   const view = render(ProfilePane, {
     runtime, bot, t, selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
@@ -610,6 +611,35 @@ test("a Claude Agent Bot picks its model among Claude's aliases, or Claude Code'
   expect(rowLabels(full.host)).toEqual([t.sidebar.botAgentModelDefault, "claude-opus-4-6", "sonnet", "opus", "haiku", "fable"]);
   expect(rowByValue(full.host, "claude-opus-4-6")?.classList.contains("is-selected")).toBe(true);
   full.close();
+});
+
+test("a Claude Agent Bot picks among the models Claude Code lists for its account; one that takes no thinking level hides it and clears the one set", async () => {
+  const { forgetClaudeModels } = await import("../claude-models.svelte.ts");
+  forgetClaudeModels();
+  const asked: Array<string | null> = [];
+  const claudeCodeModels = async (dir: string | null) => (asked.push(dir), { config_dir: dir, checked_at: "t", error: null, models: [
+      { value: "default", display_name: "Default (recommended)", description: "Opus 5.5", resolved_model: "claude-opus-5-5", efforts: ["low", "high"] },
+      { value: "opus", display_name: "Opus 5.5", description: "", resolved_model: "claude-opus-5-5", efforts: ["low", "high"] },
+      { value: "claude-haiku-4-5", display_name: "Haiku 4.5", description: "", resolved_model: "claude-haiku-4-5", efforts: [] },
+    ] });
+  const bot = aBot({ runner: "claude_code", agent_model: "opus", agent_effort: "high", agent_config_dir: "/Users/you/.claude-b" });
+  const { host, runtime, close } = openOnClaude(bot, claudeStatus(), { claudeCodeModels });
+  await sleep(30);
+  await settle();
+  expect(asked).toEqual(["/Users/you/.claude-b"]);
+  const effortShown = () => host.querySelector("#profile-agent-effort-label") !== null;
+  expect(effortShown()).toBe(true);
+  click(host.querySelector("#profile-agent-model"));
+  await settle();
+  expect(rowLabels(host)).toEqual([t.sidebar.botAgentModelDefault, "Opus 5.5", "Haiku 4.5"]);
+  click(rowByValue(host, "claude-haiku-4-5"));
+  await settle();
+  // Before the save comes back (this fake echoes nothing): the level is gone, and with it the picker.
+  expect(effortShown()).toBe(false);
+  await sleep(200);
+  expect(lastSave(runtime)).toMatchObject({ agent_model: "claude-haiku-4-5", agent_effort: null });
+  close();
+  forgetClaudeModels();
 });
 
 test("an effort picked for a Claude Agent Bot is saved as Claude Code's effort", async () => {

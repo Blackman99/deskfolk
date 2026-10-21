@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Every Claude model picker lists Claude Code's full list
+
+- A Claude Agent Bot's model (when creating it and in the Bot panel), the setup wizard, the Roles page's Claude models, the model ladder and a ticket's model offered only the aliases sonnet, opus, haiku and fable. They now list every model Claude Code's own `/model` offers, as a project session does (asked per account, by its names such as Opus 5.5 and Haiku 4.5), and fall back to the aliases only when the list cannot be had. Efforts are the picked model's only: a Bot moved to a model that does not take its effort goes back to the default, and a ladder rung on such a model offers none.
+
 ### A task map's empty buildings show only their dot
 
 - A task map with many folders was a wall of plates: every building's plate carried its folder's whole name, and ten long names stacked over one another and hid the buildings under them. A building nobody is at now shows only its colour dot and visit count; hover over it, pick it or zoom in past 1.5× and its name comes back, opening over its neighbours where it stands. A building someone is working in, or one marked with a moment's !, keeps its whole plate.

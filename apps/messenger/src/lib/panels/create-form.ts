@@ -1,5 +1,4 @@
 import {
-  CLAUDE_MODEL_ALIASES,
   THINKING_LEVELS,
   isAgentEffort,
   isAgentModelName,
@@ -9,10 +8,12 @@ import {
   sortThinkingLevels,
   type AgentsStatusResponse,
   type BotRunner,
+  type ClaudeCodeModel,
   type CreateBotRequest,
   type CreateGroupRequest,
   type ThinkingLevel,
 } from "@real-bot/protocol";
+import { claudeModelOptions } from "../claude-models.svelte.ts";
 import type { Copy } from "../copy.ts";
 import { sourceRows, type PickerData, type PickerRow, type PickerSource } from "../model-picker.ts";
 import { agentPickerSources, claudePickerSource, endpointPickerSources, type EndpointLike } from "../model-picker-sources.ts";
@@ -190,11 +191,16 @@ export function endpointModelPicker(providers: readonly EndpointLike[], t: Copy)
   };
 }
 
-/** A Bot on Claude Agent picks an alias (the value is the alias); a name it already holds that is none stays a row, so it still reads. */
-export function claudeModelPicker(t: Copy, current: string): PickerData {
+/**
+ * A Bot on Claude Agent picks among the models Claude Code lists for its account (the value is the
+ * model's own, an alias or a full id), its aliases until the list comes; a name it already holds
+ * that is none of them stays a row, so it still reads.
+ */
+export function claudeModelPicker(t: Copy, current: string, list: ClaudeCodeModel[] | null = null): PickerData {
+  const models = claudeModelOptions(list);
   const specials: PickerRow[] = [{ value: "", label: t.sidebar.botAgentModelDefault }];
-  if (current && !(CLAUDE_MODEL_ALIASES as readonly string[]).includes(current)) specials.push({ value: current, label: current });
-  return { specials, sources: [claudePickerSource(t, (model) => model)] };
+  if (current && !models.some((model) => model.value === current)) specials.push({ value: current, label: current });
+  return { specials, sources: [claudePickerSource(t, (model) => model, models)] };
 }
 
 /**

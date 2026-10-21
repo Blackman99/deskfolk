@@ -321,6 +321,33 @@ test("a Claude rung picks its own effort, and its account when there is more tha
   single.close();
 });
 
+test("the Claude models to add are Claude Code's own list for this computer's account, and a Claude rung offers only the levels its model takes", async () => {
+  const { forgetClaudeModels } = await import("../claude-models.svelte.ts");
+  forgetClaudeModels();
+  const asked: Array<string | null> = [];
+  const claudeModels = {
+    claudeCodeModels: async (dir: string | null) => (asked.push(dir), { config_dir: dir, checked_at: "t", error: null, models: [
+      { value: "default", display_name: "Default (recommended)", description: "", resolved_model: "claude-opus-5-5", efforts: ["low", "high"] },
+      { value: "opus", display_name: "Opus 5.5", description: "", resolved_model: "claude-opus-5-5", efforts: ["low", "high"] },
+      { value: "claude-haiku-4-5", display_name: "Haiku 4.5", description: "", resolved_model: "claude-haiku-4-5", efforts: [] },
+    ] }),
+  };
+  const haiku = { runner: "claude_code" as const, model: "claude-haiku-4-5", effort: null, config_dir: null };
+  const ladder = new ModelLadder(() => fakeApi([haiku]).api);
+  void ladder.load();
+  const view = render(ModelLadderCard, { ladder, providers, claudeCode: async () => claudeStatus(), agents: null, claudeModels, t });
+  await sleep(0);
+  await settle();
+  expect(asked).toEqual([null]);
+  // Haiku 4.5 takes no level, and there is one account: its rung has nothing to tune.
+  expect(view.host.querySelector("[data-rung-claude]") === null).toBe(true);
+  click(addTrigger(view.host));
+  await settle();
+  expect((await offered(view.host)).find((source) => source.source === t.claudeAgent.title)?.models).toEqual(["Opus 5.5"]);
+  view.close();
+  forgetClaudeModels();
+});
+
 /** One of your other local agents as the daemon reports it (ADR 0079). */
 function agentStatus(runner: BotRunner, over: Record<string, unknown> = {}) {
   return {

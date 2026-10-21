@@ -24,6 +24,7 @@
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import { modalOut } from '../modal-motion.ts';
 	import { agentBlocker, agentLabelOf, agentStatusOf, parseRunnerValue, runnerOptions, setupRunnerOf } from '../runner-choice.ts';
+	import { claudeModelsOf, loadClaudeModels } from '../claude-models.svelte.ts';
 	import { BUILTIN_PLAYBOOK_IDS } from '@real-bot/protocol';
 	import { templatesFor, type BotTemplate, type BotTemplateId } from '../bot-templates.ts';
 	import { playbookName, Playbooks } from '../settings/playbooks.svelte.ts';
@@ -100,6 +101,11 @@
 	}
 
 	const providers = $derived(runtime.snapshot.providers);
+	// Claude Code's own models, asked for once Claude Agent is picked (the computer's own account: a new Bot has no other yet).
+	$effect(() => {
+		const api = runtime.client;
+		if (draft.runner === 'claude_code') untrack(() => loadClaudeModels(api, null));
+	});
 	const endpointModels = $derived(endpointModelPicker(providers, t));
 	const modelValues = $derived(pickerValues(endpointModels));
 	const thinkingOptions = $derived(pinnableThinkingLevels(draft.model, providers));
@@ -293,7 +299,7 @@
 				<ModelPicker
 					id="bot-agent-model"
 					value={draft.agentModel ?? ''}
-					data={claudeModelPicker(t, draft.agentModel ?? '')}
+					data={claudeModelPicker(t, draft.agentModel ?? '', claudeModelsOf(null))}
 					{t}
 					title={t.sidebar.botAgentModel}
 					error={!!errors.agentModel}

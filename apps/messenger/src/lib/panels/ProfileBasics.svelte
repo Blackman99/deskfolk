@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { AGENT_KINDS, DEFAULT_PERMISSION_MODE, PERMISSION_MODES, isAgentEffort, isPermissionMode, type AgentsStatusResponse, type ClaudeCodeStatus } from '@real-bot/protocol';
 	import { claudeAccountLabel, claudeAccountOf, claudeAgentBlocker, claudeAgentPaysPerToken } from '../settings/claude-agent.ts';
+	import { claudeModelsOf, effortChoices, loadClaudeModels } from '../claude-models.svelte.ts';
 	import AvatarEditor from '../AvatarEditor.svelte';
 	import ModelPicker from '../ModelPicker.svelte';
 	import Select from '../Select.svelte';
@@ -104,7 +106,21 @@
 	const otherLoginCommand = $derived(agentAccount?.login_command ?? agentStatus?.login_command ?? null);
 	const agentAuth = $derived(agentAccount?.auth ?? agentStatus?.auth ?? null);
 	const agentOtherAccountOptions = $derived(otherAgentAccountOptions(agentStatus, profileDraft.agentConfigDir ?? '', t));
-	const claudeModelData = $derived(claudeModelPicker(t, profileDraft.agentModel ?? ''));
+	/** Claude Code's own models for the account the Bot spends, asked for once Claude Agent is picked; the levels the picked one takes. */
+	const claudeAccount = $derived(profileDraft.agentConfigDir || null);
+	$effect(() => {
+		const api = runtime.client;
+		const dir = claudeAccount;
+		if (profileDraft.runner === 'claude_code') untrack(() => loadClaudeModels(api, dir));
+	});
+	const claudeModels = $derived(claudeModelsOf(claudeAccount));
+	const claudeModelData = $derived(claudeModelPicker(t, profileDraft.agentModel ?? '', claudeModels));
+	/** A level set already that the model does not take stays a choice, so it reads and can be cleared. */
+	const claudeEfforts = $derived.by((): string[] => {
+		const levels: string[] = [...effortChoices(claudeModels, profileDraft.agentModel ?? '')];
+		const effort = profileDraft.agentEffort ?? '';
+		return effort && !levels.includes(effort) ? [...levels, effort] : levels;
+	});
 
 	/** The account this Bot's turns spend, as Claude Code reports it; the daemon's own while none is picked. */
 	const agentSignIn = $derived(claudeAccountOf(claudeStatus, profileDraft.agentConfigDir) ?? claudeStatus);
@@ -148,6 +164,9 @@
 
 	function onProfileAgentModelChange(value: string): void {
 		profileDraft.agentModel = value;
+		// A thinking level the new Claude model does not take goes back to the default with it.
+		const effort = profileDraft.agentEffort ?? '';
+		if (profileDraft.runner === 'claude_code' && effort && !effortChoices(claudeModels, value).some((level) => level === effort)) profileDraft.agentEffort = '';
 		onProfilePick();
 	}
 
@@ -347,7 +366,10 @@
 				<p class="field-error">{t.sidebar.botAgentModelInvalid}</p>
 			{/if}
 		</div>
-		{@render effortPicker(AGENT_KINDS.claude_code.efforts, t.sidebar.botAgentEffortHint)}
+		<!-- A model that takes no thinking level has none to pick, unless one is set already. -->
+		{#if claudeEfforts.length > 0}
+			{@render effortPicker(claudeEfforts, t.sidebar.botAgentEffortHint)}
+		{/if}
 		{:else if agentRunner && agentKind}
 		{#if profileDraft.agentConfigDir !== undefined && agentKind.configDirVar && agentAccounts.length > 0}
 		<div class="form-group" data-agent-account>

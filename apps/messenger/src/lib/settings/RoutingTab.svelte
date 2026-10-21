@@ -248,7 +248,7 @@
 					<p class="routing-turn-hint">{c.turn.ladderNoEndpoint}</p>
 				{:else}
 					<p class="routing-turn-hint">{t.modelLadder.hint}</p>
-					<ModelLadderCard {ladder} {providers} claudeCode={claudeStatus} {agents} {t} />
+					<ModelLadderCard {ladder} {providers} claudeCode={claudeStatus} {agents} claudeModels={runtime.client} {t} />
 				{/if}
 			</div>
 		</section>
@@ -283,6 +283,7 @@
 			{pickable}
 			{claudeStatus}
 			{agents}
+			claudeModels={runtime.client}
 			promptsFailed={loadFailed}
 			{ui}
 			{botNames}

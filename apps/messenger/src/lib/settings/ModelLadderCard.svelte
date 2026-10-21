@@ -2,7 +2,6 @@
 	import Icon from '../Icon.svelte';
 	import {
 		AGENT_KINDS,
-		CLAUDE_MODEL_ALIASES,
 		isLadderAgentRung,
 		MODEL_LADDER_MAX,
 		sameLadderRung,
@@ -13,7 +12,9 @@
 		type ModelLadderRung,
 		type Provider
 	} from '@real-bot/protocol';
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
+	import { claudeModelOptions, claudeModelsOf, effortChoices, loadClaudeModels } from '../claude-models.svelte.ts';
+	import type { MessengerApi } from '../messenger-api.ts';
 	import { flip } from 'svelte/animate';
 	import ModelPicker from '../ModelPicker.svelte';
 	import Select from '../Select.svelte';
@@ -45,10 +46,15 @@
 		 * signed in can be rungs too, grouped by agent. Absent or failing, none are offered.
 		 */
 		agents?: (() => Promise<AgentsStatusResponse>) | null;
+		/**
+		 * Asks Claude Code for its own model list per account (ADR 0095): the Claude models to add, and
+		 * the levels a Claude rung's model takes. Absent, or before it answers, its aliases and every level.
+		 */
+		claudeModels?: Pick<MessengerApi, 'claudeCodeModels'> | null;
 		t: Copy;
 	}
 
-	let { ladder, providers, claudeCode = null, agents = null, t }: Props = $props();
+	let { ladder, providers, claudeCode = null, agents = null, claudeModels = null, t }: Props = $props();
 
 	let claudeStatus = $state<ClaudeCodeStatus | null>(null);
 	let agentsFound = $state<AgentsStatusResponse | null>(null);
@@ -112,8 +118,16 @@
 	 * offer, then each other agent found and signed in, which also takes a model typed into the
 	 * search. A source with nothing left to add is left out.
 	 */
+	// This computer's account's list for what to add, and each Claude rung's own account's for its levels.
+	$effect(() => {
+		const source = claudeModels;
+		if (!claudeReady(claudeStatus)) return;
+		const dirs = new Set<string | null>([null, ...ladder.rungs.filter(isLadderAgentRung).filter((rung) => rung.runner === 'claude_code').map((rung) => rung.config_dir ?? null)]);
+		untrack(() => dirs.forEach((dir) => loadClaudeModels(source, dir)));
+	});
+
 	const addable = $derived.by((): PickerData => {
-		const claudeModels = CLAUDE_MODEL_ALIASES.filter((model) => !onLadder(claudeRung(model)));
+		const claudeAddable = claudeModelOptions(claudeModelsOf(null)).filter((model) => !onLadder(claudeRung(model.value)));
 		const sources = [
 			...endpointPickerSources(
 				providers,
@@ -121,7 +135,7 @@
 				(provider_id, model) => key({ provider_id, model }),
 				(provider_id, model) => !onLadder({ provider_id, model })
 			),
-			...(claudeReady(claudeStatus) && claudeModels.length > 0 ? [claudePickerSource(t, (model) => key(claudeRung(model)), claudeModels)] : []),
+			...(claudeReady(claudeStatus) && claudeAddable.length > 0 ? [claudePickerSource(t, (model) => key(claudeRung(model)), claudeAddable)] : []),
 			...agentPickerSources(agentsOffered, t, (runner, model, customId) => key(agentRung(runner, model, customId)), {
 				typed: true,
 				keep: (runner, model, customId) => !onLadder(agentRung(runner, model, customId))
@@ -130,10 +144,19 @@
 		return { specials: [], sources: sources.filter((source) => sourceCount(source) > 0 || source.custom) };
 	});
 
+	/**
+	 * The effort levels a rung takes: a Claude rung's model's, as Claude Code lists it for the rung's
+	 * account, another agent's own; none for one that has none. A level set already stays, so it reads.
+	 */
+	const rungEfforts = (rung: ModelLadderAgentRung): readonly string[] => {
+		if (rung.runner !== 'claude_code') return AGENT_KINDS[rung.runner].efforts;
+		const levels: string[] = [...effortChoices(claudeModelsOf(rung.config_dir ?? null), rung.model)];
+		return rung.effort && !levels.includes(rung.effort) ? [...levels, rung.effort] : levels;
+	};
 	/** The effort levels a rung's agent takes; none for one that has none. */
 	const effortOptions = (rung: ModelLadderAgentRung) => [
 		{ value: '', label: t.modelLadder.effort(t.sidebar.botAgentEffortDefault) },
-		...AGENT_KINDS[rung.runner].efforts.map((level) => ({ value: level, label: t.modelLadder.effort(thinkingLevelLabel(t.sidebar.thinkingLevels, level)) }))
+		...rungEfforts(rung).map((level) => ({ value: level, label: t.modelLadder.effort(thinkingLevelLabel(t.sidebar.thinkingLevels, level)) }))
 	];
 	/**
 	 * The accounts a rung can spend, named short enough to sit beside its effort: this computer's
@@ -243,9 +266,9 @@
 								<span class="ladder-name" title={named(rung)}><span class="ladder-model">{rung.model}</span></span>
 								<span class="ladder-source"><ModelSourceMark source={runnerSource(agent.runner, agentName(agent), t)} /></span>
 								<span class="ladder-provider">{agentName(agent)}</span>
-								{#if AGENT_KINDS[agent.runner].efforts.length > 0 || accountsShown(agent)}
+								{#if rungEfforts(agent).length > 0 || accountsShown(agent)}
 									<span class="ladder-tune" data-rung-agent={agent.runner} data-rung-claude={agent.runner === 'claude_code' ? '' : undefined}>
-										{#if AGENT_KINDS[agent.runner].efforts.length > 0}
+										{#if rungEfforts(agent).length > 0}
 											<Select
 												value={agent.effort ?? ''}
 												options={effortOptions(agent)}

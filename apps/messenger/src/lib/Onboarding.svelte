@@ -2,7 +2,9 @@
 	import BrandMark from './BrandMark.svelte';
 	import { COPY, WORKSPACE_COPY } from './copy.ts';
 	import Select from './Select.svelte';
+	import { untrack } from 'svelte';
 	import ModelPicker from './ModelPicker.svelte';
+	import { claudeModelOptions, claudeModelsOf, loadClaudeModels } from './claude-models.svelte.ts';
 	import WorkspacePicker from './settings/WorkspacePicker.svelte';
 	import ConnectorLogo from './settings/ConnectorLogo.svelte';
 	import AgentLogo from './settings/AgentLogo.svelte';
@@ -116,8 +118,13 @@
 		if (!pickedStatus || agentModel) return;
 		agentModel = pickedStatus.default_model ?? pickedStatus.models[0]?.id ?? '';
 	});
-	/** Claude Code's models, one source; a model's value is its alias. */
-	const claudeModelData: PickerData = $derived({ specials: [], sources: [claudePickerSource(t, (model) => model)] });
+	/** Claude Code's models for the account picked, one source, asked for once that way is chosen; a model's value is Claude Code's own. */
+	$effect(() => {
+		const api = runtime.client;
+		const dir = claudeConfigDir || null;
+		if (connectMode === 'claude') untrack(() => loadClaudeModels(api, dir));
+	});
+	const claudeModelData: PickerData = $derived({ specials: [], sources: [claudePickerSource(t, (model) => model, claudeModelOptions(claudeModelsOf(claudeConfigDir || null)))] });
 	/**
 	 * The picked agent's models, one source: what it lists, else its default one, and a name typed as
 	 * the agent spells it when it lists none.

@@ -23,6 +23,7 @@ import type { Copy } from "../copy.ts";
 import type { MessengerApi } from "../messenger-api.ts";
 import { findPicked, type PickerData } from "../model-picker.ts";
 import { agentPickerSources, claudePickerSource, endpointPickerSources } from "../model-picker-sources.ts";
+import { claudeModelOptions, claudeModelsOf, loadClaudeModels } from "../claude-models.svelte.ts";
 import { claudeReady } from "../settings/claude-agent.ts";
 import { enqueueMove, nextQueuedMove } from "./ticket-board.ts";
 
@@ -104,8 +105,8 @@ export class TicketEdits {
 
   /**
    * The models a ticket can be given (ADR 0049, level 7): every model an endpoint lists, Claude
-   * Code's when it is signed in, and those of your other local agents (ADR 0079), which then run
-   * the ticket's turns.
+   * Code's own list when it is signed in (its aliases until the list comes), and those of your other
+   * local agents (ADR 0079), which then run the ticket's turns.
    */
   modelData = $derived.by<PickerData>(() => {
     const t = this.#host.t();
@@ -113,7 +114,7 @@ export class TicketEdits {
       specials: [{ value: "", label: t.plan.modelOwn }],
       sources: [
         ...endpointPickerSources(this.#host.providers(), t, (provider_id, model) => modelKey({ provider_id, model })),
-        ...(claudeReady(this.claude) ? [claudePickerSource(t, (model) => modelKey({ runner: "claude_code", model, effort: null, config_dir: null }))] : []),
+        ...(claudeReady(this.claude) ? [claudePickerSource(t, (model) => modelKey({ runner: "claude_code", model, effort: null, config_dir: null }), claudeModelOptions(claudeModelsOf(null)))] : []),
         ...agentPickerSources(this.agents, t, (runner, model, customId) => modelKey({ runner, model, effort: null, config_dir: null, ...(customId ? { custom_id: customId } : {}) }), { typed: true }),
       ],
     };
@@ -155,6 +156,7 @@ export class TicketEdits {
     this.#askedAgents = true;
     void api.agents?.().then((list) => (this.agents = list), () => undefined);
     void api.claudeCode?.().then((status) => (this.claude = status), () => undefined);
+    loadClaudeModels(api, null);
   }
 
   /** The same, with the ticket's own model on top when nothing lists it any more, so it reads as its name. */

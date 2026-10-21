@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { claudeModelOptions, claudeModelsOf, loadClaudeModels } from '../claude-models.svelte.ts';
+	import type { MessengerApi } from '../messenger-api.ts';
 	import {
-		CLAUDE_MODEL_ALIASES,
 		isReaderAgentModel,
 		isReaderClaudeModel,
 		type AgentsStatusResponse,
@@ -56,12 +57,14 @@
 		 * and the one already chosen stays shown.
 		 */
 		agents?: (() => Promise<AgentsStatusResponse>) | null;
+		/** Asks Claude Code for its own model list (ADR 0095); absent, or before it answers, its aliases are offered. */
+		claudeModels?: Pick<MessengerApi, 'claudeCodeModels'> | null;
 		/** False drops the card's own chrome, for a picker that sits as a row inside another card. */
 		framed?: boolean;
 		t: Copy;
 	}
 
-	let { kind, providers, chosen, defaultModel, patch, toPatch, title, followDefault, failed: failedText, claude = null, agents = null, framed = true, t }: Props = $props();
+	let { kind, providers, chosen, defaultModel, patch, toPatch, title, followDefault, failed: failedText, claude = null, agents = null, claudeModels = null, framed = true, t }: Props = $props();
 
 	let busy = $state(false);
 	let failed = $state(false);
@@ -99,16 +102,21 @@
 		);
 	const sameAgent = (row: ReaderAgentModel, runner: BotRunner, customId: string | null) => row.runner === runner && (row.custom_id ?? null) === customId;
 
-	/** The Claude models Claude Code resolves itself, the fastest first: a reading holds up your line. */
-	const claudeModels = $derived.by(() => {
-		const aliases: string[] = ['haiku', ...CLAUDE_MODEL_ALIASES.filter((alias) => alias !== 'haiku')];
-		return isReaderClaudeModel(chosen) && !aliases.includes(chosen.model) ? [...aliases, chosen.model] : aliases;
+	/** The Claude models Claude Code lists for this computer's account, the fastest first: a reading holds up your line. */
+	const claudeOptions = $derived.by(() => {
+		const listed = claudeModelOptions(claudeModelsOf(null));
+		const options = [...listed.filter((model) => model.value === 'haiku'), ...listed.filter((model) => model.value !== 'haiku')];
+		return isReaderClaudeModel(chosen) && !options.some((model) => model.value === chosen.model) ? [...options, { value: chosen.model, label: chosen.model }] : options;
 	});
 	/** The agent whose model is chosen, whichever it is; Claude's is told apart where only it behaves differently. */
 	const chosenAgent = $derived(isReaderAgentModel(chosen) ? chosen : null);
 	const claudeChosen = $derived(isReaderClaudeModel(chosen) ? chosen : null);
 	/** Offered once Claude Code is there and signed in, and kept while one of its models is what reads. */
 	const claudeOffered = $derived(claude !== null && (claudeReady(claudeStatus) || claudeChosen !== null));
+	$effect(() => {
+		const source = claudeModels;
+		if (claudeOffered) untrack(() => loadClaudeModels(source, null));
+	});
 	/**
 	 * What the agents list, else the default model one named, and the one chosen kept even when it is
 	 * no longer listed. The picker's sources are built from this.
@@ -146,7 +154,7 @@
 		const specials: PickerRow[] = [{ value: FOLLOW, label: followDefault(defaultModel) }];
 		const sources: PickerSource[] = [
 			...endpointPickerSources(providers, t, (provider_id, model) => key({ provider_id, model })),
-			...(claudeOffered ? [claudePickerSource(t, (model) => key({ runner: 'claude_code', model, config_dir: null }), claudeModels)] : []),
+			...(claudeOffered ? [claudePickerSource(t, (model) => key({ runner: 'claude_code', model, config_dir: null }), claudeOptions)] : []),
 			...agentPickerSources(agentsOffered, t, (runner, model, custom_id) => key({ runner, model, config_dir: null, custom_id }), { typed: true })
 		];
 		if (chosen) {

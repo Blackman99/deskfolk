@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ClaudeCodeModel } from "@real-bot/protocol";
-import { effortChoices, modelChoices, modelRowOf } from "./claude-models.svelte.ts";
+import { claudeModelOptions, effortChoices, modelChoices, modelRowOf } from "./claude-models.svelte.ts";
 
 const list: ClaudeCodeModel[] = [
   { value: "default", display_name: "Default (recommended)", description: "Opus 5.5 · Best for everyday, complex tasks", resolved_model: "claude-opus-5-5", efforts: ["low", "medium", "high", "xhigh", "max"] },
@@ -23,4 +23,9 @@ test("the thinking levels are the picked model's, all of them until the list say
   expect(effortChoices(null, "haiku")).toHaveLength(5);
   // A full id is the row it resolves from.
   expect(modelRowOf(list, "claude-haiku-5-5")?.value).toBe("haiku");
+});
+
+test("what a picker offers is Claude Code's own rows but its default, named its way; its aliases before the list", () => {
+  expect(claudeModelOptions(list)).toEqual([{ value: "opus", label: "Opus 5.5" }, { value: "haiku", label: "Haiku 5.5" }]);
+  expect(claudeModelOptions(null).map((option) => option.value)).toEqual(["sonnet", "opus", "haiku", "fable"]);
 });
