@@ -31,6 +31,7 @@ import { delegationStory } from './delegation-story.ts';
 import { workQuestionStory } from './work-question-story.ts';
 import { ticketStagesStory } from './ticket-stages-story.ts';
 import { ticketBoardStory } from './ticket-board-story.ts';
+import { taskmapSideStory } from './taskmap-side-story.ts';
 import Shell from '../../src/lib/Shell.svelte';
 import Onboarding from '../../src/lib/Onboarding.svelte';
 import TeamStep from '../../src/lib/onboarding/TeamStep.svelte';
@@ -1710,6 +1711,10 @@ export const rc11Stories = {
   'ticket26a-tall': ticketStagesStory('zh', true),
   'ticket-board': ticketBoardStory(),
   'ticket-board-live': ticketBoardStory(true),
+  'taskmap-side': taskmapSideStory(28, 10),
+  'taskmap-side-few-said': taskmapSideStory(2, 10),
+  'taskmap-side-few-moments': taskmapSideStory(28, 2),
+  'taskmap-side-few': taskmapSideStory(2, 2),
 	'onboarding-validation': {
 		component: Shell as never,
 		props: { runtime: onboardingValidationRuntime() },

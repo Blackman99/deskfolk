@@ -115,6 +115,8 @@
 		</section>
 	{/if}
 
+	{#if quests.length || moments.length}
+	<div class="tm-split">
 	{#if quests.length}
 		<section class="tm-scard tm-said" class:is-long={quests.length > 2}>
 			<header class="tm-shead"><strong>{t.card.said}</strong><span class="tm-muted">{t.card.saidHint}</span></header>
@@ -130,7 +132,7 @@
 	{/if}
 
 	{#if moments.length}
-		<section class="tm-scard tm-grow">
+		<section class="tm-scard tm-moments">
 			<header class="tm-shead"><strong>{t.card.moments}</strong><span class="tm-muted">{t.card.momentsHint}</span></header>
 			<div class="tm-list tm-scroll">
 				{#each moments as m, i (i)}
@@ -142,20 +144,27 @@
 			</div>
 		</section>
 	{/if}
+	</div>
+	{/if}
 </div>
 
 <style>
 	/*
-	 * Fills the side column above its note: a Bot's card whole, what was asked giving way first (its
-	 * list scrolls), the moments at least 120px. When even that does not fit, the cards scroll here,
-	 * rather than running over the note under them.
+	 * Fills the side column above its note: each lead's card whole, then what was asked and the
+	 * moments in what is left. When even their least does not fit, the cards scroll here, rather
+	 * than running over the note under them.
 	 */
 	.tm-side { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; overflow-y: auto; color: var(--ink); }
 	.tm-scard { flex: none; padding: 10px 12px; background: var(--pane); border: 1px solid var(--line); border-radius: var(--radius-lg); }
-	.tm-scard.tm-said { flex: 0 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-	/* A long list keeps its header and a few lines in sight while it gives way to the moments. */
-	.tm-scard.tm-said.is-long { min-height: 132px; }
-	.tm-scard.tm-grow { flex: 1 1 0; min-height: 120px; display: flex; flex-direction: column; }
+	/*
+	 * What was asked and the moments share what the leads leave, a grid row each: the grid deals the
+	 * height out evenly and stops a row at its card's content, so a short list keeps just its lines
+	 * and the other takes the rest; both long, half each. Each list scrolls in its own card.
+	 */
+	.tm-split { flex: 1 1 0; min-height: 0; display: grid; grid-auto-rows: auto; align-content: start; gap: 8px; }
+	.tm-scard.tm-said, .tm-scard.tm-moments { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+	/* Its header and a couple of lines in sight however little is left; the same for both, so both long split exactly. */
+	.tm-scard.tm-said.is-long, .tm-scard.tm-moments { min-height: 120px; }
 	.tm-main { display: flex; gap: 12px; align-items: flex-start; }
 	.tm-main-logo { flex: none; display: inline-flex; border-radius: var(--radius-sm); }
 	.tm-main-logo.is-face { width: 40px; height: 40px; border-radius: 50%; background: var(--chip); overflow: hidden; }

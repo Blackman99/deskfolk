@@ -597,7 +597,7 @@
 	.tm-aside { padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; }
 	/* Stacked under the town, the cards scroll together rather than each in its own box. */
 	.taskmap:not(.is-wide) .tm-aside { border-top: 1px solid var(--line-subtle); }
-	.taskmap:not(.is-wide) .tm-aside :global(.tm-side), .taskmap:not(.is-wide) .tm-aside :global(.tm-grow) { flex: none; }
+	.taskmap:not(.is-wide) .tm-aside :global(.tm-side), .taskmap:not(.is-wide) .tm-aside :global(.tm-split) { flex: none; }
 	.tm-note { margin: 0; font-size: var(--text-micro); color: var(--muted); line-height: 1.4; }
 	.tm-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: 24px; text-align: center; font-size: var(--text-small); color: #37444a; pointer-events: none; }
 </style>

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The task map's moments get as much room as what you asked
+
+- On a task map's side, a long list of what you asked took the whole column and left the moments two lines at the bottom. The two now share what the cards above them leave: half each when both are long, a short one keeping just its lines and the other taking the rest. Each still scrolls in its own card.
+
 ### On a phone, the Bots and the projects are two pages of the bottom bar
 
 - The phone's bottom bar is now Bots, Projects and Settings. The Bots page holds the file drop, groups and your Bots' conversations; the Projects page holds only the project sessions, by directory, with a + that starts one in a folder or imports a terminal session, and says how to start when there are none. A conversation opened from search or a link brings its own page back when you leave it. The workspace moved from the bottom bar into Tools, first in the list, and opens as a page like the calendar.
