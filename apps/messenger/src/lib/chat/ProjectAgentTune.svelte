@@ -262,7 +262,7 @@
 		const rect = triggerEl.getBoundingClientRect();
 		const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
 		const room = placeAbove ? rect.top - 12 : window.innerHeight - rect.bottom - 12;
-		el.style.setProperty('--tune-height', `${Math.max(220, Math.min(520, room))}px`);
+		el.style.setProperty('--tune-height', `${Math.max(220, Math.min(640, room))}px`);
 		el.style.maxWidth = `${viewportWidth - 16}px`;
 		const width = el.offsetWidth;
 		el.style.left = `${Math.max(8, Math.min(rect.left, viewportWidth - 8 - width))}px`;
@@ -602,7 +602,7 @@
 	}
 
 	.tune-column.is-account {
-		width: 250px;
+		width: 264px;
 		background: var(--line-subtle);
 	}
 
