@@ -41,6 +41,28 @@
 		return q.kind === 'say' ? t.forLine(q.text.slice(0, 40)) : t.forAnswer(q.answers.join('；').slice(0, 40));
 	});
 	const CHIP: Record<string, string> = { work: 'is-work', walk: 'is-walk', idle: 'is-idle', fail: 'is-fail', back: 'is-back', none: 'is-idle' };
+
+	// A long list of what was asked scrolls in its card; the line being worked for is kept in sight,
+	// also once the list first gets its height (the pane is measured after the map opens).
+	let saidList = $state<HTMLDivElement | null>(null);
+	$effect(() => {
+		const list = saidList, at = quest;
+		void quests.length;
+		if (!list || at < 0) return;
+		const keep = () => {
+			const item = list.children[at] as HTMLElement | undefined;
+			if (!item || list.scrollHeight <= list.clientHeight) return;
+			const top = item.offsetTop, bottom = top + item.offsetHeight;
+			if (top < list.scrollTop) list.scrollTop = top;
+			else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+		};
+		keep();
+		let raf = 0;
+		// Scrolled on the next frame: work inside the observer during a pane's resize loops in WebKit.
+		const ro = new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(keep); });
+		ro.observe(list);
+		return () => { ro.disconnect(); cancelAnimationFrame(raf); };
+	});
 </script>
 
 <div class="tm-side">
@@ -83,9 +105,9 @@
 	{/if}
 
 	{#if quests.length}
-		<section class="tm-scard">
+		<section class="tm-scard tm-said" class:is-long={quests.length > 2}>
 			<header class="tm-shead"><strong>{t.card.said}</strong><span class="tm-muted">{t.card.saidHint}</span></header>
-			<div class="tm-list">
+			<div class="tm-list tm-scroll" bind:this={saidList}>
 				{#each quests as q, i (i)}
 					<button type="button" class="tm-item" class:is-now={i === quest} class:is-later={i > quest} onclick={() => onJump(q.v)}>
 						<span class="tm-mono tm-muted">{when(q.at)}</span>
@@ -112,9 +134,17 @@
 </div>
 
 <style>
-	.tm-side { display: flex; flex-direction: column; gap: 8px; min-height: 0; color: var(--ink); }
-	.tm-scard { padding: 10px 12px; background: var(--pane); border: 1px solid var(--line); border-radius: var(--radius-lg); }
-	.tm-scard.tm-grow { flex: 1; min-height: 120px; display: flex; flex-direction: column; }
+	/*
+	 * Fills the side column above its note: a Bot's card whole, what was asked giving way first (its
+	 * list scrolls), the moments at least 120px. When even that does not fit, the cards scroll here,
+	 * rather than running over the note under them.
+	 */
+	.tm-side { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; overflow-y: auto; color: var(--ink); }
+	.tm-scard { flex: none; padding: 10px 12px; background: var(--pane); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+	.tm-scard.tm-said { flex: 0 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+	/* A long list keeps its header and a few lines in sight while it gives way to the moments. */
+	.tm-scard.tm-said.is-long { min-height: 132px; }
+	.tm-scard.tm-grow { flex: 1 1 0; min-height: 120px; display: flex; flex-direction: column; }
 	.tm-main { display: flex; gap: 12px; align-items: flex-start; }
 	.tm-main-logo { flex: none; display: inline-flex; border-radius: var(--radius-sm); }
 	.tm-main-logo.is-face { width: 40px; height: 40px; border-radius: 50%; background: var(--chip); overflow: hidden; }
@@ -137,7 +167,7 @@
 	.tm-sub { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
 	.tm-sub.is-away .tm-sub-logo { opacity: .5; }
 	.tm-sub-logo { flex: none; display: inline-flex; border-radius: var(--radius-sm); }
-	.tm-list { display: flex; flex-direction: column; gap: 1px; margin: 0 -6px; }
+	.tm-list { position: relative; display: flex; flex-direction: column; gap: 1px; margin: 0 -6px; }
 	.tm-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 	.tm-item, .tm-moment { display: flex; gap: 8px; align-items: flex-start; width: 100%; box-sizing: border-box; padding: 5px 6px; font: inherit; font-size: var(--text-small); text-align: left; color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer; }
 	.tm-item:hover, .tm-moment:hover { background: var(--row-hover); }
