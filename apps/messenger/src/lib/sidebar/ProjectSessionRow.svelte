@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import type { ProjectAgent } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
+	import AgentLogo from '../settings/AgentLogo.svelte';
 	import { unreadBadge } from './unread.ts';
 
 	/**
-	 * One project session under its directory (ADR 0095): its name and time, a pulse while the agent
-	 * is at work in it, and the unread count. No avatar: it has no Bot, and the directory row says where.
+	 * One project session under its directory (ADR 0095): its agent's mark, its name and time, a
+	 * pulse while the agent is at work in it, and the unread count. The mark is the session's, not
+	 * the directory's: one directory can hold sessions of different agents.
 	 */
 	type Props = {
 		t: Copy;
@@ -14,6 +17,8 @@
 		/** The row the context menu belongs to. */
 		contextOpen: boolean;
 		title: string;
+		/** The agent it runs: its mark leads the row. */
+		agent: ProjectAgent;
 		/** Its own name; null while your first line has not named it yet. */
 		name?: string | null;
 		/** The row is a name field: Enter or leaving it saves, Escape leaves the name as it was. */
@@ -30,7 +35,7 @@
 		onPointerDown?: (e: PointerEvent) => void;
 	};
 
-	let { t, on, contextOpen, title, name = null, renaming = false, onRename, time, live, unread, onSelect, onContextMenu, onPointerDown }: Props = $props();
+	let { t, on, contextOpen, title, agent, name = null, renaming = false, onRename, time, live, unread, onSelect, onContextMenu, onPointerDown }: Props = $props();
 
 	let field = $state<HTMLInputElement | null>(null);
 	let draft = $state('');
@@ -65,7 +70,7 @@
 
 {#if renaming}
 	<div class="project-row is-renaming" class:is-on={on} data-project-session data-renaming>
-		<span class="pulse-slot"></span>
+		<span class="agent-mark"><AgentLogo runner={agent} size={16} /></span>
 		<input
 			bind:this={field}
 			class="rename-field"
@@ -107,10 +112,9 @@
 	oncontextmenu={onContextMenu}
 	onpointerdown={onPointerDown}
 >
-	<span class="pulse-slot">
-		{#if live}<span class="project-pulse" title={t.project.live} role="img" aria-label={t.project.live}></span>{/if}
-	</span>
+	<span class="agent-mark" title={t.project.agentName}><AgentLogo runner={agent} size={16} /></span>
 	<span class="name">{title}</span>
+	{#if live}<span class="project-pulse" title={t.project.live} role="img" aria-label={t.project.live}></span>{/if}
 	<span class="time">{time}</span>
 	{#if unread > 0}
 		<span class="unread-dot" title={t.sidebar.unread}>{unreadBadge(unread)}</span>
@@ -149,13 +153,13 @@
 		box-shadow: var(--shadow-sm);
 	}
 
-	.pulse-slot {
-		flex: 0 0 8px;
+	.agent-mark {
+		flex: none;
 		display: inline-flex;
-		justify-content: center;
 	}
 
 	.project-pulse {
+		flex: none;
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;

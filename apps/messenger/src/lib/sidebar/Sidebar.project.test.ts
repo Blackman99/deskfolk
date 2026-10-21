@@ -28,15 +28,18 @@ function open(selected: ReturnType<typeof aProjectSession> | null = null, rename
   return { ...view, runtime };
 }
 
-test("the Projects section lists one open row per agent and directory, labelled by its last segment with the agent's mark, its sessions newest first", () => {
+test("the Projects section lists one open row per directory, labelled by its last segment, its sessions newest first, each with its agent's mark", () => {
   const { host, close } = open();
   const dirs = [...host.querySelectorAll("[data-project-dir]")];
   expect(dirs.map((d) => d.querySelector(".project-dir-name")?.textContent)).toEqual(["proj", "other"]);
-  expect(dirs[0]?.querySelector(".project-dir-head")?.getAttribute("title")).toBe("Claude Code · /Users/a/proj");
-  // Each directory row wears its agent's mark, not a folder.
-  expect(dirs.map((d) => d.querySelector(".project-dir-head [data-agent-logo]")?.getAttribute("data-agent-logo"))).toEqual(["claude_code", "claude_code"]);
+  expect(dirs[0]?.querySelector(".project-dir-head")?.getAttribute("title")).toBe("/Users/a/proj");
+  // A directory is a folder; each session under it wears its own agent's mark, since one directory
+  // can hold sessions of different agents.
+  expect(dirs[0]?.querySelector(".project-dir-head [data-agent-logo]")).toBeNull();
+  expect(dirs[0]?.querySelector(".project-dir-head svg")).not.toBeNull();
   const rows = [...dirs[0]!.querySelectorAll("[data-project-session]")];
   expect(rows.map((r) => r.querySelector(".name")?.textContent)).toEqual(["Fix login", t.project.untitled]);
+  expect(rows.map((r) => r.querySelector("[data-agent-logo]")?.getAttribute("data-agent-logo"))).toEqual(["claude_code", "claude_code"]);
   expect(rows[0]?.querySelector(".project-pulse")).not.toBeNull();
   expect(rows[1]?.querySelector(".project-pulse")).toBeNull();
   close();

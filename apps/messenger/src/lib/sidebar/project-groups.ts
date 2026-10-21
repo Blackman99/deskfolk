@@ -4,11 +4,11 @@ import { tildePath } from "./import-claude-session.ts";
 /** The agents a project session can run, in the order the sheet offers them (ADR 0095: Claude Code first). */
 export const PROJECT_AGENTS: readonly ProjectAgent[] = ["claude_code"];
 
-/** One directory of one agent in the 「项目」 section and the project sessions that ran there, newest first. */
+/**
+ * One directory of the 「项目」 section and the project sessions that ran in it, newest first,
+ * whichever agent each ran: a directory can hold sessions of different agents, each wearing its own mark.
+ */
 export type ProjectDirGroup = {
-  /** The agent and the directory, each group's own. */
-  key: string;
-  agent: ProjectAgent;
   dir: string;
   /** The last segment of the path: what the row says. */
   label: string;
@@ -26,27 +26,26 @@ function newestFirst(a: SessionSummary, b: SessionSummary): number {
   return a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0;
 }
 
-function agentOf(session: SessionSummary): ProjectAgent {
+/** The agent a project session runs; a row from before agents were named is Claude Code's. */
+export function projectAgentOf(session: SessionSummary): ProjectAgent {
   return session.project_agent ?? "claude_code";
 }
 
 /**
- * Project sessions grouped by agent and directory: one directory worked in by two agents is two
- * groups. The groups run newest first by their newest session, so the project you just worked in
- * is on top; a session with no directory is left out.
+ * Project sessions grouped by directory, whatever agent each ran. The directories run newest
+ * first by their newest session, so the project you just worked in is on top; a session with no
+ * directory is left out.
  */
 export function groupProjectSessions(sessions: readonly SessionSummary[]): ProjectDirGroup[] {
-  const byKey = new Map<string, ProjectDirGroup>();
+  const byDir = new Map<string, ProjectDirGroup>();
   for (const session of sessions) {
     const dir = session.project_dir;
     if (!dir) continue;
-    const agent = agentOf(session);
-    const key = `${agent}\u0000${dir}`;
-    const group = byKey.get(key);
+    const group = byDir.get(dir);
     if (group) group.sessions.push(session);
-    else byKey.set(key, { key, agent, dir, label: projectDirLabel(dir), sessions: [session] });
+    else byDir.set(dir, { dir, label: projectDirLabel(dir), sessions: [session] });
   }
-  const groups = [...byKey.values()];
+  const groups = [...byDir.values()];
   for (const group of groups) group.sessions.sort(newestFirst);
   return groups.sort((a, b) => newestFirst(a.sessions[0]!, b.sessions[0]!));
 }
@@ -95,7 +94,7 @@ export function pickerDirs(
     for (const listing of listings) if (listing.cwd) at(listing.cwd, listing.modified_at).listings.push(listing);
   }
   for (const session of sessions) {
-    if (session.kind === "project" && session.project_dir && agentOf(session) === agent) at(session.project_dir, session.updated_at);
+    if (session.kind === "project" && session.project_dir && projectAgentOf(session) === agent) at(session.project_dir, session.updated_at);
   }
   const dirs = [...byDir.values()];
   for (const entry of dirs) entry.listings.sort((a, b) => (a.modified_at < b.modified_at ? 1 : a.modified_at > b.modified_at ? -1 : 0));

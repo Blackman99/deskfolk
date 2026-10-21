@@ -583,7 +583,7 @@ A completion name that a given endpoint recognizes. Each endpoint has its own li
 <a id="project-sessions"></a>
 ## Project sessions
 
-([ADR 0095](adr/0095-project-sessions.md)) You and your local Claude Code in a project directory, as in Claude's and Codex's own desktop apps, with no Bot. Below 你 ↔ Bot in the sidebar is a Projects section: one row per directory of each agent, led by that agent's mark, unfolding to its sessions, newest first; the section's "+" opens the sheet for a new one.
+([ADR 0095](adr/0095-project-sessions.md)) You and your local Claude Code in a project directory, as in Claude's and Codex's own desktop apps, with no Bot. Below 你 ↔ Bot in the sidebar is a Projects section: one row per directory, unfolding to its sessions, newest first, each led by its agent's mark (one directory can hold sessions of different agents); the section's "+" opens the sheet for a new one.
 
 **The sheet**: pick the agent first (Claude Code only for now); below it, the directories: each one your Claude Code terminal sessions or the app's project sessions ran in, once, the most recently active first, with its name, path and how many terminal sessions it holds. One unfolds at a time; the last row, Another directory…, takes one of your own.
 

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
-	import AgentLogo from '../settings/AgentLogo.svelte';
 	import type { Hold, SessionSummary } from '@real-bot/protocol';
 	import BrandMark from '../BrandMark.svelte';
 	import { dragRegion, scrollbarIsNotDrag } from '../window-chrome.ts';
@@ -23,7 +22,7 @@
 	import ToolsToggle from './ToolsToggle.svelte';
 	import SessionRow from './SessionRow.svelte';
 	import ProjectSessionRow from './ProjectSessionRow.svelte';
-	import { dirDisplay, groupProjectSessions, isLiveRun, liveRunSessionIds } from './project-groups.ts';
+	import { dirDisplay, groupProjectSessions, isLiveRun, liveRunSessionIds, projectAgentOf } from './project-groups.ts';
 	import { flip } from 'svelte/animate';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from '../reduced-motion.ts';
@@ -169,16 +168,15 @@
 	const pinnedWorking = $derived(workingIds !== null && pinnedSessions.some((session) => workingIds.has(session.id)));
 
 	/**
-	 * Which directories of the 「项目」 section are open, by group key (agent and directory): every
-	 * one until you fold it, as in the agents' desktop apps — on a phone nothing is selected yet, and
-	 * folded rows hid every session.
+	 * Which directories of the 「项目」 section are open: every one until you fold it, as in the
+	 * agents' desktop apps — on a phone nothing is selected yet, and folded rows hid every session.
 	 */
 	let openDirs = $state<Record<string, boolean>>({});
-	function dirOpen(key: string): boolean {
-		return openDirs[key] ?? true;
+	function dirOpen(dir: string): boolean {
+		return openDirs[dir] ?? true;
 	}
-	function toggleDir(key: string): void {
-		openDirs = { ...openDirs, [key]: !dirOpen(key) };
+	function toggleDir(dir: string): void {
+		openDirs = { ...openDirs, [dir]: !dirOpen(dir) };
 	}
 
 	let phone = $state(false);
@@ -490,20 +488,20 @@
 					<button type="button" class="add" title={t.project.add} onclick={() => runtime.openCreateProject()}>+</button>
 				</div>
 			{/if}
-			{#each projectGroups as group (group.key)}
-				{@const open = dirOpen(group.key)}
+			{#each projectGroups as group (group.dir)}
+				{@const open = dirOpen(group.dir)}
 				{@const dirLive = group.sessions.some((row) => isLiveRun(snapshot.agentRuns[row.id]))}
 				<div class="project-dir" data-project-dir={group.dir}>
 					<button
 						type="button"
 						class="project-dir-head"
-						title={`${t.project.agentName} · ${group.dir}`}
+						title={group.dir}
 						aria-expanded={open}
 						aria-label={t.project.toggleDir(group.label)}
-						onclick={() => toggleDir(group.key)}
+						onclick={() => toggleDir(group.dir)}
 					>
 						<Icon name={open ? 'chevron-down' : 'chevron-right'} size={12} />
-						<AgentLogo runner={group.agent} size={16} />
+						<Icon name="folder" size={16} />
 						<span class="project-dir-name">{group.label}</span>
 						{#if !open && dirLive}<span class="project-dir-live" aria-hidden="true"></span>{/if}
 					</button>
@@ -515,6 +513,7 @@
 									on={runtime.selectedId === session.id}
 									contextOpen={contextMenuSessionId === session.id}
 									title={session.name || t.project.untitled}
+									agent={projectAgentOf(session)}
 									name={session.name}
 									renaming={renamingSessionId === session.id}
 									onRename={onRenameSession ? (name) => onRenameSession(session.id, name) : undefined}

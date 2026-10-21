@@ -20,9 +20,6 @@ test("project sessions group by directory, directories and sessions newest first
   ];
   const groups = groupProjectSessions(sessions);
   expect(groups.map((g) => g.dir)).toEqual(["/w/b", "/w/a"]);
-  // Each group is one agent's: the row wears its mark.
-  expect(groups.map((g) => g.agent)).toEqual(["claude_code", "claude_code"]);
-  expect(new Set(groups.map((g) => g.key)).size).toBe(2);
   expect(groups.map((g) => g.label)).toEqual(["b", "a"]);
   expect(groups[1]!.sessions.map((s) => s.id)).toEqual(["a2", "a1"]);
 });
