@@ -100,3 +100,21 @@ test("the file drop has no job to open", () => {
   expect(host.querySelector("[data-job-view]")).toBeNull();
   close();
 });
+
+test("Rename shows for a project session only where it is given, and closes the menu", async () => {
+  const { aProjectSession } = await import("../test-fixtures.ts");
+  let renamed = 0;
+  let closed = 0;
+  const view = render(SessionContextMenu, {
+    session: aProjectSession(), botsById: new Map(), isPinned: false, x: 20, y: 20, t,
+    onClose: () => (closed += 1), onTogglePin: () => {}, onViewInfo: () => {}, onClearHistory: () => {},
+    onToggleArchive: () => {}, onDelete: () => {}, onRename: () => (renamed += 1),
+  });
+  click(view.host.querySelector("[data-session-rename]"));
+  expect([renamed, closed]).toEqual([1, 1]);
+  view.close();
+  // The sidebar folded to its rail has no row to type in: no Rename there.
+  const { host, close } = open(aProjectSession(), []);
+  expect(host.querySelector("[data-session-rename]")).toBeNull();
+  close();
+});

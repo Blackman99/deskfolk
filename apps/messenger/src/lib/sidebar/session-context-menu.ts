@@ -11,6 +11,8 @@ export type SessionContextMenuData = {
   canShowJob: boolean;
   /** Its task map can be opened from here: a project session's (ADR 0096) or a Bot conversation's (ADR 0097); absent means none. */
   canShowMap?: boolean;
+  /** Renamed in place on its sidebar row: a project session's, while it is listed there; absent means not here. */
+  canRename?: boolean;
   canClearHistory: boolean;
   archive: {
     enabled: boolean;
@@ -51,6 +53,7 @@ export function deriveSessionContextMenu(
       canViewInfo: false,
       canShowJob: false,
       canShowMap: true,
+      canRename: !session.archived_at,
       canClearHistory: true,
       archive: { enabled: true, isArchived: Boolean(session.archived_at), botId: null },
       delete: { enabled: true, kind: "project", targetId: session.id },

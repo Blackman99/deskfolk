@@ -85,6 +85,24 @@ export class ShellSessionMenu {
     runtime.openTrace(null, null, { sessionId: session.id });
   };
 
+  /** The project session whose sidebar row is being renamed (ADR 0095); null when none. */
+  renamingSessionId = $state<string | null>(null);
+
+  handleMenuRename = (session: SessionSummary): void => {
+    if (session.kind !== "project") return;
+    this.renamingSessionId = session.id;
+  };
+
+  /**
+   * The row's new name, or null to leave it as it was. False keeps the row editing: the name did
+   * not go through. The new name comes back with the session's own event.
+   */
+  finishRename = async (sessionId: string, name: string | null): Promise<boolean> => {
+    if (name !== null && (await this.getRuntime().patchSession(sessionId, { name }))) return false;
+    if (this.renamingSessionId === sessionId) this.renamingSessionId = null;
+    return true;
+  };
+
   /** A project session's task map (ADR 0096), in a pane; there is no page of it on a phone yet. */
   handleMenuShowMap = (session: SessionSummary): void => {
     const runtime = this.getRuntime();

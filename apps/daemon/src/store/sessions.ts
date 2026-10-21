@@ -288,8 +288,9 @@ export function createGroup(ctx: StoreContext, input: CreateGroupRequest): Sessi
 
 export function renameSession(ctx: StoreContext, id: string, name: string): SessionDetail {
   const session = sessionRow(ctx, id);
-  if (session.kind !== "group") {
-    throw new HttpError(422, "invalid_args", "only groups have a name");
+  // A group's name, or a project session's (ADR 0095): your first line names one until you rename it.
+  if (session.kind !== "group" && session.kind !== "project") {
+    throw new HttpError(422, "invalid_args", "only groups and project sessions have a name");
   }
   const next = requireNonEmpty("name", name);
   const now = isoNow();

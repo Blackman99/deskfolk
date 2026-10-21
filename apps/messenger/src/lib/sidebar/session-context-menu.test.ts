@@ -189,3 +189,11 @@ test("every conversation but the file drop offers its task map: a project sessio
   const drop = { ...direct, id: FILE_DROP_SESSION_ID };
   expect(deriveSessionContextMenu(drop, false, new Map()).canShowMap).toBeFalsy();
 });
+
+test("a listed project session can be renamed from its menu; an archived one is not listed to rename in", async () => {
+  const { aProjectSession } = await import("../test-fixtures.ts");
+  expect(deriveSessionContextMenu(aProjectSession(), false, new Map()).canRename).toBe(true);
+  expect(deriveSessionContextMenu(aProjectSession({ archived_at: "2026-09-19T00:00:00.000Z" }), false, new Map()).canRename).toBe(false);
+  const direct = { ...aProjectSession(), kind: "direct" as const, project_dir: null };
+  expect(deriveSessionContextMenu(direct, false, new Map()).canRename).toBeFalsy();
+});

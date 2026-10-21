@@ -22,7 +22,8 @@
 		onToggleArchive,
 		onDelete,
 		onShowJobView,
-		onShowMap
+		onShowMap,
+		onRename
 	}: {
 		session: SessionSummary;
 		botsById: ReadonlyMap<string, Bot>;
@@ -40,6 +41,8 @@
 		onShowJobView?: () => void;
 		/** Open a project session's task map (ADR 0096); given only where a workbench can hold it. */
 		onShowMap?: () => void;
+		/** Rename a project session on its sidebar row; given only while the sidebar shows its rows. */
+		onRename?: () => void;
 	} = $props();
 
 
@@ -185,6 +188,22 @@
 	{/if}
 
 	<div class={inSheet ? 'sheet-separator' : 'session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2'} role="separator"></div>
+
+	{#if data.canRename && onRename}
+		<button
+			type="button"
+			class={['session-context-menu-item', { 'sheet-item': inSheet }]}
+			role="menuitem"
+			data-session-rename
+			onclick={() => {
+				onRename();
+				onClose();
+			}}
+		>
+			<Icon name="edit" />
+			<span>{t.project.rename}</span>
+		</button>
+	{/if}
 
 	{#if data.canClearHistory}
 	<button

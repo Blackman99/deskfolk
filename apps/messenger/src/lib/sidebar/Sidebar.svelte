@@ -54,6 +54,10 @@
 		workspaceOpen: boolean;
 		/** Marks the row the context menu belongs to. */
 		contextMenuSessionId: string | null;
+		/** The project session whose row is a name field for now (ADR 0095). */
+		renamingSessionId?: string | null;
+		/** Its new name, or null to leave it; false when the name did not go through. */
+		onRenameSession?: (sessionId: string, name: string | null) => Promise<boolean>;
 		onOpenContextMenu: (e: MouseEvent, session: SessionSummary) => void;
 		/** Pin or unpin a conversation from its row, without opening its menu. */
 		onTogglePin?: (sessionId: string) => void;
@@ -87,6 +91,8 @@
 		toolsMenuOpen = $bindable(false),
 		workspaceOpen,
 		contextMenuSessionId,
+		renamingSessionId = null,
+		onRenameSession,
 		onOpenContextMenu,
 		onTogglePin,
 		onToggleWorkspace,
@@ -509,6 +515,9 @@
 									on={runtime.selectedId === session.id}
 									contextOpen={contextMenuSessionId === session.id}
 									title={session.name || t.project.untitled}
+									name={session.name}
+									renaming={renamingSessionId === session.id}
+									onRename={onRenameSession ? (name) => onRenameSession(session.id, name) : undefined}
 									time={timeOf(session)}
 									live={isLiveRun(snapshot.agentRuns[session.id])}
 									unread={unreadOf(session)}

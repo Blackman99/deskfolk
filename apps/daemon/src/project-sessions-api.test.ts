@@ -290,6 +290,19 @@ test("a session's model: each run asks for it, a run going now switches, and nul
   expect(h.seen.options[2]!.model).toBeUndefined();
 });
 
+test("you can rename a project session; your first line then no longer names it", async () => {
+  const h = start(async ({ line }) => `答：${line}`);
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  const renamed = await h.call<SessionDetail>("PATCH", `/v1/sessions/${id}`, { name: "  登录修复  " });
+  expect(renamed.status).toBe(200);
+  expect(renamed.body.name).toBe("登录修复");
+  expect(h.events.some((event) => event.event === "session.upsert" && event.id === id && event.name === "登录修复")).toBe(true);
+  expect((await h.call("PATCH", `/v1/sessions/${id}`, { name: "  " })).status).toBe(422);
+  await h.say(id, "看看这个项目的结构");
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(h.store.getSession(id).name).toBe("登录修复");
+});
+
 test("a phone reaches the same routes", () => {
   const id = ulid();
   const ok = (request: Parameters<typeof validateBusiness>[0]) => expect(() => validateBusiness(request)).not.toThrow();
@@ -300,6 +313,7 @@ test("a phone reaches the same routes", () => {
   ok({ v: 1, id, method: "POST", path: `/v1/agent-runs/${ulid()}/stop` });
   ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { model: "opus" } });
   ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { model: null } });
+  ok({ v: 1, id, method: "PATCH", path: `/v1/sessions/${ulid()}`, body: { name: "登录修复" } });
   expect(() => validateBusiness({ v: 1, id, method: "POST", path: `/v1/agent-runs/${ulid()}/delete` })).toThrow();
 });
 

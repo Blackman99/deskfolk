@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
 import { aBot, aProjectSession, anAgentRun, fakeRuntime } from "../test-fixtures.ts";
-import { click, render } from "../test-render.ts";
+import { click, fill, press, render } from "../test-render.ts";
+import { settle } from "../test-async.ts";
 import Sidebar from "./Sidebar.svelte";
 
 const t = copyFor("zh");
 
-function open(selected: ReturnType<typeof aProjectSession> | null = null) {
+function open(selected: ReturnType<typeof aProjectSession> | null = null, rename: { renamingSessionId?: string | null; onRenameSession?: (id: string, name: string | null) => Promise<boolean> } = {}) {
   const runtime = fakeRuntime({
     bots: [aBot({ id: "bot-1" })],
     sessions: [
@@ -22,6 +23,7 @@ function open(selected: ReturnType<typeof aProjectSession> | null = null) {
     onOpenContextMenu: () => {}, onToggleWorkspace: () => {}, onOpenRoutines: () => {}, onOpenSpend: () => {},
     workbench: true, onNewTerminal: () => {}, onOpenSettings: () => {}, onCreateBot: () => {}, onCreateGroup: () => {},
     onOpenSearch: () => {},
+    ...rename,
   });
   return { ...view, runtime };
 }
@@ -58,3 +60,55 @@ test("the section's + opens the project sheet", () => {
   expect(runtime.calls.some((c) => c.name === "openCreateProject")).toBe(true);
   close();
 });
+
+test("a row being renamed is a name field: Enter saves the new name, Escape and a blank one leave it", async () => {
+  const names: Array<[string, string | null]> = [];
+  const { host, close } = open(null, { renamingSessionId: "p1", onRenameSession: async (id, name) => { names.push([id, name]); return true; } });
+  await settle();
+  const field = host.querySelector<HTMLInputElement>("[data-renaming] input");
+  expect(field?.value).toBe("Fix login");
+  expect(document.activeElement).toBe(field);
+  fill(field, "  登录修复  ");
+  press(field, "Enter");
+  await settle();
+  // Its blur after Enter is not a second save.
+  field?.dispatchEvent(new FocusEvent("blur"));
+  await settle();
+  expect(names).toEqual([["p1", "登录修复"]]);
+  close();
+
+  const left: Array<[string, string | null]> = [];
+  const again = open(null, { renamingSessionId: "p1", onRenameSession: async (id, name) => { left.push([id, name]); return true; } });
+  await settle();
+  const escape = again.host.querySelector<HTMLInputElement>("[data-renaming] input");
+  fill(escape, "别存这个");
+  press(escape, "Escape");
+  escape?.dispatchEvent(new FocusEvent("blur"));
+  await settle();
+  expect(left).toEqual([["p1", null]]);
+  again.close();
+
+  const blank: Array<[string, string | null]> = [];
+  const third = open(null, { renamingSessionId: "p2", onRenameSession: async (id, name) => { blank.push([id, name]); return true; } });
+  await settle();
+  const unnamed = third.host.querySelector<HTMLInputElement>("[data-renaming] input");
+  // An unnamed session starts empty, its stand-in name only as the placeholder.
+  expect([unnamed?.value, unnamed?.placeholder]).toEqual(["", t.project.untitled]);
+  press(unnamed, "Enter");
+  await settle();
+  expect(blank).toEqual([["p2", null]]);
+  third.close();
+});
+
+test("a name that did not go through keeps the field open and says so", async () => {
+  const { host, close } = open(null, { renamingSessionId: "p1", onRenameSession: async () => false });
+  await settle();
+  const field = host.querySelector<HTMLInputElement>("[data-renaming] input");
+  fill(field, "新名字");
+  press(field, "Enter");
+  await settle();
+  expect(host.querySelector("[data-renaming] input")?.getAttribute("aria-invalid")).toBe("true");
+  expect(host.querySelector("[data-renaming] input")?.getAttribute("title")).toBe(t.project.renameFailed);
+  close();
+});
+

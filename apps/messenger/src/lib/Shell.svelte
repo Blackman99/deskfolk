@@ -1105,6 +1105,8 @@
 			bind:createMenuOpen
 			workspaceOpen={runtime.workspaceOpen}
 			contextMenuSessionId={sessionMenu.contextMenu?.session.id ?? null}
+			renamingSessionId={sessionMenu.renamingSessionId}
+			onRenameSession={sessionMenu.finishRename}
 			onOpenContextMenu={sessionMenu.openContextMenu}
 			onTogglePin={sessionMenu.handleMenuTogglePin}
 			onToggleWorkspace={artifact.toggleWorkspaceExplorer}
@@ -1434,6 +1436,7 @@
 			onDelete={() => sessionMenu.handleMenuDelete(activeMenu.session)}
 			onShowJobView={() => void sessionMenu.handleMenuShowJobView(activeMenu.session)}
 			onShowMap={runtime.paneOpener ? () => sessionMenu.handleMenuShowMap(activeMenu.session) : undefined}
+			onRename={sidebarHidden ? undefined : () => sessionMenu.handleMenuRename(activeMenu.session)}
 		/>
 	{/if}
 
