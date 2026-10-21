@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { FILE_DROP_SESSION_ID } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { spendCopyFor } from "../spend/spend-copy.ts";
-import { aBot, aBotDirect, aDirect, aGroup, aMessage, aRoutine, aTurn, anApproval, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aProjectSession, aBotDirect, aDirect, aGroup, aMessage, aRoutine, aTurn, anApproval, fakeRuntime } from "../test-fixtures.ts";
 import type { Snapshot } from "../snapshot.ts";
 import { click, press, render } from "../test-render.ts";
 import Sidebar from "./Sidebar.svelte";
@@ -25,10 +25,10 @@ function botDms(count: number) {
 }
 
 /** `workbench` defaults to what the desktop app has: a workbench wherever the list is wider than a phone. */
-function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | null = null, live = false, created: string[] = [], pinnedSessionIds: string[] = [], workbench = !window.matchMedia("(max-width: 680px)").matches) {
+function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | null = null, live = false, created: string[] = [], pinnedSessionIds: string[] = [], workbench = !window.matchMedia("(max-width: 680px)").matches, extra: Record<string, unknown> = {}) {
   const stub = fakeRuntime({
     bots: [aBot({ id: "bot-1", name: "Writer" }), aBot({ id: "bot-2", name: "Researcher" })],
-    sessions: [aGroup({ id: "sess-1", name: "视频组" }), ...sessions],
+    sessions: [aGroup({ id: "sess-1", name: "视频组" }), ...sessions, ...((extra.projects as ReturnType<typeof aProjectSession>[] | undefined) ?? [])],
   });
   const runtime = live ? reactive(stub) : stub;
   if (live) {
@@ -57,6 +57,7 @@ function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | nu
     onCreateBot: () => created.push("bot"),
     onCreateGroup: () => created.push("group"),
     onOpenSearch: () => created.push("search"),
+    ...(extra.phoneList ? { phoneList: extra.phoneList } : {}),
   });
   return { ...view, runtime, created };
 }
@@ -203,7 +204,8 @@ test("creating on a phone is one floating button, asking which once", () => {
 
     click(fab);
     const items = [...host.querySelectorAll('.fab-menu-item')].map((b) => b.textContent?.trim());
-    expect(items).toEqual([t.sidebar.addBot, t.sidebar.addGroup, t.project.newInFolder, t.project.importSession]);
+    // The Bots' page makes Bots and groups; the projects have a page and a + of their own.
+    expect(items).toEqual([t.sidebar.addBot, t.sidebar.addGroup]);
     expect(fab?.getAttribute('aria-expanded')).toBe('true');
 
     click(host.querySelectorAll('.fab-menu-item')[1]);
@@ -213,6 +215,34 @@ test("creating on a phone is one floating button, asking which once", () => {
     click(host.querySelector('.fab'));
     click(host.querySelectorAll('.fab-menu-item')[0]);
     expect(created).toEqual(['group', 'bot']);
+    close();
+  });
+});
+
+test("a phone's projects page lists only the projects, and its + makes only project sessions", () => {
+  withPhone(() => {
+    const projects = [aProjectSession({ id: "p1", name: "Fix login", project_dir: "/Users/a/proj" })];
+    const bots = open([aBotDirect()], null, true, [], [], false, { phoneList: "bots", projects });
+    expect(bots.host.querySelector("[data-project-dir]")).toBeNull();
+    expect(bots.host.textContent).toContain(t.sidebar.youBot);
+    bots.close();
+    const { host, runtime, close } = open([aBotDirect()], null, true, [], [], false, { phoneList: "projects", projects });
+    expect(host.querySelector('[data-project-dir="/Users/a/proj"]')).not.toBeNull();
+    expect(host.textContent).not.toContain(t.sidebar.youBot);
+    expect(host.textContent).not.toContain(t.sidebar.groups);
+    click(host.querySelector(".fab"));
+    expect([...host.querySelectorAll(".fab-menu-item")].map((b) => b.textContent?.trim())).toEqual([t.project.newInFolder, t.project.importSession]);
+    click(host.querySelector('.fab-menu-item[data-project-add="import"]'));
+    expect(runtime.calls.filter((c) => c.name === "openCreateProject").map((c) => c.args)).toEqual([["import"]]);
+    close();
+  });
+});
+
+test("an empty projects page says how to start one", () => {
+  withPhone(() => {
+    const { host, close } = open([aBotDirect()], null, true, [], [], false, { phoneList: "projects" });
+    expect(host.textContent).toContain(t.project.emptyList);
+    expect(host.querySelector('.roster-empty-btn[data-project-add="new"]')?.textContent?.trim()).toBe(t.project.newInFolder);
     close();
   });
 });
@@ -496,12 +526,14 @@ test("on a phone the calendar and the terminal live behind one button", () => {
     click(entry);
     // Tools live here; the menu is free to grow, so this checks membership and order, not the list.
     const items = Array.from(host.querySelectorAll('.tools-menu-item')).map((el) => el.textContent?.trim());
-    expect(items.indexOf(t.calendar.open)).toBe(0);
-    expect(items.indexOf(spendCopyFor("zh").open)).toBe(1);
-    expect(items.indexOf(t.usage.open)).toBe(2);
-    expect(items.indexOf(t.terminal.title)).toBe(3);
-    expect(items.indexOf(t.routing.tab)).toBe(4);
-    expect(items.indexOf(t.sidebar.archivedSessions)).toBe(5);
+    // The workspace left the bottom bar for here.
+    expect(items.indexOf(t.sidebar.workspace)).toBe(0);
+    expect(items.indexOf(t.calendar.open)).toBe(1);
+    expect(items.indexOf(spendCopyFor("zh").open)).toBe(2);
+    expect(items.indexOf(t.usage.open)).toBe(3);
+    expect(items.indexOf(t.terminal.title)).toBe(4);
+    expect(items.indexOf(t.routing.tab)).toBe(5);
+    expect(items.indexOf(t.sidebar.archivedSessions)).toBe(6);
 
     const terminalItem = [...host.querySelectorAll<HTMLButtonElement>('.tools-menu-item')].find((item) => item.textContent?.includes(t.terminal.title));
     click(terminalItem);

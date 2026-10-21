@@ -15,8 +15,9 @@
 		createMenuOpen?: boolean;
 		/** The wrapper, for the sidebar's outside-click check. */
 		wrapEl?: HTMLElement | null;
-		onCreateBot: () => void;
-		onCreateGroup: () => void;
+		/** A Bot and a group; left out (a phone's projects page), the menu has neither. */
+		onCreateBot?: () => void;
+		onCreateGroup?: () => void;
 		/** A project session (ADR 0095): a new one in a folder, or a terminal session carried on; left out, the menu has neither. */
 		onNewProject?: () => void;
 		onImportProject?: () => void;
@@ -29,6 +30,7 @@
 	{#if createMenuOpen}
 		<BottomSheet title={t.sidebar.createMenu} closeLabel={t.common.close} onClose={() => (createMenuOpen = false)}>
 			<div class="fab-menu" role="menu" aria-label={t.sidebar.createMenu}>
+				{#if onCreateBot}
 				<button
 					type="button"
 					class="fab-menu-item sheet-item"
@@ -41,6 +43,8 @@
 					<Icon name="bot" />
 					<span class="sheet-item-label">{t.sidebar.addBot}</span>
 				</button>
+				{/if}
+				{#if onCreateGroup}
 				<button
 					type="button"
 					class="fab-menu-item sheet-item"
@@ -53,6 +57,7 @@
 					<Icon name="users" />
 					<span class="sheet-item-label">{t.sidebar.addGroup}</span>
 				</button>
+				{/if}
 				{#if onNewProject}
 					<button
 						type="button"

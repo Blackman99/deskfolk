@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { flushSync } from 'svelte';
 import { emptySnapshot } from './snapshot.ts';
-import { aBot, aBotDirect, aDirect, aGroup, aMessage, aRoutine, anAttachment, fakeRuntime } from './test-fixtures.ts';
+import { aBot, aBotDirect, aDirect, aGroup, aMessage, aProjectSession, aRoutine, anAttachment, fakeRuntime } from './test-fixtures.ts';
 import { reactive } from './test-reactive.svelte.ts';
 import { buttonByText, click, render } from './test-render.ts';
 import { copyFor } from './copy.ts';
@@ -131,7 +131,7 @@ test("the routine calendar replaces the main column and stays visible without a 
   expect(runtime.routinesOpen).toBe(true);
 });
 
-test('mobile destinations preserve selection state, repeat safely and expose unconfigured workspace recovery', async () => {
+test('mobile destinations: the Bots, the projects and settings; the workspace, opened from Tools, still leads to settings when unset', async () => {
   const runtime = reactive(fakeRuntime({
     settings: { ...emptySnapshot().settings, locale: 'zh', wizard_complete: true, workspace_path: null },
   }));
@@ -146,8 +146,12 @@ test('mobile destinations preserve selection state, repeat safely and expose unc
   expect(runtime.settingsOpen).toBe(true);
   click(nav(1));
   await settle();
-  expect(runtime.workspaceOpen).toBe(true);
   expect(runtime.settingsOpen).toBe(false);
+  expect(host.querySelector('.mobile-navigation [aria-current]')?.textContent).toContain('项目');
+  runtime.openWorkspace();
+  await settle();
+  // A page over the list, like the calendar: no bottom bar under it.
+  expect(host.querySelector('.mobile-navigation')).toBeNull();
   expect(host.querySelector('.workspace-unset')).not.toBeNull();
   click(host.querySelector('.workspace-unset button'));
   await settle();
@@ -156,7 +160,7 @@ test('mobile destinations preserve selection state, repeat safely and expose unc
   click(nav(0));
   await settle();
   expect(runtime.settingsOpen).toBe(false);
-  expect(host.querySelector('.mobile-navigation [aria-current]')?.textContent).toContain('会话');
+  expect(host.querySelector('.mobile-navigation [aria-current]')?.textContent).toContain('Bot');
 });
 
 test('on a phone the settings page is headed with the Bot or the Bots it belongs to', () => {
@@ -598,4 +602,45 @@ test("Back on the floor under the first page closes a sheet, then the conversati
   expect(runtime.selectedId).toBeNull();
   // On the list with nothing open, Back is the app's to let go.
   expect(floor()).toBe(false);
+});
+
+test("a project session opened from anywhere brings the projects page back with it, a Bot's conversation the Bots'", async () => {
+  const project = aProjectSession({ id: "p1" });
+  const direct = aDirect({ id: "bot-1", participants: [
+    { member: "user", joined_at: "now", left_at: null },
+    { member: "bot-1", joined_at: "now", left_at: null },
+  ] });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ id: "bot-1", name: "Alpha" })],
+    sessions: [direct, project],
+    settings: { ...emptySnapshot().settings, locale: "zh", wizard_complete: true, workspace_path: "/fixture" },
+  }));
+  const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+  const current = () => host.querySelector(".mobile-navigation [aria-current]")?.textContent?.trim();
+  expect(current()).toBe("Bot");
+  runtime.selectedId = project.id;
+  flushSync();
+  runtime.selectedId = null;
+  await settle();
+  expect(current()).toBe("项目");
+  runtime.selectedId = direct.id;
+  flushSync();
+  runtime.selectedId = null;
+  await settle();
+  expect(current()).toBe("Bot");
+});
+
+test("the list page a phone was on comes back after a reload", async () => {
+  localStorage.setItem("real-bot-phone-list", "projects");
+  try {
+    const runtime = reactive(fakeRuntime({ settings: { ...emptySnapshot().settings, locale: "zh", wizard_complete: true, workspace_path: "/fixture" } }));
+    runtime.closeWorkspace = () => { runtime.workspaceOpen = false; };
+    const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+    expect(host.querySelector(".mobile-navigation [aria-current]")?.textContent?.trim()).toBe("项目");
+    click(host.querySelectorAll(".mobile-navigation button")[0]);
+    await settle();
+    expect(localStorage.getItem("real-bot-phone-list")).toBe("bots");
+  } finally {
+    localStorage.removeItem("real-bot-phone-list");
+  }
 });

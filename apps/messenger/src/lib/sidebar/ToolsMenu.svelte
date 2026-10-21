@@ -39,7 +39,7 @@
 		focusLast?: boolean;
 		archivedCount: number;
 		/** What is on screen now, for the phone's pages. */
-		current?: { routines?: boolean; spend?: boolean; usage?: boolean; roles?: boolean; terminal?: boolean; screen?: boolean; archived?: boolean };
+		current?: { routines?: boolean; spend?: boolean; usage?: boolean; roles?: boolean; terminal?: boolean; screen?: boolean; workspace?: boolean; archived?: boolean };
 		onOpenRoutines: () => void;
 		onOpenSpend: () => void;
 		/** Every agent's usage (ADR 0080): the floating widget's panel, or a phone's page. */
@@ -49,6 +49,8 @@
 		onOpenTerminal: () => void;
 		/** The remote screen; null where this is not a phone on a Mac that offers it. */
 		onOpenScreen?: (() => void) | null;
+		/** The workspace, as a page among the tools on a phone, whose bottom bar no longer has it; null elsewhere. */
+		onOpenWorkspace?: (() => void) | null;
 		/** Whose screen that is, for its name: a Mac's, or a Windows PC's. */
 		screenHost?: 'mac' | 'windows';
 		onOpenArchived: () => void;
@@ -71,6 +73,7 @@
 		onOpenRoles = null,
 		onOpenTerminal,
 		onOpenScreen = null,
+		onOpenWorkspace = null,
 		screenHost = 'mac',
 		onOpenArchived
 	}: Props = $props();
@@ -157,6 +160,19 @@
 <svelte:window onclick={onWindowClick} onresize={place} />
 
 {#snippet entries(inSheet: boolean)}
+	{#if onOpenWorkspace}
+		<button
+			type="button"
+			class={['tools-menu-item', { 'sheet-item': inSheet }]}
+			role="menuitem"
+			aria-current={current.workspace ? 'true' : undefined}
+			data-tools-workspace
+			onclick={() => choose(onOpenWorkspace)}
+		>
+			<Icon name="folder" />
+			<span>{t.sidebar.workspace}</span>
+		</button>
+	{/if}
 	<button
 		type="button"
 		class={['tools-menu-item', { 'sheet-item': inSheet }]}

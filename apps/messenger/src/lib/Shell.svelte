@@ -416,8 +416,39 @@
 		untrack(() => { paneMobileDetail = false; });
 	});
 
+	/**
+	 * Which list a phone shows: your Bots' conversations or the project sessions (ADR 0095), two
+	 * pages of the bottom bar. A conversation opened from anywhere — search, a link — brings its
+	 * own list back with it, so Back from it lands where it belongs. Kept in this browser, so a
+	 * reload — a phone reloads a tab it kept in the background — opens on the same page.
+	 */
+	const PHONE_LIST_KEY = 'real-bot-phone-list';
+	let phoneList = $state<'bots' | 'projects'>(readPhoneList());
+	function readPhoneList(): 'bots' | 'projects' {
+		try {
+			return localStorage.getItem(PHONE_LIST_KEY) === 'projects' ? 'projects' : 'bots';
+		} catch {
+			return 'bots';
+		}
+	}
+	$effect(() => {
+		const list = phoneList;
+		try {
+			localStorage.setItem(PHONE_LIST_KEY, list);
+		} catch {
+			// Private mode or blocked storage: the page just opens on the Bots next time.
+		}
+	});
+	$effect(() => {
+		const kind = selected?.kind;
+		if (!kind) return;
+		untrack(() => {
+			phoneList = kind === 'project' ? 'projects' : 'bots';
+		});
+	});
+
 	const mobileDestination = $derived<MobileDestination>(
-		runtime.settingsOpen ? 'settings' : runtime.workspaceOpen ? 'workspace' : 'sessions'
+		runtime.settingsOpen ? 'settings' : phoneList === 'projects' ? 'projects' : 'sessions'
 	);
 	function navigateMobile(destination: MobileDestination): void {
 		if (destination === mobileDestination) return;
@@ -429,13 +460,11 @@
 			closeGlobalSearch();
 			if (destination === 'settings') {
 				runtime.openSettings();
-			} else if (destination === 'workspace') {
-				runtime.openWorkspace();
-			}
-			else {
+			} else {
 				closeSettings();
 				runtime.closeWorkspace();
 				runtime.selectedId = null;
+				phoneList = destination === 'projects' ? 'projects' : 'bots';
 			}
 		};
 		if (runtime.workspaceOpen && workspacePane) {
@@ -893,7 +922,8 @@
 		!runtime.screenOpen &&
 		!runtime.createBotOpen && !runtime.createGroupOpen && !runtime.createProjectOpen && !runtime.sessionSettingsOpen &&
 		!runtime.profileBotId && !danger.dangerConfirm &&
-		(runtime.settingsOpen ? !mobileSettingsDetail && !providerEditor : runtime.workspaceOpen || (!selected && !artifact.artifactPreview))
+		// The workspace is a page opened from Tools, like the calendar: it has its own way back.
+		(runtime.settingsOpen ? !mobileSettingsDetail && !providerEditor : !runtime.workspaceOpen && !selected && !artifact.artifactPreview)
 	);
 </script>
 
@@ -1130,6 +1160,7 @@
 			workspaceOpen={runtime.workspaceOpen}
 			contextMenuSessionId={sessionMenu.contextMenu?.session.id ?? null}
 			renamingSessionId={sessionMenu.renamingSessionId}
+			{phoneList}
 			onRenameSession={sessionMenu.finishRename}
 			onOpenContextMenu={sessionMenu.openContextMenu}
 			onTogglePin={sessionMenu.handleMenuTogglePin}

@@ -57,6 +57,8 @@
 		contextMenuSessionId: string | null;
 		/** The project session whose row is a name field for now (ADR 0095). */
 		renamingSessionId?: string | null;
+		/** On a phone, which page of the bottom bar this list is: your Bots' conversations or the projects. */
+		phoneList?: 'bots' | 'projects';
 		/** Its new name, or null to leave it; false when the name did not go through. */
 		onRenameSession?: (sessionId: string, name: string | null) => Promise<boolean>;
 		onOpenContextMenu: (e: MouseEvent, session: SessionSummary) => void;
@@ -93,6 +95,7 @@
 		workspaceOpen,
 		contextMenuSessionId,
 		renamingSessionId = null,
+		phoneList = 'bots',
 		onRenameSession,
 		onOpenContextMenu,
 		onTogglePin,
@@ -146,18 +149,25 @@
 	);
 	const listed = $derived(onlyWorking(grouped, workingIds, runtime.selectedId));
 
-	const fileDrop = $derived(listed.fileDrop);
-	const groupRows = $derived(listed.groups);
-	const youBotRows = $derived(listed.youBot);
+	/** Set from the phone media query below. */
+	let phone = $state(false);
+	/** A phone lists the Bots and the projects on two pages of its bottom bar; a wider window, together. */
+	const showBots = $derived(!phone || phoneList === 'bots');
+	const showProjects = $derived(!phone || phoneList === 'projects');
+	const fileDrop = $derived(showBots ? listed.fileDrop : null);
+	const groupRows = $derived(showBots ? listed.groups : []);
+	const youBotRows = $derived(showBots ? listed.youBot : []);
 	// A Bot↔Bot direct is not listed: it opens from the message it hangs under, in a popup (ADR 0091).
-	const projectGroups = $derived(groupProjectSessions(listed.project));
+	const projectGroups = $derived(showProjects ? groupProjectSessions(listed.project) : []);
 	const nothingWorking = $derived(
 		workingIds !== null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0 && projectGroups.length === 0
 	);
 	/** No conversation at all yet, unfiltered: the list says how to start one instead of bare headers. */
 	const rosterEmpty = $derived(
-		workingIds === null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0 && projectGroups.length === 0
+		showBots && workingIds === null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0 && projectGroups.length === 0
 	);
+	/** A phone's projects page with no project session yet says how to start one. */
+	const projectsEmpty = $derived(!showBots && workingIds === null && projectGroups.length === 0);
 	const archivedSessions = $derived(
 		snapshot.sessions.filter((session) => isSessionArchived(session, botsById))
 	);
@@ -184,7 +194,6 @@
 	let projectMenuOpen = $state(false);
 	let projectAddEl = $state<HTMLButtonElement | null>(null);
 
-	let phone = $state(false);
 	$effect(() => {
 		if (typeof window.matchMedia !== 'function') return;
 		const query = window.matchMedia('(max-width: 680px)');
@@ -324,7 +333,7 @@
 		</div>
 	{/if}
 	<!-- Nothing pinned is not news worth the top of the sidebar: the band only appears once something is. -->
-	{#if pinnedSessions.length > 0}
+	{#if pinnedSessions.length > 0 && showBots}
 	<PinnedRoster
 		{runtime}
 		{t}
@@ -424,7 +433,7 @@
 					onPointerDown={pressOf(fileDrop)}
 				/>
 			{/if}
-			{#if !workingIds || groupRows.length > 0}
+			{#if showBots && (!workingIds || groupRows.length > 0)}
 				<div class="ghead">
 					<span>{t.sidebar.groups}</span>
 					<button type="button" class="add" title={t.sidebar.addGroup} onclick={onCreateGroup}
@@ -456,7 +465,7 @@
 					/>
 				</div>
 			{/each}
-			{#if !workingIds || youBotRows.length > 0}
+			{#if showBots && (!workingIds || youBotRows.length > 0)}
 				<div class="ghead">
 					<span>{t.sidebar.youBot}</span>
 					<button type="button" class="add" title={t.sidebar.addBot} onclick={onCreateBot}>+</button>
@@ -487,7 +496,7 @@
 					/>
 				</div>
 			{/each}
-			{#if !workingIds || projectGroups.length > 0}
+			{#if showProjects && (!workingIds || projectGroups.length > 0)}
 				<div class="ghead">
 					<span>{t.project.section}</span>
 					<button
@@ -571,6 +580,12 @@
 					<button type="button" class="roster-empty-btn" onclick={onCreateGroup}>{t.sidebar.addGroup}</button>
 				</EmptyState>
 			{/if}
+			{#if projectsEmpty}
+				<EmptyState size="inline" level={3} title={t.project.emptyList} hint={t.project.emptyListHint}>
+					<button type="button" class="roster-empty-btn is-primary" data-project-add="new" onclick={() => void newProjectInFolder(runtime, t)}>{t.project.newInFolder}</button>
+					<button type="button" class="roster-empty-btn" data-project-add="import" onclick={() => runtime.openCreateProject('import')}>{t.project.importSession}</button>
+				</EmptyState>
+			{/if}
 		{/if}
 	</div>
 	{/if}
@@ -604,6 +619,7 @@
 			roles: viewingRoles,
 			terminal: !workbench && runtime.terminalOpen,
 			screen: runtime.screenOpen,
+			workspace: phone && runtime.workspaceOpen,
 			archived: viewingArchived
 		}}
 		{onOpenRoutines}
@@ -615,6 +631,7 @@
 		onOpenRoles={() => runtime.openRoles()}
 		onOpenTerminal={() => (workbench ? onNewTerminal() : runtime.openTerminal())}
 		onOpenScreen={runtime.screenOffered ? () => runtime.openRemoteScreen() : null}
+		onOpenWorkspace={phone ? onToggleWorkspace : null}
 		screenHost={runtime.screenHost}
 		onOpenArchived={openArchived}
 	/>
@@ -640,7 +657,15 @@
 	there are two of them saying the same kind of thing; this asks which once, where your thumb is.
 -->
 {#if phone && !selected && !searchOpen && !viewingArchived && !viewingUsage && !viewingRoles && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen && !runtime.terminalOpen && !runtime.screenOpen}
-	<CreateFab {t} bind:createMenuOpen bind:wrapEl={fabEl} {onCreateBot} {onCreateGroup} onNewProject={() => void newProjectInFolder(runtime, t)} onImportProject={() => runtime.openCreateProject('import')} />
+	<CreateFab
+		{t}
+		bind:createMenuOpen
+		bind:wrapEl={fabEl}
+		onCreateBot={showBots ? onCreateBot : undefined}
+		onCreateGroup={showBots ? onCreateGroup : undefined}
+		onNewProject={showProjects ? () => void newProjectInFolder(runtime, t) : undefined}
+		onImportProject={showProjects ? () => runtime.openCreateProject('import') : undefined}
+	/>
 {/if}
 
 <style>

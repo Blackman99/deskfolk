@@ -8,15 +8,16 @@ for (const locale of ['zh', 'en'] as const) {
     const t = copyFor(locale);
     const destinations: string[] = [];
     const { host, close } = render(MobileNavigation, {
-      active: 'workspace', t, updateAvailable: true,
+      active: 'projects', t, updateAvailable: true,
       onNavigate: (destination: string) => destinations.push(destination),
     });
     const buttons = [...host.querySelectorAll('button')];
-    expect(buttons.map(b => b.textContent?.trim())).toEqual([t.sidebar.sessions, t.sidebar.workspace, t.settings.title]);
+    // The Bots and the projects are two lists; the workspace is one of the Tools now.
+    expect(buttons.map(b => b.textContent?.trim())).toEqual([t.sidebar.botsTab, t.project.section, t.settings.title]);
     expect(buttons[1].getAttribute('aria-current')).toBe('page');
     expect(host.querySelectorAll('[aria-current]')).toHaveLength(1);
     for (const button of buttons) click(button);
-    expect(destinations).toEqual(['sessions', 'workspace', 'settings']);
+    expect(destinations).toEqual(['sessions', 'projects', 'settings']);
     expect(host.querySelector('.navigation-update')?.getAttribute('aria-label')).toBe(t.sidebar.updateAvailable);
     close();
   });

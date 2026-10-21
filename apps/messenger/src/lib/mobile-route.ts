@@ -19,7 +19,7 @@
 import type { UrlOverlay, UrlView } from "./session-url.ts";
 
 /** The phone's three destinations, in the order the bottom bar shows them. */
-export type MobileDestination = "sessions" | "workspace" | "settings";
+export type MobileDestination = "sessions" | "projects" | "settings";
 
 export type RouteStep = "deeper" | "shallower" | "lateral" | "swap";
 export type UrlNavigation = "push" | "replace" | "back";

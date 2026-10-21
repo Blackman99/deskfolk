@@ -2,22 +2,26 @@
 	import Icon from './Icon.svelte';
 	import type { Copy } from './copy.ts';
 
+	/**
+	 * A phone's bottom bar: your Bots' conversations, the project sessions (ADR 0095), settings. The
+	 * workspace is one of the Tools, not a destination of its own.
+	 */
 	let { active, t, updateAvailable = false, onNavigate }: {
-		active: 'sessions' | 'workspace' | 'settings';
+		active: 'sessions' | 'projects' | 'settings';
 		t: Copy;
 		updateAvailable?: boolean;
-		onNavigate: (destination: 'sessions' | 'workspace' | 'settings') => void;
+		onNavigate: (destination: 'sessions' | 'projects' | 'settings') => void;
 	} = $props();
 </script>
 
 <nav class="mobile-navigation" aria-label={t.sidebar.mainNavigation}>
 	<button type="button" class:is-active={active === 'sessions'} aria-current={active === 'sessions' ? 'page' : undefined} onclick={() => onNavigate('sessions')}>
 		<Icon name="message" size={24} filled={active === 'sessions'} />
-		<span>{t.sidebar.sessions}</span>
+		<span>{t.sidebar.botsTab}</span>
 	</button>
-	<button type="button" class:is-active={active === 'workspace'} aria-current={active === 'workspace' ? 'page' : undefined} onclick={() => onNavigate('workspace')}>
-		<Icon name="folder" size={24} filled={active === 'workspace'} />
-		<span>{t.sidebar.workspace}</span>
+	<button type="button" class:is-active={active === 'projects'} aria-current={active === 'projects' ? 'page' : undefined} data-nav-projects onclick={() => onNavigate('projects')}>
+		<Icon name="folder" size={24} filled={active === 'projects'} />
+		<span>{t.project.section}</span>
 	</button>
 	<button type="button" class:is-active={active === 'settings'} aria-current={active === 'settings' ? 'page' : undefined} onclick={() => onNavigate('settings')}>
 		<span class="navigation-icon">

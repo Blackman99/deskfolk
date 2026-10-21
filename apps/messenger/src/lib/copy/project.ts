@@ -3,6 +3,8 @@ import type { CopyShape } from "./shape.ts";
 /** Project sessions (ADR 0095): the sidebar's 项目 section, the sheet that starts one, and its chat. */
 export const zh = {
   section: "项目",
+  emptyList: "还没有项目会话",
+  emptyListHint: "在电脑上的一个文件夹里和 Claude Code 对话，或者接着终端里开过的会话。",
   add: "新开或导入项目会话",
   newInFolder: "在文件夹中新开…",
   importSession: "导入终端会话…",
@@ -58,6 +60,8 @@ export const zh = {
 
 export const en: CopyShape<typeof zh> = {
   section: "Projects",
+  emptyList: "No project sessions yet",
+  emptyListHint: "Talk to Claude Code in a folder on the computer, or carry on a session you had in a terminal.",
   add: "New or import a project session",
   newInFolder: "New in a folder…",
   importSession: "Import a terminal session…",

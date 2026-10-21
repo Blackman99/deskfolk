@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### On a phone, the Bots and the projects are two pages of the bottom bar
+
+- The phone's bottom bar is now Bots, Projects and Settings. The Bots page holds the file drop, groups and your Bots' conversations; the Projects page holds only the project sessions, by directory, with a + that starts one in a folder or imports a terminal session, and says how to start when there are none. A conversation opened from search or a link brings its own page back when you leave it. The workspace moved from the bottom bar into Tools, first in the list, and opens as a page like the calendar.
+
 ### Back on a phone always goes back within the app first
 
 - On a phone, Back left the app instead of closing what was open whenever nothing of the app's was behind the page: a sheet or menu opened on the first page after a fresh load, or a conversation opened straight from a link or a notification. The app now keeps one entry of its own under its first page, so Back there closes the sheet, then the page showing, then the conversation, back to the list; only Back on the list with nothing open leaves the app.
