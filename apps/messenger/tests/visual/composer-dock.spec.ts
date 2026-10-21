@@ -193,6 +193,55 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 		});
 
 		/*
+		 * The Mac window draws classic scrollbars, 15px off the list's right edge, and the card floats
+		 * over the list: on the stage's 12px it ran into the bar, its right margin gone (2026-10-21).
+		 * It sits on the transcript's column now, as wide as the text and centred on it.
+		 */
+		test('a floating card keeps its margin off a classic scrollbar', async ({ baseURL }) => {
+			test.skip(name === 'chromium', 'Playwright runs Chromium with its scrollbars hidden');
+			const browser = await engine.launch();
+			const context = await browser.newContext({ viewport: { width: 900, height: 844 } });
+			await context.addInitScript(() =>
+				document.addEventListener('DOMContentLoaded', () => {
+					const style = document.createElement('style');
+					style.textContent = '::-webkit-scrollbar{width:15px}::-webkit-scrollbar-thumb{background:#888}';
+					document.head.append(style);
+				})
+			);
+			const page = await context.newPage();
+			await page.goto(`${baseURL}index.html?story=chat-stage-narrow`);
+			await page.waitForSelector('html[data-ready="yes"]');
+			// Short enough that the list scrolls, so its bar shows.
+			await page.evaluate(() => (document.getElementById('story')!.style.height = '420px'));
+			const column = () =>
+				page.locator('.composer').evaluate((el) => {
+					const stream = el.parentElement!.querySelector<HTMLElement>('.stream')!;
+					const inner = stream.querySelector('.stream-inner')!;
+					const box = inner.getBoundingClientRect();
+					const textLeft = box.left + parseFloat(getComputedStyle(inner).paddingLeft);
+					const textRight = box.right - parseFloat(getComputedStyle(inner).paddingRight);
+					const card = el.querySelector('.composer-card')!.getBoundingClientRect();
+					return {
+						bar: stream.offsetWidth - stream.clientWidth,
+						left: Math.round(card.left - textLeft),
+						right: Math.round(textRight - card.right),
+						centre: Math.round((card.left + card.right - textLeft - textRight) / 2)
+					};
+				});
+			for (const px of [560, 481]) {
+				await storyWidth(page, px);
+				await expect.poll(column).toEqual({ bar: 15, left: 0, right: 0, centre: 0 });
+			}
+			await storyWidth(page, 900);
+			// Wide, the card is the chat's width and the text a little narrower: they share a centre.
+			await expect.poll(async () => {
+				const { bar, centre } = await column();
+				return { bar, centre };
+			}).toEqual({ bar: 15, centre: 0 });
+			await browser.close();
+		});
+
+		/*
 		 * A project session's composer is its own (ADR 0095), and it only ever asked the window: in
 		 * a 500px pane it kept the wide card and margins (2026-10-21). It follows the conversation's
 		 * width now, as a Bot's does: the phone's 12px up to 680px, docked at 480px and under.

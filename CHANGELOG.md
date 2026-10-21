@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A floating composer keeps its margin off the scrollbar
+
+- In the Mac window, where scrollbars always show, a composer floating over a conversation between 481 and 680px wide ran into the conversation's scrollbar on the right, its margin there gone. The card now leaves room for the scrollbar and lines up with the conversation's text on both sides; on a wide screen it is centred on the text as well.
+
 ### A task map's list of plans opens over the town
 
 - On a task map, the list its title opens to switch plans opened under the town's hint and plates, so the hint covered the plan at the top of it. The list now opens over the town.

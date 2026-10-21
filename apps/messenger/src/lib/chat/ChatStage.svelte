@@ -503,6 +503,8 @@
 
 	$effect(() => scroll.followSize());
 
+	$effect(() => scroll.followScrollbar());
+
 	$effect(() => {
 		if (liveTurnsHere.length > 0) {
 			const timer = setInterval(() => {

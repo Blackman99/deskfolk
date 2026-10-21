@@ -630,7 +630,9 @@
 		right: 0;
 		bottom: var(--keyboard-inset, 0px);
 		background: transparent;
-		padding: 10px 24px 12px;
+		/* On the transcript's column: a classic scrollbar takes the list's right edge, and the card
+		   floats over the list, so it keeps its margin off the bar (the stage measures it). */
+		padding: 10px calc(24px + var(--stream-scrollbar, 0px)) 12px 24px;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -910,10 +912,10 @@
 		}
 	}
 
-	/* Still floating, on the transcript's 12px here (see above). */
+	/* Still floating, on the transcript's 12px here (see above), and the right one off the scrollbar. */
 	@container conversation (max-width: 680px) {
 		.composer {
-			padding-inline: 12px;
+			padding-inline: 12px calc(12px + var(--stream-scrollbar, 0px));
 		}
 	}
 

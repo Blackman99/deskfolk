@@ -170,6 +170,26 @@ export class ChatScroll {
     };
   };
 
+  /**
+   * The stage's effect for the list's scrollbar. The composer floats over the list, and a classic
+   * scrollbar (always on in the Mac app's window) takes the list's right edge: its width goes to
+   * the stage, so the card keeps its margin off the bar instead of running into it.
+   */
+  followScrollbar = (): (() => void) | undefined => {
+    const outer = this.streamContainer;
+    const stage = outer?.parentElement;
+    if (!outer || !stage) return;
+    const apply = () => stage.style.setProperty("--stream-scrollbar", `${outer.offsetWidth - outer.clientWidth}px`);
+    // The bar showing up narrows the list's content box, so this sees it come and go.
+    const ro = new ResizeObserver(apply);
+    ro.observe(outer);
+    apply();
+    return () => {
+      ro.disconnect();
+      stage.style.removeProperty("--stream-scrollbar");
+    };
+  };
+
   scrollHighlightedMessage = (): void => {
     const id = this.deps.highlightedId();
     const root = this.streamContainer;
