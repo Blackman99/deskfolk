@@ -280,6 +280,41 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			await browser.close();
 		});
 
+		/*
+		 * The account, model and thinking level are one cascading picker (2026-10-22): its columns
+		 * open over the composer, in the top layer, inside the window. WebKit does not focus a
+		 * button it was clicked on, and the keys are read on the picker's field: opening focuses it.
+		 */
+		test('a project session\'s picker opens its columns over the composer, and takes the keys', async ({ baseURL }) => {
+			const browser = await engine.launch();
+			const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+			await page.goto(`${baseURL}index.html?story=project-chat`);
+			await page.waitForSelector('html[data-ready="yes"]');
+			await storyWidth(page, 480);
+			const trigger = page.locator('.tune-trigger');
+			await trigger.click();
+			const panel = page.locator('.tune-panel');
+			await expect(panel).toBeVisible();
+			// Measured where it comes to rest: it rises into place.
+			await panel.evaluate((el) => Promise.all(el.getAnimations().map((animation) => animation.finished)));
+			const place = await page.evaluate(() => {
+				const p = document.querySelector('.tune-panel')!.getBoundingClientRect();
+				const t = document.querySelector('.tune-trigger')!.getBoundingClientRect();
+				return { above: Math.round(t.top - p.bottom), left: Math.round(p.left - t.left), inside: p.top >= 0 && p.right <= innerWidth };
+			});
+			expect(place).toEqual({ above: 4, left: 0, inside: true });
+			await expect(page.locator('[data-tune-column]')).toHaveCount(3);
+			// To the accounts, down to the other one, over to its models: the keys walk the cascade.
+			await page.keyboard.press('ArrowLeft');
+			await page.keyboard.press('ArrowDown');
+			await page.keyboard.press('ArrowRight');
+			await expect(page.locator('[data-tune-column="account"] .tune-row.is-focus')).toHaveAttribute('data-value', '/Users/me/.claude-team');
+			await expect(page.locator('[data-tune-column="model"] .tune-row.is-keyed')).toHaveCount(1);
+			await page.keyboard.press('Escape');
+			await expect(panel).toHaveCount(0);
+			await browser.close();
+		});
+
 		test('a wide conversation keeps the floating card, and ✨ waits for the reply in progress', async ({ baseURL }) => {
 			const browser = await engine.launch();
 			const page = await browser.newPage({ viewport: { width: 900, height: 820 } });

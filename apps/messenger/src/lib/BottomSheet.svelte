@@ -24,12 +24,15 @@
 		/** The close button's and the backdrop's name. */
 		closeLabel: string;
 		onClose: () => void;
+		/** One level up in a sheet that goes down a level at a time: a Back button before the heading, and what the phone's Back and Escape do. */
+		onBack?: () => void;
+		backLabel?: string;
 		/** A class for the sheet itself, for the component's own rules. */
 		class?: string;
 		children: Snippet;
 	}
 
-	let { title = null, label = null, closeLabel, onClose, class: className = '', children }: Props = $props();
+	let { title = null, label = null, closeLabel, onClose, onBack, backLabel, class: className = '', children }: Props = $props();
 
 	let layerEl = $state<HTMLDivElement | null>(null);
 	let sheetEl = $state<HTMLDivElement | null>(null);
@@ -54,8 +57,8 @@
 		};
 	});
 
-	// The phone's Back puts the sheet away first, rather than leaving the page under it.
-	$effect(() => holdBack(() => onClose()));
+	// The phone's Back puts the sheet away first, rather than leaving the page under it; a level down, it goes up one.
+	$effect(() => holdBack(() => (onBack ?? onClose)()));
 
 	// Focus comes into the sheet, so Escape and a screen reader start there; the page under it stays where it was.
 	$effect(() => {
@@ -66,7 +69,7 @@
 		if (event.key !== 'Escape') return;
 		event.preventDefault();
 		event.stopPropagation();
-		onClose();
+		(onBack ?? onClose)();
 	}
 </script>
 
@@ -75,7 +78,12 @@
 	<div bind:this={sheetEl} class="bottom-sheet-panel {className}" role="dialog" aria-modal="true" aria-label={title ?? label ?? undefined} tabindex="-1">
 		<div class="bottom-sheet-grip" aria-hidden="true"></div>
 		{#if title}
-			<header class="bottom-sheet-head">
+			<header class="bottom-sheet-head" class:has-back={Boolean(onBack)}>
+				{#if onBack}
+					<button type="button" class="bottom-sheet-close" aria-label={backLabel} title={backLabel} onclick={() => onBack?.()}>
+						<Icon name="chevron-left" size={20} />
+					</button>
+				{/if}
 				<h2 class="bottom-sheet-title">{title}</h2>
 				<button type="button" class="bottom-sheet-close" aria-label={closeLabel} title={closeLabel} onclick={() => onClose()}>
 					<Icon name="x" size={20} />
@@ -166,6 +174,10 @@
 		align-items: center;
 		gap: 8px;
 		padding: 2px 8px 6px 20px;
+	}
+
+	.bottom-sheet-head.has-back {
+		padding-left: 4px;
 	}
 
 	.bottom-sheet-title {

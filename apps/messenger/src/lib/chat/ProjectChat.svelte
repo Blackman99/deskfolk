@@ -1,11 +1,8 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { CLAUDE_EFFORTS, isHiddenTranscriptKind, type ClaudeEffort, speechReady, USER_MEMBER, type Attachment, type Message, type SessionSummary } from '@real-bot/protocol';
+	import { isHiddenTranscriptKind, type PatchProjectSessionRequest, speechReady, USER_MEMBER, type Attachment, type Message, type SessionSummary } from '@real-bot/protocol';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
-	import Select from '../Select.svelte';
-	import { claudeAgentSource } from '../model-source.ts';
-	import type { SelectOption } from '../select-options.ts';
 	import MarkdownBody from '../MarkdownBody.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -25,8 +22,9 @@
 	import { focusMode } from './focus-mode.svelte.ts';
 	import { describeStep } from './turn-activity.ts';
 	import { ComposerVoice, spacedHeard } from './composer-voice.svelte.ts';
-	import { claudeModelsOf, effortChoices, loadClaudeModels, modelChoices, modelRowOf } from '../claude-models.svelte.ts';
+	import { loadClaudeModels } from '../claude-models.svelte.ts';
 	import { accountChoices, claudeStatus, loadClaudeStatus } from './project-agent-options.svelte.ts';
+	import ProjectAgentTune from './ProjectAgentTune.svelte';
 	import VoiceButton from './VoiceButton.svelte';
 	import VoiceStatus from './VoiceStatus.svelte';
 	import { ProjectCitedPaths } from './project-cited-path.ts';
@@ -97,10 +95,11 @@
 
 	/**
 	 * The account its next run spends, the model its runs ask for and their thinking level, each the
-	 * session's own and kept with it. The models are the ones your Claude Code lists for that account,
-	 * as its `/model` does, its default first for what your settings say; one set elsewhere stays a
-	 * choice. The thinking levels are the ones the picked model takes. A model or level change reaches
-	 * a run going now from its next step; an account change waits for the run to end.
+	 * session's own and kept with it, picked in one cascading picker (`ProjectAgentTune`). The models
+	 * are the ones your Claude Code lists for that account, as its `/model` does, its default first
+	 * for what your settings say; one set elsewhere stays a choice. The thinking levels are the ones
+	 * the picked model takes. A model or level change reaches a run going now from its next step; an
+	 * account change waits for the run to end.
 	 */
 	const account = $derived(selected.project_config_dir ?? '');
 	// Asked once each; untracked, so what the asking writes does not ask again.
@@ -116,47 +115,15 @@
 	const accountOptions = $derived(accountChoices(claudeStatus(), account, t.project.defaultAccount));
 	/** Picked only with a second account to pick, or the session already on one. */
 	const accountShown = $derived(accountOptions.length > 1);
-	const modelList = $derived(claudeModelsOf(account || null));
 	const model = $derived(selected.project_model ?? '');
-	const modelOptions = $derived.by((): SelectOption[] => {
-		const mark = claudeAgentSource(t);
-		return modelChoices(modelList, model, t.project.modelDefault).map((choice) => ({ ...choice, source: mark }));
-	});
-	/** What Claude Code says of the picked model, on the pointer. */
-	const modelNote = $derived(modelRowOf(modelList, model)?.description || (model ? undefined : t.project.modelDefaultHint));
 	const effort = $derived(selected.project_effort ?? '');
-	const efforts = $derived(effortChoices(modelList, model));
-	const effortOptions = $derived.by((): SelectOption[] => {
-		const levels: string[] = [...efforts];
-		if (effort && !levels.includes(effort)) levels.push(effort);
-		return [
-			{ value: '', label: t.project.effortDefault },
-			...levels.map((level) => ({ value: level, label: t.sidebar.thinkingLevels[level as ClaudeEffort] ?? level }))
-		];
-	});
-	/** A model that takes no thinking level has none to pick, unless one is set already. */
-	const effortShown = $derived(efforts.length > 0 || Boolean(effort));
 	let tuneFailed = $state(false);
 	let accountRefused = $state(false);
 
-	async function pickAccount(value: string): Promise<void> {
-		if (value === account) return;
-		const failure = await runtime.tuneProjectSession(selected.id, { config_dir: value || null });
-		accountRefused = failure?.status === 409;
+	async function tune(change: PatchProjectSessionRequest): Promise<void> {
+		const failure = await runtime.tuneProjectSession(selected.id, change);
+		accountRefused = failure?.status === 409 && change.config_dir !== undefined;
 		tuneFailed = failure !== null && !accountRefused;
-	}
-
-	async function pickModel(value: string): Promise<void> {
-		if (value === model) return;
-		// A thinking level the new model does not take goes back to the default with it.
-		const keeps = !effort || effortChoices(modelList, value).some((level) => level === effort);
-		tuneFailed = (await runtime.tuneProjectSession(selected.id, { model: value || null, ...(keeps ? {} : { effort: null }) })) !== null;
-	}
-
-	async function pickEffort(value: string): Promise<void> {
-		if (value === effort) return;
-		const level = CLAUDE_EFFORTS.find((each) => each === value) ?? null;
-		tuneFailed = (await runtime.tuneProjectSession(selected.id, { effort: level })) !== null;
 	}
 
 	/**
@@ -533,48 +500,16 @@
 					<Icon name="paperclip" size={16} />
 				</button>
 				<input type="file" multiple hidden bind:this={attachments.fileInputEl} onchange={attachments.onFileInputChange} />
-				{#if accountShown}
-					<!-- An account changes for the next run: Claude Code keeps the session under the account it ran on. -->
-					<div class="account" data-project-account title={live ? t.project.accountBusy : t.project.accountLabel}>
-						<Select
-							size="sm"
-							placement="top"
-							value={account}
-							options={accountOptions}
-							ariaLabel={t.project.accountLabel}
-							title={t.project.accountLabel}
-							disabled={!connected || live}
-							onchange={(value) => void pickAccount(value)}
-						/>
-					</div>
-				{/if}
-				<!-- What Claude Code says of the model, on the pointer: a hint in the picker itself would crowd the composer. -->
-				<div class="model" data-project-model title={modelNote}>
-					<Select
-						size="sm"
-						placement="top"
-						value={model}
-						options={modelOptions}
-						ariaLabel={t.project.modelLabel}
-						title={t.project.modelLabel}
-						disabled={!connected}
-						onchange={(value) => void pickModel(value)}
-					/>
-				</div>
-				{#if effortShown}
-				<div class="effort" data-project-effort title={effort ? undefined : t.project.effortDefaultHint}>
-					<Select
-						size="sm"
-						placement="top"
-						value={effort}
-						options={effortOptions}
-						ariaLabel={t.project.effortLabel}
-						title={t.project.effortLabel}
-						disabled={!connected}
-						onchange={(value) => void pickEffort(value)}
-					/>
-				</div>
-				{/if}
+				<!-- An account changes for the next run: Claude Code keeps the session under the account it ran on. -->
+				<ProjectAgentTune
+					{t}
+					tune={{ account, model, effort }}
+					accounts={accountShown ? accountOptions : null}
+					accountLocked={live}
+					disabled={!connected}
+					client={runtime.client}
+					onpick={(change) => void tune(change)}
+				/>
 				<span class="tools-gap"></span>
 				{#if voiceOffered || voice.busy}
 					<VoiceButton {voice} {t} disabled={!connected} />
@@ -913,17 +848,6 @@
 	.attach:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
-	}
-
-	.account,
-	.model,
-	.effort {
-		min-width: 0;
-		max-width: 200px;
-	}
-
-	.model {
-		margin-left: -6px;
 	}
 
 	.tools-gap {

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A project session's account, model and thinking level are one cascading picker
+
+- A project session's composer had three dropdowns side by side, for the account, the model and the thinking level, and each was cut short. They are now one picker that reads the model and its level, with the account after them. Open, it shows three columns from left to right: the accounts, that account's models with Claude Code's description of each, and that model's thinking levels, opened on the session's current choices. Pointing at a row shows its options in the next column, and a click takes everything up to that row at once, so another account's model, or another model's level, is one click. The arrow keys work too. A phone gets a sheet with one row for each of the three.
+
 ### A task map's sun and moon light the town
 
 - A task map took the hour's colours but its light never moved: every wall was lit from one fixed side and nothing cast a shadow. Now the sun rises in the east at 6:00, stands in the south at midday and sets in the west at 19:00, and the moon takes the night the same way across, hanging in the sky on the side its light comes from and sliding as you turn the map. Walls are lit by it, and buildings, trees, lamps and characters cast shadows along it, long in the morning and evening, short at midday and faint by moonlight. At night the stars come out and the lamps light up, pooling on the ground. Played back, the light keeps the replay's clock.
