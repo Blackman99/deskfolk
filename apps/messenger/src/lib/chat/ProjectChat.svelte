@@ -25,7 +25,8 @@
 	import { focusMode } from './focus-mode.svelte.ts';
 	import { describeStep } from './turn-activity.ts';
 	import { ComposerVoice, spacedHeard } from './composer-voice.svelte.ts';
-	import { accountChoices, claudeModelsOf, claudeStatus, effortChoices, loadClaudeModels, loadClaudeStatus, modelChoices, modelRowOf } from './project-agent-options.svelte.ts';
+	import { claudeModelsOf, effortChoices, loadClaudeModels, modelChoices, modelRowOf } from '../claude-models.svelte.ts';
+	import { accountChoices, claudeStatus, loadClaudeStatus } from './project-agent-options.svelte.ts';
 	import VoiceButton from './VoiceButton.svelte';
 	import VoiceStatus from './VoiceStatus.svelte';
 	import { ProjectCitedPaths } from './project-cited-path.ts';
