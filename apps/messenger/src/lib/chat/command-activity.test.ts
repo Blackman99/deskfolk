@@ -95,3 +95,12 @@ test("a duration reads in the unit it is short in", () => {
   expect(formatDuration(2 * 3_600_000 + 5 * 60_000)).toBe("2h5m");
   expect(formatDuration(26 * 3_600_000)).toBe("1d2h");
 });
+
+test("Claude Code's Bash in a project session earns a row, as a Bot's shell does; its other tools do not", () => {
+  const activity = new CommandActivity();
+  const frame = (over: Partial<ToolFrame>): ToolFrame => ({ type: "tool", turn_id: "run-1", id: "c1", name: "Bash", phase: "started", command: "bun test", ...over });
+  activity.applyTool(frame({}));
+  activity.applyTool(frame({ id: "c2", name: "Read", command: undefined, target: "src/a.ts" }));
+  activity.applyTool(frame({ phase: "exited", exit_code: 1, duration_ms: 900 }));
+  expect(activity.forTurn("run-1").map((row) => [row.command, row.running, row.exitCode])).toEqual([["bun test", false, 1]]);
+});

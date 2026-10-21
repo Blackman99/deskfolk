@@ -37,9 +37,13 @@ export class CommandActivity {
   private readonly rows = new Map<string, Entry>();
   private readonly decoder = new TextDecoder();
 
-  /** Only `shell` earns a row: the other tools finish in milliseconds and print nothing. */
+  /**
+   * Only a command earns a row: the other tools finish in milliseconds and print nothing. It is
+   * `shell` for a Bot (Claude Agent's Bash comes as `shell` too) and Claude Code's own `Bash` for a
+   * project session's agent (ADR 0095), whose frames keep Claude Code's names for the task map.
+   */
   static shows(name: string): boolean {
-    return name === "shell";
+    return name === "shell" || name === "Bash";
   }
 
   applyTool(frame: ToolFrame): void {

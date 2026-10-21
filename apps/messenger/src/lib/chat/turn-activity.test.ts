@@ -126,3 +126,16 @@ test("a row in the list says the whole step going on, and how long it has taken"
   expect(stepRow(step({ name: "shell", target: "render.sh" }), zh, 85 * 60_000 + 50_000).time).toBe("1h 25m");
   expect(stepRow(step({ name: "mcp_x", mcp: { server: "GitHub", tool: "create-issue" } }), zh, 0).text).toBe("调用 GitHub · create-issue");
 });
+
+test("a project session's agent calls Claude Code's tools by their own names, and they read like a Bot's", () => {
+  const copy = COPY.zh.chat.activity;
+  const activity = new TurnActivity();
+  const frame = (over: Partial<ToolFrame>): ToolFrame => ({ type: "tool", turn_id: "run-1", id: "c1", name: "Bash", phase: "started", ...over });
+  activity.applyTool(frame({ command: "cd /work/app && bun test src/a.test.ts", target: "cd /work/app && bun test src/a.test.ts" }));
+  const step = activity.latestFor("run-1")!;
+  // A command, as a Bot's `shell`: run, its leading cd dropped.
+  expect(describeStep(step, copy, step.startedAt).text).toBe("运行 bun test src/a.test.ts");
+  expect(stepRow(step, copy, step.startedAt).shell).toBe(true);
+  activity.applyTool(frame({ id: "c2", name: "Edit", target: "src/login.ts" }));
+  expect(describeStep(activity.latestFor("run-1")!, copy, Date.now()).text).toBe("写入 src/login.ts");
+});

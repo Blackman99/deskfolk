@@ -36,7 +36,7 @@ export class TurnActivity {
   applyTool(frame: ToolFrame, now = Date.now()): void {
     const list = this.steps.get(frame.turn_id) ?? [];
     if (frame.phase === "started") {
-      const target = frame.name === "shell" ? frame.command : frame.target;
+      const target = isCommand(frame.name) ? frame.command ?? frame.target : frame.target;
       list.push({
         id: frame.id,
         name: frame.name,
@@ -130,7 +130,22 @@ const VERBS: Readonly<Record<string, ActivityVerb>> = {
   describe_data: "records",
   query_data: "records",
   read_data_log: "records",
+  // A project session's agent (ADR 0095) calls Claude Code's own tools by their own names.
+  Bash: "run",
+  Read: "read",
+  Write: "write",
+  Edit: "write",
+  MultiEdit: "write",
+  NotebookEdit: "write",
+  Glob: "list",
+  Grep: "list",
+  LS: "list",
 };
+
+/** A command line: a Bot's `shell`, or Claude Code's `Bash` in a project session. */
+function isCommand(name: string): boolean {
+  return name === "shell" || name === "Bash";
+}
 
 /** A step shorter than this is over before its time would be worth reading. */
 export const LONG_STEP_MS = 3000;
@@ -200,14 +215,14 @@ export function stepRow(step: ToolStep, copy: ActivityCopy, nowMs: number): Step
     id: step.id,
     text: subject ? `${verb.doing} ${subject}` : verb.doing,
     time: ms >= 1000 ? formatElapsed(ms) : null,
-    shell: step.name === "shell",
+    shell: isCommand(step.name),
   };
 }
 
 function subjectOf(step: ToolStep): string | null {
   if (step.mcp) return `${step.mcp.server} · ${step.mcp.tool}`;
   // A command reads as its row in the command card does: no leading cd, its lines on one line.
-  if (step.target) return (step.name === "shell" ? commandLine(step.target) : step.target.split("\n")[0]!.trim()) || null;
+  if (step.target) return (isCommand(step.name) ? commandLine(step.target) : step.target.split("\n")[0]!.trim()) || null;
   // A tool this table does not know still says which one it is.
   return VERBS[step.name] ? null : step.name;
 }
@@ -215,7 +230,7 @@ function subjectOf(step: ToolStep): string | null {
 /** A path is read from its end, where the file name is; anything else from its start. */
 function clip(subject: string, name: string): string {
   if (subject.length <= SUBJECT_MAX) return subject;
-  const pathLike = name !== "shell" && subject.includes("/");
+  const pathLike = !isCommand(name) && subject.includes("/");
   return pathLike ? `…${subject.slice(subject.length - SUBJECT_MAX + 1)}` : `${subject.slice(0, SUBJECT_MAX - 1)}…`;
 }
 

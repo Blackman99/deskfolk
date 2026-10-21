@@ -222,7 +222,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     const configDirs = store.claudeCodeConfigDirs();
     const home = homedir();
     /** The calls under way, by id: when each started and where, for its exited frame. */
-    const started = new Map<string, { at: number; name: string; info: AgentRunToolInfo }>();
+    const started = new Map<string, { at: number; name: string; info: AgentRunToolInfo; command?: string }>();
     /**
      * Which model makes each call, for the map's logos: by the call's id, from the message that
      * asked for it (a subagent's too); failing that the agent's last known model, then the run's.
@@ -248,8 +248,11 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       const { place, action } = placeOfCall(raw.tool_name, toolInput, { projectDir: project.dir, cwd: raw.cwd || project.dir, home, configDirs });
       const info: AgentRunToolInfo = { session_id: live.sessionId, agent_id: raw.agent_id ?? null, place, ...(action ? { action } : {}),
         model: modelFor(id, raw.agent_id ?? null), at: new Date().toISOString() };
-      started.set(id, { at: Date.now(), name: raw.tool_name, info });
-      deps.onTool?.({ type: "tool", turn_id: live.runId, id, name: raw.tool_name, phase: "started", target: targetText(place), agent_run: info });
+      // A command says itself, as a Bot's does: the chat's command card and its working line read it.
+      const command = raw.tool_name === "Bash" && typeof toolInput.command === "string" ? toolInput.command : undefined;
+      started.set(id, { at: Date.now(), name: raw.tool_name, info, ...(command ? { command } : {}) });
+      deps.onTool?.({ type: "tool", turn_id: live.runId, id, name: raw.tool_name, phase: "started",
+        ...(command ? { command, target: command } : { target: targetText(place) }), agent_run: info });
       if (decision.kind === "ask") {
         live.asked.set(id, decision.approval);
         return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: decision.approval.summary } };
@@ -267,7 +270,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       const call = started.get(id);
       if (!call) return;
       started.delete(id);
-      deps.onTool?.({ type: "tool", turn_id: live.runId, id, name: call.name, phase: "exited", target: targetText(call.info.place),
+      deps.onTool?.({ type: "tool", turn_id: live.runId, id, name: call.name, phase: "exited",
+        ...(call.command ? { command: call.command, target: call.command, exit_code: ok ? 0 : 1 } : { target: targetText(call.info.place) }),
         duration_ms: Date.now() - call.at, agent_run: { ...call.info, at: new Date().toISOString(), ok } });
     };
     const canUseTool: CanUseTool = async (toolName, toolInput, options): Promise<PermissionResult> => {

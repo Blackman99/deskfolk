@@ -459,6 +459,10 @@ test("each tool call reaches the windows as a tool frame with where it works, st
   expect(frames[2]!.agent_run).toMatchObject({ place: { zone: "check", check: "test" }, action: "check" });
   expect(frames[3]!.agent_run?.ok).toBe(true);
   expect(typeof frames[3]!.duration_ms).toBe("number");
+  // A command says itself, as a Bot's does, for the chat's command card and working line.
+  expect(frames[2]).toMatchObject({ command: "bun test src/a.test.ts", target: "bun test src/a.test.ts" });
+  expect(frames[3]).toMatchObject({ command: "bun test src/a.test.ts", exit_code: 0 });
+  expect(frames[0]!.command).toBeUndefined();
   // No message named a model for these calls: the run's own, from its start.
   expect(frames.map((frame) => frame.agent_run?.model)).toEqual(["claude-sonnet-5", "claude-sonnet-5", "claude-sonnet-5", "claude-sonnet-5"]);
 });

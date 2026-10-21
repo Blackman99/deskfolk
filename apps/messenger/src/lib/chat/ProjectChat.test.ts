@@ -36,15 +36,40 @@ test("your lines, the agent's and the app's each sit in their own place", () => 
   close();
 });
 
-test("a running run shows what it does, what it has said, and Stop", () => {
+test("a running run is a working bubble at the end, as a Bot's, with Stop in the composer", () => {
   const { host, runtime, close } = open(anAgentRun({ activity: "Bash npm test", partial: "先看一下 **日志**" }));
-  expect(host.querySelector("[data-agent-run]")?.textContent).toContain(t.project.working);
-  expect(host.querySelector(".activity")?.textContent).toBe("Bash npm test");
-  expect(host.querySelector(".partial strong")?.textContent).toBe("日志");
+  const bubble = host.querySelector('[data-line="working"][data-agent-run]');
+  expect(bubble?.querySelector("strong")?.textContent).toBe("日志");
+  expect(bubble?.querySelector(".streaming-cursor")).not.toBeNull();
+  // Before any tool frame has come, the step is the one the run last stored.
+  expect(bubble?.querySelector(".stream-foot .stream-step")?.textContent).toBe("Bash npm test");
+  expect(bubble?.querySelector(".stream-foot .duration-badge")).not.toBeNull();
   expect(host.querySelector("[data-agent-approval]")).toBeNull();
-  const stop = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes(t.project.stop));
+  // No Stop in the bubble: it is beside Send, as in a Bot's direct.
+  expect(bubble?.querySelector("button")).toBeNull();
+  const stop = host.querySelector<HTMLButtonElement>(`.composer button[aria-label="${t.composer.stopGeneration}"]`);
   click(stop);
   expect(runtime.calls.find((c) => c.name === "stopAgentRun")?.args).toEqual(["run-1"]);
+  close();
+});
+
+test("the working bubble reads the run's tool frames: its commands folded above the step it is on", async () => {
+  const session = aProjectSession();
+  const runtime = fakeRuntime({ sessions: [session], agentRuns: { "proj-1": anAgentRun() } });
+  const now = Date.now();
+  (runtime as unknown as { stepOf: (id: string) => unknown }).stepOf = (id: string) =>
+    id === "run-1" ? { id: "c2", name: "Read", target: "src/login.ts", mcp: null, startedAt: now, running: true, exitCode: null } : null;
+  runtime.activity.applyTool({ type: "tool", turn_id: "run-1", id: "c1", name: "Bash", phase: "started", command: "bun test src/a.test.ts" });
+  runtime.activity.applyTool({ type: "tool", turn_id: "run-1", id: "c1", name: "Bash", phase: "exited", command: "bun test src/a.test.ts", exit_code: 0, duration_ms: 1200 });
+  const { host, close } = render(ProjectChat, { runtime, t, selected: session });
+  const bubble = host.querySelector('[data-line="working"]');
+  // Folded, as a Bot's: how many, and the commands once opened.
+  const card = bubble?.querySelector(".command-activity");
+  expect(card?.textContent).not.toContain("bun test");
+  click(card?.querySelector("button"));
+  await settle();
+  expect(card?.textContent).toContain("bun test");
+  expect(bubble?.querySelector(".stream-step")?.textContent).toContain("src/login.ts");
   close();
 });
 
@@ -53,6 +78,7 @@ test("a run waiting on you shows the approval card and answers it", async () => 
     anAgentRun({ status: "waiting_approval", approval: { kind_key: "bash", target: "rm -rf dist", summary: "Bash: rm -rf dist" } }),
   );
   expect(host.querySelector("[data-agent-approval] pre")?.textContent).toBe("Bash: rm -rf dist");
+  expect(host.querySelector('[data-line="working"] .stream-step')?.textContent).toBe(t.project.waiting);
   const byText = (text: string) => [...host.querySelectorAll("[data-agent-approval] button")].find((b) => b.textContent?.trim() === text);
   click(byText(t.project.allow));
   await settle();

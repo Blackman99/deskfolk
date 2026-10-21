@@ -19,7 +19,11 @@
 		COMPOSER_IME_IDLE,
 		type ComposerImeState
 	} from './composer-ime.ts';
-	import { formatDateDivider, formatMessageTime, isDifferentDay } from './chat-view.ts';
+	import { formatDateDivider, formatLiveDuration, formatMessageTime, isDifferentDay } from './chat-view.ts';
+	import CommandActivity from './CommandActivity.svelte';
+	import SendButton from './SendButton.svelte';
+	import { focusMode } from './focus-mode.svelte.ts';
+	import { describeStep } from './turn-activity.ts';
 	import { ComposerVoice, spacedHeard } from './composer-voice.svelte.ts';
 	import VoiceButton from './VoiceButton.svelte';
 	import VoiceStatus from './VoiceStatus.svelte';
@@ -29,8 +33,10 @@
 	/**
 	 * A project session's conversation (ADR 0095): you and the agent in a directory, as in the
 	 * agent's own desktop app. It has no Bot, so none of the Bot stage applies: your lines on the
-	 * right, the agent's on the left as markdown, the app's centred, and below them the run that is
-	 * going on, with the approval it waits on and Stop. The header is the pane's or the page's own.
+	 * right, the agent's on the left as markdown, the app's centred. The run going on is a Bot's
+	 * working bubble at the end — what it has said, its commands folded, its step and times on the
+	 * last line — with the approval it waits on under it; Stop is in the composer, as in a Bot's
+	 * direct. The header is the pane's or the page's own.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -146,6 +152,27 @@
 	/** Offered once a speech endpoint is ready, as in a Bot's composer. */
 	const voiceOffered = $derived(speechReady(snapshot.settings.speech));
 	$effect(() => () => voice.cancel());
+
+	/**
+	 * The working bubble's clock and commands, as a Bot's: its step and the commands it ran come from
+	 * the run's tool frames (`turn_id` is the run's id); a page opened mid-run has only the step the
+	 * run last stored until the next frame.
+	 */
+	let nowMs = $state(Date.now());
+	$effect(() => {
+		if (!live) return;
+		const timer = setInterval(() => (nowMs = Date.now()), 250);
+		return () => clearInterval(timer);
+	});
+	const stepLine = $derived.by(() => {
+		void runtime.toolRevision;
+		const step = run && live ? runtime.stepOf(run.id) : null;
+		return step ? describeStep(step, t.chat.activity, nowMs) : null;
+	});
+	const commandRows = $derived.by(() => {
+		void runtime.activityRevision;
+		return run && live ? runtime.activity.forTurn(run.id) : [];
+	});
 
 	let scroller = $state<HTMLElement | null>(null);
 	let stuck = true;
@@ -313,34 +340,56 @@
 			{/each}
 
 			{#if run && live}
-				<div class="run" data-agent-run={run.status}>
-					<div class="run-head" role="status" aria-live="polite">
-						<span class="pulse" aria-hidden="true"></span>
-						<span class="run-title">{waiting ? t.project.waiting : t.project.working}</span>
-						<Button size="sm" icon="square" onclick={() => void stop()} disabled={!connected}>{t.project.stop}</Button>
-					</div>
-					{#if run.activity}
-						<div class="activity mono" title={run.activity}>{run.activity}</div>
-					{/if}
+				<!-- The agent at work, as a Bot's working bubble: what it has said, its commands, then where it is and for how long. -->
+				<div class="line is-agent is-stream" data-line="working" data-agent-run={run.status}>
 					{#if run.partial}
-						<div class="partial">
-							<MarkdownBody source={run.partial} options={{ streaming: true }} copyLabel={t.chat.copyCode} copiedLabel={t.chat.copied} onOpenArtifact={(path) => openCited(path)} />
-						</div>
+						<MarkdownBody source={run.partial} options={{ streaming: true }} copyLabel={t.chat.copyCode} copiedLabel={t.chat.copied} onOpenArtifact={(path) => openCited(path)}>
+							<span class="streaming-cursor"></span>
+						</MarkdownBody>
 					{/if}
-					{#if waiting}
-						<div class="approval" data-agent-approval>
-							<span class="approval-head"><Icon name="shield-check" size={12} />{t.project.approvalHead}</span>
+					{#if !focusMode.on}
+						<CommandActivity rows={commandRows} {t} />
+					{/if}
+					<div class="stream-foot" role="status" aria-live="polite">
+						<span class="pulse" aria-hidden="true"></span>
+						{#if waiting}
+							<span class="stream-step">{t.project.waiting}</span>
+						{:else if !focusMode.on && stepLine}
+							<span class="stream-step" title={stepLine.full}>{stepLine.text}</span>
+							{#if stepLine.elapsed}<span class="stream-step-elapsed mono" aria-hidden="true">{stepLine.elapsed}</span>{/if}
+						{:else if !focusMode.on && run.activity}
+							<span class="stream-step" title={run.activity}>{run.activity}</span>
+						{:else}
+							<span class="stream-step">{run.partial ? t.stream.streaming : t.sidebar.statusRunning}</span>
+						{/if}
+						{#if !focusMode.on}
+							<span class="duration-badge">
+								<Icon name="clock" size={12} />
+								{formatLiveDuration(run.created_at, nowMs, t.chat.spanPart)}
+							</span>
+						{/if}
+					</div>
+				</div>
+				{#if waiting}
+					<!-- What it waits on you for, as a Bot's approval card. -->
+					<article class="approval-card" data-agent-approval>
+						<div class="approval-head">
+							<Icon name="shield-check" size={12} />
+							<span>{t.project.approvalHead}</span>
+							<span class="approval-who">{t.project.agentName}</span>
+						</div>
+						<div class="approval-main">
 							<pre class="approval-summary mono">{waiting.summary}</pre>
 							<div class="approval-actions">
-								<Button variant="primary" disabled={answering || !connected} onclick={() => void answer(true)}>{t.project.allow}</Button>
+								<Button variant="primary" icon="check" disabled={answering || !connected} onclick={() => void answer(true)}>{t.project.allow}</Button>
 								<Button disabled={answering || !connected} onclick={() => void answer(false)}>{t.project.deny}</Button>
 							</div>
 						</div>
-					{/if}
-					{#if answerFailed}
-						<p class="field-error">{t.project.actionFailed}</p>
-					{/if}
-				</div>
+					</article>
+				{/if}
+				{#if answerFailed}
+					<p class="field-error">{t.project.actionFailed}</p>
+				{/if}
 			{/if}
 		</div>
 	</div>
@@ -397,16 +446,18 @@
 				{#if voiceOffered || voice.busy}
 					<VoiceButton {voice} {t} disabled={!connected} />
 				{/if}
-				<button
-					type="button"
-					class="send"
-					title={t.project.send}
-					aria-label={t.project.send}
-					disabled={!view.draft.trim() || view.sending || !connected}
-					onclick={() => void send()}
-				>
-					<Icon name="arrow-up" size={16} />
-				</button>
+				<!-- Stop beside Send while the agent works, as in a Bot's direct: a line sent meanwhile goes into the run. -->
+				<SendButton
+					{t}
+					{connected}
+					primaryAction={{ kind: 'send', disabled: !view.draft.trim() || Boolean(view.sending) || !connected }}
+					directStop={live}
+					stepsAside={false}
+					sending={view.sending}
+					upload={undefined}
+					onStop={() => void stop()}
+					onSend={() => void send()}
+				/>
 			</div>
 		</div>
 	</div>
@@ -519,43 +570,30 @@
 		overflow-wrap: anywhere;
 	}
 
-	.run {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding: 12px 14px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-lg);
-		background: var(--pane);
-	}
-
-	.run-head {
+	/* The working bubble's last line, as a Bot's: its step, that step's time and the whole run's. */
+	.stream-foot {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-	}
-
-	.run-title {
-		flex: 1;
+		gap: 6px;
 		min-width: 0;
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--ink-secondary);
+		margin-top: 8px;
+		color: var(--accent);
+		font-size: 12px;
+		font-weight: 500;
 	}
 
+	.line.is-stream :global(.command-activity) {
+		margin-top: 8px;
+	}
+
+	/* Working is the accent everywhere — the sidebar row, a Bot's bubble and this. */
 	.pulse {
-		flex: none;
-		width: 8px;
-		height: 8px;
+		flex-shrink: 0;
+		width: 7px;
+		height: 7px;
 		border-radius: 50%;
 		background: var(--accent);
-		animation: run-pulse 1.4s ease-in-out infinite;
-	}
-
-	@keyframes run-pulse {
-		50% {
-			opacity: 0.35;
-		}
+		animation: pulse 1.2s ease-in-out infinite;
 	}
 
 	@media (prefers-reduced-motion: reduce) {
@@ -564,36 +602,77 @@
 		}
 	}
 
-	.activity {
+	/* A long command clips; the times beside it never do. */
+	.stream-step {
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-size: 12px;
-		color: var(--muted);
 	}
 
-	/* What it has said so far, fainter than a settled reply. */
-	.partial {
-		opacity: 0.65;
+	.stream-step-elapsed,
+	.duration-badge {
+		flex-shrink: 0;
 	}
 
-	.approval {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding: 10px 12px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		background: var(--accent-tint);
-	}
-
-	.approval-head {
+	/* The whole run's time sits at the right end, where a finished line has its time. */
+	.duration-badge {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		font-size: 12px;
-		font-weight: 600;
+		margin-left: auto;
+		padding-left: 8px;
+		font-weight: 400;
+		color: var(--muted);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.streaming-cursor {
+		display: inline-block;
+		width: 7px;
+		height: 14px;
+		background: var(--accent);
+		margin-left: 3px;
+		vertical-align: -2px;
+		animation: cursorBlink 0.8s infinite;
+	}
+
+	/* What it waits on you for, as a Bot's approval card: a warn-tinted head and a soft warn ring. */
+	.approval-card {
+		overflow: hidden;
+		border: 1px solid var(--warn-line);
+		border-radius: var(--radius-lg);
+		background: var(--pane);
+		box-shadow:
+			0 0 0 3px color-mix(in srgb, var(--warn) 10%, transparent),
+			var(--shadow-sm);
+	}
+
+	.approval-head {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 9px 16px;
+		border-bottom: 1px solid var(--warn-line);
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		font-size: var(--text-caption);
+		font-weight: 650;
+	}
+
+	.approval-who {
 		color: var(--ink-secondary);
+		font-weight: 500;
+	}
+
+	.approval-who::before {
+		content: '·';
+		margin-right: 6px;
+		color: var(--muted-light);
+	}
+
+	.approval-main {
+		padding: 12px 16px 14px;
 	}
 
 	.approval-summary {
@@ -607,7 +686,9 @@
 
 	.approval-actions {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 8px;
+		margin-top: 10px;
 	}
 
 	.composer {
@@ -672,21 +753,6 @@
 		flex: 1;
 	}
 
-	.send {
-		flex: none;
-		display: grid;
-		place-items: center;
-		width: 34px;
-		height: 34px;
-		border-radius: 50%;
-		background: var(--accent);
-		color: var(--on-accent);
-	}
-
-	.send:disabled {
-		opacity: 0.4;
-	}
-
 	@media (max-width: 680px) {
 		.transcript-inner {
 			padding: 14px 12px 12px;
@@ -696,10 +762,6 @@
 			padding: 6px 12px calc(10px + env(safe-area-inset-bottom));
 		}
 
-		.send {
-			width: 44px;
-			height: 44px;
-		}
 
 		.line.is-you .bubble {
 			max-width: 88%;
