@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import Icon from '../Icon.svelte';
 	import { pickWorkspaceFolder, workspacePickerAvailable, type HostTreePage } from './pick-workspace.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
@@ -21,6 +22,8 @@
 		upLabel?: string;
 		useLabel?: string;
 		cancelLabel?: string;
+		/** How the chosen path reads on the button (the whole path stays its tooltip); as it is by default. */
+		shown?: (path: string) => string;
 	}
 
 	let {
@@ -41,6 +44,7 @@
 		upLabel = 'Up',
 		useLabel = 'Use this folder',
 		cancelLabel = 'Cancel',
+		shown = (value: string) => value,
 	}: Props = $props();
 
 	let busy = $state(false);
@@ -49,6 +53,7 @@
 	let browsing = $state(false);
 	let page = $state<HostTreePage | null>(null);
 	let browseError = $state('');
+	let panel = $state<HTMLElement | null>(null);
 	const canPick = $derived(remote || workspacePickerAvailable());
 	const display = $derived(path.trim());
 	const actionLabel = $derived(display ? changeLabel : chooseLabel);
@@ -56,11 +61,16 @@
 	async function load(dir: string): Promise<void> {
 		if (!api) return;
 		busy = true;
+		// A folder that failed before says nothing about this one.
+		failed = false;
 		browseError = '';
 		permission = false;
 		try {
 			page = await api.hostTree(dir);
 			browsing = true;
+			// It opens under the button, which can be at the bottom of a sheet on a phone.
+			await tick();
+			panel?.scrollIntoView?.({ block: 'nearest' });
 		} catch (error) {
 			failed = true;
 			permission = Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'host_permission');
@@ -116,7 +126,7 @@
 		onclick={() => void choose()}
 	>
 		<Icon name="folder" />
-		<span class="mono">{display || emptyLabel}</span>
+		<span class="mono">{display ? shown(display) : emptyLabel}</span>
 	</button>
 	<button
 		type="button"
@@ -133,7 +143,7 @@
 	<p class="muted field-hint">{browseError || unavailableLabel}</p>
 {/if}
 {#if browsing && page}
-	<div class="host-browse" role="dialog" aria-label={dialogTitle}>
+	<div class="host-browse" role="dialog" aria-label={dialogTitle} bind:this={panel}>
 		<p class="mono host-browse-path">{page.path}</p>
 		{#if browseHint}<p class="muted field-hint">{browseHint}</p>{/if}
 		{#if confirmHint}<p class="muted field-hint">{confirmHint}</p>{/if}

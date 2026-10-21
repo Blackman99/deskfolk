@@ -155,7 +155,9 @@ test("from a phone, another directory is browsed on the computer's disk and star
   expect(asked).toEqual(["", "/Users/a/work"]);
   click(buttonIn(host.querySelector(".host-browse"), t.settings.workspaceUseFolder));
   await settle();
-  expect(host.querySelector("button#project-dir")?.textContent).toContain("/Users/a/work");
+  // Home reads as ~, the whole path on hover.
+  expect(host.querySelector("button#project-dir")?.textContent?.trim()).toBe("~/work");
+  expect(host.querySelector("button#project-dir")?.getAttribute("title")).toBe("/Users/a/work");
   click(buttonIn(host.querySelector("[data-picker-other]"), t.project.start));
   expect(runtime.calls.find((c) => c.name === "createProjectSession")?.args).toEqual([{ agent: "claude_code", dir: "/Users/a/work" }]);
   close();

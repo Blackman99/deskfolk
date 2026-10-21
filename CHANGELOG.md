@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Browsing the computer's folders from a phone
+
+- When one folder could not be read, every folder you opened after it still said it could not be read, until you closed the browser. It now says so only for the folder that failed. This is the browser behind Settings' workspace on a phone and a project session's "Another directory…". The chosen folder now reads with home as `~`, and a long path shows its last two names rather than being cut off at the end; the whole path is on hover. The browser also scrolls into view when it opens near the bottom of a sheet.
+
 ### Task maps for Bot conversations
 
 - A direct or a group now has a task map too: Open task map in its context menu, or Map in its pane header and tab ⋯, draws its Bots at work as a town of your workspace's folders. Every Bot that worked is a main character on the map from start to end, in its own figure, its badge carrying its model's logo (the endpoint's vendor, Claude Agent's spark or the local agent's), its name and the step's model; each Bot has a card at the side. Calls waiting on your card are on the map whether you allowed or refused them, and your answers to a Bot's questions are among the moments.

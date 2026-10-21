@@ -7,7 +7,7 @@
 	import { pickWorkspaceFolder, workspacePickerAvailable } from '../settings/pick-workspace.ts';
 	import WorkspacePicker from '../settings/WorkspacePicker.svelte';
 	import { importRequest, importSubtitle, newProjectRequest, tildePath } from './import-claude-session.ts';
-	import { isAbsoluteDir, listingSpansAccounts, pickerDirs } from './project-groups.ts';
+	import { dirDisplay, isAbsoluteDir, listingSpansAccounts, pickerDirs } from './project-groups.ts';
 
 	/**
 	 * The sheet's directories for one agent (ADR 0095), one open at a time: start a session in it,
@@ -192,6 +192,7 @@
 						upLabel={t.settings.workspaceUp}
 						useLabel={t.settings.workspaceUseFolder}
 						cancelLabel={t.sidebar.cancel}
+						shown={dirDisplay}
 						onChange={(next) => {
 							typed = next;
 							startError = null;
