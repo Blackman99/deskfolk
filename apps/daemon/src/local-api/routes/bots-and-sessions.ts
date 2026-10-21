@@ -186,6 +186,16 @@ export function botAndSessionRoutes(ctx: RouteCtx): Response | Promise<Response>
     return emptyResponse(204, null);
   }
 
+  // A Bot conversation's work for the task map (ADR 0097): where each of its Bots' tool calls
+  // worked, as recorded when it ran, with your lines and answers there. A project session's is read
+  // from its agent's own files instead.
+  params = matchPath(path, "/v1/sessions/:id/replay");
+  if (params && method === "GET") {
+    store.getSession(params.id!, { messageLimit: 1 });
+    if (store.projectOf(params.id!)) throw new HttpError(404, "not_found", "a project session's replay is /v1/project-sessions/:id/replay");
+    return jsonResponse(store.sessionReplay(params.id!), 200, null);
+  }
+
   params = matchPath(path, "/v1/sessions/:id/members");
   if (params && method === "POST") {
     options.admission?.assertNew();

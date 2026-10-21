@@ -614,8 +614,10 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       const path = writtenPathOf(args) ?? (typeof args.path === "string" ? args.path : undefined);
       const target = command ?? (path ? relOrAbs(root, path) : undefined);
       live.runningTool = { id, name: appName, ...(target ? { target } : {}), started_at: new Date().toISOString() };
+      const model = state.model ?? settings.model;
       publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id, name: appName,
-        arguments: JSON.stringify(command ? { command } : path ? { path: relOrAbs(root, path) } : {}), phase: "started", ...(target ? { target } : {}) });
+        arguments: JSON.stringify(command ? { command } : path ? { path: relOrAbs(root, path) } : {}), phase: "started", ...(target ? { target } : {}),
+        ...(model ? { model } : {}) });
     };
 
     // --- bookkeeping, after each of Claude Code's own calls -----------------------------------

@@ -269,8 +269,10 @@ export async function runExternalSession(input: {
     const path = action.paths[0];
     const target = command ?? (path ? relOrAbs(absolute(action.cwd, path)) : undefined);
     live.runningTool = { id, name: action.appName, ...(target ? { target } : {}), started_at: new Date().toISOString() };
+    const model = state.model ?? settings.model;
     publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id, name: action.appName,
-      arguments: JSON.stringify(command ? { command } : path ? { path: target } : {}), phase: "started", ...(target ? { target } : {}) });
+      arguments: JSON.stringify(command ? { command, cwd: action.cwd } : path ? { path: target } : {}), phase: "started", ...(target ? { target } : {}),
+      ...(model ? { model } : {}) });
   };
   const policyContext = () => ({
     mode: current.mode === "readonly" ? "readonly" as const : current.mode === "desk" ? "desk" as const : "work" as const,

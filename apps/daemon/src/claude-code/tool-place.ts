@@ -18,7 +18,8 @@ export type PlaceContext = {
 };
 
 const FILE_TOOLS = new Set(["Read", "Edit", "MultiEdit", "Write", "NotebookEdit", "Grep", "Glob", "LS"]);
-const EXT = "(?:ts|tsx|js|mjs|cjs|svelte|json|jsonl|md|css|py|sh|sql|txt|rs|toml|yaml|yml|html|swift|go)";
+// Code and docs, and the media and office files a Bot makes and reads.
+const EXT = "(?:ts|tsx|js|mjs|cjs|svelte|json|jsonl|md|css|py|sh|sql|txt|rs|toml|yaml|yml|html|swift|go|png|jpe?g|webp|gif|svg|mp4|mov|webm|mp3|wav|m4a|srt|pdf|docx|xlsx|pptx|csv)";
 const TOKEN = /"([^"\n]+)"|'([^'\n]+)'|([^\s"'|;&<>()=,[\]{}`]+)/g;
 const TEST = /\b(bun test|pnpm (run )?test|npm (run )?test|yarn test|vitest|jest|playwright|typecheck|svelte-check|tsc\b|cargo test|pytest|go test)/;
 const TYPECHECK = /typecheck|svelte-check|\btsc\b/;

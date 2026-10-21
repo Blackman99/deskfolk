@@ -63,6 +63,8 @@ add("POST", "project-sessions", { agent: one("claude_code"), dir: string, config
 get("project-sessions/:id/(run|replay)");
 add("PATCH", "project-sessions/:id", { model: nullable(string) }, ["model"]);
 add("POST", "agent-runs/:id/(approve|deny|stop)");
+// A Bot conversation's tool calls for the task map (ADR 0097).
+get("sessions/:id/replay");
 // Your other local agents (ADR 0079), seen and set up from the phone as on the Mac, and their usage.
 get("runtime/agents", { refresh: one("1"), wait: one("1") }); add("POST", "runtime/agents/detect", { runner, custom_id: nullable(string) }, ["runner"]);
 add("PUT", "runtime/agents/path", { runner, path: nullable(string) }, ["runner", "path"]);

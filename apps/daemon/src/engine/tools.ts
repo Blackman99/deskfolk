@@ -35,6 +35,7 @@ import type { Participation } from "./participation";
 import type { Submissions } from "./submissions";
 import type { TurnTrouble } from "../store/escalation";
 import { noteArguments, noteOutcome } from "./trouble";
+import { cardPlaceOf, placeContextFor } from "../tool-places";
 import type { Live } from "./types";
 
 /** Tools that are the work itself, not looking around: a turn using one is working on its ticket. */
@@ -347,6 +348,7 @@ export function createTools(deps: ToolsDeps): Tools {
         publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
           name: call.name, arguments: call.arguments, phase: "started",
           ...(target ? { target } : {}),
+          ...(live.target?.model ? { model: live.target.model } : {}),
           ...(mcpTool ? { mcp_server: mcpTool.server, mcp_tool: mcpTool.tool } : {}) });
         try {
           result = await dispatchTool(turn, live, call.name, args, call.id);
@@ -926,13 +928,18 @@ export function createTools(deps: ToolsDeps): Tools {
       const waiting = store.setTurnStatus(turnId, "waiting_approval");
       return { card, approval, waiting };
     });
+    // The map's record of the call (ADR 0097): tied to this card, and closed with how you answered.
+    notePlaceCard(turnId, toolCallId, approval.id, waitApproval);
     const pending = waitForApproval(
       turnId,
       approval.id,
       toolCallId,
       waitApproval.run,
       waitApproval.requiresApiKey,
-    );
+    ).then((resolved) => {
+      if (resolved) notePlaceEnd(turnId, toolCallId, resolved.ok, resolved.ok ? null : resolved.error?.code ?? null);
+      return resolved;
+    });
     publishMessage(card);
     publish({ event: "approval.upsert", occurred_at: occurred(), ...approval });
     publishTurn(waiting, null);
@@ -980,7 +987,29 @@ export function createTools(deps: ToolsDeps): Tools {
     publishMessage(ask);
     publishTurn(waiting, null);
     const answer = await waitForAsk(turnId, ask.id, toolCallId);
+    if (answer) notePlaceEnd(turnId, toolCallId, true, null);
     return { ask, answer };
+  }
+
+  /** A card for a call: its place row tied to the card, made from the card when the call has not started. */
+  function notePlaceCard(turnId: string, toolCallId: string, approvalId: string, card: { kind_key: string; target: string; summary: string }): void {
+    try {
+      const ctx = placeContextFor(store, turnId);
+      if (!ctx) return;
+      const { tool, ...place } = cardPlaceOf(card, ctx);
+      store.cardForToolPlace({ turnId, toolCallId, approvalId, fallback: { tool, place: place.place, action: place.action ?? null, file: place.file } });
+    } catch {
+      // the map's record, never the work's
+    }
+  }
+
+  /** How a call that waited on you came out, once you answered. */
+  function notePlaceEnd(turnId: string, toolCallId: string, ok: boolean, errorCode: string | null): void {
+    try {
+      store.finishToolPlace({ turnId, toolCallId, ok, errorCode });
+    } catch {
+      // the map's record, never the work's
+    }
   }
 
   function waitForApproval(

@@ -38,6 +38,7 @@ import type { AttachmentInput } from "./store";
 import type { FileCommit } from "./store/files";
 import type { KeyOperation, RequestScope } from "./store/receipts";
 import { ENGINE_LEVEL } from "./store/schema-gate";
+import { createToolPlaceRecorder } from "./tool-places";
 import { StreamHub, type StreamRead } from "./streams";
 import { ensureZshIntegration } from "./terminal-env";
 import { Terminals } from "./terminals";
@@ -200,8 +201,12 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     for (const listener of toolListeners) listener(frame);
   }
 
+  // Where each Bot tool call works, kept for the task map and told on its frame (ADR 0097).
+  const notePlace = createToolPlaceRecorder(options.store);
+
   function publish(event: ClientEvent): void {
     if (event.event === "turn.tool" && (event.phase === "started" || event.phase === "exited")) {
+      const botCall = notePlace(event);
       publishTool({
         type: "tool",
         turn_id: event.turn_id,
@@ -214,6 +219,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         ...(event.mcp_tool ? { mcp_tool: event.mcp_tool } : {}),
         ...(event.exit_code === undefined ? {} : { exit_code: event.exit_code }),
         ...(event.duration_ms === undefined ? {} : { duration_ms: event.duration_ms }),
+        ...(botCall ? { bot_call: botCall } : {}),
       });
     }
     options.store.afterCommit(() => {

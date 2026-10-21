@@ -7,13 +7,18 @@
  * is read-only besides; this is what keeps it to the tables Bots may read.
  */
 
-/** Tables Bots never read: remote access's keys and receipts, push delivery, your terminals. */
+/**
+ * Tables Bots never read: remote access's keys and receipts, push delivery, your terminals, and the
+ * task map's record of where each call worked (ADR 0097) — a picture's data; what a Bot ran is in
+ * turn_runs and tool_executions.
+ */
 export const DENIED_TABLES: ReadonlySet<string> = new Set([
   "pending_keys",
   "request_receipts",
   "notification_push_config",
   "notification_devices",
   "terminals",
+  "tool_places",
 ]);
 
 /** Every `remote_*` table is remote access's (device keys, push subscriptions, pairing); `sqlite_*` is SQLite's own. */

@@ -48,6 +48,8 @@ export type ClientEvent =
       phase?: "announced" | "started" | "exited";
       /** On `started`: see {@link ToolFrame}'s fields of the same names. */
       target?: string;
+      /** On `started`: the model the turn runs the call on, for the task map (ADR 0097). */
+      model?: string;
       mcp_server?: string;
       mcp_tool?: string;
       exit_code?: number | null;

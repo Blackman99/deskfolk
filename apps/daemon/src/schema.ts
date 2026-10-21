@@ -1218,6 +1218,37 @@ CREATE INDEX IF NOT EXISTS call_runs_task ON call_runs (task_id, created_at);
 CREATE INDEX IF NOT EXISTS call_runs_message ON call_runs (message_id);
 CREATE INDEX IF NOT EXISTS call_runs_turn ON call_runs (turn_id);
 
+-- Where each tool call of a Bot's turn worked (ADR 0097), for the task map: the place read from its
+-- arguments (a path, the paths a command names, an MCP server; AgentToolPlace JSON), never the
+-- arguments themselves; the shell action, the file's last name, the model the turn ran it on, and
+-- how it came out. One row per call, made as it starts (or as its card opens, when the card comes
+-- first) and closed as it ends; approval_id is the card you answered for it. No foreign keys, like
+-- call_runs; deleting or clearing a session removes its rows, and each session keeps its newest
+-- TOOL_PLACES_KEPT_PER_SESSION.
+CREATE TABLE IF NOT EXISTS tool_places (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  bot_id TEXT NOT NULL,
+  task_id TEXT,
+  ticket_id TEXT,
+  tool_call_id TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  place TEXT NOT NULL,
+  action TEXT,
+  file TEXT,
+  model TEXT,
+  approval_id TEXT,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  ok INTEGER,
+  error_code TEXT,
+  duration_ms INTEGER,
+  UNIQUE (turn_id, tool_call_id)
+);
+
+CREATE INDEX IF NOT EXISTS tool_places_session ON tool_places (session_id, started_at, id);
+
 -- 引擎 (Playbook, ADR 0085): what you changed from a built-in engine (a built-in's own row, made on
 -- its first change), or a custom engine based on one. The built-ins themselves are code.
 CREATE TABLE IF NOT EXISTS playbooks (

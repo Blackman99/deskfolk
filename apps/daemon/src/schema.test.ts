@@ -106,6 +106,7 @@ describe("schema", () => {
       "ticket_parts",
       "tickets",
       "tool_executions",
+      "tool_places",
       "turn_route_decisions",
       "turn_runs",
       "turns",

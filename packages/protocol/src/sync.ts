@@ -4,6 +4,7 @@ import type { ClientEvent } from "./events.ts";
 import type { Hold } from "./holds.ts";
 import type { Provider } from "./providers.ts";
 import type { AgentRunToolInfo } from "./project-sessions.ts";
+import type { BotToolInfo } from "./bot-replay.ts";
 import type { Judgement } from "./routing.ts";
 import type { SessionDetail, SessionSummary } from "./sessions.ts";
 import type { Settings } from "./settings.ts";
@@ -163,6 +164,8 @@ export type ToolFrame = {
   duration_ms?: number;
   /** A project session's agent at work (ADR 0095): which session, which subagent, and where. */
   agent_run?: AgentRunToolInfo;
+  /** A Bot at work (ADR 0097): which conversation, which Bot, where, and on which model. */
+  bot_call?: BotToolInfo;
 };
 
 export type StreamFrame = {

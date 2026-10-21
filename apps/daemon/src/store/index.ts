@@ -63,6 +63,7 @@ import { migrateSchema } from "./migrate";
 import * as notifications from "./notifications";
 import * as organizerRuns from "./organizer-runs";
 import * as callRuns from "./call-runs";
+import * as toolPlaces from "./tool-places";
 import * as playbooks from "./playbooks";
 import * as providers from "./providers";
 import * as quotes from "./quotes";
@@ -530,6 +531,11 @@ export class Store {
   readonly recordCallRun = this.bind(callRuns.recordCallRun);
   readonly getCallRun = this.bind(callRuns.getCallRun);
   readonly traceSteps = this.bind(callRuns.traceSteps);
+  // Where each Bot tool call worked, for the task map (ADR 0097) -----------------------------
+  readonly beginToolPlace = this.bind(toolPlaces.beginToolPlace);
+  readonly finishToolPlace = this.bind(toolPlaces.finishToolPlace);
+  readonly cardForToolPlace = this.bind(toolPlaces.cardForToolPlace);
+  readonly sessionReplay = this.bind(toolPlaces.sessionReplay);
   readonly listPlaybooks = this.bind(playbooks.listPlaybooks);
   readonly getPlaybook = this.bind(playbooks.getPlaybook);
   readonly playbookFor = this.bind(playbooks.playbookFor);
