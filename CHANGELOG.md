@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Task maps for Bot conversations
+
+- A direct or a group now has a task map too: Open task map in its context menu, or Map in its pane header and tab ⋯, draws its Bots at work as a town of your workspace's folders. Every Bot that worked is a main character on the map from start to end, in its own figure, its badge carrying its model's logo (the endpoint's vendor, Claude Agent's spark or the local agent's), its name and the step's model; each Bot has a card at the side. Calls waiting on your card are on the map whether you allowed or refused them, and your answers to a Bot's questions are among the moments.
+- For this the app now keeps where each of a Bot's tool calls worked: the folder or file it named, a command's paths, the MCP server it called, with its model and how it came out, never the arguments, commands or contents. Calls from before this version kept nothing of the kind, so earlier work cannot be drawn. A conversation's record goes when it is deleted or cleared, and Bots cannot read it. `GET /v1/sessions/:id/replay` reads it back.
+- MCP calls, a Bot's or Claude Code's in a project session, now stand at a services building on the floating island instead of the root, named for the server when only one was called.
+
 ### The flow shows a spinner while it loads
 
 - While a job's flow was being read, its board said "Loading…" in small grey text in a corner. It now shows a spinner in the middle of the board, faded in after a moment so a quick read never flashes it; a screen reader still hears "Loading…".

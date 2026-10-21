@@ -1,6 +1,6 @@
 # 任务地图：把 Agent 干活的过程画成项目目录的小镇 / Task map: an agent's work drawn as a town of the project's folders
 
-Status: implemented 2026-10-20. Builds on [ADR 0095](0095-project-sessions.md) (project sessions), whose replay route and live tool frames it reads.
+Status: implemented 2026-10-20. Builds on [ADR 0095](0095-project-sessions.md) (project sessions), whose replay route and live tool frames it reads. Extended to Bot conversations by [ADR 0097](0097-bot-task-maps.md).
 
 2026-10-20 你想把 Bot 执行的过程可视化得更彻底：Bot 当前在处理什么文件，流程做成游戏地图，Bot 是在各个地点之间来回做任务的角色。先在原型上试了：一个 Bot 任务的回放，再改成等距 3D、能平移缩放旋转、每栋楼长得不一样、人物带头像、每一步标出执行它的模型。你问能不能用到项目会话上，原型就拿做项目会话的那个 Claude Code 会话本身跑了一遍，缺的几处在 ADR 0095 那边补上（每次调用的地点和模型、回放接口），这里把地图做进应用。
 
