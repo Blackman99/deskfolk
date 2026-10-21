@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { Copy } from '../copy.ts';
-	import FolkAvatar from '../FolkAvatar.svelte';
 	import type { CharacterLook } from './characters.ts';
 	import { statusText, type FrameActor } from './frame.ts';
 	import MapLogo from './MapLogo.svelte';
@@ -84,7 +83,7 @@
 		<section class="tm-scard">
 			<div class="tm-main">
 				<span class="tm-main-logo" class:is-face={faces} style:box-shadow="0 0 0 2px var(--pane), 0 0 0 3.5px {colors[main.b]}">
-					{#if faces && look}<FolkAvatar avatar={look.avatar} motion={main.motion} />{:else if look}<MapLogo source={look.source} size={40} />{/if}
+					{#if faces && look?.avatar}<img src={look.avatar} alt="" />{:else if look}<MapLogo source={look.source} size={40} />{/if}
 				</span>
 				<div class="tm-main-text">
 					<div class="tm-row">
@@ -160,6 +159,7 @@
 	.tm-main { display: flex; gap: 12px; align-items: flex-start; }
 	.tm-main-logo { flex: none; display: inline-flex; border-radius: var(--radius-sm); }
 	.tm-main-logo.is-face { width: 40px; height: 40px; border-radius: 50%; background: var(--chip); overflow: hidden; }
+	.tm-main-logo.is-face img { width: 100%; height: 100%; object-fit: cover; }
 	.tm-main-text, .tm-sub-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 	.tm-row { display: flex; align-items: center; gap: 6px; }
 	.tm-row strong { font-size: var(--text-body); }

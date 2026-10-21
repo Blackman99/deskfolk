@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { generateBoringAvatar, type AgentReplay, type AgentReplayCall, type PlanReplay, type SessionReplay, type SessionReplayCall, type ToolFrame } from "@real-bot/protocol";
+import { avatarSrc } from "../avatar.ts";
 import { copyFor } from "../copy.ts";
 import { aBot, aDirect, aGroup, aProjectSession, aProvider, aTurn, fakeRuntime } from "../test-fixtures.ts";
 import { job } from "../overlays/task-trace-test-kit.ts";
@@ -187,6 +188,12 @@ test("a Bot conversation's map: its Bots in the workspace, each with its own nam
   // The endpoint's vendor on one badge, Claude Agent's spark on the other.
   expect(host.querySelector(".tm-badge .connector-logo.is-deepseek")).not.toBeNull();
   expect(host.querySelector(".tm-badge [data-agent-logo='claude_code']")).not.toBeNull();
+  // Each Bot its own figure, wearing its own avatar.
+  const shapes = [...host.querySelectorAll(".tm-figure")].map((el) => el.getAttribute("data-figure"));
+  expect(shapes).toHaveLength(2);
+  expect(shapes[0]).not.toBe(shapes[1]);
+  expect(host.querySelector(".tm-figure image")?.getAttribute("href")).toBe(avatarSrc(generateBoringAvatar({ name: "导演" })));
+  expect(host.querySelector(".tm-side .tm-main-logo.is-face img")?.getAttribute("src")).toBe(avatarSrc(generateBoringAvatar({ name: "导演" })));
   // One card for each Bot, not a main line and subagents.
   expect(host.querySelectorAll(".tm-side .tm-main").length).toBe(2);
   expect(host.textContent).not.toContain(t.taskmap.card.subs);

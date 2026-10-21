@@ -53,7 +53,8 @@ function textWidth(s: string): number {
 
 export function badgeBox(a: BadgeActor, zoom: number): LabelBox {
   const cw = textWidth(a.short);
-  const tag = a.hasModel ? [...a.modelShort].length * 6.2 + 4 : 0;
+  // A Bot's badge carries its model's logo beside the model too.
+  const tag = a.hasModel ? [...a.modelShort].length * 6.2 + 4 + 14 : 0;
   const bw = (cw * 11 + 38 + tag) / zoom;
   const bh = 28 / zoom;
   const mid = a.x + 29;

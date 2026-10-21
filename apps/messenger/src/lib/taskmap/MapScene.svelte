@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { Copy } from '../copy.ts';
-	import FolkAvatar from '../FolkAvatar.svelte';
 	import type { ModelSource } from '../model-source.ts';
 	import type { Frame } from './frame.ts';
+	import type { DrawnFigure, FigureId } from './scene/figures.ts';
 	import MapLogo from './MapLogo.svelte';
 	import { VIEW_H, VIEW_W } from './scene/view.ts';
 
@@ -16,8 +16,8 @@
 		frame: Frame;
 		/** Whose model each character works on, by index: the logo on its badge, its name beside the model in the badge's tooltip. */
 		logos: readonly ModelSource[];
-		/** Each character's folk avatar (a stored avatar's SVG) and its colour, by index. */
-		avatars: readonly string[];
+		/** Each character's figure as drawn in this light, the avatar on its chest, and its colour, by index. */
+		figures: readonly (DrawnFigure & { figure: FigureId; avatar: string | null })[];
 		colors: readonly string[];
 		cam: { tx: number; ty: number; k: number };
 		/** How long the camera glides to where it is asked (0 while dragging or turning). */
@@ -38,7 +38,8 @@
 		onDragging: (turning: boolean | null) => void;
 	};
 
-	let { frame, logos, avatars, colors, cam, camMs, walkMs, sel, hover, follow, labels, t, onPan, onTurn, onZoom, onPick, onHover, onFollow, onDeselect, onDragging }: Props = $props();
+	const uid = $props.id();
+	let { frame, logos, figures, colors, cam, camMs, walkMs, sel, hover, follow, labels, t, onPan, onTurn, onZoom, onPick, onHover, onFollow, onDeselect, onDragging }: Props = $props();
 
 	let view = $state<HTMLDivElement | null>(null);
 	const inv = $derived((1 / cam.k).toFixed(3));
@@ -209,14 +210,26 @@
 		{/each}
 
 		{#each frame.actors as actor (actor.key)}
+			{@const fig = figures[actor.b]}
 			<div class="tm-actor" style:transform="translate({actor.x}px, {actor.y}px)" style:transition-duration="{walkMs}ms" style:opacity={actor.present ? 1 : 0} style:z-index={actor.z}>
 				<div class="tm-shadow" style:box-shadow={follow === actor.b ? `0 0 0 2px ${colors[actor.b]}` : 'none'}></div>
-				<div class="tm-body" style:transform="scale({actor.scale})"><FolkAvatar avatar={avatars[actor.b] ?? ''} motion={actor.motion} /></div>
+				{#if fig}
+					<!-- Its own figure, its face to you, its avatar on its chest; it moves as its status has it. -->
+					<svg class="tm-body tm-figure is-{actor.motion}" data-figure={fig.figure} viewBox="0 0 58 64" style:transform="scale({actor.scale})" aria-hidden="true">
+						{#each fig.faces as f, k (k)}<polygon points={f.pts} fill={f.fill} stroke={f.stroke} stroke-width="0.5" stroke-linejoin="round" />{/each}
+						{#if fig.avatar}
+							<clipPath id="{uid}-plate-{actor.b}"><circle cx={fig.chest[0]} cy={fig.chest[1]} r="4.6" /></clipPath>
+							<circle class="tm-plate-ring" cx={fig.chest[0]} cy={fig.chest[1]} r="5.6" fill="#ffffff" stroke={colors[actor.b]} stroke-width="1" />
+							<image href={fig.avatar} x={fig.chest[0] - 4.6} y={fig.chest[1] - 4.6} width="9.2" height="9.2" clip-path="url(#{uid}-plate-{actor.b})" preserveAspectRatio="xMidYMid slice" />
+						{/if}
+					</svg>
+				{/if}
 				{#if actor.present}
 					<div class="tm-badge is-{actor.side < 0 ? 'l' : actor.side > 0 ? 'r' : 'c'}" style:top="{actor.badgeTop}px" style:border-color={colors[actor.b]} style:transform={badgeT(actor.side, actor.lift)} title={t.ranBy(logos[actor.b]?.name ?? '', actor.modelShort)}>
-						<span class="tm-badge-logo">{#if logos[actor.b]}<MapLogo source={logos[actor.b]!} size={20} />{/if}<span class="tm-badge-dot" style:background={STATUS_DOT[actor.status]}></span></span>
+						<!-- A Bot's badge leads with its own avatar, its model's logo beside the model; an agent's leads with its logo. -->
+						<span class="tm-badge-logo">{#if fig?.avatar}<img class="tm-badge-avatar" src={fig.avatar} alt="" />{:else if logos[actor.b]}<MapLogo source={logos[actor.b]!} size={20} />{/if}<span class="tm-badge-dot" style:background={STATUS_DOT[actor.status]}></span></span>
 						<span class="tm-badge-name" style:color={colors[actor.b]}>{actor.short}</span>
-						{#if actor.hasModel}<span class="tm-badge-model">{actor.modelShort}</span>{/if}
+						{#if actor.hasModel}<span class="tm-badge-model">{#if fig?.avatar && logos[actor.b]}<MapLogo source={logos[actor.b]!} size={11} />{/if}{actor.modelShort}</span>{/if}
 					</div>
 					<button type="button" class="tm-actor-hit" aria-label={follow === actor.b ? t.stopFollowOf(actor.short) : t.followOf(actor.short)} onclick={() => onFollow(actor.b)}></button>
 				{/if}
@@ -257,7 +270,14 @@
 	@keyframes tm-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 	.tm-actor { position: absolute; left: 0; top: 0; width: 58px; height: 64px; transition-property: transform, opacity; transition-timing-function: cubic-bezier(.3, .7, .3, 1); pointer-events: none; }
 	.tm-shadow { position: absolute; left: 12px; top: 55px; width: 34px; height: 8px; border-radius: 50%; background: rgba(23, 38, 42, .25); }
-	.tm-body { position: absolute; left: 3px; top: 8px; width: 52px; height: 52px; transform-origin: 50% 100%; }
+	.tm-body { position: absolute; left: 0; top: 0; width: 58px; height: 64px; transform-origin: 50% 94%; overflow: visible; }
+	/* Working, a figure bobs; waiting on you, it hops; a failure shakes it once. */
+	.tm-figure.is-running, .tm-figure.is-replying { animation: tm-bob .7s ease-in-out infinite alternate; }
+	.tm-figure.is-waiting { animation: tm-hop 1.1s ease-in-out infinite; }
+	.tm-figure.is-failed { animation: tm-shake .5s ease-in-out 2; }
+	@keyframes tm-bob { from { translate: 0 0; } to { translate: 0 -2.5px; } }
+	@keyframes tm-hop { 0%, 60%, 100% { translate: 0 0; } 30% { translate: 0 -6px; } }
+	@keyframes tm-shake { 0%, 100% { rotate: 0deg; } 25% { rotate: -6deg; } 75% { rotate: 6deg; } }
 	.tm-badge { position: absolute; left: 29px; display: flex; align-items: center; gap: 4px; height: 26px; box-sizing: border-box; padding: 0 8px 0 2px; background: rgba(255, 255, 255, .96); border: 1.5px solid; border-radius: 999px; box-shadow: 0 1px 3px rgba(18, 28, 32, .18); white-space: nowrap; pointer-events: none; }
 	.tm-badge.is-l { flex-direction: row-reverse; padding: 0 2px 0 8px; transform-origin: calc(100% - 14.5px) 100%; }
 	.tm-badge.is-r { transform-origin: 14.5px 100%; }
@@ -265,7 +285,8 @@
 	.tm-badge-logo { position: relative; display: inline-flex; flex: none; }
 	.tm-badge-dot { position: absolute; right: -3px; bottom: -2px; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid #fff; }
 	.tm-badge-name { font-size: 11px; font-weight: 700; }
-	.tm-badge-model { font-size: 10px; font-weight: 600; color: #5f6d74; }
+	.tm-badge-model { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; color: #5f6d74; }
+	.tm-badge-avatar { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: #eef1f3; }
 	.tm-actor-hit { position: absolute; left: 8px; top: 4px; width: 42px; height: 56px; margin: 0; padding: 0; border: 0; border-radius: 12px; background: transparent; cursor: pointer; pointer-events: auto; }
 	.tm-actor-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 	.tm-fx { position: absolute; width: 0; height: 0; pointer-events: none; }
@@ -281,7 +302,7 @@
 	@keyframes tm-flutter { 0% { opacity: 0; transform: translate(0, 0) rotate(0); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(12px, -24px) rotate(160deg); } }
 	@keyframes tm-blink { 0%, 100% { opacity: 0; transform: scale(.6); } 40% { opacity: 1; transform: scale(1.6); } }
 	@media (prefers-reduced-motion: reduce) {
-		.tm-fx i, .tm-quest { animation: none !important; }
+		.tm-fx i, .tm-quest, .tm-figure { animation: none !important; }
 		.tm-actor, .tm-world { transition: none !important; }
 	}
 </style>

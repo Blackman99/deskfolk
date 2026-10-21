@@ -13,6 +13,7 @@
 	import { MOMENT_COLOR, momentText } from './moment-text.ts';
 	import { normalizePhi, fitZoom, turnTarget } from './scene/camera.ts';
 	import { buildGround, lightAt, type ModelCache } from './scene/draw.ts';
+	import { drawFigure, figureModel, type DrawnFigure, type FigureModel } from './scene/figures.ts';
 	import { axes, proj, unproj } from './scene/geometry.ts';
 	import { buildTimeline } from './timeline.ts';
 	import MapHud from './MapHud.svelte';
@@ -397,7 +398,21 @@
 	});
 
 	// --- What the cards say ---
-	const avatars = $derived(looks.map((l) => l.avatar));
+	// Each character's figure in this light: drawn again only when the light has moved on.
+	const figureCache = new Map<string, FigureModel>();
+	const drawn = new Map<string, DrawnFigure>();
+	const figures = $derived.by(() => {
+		const L = light, key = `${L.w.toFixed(2)}:${L.n.toFixed(2)}`;
+		return looks.map((look) => {
+			const id = `${look.figure}:${look.palette.body}:${key}`;
+			let fig = drawn.get(id);
+			if (!fig) {
+				if (drawn.size > 64) drawn.clear();
+				drawn.set(id, (fig = drawFigure(figureModel(look.figure, look.palette, figureCache), L)));
+			}
+			return { ...fig, figure: look.figure, avatar: look.avatar };
+		});
+	});
 	const who = (b: number) => ({ short: bots ? (looks[b]?.name ?? tm.mainLane) : b === 0 ? tm.mainLane : tm.subagent(b), color: colorOf(b) });
 	const sameDay = $derived.by(() => {
 		if (!data?.calls.length) return true;
@@ -465,7 +480,7 @@
 			<MapScene
 				{frame}
 				logos={looks.map((l) => l.source)}
-				{avatars}
+				{figures}
 				colors={data.characters.map((_, b) => colorOf(b))}
 				{cam}
 				{camMs}
