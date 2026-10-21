@@ -753,7 +753,8 @@
 		flex: 1;
 	}
 
-	@media (max-width: 680px) {
+	/* The conversation's own width, as in a Bot's (the `conversation` container): a workbench pane as narrow as a phone gets it in a wide window too. */
+	@container conversation (max-width: 680px) {
 		.transcript-inner {
 			padding: 14px 12px 12px;
 		}
@@ -765,6 +766,37 @@
 
 		.line.is-you .bubble {
 			max-width: 88%;
+		}
+	}
+
+	/* As narrow as a phone itself the composer docks, as a Bot's does: a bar across the bottom, its line on top. */
+	@container conversation (max-width: 480px) {
+		.composer {
+			max-width: none;
+			padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)) 12px;
+			background: var(--input-bg);
+			border-top: 1px solid var(--line);
+			transition: border-color 0.15s ease;
+		}
+
+		.composer:focus-within {
+			border-top-color: var(--field-focus-border);
+		}
+
+		.composer-box,
+		.composer-box:focus-within {
+			padding: 0;
+			border: 0;
+			border-radius: 0;
+			background: transparent;
+			box-shadow: none;
+		}
+
+		/* A thumb, on a screen whose edges may curve away: the bar keeps its own margin from all three. */
+		@media (pointer: coarse) {
+			.composer {
+				padding: 6px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+			}
 		}
 	}
 </style>

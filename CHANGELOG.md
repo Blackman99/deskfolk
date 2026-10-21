@@ -10,6 +10,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - A conversation docked its composer to the bottom as soon as it was 680px or narrower, so a 500px workbench pane got the phone's bar where the floating card read well. Only a conversation as narrow as a phone itself, 480px or under, docks it now; between that and 680px the card floats as on a wide screen, in two rows, on the same 12px margins as the conversation.
 
+### A project session's composer docks in a narrow pane
+
+- A project session's composer followed the window's width, not its pane's, so in a narrow pane of a wide window it never docked and kept the wide margins. It follows the conversation's own width now, as a Bot conversation's does: the narrower margins at 680px and under, docked to the bottom at 480px and under.
+
 ### On a task map each character works its own way
 
 - A character at work in a place no longer just moves its hands in turn: each does its own work with what it wears and holds. Pudding types while its antenna sways and picks up signals; Mochi's coffee steams and now and then it takes a sip; taro nods to the music in its headphones and ticks off its clipboard; sakura paints, flicking strokes of colour; matcha whisks hard; caramel brings its hammer down at its side, sparks flying; sesame reads its book, turns a page and pushes up its glasses; blueberry floats and casts circles with its wand, stars trailing. Walking, they all still swing their arms alike. Where several Bots stand at one door, each stands in front of the one on its right, so the work in its hand is not hidden.

@@ -192,6 +192,45 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			await browser.close();
 		});
 
+		/*
+		 * A project session's composer is its own (ADR 0095), and it only ever asked the window: in
+		 * a 500px pane it kept the wide card and margins (2026-10-21). It follows the conversation's
+		 * width now, as a Bot's does: the phone's 12px up to 680px, docked at 480px and under.
+		 */
+		test('a project session\'s composer follows the pane\'s width, and docks at 480', async ({ baseURL }) => {
+			const browser = await engine.launch();
+			const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+			await page.goto(`${baseURL}index.html?story=project-chat`);
+			await page.waitForSelector('html[data-ready="yes"]');
+			const shape = () =>
+				page.locator('.project-chat').evaluate((el) => {
+					const chat = el.getBoundingClientRect();
+					const composer = el.querySelector('.composer')!;
+					const box = el.querySelector('.composer-box')!;
+					const bar = composer.getBoundingClientRect();
+					const card = box.getBoundingClientRect();
+					return {
+						text: parseFloat(getComputedStyle(el.querySelector('.transcript-inner')!).paddingLeft),
+						left: Math.round(card.left - chat.left),
+						right: Math.round(chat.right - card.right),
+						bottom: Math.round(chat.bottom - bar.bottom),
+						rounded: getComputedStyle(box).borderTopLeftRadius !== '0px',
+						rule: getComputedStyle(composer).borderTopWidth,
+						filled: getComputedStyle(composer).backgroundColor !== 'rgba(0, 0, 0, 0)'
+					};
+				});
+			await storyWidth(page, 760);
+			await expect.poll(shape).toEqual({ text: 24, left: 24, right: 24, bottom: 0, rounded: true, rule: '0px', filled: false });
+			for (const px of [560, 481]) {
+				await storyWidth(page, px);
+				await expect.poll(shape).toEqual({ text: 12, left: 12, right: 12, bottom: 0, rounded: true, rule: '0px', filled: false });
+			}
+			// Docked, the bar is the field: filled to both sides, a rule on top, its line on the bar's own margins.
+			await storyWidth(page, 480);
+			await expect.poll(shape).toEqual({ text: 12, left: 12, right: 8, bottom: 0, rounded: false, rule: '1px', filled: true });
+			await browser.close();
+		});
+
 		test('a wide conversation keeps the floating card, and ✨ waits for the reply in progress', async ({ baseURL }) => {
 			const browser = await engine.launch();
 			const page = await browser.newPage({ viewport: { width: 900, height: 820 } });
