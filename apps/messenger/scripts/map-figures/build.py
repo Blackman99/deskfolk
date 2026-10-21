@@ -3,8 +3,8 @@
 Run: python3 build.py LAYER_DIR   (needs Pillow)
 Each square PNG is scaled to EDGE px, cropped to what it shows and stored as a lossy WebP with its
 alpha intact, with the part of the square it covers. The points the messenger draws and turns about
-(the feet, the shoulders, the mouth, the pin's face) and how high each character reaches are written
-beside the layers, as fractions of the square.
+(the feet, the shoulders and hands, the mouth, the pin's face, the antenna's foot), how high each character
+reaches and the points its work comes out of are written beside the layers, as fractions of the square.
 """
 import base64, io, json, os, sys
 from PIL import Image
@@ -12,7 +12,8 @@ from PIL import Image
 EDGE = 352  # a figure stands about 40 CSS px tall in an 80 px square; this covers 2x at the map's 2.2x zoom
 QUALITY = 84
 IDS = ['pudding', 'mochi', 'taro', 'sakura', 'matcha', 'caramel', 'sesame', 'blueberry']
-FRONT = {'sesame'}
+HELD = {'mochi': 'r', 'taro': 'r', 'sakura': 'lr', 'matcha': 'r', 'caramel': 'r', 'sesame': 'l', 'blueberry': 'r'}  # what each hand holds
+PARTS = {'pudding': ['antenna'], 'sesame': ['front']}  # layers of their own, drawn over the face
 SHARED = ['eyes-dot', 'eyes-happy', 'eyes-wink', 'eyes-closed', 'mouth-smile', 'mouth-open', 'mouth-cat', 'pin']
 
 src = sys.argv[1] if len(sys.argv) > 1 else 'figure-layers'
@@ -20,7 +21,8 @@ out = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src'
 
 names = []
 for cid in IDS:
-    names += [f'{cid}-body', f'{cid}-arm-l', f'{cid}-arm-r'] + ([f'{cid}-front'] if cid in FRONT else [])
+    names += [f'{cid}-body', f'{cid}-arm-l', f'{cid}-arm-r'] + [f'{cid}-held-{side}' for side in HELD.get(cid, '')]
+    names += [f'{cid}-{p}' for p in PARTS.get(cid, [])]
 names += SHARED
 
 
@@ -63,10 +65,14 @@ geometry = {
     'feet': meta['feet'],
     'shoulderL': meta['shoulder_l'],
     'shoulderR': meta['shoulder_r'],
+    'handL': meta['hand_l'],
+    'handR': meta['hand_r'],
     'mouth': [round((mouth[0] + mouth[2]) / 2 / EDGE, 4), round((mouth[1] + mouth[3]) / 2 / EDGE, 4)],
     'pin': meta['pin'],
     'pinR': meta['pin_r'],
+    'antenna': meta['head_top'],
     'top': tops,
+    'work': meta['points'],
 }
 lines += [
     '} as const;',
@@ -75,7 +81,8 @@ lines += [
     '',
     '/**',
     ' * Where a figure stands, turns and wears its pin, as [x, y] fractions of the square from its',
-    ' * top-left corner; `pinR` is the pin face\'s radius and `top` how high each character reaches.',
+    ' * top-left corner; `pinR` is the pin face\'s radius, `top` how high each character reaches and',
+    ' * `work` the points each character\'s work comes out of.',
     ' */',
     'export const FIGURE_GEOMETRY = ' + json.dumps(geometry) + ' as const;',
     '',

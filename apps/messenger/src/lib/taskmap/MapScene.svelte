@@ -218,7 +218,7 @@
 			{@const fig = figures[actor.b]}
 			<div class="tm-actor" style:transform="translate({actor.x}px, {actor.y}px)" style:transition-duration="{walkMs}ms" style:opacity={actor.present ? 1 : 0} style:z-index={actor.z}>
 				<div class="tm-shadow" style:box-shadow={follow === actor.b ? `0 0 0 2px ${colors[actor.b]}` : 'none'}></div>
-				{#if fig}<MapFigure {fig} motion={actor.motion} b={actor.b} scale={actor.scale} k={cam.k} {tint} />{/if}
+				{#if fig}<MapFigure {fig} motion={actor.motion} work={actor.status === 'work'} b={actor.b} scale={actor.scale} k={cam.k} {tint} />{/if}
 				{#if actor.present}
 					<div class="tm-badge is-{actor.side < 0 ? 'l' : actor.side > 0 ? 'r' : 'c'}" style:top="{actor.badgeTop}px" style:border-color={colors[actor.b]} style:transform={badgeT(actor.side, actor.lift)} title={t.ranBy(logos[actor.b]?.name ?? '', actor.modelShort)}>
 						<!-- A Bot's badge leads with its own avatar, its model's logo beside the model; an agent's leads with its logo. -->

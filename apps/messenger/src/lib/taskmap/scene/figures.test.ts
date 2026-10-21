@@ -58,3 +58,39 @@ test("the hour's light falls on a figure as it falls on a building's wall", () =
     }
   }
 });
+
+test("what a character holds turns about its hand, and its work shows at spots on what it holds", () => {
+  const face = { eyes: "dot", mouth: "smile" } as const;
+  const holds: Record<string, string> = { pudding: "", mochi: "r", taro: "r", sakura: "lr", matcha: "r", caramel: "r", sesame: "l", blueberry: "r" };
+  for (const id of FIGURE_IDS) {
+    const d = drawFigure(id, face);
+    expect([d.heldL !== null, d.heldR !== null]).toEqual([holds[id]!.includes("l"), holds[id]!.includes("r")]);
+    // The hand it turns about is in the held thing's picture.
+    for (const [held, hand] of [[d.heldL, d.handL], [d.heldR, d.handR]] as const) {
+      if (!held) continue;
+      expect(hand[0]).toBeGreaterThan(held.x - 2);
+      expect(hand[0]).toBeLessThan(held.x + held.w + 2);
+      expect(hand[1]).toBeGreaterThan(held.y - 2);
+      expect(hand[1]).toBeLessThan(held.y + held.h + 2);
+    }
+    expect(Object.keys(d.spots).length).toBeGreaterThan(0);
+    for (const css of Object.values(d.spots)) expect(css).toMatch(/^left:-?[\d.]+%;top:-?[\d.]+%$/);
+  }
+  expect(FIGURE_GEOMETRY.handL[1]).toBeGreaterThan(FIGURE_GEOMETRY.shoulderL[1]);
+  expect(FIGURE_GEOMETRY.handR[1]).toBeGreaterThan(FIGURE_GEOMETRY.shoulderR[1]);
+  // The hammer's head, the mug's rim, the wand's star and the book are on what the hand holds.
+  for (const [id, spot, side] of [["caramel", "hammer", "r"], ["mochi", "steam", "r"], ["blueberry", "wand", "r"], ["sesame", "book", "l"]] as const) {
+    const [x, y, w, h] = FIGURE_LAYERS[`${id}-held-${side}`].box;
+    const p = (FIGURE_GEOMETRY.work[id] as Record<string, readonly [number, number]>)[spot]!;
+    expect(p[0]).toBeGreaterThan(x);
+    expect(p[0]).toBeLessThan(x + w);
+    expect(p[1]).toBeGreaterThan(y - 0.01);
+    expect(p[1]).toBeLessThan(y + h);
+  }
+  // Pudding's antenna is a layer of its own, its foot on top of its head.
+  const pudding = drawFigure("pudding", face);
+  expect(drawFigure("mochi", face).antenna).toBeNull();
+  expect(pudding.antennaAt[1]).toBeGreaterThan(pudding.antenna!.y);
+  expect(pudding.antennaAt[1]).toBeLessThan(pudding.antenna!.y + pudding.antenna!.h + 1);
+  expect(pudding.antennaAt[1]).toBeLessThan(pudding.body.y + 6);
+});

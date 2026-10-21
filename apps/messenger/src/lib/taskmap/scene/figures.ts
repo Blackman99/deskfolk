@@ -5,8 +5,10 @@
  * rendered in Blender from the map's camera (scripts/map-figures), so no two characters of one map
  * look alike and every one is plainly one of the app's mascots. A figure stacks its layers: body,
  * face, what sits over the face, the pin with its Bot's avatar, then its arms, which turn about the
- * shoulders. A Bot whose avatar is a folk wears that folk's eyes and mouth here too. The layers are
+ * shoulders, each with what its hand holds, which turns about the hand. A Bot whose avatar is a folk wears that folk's eyes and mouth here too. The layers are
  * HTML images placed in % of the actor box, so the map can lay a figure out at its size on screen.
+ * Each character works in a way of its own, with what it holds: the renders mark where that work
+ * shows (the steam off Mochi's mug, the tip of the brush, the wand's star…).
  */
 import { folkHash, folkLook } from "@real-bot/protocol";
 import type { LightLevel } from "./draw.ts";
@@ -46,15 +48,25 @@ export type DrawnFigure = {
   figure: FigureId;
   body: FigureImage;
   front: FigureImage | null;
+  /** Pudding's antenna, a layer of its own that sways about its foot. */
+  antenna: FigureImage | null;
+  antennaAt: Vec2;
   eyes: FigureImage;
+  /** Eyes shut in a smile, for a character that grooves at its work. */
+  happy: FigureImage;
   blink: FigureImage;
   mouth: FigureImage;
   talk: FigureImage;
   pin: FigureImage;
   armL: FigureImage;
   armR: FigureImage;
+  /** What each hand holds (the mug, the hammer…), if anything. */
+  heldL: FigureImage | null;
+  heldR: FigureImage | null;
   shoulderL: Vec2;
   shoulderR: Vec2;
+  handL: Vec2;
+  handR: Vec2;
   mouthAt: Vec2;
   /** The pin's face, where the Bot's avatar goes: its centre and radius, and the avatar's box as CSS. */
   chest: Vec2;
@@ -62,6 +74,8 @@ export type DrawnFigure = {
   avatarBox: string;
   /** Where a badge over its head stands: a little above the top of its hat. */
   top: number;
+  /** Where its work shows, by name (`steam`, `brush`, `wand`…), as CSS `left` and `top` in % of the box. */
+  spots: Readonly<Record<string, string>>;
 };
 
 const hrefs = new Map<FigureLayer, string>();
@@ -89,20 +103,27 @@ export function drawFigure(figure: FigureId, face: FigureFace): DrawnFigure {
   const key = `${figure}:${face.eyes}:${face.mouth}`;
   let d = drawn.get(key);
   if (d) return d;
-  const front = `${figure}-front`;
+  const own = (part: string) => (`${figure}-${part}` in FIGURE_LAYERS ? image(`${figure}-${part}` as FigureLayer) : null);
   d = {
     figure,
     body: image(`${figure}-body`),
-    front: front in FIGURE_LAYERS ? image(front as FigureLayer) : null,
+    front: own("front"),
+    antenna: own("antenna"),
+    antennaAt: at(FIGURE_GEOMETRY.antenna),
     eyes: image(`eyes-${face.eyes}`),
+    happy: image("eyes-happy"),
     blink: image("eyes-closed"),
     mouth: image(`mouth-${face.mouth}`),
     talk: image("mouth-open"),
     pin: image("pin"),
     armL: image(`${figure}-arm-l`),
     armR: image(`${figure}-arm-r`),
+    heldL: own("held-l"),
+    heldR: own("held-r"),
     shoulderL: at(FIGURE_GEOMETRY.shoulderL),
     shoulderR: at(FIGURE_GEOMETRY.shoulderR),
+    handL: at(FIGURE_GEOMETRY.handL),
+    handR: at(FIGURE_GEOMETRY.handR),
     mouthAt: at(FIGURE_GEOMETRY.mouth),
     chest: at(FIGURE_GEOMETRY.pin),
     chestR: FIGURE_GEOMETRY.pinR * S,
@@ -112,6 +133,12 @@ export function drawFigure(figure: FigureId, face: FigureFace): DrawnFigure {
       return place("", cx - r, cy - r, 2 * r, 2 * r).box;
     })(),
     top: Math.round(OY + FIGURE_GEOMETRY.top[figure] * S - 2),
+    spots: Object.fromEntries(
+      Object.entries(FIGURE_GEOMETRY.work[figure]).map(([name, p]) => {
+        const [x, y] = at(p);
+        return [name, `left:${pct(x, 58)};top:${pct(y, 64)}`];
+      }),
+    ),
   };
   drawn.set(key, d);
   return d;

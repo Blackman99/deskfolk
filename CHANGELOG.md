@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### On a task map each character works its own way
+
+- A character at work in a place no longer just moves its hands in turn: each does its own work with what it wears and holds. Pudding types while its antenna sways and picks up signals; Mochi's coffee steams and now and then it takes a sip; taro nods to the music in its headphones and ticks off its clipboard; sakura paints, flicking strokes of colour; matcha whisks hard; caramel brings its hammer down at its side, sparks flying; sesame reads its book, turns a page and pushes up its glasses; blueberry floats and casts circles with its wand, stars trailing. Walking, they all still swing their arms alike. Where several Bots stand at one door, each stands in front of the one on its right, so the work in its hand is not hidden.
+
 ### A task map's labels stay sharp when you zoom in
 
 - Zoomed in on a task map, the plates over the buildings, the characters' badges and the region names blurred, a plate's small second line (who is there and what they are doing) the most: they were drawn at the town's own scale and stretched with it. Each is now drawn at its size on screen and stays as sharp as at 100%.

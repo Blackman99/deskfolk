@@ -6,13 +6,17 @@ the ground like the town, turned so a little of its right side shows. Each layer
 square PNG, framed alike, so the messenger stacks them and moves the arms on their own:
 
   <id>-body                body, feet, cheeks and what it wears
-  <id>-arm-l, <id>-arm-r   an arm (image left, image right) and what that hand holds
+  <id>-arm-l, <id>-arm-r   an arm (image left, image right)
+  <id>-held-l, <id>-held-r what that hand holds, which turns about the hand as the character works
   <id>-front               what sits over the face (glasses), for a character that has one
+  <id>-antenna             Pudding's antenna, on its own so it can sway while Pudding works
   eyes-*, mouth-*          the face; every body is the same shape, so every character shares it
   pin                      the round pin on its chest; the Bot's avatar goes on its face
 
 Parts that sit on the body are rendered with the body (and what it wears) as a holdout, so it hides
-whatever is behind it. meta.json holds the pivots and the pin's face as fractions of the square.
+whatever is behind it. meta.json holds the pivots (shoulders, hands, the antenna's foot) and the pin's
+face as fractions of the square, and
+for each character the points its work comes out of (the mug's steam, the brush's tip, the wand's star…).
 
 Run with Blender 5.2 (headless):
   Blender -b --factory-startup --python figures.py -- OUT_DIR [layer,...]
@@ -197,11 +201,15 @@ def ellipse_radius_at(f, z):
 
 
 # ---- What each character wears (layer 'body') and holds (layer 'part', with its arm) ----
+# Each also marks in f.points where its work shows: what rises from its mug, flies off its brush…
 
-def wear_antenna(f):
+def wear_nothing(f):
+    pass
+
+
+def part_antenna(f):
     f.accessory('antenna')
-    f.objects[-2] = (f.objects[-2][0], 'body')
-    f.objects[-1] = (f.objects[-1][0], 'body')
+    f.points['signal'] = head_top(f) + Vector((0.006, 0, 0.032))
 
 
 def wear_beanie(f):
@@ -224,12 +232,14 @@ def hold_mug(f, s):
     cyl(f, 'Coffee', 0.0135, 0.0135, 0.001, at + Vector((0, 0, 0.0135)), M['coffee'], 'part', segs=40)
     f.tube('Mug handle', [at + Vector((s * 0.019, 0, 0)) + 0.008 * Vector((s * math.cos(a), 0, math.sin(a)))
                           for a in [-1.5 + 3.0 * i / 12 for i in range(13)]], 0.0026, M['teal'], 'part')
+    f.points['steam'] = at + Vector((0, 0, 0.016))
 
 
 def wear_headphones(f):
     f.accessory('headphones')
     for i in range(1, 4):
         f.objects[-i] = (f.objects[-i][0], 'body')
+    f.points['notes'] = f.c + Vector((f.r + 0.012, 0.004, 0.036))
 
 
 def hold_clipboard(f, s):
@@ -243,6 +253,7 @@ def hold_clipboard(f, s):
     for i, w in enumerate((0.03, 0.026, 0.03, 0.018)):
         box(f, 'Line', (w, 0.0025, 0.0006), at + rot((-0.004 + (0.03 - w) / 2, 0.014 - i * 0.009, 0.0026)), M['ink'], 'part', quat=q)
     box(f, 'Tick', (0.007, 0.0025, 0.0006), at + rot((0.014, 0.014, 0.0027)), M['paint_teal'], 'part', quat=q)
+    f.points['tick'] = at + rot((0, 0, 0.003))
 
 
 def wear_beret(f):
@@ -261,6 +272,7 @@ def hold_brush(f, s):
     cyl(f, 'Ferrule', 0.0045, 0.0045, 0.009, at + axis * 0.034, M['steel'], 'part', quat=q, segs=16)
     cyl(f, 'Bristles', 0.0046, 0.0012, 0.014, at + axis * 0.045, M['graphite'], 'part', quat=q, segs=16)
     cyl(f, 'Paint tip', 0.0026, 0.0006, 0.006, at + axis * 0.0505, M['paint_teal'], 'part', quat=q, segs=16)
+    f.points['brush'] = at + axis * 0.0535
 
 
 def hold_palette(f, s):
@@ -272,6 +284,7 @@ def hold_palette(f, s):
     for (x, y), m in zip(((-0.018, 0.01), (0.0, 0.016), (0.018, 0.009), (0.016, -0.01)),
                          ('paint_teal', 'paint_mustard', 'paint_coral', 'paint_white')):
         f.sphere('Dab', 0.006, at + q @ Vector((x, y, 0.0022)), M[m], 'part', scale=(1, 1, 0.45), quat=q)
+    f.points['palette'] = at
 
 
 def wear_toque(f):
@@ -301,6 +314,7 @@ def hold_whisk(f, s):
               [base + axis * (0.004 + 0.036 * (1 - math.cos(t)) / 2) - w * (0.012 * math.sin(t))
                for t in [math.pi * i / 16 for i in range(16, -1, -1)]]
         f.tube('Whisk wire', pts, 0.0009, M['steel'], 'part')
+    f.points['whisk'] = base + axis * 0.04
 
 
 def wear_hardhat(f):
@@ -328,6 +342,7 @@ def hold_hammer(f, s):
     head = at + axis * 0.037
     hq = track(q @ Vector((1, 0, 0)), 'Y')
     cyl(f, 'Hammer head', 0.0095, 0.0095, 0.042, head, M['steel'], 'part', quat=hq, segs=8, bevel=0.002)
+    f.points['hammer'] = head
 
 
 def front_glasses(f):
@@ -341,6 +356,8 @@ def front_glasses(f):
     b, nb = f.surface_point(f.dir(0.12, 0.24))
     mid, nm = f.surface_point(f.dir(0, 0.26))
     f.tube('Bridge', [a + na * 0.005, mid + nm * 0.008, b + nb * 0.005], 0.0014, M['gold'], 'part')
+    p, n = f.surface_point(f.dir(0.3, 0.2))
+    f.points['glasses'] = p + n * 0.005
 
 
 def wear_pencil(f):
@@ -364,6 +381,7 @@ def hold_book(f, s):
         box(f, 'Cover', (0.043, 0.055, 0.002), at + rot((0.0015, 0, z)), M['book'], 'part', quat=q, bevel=0.0006)
     box(f, 'Spine', (0.003, 0.055, 0.015), at + rot((-0.021, 0, 0)), M['book'], 'part', quat=q, bevel=0.0008)
     box(f, 'Label', (0.024, 0.008, 0.0006), at + rot((0.002, 0.012, -0.0078)), M['paint_mustard'], 'part', quat=q)
+    f.points['book'] = at
 
 
 def wear_wizard_hat(f):
@@ -406,18 +424,20 @@ def hold_wand(f, s):
     at = p + Vector((0, -0.01, 0.004))
     cyl(f, 'Wand', 0.0022, 0.003, 0.06, at, M['wood_dark'], 'part', quat=q, segs=12)
     prism(f, 'Wand star', star(0.011, 0.0048), 0.004, at + axis * 0.036, M['gold'], 'part', quat=track((0.2, -1, 0.3), 'Y'), bevel=0.0008)
+    f.points['wand'] = at + axis * 0.036
 
 
-# id, flavour (the body's colour), what it wears, what each hand holds (image left, right), front
+# id, flavour (the body's colour), what it wears, what each hand holds (image left, right), and the
+# parts drawn as layers of their own (the glasses over the face, Pudding's antenna)
 CHARACTERS = [
-    ('pudding', '#ef9f2c', dict(rough=0.45), wear_antenna, None, None, None),
-    ('mochi', '#f6f3ec', dict(rough=0.55, sss=0.12), wear_beanie, None, hold_mug, None),
-    ('taro', '#ad93d6', dict(rough=0.45), wear_headphones, None, hold_clipboard, None),
-    ('sakura', '#f2a9bb', dict(rough=0.5, sss=0.05), wear_beret, hold_palette, hold_brush, None),
-    ('matcha', '#93b45a', dict(rough=0.5), wear_toque, None, hold_whisk, None),
-    ('caramel', '#c27d45', dict(rough=0.4, coat=0.15), wear_hardhat, None, hold_hammer, None),
-    ('sesame', '#77716c', dict(rough=0.5), wear_pencil, hold_book, None, front_glasses),
-    ('blueberry', '#6b82d6', dict(rough=0.45), wear_wizard_hat, None, hold_wand, None),
+    ('pudding', '#ef9f2c', dict(rough=0.45), wear_nothing, None, None, {'antenna': part_antenna}),
+    ('mochi', '#f6f3ec', dict(rough=0.55, sss=0.12), wear_beanie, None, hold_mug, {}),
+    ('taro', '#ad93d6', dict(rough=0.45), wear_headphones, None, hold_clipboard, {}),
+    ('sakura', '#f2a9bb', dict(rough=0.5, sss=0.05), wear_beret, hold_palette, hold_brush, {}),
+    ('matcha', '#93b45a', dict(rough=0.5), wear_toque, None, hold_whisk, {}),
+    ('caramel', '#c27d45', dict(rough=0.4, coat=0.15), wear_hardhat, None, hold_hammer, {}),
+    ('sesame', '#77716c', dict(rough=0.5), wear_pencil, hold_book, None, {'front': front_glasses}),
+    ('blueberry', '#6b82d6', dict(rough=0.45), wear_wizard_hat, None, hold_wand, {}),
 ]
 
 
@@ -442,6 +462,7 @@ def scene():
 
 def new_folk(body_color=None, body_opts=None):
     f = folk.Folk()
+    f.points = {}
     if body_color:
         f.M['body'] = material('Body', body_color, **(body_opts or {}))
     return f
@@ -459,7 +480,7 @@ def render(out, name, build, holdout):
 
 def layers():
     out = []
-    for cid, color, opts, wear, hold_l, hold_r, front in CHARACTERS:
+    for cid, color, opts, wear, hold_l, hold_r, parts in CHARACTERS:
         def dressed(cid=cid, color=color, opts=opts, wear=wear):
             f = new_folk(color, opts)
             f.body()
@@ -467,19 +488,23 @@ def layers():
             return f
         out.append((f'{cid}-body', dressed, False))
         for side, s_, hold in (('l', -1, hold_l), ('r', 1, hold_r)):
-            def arm(dressed=dressed, s_=s_, hold=hold):
+            def arm(dressed=dressed, s_=s_):
                 f = dressed()
                 f.arm(s_, 'part')
-                if hold:
-                    hold(f, s_)
                 return f
             out.append((f'{cid}-arm-{side}', arm, True))
-        if front:
-            def fr(dressed=dressed, front=front):
+            if hold:
+                def held(dressed=dressed, s_=s_, hold=hold):
+                    f = dressed()
+                    hold(f, s_)
+                    return f
+                out.append((f'{cid}-held-{side}', held, True))
+        for suffix, part in parts.items():
+            def apart(dressed=dressed, part=part):
                 f = dressed()
-                front(f)
+                part(f)
                 return f
-            out.append((f'{cid}-front', fr, True))
+            out.append((f'{cid}-{suffix}', apart, True))
     for style in ('dot', 'happy', 'wink', 'closed'):
         out.append((f'eyes-{style}', lambda s=style: (lambda f: (f.body(), f.eyes(s), f)[2])(new_folk()), True))
     for style in ('smile', 'open', 'cat'):
@@ -499,6 +524,22 @@ if __name__ == '__main__':
             render(out, name, build, holdout)
 
     # Pivots and the badge's window, as fractions of the square from its top-left corner.
+    def at(point):
+        v = world_to_camera_view(s, s.camera, point)
+        return [round(v.x, 4), round(1 - v.y, 4)]
+    points = {}
+    for cid, color, opts, wear, hold_l, hold_r, parts in CHARACTERS:
+        s = scene()
+        f = new_folk(color, opts)
+        f.body()
+        wear(f)
+        for s_, hold in ((-1, hold_l), (1, hold_r)):
+            if hold:
+                hold(f, s_)
+        for part in parts.values():
+            part(f)
+        bpy.context.view_layer.update()
+        points[cid] = {k: at(p) for k, p in f.points.items()}
     s = scene()
     f = new_folk()
     f.body()
@@ -506,16 +547,16 @@ if __name__ == '__main__':
     for o, _ in f.objects:
         o.hide_render = True
     bpy.context.view_layer.update()
-    def at(point):
-        v = world_to_camera_view(s, s.camera, point)
-        return [round(v.x, 4), round(1 - v.y, 4)]
     meta = {
         'shoulder_l': at(f.shoulder(-1)[0]),
         'shoulder_r': at(f.shoulder(1)[0]),
+        'hand_l': at(hand(f, -1)[0]),
+        'hand_r': at(hand(f, 1)[0]),
         'feet': at(Vector((0, 0, 0))),
         'head_top': at(head_top(f)),
         'pin': at(centre),
         'pin_r': round(radius / FRAME, 4),
+        'points': points,
     }
     json.dump(meta, open(os.path.join(out, 'meta.json'), 'w'), indent=1)
     print('meta', meta)

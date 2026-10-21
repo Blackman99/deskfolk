@@ -259,6 +259,7 @@ export function buildFrame(input: FrameInput): Frame {
     const door = doors.get(tile) ?? [s.b];
     const slot = door.indexOf(s.b);
     // A figure is ~50 px wide with its arms: neighbours at one door stand 38 px apart, arms just touching.
+    // Each stands in front of the one on its right, whose right hand, where its work shows, stays in view.
     const off = slot < 0 ? 0 : (slot - (door.length - 1) / 2) * 38;
     const [fx, fy] = proj(phi, d.gx + ax.front[0] * 0.47, d.gy + ax.front[1] * 0.47, d.island === "ext" ? LIFT : 0);
     let fails = 0;
@@ -266,7 +267,7 @@ export function buildFrame(input: FrameInput): Frame {
     const scale = s.lead ? 1 : 0.78;
     return {
       b: s.b, key: ch.key, lead: s.lead, sessionId: call?.sessionId ?? null, at: call?.at ?? null, short: input.names?.[s.b] ?? (s.b === 0 ? t.mainLane : t.subagent(s.b)), description: ch.description,
-      x: Math.round(fx + off - 27.5), y: Math.round(fy - 59.5 + 1), z: 400 + (s.lead ? 10 + s.b : s.b),
+      x: Math.round(fx + off - 27.5), y: Math.round(fy - 59.5 + 1), z: 400 + (s.lead ? 10 : 0) + door.length - slot,
       present: s.out && (s.lead || !!call), walking, busy: s.out && !!call && !walking && idleMin <= 10,
       status, idleMin, verb: call ? verbOf(call, t) : "", file: call?.file ?? null, tile,
       model: call?.model ?? null, modelShort: modelLabel(call?.model), hasModel: !!call?.model, modelFamily: modelFamily(call?.model),

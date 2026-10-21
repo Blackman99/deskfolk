@@ -233,6 +233,20 @@ test("a Bot conversation's replay: every Bot a lead in the order it worked, a qu
   expect(frame.actors[1]!.tile).toBe(map.indexOf({ zone: "none" }));
 });
 
+test("Bots working at one door stand in a row, each in front of the one on its right, whose working hand shows", () => {
+  const c = (id: string, bot: string, sec: number) => ({ id, at: iso(sec), bot_id: bot, turn_id: "t", task_id: null, tool: "write_file", place: project("jobs/a/x.md"), model: "deepseek-chat", file: null, ok: true, duration_ms: 100, decision: null });
+  const data = fromSessionReplay({ session_id: "g-1", bots: ["b-1", "b-2", "b-3"], truncated: false, calls: [c("c1", "b-1", 10), c("c2", "b-2", 11), c("c3", "b-3", 12)], said: [] });
+  const map = buildDistricts(data.calls.map((x) => x.place));
+  const tl = buildTimeline(data, map);
+  const t = copyFor("zh").taskmap;
+  const frame = buildFrame({ data, map, tl, v: tl.v.at(-1)!, phi: 0, zoom: 1, now: 0, speed: 4, light: { w: 0, n: 0 } as never, cache: new Map(), walk: { lastTile: [], until: [] }, hover: -1, sel: -1, t });
+  const row = [...frame.actors].sort((a, b) => a.x - b.x);
+  expect(new Set(row.map((a) => a.tile)).size).toBe(1);
+  expect(row.map((a) => a.status)).toEqual(["work", "work", "work"]);
+  expect(row[0]!.z).toBeGreaterThan(row[1]!.z);
+  expect(row[1]!.z).toBeGreaterThan(row[2]!.z);
+});
+
 test("a Bot's live call is logged under its Bot, and a Bot first seen live joins as a lead", () => {
   const log = new AgentCallLog();
   log.applyTool({ type: "tool", turn_id: "t", id: "c9", name: "shell", phase: "started", bot_call: { session_id: "g-1", bot_id: "b-3", place: project("jobs/c"), model: "m", at: iso(50) } } as ToolFrame);
