@@ -157,7 +157,7 @@
 			onclick={toggleSwitcher}
 			title={heading}
 		>
-			<h2>{heading}</h2>
+			<h2 class="trace-heading">{heading}</h2>
 			<Icon name="chevron-down" size={12} class={['trace-title-arrow', { 'is-open': open }]} />
 		</button>
 		{#if open && phone.current}
@@ -179,12 +179,12 @@
 		{/if}
 	</div>
 {:else}
-	<h2>{heading}</h2>
+	<h2 class="trace-heading">{heading}</h2>
 {/if}
 
 <style>
-	/* `.trace-titles` is the header's own wrapper, in JobHeader; the h2 it sizes renders here. */
-	:global(.trace-titles) h2 {
+	/* One row wherever the switcher sits, the flow's header or the map's: clipped only when the row runs out. */
+	h2.trace-heading {
 		margin: 0;
 		font-size: 14px;
 		font-weight: 600;
@@ -206,8 +206,8 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
+		/* No `max-width: 100%`: the select is as wide as this button's margin box, 12px under its own width, so a cap held the title short. */
 		min-width: 0;
-		max-width: 100%;
 		margin: -3px -6px;
 		padding: 3px 6px;
 		border-radius: var(--radius-sm);

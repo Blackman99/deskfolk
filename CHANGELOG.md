@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A task map's title stays on one row
+
+- On a task map over a plan, the plan's title in the head wrapped onto a second row with room to spare, set in a large default heading. It is now set as in the flow's header, on one row, and clipped with an ellipsis only when the head runs out of room. The flow's switcher had held every title 12px short of its own width, which in the flow's header clipped a long title that early.
+
 ### A pane wider than a phone keeps the floating composer
 
 - A conversation docked its composer to the bottom as soon as it was 680px or narrower, so a 500px workbench pane got the phone's bar where the floating card read well. Only a conversation as narrow as a phone itself, 480px or under, docks it now; between that and 680px the card floats as on a wide screen, in two rows, on the same 12px margins as the conversation.
