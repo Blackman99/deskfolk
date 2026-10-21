@@ -20,8 +20,12 @@ export function loadClaudeModels(api: MessengerApi | null, configDir: string | n
   Promise.resolve()
     .then(() => api.claudeCodeModels(configDir))
     .then(
-      (list) => (models[key] = list.models.length ? list : "failed"),
-      () => (models[key] = "failed"),
+      (list) => {
+        models[key] = list.models.length ? list : "failed";
+      },
+      () => {
+        models[key] = "failed";
+      },
     );
 }
 
@@ -39,7 +43,9 @@ export function loadClaudeStatus(api: MessengerApi | null): void {
     .then(() => api.claudeCode())
     // Once a page, answered or not: a Mac that cannot say leaves the account picker out.
     .then(
-      (status) => (claude.status = status),
+      (status) => {
+        claude.status = status;
+      },
       () => {},
     );
 }
