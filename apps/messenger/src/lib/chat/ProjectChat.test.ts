@@ -130,3 +130,39 @@ test("the composer picks the session's thinking level beside the model, the defa
   set.close();
 });
 
+
+test("the microphone puts what it heard where the caret was, in that session's box, and sends nothing", async () => {
+  const { installFakeMic } = await import("../test-voice.ts");
+  const mic = installFakeMic();
+  const session = aProjectSession();
+  const runtime = fakeRuntime({ sessions: [session] });
+  runtime.snapshot = { ...runtime.snapshot, settings: { ...runtime.snapshot.settings, speech: { enabled: true, preset: "openai", format: "openai", base_url: "https://api.openai.com/v1", model: "gpt-4o-mini-transcribe", language: null, key_provider_id: null, key_set: true } } };
+  const sent: unknown[] = [];
+  (runtime as unknown as { client: unknown }).client = { transcribe: async (body: unknown) => (sent.push(body), { text: "中间" }) };
+  runtime.sessionView(session.id).draft = "前后";
+  const { host, close } = render(ProjectChat, { runtime, t, selected: session });
+  try {
+    const field = host.querySelector<HTMLTextAreaElement>(".project-chat textarea")!;
+    field.setSelectionRange(1, 1);
+    const button = () => host.querySelector<HTMLButtonElement>("[data-voice-button]");
+    expect(button()?.getAttribute("aria-label")).toBe(t.speech.micStart);
+    click(button());
+    await settle();
+    expect(host.querySelector("[data-voice-status]")?.textContent).toContain("正在听");
+    click(button());
+    await settle();
+    await settle();
+    expect(sent).toHaveLength(1);
+    expect(runtime.sessionView(session.id).draft).toBe("前中间后");
+    expect(runtime.calls.some((c) => c.name === "send")).toBe(false);
+  } finally {
+    close();
+    mic.restore();
+  }
+});
+
+test("no speech endpoint, no microphone", () => {
+  const { host, close } = open(null);
+  expect(host.querySelector("[data-voice-button]")).toBeNull();
+  close();
+});

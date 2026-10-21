@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { CLAUDE_EFFORTS, CLAUDE_MODEL_ALIASES, isHiddenTranscriptKind, USER_MEMBER, type Message, type SessionSummary } from '@real-bot/protocol';
+	import { CLAUDE_EFFORTS, CLAUDE_MODEL_ALIASES, isHiddenTranscriptKind, speechReady, USER_MEMBER, type Message, type SessionSummary } from '@real-bot/protocol';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
 	import Select from '../Select.svelte';
@@ -20,6 +20,9 @@
 		type ComposerImeState
 	} from './composer-ime.ts';
 	import { formatDateDivider, formatMessageTime, isDifferentDay } from './chat-view.ts';
+	import { ComposerVoice, spacedHeard } from './composer-voice.svelte.ts';
+	import VoiceButton from './VoiceButton.svelte';
+	import VoiceStatus from './VoiceStatus.svelte';
 
 	/**
 	 * A project session's conversation (ADR 0095): you and the agent in a directory, as in the
@@ -85,6 +88,42 @@
 		const level = CLAUDE_EFFORTS.find((each) => each === value) ?? null;
 		tuneFailed = (await runtime.tuneProjectSession(selected.id, { effort: level })) !== null;
 	}
+
+	/**
+	 * The microphone (ADR 0073), as in a Bot's composer: what is heard goes in where the caret was,
+	 * in the session it was recorded for, and nothing is sent until you send it. The box is a plain
+	 * field, so the caret is its selection, which stays put while the button has the focus.
+	 */
+	let voiceCaret: { start: number; end: number } | null = null;
+	const voice = new ComposerVoice({
+		api: () => runtime.client,
+		t: () => t,
+		sessionId: () => selected.id,
+		markCaret: () => (voiceCaret = field ? { start: field.selectionStart, end: field.selectionEnd } : null),
+		insert: (sessionId, heard) => {
+			const caret = voiceCaret;
+			voiceCaret = null;
+			const target = runtime.sessionView(sessionId);
+			if (sessionId !== selected.id) {
+				target.draft = target.draft + spacedHeard(target.draft, heard);
+				return;
+			}
+			const draft = target.draft;
+			const start = Math.min(caret?.start ?? draft.length, draft.length);
+			const end = Math.min(Math.max(caret?.end ?? start, start), draft.length);
+			const before = draft.slice(0, start);
+			const piece = spacedHeard(before, heard);
+			target.draft = before + piece + draft.slice(end);
+			sendFailed = false;
+			void tick().then(() => {
+				grow();
+				if (field && document.activeElement === field) field.setSelectionRange(before.length + piece.length, before.length + piece.length);
+			});
+		}
+	});
+	/** Offered once a speech endpoint is ready, as in a Bot's composer. */
+	const voiceOffered = $derived(speechReady(snapshot.settings.speech));
+	$effect(() => () => voice.cancel());
 
 	let scroller = $state<HTMLElement | null>(null);
 	let stuck = true;
@@ -288,6 +327,7 @@
 		{#if sendFailed || tuneFailed}
 			<p class="field-error">{t.project.actionFailed}</p>
 		{/if}
+		<VoiceStatus {voice} {t} />
 		<div class="composer-box">
 			<textarea
 				bind:this={field}
@@ -332,6 +372,9 @@
 					/>
 				</div>
 				<span class="tools-gap"></span>
+				{#if voiceOffered || voice.busy}
+					<VoiceButton {voice} {t} disabled={!connected} />
+				{/if}
 				<button
 					type="button"
 					class="send"
