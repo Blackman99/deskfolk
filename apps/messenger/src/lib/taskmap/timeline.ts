@@ -1,4 +1,4 @@
-import type { AgentShellAction } from "@real-bot/protocol";
+import type { AgentShellAction, AgentToolPlace } from "@real-bot/protocol";
 import type { DistrictMap } from "./districts.ts";
 import type { MapData } from "./map-data.ts";
 
@@ -30,7 +30,7 @@ export type Moment =
   | { kind: "reject"; who: number; v: number; v1: number; places: number[]; at: number; source: string | null; reason: string | null; waitMs: number }
   | { kind: "approve"; who: number; v: number; v1: number; places: number[]; at: number }
   | { kind: "fail"; who: -1; v: number; v1: number; places: number[]; count: number; byWho: [number, number][] }
-  | { kind: "long"; who: number; v: number; v1: number; places: number[]; tool: string; action: AgentShellAction | null; ms: number; file: string | null }
+  | { kind: "long"; who: number; v: number; v1: number; places: number[]; tool: string; action: AgentShellAction | null; place: AgentToolPlace; ms: number; file: string | null }
   | { kind: "loop"; who: number; v: number; v1: number; places: [number, number]; from: number; to: number; trips: number };
 
 export type Timeline = {
@@ -139,7 +139,7 @@ export function buildTimeline(data: MapData, map: DistrictMap, track = 996, lane
     .filter(([c]) => c.tool !== "AskUserQuestion" && c.tool !== "Agent" && c.tool !== "Task" && c.durationMs >= LONG_CALL_MS)
     .sort((a, b) => b[0].durationMs - a[0].durationMs)
     .slice(0, 2)
-    .forEach(([c, i]) => moments.push({ kind: "long", who: c.who, v: v[i]!, v1: v[i]!, places: [placeOf[i]!], tool: c.tool, action: c.action ?? null, ms: c.durationMs, file: c.file }));
+    .forEach(([c, i]) => moments.push({ kind: "long", who: c.who, v: v[i]!, v1: v[i]!, places: [placeOf[i]!], tool: c.tool, action: c.action ?? null, place: c.place, ms: c.durationMs, file: c.file }));
 
   data.characters.forEach((ch, who) => { if (ch.lead) moments.push(...loopsOf(calls, placeOf, v, who)); });
   moments.sort((a, b) => a.v - b.v);

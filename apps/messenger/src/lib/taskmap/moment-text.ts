@@ -42,7 +42,7 @@ export function momentText(m: Moment, t: T, who: (b: number) => string, place: (
     case "fail":
       return { title: t.moments.fail(m.count), sub: m.byWho.map(([b, n]) => `${who(b)} ${n}`).join(" · "), color };
     case "long":
-      return { title: t.moments.long(verbOf({ tool: m.tool, ...(m.action ? { action: m.action } : {}), place: { zone: "none" } }, t), Math.round(m.ms / 1000)), sub: `${who(m.who)} · ${place(m.places[0] ?? 0)}${m.file ? ` · ${m.file}` : ""}`, color };
+      return { title: t.moments.long(verbOf({ tool: m.tool, ...(m.action ? { action: m.action } : {}), place: m.place }, t), Math.round(m.ms / 1000)), sub: `${who(m.who)} · ${place(m.places[0] ?? 0)}${m.file ? ` · ${m.file}` : ""}`, color };
     case "loop":
       return { title: t.moments.loop(Math.max(1, Math.round((m.to - m.from) / 60000)), place(m.places[0]), place(m.places[1]), m.trips), sub: `${when(m.from)}–${when(m.to)}`, color };
   }

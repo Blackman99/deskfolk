@@ -6,6 +6,7 @@ import { buildFrame, placeName, statusText } from "./frame.ts";
 import { AgentCallLog } from "./live.svelte.ts";
 import { fromAgentReplay, fromSessionReplay, mergeLive } from "./map-data.ts";
 import { modelFamily, modelLabel } from "./model-label.ts";
+import { momentText } from "./moment-text.ts";
 import { LONG_GAP, buildTimeline } from "./timeline.ts";
 
 const T0 = Date.parse("2026-10-20T01:00:00.000Z");
@@ -240,4 +241,12 @@ test("a Bot's live call is logged under its Bot, and a Bot first seen live joins
   const merged = mergeLive(fromSessionReplay(aSessionReplay()), log.callsOf("g-1"));
   expect(merged.characters.map((c) => [c.key, c.lead])).toEqual([["b-1", true], ["b-2", true], ["b-3", true]]);
   expect(merged.calls.at(-1)).toMatchObject({ id: "c9", who: 2, running: true });
+});
+
+test("a long MCP call reads as a call to a service, not by its tool's name", () => {
+  const data = fromAgentReplay(aReplay([aCall({ s: 0, tool: "mcp__westlake-cpa__generate_video", place: { zone: "service", server: "westlake-cpa" }, duration_ms: 40_000 })]), "claude_code");
+  const map = buildDistricts(data.calls.map((c) => c.place));
+  const long = buildTimeline(data, map).moments.find((m) => m.kind === "long")!;
+  const t = copyFor("zh").taskmap;
+  expect(momentText(long, t, () => "", () => "", () => "").title).toBe(t.moments.long(t.verbs.service, 40));
 });
