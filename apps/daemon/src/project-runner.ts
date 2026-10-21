@@ -71,8 +71,12 @@ type Live = {
   abort: AbortController;
   /** Lines sent that Claude Code has not answered with a result yet. */
   unanswered: number;
-  /** The approval waiting on you, and how to answer it. */
-  waiting: { resolve: (allow: boolean) => void } | null;
+  /**
+   * The approvals waiting on you, oldest first, and how to answer each: Claude Code can ask about
+   * two calls at once (it runs independent tools in parallel). The first is the card; answering it
+   * brings the next.
+   */
+  waiting: Array<{ approval: AgentRunApproval; resolve: (allow: boolean) => void }>;
   /** The approval each tool call asked for, by call id, read back when Claude Code asks. */
   asked: Map<string, AgentRunApproval>;
   stopped: boolean;
@@ -179,7 +183,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     const input = inputQueue<SDKUserMessage>();
     let finish!: () => void;
     const fresh: Live = {
-      runId: run.id, sessionId, input, abort: new AbortController(), unanswered: 1, waiting: null, asked: new Map(), stopped: false, closing: false, query: null,
+      runId: run.id, sessionId, input, abort: new AbortController(), unanswered: 1, waiting: [], asked: new Map(), stopped: false, closing: false, query: null,
       done: new Promise<void>((resolve) => { finish = resolve; }),
     };
     lives.set(sessionId, fresh);
@@ -275,12 +279,16 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
         if (verdict === "refuse") return { behavior: "deny", message: en ? "the permission mode is read-only" : "权限模式是只读" };
       }
       const approval = asked ?? { kind_key: "agent-permission", target: options.blockedPath ?? toolName, summary: clip(`${toolName} ${options.title ?? options.description ?? JSON.stringify(toolInput)}`, 300) };
-      update(live.runId, { status: "waiting_approval", approval });
-      const allow = await new Promise<boolean>((resolve) => { live.waiting = { resolve }; });
-      live.waiting = null;
+      const allow = await new Promise<boolean>((resolve) => {
+        live.waiting.push({ approval, resolve });
+        // Another call already asking keeps the card until it is answered.
+        if (live.waiting.length === 1) update(live.runId, { status: "waiting_approval", approval });
+      });
       live.asked.delete(options.toolUseID);
       if (live.stopped) return { behavior: "deny", message: en ? "stopped" : "已停止", interrupt: true };
-      update(live.runId, { status: "running", approval: null });
+      // The next call still asking is the card now; with none, the run is at work again.
+      const next = live.waiting[0];
+      update(live.runId, next ? { status: "waiting_approval", approval: next.approval } : { status: "running", approval: null });
       if (!allow) ended(options.toolUseID, false);
       if (!allow) return { behavior: "deny", message: en ? "denied: the user does not want this. Do not do the same thing another way." : "denied：用户拒绝了这个动作。不要换办法做同一件事。" };
       return { behavior: "allow", updatedInput: toolInput };
@@ -412,8 +420,9 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       } catch {
         return run;
       }
-      if (run.status !== "waiting_approval" || !live.waiting) return run;
-      live.waiting.resolve(allow);
+      const head = run.status === "waiting_approval" ? live.waiting.shift() : undefined;
+      if (!head) return run;
+      head.resolve(allow);
       return store.getAgentRun(runId);
     },
     stop(runId) {
@@ -425,7 +434,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
         return run;
       }
       live.stopped = true;
-      live.waiting?.resolve(false);
+      for (const asking of live.waiting.splice(0)) asking.resolve(false);
       live.input.close();
       live.abort.abort();
       return update(runId, { status: "stopped", activity: null, approval: null });
@@ -450,7 +459,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     close() {
       for (const live of lives.values()) {
         live.stopped = true;
-        live.waiting?.resolve(false);
+        for (const asking of live.waiting.splice(0)) asking.resolve(false);
         live.input.close();
         live.abort.abort();
       }

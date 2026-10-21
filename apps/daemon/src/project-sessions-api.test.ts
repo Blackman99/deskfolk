@@ -183,6 +183,49 @@ test("under ask first a write waits on the run's card; approving lets it run, de
   expect(outcomes).toEqual([true, false]);
 });
 
+test("two calls asking at once each get their card, one after the other; neither is lost", async () => {
+  let outcomes: boolean[] = [];
+  const h = start(async ({ useTool, options }) => {
+    // Claude Code runs independent tools in parallel, so it can ask about two at once.
+    outcomes = await Promise.all([
+      useTool("Write", { file_path: join(options.cwd!, "a.txt"), content: "x" }),
+      useTool("Write", { file_path: join(options.cwd!, "b.txt"), content: "y" }),
+    ]);
+    return "写好了";
+  });
+  h.store.patchSettings({ permission_mode: "ask_first" });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(id, "写两个文件");
+  await h.until(async () => (await h.run(id))?.status === "waiting_approval");
+  const first = (await h.run(id))!;
+  expect(first.approval?.summary).toContain("a.txt");
+  await h.call("POST", `/v1/agent-runs/${first.id}/approve`);
+  // The second one's card comes up instead of the run going on without an answer.
+  await h.until(async () => (await h.run(id))?.approval?.summary?.includes("b.txt") === true);
+  expect((await h.run(id))!.status).toBe("waiting_approval");
+  await h.call("POST", `/v1/agent-runs/${first.id}/deny`);
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(outcomes).toEqual([true, false]);
+});
+
+test("Stop answers every call still asking, so none is left waiting", async () => {
+  let settled = 0;
+  const h = start(async ({ useTool, options }) => {
+    await Promise.all([
+      useTool("Write", { file_path: join(options.cwd!, "a.txt"), content: "x" }).then(() => settled++),
+      useTool("Write", { file_path: join(options.cwd!, "b.txt"), content: "y" }).then(() => settled++),
+    ]);
+    return "好";
+  });
+  h.store.patchSettings({ permission_mode: "ask_first" });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(id, "写两个文件");
+  await h.until(async () => (await h.run(id))?.status === "waiting_approval");
+  await h.call("POST", `/v1/agent-runs/${(await h.run(id))!.id}/stop`);
+  await h.until(() => settled === 2);
+  expect((await h.run(id))!.status).toBe("stopped");
+});
+
 test("read-only refuses a write with no card, and Claude Code's credentials are refused in any mode", async () => {
   const outcomes: boolean[] = [];
   const h = start(async ({ useTool, options }) => {
