@@ -27,6 +27,17 @@ On 2026-10-21, with the task map in, you asked why plain Bots had none. The reas
 - **多一次写库 / One more write per call.** 每次调用多一次插入和一次更新；写失败不影响调用本身。 / Every call costs an insert and an update; a failed write leaves the call as it was.
 - **手机上仍然没有 / Still not on a phone.** 和 ADR 0096 一样只在宽窗口有工作台时给出。 / As in ADR 0096, only where a workbench holds it.
 
+## 2026-10-21 修订：按这件事画 / Revised: drawn by plan
+
+用了一阵你说：Bot 视角的地图有问题，应该和流程一样按「这件事」画——一件事可能涉及几个 Bot，跨群、私聊和 Bot 之间的私聊，这些都要体现。于是：
+
+On using it you said the map from a Bot's point of view was wrong: like the flow, it should be drawn by the plan (这件事), which may take several Bots, across groups, your directs and the Bots' directs with each other, and all of that should show. So:
+
+1. **一张图是一件事 / A map is a plan.** 从 Bot 的对话打开地图，画的是一件事（规划），和流程同一个口径：没指定时是这段对话最新的那件工作，地图上方的切换器（和流程同一个）能换；流程页顶栏多了「地图」，打开的就是这件事的地图，地图窗格记着它（`taskId`，和流程的标签页一样）。一段对话还没有一件事时，地图画它里面的全部工作。 / A map opened from a Bot conversation draws one plan, the same one the flow would: with none asked for, the conversation's newest work, switched in the switcher above the town (the flow's own); the flow's header gains Map, opening that plan's map, and the map's tab remembers it (`taskId`, as the flow's tab does). A conversation with no plan yet draws all its work.
+2. **一件事的工作在哪都算 / A plan's work wherever it was done.** 它所有轮次的调用，不管在哪段对话里，按轮次现在属于哪件事算：中途才归进这件事的轮次，早先的调用一起算。`GET /v1/tasks/:id/replay` 读回，每次调用带上它的对话；你说的话取归到这件事下的和唤起它轮次的（流程里你的卡片），回答取它的轮次里的提问。 / Every call of its turns, in whatever conversation, by the plan the turn is in now: a turn filed into it mid-turn brings its earlier calls. `GET /v1/tasks/:id/replay` reads it back, each call with its conversation; your lines are the ones filed under it and the ones that woke its turns (your cards on the flow), your answers the ones to its turns' questions.
+3. **对话都体现出来 / Every conversation shows.** 每个 Bot 的卡片写着它这一步在哪段对话里，为你哪一句干活按那段对话里你最新的一句；「交代给它的事」每句标出在哪说的；一个 Bot 第一次在某段对话里做这件事是值得看的时刻（「在和你的私聊里开始做这件事」「转到群「视频组」里接着做」）；顶上写着它在几段对话里；小镇以这件事的文件夹命名。 / Each Bot's card says which conversation its step is in, and the line it works for is your newest one in that conversation; each line you said is tagged with where; a Bot working on the plan in a conversation for the first time is a moment (“took this up in its direct with you”, “carried on in the group “视频组””); the top says how many conversations; the town is named for the plan's folder.
+4. **实时按轮次归 / Live by the turn.** 实时的调用按它那一轮现在属于哪件事归到地图上：窗口里的轮次记着它属于哪件事；帧上的 `task_id`（这一轮开始那一刻的）只在窗口不认得这一轮时用。 / A live call joins the map by the plan its turn is in now, as the window's copy of the turn says; the frame's `task_id` (the plan when the call started) is only for a turn the window does not hold.
+
 ## 实现 / Implementation
 
 守护进程：`tool-places.ts`（地点规则 `botPlaceOf`、卡片的地点 `cardPlaceOf`、记录器 `createToolPlaceRecorder`，挂在 `local-api.ts` 的 `publish`）、`store/tool-places.ts`（建行、补结果、关联卡片、`sessionReplay`），`engine/tools.ts` 的 `openApprovalCard` / `openAskCard` 关联卡片和补结果，三个运行方式在开始帧上带 `model`；`claude-code/tool-place.ts` 认 MCP 工具，也认媒体和办公文件的扩展名。协议：`bot-replay.ts`（`BotToolInfo`、`SessionReplay`），`ToolFrame.bot_call`，`turn.tool` 的 `model`。信使：`taskmap/map-data.ts` 的 `fromSessionReplay`、`MapCharacter.lead`，`characters.ts`（名字、形象、模型来源），`MapLogo.svelte`，`TaskMap` 按会话种类读回放，入口在 `Shell.svelte` 的 `chatTabActions` 和 `sidebar/session-context-menu.ts`。
