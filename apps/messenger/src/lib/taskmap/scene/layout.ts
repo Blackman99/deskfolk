@@ -43,6 +43,9 @@ export interface PlateBlock {
   lines: ReadonlyArray<{ text: string; model: string }>;
 }
 
+/** A plate's widest, as MapScene's `.tm-plate` caps it: a longer name ends in … inside it. */
+export const PLATE_MAX_W = 180;
+
 /** Width in "em-ish" units: a CJK character counts 1, anything narrower 0.55. */
 function textWidth(s: string): number {
   return [...s].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 1 : 0.55), 0);
@@ -125,7 +128,7 @@ export function layoutPlates(blocks: PlateBlock[], actors: ReadonlyArray<PlacedA
   for (const k of order) {
     const b = blocks[k];
     const lineW = Math.max(0, ...b.lines.map((l) => textWidth(l.text + l.model) * 10 + 15));
-    const w = Math.min(150, Math.max(textWidth(b.name) * 12 + 12 + String(b.n).length * 6.5 + 4, lineW) + 18) / zoom;
+    const w = Math.min(PLATE_MAX_W, Math.max(textWidth(b.name) * 12 + 12 + String(b.n).length * 6.5 + 4, lineW) + 18) / zoom;
     const hgt = (23 + b.lines.length * 13.5 + (b.flag ? 26 : 0)) / zoom;
     const gap = 3 / zoom;
     const x0 = b.px - w / 2;

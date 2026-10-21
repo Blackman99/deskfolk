@@ -194,13 +194,14 @@
 				style:top="{block.plateY}px"
 				style:transform="translate(-50%, -100%) scale({inv})"
 				aria-label={t.insp.aria(block.name, Number(block.n) || 0, sel === q)}
+				title={block.name}
 				aria-pressed={sel === q}
 				onclick={() => { if (fresh()) onPick(q); }}
 				onpointerenter={() => onHover(q)}
 				onpointerleave={() => onHover(-1)}
 			>
 				{#if block.flag}<span class="tm-quest" aria-hidden="true">!</span>{/if}
-				<span class="tm-plate-name"><span class="tm-dot" style:background={block.district.color}></span>{block.name}<span class="tm-plate-n">{block.n}</span></span>
+				<span class="tm-plate-name"><span class="tm-dot" style:background={block.district.color}></span><span class="tm-plate-label">{block.name}</span><span class="tm-plate-n">{block.n}</span></span>
 				{#each block.lines as line, j (j)}
 					<span class="tm-plate-line" style:color={colors[line.b]}>{#if logos[line.b]}<MapLogo source={logos[line.b]!} size={12} />{/if}{line.text}<span class="tm-plate-model">{line.model}</span></span>
 				{/each}
@@ -241,13 +242,15 @@
 	.tm-blk svg { position: absolute; left: 0; top: 0; width: 180px; height: 230px; overflow: visible; }
 	.tm-ring { fill: rgba(18, 28, 32, .08); stroke: #121c20; stroke-width: 1.6; stroke-dasharray: 4 3; }
 	.b-hit { pointer-events: all; fill: #000; fill-opacity: 0; cursor: pointer; }
-	.tm-plate { position: absolute; z-index: 300; transform-origin: 50% 100%; max-width: 150px; box-sizing: border-box; margin: 0; padding: 2px 7px 3px; background: rgba(255, 255, 255, .95); border: 1px solid #dfe6e8; border-radius: 8px; text-align: center; box-shadow: 0 1px 3px rgba(18, 28, 32, .14); font: inherit; color: #121c20; cursor: pointer; }
+	.tm-plate { position: absolute; z-index: 300; transform-origin: 50% 100%; max-width: 180px; box-sizing: border-box; margin: 0; padding: 2px 7px 3px; background: rgba(255, 255, 255, .95); border: 1px solid #dfe6e8; border-radius: 8px; text-align: center; box-shadow: 0 1px 3px rgba(18, 28, 32, .14); font: inherit; color: #121c20; cursor: pointer; }
 	.tm-plate.is-hot { z-index: 360; border-color: #7d8d93; }
 	.tm-plate.is-on { z-index: 360; border-color: #121c20; }
 	.tm-plate:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 	.tm-plate-name { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 	.tm-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; box-shadow: inset 0 0 0 1px rgba(18, 28, 32, .18); }
-	.tm-plate-n { font-size: 10.5px; color: #5f6d74; font-weight: 500; font-family: var(--mono); }
+	/* A long folder name ends in … inside the plate; the plate's title has it whole. */
+	.tm-plate-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+	.tm-plate-n { flex: none; font-size: 10.5px; color: #5f6d74; font-weight: 500; font-family: var(--mono); }
 	.tm-plate-line { display: flex; align-items: center; justify-content: center; gap: 3px; font-size: 10px; white-space: nowrap; overflow: hidden; line-height: 1.35; --agent-logo-size: 12px; }
 	.tm-plate-model { color: #5f6d74; }
 	.tm-quest { position: absolute; left: 50%; top: -25px; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%; background: #f2b632; color: #3a2600; font-size: 13px; font-weight: 800; line-height: 20px; text-align: center; box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(18, 28, 32, .3); animation: tm-bob 1.1s ease-in-out infinite; }
