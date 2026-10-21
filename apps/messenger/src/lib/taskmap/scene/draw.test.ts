@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { BY, NIGHT, SHADE, mix } from "./geometry.ts";
-import { LAMPS, ROADS, SLAB_IDS, TREES, buildGround, drawBuilding, faceColor, lightAt, type BuiltModel, type LightLevel } from "./draw.ts";
+import { BY, NIGHT, SHADE, W, axes, mix, type Vec3 } from "./geometry.ts";
+import {
+  LAMPS, ROADS, SLAB_IDS, TREES, buildGround, castOffset, drawBuilding, faceColor, islandShadow, lampShadow, lightAt, shadeOf, shadowOf, treeShadow,
+  type BuiltModel, type LightLevel,
+} from "./draw.ts";
 import { ARCHETYPE_IDS } from "./models.ts";
 
 const DAY: LightLevel = { n: 0, w: 0 };
@@ -40,7 +43,9 @@ describe("buildGround", () => {
         // A label sits below its slab's front corner, inside the box.
         expect(g.lb[id].y).toBeLessThanOrEqual(g.box.y1);
       }
-      for (const text of [g.roads, g.shadow, ...g.slabs.flatMap((s) => s.faces.map((f) => f.d))]) expect(numbers(text).every(Number.isFinite)).toBe(true);
+      for (const text of [g.roads, g.shadow, ...Object.values(g.tops), ...g.slabs.flatMap((s) => s.faces.map((f) => f.d))]) expect(numbers(text).every(Number.isFinite)).toBe(true);
+      // Each slab's top is there to clip that island's shadows to.
+      expect(SLAB_IDS.every((id) => g.tops[id].startsWith("M"))).toBe(true);
       // Every slab shows its top and at least two sides at any turn (a box seen from above).
       for (const s of g.slabs) expect(s.faces.length).toBeGreaterThanOrEqual(3);
       expect(g.slabs.map((s) => s.puffs.length)).toEqual([0, 0, 8]);
@@ -71,8 +76,8 @@ describe("lightAt", () => {
   });
 
   test("is dark at night, bright by day, and n and w always stay within 0 to 1", () => {
-    expect(lightAt(12)).toEqual({ n: 0, w: 0, name: "day" });
-    expect(lightAt(23)).toEqual({ n: 1, w: 0, name: "night" });
+    expect(lightAt(12)).toMatchObject({ n: 0, w: 0, name: "day" });
+    expect(lightAt(23)).toMatchObject({ n: 1, w: 0, name: "night" });
     for (let m = 0; m < 1440; m++) {
       const L = lightAt(m / 60);
       expect(L.n).toBeGreaterThanOrEqual(0);
@@ -96,6 +101,110 @@ describe("lightAt", () => {
       prev = n;
     }
     expect(lightAt(17.5).w).toBeGreaterThan(lightAt(17.5).n);
+  });
+
+  // The ground's compass: north is grid (-1, -1), up the screen at turn 0; east is (1, -1).
+  const toward = (dir: Vec3, gx: number, gy: number) => (dir[0] * gx + dir[1] * gy) / Math.hypot(gx, gy);
+
+  test("the sun rises in the east, stands highest in the south around midday and sets in the west; the moon has the night", () => {
+    const morning = lightAt(7);
+    const noon = lightAt(12.5);
+    const evening = lightAt(18);
+    for (const L of [morning, noon, evening]) expect(L.body.kind).toBe("sun");
+    expect(toward(morning.dir, 1, -1)).toBeGreaterThan(0.5);
+    expect(toward(evening.dir, -1, 1)).toBeGreaterThan(0.5);
+    expect(toward(noon.dir, 1, 1)).toBeGreaterThan(0.4);
+    expect(noon.body.height).toBeCloseTo(1, 2);
+    expect(noon.dir[2]).toBeGreaterThan(morning.dir[2]);
+    expect(noon.dir[2]).toBeGreaterThan(evening.dir[2]);
+    for (const h of [20, 23, 1, 4]) expect(lightAt(h).body.kind).toBe("moon");
+    expect(toward(lightAt(20.5).dir, 1, -1)).toBeGreaterThan(0.5);
+    for (let m = 0; m < 1440; m++) {
+      const L = lightAt(m / 60);
+      expect(Math.hypot(...L.dir)).toBeCloseTo(1, 9);
+      expect(L.dir[2]).toBeGreaterThanOrEqual(0);
+      expect(L.cast).toBeGreaterThanOrEqual(0);
+      expect(L.cast).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("the light has no direction where the sun and moon hand over, so no wall or shadow jumps", () => {
+    for (const h of [6, 19]) {
+      expect(lightAt(h).cast).toBeCloseTo(0, 6);
+      expect(lightAt(h - 1 / 60).cast).toBeLessThan(0.02);
+      expect(lightAt(h + 1 / 60).cast).toBeLessThan(0.02);
+    }
+    // A wall facing east, minute by minute through the day and night, never changes shade by much at once.
+    const wall = { n: [Math.SQRT1_2, 0, Math.SQRT1_2] as Vec3, shade: 0.8 };
+    let prev = shadeOf(wall, lightAt(0));
+    for (let m = 1; m <= 1440; m++) {
+      const next = shadeOf(wall, lightAt((m % 1440) / 60));
+      expect(Math.abs(next - prev)).toBeLessThan(0.02);
+      prev = next;
+    }
+    // Moonlight casts less than the midday sun.
+    expect(lightAt(0.5).cast).toBeLessThan(lightAt(12.5).cast);
+  });
+});
+
+describe("shadeOf", () => {
+  test("a face turned to the light is brighter than one turned away; a bare level keeps the fixed sun's shade", () => {
+    const morning = lightAt(8);
+    const east = { n: [Math.SQRT1_2, -Math.SQRT1_2, 0] as Vec3, shade: 0.7 };
+    const west = { n: [-Math.SQRT1_2, Math.SQRT1_2, 0] as Vec3, shade: 0.7 };
+    expect(shadeOf(east, morning)).toBeGreaterThan(shadeOf(west, morning));
+    expect(shadeOf(west, lightAt(17))).toBeGreaterThan(shadeOf(east, lightAt(17)));
+    expect(shadeOf(east, DAY)).toBe(0.7);
+    for (const L of [morning, lightAt(12.5), lightAt(23)]) {
+      expect(shadeOf(east, L)).toBeGreaterThanOrEqual(0.62);
+      expect(shadeOf(east, L)).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe("shadows", () => {
+  const cache = new Map<string, BuiltModel>();
+  const centre = (polys: readonly (readonly (readonly [number, number])[])[]) => {
+    const pts = polys.flat();
+    return [pts.reduce((s, p) => s + p[0], 0) / pts.length, pts.reduce((s, p) => s + p[1], 0) / pts.length];
+  };
+
+  test("a point casts away from the light, longer the lower the light, and never past its cap", () => {
+    const morning = lightAt(7.5).dir;
+    const noon = lightAt(12.5).dir;
+    const [mx, my] = castOffset(50, morning);
+    // The sun in the east puts the shadow to the west.
+    expect((mx - my) / Math.SQRT2).toBeLessThan(0);
+    expect(Math.hypot(...castOffset(50, morning))).toBeGreaterThan(Math.hypot(...castOffset(50, noon)));
+    expect(Math.hypot(...castOffset(50, [1, 0, 0.01]))).toBeLessThanOrEqual(50 / 0.3 / W + 1e-9);
+  });
+
+  test("a building's shadow falls on the side away from the sun, and the evening's on the other side", () => {
+    for (const phi of [0, 90, 217]) {
+      const { ex, ey } = axes(phi);
+      const west = [-ex[0] + ey[0], -ex[1] + ey[1]];
+      const side = (h: number) => {
+        const [x, y] = centre(shadowOf("bible", 40, phi, lightAt(h).dir, cache));
+        return x * west[0] + y * west[1];
+      };
+      expect(side(7.5)).toBeGreaterThan(0);
+      expect(side(17.5)).toBeLessThan(0);
+    }
+  });
+
+  test("outlines are finite, kept by shape, turn and light, and every shape casts one", () => {
+    const dir = lightAt(9).dir;
+    for (const id of ARCHETYPE_IDS) {
+      const polys = shadowOf(id, 30, 25, dir, cache);
+      expect(polys.length).toBeGreaterThan(0);
+      expect(polys.flat(2).every(Number.isFinite)).toBe(true);
+    }
+    expect(shadowOf("camp", 30.1, 25, dir, cache)).toBe(shadowOf("camp", 30, 25, dir, cache));
+    for (const pts of [treeShadow(true, 25, dir), treeShadow(false, 25, dir), lampShadow(25, dir)]) {
+      expect(pts.length).toBeGreaterThanOrEqual(3);
+      expect(pts.flat().every(Number.isFinite)).toBe(true);
+    }
+    expect(numbers(islandShadow(25, dir)).every(Number.isFinite)).toBe(true);
   });
 });
 

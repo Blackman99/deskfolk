@@ -5,6 +5,7 @@
 	import type { DrawnFigure } from './scene/figures.ts';
 	import MapFigure from './MapFigure.svelte';
 	import MapLogo from './MapLogo.svelte';
+	import { SLAB_IDS } from './scene/draw.ts';
 	import { VIEW_H, VIEW_W } from './scene/view.ts';
 
 	/**
@@ -118,6 +119,12 @@
 		return () => el.removeEventListener('wheel', wheel);
 	});
 
+	// A fixed field of stars over the top of the view, the same every night: [x %, y %, radius].
+	const STARS: readonly (readonly [number, number, number])[] = Array.from({ length: 48 }, (_, i) => {
+		const r = (n: number) => (((Math.sin(i * 12.9898 + n * 78.233) * 43758.5453) % 1) + 1) % 1;
+		return [Number((r(1) * 100).toFixed(1)), Number((r(2) * 52).toFixed(1)), r(3) > 0.82 ? 1.4 : 0.8] as const;
+	});
+
 	const STATUS_DOT: Record<string, string> = { work: '#16a34a', walk: '#95a2a8', idle: '#c3cfd3', fail: '#dc2626', back: '#16a34a', none: '#c3cfd3' };
 	const badgeT = (side: number, lift: number) => {
 		const up = ((lift * 28) / cam.k).toFixed(1);
@@ -138,7 +145,21 @@
 	onpointercancel={up}
 	oncontextmenu={(e) => e.preventDefault()}
 >
-	<div class="tm-world" style:width="{VIEW_W}px" style:height="{VIEW_H}px" style:transform="translate({cam.tx.toFixed(1)}px, {cam.ty.toFixed(1)}px) scale({cam.k.toFixed(3)})" style:transition-duration="{camMs}ms">
+	<!-- The sky stays put as the town pans and zooms: stars by night, the sun or moon on the side its light comes from. -->
+	<div class="tm-sky" aria-hidden="true">
+		{#if frame.sky.stars > 0}
+			<svg class="tm-stars" style:opacity={frame.sky.stars.toFixed(2)}>{#each STARS as [x, y, r], i (i)}<circle cx="{x}%" cy="{y}%" {r} />{/each}</svg>
+		{/if}
+		{#if frame.sky.body && frame.sky.body.alpha > 0}
+			{@const body = frame.sky.body}
+			<div class="tm-body is-{body.kind}" style:left="{(body.x * 100).toFixed(2)}%" style:top="{(body.y * 100).toFixed(2)}%" style:opacity={body.alpha} style:--warm="{Math.round(body.warm * 100)}%">
+				{#if body.kind === 'moon'}
+					<svg viewBox="0 0 28 28"><mask id="{uid}-moon"><circle cx="14" cy="14" r="12" fill="#fff" /><circle cx="19.5" cy="9.5" r="10" fill="#000" /></mask><circle cx="14" cy="14" r="12" fill="#f4efdc" mask="url(#{uid}-moon)" /></svg>
+				{/if}
+			</div>
+		{/if}
+	</div>
+	<div class="tm-world" style:width="{VIEW_W}px" style:height="{VIEW_H}px" style:transform="translate({cam.tx.toFixed(1)}px, {cam.ty.toFixed(1)}px) scale({cam.k.toFixed(3)})" style:transition-duration="{camMs}ms" style:--night={frame.night.toFixed(3)}>
 		<svg class="tm-ground" viewBox="0 0 {VIEW_W} {VIEW_H}" style:z-index="1" aria-hidden="true">
 			<path d={frame.ground.shadow} fill="rgba(23,38,42,.13)" />
 		</svg>
@@ -151,6 +172,23 @@
 		<svg class="tm-ground" viewBox="0 0 {VIEW_W} {VIEW_H}" style:z-index="5" aria-hidden="true">
 			<path class="tm-road-edge" d={frame.ground.roads} stroke={frame.roadEdge} />
 			<path class="tm-road" d={frame.ground.roads} stroke={frame.roadFill} />
+		</svg>
+		<!-- Shadows over the ground and roads, under everything standing; each island's only on its own top. Lamps pool their light at night. -->
+		<svg class="tm-ground" viewBox="0 0 {VIEW_W} {VIEW_H}" style:z-index="6" aria-hidden="true">
+			<defs>
+				{#each SLAB_IDS as id (id)}<clipPath id="{uid}-{id}"><path d={frame.ground.tops[id]} /></clipPath>{/each}
+				<radialGradient id="{uid}-pool"><stop offset="0" stop-color="#ffd98a" stop-opacity=".6" /><stop offset="1" stop-color="#ffd98a" stop-opacity="0" /></radialGradient>
+			</defs>
+			{#if frame.shadows.alpha > 0}
+				<g fill="#1d2636" opacity={frame.shadows.alpha}>
+					<path d={frame.shadows.town + frame.shadows.island} clip-path="url(#{uid}-town)" />
+					<path d={frame.shadows.ws} clip-path="url(#{uid}-ws)" />
+					<path d={frame.shadows.ext} clip-path="url(#{uid}-ext)" />
+				</g>
+			{/if}
+			{#if frame.night > 0}
+				<g opacity={frame.night.toFixed(3)}>{#each frame.lamps as lamp, i (i)}<ellipse cx={lamp.l + 6} cy={lamp.t + 33} rx="30" ry="15" fill="url(#{uid}-pool)" />{/each}</g>
+			{/if}
 		</svg>
 
 		<div class="tm-region" style:left="{frame.ground.lb.ext.x}px" style:top="{frame.ground.lb.ext.y}px" style:transform="translate(-50%, 0) scale({inv})">{labels.ext}</div>
@@ -218,6 +256,7 @@
 		{#each frame.actors as actor (actor.key)}
 			{@const fig = figures[actor.b]}
 			<div class="tm-actor" style:transform="translate({actor.x}px, {actor.y}px)" style:transition-duration="{walkMs}ms" style:opacity={actor.present ? 1 : 0} style:z-index={actor.z}>
+				{#if frame.cast.alpha > 0}<div class="tm-cast" style:width="{Math.round(frame.cast.len * actor.scale + 18)}px" style:transform="rotate({frame.cast.angle}deg)" style:opacity={frame.cast.alpha}></div>{/if}
 				<div class="tm-shadow" style:box-shadow={follow === actor.b ? `0 0 0 2px ${colors[actor.b]}` : 'none'}></div>
 				{#if fig}<MapFigure {fig} motion={actor.motion} work={actor.status === 'work'} b={actor.b} scale={actor.scale} k={cam.k} {tint} />{/if}
 				{#if actor.present}
@@ -237,6 +276,13 @@
 <style>
 	.tm-view { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 	.tm-view.is-dragging { cursor: grabbing; }
+	.tm-sky { position: absolute; inset: 0; pointer-events: none; }
+	.tm-stars { position: absolute; inset: 0; width: 100%; height: 100%; fill: #f4f1e6; }
+	.tm-body { position: absolute; width: 34px; height: 34px; transform: translate(-50%, -50%); border-radius: 50%; }
+	/* By day a pale sun, warming toward orange at golden hour (--warm); by night a crescent moon. */
+	.tm-body.is-sun { background: radial-gradient(circle, color-mix(in srgb, #ffb55c var(--warm), #fff7d6) 0 52%, color-mix(in srgb, #ff9a4a var(--warm), #ffe7a0) 64%, transparent 72%); box-shadow: 0 0 46px 16px color-mix(in srgb, rgba(255, 150, 80, .5) var(--warm), rgba(255, 236, 170, .45)); }
+	.tm-body.is-moon { width: 30px; height: 30px; box-shadow: 0 0 30px 6px rgba(220, 228, 255, .18); }
+	.tm-body.is-moon svg { width: 100%; height: 100%; display: block; }
 	.tm-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; transition-property: transform; transition-timing-function: cubic-bezier(.3, .7, .3, 1); }
 	.tm-ground { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 	.tm-road { fill: none; stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; }
@@ -250,7 +296,8 @@
 	.tm-tree { position: absolute; width: 30px; height: 46px; pointer-events: none; }
 	.tm-lamp { position: absolute; width: 12px; height: 34px; pointer-events: none; }
 	.tm-lamp i { position: absolute; left: 5px; top: 8px; width: 2px; height: 26px; background: #6b7178; border-radius: 1px; }
-	.tm-lamp b { position: absolute; left: 2px; top: 2px; width: 8px; height: 8px; border-radius: 50%; background: #eeeae0; }
+	/* Lit as the night comes (--night on the world, 0 to 1): the bulb warms and glows. */
+	.tm-lamp b { position: absolute; left: 2px; top: 2px; width: 8px; height: 8px; border-radius: 50%; background: color-mix(in srgb, #ffd36e calc(var(--night, 0) * 100%), #eeeae0); box-shadow: 0 0 calc(var(--night, 0) * 10px) calc(var(--night, 0) * 3px) rgba(255, 211, 110, .8); }
 	.tm-blk { position: absolute; width: 180px; height: 230px; pointer-events: none; }
 	.tm-blk svg { position: absolute; left: 0; top: 0; width: 180px; height: 230px; overflow: visible; }
 	.tm-ring { fill: rgba(18, 28, 32, .08); stroke: #121c20; stroke-width: 1.6; stroke-dasharray: 4 3; }
@@ -271,6 +318,8 @@
 	.tm-quest { position: absolute; left: 50%; top: -25px; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%; background: var(--mustard); color: var(--on-mustard); font-size: 13px; font-weight: 800; line-height: 20px; text-align: center; box-shadow: 0 0 0 2px var(--pane), 0 2px 6px rgba(18, 28, 32, .3); animation: tm-bob 1.1s ease-in-out infinite; }
 	@keyframes tm-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 	.tm-actor { position: absolute; left: 0; top: 0; width: 58px; height: 64px; transition-property: transform, opacity; transition-timing-function: cubic-bezier(.3, .7, .3, 1); pointer-events: none; }
+	/* A character's shadow along the light, from its feet; the contact shadow stays under it. */
+	.tm-cast { position: absolute; left: 20px; top: 55px; height: 10px; transform-origin: 9px 50%; border-radius: 999px; background: linear-gradient(90deg, rgb(23, 38, 42), rgba(23, 38, 42, .3)); pointer-events: none; }
 	.tm-shadow { position: absolute; left: 12px; top: 55px; width: 34px; height: 8px; border-radius: 50%; background: rgba(23, 38, 42, .25); }
 	.tm-badge { position: absolute; left: 29px; will-change: transform; display: flex; align-items: center; gap: 4px; height: 26px; box-sizing: border-box; padding: 0 8px 0 2px; background: color-mix(in srgb, var(--pane) 96%, transparent); border: 1.5px solid; border-radius: 999px; box-shadow: 0 1px 3px rgba(18, 28, 32, .18); white-space: nowrap; pointer-events: none; }
 	.tm-badge.is-l { flex-direction: row-reverse; padding: 0 2px 0 8px; transform-origin: calc(100% - 14.5px) 100%; }

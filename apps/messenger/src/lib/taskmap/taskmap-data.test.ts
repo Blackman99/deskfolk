@@ -7,6 +7,7 @@ import { AgentCallLog } from "./live.svelte.ts";
 import { fromAgentReplay, fromSessionReplay, mergeLive } from "./map-data.ts";
 import { modelFamily, modelLabel } from "./model-label.ts";
 import { momentText } from "./moment-text.ts";
+import { lightAt } from "./scene/draw.ts";
 import { LONG_GAP, buildTimeline } from "./timeline.ts";
 
 const T0 = Date.parse("2026-10-20T01:00:00.000Z");
@@ -294,4 +295,34 @@ test("a call that waited on your card is not a long one: the wait was yours", ()
   const moments = buildTimeline(data, buildDistricts(data.calls.map((c) => c.place))).moments;
   expect(moments.some((m) => m.kind === "long")).toBe(false);
   expect(moments.some((m) => m.kind === "approve")).toBe(true);
+});
+
+test("the sun hangs on the side its light comes from, the moon takes the night, and what stands casts along the light", () => {
+  const c = (id: string, sec: number, path: string) => ({ id, at: iso(sec), bot_id: "b-1", turn_id: "t", task_id: null, tool: "write_file", place: project(path), model: "deepseek-chat", file: null, ok: true, duration_ms: 100, decision: null });
+  const data = fromSessionReplay({ session_id: "g-1", bots: ["b-1"], truncated: false, calls: [c("c1", 10, "docs/a.md"), c("c2", 11, "jobs/a/x.md"), c("c3", 12, "jobs/a/y.md")], said: [] });
+  const map = buildDistricts(data.calls.map((x) => x.place));
+  const tl = buildTimeline(data, map);
+  const t = copyFor("zh").taskmap;
+  const frameAt = (hour: number, phi = 0) => buildFrame({ data, map, tl, v: tl.v.at(-1)!, phi, zoom: 1, now: 0, speed: 4, light: lightAt(hour), cache: new Map(), walk: { lastTile: [], until: [] }, hover: -1, sel: -1, t });
+  const morning = frameAt(8);
+  const evening = frameAt(17.5);
+  const night = frameAt(23);
+  // At the opening turn the east is on the right: the sun rises there and sets on the left, highest at midday.
+  expect(morning.sky.body).toMatchObject({ kind: "sun" });
+  expect(morning.sky.body!.x).toBeGreaterThan(0.6);
+  expect(evening.sky.body!.x).toBeLessThan(0.4);
+  expect(frameAt(12.5).sky.body!.y).toBeLessThan(morning.sky.body!.y);
+  expect(night.sky.body).toMatchObject({ kind: "moon" });
+  expect(night.sky.stars).toBeGreaterThan(0.9);
+  // Turned half way round, the morning sun is on the other side.
+  expect(frameAt(8, 180).sky.body!.x).toBeLessThan(0.4);
+  // By day everything standing casts; the moon's shadows are fainter, and the lamps are lit at night only.
+  expect(morning.shadows.town).toContain("M");
+  expect(morning.shadows.alpha).toBeGreaterThan(night.shadows.alpha);
+  expect(night.shadows.alpha).toBeGreaterThan(0);
+  expect([morning.night, night.night]).toEqual([0, 1]);
+  // A bare level (a story's) keeps the fixed sun's shadows and hangs nothing in the sky.
+  const bare = buildFrame({ data, map, tl, v: tl.v.at(-1)!, phi: 0, zoom: 1, now: 0, speed: 4, light: { n: 0, w: 0 }, cache: new Map(), walk: { lastTile: [], until: [] }, hover: -1, sel: -1, t });
+  expect(bare.sky.body).toBeNull();
+  expect(bare.shadows.alpha).toBe(0.3);
 });

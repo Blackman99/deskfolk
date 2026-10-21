@@ -11,7 +11,10 @@ export interface Face {
   readonly v: readonly Vec3[];
   readonly col: string;
   readonly kind: FaceKind;
+  /** Its shade under the prototype's fixed sun, `LIGHT`; `shadeOf` gives it under the hour's. */
   readonly shade: number;
+  /** Its outward unit normal, in the space the light is in (grid x and y at W px, z in px). */
+  readonly n: Vec3;
 }
 
 /** A convex piece: its centre, the z it stands on (for paint order) and its faces. */
@@ -45,7 +48,7 @@ export type ArchetypeId = (typeof ARCHETYPE_IDS)[number];
 
 // ---- The modeller ----
 
-/** A convex part: every face is wound outward and shaded once, since the sun never moves. */
+/** A convex part: every face is wound outward and shaded once under `LIGHT`, its normal kept for the hour's light. */
 export function part(faces: readonly FaceSpec[], c: Vec3, z0: number, decals?: readonly Decal[]): Part {
   const L = LIGHT;
   const out: Face[] = [];
@@ -90,7 +93,7 @@ export function part(faces: readonly FaceSpec[], c: Vec3, z0: number, decals?: r
     }
     if (nz < -0.9) return;
     const lam = Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]);
-    out.push({ v, col: f.col, kind: f.kind || "solid", shade: 0.62 + 0.38 * lam });
+    out.push({ v, col: f.col, kind: f.kind || "solid", shade: 0.62 + 0.38 * lam, n: [nx, ny, nz] });
   };
   for (const f of faces) add(f);
   for (const d of decals || []) add(d, d.n);

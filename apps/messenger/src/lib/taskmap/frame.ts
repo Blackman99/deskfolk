@@ -3,8 +3,11 @@ import type { FolkMotion } from "../folk-motion.ts";
 import type { District, DistrictMap } from "./districts.ts";
 import type { MapCall, MapData } from "./map-data.ts";
 import { modelFamily, modelLabel } from "./model-label.ts";
-import { buildGround, drawBuilding, LAMPS, TREES, type DrawnFace, type Ground, type Light, type ModelCache } from "./scene/draw.ts";
-import { axes, depth, HMAX, HMIN, LIFT, mix, NIGHT, proj, SHADE, BX, BY } from "./scene/geometry.ts";
+import {
+  buildGround, castOffset, drawBuilding, islandShadow, lampShadow, lightDir, LAMPS, shadeOf, shadowOf, treeShadow, TREES,
+  type DrawnFace, type Ground, type LightName, type Lighting, type ModelCache, type SkyBody,
+} from "./scene/draw.ts";
+import { A, axes, depth, HMAX, HMIN, LIFT, mix, NIGHT, proj, SHADE, BX, BY, type Vec2 } from "./scene/geometry.ts";
 import { assignBadges, layoutPlates } from "./scene/layout.ts";
 import type { Timeline } from "./timeline.ts";
 
@@ -86,7 +89,20 @@ export type Frame = {
   slabs: { z: number; faces: { d: string; fill: string; stroke: string }[]; puffs: { x: string; y: string; rx: number; ry: string; fill: string }[] }[];
   roadFill: string;
   roadEdge: string;
-  sky: { top: string; bottom: string; stars: number };
+  /**
+   * The shadows cast along the hour's light, one SVG path per island (each clipped to its top), and the
+   * floating island's where it falls on the town; `alpha` is how dark they fall.
+   */
+  shadows: { town: string; ws: string; ext: string; island: string; alpha: number };
+  /** A standing character's shadow from its feet, in picture px and degrees on the picture. */
+  cast: { len: number; angle: number; alpha: number };
+  /** How far into the night, 0 to 1: the lamps are lit by it. */
+  night: number;
+  /**
+   * The sky: its colours, its stars, and the sun or moon in it, placed on the view (0 to 1 across and down)
+   * the way it lights the town: rising on the side the east is turned to, highest in the middle.
+   */
+  sky: { top: string; bottom: string; stars: number; body: { kind: SkyBody["kind"]; x: number; y: number; alpha: number; warm: number } | null };
   /** The moment whose span holds the playhead, by index into `Timeline.moments`. */
   live: number;
   /** The quest the work at the playhead is for. */
@@ -107,7 +123,8 @@ export type FrameInput = {
   zoom: number;
   now: number;
   speed: number;
-  light: Light;
+  /** The hour's light (`lightAt`); a bare level keeps the prototype's fixed sun and no sun or moon in the sky. */
+  light: Lighting & { readonly name?: LightName; readonly body?: SkyBody };
   cache: ModelCache;
   walk: WalkState;
   hover: number;
@@ -199,6 +216,33 @@ export function statusText(a: Pick<FrameActor, "status" | "idleMin">, t: T): str
  * and count, so a town of long folder names is not a wall of plates over its own buildings.
  */
 export const NAMES_AT = 1.5;
+
+const smooth = (x: number): number => {
+  const s = Math.min(1, Math.max(0, x));
+  return s * s * (3 - 2 * s);
+};
+
+/**
+ * Where the sun or moon hangs on the view: across by which way its light comes at this turn (the side the
+ * east is turned to at sunrise), up by how high it stands. Low and behind the viewer, where its shadows run
+ * up the picture, it fades rather than hang over them; on the horizon it fades too, where the two hand over.
+ */
+export function skyBody(body: SkyBody, dir: readonly number[], phi: number, warm: number): NonNullable<Frame["sky"]["body"]> {
+  const ax = axes(phi);
+  const g = Math.hypot(dir[0]!, dir[1]!) || 1;
+  const gx = dir[0]! / g;
+  const gy = dir[1]! / g;
+  const across = (gx * ax.ex[0] + gy * ax.ey[0]) / (A * Math.SQRT2);
+  const front = gx * ax.front[0] + gy * ax.front[1];
+  const behind = smooth((front - 0.5) / 0.4) * (1 - smooth((body.height - 0.35) / 0.25));
+  return {
+    kind: body.kind,
+    x: Number((0.5 + 0.4 * across).toFixed(4)),
+    y: Number((0.38 - 0.3 * body.height).toFixed(4)),
+    alpha: Number((smooth(body.height / 0.1) * (1 - behind)).toFixed(3)),
+    warm: body.kind === "sun" ? warm : 0,
+  };
+}
 
 const MOTION: Readonly<Record<CharacterStatus, FolkMotion>> = {
   work: "running", walk: "running", idle: "idle", fail: "failed", back: "idle", none: "idle",
@@ -302,6 +346,20 @@ export function buildFrame(input: FrameInput): Frame {
   });
   layoutPlates(blocks, actors, spot, zoom);
 
+  // Everything standing casts along the light, onto the island it stands on.
+  const dir = lightDir(L);
+  const shadow = { town: "", ws: "", ext: "" };
+  const outline = (at: Vec2, pts: readonly Vec2[]) => `M${pts.map(([x, y]) => `${(at[0] + x).toFixed(1)},${(at[1] + y).toFixed(1)}`).join("L")}Z`;
+  D.forEach((d, q) => {
+    for (const pts of shadowOf(d.archetype, heights[q]!, phi, dir, cache)) shadow[d.island ?? "town"] += outline(spot[q]!, pts);
+  });
+  TREES.forEach(([gx, gy], i) => { shadow[gx < -1.15 ? "ws" : "town"] += outline(proj(phi, gx, gy, 0), treeShadow(i % 2 === 0, phi, dir)); });
+  const lampPts = lampShadow(phi, dir);
+  for (const [gx, gy] of LAMPS) shadow.town += outline(proj(phi, gx, gy, 0), lampPts);
+  const feet = castOffset(44, dir);
+  const toes: Vec2 = [feet[0] * ax.ex[0] + feet[1] * ax.ey[0], feet[0] * ax.ex[1] + feet[1] * ax.ey[1]];
+  const cast = L.cast ?? 1;
+
   const tint = (c: string) => {
     let x = c;
     if (L.w) x = mix(x, "#ffb070", 0.12 * L.w);
@@ -310,7 +368,7 @@ export function buildFrame(input: FrameInput): Frame {
   };
   const slabs = ground.slabs.map((s) => ({
     z: s.z,
-    faces: s.faces.map((f) => { const fill = tint(mix(SHADE, f.col, f.shade)); return { d: f.d, fill, stroke: mix(fill, NIGHT, 0.22) }; }),
+    faces: s.faces.map((f) => { const fill = tint(mix(SHADE, f.col, shadeOf(f, L))); return { d: f.d, fill, stroke: mix(fill, NIGHT, 0.22) }; }),
     puffs: s.puffs.map((p) => ({ ...p, fill: tint("#ffffff") })),
   }));
 
@@ -320,10 +378,14 @@ export function buildFrame(input: FrameInput): Frame {
     lamps: LAMPS.map(([gx, gy]) => { const [x, y] = proj(phi, gx, gy, 0); return { l: Math.round(x - 6), t: Math.round(y - 33), z: depth(phi, gx, gy) }; }),
     ground, slabs,
     roadFill: tint("#efe3c6"), roadEdge: tint("#d6c49c"),
+    shadows: { ...shadow, island: islandShadow(phi, dir), alpha: Number((0.3 * cast).toFixed(3)) },
+    cast: { len: Math.round(Math.hypot(toes[0], toes[1])), angle: Math.round((Math.atan2(toes[1], toes[0]) * 180) / Math.PI), alpha: Number((0.2 * cast).toFixed(3)) },
+    night: L.n,
     sky: {
       top: mix(mix("#cfe7f2", "#f6cfa6", L.w), "#141c38", L.n),
       bottom: mix(mix("#eef6ec", "#f3e3cf", L.w), "#2e3b66", L.n),
       stars: Math.max(0, L.n - 0.3) / 0.7,
+      body: L.body ? skyBody(L.body, dir, phi, L.w) : null,
     },
     live, quest,
   };

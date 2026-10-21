@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A task map's sun and moon light the town
+
+- A task map took the hour's colours but its light never moved: every wall was lit from one fixed side and nothing cast a shadow. Now the sun rises in the east at 6:00, stands in the south at midday and sets in the west at 19:00, and the moon takes the night the same way across, hanging in the sky on the side its light comes from and sliding as you turn the map. Walls are lit by it, and buildings, trees, lamps and characters cast shadows along it, long in the morning and evening, short at midday and faint by moonlight. At night the stars come out and the lamps light up, pooling on the ground. Played back, the light keeps the replay's clock.
+
 ### A project session takes pictures
 
 - A project session's composer took words only. Now, as in a Bot's, you can paste a screenshot or files, or pick them with the clip at the bottom left; they wait above the line until it is sent, show in your line, and a picture opens enlarged on a click. Claude Code gets a picture as an image, as a paste into Claude Code itself does, and any other file as its path on this computer.
