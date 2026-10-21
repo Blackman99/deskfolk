@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
 import type { ProjectPathLookup } from "@real-bot/protocol";
-import { aMessage, aProjectSession, anAgentRun, fakeRuntime } from "../test-fixtures.ts";
+import { aMessage, aProjectSession, anAgentRun, anAttachment, fakeRuntime } from "../test-fixtures.ts";
 import { toasts } from "../toast.svelte.ts";
 import { settle } from "../test-async.ts";
 import { click, fill, press, render } from "../test-render.ts";
+import { flushSync } from "svelte";
 import ProjectChat from "./ProjectChat.svelte";
 
 const t = copyFor("zh");
@@ -332,3 +333,68 @@ test("one account only: no account to pick; the account waits while a run is goi
   forgetClaudeOptions();
 });
 
+
+/** A paste as WebKit hands it over: a screenshot is one file item and no text; words are text alone. */
+function paste(field: HTMLElement, data: { files?: File[]; text?: string }): Event {
+  const items = (data.files ?? []).map((file) => ({ kind: "file", type: file.type, getAsFile: () => file, webkitGetAsEntry: () => ({ isDirectory: false, isFile: true }) }));
+  const ev = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(ev, "clipboardData", { value: { items, types: items.length ? ["Files"] : ["text/plain"], getData: () => data.text ?? "" } });
+  field.dispatchEvent(ev);
+  flushSync();
+  return ev;
+}
+
+test("a pasted picture waits in the box and goes with your line, even alone; it leaves the box once the Mac has it", async () => {
+  const sent: unknown[] = [];
+  const answers: Array<(ok: boolean) => void> = [];
+  const { host, close } = open(null, { send: (opts: unknown) => { sent.push(opts); return new Promise<boolean>((resolve) => answers.push(resolve)); } });
+  const field = host.querySelector("textarea") as HTMLTextAreaElement;
+  // Words paste as the field pastes them.
+  expect(paste(field, { text: "一句话" }).defaultPrevented).toBe(false);
+  const shot = new File(["png"], "image.png", { type: "image/png" });
+  expect(paste(field, { files: [shot] }).defaultPrevented).toBe(true);
+  expect(host.querySelectorAll(".composer-attachment-item.is-img")).toHaveLength(1);
+  expect((host.querySelector('[aria-label="发送"]') as HTMLButtonElement | null)?.disabled).toBe(false);
+
+  press(field, "Enter");
+  expect(sent).toEqual([{ sessionId: "proj-1", attachments: [shot] }]);
+  // A send that fails keeps it; one the Mac has takes it out.
+  answers.shift()!(false);
+  await settle();
+  expect(host.querySelectorAll(".composer-attachment-item")).toHaveLength(1);
+  press(field, "Enter");
+  answers.shift()!(true);
+  await settle();
+  expect(host.querySelectorAll(".composer-attachment-item")).toHaveLength(0);
+  close();
+});
+
+test("the clip picks files for your line", () => {
+  const { host, runtime, close } = open(null);
+  const input = host.querySelector('input[type="file"]') as HTMLInputElement;
+  let picked = 0;
+  input.click = () => { picked += 1; };
+  click(host.querySelector("[data-project-attach]") as HTMLElement);
+  expect(picked).toBe(1);
+  const notes = new File(["# notes"], "notes.md", { type: "text/markdown" });
+  Object.defineProperty(input, "files", { value: [notes], configurable: true });
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  flushSync();
+  expect(runtime.sessionView("proj-1").stagedAttachments.map((row) => [row.name, row.isImage])).toEqual([["notes.md", false]]);
+  close();
+});
+
+test("a line of yours shows its picture in its bubble, and a click enlarges it", () => {
+  const session = aProjectSession();
+  const picture = anAttachment({ id: "a1", message_id: "m1", workspace_relpath: "inbox/2026-10-21/shot.png", original_filename: "shot.png", mime: "image/png" });
+  const runtime = fakeRuntime({ sessions: [session], messages: [aMessage({ id: "m1", session_id: "proj-1", body: "", attachments: [picture], created_at: "2026-09-19T02:00:00.000Z" })] });
+  const { host, close } = render(ProjectChat, { runtime, t, selected: session, onOpenArtifact: () => {} });
+  const bubble = host.querySelector('[data-line="you"] .bubble') as HTMLElement;
+  // No words, no empty line of them.
+  expect(bubble.querySelector(".words") === null).toBe(true);
+  expect(bubble.querySelector(".attachment-file-btn")?.getAttribute("title")).toBe("inbox/2026-10-21/shot.png");
+  expect(host.querySelector(".msg-image-lightbox") === null).toBe(true);
+  click(bubble.querySelector(".attachment-file-btn") as HTMLElement);
+  expect(host.querySelector(".msg-image-lightbox") === null).toBe(false);
+  close();
+});

@@ -55,7 +55,11 @@ function scripted(seen: { options: Options[]; lines: string[]; closed: number; m
       yield { type: "system", subtype: "init", session_id: ownSession, model: "claude-sonnet-5", uuid: crypto.randomUUID() } as unknown as SDKMessage;
       for await (const message of prompt as AsyncIterable<SDKUserMessage>) {
         if (closed) break;
-        const line = String(message.message.content);
+        // A picture reads as its type, so a test can say what went with the words.
+        const content = message.message.content;
+        const line = typeof content === "string" ? content : content
+          .map((part) => (part.type === "text" ? part.text : part.type === "image" && part.source.type === "base64" ? `[${part.source.media_type}]` : `[${part.type}]`))
+          .join("\n");
         seen.lines.push(line);
         yield* preface(line);
         const reply = await step({ line, options, useTool });
@@ -277,6 +281,42 @@ test("a line sent while a run is going goes into that run", async () => {
   await h.until(async () => (await h.run(id))?.status === "completed");
   expect(h.seen.options).toHaveLength(1);
   expect(h.lines(id).filter((row) => row.kind === "bot").map((row) => row.body)).toEqual(["答：第一句", "答：第二句"]);
+});
+
+test("a line's pictures reach Claude Code as images ahead of its words; any other file by its path", async () => {
+  const h = start(async ({ line }) => `答：${line}`);
+  const ws = realpathSync(mkdtempSync(join(tmpdir(), "project-session-ws-")));
+  closes.push(() => rmSync(ws, { recursive: true, force: true }));
+  expect((await h.call("PATCH", "/v1/settings", { workspace_path: ws })).status).toBe(200);
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  const post = async (body: string, files: File[], extra: Record<string, string> = {}) => {
+    const form = new FormData();
+    form.append("body", body);
+    for (const file of files) form.append("files", file);
+    for (const [key, value] of Object.entries(extra)) form.append(key, value);
+    const response = await fetch(`${h.origin}/v1/sessions/${id}/messages`, { method: "POST", headers: { Authorization: "Bearer project-test", "Idempotency-Key": ulid() }, body: form });
+    return { status: response.status, body: (await response.json()) as { attachments: Array<{ workspace_relpath: string }> } };
+  };
+  const png = () => new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])], "image.png", { type: "image/png" });
+
+  const first = await post("这是什么颜色", [png()]);
+  expect(first.status).toBe(201);
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(h.seen.lines).toEqual(["[image/png]\n这是什么颜色"]);
+
+  // A picture alone carries no empty text with it; a file Claude Code cannot look at goes by where it is.
+  const second = await post("", [png(), new File([new Uint8Array([1, 2])], "notes.txt", { type: "text/plain" })]);
+  expect(second.status).toBe(201);
+  await h.until(() => h.seen.lines.length === 2);
+  const notes = join(ws, second.body.attachments[1]!.workspace_relpath);
+  expect(existsSync(notes)).toBe(true);
+  expect(h.seen.lines[1]).toBe(`[image/png]\n附件：${notes}`);
+  await h.until(async () => (await h.run(id))?.status === "completed");
+
+  // Your first line named the session; a line of pictures alone names nothing.
+  expect(h.store.getSession(id).name).toBe("这是什么颜色");
+  // Quotes and workspace paths are a Bot conversation's.
+  expect((await h.call("POST", `/v1/sessions/${id}/messages`, { body: "看这个", paths: ["notes.md"] })).status).toBe(422);
 });
 
 test("Claude Code missing fails the run with a line that says so", async () => {

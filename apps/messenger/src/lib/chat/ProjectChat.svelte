@@ -31,6 +31,11 @@
 	import VoiceStatus from './VoiceStatus.svelte';
 	import { ProjectCitedPaths } from './project-cited-path.ts';
 	import { showToast } from '../toast.svelte.ts';
+	import { ComposerAttachments, pastedFiles, uploadedShare } from './composer-attachments.svelte.ts';
+	import ComposerAttachmentsBar from './ComposerAttachments.svelte';
+	import MessageAttachments from './MessageAttachments.svelte';
+	import MessageImageLightbox, { type ImageOrigin } from './MessageImageLightbox.svelte';
+	import { pictureOrigin, pictureStandIn } from './enlarged-images.ts';
 
 	/**
 	 * A project session's conversation (ADR 0095): you and the agent in a directory, as in the
@@ -38,7 +43,8 @@
 	 * right, the agent's on the left as markdown, the app's centred. The run going on is a Bot's
 	 * working bubble at the end — what it has said, its commands folded, its step and times on the
 	 * last line — with the approval it waits on under it; Stop is in the composer, as in a Bot's
-	 * direct. The header is the pane's or the page's own.
+	 * direct. Pictures and files go with a line as in a Bot's composer: pasted, or picked with the
+	 * clip. The header is the pane's or the page's own.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -210,6 +216,38 @@
 		return run && live ? runtime.activity.forTurn(run.id) : [];
 	});
 
+	/**
+	 * What goes with your next line, staged on the conversation as a Bot's composer stages it, and
+	 * kept there until the Mac has it. Claude Code sees a picture as one, and any other file by its
+	 * path (ADR 0095).
+	 */
+	const attachments = new ComposerAttachments({
+		runtime: () => runtime,
+		selected: () => selected,
+		view: () => view,
+		lockedComposer: () => false,
+		connected: () => connected,
+		fileDrop: () => false,
+		editorEl: () => null
+	});
+	const staged = $derived(attachments.pendingAttachments);
+	const sendable = $derived(Boolean(view.draft.trim()) || staged.length > 0);
+
+	/** A paste with files stages them; words paste as the field pastes them. */
+	function onPaste(event: ClipboardEvent): void {
+		const files = pastedFiles(event.clipboardData);
+		if (files.length === 0) return;
+		event.preventDefault();
+		attachments.addFiles(files);
+	}
+
+	/** A picture of yours opened from its chip, enlarged over the whole app as in a Bot's conversation. */
+	let shownImage = $state<{ sessionId: string; attachment: Attachment; origin: ImageOrigin | null; placeholder: string | null } | null>(null);
+
+	function openImage(attachment: Attachment, from?: HTMLElement | null): void {
+		shownImage = { sessionId: selected.id, attachment, origin: pictureOrigin(from), placeholder: pictureStandIn(from) };
+	}
+
 	let scroller = $state<HTMLElement | null>(null);
 	let stuck = true;
 	let answerFailed = $state(false);
@@ -310,12 +348,18 @@
 	}
 
 	async function send(): Promise<void> {
-		if (!view.draft.trim() || view.sending) return;
+		if (!sendable || view.sending) return;
 		sendFailed = false;
 		stuck = true;
-		const sent = await runtime.send({ sessionId: selected.id });
+		const target = view;
+		const files = [...staged];
+		const sent = await runtime.send({ sessionId: selected.id, attachments: files.length > 0 ? files.map((row) => row.file) : undefined });
 		sendFailed = !sent;
 		if (sent) {
+			// What was staged goes once the Mac has it, as in a Bot's composer.
+			for (const row of files) if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
+			const gone = new Set(files.map((row) => row.id));
+			target.stagedAttachments = target.stagedAttachments.filter((row) => !gone.has(row.id));
 			if (field) field.style.height = '';
 			field?.focus();
 			toBottom();
@@ -364,7 +408,17 @@
 					<div class="line is-app" data-line="app">{message.body}</div>
 				{:else if who === 'you'}
 					<div class="line is-you" data-line="you">
-						<div class="bubble">{message.body}</div>
+						<div class="bubble">
+							{#if message.body}<div class="words">{message.body}</div>{/if}{#if message.attachments.length > 0}
+								<MessageAttachments
+									attachments={message.attachments}
+									api={runtime.client}
+									{t}
+									onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, message.id)}
+									onOpenImage={openImage}
+								/>
+							{/if}
+						</div>
 						<span class="time">{formatMessageTime(message.created_at)}</span>
 					</div>
 				{:else}
@@ -438,6 +492,17 @@
 		{/if}
 		<VoiceStatus {voice} {t} />
 		<div class="composer-box">
+			{#if staged.length > 0}
+				<ComposerAttachmentsBar
+					{t}
+					pendingAttachments={staged}
+					pendingPaths={[]}
+					sending={view.sending}
+					uploadedPercent={(file) => uploadedShare(view.upload, file)}
+					onRemoveAttachment={attachments.removePendingAttachment}
+					onRemovePath={() => {}}
+				/>
+			{/if}
 			<textarea
 				bind:this={field}
 				rows="1"
@@ -450,11 +515,24 @@
 					grow();
 				}}
 				onkeydown={onKey}
+				onpaste={onPaste}
 				oncompositionstart={() => (ime = composerImeOnStart())}
 				oncompositionupdate={() => (ime = composerImeOnUpdate(ime))}
 				oncompositionend={() => (ime = composerImeOnEnd(Date.now()))}
 			></textarea>
 			<div class="composer-tools">
+				<button
+					type="button"
+					class="attach"
+					title={t.composer.attach}
+					aria-label={t.composer.attach}
+					disabled={!connected || Boolean(view.sending)}
+					onclick={attachments.openFilePicker}
+					data-project-attach
+				>
+					<Icon name="paperclip" size={16} />
+				</button>
+				<input type="file" multiple hidden bind:this={attachments.fileInputEl} onchange={attachments.onFileInputChange} />
 				{#if accountShown}
 					<!-- An account changes for the next run: Claude Code keeps the session under the account it ran on. -->
 					<div class="account" data-project-account title={live ? t.project.accountBusy : t.project.accountLabel}>
@@ -505,17 +583,29 @@
 				<SendButton
 					{t}
 					{connected}
-					primaryAction={{ kind: 'send', disabled: !view.draft.trim() || Boolean(view.sending) || !connected }}
+					primaryAction={{ kind: 'send', disabled: !sendable || Boolean(view.sending) || !connected }}
 					directStop={live}
 					stepsAside={false}
 					sending={view.sending}
-					upload={undefined}
+					upload={view.upload}
 					onStop={() => void stop()}
 					onSend={() => void send()}
 				/>
 			</div>
 		</div>
 	</div>
+
+	{#if shownImage && shownImage.sessionId === selected.id}
+		<MessageImageLightbox
+			attachment={shownImage.attachment}
+			relpath={shownImage.attachment.workspace_relpath}
+			origin={shownImage.origin}
+			placeholder={shownImage.placeholder}
+			api={runtime.client}
+			{t}
+			onClose={() => (shownImage = null)}
+		/>
+	{/if}
 </div>
 
 <style>
@@ -600,6 +690,9 @@
 		background: var(--you);
 		color: var(--you-text);
 		box-shadow: var(--shadow-xs);
+	}
+
+	.line.is-you .words {
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
 	}
@@ -792,6 +885,34 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
+	}
+
+	/* The clip leads the row, its glyph under the line's first letter. */
+	.attach {
+		flex: 0 0 30px;
+		width: 30px;
+		height: 30px;
+		margin-left: -8px;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+		transition: background-color 0.15s ease, color 0.15s ease;
+	}
+
+	.attach:hover:not(:disabled) {
+		background: var(--line-subtle);
+		color: var(--ink);
+	}
+
+	.attach:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 
 	.account,

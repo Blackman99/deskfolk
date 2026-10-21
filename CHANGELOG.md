@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A project session takes pictures
+
+- A project session's composer took words only. Now, as in a Bot's, you can paste a screenshot or files, or pick them with the clip at the bottom left; they wait above the line until it is sent, show in your line, and a picture opens enlarged on a click. Claude Code gets a picture as an image, as a paste into Claude Code itself does, and any other file as its path on this computer.
+
 ### Every Claude model picker lists Claude Code's full list
 
 - A Claude Agent Bot's model (when creating it and in the Bot panel), the setup wizard, the Roles page's Claude models, the model ladder and a ticket's model offered only the aliases sonnet, opus, haiku and fable. They now list every model Claude Code's own `/model` offers, as a project session does (asked per account, by its names such as Opus 5.5 and Haiku 4.5), and fall back to the aliases only when the list cannot be had. Efforts are the picked model's only: a Bot moved to a model that does not take its effort goes back to the default, and a ladder rung on such a model offers none.

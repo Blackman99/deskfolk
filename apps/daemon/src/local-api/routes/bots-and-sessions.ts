@@ -130,10 +130,11 @@ export function botAndSessionRoutes(ctx: RouteCtx): Response | Promise<Response>
     }
     // The file drop is where files arrive on the Mac; what is already in the workspace has no reason to go there.
     if (fileDrop && paths.length > 0) throw new HttpError(422, "invalid_args", "the file drop takes files, not workspace paths");
-    // A project session's line goes to its agent alone (ADR 0095), as plain text for now.
+    // A project session's line goes to its agent alone (ADR 0095): your words and files, and no
+    // workspace paths or quotes, which only a Bot's conversation has.
     const project = !fileDrop && store.projectOf(sessionId) !== null;
-    if (project && (fileInputs.length > 0 || paths.length > 0 || parentId)) {
-      throw new HttpError(422, "invalid_args", "a project session takes plain lines for now");
+    if (project && (paths.length > 0 || parentId)) {
+      throw new HttpError(422, "invalid_args", "a project session takes no workspace paths or quotes");
     }
     options.admission?.assertNew();
     const message = store.transaction(() => store.postMessage(sessionId, {

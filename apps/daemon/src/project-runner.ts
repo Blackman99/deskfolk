@@ -4,12 +4,12 @@
  * mode (`decideAgentCall`, an approval card under ask first), and Stop ends the run and what it
  * started. Nothing else of a Bot's turn runs: no jobs, organizer, end contract or supervisor. The
  * agent keeps the history itself — the first run starts or branches its session, every later one
- * resumes it — so a run is sent only your new line.
+ * resumes it — so a run is sent only your new line, with its pictures.
  */
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import type { CanUseTool, HookCallbackMatcher, HookInput, HookJSONOutput, Options, PermissionResult, SDKMessage, SDKUserMessage, SpawnedProcess, SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
-import { isClaudeEffort, type AgentRun, type AgentRunApproval, type AgentRunToolInfo, type ClaudeEffort, type Message, type ToolFrame } from "@real-bot/protocol";
+import { isClaudeEffort, type AgentRun, type AgentRunApproval, type AgentRunToolInfo, type Attachment, type ClaudeEffort, type Message, type ToolFrame } from "@real-bot/protocol";
 import { homedir } from "node:os";
 import { placeOfCall } from "./claude-code/tool-place";
 import { modelOf } from "./claude-code/replay";
@@ -22,7 +22,9 @@ import { claudeLaunch, killsTree } from "./claude-code/spawn";
 import { tildeDir } from "./claude-code/account";
 import { inputQueue, LIMIT_ERRORS, SIGNED_OUT_ERRORS, userMessage } from "./engine/agent-runner";
 import { recordLiveProc } from "./live-procs";
+import { pictureMime } from "./loop-pictures";
 import type { Store } from "./store";
+import { visionImage } from "./vision-image";
 
 /** The SDK's `query` as the runner uses it, or a test's stand-in. */
 export type ProjectQuery = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => AsyncIterable<SDKMessage> & {
@@ -117,6 +119,52 @@ function firstLine(text: string): string | null {
   return line ? clip(line, 300) : null;
 }
 
+type ImageBlock = { type: "image"; source: { type: "base64"; media_type: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; data: string } };
+type LineContent = SDKUserMessage["message"]["content"];
+
+/** What the Messages API takes as one picture; a bigger one goes by its path. */
+const PICTURE_BYTES_MAX = 5_000_000;
+
+/** A file of a line as an image Claude Code can look at, shrunk as a Bot's are; null for anything else. */
+function pictureOf(abs: string, att: Attachment): ImageBlock | null {
+  const mime = pictureMime(att.original_filename) ?? pictureMime(abs);
+  if (!mime) return null;
+  try {
+    const image = visionImage(abs, mime, statSync(abs));
+    if (image.bytes.byteLength > PICTURE_BYTES_MAX) return null;
+    return { type: "image", source: { type: "base64", media_type: image.mime as ImageBlock["source"]["media_type"], data: image.bytes.toString("base64") } };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Your line as Claude Code reads it: its pictures first, as a paste into Claude Code sends them,
+ * then your words. Any other file, or a picture too big or of a type it does not take, is named by
+ * its path on this computer: the app keeps what you send in its inbox, not in the session's
+ * directory, so a relative path would point nowhere.
+ */
+function lineContent(store: Store, message: Message, en: boolean): LineContent {
+  if (message.attachments.length === 0) return message.body;
+  const pictures: ImageBlock[] = [];
+  const named: string[] = [];
+  for (const att of message.attachments) {
+    let abs: string;
+    try {
+      abs = store.getAttachmentFilePath(att);
+    } catch {
+      continue;
+    }
+    const picture = pictureOf(abs, att);
+    if (picture) pictures.push(picture);
+    else named.push(`${en ? "Attached: " : "附件："}${abs}`);
+  }
+  const text = [message.body.trim() ? message.body : "", ...named].filter(Boolean).join("\n\n");
+  // The API takes no empty text block: a line of pictures alone is just them.
+  if (pictures.length === 0) return text || message.body;
+  return text ? [...pictures, { type: "text", text }] : pictures;
+}
+
 /** One line for what a tool call is doing: its name and what it names. */
 function activityOf(name: string, input: Record<string, unknown>): string {
   const named = ["command", "file_path", "notebook_path", "pattern", "url", "query", "description", "path"]
@@ -176,7 +224,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     if (live) {
       // Read at Claude Code's next step, answered with a result of its own.
       live.unanswered += 1;
-      live.input.push(userMessage(message.body));
+      live.input.push(userMessage(lineContent(store, message, locale() === "en")));
       return;
     }
     const run = store.createAgentRun(sessionId);
@@ -187,7 +235,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       done: new Promise<void>((resolve) => { finish = resolve; }),
     };
     lives.set(sessionId, fresh);
-    input.push(userMessage(message.body));
+    input.push(userMessage(lineContent(store, message, locale() === "en")));
     const running = runSession(fresh, project).catch((error) => {
       console.error(`[project ${sessionId}] run failed`, error);
       if (!fresh.stopped) fail(fresh, firstLine(String(error)) ?? "error");
