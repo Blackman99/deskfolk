@@ -255,12 +255,14 @@
 		if (open && !levels.includes(active)) active = levels[levels.length - 1]!;
 	});
 
-	/** In the top layer, against the window: over the field (or under it), kept inside the window. */
+	/** In the top layer, against the window: over the field (or under it), kept inside the window, as tall as the room there. */
 	function place(): void {
 		const el = panelEl;
 		if (!el || !triggerEl) return;
 		const rect = triggerEl.getBoundingClientRect();
 		const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+		const room = placeAbove ? rect.top - 12 : window.innerHeight - rect.bottom - 12;
+		el.style.setProperty('--tune-height', `${Math.max(220, Math.min(520, room))}px`);
 		el.style.maxWidth = `${viewportWidth - 16}px`;
 		const width = el.offsetWidth;
 		el.style.left = `${Math.max(8, Math.min(rect.left, viewportWidth - 8 - width))}px`;
@@ -590,7 +592,7 @@
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
-		max-height: 360px;
+		max-height: var(--tune-height, 360px);
 		padding: 4px;
 		box-sizing: border-box;
 	}
@@ -600,7 +602,7 @@
 	}
 
 	.tune-column.is-account {
-		width: 220px;
+		width: 250px;
 		background: var(--line-subtle);
 	}
 
