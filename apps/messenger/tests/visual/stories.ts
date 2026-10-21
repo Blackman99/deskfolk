@@ -1722,6 +1722,7 @@ export const rc11Stories = {
   'taskmap-head': taskmapHeadStory(1000, 640, 2),
   'taskmap-head-one': taskmapHeadStory(1000, 640, 1),
   'taskmap-head-narrow': taskmapHeadStory(360, 720, 2),
+  'taskmap-head-many': taskmapHeadStory(1000, 640, 'many'),
   'project-chat': projectChatStory(),
 	'onboarding-validation': {
 		component: Shell as never,

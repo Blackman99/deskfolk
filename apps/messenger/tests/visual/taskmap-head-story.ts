@@ -18,6 +18,13 @@ function job(id: string, name: string): SessionTaskSummary {
   };
 }
 
+/** One question and its answer: closed, no tickets, one turn. */
+function oneShot(id: string, name: string): SessionTaskSummary {
+  return { ...job(id, name), status: 'done', closed_at: '2026-10-20T08:00:00.000Z', ticket_counts: { todo: 0, doing: 0, review: 0, done: 0, parked: 0 }, turn_count: 1 };
+}
+
+const earlier = ['找优秀影视作品分析学习分镜', '制作一个 MV 来纪念 IG 在 2018 年世界赛上的那些名场面', '把你的头像换回去', '测试下当前配置的阿里百炼端点是否能生成视频', '剪预告', '配字幕', '做片头'];
+
 /** Worked on in the group, in your direct with the reviewer and in the reviewer's direct with the director. */
 function replay(id: string): PlanReplay {
   const call = (n: number, bot: string, session: string, path: string) => ({
@@ -36,14 +43,16 @@ function replay(id: string): PlanReplay {
   };
 }
 
-/** `jobs`: one gives the head a bare heading, two the switcher's button and its list. */
-export function taskmapHeadStory(width: number, height: number, jobs: 1 | 2) {
+/** `jobs`: one gives the head a bare heading, two the switcher's button and its list; many, more work than the list shows and two questions. */
+export function taskmapHeadStory(width: number, height: number, jobs: 1 | 2 | 'many') {
   const t = copyFor('zh');
   const group = aGroup({ id: 'g-1', name: '视频组' });
   const member = (id: string) => ({ member: id, joined_at: '2026-09-19T00:00:00.000Z', left_at: null });
   const sessions = [group, aDirect({ id: 'dm-2', participants: [member('user'), member('bot-2')] }), aDirect({ id: 'dm-3', participants: [member('bot-1'), member('bot-2')] })];
   const runtime = fakeRuntime({ sessions, bots: [aBot({ id: 'bot-1', name: '视频导演' }), aBot({ id: 'bot-2', name: '审核员' })] });
-  const listed = [job('task-1', title), job('task-2', '剪预告')].slice(0, jobs);
+  const listed = jobs === 'many'
+    ? [job('task-1', title), ...earlier.map((name, i) => job(`task-${i + 2}`, name)), oneShot('task-q1', '几点了'), oneShot('task-q2', '翻译一句话')]
+    : [job('task-1', title), job('task-2', '剪预告')].slice(0, jobs);
   Reflect.set(runtime, 'client', {
     sessionTasks: async () => listed,
     planReplay: async (id: string) => replay(id),

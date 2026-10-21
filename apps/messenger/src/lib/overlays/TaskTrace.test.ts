@@ -279,14 +279,28 @@ function jobRows(host: HTMLElement): string[] {
   return [...host.querySelectorAll(".trace-job")].map((row) => row.querySelector(".trace-job-title")?.textContent?.trim() ?? "");
 }
 
-test("the switcher folds the one-question jobs into a single row that unfolds in place, and the job on screen never folds", async () => {
+/** The popover's kinds beside its list: each one's name and how many jobs it holds. */
+function jobKinds(host: HTMLElement): [string, string][] {
+  return [...host.querySelectorAll(".trace-job-kind")].map((kind) => [
+    kind.querySelector(".trace-job-kind-label")?.textContent ?? "",
+    kind.querySelector(".trace-job-kind-count")?.textContent ?? "",
+  ]);
+}
+
+function hover(el: Element | null | undefined): void {
+  if (!el) throw new Error("hover: no element");
+  el.dispatchEvent(new MouseEvent("mouseenter"));
+  flushSync();
+}
+
+test("the switcher puts the one-question jobs in a kind of their own beside the list, a hover away", async () => {
   const view = open({
     jobs: [
       job({ turn_count: 6 }),
       oneShot("task-2", "几点了"),
       job({ id: "task-3", title: "上周的排期", status: "done", closed_at: "2026-09-15T00:00:00.000Z", turn_count: 4 }),
       oneShot("task-4", "翻译一句话"),
-      // Still going: not folded, however short.
+      // Still going: not a question, however short.
       job({ id: "task-5", title: "刚开的", turn_count: 1 }),
       // A ticket makes it work, not a question.
       job({ id: "task-6", title: "有任务的", status: "done", turn_count: 1, ticket_counts: { todo: 0, doing: 0, review: 0, done: 1, parked: 0 } }),
@@ -294,54 +308,80 @@ test("the switcher folds the one-question jobs into a single row that unfolds in
   });
   click(await until(view.host, ".trace-title-trigger"));
   await until(view.host, ".trace-job");
-  expect(jobRows(view.host)).toEqual(["先出分镜", "上周的排期", "刚开的", "有任务的", t.plan.oneShotJobs(2)]);
-  const fold = view.host.querySelector<HTMLButtonElement>(".trace-job.is-fold")!;
-  expect(t.plan.oneShotJobs(2)).toBe("一问一答 2 件");
-  expect(fold.getAttribute("aria-expanded")).toBe("false");
-  // Folding does not choose a job: only the first read of the board has said which is on screen.
-  click(fold);
-  expect(fold.getAttribute("aria-expanded")).toBe("true");
+  // It opens on the work, the job on screen with it; the other kind sits beside the list, not under it.
+  expect(jobKinds(view.host)).toEqual([[t.plan.jobKinds.work, "4"], [t.plan.jobKinds.oneShot, "2"]]);
+  expect(t.plan.jobKinds.oneShot).toBe("一问一答");
+  expect(jobRows(view.host)).toEqual(["先出分镜", "上周的排期", "刚开的", "有任务的"]);
+  expect(view.host.querySelector(".trace-switcher-popover .trace-job.is-fold")).toBeNull();
+  // A hover shows the other kind's jobs; it does not choose one.
+  const [work, questions] = view.host.querySelectorAll(".trace-job-kind");
+  hover(questions);
+  expect(questions!.getAttribute("aria-selected")).toBe("true");
+  expect(jobRows(view.host)).toEqual(["几点了", "翻译一句话"]);
   expect(view.settled).toEqual(["task-1"]);
-  expect(jobRows(view.host)).toEqual(["先出分镜", "上周的排期", "刚开的", "有任务的", t.plan.oneShotJobs(2), "几点了", "翻译一句话"]);
-  // A folded job opens like any other.
+  hover(work);
+  expect(jobRows(view.host)).toEqual(["先出分镜", "上周的排期", "刚开的", "有任务的"]);
+  // A job of either kind opens like any other.
+  hover(questions);
   click([...view.host.querySelectorAll<HTMLButtonElement>(".trace-job")].find((row) => row.textContent?.includes("翻译一句话")));
   await until(view.host, ".trace-empty");
   expect(view.settled).toEqual(["task-1", "task-4"]);
   view.close();
 });
 
-test("the job on screen stays in the list when it is itself a one-question job; no fold row for none", async () => {
+test("the job on screen stays with the work when it is itself a one-question job; one kind is a plain list", async () => {
   const view = open({ taskId: "task-2", jobs: [job(), oneShot("task-2", "几点了"), oneShot("task-4", "翻译一句话")] });
   click(await until(view.host, ".trace-title-trigger"));
   await until(view.host, ".trace-job");
-  expect(jobRows(view.host)).toEqual(["先出分镜", "几点了", t.plan.oneShotJobs(1)]);
+  expect(jobKinds(view.host)).toEqual([[t.plan.jobKinds.work, "2"], [t.plan.jobKinds.oneShot, "1"]]);
+  expect(jobRows(view.host)).toEqual(["先出分镜", "几点了"]);
   expect(view.host.querySelector(".trace-job.is-current .trace-job-title")?.textContent).toBe("几点了");
   view.close();
 
   const plain = open({ jobs: [job(), job({ id: "task-3", title: "上周的排期", status: "done", turn_count: 3 })] });
   click(await until(plain.host, ".trace-title-trigger"));
   await until(plain.host, ".trace-job");
-  expect(plain.host.querySelector(".trace-job.is-fold")).toBeNull();
+  expect(plain.host.querySelector(".trace-job-kinds")).toBeNull();
+  expect(jobRows(plain.host)).toEqual(["先出分镜", "上周的排期"]);
   plain.close();
 });
 
-test("the arrow keys walk the switcher's rows, the fold row and the folded jobs among them", async () => {
-  const view = open({ jobs: [job({ turn_count: 6 }), oneShot("task-2", "几点了"), oneShot("task-4", "翻译一句话")] });
+test("the arrow keys walk the list, step left onto the kinds and switch kind there, and right back into the list", async () => {
+  const view = open({
+    jobs: [
+      job({ turn_count: 6 }),
+      job({ id: "task-3", title: "上周的排期", status: "done", closed_at: "2026-09-15T00:00:00.000Z", turn_count: 4 }),
+      oneShot("task-2", "几点了"),
+      oneShot("task-4", "翻译一句话"),
+    ],
+  });
   click(await until(view.host, ".trace-title-trigger"));
   await until(view.host, ".trace-job");
-  const popover = view.host.querySelector(".trace-switcher-popover")!;
-  expect(document.activeElement?.classList.contains("is-current")).toBe(true);
-  press(popover, "ArrowDown");
-  expect(document.activeElement?.classList.contains("is-fold")).toBe(true);
-  click(document.activeElement);
-  press(popover, "ArrowDown");
-  expect(document.activeElement?.textContent).toContain("几点了");
-  press(popover, "ArrowDown");
-  expect(document.activeElement?.textContent).toContain("翻译一句话");
-  press(popover, "ArrowDown");
-  expect(document.activeElement?.classList.contains("is-current")).toBe(true);
-  press(popover, "ArrowUp");
-  expect(document.activeElement?.textContent).toContain("翻译一句话");
+  const focused = () => document.activeElement as HTMLElement;
+  expect(focused().classList.contains("is-current")).toBe(true);
+  press(focused(), "ArrowDown");
+  expect(focused().textContent).toContain("上周的排期");
+  press(focused(), "ArrowDown");
+  expect(focused().classList.contains("is-current")).toBe(true);
+  // Left: onto the kind shown; down there shows the other kind and stays on the kinds.
+  press(focused(), "ArrowLeft");
+  expect(focused().textContent).toContain(t.plan.jobKinds.work);
+  press(focused(), "ArrowDown");
+  expect(focused().textContent).toContain(t.plan.jobKinds.oneShot);
+  expect(jobRows(view.host)).toEqual(["几点了", "翻译一句话"]);
+  // Right: into its list, at its first job (the one on screen is not among them).
+  press(focused(), "ArrowRight");
+  expect(focused().textContent).toContain("几点了");
+  press(focused(), "ArrowDown");
+  expect(focused().textContent).toContain("翻译一句话");
+  press(focused(), "ArrowUp");
+  expect(focused().textContent).toContain("几点了");
+  // Pressing a kind shows it and goes into its list, on the job on screen.
+  click(view.host.querySelector(".trace-job-kind"));
+  expect(focused().classList.contains("is-current")).toBe(true);
+  // Escape still closes it.
+  press(focused(), "Escape");
+  expect(view.host.querySelector(".trace-switcher-popover")).toBeNull();
   view.close();
 });
 

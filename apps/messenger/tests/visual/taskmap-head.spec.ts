@@ -42,6 +42,24 @@ async function overTheList(page: Page): Promise<string[]> {
   });
 }
 
+/** With the switcher's list open over many jobs: where its kinds are, and what scrolls. */
+async function kindsInView(page: Page): Promise<{ kinds: number; inView: boolean; popoverScrolls: boolean; listScrolls: boolean }> {
+  await page.locator('.tm-head .trace-title-trigger').click();
+  await expect(page.locator('.trace-switcher-popover')).toBeVisible();
+  return page.evaluate(() => {
+    const popover = document.querySelector<HTMLElement>('.trace-switcher-popover')!;
+    const list = popover.querySelector<HTMLElement>('.trace-job-list')!;
+    const box = popover.getBoundingClientRect();
+    const kinds = [...popover.querySelectorAll<HTMLElement>('.trace-job-kind')].map((kind) => kind.getBoundingClientRect());
+    return {
+      kinds: kinds.length,
+      inView: kinds.every((kind) => kind.top >= box.top && kind.bottom <= box.bottom && kind.right <= box.right),
+      popoverScrolls: popover.scrollHeight > popover.clientHeight + 1,
+      listScrolls: list.scrollHeight > list.clientHeight + 1,
+    };
+  });
+}
+
 async function open(page: Page, baseURL: string | undefined, story: string): Promise<void> {
   await page.goto(`${baseURL}index.html?story=${story}`);
   await expect(page.locator('.tm-head h2')).toBeVisible({ timeout: 5000 });
@@ -56,13 +74,18 @@ async function headHolds(page: Page, baseURL: string | undefined): Promise<void>
   expect(await measure(page)).toEqual({ rows: 1, clipped: false, overflows: false });
   // The list opens over the town: its hint and its plates under it.
   expect(await overTheList(page)).toEqual([]);
+  // More jobs than the list shows: the one-question kind is beside it from the start, and a hover shows its jobs.
+  await open(page, baseURL, 'taskmap-head-many');
+  expect(await kindsInView(page)).toEqual({ kinds: 2, inView: true, popoverScrolls: false, listScrolls: true });
+  await page.locator('.trace-job-kind').nth(1).hover();
+  await expect(page.locator('.trace-job-list .trace-job-title')).toHaveText(['几点了', '翻译一句话']);
   // No room: still one row, clipped, the count kept in the head; the list still over the town.
   await open(page, baseURL, 'taskmap-head-narrow');
   expect(await measure(page)).toEqual({ rows: 1, clipped: true, overflows: false });
   expect(await overTheList(page)).toEqual([]);
 }
 
-test('the task map head: one row for its title, and its list of jobs opens over the town', async ({ page, baseURL }) => {
+test('the task map head: one row for its title, and its list of jobs opens over the town with its kinds in view', async ({ page, baseURL }) => {
   await headHolds(page, baseURL);
 });
 

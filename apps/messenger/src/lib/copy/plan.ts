@@ -275,6 +275,8 @@ export const zh = {
   },
   /** The switcher's one row for the jobs that were a single question and its answer. */
   oneShotJobs: (n: number) => `一问一答 ${n} 件`,
+  /** The switcher's two kinds, side by side with the list: the jobs that were work, and those that were one question. */
+  jobKinds: { label: "分类", work: "工作", oneShot: "一问一答" },
   /** How the plan's spec and its tickets point at each other: every ticket meets the spec, some lines hold for one ticket alone. */
   links: {
     ticketsHint: "每个任务都要满足要点里的验收、规则和你的要求；点一个任务，流程图点亮它的轮，并列出它要满足的。",
@@ -668,6 +670,8 @@ export const en: CopyShape<typeof zh> = {
   },
   /** The switcher's one row for the jobs that were a single question and its answer. */
   oneShotJobs: (n: number) => `${n} one-question job${n === 1 ? "" : "s"}`,
+  /** The switcher's two kinds, side by side with the list: the jobs that were work, and those that were one question. */
+  jobKinds: { label: "Kinds", work: "Work", oneShot: "One question" },
   links: {
     ticketsHint: "Every ticket meets the plan’s done-when lines, rules and what you asked for. Pick one: the board lights its turns and it lists what it has to meet.",
     heldTo: "Has to meet",

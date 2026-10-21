@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
+	import { flushSync } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import BottomSheet from '../BottomSheet.svelte';
 	import { PHONE_SHEET_QUERY } from '../bottom-sheet.ts';
@@ -33,9 +34,23 @@
 	const listed = $derived(jobs.filter((job) => !folded.includes(job)));
 	let foldOpen = $state(false);
 
-	// A menu that opens again opens compact.
+	/**
+	 * In the popover the two kinds sit in a column beside the list, as the model picker's sources do,
+	 * so the one-question jobs are a hover away however many jobs there are. It opens on the work,
+	 * where the job on screen is. A phone's sheet keeps the fold row.
+	 */
+	type Kind = 'work' | 'oneShot';
+	let kind = $state<Kind>('work');
+	const twoKinds = $derived(listed.length > 0 && folded.length > 0);
+	const kinds = $derived<{ key: Kind; count: number }[]>([{ key: 'work', count: listed.length }, { key: 'oneShot', count: folded.length }]);
+	const shown = $derived(twoKinds ? (kind === 'work' ? listed : folded) : listed.length > 0 ? listed : folded);
+
+	// A menu that opens again opens compact, on the work.
 	$effect(() => {
-		if (!open) foldOpen = false;
+		if (!open) {
+			foldOpen = false;
+			kind = 'work';
+		}
 	});
 
 	/** A row from a daemon that predates plans has neither a status nor counts. */
@@ -54,6 +69,9 @@
 			event.stopImmediatePropagation();
 			open = false;
 			titleTriggerEl?.focus();
+		} else if (event.key === 'ArrowLeft' && twoKinds && !phone.current) {
+			event.preventDefault();
+			titleMenuEl?.querySelector<HTMLButtonElement>('.trace-job-kind.is-active')?.focus();
 		} else if (event.key === 'ArrowDown') {
 			event.preventDefault();
 			const items = Array.from(titleMenuEl?.querySelectorAll<HTMLButtonElement>('.trace-job') ?? []);
@@ -67,6 +85,32 @@
 			const prev = items[currentIndex - 1] ?? items[items.length - 1];
 			prev?.focus();
 		}
+	}
+
+	/** On the kinds: up and down show the other kind, right goes into its list. */
+	function onKindsKeydown(event: KeyboardEvent): void {
+		if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+			event.preventDefault();
+			showKind(kind === 'work' ? 'oneShot' : 'work', 'kind');
+		} else if (event.key === 'ArrowRight') {
+			event.preventDefault();
+			focusList();
+		} else {
+			onMenuKeydown(event);
+		}
+	}
+
+	function showKind(next: Kind, focus: 'kind' | 'list'): void {
+		kind = next;
+		flushSync();
+		if (focus === 'kind') titleMenuEl?.querySelector<HTMLButtonElement>('.trace-job-kind.is-active')?.focus();
+		else focusList();
+	}
+
+	/** Into the list: on the job on screen when it is there, else its first. */
+	function focusList(): void {
+		const list = titleMenuEl?.querySelector('.trace-job-list');
+		(list?.querySelector<HTMLButtonElement>('.trace-job.is-current') ?? list?.querySelector<HTMLButtonElement>('.trace-job'))?.focus();
 	}
 
 	$effect(() => {
@@ -167,14 +211,31 @@
 				</div>
 			</BottomSheet>
 		{:else if open}
-			<div
-				class="trace-switcher-popover"
-				role="listbox"
-				tabindex="-1"
-				aria-label={t.trace.title}
-				onkeydown={onMenuKeydown}
-			>
-				{@render jobList()}
+			<div class="trace-switcher-popover" class:has-kinds={twoKinds} role="dialog" aria-label={t.trace.title}>
+				{#if twoKinds}
+					<div class="trace-job-kinds" role="tablist" aria-orientation="vertical" aria-label={t.plan.jobKinds.label} tabindex="-1" onkeydown={onKindsKeydown}>
+						{#each kinds as entry (entry.key)}
+							<button
+								type="button"
+								role="tab"
+								class="trace-job-kind"
+								class:is-active={entry.key === kind}
+								aria-selected={entry.key === kind}
+								tabindex="-1"
+								onmouseenter={() => (kind = entry.key)}
+								onclick={() => showKind(entry.key, 'list')}
+							>
+								<span class="trace-job-kind-label">{t.plan.jobKinds[entry.key]}</span>
+								<span class="trace-job-kind-count">{entry.count}</span>
+							</button>
+						{/each}
+					</div>
+				{/if}
+				<div class="trace-job-list" role="listbox" tabindex="-1" aria-label={twoKinds ? t.plan.jobKinds[kind] : t.trace.title} onkeydown={onMenuKeydown}>
+					{#each shown as job (job.id)}
+						{@render jobRow(job)}
+					{/each}
+				</div>
 			</div>
 		{/if}
 	</div>
@@ -244,19 +305,92 @@
 		top: calc(100% + 6px);
 		left: 0;
 		z-index: 100;
+		display: flex;
 		min-width: 260px;
 		max-width: min(440px, calc(100vw - 32px));
 		max-height: 280px;
-		overflow-y: auto;
+		overflow: hidden;
 		background: var(--pane);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-md);
-		padding: 4px;
 		box-sizing: border-box;
+	}
+
+	/* Both kinds: one width, so moving from one kind to the other does not resize it; it fits a job tab at its narrowest. */
+	.trace-switcher-popover.has-kinds {
+		width: min(492px, calc(100vw - 32px));
+		max-width: none;
+	}
+
+	/* The kinds stay put while the list scrolls; drawn as the model picker's sources. */
+	.trace-job-kinds {
+		flex: 0 0 112px;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		padding: 4px;
+		border-right: 1px solid var(--line);
+		background: var(--line-subtle);
+		box-sizing: border-box;
+		outline: none;
+	}
+
+	.trace-job-kind {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		width: 100%;
+		padding: 7px 8px;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--ink-secondary);
+		font: inherit;
+		font-size: 12px;
+		text-align: left;
+		cursor: pointer;
+		transition: background 0.12s ease, color 0.12s ease;
+	}
+
+	.trace-job-kind.is-active {
+		background: var(--pane);
+		color: var(--ink);
+		box-shadow: var(--shadow-xs);
+	}
+
+	.trace-job-kind:focus-visible {
+		outline: 2px solid var(--accent-border);
+		outline-offset: -2px;
+	}
+
+	.trace-job-kind-label {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-weight: 500;
+	}
+
+	.trace-job-kind-count {
+		flex: none;
+		font-size: 11px;
+		color: var(--muted);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.trace-job-list {
+		flex: 1;
+		min-width: 0;
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+		padding: 4px;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		box-sizing: border-box;
+		outline: none;
 	}
 
 	.trace-job {

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The job switcher shows its one-question jobs beside the list
+
+- The job switcher under a flow's or a task map's title kept the jobs that were one question and its answer in a row of their own at the end of its list, so with many jobs you had to scroll to the bottom to find it. On a desktop the switcher now puts its two kinds, Work and One question, in a column on the left with their counts and the jobs on the right, as the model picker does its sources: it opens on Work, where the job on screen is, and hovering One question shows those. The arrow keys walk the list, Left steps onto the kinds, Up and Down switch kind there and Right goes back into the list. With only one kind it is the plain list as before, and a phone's sheet keeps the row.
+
 ### A task map's signs follow the theme
 
 - In the dark theme, a task map's plates over the buildings, the characters' badges and the island names stayed white with dark words. They are now the theme's own surface, dark with light words, and each character's coloured name is lifted so it still reads on them. The town itself keeps the colours of the hour in either theme.
