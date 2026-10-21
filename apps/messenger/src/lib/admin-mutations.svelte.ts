@@ -192,6 +192,18 @@ export class AdminMutations {
     }
   }
 
+  /** A project session's model, from the agent's next step on; the session's own event brings it back. */
+  async setProjectModel(sessionId: string, model: string | null): Promise<ApiError | null> {
+    const api = this.host.api;
+    if (!api) return null;
+    try {
+      await api.setProjectModel(sessionId, model);
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api);
+    }
+  }
+
   /** Your answer to the approval a run waits on; the run's own event brings the new state. */
   async answerAgentRun(runId: string, allow: boolean): Promise<ApiError | null> {
     const api = this.host.api;

@@ -1,4 +1,4 @@
-import type { CreateProjectSessionRequest } from "@real-bot/protocol";
+import { isAgentModelName, type CreateProjectSessionRequest } from "@real-bot/protocol";
 import { homedir } from "node:os";
 import { readAgentReplay } from "../../claude-code/replay";
 import { claudeSessionRoots, findClaudeSessionFile, readClaudeSession } from "../../claude-code/sessions";
@@ -64,6 +64,21 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
       { sessionId: params.id!, agentFile: fileOf(project.agentSession), sourceFile: fileOf(project.source), agentSession: project.agentSession, sourceSession: project.source },
       { projectDir: project.dir, home: homedir(), configDirs },
     ), 200, null);
+  }
+
+  // The model its runs ask for (an alias or a full id; null: the agent's own default), from the next
+  // step on: a run going now switches too.
+  params = matchPath(path, "/v1/project-sessions/:id");
+  if (params && method === "PATCH") {
+    const raw = ((input.body ?? {}) as { model?: unknown }).model;
+    const model = typeof raw === "string" ? raw.trim() : raw;
+    if (model !== null && (typeof model !== "string" || !isAgentModelName(model))) {
+      throw new HttpError(422, "invalid_args", "model must be a model name or null");
+    }
+    const session = store.setProjectModel(params.id!, model);
+    projects.setModel(params.id!, model);
+    publish({ event: "session.upsert", occurred_at: occurred(), ...sessionUpsertFields(session) });
+    return jsonResponse(session, 200, null);
   }
 
   params = matchPath(path, "/v1/agent-runs/:id/:action");

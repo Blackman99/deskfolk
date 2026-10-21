@@ -416,6 +416,8 @@ export class SessionHistory {
                     project_config_dir: detail.project_config_dir ?? s.project_config_dir ?? null,
                     project_agent_session: detail.project_agent_session ?? s.project_agent_session ?? null,
                     project_source: detail.project_source ?? s.project_source ?? null,
+                    // Null is a choice here (back to the agent's default), not a gap to fill.
+                    project_model: detail.project_model !== undefined ? detail.project_model : (s.project_model ?? null),
                   }
                 : {}),
             }

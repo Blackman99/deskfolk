@@ -84,3 +84,27 @@ test("opening the chat reads the session's newest run once", () => {
   expect(runtime.calls.filter((c) => c.name === "loadProjectRun").map((c) => c.args)).toEqual([["proj-1"]]);
   close();
 });
+
+test("the composer picks the session's model: your settings' default, Claude Code's names, and one set elsewhere stays a choice", async () => {
+  const { host, runtime, close } = open(null);
+  const trigger = host.querySelector("[data-project-model] .real-select-trigger");
+  expect(trigger?.textContent).toContain(t.project.modelDefault);
+  click(trigger);
+  const rows = () => [...host.querySelectorAll("[role=option]")].map((row) => row.querySelector(".real-select-option-label")?.textContent?.trim());
+  expect(rows()).toEqual([t.project.modelDefault, "sonnet", "opus", "haiku", "fable"]);
+  expect(host.querySelector("[data-project-model]")?.getAttribute("title")).toBe(t.project.modelDefaultHint);
+  click([...host.querySelectorAll("[role=option]")].find((row) => row.textContent?.includes("opus")) ?? null);
+  await settle();
+  expect(runtime.calls.find((c) => c.name === "setProjectModel")?.args).toEqual(["proj-1", "opus"]);
+  close();
+
+  const session = aProjectSession({ project_model: "claude-opus-5-5" });
+  const pinned = fakeRuntime({ sessions: [session] });
+  const view = render(ProjectChat, { runtime: pinned, t, selected: session });
+  expect(view.host.querySelector("[data-project-model] .real-select-trigger")?.textContent).toContain("claude-opus-5-5");
+  click(view.host.querySelector("[data-project-model] .real-select-trigger"));
+  click([...view.host.querySelectorAll("[role=option]")].find((row) => row.textContent?.includes(t.project.modelDefault)) ?? null);
+  await settle();
+  expect(pinned.calls.find((c) => c.name === "setProjectModel")?.args).toEqual(["proj-1", null]);
+  view.close();
+});

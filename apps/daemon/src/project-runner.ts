@@ -25,7 +25,11 @@ import { recordLiveProc } from "./live-procs";
 import type { Store } from "./store";
 
 /** The SDK's `query` as the runner uses it, or a test's stand-in. */
-export type ProjectQuery = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => AsyncIterable<SDKMessage> & { close(): void };
+export type ProjectQuery = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => AsyncIterable<SDKMessage> & {
+  close(): void;
+  /** The SDK's own: the model for the steps still to come in this run. */
+  setModel?(model?: string): Promise<void>;
+};
 
 export type ProjectRunnerDeps = {
   store: Store;
@@ -48,6 +52,8 @@ export type ProjectRunner = {
   stop(runId: string): AgentRun;
   /** Stops the session's live run, if any: its history is being cleared or the session deleted. */
   stopSession(sessionId: string): void;
+  /** The session's model changed: a live run takes it from its next step (null: the agent's default). */
+  setModel(sessionId: string, model: string | null): void;
   /** Resolves once every run started so far has ended (tests). */
   idle(): Promise<void>;
   close(): void;
@@ -68,6 +74,8 @@ type Live = {
   /** Its input is closed (everything answered, or stopped): a new line waits for the next run. */
   closing: boolean;
   done: Promise<void>;
+  /** The SDK query, once it is started: a model change reaches it here. */
+  query: ReturnType<ProjectQuery> | null;
 };
 
 const STDERR_KEEP = 8 * 1024;
@@ -165,7 +173,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     const input = inputQueue<SDKUserMessage>();
     let finish!: () => void;
     const fresh: Live = {
-      runId: run.id, sessionId, input, abort: new AbortController(), unanswered: 1, waiting: null, asked: new Map(), stopped: false, closing: false,
+      runId: run.id, sessionId, input, abort: new AbortController(), unanswered: 1, waiting: null, asked: new Map(), stopped: false, closing: false, query: null,
       done: new Promise<void>((resolve) => { finish = resolve; }),
     };
     lives.set(sessionId, fresh);
@@ -292,6 +300,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       settingSources: ["user", "project", "local"],
       persistSession: true,
       ...(resume ? { resume, forkSession: project.agentSession === null } : {}),
+      // The session's own pick; none leaves it to your settings, as in the terminal.
+      ...(project.model ? { model: project.model } : {}),
       includePartialMessages: false,
       permissionMode: "default",
       tools: [...AGENT_WORK_TOOLS],
@@ -313,6 +323,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     let failure: string | null = null;
     let partial = "";
     const session = query({ prompt: live.input.iterable, options });
+    live.query = session;
     try {
       for await (const message of session) {
         if (live.stopped) break;
@@ -415,6 +426,12 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     stopSession(sessionId) {
       const live = lives.get(sessionId);
       if (live && !live.stopped) this.stop(live.runId);
+    },
+    setModel(sessionId, model) {
+      const live = lives.get(sessionId);
+      if (!live || live.stopped || live.closing || !live.query?.setModel) return;
+      // Best effort: a run that ends meanwhile has nothing to switch, and the next one starts on it.
+      live.query.setModel(model ?? undefined).catch(() => {});
     },
     async idle() {
       while (settling.size > 0) await Promise.all([...settling]);

@@ -665,6 +665,7 @@ export class MessengerRuntime {
   }
 
   createProjectSession(body: CreateProjectSessionRequest): Promise<ApiError | null> { return this.adminMutations.createProjectSession(body); }
+  setProjectModel(sessionId: string, model: string | null): Promise<ApiError | null> { return this.adminMutations.setProjectModel(sessionId, model); }
   answerAgentRun(runId: string, allow: boolean): Promise<ApiError | null> { return this.adminMutations.answerAgentRun(runId, allow); }
   stopAgentRun(runId: string): Promise<ApiError | null> { return this.adminMutations.stopAgentRun(runId); }
   createGroup(body: CreateGroupRequest): Promise<ApiError | null> { return this.adminMutations.createGroup(body); }

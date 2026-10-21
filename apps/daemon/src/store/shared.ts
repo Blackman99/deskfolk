@@ -165,6 +165,7 @@ export type SessionRow = {
   project_config_dir?: string | null;
   project_agent_session?: string | null;
   project_source?: string | null;
+  project_model?: string | null;
   created_at: string;
   updated_at: string;
 };

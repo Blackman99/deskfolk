@@ -75,6 +75,8 @@ export type Session = {
   project_config_dir?: string | null;
   project_agent_session?: string | null;
   project_source?: string | null;
+  /** The model its runs ask for (an alias or a full id, as the agent names it); null: the agent's own default. */
+  project_model?: string | null;
   created_at: string;
   updated_at: string;
 };

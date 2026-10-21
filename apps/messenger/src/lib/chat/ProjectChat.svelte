@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { isHiddenTranscriptKind, USER_MEMBER, type Message, type SessionSummary } from '@real-bot/protocol';
+	import { CLAUDE_MODEL_ALIASES, isHiddenTranscriptKind, USER_MEMBER, type Message, type SessionSummary } from '@real-bot/protocol';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
+	import Select from '../Select.svelte';
+	import { claudeAgentSource } from '../model-source.ts';
+	import type { SelectOption } from '../select-options.ts';
 	import MarkdownBody from '../MarkdownBody.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -52,6 +55,24 @@
 		const id = selected.id;
 		if (connected) void runtime.loadProjectRun(id);
 	});
+
+	/**
+	 * The model its runs ask for: Claude Code's aliases, or none for what your settings say. One
+	 * set elsewhere (a full id) stays a choice. A change reaches a run going now from its next step.
+	 */
+	const model = $derived(selected.project_model ?? '');
+	const modelOptions = $derived.by((): SelectOption[] => {
+		const mark = claudeAgentSource(t);
+		const names: string[] = [...CLAUDE_MODEL_ALIASES];
+		if (model && !names.includes(model)) names.push(model);
+		return [{ value: '', label: t.project.modelDefault, source: mark }, ...names.map((name) => ({ value: name, label: name, source: mark }))];
+	});
+	let modelFailed = $state(false);
+
+	async function pickModel(value: string): Promise<void> {
+		if (value === model) return;
+		modelFailed = (await runtime.setProjectModel(selected.id, value || null)) !== null;
+	}
 
 	let scroller = $state<HTMLElement | null>(null);
 	let stuck = true;
@@ -252,7 +273,7 @@
 	</div>
 
 	<div class="composer">
-		{#if sendFailed}
+		{#if sendFailed || modelFailed}
 			<p class="field-error">{t.project.actionFailed}</p>
 		{/if}
 		<div class="composer-box">
@@ -272,16 +293,31 @@
 				oncompositionupdate={() => (ime = composerImeOnUpdate(ime))}
 				oncompositionend={() => (ime = composerImeOnEnd(Date.now()))}
 			></textarea>
-			<button
-				type="button"
-				class="send"
-				title={t.project.send}
-				aria-label={t.project.send}
-				disabled={!view.draft.trim() || view.sending || !connected}
-				onclick={() => void send()}
-			>
-				<Icon name="arrow-up" size={16} />
-			</button>
+			<div class="composer-tools">
+				<!-- What the default is, on the pointer: a hint in the picker itself would crowd the composer. -->
+				<div class="model" data-project-model title={model ? undefined : t.project.modelDefaultHint}>
+					<Select
+						size="sm"
+						placement="top"
+						value={model}
+						options={modelOptions}
+						ariaLabel={t.project.modelLabel}
+						title={t.project.modelLabel}
+						disabled={!connected}
+						onchange={(value) => void pickModel(value)}
+					/>
+				</div>
+				<button
+					type="button"
+					class="send"
+					title={t.project.send}
+					aria-label={t.project.send}
+					disabled={!view.draft.trim() || view.sending || !connected}
+					onclick={() => void send()}
+				>
+					<Icon name="arrow-up" size={16} />
+				</button>
+			</div>
 		</div>
 	</div>
 </div>
@@ -493,10 +529,11 @@
 		box-sizing: border-box;
 	}
 
+	/* The line on top, the model and Send under it, as in the agents' own apps. */
 	.composer-box {
 		display: flex;
-		align-items: flex-end;
-		gap: 8px;
+		flex-direction: column;
+		gap: 4px;
 		padding: 8px 8px 8px 14px;
 		border: 1px solid var(--line);
 		border-radius: var(--radius-lg);
@@ -510,7 +547,7 @@
 	}
 
 	.composer-box textarea {
-		flex: 1;
+		width: 100%;
 		min-width: 0;
 		max-height: 200px;
 		padding: 6px 0;
@@ -523,6 +560,19 @@
 		font: inherit;
 		font-size: 14px;
 		line-height: 1.5;
+	}
+
+	.composer-tools {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+
+	.model {
+		min-width: 0;
+		max-width: 220px;
+		margin-left: -6px;
 	}
 
 	.send {

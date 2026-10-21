@@ -61,6 +61,7 @@ get("runtime/claude-code/sessions", { limit: v => typeof v === "string" && /^[1-
 add("POST", "project-sessions", { agent: one("claude_code"), dir: string, config_dir: nullable(string),
   import: object({ session_id: string, config_dir: nullable(string) }, ["session_id"]) });
 get("project-sessions/:id/(run|replay)");
+add("PATCH", "project-sessions/:id", { model: nullable(string) }, ["model"]);
 add("POST", "agent-runs/:id/(approve|deny|stop)");
 // Your other local agents (ADR 0079), seen and set up from the phone as on the Mac, and their usage.
 get("runtime/agents", { refresh: one("1"), wait: one("1") }); add("POST", "runtime/agents/detect", { runner, custom_id: nullable(string) }, ["runner"]);

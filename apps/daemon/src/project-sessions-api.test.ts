@@ -24,7 +24,7 @@ const probe: ClaudeCodeProbe = { last: () => signedIn, current: async () => sign
 type UseTool = (name: string, input: Record<string, unknown>, call?: { id?: string; agentId?: string }) => Promise<boolean>;
 type Step = (ctx: { line: string; options: Options; useTool: UseTool }) => Promise<string>;
 
-function scripted(seen: { options: Options[]; lines: string[]; closed: number }, step: Step, ownSession = "own-1", preface: (line: string) => SDKMessage[] = () => []): ProjectQuery {
+function scripted(seen: { options: Options[]; lines: string[]; closed: number; models: Array<string | null> }, step: Step, ownSession = "own-1", preface: (line: string) => SDKMessage[] = () => []): ProjectQuery {
   let tool = 0;
   return ({ prompt, options }) => {
     seen.options.push(options);
@@ -61,14 +61,17 @@ function scripted(seen: { options: Options[]; lines: string[]; closed: number },
         yield { type: "result", subtype: "success", result: reply, is_error: false, session_id: ownSession, uuid: crypto.randomUUID() } as unknown as SDKMessage;
       }
     })();
-    return Object.assign(generator, { close: () => { closed = true; seen.closed += 1; } });
+    return Object.assign(generator, {
+      close: () => { closed = true; seen.closed += 1; },
+      setModel: async (model?: string) => { seen.models.push(model ?? null); },
+    });
   };
 }
 
 function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[] } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "project-session-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
-  const seen = { options: [] as Options[], lines: [] as string[], closed: 0 };
+  const seen = { options: [] as Options[], lines: [] as string[], closed: 0, models: [] as Array<string | null> };
   const api = createLocalApi({ store, token: "project-test", schedule: false, claudeCode: probe, projectQuery: scripted(seen, step, opts.ownSession, opts.preface) });
   const events: ClientEvent[] = [];
   api.subscribeSync((frame) => { if (frame.type === "event") events.push(frame.payload); });
@@ -254,6 +257,39 @@ test("a sessions table from before project sessions is rebuilt with every row ke
   expect(db.query(`PRAGMA foreign_key_check`).all()).toEqual([]);
 });
 
+test("a session's model: each run asks for it, a run going now switches, and null goes back to your settings", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const h = start(async ({ line }) => {
+    if (line === "慢一点") await gate;
+    return `答：${line}`;
+  });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  expect((await h.call<SessionDetail>("PATCH", `/v1/project-sessions/${id}`, { model: "a b" })).status).toBe(422);
+  expect((await h.call<SessionDetail>("PATCH", `/v1/project-sessions/${ulid()}`, { model: "opus" })).status).toBe(404);
+
+  const set = await h.call<SessionDetail>("PATCH", `/v1/project-sessions/${id}`, { model: " opus " });
+  expect(set.status).toBe(200);
+  expect(set.body.project_model).toBe("opus");
+  expect(h.events.some((event) => event.event === "session.upsert" && event.id === id && event.project_model === "opus")).toBe(true);
+  await h.say(id, "第一句");
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(h.seen.options[0]!.model).toBe("opus");
+
+  // Changed mid-run: the run going now takes it from its next step.
+  await h.say(id, "慢一点");
+  await h.until(() => h.seen.lines.length === 2);
+  await h.call("PATCH", `/v1/project-sessions/${id}`, { model: "haiku" });
+  expect(h.seen.models).toEqual(["haiku"]);
+  release();
+  await h.until(async () => (await h.run(id))?.status === "completed" && h.lines(id).length === 4);
+
+  await h.call("PATCH", `/v1/project-sessions/${id}`, { model: null });
+  await h.say(id, "第三句");
+  await h.until(() => h.seen.options.length === 3);
+  expect(h.seen.options[2]!.model).toBeUndefined();
+});
+
 test("a phone reaches the same routes", () => {
   const id = ulid();
   const ok = (request: Parameters<typeof validateBusiness>[0]) => expect(() => validateBusiness(request)).not.toThrow();
@@ -262,6 +298,8 @@ test("a phone reaches the same routes", () => {
   ok({ v: 1, id, method: "POST", path: "/v1/project-sessions", body: { import: { session_id: "abc", config_dir: null } } });
   ok({ v: 1, id, method: "GET", path: `/v1/project-sessions/${ulid()}/run` });
   ok({ v: 1, id, method: "POST", path: `/v1/agent-runs/${ulid()}/stop` });
+  ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { model: "opus" } });
+  ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { model: null } });
   expect(() => validateBusiness({ v: 1, id, method: "POST", path: `/v1/agent-runs/${ulid()}/delete` })).toThrow();
 });
 

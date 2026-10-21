@@ -236,6 +236,11 @@ export abstract class ApiBase<Row extends PendingRow> {
     return this.post<SessionDetail>("/v1/project-sessions", body);
   }
 
+  /** The model a project session's runs ask for (ADR 0095); null: the agent's own default. */
+  async setProjectModel(sessionId: string, model: string | null): Promise<SessionDetail> {
+    return this.patch<SessionDetail>(`/v1/project-sessions/${encodeURIComponent(sessionId)}`, { model });
+  }
+
   /** The newest run of a project session; the event stream carries only changes after it. */
   async projectRun(sessionId: string): Promise<AgentRun | null> {
     return (await this.get<{ run: AgentRun | null }>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/run`)).run;

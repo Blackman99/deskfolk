@@ -39,3 +39,10 @@ test("a project session upsert keeps its directory", () => {
   const next = applyEvent(emptySnapshot(), { event: "session.upsert", occurred_at: "t", ...session });
   expect(next.sessions[0]?.project_dir).toBe("/Users/a/proj");
 });
+
+test("a project session's model comes and goes with its upserts; null is the default again", () => {
+  let snapshot = applyEvent(emptySnapshot(), { event: "session.upsert", occurred_at: "t", ...aProjectSession({ project_model: "opus" }) });
+  expect(snapshot.sessions[0]?.project_model).toBe("opus");
+  snapshot = applyEvent(snapshot, { event: "session.upsert", occurred_at: "t", ...aProjectSession({ project_model: null }) });
+  expect(snapshot.sessions[0]?.project_model).toBeNull();
+});
