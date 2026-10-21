@@ -16,6 +16,8 @@ import type { ToolPlaceRow, ToolPlaceStart } from "./store/tool-places";
 
 /** The app's file tools, and the names the agent runners give their agents' file tools. */
 const FILE_TOOLS = new Set(["read_file", "write_file", "delete_file", "list_dir", "list_annotations"]);
+/** Calls that do no work of their own: how a turn says it is done. */
+const NOT_STEPS = new Set(["end_turn"]);
 
 export type BotPlaceContext = {
   /** The workspace: file tools' paths are read from it, and paths in it are places of the town. */
@@ -118,6 +120,7 @@ export function placeContextFor(store: Store, turnId: string, home = homedir()):
 export function createToolPlaceRecorder(store: Store, home = homedir()): (event: ToolEvent) => BotToolInfo | undefined {
   return (event) => {
     try {
+      if (NOT_STEPS.has(event.name ?? "")) return undefined;
       if (event.phase === "started") {
         const ctx = placeContextFor(store, event.turn_id, home);
         if (!ctx) return undefined;

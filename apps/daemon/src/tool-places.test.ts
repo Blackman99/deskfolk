@@ -49,6 +49,8 @@ test("a Bot turn's calls are kept with where they worked, told on their frames, 
     call("call_1", "write_file", { path: "docs/plan.md", content: "SECRET_BODY" }),
     call("call_2", "shell", { command: "ls src/", cwd: "." }),
     call("call_3", "read_file", { path: "/definitely/not/here.txt" }),
+    // How a turn ends is not a step of its work.
+    call("call_4", "end_turn", {}),
   ];
   const api = createLocalApi({
     store, token: "fixture", schedule: false,
@@ -73,16 +75,20 @@ test("a Bot turn's calls are kept with where they worked, told on their frames, 
     const trigger = store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "写个计划" });
     await api.engine.handleInboundMessage(trigger, { fromUser: true });
     const deadline = Date.now() + 20000;
-    while (Date.now() < deadline && frames.filter((f) => f.phase === "exited").length < 3) await Bun.sleep(50);
+    while (Date.now() < deadline && frames.filter((f) => f.phase === "exited").length < 4) await Bun.sleep(50);
 
-    const started = frames.filter((f) => f.phase === "started");
-    expect(started.map((f) => f.bot_call?.place)).toEqual([
+    // end_turn still goes out as a frame, with nothing for the map.
+    const ends = frames.filter((f) => f.name === "end_turn");
+    expect(ends.length).toBeGreaterThan(0);
+    expect(ends.every((f) => f.bot_call === undefined)).toBe(true);
+    const started = frames.filter((f) => f.phase === "started" && f.name !== "end_turn");
+    expect(started.map((f) => f.bot_call?.place)).toStrictEqual([
       { zone: "project", path: "docs/plan.md" },
       { zone: "project", path: "src" },
       { zone: "outside", path: "/definitely/not/here.txt" },
     ]);
     expect(started.every((f) => f.bot_call?.session_id === session && f.bot_call?.bot_id === bot.id && f.bot_call?.model === "fixture")).toBe(true);
-    const ended = frames.filter((f) => f.phase === "exited");
+    const ended = frames.filter((f) => f.phase === "exited" && f.name !== "end_turn");
     expect(ended.map((f) => f.bot_call?.ok)).toEqual([true, true, false]);
 
     const res = await get(`/v1/sessions/${session}/replay`);
