@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A task map's labels stay sharp when you zoom in
+
+- Zoomed in on a task map, the plates over the buildings, the characters' badges and the region names blurred, a plate's small second line (who is there and what they are doing) the most: they were drawn at the town's own scale and stretched with it. Each is now drawn at its size on screen and stays as sharp as at 100%.
+
 ### Files a project session names open
 
 - In a project session, pressing a file Claude Code named in its reply did nothing. It now opens in the preview, found where Claude Code meant it: Claude Code writes paths relative to where it was working, so a path that is not under the project directory as written is looked for inside it. In a folder holding several repositories, `comm/defs.go` opens `steez/comm/defs.go`, and `server.go` the one `server.go` there. When nothing matches, or several places match equally, a toast says so and nothing opens; a branch name like `feat/adverse-media` shows as a link too, and pressing it says it is not in the project directory. `GET /v1/project-sessions/:id/locate?path=` answers where a path is.

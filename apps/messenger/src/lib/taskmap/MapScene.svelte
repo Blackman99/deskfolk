@@ -245,7 +245,9 @@
 	.tm-ground { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 	.tm-road { fill: none; stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; }
 	.tm-road-edge { fill: none; stroke-width: 15; stroke-linecap: round; stroke-linejoin: round; }
-	.tm-region { position: absolute; z-index: 40; transform-origin: 50% 0; white-space: nowrap; font-size: 11px; color: #37444a; background: rgba(255, 255, 255, .86); border-radius: 999px; padding: 1px 8px; pointer-events: none; }
+	/* What keeps its size on screen gets a layer of its own (will-change): painted into the world's layer,
+	   which WebKit draws once and stretches as the map zooms in, its type blurred, small type the most. */
+	.tm-region { position: absolute; z-index: 40; transform-origin: 50% 0; will-change: transform; white-space: nowrap; font-size: 11px; color: #37444a; background: rgba(255, 255, 255, .86); border-radius: 999px; padding: 1px 8px; pointer-events: none; }
 	.tm-mono { font-family: var(--mono); }
 	.tm-tree { position: absolute; width: 30px; height: 46px; pointer-events: none; }
 	.tm-lamp { position: absolute; width: 12px; height: 34px; pointer-events: none; }
@@ -255,7 +257,7 @@
 	.tm-blk svg { position: absolute; left: 0; top: 0; width: 180px; height: 230px; overflow: visible; }
 	.tm-ring { fill: rgba(18, 28, 32, .08); stroke: #121c20; stroke-width: 1.6; stroke-dasharray: 4 3; }
 	.b-hit { pointer-events: all; fill: #000; fill-opacity: 0; cursor: pointer; }
-	.tm-plate { position: absolute; z-index: 300; transform-origin: 50% 100%; max-width: 180px; box-sizing: border-box; margin: 0; padding: 2px 7px 3px; background: rgba(255, 255, 255, .95); border: 1px solid #dfe6e8; border-radius: 8px; text-align: center; box-shadow: 0 1px 3px rgba(18, 28, 32, .14); font: inherit; color: #121c20; cursor: pointer; }
+	.tm-plate { position: absolute; z-index: 300; transform-origin: 50% 100%; will-change: transform; max-width: 180px; box-sizing: border-box; margin: 0; padding: 2px 7px 3px; background: rgba(255, 255, 255, .95); border: 1px solid #dfe6e8; border-radius: 8px; text-align: center; box-shadow: 0 1px 3px rgba(18, 28, 32, .14); font: inherit; color: #121c20; cursor: pointer; }
 	.tm-plate.is-hot { z-index: 360; border-color: #7d8d93; }
 	.tm-plate.is-on { z-index: 360; border-color: #121c20; }
 	.tm-plate:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -278,7 +280,7 @@
 	@keyframes tm-bob { from { translate: 0 0; } to { translate: 0 -2.5px; } }
 	@keyframes tm-hop { 0%, 60%, 100% { translate: 0 0; } 30% { translate: 0 -6px; } }
 	@keyframes tm-shake { 0%, 100% { rotate: 0deg; } 25% { rotate: -6deg; } 75% { rotate: 6deg; } }
-	.tm-badge { position: absolute; left: 29px; display: flex; align-items: center; gap: 4px; height: 26px; box-sizing: border-box; padding: 0 8px 0 2px; background: rgba(255, 255, 255, .96); border: 1.5px solid; border-radius: 999px; box-shadow: 0 1px 3px rgba(18, 28, 32, .18); white-space: nowrap; pointer-events: none; }
+	.tm-badge { position: absolute; left: 29px; will-change: transform; display: flex; align-items: center; gap: 4px; height: 26px; box-sizing: border-box; padding: 0 8px 0 2px; background: rgba(255, 255, 255, .96); border: 1.5px solid; border-radius: 999px; box-shadow: 0 1px 3px rgba(18, 28, 32, .18); white-space: nowrap; pointer-events: none; }
 	.tm-badge.is-l { flex-direction: row-reverse; padding: 0 2px 0 8px; transform-origin: calc(100% - 14.5px) 100%; }
 	.tm-badge.is-r { transform-origin: 14.5px 100%; }
 	.tm-badge.is-c { transform-origin: 50% 100%; }
