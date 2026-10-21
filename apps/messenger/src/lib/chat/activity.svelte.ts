@@ -115,7 +115,8 @@ export class ChatActivity {
     this.activityRevision += 1;
     this.turnActivity.applyTool(tool);
     this.toolRevision += 1;
-    if (tool.agent_run) this.agentCalls.applyTool(tool);
+    // Where a call works, for the task map: a project session's agent (ADR 0095) or a Bot (ADR 0097).
+    if (tool.agent_run || tool.bot_call) this.agentCalls.applyTool(tool);
     // A command's bytes are only worth carrying while someone can see them run — and only for
     // the conversation that is open. A phone on a radio should not receive the output of a
     // build happening in a session nobody is looking at.
