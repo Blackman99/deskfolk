@@ -201,7 +201,7 @@
 		}
 	}
 
-	@container conversation (max-width: 680px) {
+	@container conversation (max-width: 480px) {
 		:global(.composer) .composer-action {
 			width: 34px;
 			height: 34px;

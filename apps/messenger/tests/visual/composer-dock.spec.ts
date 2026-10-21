@@ -1,7 +1,7 @@
-import { chromium, expect, test, webkit, type Locator } from '@playwright/test';
+import { chromium, expect, test, webkit, type Locator, type Page } from '@playwright/test';
 
 /**
- * A conversation as narrow as a phone — a phone, a small window, a narrow workbench pane — docks
+ * A conversation as narrow as a phone itself — 480px and under, a phone or a pane that thin — docks
  * its composer: a bar flush with the bottom and both sides, which the transcript ends above
  * (2026-09-24). It used to float over the transcript as a rounded card with a margin all round,
  * its suggestion chips in a frosted bubble above it, and a chip past the right edge was cut off
@@ -30,6 +30,14 @@ async function geometry(composer: Locator) {
 }
 
 const docked = { position: 'relative', bottom: 0, left: 0, right: 0, gap: 0, stuck: true, radius: '0px' };
+
+/** The story's column at another width, the way a workbench pane is dragged narrower. */
+async function storyWidth(page: Page, px: number) {
+	await page.evaluate((width) => {
+		document.body.style.width = `${width}px`;
+		document.getElementById('story')!.style.width = `${width}px`;
+	}, px);
+}
 
 for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as const) {
 	test.describe(name, () => {
@@ -146,6 +154,41 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			expect(Math.abs(send.x - stop.x)).toBeLessThanOrEqual(1);
 			expect(send.x - (stopNow.x + stopNow.width)).toBeGreaterThanOrEqual(8);
 			await expect(page.locator('.suggest-btn')).toBeHidden();
+			await browser.close();
+		});
+
+		/*
+		 * Between a phone and 680px (2026-10-21): a 500px pane docked its composer like a phone,
+		 * where the floating card read well. The card floats there now, on the 12px the transcript
+		 * has at that width, and the stream keeps room for it; at 480px and under it docks.
+		 */
+		test('a pane wider than a phone floats the card on the transcript\'s margins, and docks at 480', async ({ baseURL }) => {
+			const browser = await engine.launch();
+			const page = await browser.newPage({ viewport: { width: 900, height: 844 } });
+			await page.goto(`${baseURL}index.html?story=chat-stage-narrow`);
+			await page.waitForSelector('html[data-ready="yes"]');
+			const composer = page.locator('.composer');
+			const floating = () =>
+				composer.evaluate((el) => {
+					const stage = el.parentElement!.getBoundingClientRect();
+					const card = el.querySelector('.composer-card')!;
+					const box = card.getBoundingClientRect();
+					const inner = getComputedStyle(el.parentElement!.querySelector('.stream-inner')!);
+					return {
+						position: getComputedStyle(el).position,
+						left: Math.round(box.left - stage.left),
+						right: Math.round(stage.right - box.right),
+						text: parseFloat(inner.paddingLeft),
+						room: parseFloat(inner.paddingBottom) >= Math.round(el.getBoundingClientRect().height),
+						radius: getComputedStyle(card).borderTopLeftRadius
+					};
+				});
+			for (const px of [560, 481]) {
+				await storyWidth(page, px);
+				await expect.poll(floating).toEqual({ position: 'absolute', left: 12, right: 12, text: 12, room: true, radius: '18px' });
+			}
+			await storyWidth(page, 480);
+			await expect.poll(() => geometry(composer)).toEqual(docked);
 			await browser.close();
 		});
 

@@ -80,7 +80,7 @@
 		box-shadow: inset 0 0 0 2px var(--accent);
 	}
 
-	@container conversation (max-width: 680px) {
+	@container conversation (max-width: 480px) {
 		@media (pointer: coarse) {
 			/* Centred over send, and off the curve with it. */
 			.scroll-bottom-slot {

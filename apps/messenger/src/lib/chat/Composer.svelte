@@ -855,20 +855,24 @@
 	}
 
 	/*
-	 * A conversation as narrow as a phone — a phone, a small window, a workbench pane — docks the
-	 * composer: a bar across the bottom that the transcript ends above, rather than a card floating
-	 * over it. Floating cost a margin on every side of a column that has none to spare, and the
-	 * transcript showed through the gaps around the card and the chips. The bar is in the stage's
-	 * flow, so the stream shrinks to fit it; the stage's resize follow keeps it stuck to the bottom.
-	 * The keyboard inset and the safe area are zero outside a phone. With the keyboard up the home
-	 * indicator is under it, so the bar does not keep its inset above the keys.
+	 * A conversation as narrow as a phone itself — 480px and under, a phone or a pane that thin —
+	 * docks the composer: a bar across the bottom that the transcript ends above, rather than a
+	 * card floating over it. Floating cost a margin on every side of a column that has none to
+	 * spare, and the transcript showed through the gaps around the card and the chips. The bar is
+	 * in the stage's flow, so the stream shrinks to fit it; the stage's resize follow keeps it stuck
+	 * to the bottom. The keyboard inset and the safe area are zero outside a phone. With the
+	 * keyboard up the home indicator is under it, so the bar does not keep its inset above the keys.
+	 *
+	 * The rest of the phone layout starts at 680px. A pane between the two still floats the card:
+	 * at 500px the card read well, and docking it there looked like a phone squeezed into a pane
+	 * (2026-10-21). It keeps to the 12px the transcript has there instead of the wide 24px.
 	 */
 	/*
 	 * Wider than a phone, the composer is two rows, the way the design draws it: the text on top,
 	 * its tools under it — attach on the left, voice, suggest and send on the right. Only the
 	 * row wraps; the markup and its order stay what the phone's one row uses.
 	 */
-	@container conversation (min-width: 681px) {
+	@container conversation (min-width: 481px) {
 		.composer-card-shell {
 			border-radius: 18px;
 		}
@@ -906,7 +910,14 @@
 		}
 	}
 
+	/* Still floating, on the transcript's 12px here (see above). */
 	@container conversation (max-width: 680px) {
+		.composer {
+			padding-inline: 12px;
+		}
+	}
+
+	@container conversation (max-width: 480px) {
 		.composer {
 			position: relative;
 			bottom: auto;

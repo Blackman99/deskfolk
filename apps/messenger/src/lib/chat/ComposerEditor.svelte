@@ -241,7 +241,7 @@
 		line-height: 1;
 	}
 
-	@container conversation (max-width: 680px) {
+	@container conversation (max-width: 480px) {
 		:global(.composer) .composer-input {
 			font-size: 15px;
 			max-height: min(120px, 25dvh);

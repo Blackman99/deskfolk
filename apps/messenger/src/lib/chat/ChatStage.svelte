@@ -1227,11 +1227,19 @@
 	 * needs — no text selection on long-press, no hover pill — still asks the window.
 	 */
 	@container conversation (max-width: 680px) {
-		/* The composer docks below the stream here instead of floating over it (see Composer), so
-		   the transcript needs no room kept for it. */
 		.stream-inner,
 		.has-message-index .stream-inner {
-			padding: 14px 12px 16px;
+			padding-top: 14px;
+			padding-inline: 12px;
+		}
+	}
+
+	@container conversation (max-width: 480px) {
+		/* The composer docks below the stream here instead of floating over it (see Composer), so
+		   the transcript needs no room kept for it. Up to 680px it still floats, and keeps its room. */
+		.stream-inner,
+		.has-message-index .stream-inner {
+			padding-bottom: 16px;
 		}
 	}
 

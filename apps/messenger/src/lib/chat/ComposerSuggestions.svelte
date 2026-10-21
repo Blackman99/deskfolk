@@ -140,7 +140,7 @@
 		color: var(--accent);
 	}
 
-	@container conversation (max-width: 680px) {
+	@container conversation (max-width: 480px) {
 		.suggest-scroll {
 			flex: 1;
 			padding: 8px 10px 2px;

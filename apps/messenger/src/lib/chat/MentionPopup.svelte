@@ -155,7 +155,7 @@
 		font-size: 14px;
 	}
 
-	@container conversation (max-width: 680px) {
+	@container conversation (max-width: 480px) {
 		/* Clear of the bar's top edge, which it used to overlap by the card's rounding. */
 		.mention-autocomplete-popup {
 			bottom: calc(100% + 6px);

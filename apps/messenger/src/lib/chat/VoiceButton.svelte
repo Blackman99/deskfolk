@@ -110,7 +110,7 @@
 		}
 	}
 
-	@container conversation (max-width: 680px) {
+	@container conversation (max-width: 480px) {
 		@media (pointer: coarse) {
 			.voice-btn {
 				width: 40px;
