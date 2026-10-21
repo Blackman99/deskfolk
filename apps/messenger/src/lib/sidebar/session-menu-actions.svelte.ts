@@ -103,10 +103,13 @@ export class ShellSessionMenu {
     return true;
   };
 
-  /** A project session's task map (ADR 0096), in a pane; there is no page of it on a phone yet. */
+  /**
+   * The row's task map, in a pane: a project session's agent (ADR 0096) or a conversation's Bots
+   * (ADR 0097). There is no page of it on a phone yet.
+   */
   handleMenuShowMap = (session: SessionSummary): void => {
     const runtime = this.getRuntime();
-    if (session.kind !== "project") return;
+    if (isFileDropSession(session)) return;
     runtime.paneOpener?.({ kind: "map", sessionId: session.id });
   };
 
