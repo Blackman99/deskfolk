@@ -570,7 +570,8 @@
 	/* Its own stacking context: the HUD's and the plates' z-indexes order the map's layers, never the app's dialogs over it. */
 	.taskmap { position: absolute; inset: 0; isolation: isolate; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(220px, 1fr) auto minmax(120px, 38%); overflow-y: auto; background: var(--ground); color: var(--ink); }
 	.taskmap.is-wide { grid-template-columns: minmax(0, 1fr) 300px; grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; }
-	.tm-stage { position: relative; min-height: 260px; overflow: hidden; }
+	/* The town's layers stack inside it: the head's job list opens over the town, not under its hint and plates. */
+	.tm-stage { position: relative; isolation: isolate; min-height: 260px; overflow: hidden; }
 	.taskmap.is-wide .tm-stage { grid-column: 1; grid-row: 1; }
 	.taskmap.is-wide .tm-clock { grid-column: 1; grid-row: 2; }
 	.taskmap.is-wide .tm-aside { grid-column: 2; grid-row: 1 / span 2; overflow-y: auto; border-left: 1px solid var(--line-subtle); }

@@ -17,6 +17,31 @@ async function measure(page: Page): Promise<{ rows: number; clipped: boolean; ov
   });
 }
 
+/** With the switcher's list open, whatever of the town is painted over it where the two overlap. */
+async function overTheList(page: Page): Promise<string[]> {
+  await page.locator('.tm-head .trace-title-trigger').click();
+  await expect(page.locator('.trace-switcher-popover')).toBeVisible();
+  return page.evaluate(() => {
+    const list = document.querySelector<HTMLElement>('.trace-switcher-popover')!.getBoundingClientRect();
+    const stage = document.querySelector<HTMLElement>('.tm-stage')!.getBoundingClientRect();
+    // The hint, the badges and the ground let the pointer through; hit-test them all so a point answers what is painted on top.
+    const style = document.createElement('style');
+    style.textContent = '.tm-stage, .tm-stage * { pointer-events: auto !important; }';
+    document.head.append(style);
+    const left = Math.max(list.left, stage.left), right = Math.min(list.right, stage.right);
+    const top = Math.max(list.top, stage.top), bottom = Math.min(list.bottom, stage.bottom);
+    const over = new Set<string>();
+    for (let i = 1; i < 12; i += 1) {
+      for (let j = 1; j < 6; j += 1) {
+        const el = document.elementFromPoint(left + ((right - left) * i) / 12, top + ((bottom - top) * j) / 6);
+        if (el && !el.closest('.trace-switcher-popover')) over.add(el.closest('[class]')?.className.toString().split(' ')[0] ?? el.tagName);
+      }
+    }
+    style.remove();
+    return [...over];
+  });
+}
+
 async function open(page: Page, baseURL: string | undefined, story: string): Promise<void> {
   await page.goto(`${baseURL}index.html?story=${story}`);
   await expect(page.locator('.tm-head h2')).toBeVisible({ timeout: 5000 });
@@ -29,12 +54,15 @@ async function headHolds(page: Page, baseURL: string | undefined): Promise<void>
   expect(await measure(page)).toEqual({ rows: 1, clipped: false, overflows: false });
   await open(page, baseURL, 'taskmap-head');
   expect(await measure(page)).toEqual({ rows: 1, clipped: false, overflows: false });
-  // No room: still one row, clipped, the count kept in the head.
+  // The list opens over the town: its hint and its plates under it.
+  expect(await overTheList(page)).toEqual([]);
+  // No room: still one row, clipped, the count kept in the head; the list still over the town.
   await open(page, baseURL, 'taskmap-head-narrow');
   expect(await measure(page)).toEqual({ rows: 1, clipped: true, overflows: false });
+  expect(await overTheList(page)).toEqual([]);
 }
 
-test('the task map head: one row for its title, clipped only when the row runs out', async ({ page, baseURL }) => {
+test('the task map head: one row for its title, and its list of jobs opens over the town', async ({ page, baseURL }) => {
   await headHolds(page, baseURL);
 });
 

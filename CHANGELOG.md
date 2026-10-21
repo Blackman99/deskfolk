@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A task map's list of plans opens over the town
+
+- On a task map, the list its title opens to switch plans opened under the town's hint and plates, so the hint covered the plan at the top of it. The list now opens over the town.
+
 ### A task map's title stays on one row
 
 - On a task map over a plan, the plan's title in the head wrapped onto a second row with room to spare, set in a large default heading. It is now set as in the flow's header, on one row, and clipped with an ellipsis only when the head runs out of room. The flow's switcher had held every title 12px short of its own width, which in the flow's header clipped a long title that early.
