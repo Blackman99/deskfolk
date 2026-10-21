@@ -156,6 +156,15 @@ describe("assignBadges", () => {
     expect(four.map((x) => x.side)).toEqual([-1, -1, 1, 1]);
   });
 
+  test("a badge that would reach past the town's left edge grows right instead", () => {
+    const a = [actor(0, { x: 10 }), actor(1, { x: 400 })];
+    assignBadges(a, 1, 0);
+    expect(a.map((x) => x.side)).toEqual([1, 1]);
+    const roomy = [actor(0, { x: 300 }), actor(1, { x: 600 })];
+    assignBadges(roomy, 1, 0);
+    expect(roomy.map((x) => x.side)).toEqual([-1, 1]);
+  });
+
   test("a tie in x goes by the character's index", () => {
     const a = [actor(1, { x: 100 }), actor(0, { x: 100 })];
     assignBadges(a, 1);

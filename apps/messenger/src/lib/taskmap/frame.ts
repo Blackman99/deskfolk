@@ -267,7 +267,8 @@ export function buildFrame(input: FrameInput): Frame {
       motion: MOTION[status], step: s.j + 1, fails, side: 1, lift: 0, badgeTop: Math.round(4 + (1 - scale) * 60), scale,
     };
   });
-  assignBadges(actors, zoom);
+  const ground = buildGround(phi);
+  assignBadges(actors, zoom, ground.box.x0);
 
   const blocks: FrameBlock[] = D.map((d, q) => {
     const [px, py] = spot[q]!;
@@ -285,7 +286,6 @@ export function buildFrame(input: FrameInput): Frame {
   });
   layoutPlates(blocks, actors, spot, zoom);
 
-  const ground = buildGround(phi);
   const tint = (c: string) => {
     let x = c;
     if (L.w) x = mix(x, "#ffb070", 0.12 * L.w);

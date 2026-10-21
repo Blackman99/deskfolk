@@ -63,14 +63,18 @@ export function badgeBox(a: BadgeActor, zoom: number): LabelBox {
 
 /**
  * Badges: left half grow left, right half grow right, the middle one centred; a badge that would cover
- * another rises a level, up to two. Sets `side` and `lift` on every actor (a character not on the map gets 1 and 0).
+ * another rises a level, up to two. One that would reach past `minX` (the town's left edge, where the
+ * view clips it) grows right instead. Sets `side` and `lift` on every actor (a character not on the map
+ * gets 1 and 0).
  */
-export function assignBadges(actors: ReadonlyArray<PlacedActor>, zoom: number): void {
+export function assignBadges(actors: ReadonlyArray<PlacedActor>, zoom: number, minX = -Infinity): void {
   const shown = actors.filter((a) => a.present).sort((a, c) => a.x - c.x || a.b - c.b);
   shown.forEach((a, j) => {
     const m = shown.length;
     const mid = (m - 1) / 2;
     a.side = m === 1 ? 1 : j < mid ? -1 : j > mid ? 1 : 0;
+    a.lift = 0;
+    if (a.side <= 0 && badgeBox(a, zoom)[0] < minX) a.side = 1;
   });
   const taken: LabelBox[] = [];
   for (const a of shown) {
