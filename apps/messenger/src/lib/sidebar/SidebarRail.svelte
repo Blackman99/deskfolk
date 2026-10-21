@@ -2,6 +2,7 @@
 	import Icon from '../Icon.svelte';
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
+	import AgentLogo from '../settings/AgentLogo.svelte';
 	import BrandMark from '../BrandMark.svelte';
 	import { dragRegion } from '../window-chrome.ts';
 	import type { Copy } from '../copy.ts';
@@ -14,7 +15,7 @@
 	import { botWorkStatus, sidebarStatus } from './session-status.ts';
 	import { directElsewhere } from './bot-elsewhere.ts';
 	import { sessionTitle } from './session-title.ts';
-	import { isLiveRun, liveRunSessionIds } from './project-groups.ts';
+	import { isLiveRun, liveRunSessionIds, projectAgentOf } from './project-groups.ts';
 	import { sessionUnreadCount, unreadBadge } from './unread.ts';
 	import ToolsMenu from './ToolsMenu.svelte';
 	import { usageWidget } from '../usage/usage-widget.svelte.ts';
@@ -239,10 +240,12 @@
 							</span>
 						</span>
 					{:else if session.kind === 'project'}
-						<span class="row-avatar size-md" aria-hidden="true">
-							<span class="row-avatar-bot rail-file-drop">
-								<Icon name="folder" />
-							</span>
+						<!-- Its agent's mark, as its row in the open sidebar wears it; the dot while the agent works. -->
+						<span class="row-avatar size-md rail-agent" aria-hidden="true">
+							<AgentLogo runner={projectAgentOf(session)} size={40} />
+							{#if isLiveRun(snapshot.agentRuns[session.id])}
+								<span class="avatar-status-dot is-busy"></span>
+							{/if}
 						</span>
 					{:else}
 						<SessionAvatar {session} bots={botsById} botStatus={botStatusOf} />
@@ -505,6 +508,10 @@
 		background: var(--accent-tint);
 		color: var(--accent);
 		border-color: transparent;
+	}
+
+	.rail-agent :global(.agent-logo) {
+		border-radius: var(--radius-bot);
 	}
 
 	.rail-badge {

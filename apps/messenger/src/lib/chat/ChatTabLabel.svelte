@@ -2,16 +2,18 @@
 	import Icon from '../Icon.svelte';
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
+	import AgentLogo from '../settings/AgentLogo.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { dirDisplay, isLiveRun } from '../sidebar/project-groups.ts';
+	import { dirDisplay, isLiveRun, projectAgentOf } from '../sidebar/project-groups.ts';
 	import { classifySession, isFileDropSession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { botWorkStatus, sidebarStatus } from '../sidebar/session-status.ts';
 	import { sessionPresence } from '../sidebar/session-title.ts';
 
 	/**
 	 * A conversation's tab, which is also its header: the avatar and its status dot sit before
-	 * the name, and the header's second line is the tooltip. The picture is marked `wb-tab-icon`.
+	 * the name, and the header's second line is the tooltip; a project session's avatar is its
+	 * agent's mark. The picture is marked `wb-tab-icon`.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -71,8 +73,8 @@
 			<Icon name="file" size={12} />
 		</span>
 	{:else if kind === 'project'}
-		<span class="wb-tab-icon chat-tab-avatar is-file" aria-hidden="true">
-			<Icon name="folder" size={12} />
+		<span class="wb-tab-icon chat-tab-avatar is-agent" aria-hidden="true">
+			<AgentLogo runner={projectAgentOf(session)} size={20} />
 			{#if isLiveRun(snapshot.agentRuns[session.id])}
 				<span class="avatar-status-dot is-busy"></span>
 			{/if}
@@ -117,6 +119,11 @@
 		border-radius: 50%;
 		background: var(--accent-tint);
 		color: var(--accent);
+	}
+
+	/* A Bot's shape, the rounded square, as a Bot's face is at this size. */
+	.chat-tab-avatar.is-agent :global(.agent-logo) {
+		border-radius: var(--radius-bot);
 	}
 
 	/* Rung in whatever the tab is painted, so the dot and the stacked faces read as cut out. */

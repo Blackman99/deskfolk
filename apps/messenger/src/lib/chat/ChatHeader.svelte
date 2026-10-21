@@ -3,6 +3,7 @@
 	import BottomSheet from '../BottomSheet.svelte';
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
+	import AgentLogo from '../settings/AgentLogo.svelte';
 	import FolkAvatar from '../FolkAvatar.svelte';
 	import { avatarSrc, botAvatarColor, isFolkAvatar } from '../avatar.ts';
 	import { folkMotion } from '../folk-motion.ts';
@@ -13,7 +14,7 @@
 	import { classifySession, isFileDropSession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { botWorkStatus, isWorkingStatus, sidebarStatus } from '../sidebar/session-status.ts';
 	import { sessionPresence, sessionTitle } from '../sidebar/session-title.ts';
-	import { dirDisplay } from '../sidebar/project-groups.ts';
+	import { dirDisplay, projectAgentOf } from '../sidebar/project-groups.ts';
 	import BotElsewhere from './BotElsewhere.svelte';
 
 	type Props = {
@@ -156,8 +157,8 @@
 				</div>
 			{:else if projectSession}
 				<div class="top-file-identity" data-project-identity>
-					<span class="top-avatar file-drop-mark" aria-hidden="true">
-						<Icon name="folder" size={20} />
+					<span class="top-agent" aria-hidden="true">
+						<AgentLogo runner={projectAgentOf(projectSession)} size={36} />
 					</span>
 					<span class="top-titles flex flex-col min-w-0 gap-1">
 						<span class="top-title-text" role="heading" aria-level="1">{titleOf(projectSession)}{archivedSuffix(projectSession)}</span>
@@ -350,6 +351,15 @@
 		background: var(--accent-tint);
 		color: var(--accent);
 		border-color: transparent;
+	}
+
+	.top-agent {
+		display: inline-flex;
+		flex-shrink: 0;
+	}
+
+	.top-agent :global(.agent-logo) {
+		border-radius: var(--radius-bot);
 	}
 
 	.setup-guide-pill {

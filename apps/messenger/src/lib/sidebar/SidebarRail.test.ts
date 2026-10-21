@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { flushSync } from "svelte";
 import { FILE_DROP_SESSION_ID, type SessionSummary } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
-import { aBot, aBotDirect, aDirect, aGroup, aMessage, anApproval, aTurn, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aBotDirect, aDirect, aGroup, aMessage, anAgentRun, anApproval, aProjectSession, aTurn, fakeRuntime } from "../test-fixtures.ts";
 import { spendCopyFor } from "../spend/spend-copy.ts";
 import { updateChecker } from "../update-checker.svelte.ts";
 import { click, press, render } from "../test-render.ts";
@@ -98,6 +98,21 @@ test("a pinned file drop sits with the pins, still drawn as the file drop", () =
   // Pins, groups, you↔Bot: the file drop's own section is gone.
   expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(2);
   expect(item(view.host, FILE_DROP_SESSION_ID)?.querySelector(".rail-file-drop")).not.toBeNull();
+  view.close();
+});
+
+test("a project session folded into the rail wears its agent's mark, with the dot while the agent works", () => {
+  const runtime = fakeRuntime({ sessions: [aProjectSession()], agentRuns: { "proj-1": anAgentRun() } });
+  const noop = () => {};
+  const view = render(SidebarRail, {
+    runtime, t, pinnedSessionIds: [], contextMenuSessionId: null, workspaceOpen: false, onOpenContextMenu: noop, onExpand: noop,
+    onToggleWorkspace: noop, onOpenRoutines: noop, onOpenSpend: noop, workbench: true, onNewTerminal: noop, onOpenArchived: noop,
+    onOpenSettings: noop, onOpenSearch: noop,
+  });
+  const avatar = item(view.host, "proj-1")?.querySelector(".row-avatar");
+  expect(avatar?.querySelector('[data-agent-logo="claude_code"]')).not.toBeNull();
+  expect(avatar?.querySelector(".avatar-status-dot.is-busy")).not.toBeNull();
+  expect(avatar?.querySelector(".rail-file-drop")).toBeNull();
   view.close();
 });
 

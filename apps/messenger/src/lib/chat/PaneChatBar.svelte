@@ -8,10 +8,11 @@
 	 */
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
+	import AgentLogo from '../settings/AgentLogo.svelte';
 	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { dirDisplay, isLiveRun } from '../sidebar/project-groups.ts';
+	import { dirDisplay, isLiveRun, projectAgentOf } from '../sidebar/project-groups.ts';
 	import { classifySession, isFileDropSession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { botWorkStatus, sidebarStatus } from '../sidebar/session-status.ts';
 	import { sessionPresence, sessionTitle } from '../sidebar/session-title.ts';
@@ -90,7 +91,7 @@
 			onclick={() => settingsAction?.run()}
 		>
 			{#if kind === 'project'}
-				<span class="bar-folder" aria-hidden="true"><Icon name="folder" size={16} /></span>
+				<span class="bar-agent" aria-hidden="true"><AgentLogo runner={projectAgentOf(session)} size={32} /></span>
 			{:else}
 				<SessionAvatar {session} bots={botsById} size="top" botStatus={botStatusOf} />
 			{/if}
@@ -194,15 +195,13 @@
 		box-shadow: var(--focus-ring);
 	}
 
-	.bar-folder {
+	.bar-agent {
 		flex: none;
-		display: grid;
-		place-items: center;
-		width: 32px;
-		height: 32px;
-		border-radius: 50%;
-		background: var(--accent-tint);
-		color: var(--accent);
+		display: inline-flex;
+	}
+
+	.bar-agent :global(.agent-logo) {
+		border-radius: var(--radius-bot);
 	}
 
 	.bar-titles {

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { FILE_DROP_SESSION_ID, USER_MEMBER } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
-import { aBot, aDirect, aGroup, aTurn, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aDirect, aGroup, anAgentRun, aProjectSession, aTurn, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { render } from "../test-render.ts";
 import ChatTabLabel from "./ChatTabLabel.svelte";
@@ -66,6 +66,20 @@ test("the file conversation's tab is its file mark and hint", () => {
     expect(host.querySelector(".wb-tab-icon.is-file svg")).not.toBeNull();
     expect(host.querySelector(".row-avatar")).toBeNull();
     expect(host.querySelector(".chat-tab")?.getAttribute("title")).toBe(`视频组\n${t.sidebar.fileDropHint}`);
+  } finally {
+    close();
+  }
+});
+
+test("a project session's tab is its agent's mark, with the dot while the agent works", () => {
+  const session = aProjectSession();
+  const runtime = reactive(fakeRuntime({ sessions: [session], agentRuns: { "proj-1": anAgentRun() } }));
+  const { host, close } = render(ChatTabLabel, { runtime, t, session, title: "登录修复" });
+  try {
+    const picture = host.querySelector(".wb-tab-icon");
+    expect(picture?.querySelector('[data-agent-logo="claude_code"]')).not.toBeNull();
+    expect(picture?.querySelector(":scope > .avatar-status-dot.is-busy")).not.toBeNull();
+    expect(picture?.classList.contains("is-file")).toBe(false);
   } finally {
     close();
   }
