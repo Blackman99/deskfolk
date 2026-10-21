@@ -18,31 +18,34 @@ function placeOk(place: unknown): place is AgentToolPlace {
 }
 
 /**
- * The project-session tool calls this window has seen on the event stream, by session and call id
- * (ADR 0095's `ToolFrame.agent_run`). Each call is its own entry, so a subagent's calls running
- * beside the agent's each get their end; nothing here survives a reload, which is what the replay is for.
+ * The tool calls this window has seen on the event stream for the task map, by session and call id:
+ * a project session's (ADR 0095's `ToolFrame.agent_run`) and a Bot's (ADR 0097's `bot_call`). Each
+ * call is its own entry, so a subagent's or another Bot's calls running beside each other each get
+ * their end; nothing here survives a reload, which is what the replay is for.
  */
 export class AgentCallLog {
   revision = $state(0);
   readonly #bySession = new Map<string, Map<string, LiveCall>>();
 
-  /** Take one tool frame; a frame that is not a project session's is ignored. */
+  /** Take one tool frame; a frame that says nothing of where its call works is ignored. */
   applyTool(frame: ToolFrame): void {
-    const info = frame.agent_run;
+    const info = frame.agent_run ?? frame.bot_call;
     if (!info || typeof info.session_id !== "string" || !placeOk(info.place)) return;
+    const actor = frame.agent_run ? frame.agent_run.agent_id : frame.bot_call!.bot_id;
     let calls = this.#bySession.get(info.session_id);
     if (!calls) this.#bySession.set(info.session_id, (calls = new Map()));
     const at = Date.parse(info.at);
     const seen = calls.get(frame.id);
     if (frame.phase === "started") {
       if (seen) return;
-      calls.set(frame.id, { id: frame.id, sessionId: info.session_id, tool: frame.name, info, startedAt: Number.isFinite(at) ? at : Date.now(), running: true, ok: null, durationMs: null });
+      calls.set(frame.id, { id: frame.id, sessionId: info.session_id, actor, tool: frame.name, info, startedAt: Number.isFinite(at) ? at : Date.now(), running: true, ok: null, durationMs: null });
       if (calls.size > KEEP) calls.delete(calls.keys().next().value!);
     } else {
       const started = seen?.startedAt ?? (Number.isFinite(at) ? at - (frame.duration_ms ?? 0) : Date.now());
       calls.set(frame.id, {
         id: frame.id,
         sessionId: info.session_id,
+        actor: seen?.actor ?? actor,
         tool: frame.name,
         info: { ...(seen?.info ?? info), ...(info.model ? { model: info.model } : {}) },
         startedAt: started,

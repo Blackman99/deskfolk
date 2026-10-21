@@ -19,19 +19,19 @@ export type Idle = { v0: number; v1: number; t0: number; t1: number };
 /** What it was asked: what you said, and how you answered its questions. */
 export type Quest =
   | { kind: "say"; at: number; v: number; text: string }
-  | { kind: "answer"; at: number; v: number; askedAt: number; questions: string[]; answers: string[] };
+  | { kind: "answer"; at: number; v: number; askedAt: number; questions: string[]; answers: string[]; by: number };
 
 /** Moments worth a look, described rather than judged; the copy words them. */
 export type Moment =
   | { kind: "spawn"; who: number; v: number; v1: number; places: number[]; from: number; to: number; steps: number; model: string | null }
-  | { kind: "ask"; who: 0; v: number; v1: number; places: number[]; askedAt: number; waitMs: number; answers: string[] }
+  | { kind: "ask"; who: number; v: number; v1: number; places: number[]; askedAt: number; waitMs: number; answers: string[] }
   | { kind: "say"; who: 0; v: number; v1: number; places: number[]; at: number; text: string }
   | { kind: "idle"; who: -1; v: number; v1: number; places: number[]; t0: number; t1: number; waitingForYou: boolean }
   | { kind: "reject"; who: number; v: number; v1: number; places: number[]; at: number; source: string | null; reason: string | null; waitMs: number }
   | { kind: "approve"; who: number; v: number; v1: number; places: number[]; at: number }
   | { kind: "fail"; who: -1; v: number; v1: number; places: number[]; count: number; byWho: [number, number][] }
   | { kind: "long"; who: number; v: number; v1: number; places: number[]; tool: string; action: AgentShellAction | null; ms: number; file: string | null }
-  | { kind: "loop"; who: 0; v: number; v1: number; places: [number, number]; from: number; to: number; trips: number };
+  | { kind: "loop"; who: number; v: number; v1: number; places: [number, number]; from: number; to: number; trips: number };
 
 export type Timeline = {
   t0: number;
@@ -88,18 +88,20 @@ export function buildTimeline(data: MapData, map: DistrictMap, track = 996, lane
     return v[v.length - 1]!;
   };
 
+  // A Bot's question is its own; a project session's are the agent's.
+  const askedBy = (botId: string | undefined) => Math.max(0, botId ? data.characters.findIndex((c) => c.key === botId) : 0);
   const quests: Quest[] = data.said.map((line): Quest => {
     const at = Date.parse(line.at);
     if (line.kind === "say") return { kind: "say", at, v: vOf(at), text: line.text };
-    return { kind: "answer", at, v: vOf(at), askedAt: Date.parse(line.asked_at), questions: line.questions, answers: line.answers };
+    return { kind: "answer", at, v: vOf(at), askedAt: Date.parse(line.asked_at), questions: line.questions, answers: line.answers, by: askedBy(line.bot_id) };
   }).filter((q) => Number.isFinite(q.at)).sort((a, b) => a.at - b.at);
 
   const root = map.indexOf({ zone: "none" });
   const moments: Moment[] = [];
 
-  // Subagents: when each went out, how long and where it mostly worked.
+  // Subagents: when each went out, how long and where it mostly worked. A lead never goes out.
   data.characters.forEach((ch, who) => {
-    if (who === 0) return;
+    if (ch.lead) return;
     const mine = calls.map((c, i) => [c, i] as const).filter(([c]) => c.who === who);
     if (!mine.length) return;
     const top = mode(mine.map(([, i]) => placeOf[i]!));
@@ -109,7 +111,7 @@ export function buildTimeline(data: MapData, map: DistrictMap, track = 996, lane
 
   // Its questions and how long they waited on you; what you said after the first line.
   for (const q of quests) {
-    if (q.kind === "answer") moments.push({ kind: "ask", who: 0, v: vOf(q.askedAt), v1: q.v, places: [root], askedAt: q.askedAt, waitMs: Math.max(0, q.at - q.askedAt), answers: q.answers });
+    if (q.kind === "answer") moments.push({ kind: "ask", who: q.by, v: vOf(q.askedAt), v1: q.v, places: [root], askedAt: q.askedAt, waitMs: Math.max(0, q.at - q.askedAt), answers: q.answers });
     else if (q !== quests[0]) moments.push({ kind: "say", who: 0, v: q.v, v1: q.v, places: [root], at: q.at, text: q.text });
   }
 
@@ -139,7 +141,7 @@ export function buildTimeline(data: MapData, map: DistrictMap, track = 996, lane
     .slice(0, 2)
     .forEach(([c, i]) => moments.push({ kind: "long", who: c.who, v: v[i]!, v1: v[i]!, places: [placeOf[i]!], tool: c.tool, action: c.action ?? null, ms: c.durationMs, file: c.file }));
 
-  moments.push(...loopsOf(calls, placeOf, v));
+  data.characters.forEach((ch, who) => { if (ch.lead) moments.push(...loopsOf(calls, placeOf, v, who)); });
   moments.sort((a, b) => a.v - b.v);
 
   const n = Math.max(1, data.characters.length);
@@ -157,11 +159,11 @@ export function buildTimeline(data: MapData, map: DistrictMap, track = 996, lane
   return { t0, total, v, placeOf, idles, quests, moments, lanes, failD, laneH };
 }
 
-/** The agent itself going back and forth between two places, five or more switches each within ten minutes. */
-function loopsOf(calls: MapData["calls"], placeOf: number[], v: number[]): Moment[] {
+/** A lead (the agent, or a Bot) going back and forth between two places, five or more switches each within ten minutes. */
+function loopsOf(calls: MapData["calls"], placeOf: number[], v: number[], who: number): Moment[] {
   const hops: [number, number][] = [];
   calls.forEach((c, i) => {
-    if (c.who === 0 && (!hops.length || hops[hops.length - 1]![1] !== placeOf[i])) hops.push([i, placeOf[i]!]);
+    if (c.who === who && (!hops.length || hops[hops.length - 1]![1] !== placeOf[i])) hops.push([i, placeOf[i]!]);
   });
   const out: Moment[] = [];
   let i = 0;
@@ -170,7 +172,7 @@ function loopsOf(calls: MapData["calls"], placeOf: number[], v: number[]): Momen
     let j = i + 1;
     while (j + 1 < hops.length && hops[j + 1]![1] === ((j + 1 - i) % 2 === 0 ? a : b) && calls[hops[j + 1]![0]]!.at - calls[hops[j]![0]]!.at < 600_000) j++;
     if (j - i >= 5) {
-      out.push({ kind: "loop", who: 0, v: v[hops[i]![0]]!, v1: v[hops[j]![0]]!, places: [a, b], from: calls[hops[i]![0]]!.at, to: calls[hops[j]![0]]!.at, trips: Math.floor((j - i + 1) / 2) });
+      out.push({ kind: "loop", who, v: v[hops[i]![0]]!, v1: v[hops[j]![0]]!, places: [a, b], from: calls[hops[i]![0]]!.at, to: calls[hops[j]![0]]!.at, trips: Math.floor((j - i + 1) / 2) });
       i = j;
     } else i++;
   }

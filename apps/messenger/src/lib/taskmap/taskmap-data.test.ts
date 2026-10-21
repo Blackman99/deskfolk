@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
-import type { AgentReplay, AgentReplayCall, AgentToolPlace, ToolFrame } from "@real-bot/protocol";
+import type { AgentReplay, AgentReplayCall, AgentToolPlace, SessionReplay, ToolFrame } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { buildDistricts } from "./districts.ts";
-import { placeName, statusText } from "./frame.ts";
+import { buildFrame, placeName, statusText } from "./frame.ts";
 import { AgentCallLog } from "./live.svelte.ts";
-import { fromAgentReplay, mergeLive } from "./map-data.ts";
+import { fromAgentReplay, fromSessionReplay, mergeLive } from "./map-data.ts";
 import { modelFamily, modelLabel } from "./model-label.ts";
 import { LONG_GAP, buildTimeline } from "./timeline.ts";
 
@@ -50,9 +50,9 @@ test("a replay becomes map data: calls oldest first, the agent first, subagents 
 test("live calls the replay does not hold are added; a subagent first seen live gets a character", () => {
   const data = fromAgentReplay(aReplay([aCall({ s: 1, id: "toolu_a" })]), "claude_code");
   const merged = mergeLive(data, [
-    { id: "toolu_a", sessionId: "proj-1", tool: "Read", info: { session_id: "proj-1", agent_id: null, place: project("x"), model: null, at: iso(1) }, startedAt: T0 + 1000, running: false, ok: true, durationMs: 1 },
-    { id: "toolu_b", sessionId: "proj-1", tool: "Bash", info: { session_id: "proj-1", agent_id: "agent-new", place: { zone: "check", check: "test" }, model: "claude-sonnet-5-5", at: iso(5) }, startedAt: T0 + 5000, running: true, ok: null, durationMs: null },
-    { id: "toolu_c", sessionId: "other", tool: "Bash", info: { session_id: "other", agent_id: null, place: { zone: "git" }, model: null, at: iso(6) }, startedAt: T0 + 6000, running: false, ok: true, durationMs: 1 },
+    { id: "toolu_a", sessionId: "proj-1", actor: null, tool: "Read", info: { session_id: "proj-1", agent_id: null, place: project("x"), model: null, at: iso(1) }, startedAt: T0 + 1000, running: false, ok: true, durationMs: 1 },
+    { id: "toolu_b", sessionId: "proj-1", actor: "agent-new", tool: "Bash", info: { session_id: "proj-1", agent_id: "agent-new", place: { zone: "check", check: "test" }, model: "claude-sonnet-5-5", at: iso(5) }, startedAt: T0 + 5000, running: true, ok: null, durationMs: null },
+    { id: "toolu_c", sessionId: "other", actor: null, tool: "Bash", info: { session_id: "other", agent_id: null, place: { zone: "git" }, model: null, at: iso(6) }, startedAt: T0 + 6000, running: false, ok: true, durationMs: 1 },
   ]);
   expect(merged.calls.map((c) => c.id)).toEqual(["toolu_a", "toolu_b"]);
   expect(merged.characters.map((c) => c.key)).toEqual(["main", "agent-new"]);
@@ -205,4 +205,39 @@ test("a character that stopped under a minute ago has just stopped, later for ho
   const t = copyFor("zh").taskmap;
   expect(statusText({ status: "idle", idleMin: 0.1 }, t)).toBe(t.status.rested);
   expect(statusText({ status: "idle", idleMin: 27 }, t)).toBe(t.status.idle(t.minutes(27)));
+});
+
+function aSessionReplay(): SessionReplay {
+  const c = (id: string, bot: string, sec: number, path: string) => ({ id, at: iso(sec), bot_id: bot, turn_id: "t", task_id: null, tool: "write_file", place: project(path), model: "deepseek-chat", file: null, ok: true, duration_ms: 100, decision: null });
+  return {
+    session_id: "g-1", bots: ["b-1", "b-2"], truncated: false,
+    calls: [c("c3", "b-2", 30, "jobs/b/x.md"), c("c1", "b-1", 10, "jobs/a/x.md"), c("c2", "b-1", 20, "jobs/a/y.md")],
+    said: [{ kind: "answer", at: iso(40), asked_at: iso(35), questions: ["几个？"], answers: ["三个"], bot_id: "b-2" }],
+  };
+}
+
+test("a Bot conversation's replay: every Bot a lead in the order it worked, a question its own Bot's", () => {
+  const data = fromSessionReplay(aSessionReplay());
+  expect(data.source).toEqual({ kind: "bots" });
+  expect(data.characters.map((c) => [c.key, c.lead, c.calls])).toEqual([["b-1", true, 2], ["b-2", true, 1]]);
+  expect(data.calls.map((c) => [c.id, c.who])).toEqual([["c1", 0], ["c2", 0], ["c3", 1]]);
+  const map = buildDistricts(data.calls.map((c) => c.place));
+  const tl = buildTimeline(data, map);
+  expect(tl.moments.filter((m) => m.kind === "spawn")).toEqual([]);
+  expect(tl.moments.find((m) => m.kind === "ask")?.who).toBe(1);
+  // A Bot that has not worked yet waits at the root; every Bot is drawn full size, by its own name.
+  const t = copyFor("zh").taskmap;
+  const frame = buildFrame({ data, map, tl, v: 0, phi: 0, zoom: 1, now: 0, speed: 4, light: { w: 0, n: 0 } as never, cache: new Map(), walk: { lastTile: [], until: [] }, hover: -1, sel: -1, t, names: ["导演", "审片员"] });
+  expect(frame.actors.map((a) => [a.short, a.lead, a.present, a.scale])).toEqual([["导演", true, true, 1], ["审片员", true, true, 1]]);
+  expect(frame.actors[1]!.tile).toBe(map.indexOf({ zone: "none" }));
+});
+
+test("a Bot's live call is logged under its Bot, and a Bot first seen live joins as a lead", () => {
+  const log = new AgentCallLog();
+  log.applyTool({ type: "tool", turn_id: "t", id: "c9", name: "shell", phase: "started", bot_call: { session_id: "g-1", bot_id: "b-3", place: project("jobs/c"), model: "m", at: iso(50) } } as ToolFrame);
+  const [live] = log.callsOf("g-1");
+  expect(live!.actor).toBe("b-3");
+  const merged = mergeLive(fromSessionReplay(aSessionReplay()), log.callsOf("g-1"));
+  expect(merged.characters.map((c) => [c.key, c.lead])).toEqual([["b-1", true], ["b-2", true], ["b-3", true]]);
+  expect(merged.calls.at(-1)).toMatchObject({ id: "c9", who: 2, running: true });
 });

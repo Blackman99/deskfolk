@@ -14,16 +14,18 @@ type T = Copy["taskmap"];
 export type CharacterStatus = "work" | "walk" | "idle" | "fail" | "back" | "none";
 
 export type FrameActor = {
-  /** Index among the characters (0 is the agent). */
+  /** Index among the characters (0 is the agent, or the first Bot to work). */
   b: number;
   key: string;
+  /** On the map all along, full size: the agent, or a Bot. */
+  lead: boolean;
   short: string;
   /** What the subagent was sent to do; null for the agent. */
   description: string | null;
   x: number;
   y: number;
   z: number;
-  /** Standing on the map now: the agent always, a subagent while it is out. */
+  /** Standing on the map now: a lead always, a subagent while it is out. */
   present: boolean;
   walking: boolean;
   busy: boolean;
@@ -106,6 +108,8 @@ export type FrameInput = {
   hover: number;
   sel: number;
   t: T;
+  /** Each character's name where the data has one (a Bot's), in place of 主线 and 分身 N. */
+  names?: readonly (string | null)[];
 };
 
 /** A call's verb on a plate and a card, from its tool and what its command did. */
@@ -119,7 +123,14 @@ export function verbOf(call: Pick<MapCall, "tool" | "action" | "place">, t: T): 
     case "Agent": case "Task": return v.agent;
     case "AskUserQuestion": return v.ask;
     case "TodoWrite": return v.todo;
-    case "WebFetch": case "WebSearch": return v.web;
+    case "WebFetch": case "WebSearch": case "web": return v.web;
+    // A Bot's own tools (ADR 0097).
+    case "read_file": return v.readFile;
+    case "write_file": return v.write;
+    case "delete_file": return v.remove;
+    case "list_dir": case "list_annotations": return v.look;
+    case "ask_user": return v.ask;
+    case "send_message": return v.say;
   }
   if (call.place.zone === "check") return call.place.check === "typecheck" ? v.typecheck : v.test;
   if (call.place.zone === "service") return v.service;
@@ -211,10 +222,13 @@ export function buildFrame(input: FrameInput): Frame {
     const j = lastLE(byWho[b]!, idx, (x) => x);
     const i = j >= 0 ? byWho[b]![j]! : -1;
     const call = i >= 0 ? calls[i]! : null;
-    const out = b === 0 ? true : !!call && at <= (ch.lastAt ?? call.at) + 3000;
-    return { b, j, i, call, out, back: b > 0 && !!call && !out };
+    const out = ch.lead ? true : !!call && at <= (ch.lastAt ?? call.at) + 3000;
+    return { b, j, i, call, out, lead: ch.lead, back: !ch.lead && !!call && !out };
   });
-  const tileOf = (s: (typeof states)[number]) => (s.out && s.i >= 0 ? tl.placeOf[s.i]! : states[0] && states[0].i >= 0 ? tl.placeOf[states[0].i]! : 0);
+  // A lead that has not worked yet waits at the root; a subagent away is with the agent.
+  const root = map.indexOf({ zone: "none" });
+  const tileOf = (s: (typeof states)[number]) =>
+    s.out && s.i >= 0 ? tl.placeOf[s.i]! : s.lead ? root : states[0] && states[0].i >= 0 ? tl.placeOf[states[0].i]! : 0;
   const doors = new Map<number, number[]>();
   for (const s of states) if (s.out) doors.set(tileOf(s), [...(doors.get(tileOf(s)) ?? []), s.b]);
 
@@ -243,11 +257,11 @@ export function buildFrame(input: FrameInput): Frame {
     const [fx, fy] = proj(phi, d.gx + ax.front[0] * 0.47, d.gy + ax.front[1] * 0.47, d.island === "ext" ? LIFT : 0);
     let fails = 0;
     for (let q = 0; q <= s.j; q++) if (!calls[byWho[s.b]![q]!]!.ok) fails++;
-    const scale = s.b === 0 ? 1 : 0.78;
+    const scale = s.lead ? 1 : 0.78;
     return {
-      b: s.b, key: ch.key, short: s.b === 0 ? t.mainLane : t.subagent(s.b), description: ch.description,
-      x: Math.round(fx + off - 27.5), y: Math.round(fy - 59.5 + 1), z: 400 + (s.b === 0 ? 10 : s.b),
-      present: s.out && (s.b === 0 || !!call), walking, busy: s.out && !!call && !walking && idleMin <= 10,
+      b: s.b, key: ch.key, lead: s.lead, short: input.names?.[s.b] ?? (s.b === 0 ? t.mainLane : t.subagent(s.b)), description: ch.description,
+      x: Math.round(fx + off - 27.5), y: Math.round(fy - 59.5 + 1), z: 400 + (s.lead ? 10 + s.b : s.b),
+      present: s.out && (s.lead || !!call), walking, busy: s.out && !!call && !walking && idleMin <= 10,
       status, idleMin, verb: call ? verbOf(call, t) : "", file: call?.file ?? null, tile,
       model: call?.model ?? null, modelShort: modelLabel(call?.model), hasModel: !!call?.model, modelFamily: modelFamily(call?.model),
       motion: MOTION[status], step: s.j + 1, fails, side: 1, lift: 0, badgeTop: Math.round(4 + (1 - scale) * 60), scale,

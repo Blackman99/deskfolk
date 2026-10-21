@@ -23,7 +23,7 @@ export const zh = {
   verbs: {
     read: "读代码", edit: "改代码", write: "写文件", search: "搜索", test: "跑测试", typecheck: "类型检查",
     git: "git", script: "跑脚本", run: "执行命令", look: "翻阅", agent: "派出分身", ask: "问你", todo: "记待办", web: "查网页",
-    service: "调用服务",
+    service: "调用服务", readFile: "读文件", remove: "删文件", say: "发消息",
   },
   at: (place: string) => `在${place}`,
   ranBy: (agent: string, model: string) => (model ? `${agent} · ${model}` : agent),
@@ -69,6 +69,14 @@ export const zh = {
   },
   light: { day: "白天", golden: "黄昏", dusk: "入夜", night: "夜晚", dawn: "清晨" },
   note: "数据来自 Agent 自己的会话文件：每次工具调用的地点、模型和结果，不带命令和文件内容。时间轴已压缩，超过 15 分钟的空档各算 4 秒。",
+  /** A Bot conversation's map (ADR 0097): what reads differently from a project session's. */
+  bots: {
+    root: "工作区",
+    rootPath: "工作区根目录 · 发消息、提问、排任务",
+    empty: "这里还没有 Bot 用工具的记录。从这一版起，Bot 每用一次工具，地图上就多一步；之前的工作没有记下地点，画不出来。",
+    note: "数据来自应用记下的每次工具调用：地点、模型和结果，不带命令和文件内容；从这一版起才开始记。时间轴已压缩，超过 15 分钟的空档各算 4 秒。",
+    truncated: (n: number) => `只画了最近 ${n} 步。`,
+  },
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -93,7 +101,7 @@ export const en: CopyShape<typeof zh> = {
   verbs: {
     read: "reading", edit: "editing", write: "writing", search: "searching", test: "running tests", typecheck: "type-checking",
     git: "git", script: "running a script", run: "running a command", look: "looking through", agent: "sending a subagent", ask: "asking you", todo: "noting to-dos", web: "fetching a page",
-    service: "calling a service",
+    service: "calling a service", readFile: "reading a file", remove: "deleting a file", say: "sending a message",
   },
   at: (place: string) => `At ${place}`,
   ranBy: (agent: string, model: string) => (model ? `${agent} · ${model}` : agent),
@@ -139,4 +147,11 @@ export const en: CopyShape<typeof zh> = {
   },
   light: { day: "Day", golden: "Golden hour", dusk: "Dusk", night: "Night", dawn: "Dawn" },
   note: "From the agent's own session files: where each tool call worked, its model and whether it succeeded — never the commands or the files' contents. The timeline is squeezed: a gap over 15 minutes takes 4 seconds.",
+  bots: {
+    root: "Workspace",
+    rootPath: "The workspace folder · messages, questions, planning",
+    empty: "No Bot has used a tool here since the app began keeping where calls work. From this version each tool call adds a step to the map; earlier work was never placed, so it cannot be drawn.",
+    note: "From the app's record of each tool call: where it worked, its model and whether it succeeded — never the commands or the files' contents; kept from this version on. The timeline is squeezed: a gap over 15 minutes takes 4 seconds.",
+    truncated: (n: number) => `Only the last ${n} steps are drawn.`,
+  },
 };

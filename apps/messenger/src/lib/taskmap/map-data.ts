@@ -1,24 +1,24 @@
 import type {
   AgentReplay,
   AgentReplayDecision,
-  AgentReplayLine,
-  AgentRunToolInfo,
   AgentShellAction,
   AgentToolPlace,
   ProjectAgent,
+  SessionReplay,
+  SessionReplayLine,
 } from "@real-bot/protocol";
 
 /**
- * What the task map draws, whoever's work it is. A project session's replay (ADR 0095) is read into
- * it here, and the calls seen live are merged on top; the scene and the timeline only read this, so
- * a Bot job can feed the same map once its tool calls carry where they worked.
+ * What the task map draws, whoever's work it is. A project session's replay (ADR 0095) and a Bot
+ * conversation's (ADR 0097) are read into it here, and the calls seen live are merged on top; the
+ * scene and the timeline only read this.
  */
 export type MapCall = {
   /** The tool call's id; a live call and the same call in a later replay share it. */
   id: string;
   /** Epoch milliseconds. */
   at: number;
-  /** Index into `MapData.characters`: 0 is the agent itself. */
+  /** Index into `MapData.characters`: 0 is the agent itself, or the first Bot to work. */
   who: number;
   tool: string;
   place: AgentToolPlace;
@@ -33,8 +33,13 @@ export type MapCall = {
 };
 
 export type MapCharacter = {
-  /** The subagent's id, or "main" for the agent itself. */
+  /** The subagent's id, "main" for the agent itself, or a Bot's id. */
   key: string;
+  /**
+   * On the map from the start, full size: the agent, and every Bot of a conversation. A subagent is
+   * not: it comes out for its work and goes back.
+   */
+  lead: boolean;
   /** What the replay says the subagent was sent to do; null for the agent and for one seen only live. */
   description: string | null;
   agentType: string | null;
@@ -47,8 +52,10 @@ export type MapCharacter = {
 export type LiveCall = {
   id: string;
   sessionId: string;
+  /** The subagent (null for the agent itself) or the Bot that made it. */
+  actor: string | null;
   tool: string;
-  info: AgentRunToolInfo;
+  info: { place: AgentToolPlace; action?: AgentShellAction; model: string | null; at: string; ok?: boolean };
   startedAt: number;
   running: boolean;
   ok: boolean | null;
@@ -57,11 +64,11 @@ export type LiveCall = {
 
 export type MapData = {
   sessionId: string;
-  /** The agent the session runs, for its logo. */
-  agent: ProjectAgent;
+  /** A project session's agent (for its logo), or a conversation of Bots. */
+  source: { kind: "project"; agent: ProjectAgent } | { kind: "bots" };
   calls: MapCall[];
   characters: MapCharacter[];
-  said: AgentReplayLine[];
+  said: SessionReplayLine[];
 };
 
 const MAIN = "main";
@@ -92,6 +99,7 @@ function charactersOf(calls: readonly { agentId: string | null; at: number }[], 
     const sub = named.get(key);
     return {
       key,
+      lead: key === MAIN,
       description: sub?.description ?? null,
       agentType: sub?.agent_type ?? null,
       firstAt: first.get(key) ?? null,
@@ -122,7 +130,40 @@ export function fromAgentReplay(replay: AgentReplay, agent: ProjectAgent): MapDa
     model: c.model,
     decision: c.decision,
   }));
-  return { sessionId: replay.session_id, agent, calls, characters, said: replay.said };
+  return { sessionId: replay.session_id, source: { kind: "project", agent }, calls, characters, said: replay.said };
+}
+
+/** A Bot conversation's replay as map data: every Bot a lead, in the order they first worked. */
+export function fromSessionReplay(replay: SessionReplay): MapData {
+  const raw = replay.calls
+    .map((c) => ({ c, at: ms(c.at) }))
+    .filter((x): x is { c: SessionReplay["calls"][number]; at: number } => x.at !== null)
+    .sort((a, b) => a.at - b.at || a.c.id.localeCompare(b.c.id));
+  const order = [...replay.bots, ...raw.map((x) => x.c.bot_id).filter((id) => !replay.bots.includes(id))];
+  const keys = [...new Set(order)];
+  const index = new Map(keys.map((key, i) => [key, i]));
+  const characters: MapCharacter[] = keys.map((key) => ({ key, lead: true, description: null, agentType: null, firstAt: null, lastAt: null, calls: 0 }));
+  const calls: MapCall[] = raw.map(({ c, at }) => {
+    const who = index.get(c.bot_id)!;
+    const ch = characters[who]!;
+    ch.calls += 1;
+    ch.firstAt ??= at;
+    ch.lastAt = Math.max(ch.lastAt ?? at, at + c.duration_ms);
+    return {
+      id: c.id,
+      at,
+      who,
+      tool: c.tool,
+      place: c.place,
+      ...(c.action ? { action: c.action } : {}),
+      file: c.file,
+      ok: c.ok,
+      durationMs: c.duration_ms,
+      model: c.model,
+      decision: c.decision,
+    };
+  });
+  return { sessionId: replay.session_id, source: { kind: "bots" }, calls, characters, said: replay.said };
 }
 
 /**
@@ -138,12 +179,13 @@ export function mergeLive(data: MapData, live: readonly LiveCall[]): MapData {
   const characters = data.characters.map((c) => ({ ...c }));
   const index = new Map(characters.map((c, i) => [c.key, i]));
   const calls = [...data.calls];
+  const bots = data.source.kind === "bots";
   for (const call of [...fresh].sort((a, b) => a.startedAt - b.startedAt)) {
-    const key = call.info.agent_id ?? MAIN;
+    const key = call.actor ?? MAIN;
     let who = index.get(key);
     if (who === undefined) {
       who = characters.length;
-      characters.push({ key, description: null, agentType: null, firstAt: call.startedAt, lastAt: call.startedAt, calls: 0 });
+      characters.push({ key, lead: bots, description: null, agentType: null, firstAt: call.startedAt, lastAt: call.startedAt, calls: 0 });
       index.set(key, who);
     }
     const character = characters[who]!;

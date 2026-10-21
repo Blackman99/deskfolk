@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import type { AgentReplay, AgentReplayCall, ToolFrame } from "@real-bot/protocol";
+import { generateBoringAvatar, type AgentReplay, type AgentReplayCall, type SessionReplay, type SessionReplayCall, type ToolFrame } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
-import { aProjectSession, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aGroup, aProjectSession, aProvider, aTurn, fakeRuntime } from "../test-fixtures.ts";
 import { settle } from "../test-async.ts";
 import { click, render } from "../test-render.ts";
 import { AgentCallLog } from "./live.svelte.ts";
@@ -130,5 +130,88 @@ test("the ground shows the grabbing hand only while it is being dragged", async 
   at("pointerup", 130, 0);
   await settle();
   expect(view.classList.contains("is-dragging")).toBe(false);
+  close();
+});
+
+function aBotCall(bot: string, path: string, s: number, over: Partial<SessionReplayCall> = {}): SessionReplayCall {
+  n += 1;
+  return { id: `call_${n}`, at: iso(s), bot_id: bot, turn_id: "turn-1", task_id: null, tool: "write_file", place: { zone: "project", path }, model: "deepseek-chat",
+    file: path.split("/").pop() ?? null, ok: true, duration_ms: 300, decision: null, ...over };
+}
+
+function openBots(replay: SessionReplay, turns = [] as ReturnType<typeof aTurn>[]) {
+  const session = aGroup({ id: "g-1" });
+  const director = aBot({ id: "bot-1", name: "导演", avatar: generateBoringAvatar({ name: "导演" }), provider_id: "prov-1" });
+  const reviewer = aBot({ id: "bot-2", name: "审片员", runner: "claude_code" });
+  const runtime = fakeRuntime({
+    sessions: [session], bots: [director, reviewer], turns,
+    providers: [aProvider({ id: "prov-1", name: "DeepSeek", base_url: "https://api.deepseek.com" })],
+  });
+  Reflect.set(runtime, "client", { sessionReplay: async () => replay, projectReplay: async () => { throw new Error("not a project session"); } });
+  Reflect.set(runtime, "agentCalls", new AgentCallLog());
+  const view = render(TaskMap, { runtime, t, session });
+  return { ...view, runtime };
+}
+
+function aBotReplay(): SessionReplay {
+  n = 0;
+  return {
+    session_id: "g-1",
+    bots: ["bot-1", "bot-2"],
+    truncated: false,
+    calls: [
+      ...Array.from({ length: 8 }, (_, i) => aBotCall("bot-1", "jobs/mv/shots/a.png", i * 10)),
+      aBotCall("bot-1", "x", 85, { tool: "mcp_westlake_generate_video", place: { zone: "service", server: "westlake-cpa" }, file: null }),
+      ...Array.from({ length: 6 }, (_, i) => aBotCall("bot-2", "jobs/mv/review/notes.md", 100 + i * 10, { tool: "read_file", model: "claude-opus-5-5" })),
+    ],
+    said: [
+      { kind: "say", at: iso(0), text: "做一支 MV" },
+      { kind: "answer", at: iso(95), asked_at: iso(90), questions: ["要几个镜头？"], answers: ["六个"], bot_id: "bot-2" },
+    ],
+  };
+}
+
+test("a Bot conversation's map: its Bots in the workspace, each with its own name, figure and its model's logo", async () => {
+  const { host, close } = openBots(aBotReplay());
+  await settle();
+  const plates = [...host.querySelectorAll(".tm-plate .tm-plate-name")].map((el) => el.textContent?.replace(/\d+$/, ""));
+  expect(plates).toContain(t.taskmap.bots.root);
+  expect(plates).toContain("westlake-cpa");
+  expect(plates.some((p) => p === "shots" || p === "review")).toBe(true);
+  // Both Bots stand on the map all along, named as the sidebar names them.
+  expect(host.querySelectorAll(".tm-actor").length).toBe(2);
+  const names = [...host.querySelectorAll(".tm-badge-name")].map((el) => el.textContent);
+  expect(names).toEqual(["导演", "审片员"]);
+  // The endpoint's vendor on one badge, Claude Agent's spark on the other.
+  expect(host.querySelector(".tm-badge .connector-logo.is-deepseek")).not.toBeNull();
+  expect(host.querySelector(".tm-badge [data-agent-logo='claude_code']")).not.toBeNull();
+  // One card for each Bot, not a main line and subagents.
+  expect(host.querySelectorAll(".tm-side .tm-main").length).toBe(2);
+  expect(host.textContent).not.toContain(t.taskmap.card.subs);
+  // Your answer to the reviewer's question is a moment of its own, and the note says where the record comes from.
+  expect(host.textContent).toContain("六个");
+  expect(host.textContent).toContain(t.taskmap.bots.note);
+  close();
+});
+
+test("a Bot conversation with no record yet says the map starts from this version", async () => {
+  const { host, close } = openBots({ session_id: "g-1", bots: [], calls: [], said: [], truncated: false });
+  await settle();
+  expect(host.textContent).toContain(t.taskmap.bots.empty);
+  close();
+});
+
+test("a Bot's call seen live lands on the map, its Bot working while its turn runs", async () => {
+  const live = aTurn({ id: "turn-9", session_id: "g-1", bot_id: "bot-1", status: "running" });
+  const { host, runtime, close } = openBots(aBotReplay(), [live]);
+  await settle();
+  expect(host.textContent).toContain(t.taskmap.controls.step(15, 15));
+  runtime.agentCalls.applyTool({
+    type: "tool", turn_id: "turn-9", id: "call_live", name: "shell", phase: "started",
+    bot_call: { session_id: "g-1", bot_id: "bot-1", place: { zone: "project", path: "jobs/mv/shots" }, action: "script", model: "deepseek-chat", at: iso(300) },
+  } as ToolFrame);
+  await settle();
+  expect(host.textContent).toContain(t.taskmap.controls.step(16, 16));
+  expect(host.textContent).toContain(t.taskmap.live);
   close();
 });

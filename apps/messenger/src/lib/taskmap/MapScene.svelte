@@ -1,9 +1,9 @@
 <script lang="ts">
-	import type { ProjectAgent } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import FolkAvatar from '../FolkAvatar.svelte';
-	import AgentLogo from '../settings/AgentLogo.svelte';
+	import type { ModelSource } from '../model-source.ts';
 	import type { Frame } from './frame.ts';
+	import MapLogo from './MapLogo.svelte';
 	import { VIEW_H, VIEW_W } from './scene/view.ts';
 
 	/**
@@ -14,9 +14,8 @@
 	 */
 	type Props = {
 		frame: Frame;
-		agent: ProjectAgent;
-		/** The agent's name ("Claude Code"), beside the model in a badge's tooltip. */
-		agentName: string;
+		/** Whose model each character works on, by index: the logo on its badge, its name beside the model in the badge's tooltip. */
+		logos: readonly ModelSource[];
 		/** Each character's folk avatar (a stored avatar's SVG) and its colour, by index. */
 		avatars: readonly string[];
 		colors: readonly string[];
@@ -39,7 +38,7 @@
 		onDragging: (turning: boolean | null) => void;
 	};
 
-	let { frame, agent, agentName, avatars, colors, cam, camMs, walkMs, sel, hover, follow, labels, t, onPan, onTurn, onZoom, onPick, onHover, onFollow, onDeselect, onDragging }: Props = $props();
+	let { frame, logos, avatars, colors, cam, camMs, walkMs, sel, hover, follow, labels, t, onPan, onTurn, onZoom, onPick, onHover, onFollow, onDeselect, onDragging }: Props = $props();
 
 	let view = $state<HTMLDivElement | null>(null);
 	const inv = $derived((1 / cam.k).toFixed(3));
@@ -203,7 +202,7 @@
 				{#if block.flag}<span class="tm-quest" aria-hidden="true">!</span>{/if}
 				<span class="tm-plate-name"><span class="tm-dot" style:background={block.district.color}></span>{block.name}<span class="tm-plate-n">{block.n}</span></span>
 				{#each block.lines as line, j (j)}
-					<span class="tm-plate-line" style:color={colors[line.b]}><AgentLogo runner={agent} size={12} />{line.text}<span class="tm-plate-model">{line.model}</span></span>
+					<span class="tm-plate-line" style:color={colors[line.b]}>{#if logos[line.b]}<MapLogo source={logos[line.b]!} size={12} />{/if}{line.text}<span class="tm-plate-model">{line.model}</span></span>
 				{/each}
 			</button>
 		{/each}
@@ -213,8 +212,8 @@
 				<div class="tm-shadow" style:box-shadow={follow === actor.b ? `0 0 0 2px ${colors[actor.b]}` : 'none'}></div>
 				<div class="tm-body" style:transform="scale({actor.scale})"><FolkAvatar avatar={avatars[actor.b] ?? ''} motion={actor.motion} /></div>
 				{#if actor.present}
-					<div class="tm-badge is-{actor.side < 0 ? 'l' : actor.side > 0 ? 'r' : 'c'}" style:top="{actor.badgeTop}px" style:border-color={colors[actor.b]} style:transform={badgeT(actor.side, actor.lift)} title={t.ranBy(agentName, actor.modelShort)}>
-						<span class="tm-badge-logo"><AgentLogo runner={agent} size={20} /><span class="tm-badge-dot" style:background={STATUS_DOT[actor.status]}></span></span>
+					<div class="tm-badge is-{actor.side < 0 ? 'l' : actor.side > 0 ? 'r' : 'c'}" style:top="{actor.badgeTop}px" style:border-color={colors[actor.b]} style:transform={badgeT(actor.side, actor.lift)} title={t.ranBy(logos[actor.b]?.name ?? '', actor.modelShort)}>
+						<span class="tm-badge-logo">{#if logos[actor.b]}<MapLogo source={logos[actor.b]!} size={20} />{/if}<span class="tm-badge-dot" style:background={STATUS_DOT[actor.status]}></span></span>
 						<span class="tm-badge-name" style:color={colors[actor.b]}>{actor.short}</span>
 						{#if actor.hasModel}<span class="tm-badge-model">{actor.modelShort}</span>{/if}
 					</div>

@@ -18,7 +18,7 @@
 	import { previewContext, type PreviewHandle } from './preview-context.ts';
 	import { annotationsForFile, targetFor } from '../annotations/model.ts';
 	import { isPlaceholderAttachment } from '../overlays/artifacts.ts';
-	import { classifySession } from '../sidebar/session-groups.ts';
+	import { classifySession, isFileDropSession } from '../sidebar/session-groups.ts';
 	import { sanitizePreviewPath } from '../session-url.ts';
 	import { backdropClick } from '../click-outside.ts';
 
@@ -300,8 +300,8 @@
 		<RolesPage {runtime} {t} />
 	{/await}
 {:else if content.kind === 'map'}
-	<!-- A project session's task map (ADR 0096), loaded when a map tab is first shown. -->
-	{#if session?.kind === 'project'}
+	<!-- A conversation's task map (ADR 0096, ADR 0097), loaded when a map tab is first shown. -->
+	{#if session && !isFileDropSession(session)}
 		<div class="pane-map">
 			{#await import('../taskmap/TaskMap.svelte') then { default: TaskMap }}
 				<TaskMap {runtime} {t} {session} />

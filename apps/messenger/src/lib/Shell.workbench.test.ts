@@ -191,7 +191,7 @@ test('a conversation tab offers its header\'s actions, each on that tab\'s own c
 
   // The group's tab is not the one in front; its settings bring it forward and open over it.
   click(host.querySelector('[data-tab="t-g"] .wb-tab-more'));
-  expect(actions()).toEqual([t.top.pin, t.plan.segmentTrace, t.top.groupSettings]);
+  expect(actions()).toEqual([t.top.pin, t.plan.segmentTrace, t.taskmap.open, t.top.groupSettings]);
   click(menu()!.querySelector('[data-action="settings"]'));
   await settle();
   expect(host.querySelector('[data-tab="t-g"] [role="tab"]')?.getAttribute('aria-selected')).toBe('true');
@@ -204,7 +204,7 @@ test('a conversation tab offers its header\'s actions, each on that tab\'s own c
 
   // Pinning from a right-click on the direct tab pins that conversation, and the menu then says so.
   rightClick(host.querySelector('[data-tab="t-d"] [role="tab"]'));
-  expect(actions()).toEqual([t.top.pin, t.plan.segmentTrace, t.top.botSettings]);
+  expect(actions()).toEqual([t.top.pin, t.plan.segmentTrace, t.taskmap.open, t.top.botSettings]);
   expect(menu()!.querySelector('[data-split]')).not.toBeNull();
   click(menu()!.querySelector('[data-action="pin"]'));
   expect(JSON.parse(localStorage.getItem(PINNED_STORAGE_KEY) ?? '[]')).toEqual(['d1']);

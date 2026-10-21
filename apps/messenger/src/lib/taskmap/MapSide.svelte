@@ -1,19 +1,23 @@
 <script lang="ts">
-	import type { ProjectAgent } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import AgentLogo from '../settings/AgentLogo.svelte';
+	import FolkAvatar from '../FolkAvatar.svelte';
+	import type { CharacterLook } from './characters.ts';
 	import { statusText, type FrameActor } from './frame.ts';
+	import MapLogo from './MapLogo.svelte';
 	import type { MomentText } from './moment-text.ts';
 	import type { Quest } from './timeline.ts';
 
 	/**
-	 * The map's side column (ADR 0096): the agent and what it is on, the subagents it sent out, what it
-	 * was asked (your lines and your answers), and the moments worth a look.
+	 * The map's side column (ADR 0096): each lead (the agent, or every Bot of a conversation, ADR 0097)
+	 * and what it is on, the subagents sent out, what was asked (your lines and your answers), and the
+	 * moments worth a look.
 	 */
 	type Props = {
 		t: Copy['taskmap'];
-		agent: ProjectAgent;
-		agentName: string;
+		/** Each character's name, figure and whose model it works on, by index. */
+		looks: readonly CharacterLook[];
+		/** Show each lead's own figure rather than its logo: a Bot is known by its face. */
+		faces: boolean;
 		actors: readonly FrameActor[];
 		colors: readonly string[];
 		place: (q: number) => string;
@@ -27,10 +31,10 @@
 		onJump: (v: number) => void;
 	};
 
-	let { t, agent, agentName, actors, colors, place, follow, quests, quest, moments, live, when, onFollow, onJump }: Props = $props();
+	let { t, looks, faces, actors, colors, place, follow, quests, quest, moments, live, when, onFollow, onJump }: Props = $props();
 
-	const main = $derived(actors[0]);
-	const subs = $derived(actors.slice(1));
+	const leads = $derived(actors.filter((a) => a.lead));
+	const subs = $derived(actors.filter((a) => !a.lead));
 	const forLine = $derived.by(() => {
 		const q = quests[quest];
 		if (!q) return '';
@@ -40,30 +44,34 @@
 </script>
 
 <div class="tm-side">
-	{#if main}
+	{#each leads as main (main.key)}
+		{@const look = looks[main.b]}
+		{@const name = look?.name ?? main.short}
 		<section class="tm-scard">
 			<div class="tm-main">
-				<span class="tm-main-logo" style:box-shadow="0 0 0 2px var(--pane), 0 0 0 3.5px {colors[0]}"><AgentLogo runner={agent} size={40} /></span>
+				<span class="tm-main-logo" class:is-face={faces} style:box-shadow="0 0 0 2px var(--pane), 0 0 0 3.5px {colors[main.b]}">
+					{#if faces && look}<FolkAvatar avatar={look.avatar} motion={main.motion} />{:else if look}<MapLogo source={look.source} size={40} />{/if}
+				</span>
 				<div class="tm-main-text">
 					<div class="tm-row">
-						<strong>{agentName}</strong>
+						<strong>{name}</strong>
 						<span class="tm-chip {CHIP[main.status]}">{statusText(main, t)}</span>
-						<button type="button" class="tm-follow-btn" class:is-on={follow === 0} aria-pressed={follow === 0} aria-label={follow === 0 ? t.stopFollowOf(agentName) : t.followOf(agentName)} onclick={() => onFollow(0)}>{t.follow}</button>
+						<button type="button" class="tm-follow-btn" class:is-on={follow === main.b} aria-pressed={follow === main.b} aria-label={follow === main.b ? t.stopFollowOf(name) : t.followOf(name)} onclick={() => onFollow(main.b)}>{t.follow}</button>
 					</div>
 					<p class="tm-clip">{main.verb ? `${t.at(place(main.tile))} · ${main.verb}${main.file ? ` ${main.file}` : ''}` : t.status.none}</p>
-					<p class="tm-clip tm-muted">{forLine}{forLine ? ' · ' : ''}{t.stepLine(main.step, main.fails)}</p>
-					{#if main.hasModel}<p class="tm-clip tm-exec"><AgentLogo runner={agent} size={12} />{t.ranBy(agentName, main.modelShort)}</p>{/if}
+					<p class="tm-clip tm-muted">{main.b === 0 ? `${forLine}${forLine ? ' · ' : ''}` : ''}{t.stepLine(main.step, main.fails)}</p>
+					{#if main.hasModel && look}<p class="tm-clip tm-exec"><MapLogo source={look.source} size={12} />{t.ranBy(look.source.name, main.modelShort)}</p>{/if}
 				</div>
 			</div>
 		</section>
-	{/if}
+	{/each}
 
 	{#if subs.length}
 		<section class="tm-scard">
 			<header class="tm-shead"><strong>{t.card.subs}</strong><span class="tm-muted">{t.card.subsHint}</span></header>
 			{#each subs as sub (sub.key)}
 				<div class="tm-sub" class:is-away={!sub.present}>
-					<span class="tm-sub-logo" style:box-shadow="0 0 0 2px var(--pane), 0 0 0 3px {colors[sub.b]}"><AgentLogo runner={agent} size={24} /></span>
+					<span class="tm-sub-logo" style:box-shadow="0 0 0 2px var(--pane), 0 0 0 3px {colors[sub.b]}">{#if looks[sub.b]}<MapLogo source={looks[sub.b]!.source} size={24} />{/if}</span>
 					<div class="tm-sub-text">
 						<div class="tm-row"><strong style:color={colors[sub.b]}>{sub.short}</strong><span class="tm-chip {CHIP[sub.status]}">{statusText(sub, t)}</span></div>
 						<p class="tm-clip tm-muted">{sub.description ?? ''}{sub.modelShort ? ` · ${sub.modelShort}` : ''}</p>
@@ -109,6 +117,7 @@
 	.tm-scard.tm-grow { flex: 1; min-height: 120px; display: flex; flex-direction: column; }
 	.tm-main { display: flex; gap: 12px; align-items: flex-start; }
 	.tm-main-logo { flex: none; display: inline-flex; border-radius: var(--radius-sm); }
+	.tm-main-logo.is-face { width: 40px; height: 40px; border-radius: 50%; background: var(--chip); overflow: hidden; }
 	.tm-main-text, .tm-sub-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 	.tm-row { display: flex; align-items: center; gap: 6px; }
 	.tm-row strong { font-size: var(--text-body); }

@@ -1,12 +1,13 @@
 <script lang="ts">
-	import { generateBoringAvatar, type SessionSummary } from '@real-bot/protocol';
+	import type { SessionSummary } from '@real-bot/protocol';
 	import { untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import { characterLooks } from './characters.ts';
 	import { buildDistricts, type DistrictKind, type DistrictMap } from './districts.ts';
 	import { buildFrame, placeName, timeAt, verbOf, type WalkState } from './frame.ts';
 	import { placeDetail, tripsByPlace } from './inspect.ts';
-	import { fromAgentReplay, mergeLive, type MapCall, type MapData } from './map-data.ts';
+	import { fromAgentReplay, fromSessionReplay, mergeLive, type MapCall, type MapData } from './map-data.ts';
 	import { MOMENT_COLOR, momentText } from './moment-text.ts';
 	import { normalizePhi, fitZoom, turnTarget } from './scene/camera.ts';
 	import { buildGround, lightAt, type ModelCache } from './scene/draw.ts';
@@ -18,15 +19,28 @@
 	import MapTimeline from './MapTimeline.svelte';
 
 	/**
-	 * A project session's task map (ADR 0096): its agent at work, drawn as a town of the project's
-	 * folders, with the subagents it sent out. It reads the session's whole run back from the agent's
-	 * own files, then follows the tool calls live; the town is laid out once from what it read, and
-	 * what comes after folds into it.
+	 * A conversation's task map: a project session's agent at work, drawn as a town of the project's
+	 * folders with the subagents it sent out (ADR 0096), or a Bot conversation's Bots at work in the
+	 * workspace (ADR 0097). It reads the work back (from the agent's own files, or from the app's record
+	 * of each Bot call), then follows the tool calls live; the town is laid out once from what it read,
+	 * and what comes after folds into it.
 	 */
 	type Props = { runtime: MessengerRuntime; t: Copy; session: SessionSummary };
 	let { runtime, t, session }: Props = $props();
 
-	const tm = $derived(t.taskmap);
+	const bots = $derived(session.kind !== 'project');
+	// A Bot map's root is the workspace, where messages, questions and plans are made.
+	const tm = $derived(
+		bots
+			? {
+					...t.taskmap,
+					places: { ...t.taskmap.places, root: t.taskmap.bots.root },
+					placePaths: { ...t.taskmap.placePaths, root: t.taskmap.bots.rootPath },
+					empty: t.taskmap.bots.empty,
+					note: t.taskmap.bots.note
+				}
+			: t.taskmap
+	);
 	const agent = $derived(session.project_agent ?? 'claude_code');
 	const agentName = $derived(t.project.agentName);
 	/** The agent first, then each subagent; the agent wears the app's accent. */
@@ -40,6 +54,7 @@
 	let loading = $state(true);
 	let seq = 0;
 
+	let truncated = $state(false);
 	let laidFrom = 0;
 	function lay(calls: readonly MapCall[]): void {
 		districts = buildDistricts(calls.map((c) => c.place));
@@ -51,9 +66,17 @@
 		if (!api) return;
 		const mine = ++seq;
 		try {
-			const replay = await api.projectReplay(session.id);
-			if (mine !== seq) return;
-			const data = fromAgentReplay(replay, agent);
+			let data: MapData;
+			if (bots) {
+				const replay = await api.sessionReplay(session.id);
+				if (mine !== seq) return;
+				data = fromSessionReplay(replay);
+				truncated = replay.truncated;
+			} else {
+				const replay = await api.projectReplay(session.id);
+				if (mine !== seq) return;
+				data = fromAgentReplay(replay, agent);
+			}
 			const merged = mergeLive(data, runtime.agentCalls.callsOf(session.id));
 			// The town is laid out once; only a session grown half again is laid out anew, between runs.
 			if (!districts || merged.calls.length >= Math.max(laidFrom * 1.5, laidFrom + 4)) lay(merged.calls);
@@ -78,8 +101,13 @@
 	});
 
 	const run = $derived(runtime.snapshot.agentRuns[session.id] ?? null);
-	const liveRun = $derived(run?.status === 'running' || run?.status === 'waiting_approval');
-	// A run that ends has written its calls to the agent's files; a reconnect may have missed frames.
+	// A project session runs while its agent's run does; a Bot conversation while any of its turns does.
+	const liveRun = $derived(
+		bots
+			? runtime.snapshot.turns.some((turn) => turn.session_id === session.id && (turn.status === 'running' || turn.status === 'waiting_approval' || turn.status === 'waiting_ask'))
+			: run?.status === 'running' || run?.status === 'waiting_approval'
+	);
+	// A run that ends has written its calls down; a reconnect may have missed frames.
 	let wasLive = false;
 	$effect(() => {
 		const now = liveRun;
@@ -254,6 +282,13 @@
 	}
 	$effect(() => () => { cancelAnimationFrame(spinRaf); clearTimeout(turnTimer); });
 
+	// Each character's name, figure and whose model it works on: the agent's logo, or each Bot as the sidebar shows it.
+	const looks = $derived(
+		data
+			? characterLooks(data, { agentName, bots: runtime.snapshot.bots, providers: runtime.snapshot.providers, defaultProviderId: runtime.snapshot.settings.default_provider_id, t })
+			: []
+	);
+
 	// --- One frame of the town ---
 	const cache: ModelCache = new Map();
 	const walk: WalkState = { lastTile: [], until: [] };
@@ -272,7 +307,7 @@
 	const light = $derived.by(() => { const d = new Date(at); return lightAt(d.getHours() + d.getMinutes() / 60); });
 	const frame = $derived(
 		data && tl && districts
-			? buildFrame({ data, map: districts, tl, v: shown, rest, phi, zoom: cam.k, now: performance.now(), speed, light, cache, walk, hover, sel, t: tm })
+			? buildFrame({ data, map: districts, tl, v: shown, rest, phi, zoom: cam.k, now: performance.now(), speed, light, cache, walk, hover, sel, t: tm, names: bots ? looks.map((l) => l.name) : undefined })
 			: null
 	);
 	const walkMs = $derived(turning ? 0 : speed >= 16 ? 220 : 480);
@@ -289,8 +324,8 @@
 	});
 
 	// --- What the cards say ---
-	const avatars = $derived(data ? data.characters.map((c, i) => generateBoringAvatar({ name: i === 0 ? agentName : (c.description ?? c.key) })) : []);
-	const who = (b: number) => ({ short: b === 0 ? tm.mainLane : tm.subagent(b), color: colorOf(b) });
+	const avatars = $derived(looks.map((l) => l.avatar));
+	const who = (b: number) => ({ short: bots ? (looks[b]?.name ?? tm.mainLane) : b === 0 ? tm.mainLane : tm.subagent(b), color: colorOf(b) });
 	const sameDay = $derived.by(() => {
 		if (!data?.calls.length) return true;
 		return new Date(data.calls[0]!.at).toDateString() === new Date(data.calls[data.calls.length - 1]!.at).toDateString();
@@ -332,7 +367,7 @@
 	const regionLabels = $derived({
 		ext: islandLabel('ext', `${tm.places.outside} · ${tm.places.claude_home}`),
 		ws: islandLabel('ws', `${tm.places.git} · ${tm.places.other}`),
-		town: `${(session.project_dir ?? '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''}/`
+		town: `${((bots ? runtime.snapshot.settings.workspace_path : session.project_dir) ?? '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''}/`
 	});
 	const wide = $derived(width >= 760);
 	const compact = $derived(size.w < 560 || size.h < 460);
@@ -343,8 +378,7 @@
 		{#if frame && districts && data}
 			<MapScene
 				{frame}
-				{agent}
-				{agentName}
+				logos={looks.map((l) => l.source)}
 				{avatars}
 				colors={data.characters.map((_, b) => colorOf(b))}
 				{cam}
@@ -420,8 +454,8 @@
 		<aside class="tm-aside">
 			<MapSide
 				t={tm}
-				{agent}
-				{agentName}
+				{looks}
+				faces={bots}
 				actors={frame?.actors ?? []}
 				colors={data.characters.map((_, b) => colorOf(b))}
 				place={placeOf}
@@ -434,7 +468,7 @@
 				onFollow={toggleFollow}
 				onJump={seek}
 			/>
-			<p class="tm-note">{tm.note}</p>
+			<p class="tm-note">{truncated ? `${tm.bots.truncated(data.calls.length)} ` : ''}{tm.note}</p>
 		</aside>
 	{/if}
 </div>

@@ -9,7 +9,7 @@ export type SessionContextMenuData = {
   canViewInfo: boolean;
   /** Its jobs' trace, board and plan can be opened from here: every conversation but the file drop. */
   canShowJob: boolean;
-  /** Its task map can be opened from here (ADR 0096): a project session's; absent means none. */
+  /** Its task map can be opened from here: a project session's (ADR 0096) or a Bot conversation's (ADR 0097); absent means none. */
   canShowMap?: boolean;
   canClearHistory: boolean;
   archive: {
@@ -63,6 +63,7 @@ export function deriveSessionContextMenu(
       isPinned,
       canViewInfo: true,
       canShowJob: true,
+      canShowMap: true,
       canClearHistory: true,
       archive: {
         enabled: true,
@@ -87,6 +88,7 @@ export function deriveSessionContextMenu(
       isPinned,
       canViewInfo: true,
       canShowJob: true,
+      canShowMap: true,
       canClearHistory: true,
       archive: {
         enabled: Boolean(peerBot),
@@ -106,6 +108,7 @@ export function deriveSessionContextMenu(
     isPinned,
     canViewInfo: true,
     canShowJob: true,
+    canShowMap: true,
     canClearHistory: true,
     archive: {
       enabled: false,

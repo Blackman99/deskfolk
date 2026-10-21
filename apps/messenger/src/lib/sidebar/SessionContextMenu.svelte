@@ -168,7 +168,7 @@
 
 	{#if data.canShowMap && onShowMap}
 		<div class={inSheet ? 'sheet-separator' : 'session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2'} role="separator"></div>
-		<!-- A project session's agent at work, drawn as a town of its folders (ADR 0096). -->
+		<!-- The conversation's work drawn as a town: a project session's agent (ADR 0096), a conversation's Bots (ADR 0097). -->
 		<button
 			type="button"
 			class={['session-context-menu-item', { 'sheet-item': inSheet }]}

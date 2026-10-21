@@ -11,6 +11,7 @@ import type {
   CreateGroupRequest,
   CreateProjectSessionRequest,
   AgentReplay,
+  SessionReplay,
   AgentRun,
   CreateHoldRequest,
   CreateProviderRequest,
@@ -249,6 +250,11 @@ export abstract class ApiBase<Row extends PendingRow> {
   /** Every tool call a project session's agent made, read back from its own session files (ADR 0095), for the task map. */
   async projectReplay(sessionId: string): Promise<AgentReplay> {
     return this.get<AgentReplay>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/replay`);
+  }
+
+  /** A Bot conversation's tool calls with where each worked, as the app recorded them (ADR 0097), for the task map. */
+  async sessionReplay(sessionId: string): Promise<SessionReplay> {
+    return this.get<SessionReplay>(`/v1/sessions/${encodeURIComponent(sessionId)}/replay`);
   }
 
   async answerAgentRun(runId: string, allow: boolean): Promise<AgentRun> {

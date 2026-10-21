@@ -811,6 +811,8 @@
 				icon: traceIcon,
 				run: () => workbench.openGuarded({ kind: 'trace', sessionId: session.id, taskId: null, focus: null, focusNonce: null })
 			},
+			// Its Bots at work, drawn as a town of the workspace (ADR 0097).
+			{ id: 'map', label: t.taskmap.open, icon: mapIcon, run: () => workbench.openGuarded({ kind: 'map', sessionId: session.id }) },
 			{
 				id: 'settings',
 				label: classifySession(session) === 'group' ? t.top.groupSettings : t.top.botSettings,
