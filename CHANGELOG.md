@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A task map's signs follow the theme
+
+- In the dark theme, a task map's plates over the buildings, the characters' badges and the island names stayed white with dark words. They are now the theme's own surface, dark with light words, and each character's coloured name is lifted so it still reads on them. The town itself keeps the colours of the hour in either theme.
+
 ### A floating composer keeps its margin off the scrollbar
 
 - In the Mac window, where scrollbars always show, a composer floating over a conversation between 481 and 680px wide ran into the conversation's scrollbar on the right, its margin there gone. The card now leaves room for the scrollbar and lines up with the conversation's text on both sides; on a wide screen it is centred on the text as well.

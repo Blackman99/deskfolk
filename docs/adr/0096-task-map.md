@@ -22,7 +22,7 @@ On 2026-10-20 you wanted a Bot's work shown more fully: which file it is on, the
 
 - **只有项目会话 / Project sessions only.** Bot 的任务也能这样画（原型就是），但它的 `tool_executions` 没有记目标路径，`write_file` 只有极少数找得回位置；等那边记下目标再接，`MapData` 已经和会话种类无关。 / A Bot's job could be drawn the same way (the prototype was one), but its `tool_executions` keep no target, so few `write_file` calls can be placed; once they do, `MapData` already does not care which kind of session it came from.
 - **记录在应用外 / The record lives outside the app.** 回放读的是 Agent 自己的会话文件，文件被删就画不出来，和 ADR 0095 的取舍一样。 / The replay reads the agent's own session files; with them deleted there is nothing to draw, the same trade-off as ADR 0095.
-- **画面是一张画 / The picture is a picture.** 小镇的颜色不跟深色主题变，牌子和名牌在两种主题里都是白底；叠在上面的控件和卡片用应用的颜色。 / The town's colours do not follow the dark theme, and its plates and badges are white in both; the controls and cards over it use the app's colours.
+- **画面是一张画 / The picture is a picture.** 小镇的颜色不跟深色主题变，牌子和名牌在两种主题里都是白底；叠在上面的控件和卡片用应用的颜色。（2026-10-21 改：你说标牌要适配亮暗主题。牌子、名牌和岛上的地名改用应用的颜色，暗色下深底浅字，角色带颜色的名字在深底上提亮；小镇本身照旧按时刻着色。）/ The town's colours do not follow the dark theme, and its plates and badges are white in both; the controls and cards over it use the app's colours. (Changed 2026-10-21: you asked for the signs to follow the theme. Plates, badges and island names now use the app's colours, dark with light words in the dark theme, a character's coloured name lifted on them; the town itself still takes the hour's colours.)
 - **没有手机页 / No phone page yet.** 手机和窄窗口打不开地图，入口也不给出。 / A phone or a narrow window cannot open the map, and is not offered it.
 
 ## 实现 / Implementation

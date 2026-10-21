@@ -209,7 +209,7 @@
 				{#if block.flag}<span class="tm-quest" aria-hidden="true">!</span>{/if}
 				<span class="tm-plate-name"><span class="tm-dot" style:background={block.district.color}></span><span class="tm-plate-label">{block.name}</span><span class="tm-plate-n">{block.n}</span></span>
 				{#each block.lines as line, j (j)}
-					<span class="tm-plate-line" style:color={colors[line.b]}>{#if logos[line.b]}<MapLogo source={logos[line.b]!} size={12} />{/if}{line.text}<span class="tm-plate-model">{line.model}</span></span>
+					<span class="tm-plate-line" style:--who={colors[line.b]}>{#if logos[line.b]}<MapLogo source={logos[line.b]!} size={12} />{/if}{line.text}<span class="tm-plate-model">{line.model}</span></span>
 				{/each}
 			</button>
 		{/each}
@@ -223,7 +223,7 @@
 					<div class="tm-badge is-{actor.side < 0 ? 'l' : actor.side > 0 ? 'r' : 'c'}" style:top="{actor.badgeTop}px" style:border-color={colors[actor.b]} style:transform={badgeT(actor.side, actor.lift)} title={t.ranBy(logos[actor.b]?.name ?? '', actor.modelShort)}>
 						<!-- A Bot's badge leads with its own avatar, its model's logo beside the model; an agent's leads with its logo. -->
 						<span class="tm-badge-logo">{#if fig?.avatar}<img class="tm-badge-avatar" src={fig.avatar} alt="" />{:else if logos[actor.b]}<MapLogo source={logos[actor.b]!} size={20} />{/if}<span class="tm-badge-dot" style:background={STATUS_DOT[actor.status]}></span></span>
-						<span class="tm-badge-name" style:color={colors[actor.b]}>{actor.short}</span>
+						<span class="tm-badge-name" style:--who={colors[actor.b]}>{actor.short}</span>
 						{#if actor.hasModel}<span class="tm-badge-model">{#if fig?.avatar && logos[actor.b]}<MapLogo source={logos[actor.b]!} size={11} />{/if}{actor.modelShort}</span>{/if}
 					</div>
 					<button type="button" class="tm-actor-hit" aria-label={follow === actor.b ? t.stopFollowOf(actor.short) : t.followOf(actor.short)} onclick={() => onFollow(actor.b)}></button>
@@ -241,8 +241,10 @@
 	.tm-road { fill: none; stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; }
 	.tm-road-edge { fill: none; stroke-width: 15; stroke-linecap: round; stroke-linejoin: round; }
 	/* What keeps its size on screen gets a layer of its own (will-change): painted into the world's layer,
-	   which WebKit draws once and stretches as the map zooms in, its type blurred, small type the most. */
-	.tm-region { position: absolute; z-index: 40; transform-origin: 50% 0; will-change: transform; white-space: nowrap; font-size: 11px; color: #37444a; background: rgba(255, 255, 255, .86); border-radius: 999px; padding: 1px 8px; pointer-events: none; }
+	   which WebKit draws once and stretches as the map zooms in, its type blurred, small type the most.
+	   The town keeps the hour's colours in either theme; its plates, badges and labels are the app's
+	   surfaces and follow the theme, their shadows still cast on the daylit ground. */
+	.tm-region { position: absolute; z-index: 40; transform-origin: 50% 0; will-change: transform; white-space: nowrap; font-size: 11px; color: var(--ink-secondary); background: color-mix(in srgb, var(--pane) 86%, transparent); border-radius: 999px; padding: 1px 8px; pointer-events: none; }
 	.tm-mono { font-family: var(--mono); }
 	.tm-tree { position: absolute; width: 30px; height: 46px; pointer-events: none; }
 	.tm-lamp { position: absolute; width: 12px; height: 34px; pointer-events: none; }
@@ -252,30 +254,32 @@
 	.tm-blk svg { position: absolute; left: 0; top: 0; width: 180px; height: 230px; overflow: visible; }
 	.tm-ring { fill: rgba(18, 28, 32, .08); stroke: #121c20; stroke-width: 1.6; stroke-dasharray: 4 3; }
 	.b-hit { pointer-events: all; fill: #000; fill-opacity: 0; cursor: pointer; }
-	.tm-plate { position: absolute; z-index: 300; transform-origin: 50% 100%; will-change: transform; max-width: 180px; box-sizing: border-box; margin: 0; padding: 2px 7px 3px; background: rgba(255, 255, 255, .95); border: 1px solid #dfe6e8; border-radius: 8px; text-align: center; box-shadow: 0 1px 3px rgba(18, 28, 32, .14); font: inherit; color: #121c20; cursor: pointer; }
-	.tm-plate.is-hot { z-index: 360; border-color: #7d8d93; }
-	.tm-plate.is-on { z-index: 360; border-color: #121c20; }
+	.tm-plate { position: absolute; z-index: 300; transform-origin: 50% 100%; will-change: transform; max-width: 180px; box-sizing: border-box; margin: 0; padding: 2px 7px 3px; background: color-mix(in srgb, var(--pane) 95%, transparent); border: 1px solid var(--line); border-radius: 8px; text-align: center; box-shadow: 0 1px 3px rgba(18, 28, 32, .14); font: inherit; color: var(--ink); cursor: pointer; }
+	.tm-plate.is-hot { z-index: 360; border-color: var(--muted-light); }
+	.tm-plate.is-on { z-index: 360; border-color: var(--ink); }
 	.tm-plate:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 	.tm-plate-name { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 	.tm-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; box-shadow: inset 0 0 0 1px rgba(18, 28, 32, .18); }
 	/* A long folder name ends in … inside the plate; the plate's title has it whole. */
 	.tm-plate-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-	.tm-plate-n { flex: none; font-size: 10.5px; color: #5f6d74; font-weight: 500; font-family: var(--mono); }
-	.tm-plate-line { display: flex; align-items: center; justify-content: center; gap: 3px; font-size: 10px; white-space: nowrap; overflow: hidden; line-height: 1.35; --agent-logo-size: 12px; }
-	.tm-plate-model { color: #5f6d74; }
-	.tm-quest { position: absolute; left: 50%; top: -25px; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%; background: #f2b632; color: #3a2600; font-size: 13px; font-weight: 800; line-height: 20px; text-align: center; box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(18, 28, 32, .3); animation: tm-bob 1.1s ease-in-out infinite; }
+	.tm-plate-n { flex: none; font-size: 10.5px; color: var(--muted); font-weight: 500; font-family: var(--mono); }
+	.tm-plate-line { display: flex; align-items: center; justify-content: center; gap: 3px; font-size: 10px; white-space: nowrap; overflow: hidden; line-height: 1.35; --agent-logo-size: 12px; color: var(--who); }
+	.tm-plate-model { color: var(--muted); }
+	.tm-quest { position: absolute; left: 50%; top: -25px; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%; background: var(--mustard); color: var(--on-mustard); font-size: 13px; font-weight: 800; line-height: 20px; text-align: center; box-shadow: 0 0 0 2px var(--pane), 0 2px 6px rgba(18, 28, 32, .3); animation: tm-bob 1.1s ease-in-out infinite; }
 	@keyframes tm-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 	.tm-actor { position: absolute; left: 0; top: 0; width: 58px; height: 64px; transition-property: transform, opacity; transition-timing-function: cubic-bezier(.3, .7, .3, 1); pointer-events: none; }
 	.tm-shadow { position: absolute; left: 12px; top: 55px; width: 34px; height: 8px; border-radius: 50%; background: rgba(23, 38, 42, .25); }
-	.tm-badge { position: absolute; left: 29px; will-change: transform; display: flex; align-items: center; gap: 4px; height: 26px; box-sizing: border-box; padding: 0 8px 0 2px; background: rgba(255, 255, 255, .96); border: 1.5px solid; border-radius: 999px; box-shadow: 0 1px 3px rgba(18, 28, 32, .18); white-space: nowrap; pointer-events: none; }
+	.tm-badge { position: absolute; left: 29px; will-change: transform; display: flex; align-items: center; gap: 4px; height: 26px; box-sizing: border-box; padding: 0 8px 0 2px; background: color-mix(in srgb, var(--pane) 96%, transparent); border: 1.5px solid; border-radius: 999px; box-shadow: 0 1px 3px rgba(18, 28, 32, .18); white-space: nowrap; pointer-events: none; }
 	.tm-badge.is-l { flex-direction: row-reverse; padding: 0 2px 0 8px; transform-origin: calc(100% - 14.5px) 100%; }
 	.tm-badge.is-r { transform-origin: 14.5px 100%; }
 	.tm-badge.is-c { transform-origin: 50% 100%; }
 	.tm-badge-logo { position: relative; display: inline-flex; flex: none; }
-	.tm-badge-dot { position: absolute; right: -3px; bottom: -2px; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid #fff; }
-	.tm-badge-name { font-size: 11px; font-weight: 700; }
-	.tm-badge-model { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; color: #5f6d74; }
-	.tm-badge-avatar { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: #eef1f3; }
+	.tm-badge-dot { position: absolute; right: -3px; bottom: -2px; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--pane); }
+	.tm-badge-name { font-size: 11px; font-weight: 700; color: var(--who); }
+	.tm-badge-model { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; color: var(--muted); }
+	.tm-badge-avatar { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: var(--bg); }
+	/* Each character's colour is picked against a light plate; on a dark one it is lifted toward the text colour. */
+	:global([data-theme='dark']) .tm-plate-line, :global([data-theme='dark']) .tm-badge-name { color: color-mix(in srgb, var(--who) 60%, var(--ink)); }
 	.tm-actor-hit { position: absolute; left: 8px; top: 4px; width: 42px; height: 56px; margin: 0; padding: 0; border: 0; border-radius: 12px; background: transparent; cursor: pointer; pointer-events: auto; }
 	.tm-actor-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 	.tm-fx { position: absolute; width: 0; height: 0; pointer-events: none; }

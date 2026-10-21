@@ -32,6 +32,7 @@ import { workQuestionStory } from './work-question-story.ts';
 import { ticketStagesStory } from './ticket-stages-story.ts';
 import { ticketBoardStory } from './ticket-board-story.ts';
 import { taskmapSideStory } from './taskmap-side-story.ts';
+import { taskmapSceneStory } from './taskmap-scene-story.ts';
 import { taskmapHeadStory } from './taskmap-head-story.ts';
 import { projectChatStory } from './project-chat-story.ts';
 import Shell from '../../src/lib/Shell.svelte';
@@ -1717,6 +1718,7 @@ export const rc11Stories = {
   'taskmap-side-few-said': taskmapSideStory(2, 10),
   'taskmap-side-few-moments': taskmapSideStory(28, 2),
   'taskmap-side-few': taskmapSideStory(2, 2),
+  'taskmap-scene': taskmapSceneStory(),
   'taskmap-head': taskmapHeadStory(1000, 640, 2),
   'taskmap-head-one': taskmapHeadStory(1000, 640, 1),
   'taskmap-head-narrow': taskmapHeadStory(360, 720, 2),
