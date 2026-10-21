@@ -83,13 +83,15 @@ export function projectOf(ctx: StoreContext, sessionId: string): ProjectOf | nul
 }
 
 /**
- * The model and thinking level a project session's runs ask for from the next step on: a key left
- * out stays, null goes back to the agent's default.
+ * The model and thinking level a project session's runs ask for from the next step on, and the
+ * account its next run spends: a key left out stays, null goes back to the agent's default (for
+ * the account, the daemon's own environment).
  */
-export function tuneProjectSession(ctx: StoreContext, sessionId: string, change: { model?: string | null; effort?: string | null }): SessionDetail {
+export function tuneProjectSession(ctx: StoreContext, sessionId: string, change: { model?: string | null; effort?: string | null; configDir?: string | null }): SessionDetail {
   if (!projectOf(ctx, sessionId)) throw new HttpError(404, "not_found", "not a project session");
   if (change.model !== undefined) ctx.db.run(`UPDATE sessions SET project_model = ? WHERE id = ? AND kind = 'project'`, [change.model, sessionId]);
   if (change.effort !== undefined) ctx.db.run(`UPDATE sessions SET project_effort = ? WHERE id = ? AND kind = 'project'`, [change.effort, sessionId]);
+  if (change.configDir !== undefined) ctx.db.run(`UPDATE sessions SET project_config_dir = ? WHERE id = ? AND kind = 'project'`, [change.configDir, sessionId]);
   return getSession(ctx, sessionId);
 }
 

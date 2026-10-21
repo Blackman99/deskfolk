@@ -402,6 +402,26 @@ export type ProfileRevision = {
 };
 
 /** One of your terminal Claude Code sessions, to carry on as a project session (ADR 0095, `GET /v1/runtime/claude-code/sessions`). */
+/** One model your Claude Code offers, as its own `/model` lists it (ADR 0095). */
+export type ClaudeCodeModel = {
+  /** What a run asks for: an alias such as `opus`, or `default` for Claude Code's own pick. */
+  value: string;
+  display_name: string;
+  description: string;
+  /** The model id the value stands for now; null when Claude Code did not say. */
+  resolved_model: string | null;
+  /** The thinking levels it takes, lowest first; empty when it takes none. */
+  efforts: ClaudeEffort[];
+};
+
+/** The models one Claude account offers; empty with `error` set when it could not be asked. */
+export type ClaudeCodeModelList = {
+  config_dir: string | null;
+  models: ClaudeCodeModel[];
+  checked_at: string;
+  error: string | null;
+};
+
 export type ClaudeCodeSessionListing = {
   session_id: string;
   /** The account directory it was found under; null is the daemon's own environment. */

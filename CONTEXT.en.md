@@ -33,7 +33,7 @@ A one-to-one conversation between you and a Bot or between two Bots; your direct
 _Avoid_: mixing unrelated jobs in one collaboration direct, user as a speaker in a Bot↔Bot direct, every private line must wake the other side
 
 **Project session**:
-You and a local agent (Claude Code for now) in a project directory, as in the agent's own desktop app; no Bot. Start one by picking a directory, or carry on a session you had in a terminal (on a branch of it, the original left as it was). The app keeps only the permission mode, the model, the thinking level and Stop: no jobs, flow, organizing, deliveries, reviews or holds; the agent keeps the history itself, and each run is sent only your new line. The sidebar's Projects section groups them by directory. Details: [Behavior · Project sessions](docs/behavior.en.md#project-sessions), [ADR 0095](docs/adr/0095-project-sessions.md).
+You and a local agent (Claude Code for now) in a project directory, as in the agent's own desktop app; no Bot. Start one by picking a directory, or carry on a session you had in a terminal (on a branch of it, the original left as it was). The app keeps only the permission mode, the account, the model, the thinking level and Stop: no jobs, flow, organizing, deliveries, reviews or holds; the agent keeps the history itself, and each run is sent only your new line. The sidebar's Projects section groups them by directory. Details: [Behavior · Project sessions](docs/behavior.en.md#project-sessions), [ADR 0095](docs/adr/0095-project-sessions.md).
 _Avoid_: calling a project session a Bot, jobs or a flow in a project session, typing "stop" as Stop, changing the terminal's original session
 
 **Task map**:

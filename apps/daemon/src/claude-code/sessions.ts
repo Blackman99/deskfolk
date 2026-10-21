@@ -4,8 +4,8 @@
  * under an account's config directory, one JSON entry per line, chained by `parentUuid`. Only the
  * transcripts are read here, never a sign-in; a Bot's own tools stay out of these directories.
  */
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import type { ClaudeCodeSessionListing } from "@real-bot/protocol";
 import { defaultConfigDir } from "./account";
 
@@ -208,6 +208,26 @@ export function findClaudeSessionFile(root: ClaudeSessionRoot, sessionId: string
     if (existsSync(path)) return path;
   }
   return null;
+}
+
+/**
+ * A session carried to another account (ADR 0095): Claude Code finds a session to resume only
+ * under its own config directory, so moving a project session to another account copies the file
+ * — with its folder of subagents and tool results — to the same project folder there. One already
+ * there is left as it is unless this one was written since: a session moved back to an account it
+ * ran on before brings the turns it had meanwhile. False when the session is not found under `from`.
+ */
+export function carryClaudeSession(from: ClaudeSessionRoot, to: ClaudeSessionRoot, sessionId: string): boolean {
+  const file = findClaudeSessionFile(from, sessionId);
+  if (!file) return false;
+  const folder = join(to.dir, "projects", basename(dirname(file)));
+  const target = join(folder, basename(file));
+  if (existsSync(target) && statSync(target).mtimeMs >= statSync(file).mtimeMs) return true;
+  mkdirSync(folder, { recursive: true });
+  copyFileSync(file, target);
+  const own = join(dirname(file), sessionId);
+  if (existsSync(own)) cpSync(own, join(folder, sessionId), { recursive: true });
+  return true;
 }
 
 /**

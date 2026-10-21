@@ -66,6 +66,16 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 40, 1), 200);
     return jsonResponse({ items: listClaudeSessions(claudeSessionRoots(store.claudeCodeConfigDirs()), { limit }) }, 200, null);
   }
+  // The models one of your Claude accounts offers, as its `/model` lists them (ADR 0095): asked of
+  // Claude Code without a prompt and kept a while. Only an account listed here is asked.
+  if (path === "/v1/runtime/claude-code/models" && method === "GET" && options.claudeModels) {
+    const raw = url.searchParams.get("config_dir");
+    const configDir = raw && raw.trim() ? raw : null;
+    if (configDir !== null && !store.claudeCodeConfigDirs().includes(configDir)) {
+      throw new HttpError(422, "invalid_args", "config_dir is not one of your Claude accounts");
+    }
+    return options.claudeModels.list(configDir).then((list) => jsonResponse(list, 200, null));
+  }
   // The Claude accounts besides the daemon's own environment: the config directories a Bot may
   // run on. The whole list each time; one a Bot or a ladder rung runs on cannot be taken away (409).
   if (path === "/v1/runtime/claude-code/accounts" && method === "PUT") {

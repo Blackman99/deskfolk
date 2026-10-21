@@ -40,6 +40,11 @@ export type PatchProjectSessionRequest = {
   model?: string | null;
   /** One of `CLAUDE_EFFORTS`. */
   effort?: ClaudeEffort | null;
+  /**
+   * The Claude account its next run spends: one listed in Settings, null for the daemon's own. The
+   * session is carried to that account first; refused (409) while a run is going on.
+   */
+  config_dir?: string | null;
 };
 
 export type CreateProjectSessionRequest = {

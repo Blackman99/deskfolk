@@ -6,6 +6,7 @@ import { isNonReceiptPath, LOCAL_API_NAME, type CapabilitiesResponse, type Clien
 import { warmDisplayAvatar } from "./avatar-display";
 import { createClaudeCodeProbe } from "./claude-code/probe";
 import { createClaudeUsageProbe } from "./claude-code/usage";
+import { createClaudeModelList } from "./claude-code/models";
 import { HttpError } from "./errors";
 import { emptyResponse, fromError, jsonResponse, matchPath, readBearer, readJson, responseRecord } from "./http";
 import { ulid } from "./ids";
@@ -62,6 +63,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     }),
   };
   const claudeCode = options.claudeCode!;
+  options.claudeModels ??= createClaudeModelList({ claudeCode });
   options.claudeUsage ??= createClaudeUsageProbe({
     claudeCode,
     // Bots, Claude rungs of the model ladder (ADR 0076) and built-in calls alike, and every account

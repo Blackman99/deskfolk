@@ -1,7 +1,7 @@
 import { isAgentModelName, isClaudeEffort, type CreateProjectSessionRequest } from "@real-bot/protocol";
 import { homedir } from "node:os";
 import { readAgentReplay } from "../../claude-code/replay";
-import { claudeSessionRoots, findClaudeSessionFile, readClaudeSession } from "../../claude-code/sessions";
+import { carryClaudeSession, claudeSessionRoots, findClaudeSessionFile, readClaudeSession } from "../../claude-code/sessions";
 import { HttpError } from "../../errors";
 import { jsonResponse, matchPath } from "../../http";
 import { sessionUpsertFields } from "../../session-events";
@@ -80,11 +80,13 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
   }
 
   // The model (an alias or a full id) and the thinking level its runs ask for, each from the next
-  // step on: a run going now switches too. A key left out stays; null is the agent's own default.
+  // step on: a run going now switches too. The account its next run spends: Claude Code keeps a
+  // session under the account's own directory, so the session is carried there first, and not
+  // while a run is still writing it. A key left out stays; null is the agent's own default.
   params = matchPath(path, "/v1/project-sessions/:id");
   if (params && method === "PATCH") {
-    const body = (input.body ?? {}) as { model?: unknown; effort?: unknown };
-    const change: { model?: string | null; effort?: string | null } = {};
+    const body = (input.body ?? {}) as { model?: unknown; effort?: unknown; config_dir?: unknown };
+    const change: { model?: string | null; effort?: string | null; configDir?: string | null } = {};
     if (body.model !== undefined) {
       const model = typeof body.model === "string" ? body.model.trim() : body.model;
       if (model !== null && (typeof model !== "string" || !isAgentModelName(model))) {
@@ -96,7 +98,26 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
       if (body.effort !== null && !isClaudeEffort(body.effort)) throw new HttpError(422, "invalid_args", "effort must be low, medium, high, xhigh, max or null");
       change.effort = body.effort;
     }
-    if (change.model === undefined && change.effort === undefined) throw new HttpError(422, "invalid_args", "model or effort is required");
+    if (body.config_dir !== undefined) {
+      const project = store.projectOf(params.id!);
+      if (!project) throw new HttpError(404, "not_found", "not a project session");
+      const configDir = body.config_dir;
+      const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
+      const to = roots.find((root) => root.configDir === configDir);
+      if (configDir !== null && (typeof configDir !== "string" || !to)) throw new HttpError(422, "invalid_args", "config_dir is not one of your Claude accounts");
+      if (configDir !== project.configDir) {
+        const latest = store.latestAgentRun(params.id!);
+        if (latest && (latest.status === "running" || latest.status === "waiting_approval")) {
+          throw new HttpError(409, "conflict", "the account changes once the run going now has ended");
+        }
+        const from = roots.find((root) => root.configDir === project.configDir) ?? roots[0]!;
+        for (const id of [project.agentSession, project.source]) if (id) carryClaudeSession(from, to ?? roots[0]!, id);
+      }
+      change.configDir = configDir;
+    }
+    if (change.model === undefined && change.effort === undefined && change.configDir === undefined) {
+      throw new HttpError(422, "invalid_args", "model, effort or config_dir is required");
+    }
     const session = store.tuneProjectSession(params.id!, change);
     projects.tune(params.id!, change);
     publish({ event: "session.upsert", occurred_at: occurred(), ...sessionUpsertFields(session) });

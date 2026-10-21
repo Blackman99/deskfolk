@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
-	import { CLAUDE_EFFORTS, CLAUDE_MODEL_ALIASES, isHiddenTranscriptKind, speechReady, USER_MEMBER, type Attachment, type Message, type SessionSummary } from '@real-bot/protocol';
+	import { onMount, tick, untrack } from 'svelte';
+	import { CLAUDE_EFFORTS, isHiddenTranscriptKind, type ClaudeEffort, speechReady, USER_MEMBER, type Attachment, type Message, type SessionSummary } from '@real-bot/protocol';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
 	import Select from '../Select.svelte';
@@ -25,6 +25,7 @@
 	import { focusMode } from './focus-mode.svelte.ts';
 	import { describeStep } from './turn-activity.ts';
 	import { ComposerVoice, spacedHeard } from './composer-voice.svelte.ts';
+	import { accountChoices, claudeModelsOf, claudeStatus, effortChoices, loadClaudeModels, loadClaudeStatus, modelChoices, modelRowOf } from './project-agent-options.svelte.ts';
 	import VoiceButton from './VoiceButton.svelte';
 	import VoiceStatus from './VoiceStatus.svelte';
 	import { ProjectCitedPaths } from './project-cited-path.ts';
@@ -88,27 +89,61 @@
 	});
 
 	/**
-	 * The model its runs ask for: Claude Code's aliases, or none for what your settings say. One
-	 * set elsewhere (a full id) stays a choice. A change reaches a run going now from its next step.
+	 * The account its next run spends, the model its runs ask for and their thinking level, each the
+	 * session's own and kept with it. The models are the ones your Claude Code lists for that account,
+	 * as its `/model` does, its default first for what your settings say; one set elsewhere stays a
+	 * choice. The thinking levels are the ones the picked model takes. A model or level change reaches
+	 * a run going now from its next step; an account change waits for the run to end.
 	 */
+	const account = $derived(selected.project_config_dir ?? '');
+	// Asked once each; untracked, so what the asking writes does not ask again.
+	$effect(() => {
+		const api = runtime.client;
+		untrack(() => loadClaudeStatus(api));
+	});
+	$effect(() => {
+		const api = runtime.client;
+		const dir = account || null;
+		untrack(() => loadClaudeModels(api, dir));
+	});
+	const accountOptions = $derived(accountChoices(claudeStatus(), account, t.project.defaultAccount));
+	/** Picked only with a second account to pick, or the session already on one. */
+	const accountShown = $derived(accountOptions.length > 1);
+	const modelList = $derived(claudeModelsOf(account || null));
 	const model = $derived(selected.project_model ?? '');
 	const modelOptions = $derived.by((): SelectOption[] => {
 		const mark = claudeAgentSource(t);
-		const names: string[] = [...CLAUDE_MODEL_ALIASES];
-		if (model && !names.includes(model)) names.push(model);
-		return [{ value: '', label: t.project.modelDefault, source: mark }, ...names.map((name) => ({ value: name, label: name, source: mark }))];
+		return modelChoices(modelList, model, t.project.modelDefault).map((choice) => ({ ...choice, source: mark }));
 	});
-	/** The thinking level its runs ask for, the same way: none for what your settings say. */
+	/** What Claude Code says of the picked model, on the pointer. */
+	const modelNote = $derived(modelRowOf(modelList, model)?.description || (model ? undefined : t.project.modelDefaultHint));
 	const effort = $derived(selected.project_effort ?? '');
-	const effortOptions = $derived.by((): SelectOption[] => [
-		{ value: '', label: t.project.effortDefault },
-		...CLAUDE_EFFORTS.map((level) => ({ value: level, label: t.sidebar.thinkingLevels[level] }))
-	]);
+	const efforts = $derived(effortChoices(modelList, model));
+	const effortOptions = $derived.by((): SelectOption[] => {
+		const levels: string[] = [...efforts];
+		if (effort && !levels.includes(effort)) levels.push(effort);
+		return [
+			{ value: '', label: t.project.effortDefault },
+			...levels.map((level) => ({ value: level, label: t.sidebar.thinkingLevels[level as ClaudeEffort] ?? level }))
+		];
+	});
+	/** A model that takes no thinking level has none to pick, unless one is set already. */
+	const effortShown = $derived(efforts.length > 0 || Boolean(effort));
 	let tuneFailed = $state(false);
+	let accountRefused = $state(false);
+
+	async function pickAccount(value: string): Promise<void> {
+		if (value === account) return;
+		const failure = await runtime.tuneProjectSession(selected.id, { config_dir: value || null });
+		accountRefused = failure?.status === 409;
+		tuneFailed = failure !== null && !accountRefused;
+	}
 
 	async function pickModel(value: string): Promise<void> {
 		if (value === model) return;
-		tuneFailed = (await runtime.tuneProjectSession(selected.id, { model: value || null })) !== null;
+		// A thinking level the new model does not take goes back to the default with it.
+		const keeps = !effort || effortChoices(modelList, value).some((level) => level === effort);
+		tuneFailed = (await runtime.tuneProjectSession(selected.id, { model: value || null, ...(keeps ? {} : { effort: null }) })) !== null;
 	}
 
 	async function pickEffort(value: string): Promise<void> {
@@ -397,6 +432,8 @@
 	<div class="composer">
 		{#if sendFailed || tuneFailed}
 			<p class="field-error">{t.project.actionFailed}</p>
+		{:else if accountRefused}
+			<p class="field-error">{t.project.accountBusy}</p>
 		{/if}
 		<VoiceStatus {voice} {t} />
 		<div class="composer-box">
@@ -417,8 +454,23 @@
 				oncompositionend={() => (ime = composerImeOnEnd(Date.now()))}
 			></textarea>
 			<div class="composer-tools">
-				<!-- What the default is, on the pointer: a hint in the picker itself would crowd the composer. -->
-				<div class="model" data-project-model title={model ? undefined : t.project.modelDefaultHint}>
+				{#if accountShown}
+					<!-- An account changes for the next run: Claude Code keeps the session under the account it ran on. -->
+					<div class="account" data-project-account title={live ? t.project.accountBusy : t.project.accountLabel}>
+						<Select
+							size="sm"
+							placement="top"
+							value={account}
+							options={accountOptions}
+							ariaLabel={t.project.accountLabel}
+							title={t.project.accountLabel}
+							disabled={!connected || live}
+							onchange={(value) => void pickAccount(value)}
+						/>
+					</div>
+				{/if}
+				<!-- What Claude Code says of the model, on the pointer: a hint in the picker itself would crowd the composer. -->
+				<div class="model" data-project-model title={modelNote}>
 					<Select
 						size="sm"
 						placement="top"
@@ -430,6 +482,7 @@
 						onchange={(value) => void pickModel(value)}
 					/>
 				</div>
+				{#if effortShown}
 				<div class="effort" data-project-effort title={effort ? undefined : t.project.effortDefaultHint}>
 					<Select
 						size="sm"
@@ -442,6 +495,7 @@
 						onchange={(value) => void pickEffort(value)}
 					/>
 				</div>
+				{/if}
 				<span class="tools-gap"></span>
 				{#if voiceOffered || voice.busy}
 					<VoiceButton {voice} {t} disabled={!connected} />
@@ -739,6 +793,7 @@
 		gap: 6px;
 	}
 
+	.account,
 	.model,
 	.effort {
 		min-width: 0;

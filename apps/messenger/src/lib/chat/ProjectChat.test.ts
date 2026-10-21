@@ -246,3 +246,89 @@ test("a file the agent cites opens where the Mac finds it under the project; one
     close();
   }
 });
+
+test("the composer picks the account, and its models are Claude Code's own for that account, each with the levels it takes", async () => {
+  const { forgetClaudeOptions } = await import("./project-agent-options.svelte.ts");
+  forgetClaudeOptions();
+  const session = aProjectSession({ project_config_dir: "/Users/a/.claude-b", project_model: "haiku" });
+  const runtime = fakeRuntime({ sessions: [session] });
+  const askedModels: Array<string | null> = [];
+  (runtime as unknown as { client: unknown }).client = {
+    claudeCode: async () => ({ email: "me@a.com", accounts: [{ config_dir: null, email: "me@a.com" }, { config_dir: "/Users/a/.claude-b", email: "team@b.com" }] }),
+    claudeCodeModels: async (dir: string | null) => (askedModels.push(dir), { config_dir: dir, checked_at: "t", error: null, models: [
+      { value: "default", display_name: "Default (recommended)", description: "Opus 5.5", resolved_model: "claude-opus-5-5", efforts: ["low", "high"] },
+      { value: "haiku", display_name: "Haiku 5.5", description: "Fastest", resolved_model: "claude-haiku-5-5", efforts: [] },
+    ] }),
+  };
+  const { host, close } = render(ProjectChat, { runtime, t, selected: session });
+  await settle();
+  await settle();
+  expect(askedModels).toEqual(["/Users/a/.claude-b"]);
+  const trigger = (box: string) => host.querySelector(`${box} .real-select-trigger`);
+  expect(trigger("[data-project-account]")?.textContent).toContain("team@b.com");
+  expect(trigger("[data-project-model]")?.textContent).toContain("Haiku 5.5");
+  expect(host.querySelector("[data-project-model]")?.getAttribute("title")).toBe("Fastest");
+  // Haiku takes no thinking level: there is none to pick.
+  expect(host.querySelector("[data-project-effort]")).toBeNull();
+  click(trigger("[data-project-account]"));
+  click([...host.querySelectorAll("[data-project-account] [role=option]")].find((row) => row.textContent?.includes("me@a.com")) ?? null);
+  await settle();
+  expect(runtime.calls.find((c) => c.name === "tuneProjectSession")?.args).toEqual(["proj-1", { config_dir: null }]);
+  close();
+  forgetClaudeOptions();
+});
+
+test("a model that does not take the session's thinking level takes it back to the default", async () => {
+  const { forgetClaudeOptions } = await import("./project-agent-options.svelte.ts");
+  forgetClaudeOptions();
+  const session = aProjectSession({ project_effort: "high" });
+  const runtime = fakeRuntime({ sessions: [session] });
+  (runtime as unknown as { client: unknown }).client = {
+    claudeCode: async () => ({ email: "me@a.com", accounts: [{ config_dir: null, email: "me@a.com" }] }),
+    claudeCodeModels: async (dir: string | null) => ({ config_dir: dir, checked_at: "t", error: null, models: [
+      { value: "default", display_name: "Default (recommended)", description: "Opus 5.5", resolved_model: "claude-opus-5-5", efforts: ["low", "high"] },
+      { value: "sonnet", display_name: "Sonnet 5.5", description: "", resolved_model: "claude-sonnet-5-5", efforts: ["low", "medium", "high"] },
+      { value: "haiku", display_name: "Haiku 5.5", description: "Fastest", resolved_model: "claude-haiku-5-5", efforts: [] },
+    ] }),
+  };
+  const { host, close } = render(ProjectChat, { runtime, t, selected: session });
+  await settle();
+  await settle();
+  const pick = (label: string) => {
+    click(host.querySelector("[data-project-model] .real-select-trigger"));
+    click([...host.querySelectorAll("[data-project-model] [role=option]")].find((row) => row.textContent?.includes(label)) ?? null);
+  };
+  pick("Sonnet 5.5");
+  await settle();
+  pick("Haiku 5.5");
+  await settle();
+  const tunes = runtime.calls.filter((c) => c.name === "tuneProjectSession").map((c) => c.args);
+  expect(tunes).toEqual([["proj-1", { model: "sonnet" }], ["proj-1", { model: "haiku", effort: null }]]);
+  close();
+  forgetClaudeOptions();
+});
+
+test("one account only: no account to pick; the account waits while a run is going", async () => {
+  const { forgetClaudeOptions } = await import("./project-agent-options.svelte.ts");
+  forgetClaudeOptions();
+  const status = (accounts: unknown[]) => async () => ({ email: "me@a.com", accounts });
+  const single = fakeRuntime({ sessions: [aProjectSession()] });
+  (single as unknown as { client: unknown }).client = { claudeCode: status([{ config_dir: null, email: "me@a.com" }]), claudeCodeModels: async () => { throw new Error("old Mac"); } };
+  const one = render(ProjectChat, { runtime: single, t, selected: aProjectSession() });
+  await settle();
+  expect(one.host.querySelector("[data-project-account]")).toBeNull();
+  // A Mac that cannot list its models: Claude Code's aliases.
+  click(one.host.querySelector("[data-project-model] .real-select-trigger"));
+  expect([...one.host.querySelectorAll("[data-project-model] [role=option]")].map((row) => row.textContent?.trim())).toContain("opus");
+  one.close();
+  forgetClaudeOptions();
+  const busy = fakeRuntime({ sessions: [aProjectSession()], agentRuns: { "proj-1": anAgentRun() } });
+  (busy as unknown as { client: unknown }).client = { claudeCode: status([{ config_dir: null, email: "me@a.com" }, { config_dir: "/b", email: "b@b.com" }]), claudeCodeModels: async () => { throw new Error("no"); } };
+  const two = render(ProjectChat, { runtime: busy, t, selected: aProjectSession() });
+  await settle();
+  expect(two.host.querySelector("[data-project-account]")?.getAttribute("title")).toBe(t.project.accountBusy);
+  expect(two.host.querySelector<HTMLButtonElement>("[data-project-account] .real-select-trigger")?.disabled).toBe(true);
+  two.close();
+  forgetClaudeOptions();
+});
+

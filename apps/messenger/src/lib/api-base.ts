@@ -7,6 +7,7 @@ import type {
   ControlActionResult,
   CreateBotRequest,
   CreateBotResponse,
+  ClaudeCodeModelList,
   ClaudeCodeSessionListing,
   CreateGroupRequest,
   CreateProjectSessionRequest,
@@ -227,6 +228,11 @@ export abstract class ApiBase<Row extends PendingRow> {
 
   async createBot(body: CreateBotRequest): Promise<CreateBotResponse> {
     return this.post<CreateBotResponse>("/v1/bots", body);
+  }
+
+  /** The models one Claude account offers, as Claude Code's own `/model` lists them (ADR 0095). */
+  async claudeCodeModels(configDir: string | null): Promise<ClaudeCodeModelList> {
+    return this.get<ClaudeCodeModelList>(`/v1/runtime/claude-code/models${configDir ? `?config_dir=${encodeURIComponent(configDir)}` : ""}`);
   }
 
   /** Claude Code sessions the Mac holds, newest first (ADR 0095). */

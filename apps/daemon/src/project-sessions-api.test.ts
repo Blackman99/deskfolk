@@ -1,10 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallbackMatcher, Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { Database } from "bun:sqlite";
 import type { AgentReplay, AgentRun, ClaudeCodeStatus, ClientEvent, ProjectPathLookup, SessionDetail, ToolFrame } from "@real-bot/protocol";
+import type { ClaudeModelList } from "./claude-code/models";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
 import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
@@ -69,11 +70,12 @@ function scripted(seen: { options: Options[]; lines: string[]; closed: number; m
   };
 }
 
-function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[] } = {}) {
+function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[]; claudeModels?: ClaudeModelList } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "project-session-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
   const seen = { options: [] as Options[], lines: [] as string[], closed: 0, models: [] as Array<string | null>, efforts: [] as Array<string | null> };
-  const api = createLocalApi({ store, token: "project-test", schedule: false, claudeCode: probe, projectQuery: scripted(seen, step, opts.ownSession, opts.preface) });
+  const api = createLocalApi({ store, token: "project-test", schedule: false, claudeCode: probe, projectQuery: scripted(seen, step, opts.ownSession, opts.preface),
+    ...(opts.claudeModels ? { claudeModels: opts.claudeModels } : {}) });
   const events: ClientEvent[] = [];
   api.subscribeSync((frame) => { if (frame.type === "event") events.push(frame.payload); });
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: api.fetch, websocket: api.websocket });
@@ -382,6 +384,74 @@ test("a session's thinking level: each run asks for it, a run going now switches
   expect(h.seen.options[2]!.model).toBe("opus");
 });
 
+test("a session moves to another of your Claude accounts: its Claude Code session goes with it, and its next run spends that account", async () => {
+  const h = start(async ({ line }) => `答：${line}`);
+  const homeA = mkdtempSync(join(tmpdir(), "claude-a-"));
+  const homeB = mkdtempSync(join(tmpdir(), "claude-b-"));
+  closes.push(async () => { rmSync(homeA, { recursive: true, force: true }); rmSync(homeB, { recursive: true, force: true }); });
+  h.store.setClaudeCodeConfigDirs([homeA, homeB]);
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir, config_dir: homeA })).body.id;
+  // A run on account A left its session there, with a subagent beside it.
+  const folder = join(homeA, "projects", "-work-app");
+  mkdirSync(join(folder, "own-1", "subagents"), { recursive: true });
+  writeFileSync(join(folder, "own-1.jsonl"), '{"type":"user"}\n');
+  writeFileSync(join(folder, "own-1", "subagents", "agent-x.jsonl"), "{}\n");
+  h.store.recordProjectAgentSession(id, "own-1");
+
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { config_dir: "/not/listed" })).status).toBe(422);
+  const moved = await h.call<SessionDetail>("PATCH", `/v1/project-sessions/${id}`, { config_dir: homeB });
+  expect(moved.status).toBe(200);
+  expect(moved.body.project_config_dir).toBe(homeB);
+  expect(readFileSync(join(homeB, "projects", "-work-app", "own-1.jsonl"), "utf8")).toBe('{"type":"user"}\n');
+  expect(existsSync(join(homeB, "projects", "-work-app", "own-1", "subagents", "agent-x.jsonl"))).toBe(true);
+  // The original is left as it was.
+  expect(existsSync(join(folder, "own-1.jsonl"))).toBe(true);
+
+  await h.say(id, "接着说");
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(h.seen.options[0]!.env?.CLAUDE_CONFIG_DIR).toBe(homeB);
+  expect(h.seen.options[0]!.resume).toBe("own-1");
+
+  // Back to A after turns on B: A's older copy gives way to the one B wrote.
+  const later = '{"type":"user"}\n{"type":"assistant"}\n';
+  writeFileSync(join(homeB, "projects", "-work-app", "own-1.jsonl"), later);
+  utimesSync(join(folder, "own-1.jsonl"), new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { config_dir: homeA })).status).toBe(200);
+  expect(readFileSync(join(folder, "own-1.jsonl"), "utf8")).toBe(later);
+});
+
+test("the account does not change under a run still writing its session", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const h = start(async () => { await gate; return "好"; });
+  const homeB = mkdtempSync(join(tmpdir(), "claude-b-"));
+  closes.push(async () => rmSync(homeB, { recursive: true, force: true }));
+  h.store.setClaudeCodeConfigDirs([homeB]);
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(id, "慢慢来");
+  await h.until(async () => (await h.run(id))?.status === "running");
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { config_dir: homeB })).status).toBe(409);
+  // The model still changes under it.
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { model: "haiku" })).status).toBe(200);
+  release();
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { config_dir: homeB })).status).toBe(200);
+});
+
+test("each account's models are asked of Claude Code, and only a listed account's", async () => {
+  const asked: Array<string | null> = [];
+  const claudeModels: ClaudeModelList = { list: async (configDir) => (asked.push(configDir), { config_dir: configDir, models: [{ value: "opus", display_name: "Opus 5.5", description: "", resolved_model: "claude-opus-5-5", efforts: ["low", "high"] }], checked_at: "t", error: null }) };
+  const h = start(async () => "好", { claudeModels });
+  const homeB = mkdtempSync(join(tmpdir(), "claude-b-"));
+  closes.push(async () => rmSync(homeB, { recursive: true, force: true }));
+  h.store.setClaudeCodeConfigDirs([homeB]);
+  const own = await h.call<{ models: Array<{ value: string }> }>("GET", "/v1/runtime/claude-code/models");
+  expect(own.body.models.map((m) => m.value)).toEqual(["opus"]);
+  expect((await h.call("GET", `/v1/runtime/claude-code/models?config_dir=${encodeURIComponent(homeB)}`)).status).toBe(200);
+  expect((await h.call("GET", "/v1/runtime/claude-code/models?config_dir=%2Fnot%2Flisted")).status).toBe(422);
+  expect(asked).toEqual([null, homeB]);
+});
+
 test("a phone reaches the same routes", () => {
   const id = ulid();
   const ok = (request: Parameters<typeof validateBusiness>[0]) => expect(() => validateBusiness(request)).not.toThrow();
@@ -394,6 +464,9 @@ test("a phone reaches the same routes", () => {
   ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { model: null } });
   ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { effort: "xhigh" } });
   ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { model: "opus", effort: null } });
+  ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { config_dir: "/Users/a/.claude-b" } });
+  ok({ v: 1, id, method: "GET", path: "/v1/runtime/claude-code/models", query: { config_dir: "/Users/a/.claude-b" } });
+  ok({ v: 1, id, method: "GET", path: "/v1/runtime/claude-code/models" });
   expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { effort: "huge" } })).toThrow();
   expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: {} })).toThrow();
   ok({ v: 1, id, method: "PATCH", path: `/v1/sessions/${ulid()}`, body: { name: "登录修复" } });

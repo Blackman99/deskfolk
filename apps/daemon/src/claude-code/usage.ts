@@ -213,7 +213,7 @@ async function askWithSdk(launch: { executable: string; env: Record<string, stri
 }
 
 /** `claude`, through cmd.exe when it is npm's batch file; a stop takes what it started too. */
-function spawnClaude(options: SpawnOptions): SpawnedProcess {
+export function spawnClaude(options: SpawnOptions): SpawnedProcess {
   const launch = claudeLaunch(options.command, options.args, options.env as Record<string, string>);
   const child = spawn(launch.command, launch.args, {
     cwd: options.cwd,
