@@ -1,6 +1,6 @@
 import { expect, test, webkit, type Browser, type Page } from '@playwright/test';
 
-type Card = { top: number; bottom: number; height: number; scrolls: boolean };
+type Card = { top: number; bottom: number; height: number; scrolls: boolean; overflowsX: boolean };
 
 /** What was asked and the moments: where each card is and whether its list scrolls; and the note's top. */
 async function measure(page: Page): Promise<{ said: Card; moments: Card; noteTop: number }> {
@@ -9,7 +9,10 @@ async function measure(page: Page): Promise<{ said: Card; moments: Card; noteTop
       const el = document.querySelector<HTMLElement>(selector)!;
       const box = el.getBoundingClientRect();
       const list = el.querySelector<HTMLElement>('.tm-list')!;
-      return { top: box.top, bottom: box.bottom, height: box.height, scrolls: list.scrollHeight > list.clientHeight + 1 };
+      return {
+        top: box.top, bottom: box.bottom, height: box.height,
+        scrolls: list.scrollHeight > list.clientHeight + 1, overflowsX: list.scrollWidth > list.clientWidth + 1,
+      };
     };
     const note = document.querySelector<HTMLElement>('#story > p')!;
     return { said: card('.tm-said'), moments: card('.tm-moments'), noteTop: note.getBoundingClientRect().top };
@@ -29,6 +32,9 @@ async function sharesTheColumn(page: Page, baseURL: string | undefined): Promise
   expect(both.said.scrolls).toBe(true);
   expect(both.moments.scrolls).toBe(true);
   expect(both.moments.bottom).toBeLessThanOrEqual(both.noteTop);
+  // A word wider than the column (an address) wraps inside its line; neither list scrolls sideways.
+  expect(both.said.overflowsX).toBe(false);
+  expect(both.moments.overflowsX).toBe(false);
 
   // A short list keeps only its lines; the long one takes the rest.
   await open(page, baseURL, 'taskmap-side-few-said');

@@ -26,6 +26,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - In a project session, pressing a file Claude Code named in its reply did nothing. It now opens in the preview, found where Claude Code meant it: Claude Code writes paths relative to where it was working, so a path that is not under the project directory as written is looked for inside it. In a folder holding several repositories, `comm/defs.go` opens `steez/comm/defs.go`, and `server.go` the one `server.go` there. When nothing matches, or several places match equally, a toast says so and nothing opens; a branch name like `feat/adverse-media` shows as a link too, and pressing it says it is not in the project directory. `GET /v1/project-sessions/:id/locate?path=` answers where a path is.
 
+### A task map's moments no longer scroll sideways
+
+- A moment quoting a link or hash with nowhere to break, such as a percent-encoded URL, widened the moments list past its card: the list got a sideways scrollbar, and scrolled along it the start of every line was cut off. Such a word now wraps inside its own line, and the list only scrolls up and down.
+
 ### The task map's moments get as much room as what you asked
 
 - On a task map's side, a long list of what you asked took the whole column and left the moments two lines at the bottom. The two now share what the cards above them leave: half each when both are long, a short one keeping just its lines and the other taking the rest. Each still scrolls in its own card.

@@ -25,8 +25,12 @@ export function taskmapSideStory(said: number, moments: number) {
     { name: '视频导演', figure: 'pudding', face: { eyes: 'dot', mouth: 'smile' }, avatar: null, source: { kind: 'custom', name: 'Claude Agent' } },
     { name: '审核员', figure: 'taro', face: { eyes: 'dot', mouth: 'smile' }, avatar: null, source: { kind: 'custom', name: 'Claude Agent' } },
   ];
-  const quests: Quest[] = Array.from({ length: said }, (_, i) => ({ kind: 'say', at: i * 60_000, v: i * 10, text: `第 ${i + 1} 句：继续把成片做完` }));
-  const lines: (MomentText & { v: number })[] = Array.from({ length: moments }, (_, i) => ({ title: `时刻 ${i + 1}`, sub: '09:04 · 继续', color: '#3aa0a8', v: i * 10 + 5 }));
+  // The first line and the first moment quote a link: an encoded path wider than the column, with nowhere to break.
+  const link = 'https://example.com/docs/%E4%BA%A4%E6%98%93%E8%BF%BD%E8%B8%AA%E8%AF%B4%E6%98%8E.md';
+  const quests: Quest[] = Array.from({ length: said }, (_, i) => ({ kind: 'say', at: i * 60_000, v: i * 10, text: i === 0 ? `${link} 看一下这份说明` : `第 ${i + 1} 句：继续把成片做完` }));
+  const lines: (MomentText & { v: number })[] = Array.from({ length: moments }, (_, i) => ({
+    title: `时刻 ${i + 1}`, sub: i === 0 ? `09:04 · ${link} 看一下这份说明` : '09:04 · 继续', color: '#3aa0a8', v: i * 10 + 5,
+  }));
   return {
     component: MapSide as never,
     props: {

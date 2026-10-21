@@ -138,7 +138,7 @@
 				{#each moments as m, i (i)}
 					<button type="button" class="tm-moment" class:is-now={i === live} onclick={() => onJump(Math.max(0, m.v - 1))}>
 						<span class="tm-mdot" style:background={m.color}></span>
-						<span><span class="tm-mtitle">{m.title}</span><span class="tm-msub">{m.sub}</span></span>
+						<span class="tm-mtext"><span class="tm-mtitle">{m.title}</span><span class="tm-msub">{m.sub}</span></span>
 					</button>
 				{/each}
 			</div>
@@ -199,6 +199,8 @@
 	.tm-item-text b { color: var(--accent); }
 	.tm-conv { margin-left: 4px; padding: 0 5px; border-radius: var(--radius-sm); background: var(--chip); color: var(--ink-secondary); font-size: var(--text-micro); }
 	.tm-mdot { width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 5px; }
+	/* A quoted link or hash has nowhere to break: it wraps inside its line rather than widening the list sideways. */
+	.tm-mtext { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 	.tm-mtitle { display: block; font-weight: 600; }
 	.tm-msub { display: block; font-size: var(--text-micro); color: var(--muted); }
 </style>
