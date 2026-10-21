@@ -3,7 +3,7 @@
 	import { untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { buildDistricts, type DistrictMap } from './districts.ts';
+	import { buildDistricts, type DistrictKind, type DistrictMap } from './districts.ts';
 	import { buildFrame, placeName, timeAt, verbOf, type WalkState } from './frame.ts';
 	import { placeDetail, tripsByPlace } from './inspect.ts';
 	import { fromAgentReplay, mergeLive, type MapCall, type MapData } from './map-data.ts';
@@ -309,21 +309,29 @@
 		while (parts.length && out.length + parts[parts.length - 1]!.length < 27) out = `${parts.pop()}/${out}`;
 		return `…/${out}`;
 	};
-	const legend = $derived(districts ? districts.districts.map((d) => ({ name: placeName(d, tm), path: d.kind === 'code' ? tail(d.path) : tm.placePaths[d.kind], color: d.color })) : []);
+	/** What a place stands for under its name: a folder from its end, the servers called, or the fixed place's own line. */
+	const placePath = (kind: DistrictKind, path: string, short: boolean) =>
+		kind === 'code' ? (short ? tail(path) : path) : kind === 'service' && path ? `${tm.placePaths.service} · ${path}` : tm.placePaths[kind];
+	const legend = $derived(districts ? districts.districts.map((d) => ({ name: placeName(d, tm), path: placePath(d.kind, d.path, true), color: d.color })) : []);
 	const picked = $derived.by(() => {
 		if (!data || !tl || !districts || !frame || sel < 0 || !districts.districts[sel]) return null;
 		const d = districts.districts[sel]!;
-		const full = d.kind === 'code' ? d.path : tm.placePaths[d.kind];
-		return { name: placeName(d, tm), path: tail(full), full, color: d.color, detail: placeDetail(data, tl, trips[sel] ?? [], sel, frame.idx, shown) };
+		const full = placePath(d.kind, d.path, false);
+		return { name: placeName(d, tm), path: d.kind === 'code' ? tail(full) : full, full, color: d.color, detail: placeDetail(data, tl, trips[sel] ?? [], sel, frame.idx, shown) };
 	});
 	const moments = $derived(
 		tl && data ? tl.moments.map((m) => ({ ...momentText(m, tm, (b) => who(b).short, placeOf, when, (b) => data.characters[b]?.description ?? who(b).short), v: m.v })) : []
 	);
 	const lanes = $derived(data ? data.characters.map((_, b) => ({ label: who(b).short, color: colorOf(b) })) : []);
 	const needle = $derived.by(() => { const ax = axes(phi); return (Math.atan2(-(ax.ex[0] + ax.ey[0]), ax.ex[1] + ax.ey[1]) * 180) / Math.PI; });
+	// Each island is labelled by the places standing on it, or by what it is for while it is empty.
+	const islandLabel = (island: 'ext' | 'ws', empty: string) => {
+		const names = (districts?.districts ?? []).filter((d) => d.island === island).map((d) => placeName(d, tm));
+		return names.length ? names.join(' · ') : empty;
+	};
 	const regionLabels = $derived({
-		ext: `${tm.places.outside} · ${tm.places.claude_home}`,
-		ws: `${tm.places.git} · ${tm.places.other}`,
+		ext: islandLabel('ext', `${tm.places.outside} · ${tm.places.claude_home}`),
+		ws: islandLabel('ws', `${tm.places.git} · ${tm.places.other}`),
 		town: `${(session.project_dir ?? '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''}/`
 	});
 	const wide = $derived(width >= 760);

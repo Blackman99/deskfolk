@@ -6,17 +6,20 @@ export type { ArchetypeId };
 /**
  * What a place on the map stands for. `code` is a folder of the project; the others are the fixed
  * places every map has when they were worked in: the project's root (where questions and subagents
- * start), checks (tests and type checks), git, Claude Code's own files, anywhere else outside the
- * project, and the folders too small to be a place of their own.
+ * start), checks (tests and type checks), git, the MCP servers it called, Claude Code's own files,
+ * anywhere else outside the project, and the folders too small to be a place of their own.
  */
-export type DistrictKind = "root" | "code" | "check" | "git" | "claude_home" | "outside" | "other";
+export type DistrictKind = "root" | "code" | "check" | "git" | "service" | "claude_home" | "outside" | "other";
 
 export type District = {
   key: string;
   kind: DistrictKind;
-  /** A code district's folder, relative to the project ("" for the root); empty for the others. */
+  /** A code district's folder, relative to the project ("" for the root); the servers' names for services; empty for the others. */
   path: string;
-  /** A code district's name on its plate: the shortest tail of its path no other district shares. */
+  /**
+   * A code district's name on its plate: the shortest tail of its path no other district shares.
+   * The services' is their server's name when there is one; empty for the other fixed places.
+   */
   label: string;
   archetype: ArchetypeId;
   /** Its plate's dot, the building's main colour. */
@@ -39,7 +42,7 @@ export type DistrictMap = {
 export const ARCHETYPE_COLOR: Readonly<Record<ArchetypeId, string>> = {
   camp: "#ee9550", song: "#8c7bd3", bible: "#b8574a", board: "#f2c14e", scratch: "#e9e1c8",
   tools: "#3f9a86", keys: "#5aa6d6", clips: "#3e5182", edit: "#9bc34a", review: "#d64a62",
-  paint: "#e48fbd", film: "#5a5cc4", mail: "#d6b47a", kit: "#6fae5a", others: "#8a9bb0",
+  paint: "#e48fbd", film: "#5a5cc4", mail: "#d6b47a", kit: "#6fae5a", others: "#8a9bb0", relay: "#4a5a6e",
 };
 
 /** The fixed places: their shape and where they stand (the root at the town's left, checks at its front corner). */
@@ -47,6 +50,7 @@ const FIXED: Readonly<Record<Exclude<DistrictKind, "code">, { archetype: Archety
   root: { archetype: "camp", gx: 0, gy: 1 },
   check: { archetype: "review", gx: 3, gy: 2 },
   git: { archetype: "kit", gx: -1.65, gy: 0.55, island: "ws" },
+  service: { archetype: "relay", gx: 1, gy: -1.65, island: "ext" },
   other: { archetype: "others", gx: -1.65, gy: 1.65, island: "ws" },
   claude_home: { archetype: "paint", gx: 2, gy: -1.65, island: "ext" },
   outside: { archetype: "scratch", gx: 3, gy: -1.65, island: "ext" },
@@ -96,6 +100,7 @@ function fixedKind(place: AgentToolPlace): Exclude<DistrictKind, "code" | "other
   switch (place.zone) {
     case "check": return "check";
     case "git": return "git";
+    case "service": return "service";
     case "claude_home": return "claude_home";
     case "outside": return "outside";
     case "none": return "root";
@@ -163,8 +168,10 @@ export function buildDistricts(places: readonly AgentToolPlace[], opts: { maxCod
   const maxCode = Math.min(opts.maxCode ?? CODE_SLOTS.length, CODE_SLOTS.length);
   const fixedCounts = new Map<DistrictKind, number>();
   const folders: string[] = [];
+  const servers = new Map<string, number>();
   for (const place of places) {
     const fixed = fixedKind(place);
+    if (place.zone === "service") servers.set(place.server, (servers.get(place.server) ?? 0) + 1);
     if (fixed) fixedCounts.set(fixed, (fixedCounts.get(fixed) ?? 0) + 1);
     else if (place.zone === "project") folders.push(folderOf(place.path));
   }
@@ -203,9 +210,9 @@ export function buildDistricts(places: readonly AgentToolPlace[], opts: { maxCod
   };
   const labels = labelsOf(code.map((n) => n.path));
   const districts: District[] = [];
-  const fixed = (kind: Exclude<DistrictKind, "code">, calls: number) => {
+  const fixed = (kind: Exclude<DistrictKind, "code">, calls: number, path = "", label = "") => {
     const f = FIXED[kind];
-    districts.push({ key: kind, kind, path: "", label: "", archetype: f.archetype, color: ARCHETYPE_COLOR[f.archetype], gx: f.gx, gy: f.gy, ...(f.island ? { island: f.island } : {}), calls });
+    districts.push({ key: kind, kind, path, label, archetype: f.archetype, color: ARCHETYPE_COLOR[f.archetype], gx: f.gx, gy: f.gy, ...(f.island ? { island: f.island } : {}), calls });
   };
   fixed("root", fixedCounts.get("root") ?? 0);
   code.forEach((n, i) => {
@@ -213,8 +220,12 @@ export function buildDistricts(places: readonly AgentToolPlace[], opts: { maxCod
     const [gx, gy] = CODE_SLOTS[i]!;
     districts.push({ key: `code:${n.path}`, kind: "code", path: n.path, label: labels[i]!, archetype, color: ARCHETYPE_COLOR[archetype], gx, gy, calls: n.count });
   });
-  for (const kind of ["check", "git", "claude_home", "outside"] as const) {
-    if (fixedCounts.get(kind)) fixed(kind, fixedCounts.get(kind)!);
+  for (const kind of ["check", "git", "service", "claude_home", "outside"] as const) {
+    if (!fixedCounts.get(kind)) continue;
+    // One building for every server, the busiest first; its plate names the server when there is one.
+    const names = [...servers.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name]) => name);
+    if (kind === "service") fixed(kind, fixedCounts.get(kind)!, names.join(" · "), names.length === 1 ? names[0]! : "");
+    else fixed(kind, fixedCounts.get(kind)!);
   }
   if (smallCalls > 0) fixed("other", smallCalls);
 

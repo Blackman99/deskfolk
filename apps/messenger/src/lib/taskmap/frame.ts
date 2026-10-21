@@ -122,6 +122,7 @@ export function verbOf(call: Pick<MapCall, "tool" | "action" | "place">, t: T): 
     case "WebFetch": case "WebSearch": return v.web;
   }
   if (call.place.zone === "check") return call.place.check === "typecheck" ? v.typecheck : v.test;
+  if (call.place.zone === "service") return v.service;
   switch (call.action) {
     case "check": return v.test;
     case "git": return v.git;
@@ -134,9 +135,9 @@ export function verbOf(call: Pick<MapCall, "tool" | "action" | "place">, t: T): 
   return call.place.zone === "git" ? v.git : call.tool;
 }
 
-/** A district's name on its plate: a folder's own label, or the fixed place's name. */
+/** A district's name on its plate: a folder's own label, the one server's name, or the fixed place's name. */
 export function placeName(d: District, t: T): string {
-  return d.kind === "code" ? d.label : t.places[d.kind];
+  return d.kind === "code" || d.label ? d.label : t.places[d.kind];
 }
 
 /** The real time at the playhead `v`: between two calls, as far along as the playhead is. */

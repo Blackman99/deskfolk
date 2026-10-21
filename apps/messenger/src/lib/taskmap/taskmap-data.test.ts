@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { AgentReplay, AgentReplayCall, AgentToolPlace, ToolFrame } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { buildDistricts } from "./districts.ts";
-import { statusText } from "./frame.ts";
+import { placeName, statusText } from "./frame.ts";
 import { AgentCallLog } from "./live.svelte.ts";
 import { fromAgentReplay, mergeLive } from "./map-data.ts";
 import { modelFamily, modelLabel } from "./model-label.ts";
@@ -111,6 +111,20 @@ test("a folder carrying shell words is cut where they start, and plates skip nam
   expect(code.map((d) => d.label).sort()).toEqual(["daemon", "messenger", "store"]);
 });
 
+test("MCP calls stand at one services building on the floating island, named for its server when there is one", () => {
+  const svc = (server: string): AgentToolPlace => ({ zone: "service", server });
+  const one = buildDistricts([project("src/a.ts"), svc("westlake-cpa"), svc("westlake-cpa")]);
+  const d = one.districts.find((x) => x.kind === "service")!;
+  expect(d).toMatchObject({ island: "ext", archetype: "relay", label: "westlake-cpa", path: "westlake-cpa", calls: 2 });
+  expect(one.indexOf(svc("anything"))).toBe(one.districts.indexOf(d));
+  const t = copyFor("zh").taskmap;
+  expect(placeName(d, t)).toBe("westlake-cpa");
+  const two = buildDistricts([svc("b"), svc("a"), svc("a")]).districts.find((x) => x.kind === "service")!;
+  expect(two).toMatchObject({ label: "", path: "a · b" });
+  expect(placeName(two, t)).toBe(t.places.service);
+  expect(new Set(buildDistricts([svc("a"), { zone: "claude_home", path: "/h/.claude" }, { zone: "outside", path: "/x" }]).districts.map((x) => x.archetype)).size).toBe(4);
+});
+
 test("a session with no calls yet is a town of one: the root", () => {
   const map = buildDistricts([]);
   expect(map.districts.map((d) => d.kind)).toEqual(["root"]);
@@ -180,6 +194,9 @@ test("the live log keeps each call's start and end by id, and ignores frames it 
   log.applyTool({ type: "tool", turn_id: "t", id: "x", name: "shell", phase: "started" } as ToolFrame);
   log.applyTool(aFrame({ phase: "started", id: "bad", agent_run: { session_id: "proj-1", agent_id: null, place: { zone: "moon" } as unknown as AgentToolPlace, model: null, at: iso(4) } }));
   expect(log.callsOf("proj-1")).toHaveLength(2);
+  log.applyTool(aFrame({ phase: "started", id: "toolu_3", agent_run: { session_id: "proj-1", agent_id: null, place: { zone: "service", server: "westlake-cpa" }, model: null, at: iso(5) } }));
+  log.applyTool(aFrame({ phase: "started", id: "toolu_4", agent_run: { session_id: "proj-1", agent_id: null, place: { zone: "service" } as unknown as AgentToolPlace, model: null, at: iso(6) } }));
+  expect(log.callsOf("proj-1").map((c) => c.id)).toEqual(["toolu_1", "toolu_2", "toolu_3"]);
   log.forget("proj-1");
   expect(log.callsOf("proj-1")).toEqual([]);
 });

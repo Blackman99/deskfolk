@@ -99,6 +99,7 @@ function targetText(place: AgentRunToolInfo["place"]): string | undefined {
   if (place.zone === "outside" || place.zone === "claude_home") return place.path;
   if (place.zone === "check") return place.check;
   if (place.zone === "git") return "git";
+  if (place.zone === "service") return place.server;
   return undefined;
 }
 

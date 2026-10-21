@@ -40,8 +40,9 @@ export type CreateProjectSessionRequest = {
 /**
  * Where a tool call of a project session's agent works (ADR 0095), for the task map: a path
  * relative to the project directory (`""` its root), a path outside it — Claude Code's own files
- * under `~/.claude*` apart — or, for a shell command, a test or type check, or git. `none` for a
- * call that names no place (a subagent, a question, a to-do list).
+ * under `~/.claude*` apart — or, for a shell command, a test or type check, or git; an MCP tool
+ * works at its server, by the server's name. `none` for a call that names no place (a subagent, a
+ * question, a to-do list).
  */
 export type AgentToolPlace =
   | { zone: "project"; path: string }
@@ -49,6 +50,7 @@ export type AgentToolPlace =
   | { zone: "claude_home"; path: string }
   | { zone: "check"; check: "test" | "typecheck" }
   | { zone: "git" }
+  | { zone: "service"; server: string }
   | { zone: "none" };
 
 /** What a shell command did, read from its words; the command itself is never carried. */

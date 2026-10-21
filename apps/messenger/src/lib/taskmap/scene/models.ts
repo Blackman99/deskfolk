@@ -40,7 +40,7 @@ export type PaneSide = "x+" | "x-" | "y+" | "y-";
 export type PartList = Part[] & { emit: Vec3 };
 export type ModelBuilder = (h: number) => PartList;
 
-export const ARCHETYPE_IDS = ["camp", "song", "bible", "board", "scratch", "tools", "keys", "clips", "edit", "review", "paint", "film", "mail", "kit", "others"] as const;
+export const ARCHETYPE_IDS = ["camp", "song", "bible", "board", "scratch", "tools", "keys", "clips", "edit", "review", "paint", "film", "mail", "kit", "others", "relay"] as const;
 export type ArchetypeId = (typeof ARCHETYPE_IDS)[number];
 
 // ---- The modeller ----
@@ -404,5 +404,18 @@ export const MODELS: Readonly<Record<ArchetypeId, ModelBuilder>> = {
     ];
     const parts = [...house(-0.14, -0.14, 8 + h * 0.4, "#8a9bb0", "x"), ...house(0.15, -0.05, 6 + h * 0.3, "#a3b1c2", "y"), ...house(-0.03, 0.16, 10 + h * 0.5, "#7c8ea6", "x")];
     return withEmit(parts, [-0.03, 0.16, 19 + h * 0.5]);
+  },
+  // A relay station: a low hut, a dish turned to the sky and a mast with a beacon.
+  relay: (h) => {
+    const hb = 7 + h * 0.4;
+    const top = hb + 20 + h * 0.5;
+    const parts = [
+      box(-0.27, -0.22, 0.14, 0.22, 0, hb, "#4a5a6e", "#5d6e84", [...windows("y+", 0.22, -0.27, 0.14, hb, 2), ...windows("x-", -0.27, -0.22, 0.22, hb, 2)]),
+      cyl(-0.07, 0, 0.03, 0.03, hb, hb + 6, "#8a97a8", 6),
+      ext("y", -0.04, 0.03, disc(-0.07, hb + 14, 0.17, 9, 14), "#dfe6ee", "#ffffff"),
+      cyl(0.2, -0.1, 0.045, 0.02, 0, top, "#8a97a8", 4, Math.PI / 4),
+      box(0.18, -0.12, 0.22, -0.08, top, top + 4, "#e5484d"),
+    ];
+    return withEmit(parts, [0.2, -0.1, top + 4]);
   },
 };

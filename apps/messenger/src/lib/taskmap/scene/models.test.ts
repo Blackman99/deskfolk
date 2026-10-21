@@ -84,7 +84,7 @@ function split(pt: Part): { solids: Face[]; details: Array<[Face, Face]> } {
 
 describe("archetypes", () => {
   test("there are fifteen, each with a place for its effects", () => {
-    expect(ARCHETYPE_IDS.length).toBe(15);
+    expect(ARCHETYPE_IDS.length).toBe(16);
     expect(Object.keys(MODELS)).toEqual([...ARCHETYPE_IDS]);
     for (const id of ARCHETYPE_IDS) {
       const parts = MODELS[id](23.5);

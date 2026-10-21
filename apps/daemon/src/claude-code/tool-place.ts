@@ -122,6 +122,9 @@ export function placeOfCall(tool: string, input: Record<string, unknown>, ctx: P
     const command = typeof input.command === "string" ? input.command : "";
     return { place: placeOfCommand(command, ctx), action: shellActionOf(command) };
   }
+  // An MCP tool (`mcp__<server>__<tool>`) works at its server, whatever its arguments name.
+  const mcp = /^mcp__(.+?)__./.exec(tool);
+  if (mcp) return { place: { zone: "service", server: mcp[1]! } };
   if (FILE_TOOLS.has(tool)) {
     const named = ["file_path", "notebook_path", "path"].map((key) => input[key]).find((value): value is string => typeof value === "string" && value.trim().length > 0);
     return { place: placeOfPath(resolve(named?.trim() ?? ".", ctx.cwd, ctx.home), ctx) };

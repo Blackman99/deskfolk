@@ -21,6 +21,7 @@ test("file tools name their place; a call that names none has no place", () => {
   expect(placeOfCall("Glob", { pattern: "**/*.ts" }, { ...ctx, cwd: "/work/app/docs" })).toEqual({ place: { zone: "project", path: "docs" } });
   expect(placeOfCall("Agent", { description: "look around" }, ctx)).toEqual({ place: { zone: "none" } });
   expect(placeOfCall("AskUserQuestion", {}, ctx)).toEqual({ place: { zone: "none" } });
+  expect(placeOfCall("mcp__westlake-cpa__generate_video", { path: "src/a.ts" }, ctx)).toEqual({ place: { zone: "service", server: "westlake-cpa" } });
 });
 
 test("a test or type check and git are places of their own", () => {

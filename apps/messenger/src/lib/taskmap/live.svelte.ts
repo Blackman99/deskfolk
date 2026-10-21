@@ -4,7 +4,7 @@ import type { LiveCall } from "./map-data.ts";
 /** How many calls a session keeps between replays; an open map refetches the replay long before. */
 const KEEP = 3000;
 
-const ZONES = new Set<AgentToolPlace["zone"]>(["project", "outside", "claude_home", "check", "git", "none"]);
+const ZONES = new Set<AgentToolPlace["zone"]>(["project", "outside", "claude_home", "check", "git", "service", "none"]);
 
 /** A frame's place, if it is one the map can stand somewhere (the parser lets `agent_run` through unread). */
 function placeOk(place: unknown): place is AgentToolPlace {
@@ -13,6 +13,7 @@ function placeOk(place: unknown): place is AgentToolPlace {
   if (typeof zone !== "string" || !ZONES.has(zone as AgentToolPlace["zone"])) return false;
   if (zone === "project" || zone === "outside" || zone === "claude_home") return typeof (place as { path?: unknown }).path === "string";
   if (zone === "check") return (place as { check?: unknown }).check === "test" || (place as { check?: unknown }).check === "typecheck";
+  if (zone === "service") return typeof (place as { server?: unknown }).server === "string";
   return true;
 }
 

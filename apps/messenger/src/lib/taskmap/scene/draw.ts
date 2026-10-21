@@ -159,7 +159,7 @@ interface SlabSpec {
 const SLABS: readonly SlabSpec[] = [
   { id: "town", x0: -0.6, y0: -0.6, x1: 3.6, y1: 2.6, T: 16, L: 0, top: "#bfdca2", side: "#c9a273" },
   { id: "ws", x0: -2.15, y0: 0, x1: -1.15, y1: 2.2, T: 12, L: 0, top: "#c9e2b0", side: "#c9a273" },
-  { id: "ext", x0: 1.4, y0: -2.2, x1: 3.6, y1: -1.1, T: 12, L: LIFT, top: "#f3f6fb", side: "#d3deec", cloud: true },
+  { id: "ext", x0: 0.4, y0: -2.2, x1: 3.6, y1: -1.1, T: 12, L: LIFT, top: "#f3f6fb", side: "#d3deec", cloud: true },
 ];
 
 export interface GroundFace {
@@ -255,7 +255,7 @@ export function buildGround(phi: number): Ground {
     return `${px.toFixed(1)},${py.toFixed(1)}`;
   };
   let roads = ROADS.map(([a, b]) => `M${pt(a[0], a[1], 0)}L${pt(b[0], b[1], 0)}`).join("");
-  roads += `M${pt(2, -1.65, LIFT)}L${pt(3, -1.65, LIFT)}`;
-  const shadow = path(([[1.5, -2.05], [3.7, -2.05], [3.7, -0.95], [1.5, -0.95]] as const).map(([x, y]) => proj(p, x, y, 0)));
+  roads += `M${pt(1, -1.65, LIFT)}L${pt(3, -1.65, LIFT)}`;
+  const shadow = path(([[0.5, -2.05], [3.7, -2.05], [3.7, -0.95], [0.5, -0.95]] as const).map(([x, y]) => proj(p, x, y, 0)));
   return { phi: p, slabs, roads, shadow, lb, box: bounds };
 }
