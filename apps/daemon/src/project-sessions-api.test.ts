@@ -1,10 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallbackMatcher, Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { Database } from "bun:sqlite";
 import type { AgentReplay, AgentRun, ClaudeCodeStatus, ClientEvent, ProjectPathLookup, SessionDetail, ToolFrame } from "@real-bot/protocol";
+import { claudeProjectKey } from "./claude-code/memory-dir";
 import type { ClaudeModelList } from "./claude-code/models";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
 import { ulid } from "./ids";
@@ -244,6 +245,25 @@ test("read-only refuses a write with no card, and Claude Code's credentials are 
   await h.say(id, "写个文件");
   await h.until(async () => (await h.run(id))?.status === "completed");
   expect(outcomes).toEqual([false, false]);
+});
+
+test("Claude Code's memory of the project opens with its file tools, by the mode; its transcripts and other projects' memory stay shut", async () => {
+  const outcomes: boolean[] = [];
+  const projects = join(process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude"), "projects");
+  const h = start(async ({ useTool, options }) => {
+    const memory = join(projects, claudeProjectKey(options.cwd!), "memory");
+    outcomes.push(await useTool("Read", { file_path: join(memory, "product_test_account.md") }));
+    outcomes.push(await useTool("Write", { file_path: join(memory, "new.md"), content: "x" }));
+    outcomes.push(await useTool("Read", { file_path: join(memory, "..", "own-1.jsonl") }));
+    outcomes.push(await useTool("Read", { file_path: join(projects, "-somewhere-else", "memory", "MEMORY.md") }));
+    outcomes.push(await useTool("Bash", { command: `cat ${join(memory, "MEMORY.md")}` }));
+    return "好";
+  });
+  h.store.patchSettings({ permission_mode: "read_only" });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(id, "看看记忆");
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(outcomes).toEqual([true, false, false, false, false]);
 });
 
 test("Stop ends a run waiting on you; your next line starts a new one", async () => {

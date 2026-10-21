@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A project session's Claude Code can open its memory of the project
+
+- Claude Code in a project session said it could not read its memory: the app's hook stopped it. Claude Code keeps its memory of a project under its config directory (`~/.claude/projects/<project>/memory/`), and the app kept the whole directory off limits as Claude Code's sign-in, so it saw only the memory's index and could neither open what the index pointed to nor save anything new. Its file tools now open that one folder as any folder outside the project: reading always runs, and a write goes by the permission mode, so under Ask first it is a card. A command still cannot reach it, and the refusal tells Claude Code to use its file tools. The session files beside it, other projects' memory and the rest of the directory stay off limits, as does a link in the memory folder that leads out of it.
+
 ### A project session's account, model and thinking level are one cascading picker
 
 - A project session's composer had three dropdowns side by side, for the account, the model and the thinking level, and each was cut short. They are now one picker that reads the model and its level, with the account after them. Open, it shows three columns from left to right: the accounts, that account's models with Claude Code's description of each, and that model's thinking levels, opened on the session's current choices. Pointing at a row shows its options in the next column, and a click takes everything up to that row at once, so another account's model, or another model's level, is one click. The arrow keys work too. A phone gets a sheet with one row for each of the three.

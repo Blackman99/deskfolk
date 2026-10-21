@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, realpathSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import type { PathHost } from "../workspace-paths";
@@ -89,6 +89,62 @@ posixTest("Claude Code's own credentials are never reachable", () => {
   expect(touchesClaudeCredentials("ls ~/.claudex", home)).toBe(false);
   expect(isClaudeCredentialPath(`${home}/Library/Keychains/login.keychain-db`, home)).toBe(true);
   expect(isClaudeCredentialPath(`${home}/projects/.claude-notes`, home)).toBe(false);
+});
+
+posixTest("a project session's file tools open its memory of the project, by the mode as any folder outside; the rest of ~/.claude stays shut", () => {
+  const memory = `${home}/.claude/projects/-Users-someone-proj/memory`;
+  // The fake home's top folder is a disk one here, as above.
+  const at = { ...base, exists: () => true, memoryDirs: [memory] };
+  for (const permission of ["read_only", "ask_first", "auto", "allow_all"] as const) {
+    expect(decideAgentCall({ ...at, permission, tool: "Read", input: { file_path: `${memory}/kyt_notes.md` } }))
+      .toEqual({ kind: "allow", effect: false, appName: "read_file", target: `${memory}/kyt_notes.md` });
+  }
+  expect(decideAgentCall({ ...at, tool: "Read", input: { file_path: "~/.claude/projects/-Users-someone-proj/memory/MEMORY.md" } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...at, tool: "Grep", input: { pattern: "api key", path: memory } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...at, tool: "Glob", input: { pattern: "*.md", path: memory } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...at, tool: "Write", input: { file_path: `${memory}/new.md` } })).toEqual({ kind: "allow", effect: true, appName: "write_file", target: `${memory}/new.md` });
+  expect(decideAgentCall({ ...at, permission: "ask_first", tool: "Edit", input: { file_path: `${memory}/MEMORY.md` } }).kind).toBe("ask");
+  expect(decideAgentCall({ ...at, permission: "read_only", tool: "Write", input: { file_path: `${memory}/new.md` } })).toEqual({ kind: "deny", reason: expect.stringContaining("read-only") });
+  // A Bot names no memory folder: the same file is Claude Code's as before.
+  expect(decideAgentCall({ ...base, exists: () => true, tool: "Read", input: { file_path: `${memory}/kyt_notes.md` } }).kind).toBe("deny");
+  // Out of it by climbing, the transcripts beside it, another project's memory, a folder named like it.
+  for (const file_path of [`${memory}/../../../settings.json`, `${memory}/../47ce0671.jsonl`, `${home}/.claude/projects/-Users-someone-other/memory/a.md`,
+    `${memory}-old/a.md`, `${home}/.claude.json`, `${home}/.claude/.credentials.json`]) {
+    const call = decideAgentCall({ ...at, permission: "allow_all", tool: "Read", input: { file_path } });
+    expect([file_path, call.kind]).toEqual([file_path, "deny"]);
+    if (call.kind === "deny") expect(call.reason).toContain("credentials");
+  }
+  for (const pattern of ["../../*.json", "**/../../../.credentials.json", `${home}/.claude/*.json`, "~/.claude/*"]) {
+    expect([pattern, decideAgentCall({ ...at, tool: "Glob", input: { pattern, path: memory } }).kind]).toEqual([pattern, "deny"]);
+  }
+  // A command does not get in: from there it could go on to the rest. It is told to use the file tools.
+  for (const command of [`cd ${memory} && cat kyt_notes.md`, "cat ~/.claude/projects/-Users-someone-proj/memory/MEMORY.md"]) {
+    expect(decideAgentCall({ ...at, permission: "allow_all", tool: "Bash", input: { command } })).toEqual({ kind: "deny", reason: expect.stringContaining("open with Read, Write, Edit") });
+  }
+  expect(decideAgentCall({ ...at, tool: "Bash", input: { command: "cat ~/.claude.json" } })).toEqual({ kind: "deny", reason: "Claude Code's own settings and credentials are off limits" });
+});
+
+posixTest("a session on a listed account opens its memory there, and nothing else of that account", () => {
+  const configDirs = [`${home}/.claude-b`];
+  const at = { ...base, exists: () => true, configDirs, memoryDirs: [`${home}/.claude-b/projects/-Users-someone-proj/memory`] };
+  expect(decideAgentCall({ ...at, tool: "Read", input: { file_path: `${home}/.claude-b/projects/-Users-someone-proj/memory/a.md` } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...at, tool: "Read", input: { file_path: `${home}/.claude-b/.claude.json` } }).kind).toBe("deny");
+  expect(decideAgentCall({ ...at, tool: "Read", input: { file_path: `${home}/.claude/projects/-Users-someone-proj/memory/a.md` } }).kind).toBe("deny");
+});
+
+posixTest("a link in the memory folder is followed: one leading to a sign-in, or to nothing yet, stays shut", () => {
+  const config = join(elsewhere, "cfg");
+  const memory = join(config, "projects", "-proj", "memory");
+  mkdirSync(memory, { recursive: true });
+  writeFileSync(join(config, ".credentials.json"), "{}");
+  writeFileSync(join(memory, "notes.md"), "x");
+  symlinkSync(join(config, ".credentials.json"), join(memory, "leak.md"));
+  symlinkSync(join(config, "settings.json"), join(memory, "later.md"));
+  const at = { ...base, configDirs: [config], memoryDirs: [memory] };
+  expect(decideAgentCall({ ...at, tool: "Read", input: { file_path: join(memory, "notes.md") } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...at, tool: "Write", input: { file_path: join(memory, "fresh", "a.md") } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...at, tool: "Read", input: { file_path: join(memory, "leak.md") } }).kind).toBe("deny");
+  expect(decideAgentCall({ ...at, tool: "Write", input: { file_path: join(memory, "later.md") } }).kind).toBe("deny");
 });
 
 posixTest("a read-only turn can look and nothing else; background work and unlisted tools are refused", () => {
@@ -198,4 +254,15 @@ test("on Windows, Claude Code's Bash is Git Bash: a command runs or asks by the 
   const asked = decideAgentCall({ ...winBase, permission: "ask_first", tool: "Bash", input: { command: "cat /c/Users/Someone/Documents/x.md" } });
   expect(asked.kind).toBe("ask");
   if (asked.kind === "ask") expect(asked.approval).toMatchObject({ kind_key: "shell", target: WIN_WS });
+});
+
+test("on Windows, a project session's memory opens with the file tools however its path is spelled; the rest of .claude does not", () => {
+  const memory = `${WIN_HOME}\\.claude\\projects\\C--Users-Someone-ws\\memory`;
+  const at = { ...winBase, memoryDirs: [memory] };
+  for (const file_path of [`${memory}\\MEMORY.md`, "c:/users/someone/.CLAUDE/projects/c--users-someone-ws/memory/a.md", "~\\.claude\\projects\\C--Users-Someone-ws\\memory\\a.md"]) {
+    expect([file_path, decideAgentCall({ ...at, tool: "Read", input: { file_path } }).kind]).toEqual([file_path, "allow"]);
+  }
+  for (const file_path of [`${memory}\\..\\..\\..\\.credentials.json`, `${WIN_HOME}\\.claude\\.credentials.json`, "/c/Users/Someone/.claude/projects/C--Users-Someone-ws/memory/a.md"]) {
+    expect([file_path, decideAgentCall({ ...at, tool: "Read", input: { file_path } }).kind]).toEqual([file_path, "deny"]);
+  }
 });

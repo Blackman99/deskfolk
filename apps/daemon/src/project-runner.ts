@@ -19,7 +19,8 @@ import { AGENT_WORK_TOOLS, decideAgentCall } from "./claude-code/policy";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
 import { withSystemProxy } from "./claude-code/proxy";
 import { claudeLaunch, killsTree } from "./claude-code/spawn";
-import { tildeDir } from "./claude-code/account";
+import { defaultConfigDir, tildeDir } from "./claude-code/account";
+import { claudeMemoryDirs } from "./claude-code/memory-dir";
 import { inputQueue, LIMIT_ERRORS, SIGNED_OUT_ERRORS, userMessage } from "./engine/agent-runner";
 import { recordLiveProc } from "./live-procs";
 import { pictureMime } from "./loop-pictures";
@@ -268,6 +269,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
 
     const permission = store.appPermissionMode();
     const configDirs = store.claudeCodeConfigDirs();
+    // Its memory of this project, under the account it runs on: the one thing in there it may open.
+    const memoryDirs = claudeMemoryDirs(project.dir, project.configDir ?? (process.env.CLAUDE_CONFIG_DIR?.trim() || defaultConfigDir()));
     const home = homedir();
     /** The calls under way, by id: when each started and where, for its exited frame. */
     const started = new Map<string, { at: number; name: string; info: AgentRunToolInfo; command?: string }>();
@@ -289,7 +292,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       const toolInput = (raw.tool_input ?? {}) as Record<string, unknown>;
       const decision = decideAgentCall({
         tool: raw.tool_name, input: toolInput, cwd: raw.cwd || project.dir, agentId: raw.agent_id ?? null,
-        mode: "work", workspace: project.dir, configDirs, permission,
+        mode: "work", workspace: project.dir, configDirs, memoryDirs, permission,
       });
       if (decision.kind === "deny") return deny(decision.reason);
       if (!raw.agent_id) update(live.runId, { activity: activityOf(raw.tool_name, toolInput) });

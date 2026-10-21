@@ -3,7 +3,8 @@
  * runs them: the permission mode every Bot has (ADR 0092: reads run, a write or a command runs,
  * waits for your OK or is refused as the mode says, wherever it lands), the same recursive-search
  * refusal, nothing outside a short list of Claude Code's tools, nothing in the background, and
- * never Claude Code's own credentials. Pure: everything it needs is passed in, so the rules are
+ * never Claude Code's own credentials — though a project session's file tools reach its memory of
+ * that project, which lives among them. Pure: everything it needs is passed in, so the rules are
  * tested on their own — the Windows ones too, on a fake disk (`host`).
  */
 import { existsSync } from "node:fs";
@@ -45,6 +46,11 @@ export type AgentCall = {
   home?: string;
   /** Your Claude accounts' config directories listed in Settings: as off limits as `~/.claude`. */
   configDirs?: string[];
+  /**
+   * Claude Code's memory folders for this project (a project session's, ADR 0095): inside its
+   * config directory, yet its file tools read and write there as in any folder outside.
+   */
+  memoryDirs?: string[];
   /** The Bot's permission mode (ADR 0092): whether a write or a command runs, asks or is refused. */
   permission: PermissionMode;
   /** Whether a path exists; the disk's own when absent. */
@@ -97,7 +103,9 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   if (call.tool === "Bash") {
     const command = typeof call.input.command === "string" ? call.input.command : "";
     if (touchesClaudeCredentials(command, home, platform, call.configDirs)) {
-      return { kind: "deny", reason: "Claude Code's own settings and credentials are off limits" };
+      // Its memory is open to the file tools only: a command could `cd` there and on to the rest.
+      const memory = call.memoryDirs?.some((dir) => namesDir(command, dir, home, platform));
+      return { kind: "deny", reason: memory ? MEMORY_BY_FILE_TOOLS : "Claude Code's own settings and credentials are off limits" };
     }
     // Every other local agent's too (ADR 0079): a Bot reads no agent's sign-in, its own or another's.
     if (touchesAgentCredentials(command, home, platform, call.configDirs)) {
@@ -115,10 +123,13 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   const abs = raw === null ? call.cwd : anchorAt(call.cwd, expandHome(raw, home, platform), platform);
   // A Git Bash spelling (`/c/Users/…`) names the same file to Claude Code as `C:\Users\…` may.
   const named = [abs, ...(platform === "win32" && raw ? [gitBashToWindows(raw)].filter((path): path is string => path !== null) : [])];
-  if (named.some((path) => isClaudeCredentialPath(path, home, platform, call.configDirs))) {
+  // The project's memory holds no sign-in: open as a folder outside is, while the path and where
+  // its links lead stay in it.
+  const memory = named.every((path) => inMemoryDir(path, call.memoryDirs ?? [], host)) && !globLeaves(call, platform);
+  if (!memory && named.some((path) => isClaudeCredentialPath(path, home, platform, call.configDirs))) {
     return { kind: "deny", reason: "Claude Code's own settings and credentials are off limits" };
   }
-  if (named.some((path) => isAgentCredentialPath(path, home, platform, call.configDirs))) {
+  if (!memory && named.some((path) => isAgentCredentialPath(path, home, platform, call.configDirs))) {
     return { kind: "deny", reason: "your local agents' own settings and credentials are off limits" };
   }
   // On Windows a path with no drive ("/work/a.md", "/c/Users/…") opens on whichever drive the
@@ -142,6 +153,48 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   }
   if (READS.has(call.tool)) return { kind: "allow", effect: false, appName, target };
   return { kind: "deny", reason: `${call.tool} is not available in a Deskfolk turn` };
+}
+
+const MEMORY_BY_FILE_TOOLS = "Claude Code's memory files for this project open with Read, Write, Edit, Glob and Grep, not in a command; its other settings and credentials are off limits";
+
+/**
+ * Whether a file tool's path is in one of the memory folders: as named, and, as far as it exists,
+ * where its links lead (a link there to `~/.claude.json` is that file). A dangling link is not.
+ */
+function inMemoryDir(path: string, dirs: string[], host: PathHost): boolean {
+  const dir = dirs.find((candidate) => isWithinPath(candidate, path, host.platform));
+  if (dir === undefined) return false;
+  const realDir = throughLinks(dir, host);
+  const realPath = throughLinks(path, host);
+  return realDir !== null && realPath !== null && isWithinPath(realDir, realPath, host.platform);
+}
+
+/** A path with its nearest part on disk resolved through links and the rest as named; null at a dangling link. */
+function throughLinks(path: string, host: PathHost): string | null {
+  const p = host.platform === "win32" ? win32 : posix;
+  const rest: string[] = [];
+  for (let at = path; ;) {
+    try {
+      return p.join(host.realpath(at), ...rest);
+    } catch {
+      // not there, or a link to nothing
+    }
+    try {
+      if (host.lstat(at).isSymbolicLink()) return null;
+    } catch {
+      // not there: look one folder up
+    }
+    const up = p.dirname(at);
+    if (up === at) return null;
+    rest.unshift(p.basename(at));
+    at = up;
+  }
+}
+
+/** A Glob pattern that leaves the folder it searches: absolute, from `~`, or climbing with `..`. */
+function globLeaves(call: AgentCall, platform: NodeJS.Platform): boolean {
+  const pattern = call.tool === "Glob" ? call.input.pattern : undefined;
+  return typeof pattern === "string" && (isAbsoluteHostPath(pattern, platform) || pattern.startsWith("~") || pattern.split(/[\\/]/).includes(".."));
 }
 
 /** The path a file tool names: `file_path`, `notebook_path`, or a search's `path` (its cwd when absent). */
