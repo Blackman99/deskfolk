@@ -29,13 +29,13 @@
 	let { runtime, t, session }: Props = $props();
 
 	const bots = $derived(session.kind !== 'project');
-	// A Bot map's root is the workspace, where messages, questions and plans are made.
+	// A Bot map's places are the workspace's: its root, where messages, questions and plans are made, and what lies outside it.
 	const tm = $derived(
 		bots
 			? {
 					...t.taskmap,
-					places: { ...t.taskmap.places, root: t.taskmap.bots.root },
-					placePaths: { ...t.taskmap.placePaths, root: t.taskmap.bots.rootPath },
+					places: { ...t.taskmap.places, root: t.taskmap.bots.root, outside: t.taskmap.bots.outside, other: t.taskmap.bots.other },
+					placePaths: { ...t.taskmap.placePaths, root: t.taskmap.bots.rootPath, outside: t.taskmap.bots.outsidePath },
 					empty: t.taskmap.bots.empty,
 					note: t.taskmap.bots.note
 				}
@@ -365,7 +365,7 @@
 		return names.length ? names.join(' · ') : empty;
 	};
 	const regionLabels = $derived({
-		ext: islandLabel('ext', `${tm.places.outside} · ${tm.places.claude_home}`),
+		ext: islandLabel('ext', bots ? `${tm.places.service} · ${tm.places.outside}` : `${tm.places.outside} · ${tm.places.claude_home}`),
 		ws: islandLabel('ws', `${tm.places.git} · ${tm.places.other}`),
 		town: `${((bots ? runtime.snapshot.settings.workspace_path : session.project_dir) ?? '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''}/`
 	});

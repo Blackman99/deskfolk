@@ -73,6 +73,9 @@ export const zh = {
   bots: {
     root: "工作区",
     rootPath: "工作区根目录 · 发消息、提问、排任务",
+    outside: "工作区外",
+    outsidePath: "工作区目录以外",
+    other: "工作区别处",
     empty: "这里还没有 Bot 用工具的记录。从这一版起，Bot 每用一次工具，地图上就多一步；之前的工作没有记下地点，画不出来。",
     note: "数据来自应用记下的每次工具调用：地点、模型和结果，不带命令和文件内容；从这一版起才开始记。时间轴已压缩，超过 15 分钟的空档各算 4 秒。",
     truncated: (n: number) => `只画了最近 ${n} 步。`,
@@ -150,6 +153,9 @@ export const en: CopyShape<typeof zh> = {
   bots: {
     root: "Workspace",
     rootPath: "The workspace folder · messages, questions, planning",
+    outside: "Outside",
+    outsidePath: "Outside the workspace",
+    other: "Elsewhere",
     empty: "No Bot has used a tool here since the app began keeping where calls work. From this version each tool call adds a step to the map; earlier work was never placed, so it cannot be drawn.",
     note: "From the app's record of each tool call: where it worked, its model and whether it succeeded — never the commands or the files' contents; kept from this version on. The timeline is squeezed: a gap over 15 minutes takes 4 seconds.",
     truncated: (n: number) => `Only the last ${n} steps are drawn.`,
