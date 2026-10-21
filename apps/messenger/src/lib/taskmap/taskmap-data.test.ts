@@ -250,3 +250,10 @@ test("a long MCP call reads as a call to a service, not by its tool's name", () 
   const t = copyFor("zh").taskmap;
   expect(momentText(long, t, () => "", () => "", () => "").title).toBe(t.moments.long(t.verbs.service, 40));
 });
+
+test("a call that waited on your card is not a long one: the wait was yours", () => {
+  const data = fromAgentReplay(aReplay([aCall({ s: 0, tool: "Write", duration_ms: 90_000, decision: { decision: "accept", source: "user_temporary", reason_type: null } })]), "claude_code");
+  const moments = buildTimeline(data, buildDistricts(data.calls.map((c) => c.place))).moments;
+  expect(moments.some((m) => m.kind === "long")).toBe(false);
+  expect(moments.some((m) => m.kind === "approve")).toBe(true);
+});

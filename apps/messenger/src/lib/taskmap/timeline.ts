@@ -1,6 +1,6 @@
 import type { AgentShellAction, AgentToolPlace } from "@real-bot/protocol";
 import type { DistrictMap } from "./districts.ts";
-import type { MapData } from "./map-data.ts";
+import type { MapCall, MapData } from "./map-data.ts";
 
 /**
  * The replay's clock, squeezed: a step takes STEP seconds plus a ninetieth of the real gap (capped at
@@ -134,9 +134,11 @@ export function buildTimeline(data: MapData, map: DistrictMap, track = 996, lane
     moments.push({ kind: "fail", who: -1, v: v[fails[0]![1]]!, v1: v[fails[0]![1]]!, places: [], count: fails.length, byWho: [...byWho.entries()].sort((a, b) => b[1] - a[1]) });
   }
 
-  // The two longest calls of half a minute or more (a question or a subagent is long by waiting, not by work).
+  // The two longest calls of half a minute or more. A question, a subagent and a call that waited on
+  // your card are long by waiting, not by work.
+  const waited = (c: MapCall) => c.decision?.source === "user_temporary" || c.decision?.source === "user_reject";
   calls.map((c, i) => [c, i] as const)
-    .filter(([c]) => c.tool !== "AskUserQuestion" && c.tool !== "Agent" && c.tool !== "Task" && c.durationMs >= LONG_CALL_MS)
+    .filter(([c]) => c.tool !== "AskUserQuestion" && c.tool !== "Agent" && c.tool !== "Task" && !waited(c) && c.durationMs >= LONG_CALL_MS)
     .sort((a, b) => b[0].durationMs - a[0].durationMs)
     .slice(0, 2)
     .forEach(([c, i]) => moments.push({ kind: "long", who: c.who, v: v[i]!, v1: v[i]!, places: [placeOf[i]!], tool: c.tool, action: c.action ?? null, place: c.place, ms: c.durationMs, file: c.file }));
