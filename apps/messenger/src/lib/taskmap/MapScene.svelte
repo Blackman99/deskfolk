@@ -196,6 +196,7 @@
 				class="tm-plate"
 				class:is-on={sel === q}
 				class:is-hot={hover === q}
+				class:is-compact={block.compact}
 				style:left="{block.px}px"
 				style:top="{block.plateY}px"
 				style:transform="translate(-50%, -100%) scale({inv})"
@@ -262,6 +263,8 @@
 	.tm-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; box-shadow: inset 0 0 0 1px rgba(18, 28, 32, .18); }
 	/* A long folder name ends in … inside the plate; the plate's title has it whole. */
 	.tm-plate-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+	/* A compact plate (nobody there) is its dot and count; hovered or focused, its name opens over its neighbours. */
+	.tm-plate.is-compact:not(.is-hot):not(:focus-visible) .tm-plate-label { display: none; }
 	.tm-plate-n { flex: none; font-size: 10.5px; color: var(--muted); font-weight: 500; font-family: var(--mono); }
 	.tm-plate-line { display: flex; align-items: center; justify-content: center; gap: 3px; font-size: 10px; white-space: nowrap; overflow: hidden; line-height: 1.35; --agent-logo-size: 12px; color: var(--who); }
 	.tm-plate-model { color: var(--muted); }

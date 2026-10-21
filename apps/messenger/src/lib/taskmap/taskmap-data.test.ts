@@ -247,6 +247,30 @@ test("Bots working at one door stand in a row, each in front of the one on its r
   expect(row[1]!.z).toBeGreaterThan(row[2]!.z);
 });
 
+test("a plate nobody is at is its dot and count, until it is picked or the map is zoomed in", () => {
+  const c = (id: string, sec: number, path: string) => ({ id, at: iso(sec), bot_id: "b-1", turn_id: "t", task_id: null, tool: "write_file", place: project(path), model: "deepseek-chat", file: null, ok: true, duration_ms: 100, decision: null });
+  const data = fromSessionReplay({ session_id: "g-1", bots: ["b-1"], truncated: false, calls: [c("c1", 10, "docs/a.md"), c("c2", 11, "docs/b.md"), c("c3", 12, "jobs/a/x.md"), c("c4", 13, "jobs/a/y.md")], said: [] });
+  const map = buildDistricts(data.calls.map((x) => x.place));
+  const tl = buildTimeline(data, map);
+  const t = copyFor("zh").taskmap;
+  const frameAt = (zoom: number, sel: number, hover = -1) => buildFrame({ data, map, tl, v: tl.v.at(-1)!, phi: 0, zoom, now: 0, speed: 4, light: { w: 0, n: 0 } as never, cache: new Map(), walk: { lastTile: [], until: [] }, hover, sel, t });
+  const docs = map.districts.findIndex((d) => d.path === "docs");
+  const jobs = map.districts.findIndex((d) => d.path === "jobs/a");
+  const compact = (zoom: number, sel: number) => frameAt(zoom, sel).blocks.map((b) => b.compact);
+  // The Bot stands at jobs/a, so its plate carries its line and its name; docs, where it was, is compact.
+  expect(compact(1, -1)[jobs]).toBe(false);
+  expect(compact(1, -1)[docs]).toBe(true);
+  // Its name is still the plate's, for its title and what a screen reader says.
+  expect(frameAt(1, -1).blocks[docs]!.name).toBe("docs");
+  expect(compact(1, docs)[docs]).toBe(false);
+  expect(compact(1.5, -1).some(Boolean)).toBe(false);
+  // Hovered, it opens over its neighbours where it stands: laid out as before, so it never slides from under the pointer.
+  const still = frameAt(1, -1).blocks;
+  const hovered = frameAt(1, -1, docs).blocks;
+  expect(hovered[docs]!.compact).toBe(true);
+  expect(hovered.map((b) => [b.px, b.plateY])).toEqual(still.map((b) => [b.px, b.plateY]));
+});
+
 test("a Bot's live call is logged under its Bot, and a Bot first seen live joins as a lead", () => {
   const log = new AgentCallLog();
   log.applyTool({ type: "tool", turn_id: "t", id: "c9", name: "shell", phase: "started", bot_call: { session_id: "g-1", bot_id: "b-3", place: project("jobs/c"), model: "m", at: iso(50) } } as ToolFrame);

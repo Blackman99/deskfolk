@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { assignBadges, badgeBox, layoutPlates, type LabelBox, type PlacedActor, type PlateBlock } from "./layout.ts";
 
-const plate = (over: Partial<PlateBlock> = {}): PlateBlock => ({ z: 1, px: 500, plateY: 300, name: "src", n: 3, flag: false, lines: [], ...over });
+const plate = (over: Partial<PlateBlock> = {}): PlateBlock => ({ z: 1, px: 500, plateY: 300, name: "src", n: 3, flag: false, lines: [], compact: false, ...over });
 
 const actor = (b: number, over: Partial<PlacedActor> = {}): PlacedActor => ({
   b,
@@ -104,6 +104,21 @@ describe("layoutPlates", () => {
     const b = plate({ plateY: 300.4 });
     layoutPlates([b], [], [[500, 700]], 1);
     expect(b.plateY).toBe(300);
+  });
+
+  test("a compact plate is laid out by its dot and count: neighbours that stack as full plates both keep their wish", () => {
+    const pair = (compact: boolean) => [
+      plate({ z: 2, px: 500, name: "13-代码版：1983-与你同行", n: 325, compact }),
+      plate({ z: 1, px: 560, name: "13-代码版：1983-与他们的故事", n: 106, compact }),
+    ];
+    const at: Array<[number, number]> = [[500, 600], [560, 600]];
+    const full = pair(false);
+    layoutPlates(full, [], at, 1);
+    expect(full[0].plateY).toBe(300);
+    expect(full[1].plateY).not.toBe(300);
+    const compact = pair(true);
+    layoutPlates(compact, [], at, 1);
+    expect(compact.map((b) => b.plateY)).toEqual([300, 300]);
   });
 
   test("a wish below the floor stays put: there is nothing above to try that would be allowed", () => {

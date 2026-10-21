@@ -69,6 +69,8 @@ export type FrameBlock = {
   name: string;
   n: number | string;
   lines: { text: string; model: string; ink: string; b: number }[];
+  /** Nobody at it, no flag, not picked, the map not zoomed in to `NAMES_AT`: its plate is its dot and count. */
+  compact: boolean;
 };
 
 export type Frame = {
@@ -192,6 +194,12 @@ export function statusText(a: Pick<FrameActor, "status" | "idleMin">, t: T): str
   }
 }
 
+/**
+ * The zoom from which every plate carries its name. Below it a plate nobody is at shows only its dot
+ * and count, so a town of long folder names is not a wall of plates over its own buildings.
+ */
+export const NAMES_AT = 1.5;
+
 const MOTION: Readonly<Record<CharacterStatus, FolkMotion>> = {
   work: "running", walk: "running", idle: "idle", fail: "failed", back: "idle", none: "idle",
 };
@@ -289,6 +297,7 @@ export function buildFrame(input: FrameInput): Frame {
       fx: { on: busy, x: Math.round(B.emit[0]), y: Math.round(B.emit[1] - 4) },
       px: Math.round(px), plateY: Math.round(py + B.top - (flagged.has(q) ? 8 : 6)),
       name: placeName(d, t), n: counts[q] || "", lines,
+      compact: zoom < NAMES_AT && lines.length === 0 && !flagged.has(q) && sel !== q,
     };
   });
   layoutPlates(blocks, actors, spot, zoom);

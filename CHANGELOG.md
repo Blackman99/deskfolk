@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A task map's empty buildings show only their dot
+
+- A task map with many folders was a wall of plates: every building's plate carried its folder's whole name, and ten long names stacked over one another and hid the buildings under them. A building nobody is at now shows only its colour dot and visit count; hover over it, pick it or zoom in past 1.5× and its name comes back, opening over its neighbours where it stands. A building someone is working in, or one marked with a moment's !, keeps its whole plate.
+
 ### The job switcher shows its one-question jobs beside the list
 
 - The job switcher under a flow's or a task map's title kept the jobs that were one question and its answer in a row of their own at the end of its list, so with many jobs you had to scroll to the bottom to find it. On a desktop the switcher now puts its two kinds, Work and One question, in a column on the left with their counts and the jobs on the right, as the model picker does its sources: it opens on Work, where the job on screen is, and hovering One question shows those. The arrow keys walk the list, Left steps onto the kinds, Up and Down switch kind there and Right goes back into the list. With only one kind it is the plain list as before, and a phone's sheet keeps the row.

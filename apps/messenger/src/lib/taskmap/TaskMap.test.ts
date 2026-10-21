@@ -69,12 +69,16 @@ test("a building's plate opens its card, and the card's next visit moves the pla
   const { host, close } = open();
   await settle();
   const store = [...host.querySelectorAll<HTMLButtonElement>(".tm-plate")].find((b) => b.textContent?.includes("store"))!;
+  // Nobody is at it, so its plate is its dot and count until it is picked.
+  expect(store.classList.contains("is-compact")).toBe(true);
   click(store);
+  expect(store.classList.contains("is-compact")).toBe(false);
   const card = host.querySelector(".tm-insp");
   expect(card?.textContent).toContain("store");
   expect(card?.textContent).toContain("apps/daemon/src/store");
   click(host.querySelector(".tm-insp .ui-icon-btn"));
   expect(host.querySelector(".tm-insp")).toBeNull();
+  expect(store.classList.contains("is-compact")).toBe(true);
   close();
 });
 

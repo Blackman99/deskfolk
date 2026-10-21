@@ -41,6 +41,8 @@ export interface PlateBlock {
   n: number | string;
   flag: boolean;
   lines: ReadonlyArray<{ text: string; model: string }>;
+  /** Shown as its dot and count, laid out without its name: hovered, it opens over its neighbours where it stands. */
+  compact: boolean;
 }
 
 /** A plate's widest, as MapScene's `.tm-plate` caps it: a longer name ends in … inside it. */
@@ -129,7 +131,8 @@ export function layoutPlates(blocks: PlateBlock[], actors: ReadonlyArray<PlacedA
   for (const k of order) {
     const b = blocks[k];
     const lineW = Math.max(0, ...b.lines.map((l) => textWidth(l.text + l.model) * 10 + 15));
-    const w = Math.min(PLATE_MAX_W, Math.max(textWidth(b.name) * 12 + 12 + String(b.n).length * 6.5 + 4, lineW) + 18) / zoom;
+    const nameW = b.compact ? 0 : textWidth(b.name) * 12;
+    const w = Math.min(PLATE_MAX_W, Math.max(nameW + 12 + String(b.n).length * 6.5 + 4, lineW) + 18) / zoom;
     const hgt = (23 + b.lines.length * 13.5 + (b.flag ? 26 : 0)) / zoom;
     const gap = 3 / zoom;
     const x0 = b.px - w / 2;
