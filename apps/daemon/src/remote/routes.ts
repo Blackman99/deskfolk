@@ -56,11 +56,12 @@ get("runtime/claude-code"); add("POST", "runtime/claude-code/detect");
 add("PUT", "runtime/claude-code/path", { path: nullable(string) }, ["path"]);
 add("PUT", "runtime/claude-code/accounts", { config_dirs: list(string) }, ["config_dirs"]);
 // Project sessions (ADR 0095): your terminal Claude Code sessions to carry on, a new or imported
-// session, its newest run, and your answer or Stop on a run.
+// session, its newest run, where a path its agent cites is, and your answer or Stop on a run.
 get("runtime/claude-code/sessions", { limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) });
 add("POST", "project-sessions", { agent: one("claude_code"), dir: string, config_dir: nullable(string),
   import: object({ session_id: string, config_dir: nullable(string) }, ["session_id"]) });
 get("project-sessions/:id/(run|replay)");
+get("project-sessions/:id/locate", { path: string }, ["path"]);
 add("PATCH", "project-sessions/:id", { model: nullable(string), effort: nullable(one(...CLAUDE_EFFORTS)) }, [], true);
 add("POST", "agent-runs/:id/(approve|deny|stop)");
 // A Bot conversation's and a plan's tool calls for the task map (ADR 0097).

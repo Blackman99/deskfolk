@@ -51,6 +51,18 @@ export type CreateProjectSessionRequest = {
 };
 
 /**
+ * `GET /v1/project-sessions/:id/locate?path=`: where a path the agent cites is on this computer
+ * (ADR 0095). `path` is absolute, or null when nothing matches or the closest matches are several;
+ * `matches` are what a lookup by name found, relative to the project directory (empty when the
+ * path was there as written).
+ */
+export type ProjectPathLookup = {
+  path: string | null;
+  kind: "file" | "dir" | null;
+  matches: string[];
+};
+
+/**
  * Where a tool call of a project session's agent works (ADR 0095), for the task map: a path
  * relative to the project directory (`""` its root), a path outside it — Claude Code's own files
  * under `~/.claude*` apart — or, for a shell command, a test or type check, or git; an MCP tool

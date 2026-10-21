@@ -5,12 +5,13 @@ import { claudeSessionRoots, findClaudeSessionFile, readClaudeSession } from "..
 import { HttpError } from "../../errors";
 import { jsonResponse, matchPath } from "../../http";
 import { sessionUpsertFields } from "../../session-events";
+import { locateProjectPath } from "../../project-paths";
 import { occurred } from "../helpers";
 import type { RouteCtx } from "../route-ctx";
 
 /** Local API routes: project sessions (ADR 0095) and their agent's runs. */
 export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response> | null {
-  const { input, store, publish, projects, method, path } = ctx;
+  const { input, store, publish, projects, method, path, url } = ctx;
   let params: ReturnType<typeof matchPath>;
 
   // A new session in a directory, or one carrying a terminal session on: only an account directory
@@ -64,6 +65,18 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
       { sessionId: params.id!, agentFile: fileOf(project.agentSession), sourceFile: fileOf(project.source), agentSession: project.agentSession, sourceSession: project.source },
       { projectDir: project.dir, home: homedir(), configDirs },
     ), 200, null);
+  }
+
+  // Where a path the agent cites is: its words are relative to wherever it was working, so a path
+  // is looked for under the project as well as at it. Opening it is the file routes' work, with
+  // the absolute path this gives.
+  params = matchPath(path, "/v1/project-sessions/:id/locate");
+  if (params && method === "GET") {
+    const project = store.projectOf(params.id!);
+    if (!project) throw new HttpError(404, "not_found", "not a project session");
+    const cited = url.searchParams.get("path") ?? "";
+    if (!cited.trim()) throw new HttpError(422, "invalid_args", "path is required");
+    return jsonResponse(locateProjectPath(project.dir, cited), 200, null);
   }
 
   // The model (an alias or a full id) and the thinking level its runs ask for, each from the next

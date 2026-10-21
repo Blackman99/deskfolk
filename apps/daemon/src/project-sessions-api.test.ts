@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallbackMatcher, Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { Database } from "bun:sqlite";
-import type { AgentReplay, AgentRun, ClaudeCodeStatus, ClientEvent, SessionDetail, ToolFrame } from "@real-bot/protocol";
+import type { AgentReplay, AgentRun, ClaudeCodeStatus, ClientEvent, ProjectPathLookup, SessionDetail, ToolFrame } from "@real-bot/protocol";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
 import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
@@ -464,4 +464,20 @@ test("the replay reads the agent's own session file under the session's account"
   const direct = h.store.createBot({ name: "zz-bot", duties: "d", boundaries: "b" }).direct_session;
   expect((await h.call("GET", `/v1/project-sessions/${direct.id}/replay`)).status).toBe(404);
   expect(() => validateBusiness({ v: 1, id: ulid(), method: "GET", path: `/v1/project-sessions/${id}/replay` })).not.toThrow();
+});
+
+test("a path the agent cites is located under the session's directory; other conversations have none", async () => {
+  const h = start(async () => "好");
+  mkdirSync(join(h.dir, "steez", "comm"), { recursive: true });
+  writeFileSync(join(h.dir, "steez", "comm", "defs.go"), "package comm");
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  const locate = (path: string) => h.call<ProjectPathLookup>("GET", `/v1/project-sessions/${id}/locate?path=${encodeURIComponent(path)}`);
+  expect((await locate("comm/defs.go")).body).toEqual({ path: join(h.dir, "steez", "comm", "defs.go"), kind: "file", matches: ["steez/comm/defs.go"] });
+  expect((await locate("steez/comm/")).body).toEqual({ path: join(h.dir, "steez", "comm"), kind: "dir", matches: [] });
+  expect((await locate("feat/adverse-media")).body).toEqual({ path: null, kind: null, matches: [] });
+  expect((await h.call("GET", `/v1/project-sessions/${id}/locate`)).status).toBe(422);
+  const direct = h.store.createBot({ name: "zz-bot", duties: "d", boundaries: "b" }).direct_session;
+  expect((await h.call("GET", `/v1/project-sessions/${direct.id}/locate?path=a.ts`)).status).toBe(404);
+  expect(() => validateBusiness({ v: 1, id: ulid(), method: "GET", path: `/v1/project-sessions/${id}/locate`, query: { path: "comm/defs.go" } })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id: ulid(), method: "GET", path: `/v1/project-sessions/${id}/locate` })).toThrow();
 });

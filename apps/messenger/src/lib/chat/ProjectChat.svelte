@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { CLAUDE_EFFORTS, CLAUDE_MODEL_ALIASES, isHiddenTranscriptKind, speechReady, USER_MEMBER, type Message, type SessionSummary } from '@real-bot/protocol';
+	import { CLAUDE_EFFORTS, CLAUDE_MODEL_ALIASES, isHiddenTranscriptKind, speechReady, USER_MEMBER, type Attachment, type Message, type SessionSummary } from '@real-bot/protocol';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
 	import Select from '../Select.svelte';
@@ -23,6 +23,8 @@
 	import { ComposerVoice, spacedHeard } from './composer-voice.svelte.ts';
 	import VoiceButton from './VoiceButton.svelte';
 	import VoiceStatus from './VoiceStatus.svelte';
+	import { ProjectCitedPaths } from './project-cited-path.ts';
+	import { showToast } from '../toast.svelte.ts';
 
 	/**
 	 * A project session's conversation (ADR 0095): you and the agent in a directory, as in the
@@ -34,9 +36,29 @@
 		runtime: MessengerRuntime;
 		t: Copy;
 		selected: SessionSummary;
+		/** Opens a file the agent cites, as a Bot conversation's do; given the absolute path the Mac found. */
+		onOpenArtifact: (relpath: string, att?: Attachment, messageId?: string) => void;
 	};
 
-	let { runtime, t, selected }: Props = $props();
+	let { runtime, t, selected, onOpenArtifact }: Props = $props();
+
+	const citedPaths = new ProjectCitedPaths(() => runtime.client);
+
+	/**
+	 * The agent's paths are relative to where it was working, not to the workspace, so the Mac says
+	 * where one is before it opens (project-cited-path.ts); one it cannot place is said, not opened.
+	 */
+	function openCited(path: string, messageId?: string): void {
+		const pending = citedPaths.resolve(selected.id, path);
+		if (!pending) {
+			onOpenArtifact(path, undefined, messageId);
+			return;
+		}
+		void pending.then((answer) => {
+			if (answer.path !== null) onOpenArtifact(answer.path, undefined, messageId);
+			else showToast(answer.matches > 1 ? t.project.citedAmbiguous(path, answer.matches) : t.project.citedMissing(path));
+		});
+	}
 
 	const snapshot = $derived(runtime.snapshot);
 	const view = $derived(runtime.sessionView(selected.id));
@@ -284,7 +306,7 @@
 					</div>
 				{:else}
 					<div class="line is-agent" data-line="agent">
-						<MarkdownBody source={message.body} copyLabel={t.chat.copyCode} copiedLabel={t.chat.copied} />
+						<MarkdownBody source={message.body} copyLabel={t.chat.copyCode} copiedLabel={t.chat.copied} onOpenArtifact={(path) => openCited(path, message.id)} />
 						<span class="time">{formatMessageTime(message.created_at)}</span>
 					</div>
 				{/if}
@@ -302,7 +324,7 @@
 					{/if}
 					{#if run.partial}
 						<div class="partial">
-							<MarkdownBody source={run.partial} options={{ streaming: true }} copyLabel={t.chat.copyCode} copiedLabel={t.chat.copied} />
+							<MarkdownBody source={run.partial} options={{ streaming: true }} copyLabel={t.chat.copyCode} copiedLabel={t.chat.copied} onOpenArtifact={(path) => openCited(path)} />
 						</div>
 					{/if}
 					{#if waiting}

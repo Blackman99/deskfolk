@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
+import type { ProjectPathLookup } from "@real-bot/protocol";
 import { aMessage, aProjectSession, anAgentRun, fakeRuntime } from "../test-fixtures.ts";
+import { toasts } from "../toast.svelte.ts";
 import { settle } from "../test-async.ts";
 import { click, fill, press, render } from "../test-render.ts";
 import ProjectChat from "./ProjectChat.svelte";
@@ -21,7 +23,7 @@ function open(run: ReturnType<typeof anAgentRun> | null, stubs: Record<string, u
     },
     stubs,
   );
-  const view = render(ProjectChat, { runtime, t, selected: session });
+  const view = render(ProjectChat, { runtime, t, selected: session, onOpenArtifact: () => {} });
   return { ...view, runtime };
 }
 
@@ -101,7 +103,7 @@ test("the composer picks the session's model: your settings' default, Claude Cod
 
   const session = aProjectSession({ project_model: "claude-opus-5-5" });
   const pinned = fakeRuntime({ sessions: [session] });
-  const view = render(ProjectChat, { runtime: pinned, t, selected: session });
+  const view = render(ProjectChat, { runtime: pinned, t, selected: session, onOpenArtifact: () => {} });
   expect(view.host.querySelector("[data-project-model] .real-select-trigger")?.textContent).toContain("claude-opus-5-5");
   click(view.host.querySelector("[data-project-model] .real-select-trigger"));
   click([...view.host.querySelectorAll("[data-project-model] [role=option]")].find((row) => row.textContent?.includes(t.project.modelDefault)) ?? null);
@@ -124,7 +126,7 @@ test("the composer picks the session's thinking level beside the model, the defa
   close();
 
   const session = aProjectSession({ project_effort: "max" });
-  const set = render(ProjectChat, { runtime: fakeRuntime({ sessions: [session] }), t, selected: session });
+  const set = render(ProjectChat, { runtime: fakeRuntime({ sessions: [session] }), t, selected: session, onOpenArtifact: () => {} });
   expect(set.host.querySelector("[data-project-effort] .real-select-trigger")?.textContent).toContain("最大");
   expect(set.host.querySelector("[data-project-effort]")?.getAttribute("title")).toBeNull();
   set.close();
@@ -140,7 +142,7 @@ test("the microphone puts what it heard where the caret was, in that session's b
   const sent: unknown[] = [];
   (runtime as unknown as { client: unknown }).client = { transcribe: async (body: unknown) => (sent.push(body), { text: "中间" }) };
   runtime.sessionView(session.id).draft = "前后";
-  const { host, close } = render(ProjectChat, { runtime, t, selected: session });
+  const { host, close } = render(ProjectChat, { runtime, t, selected: session, onOpenArtifact: () => {} });
   try {
     const field = host.querySelector<HTMLTextAreaElement>(".project-chat textarea")!;
     field.setSelectionRange(1, 1);
@@ -165,4 +167,56 @@ test("no speech endpoint, no microphone", () => {
   const { host, close } = open(null);
   expect(host.querySelector("[data-voice-button]")).toBeNull();
   close();
+});
+
+test("a file the agent cites opens where the Mac finds it under the project; one it cannot place is said, not opened", async () => {
+  const session = aProjectSession();
+  const runtime = fakeRuntime({
+    sessions: [session],
+    messages: [aMessage({
+      id: "m1", session_id: "proj-1", kind: "bot", author: "agent", created_at: "2026-09-19T02:00:05.000Z",
+      body: "改了 `comm/defs.go`，分支 `feat/adverse-media`，看 `server.go`，日志在 `/tmp/out/run.log`。",
+    })],
+  });
+  const asked: Array<[string, string]> = [];
+  const answers: Record<string, ProjectPathLookup> = {
+    "comm/defs.go": { path: "/Users/a/proj/steez/comm/defs.go", kind: "file", matches: ["steez/comm/defs.go"] },
+    "feat/adverse-media": { path: null, kind: null, matches: [] },
+    "server.go": { path: null, kind: null, matches: ["a/server.go", "b/server.go"] },
+  };
+  (runtime as unknown as { client: unknown }).client = {
+    locateProjectPath: async (id: string, path: string) => (asked.push([id, path]), answers[path]!),
+  };
+  const opened: unknown[][] = [];
+  const { host, close } = render(ProjectChat, { runtime, t, selected: session, onOpenArtifact: (...args: unknown[]) => { opened.push(args); } });
+  const chip = (path: string) => [...host.querySelectorAll<HTMLAnchorElement>("a.md-artifact-link")].find((a) => a.getAttribute("title") === path || a.textContent === path);
+  try {
+    toasts.current = null;
+    click(chip("comm/defs.go"));
+    await settle();
+    expect(opened).toEqual([["/Users/a/proj/steez/comm/defs.go", undefined, "m1"]]);
+    // Found once, opened again without asking.
+    click(chip("comm/defs.go"));
+    await settle();
+    expect(opened).toHaveLength(2);
+    expect(asked).toEqual([["proj-1", "comm/defs.go"]]);
+
+    click(chip("feat/adverse-media"));
+    await settle();
+    expect(opened).toHaveLength(2);
+    expect(toasts.current?.text).toBe(t.project.citedMissing("feat/adverse-media"));
+
+    click(chip("server.go"));
+    await settle();
+    expect(opened).toHaveLength(2);
+    expect(toasts.current?.text).toBe(t.project.citedAmbiguous("server.go", 2));
+
+    // A path written absolute says where it is: it opens as written, nothing asked.
+    click(chip("/tmp/out/run.log"));
+    expect(opened.at(-1)).toEqual(["/tmp/out/run.log", undefined, "m1"]);
+    expect(asked).toHaveLength(3);
+  } finally {
+    toasts.current = null;
+    close();
+  }
 });

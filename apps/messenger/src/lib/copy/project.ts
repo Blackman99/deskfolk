@@ -56,6 +56,8 @@ export const zh = {
   deleteTitle: "删除项目会话",
   deleteBody: "删除后，这个会话和里面的消息都去掉，Claude Code 这边的会话文件还在。正在跑的那一轮会 Stop。目录里的文件不受影响。",
   confirmDelete: "确认删除",
+  citedMissing: (path: string) => `在项目目录里没找到 ${path}`,
+  citedAmbiguous: (path: string, n: number) => `项目目录里有 ${n} 处 ${path}，没法确定是哪一个`,
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -113,4 +115,6 @@ export const en: CopyShape<typeof zh> = {
   deleteTitle: "Delete project session",
   deleteBody: "This removes the session and its messages; Claude Code's own session file stays. A run still going is stopped. Nothing in the directory is touched.",
   confirmDelete: "Confirm delete",
+  citedMissing: (path: string) => `${path} is not in the project directory`,
+  citedAmbiguous: (path: string, n: number) => `${n} places in the project directory end in ${path}; cannot tell which one`,
 };

@@ -1328,7 +1328,7 @@
 			onShowOnboarding={() => (dismissedOnboarding = false)}
 		/>
 		{#if selected?.kind === 'project'}
-			<ProjectChat {runtime} {t} {selected} />
+			<ProjectChat {runtime} {t} {selected} onOpenArtifact={artifact.openArtifactPath} />
 		{:else}
 		<ChatStage
 			{runtime}

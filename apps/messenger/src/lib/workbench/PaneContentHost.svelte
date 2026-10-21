@@ -241,7 +241,13 @@
 			<div class="pane-conversation">
 				{@render chatBar?.(tab, leafId)}
 				{#if session.kind === 'project'}
-					<ProjectChat {runtime} {t} selected={session} />
+					<ProjectChat
+						{runtime}
+						{t}
+						selected={session}
+						onOpenArtifact={(relpath, att, messageId) =>
+							onOpenArtifact(relpath, att, messageId, false, null, null, content.sessionId)}
+					/>
 				{:else}
 				<ChatStage
 					{runtime}

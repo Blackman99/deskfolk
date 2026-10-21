@@ -11,6 +11,7 @@ import type {
   CreateGroupRequest,
   CreateProjectSessionRequest,
   PatchProjectSessionRequest,
+  ProjectPathLookup,
   AgentReplay,
   PlanReplay,
   SessionReplay,
@@ -257,6 +258,11 @@ export abstract class ApiBase<Row extends PendingRow> {
   /** A plan's tool calls wherever its turns ran, each with where it worked and its conversation (ADR 0097), for the task map. */
   async planReplay(taskId: string): Promise<PlanReplay> {
     return this.get<PlanReplay>(`/v1/tasks/${encodeURIComponent(taskId)}/replay`);
+  }
+
+  /** Where a path a project session's agent cites is on the Mac (ADR 0095): under its directory, or found there by name. */
+  async locateProjectPath(sessionId: string, path: string): Promise<ProjectPathLookup> {
+    return this.get<ProjectPathLookup>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/locate?path=${encodeURIComponent(path)}`);
   }
 
   /** A Bot conversation's tool calls with where each worked, as the app recorded them (ADR 0097), for the task map. */
