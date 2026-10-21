@@ -13,7 +13,7 @@ import { forgetKeptBoards } from "./task-trace.ts";
 import { aBot, aDirect, aGroup, aHold } from "../test-fixtures.ts";
 import { buttonByText, click, press, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
-import { settle } from "../test-async.ts";
+import { deferred, settle } from "../test-async.ts";
 
 import { writer, artist, group, direct, job, detail, picture, drag, type Opened, open, until, aRecord, routedPicture, withMeasuredCards } from "./task-trace-test-kit.ts";
 
@@ -393,6 +393,22 @@ test("a session with nothing yet says so, and a failed read can be retried", asy
   click(failed);
   await until(view.host, ".trace-empty button");
   expect(view.asked.length).toBeGreaterThan(1);
+  view.close();
+});
+
+test("while the job is being read, the board spins instead of saying so", async () => {
+  const held = deferred<void>();
+  const view = open({ traceHeld: held.promise });
+  const loading = await until(view.host, ".trace-viewport .trace-loading");
+  expect(loading.getAttribute("role")).toBe("status");
+  expect(loading.querySelector(".trace-spinner")?.getAttribute("aria-hidden")).toBe("true");
+  // The words stay for a screen reader only; nothing on the board reads them out.
+  expect(loading.querySelector(".sr-only")?.textContent).toBe(t.trace.loading);
+  expect(view.host.querySelector(".trace-empty")).toBeNull();
+
+  held.resolve();
+  await until(view.host, ".trace-slot");
+  expect(view.host.querySelector(".trace-loading")).toBeNull();
   view.close();
 });
 

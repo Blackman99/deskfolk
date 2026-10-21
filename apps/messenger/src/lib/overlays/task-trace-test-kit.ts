@@ -188,6 +188,8 @@ export function open(opts: {
   sessionId?: string;
   writeBack?: boolean;
   trace?: TaskTrace;
+  /** The trace answers only once this settles; left out, at once. */
+  traceHeld?: Promise<unknown>;
   /** What task-2's trace is; an empty one by default. */
   otherTrace?: TaskTrace;
   /** What the plan endpoint answers; `false` is a daemon that predates plans (404). */
@@ -240,12 +242,14 @@ export function open(opts: {
       if (opts.jobs) return opts.jobs;
       return [job({ goal: opts.detail === false ? null : "先出分镜的草图和配乐" }), job({ id: "task-2", title: "上周的排期", closed_at: "2026-09-15T00:00:00.000Z", status: "done" })];
     },
-    taskTrace: async (id: string) =>
-      id === "task-1"
+    taskTrace: async (id: string) => {
+      if (opts.traceHeld) await opts.traceHeld;
+      return id === "task-1"
         ? (opts.trace ?? picture())
         : id === "task-2" && opts.otherTrace
           ? opts.otherTrace
-          : { ...picture(), id, title: id === "task-9" ? "另一件事" : "上周的排期", nodes: [] },
+          : { ...picture(), id, title: id === "task-9" ? "另一件事" : "上周的排期", nodes: [] };
+    },
     taskDetail: async (id: string) => {
       if (opts.detail === false) throw Object.assign(new Error("not found"), { status: 404 });
       if (id === "task-1") return opts.detail ?? detail();

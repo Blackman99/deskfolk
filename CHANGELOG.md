@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The flow shows a spinner while it loads
+
+- While a job's flow was being read, its board said "Loading…" in small grey text in a corner. It now shows a spinner in the middle of the board, faded in after a moment so a quick read never flashes it; a screen reader still hears "Loading…".
+
 ### Task map: Claude Code's work drawn as a town of your project
 
 - Open task map in a project session's context menu (or Map in its pane header) opens a pane beside it that draws the session as an isometric town: the busiest folders a building each, its shape picked by the folder's name, besides the project's root, checks, git, Claude Code's own files and outside the project. Claude Code and the subagents it sends out are characters going between the buildings, their badges carrying Claude Code's logo and the step's model. Pan, turn and zoom; click a building for its visits, who made them, its failures and the files it touched last, or a character to follow it. The timeline below plays from the start and scrubs, and the side lists what you asked of it and the moments worth a look: a subagent sent out, a question and how long it waited on you, a long pause, a call stopped, failures and going back and forth. While the session runs the map follows its newest step. Wide windows only for now.

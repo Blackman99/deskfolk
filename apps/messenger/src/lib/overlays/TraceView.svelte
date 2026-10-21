@@ -657,7 +657,10 @@
 			use:watchViewport
 		>
 				{#if job.loading && !job.trace}
-					<p class="trace-empty">{t.trace.loading}</p>
+					<div class="trace-loading" role="status">
+						<span class="trace-spinner" aria-hidden="true"></span>
+						<span class="sr-only">{t.trace.loading}</span>
+					</div>
 				{:else if job.failed}
 					<p class="trace-empty">
 						{t.trace.failed}
@@ -1083,6 +1086,44 @@
 		margin: 24px 0;
 		font-size: 13px;
 		color: var(--muted);
+	}
+
+	/* Centred on the board; it only fades in after a moment, so a quick read never flashes it. */
+	.trace-loading {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-items: center;
+		pointer-events: none;
+	}
+
+	.trace-spinner {
+		width: 20px;
+		height: 20px;
+		border: 2px solid var(--line);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation:
+			trace-spin 0.8s linear infinite,
+			trace-loading-in 0.2s ease-out 0.15s both;
+	}
+
+	@keyframes trace-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	@keyframes trace-loading-in {
+		from {
+			opacity: 0;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.trace-spinner {
+			animation: none;
+		}
 	}
 
 </style>
