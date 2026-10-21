@@ -128,3 +128,35 @@ test("while the listing is on the way only the hint shows, so nothing moves unde
   expect(host.textContent).toContain(t.sidebar.importClaudeLoading);
   close();
 });
+
+test("from a phone, another directory is browsed on the computer's disk and started there", async () => {
+  const pages: Record<string, { path: string; parent: string | null; truncated: boolean; items: Array<{ name: string; path: string; kind: "file" | "dir" }> }> = {
+    "": { path: "/Users/a", parent: "/Users", truncated: false, items: [{ name: "work", path: "/Users/a/work", kind: "dir" }, { name: "notes.md", path: "/Users/a/notes.md", kind: "file" }] },
+    "/Users/a/work": { path: "/Users/a/work", parent: "/Users/a", truncated: false, items: [{ name: "app", path: "/Users/a/work/app", kind: "dir" }] },
+  };
+  const asked: string[] = [];
+  const runtime = fakeRuntime({ sessions: [] });
+  Object.assign(runtime as unknown as Record<string, unknown>, {
+    remote: true,
+    client: { claudeCodeSessions: async () => [], hostTree: async (path: string) => (asked.push(path), pages[path]) },
+  });
+  const { host, close } = render(ProjectSessionSheet, { runtime, t, onClose: () => {} });
+  await settle();
+  // No folder dialog on a phone, and no path to type: a browse of the computer's folders instead.
+  expect(host.querySelector("input#project-dir")).toBeNull();
+  const browse = host.querySelector("button#project-dir");
+  expect(browse?.textContent).toContain(t.project.browseEmpty);
+  click(browse);
+  await settle();
+  const dirs = () => [...host.querySelectorAll(".host-browse-item")].map((b) => b.textContent?.trim());
+  expect(dirs()).toEqual(["work"]);
+  click([...host.querySelectorAll(".host-browse-item")][0]);
+  await settle();
+  expect(asked).toEqual(["", "/Users/a/work"]);
+  click(buttonIn(host.querySelector(".host-browse"), t.settings.workspaceUseFolder));
+  await settle();
+  expect(host.querySelector("button#project-dir")?.textContent).toContain("/Users/a/work");
+  click(buttonIn(host.querySelector("[data-picker-other]"), t.project.start));
+  expect(runtime.calls.find((c) => c.name === "createProjectSession")?.args).toEqual([{ agent: "claude_code", dir: "/Users/a/work" }]);
+  close();
+});

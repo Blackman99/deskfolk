@@ -5,13 +5,15 @@
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { pickWorkspaceFolder, workspacePickerAvailable } from '../settings/pick-workspace.ts';
+	import WorkspacePicker from '../settings/WorkspacePicker.svelte';
 	import { importRequest, importSubtitle, newProjectRequest, tildePath } from './import-claude-session.ts';
 	import { isAbsoluteDir, listingSpansAccounts, pickerDirs } from './project-groups.ts';
 
 	/**
 	 * The sheet's directories for one agent (ADR 0095), one open at a time: start a session in it,
-	 * or carry on one of the terminal's sessions that ran there. Last, a directory of your own,
-	 * typed or picked.
+	 * or carry on one of the terminal's sessions that ran there. Last, a directory of your own:
+	 * typed or picked on the Mac, browsed on the Mac's disk from a phone, where there is no folder
+	 * dialog and typing a full path is no way to choose one.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -173,6 +175,29 @@
 		{#if shown === OTHER}
 			<div class="picker-body" data-project-new>
 				<label for="project-dir">{t.project.dirLabel}</label>
+				{#if runtime.remote}
+					<WorkspacePicker
+						id="project-dir"
+						path={typed}
+						chooseLabel={t.project.browse}
+						changeLabel={t.project.browse}
+						emptyLabel={t.project.browseEmpty}
+						unavailableLabel={t.project.browseFailed}
+						dialogTitle={t.project.pickTitle}
+						remote
+						api={runtime.client}
+						browseHint={t.project.browseHint}
+						permissionHint={t.settings.workspaceAuthorizeMac}
+						truncatedHint={t.stream.workspaceTruncated}
+						upLabel={t.settings.workspaceUp}
+						useLabel={t.settings.workspaceUseFolder}
+						cancelLabel={t.sidebar.cancel}
+						onChange={(next) => {
+							typed = next;
+							startError = null;
+						}}
+					/>
+				{:else}
 				<div class="dir-row">
 					<input
 						id="project-dir"
@@ -190,6 +215,7 @@
 						<Button icon="folder" onclick={() => void pickFolder()}>{t.project.pick}</Button>
 					{/if}
 				</div>
+				{/if}
 				<p class="muted field-hint">{t.project.dirHint}</p>
 				{@render startFailure()}
 				<div>
