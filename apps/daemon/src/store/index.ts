@@ -536,6 +536,7 @@ export class Store {
   readonly finishToolPlace = this.bind(toolPlaces.finishToolPlace);
   readonly cardForToolPlace = this.bind(toolPlaces.cardForToolPlace);
   readonly sessionReplay = this.bind(toolPlaces.sessionReplay);
+  readonly planReplay = this.bind(toolPlaces.planReplay);
   readonly listPlaybooks = this.bind(playbooks.listPlaybooks);
   readonly getPlaybook = this.bind(playbooks.getPlaybook);
   readonly playbookFor = this.bind(playbooks.playbookFor);

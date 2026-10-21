@@ -97,6 +97,7 @@ export function botCallOf(row: ToolPlaceRow): BotToolInfo {
     model: row.model,
     at: row.started_at,
     ...(row.ok === null ? {} : { ok: row.ok === 1 }),
+    task_id: row.task_id,
   };
 }
 

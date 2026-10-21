@@ -73,6 +73,11 @@ export function planRoutes(ctx: RouteCtx): Response | Promise<Response> | null {
     return jsonResponse({ ...trace, nodes: boardNodes(trace.nodes, trace.id), steps: store.boardSteps(trace.id, trace.nodes) }, 200, null);
   }
 
+  // A plan's work for the task map (ADR 0097), wherever its turns ran: each tool call with where it
+  // worked and the conversation it was in, your lines for it and your answers to its Bots.
+  params = matchPath(path, "/v1/tasks/:id/replay");
+  if (params && method === "GET") return jsonResponse(store.planReplay(params.id!), 200, null);
+
   params = matchPath(path, "/v1/messages/:id/trace");
   if (params && method === "GET") {
     // One line as a board of its own (ADR 0083), for a line filed under no job.

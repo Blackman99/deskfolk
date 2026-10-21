@@ -19,6 +19,11 @@ export type BotToolInfo = {
   at: string;
   /** On `exited`: whether the call succeeded; absent while it waits on your card or your answer. */
   ok?: boolean;
+  /**
+   * The plan (这件事) its turn was in when the call started; null for desk work. A turn filed
+   * later keeps its earlier calls' null here: what the turn is in now is the turn's own `task_id`.
+   */
+  task_id?: string | null;
 };
 
 /** One tool call of a Bot's turn, as recorded when it ran. */
@@ -41,5 +46,30 @@ export type SessionReplay = {
   calls: SessionReplayCall[];
   bots: string[];
   said: SessionReplayLine[];
+  truncated: boolean;
+};
+
+/** One call of a plan's map: the conversation it was made in too. */
+export type PlanReplayCall = SessionReplayCall & { session_id: string };
+
+/** What you said for a plan, and your answers to its Bots' questions, with where you said it. */
+export type PlanReplayLine = SessionReplayLine & { session_id: string };
+
+/**
+ * `GET /v1/tasks/:id/replay`: a plan's work for the task map (ADR 0097), wherever it was done — its
+ * group, your directs with its Bots, the Bots' directs with each other. Every tool call of a turn
+ * in the plan since the app began recording where calls work, the newest ones only when there are
+ * more than a replay carries; your lines filed under it or that woke its turns, and your answers
+ * to its Bots' questions; its Bots and conversations in the order they first worked.
+ */
+export type PlanReplay = {
+  task_id: string;
+  title: string;
+  /** Its work dir, workspace-relative: the town is named for it. */
+  dir: string;
+  calls: PlanReplayCall[];
+  bots: string[];
+  sessions: string[];
+  said: PlanReplayLine[];
   truncated: boolean;
 };

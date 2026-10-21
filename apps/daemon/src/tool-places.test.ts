@@ -155,3 +155,43 @@ test("a call whose card comes first is on the map at the card's place, then take
     store.close();
   }
 });
+
+test("a plan's replay is its turns' calls wherever they ran, with your lines for it and your answers there", () => {
+  const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+  try {
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+    const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "none" });
+    const group = store.createGroup({ name: "制作组", members: [writer.bot.id, reviewer.bot.id] });
+    const line = store.postMessage(group.id, { body: "做一支短片" });
+    const first = store.createTurn({ sessionId: group.id, botId: writer.bot.id, triggerMessageId: line.id });
+    const plan = first.task_id!;
+    expect(plan).toBeTruthy();
+    // The reviewer takes it up in your direct with it; that turn is in the same plan.
+    const direct = reviewer.direct_session.id;
+    const there = store.postMessage(direct, { body: "审一下第一版" });
+    const second = store.createTurn({ sessionId: direct, botId: reviewer.bot.id, triggerMessageId: there.id });
+    store.db.run("UPDATE turns SET task_id = ? WHERE id = ?", [plan, second.id]);
+    // A turn in no plan, in the same direct, is not on the plan's map.
+    const aside = store.postMessage(direct, { body: "随便聊聊" });
+    const third = store.createTurn({ sessionId: direct, botId: reviewer.bot.id, triggerMessageId: aside.id });
+    store.db.run("UPDATE turns SET task_id = NULL WHERE id = ?", [third.id]);
+    const place = (path: string) => ({ zone: "project" as const, path });
+    store.beginToolPlace({ turnId: first.id, toolCallId: "c1", tool: "write_file", place: place("jobs/short/script.md"), at: "2026-10-21T01:00:00.000Z" });
+    store.beginToolPlace({ turnId: second.id, toolCallId: "c2", tool: "read_file", place: place("jobs/short/script.md"), at: "2026-10-21T01:05:00.000Z" });
+    store.beginToolPlace({ turnId: third.id, toolCallId: "c3", tool: "read_file", place: place("notes/x.md"), at: "2026-10-21T01:06:00.000Z" });
+    const ask = store.insertMessage({ sessionId: direct, turnId: second.id, kind: "ask", author: reviewer.bot.id, body: "节奏要快一点吗？" });
+    store.db.run("UPDATE messages SET ask_answer = ? WHERE id = ?", [JSON.stringify({ selected: ["快一点"], custom: null, answered_at: new Date(Date.parse(ask.created_at) + 60_000).toISOString() }), ask.id]);
+
+    const replay = store.planReplay(plan);
+    expect(replay).toMatchObject({ task_id: plan, bots: [writer.bot.id, reviewer.bot.id], sessions: [group.id, direct], truncated: false });
+    expect(replay.calls.map((c) => [c.id, c.session_id, c.bot_id])).toEqual([["c1", group.id, writer.bot.id], ["c2", direct, reviewer.bot.id]]);
+    expect(replay.said.map((l) => [l.kind, l.session_id, l.kind === "say" ? l.text : l.answers[0]])).toEqual([
+      ["say", group.id, "做一支短片"],
+      ["say", direct, "审一下第一版"],
+      ["answer", direct, "快一点"],
+    ]);
+    expect(() => store.planReplay("no-such-plan")).toThrow();
+  } finally {
+    store.close();
+  }
+});

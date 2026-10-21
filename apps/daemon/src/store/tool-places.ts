@@ -4,9 +4,10 @@
  * call starts), and closed as it ends; it holds the place read from the call's arguments, never the
  * arguments. The replay reads a conversation's rows back with your answers on their cards.
  */
-import type { AgentShellAction, AgentToolPlace, SessionReplay, SessionReplayCall, SessionReplayLine } from "@real-bot/protocol";
+import { USER_MEMBER, type AgentShellAction, type AgentToolPlace, type PlanReplay, type PlanReplayLine, type SessionReplay, type SessionReplayCall, type SessionReplayLine } from "@real-bot/protocol";
 import { isoNow, ulid } from "../ids";
 import { type StoreContext } from "./shared";
+import { getTask } from "./tasks";
 
 /**
  * Rows kept per session. A long job is a few thousand calls (one music video took 888 steps); past
@@ -133,24 +134,18 @@ function decisionOf(row: ToolPlaceRow & { approval_status: string | null }): Ses
   return null;
 }
 
+type SaidRow = { session_id: string; kind: string; author: string; body: string; ask_answer: string | null; created_at: string };
+
 /**
- * Your lines in a conversation, and your answers to its Bots' questions, oldest first. An answer is
- * written on the question itself (`ask_answer`); a line of yours taken as one is that answer, and a
- * line the app carried out itself (a stop, a status question) asked nothing of the Bots.
+ * Your lines, and your answers to the Bots' questions, oldest first. An answer is written on the
+ * question itself (`ask_answer`); a line of yours taken as one is that answer, and a line the app
+ * carried out itself (a stop, a status question) asked nothing of the Bots — the queries leave both out.
  */
-function saidIn(ctx: StoreContext, sessionId: string): SessionReplayLine[] {
-  const rows = ctx.db
-    .query<{ kind: string; author: string; body: string; ask_answer: string | null; created_at: string }, [string]>(
-      `SELECT kind, author, body, ask_answer, created_at FROM messages
-       WHERE session_id = ? AND bot_only = 0 AND withdrawn_at IS NULL
-         AND ((kind = 'user' AND taken_as IS NULL) OR (kind = 'ask' AND ask_answer IS NOT NULL))
-       ORDER BY created_at, message_seq, id`,
-    )
-    .all(sessionId);
-  const out: SessionReplayLine[] = [];
+function linesOf(rows: readonly SaidRow[]): PlanReplayLine[] {
+  const out: PlanReplayLine[] = [];
   for (const row of rows) {
     if (row.kind === "user") {
-      out.push({ kind: "say", at: row.created_at, text: row.body });
+      out.push({ kind: "say", at: row.created_at, text: row.body, session_id: row.session_id });
       continue;
     }
     let answer: { selected?: unknown; custom?: unknown; answered_at?: unknown };
@@ -162,30 +157,60 @@ function saidIn(ctx: StoreContext, sessionId: string): SessionReplayLine[] {
     const answers = [...(Array.isArray(answer.selected) ? answer.selected.filter((x): x is string => typeof x === "string") : []),
       ...(typeof answer.custom === "string" && answer.custom.trim() ? [answer.custom] : [])];
     const at = typeof answer.answered_at === "string" ? answer.answered_at : row.created_at;
-    out.push({ kind: "answer", at, asked_at: row.created_at, questions: [row.body], answers, bot_id: row.author });
+    out.push({ kind: "answer", at, asked_at: row.created_at, questions: [row.body], answers, bot_id: row.author, session_id: row.session_id });
   }
   return out.sort((a, b) => a.at.localeCompare(b.at));
 }
 
-/** A conversation's calls for the task map, newest REPLAY_CALLS_MAX at most, oldest first. */
-export function sessionReplay(ctx: StoreContext, sessionId: string): SessionReplay {
+/** Your lines in a conversation, and your answers there. */
+function saidIn(ctx: StoreContext, sessionId: string): SessionReplayLine[] {
   const rows = ctx.db
-    .query<ToolPlaceRow & { approval_status: string | null }, [string, number]>(
-      `SELECT p.*, a.status AS approval_status FROM tool_places p LEFT JOIN approvals a ON a.id = p.approval_id
-       WHERE p.session_id = ? ORDER BY p.started_at DESC, p.id DESC LIMIT ?`,
+    .query<SaidRow, [string]>(
+      `SELECT session_id, kind, author, body, ask_answer, created_at FROM messages
+       WHERE session_id = ? AND bot_only = 0 AND withdrawn_at IS NULL
+         AND ((kind = 'user' AND taken_as IS NULL) OR (kind = 'ask' AND ask_answer IS NOT NULL))
+       ORDER BY created_at, message_seq, id`,
     )
-    .all(sessionId, REPLAY_CALLS_MAX + 1);
+    .all(sessionId);
+  return linesOf(rows).map(({ session_id: _session, ...line }) => line);
+}
+
+/**
+ * Your lines for a plan, wherever you said them: the ones filed under it and the ones that woke
+ * its turns (the flow's own cards of yours); and your answers to the questions its turns asked.
+ */
+function saidFor(ctx: StoreContext, taskId: string): PlanReplayLine[] {
+  const rows = ctx.db
+    .query<SaidRow, [string, string]>(
+      `SELECT session_id, kind, author, body, ask_answer, created_at FROM messages
+       WHERE bot_only = 0 AND withdrawn_at IS NULL AND (
+         (kind = 'user' AND author = ?2 AND taken_as IS NULL
+           AND (task_id = ?1 OR id IN (SELECT trigger_message_id FROM turns WHERE task_id = ?1)))
+         OR (kind = 'ask' AND ask_answer IS NOT NULL AND turn_id IN (SELECT id FROM turns WHERE task_id = ?1)))
+       ORDER BY created_at, message_seq, id`,
+    )
+    .all(taskId, USER_MEMBER);
+  return linesOf(rows);
+}
+
+type CardedRow = ToolPlaceRow & { approval_status: string | null };
+
+/** Rows read newest first as replay calls oldest first, the Bots and conversations in the order they first worked. */
+function callsOf(rows: readonly CardedRow[]): { calls: (SessionReplayCall & { session_id: string })[]; bots: string[]; sessions: string[]; truncated: boolean } {
   const truncated = rows.length > REPLAY_CALLS_MAX;
   const kept = rows.slice(0, REPLAY_CALLS_MAX).reverse();
   const bots: string[] = [];
-  const calls = kept.map((row): SessionReplayCall => {
+  const sessions: string[] = [];
+  const calls = kept.map((row): SessionReplayCall & { session_id: string } => {
     if (!bots.includes(row.bot_id)) bots.push(row.bot_id);
+    if (!sessions.includes(row.session_id)) sessions.push(row.session_id);
     const started = Date.parse(row.started_at);
     const finished = row.finished_at ? Date.parse(row.finished_at) : NaN;
     return {
       id: row.tool_call_id,
       at: row.started_at,
       bot_id: row.bot_id,
+      session_id: row.session_id,
       turn_id: row.turn_id,
       task_id: row.task_id,
       tool: row.tool,
@@ -199,5 +224,30 @@ export function sessionReplay(ctx: StoreContext, sessionId: string): SessionRepl
       decision: decisionOf(row),
     };
   });
-  return { session_id: sessionId, calls, bots, said: saidIn(ctx, sessionId), truncated };
+  return { calls, bots, sessions, truncated };
+}
+
+const CARDED = `SELECT p.*, a.status AS approval_status FROM tool_places p LEFT JOIN approvals a ON a.id = p.approval_id`;
+
+/** A conversation's calls for the task map, newest REPLAY_CALLS_MAX at most, oldest first. */
+export function sessionReplay(ctx: StoreContext, sessionId: string): SessionReplay {
+  const rows = ctx.db
+    .query<CardedRow, [string, number]>(`${CARDED} WHERE p.session_id = ? ORDER BY p.started_at DESC, p.id DESC LIMIT ?`)
+    .all(sessionId, REPLAY_CALLS_MAX + 1);
+  const { calls, bots, truncated } = callsOf(rows);
+  return { session_id: sessionId, calls: calls.map(({ session_id: _session, ...call }) => call), bots, said: saidIn(ctx, sessionId), truncated };
+}
+
+/**
+ * A plan's calls for the task map, wherever its turns ran: the turns in it now, so a turn filed
+ * into it after its first calls brings those along. Newest REPLAY_CALLS_MAX at most, oldest first.
+ */
+export function planReplay(ctx: StoreContext, taskId: string): PlanReplay {
+  const task = getTask(ctx, taskId);
+  const rows = ctx.db
+    .query<CardedRow, [string, number]>(
+      `${CARDED} WHERE p.turn_id IN (SELECT id FROM turns WHERE task_id = ?) ORDER BY p.started_at DESC, p.id DESC LIMIT ?`,
+    )
+    .all(taskId, REPLAY_CALLS_MAX + 1);
+  return { task_id: task.id, title: task.title, dir: task.dir, ...callsOf(rows), said: saidFor(ctx, taskId) };
 }
