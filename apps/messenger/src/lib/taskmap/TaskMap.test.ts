@@ -3,6 +3,7 @@ import { generateBoringAvatar, type AgentReplay, type AgentReplayCall, type Sess
 import { copyFor } from "../copy.ts";
 import { aBot, aGroup, aProjectSession, aProvider, aTurn, fakeRuntime } from "../test-fixtures.ts";
 import { settle } from "../test-async.ts";
+import { reactive } from "../test-reactive.svelte.ts";
 import { click, render } from "../test-render.ts";
 import { AgentCallLog } from "./live.svelte.ts";
 import TaskMap from "./TaskMap.svelte";
@@ -213,5 +214,31 @@ test("a Bot's call seen live lands on the map, its Bot working while its turn ru
   await settle();
   expect(host.textContent).toContain(t.taskmap.controls.step(16, 16));
   expect(host.textContent).toContain(t.taskmap.live);
+  close();
+});
+
+test("the same conversation, updated while it works, keeps its map: it is read again only for another conversation", async () => {
+  const session = aGroup({ id: "g-1" });
+  const runtime = fakeRuntime({ sessions: [session], bots: [aBot({ id: "bot-1" }), aBot({ id: "bot-2", name: "审片员" })] });
+  let reads = 0;
+  Reflect.set(runtime, "client", { sessionReplay: async () => { reads += 1; return aBotReplay(); } });
+  Reflect.set(runtime, "agentCalls", new AgentCallLog());
+  const props = reactive({ runtime, t, session });
+  const { host, close } = render(TaskMap, props);
+  await settle();
+  expect(reads).toBe(1);
+  const plates = () => host.querySelectorAll(".tm-plate").length;
+  const before = plates();
+  expect(before).toBeGreaterThan(0);
+  // Every message and every step of a working Bot hands the pane a new summary of the same conversation.
+  for (let i = 0; i < 5; i++) {
+    props.session = { ...session, updated_at: iso(1000 + i) };
+    await settle();
+    expect(plates()).toBe(before);
+  }
+  expect(reads).toBe(1);
+  props.session = aGroup({ id: "g-2" });
+  await settle();
+  expect(reads).toBe(2);
   close();
 });

@@ -89,8 +89,11 @@
 		}
 	}
 
+	// The pane hands over a new summary of the conversation on every change to it (each message, each
+	// step of a working Bot); only another conversation is read anew, or the town blinks out each time.
+	const sessionId = $derived(session.id);
 	$effect(() => {
-		void session.id;
+		void sessionId;
 		untrack(() => {
 			base = null;
 			districts = null;
