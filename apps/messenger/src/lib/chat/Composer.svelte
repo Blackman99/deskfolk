@@ -22,7 +22,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { isLiveStatus } from './transcript.ts';
 	import { workspaceDropTarget } from '../workspace-drag.svelte.ts';
-	import { ComposerAttachments, pastedFiles } from './composer-attachments.svelte.ts';
+	import { ComposerAttachments, pastedFiles, uploadedShare } from './composer-attachments.svelte.ts';
 	import { handleComposerKey, type ComposerKeyContext } from './composer-keys.ts';
 	import { ComposerMentions } from './composer-mentions.svelte.ts';
 	import { ComposerVoice, caretIn, insertHeardAt, spacedHeard } from './composer-voice.svelte.ts';
@@ -218,14 +218,7 @@
 		selectedKind === 'you-bot' && !lockedComposer && Boolean(liveTurn) && primaryAction.kind === 'send'
 	);
 
-	/** A staged file's own share: the files go out one after the other, in the order they were sent. */
-	function uploadedPercent(file: File): number | null {
-		const upload = view?.upload;
-		const at = upload ? upload.files.indexOf(file) : -1;
-		if (!upload || at < 0 || file.size === 0) return null;
-		const before = upload.files.slice(0, at).reduce((n, row) => n + row.size, 0);
-		return Math.floor(Math.max(0, Math.min(1, (upload.loaded - before) / file.size)) * 100);
-	}
+	const uploadedPercent = (file: File): number | null => uploadedShare(view?.upload, file);
 
 	/** Somewhere to send what ✨ drafts: not a locked composer, and no Bot reads the file conversation. */
 	const canSuggest = $derived(Boolean(selected) && !lockedComposer && !fileDrop);

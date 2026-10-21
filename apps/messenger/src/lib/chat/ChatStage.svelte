@@ -5,6 +5,7 @@
 	} from '@real-bot/protocol';
 	import Composer from './Composer.svelte';
 	import MessageImageLightbox, { type ImageOrigin } from './MessageImageLightbox.svelte';
+	import { pictureOrigin, pictureStandIn } from './enlarged-images.ts';
 	import MessageFileOverlay from './MessageFileOverlay.svelte';
 	import { copyableImageAt } from '../image-context.ts';
 	import { desktopPlatform } from '../platform.ts';
@@ -214,25 +215,6 @@
 	const shownFile = $derived(
 		inlineFile && inlineFile.sessionId === (selected?.id ?? null) ? inlineFile : null
 	);
-
-	function pictureOrigin(from?: HTMLElement | null): ImageOrigin | null {
-		const picture =
-			from?.querySelector('img, .attachment-chip-pending, .md-artifact-pending') ?? from;
-		if (!(picture instanceof HTMLElement)) return null;
-		const box = picture.getBoundingClientRect();
-		if (box.width < 2 || box.height < 2) return null;
-		return { top: box.top, left: box.left, width: box.width, height: box.height };
-	}
-
-	/**
-	 * The thumbnail already on screen for this picture, if any: the enlargement shows it at the
-	 * picture's own proportions while the real bytes come, instead of growing to a guess first.
-	 * The chip keeps owning the object URL; it stays mounted under the enlargement.
-	 */
-	function pictureStandIn(from?: HTMLElement | null): string | null {
-		const img = from instanceof HTMLImageElement ? from : from?.querySelector('img');
-		return img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0 ? img.currentSrc || img.src : null;
-	}
 
 	function openInlineFile(att: Attachment, messageId: string): void {
 		inlineFile = {

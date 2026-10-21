@@ -32,6 +32,14 @@ export function pastedFiles(data: DataTransfer | null | undefined): File[] {
   return files;
 }
 
+/** A staged file's own share: the files go out one after the other, in the order they were sent. */
+export function uploadedShare(upload: SessionView["upload"] | undefined, file: File): number | null {
+  const at = upload ? upload.files.indexOf(file) : -1;
+  if (!upload || at < 0 || file.size === 0) return null;
+  const before = upload.files.slice(0, at).reduce((n, row) => n + row.size, 0);
+  return Math.floor(Math.max(0, Math.min(1, (upload.loaded - before) / file.size)) * 100);
+}
+
 /** Files and workspace paths staged on the conversation, from the picker, a paste, a drop or the file tree. */
 export class ComposerAttachments {
   private readonly deps: ComposerAttachmentsDeps;
