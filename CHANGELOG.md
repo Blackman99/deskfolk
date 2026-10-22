@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A line sent while a project session's Claude Code works no longer leaves the run open
+
+- Sending a line while Claude Code was at work in a project session left that run working until you pressed Stop: Claude Code takes such a line into the step it is on and answers both with one result, while the app waited for a second. The app now reads which lines each result answers.
+
 ### A project session has plan mode and Claude Code's slash commands
 
 - The composer has a Plan switch (Shift+Tab flips it, as in the terminal). With it on, Claude Code looks around and writes a plan, and changes nothing until you approve it: the plan comes as a card of its own, drawn as markdown, with Approve and start and Keep planning; a line you send while it waits says what to change. Approving turns plan mode off and Claude Code gets to work under the app's permission mode. While it plans, only its plan file is written, other writes are refused, and every command asks first (read-only still refuses them).

@@ -83,11 +83,11 @@ function scripted(seen: Seen, step: Step, ownSession = "own-1", preface: (line: 
   };
 }
 
-function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[]; claudeModels?: ClaudeModelList; claudeCommands?: ClaudeCommandList } = {}) {
+function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[]; claudeModels?: ClaudeModelList; claudeCommands?: ClaudeCommandList; query?: ProjectQuery } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "project-session-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
   const seen: Seen = { options: [], lines: [], closed: 0, models: [], efforts: [], modes: [], verdicts: [] };
-  const api = createLocalApi({ store, token: "project-test", schedule: false, claudeCode: probe, projectQuery: scripted(seen, step, opts.ownSession, opts.preface),
+  const api = createLocalApi({ store, token: "project-test", schedule: false, claudeCode: probe, projectQuery: opts.query ?? scripted(seen, step, opts.ownSession, opts.preface),
     ...(opts.claudeModels ? { claudeModels: opts.claudeModels } : {}), ...(opts.claudeCommands ? { claudeCommands: opts.claudeCommands } : {}) });
   const events: ClientEvent[] = [];
   api.subscribeSync((frame) => { if (frame.type === "event") events.push(frame.payload); });
@@ -800,4 +800,38 @@ test("typing / lists the session's commands, asked of Claude Code in its directo
   ok({ v: 1, id: ulid(), method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { mode: "plan" } });
   ok({ v: 1, id: ulid(), method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { mode: null } });
   expect(() => validateBusiness({ v: 1, id: ulid(), method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { mode: "bypassPermissions" } })).toThrow();
+});
+
+test("a line Claude Code folds into the step it is on is answered by that step's result: the run ends, nothing waits", async () => {
+  let second!: () => void;
+  const secondSent = new Promise<void>((resolve) => { second = resolve; });
+  const sent: Array<{ line: string; uuid?: string }> = [];
+  // As Claude Code 2.1.307 does: a line sent mid-step joins it, and the one result lists both.
+  const folding: ProjectQuery = ({ prompt }) => Object.assign((async function* (): AsyncGenerator<SDKMessage> {
+    yield { type: "system", subtype: "init", session_id: "own-1", uuid: crypto.randomUUID() } as unknown as SDKMessage;
+    const lines = (prompt as AsyncIterable<SDKUserMessage>)[Symbol.asyncIterator]();
+    const read = async () => {
+      const next = (await lines.next()).value as SDKUserMessage;
+      sent.push({ line: String(next.message.content), uuid: next.uuid });
+      return next.uuid;
+    };
+    const first = await read();
+    await secondSent;
+    const folded = await read();
+    yield { type: "result", subtype: "success", result: "两句一起答了", is_error: false, session_id: "own-1", user_message_uuids: [first, folded], uuid: crypto.randomUUID() } as unknown as SDKMessage;
+    for (;;) {
+      const done = await lines.next();
+      if (done.done) return;
+    }
+  })(), { close: () => {} });
+  const h = start(async () => "", { query: folding });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(id, "先做这个");
+  await h.until(() => sent.length === 1);
+  await h.say(id, "顺便也做那个");
+  second();
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(sent.map((row) => row.line)).toEqual(["先做这个", "顺便也做那个"]);
+  expect(sent.every((row) => typeof row.uuid === "string" && row.uuid.length > 0)).toBe(true);
+  expect(h.lines(id).at(-1)).toMatchObject({ kind: "bot", body: "两句一起答了" });
 });

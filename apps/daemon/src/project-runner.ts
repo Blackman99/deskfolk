@@ -81,8 +81,12 @@ type Live = {
   sessionId: string;
   input: ReturnType<typeof inputQueue<SDKUserMessage>>;
   abort: AbortController;
-  /** Lines sent that Claude Code has not answered with a result yet. */
-  unanswered: number;
+  /**
+   * Lines sent that no result has answered yet, oldest first: each with the uuid a result lists it
+   * by, and the command it runs (`compact`) or null. Claude Code folds a line sent mid-step into the
+   * step it is on, so one result can answer several.
+   */
+  sent: Array<{ uuid: string; command: string | null }>;
   /**
    * The approvals waiting on you, oldest first, and how to answer each: Claude Code can ask about
    * two calls at once (it runs independent tools in parallel). The first is the card; answering it
@@ -99,8 +103,6 @@ type Live = {
   query: ReturnType<ProjectQuery> | null;
   /** Claude Code's mode as last known: the session's when the run starts, then as it says. */
   mode: ClaudeMode;
-  /** For each line sent and not yet answered, oldest first: the command it runs (`compact`), or null. */
-  commands: Array<string | null>;
 };
 
 const STDERR_KEEP = 8 * 1024;
@@ -271,8 +273,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     if (live) {
       // A plan waiting on you is not approved by what you say next: it is what to change.
       if (live.waiting[0]?.approval.kind_key === PLAN_APPROVAL_KIND) live.waiting.shift()!.resolve("revise");
-      // Read at Claude Code's next step, answered with a result of its own.
-      live.unanswered += 1;
+      // Read at Claude Code's next step: folded into the step it is on, or answered on its own.
       send(live, lineContent(store, message, locale() === "en"));
       return;
     }
@@ -280,8 +281,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     const input = inputQueue<SDKUserMessage>();
     let finish!: () => void;
     const fresh: Live = {
-      runId: run.id, sessionId, input, abort: new AbortController(), unanswered: 1, waiting: [], asked: new Map(), stopped: false, closing: false, query: null,
-      done: new Promise<void>((resolve) => { finish = resolve; }), mode: project.mode === "plan" ? "plan" : "default", commands: [],
+      runId: run.id, sessionId, input, abort: new AbortController(), sent: [], waiting: [], asked: new Map(), stopped: false, closing: false, query: null,
+      done: new Promise<void>((resolve) => { finish = resolve; }), mode: project.mode === "plan" ? "plan" : "default",
     };
     lives.set(sessionId, fresh);
     send(fresh, lineContent(store, message, locale() === "en"));
@@ -297,8 +298,9 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
   }
 
   function send(live: Live, content: LineContent): void {
-    live.commands.push(commandOf(content));
-    live.input.push(userMessage(content));
+    const uuid = crypto.randomUUID();
+    live.sent.push({ uuid, command: commandOf(content) });
+    live.input.push({ ...userMessage(content), uuid });
   }
 
   function fail(live: Live, detail: string): void {
@@ -506,8 +508,13 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           continue;
         }
         if (message.type === "result") {
-          live.unanswered = Math.max(0, live.unanswered - 1);
-          const command = live.commands.shift() ?? null;
+          // The lines it answers: the ones it lists, or the oldest when it lists none of ours (an
+          // older Claude Code lists none).
+          const listed = (message as { user_message_uuids?: unknown }).user_message_uuids;
+          const mine = Array.isArray(listed) ? live.sent.filter((line) => listed.includes(line.uuid)) : [];
+          const answered = mine.length > 0 ? mine : live.sent.slice(0, 1);
+          live.sent = live.sent.filter((line) => !answered.includes(line));
+          const command = answered.find((line) => line.command)?.command ?? null;
           if (message.subtype !== "success" || message.is_error || failure) {
             failure ??= message.subtype === "success" ? firstLine(message.result ?? "") ?? "error" : message.errors?.[0] ?? message.subtype;
             break;
@@ -518,7 +525,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           partial = "";
           update(live.runId, { partial: null, activity: null });
           // Nothing more of yours to answer: the run is over.
-          if (live.unanswered === 0) {
+          if (live.sent.length === 0) {
             live.closing = true;
             live.input.close();
           }
