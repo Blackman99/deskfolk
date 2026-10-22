@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A project session's conversation scrolls on under its composer
+
+- In a project session the conversation, and its scrollbar, stopped above the composer, so in the Mac window the scrollbar ended well short of the bottom and looked as if it could not scroll to the end. The composer now floats over the conversation as it does in a Bot's: the conversation and its scrollbar run to the bottom, the last line still clears the composer, and the composer keeps its margin off the scrollbar. In a conversation as narrow as a phone the composer still docks below it.
+
 ### Code with a command and a path in it stays code in a message
 
 - Inline code that ran a command on a file, such as `` `tail -3 README.md` `` or `` `cat src/a.ts` ``, showed in a message as the literal `[tail -3 README.md](tail -3 README.md)`, with its code look gone. It now shows as code. Inline code that is only a path still becomes the file's link, and so does a file the message hands over whose name has a space in it, which used to show as that same bracketed text.

@@ -307,6 +307,7 @@
 	}
 
 	let scroller = $state<HTMLElement | null>(null);
+	let composerEl = $state<HTMLElement | null>(null);
 	let stuck = true;
 	let answerFailed = $state(false);
 	let sendFailed = $state(false);
@@ -344,6 +345,33 @@
 		void run?.activity;
 		void run?.status;
 		if (stuck) toBottom();
+	});
+	/**
+	 * The composer floats over the transcript, as a Bot's does, so the list and its scrollbar run to
+	 * the pane's bottom. The list keeps room under its last line as tall as the composer actually is
+	 * (a longer line, staged files and an error all grow it), and the card keeps its margin off a
+	 * classic scrollbar on the list's right edge. Either changing keeps you at the end if you were.
+	 */
+	$effect(() => {
+		const list = scroller;
+		const bar = composerEl;
+		const chat = list?.parentElement;
+		if (!list || !bar || !chat || typeof ResizeObserver === 'undefined') return;
+		const apply = () => {
+			chat.style.setProperty('--composer-height', `${Math.ceil(bar.getBoundingClientRect().height)}px`);
+			chat.style.setProperty('--stream-scrollbar', `${list.offsetWidth - list.clientWidth}px`);
+			if (stuck) list.scrollTop = list.scrollHeight;
+		};
+		// The scrollbar showing up narrows the list's content box, so watching the list sees it come and go.
+		const observer = new ResizeObserver(apply);
+		observer.observe(bar);
+		observer.observe(list);
+		apply();
+		return () => {
+			observer.disconnect();
+			chat.style.removeProperty('--composer-height');
+			chat.style.removeProperty('--stream-scrollbar');
+		};
 	});
 
 	// Reading it: the last line counts as read once the window has shown it for a moment.
@@ -553,116 +581,118 @@
 		</div>
 	</div>
 
-	<div class="composer">
-		{#if sendFailed || tuneFailed}
-			<p class="field-error">{t.project.actionFailed}</p>
-		{:else if accountRefused}
-			<p class="field-error">{t.project.accountBusy}</p>
-		{/if}
-		<VoiceStatus {voice} {t} />
-		<div class="composer-box">
-			{#if commandsShown}
-				<ProjectCommandMenu
-					{t}
-					id={commandMenuId}
-					status={commandsState}
-					matches={commandMatches}
-					active={commandActive}
-					onHover={(index) => (commandActive = index)}
-					onPick={(command) => pickCommand(command, false)}
-				/>
+	<div class="composer" bind:this={composerEl}>
+		<div class="composer-column">
+			{#if sendFailed || tuneFailed}
+				<p class="field-error">{t.project.actionFailed}</p>
+			{:else if accountRefused}
+				<p class="field-error">{t.project.accountBusy}</p>
 			{/if}
-			{#if staged.length > 0}
-				<ComposerAttachmentsBar
-					{t}
-					pendingAttachments={staged}
-					pendingPaths={[]}
-					sending={view.sending}
-					uploadedPercent={(file) => uploadedShare(view.upload, file)}
-					onRemoveAttachment={attachments.removePendingAttachment}
-					onRemovePath={() => {}}
-				/>
-			{/if}
-			<textarea
-				bind:this={field}
-				rows="1"
-				aria-label={t.project.composerLabel}
-				placeholder={planning ? t.project.composerPlaceholderPlan : t.project.composerPlaceholder}
-				aria-autocomplete="list"
-				aria-controls={commandsListed ? commandMenuId : undefined}
-				aria-activedescendant={commandsListed ? `${commandMenuId}-${commandActive}` : undefined}
-				value={view.draft}
-				oninput={(event) => {
-					view.draft = event.currentTarget.value;
-					caret = event.currentTarget.selectionStart;
-					sendFailed = false;
-					grow();
-				}}
-				onkeydown={onKey}
-				onkeyup={(event) => {
-					if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') trackCaret();
-				}}
-				onclick={trackCaret}
-				onfocus={trackCaret}
-				onblur={() => (commandsClosedAt = view.draft)}
-				onpaste={onPaste}
-				oncompositionstart={() => (ime = composerImeOnStart())}
-				oncompositionupdate={() => (ime = composerImeOnUpdate(ime))}
-				oncompositionend={() => (ime = composerImeOnEnd(Date.now()))}
-			></textarea>
-			<div class="composer-tools">
-				<button
-					type="button"
-					class="attach"
-					title={t.composer.attach}
-					aria-label={t.composer.attach}
-					disabled={!connected || Boolean(view.sending)}
-					onclick={attachments.openFilePicker}
-					data-project-attach
-				>
-					<Icon name="paperclip" size={16} />
-				</button>
-				<input type="file" multiple hidden bind:this={attachments.fileInputEl} onchange={attachments.onFileInputChange} />
-				<!-- Plan mode, the session's own: on, it plans and asks before changing anything. -->
-				<button
-					type="button"
-					class="plan-toggle"
-					class:is-on={planning}
-					aria-pressed={planning}
-					title={planning ? t.project.planOnHint : t.project.planOffHint}
-					disabled={!connected}
-					onclick={togglePlan}
-					data-project-plan
-				>
-					<Icon name="list" size={16} />
-					<span>{t.project.plan}</span>
-				</button>
-				<!-- An account changes for the next run: Claude Code keeps the session under the account it ran on. -->
-				<ProjectAgentTune
-					{t}
-					tune={{ account, model, effort }}
-					accounts={accountShown ? accountOptions : null}
-					accountLocked={live}
-					disabled={!connected}
-					client={runtime.client}
-					onpick={(change) => void tune(change)}
-				/>
-				<span class="tools-gap"></span>
-				{#if voiceOffered || voice.busy}
-					<VoiceButton {voice} {t} disabled={!connected} />
+			<VoiceStatus {voice} {t} />
+			<div class="composer-box">
+				{#if commandsShown}
+					<ProjectCommandMenu
+						{t}
+						id={commandMenuId}
+						status={commandsState}
+						matches={commandMatches}
+						active={commandActive}
+						onHover={(index) => (commandActive = index)}
+						onPick={(command) => pickCommand(command, false)}
+					/>
 				{/if}
-				<!-- Stop beside Send while the agent works, as in a Bot's direct: a line sent meanwhile goes into the run. -->
-				<SendButton
-					{t}
-					{connected}
-					primaryAction={{ kind: 'send', disabled: !sendable || Boolean(view.sending) || !connected }}
-					directStop={live}
-					stepsAside={false}
-					sending={view.sending}
-					upload={view.upload}
-					onStop={() => void stop()}
-					onSend={() => void send()}
-				/>
+				{#if staged.length > 0}
+					<ComposerAttachmentsBar
+						{t}
+						pendingAttachments={staged}
+						pendingPaths={[]}
+						sending={view.sending}
+						uploadedPercent={(file) => uploadedShare(view.upload, file)}
+						onRemoveAttachment={attachments.removePendingAttachment}
+						onRemovePath={() => {}}
+					/>
+				{/if}
+				<textarea
+					bind:this={field}
+					rows="1"
+					aria-label={t.project.composerLabel}
+					placeholder={planning ? t.project.composerPlaceholderPlan : t.project.composerPlaceholder}
+					aria-autocomplete="list"
+					aria-controls={commandsListed ? commandMenuId : undefined}
+					aria-activedescendant={commandsListed ? `${commandMenuId}-${commandActive}` : undefined}
+					value={view.draft}
+					oninput={(event) => {
+						view.draft = event.currentTarget.value;
+						caret = event.currentTarget.selectionStart;
+						sendFailed = false;
+						grow();
+					}}
+					onkeydown={onKey}
+					onkeyup={(event) => {
+						if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') trackCaret();
+					}}
+					onclick={trackCaret}
+					onfocus={trackCaret}
+					onblur={() => (commandsClosedAt = view.draft)}
+					onpaste={onPaste}
+					oncompositionstart={() => (ime = composerImeOnStart())}
+					oncompositionupdate={() => (ime = composerImeOnUpdate(ime))}
+					oncompositionend={() => (ime = composerImeOnEnd(Date.now()))}
+				></textarea>
+				<div class="composer-tools">
+					<button
+						type="button"
+						class="attach"
+						title={t.composer.attach}
+						aria-label={t.composer.attach}
+						disabled={!connected || Boolean(view.sending)}
+						onclick={attachments.openFilePicker}
+						data-project-attach
+					>
+						<Icon name="paperclip" size={16} />
+					</button>
+					<input type="file" multiple hidden bind:this={attachments.fileInputEl} onchange={attachments.onFileInputChange} />
+					<!-- Plan mode, the session's own: on, it plans and asks before changing anything. -->
+					<button
+						type="button"
+						class="plan-toggle"
+						class:is-on={planning}
+						aria-pressed={planning}
+						title={planning ? t.project.planOnHint : t.project.planOffHint}
+						disabled={!connected}
+						onclick={togglePlan}
+						data-project-plan
+					>
+						<Icon name="list" size={16} />
+						<span>{t.project.plan}</span>
+					</button>
+					<!-- An account changes for the next run: Claude Code keeps the session under the account it ran on. -->
+					<ProjectAgentTune
+						{t}
+						tune={{ account, model, effort }}
+						accounts={accountShown ? accountOptions : null}
+						accountLocked={live}
+						disabled={!connected}
+						client={runtime.client}
+						onpick={(change) => void tune(change)}
+					/>
+					<span class="tools-gap"></span>
+					{#if voiceOffered || voice.busy}
+						<VoiceButton {voice} {t} disabled={!connected} />
+					{/if}
+					<!-- Stop beside Send while the agent works, as in a Bot's direct: a line sent meanwhile goes into the run. -->
+					<SendButton
+						{t}
+						{connected}
+						primaryAction={{ kind: 'send', disabled: !sendable || Boolean(view.sending) || !connected }}
+						directStop={live}
+						stepsAside={false}
+						sending={view.sending}
+						upload={view.upload}
+						onStop={() => void stop()}
+						onSend={() => void send()}
+					/>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -700,7 +730,8 @@
 		width: 100%;
 		max-width: calc(var(--chat-max-width) + 48px);
 		margin-inline: auto;
-		padding: 20px 24px 16px;
+		/* Room for the composer floating over this list, as tall as it actually is. */
+		padding: 20px 24px calc(var(--composer-height, 120px) + 16px);
 		box-sizing: border-box;
 	}
 
@@ -911,13 +942,39 @@
 		margin-top: 10px;
 	}
 
+	/* Over the transcript, which runs on under it; only the column takes the pointer, so the list
+	   still scrolls and selects beside the card. On the transcript's column: a classic scrollbar
+	   takes the list's right edge, and the card keeps its margin off it. */
 	.composer {
-		flex: none;
-		width: 100%;
-		max-width: calc(var(--chat-max-width) + 48px);
-		margin-inline: auto;
-		padding: 8px 24px calc(14px + env(safe-area-inset-bottom));
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 4;
+		padding: 8px calc(24px + var(--stream-scrollbar, 0px)) calc(14px + env(safe-area-inset-bottom)) 24px;
 		box-sizing: border-box;
+		pointer-events: none;
+	}
+
+	.composer-column {
+		position: relative;
+		max-width: var(--chat-max-width);
+		margin-inline: auto;
+		pointer-events: auto;
+	}
+
+	/* Frost hugging the card and the lines above it, as on a Bot's composer: what scrolls under them
+	   blurs. Under the column's own lines (the composer is its stacking context), not over them. */
+	.composer-column::before {
+		content: "";
+		position: absolute;
+		z-index: -1;
+		inset: -8px;
+		border-radius: calc(var(--radius-lg) + 8px);
+		pointer-events: none;
+		background: color-mix(in srgb, var(--glass-composer) 50%, transparent);
+		backdrop-filter: blur(16px);
+		-webkit-backdrop-filter: blur(16px);
 	}
 
 	/* The line on top, the model and Send under it, as in the agents' own apps. */
@@ -1035,11 +1092,11 @@
 	/* The conversation's own width, as in a Bot's (the `conversation` container): a workbench pane as narrow as a phone gets it in a wide window too. */
 	@container conversation (max-width: 680px) {
 		.transcript-inner {
-			padding: 14px 12px 12px;
+			padding: 14px 12px calc(var(--composer-height, 120px) + 12px);
 		}
 
 		.composer {
-			padding: 6px 12px calc(10px + env(safe-area-inset-bottom));
+			padding: 6px calc(12px + var(--stream-scrollbar, 0px)) calc(10px + env(safe-area-inset-bottom)) 12px;
 		}
 
 
@@ -1048,10 +1105,18 @@
 		}
 	}
 
-	/* As narrow as a phone itself the composer docks, as a Bot's does: a bar across the bottom, its line on top. */
+	/* As narrow as a phone itself the composer docks, as a Bot's does: a bar across the bottom, its
+	   line on top, in the chat's flow, so the transcript ends above it and keeps no room for it. */
 	@container conversation (max-width: 480px) {
+		.transcript-inner {
+			padding-bottom: 12px;
+		}
+
 		.composer {
-			max-width: none;
+			position: relative;
+			bottom: auto;
+			flex: none;
+			pointer-events: auto;
 			padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)) 12px;
 			background: var(--input-bg);
 			border-top: 1px solid var(--line);
@@ -1060,6 +1125,14 @@
 
 		.composer:focus-within {
 			border-top-color: var(--field-focus-border);
+		}
+
+		.composer-column {
+			max-width: none;
+		}
+
+		.composer-column::before {
+			display: none;
 		}
 
 		.composer-box,

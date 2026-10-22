@@ -281,6 +281,63 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 		});
 
 		/*
+		 * A project session's composer sat in the chat's flow, so its transcript, and the scrollbar
+		 * with it, stopped above the card, where a Bot's runs on under its floating card to the
+		 * pane's bottom: the bar looked as if it could not reach the end (2026-10-22). The card
+		 * floats now, the list keeps room for it, and the card keeps its margin off the bar.
+		 */
+		test('a project session\'s transcript and its scrollbar run under the floating composer', async ({ baseURL }) => {
+			test.skip(name === 'chromium', 'Playwright runs Chromium with its scrollbars hidden');
+			const browser = await engine.launch();
+			const context = await browser.newContext({ viewport: { width: 1280, height: 820 } });
+			await context.addInitScript(() =>
+				document.addEventListener('DOMContentLoaded', () => {
+					const style = document.createElement('style');
+					style.textContent = '::-webkit-scrollbar{width:15px}::-webkit-scrollbar-thumb{background:#888}';
+					document.head.append(style);
+				})
+			);
+			const page = await context.newPage();
+			await page.goto(`${baseURL}index.html?story=project-chat`);
+			await page.waitForSelector('html[data-ready="yes"]');
+			// Short enough that the list scrolls, so its bar shows.
+			await page.evaluate(() => (document.getElementById('story')!.style.height = '260px'));
+			const atEnd = () =>
+				page.locator('.project-chat').evaluate((el) => {
+					const list = el.querySelector<HTMLElement>('.transcript')!;
+					list.scrollTop = list.scrollHeight;
+					const inner = list.querySelector('.transcript-inner')!;
+					const box = inner.getBoundingClientRect();
+					const textLeft = box.left + parseFloat(getComputedStyle(inner).paddingLeft);
+					const textRight = box.right - parseFloat(getComputedStyle(inner).paddingRight);
+					const composer = el.querySelector('.composer')!;
+					const card = el.querySelector('.composer-box')!.getBoundingClientRect();
+					return {
+						bar: list.offsetWidth - list.clientWidth,
+						under: Math.round(el.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom),
+						position: getComputedStyle(composer).position,
+						left: Math.round(card.left - textLeft),
+						right: Math.round(textRight - card.right),
+						lastClear: inner.lastElementChild!.getBoundingClientRect().bottom <= card.top
+					};
+				});
+			for (const px of [900, 560, 481]) {
+				await storyWidth(page, px);
+				await expect.poll(atEnd).toEqual({ bar: 15, under: 0, position: 'absolute', left: 0, right: 0, lastClear: true });
+			}
+			// Docked, the bar is in the chat's flow again: the list ends on its top edge.
+			await storyWidth(page, 480);
+			await expect.poll(() =>
+				page.locator('.project-chat').evaluate((el) => {
+					const composer = el.querySelector('.composer')!;
+					const list = el.querySelector('.transcript')!.getBoundingClientRect();
+					return { position: getComputedStyle(composer).position, gap: Math.round(composer.getBoundingClientRect().top - list.bottom) };
+				})
+			).toEqual({ position: 'relative', gap: 0 });
+			await browser.close();
+		});
+
+		/*
 		 * The account, model and thinking level are one cascading picker (2026-10-22): its columns
 		 * open over the composer, in the top layer, inside the window. WebKit does not focus a
 		 * button it was clicked on, and the keys are read on the picker's field: opening focuses it.
