@@ -9,7 +9,7 @@
 	type Props = {
 		node: LayoutNode;
 		focusId: string;
-		/** More than one pane is showing, so the current one is marked and the rest go quiet. */
+		/** More than one pane is showing, so all but the current one go quiet. */
 		divided: boolean;
 		mins: MinSizeLookup;
 		t: Copy;

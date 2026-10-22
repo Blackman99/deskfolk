@@ -132,14 +132,13 @@ test("the focused pane is marked by more than colour", () => {
   }
 });
 
-test("the current pane is marked and the others dimmed only while there is another pane to tell it from", () => {
-  const leaves = (host: HTMLElement, state: string) =>
-    [...host.querySelectorAll(`.wb-leaf.is-${state}`)].map((leaf) => leaf.getAttribute("data-leaf"));
+test("the panes that are not the current one are dimmed only while there is another pane to tell it from", () => {
+  const dimmed = (host: HTMLElement) =>
+    [...host.querySelectorAll(".wb-leaf.is-dimmed")].map((leaf) => leaf.getAttribute("data-leaf"));
 
   const alone = mountWorkbench(layoutOf(makeLeaf("a", [aTab("t1")])));
   try {
-    expect(leaves(alone.host, "marked")).toEqual([]);
-    expect(leaves(alone.host, "dimmed")).toEqual([]);
+    expect(dimmed(alone.host)).toEqual([]);
   } finally {
     alone.close();
   }
@@ -148,14 +147,13 @@ test("the current pane is marked and the others dimmed only while there is anoth
     makeLeaf("a", [aTab("t1")]), makeLeaf("b", [aTab("t2")]),
   ]), "b"));
   try {
-    expect(leaves(split.host, "marked")).toEqual(["b"]);
-    expect(leaves(split.host, "dimmed")).toEqual(["a"]);
+    expect(dimmed(split.host)).toEqual(["a"]);
   } finally {
     split.close();
   }
 
   // One tiled pane with a floating one over it is still two panes, and the pane inside a float
-  // is marked or dimmed the same way a tiled one is.
+  // is dimmed the same way a tiled one is.
   const withFloat = (focus: WorkbenchLayout["focus"]): WorkbenchLayout => ({
     version: 1,
     root: makeLeaf("a", [aTab("t1")]),
@@ -164,16 +162,14 @@ test("the current pane is marked and the others dimmed only while there is anoth
   });
   const tiledCurrent = mountWorkbench(withFloat({ zone: "tiled", leafId: "a" }));
   try {
-    expect(leaves(tiledCurrent.host, "marked")).toEqual(["a"]);
-    expect(leaves(tiledCurrent.host, "dimmed")).toEqual(["f"]);
+    expect(dimmed(tiledCurrent.host)).toEqual(["f"]);
     expect(tiledCurrent.host.querySelector(".wb-float.is-focused")).toBeNull();
   } finally {
     tiledCurrent.close();
   }
   const floatCurrent = mountWorkbench(withFloat({ zone: "floating", leafId: "f" }));
   try {
-    expect(leaves(floatCurrent.host, "marked")).toEqual(["f"]);
-    expect(leaves(floatCurrent.host, "dimmed")).toEqual(["a"]);
+    expect(dimmed(floatCurrent.host)).toEqual(["a"]);
     expect(floatCurrent.host.querySelector(".wb-float.is-focused")).not.toBeNull();
   } finally {
     floatCurrent.close();
@@ -182,8 +178,7 @@ test("the current pane is marked and the others dimmed only while there is anoth
   // Too narrow to divide: one pane on screen, however many the tree holds.
   const narrow = mountWorkbench(split.state.layout, false);
   try {
-    expect(leaves(narrow.host, "marked")).toEqual([]);
-    expect(leaves(narrow.host, "dimmed")).toEqual([]);
+    expect(dimmed(narrow.host)).toEqual([]);
   } finally {
     narrow.close();
   }
@@ -546,12 +541,12 @@ test("activating or focusing a tab never changes the size of its box", () => {
   for (const block of style.split("}")) {
     const [selector, body] = block.split("{");
     if (!selector || !body) continue;
-    // Only the states a click or a focus moves into. The flare pieces and the current pane's bar
-    // under its active tab are absolutely placed, so their size never reaches the tab's box.
+    // Only the states a click or a focus moves into. The flare pieces are absolutely placed, so
+    // their size never reaches the tab's box.
     const stateful = selector
       .split(",")
       .filter((part) => /is-active|is-focused|:hover|:focus/.test(part))
-      .filter((part) => !part.includes("wb-tab-flare") && !part.includes("wb-tab.is-active::before") && !part.includes("wb-new-tab") && !part.includes("wb-pane-menu") && !part.includes("wb-tab-close"));
+      .filter((part) => !part.includes("wb-tab-flare") && !part.includes("wb-new-tab") && !part.includes("wb-pane-menu") && !part.includes("wb-tab-close"));
     if (stateful.length === 0) continue;
     for (const declaration of body.split(";")) {
       const property = declaration.split(":")[0]?.trim() ?? "";

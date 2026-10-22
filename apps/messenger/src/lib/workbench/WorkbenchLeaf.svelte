@@ -9,10 +9,7 @@
 	type Props = {
 		leaf: LeafNode;
 		focused: boolean;
-		/**
-		 * More than one pane is showing, so this one says whether it is the current one: marked if
-		 * it is, quiet if not. A lone pane marked in accent is just noise.
-		 */
+		/** More than one pane is showing, so this one goes quiet when it is not the current one. */
 		divided?: boolean;
 		t: Copy;
 		/** The content of the active tab. The workbench never imports a content component itself. */
@@ -320,7 +317,6 @@
 <div
 	class="wb-leaf"
 	class:is-focused={focused}
-	class:is-marked={divided && focused}
 	class:is-dimmed={divided && !focused}
 	class:is-empty={leaf.tabs.length === 0}
 	data-leaf={leaf.id}
@@ -607,47 +603,14 @@
 		 */
 	}
 	/*
-	 * Which pane is the current one, while there is another to tell it from. A lit dot sits under
-	 * its active tab, the way the Dock marks a running app, and lights up with a short glow each
-	 * time the pane (or another of its tabs) becomes current. Every other pane goes quiet: tab
-	 * labels at the idle ink and a light veil over the content, the way a Mac dims the windows
-	 * behind the front one. Nothing is drawn round the pane: a frame faint enough to stay out of
-	 * the way was hard to find, and where the strip is the card's solid head (dark on macOS) it
-	 * ringed the card under the head instead of the window. A bar under the tab read as an
-	 * underline. The dot lights once and stays still; a breathing light would read as the pulse
-	 * that means a Bot is working.
+	 * Which pane is the current one, while there is another to tell it from: every other pane goes
+	 * quiet, the way a Mac dims the windows behind the front one — tab labels at the idle ink, the
+	 * active tab sunk into the strip, and a veil over the content that greys the card and fades
+	 * its text. The current pane itself carries no mark. A frame round it was faint enough to be
+	 * hard to find, and where the strip is the card's solid head (dark on macOS) it ringed the
+	 * card under the head instead of the window; a bar or a lit dot under its tab only cluttered
+	 * the strip.
 	 */
-	.wb-leaf.is-marked .wb-tab.is-active::before {
-		content: '';
-		position: absolute;
-		left: 50%;
-		/* Midway down the 6px between the tab and the card. */
-		bottom: -5px;
-		width: 4px;
-		height: 4px;
-		margin-left: -2px;
-		border-radius: 50%;
-		background: var(--accent);
-		box-shadow: 0 0 5px 1px color-mix(in srgb, var(--accent) 55%, transparent);
-		pointer-events: none;
-		animation: wb-light-up 560ms cubic-bezier(0.2, 0.8, 0.2, 1);
-	}
-	@keyframes wb-light-up {
-		0% {
-			transform: scale(0.2);
-			opacity: 0;
-			box-shadow: 0 0 0 0 transparent;
-		}
-		45% {
-			transform: scale(1.5);
-			opacity: 1;
-			box-shadow: 0 0 10px 4px color-mix(in srgb, var(--accent) 70%, transparent);
-		}
-		100% {
-			transform: scale(1);
-			opacity: 1;
-		}
-	}
 	/* Its active tab's label too, which `.wb-tab.is-active .wb-tab-button` below would keep at full ink. */
 	.wb-leaf.is-dimmed .wb-tab .wb-tab-button {
 		color: var(--tab-idle-ink);
@@ -1186,10 +1149,8 @@
 			height: 40px;
 			background: transparent;
 		}
-		/* As tall as the strip, the tabs centred in it, so the current pane's dot under its tab is not clipped. */
 		.wb-tabs {
 			align-items: center;
-			align-self: stretch;
 		}
 		.wb-tab {
 			--wb-tab-surface: var(--sidebar-bg);
