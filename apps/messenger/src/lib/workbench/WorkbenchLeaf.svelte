@@ -10,10 +10,10 @@
 		leaf: LeafNode;
 		focused: boolean;
 		/**
-		 * Draw the frame that says "this is the current pane". Only worth it while there is
-		 * another pane to tell it from; a lone pane framed in accent is just noise.
+		 * More than one pane is showing, so this one says whether it is the current one: marked if
+		 * it is, quiet if not. A lone pane marked in accent is just noise.
 		 */
-		framed?: boolean;
+		divided?: boolean;
 		t: Copy;
 		/** The content of the active tab. The workbench never imports a content component itself. */
 		tabBody: Snippet<[WorkbenchTab, string]>;
@@ -52,7 +52,7 @@
 	let {
 		leaf,
 		focused,
-		framed = false,
+		divided = false,
 		t,
 		tabBody,
 		tabLabel,
@@ -320,7 +320,8 @@
 <div
 	class="wb-leaf"
 	class:is-focused={focused}
-	class:is-framed={framed}
+	class:is-marked={divided && focused}
+	class:is-dimmed={divided && !focused}
 	class:is-empty={leaf.tabs.length === 0}
 	data-leaf={leaf.id}
 	data-testid="wb-leaf"
@@ -606,18 +607,36 @@
 		 */
 	}
 	/*
-	 * Drawn as a layer over the content, not as the pane's own outline or border: the strip and
-	 * the chat header both paint a background right up to the pane's edge, and an outline on the
-	 * pane sits under them. Over the pane's own layers (its settings scrim is 30) and under the
-	 * floating panes (40 and up), which draw their own. The tint a divider takes in hand
-	 * (`.split-handle`), so the frame and the edges round it read as one family.
+	 * Which pane is the current one, while there is another to tell it from. Its active tab
+	 * carries a short accent bar, and every other pane goes quiet: tab labels at the idle ink and
+	 * a light veil over the content, the way a Mac dims the windows behind the front one. Nothing
+	 * is drawn round the pane. A frame faint enough to stay out of the way was hard to find, and
+	 * where the strip is the card's solid head (dark on macOS) it ringed the card under the head
+	 * instead of the window.
 	 */
-	.wb-leaf.is-framed::after {
+	.wb-leaf.is-marked .wb-tab.is-active::before {
+		content: '';
+		position: absolute;
+		left: 10px;
+		right: 10px;
+		bottom: 2px;
+		height: 2px;
+		border-radius: 1px;
+		background: var(--accent);
+		pointer-events: none;
+	}
+	/* Its active tab's label too, which `.wb-tab.is-active .wb-tab-button` below would keep at full ink. */
+	.wb-leaf.is-dimmed .wb-tab .wb-tab-button {
+		color: var(--tab-idle-ink);
+	}
+	/* Over the pane's own layers (its settings scrim is 30), under the floating panes (40 and up). */
+	.wb-leaf.is-dimmed > .wb-body::after {
 		content: '';
 		position: absolute;
 		inset: 0;
 		z-index: 35;
-		box-shadow: inset 0 0 0 1px var(--accent-border);
+		border-radius: inherit;
+		background: var(--pane-veil);
 		pointer-events: none;
 	}
 	/*
@@ -1166,17 +1185,11 @@
 			background: var(--pane);
 			box-shadow: var(--shadow-pane);
 		}
-		.wb-leaf.is-framed::after {
-			display: none;
-		}
-		.wb-leaf.is-framed > .wb-body::after {
-			content: '';
-			position: absolute;
-			inset: 0;
-			z-index: 35;
-			border-radius: inherit;
-			box-shadow: inset 0 0 0 1px var(--accent-border);
-			pointer-events: none;
+		/* A quiet pane's active tab sinks halfway into the strip, its edge gone. */
+		.wb-leaf.is-dimmed .wb-tab.is-active {
+			--wb-tab-surface: color-mix(in srgb, var(--pane) 45%, var(--ground));
+			background: var(--wb-tab-surface);
+			box-shadow: none;
 		}
 		/*
 		 * Dark on macOS the ground lets most of the window's glass through (`--ground-tint`), and
@@ -1235,10 +1248,14 @@
 		:global(.wb-float) .wb-strip {
 			background: var(--sidebar-bg);
 		}
+		:global(.wb-float) .wb-leaf.is-dimmed .wb-tab.is-active {
+			--wb-tab-surface: color-mix(in srgb, var(--pane) 45%, var(--sidebar-bg));
+		}
 		:global(.wb-float) .wb-body {
 			margin: 0;
 			border-radius: 0;
 			box-shadow: none;
 		}
 	}
+
 </style>

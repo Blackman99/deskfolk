@@ -9,7 +9,7 @@
 	type Props = {
 		node: LayoutNode;
 		focusId: string;
-		/** More than one pane is showing, so the current one is framed. */
+		/** More than one pane is showing, so the current one is marked and the rest go quiet. */
 		divided: boolean;
 		mins: MinSizeLookup;
 		t: Copy;
@@ -57,7 +57,7 @@
 	<WorkbenchLeaf
 		leaf={node}
 		focused={node.id === focusId}
-		framed={divided && node.id === focusId}
+		{divided}
 		{t}
 		{tabBody}
 		{tabLabel}

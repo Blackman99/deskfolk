@@ -132,13 +132,14 @@ test("the focused pane is marked by more than colour", () => {
   }
 });
 
-test("the current pane is framed only while there is another pane to tell it from", () => {
-  const framed = (host: HTMLElement) =>
-    [...host.querySelectorAll(".wb-leaf.is-framed")].map((leaf) => leaf.getAttribute("data-leaf"));
+test("the current pane is marked and the others dimmed only while there is another pane to tell it from", () => {
+  const leaves = (host: HTMLElement, state: string) =>
+    [...host.querySelectorAll(`.wb-leaf.is-${state}`)].map((leaf) => leaf.getAttribute("data-leaf"));
 
   const alone = mountWorkbench(layoutOf(makeLeaf("a", [aTab("t1")])));
   try {
-    expect(framed(alone.host)).toEqual([]);
+    expect(leaves(alone.host, "marked")).toEqual([]);
+    expect(leaves(alone.host, "dimmed")).toEqual([]);
   } finally {
     alone.close();
   }
@@ -147,13 +148,14 @@ test("the current pane is framed only while there is another pane to tell it fro
     makeLeaf("a", [aTab("t1")]), makeLeaf("b", [aTab("t2")]),
   ]), "b"));
   try {
-    expect(framed(split.host)).toEqual(["b"]);
+    expect(leaves(split.host, "marked")).toEqual(["b"]);
+    expect(leaves(split.host, "dimmed")).toEqual(["a"]);
   } finally {
     split.close();
   }
 
-  // One tiled pane with a floating one over it is still two panes. The floating pane frames
-  // itself, rounded corners and all, so the leaf inside it never does.
+  // One tiled pane with a floating one over it is still two panes, and the pane inside a float
+  // is marked or dimmed the same way a tiled one is.
   const withFloat = (focus: WorkbenchLayout["focus"]): WorkbenchLayout => ({
     version: 1,
     root: makeLeaf("a", [aTab("t1")]),
@@ -162,14 +164,16 @@ test("the current pane is framed only while there is another pane to tell it fro
   });
   const tiledCurrent = mountWorkbench(withFloat({ zone: "tiled", leafId: "a" }));
   try {
-    expect(framed(tiledCurrent.host)).toEqual(["a"]);
+    expect(leaves(tiledCurrent.host, "marked")).toEqual(["a"]);
+    expect(leaves(tiledCurrent.host, "dimmed")).toEqual(["f"]);
     expect(tiledCurrent.host.querySelector(".wb-float.is-focused")).toBeNull();
   } finally {
     tiledCurrent.close();
   }
   const floatCurrent = mountWorkbench(withFloat({ zone: "floating", leafId: "f" }));
   try {
-    expect(framed(floatCurrent.host)).toEqual([]);
+    expect(leaves(floatCurrent.host, "marked")).toEqual(["f"]);
+    expect(leaves(floatCurrent.host, "dimmed")).toEqual(["a"]);
     expect(floatCurrent.host.querySelector(".wb-float.is-focused")).not.toBeNull();
   } finally {
     floatCurrent.close();
@@ -178,7 +182,8 @@ test("the current pane is framed only while there is another pane to tell it fro
   // Too narrow to divide: one pane on screen, however many the tree holds.
   const narrow = mountWorkbench(split.state.layout, false);
   try {
-    expect(framed(narrow.host)).toEqual([]);
+    expect(leaves(narrow.host, "marked")).toEqual([]);
+    expect(leaves(narrow.host, "dimmed")).toEqual([]);
   } finally {
     narrow.close();
   }
@@ -541,12 +546,12 @@ test("activating or focusing a tab never changes the size of its box", () => {
   for (const block of style.split("}")) {
     const [selector, body] = block.split("{");
     if (!selector || !body) continue;
-    // Only the states a click or a focus moves into. The flare pieces are absolutely placed, so
-    // their size never reaches the tab's box.
+    // Only the states a click or a focus moves into. The flare pieces and the current pane's bar
+    // under its active tab are absolutely placed, so their size never reaches the tab's box.
     const stateful = selector
       .split(",")
       .filter((part) => /is-active|is-focused|:hover|:focus/.test(part))
-      .filter((part) => !part.includes("wb-tab-flare") && !part.includes("wb-new-tab") && !part.includes("wb-pane-menu") && !part.includes("wb-tab-close"));
+      .filter((part) => !part.includes("wb-tab-flare") && !part.includes("wb-tab.is-active::before") && !part.includes("wb-new-tab") && !part.includes("wb-pane-menu") && !part.includes("wb-tab-close"));
     if (stateful.length === 0) continue;
     for (const declaration of body.split(";")) {
       const property = declaration.split(":")[0]?.trim() ?? "";
