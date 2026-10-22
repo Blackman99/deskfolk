@@ -2,6 +2,7 @@ import { untrack } from "svelte";
 import type { Attachment, TaskArtifacts } from "@real-bot/protocol";
 import type { Copy } from "../copy.ts";
 import type { MessengerApi } from "../messenger-api.ts";
+import { hostSeparator } from "../paths.ts";
 import { absWorkspacePath, artifactKind, citedInWorkspace, isHostCitedPath, terminalDirFor } from "./artifacts.ts";
 import {
   buildCitedPathTree,
@@ -27,6 +28,8 @@ export interface ArtifactTreeSourceHost {
   onOpenTerminal: () => ((dir: string) => void) | undefined;
   /** The file on screen went to the Trash. */
   showGone: () => void;
+  /** The project session's directory (ADR 0095) when the preview is one of its conversation's. */
+  projectDir: () => string | null;
 }
 
 /** The file tree: what the message cites or the job lists, or the workspace read folder by folder, and the right-click menu and Trash confirm that act on it. */
@@ -82,14 +85,43 @@ export class ArtifactTreeSource {
     )
   );
 
+  /**
+   * Opened from a project session (ADR 0095), a file inside its directory is shown in that
+   * directory's tree, as in the agent's own app. Null for the explorer, a job's files and a file
+   * from anywhere else (a picture you pasted, `/tmp/…`), which keep the tree they had.
+   */
+  projectRoot = $derived.by(() => {
+    if (this.#h.mode() === "workspace" || this.#h.taskId()) return null;
+    const dir = dirKey(this.#h.projectDir() ?? "");
+    const relpath = dirKey(this.#h.relpath());
+    return dir && (relpath === dir || holds(dir, relpath)) ? dir : null;
+  });
+  /** The tree is a folder read a level at a time, as you open it: the workspace's, or the project's. */
+  lazy = $derived.by(() => this.#h.mode() === "workspace" || this.projectRoot !== null);
+  /**
+   * The project's folders down to the file on screen, outermost first, and the one on screen when
+   * it is a folder: the tree opens them, each listed after the one above it.
+   */
+  revealDirs = $derived.by(() => {
+    const root = this.projectRoot;
+    if (root === null) return [];
+    const relpath = dirKey(this.#h.relpath());
+    const names = relpath.slice(root.length + 1).split(/[\\/]/).filter(Boolean);
+    if (!this.isDir(relpath)) names.pop();
+    const sep = hostSeparator(root);
+    const dirs: string[] = [];
+    for (const name of names) dirs.push(`${dirs.at(-1) ?? root}${sep}${name}`);
+    return dirs;
+  });
+
   workspaceTree = $state<ArtifactTreeNode[]>([]);
   loadedDirs = $state(new Set<string>());
   loadingDirs = $state(new Set<string>());
   failedDirs = $state(new Set<string>());
   treeGeneration = $state(0);
   truncatedHint = $state(false);
-  tree = $derived.by(() => this.#h.mode() === "workspace" ? this.workspaceTree : this.citedTree);
-  /** Which workspace root is listed; `null` when this pane is not the explorer. */
+  tree = $derived.by(() => this.lazy ? this.workspaceTree : this.citedTree);
+  /** Which workspace root (or project directory) is listed; `null` when the tree is not read a folder at a time. */
   loadedWorkspaceKey: string | null | undefined = undefined;
   loadedWorkspaceClient: MessengerApi | null = null;
 
@@ -265,7 +297,9 @@ export class ArtifactTreeSource {
       const client = this.#h.api();
       const workspaceMode = this.#h.mode() === "workspace";
       const root = this.#h.workspacePath();
-      const key = workspaceMode && client ? (root ?? "") : null;
+      // Walking from file to file inside the project keeps its listing; leaving it lets go.
+      const project = this.projectRoot;
+      const key = !client ? null : workspaceMode ? (root ?? "") : project !== null ? `project\u0000${project}` : null;
       if (key === this.loadedWorkspaceKey && client === this.loadedWorkspaceClient) return;
       this.loadedWorkspaceKey = key;
       this.loadedWorkspaceClient = client;
@@ -279,6 +313,26 @@ export class ArtifactTreeSource {
         if (key !== null) void this.loadWorkspaceDir(".");
       });
     });
+
+    /*
+     * A folder's entries have nowhere to go until the folder above it is listed (a listing that
+     * comes first is dropped, and the folder reads as empty), so the way down to the file on
+     * screen is listed one folder after another.
+     */
+    $effect(() => {
+      const dirs = this.revealDirs;
+      const generation = this.treeGeneration;
+      if (dirs.length === 0) return;
+      untrack(() => void this.revealPath(dirs, generation));
+    });
+  }
+
+  async revealPath(dirs: readonly string[], generation: number): Promise<void> {
+    for (const dir of [".", ...dirs]) {
+      if (generation !== this.treeGeneration) return;
+      await this.loadWorkspaceDir(dir);
+      if (!this.loadedDirs.has(dir)) return;
+    }
   }
 
   /** The pane is going away: anything still in flight belongs to a listing that is gone. */
@@ -287,17 +341,35 @@ export class ArtifactTreeSource {
     this.treeGeneration += 1;
   }
 
-  async loadWorkspaceDir(dirPath: string): Promise<void> {
-    const client = this.#h.api();
+  /** A folder being listed, so whoever asks for it again waits for the same listing. */
+  #listing = new Map<string, Promise<void>>();
+
+  loadWorkspaceDir(dirPath: string): Promise<void> {
     const path = dirPath || ".";
+    const asked = this.#listing.get(path);
+    if (asked && this.loadingDirs.has(path)) return asked;
+    const listing = this.#listDir(path);
+    this.#listing.set(path, listing);
+    return listing;
+  }
+
+  async #listDir(path: string): Promise<void> {
+    const client = this.#h.api();
     if (!client || this.loadingDirs.has(path) || this.loadedDirs.has(path)) return;
     const generation = this.treeGeneration;
+    const project = this.projectRoot;
     this.loadingDirs = new Set(this.loadingDirs).add(path);
     this.failedDirs = new Set([...this.failedDirs].filter((dir) => dir !== path));
     try {
-      const page = await client.workspaceTree(path === "." ? "" : path);
+      const dir = path === "." ? project : path;
+      const page = await client.workspaceTree(dir ?? "");
       if (generation !== this.treeGeneration) return;
-      const children = workspaceEntriesToNodes(page.items);
+      // The Mac spells a folder's entries from where it really is; the project's keep the spelling
+      // the agent's paths have, so the file on screen is the row it opened from.
+      const items = dir !== null && project !== null
+        ? page.items.map((row) => ({ ...row, path: `${dir}${hostSeparator(dir)}${row.name}` }))
+        : page.items;
+      const children = workspaceEntriesToNodes(items);
       if (path === ".") this.workspaceTree = children;
       else this.workspaceTree = mergeWorkspaceChildren(this.workspaceTree, path, children, page.truncated);
       this.loadedDirs = new Set(this.loadedDirs).add(path);
@@ -349,7 +421,7 @@ export class ArtifactTreeSource {
   dropTrashed(paths: string[]): void {
     if (paths.length === 0) return;
     this.trashedPaths = [...this.trashedPaths, ...paths];
-    if (this.#h.mode() === "workspace") {
+    if (this.lazy) {
       this.workspaceTree = removeTreePaths(this.workspaceTree, paths);
       const keep = (dirs: Set<string>) => new Set([...dirs].filter((dir) => !isUnderAny(dir, paths)));
       this.loadedDirs = keep(this.loadedDirs);

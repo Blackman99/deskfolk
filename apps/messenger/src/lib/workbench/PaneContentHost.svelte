@@ -18,6 +18,7 @@
 	import { previewContext, type PreviewHandle } from './preview-context.ts';
 	import { annotationsForFile, targetFor } from '../annotations/model.ts';
 	import { isPlaceholderAttachment } from '../overlays/artifacts.ts';
+	import { projectDirOf } from '../overlays/artifact-lookup.ts';
 	import { classifySession, isFileDropSession } from '../sidebar/session-groups.ts';
 	import { sanitizePreviewPath } from '../session-url.ts';
 	import { backdropClick } from '../click-outside.ts';
@@ -398,6 +399,7 @@
 				relpath={preview.relpath}
 				siblings={preview.siblings}
 				taskId={preview.taskId}
+				projectDir={projectDirOf(snapshot.sessions, previewSessionId)}
 				forceTree={content.forceTree}
 				api={runtime.client}
 				workspacePath={snapshot.settings.workspace_path}

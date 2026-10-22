@@ -5,7 +5,7 @@
  * already had queued as siblings) rather than this module reaching into `snapshot` or `runtime`
  * itself.
  */
-import type { Attachment, Message } from "@real-bot/protocol";
+import type { Attachment, Message, SessionSummary } from "@real-bot/protocol";
 import { baseName } from "../paths.ts";
 import { handedOverPaths } from "./artifacts.ts";
 
@@ -92,4 +92,10 @@ export function withOpenedPath(
     id: `virtual-${messageId ?? "opened"}-${path}`, message_id: messageId ?? "",
     workspace_relpath: path, original_filename: baseName(path) || path, created_at: createdAt,
   }];
+}
+
+/** The directory of the conversation a preview belongs to, when it is a project session (ADR 0095). */
+export function projectDirOf(sessions: readonly SessionSummary[], sessionId: string | null | undefined): string | null {
+  const session = sessionId ? sessions.find((row) => row.id === sessionId) : undefined;
+  return session?.kind === "project" ? (session.project_dir ?? null) : null;
 }

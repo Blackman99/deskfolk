@@ -2,6 +2,7 @@
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { ShellArtifact } from './shell-artifact.svelte.ts';
+	import { projectDirOf } from './artifact-lookup.ts';
 	// ArtifactPreview.svelte is lazy-loaded below (see the artifactPreview block): it only
 	// mounts once a file is actually opened.
 
@@ -46,6 +47,7 @@
 			workspacePath={snapshot.settings.workspace_path}
 			forceTree={artifact.artifactPreview.forceTree}
 			taskId={artifact.artifactPreview.taskId}
+			projectDir={projectDirOf(snapshot.sessions, runtime.selectedId)}
 			target={artifact.artifactPreview.target}
 			sheet={!wide}
 			annotations={snapshot.annotations}

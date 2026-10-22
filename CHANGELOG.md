@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A file opened from a project session comes with the project directory's tree
+
+- A file Claude Code named in a project session opened with at most the other files that line named beside it, and those written as relative paths were looked for in the app's workspace, so pressing them opened nothing. The preview now has the whole project directory's file tree beside it, opened a level at a time like the workspace explorer: the folders down to the file are open and the file is selected; pressing another file shows it in the same preview, and pressing a folder opens or closes it. On a phone the list button at the top of the preview reads the project directory's name. A picture you pasted into the conversation, or a file outside the project directory, opens as before. Hidden folders and `node_modules` are not in the tree: a file inside one still opens, with no row selected.
+
 ### A task map's buildings stand apart
 
 - A task map's town packed its buildings wall to wall: its plots stood so close that neighbours touched on screen and the streets between them were all but gone. The plots are now 1.4 times as far apart, buildings the same size, so with the map facing any of its four ways there is a street and some grass between any two, with the trees and lamps along them, and turned in between they hide one another far less. The town is bigger for it, so the map opens a little further out to show all of it; zoom in for a closer look.

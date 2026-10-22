@@ -55,6 +55,7 @@
 	import ArtifactBody from './ArtifactBody.svelte';
 	import ArtifactDirtyDialog from './ArtifactDirtyDialog.svelte';
 	import { trackPointerDrag } from '../pointer-drag.ts';
+	import { baseName } from '../paths.ts';
 
 	interface Props {
 		attachment: Attachment | null;
@@ -74,6 +75,8 @@
 		noTree?: boolean;
 		/** The job the flow chart opened this from: its whole job is listed, not just this step. */
 		taskId?: string | null;
+		/** A project session's directory, when this is its preview: a file inside it is shown in that folder's tree. */
+		projectDir?: string | null;
 		/** 挂到谁：the Bot message this preview hangs on; null means nothing can be annotated here. */
 		target?: AnnotationTarget | null;
 		/** Every annotation the runtime holds; the pane keeps this file's. */
@@ -114,6 +117,7 @@
 		forceTree = false,
 		noTree = false,
 		taskId = null,
+		projectDir = null,
 		target = null,
 		annotations = [],
 		annotationFocusId = null,
@@ -214,7 +218,14 @@
 			treeExpanded = new Set();
 		});
 	});
-	const treeLabel = $derived(mode === 'workspace' ? t.stream.workspaceExplorer : t.stream.artifactTree);
+	// A project's file opens with the folders down to it open; after the reset above, which a new listing also runs.
+	$effect(() => {
+		void treeSrc.treeGeneration;
+		const dirs = treeSrc.revealDirs;
+		untrack(() => {
+			if (dirs.some((dir) => !treeExpanded.has(dir))) treeExpanded = new Set([...treeExpanded, ...dirs]);
+		});
+	});
 	let paneEl = $state<HTMLElement | null>(null);
 	let paneWidth = $state(Number.POSITIVE_INFINITY);
 	const treeWidth = $derived(clampArtifactTreeWidth(treePreferred, paneWidth));
@@ -239,8 +250,16 @@
 		dirty: () => dirty,
 		t: () => t,
 		onOpenTerminal: () => onOpenTerminal,
-		showGone: () => loader.showGone()
+		showGone: () => loader.showGone(),
+		projectDir: () => projectDir
 	});
+	const treeLabel = $derived(
+		mode === 'workspace'
+			? t.stream.workspaceExplorer
+			: treeSrc.projectRoot !== null
+				? baseName(treeSrc.projectRoot) || treeSrc.projectRoot
+				: t.stream.artifactTree
+	);
 	// A cited path the Mac listed is a folder too: a link can name one (`voice_samples/ja/`).
 	let kind: ArtifactKind = $derived(
 		artifactKind(attachment?.original_filename ?? relpath, {
@@ -250,7 +269,7 @@
 
 	let showTree = $derived(
 		!noTree &&
-			(mode === 'workspace' ||
+			(treeSrc.lazy ||
 				forceTree || Boolean(taskId) ||
 				treeSrc.tree.length > 1 ||
 				treeSrc.tree.some((node) => node.kind === 'dir'))
@@ -569,24 +588,24 @@
 	<ArtifactTree
 		nodes={treeSrc.tree}
 		selected={relpath}
-		label={mode === 'workspace' ? t.stream.workspaceExplorer : t.stream.artifactTree}
+		label={treeLabel}
 		onSelect={selectNode}
 		onContextMenu={treeSrc.openTreeMenu}
 		onTrash={treeSrc.canTrash ? treeSrc.askTrash : undefined}
 		dragLabel={t.stream.dragItems}
-		lazyDirs={mode === 'workspace'}
+		lazyDirs={treeSrc.lazy}
 		loadedDirs={treeSrc.loadedDirs}
 		onExpandDir={(path) => void treeSrc.loadWorkspaceDir(path)}
 		truncatedLabel={t.stream.workspaceTruncated}
 		loadingDirs={treeSrc.loadingDirs}
 		failedDirs={treeSrc.failedDirs}
-		loading={mode === 'workspace' ? treeSrc.loadingDirs.has('.') : treeSrc.taskTreeLoading}
-		failed={mode === 'workspace' ? treeSrc.failedDirs.has('.') : treeSrc.taskTreeFailed}
+		loading={treeSrc.lazy ? treeSrc.loadingDirs.has('.') : treeSrc.taskTreeLoading}
+		failed={treeSrc.lazy ? treeSrc.failedDirs.has('.') : treeSrc.taskTreeFailed}
 		loadingLabel={t.stream.artifactTreeLoading}
 		failedLabel={t.stream.artifactTreeFailed}
-		emptyLabel={mode === 'workspace' ? t.stream.workspaceEmpty : t.stream.artifactTreeEmpty}
+		emptyLabel={treeSrc.lazy ? t.stream.workspaceEmpty : t.stream.artifactTreeEmpty}
 		retryLabel={t.disconnected.retry}
-		onRetry={() => { if (mode === 'workspace') void treeSrc.loadWorkspaceDir('.'); else treeSrc.taskTreeRetry += 1; }}
+		onRetry={() => { if (treeSrc.lazy) void treeSrc.loadWorkspaceDir('.'); else treeSrc.taskTreeRetry += 1; }}
 		bind:collapsed={treeCollapsed}
 		bind:expandedLazy={treeExpanded}
 	/>
