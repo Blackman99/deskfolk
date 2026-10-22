@@ -223,6 +223,10 @@
 		outline: 1px solid var(--line);
 		outline-offset: -1px;
 	}
+	/* Not the current pane: it still floats, on a shorter shadow, as a Mac window behind the front one does. */
+	.wb-float:not(.is-focused) {
+		box-shadow: var(--shadow-md);
+	}
 	.wb-float :global(.wb-leaf) {
 		flex: 1;
 		min-height: 0;

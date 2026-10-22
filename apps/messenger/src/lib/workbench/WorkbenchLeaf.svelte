@@ -318,6 +318,7 @@
 	class="wb-leaf"
 	class:is-focused={focused}
 	class:is-dimmed={divided && !focused}
+	class:is-raised={divided && focused}
 	class:is-empty={leaf.tabs.length === 0}
 	data-leaf={leaf.id}
 	data-testid="wb-leaf"
@@ -603,27 +604,22 @@
 		 */
 	}
 	/*
-	 * Which pane is the current one, while there is another to tell it from: every other pane goes
-	 * quiet, the way a Mac dims the windows behind the front one — tab labels at the idle ink, the
-	 * active tab sunk into the strip, and a veil over the content that greys the card and fades
-	 * its text. The current pane itself carries no mark. A frame round it was faint enough to be
-	 * hard to find, and where the strip is the card's solid head (dark on macOS) it ringed the
-	 * card under the head instead of the window; a bar or a lit dot under its tab only cluttered
-	 * the strip.
+	 * Which pane is the current one, while there is another to tell it from: the way a Mac sets the
+	 * front window off the ones behind it, and without touching what any pane shows. Every other
+	 * pane steps back in its chrome alone — tab labels at the idle ink, the active tab sunk into the
+	 * strip, the strip's tabs and buttons half faded, its card lying flat — and the current card
+	 * stands off the ground by a soft shadow (`is-raised`, below). A veil over the others' content
+	 * greyed with them a task map or a flow board being watched in another pane. A frame round the
+	 * current pane was faint enough to be hard to find, and where the strip is the card's solid
+	 * head (dark on macOS) it ringed the card under the head instead of the window; a bar or a lit
+	 * dot under its tab only cluttered the strip.
 	 */
 	/* Its active tab's label too, which `.wb-tab.is-active .wb-tab-button` below would keep at full ink. */
 	.wb-leaf.is-dimmed .wb-tab .wb-tab-button {
 		color: var(--tab-idle-ink);
 	}
-	/* Over the pane's own layers (its settings scrim is 30), under the floating panes (40 and up). */
-	.wb-leaf.is-dimmed > .wb-body::after {
-		content: '';
-		position: absolute;
-		inset: 0;
-		z-index: 35;
-		border-radius: inherit;
-		background: var(--pane-veil);
-		pointer-events: none;
+	.wb-leaf.is-dimmed > .wb-strip > * {
+		opacity: 0.5;
 	}
 	/*
 	 * The strip reads the way a browser's does: it sits a step below the content (`--tab-strip`,
@@ -1171,11 +1167,29 @@
 			background: var(--pane);
 			box-shadow: var(--shadow-pane);
 		}
-		/* A quiet pane's active tab sinks halfway into the strip, its edge gone. */
+		/* A quiet pane's card lies flat, and its active tab sinks halfway into the strip, its edge gone. */
+		.wb-leaf.is-dimmed > .wb-body {
+			box-shadow: var(--shadow-pane-flat);
+		}
 		.wb-leaf.is-dimmed .wb-tab.is-active {
 			--wb-tab-surface: color-mix(in srgb, var(--pane) 50%, var(--tab-strip));
 			background: var(--wb-tab-surface);
 			box-shadow: none;
+		}
+		/*
+		 * The current card's lift is drawn under the card, not by it: where the strip is the card's
+		 * head (dark on macOS, below) the body would cast up over the head, and the two casting at
+		 * once meet in a notch at the seam. Positioned with no z-index of its own, it paints after
+		 * the ground and before the card. It reaches into the 4px around the card and no further
+		 * than the gutter, so it does not darken the pane beside it either.
+		 */
+		.wb-leaf.is-raised::before {
+			content: '';
+			position: absolute;
+			inset: 40px 4px 4px;
+			border-radius: var(--radius-lg);
+			box-shadow: var(--shadow-pane-lift);
+			pointer-events: none;
 		}
 		/*
 		 * Dark on macOS the ground lets most of the window's glass through (`--ground-tint`), and
@@ -1193,6 +1207,9 @@
 		:global(:root[data-chrome='mac'][data-theme='dark']) .wb-leaf:not(.is-empty) > .wb-body {
 			border-top-left-radius: 0;
 			border-top-right-radius: 0;
+		}
+		:global(:root[data-chrome='mac'][data-theme='dark']) .wb-leaf.is-raised:not(.is-empty)::before {
+			top: 4px;
 		}
 		/* A floating pane has its own frame, and the band under its tabs stays as it was. */
 		:global(:root[data-chrome='mac'][data-theme='dark'] .wb-float) .wb-leaf:not(.is-empty) > .wb-strip {
@@ -1217,6 +1234,9 @@
 		.wb-leaf.is-empty > .wb-body {
 			margin-top: 4px;
 		}
+		.wb-leaf.is-empty.is-raised::before {
+			top: 4px;
+		}
 		:global(.wb-float) .wb-leaf.is-empty > .wb-strip {
 			position: relative;
 			top: auto;
@@ -1230,6 +1250,10 @@
 		:global(.wb-float) .wb-leaf {
 			overflow: hidden;
 			border-radius: inherit;
+		}
+		/* The float's own frame casts its shadow (WorkbenchFloat). */
+		:global(.wb-float) .wb-leaf.is-raised::before {
+			content: none;
 		}
 		:global(.wb-float) .wb-strip {
 			background: var(--sidebar-bg);

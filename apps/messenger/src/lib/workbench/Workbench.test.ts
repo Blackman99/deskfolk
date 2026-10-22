@@ -132,13 +132,16 @@ test("the focused pane is marked by more than colour", () => {
   }
 });
 
-test("the panes that are not the current one are dimmed only while there is another pane to tell it from", () => {
+test("the panes that are not the current one are dimmed, and the current one raised, only while there is another pane to tell it from", () => {
   const dimmed = (host: HTMLElement) =>
     [...host.querySelectorAll(".wb-leaf.is-dimmed")].map((leaf) => leaf.getAttribute("data-leaf"));
+  const raised = (host: HTMLElement) =>
+    [...host.querySelectorAll(".wb-leaf.is-raised")].map((leaf) => leaf.getAttribute("data-leaf"));
 
   const alone = mountWorkbench(layoutOf(makeLeaf("a", [aTab("t1")])));
   try {
     expect(dimmed(alone.host)).toEqual([]);
+    expect(raised(alone.host)).toEqual([]);
   } finally {
     alone.close();
   }
@@ -148,6 +151,7 @@ test("the panes that are not the current one are dimmed only while there is anot
   ]), "b"));
   try {
     expect(dimmed(split.host)).toEqual(["a"]);
+    expect(raised(split.host)).toEqual(["b"]);
   } finally {
     split.close();
   }
@@ -163,6 +167,7 @@ test("the panes that are not the current one are dimmed only while there is anot
   const tiledCurrent = mountWorkbench(withFloat({ zone: "tiled", leafId: "a" }));
   try {
     expect(dimmed(tiledCurrent.host)).toEqual(["f"]);
+    expect(raised(tiledCurrent.host)).toEqual(["a"]);
     expect(tiledCurrent.host.querySelector(".wb-float.is-focused")).toBeNull();
   } finally {
     tiledCurrent.close();
@@ -170,6 +175,7 @@ test("the panes that are not the current one are dimmed only while there is anot
   const floatCurrent = mountWorkbench(withFloat({ zone: "floating", leafId: "f" }));
   try {
     expect(dimmed(floatCurrent.host)).toEqual(["a"]);
+    expect(raised(floatCurrent.host)).toEqual(["f"]);
     expect(floatCurrent.host.querySelector(".wb-float.is-focused")).not.toBeNull();
   } finally {
     floatCurrent.close();
@@ -179,6 +185,7 @@ test("the panes that are not the current one are dimmed only while there is anot
   const narrow = mountWorkbench(split.state.layout, false);
   try {
     expect(dimmed(narrow.host)).toEqual([]);
+    expect(raised(narrow.host)).toEqual([]);
   } finally {
     narrow.close();
   }
