@@ -18,14 +18,21 @@ export interface Box {
 export const A = 96;
 /** Half the footprint of a place's building, in grid units (the prototype declares it and never reads it). */
 export const S = 0.3;
+/**
+ * Grid units from one plot of the town to the next. The town's plan (where places, roads, trees, lamps and
+ * islands go) is drawn up in plots; a building is ±0.3 grid units, so this leaves a street and grass between two.
+ */
+export const PLOT = 1.4;
+/** A length on the town's plan, in plots, in grid units. */
+export const plot = (v: number): number => v * PLOT;
 /** Body height of a place nobody visited, and of the busiest one. */
 export const HMIN = 12;
 export const HMAX = 54;
 /** How high the floating island sits above the town, in px. */
 export const LIFT = 30;
-/** The grid point that lands on (CX, CY). */
-export const PX = 1.5;
-export const PY = 1;
+/** The grid point that lands on (CX, CY): the town's middle. */
+export const PX = plot(1.5);
+export const PY = plot(1);
 export const CX = 508;
 export const CY = 395;
 /** Where a building's own origin sits in its picture box. */

@@ -2,7 +2,7 @@
  * Drawing: a building as screen polygons for a turn of the map, the ground slabs and their roads,
  * and the light of the hour. A faithful port of the Project prototype's `draw`, `ground`, `faceColor` and `light`.
  */
-import { BX, BY, LIFT, LIGHT, NIGHT, SHADE, W, axes, hull, mix, proj, type Box, type Vec2, type Vec3 } from "./geometry.ts";
+import { BX, BY, LIFT, LIGHT, NIGHT, SHADE, W, axes, hull, mix, plot, proj, type Box, type Vec2, type Vec3 } from "./geometry.ts";
 import { MODELS, box, type ArchetypeId, type Face, type Part } from "./models.ts";
 
 // ---- Light ----
@@ -262,16 +262,19 @@ export function lampShadow(phi: number, dir: Vec3): Vec2[] {
 
 // ---- Ground ----
 
-/** Trees and lamps, as ground points in grid units; the scenery sorts among the buildings by `depth`. */
-export const TREES: readonly Vec2[] = [[1.0, 2.4], [1.32, 2.28], [0.68, 2.32], [3.4, -0.38], [-1.95, 2.05], [-0.42, -0.4], [3.45, 2.45], [-0.42, 2.45], [1.5, -0.42], [-1.92, 0.12], [2.55, 2.42]];
-export const LAMPS: readonly Vec2[] = [[0.5, 0.14], [2.5, 0.14], [1.5, 1.14], [3.14, 1.5], [0.5, 2.14], [-0.14, 1.5]];
+/** A point on the town's plan, in plots, as a ground point in grid units. */
+const onPlan = ([x, y]: Vec2): Vec2 => [plot(x), plot(y)];
+
+/** Trees and lamps, as ground points in grid units (placed on the plan); the scenery sorts among the buildings by `depth`. */
+export const TREES: readonly Vec2[] = ([[1.0, 2.4], [1.32, 2.28], [0.68, 2.32], [3.4, -0.38], [-1.95, 2.05], [-0.42, -0.4], [3.45, 2.45], [-0.42, 2.45], [1.5, -0.42], [-1.92, 0.12], [2.55, 2.42]] as const).map(onPlan);
+export const LAMPS: readonly Vec2[] = ([[0.5, 0.14], [2.5, 0.14], [1.5, 1.14], [3.14, 1.5], [0.5, 2.14], [-0.14, 1.5]] as const).map(onPlan);
 
 /** Road segments between ground points (the lane to the floating island is added by `buildGround`). */
-export const ROADS: ReadonlyArray<readonly [Vec2, Vec2]> = [
+export const ROADS: ReadonlyArray<readonly [Vec2, Vec2]> = ([
   [[0, 0], [3, 0]], [[0, 1], [3, 1]], [[0, 2], [3, 2]],
   [[0, 0], [0, 2]], [[1, 0], [1, 1]], [[2, 0], [2, 2]], [[3, 0], [3, 2]],
   [[-1.65, 0.55], [-1.65, 1.65]], [[-1.65, 1], [0, 1]],
-];
+] as const).map(([a, b]) => [onPlan(a), onPlan(b)] as const);
 
 export const SLAB_IDS = ["town", "ws", "ext"] as const;
 export type SlabId = (typeof SLAB_IDS)[number];
@@ -291,11 +294,12 @@ interface SlabSpec {
   readonly cloud?: boolean;
 }
 
-const SLABS: readonly SlabSpec[] = [
+/** The islands, their corners on the plan. */
+const SLABS: readonly SlabSpec[] = ([
   { id: "town", x0: -0.6, y0: -0.6, x1: 3.6, y1: 2.6, T: 16, L: 0, top: "#bfdca2", side: "#c9a273" },
   { id: "ws", x0: -2.15, y0: 0, x1: -1.15, y1: 2.2, T: 12, L: 0, top: "#c9e2b0", side: "#c9a273" },
   { id: "ext", x0: 0.4, y0: -2.2, x1: 3.6, y1: -1.1, T: 12, L: LIFT, top: "#f3f6fb", side: "#d3deec", cloud: true },
-];
+] satisfies readonly SlabSpec[]).map((s) => ({ ...s, x0: plot(s.x0), y0: plot(s.y0), x1: plot(s.x1), y1: plot(s.y1) }));
 
 export interface GroundFace {
   /** SVG path. */
@@ -396,8 +400,8 @@ export function buildGround(phi: number): Ground {
     return `${px.toFixed(1)},${py.toFixed(1)}`;
   };
   let roads = ROADS.map(([a, b]) => `M${pt(a[0], a[1], 0)}L${pt(b[0], b[1], 0)}`).join("");
-  roads += `M${pt(1, -1.65, LIFT)}L${pt(3, -1.65, LIFT)}`;
-  const shadow = path(([[0.5, -2.05], [3.7, -2.05], [3.7, -0.95], [0.5, -0.95]] as const).map(([x, y]) => proj(p, x, y, 0)));
+  roads += `M${pt(plot(1), plot(-1.65), LIFT)}L${pt(plot(3), plot(-1.65), LIFT)}`;
+  const shadow = path(([[0.5, -2.05], [3.7, -2.05], [3.7, -0.95], [0.5, -0.95]] as const).map(([x, y]) => proj(p, plot(x), plot(y), 0)));
   return { phi: p, slabs, roads, shadow, tops, lb, box: bounds };
 }
 

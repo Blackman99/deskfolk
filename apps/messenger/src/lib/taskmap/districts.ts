@@ -1,4 +1,5 @@
 import type { AgentToolPlace } from "@real-bot/protocol";
+import { plot } from "./scene/geometry.ts";
 import type { ArchetypeId } from "./scene/models.ts";
 
 export type { ArchetypeId };
@@ -24,6 +25,7 @@ export type District = {
   archetype: ArchetypeId;
   /** Its plate's dot, the building's main colour. */
   color: string;
+  /** Where it stands, in grid units (its plot on the town's plan, `plot` apart). */
   gx: number;
   gy: number;
   /** The side island (git and the small folders) or the floating one (outside the project). */
@@ -45,7 +47,7 @@ export const ARCHETYPE_COLOR: Readonly<Record<ArchetypeId, string>> = {
   paint: "#e48fbd", film: "#5a5cc4", mail: "#d6b47a", kit: "#6fae5a", others: "#8a9bb0", relay: "#4a5a6e",
 };
 
-/** The fixed places: their shape and where they stand (the root at the town's left, checks at its front corner). */
+/** The fixed places: their shape and their plot (the root at the town's left, checks at its front corner). */
 const FIXED: Readonly<Record<Exclude<DistrictKind, "code">, { archetype: ArchetypeId; gx: number; gy: number; island?: "ws" | "ext" }>> = {
   root: { archetype: "camp", gx: 0, gy: 1 },
   check: { archetype: "review", gx: 3, gy: 2 },
@@ -212,13 +214,13 @@ export function buildDistricts(places: readonly AgentToolPlace[], opts: { maxCod
   const districts: District[] = [];
   const fixed = (kind: Exclude<DistrictKind, "code">, calls: number, path = "", label = "") => {
     const f = FIXED[kind];
-    districts.push({ key: kind, kind, path, label, archetype: f.archetype, color: ARCHETYPE_COLOR[f.archetype], gx: f.gx, gy: f.gy, ...(f.island ? { island: f.island } : {}), calls });
+    districts.push({ key: kind, kind, path, label, archetype: f.archetype, color: ARCHETYPE_COLOR[f.archetype], gx: plot(f.gx), gy: plot(f.gy), ...(f.island ? { island: f.island } : {}), calls });
   };
   fixed("root", fixedCounts.get("root") ?? 0);
   code.forEach((n, i) => {
     const archetype = shapeOf(n.path);
     const [gx, gy] = CODE_SLOTS[i]!;
-    districts.push({ key: `code:${n.path}`, kind: "code", path: n.path, label: labels[i]!, archetype, color: ARCHETYPE_COLOR[archetype], gx, gy, calls: n.count });
+    districts.push({ key: `code:${n.path}`, kind: "code", path: n.path, label: labels[i]!, archetype, color: ARCHETYPE_COLOR[archetype], gx: plot(gx), gy: plot(gy), calls: n.count });
   });
   for (const kind of ["check", "git", "service", "claude_home", "outside"] as const) {
     if (!fixedCounts.get(kind)) continue;

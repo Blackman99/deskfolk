@@ -7,7 +7,7 @@ import {
   buildGround, castOffset, drawBuilding, islandShadow, lampShadow, lightDir, LAMPS, shadeOf, shadowOf, treeShadow, TREES,
   type DrawnFace, type Ground, type LightName, type Lighting, type ModelCache, type SkyBody,
 } from "./scene/draw.ts";
-import { A, axes, depth, HMAX, HMIN, LIFT, mix, NIGHT, proj, SHADE, BX, BY, type Vec2 } from "./scene/geometry.ts";
+import { A, axes, depth, HMAX, HMIN, LIFT, mix, NIGHT, plot, proj, SHADE, BX, BY, type Vec2 } from "./scene/geometry.ts";
 import { assignBadges, layoutPlates } from "./scene/layout.ts";
 import type { Timeline } from "./timeline.ts";
 
@@ -353,7 +353,7 @@ export function buildFrame(input: FrameInput): Frame {
   D.forEach((d, q) => {
     for (const pts of shadowOf(d.archetype, heights[q]!, phi, dir, cache)) shadow[d.island ?? "town"] += outline(spot[q]!, pts);
   });
-  TREES.forEach(([gx, gy], i) => { shadow[gx < -1.15 ? "ws" : "town"] += outline(proj(phi, gx, gy, 0), treeShadow(i % 2 === 0, phi, dir)); });
+  TREES.forEach(([gx, gy], i) => { shadow[gx < plot(-1.15) ? "ws" : "town"] += outline(proj(phi, gx, gy, 0), treeShadow(i % 2 === 0, phi, dir)); });
   const lampPts = lampShadow(phi, dir);
   for (const [gx, gy] of LAMPS) shadow.town += outline(proj(phi, gx, gy, 0), lampPts);
   const feet = castOffset(44, dir);

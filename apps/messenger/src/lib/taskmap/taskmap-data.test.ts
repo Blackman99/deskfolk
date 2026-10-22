@@ -272,6 +272,42 @@ test("a plate nobody is at is its dot and count, until it is picked or the map i
   expect(hovered.map((b) => [b.px, b.plateY])).toEqual(still.map((b) => [b.px, b.plateY]));
 });
 
+test("a full town's buildings stand apart: at every quarter turn there is ground between any two, even all at their tallest", () => {
+  // Ten folders, the root and checks, each as busy as the busiest, so every building is at its tallest.
+  let s = 0;
+  const c = (place: AgentToolPlace) => ({ id: `c${s}`, at: iso(s++), bot_id: "b-1", turn_id: "t", task_id: null, tool: "write_file", place, model: "deepseek-chat", file: null, ok: true, duration_ms: 100, decision: null });
+  const places: AgentToolPlace[] = [{ zone: "none" }, { zone: "check", check: "test" }, ...Array.from({ length: 10 }, (_, i) => project(`pkg/m${i}/a.ts`))];
+  const data = fromSessionReplay({ session_id: "g-1", bots: ["b-1"], truncated: false, calls: Array.from({ length: 5 }, () => places.map(c)).flat(), said: [] });
+  const map = buildDistricts(data.calls.map((x) => x.place));
+  const tl = buildTimeline(data, map);
+  const t = copyFor("zh").taskmap;
+  expect(map.districts.filter((d) => !d.island)).toHaveLength(12);
+  // How far apart two convex silhouettes are along the edge normal that separates them most (negative: they overlap).
+  type Pt = readonly [number, number];
+  const apart = (a: readonly Pt[], b: readonly Pt[]) => {
+    let best = -Infinity;
+    for (const poly of [a, b]) for (let i = 0; i < poly.length; i++) {
+      const p = poly[i]!, q = poly[(i + 1) % poly.length]!;
+      const len = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
+      const nx = (q[1] - p[1]) / len, ny = (p[0] - q[0]) / len;
+      const span = (ps: readonly Pt[]) => ps.map(([x, y]) => x * nx + y * ny);
+      const sa = span(a), sb = span(b);
+      best = Math.max(best, Math.min(...sb) - Math.max(...sa), Math.min(...sa) - Math.max(...sb));
+    }
+    return best;
+  };
+  for (const phi of [0, 90, 180, 270]) {
+    const frame = buildFrame({ data, map, tl, v: tl.v.at(-1)!, phi, zoom: 1, now: 0, speed: 4, light: { w: 0, n: 0 } as never, cache: new Map(), walk: { lastTile: [], until: [] }, hover: -1, sel: -1, t });
+    const town = frame.blocks.filter((b) => !b.district.island);
+    expect(new Set(town.map((b) => b.district.calls)).size).toBe(1);
+    const hulls = town.map((b) => b.hit.split(" ").map((xy): Pt => { const [x, y] = xy.split(",").map(Number); return [x! + b.l, y! + b.t]; }));
+    let nearest = Infinity;
+    for (let i = 0; i < hulls.length; i++) for (let j = i + 1; j < hulls.length; j++) nearest = Math.min(nearest, apart(hulls[i]!, hulls[j]!));
+    // A plot apart they overlapped by ~20 px; the tallest pairs now keep ~6 px of ground at the least.
+    expect(nearest).toBeGreaterThan(4);
+  }
+});
+
 test("a Bot's live call is logged under its Bot, and a Bot first seen live joins as a lead", () => {
   const log = new AgentCallLog();
   log.applyTool({ type: "tool", turn_id: "t", id: "c9", name: "shell", phase: "started", bot_call: { session_id: "g-1", bot_id: "b-3", place: project("jobs/c"), model: "m", at: iso(50) } } as ToolFrame);
