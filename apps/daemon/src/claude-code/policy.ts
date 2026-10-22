@@ -4,12 +4,13 @@
  * waits for your OK or is refused as the mode says, wherever it lands), the same recursive-search
  * refusal, nothing outside a short list of Claude Code's tools, nothing in the background, and
  * never Claude Code's own credentials — though a project session's file tools reach its memory of
- * that project, which lives among them. Pure: everything it needs is passed in, so the rules are
- * tested on their own — the Windows ones too, on a fake disk (`host`).
+ * that project and its saved plans, which live among them. A project session in plan mode (ADR
+ * 0098) changes nothing but its plan until you approve it. Pure: everything it needs is passed in,
+ * so the rules are tested on their own — the Windows ones too, on a fake disk (`host`).
  */
 import { existsSync } from "node:fs";
 import { posix, win32 } from "node:path";
-import type { PermissionMode } from "@real-bot/protocol";
+import { PLAN_APPROVAL_KIND, type PermissionMode } from "@real-bot/protocol";
 import { FILE_WRITE_KIND, READ_ONLY_REFUSAL, SHELL_KIND, changeVerdict } from "../permission-gate";
 import { isAgentCredentialPath, touchesAgentCredentials } from "../engine/agent/credentials";
 import { recursiveSearchGuard, searchGuardMessage } from "../search-guard";
@@ -51,6 +52,12 @@ export type AgentCall = {
    * config directory, yet its file tools read and write there as in any folder outside.
    */
   memoryDirs?: string[];
+  /**
+   * A project session's plan mode (ADR 0098): whether it is on, and the folders Claude Code saves
+   * its plans in (inside its config directory, open to its file tools as `memoryDirs` are). Absent
+   * for a Bot, which is never offered `ExitPlanMode`.
+   */
+  plan?: { on: boolean; dirs: string[] };
   /** The Bot's permission mode (ADR 0092): whether a write or a command runs, asks or is refused. */
   permission: PermissionMode;
   /** Whether a path exists; the disk's own when absent. */
@@ -85,8 +92,10 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   const platform = host.platform;
   const home = call.home ?? host.homedir();
   const appName = appToolName(call.tool);
-  const known = (AGENT_WORK_TOOLS as readonly string[]).includes(call.tool) || call.tool === "MultiEdit";
+  const known = (AGENT_WORK_TOOLS as readonly string[]).includes(call.tool) || call.tool === "MultiEdit" || (call.plan !== undefined && call.tool === "ExitPlanMode");
   if (!known) return { kind: "deny", reason: `${call.tool} is not available in a Deskfolk turn` };
+  // The plan it presents is yours to approve, whatever the mode: approving is what ends planning.
+  if (call.tool === "ExitPlanMode") return { kind: "ask", effect: false, appName, approval: planApproval(call.input) };
   if (call.mode === "readonly" && !(AGENT_READONLY_TOOLS as readonly string[]).includes(call.tool)) {
     return { kind: "deny", reason: "this is a read-only turn (a stop holds this work): look and answer, nothing else" };
   }
@@ -103,9 +112,10 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   if (call.tool === "Bash") {
     const command = typeof call.input.command === "string" ? call.input.command : "";
     if (touchesClaudeCredentials(command, home, platform, call.configDirs)) {
-      // Its memory is open to the file tools only: a command could `cd` there and on to the rest.
+      // Its memory and plans are open to the file tools only: a command could `cd` there and on to the rest.
       const memory = call.memoryDirs?.some((dir) => namesDir(command, dir, home, platform));
-      return { kind: "deny", reason: memory ? MEMORY_BY_FILE_TOOLS : "Claude Code's own settings and credentials are off limits" };
+      const plans = call.plan?.dirs.some((dir) => namesDir(command, dir, home, platform));
+      return { kind: "deny", reason: memory ? MEMORY_BY_FILE_TOOLS : plans ? PLANS_BY_FILE_TOOLS : "Claude Code's own settings and credentials are off limits" };
     }
     // Every other local agent's too (ADR 0079): a Bot reads no agent's sign-in, its own or another's.
     if (touchesAgentCredentials(command, home, platform, call.configDirs)) {
@@ -115,7 +125,10 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
     if (hit) return { kind: "deny", reason: searchGuardMessage(hit) };
     // Claude Code's Bash on Windows is Git Bash, so `/c/Users/…` is read as Git Bash reads it.
     const classified = classifyShell(call.workspace, command, call.cwd, host, platform === "win32" ? "bash" : undefined);
-    return gateChange(call.permission, { kind: "allow", effect: true, appName, target: command },
+    // In plan mode a command asks even where the mode lets it run: which commands only look is not
+    // the app's to guess, and nothing may change before you approve the plan.
+    return gateChange(call.plan?.on && call.permission !== "read_only" ? "ask_first" : call.permission,
+      { kind: "allow", effect: true, appName, target: command },
       { kind_key: SHELL_KIND, target: classified.cwdAbs, summary: `${SHELL_KIND} ${command}` });
   }
 
@@ -123,9 +136,10 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   const abs = raw === null ? call.cwd : anchorAt(call.cwd, expandHome(raw, home, platform), platform);
   // A Git Bash spelling (`/c/Users/…`) names the same file to Claude Code as `C:\Users\…` may.
   const named = [abs, ...(platform === "win32" && raw ? [gitBashToWindows(raw)].filter((path): path is string => path !== null) : [])];
-  // The project's memory holds no sign-in: open as a folder outside is, while the path and where
-  // its links lead stay in it.
-  const memory = named.every((path) => inMemoryDir(path, call.memoryDirs ?? [], host)) && !globLeaves(call, platform);
+  // The project's memory and the saved plans hold no sign-in: open as a folder outside is, while the
+  // path and where its links lead stay in it.
+  const plans = named.every((path) => inMemoryDir(path, call.plan?.dirs ?? [], host)) && !globLeaves(call, platform);
+  const memory = plans || (named.every((path) => inMemoryDir(path, call.memoryDirs ?? [], host)) && !globLeaves(call, platform));
   if (!memory && named.some((path) => isClaudeCredentialPath(path, home, platform, call.configDirs))) {
     return { kind: "deny", reason: "Claude Code's own settings and credentials are off limits" };
   }
@@ -147,6 +161,11 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
     return { kind: "deny", reason: `${abs} does not exist and is not in the workspace. The workspace root is ${call.workspace} and this call's directory is ${call.cwd}: put a workspace path after the root and use the absolute path.` };
   }
   const target = classified.zone === "inside" ? classified.rel : classified.abs;
+  // Plan mode: the plan is the one thing it writes, as its to-do list is, in every permission mode;
+  // anything else waits for the plan to be approved.
+  if (WRITES.has(call.tool) && call.plan?.on) {
+    return plans ? { kind: "allow", effect: false, appName, target } : { kind: "deny", reason: PLAN_MODE_REFUSAL };
+  }
   if (WRITES.has(call.tool)) {
     return gateChange(call.permission, { kind: "allow", effect: true, appName, target },
       { kind_key: FILE_WRITE_KIND, target: classified.abs, summary: `${FILE_WRITE_KIND} ${classified.abs}` });
@@ -155,7 +174,17 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   return { kind: "deny", reason: `${call.tool} is not available in a Deskfolk turn` };
 }
 
+const PLAN_MODE_REFUSAL = "plan mode is on: nothing changes before the user approves your plan. Write the plan to your plan file and present it with ExitPlanMode";
+
+/** The plan `ExitPlanMode` presents, as its card: Claude Code puts the plan and its file in the call. */
+export function planApproval(input: Record<string, unknown>): { kind_key: string; target: string; summary: string } {
+  const plan = typeof input.plan === "string" ? input.plan : "";
+  const file = typeof input.planFilePath === "string" ? input.planFilePath : "";
+  return { kind_key: PLAN_APPROVAL_KIND, target: file, summary: plan };
+}
+
 const MEMORY_BY_FILE_TOOLS = "Claude Code's memory files for this project open with Read, Write, Edit, Glob and Grep, not in a command; its other settings and credentials are off limits";
+const PLANS_BY_FILE_TOOLS = "Claude Code's saved plans open with Read, Write, Edit, Glob and Grep, not in a command; its other settings and credentials are off limits";
 
 /**
  * Whether a file tool's path is in one of the memory folders: as named, and, as far as it exists,

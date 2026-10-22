@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { CatchupResponse, ClientEvent, EventCursor, SequencedEvent, SessionKind, SyncFrame } from "@real-bot/protocol";
+import type { CatchupResponse, ClientEvent, EventCursor, ProjectAgentMode, SequencedEvent, SessionKind, SyncFrame } from "@real-bot/protocol";
 import { displayAvatar } from "./avatar-display";
 
 export const EVENT_RING_COUNT = 2000;
@@ -87,6 +87,7 @@ export type SessionUpsertInput = {
   project_source?: string | null;
   project_model?: string | null;
   project_effort?: string | null;
+  project_mode?: ProjectAgentMode | null;
   created_at: string;
   updated_at: string;
   participants: { member: string; joined_at: string; left_at: string | null }[];
@@ -109,7 +110,7 @@ export function sessionUpsertFields(session: SessionUpsertInput) {
     ...(session.kind === "project"
       ? { project_dir: session.project_dir ?? null, project_agent: session.project_agent ?? null, project_config_dir: session.project_config_dir ?? null,
           project_agent_session: session.project_agent_session ?? null, project_source: session.project_source ?? null,
-          project_model: session.project_model ?? null, project_effort: session.project_effort ?? null }
+          project_model: session.project_model ?? null, project_effort: session.project_effort ?? null, project_mode: session.project_mode ?? null }
       : {}),
     created_at: session.created_at,
     updated_at: session.updated_at,

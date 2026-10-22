@@ -9,8 +9,26 @@ export type ProjectAgent = "claude_code";
 
 export type AgentRunStatus = "running" | "waiting_approval" | "completed" | "failed" | "stopped" | "interrupted";
 
-/** What a run waits on you for under ask first: the same kinds as a Bot's approval card. */
+/**
+ * What a run waits on you for under ask first: the same kinds as a Bot's approval card. In plan
+ * mode (ADR 0098) it can also be the plan Claude Code asks you to approve: `kind_key` is
+ * `PLAN_APPROVAL_KIND`, `summary` the plan as markdown, `target` the file it is saved in.
+ */
 export type AgentRunApproval = { kind_key: string; target: string; summary: string };
+
+/** The approval kind of a plan Claude Code presents in plan mode (ADR 0098). */
+export const PLAN_APPROVAL_KIND = "plan";
+
+/**
+ * The mode a project session's runs start Claude Code in (ADR 0098): `plan` is its plan mode — it
+ * looks around, writes a plan and asks you to approve it before it changes anything. Null on the
+ * session is as usual.
+ */
+export type ProjectAgentMode = "plan";
+
+export function isProjectAgentMode(value: unknown): value is ProjectAgentMode {
+  return value === "plan";
+}
 
 export type AgentRun = {
   id: string;
@@ -40,6 +58,8 @@ export type PatchProjectSessionRequest = {
   model?: string | null;
   /** One of `CLAUDE_EFFORTS`. */
   effort?: ClaudeEffort | null;
+  /** Plan mode on (`plan`) or off (null), from the run's next step on (ADR 0098). */
+  mode?: ProjectAgentMode | null;
   /**
    * The Claude account its next run spends: one listed in Settings, null for the daemon's own. The
    * session is carried to that account first; refused (409) while a run is going on.
@@ -53,6 +73,28 @@ export type CreateProjectSessionRequest = {
   /** The Claude account directory; omitted or null is the daemon's own environment. */
   config_dir?: string | null;
   import?: { session_id: string; config_dir?: string | null };
+};
+
+/** One slash command Claude Code offers in a project session's directory (ADR 0098), as its own `/` lists it. */
+export type ClaudeCodeCommand = {
+  /** Without the slash: `compact`, `review`, a skill's `pdf`, a plugin's `plugin:command`. */
+  name: string;
+  description: string;
+  /** What it takes after its name (`<file>`); empty when it takes nothing. */
+  argument_hint: string;
+  /** Other names that run it. */
+  aliases: string[];
+};
+
+/**
+ * `GET /v1/project-sessions/:id/commands`: what typing `/` offers in the session (ADR 0098), the
+ * account's and the directory's own commands and skills; empty with `error` set when Claude Code
+ * could not be asked.
+ */
+export type ClaudeCodeCommandList = {
+  commands: ClaudeCodeCommand[];
+  checked_at: string;
+  error: string | null;
 };
 
 /**

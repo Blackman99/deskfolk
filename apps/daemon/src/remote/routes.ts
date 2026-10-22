@@ -60,9 +60,9 @@ add("PUT", "runtime/claude-code/accounts", { config_dirs: list(string) }, ["conf
 get("runtime/claude-code/sessions", { limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) });
 add("POST", "project-sessions", { agent: one("claude_code"), dir: string, config_dir: nullable(string),
   import: object({ session_id: string, config_dir: nullable(string) }, ["session_id"]) });
-get("project-sessions/:id/(run|replay)");
+get("project-sessions/:id/(run|replay|commands)");
 get("project-sessions/:id/locate", { path: string }, ["path"]);
-add("PATCH", "project-sessions/:id", { model: nullable(string), effort: nullable(one(...CLAUDE_EFFORTS)), config_dir: nullable(string) }, [], true);
+add("PATCH", "project-sessions/:id", { model: nullable(string), effort: nullable(one(...CLAUDE_EFFORTS)), mode: nullable(one("plan")), config_dir: nullable(string) }, [], true);
 get("runtime/claude-code/models", { config_dir: string });
 add("POST", "agent-runs/:id/(approve|deny|stop)");
 // A Bot conversation's and a plan's tool calls for the task map (ADR 0097).

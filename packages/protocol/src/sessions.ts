@@ -1,7 +1,7 @@
 import type { USER_MEMBER } from "./constants.ts";
 import type { Message } from "./messages.ts";
 import type { ListPage } from "./runtime.ts";
-import type { ProjectAgent } from "./project-sessions.ts";
+import type { ProjectAgent, ProjectAgentMode } from "./project-sessions.ts";
 
 /** A project session (ADR 0095) is you and a local agent in a directory, with no Bot. */
 export type SessionKind = "direct" | "group" | "project";
@@ -79,6 +79,8 @@ export type Session = {
   project_model?: string | null;
   /** The thinking level its runs ask for, one of `CLAUDE_EFFORTS`; null: the agent's own default. */
   project_effort?: string | null;
+  /** `plan` while plan mode is on (ADR 0098); null: as usual. Absent from a daemon older than that ADR. */
+  project_mode?: ProjectAgentMode | null;
   created_at: string;
   updated_at: string;
 };

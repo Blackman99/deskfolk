@@ -3,6 +3,7 @@ import type { ClientEvent, RuntimeResponse, RuntimeSnapshot, ToolFrame } from "@
 import type { Ablation } from "../ablation";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
 import type { ClaudeUsageProbe } from "../claude-code/usage";
+import type { ClaudeCommandList } from "../claude-code/commands";
 import type { ClaudeModelList } from "../claude-code/models";
 import type { CompletionsClient } from "../completions";
 import type { AgentQuery } from "../engine/agent-runner";
@@ -91,6 +92,8 @@ export type LocalApiOptions = {
   claudeUsage?: ClaudeUsageProbe;
   /** Each Claude account's models, as Claude Code's `/model` lists them (ADR 0095). */
   claudeModels?: ClaudeModelList;
+  /** The slash commands Claude Code offers an account in a directory (ADR 0098). */
+  claudeCommands?: ClaudeCommandList;
   /** Stands in for the Agent SDK's `query` in tests, so no Claude Code is started. */
   agentQuery?: AgentQuery;
   /** Project sessions' Claude Code (ADR 0095); a test's stand-in for the SDK's query. */

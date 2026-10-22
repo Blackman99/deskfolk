@@ -77,6 +77,7 @@ export function aProjectSession(over: Partial<SessionSummary> = {}): SessionSumm
     project_source: null,
     project_model: null,
     project_effort: null,
+    project_mode: null,
     ...over,
   } as SessionSummary;
 }

@@ -6,6 +6,7 @@ import type { HookCallbackMatcher, Options, SDKMessage, SDKUserMessage } from "@
 import { Database } from "bun:sqlite";
 import type { AgentReplay, AgentRun, ClaudeCodeStatus, ClientEvent, ProjectPathLookup, SessionDetail, ToolFrame } from "@real-bot/protocol";
 import { claudeProjectKey } from "./claude-code/memory-dir";
+import type { ClaudeCommandList } from "./claude-code/commands";
 import type { ClaudeModelList } from "./claude-code/models";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
 import { ulid } from "./ids";
@@ -23,10 +24,15 @@ const signedIn = { path: "/usr/local/bin/claude", version: "2.1.304", logged_in:
 const probe: ClaudeCodeProbe = { last: () => signedIn, current: async () => signedIn, detect: async () => signedIn };
 
 /** What one run of Claude Code does with the lines it is sent: `say` answers each with a result. */
-type UseTool = (name: string, input: Record<string, unknown>, call?: { id?: string; agentId?: string }) => Promise<boolean>;
+type UseTool = (name: string, input: Record<string, unknown>, call?: { id?: string; agentId?: string; mode?: string }) => Promise<boolean>;
 type Step = (ctx: { line: string; options: Options; useTool: UseTool }) => Promise<string>;
+/** What the runner asked of Claude Code: each run's options, the lines, mid-run switches and the answers to its asks. */
+type Seen = {
+  options: Options[]; lines: string[]; closed: number; models: Array<string | null>; efforts: Array<string | null>; modes: string[];
+  verdicts: Array<{ name: string; behavior: string; message?: string; updatedPermissions?: unknown }>;
+};
 
-function scripted(seen: { options: Options[]; lines: string[]; closed: number; models: Array<string | null>; efforts: Array<string | null> }, step: Step, ownSession = "own-1", preface: (line: string) => SDKMessage[] = () => []): ProjectQuery {
+function scripted(seen: Seen, step: Step, ownSession = "own-1", preface: (line: string) => SDKMessage[] = () => []): ProjectQuery {
   let tool = 0;
   return ({ prompt, options }) => {
     seen.options.push(options);
@@ -40,12 +46,13 @@ function scripted(seen: { options: Options[]; lines: string[]; closed: number; m
     };
     const useTool: UseTool = async (name, input, call = {}) => {
       const id = call.id ?? `toolu_${++tool}`;
-      const agent = call.agentId ? { agent_id: call.agentId } : {};
+      const agent = { ...(call.agentId ? { agent_id: call.agentId } : {}), ...(call.mode ? { permission_mode: call.mode } : {}) };
       const pre = await runHook("PreToolUse", { tool_name: name, tool_input: input, tool_use_id: id, ...agent }, id);
       const decision = pre.hookSpecificOutput?.permissionDecision ?? "ask";
       if (decision === "deny") return false;
       if (decision === "ask") {
         const verdict = await options.canUseTool!(name, input, { signal: new AbortController().signal, toolUseID: id, requestId: id } as never);
+        if (verdict) seen.verdicts.push({ name, behavior: verdict.behavior, ...(verdict.behavior === "deny" ? { message: verdict.message } : { updatedPermissions: verdict.updatedPermissions }) });
         if (!verdict || verdict.behavior === "deny") return false;
       }
       await runHook("PostToolUse", { tool_name: name, tool_input: input, tool_response: "ok", tool_use_id: id, ...agent }, id);
@@ -71,16 +78,17 @@ function scripted(seen: { options: Options[]; lines: string[]; closed: number; m
       close: () => { closed = true; seen.closed += 1; },
       setModel: async (model?: string) => { seen.models.push(model ?? null); },
       applyFlagSettings: async (settings: { effortLevel?: string | null }) => { seen.efforts.push(settings.effortLevel ?? null); },
+      setPermissionMode: async (mode: string) => { seen.modes.push(mode); },
     });
   };
 }
 
-function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[]; claudeModels?: ClaudeModelList } = {}) {
+function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[]; claudeModels?: ClaudeModelList; claudeCommands?: ClaudeCommandList } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "project-session-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
-  const seen = { options: [] as Options[], lines: [] as string[], closed: 0, models: [] as Array<string | null>, efforts: [] as Array<string | null> };
+  const seen: Seen = { options: [], lines: [], closed: 0, models: [], efforts: [], modes: [], verdicts: [] };
   const api = createLocalApi({ store, token: "project-test", schedule: false, claudeCode: probe, projectQuery: scripted(seen, step, opts.ownSession, opts.preface),
-    ...(opts.claudeModels ? { claudeModels: opts.claudeModels } : {}) });
+    ...(opts.claudeModels ? { claudeModels: opts.claudeModels } : {}), ...(opts.claudeCommands ? { claudeCommands: opts.claudeCommands } : {}) });
   const events: ClientEvent[] = [];
   api.subscribeSync((frame) => { if (frame.type === "event") events.push(frame.payload); });
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: api.fetch, websocket: api.websocket });
@@ -660,4 +668,136 @@ test("a path the agent cites is located under the session's directory; other con
   expect((await h.call("GET", `/v1/project-sessions/${direct.id}/locate?path=a.ts`)).status).toBe(404);
   expect(() => validateBusiness({ v: 1, id: ulid(), method: "GET", path: `/v1/project-sessions/${id}/locate`, query: { path: "comm/defs.go" } })).not.toThrow();
   expect(() => validateBusiness({ v: 1, id: ulid(), method: "GET", path: `/v1/project-sessions/${id}/locate` })).toThrow();
+});
+
+/** Where the runner's Claude Code saves its plans, as the runner works it out in these tests. */
+const planFile = (name: string) => join(process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude"), "plans", name);
+
+test("plan mode: runs start in it, change nothing but the plan, and the plan is a card; approving it gets to work and turns plan mode off", async () => {
+  const outcomes: Array<[string, boolean]> = [];
+  const h = start(async ({ line, useTool, options }) => {
+    const mode = line === "开始" ? "plan" : "default";
+    outcomes.push(["write", await useTool("Write", { file_path: join(options.cwd!, "a.txt"), content: "x" }, { mode })]);
+    outcomes.push(["command", await useTool("Bash", { command: "git log --oneline" }, { mode })]);
+    if (line !== "开始") return "照常做了";
+    outcomes.push(["plan file", await useTool("Write", { file_path: planFile("cozy-newt.md"), content: "# 计划" }, { mode })]);
+    outcomes.push(["plan", await useTool("ExitPlanMode", { plan: "# 计划\n1. 写 a.txt", planFilePath: planFile("cozy-newt.md") }, { mode })]);
+    outcomes.push(["after", await useTool("Write", { file_path: join(options.cwd!, "a.txt"), content: "x" }, { mode: "default" })]);
+    return "做完了";
+  });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { mode: "acceptEdits" })).status).toBe(422);
+  const on = await h.call<SessionDetail>("PATCH", `/v1/project-sessions/${id}`, { mode: "plan" });
+  expect(on.body.project_mode).toBe("plan");
+  expect(h.events.some((event) => event.event === "session.upsert" && event.id === id && event.project_mode === "plan")).toBe(true);
+
+  await h.say(id, "开始");
+  // The command asks even under auto, where it would have run: nothing changes before the plan is approved.
+  await h.until(async () => (await h.run(id))?.approval?.kind_key === "shell");
+  await h.call("POST", `/v1/agent-runs/${(await h.run(id))!.id}/approve`);
+  await h.until(async () => (await h.run(id))?.approval?.kind_key === "plan");
+  const waiting = (await h.run(id))!;
+  expect(h.seen.options[0]!.permissionMode).toBe("plan");
+  expect(h.seen.options[0]!.tools).toContain("ExitPlanMode");
+  expect(waiting.approval).toEqual({ kind_key: "plan", target: planFile("cozy-newt.md"), summary: "# 计划\n1. 写 a.txt" });
+  await h.call("POST", `/v1/agent-runs/${waiting.id}/approve`);
+  await h.until(async () => (await h.run(id))?.status === "completed");
+
+  expect(outcomes).toEqual([["write", false], ["command", true], ["plan file", true], ["plan", true], ["after", true]]);
+  // Approved: Claude Code leaves plan mode, and so does the session.
+  expect(h.seen.verdicts.find((verdict) => verdict.name === "ExitPlanMode")).toEqual({ name: "ExitPlanMode", behavior: "allow",
+    updatedPermissions: [{ type: "setMode", mode: "default", destination: "session" }] });
+  expect(h.store.getSession(id).project_mode).toBeNull();
+  expect(h.events.some((event) => event.event === "session.upsert" && event.id === id && event.project_mode === null)).toBe(true);
+
+  // The next run starts as usual.
+  await h.say(id, "再来");
+  await h.until(async () => h.seen.options.length === 2 && (await h.run(id))?.status === "completed");
+  expect(h.seen.options[1]!.permissionMode).toBe("default");
+  expect(outcomes.slice(5)).toEqual([["write", true], ["command", true]]);
+});
+
+test("a plan not approved keeps planning: the button says keep at it, a line you send says what to change", async () => {
+  const h = start(async ({ line, useTool }) => {
+    if (line === "改成两步") return "好的，改了";
+    await useTool("ExitPlanMode", { plan: "# 计划", planFilePath: planFile("p.md") }, { mode: "plan" });
+    return "计划交了";
+  });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.call("PATCH", `/v1/project-sessions/${id}`, { mode: "plan" });
+
+  await h.say(id, "出个计划");
+  await h.until(async () => (await h.run(id))?.approval?.kind_key === "plan");
+  await h.call("POST", `/v1/agent-runs/${(await h.run(id))!.id}/deny`);
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(h.seen.verdicts[0]).toMatchObject({ name: "ExitPlanMode", behavior: "deny" });
+  expect(h.seen.verdicts[0]!.message).toContain("接着改");
+  expect(h.store.getSession(id).project_mode).toBe("plan");
+
+  // A line while the plan waits: not an approval, a change to the plan, and it goes into the run.
+  await h.say(id, "再出一个");
+  await h.until(async () => (await h.run(id))?.approval?.kind_key === "plan");
+  await h.say(id, "改成两步");
+  await h.until(async () => (await h.run(id))?.status === "completed" && h.lines(id).length === 6);
+  expect(h.seen.verdicts[1]).toMatchObject({ name: "ExitPlanMode", behavior: "deny" });
+  expect(h.seen.verdicts[1]!.message).toContain("下一条消息");
+  expect(h.seen.lines).toEqual(["出个计划", "再出一个", "改成两步"]);
+  expect(h.seen.options[1]!.permissionMode).toBe("plan");
+});
+
+test("plan mode switched mid-run reaches Claude Code at its next step; Claude Code asking on its own while it plans is refused", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const h = start(async ({ line, options }) => {
+    if (line !== "慢一点") return "好";
+    await gate;
+    // Asked about a protected file with no card of the app's: refused while it plans.
+    const verdict = await options.canUseTool!("Write", { file_path: "/x" }, { signal: new AbortController().signal, toolUseID: "own-ask", requestId: "own-ask" } as never);
+    return verdict?.behavior ?? "none";
+  });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(id, "慢一点");
+  await h.until(() => h.seen.lines.length === 1);
+  await h.call("PATCH", `/v1/project-sessions/${id}`, { mode: "plan" });
+  expect(h.seen.modes).toEqual(["plan"]);
+  release();
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(h.lines(id).at(-1)).toMatchObject({ kind: "bot", body: "deny" });
+  await h.call("PATCH", `/v1/project-sessions/${id}`, { mode: null });
+  expect(h.store.getSession(id).project_mode).toBeNull();
+});
+
+test("a slash command goes to Claude Code as typed; one that answers nothing still says it ran", async () => {
+  const h = start(async ({ line }) => (line.startsWith("/") ? (line === "/context" ? "## Context Usage" : "") : `答：${line}`));
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(id, "/compact 留下测试相关的");
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  await h.say(id, "/context");
+  await h.until(async () => h.lines(id).length === 4);
+  await h.say(id, "/clear");
+  await h.until(async () => h.lines(id).length === 6);
+  expect(h.seen.lines).toEqual(["/compact 留下测试相关的", "/context", "/clear"]);
+  // A command names nothing: the session waits for a line that asks for something.
+  expect(h.store.getSession(id).name).toBeNull();
+  expect(h.lines(id).filter((line) => line.author !== "user")).toEqual([
+    { kind: "system", author: "app", body: "已执行 /compact：Claude Code 把之前的对话压成了摘要" },
+    { kind: "bot", author: "agent", body: "## Context Usage" },
+    { kind: "system", author: "app", body: "已执行 /clear：Claude Code 从空的上下文重新开始，这里的记录还在" },
+  ]);
+});
+
+test("typing / lists the session's commands, asked of Claude Code in its directory under its account", async () => {
+  const asked: Array<[string | null, string]> = [];
+  const claudeCommands: ClaudeCommandList = { list: async (configDir, dir) => (asked.push([configDir, dir]), { commands: [{ name: "compact", description: "Clear history but keep a summary", argument_hint: "<instructions>", aliases: [] }], checked_at: "t", error: null }) };
+  const h = start(async () => "好", { claudeCommands });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  const listed = await h.call<{ commands: Array<{ name: string }> }>("GET", `/v1/project-sessions/${id}/commands`);
+  expect(listed.body.commands.map((command) => command.name)).toEqual(["compact"]);
+  expect(asked).toEqual([[null, h.dir]]);
+  expect((await h.call("GET", `/v1/project-sessions/${ulid()}/commands`)).status).toBe(404);
+  const ok = (request: Parameters<typeof validateBusiness>[0]) => expect(() => validateBusiness(request)).not.toThrow();
+  ok({ v: 1, id: ulid(), method: "GET", path: `/v1/project-sessions/${ulid()}/commands` });
+  ok({ v: 1, id: ulid(), method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { mode: "plan" } });
+  ok({ v: 1, id: ulid(), method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { mode: null } });
+  expect(() => validateBusiness({ v: 1, id: ulid(), method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { mode: "bypassPermissions" } })).toThrow();
 });

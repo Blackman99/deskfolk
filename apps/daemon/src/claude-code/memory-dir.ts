@@ -41,6 +41,21 @@ export function claudeMemoryDirs(projectDir: string, configDir: string): string[
 }
 
 /**
+ * Where Claude Code saves the plans it writes in plan mode (ADR 0098): `plans/` under the config
+ * directory it runs on, as named and through links. A folder set elsewhere (`plansDirectory`) is not
+ * looked for: the app reads no settings.
+ */
+export function claudePlanDirs(configDir: string): string[] {
+  const dirs = new Set([join(configDir, "plans")]);
+  try {
+    dirs.add(join(realpathSync(configDir), "plans"));
+  } catch {
+    // not there yet: Claude Code makes it with the first plan
+  }
+  return [...dirs];
+}
+
+/**
  * The repository a folder is in, as Claude Code keys a project by it: the nearest folder up with a
  * `.git`, or for a linked worktree (its `.git` a file naming `<repo>/.git/worktrees/<name>`) the
  * main checkout. Null outside a repository, and at a `.git` that is a link, where Claude Code stops.

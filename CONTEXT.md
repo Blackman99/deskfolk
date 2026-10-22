@@ -33,7 +33,7 @@ _Avoid_: 统计第一名自动任命, Bot 自封负责人, 负责人替你解除
 _Avoid_: 把几件不相干的事混成一条协作私聊, 用户是 Bot↔Bot 私聊发言者, 所有私聊发言必叫醒对方
 
 **项目会话（Project session）**：
-你和本机的一个 Agent（现在是 Claude Code）在一个项目目录里的对话，和 Agent 自己的桌面端一样；没有 Bot。可以选目录新开，也可以接着你在终端里开过的会话（从原会话开分支，原会话不变）。应用只管权限模式、账号、模型、思考等级和 Stop：没有工作、流程图、整理、交付审查和叫停；Agent 自己记着历史，应用每轮只发你的新话。侧栏「项目」一段按目录分组。细节见[行为说明·项目会话](docs/behavior.md#project-sessions)和 [ADR 0095](docs/adr/0095-project-sessions.md)。
+你和本机的一个 Agent（现在是 Claude Code）在一个项目目录里的对话，和 Agent 自己的桌面端一样；没有 Bot。可以选目录新开，也可以接着你在终端里开过的会话（从原会话开分支，原会话不变）。应用只管权限模式、账号、模型、思考等级、计划模式和 Stop，打 `/` 列出 Claude Code 的命令：没有工作、流程图、整理、交付审查和叫停；Agent 自己记着历史，应用每轮只发你的新话。侧栏「项目」一段按目录分组。细节见[行为说明·项目会话](docs/behavior.md#project-sessions)、[ADR 0095](docs/adr/0095-project-sessions.md) 和 [ADR 0098](docs/adr/0098-plan-mode-and-commands-in-project-sessions.md)。
 _Avoid_: 把项目会话叫成 Bot, 给项目会话开工作或流程图, 打「停下」当 Stop, 改写终端里的原会话
 
 **任务地图（Task map）**：

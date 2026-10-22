@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { USER_MEMBER, type AgentRun, type AgentRunApproval, type AgentRunStatus, type Message, type ProjectAgent, type SessionDetail } from "@real-bot/protocol";
+import { isProjectAgentMode, USER_MEMBER, type AgentRun, type AgentRunApproval, type AgentRunStatus, type Message, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
 import type { ClaudeSessionRead } from "../claude-code/sessions";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
@@ -52,7 +52,7 @@ export function migrateProjectSessions(db: Database): void {
     }
   }
   const names = db.query<{ name: string }, []>(`PRAGMA table_info(sessions)`).all().map((row) => row.name);
-  for (const name of ["project_dir", "project_agent", "project_config_dir", "project_agent_session", "project_source", "project_model", "project_effort"]) {
+  for (const name of ["project_dir", "project_agent", "project_config_dir", "project_agent_session", "project_source", "project_model", "project_effort", "project_mode"]) {
     if (!names.includes(name)) db.run(`ALTER TABLE sessions ADD COLUMN ${name} TEXT`);
   }
 }
@@ -67,30 +67,33 @@ export type ProjectOf = {
   model: string | null;
   /** The thinking level its runs ask for; null leaves it to the agent's own default. */
   effort: string | null;
+  /** `plan` while plan mode is on (ADR 0098): its runs start in it. */
+  mode: ProjectAgentMode | null;
 };
 
 /** A project session's directory and agent, or null for any other conversation. */
 export function projectOf(ctx: StoreContext, sessionId: string): ProjectOf | null {
   const row = ctx.db
-    .query<{ kind: string; project_dir: string | null; project_agent: string | null; project_config_dir: string | null; project_agent_session: string | null; project_source: string | null; project_model: string | null; project_effort: string | null }, [string]>(
-      `SELECT kind, project_dir, project_agent, project_config_dir, project_agent_session, project_source, project_model, project_effort FROM sessions WHERE id = ?`,
+    .query<{ kind: string; project_dir: string | null; project_agent: string | null; project_config_dir: string | null; project_agent_session: string | null; project_source: string | null; project_model: string | null; project_effort: string | null; project_mode: string | null }, [string]>(
+      `SELECT kind, project_dir, project_agent, project_config_dir, project_agent_session, project_source, project_model, project_effort, project_mode FROM sessions WHERE id = ?`,
     )
     .get(sessionId);
   if (!row || row.kind !== "project" || !row.project_dir) return null;
   return { dir: row.project_dir, agent: (row.project_agent ?? "claude_code") as ProjectAgent, configDir: row.project_config_dir,
     agentSession: row.project_agent_session, source: row.project_source, model: row.project_model,
-    effort: row.project_effort };
+    effort: row.project_effort, mode: isProjectAgentMode(row.project_mode) ? row.project_mode : null };
 }
 
 /**
- * The model and thinking level a project session's runs ask for from the next step on, and the
- * account its next run spends: a key left out stays, null goes back to the agent's default (for
- * the account, the daemon's own environment).
+ * The model and thinking level a project session's runs ask for from the next step on, plan mode
+ * on or off (ADR 0098), and the account its next run spends: a key left out stays, null goes back
+ * to the agent's default (for the account, the daemon's own environment).
  */
-export function tuneProjectSession(ctx: StoreContext, sessionId: string, change: { model?: string | null; effort?: string | null; configDir?: string | null }): SessionDetail {
+export function tuneProjectSession(ctx: StoreContext, sessionId: string, change: { model?: string | null; effort?: string | null; mode?: ProjectAgentMode | null; configDir?: string | null }): SessionDetail {
   if (!projectOf(ctx, sessionId)) throw new HttpError(404, "not_found", "not a project session");
   if (change.model !== undefined) ctx.db.run(`UPDATE sessions SET project_model = ? WHERE id = ? AND kind = 'project'`, [change.model, sessionId]);
   if (change.effort !== undefined) ctx.db.run(`UPDATE sessions SET project_effort = ? WHERE id = ? AND kind = 'project'`, [change.effort, sessionId]);
+  if (change.mode !== undefined) ctx.db.run(`UPDATE sessions SET project_mode = ? WHERE id = ? AND kind = 'project'`, [change.mode, sessionId]);
   if (change.configDir !== undefined) ctx.db.run(`UPDATE sessions SET project_config_dir = ? WHERE id = ? AND kind = 'project'`, [change.configDir, sessionId]);
   return getSession(ctx, sessionId);
 }

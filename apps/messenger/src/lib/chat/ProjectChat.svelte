@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { isHiddenTranscriptKind, type PatchProjectSessionRequest, speechReady, USER_MEMBER, type Attachment, type Message, type SessionSummary } from '@real-bot/protocol';
+	import { isHiddenTranscriptKind, PLAN_APPROVAL_KIND, type ClaudeCodeCommand, type PatchProjectSessionRequest, speechReady, USER_MEMBER, type Attachment, type Message, type SessionSummary } from '@real-bot/protocol';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
 	import MarkdownBody from '../MarkdownBody.svelte';
@@ -25,6 +25,9 @@
 	import { loadClaudeModels } from '../claude-models.svelte.ts';
 	import { accountChoices, claudeStatus, loadClaudeStatus } from './project-agent-options.svelte.ts';
 	import ProjectAgentTune from './ProjectAgentTune.svelte';
+	import ProjectCommandMenu from './ProjectCommandMenu.svelte';
+	import ProjectPlanCard from './ProjectPlanCard.svelte';
+	import { loadProjectCommands, matchCommands, projectCommandsOf, slashQuery, withCommand } from './project-commands.svelte.ts';
 	import VoiceButton from './VoiceButton.svelte';
 	import VoiceStatus from './VoiceStatus.svelte';
 	import { ProjectCitedPaths } from './project-cited-path.ts';
@@ -42,7 +45,9 @@
 	 * working bubble at the end — what it has said, its commands folded, its step and times on the
 	 * last line — with the approval it waits on under it; Stop is in the composer, as in a Bot's
 	 * direct. Pictures and files go with a line as in a Bot's composer: pasted, or picked with the
-	 * clip. The header is the pane's or the page's own.
+	 * clip. Plan mode is a switch in the composer (Shift+Tab, as in the terminal), and the plan it
+	 * brings is a card of its own; typing `/` lists Claude Code's commands (ADR 0098). The header is
+	 * the pane's or the page's own.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -79,6 +84,7 @@
 	const run = $derived(snapshot.agentRuns[selected.id] ?? null);
 	const live = $derived(isLiveRun(run));
 	const waiting = $derived(run?.status === 'waiting_approval' && run.approval ? run.approval : null);
+	const planWaiting = $derived(waiting?.kind_key === PLAN_APPROVAL_KIND);
 
 	/** Oldest first; what the app keeps out of a transcript stays out. */
 	const lines = $derived(
@@ -124,6 +130,91 @@
 		const failure = await runtime.tuneProjectSession(selected.id, change);
 		accountRefused = failure?.status === 409 && change.config_dir !== undefined;
 		tuneFailed = failure !== null && !accountRefused;
+	}
+
+	/**
+	 * Plan mode (ADR 0098), the session's own: its runs start in it, and a run going now switches at
+	 * its next step. An approved plan turns it off; the session's own event brings that back here.
+	 */
+	const planning = $derived(selected.project_mode === 'plan');
+
+	function togglePlan(): void {
+		if (connected) void tune({ mode: planning ? null : 'plan' });
+	}
+
+	/**
+	 * Typing `/` at the start of the line lists Claude Code's commands that fit what follows, while the
+	 * caret is still in that word (`project-commands.svelte.ts`); Esc closes it until the line changes.
+	 */
+	let caret = $state(0);
+	let commandsClosedAt = $state<string | null>(null);
+	let commandActive = $state(0);
+	const commandMenuId = $derived(`project-commands-${selected.id}`);
+	const commandQuery = $derived(slashQuery(view.draft, caret));
+	const commandsShown = $derived(commandQuery !== null && commandsClosedAt !== view.draft);
+	const commandsState = $derived(commandsShown ? projectCommandsOf(selected.id) : null);
+	const commandMatches = $derived(Array.isArray(commandsState) && commandQuery !== null ? matchCommands(commandsState, commandQuery) : []);
+	const commandsListed = $derived(commandsShown && commandMatches.length > 0);
+	$effect(() => {
+		if (!commandsShown) return;
+		const api = runtime.client;
+		const id = selected.id;
+		untrack(() => loadProjectCommands(api, id));
+	});
+	// A new word starts at the best match.
+	$effect(() => {
+		void commandQuery;
+		commandActive = 0;
+	});
+
+	function trackCaret(): void {
+		if (field) caret = field.selectionStart;
+	}
+
+	/** A picked command fills the line's first word; `run` sends it as it stands. */
+	function pickCommand(command: ClaudeCodeCommand, run: boolean): void {
+		const next = withCommand(view.draft, command.name, run);
+		view.draft = next.text;
+		caret = next.caret;
+		sendFailed = false;
+		if (run) {
+			void send();
+			return;
+		}
+		void tick().then(() => {
+			grow();
+			field?.focus();
+			field?.setSelectionRange(next.caret, next.caret);
+		});
+	}
+
+	/** The menu's keys, while it is open; true when the key was its. */
+	function commandKey(event: KeyboardEvent): boolean {
+		if (!commandsShown) return false;
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			commandsClosedAt = view.draft;
+			return true;
+		}
+		if (commandMatches.length === 0) return false;
+		const count = commandMatches.length;
+		if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+			event.preventDefault();
+			commandActive = (commandActive + (event.key === 'ArrowDown' ? 1 : count - 1)) % count;
+			return true;
+		}
+		const command = commandMatches[Math.min(commandActive, count - 1)]!;
+		if (event.key === 'Tab' && !event.shiftKey) {
+			event.preventDefault();
+			pickCommand(command, false);
+			return true;
+		}
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault();
+			pickCommand(command, true);
+			return true;
+		}
+		return false;
 	}
 
 	/**
@@ -339,7 +430,15 @@
 	function onKey(event: KeyboardEvent): void {
 		const action = composerImeKeyAction(event, ime, Date.now());
 		if (action === 'swallow') event.preventDefault();
-		if (action !== 'pass' || event.key !== 'Enter' || event.shiftKey) return;
+		if (action !== 'pass') return;
+		if (commandKey(event)) return;
+		// Shift+Tab switches plan mode, as in the terminal.
+		if (event.key === 'Tab' && event.shiftKey) {
+			event.preventDefault();
+			togglePlan();
+			return;
+		}
+		if (event.key !== 'Enter' || event.shiftKey) return;
 		event.preventDefault();
 		void send();
 	}
@@ -410,7 +509,7 @@
 					<div class="stream-foot" role="status" aria-live="polite">
 						<span class="pulse" aria-hidden="true"></span>
 						{#if waiting}
-							<span class="stream-step">{t.project.waiting}</span>
+							<span class="stream-step">{planWaiting ? t.project.waitingPlan : t.project.waiting}</span>
 						{:else if !focusMode.on && stepLine}
 							<span class="stream-step" title={stepLine.full}>{stepLine.text}</span>
 							{#if stepLine.elapsed}<span class="stream-step-elapsed mono" aria-hidden="true">{stepLine.elapsed}</span>{/if}
@@ -427,7 +526,10 @@
 						{/if}
 					</div>
 				</div>
-				{#if waiting}
+				{#if waiting && planWaiting}
+					<!-- The plan it asks you to approve: approved, it gets to work; a line you send is what to change. -->
+					<ProjectPlanCard {t} approval={waiting} disabled={answering || !connected} onAnswer={(allow) => void answer(allow)} onOpenPath={(path) => openCited(path)} />
+				{:else if waiting}
 					<!-- What it waits on you for, as a Bot's approval card. -->
 					<article class="approval-card" data-agent-approval>
 						<div class="approval-head">
@@ -459,6 +561,17 @@
 		{/if}
 		<VoiceStatus {voice} {t} />
 		<div class="composer-box">
+			{#if commandsShown}
+				<ProjectCommandMenu
+					{t}
+					id={commandMenuId}
+					status={commandsState}
+					matches={commandMatches}
+					active={commandActive}
+					onHover={(index) => (commandActive = index)}
+					onPick={(command) => pickCommand(command, false)}
+				/>
+			{/if}
 			{#if staged.length > 0}
 				<ComposerAttachmentsBar
 					{t}
@@ -474,14 +587,24 @@
 				bind:this={field}
 				rows="1"
 				aria-label={t.project.composerLabel}
-				placeholder={t.project.composerPlaceholder}
+				placeholder={planning ? t.project.composerPlaceholderPlan : t.project.composerPlaceholder}
+				aria-autocomplete="list"
+				aria-controls={commandsListed ? commandMenuId : undefined}
+				aria-activedescendant={commandsListed ? `${commandMenuId}-${commandActive}` : undefined}
 				value={view.draft}
 				oninput={(event) => {
 					view.draft = event.currentTarget.value;
+					caret = event.currentTarget.selectionStart;
 					sendFailed = false;
 					grow();
 				}}
 				onkeydown={onKey}
+				onkeyup={(event) => {
+					if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') trackCaret();
+				}}
+				onclick={trackCaret}
+				onfocus={trackCaret}
+				onblur={() => (commandsClosedAt = view.draft)}
 				onpaste={onPaste}
 				oncompositionstart={() => (ime = composerImeOnStart())}
 				oncompositionupdate={() => (ime = composerImeOnUpdate(ime))}
@@ -500,6 +623,20 @@
 					<Icon name="paperclip" size={16} />
 				</button>
 				<input type="file" multiple hidden bind:this={attachments.fileInputEl} onchange={attachments.onFileInputChange} />
+				<!-- Plan mode, the session's own: on, it plans and asks before changing anything. -->
+				<button
+					type="button"
+					class="plan-toggle"
+					class:is-on={planning}
+					aria-pressed={planning}
+					title={planning ? t.project.planOnHint : t.project.planOffHint}
+					disabled={!connected}
+					onclick={togglePlan}
+					data-project-plan
+				>
+					<Icon name="list" size={16} />
+					<span>{t.project.plan}</span>
+				</button>
 				<!-- An account changes for the next run: Claude Code keeps the session under the account it ran on. -->
 				<ProjectAgentTune
 					{t}
@@ -785,6 +922,7 @@
 
 	/* The line on top, the model and Send under it, as in the agents' own apps. */
 	.composer-box {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
@@ -852,6 +990,46 @@
 
 	.tools-gap {
 		flex: 1;
+	}
+
+	/* Plan mode: quiet while off, the accent's tint while on, as a selected item of a set is. */
+	.plan-toggle {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		height: 28px;
+		padding: 0 9px 0 7px;
+		border: 1px solid transparent;
+		border-radius: var(--radius-full);
+		background: transparent;
+		color: var(--muted);
+		font: inherit;
+		font-size: 12px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+	}
+
+	.plan-toggle:hover:not(:disabled) {
+		background: var(--line-subtle);
+		color: var(--ink);
+	}
+
+	.plan-toggle.is-on {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
+	.plan-toggle.is-on:hover:not(:disabled) {
+		background: var(--accent-tint);
+		color: var(--accent-hover);
+	}
+
+	.plan-toggle:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 
 	/* The conversation's own width, as in a Bot's (the `conversation` container): a workbench pane as narrow as a phone gets it in a wide window too. */

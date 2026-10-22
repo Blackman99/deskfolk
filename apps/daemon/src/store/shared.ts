@@ -23,6 +23,7 @@ import {
   type Approval,
   type Bot,
   type Message,
+  type ProjectAgentMode,
   type SessionKind,
   type SessionParticipant,
   type Turn,
@@ -167,6 +168,7 @@ export type SessionRow = {
   project_source?: string | null;
   project_model?: string | null;
   project_effort?: string | null;
+  project_mode?: ProjectAgentMode | null;
   created_at: string;
   updated_at: string;
 };

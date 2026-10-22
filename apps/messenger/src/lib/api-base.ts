@@ -13,6 +13,7 @@ import type {
   CreateProjectSessionRequest,
   PatchProjectSessionRequest,
   ProjectPathLookup,
+  ClaudeCodeCommandList,
   AgentReplay,
   PlanReplay,
   SessionReplay,
@@ -269,6 +270,11 @@ export abstract class ApiBase<Row extends PendingRow> {
   /** Where a path a project session's agent cites is on the Mac (ADR 0095): under its directory, or found there by name. */
   async locateProjectPath(sessionId: string, path: string): Promise<ProjectPathLookup> {
     return this.get<ProjectPathLookup>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/locate?path=${encodeURIComponent(path)}`);
+  }
+
+  /** The slash commands Claude Code offers in a project session (ADR 0098), for the composer's `/`. */
+  async projectCommands(sessionId: string): Promise<ClaudeCodeCommandList> {
+    return this.get<ClaudeCodeCommandList>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/commands`);
   }
 
   /** A Bot conversation's tool calls with where each worked, as the app recorded them (ADR 0097), for the task map. */

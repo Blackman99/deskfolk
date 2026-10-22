@@ -2,14 +2,15 @@
  * A project session's agent (ADR 0095): your own Claude Code in the session's directory, as in its
  * desktop app, with no Bot. The app keeps two things: every tool goes through the app's permission
  * mode (`decideAgentCall`, an approval card under ask first), and Stop ends the run and what it
- * started. Nothing else of a Bot's turn runs: no jobs, organizer, end contract or supervisor. The
+ * started. In plan mode (ADR 0098) it changes nothing but its plan, and the plan is a card of its
+ * own: approved, it gets to work; not, it keeps planning. Nothing else of a Bot's turn runs: no jobs, organizer, end contract or supervisor. The
  * agent keeps the history itself — the first run starts or branches its session, every later one
  * resumes it — so a run is sent only your new line, with its pictures.
  */
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import type { CanUseTool, HookCallbackMatcher, HookInput, HookJSONOutput, Options, PermissionResult, SDKMessage, SDKUserMessage, SpawnedProcess, SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
-import { isClaudeEffort, type AgentRun, type AgentRunApproval, type AgentRunToolInfo, type Attachment, type ClaudeEffort, type Message, type ToolFrame } from "@real-bot/protocol";
+import { isClaudeEffort, PLAN_APPROVAL_KIND, type AgentRun, type AgentRunApproval, type AgentRunToolInfo, type Attachment, type ClaudeEffort, type Message, type ProjectAgentMode, type ToolFrame } from "@real-bot/protocol";
 import { homedir } from "node:os";
 import { placeOfCall } from "./claude-code/tool-place";
 import { modelOf } from "./claude-code/replay";
@@ -20,7 +21,7 @@ import type { ClaudeCodeProbe } from "./claude-code/probe";
 import { withSystemProxy } from "./claude-code/proxy";
 import { claudeLaunch, killsTree } from "./claude-code/spawn";
 import { defaultConfigDir, tildeDir } from "./claude-code/account";
-import { claudeMemoryDirs } from "./claude-code/memory-dir";
+import { claudeMemoryDirs, claudePlanDirs } from "./claude-code/memory-dir";
 import { inputQueue, LIMIT_ERRORS, SIGNED_OUT_ERRORS, userMessage } from "./engine/agent-runner";
 import { recordLiveProc } from "./live-procs";
 import { pictureMime } from "./loop-pictures";
@@ -34,7 +35,15 @@ export type ProjectQuery = (params: { prompt: AsyncIterable<SDKUserMessage>; opt
   setModel?(model?: string): Promise<void>;
   /** The SDK's own: the session's flag settings, here its thinking level (null: the model's default). */
   applyFlagSettings?(settings: { effortLevel?: ClaudeEffort | null }): Promise<void>;
+  /** The SDK's own: plan mode on or off for the steps still to come. */
+  setPermissionMode?(mode: ClaudeMode): Promise<void>;
 };
+
+/** The two of Claude Code's own modes a project session runs in: as usual, or planning (ADR 0098). */
+type ClaudeMode = "default" | "plan";
+
+/** Your answer on a card: a line sent while a plan waits on you is a change to it (`revise`). */
+type Answer = "allow" | "deny" | "revise";
 
 export type ProjectRunnerDeps = {
   store: Store;
@@ -61,7 +70,7 @@ export type ProjectRunner = {
    * The session's model or thinking level changed: a live run takes it from its next step (null:
    * the agent's default); a key left out is not touched.
    */
-  tune(sessionId: string, change: { model?: string | null; effort?: string | null }): void;
+  tune(sessionId: string, change: { model?: string | null; effort?: string | null; mode?: ProjectAgentMode | null }): void;
   /** Resolves once every run started so far has ended (tests). */
   idle(): Promise<void>;
   close(): void;
@@ -79,7 +88,7 @@ type Live = {
    * two calls at once (it runs independent tools in parallel). The first is the card; answering it
    * brings the next.
    */
-  waiting: Array<{ approval: AgentRunApproval; resolve: (allow: boolean) => void }>;
+  waiting: Array<{ approval: AgentRunApproval; resolve: (answer: Answer) => void }>;
   /** The approval each tool call asked for, by call id, read back when Claude Code asks. */
   asked: Map<string, AgentRunApproval>;
   stopped: boolean;
@@ -88,6 +97,10 @@ type Live = {
   done: Promise<void>;
   /** The SDK query, once it is started: a model change reaches it here. */
   query: ReturnType<ProjectQuery> | null;
+  /** Claude Code's mode as last known: the session's when the run starts, then as it says. */
+  mode: ClaudeMode;
+  /** For each line sent and not yet answered, oldest first: the command it runs (`compact`), or null. */
+  commands: Array<string | null>;
 };
 
 const STDERR_KEEP = 8 * 1024;
@@ -113,6 +126,11 @@ function targetText(place: AgentRunToolInfo["place"]): string | undefined {
   if (place.zone === "git") return "git";
   if (place.zone === "service") return place.server;
   return undefined;
+}
+
+/** The slash command a line runs, by its name (`/compact keep the tests` runs `compact`); null for any other line. */
+function commandOf(content: LineContent): string | null {
+  return typeof content === "string" ? (/^\/([^\s/]+)/.exec(content.trim())?.[1] ?? null) : null;
 }
 
 function firstLine(text: string): string | null {
@@ -174,6 +192,33 @@ function activityOf(name: string, input: Record<string, unknown>): string {
   return clip(named ? `${name} ${named.replace(/\s+/g, " ").trim()}` : name, ACTIVITY_MAX);
 }
 
+/** Claude Code's mode as an `init` or `status` message says it; null when it says none. */
+function modeOf(message: SDKMessage): ClaudeMode | null {
+  const mode = (message as { permissionMode?: unknown }).permissionMode;
+  return typeof mode === "string" ? (mode === "plan" ? "plan" : "default") : null;
+}
+
+const PLAN_MODE_DENIED = {
+  en: "plan mode is on: nothing changes before the user approves your plan. Present it with ExitPlanMode",
+  zh: "计划模式开着：用户批准计划之前什么都不改。用 ExitPlanMode 交上计划",
+};
+const PLAN_REVISE = {
+  en: "The user has not approved this plan: they want it changed, and their next message says how. Stay in plan mode, revise the plan and present it again with ExitPlanMode.",
+  zh: "用户还没批准这个计划，要改的地方在用户的下一条消息里。留在计划模式，改好计划后再用 ExitPlanMode 交上来。",
+};
+const PLAN_KEEP = {
+  en: "The user has not approved this plan and wants to keep planning. Stay in plan mode; ask what to change if it is unclear, then present the revised plan with ExitPlanMode.",
+  zh: "用户没有批准这个计划，要接着改。留在计划模式；不清楚改哪里就问，改好后再用 ExitPlanMode 交上来。",
+};
+const COMPACTING = { en: "Compacting the conversation", zh: "正在压缩上下文" };
+
+/** The app's line for a command that answered nothing. */
+function commandRan(command: string, en: boolean): string {
+  if (command === "clear") return en ? "Ran /clear: Claude Code starts over with an empty context; the lines here stay" : "已执行 /clear：Claude Code 从空的上下文重新开始，这里的记录还在";
+  if (command === "compact") return en ? "Ran /compact: Claude Code keeps a summary of the conversation so far" : "已执行 /compact：Claude Code 把之前的对话压成了摘要";
+  return en ? `Ran /${command}` : `已执行 /${command}`;
+}
+
 export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
   const { store } = deps;
   const lives = new Map<string, Live>();
@@ -215,7 +260,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     const sessionId = message.session_id;
     const project = store.projectOf(sessionId);
     if (!project) return;
-    store.nameProjectSessionIfUnnamed(sessionId, message.body);
+    // A command names nothing: the session takes its name from the first thing you ask.
+    if (!commandOf(message.body)) store.nameProjectSessionIfUnnamed(sessionId, message.body);
     const live = lives.get(sessionId);
     if (live && (live.stopped || live.closing)) {
       // Winding down: the line opens the next run once this one is gone.
@@ -223,9 +269,11 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       return;
     }
     if (live) {
+      // A plan waiting on you is not approved by what you say next: it is what to change.
+      if (live.waiting[0]?.approval.kind_key === PLAN_APPROVAL_KIND) live.waiting.shift()!.resolve("revise");
       // Read at Claude Code's next step, answered with a result of its own.
       live.unanswered += 1;
-      live.input.push(userMessage(lineContent(store, message, locale() === "en")));
+      send(live, lineContent(store, message, locale() === "en"));
       return;
     }
     const run = store.createAgentRun(sessionId);
@@ -233,10 +281,10 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     let finish!: () => void;
     const fresh: Live = {
       runId: run.id, sessionId, input, abort: new AbortController(), unanswered: 1, waiting: [], asked: new Map(), stopped: false, closing: false, query: null,
-      done: new Promise<void>((resolve) => { finish = resolve; }),
+      done: new Promise<void>((resolve) => { finish = resolve; }), mode: project.mode === "plan" ? "plan" : "default", commands: [],
     };
     lives.set(sessionId, fresh);
-    input.push(userMessage(lineContent(store, message, locale() === "en")));
+    send(fresh, lineContent(store, message, locale() === "en"));
     const running = runSession(fresh, project).catch((error) => {
       console.error(`[project ${sessionId}] run failed`, error);
       if (!fresh.stopped) fail(fresh, firstLine(String(error)) ?? "error");
@@ -246,6 +294,11 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     });
     settling.add(running);
     void running.finally(() => settling.delete(running));
+  }
+
+  function send(live: Live, content: LineContent): void {
+    live.commands.push(commandOf(content));
+    live.input.push(userMessage(content));
   }
 
   function fail(live: Live, detail: string): void {
@@ -269,8 +322,10 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
 
     const permission = store.appPermissionMode();
     const configDirs = store.claudeCodeConfigDirs();
-    // Its memory of this project, under the account it runs on: the one thing in there it may open.
-    const memoryDirs = claudeMemoryDirs(project.dir, project.configDir ?? (process.env.CLAUDE_CONFIG_DIR?.trim() || defaultConfigDir()));
+    const accountDir = project.configDir ?? (process.env.CLAUDE_CONFIG_DIR?.trim() || defaultConfigDir());
+    // Its memory of this project and its saved plans, under the account it runs on: the things in there it may open.
+    const memoryDirs = claudeMemoryDirs(project.dir, accountDir);
+    const planDirs = claudePlanDirs(accountDir);
     const home = homedir();
     /** The calls under way, by id: when each started and where, for its exited frame. */
     const started = new Map<string, { at: number; name: string; info: AgentRunToolInfo; command?: string }>();
@@ -290,9 +345,11 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       if (raw.hook_event_name !== "PreToolUse") return {};
       const id = toolUseId ?? raw.tool_use_id;
       const toolInput = (raw.tool_input ?? {}) as Record<string, unknown>;
+      // The call's own mode, as Claude Code says it; the run's as last known otherwise.
+      const planning = (raw.permission_mode ?? live.mode) === "plan";
       const decision = decideAgentCall({
         tool: raw.tool_name, input: toolInput, cwd: raw.cwd || project.dir, agentId: raw.agent_id ?? null,
-        mode: "work", workspace: project.dir, configDirs, memoryDirs, permission,
+        mode: "work", workspace: project.dir, configDirs, memoryDirs, plan: { on: planning, dirs: planDirs }, permission,
       });
       if (decision.kind === "deny") return deny(decision.reason);
       if (!raw.agent_id) update(live.runId, { activity: activityOf(raw.tool_name, toolInput) });
@@ -306,7 +363,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
         ...(command ? { command, target: command } : { target: targetText(place) }), agent_run: info });
       if (decision.kind === "ask") {
         live.asked.set(id, decision.approval);
-        return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: decision.approval.summary } };
+        const plan = decision.approval.kind_key === PLAN_APPROVAL_KIND;
+        return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: plan ? "the plan waits on the user" : decision.approval.summary } };
       }
       return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow" } };
     };
@@ -327,6 +385,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     };
     const canUseTool: CanUseTool = async (toolName, toolInput, options): Promise<PermissionResult> => {
       const asked = live.asked.get(options.toolUseID);
+      // Claude Code asking on its own while it plans: nothing changes before the plan is approved.
+      if (!asked && live.mode === "plan") return { behavior: "deny", message: en ? PLAN_MODE_DENIED.en : PLAN_MODE_DENIED.zh };
       // Claude Code asking on its own (a protected file): answered by the mode, as for a Bot.
       if (!asked) {
         const verdict = changeVerdict(permission);
@@ -334,7 +394,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
         if (verdict === "refuse") return { behavior: "deny", message: en ? "the permission mode is read-only" : "权限模式是只读" };
       }
       const approval = asked ?? { kind_key: "agent-permission", target: options.blockedPath ?? toolName, summary: clip(`${toolName} ${options.title ?? options.description ?? JSON.stringify(toolInput)}`, 300) };
-      const allow = await new Promise<boolean>((resolve) => {
+      const answer = await new Promise<Answer>((resolve) => {
         live.waiting.push({ approval, resolve });
         // Another call already asking keeps the card until it is answered.
         if (live.waiting.length === 1) update(live.runId, { status: "waiting_approval", approval });
@@ -344,8 +404,15 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       // The next call still asking is the card now; with none, the run is at work again.
       const next = live.waiting[0];
       update(live.runId, next ? { status: "waiting_approval", approval: next.approval } : { status: "running", approval: null });
-      if (!allow) ended(options.toolUseID, false);
-      if (!allow) return { behavior: "deny", message: en ? "denied: the user does not want this. Do not do the same thing another way." : "denied：用户拒绝了这个动作。不要换办法做同一件事。" };
+      if (answer !== "allow") ended(options.toolUseID, false);
+      if (approval.kind_key === PLAN_APPROVAL_KIND) {
+        if (answer !== "allow") return { behavior: "deny", message: (answer === "revise" ? PLAN_REVISE : PLAN_KEEP)[en ? "en" : "zh"] };
+        // Approved: it works as usual from here, under the app's permission mode, and so do later runs.
+        live.mode = "default";
+        store.tuneProjectSession(live.sessionId, { mode: null });
+        return { behavior: "allow", updatedInput: toolInput, updatedPermissions: [{ type: "setMode", mode: "default", destination: "session" }] };
+      }
+      if (answer !== "allow") return { behavior: "deny", message: en ? "denied: the user does not want this. Do not do the same thing another way." : "denied：用户拒绝了这个动作。不要换办法做同一件事。" };
       return { behavior: "allow", updatedInput: toolInput };
     };
     const hooks: Partial<Record<"PreToolUse" | "PostToolUse" | "PostToolUseFailure", HookCallbackMatcher[]>> = {
@@ -373,8 +440,10 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       ...(project.model ? { model: project.model } : {}),
       ...(project.effort && isClaudeEffort(project.effort) ? { effort: project.effort } : {}),
       includePartialMessages: false,
-      permissionMode: "default",
-      tools: [...AGENT_WORK_TOOLS],
+      // The session's own: plan mode carries from run to run until a plan is approved or you turn it off.
+      permissionMode: live.mode,
+      // Always offered, so plan mode turned on mid-run has a way out.
+      tools: [...AGENT_WORK_TOOLS, "ExitPlanMode"],
       disallowedTools: ["AskUserQuestion"],
       systemPrompt: { type: "preset", preset: "claude_code" },
       hooks,
@@ -401,6 +470,16 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           const own = (message as { session_id?: string }).session_id;
           if (own) store.recordProjectAgentSession(live.sessionId, own);
           models.main = modelOf({ model: (message as { model?: string }).model }) ?? models.main;
+          live.mode = modeOf(message) ?? live.mode;
+          continue;
+        }
+        if (message.type === "system" && message.subtype === "status") {
+          live.mode = modeOf(message) ?? live.mode;
+          // `/compact` says it is at it; nothing else on screen would.
+          const compacting = (message as { status?: string | null }).status === "compacting";
+          if (compacting || store.getAgentRun(live.runId).activity === COMPACTING[en ? "en" : "zh"]) {
+            update(live.runId, { activity: compacting ? COMPACTING[en ? "en" : "zh"] : null });
+          }
           continue;
         }
         if (message.type === "assistant") {
@@ -428,11 +507,14 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
         }
         if (message.type === "result") {
           live.unanswered = Math.max(0, live.unanswered - 1);
+          const command = live.commands.shift() ?? null;
           if (message.subtype !== "success" || message.is_error || failure) {
             failure ??= message.subtype === "success" ? firstLine(message.result ?? "") ?? "error" : message.errors?.[0] ?? message.subtype;
             break;
           }
           if ((message.result ?? "").trim()) postLine(live.sessionId, "bot", message.result!.trim());
+          // A command that answers nothing (`/compact`, `/clear`) still says it ran.
+          else if (command) postLine(live.sessionId, "system", commandRan(command, en));
           partial = "";
           update(live.runId, { partial: null, activity: null });
           // Nothing more of yours to answer: the run is over.
@@ -477,7 +559,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       }
       const head = run.status === "waiting_approval" ? live.waiting.shift() : undefined;
       if (!head) return run;
-      head.resolve(allow);
+      head.resolve(allow ? "allow" : "deny");
       return store.getAgentRun(runId);
     },
     stop(runId) {
@@ -489,7 +571,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
         return run;
       }
       live.stopped = true;
-      for (const asking of live.waiting.splice(0)) asking.resolve(false);
+      for (const asking of live.waiting.splice(0)) asking.resolve("deny");
       live.input.close();
       live.abort.abort();
       return update(runId, { status: "stopped", activity: null, approval: null });
@@ -500,7 +582,13 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     },
     tune(sessionId, change) {
       const live = lives.get(sessionId);
-      if (!live || live.stopped || live.closing || !live.query) return;
+      if (!live || live.stopped || live.closing) return;
+      // Known before the query starts too: the run starts in it.
+      if (change.mode !== undefined) {
+        live.mode = change.mode === "plan" ? "plan" : "default";
+        live.query?.setPermissionMode?.(live.mode).catch(() => {});
+      }
+      if (!live.query) return;
       // Best effort: a run that ends meanwhile has nothing to switch, and the next one starts on it.
       if (change.model !== undefined) live.query.setModel?.(change.model ?? undefined).catch(() => {});
       if (change.effort !== undefined) {
@@ -514,7 +602,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     close() {
       for (const live of lives.values()) {
         live.stopped = true;
-        for (const asking of live.waiting.splice(0)) asking.resolve(false);
+        for (const asking of live.waiting.splice(0)) asking.resolve("deny");
         live.input.close();
         live.abort.abort();
       }

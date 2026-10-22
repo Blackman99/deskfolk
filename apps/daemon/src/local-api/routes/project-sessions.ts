@@ -1,4 +1,4 @@
-import { isAgentModelName, isClaudeEffort, type CreateProjectSessionRequest } from "@real-bot/protocol";
+import { isAgentModelName, isClaudeEffort, isProjectAgentMode, type CreateProjectSessionRequest, type ProjectAgentMode } from "@real-bot/protocol";
 import { homedir } from "node:os";
 import { readAgentReplay } from "../../claude-code/replay";
 import { carryClaudeSession, claudeSessionRoots, findClaudeSessionFile, readClaudeSession } from "../../claude-code/sessions";
@@ -11,7 +11,7 @@ import type { RouteCtx } from "../route-ctx";
 
 /** Local API routes: project sessions (ADR 0095) and their agent's runs. */
 export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response> | null {
-  const { input, store, publish, projects, method, path, url } = ctx;
+  const { input, store, publish, projects, method, path, url, options } = ctx;
   let params: ReturnType<typeof matchPath>;
 
   // A new session in a directory, or one carrying a terminal session on: only an account directory
@@ -67,6 +67,15 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
     ), 200, null);
   }
 
+  // What typing `/` offers (ADR 0098): the account's and the directory's commands and skills, asked
+  // of Claude Code without a prompt and kept a while.
+  params = matchPath(path, "/v1/project-sessions/:id/commands");
+  if (params && method === "GET" && options.claudeCommands) {
+    const project = store.projectOf(params.id!);
+    if (!project) throw new HttpError(404, "not_found", "not a project session");
+    return options.claudeCommands.list(project.configDir, project.dir).then((list) => jsonResponse(list, 200, null));
+  }
+
   // Where a path the agent cites is: its words are relative to wherever it was working, so a path
   // is looked for under the project as well as at it. Opening it is the file routes' work, with
   // the absolute path this gives.
@@ -79,14 +88,14 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
     return jsonResponse(locateProjectPath(project.dir, cited), 200, null);
   }
 
-  // The model (an alias or a full id) and the thinking level its runs ask for, each from the next
-  // step on: a run going now switches too. The account its next run spends: Claude Code keeps a
+  // The model (an alias or a full id) and the thinking level its runs ask for, and plan mode on or
+  // off (ADR 0098), each from the next step on: a run going now switches too. The account its next run spends: Claude Code keeps a
   // session under the account's own directory, so the session is carried there first, and not
   // while a run is still writing it. A key left out stays; null is the agent's own default.
   params = matchPath(path, "/v1/project-sessions/:id");
   if (params && method === "PATCH") {
-    const body = (input.body ?? {}) as { model?: unknown; effort?: unknown; config_dir?: unknown };
-    const change: { model?: string | null; effort?: string | null; configDir?: string | null } = {};
+    const body = (input.body ?? {}) as { model?: unknown; effort?: unknown; mode?: unknown; config_dir?: unknown };
+    const change: { model?: string | null; effort?: string | null; mode?: ProjectAgentMode | null; configDir?: string | null } = {};
     if (body.model !== undefined) {
       const model = typeof body.model === "string" ? body.model.trim() : body.model;
       if (model !== null && (typeof model !== "string" || !isAgentModelName(model))) {
@@ -97,6 +106,10 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
     if (body.effort !== undefined) {
       if (body.effort !== null && !isClaudeEffort(body.effort)) throw new HttpError(422, "invalid_args", "effort must be low, medium, high, xhigh, max or null");
       change.effort = body.effort;
+    }
+    if (body.mode !== undefined) {
+      if (body.mode !== null && !isProjectAgentMode(body.mode)) throw new HttpError(422, "invalid_args", "mode must be plan or null");
+      change.mode = body.mode;
     }
     if (body.config_dir !== undefined) {
       const project = store.projectOf(params.id!);
@@ -115,8 +128,8 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
       }
       change.configDir = configDir;
     }
-    if (change.model === undefined && change.effort === undefined && change.configDir === undefined) {
-      throw new HttpError(422, "invalid_args", "model, effort or config_dir is required");
+    if (change.model === undefined && change.effort === undefined && change.mode === undefined && change.configDir === undefined) {
+      throw new HttpError(422, "invalid_args", "model, effort, mode or config_dir is required");
     }
     const session = store.tuneProjectSession(params.id!, change);
     projects.tune(params.id!, change);

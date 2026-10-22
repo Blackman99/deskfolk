@@ -266,3 +266,52 @@ test("on Windows, a project session's memory opens with the file tools however i
     expect([file_path, decideAgentCall({ ...at, tool: "Read", input: { file_path } }).kind]).toEqual([file_path, "deny"]);
   }
 });
+
+posixTest("plan mode changes nothing but the plan: its file is written in every mode, any other write waits for the plan", () => {
+  const configDir = join(home, ".claude");
+  const plans = join(configDir, "plans");
+  const plan = { on: true, dirs: [plans] };
+  for (const permission of ["read_only", "ask_first", "auto", "allow_all"] as const) {
+    expect(decideAgentCall({ ...base, permission, plan, tool: "Write", input: { file_path: join(plans, "cozy-newt.md") } }))
+      .toEqual({ kind: "allow", effect: false, appName: "write_file", target: join(plans, "cozy-newt.md") });
+    const refused = decideAgentCall({ ...base, permission, plan, tool: "Edit", input: { file_path: join(root, "a.md") } });
+    expect(refused.kind).toBe("deny");
+    if (refused.kind === "deny") expect(refused.reason).toContain("plan mode is on");
+  }
+  // Its saved plans read in any mode, as its memory does; written by the mode once plan mode is off.
+  const off = { on: false, dirs: [plans] };
+  expect(decideAgentCall({ ...base, permission: "read_only", plan: off, tool: "Read", input: { file_path: join(plans, "cozy-newt.md") } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...base, permission: "ask_first", plan: off, tool: "Write", input: { file_path: join(plans, "cozy-newt.md") } }).kind).toBe("ask");
+  // The rest of the config directory stays shut, plan mode or not, and so does a climb out of the plans.
+  for (const file_path of [join(configDir, ".credentials.json"), join(plans, "..", "settings.json")]) {
+    expect([file_path, decideAgentCall({ ...base, plan, tool: "Read", input: { file_path } }).kind]).toEqual([file_path, "deny"]);
+  }
+  const named = decideAgentCall({ ...base, plan, tool: "Bash", input: { command: `cat ${join(plans, "cozy-newt.md")}` } });
+  expect(named.kind).toBe("deny");
+  if (named.kind === "deny") expect(named.reason).toContain("saved plans open with Read");
+});
+
+posixTest("plan mode: a command asks even where the mode would run it, and read-only still refuses it", () => {
+  const plan = { on: true, dirs: [join(home, ".claude", "plans")] };
+  for (const permission of ["ask_first", "auto", "allow_all"] as const) {
+    const asked = decideAgentCall({ ...base, permission, plan, tool: "Bash", input: { command: "git log --oneline" } });
+    expect([permission, asked.kind]).toEqual([permission, "ask"]);
+    if (asked.kind === "ask") expect(asked.approval).toEqual({ kind_key: "shell", target: root, summary: "shell git log --oneline" });
+  }
+  expect(decideAgentCall({ ...base, permission: "read_only", plan, tool: "Bash", input: { command: "git log --oneline" } }).kind).toBe("deny");
+  // Off, a command runs by the mode again.
+  expect(decideAgentCall({ ...base, plan: { ...plan, on: false }, tool: "Bash", input: { command: "git log --oneline" } }).kind).toBe("allow");
+  // Reads and the to-do list are not changes.
+  expect(decideAgentCall({ ...base, plan, tool: "Grep", input: { pattern: "x", path: root } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...base, plan, tool: "TodoWrite", input: {} }).kind).toBe("allow");
+});
+
+test("the plan it presents is a card of its own in every mode; a Bot is never offered ExitPlanMode", () => {
+  const plan = { on: true, dirs: ["/Users/someone/.claude/plans"] };
+  for (const permission of ["read_only", "auto", "allow_all"] as const) {
+    const asked = decideAgentCall({ ...base, permission, plan, tool: "ExitPlanMode", input: { plan: "# 计划\n1. 写", planFilePath: "/Users/someone/.claude/plans/p.md" } });
+    expect(asked).toEqual({ kind: "ask", effect: false, appName: "ExitPlanMode", approval: { kind_key: "plan", target: "/Users/someone/.claude/plans/p.md", summary: "# 计划\n1. 写" } });
+  }
+  expect(decideAgentCall({ ...base, tool: "ExitPlanMode", input: { plan: "x" } }).kind).toBe("deny");
+  expect(decideAgentCall({ ...base, plan, tool: "EnterPlanMode", input: {} }).kind).toBe("deny");
+});

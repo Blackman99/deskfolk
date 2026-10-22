@@ -189,7 +189,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   -- A project session's (ADR 0095): its directory, agent, Claude account directory (null: the
   -- daemon's own), the agent's own session id once a run has one, the terminal session it was
   -- imported from, and the model and thinking level its runs ask for (null: the agent's own
-  -- default). Null on every other conversation.
+  -- default); project_mode is 'plan' while plan mode is on (ADR 0098). Null on every other
+  -- conversation.
   project_dir TEXT,
   project_agent TEXT,
   project_config_dir TEXT,
@@ -197,6 +198,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   project_source TEXT,
   project_model TEXT,
   project_effort TEXT,
+  project_mode TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

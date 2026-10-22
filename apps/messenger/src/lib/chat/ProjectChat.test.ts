@@ -479,3 +479,99 @@ test("a line of yours shows its picture in its bubble, and a click enlarges it",
   expect(host.querySelector(".msg-image-lightbox") === null).toBe(false);
   close();
 });
+
+test("plan mode is a switch in the composer, and Shift+Tab flips it as in the terminal", () => {
+  const { host, runtime, close } = open(null);
+  const toggle = host.querySelector<HTMLButtonElement>("[data-project-plan]");
+  expect(toggle?.getAttribute("aria-pressed")).toBe("false");
+  expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe(t.project.composerPlaceholder);
+  click(toggle);
+  press(host.querySelector("textarea"), "Tab", { shiftKey: true });
+  expect(tunes(runtime)).toEqual([["proj-1", { mode: "plan" }], ["proj-1", { mode: "plan" }]]);
+  close();
+
+  const session = aProjectSession({ project_mode: "plan" });
+  const on = fakeRuntime({ sessions: [session] });
+  const view = render(ProjectChat, { runtime: on, t, selected: session, onOpenArtifact: () => {} });
+  expect(view.host.querySelector("[data-project-plan]")?.getAttribute("aria-pressed")).toBe("true");
+  expect(view.host.querySelector("textarea")?.getAttribute("placeholder")).toBe(t.project.composerPlaceholderPlan);
+  click(view.host.querySelector("[data-project-plan]"));
+  expect(tunes(on)).toEqual([["proj-1", { mode: null }]]);
+  view.close();
+});
+
+test("the plan it asks you to approve is a card of its own: the plan as written, approve or keep planning", async () => {
+  const { host, runtime, close } = open(
+    anAgentRun({ status: "waiting_approval", approval: { kind_key: "plan", target: "/Users/a/.claude/plans/p.md", summary: "## 计划\n1. 改 **登录**" } }),
+  );
+  const card = host.querySelector("[data-plan-card]");
+  expect(card?.querySelector("h2")?.textContent).toBe("计划");
+  expect(card?.querySelector("strong")?.textContent).toBe("登录");
+  expect(card?.querySelector("pre")).toBeNull();
+  expect(host.querySelector('[data-line="working"] .stream-step')?.textContent).toBe(t.project.waitingPlan);
+  const byText = (text: string) => [...(card?.querySelectorAll("button") ?? [])].find((b) => b.textContent?.trim() === text);
+  click(byText(t.project.planApprove));
+  await settle();
+  click(byText(t.project.planKeep));
+  expect(runtime.calls.filter((c) => c.name === "answerAgentRun").map((c) => c.args)).toEqual([["run-1", true], ["run-1", false]]);
+  close();
+});
+
+const commands = [
+  { name: "clear", description: "Clear conversation history", argument_hint: "", aliases: ["reset"] },
+  { name: "compact", description: "Clear history but keep a summary", argument_hint: "<instructions>", aliases: [] },
+  { name: "context", description: "Show context usage", argument_hint: "", aliases: [] },
+  { name: "frontend-design:frontend-design", description: "Design guidance", argument_hint: "", aliases: [] },
+];
+
+function withCommands(stubs: Record<string, unknown> = {}) {
+  const view = open(null, stubs);
+  const asked: string[] = [];
+  (view.runtime as unknown as { client: unknown }).client = { projectCommands: async (id: string) => (asked.push(id), { commands, checked_at: "t", error: null }) };
+  return { ...view, asked, field: view.host.querySelector("textarea") as HTMLTextAreaElement };
+}
+
+const rows = (host: HTMLElement) => [...host.querySelectorAll<HTMLElement>("[data-project-commands] [role=option]")].map((row) => row.querySelector(".command-name")?.textContent);
+
+test("typing / lists Claude Code's commands that fit, asked once; ↑↓ move, Tab fills one in", async () => {
+  const { host, runtime, field, asked, close } = withCommands();
+  expect(host.querySelector("[data-project-commands]")).toBeNull();
+  fill(field, "/");
+  expect(host.querySelector("[data-project-commands]")?.textContent).toContain(t.project.commandsLoading);
+  await settle();
+  expect(rows(host)).toEqual(["/clear", "/compact", "/context", "/frontend-design:frontend-design"]);
+  fill(field, "/co");
+  expect(rows(host)).toEqual(["/compact", "/context"]);
+  expect(host.querySelector('[aria-selected="true"] .command-name')?.textContent).toBe("/compact");
+  press(field, "ArrowDown");
+  expect(host.querySelector('[aria-selected="true"] .command-name')?.textContent).toBe("/context");
+  expect(field.getAttribute("aria-activedescendant")).toBe("project-commands-proj-1-1");
+  press(field, "Tab");
+  await settle();
+  expect(runtime.sessionView("proj-1").draft).toBe("/context ");
+  // Past the command's word, the list is gone.
+  expect(host.querySelector("[data-project-commands]")).toBeNull();
+  // A plugin's command is found by the part after its colon; another name finds it too.
+  fill(field, "/front");
+  expect(rows(host)).toEqual(["/frontend-design:frontend-design"]);
+  fill(field, "/res");
+  expect(rows(host)).toEqual(["/clear"]);
+  expect(asked).toEqual(["proj-1"]);
+  close();
+});
+
+test("Enter runs the command picked; Esc closes the list and Enter then sends what you typed", async () => {
+  const drafts: string[] = [];
+  const { host, runtime, field, close } = withCommands({ send: () => { drafts.push(runtime.sessionView("proj-1").draft); return Promise.resolve(true); } });
+  fill(field, "/cont");
+  await settle();
+  press(field, "Enter");
+  expect(drafts).toEqual(["/context"]);
+  fill(field, "/zzz");
+  expect(host.querySelector("[data-project-commands]")?.textContent).toContain(t.project.commandsNone);
+  press(field, "Escape");
+  expect(host.querySelector("[data-project-commands]")).toBeNull();
+  press(field, "Enter");
+  expect(drafts).toEqual(["/context", "/zzz"]);
+  close();
+});
