@@ -208,6 +208,21 @@ test("linkifyWorkspacePaths and bodyMentionsPath", () => {
   expect(bodyMentionsPath("hello", "report.md")).toBe(false);
 });
 
+test("linkifyWorkspacePaths links a code span only when it is just a path", () => {
+  expect(linkifyWorkspacePaths("跑 `cat src/a.ts`，看 `src/a.ts`")).toBe("跑 `cat src/a.ts`，看 [src/a.ts](src/a.ts)");
+  expect(linkifyWorkspacePaths("跑 `open work/a.png` 和 work/a.png", ["work/a.png"])).toBe(
+    "跑 `open work/a.png` 和 [work/a.png](work/a.png)",
+  );
+  expect(linkifyWorkspacePaths("看 `docs/My Notes.md`")).toBe("看 `docs/My Notes.md`");
+  expect(linkifyWorkspacePaths("代码 `[x](y)` 照旧")).toBe("代码 `[x](y)` 照旧");
+});
+
+test("linkifyWorkspacePaths writes a known path with a space as a destination that parses", () => {
+  const path = "docs/My Notes.md";
+  expect(linkifyWorkspacePaths(`看 \`${path}\``, [path])).toBe(`看 [${path}](<${path}>)`);
+  expect(linkifyWorkspacePaths(`看 ${path} 吧`, [path, "Notes.md"])).toBe(`看 [${path}](<${path}>) 吧`);
+});
+
 
 
 test("stripSvgActiveContent removes scripts and handlers", () => {

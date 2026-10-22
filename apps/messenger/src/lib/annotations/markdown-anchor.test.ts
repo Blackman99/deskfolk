@@ -359,7 +359,7 @@ test("a document using most of Markdown pairs every character, and every one poi
     "",
     "    indented code",
     "",
-    "Text with inbox/report.md path and `docs/plan.md` code path.",
+    "Text with inbox/report.md path and `docs/plan.md` code path, and `cat src/a.ts` a command.",
     "",
     "***",
     "",

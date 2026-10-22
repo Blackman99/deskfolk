@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Code with a command and a path in it stays code in a message
+
+- Inline code that ran a command on a file, such as `` `tail -3 README.md` `` or `` `cat src/a.ts` ``, showed in a message as the literal `[tail -3 README.md](tail -3 README.md)`, with its code look gone. It now shows as code. Inline code that is only a path still becomes the file's link, and so does a file the message hands over whose name has a space in it, which used to show as that same bracketed text.
+
 ### A line sent while a project session's Claude Code works no longer leaves the run open
 
 - Sending a line while Claude Code was at work in a project session left that run working until you pressed Stop: Claude Code takes such a line into the step it is on and answers both with one result, while the app waited for a second. The app now reads which lines each result answers.

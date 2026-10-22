@@ -65,6 +65,20 @@ test("backticks and extraPaths become clickable artifact links", () => {
   expect(html).toContain('href="artifact:notes%2Fa.txt"');
 });
 
+test("a code span with a command in it stays code; one that is only a path still links", () => {
+  const html = renderMarkdown("跑 `tail -3 README.md` 和 `cat src/a.ts`，再看 `README.md`", { extraPaths: ["src/a.ts"] });
+  expect(html).toContain("<code>tail -3 README.md</code>");
+  expect(html).toContain("<code>cat src/a.ts</code>");
+  expect(html).toContain('href="artifact:README.md"');
+  expect(html).not.toContain("](");
+});
+
+test("a known path with a space links", () => {
+  const html = renderMarkdown("写了 docs/My Notes.md", { extraPaths: ["docs/My Notes.md"] });
+  const href = html.match(/href="([^"]+)"/)?.[1];
+  expect(parseArtifactHref(href ?? "")).toBe("docs/My Notes.md");
+});
+
 test("a path elsewhere on the Mac links like a workspace one; a route stays text", () => {
   const html = renderMarkdown("克隆到了 [~/my-projects/curio](~/my-projects/curio)，截图 `/Users/me/shots/hall.png`，页面 [首页](/Users/me/curio/index.html)，路由 `/sidebar` 和 [x](/sidebar)");
   const hrefs = [...html.matchAll(/href="([^"]+)"/g)].map((match) => parseArtifactHref(match[1]!));

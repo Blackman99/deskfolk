@@ -24,6 +24,7 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 					table: render('| a | b |\n|:-|-:|\n| 1 | 2 |'),
 					code: render('```ts\nconst a = 1;\n```'),
 					artifact: render('[shot](artifact:shots/a.png)'),
+					paths: renderMarkdown('跑 `tail -3 README.md`，看 `README.md` 和 docs/My Notes.md', { extraPaths: ['docs/My Notes.md'] }),
 					script: render('<script>alert(1)</script><p onclick="x()">hi</p>'),
 					image: render('<img src=x onerror=alert(1)>ok'),
 					js: render('[a](javascript:alert(1))'),
@@ -43,6 +44,10 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			expect(out.artifact).toContain('class="md-artifact-link"');
 			// The file's icon is added after the sanitizer, so it survives where a written <svg> does not.
 			expect(out.artifact).toMatch(/<a [^>]*class="md-artifact-link"[^>]*><svg class="md-artifact-icon"[^>]*data-icon="image"/);
+			// A command in code stays code; a lone path in code, and a known one with a space, become links.
+			expect(out.paths).toContain('<code>tail -3 README.md</code>');
+			expect(out.paths.match(/class="md-artifact-link"/g)).toHaveLength(2);
+			expect(out.paths).not.toContain('](');
 			for (const [name, html] of Object.entries(out)) {
 				expect(html, name).not.toMatch(/<script|<img|<svg><g|<math|onerror|onclick|onload|onmouseover|javascript:|style=|class="evil"/i);
 			}

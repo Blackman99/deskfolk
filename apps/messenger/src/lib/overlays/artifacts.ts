@@ -398,23 +398,40 @@ function splitFences(body: string): Array<{ text: string; fence: boolean }> {
 }
 
 function linkifyOutsideFences(text: string, known: string[]): string {
-  const protectedLinks: string[] = [];
-  let next = text.replace(/\[(?:[^\]]*)\]\((?:<[^>]+>|[^)\s]+)\)/g, (link) => {
-    const token = `\u0000L${protectedLinks.length}\u0000`;
-    protectedLinks.push(link);
-    return token;
-  });
+  const kept: string[] = [];
+  const keep = (piece: string) => {
+    kept.push(piece);
+    return `\u0000L${kept.length - 1}\u0000`;
+  };
+  let next = text.replace(/\[(?:[^\]]*)\]\((?:<[^>]+>|[^)\s]+)\)/g, keep);
+  // A code span is kept whole: one that is only a path becomes its link, any other — `cat src/a.ts` —
+  // stays code, and no path inside it is linked.
+  const cited = new Set<string>();
   next = next.replace(/`([^`\n]+)`/g, (full, inner: string) => {
-    if (!looksLikeWorkspaceHref(inner.trim())) return full;
-    return `[${inner.trim()}](${inner.trim()})`;
+    const path = inner.trim();
+    if (!codeIsPath(path, known)) return keep(full);
+    cited.add(path);
+    return keep(pathLink(path));
   });
   for (const path of known) {
-    if (!path || next.includes(`](${path})`)) continue;
+    if (!path || cited.has(path)) continue;
     const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const re = new RegExp(`(?<![\\w./-])${escaped}(?![\\w./-])`, "g");
-    next = next.replace(re, `[${path}](${path})`);
+    next = next.replace(re, () => keep(pathLink(path)));
   }
-  return next.replace(/\u0000L(\d+)\u0000/g, (_, i: string) => protectedLinks[Number(i)] ?? "");
+  const restore = (piece: string): string =>
+    piece.replace(/\u0000L(\d+)\u0000/g, (_, i: string) => restore(kept[Number(i)] ?? ""));
+  return restore(next);
+}
+
+/** A code span names a path when it is shaped like one and is one word, `README.md` not `tail -3 README.md`, or a known path. */
+function codeIsPath(code: string, known: string[]): boolean {
+  return looksLikeWorkspaceHref(code) && (!/\s/.test(code) || known.includes(code));
+}
+
+/** A destination with a space only parses inside `<…>`. */
+function pathLink(path: string): string {
+  return `[${path}](${/\s/.test(path) ? `<${path}>` : path})`;
 }
 
 const SVG_EVENT_ATTR = /(?:[\s/])on[a-z][a-z0-9_-]*\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>/]*)/gi;
