@@ -35,11 +35,12 @@ export function projectCommandsOf(sessionId: string): ProjectCommandsState | nul
 
 /**
  * The command you are typing: the word after a `/` that opens the line, while the caret is still in
- * it (lowercase, `""` for a bare `/`); null for any other line, or once the caret has moved past it.
+ * it (lowercase, `""` for a bare `/`); null for any other line — a path (`/Users/me`) among them —
+ * or once the caret has moved past it.
  */
 export function slashQuery(text: string, caret: number): string | null {
   const token = /^\/\S*/.exec(text)?.[0];
-  if (!token || caret < 1 || caret > token.length) return null;
+  if (!token || token.indexOf("/", 1) !== -1 || caret < 1 || caret > token.length) return null;
   return token.slice(1).toLowerCase();
 }
 

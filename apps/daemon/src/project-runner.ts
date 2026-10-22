@@ -130,9 +130,12 @@ function targetText(place: AgentRunToolInfo["place"]): string | undefined {
   return undefined;
 }
 
-/** The slash command a line runs, by its name (`/compact keep the tests` runs `compact`); null for any other line. */
+/**
+ * The slash command a line runs, by its name (`/compact keep the tests` runs `compact`); null for
+ * any other line, a path included (`/Users/me/a.ts 看一下`).
+ */
 function commandOf(content: LineContent): string | null {
-  return typeof content === "string" ? (/^\/([^\s/]+)/.exec(content.trim())?.[1] ?? null) : null;
+  return typeof content === "string" ? (/^\/([^\s/]+)(?=\s|$)/.exec(content.trim())?.[1] ?? null) : null;
 }
 
 function firstLine(text: string): string | null {

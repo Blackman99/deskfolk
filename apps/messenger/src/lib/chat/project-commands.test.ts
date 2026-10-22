@@ -13,6 +13,9 @@ test("a command is the first word of the line after its slash, while the caret i
   expect(slashQuery(" /compact", 3)).toBeNull();
   expect(slashQuery("看 /compact", 5)).toBeNull();
   expect(slashQuery("", 0)).toBeNull();
+  // A path is not a command.
+  expect(slashQuery("/Users/me", 9)).toBeNull();
+  expect(slashQuery("/tmp/", 5)).toBeNull();
 });
 
 test("the best fits come first: a name or another name it goes by starting so, then the rest that have it", () => {

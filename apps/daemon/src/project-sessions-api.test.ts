@@ -768,7 +768,7 @@ test("plan mode switched mid-run reaches Claude Code at its next step; Claude Co
 });
 
 test("a slash command goes to Claude Code as typed; one that answers nothing still says it ran", async () => {
-  const h = start(async ({ line }) => (line.startsWith("/") ? (line === "/context" ? "## Context Usage" : "") : `答：${line}`));
+  const h = start(async ({ line }) => (line === "/context" ? "## Context Usage" : /^\/[^\s/]+(\s|$)/.test(line) ? "" : `答：${line}`));
   const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
   await h.say(id, "/compact 留下测试相关的");
   await h.until(async () => (await h.run(id))?.status === "completed");
@@ -784,6 +784,11 @@ test("a slash command goes to Claude Code as typed; one that answers nothing sti
     { kind: "bot", author: "agent", body: "## Context Usage" },
     { kind: "system", author: "app", body: "已执行 /clear：Claude Code 从空的上下文重新开始，这里的记录还在" },
   ]);
+  // A path is not a command: it names the session, and its answer is Claude Code's.
+  await h.say(id, "/tmp/notes.md 看一下");
+  await h.until(async () => h.lines(id).length === 8);
+  expect(h.store.getSession(id).name).toBe("/tmp/notes.md 看一下");
+  expect(h.lines(id).at(-1)).toEqual({ kind: "bot", author: "agent", body: "答：/tmp/notes.md 看一下" });
 });
 
 test("typing / lists the session's commands, asked of Claude Code in its directory under its account", async () => {
