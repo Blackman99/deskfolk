@@ -2,7 +2,7 @@
  * A project session's agent (ADR 0095): your own Claude Code in the session's directory, as in its
  * desktop app, with no Bot. The app keeps two things: every tool goes through the app's permission
  * mode (`decideAgentCall`, an approval card under ask first), and Stop ends the run and what it
- * started. In plan mode (ADR 0098) it changes nothing but its plan, and the plan is a card of its
+ * started. In plan mode (ADR 0098) it writes no file but its plan, and the plan is a card of its
  * own: approved, it gets to work; not, it keeps planning. Nothing else of a Bot's turn runs: no jobs, organizer, end contract or supervisor. The
  * agent keeps the history itself — the first run starts or branches its session, every later one
  * resumes it — so a run is sent only your new line, with its pictures.

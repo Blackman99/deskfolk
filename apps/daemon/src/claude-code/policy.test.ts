@@ -291,16 +291,18 @@ posixTest("plan mode changes nothing but the plan: its file is written in every 
   if (named.kind === "deny") expect(named.reason).toContain("saved plans open with Read");
 });
 
-posixTest("plan mode: a command asks even where the mode would run it, and read-only still refuses it", () => {
+posixTest("plan mode: a command goes by the permission mode, as with plan mode off", () => {
   const plan = { on: true, dirs: [join(home, ".claude", "plans")] };
-  for (const permission of ["ask_first", "auto", "allow_all"] as const) {
-    const asked = decideAgentCall({ ...base, permission, plan, tool: "Bash", input: { command: "git log --oneline" } });
-    expect([permission, asked.kind]).toEqual([permission, "ask"]);
+  for (const on of [true, false]) {
+    for (const permission of ["auto", "allow_all"] as const) {
+      expect(decideAgentCall({ ...base, permission, plan: { ...plan, on }, tool: "Bash", input: { command: "git log --oneline" } }))
+        .toEqual({ kind: "allow", effect: true, appName: "shell", target: "git log --oneline" });
+    }
+    const asked = decideAgentCall({ ...base, permission: "ask_first", plan: { ...plan, on }, tool: "Bash", input: { command: "git log --oneline" } });
+    expect(asked.kind).toBe("ask");
     if (asked.kind === "ask") expect(asked.approval).toEqual({ kind_key: "shell", target: root, summary: "shell git log --oneline" });
+    expect(decideAgentCall({ ...base, permission: "read_only", plan: { ...plan, on }, tool: "Bash", input: { command: "git log --oneline" } }).kind).toBe("deny");
   }
-  expect(decideAgentCall({ ...base, permission: "read_only", plan, tool: "Bash", input: { command: "git log --oneline" } }).kind).toBe("deny");
-  // Off, a command runs by the mode again.
-  expect(decideAgentCall({ ...base, plan: { ...plan, on: false }, tool: "Bash", input: { command: "git log --oneline" } }).kind).toBe("allow");
   // Reads and the to-do list are not changes.
   expect(decideAgentCall({ ...base, plan, tool: "Grep", input: { pattern: "x", path: root } }).kind).toBe("allow");
   expect(decideAgentCall({ ...base, plan, tool: "TodoWrite", input: {} }).kind).toBe("allow");

@@ -5,7 +5,8 @@
  * refusal, nothing outside a short list of Claude Code's tools, nothing in the background, and
  * never Claude Code's own credentials — though a project session's file tools reach its memory of
  * that project and its saved plans, which live among them. A project session in plan mode (ADR
- * 0098) changes nothing but its plan until you approve it. Pure: everything it needs is passed in,
+ * 0098) writes no file but its plan until you approve it; its commands go by the permission mode,
+ * as at any other time. Pure: everything it needs is passed in,
  * so the rules are tested on their own — the Windows ones too, on a fake disk (`host`).
  */
 import { existsSync } from "node:fs";
@@ -125,9 +126,8 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
     if (hit) return { kind: "deny", reason: searchGuardMessage(hit) };
     // Claude Code's Bash on Windows is Git Bash, so `/c/Users/…` is read as Git Bash reads it.
     const classified = classifyShell(call.workspace, command, call.cwd, host, platform === "win32" ? "bash" : undefined);
-    // In plan mode a command asks even where the mode lets it run: which commands only look is not
-    // the app's to guess, and nothing may change before you approve the plan.
-    return gateChange(call.plan?.on && call.permission !== "read_only" ? "ask_first" : call.permission,
+    // Plan mode too: Claude Code's plan mode is what keeps its commands to looking.
+    return gateChange(call.permission,
       { kind: "allow", effect: true, appName, target: command },
       { kind_key: SHELL_KIND, target: classified.cwdAbs, summary: `${SHELL_KIND} ${command}` });
   }

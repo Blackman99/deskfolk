@@ -692,9 +692,7 @@ test("plan mode: runs start in it, change nothing but the plan, and the plan is 
   expect(h.events.some((event) => event.event === "session.upsert" && event.id === id && event.project_mode === "plan")).toBe(true);
 
   await h.say(id, "开始");
-  // The command asks even under auto, where it would have run: nothing changes before the plan is approved.
-  await h.until(async () => (await h.run(id))?.approval?.kind_key === "shell");
-  await h.call("POST", `/v1/agent-runs/${(await h.run(id))!.id}/approve`);
+  // The command runs under auto with no card, as it would with plan mode off: only the plan is one.
   await h.until(async () => (await h.run(id))?.approval?.kind_key === "plan");
   const waiting = (await h.run(id))!;
   expect(h.seen.options[0]!.permissionMode).toBe("plan");
@@ -704,6 +702,7 @@ test("plan mode: runs start in it, change nothing but the plan, and the plan is 
   await h.until(async () => (await h.run(id))?.status === "completed");
 
   expect(outcomes).toEqual([["write", false], ["command", true], ["plan file", true], ["plan", true], ["after", true]]);
+  expect([...new Set(h.events.flatMap((event) => event.event === "agent_run.upsert" && event.approval ? [event.approval.kind_key] : []))]).toEqual(["plan"]);
   // Approved: Claude Code leaves plan mode, and so does the session.
   expect(h.seen.verdicts.find((verdict) => verdict.name === "ExitPlanMode")).toEqual({ name: "ExitPlanMode", behavior: "allow",
     updatedPermissions: [{ type: "setMode", mode: "default", destination: "session" }] });

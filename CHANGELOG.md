@@ -16,7 +16,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ### A project session has plan mode and Claude Code's slash commands
 
-- The composer has a Plan switch (Shift+Tab flips it, as in the terminal). With it on, Claude Code looks around and writes a plan, and changes nothing until you approve it: the plan comes as a card of its own, drawn as markdown, with Approve and start and Keep planning; a line you send while it waits says what to change. Approving turns plan mode off and Claude Code gets to work under the app's permission mode. While it plans, only its plan file is written, other writes are refused, and every command asks first (read-only still refuses them).
+- The composer has a Plan switch (Shift+Tab flips it, as in the terminal). With it on, Claude Code looks around and writes a plan, and changes nothing until you approve it: the plan comes as a card of its own, drawn as markdown, with Approve and start and Keep planning; a line you send while it waits says what to change. Approving turns plan mode off and Claude Code gets to work under the app's permission mode. While it plans, only its plan file is written and other writes are refused; commands go by the permission mode, as at any other time.
 - Typing `/` at the start of a line lists the session's commands above the composer: Claude Code's own, your skills and plugin commands, and the project's. ↑↓ move, Tab fills one in, Enter runs it, Esc closes. A command that answers nothing, such as `/compact` or `/clear`, leaves a line saying it ran. ([ADR 0098](docs/adr/0098-plan-mode-and-commands-in-project-sessions.md))
 
 ### The panes other than the current one dim, instead of a frame round it
