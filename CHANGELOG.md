@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Clicking into the other pane's composer lets you type
+
+- With two conversations side by side, clicking into the other pane's composer often left nothing focused, so what you typed went nowhere until you clicked again; every other switch between the panes did it, in a Bot's conversation and in a project session alike. The composer you click now keeps the focus, and the caret stays where you clicked.
+
 ### A project session's conversation scrolls on under its composer
 
 - In a project session the conversation, and its scrollbar, stopped above the composer, so in the Mac window the scrollbar ended well short of the bottom and looked as if it could not scroll to the end. The composer now floats over the conversation as it does in a Bot's: the conversation and its scrollbar run to the bottom, the last line still clears the composer, and the composer keeps its margin off the scrollbar. In a conversation as narrow as a phone the composer still docks below it.

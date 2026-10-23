@@ -17,6 +17,7 @@ const navigations: string[] = [];
 const navigationModes: Array<"push" | "replace"> = [];
 const entries: string[] = ["/"];
 let beforeNavigation: (navigation: { type: string; delta?: number; cancel: () => void }) => void;
+let afterNavigation: (navigation: { type: string }) => void;
 let settingsBackHandled = false;
 let settingsBackCalls = 0;
 /** What the stub Shell's chain closes when it answers a Back. */
@@ -25,6 +26,7 @@ let mountRealShell = false;
 mock.module("$app/state", () => ({ page }));
 mock.module("$app/navigation", () => ({
   beforeNavigate(callback: typeof beforeNavigation) { beforeNavigation = callback; },
+  afterNavigate(callback: typeof afterNavigation) { afterNavigation = callback; },
   async goto(target: string, opts?: { replaceState?: boolean }) {
     navigations.push(target);
     navigationModes.push(opts?.replaceState ? "replace" : "push");
@@ -299,6 +301,56 @@ test('opening a screen pushes, closing it walks back, and a deep link rewrites i
     expect(entries).toEqual(['/?s=direct-1']);
   } finally {
     window.history.back = previousBack;
+  }
+});
+
+/*
+ * Switching to the conversation underneath — the other pane of a split — is a step back the page
+ * takes itself, and SvelteKit drops focus on every popstate. The click that switched had just put
+ * the caret in that pane's composer, so every other switch left you typing into nothing
+ * (2026-10-23). The page gives it back, as the `goto` beside it keeps it.
+ */
+test('switching back to the conversation underneath keeps the field the click focused', async () => {
+  page.url = new URL('http://localhost/');
+  entries.length = 0;
+  entries.push('/');
+  navigationModes.length = 0;
+  globalThis.WebSocket = Socket as unknown as typeof WebSocket;
+  globalThis.fetch = localApiFetch({
+    port: 17893,
+    snapshot: () => ({ ...emptySnapshot(), ...cursor, bots: [aBot()], sessions: [aDirect(), aDirect({ id: 'direct-2' })] }),
+    handle: (path) => (path.includes('/snapshot') ? { ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] } : undefined),
+  });
+  const field = document.createElement('textarea');
+  document.body.append(field);
+  const previousBack = window.history.back;
+  // A real Back as SvelteKit walks it: the page hears it first, then focus goes to the body.
+  window.history.back = () => {
+    beforeNavigation({ type: 'popstate', delta: -1, cancel: () => {} });
+    (document.activeElement as HTMLElement | null)?.blur();
+    entries.pop();
+    page.url = new URL(entries[entries.length - 1]!, page.url);
+    flushSync();
+    afterNavigation({ type: 'popstate' });
+  };
+  try {
+    close = render(Page, {}).close;
+    const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
+    await until(() => runtime.connection === 'connected');
+    await runtime.selectSession('direct-1');
+    await until(() => page.url.searchParams.get('s') === 'direct-1');
+    await runtime.selectSession('direct-2');
+    await until(() => page.url.searchParams.get('s') === 'direct-2');
+    expect(entries).toEqual(['/', '/?s=direct-1', '/?s=direct-2']);
+
+    field.focus();
+    await runtime.selectSession('direct-1');
+    await until(() => page.url.searchParams.get('s') === 'direct-1');
+    expect(entries).toEqual(['/', '/?s=direct-1']);
+    await until(() => document.activeElement === field);
+  } finally {
+    window.history.back = previousBack;
+    field.remove();
   }
 });
 

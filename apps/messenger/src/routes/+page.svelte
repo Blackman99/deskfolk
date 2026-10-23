@@ -1,7 +1,7 @@
 <script lang="ts">
 	import BrandMark from '$lib/BrandMark.svelte';
 	import { onMount, untrack } from 'svelte';
-	import { beforeNavigate, goto } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { copyFor } from '$lib/copy';
 	import { MessengerRuntime } from '$lib/runtime.svelte';
@@ -19,21 +19,26 @@
 	import { planUrlNavigation, routeStep, stackAfter } from '$lib/mobile-route';
 	import { HOSTED_MESSENGER } from '$lib/remote/mode';
 	import { armBackFloor } from '$lib/back-floor';
+	import { keptFocus } from '$lib/kept-focus';
 	import PairingScreen from '$lib/remote/PairingScreen.svelte';
 	import { updateChecker } from '$lib/update-checker.svelte';
 	import Shell from '$lib/Shell.svelte';
 
 	let shell = $state<Shell>();
+	const focusKept = keptFocus();
 beforeNavigate((navigation) => {
+	focusKept.drop();
 	// Back walks the app's own stack of screens before it walks history; see mobile-route.ts.
 	if (navigation.type !== 'popstate') {
 		cancelledBack = false;
 		return;
 	}
 	// A step this page asked for is not the person pressing Back, so the chain stays out of it.
+	// Nor does it lose focus, as its `goto` would not: see kept-focus.ts.
 	if (selfBack) {
 		selfBack = false;
 		cancelledBack = false;
+		focusKept.hold();
 		return;
 	}
 	if ((navigation.delta ?? 0) < 0) {
@@ -50,6 +55,8 @@ beforeNavigate((navigation) => {
 	}
 	// A forward step is the restore that cancel just asked for; it is not an answer to anything.
 });
+
+afterNavigate(() => focusKept.restore());
 
 const runtime = new MessengerRuntime();
 	if (typeof window !== 'undefined') {
