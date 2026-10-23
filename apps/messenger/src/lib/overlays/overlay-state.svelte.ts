@@ -1,4 +1,4 @@
-import type { Attachment, BuiltinModelRole } from "@real-bot/protocol";
+import type { Attachment, BuiltinModelRole, ProjectAgent } from "@real-bot/protocol";
 import type { MessengerApi } from "../messenger-api.ts";
 import type { SessionView } from "../session-view.svelte.ts";
 import type { UrlOverlay } from "../session-url.ts";
@@ -69,6 +69,8 @@ export class OverlayState {
   createProjectOpen = $state(false);
   /** What the project sheet is for (ADR 0095): a new session in a directory, or carrying a terminal session on. */
   createProjectMode = $state<"new" | "import">("new");
+  /** The agent the project sheet opens on (ADR 0099): the one whose "new" was chosen. */
+  createProjectAgent = $state<ProjectAgent>("claude_code");
   createGroupOpen = $state(false);
   sessionSettingsOpen = $state(false);
   /** The job whose trace is open. Null while closed; an empty string asks for the session's latest. */
@@ -118,10 +120,11 @@ export class OverlayState {
     this.createBotOpen = true;
   }
 
-  openCreateProject(mode: "new" | "import" = "new"): void {
+  openCreateProject(mode: "new" | "import" = "new", agent: ProjectAgent = "claude_code"): void {
     this.openCreateBot();
     this.createBotOpen = false;
     this.createProjectMode = mode;
+    this.createProjectAgent = agent;
     this.createProjectOpen = true;
   }
 

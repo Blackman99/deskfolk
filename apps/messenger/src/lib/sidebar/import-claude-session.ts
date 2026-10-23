@@ -1,4 +1,4 @@
-import type { ClaudeCodeSessionListing, CreateProjectSessionRequest } from "@real-bot/protocol";
+import type { ClaudeCodeSessionListing, CreateProjectSessionRequest, ProjectAgent } from "@real-bot/protocol";
 import { formatListTime } from "./list-time.ts";
 
 /** The home directory as `~`, so a path reads the way a terminal shows it. */
@@ -25,7 +25,7 @@ export function importRequest(session: ClaudeCodeSessionListing): CreateProjectS
   return { agent: "claude_code", import: { session_id: session.session_id, config_dir: session.config_dir } };
 }
 
-/** The request for a new project session in a typed or picked directory. */
-export function newProjectRequest(dir: string): CreateProjectSessionRequest {
-  return { agent: "claude_code", dir: dir.trim() };
+/** The request for a new project session of an agent in a typed or picked directory. */
+export function newProjectRequest(dir: string, agent: ProjectAgent = "claude_code"): CreateProjectSessionRequest {
+  return { agent, dir: dir.trim() };
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import type { ClaudeCodeSessionListing, ProjectAgent } from '@real-bot/protocol';
+	import { onMount, untrack } from 'svelte';
+	import { PROJECT_AGENT_CAPS, type ClaudeCodeSessionListing, type ProjectAgent } from '@real-bot/protocol';
 	import Icon from '../Icon.svelte';
 	import AgentLogo from '../settings/AgentLogo.svelte';
 	import { backdropClick } from '../click-outside.ts';
@@ -14,20 +14,24 @@
 	/**
 	 * A project session (ADR 0095), in one of two errands: `new` picks the agent, then a directory
 	 * to start in; `import` picks the agent, then a terminal session to carry on, by the directory
-	 * it ran in. Mounted only while open, so a fresh mount is the reset.
+	 * it ran in. Only Claude Code's terminal sessions can be carried on so far (ADR 0099): the import
+	 * sheet offers the agents that can. Mounted only while open, so a fresh mount is the reset.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
 		t: Copy;
 		mode?: 'new' | 'import';
+		/** The agent it opens on: the one whose "new" was chosen. */
+		agent?: ProjectAgent;
 		onClose: () => void;
 	};
 
-	let { runtime, t, mode = 'new', onClose }: Props = $props();
+	let { runtime, t, mode = 'new', agent: openedOn = 'claude_code', onClose }: Props = $props();
 	/** A click outside closes the sheet; a text-selection drag that starts inside never does. */
 	const backdrop = backdropClick();
 
-	let agent = $state<ProjectAgent>(PROJECT_AGENTS[0]!);
+	const agents = $derived(PROJECT_AGENTS.filter((each) => mode === 'new' || PROJECT_AGENT_CAPS[each].importable));
+	let agent = $state<ProjectAgent>(untrack(() => (agents.includes(openedOn) ? openedOn : agents[0]!)));
 	/** The terminal sessions, read once; enough of them that a directory from last week still shows. */
 	let items = $state<ClaudeCodeSessionListing[] | null>(null);
 	let loadFailed = $state(false);
@@ -77,7 +81,7 @@
 			<div class="modal-section" data-project-agents>
 				<span class="field-head">{t.project.agentHead}</span>
 				<div class="agent-tiles" role="radiogroup" aria-label={t.project.agentHead}>
-					{#each PROJECT_AGENTS as each (each)}
+					{#each agents as each (each)}
 						<button
 							type="button"
 							class="agent-tile"
@@ -88,7 +92,7 @@
 							onclick={() => (agent = each)}
 						>
 							<AgentLogo runner={each} size={20} />
-							<span>{t.project.agentName}</span>
+							<span>{t.project.agentNames[each]}</span>
 						</button>
 					{/each}
 				</div>

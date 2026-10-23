@@ -24,7 +24,7 @@
 	import ProjectSessionRow from './ProjectSessionRow.svelte';
 	import ProjectAddMenu from './ProjectAddMenu.svelte';
 	import { newProjectIn, newProjectInFolder } from './project-actions.ts';
-	import { dirDisplay, groupProjectSessions, isLiveRun, liveRunSessionIds, projectAgentOf } from './project-groups.ts';
+	import { dirDisplay, groupProjectSessions, isLiveRun, liveRunSessionIds, PROJECT_AGENTS, projectAgentOf } from './project-groups.ts';
 	import { flip } from 'svelte/animate';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from '../reduced-motion.ts';
@@ -190,9 +190,12 @@
 	function toggleDir(dir: string): void {
 		openDirs = { ...openDirs, [dir]: !dirOpen(dir) };
 	}
-	/** The section's +: a new session in a folder, or a terminal session carried on (ADR 0095). */
+	/** The section's +: a new session of each agent in a folder, or a terminal session carried on (ADR 0095, ADR 0099). */
 	let projectMenuOpen = $state(false);
 	let projectAddEl = $state<HTMLButtonElement | null>(null);
+	/** A directory's +: a new session of each agent right there. */
+	let dirMenuOpen = $state(false);
+	let dirMenuFor = $state<{ dir: string; label: string; anchor: HTMLElement } | null>(null);
 
 	$effect(() => {
 		if (typeof window.matchMedia !== 'function') return;
@@ -514,8 +517,20 @@
 				{t}
 				anchor={projectAddEl}
 				bind:open={projectMenuOpen}
-				onNew={() => void newProjectInFolder(runtime, t)}
+				label={t.project.add}
+				picksFolder
+				onNew={(agent) => void newProjectInFolder(runtime, t, agent)}
 				onImport={() => runtime.openCreateProject('import')}
+			/>
+			<ProjectAddMenu
+				{t}
+				anchor={dirMenuFor?.anchor ?? null}
+				bind:open={dirMenuOpen}
+				label={dirMenuFor ? t.project.newHere(dirMenuFor.label) : t.project.add}
+				picksFolder={false}
+				onNew={(agent) => {
+					if (dirMenuFor) void newProjectIn(runtime, dirMenuFor.dir, agent);
+				}}
 			/>
 			{#each projectGroups as group (group.dir)}
 				{@const open = dirOpen(group.dir)}
@@ -535,14 +550,21 @@
 							<span class="project-dir-name">{group.label}</span>
 							{#if !open && dirLive}<span class="project-dir-live" aria-hidden="true"></span>{/if}
 						</button>
-						<!-- A new session right here, as in the agents' own apps: the directory is already the answer. -->
+						<!-- A new session right here, as in the agents' own apps: the directory is already the answer; which agent is the one question left. -->
 						<button
 							type="button"
 							class="project-dir-add"
 							title={t.project.newHere(group.label)}
 							aria-label={t.project.newHere(group.label)}
+							aria-haspopup="menu"
+							aria-expanded={dirMenuOpen && dirMenuFor?.dir === group.dir}
 							data-project-dir-add
-							onclick={() => void newProjectIn(runtime, group.dir)}
+							onclick={(event) => {
+								const anchor = event.currentTarget as HTMLElement;
+								const again = dirMenuOpen && dirMenuFor?.dir === group.dir;
+								dirMenuFor = { dir: group.dir, label: group.label, anchor };
+								dirMenuOpen = !again;
+							}}
 						>
 							<Icon name="plus" size={16} />
 						</button>
@@ -582,7 +604,9 @@
 			{/if}
 			{#if projectsEmpty}
 				<EmptyState size="inline" level={3} title={t.project.emptyList} hint={t.project.emptyListHint}>
-					<button type="button" class="roster-empty-btn is-primary" data-project-add="new" onclick={() => void newProjectInFolder(runtime, t)}>{t.project.newInFolder}</button>
+					{#each PROJECT_AGENTS as agent, index (agent)}
+						<button type="button" class="roster-empty-btn" class:is-primary={index === 0} data-project-add="new" data-project-agent={agent} onclick={() => void newProjectInFolder(runtime, t, agent)}>{t.project.newWith(t.project.agentNames[agent])}…</button>
+					{/each}
 					<button type="button" class="roster-empty-btn" data-project-add="import" onclick={() => runtime.openCreateProject('import')}>{t.project.importSession}</button>
 				</EmptyState>
 			{/if}

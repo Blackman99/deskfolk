@@ -1,4 +1,4 @@
-import { ANNOTATION_REMOTE_CROP_BASE64_MAX, BOT_RUNNERS, BUILTIN_MODEL_ROLES, CLAUDE_EFFORTS, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, PERMISSION_MODES, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
+import { ANNOTATION_REMOTE_CROP_BASE64_MAX, BOT_RUNNERS, BUILTIN_MODEL_ROLES, CLAUDE_EFFORTS, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, PERMISSION_MODES, PROJECT_AGENTS, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
 import type { RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 import { isUlid } from "../ids";
@@ -58,7 +58,7 @@ add("PUT", "runtime/claude-code/accounts", { config_dirs: list(string) }, ["conf
 // Project sessions (ADR 0095): your terminal Claude Code sessions to carry on, a new or imported
 // session, its newest run, where a path its agent cites is, and your answer or Stop on a run.
 get("runtime/claude-code/sessions", { limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) });
-add("POST", "project-sessions", { agent: one("claude_code"), dir: string, config_dir: nullable(string),
+add("POST", "project-sessions", { agent: one(...PROJECT_AGENTS), dir: string, config_dir: nullable(string),
   import: object({ session_id: string, config_dir: nullable(string) }, ["session_id"]) });
 get("project-sessions/:id/(run|replay|commands)");
 get("project-sessions/:id/locate", { path: string }, ["path"]);

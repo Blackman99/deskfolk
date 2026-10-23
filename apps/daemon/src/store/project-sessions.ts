@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { isProjectAgentMode, USER_MEMBER, type AgentRun, type AgentRunApproval, type AgentRunStatus, type Message, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
+import { isProjectAgent, isProjectAgentMode, USER_MEMBER, type AgentRun, type AgentRunApproval, type AgentRunStatus, type Message, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
 import type { ClaudeSessionRead } from "../claude-code/sessions";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
@@ -79,7 +79,7 @@ export function projectOf(ctx: StoreContext, sessionId: string): ProjectOf | nul
     )
     .get(sessionId);
   if (!row || row.kind !== "project" || !row.project_dir) return null;
-  return { dir: row.project_dir, agent: (row.project_agent ?? "claude_code") as ProjectAgent, configDir: row.project_config_dir,
+  return { dir: row.project_dir, agent: isProjectAgent(row.project_agent) ? row.project_agent : "claude_code", configDir: row.project_config_dir,
     agentSession: row.project_agent_session, source: row.project_source, model: row.project_model,
     effort: row.project_effort, mode: isProjectAgentMode(row.project_mode) ? row.project_mode : null };
 }

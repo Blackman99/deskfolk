@@ -25,7 +25,7 @@
 	<div class="plan-head">
 		<Icon name="list" size={12} />
 		<span>{t.project.planHead}</span>
-		<span class="plan-who">{t.project.agentName}</span>
+		<span class="plan-who">{t.project.agentNames.claude_code}</span>
 	</div>
 	<div class="plan-body">
 		{#if approval.summary.trim()}

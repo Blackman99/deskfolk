@@ -1,4 +1,4 @@
-import { isAgentModelName, isClaudeEffort, isProjectAgentMode, type CreateProjectSessionRequest, type ProjectAgentMode } from "@real-bot/protocol";
+import { AGENT_KINDS, isAgentEffort, isAgentModelName, isProjectAgent, isProjectAgentMode, PROJECT_AGENT_CAPS, PROJECT_AGENTS, type AgentReplay, type CreateProjectSessionRequest, type ProjectAgentMode } from "@real-bot/protocol";
 import { homedir } from "node:os";
 import { readAgentReplay } from "../../claude-code/replay";
 import { carryClaudeSession, claudeSessionRoots, findClaudeSessionFile, readClaudeSession } from "../../claude-code/sessions";
@@ -15,11 +15,15 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
   let params: ReturnType<typeof matchPath>;
 
   // A new session in a directory, or one carrying a terminal session on: only an account directory
-  // the listing reads is looked in, and the session must be there.
+  // the listing reads is looked in, and the session must be there. Codex sessions (ADR 0099) are
+  // only started here, on the daemon's own Codex account.
   if (method === "POST" && path === "/v1/project-sessions") {
     const body = (input.body ?? {}) as CreateProjectSessionRequest;
     const agent = body.agent ?? "claude_code";
-    if (agent !== "claude_code") throw new HttpError(422, "invalid_args", "only claude_code runs a project session for now");
+    if (!isProjectAgent(agent)) throw new HttpError(422, "invalid_args", `agent must be one of ${PROJECT_AGENTS.join(", ")}`);
+    const caps = PROJECT_AGENT_CAPS[agent];
+    if (body.import && !caps.importable) throw new HttpError(422, "invalid_args", "only a Claude Code session can be carried on from a terminal for now");
+    if (body.config_dir != null && !caps.accounts) throw new HttpError(422, "invalid_args", "only a Claude Code session picks an account");
     const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
     const locale = store.settingsCached().locale;
     let created;
@@ -58,6 +62,11 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
   if (params && method === "GET") {
     const project = store.projectOf(params.id!);
     if (!project) throw new HttpError(404, "not_found", "not a project session");
+    // An agent with no replay yet (Codex, ADR 0099) has nothing read back: the map draws its runs live.
+    if (!PROJECT_AGENT_CAPS[project.agent].replay) {
+      const empty: AgentReplay = { session_id: params.id!, agent_session: project.agentSession, source_session: null, calls: [], subagents: [], said: [] };
+      return jsonResponse(empty, 200, null);
+    }
     const configDirs = store.claudeCodeConfigDirs();
     const root = claudeSessionRoots(configDirs).find((entry) => entry.configDir === project.configDir) ?? claudeSessionRoots(configDirs)[0]!;
     const fileOf = (id: string | null) => (id ? findClaudeSessionFile(root, id) : null);
@@ -73,6 +82,8 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
   if (params && method === "GET" && options.claudeCommands) {
     const project = store.projectOf(params.id!);
     if (!project) throw new HttpError(404, "not_found", "not a project session");
+    // Only Claude Code is asked: another agent's session has no `/` list (ADR 0099).
+    if (!PROJECT_AGENT_CAPS[project.agent].commands) return jsonResponse({ commands: [], checked_at: new Date().toISOString(), error: null }, 200, null);
     return options.claudeCommands.list(project.configDir, project.dir).then((list) => jsonResponse(list, 200, null));
   }
 
@@ -95,6 +106,9 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
   params = matchPath(path, "/v1/project-sessions/:id");
   if (params && method === "PATCH") {
     const body = (input.body ?? {}) as { model?: unknown; effort?: unknown; mode?: unknown; config_dir?: unknown };
+    const project = store.projectOf(params.id!);
+    if (!project) throw new HttpError(404, "not_found", "not a project session");
+    const caps = PROJECT_AGENT_CAPS[project.agent];
     const change: { model?: string | null; effort?: string | null; mode?: ProjectAgentMode | null; configDir?: string | null } = {};
     if (body.model !== undefined) {
       const model = typeof body.model === "string" ? body.model.trim() : body.model;
@@ -104,16 +118,18 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
       change.model = model;
     }
     if (body.effort !== undefined) {
-      if (body.effort !== null && !isClaudeEffort(body.effort)) throw new HttpError(422, "invalid_args", "effort must be low, medium, high, xhigh, max or null");
+      if (body.effort !== null && !isAgentEffort(project.agent, body.effort)) {
+        throw new HttpError(422, "invalid_args", `effort must be ${AGENT_KINDS[project.agent].efforts.join(", ")} or null`);
+      }
       change.effort = body.effort;
     }
     if (body.mode !== undefined) {
+      if (!caps.plan) throw new HttpError(422, "invalid_args", "only a Claude Code session has plan mode");
       if (body.mode !== null && !isProjectAgentMode(body.mode)) throw new HttpError(422, "invalid_args", "mode must be plan or null");
       change.mode = body.mode;
     }
     if (body.config_dir !== undefined) {
-      const project = store.projectOf(params.id!);
-      if (!project) throw new HttpError(404, "not_found", "not a project session");
+      if (!caps.accounts) throw new HttpError(422, "invalid_args", "only a Claude Code session picks an account");
       const configDir = body.config_dir;
       const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
       const to = roots.find((root) => root.configDir === configDir);

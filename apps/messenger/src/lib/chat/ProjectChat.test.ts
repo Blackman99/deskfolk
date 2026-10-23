@@ -79,7 +79,7 @@ test("a run waiting on you shows the approval card and answers it", async () => 
     anAgentRun({ status: "waiting_approval", approval: { kind_key: "bash", target: "rm -rf dist", summary: "Bash: rm -rf dist" } }),
   );
   expect(host.querySelector("[data-agent-approval] pre")?.textContent).toBe("Bash: rm -rf dist");
-  expect(host.querySelector('[data-line="working"] .stream-step')?.textContent).toBe(t.project.waiting);
+  expect(host.querySelector('[data-line="working"] .stream-step')?.textContent).toBe(t.project.waiting("Claude Code"));
   const byText = (text: string) => [...host.querySelectorAll("[data-agent-approval] button")].find((b) => b.textContent?.trim() === text);
   click(byText(t.project.allow));
   await settle();
@@ -126,7 +126,7 @@ test("one picker holds the model and its thinking level: the session's path open
   const trigger = tuneTrigger(host);
   expect(trigger?.textContent).toContain(t.project.modelDefault);
   expect(trigger?.textContent).toContain(t.project.effortDefault);
-  expect(trigger?.getAttribute("title")).toContain(t.project.modelDefaultHint);
+  expect(trigger?.getAttribute("title")).toContain(t.project.modelDefaultHint("Claude Code"));
   click(trigger);
   // One account: its column is left out; the model's levels open beside the models.
   expect(host.querySelector('[data-tune-column="account"]')).toBeNull();
@@ -480,11 +480,56 @@ test("a line of yours shows its picture in its bubble, and a click enlarges it",
   close();
 });
 
+test("a Codex session names Codex, has no plan mode, `/` list or account, and picks among the models Codex lists", async () => {
+  const { forgetClaudeOptions } = await import("./project-agent-options.svelte.ts");
+  forgetClaudeOptions();
+  const session = aProjectSession({ project_agent: "codex", project_model: "gpt-5.6-luna" });
+  const runtime = fakeRuntime({ sessions: [session], agentRuns: { "proj-1": anAgentRun({ status: "waiting_approval", approval: { kind_key: "shell", target: "/Users/a/proj", summary: "shell npm test" } }) } });
+  const asked: string[] = [];
+  (runtime as unknown as { client: unknown }).client = {
+    agents: async () => (asked.push("agents"), { custom_agents: [], items: [
+      { runner: "codex", label: "Codex", models: [
+        { id: "gpt-5.6-terra", name: "GPT-5.6 Terra", efforts: ["low", "medium", "high", "xhigh", "max"] },
+        { id: "gpt-5.6-luna", name: "GPT-5.6 Luna", efforts: ["low", "medium"] },
+      ] },
+    ] }),
+    claudeCode: async () => { asked.push("claudeCode"); throw new Error("not asked"); },
+    claudeCodeModels: async () => { asked.push("claudeCodeModels"); throw new Error("not asked"); },
+    projectCommands: async () => { asked.push("projectCommands"); throw new Error("not asked"); },
+  };
+  const { host, close } = render(ProjectChat, { runtime, t, selected: session, onOpenArtifact: () => {} });
+  await settle();
+  await settle();
+  expect(asked).toEqual(["agents"]);
+  const field = host.querySelector("textarea") as HTMLTextAreaElement;
+  expect(field.getAttribute("placeholder")).toBe(t.project.composerPlaceholder("Codex"));
+  expect(host.querySelector('[data-line="working"] .stream-step')?.textContent).toBe(t.project.waiting("Codex"));
+  expect(host.querySelector("[data-agent-approval] .approval-who")?.textContent).toBe("Codex");
+  expect(host.querySelector("[data-project-plan]")).toBeNull();
+  // Shift+Tab and `/` are Codex's plain keys here: no plan mode to flip, no list to open.
+  press(field, "Tab", { shiftKey: true });
+  fill(field, "/compact");
+  await settle();
+  expect(host.querySelector("[data-project-commands]")).toBeNull();
+  expect(asked).toEqual(["agents"]);
+  const trigger = tuneTrigger(host);
+  expect(trigger?.textContent).toContain("GPT-5.6 Luna");
+  click(trigger);
+  expect(host.querySelector('[data-tune-column="account"]')).toBeNull();
+  expect(tuneLabels(host, "model")).toEqual([t.project.modelDefault, "GPT-5.6 Terra", "GPT-5.6 Luna"]);
+  expect(tuneLabels(host, "effort")).toEqual([t.project.effortDefault, "低", "中"]);
+  click(tuneRow(host, "model", "GPT-5.6 Terra"));
+  await settle();
+  expect(tunes(runtime)).toEqual([["proj-1", { model: "gpt-5.6-terra" }]]);
+  close();
+  forgetClaudeOptions();
+});
+
 test("plan mode is a switch in the composer, and Shift+Tab flips it as in the terminal", () => {
   const { host, runtime, close } = open(null);
   const toggle = host.querySelector<HTMLButtonElement>("[data-project-plan]");
   expect(toggle?.getAttribute("aria-pressed")).toBe("false");
-  expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe(t.project.composerPlaceholder);
+  expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe(t.project.composerPlaceholder("Claude Code"));
   click(toggle);
   press(host.querySelector("textarea"), "Tab", { shiftKey: true });
   expect(tunes(runtime)).toEqual([["proj-1", { mode: "plan" }], ["proj-1", { mode: "plan" }]]);

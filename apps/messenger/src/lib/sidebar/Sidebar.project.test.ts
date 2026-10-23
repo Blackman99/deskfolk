@@ -57,14 +57,14 @@ test("folding a directory hides its sessions, and a row opens its session", () =
   close();
 });
 
-test("the section's + offers a new session in a folder or a terminal session to import", async () => {
+test("the section's + offers a new session of each agent in a folder, or a terminal session to import", async () => {
   const { host, runtime, close } = open();
   const add = host.querySelector<HTMLButtonElement>(`.ghead .add[title="${t.project.add}"]`);
   click(add);
   await settle();
   expect(add?.getAttribute("aria-expanded")).toBe("true");
   const items = [...document.querySelectorAll("[data-project-add-menu] [role=menuitem]")];
-  expect(items.map((item) => item.textContent?.trim())).toEqual([t.project.newInFolder, t.project.importSession]);
+  expect(items.map((item) => item.textContent?.trim())).toEqual([`${t.project.newWith("Claude Code")}…`, `${t.project.newWith("Codex")}…`, t.project.importSession]);
   click(document.querySelector('[data-project-add-menu] [data-project-add="import"]'));
   await settle();
   expect(runtime.calls.filter((c) => c.name === "openCreateProject").map((c) => c.args)).toEqual([["import"]]);
@@ -74,17 +74,30 @@ test("the section's + offers a new session in a folder or a terminal session to 
   await settle();
   click(document.querySelector('[data-project-add-menu] [data-project-add="new"]'));
   await settle();
-  expect(runtime.calls.filter((c) => c.name === "openCreateProject").map((c) => c.args)).toEqual([["import"], ["new"]]);
+  click(add);
+  await settle();
+  click(document.querySelector('[data-project-add-menu] [data-project-agent="codex"]'));
+  await settle();
+  // The sheet opens on the agent you chose.
+  expect(runtime.calls.filter((c) => c.name === "openCreateProject").map((c) => c.args)).toEqual([["import"], ["new", "claude_code"], ["new", "codex"]]);
   close();
 });
 
-test("each directory row starts a new session right there", async () => {
+test("each directory row starts a new session of the agent you pick right there", async () => {
   const { host, runtime, close } = open();
   const add = host.querySelector('[data-project-dir="/Users/a/other"] [data-project-dir-add]');
   expect(add?.getAttribute("title")).toBe(t.project.newHere("other"));
   click(add);
   await settle();
-  expect(runtime.calls.find((c) => c.name === "createProjectSession")?.args).toEqual([{ agent: "claude_code", dir: "/Users/a/other" }]);
+  expect(add?.getAttribute("aria-expanded")).toBe("true");
+  const menu = document.querySelector("[data-project-add-menu]");
+  expect(menu?.getAttribute("aria-label")).toBe(t.project.newHere("other"));
+  // The directory is already picked: no ellipsis, and nothing to import here.
+  expect([...(menu?.querySelectorAll("[role=menuitem]") ?? [])].map((item) => item.textContent?.trim())).toEqual([t.project.newWith("Claude Code"), t.project.newWith("Codex")]);
+  click(menu?.querySelector('[data-project-agent="codex"]'));
+  await settle();
+  expect(runtime.calls.find((c) => c.name === "createProjectSession")?.args).toEqual([{ agent: "codex", dir: "/Users/a/other" }]);
+  expect(document.querySelector("[data-project-add-menu]")).toBeNull();
   // It starts a session; it does not fold the directory.
   expect(host.querySelectorAll('[data-project-dir="/Users/a/other"] [data-project-session]')).toHaveLength(1);
   close();

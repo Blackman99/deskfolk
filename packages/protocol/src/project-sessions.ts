@@ -5,7 +5,26 @@
  */
 import type { ClaudeEffort } from "./bots.ts";
 
-export type ProjectAgent = "claude_code";
+/** The agents a project session can run, in the order a new session offers them (ADR 0095, ADR 0099). */
+export const PROJECT_AGENTS = ["claude_code", "codex"] as const;
+export type ProjectAgent = (typeof PROJECT_AGENTS)[number];
+
+export function isProjectAgent(value: unknown): value is ProjectAgent {
+  return typeof value === "string" && (PROJECT_AGENTS as readonly string[]).includes(value);
+}
+
+/**
+ * What each agent's project sessions have beyond a conversation in a directory with permissions
+ * and Stop (ADR 0099): plan mode (ADR 0098), the `/` list of its commands, a choice of your
+ * accounts, carrying on a terminal session, and a replay for the task map. What one lacks the
+ * windows leave out and the routes refuse (422).
+ */
+export type ProjectAgentCaps = { plan: boolean; commands: boolean; accounts: boolean; importable: boolean; replay: boolean };
+
+export const PROJECT_AGENT_CAPS: Record<ProjectAgent, ProjectAgentCaps> = {
+  claude_code: { plan: true, commands: true, accounts: true, importable: true, replay: true },
+  codex: { plan: false, commands: false, accounts: false, importable: false, replay: false },
+};
 
 export type AgentRunStatus = "running" | "waiting_approval" | "completed" | "failed" | "stopped" | "interrupted";
 
@@ -56,22 +75,24 @@ export type AgentRun = {
 export type PatchProjectSessionRequest = {
   /** An alias or a full id, as the agent names it. */
   model?: string | null;
-  /** One of `CLAUDE_EFFORTS`. */
+  /** One of the levels the session's agent takes (`AGENT_KINDS[agent].efforts`). */
   effort?: ClaudeEffort | null;
-  /** Plan mode on (`plan`) or off (null), from the run's next step on (ADR 0098). */
+  /** Plan mode on (`plan`) or off (null), from the run's next step on (ADR 0098). Claude Code only. */
   mode?: ProjectAgentMode | null;
   /**
    * The Claude account its next run spends: one listed in Settings, null for the daemon's own. The
-   * session is carried to that account first; refused (409) while a run is going on.
+   * session is carried to that account first; refused (409) while a run is going on. Claude Code only.
    */
   config_dir?: string | null;
 };
 
 export type CreateProjectSessionRequest = {
+  /** Claude Code when left out. */
   agent?: ProjectAgent;
   dir?: string;
-  /** The Claude account directory; omitted or null is the daemon's own environment. */
+  /** The Claude account directory; omitted or null is the daemon's own environment. Claude Code only. */
   config_dir?: string | null;
+  /** A terminal session to carry on: Claude Code only (`PROJECT_AGENT_CAPS`). */
   import?: { session_id: string; config_dir?: string | null };
 };
 

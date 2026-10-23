@@ -65,6 +65,10 @@ test("the sheet's directories: the terminal's and the app's, each once, newest f
   expect(dirs.map((d) => d.label)).toEqual(["b", "a", "c"]);
   expect(dirs.map((d) => d.listings.map((l) => l.session_id))).toEqual([["s3"], ["s1", "s4"], []]);
   expect(dirs[0]!.latest).toBe("2026-09-19T06:00:00.000Z");
+  // Codex carries no terminal session on: the same folders, none listed under them.
+  const codex = pickerDirs(items, [...sessions, aProjectSession({ id: "p3", project_dir: "/w/d", project_agent: "codex", updated_at: "2026-09-19T00:00:00.000Z" })], "codex");
+  expect(codex.map((d) => d.dir)).toEqual(["/w/b", "/w/a", "/w/c", "/w/d"]);
+  expect(codex.every((d) => d.listings.length === 0)).toBe(true);
   expect(listingSpansAccounts(items)).toBe(false);
   expect(listingSpansAccounts([...items, listing("s5", "/w/a", "t", "/Users/a/.claude-b")])).toBe(true);
 });

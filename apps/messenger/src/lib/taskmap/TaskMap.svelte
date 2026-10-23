@@ -54,7 +54,7 @@
 			: t.taskmap
 	);
 	const agent = $derived(session.project_agent ?? 'claude_code');
-	const agentName = $derived(t.project.agentName);
+	const agentName = $derived(t.project.agentNames[agent]);
 	/** The agent first, then each subagent; the agent wears the app's accent. */
 	const COLORS = ['#146a7c', '#3b5bdb', '#9c36b5', '#2b8a3e', '#c0623a', '#b45309'];
 	const colorOf = (b: number) => COLORS[b % COLORS.length]!;

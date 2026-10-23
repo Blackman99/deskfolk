@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { isHiddenTranscriptKind, PLAN_APPROVAL_KIND, type ClaudeCodeCommand, type PatchProjectSessionRequest, speechReady, USER_MEMBER, type Attachment, type Message, type SessionSummary } from '@real-bot/protocol';
+	import { isHiddenTranscriptKind, PLAN_APPROVAL_KIND, PROJECT_AGENT_CAPS, type ClaudeCodeCommand, type PatchProjectSessionRequest, speechReady, USER_MEMBER, type Attachment, type Message, type SessionSummary } from '@real-bot/protocol';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
 	import MarkdownBody from '../MarkdownBody.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { desktopReadingMode, transcriptReadingReady, TRANSCRIPT_VISIBLE_MS } from '../notifications/reading.ts';
-	import { isLiveRun } from '../sidebar/project-groups.ts';
+	import { isLiveRun, projectAgentOf } from '../sidebar/project-groups.ts';
 	import {
 		composerImeKeyAction,
 		composerImeOnEnd,
@@ -23,7 +23,7 @@
 	import { describeStep } from './turn-activity.ts';
 	import { ComposerVoice, spacedHeard } from './composer-voice.svelte.ts';
 	import { loadClaudeModels } from '../claude-models.svelte.ts';
-	import { accountChoices, claudeStatus, loadClaudeStatus } from './project-agent-options.svelte.ts';
+	import { accountChoices, claudeStatus, codexModels, loadClaudeStatus, loadCodexStatus } from './project-agent-options.svelte.ts';
 	import ProjectAgentTune from './ProjectAgentTune.svelte';
 	import ProjectCommandMenu from './ProjectCommandMenu.svelte';
 	import ProjectPlanCard from './ProjectPlanCard.svelte';
@@ -46,8 +46,8 @@
 	 * last line — with the approval it waits on under it; Stop is in the composer, as in a Bot's
 	 * direct. Pictures and files go with a line as in a Bot's composer: pasted, or picked with the
 	 * clip. Plan mode is a switch in the composer (Shift+Tab, as in the terminal), and the plan it
-	 * brings is a card of its own; typing `/` lists Claude Code's commands (ADR 0098). The header is
-	 * the pane's or the page's own.
+	 * brings is a card of its own; typing `/` lists Claude Code's commands (ADR 0098). A Codex
+	 * session (ADR 0099) has neither, and no account to pick. The header is the pane's or the page's own.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -108,19 +108,27 @@
 	 * account change waits for the run to end.
 	 */
 	const account = $derived(selected.project_config_dir ?? '');
+	/**
+	 * Whose session it is (ADR 0099): a Codex session has no account to pick, no plan mode and no `/`
+	 * list, and its models are the ones Codex lists.
+	 */
+	const agent = $derived(projectAgentOf(selected));
+	const caps = $derived(PROJECT_AGENT_CAPS[agent]);
+	const agentName = $derived(t.project.agentNames[agent]);
 	// Asked once each; untracked, so what the asking writes does not ask again.
 	$effect(() => {
 		const api = runtime.client;
-		untrack(() => loadClaudeStatus(api));
+		const codex = agent === 'codex';
+		untrack(() => (codex ? loadCodexStatus(api) : loadClaudeStatus(api)));
 	});
 	$effect(() => {
 		const api = runtime.client;
 		const dir = account || null;
-		untrack(() => loadClaudeModels(api, dir));
+		if (agent === 'claude_code') untrack(() => loadClaudeModels(api, dir));
 	});
 	const accountOptions = $derived(accountChoices(claudeStatus(), account, t.project.defaultAccount));
 	/** Picked only with a second account to pick, or the session already on one. */
-	const accountShown = $derived(accountOptions.length > 1);
+	const accountShown = $derived(caps.accounts && accountOptions.length > 1);
 	const model = $derived(selected.project_model ?? '');
 	const effort = $derived(selected.project_effort ?? '');
 	let tuneFailed = $state(false);
@@ -139,7 +147,7 @@
 	const planning = $derived(selected.project_mode === 'plan');
 
 	function togglePlan(): void {
-		if (connected) void tune({ mode: planning ? null : 'plan' });
+		if (connected && caps.plan) void tune({ mode: planning ? null : 'plan' });
 	}
 
 	/**
@@ -150,7 +158,7 @@
 	let commandsClosedAt = $state<string | null>(null);
 	let commandActive = $state(0);
 	const commandMenuId = $derived(`project-commands-${selected.id}`);
-	const commandQuery = $derived(slashQuery(view.draft, caret));
+	const commandQuery = $derived(caps.commands ? slashQuery(view.draft, caret) : null);
 	const commandsShown = $derived(commandQuery !== null && commandsClosedAt !== view.draft);
 	const commandsState = $derived(commandsShown ? projectCommandsOf(selected.id) : null);
 	const commandMatches = $derived(Array.isArray(commandsState) && commandQuery !== null ? matchCommands(commandsState, commandQuery) : []);
@@ -460,8 +468,8 @@
 		if (action === 'swallow') event.preventDefault();
 		if (action !== 'pass') return;
 		if (commandKey(event)) return;
-		// Shift+Tab switches plan mode, as in the terminal.
-		if (event.key === 'Tab' && event.shiftKey) {
+		// Shift+Tab switches plan mode, as in the terminal; where there is none it moves the focus as usual.
+		if (caps.plan && event.key === 'Tab' && event.shiftKey) {
 			event.preventDefault();
 			togglePlan();
 			return;
@@ -490,7 +498,7 @@
 				<div class="earlier muted" role="status">{view.olderLoading ? t.stream.loadingEarlier : ' '}</div>
 			{/if}
 			{#if lines.length === 0 && !live && !view.historyLoading}
-				<p class="empty muted">{t.project.empty}</p>
+				<p class="empty muted">{t.project.empty(agentName)}</p>
 			{/if}
 			{#each lines as message, index (message.id)}
 				{@const previous = index > 0 ? lines[index - 1] : null}
@@ -537,7 +545,7 @@
 					<div class="stream-foot" role="status" aria-live="polite">
 						<span class="pulse" aria-hidden="true"></span>
 						{#if waiting}
-							<span class="stream-step">{planWaiting ? t.project.waitingPlan : t.project.waiting}</span>
+							<span class="stream-step">{planWaiting ? t.project.waitingPlan : t.project.waiting(agentName)}</span>
 						{:else if !focusMode.on && stepLine}
 							<span class="stream-step" title={stepLine.full}>{stepLine.text}</span>
 							{#if stepLine.elapsed}<span class="stream-step-elapsed mono" aria-hidden="true">{stepLine.elapsed}</span>{/if}
@@ -563,7 +571,7 @@
 						<div class="approval-head">
 							<Icon name="shield-check" size={12} />
 							<span>{t.project.approvalHead}</span>
-							<span class="approval-who">{t.project.agentName}</span>
+							<span class="approval-who">{agentName}</span>
 						</div>
 						<div class="approval-main">
 							<pre class="approval-summary mono">{waiting.summary}</pre>
@@ -615,8 +623,8 @@
 				<textarea
 					bind:this={field}
 					rows="1"
-					aria-label={t.project.composerLabel}
-					placeholder={planning ? t.project.composerPlaceholderPlan : t.project.composerPlaceholder}
+					aria-label={t.project.composerLabel(agentName)}
+					placeholder={planning ? t.project.composerPlaceholderPlan : t.project.composerPlaceholder(agentName)}
 					aria-autocomplete="list"
 					aria-controls={commandsListed ? commandMenuId : undefined}
 					aria-activedescendant={commandsListed ? `${commandMenuId}-${commandActive}` : undefined}
@@ -652,23 +660,27 @@
 						<Icon name="paperclip" size={16} />
 					</button>
 					<input type="file" multiple hidden bind:this={attachments.fileInputEl} onchange={attachments.onFileInputChange} />
-					<!-- Plan mode, the session's own: on, it plans and asks before changing anything. -->
-					<button
-						type="button"
-						class="plan-toggle"
-						class:is-on={planning}
-						aria-pressed={planning}
-						title={planning ? t.project.planOnHint : t.project.planOffHint}
-						disabled={!connected}
-						onclick={togglePlan}
-						data-project-plan
-					>
-						<Icon name="list" size={16} />
-						<span>{t.project.plan}</span>
-					</button>
+					<!-- Plan mode, the session's own: on, it plans and asks before changing anything. Claude Code's only. -->
+					{#if caps.plan}
+						<button
+							type="button"
+							class="plan-toggle"
+							class:is-on={planning}
+							aria-pressed={planning}
+							title={planning ? t.project.planOnHint : t.project.planOffHint}
+							disabled={!connected}
+							onclick={togglePlan}
+							data-project-plan
+						>
+							<Icon name="list" size={16} />
+							<span>{t.project.plan}</span>
+						</button>
+					{/if}
 					<!-- An account changes for the next run: Claude Code keeps the session under the account it ran on. -->
 					<ProjectAgentTune
 						{t}
+						{agent}
+						models={agent === 'codex' ? codexModels() : undefined}
 						tune={{ account, model, effort }}
 						accounts={accountShown ? accountOptions : null}
 						accountLocked={live}

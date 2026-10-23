@@ -163,7 +163,7 @@
 					<span class="top-titles flex flex-col min-w-0 gap-1">
 						<span class="top-title-text" role="heading" aria-level="1">{titleOf(projectSession)}{archivedSuffix(projectSession)}</span>
 						<span class="top-subline flex items-center gap-3 text-12 text-muted whitespace-nowrap overflow-hidden text-ellipsis">
-							<span class="meta" title={projectSession.project_dir ?? undefined}>{t.project.agentName} · {dirDisplay(projectSession.project_dir)}</span>
+							<span class="meta" title={projectSession.project_dir ?? undefined}>{t.project.agentNames[projectAgentOf(projectSession)]} · {dirDisplay(projectSession.project_dir)}</span>
 						</span>
 					</span>
 				</div>

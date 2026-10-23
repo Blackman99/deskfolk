@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A project session can run Codex
+
+- The Projects section's + offers New Claude Code session… and New Codex session…, a directory's + asks which of the two, and the New project session sheet offers both. A Codex session talks to your own Codex in the folder you pick, as in Codex's own app: your config, AGENTS.md, MCP servers and skills apply, and each later line carries on the same Codex thread. As with Claude Code, every command and file change Codex makes asks the app first and goes by the app's permission mode, with an approval card under ask first; Stop ends the run. The composer's picker lists the models Codex lists and the thinking levels each takes, and a line sent while Codex works goes into the turn it is on. A Codex session does not yet have plan mode, the `/` command list, a choice of account, carrying on a terminal session, or a replay on the task map. ([ADR 0099](docs/adr/0099-codex-in-project-sessions.md))
+
 ### Clicking into the other pane's composer lets you type
 
 - With two conversations side by side, clicking into the other pane's composer often left nothing focused, so what you typed went nowhere until you clicked again; every other switch between the panes did it, in a Bot's conversation and in a project session alike. The composer you click now keeps the focus, and the caret stays where you clicked.

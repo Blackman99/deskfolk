@@ -112,7 +112,7 @@
 	oncontextmenu={onContextMenu}
 	onpointerdown={onPointerDown}
 >
-	<span class="agent-mark" title={t.project.agentName}><AgentLogo runner={agent} size={16} /></span>
+	<span class="agent-mark" title={t.project.agentNames[agent]}><AgentLogo runner={agent} size={16} /></span>
 	<span class="name">{title}</span>
 	{#if live}<span class="project-pulse" title={t.project.live} role="img" aria-label={t.project.live}></span>{/if}
 	<span class="time">{time}</span>

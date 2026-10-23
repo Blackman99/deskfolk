@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { MediaQuery } from 'svelte/reactivity';
-	import type { PatchProjectSessionRequest } from '@real-bot/protocol';
+	import type { ClaudeCodeModel, PatchProjectSessionRequest, ProjectAgent } from '@real-bot/protocol';
 	import BottomSheet from '../BottomSheet.svelte';
 	import Icon from '../Icon.svelte';
 	import ModelSourceMark from '../ModelSourceMark.svelte';
@@ -8,7 +8,7 @@
 	import { claudeModelsOf, loadClaudeModels, modelChoices, modelRowOf, type Choice } from '../claude-models.svelte.ts';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
-	import { claudeAgentSource } from '../model-source.ts';
+	import { runnerSource } from '../model-source.ts';
 	import { effortOn, effortRows, effortsShown, modelRows, tunePatch, type AgentTune, type TuneRow } from './project-agent-tune.ts';
 
 	/**
@@ -17,12 +17,17 @@
 	 * opening beside the one before it, the session's own path open from the start. Pointing at a
 	 * row opens what is under it; a click takes the path up to that row and closes. On a phone a
 	 * sheet from the bottom: the three, each with what it is now, and a level of its own for each.
+	 * A Codex session (ADR 0099) has no account to pick: its models are the ones Codex lists.
 	 */
 	type Level = 'account' | 'model' | 'effort';
 
 	type Props = {
 		t: Copy;
+		/** Whose session it is: its name and mark on the picker. */
+		agent: ProjectAgent;
 		tune: AgentTune;
+		/** The agent's own models when it is not Claude Code (Codex's, as it lists them); left out, Claude Code's for the account. */
+		models?: ClaudeCodeModel[];
 		/** Your accounts, with a second one to pick; null leaves the account out. */
 		accounts: Choice[] | null;
 		/** A run is going: the account waits for it to end. */
@@ -32,7 +37,8 @@
 		onpick: (change: PatchProjectSessionRequest) => void;
 	};
 
-	let { t, tune, accounts, accountLocked, disabled, client, onpick }: Props = $props();
+	let { t, agent, tune, models: ownModels, accounts, accountLocked, disabled, client, onpick }: Props = $props();
+	const agentName = $derived(t.project.agentNames[agent]);
 
 	const phone = new MediaQuery(PHONE_SHEET_QUERY);
 	const uid = $props.id();
@@ -54,8 +60,8 @@
 	/** A finger has no pointing: its first tap on a row with a column beside it opens that column. */
 	let touching = false;
 
-	const nowList = $derived(claudeModelsOf(tune.account || null));
-	const focusList = $derived(claudeModelsOf(focusAccount || null));
+	const nowList = $derived(ownModels ?? claudeModelsOf(tune.account || null));
+	const focusList = $derived(ownModels ?? claudeModelsOf(focusAccount || null));
 	/** The level the session keeps on a model: its own on its own model, else its own only if that model takes it. */
 	const keptOn = (model: string) => (model === tune.model ? tune.effort : effortOn(focusList, model, tune.effort));
 	const keptEffort = $derived(keptOn(focusModel));
@@ -63,7 +69,7 @@
 	const accountRows = $derived(
 		(accounts ?? []).map((row): TuneRow => ({ ...row, disabled: accountLocked && row.value !== tune.account }))
 	);
-	const models = $derived(modelRows(focusList, tune.model, t.project.modelDefault, t.project.modelDefaultHint));
+	const models = $derived(modelRows(focusList, tune.model, t.project.modelDefault, t.project.modelDefaultHint(agentName)));
 	const efforts = $derived(effortRows(focusList, focusModel, keptEffort, t.project.effortDefault, t.sidebar.thinkingLevels));
 	const levels = $derived(
 		[accounts ? 'account' : null, 'model', effortsShown(focusList, focusModel, keptEffort) ? 'effort' : null].filter((level): level is Level => level !== null)
@@ -94,7 +100,7 @@
 
 	// What the closed picker says: the model and its level; the account after them, quieter, cut first.
 	const modelLabel = $derived(modelChoices(nowList, tune.model, t.project.modelDefault).find((row) => row.value === tune.model)?.label ?? tune.model);
-	const modelNote = $derived(modelRowOf(nowList, tune.model)?.description || (tune.model ? undefined : t.project.modelDefaultHint));
+	const modelNote = $derived(modelRowOf(nowList, tune.model)?.description || (tune.model ? undefined : t.project.modelDefaultHint(agentName)));
 	const effortShown = $derived(effortsShown(nowList, tune.model, tune.effort));
 	const effortLabel = $derived(tune.effort ? (t.sidebar.thinkingLevels[tune.effort as keyof typeof t.sidebar.thinkingLevels] ?? tune.effort) : t.project.effortDefault);
 	const accountLabel = $derived(accounts?.find((row) => row.value === tune.account)?.label ?? null);
@@ -345,7 +351,7 @@
 		onclick={() => (open ? close() : openPicker())}
 		onkeydown={onKeydown}
 	>
-		<ModelSourceMark source={claudeAgentSource(t)} />
+		<ModelSourceMark source={runnerSource(agent, agentName, t)} />
 		<span class="tune-value">
 			<span class="tune-model">{modelLabel}</span>
 			{#if effortShown}
@@ -417,7 +423,7 @@
 
 	{#if open && phone.current}
 		<BottomSheet
-			title={sheetLevel ? headingOf(sheetLevel) : t.project.agentName}
+			title={sheetLevel ? headingOf(sheetLevel) : agentName}
 			closeLabel={t.common.close}
 			onClose={() => close()}
 			onBack={sheetLevel && levels.length > 1 ? () => (sheetLevel = null) : undefined}

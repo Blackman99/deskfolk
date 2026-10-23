@@ -8,7 +8,8 @@
  * Script: `{ signedOut?, model?, mcpServers?: [{ name, pluginId? }], rejectMcp?: string[], turns }`.
  * `signedOut` answers `account/read` with no account. `mcpServers` is what `mcpServerStatus/list`
  * lists; a `thread/start` whose `config.mcp_servers` names one of `rejectMcp` fails the way Codex
- * does for a server it cannot take an override for. `@CWD` in the script is the thread's cwd.
+ * does for a server it cannot take an override for. `thread/resume` reopens the thread it names, as
+ * a project session's later runs do (ADR 0099). `@CWD` in the script is the thread's cwd.
  *
  * Steps: `{ say }` a chunk of the final answer; `{ commentary }` words beside the work;
  * `{ command }` a command it asks approval for, then completes (declined when refused);
@@ -18,6 +19,7 @@
  * `{ unasked }` a command it completes without asking; `{ tool: { name, args } }` one of the app's
  * dynamic tools (`item/tool/call`; logged as `toolCalled` when asked, and with its answer as `tool`
  * if the app is still there to give one); `{ usage: { input, output, cached } }` token totals;
+ * `{ sleep: ms }` the turn goes on that long, so a line can be steered into it;
  * `{ fail: { message, codexErrorInfo, errorNotice? } }` the turn fails (with an `error`
  * notification first when `errorNotice`); `{ hang: true }` until `turn/interrupt`.
  */
@@ -34,13 +36,16 @@ type Step =
   | { tool: { name: string; args?: Record<string, unknown> } }
   | { usage: { input: number; output: number; cached: number } }
   | { fail: { message: string; codexErrorInfo?: unknown; errorNotice?: boolean } }
-  | { hang: true };
+  | { hang: true }
+  | { sleep: number };
 
 type Script = {
   signedOut?: boolean;
   model?: string;
   mcpServers?: Array<{ name: string; pluginId?: string | null }>;
   rejectMcp?: string[];
+  /** The one thread `thread/resume` finds; any when left out. */
+  resumable?: string;
   turns: Step[][];
 };
 
@@ -50,7 +55,7 @@ const log = (entry: Record<string, unknown>) => {
 };
 const rpc = rpcPeer(process.stdin, process.stdout, { jsonrpc: false });
 
-const THREAD_ID = "thread-1";
+let THREAD_ID = "thread-1";
 let cwd = process.cwd();
 let turnIndex = 0;
 let seq = 0;
@@ -154,6 +159,8 @@ async function play(steps: Step[], turnId: string): Promise<void> {
       if (step.fail.errorNotice) notify("error", { threadId: THREAD_ID, turnId, error: { message: error.message, codexErrorInfo: error.codexErrorInfo ?? null }, willRetry: false });
       complete("failed", error);
       return;
+    } else if ("sleep" in step) {
+      await sleep(step.sleep);
     } else if ("hang" in step) {
       while (!interrupted) await sleep(20);
       complete("interrupted");
@@ -185,6 +192,13 @@ rpc.onRequest(async (method, params) => {
         }
       }
       // `@CWD` in the script is the directory the thread was opened in.
+      cwd = String(p.cwd ?? process.cwd());
+      script.turns = JSON.parse(JSON.stringify(script.turns).replaceAll("@CWD", cwd)) as Step[][];
+      return { thread: { id: THREAD_ID, cwd }, model: script.model ?? "fake-codex-model", modelProvider: "openai", cwd, approvalPolicy: p.approvalPolicy ?? "untrusted", sandbox: { type: "readOnly" } };
+    }
+    case "thread/resume": {
+      if (typeof p.threadId !== "string" || p.threadId !== (script.resumable ?? p.threadId)) throw new RpcError(-32600, `no rollout found for thread id ${String(p.threadId)}`);
+      THREAD_ID = p.threadId;
       cwd = String(p.cwd ?? process.cwd());
       script.turns = JSON.parse(JSON.stringify(script.turns).replaceAll("@CWD", cwd)) as Step[][];
       return { thread: { id: THREAD_ID, cwd }, model: script.model ?? "fake-codex-model", modelProvider: "openai", cwd, approvalPolicy: p.approvalPolicy ?? "untrusted", sandbox: { type: "readOnly" } };

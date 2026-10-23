@@ -110,7 +110,7 @@
 					{#if peerModel}
 						<span class="bar-model mono" title={peerModel}>{peerModel}</span>
 					{:else if kind === 'project'}
-						<span class="bar-presence" title={session.project_dir ?? undefined}>{t.project.agentName} · {dirDisplay(session.project_dir)}</span>
+						<span class="bar-presence" title={session.project_dir ?? undefined}>{t.project.agentNames[projectAgentOf(session)]} · {dirDisplay(session.project_dir)}</span>
 					{:else if presence && kind !== 'you-bot'}
 						<!-- A direct's presence is "you ↔ the Bot", which the title already says. -->
 						<span class="bar-presence">{presence}</span>

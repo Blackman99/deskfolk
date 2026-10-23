@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { CatchupResponse, ClientEvent, EventCursor, ProjectAgentMode, SequencedEvent, SessionKind, SyncFrame } from "@real-bot/protocol";
+import type { CatchupResponse, ClientEvent, EventCursor, ProjectAgent, ProjectAgentMode, SequencedEvent, SessionKind, SyncFrame } from "@real-bot/protocol";
 import { displayAvatar } from "./avatar-display";
 
 export const EVENT_RING_COUNT = 2000;
@@ -81,7 +81,7 @@ export type SessionUpsertInput = {
   entry_message_id?: string | null;
   playbook_id?: string | null;
   project_dir?: string | null;
-  project_agent?: "claude_code" | null;
+  project_agent?: ProjectAgent | null;
   project_config_dir?: string | null;
   project_agent_session?: string | null;
   project_source?: string | null;

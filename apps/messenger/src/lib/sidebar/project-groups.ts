@@ -1,8 +1,8 @@
-import type { AgentRun, ClaudeCodeSessionListing, ProjectAgent, SessionSummary } from "@real-bot/protocol";
+import { PROJECT_AGENT_CAPS, PROJECT_AGENTS, type AgentRun, type ClaudeCodeSessionListing, type ProjectAgent, type SessionSummary } from "@real-bot/protocol";
 import { tildePath } from "./import-claude-session.ts";
 
-/** The agents a project session can run, in the order the sheet offers them (ADR 0095: Claude Code first). */
-export const PROJECT_AGENTS: readonly ProjectAgent[] = ["claude_code"];
+/** The agents a project session can run, in the order the sheet offers them (ADR 0095: Claude Code first, ADR 0099: then Codex). */
+export { PROJECT_AGENTS };
 
 /**
  * One directory of the 「项目」 section and the project sessions that ran in it, newest first,
@@ -71,9 +71,11 @@ export type PickerDir = {
 };
 
 /**
- * The directories the sheet offers for an agent, newest first: where its terminal sessions ran
- * and where the app's project sessions for it did, each once. A terminal session with no
- * directory has nowhere to be carried on and is left out.
+ * The directories the sheet offers for an agent, newest first: where the terminal's sessions ran
+ * and where the app's project sessions did, each once. Only an agent whose terminal sessions can be
+ * carried on (Claude Code) lists them under their directory; for another (Codex, ADR 0099) they
+ * only say which folders you worked in lately, as its own sessions and the other agent's do. A
+ * terminal session with no directory is left out.
  */
 export function pickerDirs(
   listings: readonly ClaudeCodeSessionListing[],
@@ -89,12 +91,14 @@ export function pickerDirs(
     } else if (when > entry.latest) entry.latest = when;
     return entry;
   };
-  // Only Claude Code has a terminal listing to read.
-  if (agent === "claude_code") {
-    for (const listing of listings) if (listing.cwd) at(listing.cwd, listing.modified_at).listings.push(listing);
+  const carries = PROJECT_AGENT_CAPS[agent].importable;
+  for (const listing of listings) {
+    if (!listing.cwd) continue;
+    const entry = at(listing.cwd, listing.modified_at);
+    if (carries) entry.listings.push(listing);
   }
   for (const session of sessions) {
-    if (session.kind === "project" && session.project_dir && projectAgentOf(session) === agent) at(session.project_dir, session.updated_at);
+    if (session.kind === "project" && session.project_dir) at(session.project_dir, session.updated_at);
   }
   const dirs = [...byDir.values()];
   for (const entry of dirs) entry.listings.sort((a, b) => (a.modified_at < b.modified_at ? 1 : a.modified_at > b.modified_at ? -1 : 0));

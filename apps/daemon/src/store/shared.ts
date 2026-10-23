@@ -23,6 +23,7 @@ import {
   type Approval,
   type Bot,
   type Message,
+  type ProjectAgent,
   type ProjectAgentMode,
   type SessionKind,
   type SessionParticipant,
@@ -162,7 +163,7 @@ export type SessionRow = {
   origin_message_id: string | null;
   playbook_id?: string | null;
   project_dir?: string | null;
-  project_agent?: "claude_code" | null;
+  project_agent?: ProjectAgent | null;
   project_config_dir?: string | null;
   project_agent_session?: string | null;
   project_source?: string | null;

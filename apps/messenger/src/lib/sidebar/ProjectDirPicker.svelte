@@ -70,7 +70,7 @@
 		}
 		pending = true;
 		startError = null;
-		const failure = await runtime.createProjectSession(newProjectRequest(dir));
+		const failure = await runtime.createProjectSession(newProjectRequest(dir, agent));
 		pending = false;
 		if (failure) startError = failure.status === 422 || failure.status === 404 ? 'invalid' : 'failed';
 	}
@@ -236,7 +236,7 @@
 					{/if}
 				</div>
 				{/if}
-				<p class="muted field-hint">{t.project.dirHint}</p>
+				<p class="muted field-hint">{t.project.dirHints[agent]}</p>
 				{@render startFailure()}
 				<div>
 					<Button variant="primary" disabled={pending || !typed.trim()} onclick={() => void start(typed)}>{t.project.start}</Button>

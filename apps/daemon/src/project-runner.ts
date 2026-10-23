@@ -116,12 +116,12 @@ function loadQuery(): Promise<ProjectQuery> {
   return sdkQuery;
 }
 
-function clip(text: string, max: number): string {
+export function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
 /** A place as a few words, for a reader that knows only `ToolFrame.target`. */
-function targetText(place: AgentRunToolInfo["place"]): string | undefined {
+export function targetText(place: AgentRunToolInfo["place"]): string | undefined {
   if (place.zone === "project") return place.path || ".";
   if (place.zone === "outside" || place.zone === "claude_home") return place.path;
   if (place.zone === "check") return place.check;
@@ -138,7 +138,7 @@ function commandOf(content: LineContent): string | null {
   return typeof content === "string" ? (/^\/([^\s/]+)(?=\s|$)/.exec(content.trim())?.[1] ?? null) : null;
 }
 
-function firstLine(text: string): string | null {
+export function firstLine(text: string): string | null {
   const line = text.trim().split(/\r?\n/).find((part) => part.trim())?.trim();
   return line ? clip(line, 300) : null;
 }

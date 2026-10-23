@@ -29,7 +29,8 @@ test("to start one: the agent first, then each directory once, newest first, one
   await settle();
   expect(host.querySelector("h2")?.textContent).toBe(t.project.newTitle);
   const agents = [...host.querySelectorAll("[data-project-agent]")];
-  expect(agents.map((a) => a.getAttribute("data-project-agent"))).toEqual(["claude_code"]);
+  expect(agents.map((a) => a.getAttribute("data-project-agent"))).toEqual(["claude_code", "codex"]);
+  expect(agents.map((a) => a.textContent?.trim())).toEqual(["Claude Code", "Codex"]);
   expect(agents[0]?.getAttribute("aria-checked")).toBe("true");
   expect(agents[0]?.querySelector("[data-agent-logo]")).not.toBeNull();
   expect(dirNames(host)).toEqual(["proj", "other", "app-only"]);
@@ -40,10 +41,40 @@ test("to start one: the agent first, then each directory once, newest first, one
   close();
 });
 
+test("Codex starts in the same folders, with no terminal session to carry on", async () => {
+  const { host, runtime, close } = open();
+  await settle();
+  click(host.querySelector('[data-project-agent="codex"]'));
+  await settle();
+  expect(host.querySelector('[data-project-agent="codex"]')?.getAttribute("aria-checked")).toBe("true");
+  expect(dirNames(host)).toEqual(["proj", "other", "app-only"]);
+  expect(host.querySelector(".picker-count")).toBeNull();
+  click(host.querySelector('[data-picker-dir="/Users/a/proj"] [data-picker-start]'));
+  expect(runtime.calls.find((c) => c.name === "createProjectSession")?.args).toEqual([{ agent: "codex", dir: "/Users/a/proj" }]);
+  close();
+});
+
+test("the sheet opens on the agent whose new session you chose", async () => {
+  const runtime = fakeRuntime({ sessions: [] });
+  (runtime as unknown as { client: unknown }).client = { claudeCodeSessions: async () => [] };
+  const { host, close } = render(ProjectSessionSheet, { runtime, t, mode: "new", agent: "codex", onClose: () => {} });
+  await settle();
+  expect(host.querySelector('[data-project-agent="codex"]')?.getAttribute("aria-checked")).toBe("true");
+  expect(host.textContent).toContain(t.project.dirHints.codex);
+  close();
+  // Importing has only Claude Code to carry on, whatever was chosen before.
+  const again = render(ProjectSessionSheet, { runtime, t, mode: "import", agent: "codex", onClose: () => {} });
+  await settle();
+  expect(again.host.querySelector('[data-project-agent="claude_code"]')?.getAttribute("aria-checked")).toBe("true");
+  again.close();
+});
+
 test("to carry one on: only directories with terminal sessions, each opening to its own, one at a time", async () => {
   const { host, close } = open({}, undefined, "import");
   await settle();
   expect(host.querySelector("h2")?.textContent).toBe(t.project.importTitle);
+  // Only Claude Code's terminal sessions can be carried on so far.
+  expect([...host.querySelectorAll("[data-project-agent]")].map((a) => a.getAttribute("data-project-agent"))).toEqual(["claude_code"]);
   // The app-only directory has nothing to carry on; there is no directory of your own to type.
   expect(dirNames(host)).toEqual(["proj", "other"]);
   expect(host.querySelector("[data-picker-other]")).toBeNull();

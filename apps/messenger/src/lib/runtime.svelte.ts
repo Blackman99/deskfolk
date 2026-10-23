@@ -8,6 +8,7 @@ import type {
   CreateGroupRequest,
   CreateProjectSessionRequest,
   PatchProjectSessionRequest,
+  ProjectAgent,
   PatchMemoryRequest,
   CreateProviderRequest,
   PatchProviderRequest,
@@ -543,6 +544,7 @@ export class MessengerRuntime {
   get createProjectOpen(): boolean { return this.overlayState.createProjectOpen; }
   set createProjectOpen(value: boolean) { this.overlayState.createProjectOpen = value; }
   get createProjectMode(): "new" | "import" { return this.overlayState.createProjectMode; }
+  get createProjectAgent(): ProjectAgent { return this.overlayState.createProjectAgent; }
   get createGroupOpen(): boolean { return this.overlayState.createGroupOpen; }
   set createGroupOpen(value: boolean) { this.overlayState.createGroupOpen = value; }
   get sessionSettingsOpen(): boolean { return this.overlayState.sessionSettingsOpen; }
@@ -578,7 +580,7 @@ export class MessengerRuntime {
   set previewAttachmentId(value: string | null) { this.overlayState.previewAttachmentId = value; }
   openCreateBot(): void { this.overlayState.openCreateBot(); }
   openCreateGroup(): void { this.overlayState.openCreateGroup(); }
-  openCreateProject(mode: "new" | "import" = "new"): void { this.overlayState.openCreateProject(mode); }
+  openCreateProject(mode: "new" | "import" = "new", agent: ProjectAgent = "claude_code"): void { this.overlayState.openCreateProject(mode, agent); }
   openSessionSettings(): void { this.overlayState.openSessionSettings(); }
   get paneOpener(): ((content: PaneContent) => void) | null { return this.overlayState.paneOpener; }
   set paneOpener(value: ((content: PaneContent) => void) | null) { this.overlayState.paneOpener = value; }
