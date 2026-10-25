@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { parse } from "svelte/compiler";
 
 /**
@@ -117,7 +117,8 @@ test("every icon-only button has a tooltip", () => {
   const exemptHits = new Set<string>();
   for (const path of walk(SRC)) {
     const source = readFileSync(path, "utf8");
-    const file = relative(SRC, path);
+    // Forward slashes, as in EXEMPT: on Windows `relative` gives backslashes.
+    const file = relative(SRC, path).split(sep).join("/");
     const visit = (value: unknown): void => {
       if (!value || typeof value !== "object") return;
       if (Array.isArray(value)) {
