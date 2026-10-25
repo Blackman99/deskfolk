@@ -37,6 +37,16 @@ Object.defineProperty(navigator, "platform", { configurable: true, value: "MacIn
   }
 };
 
+// Cancelling an animation rejects its `finished` promise with an AbortError, which a browser marks
+// as handled (Web Animations, "cancel an animation"). happy-dom leaves it unhandled, so a Svelte
+// transition cut short by an unmount failed the run with "Unhandled error between tests".
+const AnimationClass = (globalThis as { Animation: { prototype: { cancel(): void; finished: Promise<unknown> } } }).Animation;
+const cancelAnimation = AnimationClass.prototype.cancel;
+AnimationClass.prototype.cancel = function cancel(this: { finished: Promise<unknown> }) {
+  this.finished.catch(() => {});
+  cancelAnimation.call(this);
+};
+
 const tsToJs = new Bun.Transpiler({ loader: "ts" });
 
 plugin({
