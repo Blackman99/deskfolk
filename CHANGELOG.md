@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+(none)
+
+## 0.2.0 — 2026-10-25
+
+Project sessions: Claude Code or Codex at work in a folder of yours, in the same window as your Bots. Signed and notarized for macOS, with an experimental, still unsigned Windows installer beside the `.dmg`s.
+
 ### Typing `/` in a Codex session lists Codex's commands and skills
 
 - In a Codex project session `/` now opens the command list, as in a Claude Code one: `/compact` compacts the conversation, `/review` reviews the uncommitted changes (or what you write after it), `/new` (or `/clear`) starts a new Codex conversation, and every skill Codex would load in that folder is there by its name, used as Codex's own `$name` uses it. Codex's app-server runs no slash command, so before this a line like `/status` reached Codex as plain words. A review runs its own commands, which only look, without asking for each, so the app's permission mode decides once before it starts: under ask first an approval card comes first, under read-only it does not run. A command sent while Codex is working waits for the turn to end. ([ADR 0099](docs/adr/0099-codex-in-project-sessions.md))
