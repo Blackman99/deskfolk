@@ -90,6 +90,8 @@ describe("why the daemon started again", () => {
 });
 
 describe("after a restart", () => {
+  // Longer than bun's 5 s: the file's first scenario once ran past it on CI's Linux runner, and a
+  // bare timeout leaves waitIdle's own failure, which names what was still busy, unsaid.
   test("a development run's restart is told as one, and nothing starts until you press a button", async () => {
     const h = await scenario();
     const { director, reviewer, room } = videoTeam(h);
@@ -112,7 +114,7 @@ describe("after a restart", () => {
     expect(note.turn_id).toBe(turn.id);
     expect(h.store.listWorkEvents({ kind: "daemon.restart" }).map((row) => row.payload)).toEqual([{ cause: "dev", cut: [turn.id], boot_id: expect.any(String) }]);
     expect(turnsAfter(h, director, downAt)).toEqual([]);
-  });
+  }, 15_000);
 
   test("a clean stop's cut work is told the same way, named as a stop", async () => {
     const h = await scenario();
