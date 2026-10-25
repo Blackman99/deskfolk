@@ -134,8 +134,12 @@ export function targetText(place: AgentRunToolInfo["place"]): string | undefined
  * The slash command a line runs, by its name (`/compact keep the tests` runs `compact`); null for
  * any other line, a path included (`/Users/me/a.ts 看一下`).
  */
+export function slashCommandOf(text: string): string | null {
+  return /^\/([^\s/]+)(?=\s|$)/.exec(text.trim())?.[1] ?? null;
+}
+
 function commandOf(content: LineContent): string | null {
-  return typeof content === "string" ? (/^\/([^\s/]+)(?=\s|$)/.exec(content.trim())?.[1] ?? null) : null;
+  return typeof content === "string" ? slashCommandOf(content) : null;
 }
 
 export function firstLine(text: string): string | null {
