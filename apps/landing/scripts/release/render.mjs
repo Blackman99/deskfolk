@@ -1,9 +1,9 @@
-// Renders the release film (film.html) frame by frame: every frame is film.seek(t) (which waits for its sprites to decode), captured over
-// CDP and piped to ffmpeg.
+// Renders a release film (film.html) frame by frame: every frame is film.seek(t) (which waits for its sprites to decode), captured over
+// CDP and piped to ffmpeg. The film is this folder's (0.1.0) unless FILM_DIR names another (../release-0.2).
 //   node render.mjs --lang zh|en [--fps 30] [--workers 8] [--out <file.mp4>]   → <out>, plus <lang>-cues.json for mix.py
 //   node render.mjs --lang zh --stills 0,2.5,11.8 [--dir <folder>]            → PNG stills
-// Work files go to apps/landing/film-out/release (RELEASE_OUT overrides). The cast is the reel's: its sprites.py frames
-// are served from the reel's work folder (film-out/reel/sprites, REEL_OUT overrides). The fonts are the Mac's own SF Pro and SF Mono,
+// Work files go to apps/landing/film-out/release (RELEASE_OUT overrides) and are served to the film under /work/. The cast is
+// the reel's: its sprites.py frames are served from the reel's work folder (film-out/reel/sprites, REEL_OUT overrides). The fonts are the Mac's own SF Pro and SF Mono,
 // served from /System/Library over /fonts/* (file:// font loads are blocked); PingFang SC is used by name. Never copy them
 // into the repo.
 import http from 'node:http';
@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const FILM = process.env.FILM_DIR ? path.resolve(process.env.FILM_DIR) : HERE;
 const OUT = process.env.RELEASE_OUT || path.resolve(HERE, '../../film-out/release');
 const REEL = process.env.REEL_OUT || path.resolve(HERE, '../../film-out/reel');
 const args = process.argv.slice(2);
@@ -29,10 +30,11 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/ja
 function serve() {
   const server = http.createServer((req, res) => {
     const url = decodeURIComponent(req.url.split('?')[0]);
-    // the launch film's timeline helpers are shared (/launch/lib.js); the sprites are the reel's work files
-    const work = url.startsWith('/sprites/');
-    const root = work ? REEL : url.startsWith('/launch/') ? path.resolve(HERE, '..') : HERE;
-    const file = url.startsWith('/fonts/') ? FONTS[url.slice(7)] : path.join(root, url === '/' ? 'film.html' : path.normalize(url));
+    // the launch film's timeline helpers are shared (/launch/lib.js); the sprites are the reel's work files, /work/ this film's
+    const own = url.startsWith('/work/');
+    const root = url.startsWith('/sprites/') ? REEL : own ? OUT : url.startsWith('/launch/') ? path.resolve(HERE, '..') : FILM;
+    const rel = own ? url.slice('/work'.length) : url;
+    const file = url.startsWith('/fonts/') ? FONTS[url.slice(7)] : path.join(root, rel === '/' ? 'film.html' : path.normalize(rel));
     if (!file || (!url.startsWith('/fonts/') && !file.startsWith(root)) || !fs.existsSync(file)) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
     fs.createReadStream(file).pipe(res);

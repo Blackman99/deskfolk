@@ -1,0 +1,274 @@
+@font-face { font-family: "DF Sans"; src: url(/fonts/SFNS.ttf) format("truetype"); font-weight: 1 1000; }
+@font-face { font-family: "DF Mono"; src: url(/fonts/SFNSMono.ttf) format("truetype"); font-weight: 1 1000; }
+
+:root {
+  --bg: #eef1f2; --pane: #ffffff; --ink: #121c20; --ink2: #37444a; --muted: #5f6d74; --muted-l: #95a2a8;
+  --line: #e0e6e8; --line-s: #eff3f4; --accent: #146a7c; --tint: #e6f2f4; --accent-b: #b9d6dc;
+  --mustard: #f0ab3d; --ok: #16a34a; --ok-bg: #f0fdf4; --ok-line: #bbf7d0; --ok-text: #15803d;
+  --danger: #dc2626; --danger-bg: #fef2f2; --danger-line: #fca5a5; --danger-text: #b91c1c;
+  --warn: #d97706; --warn-bg: #fffbeb; --warn-line: #fcd34d; --warn-text: #b45309;
+  --chip: #eff3f4;
+  /* more of the app's light tokens (apps/messenger/src/lib/styles/tokens.css) */
+  --ground: #f7f9f9; --line-hover: #c9d3d6; --tab-idle-ink: #5a676e; --accent-hover: #0f5462; --accent-active: #0c4450; --input-bg: #ffffff;
+  --field-focus: color-mix(in srgb, var(--accent) 70%, var(--line));
+  /* The app's surfaces are drawn at --k times their size in the app; the window you come back to, a whole tab, at
+     --kw. film.js has the same two numbers (K, KW). A size below is written as the app's px × --k. */
+  --k: 2.3; --kw: 1.8;
+  /* --shadow-card: the content card on the window's ground */
+  --card-shadow: 0 0 0 calc(.5px * var(--k)) rgba(18,28,32,.13), 0 calc(1px * var(--k)) calc(3px * var(--k)) rgba(18,28,32,.06),
+    0 calc(12px * var(--k)) calc(32px * var(--k)) calc(-12px * var(--k)) rgba(18,28,32,.16);
+  --sans: "DF Sans", "PingFang SC", sans-serif;
+  --mono: "DF Mono", "PingFang SC", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+body { font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; font-feature-settings: "kern"; }
+#stage { position: absolute; inset: 0; overflow: hidden; background: var(--bg); }
+.abs { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.mono { font-family: var(--mono); }
+.glyph { display: block; flex: none; }
+
+/* the room: soft teal light, a dot grid drifting, and the evening wash while you are away */
+#bgGlow { position: absolute; inset: -200px; background:
+  radial-gradient(900px 620px at 18% 12%, rgba(20,106,124,.10), transparent 70%),
+  radial-gradient(1100px 700px at 92% 96%, rgba(240,171,61,.10), transparent 70%); }
+#dots { position: absolute; left: -400px; top: -400px; width: 2720px; height: 1880px; opacity: .5;
+  background-image: radial-gradient(circle, rgba(18,28,32,.09) 1.6px, transparent 1.8px); background-size: 36px 36px; }
+#dusk { position: absolute; inset: 0; opacity: 0; background:
+  linear-gradient(180deg, rgba(31,53,84,.55), rgba(48,60,96,.38) 55%, rgba(20,34,52,.5)); }
+#moon { position: absolute; width: 90px; height: 90px; border-radius: 50%; opacity: 0;
+  box-shadow: inset -26px -10px 0 0 #f6efd9; }
+
+/* headline zone */
+.headline { position: absolute; left: 120px; top: 84px; font-size: 76px; font-weight: 700; letter-spacing: -1.5px; line-height: 1.1; white-space: nowrap; color: var(--ink); }
+.headline.en { font-size: 66px; letter-spacing: -1.2px; }
+.subline { position: absolute; left: 124px; top: 186px; font-size: 32px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+
+/* the cast */
+.mascot { position: absolute; left: 0; top: 0; transform-origin: 0 0; z-index: 10; }
+/* over the cast: the hold over the Producer, and what flies or is said */
+.hold { z-index: 11; }
+.bubble-you, .say, .filechip, .poll, .tag-name, .stamp, .over { z-index: 12; }
+.mascot img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.mascot .shadow { position: absolute; border-radius: 50%; background: radial-gradient(closest-side, rgba(18,28,32,.28), rgba(18,28,32,0)); }
+.tag-name { position: absolute; left: 0; top: 0; padding: 6px 18px; border-radius: 99px; background: #fff; border: 2px solid var(--line); font-size: 26px; font-weight: 650; white-space: nowrap; box-shadow: 0 10px 26px -18px rgba(18,28,32,.45); }
+/* an avatar: you and a group's stacked faces are round; one Bot's picture is a rounded square (--radius-bot) */
+.face { display: inline-block; flex: none; border-radius: 50%; background-color: #fff; background-repeat: no-repeat; border: calc(1px * var(--k)) solid var(--line); }
+.face.bot { border-radius: 30%; }
+
+/* panes and cards: a card on the ground, a hairline edge and the card's shadow (--shadow-card) */
+.pane { background: var(--pane); border-radius: calc(14px * var(--k)); box-shadow: var(--card-shadow); }
+.pill { display: inline-flex; align-items: center; gap: 8px; border-radius: 99px; padding: 4px 16px; font-size: 22px; font-weight: 600; white-space: nowrap; }
+.pill.run { background: var(--tint); color: var(--accent); border: 1.5px solid var(--accent-b); }
+.pill.done { background: var(--ok-bg); color: var(--ok-text); border: 1.5px solid var(--ok-line); }
+.pill.quiet { background: var(--chip); color: var(--muted); border: 1.5px solid var(--line); font-weight: 500; }
+.pill.warn { background: var(--warn-bg); color: var(--warn-text); border: 1.5px solid var(--warn-line); }
+/* a quiet tag beside a Bot's name (.bot-badge): the accent is kept for what you can act on */
+.bot-badge { font-size: calc(10px * var(--k)); font-weight: 600; padding: calc(1px * var(--k)) calc(5px * var(--k)); border-radius: calc(4px * var(--k)); border: calc(1px * var(--k)) solid var(--line); color: var(--muted); line-height: 1.2; }
+
+/* composer (Composer.svelte, wider than a phone): the text on top, the tools under it */
+.composer { display: flex; flex-wrap: wrap; align-items: center; column-gap: calc(4px * var(--k)); row-gap: calc(2px * var(--k));
+  padding: calc(8px * var(--k)) calc(8px * var(--k)) calc(6px * var(--k)); border-radius: calc(18px * var(--k));
+  background: var(--input-bg); border: calc(1px * var(--k)) solid var(--line); font-size: calc(14px * var(--k));
+  /* --shadow-raised: a lit top edge, a contact shadow, a long soft one */
+  box-shadow: inset 0 calc(1px * var(--k)) 0 rgba(255,255,255,.7), 0 calc(1px * var(--k)) calc(2px * var(--k)) rgba(18,28,32,.05),
+    0 calc(10px * var(--k)) calc(28px * var(--k)) calc(-12px * var(--k)) rgba(18,28,32,.22); }
+/* typing in it: the hairline turns to the accent, and nothing else (no halo on the composer) */
+.composer.focus { border-color: var(--field-focus); }
+.composer .txt { order: -1; flex: 1 0 100%; min-height: calc(34px * var(--k)); padding: calc(6px * var(--k)) calc(10px * var(--k)) calc(2px * var(--k));
+  line-height: calc(22px * var(--k)); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.composer .ph { color: var(--muted); }
+.composer .caret { display: inline-block; width: calc(1.5px * var(--k)); height: calc(17px * var(--k)); background: var(--accent); vertical-align: calc(-3px * var(--k)); margin-left: calc(1px * var(--k)); border-radius: 2px; }
+.composer .caret.lead { margin: 0 calc(-1.5px * var(--k)) 0 0; }
+.composer .cb { width: calc(34px * var(--k)); height: calc(34px * var(--k)); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; color: var(--muted); }
+.composer .cb.attach { margin-right: auto; }
+.composer .send { background: var(--accent); color: #fff; }
+/* nothing to send yet: the send button in the accent's tint, so it still reads as send */
+.composer .send.off { background: var(--tint); color: color-mix(in srgb, var(--accent) 55%, transparent); }
+/* your line (.msg.is-you): the corner nearest your avatar is the mark's bubble tail */
+.bubble-you { background: var(--accent); color: #fff; border-radius: calc(14px * var(--k)) calc(4px * var(--k)) calc(14px * var(--k)) calc(14px * var(--k));
+  padding: calc(10px * var(--k)) calc(14px * var(--k)); font-size: calc(14px * var(--k)); line-height: 1.5; white-space: nowrap;
+  box-shadow: 0 calc(1px * var(--k)) calc(2px * var(--k)) rgba(18,28,32,.04), 0 18px 40px -22px rgba(20,106,124,.55); }
+.say { background: #fff; color: var(--ink); border: 2px solid var(--line); border-radius: 26px; padding: 16px 26px; font-size: 32px; font-weight: 650; white-space: nowrap; box-shadow: 0 16px 36px -22px rgba(18,28,32,.45); }
+
+/* approval (TranscriptApproval.svelte): waiting on you, a warn-tinted head with the shield and a soft warn ring;
+   answered, a plain card with its outcome */
+.approval { width: calc(456px * var(--k)); background: var(--pane); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(14px * var(--k)); overflow: hidden;
+  box-shadow: 0 calc(2px * var(--k)) calc(4px * var(--k)) rgba(18,28,32,.05), 0 40px 90px -36px rgba(18,28,32,.30); }
+.approval.waiting { border-color: var(--warn-line);
+  box-shadow: 0 0 0 calc(3px * var(--k)) color-mix(in srgb, var(--warn) 10%, transparent), 0 calc(2px * var(--k)) calc(4px * var(--k)) rgba(18,28,32,.05), 0 40px 90px -36px rgba(18,28,32,.30); }
+.approval .head { display: flex; align-items: center; gap: calc(6px * var(--k)); padding: calc(9px * var(--k)) calc(16px * var(--k)); background: var(--line-s);
+  border-bottom: calc(1px * var(--k)) solid var(--line-s); color: var(--muted); font-size: calc(12px * var(--k)); font-weight: 650; white-space: nowrap; }
+.approval.waiting .head { background: var(--warn-bg); border-bottom-color: var(--warn-line); color: var(--warn-text); }
+.approval .head .whom { color: var(--ink2); font-weight: 500; }
+.approval .head .whom::before { content: "·"; margin-right: calc(6px * var(--k)); color: var(--muted-l); }
+.approval .main { padding: calc(12px * var(--k)) calc(16px * var(--k)) calc(14px * var(--k)); }
+.approval .body { font-size: calc(14px * var(--k)); line-height: 1.55; white-space: pre-wrap; color: var(--ink); }
+.approval .acts { position: relative; margin-top: calc(14px * var(--k)); }
+.approval .btns { display: flex; gap: calc(8px * var(--k)); }
+.approval .status { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: calc(6px * var(--k)); font-size: calc(13px * var(--k)); color: var(--muted); white-space: nowrap; }
+/* Button.svelte: primary, secondary, ghost */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: calc(6px * var(--k)); height: calc(32px * var(--k)); padding: 0 calc(12px * var(--k)); border-radius: calc(8px * var(--k));
+  font-size: calc(13px * var(--k)); font-weight: 600; white-space: nowrap; color: var(--ink); }
+.btn.primary { background: var(--accent); color: #fff; box-shadow: inset 0 calc(1px * var(--k)) 0 rgba(255,255,255,.14), 0 calc(1px * var(--k)) calc(2px * var(--k)) color-mix(in srgb, var(--accent) 35%, transparent); }
+.btn.secondary { background: #fff; box-shadow: inset 0 0 0 calc(1px * var(--k)) var(--line), 0 calc(1px * var(--k)) calc(2px * var(--k)) rgba(18,28,32,.04); }
+.btn.ghost { background: transparent; color: var(--ink2); }
+
+/* the app's own lines: a white card with the mark */
+.appline { display: flex; align-items: center; gap: 18px; background: #fff; border: calc(1px * var(--k)) solid var(--accent-b); border-radius: calc(10px * var(--k)); padding: 18px 26px; font-size: 30px; line-height: 1.4; white-space: nowrap; box-shadow: 0 18px 44px -26px rgba(18,28,32,.35); }
+.appline .who { font-weight: 650; color: var(--accent); }
+.mark { display: inline-block; flex: none; }
+.spin { display: inline-block; flex: none; }
+/* a status dot with the set's check or cross in it */
+.dot { display: inline-flex; align-items: center; justify-content: center; flex: none; border-radius: 50%; color: #fff; }
+/* a file named in a message (MarkdownBody.svelte's a.md-artifact-link): its kind's icon and its name on a light
+   wash of the accent with a thin ring */
+.filechip { display: inline-flex; align-items: center; gap: calc(4px * var(--k)); padding: calc(2px * var(--k)) calc(7px * var(--k)); border-radius: calc(6px * var(--k));
+  background: color-mix(in srgb, var(--accent) 7%, #fff); box-shadow: inset 0 0 0 calc(1px * var(--k)) color-mix(in srgb, var(--accent) 17%, transparent);
+  color: var(--accent-hover); font-size: calc(13px * var(--k)); font-weight: 400; line-height: 1.3; white-space: nowrap; }
+.filechip.fly { box-shadow: inset 0 0 0 calc(1px * var(--k)) color-mix(in srgb, var(--accent) 17%, transparent), 0 18px 40px -22px rgba(18,28,32,.5); }
+/* pointer */
+#pointer { position: absolute; left: 0; top: 0; width: 44px; height: 60px; z-index: 50; filter: drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+#ripple { position: absolute; left: 0; top: 0; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 5px solid var(--accent); z-index: 49; opacity: 0; }
+
+/* end card */
+.word { font-size: 150px; font-weight: 700; letter-spacing: -5px; white-space: nowrap; }
+.tagline { font-size: 56px; font-weight: 650; letter-spacing: -.8px; white-space: nowrap; color: var(--ink2); }
+.cta { display: inline-flex; align-items: center; gap: 22px; height: 92px; padding: 0 44px; border-radius: 46px; background: var(--accent); color: #fff; font-size: 38px; font-weight: 650; white-space: nowrap; }
+.url { font-family: var(--mono); font-size: 40px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.fine { font-size: 26px; color: var(--ink2); white-space: nowrap; }
+.finer { font-size: 21px; color: #47545a; white-space: nowrap; }
+
+
+/* ================================================================ the 0.2.0 release film */
+/* 0–4: the name, the version turning over from 0.1.0 */
+.ver { font-family: var(--mono); font-size: 112px; font-weight: 700; letter-spacing: -3px; color: var(--accent); white-space: nowrap; line-height: 1.1; }
+.ver.small { font-size: 60px; letter-spacing: -1px; }
+.pill.count { font-size: 34px; padding: 8px 24px; gap: 10px; background: var(--tint); color: var(--accent); border: 2px solid var(--accent-b); }
+/* the middle digit rolls over: a column of the old and the new, behind a one-digit window */
+.ver .roll { display: inline-block; height: 1.1em; overflow: hidden; vertical-align: top; }
+.ver .roll .col { display: flex; flex-direction: column; }
+.ver .roll .col span { display: block; height: 1.1em; }
+.platform { display: inline-flex; align-items: center; gap: 14px; height: 74px; padding: 0 28px; border-radius: 37px; background: #fff; border: 2px solid var(--line);
+  font-size: 30px; font-weight: 600; color: var(--ink); white-space: nowrap; box-shadow: 0 16px 36px -24px rgba(18,28,32,.45); }
+.platform.quiet { color: var(--muted); }
+
+/* the window: the sidebar on the ground, the conversation on the card */
+.chat, .mappane { --k: var(--kw); }
+.chat { overflow: hidden; }
+.chat .side { position: absolute; left: 0; top: 0; bottom: 0; width: 300px; background: var(--ground); border-right: 2px solid var(--line-s); padding: 0 14px; }
+.chat .side-hd { display: flex; align-items: center; gap: 12px; height: 82px; padding: 0 8px; font-size: 28px; white-space: nowrap; }
+.chat .target { margin-left: auto; width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.chat .target.on { background: var(--tint); color: var(--accent); }
+.chat .srow { display: flex; align-items: center; gap: 14px; padding: 12px 10px; border-radius: 14px; margin-top: 6px; white-space: nowrap; }
+.chat .srow.on { background: var(--pane); box-shadow: 0 0 0 1px rgba(18,28,32,.10), 0 2px 6px rgba(18,28,32,.06); }
+.chat .sn { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.chat .sn b { font-size: 24px; font-weight: 650; }
+.chat .sp { font-size: 19px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+.chat .conv { position: absolute; left: 300px; top: 0; right: 0; bottom: 0; }
+.chat .conv-hd { display: flex; align-items: center; gap: 14px; height: 82px; padding: 0 40px; border-bottom: 2px solid var(--line-s); font-size: 26px; white-space: nowrap; }
+.chat .hd2 { display: flex; align-items: center; gap: 18px; }
+.meta { font-size: 20px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.working { display: flex; align-items: center; gap: 16px; font-size: 22px; color: var(--muted); white-space: nowrap; }
+.working .wl { display: flex; align-items: center; gap: 12px; }
+.working .timer { font-family: var(--mono); font-size: 20px; color: var(--ink2); background: var(--chip); border-radius: 8px; padding: 1px 8px; }
+.working .dots { display: inline-flex; gap: 6px; } .working .dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+
+/* 24–26.5: and more */
+.morechip { display: inline-flex; align-items: center; gap: 18px; height: 84px; padding: 0 30px 0 22px; border-radius: 22px; background: #fff; border: 2px solid var(--line);
+  font-size: 30px; font-weight: 600; white-space: nowrap; box-shadow: 0 16px 36px -24px rgba(18,28,32,.45); }
+
+/* the sidebar's 项目 section (Sidebar.svelte, ProjectSessionRow.svelte): its head with +, a folder with its own +, the
+   folder's sessions. An agent's mark is drawn as a plain tile here: the app shows the agent's own logo. */
+.side .sec { display: flex; align-items: center; height: 50px; margin-top: 22px; padding: 0 10px; font-size: 19px; font-weight: 650; color: var(--muted); white-space: nowrap; }
+.side .dirrow { display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 10px; font-size: 22px; font-weight: 600; color: var(--ink2); white-space: nowrap; }
+.side .dirrow .fold { display: inline-flex; color: var(--muted); }
+.side .add { margin-left: auto; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.side .add.hot { background: var(--line-s); color: var(--ink); }
+.prow { display: flex; align-items: center; gap: 12px; height: 54px; margin-top: 4px; padding: 0 12px 0 22px; border-radius: 12px; font-size: 21px; white-space: nowrap; color: var(--ink2); overflow: hidden; }
+.prow.on { background: var(--pane); color: var(--ink); box-shadow: 0 0 0 1px rgba(18,28,32,.10), 0 2px 6px rgba(18,28,32,.06); }
+.prow .t { overflow: hidden; text-overflow: ellipsis; }
+.am { width: 32px; height: 32px; border-radius: 9px; flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--chip); color: var(--ink2); border: 1.5px solid var(--line); }
+.prow .live { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); margin-left: auto; flex: none; }
+/* the folder's + (ProjectAddMenu.svelte): one item per agent */
+.amenu { width: 400px; padding: 8px; border-radius: 16px; background: var(--pane); z-index: 13;
+  box-shadow: 0 0 0 1px rgba(18,28,32,.10), 0 18px 44px -14px rgba(18,28,32,.32); }
+.amenu .ami { display: flex; align-items: center; gap: 14px; height: 58px; padding: 0 14px; border-radius: 10px; font-size: 22px; white-space: nowrap; color: var(--ink); }
+.amenu .ami.hot { background: var(--line-s); }
+.amenu .sep { height: 2px; margin: 6px 8px; background: var(--line-s); }
+
+/* the conversation's head: the session's name, its agent and folder, and the bar's 地图 */
+.chat .conv-hd b { font-weight: 650; }
+.agentpill { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; border-radius: 10px; background: var(--chip); color: var(--ink2); font-size: 20px; font-weight: 600; }
+.dirp { font-family: var(--mono); font-size: 19px; color: var(--muted); }
+.mapbtn { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; height: 48px; padding: 0 18px; border-radius: 12px; color: var(--ink2); font-size: 21px; font-weight: 600; white-space: nowrap; }
+.mapbtn.hot { background: var(--line-s); color: var(--ink); }
+/* the transcript (ProjectChat.svelte): your lines in the bubble, the agent's as plain words, both with a time */
+.time { font-size: 19px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.agentline { font-size: 25px; line-height: 1.6; width: 760px; }
+.agentline .filechip { vertical-align: -2px; }
+/* the agent at work: what it is on, and for how long (the stream foot) */
+.sfoot { display: flex; align-items: center; gap: 14px; font-size: 22px; color: var(--muted); white-space: nowrap; }
+.sfoot .pulse { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); flex: none; }
+.sfoot .dur { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 19px; color: var(--ink2); background: var(--chip); border-radius: 8px; padding: 2px 9px; }
+.approval .body.mono { font-family: var(--mono); font-size: calc(12.5px * var(--k)); white-space: nowrap; }
+/* the plan Claude Code presents (ProjectPlanCard.svelte) */
+.plancard { width: 760px; background: var(--pane); border: 2px solid var(--accent-b); border-radius: 22px; overflow: hidden;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 8%, transparent), 0 40px 90px -36px rgba(18,28,32,.30); }
+.plancard .head { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 26px; background: var(--tint); border-bottom: 2px solid var(--accent-b); color: var(--accent); font-size: 21px; font-weight: 650; white-space: nowrap; }
+.plancard .head .whom { color: var(--ink2); font-weight: 500; }
+.plancard .head .whom::before { content: "·"; margin-right: 10px; color: var(--muted-l); }
+.plancard ol { margin: 0; padding: 16px 26px 4px 62px; font-size: 24px; line-height: 1.6; white-space: nowrap; }
+.plancard code { font-family: var(--mono); font-size: 21px; background: var(--chip); border-radius: 7px; padding: 1px 7px; }
+.plancard .foot { display: flex; align-items: center; gap: 14px; padding: 10px 26px 16px; }
+.plancard .hint { margin-left: 8px; font-size: 20px; color: var(--muted); white-space: nowrap; }
+
+/* the composer of a project session: words on top; the clip, 计划, the account/model/thinking picker, send */
+.pcomp { width: 800px; }
+.pcomp .tune { display: inline-flex; align-items: center; gap: 8px; height: calc(30px * var(--k)); padding: 0 calc(8px * var(--k)); border-radius: calc(8px * var(--k)); font-size: calc(12.5px * var(--k)); color: var(--ink2); white-space: nowrap; }
+.pcomp .tune .sep { color: var(--muted-l); }
+.pcomp .tune .chev { display: inline-flex; color: var(--muted); }
+.plantog { display: inline-flex; align-items: center; gap: 8px; height: calc(30px * var(--k)); padding: 0 calc(9px * var(--k)); border-radius: calc(8px * var(--k)); font-size: calc(12.5px * var(--k)); font-weight: 600; color: var(--ink2); white-space: nowrap; }
+.plantog.on { background: var(--tint); color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent-b); }
+.pcomp .gap { flex: 1; }
+/* the / list over the composer (ProjectCommandMenu.svelte) */
+.cmenu { width: 800px; padding: 8px; border-radius: 18px; background: var(--pane); z-index: 13;
+  box-shadow: 0 0 0 1px rgba(18,28,32,.10), 0 22px 50px -16px rgba(18,28,32,.34); }
+.cmenu .cr { display: flex; align-items: baseline; gap: 14px; height: 56px; padding: 14px 16px 0; border-radius: 10px; white-space: nowrap; overflow: hidden; }
+.cmenu .cr.on { background: var(--tint); }
+.cmenu .cn { font-family: var(--mono); font-size: 22px; font-weight: 650; color: var(--ink); flex: none; }
+.cmenu .cr.on .cn { color: var(--accent); }
+.cmenu .ch { font-family: var(--mono); font-size: 19px; color: var(--muted); flex: none; }
+.cmenu .cd { font-size: 20px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.cmenu .keys { display: flex; align-items: center; gap: 8px; padding: 12px 16px 6px; margin-top: 6px; border-top: 2px solid var(--line-s); font-size: 17px; color: var(--muted); white-space: nowrap; }
+.cmenu .key { font-family: var(--mono); font-size: 15px; color: var(--ink2); background: var(--chip); border-radius: 6px; padding: 1px 7px; margin-left: 8px; }
+.cmenu .key:first-child { margin-left: 0; }
+/* a key pressed, shown beside the composer */
+.keycap { display: inline-flex; align-items: center; gap: 12px; font-size: 30px; font-weight: 600; color: var(--muted); z-index: 12; }
+.keycap .kc { display: inline-flex; align-items: center; height: 62px; padding: 0 22px; border-radius: 14px; background: #fff; border: 2px solid var(--line); border-bottom-width: 6px;
+  font-family: var(--mono); font-size: 28px; font-weight: 650; color: var(--ink); box-shadow: 0 14px 30px -20px rgba(18,28,32,.45); }
+
+/* 19–24: the task map's pane: its head, then the town as the app draws it (map/capture.mjs) */
+.mappane { overflow: hidden; }
+.mappane .mhd { position: absolute; left: 0; right: 0; top: 0; height: 76px; display: flex; align-items: center; gap: 16px; padding: 0 30px; border-bottom: 2px solid var(--line-s); background: var(--pane); white-space: nowrap; }
+.mappane .mhd b { font-size: 26px; font-weight: 650; }
+.mappane .mhd .mt { font-size: 22px; color: var(--ink2); }
+.mappane .mhd .lv { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; height: 36px; padding: 0 14px; border-radius: 18px; background: var(--tint); color: var(--accent); font-size: 19px; font-weight: 600; }
+.mappane .mhd .lv i { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.mappane img { position: absolute; left: 0; top: 76px; width: 1300px; height: 604px; display: block; }
+
+/* a Bot's reply (TranscriptBotGroup.svelte): its picture beside it, its name, the words */
+.reply { display: flex; align-items: flex-start; gap: calc(10px * var(--k)); }
+.reply .name { display: flex; align-items: center; gap: calc(6px * var(--k)); margin-bottom: calc(4px * var(--k)); font-size: calc(13px * var(--k)); font-weight: 650; line-height: 1; padding-top: calc(2px * var(--k)); }
+.reply .words { font-size: calc(14px * var(--k)); line-height: 1.6; white-space: normal; }
+.reply .words .filechip { vertical-align: calc(-1px * var(--k)); }
+.chat .reply .words { font-size: 25px; }
+.rname { display: flex; align-items: center; gap: 10px; font-size: 23px; white-space: nowrap; }
+/* a long session name is cut, so the head keeps its 地图 */
+.chat .conv-hd b { min-width: 0; max-width: 360px; overflow: hidden; text-overflow: ellipsis; flex: none; }
+/* the plan's foot: the hint goes under the buttons when the row is full */
+.plancard { width: 800px; }
+.plancard .foot { flex-wrap: wrap; row-gap: 4px; }
+.plancard .hint { font-size: 18px; }
+/* a card's summary over two lines, wrapped to the card as the app's pre-wrap does */
+.approval .body.mono.wrap { white-space: pre-wrap; font-size: calc(12px * var(--k)); }
