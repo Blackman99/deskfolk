@@ -98,8 +98,8 @@ export function tuneProjectSession(ctx: StoreContext, sessionId: string, change:
   return getSession(ctx, sessionId);
 }
 
-/** The agent's own session id, once a run has one: every later run resumes it. */
-export function recordProjectAgentSession(ctx: StoreContext, sessionId: string, agentSession: string): void {
+/** The agent's own session id, once a run has one: every later run resumes it. Null starts the next run on a new one. */
+export function recordProjectAgentSession(ctx: StoreContext, sessionId: string, agentSession: string | null): void {
   ctx.db.run(`UPDATE sessions SET project_agent_session = ? WHERE id = ? AND kind = 'project'`, [agentSession, sessionId]);
 }
 

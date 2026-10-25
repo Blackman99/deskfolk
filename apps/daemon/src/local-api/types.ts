@@ -94,6 +94,8 @@ export type LocalApiOptions = {
   claudeModels?: ClaudeModelList;
   /** The slash commands Claude Code offers an account in a directory (ADR 0098). */
   claudeCommands?: ClaudeCommandList;
+  /** What typing `/` offers in a Codex session: the commands the app carries out and the directory's skills (ADR 0099). */
+  codexCommands?: import("../agents/codex-commands").CodexCommandList;
   /** Stands in for the Agent SDK's `query` in tests, so no Claude Code is started. */
   agentQuery?: AgentQuery;
   /** Project sessions' Claude Code (ADR 0095); a test's stand-in for the SDK's query. */

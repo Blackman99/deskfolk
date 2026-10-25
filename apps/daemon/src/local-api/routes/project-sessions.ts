@@ -77,14 +77,16 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
   }
 
   // What typing `/` offers (ADR 0098): the account's and the directory's commands and skills, asked
-  // of Claude Code without a prompt and kept a while.
+  // of Claude Code without a prompt and kept a while; in a Codex session, the commands the app
+  // carries out for Codex and the directory's skills, asked of its app-server (ADR 0099).
   params = matchPath(path, "/v1/project-sessions/:id/commands");
-  if (params && method === "GET" && options.claudeCommands) {
+  if (params && method === "GET" && (options.claudeCommands || options.codexCommands)) {
     const project = store.projectOf(params.id!);
     if (!project) throw new HttpError(404, "not_found", "not a project session");
-    // Only Claude Code is asked: another agent's session has no `/` list (ADR 0099).
-    if (!PROJECT_AGENT_CAPS[project.agent].commands) return jsonResponse({ commands: [], checked_at: new Date().toISOString(), error: null }, 200, null);
-    return options.claudeCommands.list(project.configDir, project.dir).then((list) => jsonResponse(list, 200, null));
+    const none = () => jsonResponse({ commands: [], checked_at: new Date().toISOString(), error: null }, 200, null);
+    if (!PROJECT_AGENT_CAPS[project.agent].commands) return none();
+    if (project.agent === "codex") return options.codexCommands ? options.codexCommands.list(project.dir).then((list) => jsonResponse(list, 200, null)) : none();
+    return options.claudeCommands ? options.claudeCommands.list(project.configDir, project.dir).then((list) => jsonResponse(list, 200, null)) : none();
   }
 
   // Where a path the agent cites is: its words are relative to wherever it was working, so a path

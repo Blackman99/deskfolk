@@ -23,7 +23,7 @@ export type ProjectAgentCaps = { plan: boolean; commands: boolean; accounts: boo
 
 export const PROJECT_AGENT_CAPS: Record<ProjectAgent, ProjectAgentCaps> = {
   claude_code: { plan: true, commands: true, accounts: true, importable: true, replay: true },
-  codex: { plan: false, commands: false, accounts: false, importable: false, replay: false },
+  codex: { plan: false, commands: true, accounts: false, importable: false, replay: false },
 };
 
 export type AgentRunStatus = "running" | "waiting_approval" | "completed" | "failed" | "stopped" | "interrupted";
@@ -96,7 +96,10 @@ export type CreateProjectSessionRequest = {
   import?: { session_id: string; config_dir?: string | null };
 };
 
-/** One slash command Claude Code offers in a project session's directory (ADR 0098), as its own `/` lists it. */
+/**
+ * One slash command a project session's agent offers in its directory: Claude Code's as its own `/`
+ * lists it (ADR 0098); Codex's one the app carries out for it, or a skill (ADR 0099).
+ */
 export type ClaudeCodeCommand = {
   /** Without the slash: `compact`, `review`, a skill's `pdf`, a plugin's `plugin:command`. */
   name: string;
@@ -110,7 +113,9 @@ export type ClaudeCodeCommand = {
 /**
  * `GET /v1/project-sessions/:id/commands`: what typing `/` offers in the session (ADR 0098), the
  * account's and the directory's own commands and skills; empty with `error` set when Claude Code
- * could not be asked.
+ * could not be asked. In a Codex session (ADR 0099), the commands the app carries out for Codex
+ * and the directory's skills, the commands listed still, with `error` set, when the skills could
+ * not be asked.
  */
 export type ClaudeCodeCommandList = {
   commands: ClaudeCodeCommand[];

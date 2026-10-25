@@ -6,9 +6,13 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Typing `/` in a Codex session lists Codex's commands and skills
+
+- In a Codex project session `/` now opens the command list, as in a Claude Code one: `/compact` compacts the conversation, `/review` reviews the uncommitted changes (or what you write after it), `/new` (or `/clear`) starts a new Codex conversation, and every skill Codex would load in that folder is there by its name, used as Codex's own `$name` uses it. Codex's app-server runs no slash command, so before this a line like `/status` reached Codex as plain words. A review runs its own commands, which only look, without asking for each, so the app's permission mode decides once before it starts: under ask first an approval card comes first, under read-only it does not run. A command sent while Codex is working waits for the turn to end. ([ADR 0099](docs/adr/0099-codex-in-project-sessions.md))
+
 ### A project session can run Codex
 
-- The Projects section's + offers New Claude Code session… and New Codex session…, a directory's + asks which of the two, and the New project session sheet offers both. A Codex session talks to your own Codex in the folder you pick, as in Codex's own app: your config, AGENTS.md, MCP servers and skills apply, and each later line carries on the same Codex thread. As with Claude Code, every command and file change Codex makes asks the app first and goes by the app's permission mode, with an approval card under ask first; Stop ends the run. The composer's picker lists the models Codex lists and the thinking levels each takes, and a line sent while Codex works goes into the turn it is on. A Codex session does not yet have plan mode, the `/` command list, a choice of account, carrying on a terminal session, or a replay on the task map. ([ADR 0099](docs/adr/0099-codex-in-project-sessions.md))
+- The Projects section's + offers New Claude Code session… and New Codex session…, a directory's + asks which of the two, and the New project session sheet offers both. A Codex session talks to your own Codex in the folder you pick, as in Codex's own app: your config, AGENTS.md, MCP servers and skills apply, and each later line carries on the same Codex thread. As with Claude Code, every command and file change Codex makes asks the app first and goes by the app's permission mode, with an approval card under ask first; Stop ends the run. The composer's picker lists the models Codex lists and the thinking levels each takes, and a line sent while Codex works goes into the turn it is on. A Codex session does not yet have plan mode, a choice of account, carrying on a terminal session, or a replay on the task map. ([ADR 0099](docs/adr/0099-codex-in-project-sessions.md))
 
 ### Clicking into the other pane's composer lets you type
 

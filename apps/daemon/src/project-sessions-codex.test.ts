@@ -7,7 +7,8 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentReplay, AgentRun, ClientEvent, SessionDetail, ToolFrame } from "@real-bot/protocol";
+import type { AgentReplay, AgentRun, ClaudeCodeCommandList, ClientEvent, SessionDetail, ToolFrame } from "@real-bot/protocol";
+import { CODEX_BUILTIN_COMMANDS, type CodexCommandList } from "./agents/codex-commands";
 import type { ClaudeCommandList } from "./claude-code/commands";
 import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
@@ -22,10 +23,10 @@ afterEach(async () => { while (closes.length) await closes.pop()!(); });
 
 type Step = Record<string, unknown>;
 /** One app-server's script: each run of a session starts an app-server of its own. */
-type Script = { signedOut?: boolean; model?: string; resumable?: string; turns: Step[][] };
+type Script = { signedOut?: boolean; model?: string; resumable?: string; skills?: Array<{ name: string; description: string; path: string }>; compactMs?: number; turns: Step[][] };
 type Entry = Record<string, unknown> & { method?: string; params?: Record<string, unknown>; asked?: string; answer?: { decision?: string } };
 
-function start(scripts: Script[], opts: { claudeCommands?: ClaudeCommandList } = {}) {
+function start(scripts: Script[], opts: { claudeCommands?: ClaudeCommandList; codexCommands?: CodexCommandList } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "codex-project-")));
   const logDir = realpathSync(mkdtempSync(join(tmpdir(), "codex-project-log-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
@@ -33,6 +34,7 @@ function start(scripts: Script[], opts: { claudeCommands?: ClaudeCommandList } =
   const api = createLocalApi({
     store, token: "codex-test", schedule: false,
     ...(opts.claudeCommands ? { claudeCommands: opts.claudeCommands } : {}),
+    ...(opts.codexCommands ? { codexCommands: opts.codexCommands } : {}),
     projectCodex: async () => {
       const index = runs++;
       return {
@@ -245,9 +247,12 @@ test("a failed turn says why in Codex's own words; a signed-out Codex says how t
   expect(h.sent(1, "thread/resume")).toEqual([]);
 });
 
-test("a Codex session's model and level reach its next turn; what it has not got is refused, and its replay and commands are empty", async () => {
+test("a Codex session's model and level reach its next turn; what it has not got is refused, its replay is empty, and `/` lists Codex's", async () => {
   const claudeCommands: ClaudeCommandList = { list: async () => { throw new Error("Claude Code is not asked for a Codex session"); } };
-  const h = start([{ turns: [[{ say: "好" }]] }], { claudeCommands });
+  const asked: string[] = [];
+  const listed: ClaudeCodeCommandList = { commands: [...CODEX_BUILTIN_COMMANDS, { name: "pdf:pdf", description: "Read PDF files", argument_hint: "", aliases: [] }], checked_at: new Date().toISOString(), error: null };
+  const codexCommands: CodexCommandList = { list: async (dir) => { asked.push(dir); return listed; } };
+  const h = start([{ turns: [[{ say: "好" }]] }], { claudeCommands, codexCommands });
   const id = await h.open();
   expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { model: "gpt-5.6-luna", effort: "high" })).status).toBe(200);
   expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { effort: "ultra" })).status).toBe(422);
@@ -260,12 +265,150 @@ test("a Codex session's model and level reach its next turn; what it has not got
 
   const replay = await h.call<AgentReplay>("GET", `/v1/project-sessions/${id}/replay`);
   expect(replay.body).toEqual({ session_id: id, agent_session: "thread-1", source_session: null, calls: [], subagents: [], said: [] });
-  const commands = await h.call<{ commands: unknown[]; error: string | null }>("GET", `/v1/project-sessions/${id}/commands`);
-  expect(commands.body).toMatchObject({ commands: [], error: null });
+  const commands = await h.call<ClaudeCodeCommandList>("GET", `/v1/project-sessions/${id}/commands`);
+  expect(commands.body).toEqual(listed);
+  expect(asked).toEqual([h.dir]);
 
   expect((await h.call("POST", "/v1/project-sessions", { agent: "codex", import: { session_id: "x" } })).status).toBe(422);
   expect((await h.call("POST", "/v1/project-sessions", { agent: "codex", dir: h.dir, config_dir: "/somewhere" })).status).toBe(422);
   expect((await h.call("POST", "/v1/project-sessions", { agent: "grok", dir: h.dir })).status).toBe(422);
   // The phone reaches the same route.
   expect(() => validateBusiness({ v: 1, id: ulid(), method: "POST", path: "/v1/project-sessions", body: { agent: "codex", dir: "/tmp/x" } })).not.toThrow();
+});
+
+test("/compact compacts Codex's thread in a turn of its own and says it ran; a command names no session", async () => {
+  const h = start([{ turns: [] }]);
+  const id = await h.open();
+  await h.say(id, "/compact");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("completed");
+  expect(h.sent(0, "thread/compact/start")).toEqual([{ threadId: "thread-1" }]);
+  expect(h.sent(0, "turn/start")).toEqual([]);
+  expect(h.lines(id)).toEqual([
+    { kind: "user", author: "user", body: "/compact" },
+    { kind: "system", author: "app", body: "已执行 /compact：Codex 把之前的对话压成了摘要" },
+  ]);
+  expect(h.events.some((event) => event.event === "agent_run.upsert" && event.activity === "正在压缩上下文")).toBe(true);
+  expect(h.store.getSession(id).name).toBeNull();
+});
+
+test("Stop interrupts a compaction by the turn Codex named for it", async () => {
+  const h = start([{ compactMs: 5_000, turns: [] }]);
+  const id = await h.open();
+  await h.say(id, "/compact");
+  await h.until(() => h.log(0).some((entry) => entry.method === "thread/compact/start"));
+  await Bun.sleep(80);
+  expect((await h.call<AgentRun>("POST", `/v1/agent-runs/${(await h.run(id))!.id}/stop`)).body.status).toBe("stopped");
+  await h.until(() => h.sent(0, "turn/interrupt").length === 1);
+  expect(h.sent(0, "turn/interrupt")[0]).toEqual({ threadId: "thread-1", turnId: expect.stringMatching(/^compact-/) });
+});
+
+test("/review reviews the uncommitted changes, or what you wrote after it: its commands run unasked, its findings are the reply", async () => {
+  const h = start([
+    { turns: [[{ unasked: "git diff" }, { say: "没发现问题" }]] },
+    { turns: [[{ say: "add 用了减号" }]] },
+  ]);
+  h.store.patchSettings({ permission_mode: "auto" });
+  const frames: ToolFrame[] = [];
+  h.api.subscribeTools((frame) => frames.push(frame));
+  const id = await h.open();
+  await h.say(id, "/review");
+  await h.settled(id);
+  expect(h.sent(0, "review/start")).toEqual([{ threadId: "thread-1", target: { type: "uncommittedChanges" }, delivery: "inline" }]);
+  expect(h.sent(0, "turn/start")).toEqual([]);
+  expect(h.log(0).some((entry) => entry.asked)).toBe(false);
+  expect(frames.map((frame) => [frame.phase, frame.name, frame.command])).toEqual([["started", "shell", "git diff"], ["exited", "shell", "git diff"]]);
+  // Its findings are said once: the reply, not words beside its work as well.
+  expect(h.events.some((event) => event.event === "agent_run.upsert" && event.partial === "没发现问题")).toBe(false);
+
+  await h.say(id, "/review 看看 calc.py 的 add");
+  await h.until(() => h.lines(id).length === 4);
+  await h.settled(id);
+  expect(h.sent(1, "review/start")).toEqual([{ threadId: "thread-1", target: { type: "custom", instructions: "看看 calc.py 的 add" }, delivery: "inline" }]);
+  expect(h.lines(id).map((line) => [line.kind, line.body])).toEqual([
+    ["user", "/review"], ["bot", "没发现问题"], ["user", "/review 看看 calc.py 的 add"], ["bot", "add 用了减号"],
+  ]);
+});
+
+test("/review waits on one card under ask first and starts once approved; denied it says so; read-only refuses it", async () => {
+  const h = start([{ turns: [[{ unasked: "git diff" }, { say: "好" }]] }, { turns: [] }, { turns: [] }]);
+  h.store.patchSettings({ permission_mode: "ask_first" });
+  const id = await h.open();
+  await h.say(id, "/review");
+  await h.until(async () => (await h.run(id))?.status === "waiting_approval");
+  const card = (await h.run(id))!;
+  expect(card.approval).toMatchObject({ kind_key: "codex-review", target: h.dir });
+  expect(card.approval?.summary).toContain("review 未提交的改动");
+  expect(h.sent(0, "review/start")).toEqual([]);
+  expect((await h.call("POST", `/v1/agent-runs/${card.id}/approve`)).status).toBe(200);
+  await h.settled(id);
+  expect(h.sent(0, "review/start")).toHaveLength(1);
+  expect(h.lines(id).at(-1)).toEqual({ kind: "bot", author: "agent", body: "好" });
+
+  await h.say(id, "/review");
+  await h.until(async () => (await h.run(id))?.status === "waiting_approval");
+  expect((await h.call("POST", `/v1/agent-runs/${(await h.run(id))!.id}/deny`)).status).toBe(200);
+  await h.settled(id);
+  expect(h.sent(1, "review/start")).toEqual([]);
+  expect(h.lines(id).at(-1)).toEqual({ kind: "system", author: "app", body: "没有执行 /review：你拒绝了" });
+
+  h.store.patchSettings({ permission_mode: "read_only" });
+  await h.say(id, "/review");
+  await h.until(() => h.lines(id).length === 6);
+  await h.settled(id);
+  expect(h.sent(2, "review/start")).toEqual([]);
+  expect(h.lines(id).at(-1)).toEqual({ kind: "system", author: "app", body: "只读模式下不能用 /review：审查时 Codex 自己跑命令，不经过应用" });
+});
+
+test("/new opens a new Codex thread: what follows it, and every later line, go there", async () => {
+  const h = start([{ turns: [[{ say: "答一" }]] }, { turns: [[{ say: "新的" }]] }, { turns: [[{ say: "接着新的" }]] }, { turns: [] }, { turns: [[{ say: "第三个" }]] }]);
+  const id = await h.open();
+  await h.say(id, "你好");
+  await h.settled(id);
+  await h.say(id, "/new 从头来");
+  await h.until(() => h.lines(id).length === 5);
+  await h.settled(id);
+  expect(h.sent(1, "thread/resume")[0]).toMatchObject({ threadId: "thread-1" });
+  expect(h.sent(1, "thread/start")[0]).toMatchObject({ cwd: h.dir, approvalPolicy: "untrusted", sandbox: "read-only", ephemeral: false });
+  expect(h.sent(1, "turn/start")).toEqual([{ threadId: "thread-2", input: [{ type: "text", text: "从头来", text_elements: [] }] }]);
+  expect(h.store.projectOf(id)?.agentSession).toBe("thread-2");
+  expect(h.lines(id).slice(2).map((line) => [line.kind, line.body])).toEqual([
+    ["user", "/new 从头来"], ["system", "已执行 /new：Codex 开了一个新会话，从空的上下文重新开始，这里的记录还在"], ["bot", "新的"],
+  ]);
+
+  await h.say(id, "再来");
+  await h.until(() => h.lines(id).length === 7);
+  await h.settled(id);
+  expect(h.sent(2, "thread/resume")[0]).toMatchObject({ threadId: "thread-2" });
+
+  // Alone it opens no thread yet: Codex keeps one only once it has had a turn, so the next line's run starts it.
+  await h.say(id, "/new");
+  await h.until(() => h.lines(id).length === 9);
+  await h.settled(id);
+  expect(h.sent(3, "thread/start")).toEqual([]);
+  expect(h.store.projectOf(id)?.agentSession).toBeNull();
+  await h.say(id, "第三句");
+  await h.until(() => h.lines(id).length === 11);
+  await h.settled(id);
+  expect(h.sent(4, "thread/resume")).toEqual([]);
+  expect(h.sent(4, "thread/start")).toHaveLength(1);
+  expect(h.lines(id).at(-1)).toEqual({ kind: "bot", author: "agent", body: "第三个" });
+});
+
+test("a skill named after `/` goes as Codex's own `$` sends one; a command sent mid-turn waits for its end; a name Codex has not got goes as your words", async () => {
+  const path = "/skills/hello/SKILL.md";
+  const h = start([{ skills: [{ name: "hello", description: "Say hello", path }], turns: [[{ sleep: 300 }, { say: "Ahoy" }], [{ say: "状态" }]] }]);
+  const id = await h.open();
+  await h.say(id, "/hello 打个招呼");
+  await h.until(() => h.sent(0, "turn/start").length === 1);
+  await h.say(id, "/status");
+  await h.until(() => h.lines(id).length === 4);
+  await h.settled(id);
+  expect(h.sent(0, "skills/list")).toEqual([{ cwds: [h.dir] }]);
+  expect(h.sent(0, "turn/start")).toEqual([
+    { threadId: "thread-1", input: [{ type: "text", text: "$hello 打个招呼", text_elements: [] }, { type: "skill", name: "hello", path }] },
+    { threadId: "thread-1", input: [{ type: "text", text: "/status", text_elements: [] }] },
+  ]);
+  expect(h.sent(0, "turn/steer")).toEqual([]);
+  expect(h.lines(id).map((line) => line.body)).toEqual(["/hello 打个招呼", "/status", "Ahoy", "状态"]);
 });

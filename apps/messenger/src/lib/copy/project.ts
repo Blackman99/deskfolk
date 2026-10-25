@@ -77,10 +77,10 @@ export const zh = {
   planHint: "要改哪里，直接在下面说。",
   planEmpty: "（Claude Code 没写出计划的内容）",
   waitingPlan: "Claude Code 在等你批准计划",
-  commandsLabel: "Claude Code 的命令",
+  commandsLabel: (agent: string) => `${agent} 的命令`,
   commandsLoading: "正在读取命令…",
-  commandsFailed: "读不到命令列表；直接输入的命令照样发给 Claude Code。",
-  commandsNone: "没有对得上的命令；回车照样发给 Claude Code。",
+  commandsFailed: (agent: string) => `读不到命令列表；直接输入的命令照样发给 ${agent}。`,
+  commandsNone: (agent: string) => `没有对得上的命令；回车照样发给 ${agent}。`,
   commandKeys: { move: "选择", fill: "补全", run: "执行", close: "关闭" },
 };
 
@@ -156,9 +156,9 @@ export const en: CopyShape<typeof zh> = {
   planHint: "To change something, say it below.",
   planEmpty: "(Claude Code wrote nothing in the plan)",
   waitingPlan: "Claude Code is waiting for you to approve its plan",
-  commandsLabel: "Claude Code's commands",
+  commandsLabel: (agent: string) => `${agent}'s commands`,
   commandsLoading: "Reading the commands…",
-  commandsFailed: "Could not read the commands; a command you type still goes to Claude Code.",
-  commandsNone: "No command matches; Enter still sends it to Claude Code.",
+  commandsFailed: (agent: string) => `Could not read the commands; a command you type still goes to ${agent}.`,
+  commandsNone: (agent: string) => `No command matches; Enter still sends it to ${agent}.`,
   commandKeys: { move: "Move", fill: "Fill in", run: "Run", close: "Close" },
 };

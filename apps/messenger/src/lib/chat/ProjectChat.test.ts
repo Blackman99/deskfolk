@@ -480,11 +480,11 @@ test("a line of yours shows its picture in its bubble, and a click enlarges it",
   close();
 });
 
-test("a Codex session names Codex, has no plan mode, `/` list or account, and picks among the models Codex lists", async () => {
+test("a Codex session names Codex, has no plan mode or account, lists Codex's commands on `/`, and picks among the models Codex lists", async () => {
   const { forgetClaudeOptions } = await import("./project-agent-options.svelte.ts");
   forgetClaudeOptions();
-  const session = aProjectSession({ project_agent: "codex", project_model: "gpt-5.6-luna" });
-  const runtime = fakeRuntime({ sessions: [session], agentRuns: { "proj-1": anAgentRun({ status: "waiting_approval", approval: { kind_key: "shell", target: "/Users/a/proj", summary: "shell npm test" } }) } });
+  const session = aProjectSession({ id: "proj-codex", project_agent: "codex", project_model: "gpt-5.6-luna" });
+  const runtime = fakeRuntime({ sessions: [session], agentRuns: { "proj-codex": anAgentRun({ session_id: "proj-codex", status: "waiting_approval", approval: { kind_key: "shell", target: "/Users/a/proj", summary: "shell npm test" } }) } });
   const asked: string[] = [];
   (runtime as unknown as { client: unknown }).client = {
     agents: async () => (asked.push("agents"), { custom_agents: [], items: [
@@ -495,7 +495,11 @@ test("a Codex session names Codex, has no plan mode, `/` list or account, and pi
     ] }),
     claudeCode: async () => { asked.push("claudeCode"); throw new Error("not asked"); },
     claudeCodeModels: async () => { asked.push("claudeCodeModels"); throw new Error("not asked"); },
-    projectCommands: async () => { asked.push("projectCommands"); throw new Error("not asked"); },
+    projectCommands: async (id: string) => (asked.push(`projectCommands ${id}`), { checked_at: "2026-10-25T00:00:00.000Z", error: null, commands: [
+      { name: "compact", description: "summarize conversation to prevent hitting the context limit", argument_hint: "", aliases: [] },
+      { name: "review", description: "review my current changes and find issues", argument_hint: "[instructions]", aliases: [] },
+      { name: "pdf:pdf", description: "Read, create, render, and verify PDF files", argument_hint: "", aliases: [] },
+    ] }),
   };
   const { host, close } = render(ProjectChat, { runtime, t, selected: session, onOpenArtifact: () => {} });
   await settle();
@@ -506,12 +510,18 @@ test("a Codex session names Codex, has no plan mode, `/` list or account, and pi
   expect(host.querySelector('[data-line="working"] .stream-step')?.textContent).toBe(t.project.waiting("Codex"));
   expect(host.querySelector("[data-agent-approval] .approval-who")?.textContent).toBe("Codex");
   expect(host.querySelector("[data-project-plan]")).toBeNull();
-  // Shift+Tab and `/` are Codex's plain keys here: no plan mode to flip, no list to open.
+  // Shift+Tab is Codex's plain key here: no plan mode to flip.
   press(field, "Tab", { shiftKey: true });
-  fill(field, "/compact");
+  expect(tunes(runtime)).toEqual([]);
+  // `/` lists the commands the app carries out for Codex and its skills, named as Codex's.
+  fill(field, "/");
   await settle();
-  expect(host.querySelector("[data-project-commands]")).toBeNull();
-  expect(asked).toEqual(["agents"]);
+  expect(asked).toEqual(["agents", "projectCommands proj-codex"]);
+  expect(rows(host)).toEqual(["/compact", "/review", "/pdf:pdf"]);
+  expect(host.querySelector("[data-project-commands] [role=listbox]")?.getAttribute("aria-label")).toBe(t.project.commandsLabel("Codex"));
+  fill(field, "/pdf");
+  expect(rows(host)).toEqual(["/pdf:pdf"]);
+  fill(field, "");
   const trigger = tuneTrigger(host);
   expect(trigger?.textContent).toContain("GPT-5.6 Luna");
   click(trigger);
@@ -520,7 +530,7 @@ test("a Codex session names Codex, has no plan mode, `/` list or account, and pi
   expect(tuneLabels(host, "effort")).toEqual([t.project.effortDefault, "低", "中"]);
   click(tuneRow(host, "model", "GPT-5.6 Terra"));
   await settle();
-  expect(tunes(runtime)).toEqual([["proj-1", { model: "gpt-5.6-terra" }]]);
+  expect(tunes(runtime)).toEqual([["proj-codex", { model: "gpt-5.6-terra" }]]);
   close();
   forgetClaudeOptions();
 });
@@ -613,7 +623,7 @@ test("Enter runs the command picked; Esc closes the list and Enter then sends wh
   press(field, "Enter");
   expect(drafts).toEqual(["/context"]);
   fill(field, "/zzz");
-  expect(host.querySelector("[data-project-commands]")?.textContent).toContain(t.project.commandsNone);
+  expect(host.querySelector("[data-project-commands]")?.textContent).toContain(t.project.commandsNone("Claude Code"));
   press(field, "Escape");
   expect(host.querySelector("[data-project-commands]")).toBeNull();
   press(field, "Enter");

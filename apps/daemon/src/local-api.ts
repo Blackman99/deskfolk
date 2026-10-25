@@ -6,6 +6,7 @@ import { isNonReceiptPath, LOCAL_API_NAME, type CapabilitiesResponse, type Clien
 import { warmDisplayAvatar } from "./avatar-display";
 import { createClaudeCodeProbe } from "./claude-code/probe";
 import { createClaudeUsageProbe } from "./claude-code/usage";
+import { createCodexCommandList } from "./agents/codex-commands";
 import { createClaudeCommandList } from "./claude-code/commands";
 import { createClaudeModelList } from "./claude-code/models";
 import { HttpError } from "./errors";
@@ -46,6 +47,7 @@ import { ensureZshIntegration } from "./terminal-env";
 import { Terminals } from "./terminals";
 import { createTurnEngine, type TurnEngine } from "./turn-engine";
 import type { ProjectRunner } from "./project-runner";
+import { projectCodexOf } from "./project-runner-codex";
 import { createProjectRunners } from "./project-runners";
 import { locateWorkspaceFile } from "./workspace-browse";
 export type { LocalApi, LocalApiOptions } from "./local-api/types";
@@ -67,6 +69,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   const claudeCode = options.claudeCode!;
   options.claudeModels ??= createClaudeModelList({ claudeCode });
   options.claudeCommands ??= createClaudeCommandList({ claudeCode });
+  options.codexCommands ??= createCodexCommandList({ resolve: projectCodexOf(options.store) });
   options.claudeUsage ??= createClaudeUsageProbe({
     claudeCode,
     // Bots, Claude rungs of the model ladder (ADR 0076) and built-in calls alike, and every account

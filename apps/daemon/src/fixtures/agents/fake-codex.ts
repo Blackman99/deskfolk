@@ -9,7 +9,11 @@
  * `signedOut` answers `account/read` with no account. `mcpServers` is what `mcpServerStatus/list`
  * lists; a `thread/start` whose `config.mcp_servers` names one of `rejectMcp` fails the way Codex
  * does for a server it cannot take an override for. `thread/resume` reopens the thread it names, as
- * a project session's later runs do (ADR 0099). `@CWD` in the script is the thread's cwd.
+ * a project session's later runs do (ADR 0099); each `thread/start` opens a new one (`thread-1`,
+ * `thread-2`, …). `skills` is what `skills/list` lists. `thread/compact/start` compacts in a turn of
+ * its own, named only by `turn/started`; `review/start` plays the next script turn as a review,
+ * between `enteredReviewMode` and `exitedReviewMode` (its findings what it says), its commands
+ * unasked as Codex's own are. `@CWD` in the script is the thread's cwd.
  *
  * Steps: `{ say }` a chunk of the final answer; `{ commentary }` words beside the work;
  * `{ command }` a command it asks approval for, then completes (declined when refused);
@@ -46,6 +50,9 @@ type Script = {
   rejectMcp?: string[];
   /** The one thread `thread/resume` finds; any when left out. */
   resumable?: string;
+  skills?: Array<{ name: string; description: string; path: string; enabled?: boolean }>;
+  /** How long a compaction takes; 30 ms when left out. */
+  compactMs?: number;
   turns: Step[][];
 };
 
@@ -56,6 +63,7 @@ const log = (entry: Record<string, unknown>) => {
 const rpc = rpcPeer(process.stdin, process.stdout, { jsonrpc: false });
 
 let THREAD_ID = "thread-1";
+let threads = 0;
 let cwd = process.cwd();
 let turnIndex = 0;
 let seq = 0;
@@ -88,7 +96,7 @@ function held<T>(send: () => T): T {
   }
 }
 
-async function play(steps: Step[], turnId: string): Promise<void> {
+async function play(steps: Step[], turnId: string, review = false): Promise<void> {
   // The turn/start answer goes out first.
   await sleep(10);
   interrupted = false;
@@ -100,6 +108,7 @@ async function play(steps: Step[], turnId: string): Promise<void> {
   };
   const complete = (status: "completed" | "interrupted" | "failed", error: { message: string; codexErrorInfo?: unknown } | null = null) =>
     notify("turn/completed", { threadId: THREAD_ID, turn: { id: turnId, status, error: error ? { message: error.message, codexErrorInfo: error.codexErrorInfo ?? null } : null } });
+  if (review) notify("item/completed", { threadId: THREAD_ID, turnId, item: { type: "enteredReviewMode", id: nextId("review"), review: "current changes" } });
 
   for (const step of steps) {
     if ("say" in step) {
@@ -168,7 +177,12 @@ async function play(steps: Step[], turnId: string): Promise<void> {
     }
     await sleep(5);
   }
-  message(said.join(""), "final_answer");
+  if (review) {
+    // Codex closes a review with its findings, and says them once more as a message without a phase.
+    const findings = said.join("");
+    notify("item/completed", { threadId: THREAD_ID, turnId, item: { type: "exitedReviewMode", id: nextId("review"), review: findings } });
+    notify("item/completed", { threadId: THREAD_ID, turnId, item: { type: "agentMessage", id: nextId("msg"), text: findings, phase: null } });
+  } else message(said.join(""), "final_answer");
   complete("completed");
 }
 
@@ -192,6 +206,7 @@ rpc.onRequest(async (method, params) => {
         }
       }
       // `@CWD` in the script is the directory the thread was opened in.
+      THREAD_ID = `thread-${++threads}`;
       cwd = String(p.cwd ?? process.cwd());
       script.turns = JSON.parse(JSON.stringify(script.turns).replaceAll("@CWD", cwd)) as Step[][];
       return { thread: { id: THREAD_ID, cwd }, model: script.model ?? "fake-codex-model", modelProvider: "openai", cwd, approvalPolicy: p.approvalPolicy ?? "untrusted", sandbox: { type: "readOnly" } };
@@ -199,6 +214,8 @@ rpc.onRequest(async (method, params) => {
     case "thread/resume": {
       if (typeof p.threadId !== "string" || p.threadId !== (script.resumable ?? p.threadId)) throw new RpcError(-32600, `no rollout found for thread id ${String(p.threadId)}`);
       THREAD_ID = p.threadId;
+      // A thread started after it is the next one.
+      threads = Math.max(threads, Number(/^thread-(\d+)$/.exec(p.threadId)?.[1] ?? 0));
       cwd = String(p.cwd ?? process.cwd());
       script.turns = JSON.parse(JSON.stringify(script.turns).replaceAll("@CWD", cwd)) as Step[][];
       return { thread: { id: THREAD_ID, cwd }, model: script.model ?? "fake-codex-model", modelProvider: "openai", cwd, approvalPolicy: p.approvalPolicy ?? "untrusted", sandbox: { type: "readOnly" } };
@@ -209,6 +226,26 @@ rpc.onRequest(async (method, params) => {
       void play(steps, turnId);
       return { turn: { id: turnId, status: "inProgress", items: [], error: null } };
     }
+    case "review/start": {
+      const steps = script.turns[turnIndex++] ?? [{ say: "(no more script)" }];
+      const turnId = `turn-${turnIndex}`;
+      void play(steps, turnId, true);
+      return { turn: { id: turnId, status: "inProgress", items: [], error: null }, reviewThreadId: THREAD_ID };
+    }
+    case "thread/compact/start": {
+      const turnId = `compact-${++seq}`;
+      void (async () => {
+        await sleep(10);
+        notify("turn/started", { threadId: THREAD_ID, turn: { id: turnId, status: "inProgress", items: [], error: null } });
+        notify("item/started", { threadId: THREAD_ID, turnId, item: { type: "contextCompaction", id: nextId("compaction") } });
+        await sleep(script.compactMs ?? 30);
+        notify("item/completed", { threadId: THREAD_ID, turnId, item: { type: "contextCompaction", id: `compaction_${seq}` } });
+        notify("turn/completed", { threadId: THREAD_ID, turn: { id: turnId, status: "completed", error: null } });
+      })();
+      return {};
+    }
+    case "skills/list":
+      return { data: [{ cwd: (p.cwds as string[] | undefined)?.[0] ?? cwd, skills: (script.skills ?? []).map((skill) => ({ ...skill, scope: "user", enabled: skill.enabled ?? true, pluginId: null })), errors: [] }] };
     case "turn/interrupt":
       interrupted = true;
       return {};

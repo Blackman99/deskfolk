@@ -4,13 +4,16 @@
 	import type { ProjectCommandsState } from './project-commands.svelte.ts';
 
 	/**
-	 * What typing `/` in a project session's composer offers (ADR 0098): Claude Code's commands and
-	 * skills whose names fit what you typed, as its own `/` lists them, above the composer the way the
+	 * What typing `/` in a project session's composer offers (ADR 0098): the agent's commands and
+	 * skills whose names fit what you typed — Claude Code's as its own `/` lists them, Codex's the
+	 * ones the app carries out for it and its skills (ADR 0099) — above the composer the way the
 	 * @ list sits above a Bot's. The composer keeps the keys: ↑↓ move, Tab fills the command in, Enter
 	 * runs it, Esc closes; a click fills it in.
 	 */
 	type Props = {
 		t: Copy;
+		/** Whose commands they are, as the session names its agent. */
+		agentName: string;
 		id: string;
 		status: ProjectCommandsState | null;
 		matches: ClaudeCodeCommand[];
@@ -19,7 +22,7 @@
 		onPick: (command: ClaudeCodeCommand) => void;
 	};
 
-	let { t, id, status, matches, active, onHover, onPick }: Props = $props();
+	let { t, agentName, id, status, matches, active, onHover, onPick }: Props = $props();
 
 	let list = $state<HTMLElement | null>(null);
 
@@ -35,11 +38,11 @@
 	{#if status === 'loading' || status === null}
 		<p class="command-note" role="status">{t.project.commandsLoading}</p>
 	{:else if status === 'failed'}
-		<p class="command-note" role="status">{t.project.commandsFailed}</p>
+		<p class="command-note" role="status">{t.project.commandsFailed(agentName)}</p>
 	{:else if matches.length === 0}
-		<p class="command-note" role="status">{t.project.commandsNone}</p>
+		<p class="command-note" role="status">{t.project.commandsNone(agentName)}</p>
 	{:else}
-		<div class="command-list" bind:this={list} {id} role="listbox" aria-label={t.project.commandsLabel}>
+		<div class="command-list" bind:this={list} {id} role="listbox" aria-label={t.project.commandsLabel(agentName)}>
 			{#each matches as command, index (command.name)}
 				<button
 					type="button"

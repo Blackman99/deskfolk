@@ -7,14 +7,17 @@
  * (`engine/agent/drivers/codex.ts`), and the app's permission mode answers (`decideAction`), with
  * a card under ask first. Stop ends the run and what it started. Each run is an app-server of its
  * own: the first starts a thread Codex keeps, every later one resumes it, so a run is sent only
- * your new line. Plan mode, the `/` list, accounts, carrying on a terminal session and the replay
- * are Claude Code's only (`PROJECT_AGENT_CAPS`).
+ * your new line. Codex's app-server runs no slash command, so the app carries out the few it can
+ * (`agents/codex-commands.ts`): `/compact`, `/review`, `/new`, and a skill by its name. Plan mode,
+ * accounts, carrying on a terminal session and the replay are Claude Code's only
+ * (`PROJECT_AGENT_CAPS`).
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAgentEffort, type AgentRunApproval, type AgentRunToolInfo, type Message, type ToolFrame } from "@real-bot/protocol";
 import daemonPackage from "../package.json";
+import { askSkills, codexBuiltinOf, type CodexBuiltin, type CodexSkill } from "./agents/codex-commands";
 import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
 import { placeOfCall } from "./claude-code/tool-place";
 import { claudeLaunch, killsTree } from "./claude-code/spawn";
@@ -24,7 +27,8 @@ import { absoluteFrom, decideAction, unwrapShell, type AppAction } from "./engin
 import { agentTrace } from "./engine/agent/trace";
 import { recordLiveProc } from "./live-procs";
 import { pictureMime } from "./loop-pictures";
-import { clip, firstLine, targetText, type ProjectRunner } from "./project-runner";
+import { changeVerdict } from "./permission-gate";
+import { clip, COMPACTING, firstLine, slashCommandOf, targetText, type ProjectRunner } from "./project-runner";
 import type { Store } from "./store";
 
 export type CodexProjectDeps = {
@@ -35,16 +39,19 @@ export type CodexProjectDeps = {
   onTool?: (frame: ToolFrame) => void;
 };
 
-/** One of your lines as Codex's `turn/start` takes it: pictures by their path, then your words. */
-type CodexInput = { type: "text"; text: string; text_elements: [] } | { type: "localImage"; path: string };
+/** One of your lines as Codex's `turn/start` takes it: pictures by their path, then your words, and a skill you named. */
+type CodexInput = { type: "text"; text: string; text_elements: [] } | { type: "localImage"; path: string } | { type: "skill"; name: string; path: string };
 type Item = Record<string, unknown> & { id: string; type: string };
 type TurnEnd = { status?: string; error?: { message?: string; codexErrorInfo?: unknown } | null };
+
+/** A line Codex has not been sent yet: what it says, and the command it starts with (`/compact`, a skill's `/pdf:pdf`), if any. */
+type Queued = { input: CodexInput[]; command: { name: string; rest: string } | null };
 
 type Live = {
   runId: string;
   sessionId: string;
-  /** Your lines Codex has not been sent yet, oldest first: the next turn takes them all. */
-  queue: CodexInput[][];
+  /** Your lines Codex has not been sent yet, oldest first: the next turn takes the words up to a command, a command goes on its own. */
+  queue: Queued[];
   /** Lines being added to the turn going now (`turn/steer`); one Codex turns down joins the queue. */
   steering: Set<Promise<void>>;
   /** The approvals waiting on you, oldest first: the first is the card; answering it brings the next. */
@@ -144,6 +151,41 @@ function actionOf(item: Item, cwd: string): AppAction | null {
   return null;
 }
 
+/** What the next turn takes: a command on its own, or else every line of words up to the next command, at once. */
+function takeNext(queue: Queued[]): Queued | null {
+  const first = queue[0];
+  if (!first) return null;
+  if (first.command) return queue.shift()!;
+  const command = queue.findIndex((line) => line.command);
+  const words = queue.splice(0, command === -1 ? queue.length : command);
+  return { input: words.flatMap((line) => line.input), command: null };
+}
+
+/** The line with its leading `/name` written as `word` instead: `$name` for a skill, as Codex's own `$` writes it. */
+function withCommandWord(input: CodexInput[], name: string, word: string): CodexInput[] {
+  const head = new RegExp(`^(\\s*)/${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\s|$)\\s*`);
+  return input.flatMap((part) => {
+    if (part.type !== "text" || !head.test(part.text)) return [part];
+    const text = part.text.replace(head, (_, lead: string) => (word ? `${lead}${word} ` : lead)).trimEnd();
+    return text.trim() ? [{ ...part, text }] : [];
+  });
+}
+
+/** The card `/review` waits on under ask first: Codex runs a review's commands itself, so it is asked once, before it starts. */
+const REVIEW_APPROVAL_KIND = "codex-review";
+
+/** The app's line for a command that answered nothing, by the name you typed it with. */
+function commandRan(command: CodexBuiltin, typed: string, en: boolean): string {
+  if (command === "new") return en ? `Ran /${typed}: Codex starts a new conversation with an empty context; the lines here stay` : `已执行 /${typed}：Codex 开了一个新会话，从空的上下文重新开始，这里的记录还在`;
+  if (command === "compact") return en ? "Ran /compact: Codex keeps a summary of the conversation so far" : "已执行 /compact：Codex 把之前的对话压成了摘要";
+  return en ? `Ran /${typed}` : `已执行 /${typed}`;
+}
+
+/** The Codex a project session starts, found as a Bot's is: the path you set in Settings, or the one on this computer. */
+export function projectCodexOf(store: Store): () => Promise<ResolvedAgent> {
+  return () => resolveAgent({ runner: "codex", custom: null, setting: store.agentPath("codex"), configDir: null });
+}
+
 export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner {
   const { store } = deps;
   const lives = new Map<string, Live>();
@@ -154,7 +196,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     store.insertAgentLine(sessionId, { kind, body });
   };
   const locale = () => store.settingsCached().locale;
-  const resolve = deps.resolve ?? (() => resolveAgent({ runner: "codex", custom: null, setting: store.agentPath("codex"), configDir: null }));
+  const resolve = deps.resolve ?? projectCodexOf(store);
 
   /** Codex's app-server, in a process group of its own and on the record, so Stop and a crashed daemon's next boot can end it. */
   function spawnRecorded(live: Live, executable: string, args: string[], cwd: string, env: Record<string, string>): ChildProcess {
@@ -181,24 +223,30 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     const sessionId = message.session_id;
     const project = store.projectOf(sessionId);
     if (!project) return;
-    store.nameProjectSessionIfUnnamed(sessionId, message.body);
+    const command = slashCommandOf(message.body);
+    // A command names nothing: the session takes its name from the first thing you ask.
+    if (!command) store.nameProjectSessionIfUnnamed(sessionId, message.body);
     const live = lives.get(sessionId);
     if (live && (live.stopped || live.closing)) {
       // Winding down: the line opens the next run once this one is gone.
       void live.done.then(() => heard(message));
       return;
     }
-    const input = lineInput(store, message, locale() === "en");
+    const line: Queued = {
+      input: lineInput(store, message, locale() === "en"),
+      command: command ? { name: command, rest: message.body.trim().slice(command.length + 1).trim() } : null,
+    };
     if (live) {
-      // A turn going now takes it at its next step, as Codex's own steer does; between turns it waits for the next.
-      if (live.rpc && live.threadId && live.turnId) steer(live, live.rpc, live.threadId, live.turnId, input);
-      else live.queue.push(input);
+      // A turn going now takes words at its next step, as Codex's own steer does. A command, and
+      // anything sent after one still waiting, waits for the turn's end: it is a turn of its own.
+      if (!line.command && live.queue.length === 0 && live.rpc && live.threadId && live.turnId) steer(live, live.rpc, live.threadId, live.turnId, line.input);
+      else live.queue.push(line);
       return;
     }
     const run = store.createAgentRun(sessionId);
     let finish!: () => void;
     const fresh: Live = {
-      runId: run.id, sessionId, queue: [input], steering: new Set(), waiting: [], stopped: false, closing: false,
+      runId: run.id, sessionId, queue: [line], steering: new Set(), waiting: [], stopped: false, closing: false,
       done: new Promise<void>((resolve) => { finish = resolve; }), abort: new AbortController(), rpc: null, threadId: null, turnId: null,
     };
     lives.set(sessionId, fresh);
@@ -218,8 +266,11 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
   function steer(live: Live, rpc: RpcPeer, threadId: string, turnId: string, input: CodexInput[]): void {
     const going = rpc.request("turn/steer", { threadId, expectedTurnId: turnId, input }, STEER_TIMEOUT_MS).then(
       () => {},
-      // The turn ended first: the line starts the next one.
-      () => { live.queue.push(input); },
+      // The turn ended first: the line starts the next one, ahead of a command sent after it.
+      () => {
+        const command = live.queue.findIndex((line) => line.command);
+        live.queue.splice(command === -1 ? live.queue.length : command, 0, { input, command: null });
+      },
     );
     live.steering.add(going);
     void going.finally(() => live.steering.delete(going));
@@ -266,11 +317,28 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     let partial = "";
     let finalText = "";
     let lastText = "";
+    /** What a review found, as Codex closes it (`exitedReviewMode`): the reply to `/review`. */
+    let reviewText: string | null = null;
     let failure: string | null = null;
     let turnDone: ((turn: TurnEnd) => void) | null = null;
+    /** The skills Codex loads here, asked the first time a line names one. */
+    let skills: CodexSkill[] | null = null;
 
     /** Whose call it is: Codex's own thread, or a subagent's thread of its own. */
     const agentOf = (p: Record<string, unknown>): string | null => (typeof p.threadId === "string" && live.threadId && p.threadId !== live.threadId ? p.threadId : null);
+
+    /** A card that waits on you; any other call already asking keeps the card until it is answered. */
+    const askYou = async (approval: AgentRunApproval): Promise<boolean> => {
+      const allow = await new Promise<boolean>((resolve) => {
+        live.waiting.push({ approval, resolve });
+        if (live.waiting.length === 1) update(live.runId, { status: "waiting_approval", approval });
+      });
+      if (live.stopped) return false;
+      // The next call still asking is the card now; with none, the run is at work again.
+      const next = live.waiting[0];
+      update(live.runId, next ? { status: "waiting_approval", approval: next.approval } : { status: "running", approval: null });
+      return allow;
+    };
 
     /** The app's rules for one command or file change: allowed, refused, or a card that waits on you. */
     const gate = async (action: AppAction): Promise<boolean> => {
@@ -278,16 +346,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       const decision = decideAction(action, { mode: "work", workspace: project.dir, configDirs, permission });
       if (decision.kind === "deny") return false;
       if (decision.kind === "allow") return true;
-      const allow = await new Promise<boolean>((resolve) => {
-        live.waiting.push({ approval: decision.approval, resolve });
-        // Another call already asking keeps the card until it is answered.
-        if (live.waiting.length === 1) update(live.runId, { status: "waiting_approval", approval: decision.approval });
-      });
-      if (live.stopped) return false;
-      // The next call still asking is the card now; with none, the run is at work again.
-      const next = live.waiting[0];
-      update(live.runId, next ? { status: "waiting_approval", approval: next.approval } : { status: "running", approval: null });
-      return allow;
+      return askYou(decision.approval);
     };
 
     rpc.onRequest(async (method, params) => {
@@ -343,12 +402,18 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         if (!item?.id) return;
         items.set(item.id, { ...(items.get(item.id) ?? {}), ...item });
         const agentId = agentOf(p);
+        if (item.type === "exitedReviewMode") {
+          if (method === "item/completed" && !agentId && typeof item.review === "string") reviewText = item.review;
+          return;
+        }
         if (item.type === "agentMessage") {
           if (method !== "item/completed" || agentId) return;
           const text = typeof item.text === "string" ? item.text : "";
           lastText = text;
-          // Its final answer is the reply; words beside its work are what it has said so far.
+          // Its final answer is the reply; words beside its work are what it has said so far. A
+          // review's findings come once more as a message of their own: they are the reply already.
           if (item.phase === "final_answer") finalText = text;
+          else if (reviewText !== null && text.trim() === reviewText.trim()) return;
           else if (text.trim()) {
             partial = clip(partial ? `${partial}\n\n${text}` : text, PARTIAL_MAX);
             update(live.runId, { partial });
@@ -376,6 +441,12 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         if (p.willRetry !== true && !agentOf(p)) failure = codexFailure(error);
         return;
       }
+      // A compaction's turn is named only here: Stop needs it to interrupt.
+      if (method === "turn/started" && !agentOf(p)) {
+        const turn = (p.turn ?? {}) as { id?: unknown };
+        if (turnDone && !live.turnId && typeof turn.id === "string") live.turnId = turn.id;
+        return;
+      }
       if (method === "turn/completed" && !agentOf(p)) {
         const turn = (p.turn ?? {}) as TurnEnd & { id?: string };
         if (live.turnId && turn.id && turn.id !== live.turnId) return;
@@ -396,50 +467,142 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       }
       if (live.stopped) return;
       // Asks before every command and file change, whatever your config says: the app answers them.
-      const asks = { cwd: project.dir, approvalPolicy: "untrusted", sandbox: "read-only", ...(project.model ? { model: project.model } : {}) };
-      // The first run starts a thread Codex keeps; every later one resumes it.
-      const opened = project.agentSession
-        ? await rpc.request<{ thread?: { id?: string }; model?: string }>("thread/resume", { threadId: project.agentSession, ...asks, excludeTurns: true }, INIT_TIMEOUT_MS)
-        : await rpc.request<{ thread?: { id?: string }; model?: string }>("thread/start", { ...asks, ephemeral: false, serviceName: "deskfolk" }, INIT_TIMEOUT_MS);
-      const threadId = opened?.thread?.id ?? project.agentSession;
-      if (!threadId) return fail(live, en ? "Codex opened no thread" : "Codex 没有开出会话");
-      if (!project.agentSession) store.recordProjectAgentSession(live.sessionId, threadId);
-      live.threadId = threadId;
-      model = opened?.model ?? model;
-
-      while (!live.stopped) {
-        // Lines being added to the turn that just ended either made it in or wait in the queue now.
-        while (live.steering.size > 0) await Promise.all([...live.steering]);
-        const input = live.queue.splice(0).flat();
-        if (input.length === 0 || live.stopped) break;
-        // The session's model and level as they are now: a change reaches the next turn.
+      // The session's model as it is now: `/new` opens its thread with the one picked by then.
+      const asks = () => {
         const now = store.projectOf(live.sessionId) ?? project;
+        return { cwd: project.dir, approvalPolicy: "untrusted", sandbox: "read-only", ...(now.model ? { model: now.model } : {}) };
+      };
+      /** The thread a turn goes on: the one open, or else a new one Codex keeps, recorded so every later run resumes it. */
+      const thread = async (): Promise<string> => {
+        if (live.threadId) return live.threadId;
+        const opened = await rpc.request<{ thread?: { id?: string }; model?: string }>("thread/start", { ...asks(), ephemeral: false, serviceName: "deskfolk" }, INIT_TIMEOUT_MS);
+        const id = opened?.thread?.id;
+        if (!id) throw new Error(en ? "Codex opened no thread" : "Codex 没有开出会话");
+        live.threadId = id;
+        store.recordProjectAgentSession(live.sessionId, id);
+        model = opened?.model ?? model;
+        return id;
+      };
+      // The first run starts a thread Codex keeps; every later one resumes it.
+      if (project.agentSession) {
+        const opened = await rpc.request<{ thread?: { id?: string }; model?: string }>("thread/resume", { threadId: project.agentSession, ...asks(), excludeTurns: true }, INIT_TIMEOUT_MS);
+        live.threadId = opened?.thread?.id ?? project.agentSession;
+        model = opened?.model ?? model;
+      } else await thread();
+
+      /**
+       * One turn of Codex's: `start` asks for it and gives its id when the answer names one (a
+       * compaction's comes with `turn/started`), then the turn is waited out and its reply posted,
+       * or `ran` when it said nothing. False when the run ends here: stopped, Codex gone, or the
+       * turn failed.
+       */
+      const turn = async (start: () => Promise<string | null | undefined>, ran?: string): Promise<boolean> => {
         finalText = "";
         lastText = "";
+        reviewText = null;
         const finished = new Promise<TurnEnd>((resolve) => { turnDone = resolve; });
-        const turnStarted = await rpc.request<{ turn?: { id?: string } }>("turn/start", {
-          threadId, input,
+        try {
+          const id = await start();
+          if (id) live.turnId = id;
+        } catch (error) {
+          turnDone = null;
+          throw error;
+        }
+        const end = await Promise.race([finished, exited.then((): TurnEnd => ({ status: "exited" }))]);
+        turnDone = null;
+        live.turnId = null;
+        if (live.stopped) return false;
+        if (end.status === "exited") {
+          failure ??= firstLine(stderr.split("\n").filter(Boolean).at(-1) ?? "") ?? (en ? "Codex exited" : "Codex 退出了");
+          return false;
+        }
+        if (end.status !== "completed") {
+          failure ??= end.error ? codexFailure(end.error) : end.status ?? "error";
+          return false;
+        }
+        const reply = (reviewText ?? (finalText || lastText)).trim();
+        if (reply) postLine(live.sessionId, "bot", reply);
+        else if (ran) postLine(live.sessionId, "system", ran);
+        partial = "";
+        update(live.runId, { partial: null, activity: null });
+        return true;
+      };
+
+      /** A turn on your words, with the session's model and level as they are now: a change reaches the next turn. */
+      const words = (input: CodexInput[]) => turn(async () => {
+        const now = store.projectOf(live.sessionId) ?? project;
+        const started = await rpc.request<{ turn?: { id?: string } }>("turn/start", {
+          threadId: await thread(), input,
           ...(now.model ? { model: now.model } : {}),
           ...(now.effort && isAgentEffort("codex", now.effort) ? { effort: now.effort } : {}),
         }, INIT_TIMEOUT_MS);
         if (now.model) model = now.model;
-        if (turnStarted?.turn?.id) live.turnId = turnStarted.turn.id;
-        const turn = await Promise.race([finished, exited.then((): TurnEnd => ({ status: "exited" }))]);
-        turnDone = null;
-        live.turnId = null;
-        if (live.stopped) return;
-        if (turn.status === "exited") {
-          failure ??= firstLine(stderr.split("\n").filter(Boolean).at(-1) ?? "") ?? (en ? "Codex exited" : "Codex 退出了");
-          break;
+        return started?.turn?.id;
+      });
+
+      /** What a review looks at: what you wrote after `/review`, or else the changes not yet committed. */
+      const review = async (rest: string, typed: string): Promise<boolean> => {
+        const verdict = changeVerdict(permission);
+        // Codex runs a review's commands itself, asking nobody (in its read-only sandbox): the app's mode decides once, before it starts.
+        if (verdict === "refuse") {
+          postLine(live.sessionId, "system", en ? `/${typed} is not available under read-only: Codex runs a review's commands itself, without the app's say` : `只读模式下不能用 /${typed}：审查时 Codex 自己跑命令，不经过应用`);
+          return true;
         }
-        if (turn.status !== "completed") {
-          failure ??= turn.error ? codexFailure(turn.error) : turn.status ?? "error";
-          break;
+        const what = rest || (en ? "the uncommitted changes" : "未提交的改动");
+        const note = en ? "While it reviews, Codex runs its own commands in a read-only sandbox, without asking for each" : "审查时 Codex 自己跑只看不改的命令（只读沙盒），不再逐条问你";
+        if (verdict === "ask" && !(await askYou({ kind_key: REVIEW_APPROVAL_KIND, target: project.dir, summary: `review ${what}\n${note}` }))) {
+          if (!live.stopped) postLine(live.sessionId, "system", en ? `Did not run /${typed}: you said no` : `没有执行 /${typed}：你拒绝了`);
+          return !live.stopped;
         }
-        const reply = (finalText || lastText).trim();
-        if (reply) postLine(live.sessionId, "bot", reply);
-        partial = "";
-        update(live.runId, { partial: null, activity: null });
+        const target = rest ? { type: "custom", instructions: rest } : { type: "uncommittedChanges" };
+        return turn(async () => (await rpc.request<{ turn?: { id?: string } }>("review/start", { threadId: await thread(), target, delivery: "inline" }, INIT_TIMEOUT_MS))?.turn?.id);
+      };
+
+      /** A line that starts with a command: Codex's own the app carries out, a skill by its name, or else your words as you wrote them. */
+      const command = async (line: Queued & { command: NonNullable<Queued["command"]> }): Promise<boolean> => {
+        const { name, rest } = line.command;
+        const builtin = codexBuiltinOf(name);
+        try {
+          if (builtin === "compact") {
+            update(live.runId, { activity: COMPACTING[en ? "en" : "zh"] });
+            return await turn(async () => {
+              await rpc.request("thread/compact/start", { threadId: await thread() }, INIT_TIMEOUT_MS);
+              return null;
+            }, commandRan("compact", name, en));
+          }
+          if (builtin === "review") return await review(rest, name);
+          if (builtin === "new") {
+            // A new thread from the next turn on, not before: Codex keeps a thread only once it has
+            // had a turn, so one opened now and left unused could not be resumed. What you wrote
+            // after it is that thread's first line.
+            live.threadId = null;
+            store.recordProjectAgentSession(live.sessionId, null);
+            postLine(live.sessionId, "system", commandRan("new", name, en));
+            const after = withCommandWord(line.input, name, "");
+            if (after.length > 0) live.queue.unshift({ input: after, command: null });
+            return true;
+          }
+        } catch (error) {
+          if (rpc.closed || live.stopped) throw error;
+          // Codex said no to the command itself: the session says so and goes on.
+          update(live.runId, { activity: null });
+          postLine(live.sessionId, "system", en ? `Codex could not run /${name}: ${firstLine(error instanceof Error ? error.message : String(error)) ?? "error"}` : `Codex 没能执行 /${name}：${firstLine(error instanceof Error ? error.message : String(error)) ?? "error"}`);
+          return true;
+        }
+        skills ??= await askSkills(rpc, project.dir).catch(() => []);
+        const skill = skills.find((one) => one.name === name);
+        // A skill goes as Codex's own `$` sends one: its name in your words, and the skill itself.
+        if (skill) return words([...withCommandWord(line.input, name, `$${name}`), { type: "skill", name: skill.name, path: skill.path }]);
+        return words(line.input);
+      };
+
+      while (!live.stopped) {
+        // Lines being added to the turn that just ended either made it in or wait in the queue now.
+        while (live.steering.size > 0) await Promise.all([...live.steering]);
+        const next = takeNext(live.queue);
+        if (!next || next.input.length === 0 || live.stopped) break;
+        const going = next.command ? await command({ ...next, command: next.command }) : await words(next.input);
+        if (!going) break;
       }
     } catch (error) {
       if (!live.stopped) failure ??= firstLine(error instanceof Error ? error.message : String(error)) ?? firstLine(stderr.split("\n").filter(Boolean).at(-1) ?? "") ?? "error";

@@ -6,9 +6,13 @@
 
 ## Unreleased
 
+### Codex 会话里打 `/` 列出 Codex 的命令和 skill
+
+- Codex 项目会话里打 `/` 现在也会弹出命令列表，和 Claude Code 会话一样：`/compact` 压缩对话，`/review` 审查未提交的改动（后面写了字就按你写的审查），`/new`（或 `/clear`）开一个新的 Codex 对话，这个文件夹里 Codex 会加载的 skill 都按名字列着，用法和 Codex 自己的 `$名字` 一样。Codex 的 app-server 不执行斜杠命令，所以之前 `/status` 这样的话到了 Codex 那里只是普通的字。审查时 Codex 自己跑只看不改的命令，不逐条问，所以开始前按应用的权限模式决定一次：改动先问下先出批准卡，只读下不执行。Codex 干活时发的命令等这一轮完了再执行。（[ADR 0099](docs/adr/0099-codex-in-project-sessions.md)）
+
 ### 项目会话可以跑 Codex
 
-- 侧栏「项目」的「+」里分成「新开 Claude Code 会话…」和「新开 Codex 会话…」，目录行的「+」点开先选这两个之一，新开面板里也两个都有。Codex 会话在你选的文件夹里和你本机的 Codex 对话，和 Codex 自己的应用一样：读你的配置、AGENTS.md、MCP 服务器和 skill，之后的每句话都接着同一个 Codex 线程。和 Claude Code 一样，Codex 的每条命令和每次改文件都先问应用，按应用的权限模式走，改动先问下出批准卡；Stop 结束这一轮。输入框底部的选择器列的是 Codex 自己列出的模型和每个模型支持的思考等级；Codex 干活时你再说话，会送进它正在跑的那个 turn。Codex 会话暂时还没有计划模式、`/` 命令列表、选账号、接着终端里的会话和任务地图的回放。（[ADR 0099](docs/adr/0099-codex-in-project-sessions.md)）
+- 侧栏「项目」的「+」里分成「新开 Claude Code 会话…」和「新开 Codex 会话…」，目录行的「+」点开先选这两个之一，新开面板里也两个都有。Codex 会话在你选的文件夹里和你本机的 Codex 对话，和 Codex 自己的应用一样：读你的配置、AGENTS.md、MCP 服务器和 skill，之后的每句话都接着同一个 Codex 线程。和 Claude Code 一样，Codex 的每条命令和每次改文件都先问应用，按应用的权限模式走，改动先问下出批准卡；Stop 结束这一轮。输入框底部的选择器列的是 Codex 自己列出的模型和每个模型支持的思考等级；Codex 干活时你再说话，会送进它正在跑的那个 turn。Codex 会话暂时还没有计划模式、选账号、接着终端里的会话和任务地图的回放。（[ADR 0099](docs/adr/0099-codex-in-project-sessions.md)）
 
 ### 点另一个窗格的输入框就能直接打字
 

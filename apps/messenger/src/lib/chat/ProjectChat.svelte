@@ -46,8 +46,9 @@
 	 * last line — with the approval it waits on under it; Stop is in the composer, as in a Bot's
 	 * direct. Pictures and files go with a line as in a Bot's composer: pasted, or picked with the
 	 * clip. Plan mode is a switch in the composer (Shift+Tab, as in the terminal), and the plan it
-	 * brings is a card of its own; typing `/` lists Claude Code's commands (ADR 0098). A Codex
-	 * session (ADR 0099) has neither, and no account to pick. The header is the pane's or the page's own.
+	 * brings is a card of its own; typing `/` lists the agent's commands (ADR 0098). A Codex
+	 * session (ADR 0099) has no plan mode and no account to pick; its `/` lists the commands the app
+	 * carries out for Codex and its skills. The header is the pane's or the page's own.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -109,8 +110,8 @@
 	 */
 	const account = $derived(selected.project_config_dir ?? '');
 	/**
-	 * Whose session it is (ADR 0099): a Codex session has no account to pick, no plan mode and no `/`
-	 * list, and its models are the ones Codex lists.
+	 * Whose session it is (ADR 0099): a Codex session has no account to pick and no plan mode, its `/`
+	 * lists what the app carries out for Codex and its skills, and its models are the ones Codex lists.
 	 */
 	const agent = $derived(projectAgentOf(selected));
 	const caps = $derived(PROJECT_AGENT_CAPS[agent]);
@@ -151,7 +152,7 @@
 	}
 
 	/**
-	 * Typing `/` at the start of the line lists Claude Code's commands that fit what follows, while the
+	 * Typing `/` at the start of the line lists the agent's commands that fit what follows, while the
 	 * caret is still in that word (`project-commands.svelte.ts`); Esc closes it until the line changes.
 	 */
 	let caret = $state(0);
@@ -601,6 +602,7 @@
 				{#if commandsShown}
 					<ProjectCommandMenu
 						{t}
+						{agentName}
 						id={commandMenuId}
 						status={commandsState}
 						matches={commandMatches}

@@ -219,7 +219,7 @@ const PLAN_KEEP = {
   en: "The user has not approved this plan and wants to keep planning. Stay in plan mode; ask what to change if it is unclear, then present the revised plan with ExitPlanMode.",
   zh: "用户没有批准这个计划，要接着改。留在计划模式；不清楚改哪里就问，改好后再用 ExitPlanMode 交上来。",
 };
-const COMPACTING = { en: "Compacting the conversation", zh: "正在压缩上下文" };
+export const COMPACTING = { en: "Compacting the conversation", zh: "正在压缩上下文" };
 
 /** The app's line for a command that answered nothing. */
 function commandRan(command: string, en: boolean): string {
