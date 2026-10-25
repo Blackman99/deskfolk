@@ -268,25 +268,27 @@ test("on Windows, a project session's memory opens with the file tools however i
 });
 
 posixTest("plan mode changes nothing but the plan: its file is written in every mode, any other write waits for the plan", () => {
+  // The fake home's top folder is a disk one here, as above.
+  const at = { ...base, exists: () => true };
   const configDir = join(home, ".claude");
   const plans = join(configDir, "plans");
   const plan = { on: true, dirs: [plans] };
   for (const permission of ["read_only", "ask_first", "auto", "allow_all"] as const) {
-    expect(decideAgentCall({ ...base, permission, plan, tool: "Write", input: { file_path: join(plans, "cozy-newt.md") } }))
+    expect(decideAgentCall({ ...at, permission, plan, tool: "Write", input: { file_path: join(plans, "cozy-newt.md") } }))
       .toEqual({ kind: "allow", effect: false, appName: "write_file", target: join(plans, "cozy-newt.md") });
-    const refused = decideAgentCall({ ...base, permission, plan, tool: "Edit", input: { file_path: join(root, "a.md") } });
+    const refused = decideAgentCall({ ...at, permission, plan, tool: "Edit", input: { file_path: join(root, "a.md") } });
     expect(refused.kind).toBe("deny");
     if (refused.kind === "deny") expect(refused.reason).toContain("plan mode is on");
   }
   // Its saved plans read in any mode, as its memory does; written by the mode once plan mode is off.
   const off = { on: false, dirs: [plans] };
-  expect(decideAgentCall({ ...base, permission: "read_only", plan: off, tool: "Read", input: { file_path: join(plans, "cozy-newt.md") } }).kind).toBe("allow");
-  expect(decideAgentCall({ ...base, permission: "ask_first", plan: off, tool: "Write", input: { file_path: join(plans, "cozy-newt.md") } }).kind).toBe("ask");
+  expect(decideAgentCall({ ...at, permission: "read_only", plan: off, tool: "Read", input: { file_path: join(plans, "cozy-newt.md") } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...at, permission: "ask_first", plan: off, tool: "Write", input: { file_path: join(plans, "cozy-newt.md") } }).kind).toBe("ask");
   // The rest of the config directory stays shut, plan mode or not, and so does a climb out of the plans.
   for (const file_path of [join(configDir, ".credentials.json"), join(plans, "..", "settings.json")]) {
-    expect([file_path, decideAgentCall({ ...base, plan, tool: "Read", input: { file_path } }).kind]).toEqual([file_path, "deny"]);
+    expect([file_path, decideAgentCall({ ...at, plan, tool: "Read", input: { file_path } }).kind]).toEqual([file_path, "deny"]);
   }
-  const named = decideAgentCall({ ...base, plan, tool: "Bash", input: { command: `cat ${join(plans, "cozy-newt.md")}` } });
+  const named = decideAgentCall({ ...at, plan, tool: "Bash", input: { command: `cat ${join(plans, "cozy-newt.md")}` } });
   expect(named.kind).toBe("deny");
   if (named.kind === "deny") expect(named.reason).toContain("saved plans open with Read");
 });
