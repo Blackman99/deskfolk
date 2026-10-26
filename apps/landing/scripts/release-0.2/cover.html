@@ -1,0 +1,96 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Deskfolk 0.2.0 cover</title><link rel="stylesheet" href="film.css">
+<style>
+  /* Share covers for the 0.2.0 film: cover.html?lang=zh|en&w=1920&h=1080 (captured by ../release/cover.mjs with
+     FILM_DIR here). Everything is sized in --u, 1/1080 of the cover's short side, so one layout serves every platform's
+     size: wide covers put the words left and the cast right, square and tall ones stack them. The words shrink when the
+     longer English lines would leave too little room. */
+  html, body { margin: 0; }
+  #stage { position: absolute; left: 0; top: 0; overflow: hidden; }
+  .cv { position: absolute; display: flex; flex-direction: column; gap: calc(30 * var(--u)); }
+  .lock { display: flex; align-items: center; gap: calc(30 * var(--u)); }
+  .lock .word { font-size: calc(132 * var(--u)); letter-spacing: calc(-4 * var(--u)); line-height: 1; }
+  .vrow { display: flex; align-items: center; gap: calc(26 * var(--u)); }
+  .vrow .ver { font-size: calc(124 * var(--u)); letter-spacing: calc(-3 * var(--u)); line-height: 1; }
+  .vrow .pill.count { font-size: calc(40 * var(--u)); padding: calc(10 * var(--u)) calc(28 * var(--u)) calc(10 * var(--u)) calc(22 * var(--u)); gap: calc(12 * var(--u)); border-width: calc(3 * var(--u)); }
+  .vrow .pill.count svg { width: calc(34 * var(--u)); height: calc(34 * var(--u)); }
+  .lock svg { width: calc(150 * var(--u)); height: calc(150 * var(--u)); flex: none; }
+  .tl { font-size: calc(54 * var(--u)); font-weight: 650; letter-spacing: calc(-.8 * var(--u)); color: var(--ink2); white-space: nowrap; }
+  .chips { display: grid; grid-template-columns: auto auto; gap: calc(16 * var(--u)); justify-content: start; }
+  .chip { display: inline-flex; align-items: center; gap: calc(14 * var(--u)); padding: calc(14 * var(--u)) calc(26 * var(--u)) calc(14 * var(--u)) calc(16 * var(--u));
+    border-radius: calc(22 * var(--u)); background: #fff; border: calc(2 * var(--u)) solid var(--line); font-size: calc(32 * var(--u)); font-weight: 600; white-space: nowrap;
+    box-shadow: 0 calc(16 * var(--u)) calc(36 * var(--u)) calc(-24 * var(--u)) rgba(18,28,32,.45); }
+  .chip .dot { width: calc(42 * var(--u)); height: calc(42 * var(--u)); background: var(--accent); }
+  .chip .dot svg { width: calc(26 * var(--u)); height: calc(26 * var(--u)); }
+  .fineprint { font-size: calc(28 * var(--u)); color: var(--muted); white-space: nowrap; }
+  .tall .cv { align-items: center; text-align: center; }
+  .tall .chips { justify-content: center; }
+  .cast { position: absolute; }
+  .cast img { position: absolute; }
+  .cast .sh { position: absolute; border-radius: 50%; background: radial-gradient(closest-side, rgba(18,28,32,.28), rgba(18,28,32,0)); }
+</style></head>
+<body><div id="stage"><div id="bgGlow"></div><div id="dots"></div></div>
+<script type="module">
+import { STR } from './strings.js';
+const q = new URLSearchParams(location.search);
+const LANG = q.get('lang') === 'en' ? 'en' : 'zh', S = STR[LANG];
+const W = +q.get('w') || 1920, H = +q.get('h') || 1080, U = Math.min(W, H) / 1080, WIDE = W / H >= 1.5;
+const stage = document.getElementById('stage');
+Object.assign(stage.style, { width: `${W}px`, height: `${H}px` });
+document.documentElement.style.setProperty('--u', `${U}px`);
+stage.classList.toggle('tall', !WIDE);
+// the headline is the release's: project sessions; the chips are the film's other scenes and one of its "more"
+const TL = { zh: 'Claude Code、Codex 进到你的项目里', en: 'Claude Code and Codex in your projects' }[LANG];
+const CHIPS = { zh: ['先出计划，批准再动手', '打 / 出命令和 skill', '项目会话能发图片', '任务地图画成小镇'], en: ['A plan before any change', 'Type / for commands', 'Pictures in project sessions', 'Work drawn as a town'] }[LANG];
+const FINE = { zh: 'macOS 已签名、公证 · Windows 预览版 · MIT 开源', en: 'macOS signed and notarized · Windows preview · MIT' }[LANG];
+const tick = c => `<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>`;
+const check = tick('#fff');
+const mark = () => `<svg viewBox="0 0 64 64"><path d="M22 6h20a16 16 0 0 1 16 16v14a16 16 0 0 1-16 16H24.5L11 61.5c-1.2 1-2.9.1-2.7-1.4L9.6 50A16 16 0 0 1 6 40V22A16 16 0 0 1 22 6Z" fill="#146a7c"/><circle cx="25" cy="29" r="10.5" fill="#fff"/><circle cx="39.5" cy="29" r="10.5" fill="#f0ab3d" stroke="#146a7c" stroke-width="3"/></svg>`;
+
+const cv = document.createElement('div');
+cv.className = 'cv';
+cv.innerHTML = `<div class="lock">${mark()}<span class="word">${S.word}</span></div>` +
+  `<div class="vrow"><span class="ver">${S.version}</span><span class="pill count">${tick('currentColor')}${S.count}</span></div>` +
+  `<div class="tl">${TL}</div>` +
+  `<div class="chips">${CHIPS.map(c => `<span class="chip"><span class="dot">${check}</span>${c}</span>`).join('')}</div>` +
+  `<div class="fineprint">${FINE}</div>`;
+stage.appendChild(cv);
+
+// the cast cheering, frames of the reel's sprites (720², feet at feetY); Pudding and the Reviewer face Mochi
+const SP = await (await fetch('/sprites/sprites.json')).json();
+const frame = (who, n) => `/sprites/${who}/cheer/${String(n).padStart(4, '0')}.png`;
+function actor(who, n, cx, gy, s, flip) {
+  const box = document.createElement('div');
+  box.className = 'cast';
+  Object.assign(box.style, { left: `${cx - s / 2}px`, top: `${gy - SP.feetY * s}px`, width: `${s}px`, height: `${s}px` });
+  const sw = s * 0.42;
+  box.innerHTML = `<div class="sh" style="left:${(s - sw) / 2}px;top:${SP.feetY * s - s * 0.035}px;width:${sw}px;height:${s * 0.07}px"></div>` +
+    `<img src="${frame(who, n)}" style="width:${s}px;height:${s}px;${flip ? 'transform:scaleX(-1)' : ''}">`;
+  stage.appendChild(box);
+  return box.querySelector('img');
+}
+await document.fonts.ready;
+// the words take at most this much of the width; wider, they shrink as one
+const most = WIDE ? W * 0.58 : W * 0.88, width = cv.getBoundingClientRect().width;
+if (width > most) cv.style.setProperty('--u', `${U * most / width}px`);
+const imgs = [];
+if (WIDE) {
+  // words on the left, the cast on the right
+  const r = cv.getBoundingClientRect();
+  cv.style.left = `${W * 0.065}px`; cv.style.top = `${(H - r.height) / 2}px`;
+  const right = cv.getBoundingClientRect().right, room = W - right, gy = H * 0.86, s = Math.min(H * 0.7, room * 0.66);
+  const cx = right + room / 2;
+  imgs.push(actor('reviewer', 16, cx + s * 0.55, gy - s * 0.1, s * 0.82, true), actor('mochi', 14, cx - s * 0.42, gy, s, false), actor('pudding', 15, cx + s * 0.18, gy + s * 0.04, s * 0.92, true));
+} else {
+  // the words, then the cast under them (a sprite's body stands about 0.45 of its frame over the feet), the two
+  // centred together in the height
+  const r = cv.getBoundingClientRect(), gap = 40 * U;
+  const s = Math.min(W * 0.46, (H * 0.88 - r.height - gap) / 0.45); // feet no lower than 0.93 H
+  const top = Math.max(H * 0.05, (H - (r.height + gap + 0.45 * s)) / 2);
+  cv.style.left = `${(W - r.width) / 2}px`; cv.style.top = `${top}px`;
+  const gy = top + r.height + gap + 0.45 * s;
+  imgs.push(actor('reviewer', 16, W / 2 + s * 0.6, gy - s * 0.04, s * 0.8, true), actor('mochi', 14, W / 2 - s * 0.5, gy, s * 0.95, false), actor('pudding', 15, W / 2 + s * 0.08, gy + s * 0.02, s * 0.9, true));
+}
+await Promise.all(imgs.map(i => i.decode().catch(() => {})));
+window.coverReady = true;
+</script></body></html>

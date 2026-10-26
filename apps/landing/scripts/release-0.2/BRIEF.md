@@ -39,3 +39,12 @@ by `map/capture.mjs` from the visual harness's Vite in the messenger checkout gi
 tree shares its Vite cache, so give a worktree's then. Delete `map-<lang>/` to capture again after a map change.
 Trap: a child given `visibility: visible` by `show()` stays on screen under a hidden parent — list such children in the
 scene's `kids` so they are hidden when the window is off.
+
+## Share covers
+
+`build.sh` ends with them; alone, `FILM_DIR=apps/landing/scripts/release-0.2 RELEASE_OUT=apps/landing/film-out/release-0.2
+node apps/landing/scripts/release/cover.mjs [--lang zh|en]` captures `cover.html` at 0.1.0's six platform sizes into
+`film-out/release-0.2/covers/<lang>-<ratio>-<w>x<h>.jpg`, laid out as 0.1.0's. The words: the name, 0.2.0 with the film's
+「49 项更新」 pill, the headline (Claude Code and Codex in your projects), four chips (the plan, the / list, pictures, the
+task map) and the platform line; the cast cheers. The words shrink as one if they would take more than 58% of a wide
+cover's width or 88% of a narrow one's (none do in either language).

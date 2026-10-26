@@ -7,6 +7,7 @@
 #   deskfolk-release-0.2-<lang>.mp4        the film (H.264 CRF 23, AAC, faststart)
 #   deskfolk-release-0.2-<lang>-master.mp4 the near-lossless master; -music-only.mp4 the same cut without effects
 #   deskfolk-release-0.2-<lang>.jpg        poster frame (POSTER_AT); -sheet.jpg a contact sheet
+#   covers/<lang>-<ratio>-<w>x<h>.jpg      share covers at each platform size (cover.html, by ../release/cover.mjs)
 # Needs macOS (SF Pro, SF Mono and PingFang SC are the system's own), Blender 5.2 (sprites only), ffmpeg, Python 3 with numpy.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -27,4 +28,5 @@ ffmpeg -v error -y -i "$out/$name-master.mp4" -c:v libx264 -preset slow -crf "${
   -c:a aac -b:a 160k -movflags +faststart "$out/$name.mp4"
 ffmpeg -v error -y -ss "${POSTER_AT:-2.9}" -i "$out/$name-master.mp4" -frames:v 1 -q:v 2 "$out/$name.jpg"
 ffmpeg -v error -y -i "$out/$name.mp4" -vf "fps=2,scale=384:-1,tile=6x11:padding=4:color=white" -frames:v 1 -q:v 3 "$out/$name-sheet.jpg"
+node "$here/../release/cover.mjs" --lang "$lang"
 ls -la "$out/$name.mp4" "$out/$name-master.mp4" "$out/$name-music-only.mp4" "$out/$name.jpg" "$out/$name-sheet.jpg"

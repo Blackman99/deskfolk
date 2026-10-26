@@ -1,6 +1,7 @@
-// Share covers for the 0.1.0 film, one per platform size and language: cover.html captured at each size.
+// Share covers for a release film, one per platform size and language: cover.html captured at each size. The cover is
+// this folder's (0.1.0) unless FILM_DIR names another (../release-0.2).
 //   node cover.mjs [--lang zh|en]   → <out>/covers/<lang>-<name>-<w>x<h>.jpg (both languages when --lang is left out)
-// Served like render.mjs: the page and film.css from here, the fonts from /System/Library, the reel's sprites.
+// Served like render.mjs: the page and film.css from the film's folder, the fonts from /System/Library, the reel's sprites.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const FILM = process.env.FILM_DIR ? path.resolve(process.env.FILM_DIR) : HERE;
 const OUT = process.env.RELEASE_OUT || path.resolve(HERE, '../../film-out/release');
 const REEL = process.env.REEL_OUT || path.resolve(HERE, '../../film-out/reel');
 const args = process.argv.slice(2);
@@ -26,7 +28,7 @@ const FONTS = { 'SFNS.ttf': '/System/Library/Fonts/SFNS.ttf', 'SFNSMono.ttf': '/
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.ttf': 'font/ttf', '.png': 'image/png', '.json': 'application/json' };
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent(req.url.split('?')[0]);
-  const root = url.startsWith('/sprites/') ? REEL : HERE;
+  const root = url.startsWith('/sprites/') ? REEL : FILM;
   const file = url.startsWith('/fonts/') ? FONTS[url.slice(7)] : path.join(root, path.normalize(url));
   if (!file || (!url.startsWith('/fonts/') && !file.startsWith(root)) || !fs.existsSync(file)) { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
