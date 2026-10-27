@@ -28,6 +28,7 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { BotRunner, ClaudeEffort, ClientEvent, Message, ModelLadderAgentRung, Spend, Turn } from "@real-bot/protocol";
 import { agentMcpPort } from "../agent-mcp/bridge";
+import { resultTotals, type ModelTotals } from "../claude-code/model-usage";
 import { resolveAgent as resolveLocalAgent, type ResolvedAgent } from "../agents/runtime";
 import type { AgentDriver } from "./agent/driver";
 import { driverFor } from "./agent/drivers/profiles";
@@ -129,8 +130,6 @@ export type AgentRunner = {
 
 /** What a Claude Agent turn asks Claude Code for: the model, the effort, and the account it spends. */
 type AgentSettings = { model: string | null; effort: string | null; configDir: string | null; baseReason: string | null };
-
-type ModelTotals = { input: number; output: number; cached: number; cost: number };
 
 /** A queue the session reads its user messages from; it stays open until the segment is over. */
 export function inputQueue<T>() {
@@ -1065,14 +1064,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
    */
   function recordAgentSpend(turnId: string, turn: Turn, result: SDKResultMessage, state: { billed: Map<string, ModelTotals>; model: string | null }): void {
     const owner = deps.spendOwner(turn.session_id, turn.bot_id);
-    const usage = (result as { modelUsage?: Record<string, { inputTokens?: number; outputTokens?: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number; costUSD?: number }> }).modelUsage ?? {};
-    const totals: Array<[string, ModelTotals]> = Object.keys(usage).length > 0
-      ? Object.entries(usage).map(([model, row]) => [model, {
-        input: (row.inputTokens ?? 0) + (row.cacheReadInputTokens ?? 0) + (row.cacheCreationInputTokens ?? 0),
-        output: row.outputTokens ?? 0, cached: row.cacheReadInputTokens ?? 0, cost: row.costUSD ?? 0 }])
-      : [[state.model ?? "claude", {
-        input: (result.usage?.input_tokens ?? 0) + (result.usage?.cache_read_input_tokens ?? 0) + (result.usage?.cache_creation_input_tokens ?? 0),
-        output: result.usage?.output_tokens ?? 0, cached: result.usage?.cache_read_input_tokens ?? 0, cost: result.total_cost_usd ?? 0 }]];
+    const totals = resultTotals(result, state.model);
     for (const [model, total] of totals) {
       const before = state.billed.get(model) ?? { input: 0, output: 0, cached: 0, cost: 0 };
       const delta = { input: total.input - before.input, output: total.output - before.output, cached: total.cached - before.cached, cost: total.cost - before.cost };
