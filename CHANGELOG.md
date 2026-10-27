@@ -11,6 +11,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - What a Claude Code or Codex project session spends now goes into the spend ledger as its own line, Project sessions, under turns, owned by no Bot and named after the session; before, it showed only in the usage widget. Claude Code's runs are billed per model at the price it estimates, and only what each run adds: Claude Code carries a session's totals over from its earlier runs, which would otherwise be billed again every run. Codex's are billed per model call, tokens only, since it reports no price.
 - The daily cap counts a project session's spend as it counts a Bot's; reaching it still stops only Bots, and a project session keeps going.
 
+### The README shows the task map and a project session
+
+- Two screenshots join the README: the job's task map beside the group, and a project session in which Claude Code puts the film on a small site's first screen. The other four, the phone screenshots, the home page's three clips, its first-screen still and the share images are re-filmed on today's look (a line's side says who said it, the flow draws only what went wrong, the sidebar has its Projects section). The README's opening lines name the task map and project sessions too.
+- In the film the Producer is on Ask first, so its first change waits on a card, and Allow from now on lets it go ahead and moves it to Auto, as permission modes work since 0.2.0; the home page's fifth step says so instead of "it asks before leaving the workspace".
+
 ## 0.2.0 — 2026-10-25
 
 Project sessions: Claude Code or Codex at work in a folder of yours, in the same window as your Bots. Signed and notarized for macOS, with an experimental, still unsigned Windows installer beside the `.dmg`s.

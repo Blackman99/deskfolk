@@ -196,6 +196,22 @@ export async function playStory(s: Stage): Promise<void> {
       return false;
     }
   };
+  /**
+   * Whether the organizer has written the plan up since the last hand-over was let through. Its
+   * summary on the board (what is stuck, what needs you) is only as new as its last settle, which
+   * comes once the plan has been quiet a while: one written while a hand-over waited on your word
+   * says so until the next, and on 2026-10-27 that left 「需要你看」 standing through the stop, the
+   * review and the coming back. No route lists settles, so the demo daemon's own database is read.
+   */
+  const settledSinceApproval = (planId: string): boolean => {
+    try {
+      const sql = `SELECT count(*) FROM organizer_runs WHERE task_id = '${planId}' AND mode = 'settle'
+        AND created_at > (SELECT max(updated_at) FROM submissions WHERE task_id = '${planId}' AND state = 'approved')`;
+      return Number(execFileSync('sqlite3', ['-readonly', '/private/tmp/deskfolk-demo/data/state.sqlite', sql], { encoding: 'utf-8' }).trim()) > 0;
+    } catch {
+      return false;
+    }
+  };
   const until = async <T>(what: string, read: () => Promise<T | null | undefined | false>, timeoutMs: number, everyMs = 1000): Promise<T> => {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -403,12 +419,27 @@ export async function playStory(s: Stage): Promise<void> {
       await s.api('PATCH', `/v1/tickets/${x.id}`, { reviewer_bot_id: reviewer.id }).catch(() => {});
     }
   };
+  /**
+   * Off camera: the Producer asks before every change from the moment its tickets are laid out
+   * (ADR 0092; on auto, the default, it would just go ahead). Set before the goal, a `mkdir` ahead of
+   * the layout would stop at a card and no ticket would come; set now, the cp of the logo may slip
+   * through first, but the next change asks all the same. Step 5 answers that card on camera with
+   * "allow from now on", which puts the Producer back on auto.
+   */
+  let askingFirst = false;
+  const askFirst = async () => {
+    if (askingFirst || !((await detail(plan.id)).tickets ?? []).length) return;
+    askingFirst = true;
+    s.log('the Producer on ask first, off camera');
+    await s.api('PATCH', `/v1/bots/${producer.id}`, { permission_mode: 'ask_first' });
+  };
   // The tickets come when the Producer lays them out, mid-segment: watched for beside the story.
   let watching = true;
   const reviewerWatch = (async () => {
     while (watching) {
+      await askFirst().catch(() => {});
       await nameReviewer().catch(() => {});
-      await sleep(300);
+      await sleep(askingFirst ? 300 : 150);
     }
   })();
 
@@ -435,7 +466,7 @@ export async function playStory(s: Stage): Promise<void> {
     await s.focus(null);
   });
 
-  /* 5 · Outside the workspace, it asks first; then your asks, written up, and what counts as done */
+  /* 5 · Its first change asks first; you let it go ahead from now on */
   const approval = app.locator('.msg.is-approval').filter({ has: app.locator('.approval-acts button') }).first();
   // Questions answered meanwhile, approvals not: this one is pressed on camera.
   await until('the approval card', async () => {
@@ -445,8 +476,8 @@ export async function playStory(s: Stage): Promise<void> {
   await s.scene(5);
   await follow();
   await s.focus(approval);
-  await s.hold(900);
-  await s.attempt('approve', () => s.click(approval.getByRole('button', { name: re('允许一次', 'Allow once') })));
+  await s.hold(1400);
+  await s.attempt('approve', () => s.click(approval.getByRole('button', { name: re('以后都直接干', 'Allow from now on') })));
   await s.focus(null);
   await follow();
   // The render goes out a moment after the approval and can be back within a minute: catch it out.
@@ -571,6 +602,11 @@ export async function playStory(s: Stage): Promise<void> {
     return rest && Date.now() - restSince > 3000;
   }, 30 * 60_000, 1000);
 
+  await until('the plan written up after your word', async () => {
+    await unblock(true);
+    return settledSinceApproval(plan.id);
+  }, 3 * 60_000, 1000).catch(() => s.log('no write-up after your word'));
+
   await follow();
   // Your stop, told from any hold already standing: a new id in force, then that id lifted.
   const standing = new Set((await holdsInForce()).map((h: any) => h.id));
@@ -595,13 +631,19 @@ export async function playStory(s: Stage): Promise<void> {
     30_000,
     500
   );
-  // Your change sets the Producer going again (a stop is for now): let it get to a resting point,
-  // its approvals given off camera (left waiting, a command outside the workspace stalls it here).
-  await s.idle(5 * 60_000).catch(() => s.log('still at work after your change'));
-  // The render still out when you stopped finishes while the stop holds, and the app keeps its
-  // result until you go on. Both shoots had it so, by seconds; waiting makes it the order a replay
-  // keeps too, whatever its pace.
-  await until('the render in', async () => !renderOut(plan.id), 10 * 60_000, 1000).catch(() => {});
+  // Your change sets the Producer going again (a stop is for now). What it hands in next, the checks
+  // and the review are step 8's: on 2026-10-27 the Producer redid the logo with ffmpeg alone, handed
+  // it in and had it approved inside a wait for everyone to rest here, and step 8 had nothing left.
+  // No render can still be out (the stop waited for the work at rest), so a render now is the change's.
+  await until(
+    'the Producer at work on your change',
+    async () => {
+      await unblock(true);
+      return (await sessions()).some((x: any) => (x.live_turns ?? []).some((turn: any) => turn.bot_id === producer.id));
+    },
+    90_000,
+    500
+  ).catch(() => s.log('the Producer is not at work on your change yet'));
   await s.hold(1200);
 
   /* 8 · Done has a definition: checks the app runs, a review with evidence, your word */
@@ -656,6 +698,7 @@ export async function playStory(s: Stage): Promise<void> {
   // The reviewer's turn ends a moment after its approval: ask once nobody is at work, or the answer
   // lists it as still going (a quiet moment is the point of coming back).
   await until('nobody at work', async () => !(await sessions()).some((x: any) => (x.live_turns ?? []).length > 0), 3 * 60_000, 1000).catch(() => {});
+  await until('the plan written up after the review', async () => settledSinceApproval(plan.id), 3 * 60_000, 1000).catch(() => s.log('no write-up after the review'));
   await s.hold(1500);
 
   /* 9 · Back to the result: ask how it went, see it on the board, play it beside the chat */

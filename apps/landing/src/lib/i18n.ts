@@ -166,10 +166,10 @@ const zh: Dict = {
         callout: '每张任务都写明谁来做、谁来审。'
       },
       {
-        title: '工作区外，先问你',
+        title: '动手之前，先问你',
         body:
-          'logo 在工作区外，拷进来的命令停在批准卡上，点「允许一次」才跑。随后制片把画面交给 Grok Imagine 生成视频，这一段就结束了：等渲染不占着一轮。',
-        callout: '动工作区以外的东西，先停在批准卡上。'
+          '制片的权限模式是「改动先问」：读文件、调 Grok Imagine 直接做，写文件、跑命令先停在批准卡上。点「以后都直接干」，这一次放行，制片也改成「自动」，之后的改动不再问；点「允许一次」就下次照样问。随后制片把画面交给 Grok Imagine 生成视频，这一段就结束了：等渲染不占着一轮。',
+        callout: '改东西先停在批准卡上，问到什么程度看权限模式。'
       },
       {
         title: '关窗走开，渲染由应用去查',
@@ -374,10 +374,10 @@ const en: Dict = {
         callout: 'Every ticket names who makes it and who reviews it.'
       },
       {
-        title: 'It asks before leaving the workspace',
+        title: 'It asks before it changes anything',
         body:
-          'The logo lives outside the workspace, so the command that copies it in stops at an approval card until you press Allow once. Then the Producer hands the picture to Grok Imagine and its segment ends: waiting on a render holds no turn.',
-        callout: 'Anything outside the workspace waits on an approval card.'
+          'The Producer’s permission mode is Ask first: reading files and calling Grok Imagine go ahead, writing a file or running a command stops at an approval card. Allow from now on lets this one through and moves the Producer to Auto, so its later changes no longer ask; Allow once would ask again next time. Then the Producer hands the picture to Grok Imagine and its segment ends: waiting on a render holds no turn.',
+        callout: 'A change waits on an approval card, as far as the permission mode says.'
       },
       {
         title: 'Walk away; the app watches the render',

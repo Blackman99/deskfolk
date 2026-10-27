@@ -10,9 +10,9 @@
 
 <p align="center">交出去，离开，回来看结果。</p>
 
-<p align="center">产物按件归好，在应用里直接播、直接看、直接批注；每一轮在做哪张任务、为什么，都画在流程图上；Bot 交付之后自己复盘，下次照做。<br>多天、多步、要返工的活也放心交：Bot 说做完的，应用先核过。</p>
+<p align="center">产物按件归好，在应用里直接播、直接看、直接批注；每一轮在做哪张任务、为什么，都画在流程图上，在哪个文件夹干的，任务地图上一步步回放；Bot 交付之后自己复盘，下次照做。<br>多天、多步、要返工的活也放心交：Bot 说做完的，应用先核过。</p>
 
-<p align="center">不一定要 API key：这台电脑上装好并登录的 <b>Claude Code、Codex、Grok、OpenCode、Antigravity、ZCode</b>，或任何讲 ACP 的 Agent，在向导里选它就能开始，用的是你自己的登录。<br>也可以接 <b>OpenAI、Anthropic、小米 MiMo、千问、DeepSeek、OpenRouter</b> 或任意 OpenAI / Anthropic 兼容地址，或本机的 <b>Ollama、LM Studio、llama.cpp</b>。</p>
+<p align="center">不一定要 API key：这台电脑上装好并登录的 <b>Claude Code、Codex、Grok、OpenCode、Antigravity、ZCode</b>，或任何讲 ACP 的 Agent，在向导里选它就能开始，用的是你自己的登录；项目会话里则直接和 Claude Code 或 Codex 对话，在你自己的文件夹里。<br>也可以接 <b>OpenAI、Anthropic、小米 MiMo、千问、DeepSeek、OpenRouter</b> 或任意 OpenAI / Anthropic 兼容地址，或本机的 <b>Ollama、LM Studio、llama.cpp</b>。</p>
 
 <p align="center">
   <a href="https://blackman99.github.io/deskfolk/zh"><b>官网</b></a> ·
@@ -46,6 +46,16 @@
 <p align="center">
   <img alt="回来看结果：会话、成品、看板摆在一起" src="docs/assets/app-zh-desk.jpg"><br>
   <sub>回来看结果：会话、成品、看板摆在一起</sub>
+</p>
+
+<p align="center">
+  <img alt="活在哪儿干的：这件事画成一座文件夹小镇，一步步回放" src="docs/assets/app-zh-map.jpg"><br>
+  <sub>活在哪儿干的：这件事画成一座文件夹小镇，一步步回放</sub>
+</p>
+
+<p align="center">
+  <img alt="项目会话：在你的文件夹里直接用 Claude Code 或 Codex，和 Bot 在同一个窗口" src="docs/assets/app-zh-project.jpg"><br>
+  <sub>项目会话：在你的文件夹里直接用 Claude Code 或 Codex，和 Bot 在同一个窗口</sub>
 </p>
 
 <p align="center">
