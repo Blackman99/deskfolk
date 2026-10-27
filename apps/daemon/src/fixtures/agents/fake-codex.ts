@@ -9,7 +9,8 @@
  * `signedOut` answers `account/read` with no account. `mcpServers` is what `mcpServerStatus/list`
  * lists; a `thread/start` whose `config.mcp_servers` names one of `rejectMcp` fails the way Codex
  * does for a server it cannot take an override for. `thread/resume` reopens the thread it names, as
- * a project session's later runs do (ADR 0099); each `thread/start` opens a new one (`thread-1`,
+ * a project session's later runs do (ADR 0099), and first repeats `resumedUsage`, an earlier run's
+ * turn's, when the script has one; each `thread/start` opens a new one (`thread-1`,
  * `thread-2`, …). `skills` is what `skills/list` lists. `thread/compact/start` compacts in a turn of
  * its own, named only by `turn/started`; `review/start` plays the next script turn as a review,
  * between `enteredReviewMode` and `exitedReviewMode` (its findings what it says), its commands
@@ -22,7 +23,8 @@
  * same write, as a pipe the app was too busy to read delivers them;
  * `{ unasked }` a command it completes without asking; `{ tool: { name, args } }` one of the app's
  * dynamic tools (`item/tool/call`; logged as `toolCalled` when asked, and with its answer as `tool`
- * if the app is still there to give one); `{ usage: { input, output, cached } }` token totals;
+ * if the app is still there to give one); `{ usage: { input, output, cached, last? } }` token totals,
+ * and the last call's when they differ (after a compaction the totals start over);
  * `{ sleep: ms }` the turn goes on that long, so a line can be steered into it;
  * `{ fail: { message, codexErrorInfo, errorNotice? } }` the turn fails (with an `error`
  * notification first when `errorNotice`); `{ hang: true }` until `turn/interrupt`.
@@ -38,7 +40,7 @@ type Step =
   | { fileChange: string; burst?: boolean }
   | { unasked: string }
   | { tool: { name: string; args?: Record<string, unknown> } }
-  | { usage: { input: number; output: number; cached: number } }
+  | { usage: { input: number; output: number; cached: number; last?: { input: number; output: number; cached: number } } }
   | { fail: { message: string; codexErrorInfo?: unknown; errorNotice?: boolean } }
   | { hang: true }
   | { sleep: number };
@@ -50,6 +52,8 @@ type Script = {
   rejectMcp?: string[];
   /** The one thread `thread/resume` finds; any when left out. */
   resumable?: string;
+  /** Usage `thread/resume` repeats from a turn of an earlier run's, as Codex may: its totals, that turn's id. */
+  resumedUsage?: { input: number; output: number; cached: number; turnId: string };
   skills?: Array<{ name: string; description: string; path: string; enabled?: boolean }>;
   /** How long a compaction takes; 30 ms when left out. */
   compactMs?: number;
@@ -72,6 +76,8 @@ let interrupted = false;
 const nextId = (prefix: string) => `${prefix}_${++seq}`;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const notify = (method: string, params: Record<string, unknown>) => rpc.notify(method, params);
+const breakdown = (usage: { input: number; output: number; cached: number }) =>
+  ({ inputTokens: usage.input, cachedInputTokens: usage.cached, cacheWriteInputTokens: 0, outputTokens: usage.output, reasoningOutputTokens: 0, totalTokens: usage.input + usage.output });
 
 /** Asks the driver (the client) for a decision on one item; logs what it answered. */
 async function ask(method: string, params: Record<string, unknown>, what: string): Promise<boolean> {
@@ -161,8 +167,7 @@ async function play(steps: Step[], turnId: string, review = false): Promise<void
       log({ tool: step.tool.name, out });
       notify("item/completed", { threadId: THREAD_ID, turnId, item: { ...item, status: out?.success === false ? "failed" : "completed" } });
     } else if ("usage" in step) {
-      const total = { inputTokens: step.usage.input, cachedInputTokens: step.usage.cached, outputTokens: step.usage.output, reasoningOutputTokens: 0, totalTokens: step.usage.input + step.usage.output };
-      notify("thread/tokenUsage/updated", { threadId: THREAD_ID, turnId, tokenUsage: { total, last: { ...total } } });
+      notify("thread/tokenUsage/updated", { threadId: THREAD_ID, turnId, tokenUsage: { total: breakdown(step.usage), last: breakdown(step.usage.last ?? step.usage) } });
     } else if ("fail" in step) {
       const error = { message: step.fail.message, codexErrorInfo: step.fail.codexErrorInfo };
       if (step.fail.errorNotice) notify("error", { threadId: THREAD_ID, turnId, error: { message: error.message, codexErrorInfo: error.codexErrorInfo ?? null }, willRetry: false });
@@ -218,6 +223,8 @@ rpc.onRequest(async (method, params) => {
       threads = Math.max(threads, Number(/^thread-(\d+)$/.exec(p.threadId)?.[1] ?? 0));
       cwd = String(p.cwd ?? process.cwd());
       script.turns = JSON.parse(JSON.stringify(script.turns).replaceAll("@CWD", cwd)) as Step[][];
+      const repeated = script.resumedUsage;
+      if (repeated) setTimeout(() => notify("thread/tokenUsage/updated", { threadId: THREAD_ID, turnId: repeated.turnId, tokenUsage: { total: breakdown(repeated), last: breakdown(repeated) } }), 0);
       return { thread: { id: THREAD_ID, cwd }, model: script.model ?? "fake-codex-model", modelProvider: "openai", cwd, approvalPolicy: p.approvalPolicy ?? "untrusted", sandbox: { type: "readOnly" } };
     }
     case "turn/start": {

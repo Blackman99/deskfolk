@@ -15,10 +15,11 @@ export type SpendKind =
  * reflection, once there is one, as `organize`, and so does reading a line for what the app acts
  * on (`reader`, ADR 0055) and a Bot's retrospective of a delivered plan (`retrospect`, ADR 0062);
  * condensing a long turn's earlier work into a summary (`compact`, ADR 0068) bills as the `turn` it
- * belongs to. The kind stays the nearest old value, so an older build still reads the row; every
- * other row has no purpose.
+ * belongs to, and so does a project session's run (`project`, ADR 0095), with the run's id where a
+ * turn's would be and no Bot. The kind stays the nearest old value, so an older build still reads
+ * the row; every other row has no purpose.
  */
-export type SpendPurpose = "scribe" | "vision" | "reflect" | "reader" | "retrospect" | "compact";
+export type SpendPurpose = "scribe" | "vision" | "reflect" | "reader" | "retrospect" | "compact" | "project";
 
 export const SPEND_PURPOSE_KIND: Record<SpendPurpose, SpendKind> = {
   scribe: "organize",
@@ -27,6 +28,7 @@ export const SPEND_PURPOSE_KIND: Record<SpendPurpose, SpendKind> = {
   reader: "organize",
   retrospect: "organize",
   compact: "turn",
+  project: "turn",
 };
 
 /** One line of the view's breakdown: a kind, or a purpose split out of the kind it bills as. */
@@ -58,6 +60,7 @@ export const SPEND_CATEGORY_OF: Record<SpendLine, SpendCategory> = {
   reader: "other",
   retrospect: "feedback",
   compact: "turn",
+  project: "turn",
 };
 
 /**

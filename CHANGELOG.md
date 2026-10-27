@@ -6,7 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
-(none)
+### A project session's spend shows in Spend and counts toward the daily cap
+
+- What a Claude Code or Codex project session spends now goes into the spend ledger as its own line, Project sessions, under turns, owned by no Bot and named after the session; before, it showed only in the usage widget. Claude Code's runs are billed per model at the price it estimates, and only what each run adds: Claude Code carries a session's totals over from its earlier runs, which would otherwise be billed again every run. Codex's are billed per model call, tokens only, since it reports no price.
+- The daily cap counts a project session's spend as it counts a Bot's; reaching it still stops only Bots, and a project session keeps going.
 
 ## 0.2.0 — 2026-10-25
 

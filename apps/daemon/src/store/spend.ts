@@ -16,6 +16,7 @@ import {
   type SpendSummaryQuery,
   type SpendTotals,
 } from "@real-bot/protocol";
+import { basename } from "node:path";
 import { HttpError } from "../errors";
 import { isUlid, isoNow, ulid } from "../ids";
 import { type CatalogEntry } from "../route-decision";
@@ -401,6 +402,8 @@ function groupSql(groupBy: Exclude<NonNullable<SpendSummaryQuery["group_by"]>, "
         CASE
           WHEN sessions.id IS NULL THEN ${FROZEN_NAME("spend.session_name")}
           WHEN sessions.kind = 'group' THEN sessions.name
+          -- A project session has no Bot (ADR 0095): its name; with none, the one its rows were billed under (its directory's).
+          WHEN sessions.kind = 'project' THEN COALESCE(sessions.name, MAX(spend.session_name))
           WHEN EXISTS (
             SELECT 1 FROM session_participants
             JOIN bots ON bots.id = session_participants.member AND bots.deleted_at IS NOT NULL
@@ -787,10 +790,12 @@ function botName(ctx: StoreContext, botId: string): string | null {
 /** Group name, the other side of a you↔Bot direct, or `A ↔ B`. */
 function sessionTitle(ctx: StoreContext, sessionId: string): string | null {
   const session = ctx.db
-    .query<{ kind: string; name: string | null }, [string]>(`SELECT kind, name FROM sessions WHERE id = ?`)
+    .query<{ kind: string; name: string | null; project_dir: string | null }, [string]>(`SELECT kind, name, project_dir FROM sessions WHERE id = ?`)
     .get(sessionId);
   if (!session) return null;
   if (session.kind === "group") return session.name;
+  // A project session has no Bot (ADR 0095): its name, or its directory's until your first line names it.
+  if (session.kind === "project") return session.name ?? (session.project_dir ? basename(session.project_dir) : null);
   const names = presentBotIds(ctx, sessionId)
     .map((id) => botName(ctx, id))
     .filter((name): name is string => Boolean(name));

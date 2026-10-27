@@ -839,3 +839,69 @@ test("a line Claude Code folds into the step it is on is answered by that step's
   expect(sent.every((row) => typeof row.uuid === "string" && row.uuid.length > 0)).toBe(true);
   expect(h.lines(id).at(-1)).toMatchObject({ kind: "bot", body: "两句一起答了" });
 });
+
+test("a run's spend goes in the ledger as a project session's: what grew past what the session carried in, per model, toward the day's cap", async () => {
+  const account = mkdtempSync(join(tmpdir(), "project-spend-"));
+  closes.push(() => rmSync(account, { recursive: true, force: true }));
+  const file = join(account, "projects", "-work-app", "own-1.jsonl");
+  mkdirSync(join(account, "projects", "-work-app"), { recursive: true });
+  type Usage = Record<string, { inputTokens: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number; outputTokens: number; costUSD: number }>;
+  const costState = (modelUsage: Usage) => `${JSON.stringify({ type: "cost-state", totalCostUSD: 0, modelUsage })}\n`;
+  // The session ran before: Claude Code wrote its totals on each exit, and goes on from the last.
+  writeFileSync(file, costState({ "claude-sonnet-5": { inputTokens: 100, outputTokens: 50, costUSD: 0.5 } })
+    + `${JSON.stringify({ type: "user", message: { role: "user", content: "早先的话" } })}\n`
+    + costState({ "claude-sonnet-5": { inputTokens: 200, cacheReadInputTokens: 700, cacheCreationInputTokens: 100, outputTokens: 100, costUSD: 1 } }));
+  // What each run's result reports: the session's totals so far. The third run's Claude Code did not
+  // carry them in (a terminal session ran there in between), so its totals start from zero.
+  const reported: Usage[] = [
+    { "claude-sonnet-5": { inputTokens: 210, cacheReadInputTokens: 1700, cacheCreationInputTokens: 300, outputTokens: 160, costUSD: 1.25 } },
+    { "claude-sonnet-5": { inputTokens: 215, cacheReadInputTokens: 2600, cacheCreationInputTokens: 300, outputTokens: 200, costUSD: 1.5 },
+      "claude-haiku-5-5": { inputTokens: 40, outputTokens: 10, costUSD: 0.01 } },
+    { "claude-sonnet-5": { inputTokens: 5, cacheCreationInputTokens: 95, outputTokens: 7, costUSD: 0.02 } },
+  ];
+  let runs = 0;
+  const query: ProjectQuery = ({ prompt }) => {
+    const usage = reported[runs++]!;
+    return Object.assign((async function* (): AsyncGenerator<SDKMessage> {
+      yield { type: "system", subtype: "init", session_id: "own-1", model: "claude-sonnet-5", uuid: crypto.randomUUID() } as unknown as SDKMessage;
+      for await (const _ of prompt as AsyncIterable<SDKUserMessage>) {
+        yield { type: "result", subtype: "success", result: "好", is_error: false, session_id: "own-1", modelUsage: usage, uuid: crypto.randomUUID() } as unknown as SDKMessage;
+      }
+      // On exit, as Claude Code does.
+      writeFileSync(file, readFileSync(file, "utf8") + costState(usage));
+    })(), { close: () => {} });
+  };
+  const h = start(async () => "", { query });
+  h.store.setClaudeCodeConfigDirs([account]);
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir, config_dir: account })).body.id;
+  h.store.recordProjectAgentSession(id, "own-1");
+  const runIds: string[] = [];
+  for (const line of ["看看测试", "再跑一遍", "收尾"]) {
+    await h.say(id, line);
+    await h.until(async () => (await h.run(id))?.status === "completed" && !runIds.includes((await h.run(id))!.id));
+    runIds.push((await h.run(id))!.id);
+  }
+
+  const rows = h.store.db
+    .query<Record<string, unknown>, [string]>(`SELECT * FROM spend WHERE session_id = ? ORDER BY created_at, id`).all(id)
+    .map((row) => ({ turn: runIds.indexOf(row.turn_id as string), model: row.model, input: row.input_tokens, output: row.output_tokens, cached: row.cached_tokens, ticks: row.estimated_cost_usd_ticks }));
+  expect(rows).toEqual([
+    { turn: 0, model: "claude-sonnet-5", input: 1210, output: 60, cached: 1000, ticks: 2_500_000_000 },
+    { turn: 1, model: "claude-sonnet-5", input: 905, output: 40, cached: 900, ticks: 2_500_000_000 },
+    { turn: 1, model: "claude-haiku-5-5", input: 40, output: 10, cached: 0, ticks: 100_000_000 },
+    { turn: 2, model: "claude-sonnet-5", input: 100, output: 7, cached: 0, ticks: 200_000_000 },
+  ]);
+  // A turn's line of the ledger, with no Bot: named after the session, billed as Claude Code's are.
+  expect(h.store.db.query(`SELECT DISTINCT kind, purpose, bot_id, bot_name, session_name, provider_id, provider_name, cost_usd_ticks FROM spend`).all()).toEqual([
+    { kind: "turn", purpose: "project", bot_id: null, bot_name: null, session_name: "看看测试", provider_id: null, provider_name: "Claude Agent", cost_usd_ticks: null },
+  ]);
+  const summary = h.store.spendSummary({ group_by: "session" });
+  expect(summary.categories.find((row) => row.category === "turn")?.kinds.find((row) => row.kind === "project")?.calls).toBe(4);
+  expect(summary.groups.map((group) => ({ id: group.id, name: group.name, deleted: group.deleted, calls: group.calls }))).toEqual([{ id, name: "看看测试", deleted: false, calls: 4 }]);
+  // Renamed, it goes by its new name.
+  expect((await h.call("PATCH", `/v1/sessions/${id}`, { name: "跑测试" })).status).toBe(200);
+  expect(h.store.spendSummary({ group_by: "session" }).groups[0]?.name).toBe("跑测试");
+  // The day's cap counts it as it counts a Bot's.
+  h.store.patchSettingsSync({ spend_cap_usd: 0.5 });
+  expect(h.store.spendCapDue()?.spentUsd).toBeCloseTo(0.53, 6);
+});

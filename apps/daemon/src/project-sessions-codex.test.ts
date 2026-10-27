@@ -23,7 +23,7 @@ afterEach(async () => { while (closes.length) await closes.pop()!(); });
 
 type Step = Record<string, unknown>;
 /** One app-server's script: each run of a session starts an app-server of its own. */
-type Script = { signedOut?: boolean; model?: string; resumable?: string; skills?: Array<{ name: string; description: string; path: string }>; compactMs?: number; turns: Step[][] };
+type Script = { signedOut?: boolean; model?: string; resumable?: string; resumedUsage?: { input: number; output: number; cached: number; turnId: string }; skills?: Array<{ name: string; description: string; path: string }>; compactMs?: number; turns: Step[][] };
 type Entry = Record<string, unknown> & { method?: string; params?: Record<string, unknown>; asked?: string; answer?: { decision?: string } };
 
 function start(scripts: Script[], opts: { claudeCommands?: ClaudeCommandList; codexCommands?: CodexCommandList } = {}) {
@@ -411,4 +411,41 @@ test("a skill named after `/` goes as Codex's own `$` sends one; a command sent 
   ]);
   expect(h.sent(0, "turn/steer")).toEqual([]);
   expect(h.lines(id).map((line) => line.body)).toEqual(["/hello 打个招呼", "/status", "Ahoy", "状态"]);
+});
+
+test("each Codex call's usage goes in the ledger as a project session's, once; an earlier run's turn a resume repeats is not billed again", async () => {
+  const h = start([
+    { model: "gpt-5.6-luna", turns: [[
+      { usage: { input: 1000, output: 50, cached: 800 } },
+      // The same update again bills nothing.
+      { usage: { input: 1000, output: 50, cached: 800 } },
+      { usage: { input: 2200, output: 120, cached: 1700, last: { input: 1200, output: 70, cached: 900 } } },
+      // After a compaction its totals start over; the call is still the last one.
+      { usage: { input: 1500, output: 30, cached: 0 } },
+      { say: "好" },
+    ]] },
+    { model: "gpt-5.6-luna", resumedUsage: { input: 1500, output: 30, cached: 0, turnId: "turn-earlier" }, turns: [[{ usage: { input: 400, output: 20, cached: 300 } }, { say: "再好" }]] },
+  ]);
+  const id = await h.open();
+  await h.say(id, "看看");
+  await h.settled(id);
+  const first = (await h.run(id))!.id;
+  await h.say(id, "接着");
+  await h.until(async () => (await h.run(id))?.id !== first);
+  await h.settled(id);
+  const second = (await h.run(id))!.id;
+
+  const rows = h.store.db
+    .query<Record<string, unknown>, [string]>(`SELECT * FROM spend WHERE session_id = ? ORDER BY created_at, id`).all(id)
+    .map((row) => ({ run: row.turn_id === first ? 1 : row.turn_id === second ? 2 : null, input: row.input_tokens, output: row.output_tokens, cached: row.cached_tokens }));
+  expect(rows).toEqual([
+    { run: 1, input: 1000, output: 50, cached: 800 },
+    { run: 1, input: 1200, output: 70, cached: 900 },
+    { run: 1, input: 1500, output: 30, cached: 0 },
+    { run: 2, input: 400, output: 20, cached: 300 },
+  ]);
+  // No Bot, named after the session; Codex reports no price, so there is no estimate and the cap does not count it.
+  expect(h.store.db.query(`SELECT DISTINCT kind, purpose, bot_id, session_name, provider_name, model, cost_usd_ticks, estimated_cost_usd_ticks FROM spend`).all()).toEqual([
+    { kind: "turn", purpose: "project", bot_id: null, session_name: "看看", provider_name: "Codex", model: "gpt-5.6-luna", cost_usd_ticks: null, estimated_cost_usd_ticks: null },
+  ]);
 });

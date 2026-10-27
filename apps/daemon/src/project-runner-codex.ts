@@ -323,6 +323,10 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     let turnDone: ((turn: TurnEnd) => void) | null = null;
     /** The skills Codex loads here, asked the first time a line names one. */
     let skills: CodexSkill[] | null = null;
+    /** The turns this run started, a subagent's included: only their usage is this run's. */
+    const ours = new Set<string>();
+    /** Per thread, the usage update last billed: the same one again bills nothing. */
+    const billedUsage = new Map<string, string>();
 
     /** Whose call it is: Codex's own thread, or a subagent's thread of its own. */
     const agentOf = (p: Record<string, unknown>): string | null => (typeof p.threadId === "string" && live.threadId && p.threadId !== live.threadId ? p.threadId : null);
@@ -393,8 +397,39 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         duration_ms: Date.now() - call.at, agent_run: { ...call.info, at: new Date().toISOString(), ok } });
     };
 
+    /**
+     * One call's usage as a row of the spend ledger's `project` line (ADR 0095, 2026-10-27), from
+     * `last`: `total` starts over after a compaction, and a resumed thread may first repeat a turn
+     * of an earlier run's, which is not this run's to bill. Codex reports no price.
+     */
+    const bill = (p: Record<string, unknown>) => {
+      const usage = (p.tokenUsage ?? {}) as { total?: Record<string, number>; last?: Record<string, number> };
+      if (!usage.last || typeof p.turnId !== "string" || !ours.has(p.turnId)) return;
+      const thread = typeof p.threadId === "string" ? p.threadId : "";
+      const key = JSON.stringify([usage.total, usage.last]);
+      if (billedUsage.get(thread) === key) return;
+      billedUsage.set(thread, key);
+      const input = usage.last.inputTokens ?? 0;
+      const output = usage.last.outputTokens ?? 0;
+      if (input <= 0 && output <= 0) return;
+      try {
+        store.insertSpend({
+          kind: "turn", purpose: "project", sessionId: live.sessionId, botId: null, turnId: live.runId, providerId: "", providerName: "Codex",
+          model, thinkingLevel: null, inputTokens: input, outputTokens: output, totalTokens: input + output, cachedTokens: usage.last.cachedInputTokens ?? 0,
+          reasoningTokens: usage.last.reasoningOutputTokens ?? null, costUsdTicks: null, estimatedCostUsdTicks: null, missingReason: null,
+        });
+      } catch (error) {
+        console.error(`[project ${live.sessionId}] could not record spend`, error);
+      }
+    };
+
     rpc.onNotification((method, params) => {
       const p = (params ?? {}) as Record<string, unknown>;
+      if (method === "thread/tokenUsage/updated") return bill(p);
+      if (method === "turn/started") {
+        const turn = (p.turn ?? {}) as { id?: unknown };
+        if (typeof turn.id === "string") ours.add(turn.id);
+      }
       // An item is noted at once, before an approval request that follows it in the same read is
       // answered: a file change's request names only the item, and its paths are in the item.
       if (method === "item/started" || method === "item/completed") {
@@ -503,7 +538,10 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         const finished = new Promise<TurnEnd>((resolve) => { turnDone = resolve; });
         try {
           const id = await start();
-          if (id) live.turnId = id;
+          if (id) {
+            live.turnId = id;
+            ours.add(id);
+          }
         } catch (error) {
           turnDone = null;
           throw error;

@@ -9,7 +9,7 @@
  */
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import type { CanUseTool, HookCallbackMatcher, HookInput, HookJSONOutput, Options, PermissionResult, SDKMessage, SDKUserMessage, SpawnedProcess, SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, HookCallbackMatcher, HookInput, HookJSONOutput, Options, PermissionResult, SDKMessage, SDKResultMessage, SDKUserMessage, SpawnedProcess, SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
 import { isClaudeEffort, PLAN_APPROVAL_KIND, type AgentRun, type AgentRunApproval, type AgentRunToolInfo, type Attachment, type ClaudeEffort, type Message, type ProjectAgentMode, type ToolFrame } from "@real-bot/protocol";
 import { homedir } from "node:os";
 import { placeOfCall } from "./claude-code/tool-place";
@@ -22,6 +22,8 @@ import { withSystemProxy } from "./claude-code/proxy";
 import { claudeLaunch, killsTree } from "./claude-code/spawn";
 import { defaultConfigDir, tildeDir } from "./claude-code/account";
 import { claudeMemoryDirs, claudePlanDirs } from "./claude-code/memory-dir";
+import { carriedTotals, resultTotals, type ModelTotals } from "./claude-code/model-usage";
+import { findClaudeSessionFile } from "./claude-code/sessions";
 import { inputQueue, LIMIT_ERRORS, SIGNED_OUT_ERRORS, userMessage } from "./engine/agent-runner";
 import { recordLiveProc } from "./live-procs";
 import { pictureMime } from "./loop-pictures";
@@ -436,6 +438,9 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     // The first run starts the agent's session, or branches off the terminal session it carries on;
     // every later run resumes the one it has.
     const resume = project.agentSession ?? project.source;
+    // What the session carries in: Claude Code's totals go on from it, and the ledger bills only what grows past it.
+    const carried = resume ? findClaudeSessionFile({ configDir: project.configDir, dir: accountDir }, resume) : null;
+    const billed = (carried ? carriedTotals(carried) : null) ?? new Map<string, ModelTotals>();
     const options: Options = {
       pathToClaudeCodeExecutable: status.path,
       spawnClaudeCodeProcess: (spawnOptions) => (deps.spawnProcess ?? spawnRecorded)(spawnOptions),
@@ -522,6 +527,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           const answered = mine.length > 0 ? mine : live.sent.slice(0, 1);
           live.sent = live.sent.filter((line) => !answered.includes(line));
           const command = answered.find((line) => line.command)?.command ?? null;
+          bill(live, message, billed, models.main);
           if (message.subtype !== "success" || message.is_error || failure) {
             failure ??= message.subtype === "success" ? firstLine(message.result ?? "") ?? "error" : message.errors?.[0] ?? message.subtype;
             break;
@@ -554,6 +560,31 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     if (live.stopped) return;
     if (failure) return fail(live, failure);
     update(live.runId, { status: "completed", activity: null, partial: null, approval: null });
+  }
+
+  /**
+   * What the run has cost since its last row, per model, as the spend ledger's `project` line (ADR
+   * 0095, 2026-10-27): a result's totals are the whole session's, carried across runs, so a row
+   * bills what grew past `billed`. Totals smaller than that started from zero after all and bill whole.
+   */
+  function bill(live: Live, result: SDKResultMessage, billed: Map<string, ModelTotals>, model: string | null): void {
+    for (const [name, total] of resultTotals(result, model)) {
+      const before = billed.get(name);
+      const base = before && total.input >= before.input && total.output >= before.output && total.cost >= before.cost
+        ? before : { input: 0, output: 0, cached: 0, cost: 0 };
+      billed.set(name, total);
+      const delta = { input: total.input - base.input, output: total.output - base.output, cached: Math.max(0, total.cached - base.cached), cost: total.cost - base.cost };
+      if (delta.input <= 0 && delta.output <= 0 && delta.cost <= 0) continue;
+      try {
+        store.insertSpend({
+          kind: "turn", purpose: "project", sessionId: live.sessionId, botId: null, turnId: live.runId, providerId: "", providerName: "Claude Agent",
+          model: name, thinkingLevel: null, inputTokens: delta.input, outputTokens: delta.output, totalTokens: delta.input + delta.output,
+          cachedTokens: delta.cached, reasoningTokens: null, costUsdTicks: null, estimatedCostUsdTicks: Math.max(0, Math.round(delta.cost * 1e10)), missingReason: null,
+        });
+      } catch (error) {
+        console.error(`[project ${live.sessionId}] could not record spend`, error);
+      }
+    }
   }
 
   function liveRun(runId: string): Live {
