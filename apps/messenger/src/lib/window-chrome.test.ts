@@ -1,5 +1,14 @@
 import { expect, test } from "bun:test";
-import { applyWindowChromeAttribute, scrollbarIsNotDrag, syncWindowTheme, windowChrome, windowTheme } from "./window-chrome.ts";
+import {
+  applyWindowChromeAttribute,
+  applyWindowMaterialAttribute,
+  askWindowMaterial,
+  scrollbarIsNotDrag,
+  syncWindowTheme,
+  windowChrome,
+  windowMaterialAtStart,
+  windowTheme,
+} from "./window-chrome.ts";
 
 test("only the desktop window on macOS draws its own frame", () => {
   expect(windowChrome(true, "mac")).toBe("mac");
@@ -69,4 +78,39 @@ test("a press on a drag region's scrollbar does not move the window; one on its 
     document.removeEventListener("mousedown", onDoc);
     node.remove();
   }
+});
+
+test("on macOS the material is known before the first paint; nowhere else is", () => {
+  expect(windowMaterialAtStart("mac")).toBe("glass");
+  expect(windowMaterialAtStart("system")).toBe("none");
+});
+
+test("on Windows the page asks the window what it got; a refusal or a browser tab means none", async () => {
+  expect(await askWindowMaterial(undefined, "windows")).toBe("none");
+  expect(await askWindowMaterial({ invoke: async () => "glass" }, "windows")).toBe("glass");
+  expect(await askWindowMaterial({ invoke: async () => "none" }, "windows")).toBe("none");
+  expect(await askWindowMaterial({ invoke: async () => 42 }, "windows")).toBe("none");
+  expect(
+    await askWindowMaterial(
+      {
+        invoke: async () => {
+          throw new Error("window_material not allowed");
+        },
+      },
+      "windows",
+    ),
+  ).toBe("none");
+  // macOS has its answer from the start and never asks; a browser tab has nothing to ask.
+  const asked: string[] = [];
+  const noisy = { invoke: async (cmd: string) => (asked.push(cmd), "glass") };
+  expect(await askWindowMaterial(noisy, "mac")).toBe("none");
+  expect(await askWindowMaterial(noisy, "other")).toBe("none");
+  expect(asked).toEqual([]);
+});
+
+test("the root says what is behind the page", () => {
+  applyWindowMaterialAttribute("glass");
+  expect(document.documentElement.dataset.material).toBe("glass");
+  applyWindowMaterialAttribute("none");
+  expect(document.documentElement.dataset.material).toBe("none");
 });

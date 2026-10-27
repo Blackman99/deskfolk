@@ -22,6 +22,7 @@
     "allow-independent-runtime-status",
     "allow-app-version",
     "allow-hide-main-window",
+    "allow-window-material",
     "allow-check-for-update",
     "allow-update-install-status",
     "allow-open-external-url",

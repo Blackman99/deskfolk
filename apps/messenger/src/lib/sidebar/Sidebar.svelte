@@ -840,12 +840,13 @@
 	}
 
 	/*
-	 * Dark on macOS the ground lets most of the window's glass through (`--ground-tint` 20%), and
-	 * the glass is lighter than the dark ground was: from about (33,40,49) to (70,76,80) when a light
-	 * window is behind. The quiet greys go up a step so a preview line keeps 4:1 at the bright end
-	 * and the search icon stays legible.
+	 * Dark on a window with material (macOS, Windows 11) the ground lets most of the glass through
+	 * (`--ground-tint` 20%), and the glass is lighter than the dark ground was: on macOS from about
+	 * (33,40,49) to (70,76,80) when a light window is behind; Mica takes the desktop's colour. The
+	 * quiet greys go up a step so a preview line keeps 4:1 at the bright end and the search icon
+	 * stays legible.
 	 */
-	:global(:root[data-chrome='mac'][data-theme='dark']) .side {
+	:global(:root[data-material='glass'][data-theme='dark']) .side {
 		--muted: #a8b3b8;
 		--muted-light: #8b989e;
 	}

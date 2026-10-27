@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-window-material"
+description = "Lets the messenger ask whether the window has a frosted material behind the page (the sidebar material on macOS, Mica on Windows 11), so it knows whether to let its ground show the material through. Read-only."
+commands.allow = ["window_material"]

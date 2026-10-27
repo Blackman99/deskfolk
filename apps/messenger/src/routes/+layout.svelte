@@ -10,7 +10,15 @@
 	import { applyPlatformAttribute } from '$lib/platform';
 	import { applyThemeToDocument, themeManager } from '$lib/theme';
 	import { HOSTED_MESSENGER } from '$lib/remote/mode';
-	import { applyWindowChromeAttribute, syncWindowTheme, WINDOW_CHROME } from '$lib/window-chrome';
+	import { isTauri } from '$lib/tauri';
+	import {
+		applyWindowChromeAttribute,
+		applyWindowMaterialAttribute,
+		askWindowMaterial,
+		syncWindowTheme,
+		WINDOW_CHROME,
+		windowMaterialAtStart
+	} from '$lib/window-chrome';
 	import '$lib/styles/index.css';
 
 	let { children } = $props();
@@ -24,6 +32,8 @@
 	applyPlatformAttribute();
 	// Also once: on macOS the page draws the window's frame (`window-chrome.css`).
 	applyWindowChromeAttribute();
+	// And what is behind the page. macOS knows from the start; Windows is asked once mounted.
+	applyWindowMaterialAttribute(windowMaterialAtStart());
 	// Before the first render too: `tokens.css` keys dark mode off `data-theme` alone, and a
 	// system-dark window would otherwise draw its first frame light.
 	applyThemeToDocument(themeManager.resolved, themeManager.preference);
@@ -33,7 +43,9 @@
 
 	onMount(() => {
 		const stopTheme = themeManager.init();
-		if (WINDOW_CHROME === 'mac') {
+		if (isTauri()) {
+			// The window's material and menus (and Windows's title bar) follow the app's theme.
+			if (WINDOW_CHROME !== 'mac') void askWindowMaterial().then(applyWindowMaterialAttribute);
 			syncWindowTheme(themeManager.preference, themeManager.resolved);
 			const stopSync = themeManager.subscribe(() => syncWindowTheme(themeManager.preference, themeManager.resolved));
 			return () => {

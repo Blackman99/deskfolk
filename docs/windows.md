@@ -42,6 +42,7 @@ The other local agents ([how they work](behavior.en.md#local-agents)) can be pic
 - Holding off idle sleep while work runs (the Mac does it on power).
 - Downloading and installing an update inside the app: a new version still means a manual download in the browser.
 - Desktop notifications and the icon badge.
+- Frosted glass on Windows 10: the window's material is Windows 11's Mica, and on Windows 10 the window has a solid ground.
 - Image thumbnails. Images sent to a model are not affected.
 
 ## Running from source

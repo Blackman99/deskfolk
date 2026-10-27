@@ -1585,7 +1585,7 @@
 			left: 5px;
 		}
 
-		:global(:root[data-chrome='mac']) .shell {
+		:global(:root[data-material='glass']) .shell {
 			background: color-mix(in srgb, var(--ground) var(--ground-tint), transparent);
 		}
 	}

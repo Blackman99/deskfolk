@@ -1192,27 +1192,27 @@
 			pointer-events: none;
 		}
 		/*
-		 * Dark on macOS the ground lets most of the window's glass through (`--ground-tint`), and
-		 * glass that clear takes the colour of whatever is behind each part of the window: two
+		 * Dark on a window with material (macOS, Windows 11) the ground lets most of the glass through
+		 * (`--ground-tint`), and glass that clear takes the colour of whatever is behind each part: two
 		 * panes' tab rows came out one blue and one orange. So there the strip is the card's head,
 		 * a solid dark band joined to the body, and only the gutters between the cards show the
 		 * glass.
 		 */
 		/* 4px above the head too, so a pane under another sits 9px off it, as one beside it does. */
-		:global(:root[data-chrome='mac'][data-theme='dark']) .wb-leaf:not(.is-empty) > .wb-strip {
+		:global(:root[data-material='glass'][data-theme='dark']) .wb-leaf:not(.is-empty) > .wb-strip {
 			margin: 4px 4px 0;
 			border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 			background: var(--ground);
 		}
-		:global(:root[data-chrome='mac'][data-theme='dark']) .wb-leaf:not(.is-empty) > .wb-body {
+		:global(:root[data-material='glass'][data-theme='dark']) .wb-leaf:not(.is-empty) > .wb-body {
 			border-top-left-radius: 0;
 			border-top-right-radius: 0;
 		}
-		:global(:root[data-chrome='mac'][data-theme='dark']) .wb-leaf.is-raised:not(.is-empty)::before {
+		:global(:root[data-material='glass'][data-theme='dark']) .wb-leaf.is-raised:not(.is-empty)::before {
 			top: 4px;
 		}
 		/* A floating pane has its own frame, and the band under its tabs stays as it was. */
-		:global(:root[data-chrome='mac'][data-theme='dark'] .wb-float) .wb-leaf:not(.is-empty) > .wb-strip {
+		:global(:root[data-material='glass'][data-theme='dark'] .wb-float) .wb-leaf:not(.is-empty) > .wb-strip {
 			margin: 0;
 			border-radius: 0;
 			background: var(--sidebar-bg);

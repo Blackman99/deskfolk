@@ -2853,6 +2853,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "ureq",
  "webview2-com",
+ "window-vibrancy",
  "windows",
  "windows-core 0.61.2",
  "windows-future",

@@ -1,5 +1,5 @@
 import { desktopPlatform } from "./platform.ts";
-import { isTauri, readTauriInternals } from "./tauri.ts";
+import { isTauri, readTauriInternals, type TauriInternals } from "./tauri.ts";
 import type { Theme } from "@real-bot/protocol";
 import type { ResolvedTheme } from "./theme.ts";
 
@@ -55,12 +55,53 @@ export function applyWindowChromeAttribute(chrome: WindowChrome = WINDOW_CHROME)
 }
 
 /**
+ * What is behind the page: the window's frosted material (the sidebar material on macOS, Mica on
+ * Windows 11) or nothing. Where there is material the page is clear and the shell paints a tinted
+ * ground over it (`base.css`, `--ground-tint`); where there is none the page keeps its solid
+ * ground, since a clear page over a plain window shows the desktop. The frame and the material
+ * are separate questions: Windows keeps the system's title bar and still gets the material.
+ */
+export type WindowMaterial = "glass" | "none";
+
+/**
+ * On macOS the material is in the window's config, so the answer is known before the first paint
+ * and the page never goes solid first. Everywhere else it starts as none.
+ */
+export function windowMaterialAtStart(chrome: WindowChrome = WINDOW_CHROME): WindowMaterial {
+  return chrome === "mac" ? "glass" : "none";
+}
+
+/**
+ * On Windows the window asks for Mica at startup and only Windows 11 grants it, so the page asks
+ * the window what it got (`window_material`). None outside the desktop window, on macOS (which
+ * has its answer already), and when the window refuses or answers with something else.
+ */
+export async function askWindowMaterial(
+  internals: TauriInternals | undefined = readTauriInternals(),
+  platform = desktopPlatform(),
+): Promise<WindowMaterial> {
+  if (!internals?.invoke || platform !== "windows") return "none";
+  try {
+    const answer = await internals.invoke("window_material");
+    return answer === "glass" ? "glass" : "none";
+  } catch {
+    return "none";
+  }
+}
+
+/** `<html data-material="glass|none">`, for the rules that let the material through. */
+export function applyWindowMaterialAttribute(material: WindowMaterial): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.dataset.material = material;
+}
+
+/**
  * What the window's own appearance should be for a theme setting: the chosen one when you picked
- * light or dark, so the sidebar material and the native menus match the app rather than the
- * system (a dark app on a light system would otherwise draw light glass under light text); and
- * `null` when the app follows the system. Pinning the window there too broke following: the page
- * reads the system's theme through the window (`prefers-color-scheme`), so a pinned window never
- * told it the system had changed.
+ * light or dark, so the window's material, the native menus and (on Windows) the title bar match
+ * the app rather than the system (a dark app on a light system would otherwise draw light glass
+ * under light text); and `null` when the app follows the system. Pinning the window there too
+ * broke following: the page reads the system's theme through the window (`prefers-color-scheme`),
+ * so a pinned window never told it the system had changed.
  */
 export function windowTheme(preference: Theme, resolved: ResolvedTheme): ResolvedTheme | null {
   return preference === "system" ? null : resolved;
