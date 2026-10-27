@@ -105,7 +105,7 @@ async function shoot(url: string, out: string) {
 
   // 3 · The job's sheet at 要点: the goal, who makes and who reviews, the checks passed.
   await page.getByRole('button', { name: lang === 'zh' ? '更多会话操作' : 'More conversation actions' }).click();
-  await page.getByRole('button', { name: lang === 'zh' ? '经过' : 'Trace', exact: true }).click();
+  await page.getByRole('menuitem', { name: lang === 'zh' ? '经过' : 'Trace', exact: true }).click();
   await page.locator('.trace-view-tab').last().click();
   await shot('job');
 
