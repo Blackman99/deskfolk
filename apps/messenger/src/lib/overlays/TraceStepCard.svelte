@@ -172,7 +172,7 @@
 	}
 
 	.trace-step-why {
-		color: var(--warn);
+		color: var(--warn-text);
 		font-size: 11px;
 	}
 </style>

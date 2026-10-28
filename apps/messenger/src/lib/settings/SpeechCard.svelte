@@ -407,7 +407,7 @@
 	}
 
 	.speech-key-clear:hover:not(:disabled) {
-		color: var(--danger);
+		color: var(--danger-text);
 		border-color: var(--danger-line);
 		background: var(--danger-bg);
 	}

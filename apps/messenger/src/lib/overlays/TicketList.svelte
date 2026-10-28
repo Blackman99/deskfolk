@@ -779,7 +779,7 @@
 
 	.ticket-status.is-review,
 	.ticket-head :global(.ticket-status.is-review) {
-		color: var(--purple);
+		color: var(--purple-text);
 	}
 
 	.ticket-status.is-done,
@@ -940,7 +940,7 @@
 		margin: 0;
 		font-size: 11px;
 		line-height: 1.45;
-		color: var(--muted-light);
+		color: var(--muted);
 	}
 
 	.ticket-board-conflict {
@@ -1008,7 +1008,7 @@
 
 	.ticket-column-count {
 		font-size: 10px;
-		color: var(--muted-light);
+		color: var(--muted);
 	}
 
 	.ticket-column-clear {
@@ -1032,7 +1032,7 @@
 	.ticket-column-empty {
 		margin: 0;
 		font-size: 11px;
-		color: var(--muted-light);
+		color: var(--muted);
 	}
 
 	.ticket-row.is-dragging {

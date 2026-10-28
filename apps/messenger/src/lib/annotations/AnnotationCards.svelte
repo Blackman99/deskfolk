@@ -77,8 +77,12 @@
 		border-radius: var(--radius-md);
 		background: color-mix(in srgb, currentColor 6%, transparent);
 	}
+	/*
+	 * A batch is always your message, and white on the accent bubble is 6.2:1 at best, so nothing
+	 * in a card fades below 90%. A handled card recedes by dropping its fill instead of its ink.
+	 */
 	.annot-card.is-resolved {
-		opacity: 0.78;
+		background: none;
 	}
 	.annot-cards-error {
 		color: inherit;
@@ -103,7 +107,7 @@
 		font: inherit;
 	}
 	.annot-card-pos {
-		opacity: 0.7;
+		opacity: 0.9;
 	}
 	.annot-card-body {
 		line-height: 1.4;
@@ -111,7 +115,7 @@
 		word-break: break-word;
 	}
 	.annot-card-note {
-		opacity: 0.75;
+		opacity: 0.9;
 		white-space: pre-wrap;
 		word-break: break-word;
 	}
@@ -130,12 +134,12 @@
 		font-weight: 650;
 	}
 	.annot-badge.is-resolved {
-		opacity: 0.7;
+		opacity: 0.9;
 	}
 	.annot-badge.is-stale {
 		align-self: flex-start;
 		border-style: dashed;
-		opacity: 0.8;
+		opacity: 0.9;
 	}
 	.annot-toggle {
 		cursor: pointer;
@@ -151,7 +155,7 @@
 		background: none;
 		color: inherit;
 		text-decoration: underline;
-		opacity: 0.8;
+		opacity: 0.9;
 		cursor: pointer;
 	}
 	@media (max-width: 680px) {

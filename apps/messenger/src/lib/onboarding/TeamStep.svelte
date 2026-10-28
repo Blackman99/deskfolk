@@ -386,7 +386,7 @@
 	}
 
 	.team-made {
-		color: var(--ok);
+		color: var(--ok-text);
 	}
 
 	.team-bot-duties {
@@ -398,7 +398,7 @@
 	}
 
 	.team-bot-duties.is-error {
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	.team-edit {

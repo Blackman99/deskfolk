@@ -709,7 +709,7 @@
 	.btn-remove-member:hover:not(:disabled) {
 		background: var(--danger-bg);
 		border-color: var(--danger-line);
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	.btn-remove-member:disabled {

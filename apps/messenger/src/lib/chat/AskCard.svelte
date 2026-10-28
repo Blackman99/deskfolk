@@ -258,6 +258,7 @@
 		border-radius: var(--radius-md) var(--radius-md) var(--radius-xs) var(--radius-md);
 		background: var(--you);
 		color: var(--you-text);
+		--selection: color-mix(in srgb, var(--you-text) 30%, transparent);
 		font-size: 13px;
 		line-height: 1.45;
 		white-space: pre-wrap;

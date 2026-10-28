@@ -369,7 +369,7 @@
 	.skill-action-btn.delete:hover {
 		background: var(--danger-bg);
 		border-color: var(--danger-line);
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	.skill-badge-disabled {

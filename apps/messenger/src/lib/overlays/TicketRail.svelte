@@ -459,7 +459,7 @@
 	}
 
 	.rail-stage.is-review {
-		color: var(--purple);
+		color: var(--purple-text);
 	}
 
 	.rail-stage.is-done {

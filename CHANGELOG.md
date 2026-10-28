@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Hints, statuses and selected rows are easier to read
+
+- Text that fell under 4.5:1 now holds it in both themes. Status words (errors, Configured, Waiting for an answer, In review, Delete and Deny buttons) are drawn in their status's text colour, not its fill colour: the fill's yellow and green came to about 3.2:1 on white, and dark mode's red to 3.9:1. The faint grey is no longer used for hints and counts in the plan, ticket and flow panes. The chosen row of a menu, the model picker and the speech-service picker shows the pointer by a ring instead of a deeper fill that the label nearly disappeared into, and the secondary line on a selected row is darker. In your own messages a quote, a mention, inline code and the annotation cards fade no further than the accent bubble allows; a handled annotation drops its fill instead of fading.
+- The parts the browser draws follow the app: placeholders are the app's grey instead of the browser's, checkboxes and radio buttons the accent instead of the system blue, and so are the text caret and selected text (in your own messages a light band, so it shows on the accent).
+- Smaller things: the usage bubbles no longer overshoot as they open, the blocker box on a job's plan lost its thick left edge, and in light mode the number on a middle rung of the Roles ladder is drawn dark, since white did not read on it.
+
 ### A pinch anywhere on the screen zooms an enlarged picture on the phone
 
 - A picture opened full screen on a phone zoomed only when both fingers landed on it, so a wide one, which fills a strip across the middle, would not zoom with a finger above or below it. Two fingers anywhere on the screen now zoom it, and once it is zoomed one finger drags it from anywhere too. The buttons keep their own taps.

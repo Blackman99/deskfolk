@@ -156,7 +156,7 @@
 	.connector-key-badge.is-set {
 		background: var(--ok-bg);
 		border-color: var(--ok-line);
-		color: var(--ok);
+		color: var(--ok-text);
 		font-weight: 600;
 	}
 
@@ -179,7 +179,7 @@
 	}
 
 	.connector-status-line.is-ok {
-		color: var(--ok);
+		color: var(--ok-text);
 		font-weight: 500;
 	}
 

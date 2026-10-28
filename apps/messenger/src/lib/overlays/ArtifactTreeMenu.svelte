@@ -200,7 +200,7 @@
 	.artifact-tree-menu-item.is-danger:hover,
 	.artifact-tree-menu-item.is-danger:focus-visible {
 		background: var(--danger-bg);
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	@media (max-width: 680px) {

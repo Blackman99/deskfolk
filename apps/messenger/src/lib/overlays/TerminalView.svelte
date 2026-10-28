@@ -1110,7 +1110,7 @@
 	}
 
 	.terminal-end.is-armed {
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	.terminal-confirm {
@@ -1282,7 +1282,7 @@
 	.terminal-error {
 		margin: 0;
 		padding: 8px 12px;
-		color: var(--danger);
+		color: var(--danger-text);
 		font-size: 12px;
 	}
 
@@ -1552,7 +1552,7 @@
 	}
 
 	.terminal-menu .terminal-end {
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	.terminal-menu .terminal-confirm {
@@ -1575,7 +1575,7 @@
 
 	.terminal-menu-confirm .is-armed {
 		border-color: var(--danger);
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	.is-gathered .terminal-host {

@@ -44,6 +44,8 @@
   --accent-tint: #e6f2f4;
   --accent-border: #b9d6dc;
   --accent-glow: rgba(20, 106, 124, 0.14);
+  /* Selected text (`base.css`). */
+  --selection: color-mix(in srgb, var(--accent) 22%, transparent);
   /* Text and icons drawn on an accent fill. Dark mode's accent is light, so this flips there. */
   --on-accent: #ffffff;
   /* The mark's second colour: highlights that are about the brand, not a status. */
@@ -281,6 +283,7 @@ body.dark,
   --accent-tint: rgba(69, 176, 195, 0.14);
   --accent-border: rgba(69, 176, 195, 0.35);
   --accent-glow: rgba(69, 176, 195, 0.22);
+  --selection: color-mix(in srgb, var(--accent) 32%, transparent);
   /* Over the dark surfaces the halo needs a little more of the accent to show at all. */
   --field-focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent);
   --on-accent: #06181c;

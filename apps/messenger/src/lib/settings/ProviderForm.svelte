@@ -724,7 +724,7 @@
 	.key-status-badge.is-set {
 		background: var(--ok-bg);
 		border-color: var(--ok-line);
-		color: var(--ok);
+		color: var(--ok-text);
 		font-weight: 600;
 	}
 
@@ -963,7 +963,7 @@
 	.attr-field-speed { grid-column: 1 / -1; }
 	.attr-window-input { max-width: 160px; }
 	.speed-note { margin: 0; font-size: 12px; color: var(--ink-secondary); line-height: 1.5; overflow-wrap: anywhere; }
-	.model-custom-tag.is-warn { color: var(--warn); border-color: var(--warn); background: transparent; }
+	.model-custom-tag.is-warn { color: var(--warn-text); border-color: var(--warn); background: transparent; }
 
 	.attr-field :global(label),
 

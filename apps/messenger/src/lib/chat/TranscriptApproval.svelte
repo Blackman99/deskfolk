@@ -317,7 +317,7 @@
 		margin: 0;
 		font-size: 12px;
 		font-weight: 400;
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	.msg-wrap.is-search-hit {

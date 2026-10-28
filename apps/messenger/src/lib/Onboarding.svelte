@@ -1599,7 +1599,7 @@
 		background: var(--danger-bg);
 		border: 1px solid var(--danger-line);
 		border-radius: var(--radius-md);
-		color: var(--danger);
+		color: var(--danger-text);
 		font-size: 13px;
 		font-weight: 500;
 	}

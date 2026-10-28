@@ -235,7 +235,7 @@
 	.plan-reqs-group-hint {
 		margin: 0;
 		font-size: 11px;
-		color: var(--muted-light);
+		color: var(--muted);
 	}
 
 	.plan-reqs-empty {

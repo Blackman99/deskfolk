@@ -320,7 +320,7 @@
 	}
 	.annot-list-error {
 		padding: 8px 16px 0;
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 	.annot-empty {
 		flex: 1;

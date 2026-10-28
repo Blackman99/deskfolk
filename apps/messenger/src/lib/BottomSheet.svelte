@@ -262,7 +262,7 @@
 
 	/* What cannot be taken back, in every sheet: Delete, Move to Trash. */
 	.bottom-sheet-layer .bottom-sheet-body :global(.sheet-item.is-danger:not(:disabled)) {
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	.bottom-sheet-layer .bottom-sheet-body :global(.sheet-item svg) {

@@ -71,7 +71,7 @@
 		border-color: var(--field-focus-border);
 	}
 	.annot-composer-error {
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 	.annot-composer-save {
 		min-height: 28px;

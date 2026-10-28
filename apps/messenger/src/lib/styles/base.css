@@ -96,6 +96,35 @@ select:focus-visible {
   border-color: var(--field-focus-border) !important;
 }
 
+/*
+ * The parts of a control the browser draws itself. The UA placeholder grey (#757575 in both
+ * themes) fell to 3.3:1 on a dark field and matched nothing else here; checkboxes, radios and
+ * ranges came in the system blue. They take the app's muted ink and its accent, the caret too.
+ */
+::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+:root {
+  accent-color: var(--accent);
+}
+
+input,
+textarea,
+[contenteditable]:not([contenteditable="false"]) {
+  caret-color: var(--accent);
+}
+
+/*
+ * Selected text is tinted from the accent rather than the system highlight. A surface whose own
+ * fill is the accent (your bubble) sets `--selection` to a tint of its text colour instead, or
+ * the selection would vanish into it.
+ */
+::selection {
+  background: var(--selection);
+}
+
 .mono {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;

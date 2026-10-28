@@ -198,7 +198,7 @@
 	.plan-retro-muted {
 		margin: 0;
 		font-size: 11px;
-		color: var(--muted-light);
+		color: var(--muted);
 	}
 
 	.plan-retro {

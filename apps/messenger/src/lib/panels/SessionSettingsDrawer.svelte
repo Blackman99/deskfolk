@@ -263,14 +263,14 @@
 
 	.sheet.session-settings :global(.deny) {
 		background: var(--btn-secondary-bg);
-		color: var(--danger);
+		color: var(--danger-text);
 		border: 1px solid var(--danger-line);
 	}
 
 	.sheet.session-settings :global(.deny:hover:not(:disabled)) {
 		background: var(--danger-bg);
 		border-color: var(--danger);
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	/* Persona / Profile Drawer Backdrop & Right Sidebar */

@@ -560,6 +560,7 @@
 	.msg.is-you {
 		background: var(--you);
 		color: var(--you-text);
+		--selection: color-mix(in srgb, var(--you-text) 30%, transparent);
 		border: 1px solid transparent;
 		/* The corner toward your side is the mark's bubble tail. */
 		border-radius: var(--radius-lg) var(--radius-xs) var(--radius-lg) var(--radius-lg);
@@ -689,9 +690,12 @@
 		background: var(--line);
 	}
 
-	/* The quote itself is QuoteRef's; inside your bubble it takes the bubble's light ink. */
+	/*
+	 * The quote itself is QuoteRef's; inside your bubble it takes the bubble's light ink. At 14% the
+	 * wash left its 90% body text at 4.0:1; at 8% it holds 4.5:1.
+	 */
 	.msg.is-you :global(.quote-ref) {
-		background: rgba(255, 255, 255, 0.14);
+		background: rgba(255, 255, 255, 0.08);
 		border-left-color: rgba(255, 255, 255, 0.55);
 	}
 

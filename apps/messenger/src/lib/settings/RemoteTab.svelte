@@ -322,13 +322,13 @@
 	.settings-badge-ok {
 		background: var(--ok-bg);
 		border: 1px solid var(--ok-line);
-		color: var(--ok);
+		color: var(--ok-text);
 	}
 
 	.settings-badge-warn {
 		background: var(--warn-bg);
 		border: 1px solid var(--warn-line);
-		color: var(--warn);
+		color: var(--warn-text);
 	}
 
 	.settings-badge-neutral {
@@ -392,7 +392,7 @@
 	}
 
 	.btn-danger-xs {
-		color: var(--danger);
+		color: var(--danger-text);
 		border-color: color-mix(in srgb, var(--danger) 42%, var(--line));
 		background: color-mix(in srgb, var(--danger) 8%, transparent);
 	}
@@ -584,7 +584,7 @@
 	.pairing-done {
 		margin: 0;
 		font-size: 13px;
-		color: var(--ok);
+		color: var(--ok-text);
 	}
 
 	.pairing-failed {

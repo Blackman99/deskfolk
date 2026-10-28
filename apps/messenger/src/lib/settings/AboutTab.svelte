@@ -238,7 +238,7 @@
 	.about-status-banner.is-ok {
 		background: var(--ok-bg);
 		border: 1px solid var(--ok-line);
-		color: var(--ok);
+		color: var(--ok-text);
 	}
 
 	.about-status-banner.is-error {
@@ -362,11 +362,12 @@
 		color: var(--ink-secondary);
 	}
 
+	/* It only appears on the update banner's accent tint, where `--muted` is 4.3:1 in dark. */
 	.about-notes-heading {
 		margin: 8px 0 2px;
 		font-size: 11px;
 		font-weight: 600;
-		color: var(--muted);
+		color: var(--ink-secondary);
 	}
 
 	.about-notes-heading:first-of-type {

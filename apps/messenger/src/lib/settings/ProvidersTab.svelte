@@ -332,7 +332,7 @@
 	}
 
 	.btn-provider-action.btn-provider-delete:hover {
-		color: var(--danger);
+		color: var(--danger-text);
 		background: var(--danger-bg);
 		border-color: var(--danger-line);
 	}

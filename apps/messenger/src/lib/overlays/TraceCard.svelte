@@ -454,7 +454,7 @@
 
 	.trace-status.is-running { color: var(--accent); }
 	.trace-status.is-waiting_approval { color: var(--warn-text); }
-	.trace-status.is-waiting_ask { color: var(--purple); }
+	.trace-status.is-waiting_ask { color: var(--purple-text); }
 	.trace-status.is-redirected { color: var(--muted); }
 	.trace-status.is-interrupted,
 	.trace-status.is-stopped { color: var(--danger-text); }

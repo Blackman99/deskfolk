@@ -156,6 +156,11 @@
 		color: var(--muted);
 	}
 
+	/* `--muted` on the accent tint is 4.3:1 in dark. */
+	.permission-mode.is-active .permission-mode-desc {
+		color: var(--ink-secondary);
+	}
+
 	.permission-note {
 		margin: 8px 0 0;
 		font-size: 12px;

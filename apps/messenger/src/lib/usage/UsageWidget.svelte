@@ -572,7 +572,7 @@
 	.is-expanded .usage-column li {
 		opacity: 1;
 		transform: none;
-		transition: opacity 0.2s ease calc(var(--i) * 35ms + 60ms), transform 0.24s cubic-bezier(0.3, 1.4, 0.5, 1) calc(var(--i) * 35ms + 60ms);
+		transition: opacity 0.2s ease calc(var(--i) * 35ms + 60ms), transform 0.24s var(--ease-out) calc(var(--i) * 35ms + 60ms);
 	}
 
 	.usage-bubble {

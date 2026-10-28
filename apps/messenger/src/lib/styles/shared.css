@@ -43,7 +43,7 @@ img[src*="mask_folk_"] {
 .field-error {
   margin: 5px 0 0;
   font-size: 12px;
-  color: var(--warn);
+  color: var(--warn-text);
   font-weight: 500;
   line-height: 1.4;
 }

@@ -696,7 +696,7 @@
 	}
 
 	.pdf-status.is-error {
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	.pdf-password {

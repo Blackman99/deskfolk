@@ -350,7 +350,7 @@
 
 	.session-context-menu-item.is-danger:hover:not(:disabled) {
 		background: var(--danger-bg);
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	.session-context-menu-item.is-danger:hover:not(:disabled) :global(.icon) {

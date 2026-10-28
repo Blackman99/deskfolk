@@ -1046,7 +1046,7 @@
 		align-items: center;
 		gap: 6px;
 		font-size: 12px;
-		color: var(--danger);
+		color: var(--danger-text);
 		padding: 6px 10px;
 		border-radius: var(--radius-sm);
 		background: var(--danger-bg);

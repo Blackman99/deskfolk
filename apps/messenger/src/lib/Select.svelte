@@ -689,8 +689,12 @@
 		font-weight: 600;
 	}
 
+	/*
+	 * The pointer or the arrow keys on the chosen row: a ring, not a deeper fill. Filled with
+	 * `--accent-border`, the accent label on it fell to 4.1:1 in light and 3.3:1 in dark.
+	 */
 	.real-select-option.is-selected.is-highlighted {
-		background-color: var(--accent-border);
+		box-shadow: inset 0 0 0 1px var(--accent-border);
 	}
 
 	.real-select-option.is-disabled {

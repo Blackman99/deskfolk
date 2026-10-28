@@ -34,6 +34,6 @@
 	}
 
 	.settings-save-state.is-error {
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 </style>

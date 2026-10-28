@@ -126,7 +126,7 @@
 }
 
 .sheet .actions .deny {
-  color: var(--danger);
+  color: var(--danger-text);
   border-color: var(--danger-line);
 }
 

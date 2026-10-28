@@ -922,8 +922,9 @@
 		color: var(--accent);
 	}
 
+	/* As in Select: a ring on the chosen row, so its accent label keeps its contrast. */
 	.mp-row.is-selected.is-active {
-		background: var(--accent-border);
+		box-shadow: inset 0 0 0 1px var(--accent-border);
 	}
 
 	.mp-row.is-disabled {
@@ -962,6 +963,11 @@
 		white-space: nowrap;
 		font-size: 11px;
 		color: var(--muted);
+	}
+
+	/* `--muted` on the accent tint is 4.3:1 in dark. */
+	.mp-row.is-selected .mp-row-detail {
+		color: var(--ink-secondary);
 	}
 
 	:global(.icon.mp-check) {

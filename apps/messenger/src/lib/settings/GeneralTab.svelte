@@ -308,13 +308,13 @@
 	.settings-badge-ok {
 		background: var(--ok-bg);
 		border: 1px solid var(--ok-line);
-		color: var(--ok);
+		color: var(--ok-text);
 	}
 
 	.settings-badge-warn {
 		background: var(--warn-bg);
 		border: 1px solid var(--warn-line);
-		color: var(--warn);
+		color: var(--warn-text);
 	}
 
 	.field-error-alert {

@@ -806,6 +806,7 @@
 		border-radius: var(--radius-lg) var(--radius-xs) var(--radius-lg) var(--radius-lg);
 		background: var(--you);
 		color: var(--you-text);
+		--selection: color-mix(in srgb, var(--you-text) 30%, transparent);
 		box-shadow: var(--shadow-xs);
 	}
 

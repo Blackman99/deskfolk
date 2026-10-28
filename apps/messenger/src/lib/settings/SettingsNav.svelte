@@ -411,8 +411,9 @@
 		box-shadow: 0 0 0 2px var(--row-hover);
 	}
 
+	/* The row is already tinted; a second tint under the count took it to 4.4:1 in dark. */
 	.settings-tab-btn.is-active .tab-count {
-		background: var(--accent-tint);
+		background: var(--pane);
 		color: var(--accent);
 	}
 

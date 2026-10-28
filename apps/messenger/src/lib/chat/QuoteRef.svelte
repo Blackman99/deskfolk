@@ -47,16 +47,16 @@
 		cursor: pointer;
 	}
 
+	/* Inside your bubble white on the accent leaves little room: the quote fades no further than 90%. */
 	.quote-ref-who {
 		font-size: 11px;
 		font-weight: 650;
-		opacity: 0.85;
 	}
 
 	.quote-ref-body {
 		font-size: 12px;
 		line-height: 1.35;
-		opacity: 0.72;
+		opacity: 0.92;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

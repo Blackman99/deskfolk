@@ -252,7 +252,7 @@
 
 	.trace-step-detail-why {
 		margin: 0;
-		color: var(--warn);
+		color: var(--warn-text);
 	}
 
 	.trace-step-detail-note {

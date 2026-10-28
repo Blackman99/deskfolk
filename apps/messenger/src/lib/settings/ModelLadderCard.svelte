@@ -253,6 +253,7 @@
 						class:is-held={drag?.from === index}
 						class:is-last={index === ladder.rungs.length - 1}
 						class:is-deep={strength(place) > 60}
+						class:is-deepest={strength(place) > 80}
 						data-rung={rung.model}
 						style:--rung-strength="{strength(place)}%"
 						style:--rung-next="{strength(place + 1)}%"
@@ -435,8 +436,13 @@
 		transition: background-color 0.15s ease;
 	}
 
-	/* On the deeper rungs the number goes light, as on any accent fill. */
-	.ladder-rung.is-deep .ladder-step {
+	/*
+	 * On the deeper rungs the number takes the ink drawn on an accent fill. Light mode's middle rungs
+	 * are still pale enough for the dark number (white measured 3.6:1 on the 67% rung, the ink 4.8:1),
+	 * so there it changes only on the deepest; dark mode's change from the middle on.
+	 */
+	.ladder-rung.is-deepest .ladder-step,
+	:global([data-theme='dark']) .ladder-rung.is-deep .ladder-step {
 		color: var(--on-accent);
 	}
 

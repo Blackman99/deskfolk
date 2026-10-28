@@ -1079,7 +1079,6 @@
 		min-width: 0;
 		padding: 9px 12px 10px;
 		border: 1px solid var(--danger-line);
-		border-left-width: 3px;
 		border-radius: var(--radius-md);
 		background: var(--danger-bg);
 	}
@@ -1453,7 +1452,7 @@
 	.plan-spec-checks-hint {
 		margin: 0;
 		font-size: 11px;
-		color: var(--muted-light);
+		color: var(--muted);
 	}
 
 	.plan-spec-checks-pills {
@@ -1651,7 +1650,7 @@
 	.plan-spec-empty-line {
 		margin: 0;
 		font-size: 12px;
-		color: var(--muted-light);
+		color: var(--muted);
 		font-style: italic;
 	}
 

@@ -356,7 +356,7 @@
 		flex: none;
 		padding-top: 1px;
 		font-size: 10px;
-		color: var(--muted-light);
+		color: var(--muted);
 	}
 
 	.trace-route-review {

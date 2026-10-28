@@ -171,7 +171,7 @@
 	}
 
 	.cap-hint.is-error {
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 
 	@container spend (max-width: 620px) {

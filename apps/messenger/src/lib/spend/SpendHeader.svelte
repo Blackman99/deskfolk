@@ -331,7 +331,7 @@
 
 	.field-error {
 		font-size: 12px;
-		color: var(--danger);
+		color: var(--danger-text);
 		font-weight: 500;
 	}
 

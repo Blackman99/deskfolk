@@ -17,7 +17,7 @@
 .panel-alert.is-error {
   background: var(--danger-bg);
   border: 1px solid var(--danger-line);
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .danger-zone-card {
@@ -102,7 +102,7 @@
 
 .action-btn.deny {
   background: var(--danger-bg);
-  color: var(--danger);
+  color: var(--danger-text);
   border: 1px solid var(--danger-line);
 }
 

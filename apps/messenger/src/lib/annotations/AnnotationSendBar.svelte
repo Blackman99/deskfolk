@@ -116,13 +116,13 @@
 		white-space: nowrap;
 	}
 	.annot-send-clear.is-danger {
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 	.annot-send-cap {
 		color: var(--muted);
 	}
 	.annot-send-error {
-		color: var(--danger);
+		color: var(--danger-text);
 	}
 	@media (max-width: 680px) {
 		.annot-send-row {

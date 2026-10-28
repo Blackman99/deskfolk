@@ -176,7 +176,7 @@
 				{@const heading = row.kind ? `prompts-tool-kind-${row.kind}` : undefined}
 				<section class="prompts-tool-kind" data-tool-kind={row.kind} aria-labelledby={heading}>
 					{#if row.kind}
-						<h5 class="prompts-tool-kind-title" id={heading}>{c.toolKinds[row.kind]}</h5>
+						<h4 class="prompts-tool-kind-title" id={heading}>{c.toolKinds[row.kind]}</h4>
 					{/if}
 					<ul class="prompts-tool-grid">
 						{#each row.items as item (item.id)}

@@ -214,7 +214,7 @@
 }
 
 .modal-foot button.deny {
-  color: var(--danger);
+  color: var(--danger-text);
   border-color: var(--danger-line);
   background: var(--btn-secondary-bg);
 }

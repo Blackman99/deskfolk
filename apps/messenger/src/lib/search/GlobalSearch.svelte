@@ -236,6 +236,8 @@
 	.result-text { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
 	.result-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 14px; line-height: 1.45; }
 	.result-secondary { font-size: 12px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+	/* `--muted` on the accent tint is 4.3:1 in dark. */
+	.search-result:hover:not([aria-disabled='true']) :is(.result-secondary, .result-kind), .search-result.is-selected :is(.result-secondary, .result-kind) { color: var(--ink-secondary); }
 	.result-unavailable { color: var(--muted); font-size: 12px; }
 	.result-kind { flex-shrink: 0; font-size: 11px; color: var(--muted); }
 	.search-footer { display: flex; gap: 14px; align-items: center; padding: 10px 18px; border-top: 1px solid var(--line); flex-shrink: 0; color: var(--muted); font-size: 11px; }
