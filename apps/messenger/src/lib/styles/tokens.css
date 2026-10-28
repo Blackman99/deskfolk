@@ -10,12 +10,14 @@
   --sidebar-bg: #f7f9f9;
   /*
    * The ground the content cards lie on beside the phone layout (`Shell.svelte`): the sidebar and
-   * the gutter around the cards. `--ground-tint` is how much of it covers the window's material on
-   * macOS. Light keeps the sidebar's colour at 30%, so the frosted glass shows through. Dark has
-   * no middle: the dark glass is lighter than `--pane`, so a ground between the two (about 35–60%)
-   * is the cards' own colour. Off macOS dark goes well under `--pane`; on macOS it covers 20% and
+   * the gutter around the cards. `--ground-tint` is how much of it covers the window's material
+   * where there is one (macOS's sidebar material, Windows 11's Mica; `window-chrome.ts`). Light
+   * keeps the sidebar's colour at 30%, so the frosted glass shows through. Dark has no middle: the
+   * dark glass is lighter than `--pane`, so a ground between the two (about 35–60%) is the cards'
+   * own colour. Without material dark goes well under `--pane`; with it the ground covers 20% and
    * the glass sits above the cards instead, as a dark Finder's sidebar does. The workbench's tab
-   * rows are not left on that glass there (`WorkbenchLeaf.svelte`).
+   * rows are not left on that glass there (`WorkbenchLeaf.svelte`). The tints were tuned on macOS;
+   * Mica has not been checked on a Windows 11 machine yet.
    */
   --ground: var(--sidebar-bg);
   --ground-tint: 30%;

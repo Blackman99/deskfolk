@@ -42,6 +42,7 @@ Claude Agent（[怎么用](behavior.md#claude-agent)）在 Windows 上也能选�
 - 有活在跑时挡住空闲睡眠（Mac 上插电时有）。
 - 在应用里下载并安装更新：发现新版仍要去浏览器手动下载。
 - 桌面通知与图标角标。
+- Windows 10 上没有毛玻璃：窗的材质是 Windows 11 的 Mica，Windows 10 的窗是实色底。
 - 图片缩略图。发给模型的图片不受影响。
 
 ## 从源码运行

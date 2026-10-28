@@ -14,6 +14,7 @@ mod remote_setup;
 mod supervisor;
 mod updates;
 mod usage_tray;
+mod window_material;
 mod window_state;
 
 use std::path::PathBuf;
@@ -677,6 +678,7 @@ pub fn run() {
         .manage(remote_native::HelperState::default())
         .manage(Installer::default())
         .manage(notifications::NotificationState::new())
+        .manage(window_material::MaterialState::default())
         .invoke_handler(tauri::generate_handler![
             local_api_endpoint,
             pick_workspace_folder,
@@ -698,7 +700,8 @@ pub fn run() {
             notifications::notification_permission_state,
             notifications::request_notification_permission,
             notifications::take_notification_intent,
-            notifications::report_notification_view
+            notifications::report_notification_view,
+            window_material::window_material
         ])
         .setup(|app| {
             install_menus(app.handle())?;
@@ -708,6 +711,7 @@ pub fn run() {
             register_login_item(app.handle());
             restore_independent_mode(app.handle(), &local_api::data_dir());
             restore_window_size(app.handle());
+            window_material::apply(app.handle());
             notifications::setup_notifications(app.handle())?;
             if !launched_hidden(&std::env::args().collect::<Vec<_>>()) {
                 show_main(app.handle());

@@ -323,6 +323,8 @@ Claude Agent（[ADR 0061](adr/0061-claude-agent-runner.md)）：找 `claude` 时
 
 远控（[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）：编译态守护进程和 macOS 一样用文件凭据存储；窗交给它的设置通道不是 FD 3，而是守护进程自己的 stdin/stdout（`remote_setup.rs` 的 Windows 分支，守护进程 `main.ts` 开头的 `reserveStdout()` 把 console 输出挪到 stderr，所以守护进程里别往 stdout 写东西）；确认框是 Windows Hello（`local_confirm.rs`），账户没设 Hello 时答 `hello_not_configured`。远程屏幕连本机 5900 上用户装的 VNC 服务（推荐 TightVNC 服务模式、只允许回环），手机从 `/remote/features` 的 `host: "windows"` 换文案和按键行，没有流畅模式。要试直连，先 `cargo build --manifest-path apps/rtc-helper/Cargo.toml`。这些都还没在真的 Windows 电脑上跑过；`window-setup.test.ts` 里用子进程跑 stdin/stdout 通道的那条测试在 Windows CI 上也跑。从 macOS 交叉检查 Windows 目标的 Rust 代码：`rustup target add x86_64-pc-windows-msvc` 后 `cargo check --target x86_64-pc-windows-msvc`，ring 要编 C，给 clang 一组最小的桩头文件（`assert.h`、`string.h`、`stdlib.h`）并在 PATH 上放假的 `lib.exe` / `llvm-rc`（只 check 不链接，空输出就够）。
 
+毛玻璃：macOS 的窗是 `tauri.macos.conf.json` 里的 sidebar 材质，窗一建好就在；Windows 的窗同样设成透明（`tauri.windows.conf.json`），启动时 `window_material.rs` 直接向 window-vibrancy 要 Mica（不走 Tauri 的 `set_effects`，那个不回报成不成），Windows 11 给，Windows 10 不给，不给时把 webview 底色重新设成不透明的 `--bg`，免得页面画出来之前露出桌面。信使启动后用 `window_material` 命令问一次结果，答 `glass` 才把 `<html data-material>` 置成 `glass`，透明底和 `--ground-tint` 都挂在这个属性上；交通灯位移之类的几何仍只跟 `data-chrome="mac"`。亚克力和 blur 没有作为退路：在常见的 Windows 10 1903+ 和 Windows 11 22000 上拖动、缩放会卡。暗色下的 tint 和 `--muted` 是按 macOS 玻璃的亮度调的，Mica 还没在 Windows 11 真机上看过。
+
 还没有的：独立运行时（macOS 的 LaunchAgent 那一套）、应用内下载安装更新（发现新版仍只能跳浏览器手动下载）、桌面通知与图标角标、图片缩略图（依赖 macOS 系统的 `sips`；发给模型的图片不受影响，Windows 上用 GDI+ 缩小）。密钥（端点 API key、MCP 凭据）改存 Windows 凭据管理器（Credential Manager），不是 macOS 钥匙串。
 
 ## 命令

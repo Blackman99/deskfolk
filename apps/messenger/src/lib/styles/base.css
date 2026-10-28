@@ -15,12 +15,13 @@
 }
 
 /*
- * On macOS the window's sidebar material sits behind a transparent webview (`window-chrome.ts`).
- * While the shell is up the page itself is clear and the shell paints its own tinted ground over
- * the material; onboarding and the connection screens keep the solid one.
+ * Where the window has a frosted material behind a transparent webview (macOS's sidebar material,
+ * Windows 11's Mica; `window-chrome.ts`), while the shell is up the page itself is clear and the
+ * shell paints its own tinted ground over the material; onboarding and the connection screens
+ * keep the solid one. Windows 10 has no material, and there the page stays solid throughout.
  */
-:root[data-chrome="mac"]:has(.shell),
-:root[data-chrome="mac"]:has(.shell) body {
+:root[data-material="glass"]:has(.shell),
+:root[data-material="glass"]:has(.shell) body {
   background: transparent;
 }
 
