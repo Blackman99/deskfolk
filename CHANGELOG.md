@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A pinch anywhere on the screen zooms an enlarged picture on the phone
+
+- A picture opened full screen on a phone zoomed only when both fingers landed on it, so a wide one, which fills a strip across the middle, would not zoom with a finger above or below it. Two fingers anywhere on the screen now zoom it, and once it is zoomed one finger drags it from anywhere too. The buttons keep their own taps.
+
 ### A project session's spend shows in Spend and counts toward the daily cap
 
 - What a Claude Code or Codex project session spends now goes into the spend ledger as its own line, Project sessions, under turns, owned by no Bot and named after the session; before, it showed only in the usage widget. Claude Code's runs are billed per model at the price it estimates, and only what each run adds: Claude Code carries a session's totals over from its earlier runs, which would otherwise be billed again every run. Codex's are billed per model call, tokens only, since it reports no price.

@@ -422,7 +422,10 @@
 		measure();
 	}
 
-	/** Touch points on the frame, by pointer id, in client pixels. */
+	/**
+	 * Touch points by pointer id, in client pixels. Anywhere on the screen, not only on the
+	 * picture: a wide one fills a strip, and a pinch with a finger beside it did nothing.
+	 */
 	const fingers = new Map<number, Point>();
 	let gesture: { from: PictureView; mid: Point; distance: number; at: Point } | null = null;
 	/** A pinch or a drag ends with a click the browser still sends: it neither closes nor resets. */
@@ -442,8 +445,10 @@
 		gesture = { from, mid, distance: b ? Math.hypot(a.x - b.x, a.y - b.y) : 0, at: mid };
 	}
 
-	function onFramePointerDown(ev: PointerEvent): void {
+	function onStagePointerDown(ev: PointerEvent): void {
 		if (ev.pointerType !== 'touch' || phase !== 'open' || !grown || !displayed || !settled) return;
+		// The buttons keep their own taps.
+		if (ev.target instanceof Element && ev.target.closest('.msg-image-close, .msg-image-save, .msg-image-original')) return;
 		if (fingers.size === 0) travelled = 0;
 		fingers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
 		if (fingers.size > 1) travelled = Infinity;
@@ -451,7 +456,7 @@
 		startGesture();
 	}
 
-	function onFramePointerMove(ev: PointerEvent): void {
+	function onStagePointerMove(ev: PointerEvent): void {
 		const was = fingers.get(ev.pointerId);
 		if (!was || !gesture || !settled) return;
 		fingers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
@@ -473,7 +478,7 @@
 		zoom = panBy(stage, settled, gesture.from, { x: ev.clientX - gesture.at.x, y: ev.clientY - gesture.at.y });
 	}
 
-	function onFramePointerUp(ev: PointerEvent): void {
+	function onStagePointerUp(ev: PointerEvent): void {
 		if (!fingers.delete(ev.pointerId)) return;
 		if (travelled > 8) swallowClickUntil = performance.now() + 500;
 		if (fingers.size > 0) {
@@ -533,6 +538,7 @@
 	</div>
 {/snippet}
 
+<!-- The pointer handlers are a phone's pinch, anywhere on the screen; the keyboard closes with Escape. -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	bind:this={root}
@@ -542,10 +548,12 @@
 	class:is-instant={instant}
 	role="presentation"
 	onclick={onBackdrop}
+	onpointerdown={onStagePointerDown}
+	onpointermove={onStagePointerMove}
+	onpointerup={onStagePointerUp}
+	onpointercancel={onStagePointerUp}
 >
 	<!-- The frame grows out of the clicked picture. The dialog role stays on the picture's box. -->
-	<!-- The pointer handlers are a phone's pinch; the keyboard closes the dialog with Escape. -->
-	<!-- svelte-ignore a11y_interactive_supports_focus -->
 	<div
 		class="msg-image-frame"
 		class:is-centered={!frameBox}
@@ -556,10 +564,6 @@
 		aria-modal="true"
 		aria-label={name || path}
 		ontransitionend={onFrameEnd}
-		onpointerdown={onFramePointerDown}
-		onpointermove={onFramePointerMove}
-		onpointerup={onFramePointerUp}
-		onpointercancel={onFramePointerUp}
 	>
 		{#if displayed}
 			<img bind:this={frame} src={displayed} alt={name || path} class="msg-image-full" data-copy-image onload={measure} />
@@ -643,6 +647,8 @@
 		inset: 0;
 		z-index: 1300;
 		background: rgba(0, 0, 0, 0);
+		/* A pinch zooms the picture, not the page; one finger drags it once zoomed. */
+		touch-action: none;
 		transition: background-color 220ms ease;
 	}
 
@@ -662,8 +668,6 @@
 		background: var(--pane);
 		/* Text and the bar appear once the box has grown past the thumbnail. */
 		container-type: size;
-		/* A pinch zooms the picture, not the page; one finger drags it once zoomed. */
-		touch-action: none;
 		transform-origin: 0 0;
 		transition:
 			top 220ms ease,

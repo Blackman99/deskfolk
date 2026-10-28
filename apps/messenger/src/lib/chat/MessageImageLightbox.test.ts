@@ -418,3 +418,33 @@ test("a pinch zooms the enlargement and a tap brings it back before closing", as
     close();
   }
 });
+
+/** A wide picture fills a strip of the phone: a pinch with a finger beside it still zooms it. */
+test("a pinch that starts off the picture zooms it, and the buttons keep their taps", async () => {
+  const { api } = fakeApi("local", async () => new Blob([new Uint8Array([1])], { type: "image/png" }));
+  let closed = 0;
+  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => { closed += 1; } });
+  try {
+    await settle();
+    const stage = host.querySelector<HTMLElement>(".msg-image-lightbox")!;
+    const frame = host.querySelector<HTMLElement>(".msg-image-frame")!;
+    touch(stage, "pointerdown", 1, 400, 140);
+    touch(frame, "pointerdown", 2, 400, 380);
+    touch(stage, "pointermove", 1, 400, 20);
+    touch(frame, "pointermove", 2, 400, 500);
+    expect(frame.style.transform).toContain("scale(2)");
+    touch(stage, "pointerup", 1, 400, 20);
+    touch(frame, "pointerup", 2, 400, 500);
+    // A finger on ✕ is no part of a pinch.
+    const closeButton = host.querySelector<HTMLElement>(".msg-image-close")!;
+    touch(closeButton, "pointerdown", 3, 990, 30);
+    touch(stage, "pointerdown", 4, 400, 380);
+    touch(stage, "pointermove", 4, 300, 380);
+    expect(frame.style.transform).toContain("scale(2)");
+    touch(stage, "pointerup", 4, 300, 380);
+    touch(closeButton, "pointerup", 3, 990, 30);
+    expect(closed).toBe(0);
+  } finally {
+    close();
+  }
+});
