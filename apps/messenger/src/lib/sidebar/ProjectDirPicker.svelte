@@ -25,9 +25,11 @@
 		items: ClaudeCodeSessionListing[] | null;
 		/** The app's own sessions, for the directories you have only used here. */
 		sessions: readonly SessionSummary[];
+		/** The session is made and open: the first-launch wizard comes down on it. */
+		ondone?: () => void;
 	};
 
-	let { runtime, t, agent, mode, items, sessions }: Props = $props();
+	let { runtime, t, agent, mode, items, sessions, ondone }: Props = $props();
 
 	/** The open directory, or `OTHER` for the typed one. */
 	const OTHER = '\u0000other';
@@ -73,6 +75,7 @@
 		const failure = await runtime.createProjectSession(newProjectRequest(dir, agent));
 		pending = false;
 		if (failure) startError = failure.status === 422 || failure.status === 404 ? 'invalid' : 'failed';
+		else ondone?.();
 	}
 
 	async function carryOn(): Promise<void> {
@@ -83,6 +86,7 @@
 		pending = false;
 		// A session file that went away since the list was read.
 		if (failure) importError = failure.status === 404 ? 'missing' : 'failed';
+		else ondone?.();
 	}
 
 	async function pickFolder(): Promise<void> {

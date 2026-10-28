@@ -28,6 +28,7 @@
 	import type { CreateBotDraft } from './panels/create-form.ts';
 	import TeamStep from './onboarding/TeamStep.svelte';
 	import LocaleSwitch from './onboarding/LocaleSwitch.svelte';
+	import ProjectDirPicker from './sidebar/ProjectDirPicker.svelte';
 	import {
 		BUILTIN_MODEL_ROLES,
 		connectorById,
@@ -35,6 +36,7 @@
 		isLocalEndpoint,
 		type ApiFormat,
 		type BotRunner,
+		type ClaudeCodeSessionListing,
 		type ClaudeCodeStatus,
 		type CreateProviderRequest,
 		type ProbedModel
@@ -653,6 +655,23 @@
 	let teamBusy = $state(false);
 
 	/**
+	 * Your Claude Code sessions from a terminal (ADR 0095), asked for once while the roster is empty:
+	 * with any, the last step offers carrying one on as a project session instead of making Bots.
+	 * Setup is saved by then, so landing in that session is the end of the wizard too.
+	 */
+	let terminalSessions = $state<ClaudeCodeSessionListing[]>([]);
+	let terminalAsked = false;
+	$effect(() => {
+		const client = runtime.client as { claudeCodeSessions?: (limit?: number) => Promise<ClaudeCodeSessionListing[]> } | null;
+		if (terminalAsked || !client?.claudeCodeSessions || !rosterEmpty) return;
+		terminalAsked = true;
+		// Enough of them that a directory from last week still shows, as in the import sheet.
+		void client.claudeCodeSessions(120).then((items) => (terminalSessions = items), () => undefined);
+	});
+	const carryOffered = $derived(terminalSessions.length > 0);
+	let startWay = $state<'team' | 'carry'>('team');
+
+	/**
 	 * The last step (ADR 0085): a way of working and the first Bots, from templates ready for it. No
 	 * model: they run on the default model just chosen, and each profile can pin another later.
 	 */
@@ -731,7 +750,7 @@
 					disabled
 				>
 					<div class="step-bar-circle">4</div>
-					<span class="step-bar-label">{t.onboarding.step4Title}</span>
+					<span class="step-bar-label">{carryOffered ? t.onboarding.step4StartTitle : t.onboarding.step4Title}</span>
 				</button>
 			{/if}
 		</div>
@@ -1164,7 +1183,7 @@
 						</button>
 						<button type="button" class="btn-step-primary" disabled={!canCompleteSetup} onclick={handleComplete}>
 							{#if rosterEmpty}
-								{t.onboarding.step3Next} →
+								{carryOffered ? t.onboarding.step3NextStart : t.onboarding.step3Next} →
 							{:else}
 								{t.onboarding.submit} ✓
 							{/if}
@@ -1172,27 +1191,55 @@
 					</div>
 				</div>
 			{:else if currentStep === 4}
-				<!-- Step 4: a way of working and the first Bots (ADR 0085) -->
+				<!-- Step 4: a way of working and the first Bots (ADR 0085), or a terminal session carried on (ADR 0095) -->
 				<div class="step-pane">
 					<div class="step-pane-header">
-						<h2 class="step-pane-title">{t.onboarding.stepBot}</h2>
-						<p class="step-pane-desc">{t.onboarding.botDesc}</p>
+						<h2 class="step-pane-title">{carryOffered ? t.onboarding.stepStart : t.onboarding.stepBot}</h2>
+						<p class="step-pane-desc">{startWay === 'carry' ? t.onboarding.carryDesc : t.onboarding.botDesc}</p>
 					</div>
 
-					<TeamStep bind:this={teamStep} bind:count={teamCount} bind:ready={teamReady} bind:busy={teamBusy} {runtime} {t} base={teamBase} ondone={() => (holding = false)} />
-					{#if teamBase.runner}
-						<p class="muted field-hint">{teamBase.runner === 'claude_code' ? t.onboarding.botClaudeHint : t.onboarding.botAgentHint.replace('{agent}', pickedLabel)}</p>
-					{:else}
-						<p class="muted field-hint">{t.onboarding.botModelHint}</p>
+					{#if carryOffered}
+						<div class="connect-modes" role="radiogroup" aria-label={t.onboarding.step4StartTitle}>
+							{#each [['team', t.onboarding.startTeam, t.onboarding.startTeamDesc], ['carry', t.onboarding.startCarry, t.onboarding.startCarryDesc]] as const as [way, label, desc] (way)}
+								<button
+									type="button"
+									class="connect-mode"
+									role="radio"
+									aria-checked={startWay === way}
+									class:is-active={startWay === way}
+									data-start-way={way}
+									disabled={teamBusy}
+									onclick={() => (startWay = way)}
+								>
+									<span class="connect-mode-label">{label}</span>
+									<span class="connect-mode-desc">{desc}</span>
+								</button>
+							{/each}
+						</div>
+					{/if}
+
+					<!-- Kept while the other way is looked at, so the drafts stay as you left them. -->
+					<div class="start-way" class:is-hidden={startWay !== 'team'}>
+						<TeamStep bind:this={teamStep} bind:count={teamCount} bind:ready={teamReady} bind:busy={teamBusy} {runtime} {t} base={teamBase} ondone={() => (holding = false)} />
+						{#if teamBase.runner}
+							<p class="muted field-hint">{teamBase.runner === 'claude_code' ? t.onboarding.botClaudeHint : t.onboarding.botAgentHint.replace('{agent}', pickedLabel)}</p>
+						{:else}
+							<p class="muted field-hint">{t.onboarding.botModelHint}</p>
+						{/if}
+					</div>
+					{#if startWay === 'carry'}
+						<ProjectDirPicker {runtime} {t} agent="claude_code" mode="import" items={terminalSessions} sessions={snapshot.sessions} ondone={() => (holding = false)} />
 					{/if}
 
 					<div class="step-nav-footer">
 						<button type="button" class="btn-step-secondary" onclick={() => (holding = false)}>
-							{t.onboarding.skipBot}
+							{startWay === 'carry' ? t.onboarding.skipStart : t.onboarding.skipBot}
 						</button>
-						<button type="button" class="btn-step-primary" disabled={teamBusy || !teamReady} data-team-create onclick={() => void teamStep?.create()}>
-							{t.templates.create(teamCount)} ✓
-						</button>
+						{#if startWay === 'team'}
+							<button type="button" class="btn-step-primary" disabled={teamBusy || !teamReady} data-team-create onclick={() => void teamStep?.create()}>
+								{t.templates.create(teamCount)} ✓
+							</button>
+						{/if}
 					</div>
 				</div>
 			{/if}
@@ -1262,6 +1309,15 @@
 		.connect-modes {
 			grid-template-columns: 1fr;
 		}
+	}
+
+	/* The step's own column lays the Bots out, as before there was a choice. */
+	.start-way {
+		display: contents;
+	}
+
+	.start-way.is-hidden {
+		display: none;
 	}
 
 	.onboarding-card {

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Carry on a terminal Claude Code session from the first launch
+
+- When the wizard saves setup with the roster still empty and this computer has Claude Code sessions you had in a terminal, its last step is now "Get started": beside a way of working and the first bots, you can pick "Carry on a terminal session", choose one by its directory and press Carry on; the wizard comes down and the project session opens, with no bot to make first. Switching between the two keeps the bot drafts. With no terminal session found, the step is as before.
+
 ### Scrolling up in a conversation stays put while it carries on
 
 - Scrolled up to read back in a Bot's conversation or a project session, you could be pulled to the bottom the moment the conversation changed, for instance when a new line came in or a line was read, so it happened only while the conversation was active. The view took any new summary of the open conversation for another conversation and started it over at its end, and in a Bot's conversation it also unmounted the older pages you had scrolled into. It now starts over only when another conversation is opened in it; while you are scrolled up, new lines come in below and what you are reading stays where it is.

@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { flushSync } from 'svelte';
 import { ApiError } from './api.ts';
 import { emptySnapshot } from './snapshot.ts';
-import { aBot, aDirect, fakeRuntime } from './test-fixtures.ts';
+import { aBot, aDirect, aProjectSession, fakeRuntime } from './test-fixtures.ts';
 import { reactive } from './test-reactive.svelte.ts';
 import { buttonByText, click, fill, render } from './test-render.ts';
 import { copyFor } from './copy.ts';
@@ -83,6 +83,36 @@ test('saving setup on an empty roster leads to the first Bots, and making them o
   });
   expect(host.querySelector('.onboarding-screen')).toBeNull();
   expect(host.querySelector('.shell')).not.toBeNull();
+});
+
+test('carrying a terminal session on at the last step opens the app in it, with no Bot made', async () => {
+  const zh = copyFor('zh');
+  const listing = { session_id: 's1', config_dir: null, title: '修登录页的跳转', cwd: '/Users/a/proj', git_branch: null, modified_at: new Date().toISOString(), size: 1 };
+  const carried: unknown[] = [];
+  const runtime = firstRunRuntime({}, {
+    client: { claudeCodeSessions: async () => [listing] },
+    createProjectSession: async (body: unknown) => {
+      carried.push(body);
+      runtime.snapshot.sessions = [aProjectSession({ id: 'p1', name: listing.title, project_dir: listing.cwd })];
+      return null;
+    },
+  });
+  const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+  await settle();
+  saveSetup(host, `${zh.onboarding.step3NextStart} →`);
+  await settle();
+  click(host.querySelector('[data-start-way="carry"]'));
+  flushSync();
+  click(host.querySelector('[data-picker-dir="/Users/a/proj"] .picker-head'));
+  flushSync();
+  click(host.querySelector('[data-claude-session="s1"]'));
+  flushSync();
+  click(buttonByText(host, zh.sidebar.importClaudeSubmit));
+  await settle();
+  expect(carried).toEqual([{ agent: 'claude_code', import: { session_id: 's1', config_dir: null } }]);
+  expect(host.querySelector('.onboarding-screen')).toBeNull();
+  expect(host.querySelector('.shell')).not.toBeNull();
+  expect(runtime.snapshot.bots).toEqual([]);
 });
 
 test('the first-Bot step can be skipped into the app', async () => {

@@ -267,7 +267,7 @@ One way a Bot can run: each of its turns is run by an agent program you installe
 _Avoid_: an agent as a completion endpoint, signing in to an agent inside the app, rewriting an agent's config file, reading an agent's tokens, a Bot switching its own runner, pretending to hand over without the tools
 
 **Setup wizard**:
-The empty state of Settings: it is complete once the workspace path is set and there is either a usable endpoint (its URL and a saved key; an address on this computer needs no key) or a signed-in local agent on this computer with the built-in calls on its models (ADR 0078, ADR 0079). With an empty roster it has one more step: a way of working (an engine) and the first Bots (Bot templates), with a group on that engine when there are two or more (ADR 0085); the step can be skipped. It has no route of its own; it slides out over the sidebar only and does not take over the main transcript.
+The empty state of Settings: it is complete once the workspace path is set and there is either a usable endpoint (its URL and a saved key; an address on this computer needs no key) or a signed-in local agent on this computer with the built-in calls on its models (ADR 0078, ADR 0079). With an empty roster it has one more step: a way of working (an engine) and the first Bots (Bot templates), with a group on that engine when there are two or more (ADR 0085); when this computer has Claude Code sessions from a terminal, the step can carry one on as a project session instead (ADR 0095); the step can be skipped. It has no route of its own; it slides out over the sidebar only and does not take over the main transcript.
 _Avoid_: /setup, full-screen onboarding, making Settings the main transcript
 
 **MCP**:

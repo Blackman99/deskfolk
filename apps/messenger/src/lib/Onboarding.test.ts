@@ -504,3 +504,62 @@ test('the model step offers only what the endpoint listed, never names written i
   expect(runtime.endpointDefaultModel).toBe('my-model');
   expect(save.disabled).toBe(false);
 });
+
+/** Claude Code sessions from a terminal, as the daemon lists them (ADR 0095). */
+const terminal = (session_id: string, cwd: string, minutesAgo: number) => ({
+  session_id, config_dir: null, title: `title ${session_id}`, cwd, git_branch: 'main', modified_at: new Date(Date.now() - minutesAgo * 60_000).toISOString(), size: 1,
+});
+
+test('with terminal sessions on this computer, the last step offers carrying one on beside the first Bots', async () => {
+  const { host, calls } = open({ client: { claudeCodeSessions: async () => [terminal('s1', '/Users/a/proj', 1), terminal('s2', '/Users/a/other', 2)] } });
+  await settle();
+  expect(step(host, t.onboarding.step4StartTitle)).toBeDefined();
+  click(step(host, t.onboarding.step3Title));
+  click(buttonByText(host, `${t.onboarding.step3NextStart} →`));
+  await settle();
+  expect(host.querySelector('.step-pane-title')?.textContent).toBe(t.onboarding.stepStart);
+  // The first Bots to begin with, as without a terminal session.
+  expect(host.querySelector('[data-start-way="team"]')?.getAttribute('aria-checked')).toBe('true');
+  expect(host.querySelector('[data-team-step]')).not.toBeNull();
+  click(host.querySelector('[data-team-template="assistant"] .team-edit'));
+  flushSync();
+  fill(host.querySelector('[data-team-name="assistant"]'), '阿福');
+
+  click(host.querySelector('[data-start-way="carry"]'));
+  flushSync();
+  expect(host.querySelector('.step-pane-desc')?.textContent).toBe(t.onboarding.carryDesc);
+  expect([...host.querySelectorAll('[data-picker-dir] .picker-name')].map((name) => name.textContent)).toEqual(['proj', 'other']);
+  // Nothing to make on this way: the footer only lets you past it.
+  expect(host.querySelector('[data-team-create]')).toBeNull();
+  expect(buttonByText(host, t.onboarding.skipStart)).toBeDefined();
+  click(host.querySelector('[data-picker-dir="/Users/a/other"] .picker-head'));
+  flushSync();
+  click(host.querySelector('[data-claude-session="s2"]'));
+  flushSync();
+  click(buttonByText(host, t.sidebar.importClaudeSubmit));
+  await settle();
+  expect(calls.filter((call) => call.name === 'createProjectSession').map((call) => call.args[0])).toEqual([
+    { agent: 'claude_code', import: { session_id: 's2', config_dir: null } },
+  ]);
+  expect(calls.some((call) => call.name === 'createTeam')).toBe(false);
+
+  // Back on the Bots, the draft is as you left it.
+  click(host.querySelector('[data-start-way="team"]'));
+  flushSync();
+  expect(host.querySelector<HTMLInputElement>('[data-team-name="assistant"]')?.value).toBe('阿福');
+  expect(buttonByText(host, `${t.templates.create(1)} ✓`)).toBeDefined();
+});
+
+test('with no terminal session to carry on, the last step is the first Bots alone', async () => {
+  for (const claudeCodeSessions of [async () => [], async () => { throw new Error('older daemon'); }]) {
+    const { host } = open({ client: { claudeCodeSessions } });
+    await settle();
+    expect(step(host, t.onboarding.step4Title)).toBeDefined();
+    click(step(host, t.onboarding.step3Title));
+    click(buttonByText(host, `${t.onboarding.step3Next} →`));
+    await settle();
+    expect(host.querySelector('.step-pane-title')?.textContent).toBe(t.onboarding.stepBot);
+    expect(host.querySelector('[data-start-way]')).toBeNull();
+    expect(host.querySelector('[data-team-step]')).not.toBeNull();
+  }
+});
