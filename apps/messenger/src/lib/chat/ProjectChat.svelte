@@ -341,9 +341,11 @@
 		}
 	}
 
-	// Another conversation starts at its end.
+	// Another conversation starts at its end. Its id, not its summary: each line or read in this
+	// one brings a new summary, and that must not pull you down from what you scrolled up to.
+	const sessionId = $derived(selected.id);
 	$effect(() => {
-		void selected.id;
+		void sessionId;
 		stuck = true;
 		toBottom();
 	});

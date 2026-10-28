@@ -124,3 +124,37 @@ test("the first page of a remote conversation says it is loading instead of look
   expect(host.textContent).not.toContain("No messages yet.");
   close();
 });
+
+/** A list whose scroll position the stage can move, as a browser's can. */
+function scrollable(el: HTMLElement, box: { scrollHeight: number; clientHeight: number }) {
+  let top = 0;
+  Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => box.scrollHeight });
+  Object.defineProperty(el, "clientHeight", { configurable: true, get: () => box.clientHeight });
+  Object.defineProperty(el, "scrollTop", { configurable: true, get: () => top, set: (value: number) => { top = value; } });
+  return { get top() { return top; }, set top(value: number) { top = value; } };
+}
+
+test("a new summary of the open conversation leaves the transcript where you scrolled to", async () => {
+  const other = aGroup({ id: "sess-2" });
+  const runtime = reactive(
+    fakeRuntime({ bots: [bot], sessions: [session, other], messages: history(30), turns: [] }, { selectedId: "sess-1" }),
+  );
+  const props = reactive({ runtime, t, selected: session, onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {} });
+  const { host, close } = render(ChatStage, props as never);
+  const stream = host.querySelector<HTMLElement>(".stream")!;
+  const list = scrollable(stream, { scrollHeight: 5000, clientHeight: 600 });
+  await tick();
+  list.top = 1000;
+  stream.dispatchEvent(new Event("scroll"));
+  // A Bot's line or a read brings the conversation a new summary; it is still this conversation.
+  props.selected = { ...session, unread_count: 3 };
+  flushSync();
+  await tick();
+  expect(list.top).toBe(1000);
+  // Another conversation starts at its end.
+  props.selected = other;
+  flushSync();
+  await tick();
+  expect(list.top).toBe(4400);
+  close();
+});

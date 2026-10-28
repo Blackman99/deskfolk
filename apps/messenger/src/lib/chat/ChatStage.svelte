@@ -315,6 +315,7 @@
 	const scroll: ChatScroll = new ChatScroll({
 		runtime: () => runtime,
 		selected: () => selected,
+		sessionId: () => stageSessionId,
 		view: () => view,
 		snapshot: () => snapshot,
 		highlightedId: () => highlightedId,

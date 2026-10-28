@@ -4,8 +4,9 @@ import type { ProjectPathLookup } from "@real-bot/protocol";
 import { aMessage, aProjectSession, anAgentRun, anAttachment, fakeRuntime } from "../test-fixtures.ts";
 import { toasts } from "../toast.svelte.ts";
 import { settle } from "../test-async.ts";
+import { reactive } from "../test-reactive.svelte.ts";
 import { click, fill, press, render } from "../test-render.ts";
-import { flushSync } from "svelte";
+import { flushSync, tick } from "svelte";
 import ProjectChat from "./ProjectChat.svelte";
 
 const t = copyFor("zh");
@@ -628,5 +629,32 @@ test("Enter runs the command picked; Esc closes the list and Enter then sends wh
   expect(host.querySelector("[data-project-commands]")).toBeNull();
   press(field, "Enter");
   expect(drafts).toEqual(["/context", "/zzz"]);
+  close();
+});
+
+test("a new summary of the session leaves the transcript where you scrolled to", async () => {
+  const session = aProjectSession();
+  const other = aProjectSession({ id: "proj-2" });
+  const messages = Array.from({ length: 30 }, (_, i) => aMessage({ id: `m${i}`, session_id: "proj-1", body: `第 ${i} 行` }));
+  const props = reactive({ runtime: fakeRuntime({ sessions: [session, other], messages }), t, selected: session, onOpenArtifact: () => {} });
+  const { host, close } = render(ProjectChat, props as never);
+  const transcript = host.querySelector<HTMLElement>(".transcript")!;
+  let top = 0;
+  Object.defineProperty(transcript, "scrollHeight", { configurable: true, get: () => 5000 });
+  Object.defineProperty(transcript, "clientHeight", { configurable: true, get: () => 600 });
+  Object.defineProperty(transcript, "scrollTop", { configurable: true, get: () => top, set: (value: number) => { top = value; } });
+  await tick();
+  top = 1000;
+  transcript.dispatchEvent(new Event("scroll"));
+  // A line or a read brings the session a new summary; it is still this session.
+  props.selected = { ...session, unread_count: 3 };
+  flushSync();
+  await tick();
+  expect(top).toBe(1000);
+  // Another session starts at its end.
+  props.selected = other;
+  flushSync();
+  await tick();
+  expect(top).toBe(5000);
   close();
 });

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Scrolling up in a conversation stays put while it carries on
+
+- Scrolled up to read back in a Bot's conversation or a project session, you could be pulled to the bottom the moment the conversation changed, for instance when a new line came in or a line was read, so it happened only while the conversation was active. The view took any new summary of the open conversation for another conversation and started it over at its end, and in a Bot's conversation it also unmounted the older pages you had scrolled into. It now starts over only when another conversation is opened in it; while you are scrolled up, new lines come in below and what you are reading stays where it is.
+
 ### Hints, statuses and selected rows are easier to read
 
 - Text that fell under 4.5:1 now holds it in both themes. Status words (errors, Configured, Waiting for an answer, In review, Delete and Deny buttons) are drawn in their status's text colour, not its fill colour: the fill's yellow and green came to about 3.2:1 on white, and dark mode's red to 3.9:1. The faint grey is no longer used for hints and counts in the plan, ticket and flow panes. The chosen row of a menu, the model picker and the speech-service picker shows the pointer by a ring instead of a deeper fill that the label nearly disappeared into, and the secondary line on a selected row is darker. In your own messages a quote, a mention, inline code and the annotation cards fade no further than the accent bubble allows; a handled annotation drops its fill instead of fading.

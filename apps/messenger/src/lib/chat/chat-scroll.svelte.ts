@@ -12,6 +12,8 @@ import { deferWhileDragging } from "../workbench/pane-resize.svelte.ts";
 export type ChatScrollDeps = {
   runtime: () => MessengerRuntime;
   selected: () => SessionSummary | null;
+  /** The conversation's id alone: a new summary of the same conversation (a line, a read) is not another one. */
+  sessionId: () => string | null;
   view: () => SessionView | null;
   snapshot: () => MessengerRuntime["snapshot"];
   highlightedId: () => string | null;
@@ -106,7 +108,7 @@ export class ChatScroll {
 
   /** The stage's effect for another conversation in it. */
   startOver = (): (() => void) => {
-    void this.deps.selected()?.id;
+    void this.deps.sessionId();
     this.indexJumpSequence++;
     this.indexJumping = false;
     this.activeIndexId = null;
@@ -129,7 +131,7 @@ export class ChatScroll {
     if (!id) return;
     this.stickToBottom = false;
     void this.deps.snapshot().messages;
-    void this.deps.selected()?.id;
+    void this.deps.sessionId();
     void token;
     const stream = this.deps.stream();
     const at = stream.findIndex((item) => item.type === "message" && item.message.id === id);
