@@ -197,3 +197,11 @@ test("a listed project session can be renamed from its menu; an archived one is 
   const direct = { ...aProjectSession(), kind: "direct" as const, project_dir: null };
   expect(deriveSessionContextMenu(direct, false, new Map()).canRename).toBeFalsy();
 });
+
+test("a project session's directory can be opened from its menu; a session with none, or another conversation, cannot", async () => {
+  const { aProjectSession } = await import("../test-fixtures.ts");
+  expect(deriveSessionContextMenu(aProjectSession(), false, new Map()).canOpenProjectDir).toBe(true);
+  expect(deriveSessionContextMenu(aProjectSession({ project_dir: null }), false, new Map()).canOpenProjectDir).toBe(false);
+  const direct = { ...aProjectSession(), kind: "direct" as const, project_dir: null };
+  expect(deriveSessionContextMenu(direct, false, new Map()).canOpenProjectDir).toBeFalsy();
+});

@@ -50,6 +50,11 @@ export function groupProjectSessions(sessions: readonly SessionSummary[]): Proje
   return groups.sort((a, b) => newestFirst(a.sessions[0]!, b.sessions[0]!));
 }
 
+/** The session a directory row's own actions go by: the open one when it is in this directory, else its newest. */
+export function dirSession(group: ProjectDirGroup, selectedId: string | null): SessionSummary {
+  return group.sessions.find((session) => session.id === selectedId) ?? group.sessions[0]!;
+}
+
 /** Whether the agent is at work in this run, or waiting on you inside it. */
 export function isLiveRun(run: AgentRun | null | undefined): boolean {
   return run?.status === "running" || run?.status === "waiting_approval";

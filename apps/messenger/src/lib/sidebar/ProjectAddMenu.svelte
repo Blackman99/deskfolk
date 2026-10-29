@@ -6,12 +6,14 @@
 	import { PROJECT_AGENTS } from './project-groups.ts';
 	import { dismissOnOutside } from '../dismissable-menu.ts';
 	import { roveFocus } from '../menu-roving.ts';
+	import { computeContextMenuPosition } from './session-context-menu.ts';
 
 	/**
 	 * What a + in the 「项目」 section offers (ADR 0095): a new session of each agent (ADR 0099),
-	 * in a folder you pick next on the section's +, right in the directory on a directory's; and on
-	 * the section's, a terminal session to carry on. It hangs under the +, walks with the arrow
-	 * keys, closes on Escape, Tab or a press elsewhere, and hands focus back to the +.
+	 * in a folder you pick next on the section's +, right in the directory on a directory's; on the
+	 * section's, a terminal session to carry on; on a directory's, the directory itself opened in
+	 * the preview. It hangs under the +, or where a directory row was right-clicked; walks with the
+	 * arrow keys, closes on Escape, Tab or a press elsewhere, and hands focus back to the +.
 	 */
 	type Props = {
 		t: Copy;
@@ -25,9 +27,13 @@
 		onNew: (agent: ProjectAgent) => void;
 		/** Carrying on a terminal session; a directory's + leaves it out. */
 		onImport?: () => void;
+		/** Opening the directory in the preview; only a directory's menu has one. */
+		onOpenDir?: () => void;
+		/** Where a right-click opened it: it hangs there instead of under the +. */
+		point?: { x: number; y: number } | null;
 	};
 
-	let { t, anchor, open = $bindable(false), label, picksFolder, onNew, onImport }: Props = $props();
+	let { t, anchor, open = $bindable(false), label, picksFolder, onNew, onImport, onOpenDir, point = null }: Props = $props();
 	let menuEl = $state<HTMLElement | null>(null);
 
 	function close(): void {
@@ -42,10 +48,18 @@
 
 	$effect(() => {
 		if (!open || !menuEl || !anchor) return;
-		// Under the +, its right edge on the +'s, kept inside the window.
-		const a = anchor.getBoundingClientRect();
 		const m = menuEl.getBoundingClientRect();
 		const margin = 8;
+		if (point) {
+			// At the pointer, as a context menu is, kept inside the window.
+			const at = computeContextMenuPosition(point.x, point.y, m.width, m.height, window.innerWidth, window.innerHeight, margin);
+			menuEl.style.left = `${at.x}px`;
+			menuEl.style.top = `${at.y}px`;
+			// Nothing here toggles it: a press on the row it came from closes it too.
+			return dismissOnOutside(menuEl, () => (open = false));
+		}
+		// Under the +, its right edge on the +'s, kept inside the window.
+		const a = anchor.getBoundingClientRect();
 		const below = a.bottom + 4;
 		const top = below + m.height <= window.innerHeight - margin ? below : a.top - m.height - 4;
 		menuEl.style.left = `${Math.max(margin, Math.min(a.right - m.width, window.innerWidth - m.width - margin))}px`;
@@ -83,6 +97,13 @@
 			<button type="button" class="project-add-item" role="menuitem" data-project-add="import" onclick={() => choose(onImport)}>
 				<Icon name="file-down" />
 				<span>{t.project.importSession}</span>
+			</button>
+		{/if}
+		{#if onOpenDir}
+			<div class="project-add-sep" role="separator"></div>
+			<button type="button" class="project-add-item" role="menuitem" data-project-open-dir onclick={() => choose(onOpenDir)}>
+				<Icon name="folder" />
+				<span>{t.project.openDir}</span>
 			</button>
 		{/if}
 	</div>

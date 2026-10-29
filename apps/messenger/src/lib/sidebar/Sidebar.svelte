@@ -24,7 +24,7 @@
 	import ProjectSessionRow from './ProjectSessionRow.svelte';
 	import ProjectAddMenu from './ProjectAddMenu.svelte';
 	import { newProjectIn, newProjectInFolder } from './project-actions.ts';
-	import { dirDisplay, groupProjectSessions, isLiveRun, liveRunSessionIds, PROJECT_AGENTS, projectAgentOf } from './project-groups.ts';
+	import { dirDisplay, dirSession, groupProjectSessions, isLiveRun, liveRunSessionIds, PROJECT_AGENTS, projectAgentOf } from './project-groups.ts';
 	import { flip } from 'svelte/animate';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from '../reduced-motion.ts';
@@ -64,6 +64,8 @@
 		onOpenContextMenu: (e: MouseEvent, session: SessionSummary) => void;
 		/** Pin or unpin a conversation from its row, without opening its menu. */
 		onTogglePin?: (sessionId: string) => void;
+		/** A project directory opened in the preview, by one of its sessions: its tree is that session's project. */
+		onOpenProjectDir?: (session: SessionSummary) => void;
 		onToggleWorkspace: () => void;
 		onOpenRoutines: () => void;
 		onOpenSpend: () => void;
@@ -99,6 +101,7 @@
 		onRenameSession,
 		onOpenContextMenu,
 		onTogglePin,
+		onOpenProjectDir,
 		onToggleWorkspace,
 		onOpenRoutines,
 		onOpenSpend,
@@ -193,9 +196,17 @@
 	/** The section's +: a new session of each agent in a folder, or a terminal session carried on (ADR 0095, ADR 0099). */
 	let projectMenuOpen = $state(false);
 	let projectAddEl = $state<HTMLButtonElement | null>(null);
-	/** A directory's +: a new session of each agent right there. */
+	/**
+	 * A directory's +, or a right-click on its row: a new session of each agent right there, and the
+	 * directory opened in the preview. `point` is where the right-click was; the + leaves it out.
+	 */
 	let dirMenuOpen = $state(false);
-	let dirMenuFor = $state<{ dir: string; label: string; anchor: HTMLElement } | null>(null);
+	let dirMenuFor = $state<{ dir: string; label: string; anchor: HTMLElement; point?: { x: number; y: number } } | null>(null);
+	/** Opens the directory the menu is for, by the session `dirSession` picks among those listed now. */
+	function openDirOfMenu(): void {
+		const group = dirMenuFor && projectGroups.find((row) => row.dir === dirMenuFor?.dir);
+		if (group) onOpenProjectDir?.(dirSession(group, runtime.selectedId));
+	}
 
 	$effect(() => {
 		if (typeof window.matchMedia !== 'function') return;
@@ -525,18 +536,30 @@
 			<ProjectAddMenu
 				{t}
 				anchor={dirMenuFor?.anchor ?? null}
+				point={dirMenuFor?.point ?? null}
 				bind:open={dirMenuOpen}
 				label={dirMenuFor ? t.project.newHere(dirMenuFor.label) : t.project.add}
 				picksFolder={false}
 				onNew={(agent) => {
 					if (dirMenuFor) void newProjectIn(runtime, dirMenuFor.dir, agent);
 				}}
+				onOpenDir={onOpenProjectDir ? openDirOfMenu : undefined}
 			/>
 			{#each projectGroups as group (group.dir)}
 				{@const open = dirOpen(group.dir)}
 				{@const dirLive = group.sessions.some((row) => isLiveRun(snapshot.agentRuns[row.id]))}
 				<div class="project-dir" data-project-dir={group.dir}>
-					<div class="project-dir-row">
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="project-dir-row"
+						oncontextmenu={(event) => {
+							event.preventDefault();
+							const anchor = (event.currentTarget as HTMLElement).querySelector<HTMLElement>('.project-dir-head');
+							if (!anchor) return;
+							dirMenuFor = { dir: group.dir, label: group.label, anchor, point: { x: event.clientX, y: event.clientY } };
+							dirMenuOpen = true;
+						}}
+					>
 						<button
 							type="button"
 							class="project-dir-head"
@@ -557,11 +580,11 @@
 							title={t.project.newHere(group.label)}
 							aria-label={t.project.newHere(group.label)}
 							aria-haspopup="menu"
-							aria-expanded={dirMenuOpen && dirMenuFor?.dir === group.dir}
+							aria-expanded={dirMenuOpen && dirMenuFor?.dir === group.dir && !dirMenuFor.point}
 							data-project-dir-add
 							onclick={(event) => {
 								const anchor = event.currentTarget as HTMLElement;
-								const again = dirMenuOpen && dirMenuFor?.dir === group.dir;
+								const again = dirMenuOpen && dirMenuFor?.dir === group.dir && !dirMenuFor.point;
 								dirMenuFor = { dir: group.dir, label: group.label, anchor };
 								dirMenuOpen = !again;
 							}}

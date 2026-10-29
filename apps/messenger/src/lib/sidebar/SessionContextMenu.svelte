@@ -23,6 +23,7 @@
 		onDelete,
 		onShowJobView,
 		onShowMap,
+		onOpenProjectDir,
 		onRename
 	}: {
 		session: SessionSummary;
@@ -41,6 +42,8 @@
 		onShowJobView?: () => void;
 		/** Open a project session's task map (ADR 0096); given only where a workbench can hold it. */
 		onShowMap?: () => void;
+		/** Open a project session's directory in the preview, the project's tree beside it. */
+		onOpenProjectDir?: () => void;
 		/** Rename a project session on its sidebar row; given only while the sidebar shows its rows. */
 		onRename?: () => void;
 	} = $props();
@@ -184,6 +187,26 @@
 		>
 			<Icon name="minimap" />
 			<span>{t.taskmap.openLong}</span>
+		</button>
+	{/if}
+
+	{#if data.canOpenProjectDir && onOpenProjectDir}
+		{#if !(data.canShowMap && onShowMap)}
+			<div class={inSheet ? 'sheet-separator' : 'session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2'} role="separator"></div>
+		{/if}
+		<!-- The project's directory in the preview, listed a level at a time as the workspace explorer is (ADR 0095). -->
+		<button
+			type="button"
+			class={['session-context-menu-item', { 'sheet-item': inSheet }]}
+			role="menuitem"
+			data-session-project-dir
+			onclick={() => {
+				onOpenProjectDir();
+				onClose();
+			}}
+		>
+			<Icon name="folder" />
+			<span>{t.project.openDir}</span>
 		</button>
 	{/if}
 

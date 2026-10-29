@@ -6,10 +6,12 @@
  * to read from that Shell instance, and never snapshots them. The handlers are arrow fields
  * because the shell hands them to components as callbacks.
  */
-import type { Bot, SessionSummary } from "@real-bot/protocol";
+import type { Attachment, Bot, SessionSummary } from "@real-bot/protocol";
 import type { ShellDangerConfirm } from "../overlays/danger-confirm.svelte.ts";
+import type { ShellArtifact } from "../overlays/shell-artifact.svelte.ts";
 import type { MessengerRuntime } from "../runtime.svelte.ts";
 import { deriveSessionContextMenu } from "./session-context-menu.ts";
+import { projectDirLabel } from "./project-groups.ts";
 import { classifySession, isFileDropSession, youBotPeer } from "./session-groups.ts";
 
 export type ShellSessionMenuDeps = {
@@ -18,6 +20,8 @@ export type ShellSessionMenuDeps = {
   danger: () => ShellDangerConfirm;
   togglePin: (sessionId: string) => void;
   openProfile: (botId: string, sessionId?: string) => void;
+  /** Opens a path in the preview: a tab of its own on the workbench, the conversation's preview elsewhere. */
+  openArtifact: ShellArtifact["openArtifactPath"];
 };
 
 export class ShellSessionMenu {
@@ -26,6 +30,7 @@ export class ShellSessionMenu {
   private readonly getDanger: () => ShellDangerConfirm;
   private readonly togglePin: (sessionId: string) => void;
   private readonly openProfile: (botId: string, sessionId?: string) => void;
+  private readonly openArtifact: ShellArtifact["openArtifactPath"];
 
   contextMenu = $state<{
     session: SessionSummary;
@@ -40,6 +45,7 @@ export class ShellSessionMenu {
     this.getDanger = deps.danger;
     this.togglePin = deps.togglePin;
     this.openProfile = deps.openProfile;
+    this.openArtifact = deps.openArtifact;
   }
 
   openContextMenu = (e: MouseEvent, session: SessionSummary): void => {
@@ -111,6 +117,24 @@ export class ShellSessionMenu {
     const runtime = this.getRuntime();
     if (isFileDropSession(session)) return;
     runtime.paneOpener?.({ kind: "map", sessionId: session.id });
+  };
+
+  /**
+   * A project session's directory in the preview (ADR 0095), with the project's tree beside it read
+   * a level at a time, as a file it opened comes with. The row says it is a folder, so the preview
+   * lists what is in it rather than reading it as a file. A preview off the workbench is the open
+   * conversation's, and the tree is that conversation's project, so that one comes up first.
+   */
+  handleMenuOpenProjectDir = async (session: SessionSummary): Promise<void> => {
+    const dir = session.kind === "project" ? session.project_dir : null;
+    if (!dir) return;
+    const runtime = this.getRuntime();
+    if (!runtime.paneOpener && runtime.selectedId !== session.id) await runtime.selectSession(session.id);
+    const row: Attachment = {
+      id: `virtual-project-${dir}`, message_id: "", workspace_relpath: dir,
+      original_filename: projectDirLabel(dir), created_at: "", is_dir: true,
+    };
+    this.openArtifact(dir, undefined, null, false, null, [row], session.id);
   };
 
   handleMenuViewInfo = async (session: SessionSummary): Promise<void> => {

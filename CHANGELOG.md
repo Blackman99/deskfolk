@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Open a project's folder from the sidebar
+
+- A project directory's folder could only be browsed by opening a file Claude Code or Codex named in one of its sessions. A directory row's "+" in the Projects section now offers Open project folder below the new-session items, and right-clicking the row brings up the same menu where the pointer is; a project session's own context menu has it too. It opens the directory in the preview: what is in it is listed, with the project directory's file tree beside it, read a level at a time; press a folder to go into it, a file to see it there. It opens as the preview of one of the directory's sessions, the one on screen if it is in that directory, else the newest: on a wide window its tab is that session's artifacts, and on a phone that session comes up first.
+
 ### Carry on a terminal Claude Code session from the first launch
 
 - When the wizard saves setup with the roster still empty and this computer has Claude Code sessions you had in a terminal, its last step is now "Get started": beside a way of working and the first bots, you can pick "Carry on a terminal session", choose one by its directory and press Carry on; the wizard comes down and the project session opens, with no bot to make first. Switching between the two keeps the bot drafts. With no terminal session found, the step is as before.

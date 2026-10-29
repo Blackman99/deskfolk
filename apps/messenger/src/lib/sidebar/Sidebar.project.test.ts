@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { SessionSummary } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { aBot, aProjectSession, anAgentRun, fakeRuntime } from "../test-fixtures.ts";
 import { click, fill, press, render } from "../test-render.ts";
@@ -7,7 +8,10 @@ import Sidebar from "./Sidebar.svelte";
 
 const t = copyFor("zh");
 
-function open(selected: ReturnType<typeof aProjectSession> | null = null, rename: { renamingSessionId?: string | null; onRenameSession?: (id: string, name: string | null) => Promise<boolean> } = {}) {
+function open(
+  selected: ReturnType<typeof aProjectSession> | null = null,
+  rename: { renamingSessionId?: string | null; onRenameSession?: (id: string, name: string | null) => Promise<boolean>; onOpenProjectDir?: (session: SessionSummary) => void } = {},
+) {
   const runtime = fakeRuntime({
     bots: [aBot({ id: "bot-1" })],
     sessions: [
@@ -100,6 +104,56 @@ test("each directory row starts a new session of the agent you pick right there"
   expect(document.querySelector("[data-project-add-menu]")).toBeNull();
   // It starts a session; it does not fold the directory.
   expect(host.querySelectorAll('[data-project-dir="/Users/a/other"] [data-project-session]')).toHaveLength(1);
+  close();
+});
+
+test("a directory's + also opens the directory, by the session open in it or else its newest", async () => {
+  const openedDirs: string[] = [];
+  const { host, close } = open(null, { onOpenProjectDir: (session) => openedDirs.push(session.id) });
+  const add = host.querySelector('[data-project-dir="/Users/a/proj"] [data-project-dir-add]');
+  click(add);
+  await settle();
+  const menu = document.querySelector("[data-project-add-menu]");
+  expect([...(menu?.querySelectorAll("[role=menuitem]") ?? [])].map((item) => item.textContent?.trim())).toEqual([t.project.newWith("Claude Code"), t.project.newWith("Codex"), t.project.openDir]);
+  click(menu?.querySelector("[data-project-open-dir]"));
+  await settle();
+  expect(document.querySelector("[data-project-add-menu]")).toBeNull();
+  close();
+  // p2 is the older of the two in /Users/a/proj; open, it is the one the directory goes by.
+  const p2 = aProjectSession({ id: "p2", name: null, project_dir: "/Users/a/proj", updated_at: "2026-09-19T01:00:00.000Z" });
+  const again = open(p2, { onOpenProjectDir: (session) => openedDirs.push(session.id) });
+  click(again.host.querySelector('[data-project-dir="/Users/a/proj"] [data-project-dir-add]'));
+  await settle();
+  click(document.querySelector("[data-project-add-menu] [data-project-open-dir]"));
+  await settle();
+  expect(openedDirs).toEqual(["p1", "p2"]);
+  again.close();
+});
+
+test("a right-click on a directory row opens the same menu where the pointer is", async () => {
+  const openedDirs: string[] = [];
+  const { host, runtime, close } = open(null, { onOpenProjectDir: (session) => openedDirs.push(session.id) });
+  const row = host.querySelector('[data-project-dir="/Users/a/other"] .project-dir-row');
+  const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 60 });
+  row?.dispatchEvent(event);
+  await settle();
+  expect(event.defaultPrevented).toBe(true);
+  const menu = document.querySelector<HTMLElement>("[data-project-add-menu]");
+  expect(menu?.getAttribute("aria-label")).toBe(t.project.newHere("other"));
+  expect(menu?.style.left).toBe("40px");
+  expect(menu?.style.top).toBe("60px");
+  // The + it did not come from does not read as open.
+  expect(host.querySelector('[data-project-dir="/Users/a/other"] [data-project-dir-add]')?.getAttribute("aria-expanded")).toBe("false");
+  expect([...(menu?.querySelectorAll("[role=menuitem]") ?? [])].map((item) => item.textContent?.trim())).toEqual([t.project.newWith("Claude Code"), t.project.newWith("Codex"), t.project.openDir]);
+  click(menu?.querySelector("[data-project-open-dir]"));
+  await settle();
+  expect(openedDirs).toEqual(["p3"]);
+  // A new session from it starts right in that directory, as the + does.
+  row?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 60 }));
+  await settle();
+  click(document.querySelector('[data-project-add-menu] [data-project-agent="claude_code"]'));
+  await settle();
+  expect(runtime.calls.find((c) => c.name === "createProjectSession")?.args).toEqual([{ agent: "claude_code", dir: "/Users/a/other" }]);
   close();
 });
 

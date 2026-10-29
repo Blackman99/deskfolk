@@ -484,7 +484,9 @@
 		botsById: () => botsById,
 		danger: () => danger,
 		togglePin,
-		openProfile
+		openProfile,
+		// The preview below is declared after this menu; by the time an item is pressed it is there.
+		openArtifact: (...args) => artifact.openArtifactPath(...args)
 	});
 	let workspacePane = $state<{ requestCloseFromParent: (afterClose?: () => void) => void; closeFind: () => boolean; blocksClose: () => boolean } | null>(null);
 	/**
@@ -1164,6 +1166,7 @@
 			onRenameSession={sessionMenu.finishRename}
 			onOpenContextMenu={sessionMenu.openContextMenu}
 			onTogglePin={sessionMenu.handleMenuTogglePin}
+			onOpenProjectDir={(session) => void sessionMenu.handleMenuOpenProjectDir(session)}
 			onToggleWorkspace={artifact.toggleWorkspaceExplorer}
 			onOpenRoutines={artifact.openRoutinesFromUi}
 			onOpenSpend={artifact.openSpendFromUi}
@@ -1491,6 +1494,7 @@
 			onDelete={() => sessionMenu.handleMenuDelete(activeMenu.session)}
 			onShowJobView={() => void sessionMenu.handleMenuShowJobView(activeMenu.session)}
 			onShowMap={runtime.paneOpener ? () => sessionMenu.handleMenuShowMap(activeMenu.session) : undefined}
+			onOpenProjectDir={() => void sessionMenu.handleMenuOpenProjectDir(activeMenu.session)}
 			onRename={sidebarHidden ? undefined : () => sessionMenu.handleMenuRename(activeMenu.session)}
 		/>
 	{/if}

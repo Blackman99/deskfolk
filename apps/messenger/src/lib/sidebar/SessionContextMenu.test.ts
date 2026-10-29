@@ -118,3 +118,25 @@ test("Rename shows for a project session only where it is given, and closes the 
   expect(host.querySelector("[data-session-rename]")).toBeNull();
   close();
 });
+
+test("a project session's menu opens its directory where it is given, and closes", async () => {
+  const { aProjectSession } = await import("../test-fixtures.ts");
+  let opened = 0;
+  let closed = 0;
+  const view = render(SessionContextMenu, {
+    session: aProjectSession(), botsById: new Map(), isPinned: false, x: 20, y: 20, t,
+    onClose: () => (closed += 1), onTogglePin: () => {}, onViewInfo: () => {}, onClearHistory: () => {},
+    onToggleArchive: () => {}, onDelete: () => {}, onOpenProjectDir: () => (opened += 1),
+  });
+  const item = view.host.querySelector("[data-session-project-dir]");
+  expect(item?.textContent?.trim()).toBe(t.project.openDir);
+  // Without a task map item above it, it starts a group of its own.
+  expect(item?.previousElementSibling?.getAttribute("role")).toBe("separator");
+  click(item);
+  expect([opened, closed]).toEqual([1, 1]);
+  view.close();
+  // A Bot's conversation has no directory to open.
+  const { host, close } = open(aDirect(), [aBot()]);
+  expect(host.querySelector("[data-session-project-dir]")).toBeNull();
+  close();
+});
