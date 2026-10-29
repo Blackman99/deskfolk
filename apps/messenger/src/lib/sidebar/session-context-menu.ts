@@ -13,7 +13,7 @@ export type SessionContextMenuData = {
   canShowMap?: boolean;
   /** Renamed in place on its sidebar row: a project session's, while it is listed there; absent means not here. */
   canRename?: boolean;
-  /** Its directory can be opened in the preview with the project's tree: a project session's; absent means none. */
+  /** Its directory can be opened in the preview with the project's tree, or a terminal started in it: a project session's; absent means none. */
   canOpenProjectDir?: boolean;
   canClearHistory: boolean;
   archive: {
@@ -47,7 +47,8 @@ export function deriveSessionContextMenu(
   const kind = classifySession(session);
   if (kind === "project") {
     // No Bot, flow or settings here (ADR 0095): clearing starts the agent over, deleting removes it.
-    // Its work can be watched on its task map (ADR 0096), and its directory browsed in the preview.
+    // Its work can be watched on its task map (ADR 0096), and its directory browsed in the preview
+    // or opened in a terminal.
     return {
       sessionId: session.id,
       isPinned: false,

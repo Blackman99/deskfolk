@@ -24,6 +24,7 @@
 		onShowJobView,
 		onShowMap,
 		onOpenProjectDir,
+		onOpenProjectTerminal,
 		onRename
 	}: {
 		session: SessionSummary;
@@ -44,6 +45,8 @@
 		onShowMap?: () => void;
 		/** Open a project session's directory in the preview, the project's tree beside it. */
 		onOpenProjectDir?: () => void;
+		/** Start a terminal in a project session's directory. */
+		onOpenProjectTerminal?: () => void;
 		/** Rename a project session on its sidebar row; given only while the sidebar shows its rows. */
 		onRename?: () => void;
 	} = $props();
@@ -207,6 +210,26 @@
 		>
 			<Icon name="folder" />
 			<span>{t.project.openDir}</span>
+		</button>
+	{/if}
+
+	{#if data.canOpenProjectDir && onOpenProjectTerminal}
+		{#if !(data.canShowMap && onShowMap) && !onOpenProjectDir}
+			<div class={inSheet ? 'sheet-separator' : 'session-context-menu-divider h-[1px] bg-line-subtle my-[3px] mx-2'} role="separator"></div>
+		{/if}
+		<!-- A shell in the project's directory: a tab of its own on the workbench, the terminal page on a phone. -->
+		<button
+			type="button"
+			class={['session-context-menu-item', { 'sheet-item': inSheet }]}
+			role="menuitem"
+			data-session-project-terminal
+			onclick={() => {
+				onOpenProjectTerminal();
+				onClose();
+			}}
+		>
+			<Icon name="terminal" />
+			<span>{t.project.openTerminal}</span>
 		</button>
 	{/if}
 

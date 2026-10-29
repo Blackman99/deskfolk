@@ -197,8 +197,9 @@
 	let projectMenuOpen = $state(false);
 	let projectAddEl = $state<HTMLButtonElement | null>(null);
 	/**
-	 * A directory's +, or a right-click on its row: a new session of each agent right there, and the
-	 * directory opened in the preview. `point` is where the right-click was; the + leaves it out.
+	 * A directory's +, or a right-click on its row: a new session of each agent right there, the
+	 * directory opened in the preview, and a terminal started in it. `point` is where the right-click
+	 * was; the + leaves it out.
 	 */
 	let dirMenuOpen = $state(false);
 	let dirMenuFor = $state<{ dir: string; label: string; anchor: HTMLElement; point?: { x: number; y: number } } | null>(null);
@@ -544,6 +545,9 @@
 					if (dirMenuFor) void newProjectIn(runtime, dirMenuFor.dir, agent);
 				}}
 				onOpenDir={onOpenProjectDir ? openDirOfMenu : undefined}
+				onOpenTerminal={() => {
+					if (dirMenuFor) void runtime.openTerminalAt(dirMenuFor.dir);
+				}}
 			/>
 			{#each projectGroups as group (group.dir)}
 				{@const open = dirOpen(group.dir)}

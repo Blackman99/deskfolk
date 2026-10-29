@@ -98,3 +98,26 @@ test("a conversation with no project directory opens nothing", async () => {
   await menu.handleMenuOpenProjectDir({ ...session("p2", "project", ["you"]), project_dir: null });
   expect(steps).toEqual([]);
 });
+
+test("a project session's terminal starts in its directory and leaves the conversation on screen as it is", () => {
+  const steps: string[] = [];
+  const runtime = {
+    paneOpener: null,
+    selectedId: "d1",
+    selectSession: async (id: string) => void steps.push(`select ${id}`),
+    openTerminalAt: async (dir: string) => void steps.push(`terminal ${dir}`),
+  } as unknown as MessengerRuntime;
+  const menu = new ShellSessionMenu({
+    runtime: () => runtime,
+    botsById: () => new Map(),
+    danger: () => ({}) as ShellDangerConfirm,
+    togglePin: () => {},
+    openProfile: () => {},
+    openArtifact: () => {},
+  });
+  menu.handleMenuOpenProjectTerminal({ ...session("p1", "project", ["you"]), project_dir: "/Users/a/proj" });
+  // Nothing to start in: a Bot's conversation, or a project session that lost its directory.
+  menu.handleMenuOpenProjectTerminal(session("d2", "direct", ["you", "writer"]));
+  menu.handleMenuOpenProjectTerminal({ ...session("p2", "project", ["you"]), project_dir: null });
+  expect(steps).toEqual(["terminal /Users/a/proj"]);
+});

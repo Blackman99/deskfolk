@@ -12,8 +12,9 @@
 	 * What a + in the 「项目」 section offers (ADR 0095): a new session of each agent (ADR 0099),
 	 * in a folder you pick next on the section's +, right in the directory on a directory's; on the
 	 * section's, a terminal session to carry on; on a directory's, the directory itself opened in
-	 * the preview. It hangs under the +, or where a directory row was right-clicked; walks with the
-	 * arrow keys, closes on Escape, Tab or a press elsewhere, and hands focus back to the +.
+	 * the preview, and a terminal started in it. It hangs under the +, or where a directory row was
+	 * right-clicked; walks with the arrow keys, closes on Escape, Tab or a press elsewhere, and hands
+	 * focus back to the +.
 	 */
 	type Props = {
 		t: Copy;
@@ -29,11 +30,13 @@
 		onImport?: () => void;
 		/** Opening the directory in the preview; only a directory's menu has one. */
 		onOpenDir?: () => void;
+		/** A terminal started in the directory; only a directory's menu has one. */
+		onOpenTerminal?: () => void;
 		/** Where a right-click opened it: it hangs there instead of under the +. */
 		point?: { x: number; y: number } | null;
 	};
 
-	let { t, anchor, open = $bindable(false), label, picksFolder, onNew, onImport, onOpenDir, point = null }: Props = $props();
+	let { t, anchor, open = $bindable(false), label, picksFolder, onNew, onImport, onOpenDir, onOpenTerminal, point = null }: Props = $props();
 	let menuEl = $state<HTMLElement | null>(null);
 
 	function close(): void {
@@ -99,11 +102,19 @@
 				<span>{t.project.importSession}</span>
 			</button>
 		{/if}
-		{#if onOpenDir}
+		{#if onOpenDir || onOpenTerminal}
 			<div class="project-add-sep" role="separator"></div>
+		{/if}
+		{#if onOpenDir}
 			<button type="button" class="project-add-item" role="menuitem" data-project-open-dir onclick={() => choose(onOpenDir)}>
 				<Icon name="folder" />
 				<span>{t.project.openDir}</span>
+			</button>
+		{/if}
+		{#if onOpenTerminal}
+			<button type="button" class="project-add-item" role="menuitem" data-project-open-terminal onclick={() => choose(onOpenTerminal)}>
+				<Icon name="terminal" />
+				<span>{t.project.openTerminal}</span>
 			</button>
 		{/if}
 	</div>

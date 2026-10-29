@@ -31,16 +31,16 @@ export class TerminalList {
   terminalsLoaded = $state(false);
 
   /**
-   * A new shell in the workspace (or in `cwd`, a folder in it), in the list before the next read
-   * comes back: a desktop tab bound to it must not be healed away for naming a session nobody has
-   * heard of yet. Null when there is no workspace or the daemon would not start one; the tab says
-   * so itself.
+   * A new shell in the workspace (or in `cwd`, a folder in it or a project's directory), in the list
+   * before the next read comes back: a desktop tab bound to it must not be healed away for naming a
+   * session nobody has heard of yet. Null when there is neither a `cwd` nor a workspace, or the
+   * daemon would not start one; the tab says so itself. A project session needs no workspace, so a
+   * shell in its directory does not either.
    */
   async startTerminal(cwd?: string): Promise<Terminal | null> {
     const api = this.host.api;
-    const root = this.host.snapshot.settings.workspace_path;
-    const where = cwd ?? root;
-    if (!api || !root || !where) return null;
+    const where = cwd ?? this.host.snapshot.settings.workspace_path;
+    if (!api || !where) return null;
     try {
       const created = await api.openTerminal(where, 24, 80);
       if (this.host.api === api && !this.terminals.some((row) => row.id === created.id)) {

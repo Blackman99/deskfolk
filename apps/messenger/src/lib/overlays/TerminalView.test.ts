@@ -155,6 +155,25 @@ test("a workbench tab shows its own shell and no strip, even when a newer one is
   view.close();
 });
 
+test("with no workspace a tab still shows a shell started in a project's directory, and only an empty one asks for a workspace", async () => {
+  const { api } = fakeApi([older]);
+  const view = render(TerminalView, {
+    api: api as never, workspacePath: null, rows: [older], t,
+    onStream: () => () => {}, onChanged: () => {}, onClose: () => {}, tabIds: ["term-old"],
+  });
+  await settle();
+  expect(view.host.textContent).not.toContain(t.terminal.needsWorkspace);
+  expect(view.host.querySelector(".terminal-stage")?.classList.contains("is-hidden")).toBe(false);
+  view.close();
+  const empty = render(TerminalView, {
+    api: api as never, workspacePath: null, rows: [], t,
+    onStream: () => () => {}, onChanged: () => {}, onClose: () => {}, tabIds: [],
+  });
+  await settle();
+  expect(empty.host.querySelector(".terminal-empty")?.textContent).toBe(t.terminal.needsWorkspace);
+  empty.close();
+});
+
 test("a tab whose shell never started offers to start one, and becomes that terminal", async () => {
   const { api, opened } = fakeApi([]);
   const bound: string[] = [];

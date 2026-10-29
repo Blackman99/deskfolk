@@ -992,7 +992,8 @@
 		{/if}
 	</header>
 
-	{#if !workspacePath}
+	<!-- A shell in a project's directory needs no workspace; only a new one started here does. -->
+	{#if !workspacePath && !showing}
 		<p class="terminal-empty">{t.terminal.needsWorkspace}</p>
 	{:else if !showing}
 		<div class="terminal-empty">

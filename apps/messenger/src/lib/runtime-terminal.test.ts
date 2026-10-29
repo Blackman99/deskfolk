@@ -73,3 +73,14 @@ test("a shell the daemon will not start opens nothing, and a plain new terminal 
   await plain.rt.startTerminal();
   expect(plain.opened).toEqual(["/Users/me/ws"]);
 });
+
+test("a shell in a given folder needs no workspace; a plain new one still does", async () => {
+  const { rt, opened } = fixture();
+  rt.snapshot = { ...rt.snapshot, settings: { ...rt.snapshot.settings, workspace_path: null } };
+  const panes: PaneContent[] = [];
+  rt.paneOpener = (content) => panes.push(content);
+  await rt.openTerminalAt("/Users/me/code/app");
+  expect(panes).toEqual([{ kind: "terminal", terminalId: "term-1", cwd: "/Users/me/code/app" }]);
+  expect(await rt.startTerminal()).toBeNull();
+  expect(opened).toEqual(["/Users/me/code/app"]);
+});

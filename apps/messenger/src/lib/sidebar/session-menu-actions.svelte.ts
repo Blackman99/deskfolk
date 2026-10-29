@@ -137,6 +137,16 @@ export class ShellSessionMenu {
     this.openArtifact(dir, undefined, null, false, null, [row], session.id);
   };
 
+  /**
+   * A shell started in a project session's directory: a tab of its own on the workbench, the
+   * terminal page elsewhere. It belongs to no conversation, so the one on screen stays.
+   */
+  handleMenuOpenProjectTerminal = (session: SessionSummary): void => {
+    const dir = session.kind === "project" ? session.project_dir : null;
+    if (!dir) return;
+    void this.getRuntime().openTerminalAt(dir);
+  };
+
   handleMenuViewInfo = async (session: SessionSummary): Promise<void> => {
     const runtime = this.getRuntime();
     if (isFileDropSession(session)) return;

@@ -140,3 +140,29 @@ test("a project session's menu opens its directory where it is given, and closes
   expect(host.querySelector("[data-session-project-dir]")).toBeNull();
   close();
 });
+
+test("a project session's menu opens a terminal in its directory where it is given, beside Open project folder", async () => {
+  const { aProjectSession } = await import("../test-fixtures.ts");
+  let started = 0;
+  let closed = 0;
+  const handlers = {
+    session: aProjectSession(), botsById: new Map(), isPinned: false, x: 20, y: 20, t,
+    onClose: () => (closed += 1), onTogglePin: () => {}, onViewInfo: () => {}, onClearHistory: () => {},
+    onToggleArchive: () => {}, onDelete: () => {}, onOpenProjectTerminal: () => (started += 1),
+  };
+  const view = render(SessionContextMenu, { ...handlers, onOpenProjectDir: () => {} });
+  const item = view.host.querySelector("[data-session-project-terminal]");
+  expect(item?.textContent?.trim()).toBe(t.project.openTerminal);
+  expect(item?.previousElementSibling?.hasAttribute("data-session-project-dir")).toBe(true);
+  click(item);
+  expect([started, closed]).toEqual([1, 1]);
+  view.close();
+  // On its own, with neither the task map nor the folder above it, it starts a group of its own.
+  const alone = render(SessionContextMenu, handlers);
+  expect(alone.host.querySelector("[data-session-project-terminal]")?.previousElementSibling?.getAttribute("role")).toBe("separator");
+  alone.close();
+  // A Bot's conversation has no directory to start one in.
+  const { host, close } = open(aDirect(), [aBot()]);
+  expect(host.querySelector("[data-session-project-terminal]")).toBeNull();
+  close();
+});

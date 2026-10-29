@@ -1495,6 +1495,7 @@
 			onShowJobView={() => void sessionMenu.handleMenuShowJobView(activeMenu.session)}
 			onShowMap={runtime.paneOpener ? () => sessionMenu.handleMenuShowMap(activeMenu.session) : undefined}
 			onOpenProjectDir={() => void sessionMenu.handleMenuOpenProjectDir(activeMenu.session)}
+			onOpenProjectTerminal={() => sessionMenu.handleMenuOpenProjectTerminal(activeMenu.session)}
 			onRename={sidebarHidden ? undefined : () => sessionMenu.handleMenuRename(activeMenu.session)}
 		/>
 	{/if}
