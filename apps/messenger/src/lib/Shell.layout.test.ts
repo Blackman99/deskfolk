@@ -46,7 +46,8 @@ test('the session list folds to a rail of avatars from its own button or ⌘B, a
   expect(shell().style.getPropertyValue('--sidebar-width')).toBe('64px');
   expect(shell().style.getPropertyValue('--sidebar-split')).toBe('0px');
   expect(document.activeElement).toBe(expand());
-  expect([...mounted.host.querySelectorAll<HTMLElement>('.rail-item')].map((el) => el.dataset.session)).toEqual(['sess-2', 'direct-1']);
+  // Groups and your directs are one section, in the list's order: the group no longer leads.
+  expect([...mounted.host.querySelectorAll<HTMLElement>('.rail-item')].map((el) => el.dataset.session)).toEqual(['direct-1', 'sess-2']);
   expect(mounted.host.querySelector('.rail-item[data-session="sess-2"] .rail-badge')?.textContent).toBe('3');
   expect(localStorage.getItem('real-bot-sidebar-collapsed')).toBe('1');
 

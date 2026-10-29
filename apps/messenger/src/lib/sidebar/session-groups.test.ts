@@ -52,15 +52,15 @@ test("a left you does not count as you↔Bot", () => {
   expect(classifySession(s)).toBe("bot-bot");
 });
 
-test("groupSessions keeps groups first in its buckets, and extracts pinned", () => {
+test("groupSessions lists groups and your directs as one Bot section in the order they came, and extracts pinned", () => {
   const g = session("g", "group", [{ member: "user" }, { member: "a" }, { member: "b" }]);
   const you = session("d", "direct", [{ member: "user" }, { member: "writer" }]);
   const them = session("bb", "direct", [{ member: "writer" }, { member: "researcher" }]);
-  expect(groupSessions([them, you, g])).toEqual({ pinned: [], groups: [g], youBot: [you], botBot: [them], project: [], fileDrop: null });
+  expect(groupSessions([them, you, g])).toEqual({ pinned: [], bots: [you, g], botBot: [them], project: [], fileDrop: null });
+  expect(groupSessions([them, g, you])).toMatchObject({ bots: [g, you] });
   expect(groupSessions([them, you, g], ["d"])).toEqual({
     pinned: [you],
-    groups: [g],
-    youBot: [],
+    bots: [g],
     botBot: [them],
     project: [],
     fileDrop: null,
@@ -75,8 +75,7 @@ test("the file drop stays out of the chat groups and is named on its own", () =>
   expect(presentBotIds(drop)).toEqual([]);
   const grouped = groupSessions([drop, you]);
   expect(grouped.fileDrop?.id).toBe(FILE_DROP_SESSION_ID);
-  expect(grouped.youBot).toEqual([you]);
-  expect(grouped.groups).toEqual([]);
+  expect(grouped.bots).toEqual([you]);
   expect(grouped.botBot).toEqual([]);
 });
 
@@ -86,7 +85,7 @@ test("a pinned file drop moves up with the pins and leaves its own section", () 
   const grouped = groupSessions([drop, you], [FILE_DROP_SESSION_ID]);
   expect(grouped.pinned).toEqual([drop]);
   expect(grouped.fileDrop).toBeNull();
-  expect(grouped.youBot).toEqual([you]);
+  expect(grouped.bots).toEqual([you]);
 });
 
 test("groupSessions filters out sessions with deleted bots when aliveBotIds is provided", () => {
@@ -96,15 +95,14 @@ test("groupSessions filters out sessions with deleted bots when aliveBotIds is p
   const alive = new Set(["writer", "a", "b"]);
   expect(groupSessions([g, you, deadYou], [], alive)).toEqual({
     pinned: [],
-    groups: [g],
-    youBot: [you],
+    bots: [g, you],
     botBot: [],
     project: [],
     fileDrop: null,
   });
 });
 
-test("groupSessions filters out archived sessions from groups, youBot, botBot and pinned", () => {
+test("groupSessions filters out archived sessions from the Bot section, botBot and pinned", () => {
   const g = session("g", "group", [{ member: "user" }, { member: "a" }, { member: "b" }]);
   const gArchived: SessionSummary = {
     ...session("g_archived", "group", [{ member: "user" }, { member: "a" }, { member: "b" }]),
@@ -127,8 +125,7 @@ test("groupSessions filters out archived sessions from groups, youBot, botBot an
     undefined,
     bots,
   );
-  expect(res.groups).toEqual([g]);
-  expect(res.youBot).toEqual([you]);
+  expect(res.bots).toEqual([g, you]);
   expect(res.pinned).toEqual([]);
 });
 

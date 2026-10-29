@@ -81,7 +81,8 @@ test("the rail keeps the list's order and sections, avatars only, and leaves out
   const ids = [...view.host.querySelectorAll<HTMLElement>(".rail-item")].map((el) => el.dataset.session);
   // No Bot↔Bot direct: it opens from its message, in a popup (ADR 0091).
   expect(ids).toEqual(["direct-pin", FILE_DROP_SESSION_ID, "sess-1", "direct-1"]);
-  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(3);
+  // Pins, the file drop, and the Bots' section: groups and your directs are one, as in the list.
+  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(2);
   expect(item(view.host, "sess-old")).toBeNull();
   // Names live in the styled tip, not a native title; nothing but the picture is drawn.
   expect(item(view.host, "sess-1")?.hasAttribute("title")).toBe(false);
@@ -95,8 +96,8 @@ test("a pinned file drop sits with the pins, still drawn as the file drop", () =
   const view = open(null, null, ["direct-pin", FILE_DROP_SESSION_ID]);
   const ids = [...view.host.querySelectorAll<HTMLElement>(".rail-item")].map((el) => el.dataset.session);
   expect(ids).toEqual(["direct-pin", FILE_DROP_SESSION_ID, "sess-1", "direct-1"]);
-  // Pins, groups, you↔Bot: the file drop's own section is gone.
-  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(2);
+  // Pins, then the Bots' section: the file drop's own section is gone.
+  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(1);
   expect(item(view.host, FILE_DROP_SESSION_ID)?.querySelector(".rail-file-drop")).not.toBeNull();
   view.close();
 });
@@ -390,7 +391,7 @@ test("the rail has the list's working filter, keeps the pins, and flips the same
   // The group's turn is live (waiting on approval) and Writer's direct is unread; the pin stays
   // as it is.
   expect(railIds(view.host)).toEqual(["direct-pin", "sess-1", "direct-1"]);
-  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(2);
+  expect(view.host.querySelectorAll(".rail-divider")).toHaveLength(1);
   expect(window.localStorage.getItem(WORKING_ONLY_KEY)).toBe("1");
   toggle.focus();
   flushSync();

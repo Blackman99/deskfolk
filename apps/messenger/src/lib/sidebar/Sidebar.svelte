@@ -23,6 +23,7 @@
 	import SessionRow from './SessionRow.svelte';
 	import ProjectSessionRow from './ProjectSessionRow.svelte';
 	import ProjectAddMenu from './ProjectAddMenu.svelte';
+	import BotAddMenu from './BotAddMenu.svelte';
 	import { newProjectIn, newProjectInFolder } from './project-actions.ts';
 	import { dirDisplay, dirSession, groupProjectSessions, isLiveRun, liveRunSessionIds, PROJECT_AGENTS, projectAgentOf } from './project-groups.ts';
 	import { flip } from 'svelte/animate';
@@ -158,16 +159,16 @@
 	const showBots = $derived(!phone || phoneList === 'bots');
 	const showProjects = $derived(!phone || phoneList === 'projects');
 	const fileDrop = $derived(showBots ? listed.fileDrop : null);
-	const groupRows = $derived(showBots ? listed.groups : []);
-	const youBotRows = $derived(showBots ? listed.youBot : []);
+	/** Group chats and your directs with Bots, one section: the phone's 「Bot」 page, the list's first section. */
+	const botRows = $derived(showBots ? listed.bots : []);
 	// A Bot↔Bot direct is not listed: it opens from the message it hangs under, in a popup (ADR 0091).
 	const projectGroups = $derived(showProjects ? groupProjectSessions(listed.project) : []);
 	const nothingWorking = $derived(
-		workingIds !== null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0 && projectGroups.length === 0
+		workingIds !== null && !fileDrop && botRows.length === 0 && projectGroups.length === 0
 	);
 	/** No conversation at all yet, unfiltered: the list says how to start one instead of bare headers. */
 	const rosterEmpty = $derived(
-		showBots && workingIds === null && !fileDrop && groupRows.length === 0 && youBotRows.length === 0 && projectGroups.length === 0
+		showBots && workingIds === null && !fileDrop && botRows.length === 0 && projectGroups.length === 0
 	);
 	/** A phone's projects page with no project session yet says how to start one. */
 	const projectsEmpty = $derived(!showBots && workingIds === null && projectGroups.length === 0);
@@ -193,6 +194,9 @@
 	function toggleDir(dir: string): void {
 		openDirs = { ...openDirs, [dir]: !dirOpen(dir) };
 	}
+	/** The 「Bot」 section's +: a new Bot or a new group. */
+	let botMenuOpen = $state(false);
+	let botAddEl = $state<HTMLButtonElement | null>(null);
 	/** The section's +: a new session of each agent in a folder, or a terminal session carried on (ADR 0095, ADR 0099). */
 	let projectMenuOpen = $state(false);
 	let projectAddEl = $state<HTMLButtonElement | null>(null);
@@ -453,45 +457,22 @@
 					onPointerDown={pressOf(fileDrop)}
 				/>
 			{/if}
-			{#if showBots && (!workingIds || groupRows.length > 0)}
+			{#if showBots && (!workingIds || botRows.length > 0)}
 				<div class="ghead">
-					<span>{t.sidebar.groups}</span>
-					<button type="button" class="add" title={t.sidebar.addGroup} onclick={onCreateGroup}
-						>+</button
-					>
+					<span>{t.sidebar.botsTab}</span>
+					<button
+						bind:this={botAddEl}
+						type="button"
+						class="add"
+						title={t.sidebar.createMenu}
+						aria-haspopup="menu"
+						aria-expanded={botMenuOpen}
+						onclick={() => (botMenuOpen = !botMenuOpen)}
+					>+</button>
 				</div>
 			{/if}
-			{#each groupRows as session (session.id)}
-				{@const status = statusOf(session)}
-				{@const unread = unreadOf(session)}
-				<div class="row-flip" animate:flip={rowFlip()}>
-					<SessionRow
-						{session}
-						{t}
-						on={runtime.selectedId === session.id}
-						contextOpen={contextMenuSessionId === session.id}
-						title={titleOf(session)}
-						time={timeOf(session)}
-						{status}
-						preview={previewOf(session) || t.sidebar.noMessages}
-						{unread}
-						bots={botsById}
-						botStatus={botStatusOf}
-						onSelect={() => void runtime.selectSession(session.id)}
-						onContextMenu={(e) => onOpenContextMenu(e, session)}
-						onPointerDown={pressOf(session)}
-						pinned={isSessionPinned(pinnedSessionIds, session.id)}
-						onTogglePin={onTogglePin ? () => onTogglePin(session.id) : undefined}
-					/>
-				</div>
-			{/each}
-			{#if showBots && (!workingIds || youBotRows.length > 0)}
-				<div class="ghead">
-					<span>{t.sidebar.youBot}</span>
-					<button type="button" class="add" title={t.sidebar.addBot} onclick={onCreateBot}>+</button>
-				</div>
-			{/if}
-			{#each youBotRows as session (session.id)}
+			<BotAddMenu {t} anchor={botAddEl} bind:open={botMenuOpen} {onCreateBot} {onCreateGroup} />
+			{#each botRows as session (session.id)}
 				{@const status = statusOf(session)}
 				{@const unread = unreadOf(session)}
 				<div class="row-flip" animate:flip={rowFlip()}>

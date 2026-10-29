@@ -108,8 +108,7 @@
 		[
 			listed.pinned,
 			listed.fileDrop ? [listed.fileDrop] : [],
-			listed.groups,
-			listed.youBot,
+			listed.bots,
 			listed.project
 		].filter((section) => section.length > 0)
 	);

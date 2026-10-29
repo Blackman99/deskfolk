@@ -5,6 +5,7 @@ import { spendCopyFor } from "../spend/spend-copy.ts";
 import { aBot, aProjectSession, aBotDirect, aDirect, aGroup, aMessage, aRoutine, aTurn, anApproval, fakeRuntime } from "../test-fixtures.ts";
 import type { Snapshot } from "../snapshot.ts";
 import { click, press, render } from "../test-render.ts";
+import { settle } from "../test-async.ts";
 import Sidebar from "./Sidebar.svelte";
 import { updateChecker } from "../update-checker.svelte.ts";
 
@@ -224,12 +225,11 @@ test("a phone's projects page lists only the projects, and its + makes only proj
     const projects = [aProjectSession({ id: "p1", name: "Fix login", project_dir: "/Users/a/proj" })];
     const bots = open([aBotDirect()], null, true, [], [], false, { phoneList: "bots", projects });
     expect(bots.host.querySelector("[data-project-dir]")).toBeNull();
-    expect(bots.host.textContent).toContain(t.sidebar.youBot);
+    expect(bots.host.textContent).toContain(t.sidebar.botsTab);
     bots.close();
     const { host, runtime, close } = open([aBotDirect()], null, true, [], [], false, { phoneList: "projects", projects });
     expect(host.querySelector('[data-project-dir="/Users/a/proj"]')).not.toBeNull();
-    expect(host.textContent).not.toContain(t.sidebar.youBot);
-    expect(host.textContent).not.toContain(t.sidebar.groups);
+    expect([...host.querySelectorAll(".ghead > span:first-child")].map((el) => el.textContent)).toEqual([t.project.section]);
     click(host.querySelector(".fab"));
     expect([...host.querySelectorAll(".fab-menu-item")].map((b) => b.textContent?.trim())).toEqual([t.project.newInFolder, t.project.importSession]);
     click(host.querySelector('.fab-menu-item[data-project-add="import"]'));
@@ -272,13 +272,25 @@ test("the floating create button steps aside while the routine calendar is open"
 });
 
 /** Wider windows keep the + in each group header, where the pointer can reach it. */
-test("the group headers keep their own + on a wider window, and there is no floating one", () => {
+test("on a wider window the Bots' section has one + for a Bot or a group, and there is no floating one", async () => {
   const { host, created, close } = open([], null, true, []);
   expect(host.querySelector('.fab')).toBeNull();
+  // Groups and your directs are one section, the Bots', above the projects.
+  expect([...host.querySelectorAll('.ghead > span:first-child')].map((el) => el.textContent)).toEqual([t.sidebar.botsTab, t.project.section]);
   const adds = [...host.querySelectorAll<HTMLButtonElement>('.ghead .add')];
-  expect(adds.map((b) => b.title)).toEqual([t.sidebar.addGroup, t.sidebar.addBot, t.project.add]);
+  expect(adds.map((b) => b.title)).toEqual([t.sidebar.createMenu, t.project.add]);
+  expect(adds[0]?.getAttribute('aria-haspopup')).toBe('menu');
+  const item = (kind: string) => document.querySelector<HTMLButtonElement>(`[data-bot-add-menu] [data-bot-add="${kind}"]`);
   click(adds[0]);
-  click(adds[1]);
+  await settle();
+  expect(adds[0]?.getAttribute('aria-expanded')).toBe('true');
+  expect([...document.querySelectorAll('[data-bot-add-menu] [role=menuitem]')].map((el) => el.textContent?.trim())).toEqual([t.sidebar.addBot, t.sidebar.addGroup]);
+  click(item('group'));
+  await settle();
+  expect(document.querySelector('[data-bot-add-menu]')).toBeNull();
+  click(adds[0]);
+  await settle();
+  click(item('bot'));
   expect(created).toEqual(['group', 'bot']);
   close();
 });
@@ -617,8 +629,8 @@ test("the working filter lists only the rows a Bot is at work in, and remembers 
   // Thinking counts, and so does a turn stopped on your approval; a finished turn does not. A
   // Bot↔Bot direct at work is not listed either: its card under the message shows it (ADR 0091).
   expect(titles()).toEqual(["视频组", "Writer"]);
-  // The file drop never has a Bot at work, so its section goes; the rest keep their headings.
-  expect(heads()).toEqual([t.sidebar.groups, t.sidebar.youBot]);
+  // The file drop never has a Bot at work, so its section goes; the Bots' keeps its heading.
+  expect(heads()).toEqual([t.sidebar.botsTab]);
   expect(host.querySelector(".ghead-more")).toBeNull();
   expect(host.querySelector(".working-empty-hint")).toBeNull();
   expect(window.localStorage.getItem(WORKING_ONLY_KEY)).toBe("1");
@@ -658,7 +670,7 @@ test("the filter also lists what you have not read, outside Bot↔Bot directs", 
       if ([FILE_DROP_SESSION_ID, "sess-2", "direct-2", "d-03"].includes(session.id)) session.unread_count = 2;
     }
   });
-  expect(heads()).toEqual([t.sidebar.fileDrop, t.sidebar.groups, t.sidebar.youBot]);
+  expect(heads()).toEqual([t.sidebar.fileDrop, t.sidebar.botsTab]);
   expect(titles()).toEqual([t.sidebar.fileDrop, "文案组", "Researcher"]);
   expect(host.querySelector(".working-empty-hint")).toBeNull();
   close();

@@ -45,16 +45,15 @@ export function groupSessions(
   botsById?: ReadonlyMap<string, Bot>,
 ): {
   pinned: SessionSummary[];
-  groups: SessionSummary[];
-  youBot: SessionSummary[];
+  /** Group chats and your directs with Bots, one section, in the order they came. */
+  bots: SessionSummary[];
   botBot: SessionSummary[];
   project: SessionSummary[];
   fileDrop: SessionSummary | null;
 } {
   const pinSet = pinnedIds instanceof Set ? pinnedIds : new Set(pinnedIds ?? []);
   const pinned: SessionSummary[] = [];
-  const groups: SessionSummary[] = [];
-  const youBot: SessionSummary[] = [];
+  const bots: SessionSummary[] = [];
   const botBot: SessionSummary[] = [];
   const project: SessionSummary[] = [];
   let fileDrop: SessionSummary | null = null;
@@ -87,12 +86,11 @@ export function groupSessions(
       pinned.push(session);
       continue;
     }
-    if (kind === "group") groups.push(session);
-    else if (kind === "you-bot") youBot.push(session);
+    if (kind === "group" || kind === "you-bot") bots.push(session);
     else if (kind === "project") project.push(session);
     else botBot.push(session);
   }
-  return { pinned, groups, youBot, botBot, project, fileDrop };
+  return { pinned, bots, botBot, project, fileDrop };
 }
 
 export function youBotSession(sessions: SessionSummary[], botId: string): SessionSummary | undefined {

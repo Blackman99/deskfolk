@@ -30,7 +30,7 @@ test("a project session is its own group, never pinned and never in the Bot list
   const grouped = groupSessions([project], ["proj-1"]);
   expect(grouped.project).toEqual([project]);
   expect(grouped.pinned).toEqual([]);
-  expect(grouped.youBot).toEqual([]);
+  expect(grouped.bots).toEqual([]);
   expect(grouped.botBot).toEqual([]);
   expect(groupSessions([aProjectSession({ archived_at: "t" })]).project).toEqual([]);
 });

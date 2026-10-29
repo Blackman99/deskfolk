@@ -14,6 +14,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - A Bot's conversation has had a message index down its left edge, a tick for each line, since September; a project session's conversation with Claude Code or Codex had none. It has the same one now: hovering a tick shows the line, who said it and when, pressing it scrolls there, the lit tick follows where you are reading, and the arrow on top loads earlier lines. Once you have jumped back, new lines and the agent's progress no longer pull you down to the end. As in a Bot's conversation it shows from two lines on, and not at a phone's width.
 
+### The sidebar has two sections: Bots and Projects
+
+- A wide window's sidebar split group chats and your directs with Bots into two sections, 群 and 你 ↔ Bot, whose headings stood one on the other when you had no group chat. They are now one section, Bots, named like the phone's bottom-bar page and in the list's own order, groups no longer held above the directs; Projects follows it. The section has a single "+", which offers New bot or New group. The folded sidebar's rail loses that divider too.
+
 ### Project sessions' rows match a Bot's in size and in what they say
 
 - Each session under Projects in the sidebar took a single line: a 16px agent mark, its name, its time, and a blinking dot while it ran, with nothing on where it had got to or what it was waiting on. It is now the size of a 你 ↔ Bot row: the agent's mark where the avatar goes (a size smaller than a portrait, so a bright brand tile does not outweigh the row), and under the name and time its last line; while the agent runs, that line reads Thinking, Replying or Approval instead and a dot of the same colour lights on the mark, as for a Bot at work. The unread count takes the Bot rows' look too. On a phone the rows grow with the Bot rows and get the same dividers; renaming keeps the row's height, so the rows below stay put.

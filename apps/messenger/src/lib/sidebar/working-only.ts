@@ -38,8 +38,7 @@ export function workingOrUnreadIds(
 }
 
 type Listed = {
-  groups: SessionSummary[];
-  youBot: SessionSummary[];
+  bots: SessionSummary[];
   botBot: SessionSummary[];
   project: SessionSummary[];
   fileDrop: SessionSummary | null;
@@ -60,8 +59,7 @@ export function onlyWorking<T extends Listed>(
   const keep = (session: SessionSummary) => ids.has(session.id) || session.id === keepId;
   return {
     ...grouped,
-    groups: grouped.groups.filter(keep),
-    youBot: grouped.youBot.filter(keep),
+    bots: grouped.bots.filter(keep),
     botBot: grouped.botBot.filter(keep),
     project: grouped.project.filter(keep),
     fileDrop: grouped.fileDrop && keep(grouped.fileDrop) ? grouped.fileDrop : null,
