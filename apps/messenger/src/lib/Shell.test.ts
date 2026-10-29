@@ -83,6 +83,9 @@ for (const kind of ['bot', 'group', 'provider'] as const) for (const confirmB of
       click(replacement.querySelector('.deny')); click(replacement.querySelector('.deny'));
       expect(calls).toEqual(['a', 'b']);
       expect(replacement.getAttribute('aria-busy')).toBe('true');
+      // The wait shows on the button you pressed, not only to a screen reader.
+      expect(replacement.querySelector('.deny')!.textContent!.trim()).toBe(copyFor('en').common.deleting);
+      expect(replacement.querySelector('.deny .confirm-spinner')).not.toBeNull();
     }
     first.resolve(failedA ? new ApiError(409, 'conflict', 'old fixture failure') : null); await settle();
     expect(host.querySelector('dialog')).toBe(replacement);
@@ -101,6 +104,7 @@ for (const kind of ['bot', 'group', 'provider'] as const) for (const confirmB of
     if (kind !== 'provider') {
       expect(host.querySelector('dialog')).toBe(replacement);
       expect(replacement.getAttribute('aria-busy')).toBe('false');
+      expect(replacement.querySelector('.deny .confirm-spinner')).toBeNull();
     }
   });
 }

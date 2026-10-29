@@ -27,6 +27,8 @@ export type DangerCopy = {
    * what you said there (ADR 0040); this is where you ask for it to be erased as well.
    */
   option?: string;
+  /** The confirm button's words while it runs; a group's delete can take seconds. */
+  busy?: string;
 };
 
 /**
@@ -81,6 +83,7 @@ export function dangerCopy(kind: DangerKind, t: Copy): DangerCopy {
         body: t.sidebar.deleteBody,
         confirm: t.sidebar.confirmDelete,
         cancel: t.sidebar.cancel,
+        busy: t.common.deleting,
       };
     case "group":
       return {
@@ -88,6 +91,7 @@ export function dangerCopy(kind: DangerKind, t: Copy): DangerCopy {
         body: t.detail.deleteGroupBody,
         confirm: t.detail.confirmDeleteGroup,
         cancel: t.detail.cancel,
+        busy: t.common.deleting,
         option: t.detail.eraseQuotes,
       };
     case "project":
@@ -96,6 +100,7 @@ export function dangerCopy(kind: DangerKind, t: Copy): DangerCopy {
         body: t.project.deleteBody,
         confirm: t.project.confirmDelete,
         cancel: t.detail.cancel,
+        busy: t.common.deleting,
       };
     case "history":
       return {
@@ -103,6 +108,7 @@ export function dangerCopy(kind: DangerKind, t: Copy): DangerCopy {
         body: t.detail.clearHistoryBody,
         confirm: t.detail.confirmClearHistory,
         cancel: t.detail.cancel,
+        busy: t.common.clearing,
         option: t.detail.eraseQuotes,
       };
     case "skill":
@@ -111,6 +117,7 @@ export function dangerCopy(kind: DangerKind, t: Copy): DangerCopy {
         body: t.sidebar.skillDeleteBody,
         confirm: t.sidebar.skillConfirmDelete,
         cancel: t.sidebar.skillCancel,
+        busy: t.common.deleting,
       };
     case "memory":
       return {
@@ -118,6 +125,7 @@ export function dangerCopy(kind: DangerKind, t: Copy): DangerCopy {
         body: t.sidebar.memoryDeleteBody,
         confirm: t.sidebar.memoryConfirmDelete,
         cancel: t.sidebar.memoryCancel,
+        busy: t.common.deleting,
       };
     case "provider":
       return {
@@ -125,6 +133,7 @@ export function dangerCopy(kind: DangerKind, t: Copy): DangerCopy {
         body: t.settings.providerDeleteBody,
         confirm: t.settings.providerConfirmDelete,
         cancel: t.settings.providerCancel,
+        busy: t.common.deleting,
       };
   }
 }

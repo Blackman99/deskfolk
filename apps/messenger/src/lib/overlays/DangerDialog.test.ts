@@ -135,6 +135,30 @@ test("an option box shows only when the copy has one, reports each tick, and wai
   busy.close();
 });
 
+test("while it runs, the confirm button turns and says what it is doing, and the ways out fade", () => {
+  const idle = render(DangerDialog, { copy: { ...copy, busy: "正在删除…" }, t, onDismiss: () => {}, onConfirm: () => {} });
+  const ready = idle.host.querySelector('.deny')!;
+  expect(ready.textContent!.trim()).toBe("确认删除");
+  expect(ready.querySelector('.confirm-spinner')).toBeNull();
+  expect(ready.getAttribute('aria-busy')).toBeNull();
+  idle.close();
+
+  const { host, close } = render(DangerDialog, { copy: { ...copy, busy: "正在删除…" }, t, busy: true, onDismiss: () => {}, onConfirm: () => {} });
+  const running = host.querySelector('.deny')!;
+  expect(running.textContent!.trim()).toBe("正在删除…");
+  expect(running.querySelector('.confirm-spinner')).not.toBeNull();
+  expect(running.getAttribute('aria-busy')).toBe('true');
+  expect(running.classList.contains('is-busy')).toBe(true);
+  expect(buttonByText(host, "取消").classList.contains('is-busy')).toBe(false);
+  close();
+
+  // A caller with no words for the wait keeps its confirm label beside the spinner.
+  const plain = render(DangerDialog, { copy, t, busy: true, onDismiss: () => {}, onConfirm: () => {} });
+  expect(plain.host.querySelector('.deny')!.textContent!.trim()).toBe("确认删除");
+  expect(plain.host.querySelector('.deny .confirm-spinner')).not.toBeNull();
+  plain.close();
+});
+
 test('nested native modal restores focus in its parent without closing that overlay', () => {
   const parent = document.createElement('dialog');
   const opener = document.createElement('button'); parent.append(opener); document.body.append(parent); parent.showModal(); opener.focus();

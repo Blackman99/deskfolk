@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Deleting a group or project session shows that it is under way
+
+- Deleting a group or a project session takes a few seconds (its messages and turns go with it), and for all that time the confirm looked unchanged: its buttons were already disabled but looked the same, as if the click had done nothing. Now the Confirm delete button you pressed spins and reads Deleting…, Cancel, ✕ and the checkbox fade, and the confirm closes once the delete is done. Clearing a history reads Clearing…; the other places that use the same confirm (deleting a Bot, an endpoint, a routine) do the same.
+
 ### Open a terminal in a project's folder
 
 - A terminal started from Tools opens in the workspace, so for a project folder anywhere else you had to `cd` there first. A directory row's menu in the Projects section (its "+", or a right-click on the row) now has Open terminal in project folder below Open project folder, and a project session's context menu has it too. It starts a shell in that directory: a terminal tab of its own on a wide window, the Terminal page on a phone. It works with no workspace set as well, since a project session needs none.

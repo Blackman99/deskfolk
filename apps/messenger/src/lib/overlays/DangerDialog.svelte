@@ -2,9 +2,11 @@
 	import { untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import { backdropClick } from '../click-outside.ts';
+	import Icon from '../Icon.svelte';
 
 	type Props = {
-		copy: { title: string; body: string; confirm: string; cancel: string; option?: string };
+		/** `busy` is what the confirm button says while it runs; without it the button keeps `confirm`. */
+		copy: { title: string; body: string; confirm: string; cancel: string; option?: string; busy?: string };
 		t: Copy;
 		onDismiss: () => void;
 		onConfirm: () => void;
@@ -90,7 +92,17 @@
 		</div>
 		<div class="modal-foot actions">
 			<button type="button" disabled={busy} onclick={dismiss}>{copy.cancel}</button>
-			<button type="button" class="deny" disabled={busy} onclick={() => { if (!busy) onConfirm(); }}>{copy.confirm}</button>
+			<button
+				type="button"
+				class="deny"
+				class:is-busy={busy}
+				disabled={busy}
+				aria-busy={busy ? 'true' : undefined}
+				onclick={() => { if (!busy) onConfirm(); }}
+			>
+				{#if busy}<Icon name="spinner" class="confirm-spinner" />{/if}
+				{busy ? (copy.busy ?? copy.confirm) : copy.confirm}
+			</button>
 		</div>
 	</div>
 </dialog>
@@ -109,5 +121,19 @@
 	}
 	@media (pointer: coarse) and (min-width: 681px) {
 		.confirm-dialog .modal-foot button { min-height: 44px; }
+	}
+	/*
+	 * Deleting a group can take seconds. Until it is done the button you pressed says so and turns,
+	 * and the ways out fade and stop answering the pointer, so the wait never looks like a click that
+	 * did nothing.
+	 */
+	dialog[aria-busy='true'] .confirm-dialog { cursor: progress; }
+	.confirm-dialog button:disabled, .confirm-option:has(input:disabled) { pointer-events: none; }
+	.confirm-dialog button:disabled:not(.is-busy), .confirm-option:has(input:disabled) { opacity: 0.45; }
+	.confirm-dialog .deny.is-busy { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+	.deny :global(.confirm-spinner) { flex: none; animation: confirmSpin 0.9s linear infinite; }
+	@keyframes confirmSpin { to { transform: rotate(360deg); } }
+	@media (prefers-reduced-motion: reduce) {
+		.deny :global(.confirm-spinner) { animation: none; }
 	}
 </style>

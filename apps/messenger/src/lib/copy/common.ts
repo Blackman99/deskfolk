@@ -8,6 +8,8 @@ export const zh = {
   copyImageFailed: "没能复制图片",
   updateReady: "有新版本",
   updateReload: "刷新",
+  deleting: "正在删除…",
+  clearing: "正在清空…",
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -18,4 +20,6 @@ export const en: CopyShape<typeof zh> = {
   copyImageFailed: "Couldn’t copy the image",
   updateReady: "A new version is ready",
   updateReload: "Reload",
+  deleting: "Deleting…",
+  clearing: "Clearing…",
 };
