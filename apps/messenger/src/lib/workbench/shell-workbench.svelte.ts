@@ -12,6 +12,8 @@ import type { SessionSummary, Terminal } from "@real-bot/protocol";
 import type { Copy } from "../copy.ts";
 import type { MessengerRuntime } from "../runtime.svelte.ts";
 import { classifySession, youBotPeer } from "../sidebar/session-groups.ts";
+import { projectDirLabel } from "../sidebar/project-groups.ts";
+import { projectDirOf } from "../overlays/artifact-lookup.ts";
 import { spendCopyFor } from "../spend/spend-copy.ts";
 import { orderTerminals, statusLabel, terminalNames } from "../overlays/terminals.ts";
 import { hideDesktopWindow, listenToWindow } from "../tauri.ts";
@@ -39,6 +41,7 @@ import {
   existingTarget,
   findKind,
   openContent,
+  stampProjectPreviews,
   type OpenOptions,
   type PlaceContext,
 } from "./pane-open.ts";
@@ -137,6 +140,7 @@ export class ShellWorkbench {
         terminalIds: runtime.terminalsLoaded ? new Set(runtime.terminals.map((row) => row.id)) : null,
         knownKinds: PANE_KIND_SET,
       };
+      const sessions = runtime.snapshot.sessions;
       // Only a bound on the window: the workbench keeps its floating panes inside its own box. A
       // guessed height here pulled up, on the next snapshot, any pane left lower than it allowed.
       const viewport = {
@@ -146,8 +150,12 @@ export class ShellWorkbench {
         height: untrack(() => this.getShellEl()?.clientHeight) || Number.POSITIVE_INFINITY,
       };
       untrack(() => {
+        // A project's sessions share one preview: one saved per session names its project first, then folds.
         const healed = dropDuplicateBoundTabs(
-          healLayout(this.layout, live, viewport, WB_FALLBACK_MIN, this.freshPaneId()),
+          stampProjectPreviews(
+            healLayout(this.layout, live, viewport, WB_FALLBACK_MIN, this.freshPaneId()),
+            (sessionId) => projectDirOf(sessions, sessionId),
+          ),
           this.freshPaneId,
         );
         if (healed !== this.layout) this.commitLayout(healed);
@@ -289,6 +297,8 @@ export class ShellWorkbench {
       case "map":
         return t.pane.mapOf(this.sessionName(content.sessionId));
       case "preview":
+        // A project's sessions share its preview, so it goes by the project's name rather than one of theirs.
+        if (content.projectDir) return t.pane.projectFolderOf(projectDirLabel(content.projectDir));
         return content.sessionId ? t.pane.artifactsOf(this.sessionName(content.sessionId)) : t.pane.title;
     }
   };

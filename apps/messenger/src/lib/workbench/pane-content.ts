@@ -23,7 +23,11 @@ export type ChatSide = { kind: "settings"; botId: string | null };
 export type PaneContent =
   /** `side` left out means "whatever it has open"; `null` means nothing beside the transcript. */
   | { kind: "chat"; sessionId: string; side?: ChatSide | null }
-  | { kind: "preview"; sessionId: string | null; relpath: string | null; attachmentId: string | null; messageId?: string | null; taskId?: string | null; forceTree?: boolean; siblings?: Attachment[] | null }
+  /**
+   * A conversation's preview. A project session's names its directory too (ADR 0095): the preview is
+   * that project's, one for every session in it, and `sessionId` is only the one it was last opened from.
+   */
+  | { kind: "preview"; sessionId: string | null; relpath: string | null; attachmentId: string | null; messageId?: string | null; taskId?: string | null; forceTree?: boolean; siblings?: Attachment[] | null; projectDir?: string | null }
   | {
       kind: "trace";
       sessionId: string;
@@ -100,6 +104,7 @@ export function contentToParams(content: PaneContent): Record<string, string> {
       if (content.taskId) params.taskId = content.taskId;
       if (content.forceTree) params.forceTree = "true";
       if (content.siblings?.length) params.siblings = JSON.stringify(content.siblings);
+      if (content.projectDir) params.projectDir = content.projectDir;
       return params;
     }
     case "trace": {
@@ -152,6 +157,7 @@ export function contentOfTab(tab: WorkbenchTab): PaneContent | null {
         taskId: p.taskId ?? null,
         forceTree: p.forceTree === "true",
         siblings: parsePreviewSiblings(p.siblings),
+        ...(p.projectDir ? { projectDir: p.projectDir } : {}),
       };
     case "trace":
       return p.sessionId ? traceContent(p.sessionId, p) : null;

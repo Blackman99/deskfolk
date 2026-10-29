@@ -6,9 +6,13 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A project's sessions share one preview on a wide window
+
+- On a wide window each project session had a preview tab of its own, so two sessions in one directory, each opening a file Claude Code or Codex named, or one opening a file and the other Open project folder, gave two tabs named after the two sessions. A project now has one preview tab, named after its folder ("deskfolk project folder"): a file opened from any of its sessions, or the folder opened from its row or any session's menu, turns that tab. Tabs saved one per session from before fold into one when the app opens, keeping the one nearest the keyboard. A Bot conversation still keeps a preview of its own.
+
 ### Open a project's folder from the sidebar
 
-- A project directory's folder could only be browsed by opening a file Claude Code or Codex named in one of its sessions. A directory row's "+" in the Projects section now offers Open project folder below the new-session items, and right-clicking the row brings up the same menu where the pointer is; a project session's own context menu has it too. It opens the directory in the preview: what is in it is listed, with the project directory's file tree beside it, read a level at a time; press a folder to go into it, a file to see it there. It opens as the preview of one of the directory's sessions, the one on screen if it is in that directory, else the newest: on a wide window its tab is that session's artifacts, and on a phone that session comes up first.
+- A project directory's folder could only be browsed by opening a file Claude Code or Codex named in one of its sessions. A directory row's "+" in the Projects section now offers Open project folder below the new-session items, and right-clicking the row brings up the same menu where the pointer is; a project session's own context menu has it too. It opens the directory in the preview: what is in it is listed, with the project directory's file tree beside it, read a level at a time; press a folder to go into it, a file to see it there. On a wide window it opens in the project's one preview tab (see above); on a phone it opens as the preview of one of the directory's sessions, the one on screen if it is in that directory, else the newest, and that session comes up first.
 
 ### Carry on a terminal Claude Code session from the first launch
 

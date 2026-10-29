@@ -399,7 +399,7 @@
 				relpath={preview.relpath}
 				siblings={preview.siblings}
 				taskId={preview.taskId}
-				projectDir={projectDirOf(snapshot.sessions, previewSessionId)}
+				projectDir={content.projectDir ?? projectDirOf(snapshot.sessions, previewSessionId)}
 				forceTree={content.forceTree}
 				api={runtime.client}
 				workspacePath={snapshot.settings.workspace_path}

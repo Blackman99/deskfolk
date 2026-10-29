@@ -14,6 +14,7 @@ import {
   findContent,
   openContent,
   settingsSide,
+  stampProjectPreviews,
   toggleChatSide,
 } from "./pane-open.ts";
 
@@ -319,6 +320,52 @@ test("each conversation keeps a preview of its own", () => {
     ["preview", "s1", "a.md"],
     ["preview", "s2", "b.md"],
   ]);
+});
+
+const projectPreview = (sessionId: string, projectDir: string, relpath: string) =>
+  ({ ...preview(sessionId, relpath), projectDir }) as const;
+
+test("a project's sessions share one preview: a file from another of them turns it", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("p2"), "t-chat")]),
+    makeLeaf("b", [tabFor(projectPreview("p1", "/work/app", "/work/app"), "t-prev")]),
+  ]), "a");
+  const next = openContent(layout, projectPreview("p2", "/work/app", "/work/app/src/a.ts"), ids);
+  expect(tiledLeaves(next.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
+  expect(leafById(next, "b")!.tabs[0]!.params).toEqual({ sessionId: "p2", relpath: "/work/app/src/a.ts", projectDir: "/work/app" });
+  expect(next.focus.leafId).toBe("b");
+
+  // Another project, and a Bot conversation, each keep their own.
+  const other = openContent(next, projectPreview("p3", "/work/site", "/work/site"), ids);
+  const bot = openContent(other, preview("p2", "notes.md"), ids);
+  expect(tiledLeaves(bot.root).flatMap((leaf) => leaf.tabs.map((tab) => tab.params.projectDir ?? tab.params.sessionId))).toEqual([
+    "p2",
+    "/work/app",
+    "/work/site",
+    "p2",
+  ]);
+  assertInvariants(bot);
+});
+
+test("a preview saved per project session names its project, then the project's previews fold into one", () => {
+  const dirs: Record<string, string> = { p1: "/work/app", p2: "/work/app" };
+  const dirOf = (sessionId: string) => dirs[sessionId] ?? null;
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("p1"), "t-chat"), tabFor(preview("p1", "/work/app/a.ts"), "t-p1")]),
+    makeLeaf("b", [tabFor(preview("p2", "/work/app/b.ts"), "t-p2"), tabFor(preview("s1", "x.md"), "t-bot")]),
+  ]), "b");
+  const stamped = stampProjectPreviews(layout, dirOf);
+  expect(tiledLeaves(stamped.root).flatMap((leaf) => leaf.tabs.map((tab) => tab.params.projectDir ?? null))).toEqual([
+    null,
+    "/work/app",
+    "/work/app",
+    null,
+  ]);
+  const next = dropDuplicateBoundTabs(stamped, ids.id);
+  expect(tiledLeaves(next.root).map((leaf) => leaf.tabs.map((tab) => tab.id))).toEqual([["t-chat"], ["t-p2", "t-bot"]]);
+  assertInvariants(next);
+  // Nothing left to name is the same layout, so the shell does not save one that did not change.
+  expect(stampProjectPreviews(next, dirOf)).toBe(next);
 });
 
 test("a background preview tab is brought forward when it turns", () => {

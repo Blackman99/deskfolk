@@ -11,7 +11,7 @@ import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import { targetFor } from "../annotations/model.ts";
 import type { MessengerRuntime } from "../runtime.svelte.ts";
 import { sanitizeCitedPreviewPath, sanitizePreviewPath } from "../session-url.ts";
-import { findAttachmentById, findAttachmentByPath, siblingsForPath, withOpenedPath } from "./artifact-lookup.ts";
+import { findAttachmentById, findAttachmentByPath, projectDirOf, siblingsForPath, withOpenedPath } from "./artifact-lookup.ts";
 import { clampPreviewWidth, loadPreviewWidth, savePreviewWidth } from "./preview-width.ts";
 import { trackPointerDrag } from "../pointer-drag.ts";
 import { baseName } from "../paths.ts";
@@ -121,10 +121,14 @@ export class ShellArtifact {
       const owner = snapshot.messages.find((row) => row.id === sourceMessageId);
       const path = sanitizeCitedPreviewPath(relpath);
       const rows = siblings ?? siblingsForPath(snapshot.messages, relpath, att, sourceMessageId, runtime.previewSiblings);
+      // Whose preview this is decides which pane turns: every conversation has one, and a project
+      // session's is its project's, the same one from every session in that directory.
+      const owningSession = sessionId ?? owner?.session_id ?? selected?.id ?? null;
+      const projectDir = projectDirOf(snapshot.sessions, owningSession);
       runtime.paneOpener({
         kind: "preview",
-        // Whose preview this is decides which pane turns: every conversation has one.
-        sessionId: sessionId ?? owner?.session_id ?? selected?.id ?? null,
+        sessionId: owningSession,
+        ...(projectDir ? { projectDir } : {}),
         relpath: path,
         attachmentId: att?.id ?? null,
         messageId: sourceMessageId,

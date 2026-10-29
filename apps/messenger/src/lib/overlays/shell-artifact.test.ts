@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Attachment, Message } from "@real-bot/protocol";
+import type { Attachment, Message, SessionSummary } from "@real-bot/protocol";
 import type { PaneContent } from "../workbench/pane-content.ts";
 import { previewContext } from "../workbench/preview-context.ts";
 import { buildCitedPathTree } from "./artifact-tree.ts";
@@ -68,7 +68,7 @@ test("in the workbench a tab opened from a link keeps that folder while you walk
   const opened: PaneContent[] = [];
   const runtime = {
     hosted: false, paneOpener: (content: PaneContent) => { opened.push(content); },
-    snapshot: { messages }, selectedId: "s1", previewSiblings: null,
+    snapshot: { messages, sessions: [] }, selectedId: "s1", previewSiblings: null,
   };
   new ShellArtifact({
     runtime: () => runtime as never, selected: () => null, wide: () => true,
@@ -95,7 +95,7 @@ test("a link opened in a job's tree is not added as one this message handed over
   const siblingsOf = (content: PaneContent | undefined) => (content?.kind === "preview" ? content.siblings : undefined);
   const runtime = {
     hosted: false, paneOpener: (content: PaneContent) => { opened.push(content); },
-    snapshot: { messages: [message({ attachments: [att] })] }, selectedId: "s1", previewSiblings: null,
+    snapshot: { messages: [message({ attachments: [att] })], sessions: [] }, selectedId: "s1", previewSiblings: null,
   };
   const shell = new ShellArtifact({
     runtime: () => runtime as never, selected: () => null, wide: () => true,
@@ -106,6 +106,33 @@ test("a link opened in a job's tree is not added as one this message handed over
   // A handed-over file opened by its path adds nothing either.
   shell.openArtifactPath("out/a.md", undefined, "m1");
   expect(siblingsOf(opened[1])).toEqual([att]);
+});
+
+test("in the workbench a project session's file opens in its project's preview, a Bot conversation's in its own", () => {
+  const opened: PaneContent[] = [];
+  const sessions = [
+    { id: "p1", kind: "project", project_dir: "/work/app" },
+    { id: "p2", kind: "project", project_dir: "/work/app" },
+    { id: "s1", kind: "direct" },
+  ] as SessionSummary[];
+  const runtime = {
+    hosted: false, paneOpener: (content: PaneContent) => { opened.push(content); },
+    snapshot: { messages: [message({ id: "m2", session_id: "p2", body: "改了 src/a.ts" })], sessions },
+    selectedId: "s1", previewSiblings: null,
+  };
+  const shell = new ShellArtifact({
+    runtime: () => runtime as never, selected: () => null, wide: () => true,
+    shellEl: () => null, shellWidth: () => 1440, workspacePane: () => null, previewPane: () => null,
+  });
+  // A file the agent cited, from the message it was in; the folder itself, from a menu naming the session.
+  shell.openArtifactPath("/work/app/src/a.ts", undefined, "m2");
+  shell.openArtifactPath("/work/app", undefined, null, false, null, [], "p1");
+  shell.openArtifactPath("out/a.md", undefined, null, false, null, [], "s1");
+  expect(opened.map((content) => content.kind === "preview" ? [content.sessionId, content.projectDir ?? null] : null)).toEqual([
+    ["p2", "/work/app"],
+    ["p1", "/work/app"],
+    ["s1", null],
+  ]);
 });
 
 test("on the phone a handed-over file still opens by its own attachment", () => {

@@ -18,6 +18,7 @@ const samples: PaneContent[] = [
   { kind: "chat", sessionId: "s1", side: { kind: "settings", botId: "bot-1" } },
   { kind: "preview", sessionId: "s1", relpath: "work/a.md", attachmentId: null },
   { kind: "preview", sessionId: null, relpath: null, attachmentId: "att-1" },
+  { kind: "preview", sessionId: "proj-1", relpath: "/work/app/src/a.ts", attachmentId: null, projectDir: "/work/app" },
   { kind: "trace", sessionId: "s1", taskId: null },
   { kind: "trace", sessionId: "s1", taskId: "task-1" },
   {

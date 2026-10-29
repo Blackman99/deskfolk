@@ -135,12 +135,32 @@ const SINGLE_INSTANCE = new Set<PaneContent["kind"]>(["routines", "spend", "usag
  * turns to that, rather than a second one opening beside it. Each conversation keeps its own. A
  * job is one tab (ADR 0086): its tickets, its trace and its spec are parts of that tab, so a
  * conversation has one flow tab, whatever a tab saved before that asked to open on. A project
- * session has one task map (ADR 0096) the same way.
+ * session has one task map (ADR 0096) the same way. Its preview is its project's, not its own: the
+ * sessions in one directory share it (ADR 0095).
  */
 const ONE_PER_SESSION = new Set<PaneContent["kind"]>(["preview", "trace", "map"]);
 
 function boundSession(content: PaneContent): string | null {
   return "sessionId" in content ? content.sessionId : null;
+}
+
+/** What a bound tab belongs to: its conversation, or for a project session's preview, the project's directory. */
+function boundKey(content: PaneContent): string {
+  if (content.kind === "preview" && content.projectDir) return `project:${content.projectDir}`;
+  return `session:${boundSession(content) ?? ""}`;
+}
+
+/** The pane holding the one tab of this kind that this content is bound to, the focused pane first. */
+function findSameBound(layout: WorkbenchLayout, content: PaneContent): Located | null {
+  const key = boundKey(content);
+  for (const leaf of focusedFirst(layout)) {
+    for (const tab of leaf.tabs) {
+      if (tab.kind !== content.kind) continue;
+      const its = contentOfTab(tab);
+      if (its && boundKey(its) === key) return { leafId: leaf.id, tab };
+    }
+  }
+  return null;
 }
 
 /** The pane holding this conversation's one tab of this kind, the focused pane first. */
@@ -167,9 +187,7 @@ function retarget(layout: WorkbenchLayout, at: Located, content: PaneContent | n
  */
 export function existingTarget(layout: WorkbenchLayout, content: PaneContent): Located | null {
   if (SINGLE_INSTANCE.has(content.kind)) return findKind(layout, content.kind);
-  if (ONE_PER_SESSION.has(content.kind)) {
-    return findBound(layout, content.kind, boundSession(content));
-  }
+  if (ONE_PER_SESSION.has(content.kind)) return findSameBound(layout, content);
   return null;
 }
 
@@ -376,7 +394,25 @@ export function settingsSide(layout: WorkbenchLayout): { sessionId: string; botI
 }
 
 /**
- * Holds a layout to one preview and one flow tab per conversation.
+ * Names the project on each project session's preview saved before a project's sessions shared one
+ * (ADR 0095), so `dropDuplicateBoundTabs` folds a project's previews into one. `dirOf` is the
+ * directory of a project session, null for any other conversation. Returns the layout it was given
+ * when every preview already names its project or has none.
+ */
+export function stampProjectPreviews(layout: WorkbenchLayout, dirOf: (sessionId: string) => string | null): WorkbenchLayout {
+  let next = layout;
+  for (const leaf of leavesOf(layout)) {
+    for (const tab of leaf.tabs) {
+      if (tab.kind !== "preview" || tab.params.projectDir || !tab.params.sessionId) continue;
+      const dir = dirOf(tab.params.sessionId);
+      if (dir) next = replaceTabParams(next, leaf.id, tab.id, { ...tab.params, projectDir: dir });
+    }
+  }
+  return next;
+}
+
+/**
+ * Holds a layout to one preview and one flow tab per conversation, and one preview per project.
  *
  * Opening never makes a second one, but a layout saved before that rule can carry several. The
  * one nearest the keyboard stays — the focused pane first, then reading order — and the rest
@@ -390,7 +426,7 @@ export function dropDuplicateBoundTabs(layout: WorkbenchLayout, id: () => string
       if (!ONE_PER_SESSION.has(tab.kind as PaneContent["kind"])) continue;
       const its = contentOfTab(tab);
       if (!its) continue;
-      const key = `${its.kind}:${boundSession(its) ?? ""}`;
+      const key = `${its.kind}:${boundKey(its)}`;
       if (seen.has(key)) extra.push({ leafId: leaf.id, tab });
       else seen.add(key);
     }
