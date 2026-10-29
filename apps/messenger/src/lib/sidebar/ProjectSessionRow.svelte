@@ -1,16 +1,19 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import type { ProjectAgent } from '@real-bot/protocol';
+	import type { Bot, ProjectAgent, SessionSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import AgentLogo from '../settings/AgentLogo.svelte';
-	import { unreadBadge } from './unread.ts';
+	import AgentAvatar from './AgentAvatar.svelte';
+	import SessionRow from './SessionRow.svelte';
+	import type { SessionStatusResult } from './session-status.ts';
 
 	/**
-	 * One project session under its directory (ADR 0095): its agent's mark, its name and time, a
-	 * pulse while the agent is at work in it, and the unread count. The mark is the session's, not
-	 * the directory's: one directory can hold sessions of different agents.
+	 * One project session under its directory (ADR 0095), the size of a Bot's row and saying the same:
+	 * its agent's mark, its name and time, the run's status or else the last line, and the unread
+	 * count. The mark is the session's, not the directory's: one directory can hold sessions of
+	 * different agents. Renaming turns the row into a name field of the same height.
 	 */
 	type Props = {
+		session: SessionSummary;
 		t: Copy;
 		/** The open conversation. */
 		on: boolean;
@@ -26,16 +29,19 @@
 		/** The new name, or null to leave it; false when it did not go through, so the field stays. */
 		onRename?: (name: string | null) => Promise<boolean>;
 		time: string;
-		/** The agent is running or waiting on you in it. */
-		live: boolean;
+		/** The run at work or waiting on you in it, said as a Bot's turn would be. */
+		status: SessionStatusResult;
+		preview: string;
 		unread: number;
+		bots: ReadonlyMap<string, Bot>;
+		botStatus: (botId: string) => SessionStatusResult | undefined;
 		onSelect: () => void;
 		onContextMenu: (e: MouseEvent) => void;
 		/** A press that may become a drag into the workbench: only where there is one. */
 		onPointerDown?: (e: PointerEvent) => void;
 	};
 
-	let { t, on, contextOpen, title, agent, name = null, renaming = false, onRename, time, live, unread, onSelect, onContextMenu, onPointerDown }: Props = $props();
+	let { session, t, on, contextOpen, title, agent, name = null, renaming = false, onRename, time, status, preview, unread, bots, botStatus, onSelect, onContextMenu, onPointerDown }: Props = $props();
 
 	let field = $state<HTMLInputElement | null>(null);
 	let draft = $state('');
@@ -69,8 +75,8 @@
 </script>
 
 {#if renaming}
-	<div class="project-row is-renaming" class:is-on={on} data-project-session data-renaming>
-		<span class="agent-mark"><AgentLogo runner={agent} size={16} /></span>
+	<div class="project-rename" class:is-on={on} data-project-session data-renaming>
+		<AgentAvatar {agent} title={t.project.agentNames[agent]} />
 		<input
 			bind:this={field}
 			class="rename-field"
@@ -99,114 +105,67 @@
 			}}
 			onblur={() => void commit()}
 		/>
+		<span class="rename-preview">{preview}</span>
 	</div>
 {:else}
-<button
-	type="button"
-	class="project-row"
-	class:is-on={on}
-	class:is-context-open={contextOpen}
-	class:is-unread={unread > 0}
-	data-project-session
-	onclick={onSelect}
-	oncontextmenu={onContextMenu}
-	onpointerdown={onPointerDown}
->
-	<span class="agent-mark" title={t.project.agentNames[agent]}><AgentLogo runner={agent} size={16} /></span>
-	<span class="name">{title}</span>
-	{#if live}<span class="project-pulse" title={t.project.live} role="img" aria-label={t.project.live}></span>{/if}
-	<span class="time">{time}</span>
-	{#if unread > 0}
-		<span class="unread-dot" title={t.sidebar.unread}>{unreadBadge(unread)}</span>
-	{/if}
-</button>
+	<SessionRow
+		{session}
+		{t}
+		{on}
+		{contextOpen}
+		{agent}
+		{title}
+		{time}
+		{status}
+		{preview}
+		{unread}
+		{bots}
+		{botStatus}
+		{onSelect}
+		{onContextMenu}
+		{onPointerDown}
+	/>
 {/if}
 
 <style>
-	.project-row {
-		display: flex;
+	/* The row it stands in for, line for line, so starting a rename moves nothing below it. */
+	.project-rename {
+		display: grid;
+		grid-template-columns: 40px minmax(0, 1fr);
+		grid-template-rows: auto auto;
+		gap: 2px 10px;
 		align-items: center;
-		gap: 8px;
-		width: 100%;
-		min-height: 34px;
-		padding: 5px 10px 5px 8px;
+		padding: 8px 10px;
 		margin: 1px 0;
 		border: 1px solid transparent;
 		border-radius: var(--radius-md);
-		background: transparent;
-		color: inherit;
-		text-align: left;
-		transition-duration: var(--dur-base);
-		transition-timing-function: var(--ease-out);
-		transition-property: var(--transition-props);
 	}
 
-	.project-row:hover {
-		background: var(--row-hover);
-	}
-
-	/* The open one is lifted the way the other rows' is. */
-	.project-row.is-on,
-	.project-row.is-on:hover {
+	.project-rename.is-on {
 		background: var(--pane);
 		border-color: var(--line);
 		box-shadow: var(--shadow-sm);
 	}
 
-	.agent-mark {
-		flex: none;
-		display: inline-flex;
-	}
-
-	.project-pulse {
-		flex: none;
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: var(--accent);
-		animation: project-pulse 1.4s ease-in-out infinite;
-	}
-
-	@keyframes project-pulse {
-		50% {
-			opacity: 0.35;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.project-pulse {
-			animation: none;
-		}
-	}
-
-	.name {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--ink);
-	}
-
-	.project-row.is-unread .name {
-		font-weight: 750;
+	.project-rename :global(.row-avatar) {
+		--avatar-ring: var(--pane);
 	}
 
 	.rename-field {
-		flex: 1;
+		grid-column: 2;
+		grid-row: 1;
 		min-width: 0;
-		height: 24px;
+		/* The title's line: 14px at 1.5. */
+		height: 21px;
 		padding: 0 6px;
-		margin-left: -6px;
+		margin-left: -7px;
 		border: 1px solid var(--field-focus-border);
 		border-radius: var(--radius-sm);
 		background: var(--input-bg);
 		color: var(--ink);
 		font: inherit;
-		font-size: 13px;
-		font-weight: 500;
+		font-size: 14px;
+		font-weight: 600;
 		outline: none;
 		box-shadow: var(--field-focus-ring);
 	}
@@ -215,30 +174,46 @@
 		border-color: var(--danger);
 	}
 
-	.time {
-		flex: none;
-		font-size: 11px;
+	.rename-preview {
+		grid-column: 2;
+		grid-row: 2;
+		min-width: 0;
+		min-height: 1.4em;
+		font-size: 12px;
+		line-height: 1.4;
 		color: var(--muted);
 		white-space: nowrap;
-	}
-
-	.unread-dot {
-		flex: none;
-		min-width: 18px;
-		height: 18px;
-		padding: 0 5px;
-		border-radius: 9px;
-		background: var(--accent);
-		color: var(--on-accent);
-		font-size: 11px;
-		font-weight: 600;
-		line-height: 18px;
-		text-align: center;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	@media (max-width: 680px) {
-		.project-row {
-			min-height: 44px;
+		.project-rename {
+			grid-template-columns: 48px minmax(0, 1fr);
+			gap: 3px 12px;
+			padding: 10px 14px;
+			margin: 0;
+			border: 0;
+			border-radius: 0;
+		}
+
+		.project-rename.is-on {
+			background: var(--accent-tint);
+			box-shadow: none;
+		}
+
+		.project-rename :global(.row-avatar) {
+			--avatar-size: 48px;
+		}
+
+		.rename-field {
+			height: 24px;
+			font-size: 16px;
+		}
+
+		.rename-preview {
+			font-size: 13px;
+			line-height: 1.35;
 		}
 	}
 </style>

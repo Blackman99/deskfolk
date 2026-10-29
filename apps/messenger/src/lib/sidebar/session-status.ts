@@ -1,4 +1,4 @@
-import { INTERRUPT_NOTE_BODY, type Approval, type Message, type PendingJudgement, type SessionSummary, type Turn } from "@real-bot/protocol";
+import { INTERRUPT_NOTE_BODY, type AgentRun, type Approval, type Message, type PendingJudgement, type SessionSummary, type Turn } from "@real-bot/protocol";
 import { isLiveStatus } from "../chat/transcript.ts";
 
 export type SessionStateKind =
@@ -105,6 +105,18 @@ export function sidebarStatus(
   const live = sessionStatus(session.id, turns, approvals, labels, pendingJudgements);
   if (live.kind !== "idle") return live;
   return waitingCard(session, labels) ?? settledNotice(session, messages, labels) ?? live;
+}
+
+/**
+ * A project session's run read as a Bot's turn would be (ADR 0095): at work, replying once it has
+ * said something, or waiting on your press. Only the live states: a finished run's state reaches a
+ * window only if it was there to see it, so how one ended is left to the transcript, as for a Bot.
+ */
+export function agentRunStatus(run: AgentRun | null | undefined, labels: StatusLabels): SessionStatusResult | null {
+  if (run?.status === "waiting_approval") return { kind: "waiting_approval", label: labels.waitingApproval, isBusy: false };
+  if (run?.status !== "running") return null;
+  if (run.partial?.trim()) return { kind: "replying", label: labels.replying, isBusy: true };
+  return { kind: "running", label: labels.running, isBusy: true };
 }
 
 /**

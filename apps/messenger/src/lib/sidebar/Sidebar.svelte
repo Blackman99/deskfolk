@@ -8,7 +8,7 @@
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { classifySession, groupSessions, isFileDropSession, isSessionArchived, youBotPeer } from './session-groups.ts';
-	import { botWorkStatus, sidebarStatus } from './session-status.ts';
+	import { agentRunStatus, botWorkStatus, sidebarStatus } from './session-status.ts';
 	import { directElsewhere } from './bot-elsewhere.ts';
 	import HoldsBar from './HoldsBar.svelte';
 	import { holdLabel, listedHolds } from './holds-list.ts';
@@ -266,6 +266,11 @@
 
 	function statusOf(session: SessionSummary) {
 		return sidebarStatus(session, snapshot.turns, snapshot.approvals, statusLabels, snapshot.pendingJudgements, snapshot.messages);
+	}
+
+	/** A project session has runs, not turns: its run while one is live, else what its row would say anyway. */
+	function projectStatusOf(session: SessionSummary) {
+		return agentRunStatus(snapshot.agentRuns[session.id], statusLabels) ?? statusOf(session);
 	}
 
 	/** Your stops that wait to be lifted, for the bar above the list. */
@@ -599,22 +604,28 @@
 					{#if open}
 						<div class="project-sessions">
 							{#each group.sessions as session (session.id)}
-								<ProjectSessionRow
-									{t}
-									on={runtime.selectedId === session.id}
-									contextOpen={contextMenuSessionId === session.id}
-									title={session.name || t.project.untitled}
-									agent={projectAgentOf(session)}
-									name={session.name}
-									renaming={renamingSessionId === session.id}
-									onRename={onRenameSession ? (name) => onRenameSession(session.id, name) : undefined}
-									time={timeOf(session)}
-									live={isLiveRun(snapshot.agentRuns[session.id])}
-									unread={unreadOf(session)}
-									onSelect={() => void runtime.selectSession(session.id)}
-									onContextMenu={(e) => onOpenContextMenu(e, session)}
-									onPointerDown={pressOf(session)}
-								/>
+								<div class="row-flip" animate:flip={rowFlip()}>
+									<ProjectSessionRow
+										{session}
+										{t}
+										on={runtime.selectedId === session.id}
+										contextOpen={contextMenuSessionId === session.id}
+										title={session.name || t.project.untitled}
+										agent={projectAgentOf(session)}
+										name={session.name}
+										renaming={renamingSessionId === session.id}
+										onRename={onRenameSession ? (name) => onRenameSession(session.id, name) : undefined}
+										time={timeOf(session)}
+										status={projectStatusOf(session)}
+										preview={previewOf(session) || t.sidebar.noMessages}
+										unread={unreadOf(session)}
+										bots={botsById}
+										botStatus={botStatusOf}
+										onSelect={() => void runtime.selectSession(session.id)}
+										onContextMenu={(e) => onOpenContextMenu(e, session)}
+										onPointerDown={pressOf(session)}
+									/>
+								</div>
 							{/each}
 						</div>
 					{/if}

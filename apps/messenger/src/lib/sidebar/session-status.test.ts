@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { INTERRUPT_NOTE_BODY, type Approval, type Message, type PendingJudgement, type SessionSummary, type Turn } from "@real-bot/protocol";
+import { anAgentRun } from "../test-fixtures.ts";
 import {
+  agentRunStatus,
   botWorkStatus,
   isWorkingStatus,
   sessionStatus,
@@ -300,4 +302,19 @@ test("the working sessions are the ones whose row reads as live work", () => {
   ];
   const judging = [{ session_id: "s-judge", bot_id: "b1" }] as unknown as PendingJudgement[];
   expect([...workingSessionIds(sessions, turns, [], judging)].sort()).toEqual(["s-ask", "s-judge", "s-run"]);
+});
+
+test("a project session's run reads as a Bot's turn would: at work, replying once it has said something, waiting on your press", () => {
+  expect(agentRunStatus(anAgentRun({ status: "running" }), labels)).toEqual({ kind: "running", label: "思考中", isBusy: true });
+  expect(agentRunStatus(anAgentRun({ status: "running", partial: "  " }), labels)?.kind).toBe("running");
+  expect(agentRunStatus(anAgentRun({ status: "running", partial: "看过了" }), labels)).toEqual({ kind: "replying", label: "回复中", isBusy: true });
+  expect(agentRunStatus(anAgentRun({ status: "waiting_approval" }), labels)).toEqual({ kind: "waiting_approval", label: "待审批", isBusy: false });
+});
+
+/** How a run ended reaches a window only if it was open to see it, so the row leaves that to the transcript. */
+test("a finished run, or none, says nothing of its own", () => {
+  for (const status of ["completed", "failed", "stopped", "interrupted"] as const) {
+    expect(agentRunStatus(anAgentRun({ status }), labels)).toBeNull();
+  }
+  expect(agentRunStatus(undefined, labels)).toBeNull();
 });

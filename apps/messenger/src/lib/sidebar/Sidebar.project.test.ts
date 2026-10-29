@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { SessionSummary } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
-import { aBot, aProjectSession, anAgentRun, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aMessage, aProjectSession, anAgentRun, fakeRuntime } from "../test-fixtures.ts";
 import { click, fill, press, render } from "../test-render.ts";
 import { settle } from "../test-async.ts";
 import Sidebar from "./Sidebar.svelte";
@@ -20,6 +20,7 @@ function open(
       aProjectSession({ id: "p3", name: "Other", project_dir: "/Users/a/other", updated_at: "2026-09-18T01:00:00.000Z" }),
     ],
     agentRuns: { p1: anAgentRun({ session_id: "p1" }) },
+    messages: [aMessage({ id: "m-p2", session_id: "p2", body: "把登录页的报错修一下" })],
   });
   runtime.selectedId = selected?.id ?? null;
   const view = render(Sidebar, {
@@ -42,10 +43,23 @@ test("the Projects section lists one open row per directory, labelled by its las
   expect(dirs[0]?.querySelector(".project-dir-head [data-agent-logo]")).toBeNull();
   expect(dirs[0]?.querySelector(".project-dir-head svg")).not.toBeNull();
   const rows = [...dirs[0]!.querySelectorAll("[data-project-session]")];
-  expect(rows.map((r) => r.querySelector(".name")?.textContent)).toEqual(["Fix login", t.project.untitled]);
-  expect(rows.map((r) => r.querySelector("[data-agent-logo]")?.getAttribute("data-agent-logo"))).toEqual(["claude_code", "claude_code"]);
-  expect(rows[0]?.querySelector(".project-pulse")).not.toBeNull();
-  expect(rows[1]?.querySelector(".project-pulse")).toBeNull();
+  expect(rows.map((r) => r.querySelector(".t")?.textContent)).toEqual(["Fix login", t.project.untitled]);
+  expect(rows.map((r) => r.querySelector(".row-avatar [data-agent-logo]")?.getAttribute("data-agent-logo"))).toEqual(["claude_code", "claude_code"]);
+  close();
+});
+
+test("a project session's row says what a Bot's does: the run at work in place of the last line, else that line", () => {
+  const { host, close } = open();
+  const rows = [...host.querySelectorAll('[data-project-dir="/Users/a/proj"] [data-project-session]')];
+  // p1's run is going: its status speaks, on the second line and on the avatar, the way a Bot's turn does.
+  expect(rows[0]?.querySelector(".row-status")?.className).toContain("is-running");
+  expect(rows[0]?.querySelector(".row-status-text")?.textContent).toBe(t.sidebar.statusRunning);
+  expect(rows[0]?.querySelector(".row-avatar .avatar-status-dot")?.className).toContain("is-running");
+  // p2 is quiet: no status, its last line instead.
+  expect(rows[1]?.querySelector(".row-status")?.className).toContain("is-idle");
+  expect(rows[1]?.querySelector(".s")?.textContent).toBe("把登录页的报错修一下");
+  // Nothing said yet reads as a Bot's empty conversation does.
+  expect(host.querySelector('[data-project-dir="/Users/a/other"] [data-project-session] .s')?.textContent).toBe(t.sidebar.noMessages);
   close();
 });
 
@@ -55,7 +69,7 @@ test("folding a directory hides its sessions, and a row opens its session", () =
   const dirs = [...host.querySelectorAll("[data-project-dir]")];
   expect(dirs[0]!.querySelectorAll("[data-project-session]")).toHaveLength(0);
   const other = [...dirs[1]!.querySelectorAll("[data-project-session]")];
-  expect(other.map((r) => r.querySelector(".name")?.textContent)).toEqual(["Other"]);
+  expect(other.map((r) => r.querySelector(".t")?.textContent)).toEqual(["Other"]);
   click(other[0]);
   expect(runtime.calls.find((c) => c.name === "selectSession")?.args[0]).toBe("p3");
   close();

@@ -1,15 +1,16 @@
 <script lang="ts">
-	import type { Bot, SessionSummary } from '@real-bot/protocol';
+	import type { Bot, ProjectAgent, SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import Icon from '../Icon.svelte';
+	import AgentAvatar from './AgentAvatar.svelte';
 	import type { Copy } from '../copy.ts';
 	import { unreadBadge } from './unread.ts';
 	import type { SessionStatusResult } from './session-status.ts';
 
 	/**
-	 * One row of the session list: avatar, title, time, status and the last line. The five lists
-	 * (archived, file drop, groups, you↔Bot, Bot↔Bot) differ only in what they pass: the text, whether
-	 * the status carries its count, and whether unread is marked (a Bot↔Bot direct passes none).
+	 * One row of the session list: avatar, title, time, status and the last line. The lists
+	 * (archived, file drop, groups, you↔Bot, a project's sessions) differ only in what they pass: the
+	 * text, whether the status carries its count, and what stands where the avatar goes.
 	 */
 	type Props = {
 		session: SessionSummary;
@@ -22,6 +23,8 @@
 		archived?: boolean;
 		/** The file drop's row has a mark of its own where the avatar goes. */
 		fileDrop?: boolean;
+		/** A project session's row (ADR 0095) wears its agent's mark there, its status dot the run's. */
+		agent?: ProjectAgent | null;
 		title: string;
 		time: string;
 		status: SessionStatusResult;
@@ -49,6 +52,7 @@
 		contextOpen,
 		archived = false,
 		fileDrop = false,
+		agent = null,
 		title,
 		time,
 		status,
@@ -79,6 +83,7 @@
 	class:is-on={on}
 	class:is-context-open={contextOpen}
 	class:is-unread={unread > 0}
+	data-project-session={agent ? '' : undefined}
 	onclick={onSelect}
 	oncontextmenu={onContextMenu}
 	onpointerdown={onPointerDown}
@@ -89,6 +94,8 @@
 				<Icon name="file-down" />
 			</span>
 		</span>
+	{:else if agent}
+		<AgentAvatar {agent} title={t.project.agentNames[agent]} {status} />
 	{:else}
 		<SessionAvatar {session} {bots} {botStatus} statusNote={elsewhere} />
 	{/if}
