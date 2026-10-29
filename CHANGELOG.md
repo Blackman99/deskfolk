@@ -10,6 +10,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - A terminal started from Tools opens in the workspace, so for a project folder anywhere else you had to `cd` there first. A directory row's menu in the Projects section (its "+", or a right-click on the row) now has Open terminal in project folder below Open project folder, and a project session's context menu has it too. It starts a shell in that directory: a terminal tab of its own on a wide window, the Terminal page on a phone. It works with no workspace set as well, since a project session needs none.
 
+### Scrolling the other pane keeps it the current one
+
+- With two conversations side by side and the caret in one composer, scrolling the other pane made it the current one and then, every other time, switched straight back to the pane you had left. It stays current now; the caret stays in the composer you left, and typing there takes the current pane back, as it already did on the other switches.
+
 ### Project sessions have the message index
 
 - A Bot's conversation has had a message index down its left edge, a tick for each line, since September; a project session's conversation with Claude Code or Codex had none. It has the same one now: hovering a tick shows the line, who said it and when, pressing it scrolls there, the lit tick follows where you are reading, and the arrow on top loads earlier lines. Once you have jumped back, new lines and the agent's progress no longer pull you down to the end. As in a Bot's conversation it shows from two lines on, and not at a phone's width.

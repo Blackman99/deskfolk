@@ -11,7 +11,19 @@
  * Not on a touch screen. There a step back the page takes itself closes a screen — the
  * conversation sliding away to the list, a page put down — and the field still sliding out
  * would bring the soft keyboard back up over the screen underneath. Panes are a desktop thing.
+ *
+ * Putting focus back is not the person moving it. A scroll makes the other pane current and
+ * leaves the caret where it was; when that switch is the step back, the caret comes back into
+ * the pane just left, and the workbench, which follows focus into a pane, took it for a move
+ * there and switched straight back (2026-10-29). `restoringFocus()` lets it tell the two apart.
  */
+let restoring = false;
+
+/** True only inside the `focus()` call that puts focus back, while its focusin is dispatched. */
+export function restoringFocus(): boolean {
+  return restoring;
+}
+
 export interface KeptFocus {
   /** Before the step: remember what has focus, and the caret if it is inside it. */
   hold(): void;
@@ -48,7 +60,12 @@ export function keptFocus(
         const { el, caret } = kept;
         const active = doc.activeElement;
         if (!el.isConnected || (active && active !== doc.body)) return;
-        el.focus({ preventScroll: true });
+        restoring = true;
+        try {
+          el.focus({ preventScroll: true });
+        } finally {
+          restoring = false;
+        }
         if (caret && el.contains(caret.startContainer)) {
           const selection = doc.getSelection();
           selection?.removeAllRanges();

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createRawSnippet, flushSync } from "svelte";
 import Workbench from "./Workbench.svelte";
 import { copyFor } from "../copy.ts";
+import { keptFocus } from "../kept-focus.ts";
 import { click, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { WB_SASH_PX, type MinSizeLookup, type WorkbenchLayout, type WorkbenchTab } from "./layout-types.ts";
@@ -241,6 +242,44 @@ test("typing where the caret was takes the current pane back from a scroll, pane
     flushSync();
     expect(state.seen.at(-1)!.focus.leafId).toBe("a");
   } finally {
+    close();
+  }
+});
+
+/*
+ * A scroll made the other pane current with the caret left behind. When that switch was the
+ * page's own step back, SvelteKit dropped focus and the page put it back in the pane just left,
+ * which switched straight back to it (2026-10-29).
+ */
+test("focus put back after a step back leaves the current pane where the scroll took it", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [aTab("t1")]), makeLeaf("b", [aTab("t2")]),
+  ]), "b");
+  const { host, close, state } = mountWorkbench(layout);
+  const field = document.createElement("textarea");
+  (host.querySelector('[data-body="t1"]') as HTMLElement).append(field);
+  try {
+    field.focus();
+    flushSync();
+    state.seen.length = 0;
+    state.layout = layout;
+    flushSync();
+
+    const kept = keptFocus(document, (run) => run(), () => false);
+    kept.hold();
+    field.blur();
+    kept.restore();
+    flushSync();
+    expect(document.activeElement).toBe(field);
+    expect(state.seen).toHaveLength(0);
+
+    // Focus that is not a putting back still says where the keyboard is.
+    field.blur();
+    field.focus();
+    flushSync();
+    expect(state.seen.at(-1)!.focus.leafId).toBe("a");
+  } finally {
+    field.blur();
     close();
   }
 });

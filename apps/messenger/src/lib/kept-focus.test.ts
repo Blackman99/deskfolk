@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { keptFocus } from "./kept-focus.ts";
+import { keptFocus, restoringFocus } from "./kept-focus.ts";
 
 /** What SvelteKit does to focus on a popstate: blur, then the body. */
 function popstate(): void {
@@ -40,6 +40,23 @@ test("the field the click focused gets focus back once the step back has landed"
   expect(document.activeElement).toBe(document.body);
   flush();
   expect(document.activeElement).toBe(b);
+});
+
+test("the focus put back says so while it lands, and only then", () => {
+  mount(`<textarea id="a"></textarea>`);
+  const a = document.getElementById("a") as HTMLTextAreaElement;
+  const heard: boolean[] = [];
+  a.addEventListener("focusin", () => heard.push(restoringFocus()));
+  a.focus();
+  const { later, flush } = deferred();
+  const kept = keptFocus(document, later, () => false);
+  kept.hold();
+  popstate();
+  kept.restore();
+  flush();
+  expect(document.activeElement).toBe(a);
+  expect(heard).toEqual([false, true]);
+  expect(restoringFocus()).toBe(false);
 });
 
 test("a contenteditable gets its caret back where it was", () => {

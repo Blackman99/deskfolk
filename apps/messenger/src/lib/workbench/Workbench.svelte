@@ -63,6 +63,7 @@
 	import WorkbenchLeaf from './WorkbenchLeaf.svelte';
 	import PaneContextMenu from './PaneContextMenu.svelte';
 	import { swallowNextClick, trackPointerDrag } from '../pointer-drag.ts';
+	import { restoringFocus } from '../kept-focus.ts';
 	import { paneEditAt, type PaneEdit } from './pane-edit.ts';
 
 	type Props = {
@@ -747,7 +748,11 @@
 	class:is-solo={!wide}
 	bind:this={host}
 	onpointerdowncapture={(event) => focusFrom(event.target)}
-	onfocusincapture={(event) => focusFrom(event.target)}
+	onfocusincapture={(event) => {
+		// Focus put back after a step back the page took itself stays where the caret was, and
+		// the current pane stays where the scroll took it: see kept-focus.ts.
+		if (!restoringFocus()) focusFrom(event.target);
+	}}
 	oncontextmenu={openPaneMenu}
 	onkeydowncapture={(event) => {
 		// Scrolling another pane leaves the caret where it was. Typing there again is the keyboard
