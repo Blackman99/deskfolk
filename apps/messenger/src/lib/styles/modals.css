@@ -119,7 +119,6 @@
 
 .confirm-dialog .modal-body {
   flex: none;
-  padding: 16px 20px 6px;
 }
 
 .confirm-dialog .confirm-copy {
@@ -148,10 +147,17 @@
     flex: 1;
     min-height: 46px;
   }
+}
 
+/*
+ * A finger needs a 44px ✕. It reaches into the header's padding for that, so the header stays
+ * as low as a pointer's and the ✕ sits where it does there.
+ */
+@media (max-width: 680px), (pointer: coarse) {
   .confirm-dialog .modal-close {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
+    margin: -8px -8px -8px 0;
   }
 }
 

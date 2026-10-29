@@ -98,8 +98,16 @@
 <style>
 	dialog.confirm-backdrop { margin: 0; border: 0; outline: none; width: 100vw; max-width: none; height: 100dvh; max-height: none; box-sizing: border-box; }
 	dialog.confirm-backdrop::backdrop { background: transparent; }
-	.confirm-dialog button { min-width: 44px; min-height: 44px; }
-	.confirm-dialog .modal-close { width: 44px; height: 44px; }
-	.confirm-option { display: flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 8px; font-size: 13px; color: var(--ink-secondary); cursor: pointer; }
+	.confirm-option { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-secondary); cursor: pointer; }
 	.confirm-option input { margin: 0; flex: none; width: 13px; height: 13px; accent-color: var(--accent); cursor: pointer; }
+	/*
+	 * A finger needs 44px. The box reaches into the padding around it for that, as the ✕ does in
+	 * modals.css, so the body keeps the spacing a pointer sees; a phone's buttons are sized there too.
+	 */
+	@media (max-width: 680px), (pointer: coarse) {
+		.confirm-option { min-height: 44px; margin-block: -12px; }
+	}
+	@media (pointer: coarse) and (min-width: 681px) {
+		.confirm-dialog .modal-foot button { min-height: 44px; }
+	}
 </style>

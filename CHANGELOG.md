@@ -14,6 +14,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - A Bot's conversation has had a message index down its left edge, a tick for each line, since September; a project session's conversation with Claude Code or Codex had none. It has the same one now: hovering a tick shows the line, who said it and when, pressing it scrolls there, the lit tick follows where you are reading, and the arrow on top loads earlier lines. Once you have jumped back, new lines and the agent's progress no longer pull you down to the end. As in a Bot's conversation it shows from two lines on, and not at a phone's width.
 
+### Confirmations are spaced like the other dialogs
+
+- A confirmation (deleting a bot, group or project session, clearing a history, and the like) sized its ✕ and buttons for a finger on every screen, so its header and footer each stood about 72px tall around a body that had 16px above the text and 6px below; the last line sat on the divider and the ✕ sat well inside the edge. With a pointer the ✕ and buttons are now the size the other dialogs use and the text has 18px above and below. On a phone or tablet the ✕ and buttons stay large enough for a finger (44px or more); the ✕ reaches into the header's padding for it, so the header stays as low and the ✕ in the same place. The "Also erase what you said here" box sits 14px under the text on every screen, where its 44px row and the margin above it used to leave over 30px.
+
 ### A project's sessions share one preview on a wide window
 
 - On a wide window each project session had a preview tab of its own, so two sessions in one directory, each opening a file Claude Code or Codex named, or one opening a file and the other Open project folder, gave two tabs named after the two sessions. A project now has one preview tab, named after its folder ("deskfolk project folder"): a file opened from any of its sessions, or the folder opened from its row or any session's menu, turns that tab. Tabs saved one per session from before fold into one when the app opens, keeping the one nearest the keyboard. A Bot conversation still keeps a preview of its own.

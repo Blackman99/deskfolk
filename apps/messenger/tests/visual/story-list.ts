@@ -6,6 +6,8 @@ export const STORY_SIZES = {
 	'shell-narrow': { width: 600, height: 820 },
 	'danger-dialog': { width: 900, height: 520 },
 	'danger-dialog-narrow': { width: 390, height: 844 },
+	// Clearing a history or deleting a group asks one more thing: the box under the copy.
+	'danger-dialog-option': { width: 900, height: 520 },
 	// A modal, not a flyout any more: shot at a window it fits in, with room under the field for
 	// the member list to open into.
 	'create-group-sheet': { width: 560, height: 560 },

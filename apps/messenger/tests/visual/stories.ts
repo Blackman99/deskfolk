@@ -39,6 +39,7 @@ import Shell from '../../src/lib/Shell.svelte';
 import Onboarding from '../../src/lib/Onboarding.svelte';
 import TeamStep from '../../src/lib/onboarding/TeamStep.svelte';
 import DangerDialog from '../../src/lib/overlays/DangerDialog.svelte';
+import { dangerCopy } from '../../src/lib/overlays/danger-confirm.ts';
 import GroupPane from '../../src/lib/panels/GroupPane.svelte';
 import ProfilePane from '../../src/lib/panels/ProfilePane.svelte';
 import RoutineCard from '../../src/lib/panels/RoutineCard.svelte';
@@ -1129,6 +1130,10 @@ const defs: Record<StoryName, Story> = {
 			onDismiss: () => {},
 			onConfirm: () => {}
 		}
+	},
+	'danger-dialog-option': {
+		component: DangerDialog as never,
+		props: { copy: dangerCopy('history', t), t, onDismiss: () => {}, onConfirm: () => {}, onOptionChange: () => {} }
 	},
 	'create-group-sheet': {
 		component: CreateGroupSheet as never,
