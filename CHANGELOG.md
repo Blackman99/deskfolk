@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Saying "stop" no longer pauses a Bot's routines
+
+- After you said "stop" in a direct (or stopped one Bot in a group), that Bot's routines stopped too until you spoke to it again, and then the missed run fired ahead of what you had just asked: one "stop for now" could keep a daily routine from running for days. A stop now ends only the work running at the time; the routine still fires when next due, including after you stop one of its runs. "Stop every Bot" and stopping the routine's own job still pause it.
+
 ### Antigravity is no longer stopped for reading back an account you gave it to keep
 
 - Two Antigravity project sessions were each stopped once, both with "your agents' own settings and credentials are off limits". In one you had given it a test account to keep: it stored the password in the keychain, read it back with `security find-generic-password` to run a test, and was stopped at the read. In the other you asked it to fix that, and its first step, `security find-generic-password -h` for the command's help, stopped it again. The rule went by the command's name alone: with it in a command, the command was "asking the keychain for a secret", whichever item it asked for.

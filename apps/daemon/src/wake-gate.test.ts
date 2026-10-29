@@ -454,7 +454,8 @@ describe("legacy phase 0–2 holds turn every old wake away, and say so in the w
     expect(suppressed(h, director)).toEqual([{ cause: "plan_nudge", holds: [stop.id] }]);
   });
 
-  test("11. a routine due under a hold is recorded once, fires nothing, and fires once for its latest due time after the lift", async () => {
+  // A stop on the Bot holds only the run going when it was made (routine-stop.test.ts); one on everything pauses the routine.
+  test("11. a routine due under a hold on everything is recorded once, fires nothing, and fires once for its latest due time after the lift", async () => {
     const h = await scenario();
     const { director } = videoTeam(h);
     const routine = h.store.createRoutine({ bot_id: director.id, title: "日报", instruction: "写今天的进度", schedule: { kind: "daily", time: "09:00" } });
@@ -465,7 +466,7 @@ describe("legacy phase 0–2 holds turn every old wake away, and say so in the w
       at.setHours(hour!, minute!, 0, 0);
       return at;
     };
-    const stop = hold(h, "bot", director.id);
+    const stop = hold(h, "global", null);
 
     // Every scheduler tick asks again; tomorrow's and the day after's due times go by held.
     expect(h.engine.fireRoutine(routine.id, day(1, "09:05"))).toBeNull();

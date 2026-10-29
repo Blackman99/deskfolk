@@ -1,0 +1,24 @@
+# 叫停不管以后到点的日程 / A stop does not reach later routine runs
+
+Status: implemented 2026-10-29 on a branch, landed 2026-11-26 after [ADR 0101](0101-stopping-and-going-on-say-nothing.md) (decision 3 changed to match it). Narrows [ADR 0041](0041-control-plane-holds-and-restarts.md)'s "every wake goes through the gate" for routines; [ADR 0071](0071-a-stop-is-only-stop-for-now.md) and [ADR 0081](0081-a-stop-is-just-a-stop.md) stand.
+
+2026-10-27 晚，应用两次在你和开发助手的私聊里催《去掉客厅海信电视的广告》还没收口，22:52 你在那里说「先停下」。读句读成叫停，范围是对面这个 Bot：「已停下开发助手的全部工作」。这条叫停要等你下一句话才解除，你两天没再对它说话。它有两个每日日程（08:30 X / GitHub 热点巡检、09:00 curio 每日上新），10-28 和 10-29 两天四次到点都被这条叫停挡下（`wake.suppressed`，`cause: routine`）。10-29 11:54 你发来新的要求，叫停解除，两个日程立刻补跑，你的要求反倒排到了它们后面。你说：「我在对话里发送停下这种话，会导致 bot 的日程也不继续了。」
+
+On the evening of 2026-10-27 the app twice nudged 开发助手 in your direct about an unfinished job; at 22:52 you said 「先停下」 ("stop for now") there. The reader took it as a stop on that Bot: "stopped all of 开发助手's work". A stop like that ends at your next line, and you did not speak to it for two days. It has two daily routines (08:30 and 09:00); all four due times on 10-28 and 10-29 were turned away under that stop. At 11:54 on 10-29 your new request lifted it, both routines fired at once, and your request queued behind them. You said: "Saying something like 'stop' in a conversation keeps the Bot's routines from going on too."
+
+## 决定 / Decisions
+
+1. **叫停管的是叫停时已有的活 / A stop covers the work there is when you make it.** 日程之后到点的那一次是日程要的新活，不是被停下的那件。停在一个 Bot 上的叫停（私聊里的「停下」、群里点名的「停下 X」、「停下 X 的全部工作」），和停在这个 Bot 在日程那件事里的活上的叫停（日程正在跑时按停止），都不挡之后到点的那一次：它照常开轮、照常做有副作用的事。叫停时正在跑的那一次照样停下，停在原处，等你下一句话。 / A routine's later due time is new work the routine asked for, not the work that was stopped. A stop on a Bot (「停下」 in its direct, 「停下 X」 in a group, "stop all of X's work"), and a stop on that Bot's work in the routine's job (Stop pressed on a run), do not hold a later due time: it opens a turn and makes its calls as usual. The run going when you stopped still stops and waits for your next word.
+
+2. **暂停日程的叫停照旧 / What pauses a routine still does.** 停下全部（「停下所有 Bot」、菜单栏「全部停下」、花费上限），停下日程那件事本身（流程图上的「停下这件事」），以及停在日程所在会话上的叫停，仍然挡住到点：这几种本来就是冲着全部或冲着这件事来的，后两种还把日程的规划搁置。挡下时和以前一样只记一次、不算已跑，解除后按最近一次补跑一回。真要它以后不跑，关掉这个日程。 / A stop on everything ("Stop every Bot", the menu bar's Stop everything, the spend cap), on the routine's own job (Stop this job on its flow board), or on the conversation it runs in still turns a due time away: those are aimed at everything or at this job, and the last two park the routine's plan. As before it is recorded once, counts as not yet run, and runs once for its latest due time after the lift. To have a routine stop running, turn it off.
+
+3. **不回执 / No receipt.** 原先打算在回执上多一行「日程不在这次叫停里，到点照常跑。」；落地前 [ADR 0101](0101-stopping-and-going-on-say-nothing.md) 已经让叫停在会话里一行都不回，这一行也就不写，日程到点照常跑本身就是回答。 / The plan was a receipt line "Its routines are not stopped: they run when due."; before this landed, [ADR 0101](0101-stopping-and-going-on-say-nothing.md) had stops write nothing in the conversation, so no line is written and the routine firing when due is the answer.
+
+## 取舍 / Trade-offs
+
+- **按住一个 Bot 不让它动的叫停，不再管它的日程。** 想让日程也停，说「停下所有 Bot」，或者关掉日程。私聊里的「停下」本来就是叫停对面这个 Bot，读句没法从这一句分出你是不是也想停日程；以前的默认让日程无声地停好几天，代价比偶尔多跑一次大。 / A stop holding one Bot no longer reaches its routines; say "stop every Bot" or turn the routine off to stop them too. A 「停下」 in a direct cannot tell whether you meant the routines as well, and the old default stopped them silently for days, which costs more than an unwanted run now and then.
+- **叫停时正在跑的那一次仍等你开口。** 第二天的那一次照常开，前一天被停下的那一次留着，你再对它说话时照 ADR 0081 处理。 / The run you stopped still waits for your word; the next day's run opens beside it, and the stopped one goes as ADR 0081 says when you next speak.
+
+## 实现 / Implementation
+
+`store/holds.ts`：`scopeCovers` 的 `bot` 和 `bot_plan` 两支多一个 `routineRunSince`：主体的任务单属于日程的常驻规划、而且是在这条叫停之后开的，就不算被覆盖。所有「是否被扣」的判断（`holdsCovering` / 叫醒闸、`turnHeldBy` / 有副作用的调用、收件、回看、turns 表的触发器）都走这一处，触发器每次打开数据库重建，不用迁移。`engine/fire.ts`：`fireRoutine` 到点时任务单还没开，先把这一拍之前建的 `bot` / `bot_plan` 叫停放过去，数据库在写任务单和这一轮时按同一条规则再判一次；被挡下时只记真正挡住它的那几条（`mayWake` 的 `holds`）。测试：`routine-stop.test.ts`；`wake-gate.test.ts` 第 11 条改用停下全部。 / `scopeCovers` (store/holds.ts) gains `routineRunSince` on its `bot` and `bot_plan` branches: a subject whose ticket belongs to a routine's standing plan and was opened after the hold is not covered. Every "is this held?" asks there, so the wake gate, the effect gate, the inbox, check-backs and the turns triggers agree; the triggers are made again on every open, so there is no migration. `fireRoutine` passes over `bot` / `bot_plan` holds made before the tick (the ticket does not exist yet), and the database judges the ticket and turn by the same rule as they are written; a turned-away due time records only the holds that held it. Tests: `routine-stop.test.ts`; `wake-gate.test.ts` #11 now uses a stop on everything.

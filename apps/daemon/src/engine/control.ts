@@ -69,10 +69,10 @@ export function heldWake(store: Store, wake: Wake): Hold[] {
 /**
  * True when nothing holds the wake. Otherwise it records the wake as suppressed and says no.
  * `once` names a wake that asks again and again for the same thing (a routine's due time, on every
- * tick): it is recorded the first time only.
+ * tick): it is recorded the first time only. `holds` is what a caller that asked already found.
  */
-export function mayWake(store: Store, wake: Wake, opts: { once?: string } = {}): boolean {
-  const holds = heldWake(store, wake);
+export function mayWake(store: Store, wake: Wake, opts: { once?: string; holds?: Hold[] } = {}): boolean {
+  const holds = opts.holds ?? heldWake(store, wake);
   // A job whose conversation moved to an engine with no jobs stays where it was until it moves back (ADR 0103).
   const stopped = store.capabilities().engine_level >= ENGINE_LEVELS.work_items && wake.taskId
     ? !store.isPlanRunnable(wake.taskId) ? "plan_not_runnable" : !store.jobRuns(wake.taskId) ? "no_jobs" : null

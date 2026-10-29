@@ -111,13 +111,29 @@ export function heldBy(subject: HeldSubject, alias = "hs"): string {
 
 function scopeCovers(subject: HeldSubject, alias: string): string {
   return `(${alias}.scope = 'global'
-    OR (${alias}.scope = 'bot' AND ${alias}.scope_id = ${subject.bot})
+    OR (${alias}.scope = 'bot' AND ${alias}.scope_id = ${subject.bot} AND NOT ${routineRunSince(subject.ticket, alias)})
     OR (${alias}.scope = 'session' AND (${alias}.scope_id = ${subject.session}
         OR ${alias}.scope_id = ${planSession(subject.task)}))
     OR (${alias}.scope = 'plan' AND ${alias}.scope_id = ${subject.task})
     OR (${alias}.scope = 'ticket' AND ${alias}.scope_id = ${subject.ticket})
-    OR (${alias}.scope = 'bot_plan' AND ${alias}.scope_id = ${subject.bot} || ':' || ${subject.task})
+    OR (${alias}.scope = 'bot_plan' AND ${alias}.scope_id = (${subject.bot} || ':' || ${subject.task})
+        AND NOT ${routineRunSince(subject.ticket, alias)})
     OR (${alias}.scope = 'turn' AND ${alias}.scope_id = ${subject.turn}))`;
+}
+
+/**
+ * Whether the subject's ticket is a routine's run that came due after the hold was made. A stop on
+ * a Bot, or on its work in a routine's standing plan, holds the run going when you said it and none
+ * after: each later due time is a new run your schedule asked for (2026-10-29: 「先停下」 in a direct
+ * kept two dailies from firing for two days, until you next spoke to the Bot). A stop on everything
+ * still holds them, and so does one on the routine's plan or its conversation, which parks the plan.
+ * The run's ticket is stamped with the scheduler tick that fires it (`fireRoutine`): that is what
+ * this compares.
+ */
+function routineRunSince(ticket: string, alias: string): string {
+  return `EXISTS (SELECT 1 FROM tickets run_k JOIN tasks run_t ON run_t.id = run_k.task_id
+      JOIN holds run_h ON run_h.id = ${alias}.hold_id
+      WHERE run_k.id = ${ticket} AND run_t.routine_id IS NOT NULL AND run_k.created_at > run_h.created_at)`;
 }
 
 /** `EXISTS` form of {@link heldBy}: true while any hold in force covers the subject. */

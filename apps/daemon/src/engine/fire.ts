@@ -53,6 +53,8 @@ export type Fire = {
   /**
    * Fires a routine that is due. One a hold covers stays unclaimed, so once the hold is lifted it
    * fires once, for its latest due time; the wake it would have been is recorded once per due time.
+   * A stop on its Bot, or on the Bot's work in its plan, covers no due time after it was made: that
+   * stop held the run going then, and a stop on everything or on the plan is what pauses the routine.
    */
   fireRoutine: (routineId: string, now?: Date) => Turn | null;
 };
@@ -198,10 +200,16 @@ export function createFire(deps: FireDeps): Fire {
       sessionId: direct,
       taskId: jobs ? store.routineTask(routineId)?.id ?? null : null,
     };
-    if (heldWake(store, wake).length > 0) {
+    // A stop on the Bot, or on its work in this routine's plan, made before this tick holds only the
+    // runs there were then (store/holds.ts `routineRunSince`); the database asks again of the ticket.
+    const nowIso = now.toISOString();
+    const holding = heldWake(store, wake).filter(
+      (hold) => !((hold.scope === "bot" || hold.scope === "bot_plan") && hold.created_at < nowIso),
+    );
+    if (holding.length > 0) {
       // Only a due time is a wake, asked about on every tick until the lift; it stays unclaimed.
       const due = store.routineDue(routineId, now);
-      if (due) mayWake(store, wake, { once: `routine:${routineId}:${due.dueAt}` });
+      if (due) mayWake(store, wake, { once: `routine:${routineId}:${due.dueAt}`, holds: holding });
       return null;
     }
     const result = store.transaction(() => {
