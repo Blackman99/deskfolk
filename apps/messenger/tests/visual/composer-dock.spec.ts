@@ -244,7 +244,8 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 		/*
 		 * A project session's composer is its own (ADR 0095), and it only ever asked the window: in
 		 * a 500px pane it kept the wide card and margins (2026-10-21). It follows the conversation's
-		 * width now, as a Bot's does: the phone's 12px up to 680px, docked at 480px and under.
+		 * width now, as a Bot's does: the phone's 12px up to 680px, docked at 480px and under. Wide,
+		 * the text keeps 40px beside it for the message index, as a Bot's does; the card keeps 24.
 		 */
 		test('a project session\'s composer follows the pane\'s width, and docks at 480', async ({ baseURL }) => {
 			const browser = await engine.launch();
@@ -269,7 +270,7 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 					};
 				});
 			await storyWidth(page, 760);
-			await expect.poll(shape).toEqual({ text: 24, left: 24, right: 24, bottom: 0, rounded: true, rule: '0px', filled: false });
+			await expect.poll(shape).toEqual({ text: 40, left: 24, right: 24, bottom: 0, rounded: true, rule: '0px', filled: false });
 			for (const px of [560, 481]) {
 				await storyWidth(page, px);
 				await expect.poll(shape).toEqual({ text: 12, left: 12, right: 12, bottom: 0, rounded: true, rule: '0px', filled: false });
@@ -318,12 +319,20 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 						position: getComputedStyle(composer).position,
 						left: Math.round(card.left - textLeft),
 						right: Math.round(textRight - card.right),
+						centre: Math.round((card.left + card.right - textLeft - textRight) / 2),
 						lastClear: inner.lastElementChild!.getBoundingClientRect().bottom <= card.top
 					};
 				});
-			for (const px of [900, 560, 481]) {
+			// Wide, the message index takes room beside the text, as in a Bot's: the card is a little
+			// wider than the text, and they share a centre.
+			await storyWidth(page, 900);
+			await expect.poll(async () => {
+				const { bar, under, position, centre, lastClear } = await atEnd();
+				return { bar, under, position, centre, lastClear };
+			}).toEqual({ bar: 15, under: 0, position: 'absolute', centre: 0, lastClear: true });
+			for (const px of [560, 481]) {
 				await storyWidth(page, px);
-				await expect.poll(atEnd).toEqual({ bar: 15, under: 0, position: 'absolute', left: 0, right: 0, lastClear: true });
+				await expect.poll(atEnd).toEqual({ bar: 15, under: 0, position: 'absolute', left: 0, right: 0, centre: 0, lastClear: true });
 			}
 			// Docked, the bar is in the chat's flow again: the list ends on its top edge.
 			await storyWidth(page, 480);
