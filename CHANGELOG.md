@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Project sessions have the message index
+
+- A Bot's conversation has had a message index down its left edge, a tick for each line, since September; a project session's conversation with Claude Code or Codex had none. It has the same one now: hovering a tick shows the line, who said it and when, pressing it scrolls there, the lit tick follows where you are reading, and the arrow on top loads earlier lines. Once you have jumped back, new lines and the agent's progress no longer pull you down to the end. As in a Bot's conversation it shows from two lines on, and not at a phone's width.
+
 ### A project's sessions share one preview on a wide window
 
 - On a wide window each project session had a preview tab of its own, so two sessions in one directory, each opening a file Claude Code or Codex named, or one opening a file and the other Open project folder, gave two tabs named after the two sessions. A project now has one preview tab, named after its folder ("deskfolk project folder"): a file opened from any of its sessions, or the folder opened from its row or any session's menu, turns that tab. Tabs saved one per session from before fold into one when the app opens, keeping the one nearest the keyboard. A Bot conversation still keeps a preview of its own.

@@ -37,6 +37,8 @@
 	import MessageAttachments from './MessageAttachments.svelte';
 	import MessageImageLightbox, { type ImageOrigin } from './MessageImageLightbox.svelte';
 	import { pictureOrigin, pictureStandIn } from './enlarged-images.ts';
+	import { activeIndexMark, INDEX_MIN_MARKS, messageIndexMarks, type IndexMark } from './message-index.ts';
+	import MessageIndex from './MessageIndex.svelte';
 
 	/**
 	 * A project session's conversation (ADR 0095): you and the agent in a directory, as in the
@@ -48,7 +50,8 @@
 	 * clip. Plan mode is a switch in the composer (Shift+Tab, as in the terminal), and the plan it
 	 * brings is a card of its own; typing `/` lists the agent's commands (ADR 0098). A Codex
 	 * session (ADR 0099) has no plan mode and no account to pick; its `/` lists the commands the app
-	 * carries out for Codex and its skills. The header is the pane's or the page's own.
+	 * carries out for Codex and its skills. The message index down the left edge is a Bot
+	 * conversation's own. The header is the pane's or the page's own.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -329,16 +332,59 @@
 		});
 	}
 
+	/** The next page back from the Mac, keeping what you were reading where it was. */
+	async function loadEarlier(): Promise<void> {
+		if (!scroller || !view.hasOlderMessages || view.olderLoading) return;
+		const before = scroller.scrollHeight;
+		await runtime.loadOlderMessages(selected.id);
+		await tick();
+		// What came in above must not push what you were reading down.
+		if (scroller) scroller.scrollTop += scroller.scrollHeight - before;
+	}
+
 	async function onScroll(): Promise<void> {
 		if (!scroller) return;
 		stuck = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
-		if (scroller.scrollTop < 120 && view.hasOlderMessages && !view.olderLoading) {
-			const before = scroller.scrollHeight;
-			await runtime.loadOlderMessages(selected.id);
-			await tick();
-			// What came in above must not push what you were reading down.
-			if (scroller) scroller.scrollTop += scroller.scrollHeight - before;
+		refreshActiveIndex();
+		if (scroller.scrollTop < 120) await loadEarlier();
+	}
+
+	/**
+	 * The message index down the left edge, as a Bot conversation has: a tick for each line, yours
+	 * in the accent; under the pointer a card with the line, and a press goes to it. Every line here
+	 * is mounted, so a press only scrolls; the arrow on top fetches the page before the first.
+	 */
+	const indexMarks = $derived(messageIndexMarks(lines.map((message) => ({ type: 'message' as const, message }))));
+	const showMessageIndex = $derived(indexMarks.length >= INDEX_MIN_MARKS || view.hasOlderMessages);
+	let activeIndexId = $state<string | null>(null);
+
+	/** The line at the top of what is on screen, or the last one while you are at the end. */
+	function refreshActiveIndex(): void {
+		const list = scroller;
+		if (!list) return;
+		const listTop = list.getBoundingClientRect().top;
+		const positions = new Map<string, number>();
+		for (const el of list.querySelectorAll<HTMLElement>('[data-message-id]')) {
+			positions.set(el.dataset.messageId!, el.getBoundingClientRect().top - listTop + list.scrollTop);
 		}
+		activeIndexId = activeIndexMark(indexMarks, positions, list.scrollTop, list.scrollHeight - list.scrollTop - list.clientHeight < 80);
+	}
+
+	/** Up to a line: you are reading back from here, so what comes in next no longer pulls you down. */
+	function jumpToIndexMark(mark: Pick<IndexMark, 'id'>): void {
+		const list = scroller;
+		const el = list?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(mark.id)}"]`);
+		if (!list || !el) return;
+		stuck = false;
+		const top = el.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop - 24;
+		list.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
+		activeIndexId = mark.id;
+	}
+
+	function indexSender(mark: IndexMark): string {
+		if (mark.author === USER_MEMBER) return t.common.you;
+		if (mark.kind === 'system' || mark.author === 'app') return locale === 'zh' ? '系统' : 'System';
+		return agentName;
 	}
 
 	// Another conversation starts at its end. Its id, not its summary: each line or read in this
@@ -347,6 +393,7 @@
 	$effect(() => {
 		void sessionId;
 		stuck = true;
+		activeIndexId = null;
 		toBottom();
 	});
 	// New lines and a run's progress follow you down, unless you scrolled up to read.
@@ -356,6 +403,7 @@
 		void run?.activity;
 		void run?.status;
 		if (stuck) toBottom();
+		void tick().then(refreshActiveIndex);
 	});
 	/**
 	 * The composer floats over the transcript, as a Bot's does, so the list and its scrollbar run to
@@ -368,10 +416,14 @@
 		const bar = composerEl;
 		const chat = list?.parentElement;
 		if (!list || !bar || !chat || typeof ResizeObserver === 'undefined') return;
+		let frame = 0;
 		const apply = () => {
 			chat.style.setProperty('--composer-height', `${Math.ceil(bar.getBoundingClientRect().height)}px`);
 			chat.style.setProperty('--stream-scrollbar', `${list.offsetWidth - list.clientWidth}px`);
 			if (stuck) list.scrollTop = list.scrollHeight;
+			// Which line the index marks is state; written from here it would set the observer off again.
+			cancelAnimationFrame(frame);
+			frame = requestAnimationFrame(refreshActiveIndex);
 		};
 		// The scrollbar showing up narrows the list's content box, so watching the list sees it come and go.
 		const observer = new ResizeObserver(apply);
@@ -380,6 +432,7 @@
 		apply();
 		return () => {
 			observer.disconnect();
+			cancelAnimationFrame(frame);
 			chat.style.removeProperty('--composer-height');
 			chat.style.removeProperty('--stream-scrollbar');
 		};
@@ -494,7 +547,7 @@
 	}
 </script>
 
-<div class="project-chat flex-1 min-h-0 flex flex-col bg-pane" data-project-chat={selected.id}>
+<div class="project-chat flex-1 min-h-0 flex flex-col bg-pane" class:has-message-index={showMessageIndex} data-project-chat={selected.id}>
 	<div class="transcript" bind:this={scroller} onscroll={() => void onScroll()}>
 		<div class="transcript-inner">
 			{#if view.hasOlderMessages}
@@ -510,9 +563,9 @@
 					<div class="day"><span>{formatDateDivider(message.created_at, locale)}</span></div>
 				{/if}
 				{#if who === 'app'}
-					<div class="line is-app" data-line="app">{message.body}</div>
+					<div class="line is-app" data-line="app" data-message-id={message.id}>{message.body}</div>
 				{:else if who === 'you'}
-					<div class="line is-you" data-line="you">
+					<div class="line is-you" data-line="you" data-message-id={message.id}>
 						<div class="bubble">
 							{#if message.body}<div class="words">{message.body}</div>{/if}{#if message.attachments.length > 0}
 								<MessageAttachments
@@ -527,7 +580,7 @@
 						<span class="time">{formatMessageTime(message.created_at)}</span>
 					</div>
 				{:else}
-					<div class="line is-agent" data-line="agent">
+					<div class="line is-agent" data-line="agent" data-message-id={message.id}>
 						<MarkdownBody source={message.body} copyLabel={t.chat.copyCode} copiedLabel={t.chat.copied} onOpenArtifact={(path) => openCited(path, message.id)} />
 						<span class="time">{formatMessageTime(message.created_at)}</span>
 					</div>
@@ -591,6 +644,24 @@
 			{/if}
 		</div>
 	</div>
+
+	{#if showMessageIndex}
+		{#key selected.id}
+			<MessageIndex
+				marks={indexMarks}
+				activeId={activeIndexId}
+				{locale}
+				label={t.stream.messageIndex}
+				emptyLabel={t.stream.messageIndexEmpty}
+				sender={indexSender}
+				hasEarlier={view.hasOlderMessages}
+				loading={view.olderLoading}
+				earlierLabel={view.olderLoading ? t.stream.loadingEarlier : t.stream.loadEarlier}
+				onLoadEarlier={() => void loadEarlier()}
+				onJump={jumpToIndexMark}
+			/>
+		{/key}
+	{/if}
 
 	<div class="composer" bind:this={composerEl}>
 		<div class="composer-column">
@@ -749,6 +820,12 @@
 		/* Room for the composer floating over this list, as tall as it actually is. */
 		padding: 20px 24px calc(var(--composer-height, 120px) + 16px);
 		box-sizing: border-box;
+	}
+
+	/* Room for the index; a conversation narrow enough to hide it takes this back below. */
+	.has-message-index .transcript-inner {
+		padding-left: 40px;
+		padding-right: 40px;
 	}
 
 	.earlier {
@@ -1108,7 +1185,8 @@
 
 	/* The conversation's own width, as in a Bot's (the `conversation` container): a workbench pane as narrow as a phone gets it in a wide window too. */
 	@container conversation (max-width: 680px) {
-		.transcript-inner {
+		.transcript-inner,
+		.has-message-index .transcript-inner {
 			padding: 14px 12px calc(var(--composer-height, 120px) + 12px);
 		}
 
@@ -1125,7 +1203,8 @@
 	/* As narrow as a phone itself the composer docks, as a Bot's does: a bar across the bottom, its
 	   line on top, in the chat's flow, so the transcript ends above it and keeps no room for it. */
 	@container conversation (max-width: 480px) {
-		.transcript-inner {
+		.transcript-inner,
+		.has-message-index .transcript-inner {
 			padding-bottom: 12px;
 		}
 

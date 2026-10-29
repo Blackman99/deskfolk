@@ -658,3 +658,86 @@ test("a new summary of the session leaves the transcript where you scrolled to",
   expect(top).toBe(5000);
   close();
 });
+
+/** Thirty lines a second apart, so their order is their numbers'. */
+const thirtyLines = () =>
+  Array.from({ length: 30 }, (_, i) =>
+    aMessage({ id: `m${i}`, session_id: "proj-1", body: `第 ${i} 行`, created_at: `2026-09-19T02:00:${String(i).padStart(2, "0")}.000Z` }));
+
+/**
+ * A transcript laid out as a browser would: each line 100px under the one before, the list
+ * scrolling over them. happy-dom lays nothing out, so the boxes are given.
+ */
+function laidOut(host: HTMLElement) {
+  const transcript = host.querySelector<HTMLElement>(".transcript")!;
+  let top = 0;
+  Object.defineProperty(transcript, "scrollHeight", { configurable: true, get: () => 3000 });
+  Object.defineProperty(transcript, "clientHeight", { configurable: true, get: () => 600 });
+  Object.defineProperty(transcript, "scrollTop", { configurable: true, get: () => top, set: (value: number) => { top = value; } });
+  transcript.scrollTo = ((options: ScrollToOptions) => { top = options.top ?? top; }) as typeof transcript.scrollTo;
+  const place = () => host.querySelectorAll<HTMLElement>("[data-message-id]").forEach((line, index) => {
+    line.getBoundingClientRect = () => ({ top: index * 100 - top }) as DOMRect;
+  });
+  place();
+  return { transcript, place, get top() { return top; }, set top(value: number) { top = value; } };
+}
+
+test("the message index has a tick for each line, as a Bot conversation's, each saying whose it is", () => {
+  const { host, close } = open(null);
+  const entries = host.querySelectorAll<HTMLButtonElement>(".message-index [data-index-id]");
+  expect([...entries].map((entry) => entry.dataset.indexId)).toEqual(["m1", "m2", "m3"]);
+  expect(entries[0]!.getAttribute("aria-label")).toBe(`${t.common.you} · 跑一下测试`);
+  expect(entries[1]!.getAttribute("aria-label")).toBe("Claude Code · 好的，在跑。");
+  expect(entries[2]!.getAttribute("aria-label")).toBe("系统 · 来自终端会话");
+  expect(host.querySelector(".project-chat")?.classList.contains("has-message-index")).toBe(true);
+  close();
+});
+
+test("one line is not enough for an index; a page before it is, and the index's arrow fetches that page", async () => {
+  const session = aProjectSession();
+  const one = [aMessage({ id: "m1", session_id: "proj-1", body: "跑一下测试" })];
+  const alone = render(ProjectChat, { runtime: fakeRuntime({ sessions: [session], messages: one }), t, selected: session, onOpenArtifact: () => {} });
+  expect(alone.host.querySelector(".message-index")).toBeNull();
+  alone.close();
+
+  const runtime = fakeRuntime({ sessions: [session], messages: one });
+  runtime.sessionView("proj-1").messageNext = "cursor-1";
+  const { host, close } = render(ProjectChat, { runtime, t, selected: session, onOpenArtifact: () => {} });
+  click(host.querySelector(".message-index .index-earlier"));
+  await settle();
+  expect(runtime.calls.filter((c) => c.name === "loadOlderMessages").map((c) => c.args)).toEqual([["proj-1"]]);
+  close();
+});
+
+test("a press on the index scrolls to that line and marks it; what comes in next leaves you there", async () => {
+  const session = aProjectSession();
+  const props = reactive({ runtime: fakeRuntime({ sessions: [session], messages: thirtyLines() }), t, selected: session, onOpenArtifact: () => {} });
+  const { host, close } = render(ProjectChat, props as never);
+  const list = laidOut(host);
+  await tick();
+  const entries = host.querySelectorAll<HTMLButtonElement>(".message-index [data-index-id]");
+  expect(entries).toHaveLength(30);
+  click(entries[10]);
+  flushSync();
+  // The line sits just under the top of the list.
+  expect(list.top).toBe(976);
+  expect(host.querySelector('[data-index-id="m10"]')?.getAttribute("aria-current")).toBe("location");
+
+  // A line the agent sends meanwhile does not pull you down to it.
+  props.runtime.snapshot.messages = [
+    ...props.runtime.snapshot.messages,
+    aMessage({ id: "m30", session_id: "proj-1", kind: "bot", author: "agent", body: "跑完了", created_at: "2026-09-19T02:01:00.000Z" }),
+  ];
+  flushSync();
+  await tick();
+  list.place();
+  expect(list.top).toBe(976);
+  expect(host.querySelectorAll(".message-index [data-index-id]")).toHaveLength(31);
+
+  // Reading on, the mark follows the line at the top.
+  list.top = 1500;
+  list.transcript.dispatchEvent(new Event("scroll"));
+  flushSync();
+  expect(host.querySelector('[aria-current="location"]')?.getAttribute("data-index-id")).toBe("m15");
+  close();
+});
