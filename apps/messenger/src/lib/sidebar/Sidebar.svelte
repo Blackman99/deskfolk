@@ -350,7 +350,6 @@
 	{#if !phone}
 		<div class="brand-row" data-tauri-drag-region={dragRegion}>
 			<BrandMark size={22} />
-			<span class="brand-name" data-tauri-drag-region={dragRegion}>Deskfolk</span>
 			{#if !viewingArchived}<WorkingFilter {t} {workingOnly} {toggleWorkingOnly} />{/if}
 			<FocusToggle {t} />
 			{#if onCollapse}{@render collapseButton()}{/if}
@@ -717,7 +716,7 @@
 		.groups .archived-ghead { display: none; }
 	}
 
-	/* The mark and the name, with the list's two switches at the far end. */
+	/* The mark alone, as on the folded rail, with the list's switches at the far end. */
 	.brand-row {
 		display: flex;
 		align-items: center;
@@ -734,27 +733,21 @@
 	}
 
 	/*
+	 * The first switch takes the row's slack, which pushes them all to the far end and leaves the
+	 * gap as the row itself, so it still moves the window. It holds with the mark hidden below.
+	 */
+	.brand-row > :global(.brand-mark + *) {
+		margin-left: auto;
+	}
+
+	/*
 	 * Behind the traffic lights, a list dragged near its narrowest has no room for the mark and its
-	 * three buttons (22 + 3 × 30 + gaps = 136px past the lights' padding): the name has already
-	 * gone, so the mark goes too.
+	 * three buttons (22 + 3 × 30 + gaps = 136px past the lights' padding), so the mark goes.
 	 */
 	@container brand-row (max-width: 135px) {
 		:global(:root[data-chrome='mac']) .brand-row > :global(.brand-mark) {
 			display: none;
 		}
-	}
-
-	.brand-name {
-		flex: 1;
-		min-width: 0;
-		margin-left: 4px;
-		font-size: 15px;
-		font-weight: 650;
-		letter-spacing: -0.01em;
-		color: var(--ink);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 
 	.search-wrap {
