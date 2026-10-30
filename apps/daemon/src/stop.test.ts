@@ -1,15 +1,16 @@
 /**
  * Your stops and go-ons carried out (ADR 0040 P2, engine/stop.ts): a line that is only a stop makes
- * holds and ends the work they cover at once, with no model call; the app's receipt says what
- * happened, from the holds' own record; a go on lifts them and opens the stopped work again on a
- * note; a line that only might be control is delivered as usual, carrying the buttons; Stop on a
+ * holds and ends the work they cover at once, with no model call, and the app says nothing about it
+ * (ADR 0101): what happened is on the holds' own record; a go on lifts them and opens the stopped
+ * work again on a note; a line that only might be control is delivered as usual, carrying the
+ * buttons, and the buttons of receipts written before ADR 0101 still work; Stop on a
  * turn's card holds that Bot's work in the plan until you next speak about it, keeping the
  * appointments it made for then instead of cancelling them. Fixture F-a
  * (scenarios/f-a-stop.test.ts) replays the incident; these pin each piece.
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import type { CompletionResult } from "./completions";
-import type { ClientEvent, Hold } from "@real-bot/protocol";
+import type { ClientEvent, ControlOffer, ControlPlanOffer, ControlScope, Hold, MessageControl } from "@real-bot/protocol";
 import { openPlan, planSpec, videoTeam } from "./scenarios/video-team";
 import { call, checkBack, createScenario, endTurn, fileUnder, requestText, say, sendMessage, shell, tool, type Scenario, type ScenarioOptions } from "./test-kit/scenario";
 
@@ -62,7 +63,7 @@ function appHold(h: Scenario, scope: Hold["scope"], scopeId: string | null): Hol
 }
 
 describe("a stop line", () => {
-  test("makes a hold of yours, ends every turn it covers, sets its appointments aside and says so, on one reading", async () => {
+  test("makes a hold of yours, ends every turn it covers, sets its appointments aside and says nothing, on one reading", async () => {
     const h = await scenario();
     const { director, reviewer, room } = videoTeam(h);
     const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
@@ -82,7 +83,7 @@ describe("a stop line", () => {
     expect(h.store.getTurn(turn.id).status).toBe("stopped");
     // ADR 0040 benchmark S asks for quiet within ten seconds; here it is one write.
     expect(Date.now() - startedAt).toBeLessThan(10_000);
-    // What it was doing when it stopped, for the receipt and for going on later.
+    // What it was doing when it stopped, for the board and for going on later.
     expect(hold!.effect.stopped_turns).toEqual([
       {
         turn_id: turn.id,
@@ -102,25 +103,8 @@ describe("a stop line", () => {
     // Where it belongs is read beside it, and is not waited on.
     expect(h.judgeCalls().filter((row) => row.at > stop.created_at).map((row) => row.kind).filter((kind) => kind !== "read_filing")).toEqual(["read_user_line"]);
     expect(h.hops().filter((hop) => hop.sessionId === dm)).toEqual([]);
-    // The receipt: the app's line, kept from the Bots, from the hold's record.
-    const [receipt] = after(h, dm, stop);
-    expect(receipt).toMatchObject({ kind: "system", author: director.id });
-    expect(receipt!.control).toEqual({
-      kind: "receipt",
-      verb: "stop",
-      hold_ids: [hold!.id],
-      offer: ["undo", "stop_all"],
-      scopes: [{ scope: "bot", id: director.id }],
-      // A stop on the whole Bot can be narrowed to the plan its stopped work was in.
-      plans: [{ offer: "only_plan", task_id: ep01.id, title: "EP01" }],
-    });
-    expect(receipt!.body).toContain("已停下视频导演的全部工作");
-    expect(receipt!.body).toContain("你手头的生成停一下");
-    expect(receipt!.body).toContain("EP01");
-    expect(receipt!.body).toContain("最后一步：shell printf cut > EP01_MASTER.mp4");
-    expect(receipt!.body).toContain("挂起 1 个回看");
-    expect(receipt!.body).toContain("此刻在跑：无");
-    expect(h.store.listMainMessages(dm, 20).map((message) => message.id)).not.toContain(receipt!.id);
+    // Stopping is built in (ADR 0101): no line of the app's says what it did.
+    expect(after(h, dm, stop)).toEqual([]);
     expect(h.store.listWorkEvents({ kind: "control.hold" }).map((row) => row.payload)).toEqual([
       { hold: hold!.id, scope: "bot", scope_id: director.id, source: "user_text", stopped: [turn.id] },
     ]);
@@ -151,7 +135,7 @@ describe("a stop line", () => {
     expect(hold!.targets).toEqual([{ scope: "turn", id: handedOn.id }]);
     expect(h.store.getTurn(handedOn.id).status).toBe("stopped");
     expect(h.store.getTurn(own.id).status).toBe("running");
-    expect(after(h, dm, stop)[0]!.body).toContain("审片员");
+    expect(after(h, dm, stop)).toEqual([]);
   });
 
   test("said to a group with nobody named holds the group: its plans park, its turns end wherever they run", async () => {
@@ -169,12 +153,11 @@ describe("a stop line", () => {
     expect(hold).toMatchObject({ scope: "session", scope_id: room });
     expect(h.store.getTask(ep01.id).status).toBe("parked");
     expect([onPlan, inRoom].map((turn) => h.store.getTurn(turn.id).status)).toEqual(["stopped", "stopped"]);
-    const receipt = after(h, room, stop).find((message) => message.kind === "system")!;
-    expect(receipt.body).toContain("已停下这里的工作");
-    expect(receipt.body).toContain("搁置：EP01");
+    expect(hold!.effect.parked_plans?.map((row) => row.task_id)).toEqual([ep01.id]);
+    expect(after(h, room, stop).filter((message) => message.kind === "system")).toEqual([]);
   });
 
-  test("「你」 in a group, answering a Bot's line, holds that Bot and the group: two holds, one receipt", async () => {
+  test("「你」 in a group, answering a Bot's line, holds that Bot and the group: two holds, and nothing said", async () => {
     const h = await scenario();
     const { director, room } = videoTeam(h);
     const line = h.postBot(director, room, "Shot 11 交了");
@@ -187,9 +170,7 @@ describe("a stop line", () => {
       { scope: "bot", scope_id: director.id },
       { scope: "session", scope_id: room },
     ]);
-    const receipts = after(h, room, stop).filter((message) => message.kind === "system");
-    expect(receipts.map((message) => message.control?.kind)).toEqual(["receipt"]);
-    expect(receipts[0]!.body).toContain("视频导演的全部工作、这里的工作");
+    expect(after(h, room, stop).filter((message) => message.kind === "system")).toEqual([]);
   });
 
   test("before the engine level brings holds, goes where any line goes", async () => {
@@ -388,20 +369,18 @@ describe("a go on", () => {
     expect(h.messages(dm).at(-1)!.body).toBe("好，接下来做第四镜");
   });
 
-  test("a stop on everything is lifted by a go on that names everything, as its receipt says", async () => {
+  test("a stop on everything is lifted by a go on that names everything, and neither says anything", async () => {
     const h = await scenario();
     const { room } = videoTeam(h);
     const stop = h.postUser(room, "所有Bot停下");
     await h.routed();
-    const receipt = after(h, room, stop).find((message) => message.kind === "system")!;
-    expect(receipt.body).toContain("已停下所有 Bot 的工作");
-    expect(receipt.body).toContain("日程也暂停");
-    expect(receipt.body).toContain("你再对哪个 Bot 说话，叫停就结束，它从你这句接着往下");
+    expect(holds(h)).toMatchObject([{ scope: "global", lift_on_next_user_message: true, lifted_at: null }]);
 
     h.postUser(room, "所有 Bot 继续");
     await h.routed();
 
     expect(holds(h).map(({ scope, lifted_by }) => ({ scope, lifted_by }))).toEqual([{ scope: "global", lifted_by: "user_text" }]);
+    expect(after(h, room, stop).filter((message) => message.kind === "system")).toEqual([]);
   });
 
   test("that lifts a stop on a Bot also lifts your Stop on the job it is about, and the Bot goes on from your line", async () => {
@@ -696,7 +675,7 @@ describe("a question about the work goes to the Bot", () => {
     expect(after(h, room, ask).filter((message) => message.kind === "system")).toEqual([]);
   });
 
-  test("「你没停」 is read as a stop: what still runs is stopped, and the receipt says so", async () => {
+  test("「你没停」 is read as a stop: what still runs is stopped, and nothing is said", async () => {
     const h = await scenario();
     const { director, reviewer, room } = videoTeam(h);
     const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
@@ -709,7 +688,7 @@ describe("a question about the work goes to the Bot", () => {
 
     expect(h.store.getTurn(turn.id).status).toBe("stopped");
     expect(holds(h)).toMatchObject([{ scope: "bot", scope_id: director.id, source_message_id: told.id }]);
-    expect(after(h, dm, told).map((message) => message.control?.kind)).toEqual(["receipt"]);
+    expect(after(h, dm, told)).toEqual([]);
   });
 
   test("「还在做吗」 to a held Bot gets that Bot's read-only answer, not the app's", async () => {
@@ -1382,8 +1361,7 @@ describe("a group's stop menu", () => {
     const hold = menuStop(h, "session", room, room);
 
     expect(h.store.getTurn(cut.id).status).toBe("stopped");
-    const receipt = h.messages(room).filter((message) => message.kind === "system").at(-1)!;
-    expect(receipt.body.split("\n").at(-1)).toBe("你在这个群里再说话，叫停就结束，说到的 Bot 从你这句接着往下。");
+    expect(h.messages(room).filter((message) => message.kind === "system")).toEqual([]);
 
     h.script(director, room).reply(say("好，从第 1 集重做"));
     const next = h.postUser(room, "@视频导演 从头再做一遍，之前的作废");
@@ -1402,7 +1380,7 @@ describe("a group's stop menu", () => {
     const { director, reviewer, room } = videoTeam(h);
     await atWork(h, director, room, () => h.postUser(room, "@视频导演 做第三集"));
     const hold = menuStop(h, "bot", director.id, room);
-    expect(h.messages(room).filter((message) => message.kind === "system").at(-1)!.body.split("\n").at(-1)).toBe("你再对它说话，它就从你这句接着往下。");
+    expect(h.messages(room).filter((message) => message.kind === "system")).toEqual([]);
 
     h.script(reviewer, room).reply(say("好的"));
     h.postUser(room, "@审片员 先看下第二集");
@@ -1555,11 +1533,13 @@ describe("a line a stop left read-only", () => {
 });
 
 describe("buttons on the app's lines about your stops", () => {
-  /** The app's receipt for `line` in `session`. */
-  function receiptAfter(h: Scenario, session: string, line: { created_at: string }) {
-    const receipt = after(h, session, line).find((message) => message.control?.kind === "receipt");
-    expect(receipt).toBeDefined();
-    return receipt!;
+  /**
+   * A receipt for the stops in force, as builds before ADR 0101 wrote one in `session`: no stop
+   * writes one any more, but those already in a conversation keep their buttons.
+   */
+  function olderReceipt(h: Scenario, session: string, author: string, opts: { offer: ControlOffer[]; scopes: ControlScope[]; plans?: ControlPlanOffer[] }) {
+    const control: MessageControl = { kind: "receipt", verb: "stop", hold_ids: h.store.listHolds({ inForce: true }).map((hold) => hold.id), ...opts };
+    return h.store.insertMessage({ sessionId: session, kind: "system", author, body: "已停下……", hiddenFromBots: true, control });
   }
 
   test("undo lifts the stop, opens the work again, and sends your line on as any line; a second press does nothing", async () => {
@@ -1571,7 +1551,7 @@ describe("buttons on the app's lines about your stops", () => {
     const dm = h.direct(director);
     const stop = h.postUser(dm, "你手头的生成停一下");
     await h.routed();
-    const receipt = receiptAfter(h, dm, stop);
+    const receipt = olderReceipt(h, dm, director.id, { offer: ["undo", "stop_all"], scopes: [{ scope: "bot", id: director.id }] });
     const [hold] = holds(h);
 
     h.script(director, thread).reply(call(tool("list_dir", { path: "." })), say("好的，接着拼"));
@@ -1608,7 +1588,7 @@ describe("buttons on the app's lines about your stops", () => {
     const turn = await atWork(h, director, dm, () => h.postUser(dm, "做片头"));
     const stop = h.postUser(dm, "你手头的生成停一下");
     await h.routed();
-    const receipt = receiptAfter(h, dm, stop);
+    const receipt = olderReceipt(h, dm, director.id, { offer: ["undo", "stop_all"], scopes: [{ scope: "bot", id: director.id }] });
     const [hold] = holds(h);
     expect(h.store.getTurn(turn.id).status).toBe("stopped");
 
@@ -1630,7 +1610,7 @@ describe("buttons on the app's lines about your stops", () => {
     const writing = await atWork(h, writer, room, () => h.postUser(room, "@编剧分镜师 第三场改成夜景"));
     const stop = h.postUser(room, "大家先停一下");
     await h.routed();
-    const receipt = receiptAfter(h, room, stop);
+    const receipt = olderReceipt(h, room, "user", { offer: ["undo", "stop_all"], scopes: [{ scope: "session", id: room }] });
     const [hold] = holds(h);
     expect([shooting, writing].map((turn) => h.store.getTurn(turn.id).status)).toEqual(["stopped", "stopped"]);
 
@@ -1653,22 +1633,21 @@ describe("buttons on the app's lines about your stops", () => {
     expect(h.store.getHold(hold!.id).effect.resumed_turns).toHaveLength(2);
   });
 
-  test("「扩大到所有 Bot」 stops every Bot and says so where you pressed it", async () => {
+  test("「扩大到所有 Bot」 stops every Bot, and says no more than the button does", async () => {
     const h = await scenario();
     const { director, writer, room } = videoTeam(h);
     const dm = h.direct(director);
     const other = await atWork(h, writer, room, () => h.postUser(room, "@编剧分镜师 第三场改成夜景"));
-    const stop = h.postUser(dm, "停一下");
+    h.postUser(dm, "停一下");
     await h.routed();
-    const receipt = receiptAfter(h, dm, stop);
+    const receipt = olderReceipt(h, dm, director.id, { offer: ["undo", "stop_all"], scopes: [{ scope: "bot", id: director.id }] });
 
     const { made } = h.engine.control(receipt.id, { action: "stop_all" });
 
     expect(made.map(({ scope, source }) => ({ scope, source }))).toEqual([{ scope: "global", source: "user_button" }]);
     expect(h.store.getTurn(other.id).status).toBe("stopped");
-    const wider = receiptAfter(h, dm, receipt);
-    expect(wider.control).toMatchObject({ verb: "stop", hold_ids: [made[0]!.id], offer: ["undo"], scopes: [{ scope: "global", id: null }] });
-    expect(wider.body).toContain("所有 Bot 的工作");
+    expect(h.store.getMessage(receipt.id).control).toMatchObject({ acted: ["stop_all"] });
+    expect(after(h, dm, receipt)).toEqual([]);
   });
 
   test("「一起停下《…》」 stops the plan another Bot was still working in", async () => {
@@ -1679,10 +1658,13 @@ describe("buttons on the app's lines about your stops", () => {
     await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }));
     const writing = await atWork(h, writer, room, () => h.postBot(director, room, "@编剧分镜师 EP01 第三场分镜", { taskId: ep01.id }));
     const dm = h.direct(director);
-    const stop = h.postUser(dm, "你手头的生成停一下");
+    h.postUser(dm, "你手头的生成停一下");
     await h.routed();
-    const receipt = receiptAfter(h, dm, stop);
-    expect(receipt.control).toMatchObject({ plans: expect.arrayContaining([{ offer: "stop_plan", task_id: ep01.id, title: "EP01" }]) });
+    const receipt = olderReceipt(h, dm, director.id, {
+      offer: ["undo", "stop_all"],
+      scopes: [{ scope: "bot", id: director.id }],
+      plans: [{ offer: "stop_plan", task_id: ep01.id, title: "EP01" }],
+    });
     expect(h.store.getTurn(writing.id).status).toBe("running");
 
     const { made } = h.engine.control(receipt.id, { action: "stop_plan", taskId: ep01.id });
@@ -1704,14 +1686,15 @@ describe("buttons on the app's lines about your stops", () => {
     const dm = h.direct(director);
     const stop = h.postUser(dm, "停下你所有的工作");
     await h.routed();
-    const receipt = receiptAfter(h, dm, stop);
-    const [wide] = holds(h);
-    expect(receipt.control).toMatchObject({
-      plans: expect.arrayContaining([
+    const receipt = olderReceipt(h, dm, director.id, {
+      offer: ["undo", "stop_all"],
+      scopes: [{ scope: "bot", id: director.id }],
+      plans: [
         { offer: "only_plan", task_id: ep01.id, title: "EP01" },
         { offer: "only_plan", task_id: ep02.id, title: "EP02" },
-      ]),
+      ],
     });
+    const [wide] = holds(h);
 
     h.script(director, script).reply(call(endTurn()));
     const { made, lifted } = h.engine.control(receipt.id, { action: "only_plan", taskId: ep01.id });
@@ -1724,9 +1707,7 @@ describe("buttons on the app's lines about your stops", () => {
     const later = h.turns(director).filter((row) => row.id !== onEp01.id && row.id !== onEp02.id);
     expect(later.map(({ session_id, task_id }) => ({ session_id, task_id }))).toEqual([{ session_id: script, task_id: ep02.id }]);
     expect(h.store.getHold(made[0]!.id).effect.held_over?.map((row) => row.turn_id)).toEqual([onEp01.id]);
-    const narrowed = receiptAfter(h, dm, receipt);
-    expect(narrowed.control).toMatchObject({ verb: "continue", hold_ids: [wide!.id] });
-    expect(narrowed.body).toContain("仍在叫停中：视频导演在「EP01」上的工作");
+    expect(after(h, dm, receipt)).toEqual([]);
   });
 
   test("继续 on a line that may have meant it, under a stop on everything, lets that Bot go on and ends the stop", async () => {
@@ -1753,6 +1734,8 @@ describe("buttons on the app's lines about your stops", () => {
     expect(h.store.holdsCovering({ botId: director.id })).toEqual([]);
     expect(h.store.holdsCovering({ botId: writer.id })).toEqual([]);
     expect(h.turns(writer)).toEqual([]);
+    // Going on is built in too (ADR 0101): the button says it, no line of the app's does.
+    expect(after(h, room, both).filter((message) => message.kind === "system")).toEqual([]);
   });
 
   test("「停下」 on a line that only might have been a stop makes that stop, quoting the line", async () => {
@@ -1774,7 +1757,7 @@ describe("buttons on the app's lines about your stops", () => {
     expect(h.store.getMessage(line.id).control).toMatchObject({ kind: "possible_control", acted: ["stop"] });
     // Clients learn of the press from the line itself, as they learn of any change to it.
     expect(committed.some((event) => event.event === "message.upsert" && event.id === line.id && event.control?.acted?.includes("stop"))).toBe(true);
-    expect(receiptAfter(h, dm, line).body).toContain("先停，把第三镜换成夜景");
+    expect(after(h, dm, line).filter((message) => message.kind === "system")).toEqual([]);
     expect(() => h.engine.control(line.id, { action: "continue" })).toThrow("does not offer");
   });
 
@@ -1784,8 +1767,9 @@ describe("buttons on the app's lines about your stops", () => {
     const dm = h.direct(director);
     const stop = h.postUser(dm, "算了，先停下");
     await h.routed();
-    const receipt = receiptAfter(h, dm, stop);
-    expect(receipt.control).toMatchObject({ offer: ["undo", "stop_all", "cancel"] });
+    // 「算了」 offers nothing now that a stop writes no receipt; an older receipt's 作废 still works.
+    expect(after(h, dm, stop)).toEqual([]);
+    const receipt = olderReceipt(h, dm, director.id, { offer: ["undo", "stop_all", "cancel"], scopes: [{ scope: "bot", id: director.id }] });
 
     h.engine.control(receipt.id, { action: "cancel" });
 
@@ -1793,22 +1777,21 @@ describe("buttons on the app's lines about your stops", () => {
     expect(hold).toMatchObject({ action: "cancel", lifted_at: null });
   });
 
-  test("a stop from a menu says what it stopped in the conversation it was chosen in", async () => {
+  test("a stop from a menu says nothing, in the conversation it was chosen in or anywhere", async () => {
     const h = await scenario();
     const { director, writer, room } = videoTeam(h);
     const inRoom = await atWork(h, writer, room, () => h.postUser(room, "@编剧分镜师 第三场改成夜景"));
     const dm = h.direct(director);
-    const before = h.messages(dm).at(-1) ?? { created_at: "" };
+    const count = { dm: h.messages(dm).length, room: h.messages(room).length };
 
     const hold = h.engine.createHold({ scope: "session", scopeId: room, sessionId: dm });
 
     expect(h.store.getTurn(inRoom.id).status).toBe("stopped");
-    const receipt = receiptAfter(h, dm, before);
-    expect(receipt.control).toMatchObject({ verb: "stop", hold_ids: [hold.id], scopes: [{ scope: "session", id: room }] });
-    // Without one, no receipt anywhere.
-    const count = h.messages(room).length;
-    h.engine.createHold({ scope: "global" });
-    expect(h.messages(room)).toHaveLength(count);
+    expect({ dm: h.messages(dm).length, room: h.messages(room).length }).toEqual(count);
+    // Where it was chosen is on the work log.
+    expect(h.store.listWorkEvents({ kind: "control.hold" }).map((row) => ({ hold: row.payload.hold, session_id: row.session_id }))).toEqual([
+      { hold: hold.id, session_id: dm },
+    ]);
   });
 
   test("refuses a line with no buttons, and a button the line does not offer", async () => {
@@ -1819,8 +1802,9 @@ describe("buttons on the app's lines about your stops", () => {
     const plain = h.postUser(dm, "做片头");
     await h.waitIdle();
     expect(() => h.engine.control(plain.id, { action: "stop" })).toThrow("no control buttons");
-    const stop = h.postUser(dm, "停一下");
+    h.postUser(dm, "停一下");
     await h.routed();
-    expect(() => h.engine.control(receiptAfter(h, dm, stop).id, { action: "continue_all" })).toThrow("does not offer");
+    const receipt = olderReceipt(h, dm, director.id, { offer: ["undo", "stop_all"], scopes: [{ scope: "bot", id: director.id }] });
+    expect(() => h.engine.control(receipt.id, { action: "continue_all" })).toThrow("does not offer");
   });
 });

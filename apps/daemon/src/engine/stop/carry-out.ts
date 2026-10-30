@@ -1,29 +1,23 @@
-/** Carrying out a stop: the holds it makes, the live work they cover ended and recorded, and the receipt. */
-import { type Message, type ControlScope, type HoldScope, type Hold, USER_MEMBER, type ControlOffer, type ControlPlanOffer, type Turn, type HeldTurn } from "@real-bot/protocol";
+/**
+ * Carrying out a stop: the holds it makes, and the live work they cover ended and recorded. Nothing
+ * is said about it (ADR 0101): a stop shows as the work stopping, and your next word goes on.
+ */
+import { type Message, type ControlScope, type HoldScope, type Hold, type Turn, type HeldTurn } from "@real-bot/protocol";
 import { HttpError } from "../../errors";
-import { stopReceiptBody } from "../../prompts";
 import { botPlanScopeId } from "../../store";
 import type { HoldRequest, StopDeps } from "../stop";
 import type { StopReach } from "./reach";
-import type { StopWords } from "./words";
 
-/** How many plans a receipt offers to widen a stop to, and as many to narrow it to. */
-const PLAN_OFFERS_MAX = 3;
 type Ended = { turn: Turn; record: HeldTurn; hold: string };
 
-export function createStopCarryOut(deps: StopDeps, reach: StopReach, words: StopWords) {
-  const { store, publishMessage, publishTurn, lives, executionOf, abortLive } = deps;
-  const { handedOn, on, lineScopes, heldTurn, turnRow } = reach;
-  const { authorIn, planTitle, locale, scopeLabel, holdSaid, turnLine, botName, ticketLabel, safeTurn, nextLineAbout } = words;
+export function createStopCarryOut(deps: StopDeps, reach: StopReach) {
+  const { store, publishTurn, lives, executionOf, abortLive } = deps;
+  const { handedOn, on, heldTurn, turnRow } = reach;
 
   // ── Stopping ──────────────────────────────────────────────────────────────────────────────────
 
-  function stopByLine(message: Message, scopes: ControlScope[], offerCancel: boolean): void {
-    carryOut(() => scopes.map((scope) => holdOn(scope, { source: "user_text", sourceMessageId: message.id })), {
-      in: message.session_id,
-      scopes,
-      offerCancel,
-    });
+  function stopByLine(message: Message, scopes: ControlScope[]): void {
+    carryOut(() => scopes.map((scope) => holdOn(scope, { source: "user_text", sourceMessageId: message.id })), message.session_id);
   }
 
   /** A hold of yours on a scope a line or a button names, with the work it handed on. */
@@ -42,58 +36,20 @@ export function createStopCarryOut(deps: StopDeps, reach: StopReach, words: Stop
   }
 
   /**
-   * A stop in one write: the holds `create` makes, every live turn they cover ended, what beside it
-   * goes on recorded, and — when `receipt.in` names a conversation you are in — the receipt there.
-   * The aborts and the publishing follow once it is written.
+   * A stop in one write: the holds `create` makes, every live turn they cover ended, and what beside
+   * it goes on recorded, with `sessionId` — the conversation it was said or chosen in — in the work
+   * log. The aborts and the publishing follow once it is written. Nothing is said in the
+   * conversation (ADR 0101): what it ended is on the holds (`effect`), for the board.
    */
-  function carryOut(
-    create: () => Hold[],
-    receipt: { in: string | null; scopes: ControlScope[]; offerCancel?: boolean },
-  ): { made: Hold[]; receipt: Message | null } {
+  function carryOut(create: () => Hold[], sessionId: string | null): { made: Hold[] } {
     const result = store.transaction(() => {
       const created = create();
       const ended = endCovered(created);
-      const made = settle(created, ended, receipt.in);
-      const line = receipt.in && store.isPresent(receipt.in, USER_MEMBER) ? stopReceiptLine(made, receipt.in, receipt) : null;
-      return { ended, made, line };
+      const made = settle(created, ended, sessionId);
+      return { ended, made };
     });
     for (const { turn } of result.ended) publishTurn(turn, null);
-    if (result.line) publishMessage(result.line);
-    return { made: result.made, receipt: result.line };
-  }
-
-  /** The receipt for a stop you said, chose from a menu or confirmed on a button, with its buttons. */
-  function stopReceiptLine(holds: Hold[], sessionId: string, opts: { scopes: ControlScope[]; offerCancel?: boolean }): Message {
-    const offer: ControlOffer[] = ["undo", ...(holds.some((hold) => hold.scope === "global") ? [] : ["stop_all" as const]), ...(opts.offerCancel ? ["cancel" as const] : [])];
-    const plans = planOffers(holds);
-    return store.insertMessage({
-      sessionId,
-      kind: "system",
-      author: authorIn(sessionId, opts.scopes),
-      body: stopReceipt(holds, sessionId),
-      hiddenFromBots: true,
-      control: { kind: "receipt", verb: "stop", hold_ids: holds.map((hold) => hold.id), offer, scopes: opts.scopes, ...(plans.length > 0 ? { plans } : {}) },
-    });
-  }
-
-  /**
-   * The plans a stop's receipt offers to widen it to — one other Bots were still working in — and
-   * to narrow a stop on a whole Bot to: each plan its stopped work was in.
-   */
-  function planOffers(holds: Hold[]): ControlPlanOffer[] {
-    const widen = new Set<string>();
-    const narrow = new Set<string>();
-    for (const hold of holds) {
-      for (const row of hold.effect.working_beside ?? []) if (row.task_id) widen.add(row.task_id);
-      if (hold.scope !== "bot") continue;
-      for (const record of hold.effect.stopped_turns ?? []) if (record.task_id) narrow.add(record.task_id);
-    }
-    const offers = (offer: ControlPlanOffer["offer"], ids: Set<string>) =>
-      [...ids].slice(0, PLAN_OFFERS_MAX).flatMap((id) => {
-        const title = planTitle(id);
-        return title === null ? [] : [{ offer, task_id: id, title }];
-      });
-    return [...offers("stop_plan", widen), ...offers("only_plan", narrow)];
+    return { made: result.made };
   }
 
   function stopByButton(turnId: string): Turn | null {
@@ -138,7 +94,7 @@ export function createStopCarryOut(deps: StopDeps, reach: StopReach, words: Stop
           targets: cascade === true && typeof scopeId === "string" ? handedOn(scope, scopeId) : [],
         }),
       ],
-      { in: sessionId, scopes: lineScopes(scope, scopeId) },
+      sessionId,
     );
     return made[0]!;
   }
@@ -146,13 +102,10 @@ export function createStopCarryOut(deps: StopDeps, reach: StopReach, words: Stop
   /**
    * The spend cap's stop (ADR 0088): one hold on everything, made by the app, that no line of yours
    * lifts — only your Lift in the bar above the list does. Every live turn it covers ends as at any
-   * stop. No receipt: it is said in no conversation, and the bar says it.
+   * stop. The bar above the list says it.
    */
   function holdForSpendCap(): Hold {
-    const { made } = carryOut(
-      () => [store.createHold({ scope: "global", source: "spend_cap", liftOnNextUserMessage: false, targets: [] })],
-      { in: null, scopes: lineScopes("global", null) },
-    );
+    const { made } = carryOut(() => [store.createHold({ scope: "global", source: "spend_cap", liftOnNextUserMessage: false, targets: [] })], null);
     return made[0]!;
   }
 
@@ -187,7 +140,7 @@ export function createStopCarryOut(deps: StopDeps, reach: StopReach, words: Stop
   }
 
   /**
-   * What the receipt says beside what was ended, measured now and recorded on each hold: the other
+   * What goes on beside what was ended, measured now and recorded on each hold: the other
    * Bots' turns in the same plans that it does not cover, and anything it covers still running.
    * Records a `control.hold` in the work log for each. Returns the holds as they now read.
    */
@@ -270,29 +223,6 @@ export function createStopCarryOut(deps: StopDeps, reach: StopReach, words: Stop
       default:
         return [];
     }
-  }
-
-  // ── Words ─────────────────────────────────────────────────────────────────────────────────────
-
-  function stopReceipt(holds: Hold[], here: string): string {
-    const heading = new Set(holds.flatMap((hold) => (hold.scope === "bot" ? [hold.scope_id!] : hold.scope === "bot_plan" ? [hold.scope_id!.split(":")[0]!] : [])));
-    const effects = holds.map((hold) => hold.effect);
-    return stopReceiptBody(locale(), {
-      scopes: holds.map((hold) => scopeLabel(hold, here)),
-      said: holdSaid(holds[0]!),
-      stopped: effects.flatMap((effect) => effect.stopped_turns ?? []).map((record) => turnLine(record, here, heading)),
-      suspended: effects.reduce((sum, effect) => sum + (effect.suspended_check_backs?.length ?? 0), 0),
-      parked: effects.flatMap((effect) => effect.parked_plans ?? []).map((row) => planTitle(row.task_id) ?? row.task_id),
-      beside: effects
-        .flatMap((effect) => effect.working_beside ?? [])
-        .map((row) => ({ bot: botName(row.bot_id), plan: planTitle(row.task_id!) ?? "", ticket: row.ticket_id ? ticketLabel(row.ticket_id) : null })),
-      stillRunning: effects.flatMap((effect) => effect.still_running ?? []).flatMap((id) => {
-        const turn = safeTurn(id);
-        return turn ? [turnLine(heldTurn(turn, lives.get(id)), here, heading)] : [];
-      }),
-      liftOnNextLine: nextLineAbout(holds.find((hold) => hold.lift_on_next_user_message)),
-      global: holds.some((hold) => hold.scope === "global"),
-    });
   }
 
   return { stopByLine, holdOn, carryOut, stopByButton, hold, holdForSpendCap, enforce, endViolations, splitHold };

@@ -46,13 +46,6 @@ export function createStopReach(deps: StopDeps) {
     return line.task_id ?? store.turnLanding({ sessionId: line.session_id, botId, trigger: line }).taskId;
   }
 
-  /** A hold's scope as a line's buttons name it; a scope no line can name (one turn, say) has none. */
-  function lineScopes(scope: HoldScope, scopeId: string | null): ControlScope[] {
-    if (scope === "global") return [{ scope: "global", id: null }];
-    if ((scope === "bot" || scope === "session" || scope === "plan") && scopeId) return [{ scope, id: scopeId }];
-    return [];
-  }
-
   /**
    * The work a scope handed on and has not had back: a turn of another Bot opened by a line of a
    * turn the scope covers — or by a line of such a turn, up to three handoffs down — that is still
@@ -347,7 +340,7 @@ export function createStopReach(deps: StopDeps) {
     return hold.scope === "global" || hold.scope === "session" || hold.scope === "plan";
   }
 
-  return { on, scopeHolds, landedPlan, lineScopes, handedOn, turnRow, heldTurn, holdsToLift, messageSession, directWithYou, stopsAbout, saidTo, saidToBots, stopsOnBots, stopBefore, workOnHere, heldAbout, stopOnBot, inScope, botsNamed, isWide };
+  return { on, scopeHolds, landedPlan, handedOn, turnRow, heldTurn, holdsToLift, messageSession, directWithYou, stopsAbout, saidTo, saidToBots, stopsOnBots, stopBefore, workOnHere, heldAbout, stopOnBot, inScope, botsNamed, isWide };
 }
 
 export type StopReach = ReturnType<typeof createStopReach>;

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Stopping and going on no longer post a note in the conversation
+
+- Telling a Bot 「停」 ("stop"), stopping from a stop menu, or pressing Stop on a line made the app answer in the conversation with a card — "Stopped all of …'s work (you said at 12:28: 「停」) … Running now: nothing. Say anything more to it and it goes on from what you say" — marked "Lifted" once you spoke again. Stopping and going on are now built in and say nothing: what was running stopping is the answer, and your next line goes on, as with the Stop button. "Continue" on a line, and "Only “…”", "Only X goes on" and "All go on" on an older card, no longer post a card either. Which turns stopped and where each had got to is still recorded and shows on the flow board. The card's Undo, "Stop every Bot" and "Drop this job" go with it: just say what comes next, say so or use a stop menu to stop more, and drop a job on the flow board. Cards already posted stay in the conversation and their buttons still work. See [ADR 0101](docs/adr/0101-stopping-and-going-on-say-nothing.md).
+
 ### Stopping a project session keeps what the agent had said
 
 - In a project session, what Claude Code or Codex says while it works shows in the working bubble, and only its reply at the end became a line. Pressing Stop while it was writing took the bubble away and everything in it with it. Now what it had said by then stays in the conversation as its line, whole even past what the bubble shows, ahead of whatever you send next; a run that fails keeps it too, above the line saying why. A run that ends normally is unchanged.

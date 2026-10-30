@@ -1,5 +1,5 @@
 /** How the app's lines about your stops name things: the locale, Bots, plans, tickets, places and the scope of a hold. */
-import { type Locale, type Hold, type HeldTurn, type ControlScope, type Session, USER_MEMBER, type Turn } from "@real-bot/protocol";
+import { type Locale, type Hold, type HeldTurn, type ControlScope, type Session, USER_MEMBER } from "@real-bot/protocol";
 import { type ControlTurnLine, type SaidLine, saidOf } from "../../prompts";
 import type { StopDeps } from "../stop";
 import type { StopReach } from "./reach";
@@ -10,15 +10,6 @@ export function createStopWords(deps: StopDeps, reach: StopReach) {
 
   function locale(): Locale {
     return store.settingsCached().locale;
-  }
-
-  /** What the line that lifts `hold` has to be about, as its receipt says it; false for none. */
-  function nextLineAbout(hold: Hold | undefined): false | "job" | "group" | "bot" | "everyone" {
-    if (!hold) return false;
-    if (hold.scope === "global") return "everyone";
-    if (hold.scope === "session") return "group";
-    if (hold.scope === "bot") return "bot";
-    return "job";
   }
 
   function turnLine(record: HeldTurn, here: string, heading: Set<string>): ControlTurnLine {
@@ -90,7 +81,7 @@ export function createStopWords(deps: StopDeps, reach: StopReach) {
     return en ? `the direct between ${bots.join(" and ")}` : `${bots.join("和")}的私聊`;
   }
 
-  /** The line that made a hold, as a receipt quotes it; null for a button or a line since cleared. */
+  /** The line that made a hold, as a status answer quotes it; null for a button or a line since cleared. */
   function holdSaid(hold: Hold): SaidLine {
     if (!hold.source_message_id) return null;
     try {
@@ -135,14 +126,6 @@ export function createStopWords(deps: StopDeps, reach: StopReach) {
     }
   }
 
-  function safeTurn(id: string): Turn | null {
-    try {
-      return store.getTurn(id);
-    } catch {
-      return null;
-    }
-  }
-
   /**
    * Who the app's line stands under: in a direct, its Bot, as a status answer does; elsewhere the
    * Bot the line names, else nobody in particular.
@@ -160,7 +143,7 @@ export function createStopWords(deps: StopDeps, reach: StopReach) {
     return named?.scope === "bot" ? named.id : USER_MEMBER;
   }
 
-  return { locale, nextLineAbout, turnLine, headingBots, scopeLabel, aboutLabel, holdSaid, planTag, ticketLabel, botName, planTitle, safeTurn, authorIn };
+  return { locale, turnLine, headingBots, scopeLabel, aboutLabel, holdSaid, planTag, authorIn };
 }
 
 export type StopWords = ReturnType<typeof createStopWords>;

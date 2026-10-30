@@ -1,16 +1,16 @@
 /**
- * What the app itself says about your stops (ADR 0040 P2): the receipt for a stop or a go on it
- * carried out, its answer when you ask whether things stopped or say they have not, the note a
- * Bot's work goes on with after a lift, and the line a read-only turn opens on; and after a restart,
- * what it cut off (ADR 0041). Every word of it comes from what the holds recorded and what the store
+ * What the app itself says about your stops (ADR 0040 P2): its answer on a status line's buttons
+ * about whether things stopped, the note a Bot's work goes on with after a lift, and the line a
+ * read-only turn opens on; and after a restart, what it cut off (ADR 0041). A stop or a go on itself
+ * gets no line (ADR 0101). Every word of it comes from what the holds recorded and what the store
  * says is running — no model writes any of it, so it cannot claim a stop that did not happen.
  */
 import type { Locale, RestartCause } from "@real-bot/protocol";
 
-/** Your line, as a receipt quotes it: when you said it (wall-clock hour and minute) and what. Null for a button. */
+/** Your line, as the app's lines quote it: when you said it (wall-clock hour and minute) and what. Null for a button. */
 export type SaidLine = { at: string; body: string } | null;
 
-/** A line of yours as a receipt quotes it. */
+/** A line of yours as the app's lines quote it. */
 export function saidOf(line: { created_at: string; body: string }): NonNullable<SaidLine> {
   return { at: clockOf(line.created_at), body: line.body };
 }
@@ -21,7 +21,7 @@ export function clockOf(iso: string): string {
   return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
 }
 
-/** A turn a stop ended, or one still running, as a receipt lists it. */
+/** A turn a stop ended, or one still running, as a status line lists it. */
 export type ControlTurnLine = {
   /** The Bot, when the receipt's heading does not already name it. */
   bot: string | null;
@@ -31,7 +31,7 @@ export type ControlTurnLine = {
   lastStep: string | null;
 };
 
-/** How much of your line a receipt quotes. */
+/** How much of your line the app's lines quote. */
 const SAID_MAX = 60;
 
 /** Your words, quoted: 「你手头的生成停一下」. */
@@ -58,147 +58,6 @@ function turnLine(locale: Locale, line: ControlTurnLine): string {
 
 function joinList(locale: Locale, items: readonly string[]): string {
   return items.join(locale === "en" ? ", " : "、");
-}
-
-/**
- * The receipt for a stop: what it covers, what it ended, what it set aside, what goes on beside it,
- * and what still runs (nothing, unless something went wrong).
- */
-export function stopReceiptBody(
-  locale: Locale,
-  input: {
-    /** Each hold's scope in words: "视频导演的全部工作", "群「剪辑」里的工作", "所有 Bot 的工作". */
-    scopes: readonly string[];
-    said: SaidLine;
-    stopped: readonly ControlTurnLine[];
-    suspended: number;
-    parked: readonly string[];
-    beside: readonly { bot: string; plan: string; ticket: string | null }[];
-    stillRunning: readonly ControlTurnLine[];
-    /**
-     * A hold that goes when you next speak, and about what: a Stop's, about that job (`job`); a
-     * group stop menu's, in that group (`group`) or to that Bot (`bot`). False: until you lift it.
-     */
-    liftOnNextLine: false | "job" | "group" | "bot" | "everyone";
-    /** Everything is stopped, routines too. */
-    global: boolean;
-  },
-): string {
-  const en = locale === "en";
-  const lines: string[] = [];
-  const what = joinList(locale, input.scopes);
-  const source = input.said ? (en ? ` (${youSaid(locale, input.said)})` : `（${youSaid(locale, input.said)}）`) : "";
-  lines.push(en ? `Stopped: ${what}${source}.` : `已停下${what}${source}。`);
-  if (input.global) lines.push(en ? "- Routines are paused too." : "- 日程也暂停。");
-  if (input.stopped.length > 0) {
-    const turns = input.stopped.map((line) => turnLine(locale, line)).join(en ? "; " : "；");
-    lines.push(en ? `- Ended ${input.stopped.length} running turn(s): ${turns}` : `- 中止 ${input.stopped.length} 段执行：${turns}`);
-  } else {
-    lines.push(en ? "- Nothing was running; nothing new starts." : "- 当时没有在跑的，新的也不会再开。");
-  }
-  if (input.suspended > 0) {
-    lines.push(
-      en
-        ? `- ${input.suspended} check-back(s) set aside; they come back when you lift the stop.`
-        : `- 挂起 ${input.suspended} 个回看，继续时恢复。`,
-    );
-  }
-  if (input.parked.length > 0) lines.push(en ? `- Parked: ${joinList(locale, input.parked)}` : `- 搁置：${joinList(locale, input.parked)}`);
-  for (const other of input.beside) {
-    const on = other.ticket ? (en ? `${other.plan}, ${other.ticket}` : `${other.plan}的${other.ticket}`) : other.plan;
-    lines.push(
-      en
-        ? `- ${other.bot} is still working on ${on}; this stop does not cover it.`
-        : `- ${other.bot} 还在做${on}，这次叫停没有覆盖它，照常。`,
-    );
-  }
-  lines.push(
-    input.stillRunning.length === 0
-      ? en
-        ? "- Running now: nothing."
-        : "- 此刻在跑：无。"
-      : en
-        ? `- Still running: ${input.stillRunning.map((line) => turnLine(locale, line)).join("; ")}`
-        : `- 仍在跑：${input.stillRunning.map((line) => turnLine(locale, line)).join("；")}`,
-  );
-  // A stop on everything is lifted by words that name everything; a plain 「继续」 lifts one Bot's or one group's.
-  lines.push(
-    input.liftOnNextLine
-      ? nextLineLifts(locale, input.liftOnNextLine)
-      : input.global
-        ? en
-          ? `Say "all bots continue" to lift it.`
-          : "说「所有 Bot 继续」就解除。"
-        : en
-          ? `Say "continue" to lift it.`
-          : "说「继续」就解除。",
-  );
-  return lines.join("\n");
-}
-
-/**
- * How a stop says it is only "stop for now" (ADR 0071): your next line is the end of it, however many
- * Bots it is over (ADR 0081), and the Bot it is said to goes on from it.
- */
-function nextLineLifts(locale: Locale, about: "job" | "group" | "bot" | "everyone"): string {
-  const en = locale === "en";
-  switch (about) {
-    case "everyone":
-      return en ? "Say anything to a Bot and the stop is over; it goes on from what you say." : "你再对哪个 Bot 说话，叫停就结束，它从你这句接着往下。";
-    case "job":
-      return en ? "Say anything more about this job and it goes on from there." : "你在这件事上再说话，它就接着往下。";
-    case "group":
-      return en
-        ? "Say anything more in this group and the stop is over; the Bots you say it to go on from it."
-        : "你在这个群里再说话，叫停就结束，说到的 Bot 从你这句接着往下。";
-    case "bot":
-      return en ? "Say anything more to it and it goes on from what you say." : "你再对它说话，它就从你这句接着往下。";
-  }
-}
-
-/** The receipt for a go on: which stops it lifted, and what goes on now. */
-export function continueReceiptBody(
-  locale: Locale,
-  input: {
-    /** Each lifted hold, its scope in words and the line that made it. */
-    lifted: readonly { scope: string; said: SaidLine }[];
-    resumed: readonly ControlTurnLine[];
-    /** Bots going on from a line of yours they could only answer while it was stopped, with that line. */
-    takenUp?: readonly { bot: string; said: SaidLine }[];
-    resumedCheckBacks: number;
-    restored: readonly string[];
-    /** Holds still covering what you let go on, in words, with the line that made each. */
-    stillHeld: readonly { scope: string; said: SaidLine }[];
-  },
-): string {
-  const en = locale === "en";
-  const lines: string[] = [];
-  const lifted = input.lifted.map((row) => withSaid(locale, row.scope, row.said)).join(en ? "; " : "；");
-  lines.push(en ? `Lifted: ${lifted}.` : `已解除叫停：${lifted}。`);
-  if (input.resumed.length > 0) {
-    const turns = input.resumed.map((line) => turnLine(locale, line)).join(en ? "; " : "；");
-    lines.push(en ? `- ${input.resumed.length} stopped turn(s) start again with a note on where they were: ${turns}` : `- ${input.resumed.length} 段被停下的工作带着一条说明重新开始：${turns}`);
-  }
-  if (input.takenUp && input.takenUp.length > 0) {
-    const rows = input.takenUp.map((row) => withSaid(locale, row.bot, row.said)).join(en ? "; " : "；");
-    lines.push(en ? `- Going on from what you said while it was stopped: ${rows}` : `- 照你叫停期间说的接着做：${rows}`);
-  }
-  if (input.resumedCheckBacks > 0) lines.push(en ? `- ${input.resumedCheckBacks} check-back(s) back on.` : `- ${input.resumedCheckBacks} 个回看恢复。`);
-  if (input.restored.length > 0) lines.push(en ? `- Back as before: ${joinList(locale, input.restored)}` : `- 恢复原状：${joinList(locale, input.restored)}`);
-  lines.push(...stillHeldLines(locale, input.stillHeld));
-  return lines.join("\n");
-}
-
-function stillHeldLines(locale: Locale, stillHeld: readonly { scope: string; said: SaidLine }[]): string[] {
-  return stillHeld.map((row) =>
-    locale === "en" ? `Still stopped: ${withSaid(locale, row.scope, row.said)}.` : `仍在叫停中：${withSaid(locale, row.scope, row.said)}。`,
-  );
-}
-
-/** A hold's scope in words, with the line that made it when a line did. */
-function withSaid(locale: Locale, scope: string, said: SaidLine): string {
-  if (!said) return scope;
-  return locale === "en" ? `${scope} (${youSaid(locale, said)})` : `${scope}（${youSaid(locale, said)}）`;
 }
 
 /**

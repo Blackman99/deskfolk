@@ -1,6 +1,6 @@
 # 停下就是停下 / A stop is just a stop
 
-Status: implemented 2026-10-10. Takes back [ADR 0071](0071-a-stop-is-only-stop-for-now.md) #2 (a stop over more Bots releases one Bot at a time), #5 (every stop listed in the sidebar with Lift) and #6 (receipts saying the rest stay stopped); the rest of 0071 stands.
+Status: implemented 2026-10-10. Takes back [ADR 0071](0071-a-stop-is-only-stop-for-now.md) #2 (a stop over more Bots releases one Bot at a time), #5 (every stop listed in the sidebar with Lift) and #6 (receipts saying the rest stay stopped); the rest of 0071 stands. Decision 4 (the receipt's one line) is taken back by [ADR 0101](0101-stopping-and-going-on-say-nothing.md): a stop gets no receipt at all.
 
 ADR 0071 之后，叫停已经「你再说话就接着」，可它还看得见、还要按：侧栏上方一条「叫停中」列着每条叫停，各带「解除」；被叫停的群和私聊在列表里标「已叫停」；工具菜单的「全部停下」按过之后变成「全部继续」；「停下所有 Bot」或停下一个群之后，你对一个 Bot 说话只放开它，其余的一直停着，回执叫你去说「所有 Bot 继续」。你说：「当前叫停的实现很别扭，其他的工具停止就是直接停止了，没有还需要额外点击按钮恢复这一说，这应该是内置行为，用户再发送消息意思就是重启恢复了。」
 

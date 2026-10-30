@@ -13,9 +13,10 @@
  * A stop, in one write: a hold per scope the line names, each with the work the covered Bots handed
  * on and have not had back (`handedOn`); the plans and check-backs it covers are parked and set
  * aside by the hold itself (store/holds.ts); every live turn it covers ends as stopped, its
- * check-backs set aside for the lift rather than cancelled, and what it was doing recorded; then
- * the receipt. Once that is written, each ended turn's model call, MCP calls and command process
- * groups are aborted.
+ * check-backs set aside for the lift rather than cancelled, and what it was doing recorded. Once
+ * that is written, each ended turn's model call, MCP calls and command process groups are aborted.
+ * Nothing is said in the conversation (ADR 0101): stopping and going on are built in, as in any
+ * other tool — the work stopping is what you see, and your next word goes on.
  *
  * A go on lifts your stops that keep the Bots it is said to from the job it is filed under, and
  * wakes them like any line: they go on from it and say so themselves. A stop on another job stays.
@@ -25,13 +26,11 @@
  * leaves the other Bots' stops alone. Your line to a Bot only a hold of the app's covers gets a
  * read-only answer, from the Bot.
  *
- * The app's lines about your stops carry buttons (`MessageControl`), and `act` carries them out:
- * undo a stop (a line read as one then reaches the Bots as any line), widen it to every Bot or to
- * the plan other Bots are working in, narrow a stop on a Bot to one plan, drop the job, or let one
- * Bot go on under a wider stop by splitting that stop into one per other Bot. A stop from a menu
- * gets the same receipt as one you said. A Stop pressed on one turn gets none (2026-10-04, ADR 0058):
- * you pressed it on the very turn it stopped, your next word to that Bot about its job lifts it, so
- * the receipt and its Undo only repeated what you had just done.
+ * Lines about your stops carry buttons (`MessageControl`), and `act` carries them out: your line
+ * that may have meant a stop or a go on, and the app's receipts and status lines from before ADR
+ * 0101 — undo a stop (a line read as one then reaches the Bots as any line), widen it to every Bot
+ * or to the plan other Bots are working in, narrow a stop on a Bot to one plan, drop the job, or let
+ * one Bot go on under a wider stop by splitting that stop into one per other Bot.
  *
  * Work items and their inbox, external jobs and upstream waits (ADR 0040 P4) do not exist yet, so
  * "the work a hold covers" is live turns, check-backs and plans, and a delegation is the lineage of
@@ -46,7 +45,7 @@ import type {
   Session,
   Turn,
 } from "@real-bot/protocol";
-import { controlScopes, readControlLine, type ControlLineInput } from "../control-line";
+import { controlScopes, type ControlLineInput } from "../control-line";
 import type { UserLineReading } from "../line-reading";
 import type { TurnAdmission } from "../quiesce";
 import type { Store } from "../store";
@@ -84,7 +83,7 @@ export type HoldRequest = {
   action?: unknown;
   cascade?: unknown;
   liftOnNextUserMessage?: unknown;
-  /** The conversation the stop menu was in: the receipt goes there when you are in it. */
+  /** The conversation the stop menu was in, for the work log. */
   sessionId?: unknown;
 };
 
@@ -134,7 +133,7 @@ export type Stop = {
    * Null before holds are on, so the caller stops it the way it did before them.
    */
   stopByButton: (turnId: string) => Turn | null;
-  /** `POST /v1/holds`: the hold, and the live turns it covers ended; with a conversation, its receipt there. */
+  /** `POST /v1/holds`: the hold, and the live turns it covers ended. */
   hold: (input: HoldRequest) => Hold;
   /** The spend cap's stop on every Bot (ADR 0088), waiting for your Lift. */
   holdForSpendCap: () => Hold;
@@ -160,10 +159,10 @@ export function createStop(deps: StopDeps): Stop {
   const { store, admission } = deps;
   const reach = createStopReach(deps);
   const words = createStopWords(deps, reach);
-  const carry = createStopCarryOut(deps, reach, words);
+  const carry = createStopCarryOut(deps, reach);
   const answers = createStopAnswers(deps, reach, words, carry);
   const goOn = createStopGoOn(deps, reach, words, answers);
-  const buttons = createStopButtons(deps, reach, carry, answers, goOn);
+  const buttons = createStopButtons(deps, reach, carry, goOn);
   const { on, holdsToLift, stopsAbout, stopsOnBots, stopBefore, scopeHolds } = reach;
   const { stopByLine, stopByButton, hold, holdForSpendCap, enforce } = carry;
   const { heldLinesFor } = answers;
@@ -194,9 +193,7 @@ export function createStop(deps: StopDeps): Stop {
         return false;
       case "stop":
         if (line.controlOnly) {
-          // 「算了，停吧」: the receipt also offers to drop the job. Only offered: nothing is dropped by words.
-          const words = readControlLine(input);
-          stopByLine(message, scopes, words.kind === "stop" && words.offerCancel);
+          stopByLine(message, scopes);
           return true;
         }
         offerButtons(message, session, ["stop"], scopes);

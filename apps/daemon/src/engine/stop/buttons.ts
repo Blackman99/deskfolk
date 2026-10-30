@@ -1,19 +1,21 @@
-/** The buttons on the app's lines about your stops (`MessageControl`), carried out. */
+/**
+ * The buttons on lines about your stops (`MessageControl`), carried out: on your line that may have
+ * meant a stop or a go on, and on the app's receipts and status lines written before ADR 0101. What
+ * they do is said by the button itself (`acted`), not in a line of the app's.
+ */
 import type { ControlActionResult, ControlOffer, Session, Message, ControlScope } from "@real-bot/protocol";
 import { HttpError } from "../../errors";
 import { botPlanScopeId } from "../../store";
 import type { StopDeps } from "../stop";
 import type { StopReach } from "./reach";
 import type { StopCarryOut } from "./carry-out";
-import type { StopAnswers } from "./answers";
 import type { StopGoOn } from "./go-on";
 
-export function createStopButtons(deps: StopDeps, reach: StopReach, carry: StopCarryOut, answers: StopAnswers, goOn: StopGoOn) {
-  const { store, publishMessage, redeliver } = deps;
+export function createStopButtons(deps: StopDeps, reach: StopReach, carry: StopCarryOut, goOn: StopGoOn) {
+  const { store, redeliver } = deps;
   const { on, messageSession, directWithYou, botsNamed, heldAbout, isWide } = reach;
   const { carryOut, holdOn, splitHold } = carry;
-  const { answerStatus } = answers;
-  const { continueByLine, resumeLifted, continueReceiptLine, takeUp } = goOn;
+  const { continueByLine, resumeLifted, takeUp } = goOn;
 
   // ── Buttons ───────────────────────────────────────────────────────────────────────────────────
 
@@ -56,19 +58,17 @@ export function createStopButtons(deps: StopDeps, reach: StopReach, carry: StopC
           return { made: [], lifted: [] };
         }
         // Your line that only might have been a stop, or a status answer's button: the stop it
-        // meant, made now, with a receipt like any other. The line's own words are quoted.
+        // meant, made now, and like any other said nowhere but on the button. The hold quotes the line.
         const fromLine = control.kind === "possible_control" ? message.id : null;
-        const { made } = carryOut(
-          () => {
-            pressed();
-            return control.scopes.map((scope) => holdOn(scope, { source: "user_button", sourceMessageId: fromLine, action: action === "cancel" ? "cancel" : "pause" }));
-          },
-          { in: here, scopes: control.scopes },
-        );
+        const { made } = carryOut(() => {
+          pressed();
+          return control.scopes.map((scope) => holdOn(scope, { source: "user_button", sourceMessageId: fromLine, action: action === "cancel" ? "cancel" : "pause" }));
+        }, here);
         return { made, lifted: [] };
       }
       case "continue": {
-        // Your line that only might have been a go on: what it would have lifted, lifted now.
+        // Your line that only might have been a go on: what it would have lifted, lifted now. With
+        // nothing to lift there is nothing to do: the line went to the Bots as any line.
         let session: Session;
         try {
           session = store.getSession(here);
@@ -77,30 +77,24 @@ export function createStopButtons(deps: StopDeps, reach: StopReach, carry: StopC
         }
         const before = new Set(store.listHolds({ inForce: true }).map((hold) => hold.id));
         store.transaction(pressed);
-        if (!continueByLine(message, session, control.scopes, "user_button")) answerStatus(message, control.scopes, { offerStop: false });
+        continueByLine(message, session, control.scopes, "user_button");
         const lifted = [...before].map((id) => store.getHold(id)).filter((hold) => hold.lifted_at);
         return { made: [], lifted };
       }
       case "undo":
         return undo(message, control.kind === "possible_control" ? [] : control.hold_ids, pressed);
       case "stop_all": {
-        const { made } = carryOut(
-          () => {
-            pressed();
-            return [holdOn({ scope: "global", id: null }, { source: "user_button" })];
-          },
-          { in: here, scopes: [{ scope: "global", id: null }] },
-        );
+        const { made } = carryOut(() => {
+          pressed();
+          return [holdOn({ scope: "global", id: null }, { source: "user_button" })];
+        }, here);
         return { made, lifted: [] };
       }
       case "stop_plan": {
-        const { made } = carryOut(
-          () => {
-            pressed();
-            return [holdOn({ scope: "plan", id: taskId }, { source: "user_button" })];
-          },
-          { in: here, scopes: [{ scope: "plan", id: taskId! }] },
-        );
+        const { made } = carryOut(() => {
+          pressed();
+          return [holdOn({ scope: "plan", id: taskId }, { source: "user_button" })];
+        }, here);
         return { made, lifted: [] };
       }
       case "only_plan":
@@ -174,7 +168,7 @@ export function createStopButtons(deps: StopDeps, reach: StopReach, carry: StopC
 
   /**
    * 「只停《P》」 on a stop's receipt: each stop on a whole Bot becomes one on its work in that plan,
-   * and the rest of its work opens again, the way a go on would open it. Said in a receipt of its own.
+   * and the rest of its work opens again, the way a go on would open it.
    */
   function onlyPlan(message: Message, holdIds: string[], taskId: string, pressed: () => void): ControlActionResult {
     const wide = holdIds.map((id) => store.getHold(id)).filter((hold) => hold.scope === "bot" && !hold.lifted_at);
@@ -188,12 +182,9 @@ export function createStopButtons(deps: StopDeps, reach: StopReach, carry: StopC
         store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: message.session_id, payload: { hold: hold.id, by: "user_button", narrowed_to: taskId } });
       }
       // Its other work goes on (ADR 0071: lifting is going on, whatever kind of stop it was).
-      const resumed = resumeLifted(lifted, null, { stops: true });
-      const scopes = wide.map((hold) => ({ scope: "bot" as const, id: hold.scope_id! }));
-      const line = continueReceiptLine(message.session_id, scopes, lifted, resumed, made.map((hold) => store.getHold(hold.id)));
-      return { made, lifted: lifted.map((hold) => store.getHold(hold.id)), line };
+      resumeLifted(lifted, null, { stops: true });
+      return { made, lifted: lifted.map((hold) => store.getHold(hold.id)) };
     });
-    publishMessage(result.line);
     return { made: result.made.map((hold) => store.getHold(hold.id)), lifted: result.lifted };
   }
 
@@ -220,10 +211,8 @@ export function createStopButtons(deps: StopDeps, reach: StopReach, carry: StopC
       }
       const resumed = resumeLifted(lifted, null, { stops: true });
       if (unanswered) takeUp(unanswered, keep, resumed);
-      const line = continueReceiptLine(here, scopes, lifted, resumed, made.map((hold) => store.getHold(hold.id)));
-      return { made, lifted: lifted.map((hold) => store.getHold(hold.id)), line };
+      return { made, lifted: lifted.map((hold) => store.getHold(hold.id)) };
     });
-    publishMessage(result.line);
     return { made: result.made.map((hold) => store.getHold(hold.id)), lifted: result.lifted };
   }
 

@@ -1,16 +1,16 @@
 /** Going on: holds lifted by a line or a button, and the work they ended opened again on a note. */
-import { type Message, type Session, type ControlScope, type HeldTurn, type Hold, type ControlOffer, type Turn, type AnsweredLine, USER_MEMBER } from "@real-bot/protocol";
+import { type Message, type Session, type ControlScope, type HeldTurn, type Hold, type Turn, type AnsweredLine, USER_MEMBER } from "@real-bot/protocol";
 import type { UserLineReading } from "../../line-reading";
-import { saidOf, continueReceiptBody, type SaidLine, resumeNote } from "../../prompts";
+import { saidOf, type SaidLine, resumeNote } from "../../prompts";
 import type { StopDeps } from "../stop";
 import type { StopReach } from "./reach";
 import type { StopWords } from "./words";
 import type { StopAnswers } from "./answers";
 
 export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWords, answers: StopAnswers) {
-  const { store, publishMessage, admission, startTurn, hearOrStart, wakes } = deps;
-  const { holdsToLift, stopsAbout, isWide, stopOnBot, stopBefore, stopsOnBots, scopeHolds, heldAbout, on, saidTo, landedPlan, messageSession } = reach;
-  const { authorIn, locale, scopeLabel, holdSaid, turnLine, headingBots, botName, planTitle, planTag } = words;
+  const { store, admission, startTurn, hearOrStart, wakes } = deps;
+  const { holdsToLift, stopsAbout, isWide, stopOnBot, stopBefore, stopsOnBots, scopeHolds, on, saidTo, landedPlan, messageSession } = reach;
+  const { locale, planTag } = words;
   const { answerStatus } = answers;
 
   // ── Going on ──────────────────────────────────────────────────────────────────────────────────
@@ -51,43 +51,15 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
     // Oldest first, the way they were made.
     const toLift = store.listHolds({ inForce: true }).reverse().filter((hold) => ids.has(hold.id));
     // A stop is gone once you speak past it (ADR 0081), however many Bots it was over; only the
-    // work of the Bots the words name opens again (`othersOnWide`).
-    const { receipt, resumed } = store.transaction(() => {
-      const said = saidOf(message);
+    // work of the Bots the words name opens again (`othersOnWide`). Nothing is said about it (ADR
+    // 0101): the Bots going on is what you see.
+    store.transaction(() => {
       const lifted = toLift.map((hold) => store.liftHold(hold.id, { by, messageId: message.id }));
       for (const hold of lifted) {
         store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: message.session_id, payload: { hold: hold.id, by } });
       }
-      const resumed = resumeLifted(lifted, said, { stops: true, leave: othersOnWide });
-      const current = lifted.map((hold) => store.getHold(hold.id));
-      const stillHeld = heldAbout(scopes, session.id, message);
-      const receipt = store.insertMessage({
-        sessionId: message.session_id,
-        kind: "system",
-        author: authorIn(message.session_id, scopes),
-        body: continueReceiptBody(locale(), {
-          lifted: current.map((hold) => ({ scope: scopeLabel(hold, message.session_id), said: holdSaid(hold) })),
-          resumed: resumed.filter((row) => !row.line).map((row) => turnLine(row.record, message.session_id, headingBots(scopes))),
-          takenUp: resumed.flatMap((row) => (row.line ? [{ bot: botName(row.record.bot_id), said: saidOf(row.line) }] : [])),
-          resumedCheckBacks: current.reduce((sum, hold) => sum + (hold.effect.resumed_check_backs?.length ?? 0), 0),
-          restored: current.flatMap((hold) => hold.effect.restored_plans ?? []).map((id) => planTitle(id) ?? id),
-          stillHeld: stillHeld.map((hold) => ({ scope: scopeLabel(hold, message.session_id), said: holdSaid(hold) })),
-        }),
-        hiddenFromBots: true,
-        control: {
-          kind: "receipt",
-          verb: "continue",
-          hold_ids: current.map((hold) => hold.id),
-          // The buttons are for a wider stop the words could not lift; a Stop's goes with your next line about its job.
-          ...(stillHeld.some((hold) => !hold.lift_on_next_user_message)
-            ? { offer: ["continue_only", "continue_all"] as ControlOffer[], held_ids: stillHeld.map((hold) => hold.id) }
-            : { offer: [] }),
-          scopes,
-        },
-      });
-      return { receipt, resumed };
+      resumeLifted(lifted, saidOf(message), { stops: true, leave: othersOnWide });
     });
-    publishMessage(receipt);
     return true;
   }
 
@@ -210,7 +182,7 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
    * One stopped turn's work, opened again on a note in the conversation it ran in. The note is the
    * app telling that Bot, not a line of the conversation: like a check-back's own line, only the turn
    * it wakes or is heard in reads it (`botOnly`), and the flow board still draws the wake from the
-   * stopped turn. Nothing publishes it; you see the go on's receipt instead.
+   * stopped turn. Nothing publishes it: the turn opening again is what you see.
    */
   function resume(record: HeldTurn, said: SaidLine): Turn | null {
     if (admission?.draining) return null;
@@ -453,33 +425,7 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
     }
   }
 
-  /** A receipt for holds a button lifted: what it lifted, what opens again, and what stays held. */
-  function continueReceiptLine(
-    sessionId: string,
-    scopes: ControlScope[],
-    lifted: Hold[],
-    resumed: Array<{ record: HeldTurn; line?: Message }>,
-    stillHeld: Hold[],
-  ): Message {
-    const current = lifted.map((hold) => store.getHold(hold.id));
-    return store.insertMessage({
-      sessionId,
-      kind: "system",
-      author: authorIn(sessionId, scopes),
-      body: continueReceiptBody(locale(), {
-        lifted: current.map((hold) => ({ scope: scopeLabel(hold, sessionId), said: holdSaid(hold) })),
-        resumed: resumed.filter((row) => !row.line).map((row) => turnLine(row.record, sessionId, headingBots(scopes))),
-        takenUp: resumed.flatMap((row) => (row.line ? [{ bot: botName(row.record.bot_id), said: saidOf(row.line) }] : [])),
-        resumedCheckBacks: current.reduce((sum, hold) => sum + (hold.effect.resumed_check_backs?.length ?? 0), 0),
-        restored: current.flatMap((hold) => hold.effect.restored_plans ?? []).map((id) => planTitle(id) ?? id),
-        stillHeld: stillHeld.map((hold) => ({ scope: scopeLabel(hold, sessionId), said: holdSaid(hold) })),
-      }),
-      hiddenFromBots: true,
-      control: { kind: "receipt", verb: "continue", hold_ids: current.map((hold) => hold.id), offer: [], scopes },
-    });
-  }
-
-  return { continueByLine, resumeLifted, lift, liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnWithLine, goOnFromYourLine, takeUp, continueReceiptLine };
+  return { continueByLine, resumeLifted, lift, liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnWithLine, goOnFromYourLine, takeUp };
 }
 
 export type StopGoOn = ReturnType<typeof createStopGoOn>;

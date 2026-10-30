@@ -12,8 +12,9 @@
  *
  * The target is ADR 0040's control plane: a stop is a hold only you lift, every way of starting or
  * waking a turn and every call with an effect checks it, and the app itself — not a model turn —
- * says what was stopped. Each test names the phase that flips it to a plain `test`:
- * - ADR 0040 P2 (holds, the wake and tool gates, the stop line carried out and its receipt): the
+ * carries it out (since ADR 0101 without a word: the work stopping is what you see). Each test
+ * names the phase that flips it to a plain `test`:
+ * - ADR 0040 P2 (holds, the wake and tool gates, the stop line carried out): the
  *   first three, which run with holds on (`holds: true`), as a daemon does once no installed app
  *   older than the version gate shares its database.
  * - ADR 0040 P1 (a Stop no longer ends in a settle, so nothing calls the plan back): the fourth.
@@ -88,7 +89,7 @@ async function atWork(h: Scenario) {
 }
 
 // ADR 0040 P2.
-test("a stop said in the director's direct ends its work in both Bot↔Bot directs at once, and the app says what it stopped", async () => {
+test("a stop said in the director's direct ends its work in both Bot↔Bot directs at once, and the app records what it stopped", async () => {
   const h = await scenario({ media: true, holds: true });
   const t = await atWork(h);
   const dm = h.direct(t.director);
@@ -118,20 +119,18 @@ test("a stop said in the director's direct ends its work in both Bot↔Bot direc
   // A stop takes no model call: not the organizer's, not a turn's.
   expect(h.judgeCalls("organizer").filter((row) => row.at > stop.created_at)).toEqual([]);
   expect(h.hops().filter((hop) => hop.sessionId === dm).map(({ turnId, hop }) => ({ turnId, hop }))).toEqual([]);
-  // The receipt is the app's, and names the two jobs whose turns it stopped.
-  const after = h.messages(dm).filter((message) => message.created_at > stop.created_at);
-  expect(after.map(({ kind }) => kind)).toEqual(["system"]);
-  expect(after[0]!.body).toContain("EP01");
-  expect(after[0]!.body).toContain("回响纪元");
-  // 审片员's line is the one wake the hold turned away, and it is on the record.
+  // Nothing is said in the direct (ADR 0101); the hold records the two jobs whose turns it stopped.
+  expect(h.messages(dm).filter((message) => message.created_at > stop.created_at)).toEqual([]);
   const [hold] = h.store.listHolds();
+  expect(hold!.effect.stopped_turns?.map((row) => row.task_id).sort()).toEqual([t.ep01.id, t.echo.id].sort());
+  // 审片员's line is the one wake the hold turned away, and it is on the record.
   expect(h.suppressedWakes(t.director).map((row) => ({ cause: row.payload.cause, holds: row.payload.holds }))).toEqual([
     { cause: "mention", holds: [hold!.id] },
   ]);
 });
 
 // ADR 0040 P2.
-test("told it has not stopped, the app checks what is running and answers, with no model call", async () => {
+test("told it has not stopped, the app stops it again, with no model call and no word", async () => {
   const h = await scenario({ media: true, holds: true });
   const t = await atWork(h);
   const dm = h.direct(t.director);
@@ -146,10 +145,13 @@ test("told it has not stopped, the app checks what is running and answers, with 
 
   expect(h.judgeCalls("organizer").filter((row) => row.at > again.created_at)).toEqual([]);
   expect(h.turns(t.director).filter((turn) => turn.created_at > again.created_at)).toEqual([]);
-  // The answer is the app's, about the director, from what the store says is running.
-  const answer = h.messages(dm).filter((message) => message.created_at > again.created_at);
-  expect(answer.map(({ kind }) => kind)).toEqual(["system"]);
-  expect(answer[0]!.body).toContain("视频导演");
+  // Read as a stop again: a hold of its own on the director, and nothing said (ADR 0101).
+  expect(h.store.listHolds({ inForce: true }).map(({ scope, scope_id, source_message_id }) => ({ scope, scope_id, source_message_id }))).toContainEqual({
+    scope: "bot",
+    scope_id: t.director.id,
+    source_message_id: again.id,
+  });
+  expect(h.messages(dm).filter((message) => message.created_at > again.created_at)).toEqual([]);
 });
 
 // ADR 0040 P2.

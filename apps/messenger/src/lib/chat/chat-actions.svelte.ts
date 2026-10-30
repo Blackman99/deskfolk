@@ -248,9 +248,9 @@ export class ChatActions {
   }
 
   /**
-   * A stop chosen from a menu: everything, one Bot, a conversation or a plan. The receipt goes to
-   * the conversation it was chosen in, when one is named. A refusal comes back to show; a dropped
-   * link marks the connection.
+   * A stop chosen from a menu: everything, one Bot, a conversation or a plan. Nothing is said about
+   * it in the conversation (ADR 0101): the work stopping is what you see. A refusal comes back to
+   * show; a dropped link marks the connection.
    */
   async stopScope(
     scope: "global" | "bot" | "session" | "plan",

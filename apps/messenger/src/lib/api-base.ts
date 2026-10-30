@@ -564,7 +564,7 @@ export abstract class ApiBase<Row extends PendingRow> {
     await this.post("/v1/turns/stop", turnId ? { turn_id: turnId } : {});
   }
 
-  /** A stop you chose from a menu; with `session_id`, its receipt goes to that conversation. */
+  /** A stop you chose from a menu; `session_id` is where you chose it, for the work log. Nothing is said in it (ADR 0101). */
   async createHold(body: CreateHoldRequest): Promise<Hold> {
     return this.post<Hold>("/v1/holds", body);
   }
@@ -574,7 +574,7 @@ export abstract class ApiBase<Row extends PendingRow> {
     return this.post<Hold>(`/v1/holds/${encodeURIComponent(holdId)}/lift`, {});
   }
 
-  /** A button on a line about your stops: a receipt's undo, widen, narrow, or go on. */
+  /** A button on a line about your stops: your line's stop or go on, or an older receipt's undo, widen, narrow, or go on. */
   async controlAction(messageId: string, body: ControlActionRequest): Promise<ControlActionResult> {
     return this.post<ControlActionResult>(`/v1/messages/${encodeURIComponent(messageId)}/control`, body);
   }

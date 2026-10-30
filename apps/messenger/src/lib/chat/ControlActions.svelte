@@ -5,8 +5,8 @@
 	import { controlBar, partialOf, type ControlButton, type RestartPartial } from './control-actions.ts';
 
 	/**
-	 * The buttons under a line about your stops: the app's receipt or status answer, or your own line
-	 * it marked as maybe meaning a stop. What they show is read from the line and the stops in force
+	 * The buttons under a line about your stops: your own line the app marked as maybe meaning a stop,
+	 * or an app's status answer or receipt (no stop writes one since ADR 0101; older ones keep theirs). What they show is read from the line and the stops in force
 	 * (`control-actions.ts`); a press goes to the daemon, and the line's own `acted` then says what
 	 * was done — nothing here remembers it.
 	 */
