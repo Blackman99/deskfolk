@@ -12,7 +12,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ### The sidebar's head shows the mark alone
 
-- The top of the sidebar showed the Deskfolk mark with the name beside it. The name is gone and the mark stays, as on the folded sidebar; the switches keep to the far end of the row, and its empty space still moves the window.
+- The top of the sidebar showed the Deskfolk mark with the name beside it. The name is gone and the mark stays, as on the folded sidebar; the switches keep to the far end of the row, and its empty space still moves the window. Beside the macOS traffic lights the mark now stays until the row truly has no room for it; it used to go while there was still space.
 
 ### Deleting a group or project session shows that it is under way
 

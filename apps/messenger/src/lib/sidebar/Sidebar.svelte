@@ -742,9 +742,9 @@
 
 	/*
 	 * Behind the traffic lights, a list dragged near its narrowest has no room for the mark and its
-	 * three buttons (22 + 3 × 30 + gaps = 136px past the lights' padding), so the mark goes.
+	 * three buttons (22 + 3 × (4 + 30) = 124px past the lights' padding), so the mark goes.
 	 */
-	@container brand-row (max-width: 135px) {
+	@container brand-row (max-width: 123px) {
 		:global(:root[data-chrome='mac']) .brand-row > :global(.brand-mark) {
 			display: none;
 		}
