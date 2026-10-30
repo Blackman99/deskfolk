@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The app icon shows both faces
+
+- In the Dock the app icon read as an orange smiley beside a white crescent: Mochi was two-thirds hidden behind Pudding, its eyes gone at that size, and the pair sat low on the tile under an empty top. Now Mochi and Pudding peek over the edge of a desk side by side, hands resting on it, both faces whole, with a typing bubble above Pudding. The dark ring around Pudding is gone too; the two are parted by a gap the colour of the tile. The phone's home-screen icon is the same picture. The menu bar icon, the mark inside the app and the favicon are unchanged.
+
 ### Deleting a group or project session shows that it is under way
 
 - Deleting a group or a project session takes a few seconds (its messages and turns go with it), and for all that time the confirm looked unchanged: its buttons were already disabled but looked the same, as if the click had done nothing. Now the Confirm delete button you pressed spins and reads Deleting…, Cancel, ✕ and the checkbox fade, and the confirm closes once the delete is done. Clearing a history reads Clearing…; the other places that use the same confirm (deleting a Bot, an endpoint, a routine) do the same.

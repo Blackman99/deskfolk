@@ -1,54 +1,103 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <!--
-    Deskfolk app icon source. The mark's two teammates as round characters: Mochi (white, you)
-    and Pudding (mustard, your Bot), Pudding ringed in the tile's teal so it cuts into Mochi the
-    way the mark draws it, both with eyes, standing on a soft contact shadow. macOS geometry: an
+    Deskfolk app icon source. The mark's two teammates peek over the edge of a desk, hands on it:
+    Mochi (white, you) and Pudding (mustard, your Bot), with a typing bubble above Pudding. Both
+    faces stay whole so they still read at Dock size. Pudding's ring is cut out of Mochi in the
+    tile's own gradient (userSpaceOnUse), so it reads as a gap, not an outline. macOS geometry: an
     824 tile centred on the 1024 canvas, radius 185, transparent margins with the icon's own drop
     shadow. The art is drawn on a 256 grid and scaled onto the tile. Regenerate the platform set
-    with the Tauri CLI icon command; see docs/development.md. No double hyphens in comments.
+    with scripts/app-icon/build.sh; see docs/development.md. No double hyphens in comments.
   -->
   <defs>
-    <radialGradient id="tile" cx=".5" cy=".18" r=".95">
-      <stop offset="0" stop-color="#2c98ac"/>
-      <stop offset=".55" stop-color="#146a7c"/>
-      <stop offset="1" stop-color="#0a3f4a"/>
+    <radialGradient id="tile" gradientUnits="userSpaceOnUse" cx="128" cy="40" r="250">
+      <stop offset="0" stop-color="#33a4b7"/>
+      <stop offset=".55" stop-color="#167689"/>
+      <stop offset="1" stop-color="#0c4a57"/>
     </radialGradient>
     <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#fff" stop-opacity=".55"/>
+      <stop offset="0" stop-color="#fff" stop-opacity=".5"/>
       <stop offset=".35" stop-color="#fff" stop-opacity=".08"/>
       <stop offset="1" stop-color="#fff" stop-opacity="0"/>
     </linearGradient>
-    <radialGradient id="mochi" cx=".36" cy=".3" r=".8">
+    <linearGradient id="deskTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5cbccb"/>
+      <stop offset="1" stop-color="#2f93a5"/>
+    </linearGradient>
+    <linearGradient id="deskFront" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f5f6e"/>
+      <stop offset="1" stop-color="#093f4a"/>
+    </linearGradient>
+    <linearGradient id="ao" gradientUnits="userSpaceOnUse" x1="0" y1="150" x2="0" y2="184">
+      <stop offset="0" stop-color="#062a31" stop-opacity="0"/>
+      <stop offset="1" stop-color="#062a31" stop-opacity=".32"/>
+    </linearGradient>
+    <radialGradient id="mochi" cx=".38" cy=".3" r=".78">
       <stop offset="0" stop-color="#ffffff"/>
-      <stop offset=".55" stop-color="#eef3f4"/>
-      <stop offset="1" stop-color="#b9c9ce"/>
+      <stop offset=".6" stop-color="#f1f5f6"/>
+      <stop offset="1" stop-color="#c3d2d6"/>
     </radialGradient>
-    <radialGradient id="pudding" cx=".36" cy=".3" r=".8">
-      <stop offset="0" stop-color="#ffd98c"/>
-      <stop offset=".5" stop-color="#f0ab3d"/>
-      <stop offset="1" stop-color="#b8700f"/>
+    <radialGradient id="pudding" cx=".38" cy=".3" r=".78">
+      <stop offset="0" stop-color="#ffd27a"/>
+      <stop offset=".55" stop-color="#f0ab3d"/>
+      <stop offset="1" stop-color="#c47a14"/>
     </radialGradient>
-    <radialGradient id="ground" cx=".5" cy=".5" r=".5">
-      <stop offset="0" stop-color="#03181d" stop-opacity=".55"/>
-      <stop offset="1" stop-color="#03181d" stop-opacity="0"/>
+    <radialGradient id="handM" cx=".4" cy=".3" r=".8">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#cdd9dc"/>
+    </radialGradient>
+    <radialGradient id="handP" cx=".4" cy=".3" r=".8">
+      <stop offset="0" stop-color="#ffcf72"/>
+      <stop offset="1" stop-color="#d48b1e"/>
     </radialGradient>
     <filter id="drop" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur stdDeviation="14"/>
     </filter>
+    <clipPath id="tileClip"><rect width="256" height="256" rx="57.5"/></clipPath>
+    <clipPath id="mochiClip"><circle cx="78" cy="140" r="58"/></clipPath>
+    <clipPath id="both"><circle cx="78" cy="140" r="58"/><circle cx="170" cy="134" r="62"/></clipPath>
   </defs>
   <rect x="100" y="112" width="824" height="824" rx="185" fill="#04181d" opacity=".32" filter="url(#drop)"/>
   <g transform="translate(100 100) scale(3.21875)">
-    <rect x="0" y="0" width="256" height="256" rx="57.5" fill="url(#tile)"/>
-    <ellipse cx="128" cy="206" rx="92" ry="14" fill="url(#ground)"/>
-    <circle cx="98" cy="140" r="58" fill="url(#mochi)"/>
-    <ellipse cx="86" cy="134" rx="4.6" ry="6.4" fill="#1d2a2f"/>
-    <ellipse cx="108" cy="134" rx="4.6" ry="6.4" fill="#1d2a2f"/>
-    <ellipse cx="80" cy="108" rx="14" ry="8" fill="#fff" opacity=".7" transform="rotate(-25 80 108)"/>
-    <circle cx="160" cy="146" r="60" fill="url(#pudding)" stroke="#11596a" stroke-width="9"/>
-    <ellipse cx="149" cy="140" rx="4.8" ry="6.6" fill="#3d2804"/>
-    <ellipse cx="172" cy="140" rx="4.8" ry="6.6" fill="#3d2804"/>
-    <path d="M152 156q8 6 16 0" fill="none" stroke="#3d2804" stroke-width="3" stroke-linecap="round"/>
-    <ellipse cx="141" cy="112" rx="15" ry="8" fill="#fff" opacity=".45" transform="rotate(-25 141 112)"/>
+    <g clip-path="url(#tileClip)">
+      <rect width="256" height="256" fill="url(#tile)"/>
+      <!-- Mochi, Pudding's ring cut out of it, Pudding, then shade where they meet the desk. -->
+      <circle cx="78" cy="140" r="58" fill="url(#mochi)"/>
+      <g clip-path="url(#mochiClip)"><circle cx="170" cy="134" r="69" fill="url(#tile)"/></g>
+      <circle cx="170" cy="134" r="62" fill="url(#pudding)"/>
+      <rect y="140" width="256" height="50" fill="url(#ao)" clip-path="url(#both)"/>
+      <!-- Mochi's face. -->
+      <ellipse cx="63" cy="128" rx="6.2" ry="8.6" fill="#1d2a2f"/>
+      <circle cx="65" cy="124.6" r="2.1" fill="#fff"/>
+      <ellipse cx="89" cy="128" rx="6.2" ry="8.6" fill="#1d2a2f"/>
+      <circle cx="91" cy="124.6" r="2.1" fill="#fff"/>
+      <ellipse cx="54" cy="140" rx="7" ry="4" fill="#f0ab3d" opacity=".45"/>
+      <ellipse cx="98" cy="140" rx="7" ry="4" fill="#f0ab3d" opacity=".45"/>
+      <path d="M70.5 145q5.5 6.82 11 0" fill="none" stroke="#1d2a2f" stroke-width="4.6" stroke-linecap="round"/>
+      <!-- Pudding's face. -->
+      <ellipse cx="157" cy="122" rx="6.2" ry="8.6" fill="#3d2804"/>
+      <circle cx="159" cy="118.6" r="2.1" fill="#fff"/>
+      <ellipse cx="183" cy="122" rx="6.2" ry="8.6" fill="#3d2804"/>
+      <circle cx="185" cy="118.6" r="2.1" fill="#fff"/>
+      <ellipse cx="148" cy="134" rx="7" ry="4" fill="#d9661c" opacity=".45"/>
+      <ellipse cx="192" cy="134" rx="7" ry="4" fill="#d9661c" opacity=".45"/>
+      <path d="M163.5 139q6.5 8.06 13 0" fill="none" stroke="#3d2804" stroke-width="4.6" stroke-linecap="round"/>
+      <!-- The desk: a lit top edge and a darker front, with their hands resting on it. -->
+      <rect y="180" width="256" height="16" fill="url(#deskTop)"/>
+      <rect y="180" width="256" height="2.4" fill="#fff" opacity=".5"/>
+      <rect y="196" width="256" height="60" fill="url(#deskFront)"/>
+      <rect y="196" width="256" height="2" fill="#062a31" opacity=".35"/>
+      <ellipse cx="56" cy="185" rx="13" ry="9" fill="url(#handM)"/>
+      <ellipse cx="102" cy="185" rx="13" ry="9" fill="url(#handM)"/>
+      <ellipse cx="146" cy="185" rx="13.5" ry="9.5" fill="url(#handP)"/>
+      <ellipse cx="196" cy="185" rx="13.5" ry="9.5" fill="url(#handP)"/>
+      <!-- Pudding is typing: the mark's bubble with three dots. -->
+      <g transform="translate(150 22)">
+        <path d="M14 0h44a14 14 0 0 1 14 14v12a14 14 0 0 1-14 14H30l-12 11c-1.4 1.2-3.4 0-3-1.8l2-9.6A14 14 0 0 1 0 26V14A14 14 0 0 1 14 0Z" fill="#fff"/>
+        <circle cx="22" cy="20" r="5" fill="#167689"/>
+        <circle cx="36" cy="20" r="5" fill="#167689"/>
+        <circle cx="50" cy="20" r="5" fill="#167689"/>
+      </g>
+    </g>
     <rect x="1" y="1" width="254" height="254" rx="56.5" fill="none" stroke="url(#rim)" stroke-width="2"/>
   </g>
 </svg>
