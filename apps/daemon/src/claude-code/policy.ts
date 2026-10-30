@@ -4,7 +4,8 @@
  * waits for your OK or is refused as the mode says, wherever it lands), the same recursive-search
  * refusal, nothing outside a short list of Claude Code's tools, nothing in the background, and
  * never Claude Code's own credentials — though a project session's file tools reach its memory of
- * that project and its saved plans, which live among them. A project session in plan mode (ADR
+ * that project and its saved plans, which live among them, and a Bot's read what it remembers of
+ * any project (ADR 0102). A project session in plan mode (ADR
  * 0098) writes no file but its plan until you approve it; its commands go by the permission mode,
  * as at any other time. Pure: everything it needs is passed in,
  * so the rules are tested on their own — the Windows ones too, on a fake disk (`host`).
@@ -53,6 +54,11 @@ export type AgentCall = {
    * config directory, yet its file tools read and write there as in any folder outside.
    */
   memoryDirs?: string[];
+  /**
+   * A Bot's (ADR 0102): the config directory under which its file tools may read, and only read,
+   * `projects/<any project>/memory`.
+   */
+  readableMemoryRoot?: string;
   /**
    * A project session's plan mode (ADR 0098): whether it is on, and the folders Claude Code saves
    * its plans in (inside its config directory, open to its file tools as `memoryDirs` are). Absent
@@ -116,7 +122,7 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
       // Its memory and plans are open to the file tools only: a command could `cd` there and on to the rest.
       const memory = call.memoryDirs?.some((dir) => namesDir(command, dir, home, platform));
       const plans = call.plan?.dirs.some((dir) => namesDir(command, dir, home, platform));
-      return { kind: "deny", reason: memory ? MEMORY_BY_FILE_TOOLS : plans ? PLANS_BY_FILE_TOOLS : "Claude Code's own settings and credentials are off limits" };
+      return { kind: "deny", reason: memory ? MEMORY_BY_FILE_TOOLS : plans ? PLANS_BY_FILE_TOOLS : offLimits(call) };
     }
     // Every other local agent's too (ADR 0079): a Bot reads no agent's sign-in, its own or another's.
     if (touchesAgentCredentials(command, home, platform, call.configDirs)) {
@@ -140,10 +146,13 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   // path and where its links lead stay in it.
   const plans = named.every((path) => inMemoryDir(path, call.plan?.dirs ?? [], host)) && !globLeaves(call, platform);
   const memory = plans || (named.every((path) => inMemoryDir(path, call.memoryDirs ?? [], host)) && !globLeaves(call, platform));
-  if (!memory && named.some((path) => isClaudeCredentialPath(path, home, platform, call.configDirs))) {
-    return { kind: "deny", reason: "Claude Code's own settings and credentials are off limits" };
+  // A Bot reads what Claude Code remembers of any project, and only reads it.
+  const root = call.readableMemoryRoot;
+  const open = memory || (root !== undefined && READS.has(call.tool) && !globLeaves(call, platform) && named.every((path) => inProjectMemory(path, root, host)));
+  if (!open && named.some((path) => isClaudeCredentialPath(path, home, platform, call.configDirs))) {
+    return { kind: "deny", reason: offLimits(call) };
   }
-  if (!memory && named.some((path) => isAgentCredentialPath(path, home, platform, call.configDirs))) {
+  if (!open && named.some((path) => isAgentCredentialPath(path, home, platform, call.configDirs))) {
     return { kind: "deny", reason: "your local agents' own settings and credentials are off limits" };
   }
   // On Windows a path with no drive ("/work/a.md", "/c/Users/…") opens on whichever drive the
@@ -186,6 +195,13 @@ export function planApproval(input: Record<string, unknown>): { kind_key: string
 const MEMORY_BY_FILE_TOOLS = "Claude Code's memory files for this project open with Read, Write, Edit, Glob and Grep, not in a command; its other settings and credentials are off limits";
 const PLANS_BY_FILE_TOOLS = "Claude Code's saved plans open with Read, Write, Edit, Glob and Grep, not in a command; its other settings and credentials are off limits";
 
+/** The refusal at Claude Code's own config; a Bot also hears the one thing there it may read, and where. */
+function offLimits(call: Pick<AgentCall, "readableMemoryRoot">): string {
+  const refusal = "Claude Code's own settings and credentials are off limits";
+  if (call.readableMemoryRoot === undefined) return refusal;
+  return `${refusal}. Only its memory of a project can be read, with Read, Glob or Grep and not in a command: ${call.readableMemoryRoot}/projects/<the project's path with every character but a letter or digit written ->/memory`;
+}
+
 /**
  * Whether a file tool's path is in one of the memory folders: as named, and, as far as it exists,
  * where its links lead (a link there to `~/.claude.json` is that file). A dangling link is not.
@@ -196,6 +212,24 @@ function inMemoryDir(path: string, dirs: string[], host: PathHost): boolean {
   const realDir = throughLinks(dir, host);
   const realPath = throughLinks(path, host);
   return realDir !== null && realPath !== null && isWithinPath(realDir, realPath, host.platform);
+}
+
+/**
+ * Whether a file tool's path is in `projects/<a project>/memory` under the config directory. The app
+ * names no one folder here, so the folder must also really be that one, not a link out of it, and the
+ * path must stay in it through its links as {@link inMemoryDir} has it.
+ */
+function inProjectMemory(path: string, root: string, host: PathHost): boolean {
+  if (!isWithinPath(root, path, host.platform)) return false;
+  const [top, project, folder] = workspaceRelative(root, path, host.platform).split("/");
+  if (top !== "projects" || !project || folder !== "memory") return false;
+  const p = host.platform === "win32" ? win32 : posix;
+  const dir = p.join(root, top, project, folder);
+  const realRoot = throughLinks(root, host);
+  const realDir = throughLinks(dir, host);
+  if (realRoot === null || realDir === null) return false;
+  const expected = p.join(realRoot, top, project, folder);
+  return isWithinPath(expected, realDir, host.platform) && isWithinPath(realDir, expected, host.platform) && inMemoryDir(path, [dir], host);
 }
 
 /** A path with its nearest part on disk resolved through links and the rest as named; null at a dangling link. */

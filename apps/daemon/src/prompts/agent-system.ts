@@ -34,7 +34,7 @@ const PREFACE_ZH = `# 在这一轮里
 - 看图用 Read，应用会记下你看过；审查图片类交付时要先这样看过，才能给通过。
 - 问用户只能用 mcp__deskfolk__ask_user，这里没有 AskUserQuestion。
 - 这一轮最后一条不调用工具的回复，就是你发到会话里的消息，和系统指令说的一样会先过收尾检查；和工具调用写在同一条消息里的文字（包括 mcp__deskfolk__end_turn、mcp__deskfolk__submit 旁边的）不会发出。
-- 不要读、改或打印 Claude Code 自己的设置和凭据（~/.claude、~/.claude.json、钥匙串），不要运行 claude 命令，也不要用后台任务：命令和子任务都在前台跑完。`;
+- 不要读、改或打印 Claude Code 自己的设置和凭据（~/.claude、~/.claude.json、钥匙串），例外是 ~/.claude/projects/*/memory/ 下的项目记忆：可以读，不要改；~/.claude 下其他内容一律不碰。不要运行 claude 命令，也不要用后台任务：命令和子任务都在前台跑完。`;
 
 const PREFACE_EN = `# In this turn
 
@@ -44,7 +44,7 @@ This turn is run by the user's own Claude Code. Every Deskfolk tool the System s
 - Look at pictures with Read; the app records that you looked, which a review approving pictures needs.
 - Ask the user only with mcp__deskfolk__ask_user; there is no AskUserQuestion here.
 - Your last reply in this turn that calls no tool is the message you post, and it passes the closing check the System section describes; text in the same message as a tool call (beside mcp__deskfolk__end_turn or mcp__deskfolk__submit too) is never sent.
-- Never read, change or print Claude Code's own settings or credentials (~/.claude, ~/.claude.json, the keychain), never run the claude command, and do not use background tasks: run commands and subtasks to the end in the foreground.`;
+- Never read, change or print Claude Code's own settings or credentials (~/.claude, ~/.claude.json, the keychain). The one exception is the project memory under ~/.claude/projects/*/memory/: read it, do not change it; everything else in ~/.claude stays off limits. Never run the claude command, and do not use background tasks: run commands and subtasks to the end in the foreground.`;
 
 export const AGENT_PREFACE: Record<Locale, string> = { zh: PREFACE_ZH, en: PREFACE_EN };
 

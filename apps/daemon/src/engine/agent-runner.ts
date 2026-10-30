@@ -35,7 +35,7 @@ import { driverFor } from "./agent/drivers/profiles";
 import { agentLabel, runExternalSession, type ExternalSettings } from "./agent/external-runner";
 import { withSystemProxy } from "../claude-code/proxy";
 import { claudeLaunch, killsTree } from "../claude-code/spawn";
-import { tildeDir } from "../claude-code/account";
+import { defaultConfigDir, tildeDir } from "../claude-code/account";
 import { accountOf, claudeChildEnv } from "../claude-code/status";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
 import { AGENT_READONLY_TOOLS, AGENT_WORK_TOOLS, appToolName, decideAgentCall } from "../claude-code/policy";
@@ -552,6 +552,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
         mode: current.mode === "readonly" ? "readonly" : current.mode === "desk" ? "desk" : "work",
         workspace: root,
         configDirs: store.claudeCodeConfigDirs(),
+        readableMemoryRoot: process.env.CLAUDE_CONFIG_DIR?.trim() || defaultConfigDir(),
         permission: store.permissionModeFor(current.bot_id),
       });
       if (decision.kind === "deny") return deny(decision.reason);

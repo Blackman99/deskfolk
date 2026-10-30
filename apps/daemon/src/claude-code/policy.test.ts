@@ -147,6 +147,75 @@ posixTest("a link in the memory folder is followed: one leading to a sign-in, or
   expect(decideAgentCall({ ...at, tool: "Write", input: { file_path: join(memory, "later.md") } }).kind).toBe("deny");
 });
 
+posixTest("a Bot's file tools read what Claude Code remembers of any project, and only read it; the rest of ~/.claude stays shut", () => {
+  const config = `${home}/.claude`;
+  const memory = `${config}/projects/-Users-someone-proj/memory`;
+  const at = { ...base, exists: () => true, readableMemoryRoot: config };
+  for (const permission of ["read_only", "ask_first", "auto", "allow_all"] as const) {
+    expect(decideAgentCall({ ...at, permission, tool: "Read", input: { file_path: `${memory}/notes.md` } }))
+      .toEqual({ kind: "allow", effect: false, appName: "read_file", target: `${memory}/notes.md` });
+  }
+  expect(decideAgentCall({ ...at, tool: "Read", input: { file_path: `${config}/projects/-Users-someone-other/memory/a/b.md` } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...at, tool: "Read", input: { file_path: "~/.claude/projects/-Users-someone-proj/memory/MEMORY.md" } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...at, tool: "Grep", input: { pattern: "api key", path: memory } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...at, tool: "Glob", input: { pattern: "**/*.md", path: memory } }).kind).toBe("allow");
+  // Never to write, whatever the mode.
+  for (const tool of ["Write", "Edit", "MultiEdit"]) {
+    expect([tool, decideAgentCall({ ...at, permission: "allow_all", tool, input: { file_path: `${memory}/MEMORY.md` } }).kind]).toEqual([tool, "deny"]);
+  }
+  expect(decideAgentCall({ ...at, permission: "allow_all", tool: "NotebookEdit", input: { notebook_path: `${memory}/a.ipynb` } }).kind).toBe("deny");
+  // The transcripts beside it, climbing out, a folder named like it, the folder above, the rest of the config.
+  for (const file_path of [`${memory}/../47ce0671.jsonl`, `${memory}/../../../settings.json`, `${memory}-old/a.md`, `${config}/projects/-Users-someone-proj/a.md`,
+    `${config}/projects/memory/a.md`, `${config}/projects/a/b/memory/c.md`, `${config}/memory/a.md`, `${config}/settings.json`, `${config}/.credentials.json`, `${home}/.claude.json`]) {
+    const call = decideAgentCall({ ...at, permission: "allow_all", tool: "Read", input: { file_path } });
+    expect([file_path, call.kind]).toEqual([file_path, "deny"]);
+    if (call.kind === "deny") expect(call.reason).toContain("off limits");
+  }
+  // A search of the folders above, or one whose pattern leaves.
+  expect(decideAgentCall({ ...at, tool: "Grep", input: { pattern: "token", path: `${config}/projects` } }).kind).toBe("deny");
+  expect(decideAgentCall({ ...at, tool: "Grep", input: { pattern: "token", path: config } }).kind).toBe("deny");
+  expect(decideAgentCall({ ...at, tool: "Glob", input: { pattern: "*/memory/*", path: `${config}/projects` } }).kind).toBe("deny");
+  for (const pattern of ["../../*.json", "**/../../../.credentials.json", `${config}/*.json`, "~/.claude/*"]) {
+    expect([pattern, decideAgentCall({ ...at, tool: "Glob", input: { pattern, path: memory } }).kind]).toEqual([pattern, "deny"]);
+  }
+  // A command does not get in: from there it could go on to the rest. It is told where and how to read.
+  for (const command of [`cd ${memory} && cat notes.md`, "cat ~/.claude/projects/-Users-someone-proj/memory/MEMORY.md", "cat ~/.claude/.credentials.json"]) {
+    const call = decideAgentCall({ ...at, permission: "allow_all", tool: "Bash", input: { command } });
+    expect(call).toEqual({ kind: "deny", reason: expect.stringContaining("with Read, Glob or Grep and not in a command") });
+    if (call.kind === "deny") expect(call.reason).toContain(`${config}/projects/`);
+  }
+  // Only under the directory it is given: another listed account's stays shut.
+  const other = `${home}/.claude-b/projects/-Users-someone-proj/memory/a.md`;
+  expect(decideAgentCall({ ...at, configDirs: [`${home}/.claude-b`], tool: "Read", input: { file_path: other } }).kind).toBe("deny");
+  // Without it, as a project session has it, the words do not change.
+  expect(decideAgentCall({ ...base, exists: () => true, tool: "Read", input: { file_path: `${memory}/a.md` } })).toEqual({ kind: "deny", reason: "Claude Code's own settings and credentials are off limits" });
+});
+
+posixTest("a Bot's read of a project's memory follows links: out of the folder, or a folder that is itself a link out, stays shut", () => {
+  const config = join(elsewhere, "bot-cfg");
+  const memory = join(config, "projects", "-proj", "memory");
+  mkdirSync(memory, { recursive: true });
+  writeFileSync(join(config, ".credentials.json"), "{}");
+  writeFileSync(join(memory, "notes.md"), "x");
+  symlinkSync(join(config, ".credentials.json"), join(memory, "leak.md"));
+  symlinkSync(join(config, "settings.json"), join(memory, "later.md"));
+  // The folder itself, and the project's folder, each leading to the whole config.
+  mkdirSync(join(config, "projects", "-linked"));
+  symlinkSync(config, join(config, "projects", "-linked", "memory"));
+  symlinkSync(config, join(config, "projects", "-climbs"));
+  const at = { ...base, configDirs: [config], readableMemoryRoot: config };
+  expect(decideAgentCall({ ...at, tool: "Read", input: { file_path: join(memory, "notes.md") } }).kind).toBe("allow");
+  for (const file_path of [join(memory, "leak.md"), join(memory, "later.md"), join(config, "projects", "-linked", "memory", ".credentials.json"),
+    join(config, "projects", "-climbs", "memory", "a.md")]) {
+    expect([file_path, decideAgentCall({ ...at, tool: "Read", input: { file_path } }).kind]).toEqual([file_path, "deny"]);
+  }
+  expect(decideAgentCall({ ...at, tool: "Grep", input: { pattern: "x", path: join(config, "projects", "-linked", "memory") } }).kind).toBe("deny");
+  // A config directory that is itself a link, as a dotfiles setup has it, still opens.
+  const linkedConfig = join(elsewhere, "bot-cfg-link");
+  symlinkSync(config, linkedConfig);
+  expect(decideAgentCall({ ...at, configDirs: [linkedConfig], readableMemoryRoot: linkedConfig, tool: "Read", input: { file_path: join(linkedConfig, "projects", "-proj", "memory", "notes.md") } }).kind).toBe("allow");
+});
+
 posixTest("a read-only turn can look and nothing else; background work and unlisted tools are refused", () => {
   expect(decideAgentCall({ ...base, mode: "readonly", tool: "Write", input: { file_path: join(root, "a") } }).kind).toBe("deny");
   expect(decideAgentCall({ ...base, mode: "readonly", tool: "Read", input: { file_path: join(root, "a") } }).kind).toBe("allow");
@@ -254,6 +323,19 @@ test("on Windows, Claude Code's Bash is Git Bash: a command runs or asks by the 
   const asked = decideAgentCall({ ...winBase, permission: "ask_first", tool: "Bash", input: { command: "cat /c/Users/Someone/Documents/x.md" } });
   expect(asked.kind).toBe("ask");
   if (asked.kind === "ask") expect(asked.approval).toMatchObject({ kind_key: "shell", target: WIN_WS });
+});
+
+test("on Windows, a Bot reads any project's memory however its path is spelled, and only reads it", () => {
+  const config = `${WIN_HOME}\\.claude`;
+  const memory = `${config}\\projects\\C--Users-Someone-ws\\memory`;
+  const at = { ...winBase, readableMemoryRoot: config };
+  for (const file_path of [`${memory}\\MEMORY.md`, "c:/users/someone/.CLAUDE/projects/c--users-someone-ws/memory/a.md", "~\\.claude\\projects\\C--Users-Someone-ws\\memory\\a.md"]) {
+    expect([file_path, decideAgentCall({ ...at, tool: "Read", input: { file_path } }).kind]).toEqual([file_path, "allow"]);
+  }
+  for (const file_path of [`${memory}\\..\\..\\..\\.credentials.json`, `${config}\\.credentials.json`, `${config}\\projects\\a.jsonl`, "/c/Users/Someone/.claude/projects/C--Users-Someone-ws/memory/a.md"]) {
+    expect([file_path, decideAgentCall({ ...at, tool: "Read", input: { file_path } }).kind]).toEqual([file_path, "deny"]);
+  }
+  expect(decideAgentCall({ ...at, permission: "allow_all", tool: "Write", input: { file_path: `${memory}\\a.md` } }).kind).toBe("deny");
 });
 
 test("on Windows, a project session's memory opens with the file tools however its path is spelled; the rest of .claude does not", () => {
