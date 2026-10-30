@@ -181,6 +181,32 @@ test("Stop ends a run waiting on you; your next line resumes the thread in a new
   expect(h.sent(1, "thread/resume")[0]).toMatchObject({ threadId: "thread-1" });
 });
 
+test("Stop keeps what Codex had said beside its work as its line", async () => {
+  const h = start([{ turns: [[{ commentary: "先看一下" }, { commentary: "再跑测试" }, { hang: true }]] }]);
+  const id = await h.open();
+  await h.say(id, "跑测试");
+  await h.until(async () => (await h.run(id))?.partial === "先看一下\n\n再跑测试");
+  const stopped = await h.call<AgentRun>("POST", `/v1/agent-runs/${(await h.run(id))!.id}/stop`);
+  expect(stopped.body).toMatchObject({ status: "stopped", partial: null });
+  expect(h.lines(id)).toEqual([
+    { kind: "user", author: "user", body: "跑测试" },
+    { kind: "bot", author: "agent", body: "先看一下\n\n再跑测试" },
+  ]);
+  await h.api.projects.idle();
+  // Codex winding down after the interrupt says nothing more on the record.
+  expect(h.lines(id)).toHaveLength(2);
+  expect((await h.run(id))).toMatchObject({ status: "stopped", partial: null });
+});
+
+test("a failed turn keeps what Codex had said, then says why", async () => {
+  const h = start([{ turns: [[{ commentary: "先看一下" }, { fail: { message: "boom", codexErrorInfo: "other", errorNotice: true } }]] }]);
+  const id = await h.open();
+  await h.say(id, "你好");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("failed");
+  expect(h.lines(id).map((line) => [line.kind, line.body])).toEqual([["user", "你好"], ["bot", "先看一下"], ["system", "Codex 出错停下了：boom"]]);
+});
+
 test("a line sent while a turn is going is steered into it", async () => {
   const h = start([{ turns: [[{ sleep: 400 }, { say: "两句都答了" }]] }]);
   const id = await h.open();

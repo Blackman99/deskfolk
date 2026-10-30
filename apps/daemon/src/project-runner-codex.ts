@@ -56,6 +56,11 @@ type Live = {
   steering: Set<Promise<void>>;
   /** The approvals waiting on you, oldest first: the first is the card; answering it brings the next. */
   waiting: Array<{ approval: AgentRunApproval; resolve: (allow: boolean) => void }>;
+  /**
+   * What it has said in the turn going now, whole, its answer so far included: the working bubble
+   * shows the start of its words beside the work, and a turn cut short before its end keeps it all as its line.
+   */
+  said: string;
   stopped: boolean;
   /** Nothing more to send (everything answered, or stopped): a new line waits for the next run. */
   closing: boolean;
@@ -246,7 +251,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     const run = store.createAgentRun(sessionId);
     let finish!: () => void;
     const fresh: Live = {
-      runId: run.id, sessionId, queue: [line], steering: new Set(), waiting: [], stopped: false, closing: false,
+      runId: run.id, sessionId, queue: [line], steering: new Set(), waiting: [], said: "", stopped: false, closing: false,
       done: new Promise<void>((resolve) => { finish = resolve; }), abort: new AbortController(), rpc: null, threadId: null, turnId: null,
     };
     lives.set(sessionId, fresh);
@@ -276,10 +281,24 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     void going.finally(() => live.steering.delete(going));
   }
 
+  /** What it said in a turn that ends before its end (Stop, a failure, the daemon going down) stays on the record, as the bubble showed it. */
+  function keepSaid(live: Live): void {
+    const said = live.said.trim();
+    live.said = "";
+    if (!said) return;
+    try {
+      postLine(live.sessionId, "bot", said);
+    } catch (error) {
+      // The run still has to end: a session gone meanwhile has nowhere to keep it.
+      console.error(`[project ${live.sessionId}] could not keep what Codex said`, error);
+    }
+  }
+
   function fail(live: Live, detail: string): void {
     const run = store.getAgentRun(live.runId);
     if (!["running", "waiting_approval"].includes(run.status)) return;
-    update(live.runId, { status: "failed", activity: null, approval: null, error: detail });
+    keepSaid(live);
+    update(live.runId, { status: "failed", activity: null, partial: null, approval: null, error: detail });
     postLine(live.sessionId, "system", locale() === "en" ? `Codex stopped: ${detail}` : `Codex 出错停下了：${detail}`);
   }
 
@@ -315,6 +334,9 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     const started = new Map<string, { at: number; name: string; info: AgentRunToolInfo; command?: string; target?: string; mcp?: { server: string; tool: string } }>();
     let model: string | null = project.model;
     let partial = "";
+    const said = (text: string) => {
+      if (text.trim()) live.said = live.said ? `${live.said}\n\n${text}` : text;
+    };
     let finalText = "";
     let lastText = "";
     /** What a review found, as Codex closes it (`exitedReviewMode`): the reply to `/review`. */
@@ -437,8 +459,13 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         if (!item?.id) return;
         items.set(item.id, { ...(items.get(item.id) ?? {}), ...item });
         const agentId = agentOf(p);
+        // Once stopped, what it says winding down is not on the record: what it had said is kept already.
+        if (live.stopped && (item.type === "exitedReviewMode" || item.type === "agentMessage")) return;
         if (item.type === "exitedReviewMode") {
-          if (method === "item/completed" && !agentId && typeof item.review === "string") reviewText = item.review;
+          if (method === "item/completed" && !agentId && typeof item.review === "string") {
+            reviewText = item.review;
+            said(item.review);
+          }
           return;
         }
         if (item.type === "agentMessage") {
@@ -447,11 +474,14 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
           lastText = text;
           // Its final answer is the reply; words beside its work are what it has said so far. A
           // review's findings come once more as a message of their own: they are the reply already.
-          if (item.phase === "final_answer") finalText = text;
-          else if (reviewText !== null && text.trim() === reviewText.trim()) return;
+          if (item.phase === "final_answer") {
+            finalText = text;
+            said(text);
+          } else if (reviewText !== null && text.trim() === reviewText.trim()) return;
           else if (text.trim()) {
             partial = clip(partial ? `${partial}\n\n${text}` : text, PARTIAL_MAX);
             update(live.runId, { partial });
+            said(text);
           }
           return;
         }
@@ -562,6 +592,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         if (reply) postLine(live.sessionId, "bot", reply);
         else if (ran) postLine(live.sessionId, "system", ran);
         partial = "";
+        live.said = "";
         update(live.runId, { partial: null, activity: null });
         return true;
       };
@@ -663,6 +694,8 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
 
   function stopLive(live: Live): void {
     live.stopped = true;
+    // Before the run reads as stopped, and so before a line you send next.
+    keepSaid(live);
     for (const asking of live.waiting.splice(0)) asking.resolve(false);
     const { rpc, threadId, turnId } = live;
     // The turn is told to stop first, so Codex keeps a thread it can resume; then its process goes.
@@ -686,7 +719,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       const live = liveRun(runId);
       if (!live) return run;
       stopLive(live);
-      return update(runId, { status: "stopped", activity: null, approval: null });
+      return update(runId, { status: "stopped", activity: null, partial: null, approval: null });
     },
     stopSession(sessionId) {
       const live = lives.get(sessionId);

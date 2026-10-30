@@ -294,6 +294,46 @@ test("Stop ends a run waiting on you; your next line starts a new one", async ()
   expect(h.lines(id).at(-1)).toEqual({ kind: "bot", author: "agent", body: "好" });
 });
 
+/** Words Claude Code says beside its work, as an assistant message of its own. */
+const narration = (text: string) => ({ type: "assistant", parent_tool_use_id: null, uuid: crypto.randomUUID(), session_id: "own-1",
+  message: { id: `msg_${crypto.randomUUID()}`, role: "assistant", model: "claude-sonnet-5", content: [{ type: "text", text }] } }) as unknown as SDKMessage;
+
+test("Stop keeps what it had said as its line, ahead of your next one", async () => {
+  let calls = 0;
+  const h = start(async ({ useTool, options }) => {
+    calls += 1;
+    if (calls === 1) await useTool("Write", { file_path: join(options.cwd!, "a.txt"), content: "x" });
+    return "好";
+  }, { preface: (line) => (line === "写个文件" ? [narration("先看看目录结构。"), narration("要在根目录写 a.txt。")] : []) });
+  h.store.patchSettings({ permission_mode: "ask_first" });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(id, "写个文件");
+  await h.until(async () => (await h.run(id))?.status === "waiting_approval");
+  expect((await h.run(id))!.partial).toBe("先看看目录结构。\n\n要在根目录写 a.txt。");
+  const stopped = await h.call<AgentRun>("POST", `/v1/agent-runs/${(await h.run(id))!.id}/stop`);
+  expect(stopped.body).toMatchObject({ status: "stopped", partial: null });
+  // On the record the moment Stop answers, before a line you send right after it.
+  expect(h.lines(id)).toEqual([
+    { kind: "user", author: "user", body: "写个文件" },
+    { kind: "bot", author: "agent", body: "先看看目录结构。\n\n要在根目录写 a.txt。" },
+  ]);
+  await h.say(id, "算了");
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(h.lines(id).map((line) => line.body)).toEqual(["写个文件", "先看看目录结构。\n\n要在根目录写 a.txt。", "算了", "好"]);
+});
+
+test("a run that fails keeps what it had said, then says why", async () => {
+  const h = start(async () => { throw new Error("boom"); }, { preface: () => [narration("先跑一下测试。")] });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(id, "跑测试");
+  await h.until(async () => (await h.run(id))?.status === "failed");
+  expect(h.lines(id)).toEqual([
+    { kind: "user", author: "user", body: "跑测试" },
+    { kind: "bot", author: "agent", body: "先跑一下测试。" },
+    { kind: "system", author: "app", body: "Claude Code 出错停下了：Error: boom" },
+  ]);
+});
+
 test("a line sent while a run is going goes into that run", async () => {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });

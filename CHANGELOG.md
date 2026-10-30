@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Stopping a project session keeps what the agent had said
+
+- In a project session, what Claude Code or Codex says while it works shows in the working bubble, and only its reply at the end became a line. Pressing Stop while it was writing took the bubble away and everything in it with it. Now what it had said by then stays in the conversation as its line, whole even past what the bubble shows, ahead of whatever you send next; a run that fails keeps it too, above the line saying why. A run that ends normally is unchanged.
+
 ### The app icon shows both faces
 
 - In the Dock the app icon read as an orange smiley beside a white crescent: Mochi was two-thirds hidden behind Pudding, its eyes gone at that size, and the pair sat low on the tile under an empty top. Now Mochi and Pudding peek over the edge of a desk side by side, hands resting on it, both faces whole, with a typing bubble above Pudding. The dark ring around Pudding is gone too; the two are parted by a gap the colour of the tile. The phone's home-screen icon is the same picture. The menu bar icon, the mark inside the app and the favicon are unchanged.

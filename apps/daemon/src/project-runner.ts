@@ -97,6 +97,11 @@ type Live = {
   waiting: Array<{ approval: AgentRunApproval; resolve: (answer: Answer) => void }>;
   /** The approval each tool call asked for, by call id, read back when Claude Code asks. */
   asked: Map<string, AgentRunApproval>;
+  /**
+   * What it has said since its last result, whole: the working bubble shows the start of it, and a
+   * run cut short before its result keeps it as its line.
+   */
+  said: string;
   stopped: boolean;
   /** Its input is closed (everything answered, or stopped): a new line waits for the next run. */
   closing: boolean;
@@ -290,7 +295,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     const input = inputQueue<SDKUserMessage>();
     let finish!: () => void;
     const fresh: Live = {
-      runId: run.id, sessionId, input, abort: new AbortController(), sent: [], waiting: [], asked: new Map(), stopped: false, closing: false, query: null,
+      runId: run.id, sessionId, input, abort: new AbortController(), sent: [], waiting: [], asked: new Map(), said: "", stopped: false, closing: false, query: null,
       done: new Promise<void>((resolve) => { finish = resolve; }), mode: project.mode === "plan" ? "plan" : "default",
     };
     lives.set(sessionId, fresh);
@@ -312,10 +317,24 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     live.input.push({ ...userMessage(content), uuid });
   }
 
+  /** What it said in a step that ends before its result (Stop, a failure, the daemon going down) stays on the record, as the bubble showed it. */
+  function keepSaid(live: Live): void {
+    const said = live.said.trim();
+    live.said = "";
+    if (!said) return;
+    try {
+      postLine(live.sessionId, "bot", said);
+    } catch (error) {
+      // The run still has to end: a session gone meanwhile has nowhere to keep it.
+      console.error(`[project ${live.sessionId}] could not keep what it said`, error);
+    }
+  }
+
   function fail(live: Live, detail: string): void {
     const run = store.getAgentRun(live.runId);
     if (!["running", "waiting_approval"].includes(run.status)) return;
-    update(live.runId, { status: "failed", activity: null, approval: null, error: detail });
+    keepSaid(live);
+    update(live.runId, { status: "failed", activity: null, partial: null, approval: null, error: detail });
     postLine(live.sessionId, "system", locale() === "en" ? `Claude Code stopped: ${detail}` : `Claude Code 出错停下了：${detail}`);
   }
 
@@ -474,7 +493,6 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     }
     if (live.stopped) return;
     let failure: string | null = null;
-    let partial = "";
     const session = query({ prompt: live.input.iterable, options });
     live.query = session;
     try {
@@ -514,8 +532,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
             continue;
           }
           if (text.trim()) {
-            partial = clip(partial ? `${partial}\n\n${text}` : text, PARTIAL_MAX);
-            update(live.runId, { partial });
+            live.said = live.said ? `${live.said}\n\n${text}` : text;
+            update(live.runId, { partial: clip(live.said, PARTIAL_MAX) });
           }
           continue;
         }
@@ -535,7 +553,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           if ((message.result ?? "").trim()) postLine(live.sessionId, "bot", message.result!.trim());
           // A command that answers nothing (`/compact`, `/clear`) still says it ran.
           else if (command) postLine(live.sessionId, "system", commandRan(command, en));
-          partial = "";
+          live.said = "";
           update(live.runId, { partial: null, activity: null });
           // Nothing more of yours to answer: the run is over.
           if (live.sent.length === 0) {
@@ -616,10 +634,12 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
         return run;
       }
       live.stopped = true;
+      // Before the run reads as stopped, and so before a line you send next.
+      keepSaid(live);
       for (const asking of live.waiting.splice(0)) asking.resolve("deny");
       live.input.close();
       live.abort.abort();
-      return update(runId, { status: "stopped", activity: null, approval: null });
+      return update(runId, { status: "stopped", activity: null, partial: null, approval: null });
     },
     stopSession(sessionId) {
       const live = lives.get(sessionId);
@@ -647,6 +667,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     close() {
       for (const live of lives.values()) {
         live.stopped = true;
+        keepSaid(live);
         for (const asking of live.waiting.splice(0)) asking.resolve("deny");
         live.input.close();
         live.abort.abort();
