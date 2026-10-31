@@ -278,6 +278,8 @@ test("a pinned session being renamed stands under its directory again, folded or
   await settle();
   const dir = '[data-project-dir="/Users/a/other"]';
   expect(host.querySelector<HTMLInputElement>(`${dir} [data-renaming] input`)?.value).toBe("Other");
+  // Its place in the band stays: the band folding away would jump the whole list, twice.
+  expect(host.querySelectorAll(".pinned-session-btn")).toHaveLength(1);
   click(host.querySelector(`${dir} .project-dir-head`));
   await settle();
   expect(host.querySelector(`${dir} [data-renaming] input`)).not.toBeNull();
