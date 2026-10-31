@@ -237,6 +237,28 @@ test("a Bot's own check-back rings at its desk", async () => {
   expect(rows(h, "tasks")).toBe(0);
 });
 
+test("a direct a Bot opens runs with no jobs too", async () => {
+  const h = await createScenario({ learning: true });
+  open.push(h);
+  const [asks, knows] = h.createBots({ name: "问的", duties: "问" }, { name: "懂的", duties: "答" });
+  const session = h.direct(asks!);
+  h.store.setSessionPlaybook(session, "plain");
+  let direct = "";
+  h.script(asks!, session).reply(call(tool("create_direct", { name: "懂的" })), ({ results }) => {
+    direct = (JSON.parse(results[0]!.content) as { data: { session_id: string } }).data.session_id;
+    return call(sendMessage("你看这个怎么办", { session_id: direct }));
+  }, say("我去问了"));
+  h.script(asks!).handle(() => call(endTurn()));
+  h.script(knows!).reply(say("先备份再迁移，第二步换成只读副本验证，第三步才切流量。"));
+  h.postUser(session, "问问懂的");
+  await h.waitIdle();
+  expect(h.store.getSession(direct).origin_session_id).toBe(session);
+  expect(h.store.playbookFor({ sessionId: direct }).id).toBe("plain");
+  expect(h.turns(knows!)[0]).toMatchObject({ session_id: direct, mode: "desk", task_id: null, status: "completed" });
+  expect(rows(h, "tasks")).toBe(0);
+  expect(rows(h, "delegations")).toBe(0);
+});
+
 test("in a group a line naming nobody is still judged, and with the judgement off everyone takes it", async () => {
   const h = await createScenario({ learning: true });
   open.push(h);
