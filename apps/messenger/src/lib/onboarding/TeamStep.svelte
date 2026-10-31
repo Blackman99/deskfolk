@@ -50,7 +50,8 @@
 		problem = null;
 		groupFailed = false;
 		members = new Map();
-		picks = templatesFor(id).map((template) => {
+		// 自由 has no team of its own (ADR 0103): the same people, working without the jobs.
+		picks = templatesFor(id === 'plain' ? 'general' : id).map((template) => {
 			const text = c.templates[template.id]!;
 			return { id: template.id, on: template.preselected, lead: template.lead, name: text.name, duties: text.duties, boundaries: text.boundaries, made: null };
 		});

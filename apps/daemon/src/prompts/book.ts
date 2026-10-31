@@ -6,12 +6,13 @@
  */
 import { merge3Lines, type Locale } from "@real-bot/protocol";
 import { HttpError } from "../errors";
-import { toolShell } from "../platform";
+import { toolShell, type ToolShellKind } from "../platform";
 import type { Store } from "../store";
 import type { PromptLocale, PromptRevisionRow, WritePromptInput } from "../store/prompts";
 import { fill, type Placeholder } from "./fill";
 import { renderDefault, slotDef, slotLocale, type PromptEnv, type PromptRef, type SlotDef } from "./registry";
 import type { TurnPromptTexts } from "./system";
+import { plainSystemText } from "./system-plain";
 import { validatePromptText, type PromptProblem } from "./validate";
 
 /** One slot you edited, as the store keeps it. */
@@ -69,6 +70,16 @@ export function turnPromptTexts(page: PromptPage): TurnPromptTexts & { preface?:
     mcp: page.edited("turn.mcp"),
     preface: page.edited("agent.preface"),
   };
+}
+
+/**
+ * The turn texts of one conversation: its engine works in jobs, or the System section for one that
+ * does not (ADR 0103), which takes the place of yours and of the agent preface's too: both were
+ * written for the jobs and name their tools. The section notes hold either way.
+ */
+export function turnPromptTextsIn(store: PromptSource & Pick<Store, "jobsRunIn">, locale: Locale, sessionId: string, shell: ToolShellKind = toolShell().kind): TurnPromptTexts & { preface?: string } {
+  const { preface, ...texts } = turnPromptTexts(promptPage(store, locale));
+  return store.jobsRunIn(sessionId) ? { ...texts, preface } : { ...texts, system: plainSystemText(locale, shell) };
 }
 
 /** Tool descriptions you edited, for `builtinTools`. */

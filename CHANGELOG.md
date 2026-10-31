@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### You can choose not to use the app's way of working
+
+- Plans and tickets, filing your lines, reviewed hand-overs and the supervisor used to be fixed around every Bot. They are now one switch in the engine, and a fourth built-in engine, Plain (自由), leaves it off: your lines open no job, Bots just work and reply, and whether it is done is yours to judge. What stays under every engine is your lines in order, Stop and typed stops, approvals, permission modes and the spend cap. General stays the default and General, Video and Coding are unchanged, so nothing changes unless you choose it: per conversation in a group's or a Bot's Actions, as the default on Roles, or in the wizard's last step. Moving a conversation with open jobs says first that they stop where they are, woken by nothing and deleted by nothing, and they go on when you move back. An engine you build on Plain can also switch reading off, leaving Stop as the only stop, and any engine can switch off judging a group line and asking a long run how it is going. See [ADR 0103](docs/adr/0103-an-engine-can-work-in-no-jobs.md).
+
 ### A plan in a project session can take the whole window
 
 - In plan mode the plan's card now has a full-screen button in its head. The plan fills the window at a comfortable reading width, where you were reading, with Approve and Keep planning still under it; Escape or a phone's Back exits, and the conversation stays where it was scrolled. Approving, keeping planning or opening a file named in the plan exits first.

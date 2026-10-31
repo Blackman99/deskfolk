@@ -209,8 +209,8 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
    */
   function notePace(turnId: string, live: Live, target: ResolvedTarget): void {
     // Its engine's number (ADR 0085), read each hop: a change made while the turn runs applies from the next.
-    const checkInHops = store.playbookFor({ turnId }).resolved.pacing.params.check_in_hops!;
-    if (turnPace(live.hops, checkInHops) === "check_in") {
+    const pacing = store.playbookFor({ turnId }).resolved.pacing;
+    if (pacing.on && turnPace(live.hops, pacing.params.check_in_hops!) === "check_in") {
       live.loop.push({ role: "user", content: checkInNote(target.locale, live.hops - 1) });
     }
   }
@@ -259,7 +259,8 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
         const labels = new Map(delivered.map((row) => [row.seq, inboxLabel(row)]));
         live.loop.push({
           role: "user",
-          content: heardNote(target.locale, shown.map((entry) => ({ ...entry.item, ...(entry.seq !== undefined ? { label: labels.get(entry.seq) } : {}) }))),
+          content: heardNote(target.locale, shown.map((entry) => ({ ...entry.item, ...(entry.seq !== undefined ? { label: labels.get(entry.seq) } : {}) })),
+            { noJobs: !store.jobsRunIn(current.session_id) }),
         });
       }
     }
@@ -268,7 +269,7 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
   /** The tools this hop offers, recorded on the live turn with the MCP tools' servers and arguments. */
   function offerTools(live: Live, current: Turn, target: ResolvedTarget, listed: Listed): ChatTool[] {
     // Tool descriptions you edited (ADR 0064) replace the shipped ones from this hop on.
-    const offered = [...builtinTools(target.locale, store.capabilities().engine_level, editedToolDescription(promptPage(store, target.locale))), ...listed.tools];
+    const offered = [...builtinTools(target.locale, store.capabilities().engine_level, editedToolDescription(promptPage(store, target.locale)), store.jobsRunIn(current.session_id)), ...listed.tools];
     // A read-only turn is not shown what it may not call (ADR 0040 I3); the gate refuses them anyway.
     const tools = current.mode === "readonly" ? readOnlyTools(offered, listed.guides) : offered;
     live.toolNames = new Set(tools.map((tool) => tool.function.name));

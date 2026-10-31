@@ -127,6 +127,33 @@ export function toolKind(name: string): ToolKind | undefined {
   return KIND_OF.get(name);
 }
 
+const JOB_TOOLS: ReadonlySet<string> = new Set(TOOLS_BY_KIND.work.map((def) => def.name));
+
+/** A tool of the job kernel: not offered, and refused if called, where the engine works in no jobs (ADR 0103). */
+export function isJobTool(name: string): boolean {
+  return JOB_TOOLS.has(name);
+}
+
+/**
+ * What send_message and end_turn say where the engine works in no jobs (ADR 0103): a reply ends the
+ * segment and nothing is owed. Yours for the job-working ones (`tool.<name>`) assume an end contract.
+ */
+const NO_JOBS_DESCRIPTIONS: Record<string, Localized> = {
+  // A direct is how one Bot gives another work here: there is no delegate to send it to.
+  create_direct: {
+    en: CREATE_DIRECT.description.en.replace(", not to give it work. For a deliverable, a review or an answer use delegate; for several Bots", ", or to give it work. For several Bots"),
+    zh: CREATE_DIRECT.description.zh.replace("，不派活。要它交东西、审查或回答用 delegate；要几个 Bot", "，或者交给它做。要几个 Bot"),
+  },
+  send_message: {
+    en: "Post progress without ending this segment. Group mentions may wake a teammate, and every line in a direct opened with create_direct wakes the other Bot. Keep working after sending; finish with a reply that calls no tool, which is your reply to the user, or with end_turn when there is nothing to say.",
+    zh: "发送进度，不结束本段。群里点名可叫醒队友；create_direct 开的私聊里每句都叫醒对方。发送后接着干；做完时用一段不调工具的回复收尾，那就是给用户的回复，没话可说时才用 end_turn。",
+  },
+  end_turn: {
+    en: "End this segment without posting anything, when there is nothing to say: the other side only acknowledged, or all you have left is a receipt. To reply to the user, do not use it: write a reply that calls no tool, which ends the segment by itself; words written beside end_turn are never sent.",
+    zh: "结束本段，不发任何消息，没话可说时用：对方只是回执、确认，或者你只剩「收到」这类话。要回复用户就不要用它：直接写一段不调工具的回复，它本身就结束本段；写在 end_turn 旁边的话不会发出。",
+  },
+};
+
 /** What send_message and end_turn say from level 3 (ADR 0044): segments end only through end_turn. */
 const LEVEL3_DESCRIPTIONS: Record<string, Localized> = {
   send_message: {
@@ -178,12 +205,12 @@ export function toolDescription(name: string, locale: Locale, env: { level: numb
  * The app's tools for one hop. `edited` gives the description you wrote for a tool (ADR 0064), or
  * undefined to keep the one shipped; parameters are never edited.
  */
-export function builtinTools(locale: Locale, engineLevel = 0, edited?: (name: string) => string | undefined): ChatTool[] {
+export function builtinTools(locale: Locale, engineLevel = 0, edited?: (name: string) => string | undefined, jobs = true): ChatTool[] {
   // Level 5 (ADR 0046): work is handed over with submit and judged with review.
   // plan_items (ADR 0053): the lead lays the plan out as tickets, owners, reviewers, dependencies and parts.
   const defs = engineLevel >= 3 ? [...TOOLS, DELEGATE, ...(engineLevel >= 5 ? [SUBMIT, REVIEW, PLAN_ITEMS] : [])] : TOOLS;
-  const tools = toChatTools(defs, locale);
-  if (engineLevel >= 3) {
+  const tools = toChatTools(jobs ? defs : defs.filter((def) => !JOB_TOOLS.has(def.name)), locale);
+  if (engineLevel >= 3 && jobs) {
     for (const tool of tools) {
       if (tool.function.name === "send_message") {
         tool.function.description = LEVEL3_DESCRIPTIONS.send_message![locale];
@@ -200,6 +227,13 @@ export function builtinTools(locale: Locale, engineLevel = 0, edited?: (name: st
     for (const tool of tools) {
       const text = edited(tool.function.name);
       if (text !== undefined) tool.function.description = text;
+    }
+  }
+  if (!jobs) {
+    for (const tool of tools) {
+      const said = NO_JOBS_DESCRIPTIONS[tool.function.name];
+      if (said) tool.function.description = said[locale];
+      if (tool.function.name === "end_turn") delete tool.function.parameters.properties.inbox;
     }
   }
   return tools;

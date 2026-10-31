@@ -835,7 +835,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         // read. A line sent on again after you undid its stop is not read: you said it was no
         // control, and what else it says (a complaint) is read as its filing asks.
         const said = message.body;
-        const reading$ = fromUser && !opts?.ordinary ? core.track(reader.userLine(message)) : null;
+        // Off only in an engine with no jobs (ADR 0103): there a stop is the button, as in a project session.
+        const reads = fromUser && !opts?.ordinary && store.playbookStepOn({ sessionId: message.session_id }, "reader");
+        const reading$ = reads ? core.track(reader.userLine(message)) : null;
         // 控制句 (ADR 0070): only a line the reader read as nothing but a stop is carried out here and
         // goes nowhere else; one that may have meant a stop carries the buttons and goes on below.
         // Everything else is the Bots' to answer — a question about where the work stands, a go on,
@@ -866,7 +868,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         // Which job the line is about is read by a model too (ADR 0057), beside what it says: the two
         // calls run at once, so the line waits on the slower one, not on both. Work items file lines
         // from level 2; below it the organizer's message-time call still does.
-        const where = fromUser && store.capabilities().engine_level >= ENGINE_LEVELS.work_items
+        const jobs = store.jobsRunIn(message.session_id);
+        const where = fromUser && jobs && store.capabilities().engine_level >= ENGINE_LEVELS.work_items
           ? core.track(reader.filing(message))
           : null;
         const reading = reading$ ? await reading$ : null;
@@ -896,7 +899,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           // The rows place a line by what it refers to (ADR 0040 P4b) and, with nothing to go by,
           // where the reading says it belongs (ADR 0057); what neither places, the Bot chooses at
           // its desk. A dormant plan is no candidate of its own, so a complaint lands on the job still live.
-          if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items) {
+          if (!jobs) {
+            // An engine with no jobs (ADR 0103): the line is about none, whatever it cites or whichever tab it came from.
+            store.fileMessage(message.id, { none: true });
+            filed = store.getMessage(message.id);
+          } else if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items) {
             let read = where ? await where : null;
             // A question about where the work stands opens no job of its own: 「怎么样了」 once opened
             // a plan of that name that ran 79 turns by itself (status-question.ts). Nor does a go on:

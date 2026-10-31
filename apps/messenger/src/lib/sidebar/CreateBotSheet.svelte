@@ -191,7 +191,7 @@
 			<div class="modal-section" data-bot-templates>
 				<span class="field-head">{t.templates.fromTemplate}</span>
 				<div class="template-rows">
-					{#each BUILTIN_PLAYBOOK_IDS as way (way)}
+					{#each BUILTIN_PLAYBOOK_IDS.filter((way) => templatesFor(way).length > 0) as way (way)}
 						<span class="template-way">{t.playbooks.builtin[way]}</span>
 						<span class="template-chips">
 							{#each templatesFor(way) as item (item.id)}

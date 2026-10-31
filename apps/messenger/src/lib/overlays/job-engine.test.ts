@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { builtinPlaybook } from "@real-bot/protocol";
-import { engineOffSteps, sessionEngine, sessionsOnEngine } from "./job-engine.ts";
+import { engineHasNoJobs, engineOffSteps, sessionEngine, sessionsOnEngine } from "./job-engine.ts";
 
 const sessions = [
   { id: "g-video", playbook_id: "video", origin_session_id: null },
@@ -11,6 +11,13 @@ const sessions = [
   { id: "d-archived", playbook_id: "video", origin_session_id: null, archived_at: "2026-10-01T00:00:00.000Z" },
 ];
 const known = (id: string) => id !== "removed-engine";
+
+test("an engine with no jobs lists what it switched off, not everything that stops with it", () => {
+  expect(engineOffSteps({ resolved: builtinPlaybook("plain") })).toEqual(["jobs", "pacing"]);
+  expect(engineHasNoJobs({ resolved: builtinPlaybook("plain") })).toBe(true);
+  expect(engineHasNoJobs({ resolved: builtinPlaybook("general") })).toBe(false);
+  expect(engineHasNoJobs(undefined)).toBe(false);
+});
 
 test("a job's engine is its conversation's, or the one it came from, else the default", () => {
   expect(sessionEngine(sessions, "g-video", "general", known)).toEqual({ id: "video", why: "own" });

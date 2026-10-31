@@ -1,6 +1,6 @@
 /**
- * 引擎 (Playbook, ADR 0085): which of the app's own calls run around a conversation, and with what
- * numbers. The built-ins are code (`BUILTIN_PLAYBOOKS`); a row here holds what you changed from one
+ * 引擎 (Playbook, ADR 0085, ADR 0103): whether a conversation works in jobs, which of the app's own
+ * calls run around it, and with what numbers. The built-ins are code (`BUILTIN_PLAYBOOKS`); a row here holds what you changed from one
  * — a built-in's own row once you edit it, or a custom engine based on one — and every change is a
  * revision of its own, never rewritten. `playbookFor` says which engine a call runs under: the
  * job's conversation, else the conversation it is in (a Bot↔Bot direct or a job's thread running the
@@ -10,6 +10,7 @@ import {
   BUILTIN_PLAYBOOK_IDS,
   DEFAULT_PLAYBOOK_ID,
   emptyPlaybookDiff,
+  FILE_DROP_SESSION_ID,
   isBuiltinPlaybookId,
   isPlaybookStepId,
   PlaybookDiffError,
@@ -19,6 +20,7 @@ import {
   type BuiltinPlaybookId,
   type Playbook,
   type PlaybookDiff,
+  type PlaybookImpact,
   type PlaybookList,
   type PlaybookResolved,
   type PlaybookRevision,
@@ -28,7 +30,8 @@ import {
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
-import { setSetting, type StoreContext } from "./shared";
+import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
+import { planStageSql, setSetting, type StoreContext } from "./shared";
 
 /** How long a custom engine's name may be. */
 export const PLAYBOOK_NAME_MAX = 40;
@@ -134,10 +137,10 @@ export function defaultPlaybookId(ctx: StoreContext): string {
   return found && !found.deleted_at && isBuiltinPlaybookId(found.base_id) ? set : DEFAULT_PLAYBOOK_ID;
 }
 
-/** The three built-ins first, then the custom engines oldest first. */
+/** The built-ins first, then the custom engines oldest first. */
 export function listPlaybooks(ctx: StoreContext): PlaybookList {
-  const custom = ctx.db.query<PlaybookRow, []>(`SELECT * FROM playbooks WHERE deleted_at IS NULL
-    AND id NOT IN ('general', 'video', 'coding') ORDER BY created_at, id`).all().filter((found) => isBuiltinPlaybookId(found.base_id));
+  const custom = ctx.db.query<PlaybookRow, []>("SELECT * FROM playbooks WHERE deleted_at IS NULL ORDER BY created_at, id").all()
+    .filter((found) => !isBuiltinPlaybookId(found.id) && isBuiltinPlaybookId(found.base_id));
   return {
     default_id: defaultPlaybookId(ctx),
     items: [
@@ -205,6 +208,41 @@ export function playbookParam(ctx: StoreContext, scope: PlaybookScope, step: Pla
   const value = playbookFor(ctx, scope).resolved[step].params[key];
   if (value === undefined) throw new Error(`no number ${step}.${key}`);
   return value;
+}
+
+/**
+ * Whether a conversation works in jobs (ADR 0103). Asked of the conversation, never of a job: its
+ * engine decides for every line said there. Below work items (ADR 0040 P4b) there is only the way
+ * that level runs, so the answer is always yes.
+ */
+export function jobsRunIn(ctx: StoreContext, sessionId: string | null): boolean {
+  if (readEngineLevel(ctx.db) < ENGINE_LEVELS.work_items) return true;
+  return playbookFor(ctx, { sessionId }).resolved.jobs.on;
+}
+
+/**
+ * Whether a job opened earlier is still running: the conversation it lives in may have moved to an
+ * engine with no jobs since. It stays as it was, woken by nothing and taking no new lines, until
+ * that conversation moves back.
+ */
+export function jobRuns(ctx: StoreContext, taskId: string): boolean {
+  if (readEngineLevel(ctx.db) < ENGINE_LEVELS.work_items) return true;
+  return playbookFor(ctx, { taskId }).resolved.jobs.on;
+}
+
+/**
+ * What moving to an engine with no jobs would leave standing: one conversation, or (for Settings'
+ * default) every conversation of yours that names no engine, and the jobs still open in them.
+ */
+export function playbookImpact(ctx: StoreContext, scope: { sessionId?: string | null } = {}): PlaybookImpact {
+  const sessions = scope.sessionId
+    ? [scope.sessionId]
+    : ctx.db.query<{ id: string }, [string]>(`SELECT s.id FROM sessions s JOIN session_participants you ON you.session_id = s.id AND you.member = 'user' AND you.left_at IS NULL
+        WHERE s.playbook_id IS NULL AND s.kind <> 'project' AND s.id <> ? AND s.archived_at IS NULL`).all(FILE_DROP_SESSION_ID).map((session) => session.id);
+  const jobs = ctx.db.query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM tasks p
+    WHERE p.session_id IN (SELECT value FROM json_each(?)) AND p.dormant_since IS NULL AND p.routine_id IS NULL AND ${planStageSql("p")} = 'active'`)
+    .get(JSON.stringify(sessions))!.n;
+  return { sessions: sessions.length, open_jobs: jobs };
 }
 
 function checkRevision(ctx: StoreContext, id: string, ifRevision: string | null | undefined): void {

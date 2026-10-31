@@ -5,7 +5,7 @@
 	/**
 	 * The app's own share of the job (ADR 0086): the engine its calls run under (ADR 0085), why it is
 	 * that one, the steps it leaves off and how many conversations run it, and the way to Roles to
-	 * change it.
+	 * change it. An engine with no jobs (ADR 0103) says what that means for this one.
 	 */
 	interface Props {
 		name: string;
@@ -13,11 +13,13 @@
 		/** The steps it switches off, named. */
 		off: readonly string[];
 		sessions: number;
+		/** The job's conversation has moved to an engine with no jobs. */
+		stopped?: boolean;
 		t: Copy;
 		onOpen?: () => void;
 	}
 
-	let { name, why, off, sessions, t, onOpen }: Props = $props();
+	let { name, why, off, sessions, stopped = false, t, onOpen }: Props = $props();
 
 	const c = $derived(t.plan.job.engine);
 </script>
@@ -28,6 +30,9 @@
 		<span class="job-engine-chip">{c.chip(name)}</span>
 		<span class="job-engine-why">{c[why]}</span>
 	</div>
+	{#if stopped}
+		<p class="job-block-note" data-job-engine-stopped>{c.stopped}</p>
+	{/if}
 	<p class="job-block-note">{off.length > 0 ? c.off(off.join('、')) : c.allOn} · {c.sessions(sessions)}</p>
 	{#if onOpen}
 		<button type="button" class="job-engine-open" onclick={onOpen}>{c.open}</button>

@@ -72,12 +72,15 @@ function heardEntry(item: HeardItem, en: boolean, label?: string): string {
  * calls when a line of yours arrived mid-hop. It names each line by its inbox id, and asks the Bot
  * to say what it did with each one in `end_turn`.
  */
-export function heardNote(locale: Locale, items: readonly (HeardItem & { label?: string })[], opts: { cut?: boolean } = {}): string {
+export function heardNote(locale: Locale, items: readonly (HeardItem & { label?: string })[], opts: { cut?: boolean; noJobs?: boolean } = {}): string {
   const en = locale === "en";
   const lines = items.map((item) => heardEntry(item, en, item.label));
-  const deal = en
-    ? "Say what you did with each line of the user's, by its id, in end_turn's inbox: adopted, answered, declined (say why), or deferred."
-    : "用户的话逐条处置：照改 / 已回答 / 不采纳并说明理由（写进 end_turn 的 inbox，带上每条的 id）。";
+  // With no jobs (ADR 0103) no ending asks what became of each line.
+  const deal = opts.noJobs
+    ? []
+    : [en
+      ? "Say what you did with each line of the user's, by its id, in end_turn's inbox: adopted, answered, declined (say why), or deferred."
+      : "用户的话逐条处置：照改 / 已回答 / 不采纳并说明理由（写进 end_turn 的 inbox，带上每条的 id）。"];
   // Said to this Bot over there, while its turn on the job runs here: nobody there answers it, and
   // the turn's own closing reply goes here, not there (2026-10-14, 「@创意导演 你呢」 went unanswered).
   const answerThere = items.some((item) => item.replyIn)
@@ -94,7 +97,7 @@ export function heardNote(locale: Locale, items: readonly (HeardItem & { label?:
         : `(App note) ${items.length} line${items.length === 1 ? "" : "s"} came in. This turn was not interrupted.`,
       ...lines,
       ...(answerThere ? [answerThere] : []),
-      deal,
+      ...deal,
     ].join("\n");
   }
   return [
@@ -103,7 +106,7 @@ export function heardNote(locale: Locale, items: readonly (HeardItem & { label?:
       : `（应用提示）收件 ${items.length} 条（这一段没有被打断）：`,
     ...lines,
     ...(answerThere ? [answerThere] : []),
-    deal,
+    ...deal,
   ].join("\n");
 }
 

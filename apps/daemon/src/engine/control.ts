@@ -73,9 +73,13 @@ export function heldWake(store: Store, wake: Wake): Hold[] {
  */
 export function mayWake(store: Store, wake: Wake, opts: { once?: string } = {}): boolean {
   const holds = heldWake(store, wake);
-  if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items && wake.taskId && !store.isPlanRunnable(wake.taskId)) {
+  // A job whose conversation moved to an engine with no jobs stays where it was until it moves back (ADR 0103).
+  const stopped = store.capabilities().engine_level >= ENGINE_LEVELS.work_items && wake.taskId
+    ? !store.isPlanRunnable(wake.taskId) ? "plan_not_runnable" : !store.jobRuns(wake.taskId) ? "no_jobs" : null
+    : null;
+  if (stopped) {
     store.recordWorkEvent({ kind: "wake.suppressed", actor: "app", botId: wake.botId, taskId: wake.taskId,
-      sessionId: wake.sessionId, turnId: wake.turnId ?? null, payload: { cause: wake.cause, holds: holds.map((hold) => hold.id), reason: "plan_not_runnable" } });
+      sessionId: wake.sessionId, turnId: wake.turnId ?? null, payload: { cause: wake.cause, holds: holds.map((hold) => hold.id), reason: stopped } });
     return false;
   }
   if (holds.length === 0) return true;

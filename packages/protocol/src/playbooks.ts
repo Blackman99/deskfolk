@@ -1,10 +1,11 @@
 /**
- * 引擎 (Playbook, ADR 0085): which of the app's own calls run around a conversation, and their
- * thresholds. The skeleton — lines taken in order, a stop that is a stop, filing before waking, the
- * work items — stays code; an engine only says which steps hung on it run and with what numbers.
- * Prompts and models stay global (ADR 0064, ADR 0077), shown beside the steps that use them.
+ * 引擎 (Playbook, ADR 0085, ADR 0103): how the app wraps a conversation. The floor — lines taken in
+ * order, a stop that is a stop, approvals, the spend ledger — stays code under every engine. Whether
+ * the conversation works in jobs at all is a step (`jobs`), and so is each of the app's own calls
+ * hung on them; an engine says which run and with what numbers. Prompts and models stay global
+ * (ADR 0064, ADR 0077), shown beside the steps that use them.
  *
- * Three engines are built in. What you change is kept as a diff from the built-in it is based on,
+ * Four engines are built in. What you change is kept as a diff from the built-in it is based on,
  * so a field you never touched follows a new default when the app is updated, and "differs from
  * built-in" and resetting a step come straight from the diff. Not the same thing as the engine
  * level (`engine_level`, ADR 0040), which is how far a data folder has been migrated.
@@ -18,6 +19,7 @@ export type PlaybookHook = (typeof PLAYBOOK_HOOKS)[number];
 export const PLAYBOOK_STEP_IDS = [
   "intake",
   "reader",
+  "jobs",
   "scribe",
   "judgement",
   "pacing",
@@ -45,23 +47,32 @@ export type PlaybookStepSpec = {
   hook: PlaybookHook;
   /** The built-in call it makes, whose model and prompts are set on Roles; null when it makes none of its own. */
   role: BuiltinModelRole | null;
-  /** Whether an engine may switch it off. A locked step always runs; its numbers can still change. */
+  /** Whether an engine may switch it off. A locked step runs as long as what it requires does; its numbers can still change. */
   switchable: boolean;
+  /** What it stands on: with one of these off it does not run, whatever it is set to. */
+  requires?: readonly PlaybookStepId[];
+  /** May only be off while this other step is off too, because that step cannot do without it. */
+  onWhile?: PlaybookStepId;
   params: readonly PlaybookParamSpec[];
 };
 
 /** Every step an engine has, in the order Roles walks them; defaults are what the app ran before engines. */
 export const PLAYBOOK_STEPS: readonly PlaybookStepSpec[] = [
   { id: "intake", hook: "line", role: null, switchable: false, params: [{ key: "cap_s", unit: "s", min: 5, max: 300, step: 5, default: 45 }] },
-  { id: "reader", hook: "line", role: "reader", switchable: false, params: [] },
-  { id: "scribe", hook: "line", role: "scribe", switchable: true, params: [{ key: "adds_max", unit: "count", min: 1, max: 20, step: 1, default: 8 }] },
-  { id: "judgement", hook: "group", role: "judgement", switchable: false, params: [] },
+  // Jobs read your words: a hand-over waiting on your word (ADR 0084) would wait for good unread.
+  { id: "reader", hook: "line", role: "reader", switchable: true, onWhile: "jobs", params: [] },
+  // The job kernel as one (ADR 0103): filing a line before it wakes anyone, plans and tickets, work
+  // dirs, the end contract, delegation, hand-overs and reviews. They lean on each other, so they go
+  // together; off, a conversation's lines never open a job and its Bots are offered no job's tools.
+  { id: "jobs", hook: "line", role: null, switchable: true, params: [] },
+  { id: "scribe", hook: "line", role: "scribe", switchable: true, requires: ["jobs"], params: [{ key: "adds_max", unit: "count", min: 1, max: 20, step: 1, default: 8 }] },
+  { id: "judgement", hook: "group", role: "judgement", switchable: true, params: [] },
   // Only asks: a turn calls tools for as long as it works. Until 2026-10-17 the tools were also taken
   // away at a hop limit (160, the video engine 200); long jobs ran into it mid-work.
-  { id: "pacing", hook: "turn", role: null, switchable: false, params: [{ key: "check_in_hops", unit: "hops", min: 10, max: 200, step: 5, default: 40 }] },
+  { id: "pacing", hook: "turn", role: null, switchable: true, params: [{ key: "check_in_hops", unit: "hops", min: 10, max: 200, step: 5, default: 40 }] },
   { id: "compaction", hook: "turn", role: "compaction", switchable: false, params: [] },
-  { id: "closing", hook: "turn", role: null, switchable: true, params: [] },
-  { id: "settle", hook: "turn", role: "organizer", switchable: true, params: [{ key: "quiet_s", unit: "s", min: 10, max: 600, step: 10, default: 30 }] },
+  { id: "closing", hook: "turn", role: null, switchable: true, requires: ["jobs"], params: [] },
+  { id: "settle", hook: "turn", role: "organizer", switchable: true, requires: ["jobs"], params: [{ key: "quiet_s", unit: "s", min: 10, max: 600, step: 10, default: 30 }] },
   {
     id: "check_backs", hook: "turn", role: null, switchable: false, params: [
       { key: "min_minutes", unit: "min", min: 1, max: 120, step: 1, default: 5 },
@@ -69,23 +80,23 @@ export const PLAYBOOK_STEPS: readonly PlaybookStepSpec[] = [
     ],
   },
   {
-    id: "pickup", hook: "turn", role: null, switchable: false, params: [
+    id: "pickup", hook: "turn", role: null, switchable: false, requires: ["jobs"], params: [
       { key: "orphan_quiet_min", unit: "min", min: 1, max: 60, step: 1, default: 2 },
       { key: "pickups_per_hour", unit: "count", min: 1, max: 12, step: 1, default: 3 },
     ],
   },
   // Not switchable: a hand-over bound to a check of yours waits for it to run, so checks that never
   // ran would hold every such hand-over for good.
-  { id: "checks", hook: "handed_in", role: "judge", switchable: false, params: [] },
-  { id: "escalation", hook: "handed_in", role: null, switchable: true, params: [{ key: "after_failures", unit: "count", min: 1, max: 10, step: 1, default: 2 }] },
+  { id: "checks", hook: "handed_in", role: "judge", switchable: false, requires: ["jobs"], params: [] },
+  { id: "escalation", hook: "handed_in", role: null, switchable: true, requires: ["jobs"], params: [{ key: "after_failures", unit: "count", min: 1, max: 10, step: 1, default: 2 }] },
   {
-    id: "ceiling", hook: "handed_in", role: null, switchable: false, params: [
+    id: "ceiling", hook: "handed_in", role: null, switchable: false, requires: ["jobs"], params: [
       { key: "streak", unit: "count", min: 2, max: 10, step: 1, default: 3 },
       { key: "attempts", unit: "count", min: 2, max: 20, step: 1, default: 6 },
     ],
   },
-  { id: "retrospective", hook: "accepted", role: "retrospective", switchable: true, params: [] },
-  { id: "reflection", hook: "overturned", role: "reflection", switchable: true, params: [] },
+  { id: "retrospective", hook: "accepted", role: "retrospective", switchable: true, requires: ["jobs"], params: [] },
+  { id: "reflection", hook: "overturned", role: "reflection", switchable: true, requires: ["jobs"], params: [] },
   { id: "composer", hook: "compose", role: "composer", switchable: false, params: [] },
 ];
 
@@ -105,7 +116,7 @@ export type PlaybookResolved = Record<PlaybookStepId, PlaybookStepSetting>;
 export type PlaybookStepDiff = { on?: boolean; params?: Record<string, number> };
 export type PlaybookDiff = { v: 1; steps: Partial<Record<PlaybookStepId, PlaybookStepDiff>> };
 
-export const BUILTIN_PLAYBOOK_IDS = ["general", "video", "coding"] as const;
+export const BUILTIN_PLAYBOOK_IDS = ["general", "video", "coding", "plain"] as const;
 export type BuiltinPlaybookId = (typeof BUILTIN_PLAYBOOK_IDS)[number];
 /** The engine a conversation runs when neither it nor Settings names one. */
 export const DEFAULT_PLAYBOOK_ID: BuiltinPlaybookId = "general";
@@ -119,8 +130,8 @@ export function emptyPlaybookDiff(): PlaybookDiff {
 }
 
 /**
- * The three built-in engines, each as what it changes from the defaults above, tuned on the usage
- * history to 2026-10-11 (ADR 0085 has the numbers):
+ * The built-in engines, each as what it changes from the defaults above. The first three are one way
+ * of working, tuned on the usage history to 2026-10-11 (ADR 0085 has the numbers):
  * - 通用 (general), the default: no scribe, no reflection — no requirement written down and no card
  *   proposed behind your back. Most lines there are a question and its answer: the scribe came back
  *   empty on 30% of them. The retrospective runs (from 2026-10-14): Bots that learn from a delivery
@@ -131,6 +142,9 @@ export function emptyPlaybookDiff(): PlaybookDiff {
  *   new, some 53 hops each), no model escalation (it only raised Claude Code's effort, and the
  *   send-backs were about likeness), and the ceiling's backstop comes a hand-over sooner.
  * - 代码 (coding): the scribe off (one entry from two calls); the rest as before, the data being thin.
+ * The fourth is not using it (ADR 0103):
+ * - 自由 (plain): no jobs, and nobody asking a long run how it is going. Your lines still read for a
+ *   stop or a go on: a stop that is a stop has cost too many incidents to lose by choosing an engine.
  */
 export const BUILTIN_PLAYBOOKS: Record<BuiltinPlaybookId, PlaybookDiff> = {
   general: { v: 1, steps: { scribe: { on: false }, reflection: { on: false } } },
@@ -144,6 +158,7 @@ export const BUILTIN_PLAYBOOKS: Record<BuiltinPlaybookId, PlaybookDiff> = {
     },
   },
   coding: { v: 1, steps: { scribe: { on: false } } },
+  plain: { v: 1, steps: { jobs: { on: false }, pacing: { on: false } } },
 };
 
 /** What every step runs with before any engine changes it. */
@@ -155,6 +170,7 @@ export function playbookDefaults(): PlaybookResolved {
   return out;
 }
 
+/** What each step is set to, before asking whether what it stands on runs. */
 function applyDiff(base: PlaybookResolved, diff: PlaybookDiff | null | undefined): PlaybookResolved {
   const out = {} as PlaybookResolved;
   for (const step of PLAYBOOK_STEPS) {
@@ -169,14 +185,42 @@ function applyDiff(base: PlaybookResolved, diff: PlaybookDiff | null | undefined
   return out;
 }
 
+function builtinSettings(id: BuiltinPlaybookId): PlaybookResolved {
+  return applyDiff(playbookDefaults(), BUILTIN_PLAYBOOKS[id]);
+}
+
+/**
+ * What runs, given what each step is set to: a step goes off with what it requires, and one that
+ * another cannot do without stays on while that one runs. Worked out last and from the settings, so
+ * an engine that switches `jobs` back on gets the steps under it as they were set.
+ */
+function running(set: PlaybookResolved): PlaybookResolved {
+  const out = {} as PlaybookResolved;
+  for (const step of PLAYBOOK_STEPS) {
+    const on = (set[step.id].on || (step.onWhile !== undefined && set[step.onWhile].on)) && !step.requires?.some((id) => !set[id].on);
+    out[step.id] = { on, params: set[step.id].params };
+  }
+  return out;
+}
+
 /** What a built-in engine runs. */
 export function builtinPlaybook(id: BuiltinPlaybookId): PlaybookResolved {
-  return applyDiff(playbookDefaults(), BUILTIN_PLAYBOOKS[id]);
+  return running(builtinSettings(id));
 }
 
 /** What an engine runs: its built-in, with your changes over it. */
 export function resolvePlaybook(base: BuiltinPlaybookId, diff: PlaybookDiff | null | undefined): PlaybookResolved {
-  return applyDiff(builtinPlaybook(base), diff);
+  return running(applyDiff(builtinSettings(base), diff));
+}
+
+/** The steps that do not run while this one is off. */
+export function stepsRequiring(id: PlaybookStepId): PlaybookStepId[] {
+  return PLAYBOOK_STEPS.filter((step) => step.requires?.includes(id)).map((step) => step.id);
+}
+
+/** Why a step is not running although it could: the step it stands on that is off; null when nothing stops it. */
+export function stoppedBy(id: PlaybookStepId, resolved: PlaybookResolved): PlaybookStepId | null {
+  return playbookStep(id).requires?.find((other) => !resolved[other].on) ?? null;
 }
 
 export class PlaybookDiffError extends Error {}
@@ -219,12 +263,16 @@ export function validatePlaybookDiff(value: unknown, base: BuiltinPlaybookId): P
     }
     if (kept.on !== undefined || kept.params) out.steps[id] = kept;
   }
+  const set = applyDiff(builtinSettings(base), out);
+  for (const step of PLAYBOOK_STEPS) {
+    if (step.onWhile && !set[step.id].on && set[step.onWhile].on) throw new PlaybookDiffError(`${step.id} can only be off while ${step.onWhile} is off`);
+  }
   return compactPlaybookDiff(base, out);
 }
 
 /** A diff with only what differs from the built-in left in it. */
 export function compactPlaybookDiff(base: BuiltinPlaybookId, diff: PlaybookDiff): PlaybookDiff {
-  const builtin = builtinPlaybook(base);
+  const builtin = builtinSettings(base);
   const out = emptyPlaybookDiff();
   for (const step of PLAYBOOK_STEPS) {
     const change = diff.steps[step.id];
@@ -276,6 +324,14 @@ export type PlaybookRevision = {
   before: { name: string | null; diff: PlaybookDiff } | null;
   after: { name: string | null; diff: PlaybookDiff } | null;
   created_at: string;
+};
+
+/** What moving to an engine with no jobs would leave standing (ADR 0103). */
+export type PlaybookImpact = {
+  /** The conversations it would move. */
+  sessions: number;
+  /** The jobs still open in them, which stop where they are until those conversations move back. */
+  open_jobs: number;
 };
 
 export type PlaybookList = {

@@ -26,6 +26,7 @@ import { deliverDelegations } from "./delegations";
 import { confirmDerivedCheck } from "./derived-checks";
 import { noteHandOverFailed, resetEscalation } from "./escalation";
 import { holdsCovering } from "./holds";
+import { jobRuns } from "./playbooks";
 import { queueInboxItem, refreshHeldInbox } from "./inbox";
 import { largeJobRefusal, sampleOf, syncStandardChecks, yoursToApprove } from "./large-jobs";
 import { getMessage, setMessageControl } from "./messages";
@@ -983,7 +984,7 @@ export function superviseSubmissions(ctx: StoreContext, now: string = isoNow()):
     if (stage !== "submitted" && stage !== "in_review") continue;
     const plan = ctx.db.query<{ session_id: string | null; dormant_since: string | null }, [string]>(
       "SELECT session_id, dormant_since FROM tasks WHERE id = ?").get(submission.task_id);
-    if (!plan || plan.dormant_since) continue;
+    if (!plan || plan.dormant_since || !jobRuns(ctx, submission.task_id)) continue;
     if (holdsCovering(ctx, { botId: submission.bot_id, sessionId: plan.session_id, taskId: submission.task_id, ticketId: ticket.id }).length > 0) continue;
     const waited = submission.awaiting !== null;
     // A ticket's reviewer, once set, judges an organizer's reading the same as any other hand-over

@@ -10,6 +10,7 @@ import {
   BUILTIN_MODEL_ROLES,
   PLAYBOOK_HOOKS,
   PLAYBOOK_STEPS,
+  playbookStep,
   type BuiltinModelRole,
   type PlaybookHook,
   type PlaybookParamSpec,
@@ -140,11 +141,21 @@ export function isBuiltinRole(value: unknown): value is BuiltinModelRole {
   return typeof value === "string" && (BUILTIN_MODEL_ROLES as readonly string[]).includes(value);
 }
 
-/** Whether a step, as an engine runs it, differs from its built-in: its switch, or any of its numbers. */
+/**
+ * Whether a step, as an engine runs it, differs from its built-in: its switch, or any of its numbers.
+ * A step that only follows what it stands on has not been changed itself, and nothing here would reset it.
+ */
 export function stepDiffers(step: PlaybookStepId, resolved: PlaybookResolved, builtin: PlaybookResolved): boolean {
   const mine = resolved[step];
   const theirs = builtin[step];
-  return mine.on !== theirs.on || Object.keys(mine.params).some((key) => mine.params[key] !== theirs.params[key]);
+  const follows = playbookStep(step).requires?.some((id) => resolved[id].on !== builtin[id].on) ?? false;
+  return (!follows && mine.on !== theirs.on) || Object.keys(mine.params).some((key) => mine.params[key] !== theirs.params[key]);
+}
+
+/** Whether a step that is running cannot be switched off here: it is locked, or another step that stays on cannot do without it. */
+export function stepLocked(step: PlaybookStepId, resolved: PlaybookResolved): boolean {
+  const spec = playbookStep(step);
+  return resolved[step].on && (!spec.switchable || (spec.onWhile !== undefined && resolved[spec.onWhile].on));
 }
 
 /** A number as the map and the panel say it: the value and its unit. */

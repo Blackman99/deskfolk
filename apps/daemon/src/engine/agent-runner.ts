@@ -59,7 +59,7 @@ import type { Live } from "./types";
 import type { Chains } from "./chains";
 import type { SpendTracker } from "./spend";
 import daemonPackage from "../../package.json";
-import { editedToolDescription, promptPage, turnPromptTexts } from "../prompts/book";
+import { editedToolDescription, promptPage, turnPromptTextsIn } from "../prompts/book";
 
 /** One tool of the app's, as Claude Code is offered it: the app's own name and JSON schema. */
 export type AgentTool = { name: string; description: string; inputSchema: Record<string, unknown>; readOnly: boolean };
@@ -446,7 +446,8 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     // The app's own tools, as the hop loop would offer them, less the five Claude Code has its own of.
     const listed = deps.mcp ? await deps.mcp.listForTurn() : { tools: [], guides: [] };
     if (!active(turnId, live)) return;
-    const offered = [...builtinTools(locale, level, editedToolDescription(promptPage(store, locale))).filter((tool) => !OWN_FILE_TOOLS.has(tool.function.name)), ...listed.tools];
+    const jobs = store.jobsRunIn(current.session_id);
+    const offered = [...builtinTools(locale, level, editedToolDescription(promptPage(store, locale)), jobs).filter((tool) => !OWN_FILE_TOOLS.has(tool.function.name)), ...listed.tools];
     const chatTools: ChatTool[] = current.mode === "readonly" ? readOnlyTools(offered, listed.guides) : offered;
     live.toolNames = new Set(chatTools.map((tool) => tool.function.name));
     const params = new Map(listed.tools.map((tool) => [tool.function.name,
@@ -703,7 +704,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       const labels = new Map(delivered.map((row) => [row.seq, inboxLabel(row)]));
       const shown = items.filter((entry) => kept.has(entry.seq));
       if (shown.length === 0) return null;
-      const note = heardNote(locale, shown.map((entry) => ({ ...entry.item, label: labels.get(entry.seq) })), opts);
+      const note = heardNote(locale, shown.map((entry) => ({ ...entry.item, label: labels.get(entry.seq) })), { ...opts, noJobs: !jobs });
       live.loop.push({ role: "user", content: note });
       return note;
     };
@@ -839,7 +840,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       locale, name: bot.name, duties: bot.duties, boundaries: bot.boundaries, workspace: root, cwd, engineLevel: level,
       skills, memories: memoryDigest(store, current.bot_id, locale), mcpGuides: listed.guides,
       // Built-in prompts you edited (ADR 0064): the same System section every other Bot reads.
-      texts: turnPromptTexts(promptPage(store, locale)),
+      texts: turnPromptTextsIn(store, locale, current.session_id, "sh"), jobs,
     });
 
     const hooks: Partial<Record<"PreToolUse" | "PostToolUse" | "PostToolUseFailure" | "PostToolBatch", HookCallbackMatcher[]>> = {

@@ -21,7 +21,7 @@ import type { ToolCall } from "../../completions";
 import { recordLiveProc } from "../../live-procs";
 import { INTERRUPT_FLAG, OWN_FILE_TOOLS, builtinTools, type ChatTool, type FailKind } from "../../prompts";
 import { agentSystemPrompt } from "../../prompts/agent-system";
-import { editedToolDescription, promptPage, turnPromptTexts } from "../../prompts/book";
+import { editedToolDescription, promptPage, turnPromptTextsIn } from "../../prompts/book";
 import { classifyMessage } from "../../route-decision";
 import { inboxLabel, type Store } from "../../store";
 import { ENGINE_LEVELS } from "../../store/schema-gate";
@@ -131,8 +131,9 @@ export async function runExternalSession(input: {
   // cannot hand them to (Antigravity's print mode).
   const listed = driver.caps.appTools && deps.mcp ? await deps.mcp.listForTurn() : { tools: [], guides: [] };
   if (!active(turnId, live)) return;
+  const jobs = store.jobsRunIn(current.session_id);
   const offered = driver.caps.appTools
-    ? [...builtinTools(locale, level, editedToolDescription(promptPage(store, locale))).filter((tool) => !OWN_FILE_TOOLS.has(tool.function.name)), ...listed.tools]
+    ? [...builtinTools(locale, level, editedToolDescription(promptPage(store, locale)), jobs).filter((tool) => !OWN_FILE_TOOLS.has(tool.function.name)), ...listed.tools]
     : [];
   const chatTools: ChatTool[] = current.mode === "readonly" ? readOnlyTools(offered, listed.guides) : offered;
   live.toolNames = new Set(chatTools.map((tool) => tool.function.name));
@@ -238,7 +239,7 @@ export async function runExternalSession(input: {
     const labels = new Map(delivered.map((row) => [row.seq, inboxLabel(row)]));
     const shown = items.filter((entry) => kept.has(entry.seq));
     if (shown.length === 0) return null;
-    const note = heardNote(locale, shown.map((entry) => ({ ...entry.item, label: labels.get(entry.seq) })), opts);
+    const note = heardNote(locale, shown.map((entry) => ({ ...entry.item, label: labels.get(entry.seq) })), { ...opts, noJobs: !jobs });
     live.loop.push({ role: "user", content: note });
     return note;
   };
@@ -467,7 +468,7 @@ export async function runExternalSession(input: {
   const instructions = agentSystemPrompt({
     locale, name: bot.name, duties: bot.duties, boundaries: bot.boundaries, workspace: root, cwd, engineLevel: level,
     skills, memories: memoryDigest(store, current.bot_id, locale), mcpGuides: listed.guides,
-    texts: turnPromptTexts(promptPage(store, locale)),
+    texts: turnPromptTextsIn(store, locale, current.session_id, "sh"), jobs,
     agent: { label, runner: settings.runner, appTools: driver.caps.appTools, ...(driver.toolHint ? { toolHint: driver.toolHint } : {}) },
   });
 

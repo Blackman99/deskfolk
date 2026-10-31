@@ -15,7 +15,7 @@ function fixture() {
 }
 
 describe("engines", () => {
-  test("three built-ins, 通用 the default, none changed", () => {
+  test("four built-ins, 通用 the default, none changed", () => {
     const { store } = fixture();
     const list = store.listPlaybooks();
     expect(list.default_id).toBe("general");
@@ -23,6 +23,7 @@ describe("engines", () => {
       ["general", true, 0, null],
       ["video", true, 0, null],
       ["coding", true, 0, null],
+      ["plain", true, 0, null],
     ]);
     expect(list.items[1]!.resolved).toEqual(builtinPlaybook("video"));
     expect(store.settingsCached().default_playbook).toBe("general");
@@ -47,7 +48,8 @@ describe("engines", () => {
   test("a diff names known steps and numbers only, switches off only what may be, and keeps numbers in range", () => {
     const { store } = fixture();
     expect(() => store.savePlaybook("general", { diff: { steps: { nonsense: {} } } })).toThrow("unknown step: nonsense");
-    expect(() => store.savePlaybook("general", { diff: { steps: { reader: { on: false } } } })).toThrow("cannot be switched off");
+    expect(() => store.savePlaybook("general", { diff: { steps: { composer: { on: false } } } })).toThrow("cannot be switched off");
+    expect(() => store.savePlaybook("general", { diff: { steps: { reader: { on: false } } } })).toThrow("reader can only be off while jobs is off");
     expect(() => store.savePlaybook("general", { diff: { steps: { settle: { params: { quiet_s: 5 } } } } })).toThrow("from 10 to 600");
     expect(() => store.savePlaybook("general", { diff: { steps: { settle: { params: { loud: 5 } } } } })).toThrow("unknown number loud");
     expect(() => store.savePlaybook("general", { diff: { steps: { pacing: { params: { hop_limit: 400 } } } } })).toThrow("unknown number hop_limit");
@@ -80,7 +82,7 @@ describe("engines", () => {
     expect(() => store.deletePlaybook(mine.id)).toThrow("is the default");
     store.patchSettingsSync({ default_playbook: "coding" });
     store.deletePlaybook(mine.id);
-    expect(store.listPlaybooks().items.map((item) => item.id)).toEqual(["general", "video", "coding"]);
+    expect(store.listPlaybooks().items.map((item) => item.id)).toEqual(["general", "video", "coding", "plain"]);
     expect(store.getSession(group.id).playbook_id).toBeNull();
     expect(() => store.getPlaybook(mine.id)).toThrow("no such engine");
     expect(() => store.patchSettingsSync({ default_playbook: "gone" })).toThrow("no such engine");

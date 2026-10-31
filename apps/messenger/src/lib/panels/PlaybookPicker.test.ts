@@ -3,7 +3,7 @@ import { flushSync } from "svelte";
 import { emptyPlaybookDiff, resolvePlaybook, type BuiltinPlaybookId, type Playbook } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { aGroup, fakeRuntime } from "../test-fixtures.ts";
-import { render } from "../test-render.ts";
+import { click, render } from "../test-render.ts";
 import PlaybookPicker from "./PlaybookPicker.svelte";
 
 const t = copyFor("zh");
@@ -28,6 +28,49 @@ test("a conversation follows the default engine until one is chosen for it; the 
   video!.click();
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(chosen).toEqual([[group.id, "video"]]);
+  view.close();
+});
+
+/** The picker on a group with `open` jobs, and what it was asked and told to do. */
+async function picking(open: number) {
+  const group = { ...aGroup(), playbook_id: null };
+  const runtime = fakeRuntime({ sessions: [group] } as never);
+  const chosen: Array<string | null> = [];
+  const asked: Array<string | null | undefined> = [];
+  runtime.client = {
+    listPlaybooks: async () => ({ default_id: "general", items: [engine("general"), engine("plain")] }),
+    playbookImpact: async (sessionId?: string | null) => { asked.push(sessionId); return { sessions: 1, open_jobs: open }; },
+    setSessionPlaybook: async (_sessionId: string, playbookId: string | null) => { chosen.push(playbookId); return {}; },
+  } as never;
+  const view = render(PlaybookPicker, { runtime, sessionId: group.id, t });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  flushSync();
+  view.host.querySelector<HTMLButtonElement>("[data-playbook-picker] button")!.click();
+  flushSync();
+  [...document.querySelectorAll<HTMLElement>("[role='option']")].find((option) => option.textContent?.includes(t.playbooks.builtin.plain!))!.click();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  flushSync();
+  return { group, view, chosen, asked };
+}
+
+test("moving a conversation with open jobs to an engine with none says so first", async () => {
+  const { group, view, chosen, asked } = await picking(2);
+  expect(asked).toEqual([group.id]);
+  expect(chosen).toEqual([]);
+  const dialog = document.querySelector("dialog.confirm-backdrop");
+  expect(dialog?.textContent).toContain(t.playbooks.moveBody(2));
+  click(dialog!.querySelector<HTMLButtonElement>(".modal-foot button.deny"));
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  flushSync();
+  expect(chosen).toEqual(["plain"]);
+  expect(document.querySelector("dialog.confirm-backdrop")).toBeNull();
+  view.close();
+});
+
+test("with none open it just moves", async () => {
+  const { view, chosen } = await picking(0);
+  expect(document.querySelector("dialog.confirm-backdrop")).toBeNull();
+  expect(chosen).toEqual(["plain"]);
   view.close();
 });
 

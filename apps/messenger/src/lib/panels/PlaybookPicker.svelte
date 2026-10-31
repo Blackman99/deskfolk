@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import DangerDialog from '../overlays/DangerDialog.svelte';
 	import Select from '../Select.svelte';
 	import { playbookName, Playbooks } from '../settings/playbooks.svelte.ts';
 
@@ -32,8 +33,22 @@
 		...playbooks.items.map((item) => ({ value: item.id, label: playbookName(item, c.builtin) }))
 	]);
 	let failed = $state(false);
+	/** Moving a conversation with open jobs to an engine with none leaves them where they are: said first (ADR 0103). */
+	let moving = $state<{ value: string; jobs: number } | null>(null);
 
 	async function choose(value: string): Promise<void> {
+		const impact = await playbooks.impactOf(value || playbooks.defaultId, sessionId);
+		if (impact && impact.open_jobs > 0) moving = { value, jobs: impact.open_jobs };
+		else await move(value);
+	}
+
+	function confirmMove(): void {
+		const target = moving;
+		moving = null;
+		if (target) void move(target.value);
+	}
+
+	async function move(value: string): Promise<void> {
 		const api = runtime.client;
 		if (!api) return;
 		failed = false;
@@ -44,6 +59,15 @@
 		}
 	}
 </script>
+
+{#if moving}
+	<DangerDialog
+		copy={{ title: c.moveTitle, body: c.moveBody(moving.jobs), confirm: c.moveConfirm, cancel: c.cancel }}
+		{t}
+		onDismiss={() => (moving = null)}
+		onConfirm={confirmMove}
+	/>
+{/if}
 
 {#if playbooks.list}
 	<div class="action-list-row playbook-picker" data-playbook-picker>

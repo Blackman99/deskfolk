@@ -11,6 +11,7 @@ import {
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { isHeldAbort } from "./holds";
+import { jobsRunIn } from "./playbooks";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { findOrCreateWorkItem, markSegmentCutOff, queuePlace, queueWork, settleRunningWork } from "./work-items";
 import { lineCandidates } from "./filing";
@@ -72,10 +73,12 @@ export function createTurn(
     // place stays unfiled, and the turn works without one until work_on or a later line places it.
     const landing = landingInput(ctx, { ...input, trigger });
     const workItems = readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items;
+    // An engine with no jobs (ADR 0103): every turn is at the desk, whatever woke it.
+    const noJobs = !jobsRunIn(ctx, input.sessionId);
     // In the deterministic engine neither the current slot nor the waker's ticket decides work.
     const explicitTask = landing.taskId ?? trigger.task_id ?? null;
     const explicitTicket = landing.ticketId ?? lineTicketFor(ctx, trigger.ticket_id ?? null, input.botId);
-    const { taskId, ticketId, handedTicketId } = readOnly
+    const { taskId, ticketId, handedTicketId } = readOnly || noJobs
       ? { taskId: null, ticketId: null, handedTicketId: null }
       : workItems
         ? { taskId: explicitTask, ticketId: explicitTicket, handedTicketId: explicitTicket }
@@ -114,7 +117,7 @@ export function createTurn(
     // The jobs of the lines just before the trigger are among them (ADR 0057), as they were for
     // the reading of where the line belongs: what the reading could not place, the Bot can.
     if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items && !readOnly) {
-      const candidates = lineCandidates(ctx, { sessionId: input.sessionId, botId: input.botId, messageId: input.triggerMessageId }).map((plan) => plan.id);
+      const candidates = noJobs ? [] : lineCandidates(ctx, { sessionId: input.sessionId, botId: input.botId, messageId: input.triggerMessageId }).map((plan) => plan.id);
       if (taskId && !candidates.includes(taskId)) candidates.unshift(taskId);
       ctx.db.run(`UPDATE turns SET filing_candidates = ? WHERE id = ?`, [JSON.stringify(candidates), id]);
     }
@@ -140,6 +143,7 @@ export function turnLanding(
 ): { taskId: string | null; ticketId: string | null } {
   const landing = landingInput(ctx, input);
   if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items) {
+    if (!jobsRunIn(ctx, input.sessionId)) return { taskId: null, ticketId: null };
     return { taskId: landing.taskId ?? input.trigger.task_id ?? null, ticketId: landing.ticketId ?? lineTicketFor(ctx, input.trigger.ticket_id ?? null, input.botId) };
   }
   const { taskId, ticketId } = findTurnTask(ctx, landing);

@@ -13,11 +13,12 @@ function revisionGuard(value: unknown): string | null | undefined {
 /**
  * Local API routes for engines (ADR 0085): the list with the default, one engine and its history,
  * your changes as a diff from its built-in, a step or the whole engine reset, a custom engine made
- * from another, renamed or removed, and a conversation's engine. Changes are published as
- * `playbook.changed` (and `session.upsert` for a conversation's) by the store's journal.
+ * from another, renamed or removed, a conversation's engine, and what moving to one with no jobs
+ * would leave standing. Changes are published as `playbook.changed` (and `session.upsert` for a
+ * conversation's) by the store's journal.
  */
 export function playbookRoutes(ctx: RouteCtx): Response | Promise<Response> | null {
-  const { input, store, method, path } = ctx;
+  const { input, store, method, path, url } = ctx;
   const body = (input.body ?? {}) as Record<string, unknown>;
   let params: ReturnType<typeof matchPath>;
 
@@ -28,6 +29,10 @@ export function playbookRoutes(ctx: RouteCtx): Response | Promise<Response> | nu
       return jsonResponse(store.createPlaybook({ from: body.from, name: body.name, actor: "user" }), 201, null);
     }
     return null;
+  }
+
+  if (path === "/v1/playbooks/impact") {
+    return method === "GET" ? jsonResponse(store.playbookImpact({ sessionId: url.searchParams.get("session_id") }), 200, null) : null;
   }
 
   params = matchPath(path, "/v1/playbooks/:id/revisions");

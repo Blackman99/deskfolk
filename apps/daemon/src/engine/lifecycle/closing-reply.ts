@@ -53,7 +53,9 @@ export function createClosingReply(deps: LifecycleDeps, endings: TurnEndings) {
     current: Turn,
     content: string,
   ): Promise<{ kind: "bounce"; note: string } | { kind: "ended" } | { kind: "inactive" }> {
-    const closer = await readsAsNoWork(content, (text) => readBotLine(text, current.session_id, { answering: store.segmentAnswering(turnId), turnId }));
+    // With no jobs (ADR 0103) a reply is not read for anything: what the Bot wrote goes out.
+    const jobs = store.jobsRunIn(current.session_id);
+    const closer = jobs && await readsAsNoWork(content, (text) => readBotLine(text, current.session_id, { answering: store.segmentAnswering(turnId), turnId }));
     if (!active(turnId, live)) return { kind: "inactive" };
     const rawBody = closer ? "" : content;
     // A delivery to the user goes out only after one look at what the job asked for. The note
@@ -76,7 +78,7 @@ export function createClosingReply(deps: LifecycleDeps, endings: TurnEndings) {
     // "母带剪好了" approve a ticket nobody checked (ADR 0046): a ticket whose work
     // is words closes only through an explicit `end_turn(done, answer)` (engine/tools.ts).
     let posted: Message | null | undefined;
-    const files = store.capabilities().engine_level >= ENGINE_LEVELS.submissions && handsOver(current, live, closingBody);
+    const files = jobs && store.capabilities().engine_level >= ENGINE_LEVELS.submissions && handsOver(current, live, closingBody);
     if (files) {
       posted = publishCitedBotMessage(current, live, turnId, rawBody);
       const produced = live.producedPaths ?? [];
@@ -107,7 +109,7 @@ export function createClosingReply(deps: LifecycleDeps, endings: TurnEndings) {
     }
     let endingLine: string | null = null;
     if (store.capabilities().engine_level >= ENGINE_LEVELS.delegation) {
-      const lastWord = await readLastWord(turnId, current, rawBody);
+      const lastWord = jobs ? await readLastWord(turnId, current, rawBody) : undefined;
       if (!active(turnId, live)) return { kind: "inactive" };
       const finished = store.finishWork({ turnId, reason: "done" }, { pureText: true, closing: rawBody, lastWord, written: live.producedPaths ?? live.writtenPaths });
       if (finished.bounce) {

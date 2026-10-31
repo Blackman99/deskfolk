@@ -1,4 +1,4 @@
-import { ANNOTATION_REMOTE_CROP_BASE64_MAX, BOT_RUNNERS, BUILTIN_MODEL_ROLES, CLAUDE_EFFORTS, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, PERMISSION_MODES, PROJECT_AGENTS, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
+import { ANNOTATION_REMOTE_CROP_BASE64_MAX, BOT_RUNNERS, BUILTIN_MODEL_ROLES, BUILTIN_PLAYBOOK_IDS, CLAUDE_EFFORTS, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, PERMISSION_MODES, PROJECT_AGENTS, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
 import type { RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 import { isUlid } from "../ids";
@@ -102,9 +102,10 @@ add("POST", `${prompt}/(reset|keep-mine)`, { if_revision: nullable(string) }, ["
 add("POST", "prompt-revisions/:id/(undo|restore)", {});
 // Engines (ADR 0085): read, change as a difference from the built-in, reset a step, make your own,
 // rename or remove it, and a conversation's engine. The daemon checks a difference's shape.
-const playbook = "playbooks/(?:general|video|coding|[0-9A-HJKMNP-TV-Z]{26})";
+const playbook = `playbooks/(?:${BUILTIN_PLAYBOOK_IDS.join("|")}|[0-9A-HJKMNP-TV-Z]{26})`;
 const playbookDiff: Check = v => !!v && typeof v === "object" && !Array.isArray(v) && JSON.stringify(v).length <= 8000;
 get("playbooks"); get(playbook); get(`${playbook}/revisions`);
+get("playbooks/impact", { session_id: id });
 add("POST", "playbooks", { from: string, name: string }, ["from", "name"]);
 add("PUT", playbook, { diff: playbookDiff, if_revision: nullable(string) }, ["diff"]);
 add("POST", `${playbook}/reset`, { step: nullable(string), if_revision: nullable(string) });

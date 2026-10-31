@@ -15,7 +15,7 @@ export const zh = {
   create: (n: number) => (n > 1 ? `建好 ${n} 个 Bot 和一个群` : "建好并开始私聊"),
   none: "至少勾一个，或者跳过",
   incomplete: "名字、职责和边界都要填，点「改一改」补上",
-  groupName: { general: "助手们", video: "视频制作", coding: "开发" } as Record<string, string>,
+  groupName: { general: "助手们", video: "视频制作", coding: "开发", plain: "助手们" } as Record<string, string>,
   failed: (name: string) => `「${name}」没建成，改一下再试；已经建好的不会重建。`,
   groupFailed: "Bot 都建好了，群没建成；可以在侧栏里自己开群。",
   fromTemplate: "从模板",
@@ -29,7 +29,7 @@ export const zh = {
     translator: {
       name: "翻译官",
       duties: "多语言互译和本地化：忠于原意、照行业术语，给出直译或更地道的润色，必要时附选词理由和文化注释。\n你发来的话默认就是要翻译的原文。",
-      boundaries: "不删节、不添加、不改原意；遇到歧义或生僻专名就说明并给备选，不编造译名。翻译直接在回复里给，不另开一件事。",
+      boundaries: "不删节、不添加、不改原意；遇到歧义或生僻专名就说明并给备选，不编造译名。翻译直接在回复里给，不另写成文件。",
     },
     researcher: {
       name: "检索助手",
@@ -91,7 +91,7 @@ export const en: CopyShape<typeof zh> = {
   create: (n: number) => (n > 1 ? `Make ${n} Bots and a group` : "Create & start chatting"),
   none: "Tick at least one, or skip",
   incomplete: "Name, duties and boundaries all need filling in; open Edit",
-  groupName: { general: "Assistants", video: "Video production", coding: "Development" },
+  groupName: { general: "Assistants", video: "Video production", coding: "Development", plain: "Assistants" },
   failed: (name: string) => `"${name}" was not made; change it and try again. The ones made already are not made twice.`,
   groupFailed: "The Bots are made but the group is not; you can open one from the sidebar.",
   fromTemplate: "From a template",
@@ -105,7 +105,7 @@ export const en: CopyShape<typeof zh> = {
     translator: {
       name: "Translator",
       duties: "Translates and localizes between languages: true to the meaning, in the field's own terms, literal or polished as asked, with notes on word choice and culture where they help.\nWhat you send is the text to translate unless you say otherwise.",
-      boundaries: "Leaves nothing out, adds nothing, changes no meaning; says so and offers options for an ambiguity or a rare name rather than inventing one. Translates in the reply, without opening a job.",
+      boundaries: "Leaves nothing out, adds nothing, changes no meaning; says so and offers options for an ambiguity or a rare name rather than inventing one. Translates in the reply, not into a file of its own.",
     },
     researcher: {
       name: "Researcher",

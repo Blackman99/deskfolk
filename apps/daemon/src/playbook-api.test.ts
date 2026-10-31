@@ -16,7 +16,7 @@ async function call<T>(h: Awaited<ReturnType<typeof startLocalApi>>, method: str
 test("engines over the local API: list, change with a revision guard, reset a step, make and remove one, choose a conversation's", async () => {
   const h = await startLocalApi();
   const list = await call<PlaybookList>(h, "GET", "/v1/playbooks");
-  expect(list.data.items.map((item) => item.id)).toEqual(["general", "video", "coding"]);
+  expect(list.data.items.map((item) => item.id)).toEqual(["general", "video", "coding", "plain"]);
 
   const video = await call<Playbook>(h, "PUT", "/v1/playbooks/video", { diff: { v: 1, steps: { settle: { params: { quiet_s: 90 } } } }, if_revision: null });
   expect(video).toMatchObject({ status: 200, data: { revision: 1, resolved: { settle: { params: { quiet_s: 90 } } } } });

@@ -2,7 +2,7 @@
 	import { playbookStep, type PlaybookResolved, type PlaybookStepId } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import Icon from '../Icon.svelte';
-	import { layPlaybookFlow, paramText, stepDiffers, stepRole, type PlaybookCard, type PlaybookNodeId } from './playbook-flow.ts';
+	import { layPlaybookFlow, paramText, stepDiffers, stepLocked, stepRole, type PlaybookCard, type PlaybookNodeId } from './playbook-flow.ts';
 	import type { RoutingNodeView } from './routing-map.ts';
 
 	/**
@@ -85,7 +85,6 @@
 				</div>
 			{:else}
 				{@const step = card.node as PlaybookStepId}
-				{@const spec = playbookStep(step)}
 				<button
 					type="button"
 					class="playbook-card is-step"
@@ -107,7 +106,7 @@
 						{#if stepDiffers(step, resolved, builtin)}
 							<span class="playbook-card-mark" role="img" aria-label={c.changed} title={c.changed} data-differs></span>
 						{/if}
-						{#if !spec.switchable}
+						{#if stepLocked(step, resolved)}
 							<Icon name="lock" size={12} class="playbook-card-lock" label={c.locked} title={c.locked} />
 						{/if}
 					</span>

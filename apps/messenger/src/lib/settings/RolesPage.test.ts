@@ -36,14 +36,14 @@ const callPrompts = () => [
   { ...promptRow("call.read_bot_line", "call"), role: "reader" },
 ];
 
-/** The three engines as the daemon lists them, changed as `diffs` say. */
+/** The engines as the daemon lists them, changed as `diffs` say. */
 function engines(diffs: Partial<Record<BuiltinPlaybookId, PlaybookDiff>> = {}, defaultId = "general"): PlaybookList {
   const item = (id: BuiltinPlaybookId): Playbook => {
     const diff = diffs[id] ?? emptyPlaybookDiff();
     const changed = Object.keys(diff.steps).length > 0;
     return { id, builtin: true, base_id: id, name: null, revision: changed ? 1 : 0, revision_id: changed ? `rev-${id}` : null, diff, resolved: resolvePlaybook(id, diff), updated_at: null };
   };
-  return { default_id: defaultId, items: [item("general"), item("video"), item("coding")] };
+  return { default_id: defaultId, items: [item("general"), item("video"), item("coding"), item("plain")] };
 }
 
 /** A daemon that keeps the engines' differences as the window sends them. */
@@ -119,8 +119,8 @@ test("an engine drawn as the flow: each step under what sets it off, the picked 
   });
   await settle();
   expect([...host.querySelectorAll("[data-playbook-round]")].map((el) => el.getAttribute("data-playbook-round"))).toEqual(["line", "group", "turn", "handed_in", "accepted", "overturned", "compose"]);
-  // Sixteen steps and the Bot's turn; in 通用 the scribe is off.
-  expect(host.querySelectorAll("[data-playbook-node]")).toHaveLength(17);
+  // Seventeen steps and the Bot's turn; in 通用 the scribe is off.
+  expect(host.querySelectorAll("[data-playbook-node]")).toHaveLength(18);
   expect(node(host, "scribe")?.getAttribute("data-on")).toBe("false");
   expect(node(host, "scribe")?.textContent).toContain(t.playbooks.offShort);
   expect(node(host, "settle")?.textContent).toContain(t.routing.follows.default);
@@ -168,6 +168,76 @@ test("a step switched on, or a number changed, saves the engine's new difference
   await settle();
   expect(server.saved.at(-1)!.diff.steps.retrospective).toEqual({ on: false });
   expect(node(host, "retrospective")?.getAttribute("data-on")).toBe("false");
+  close();
+});
+
+test("an engine with no jobs: what stands on them shows off and says why, and reading can be off only there", async () => {
+  const server = engineServer();
+  const { host, close } = open({ client: quietClient(server.api) });
+  await settle();
+  // In 通用 the jobs can be switched off, says what goes with them; reading is held on by them.
+  click(node(host, "jobs"));
+  flushSync();
+  expect(host.querySelector("[data-playbook-also-stops]")?.textContent).toContain(t.playbooks.steps.settle!.name);
+  expect(host.querySelector('[data-playbook-step="jobs"] [data-playbook-switch]')).not.toBeNull();
+  click(node(host, "reader"));
+  flushSync();
+  expect(host.querySelector('[data-playbook-step="reader"] [data-playbook-switch]')).toBeNull();
+  expect(host.querySelector("[data-playbook-held-on]")?.textContent).toContain(t.playbooks.steps.jobs!.name);
+  expect(node(host, "reader")?.querySelector(".playbook-card-lock")).not.toBeNull();
+
+  click(host.querySelector('[data-playbook-chip="plain"]'));
+  flushSync();
+  expect(host.querySelector("[data-playbook-header]")?.textContent).toContain(t.playbooks.builtinHint.plain!);
+  for (const id of ["jobs", "settle", "closing", "checks", "ceiling", "pickup", "retrospective"]) expect(node(host, id)?.getAttribute("data-on")).toBe("false");
+  // A step that only follows them has not been changed, and shows no mark or lock of its own.
+  for (const id of ["checks", "pickup"]) {
+    expect(node(host, id)?.querySelector("[data-differs]")).toBeNull();
+    expect(node(host, id)?.querySelector(".playbook-card-lock")).toBeNull();
+  }
+  click(node(host, "settle"));
+  flushSync();
+  expect(host.querySelector("[data-playbook-stopped-by]")?.textContent).toContain(t.playbooks.steps.jobs!.name);
+  expect(host.querySelector('[data-playbook-step="settle"] [data-playbook-switch]')).toBeNull();
+  // Here reading has a switch of its own.
+  click(node(host, "reader"));
+  flushSync();
+  expect(host.querySelector('[data-playbook-step="reader"] [data-playbook-switch]')).not.toBeNull();
+  close();
+});
+
+test("switching jobs back on takes reading back with them: a save would refuse it left off", async () => {
+  const server = engineServer(engines({ plain: { v: 1, steps: { reader: { on: false } } } }));
+  const { host, close } = open({ client: quietClient(server.api) });
+  await settle();
+  click(host.querySelector('[data-playbook-chip="plain"]'));
+  flushSync();
+  click(node(host, "jobs"));
+  flushSync();
+  const box = host.querySelector<HTMLInputElement>('[data-playbook-step="jobs"] [data-playbook-switch]')!;
+  box.checked = true;
+  box.dispatchEvent(new Event("change", { bubbles: true }));
+  await settle();
+  expect(server.saved.at(-1)?.diff.steps.jobs).toEqual({ on: true });
+  expect(server.saved.at(-1)?.diff.steps.reader).toEqual({});
+  close();
+});
+
+test("making an engine with no jobs the default says first what it moves; another goes at once", async () => {
+  const server = engineServer();
+  const impact = { sessions: 12, open_jobs: 3 };
+  const { host, runtime, close } = open({ client: quietClient({ ...server.api, playbookImpact: async () => impact }) });
+  await settle();
+  click(host.querySelector('[data-playbook-chip="plain"]'));
+  flushSync();
+  click(host.querySelector('[data-playbook-action="default"]'));
+  await settle();
+  const dialog = document.querySelector("dialog.confirm-backdrop");
+  expect(dialog?.textContent).toContain(t.playbooks.defaultBody(12, 3));
+  expect(runtime.calls.filter((call) => call.name === "patchSettings")).toEqual([]);
+  click(dialog!.querySelector(".modal-foot button.deny"));
+  flushSync();
+  expect(runtime.calls.filter((call) => call.name === "patchSettings").map((call) => call.args[0])).toEqual([{ default_playbook: "plain" }]);
   close();
 });
 

@@ -542,6 +542,9 @@ export class Store {
   readonly playbookFor = this.bind(playbooks.playbookFor);
   readonly playbookStepOn = this.bind(playbooks.playbookStepOn);
   readonly playbookParam = this.bind(playbooks.playbookParam);
+  readonly jobsRunIn = this.bind(playbooks.jobsRunIn);
+  readonly jobRuns = this.bind(playbooks.jobRuns);
+  readonly playbookImpact = this.bind(playbooks.playbookImpact);
   readonly savePlaybook = this.bind(playbooks.savePlaybook);
   readonly resetPlaybook = this.bind(playbooks.resetPlaybook);
   readonly createPlaybook = this.bind(playbooks.createPlaybook);

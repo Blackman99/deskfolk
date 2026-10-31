@@ -7,7 +7,7 @@
 	export type InspectorView = 'step' | 'ticket' | 'spec';
 
 	/** The engine the job's own calls run under, as the whole job's view says it. */
-	export type InspectorEngine = { name: string; why: JobEngineWhy; off: string[]; sessions: number; onOpen?: () => void };
+	export type InspectorEngine = { name: string; why: JobEngineWhy; off: string[]; sessions: number; stopped?: boolean; onOpen?: () => void };
 </script>
 
 <script lang="ts">
@@ -222,7 +222,7 @@
 				<div class="insp-job">
 					<JobDivision rows={division} {bots} {youLabel} {deletedLabel} {t} />
 					{#if engine}
-						<JobEngine name={engine.name} why={engine.why} off={engine.off} sessions={engine.sessions} {t} onOpen={engine.onOpen} />
+						<JobEngine name={engine.name} why={engine.why} off={engine.off} sessions={engine.sessions} stopped={engine.stopped} {t} onOpen={engine.onOpen} />
 					{/if}
 				</div>
 			{/if}

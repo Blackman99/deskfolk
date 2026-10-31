@@ -776,17 +776,18 @@ The fixed text the app sends models, one slot each (`apps/daemon/src/prompts/reg
 <a id="engine"></a>
 ## Engine
 
-[ADR 0085](adr/0085-engines.md). How the app's own steps run in a conversation: the skeleton (your lines taken in order, a stop that is a stop, filing before waking, work items, what a reading of stop or go on does) is code; the steps hung on it and their numbers are the engine. Not the engine level (`engine_level`, see the glossary's Schema gate): that is how far a data folder has been migrated, the engine is how you choose to run.
+[ADR 0085](adr/0085-engines.md), [ADR 0103](adr/0103-an-engine-can-work-in-no-jobs.md). How the app wraps a conversation: a floor (your lines taken in order, Stop and holds, permission modes and approval cards, the spend ledger and daily cap, compaction, output caps and repeat guards, your words kept) is code; whether it works in jobs, the steps hung on them and their numbers are the engine. Not the engine level (`engine_level`, see the glossary's Schema gate): that is how far a data folder has been migrated, the engine is how you choose to run.
 
 **Steps** (`PLAYBOOK_STEPS`, by where they hang):
 
 | Where | Step | Can be off | Numbers (default) |
 |---|---|---|---|
 | Your line | Intake ceiling | no | waits at most 45 s for the line ahead |
-| | Reading | no | — |
+| | Reading | only while Jobs is off | — |
+| | Jobs (`jobs`) | yes | — |
 | | Scribe | yes | at most 8 entries per line |
-| A group line naming nobody | Judgement | no | — |
-| A Bot's turn | Hop pacing | no | asked how it is going every 40 hops (only asked; the tools stay) |
+| A group line naming nobody | Judgement | yes | — |
+| A Bot's turn | Hop pacing | yes | asked how it is going every 40 hops (only asked; the tools stay) |
 | | Compaction | no | — |
 | | Closing check | yes | — |
 | | Settle | yes | a job quiet 30 s before it is filed |
@@ -799,12 +800,18 @@ The fixed text the app sends models, one slot each (`apps/daemon/src/prompts/reg
 | An approval you overturn | Reflection | yes | — |
 | You press ✨ | Composer | no | — |
 
-A locked step off would break the skeleton: with the acceptance checks not running, a hand-over bound to a check of yours would wait for good. The models and prompts of reading, judgement, compaction, the composer, the picture judge, the settle, the scribe, reflection and retrospective stay global and are set on the same map ([Built-in models](#model), [Built-in prompts](#built-in-prompt)). Numbers are whole and ranged (the settle's quiet from 10 to 600 s, say). A turn may call tools for as many hops as it needs (since 2026-10-17; before, the tools went at 160 hops, 200 on video, and a limit you saved is passed over when read). The benchmark's switches (ablation) still apply and win over an engine.
+The scribe, the closing check, the settle, the supervisor's pick-ups, the acceptance checks, escalation, the capability ceiling, the retrospective and reflection all stand on Jobs: off with it, your settings kept for when it comes back. A step that cannot be off would, with Jobs on, break the kernel: with the acceptance checks not running, a hand-over bound to a check of yours would wait for good; with reading off, so would one waiting on your word. The models and prompts of reading, judgement, compaction, the composer, the picture judge, the settle, the scribe, reflection and retrospective stay global and are set on the same map ([Built-in models](#model), [Built-in prompts](#built-in-prompt)). Numbers are whole and ranged (the settle's quiet from 10 to 600 s, say). A turn may call tools for as many hops as it needs (since 2026-10-17; before, the tools went at 160 hops, 200 on video, and a limit you saved is passed over when read). The benchmark's switches (ablation) still apply and win over an engine.
 
-**The three built in** (tuned on the conversations up to 2026-10-11; numbers in ADR 0085):
+**The four built in** (the first three are templates of one way of working, tuned on the conversations up to 2026-10-11; numbers in ADR 0085):
 - **General** (the default): no scribe, no reflection — nothing written down or proposed behind your back; the rest at the defaults, the retrospective included (from 2026-10-14: Bots improving their own memories and skills after a delivery is part of what the app promises). The settle stays: it keeps a job's board true. With the scribe off, only a line finding fault with work already handed over is still kept, as a proposed entry (the fallback the scribe has when it reads nothing).
 - **Video**: the scribe stays; the settle waits 60 s so a fan-out of shots is filed once; a Bot's own check-backs are at least 15 minutes apart, at most three an hour; no escalation; more than 5 failed hand-overs stop and ask you.
 - **Coding**: no scribe; the rest at the defaults.
+- **Plain** (自由): not this way of working, only the floor. Jobs and hop pacing are off; reading and judgement are on.
+
+<a id="engine-no-jobs"></a>
+**An engine with no jobs** (Jobs off, as in Plain): a conversation's lines never open a job. Nothing reads which job a line is about, and neither a quote nor a path files it under one; every turn is at the desk with no job bound, a first effect opens none, and the shell starts at the workspace root. A Bot is not offered `work_on`, `delegate`, `submit`, `review` or `plan_items`, and is refused if it calls them; the System section is the same text less what only holds in a job, the situation block has no desk text and always names the workspace root; your edits of the System section and the agent preface were written for the jobs and stay out, other prompts hold. An ending does not read the Bot's words or weigh obligations and promises, progress lines are not counted, and a question asking your OK goes through; one thing stays: your line in your direct left without a word goes back once, then you are told. There are no plans, tickets, hand-overs, reviews, jobs on the flow or supervisor, and whether it is done is yours to judge. Stops are as ever: typing stop stops it (in an engine with reading off too, only the Stop button does), and approval cards, permission modes and the spend cap hold. A routine still fires, as a turn with no job and no standing plan. Check-backs can be booked and ring. A direct a Bot opened still calls it back when it goes quiet.
+
+**Moving between engines**: a job already open stops where it is, woken by nothing, deleted by nothing, taking no new lines, and a line elsewhere citing it is not filed under it; the supervisor passes over it and the work log says `no_jobs`; an appointment on it stays due, not voided, and rings once you move back; a turn already running finishes. Moving a conversation with open jobs, or the default, to an engine with none says first what it would leave standing (`GET /v1/playbooks/impact`). The job's page says why it stands still.
 
 **Changing and making your own**: a change is to one engine and keeps only what differs from its built-in (`playbooks.diff`); a field you never touched follows a new default, and "differs from built-in" and resetting a step come straight from it. Every change is an append-only revision (`playbook_revisions`: before, after, who), numbered; when two windows change it at once, the later is refused and asks you to reload. Any engine can be the base of one of your own, which you name, rename and remove; it cannot be removed while it is the default, and conversations using it go back to the default.
 

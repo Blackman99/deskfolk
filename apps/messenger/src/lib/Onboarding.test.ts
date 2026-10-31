@@ -282,6 +282,20 @@ test('the first Bots come from the templates of the way picked; a ticked draft l
   expect(team[0]).toMatchObject({ playbookId: 'video', groupName: t.templates.groupName.video, lead: 0 });
 });
 
+test('the way that leaves the jobs out offers the same first Bots, on its own engine', async () => {
+  const { host, calls } = open();
+  click(step(host, t.onboarding.step3Title));
+  click(buttonByText(host, `${t.onboarding.step3Next} →`));
+  await settle();
+  click(host.querySelector('[data-team-way="plain"]'));
+  flushSync();
+  expect(host.querySelector('[data-team-way="plain"]')?.textContent).toContain(t.playbooks.builtinHint.plain!);
+  expect([...host.querySelectorAll<HTMLInputElement>('[data-team-pick]')].filter((box) => box.checked).map((box) => box.dataset.teamPick)).toEqual(['assistant']);
+  click(buttonByText(host, `${t.templates.create(1)} ✓`));
+  await settle();
+  expect(calls.filter((call) => call.name === 'createTeam').map((call) => call.args[0])).toMatchObject([{ playbookId: 'plain', groupName: t.templates.groupName.plain }]);
+});
+
 test('workspace persistence errors return to the failed step without saving the provider', async () => {
   let failed = true;
   let providerSaves = 0;

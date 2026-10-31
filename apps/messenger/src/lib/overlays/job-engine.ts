@@ -37,8 +37,14 @@ export function sessionsOnEngine(
   return sessions.filter((session) => !session.archived_at && sessionEngine(sessions, session.id, defaultId, known).id === engineId).length;
 }
 
-/** The steps an engine has switched off, in the order Roles draws them. */
+/** The steps an engine has switched off, in the order Roles draws them; one that only stops with what it stands on is not listed. */
 export function engineOffSteps(playbook: Pick<Playbook, "resolved"> | undefined): PlaybookStepId[] {
   if (!playbook) return [];
-  return PLAYBOOK_STEPS.filter((step) => step.switchable && playbook.resolved[step.id]?.on === false).map((step) => step.id);
+  const stops = (step: (typeof PLAYBOOK_STEPS)[number]) => step.requires?.some((id) => playbook.resolved[id]?.on === false) ?? false;
+  return PLAYBOOK_STEPS.filter((step) => step.switchable && playbook.resolved[step.id]?.on === false && !stops(step)).map((step) => step.id);
+}
+
+/** Whether an engine works in no jobs (ADR 0103): what a job left in a conversation that moved to it shows. */
+export function engineHasNoJobs(playbook: Pick<Playbook, "resolved"> | undefined): boolean {
+  return playbook?.resolved.jobs?.on === false;
 }

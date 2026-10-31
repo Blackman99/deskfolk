@@ -456,7 +456,9 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       settled = true;
     };
     try {
-      if (ablation.has("judgement")) {
+      // Off in its engine too (ADR 0103), said apart in the record: the benchmark's switch is no choice of yours.
+      const engineOff = !store.playbookStepOn({ sessionId: message.session_id }, "judgement");
+      if (ablation.has("judgement") || engineOff) {
         // Off: every Bot the line would have asked joins, the way a "join" verdict does, unbilled.
         if (admission?.draining) return;
         let row;
@@ -466,7 +468,7 @@ export function createParticipation(deps: ParticipationDeps): Participation {
             messageId: message.id,
             botId,
             decision: "join",
-            reason: ABLATED_JOIN_REASON,
+            reason: ablation.has("judgement") ? ABLATED_JOIN_REASON : "engine: join-all",
             error: null,
           });
         } catch {

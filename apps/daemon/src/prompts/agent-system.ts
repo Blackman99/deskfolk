@@ -92,6 +92,32 @@ This turn is run by the user's own {agent}. It has no Deskfolk tools: end_turn, 
 export const LOCAL_AGENT_PREFACE: Record<Locale, string> = { zh: LOCAL_PREFACE_ZH, en: LOCAL_PREFACE_EN };
 export const REPLY_ONLY_AGENT_PREFACE: Record<Locale, string> = { zh: REPLY_ONLY_PREFACE_ZH, en: REPLY_ONLY_PREFACE_EN };
 
+/** What the three prefaces say only about a job, said for an engine with none (ADR 0103); each edit finds its words in at least one. */
+export const PLAIN_PREFACE_EDITS: Record<Locale, ReadonlyArray<readonly [from: string, to: string]>> = {
+  zh: [
+    ["end_turn、ask_user、check_back、work_on、delegate、submit、review、plan_items、remember", "end_turn、ask_user、check_back、remember"],
+    ["end_turn、ask_user、submit、delegate 等这里都用不了，你最后的回复就是发到会话里的消息，交付、转交和提问都在回复里写明", "end_turn、ask_user 等这里都用不了，你最后的回复就是发到会话里的消息，转交和提问都在回复里写明"],
+    ["，它就是系统指令里说的本轮工作目录。", "。"],
+    ["；本轮工作目录是 {cwd}。", "；命令从 {cwd} 开始。"],
+    ["看图用 Read，应用会记下你看过；审查图片类交付时要先这样看过，才能给通过。", "看图用 Read。"],
+    ["，和系统指令说的一样会先过收尾检查；", "；"],
+    ["（包括 mcp__deskfolk__end_turn、mcp__deskfolk__submit 旁边的）", "（包括 mcp__deskfolk__end_turn 旁边的）"],
+  ],
+  en: [
+    ["end_turn, ask_user, check_back, work_on, delegate, submit, review, plan_items, remember", "end_turn, ask_user, check_back, remember"],
+    ["end_turn, ask_user, submit, delegate and the rest in the System section below are not available here. Your last reply is the message you post; say in it what you hand over, pass on or need to ask", "end_turn, ask_user and the rest in the System section below are not available here. Your last reply is the message you post; say in it what you pass on or need to ask"],
+    [", which is what the System section calls this turn's work dir.", "."],
+    ["; this turn's work dir is {cwd}.", "; commands start in {cwd}."],
+    ["Look at pictures with Read; the app records that you looked, which a review approving pictures needs.", "Look at pictures with Read."],
+    [", and it passes the closing check the System section describes;", ";"],
+    ["(beside mcp__deskfolk__end_turn or mcp__deskfolk__submit too)", "(beside mcp__deskfolk__end_turn too)"],
+  ],
+};
+
+function plainPreface(preface: string, locale: Locale): string {
+  return PLAIN_PREFACE_EDITS[locale].reduce((text, [from, to]) => text.replace(from, to), preface);
+}
+
 export function agentSystemPrompt(input: {
   locale: Locale;
   name: string;
@@ -105,6 +131,8 @@ export function agentSystemPrompt(input: {
   mcpGuides?: McpPromptGuide[];
   /** Built-in prompts you edited (ADR 0064): the System section and the section notes, and this preface. */
   texts?: TurnPromptTexts & { preface?: string };
+  /** False where the engine works in no jobs (ADR 0103): the preface does not name their tools or checks. */
+  jobs?: boolean;
   /**
    * A local agent other than Claude Code (ADR 0079): its own preface, naming it, and how that agent
    * reaches the app's tools when it does not list them as tools of their own (`toolHint`).
@@ -118,10 +146,11 @@ export function agentSystemPrompt(input: {
     : `# 人设\n\n## 名字\n\n${input.name}\n\n## 职责\n\n${input.duties}\n\n## 边界\n\n${input.boundaries}`;
   const local = input.agent && input.agent.runner !== "claude_code" ? input.agent : null;
   const hint = local?.toolHint?.[input.locale];
+  const said = (text: string) => (input.jobs === false ? plainPreface(text, input.locale) : text);
   const preface = local
-    ? fill((local.appTools ? LOCAL_AGENT_PREFACE : REPLY_ONLY_AGENT_PREFACE)[input.locale], { agent: local.label, workspace: input.workspace, cwd: input.cwd })
+    ? fill(said((local.appTools ? LOCAL_AGENT_PREFACE : REPLY_ONLY_AGENT_PREFACE)[input.locale]), { agent: local.label, workspace: input.workspace, cwd: input.cwd })
       .replace(/\n\n- /, hint ? `\n\n${hint}\n\n- ` : "\n\n- ")
-    : fill(texts.preface ?? AGENT_PREFACE[input.locale], { workspace: input.workspace, cwd: input.cwd });
+    : fill(said(texts.preface ?? AGENT_PREFACE[input.locale]), { workspace: input.workspace, cwd: input.cwd });
   const systemBody = texts.system ?? systemText(input.locale, "sh", input.engineLevel);
   const system = en ? `# System\n\n${systemBody}` : `# 系统指令\n\n${systemBody}`;
   const skills = formatSkillCatalog(input.locale, input.skills ?? [], texts.skills);

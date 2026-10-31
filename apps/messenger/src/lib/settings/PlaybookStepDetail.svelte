@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { playbookStep, type Playbook, type PlaybookDiff, type PlaybookResolved, type PlaybookStepId } from '@real-bot/protocol';
+	import { PLAYBOOK_STEPS, playbookStep, stepsRequiring, stoppedBy, type Playbook, type PlaybookDiff, type PlaybookResolved, type PlaybookStepDiff, type PlaybookStepId } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import Switch from '../Switch.svelte';
 	import { paramText, stepDiffers } from './playbook-flow.ts';
@@ -33,6 +33,11 @@
 	const spec = $derived(playbookStep(step));
 	const setting = $derived(playbook.resolved[step]);
 	const differs = $derived(stepDiffers(step, playbook.resolved, builtin));
+	/** What stands in the way of this step running, when something does; its switch then has no say. */
+	const stopper = $derived(stoppedBy(step, playbook.resolved));
+	/** A step that another still on cannot do without: running, and no switch while that one is on. */
+	const heldOnBy = $derived(spec.onWhile && playbook.resolved[spec.onWhile].on ? spec.onWhile : null);
+	const dependents = $derived(stepsRequiring(step).map((id) => c.steps[id]!.name));
 
 	/** The engine's difference with this step changed as asked; the rest of it kept. */
 	function withStep(change: { on?: boolean; params?: Record<string, number> }): PlaybookDiff {
@@ -42,7 +47,16 @@
 			...(change.on === undefined ? {} : { on: change.on }),
 			...(change.params ? { params: { ...(before.params ?? {}), ...change.params } } : {}),
 		};
-		return { v: 1, steps: { ...playbook.diff.steps, [step]: next } };
+		const steps: Partial<Record<PlaybookStepId, PlaybookStepDiff>> = { ...playbook.diff.steps, [step]: next };
+		// Switched on, it takes back the step it cannot do without: a save would refuse that one left off.
+		if (change.on) {
+			for (const other of PLAYBOOK_STEPS) {
+				if (other.onWhile !== step || steps[other.id]?.on !== false) continue;
+				const { on: _off, ...rest } = steps[other.id]!;
+				steps[other.id] = rest;
+			}
+		}
+		return { ...playbook.diff, steps };
 	}
 
 	function setOn(on: boolean): void {
@@ -75,7 +89,11 @@
 	<div class="playbook-step-part" data-playbook-part="engine">
 		<h4 class="playbook-part-title">{c.runs} · {engineName}</h4>
 		<div class="playbook-step-switch">
-			{#if spec.switchable}
+			{#if stopper}
+				<span class="playbook-step-state is-locked" data-playbook-stopped-by={stopper}>{c.stoppedBy(c.steps[stopper]!.name)}</span>
+			{:else if heldOnBy}
+				<span class="playbook-step-state is-locked" data-playbook-held-on={heldOnBy}>{c.heldOn(c.steps[heldOnBy]!.name)}</span>
+			{:else if spec.switchable}
 				<Switch disabled={saving}>
 					<input type="checkbox" checked={setting.on} disabled={saving} aria-label={c.steps[step]!.name} data-playbook-switch onchange={(event) => setOn(event.currentTarget.checked)} />
 				</Switch>
@@ -87,6 +105,9 @@
 				<span class="playbook-step-state is-locked">{c.locked}</span>
 			{/if}
 		</div>
+		{#if dependents.length > 0}
+			<p class="playbook-hint" data-playbook-also-stops>{c.alsoStops(dependents.join('、'))}</p>
+		{/if}
 		{#each spec.params as param (param.key)}
 			<label class="playbook-param" class:is-off={!setting.on}>
 				<span class="playbook-param-label">{c.params[param.key]}</span>

@@ -151,6 +151,9 @@ export function createFire(deps: FireDeps): Fire {
       return false;
     }
     if (row.fired_at || row.voided_at) return false;
+    // On a job whose conversation moved to an engine with no jobs (ADR 0103): no stop to come back
+    // from, so nothing is set aside. It stays due and rings when the conversation moves back.
+    if (row.task_id && !store.jobRuns(row.task_id)) return true;
     const wake = {
       cause: causeOf(row),
       botId: row.bot_id,
@@ -186,11 +189,14 @@ export function createFire(deps: FireDeps): Fire {
     } catch {
       return null;
     }
+    const direct = store.findDirectSession(USER_MEMBER, botId)?.id ?? null;
+    // A routine fires into your direct with its Bot; with no jobs there (ADR 0103) it is a turn like any other.
+    const jobs = store.jobsRunIn(direct);
     const wake = {
       cause: "routine" as const,
       botId,
-      sessionId: store.findDirectSession(USER_MEMBER, botId)?.id ?? null,
-      taskId: store.routineTask(routineId)?.id ?? null,
+      sessionId: direct,
+      taskId: jobs ? store.routineTask(routineId)?.id ?? null : null,
     };
     if (heldWake(store, wake).length > 0) {
       // Only a due time is a wake, asked about on every tick until the lift; it stays unclaimed.
@@ -213,7 +219,7 @@ export function createFire(deps: FireDeps): Fire {
       });
       // Every routine has one standing plan, and every fire is a ticket of it, so a daily's days
       // sit side by side and the rules you set on its board stay. No model call decides this.
-      const plan =
+      const plan = !jobs ? null :
         store.routineTask(claimed.id) ??
         store.openTask({
           sessionId: session.id,
@@ -232,7 +238,7 @@ export function createFire(deps: FireDeps): Fire {
           routineId: claimed.id,
           now,
         });
-      const ticket = store.createTicket({
+      const ticket = plan && store.createTicket({
         taskId: plan.id,
         title: localDate(now),
         spec: claimed.instruction,
@@ -246,8 +252,8 @@ export function createFire(deps: FireDeps): Fire {
         triggerMessageId: trigger.id,
         routineId: claimed.id,
         routineDueAt: claimed.last_fired_for_due_at,
-        taskId: plan.id,
-        ticketId: ticket.id,
+        taskId: plan?.id ?? null,
+        ticketId: ticket?.id ?? null,
       });
       return {
         claimed,

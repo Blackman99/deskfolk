@@ -15,7 +15,7 @@ import { supervisorJobLabel, supervisorWakeNote } from "../prompts/transcript-co
 import { PROGRESS_KINDS } from "./end-contract";
 import { holdsCovering } from "./holds";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
-import { playbookFor } from "./playbooks";
+import { jobRuns, playbookFor } from "./playbooks";
 import { createNotification, updateNotificationActionState } from "./notifications";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { localeOf } from "./settings";
@@ -596,7 +596,7 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
   const since = supervisingSince(ctx);
   for (const work of items) {
     const taskId = work.task_id!;
-    if (beforeSupervision(since, work.updated_at) || !botAlive(ctx, work.bot_id)) continue;
+    if (beforeSupervision(since, work.updated_at) || !botAlive(ctx, work.bot_id) || !jobRuns(ctx, taskId)) continue;
     if (heldWork(ctx, work)) { result.deferred.push({ workItemId: work.id, reason: "held" }); continue; }
     if (work.ticket_id) {
       const holder = ballHolder(ctx, { ticketId: work.ticket_id });
@@ -763,6 +763,7 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
     WHERE t.status IN ('todo', 'doing', 'review') AND ${ACTIVE_PLAN("p")} ORDER BY p.created_at, t.seq`).all();
   const since = supervisingSince(ctx);
   for (const ticket of tickets) {
+    if (!jobRuns(ctx, ticket.task_id)) continue;
     const holder = ballHolder(ctx, { ticketId: ticket.id });
     if (holder.kind !== "owner" && holder.kind !== "lead" && holder.kind !== "delegation" && holder.kind !== "reviewer") continue;
     if (dependenciesPending(ctx, ticket)) continue;
@@ -858,7 +859,7 @@ export function recordSupervisorRestart(ctx: StoreContext, input: {
         "SELECT work_item_id, task_id, status FROM turns WHERE id = ?").get(requireNonEmpty("interruptedTurnId", turnId));
       const work = turn?.work_item_id ? workRow(ctx, turn.work_item_id) : null;
       const active = work?.task_id ? ctx.db.query(`SELECT 1 FROM tasks p WHERE p.id = ? AND ${ACTIVE_PLAN("p")}`).get(work.task_id) : null;
-      if (!supervised || !turn || turn.status !== "interrupted" || !work || work.state === "closed" || !active) {
+      if (!supervised || !turn || turn.status !== "interrupted" || !work || work.state === "closed" || !active || (work.task_id && !jobRuns(ctx, work.task_id))) {
         out.push({ turnId, workItemId: work?.id ?? null, arrangement: "waits" });
         continue;
       }
@@ -890,8 +891,9 @@ export function recordSupervisorRestart(ctx: StoreContext, input: {
  */
 export function supervisorTakesUp(ctx: StoreContext, turnId: string): boolean {
   if (readEngineLevel(ctx.db) < ENGINE_LEVELS.supervision) return false;
-  return Boolean(ctx.db.query(`SELECT 1 FROM turns t JOIN work_items w ON w.id = t.work_item_id JOIN tasks p ON p.id = w.task_id
-    WHERE t.id = ? AND w.state = 'needs_attention' AND ${ACTIVE_PLAN("p")}`).get(turnId));
+  const job = ctx.db.query<{ id: string }, [string]>(`SELECT p.id FROM turns t JOIN work_items w ON w.id = t.work_item_id JOIN tasks p ON p.id = w.task_id
+    WHERE t.id = ? AND w.state = 'needs_attention' AND ${ACTIVE_PLAN("p")}`).get(turnId);
+  return job ? jobRuns(ctx, job.id) : false;
 }
 
 /**

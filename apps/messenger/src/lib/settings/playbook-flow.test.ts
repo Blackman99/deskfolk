@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { builtinPlaybook, PLAYBOOK_STEP_IDS } from "@real-bot/protocol";
-import { layPlaybookFlow, PLAYBOOK_ORDER, PLAYBOOK_ROUNDS, stepDiffers, stepOfRole, stepRole, STEP_W } from "./playbook-flow.ts";
+import { layPlaybookFlow, PLAYBOOK_ORDER, PLAYBOOK_ROUNDS, stepDiffers, stepLocked, stepOfRole, stepRole, STEP_W } from "./playbook-flow.ts";
 
 test("every step is in one round, under the thing that sets it off, and ↑ ↓ walk the turn before its steps", () => {
   expect(PLAYBOOK_ROUNDS.flatMap((round) => round.steps).sort()).toEqual([...PLAYBOOK_STEP_IDS].sort());
@@ -9,6 +9,20 @@ test("every step is in one round, under the thing that sets it off, and ↑ ↓ 
   expect(stepRole("settle")).toBe("organizer");
   expect(stepRole("intake")).toBeNull();
   expect(stepOfRole("judge")).toBe("checks");
+});
+
+test("a step that only follows the jobs has not been changed; a locked one has no switch only while it runs", () => {
+  const general = builtinPlaybook("general");
+  const plain = builtinPlaybook("plain");
+  expect(stepDiffers("jobs", plain, general)).toBe(true);
+  expect(stepDiffers("settle", plain, general)).toBe(false);
+  expect(stepDiffers("checks", plain, general)).toBe(false);
+  expect(stepLocked("checks", general)).toBe(true);
+  expect(stepLocked("checks", plain)).toBe(false);
+  expect(stepLocked("reader", general)).toBe(true);
+  expect(stepLocked("reader", plain)).toBe(false);
+  expect(stepLocked("jobs", general)).toBe(false);
+  expect(stepLocked("compaction", plain)).toBe(true);
 });
 
 test("wide, a round's steps fan out in a row under its root; narrow, they hang down a spine — nothing overlaps either way", () => {

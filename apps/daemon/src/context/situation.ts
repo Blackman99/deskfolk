@@ -84,7 +84,9 @@ export function situationUserMessage(
     : null;
   // The prompt speaks in workspace-relative paths, so a Bot that has to name a host path (a file the
   // user points at outside the workspace, a cwd) used to guess the root and `~` — often `/Users/me`.
-  const root = workDir ? store.workspacePath() : null;
+  const jobs = store.jobsRunIn(sessionId);
+  // With no jobs (ADR 0103) the workspace root is where a turn works, so it is always named.
+  const root = workDir || !jobs ? store.workspacePath() : null;
   const rootLine = root
     ? locale === "en"
       ? `The workspace root on this machine is ${asFolder(root)} and ~ is ${homedir()}; write host paths from these, never guess.`
@@ -96,7 +98,7 @@ export function situationUserMessage(
     ? planFacts(store, { taskId, ticketId, turnId, triggerMessageId, botId: selfBotId, sessionId, locale })
     : null;
   const job = facts ? planLines(facts, locale) : [];
-  if (store.getTurn(turnId).mode === "desk") {
+  if (jobs && store.getTurn(turnId).mode === "desk") {
     const candidates = store.deskCandidateIds(turnId).map((id) => {
       try {
         const plan = store.planCandidateEvidence(id);
@@ -152,7 +154,7 @@ export function situationUserMessage(
       : members.length > 0
         ? `在场成员（点名请逐字写全名）：${members.join("、")}。`
         : "在场成员：只有你。";
-  const team = teamLines(store, sessionId, selfBotId, locale);
+  const team = teamLines(store, sessionId, selfBotId, locale, jobs);
   const seatLine =
     locale === "en"
       ? group.seats.length > 0
@@ -204,7 +206,7 @@ const DUTIES_LINE = 40;
  * poster group's lead wrote the slogans itself in two of four jobs, never laying the work out for
  * 文案, whose duties are 「写宣传语和文案」.
  */
-function teamLines(store: Store, sessionId: string, selfBotId: string, locale: Locale): string[] {
+function teamLines(store: Store, sessionId: string, selfBotId: string, locale: Locale, jobs: boolean): string[] {
   const en = locale === "en";
   const roles = store.presentBotIds(sessionId).filter((id) => id !== selfBotId).flatMap((id) => {
     try {
@@ -217,7 +219,11 @@ function teamLines(store: Store, sessionId: string, selfBotId: string, locale: L
   const lines = roles.length > 0 ? [en ? `What each does: ${roles.join("; ")}.` : `各自做什么：${roles.join("；")}。`] : [];
   const lead = store.db.query<{ member: string }, [string]>(`SELECT p.member FROM session_participants p JOIN bots b ON b.id = p.member
     WHERE p.session_id = ? AND p.left_at IS NULL AND p.is_lead = 1 AND b.deleted_at IS NULL AND b.archived_at IS NULL LIMIT 1`).get(sessionId)?.member;
-  if (lead === selfBotId) {
+  if (lead === selfBotId && !jobs) {
+    lines.push(en
+      ? "You are this group's lead, as the user confirmed: what others should make, name them for it here."
+      : "你是用户在这个群里确认的负责人：要别人做的部分，在这里点名交给他们。");
+  } else if (lead === selfBotId) {
     lines.push(en
       ? "You are this group's lead, as the user confirmed: lay out the parts others should make with plan_items (who makes each, who reviews it), then delegate on those tickets; for a reply in words only, delegate with expects answer."
       : "你是用户在这个群里确认的负责人：要别人做的部分，先用 plan_items 拆成任务、写明谁做谁审，再委派到那张任务；只要一句答复的，委派时 expects 用 answer。");

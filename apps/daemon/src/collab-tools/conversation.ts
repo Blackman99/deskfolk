@@ -23,7 +23,7 @@ export function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolRe
     return fail("not_a_member", "you are not in that session");
   }
   const session = ctx.store.getSession(sessionId);
-  if (ctx.store.capabilities().engine_level >= 3 && ctx.store.isPresent(sessionId, "user") && !parentId
+  if (ctx.store.capabilities().engine_level >= 3 && ctx.store.jobsRunIn(sessionId) && ctx.store.isPresent(sessionId, "user") && !parentId
     && ctx.store.progressMessagesSent(ctx.turnId) >= 3) {
     return fail("progress_limit", "this segment already posted three progress lines; continue the work without another progress post");
   }
@@ -57,7 +57,9 @@ export function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolRe
       return !bot || !ctx.store.isPresent(sessionId, bot.id);
     });
     if (absent || parsed.everyone || parsed.unresolved.some((name) => name !== "everyone")) {
-      return fail("use_delegate", "要它动手用 delegate / To ask another teammate to work, use delegate.");
+      return ctx.store.jobsRunIn(sessionId)
+        ? fail("use_delegate", "要它动手用 delegate / To ask another teammate to work, use delegate.")
+        : fail("not_a_member", "that teammate is not in this direct; only the two of you are, so name them where the user is");
     }
   }
   if (ctx.admission?.draining && (sessionId !== ctx.sessionId || parsed.everyone || parsed.mentions.some(name => name !== selfName))) {
@@ -256,7 +258,9 @@ export function workOn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult 
  */
 export function endTurn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   if (ctx.store.capabilities().engine_level >= ENGINE_LEVELS.delegation) {
-    const finished = ctx.store.finishWork({ turnId: ctx.turnId, reason: args.reason, note: args.note,
+    // With no jobs (ADR 0103) a Bot is asked for no reason: there is nothing it could end owing.
+    const reason = args.reason === undefined && !ctx.store.jobsRunIn(ctx.sessionId) ? "nothing_new" : args.reason;
+    const finished = ctx.store.finishWork({ turnId: ctx.turnId, reason, note: args.note,
       needsFromUser: args.needs_from_user, answer: args.answer, inbox: args.inbox },
       { ...(ctx.read?.lastWord ? { lastWord: ctx.read.lastWord } : {}), ...(ctx.read?.goAhead ? { goAhead: true } : {}),
         written: ctx.producedPaths ?? ctx.writtenPaths ?? [] });

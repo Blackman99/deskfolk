@@ -43,6 +43,7 @@ import type {
   PatchTicketRequest,
   Playbook,
   PlaybookDiff,
+  PlaybookImpact,
   PlaybookList,
   PlaybookRevision,
   PlaybookStepId,
@@ -371,6 +372,11 @@ export abstract class ApiBase<Row extends PendingRow> {
   /** Every engine and the default (ADR 0085). */
   async listPlaybooks(): Promise<PlaybookList> {
     return this.get<PlaybookList>("/v1/playbooks");
+  }
+
+  /** What moving to an engine with no jobs would leave standing: one conversation, or every one following the default. */
+  async playbookImpact(sessionId?: string | null): Promise<PlaybookImpact> {
+    return this.get<PlaybookImpact>(`/v1/playbooks/impact${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ""}`);
   }
 
   /** Your changes to an engine, as a whole diff from its built-in, guarded by the change you last saw. */

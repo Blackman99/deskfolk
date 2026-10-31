@@ -15,7 +15,7 @@
 	import TicketRail from './TicketRail.svelte';
 	import TraceView from './TraceView.svelte';
 	import { JobState } from './job-state.svelte.ts';
-	import { engineOffSteps, sessionEngine, sessionsOnEngine } from './job-engine.ts';
+	import { engineHasNoJobs, engineOffSteps, sessionEngine, sessionsOnEngine } from './job-engine.ts';
 	import { attentionCount, planAttention } from './plan-attention.ts';
 	import { Playbooks, playbookName } from '../settings/playbooks.svelte.ts';
 	import { jobInspectorWidth, jobLayoutMode, jobRailWidth } from './job-layout.ts';
@@ -203,6 +203,7 @@
 			name: playbookName(item, t.playbooks.builtin) || id,
 			why,
 			off: engineOffSteps(item).map((step) => t.playbooks.steps[step]?.name ?? step),
+			stopped: engineHasNoJobs(item),
 			sessions: sessionsOnEngine(sessions, id, playbooks.defaultId, known),
 			onOpen: onOpenRoles ? () => onOpenRoles(id) : undefined
 		};

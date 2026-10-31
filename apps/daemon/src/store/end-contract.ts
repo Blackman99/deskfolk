@@ -5,6 +5,7 @@
 import { HttpError } from "../errors";
 import { isoNow } from "../ids";
 import { holdsCovering } from "./holds";
+import { jobsRunIn } from "./playbooks";
 import { requireNonEmpty, type StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 import { disposeInboxItems, NO_SUCH_MAIL, NOT_READ_HERE, inboxLabel, turnInbox } from "./inbox";
@@ -496,6 +497,22 @@ function answeredByReply(ctx: StoreContext, turnId: string): Array<{ id: string;
     && ["user", "annotation"].includes(mail.source)).map((mail) => ({ id: inboxLabel(mail), disposition: "answered" }));
 }
 
+/**
+ * An ending in an engine with no jobs (ADR 0103): nothing is owed, so nothing is weighed. What it read
+ * of yours stands answered by what it did. The one thing left is what no engine should let pass in
+ * silence: your line in your direct with nothing said to it goes back once, then you are told.
+ */
+function endWithNoJobs(ctx: StoreContext, turn: Actor, reason: EndReason, opts: FinishWorkOptions): FinishWorkResult {
+  const dispositions = disposeInboxItems(ctx, turn.id, answeredByReply(ctx, turn.id));
+  const base = { obligations: obligations(ctx, turn), dispositions, unacknowledgedInbox: [], replies: [], implicitSubmission: implicitCandidates(ctx, turn) };
+  const unheard = leftLineUnanswered(ctx, turn, opts);
+  if (unheard && rejectionsFor(ctx, turn.id, "said_nothing") === 0 && bounceLeft(ctx, turn.id, opts)) {
+    return rejectEnd(ctx, turn, base, opts, "said_nothing", saidNothingBounce({ answer: false, pureText: opts.pureText === true, files: madeFiles(ctx, turn, opts) }));
+  }
+  return persistEnd(ctx, turn, base, reason, turn.task_id === null ? "closed" : "idle", 0,
+    unheard ? { notice: { code: "said_nothing" as const, body: saidNothingNotice(ctx, turn) } } : {});
+}
+
 export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: FinishWorkOptions = {}): FinishWorkResult {
   return ctx.commit(() => {
     if (typeof input.reason !== "string" || !["done", "answered", "nothing_new", "blocked", "gave_up"].includes(input.reason)) {
@@ -516,6 +533,7 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
     if (opts.pureText) reason = declaredMode?.mode === "readonly" || declaredMode?.task_id === null ? "answered" : "done";
     const { turn, item } = actor(ctx, input.turnId, reason, previousEnd !== null);
     if (previousEnd) return (JSON.parse(previousEnd.payload) as { result: FinishWorkResult }).result;
+    if (turn.mode !== "readonly" && !jobsRunIn(ctx, turn.session_id)) return endWithNoJobs(ctx, turn, reason, opts);
     const implicitSubmission = implicitCandidates(ctx, turn);
     // A reply in words is the Bot's answer to the lines of yours it read: they are answered by it,
     // not bounced back for a disposition a pure-text ending has no way to give (ADR 0044).

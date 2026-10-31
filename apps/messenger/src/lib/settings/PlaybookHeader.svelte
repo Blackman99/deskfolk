@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import type { PlaybookRevision } from '@real-bot/protocol';
+	import type { PlaybookImpact, PlaybookRevision } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { formatFullTimestamp } from '../chat/chat-view.ts';
+	import DangerDialog from '../overlays/DangerDialog.svelte';
 	import { playbookName, type Playbooks } from './playbooks.svelte.ts';
 
 	/**
-	 * Which engine Roles shows (ADR 0085): the three built in, then yours, the default starred. For
+	 * Which engine Roles shows (ADR 0085): the ones built in, then yours, the default starred. For
 	 * the one shown: make it the default, make a new one from it, rename or remove one of yours, and
 	 * read its history — every change, never rewritten.
 	 */
@@ -26,6 +27,8 @@
 	let naming = $state<'new' | 'rename' | null>(null);
 	let name = $state('');
 	let removing = $state(false);
+	/** Making an engine with no jobs the default moves every conversation that follows it: said first (ADR 0103). */
+	let moving = $state<PlaybookImpact | null>(null);
 	let history = $state<PlaybookRevision[] | null>(null);
 	let nameInput = $state<HTMLInputElement>();
 
@@ -55,6 +58,12 @@
 		onshow(playbooks.defaultId);
 	}
 
+	async function makeDefault(): Promise<void> {
+		const impact = current?.resolved.jobs.on === false ? await playbooks.impactOf(shown) : null;
+		if (impact && impact.sessions > 0) moving = impact;
+		else onmakedefault(shown);
+	}
+
 	async function toggleHistory(): Promise<void> {
 		if (history) {
 			history = null;
@@ -69,8 +78,18 @@
 		history = null;
 		naming = null;
 		removing = false;
+		moving = null;
 	});
 </script>
+
+{#if moving}
+	<DangerDialog
+		copy={{ title: c.defaultTitle, body: c.defaultBody(moving.sessions, moving.open_jobs), confirm: c.makeDefault, cancel: c.cancel }}
+		{t}
+		onDismiss={() => (moving = null)}
+		onConfirm={() => { moving = null; onmakedefault(shown); }}
+	/>
+{/if}
 
 <div class="playbook-header" data-playbook-header>
 	<div class="playbook-chips" role="tablist" aria-label={c.title}>
@@ -98,7 +117,7 @@
 			{#if isDefault}
 				<span class="playbook-default">{c.isDefault}</span>
 			{:else}
-				<button type="button" class="playbook-action" data-playbook-action="default" onclick={() => onmakedefault(shown)}>{c.makeDefault}</button>
+				<button type="button" class="playbook-action" data-playbook-action="default" onclick={() => void makeDefault()}>{c.makeDefault}</button>
 			{/if}
 			<button type="button" class="playbook-action" data-playbook-action="new" onclick={() => void startNaming('new')}>{c.newFrom}</button>
 			{#if !current.builtin}

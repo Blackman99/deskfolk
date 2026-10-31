@@ -6,7 +6,7 @@ import { situationUserMessage } from "./context/situation";
 import { transcriptWindow } from "./context/transcript";
 import { loopPictureSpend } from "./loop-pictures";
 import { turnSystemPrompt, type McpPromptGuide } from "./prompts";
-import { promptPage, turnPromptTexts } from "./prompts/book";
+import { turnPromptTextsIn } from "./prompts/book";
 import type { Store } from "./store";
 
 /** Turns of the job the block recounts, newest last. */
@@ -88,7 +88,7 @@ export function assembleTurnMessages(
     memories: memoryDigest(store, input.botId, input.locale),
     mcpGuides: input.mcpGuides,
     // Built-in prompts you edited (ADR 0064); what you did not edit is rendered as shipped.
-    texts: turnPromptTexts(promptPage(store, input.locale)),
+    texts: turnPromptTextsIn(store, input.locale, input.sessionId),
   });
   const window = transcriptWindow(store, {
     sessionId: input.sessionId,

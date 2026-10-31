@@ -1,4 +1,4 @@
-import type { Playbook, PlaybookDiff, PlaybookList, PlaybookRevision, PlaybookStepId } from "@real-bot/protocol";
+import type { Playbook, PlaybookDiff, PlaybookImpact, PlaybookList, PlaybookRevision, PlaybookStepId } from "@real-bot/protocol";
 import type { MessengerApi } from "../messenger-api.ts";
 
 /** Why a change did not land: the engine changed meanwhile (the latest is loaded), or it failed. */
@@ -84,6 +84,21 @@ export class Playbooks {
 
   remove(id: string): Promise<void | null> {
     return this.change((api) => api.deletePlaybook(id));
+  }
+
+  /**
+   * What moving to this engine would leave standing, when it works in no jobs and moving is worth a
+   * word first (ADR 0103): one conversation, or all that follow the default. Null when there is
+   * nothing to say, or it could not be asked: the move does not wait on it.
+   */
+  async impactOf(id: string, sessionId?: string): Promise<PlaybookImpact | null> {
+    const api = this.client();
+    if (!api || this.find(id)?.resolved.jobs.on !== false) return null;
+    try {
+      return await api.playbookImpact(sessionId ?? null);
+    } catch {
+      return null;
+    }
   }
 
   async revisions(id: string): Promise<PlaybookRevision[]> {

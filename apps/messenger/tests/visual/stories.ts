@@ -497,7 +497,7 @@ const playbookList = (): PlaybookList => {
 	const item = (id: BuiltinPlaybookId, diff: PlaybookDiff = emptyPlaybookDiff()): Playbook => ({
 		id, builtin: true, base_id: id, name: null, revision: Object.keys(diff.steps).length ? 2 : 0, revision_id: null, diff, resolved: resolvePlaybook(id, diff), updated_at: null
 	});
-	return { default_id: 'video', items: [item('general'), item('video', { v: 1, steps: { settle: { params: { quiet_s: 90 } } } }), item('coding')] };
+	return { default_id: 'video', items: [item('general'), item('video', { v: 1, steps: { settle: { params: { quiet_s: 90 } } } }), item('coding'), item('plain')] };
 };
 const playbooksClient = { listPlaybooks: async () => playbookList() };
 

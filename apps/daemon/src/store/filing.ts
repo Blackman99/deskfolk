@@ -14,6 +14,7 @@ import type { FilingReading } from "../line-reading";
 import { LIVE_TURN_STATUSES, planStageSql, type StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 import { heldSql } from "./holds";
+import { jobRuns } from "./playbooks";
 import { externalJobsReadable } from "./external-jobs-migration";
 import { parsePlanSpec } from "./plan-shape";
 import { STAGE_SQL } from "./ticket-stage";
@@ -84,7 +85,7 @@ export function planCandidates(ctx: StoreContext, input: { sessionId: string; bo
       WHERE t.dormant_since IS NULL AND t.routine_id IS NULL
         AND ${planStageSql("t")} IN ('active', 'delivered')
       ORDER BY t.created_at DESC, t.id DESC`).all(input.sessionId, input.botId ?? null, since);
-  return rows.map((row) => candidateOf(ctx, row.id));
+  return rows.filter((row) => jobRuns(ctx, row.id)).map((row) => candidateOf(ctx, row.id));
 }
 
 /** How many lines before yours a reading of where it belongs sees, and whose jobs it may file it under. */
@@ -123,7 +124,7 @@ export function lineCandidates(ctx: StoreContext, input: { sessionId: string; bo
     if (!line.taskId || candidates.some((c) => c.id === line.taskId)) continue;
     const open = ctx.db.query(`SELECT 1 FROM tasks WHERE id = ?
       AND ${planStageSql()} IN ('active', 'delivered')`).get(line.taskId);
-    if (open) candidates.push(candidateOf(ctx, line.taskId));
+    if (open && jobRuns(ctx, line.taskId)) candidates.push(candidateOf(ctx, line.taskId));
   }
   return candidates;
 }
@@ -207,7 +208,8 @@ export function fileMessage(ctx: StoreContext, messageId: string, input: FileMes
       ? lineCandidates(ctx, { sessionId: message.session_id, botId: input.botId, messageId })
       : planCandidates(ctx, { sessionId: message.session_id, botId: input.botId });
     const control = pureControl(message.control);
-    const decisions = !input.none && !control ? lockedDecisions(ctx, message, input) : [];
+    // A job whose conversation moved to an engine with no jobs (ADR 0103) takes no new lines, wherever they are said.
+    const decisions = !input.none && !control ? lockedDecisions(ctx, message, input).filter((decision) => jobRuns(ctx, decision.taskId)) : [];
     // Nothing locked: a line of yours goes where a model read it as being about (ADR 0057) — never
     // where its words, a number in it or how it opens suggest. A target that has since closed or
     // gone is dropped; what is left unplaced is the Bot's to choose at its desk.
@@ -276,6 +278,7 @@ function openTarget(ctx: StoreContext, target: FilingTarget): boolean {
   } catch {
     return false;
   }
+  if (!jobRuns(ctx, target.taskId)) return false;
   const open = ctx.db.query(`SELECT 1 FROM tasks WHERE id = ?
     AND ${planStageSql()} IN ('active', 'delivered')`).get(target.taskId);
   if (!open) return false;

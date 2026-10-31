@@ -322,6 +322,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     try {
       const queued = store.dispatchableWork();
       for (const item of queued) {
+        if (item.task_id && !store.jobRuns(item.task_id)) continue;
         if (store.workItemQueuePlace({ botId: item.bot_id, taskId: item.task_id }) !== null) continue;
         if (store.listLiveTurns({ botId: item.bot_id }).some((turn) => turn.task_id === item.task_id && turn.mode !== "readonly")) continue;
         if (store.holdsCovering({ botId: item.bot_id, sessionId: item.home_session_id, taskId: item.task_id, ticketId: item.ticket_id }).length) continue;

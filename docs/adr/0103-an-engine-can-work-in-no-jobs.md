@@ -1,0 +1,41 @@
+# 引擎可以不跑事：现在这套是一种模板，可以不用 / An engine can work in no jobs: today's way of working is a template you can leave out
+
+Status: implemented 2026-10-31. Amends [ADR 0085](0085-engines.md) decision 1, which kept the skeleton out of an engine. Project sessions ([ADR 0095](0095-project-sessions.md)) stay what they are: no Bot at all.
+
+2026-10-31 你问怎么把固定的 harness 改成可以自定义的：现在这套作为一种模板，用不用由你选。ADR 0085 把应用包在 Bot 外面的东西分成两层，骨架留在代码里，挂在上面的环节才是数据；所以这套工作方式只能调，不能不用。唯一没有它的是项目会话，但那里没有 Bot：没有人设、记忆、技能，也不能组群。
+
+查下来，内核几乎都挂在一轮有没有事上（`turn.task_id`）：收尾自检、隐式交付、书记员、整理、监督器，没有事就什么都不做。被读成「当场做完」的话今天已经走这条路（截至 2026-10-31，你的库里有 109 句）。所以不用这一套只需要三件事：这个会话的话永远不开事，不给工作工具，不说工作提示词。`engine_level` 是数据目录升到哪一级，低于某一级跑的是旧路径，不是「没有」，不能当按会话的开关。
+
+On 2026-10-31 you asked how the fixed harness could become one you define: today's as one template, yours to use or not. ADR 0085 split what the app wraps around a Bot in two: a skeleton kept as code, and the steps hung on it as data. So this way of working could be tuned but not left out. The only place without it is a project session, which has no Bot: no persona, memory or skills, and no groups.
+
+What was there: nearly all of the kernel hangs on whether a turn has a job (`turn.task_id`): the closing check, implicit hand-overs, the scribe, the settle and the supervisor do nothing without one. A line read as done in place already takes that path (to 2026-10-31, 109 lines in your database). So not using it takes three things: a conversation's lines never open a job, its Bots are offered no job's tools, and they are told nothing of jobs. `engine_level` is how far a data folder has been migrated; below a level the old paths run, not nothing, so it cannot be a per-conversation switch.
+
+## 决定 / Decisions
+
+1. **引擎就是 harness / The engine is the harness.** 不另造一个概念：一个对话跑什么、怎么跑，都是它的引擎说了算，按对话选、只存差别、留修改记录，这些 ADR 0085 都有。界面继续叫「引擎」。 / No second concept: what a conversation runs and how is its engine's to say, chosen per conversation, kept as a difference with its revisions, all as in ADR 0085. The interface keeps the word.
+
+2. **内核是一个环节 `jobs` / The kernel is one step, `jobs`.** 归属、规划和任务、工作目录和镜像文件、结束契约的义务和退回、委派、交付和审查、大活、监督器，开就都开，关就都关。站在它上面的环节（书记员、收尾自检、整理、验收检查、监督器接手、模型升级、能力天花板、完工复盘、反思）声明 `requires`，它关了就不跑，你给它们设的值留着，再打开时照旧。 / Filing, plans and tickets, work dirs and mirror files, the end contract's obligations and bounces, delegation, hand-overs and reviews, large jobs and the supervisor go on and off together. The steps that stand on it (scribe, closing check, settle, acceptance checks, supervisor pick-ups, escalation, the ceiling, retrospective, reflection) declare `requires`: off with it, your settings kept for when it comes back.
+
+3. **不拆开内核的状态机 / The kernel's state machine is not taken apart.** 工作项、结束契约、交付彼此依赖：比如单关交付，结束契约按阶段算欠的任务（`end-contract.ts`），阶段却只有交付和审查能推进，Bot 会被一直退回。所以 `jobs` 开着时它们是一个整体。 / Work items, the end contract and hand-overs lean on each other. With hand-overs off alone, the contract still counts tickets by stage while only hand-overs and reviews can move a stage, and a Bot is sent back for good. With `jobs` on they stay whole.
+
+4. **底线不随引擎变 / A floor no engine gives up.** 你的话按顺序进来、Stop 和叫停（库里的触发器）、权限模式和批准卡、花费账本和每日上限、压缩上下文、输出上限和复读防护、原话存档。 / Your lines in order, Stop and holds (the database's trigger), permission modes and approval cards, the spend ledger and daily cap, compaction, output caps and repeat guards, and your words kept.
+
+5. **第四套内置引擎：自由 / A fourth built-in: 自由 (Plain).** 它关掉 `jobs` 和每 40 跳问一次进展。通用、视频、代码是这套工作方式的三个模板，内容不变，通用仍是默认：没选的人行为一点不变。 / It leaves `jobs` off and nobody asking a long run how it is going. General, Video and Coding are three templates of today's way of working, unchanged, and General stays the default: nothing changes for anyone who does not choose it.
+
+6. **自由里说停就停 / A stop you say still stops in Plain.** 「说停就停」是 ADR 0040 花了几次事故换来的，选一个引擎不该把它弄丢，所以读句留着。代价是每句话多一次小调用，等它读完才叫醒 Bot。不想要的，以自由为底另建一个、关掉读句：那样打「停下」只是一句话，要停就按 Stop，和项目会话一样。读句只有在 `jobs` 关着时才能关：放行靠读你的话，`jobs` 开着却不读，等你放行的交付会永远等着。这不做成 `jobs` 依赖读句，否则在通用里关读句会把整个内核悄悄带停。 / A stop that is a stop cost ADR 0040 several incidents, and choosing an engine should not lose it, so reading stays. The cost is a small call per line, read before a Bot wakes. An engine built on Plain can turn it off: typing stop is then just a line and Stop is the button, as in a project session. Reading can be off only while `jobs` is off: an approval reads your words, and unread a hand-over waiting on them would wait for good. It is not `jobs` requiring reading, or switching reading off in General would quietly take the whole kernel with it.
+
+7. **Bot 读到的和拿到的 / What a Bot reads and is offered.** `work` 类工具（`work_on`、`delegate`、`submit`、`review`、`plan_items`）不给，硬调也拒绝；`end_turn`、`send_message`、`create_direct` 用不提它们的说明；系统指令是同一份文字去掉只在事里成立的部分（`prompts/system-plain.ts`，从原文生成，不复制，测试盯着每处改动都还对得上）；局面块不出桌面段，始终写工作区根。你改过的全局 `turn.system`、`agent.preface` 是为那套写的、点着那些工具的名字，这里不用；其余提示词照用。 / `work` tools (`work_on`, `delegate`, `submit`, `review`, `plan_items`) are not offered, and refused if called; `end_turn`, `send_message` and `create_direct` say nothing of them; the System section is the same text less what only holds in a job (`prompts/system-plain.ts`, built from it, not copied, a test holding each edit to its words); the situation block has no desk text and always names the workspace root. Your edits of `turn.system` and `agent.preface` were written for the jobs and name their tools, so they stay out; other prompts hold.
+
+8. **一段怎么收尾 / How a segment ends.** 不读 Bot 的话，不查义务和承诺，收件记成已回答，工作项关掉。只留一条：你的话在你和它的私聊里一句没回，退回一次，还不回就告诉你。这不是工作方式，是别让你的话掉在地上。 / A Bot's words are not read, nothing is weighed, what it read of yours stands answered, and the work item closes. One thing stays: your line in your direct left without a word goes back once, then you are told. That is no way of working, only your line not falling on the floor.
+
+9. **日程 / Routines.** 挂在不跑事的私聊上的日程照跑，是无事的一轮，不开常驻规划，文件落在工作区根。这样「不跑事的会话没有事」没有例外。代价是这类日程的结果不再按日期分文件夹。 / A routine on a direct with no jobs still fires, as a turn with no job and no standing plan, its files at the workspace root. So "a conversation with no jobs has none" holds without exception. The cost: those runs are no longer kept by date.
+
+10. **换引擎 / Moving between engines.** 已开的事停在原地：不叫醒、不删除，也不接新话（别处的话引用它也不归给它）；监督器跳过它，工作记录写明 `no_jobs`；约在它上面的回看不作废，一直等着；正在跑的这一轮跑完。换回来接着做。把一个有没收口的事的对话，或默认引擎，换到不跑事的引擎时先提示影响多少（`GET /v1/playbooks/impact`）：你库里 198 个 Bot 会话有 197 个跟默认走。 / A job already open stops where it is: woken by nothing, deleted by nothing, taking no new lines (one elsewhere citing it is not filed under it); the supervisor passes over it and the work log says `no_jobs`; an appointment on it stays due, not voided; a turn already running finishes. Moving back goes on from there. Moving a conversation with open jobs, or the default, to an engine with none says first what it would leave standing (`GET /v1/playbooks/impact`): 197 of your 198 Bot conversations follow the default.
+
+11. **版本闸不动 / The version gate stays.** 不碰 `engine_level` 和 `ENGINE_LEVEL_BY_DEFAULT`，也不升下限：旧版本读到 `plain` 当成已删除的引擎，退回默认。`jobs` 只在 2 级及以上才能关；新装和你的库都是 8 级。 / `engine_level` and `ENGINE_LEVEL_BY_DEFAULT` are untouched and no floor rises: an older build reads `plain` as an engine since removed and falls back to the default. `jobs` can be off from level 2 only; fresh installs and your data folder are at 8.
+
+## 后果 / Consequences
+
+- **「应用负责当真」在自由里不成立 / "The app holds it to account" does not hold in Plain.** 没人追，也没有「做完」的定义。所以默认不变，选的地方把这句话写明。 / Nobody chases, and done has no definition. So the default stays, and the place you choose it says so.
+- **Bot 互相叫醒没有监督器兜底 / Nothing but the floor stops Bots waking each other.** 互相点头的规则（`isNodToANod`）照跑，最后的底线是花费上限。 / The nod rule (`isNodToANod`) still runs; the spend cap is the last line.
+- **基准可以比 / The benchmark can compare.** 黄金路径的 `--playbook plain` 对照 `general`，能量出这套 harness 值多少。 / The golden path's `--playbook plain` against `general` can measure what this harness is worth.

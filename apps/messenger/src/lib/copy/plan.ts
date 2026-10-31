@@ -252,6 +252,7 @@ export const zh = {
       fallback: "会话没选，用默认",
       gone: "这件事的会话已删，按默认",
       off: (steps: string) => `这套引擎没开：${steps}`,
+      stopped: "这个会话现在的引擎不跑事，这件事停在这里，不叫醒也不接新话；换回来接着做。",
       allOn: "这套引擎的环节都开着",
       sessions: (n: number) => `用它的会话 ${n} 个`,
       open: "在分工页打开"
@@ -647,6 +648,7 @@ export const en: CopyShape<typeof zh> = {
       fallback: "The conversation names none: the default",
       gone: "The job's conversation is gone: the default",
       off: (steps: string) => `Off in this engine: ${steps}`,
+      stopped: "This conversation's engine works in no jobs now, so this job stays where it is, woken by nothing and taking no new lines, until it moves back.",
       allOn: "Every step of this engine is on",
       sessions: (n: number) => `${n} conversation${n === 1 ? "" : "s"} use it`,
       open: "Open in Roles"

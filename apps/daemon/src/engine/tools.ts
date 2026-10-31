@@ -16,6 +16,7 @@ import { attachPictures, fitsHop, pictureResultNote, type LoopPicture } from "..
 import type { McpHost } from "../mcp-host";
 import { inlineWorkspaceRefs } from "../mcp-workspace-refs";
 import { COLLAB_TOOL_NAMES, type ChatTool, type McpPromptGuide } from "../prompts";
+import { isJobTool } from "../prompts/builtin-tools";
 import type { TurnAdmission } from "../quiesce";
 import { sessionUpsertFields } from "../session-events";
 import { checkLines, isReservedTaskPath, jobArgsDigest, promptPartNumber, type Store } from "../store";
@@ -179,6 +180,8 @@ export function createTools(deps: ToolsDeps): Tools {
    * only asks their OK to go on (ADR 0058). Undefined for any other call.
    */
   async function readForCall(turn: Turn, name: string, args: Record<string, unknown>): Promise<ToolCtx["read"]> {
+    // With no jobs (ADR 0103) nothing is weighed against what a Bot says: its words go out as they are.
+    if (!store.jobsRunIn(turn.session_id)) return name === "send_message" ? { noWork: false } : undefined;
     const read = (text: string, context?: BotLineContext) => (deps.readBotLine ?? readBotLineByWords)(text, turn.session_id, { ...context, turnId: turn.id });
     // Read with what the segment answers, as every reading of its lines is: one reading per line.
     const answering = () => ({ answering: store.segmentAnswering(turn.id) });
@@ -597,6 +600,10 @@ export function createTools(deps: ToolsDeps): Tools {
     args: Record<string, unknown>,
     callId?: string,
   ): Promise<ToolResult> {
+    // Not offered with no jobs (ADR 0103); a call named from memory of an older turn opens nothing.
+    if (isJobTool(name) && !store.jobsRunIn(turn.session_id)) {
+      return toolFail("no_jobs", "This conversation works in no jobs, so this tool does nothing here. Do the work directly and reply when it is done.");
+    }
     const gate = await beforeEffect(turn, live, name, callId);
     if (!gate.ok) return gate.result;
     turn = gate.turn;
@@ -632,7 +639,8 @@ export function createTools(deps: ToolsDeps): Tools {
     // On 2026-10-08 「你能根据已经配置的模型补一下它们的上下文大小配置吗」 opened one at update_endpoint;
     // the window was set and said, the ticket stayed 待做, the plan watch called the Bot back to say it
     // again, and two endings with no progress stopped it. What no model read keeps the rule below.
-    if (trigger && !(trigger.kind === "user" && store.lineReadInPlace(trigger.id))) {
+    // An engine with no jobs (ADR 0103) has none to bind; the effect goes ahead under the same holds.
+    if (trigger && store.jobsRunIn(turn.session_id) && !(trigger.kind === "user" && store.lineReadInPlace(trigger.id))) {
       const candidates = store.deskCandidateIds(turn.id);
       // A line of yours read as new work, about none of these jobs (ADR 0057), gets a job of its own
       // at the first effect, as a line with no candidates does — unless the Bot chose one with work_on first.
@@ -676,7 +684,7 @@ export function createTools(deps: ToolsDeps): Tools {
     args: Record<string, unknown>,
     callId?: string,
   ): Promise<ToolResult> {
-    if (name === "end_turn" && args.reason === "done" && submissions && store.capabilities().engine_level >= ENGINE_LEVELS.submissions) {
+    if (name === "end_turn" && args.reason === "done" && submissions && store.capabilities().engine_level >= ENGINE_LEVELS.submissions && store.jobsRunIn(turn.session_id)) {
       // §5.2: an ending that says done hands over its new files first. A hand-over whose checks
       // fail comes back instead of the ending; the same files again hand nothing over, so asking
       // to end once more is weighed as usual.
@@ -762,7 +770,7 @@ export function createTools(deps: ToolsDeps): Tools {
     // poll. A check on a registered job reads its last known state without reaching the server; the
     // same submit within half an hour gets the first job back; a part with a job pending, or a result
     // not handed over yet, is not submitted again without a reason.
-    const pair = store.jobsOn() ? jobPair(name, live.mcpTools) : null;
+    const pair = store.jobsOn() && store.jobsRunIn(turn.session_id) ? jobPair(name, live.mcpTools) : null;
     // A large job not laid out yet, or a ticket still waiting for another (ADR 0060): nothing is
     // generated through a server meanwhile. Reading and checking on a job already running go on.
     if (pair?.kind !== "check" && live.mcpTools.get(name)?.readOnly !== true) {
