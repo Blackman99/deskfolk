@@ -119,8 +119,8 @@ test("an engine drawn as the flow: each step under what sets it off, the picked 
   });
   await settle();
   expect([...host.querySelectorAll("[data-playbook-round]")].map((el) => el.getAttribute("data-playbook-round"))).toEqual(["line", "group", "turn", "handed_in", "accepted", "overturned", "compose"]);
-  // Seventeen steps and the Bot's turn; in 通用 the scribe is off.
-  expect(host.querySelectorAll("[data-playbook-node]")).toHaveLength(18);
+  // Twenty steps and the Bot's turn; in 通用 the scribe is off.
+  expect(host.querySelectorAll("[data-playbook-node]")).toHaveLength(21);
   expect(node(host, "scribe")?.getAttribute("data-on")).toBe("false");
   expect(node(host, "scribe")?.textContent).toContain(t.playbooks.offShort);
   expect(node(host, "settle")?.textContent).toContain(t.routing.follows.default);
@@ -191,7 +191,7 @@ test("an engine with no jobs: what stands on them shows off and says why, and re
   expect(host.querySelector("[data-playbook-header]")?.textContent).toContain(t.playbooks.builtinHint.plain!);
   for (const id of ["jobs", "settle", "closing", "checks", "ceiling", "pickup", "retrospective"]) expect(node(host, id)?.getAttribute("data-on")).toBe("false");
   // A step that only follows them has not been changed, and shows no mark or lock of its own.
-  for (const id of ["checks", "pickup"]) {
+  for (const id of ["checks", "pickup", "wait_word"]) {
     expect(node(host, id)?.querySelector("[data-differs]")).toBeNull();
     expect(node(host, id)?.querySelector(".playbook-card-lock")).toBeNull();
   }

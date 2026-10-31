@@ -26,7 +26,7 @@ import { deliverDelegations } from "./delegations";
 import { confirmDerivedCheck } from "./derived-checks";
 import { noteHandOverFailed, resetEscalation } from "./escalation";
 import { holdsCovering } from "./holds";
-import { jobRuns } from "./playbooks";
+import { jobRuns, playbookFor } from "./playbooks";
 import { queueInboxItem, refreshHeldInbox } from "./inbox";
 import { largeJobRefusal, sampleOf, syncStandardChecks, yoursToApprove } from "./large-jobs";
 import { getMessage, setMessageControl } from "./messages";
@@ -565,15 +565,15 @@ export function reviewSubmission(ctx: StoreContext, input: {
         return { ok: false, code: "review_refused", reasons, submission: getSubmission(ctx, submission.id) };
       }
       // A routine's run is approved on a clean review, with nothing put to you (see takeUpAwaiting).
-      const routine = routinePlan(ctx, submission.task_id);
+      const unattended = takenUnattended(ctx, submission.task_id);
       // What you raised twice or more that a pass on the producer's own model leaves on nothing; an
       // organizer's reading or an answer, which nobody made; a hand-over no confirmed check backs,
       // when the reviewer runs on the producer's own model or gave no evidence for anything — one
       // Bot passing another's claim; a large job's sample or last part (ADR 0060). Any of these leaves
       // the clean approve waiting on your word (ADR 0084), its verdict kept with it.
       // (Every gate passed by here: a failing or unrun one refused the approval above.)
-      const open = sameModel && !routine ? unbackedItems(ctx, { ...submission, checks }, "raised") : [];
-      const needed = !routine && needsYourApproval(ctx, submission, checks, record);
+      const open = sameModel && !unattended ? unbackedItems(ctx, { ...submission, checks }, "raised") : [];
+      const needed = !unattended && needsYourApproval(ctx, submission, checks, record);
       if (open.length > 0 || needed) {
         ctx.db.run("UPDATE submissions SET checks = ?, updated_at = ? WHERE id = ?", [JSON.stringify(checks), now, submission.id]);
         awaitYourWord(ctx, getSubmission(ctx, submission.id), now, record, open);
@@ -589,7 +589,7 @@ export function reviewSubmission(ctx: StoreContext, input: {
           reasons: [...items, ...(needed ? [`${why}: a review's approve leaves it waiting on the user's word, never straight to approved`] : [])],
           submission: getSubmission(ctx, submission.id) };
       }
-      approve(ctx, submission, record, checks, now, routine ? "routine" : "no_reviewer");
+      approve(ctx, submission, record, checks, now, unattended ?? "no_reviewer");
       return { ok: true, submission: getSubmission(ctx, submission.id), outcome };
     }
     ctx.db.run("UPDATE submissions SET state = 'rejected', reviews = ?, checks = ?, updated_at = ? WHERE id = ?",
@@ -614,7 +614,7 @@ export function reviewSubmission(ctx: StoreContext, input: {
  * its parts are approved; the plan may be delivered.
  */
 function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord | null, checks: readonly SubmissionCheck[], now: string,
-  by: "no_reviewer" | "routine" | "one_go" | "user" = "no_reviewer", line: string | null = null): void {
+  by: "no_reviewer" | "routine" | "unattended" | "one_go" | "user" = "no_reviewer", line: string | null = null): void {
   const yours = by === "user";
   ctx.db.run("UPDATE submissions SET state = 'approved', reviews = ?, checks = ?, awaiting = NULL, updated_at = ? WHERE id = ?",
     [JSON.stringify(record ? [...submission.reviews, record] : submission.reviews), JSON.stringify(checks), now, submission.id]);
@@ -631,7 +631,7 @@ function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord
   if (record) {
     recordWorkEvent(ctx, { kind: "review.recorded", actor: record.reviewer_bot_id, botId: record.reviewer_bot_id, taskId: submission.task_id,
       ticketId: submission.ticket_id, turnId: record.turn_id, payload: { submission_id: submission.id, work_item_id: submission.work_item_id, outcome: "approve",
-        same_model: record.same_model, ...(by === "routine" ? { by } : {}) } });
+        same_model: record.same_model, ...(by === "routine" || by === "unattended" ? { by } : {}) } });
     tellProducer(ctx, approved, record, now);
   }
   // Yours is logged as yours even after a reviewer's approve: the review moved it to your card, your
@@ -735,6 +735,15 @@ export function workOnYourLine(ctx: StoreContext, submission: Pick<Submission, "
 }
 
 /**
+ * Why nobody waits on you for what this job hands over: it is a routine's, which runs unattended, or
+ * its engine switched that off for every job (ADR 0103). Null when your word is what it waits on.
+ */
+function takenUnattended(ctx: StoreContext, taskId: string): "routine" | "unattended" | null {
+  if (routinePlan(ctx, taskId)) return "routine";
+  return playbookFor(ctx, { taskId }).resolved.wait_word.on ? null : "unattended";
+}
+
+/**
  * Takes up a submission that waits on you again, against what is true now: the checks as they
  * last ran, your confirmations, the requirements still in force. A gate failing now sends it back to
  * its producer; nothing left open completes the approval it was waiting for (the review's, or the
@@ -753,8 +762,9 @@ function takeUpAwaiting(ctx: StoreContext, submission: Submission, now: string):
   // A routine runs unattended, as you set it up: what a run hands over is taken once its gates pass —
   // every gate that ran did, by here — with no card asking you to approve each day's brief
   // (2026-10-04). A card an earlier build left waiting is let go of as approved.
-  if (routinePlan(ctx, submission.task_id)) {
-    approve(ctx, submission, submission.awaiting?.review ?? null, checks, now, "routine");
+  const unattended = takenUnattended(ctx, submission.task_id);
+  if (unattended) {
+    approve(ctx, submission, submission.awaiting?.review ?? null, checks, now, unattended);
     return { submission: getSubmission(ctx, submission.id), unrun: [] };
   }
   const awaiting = submission.awaiting;

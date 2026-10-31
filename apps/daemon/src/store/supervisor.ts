@@ -15,7 +15,7 @@ import { supervisorJobLabel, supervisorWakeNote } from "../prompts/transcript-co
 import { PROGRESS_KINDS } from "./end-contract";
 import { holdsCovering } from "./holds";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
-import { jobRuns, playbookFor } from "./playbooks";
+import { playbookFor } from "./playbooks";
 import { createNotification, updateNotificationActionState } from "./notifications";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { localeOf } from "./settings";
@@ -108,6 +108,14 @@ const ACTIVE_PLAN = (alias: string) => `${alias}.dormant_since IS NULL AND ${ali
 
 function emptyResult(): SupervisorTickResult {
   return { wakes: [], messages: [], repaired: [], deferred: [], unsupported: SUPERVISOR_UNSUPPORTED, approved: [], checksToRun: [] };
+}
+
+/**
+ * Whether the supervisor takes this job up: its engine's pick-ups, off with them (ADR 0103) or with
+ * the jobs themselves, when its conversation has moved to an engine with none.
+ */
+function picksUp(ctx: StoreContext, taskId: string): boolean {
+  return playbookFor(ctx, { taskId }).resolved.pickup.on;
 }
 
 function plan(ctx: StoreContext, id: string): PlanRow | null {
@@ -596,7 +604,7 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
   const since = supervisingSince(ctx);
   for (const work of items) {
     const taskId = work.task_id!;
-    if (beforeSupervision(since, work.updated_at) || !botAlive(ctx, work.bot_id) || !jobRuns(ctx, taskId)) continue;
+    if (beforeSupervision(since, work.updated_at) || !botAlive(ctx, work.bot_id) || !picksUp(ctx, taskId)) continue;
     if (heldWork(ctx, work)) { result.deferred.push({ workItemId: work.id, reason: "held" }); continue; }
     if (work.ticket_id) {
       const holder = ballHolder(ctx, { ticketId: work.ticket_id });
@@ -763,7 +771,7 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
     WHERE t.status IN ('todo', 'doing', 'review') AND ${ACTIVE_PLAN("p")} ORDER BY p.created_at, t.seq`).all();
   const since = supervisingSince(ctx);
   for (const ticket of tickets) {
-    if (!jobRuns(ctx, ticket.task_id)) continue;
+    if (!picksUp(ctx, ticket.task_id)) continue;
     const holder = ballHolder(ctx, { ticketId: ticket.id });
     if (holder.kind !== "owner" && holder.kind !== "lead" && holder.kind !== "delegation" && holder.kind !== "reviewer") continue;
     if (dependenciesPending(ctx, ticket)) continue;
@@ -859,7 +867,7 @@ export function recordSupervisorRestart(ctx: StoreContext, input: {
         "SELECT work_item_id, task_id, status FROM turns WHERE id = ?").get(requireNonEmpty("interruptedTurnId", turnId));
       const work = turn?.work_item_id ? workRow(ctx, turn.work_item_id) : null;
       const active = work?.task_id ? ctx.db.query(`SELECT 1 FROM tasks p WHERE p.id = ? AND ${ACTIVE_PLAN("p")}`).get(work.task_id) : null;
-      if (!supervised || !turn || turn.status !== "interrupted" || !work || work.state === "closed" || !active || (work.task_id && !jobRuns(ctx, work.task_id))) {
+      if (!supervised || !turn || turn.status !== "interrupted" || !work || work.state === "closed" || !active || (work.task_id && !picksUp(ctx, work.task_id))) {
         out.push({ turnId, workItemId: work?.id ?? null, arrangement: "waits" });
         continue;
       }
@@ -893,7 +901,7 @@ export function supervisorTakesUp(ctx: StoreContext, turnId: string): boolean {
   if (readEngineLevel(ctx.db) < ENGINE_LEVELS.supervision) return false;
   const job = ctx.db.query<{ id: string }, [string]>(`SELECT p.id FROM turns t JOIN work_items w ON w.id = t.work_item_id JOIN tasks p ON p.id = w.task_id
     WHERE t.id = ? AND w.state = 'needs_attention' AND ${ACTIVE_PLAN("p")}`).get(turnId);
-  return job ? jobRuns(ctx, job.id) : false;
+  return job ? picksUp(ctx, job.id) : false;
 }
 
 /**

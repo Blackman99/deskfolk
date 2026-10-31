@@ -18,6 +18,7 @@ import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
+import { playbookFor } from "./playbooks";
 import { localeOf } from "./settings";
 import type { StoreContext } from "./shared";
 import { patchTicket, ticketDependencies } from "./tickets";
@@ -35,6 +36,11 @@ const UNIT_MAX = 24;
 
 function on(ctx: StoreContext): boolean {
   return readEngineLevel(ctx.db) >= ENGINE_LEVELS.submissions;
+}
+
+/** Whether this job's engine goes by its size (ADR 0103): off, it is laid out or not as its lead sees fit, and nothing waits on that. */
+function goesBySize(ctx: StoreContext, taskId: string): boolean {
+  return on(ctx) && playbookFor(ctx, { taskId }).resolved.large_job.on;
 }
 
 function clip(text: string | null | undefined, max: number): string | null {
@@ -103,7 +109,7 @@ function waitingFor(ctx: StoreContext, taskId: string, ticketId: string): Array<
  * for. Until it is, a segment on it is refused generating anything outside or handing anything over.
  */
 export function layoutMissing(ctx: StoreContext, taskId: string): boolean {
-  if (!on(ctx)) return false;
+  if (!goesBySize(ctx, taskId)) return false;
   const plan = ctx.db.query<{ status: string; stage: string | null; routine_id: string | null; scale: string | null }, [string]>(
     "SELECT status, stage, routine_id, scale FROM tasks WHERE id = ?").get(taskId);
   if (!plan || plan.scale !== "large" || plan.routine_id || plan.status !== "active" || (plan.stage !== null && plan.stage !== "active")) return false;
@@ -290,7 +296,7 @@ export function resample(ctx: StoreContext, input: { taskId: string; to: string;
 export function yoursToApprove(ctx: StoreContext, ticketId: string): "sample" | "last" | null {
   if (!on(ctx)) return null;
   const ticket = ctx.db.query<{ task_id: string; sample: number }, [string]>("SELECT task_id, sample FROM tickets WHERE id = ?").get(ticketId);
-  if (!ticket) return null;
+  if (!ticket || !goesBySize(ctx, ticket.task_id)) return null;
   const plan = ctx.db.query<{ scale: string | null; routine_id: string | null }, [string]>("SELECT scale, routine_id FROM tasks WHERE id = ?").get(ticket.task_id);
   if (!plan || plan.routine_id) return null;
   if (ticket.sample === 1) return "sample";

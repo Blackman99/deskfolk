@@ -1398,6 +1398,18 @@ test("the same check failing three hand-overs in a row blocks the part, refuses 
   expect(f.store.db.query("SELECT stage FROM ticket_parts").get()).toEqual({ stage: "rework" });
 });
 
+test("an engine with the ceiling off goes on: three in a row ask nothing, and nothing more is refused", () => {
+  const f = fixture();
+  const engine = f.store.createPlaybook({ from: "general", name: "不停" });
+  f.store.savePlaybook(engine.id, { diff: { v: 1, steps: { ceiling: { on: false } } } });
+  f.store.setSessionPlaybook(f.room.id, engine.id);
+  const produced = segment(f);
+  const check = gate(f, "fail");
+  for (let n = 1; n <= 4; n++) expect(shotHandOver(f, produced.id, check.id, "fail", n).state).toBe("checks_failed");
+  expect(ceilingCards(f)).toEqual([]);
+  expect(f.store.ballHolder({ ticketId: f.ticket.id })).not.toMatchObject({ reason: "ceiling" });
+});
+
 test("your send-backs count towards the ceiling, on the card or by what you say: three in a row ask you, and undoing the last takes its card down", () => {
   const f = fixture();
   // The MV's ticket 09 (2026-10-11): sent back eight times, none tied to a requirement, and the streak never formed.

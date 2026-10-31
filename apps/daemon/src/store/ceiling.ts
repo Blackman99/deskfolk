@@ -109,7 +109,10 @@ export const NO_CEILING: CeilingOutcome = { cards: [], stuck: [], all: false };
  */
 export function checkCeiling(ctx: StoreContext, submission: Submission, now: string, opts: { sentBack?: string } = {}): CeilingOutcome {
   const byComplaint = (id: string) => id === opts.sentBack || sentBackByComplaint(ctx, id);
-  const { streak, attempts } = playbookFor(ctx, { taskId: submission.task_id }).resolved.ceiling.params;
+  const ceiling = playbookFor(ctx, { taskId: submission.task_id }).resolved.ceiling;
+  // Off in its engine (ADR 0103): work goes round as often as it goes round, until you say otherwise.
+  if (!ceiling.on) return NO_CEILING;
+  const { streak, attempts } = ceiling.params;
   const cards: Message[] = [];
   const stuck: Array<string | null> = [];
   const units: Array<string | null> = submission.part_keys.length > 0 ? submission.part_keys : [null];

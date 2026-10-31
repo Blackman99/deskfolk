@@ -17,6 +17,7 @@ test("a step that only follows the jobs has not been changed; a locked one has n
   expect(stepDiffers("jobs", plain, general)).toBe(true);
   expect(stepDiffers("settle", plain, general)).toBe(false);
   expect(stepDiffers("checks", plain, general)).toBe(false);
+  expect(stepDiffers("wait_word", plain, general)).toBe(false);
   expect(stepLocked("checks", general)).toBe(true);
   expect(stepLocked("checks", plain)).toBe(false);
   expect(stepLocked("reader", general)).toBe(true);

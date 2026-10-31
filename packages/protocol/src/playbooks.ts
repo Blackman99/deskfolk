@@ -21,6 +21,8 @@ export const PLAYBOOK_STEP_IDS = [
   "reader",
   "jobs",
   "scribe",
+  "derived_checks",
+  "large_job",
   "judgement",
   "pacing",
   "compaction",
@@ -29,6 +31,7 @@ export const PLAYBOOK_STEP_IDS = [
   "check_backs",
   "pickup",
   "checks",
+  "wait_word",
   "escalation",
   "ceiling",
   "retrospective",
@@ -66,6 +69,10 @@ export const PLAYBOOK_STEPS: readonly PlaybookStepSpec[] = [
   // together; off, a conversation's lines never open a job and its Bots are offered no job's tools.
   { id: "jobs", hook: "line", role: null, switchable: true, params: [] },
   { id: "scribe", hook: "line", role: "scribe", switchable: true, requires: ["jobs"], params: [{ key: "adds_max", unit: "count", min: 1, max: 20, step: 1, default: 8 }] },
+  // The rules a job can do without, each with a way of going on that already runs for a routine or a
+  // small job (ADR 0103): off, your numbers offer no checks, nothing is read as a large job, and so on.
+  { id: "derived_checks", hook: "line", role: null, switchable: true, requires: ["jobs"], params: [] },
+  { id: "large_job", hook: "line", role: null, switchable: true, requires: ["jobs"], params: [] },
   { id: "judgement", hook: "group", role: "judgement", switchable: true, params: [] },
   // Only asks: a turn calls tools for as long as it works. Until 2026-10-17 the tools were also taken
   // away at a hop limit (160, the video engine 200); long jobs ran into it mid-work.
@@ -80,7 +87,7 @@ export const PLAYBOOK_STEPS: readonly PlaybookStepSpec[] = [
     ],
   },
   {
-    id: "pickup", hook: "turn", role: null, switchable: false, requires: ["jobs"], params: [
+    id: "pickup", hook: "turn", role: null, switchable: true, requires: ["jobs"], params: [
       { key: "orphan_quiet_min", unit: "min", min: 1, max: 60, step: 1, default: 2 },
       { key: "pickups_per_hour", unit: "count", min: 1, max: 12, step: 1, default: 3 },
     ],
@@ -88,9 +95,11 @@ export const PLAYBOOK_STEPS: readonly PlaybookStepSpec[] = [
   // Not switchable: a hand-over bound to a check of yours waits for it to run, so checks that never
   // ran would hold every such hand-over for good.
   { id: "checks", hook: "handed_in", role: "judge", switchable: false, requires: ["jobs"], params: [] },
+  // Off, what is handed over goes through once its gates pass, as a routine's does.
+  { id: "wait_word", hook: "handed_in", role: null, switchable: true, requires: ["jobs"], params: [] },
   { id: "escalation", hook: "handed_in", role: null, switchable: true, requires: ["jobs"], params: [{ key: "after_failures", unit: "count", min: 1, max: 10, step: 1, default: 2 }] },
   {
-    id: "ceiling", hook: "handed_in", role: null, switchable: false, requires: ["jobs"], params: [
+    id: "ceiling", hook: "handed_in", role: null, switchable: true, requires: ["jobs"], params: [
       { key: "streak", unit: "count", min: 2, max: 10, step: 1, default: 3 },
       { key: "attempts", unit: "count", min: 2, max: 20, step: 1, default: 6 },
     ],

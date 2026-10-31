@@ -372,6 +372,7 @@ export function planFacts(
 
 /** A large job's standing for the situation (ADR 0060); nothing for another job. */
 function largeJobFacts(store: Store, taskId: string, ticketId: string | null): Pick<PlanFacts, "large"> {
+  if (!store.playbookStepOn({ taskId }, "large_job")) return {};
   const scale = store.planScale(taskId);
   const sample = store.sampleOf(taskId);
   const waiting = ticketId ? store.waitingOn(ticketId) : null;

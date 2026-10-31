@@ -49,6 +49,12 @@ export const PLAIN_SYSTEM_EDITS: Record<Locale, PlainSystemEdits> = {
   },
 };
 
+/** What the System section says of a hand-over nobody reviews, and what it says where the engine does not wait on the user's word for it (ADR 0103). */
+export const NO_WAIT_EDITS: Record<Locale, readonly [from: string, to: string]> = {
+  zh: ["没人审、也没有用户的检查撑着的交付等用户的话：他认可或接着往下说就算通过，挑出毛病就退回。", "没人审的交付，门禁过了就直接通过；用户挑出毛病就退回。"],
+  en: ["What nobody reviews and no check of the user's backs waits on the user's word: a nod, or going on from it, approves it; a fault they find sends it back.", "What nobody reviews is approved once its gates pass; a fault the user finds sends it back."],
+};
+
 /** What a Bot in a conversation with no jobs reads as its System section. */
 export function plainSystemText(locale: Locale, shell: ToolShellKind): string {
   const { paragraphs, clauses } = PLAIN_SYSTEM_EDITS[locale];

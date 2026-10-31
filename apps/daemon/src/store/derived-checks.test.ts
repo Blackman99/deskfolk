@@ -81,6 +81,21 @@ const held = (w: ReturnType<typeof world>) =>
   w.store.applyOrganizerResult({ sessionId: w.direct, current: w.store.getTask(w.planId), result: done(), source: { messageId: null, turnId: null, messageBody: "" } }).heldByChecks.map((check) => check.id);
 
 describe("offered from your words, never made a gate by them", () => {
+  test("an engine with these off offers nothing new, and what you confirmed stays in force", () => {
+    const w = world();
+    const change = w.store.syncDerivedChecks(w.planId);
+    const [check] = w.derived();
+    expect(change.proposed).toEqual([check!.id]);
+    w.store.confirmDerivedCheck(check!.id);
+
+    const engine = w.store.createPlaybook({ from: "general", name: "不提议" });
+    w.store.savePlaybook(engine.id, { diff: { v: 1, steps: { derived_checks: { on: false } } } });
+    w.store.setSessionPlaybook(w.direct, engine.id);
+    w.say("分辨率要 1920×1080");
+    expect(w.store.syncDerivedChecks(w.planId).proposed).toEqual([]);
+    expect(w.derived().map((row) => [row.id, row.derived_state])).toEqual([[check!.id, "active"]]);
+  });
+
   test("a number of yours is offered the moment it is filed; bound to the master, it is measured and still no gate", () => {
     const w = world();
     const change = w.store.syncDerivedChecks(w.planId);

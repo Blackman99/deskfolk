@@ -41,7 +41,7 @@ test("plain works in no jobs: what stands on them stops with them, and a stop st
   expect(plain.jobs.on).toBe(false);
   expect(plain.pacing.on).toBe(false);
   expect(stepsRequiring("jobs").every((id) => !plain[id].on)).toBe(true);
-  for (const id of ["scribe", "closing", "settle", "pickup", "checks", "escalation", "ceiling", "retrospective", "reflection"] as const) {
+  for (const id of ["scribe", "derived_checks", "large_job", "closing", "settle", "pickup", "checks", "wait_word", "escalation", "ceiling", "retrospective", "reflection"] as const) {
     expect(stepsRequiring("jobs")).toContain(id);
     expect(stoppedBy(id, plain)).toBe("jobs");
   }

@@ -3,7 +3,7 @@ import type { BotRunner, Locale } from "@real-bot/protocol";
 import { AGENT_PREFACE, agentSystemPrompt, LOCAL_AGENT_PREFACE, PLAIN_PREFACE_EDITS, REPLY_ONLY_AGENT_PREFACE } from "./agent-system";
 import { builtinTools } from "./builtin-tools";
 import { systemText } from "./system";
-import { PLAIN_SYSTEM_EDITS, plainSystemText } from "./system-plain";
+import { NO_WAIT_EDITS, PLAIN_SYSTEM_EDITS, plainSystemText } from "./system-plain";
 
 /** What only holds in a job: a tool of the job kernel, its folders and files, its checks and its ledger. */
 const JOB_WORDS = /work_on|\bsubmit\b|plan_items|\bdelegate\b|任务目录|规划目录|map\.md|ticket\.md|ticket dir|plan dir|收尾检查|closing check|需求台账|requirements ledger/i;
@@ -18,6 +18,10 @@ describe.each(LOCALES)("%s", (locale) => {
     for (const [from] of clauses) expect(full.split(from).length).toBe(2);
     const prefaces = [AGENT_PREFACE[locale], LOCAL_AGENT_PREFACE[locale], REPLY_ONLY_AGENT_PREFACE[locale]];
     for (const [from] of PLAIN_PREFACE_EDITS[locale]) expect(prefaces.some((preface) => preface.includes(from))).toBe(true);
+  });
+
+  test("what it says of waiting on the user's word still finds its words", () => {
+    expect(systemText(locale, "sh", 8).split(NO_WAIT_EDITS[locale][0]).length).toBe(2);
   });
 
   test("the System section names nothing that only holds in a job", () => {

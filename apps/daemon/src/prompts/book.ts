@@ -11,8 +11,8 @@ import type { Store } from "../store";
 import type { PromptLocale, PromptRevisionRow, WritePromptInput } from "../store/prompts";
 import { fill, type Placeholder } from "./fill";
 import { renderDefault, slotDef, slotLocale, type PromptEnv, type PromptRef, type SlotDef } from "./registry";
-import type { TurnPromptTexts } from "./system";
-import { plainSystemText } from "./system-plain";
+import { systemText, type TurnPromptTexts } from "./system";
+import { NO_WAIT_EDITS, plainSystemText } from "./system-plain";
 import { validatePromptText, type PromptProblem } from "./validate";
 
 /** One slot you edited, as the store keeps it. */
@@ -77,9 +77,15 @@ export function turnPromptTexts(page: PromptPage): TurnPromptTexts & { preface?:
  * does not (ADR 0103), which takes the place of yours and of the agent preface's too: both were
  * written for the jobs and name their tools. The section notes hold either way.
  */
-export function turnPromptTextsIn(store: PromptSource & Pick<Store, "jobsRunIn">, locale: Locale, sessionId: string, shell: ToolShellKind = toolShell().kind): TurnPromptTexts & { preface?: string } {
+export function turnPromptTextsIn(store: PromptSource & Pick<Store, "jobsRunIn" | "playbookFor">, locale: Locale, sessionId: string, shell: ToolShellKind = toolShell().kind): TurnPromptTexts & { preface?: string } {
   const { preface, ...texts } = turnPromptTexts(promptPage(store, locale));
-  return store.jobsRunIn(sessionId) ? { ...texts, preface } : { ...texts, system: plainSystemText(locale, shell) };
+  if (!store.jobsRunIn(sessionId)) return { ...texts, system: plainSystemText(locale, shell) };
+  // With nobody waiting on the user's word, the default says so; what you wrote yourself stays as you wrote it.
+  if (texts.system === undefined && !store.playbookFor({ sessionId }).resolved.wait_word.on) {
+    const [from, to] = NO_WAIT_EDITS[locale];
+    return { ...texts, preface, system: systemText(locale, shell, store.capabilities().engine_level).replace(from, to) };
+  }
+  return { ...texts, preface };
 }
 
 /** Tool descriptions you edited, for `builtinTools`. */

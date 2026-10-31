@@ -28,6 +28,7 @@ export function createScaleWatch(deps: ScaleWatchDeps): ScaleWatch {
   const log = deps.log ?? ((line: string) => console.error(line));
 
   async function read(taskId: string, key: string, facts: { segments: number; handedBack: number } | null): Promise<void> {
+    if (!store.playbookStepOn({ taskId }, "large_job")) return;
     const input = store.scaleInputs(taskId);
     if (!input || input.said.length === 0) return;
     const reading = await deps.reader.scale({ key, taskId, sessionId: input.sessionId, title: input.title, goal: input.goal, said: input.said, facts });

@@ -31,6 +31,7 @@ import type { Dimension } from "../quote-dimensions";
 import { takeCodePoints } from "../text";
 import { CHECK_ITEM_MAX, type AcceptanceCheckRow } from "./acceptance-checks";
 import { citedPathExists } from "./messages";
+import { playbookFor } from "./playbooks";
 import type { QuoteVia } from "./quotes";
 import { settingsCached } from "./settings";
 import type { StoreContext } from "./shared";
@@ -154,6 +155,8 @@ export function syncDerivedChecks(ctx: StoreContext, taskId: string): DerivedChe
   }
   const locale = settingsCached(ctx).locale;
   const statements = derivedStatements(planQuotes(ctx, task));
+  // Off in its engine (ADR 0103): your numbers offer nothing new; what you confirmed stays in force and goes on being measured.
+  const offers = playbookFor(ctx, { taskId }).resolved.derived_checks.on;
   const rows = ctx.db.query<AcceptanceCheckRow, [string]>(`SELECT * FROM acceptance_checks WHERE task_id = ? AND origin = 'derived' ORDER BY created_at ASC, id ASC`).all(taskId);
   const byApp = removedByApp(ctx, taskId);
 
@@ -237,6 +240,7 @@ export function syncDerivedChecks(ctx: StoreContext, taskId: string): DerivedChe
     // The offer for `last`: the one standing if it asks the same (its card comes back when a line of
     // yours that had not said it says it now), else a new one.
     const offerFor = (last: Statement): void => {
+      if (!offers) return;
       const same = said.filter((statement) => sameAsk(statement.measure, last.measure) && !refused(statement));
       const newest = same.at(-1) ?? last;
       const times = sources(same.length > 0 ? same : [last]);

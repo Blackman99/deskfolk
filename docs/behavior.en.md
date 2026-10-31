@@ -786,21 +786,24 @@ The fixed text the app sends models, one slot each (`apps/daemon/src/prompts/reg
 | | Reading | only while Jobs is off | — |
 | | Jobs (`jobs`) | yes | — |
 | | Scribe | yes | at most 8 entries per line |
+| | Checks from your words | yes | — |
+| | Large jobs laid out first | yes | — |
 | A group line naming nobody | Judgement | yes | — |
 | A Bot's turn | Hop pacing | yes | asked how it is going every 40 hops (only asked; the tools stay) |
 | | Compaction | no | — |
 | | Closing check | yes | — |
 | | Settle | yes | a job quiet 30 s before it is filed |
 | | A Bot's own check-backs | no | at least 5 minutes, at most six an hour per job |
-| | Supervisor pick-ups | no | called back after 2 minutes left alone, at most three pick-ups an hour per job |
+| | Supervisor pick-ups | yes | called back after 2 minutes left alone, at most three pick-ups an hour per job |
 | A hand-in | Acceptance checks and the picture judge | no | — |
+| | Waiting on your word | yes | — |
 | | Escalation | yes | one step up after 2 failures in a row |
-| | Capability ceiling | no | the same one 3 times running, or more than 6 failures |
+| | Capability ceiling | yes | the same one 3 times running, or more than 6 failures |
 | A delivery you accept | Retrospective | yes | — |
 | An approval you overturn | Reflection | yes | — |
 | You press ✨ | Composer | no | — |
 
-The scribe, the closing check, the settle, the supervisor's pick-ups, the acceptance checks, escalation, the capability ceiling, the retrospective and reflection all stand on Jobs: off with it, your settings kept for when it comes back. A step that cannot be off would, with Jobs on, break the kernel: with the acceptance checks not running, a hand-over bound to a check of yours would wait for good; with reading off, so would one waiting on your word. The models and prompts of reading, judgement, compaction, the composer, the picture judge, the settle, the scribe, reflection and retrospective stay global and are set on the same map ([Built-in models](#model), [Built-in prompts](#built-in-prompt)). Numbers are whole and ranged (the settle's quiet from 10 to 600 s, say). A turn may call tools for as many hops as it needs (since 2026-10-17; before, the tools went at 160 hops, 200 on video, and a limit you saved is passed over when read). The benchmark's switches (ablation) still apply and win over an engine.
+The scribe, checks from your words, laying large jobs out first, the closing check, the settle, the supervisor's pick-ups, the acceptance checks, waiting on your word, escalation, the capability ceiling, the retrospective and reflection all stand on Jobs: off with it, your settings kept for when it comes back. A step that cannot be off would, with Jobs on, break the kernel: with the acceptance checks not running, a hand-over bound to a check of yours would wait for good; with reading off, so would one waiting on your word. The models and prompts of reading, judgement, compaction, the composer, the picture judge, the settle, the scribe, reflection and retrospective stay global and are set on the same map ([Built-in models](#model), [Built-in prompts](#built-in-prompt)). Numbers are whole and ranged (the settle's quiet from 10 to 600 s, say). A turn may call tools for as many hops as it needs (since 2026-10-17; before, the tools went at 160 hops, 200 on video, and a limit you saved is passed over when read). The benchmark's switches (ablation) still apply and win over an engine.
 
 **The four built in** (the first three are templates of one way of working, tuned on the conversations up to 2026-10-11; numbers in ADR 0085):
 - **General** (the default): no scribe, no reflection — nothing written down or proposed behind your back; the rest at the defaults, the retrospective included (from 2026-10-14: Bots improving their own memories and skills after a delivery is part of what the app promises). The settle stays: it keeps a job's board true. With the scribe off, only a line finding fault with work already handed over is still kept, as a proposed entry (the fallback the scribe has when it reads nothing).
@@ -810,6 +813,8 @@ The scribe, the closing check, the settle, the supervisor's pick-ups, the accept
 
 <a id="engine-no-jobs"></a>
 **An engine with no jobs** (Jobs off, as in Plain): a conversation's lines never open a job. Nothing reads which job a line is about, and neither a quote nor a path files it under one; every turn is at the desk with no job bound, a first effect opens none, and the shell starts at the workspace root. A Bot is not offered `work_on`, `delegate`, `submit`, `review` or `plan_items`, and is refused if it calls them; the System section is the same text less what only holds in a job, the situation block has no desk text and always names the workspace root; your edits of the System section and the agent preface were written for the jobs and stay out, other prompts hold. An ending does not read the Bot's words or weigh obligations and promises, progress lines are not counted, and a question asking your OK goes through; one thing stays: your line in your direct left without a word goes back once, then you are told. There are no plans, tickets, hand-overs, reviews, jobs on the flow or supervisor, and whether it is done is yours to judge. Stops are as ever: typing stop stops it (in an engine with reading off too, only the Stop button does), and approval cards, permission modes and the spend cap hold. A routine still fires, as a turn with no job and no standing plan. Check-backs can be booked and ring. A direct a Bot opened still calls it back when it goes quiet.
+
+**Rules that can go alone while Jobs is on**: only those where the way of going on without them already runs. Work items, the end contract and hand-overs are one whole and do not come apart. Waiting on your word off: hand-overs go as a routine's do, through once their gates pass, samples too; a fault you find still sends one back, and so does a reviewer. Large jobs off: a job's size is not read, nothing generated or handed over is refused, and whether to lay out or have a sample is up to the lead. The ceiling off: work goes on trying without stopping to ask. Pick-ups off: work cut off waits for your Continue and a ticket left alone is not chased, while hand-overs' checks and approvals and the restart repairs still run. Checks from your words off: nothing new is offered, and what you confirmed goes on being measured.
 
 **Moving between engines**: a job already open stops where it is, woken by nothing, deleted by nothing, taking no new lines, and a line elsewhere citing it is not filed under it; the supervisor passes over it and the work log says `no_jobs`; an appointment on it stays due, not voided, and rings once you move back; a turn already running finishes. Moving a conversation with open jobs, or the default, to an engine with none says first what it would leave standing (`GET /v1/playbooks/impact`). The job's page says why it stands still.
 

@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { isoNow } from "../ids";
 import { Store } from ".";
 import { ENGINE_LEVELS } from "./schema-gate";
+import { yoursToApprove } from "./large-jobs";
 import { superviseSubmissions, UNREVIEWED_AFTER_MS } from "./submissions";
 
 const stores: Store[] = [];
@@ -46,6 +47,27 @@ function layOut(f: Fixture) {
   const byTitle = (title: string) => result.tickets.find((row) => row.title === title)!;
   return { result, sheet: byTitle("设定集"), sample: byTitle("第一场"), two: byTitle("第二场"), three: byTitle("第三场"), cut: byTitle("组装成片") };
 }
+
+/** The group's engine, built on 通用, with these steps switched off. */
+function withOff(f: Fixture, ...steps: string[]) {
+  const engine = f.store.createPlaybook({ from: "general", name: "自己的" });
+  f.store.savePlaybook(engine.id, { diff: { v: 1, steps: Object.fromEntries(steps.map((step) => [step, { on: false }])) } });
+  f.store.setSessionPlaybook(f.room.id, engine.id);
+}
+
+test("an engine that does not go by size refuses nothing on a large job, and leaves its sample to the ordinary rules", () => {
+  const f = fixture();
+  large(f);
+  const turn = f.turnOf(f.lead.id);
+  expect(f.store.layoutMissing(f.plan.id)).toBe(true);
+  expect(f.store.largeJobRefusal(turn)?.code).toBe("layout_first");
+
+  withOff(f, "large_job");
+  expect(f.store.layoutMissing(f.plan.id)).toBe(false);
+  expect(f.store.largeJobRefusal(turn)).toBeNull();
+  const { sample } = layOut(f);
+  expect(yoursToApprove(f.ctx, sample.ticket_id)).toBeNull();
+});
 
 function ticket(f: Fixture, id: string) {
   return f.store.db.query<{ dir: string; stage: string | null; status: string }, [string]>("SELECT dir, stage, status FROM tickets WHERE id = ?").get(id)!;
