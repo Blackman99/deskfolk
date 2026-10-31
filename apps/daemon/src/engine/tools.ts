@@ -16,7 +16,7 @@ import { attachPictures, fitsHop, pictureResultNote, type LoopPicture } from "..
 import type { McpHost } from "../mcp-host";
 import { inlineWorkspaceRefs } from "../mcp-workspace-refs";
 import { COLLAB_TOOL_NAMES, type ChatTool, type McpPromptGuide } from "../prompts";
-import { isJobTool } from "../prompts/builtin-tools";
+import { offeredIn } from "../prompts/builtin-tools";
 import type { TurnAdmission } from "../quiesce";
 import { sessionUpsertFields } from "../session-events";
 import { checkLines, isReservedTaskPath, jobArgsDigest, promptPartNumber, type Store } from "../store";
@@ -600,9 +600,9 @@ export function createTools(deps: ToolsDeps): Tools {
     args: Record<string, unknown>,
     callId?: string,
   ): Promise<ToolResult> {
-    // Not offered with no jobs (ADR 0103); a call named from memory of an older turn opens nothing.
-    if (isJobTool(name) && !store.jobsRunIn(turn.session_id)) {
-      return toolFail("no_jobs", "This conversation works in no jobs, so this tool does nothing here. Do the work directly and reply when it is done.");
+    // Not offered under this conversation's engine (ADR 0103): a call named from memory of an older turn does nothing.
+    if (!offeredIn(name, store.toolsIn(turn.session_id))) {
+      return toolFail("not_offered", "This conversation's engine leaves this tool out, so it does nothing here. Do the work another way, or say what you could not do.");
     }
     const gate = await beforeEffect(turn, live, name, callId);
     if (!gate.ok) return gate.result;

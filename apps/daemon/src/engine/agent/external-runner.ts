@@ -131,9 +131,10 @@ export async function runExternalSession(input: {
   // cannot hand them to (Antigravity's print mode).
   const listed = driver.caps.appTools && deps.mcp ? await deps.mcp.listForTurn() : { tools: [], guides: [] };
   if (!active(turnId, live)) return;
-  const jobs = store.jobsRunIn(current.session_id);
+  const inEngine = store.toolsIn(current.session_id);
+  const { jobs } = inEngine;
   const offered = driver.caps.appTools
-    ? [...builtinTools(locale, level, editedToolDescription(promptPage(store, locale)), jobs).filter((tool) => !OWN_FILE_TOOLS.has(tool.function.name)), ...listed.tools]
+    ? [...builtinTools(locale, level, editedToolDescription(promptPage(store, locale)), inEngine).filter((tool) => !OWN_FILE_TOOLS.has(tool.function.name)), ...listed.tools]
     : [];
   const chatTools: ChatTool[] = current.mode === "readonly" ? readOnlyTools(offered, listed.guides) : offered;
   live.toolNames = new Set(chatTools.map((tool) => tool.function.name));

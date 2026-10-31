@@ -51,7 +51,7 @@ test("what nobody reviews waits on your word; with that off it goes through once
   const waiting = await handOver(under);
   expect(waiting).toMatchObject({ state: "submitted" });
   expect(waiting.awaiting).not.toBeNull();
-  expect(turnPromptTextsIn(under.h.store, "zh", under.direct).system).toBeUndefined();
+  expect(turnPromptTextsIn(under.h.store, "zh", under.direct).system).toContain("等用户的话");
 
   const off = await job(["wait_word"]);
   const through = await handOver(off);
@@ -67,6 +67,72 @@ test("your own System section stays as you wrote it, whatever the engine waits o
   const { savePromptText } = await import("../prompts/book");
   savePromptText(h.store, { id: "turn.system", locale: "zh", text: "我自己写的系统指令", actor: "user" });
   expect(turnPromptTextsIn(h.store, "zh", direct).system).toBe("我自己写的系统指令");
+});
+
+test("an engine's own System section is what its Bots read, in its language; the other falls back to what it would be", async () => {
+  for (const base of ["general", "plain"]) {
+    const h = await createScenario({ learning: true });
+    open.push(h);
+    const [bot] = h.createBots({ name: "写的", duties: "做事" });
+    const direct = h.direct(bot!);
+    const engine = h.store.createPlaybook({ from: base, name: "自己的" });
+    h.store.savePlaybook(engine.id, { diff: { ...h.store.getPlaybook(engine.id).diff, system: { zh: "只按我写的这段做事。" } } });
+    h.store.setSessionPlaybook(direct, engine.id);
+    h.judge("read_filing").reply({ about: "in_place" });
+    h.script(bot!).handle(() => say("好"));
+    h.postUser(direct, "你好");
+    await h.waitIdle();
+    const system = h.hops(bot!).at(-1)!.request.messages[0]!.content as string;
+    expect(system).toContain("只按我写的这段做事。");
+    expect(system).not.toContain("遇到任何障碍");
+    expect(turnPromptTextsIn(h.store, "en", direct).system).toContain("When any obstacle arises");
+  }
+});
+
+test("a group of tools an engine leaves out is not offered, not called, and not talked about", async () => {
+  const h = await createScenario({ learning: true });
+  open.push(h);
+  const [bot] = h.createBots({ name: "没工具的", duties: "做事" });
+  const direct = h.direct(bot!);
+  const engine = h.store.createPlaybook({ from: "general", name: "少给" });
+  h.store.savePlaybook(engine.id, { diff: { v: 1, steps: {}, tools_off: ["setup", "prompts"] } });
+  h.store.setSessionPlaybook(direct, engine.id);
+  h.judge("read_filing").reply({ about: "in_place" });
+  const refused: Array<string | null> = [];
+  h.script(bot!, direct).reply(call(tool("list_endpoints"), tool("read_prompt", { id: "turn.system" }), tool("list_bots")), ({ results }) => {
+    refused.push(...results.map((result) => result.error));
+    return say("好");
+  });
+  h.postUser(direct, "看看");
+  await h.waitIdle();
+  expect(refused).toEqual(["not_offered", "not_offered", null]);
+  const request = h.hops(bot!).at(-1)!.request;
+  const names = (request.tools ?? []).map((entry) => (entry as { function: { name: string } }).function.name);
+  for (const name of ["list_endpoints", "add_mcp_server", "read_prompt", "query_data"]) expect(names).not.toContain(name);
+  for (const name of ["list_bots", "write_file", "remember", "work_on"]) expect(names).toContain(name);
+  const system = request.messages[0]!.content as string;
+  expect(system).not.toContain("名册级端点和 MCP");
+  expect(system).not.toContain("每个 Bot 怎么工作写在内置提示词里");
+  expect(system).toContain("遇到任何障碍");
+});
+
+test("resetting one step leaves the engine's own text and tools as they are", async () => {
+  const h = await createScenario({ learning: true });
+  open.push(h);
+  const engine = h.store.createPlaybook({ from: "general", name: "自己的" });
+  h.store.savePlaybook(engine.id, { diff: { v: 1, steps: { settle: { params: { quiet_s: 90 } } }, system: { zh: "我的" }, tools_off: ["routines"] } });
+  // The same diff again is no change, and leaves no revision.
+  const before = h.store.getPlaybook(engine.id).revision;
+  h.store.savePlaybook(engine.id, { diff: { v: 1, steps: { settle: { params: { quiet_s: 90 } } }, tools_off: ["routines"], system: { zh: "我的" } } });
+  expect(h.store.getPlaybook(engine.id).revision).toBe(before);
+  // A new text is a change, on its own.
+  expect(h.store.savePlaybook(engine.id, { diff: { v: 1, steps: { settle: { params: { quiet_s: 90 } } }, system: { zh: "我改的" }, tools_off: ["routines"] } }).revision).toBe(before + 1);
+
+  expect(h.store.resetPlaybook(engine.id, { step: "settle" }).diff).toEqual({ v: 1, steps: {}, system: { zh: "我改的" }, tools_off: ["routines"] });
+  expect(h.store.resetPlaybook(engine.id, {}).diff).toEqual({ v: 1, steps: {} });
+  // A new engine from it starts with them.
+  h.store.savePlaybook(engine.id, { diff: { v: 1, steps: {}, system: { zh: "再写" }, tools_off: ["setup"] } });
+  expect(h.store.createPlaybook({ from: engine.id, name: "另一个" }).diff).toEqual({ v: 1, steps: {}, system: { zh: "再写" }, tools_off: ["setup"] });
 });
 
 test("a job left alone is called back; with pick-ups off nobody chases it", async () => {

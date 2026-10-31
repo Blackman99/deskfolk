@@ -446,8 +446,9 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     // The app's own tools, as the hop loop would offer them, less the five Claude Code has its own of.
     const listed = deps.mcp ? await deps.mcp.listForTurn() : { tools: [], guides: [] };
     if (!active(turnId, live)) return;
-    const jobs = store.jobsRunIn(current.session_id);
-    const offered = [...builtinTools(locale, level, editedToolDescription(promptPage(store, locale)), jobs).filter((tool) => !OWN_FILE_TOOLS.has(tool.function.name)), ...listed.tools];
+    const inEngine = store.toolsIn(current.session_id);
+    const { jobs } = inEngine;
+    const offered = [...builtinTools(locale, level, editedToolDescription(promptPage(store, locale)), inEngine).filter((tool) => !OWN_FILE_TOOLS.has(tool.function.name)), ...listed.tools];
     const chatTools: ChatTool[] = current.mode === "readonly" ? readOnlyTools(offered, listed.guides) : offered;
     live.toolNames = new Set(chatTools.map((tool) => tool.function.name));
     const params = new Map(listed.tools.map((tool) => [tool.function.name,

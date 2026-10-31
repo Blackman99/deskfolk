@@ -1,4 +1,4 @@
-import type { Locale } from "@real-bot/protocol";
+import type { EngineToolKind, Locale } from "@real-bot/protocol";
 import type { ToolShellKind } from "../platform";
 import { systemText } from "./system";
 
@@ -54,6 +54,20 @@ export const NO_WAIT_EDITS: Record<Locale, readonly [from: string, to: string]> 
   zh: ["没人审、也没有用户的检查撑着的交付等用户的话：他认可或接着往下说就算通过，挑出毛病就退回。", "没人审的交付，门禁过了就直接通过；用户挑出毛病就退回。"],
   en: ["What nobody reviews and no check of the user's backs waits on the user's word: a nod, or going on from it, approves it; a fault they find sends it back.", "What nobody reviews is approved once its gates pass; a fault the user finds sends it back."],
 };
+
+/**
+ * The paragraphs that tell a Bot about a group of tools, gone where its engine leaves that group out
+ * (ADR 0103). The groups not listed have none of their own.
+ */
+export const TOOL_KIND_PARAGRAPHS: Partial<Record<EngineToolKind, Record<Locale, string>>> = {
+  setup: { zh: "名册级端点和 MCP 所有 Bot 共用。", en: "Roster-level endpoints and MCP are shared by every Bot." },
+  prompts: { zh: "每个 Bot 怎么工作写在内置提示词里", en: "How every Bot works is written in the built-in prompts" },
+};
+
+export function withoutToolKinds(text: string, off: readonly EngineToolKind[], locale: Locale): string {
+  const starts = off.flatMap((kind) => TOOL_KIND_PARAGRAPHS[kind]?.[locale] ?? []);
+  return starts.length === 0 ? text : text.split("\n\n").filter((paragraph) => !starts.some((start) => paragraph.startsWith(start))).join("\n\n");
+}
 
 /** What a Bot in a conversation with no jobs reads as its System section. */
 export function plainSystemText(locale: Locale, shell: ToolShellKind): string {

@@ -3,7 +3,7 @@ import type { BotRunner, Locale } from "@real-bot/protocol";
 import { AGENT_PREFACE, agentSystemPrompt, LOCAL_AGENT_PREFACE, PLAIN_PREFACE_EDITS, REPLY_ONLY_AGENT_PREFACE } from "./agent-system";
 import { builtinTools } from "./builtin-tools";
 import { systemText } from "./system";
-import { NO_WAIT_EDITS, PLAIN_SYSTEM_EDITS, plainSystemText } from "./system-plain";
+import { NO_WAIT_EDITS, PLAIN_SYSTEM_EDITS, plainSystemText, TOOL_KIND_PARAGRAPHS, withoutToolKinds } from "./system-plain";
 
 /** What only holds in a job: a tool of the job kernel, its folders and files, its checks and its ledger. */
 const JOB_WORDS = /work_on|\bsubmit\b|plan_items|\bdelegate\b|任务目录|规划目录|map\.md|ticket\.md|ticket dir|plan dir|收尾检查|closing check|需求台账|requirements ledger/i;
@@ -18,6 +18,19 @@ describe.each(LOCALES)("%s", (locale) => {
     for (const [from] of clauses) expect(full.split(from).length).toBe(2);
     const prefaces = [AGENT_PREFACE[locale], LOCAL_AGENT_PREFACE[locale], REPLY_ONLY_AGENT_PREFACE[locale]];
     for (const [from] of PLAIN_PREFACE_EDITS[locale]) expect(prefaces.some((preface) => preface.includes(from))).toBe(true);
+  });
+
+  test("the paragraph about a group of tools goes with the group, in both texts", () => {
+    for (const [kind, starts] of Object.entries(TOOL_KIND_PARAGRAPHS)) {
+      const start = starts[locale];
+      for (const text of [systemText(locale, "sh", 8), plainSystemText(locale, "sh")]) {
+        expect(text.split("\n\n").filter((paragraph) => paragraph.startsWith(start))).toHaveLength(1);
+        const left = withoutToolKinds(text, [kind as "setup" | "prompts"], locale);
+        expect(left).not.toContain(start);
+        expect(left.length).toBeLessThan(text.length);
+      }
+    }
+    expect(withoutToolKinds(full, ["routines"], locale)).toBe(full);
   });
 
   test("what it says of waiting on the user's word still finds its words", () => {
@@ -37,7 +50,7 @@ describe.each(LOCALES)("%s", (locale) => {
   });
 
   test("no tool it is offered says otherwise", () => {
-    const tools = builtinTools(locale, 8, undefined, false);
+    const tools = builtinTools(locale, 8, undefined, { jobs: false, off: [] });
     for (const name of ["work_on", "delegate", "submit", "review", "plan_items"]) expect(tools.map((tool) => tool.function.name)).not.toContain(name);
     for (const tool of tools) expect(`${tool.function.name}: ${JSON.stringify(tool.function)}`).not.toMatch(JOB_WORDS);
     const end = tools.find((tool) => tool.function.name === "end_turn")!;
@@ -47,7 +60,7 @@ describe.each(LOCALES)("%s", (locale) => {
 
   test("your edits of a tool's description hold, but not of the two that assume an end contract", () => {
     const edited = (name: string) => `edited ${name}`;
-    const tools = builtinTools(locale, 8, edited, false);
+    const tools = builtinTools(locale, 8, edited, { jobs: false, off: [] });
     const of = (name: string) => tools.find((tool) => tool.function.name === name)!.function.description;
     expect(of("read_file")).toBe("edited read_file");
     expect(of("end_turn")).not.toContain("edited");
@@ -55,7 +68,7 @@ describe.each(LOCALES)("%s", (locale) => {
   });
 
   test("a job-working engine's tools are what they were", () => {
-    expect(builtinTools(locale, 8, undefined, true)).toEqual(builtinTools(locale, 8));
+    expect(builtinTools(locale, 8, undefined, { jobs: true, off: [] })).toEqual(builtinTools(locale, 8));
   });
 
   const agents: Array<{ label: string; runner: BotRunner; appTools: boolean } | undefined> = [

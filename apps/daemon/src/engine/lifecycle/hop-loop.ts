@@ -269,7 +269,7 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
   /** The tools this hop offers, recorded on the live turn with the MCP tools' servers and arguments. */
   function offerTools(live: Live, current: Turn, target: ResolvedTarget, listed: Listed): ChatTool[] {
     // Tool descriptions you edited (ADR 0064) replace the shipped ones from this hop on.
-    const offered = [...builtinTools(target.locale, store.capabilities().engine_level, editedToolDescription(promptPage(store, target.locale)), store.jobsRunIn(current.session_id)), ...listed.tools];
+    const offered = [...builtinTools(target.locale, store.capabilities().engine_level, editedToolDescription(promptPage(store, target.locale)), store.toolsIn(current.session_id)), ...listed.tools];
     // A read-only turn is not shown what it may not call (ADR 0040 I3); the gate refuses them anyway.
     const tools = current.mode === "readonly" ? readOnlyTools(offered, listed.guides) : offered;
     live.toolNames = new Set(tools.map((tool) => tool.function.name));

@@ -223,6 +223,49 @@ test("switching jobs back on takes reading back with them: a save would refuse i
   close();
 });
 
+test("the Bot's turn in an engine: a System section of its own, written from what it stands in for, and the tools it gives", async () => {
+  const server = engineServer();
+  const asked: Array<[string, string]> = [];
+  const client = quietClient({ ...server.api, playbookSystem: async (id: string, locale: string) => { asked.push([id, locale]); return { text: "内置的那段话", own: null }; } });
+  const { host, close } = open({ client });
+  await settle();
+  click(host.querySelector('[data-playbook-chip="plain"]'));
+  flushSync();
+  click(node(host, "turn"));
+  flushSync();
+  expect(host.querySelector('[data-routing-part="engine-system"]')?.textContent).toContain(t.playbooks.turn.systemBuiltin);
+  click(host.querySelector("[data-engine-system-write]"));
+  await settle();
+  expect(asked).toEqual([["plain", "zh"]]);
+  const text = host.querySelector<HTMLTextAreaElement>("[data-engine-system]")!;
+  expect(text.value).toBe("内置的那段话");
+  text.value = "我写的";
+  text.dispatchEvent(new Event("input", { bubbles: true }));
+  flushSync();
+  click(host.querySelector("[data-engine-system-save]"));
+  await settle();
+  expect(server.saved.at(-1)).toMatchObject({ id: "plain", diff: { system: { zh: "我写的" } } });
+  expect(host.querySelector('[data-routing-part="engine-system"]')?.textContent).toContain(t.playbooks.turn.systemOwn);
+  expect(host.querySelector("[data-engine-system]")).toBeNull();
+
+  // Tools: off keeps the text, and only these groups have a switch.
+  expect([...host.querySelectorAll<HTMLInputElement>("[data-engine-tool]")].map((box) => [box.dataset.engineTool, box.checked])).toEqual([
+    ["roster", true], ["routines", true], ["setup", true], ["prompts", true],
+  ]);
+  const setup = host.querySelector<HTMLInputElement>('[data-engine-tool="setup"]')!;
+  setup.checked = false;
+  setup.dispatchEvent(new Event("change", { bubbles: true }));
+  await settle();
+  expect(server.saved.at(-1)?.diff).toMatchObject({ system: { zh: "我写的" }, tools_off: ["setup"] });
+
+  // Back to built-in takes the text alone away.
+  click(host.querySelector("[data-engine-system-restore]"));
+  await settle();
+  expect(server.saved.at(-1)?.diff.system).toBeUndefined();
+  expect(server.saved.at(-1)?.diff.tools_off).toEqual(["setup"]);
+  close();
+});
+
 test("making an engine with no jobs the default says first what it moves; another goes at once", async () => {
   const server = engineServer();
   const impact = { sessions: 12, open_jobs: 3 };

@@ -102,7 +102,7 @@ test("a job's tool named from memory of an older turn does nothing here", async 
   });
   h.postUser(session, "做一件事");
   await h.waitIdle();
-  expect(refused).toEqual(["no_jobs", "no_jobs"]);
+  expect(refused).toEqual(["not_offered", "not_offered"]);
   expect(rows(h, "tasks")).toBe(0);
 });
 

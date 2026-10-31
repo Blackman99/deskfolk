@@ -12,12 +12,14 @@ import {
   emptyPlaybookDiff,
   FILE_DROP_SESSION_ID,
   isBuiltinPlaybookId,
+  isEngineToolKind,
   isPlaybookStepId,
   PlaybookDiffError,
   playbookStep,
   resolvePlaybook,
   validatePlaybookDiff,
   type BuiltinPlaybookId,
+  type EngineToolKind,
   type Playbook,
   type PlaybookDiff,
   type PlaybookImpact,
@@ -65,7 +67,7 @@ function parseDiff(text: string | null): PlaybookDiff {
   if (!text) return emptyPlaybookDiff();
   try {
     const value = JSON.parse(text) as PlaybookDiff;
-    return value && typeof value === "object" && value.steps ? withoutRetired(value.steps) : emptyPlaybookDiff();
+    return value && typeof value === "object" && value.steps ? withoutRetired(value) : emptyPlaybookDiff();
   } catch {
     return emptyPlaybookDiff();
   }
@@ -76,9 +78,9 @@ function parseDiff(text: string | null): PlaybookDiff {
  * would refuse: diffs saved before 2026-10-17 can hold pacing.hop_limit, retired then. The row keeps
  * it until the next change and the revisions keep it for good.
  */
-function withoutRetired(stored: PlaybookDiff["steps"]): PlaybookDiff {
+function withoutRetired(stored: PlaybookDiff): PlaybookDiff {
   const out = emptyPlaybookDiff();
-  for (const [id, change] of Object.entries(stored)) {
+  for (const [id, change] of Object.entries(stored.steps)) {
     if (!isPlaybookStepId(id) || !change || typeof change !== "object") continue;
     const keys = new Set(playbookStep(id).params.map((param) => param.key));
     const params = Object.fromEntries(Object.entries(change.params ?? {}).filter(([key]) => keys.has(key)));
@@ -87,6 +89,9 @@ function withoutRetired(stored: PlaybookDiff["steps"]): PlaybookDiff {
     if (Object.keys(params).length > 0) kept.params = params;
     if (kept.on !== undefined || kept.params) out.steps[id] = kept;
   }
+  if (stored.system && Object.keys(stored.system).length > 0) out.system = stored.system;
+  const off = (stored.tools_off ?? []).filter(isEngineToolKind);
+  if (off.length > 0) out.tools_off = off;
   return out;
 }
 
@@ -152,7 +157,7 @@ export function listPlaybooks(ctx: StoreContext): PlaybookList {
 
 /** Which engine a call runs under, and what it runs. */
 export type PlaybookScope = { sessionId?: string | null; taskId?: string | null; turnId?: string | null };
-export type PlaybookInForce = { id: string; revision: number; resolved: PlaybookResolved };
+export type PlaybookInForce = { id: string; revision: number; resolved: PlaybookResolved; diff: PlaybookDiff };
 
 /** The engine a conversation names: its own, else (for a job's thread or a Bot↔Bot direct) the one of where it came from. */
 function sessionPlaybook(ctx: StoreContext, sessionId: string | null): string | null {
@@ -190,12 +195,16 @@ export function playbookFor(ctx: StoreContext, scope: PlaybookScope): PlaybookIn
   for (const id of [named, defaultPlaybookId(ctx)]) {
     if (!id) continue;
     const found = row(ctx, id);
-    if (isBuiltinPlaybookId(id)) return { id, revision: found?.revision ?? 0, resolved: resolvePlaybook(id, parseDiff(found?.diff ?? null)) };
+    if (isBuiltinPlaybookId(id)) {
+      const diff = parseDiff(found?.diff ?? null);
+      return { id, revision: found?.revision ?? 0, resolved: resolvePlaybook(id, diff), diff };
+    }
     if (found && !found.deleted_at && isBuiltinPlaybookId(found.base_id)) {
-      return { id, revision: found.revision, resolved: resolvePlaybook(found.base_id, parseDiff(found.diff)) };
+      const diff = parseDiff(found.diff);
+      return { id, revision: found.revision, resolved: resolvePlaybook(found.base_id, diff), diff };
     }
   }
-  return { id: DEFAULT_PLAYBOOK_ID, revision: 0, resolved: resolvePlaybook(DEFAULT_PLAYBOOK_ID, null) };
+  return { id: DEFAULT_PLAYBOOK_ID, revision: 0, resolved: resolvePlaybook(DEFAULT_PLAYBOOK_ID, null), diff: emptyPlaybookDiff() };
 }
 
 /** Whether a step runs under the engine in force here. */
@@ -218,6 +227,11 @@ export function playbookParam(ctx: StoreContext, scope: PlaybookScope, step: Pla
 export function jobsRunIn(ctx: StoreContext, sessionId: string | null): boolean {
   if (readEngineLevel(ctx.db) < ENGINE_LEVELS.work_items) return true;
   return playbookFor(ctx, { sessionId }).resolved.jobs.on;
+}
+
+/** Which of the app's tools a conversation's Bots are offered, as `builtinTools` and the dispatch ask. */
+export function toolsIn(ctx: StoreContext, sessionId: string | null): { jobs: boolean; off: readonly EngineToolKind[] } {
+  return { jobs: jobsRunIn(ctx, sessionId), off: playbookFor(ctx, { sessionId }).diff.tools_off ?? [] };
 }
 
 /**
@@ -264,7 +278,7 @@ function writeRevision(ctx: StoreContext, input: {
 }
 
 function sameDiff(a: PlaybookDiff, b: PlaybookDiff): boolean {
-  return JSON.stringify(a.steps) === JSON.stringify(b.steps);
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** Writes an engine's diff (and name) as one revision; a built-in's own row is made on its first change. */
@@ -303,7 +317,7 @@ export function savePlaybook(ctx: StoreContext, id: string, input: { diff: unkno
 /** One step back to its built-in, or the whole engine when no step is named. */
 export function resetPlaybook(ctx: StoreContext, id: string, input: { step?: PlaybookStepId | null; ifRevision?: string | null } & PlaybookActor): Playbook {
   const current = getPlaybook(ctx, id);
-  const diff: PlaybookDiff = input.step ? { v: 1, steps: { ...current.diff.steps } } : emptyPlaybookDiff();
+  const diff: PlaybookDiff = input.step ? { ...current.diff, steps: { ...current.diff.steps } } : emptyPlaybookDiff();
   if (input.step) delete diff.steps[input.step];
   return writeDiff(ctx, id, { diff, op: "reset", by: input, ifRevision: input.ifRevision });
 }

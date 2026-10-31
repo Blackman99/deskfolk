@@ -374,6 +374,11 @@ export abstract class ApiBase<Row extends PendingRow> {
     return this.get<PlaybookList>("/v1/playbooks");
   }
 
+  /** The System section an engine's Bots read when it says nothing of its own, and the one it has. */
+  async playbookSystem(id: string, locale: Locale): Promise<{ text: string; own: string | null }> {
+    return this.get<{ text: string; own: string | null }>(`/v1/playbooks/${encodeURIComponent(id)}/system?locale=${locale}`);
+  }
+
   /** What moving to an engine with no jobs would leave standing: one conversation, or every one following the default. */
   async playbookImpact(sessionId?: string | null): Promise<PlaybookImpact> {
     return this.get<PlaybookImpact>(`/v1/playbooks/impact${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ""}`);

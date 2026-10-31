@@ -1,4 +1,4 @@
-import type { Locale, ToolKind } from "@real-bot/protocol";
+import type { EngineToolKind, Locale, ToolKind } from "@real-bot/protocol";
 import type { ToolShellKind } from "../platform";
 import type { ChatTool, Localized, ToolDef } from "./tool-schema";
 import { toChatTools } from "./tool-schema";
@@ -129,9 +129,18 @@ export function toolKind(name: string): ToolKind | undefined {
 
 const JOB_TOOLS: ReadonlySet<string> = new Set(TOOLS_BY_KIND.work.map((def) => def.name));
 
-/** A tool of the job kernel: not offered, and refused if called, where the engine works in no jobs (ADR 0103). */
-export function isJobTool(name: string): boolean {
-  return JOB_TOOLS.has(name);
+/** What a conversation's engine lets its Bots reach (ADR 0103); what `store.toolsIn` says. */
+export type ToolsInEngine = { jobs: boolean; off: readonly EngineToolKind[] };
+
+/**
+ * Whether an app tool is offered under an engine: a tool of the job kernel not where it works in no
+ * jobs, a tool of a group it leaves out not at all. What is not offered is refused if called. Anything
+ * that is not one of the app's tools is no business of the engine.
+ */
+export function offeredIn(name: string, scope: ToolsInEngine): boolean {
+  if (JOB_TOOLS.has(name)) return scope.jobs;
+  const kind = KIND_OF.get(name);
+  return !kind || !(scope.off as readonly ToolKind[]).includes(kind);
 }
 
 /**
@@ -205,11 +214,12 @@ export function toolDescription(name: string, locale: Locale, env: { level: numb
  * The app's tools for one hop. `edited` gives the description you wrote for a tool (ADR 0064), or
  * undefined to keep the one shipped; parameters are never edited.
  */
-export function builtinTools(locale: Locale, engineLevel = 0, edited?: (name: string) => string | undefined, jobs = true): ChatTool[] {
+export function builtinTools(locale: Locale, engineLevel = 0, edited?: (name: string) => string | undefined, scope: ToolsInEngine = { jobs: true, off: [] }): ChatTool[] {
+  const { jobs } = scope;
   // Level 5 (ADR 0046): work is handed over with submit and judged with review.
   // plan_items (ADR 0053): the lead lays the plan out as tickets, owners, reviewers, dependencies and parts.
   const defs = engineLevel >= 3 ? [...TOOLS, DELEGATE, ...(engineLevel >= 5 ? [SUBMIT, REVIEW, PLAN_ITEMS] : [])] : TOOLS;
-  const tools = toChatTools(jobs ? defs : defs.filter((def) => !JOB_TOOLS.has(def.name)), locale);
+  const tools = toChatTools(defs.filter((def) => offeredIn(def.name, scope)), locale);
   if (engineLevel >= 3 && jobs) {
     for (const tool of tools) {
       if (tool.function.name === "send_message") {

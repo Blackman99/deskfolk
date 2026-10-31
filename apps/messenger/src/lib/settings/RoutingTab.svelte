@@ -17,6 +17,7 @@
 	import PlaybookHeader from './PlaybookHeader.svelte';
 	import PlaybookMap from './PlaybookMap.svelte';
 	import PlaybookStepDetail from './PlaybookStepDetail.svelte';
+	import PlaybookTurnPart from './PlaybookTurnPart.svelte';
 	import RoutingNode from './RoutingNode.svelte';
 	import ModelLadderCard from './ModelLadderCard.svelte';
 	import { ModelLadder } from './model-ladder.svelte.ts';
@@ -251,6 +252,17 @@
 					<ModelLadderCard {ladder} {providers} claudeCode={claudeStatus} {agents} claudeModels={runtime.client} {t} />
 				{/if}
 			</div>
+			{#if current}
+				<PlaybookTurnPart
+					playbook={current}
+					locale={ui}
+					api={runtime.client}
+					onsave={(diff) => playbooks.save(current.id, diff)}
+					saving={playbooks.saving}
+					error={playbooks.error}
+					{t}
+				/>
+			{/if}
 		</section>
 	{:else if current}
 		{@const role = stepRole(selected)}

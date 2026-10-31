@@ -4,15 +4,16 @@
  * A page is built when it is needed and thrown away; nothing here is cached or global, so two stores
  * (two tests, a copy of the database) never see each other's edits.
  */
-import { merge3Lines, type Locale } from "@real-bot/protocol";
+import { merge3Lines, type Locale, type PlaybookDiff, type PlaybookResolved } from "@real-bot/protocol";
 import { HttpError } from "../errors";
+import { ENGINE_LEVELS } from "../store/schema-gate";
 import { toolShell, type ToolShellKind } from "../platform";
 import type { Store } from "../store";
 import type { PromptLocale, PromptRevisionRow, WritePromptInput } from "../store/prompts";
 import { fill, type Placeholder } from "./fill";
 import { renderDefault, slotDef, slotLocale, type PromptEnv, type PromptRef, type SlotDef } from "./registry";
 import { systemText, type TurnPromptTexts } from "./system";
-import { NO_WAIT_EDITS, plainSystemText } from "./system-plain";
+import { NO_WAIT_EDITS, plainSystemText, withoutToolKinds } from "./system-plain";
 import { validatePromptText, type PromptProblem } from "./validate";
 
 /** One slot you edited, as the store keeps it. */
@@ -73,19 +74,33 @@ export function turnPromptTexts(page: PromptPage): TurnPromptTexts & { preface?:
 }
 
 /**
- * The turn texts of one conversation: its engine works in jobs, or the System section for one that
- * does not (ADR 0103), which takes the place of yours and of the agent preface's too: both were
- * written for the jobs and name their tools. The section notes hold either way.
+ * The System section an engine's Bots read when the engine says nothing of its own (ADR 0103): one
+ * with no jobs reads the one written for that, which takes the place of your edit too (it was written
+ * for the jobs and names their tools). Otherwise your edit, as you wrote it, else what the app ships,
+ * saying what this engine changes: nobody waiting on your word, tools it leaves out.
+ */
+export function engineSystemDefault(store: PromptSource, engine: { resolved: PlaybookResolved; diff: PlaybookDiff }, locale: Locale, shell: ToolShellKind = toolShell().kind): string {
+  const level = store.capabilities().engine_level;
+  const off = engine.diff.tools_off ?? [];
+  // Below work items there is only the way that level runs (`jobsRunIn`).
+  if (level >= ENGINE_LEVELS.work_items && !engine.resolved.jobs.on) return withoutToolKinds(plainSystemText(locale, shell), off, locale);
+  const edited = promptPage(store, locale).edited("turn.system");
+  if (edited !== undefined) return edited;
+  const [from, to] = NO_WAIT_EDITS[locale];
+  const shipped = systemText(locale, shell, level);
+  return withoutToolKinds(engine.resolved.wait_word.on ? shipped : shipped.replace(from, to), off, locale);
+}
+
+/**
+ * The turn texts of one conversation: its engine's own System section, else what `engineSystemDefault`
+ * says. The agent preface you edited names the jobs' tools too, so it goes where they do. The section
+ * notes hold either way.
  */
 export function turnPromptTextsIn(store: PromptSource & Pick<Store, "jobsRunIn" | "playbookFor">, locale: Locale, sessionId: string, shell: ToolShellKind = toolShell().kind): TurnPromptTexts & { preface?: string } {
   const { preface, ...texts } = turnPromptTexts(promptPage(store, locale));
-  if (!store.jobsRunIn(sessionId)) return { ...texts, system: plainSystemText(locale, shell) };
-  // With nobody waiting on the user's word, the default says so; what you wrote yourself stays as you wrote it.
-  if (texts.system === undefined && !store.playbookFor({ sessionId }).resolved.wait_word.on) {
-    const [from, to] = NO_WAIT_EDITS[locale];
-    return { ...texts, preface, system: systemText(locale, shell, store.capabilities().engine_level).replace(from, to) };
-  }
-  return { ...texts, preface };
+  const engine = store.playbookFor({ sessionId });
+  const system = engine.diff.system?.[locale] ?? engineSystemDefault(store, engine, locale, shell);
+  return store.jobsRunIn(sessionId) ? { ...texts, preface, system } : { ...texts, system };
 }
 
 /** Tool descriptions you edited, for `builtinTools`. */

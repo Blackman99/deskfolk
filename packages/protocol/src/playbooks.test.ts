@@ -50,6 +50,21 @@ test("plain works in no jobs: what stands on them stops with them, and a stop st
   expect(stoppedBy("reader", plain)).toBeNull();
 });
 
+test("an engine's own System section and the tools it leaves out are kept, in one order, and checked", () => {
+  const diff = validatePlaybookDiff({ steps: {}, system: { en: "mine", zh: "我的" }, tools_off: ["setup", "roster", "setup"] }, "plain");
+  expect(diff).toEqual({ v: 1, steps: {}, system: { zh: "我的", en: "mine" }, tools_off: ["roster", "setup"] });
+  expect(JSON.stringify(Object.keys(diff.system!))).toBe('["zh","en"]');
+  // Nothing set, nothing kept: a diff that says nothing reads as the built-in.
+  expect(validatePlaybookDiff({ steps: {}, system: {}, tools_off: [] }, "general")).toEqual({ v: 1, steps: {} });
+  expect(() => validatePlaybookDiff({ steps: {}, system: { fr: "x" } }, "general")).toThrow("unknown language fr");
+  expect(() => validatePlaybookDiff({ steps: {}, system: { zh: "  " } }, "general")).toThrow("must be text");
+  expect(() => validatePlaybookDiff({ steps: {}, system: { zh: "x".repeat(50_001) } }, "general")).toThrow("at most");
+  // What a turn is, and what goes with jobs, cannot be left out here.
+  for (const kind of ["files", "talk", "work", "self", "annotations"]) {
+    expect(() => validatePlaybookDiff({ steps: {}, tools_off: [kind] }, "general")).toThrow("cannot be left out");
+  }
+});
+
 test("what a step requires stands on nothing else, so one pass settles it", () => {
   for (const step of PLAYBOOK_STEPS) {
     for (const id of step.requires ?? []) expect(playbookStep(id).requires ?? []).toEqual([]);

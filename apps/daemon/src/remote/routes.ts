@@ -103,9 +103,11 @@ add("POST", "prompt-revisions/:id/(undo|restore)", {});
 // Engines (ADR 0085): read, change as a difference from the built-in, reset a step, make your own,
 // rename or remove it, and a conversation's engine. The daemon checks a difference's shape.
 const playbook = `playbooks/(?:${BUILTIN_PLAYBOOK_IDS.join("|")}|[0-9A-HJKMNP-TV-Z]{26})`;
-const playbookDiff: Check = v => !!v && typeof v === "object" && !Array.isArray(v) && JSON.stringify(v).length <= 8000;
+// Room for an engine's own System section in both languages (ADR 0103); the daemon checks each text.
+const playbookDiff: Check = v => !!v && typeof v === "object" && !Array.isArray(v) && JSON.stringify(v).length <= 120_000;
 get("playbooks"); get(playbook); get(`${playbook}/revisions`);
 get("playbooks/impact", { session_id: id });
+get(`${playbook}/system`, { locale: one("zh", "en") }, ["locale"]);
 add("POST", "playbooks", { from: string, name: string }, ["from", "name"]);
 add("PUT", playbook, { diff: playbookDiff, if_revision: nullable(string) }, ["diff"]);
 add("POST", `${playbook}/reset`, { step: nullable(string), if_revision: nullable(string) });

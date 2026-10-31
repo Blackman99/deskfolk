@@ -2,7 +2,8 @@
  * 引擎 (Playbook, ADR 0085, ADR 0103): how the app wraps a conversation. The floor — lines taken in
  * order, a stop that is a stop, approvals, the spend ledger — stays code under every engine. Whether
  * the conversation works in jobs at all is a step (`jobs`), and so is each of the app's own calls
- * hung on them; an engine says which run and with what numbers. Prompts and models stay global
+ * hung on them; an engine says which run and with what numbers, and can carry a System section of
+ * its own and leave groups of the app's tools out. The other prompts and the models stay global
  * (ADR 0064, ADR 0077), shown beside the steps that use them.
  *
  * Four engines are built in. What you change is kept as a diff from the built-in it is based on,
@@ -10,6 +11,7 @@
  * built-in" and resetting a step come straight from the diff. Not the same thing as the engine
  * level (`engine_level`, ADR 0040), which is how far a data folder has been migrated.
  */
+import type { Locale } from "./constants.ts";
 import type { BuiltinModelRole } from "./models.ts";
 
 /** Where a step hangs: what sets it off, in the order Roles draws them. */
@@ -121,9 +123,31 @@ export function isPlaybookStepId(value: unknown): value is PlaybookStepId {
 export type PlaybookStepSetting = { on: boolean; params: Record<string, number> };
 export type PlaybookResolved = Record<PlaybookStepId, PlaybookStepSetting>;
 
+/**
+ * The groups of the app's tools an engine can leave out (ADR 0103): what a Bot can reach, not how it
+ * works. Files and speaking are what a turn is; plans and hand-overs go with `jobs`; a Bot's profile,
+ * skills and memory are what make it one, and annotations come to it on your lines anyway.
+ */
+export const ENGINE_TOOL_KINDS = ["roster", "routines", "setup", "prompts"] as const;
+export type EngineToolKind = (typeof ENGINE_TOOL_KINDS)[number];
+
+export function isEngineToolKind(value: unknown): value is EngineToolKind {
+  return typeof value === "string" && (ENGINE_TOOL_KINDS as readonly string[]).includes(value);
+}
+
+/** The longest System section of its own an engine takes, in characters (the prompts' own check is tighter). */
+export const PLAYBOOK_SYSTEM_MAX = 50_000;
+
 /** What an engine changes from what it is based on; only what differs. */
 export type PlaybookStepDiff = { on?: boolean; params?: Record<string, number> };
-export type PlaybookDiff = { v: 1; steps: Partial<Record<PlaybookStepId, PlaybookStepDiff>> };
+export type PlaybookDiff = {
+  v: 1;
+  steps: Partial<Record<PlaybookStepId, PlaybookStepDiff>>;
+  /** Its own System section, by language: whole, yours, and no update touches it. */
+  system?: Partial<Record<Locale, string>>;
+  /** The groups of tools its Bots are not offered. */
+  tools_off?: EngineToolKind[];
+};
 
 export const BUILTIN_PLAYBOOK_IDS = ["general", "video", "coding", "plain"] as const;
 export type BuiltinPlaybookId = (typeof BUILTIN_PLAYBOOK_IDS)[number];
@@ -240,7 +264,7 @@ export class PlaybookDiffError extends Error {}
  */
 export function validatePlaybookDiff(value: unknown, base: BuiltinPlaybookId): PlaybookDiff {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new PlaybookDiffError("diff must be an object");
-  const raw = value as { v?: unknown; steps?: unknown };
+  const raw = value as { v?: unknown; steps?: unknown; system?: unknown; tools_off?: unknown };
   if (raw.v !== undefined && raw.v !== 1) throw new PlaybookDiffError("diff.v must be 1");
   const steps = raw.steps ?? {};
   if (!steps || typeof steps !== "object" || Array.isArray(steps)) throw new PlaybookDiffError("diff.steps must be an object");
@@ -272,6 +296,24 @@ export function validatePlaybookDiff(value: unknown, base: BuiltinPlaybookId): P
     }
     if (kept.on !== undefined || kept.params) out.steps[id] = kept;
   }
+  if (raw.system !== undefined) {
+    if (!raw.system || typeof raw.system !== "object" || Array.isArray(raw.system)) throw new PlaybookDiffError("diff.system must be an object");
+    const texts: Partial<Record<Locale, string>> = {};
+    for (const [locale, text] of Object.entries(raw.system as Record<string, unknown>)) {
+      if (locale !== "zh" && locale !== "en") throw new PlaybookDiffError(`diff.system: unknown language ${locale}`);
+      if (typeof text !== "string" || !text.trim()) throw new PlaybookDiffError(`diff.system.${locale} must be text`);
+      if (text.length > PLAYBOOK_SYSTEM_MAX) throw new PlaybookDiffError(`diff.system.${locale} is at most ${PLAYBOOK_SYSTEM_MAX} characters`);
+      texts[locale] = text;
+    }
+    out.system = texts;
+  }
+  if (raw.tools_off !== undefined) {
+    if (!Array.isArray(raw.tools_off)) throw new PlaybookDiffError("diff.tools_off must be a list");
+    for (const kind of raw.tools_off) {
+      if (!isEngineToolKind(kind)) throw new PlaybookDiffError(`diff.tools_off: ${String(kind)} cannot be left out`);
+    }
+    out.tools_off = raw.tools_off as EngineToolKind[];
+  }
   const set = applyDiff(builtinSettings(base), out);
   for (const step of PLAYBOOK_STEPS) {
     if (step.onWhile && !set[step.id].on && set[step.onWhile].on) throw new PlaybookDiffError(`${step.id} can only be off while ${step.onWhile} is off`);
@@ -292,6 +334,12 @@ export function compactPlaybookDiff(base: BuiltinPlaybookId, diff: PlaybookDiff)
     if (Object.keys(params).length > 0) kept.params = params;
     if (kept.on !== undefined || kept.params) out.steps[step.id] = kept;
   }
+  // No built-in has either of these: whatever is set differs. In one order, so the same choice reads the same.
+  if (diff.system && Object.keys(diff.system).length > 0) {
+    out.system = { ...(diff.system.zh ? { zh: diff.system.zh } : {}), ...(diff.system.en ? { en: diff.system.en } : {}) };
+  }
+  const off = ENGINE_TOOL_KINDS.filter((kind) => diff.tools_off?.includes(kind));
+  if (off.length > 0) out.tools_off = off;
   return out;
 }
 

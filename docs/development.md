@@ -497,7 +497,7 @@ Bot 在正文里按它壳的视角写路径（刚 `echo ... > sales.csv` 之后�
 - **接到环节上**：能关的环节在原来的 `ablation.has(...)` 旁边多问一句 `store.playbookStepOn(scope, step)`（ablation 照旧压过引擎）；数在原来读常量的地方改成 `playbookFor(...).resolved.<step>.params.<key>`，跳数节奏每跳读一次。加一个环节：在目录里登记，读它的地方按上面接，`playbooks.test.ts` 的目录检查会核对默认在范围内。
 - **测试**：通用默认关着书记员和反思。测这几样、或像场景和本机接口的测试那样跑整条流水线的，先 `everyStepOn(store)`（`test-kit/playbook.ts`），场景和本机接口的测试台已经调了。
 - **Bot 模板和首启**：`bot-templates.ts` 列模板（属于哪套引擎、是不是负责人、是否预先勾上），字在 `copy/templates.ts`。向导最后一步是 `onboarding/TeamStep.svelte`：每个勾着的模板用 `planCreateBot` 出请求，`AdminMutations.createTeam` 按顺序建（带 `playbook_id`），停在第一个被拒的，已建的记在 `TeamMember.made` 里、重试不再建；两个以上再 `createGroup`（带 `playbook_id`）和 `confirmGroupLead`。「新建 Bot」（`CreateBotSheet.svelte`）的模板一行和引擎一行读同一份列表，连着没有引擎的 Mac 时不出引擎一行、也不发 `playbook_id`。
-- **本机接口**：`GET|POST /v1/playbooks`、`GET|PUT|PATCH|DELETE /v1/playbooks/:id`、`GET /v1/playbooks/:id/revisions`、`GET /v1/playbooks/impact`（换到不跑事的引擎会留下多少，ADR 0103）、`POST /v1/playbooks/:id/reset`、`PUT /v1/sessions/:id/playbook`，`POST /v1/bots`、`POST /v1/sessions` 收 `playbook_id`，设置收 `default_playbook`，都登记在手机白名单里（`local-api/routes/playbooks.ts`、`remote/routes.ts`）；改动由日志触发 `playbook.changed`。
+- **本机接口**：`GET|POST /v1/playbooks`、`GET|PUT|PATCH|DELETE /v1/playbooks/:id`、`GET /v1/playbooks/:id/revisions`、`GET /v1/playbooks/impact`（换到不跑事的引擎会留下多少，ADR 0103）、`GET /v1/playbooks/:id/system`（这个引擎现在读的系统指令和它自己的那份）、`POST /v1/playbooks/:id/reset`、`PUT /v1/sessions/:id/playbook`，`POST /v1/bots`、`POST /v1/sessions` 收 `playbook_id`，设置收 `default_playbook`，都登记在手机白名单里（`local-api/routes/playbooks.ts`、`remote/routes.ts`）；改动由日志触发 `playbook.changed`。
 
 ## 本机记录查询
 
