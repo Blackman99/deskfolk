@@ -35,6 +35,8 @@
 	let failed = $state(false);
 	/** Moving a conversation with open jobs to an engine with none leaves them where they are: said first (ADR 0103). */
 	let moving = $state<{ value: string; jobs: number } | null>(null);
+	/** A Select shows what you picked at once: a move you called off, or that failed, puts it back. */
+	let resets = $state(0);
 
 	async function choose(value: string): Promise<void> {
 		const impact = await playbooks.impactOf(value || playbooks.defaultId, sessionId);
@@ -56,6 +58,7 @@
 			await api.setSessionPlaybook(sessionId, value || null);
 		} catch {
 			failed = true;
+			resets += 1;
 		}
 	}
 </script>
@@ -64,7 +67,7 @@
 	<DangerDialog
 		copy={{ title: c.moveTitle, body: c.moveBody(moving.jobs), confirm: c.moveConfirm, cancel: c.cancel }}
 		{t}
-		onDismiss={() => (moving = null)}
+		onDismiss={() => { moving = null; resets += 1; }}
 		onConfirm={confirmMove}
 	/>
 {/if}
@@ -77,7 +80,9 @@
 			{#if failed}<span class="field-error" role="alert">{c.failed}</span>{/if}
 		</div>
 		<span class="playbook-picker-select">
-			<Select value={chosen ?? ''} {options} size="sm" ariaLabel={c.label} onchange={(value) => void choose(value)} />
+			{#key resets}
+				<Select value={chosen ?? ''} {options} size="sm" ariaLabel={c.label} onchange={(value) => void choose(value)} />
+			{/key}
 		</span>
 	</div>
 {/if}

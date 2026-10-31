@@ -67,6 +67,19 @@ test("moving a conversation with open jobs to an engine with none says so first"
   view.close();
 });
 
+test("called off, the conversation stays on its engine and the picker says so", async () => {
+  const { view, chosen } = await picking(1);
+  const trigger = () => view.host.querySelector("[data-playbook-picker] button")?.textContent;
+  expect(trigger()).toContain(t.playbooks.builtin.plain!);
+  click(document.querySelector<HTMLButtonElement>("dialog.confirm-backdrop .modal-foot button:first-child"));
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  flushSync();
+  expect(chosen).toEqual([]);
+  expect(document.querySelector("dialog.confirm-backdrop")).toBeNull();
+  expect(trigger()).toContain("跟默认（通用）");
+  view.close();
+});
+
 test("with none open it just moves", async () => {
   const { view, chosen } = await picking(0);
   expect(document.querySelector("dialog.confirm-backdrop")).toBeNull();
