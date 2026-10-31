@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { isHiddenTranscriptKind, PLAN_APPROVAL_KIND, PROJECT_AGENT_CAPS, type ClaudeCodeCommand, type PatchProjectSessionRequest, speechReady, USER_MEMBER, type Attachment, type Message, type SessionSummary } from '@real-bot/protocol';
+	import { isHiddenTranscriptKind, PLAN_APPROVAL_KIND, PROJECT_AGENT_CAPS, type AgentRunTask, type ClaudeCodeCommand, type PatchProjectSessionRequest, speechReady, USER_MEMBER, type Attachment, type Message, type SessionSummary } from '@real-bot/protocol';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
 	import MarkdownBody from '../MarkdownBody.svelte';
@@ -20,13 +20,18 @@
 	import CommandActivity from './CommandActivity.svelte';
 	import SendButton from './SendButton.svelte';
 	import { focusMode } from './focus-mode.svelte.ts';
-	import { describeStep } from './turn-activity.ts';
+	import { describeStep, stepRow, type StepRow } from './turn-activity.ts';
 	import { ComposerVoice, spacedHeard } from './composer-voice.svelte.ts';
 	import { loadClaudeModels } from '../claude-models.svelte.ts';
 	import { accountChoices, claudeStatus, codexModels, loadClaudeStatus, loadCodexStatus } from './project-agent-options.svelte.ts';
 	import ProjectAgentTune from './ProjectAgentTune.svelte';
 	import ProjectCommandMenu from './ProjectCommandMenu.svelte';
 	import ProjectPlanCard from './ProjectPlanCard.svelte';
+	import ProjectSubagentDialog from './ProjectSubagentDialog.svelte';
+	import ProjectSubagentEntry from './ProjectSubagentEntry.svelte';
+	import ProjectTaskSteps from './ProjectTaskSteps.svelte';
+	import StopMenu from './StopMenu.svelte';
+	import { isCommandTask, placeTasks, sessionTasks, taskCommandRow, taskStepRow, type TaskStopItem } from './project-tasks.ts';
 	import { loadProjectCommands, matchCommands, projectCommandsOf, slashQuery, withCommand } from './project-commands.svelte.ts';
 	import VoiceButton from './VoiceButton.svelte';
 	import VoiceStatus from './VoiceStatus.svelte';
@@ -51,7 +56,8 @@
 	 * brings is a card of its own; typing `/` lists the agent's commands (ADR 0098). A Codex
 	 * session (ADR 0099) has no plan mode and no account to pick; its `/` lists the commands the app
 	 * carries out for Codex and its skills. The message index down the left edge is a Bot
-	 * conversation's own. The header is the pane's or the page's own.
+	 * conversation's own. What it runs in the background and its subagents read as a Bot's work does
+	 * (ADR 0095, 25). The header is the pane's or the page's own.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -278,13 +284,91 @@
 	});
 	const stepLine = $derived.by(() => {
 		void runtime.toolRevision;
-		const step = run && live ? runtime.stepOf(run.id) : null;
-		return step ? describeStep(step, t.chat.activity, nowMs) : null;
+		// With its reply done the agent itself is doing nothing; a task's call is the list's, not the agent's step.
+		const step = run && live && !run.idle ? runtime.stepOf(run.id) : null;
+		return step && !taskCalls.has(step.id) ? describeStep(step, t.chat.activity, nowMs) : null;
 	});
 	const commandRows = $derived.by(() => {
 		void runtime.activityRevision;
-		return run && live ? runtime.activity.forTurn(run.id) : [];
+		if (!run || !live) return [];
+		const own = runtime.activity.forTurn(run.id).filter((row) => !taskCalls.has(row.id.slice(run.id.length + 1)));
+		return [...own, ...liveTasks.filter((task) => isCommandTask(task) && task.status !== 'running').map(keptRow)];
 	});
+
+	/**
+	 * What it runs beside its reply (ADR 0095, 25), read as a Bot's direct reads its work. The run's
+	 * own come with its events, earlier runs' and what a finished one printed are read when that
+	 * changes. While the run is live its commands are the working bubble's: going on now under its
+	 * last line, a finished one in its command card. A run over, they stay under the reply of the turn
+	 * that started them, and a subagent, like a Bot↔Bot direct, is always a way in under that line.
+	 */
+	let tasksRead = $state<AgentRunTask[]>([]);
+	const finishedTasks = $derived((run?.tasks ?? []).filter((task) => task.status !== 'running').length);
+	$effect(() => {
+		const api = runtime.client;
+		const id = sessionId;
+		void run?.id;
+		void run?.status;
+		void finishedTasks;
+		if (!api || !connected) return;
+		let gone = false;
+		void (async () => {
+			try {
+				const list = await api.projectTasks(id);
+				if (!gone) tasksRead = list;
+			} catch {
+				// A daemon from before these: the run's own list still shows.
+			}
+		})();
+		return () => {
+			gone = true;
+		};
+	});
+	const tasks = $derived(sessionTasks(run, tasksRead));
+	const taskCalls = $derived(new Set(tasks.flatMap((task) => (task.tool_use_id ? [task.tool_use_id] : []))));
+	const liveTasks = $derived(run && live ? tasks.filter((task) => task.run_id === run.id) : []);
+	const goingTasks = $derived(liveTasks.filter((task) => task.status === 'running'));
+	const agentLines = $derived(lines.filter((message) => lineOf(message) === 'agent'));
+	const placed = $derived(placeTasks(tasks, agentLines, live ? (run?.id ?? null) : null, view.hasOlderMessages ? (lines[0]?.created_at ?? null) : null));
+
+	function keptRow(task: AgentRunTask) {
+		return taskCommandRow(task, t.project.taskStatus.stopped);
+	}
+
+	/** A run over: what a line hosts of its commands, in its card. */
+	function keptRows(hosted: readonly AgentRunTask[]) {
+		return hosted.filter((task) => isCommandTask(task) && !liveTasks.includes(task)).map(keptRow);
+	}
+
+	let subagentOpen = $state<string | null>(null);
+	const subagentShown = $derived(subagentOpen ? (tasks.find((task) => task.id === subagentOpen) ?? null) : null);
+
+	/**
+	 * What a working bubble's last line opens onto, as a Bot's does: only what is going on now, the
+	 * steps of the turn and what runs beside it. Reading what a running command prints is the list's.
+	 */
+	let stepsOpen = $state(false);
+	const nowRows = $derived.by<StepRow[]>(() => {
+		void runtime.toolRevision;
+		if (!run || !live) return [];
+		const steps = run.idle ? [] : runtime.stepsOf(run.id).filter((step) => step.running && !taskCalls.has(step.id)).map((step) => stepRow(step, t.chat.activity, nowMs));
+		return [...steps, ...goingTasks.map((task) => taskStepRow(task, t.project.taskDoing[task.kind], nowMs, task.kind === 'subagent' ? () => (subagentOpen = task.id) : undefined))];
+	});
+	const footOpens = $derived(goingTasks.length > 0 || nowRows.length > 1);
+
+	/**
+	 * Stop stays in the composer. With tasks going it is a menu, as in a group: everything, or one of
+	 * them, since a background task keeps the run open and ending the agent with it cannot be the only way.
+	 */
+	const stopItems = $derived.by<TaskStopItem[]>(() => {
+		if (goingTasks.length === 0) return [];
+		return [{ key: 'run', label: t.project.stopAll, task: null }, ...goingTasks.map((task) => ({ key: `task:${task.id}`, label: t.project.stopTask(task.description || (task.command ?? task.id)), task }))];
+	});
+
+	function pickStop(item: TaskStopItem): Promise<unknown> | void {
+		if (!run) return;
+		return item.task ? runtime.stopAgentTask(item.task.run_id, item.task.id) : runtime.stopAgentRun(run.id);
+	}
 
 	/**
 	 * What goes with your next line, staged on the conversation as a Bot's composer stages it, and
@@ -394,6 +478,9 @@
 		void sessionId;
 		stuck = true;
 		activeIndexId = null;
+		tasksRead = [];
+		stepsOpen = false;
+		subagentOpen = null;
 		toBottom();
 	});
 	// New lines and a run's progress follow you down, unless you scrolled up to read.
@@ -402,6 +489,8 @@
 		void run?.partial;
 		void run?.activity;
 		void run?.status;
+		void run?.idle;
+		void stepsOpen;
 		if (stuck) toBottom();
 		void tick().then(refreshActiveIndex);
 	});
@@ -429,6 +518,8 @@
 		const observer = new ResizeObserver(apply);
 		observer.observe(bar);
 		observer.observe(list);
+		// What is at the end can grow with no line added: a command's output arriving in what the last line opened.
+		if (list.firstElementChild) observer.observe(list.firstElementChild);
 		apply();
 		return () => {
 			observer.disconnect();
@@ -580,12 +671,32 @@
 						<span class="time">{formatMessageTime(message.created_at)}</span>
 					</div>
 				{:else}
+					{@const hosted = placed.byLine.get(message.id) ?? []}
+					{@const kept = focusMode.on ? [] : keptRows(hosted)}
 					<div class="line is-agent" data-line="agent" data-message-id={message.id}>
 						<MarkdownBody source={message.body} copyLabel={t.chat.copyCode} copiedLabel={t.chat.copied} onOpenArtifact={(path) => openCited(path, message.id)} />
-						<span class="time">{formatMessageTime(message.created_at)}</span>
+						{#snippet when()}
+							<span class="time">{formatMessageTime(message.created_at)}</span>
+						{/snippet}
+						{#if kept.length > 0}
+							<CommandActivity rows={kept} {t} beside={when} />
+						{:else}
+							{@render when()}
+						{/if}
+						{#if !focusMode.on}
+							<ProjectSubagentEntry {t} tasks={hosted.filter((task) => task.kind === 'subagent')} onOpen={(task) => (subagentOpen = task.id)} />
+						{/if}
 					</div>
 				{/if}
 			{/each}
+
+			{#if placed.end.length > 0 && !focusMode.on}
+				<!-- A run that ended with nothing said: what it started has no line to hang under. -->
+				<div class="line is-agent" data-line="tasks">
+					<CommandActivity rows={keptRows(placed.end)} {t} />
+					<ProjectSubagentEntry {t} tasks={placed.end.filter((task) => task.kind === 'subagent')} onOpen={(task) => (subagentOpen = task.id)} />
+				</div>
+			{/if}
 
 			{#if run && live}
 				<!-- The agent at work, as a Bot's working bubble: what it has said, its commands, then where it is and for how long. -->
@@ -597,18 +708,38 @@
 					{/if}
 					{#if !focusMode.on}
 						<CommandActivity rows={commandRows} {t} />
+						<ProjectSubagentEntry {t} tasks={placed.bubble} onOpen={(task) => (subagentOpen = task.id)} />
 					{/if}
 					<div class="stream-foot" role="status" aria-live="polite">
 						<span class="pulse" aria-hidden="true"></span>
+						{#snippet step(text: string, full: string)}
+							{#if footOpens && !focusMode.on}
+								<button
+									type="button"
+									class="stream-step is-toggle"
+									aria-expanded={stepsOpen}
+									aria-controls={`project-steps-${run.id}`}
+									title={`${full}\n${t.chat.activity.showSteps}`}
+									data-project-steps-toggle
+									onclick={() => (stepsOpen = !stepsOpen)}
+								><span class="toggle-label">{text}</span></button>
+							{:else}
+								<span class="stream-step" title={full}>{text}</span>
+							{/if}
+						{/snippet}
 						{#if waiting}
 							<span class="stream-step">{planWaiting ? t.project.waitingPlan : t.project.waiting(agentName)}</span>
 						{:else if !focusMode.on && stepLine}
-							<span class="stream-step" title={stepLine.full}>{stepLine.text}</span>
+							{@render step(stepLine.text, stepLine.full)}
 							{#if stepLine.elapsed}<span class="stream-step-elapsed mono" aria-hidden="true">{stepLine.elapsed}</span>{/if}
+						{:else if run.idle && goingTasks.length > 0}
+							{@const text = focusMode.on ? t.sidebar.statusBackground : t.project.tasksGoing(goingTasks.length)}
+							{@render step(text, text)}
 						{:else if !focusMode.on && run.activity}
-							<span class="stream-step" title={run.activity}>{run.activity}</span>
+							{@render step(run.activity, run.activity)}
 						{:else}
-							<span class="stream-step">{run.partial ? t.stream.streaming : t.sidebar.statusRunning}</span>
+							{@const text = run.partial ? t.stream.streaming : t.sidebar.statusRunning}
+							{@render step(text, text)}
 						{/if}
 						{#if !focusMode.on}
 							<span class="duration-badge">
@@ -617,6 +748,16 @@
 							</span>
 						{/if}
 					</div>
+					{#if stepsOpen && footOpens && !focusMode.on && nowRows.length > 0}
+						<ProjectTaskSteps
+							{runtime}
+							id={`project-steps-${run.id}`}
+							title={t.chat.activity.nowTitle(agentName, nowRows.length)}
+							rows={nowRows}
+							tasks={goingTasks.filter(isCommandTask)}
+							onClose={() => (stepsOpen = false)}
+						/>
+					{/if}
 				</div>
 				{#if waiting && planWaiting}
 					<!-- The plan it asks you to approve: approved, it gets to work; a line you send is what to change. -->
@@ -769,12 +910,15 @@
 					{#if voiceOffered || voice.busy}
 						<VoiceButton {voice} {t} disabled={!connected} />
 					{/if}
+					{#if stopItems.length > 0}
+						<StopMenu items={stopItems} {t} disabled={!connected} onPick={pickStop} />
+					{/if}
 					<!-- Stop beside Send while the agent works, as in a Bot's direct: a line sent meanwhile goes into the run. -->
 					<SendButton
 						{t}
 						{connected}
 						primaryAction={{ kind: 'send', disabled: !sendable || Boolean(view.sending) || !connected }}
-						directStop={live}
+						directStop={live && stopItems.length === 0}
 						stepsAside={false}
 						sending={view.sending}
 						upload={view.upload}
@@ -785,6 +929,10 @@
 			</div>
 		</div>
 	</div>
+
+	{#if subagentShown}
+		<ProjectSubagentDialog {runtime} {t} task={subagentShown} onClose={() => (subagentOpen = null)} onOpenPath={(path) => { subagentOpen = null; openCited(path); }} />
+	{/if}
 
 	{#if shownImage && shownImage.sessionId === selected.id}
 		<MessageImageLightbox
@@ -934,8 +1082,64 @@
 		font-weight: 500;
 	}
 
-	.line.is-stream :global(.command-activity) {
+	/* The card under a line opens to the line's width, as a Bot's does, its time at the right end. */
+	.line.is-agent :global(.command-activity) {
+		align-self: stretch;
 		margin-top: 8px;
+	}
+
+	.line.is-agent :global(.command-beside) {
+		justify-content: flex-end;
+	}
+
+	/* What the last line opens onto takes the line's width too. */
+	.line.is-stream :global(.turn-steps) {
+		width: 100%;
+	}
+
+	.stream-step.is-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		font: inherit;
+		color: inherit;
+		cursor: pointer;
+	}
+
+	.stream-step.is-toggle .toggle-label {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.stream-step.is-toggle::after {
+		content: '';
+		flex-shrink: 0;
+		width: 4px;
+		height: 4px;
+		margin: 0 1px 2px 1px;
+		border-right: 1.5px solid currentColor;
+		border-bottom: 1.5px solid currentColor;
+		transform: rotate(45deg);
+		opacity: 0.6;
+		transition: transform 0.15s ease;
+	}
+
+	.stream-step.is-toggle[aria-expanded='true']::after {
+		margin-bottom: -2px;
+		transform: rotate(-135deg);
+	}
+
+	.stream-step.is-toggle:hover .toggle-label {
+		color: var(--ink);
+	}
+
+	.stream-step.is-toggle:focus-visible {
+		border-radius: var(--radius-xs);
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 
 	/* Working is the accent everywhere — the sidebar row, a Bot's bubble and this. */

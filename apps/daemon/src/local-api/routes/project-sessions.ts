@@ -1,6 +1,9 @@
-import { AGENT_KINDS, isAgentEffort, isAgentModelName, isProjectAgent, isProjectAgentMode, PROJECT_AGENT_CAPS, PROJECT_AGENTS, type AgentReplay, type CreateProjectSessionRequest, type ProjectAgentMode } from "@real-bot/protocol";
+import { AGENT_KINDS, isAgentEffort, isAgentModelName, isProjectAgent, isProjectAgentMode, PROJECT_AGENT_CAPS, PROJECT_AGENTS, type AgentReplay, type AgentTaskDetail, type CreateProjectSessionRequest, type ProjectAgentMode } from "@real-bot/protocol";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import { readAgentReplay } from "../../claude-code/replay";
+import { readOutputTail, readSubagentTrail } from "../../claude-code/task-detail";
 import { carryClaudeSession, claudeSessionRoots, findClaudeSessionFile, readClaudeSession } from "../../claude-code/sessions";
 import { HttpError } from "../../errors";
 import { jsonResponse, matchPath } from "../../http";
@@ -8,6 +11,9 @@ import { sessionUpsertFields } from "../../session-events";
 import { locateProjectPath } from "../../project-paths";
 import { occurred } from "../helpers";
 import type { RouteCtx } from "../route-ctx";
+
+/** As much of a finished task's output as its row in the list keeps, the size a Bot's kept command has. */
+const KEPT_OUTPUT = 4000;
 
 /** Local API routes: project sessions (ADR 0095) and their agent's runs. */
 export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response> | null {
@@ -47,6 +53,16 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
     }
     publish({ event: "session.upsert", occurred_at: occurred(), ...sessionUpsertFields(created) });
     return jsonResponse(created, 201, null);
+  }
+
+  // Everything its runs have sent to the background and every subagent, newest run first (ADR 0095, 25).
+  params = matchPath(path, "/v1/project-sessions/:id/tasks");
+  if (params && method === "GET") {
+    if (!store.projectOf(params.id!)) throw new HttpError(404, "not_found", "not a project session");
+    // A finished command's card opens onto the end of its output, as a Bot's kept commands do.
+    const tasks = store.agentTasksOfSession(params.id!).map((task) => (task.kind === "subagent" || task.status === "running"
+      ? task : { ...task, output: readOutputTail(task.output_file, KEPT_OUTPUT)?.output ?? null }));
+    return jsonResponse({ tasks }, 200, null);
   }
 
   // The session's newest run, live or over; null before its first.
@@ -153,6 +169,38 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
     projects.tune(params.id!, change);
     publish({ event: "session.upsert", occurred_at: occurred(), ...sessionUpsertFields(session) });
     return jsonResponse(session, 200, null);
+  }
+
+  // One task opened: read from Claude Code's own files, or asked of the run while it has no file to
+  // read yet. The id is looked up on the run: nothing the client says names a path.
+  params = matchPath(path, "/v1/agent-runs/:id/tasks/:task");
+  if (params && method === "GET") {
+    const run = store.getAgentRun(params.id!);
+    const task = run.tasks?.find((row) => row.id === params!.task);
+    if (!task) throw new HttpError(404, "not_found", "no such task");
+    if (task.kind === "subagent") {
+      const project = store.projectOf(run.session_id);
+      const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
+      const root = roots.find((entry) => entry.configDir === project?.configDir) ?? roots[0]!;
+      const session = project?.agentSession ? findClaudeSessionFile(root, project.agentSession) : null;
+      const own = session ? join(session.slice(0, -".jsonl".length), "subagents", `agent-${task.id}.jsonl`) : null;
+      // Claude Code's output file for a subagent is a link to this same file; it still leads there after a `/clear`.
+      const trail = readSubagentTrail(own && existsSync(own) ? own : task.output_file);
+      const detail: AgentTaskDetail = { task, output: null, output_bytes: null, ...trail };
+      return jsonResponse(detail, 200, null);
+    }
+    const shown = (read: { output: string; bytes: number } | null): Response => {
+      const detail: AgentTaskDetail = { task, output: read?.output ?? null, output_bytes: read?.bytes ?? null, prompt: null, model: null, steps: [] };
+      return jsonResponse(detail, 200, null);
+    };
+    const read = readOutputTail(task.output_file);
+    if (read) return shown(read);
+    return projects.taskOutput(run.id, task.id).then((asked) => shown(asked ? { output: asked.output, bytes: asked.total_bytes } : null));
+  }
+
+  params = matchPath(path, "/v1/agent-runs/:id/tasks/:task/stop");
+  if (params && method === "POST") {
+    return jsonResponse(projects.stopTask(params.id!, params.task!), 200, null);
   }
 
   params = matchPath(path, "/v1/agent-runs/:id/:action");

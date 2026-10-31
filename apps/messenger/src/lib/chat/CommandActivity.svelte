@@ -11,9 +11,11 @@
 		t: Copy;
 		/** Something short to sit on the commands' line while there is room: the reply's tag and time. */
 		beside?: Snippet;
+		/** The folded line's words, where the rows are not all commands: a subagent's tool calls. */
+		countLabel?: (count: number) => string;
 	}
 
-	let { rows, t, beside }: Props = $props();
+	let { rows, t, beside, countLabel }: Props = $props();
 
 	/**
 	 * What a turn has run so far: the finished commands. The one running now is the bubble's last
@@ -36,6 +38,7 @@
 	const failed = $derived(done.filter(isFailed).length);
 
 	function isFailed(row: CommandRow): boolean {
+		if (row.endedAs) return false;
 		return row.ok === false || (row.exitCode !== null && row.exitCode !== 0);
 	}
 
@@ -74,10 +77,11 @@
 {#snippet line(row: CommandRow, openable: boolean)}
 	{@const parts = splitProgram(commandLine(row.command ?? row.name))}
 	<span class="command-mark" aria-hidden="true">
-		{#if isFailed(row)}<Icon name="x" size={12} />{:else}<Icon name="check" size={12} />{/if}
+		{#if isFailed(row)}<Icon name="x" size={12} />{:else if row.endedAs}<Icon name="square" size={12} />{:else}<Icon name="check" size={12} />{/if}
 	</span>
 	<span class="command-text mono"><span class="command-program">{parts.program}</span>{parts.rest}</span>
 	<span class="command-meta mono">
+		{#if row.endedAs}<span>{row.endedAs}</span>{/if}
 		{#if isFailed(row)}<span class="command-exit">{row.exitCode !== null ? t.chat.activity.exit(row.exitCode) : t.chat.activity.failed}</span>{/if}
 		{#if row.durationMs !== null}<span>{formatDuration(row.durationMs)}</span>{/if}
 	</span>
@@ -94,7 +98,7 @@
 		<div class="command-head">
 		<button type="button" class="command-summary" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
 			<Icon name="terminal" class="command-summary-icon" />
-			<span class="command-count">{t.chat.commandCount(done.length)}</span>
+			<span class="command-count">{(countLabel ?? t.chat.commandCount)(done.length)}</span>
 			{#if failed > 0}
 				<span class="command-failed">· {t.chat.commandsFailed(failed)}</span>
 			{/if}
@@ -109,7 +113,7 @@
 				<ol class="command-rows" use:follow={done.length}>
 					{#each done as row (row.id)}
 						{@const openable = Boolean(row.text)}
-						<li class="command-row" class:is-failed={isFailed(row)} class:is-open={openable && opened === row.id}>
+						<li class="command-row" class:is-failed={isFailed(row)} class:is-stopped={Boolean(row.endedAs)} class:is-open={openable && opened === row.id}>
 							{#if openable}
 								<button type="button" class="command-line" aria-expanded={opened === row.id} title={row.command ?? row.name} onclick={() => toggle(row.id)}>
 									{@render line(row, true)}
@@ -285,6 +289,10 @@
 
 	.command-row.is-failed .command-mark {
 		color: var(--danger);
+	}
+
+	.command-row.is-stopped .command-mark {
+		color: var(--muted);
 	}
 
 	.command-text {

@@ -100,6 +100,8 @@ export type LocalApiOptions = {
   agentQuery?: AgentQuery;
   /** Project sessions' Claude Code (ADR 0095); a test's stand-in for the SDK's query. */
   projectQuery?: ProjectQuery;
+  /** How long a project session's run waits once its tasks have all ended; a test's is short. */
+  projectSettleMs?: number;
   /** Project sessions' Codex (ADR 0099); a test's stand-in app-server. */
   projectCodex?: () => Promise<import("../agents/runtime").ResolvedAgent>;
   /** What the daemon knows of your other local agents (ADR 0079); one is made when absent. */

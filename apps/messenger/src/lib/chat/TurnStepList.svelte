@@ -46,7 +46,11 @@
 			{@const output = row.shell && outputOf ? outputOf(row.id) : null}
 			<li class="turn-step">
 				<span class="turn-step-mark" aria-hidden="true"><span class="turn-step-pulse"></span></span>
-				<span class="turn-step-text">{row.text}</span>
+				{#if row.open}
+					<button type="button" class="turn-step-text is-open" onclick={row.open}>{row.text}</button>
+				{:else}
+					<span class="turn-step-text">{row.text}</span>
+				{/if}
 				<span class="turn-step-meta mono">
 					{#if row.time}<span>{row.time}</span>{/if}
 				</span>
@@ -120,6 +124,26 @@
 		min-width: 0;
 		overflow-wrap: anywhere;
 		white-space: pre-wrap;
+	}
+
+	button.turn-step-text {
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	button.turn-step-text:hover {
+		color: var(--accent);
+	}
+
+	button.turn-step-text:focus-visible {
+		border-radius: var(--radius-xs);
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
 	}
 
 	.turn-step-meta {

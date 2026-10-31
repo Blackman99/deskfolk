@@ -534,6 +534,7 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     tuneProjectSession: record("tuneProjectSession", null),
     answerAgentRun: record("answerAgentRun", null),
     stopAgentRun: record("stopAgentRun", null),
+    stopAgentTask: record("stopAgentTask", null),
     openCreateGroup: record("openCreateGroup"),
     startTerminal: async (...args: unknown[]) => {
       calls.push({ name: "startTerminal", args });

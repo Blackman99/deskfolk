@@ -205,6 +205,8 @@ export type StepRow = {
   /** How long it has taken so far; nothing under a second, where it would only be noise. */
   time: string | null;
   shell: boolean;
+  /** Opens what it stands for, where the row itself can say no more: a subagent's popup. */
+  open?: () => void;
 };
 
 export function stepRow(step: ToolStep, copy: ActivityCopy, nowMs: number): StepRow {

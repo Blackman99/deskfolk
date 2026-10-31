@@ -43,7 +43,7 @@ What a Bot could do used to be drawn by the workspace: reads, writes, deletes an
 
 ## 不变 / Unchanged
 
-- 拒绝不是批准，任何模式（全部允许也一样）都照旧：本机 Agent 的登录凭据（`~/.claude`、`~/.codex`、钥匙串……）读不到、碰了就停这一轮；递归搜索整个家目录或 `/` 在跑之前就拒；Claude Code 不许后台任务；叫停下的只读轮只能看。 / Refusals are not approvals and hold in every mode, allow_all included: no Bot reads your local agents' sign-ins, a recursive search of your whole home or `/` is refused before it runs, Claude Code runs nothing in the background, and a read-only segment under a stop only looks.
+- 拒绝不是批准，任何模式（全部允许也一样）都照旧：本机 Agent 的登录凭据（`~/.claude`、`~/.codex`、钥匙串……）读不到、碰了就停这一轮；递归搜索整个家目录或 `/` 在跑之前就拒；Bot 的 Claude Code 不许后台任务（项目会话可以，[ADR 0095](0095-project-sessions.md) 决定 25）；叫停下的只读轮只能看。 / Refusals are not approvals and hold in every mode, allow_all included: no Bot reads your local agents' sign-ins, a recursive search of your whole home or `/` is refused before it runs, a Bot's Claude Code runs nothing in the background (a project session's may, [ADR 0095](0095-project-sessions.md) decision 25), and a read-only segment under a stop only looks.
 - 「允许一次」「拒绝」和被拒后 Bot 听到的话不变；叫停之下按了允许也不执行（I3）。 / Allow once, Deny and what a Bot hears on a denial are as before; a call under a stop does not run even if you allow it (I3).
 - 只有 Agent 自己事后才报的调用（Antigravity 的 print 模式、Agent 没先问就跑的）：按模式本该问或拒的，照旧停下这一轮（`agent_unguarded`）。 / A call the app only hears of after it ran (Antigravity's print mode, or one an agent ran without asking) stops the turn when its mode would have asked or refused, as before (`agent_unguarded`).
 - 你自己的终端、从消息里打开工作区外的文件（[ADR 0090](0090-the-workspace-bounds-bots-not-you.md)）不走批准。 / Your own terminal and opening files outside the workspace from a message (ADR 0090) never asked and still do not.

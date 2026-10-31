@@ -266,7 +266,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
 
   // A project session's run (ADR 0095) does not outlive the daemon: one still marked live was cut.
   options.store.interruptLiveAgentRuns();
-  const projects = createProjectRunners({ store: options.store, claudeCode, query: options.projectQuery, onTool: publishTool,
+  const projects = createProjectRunners({ store: options.store, claudeCode, query: options.projectQuery, settleMs: options.projectSettleMs, onTool: publishTool,
     ...(options.projectCodex ? { resolveCodex: options.projectCodex } : {}) });
 
   options.beforeScheduler?.(engine);

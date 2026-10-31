@@ -16,7 +16,7 @@ import { fileOfCall, placeOfCall, type PlaceContext } from "./tool-place";
 type Entry = Record<string, unknown>;
 type Result = { at: string | null; ok: boolean; decision: AgentReplayDecision | null; content: unknown };
 
-function readEntries(path: string): Entry[] {
+export function readEntries(path: string): Entry[] {
   const out: Entry[] = [];
   for (const line of readFileSync(path, "utf8").split("\n")) {
     if (!line.trim()) continue;
@@ -46,7 +46,7 @@ function decisionOf(value: unknown): AgentReplayDecision | null {
 }
 
 /** Each tool result by its call's id: when it was written, whether it failed, the decision beside it. */
-function resultsOf(entries: Entry[]): Map<string, Result> {
+export function resultsOf(entries: Entry[]): Map<string, Result> {
   const results = new Map<string, Result>();
   for (const entry of entries) {
     if (entry.type !== "user") continue;
@@ -90,7 +90,7 @@ function callsOf(entries: Entry[], agentId: string | null, ctx: Omit<PlaceContex
 }
 
 /** The text of a tool result, whether a string or text parts. */
-function resultText(content: unknown): string {
+export function resultText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content.map((part) => (part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : "")).join(" ");

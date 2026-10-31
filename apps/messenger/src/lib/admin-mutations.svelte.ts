@@ -228,6 +228,18 @@ export class AdminMutations {
     }
   }
 
+  /** Ends one background task; the run's own event says when it has. */
+  async stopAgentTask(runId: string, taskId: string): Promise<ApiError | null> {
+    const api = this.host.api;
+    if (!api) return null;
+    try {
+      await api.stopAgentTask(runId, taskId);
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api);
+    }
+  }
+
   async createGroup(body: CreateGroupRequest): Promise<ApiError | null> {
     const api = this.host.api;
     if (!api) return null;

@@ -1,11 +1,11 @@
 import type { Database } from "bun:sqlite";
-import { isProjectAgent, isProjectAgentMode, USER_MEMBER, type AgentRun, type AgentRunApproval, type AgentRunStatus, type Message, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
+import { isProjectAgent, isProjectAgentMode, USER_MEMBER, type AgentRun, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
 import type { ClaudeSessionRead } from "../claude-code/sessions";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { getMessage } from "./messages";
 import { getSession } from "./sessions";
-import { sessionRow, type StoreContext } from "./shared";
+import { jsonColumnOr, sessionRow, type StoreContext } from "./shared";
 
 /** Who a project session's agent lines are by: no Bot, so no Bot id (ADR 0095). */
 export const AGENT_AUTHOR = "agent";
@@ -55,6 +55,10 @@ export function migrateProjectSessions(db: Database): void {
   for (const name of ["project_dir", "project_agent", "project_config_dir", "project_agent_session", "project_source", "project_model", "project_effort", "project_mode"]) {
     if (!names.includes(name)) db.run(`ALTER TABLE sessions ADD COLUMN ${name} TEXT`);
   }
+  // What a run has going beside its reply (ADR 0095, 25). A table made before them has neither.
+  const runs = db.query<{ name: string }, []>(`PRAGMA table_info(agent_runs)`).all().map((row) => row.name);
+  if (runs.length > 0 && !runs.includes("tasks")) db.run(`ALTER TABLE agent_runs ADD COLUMN tasks TEXT`);
+  if (runs.length > 0 && !runs.includes("idle")) db.run(`ALTER TABLE agent_runs ADD COLUMN idle INTEGER NOT NULL DEFAULT 0`);
 }
 
 export type ProjectOf = {
@@ -160,7 +164,17 @@ export function insertAgentLine(ctx: StoreContext, sessionId: string, input: { k
   return getMessage(ctx, id);
 }
 
-type AgentRunRow = Omit<AgentRun, "approval"> & { approval: string | null };
+type AgentRunRow = Omit<AgentRun, "approval" | "tasks" | "idle"> & { approval: string | null; tasks: string | null; idle: number };
+
+/**
+ * A task cannot outlive its run: Stop, a failure or a restart ended whatever was still going, so
+ * however the run ended, it is read the same way here.
+ */
+function tasksOfRow(row: AgentRunRow): AgentTask[] {
+  const tasks = jsonColumnOr<AgentTask[]>(row.tasks, []);
+  if (row.status === "running" || row.status === "waiting_approval") return tasks;
+  return tasks.map((task) => (task.status === "running" ? { ...task, status: "stopped", ended_at: task.ended_at ?? row.updated_at } : task));
+}
 
 function toAgentRun(row: AgentRunRow): AgentRun {
   let approval: AgentRunApproval | null = null;
@@ -169,7 +183,7 @@ function toAgentRun(row: AgentRunRow): AgentRun {
   } catch {
     approval = null;
   }
-  return { ...row, approval };
+  return { ...row, approval, tasks: tasksOfRow(row), idle: row.idle === 1 && row.status === "running" };
 }
 
 export function createAgentRun(ctx: StoreContext, sessionId: string): AgentRun {
@@ -185,6 +199,19 @@ export function getAgentRun(ctx: StoreContext, id: string): AgentRun {
   return toAgentRun(row);
 }
 
+/** The tasks of the session's runs, newest run first, up to `limit`: what an earlier run did still opens. */
+export function agentTasksOfSession(ctx: StoreContext, sessionId: string, limit = 200): AgentRunTask[] {
+  const rows = ctx.db.query<AgentRunRow, [string]>(`SELECT * FROM agent_runs WHERE session_id = ? AND tasks IS NOT NULL ORDER BY created_at DESC, id DESC`).all(sessionId);
+  const out: AgentRunTask[] = [];
+  for (const row of rows) {
+    for (const task of tasksOfRow(row).reverse()) {
+      if (out.length >= limit) return out;
+      out.push({ ...task, run_id: row.id });
+    }
+  }
+  return out;
+}
+
 /** The session's newest run, live or not; null before its first. */
 export function latestAgentRun(ctx: StoreContext, sessionId: string): AgentRun | null {
   const row = ctx.db.query<AgentRunRow, [string]>(`SELECT * FROM agent_runs WHERE session_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`).get(sessionId);
@@ -194,10 +221,10 @@ export function latestAgentRun(ctx: StoreContext, sessionId: string): AgentRun |
 export function updateAgentRun(
   ctx: StoreContext,
   id: string,
-  patch: { status?: AgentRunStatus; activity?: string | null; partial?: string | null; approval?: AgentRunApproval | null; error?: string | null },
+  patch: { status?: AgentRunStatus; activity?: string | null; partial?: string | null; approval?: AgentRunApproval | null; error?: string | null; tasks?: AgentTask[]; idle?: boolean },
 ): AgentRun {
   const sets: string[] = [];
-  const values: Array<string | null> = [];
+  const values: Array<string | number | null> = [];
   for (const key of ["status", "activity", "partial", "error"] as const) {
     if (patch[key] !== undefined) {
       sets.push(`${key} = ?`);
@@ -207,6 +234,14 @@ export function updateAgentRun(
   if (patch.approval !== undefined) {
     sets.push(`approval = ?`);
     values.push(patch.approval ? JSON.stringify(patch.approval) : null);
+  }
+  if (patch.tasks !== undefined) {
+    sets.push(`tasks = ?`);
+    values.push(JSON.stringify(patch.tasks));
+  }
+  if (patch.idle !== undefined) {
+    sets.push(`idle = ?`);
+    values.push(patch.idle ? 1 : 0);
   }
   sets.push(`updated_at = ?`);
   values.push(isoNow());

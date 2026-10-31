@@ -1,4 +1,4 @@
-<script lang="ts">
+<script lang="ts" generics="Item extends { key: string; label: string } = StopMenuItem">
 	import Icon from '../Icon.svelte';
 	import { tick } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
@@ -11,13 +11,14 @@
 
 	/**
 	 * The stop menu (ADR 0040 P2): a square-and-chevron button that opens the choices of what to stop
-	 * — this Bot, this job, every Bot. The choices come from `stop-menu.ts`; picking one hands it to
+	 * — this Bot, this job, every Bot; in a project session, the run or one of its background tasks
+	 * (ADR 0095, 25). A group's choices come from `stop-menu.ts`; picking one hands it to
 	 * the owner, which makes the stop, and a refusal it hands back is said by the button until your
 	 * next click. Arrow keys walk it, Escape or a click elsewhere closes it and gives focus back to the
 	 * button. On a phone the choices open as a sheet from the bottom (`BottomSheet`).
 	 */
 	type Props = {
-		items: readonly StopMenuItem[];
+		items: readonly Item[];
 		t: Copy;
 		/** Opens upward over a composer, downward under a header. */
 		placement?: 'above' | 'below';
@@ -27,7 +28,7 @@
 		size?: 'sm' | 'md';
 		disabled?: boolean;
 		/** Makes the stop; what it resolves to is a refusal to show (an `ApiError`), or nothing. */
-		onPick: (item: StopMenuItem) => Promise<unknown> | void;
+		onPick: (item: Item) => Promise<unknown> | void;
 	};
 
 	let { items, t, placement = 'above', label = null, size = 'md', disabled = false, onPick }: Props = $props();
@@ -58,7 +59,7 @@
 	/** The click that picked: it reaches the window after the refusal may already be in. */
 	let pickedWith: Event | null = null;
 
-	async function pick(item: StopMenuItem, e: Event): Promise<void> {
+	async function pick(item: Item, e: Event): Promise<void> {
 		pickedWith = e;
 		open = false;
 		failed = false;

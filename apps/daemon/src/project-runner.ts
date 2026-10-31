@@ -5,7 +5,9 @@
  * started. In plan mode (ADR 0098) it writes no file but its plan, and the plan is a card of its
  * own: approved, it gets to work; not, it keeps planning. Nothing else of a Bot's turn runs: no jobs, organizer, end contract or supervisor. The
  * agent keeps the history itself — the first run starts or branches its session, every later one
- * resumes it — so a run is sent only your new line, with its pictures.
+ * resumes it — so a run is sent only your new line, with its pictures. What it sends to the
+ * background keeps the run open until it ends (ADR 0095, 25), so a line you send meanwhile is
+ * answered at once and what it started is seen, opened and ended here.
  */
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
@@ -16,7 +18,8 @@ import { placeOfCall } from "./claude-code/tool-place";
 import { modelOf } from "./claude-code/replay";
 import { changeVerdict } from "./permission-gate";
 import { accountOf, claudeChildEnv } from "./claude-code/status";
-import { AGENT_WORK_TOOLS, decideAgentCall } from "./claude-code/policy";
+import { AGENT_BACKGROUND_TOOLS, AGENT_WORK_TOOLS, decideAgentCall } from "./claude-code/policy";
+import { backgroundTaskOf, createTaskBoard, type TaskBoard, type TaskCall } from "./claude-code/task-board";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
 import { withSystemProxy } from "./claude-code/proxy";
 import { claudeLaunch, killsTree } from "./claude-code/spawn";
@@ -39,6 +42,10 @@ export type ProjectQuery = (params: { prompt: AsyncIterable<SDKUserMessage>; opt
   applyFlagSettings?(settings: { effortLevel?: ClaudeEffort | null }): Promise<void>;
   /** The SDK's own: plan mode on or off for the steps still to come. */
   setPermissionMode?(mode: ClaudeMode): Promise<void>;
+  /** The SDK's own: ends one background task; it stays on the list, as stopped. */
+  stopTask?(taskId: string): Promise<void>;
+  /** The SDK's own, though not in its types: the last 8 KiB a shell or Monitor task wrote. */
+  getTaskOutput?(taskId: string): Promise<{ output: string; total_bytes: number; truncated: boolean }>;
 };
 
 /** The two of Claude Code's own modes a project session runs in: as usual, or planning (ADR 0098). */
@@ -58,6 +65,8 @@ export type ProjectRunnerDeps = {
    * windows and phones as tool frames, never stored. The replay reads the session files instead.
    */
   onTool?: (frame: ToolFrame) => void;
+  /** How long a run whose tasks have all ended waits for Claude Code to take that up by itself; a test's is short. */
+  settleMs?: number;
 };
 
 export type ProjectRunner = {
@@ -73,6 +82,10 @@ export type ProjectRunner = {
    * the agent's default); a key left out is not touched.
    */
   tune(sessionId: string, change: { model?: string | null; effort?: string | null; mode?: ProjectAgentMode | null }): void;
+  /** Ends one of the run's background tasks; the task's own message says when it has. */
+  stopTask(runId: string, taskId: string): AgentRun;
+  /** What a task of the live run has printed so far, asked of the agent; null when it cannot be asked. */
+  taskOutput(runId: string, taskId: string): Promise<{ output: string; total_bytes: number } | null>;
   /** Resolves once every run started so far has ended (tests). */
   idle(): Promise<void>;
   close(): void;
@@ -110,11 +123,21 @@ type Live = {
   query: ReturnType<ProjectQuery> | null;
   /** Claude Code's mode as last known: the session's when the run starts, then as it says. */
   mode: ClaudeMode;
+  /** What it has running beside its reply. */
+  board: TaskBoard;
+  /** Its reply is done and only its background tasks keep the run open. */
+  idle: boolean;
+  /** Whether this Claude Code has said which lines a result answers. */
+  lists: boolean;
 };
 
 const STDERR_KEEP = 8 * 1024;
 const ACTIVITY_MAX = 160;
 const PARTIAL_MAX = 4000;
+/** The tools a task can come from: a long run need not hold on to what every other call wrote. */
+const TASK_TOOLS = new Set(["Bash", "Monitor", "Agent", "Task"]);
+/** Claude Code takes up a task's end at once when it is going to: this long is well past that. */
+const SETTLE_MS = 2000;
 
 let sdkQuery: Promise<ProjectQuery> | null = null;
 
@@ -201,7 +224,7 @@ function lineContent(store: Store, message: Message, en: boolean): LineContent {
 }
 
 /** One line for what a tool call is doing: its name and what it names. */
-function activityOf(name: string, input: Record<string, unknown>): string {
+export function activityOf(name: string, input: Record<string, unknown>): string {
   const named = ["command", "file_path", "notebook_path", "pattern", "url", "query", "description", "path"]
     .map((key) => input[key])
     .find((value): value is string => typeof value === "string" && value.trim().length > 0);
@@ -289,18 +312,22 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       if (live.waiting[0]?.approval.kind_key === PLAN_APPROVAL_KIND) live.waiting.shift()!.resolve("revise");
       // Read at Claude Code's next step: folded into the step it is on, or answered on its own.
       send(live, lineContent(store, message, locale() === "en"));
+      setIdle(live, false);
       return;
     }
     const run = store.createAgentRun(sessionId);
     const input = inputQueue<SDKUserMessage>();
     let finish!: () => void;
+    // The call each task came from, as the hook saw it: a Monitor is known only by this.
+    const taskCalls = new Map<string, TaskCall>();
     const fresh: Live = {
       runId: run.id, sessionId, input, abort: new AbortController(), sent: [], waiting: [], asked: new Map(), said: "", stopped: false, closing: false, query: null,
       done: new Promise<void>((resolve) => { finish = resolve; }), mode: project.mode === "plan" ? "plan" : "default",
+      board: createTaskBoard((id) => (id ? taskCalls.get(id) : undefined)), idle: false, lists: false,
     };
     lives.set(sessionId, fresh);
     send(fresh, lineContent(store, message, locale() === "en"));
-    const running = runSession(fresh, project).catch((error) => {
+    const running = runSession(fresh, project, taskCalls).catch((error) => {
       console.error(`[project ${sessionId}] run failed`, error);
       if (!fresh.stopped) fail(fresh, firstLine(String(error)) ?? "error");
     }).finally(() => {
@@ -315,6 +342,12 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     const uuid = crypto.randomUUID();
     live.sent.push({ uuid, command: commandOf(content) });
     live.input.push({ ...userMessage(content), uuid });
+  }
+
+  function setIdle(live: Live, idle: boolean): void {
+    if (live.idle === idle) return;
+    live.idle = idle;
+    update(live.runId, { idle });
   }
 
   /** What it said in a step that ends before its result (Stop, a failure, the daemon going down) stays on the record, as the bubble showed it. */
@@ -338,7 +371,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     postLine(live.sessionId, "system", locale() === "en" ? `Claude Code stopped: ${detail}` : `Claude Code 出错停下了：${detail}`);
   }
 
-  async function runSession(live: Live, project: NonNullable<ReturnType<Store["projectOf"]>>): Promise<void> {
+  async function runSession(live: Live, project: NonNullable<ReturnType<Store["projectOf"]>>, taskCalls: Map<string, TaskCall>): Promise<void> {
     const en = locale() === "en";
     const status = deps.claudeCode ? await deps.claudeCode.current() : null;
     if (!status?.path) return fail(live, en ? "Claude Code was not found on this computer" : "这台电脑上没找到 Claude Code");
@@ -379,9 +412,10 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       const planning = (raw.permission_mode ?? live.mode) === "plan";
       const decision = decideAgentCall({
         tool: raw.tool_name, input: toolInput, cwd: raw.cwd || project.dir, agentId: raw.agent_id ?? null,
-        mode: "work", workspace: project.dir, configDirs, memoryDirs, plan: { on: planning, dirs: planDirs }, permission,
+        mode: "work", workspace: project.dir, configDirs, memoryDirs, plan: { on: planning, dirs: planDirs }, background: true, permission,
       });
       if (decision.kind === "deny") return deny(decision.reason);
+      if (TASK_TOOLS.has(raw.tool_name)) taskCalls.set(id, { tool: raw.tool_name, input: toolInput });
       if (!raw.agent_id) update(live.runId, { activity: activityOf(raw.tool_name, toolInput) });
       const { place, action } = placeOfCall(raw.tool_name, toolInput, { projectDir: project.dir, cwd: raw.cwd || project.dir, home, configDirs });
       const info: AgentRunToolInfo = { session_id: live.sessionId, agent_id: raw.agent_id ?? null, place, ...(action ? { action } : {}),
@@ -401,6 +435,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     const postToolUse = async (raw: HookInput, toolUseId: string | undefined, ok: boolean): Promise<HookJSONOutput> => {
       const agentId = (raw as { agent_id?: string }).agent_id;
       if (!agentId) update(live.runId, { activity: null });
+      // Sent to the background: the call returned, the work did not. It ends with its task, not here.
+      if (ok && backgroundTaskOf((raw as { tool_response?: unknown }).tool_response)) return {};
       ended(toolUseId ?? (raw as { tool_use_id?: string }).tool_use_id ?? "", ok);
       return {};
     };
@@ -451,7 +487,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       PostToolUseFailure: [{ hooks: [(raw, toolUseId) => postToolUse(raw, toolUseId, false)] }],
     };
     const env = withSystemProxy(claudeChildEnv(process.env, project.configDir), status);
-    env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = "1";
+    // As in the terminal (ADR 0095, 25). A daemon started from inside a Bot's turn could pass the switch on.
+    delete env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS;
     env.CLAUDE_CODE_STARTUP_FAILURE_RESULTS = "1";
     let stderr = "";
     // The first run starts the agent's session, or branches off the terminal session it carries on;
@@ -476,7 +513,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       // The session's own: plan mode carries from run to run until a plan is approved or you turn it off.
       permissionMode: live.mode,
       // Always offered, so plan mode turned on mid-run has a way out.
-      tools: [...AGENT_WORK_TOOLS, "ExitPlanMode"],
+      tools: [...AGENT_WORK_TOOLS, "ExitPlanMode", ...AGENT_BACKGROUND_TOOLS],
       disallowedTools: ["AskUserQuestion"],
       systemPrompt: { type: "preset", preset: "claude_code" },
       hooks,
@@ -495,14 +532,41 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     let failure: string | null = null;
     const session = query({ prompt: live.input.iterable, options });
     live.query = session;
+    /** Nothing of yours left to answer and nothing going in the background: the run is over. Its input closed, Claude Code winds down by itself. */
+    const settle = () => {
+      if (live.closing || live.stopped || live.sent.length > 0 || live.board.going() > 0) return;
+      live.closing = true;
+      live.input.close();
+    };
+    let settling: ReturnType<typeof setTimeout> | null = null;
+    let recordedSession: string | null = null;
     try {
       for await (const message of session) {
         if (live.stopped) break;
         if (message.type === "system" && message.subtype === "init") {
           const own = (message as { session_id?: string }).session_id;
-          if (own) store.recordProjectAgentSession(live.sessionId, own);
+          // Every turn says it, those Claude Code starts by itself too.
+          if (own && own !== recordedSession) store.recordProjectAgentSession(live.sessionId, own);
+          recordedSession = own ?? recordedSession;
           models.main = modelOf({ model: (message as { model?: string }).model }) ?? models.main;
           live.mode = modeOf(message) ?? live.mode;
+          setIdle(live, false);
+          continue;
+        }
+        if (message.type === "system" && ["task_started", "task_progress", "task_updated", "task_notification", "background_tasks_changed"].includes(message.subtype)) {
+          if (live.board.apply(message)) publishTasks(live);
+          const call = live.board.endedCall(message);
+          if (call) ended(call, (message as { status?: string }).status === "completed");
+          // The last one gone with the agent at rest: Claude Code goes on by itself if it has something
+          // to say about it, and says nothing when you stopped the task, so the run is not left waiting.
+          if (message.subtype === "background_tasks_changed" && live.idle && live.board.going() === 0) {
+            if (settling) clearTimeout(settling);
+            settling = setTimeout(() => { if (live.idle) settle(); }, deps.settleMs ?? SETTLE_MS);
+          }
+          continue;
+        }
+        if (message.type === "user") {
+          if (live.board.noteResult(message)) publishTasks(live);
           continue;
         }
         if (message.type === "system" && message.subtype === "status") {
@@ -541,8 +605,11 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           // The lines it answers: the ones it lists, or the oldest when it lists none of ours (an
           // older Claude Code lists none).
           const listed = (message as { user_message_uuids?: unknown }).user_message_uuids;
+          if (Array.isArray(listed)) live.lists = true;
           const mine = Array.isArray(listed) ? live.sent.filter((line) => listed.includes(line.uuid)) : [];
-          const answered = mine.length > 0 ? mine : live.sent.slice(0, 1);
+          // A turn it started by itself (a task ended, a Monitor's event) lists nothing, and answers no line of yours.
+          const itsOwn = !Array.isArray(listed) && (live.lists || live.board.any());
+          const answered = mine.length > 0 ? mine : itsOwn ? [] : live.sent.slice(0, 1);
           live.sent = live.sent.filter((line) => !answered.includes(line));
           const command = answered.find((line) => line.command)?.command ?? null;
           bill(live, message, billed, models.main);
@@ -555,16 +622,15 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           else if (command) postLine(live.sessionId, "system", commandRan(command, en));
           live.said = "";
           update(live.runId, { partial: null, activity: null });
-          // Nothing more of yours to answer: the run is over.
-          if (live.sent.length === 0) {
-            live.closing = true;
-            live.input.close();
-          }
+          settle();
+          // Only its background tasks keep it open now: the agent itself is at rest, and a line you send is answered at once.
+          if (!live.closing && live.sent.length === 0) setIdle(live, true);
         }
       }
     } catch (error) {
       if (!live.stopped) failure ??= firstLine(stderr.split("\n").filter(Boolean).at(-1) ?? "") ?? firstLine(String(error)) ?? "error";
     } finally {
+      if (settling) clearTimeout(settling);
       // A call cut by Stop or a crash never reports its end: it ends with the run.
       for (const id of [...started.keys()]) ended(id, false);
       live.closing = true;
@@ -603,6 +669,10 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
         console.error(`[project ${live.sessionId}] could not record spend`, error);
       }
     }
+  }
+
+  function publishTasks(live: Live): void {
+    update(live.runId, { tasks: live.board.list() });
   }
 
   function liveRun(runId: string): Live {
@@ -644,6 +714,24 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     stopSession(sessionId) {
       const live = lives.get(sessionId);
       if (live && !live.stopped) this.stop(live.runId);
+    },
+    stopTask(runId, taskId) {
+      const run = store.getAgentRun(runId);
+      try {
+        // Best effort, as a model change is: one that ended meanwhile has nothing to stop.
+        liveRun(runId).query?.stopTask?.(taskId).catch(() => {});
+      } catch {
+        // The run is over, and its tasks with it.
+      }
+      return run;
+    },
+    async taskOutput(runId, taskId) {
+      try {
+        const output = await liveRun(runId).query?.getTaskOutput?.(taskId);
+        return output ? { output: output.output, total_bytes: output.total_bytes } : null;
+      } catch {
+        return null;
+      }
     },
     tune(sessionId, change) {
       const live = lives.get(sessionId);

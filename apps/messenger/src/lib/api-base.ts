@@ -18,6 +18,8 @@ import type {
   PlanReplay,
   SessionReplay,
   AgentRun,
+  AgentRunTask,
+  AgentTaskDetail,
   CreateHoldRequest,
   CreateProviderRequest,
   CreateRoutineRequest,
@@ -289,6 +291,20 @@ export abstract class ApiBase<Row extends PendingRow> {
 
   async stopAgentRun(runId: string): Promise<AgentRun> {
     return this.post<AgentRun>(`/v1/agent-runs/${encodeURIComponent(runId)}/stop`);
+  }
+
+  /** What the session's runs have sent to the background and their subagents, newest run first (ADR 0095, 25). */
+  async projectTasks(sessionId: string): Promise<AgentRunTask[]> {
+    return (await this.get<{ tasks: AgentRunTask[] }>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/tasks`)).tasks;
+  }
+
+  /** One task opened: what it printed, or what a subagent did so far. */
+  async agentTaskDetail(runId: string, taskId: string): Promise<AgentTaskDetail> {
+    return this.get<AgentTaskDetail>(`/v1/agent-runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}`);
+  }
+
+  async stopAgentTask(runId: string, taskId: string): Promise<AgentRun> {
+    return this.post<AgentRun>(`/v1/agent-runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}/stop`);
   }
 
   async createGroup(body: CreateGroupRequest): Promise<SessionDetail> {

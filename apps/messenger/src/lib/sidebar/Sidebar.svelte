@@ -125,6 +125,7 @@
 	const rosterLabels = $derived({ deleted: t.top.deleted, archived: t.top.archived, fileDrop: t.sidebar.fileDrop, projectUntitled: t.project.untitled });
 	const statusLabels = $derived({
 		running: t.sidebar.statusRunning,
+		background: t.sidebar.statusBackground,
 		replying: t.sidebar.statusReplying,
 		waitingApproval: t.sidebar.statusWaitingApproval,
 		waitingAsk: t.sidebar.statusWaitingAsk,

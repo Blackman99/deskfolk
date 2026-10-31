@@ -23,6 +23,8 @@ export type CommandRow = {
    * exit code. Live frames do not carry it; their exit code says it.
    */
   ok?: boolean;
+  /** How it ended when that was neither success nor failure: a background task you stopped. */
+  endedAs?: string;
   durationMs: number | null;
   /** What it has printed, clipped to the tail a person would actually read. */
   text: string;

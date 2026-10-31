@@ -62,6 +62,84 @@ export type AgentRun = {
   error: string | null;
   created_at: string;
   updated_at: string;
+  /**
+   * What it runs beside its reply (`AgentTask`), oldest first. Absent from a daemon older than these
+   * and for Codex, which has none.
+   */
+  tasks?: AgentTask[];
+  /** Its reply is done and it is still `running` only for its background tasks: the agent itself is not at work. */
+  idle?: boolean;
+};
+
+/**
+ * What a project session's Claude Code runs beside its reply (ADR 0095, 25): a shell command in the
+ * background, a Monitor watching a command or a socket, or a subagent, foreground or background.
+ * Kept on the run; what one printed is read when you open it (`AgentTaskDetail`).
+ */
+export type AgentTaskKind = "shell" | "monitor" | "subagent" | "other";
+
+/** A task cannot outlive its run: one still going when the run ended reads as `stopped`. */
+export type AgentTaskStatus = "running" | "completed" | "failed" | "stopped";
+
+export type AgentTask = {
+  /** Claude Code's own: for a subagent also the name of its session file. */
+  id: string;
+  /** The tool call that started it: its tool frames are this task's. */
+  tool_use_id: string | null;
+  kind: AgentTaskKind;
+  status: AgentTaskStatus;
+  description: string;
+  /** What a shell or a Monitor runs, or the address a Monitor watches; the start of it when long. */
+  command: string | null;
+  /** A subagent's type (`general-purpose`). */
+  agent_type: string | null;
+  /** Where a subagent is now, in Claude Code's words (`Reading a.txt`). */
+  activity: string | null;
+  /** How it ended, in Claude Code's words: a command's exit code, a subagent's last words. */
+  summary: string | null;
+  tool_uses: number | null;
+  tokens: number | null;
+  started_at: string;
+  ended_at: string | null;
+  /** Where Claude Code keeps what it prints, once it has said; the daemon reads it, a window never does. */
+  output_file: string | null;
+};
+
+/**
+ * A task and the run it belongs to (`GET /v1/project-sessions/:id/tasks`, the session's whole list,
+ * newest run first). A finished command's or Monitor's `output` is the end of what it printed, as a
+ * Bot's kept commands have theirs; null when that can no longer be read.
+ */
+export type AgentRunTask = AgentTask & { run_id: string; output?: string | null };
+
+/** One thing a subagent did, read from its session file: what it said, or a tool call with its result. */
+export type AgentTaskStep =
+  | { kind: "say"; at: string; text: string }
+  | {
+    kind: "call";
+    id: string;
+    at: string;
+    tool: string;
+    /** The tool and what it names (`Bash npm test`). */
+    label: string;
+    /** Null while it has no result yet. */
+    ok: boolean | null;
+    duration_ms: number;
+    /** The start of what it returned. */
+    output: string | null;
+  };
+
+/** `GET /v1/agent-runs/:id/tasks/:task`: read again each time, so it follows a task still going. */
+export type AgentTaskDetail = {
+  task: AgentTask;
+  /** A shell's or a Monitor's: the end of what it printed; null once nothing can read it any more. */
+  output: string | null;
+  /** The whole of what it printed, in bytes; `output` is only the end of it when larger. */
+  output_bytes: number | null;
+  /** A subagent's: what it was asked, the model it ran on, and what it did so far. */
+  prompt: string | null;
+  model: string | null;
+  steps: AgentTaskStep[];
 };
 
 /**

@@ -727,6 +727,13 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     },
     // The model and level are read again at each turn's start; plan mode is Claude Code's only.
     tune() {},
+    // Codex's runs list no background tasks (ADR 0095, 25): there is nothing to end or read here.
+    stopTask(runId) {
+      return store.getAgentRun(runId);
+    },
+    async taskOutput() {
+      return null;
+    },
     async idle() {
       while (settling.size > 0) await Promise.all([...settling]);
     },

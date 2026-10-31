@@ -17,6 +17,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - When the Mac refuses a message, the phone no longer reconnects: the composer says why (too many files, or not taken), and keeps the files and the words. Only a link that really went reconnects.
 - A file that fails among several now fails only that message, rather than taking the link down with it.
 - After a link drops mid-upload, pressing Send again goes through the first time.
+### Project sessions run and show background commands, monitors and subagents
+
+- Claude Code in a project session can now send commands to the background, watch with Monitor and run subagents in the background, as in the terminal; all of that used to be refused. Bots still run nothing in the background
+- These read as a Bot's work does in a direct. The working bubble stays, and its last line opens onto what is going on now, running commands and Monitors with their live output. A finished one joins the "N commands" card, its output opening under it, and once the run is over stays folded under the reply of the turn that started it
+- A subagent is as a Bot↔Bot direct is: a way in under the reply, opening a popup with what it was asked, what it said and each tool call
+- While background tasks remain after a reply the run stays open, the sidebar and pane read "Background tasks running", and a line you send is answered at once. Stop stays in the composer: with tasks going it is a menu, everything or one of them. A daemon restart ends them too
 
 ### A plan in a project session can take the whole window
 

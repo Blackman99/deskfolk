@@ -23,6 +23,8 @@ export function createProjectRunners(deps: ProjectRunnersDeps): ProjectRunner {
     answer: (runId, allow) => ofRun(runId).answer(runId, allow),
     stop: (runId) => ofRun(runId).stop(runId),
     stopSession: (sessionId) => of(sessionId).stopSession(sessionId),
+    stopTask: (runId, taskId) => ofRun(runId).stopTask(runId, taskId),
+    taskOutput: (runId, taskId) => ofRun(runId).taskOutput(runId, taskId),
     tune: (sessionId, change) => of(sessionId).tune(sessionId, change),
     async idle() {
       await Promise.all([claude.idle(), codex.idle()]);

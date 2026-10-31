@@ -672,6 +672,7 @@ export class MessengerRuntime {
   tuneProjectSession(sessionId: string, change: PatchProjectSessionRequest): Promise<ApiError | null> { return this.adminMutations.tuneProjectSession(sessionId, change); }
   answerAgentRun(runId: string, allow: boolean): Promise<ApiError | null> { return this.adminMutations.answerAgentRun(runId, allow); }
   stopAgentRun(runId: string): Promise<ApiError | null> { return this.adminMutations.stopAgentRun(runId); }
+  stopAgentTask(runId: string, taskId: string): Promise<ApiError | null> { return this.adminMutations.stopAgentTask(runId, taskId); }
   createGroup(body: CreateGroupRequest): Promise<ApiError | null> { return this.adminMutations.createGroup(body); }
   createTeam(input: Parameters<AdminMutations["createTeam"]>[0]): ReturnType<AdminMutations["createTeam"]> { return this.adminMutations.createTeam(input); }
   createSkill(body: CreateSkillRequest): Promise<ApiError | null> { return this.adminMutations.createSkill(body); }

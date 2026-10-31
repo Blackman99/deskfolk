@@ -25,6 +25,8 @@ export type StatusLabels = {
   failed: string;
   interrupted: string;
   idle: string;
+  /** A project session whose agent has finished its reply, with its background tasks still going (ADR 0095, 25). */
+  background?: string;
 };
 
 /**
@@ -115,6 +117,7 @@ export function sidebarStatus(
 export function agentRunStatus(run: AgentRun | null | undefined, labels: StatusLabels): SessionStatusResult | null {
   if (run?.status === "waiting_approval") return { kind: "waiting_approval", label: labels.waitingApproval, isBusy: false };
   if (run?.status !== "running") return null;
+  if (run.idle) return { kind: "running", label: labels.background ?? labels.running, isBusy: true };
   if (run.partial?.trim()) return { kind: "replying", label: labels.replying, isBusy: true };
   return { kind: "running", label: labels.running, isBusy: true };
 }

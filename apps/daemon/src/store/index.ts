@@ -435,6 +435,7 @@ export class Store {
   readonly createAgentRun = this.bind(projectSessions.createAgentRun);
   readonly getAgentRun = this.bind(projectSessions.getAgentRun);
   readonly latestAgentRun = this.bind(projectSessions.latestAgentRun);
+  readonly agentTasksOfSession = this.bind(projectSessions.agentTasksOfSession);
   readonly updateAgentRun = this.bind(projectSessions.updateAgentRun);
   readonly interruptLiveAgentRuns = this.bind(projectSessions.interruptLiveAgentRuns);
   readonly patchBot = this.bind(bots.patchBot);

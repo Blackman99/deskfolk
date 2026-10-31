@@ -215,7 +215,9 @@ CREATE TABLE IF NOT EXISTS agent_runs (
   approval TEXT,
   error TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  tasks TEXT,
+  idle INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS agent_runs_session ON agent_runs (session_id, created_at);
 

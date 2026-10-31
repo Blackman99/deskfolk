@@ -54,6 +54,8 @@
 		)
 	);
 	const projectLive = $derived(kind === 'project' && isLiveRun(snapshot.agentRuns[session.id]));
+	/** With its reply done it is live only for its background tasks (ADR 0095, 25). */
+	const projectAtRest = $derived(projectLive && snapshot.agentRuns[session.id]?.idle === true);
 	const peerId = $derived(kind === 'you-bot' ? youBotPeer(session) : null);
 	const peerModel = $derived(peerId ? (botsById.get(peerId)?.model ?? null) : null);
 
@@ -99,7 +101,7 @@
 				<span class="bar-title" role="heading" aria-level="2">{sessionTitle(session, botsById, rosterLabels)}</span>
 				<span class="bar-meta">
 					{#if projectLive}
-						<span class="bar-status is-running"><span class="bar-pulse"></span>{t.project.live}</span>
+						<span class="bar-status is-running"><span class="bar-pulse"></span>{projectAtRest ? t.sidebar.statusBackground : t.project.live}</span>
 					{/if}
 					{#if work.kind !== 'idle'}
 						<span class="bar-status is-{work.kind}">

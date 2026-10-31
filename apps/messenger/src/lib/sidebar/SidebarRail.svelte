@@ -170,7 +170,8 @@
 			const elsewhere = directElsewhere(session, false, snapshot, botsById, statusLabels, rosterLabels, t.sidebar.elsewhere);
 			if (elsewhere) lines.push(elsewhere);
 		}
-		if (session.kind === 'project' && isLiveRun(snapshot.agentRuns[session.id])) lines.push(t.project.live);
+		const run = snapshot.agentRuns[session.id];
+		if (session.kind === 'project' && isLiveRun(run)) lines.push(run?.idle ? t.sidebar.statusBackground : t.project.live);
 		if (unread > 0) lines.push(`${t.sidebar.unread} ${unread}`);
 		return lines;
 	}

@@ -2,7 +2,8 @@
  * The app's rules for a Claude Agent turn's own tool calls (ADR 0061), decided before Claude Code
  * runs them: the permission mode every Bot has (ADR 0092: reads run, a write or a command runs,
  * waits for your OK or is refused as the mode says, wherever it lands), the same recursive-search
- * refusal, nothing outside a short list of Claude Code's tools, nothing in the background, and
+ * refusal, nothing outside a short list of Claude Code's tools, nothing in the background (a
+ * project session's may, as in the terminal: ADR 0095, 25), and
  * never Claude Code's own credentials — though a project session's file tools reach its memory of
  * that project and its saved plans, which live among them, and a Bot's read what it remembers of
  * any project (ADR 0102). A project session in plan mode (ADR
@@ -20,6 +21,8 @@ import { classifyPath, classifyShell, isAbsoluteHostPath, isWithinPath, nodePath
 
 /** The Claude Code tools a work turn is offered; anything else is refused. */
 export const AGENT_WORK_TOOLS = ["Read", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "Bash", "WebFetch", "WebSearch", "Agent", "TodoWrite"] as const;
+/** What a project session's Claude Code has on top, to watch and to end what it runs in the background (ADR 0095, 25). */
+export const AGENT_BACKGROUND_TOOLS = ["Monitor", "TaskStop"] as const;
 /** A read-only turn's: it can look and answer, nothing else (ADR 0040 I2). */
 export const AGENT_READONLY_TOOLS = ["Read", "Glob", "Grep", "WebFetch", "WebSearch"] as const;
 
@@ -65,6 +68,11 @@ export type AgentCall = {
    * for a Bot, which is never offered `ExitPlanMode`.
    */
   plan?: { on: boolean; dirs: string[] };
+  /**
+   * A project session's (ADR 0095, 25): commands and subagents may go to the background and Monitor
+   * may watch, as in the terminal. A Bot never does: its turn ends with its reply.
+   */
+  background?: boolean;
   /** The Bot's permission mode (ADR 0092): whether a write or a command runs, asks or is refused. */
   permission: PermissionMode;
   /** Whether a path exists; the disk's own when absent. */
@@ -99,16 +107,19 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   const platform = host.platform;
   const home = call.home ?? host.homedir();
   const appName = appToolName(call.tool);
-  const known = (AGENT_WORK_TOOLS as readonly string[]).includes(call.tool) || call.tool === "MultiEdit" || (call.plan !== undefined && call.tool === "ExitPlanMode");
+  const known = (AGENT_WORK_TOOLS as readonly string[]).includes(call.tool) || call.tool === "MultiEdit" || (call.plan !== undefined && call.tool === "ExitPlanMode")
+    || (call.background === true && (AGENT_BACKGROUND_TOOLS as readonly string[]).includes(call.tool));
   if (!known) return { kind: "deny", reason: `${call.tool} is not available in a Deskfolk turn` };
   // The plan it presents is yours to approve, whatever the mode: approving is what ends planning.
   if (call.tool === "ExitPlanMode") return { kind: "ask", effect: false, appName, approval: planApproval(call.input) };
   if (call.mode === "readonly" && !(AGENT_READONLY_TOOLS as readonly string[]).includes(call.tool)) {
     return { kind: "deny", reason: "this is a read-only turn (a stop holds this work): look and answer, nothing else" };
   }
-  if (call.input.run_in_background === true) {
+  if (call.input.run_in_background === true && !call.background) {
     return { kind: "deny", reason: "background tasks are not available here: run it in the foreground and wait for it" };
   }
+  // Ending what it started changes nothing else; a Monitor on a socket only listens, as WebFetch only reads.
+  if (call.tool === "TaskStop" || (call.tool === "Monitor" && typeof call.input.command !== "string")) return { kind: "allow", effect: false, appName };
   if (call.tool === "Agent") {
     const isolation = call.input.isolation;
     if (typeof isolation === "string" && isolation !== "none") return { kind: "deny", reason: "subagents run here, in this workspace" };
@@ -116,7 +127,8 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   }
   if (FREE.has(call.tool)) return { kind: "allow", effect: false, appName };
 
-  if (call.tool === "Bash") {
+  // A Monitor runs a shell command as Bash does, and answers to the same rules.
+  if (call.tool === "Bash" || call.tool === "Monitor") {
     const command = typeof call.input.command === "string" ? call.input.command : "";
     if (touchesClaudeCredentials(command, home, platform, call.configDirs)) {
       // Its memory and plans are open to the file tools only: a command could `cd` there and on to the rest.
