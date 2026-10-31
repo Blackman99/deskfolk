@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A project session's run time no longer jumps with each command
+
+- The last line of a project session's working bubble says what the agent is doing and how long the run has taken. The line was only as wide as its text, so the time sat right after the command and jumped sideways with every command's length. It now stays at the line's right end, as on a Bot's working bubble, and a command too long for the line clips before it.
+
 ### Stopping and going on no longer post a note in the conversation
 
 - Telling a Bot 「停」 ("stop"), stopping from a stop menu, or pressing Stop on a line made the app answer in the conversation with a card — "Stopped all of …'s work (you said at 12:28: 「停」) … Running now: nothing. Say anything more to it and it goes on from what you say" — marked "Lifted" once you spoke again. Stopping and going on are now built in and say nothing: what was running stopping is the answer, and your next line goes on, as with the Stop button. "Continue" on a line, and "Only “…”", "Only X goes on" and "All go on" on an older card, no longer post a card either. Which turns stopped and where each had got to is still recorded and shows on the flow board. The card's Undo, "Stop every Bot" and "Drop this job" go with it: just say what comes next, say so or use a stop menu to stop more, and drop a job on the flow board. Cards already posted stay in the conversation and their buttons still work. See [ADR 0101](docs/adr/0101-stopping-and-going-on-say-nothing.md).

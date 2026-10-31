@@ -4,13 +4,15 @@
  * Every line is a fixture.
  */
 import { copyFor } from '../../src/lib/copy.ts';
-import { aMessage, aProjectSession, fakeRuntime } from '../../src/lib/test-fixtures.ts';
+import { aMessage, aProjectSession, anAgentRun, fakeRuntime } from '../../src/lib/test-fixtures.ts';
 import ProjectChat from '../../src/lib/chat/ProjectChat.svelte';
+import type { AgentRun } from '@real-bot/protocol';
 
-export function projectChatStory() {
+export function projectChatStory(run: AgentRun | null = null) {
   const session = aProjectSession();
   const runtime = fakeRuntime({
     sessions: [session],
+    ...(run ? { agentRuns: { [session.id]: run } } : {}),
     messages: [
       aMessage({ id: 'm1', session_id: session.id, body: '把登录循环修掉，再跑一遍测试', created_at: '2026-09-19T02:00:00.000Z' }),
       aMessage({ id: 'm2', session_id: session.id, kind: 'bot', author: 'agent', body: '**修好了**：会话过期时不再跳回登录页。测试全部通过。', created_at: '2026-09-19T02:00:05.000Z' }),

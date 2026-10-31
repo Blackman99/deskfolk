@@ -915,9 +915,14 @@
 		overflow-wrap: anywhere;
 	}
 
-	/* The working bubble's last line, as a Bot's: its step, that step's time and the whole run's. */
+	/*
+	 * The working bubble's last line, as a Bot's: its step, that step's time and the whole run's. The
+	 * line's other children sit at their own width; this one takes all of it, or the run's time has
+	 * nowhere to go and follows the step, jumping with every command's length.
+	 */
 	.stream-foot {
 		display: flex;
+		align-self: stretch;
 		align-items: center;
 		gap: 6px;
 		min-width: 0;
@@ -960,7 +965,7 @@
 		flex-shrink: 0;
 	}
 
-	/* The whole run's time sits at the right end, where a finished line has its time. */
+	/* The whole run's time sits at the right end, as on a Bot's working bubble, whatever the step says. */
 	.duration-badge {
 		display: inline-flex;
 		align-items: center;

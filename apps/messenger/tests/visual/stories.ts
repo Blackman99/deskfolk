@@ -16,6 +16,7 @@ import {
 	aDirect,
 	aGroup,
 	aMessage,
+	anAgentRun,
 	anApproval,
 	anAttachment,
 	anMcpServer,
@@ -1729,6 +1730,7 @@ export const rc11Stories = {
   'taskmap-head-narrow': taskmapHeadStory(360, 720, 2),
   'taskmap-head-many': taskmapHeadStory(1000, 640, 'many'),
   'project-chat': projectChatStory(),
+  'project-chat-working': projectChatStory(anAgentRun({ activity: 'Bash npm test', partial: '我先看一下日志。' })),
 	'onboarding-validation': {
 		component: Shell as never,
 		props: { runtime: onboardingValidationRuntime() },
