@@ -1,7 +1,7 @@
 import { FILE_DROP_SESSION_ID } from "@real-bot/protocol";
 import { base64url, canonicalBytes, canonicalHash, decodeFileChunk, fromBase64url, fragmentMessage, HostSession, identityPublic,
   openPairing, parseRemoteRequest, randomBytes, Reassembler, sealPairingGrant, sha256Hex, signGrant, text,
-  encodeFileChunk, MAX_BODY, MAX_FILE_CHUNK, REMOTE_FILE_STREAMS, REASSEMBLY_TTL_MS, type IdentitySecrets, type LogicalType,
+  encodeFileChunk, MAX_BODY, MAX_FILE_CHUNK, REMOTE_FILE_STREAMS, REMOTE_UPLOAD_FILES, REASSEMBLY_TTL_MS, type IdentitySecrets, type LogicalType,
   type PairingContext, type PairingQr, type PairingRequest, type RemoteRequest, type RemoteResponse } from "@real-bot/remote";
 import { deflateRawSync } from "node:zlib";
 import type { LocalApi } from "../local-api";
@@ -408,7 +408,8 @@ export class RemoteController {
     const retire = (id: number) => {
       fileStreams.delete(id);
       retiredStreams.add(id);
-      if (retiredStreams.size > 32) retiredStreams.delete(retiredStreams.values().next().value!);
+      // At least a whole message's worth: failing one retires them all, and each may still have a chunk on its way.
+      if (retiredStreams.size > REMOTE_UPLOAD_FILES) retiredStreams.delete(retiredStreams.values().next().value!);
     };
     const abortUploads = (code: "cancelled" | "failed" = "cancelled") => {
       for (const [id, stream] of [...fileStreams]) {
@@ -523,7 +524,9 @@ export class RemoteController {
         if (previous.payload_sha256 !== digest) throw new HttpError(409, "conflict", "request id has a different payload");
         return { receipt: this.options.store.receipts.read(scope) };
       }
-      if (fileStreams.size + files.length > REMOTE_FILE_STREAMS) throw new HttpError(429, "stream_limit", "file stream limit");
+      // The device sends a message's files one after the other, so they are one transfer however many.
+      // Counting each as a stream of its own refused every message with three pictures or more.
+      if (fileStreams.size >= REMOTE_FILE_STREAMS || files.length > REMOTE_UPLOAD_FILES) throw new HttpError(429, "stream_limit", "file stream limit");
       const opened: Array<{ streamId: number; filename: string; size: number; sha256: string }> = [];
       const waiters: Array<Promise<import("../store").FileCommit>> = [];
       for (const file of files) {
@@ -716,6 +719,9 @@ export class RemoteController {
         if (frame.type === 5) {
           const chunk = decodeFileChunk(frame.body);
           const stream = fileStreams.get(chunk.streamId);
+          // Already on its way when a file of its message failed: the device stops once it hears the
+          // answer, which is what it should hear, not the link going down around it.
+          if (!stream && retiredStreams.has(chunk.streamId)) return;
           if (!stream || stream.direction !== "up" || !stream.live) throw new Error("stream_chunk");
           try {
             this.options.store.writeLiveFile(stream.live, Number(chunk.offset), chunk.chunk);

@@ -22,6 +22,8 @@ export const zh = {
   workspaceRef: "工作区里的原文件，发出时不复制",
   /** Over the composer while files from the tree are dragged onto it. */
   dropWorkspaceItems: "松开即附上 · 不复制",
+  tooManyFiles: "文件太多，这次没有发出去。去掉一些再发。",
+  sendRefused: "没有发出去，再试一次。",
   removeMention: "移除提及",
   /** The ✨ beside send. Each press is one model call on the spend ledger. */
   suggest: "建议下一步（调用一次模型）",
@@ -49,6 +51,8 @@ export const en: CopyShape<typeof zh> = {
   removeAttachment: "Remove attachment",
   workspaceRef: "The file in the workspace itself; nothing is copied",
   dropWorkspaceItems: "Drop to attach · nothing is copied",
+  tooManyFiles: "Too many files; this did not go out. Remove some and send again.",
+  sendRefused: "This did not go out; try again.",
   removeMention: "Remove mention",
   suggest: "Suggest what to send next (one model call)",
   suggestStop: "Stop drafting suggestions",

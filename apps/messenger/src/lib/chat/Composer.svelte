@@ -512,6 +512,10 @@
 		<VoiceStatus {voice} {t} />
 	{/if}
 
+	{#if view?.sendRefused}
+		<p class="field-error composer-refused" role="alert">{view.sendRefused === 'too_many_files' ? t.composer.tooManyFiles : t.composer.sendRefused}</p>
+	{/if}
+
 	{#if attachments.pendingAttachments.length > 0 || attachments.pendingPaths.length > 0}
 		<ComposerAttachmentsBar
 			{t}
@@ -688,6 +692,11 @@
 		border-radius: 22px 22px var(--radius-md) var(--radius-md);
 	}
 	/* The jump control floats above the card's top-right and grows out of the card. */
+	.composer-refused {
+		margin: 0;
+		padding: 2px 4px 6px;
+	}
+
 	.composer-card-wrap {
 		position: relative;
 		width: 100%;

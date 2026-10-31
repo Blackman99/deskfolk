@@ -35,6 +35,16 @@ export interface ChatActionsHost {
 }
 
 /**
+ * The Mac heard the message and said no. Reconnecting would only hear the same answer, and sent every
+ * message with three pictures or more round the reconnect screen, over and over, the link fine all
+ * along. A 401 is the exception: the local API's token changes when the daemon restarts, and
+ * reconnecting is how a window gets the new one.
+ */
+function refusedByTheMac(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401;
+}
+
+/**
  * What you do in a conversation besides typing: sending the draft, answering a Bot's question
  * (with the drafts each question keeps), reacting, stopping a turn or a scope and lifting a stop,
  * the buttons on a line's control row, going on after an interrupt, and resolving an approval.
@@ -63,13 +73,22 @@ export class ChatActions {
     const parentId = view.replyingToId;
     view.sending = true;
     view.upload = null;
+    view.sendRefused = null;
     const files = opts?.attachments ?? [];
     try {
-      const message = await api.postMessage(id, body, {
+      const post = () => api.postMessage(id, body, {
         attachments: opts?.attachments,
         ...(hasPaths ? { paths: opts?.paths } : {}),
         parentId,
         ...(hasAttachments ? { onUploadProgress: (progress: FileProgress) => { view.upload = { files, loaded: progress.loaded }; } } : {}),
+      });
+      // The Mac's record of the upload a dropped link cut short, read back because this send reused
+      // its id. Nothing of it was kept and that settles the old request, so this press goes under a
+      // new one: sending again after a drop should not take two tries.
+      const message = await post().catch((error: unknown) => {
+        if (!(error instanceof ApiError) || error.code !== "cancelled") throw error;
+        this.host.keepUnknownRequest(error, api);
+        return post();
       });
       if (this.host.api !== api) return true;
       view.draft = "";
@@ -79,8 +98,11 @@ export class ChatActions {
       return true;
     } catch (error) {
       if (this.host.api !== api) return false;
-      if (error instanceof ApiError && error.status === 422) return false;
-      this.host.keepUnknownRequest(error, api);
+      const unknown = this.host.keepUnknownRequest(error, api);
+      if (!unknown && refusedByTheMac(error)) {
+        view.sendRefused = error.code === "stream_limit" ? "too_many_files" : "refused";
+        return false;
+      }
       this.host.markDisconnected();
       return false;
     } finally {

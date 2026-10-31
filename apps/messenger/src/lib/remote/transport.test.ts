@@ -200,6 +200,35 @@ test("an upload leaves no faster than the device's share of the relay's meter", 
   expect(await answer).toMatchObject({ status: 201, body: { id: "msg" } });
 });
 
+/** The Mac holds a message's files as one transfer because this is how they leave. */
+test("a message's files leave one after the other, each from its start, however many there are", async () => {
+  const clock = { now: 1_000_000 };
+  const files = [40_000, 70_000, 10, 50_000].map((size, i) => {
+    const bytes = new Uint8Array(size).fill(i + 1);
+    return { filename: `${i}.jpg`, size, sha256: sha256Hex(bytes), bytes };
+  });
+  const declared = files.map(({ filename, size, sha256 }) => ({ filename, size, sha256 }));
+  const request = { v: 1, id: uploadId, method: "POST", path: "/v1/sessions/filedrop/messages", body: { body: "", files: declared } } as const;
+  const opened = { v: 1, id: uploadId, status: 202, body: { state: "upload_open" }, upload: { files: declared.map((file, i) => ({ ...file, streamId: i + 1 })) } };
+  const relay = fakeHost({ clock: () => clock.now, answer: (asked) => (asked.id === uploadId ? opened : null) });
+  const transport = pacedTransport(relay, clock);
+  await transport.connect();
+  const answer = transport.rpc(request, files);
+  await until(() => relay.chunks.filter((chunk) => chunk.eof).length === files.length);
+
+  const order = relay.chunks.map((chunk) => chunk.streamId);
+  expect(order).toEqual([...order].sort((a, b) => a - b));
+  for (const [i, file] of files.entries()) {
+    const own = relay.chunks.filter((chunk) => chunk.streamId === i + 1);
+    expect(own[0]!.offset).toBe(0);
+    expect(own.reduce((n, chunk) => n + chunk.size, 0)).toBe(file.size);
+    expect(own.map((chunk) => chunk.eof).filter(Boolean)).toHaveLength(1);
+    expect(own.at(-1)!.eof).toBe(true);
+  }
+  relay.respond({ v: 1, id: uploadId, status: 201, body: { id: "msg" } });
+  expect(await answer).toMatchObject({ status: 201 });
+});
+
 /** A paced 30 MB upload outlasts the stall window with nothing coming back from the Mac. */
 test("an upload still being paced out is not silence", async () => {
   const clock = { now: 1_000_000 };

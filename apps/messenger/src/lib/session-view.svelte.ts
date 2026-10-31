@@ -85,6 +85,8 @@ export class SessionView {
    * link reports it. They leave one after the other, in this order.
    */
   upload = $state<{ files: File[]; loaded: number } | null>(null);
+  /** The Mac answered the last send, and the answer was no. The link is fine: the composer says why. */
+  sendRefused = $state<"too_many_files" | "refused" | null>(null);
   /** The message just sent from here, until the turn it wakes is known and can be followed. */
   pendingFocusTrigger: string | null = null;
   /** Clears this conversation's highlight a few seconds after a jump. */

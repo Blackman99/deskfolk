@@ -85,6 +85,9 @@ export class ComposerAttachments {
       URL.revokeObjectURL(target.previewUrl);
     }
     this.stageAttachments(this.pendingAttachments.filter((a) => a.id !== id));
+    // "Too many files" is out of date the moment you take one away.
+    const view = this.deps.view();
+    if (view) view.sendRefused = null;
   };
 
   onFileInputChange = (ev: Event): void => {

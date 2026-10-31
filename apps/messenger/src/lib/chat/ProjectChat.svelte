@@ -665,7 +665,9 @@
 
 	<div class="composer" bind:this={composerEl}>
 		<div class="composer-column">
-			{#if sendFailed || tuneFailed}
+			{#if view.sendRefused === 'too_many_files'}
+				<p class="field-error">{t.composer.tooManyFiles}</p>
+			{:else if sendFailed || tuneFailed}
 				<p class="field-error">{t.project.actionFailed}</p>
 			{:else if accountRefused}
 				<p class="field-error">{t.project.accountBusy}</p>

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { base64url, canonicalBytes, canonicalHash, canonicalize, DeviceSession, fromBase64url, generateIdentity, requestDigest,
   identityPublic, openPairingGrant, randomBytes, sealPairing, signEnrollmentProof, Reassembler, decodeFileChunk,
-  encodeFileChunk, sha256Hex, decodeTunnelChunk, encodeTunnelChunk, type EnrollmentChallenge, type RemoteRequest, type TunnelChunk,
+  encodeFileChunk, REMOTE_UPLOAD_FILES, sha256Hex, decodeTunnelChunk, encodeTunnelChunk, type EnrollmentChallenge, type RemoteRequest, type TunnelChunk,
   type UvChallenge } from "@real-bot/remote";
 import { startRelay } from "../../../relay/src/server";
 import { Store } from "../store";
@@ -304,6 +304,28 @@ async function fixture(completions?: import("../completions").CompletionsClient,
         if (message.id === id) return message;
       }
     }
+    /**
+     * One message with several files: declared together, then each file's chunks one file after the
+     * other, as a phone sends them, without waiting to hear how the one before went.
+     */
+    async function uploadMany(sessionId: string, files: Array<{ filename: string; bytes: Uint8Array; hash?: string }>) {
+      const id = ulid();
+      const opened = await rpc({
+        v: 1, id, method: "POST", path: `/v1/sessions/${sessionId}/messages`,
+        body: { body: "album", parent_id: null, fork: false, ask_id: null,
+          files: files.map(({ filename, bytes, hash }) => ({ filename, size: bytes.length, sha256: hash ?? sha256Hex(bytes) })) },
+      });
+      if (opened.status !== 202) return opened;
+      files.forEach(({ bytes }, i) => socket.send(new Uint8Array(noise.send(5, encodeFileChunk({
+        streamId: opened.upload.files[i].streamId, offset: 0n, eof: true, chunk: bytes,
+      })))));
+      for (;;) {
+        const frame = noise.receive(await next() as Uint8Array);
+        if (frame.type !== 2) continue;
+        const message = JSON.parse(new TextDecoder().decode(frame.body));
+        if (message.id === id) return message;
+      }
+    }
     /** The next type 9 frame, from what already arrived or off the wire; events in between are kept. */
     async function nextTunnel(timeoutMs = 3000): Promise<TunnelChunk> {
       const deadline = Date.now() + timeoutMs;
@@ -316,7 +338,7 @@ async function fixture(completions?: import("../completions").CompletionsClient,
       return tunnel.shift()!;
     }
     const sendTunnel = (chunk: TunnelChunk) => socket.send(new Uint8Array(noise.send(9, encodeTunnelChunk(chunk))));
-    return { socket, noise, next, rpc, download, upload, events, ready, compressed, tunnel, nextTunnel, sendTunnel };
+    return { socket, noise, next, rpc, download, upload, uploadMany, events, ready, compressed, tunnel, nextTunnel, sendTunnel };
   }
   return { root, store, endpointKeys, api, native, controller, relay, localOrigin, sockets, pair, connect, post, maint: control, screen, releasePressure: () => { hold = false; } };
 }
@@ -1279,19 +1301,43 @@ test("remote workspace PUT requires If-Match and returns 409 after an external r
   expect(missing.status).toBe(422);
 });
 
-test("two concurrent remote streams stay at the per-device ceiling", async () => {
+test("a message's files go one after the other, so it can carry more of them than the two-stream ceiling", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const bot = f.store.createBot({ name: "Album", duties: "", boundaries: "" });
+  // A phone's gallery can hand over the same name more than once.
+  const files = ["a.jpg", "b.jpg", "image.jpg", "image.jpg", "c.jpg"].map((filename, i) => ({ filename, bytes: Buffer.from(`picture ${i}`) }));
+  const sent = await c.uploadMany(bot.direct_session.id, files);
+  expect(sent.status).toBe(201);
+  const attached = sent.body.attachments as Array<{ original_filename: string; workspace_relpath: string }>;
+  expect(attached.map((row) => row.original_filename)).toEqual(files.map((file) => file.filename));
+  expect(attached.map((row) => readFileSync(join(f.root, row.workspace_relpath), "utf8"))).toEqual(files.map((file) => file.bytes.toString()));
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots" })).status).toBe(200);
+});
+
+test("a message with more files than one upload may carry is refused, and the link stays up", async () => {
   const f = await fixture(), d = await f.pair(), c = await f.connect(d);
   const bot = f.store.createBot({ name: "Ceil", duties: "", boundaries: "" });
-  const extra = await c.rpc({
-    v: 1, id: ulid(), method: "POST", path: `/v1/sessions/${bot.direct_session.id}/messages`,
-    body: { body: "x", parent_id: null, fork: false, ask_id: null, files: [
-      { filename: "a.txt", size: 1, sha256: "a".repeat(64) },
-      { filename: "b.txt", size: 1, sha256: "b".repeat(64) },
-      { filename: "c.txt", size: 1, sha256: "c".repeat(64) },
-    ] },
-  });
-  expect(extra.status).toBe(429);
+  const files = Array.from({ length: REMOTE_UPLOAD_FILES + 1 }, (_, i) => ({ filename: `${i}.txt`, bytes: Buffer.from("x") }));
+  const refused = await c.uploadMany(bot.direct_session.id, files);
+  expect(refused.status).toBe(429);
+  expect(refused.body.error.code).toBe("stream_limit");
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots" })).status).toBe(200);
+  // As many as it may carry go through.
+  expect((await c.uploadMany(bot.direct_session.id, files.slice(1))).status).toBe(201);
 }, 15_000);
+
+test("a file that fails among several answers the message, and the chunks still on their way do not take the link", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const bot = f.store.createBot({ name: "Bad", duties: "", boundaries: "" });
+  const bytes = Buffer.from("picture");
+  const failed = await c.uploadMany(bot.direct_session.id, [
+    { filename: "bad.jpg", bytes, hash: "a".repeat(64) }, { filename: "two.jpg", bytes }, { filename: "three.jpg", bytes },
+  ]);
+  expect(failed.status).toBeGreaterThanOrEqual(400);
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots" })).status).toBe(200);
+  for (const name of ["bad.jpg", "two.jpg", "three.jpg"]) expect(existsSync(join(f.root, "inbox", name))).toBe(false);
+  expect(f.store.listMessages(bot.direct_session.id).items.filter((row) => row.kind === "user")).toEqual([]);
+});
 
 async function signedUv(f: Awaited<ReturnType<typeof fixture>>, d: Awaited<ReturnType<Awaited<ReturnType<typeof fixture>>["pair"]>>, c: Awaited<ReturnType<Awaited<ReturnType<typeof fixture>>["connect"]>>) {
   const auth = authenticator();

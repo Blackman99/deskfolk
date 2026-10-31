@@ -3,6 +3,11 @@ import { check, id, text, utf8 } from './bytes.ts';
 
 export const REMOTE_RPC_VERSION = 1;
 export const REMOTE_FILE_STREAMS = 2;
+/**
+ * How many files one message may declare. They travel one after the other, so together they are one
+ * transfer against {@link REMOTE_FILE_STREAMS}; this bounds the temp files the Mac holds open for them.
+ */
+export const REMOTE_UPLOAD_FILES = 32;
 export interface RemoteRequest {
   v: 1; id: string; method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'; path: string;
   query?: Record<string, string>; body?: Record<string, unknown>; ifMatch?: string;
