@@ -167,11 +167,11 @@ describe("computeContextMenuPosition", () => {
   });
 });
 
-test("a project session offers clear, archive and delete, but no pin, info or flow", async () => {
+test("a project session offers pin, clear, archive and delete, but no info or flow", async () => {
   const { aProjectSession } = await import("../test-fixtures.ts");
+  expect(deriveSessionContextMenu(aProjectSession(), false, new Map()).isPinned).toBe(false);
   const data = deriveSessionContextMenu(aProjectSession(), true, new Map());
-  expect(data.canPin).toBe(false);
-  expect(data.isPinned).toBe(false);
+  expect(data.isPinned).toBe(true);
   expect(data.canViewInfo).toBe(false);
   expect(data.canShowJob).toBe(false);
   expect(data.canClearHistory).toBe(true);

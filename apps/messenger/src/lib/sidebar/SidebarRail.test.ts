@@ -117,6 +117,19 @@ test("a project session folded into the rail wears its agent's mark, with the do
   view.close();
 });
 
+test("a pinned project session folded into the rail comes first, with the pins", () => {
+  const runtime = fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [aDirect({ id: "direct-1" }), aProjectSession({ id: "proj-1" }), aProjectSession({ id: "proj-2" })] });
+  const noop = () => {};
+  const view = render(SidebarRail, {
+    runtime, t, pinnedSessionIds: ["proj-2"], contextMenuSessionId: null, workspaceOpen: false, onOpenContextMenu: noop, onExpand: noop,
+    onToggleWorkspace: noop, onOpenRoutines: noop, onOpenSpend: noop, workbench: true, onNewTerminal: noop, onOpenArchived: noop,
+    onOpenSettings: noop, onOpenSearch: noop,
+  });
+  expect([...view.host.querySelectorAll<HTMLElement>(".rail-item")].map((el) => el.dataset.session)).toEqual(["proj-2", "direct-1", "proj-1"]);
+  expect(item(view.host, "proj-2")?.querySelector('[data-agent-logo="claude_code"]')).not.toBeNull();
+  view.close();
+});
+
 test("what waits on you outranks what is unread, and both are on the avatar", () => {
   const view = open();
   const waiting = item(view.host, "sess-1")?.querySelector(".rail-badge");

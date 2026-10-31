@@ -846,8 +846,8 @@
 		const content = contentOfTab(tab);
 		if (content?.kind !== 'chat') return [];
 		const session = sessionsById.get(content.sessionId);
-		// A project session has no Bot, flow or settings to offer, and is listed under its directory (ADR 0095);
-		// what it has is its task map (ADR 0096).
+		// A project session has no Bot, flow or settings to offer (ADR 0095); what it has here is its
+		// task map (ADR 0096). Pinning it is on its sidebar row.
 		if (session?.kind === 'project') return [{ id: 'map', label: t.taskmap.open, icon: mapIcon, run: () => workbench.openGuarded({ kind: 'map', sessionId: session.id }) }];
 		if (!session || isFileDropSession(session)) return [];
 		const pinned = isSessionPinned(pinnedSessionIds, session.id);

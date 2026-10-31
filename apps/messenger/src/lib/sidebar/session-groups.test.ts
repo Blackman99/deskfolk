@@ -79,6 +79,14 @@ test("the file drop stays out of the chat groups and is named on its own", () =>
   expect(grouped.botBot).toEqual([]);
 });
 
+test("a pinned project session moves up with the pins and leaves its directory's section", () => {
+  const pinned = { ...session("p1", "direct", [{ member: "user" }]), kind: "project" as const };
+  const listed = { ...session("p2", "direct", [{ member: "user" }]), kind: "project" as const };
+  const grouped = groupSessions([pinned, listed], ["p1"]);
+  expect(grouped.pinned).toEqual([pinned]);
+  expect(grouped.project).toEqual([listed]);
+});
+
 test("a pinned file drop moves up with the pins and leaves its own section", () => {
   const drop = session(FILE_DROP_SESSION_ID, "direct", [{ member: "user" }]);
   const you = session("d", "direct", [{ member: "user" }, { member: "writer" }]);

@@ -81,8 +81,7 @@ export function groupSessions(
 
     const kind = classifySession(session);
     // A Bot↔Bot direct is never a row of the list, pinned or not: it opens from its message (ADR 0091).
-    // A project session is listed under its directory, pinned or not.
-    if (pinSet.has(session.id) && kind !== "bot-bot" && kind !== "project") {
+    if (pinSet.has(session.id) && kind !== "bot-bot") {
       pinned.push(session);
       continue;
     }

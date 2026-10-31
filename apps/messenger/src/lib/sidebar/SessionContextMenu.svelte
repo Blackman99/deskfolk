@@ -122,7 +122,6 @@
 </script>
 
 {#snippet items(inSheet: boolean)}
-	{#if data.canPin !== false}
 	<button
 		type="button"
 		class={['session-context-menu-item', { 'sheet-item': inSheet }]}
@@ -140,7 +139,6 @@
 			<span>{t.sidebar.pin}</span>
 		{/if}
 	</button>
-	{/if}
 
 	{#if data.canViewInfo}
 	<button

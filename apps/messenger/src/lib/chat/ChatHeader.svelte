@@ -67,7 +67,7 @@
 		selectedKind === 'group' ? t.top.groupSettings : t.top.botSettings
 	);
 	const fileDrop = $derived(selected ? isFileDropSession(selected) : false);
-	/** A project session (ADR 0095): no Bot to open settings on, no flow, no pin. */
+	/** A project session (ADR 0095): no Bot to open settings on, no flow; pinning it is on its sidebar row. */
 	const projectSession = $derived(selected?.kind === 'project' ? selected : null);
 	const selectedWork = $derived(
 		selected

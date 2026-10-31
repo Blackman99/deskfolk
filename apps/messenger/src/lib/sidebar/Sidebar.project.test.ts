@@ -10,7 +10,7 @@ const t = copyFor("zh");
 
 function open(
   selected: ReturnType<typeof aProjectSession> | null = null,
-  rename: { renamingSessionId?: string | null; onRenameSession?: (id: string, name: string | null) => Promise<boolean>; onOpenProjectDir?: (session: SessionSummary) => void } = {},
+  rename: { pinnedSessionIds?: string[]; onTogglePin?: (id: string) => void; onOpenContextMenu?: (e: MouseEvent, session: SessionSummary) => void; renamingSessionId?: string | null; onRenameSession?: (id: string, name: string | null) => Promise<boolean>; onOpenProjectDir?: (session: SessionSummary) => void } = {},
 ) {
   const runtime = fakeRuntime({
     bots: [aBot({ id: "bot-1" })],
@@ -237,3 +237,49 @@ test("a name that did not go through keeps the field open and says so", async ()
   close();
 });
 
+test("a project session's row offers pin and the rest of its menu under the pointer, as a Bot's does", () => {
+  const pins: string[] = [];
+  const menus: string[] = [];
+  const { host, close } = open(null, { onTogglePin: (id) => pins.push(id), onOpenContextMenu: (_e, session) => menus.push(session.id) });
+  const shell = host.querySelector('[data-project-dir="/Users/a/proj"] .row-shell');
+  expect(shell?.classList.contains("has-actions")).toBe(true);
+  const [pin, more] = [...shell!.querySelectorAll(".row-actions .row-act")];
+  expect(pin?.getAttribute("aria-label")).toBe(t.sidebar.pin);
+  expect(more?.getAttribute("aria-label")).toBe(t.chat.moreActions);
+  click(pin ?? null);
+  click(more ?? null);
+  expect([pins, menus]).toEqual([["p1"], ["p1"]]);
+  close();
+});
+
+test("a pinned project session moves up to the band in its agent's mark, saying its run, and leaves its directory", () => {
+  const { host, close } = open(null, { pinnedSessionIds: ["p1"] });
+  const pin = host.querySelector(".pinned-session-btn");
+  expect(pin?.textContent).toContain("Fix login");
+  expect(pin?.querySelector('[data-agent-logo="claude_code"]')).not.toBeNull();
+  // p1's run is going: the band reads the run, which a Bot's turns would not tell it.
+  expect(pin?.classList.contains("is-run")).toBe(true);
+  expect(pin?.querySelector(".avatar-status-dot.is-running")).not.toBeNull();
+  const rows = [...host.querySelectorAll('[data-project-dir="/Users/a/proj"] [data-project-session]')];
+  expect(rows.map((r) => r.querySelector(".t")?.textContent)).toEqual([t.project.untitled]);
+  close();
+});
+
+test("with every session pinned their directories leave, and the list does not say there is nothing", () => {
+  const { host, close } = open(null, { pinnedSessionIds: ["p1", "p2", "p3"] });
+  expect(host.querySelectorAll(".pinned-session-btn")).toHaveLength(3);
+  expect(host.querySelector("[data-project-dir]")).toBeNull();
+  expect(host.textContent).not.toContain(t.sidebar.rosterEmpty);
+  close();
+});
+
+test("a pinned session being renamed stands under its directory again, folded or not, its row a name field", async () => {
+  const { host, close } = open(null, { pinnedSessionIds: ["p3"], renamingSessionId: "p3" });
+  await settle();
+  const dir = '[data-project-dir="/Users/a/other"]';
+  expect(host.querySelector<HTMLInputElement>(`${dir} [data-renaming] input`)?.value).toBe("Other");
+  click(host.querySelector(`${dir} .project-dir-head`));
+  await settle();
+  expect(host.querySelector(`${dir} [data-renaming] input`)).not.toBeNull();
+  close();
+});

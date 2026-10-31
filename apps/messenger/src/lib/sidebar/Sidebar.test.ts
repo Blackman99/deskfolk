@@ -238,6 +238,21 @@ test("a phone's projects page lists only the projects, and its + makes only proj
   });
 });
 
+test("a phone's two pages each show their own pins, so a pinned project session stays on the projects page", () => {
+  withPhone(() => {
+    const projects = [aProjectSession({ id: "p1", name: "Fix login", project_dir: "/Users/a/proj" })];
+    const bots = open([], null, false, [], ["sess-1", "p1"], false, { phoneList: "bots", projects });
+    expect([...bots.host.querySelectorAll(".pinned-session-btn")].map((b) => b.getAttribute("title"))).toEqual(["视频组"]);
+    bots.close();
+    const { host, close } = open([], null, false, [], ["sess-1", "p1"], false, { phoneList: "projects", projects });
+    expect([...host.querySelectorAll(".pinned-session-btn")].map((b) => b.getAttribute("title"))).toEqual(["Fix login"]);
+    // Its only session is up there: the page is not empty, whatever its directories say.
+    expect(host.querySelector("[data-project-dir]")).toBeNull();
+    expect(host.textContent).not.toContain(t.project.emptyList);
+    close();
+  });
+});
+
 test("an empty projects page says how to start one", () => {
   withPhone(() => {
     const { host, close } = open([aBotDirect()], null, true, [], [], false, { phoneList: "projects" });

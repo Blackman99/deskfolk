@@ -24,12 +24,13 @@ test("project sessions group by directory, directories and sessions newest first
   expect(groups[1]!.sessions.map((s) => s.id)).toEqual(["a2", "a1"]);
 });
 
-test("a project session is its own group, never pinned and never in the Bot lists", () => {
+test("a project session is its own group, up with the pins once pinned, and never in the Bot lists", () => {
   const project = aProjectSession();
   expect(classifySession(project)).toBe("project");
+  expect(groupSessions([project]).project).toEqual([project]);
   const grouped = groupSessions([project], ["proj-1"]);
-  expect(grouped.project).toEqual([project]);
-  expect(grouped.pinned).toEqual([]);
+  expect(grouped.project).toEqual([]);
+  expect(grouped.pinned).toEqual([project]);
   expect(grouped.bots).toEqual([]);
   expect(grouped.botBot).toEqual([]);
   expect(groupSessions([aProjectSession({ archived_at: "t" })]).project).toEqual([]);

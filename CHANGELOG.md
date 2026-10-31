@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Project sessions can be pinned, from a row's hover buttons
+
+- Hovering a project session's row now shows Pin and ⋯ at its right end, as on a Bot's row; ⋯ opens its context menu, which offers pin and unpin too. A pinned session moves from its directory up to the pinned band at the top of the sidebar, in its agent's mark and showing its run's status, and comes first in the folded rail. A directory with no other session is not listed until you unpin it. Renaming a pinned session brings it back under its directory for the moment, and on a phone the Bots and Projects pages each show their own pins.
+
 ### A project session's run time no longer jumps with each command
 
 - The last line of a project session's working bubble says what the agent is doing and how long the run has taken. The line was only as wide as its text, so the time sat right after the command and jumped sideways with every command's length. It now stays at the line's right end, as on a Bot's working bubble, and a command too long for the line clips before it.

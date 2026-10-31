@@ -4,8 +4,6 @@ import { classifySession, isFileDropSession, youBotPeer } from "./session-groups
 export type SessionContextMenuData = {
   sessionId: string;
   isPinned: boolean;
-  /** A project session is listed under its directory and is never pinned; absent means it can be. */
-  canPin?: boolean;
   canViewInfo: boolean;
   /** Its jobs' trace, board and plan can be opened from here: every conversation but the file drop. */
   canShowJob: boolean;
@@ -51,8 +49,7 @@ export function deriveSessionContextMenu(
     // or opened in a terminal.
     return {
       sessionId: session.id,
-      isPinned: false,
-      canPin: false,
+      isPinned,
       canViewInfo: false,
       canShowJob: false,
       canShowMap: true,

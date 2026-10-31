@@ -119,6 +119,27 @@ test("Rename shows for a project session only where it is given, and closes the 
   close();
 });
 
+test("a project session's menu pins it, and unpins it once it is pinned", async () => {
+  const { aProjectSession } = await import("../test-fixtures.ts");
+  const label = (isPinned: boolean) => {
+    let toggled = 0;
+    let closed = 0;
+    const view = render(SessionContextMenu, {
+      session: aProjectSession(), botsById: new Map(), isPinned, x: 20, y: 20, t,
+      onClose: () => (closed += 1), onTogglePin: () => (toggled += 1), onViewInfo: () => {}, onClearHistory: () => {},
+      onToggleArchive: () => {}, onDelete: () => {},
+    });
+    const first = view.host.querySelector('[role="menu"]')?.firstElementChild;
+    const text = first?.textContent?.trim();
+    click(first ?? null);
+    expect([toggled, closed]).toEqual([1, 1]);
+    view.close();
+    return text;
+  };
+  expect(label(false)).toBe(t.sidebar.pin);
+  expect(label(true)).toBe(t.sidebar.unpin);
+});
+
 test("a project session's menu opens its directory where it is given, and closes", async () => {
   const { aProjectSession } = await import("../test-fixtures.ts");
   let opened = 0;

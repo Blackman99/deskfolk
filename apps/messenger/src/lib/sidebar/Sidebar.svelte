@@ -158,30 +158,38 @@
 	/** A phone lists the Bots and the projects on two pages of its bottom bar; a wider window, together. */
 	const showBots = $derived(!phone || phoneList === 'bots');
 	const showProjects = $derived(!phone || phoneList === 'projects');
-	const fileDrop = $derived(showBots ? listed.fileDrop : null);
-	/** Group chats and your directs with Bots, one section: the phone's 「Bot」 page, the list's first section. */
-	const botRows = $derived(showBots ? listed.bots : []);
-	// A Bot↔Bot direct is not listed: it opens from the message it hangs under, in a popup (ADR 0091).
-	const projectGroups = $derived(showProjects ? groupProjectSessions(listed.project) : []);
-	const nothingWorking = $derived(
-		workingIds !== null && !fileDrop && botRows.length === 0 && projectGroups.length === 0
-	);
-	/** No conversation at all yet, unfiltered: the list says how to start one instead of bare headers. */
-	const rosterEmpty = $derived(
-		showBots && workingIds === null && !fileDrop && botRows.length === 0 && projectGroups.length === 0
-	);
-	/** A phone's projects page with no project session yet says how to start one. */
-	const projectsEmpty = $derived(!showBots && workingIds === null && projectGroups.length === 0);
-	const archivedSessions = $derived(
-		snapshot.sessions.filter((session) => isSessionArchived(session, botsById))
-	);
 	// A Bot↔Bot direct pinned before ADR 0091 stays out too: it opens only from its message.
 	const pinnedSessions = $derived(
 		pinnedSessionIds
 			.map((id) => sessionsById.get(id))
 			.filter((session): session is SessionSummary => Boolean(session) && classifySession(session!) !== 'bot-bot')
 	);
-	const pinnedWorking = $derived(workingIds !== null && pinnedSessions.some((session) => workingIds.has(session.id)));
+	/** The band above the list. A phone's two pages each show their own, so a pinned project session stays on the projects page. */
+	const shownPins = $derived(
+		phone ? pinnedSessions.filter((session) => (session.kind === 'project') === showProjects) : pinnedSessions
+	);
+	const pinnedWorking = $derived(workingIds !== null && shownPins.some((session) => workingIds.has(session.id)));
+	const fileDrop = $derived(showBots ? listed.fileDrop : null);
+	/** Group chats and your directs with Bots, one section: the phone's 「Bot」 page, the list's first section. */
+	const botRows = $derived(showBots ? listed.bots : []);
+	// A Bot↔Bot direct is not listed: it opens from the message it hangs under, in a popup (ADR 0091).
+	/** A pinned session has no row to type in: while it is being renamed it stands under its directory again. */
+	const renamingPin = $derived(pinnedSessions.find((session) => session.id === renamingSessionId && session.kind === 'project'));
+	const projectGroups = $derived(
+		showProjects ? groupProjectSessions(renamingPin ? [...listed.project, renamingPin] : listed.project) : []
+	);
+	const nothingWorking = $derived(
+		workingIds !== null && !fileDrop && botRows.length === 0 && projectGroups.length === 0
+	);
+	/** No conversation at all yet, unfiltered: the list says how to start one instead of bare headers. */
+	const rosterEmpty = $derived(
+		showBots && workingIds === null && !fileDrop && botRows.length === 0 && projectGroups.length === 0 && shownPins.length === 0
+	);
+	/** A phone's projects page with no project session yet says how to start one. */
+	const projectsEmpty = $derived(!showBots && workingIds === null && projectGroups.length === 0 && shownPins.length === 0);
+	const archivedSessions = $derived(
+		snapshot.sessions.filter((session) => isSessionArchived(session, botsById))
+	);
 
 	/**
 	 * Which directories of the 「项目」 section are open: every one until you fold it, as in the
@@ -356,16 +364,16 @@
 		</div>
 	{/if}
 	<!-- Nothing pinned is not news worth the top of the sidebar: the band only appears once something is. -->
-	{#if pinnedSessions.length > 0 && showBots}
+	{#if shownPins.length > 0}
 	<PinnedRoster
 		{runtime}
 		{t}
-		{pinnedSessions}
+		pinnedSessions={shownPins}
 		{contextMenuSessionId}
 		{onOpenContextMenu}
 		{botsById}
 		{botStatusOf}
-		{statusOf}
+		statusOf={projectStatusOf}
 		{unreadOf}
 		{titleOf}
 		{archivedSuffix}
@@ -581,7 +589,7 @@
 							<Icon name="plus" size={16} />
 						</button>
 					</div>
-					{#if open}
+					{#if open || group.sessions.some((row) => row.id === renamingSessionId)}
 						<div class="project-sessions">
 							{#each group.sessions as session (session.id)}
 								<div class="row-flip" animate:flip={rowFlip()}>
@@ -604,6 +612,8 @@
 										onSelect={() => void runtime.selectSession(session.id)}
 										onContextMenu={(e) => onOpenContextMenu(e, session)}
 										onPointerDown={pressOf(session)}
+										pinned={isSessionPinned(pinnedSessionIds, session.id)}
+										onTogglePin={onTogglePin ? () => onTogglePin(session.id) : undefined}
 									/>
 								</div>
 							{/each}

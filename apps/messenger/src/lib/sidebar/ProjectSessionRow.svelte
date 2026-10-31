@@ -39,9 +39,12 @@
 		onContextMenu: (e: MouseEvent) => void;
 		/** A press that may become a drag into the workbench: only where there is one. */
 		onPointerDown?: (e: PointerEvent) => void;
+		/** Whether the row is pinned; with `onTogglePin`, the row offers pin and ⋯ under the pointer, as a Bot's does. */
+		pinned?: boolean;
+		onTogglePin?: () => void;
 	};
 
-	let { session, t, on, contextOpen, title, agent, name = null, renaming = false, onRename, time, status, preview, unread, bots, botStatus, onSelect, onContextMenu, onPointerDown }: Props = $props();
+	let { session, t, on, contextOpen, title, agent, name = null, renaming = false, onRename, time, status, preview, unread, bots, botStatus, onSelect, onContextMenu, onPointerDown, pinned = false, onTogglePin }: Props = $props();
 
 	let field = $state<HTMLInputElement | null>(null);
 	let draft = $state('');
@@ -124,6 +127,8 @@
 		{onSelect}
 		{onContextMenu}
 		{onPointerDown}
+		{pinned}
+		{onTogglePin}
 	/>
 {/if}
 

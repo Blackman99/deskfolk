@@ -4,6 +4,8 @@
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import AgentAvatar from './AgentAvatar.svelte';
+	import { projectAgentOf } from './project-groups.ts';
 	import { isFileDropSession } from './session-groups.ts';
 	import type { SessionStatusResult } from './session-status.ts';
 	import { unreadBadge } from './unread.ts';
@@ -71,6 +73,9 @@
 									<Icon name="file-down" />
 								</span>
 							</span>
+						{:else if pSession.kind === 'project'}
+							<!-- Its agent's mark, as its row under its directory wears it (ADR 0095). -->
+							<AgentAvatar agent={projectAgentOf(pSession)} title={t.project.agentNames[projectAgentOf(pSession)]} status={pStatus} />
 						{:else}
 							<SessionAvatar session={pSession} bots={botsById} botStatus={botStatusOf} />
 						{/if}
