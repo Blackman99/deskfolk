@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A plan in a project session can take the whole window
+
+- In plan mode the plan's card now has a full-screen button in its head. The plan fills the window at a comfortable reading width, where you were reading, with Approve and Keep planning still under it; Escape or a phone's Back exits, and the conversation stays where it was scrolled. Approving, keeping planning or opening a file named in the plan exits first.
+
 ### Project sessions can be pinned, from a row's hover buttons
 
 - Hovering a project session's row now shows Pin and ⋯ at its right end, as on a Bot's row; ⋯ opens its context menu, which offers pin and unpin too. A pinned session moves from its directory up to the pinned band at the top of the sidebar, in its agent's mark and showing its run's status, and comes first in the folded rail. A directory with no other session is not listed until you unpin it. Renaming a pinned session adds a name field under its directory for the moment, and on a phone the Bots and Projects pages each show their own pins.
