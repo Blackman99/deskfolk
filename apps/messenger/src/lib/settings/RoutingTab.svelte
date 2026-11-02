@@ -15,6 +15,8 @@
 	import type { Snapshot } from '../snapshot.ts';
 	import PromptEditorPage from './PromptEditorPage.svelte';
 	import PlaybookHeader from './PlaybookHeader.svelte';
+	import PlaybookHistory from './PlaybookHistory.svelte';
+	import PlaybookList from './PlaybookList.svelte';
 	import PlaybookMap from './PlaybookMap.svelte';
 	import PlaybookStepDetail from './PlaybookStepDetail.svelte';
 	import PlaybookTurnPart from './PlaybookTurnPart.svelte';
@@ -30,10 +32,12 @@
 	 * Roles (ADR 0082; its own page since ADR 0083, see RolesPage; engines since ADR 0085): one engine
 	 * drawn as the flow board draws a job — the things that set the app's own steps off, each step a
 	 * card — and the step picked beside it: whether it runs in that engine and with what numbers, and
-	 * for a step that makes one of the app's calls, that call's model and prompts. The two scroll on
-	 * their own, so a pick changes what is beside the map and moves nothing. Where it is narrow — a
-	 * phone, a narrow tab, or in place of the list beside a wide window — it shows the map alone and
-	 * opens a step as a page of its own; a prompt opens in the same editor as on Prompts.
+	 * for a step that makes one of the app's calls, that call's model and prompts. On a wide window
+	 * the engines run down the left as the conversations do (PlaybookList), where each is made,
+	 * renamed, made the default and removed; the three scroll on their own, so a pick changes what is
+	 * beside the map and moves nothing. Where it is narrow — a phone, a narrow tab, or in place of the
+	 * list beside a wide window — the engines are a row of chips over the map alone, and a step opens
+	 * as a page of its own; a prompt opens in the same editor as on Prompts.
 	 */
 	interface Props {
 		runtime: MessengerRuntime;
@@ -55,9 +59,12 @@
 	const c = $derived(t.routing);
 	const ui = $derived<Locale>(snapshot.settings.locale === 'en' ? 'en' : 'zh');
 	const phone = new MediaQuery('(max-width: 720px)');
-	/** Its own width once measured, so a narrow tab or the list's place is narrow whatever the window. */
+	/**
+	 * Its own width once measured, so a narrow tab or the list's place is narrow whatever the window.
+	 * The engines' list beside the map and the picked step needs a little more room than the two did.
+	 */
 	let width = $state(0);
-	const narrow = $derived(width > 0 ? width <= 720 : phone.current);
+	const narrow = $derived(width > 0 ? width <= 760 : phone.current);
 	const providers = $derived(snapshot.providers);
 	const botNames = $derived(new Map(snapshot.bots.map((bot) => [bot.id, bot.name])));
 
@@ -78,6 +85,23 @@
 	const current = $derived(playbooks.find(shownId) ?? (playbooks.failed ? allOn : null));
 	const builtin = $derived(current && !playbooks.failed ? builtinPlaybook(current.base_id) : playbookDefaults());
 	const engineName = $derived(playbookName(current ?? undefined, t.playbooks.builtin));
+	/** What a built-in engine is for, over the map on a wide window; on a narrow one the chips say it. */
+	const engineHint = $derived(current?.builtin ? (t.playbooks.builtinHint[current.id] ?? null) : null);
+
+	/** An engine's history, shown beside the map in the picked step's place; picking a step leaves it. */
+	let historyOf = $state<string | null>(null);
+	const historyShown = $derived(historyOf !== null && historyOf === shownId && current !== null);
+
+	function show(id: string): void {
+		shown = id;
+		if (historyOf !== id) historyOf = null;
+	}
+
+	function showHistory(id: string): void {
+		shown = id;
+		historyOf = id;
+		if (detailScroll) detailScroll.scrollTop = 0;
+	}
 	/** On a phone, a call's page is open over the map. */
 	let opened = $state(false);
 	let scroller = $state<HTMLElement>();
@@ -119,6 +143,7 @@
 
 	function pick(node: PlaybookNodeId): void {
 		selected = node;
+		historyOf = null;
 		if (!narrow) {
 			// Another call's page starts at its top; the map stays where it was. WebKit leaves focus
 			// where it was on a click, so the picked node takes it, for ↑ and ↓ to go on from there.
@@ -185,9 +210,10 @@
 		if (!target) return;
 		runtime.rolesTarget = null;
 		// Sent from a job's title row: that job's engine shown.
-		if (target.playbook) shown = target.playbook;
+		if (target.playbook) show(target.playbook);
 		if (target.role) {
 			selected = stepOfRole(target.role);
+			historyOf = null;
 			if (narrow) opened = true;
 		}
 	});
@@ -198,6 +224,7 @@
 		focusEditor = false;
 		if (openItem.role) {
 			selected = stepOfRole(openItem.role);
+			historyOf = null;
 			opened = true;
 		}
 		void tick().then(() => document.querySelector<HTMLElement>('.prompt-editor-backdrop')?.focus());
@@ -313,7 +340,7 @@
 		<PlaybookHeader
 			{playbooks}
 			shown={shownId}
-			onshow={(id) => (shown = id)}
+			onshow={show}
 			onmakedefault={(id) => void runtime.patchSettings({ default_playbook: id })}
 			{t}
 		/>
@@ -344,19 +371,52 @@
 			{/if}
 		</div>
 	{:else}
-		<div class="routing-top">
-			{@render notices?.()}
-			{@render header()}
-			<p class="routing-intro">{c.intro}</p>
-		</div>
-		<div class="routing-split">
-			<!-- ↑ and ↓ from a focused node bubble up here; the nodes themselves are the buttons. -->
-			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-			<div class="routing-map-col" role="region" aria-label={t.playbooks.title} onkeydown={onMapKeydown} bind:this={mapCol}>
-				{@render map(selected)}
-			</div>
-			<div class="routing-detail-col" role="region" aria-label={nameOf(selected)} aria-live="polite" bind:this={detailScroll}>
-				{@render detail()}
+		<div class="routing-wide" class:has-list={!playbooks.failed}>
+			{#if !playbooks.failed}
+				<div class="routing-list-col" role="region" aria-label={t.playbooks.title}>
+					{#if playbooks.list}
+						<PlaybookList
+							{playbooks}
+							shown={shownId}
+							onshow={show}
+							onmakedefault={(id) => void runtime.patchSettings({ default_playbook: id })}
+							onhistory={showHistory}
+							locale={ui}
+							{t}
+						/>
+					{/if}
+				</div>
+			{/if}
+			<div class="routing-main">
+				<div class="routing-top">
+					{@render notices?.()}
+					{#if playbooks.failed}
+						<p class="routing-intro" role="note">{t.playbooks.older}</p>
+					{:else if engineHint}
+						<p class="routing-engine-hint" data-playbook-hint>{engineHint}</p>
+					{/if}
+					<p class="routing-intro">{c.intro}</p>
+				</div>
+				<div class="routing-split">
+					<!-- ↑ and ↓ from a focused node bubble up here; the nodes themselves are the buttons. -->
+					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+					<div class="routing-map-col" role="region" aria-label={engineName || t.playbooks.title} onkeydown={onMapKeydown} bind:this={mapCol}>
+						{@render map(historyShown ? null : selected)}
+					</div>
+					<div
+						class="routing-detail-col"
+						role="region"
+						aria-label={historyShown ? t.playbooks.historyOf(engineName) : nameOf(selected)}
+						aria-live="polite"
+						bind:this={detailScroll}
+					>
+						{#if historyShown && current}
+							<PlaybookHistory {playbooks} playbook={current} name={engineName} onclose={() => (historyOf = null)} {t} />
+						{:else}
+							{@render detail()}
+						{/if}
+					</div>
+				</div>
 			</div>
 		</div>
 	{/if}
@@ -403,12 +463,48 @@
 		padding: 18px 24px 20px;
 	}
 
+	/* The engines down the left, as the conversations are down the app's; the rest beside them. */
+	.routing-wide {
+		flex: 1;
+		min-height: 0;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.routing-wide.has-list {
+		grid-template-columns: clamp(184px, 22%, 248px) minmax(0, 1fr);
+	}
+
+	.routing-list-col {
+		min-height: 0;
+		min-width: 0;
+		overflow-x: hidden;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		padding: 10px 8px 16px;
+		border-right: 1px solid var(--line-subtle);
+	}
+
+	.routing-main {
+		min-height: 0;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+	}
+
 	.routing-top {
 		flex: none;
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: 6px;
 		padding: 16px 24px 12px;
+	}
+
+	.routing-engine-hint {
+		margin: 0;
+		font-size: 13px;
+		line-height: 1.5;
+		color: var(--ink-secondary);
 	}
 
 	/* The map and the picked call side by side, each scrolling on its own under the intro. */
@@ -416,7 +512,7 @@
 		flex: 1;
 		min-height: 0;
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+		grid-template-columns: minmax(0, 1fr) clamp(320px, 46%, 420px);
 		gap: 14px;
 		padding: 0 24px 20px;
 	}

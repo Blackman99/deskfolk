@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Roles lists its engines down the left, like the conversation list
+
+- On a wide window, the engines on Roles (General, Video, Coding, Plain and your own) are no longer a row of chips over the map with a few text links. They run down the left as the conversations do in the sidebar: one row each with its name, the default starred, when it last changed and a line about it; the one shown is tinted, its map and the picked step to its right.
+- The list's + makes a new engine from the one shown. A right-click on a row, or its ⋯, has Make default, New from this, Rename, History and Remove. Naming and renaming happen in the row itself (Enter keeps, Escape drops); removing asks first; a built-in cannot be renamed or removed, and the default cannot be removed and says why. History shows beside the map where the picked step was; picking any step goes back.
+- A phone or a narrow tab keeps the row of engine chips over the map.
+
 ### After a reload, a project session's status is right without clicking into it
 
 - After reloading the window or reopening on a phone, a project session at work looked idle in the sidebar until you clicked into it, or until its next change came along. It now says thinking, replying or waiting for approval as soon as the list appears, and so do "Only working or unread", the narrow rail and the tab marks. A phone needs the Mac's app updated to a version with this fix.

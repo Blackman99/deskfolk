@@ -50,8 +50,11 @@ function engines(diffs: Partial<Record<BuiltinPlaybookId, PlaybookDiff>> = {}, d
 function engineServer(start: PlaybookList = engines()) {
   let list = start;
   const saved: Array<{ id: string; diff: PlaybookDiff; ifRevision: string | null }> = [];
+  /** Made, renamed and removed, in order. */
+  const asked: unknown[][] = [];
   return {
     saved,
+    asked,
     api: {
       listPlaybooks: async () => list,
       savePlaybook: async (id: string, diff: PlaybookDiff, ifRevision: string | null) => {
@@ -62,10 +65,20 @@ function engineServer(start: PlaybookList = engines()) {
         return list.items.find((item) => item.id === id)!;
       },
       createPlaybook: async (from: string, name: string) => {
+        asked.push(["create", from, name]);
         const base = list.items.find((item) => item.id === from)!;
-        const made: Playbook = { ...base, id: "01MINE00000000000000000000", builtin: false, name, revision: 1, revision_id: "rev-mine" };
+        const made: Playbook = { ...base, id: "01MINE00000000000000000000", builtin: false, base_id: base.base_id, name, revision: 1, revision_id: "rev-mine" };
         list = { ...list, items: [...list.items, made] };
         return made;
+      },
+      renamePlaybook: async (id: string, name: string, ifRevision: string | null) => {
+        asked.push(["rename", id, name, ifRevision]);
+        list = { ...list, items: list.items.map((item) => (item.id === id ? { ...item, name, revision: item.revision + 1, revision_id: `rev-${item.revision + 1}` } : item)) };
+        return list.items.find((item) => item.id === id)!;
+      },
+      deletePlaybook: async (id: string) => {
+        asked.push(["delete", id]);
+        list = { ...list, items: list.items.filter((item) => item.id !== id) };
       },
       playbookRevisions: async () => [{ id: "r1", playbook_id: "video", revision: 1, op: "edit" as const, actor: "user", bot_id: null, turn_id: null, approval_id: null, message_id: null, reason: null, before: null, after: null, created_at: "2026-10-11T08:00:00.000Z" }],
     },
@@ -109,6 +122,20 @@ function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unkno
 }
 
 const node = (host: HTMLElement, id: string) => host.querySelector<HTMLButtonElement>(`[data-playbook-node="${id}"]`);
+/** An engine's menu from its row's ⋯; the menu itself hangs on the page. */
+const menuOf = (host: HTMLElement, id: string) => {
+  click(host.querySelector(`[data-playbook-more="${id}"]`));
+  return document.querySelector<HTMLElement>(`[data-playbook-menu="${id}"]`);
+};
+const action = (menu: HTMLElement | null, name: string) => menu?.querySelector<HTMLButtonElement>(`[data-playbook-action="${name}"]`) ?? null;
+/** Typed into the name field, then Enter (or Escape). */
+const typeName = (host: HTMLElement, value: string, key = "Enter") => {
+  const field = host.querySelector<HTMLInputElement>("[data-playbook-name]")!;
+  field.value = value;
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  field.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+  flushSync();
+};
 const settle = async () => { await sleep(10); flushSync(); };
 
 test("an engine drawn as the flow: each step under what sets it off, the picked one beside it with its numbers, model and prompts", async () => {
@@ -149,8 +176,8 @@ test("a step switched on, or a number changed, saves the engine's new difference
   const { host, close } = open({ client: quietClient(server.api) });
   await settle();
   // The default is shown, starred.
-  expect(host.querySelector('[data-playbook-chip="video"]')?.getAttribute("aria-selected")).toBe("true");
-  expect(host.querySelector('[data-playbook-chip="video"]')?.textContent).toContain("★");
+  expect(host.querySelector('[data-playbook-row="video"]')?.getAttribute("aria-selected")).toBe("true");
+  expect(host.querySelector('[data-playbook-row="video"]')?.textContent).toContain("★");
   click(node(host, "settle"));
   const quiet = host.querySelector<HTMLInputElement>('[data-playbook-param="quiet_s"]')!;
   expect(quiet.value).toBe("60");
@@ -186,9 +213,9 @@ test("an engine with no jobs: what stands on them shows off and says why, and re
   expect(host.querySelector("[data-playbook-held-on]")?.textContent).toContain(t.playbooks.steps.jobs!.name);
   expect(node(host, "reader")?.querySelector(".playbook-card-lock")).not.toBeNull();
 
-  click(host.querySelector('[data-playbook-chip="plain"]'));
+  click(host.querySelector('[data-playbook-row="plain"]'));
   flushSync();
-  expect(host.querySelector("[data-playbook-header]")?.textContent).toContain(t.playbooks.builtinHint.plain!);
+  expect(host.querySelector("[data-playbook-hint]")?.textContent).toContain(t.playbooks.builtinHint.plain!);
   for (const id of ["jobs", "settle", "closing", "checks", "ceiling", "pickup", "retrospective"]) expect(node(host, id)?.getAttribute("data-on")).toBe("false");
   // A step that only follows them has not been changed, and shows no mark or lock of its own.
   for (const id of ["checks", "pickup", "wait_word"]) {
@@ -210,7 +237,7 @@ test("switching jobs back on takes reading back with them: a save would refuse i
   const server = engineServer(engines({ plain: { v: 1, steps: { reader: { on: false } } } }));
   const { host, close } = open({ client: quietClient(server.api) });
   await settle();
-  click(host.querySelector('[data-playbook-chip="plain"]'));
+  click(host.querySelector('[data-playbook-row="plain"]'));
   flushSync();
   click(node(host, "jobs"));
   flushSync();
@@ -229,7 +256,7 @@ test("the Bot's turn in an engine: a System section of its own, written from wha
   const client = quietClient({ ...server.api, playbookSystem: async (id: string, locale: string) => { asked.push([id, locale]); return { text: "内置的那段话", own: null }; } });
   const { host, close } = open({ client });
   await settle();
-  click(host.querySelector('[data-playbook-chip="plain"]'));
+  click(host.querySelector('[data-playbook-row="plain"]'));
   flushSync();
   click(node(host, "turn"));
   flushSync();
@@ -271,9 +298,9 @@ test("making an engine with no jobs the default says first what it moves; anothe
   const impact = { sessions: 12, open_jobs: 3 };
   const { host, runtime, close } = open({ client: quietClient({ ...server.api, playbookImpact: async () => impact }) });
   await settle();
-  click(host.querySelector('[data-playbook-chip="plain"]'));
+  click(host.querySelector('[data-playbook-row="plain"]'));
   flushSync();
-  click(host.querySelector('[data-playbook-action="default"]'));
+  click(action(menuOf(host, "plain"), "default"));
   await settle();
   const dialog = document.querySelector("dialog.confirm-backdrop");
   expect(dialog?.textContent).toContain(t.playbooks.defaultBody(12, 3));
@@ -284,28 +311,124 @@ test("making an engine with no jobs the default says first what it moves; anothe
   close();
 });
 
-test("engines: another one shown, made the default, a new one made from it, and its history read", async () => {
+test("engines down the left: one shown, made the default, a new one made from it, and its history read beside the map", async () => {
   const server = engineServer();
   const { host, runtime, close } = open({ client: quietClient(server.api) });
   await settle();
-  click(host.querySelector('[data-playbook-chip="video"]'));
+  // One row each, as the conversations are: the default starred and shown, each with what it is for.
+  expect([...host.querySelectorAll("[data-playbook-row]")].map((row) => row.getAttribute("data-playbook-row"))).toEqual(["general", "video", "coding", "plain"]);
+  expect(host.querySelector('[data-playbook-row="general"]')?.textContent).toContain("★");
+  expect(host.querySelector('[data-playbook-row="video"]')?.textContent).toContain(t.playbooks.builtinHint.video!);
+  expect(host.querySelector("[data-playbook-header]")).toBeNull();
+  click(host.querySelector('[data-playbook-row="video"]'));
   flushSync();
+  expect(host.querySelector('[data-playbook-row="video"]')?.getAttribute("aria-selected")).toBe("true");
   expect(node(host, "scribe")?.getAttribute("data-on")).toBe("true");
-  expect(host.querySelector("[data-playbook-header]")?.textContent).toContain(t.playbooks.builtinHint.video!);
-  click(host.querySelector('[data-playbook-action="default"]'));
+  expect(host.querySelector("[data-playbook-hint]")?.textContent).toContain(t.playbooks.builtinHint.video!);
+  // A built-in has no name to change and cannot be removed.
+  const menu = menuOf(host, "video");
+  expect(action(menu, "rename")).toBeNull();
+  expect(action(menu, "remove")).toBeNull();
+  click(action(menu, "default"));
   expect(runtime.calls.filter((call) => call.name === "patchSettings").map((call) => call.args[0])).toEqual([{ default_playbook: "video" }]);
-  click(host.querySelector('[data-playbook-action="new"]'));
+  expect(document.querySelector("[data-playbook-menu]")).toBeNull();
+
+  // A new one from it: its row is a name field until Enter, then it is made and shown.
+  click(action(menuOf(host, "video"), "new"));
   await settle();
-  const name = host.querySelector<HTMLInputElement>("[data-playbook-name]")!;
-  name.value = "MV 专用";
-  name.dispatchEvent(new Event("input", { bubbles: true }));
+  expect(host.querySelector("[data-playbook-naming]")?.textContent).toContain(t.playbooks.basedOn(t.playbooks.builtin.video!));
+  typeName(host, "MV 专用");
+  await settle();
+  expect(server.asked).toEqual([["create", "video", "MV 专用"]]);
+  expect(host.querySelector("[data-playbook-name]")).toBeNull();
+  const mine = host.querySelector('[data-playbook-row="01MINE00000000000000000000"]');
+  expect(mine?.getAttribute("aria-selected")).toBe("true");
+  expect(mine?.textContent).toContain(t.playbooks.basedOn(t.playbooks.builtin.video!));
+
+  // Its history, beside the map in the picked step's place; picking a step goes back to it.
+  click(action(menuOf(host, "video"), "history"));
+  await settle();
+  expect(host.querySelector('[data-playbook-row="video"]')?.getAttribute("aria-selected")).toBe("true");
+  expect(host.querySelector("[data-playbook-history-of=\"video\"] [data-playbook-history]")?.textContent).toContain(t.playbooks.historyOp.edit);
+  expect(host.querySelector("[data-playbook-step]")).toBeNull();
+  click(node(host, "settle"));
+  expect(host.querySelector("[data-playbook-history]")).toBeNull();
+  expect(host.querySelector('[data-playbook-step="settle"]')).toBeTruthy();
+  click(action(menuOf(host, "video"), "history"));
+  await settle();
+  click(host.querySelector("[data-playbook-history-close]"));
+  expect(host.querySelector("[data-playbook-history]")).toBeNull();
+  close();
+});
+
+test("one of yours renamed in its row and removed after a word; the + makes one from the engine shown", async () => {
+  const mine: Playbook = { ...engines().items[1]!, id: "01MINE00000000000000000000", builtin: false, base_id: "video", name: "MV 专用", revision: 1, revision_id: "rev-mine", updated_at: "2026-10-11T08:00:00.000Z" };
+  const start = engines();
+  const server = engineServer({ ...start, items: [...start.items, mine] });
+  const { host, close } = open({ client: quietClient(server.api) });
+  await settle();
+  click(host.querySelector('[data-playbook-row="01MINE00000000000000000000"]'));
   flushSync();
-  click(host.querySelector('.playbook-name button[type="submit"]'));
+
+  // A right-click on its row opens the same menu; rename turns the row into its name, selected.
+  const row = host.querySelector<HTMLElement>('[data-playbook-row="01MINE00000000000000000000"]')!;
+  row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 60 }));
+  flushSync();
+  click(action(document.querySelector("[data-playbook-menu]"), "rename"));
   await settle();
-  expect(host.querySelector('[data-playbook-chip="01MINE00000000000000000000"]')?.getAttribute("aria-selected")).toBe("true");
-  click(host.querySelector('[data-playbook-action="history"]'));
+  expect(host.querySelector<HTMLInputElement>("[data-playbook-name]")?.value).toBe("MV 专用");
+  // Escape leaves the name; the same name again sends nothing.
+  typeName(host, "别的", "Escape");
+  expect(host.querySelector("[data-playbook-name]")).toBeNull();
+  click(action(menuOf(host, "01MINE00000000000000000000"), "rename"));
   await settle();
-  expect(host.querySelector("[data-playbook-history]")?.textContent).toContain(t.playbooks.historyOp.edit);
+  typeName(host, "MV 专用");
+  await settle();
+  expect(server.asked).toEqual([]);
+  click(action(menuOf(host, "01MINE00000000000000000000"), "rename"));
+  await settle();
+  typeName(host, "MV 二");
+  await settle();
+  expect(server.asked).toEqual([["rename", "01MINE00000000000000000000", "MV 二", "rev-mine"]]);
+  expect(host.querySelector('[data-playbook-row="01MINE00000000000000000000"]')?.textContent).toContain("MV 二");
+
+  // Removing it asks first; then the default is shown.
+  click(action(menuOf(host, "01MINE00000000000000000000"), "remove"));
+  flushSync();
+  const dialog = document.querySelector("dialog.confirm-backdrop");
+  expect(dialog?.textContent).toContain(t.playbooks.removeTitle("MV 二"));
+  expect(server.asked).toHaveLength(1);
+  click(dialog!.querySelector(".modal-foot button.deny"));
+  await settle();
+  expect(server.asked.at(-1)).toEqual(["delete", "01MINE00000000000000000000"]);
+  expect(host.querySelector('[data-playbook-row="01MINE00000000000000000000"]')).toBeNull();
+  expect(host.querySelector('[data-playbook-row="general"]')?.getAttribute("aria-selected")).toBe("true");
+
+  // The + names a new one made from the engine shown; blank leaves things as they were.
+  click(host.querySelector('[data-playbook-row="coding"]'));
+  click(host.querySelector("[data-playbook-add]"));
+  await settle();
+  expect(host.querySelector("[data-playbook-naming=\"new\"]")?.textContent).toContain(t.playbooks.basedOn(t.playbooks.builtin.coding!));
+  typeName(host, "  ");
+  expect(host.querySelector("[data-playbook-name]")).toBeNull();
+  click(host.querySelector("[data-playbook-add]"));
+  await settle();
+  typeName(host, "写库");
+  await settle();
+  expect(server.asked.at(-1)).toEqual(["create", "coding", "写库"]);
+  close();
+});
+
+test("the default engine of yours cannot be removed, and says why", async () => {
+  const mine: Playbook = { ...engines().items[0]!, id: "01MINE00000000000000000000", builtin: false, base_id: "general", name: "我的", revision: 1, revision_id: "rev-mine" };
+  const start = engines({}, "01MINE00000000000000000000");
+  const server = engineServer({ ...start, items: [...start.items, mine] });
+  const { host, close } = open({ client: quietClient(server.api) });
+  await settle();
+  const menu = menuOf(host, "01MINE00000000000000000000");
+  expect(action(menu, "default")).toBeNull();
+  expect(action(menu, "remove")?.disabled).toBe(true);
+  expect(action(menu, "remove")?.title).toBe(t.playbooks.removeIsDefault);
   close();
 });
 
@@ -347,6 +470,7 @@ test("a Mac older than engines shows every step running and nothing of engines t
   await settle();
   expect(host.textContent).toContain(t.playbooks.older);
   expect(host.querySelector("[data-playbook-header]")).toBeNull();
+  expect(host.querySelector("[data-playbook-list]")).toBeNull();
   expect(node(host, "scribe")?.getAttribute("data-on")).toBe("true");
   close();
 });
@@ -358,7 +482,7 @@ test("asked for an engine — from a job's title row — it shows that engine, n
   runtime.rolesTarget = { role: null, playbook: "video" };
   const view = render(RolesPage, { runtime, t });
   await settle();
-  expect(view.host.querySelector('[data-playbook-chip="video"]')?.getAttribute("aria-selected")).toBe("true");
+  expect(view.host.querySelector('[data-playbook-row="video"]')?.getAttribute("aria-selected")).toBe("true");
   expect(runtime.rolesTarget).toBeNull();
   view.close();
 });
@@ -405,6 +529,9 @@ test("as a page, Back steps out of a prompt, then a step, then the page", async 
     expect(title()).toBe(t.routing.tab);
     expect(host.querySelector("[data-playbook-map]")).toBeTruthy();
     expect(host.querySelector("[data-playbook-step]")).toBeNull();
+    // Narrow, the engines are a row of chips over the map, not a list beside it.
+    expect(host.querySelector('[data-playbook-chip="general"]')?.getAttribute("aria-selected")).toBe("true");
+    expect(host.querySelector("[data-playbook-list]")).toBeNull();
     click(node(host, "reader"));
     expect(title()).toBe(t.playbooks.steps.reader!.name);
     click(host.querySelector('[data-prompt="call.read_user_line"]'));
