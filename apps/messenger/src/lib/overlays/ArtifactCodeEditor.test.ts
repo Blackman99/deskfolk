@@ -44,3 +44,20 @@ test("the editor is not rebuilt when the object naming its file is remade for th
     count.restore();
   }
 });
+
+test("while the editor loads, a large file shows only its opening", () => {
+  // The whole file in this layer held WebKit in one layout for minutes: a 13 MB novel, 96 s.
+  const code = `第一章\n${"字".repeat(3_000_000)}`;
+  const { host, close } = render(Harness, { code });
+  const shown = host.querySelector(".artifact-cm-fallback")?.textContent ?? "";
+  expect(shown.startsWith("第一章\n字字")).toBe(true);
+  expect(shown.length).toBeLessThan(50_000);
+  close();
+});
+
+test("while the editor loads, a small file shows whole", () => {
+  const code = "const a = 1;\nconst b = 2;\n";
+  const { host, close } = render(Harness, { code });
+  expect(host.querySelector(".artifact-cm-fallback")?.textContent).toBe(code);
+  close();
+});

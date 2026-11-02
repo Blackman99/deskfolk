@@ -71,6 +71,12 @@
 	 * built again for the same file, back at line 1, and an unsaved edit went with it.
 	 */
 	const file = $derived(path);
+	/**
+	 * What shows under the editor while it loads: the file's opening, never the whole file. The
+	 * layer is one screen, never scrolled, and a 13 MB novel laid out in it held WebKit for 96 s.
+	 */
+	const FALLBACK_CHARS = 20_000;
+	const fallback = $derived(code.length > FALLBACK_CHARS ? code.slice(0, FALLBACK_CHARS) : code);
 	let host = $state<HTMLDivElement | undefined>(undefined);
 	let editor: Monaco.editor.IStandaloneCodeEditor | null = null;
 	/** Set once the editor exists, so decoration effects re-run for it. */
@@ -414,7 +420,7 @@
 </script>
 
 <div class="artifact-cm-wrap min-h-[280px] flex-1 h-full relative flex flex-col">
-	<pre class="artifact-text artifact-cm-fallback absolute inset-0 z-0 m-0 py-4 px-6 overflow-auto bg-pane pointer-events-none">{code}</pre>
+	<pre class="artifact-text artifact-cm-fallback absolute inset-0 z-0 m-0 py-4 px-6 overflow-auto bg-pane pointer-events-none">{fallback}</pre>
 	<div class="artifact-cm" bind:this={host}></div>
 </div>
 
