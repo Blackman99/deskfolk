@@ -103,7 +103,7 @@
 			.sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1))
 	);
 
-	// The event stream carries a run's changes; its state when you open the chat is read once.
+	// The snapshot holds live runs and events carry changes; how the last run ended is read once here.
 	$effect(() => {
 		const id = selected.id;
 		if (connected) void runtime.loadProjectRun(id);

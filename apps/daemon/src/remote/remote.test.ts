@@ -878,6 +878,16 @@ test("lost accepted response reconnects with fresh Noise and same receipt withou
   expect((await fresh.rpc({ v: 1, id: ulid(), method: "GET", path: `/v1/requests/${id}` })).status).toBe(201);
 });
 
+test("a phone's snapshot says which project sessions are at work, over the actual relay", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const session = f.store.createProjectSession({ dir: f.root, agent: "claude_code", configDir: null, locale: "zh" });
+  const run = f.store.createAgentRun(session.id);
+  f.store.updateAgentRun(run.id, { partial: "halfway through" });
+  const snapshot = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/snapshot" });
+  expect(snapshot.status).toBe(200);
+  expect(snapshot.body.liveAgentRuns).toMatchObject([{ id: run.id, session_id: session.id, status: "running", partial: "halfway through" }]);
+});
+
 test("actual relay + native confirmation fixture + signed mailbox grant + Noise RPC and binary file", async () => {
   const f = await fixture(), d = await f.pair(), c = await f.connect(d);
   const created = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/v1/bots", body: { name: "Remote", duties: "test", boundaries: "fixture" } });

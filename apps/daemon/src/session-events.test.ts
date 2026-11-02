@@ -298,6 +298,30 @@ describe("commit / subscribe / snapshot barrier", () => {
     expect(snapshot.sessions[0]!.live_turns![0]!.running_tool).toEqual(running);
   });
 
+  test("the snapshot carries the live runs of project sessions, so a row knows before its chat is opened", async () => {
+    // 2026-11-02: after a reload a project session's row said nothing until you clicked into it.
+    const h = await harness();
+    const session = (dir: string) => h.store.createProjectSession({ dir, agent: "claude_code", configDir: null, locale: "zh" });
+    const replying = h.store.createAgentRun(session("/tmp/replying").id);
+    h.store.updateAgentRun(replying.id, { partial: "halfway through" });
+    const asking = h.store.createAgentRun(session("/tmp/asking").id);
+    h.store.updateAgentRun(asking.id, { status: "waiting_approval", approval: { kind_key: "command", target: "rm x", summary: "rm x" } });
+    const over = h.store.createAgentRun(session("/tmp/over").id);
+    h.store.updateAgentRun(over.id, { status: "completed" });
+    session("/tmp/never-ran");
+
+    const first = await h.get<RuntimeSnapshot>("/v1/snapshot");
+    expect(Object.fromEntries((first.liveAgentRuns ?? []).map((run) => [run.id, [run.status, run.partial]]))).toEqual({
+      [replying.id]: ["running", "halfway through"],
+      [asking.id]: ["waiting_approval", null],
+    });
+
+    // Once it ends it is the transcript's to tell, as for a Bot.
+    h.store.updateAgentRun(replying.id, { status: "completed", partial: null });
+    const second = await h.get<RuntimeSnapshot>("/v1/snapshot");
+    expect(second.liveAgentRuns?.map((run) => run.id)).toEqual([asking.id]);
+  });
+
   test("nested engine writes, rollback, reactions, memories and deletes are journalled without caller publishes", async () => {
     const h = await harness();
     const created = h.store.createBot({ name: "Writer", duties: "fixture", boundaries: "fixture" });

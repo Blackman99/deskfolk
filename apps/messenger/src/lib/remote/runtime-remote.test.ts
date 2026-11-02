@@ -7,7 +7,7 @@ import { emptySnapshot } from "../snapshot.ts";
 import { RemoteApi, type DurablePendingRequest } from "./api.ts";
 import { useEnrollmentDriver, type StoredEnrollment } from "./idb.ts";
 import { enrollment as liveEnrollment, fakeHost, serveRemote } from "./test-host.ts";
-import { aBot, aDirect, aMessage } from "../test-fixtures.ts";
+import { aBot, aDirect, aMessage, anAgentRun, aProjectSession } from "../test-fixtures.ts";
 
 const keys = generateIdentity();
 const pub = identityPublic(keys);
@@ -262,6 +262,30 @@ const botEvent = (seq: number, id: string, name: string, instance = INSTANCE) =>
 const snapshotAt = (request: RemoteRequest, instance: string, watermark: number): RemoteResponse => ({
   v: 1, id: request.id, status: 200,
   body: { ...emptySnapshot(), event_instance_id: instance, watermark_seq: watermark } as unknown as RuntimeSnapshot,
+});
+
+/** The list on a phone that just loaded says what the Mac's does, with no chat opened and no run read. */
+test("a phone that just loaded knows which project sessions are at work", async () => {
+  const run = anAgentRun({ session_id: "proj-1", partial: "看过了" });
+  const asked: string[] = [];
+  const remote = serveRemote({
+    ready: () => ({ event_instance_id: INSTANCE, watermark_seq: 0 }),
+    answer: (request) => {
+      asked.push(request.path);
+      if (request.path !== "/v1/snapshot") return hostAnswers(request);
+      return { v: 1, id: request.id, status: 200, body: { ...snapshotAt(request, INSTANCE, 0).body as RuntimeSnapshot, sessions: [aProjectSession({ id: "proj-1" })], liveAgentRuns: [run] } };
+    },
+  });
+  restores.push(remote.restore);
+  useEnrollmentDriver({ get: () => Promise.resolve(liveEnrollment), set: () => Promise.resolve() });
+  const runtime = new MessengerRuntime();
+  runtimes.push(runtime);
+
+  await (runtime as unknown as { tickRemote(): Promise<void> }).tickRemote();
+
+  expect(runtime.connection).toBe("connected");
+  expect(runtime.snapshot.agentRuns["proj-1"]).toEqual(run);
+  expect(asked.filter((path) => path.startsWith("/v1/project-sessions"))).toEqual([]);
 });
 
 /**

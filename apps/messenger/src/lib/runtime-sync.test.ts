@@ -8,7 +8,8 @@ import { MessengerRuntime } from "./runtime.svelte.ts";
 import { LocalApi } from "./local-api.ts";
 import { ApiError } from "./api.ts";
 import { emptySnapshot } from "./snapshot.ts";
-import { aBot, aDirect, aMessage, aProjectSession, aRoutine, aTurn } from "./test-fixtures.ts";
+import { aBot, aDirect, aMessage, anAgentRun, aProjectSession, aRoutine, aTurn } from "./test-fixtures.ts";
+import { agentRunStatus } from "./sidebar/session-status.ts";
 import { flushSync } from "svelte";
 import RoutineCard from "./panels/RoutineCard.svelte";
 import { copyFor } from "./copy.ts";
@@ -1644,6 +1645,16 @@ test("a finished turn's commands stay for its reply: what this page saw at once,
   runtime.loadTurnCommands("01ARZ3NDEKTSV4RRFFQ69G5FAW");
   await new Promise((resolve) => setTimeout(resolve, 5));
   expect(runtime.commandsOf("01ARZ3NDEKTSV4RRFFQ69G5FAW")).toEqual([]);
+});
+
+test("a window that just loaded knows a project session's live run with nothing opened or read (ADR 0095)", async () => {
+  const project = aProjectSession({ id: "proj-1" });
+  const run = anAgentRun({ session_id: "proj-1", partial: "看过了" });
+  const { runtime } = await connected(async () => ({ ...emptySnapshot(), ...cursor, bots: [], sessions: [project], liveAgentRuns: [run] }));
+  await until(() => runtime.connection === "connected");
+  expect(runtime.selectedId).toBeNull();
+  expect(runtime.snapshot.agentRuns["proj-1"]).toEqual(run);
+  expect(agentRunStatus(runtime.snapshot.agentRuns["proj-1"], { running: "思考中", replying: "回复中", waitingApproval: "待审批", waitingAsk: "待回答", failed: "出错", interrupted: "中断", idle: "" })?.label).toBe("回复中");
 });
 
 test("opening a project session keeps its directory on its row, so the sidebar and header still have it (ADR 0095)", async () => {

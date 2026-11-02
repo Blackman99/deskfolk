@@ -218,6 +218,14 @@ export function latestAgentRun(ctx: StoreContext, sessionId: string): AgentRun |
   return row ? toAgentRun(row) : null;
 }
 
+/** The runs at work or waiting on you, in any session, oldest first: what a window needs before any chat is open. */
+export function listLiveAgentRuns(ctx: StoreContext): AgentRun[] {
+  return ctx.db
+    .query<AgentRunRow, []>(`SELECT * FROM agent_runs WHERE status IN ('running', 'waiting_approval') ORDER BY created_at, id`)
+    .all()
+    .map(toAgentRun);
+}
+
 export function updateAgentRun(
   ctx: StoreContext,
   id: string,

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { aProjectSession, anAgentRun } from "./test-fixtures.ts";
-import { applyEvent, emptySnapshot, keepNewestRun } from "./snapshot.ts";
+import { applyEvent, emptySnapshot, fromRuntimeSnapshot, keepNewestRun } from "./snapshot.ts";
 
 const upsert = (over: Parameters<typeof anAgentRun>[0]) => ({ event: "agent_run.upsert" as const, occurred_at: "t", ...anAgentRun(over) });
 
@@ -32,6 +32,27 @@ test("a run read on opening does not replace one an event already brought", () =
   const runs = keepNewestRun({ "proj-1": newer }, anAgentRun({ status: "running" }));
   expect(runs["proj-1"]).toBe(newer);
   expect(keepNewestRun({}, newer)["proj-1"]).toBe(newer);
+});
+
+test("the live runs in a runtime snapshot are held by session, before any chat is open", () => {
+  const base = { ...emptySnapshot(), event_instance_id: "a".repeat(32), watermark_seq: 0 };
+  const replying = anAgentRun({ id: "run-a", session_id: "a", partial: "看过了" });
+  const asking = anAgentRun({ id: "run-b", session_id: "b", status: "waiting_approval" });
+  const { agentRuns } = fromRuntimeSnapshot({ ...base, liveAgentRuns: [replying, asking] });
+  expect(agentRuns).toEqual({ a: replying, b: asking });
+});
+
+test("a session's newest live run is the one held, whichever order they come in", () => {
+  const base = { ...emptySnapshot(), event_instance_id: "a".repeat(32), watermark_seq: 0 };
+  const older = anAgentRun({ id: "run-1" });
+  const newer = anAgentRun({ id: "run-2", created_at: "2026-09-19T02:00:00.000Z", updated_at: "2026-09-19T02:00:00.000Z" });
+  expect(fromRuntimeSnapshot({ ...base, liveAgentRuns: [older, newer] }).agentRuns["proj-1"]).toBe(newer);
+  expect(fromRuntimeSnapshot({ ...base, liveAgentRuns: [newer, older] }).agentRuns["proj-1"]).toBe(newer);
+});
+
+test("a daemon that does not list live runs leaves none held", () => {
+  const base = { ...emptySnapshot(), event_instance_id: "a".repeat(32), watermark_seq: 0 };
+  expect(fromRuntimeSnapshot(base).agentRuns).toEqual({});
 });
 
 test("a project session upsert keeps its directory", () => {

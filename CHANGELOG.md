@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### After a reload, a project session's status is right without clicking into it
+
+- After reloading the window or reopening on a phone, a project session at work looked idle in the sidebar until you clicked into it, or until its next change came along. It now says thinking, replying or waiting for approval as soon as the list appears, and so do "Only working or unread", the narrow rail and the tab marks. A phone needs the Mac's app updated to a version with this fix.
+
 ### A subagent's popup shows all of what it was asked, and is wider
 
 - In a project session, opening a subagent with a long transcript squeezed what it was asked down to a single clipped line. It now lies flat in full, however long, and only the popup scrolls.
@@ -31,12 +35,14 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - Plans and tickets, filing your lines, reviewed hand-overs and the supervisor used to be fixed around every Bot. They are now one switch in the engine, and a fourth built-in engine, Plain (自由), leaves it off: your lines open no job, Bots just work and reply, and whether it is done is yours to judge. What stays under every engine is your lines in order, Stop and typed stops, approvals, permission modes and the spend cap. General stays the default and General, Video and Coding are unchanged, so nothing changes unless you choose it: per conversation in a group's or a Bot's Actions, as the default on Roles, or in the wizard's last step. Moving a conversation with open jobs says first that they stop where they are, woken by nothing and deleted by nothing, and they go on when you move back. An engine you build on Plain can also switch reading off, leaving Stop as the only stop, and any engine can switch off judging a group line and asking a long run how it is going.
 - An engine that keeps jobs can now let a few of their rules go on its own: waiting on your word (a hand-over goes through once its gates pass), laying large jobs out first, the capability ceiling, the supervisor's pick-ups, and checks from your words. So you can have the board and the flow without approvals.
 - An engine can carry a System section of its own and leave out groups of the app's tools (the roster, routines, endpoints and MCP, prompts and records), on Roles under "A Bot's turn". The text is all yours, kept by language, and no update changes it. See [ADR 0103](docs/adr/0103-an-engine-can-work-in-no-jobs.md).
+
 ### Sending several pictures remotely no longer sends you round the reconnect screen
 
 - Sending three or more pictures or files at once from a phone was refused by the Mac, and the phone took that answer for a lost link: pressing Send reconnected, the pictures stayed in the composer, and pressing again did the same, so they never went. The Mac counted each file as a transfer of its own, with a ceiling of two, while the phone sends them one after the other. A message can now carry up to 32 files, sent one after the other.
 - When the Mac refuses a message, the phone no longer reconnects: the composer says why (too many files, or not taken), and keeps the files and the words. Only a link that really went reconnects.
 - A file that fails among several now fails only that message, rather than taking the link down with it.
 - After a link drops mid-upload, pressing Send again goes through the first time.
+
 ### Project sessions run and show background commands, monitors and subagents
 
 - Claude Code in a project session can now send commands to the background, watch with Monitor and run subagents in the background, as in the terminal; all of that used to be refused. Bots still run nothing in the background
@@ -593,18 +599,23 @@ Signed and notarized macOS rc, with an experimental, still unsigned Windows inst
 ### A Claude Agent Bot's question no longer ends its turn as "Endpoint error" when you take a while to answer
 
 - When a Bot run by Claude Code asked you something and you answered after more than about 30 seconds, the turn ended as "Endpoint error" right after your answer: whatever the Bot tried next was refused, and its closing reply was dropped. Claude Code reports a call that is still running every 30 seconds, and the app took that report, arriving while the question waited on you, for the end of the turn. A question or an approval card now waits as long as you take, and the Bot goes on from your answer.
+
 ### Drag a conversation from the sidebar into the workbench
 
 - A conversation in the sidebar — any row of the list, a pinned avatar, an avatar on the folded rail — can now be dragged into the workbench: onto the middle of a pane it opens as a new tab there, onto a tab strip at the pointer's position, onto a pane's edge in a pane split off there, and let go with ⌥ held it floats. A conversation that already has a tab moves that tab instead of opening a second one. Its name follows the pointer and the drop shows the same marks as dragging a tab; let go outside the workbench and nothing changes, and a plain click still opens it where Where windows open says.
+
 ### A message's hover actions no longer cover its first line
 
 - The bar of quick reactions and actions that shows over a message under the pointer is smaller (24px buttons, 30px tall instead of 36px) and stands on the message's top edge instead of over its first line: above your bubble's words, and above a Bot's reply — for its first part, in the empty end of the name line. Leaving the message, the bar can still be reached while it fades, so a pointer heading for it on a slant gets there.
+
 ### A Bot that hands over a ticket is called to the next one again
 
 - A Bot that handed over one ticket of a job and stopped could be left there until you spoke: results of generation jobs that came back just before its segment moved to a ticket stayed queued on work nothing would run again, and the app took them for work the Bot still had in line on the whole job, so it never called the Bot to the job's next ticket. Work a segment leaves with mail still in line now stays open, so the mail is heard in a later segment, and mail already stranded that way no longer keeps the Bot from being called back.
+
 ### On a phone, holding a message opens a sheet sized for a thumb
 
 - A long-press on a message now opens its actions as a sheet across the bottom: the five quick reactions as 48px round buttons, then Reply, Copy, Select text and the rest as 48px rows, over a dimmed transcript that closes it when tapped. Before, the same menu opened as a small popover at the finger, with 28px reactions. A wider touch screen gets the sheet up to 560px wide, centred.
+
 ### Losing the connection keeps your place; menus and choices look finished
 
 - Once the app has been connected, losing the connection no longer swaps the whole window for a "can't reach the runtime" screen: the window stays where it was, faded and not clickable, under a banner at the top that says it is reconnecting or offers Retry. Coming back, the window is rebuilt as before. The first connection still shows the centred screen.
@@ -612,12 +623,14 @@ Signed and notarized macOS rc, with an experimental, still unsigned Windows inst
 - Settings' sidebar lifts the open page off the list as a card, as the session sidebar does.
 - Choice chips (templates, API format, thinking levels) are pills in the body font instead of small monospace tags; a model's own name keeps its monospace.
 - Card titles in Bot and group settings are sentence case instead of letter-spaced capitals.
+
 ### Empty places say what to do next
 
 - An empty pane offers New bot and New group above its list of what can be opened; a pane that has lost its conversation offers New bot too.
 - A direct's starters are cards: the icon in a tile, then what it asks. The first, the hand-off, is ringed in the accent; under the pointer a card lifts a little. A conversation with no Bot to greet shows the faded mark instead of a grey circle, and the file drop's mark is a file in the accent tint.
 - While a conversation's history comes over the relay, the transcript shows shimmering shapes of the messages to come instead of a spinner.
 - The first run's team step shows each Bot's portrait, ticks it from anywhere on its face and name, and rings a ticked Bot and the chosen way of working in the accent. Steps slide in from the right going on and from the left going back.
+
 ### A conversation pane has a header again, and the sidebar answers the pointer
 
 - On a wide window a conversation's pane has a header above the transcript: the portrait, the name, what is going on there ("Thinking", "Waiting for approval") and who is in it or the Bot's model, a pill per approval or question waiting on you that scrolls to the card, and pin, Flow and settings. They are the tab's own actions, which its ⋯ and right-click keep offering. Before, the tab was the header and these hid behind a ⋯ that showed only on hover. The phone keeps its own header.
@@ -626,6 +639,7 @@ Signed and notarized macOS rc, with an experimental, still unsigned Windows inst
 - A pinned conversation that is working shows the accent dot, as everywhere else, instead of green.
 - The tab strip's ×, + and ⋯ are drawn icons rather than text characters.
 - On a phone the bottom bar is frosted, its update dot is the accent rather than red (an update is not an error), and the conversation's ⋯ menu drops in.
+
 ### The chat says what waits on you, and new lines rise into place
 
 - An approval still waiting on you has a warn-tinted head with a shield, "Waiting for your approval", and a soft ring round the card; Allow once is the one filled button, Always allow sits beside it, Deny is the quiet way out. A question still waiting has a purple "Waiting for your answer" and ring. Once answered, both settle into a plain card with the outcome.
@@ -636,6 +650,7 @@ Signed and notarized macOS rc, with an experimental, still unsigned Windows inst
 - Send turning into Stop turns its glyph in place; the mention list fades in and shows its keys (↑↓, Enter, Esc); an attachment's remove button is 24px, and a file added pops into the row.
 - Copying from the message menu, and copying a message ID, now confirm with "Copied" at the bottom of the window.
 - Keyboard focus shows one clear ring everywhere (a gap in the surface colour, then the accent) instead of a faint glow.
+
 ### Hand off the first job and come back to it in the morning; on power, a Mac with work running does not doze off
 
 - An empty direct with a Bot now opens its starters with "🌙 Hand it off, see it tomorrow morning": it fills the composer with one line asking the Bot to look through the workspace now, write a one-page brief into `briefs/`, and set up a routine at 9 every morning that writes a fresh one. Before, the starters were questions such as "introduce your duties", so the first thing tried was always a small one.

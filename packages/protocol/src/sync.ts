@@ -3,7 +3,7 @@ import type { Bot } from "./bots.ts";
 import type { ClientEvent } from "./events.ts";
 import type { Hold } from "./holds.ts";
 import type { Provider } from "./providers.ts";
-import type { AgentRunToolInfo } from "./project-sessions.ts";
+import type { AgentRun, AgentRunToolInfo } from "./project-sessions.ts";
 import type { BotToolInfo } from "./bot-replay.ts";
 import type { Judgement } from "./routing.ts";
 import type { SessionDetail, SessionSummary } from "./sessions.ts";
@@ -55,6 +55,12 @@ export type RuntimeSnapshot = EventCursor & {
   settings: Settings;
   bots: Bot[];
   sessions: SessionSummary[];
+  /**
+   * The project sessions' runs at work right now (ADR 0095), so a list says so with no chat opened:
+   * `agent_run.upsert` carries only what changes after this. A run that has ended is not here; its
+   * chat reads it on opening. Absent from an older daemon, where a row learns only from those two.
+   */
+  liveAgentRuns?: AgentRun[];
   // No `spend`: 3,700 usage rows were 1.4 MB of every snapshot and nothing on screen read them.
   // `GET /v1/spend` serves them to whatever view needs them, when it opens.
   approvals: Approval[];

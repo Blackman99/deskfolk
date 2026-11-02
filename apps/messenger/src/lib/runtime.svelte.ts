@@ -653,8 +653,9 @@ export class MessengerRuntime {
   speedTest(providerId: string, model: string): Promise<{ ok: true; speed: ModelSpeed } | { ok: false; error: string }> { return this.adminMutations.speedTest(providerId, model); }
   createBot(body: CreateBotRequest): Promise<ApiError | null> { return this.adminMutations.createBot(body); }
   /**
-   * The newest run of a project session, read once when its chat opens: the event stream carries
-   * only what changes after that. A run an event already brought is not replaced by an older one.
+   * The newest run of a project session, read once when its chat opens: the runtime snapshot holds
+   * only live runs, so this is how a chat learns how its last run ended. A run an event already
+   * brought is not replaced by an older one.
    */
   async loadProjectRun(sessionId: string): Promise<void> {
     const api = this.api;

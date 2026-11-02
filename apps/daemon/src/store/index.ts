@@ -382,6 +382,7 @@ export class Store {
     return {
       credentialOperations: credentials.listCredentialOperations(this.ctx),
       settings: settings.settingsCached(this.ctx), bots: this.listBots(), sessions: this.listSessions(),
+      liveAgentRuns: projectSessions.listLiveAgentRuns(this.ctx),
       approvals: this.listApprovals(), mcpServers: this.listMcpServers(),
       providers: providers.providersCached(this.ctx),
       skills: skills.listSkills(this.ctx).map((skill) => skills.withLearning(this.ctx, skill)),

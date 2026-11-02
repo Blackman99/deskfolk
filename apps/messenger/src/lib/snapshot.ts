@@ -38,7 +38,10 @@ export type Snapshot = {
   routines: Routine[];
   messages: Message[];
   turns: Turn[];
-  /** The newest run of each project session (ADR 0095), by session id: events carry changes, a view loads the rest. */
+  /**
+   * The newest run of each project session (ADR 0095), by session id: the runtime snapshot brings
+   * the live ones, events carry changes, and a chat reads a run that has ended when it opens.
+   */
   agentRuns: Record<string, AgentRun>;
   judgements: Judgement[];
   pendingJudgements: PendingJudgement[];
@@ -118,6 +121,7 @@ export function fromRuntimeSnapshot(snapshot: RuntimeSnapshot): Snapshot {
     messages: snapshot.sessions.flatMap((session) => session.last_message ? [session.last_message] : []),
     turns: snapshot.sessions.flatMap((session) => session.live_turns ?? []),
     pendingJudgements: snapshot.sessions.flatMap((session) => session.pending_judgements ?? []),
+    agentRuns: (snapshot.liveAgentRuns ?? []).reduce<Record<string, AgentRun>>((runs, run) => keepNewestRun(runs, run), {}),
     holds: snapshot.holds ?? [],
     holdsOn: snapshot.holds !== undefined,
     turnInbox: snapshot.turnInbox === true,
