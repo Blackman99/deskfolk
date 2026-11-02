@@ -1,0 +1,358 @@
+@font-face { font-family: "DF Sans"; src: url(/fonts/SFNS.ttf) format("truetype"); font-weight: 1 1000; }
+@font-face { font-family: "DF Mono"; src: url(/fonts/SFNSMono.ttf) format("truetype"); font-weight: 1 1000; }
+
+:root {
+  --bg: #eef1f2; --pane: #ffffff; --ink: #121c20; --ink2: #37444a; --muted: #5f6d74; --muted-l: #95a2a8;
+  --line: #e0e6e8; --line-s: #eff3f4; --accent: #146a7c; --tint: #e6f2f4; --accent-b: #b9d6dc;
+  --mustard: #f0ab3d; --ok: #16a34a; --ok-bg: #f0fdf4; --ok-line: #bbf7d0; --ok-text: #15803d;
+  --danger: #dc2626; --danger-bg: #fef2f2; --danger-line: #fca5a5; --danger-text: #b91c1c;
+  --warn: #d97706; --warn-bg: #fffbeb; --warn-line: #fcd34d; --warn-text: #b45309;
+  --chip: #eff3f4;
+  /* more of the app's light tokens (apps/messenger/src/lib/styles/tokens.css) */
+  --ground: #f7f9f9; --line-hover: #c9d3d6; --accent-hover: #0f5462; --input-bg: #ffffff; --tab-strip: #e1e6e8;
+  --row-hover: rgba(18,28,32,.05); --accent-glow: rgba(20,106,124,.14);
+  --field-focus: color-mix(in srgb, var(--accent) 70%, var(--line));
+  /* The app's surfaces are drawn at --k times their size in the app; each surface sets its own (film.js: KW the
+     project session's window, KR Roles, KS the window's sidebar, KB the sidebar scene's window). A size below is
+     written as the app's px × --k. */
+  --k: 2.3; --kw: 1.8;
+  /* --shadow-card: the content card on the window's ground */
+  --card-shadow: 0 0 0 calc(.5px * var(--k)) rgba(18,28,32,.13), 0 calc(1px * var(--k)) calc(3px * var(--k)) rgba(18,28,32,.06),
+    0 calc(12px * var(--k)) calc(32px * var(--k)) calc(-12px * var(--k)) rgba(18,28,32,.16);
+  --sans: "DF Sans", "PingFang SC", sans-serif;
+  --mono: "DF Mono", "PingFang SC", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+body { font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; font-feature-settings: "kern"; }
+#stage { position: absolute; inset: 0; overflow: hidden; background: var(--bg); }
+.abs { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.mono { font-family: var(--mono); }
+.glyph { display: block; flex: none; }
+
+/* the room: soft teal light, a dot grid drifting, and the dusk the plan's breakdown brings */
+#bgGlow { position: absolute; inset: -200px; background:
+  radial-gradient(900px 620px at 18% 12%, rgba(20,106,124,.10), transparent 70%),
+  radial-gradient(1100px 700px at 92% 96%, rgba(240,171,61,.10), transparent 70%); }
+#dots { position: absolute; left: -400px; top: -400px; width: 2720px; height: 1880px; opacity: .5;
+  background-image: radial-gradient(circle, rgba(18,28,32,.09) 1.6px, transparent 1.8px); background-size: 36px 36px; }
+#dusk { position: absolute; inset: 0; opacity: 0; background:
+  linear-gradient(180deg, rgba(31,53,84,.55), rgba(48,60,96,.38) 55%, rgba(20,34,52,.5)); }
+
+/* headline zone */
+.headline { position: absolute; left: 120px; top: 84px; font-size: 76px; font-weight: 700; letter-spacing: -1.5px; line-height: 1.1; white-space: nowrap; color: var(--ink); }
+.headline.en { font-size: 66px; letter-spacing: -1.2px; }
+.subline { position: absolute; left: 124px; top: 186px; font-size: 32px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+
+/* the cast */
+.mascot { position: absolute; left: 0; top: 0; transform-origin: 0 0; z-index: 10; }
+.mascot img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.mascot .shadow { position: absolute; border-radius: 50%; background: radial-gradient(closest-side, rgba(18,28,32,.28), rgba(18,28,32,0)); }
+/* an avatar: one Bot's picture is a rounded square (--radius-bot) */
+.face { display: inline-block; flex: none; border-radius: 50%; background-color: #fff; background-repeat: no-repeat; border: calc(1px * var(--k)) solid var(--line); }
+.face.bot { border-radius: 30%; }
+
+/* panes and cards: a card on the ground, a hairline edge and the card's shadow (--shadow-card) */
+.pane { background: var(--pane); border-radius: calc(14px * var(--k)); box-shadow: var(--card-shadow); }
+.pill { display: inline-flex; align-items: center; gap: 8px; border-radius: 99px; padding: 4px 16px; font-size: 22px; font-weight: 600; white-space: nowrap; }
+
+/* composer (Composer.svelte, wider than a phone): the text on top, the tools under it */
+.composer { display: flex; flex-wrap: wrap; align-items: center; column-gap: calc(4px * var(--k)); row-gap: calc(2px * var(--k));
+  padding: calc(8px * var(--k)) calc(8px * var(--k)) calc(6px * var(--k)); border-radius: calc(18px * var(--k));
+  background: var(--input-bg); border: calc(1px * var(--k)) solid var(--line); font-size: calc(14px * var(--k));
+  box-shadow: inset 0 calc(1px * var(--k)) 0 rgba(255,255,255,.7), 0 calc(1px * var(--k)) calc(2px * var(--k)) rgba(18,28,32,.05),
+    0 calc(10px * var(--k)) calc(28px * var(--k)) calc(-12px * var(--k)) rgba(18,28,32,.22); z-index: 3; }
+.composer.focus { border-color: var(--field-focus); }
+.composer .txt { order: -1; flex: 1 0 100%; min-height: calc(34px * var(--k)); padding: calc(6px * var(--k)) calc(10px * var(--k)) calc(2px * var(--k));
+  line-height: calc(22px * var(--k)); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.composer .ph { color: var(--muted); }
+.composer .caret { display: inline-block; width: calc(1.5px * var(--k)); height: calc(17px * var(--k)); background: var(--accent); vertical-align: calc(-3px * var(--k)); margin-left: calc(1px * var(--k)); border-radius: 2px; }
+.composer .caret.lead { margin: 0 calc(-1.5px * var(--k)) 0 0; }
+.composer .cb { width: calc(34px * var(--k)); height: calc(34px * var(--k)); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; color: var(--muted); }
+.composer .cb.attach { margin-right: auto; }
+.composer .send { background: var(--accent); color: #fff; }
+.composer .send.off { background: var(--tint); color: color-mix(in srgb, var(--accent) 55%, transparent); }
+/* your line (.msg.is-you): the corner nearest your avatar is the mark's bubble tail */
+.bubble-you { background: var(--accent); color: #fff; border-radius: calc(14px * var(--k)) calc(4px * var(--k)) calc(14px * var(--k)) calc(14px * var(--k));
+  padding: calc(10px * var(--k)) calc(14px * var(--k)); font-size: calc(14px * var(--k)); line-height: 1.5; max-width: 640px; width: max-content;
+  box-shadow: 0 calc(1px * var(--k)) calc(2px * var(--k)) rgba(18,28,32,.04), 0 18px 40px -22px rgba(20,106,124,.55); }
+/* Button.svelte: primary, secondary */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: calc(6px * var(--k)); height: calc(32px * var(--k)); padding: 0 calc(12px * var(--k)); border-radius: calc(8px * var(--k));
+  font-size: calc(13px * var(--k)); font-weight: 600; white-space: nowrap; color: var(--ink); }
+.btn.primary { background: var(--accent); color: #fff; box-shadow: inset 0 calc(1px * var(--k)) 0 rgba(255,255,255,.14), 0 calc(1px * var(--k)) calc(2px * var(--k)) color-mix(in srgb, var(--accent) 35%, transparent); }
+.btn.secondary { background: #fff; box-shadow: inset 0 0 0 calc(1px * var(--k)) var(--line), 0 calc(1px * var(--k)) calc(2px * var(--k)) rgba(18,28,32,.04); }
+.mark { display: inline-block; flex: none; }
+.dot { display: inline-flex; align-items: center; justify-content: center; flex: none; border-radius: 50%; color: #fff; }
+/* pointer */
+#pointer { position: absolute; left: 0; top: 0; width: 44px; height: 60px; z-index: 50; filter: drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+#ripple { position: absolute; left: 0; top: 0; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 5px solid var(--accent); z-index: 49; opacity: 0; }
+
+/* end card */
+.word { font-size: 150px; font-weight: 700; letter-spacing: -5px; white-space: nowrap; }
+.tagline { font-size: 56px; font-weight: 650; letter-spacing: -.8px; white-space: nowrap; color: var(--ink2); }
+.cta { display: inline-flex; align-items: center; gap: 22px; height: 92px; padding: 0 44px; border-radius: 46px; background: var(--accent); color: #fff; font-size: 38px; font-weight: 650; white-space: nowrap; }
+.url { font-family: var(--mono); font-size: 40px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.fine { font-size: 26px; color: var(--ink2); white-space: nowrap; }
+.finer { font-size: 21px; color: #47545a; white-space: nowrap; }
+
+
+/* ================================================================ the 0.3.0 release film */
+/* 0–4: the name, the version turning over from 0.2.0 */
+.ver { font-family: var(--mono); font-size: 112px; font-weight: 700; letter-spacing: -3px; color: var(--accent); white-space: nowrap; line-height: 1.1; }
+.ver.small { font-size: 60px; letter-spacing: -1px; }
+.pill.count { font-size: 34px; padding: 8px 24px; gap: 10px; background: var(--tint); color: var(--accent); border: 2px solid var(--accent-b); }
+.ver .roll { display: inline-block; height: 1.1em; overflow: hidden; vertical-align: top; }
+.ver .roll .col { display: flex; flex-direction: column; }
+.ver .roll .col span { display: block; height: 1.1em; }
+.platform { display: inline-flex; align-items: center; gap: 14px; height: 74px; padding: 0 28px; border-radius: 37px; background: #fff; border: 2px solid var(--line);
+  font-size: 30px; font-weight: 600; color: var(--ink); white-space: nowrap; box-shadow: 0 16px 36px -24px rgba(18,28,32,.45); }
+.platform.quiet { color: var(--muted); }
+
+/* 4–10: Roles as a tab of its own (RolesPage, RoutingTab's wide layout): the workbench's tab strip, the engines down
+   the left (PlaybookList), the built-in's line and the intro over the map (PlaybookMap) and the picked step
+   (PlaybookStepDetail) */
+.roles { overflow: hidden; display: flex; flex-direction: column; }
+.rstrip { flex: none; height: calc(40px * var(--k)); background: var(--tab-strip); display: flex; align-items: flex-end; padding: 0 calc(8px * var(--k)); }
+.rtab { display: inline-flex; align-items: center; gap: calc(7px * var(--k)); height: calc(32px * var(--k)); padding: 0 calc(16px * var(--k)); border-radius: calc(9px * var(--k)) calc(9px * var(--k)) 0 0;
+  background: var(--pane); font-size: calc(13px * var(--k)); font-weight: 600; color: var(--ink); white-space: nowrap; }
+.rtab .glyph { color: var(--muted); }
+.rwide { flex: 1; min-height: 0; display: grid; grid-template-columns: clamp(calc(184px * var(--k)), 22%, calc(248px * var(--k))) minmax(0, 1fr); }
+.rlist { min-width: 0; overflow: hidden; padding: calc(10px * var(--k)) calc(8px * var(--k)) calc(16px * var(--k)); border-right: calc(1px * var(--k)) solid var(--line-s); }
+.rlhead { display: flex; align-items: center; justify-content: space-between; padding: calc(6px * var(--k)) calc(10px * var(--k)) calc(4px * var(--k)); font-size: calc(12px * var(--k)); font-weight: 600; color: var(--muted); }
+.rladd { width: calc(22px * var(--k)); height: calc(22px * var(--k)); display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+/* a conversation's row without the avatar: name (the default starred) and time, then a line; the one shown tinted */
+.erow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: calc(2px * var(--k)) calc(10px * var(--k)); padding: calc(8px * var(--k)) calc(10px * var(--k)); margin: calc(1px * var(--k)) 0;
+  border-radius: calc(10px * var(--k)); border: calc(1px * var(--k)) solid transparent; }
+.erow.hover { background: var(--row-hover); }
+.erow.on { background: var(--tint); }
+.erow .en { display: flex; align-items: baseline; gap: calc(4px * var(--k)); min-width: 0; font-size: calc(14px * var(--k)); font-weight: 600; line-height: 1.5; color: var(--ink); }
+.erow .star { flex: none; font-size: calc(11px * var(--k)); color: var(--accent); }
+.erow .et { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.erow .etime { align-self: center; font-size: calc(11px * var(--k)); color: var(--muted); }
+.erow .el { grid-column: 1 / -1; min-width: 0; min-height: 1.4em; font-size: calc(12px * var(--k)); line-height: 1.4; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rmain { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.rtop { flex: none; display: flex; flex-direction: column; gap: calc(6px * var(--k)); padding: calc(16px * var(--k)) calc(24px * var(--k)) calc(12px * var(--k)); }
+.rhints { display: grid; }
+.rhints > * { grid-area: 1 / 1; }
+.rhint { margin: 0; font-size: calc(13px * var(--k)); line-height: 1.5; color: var(--ink2); }
+.rintro { margin: 0; font-size: calc(12px * var(--k)); line-height: 1.5; color: var(--muted); }
+.rsplit { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(calc(320px * var(--k)), 46%, calc(420px * var(--k))); gap: calc(14px * var(--k)); padding: 0 calc(24px * var(--k)) calc(20px * var(--k)); }
+.rmapcol { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.pflow { position: relative; }
+.pedges { position: absolute; left: 0; top: 0; overflow: visible; }
+.pedges path { fill: none; stroke: var(--line-hover); stroke-width: 1.5; }
+.pedges path.off { stroke-dasharray: 4 4; opacity: .6; }
+/* a step as the flow board draws one of the app's calls: dashed; off, dim with a grey dot and 「已关」 */
+.pcard { position: absolute; display: flex; flex-direction: column; justify-content: center; gap: calc(2px * var(--k)); padding: calc(6px * var(--k)) calc(10px * var(--k));
+  border: calc(1px * var(--k)) solid var(--line); border-radius: calc(10px * var(--k)); background: var(--pane); min-width: 0; }
+.pcard.root { align-items: center; background: var(--chip); font-size: calc(12px * var(--k)); font-weight: 600; }
+.pcard.turn { border-style: dashed; background: var(--pane); }
+.pcard.turn .cs { text-align: center; font-weight: 400; }
+.pcard.step { border-style: dashed; }
+.pcard.sel { border-style: solid; border-color: var(--accent); box-shadow: 0 0 0 calc(1px * var(--k)) var(--accent); }
+.pcard.off { opacity: .55; }
+.pcard .ch { display: flex; align-items: center; gap: calc(6px * var(--k)); width: 100%; min-width: 0; }
+.pcard .cd { width: calc(6px * var(--k)); height: calc(6px * var(--k)); flex: none; border-radius: 50%; background: var(--ok); }
+.pcard.off .cd { background: var(--muted); }
+.pcard .ct { flex: 1; min-width: 0; overflow: hidden; font-size: calc(12px * var(--k)); font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.pcard.root .ct { flex: none; }
+.pcard .lk { flex: none; display: flex; color: var(--muted); }
+.pcard .cs { width: 100%; overflow: hidden; color: var(--muted); font-size: calc(11px * var(--k)); white-space: nowrap; text-overflow: ellipsis; }
+.rdetail { min-width: 0; min-height: 0; overflow: hidden; }
+.pstep { display: flex; flex-direction: column; gap: calc(14px * var(--k)); padding: calc(14px * var(--k)); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(10px * var(--k));
+  background: var(--pane); box-shadow: 0 1px 2px rgba(18,28,32,.04); }
+.psh { display: flex; flex-direction: column; gap: calc(3px * var(--k)); }
+.psh h3 { margin: 0; font-size: calc(14px * var(--k)); font-weight: 600; }
+.phint { margin: 0; font-size: calc(12px * var(--k)); line-height: 1.45; color: var(--muted); }
+.ppart { display: flex; flex-direction: column; gap: calc(10px * var(--k)); padding-top: calc(12px * var(--k)); border-top: calc(1px * var(--k)) solid var(--line); }
+.ppart h4 { margin: 0; font-size: calc(12px * var(--k)); font-weight: 600; color: var(--ink2); }
+.psw { display: flex; align-items: center; gap: calc(10px * var(--k)); }
+/* Switch.svelte: 40 by 22, the thumb a lit disc that slides */
+.sw { position: relative; flex: none; width: calc(40px * var(--k)); height: calc(22px * var(--k)); border-radius: 99px; background: var(--line); box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
+.sw.on { background: var(--accent); }
+.sw .th { position: absolute; top: calc(2px * var(--k)); left: calc(2px * var(--k)); width: calc(18px * var(--k)); height: calc(18px * var(--k)); border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.22), 0 0 0 .5px rgba(0,0,0,.06); }
+.pstate { font-size: calc(12px * var(--k)); }
+
+/* the sidebar (Sidebar.svelte) at its surface's --k: the mark alone at the head with the switches at the far end,
+   the pinned band once something is pinned, search, the Bots section, Projects with a folder and its sessions */
+.sb { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--ground); overflow: hidden; }
+.sb .brand { flex: none; display: flex; align-items: center; gap: calc(4px * var(--k)); height: calc(46px * var(--k)); padding: calc(6px * var(--k)) calc(10px * var(--k)) 0 calc(16px * var(--k)); }
+.sb .brand .mark + .tg { margin-left: auto; }
+.sb .tg { width: calc(30px * var(--k)); height: calc(30px * var(--k)); display: grid; place-items: center; border-radius: calc(6px * var(--k)); color: var(--muted); }
+.sb .pins { flex: none; overflow: hidden; }
+.sb .roster { display: flex; align-items: flex-start; gap: calc(6px * var(--k)); padding: calc(8px * var(--k)) calc(10px * var(--k)); min-height: calc(72px * var(--k)); }
+.sb .pin { flex: none; width: calc(58px * var(--k)); height: calc(60px * var(--k)); display: flex; flex-direction: column; align-items: center; gap: calc(3px * var(--k));
+  padding: calc(4px * var(--k)) calc(2px * var(--k)) calc(2px * var(--k)); border-radius: calc(10px * var(--k)); border: calc(1px * var(--k)) solid var(--line); background: #fff; transform-origin: 50% 50%; }
+.sb .pin.on { background: var(--tint); }
+.sb .pin.run { border-color: var(--accent); box-shadow: 0 0 0 calc(2px * var(--k)) var(--ground), 0 0 0 calc(4px * var(--k)) var(--accent); }
+.sb .pav { position: relative; width: calc(34px * var(--k)); height: calc(34px * var(--k)); display: grid; place-items: center; }
+.sb .pav .atile { width: calc(27px * var(--k)); height: calc(27px * var(--k)); }
+.sb .pin.run .pav::after { content: ""; position: absolute; top: calc(-2px * var(--k)); right: calc(-2px * var(--k)); width: calc(9px * var(--k)); height: calc(9px * var(--k)); border-radius: 50%;
+  background: var(--accent); border: calc(2px * var(--k)) solid var(--ground); box-shadow: 0 0 calc(6px * var(--k)) color-mix(in srgb, var(--accent) 60%, transparent); }
+.sb .pname { display: block; width: 100%; max-width: calc(54px * var(--k)); font-size: calc(11px * var(--k)); font-weight: 600; line-height: 1.2; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
+.sb .srch { position: relative; flex: none; display: flex; align-items: center; justify-content: space-between; gap: calc(6px * var(--k)); height: calc(32px * var(--k));
+  margin: calc(4px * var(--k)) calc(10px * var(--k)) calc(6px * var(--k)); padding: 0 calc(8px * var(--k)) 0 calc(30px * var(--k)); border: calc(1px * var(--k)) solid var(--line);
+  border-radius: calc(8px * var(--k)); background: #fff; font-size: calc(13px * var(--k)); color: var(--muted); }
+.sb .srch .si { position: absolute; left: calc(9px * var(--k)); top: 50%; translate: 0 -50%; display: flex; color: var(--muted-l); }
+.sb .srch kbd { padding: calc(1px * var(--k)) calc(4px * var(--k)); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(4px * var(--k)); font: calc(10px * var(--k)) var(--sans); color: var(--muted); }
+.sb .groups { padding: 0 calc(8px * var(--k)); }
+.sb .ghead { display: flex; align-items: center; justify-content: space-between; padding: calc(14px * var(--k)) calc(10px * var(--k)) calc(4px * var(--k)); font-size: calc(12px * var(--k)); font-weight: 600; color: var(--muted); }
+.sb .ghead:first-child { padding-top: calc(6px * var(--k)); }
+/* the section's + is a "+" in the text, not the icon set's */
+.sb .gadd { width: calc(22px * var(--k)); height: calc(22px * var(--k)); display: inline-flex; align-items: center; justify-content: center; font-size: calc(15px * var(--k)); font-weight: 400; color: var(--muted); }
+.sb .dirrow { display: flex; align-items: center; border-radius: calc(6px * var(--k)); }
+.sb .dirrow.hover { background: var(--row-hover); }
+.sb .dhead { flex: 1; min-width: 0; display: flex; align-items: center; gap: calc(6px * var(--k)); min-height: calc(32px * var(--k)); padding: 0 calc(10px * var(--k)); font-size: calc(13px * var(--k)); font-weight: 600; color: var(--ink2); white-space: nowrap; }
+.sb .dhead .glyph { color: var(--muted); }
+/* a folder's + shows on the row under the pointer */
+.sb .dadd { flex: none; display: grid; place-items: center; width: calc(26px * var(--k)); height: calc(26px * var(--k)); margin-right: calc(6px * var(--k)); border-radius: calc(6px * var(--k)); color: var(--muted); opacity: 0; }
+.sb .dadd.hot { background: var(--line-s); color: var(--accent); }
+.sb .psess { padding-left: calc(14px * var(--k)); }
+.sb .rflip { overflow: hidden; }
+/* SessionRow.svelte: avatar, name and time, then the status (while at work or waiting) or else the last line */
+.rshell { position: relative; }
+.row { display: grid; grid-template-columns: calc(40px * var(--k)) minmax(0, 1fr) auto auto; grid-template-rows: auto auto; gap: calc(2px * var(--k)) calc(10px * var(--k));
+  padding: calc(8px * var(--k)) calc(10px * var(--k)); margin: calc(1px * var(--k)) 0; border-radius: calc(10px * var(--k)); border: calc(1px * var(--k)) solid transparent; }
+.row.hover { background: var(--row-hover); }
+.row.on { background: var(--pane); border-color: var(--line); box-shadow: 0 calc(2px * var(--k)) calc(4px * var(--k)) rgba(18,28,32,.05); }
+.row .av { grid-column: 1; grid-row: 1 / 3; width: calc(40px * var(--k)); height: calc(40px * var(--k)); align-self: center; display: grid; place-items: center; }
+.row .t { grid-column: 2; grid-row: 1; min-width: 0; font-size: calc(14px * var(--k)); font-weight: 600; line-height: 1.5; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .rt { grid-column: 3; grid-row: 1; justify-self: end; align-self: center; font-size: calc(11px * var(--k)); line-height: 1.3; color: var(--muted); white-space: nowrap; }
+.row .rs { grid-column: 2 / 4; grid-row: 2; display: inline-flex; align-items: center; gap: calc(5px * var(--k)); min-width: 0; font-size: calc(12px * var(--k)); line-height: 1.4; white-space: nowrap; overflow: hidden; }
+.row .rst { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.row .rs.idle { display: none; }
+.row.busy .s { display: none; }
+.row .rs i { flex: none; width: calc(6px * var(--k)); height: calc(6px * var(--k)); border-radius: 50%; }
+.row .rs.running i { background: var(--accent); }
+.row .rs.running .rst { color: var(--accent); font-weight: 600; }
+.row .rs.wait i { background: var(--warn); }
+.row .rs.wait .rst { color: var(--warn-text); font-weight: 600; }
+.row .s { grid-column: 2 / -1; grid-row: 2; min-width: 0; min-height: 1.4em; font-size: calc(12px * var(--k)); line-height: 1.4; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* AgentAvatar.svelte: the agent's mark, drawn as a plain tile, four fifths of a portrait, the run's dot on its corner */
+.atile { position: relative; width: calc(32px * var(--k)); height: calc(32px * var(--k)); border-radius: 30%; display: grid; place-items: center; background: var(--chip); border: calc(1px * var(--k)) solid var(--line); color: var(--ink2); }
+.adot { position: absolute; right: calc(-3px * var(--k)); bottom: calc(-3px * var(--k)); width: calc(11px * var(--k)); height: calc(11px * var(--k)); border-radius: 50%; border: calc(2px * var(--k)) solid var(--ground); display: none; }
+.adot.running { display: block; background: var(--accent); }
+.adot.wait { display: block; background: var(--warn); }
+.row.on .adot { border-color: var(--pane); }
+/* under the pointer: Pin and ⋯ at the row's right end, the time giving way */
+.ract { position: absolute; top: 50%; right: calc(8px * var(--k)); translate: 0 -50%; display: flex; gap: calc(2px * var(--k)); padding: calc(2px * var(--k)); border-radius: calc(9px * var(--k)); background: var(--pane);
+  box-shadow: inset 0 0 0 calc(1px * var(--k)) var(--line), 0 calc(4px * var(--k)) calc(12px * var(--k)) rgba(18,28,32,.07); opacity: 0; z-index: 2; }
+.ract .ra { width: calc(26px * var(--k)); height: calc(26px * var(--k)); display: grid; place-items: center; border-radius: calc(7px * var(--k)); color: var(--muted); }
+.ract .ra.hot { background: var(--row-hover); color: var(--ink); }
+.ract .ra.pressed { color: var(--accent); }
+
+/* 10–19: the window, the sidebar on the ground and a project session on the card */
+.chat { --k: var(--kw); overflow: hidden; }
+.sidebox { position: absolute; left: 0; top: 0; bottom: 0; width: 300px; border-right: 2px solid var(--line-s); }
+.chat .conv { position: absolute; left: 300px; top: 0; right: 0; bottom: 0; }
+.chat .conv-hd { display: flex; align-items: center; gap: 14px; height: 82px; padding: 0 40px; border-bottom: 2px solid var(--line-s); font-size: 26px; white-space: nowrap; }
+/* a long session name is cut, so the head keeps its 地图 */
+.chat .conv-hd b { font-weight: 650; min-width: 0; max-width: 360px; overflow: hidden; text-overflow: ellipsis; flex: none; }
+.agentpill { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; border-radius: 10px; background: var(--chip); color: var(--ink2); font-size: 20px; font-weight: 600; flex: none; }
+.am { width: 32px; height: 32px; border-radius: 9px; flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--chip); color: var(--ink2); border: 1.5px solid var(--line); }
+.dirp { font-family: var(--mono); font-size: 19px; color: var(--muted); }
+.mapbtn { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; height: 48px; padding: 0 18px; border-radius: 12px; color: var(--ink2); font-size: 21px; font-weight: 600; white-space: nowrap; }
+/* the transcript: under the head, over the composer, scrolled to follow its end */
+.tr { position: absolute; left: 0; right: 0; top: 82px; height: 418px; overflow: hidden; }
+.tri { position: absolute; left: 0; top: 0; right: 0; height: 2000px; }
+.time { font-size: 19px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.agentline { font-size: 25px; line-height: 1.6; width: 760px; }
+/* the working bubble's last line (ProjectChat .stream-foot): the accent, its step, the run's time at the right end;
+   once it opens onto something, the step is a toggle with a small chevron */
+.wfoot { display: flex; align-items: center; gap: 11px; width: 760px; color: var(--accent); font-size: 22px; font-weight: 500; white-space: nowrap; }
+.wfoot .pulse, .c2foot .pulse, .sfoot2 .pulse { flex: none; width: calc(7px * var(--k)); height: calc(7px * var(--k)); border-radius: 50%; background: var(--accent); }
+.wfoot .st { min-width: 0; overflow: hidden; text-overflow: ellipsis; display: inline-flex; align-items: center; gap: 8px; }
+.wfoot.opens .st::after, .c2foot .tog::after { content: ""; flex: none; width: calc(4px * var(--k)); height: calc(4px * var(--k)); margin: 0 calc(1px * var(--k)) calc(2px * var(--k));
+  border-right: calc(1.5px * var(--k)) solid currentColor; border-bottom: calc(1.5px * var(--k)) solid currentColor; transform: rotate(45deg); opacity: .6; }
+.wfoot.open .st::after { margin-bottom: calc(-2px * var(--k)); transform: rotate(-135deg); }
+.wfoot .dur, .c2foot .dur, .sfoot2 .dur { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: calc(6px * var(--k)); padding-left: calc(8px * var(--k)); font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* the plan Claude Code presents (ProjectPlanCard.svelte); a long one scrolls in the card */
+.plancard { width: 800px; background: var(--pane); border: 2px solid var(--accent-b); border-radius: 25px; overflow: hidden;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 8%, transparent), 0 40px 90px -36px rgba(18,28,32,.30); }
+.plancard .head, .planfull .head { display: flex; align-items: center; gap: 11px; height: 50px; padding: 0 29px; background: var(--tint); border-bottom: 2px solid var(--accent-b);
+  color: var(--accent); font-size: 21.6px; font-weight: 650; white-space: nowrap; flex: none; }
+.plancard .whom, .planfull .whom { color: var(--ink2); font-weight: 500; }
+.plancard .whom::before, .planfull .whom::before { content: "·"; margin-right: 11px; color: var(--muted-l); }
+.fullbtn { margin: -7px -14px -7px auto; width: 43px; height: 43px; display: grid; place-items: center; border-radius: 10px; color: var(--accent); }
+.fullbtn.hot, .fullbtn.pressed { background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.plancard .pbody { height: 92px; overflow: hidden; padding: 16px 29px 0; -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent); }
+.plancard .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; padding: 16px 29px 22px; border-top: 2px solid var(--line-s); }
+.plancard .hint, .planfull .hint { font-size: 21.6px; color: var(--muted); white-space: nowrap; }
+.md { font-size: 23px; line-height: 1.55; color: var(--ink); }
+.md h3 { margin: 0 0 8px; font-size: 26px; font-weight: 700; }
+.md p { margin: 0 0 8px; }
+.md ol { margin: 0 0 8px; padding-left: 36px; }
+.md li { margin: 2px 0; }
+.md code { font-family: var(--mono); font-size: 20px; background: var(--chip); border-radius: 6px; padding: 1px 6px; }
+/* the button's title, as the system shows it under the pointer */
+.tip { padding: 5px 12px; border-radius: 7px; background: #f6f6f6; border: 1px solid #c9c9c9; color: #222; font-size: 20px; white-space: nowrap; z-index: 20; box-shadow: 0 6px 16px -6px rgba(0,0,0,.3); }
+/* the plan full screen: the whole window, its lines at a reading width, the buttons starting where they do */
+.planfull { width: 1180px; height: 680px; background: var(--pane); display: flex; flex-direction: column; z-index: 15; overflow: hidden; border-radius: 25px; }
+.planfull .head { height: 94px; padding: 0 40px; }
+.planfull .fbody { flex: 1; min-height: 0; overflow: hidden; padding: 30px 43px 10px; }
+.planfull .md { max-width: 760px; margin: 0 auto; }
+.planfull .ffoot { flex: none; padding: 18px 0 26px; border-top: 2px solid var(--line-s); }
+.planfull .fcol { width: 760px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; }
+/* the subagent's way in, under the reply (ProjectSubagentEntry.svelte, one): its name, a live dot and 「运行中」 */
+.subchip { display: inline-flex; align-items: center; gap: calc(6px * var(--k)); padding: calc(3px * var(--k)) calc(10px * var(--k)) calc(3px * var(--k)) calc(6px * var(--k)); border-radius: 99px;
+  background: var(--pane); border: calc(1px * var(--k)) solid var(--line); box-shadow: 0 1px 3px rgba(18,28,32,.05); font-size: calc(12px * var(--k)); line-height: 1; white-space: nowrap; color: var(--ink); width: max-content; }
+.subchip .glyph { color: var(--muted); }
+.subchip .live { width: calc(6px * var(--k)); height: calc(6px * var(--k)); border-radius: 50%; background: var(--accent); }
+.subchip .note { color: var(--muted); }
+/* what the working bubble's last line opens onto (TurnStepList.svelte): each thing going on, a running command's output */
+.tsteps { width: 760px; padding: calc(8px * var(--k)) calc(10px * var(--k)) calc(9px * var(--k)); background: var(--pane); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(14px * var(--k));
+  box-shadow: 0 calc(2px * var(--k)) calc(6px * var(--k)) rgba(18,28,32,.06); font-size: calc(12px * var(--k)); color: var(--ink); }
+.tsteps .hd { font-size: calc(12px * var(--k)); font-weight: 600; color: var(--muted); margin-bottom: calc(6px * var(--k)); }
+.trow { display: grid; grid-template-columns: calc(14px * var(--k)) minmax(0, 1fr) auto; column-gap: calc(6px * var(--k)); align-items: baseline; line-height: 1.45; margin-top: calc(3px * var(--k)); }
+.trow .tp { align-self: center; justify-self: center; width: calc(6px * var(--k)); height: calc(6px * var(--k)); border-radius: 50%; background: var(--accent); box-shadow: 0 0 calc(4px * var(--k)) var(--accent-glow); }
+.trow .tt { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.trow .tt.hot { color: var(--accent); }
+.trow .tm { font-family: var(--mono); font-size: calc(11px * var(--k)); color: var(--muted); }
+.tout { grid-column: 2 / -1; margin: calc(3px * var(--k)) 0 calc(2px * var(--k)); padding: calc(6px * var(--k)) calc(8px * var(--k)); border-radius: calc(6px * var(--k)); background: var(--chip); color: var(--muted);
+  font-family: var(--mono); font-size: calc(11px * var(--k)); line-height: 1.45; white-space: pre-wrap; }
+/* the subagent's popup (ProjectSubagentDialog.svelte): over the window, as wide as it allows here (max 92vw) */
+.popback { width: 1180px; height: 680px; background: rgba(18,28,32,.30); z-index: 16; }
+.dlg { left: 47px; top: 27px; width: 1086px; height: 626px; background: var(--pane); border-radius: 25px; box-shadow: 0 40px 100px -30px rgba(0,0,0,.45); display: flex; flex-direction: column; overflow: hidden; transform-origin: 50% 50%; }
+.dlg .mh { display: flex; align-items: center; gap: 18px; padding: 20px 29px; border-bottom: 2px solid var(--line-s); color: var(--ink2); }
+.dlg .mt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dlg .mt b { font-size: 29px; font-weight: 650; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dlg .mt span { font-size: 21.6px; color: var(--muted); white-space: nowrap; }
+.dlg .mx { font-size: 26px; color: var(--muted); padding: 0 6px; }
+.dlg .mb { flex: 1; display: flex; flex-direction: column; gap: 22px; padding: 29px 36px 40px; font-size: 25px; line-height: 1.6; }
+.dlg .asked { align-self: flex-end; max-width: 85%; padding: 18px 25px; border-radius: 25px 7px 25px 25px; background: var(--chip); line-height: 1.5; }
+.dlg .calls { display: inline-flex; align-items: center; gap: 11px; font-size: 21.6px; color: var(--muted); }
+.sfoot2 { display: flex; align-items: center; gap: 11px; color: var(--accent); font-size: 21.6px; font-weight: 500; white-space: nowrap; }
+/* the composer of a project session: words on top; the clip, 计划, the account/model/thinking picker, send */
+.pcomp { width: 800px; }
+.pcomp .tune { display: inline-flex; align-items: center; gap: 8px; height: calc(30px * var(--k)); padding: 0 calc(8px * var(--k)); border-radius: calc(8px * var(--k)); font-size: calc(12.5px * var(--k)); color: var(--ink2); white-space: nowrap; }
+.pcomp .tune .sep { color: var(--muted-l); }
+.pcomp .tune .chev { display: inline-flex; color: var(--muted); }
+.plantog { display: inline-flex; align-items: center; gap: 8px; height: calc(30px * var(--k)); padding: 0 calc(9px * var(--k)); border-radius: calc(8px * var(--k)); font-size: calc(12.5px * var(--k)); font-weight: 600; color: var(--ink2); white-space: nowrap; }
+.plantog.on { background: var(--tint); color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent-b); }
+.pcomp .gap { flex: 1; }
+
+/* 19–24: the sidebar, closer, beside the session it has open */
+.sw2 { overflow: hidden; }
+.sidebox2 { position: absolute; left: 0; top: 0; bottom: 0; width: 416px; border-right: 2px solid var(--line-s); }
+.conv2 { position: absolute; left: 416px; top: 0; right: 0; bottom: 0; }
+.c2hd { display: flex; align-items: center; gap: calc(8px * var(--k)); height: calc(46px * var(--k)); padding: 0 calc(22px * var(--k)) 0 calc(24px * var(--k)); border-bottom: calc(1px * var(--k)) solid var(--line-s); font-size: calc(14px * var(--k)); white-space: nowrap; }
+.c2hd b { min-width: 0; font-weight: 650; overflow: hidden; text-overflow: ellipsis; }
+.c2hd .agentpill { font-size: calc(12px * var(--k)); height: calc(24px * var(--k)); padding: 0 calc(8px * var(--k)); gap: calc(4px * var(--k)); }
+.c2body { position: absolute; left: calc(24px * var(--k)); right: calc(22px * var(--k)); top: calc(62px * var(--k)); display: flex; flex-direction: column; gap: calc(10px * var(--k)); font-size: calc(14px * var(--k)); line-height: 1.6; }
+.c2you { align-self: flex-end; max-width: 82%; padding: calc(8px * var(--k)) calc(12px * var(--k)); border-radius: calc(14px * var(--k)) calc(4px * var(--k)) calc(14px * var(--k)) calc(14px * var(--k)); background: var(--accent); color: #fff; line-height: 1.5; }
+.c2chip { align-self: flex-start; }
+.c2foot { display: flex; align-items: center; gap: calc(6px * var(--k)); color: var(--accent); font-size: calc(12px * var(--k)); font-weight: 500; white-space: nowrap; }
+.c2foot .tog { display: inline-flex; align-items: center; gap: calc(4px * var(--k)); }
+/* a directory's + (ProjectAddMenu.svelte): under the +, its right edge on the +'s */
+.dmenu { display: flex; flex-direction: column; min-width: calc(200px * var(--k)); padding: calc(5px * var(--k)); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(10px * var(--k)); background: var(--pane);
+  box-shadow: 0 calc(12px * var(--k)) calc(32px * var(--k)) rgba(18,28,32,.18); z-index: 13; }
+.dmi { display: flex; align-items: center; gap: calc(10px * var(--k)); min-height: calc(36px * var(--k)); padding: 0 calc(10px * var(--k)); border-radius: calc(6px * var(--k)); font-size: calc(13px * var(--k)); font-weight: 500; white-space: nowrap; color: var(--ink); }
+.dmi.hot { background: var(--row-hover); }
+.dmi .mic { display: flex; color: var(--muted); }
+.dmi .am.mi { width: calc(18px * var(--k)); height: calc(18px * var(--k)); border-radius: calc(5px * var(--k)); border-width: calc(1px * var(--k)); }
+.dsep { height: calc(1px * var(--k)); margin: calc(4px * var(--k)) calc(6px * var(--k)); background: var(--line); }
+
+/* 24–26.5: and more */
+.morechip { display: inline-flex; align-items: center; gap: 18px; height: 84px; padding: 0 30px 0 22px; border-radius: 22px; background: #fff; border: 2px solid var(--line);
+  font-size: 30px; font-weight: 600; white-space: nowrap; box-shadow: 0 16px 36px -24px rgba(18,28,32,.45); }
