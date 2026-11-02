@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Notices show in the top-right corner, with the time they have left
+
+- A notice ("Copied", "… is not in the project directory") no longer covers the bottom of the conversation, over the composer and the working line. It is a card in the top-right corner, under the pane tabs (on a phone, along the top), drawn like the rest of the window: the pane's own colour, a hairline edge and a soft shadow, in place of a pill in reverse colours that showed white in the dark theme.
+- A ring around its ✕ empties as it runs out; ✕ closes it at once. A pointer on it, or keyboard focus in it, stops the ring and the countdown together, and leaving goes on from where it stopped rather than starting over. A notice stays 4 seconds (6 with a button such as Retry), up from 2, now that it sits away from where you were looking.
+- Its mark says what kind it is: a green ✓ when something was done, a grey ⓘ when it explains why nothing happened (a file link that is not in the project directory used to show a ✓), a red ! with a reddish edge for a failure.
+
 ### Roles lists its engines down the left, like the conversation list
 
 - On a wide window, the engines on Roles (General, Video, Coding, Plain and your own) are no longer a row of chips over the map with a few text links. They run down the left as the conversations do in the sidebar: one row each with its name, the default starred, when it last changed and a line about it; the one shown is tinted, its map and the picked step to its right.

@@ -167,7 +167,7 @@ Bot 资料中的 `RoutineCard.svelte` 读取 `snapshot.routines`，只提供现�
 - **浮在内容上的东西**：输入框用 `--shadow-raised`（顶边一线亮、贴地阴影、远处一层软影）。输入框下面那行「Enter 发送 · Shift+Enter 换行」平时只留给读屏（它是编辑器的描述），发送按钮的 tooltip 已经说了；Bot 在工作、或发送要等回复时，那一行才显出来。消息索引平时淡着，只有你所在的那一格是实的，指过去或键盘到了才全亮。
 - **菜单出现**：所有弹出菜单（会话、消息、窗格、新建、用量球的菜单也在内）都用 `drawers.css` 里共用的 `@keyframes menuIn`，`var(--dur-base) var(--ease-out)`，只做淡入、不做缩放或位移：这些菜单挂载时用 `getBoundingClientRect` 量自己来贴边定位，缩放中的第一帧量出来偏小，菜单会落偏几像素（`sidebar-rail` 基线抓到过）。
 - **弹窗关掉时淡出**：弹窗的背景板加 `out:modalOut`（`modal-motion.ts`）：宽于 680px 时 140ms 淡出，背景和卡片一起；手机上是页面的弹窗照 `pageSlide` 原路退出，`instant` 时不动；减少动态效果时立刻消失。进场仍是 `modals.css` 的 CSS 动画。组件测试的 happy-dom 里动画不会结束，`modalOut` 认出它的 UA 就给 0 时长，否则关掉的弹窗会一直留在 DOM 里。
-- **底部提示**：`toast.svelte.ts` 的 `showToast(text, { tone, action })`，由 Shell 里的 `ToastHost.svelte` 画在窗口底部居中，一次一条，新的替换旧的。只给屏幕上别处看不到结果的操作用（菜单已关的复制、写进文件的保存）；就地已有反馈的（指针所在的复制按钮变成「✓ 已复制」）不再弹。
+- **提示**：`toast.svelte.ts` 的 `showToast(text, { tone, action, ms })`，由 Shell 里的 `ToastHost.svelte` 画在窗口右上角，标签栏下面（手机上贴顶、左右各留 12px），一次一条，新的替换旧的。只给屏幕上别处看不到结果的操作用（菜单已关的复制、写进文件的保存）；就地已有反馈的（指针所在的复制按钮变成「✓ 已复制」）不再弹。`tone` 三种：`neutral` 是做完了（绿色 ✓），`info` 是说明为什么没发生（灰色 ⓘ，例如项目目录里找不到被点的文件），`error` 是失败（红色 !，边框带一点红）。卡片是 `--pane` 底、`--line` 边、`--shadow-menu`、`--radius-lg`；关闭按钮外面一圈 `--accent` 的环就是剩下的时间（默认 4 秒，带操作的 6 秒）。指针停在卡片上或焦点在里面时环和计时一起停，离开后从停下的地方接着走，不重新计时。这个环是时钟不是装饰，减少动效时照样走完（组件里用 `!important` 盖掉 `base.css` 的一帧走完）；不要用 `animationend` 关提示，计时只有 `setTimeout` 一处。
 
 搬完了：全局表从 1052 条降到 134 条。
 

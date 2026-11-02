@@ -50,7 +50,7 @@
     - 小工具：`is-record.ts`、`locale-tag.ts`、`clipboard.ts` 的 `copyText`、`spend-format.ts`。
     - 交互：`pointer-drag.ts`（拖动改宽高）、`styles/shared.css` 的 `.split-handle`（拖动的分隔条长什么样：1px 细线、两侧 3px 的抓手、悬停和拖动时的浅色带）、`dismissable-menu.ts`（右键菜单的收起）、`menu-roving.ts`（菜单方向键）、`autosave.svelte.ts`（边输边存）。
   - **信使：组件**
-    - `Button.svelte`、`IconButton.svelte`、`Icon.svelte`（图标表在 `icons.ts`）；底部提示 `toast.svelte.ts` 的 `showToast`。
+    - `Button.svelte`、`IconButton.svelte`、`Icon.svelte`（图标表在 `icons.ts`）；右上角提示 `toast.svelte.ts` 的 `showToast`。
     - `Switch.svelte`。
     - 手机上的下拉：`BottomSheet.svelte`（从底部升起的面板，挡板、拖动条、标题和 ✕，Back 和 Escape 先收它；一层层往下选的面板给 `onBack`，标题前多一个返回，Back 和 Escape 改成回上一层；`bottom-sheet.ts` 的 `PHONE_SHEET_QUERY` 是何时算手机，每个组件自己 `new MediaQuery`；行加 `sheet-item` 就是面板的行样式）。
     - 设置页：`SettingsRow`、`SettingsCard`、`SettingsCardHeader`、`SettingsSubpageButton`、`AutosaveState`；分块标签和手机列表 `SettingsSectionTabs`、`SettingsSectionList`。

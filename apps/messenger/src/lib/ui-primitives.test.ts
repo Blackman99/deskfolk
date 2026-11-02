@@ -4,13 +4,18 @@ import Icon from "./Icon.svelte";
 import IconButton from "./IconButton.svelte";
 import ToastHost from "./ToastHost.svelte";
 import { ICONS } from "./icons.ts";
-import { TOAST_LEAVE_MS, showToast, toasts } from "./toast.svelte.ts";
+import { TOAST_LEAVE_MS, TOAST_MS, showToast, toasts } from "./toast.svelte.ts";
+import { copyFor } from "./copy.ts";
 import { click, render } from "./test-render.ts";
 import { flushSync } from "svelte";
 
 afterEach(() => {
+  toasts.dismiss();
   toasts.current = null;
 });
+
+const t = copyFor("zh");
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 test("every icon draws at least one shape", () => {
   for (const name of Object.keys(ICONS) as (keyof typeof ICONS)[]) {
@@ -54,7 +59,7 @@ test("an icon button is named by its label, and a toggle says whether it is pres
 });
 
 test("a toast shows, then leaves on its own", async () => {
-  const { host, close } = render(ToastHost, {});
+  const { host, close } = render(ToastHost, { t });
   showToast("已复制", { ms: 20 });
   flushSync();
   expect(host.querySelector(".toast-host")?.textContent).toContain("已复制");
@@ -65,7 +70,7 @@ test("a toast shows, then leaves on its own", async () => {
 });
 
 test("a newer toast replaces the one showing, and an action runs and dismisses", () => {
-  const { host, close } = render(ToastHost, {});
+  const { host, close } = render(ToastHost, { t });
   let retried = 0;
   showToast("已复制");
   showToast("没发出去", { tone: "error", action: { label: "重试", run: () => retried++ } });
@@ -76,4 +81,54 @@ test("a newer toast replaces the one showing, and an action runs and dismisses",
   expect(retried).toBe(1);
   expect(toasts.current?.leaving).toBe(true);
   close();
+});
+
+test("a toast carries its countdown, and ✕ closes it before the time is up", () => {
+  const { host, close } = render(ToastHost, { t });
+  showToast("在项目目录里没找到 a.tsx", { tone: "info" });
+  flushSync();
+  const card = host.querySelector<HTMLElement>(".toast-host");
+  expect(card?.classList.contains("is-info")).toBe(true);
+  expect(card?.style.getPropertyValue("--toast-ms")).toBe(`${TOAST_MS}ms`);
+  expect(host.querySelector(".toast-ring-left")).not.toBeNull();
+  const closeButton = host.querySelector(".toast-close");
+  expect(closeButton?.getAttribute("aria-label")).toBe(t.common.close);
+  expect(closeButton?.getAttribute("title")).toBe(t.common.close);
+  click(closeButton);
+  expect(toasts.current?.leaving).toBe(true);
+  close();
+});
+
+test("held, a toast stops its countdown; let go, it goes on from where it stopped", async () => {
+  const { host, close } = render(ToastHost, { t });
+  showToast("已复制", { ms: 600 });
+  flushSync();
+  await wait(150);
+  host.querySelector(".toast-host")?.dispatchEvent(new Event("pointerenter"));
+  flushSync();
+  expect(toasts.current?.paused).toBe(true);
+  expect(host.querySelector(".toast-host")?.classList.contains("is-paused")).toBe(true);
+  const left = toasts.remaining();
+  expect(left).toBeGreaterThan(250);
+  expect(left).toBeLessThanOrEqual(460);
+  await wait(250);
+  expect(toasts.current?.leaving).toBe(false);
+  expect(toasts.remaining()).toBe(left);
+  host.querySelector(".toast-host")?.dispatchEvent(new Event("pointerleave"));
+  flushSync();
+  expect(toasts.current?.paused).toBe(false);
+  // The rest of the countdown, not a fresh one: well before 600ms it is on its way out.
+  await wait(left + 80);
+  expect(toasts.current?.leaving).toBe(true);
+  close();
+});
+
+test("focus in a toast holds it as well, and the pointer leaving does not let go of it", () => {
+  showToast("没发出去", { tone: "error", action: { label: "重试", run: () => {} } });
+  toasts.hold("pointer");
+  toasts.hold("focus");
+  toasts.release("pointer");
+  expect(toasts.current?.paused).toBe(true);
+  toasts.release("focus");
+  expect(toasts.current?.paused).toBe(false);
 });

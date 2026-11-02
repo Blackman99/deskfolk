@@ -1104,7 +1104,7 @@
 {:else}
 <ImageCopy {t} />
 <WorkspaceDragGhost />
-<ToastHost />
+<ToastHost {t} />
 {#if searchOpen}
 	<GlobalSearch bind:this={searchDialog} {runtime} {t} opener={searchOpener} onClose={closeGlobalSearch} onSelect={selectSearchHit} />
 {/if}

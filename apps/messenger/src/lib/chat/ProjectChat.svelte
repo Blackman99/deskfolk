@@ -83,7 +83,7 @@
 		}
 		void pending.then((answer) => {
 			if (answer.path !== null) onOpenArtifact(answer.path, undefined, messageId);
-			else showToast(answer.matches > 1 ? t.project.citedAmbiguous(path, answer.matches) : t.project.citedMissing(path));
+			else showToast(answer.matches > 1 ? t.project.citedAmbiguous(path, answer.matches) : t.project.citedMissing(path), { tone: 'info' });
 		});
 	}
 
