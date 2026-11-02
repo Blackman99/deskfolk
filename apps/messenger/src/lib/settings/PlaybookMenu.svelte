@@ -36,8 +36,10 @@
 	let menuEl = $state<HTMLElement | null>(null);
 
 	function close(): void {
+		// Read before closing: the anchor is the list's, and it lets go of it as the menu closes.
+		const back = anchor;
 		onClose();
-		anchor.focus();
+		back.focus();
 	}
 
 	function choose(action: (id: string) => void): void {

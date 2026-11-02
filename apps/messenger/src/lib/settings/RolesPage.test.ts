@@ -325,6 +325,11 @@ test("engines down the left: one shown, made the default, a new one made from it
   expect(host.querySelector('[data-playbook-row="video"]')?.getAttribute("aria-selected")).toBe("true");
   expect(node(host, "scribe")?.getAttribute("data-on")).toBe("true");
   expect(host.querySelector("[data-playbook-hint]")?.textContent).toContain(t.playbooks.builtinHint.video!);
+  // Escape closes the menu and gives the focus back to the ⋯ it hangs from.
+  menuOf(host, "video")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  flushSync();
+  expect(document.querySelector("[data-playbook-menu]")).toBeNull();
+  expect(document.activeElement).toBe(host.querySelector('[data-playbook-more="video"]'));
   // A built-in has no name to change and cannot be removed.
   const menu = menuOf(host, "video");
   expect(action(menu, "rename")).toBeNull();
