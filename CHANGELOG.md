@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+(none)
+
+## 0.3.0 — 2026-11-02
+
+Plain, an engine that leaves the app's way of working off; project sessions that run background commands, Monitors and subagents, in a sidebar now split into Bots and Projects. Signed and notarized for macOS, with an experimental, still unsigned Windows installer beside the `.dmg`s.
+
 ### Roles lists its engines down the left, like the conversation list
 
 - On a wide window, the engines on Roles (General, Video, Coding, Plain and your own) are no longer a row of chips over the map with a few text links. They run down the left as the conversations do in the sidebar: one row each with its name, the default starred, when it last changed and a line about it; the one shown is tinted, its map and the picked step to its right.
