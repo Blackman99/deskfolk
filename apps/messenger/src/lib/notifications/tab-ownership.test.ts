@@ -72,6 +72,7 @@ class Channel {
 const realLocks = Object.getOwnPropertyDescriptor(globalThis.navigator, "locks");
 const realChannel = globalThis.BroadcastChannel;
 let locks: Locks;
+let owners: TabOwnership[] = [];
 
 beforeEach(() => {
   locks = new Locks();
@@ -79,9 +80,14 @@ beforeEach(() => {
   globalThis.BroadcastChannel = Channel as unknown as typeof BroadcastChannel;
   Channel.open = [];
   Channel.stuck.clear();
+  owners = [];
 });
 
 afterEach(() => {
+  // A tab that answered a takeover gets back in line TAKEOVER_MS later, long after its test: by then
+  // the real navigator.locks is back (null under happy-dom) and the request throws in whichever test
+  // file runs then. A tab that is no longer in line does not ask.
+  for (const owner of owners) owner.tabRole = "single";
   if (realLocks) Object.defineProperty(globalThis.navigator, "locks", realLocks);
   else delete (globalThis.navigator as { locks?: unknown }).locks;
   globalThis.BroadcastChannel = realChannel;
@@ -94,6 +100,7 @@ function tab() {
     tick: async () => { calls.ticks += 1; },
     dispatchNotificationIntent: () => {},
   });
+  owners.push(owner);
   return { owner, calls };
 }
 
