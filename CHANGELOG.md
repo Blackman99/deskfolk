@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A phone no longer stays on "This device is already connected in another tab"
+
+- A tab that got stuck (on a large file, say) kept the phone's link to the Mac, and every tab opened after it said "This device is already connected in another tab" for good: Take over asked the stuck tab to let go, which it never answered, and timed out. Take over now takes the link from a tab that does not answer within a second; that tab drops its own link once it runs again.
+- A tab waiting behind another now takes the link by itself as soon as the other tab closes or dies. It used to wait for a press of Take over.
+- Taking over from a tab that did answer could leave the new tab holding the link while still saying it was connected elsewhere.
+
 ### Opening a very large text file no longer freezes the window
 
 - Opening a large text file, such as a 13 MB novel, froze the window for minutes, on the Mac and on a phone, and on a phone opening the app again opened the file again and froze it again. While the editor loaded, the whole file was laid out once more behind it. Only its opening is now, and the same file opens in about three seconds.

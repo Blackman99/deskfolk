@@ -1,6 +1,8 @@
 export const TAB_LOCK_NAME = "real-bot-device-connection";
 export const TAB_CHANNEL = "real-bot-tab";
 export const TAKEOVER_MS = 5000;
+/** How long a takeover waits for the tab holding the link to answer before taking the lock anyway. */
+export const TAKEOVER_ANSWER_MS = 1000;
 
 export type TabRole = "owner" | "standby" | "single";
 export type TabControlMessage =
