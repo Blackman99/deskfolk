@@ -12,6 +12,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - A tab waiting behind another now takes the link by itself as soon as the other tab closes or dies. It used to wait for a press of Take over.
 - Taking over from a tab that did answer could leave the new tab holding the link while still saying it was connected elsewhere.
 
+### GBK text files read in Chinese, and very large Markdown and HTML open as source
+
+- A text file saved as GBK (GB18030), as many Chinese novels are, showed as rows of question marks. It is now read as GBK, and is read-only in the preview, as a line at the top says: saving writes UTF-8, which would change the file's encoding. Text that is neither UTF-8 nor GBK is read-only too, with what cannot be read replaced.
+- A Markdown or HTML file with more than 500,000 characters of text opens as source instead of rendered, with no switch back and a line at the top saying why. Rendering that much froze the window for seconds (a 13 MB novel as HTML, 94 s), a phone for far longer. An HTML report carrying megabytes of chart script still renders, since only the text a page shows counts.
+
 ### Opening a very large text file no longer freezes the window
 
 - Opening a large text file, such as a 13 MB novel, froze the window for minutes, on the Mac and on a phone, and on a phone opening the app again opened the file again and froze it again. While the editor loaded, the whole file was laid out once more behind it. Only its opening is now, and the same file opens in about three seconds.

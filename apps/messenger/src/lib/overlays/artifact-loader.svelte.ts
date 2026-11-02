@@ -9,11 +9,13 @@ import { fileProgressPercent, formatFileProgress, type FileProgress } from "../f
 import type { FileDownloadNote } from "./FileDownload.svelte";
 import {
   artifactByteSource,
+  decodeFileText,
   isInAppPreviewKind,
   isOfficeKind,
   previewLoadKey,
   svgDisplayBlob,
   type ArtifactKind,
+  type TextEncoding,
 } from "./artifacts.ts";
 
 /** What the pane hands the loader: each is read where it was read before, so the load effect tracks the same signals. */
@@ -63,6 +65,8 @@ export class ArtifactLoader {
   loadedClient: MessengerApi | null = null;
   /** What is on disk for a text-backed file, as loaded or last saved; null for any other kind. */
   diskText = $state<string | null>(null);
+  /** How `text` was read from the file's bytes. Anything but UTF-8 is shown, never saved. */
+  textEncoding = $state<TextEncoding>("utf-8");
   downloadNote = $state<FileDownloadNote>(null);
   /** The whole file as it was read for the preview, so a download does not fetch it again. */
   original = $state<{ path: string; blob: Blob } | null>(null);
@@ -203,8 +207,10 @@ export class ArtifactLoader {
       // A scaled copy stands in for a picture that is already small enough; that copy is the file.
       if (!size || this.reducedFrom === null) this.original = { path, blob };
       if (previewKind === "text" || previewKind === "markdown" || previewKind === "svg") {
-        const raw = await blob.text();
+        const read = previewKind === "svg" ? { text: await blob.text(), encoding: "utf-8" as const } : decodeFileText(new Uint8Array(await blob.arrayBuffer()));
+        const raw = read.text;
         if (gen !== this.loadGen) return;
+        this.textEncoding = read.encoding;
         if (previewKind === "svg") {
           this.svgRaw = raw;
           const next = URL.createObjectURL(await svgDisplayBlob(raw));
@@ -222,8 +228,9 @@ export class ArtifactLoader {
         return;
       }
       if (previewKind === "html") {
-        const raw = await blob.text();
+        const { text: raw, encoding } = decodeFileText(new Uint8Array(await blob.arrayBuffer()));
         if (gen !== this.loadGen) return;
+        this.textEncoding = encoding;
         // The HTML view builds its own sandboxed blob from the text (and a picker, in annotate mode).
         this.text = raw;
         this.diskText = raw;

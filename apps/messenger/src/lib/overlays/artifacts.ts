@@ -456,3 +456,42 @@ export async function svgDisplayBlob(source: Blob | string): Promise<Blob> {
   const raw = typeof source === "string" ? source : await source.text();
   return new Blob([stripSvgActiveContent(raw)], { type: "image/svg+xml" });
 }
+
+/**
+ * How a text file's bytes were read: UTF-8, or GB18030 (which GBK and GB2312 are part of) when
+ * they are not UTF-8, as for a novel saved on a Chinese Windows machine. `null` is neither, shown
+ * with the characters it cannot read replaced. Only a UTF-8 file can be saved from here: saving
+ * writes UTF-8, and would rewrite the others into another encoding, or lose what could not be read.
+ */
+export type TextEncoding = "utf-8" | "gb18030" | null;
+
+export function decodeFileText(bytes: Uint8Array): { text: string; encoding: TextEncoding } {
+  for (const encoding of ["utf-8", "gb18030"] as const) {
+    try {
+      return { text: new TextDecoder(encoding, { fatal: true }).decode(bytes), encoding };
+    } catch {
+      // Not this encoding: try the next.
+    }
+  }
+  return { text: new TextDecoder("utf-8").decode(bytes), encoding: null };
+}
+
+/**
+ * Past this much text, a rendered Markdown or HTML view holds the window for seconds (a 4 MB
+ * novel as Markdown, 5 s; the 13 MB one as HTML, 94 s) and a phone far longer, so the file opens
+ * as source, which the editor shows at once whatever the size.
+ */
+export const RENDER_TEXT_LIMIT = 500_000;
+
+/**
+ * Whether the rendered view would lay out more text than {@link RENDER_TEXT_LIMIT}. An HTML page
+ * counts only what it shows: a report carrying megabytes of chart script renders as fast as a
+ * small one.
+ */
+export function tooLargeToRender(kind: ArtifactKind, text: string): boolean {
+  if (text.length <= RENDER_TEXT_LIMIT) return false;
+  if (kind === "markdown") return true;
+  if (kind !== "html") return false;
+  const shown = text.replace(/<script\b[\s\S]*?<\/script\s*>|<style\b[\s\S]*?<\/style\s*>|<!--[\s\S]*?-->|<[^>]*>/gi, "");
+  return shown.length > RENDER_TEXT_LIMIT;
+}

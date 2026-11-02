@@ -191,7 +191,7 @@
 						onAnnotate={annot.offerAnnotation}
 						onPickAnnotation={annot.pickAnnotation}
 						{loadMonaco}
-						readOnly={!inWorkspace}
+						readOnly={!inWorkspace || loader.textEncoding !== 'utf-8'}
 					/>
 				{/if}
 			{:else if kind === "image" || kind === "svg"}

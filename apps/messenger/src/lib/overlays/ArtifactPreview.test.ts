@@ -642,3 +642,76 @@ test("a remote picture that is its own original offers nothing", async () => {
     close();
   }
 });
+
+function openText(bytes: Uint8Array, filename: string, saved: string[]) {
+  const file = anAttachment({ original_filename: filename, workspace_relpath: `inbox/${filename}`, mime: "text/plain" });
+  return render(ArtifactPreview, {
+    attachment: file,
+    relpath: `inbox/${filename}`,
+    siblings: [file],
+    api: {
+      kind: "local",
+      getAttachmentBlob: async () => new Blob([bytes]),
+      putWorkspaceFile: async (path: string) => {
+        saved.push(path);
+        return "\"etag\"";
+      },
+    } as never,
+    workspacePath: "/Users/you/work",
+    t,
+    onClose: () => {},
+    onSelect: () => {},
+    mode: "cited",
+  });
+}
+
+async function settle(): Promise<void> {
+  for (let i = 0; i < 4; i++) await new Promise((done) => setTimeout(done, 0));
+  flushSync();
+}
+
+function pressSave(host: HTMLElement): void {
+  host.querySelector(".artifact-pane")?.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true, bubbles: true, cancelable: true }));
+  flushSync();
+}
+
+test("a GBK text file reads in Chinese and is kept from saving; a UTF-8 one saves", async () => {
+  const saved: string[] = [];
+  // 「遮天」 then a line break, as a Chinese Windows machine saves it.
+  const gbk = openText(Uint8Array.from([0xd5, 0xda, 0xcc, 0xec, 0x0d, 0x0a]), "novel.txt", saved);
+  try {
+    await settle();
+    expect(gbk.host.querySelector(".artifact-cm-fallback")?.textContent).toContain("遮天");
+    expect(gbk.host.querySelector("[data-file-notice]")?.textContent).toBe(t.stream.artifactReadGb18030);
+    pressSave(gbk.host);
+    await settle();
+    expect(saved).toEqual([]);
+  } finally {
+    gbk.close();
+  }
+
+  const utf8 = openText(new TextEncoder().encode("遮天\n"), "notes.txt", saved);
+  try {
+    await settle();
+    expect(utf8.host.querySelector("[data-file-notice]")).toBeNull();
+    pressSave(utf8.host);
+    await settle();
+    expect(saved).toEqual(["inbox/notes.txt"]);
+  } finally {
+    utf8.close();
+  }
+});
+
+test("a Markdown file too large to render opens as source, with no switch to the rendered view", async () => {
+  const doc = new TextEncoder().encode(`# 标题\n\n${"字".repeat(500_001)}\n`);
+  const view = openText(doc, "huge.md", []);
+  try {
+    await settle();
+    expect(view.host.querySelector("[data-markdown-annotator]")).toBeNull();
+    expect(view.host.querySelector(".artifact-cm-fallback")?.textContent?.startsWith("# 标题")).toBe(true);
+    expect(view.host.querySelector(".artifact-source-toggle")).toBeNull();
+    expect(view.host.querySelector("[data-file-notice]")?.textContent).toBe(t.stream.artifactTooLargeToRender);
+  } finally {
+    view.close();
+  }
+});

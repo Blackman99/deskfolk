@@ -3,6 +3,7 @@ import {
   absWorkspacePath,
   artifactByteSource,
   citedInWorkspace,
+  decodeFileText,
   isHostCitedPath,
   artifactHref,
   artifactKind,
@@ -19,8 +20,10 @@ import {
   linkifyWorkspacePaths,
   looksLikeWorkspaceHref,
   parseArtifactHref,
+  RENDER_TEXT_LIMIT,
   stripSvgActiveContent,
   terminalDirFor,
+  tooLargeToRender,
 } from "./artifacts.ts";
 
 test("artifactKind maps extensions and directories", () => {
@@ -328,4 +331,22 @@ test("nothing to fetch has no key, and a pathless attachment keys on its id", ()
   expect(previewLoadKey({ path: "", kind: "video", source: "attachment", attachmentId: "att-9" })).toBe(
     "video|att:att-9",
   );
+});
+
+test("a text file reads as UTF-8, else as GB18030, else with what cannot be read replaced", () => {
+  expect(decodeFileText(new TextEncoder().encode("遮天 ok"))).toEqual({ text: "遮天 ok", encoding: "utf-8" });
+  // 「遮天」 as a Chinese Windows machine saves it.
+  expect(decodeFileText(Uint8Array.from([0xd5, 0xda, 0xcc, 0xec, 0x0d, 0x0a]))).toEqual({ text: "遮天\r\n", encoding: "gb18030" });
+  expect(decodeFileText(Uint8Array.from([0x61, 0xff, 0x62]))).toEqual({ text: "a\uFFFDb", encoding: null });
+});
+
+test("Markdown past the limit, and HTML that shows that much text, are too large to render", () => {
+  const long = "字".repeat(RENDER_TEXT_LIMIT + 1);
+  expect(tooLargeToRender("markdown", long)).toBe(true);
+  expect(tooLargeToRender("markdown", "字".repeat(RENDER_TEXT_LIMIT))).toBe(false);
+  expect(tooLargeToRender("html", `<body><p>${long}</p></body>`)).toBe(true);
+  // A report carrying megabytes of chart script shows a few words.
+  const script = `<script>var data = "${"x".repeat(RENDER_TEXT_LIMIT * 4)}";</script>`;
+  expect(tooLargeToRender("html", `<body><h1>报告</h1>${script}</body>`)).toBe(false);
+  expect(tooLargeToRender("text", long)).toBe(false);
 });

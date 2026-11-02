@@ -21,6 +21,8 @@
 		showAnnotToggle: boolean;
 		showAnnotMode: boolean;
 		annotHint: '' | 'dirty' | 'no-target' | 'streamed' | null;
+		/** Said in the hint's place: why this file is read-only, or shown as source. */
+		fileNotice: string | null;
 		showSourceToggle: boolean;
 		hasResolved: boolean;
 		showSource: boolean;
@@ -42,6 +44,7 @@
 		showAnnotToggle,
 		showAnnotMode,
 		annotHint,
+		fileNotice,
 		showSourceToggle,
 		hasResolved,
 		showSource,
@@ -51,9 +54,11 @@
 	}: Props = $props();
 </script>
 
-{#if showAnnotToggle || showAnnotMode || annotHint !== null || showSourceToggle || canDownload}
-	<div class="artifact-annot-bar" class:is-download-only={!(showAnnotToggle || showAnnotMode || annotHint !== null || showSourceToggle)} data-annotation-bar>
-		{#if annotHint !== null}
+{#if showAnnotToggle || showAnnotMode || annotHint !== null || fileNotice !== null || showSourceToggle || canDownload}
+	<div class="artifact-annot-bar" class:is-download-only={!(showAnnotToggle || showAnnotMode || annotHint !== null || fileNotice !== null || showSourceToggle)} data-annotation-bar>
+		{#if fileNotice !== null}
+			<p class="artifact-annot-hint" data-file-notice>{fileNotice}</p>
+		{:else if annotHint !== null}
 			<p class="artifact-annot-hint" data-annotation-hint={annotHint}>
 				{annotHint === 'dirty'
 					? t.stream.annotationDirtyHint

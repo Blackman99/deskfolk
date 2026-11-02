@@ -29,6 +29,7 @@
 		artifactKind,
 		citedInWorkspace,
 		isInAppPreviewKind,
+		tooLargeToRender,
 		type ArtifactKind,
 	} from './artifacts.ts';
 	import type { ArtifactTreeNode } from './artifact-tree.ts';
@@ -279,7 +280,9 @@
 			(relpath ? (relpath.split('/').pop() ?? relpath) : t.stream.workspaceExplorer)
 	);
 	let canShowSource = $derived(kind === 'text' || kind === 'markdown' || kind === 'html');
-	let sourceMode = $derived(kind === 'text' || (canShowSource && showSource));
+	/** Too much text to render without holding the window: Markdown and HTML open as source, with no switch. */
+	const renderTooLarge = $derived(loader.text !== null && tooLargeToRender(kind, loader.text));
+	let sourceMode = $derived(kind === 'text' || (canShowSource && (showSource || renderTooLarge)));
 	let byteSource = $derived(artifactByteSource({ mode, relpath, attachment }));
 	let remoteClient = $derived(api?.kind === 'remote');
 	/** A file shown only by name: the desktop window opens it with the system, anywhere else it downloads. */
@@ -296,7 +299,7 @@
 	// prompt's Save must be able to write it.
 	/** A file opened from elsewhere on the Mac reads like any other, but saving and notes stay in the workspace. */
 	const inWorkspace = $derived(citedInWorkspace(workspacePath, relpath, treeSrc.home));
-	let canSave = $derived(Boolean(api && relpath && inWorkspace && canShowSource && loader.text !== null && (sourceMode || loader.text !== loader.diskText)));
+	let canSave = $derived(Boolean(api && relpath && inWorkspace && canShowSource && loader.text !== null && loader.textEncoding === 'utf-8' && (sourceMode || loader.text !== loader.diskText)));
 	/**
 	 * Unsaved: what is on screen differs from what is on disk — the editor's buffer in the source
 	 * view, the text the rendered view shows otherwise. Not the editor's flag alone: a new editor
@@ -321,7 +324,16 @@
 	/** Markdown and single-file HTML can be read rendered or as source. */
 	let canToggleSource = $derived(kind === 'markdown' || kind === 'html');
 	/** The switch sits in the annotation row, beside the annotate buttons, once the text has come. */
-	const showSourceToggle = $derived(canToggleSource && loader.text !== null);
+	const showSourceToggle = $derived(canToggleSource && loader.text !== null && !renderTooLarge);
+	/** Why the text reads as it does: kept from editing for its encoding, or shown as source for its size. */
+	const fileNotice = $derived.by(() => {
+		if (!canShowSource || loader.text === null) return null;
+		const notes = [
+			loader.textEncoding === 'gb18030' ? t.stream.artifactReadGb18030 : loader.textEncoding === null ? t.stream.artifactReadUnknownEncoding : null,
+			renderTooLarge ? t.stream.artifactTooLargeToRender : null,
+		].filter((note) => note !== null);
+		return notes.length > 0 ? notes.join(' ') : null;
+	});
 	/**
 	 * The pane has no toolbar: annotating keeps one thin row of its own, and only on a file it
 	 * applies to — its list (which says why nothing new can be added when that is so), annotate
@@ -657,7 +669,7 @@
 			{loader.downloadNote === 'tap' ? t.stream.imageSaveTapAgain : t.stream.artifactDownloadFailed}
 		</p>
 	{/if}
-	<ArtifactAnnotBar {t} {api} {mode} {relpath} {attachment} {byteSource} {titleName} {downloadKey} {canDownload} {showAnnotToggle} {showAnnotMode} {annotHint} {showSourceToggle} {hasResolved} {showSource} {toggleSource} {annot} {loader} />
+	<ArtifactAnnotBar {t} {api} {mode} {relpath} {attachment} {byteSource} {titleName} {downloadKey} {canDownload} {showAnnotToggle} {showAnnotMode} {annotHint} {fileNotice} {showSourceToggle} {hasResolved} {showSource} {toggleSource} {annot} {loader} />
 	{#if showTree}
 		<div class="artifact-picker">
 			<button
