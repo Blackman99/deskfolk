@@ -6,9 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
-### A subagent's popup shows what it was asked
+### A subagent's popup shows all of what it was asked, and is wider
 
-- In a project session, opening a subagent with a long transcript squeezed what it was asked down to a single clipped line. It now shows in full, and a very long one scrolls inside its own bubble.
+- In a project session, opening a subagent with a long transcript squeezed what it was asked down to a single clipped line. It now lies flat in full, however long, and only the popup scrolls.
+- The popup follows the window instead of staying 760px wide: from 900px up to 1280px on a large screen, nearly all of a narrow window, and still a full page on a phone.
 
 ### A phone no longer stays on "This device is already connected in another tab"
 

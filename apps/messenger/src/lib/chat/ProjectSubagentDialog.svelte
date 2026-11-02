@@ -186,7 +186,8 @@
 	.subagent-dialog {
 		display: flex;
 		flex-direction: column;
-		width: 760px;
+		/* Follows the window, from a Bot↔Bot direct's width up to where a line is still readable. */
+		width: clamp(900px, 72vw, 1280px);
 		max-width: 92vw;
 		height: min(92dvh, calc(100dvh - 48px));
 		min-height: 0;
@@ -232,18 +233,12 @@
 		font-size: 14px;
 	}
 
-	/*
-	 * What it was asked sits where a line you send does: it was sent this. It scrolls on its own,
-	 * so a flex column may crush it to nothing; a long transcript scrolls the body instead.
-	 */
+	/* What it was asked sits where a line you send does: it was sent this. All of it, flat. */
 	.subagent-asked {
-		flex-shrink: 0;
 		align-self: flex-end;
 		box-sizing: border-box;
 		max-width: 85%;
-		max-height: 16em;
 		padding: 10px 14px;
-		overflow: auto;
 		border-radius: var(--radius-lg) var(--radius-xs) var(--radius-lg) var(--radius-lg);
 		background: var(--chip);
 		line-height: 1.5;
