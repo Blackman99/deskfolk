@@ -187,7 +187,7 @@
 		display: flex;
 		flex-direction: column;
 		/* Follows the window, from a Bot↔Bot direct's width up to where a line is still readable. */
-		width: clamp(900px, 72vw, 1280px);
+		width: clamp(900px, 45vw, 1080px);
 		max-width: 92vw;
 		height: min(92dvh, calc(100dvh - 48px));
 		min-height: 0;

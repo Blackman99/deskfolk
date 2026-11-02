@@ -19,11 +19,11 @@ const LONG = '把登录循环的每条路径都走一遍，记下每一步读了
 const WIDTHS = [
 	[390, 390],
 	[800, 736],
-	[1100, 900],
-	[1280, 922],
-	[1440, 1037],
-	[1920, 1280],
-	[2560, 1280]
+	[1280, 900],
+	[1728, 900],
+	[2304, 1037],
+	[2560, 1080],
+	[3200, 1080]
 ] as const;
 
 async function opened(engine: BrowserType, baseURL: string | undefined, viewport: { width: number; height: number }) {
