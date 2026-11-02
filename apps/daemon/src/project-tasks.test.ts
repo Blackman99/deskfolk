@@ -375,7 +375,8 @@ test("the background is a project session's: Monitor answers to a command's rule
   expect(kind({ ...project, permission: "ask_first", tool: "Bash", input: { command: "serve", run_in_background: true } })).toBe("ask");
   expect(kind({ ...project, permission: "read_only", tool: "Monitor", input: { command: "tail -f x" } })).toBe("deny");
   // Claude Code tells it to read a task's output file; a subagent's is a link into its own config. Neither is refused by name.
-  expect(kind({ ...project, tool: "Read", input: { file_path: "/private/tmp/claude-501/-a-b/own/tasks/b1.output" } })).toBe("allow");
+  // `/private` is macOS's own top folder: say it exists, or Linux refuses the path as one that is not there.
+  expect(kind({ ...project, exists: () => true, tool: "Read", input: { file_path: "/private/tmp/claude-501/-a-b/own/tasks/b1.output" } })).toBe("allow");
   expect(kind({ ...project, tool: "Bash", input: { command: "tail -n 20 /private/tmp/claude-501/-a-b/own/tasks/b1.output" } })).toBe("allow");
 });
 
