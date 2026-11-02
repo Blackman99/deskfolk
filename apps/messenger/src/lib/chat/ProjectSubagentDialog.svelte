@@ -232,8 +232,12 @@
 		font-size: 14px;
 	}
 
-	/* What it was asked sits where a line you send does: it was sent this. */
+	/*
+	 * What it was asked sits where a line you send does: it was sent this. It scrolls on its own,
+	 * so a flex column may crush it to nothing; a long transcript scrolls the body instead.
+	 */
 	.subagent-asked {
+		flex-shrink: 0;
 		align-self: flex-end;
 		box-sizing: border-box;
 		max-width: 85%;

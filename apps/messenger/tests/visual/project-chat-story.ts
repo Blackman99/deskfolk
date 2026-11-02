@@ -6,7 +6,27 @@
 import { copyFor } from '../../src/lib/copy.ts';
 import { aMessage, aProjectSession, anAgentRun, fakeRuntime } from '../../src/lib/test-fixtures.ts';
 import ProjectChat from '../../src/lib/chat/ProjectChat.svelte';
-import type { AgentRun } from '@real-bot/protocol';
+import type { AgentRun, AgentTask, AgentTaskDetail } from '@real-bot/protocol';
+
+const subagent: AgentTask = {
+  id: 'a1', tool_use_id: 'toolu_a1', kind: 'subagent', status: 'completed', description: '查登录循环', command: null, agent_type: 'Explore', activity: null, summary: null,
+  tool_uses: 55, tokens: 163301, started_at: '2026-09-19T02:00:01.000Z', ended_at: '2026-09-19T02:00:04.000Z', output_file: null,
+};
+
+/** A subagent whose transcript is far taller than its popup, with what it was asked at the top. */
+export function projectSubagentStory() {
+  const story = projectChatStory(anAgentRun({ status: 'completed', tasks: [subagent] }));
+  const detail: AgentTaskDetail = {
+    task: subagent,
+    output: null,
+    output_bytes: null,
+    prompt: '找出会话过期时跳回登录页的原因',
+    model: 'claude-opus-5-5',
+    steps: Array.from({ length: 40 }, (_, i) => ({ kind: 'say' as const, at: '2026-09-19T02:00:02.000Z', text: `第 ${i + 1} 步：再看一个文件。` })),
+  };
+  Object.assign(story.props.runtime.client as object, { projectTasks: async () => [], agentTaskDetail: async () => detail });
+  return { ...story, width: 1000, height: 800 };
+}
 
 export function projectChatStory(run: AgentRun | null = null) {
   const session = aProjectSession();

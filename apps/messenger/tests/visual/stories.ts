@@ -35,7 +35,7 @@ import { ticketBoardStory } from './ticket-board-story.ts';
 import { taskmapSideStory } from './taskmap-side-story.ts';
 import { taskmapSceneStory } from './taskmap-scene-story.ts';
 import { taskmapHeadStory } from './taskmap-head-story.ts';
-import { projectChatStory } from './project-chat-story.ts';
+import { projectChatStory, projectSubagentStory } from './project-chat-story.ts';
 import Shell from '../../src/lib/Shell.svelte';
 import Onboarding from '../../src/lib/Onboarding.svelte';
 import TeamStep from '../../src/lib/onboarding/TeamStep.svelte';
@@ -1731,6 +1731,7 @@ export const rc11Stories = {
   'taskmap-head-many': taskmapHeadStory(1000, 640, 'many'),
   'project-chat': projectChatStory(),
   'project-chat-working': projectChatStory(anAgentRun({ activity: 'Bash npm test', partial: '我先看一下日志。' })),
+  'project-subagent': projectSubagentStory(),
 	'onboarding-validation': {
 		component: Shell as never,
 		props: { runtime: onboardingValidationRuntime() },

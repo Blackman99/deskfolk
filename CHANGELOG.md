@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A subagent's popup shows what it was asked
+
+- In a project session, opening a subagent with a long transcript squeezed what it was asked down to a single clipped line. It now shows in full, and a very long one scrolls inside its own bubble.
+
 ### A phone no longer stays on "This device is already connected in another tab"
 
 - A tab that got stuck (on a large file, say) kept the phone's link to the Mac, and every tab opened after it said "This device is already connected in another tab" for good: Take over asked the stuck tab to let go, which it never answered, and timed out. Take over now takes the link from a tab that does not answer within a second; that tab drops its own link once it runs again.
