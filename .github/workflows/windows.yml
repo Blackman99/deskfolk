@@ -6,7 +6,7 @@ name: Windows
 # verification (with `skip-bundle`, since the release packages for itself).
 on:
   push:
-    branches: [main, linux-compat]
+    branches: [main]
   pull_request:
   workflow_dispatch:
   workflow_call:
