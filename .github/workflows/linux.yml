@@ -1,0 +1,147 @@
+name: Linux
+
+# Builds and tests the Linux preview described in docs/development.md. ci.yml already runs the
+# JavaScript suites on Ubuntu (with the pty helper built, so the terminal tests run); this adds
+# what needs the desktop's system libraries: the Rust crates and the deb/AppImage bundle. Runs on
+# pushes to `main` and on pull requests, on demand via workflow_dispatch, and from release.yml as
+# the Linux half of its verification (with `skip-bundle`, since the release packages for itself).
+# Ubuntu 22.04 on purpose: an AppImage runs on systems with this glibc or newer.
+on:
+  push:
+    branches: [main, linux-compat]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      skip-bundle:
+        description: Run only the unit checks, not the package build
+        type: boolean
+        default: false
+
+concurrency:
+  group: linux-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Tauri's own Linux prerequisites (https://v2.tauri.app/start/prerequisites/#linux).
+  LINUX_PACKAGES: build-essential curl file patchelf libssl-dev libxdo-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+jobs:
+  unit:
+    name: Linux unit tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/conpty-helper -> target
+            apps/desktop/src-tauri -> target
+            apps/rtc-helper -> target
+
+      - name: Install system libraries
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_PACKAGES
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Every check after the install runs even when an earlier one failed, so one run shows all
+      # of what is still broken on Linux; the job still goes red if any of them failed.
+      - name: Pty helper crate tests (forkpty, real shells)
+        if: success() || failure()
+        run: cargo test --manifest-path apps/conpty-helper/Cargo.toml
+
+      - name: Desktop Tauri crate tests
+        if: success() || failure()
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      - name: Remote screen helper tests
+        if: success() || failure()
+        run: cargo test --locked --manifest-path apps/rtc-helper/Cargo.toml
+
+      - name: Typecheck desktop
+        if: success() || failure()
+        run: pnpm --filter @real-bot/desktop typecheck
+
+      - name: Desktop script tests
+        if: success() || failure()
+        run: pnpm --filter @real-bot/desktop test
+
+  bundle:
+    name: Linux packages (deb and AppImage)
+    # `inputs` is empty outside workflow_call, and an empty input is not `true`.
+    if: ${{ inputs.skip-bundle != true }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/conpty-helper -> target
+            apps/desktop/src-tauri -> target
+
+      - name: Install system libraries
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_PACKAGES
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      # beforeBuildCommand builds the messenger and runs build:native, which compiles
+      # real-bot-daemon and real-bot-pty into src-tauri/native/. linuxdeploy is itself an AppImage;
+      # extracting it instead of mounting it means the runner needs no FUSE.
+      - name: Build deb and AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: pnpm --filter @real-bot/desktop tauri build --bundles deb,appimage
+
+      - name: The packaged daemon and pty helper are executable
+        run: |
+          ls -la apps/desktop/src-tauri/target/release/bundle/deb apps/desktop/src-tauri/target/release/bundle/appimage
+          deb=$(ls apps/desktop/src-tauri/target/release/bundle/deb/*.deb)
+          dpkg-deb -I "$deb"
+          listing=$(dpkg-deb -c "$deb")
+          echo "$listing" | grep -E 'native/real-bot-(daemon|pty)$'
+          for file in real-bot-daemon real-bot-pty; do
+            echo "$listing" | grep -E "^-rwx.* .*/native/$file\$" > /dev/null || { echo "native/$file is missing or not executable in $deb"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deskfolk-linux-x64
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+            apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error

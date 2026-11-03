@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, linux-compat]
   pull_request:
   workflow_dispatch:
 
@@ -36,10 +36,17 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: packages/remote/test/snow -> target
+          workspaces: |
+            packages/remote/test/snow -> target
+            apps/conpty-helper -> target
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
+
+      # The daemon's pty and terminal tests drive the real helper and skip when it is not built;
+      # on Linux that is apps/conpty-helper's forkpty backend.
+      - name: Build the pty helper
+        run: cargo build --manifest-path apps/conpty-helper/Cargo.toml
 
       - name: Test
         run: pnpm test
@@ -101,6 +108,10 @@ jobs:
 
       - name: Cargo test
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      # Linux ships this crate's forkpty backend; its tests drive real shells on macOS too.
+      - name: Pty helper crate tests
+        run: cargo test --manifest-path apps/conpty-helper/Cargo.toml
 
       - name: Remote screen helper tests
         run: cargo test --locked --manifest-path apps/rtc-helper/Cargo.toml
