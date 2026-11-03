@@ -10,6 +10,7 @@ test("the native resource list is per-OS: Windows ships no Swift helper or crede
     "real-bot-rtc",
   ]);
   expect(nativeFilesFor("win32")).toEqual(["real-bot-daemon.exe", "real-bot-pty.exe", "real-bot-rtc.exe"]);
+  expect(nativeFilesFor("linux")).toEqual(["real-bot-daemon", "real-bot-pty"]);
 });
 
 test("published macOS minimum covers every mandatory nested deployment target", () => {

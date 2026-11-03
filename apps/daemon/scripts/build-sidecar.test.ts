@@ -21,6 +21,13 @@ test("both Windows triples map to a Bun target too, so tauri dev's beforeDevComm
   expect(bunTargetFor("aarch64-pc-windows-msvc")).toBe("bun-windows-arm64");
 });
 
+test("both Linux (glibc) triples map to a Bun target, for tauri dev on a Linux machine", () => {
+  expect(bunTargetFor("x86_64-unknown-linux-gnu")).toBe("bun-linux-x64");
+  expect(bunTargetFor("aarch64-unknown-linux-gnu")).toBe("bun-linux-arm64");
+  expect(bunTargetFor("x86_64-unknown-linux-musl")).toBeNull();
+  expect(sidecarFileName("x86_64-unknown-linux-gnu")).toBe("real-bot-daemon-x86_64-unknown-linux-gnu");
+});
+
 test("the file name is the one Tauri looks for: base name plus target triple", () => {
   expect(sidecarFileName("aarch64-apple-darwin")).toBe("real-bot-daemon-aarch64-apple-darwin");
 });
@@ -42,6 +49,8 @@ test("without rustc on PATH, the host triple guess follows this process's platfo
   expect(fallbackHostTriple("darwin", "x64")).toBe("x86_64-apple-darwin");
   expect(fallbackHostTriple("win32", "x64")).toBe("x86_64-pc-windows-msvc");
   expect(fallbackHostTriple("win32", "arm64")).toBe("aarch64-pc-windows-msvc");
+  expect(fallbackHostTriple("linux", "x64")).toBe("x86_64-unknown-linux-gnu");
+  expect(fallbackHostTriple("linux", "arm64")).toBe("aarch64-unknown-linux-gnu");
 });
 
 /**
@@ -66,8 +75,9 @@ test("the bundle ships the daemon through the native resources, not as a sidecar
 test("the release matrix packages every macOS triple the build script knows", () => {
   const workflow = readFileSync(join(import.meta.dir, "../../../.github/workflows/release.yml"), "utf8");
   // This matrix packages the macOS .app (signed/notarized when the secrets are set). The Windows
-  // installer comes from release.yml's own `publish-windows` job, which, like `windows.yml`, builds
-  // it through `build:native` (apps/desktop/scripts/build-native.ts), not this matrix.
+  // installer and the Linux packages come from release.yml's own `publish-windows` and
+  // `publish-linux` jobs, which, like `windows.yml` and `linux.yml`, build them through
+  // `build:native` (apps/desktop/scripts/build-native.ts), not this matrix.
   const macTriples = Object.keys(BUN_TARGETS).filter((triple) => triple.endsWith("-apple-darwin"));
   expect(macTriples).toEqual(["aarch64-apple-darwin", "x86_64-apple-darwin"]);
   for (const triple of macTriples) {

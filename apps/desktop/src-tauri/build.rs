@@ -7,9 +7,13 @@ fn main() {
     if std::env::var("PROFILE").as_deref() == Ok("release") {
         // Windows ships the daemon, the ConPTY helper and the remote screen's WebRTC helper: no
         // Swift runtime helper, no dylib — those are macOS-only credential-runtime pieces.
-        let windows = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows");
-        let files: &[&str] = if windows {
+        // Linux ships the daemon and the same crate's forkpty helper; remote access, and with it
+        // the WebRTC helper, is not there yet on Linux.
+        let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+        let files: &[&str] = if os == "windows" {
             &["real-bot-daemon.exe", "real-bot-pty.exe", "real-bot-rtc.exe"]
+        } else if os == "linux" {
+            &["real-bot-daemon", "real-bot-pty"]
         } else {
             &[
                 "real-bot-daemon",

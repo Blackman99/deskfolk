@@ -22,9 +22,10 @@ const APP_BUNDLES = ["Deskfolk.app", "Real Bot.app"];
 /**
  * Null when no installed app shares the database: this daemon is the installed app's own (it was
  * compiled into it), or it runs on a data folder other than the default, which no installed app
- * opens. Otherwise the version of the oldest copy found where apps are installed on a Mac (empty
- * when one is there but its version cannot be read), or, when this is not a Mac, that there is no
- * telling what is installed. Both of those count as too old to share with.
+ * opens, or this is Linux, where no installed copy predates the gate. Otherwise the version of the
+ * oldest copy found where apps are installed on a Mac (empty when one is there but its version
+ * cannot be read), or, on Windows, that there is no telling what is installed. Both of those count
+ * as too old to share with.
  */
 export function sharedInstalledVersion(input: {
   dataDir: string;
@@ -37,6 +38,9 @@ export function sharedInstalledVersion(input: {
   if (input.compiled) return null;
   if (resolve(input.dataDir) !== resolve(input.defaultDataDir)) return null;
   const platform = input.platform ?? process.platform;
+  // Every Linux build has shipped with the schema gate (the first one is far past
+  // LAST_RELEASE_WITHOUT_GATE), so no installed copy there can be one too old to share with.
+  if (platform === "linux") return null;
   if (platform !== "darwin") return { unseen: `a source run cannot tell which app is installed on ${platform}` };
   const read = input.read ?? readIfThere;
   const home = input.home ?? homedir();

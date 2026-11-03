@@ -15,7 +15,10 @@ export type AppDataDirOptions = {
 /**
  * - win32: `%LOCALAPPDATA%\real-bot`, or `<home>\AppData\Local\real-bot` when `LOCALAPPDATA` is
  *   unset (joined with `\`).
- * - every other platform: `<home>/Library/Application Support/real-bot` (joined with `/`),
+ * - linux: `$XDG_DATA_HOME/real-bot`, or `<home>/.local/share/real-bot` when `XDG_DATA_HOME` is
+ *   unset, empty or relative (the XDG spec says to ignore a relative one). The desktop window's
+ *   `local_api.rs` follows the same rule.
+ * - every other platform (macOS): `<home>/Library/Application Support/real-bot` (joined with `/`),
  *   unchanged from before this function existed.
  */
 export function defaultAppDataDir(options: AppDataDirOptions): string {
@@ -24,6 +27,11 @@ export function defaultAppDataDir(options: AppDataDirOptions): string {
     return local
       ? `${local}\\${APP_SUPPORT_DIRNAME}`
       : `${options.home}\\AppData\\Local\\${APP_SUPPORT_DIRNAME}`;
+  }
+  if (options.platform === "linux") {
+    const xdg = options.env.XDG_DATA_HOME;
+    const root = xdg && xdg.startsWith("/") ? xdg.replace(/\/+$/, "") : `${options.home}/.local/share`;
+    return `${root}/${APP_SUPPORT_DIRNAME}`;
   }
   return `${options.home}/Library/Application Support/${APP_SUPPORT_DIRNAME}`;
 }

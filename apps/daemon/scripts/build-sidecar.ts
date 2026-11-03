@@ -12,16 +12,18 @@ import { join } from "node:path";
 
 /**
  * Rust target triples this project ships, mapped to the Bun runtime to embed. The macOS release
- * matrix (`.github/workflows/release.yml`) packages the two Darwin triples; the Windows triples
- * exist so this script (and `tauri dev`'s `beforeDevCommand`, which always runs it) succeeds on a
- * Windows machine too — packaging a Windows build goes through `build:native` instead, not this
- * sidecar path. Bun 1.4.2 compiles both `bun-windows-x64` and `bun-windows-arm64`.
+ * matrix (`.github/workflows/release.yml`) packages the two Darwin triples; the Windows and Linux
+ * triples exist so this script (and `tauri dev`'s `beforeDevCommand`, which always runs it)
+ * succeeds on those machines too — packaging them goes through `build:native` instead, not this
+ * sidecar path. Bun 1.4.2 compiles `bun-windows-{x64,arm64}` and `bun-linux-{x64,arm64}` (glibc).
  */
 export const BUN_TARGETS: Record<string, string> = {
   "aarch64-apple-darwin": "bun-darwin-arm64",
   "x86_64-apple-darwin": "bun-darwin-x64",
   "x86_64-pc-windows-msvc": "bun-windows-x64",
   "aarch64-pc-windows-msvc": "bun-windows-arm64",
+  "x86_64-unknown-linux-gnu": "bun-linux-x64",
+  "aarch64-unknown-linux-gnu": "bun-linux-arm64",
 };
 
 /** The base name; `externalBin` in `tauri.conf.json` has to end with it. */
@@ -50,6 +52,9 @@ export function tripleFrom(
 export function fallbackHostTriple(platform: string, arch: string): string {
   if (platform === "win32") {
     return arch === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
+  }
+  if (platform === "linux") {
+    return arch === "arm64" ? "aarch64-unknown-linux-gnu" : "x86_64-unknown-linux-gnu";
   }
   return arch === "x64" ? "x86_64-apple-darwin" : "aarch64-apple-darwin";
 }

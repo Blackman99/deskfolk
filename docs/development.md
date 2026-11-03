@@ -329,7 +329,32 @@ Claude Agent（[ADR 0061](adr/0061-claude-agent-runner.md)）：找 `claude` 时
 
 ## Linux（实验性）
 
-刚起步的预览，路子和 Windows 一样：先让它能编、能跑、能打包，缺的如实列出。下面的条目随实现逐步补上。
+刚起步的预览，路子和 Windows 一样：先让它能编、能跑、能打包，缺的如实列出。只出 x86_64 的 AppImage 和 deb，在 Ubuntu 22.04 上构建（glibc 2.35，较老的发行版也能跑）；arm64、rpm、Flatpak、Snap 还没有。
+
+前置（Debian / Ubuntu 的包名，其它发行版找同名的开发包）：
+
+```bash
+sudo apt-get install build-essential curl file patchelf libssl-dev libxdo-dev \
+  libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+再加 Rust stable、Node `>=22` 与 pnpm、Bun（和 macOS 同一个版本号）。然后和 macOS 一样 `pnpm install`、`pnpm dev`；`tauri dev` 的 `beforeDevCommand` 跑 `build:sidecar`，它认 `x86_64-unknown-linux-gnu` / `aarch64-unknown-linux-gnu`（`bun-linux-x64` / `bun-linux-arm64`）。
+
+数据目录是 `$XDG_DATA_HOME/real-bot`，没设（或设成相对路径，XDG 规范说要忽略）时是 `~/.local/share/real-bot`；`REAL_BOT_DATA_DIR` 仍然优先。守护进程（`@real-bot/protocol` 的 `defaultAppDataDir`）和窗（`local_api.rs` 的 `default_data_dir`）按同一条规则算。
+
+本地打包：
+
+```bash
+pnpm --filter @real-bot/desktop tauri build --bundles deb,appimage
+```
+
+`build:native` 在 Linux 上往 `native/` 里放两样：`bun build --compile --target=bun-linux-<arch>` 出的 `real-bot-daemon`，和 `apps/conpty-helper` 的 release 构建 `real-bot-pty`；`build.rs` 在 release 下检查的就是这两个（`native-package.ts` 的 `nativeFilesFor("linux")` 同一份清单）。远控还没有，所以不带 `real-bot-rtc`；也不签名。`tauri.linux.conf.json` 只出 `deb` 和 `appimage`（基础配置的 `targets: "all"` 在 Linux 上还会出 rpm），deb 依赖 `libayatana-appindicator3-1`（托盘），AppImage 不带 GStreamer（应用不放音视频）。窗口和 Windows 一样关掉 Tauri 自己的拖放（`dragDropEnabled: false`），文件拖进输入框走 WebKitGTK 的 HTML5 拖放。
+
+窗：Linux 用系统标题栏，没有毛玻璃（`window_material` 答 `none`）。应用菜单和 Windows 一样画成窗里的菜单栏，快捷键只显示不注册，由页面自己接（`shortcut_item`），免得焦点不在页面时一个命令跑两次。托盘图标走 AppIndicator：Linux 上点托盘图标本身没有事件，「显示窗口」在它的菜单里；GNOME 默认不显示托盘，关窗后再启动一次应用，single-instance 插件会把已经开着的窗拿回来。
+
+更新检查（`updates.rs`）：从 AppImage 跑的（AppImage 运行时设了 `APPIMAGE`）找 `Deskfolk_<版本>_<arch>.AppImage`，否则找 `.deb`；x86_64 两者都拼 `amd64`，aarch64 时 deb 拼 `arm64`、AppImage 拼 `aarch64`。没有 Linux 包的 Release 不算新版。应用内下载安装只认 macOS 的 `.dmg`，Linux 上「下载更新」打开浏览器。
+
+源码跑、又用默认数据目录时，守护进程不用等装好的那份（`installed-app.ts` 在 Linux 上答 `null`）：每个 Linux 构建都带着 schema gate，装着的不可能比它更老。
 
 终端会话的 pty 在 Linux 上由 `apps/conpty-helper` 的 unix 后端（`src/unix_impl.rs`）提供，产物同样叫 `real-bot-pty`，帧协议不变。它是 Swift 版 `PtyHelper` 的逐行移植：`forkpty` 拿控制终端，信号发给 `tcgetpgrp` 的前台进程组，关会话先 SIGHUP、两秒后 SIGKILL，谁回收子进程谁决定退出码（输出循环回收就是子进程自己的状态，关会话那边回收就是 0）。有两处有意的不同：线上的信号号码仍是 Darwin 的（守护进程 `pty.ts` 的 `SIGNO` 不变），helper 按本机重新编号，Linux 上 SIGTSTP 是 20，原样转发的 18 会变成 SIGCONT；子进程在 exec 前把 SIGPIPE 恢复成默认，因为 Rust 运行时在本进程里忽略了它，而被忽略的信号会穿过 exec 带给 shell（Swift 版现在就有这个问题：Deskfolk 终端里 `yes | head -1` 会多打一行 `Broken pipe`）。先编译一次：
 

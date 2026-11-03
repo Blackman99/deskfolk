@@ -21,12 +21,15 @@ test("a Windows sign command is read the way Tauri's signCommand string is: spac
 
 const nativeDir = "/repo/apps/desktop/src-tauri/native";
 
-test("familyFor recognizes the macOS and Windows triples this project ships, and nothing else", () => {
+test("familyFor recognizes the macOS, Windows and Linux (glibc) triples this project ships, and nothing else", () => {
   expect(familyFor("aarch64-apple-darwin")).toBe("darwin");
   expect(familyFor("x86_64-apple-darwin")).toBe("darwin");
   expect(familyFor("x86_64-pc-windows-msvc")).toBe("windows");
   expect(familyFor("aarch64-pc-windows-msvc")).toBe("windows");
-  expect(() => familyFor("x86_64-unknown-linux-gnu")).toThrow();
+  expect(familyFor("x86_64-unknown-linux-gnu")).toBe("linux");
+  expect(familyFor("aarch64-unknown-linux-gnu")).toBe("linux");
+  expect(() => familyFor("x86_64-unknown-linux-musl")).toThrow();
+  expect(() => familyFor("armv7-linux-androideabi")).toThrow();
 });
 
 test("resolveTriple: an explicit TAURI_ENV_TARGET_TRIPLE always wins", () => {
@@ -40,6 +43,23 @@ test("resolveTriple falls back to this host's own OS and architecture, Windows i
   expect(resolveTriple({}, "win32", "arm64")).toBe("aarch64-pc-windows-msvc");
   expect(resolveTriple({}, "darwin", "x64")).toBe("x86_64-apple-darwin");
   expect(resolveTriple({}, "darwin", "arm64")).toBe("aarch64-apple-darwin");
+  expect(resolveTriple({}, "linux", "x64")).toBe("x86_64-unknown-linux-gnu");
+  expect(resolveTriple({}, "linux", "arm64")).toBe("aarch64-unknown-linux-gnu");
+});
+
+test("the Linux daemon compile targets bun-linux-*, with no Windows metadata and no .exe", () => {
+  const { args, outfile } = daemonBuildPlan("x86_64-unknown-linux-gnu", nativeDir);
+  expect(args).toContain("--target=bun-linux-x64");
+  expect(args.some((arg) => arg.startsWith("--windows-"))).toBe(false);
+  expect(outfile).toBe(resolve(nativeDir, "real-bot-daemon"));
+  expect(daemonBuildPlan("aarch64-unknown-linux-gnu", nativeDir).args).toContain("--target=bun-linux-arm64");
+});
+
+test("the Linux pty helper is the same crate's forkpty build, with no .exe", () => {
+  const plan = conptyBuildPlan("x86_64-unknown-linux-gnu", nativeDir);
+  expect(plan.args).toEqual(["cargo", "build", "--release", "--manifest-path", "apps/conpty-helper/Cargo.toml", "--target", "x86_64-unknown-linux-gnu"]);
+  expect(plan.builtPath).toBe("apps/conpty-helper/target/x86_64-unknown-linux-gnu/release/real-bot-pty");
+  expect(plan.destPath).toBe(resolve(nativeDir, "real-bot-pty"));
 });
 
 test("the macOS daemon compile is unchanged: no Windows metadata flags, no .exe suffix", () => {

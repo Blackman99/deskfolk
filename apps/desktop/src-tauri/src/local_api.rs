@@ -25,20 +25,34 @@ pub fn data_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("REAL_BOT_DATA_DIR") {
         return PathBuf::from(dir);
     }
-    PathBuf::from(default_data_dir(cfg!(windows), |name| {
+    PathBuf::from(default_data_dir(std::env::consts::OS, |name| {
         std::env::var(name).ok()
     }))
 }
 
-/// Contract §1's default-data-directory rule, joined by hand rather than
-/// through `std::path::Path` (whose separator follows the platform this is
-/// *compiled* for, not the `windows` flag) and reading the environment
-/// through a closure rather than the real process environment, so the win32
-/// branch — `%LOCALAPPDATA%\real-bot`, falling back to
-/// `%USERPROFILE%\AppData\Local\real-bot` — is exercised from a macOS test.
-fn default_data_dir(windows: bool, env: impl Fn(&str) -> Option<String>) -> String {
+/// Contract §1's default-data-directory rule, the same as `defaultAppDataDir`
+/// in `@real-bot/protocol`. Joined by hand rather than through
+/// `std::path::Path` (whose separator follows the platform this is *compiled*
+/// for, not `os`) and reading the environment through a closure rather than
+/// the real process environment, so every branch — win32's
+/// `%LOCALAPPDATA%\real-bot` falling back to
+/// `%USERPROFILE%\AppData\Local\real-bot`, Linux's `$XDG_DATA_HOME/real-bot`
+/// falling back to `~/.local/share/real-bot` — is exercised from a macOS test.
+/// `os` is `std::env::consts::OS`.
+fn default_data_dir(os: &str, env: impl Fn(&str) -> Option<String>) -> String {
     let value = |name: &str| env(name).filter(|v| !v.is_empty());
-    if windows {
+    if os == "linux" {
+        // The XDG spec says a relative XDG_DATA_HOME is to be ignored.
+        let root = value("XDG_DATA_HOME")
+            .filter(|dir| dir.starts_with('/'))
+            .map(|dir| dir.trim_end_matches('/').to_string())
+            .unwrap_or_else(|| {
+                let home = value("HOME").unwrap_or_else(|| ".".to_string());
+                format!("{}/.local/share", home.trim_end_matches('/'))
+            });
+        return format!("{root}/{DEFAULT_DIRNAME}");
+    }
+    if os == "windows" {
         let root = value("LOCALAPPDATA")
             .or_else(|| value("USERPROFILE").map(|home| format!("{home}\\AppData\\Local")))
             .unwrap_or_else(|| ".".to_string());
@@ -314,36 +328,58 @@ mod tests {
         // win32: LOCALAPPDATA wins outright.
         assert_eq!(
             default_data_dir(
-                true,
+                "windows",
                 fake_env(vec![("LOCALAPPDATA", r"C:\Users\me\AppData\Local")])
             ),
             r"C:\Users\me\AppData\Local\real-bot"
         );
         // win32: falls back to USERPROFILE\AppData\Local when LOCALAPPDATA is unset.
         assert_eq!(
-            default_data_dir(true, fake_env(vec![("USERPROFILE", r"C:\Users\me")])),
+            default_data_dir("windows", fake_env(vec![("USERPROFILE", r"C:\Users\me")])),
             r"C:\Users\me\AppData\Local\real-bot"
         );
         // win32: an empty LOCALAPPDATA is treated as unset, not as a literal empty root.
         assert_eq!(
             default_data_dir(
-                true,
+                "windows",
                 fake_env(vec![("LOCALAPPDATA", ""), ("USERPROFILE", r"C:\Users\me")])
             ),
             r"C:\Users\me\AppData\Local\real-bot"
         );
         // win32: neither set falls back to the cwd, same spirit as the mac fallback.
-        assert_eq!(default_data_dir(true, fake_env(vec![])), r".\real-bot");
+        assert_eq!(default_data_dir("windows", fake_env(vec![])), r".\real-bot");
 
-        // macOS/Linux: unchanged rule.
+        // macOS: unchanged rule.
         assert_eq!(
-            default_data_dir(false, fake_env(vec![("HOME", "/Users/me")])),
+            default_data_dir("macos", fake_env(vec![("HOME", "/Users/me")])),
             "/Users/me/Library/Application Support/real-bot"
         );
         assert_eq!(
-            default_data_dir(false, fake_env(vec![])),
+            default_data_dir("macos", fake_env(vec![])),
             "./Library/Application Support/real-bot"
         );
+
+        // Linux: XDG_DATA_HOME when it is absolute, else ~/.local/share.
+        assert_eq!(
+            default_data_dir("linux", fake_env(vec![("HOME", "/home/me")])),
+            "/home/me/.local/share/real-bot"
+        );
+        assert_eq!(
+            default_data_dir(
+                "linux",
+                fake_env(vec![("HOME", "/home/me"), ("XDG_DATA_HOME", "/data/me/")])
+            ),
+            "/data/me/real-bot"
+        );
+        for ignored in ["", "relative/share"] {
+            assert_eq!(
+                default_data_dir(
+                    "linux",
+                    fake_env(vec![("HOME", "/home/me"), ("XDG_DATA_HOME", ignored)])
+                ),
+                "/home/me/.local/share/real-bot"
+            );
+        }
     }
 
     #[test]

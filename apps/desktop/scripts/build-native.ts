@@ -10,27 +10,31 @@
  * credential runtime behind a signed helper the way Keychain access groups do, so there is no
  * Swift helper, no `codesign`, no minimum-OS check — just the daemon, the ConPTY helper
  * (`apps/conpty-helper`) and the remote screen's WebRTC helper, both built by Cargo, copied in
- * as-is (and signed with the release's sign command when there is one).
+ * as-is (and signed with the release's sign command when there is one). Linux is smaller still:
+ * the daemon and the same pty helper crate's forkpty backend; no remote screen helper, since
+ * remote access is not there yet on Linux, and nothing to sign.
  *
  * The planning functions below (`resolveTriple`, `familyFor`, `daemonBuildPlan`, `conptyBuildPlan`,
- * `rtcBuildPlan`) are pure — no I/O — so a test can exercise the Windows branch without a Windows machine, Cargo,
- * or a built `conpty-helper`. Only the `import.meta.main` block actually spawns anything.
+ * `rtcBuildPlan`) are pure — no I/O — so a test can exercise the Windows and Linux branches without
+ * those machines, Cargo, or a built `conpty-helper`. Only the `import.meta.main` block actually
+ * spawns anything.
  */
 import { copyFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { minimumMacOS, verifyNativeMinimum } from "./native-package";
 
-export type Family = "darwin" | "windows";
+export type Family = "darwin" | "windows" | "linux";
 
 export function familyFor(triple: string): Family {
   if (triple.endsWith("-pc-windows-msvc")) return "windows";
   if (triple.endsWith("-apple-darwin")) return "darwin";
-  throw new Error(`Native packaging supports macOS and Windows triples only, got: ${triple}`);
+  if (triple.endsWith("-unknown-linux-gnu")) return "linux";
+  throw new Error(`Native packaging supports macOS, Windows and Linux (glibc) triples only, got: ${triple}`);
 }
 
 /**
  * `TAURI_ENV_TARGET_TRIPLE` wins (Tauri sets it for every build hook); otherwise this host's
- * default triple for its own OS and CPU architecture, macOS or Windows.
+ * default triple for its own OS and CPU architecture: macOS, Windows or Linux.
  */
 export function resolveTriple(
   env: Record<string, string | undefined>,
@@ -41,6 +45,9 @@ export function resolveTriple(
   if (explicit) return explicit;
   if (platform === "win32") {
     return arch === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
+  }
+  if (platform === "linux") {
+    return arch === "arm64" ? "aarch64-unknown-linux-gnu" : "x86_64-unknown-linux-gnu";
   }
   return arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
 }
@@ -130,16 +137,20 @@ export function rtcBuildPlan(triple: string, nativeDir: string, minimum?: string
   };
 }
 
-/** Builds the Windows terminal helper (`apps/conpty-helper`) for `triple` and places it beside the daemon. */
+/**
+ * Builds the terminal helper (`apps/conpty-helper`: ConPTY on Windows, forkpty on Linux) for
+ * `triple` and places it beside the daemon.
+ */
 export function conptyBuildPlan(triple: string, nativeDir: string): ConptyBuildPlan {
   const manifestPath = "apps/conpty-helper/Cargo.toml";
+  const name = familyFor(triple) === "windows" ? "real-bot-pty.exe" : "real-bot-pty";
   return {
     manifestPath,
     args: ["cargo", "build", "--release", "--manifest-path", manifestPath, "--target", triple],
     // Left relative on purpose: `resolve` here would anchor it to the cwd pnpm runs this script
     // in (`apps/desktop`), not the repo root the caller joins it onto.
-    builtPath: `apps/conpty-helper/target/${triple}/release/real-bot-pty.exe`,
-    destPath: resolve(nativeDir, "real-bot-pty.exe"),
+    builtPath: `apps/conpty-helper/target/${triple}/release/${name}`,
+    destPath: resolve(nativeDir, name),
   };
 }
 
@@ -233,6 +244,16 @@ async function buildWindows(root: string, triple: string, output: string): Promi
   }
 }
 
+async function buildLinux(root: string, triple: string, output: string): Promise<void> {
+  const { args: daemonArgs } = daemonBuildPlan(triple, output);
+  await run(root, daemonArgs);
+
+  const pty = conptyBuildPlan(triple, output);
+  await run(root, pty.args);
+  await copyFile(resolve(root, pty.builtPath), pty.destPath);
+  console.log(`Native resources built in ${dirname(output)}/native.`);
+}
+
 if (import.meta.main) {
   const root = resolve(import.meta.dir, "../../..");
   const triple = resolveTriple(process.env, process.platform, process.arch);
@@ -242,7 +263,9 @@ if (import.meta.main) {
   const family = familyFor(triple);
   if (family === "darwin") {
     await buildDarwin(root, triple, output);
-  } else {
+  } else if (family === "windows") {
     await buildWindows(root, triple, output);
+  } else {
+    await buildLinux(root, triple, output);
   }
 }

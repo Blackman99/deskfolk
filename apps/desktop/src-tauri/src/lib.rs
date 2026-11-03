@@ -554,7 +554,8 @@ fn send_pane_command(app: &AppHandle, id: &str) {
 /// keeps keystrokes away from the window's menu while the page has focus, so the page answers
 /// the ones it has (Ctrl+\, Ctrl+Shift+\ and Ctrl+W, in the messenger's workbench keys) and the
 /// menu only shows them, after a tab the way Win32 menus do: registering them as well would run a
-/// command twice whenever focus is outside the page.
+/// command twice whenever focus is outside the page. Linux's GTK menu bar is the same: the page
+/// answers, the menu only shows.
 fn shortcut_item(
     app: &AppHandle,
     id: &str,
@@ -579,8 +580,8 @@ fn install_menus(app: &AppHandle) -> tauri::Result<()> {
         None
     };
     let quit = MenuItem::with_id(app, "quit", "退出 Deskfolk", true, quit_shortcut)?;
-    // On Windows this menu renders as the window's own in-window menu bar,
-    // which has no concept of hiding the app (or "other" apps) the way the
+    // On Windows and Linux this menu renders as the window's own in-window menu
+    // bar, which has no concept of hiding the app (or "other" apps) the way the
     // macOS app menu does, so those two items are dropped there.
     #[cfg(target_os = "macos")]
     let app_menu = {

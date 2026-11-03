@@ -62,6 +62,11 @@ describe("the installed app that shares this database", () => {
     });
   });
 
+  test("on Linux nothing installed can predate the gate, so a source run on the default folder shares freely", () => {
+    const linuxDefault = "/home/me/.local/share/real-bot";
+    expect(sharedInstalledVersion({ dataDir: linuxDefault, defaultDataDir: linuxDefault, compiled: false, platform: "linux", read: mac({}) })).toBeNull();
+  });
+
   test("reads the version out of an XML property list", () => {
     expect(bundleVersion(plist(" 0.1.0-rc.12 "))).toBe("0.1.0-rc.12");
     expect(bundleVersion("<plist/>")).toBe("");

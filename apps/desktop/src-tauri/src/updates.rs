@@ -88,10 +88,24 @@ pub fn windows_arch_tag() -> Option<&'static str> {
     windows_arch_tag_for(std::env::consts::ARCH)
 }
 
+/// Map a Rust `std::env::consts::ARCH` value to the suffix in the Linux
+/// packages' names. The `.deb` uses Debian's own spelling (`amd64`, `arm64`);
+/// the AppImage spells x86_64 `amd64` too but keeps `aarch64`.
+pub fn linux_arch_tag_for(arch: &str, installer: InstallerKind) -> Option<&'static str> {
+    match (arch, installer) {
+        ("x86_64", _) => Some("amd64"),
+        ("aarch64", InstallerKind::Deb) => Some("arm64"),
+        ("aarch64", _) => Some("aarch64"),
+        _ => None,
+    }
+}
+
 /// The architecture tag for this platform's own release asset naming.
 pub fn platform_arch_tag() -> Option<&'static str> {
     if cfg!(windows) {
         windows_arch_tag()
+    } else if cfg!(target_os = "linux") {
+        linux_arch_tag_for(std::env::consts::ARCH, InstallerKind::for_this_platform())
     } else {
         arch_tag()
     }
@@ -130,6 +144,17 @@ pub fn pick_windows_installer(assets: &[Asset], arch: Option<&str>) -> Option<St
         .map(|asset| asset.browser_download_url.clone())
 }
 
+/// Pick the Linux package of the given kind (`Deskfolk_<ver>_<arch>.AppImage`
+/// or `Deskfolk_<ver>_<arch>.deb`) matching [`linux_arch_tag_for`]'s spelling.
+pub fn pick_linux_package(assets: &[Asset], arch: Option<&str>, extension: &str) -> Option<String> {
+    let arch = arch?;
+    let suffix = format!("_{arch}.{extension}");
+    assets
+        .iter()
+        .find(|asset| asset.name.ends_with(&suffix))
+        .map(|asset| asset.browser_download_url.clone())
+}
+
 /// Which installer this platform takes from a release.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InstallerKind {
@@ -137,14 +162,30 @@ pub enum InstallerKind {
     Dmg,
     /// `Deskfolk_<ver>_<arch>-setup.exe` (Windows NSIS), matched by [`pick_windows_installer`].
     NsisSetup,
+    /// `Deskfolk_<ver>_<arch>.AppImage`: a Linux copy running as an AppImage.
+    AppImage,
+    /// `Deskfolk_<ver>_<arch>.deb`: any other Linux copy, which a package manager installed.
+    Deb,
 }
 
 impl InstallerKind {
     pub fn for_this_platform() -> Self {
         if cfg!(windows) {
             Self::NsisSetup
+        } else if cfg!(target_os = "linux") {
+            Self::for_linux(std::env::var_os("APPIMAGE").is_some_and(|path| !path.is_empty()))
         } else {
             Self::Dmg
+        }
+    }
+
+    /// The AppImage runtime sets `APPIMAGE` to the file it runs from; a copy
+    /// without it came from the `.deb`, and the `.deb` is what replaces it.
+    pub fn for_linux(running_as_appimage: bool) -> Self {
+        if running_as_appimage {
+            Self::AppImage
+        } else {
+            Self::Deb
         }
     }
 
@@ -152,6 +193,8 @@ impl InstallerKind {
         match self {
             Self::Dmg => pick_dmg(assets, arch),
             Self::NsisSetup => pick_windows_installer(assets, arch),
+            Self::AppImage => pick_linux_package(assets, arch, "AppImage"),
+            Self::Deb => pick_linux_package(assets, arch, "deb"),
         }
     }
 }
@@ -648,6 +691,53 @@ mod tests {
             browser_download_url: "https://example.invalid/Deskfolk_0.2.0_x64.dmg".into(),
         }];
         assert_eq!(pick_windows_installer(&dmg_only, Some("x64")), None);
+    }
+
+    #[test]
+    fn linux_arch_tags_follow_each_package_s_own_spelling() {
+        assert_eq!(linux_arch_tag_for("x86_64", InstallerKind::AppImage), Some("amd64"));
+        assert_eq!(linux_arch_tag_for("x86_64", InstallerKind::Deb), Some("amd64"));
+        assert_eq!(linux_arch_tag_for("aarch64", InstallerKind::AppImage), Some("aarch64"));
+        assert_eq!(linux_arch_tag_for("aarch64", InstallerKind::Deb), Some("arm64"));
+        assert_eq!(linux_arch_tag_for("riscv64", InstallerKind::Deb), None);
+    }
+
+    #[test]
+    fn a_linux_copy_takes_the_package_it_came_as() {
+        assert_eq!(InstallerKind::for_linux(true), InstallerKind::AppImage);
+        assert_eq!(InstallerKind::for_linux(false), InstallerKind::Deb);
+        let base = "https://github.com/Blackman99/deskfolk/releases/download/v0.4.0";
+        let asset = |name: &str| Asset { name: name.into(), browser_download_url: format!("{base}/{name}") };
+        let assets = vec![
+            asset("Deskfolk_0.4.0_aarch64.dmg"),
+            asset("Deskfolk_0.4.0_x64-setup.exe"),
+            asset("Deskfolk_0.4.0_amd64.AppImage"),
+            asset("Deskfolk_0.4.0_amd64.deb"),
+        ];
+        assert_eq!(
+            InstallerKind::AppImage.pick(&assets, Some("amd64")),
+            Some(format!("{base}/Deskfolk_0.4.0_amd64.AppImage"))
+        );
+        assert_eq!(
+            InstallerKind::Deb.pick(&assets, Some("amd64")),
+            Some(format!("{base}/Deskfolk_0.4.0_amd64.deb"))
+        );
+        assert_eq!(InstallerKind::Deb.pick(&assets, Some("arm64")), None);
+    }
+
+    /// A release that carries only the macOS and Windows packages is no update
+    /// for a Linux copy, rather than a `.dmg` it cannot open.
+    #[test]
+    fn a_release_without_a_linux_package_is_no_update_on_linux() {
+        let current = version("0.3.0");
+        let mut mac_only = release("v0.4.0", false, false);
+        mac_only.assets = vec![Asset {
+            name: "Deskfolk_0.4.0_x64.dmg".into(),
+            browser_download_url: "https://example.invalid/Deskfolk_0.4.0_x64.dmg".into(),
+        }];
+        let check = pick_update(&current, &[mac_only], InstallerKind::Deb, Some("amd64"));
+        assert!(!check.update_available);
+        assert_eq!(check.download_url, None);
     }
 
     #[test]

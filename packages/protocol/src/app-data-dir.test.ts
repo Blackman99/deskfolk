@@ -8,10 +8,21 @@ describe("defaultAppDataDir", () => {
     );
   });
 
-  test("linux: same shape as macOS today (no dedicated branch)", () => {
+  test("linux: $XDG_DATA_HOME/real-bot, else ~/.local/share/real-bot", () => {
     expect(defaultAppDataDir({ platform: "linux", env: {}, home: "/home/dongsheng" })).toBe(
-      "/home/dongsheng/Library/Application Support/real-bot",
+      "/home/dongsheng/.local/share/real-bot",
     );
+    expect(
+      defaultAppDataDir({ platform: "linux", env: { XDG_DATA_HOME: "/data/me/" }, home: "/home/dongsheng" }),
+    ).toBe("/data/me/real-bot");
+  });
+
+  test("linux: an empty or relative XDG_DATA_HOME is ignored, as the XDG spec says", () => {
+    for (const XDG_DATA_HOME of ["", "relative/share"]) {
+      expect(defaultAppDataDir({ platform: "linux", env: { XDG_DATA_HOME }, home: "/home/me" })).toBe(
+        "/home/me/.local/share/real-bot",
+      );
+    }
   });
 
   test("win32: %LOCALAPPDATA%\\real-bot when set, backslash-joined", () => {
