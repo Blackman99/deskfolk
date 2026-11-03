@@ -337,7 +337,9 @@
 		overflow: hidden;
 		background: var(--sidebar-bg);
 		border-right: 1px solid var(--line);
+		/* WebKit reads only the prefixed one; the build adds it, the dev server does not. */
 		user-select: none;
+		-webkit-user-select: none;
 	}
 
 	/* Beside the content card the rail is part of the ground, with no edge of its own. */

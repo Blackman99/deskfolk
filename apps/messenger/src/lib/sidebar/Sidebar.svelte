@@ -852,7 +852,12 @@
 		min-height: 0;
 		min-width: 0;
 		position: relative;
+		/*
+		 * A right-click on a row (which on a Mac selects the word under it) or a double click never
+		 * selects its text. WebKit reads only the prefixed one; the build adds it, the dev server does not.
+		 */
 		user-select: none;
+		-webkit-user-select: none;
 	}
 
 	/* Beside the content card the shell's ground shows through (the window's material on macOS). */

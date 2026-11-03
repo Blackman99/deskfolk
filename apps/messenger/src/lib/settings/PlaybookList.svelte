@@ -256,10 +256,16 @@
 {/if}
 
 <style>
+	/*
+	 * A list of things to press, as the sidebar is: a right-click on a row (which on a Mac selects
+	 * the word under it) or a double click never selects its text. Only the name field selects.
+	 */
 	.playbook-list {
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
+		user-select: none;
+		-webkit-user-select: none;
 	}
 
 	.playbook-list-head {
@@ -420,6 +426,8 @@
 		font-weight: 600;
 		outline: none;
 		box-shadow: var(--field-focus-ring);
+		user-select: text;
+		-webkit-user-select: text;
 	}
 
 	.playbook-name-field[aria-invalid='true'] {
