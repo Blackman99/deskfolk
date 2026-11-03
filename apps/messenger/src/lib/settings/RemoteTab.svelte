@@ -77,7 +77,9 @@
 			? ''
 			: runtime.remoteStatus?.diagnostic === 'sealed_runtime_required'
 				? t.remote.setupNeedsDevSwitch
-				: ''
+				: runtime.remoteStatus?.diagnostic === 'platform_unsupported'
+					? t.remote.setupNotOnLinux
+					: ''
 	);
 </script>
 

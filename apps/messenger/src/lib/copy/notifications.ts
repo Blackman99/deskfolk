@@ -1,4 +1,4 @@
-import { isWindows } from "./platform-words.ts";
+import { isLinux, isWindows } from "./platform-words.ts";
 import type { CopyShape } from "./shape.ts";
 
 export const zh = {
@@ -52,8 +52,8 @@ export const zh = {
   deviceNotifications: "本设备系统通知",
   deviceSubtitle: "管理当前设备接收系统通知与推送的偏好",
   deviceEnable: "开启这台设备的系统通知",
-  /** Shown once notifications are on. Windows doesn't have this native path built yet. */
-  deviceEnabledDesktopNote: isWindows ? "Windows 桌面通知暂未实现，设置会保留" : "通过 macOS 本地横幅与提示音通知",
+  /** Shown once notifications are on. Windows and Linux don't have this native path built yet. */
+  deviceEnabledDesktopNote: isWindows ? "Windows 桌面通知暂未实现，设置会保留" : isLinux ? "Linux 桌面通知暂未实现，设置会保留" : "通过 macOS 本地横幅与提示音通知",
   deviceEnabled: "已开启",
   deviceDisabled: "已关闭",
   deviceSound: "声音",
@@ -146,7 +146,9 @@ export const en: CopyShape<typeof zh> = {
   deviceEnable: "Enable system notifications for this device",
   deviceEnabledDesktopNote: isWindows
     ? "Desktop notifications aren't implemented on Windows yet; the setting is kept"
-    : "Desktop native banners and alerts are active",
+    : isLinux
+      ? "Desktop notifications aren't implemented on Linux yet; the setting is kept"
+      : "Desktop native banners and alerts are active",
   deviceEnabled: "Enabled",
   deviceDisabled: "Disabled",
   deviceSound: "Sound",

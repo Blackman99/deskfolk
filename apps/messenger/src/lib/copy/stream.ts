@@ -1,4 +1,4 @@
-import { enTrashOwner, enTrashWord, isWindows, zhTrashWord } from "./platform-words.ts";
+import { enTrashOwner, enTrashWord, isLinux, isMacHost, isWindows, zhTrashWord } from "./platform-words.ts";
 import type { CopyShape } from "./shape.ts";
 
 export const zh = {
@@ -80,7 +80,7 @@ export const zh = {
   artifactDownloading: (bytes: string | null) => (bytes ? `正在下载 ${bytes}` : "正在下载…"),
   artifactDownloadFailed: "没能下载这个文件",
   artifactOpenSystem: "用系统默认应用打开",
-  artifactReveal: isWindows ? "在文件资源管理器中显示" : "在 Finder 中打开",
+  artifactReveal: isWindows ? "在文件资源管理器中显示" : isLinux ? "在文件管理器中显示" : "在 Finder 中打开",
   artifactOpenTerminal: "在此位置打开终端",
   artifactCopyPath: "复制工作区路径",
   artifactCopyAbsPath: "复制绝对路径",
@@ -90,8 +90,8 @@ export const zh = {
   artifactTrashBody: (names: string[], count: number, folders: boolean, unsaved: boolean) =>
     [
       count > 1
-        ? `${names.slice(0, 3).map((name) => `“${name}”`).join("、")}${count > 3 ? ` 等 ${count} 项` : ""}会移到${isWindows ? "" : " Mac 的"}${zhTrashWord}，可以从那里放回。`
-        : `它会移到${isWindows ? "" : " Mac 的"}${zhTrashWord}，可以从那里放回。`,
+        ? `${names.slice(0, 3).map((name) => `“${name}”`).join("、")}${count > 3 ? ` 等 ${count} 项` : ""}会移到${isMacHost ? " Mac 的" : ""}${zhTrashWord}，可以从那里放回。`
+        : `它会移到${isMacHost ? " Mac 的" : ""}${zhTrashWord}，可以从那里放回。`,
       folders ? "文件夹会连同里面的内容一起移走。" : "",
       unsaved ? "正在编辑的文件还有未保存的修改，会一起丢掉。" : "",
     ].join(""),
@@ -339,7 +339,7 @@ export const en: CopyShape<typeof zh> = {
   artifactDownloading: (bytes: string | null) => (bytes ? `Downloading ${bytes}` : "Downloading…"),
   artifactDownloadFailed: "Couldn’t download this file",
   artifactOpenSystem: "Open with default app",
-  artifactReveal: isWindows ? "Show in File Explorer" : "Show in Finder",
+  artifactReveal: isWindows ? "Show in File Explorer" : isLinux ? "Show in File Manager" : "Show in Finder",
   artifactOpenTerminal: "Open terminal here",
   artifactCopyPath: "Copy workspace path",
   artifactCopyAbsPath: "Copy absolute path",

@@ -1,4 +1,4 @@
-import { isWindows } from "./platform-words.ts";
+import { isLinux, isWindows } from "./platform-words.ts";
 import type { CopyShape } from "./shape.ts";
 
 /** Speech recognition (ADR 0073): the settings card and the composer's microphone. */
@@ -59,7 +59,9 @@ export const zh = {
   transcribing: "正在转文字…",
   micDenied: isWindows
     ? "没拿到麦克风权限。电脑上到「设置 → 隐私和安全性 → 麦克风」里允许桌面应用使用麦克风；手机上在浏览器的网站设置里允许。"
-    : "没拿到麦克风权限。电脑上到「系统设置 → 隐私与安全性 → 麦克风」里允许 Deskfolk；手机上在浏览器的网站设置里允许。",
+    : isLinux
+      ? "没拿到麦克风权限。电脑上看系统设置里的隐私（或声音）一项是否允许应用用麦克风、输入设备是否选对；Linux 版的语音输入还没在真机上试过。手机上在浏览器的网站设置里允许。"
+      : "没拿到麦克风权限。电脑上到「系统设置 → 隐私与安全性 → 麦克风」里允许 Deskfolk；手机上在浏览器的网站设置里允许。",
   micMissing: "没找到麦克风。",
   micUnsupported: "这里录不了音：页面要在 HTTPS 或本机地址下打开。",
   micFailed: (detail: string) => `录音出错：${detail}`,
@@ -132,7 +134,9 @@ export const en: CopyShape<typeof zh> = {
   transcribing: "Transcribing…",
   micDenied: isWindows
     ? "No access to the microphone. On this computer, let desktop apps use it under Settings → Privacy & security → Microphone; on a phone, allow it in the browser's site settings."
-    : "No access to the microphone. On this computer, allow Deskfolk under System Settings → Privacy & Security → Microphone; on a phone, allow it in the browser's site settings.",
+    : isLinux
+      ? "No access to the microphone. On this computer, check that the system settings' privacy (or sound) section lets apps use it and the right input is picked; voice input on Linux has not been tried on a real machine yet. On a phone, allow it in the browser's site settings."
+      : "No access to the microphone. On this computer, allow Deskfolk under System Settings → Privacy & Security → Microphone; on a phone, allow it in the browser's site settings.",
   micMissing: "No microphone found.",
   micUnsupported: "Recording isn't available here: the page has to be open over HTTPS or on this computer.",
   micFailed: (detail: string) => `Recording failed: ${detail}`,

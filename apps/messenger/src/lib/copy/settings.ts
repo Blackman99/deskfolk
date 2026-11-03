@@ -1,4 +1,4 @@
-import { isWindows, osName } from "./platform-words.ts";
+import { isLinux, isWindows, osName } from "./platform-words.ts";
 import type { CopyShape } from "./shape.ts";
 
 export const zh = {
@@ -211,7 +211,11 @@ export const zh = {
   mcpUrl: "URL",
   mcpHeaders: "headers",
   mcpAuth: "Authorization",
-  mcpAuthHint: isWindows ? "Bearer token。只写进 Windows 凭据管理器，不进列表。" : "Bearer token。只写进钥匙串，不进列表。",
+  mcpAuthHint: isWindows
+    ? "Bearer token。只写进 Windows 凭据管理器，不进列表。"
+    : isLinux
+      ? "Bearer token。只写进系统密钥环，不进列表。"
+      : "Bearer token。只写进钥匙串，不进列表。",
   mcpEnabled: "启用",
   mcpAdd: "添加",
   mcpConfirmAdd: "确认添加",
@@ -466,7 +470,9 @@ export const en: CopyShape<typeof zh> = {
   mcpAuth: "Authorization",
   mcpAuthHint: isWindows
     ? "Bearer token. Written only to Windows Credential Manager, never listed."
-    : "Bearer token. Written only to the keychain, never listed.",
+    : isLinux
+      ? "Bearer token. Written only to the system keyring, never listed."
+      : "Bearer token. Written only to the keychain, never listed.",
   mcpEnabled: "Enabled",
   mcpAdd: "Add",
   mcpConfirmAdd: "Confirm add",

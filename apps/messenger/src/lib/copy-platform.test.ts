@@ -84,3 +84,25 @@ test("the window's remote-access and remote-screen words name the Mac there, and
   expect(windows.zh.screen.macSharingSettings).toBe("下载 TightVNC");
   expect(windows.en.screen.macSharingOff).toBe("No VNC server found: the phone cannot connect");
 });
+
+test("on Linux the words name the computer, its file manager, its Trash and its keyring", async () => {
+  const linux = await copyOn("Linux x86_64");
+  for (const hint of routineHints(linux)) expect(hint).not.toContain("Mac");
+  expect(linux.zh.routines.zone).toBe("按执行电脑的本地时区运行，不按此浏览器的时区换算。");
+  expect(linux.zh.stream.artifactReveal).toBe("在文件管理器中显示");
+  expect(linux.en.stream.artifactReveal).toBe("Show in File Manager");
+  expect(linux.zh.stream.artifactTrash).toBe("移到回收站");
+  expect(linux.en.stream.artifactTrash).toBe("Move to Trash");
+  for (const line of [linux.zh.stream.artifactTrashBody(["a.md"], 1, false, false), linux.en.stream.artifactTrashBody(["a.md"], 1, false, false)]) {
+    expect(line).not.toContain("Mac");
+  }
+  expect(linux.zh.settings.mcpAuthHint).toContain("系统密钥环");
+  expect(linux.en.settings.mcpAuthHint).toContain("system keyring");
+  expect(linux.zh.onboarding.subtitle).toContain("本机 Linux 单人");
+  expect(linux.en.notifications.deviceEnabledDesktopNote).toContain("on Linux yet");
+  expect(linux.zh.speech.micDenied).not.toContain("系统设置 → 隐私与安全性");
+  expect(linux.en.remote.setupNotOnLinux).toContain("not there yet on Linux");
+  // The Mac keeps its own words.
+  expect(COPY.zh.stream.artifactReveal).toBe("在 Finder 中打开");
+  expect(COPY.en.settings.mcpAuthHint).toContain("keychain");
+});

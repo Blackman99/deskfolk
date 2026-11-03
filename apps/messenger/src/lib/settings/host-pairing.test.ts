@@ -183,6 +183,13 @@ test("a build whose credential store cannot be set up offers no connect form", (
   close();
 });
 
+test("on Linux the card says remote access is not there yet, with no form and no device count", () => {
+  const { host, close } = open(null, { remoteStatus: { state: "off", diagnostic: "platform_unsupported", devices: 0 } });
+  expect(host.querySelector("[data-testid=remote-connect]")).toBeNull();
+  expect(host.querySelector("[data-testid=remote-setup-note]")?.textContent).toContain("not there yet on Linux");
+  close();
+});
+
 test("the connect form folds away how to deploy a relay, with commands to copy and the full guide", () => {
   const { host, close } = open(null, { remoteStatus: { state: "off", diagnostic: null, devices: 0 } });
   const guide = host.querySelector<HTMLDetailsElement>("[data-testid=remote-connect] [data-testid=relay-guide]");
