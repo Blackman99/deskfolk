@@ -4,12 +4,13 @@
  * The daemon's own process env can hold secrets — API keys, `REAL_BOT_*` config — that a shell
  * the person opened themselves has no business seeing. So the default is a narrow whitelist of
  * what a login shell actually needs, not everything launchd handed the daemon, plus what
- * Terminal.app would set on top: a real `TERM`, a locale, and — for zsh — Deskfolk's own shell
- * integration, so the session's cwd is something the daemon can read back off its output.
+ * Terminal.app would set on top: a real `TERM`, a locale, and — for zsh, and bash on Linux —
+ * Deskfolk's own shell integration, so the session's cwd is something the daemon can read back off
+ * its output.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { envLookup, WINDOWS_ENV_PASSTHROUGH } from "./platform";
+import { envLookup, platformEnvPassthrough } from "./platform";
 
 /**
  * Everything else in the daemon's own env stays behind; a shell only gets these, when present.
@@ -23,6 +24,22 @@ export const ENV_WHITELIST = [
 
 const DEFAULT_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
 const DEFAULT_LANG = "en_US.UTF-8";
+/** Every glibc since 2.35 (and Debian/Ubuntu long before) has it built in; en_US may not be generated. */
+const LINUX_DEFAULT_LANG = "C.UTF-8";
+
+/**
+ * bash's counterpart of the zsh `precmd` hook below: reports the working directory as OSC 7, each
+ * byte outside `[/._~A-Za-z0-9-]` percent-encoded exactly as the zsh one does. bash reads no
+ * startup file Deskfolk could own the way `.zshenv` is owned, so the function rides in through
+ * the environment as an exported function (`BASH_FUNC_<name>%%`, bash 4.4 and later) and
+ * `PROMPT_COMMAND` runs it. A startup file that assigns `PROMPT_COMMAND` outright drops the hook,
+ * and then the session just keeps the cwd it started in.
+ */
+export const BASH_CWD_FUNCTION =
+  '() { local LC_ALL=C url_path= i ch hex; for ((i = 0; i < ${#PWD}; i++)); do ch="${PWD:i:1}"; ' +
+  'case "$ch" in [/._~A-Za-z0-9-]) url_path+="$ch" ;; *) printf -v hex "%%%02X" "\'$ch"; url_path+="$hex" ;; esac; done; ' +
+  'printf "\\e]7;file://%s%s\\a" "$HOSTNAME" "$url_path"; }';
+const BASH_CWD_NAME = "_real_bot_report_cwd";
 
 export type TerminalEnvOptions = {
   shell: string;
@@ -69,9 +86,9 @@ function deriveLang(systemLocale: string | null | undefined, available: (name: s
 export function terminalEnv(source: Record<string, string | undefined>, options: TerminalEnvOptions): Record<string, string> {
   const platform = options.platform ?? process.platform;
   // On win32, node/PowerShell/cmd need far more than the narrow POSIX whitelist just to run at
-  // all — see WINDOWS_ENV_PASSTHROUGH — and env var names there are case-insensitive.
-  const whitelist: readonly string[] =
-    platform === "win32" ? [...ENV_WHITELIST, ...WINDOWS_ENV_PASSTHROUGH] : ENV_WHITELIST;
+  // all, and on Linux anything with a window needs the desktop session's variables — see
+  // platformEnvPassthrough. Env var names on win32 are case-insensitive.
+  const whitelist: readonly string[] = [...ENV_WHITELIST, ...platformEnvPassthrough(platform)];
   const env: Record<string, string> = {};
   for (const key of whitelist) {
     const value = envLookup(source, key, platform);
@@ -96,14 +113,22 @@ export function terminalEnv(source: Record<string, string | undefined>, options:
   // A daemon started from launchd has neither LANG nor LC_ALL at all; left alone, a shell falls
   // back to POSIX and mangles anything non-ASCII. Derive what Terminal.app would show instead of
   // forcing the same locale on every machine. Windows keeps its locale in the user's settings,
-  // not LANG, and an injected en_US there would only switch git and friends to English.
+  // not LANG, and an injected en_US there would only switch git and friends to English. Linux has
+  // no system locale to ask for and en_US.UTF-8 is often not generated, so it gets C.UTF-8.
   if (platform !== "win32" && source.LANG === undefined && source.LC_ALL === undefined) {
-    env.LANG = deriveLang(options.systemLocale, options.localeAvailable ?? defaultLocaleAvailable);
+    env.LANG = platform === "linux"
+      ? LINUX_DEFAULT_LANG
+      : deriveLang(options.systemLocale, options.localeAvailable ?? defaultLocaleAvailable);
   }
 
   if (basename(options.shell) === "zsh" && options.zshIntegrationDir) {
     env.ZDOTDIR = options.zshIntegrationDir;
     if (source.ZDOTDIR !== undefined) env.REAL_BOT_ZSH_ZDOTDIR = source.ZDOTDIR;
+  }
+  if (platform === "linux" && basename(options.shell) === "bash") {
+    env[`BASH_FUNC_${BASH_CWD_NAME}%%`] = BASH_CWD_FUNCTION;
+    const inherited = source.PROMPT_COMMAND;
+    env.PROMPT_COMMAND = inherited ? `${BASH_CWD_NAME}; ${inherited}` : BASH_CWD_NAME;
   }
 
   return env;

@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureZshIntegration, macSystemLocale, terminalEnv } from "./terminal-env";
+import { CwdTracker } from "./terminal-cwd";
+import { BASH_CWD_FUNCTION, ensureZshIntegration, macSystemLocale, terminalEnv } from "./terminal-env";
 
 test("only the whitelist passes through, never the rest of the daemon's own env", () => {
   const env = terminalEnv(
@@ -179,6 +180,88 @@ test("darwin/linux are unaffected by the win32 passthrough list", () => {
   const env = terminalEnv({ SystemRoot: "C:\\Windows", PATH: "/bin" }, { shell: "/bin/zsh", platform: "darwin" });
   expect(env.SystemRoot).toBeUndefined();
   expect(env.PATH).toBe("/bin");
+});
+
+test("linux passes the desktop session's variables through, macOS does not", () => {
+  const source = { PATH: "/bin", DISPLAY: ":0", WAYLAND_DISPLAY: "wayland-0", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus", XDG_RUNTIME_DIR: "/run/user/1000", XDG_DATA_HOME: "/home/x/.local/share", ANTHROPIC_API_KEY: "sk-secret" };
+  const linux = terminalEnv(source, { shell: "/bin/bash", platform: "linux" });
+  expect(linux.DISPLAY).toBe(":0");
+  expect(linux.WAYLAND_DISPLAY).toBe("wayland-0");
+  expect(linux.DBUS_SESSION_BUS_ADDRESS).toBe("unix:path=/run/user/1000/bus");
+  expect(linux.XDG_RUNTIME_DIR).toBe("/run/user/1000");
+  expect(linux.XDG_DATA_HOME).toBe("/home/x/.local/share");
+  expect(linux.ANTHROPIC_API_KEY).toBeUndefined();
+  const mac = terminalEnv(source, { shell: "/bin/zsh", platform: "darwin" });
+  expect(mac.DISPLAY).toBeUndefined();
+  expect(mac.XDG_RUNTIME_DIR).toBeUndefined();
+});
+
+test("linux gets C.UTF-8 when neither LANG nor LC_ALL is set, and keeps what it was given", () => {
+  expect(terminalEnv({}, { shell: "/bin/bash", platform: "linux", systemLocale: "zh_CN", localeAvailable: () => true }).LANG).toBe("C.UTF-8");
+  expect(terminalEnv({ LANG: "zh_CN.UTF-8" }, { shell: "/bin/bash", platform: "linux" }).LANG).toBe("zh_CN.UTF-8");
+  expect(terminalEnv({ LC_ALL: "de_DE.UTF-8" }, { shell: "/bin/bash", platform: "linux" }).LANG).toBeUndefined();
+});
+
+test("bash on linux gets the cwd hook as an exported function, keeping an inherited PROMPT_COMMAND", () => {
+  const env = terminalEnv({}, { shell: "/bin/bash", platform: "linux" });
+  expect(env["BASH_FUNC__real_bot_report_cwd%%"]).toBe(BASH_CWD_FUNCTION);
+  expect(env.PROMPT_COMMAND).toBe("_real_bot_report_cwd");
+  const inherited = terminalEnv({ PROMPT_COMMAND: "history -a" }, { shell: "/usr/bin/bash", platform: "linux" });
+  expect(inherited.PROMPT_COMMAND).toBe("_real_bot_report_cwd; history -a");
+});
+
+test("the bash hook is for bash on linux only", () => {
+  const zsh = terminalEnv({}, { shell: "/usr/bin/zsh", platform: "linux" });
+  expect(zsh.PROMPT_COMMAND).toBeUndefined();
+  expect(Object.keys(zsh).some((key) => key.startsWith("BASH_FUNC_"))).toBe(false);
+  const macBash = terminalEnv({}, { shell: "/bin/bash", platform: "darwin" });
+  expect(macBash.PROMPT_COMMAND).toBeUndefined();
+  expect(Object.keys(macBash).some((key) => key.startsWith("BASH_FUNC_"))).toBe(false);
+});
+
+/** A bash new enough to import `BASH_FUNC_<name>%%` (4.4+): Linux's own, or Homebrew's on a Mac. */
+function modernBash(): string | null {
+  for (const candidate of ["/bin/bash", "/usr/bin/bash", "/opt/homebrew/bin/bash", "/usr/local/bin/bash"]) {
+    if (!existsSync(candidate)) continue;
+    const version = Bun.spawnSync([candidate, "-c", "echo ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"]).stdout.toString().trim();
+    const [major = 0, minor = 0] = version.split(".").map(Number);
+    if (major > 4 || (major === 4 && minor >= 4)) return candidate;
+  }
+  return null;
+}
+
+const bash = modernBash();
+
+test.skipIf(!bash)("a real bash reports a folder with spaces and CJK in it, and keeps its own locale", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "rb-bash-cwd-")));
+  try {
+    const folder = join(root, "two words", "目录 x");
+    mkdirSync(folder, { recursive: true });
+    const env = terminalEnv({ PATH: "/usr/bin:/bin", HOME: root, LANG: "en_US.UTF-8" }, { shell: bash!, platform: "linux" });
+    const run = Bun.spawnSync([bash!, "--norc", "-i"], {
+      cwd: folder, env, stdin: new TextEncoder().encode("x=中文; echo len=${#x}\nexit\n"),
+    });
+    const out = run.stdout;
+    expect(new CwdTracker({ platform: "linux" }).feed(out)).toBe(folder);
+    expect(out.toString()).toContain("len=2");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test.skipIf(!bash)("a startup file that assigns PROMPT_COMMAND outright drops the hook, and nothing breaks", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "rb-bash-cwd-")));
+  try {
+    const rc = join(root, "rc");
+    writeFileSync(rc, "PROMPT_COMMAND='printf rc-ran'\n");
+    const env = terminalEnv({ PATH: "/usr/bin:/bin", HOME: root }, { shell: bash!, platform: "linux" });
+    const run = Bun.spawnSync([bash!, "--rcfile", rc, "-i"], { cwd: root, env, stdin: new TextEncoder().encode("echo after\nexit\n") });
+    expect(new CwdTracker({ platform: "linux" }).feed(run.stdout)).toBeNull();
+    expect(run.stdout.toString()).toContain("rc-ran");
+    expect(run.stdout.toString()).toContain("after");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("win32 gets no injected LANG: its locale lives in the user's settings, not the env", () => {

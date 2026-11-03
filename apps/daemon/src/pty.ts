@@ -18,7 +18,10 @@ import { macSystemLocale, terminalEnv } from "./terminal-env";
 
 export type PtySignal = "SIGINT" | "SIGQUIT" | "SIGTSTP" | "SIGTERM" | "SIGKILL";
 
-/** Darwin signal numbers; the helper takes the number, not the name. */
+/**
+ * Darwin signal numbers, the wire format on every platform: the helper takes the number, not the
+ * name, and translates it where the host numbers differ (Linux's SIGTSTP is 20, not 18).
+ */
 const SIGNO: Record<PtySignal, number> = {
   SIGINT: 2, SIGQUIT: 3, SIGKILL: 9, SIGTERM: 15, SIGTSTP: 18,
 };
@@ -38,8 +41,9 @@ export class PtyUnavailable extends Error {}
 
 /**
  * Packaged next to the daemon; in a source checkout, whatever the platform's own build last
- * produced (`swift build` on macOS/Linux, `cargo build` for the win32 ConPTY helper). The override
- * exists for tests and for a daemon started from somewhere unusual.
+ * produced: `swift build` of `apps/runtime-helper` on macOS, `cargo build` of `apps/conpty-helper`
+ * elsewhere (ConPTY on win32, its forkpty backend on Linux). The override exists for tests and for
+ * a daemon started from somewhere unusual.
  */
 export function ptyHelperPath(
   env: Record<string, string | undefined> = process.env,
@@ -48,21 +52,13 @@ export function ptyHelperPath(
 ): string {
   const override = env.REAL_BOT_PTY_HELPER;
   if (override) return override;
-  if (platform === "win32") {
-    const packaged = join(dirname(process.execPath), "real-bot-pty.exe");
-    if (exists(packaged)) return packaged;
-    const root = resolve(import.meta.dir, "../../..");
-    for (const configuration of ["release", "debug"]) {
-      const built = join(root, "apps/conpty-helper/target", configuration, "real-bot-pty.exe");
-      if (exists(built)) return built;
-    }
-    throw new PtyUnavailable("pty helper is not built");
-  }
-  const packaged = join(dirname(process.execPath), "real-bot-pty");
+  const name = platform === "win32" ? "real-bot-pty.exe" : "real-bot-pty";
+  const packaged = join(dirname(process.execPath), name);
   if (exists(packaged)) return packaged;
   const root = resolve(import.meta.dir, "../../..");
+  const target = platform === "darwin" ? "apps/runtime-helper/.build" : "apps/conpty-helper/target";
   for (const configuration of ["release", "debug"]) {
-    const built = join(root, "apps/runtime-helper/.build", configuration, "real-bot-pty");
+    const built = join(root, target, configuration, name);
     if (exists(built)) return built;
   }
   throw new PtyUnavailable("pty helper is not built");
@@ -90,19 +86,27 @@ export const POWERSHELL_CWD_HOOK = String.raw`$global:__DeskfolkPrompt = $functi
 
 /**
  * The shell a person expects. On macOS/Linux, started as a login shell: launchd hands the daemon
- * a bare PATH. On win32 there is no such thing as a login shell and no `$SHELL` to read — `pwsh.exe`
- * if it is on PATH, else the Windows PowerShell that always ships, with `-NoLogo` and the
- * {@link POWERSHELL_CWD_HOOK}.
+ * a bare PATH, and so may a desktop session. On Linux `$SHELL` may be missing (a session started
+ * by systemd) and zsh is often not installed, so the account's own shell comes next, then bash,
+ * then sh; macOS keeps its zsh default. On win32 there is no such thing as a login shell and no
+ * `$SHELL` to read — `pwsh.exe` if it is on PATH, else the Windows PowerShell that always ships,
+ * with `-NoLogo` and the {@link POWERSHELL_CWD_HOOK}.
  */
 export function shellCommand(
   env: Record<string, string | undefined> = process.env,
   platform: string = process.platform,
   which: (name: string) => string | null = (name) => Bun.which(name, { PATH: env.PATH }) ?? null,
+  exists: (path: string) => boolean = existsSync,
+  accountShell: () => string | null = () => userInfo().shell,
 ): string[] {
   if (platform === "win32") {
     return [resolvePowerShell(env, platform, which), "-NoLogo", "-NoExit", "-Command", POWERSHELL_CWD_HOOK];
   }
-  return [env.SHELL && env.SHELL.startsWith("/") ? env.SHELL : "/bin/zsh", "-l"];
+  if (env.SHELL && env.SHELL.startsWith("/")) return [env.SHELL, "-l"];
+  if (platform === "darwin") return ["/bin/zsh", "-l"];
+  const account = accountShell();
+  if (account && account.startsWith("/") && exists(account)) return [account, "-l"];
+  return [exists("/bin/bash") ? "/bin/bash" : "/bin/sh", "-l"];
 }
 
 export type PtyOptions = {

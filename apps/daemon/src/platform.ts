@@ -78,6 +78,34 @@ export const WINDOWS_ENV_PASSTHROUGH = [
 ] as const;
 
 /**
+ * A Linux desktop session's own variables, which a terminal shell or an MCP server needs to start
+ * anything with a window (`DISPLAY`/`WAYLAND_DISPLAY`, `XAUTHORITY`), reach the session bus and
+ * the keyring behind it, or find the person's XDG folders. None of them holds a secret.
+ */
+export const LINUX_ENV_PASSTHROUGH = [
+  "DISPLAY",
+  "WAYLAND_DISPLAY",
+  "XAUTHORITY",
+  "DBUS_SESSION_BUS_ADDRESS",
+  "XDG_RUNTIME_DIR",
+  "XDG_DATA_HOME",
+  "XDG_CONFIG_HOME",
+  "XDG_CACHE_HOME",
+  "XDG_STATE_HOME",
+  "XDG_DATA_DIRS",
+  "XDG_CONFIG_DIRS",
+  "XDG_CURRENT_DESKTOP",
+  "XDG_SESSION_TYPE",
+] as const;
+
+/** What a spawned child gets on top of the narrow POSIX whitelist on this platform; none on macOS. */
+export function platformEnvPassthrough(platform: string = process.platform): readonly string[] {
+  if (platform === "win32") return WINDOWS_ENV_PASSTHROUGH;
+  if (platform === "linux") return LINUX_ENV_PASSTHROUGH;
+  return [];
+}
+
+/**
  * A hard, unconditional stop for a process. POSIX call sites signal on their own (the pty and the
  * MCP host their one child, a Bot's `shell` its whole process group — see `live-procs.ts`) and
  * only reach for this on win32, where there is no signal delivery at all: a `cmd → npx → node`

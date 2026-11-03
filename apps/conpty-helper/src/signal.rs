@@ -1,8 +1,13 @@
 //! Maps the Darwin signal numbers the daemon sends (see `apps/daemon/src/pty.ts`'s `SIGNO`
-//! table) into what this helper does with them on Windows, where there is no `kill()`: 2/3 are
-//! typed as the control keys they stand for (see `input` for how Ctrl+C reaches conhost); 18 has
-//! no Windows analogue and is dropped; 9/15 don't map to a specific per-signal behaviour on
-//! Windows, only to "make it stop, all of it".
+//! table) — the wire format on every platform — into what this helper does with them.
+//!
+//! On Windows, where there is no `kill()`: 2/3 are typed as the control keys they stand for (see
+//! `input` for how Ctrl+C reaches conhost); 18 has no Windows analogue and is dropped; 9/15 don't
+//! map to a specific per-signal behaviour on Windows, only to "make it stop, all of it".
+//!
+//! On unix they become this host's own numbers (`unix_signal`): the same values on macOS, but on
+//! Linux Darwin's SIGTSTP (18) is SIGCONT, so passing the number through would resume instead of
+//! suspend.
 
 /// What a `signal` control frame (see `protocol.rs`) asks the Windows side to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,6 +30,20 @@ pub fn windows_action(signo: u8) -> SignalAction {
         18 => SignalAction::Ignore,          // SIGTSTP: no stop/continue concept on Windows
         9 | 15 => SignalAction::KillTree { exit_code: 128 + signo as u32 }, // SIGKILL / SIGTERM
         _ => SignalAction::Ignore,
+    }
+}
+
+/// The host's own number for a Darwin-numbered signal the daemon sends; `None` for any other
+/// number, which is dropped, as on Windows.
+#[cfg(unix)]
+pub fn unix_signal(signo: u8) -> Option<libc::c_int> {
+    match signo {
+        2 => Some(libc::SIGINT),
+        3 => Some(libc::SIGQUIT),
+        9 => Some(libc::SIGKILL),
+        15 => Some(libc::SIGTERM),
+        18 => Some(libc::SIGTSTP),
+        _ => None,
     }
 }
 
@@ -55,6 +74,21 @@ mod tests {
     #[test]
     fn sigterm_kills_the_tree() {
         assert_eq!(windows_action(15), SignalAction::KillTree { exit_code: 143 });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn darwin_numbers_become_this_hosts_own() {
+        assert_eq!(unix_signal(2), Some(libc::SIGINT));
+        assert_eq!(unix_signal(3), Some(libc::SIGQUIT));
+        assert_eq!(unix_signal(9), Some(libc::SIGKILL));
+        assert_eq!(unix_signal(15), Some(libc::SIGTERM));
+        assert_eq!(unix_signal(18), Some(libc::SIGTSTP));
+        #[cfg(target_os = "linux")]
+        assert_eq!(libc::SIGTSTP, 20, "Linux numbers SIGTSTP differently from Darwin");
+        for signo in [0u8, 1, 4, 6, 19, 20, 30, 255] {
+            assert_eq!(unix_signal(signo), None, "signo {signo}");
+        }
     }
 
     #[test]

@@ -3,7 +3,7 @@ import { HttpSession } from "./mcp-host/http-session";
 import { CLIENT_INFO, LEGACY_VERSION, McpSessionExpired, MODERN_VERSION, modernMeta, RpcError } from "./mcp-host/rpc";
 import { spawnChild, StdioSession } from "./mcp-host/stdio-session";
 import { mapMcpTools, mappedMcpChatTools, type MappedMcpTool, type McpListedTool } from "./mcp-names";
-import { pickEnv, WINDOWS_ENV_PASSTHROUGH } from "./platform";
+import { pickEnv, platformEnvPassthrough } from "./platform";
 import type { ChatTool, McpPromptGuide } from "./prompts";
 
 export type McpServerSpec = {
@@ -348,15 +348,15 @@ const POSIX_ENV_KEYS = ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER", "TMP
 
 /**
  * On win32, `node`/`npm`/`npx` need far more than the narrow POSIX whitelist to resolve `.cmd`
- * shims, find `%APPDATA%`, or just run at all — see {@link WINDOWS_ENV_PASSTHROUGH}. Windows env
- * var names are case-insensitive, so `pickEnv` matches them that way there.
+ * shims, find `%APPDATA%`, or just run at all, and on Linux a server that opens a window or uses
+ * the session bus needs the desktop session's variables — see {@link platformEnvPassthrough}.
+ * Windows env var names are case-insensitive, so `pickEnv` matches them that way there.
  */
 export function childEnv(
   source: Record<string, string | undefined> = process.env,
   platform: string = process.platform,
 ): Record<string, string> {
-  const keys: readonly string[] =
-    platform === "win32" ? [...POSIX_ENV_KEYS, ...WINDOWS_ENV_PASSTHROUGH] : POSIX_ENV_KEYS;
+  const keys: readonly string[] = [...POSIX_ENV_KEYS, ...platformEnvPassthrough(platform)];
   const picked = pickEnv(source, keys, platform);
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(picked)) {

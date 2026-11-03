@@ -75,6 +75,38 @@ test("ptyHelperPath on win32 throws when nothing is found", () => {
   expect(() => ptyHelperPath({}, "win32", () => false)).toThrow(PtyUnavailable);
 });
 
+test("ptyHelperPath on linux looks next to the daemon, then in apps/conpty-helper's cargo target", () => {
+  const packaged = join(dirname(process.execPath), "real-bot-pty");
+  expect(ptyHelperPath({}, "linux", (path) => path === packaged)).toBe(packaged);
+  const root = resolve(import.meta.dir, "../../..");
+  const debug = join(root, "apps/conpty-helper/target", "debug", "real-bot-pty");
+  expect(ptyHelperPath({}, "linux", (path) => path === debug)).toBe(debug);
+  const swift = join(root, "apps/runtime-helper/.build", "debug", "real-bot-pty");
+  expect(() => ptyHelperPath({}, "linux", (path) => path === swift)).toThrow(PtyUnavailable);
+});
+
+test("ptyHelperPath on macOS keeps the Swift helper's build folder", () => {
+  const root = resolve(import.meta.dir, "../../..");
+  const swift = join(root, "apps/runtime-helper/.build", "release", "real-bot-pty");
+  expect(ptyHelperPath({}, "darwin", (path) => path === swift)).toBe(swift);
+  const cargo = join(root, "apps/conpty-helper/target", "release", "real-bot-pty");
+  expect(() => ptyHelperPath({}, "darwin", (path) => path === cargo)).toThrow(PtyUnavailable);
+});
+
+test("shellCommand on linux: $SHELL, then the account's shell, then bash, then sh", () => {
+  const none = () => null;
+  const all = () => true;
+  expect(shellCommand({ SHELL: "/usr/bin/fish" }, "linux", none, all, () => "/bin/bash")).toEqual(["/usr/bin/fish", "-l"]);
+  expect(shellCommand({}, "linux", none, all, () => "/usr/bin/zsh")).toEqual(["/usr/bin/zsh", "-l"]);
+  expect(shellCommand({}, "linux", none, (path) => path === "/bin/bash", () => "/usr/bin/zsh")).toEqual(["/bin/bash", "-l"]);
+  expect(shellCommand({}, "linux", none, (path) => path === "/bin/bash", () => null)).toEqual(["/bin/bash", "-l"]);
+  expect(shellCommand({}, "linux", none, () => false, () => null)).toEqual(["/bin/sh", "-l"]);
+});
+
+test("shellCommand on macOS still defaults to zsh without asking the account", () => {
+  expect(shellCommand({}, "darwin", () => null, () => false, () => "/bin/bash")).toEqual(["/bin/zsh", "-l"]);
+});
+
 test("shellCommand on win32 prefers pwsh.exe on PATH, with -NoLogo and the cwd hook", () => {
   const which = (name: string) => (name === "pwsh.exe" ? "C:\\tools\\pwsh\\pwsh.exe" : null);
   expect(shellCommand({}, "win32", which)).toEqual(["C:\\tools\\pwsh\\pwsh.exe", "-NoLogo", "-NoExit", "-Command", POWERSHELL_CWD_HOOK]);

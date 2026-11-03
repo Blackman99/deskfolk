@@ -1,6 +1,7 @@
-// A ConPTY pty for one terminal session, and nothing else.
+// A pty for one terminal session, and nothing else: ConPTY on Windows (`windows_impl.rs`),
+// `forkpty` on Linux (`unix_impl.rs`, a port of the Swift helper that macOS keeps using).
 //
-// This is the Windows sibling of `apps/runtime-helper/Sources/PtyHelper/main.swift`; it speaks
+// On Windows this is the sibling of `apps/runtime-helper/Sources/PtyHelper/main.swift`; it speaks
 // the exact same protocol so the daemon only has to change which binary it launches. Where the
 // Swift helper exists because a controlling terminal can only be acquired between fork and
 // exec, this one exists because attaching a pseudo console (ConPTY) is likewise something only
@@ -53,8 +54,8 @@
 // The helper answers that itself; see `handshake`.
 
 // These modules are the platform-independent core (see the module docs), unit tested
-// everywhere via `cargo test`, but only ever *called* from `windows_impl`, which doesn't exist
-// on this build. Real dead code on Windows would still be a real warning there.
+// everywhere via `cargo test`. The ConPTY-only ones are only ever *called* from `windows_impl`;
+// real dead code on Windows would still be a real warning there.
 #![cfg_attr(not(windows), allow(dead_code))]
 
 mod cli;
@@ -63,6 +64,8 @@ mod input;
 mod protocol;
 mod signal;
 
+#[cfg(unix)]
+mod unix_impl;
 #[cfg(windows)]
 mod windows_impl;
 
@@ -71,8 +74,7 @@ fn main() {
     windows_impl::run();
 }
 
-#[cfg(not(windows))]
+#[cfg(unix)]
 fn main() {
-    eprintln!("real-bot-pty: the ConPTY helper only runs on Windows");
-    std::process::exit(70);
+    unix_impl::run();
 }
