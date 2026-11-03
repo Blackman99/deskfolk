@@ -6,6 +6,7 @@
  * home, platform and the listed account directories come in, so the rules are tested on a fake disk.
  */
 import { posix } from "node:path";
+import { asksKeychainForSecret, isKeychainPath } from "../../keychains";
 import { isAbsoluteHostPath, isWithinPath, workspaceRelative } from "../../workspace-paths";
 
 /**
@@ -51,7 +52,7 @@ function under(rel: string, entry: string): boolean {
 export function isAgentCredentialPath(abs: string, home: string, platform: NodeJS.Platform = process.platform, configDirs: string[] = []): boolean {
   if (!isAbsoluteHostPath(abs, platform)) return false;
   const norm = platform === "win32" ? abs : posix.resolve(abs);
-  if (platform !== "win32" && (norm.startsWith(`${posix.join(home, "Library", "Keychains")}/`) || norm.startsWith("/Library/Keychains/"))) return true;
+  if (isKeychainPath(norm, home, platform)) return true;
   if (configDirs.some((dir) => isWithinPath(dir, norm, platform))) return true;
   const rel = homeRelative(abs, home, platform);
   if (rel === null) return false;
@@ -87,7 +88,7 @@ export function touchesAgentCredentials(command: string, home: string, platform:
   const names = new RegExp(`(?:${homes.join("|")})${sep}${own}(?:${entries})(?![A-Za-z0-9_-])`, win ? "i" : "");
   if (names.test(command)) return true;
   if (configDirs.some((dir) => namesDir(command, dir, home, platform))) return true;
-  return !win && /\bsecurity\s+(find-(generic|internet)-password|dump-keychain|export)\b/.test(command);
+  return asksKeychainForSecret(command, platform);
 }
 
 /**

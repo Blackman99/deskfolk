@@ -16,6 +16,7 @@ import { posix, win32 } from "node:path";
 import { PLAN_APPROVAL_KIND, type PermissionMode } from "@real-bot/protocol";
 import { FILE_WRITE_KIND, READ_ONLY_REFUSAL, SHELL_KIND, changeVerdict } from "../permission-gate";
 import { isAgentCredentialPath, touchesAgentCredentials } from "../engine/agent/credentials";
+import { asksKeychainForSecret, isKeychainPath } from "../keychains";
 import { recursiveSearchGuard, searchGuardMessage } from "../search-guard";
 import { classifyPath, classifyShell, isAbsoluteHostPath, isWithinPath, nodePathHost, workspaceRelative, type PathHost } from "../workspace-paths";
 
@@ -309,7 +310,7 @@ export function gitBashToWindows(path: string): string | null {
 export function isClaudeCredentialPath(abs: string, home: string, platform: NodeJS.Platform = process.platform, configDirs: string[] = []): boolean {
   if (!isAbsoluteHostPath(abs, platform)) return false;
   const norm = platform === "win32" ? abs : posix.resolve(abs);
-  if (platform !== "win32" && (norm.startsWith(`${posix.join(home, "Library", "Keychains")}/`) || norm.startsWith("/Library/Keychains/"))) return true;
+  if (isKeychainPath(norm, home, platform)) return true;
   if (configDirs.some((dir) => isWithinPath(dir, norm, platform))) return true;
   if (!isWithinPath(home, norm, platform)) return false;
   // Names compare as the file system does: regardless of case on Windows.
@@ -327,7 +328,7 @@ export function touchesClaudeCredentials(command: string, home: string, platform
   if (platform !== "win32") {
     const claude = new RegExp(`(~|\\$HOME|\\$\\{HOME\\}|${escapeRegExp(home)})/\\.claude(\\.json|/|\\b)`);
     if (claude.test(command)) return true;
-    return /\bsecurity\s+(find-(generic|internet)-password|dump-keychain|export)\b/.test(command);
+    return asksKeychainForSecret(command, platform);
   }
   // Windows: the home folder as Git Bash, cmd and PowerShell spell it, either slash, any case.
   const spelled = (path: string) => path.split(/[\\/]+/).filter(Boolean).map(escapeRegExp).join("[\\\\/]+");
