@@ -5,11 +5,11 @@ fn main() {
         std::fs::create_dir(native).expect("create native resource directory");
     }
     if std::env::var("PROFILE").as_deref() == Ok("release") {
-        // Windows ships only the daemon and the ConPTY helper: no Swift
-        // runtime helper, no dylib — those are macOS-only credential-runtime pieces.
+        // Windows ships the daemon, the ConPTY helper and the remote screen's WebRTC helper: no
+        // Swift runtime helper, no dylib — those are macOS-only credential-runtime pieces.
         let windows = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows");
         let files: &[&str] = if windows {
-            &["real-bot-daemon.exe", "real-bot-pty.exe"]
+            &["real-bot-daemon.exe", "real-bot-pty.exe", "real-bot-rtc.exe"]
         } else {
             &[
                 "real-bot-daemon",
