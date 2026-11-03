@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { DEFAULT_COLS, POWERSHELL_CWD_HOOK, Pty, PtyUnavailable, SHUTDOWN_GRACE_MS, ptyHelperPath, shellCommand } from "./pty";
@@ -231,7 +231,10 @@ withHelper("closing a session takes the shell with it, not just the helper", asy
  * form {@link CwdTracker} can decode back to the real path — including a directory name with a
  * space and CJK text in it, which is exactly the case percent-encoding exists for.
  */
-withHelper("zsh keeps the user's own dotfiles and reports its cwd via Deskfolk's integration", async () => {
+/** zsh is the Mac's own shell; a Linux machine (the CI runner included) may not have it at all. */
+const withZsh = existsSync("/bin/zsh") ? withHelper : test.skip;
+
+withZsh("zsh keeps the user's own dotfiles and reports its cwd via Deskfolk's integration", async () => {
   const home = scratch();
   const dataDir = scratch();
   writeFileSync(join(home, ".zshenv"), 'export M1="one"\n');

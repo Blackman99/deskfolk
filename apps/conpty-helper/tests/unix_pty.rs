@@ -147,13 +147,16 @@ fn a_resize_reaches_the_pty() {
 
 #[test]
 fn an_interrupt_reaches_the_foreground_program_and_the_shell_survives() {
+    // What an interactive shell does with the rest of a line after an interrupt differs (dash
+    // drops it, bash runs it), so the check comes as the next line: `sleep` died of SIGINT (130),
+    // well before its hundred seconds, and the shell is still there to say so.
     let mut session = start("/", &["/bin/sh"]);
-    session.input("sleep 100; echo after-sleep $?\n");
+    session.input("sleep 100\n");
     std::thread::sleep(Duration::from_millis(400));
     session.signal(2);
-    session.wait_for("after-sleep 130");
-    session.input("echo still-$((40+2))\n");
-    session.wait_for("still-42");
+    std::thread::sleep(Duration::from_millis(300));
+    session.input("echo status-$?-$((40+2))\n");
+    session.wait_for("status-130-42");
     session.input("exit 4\n");
     assert_eq!(session.exit_code(), 4);
 }

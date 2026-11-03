@@ -202,7 +202,9 @@ withHelper("Quit stops the process and the next start opens it again where it wa
   try {
     const created = await (await call(first, "POST", "/v1/terminals", { cwd: first.cwd })).json() as { id: string };
     await call(first, "POST", `/v1/terminals/${created.id}/input`, { data: Buffer.from("echo STILL_HERE\n").toString("base64") });
-    expect(await until(async () => (await scrollback(first, created.id)).includes("STILL_HERE"))).toBe(true);
+    // On the screen, not just in the stream: Quit saves the screen as parsed so far, and the
+    // stream gets the bytes a few milliseconds before the screen does.
+    expect(await until(async () => (await screen(first, created.id)).text.includes("STILL_HERE"))).toBe(true);
     expect((await call(first, "POST", "/v1/runtime/quit")).status).toBe(204);
     // The process is gone with the daemon.
     expect((await call(first, "GET", `/v1/terminals/${created.id}`)).status).toBe(404);

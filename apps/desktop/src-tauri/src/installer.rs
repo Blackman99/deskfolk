@@ -871,8 +871,9 @@ mod tests {
     /// The script has to survive paths with spaces (`/Applications/Deskfolk.app`)
     /// and run without the app around: exercise it against stand-in folders.
     /// It is a `/bin/sh` script exercising unix shell semantics (`kill -0`,
-    /// `/bin/mv`), so this only runs where that exists.
-    #[cfg(unix)]
+    /// `/bin/mv`) and copying with macOS's `/usr/bin/ditto`, so this only runs
+    /// on the Mac, the one platform that installs an update itself.
+    #[cfg(target_os = "macos")]
     #[test]
     fn the_swap_script_replaces_the_bundle_and_cleans_up() {
         let dir = temp_dir("swap");
