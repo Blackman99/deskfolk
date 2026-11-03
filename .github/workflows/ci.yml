@@ -48,6 +48,11 @@ jobs:
       - name: Build the pty helper
         run: cargo build --manifest-path apps/conpty-helper/Cargo.toml
 
+      # Pictures sent to a model shrink through ImageMagick on Linux; its tests skip without it,
+      # and the runner image does not ship it.
+      - name: Install ImageMagick
+        run: sudo apt-get update && sudo apt-get install -y imagemagick
+
       - name: Test
         run: pnpm test
 
