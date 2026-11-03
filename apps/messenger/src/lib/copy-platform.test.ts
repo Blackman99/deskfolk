@@ -2,18 +2,28 @@ import { expect, test } from "bun:test";
 import { COPY } from "./copy.ts";
 
 // copy/platform-words.ts reads the platform once, when it loads, and test-setup.ts pins the
-// navigator to the Mac. The Windows wording needs its own instances of copy.ts and the copy/
-// modules, loaded under a Win32 navigator: they leave the module cache for that import, and the
-// Mac ones go back afterwards so the other tests in this process keep theirs. The cache is keyed
-// by the disk's own path, with backslashes on Windows.
+// navigator to the Mac. The Windows and Linux wording needs its own instances of copy.ts and the
+// copy/ modules, loaded under that navigator: they leave the module cache for that import. Bun
+// registers `copy.ts?platform=…` as copy.ts itself, and putting the Mac entries back into
+// require.cache does not reach that registry, so a test file loaded later would import the words
+// just built for another platform. They are built once more under the Mac's navigator before the
+// cache is handed back. The cache is keyed by the disk's own path, with backslashes on Windows.
+const COPY_MODULE = /[\\/]src[\\/]lib[\\/]copy(\.ts$|[\\/])/;
+let builds = 0;
+
 async function copyOn(platform: string): Promise<typeof COPY> {
-  const kept = Object.entries(require.cache).filter(([key]) => /[\\/]src[\\/]lib[\\/]copy(\.ts$|[\\/])/.test(key));
-  for (const [key] of kept) delete require.cache[key];
+  const kept = Object.entries(require.cache).filter(([key]) => COPY_MODULE.test(key));
+  const drop = () => {
+    for (const key of Object.keys(require.cache)) if (COPY_MODULE.test(key)) delete require.cache[key];
+  };
+  drop();
   Object.defineProperty(navigator, "platform", { configurable: true, value: platform });
   try {
-    return (await import(`./copy.ts?platform=${platform}`)).COPY;
+    return (await import(`./copy.ts?platform=${platform}&build=${++builds}`)).COPY;
   } finally {
     Object.defineProperty(navigator, "platform", { configurable: true, value: "MacIntel" });
+    drop();
+    await import(`./copy.ts?platform=MacIntel&build=${++builds}`);
     for (const [key, module] of kept) require.cache[key] = module;
   }
 }
@@ -86,7 +96,7 @@ test("the window's remote-access and remote-screen words name the Mac there, and
 });
 
 test("on Linux the words name the computer, its file manager, its Trash and its keyring", async () => {
-  const linux = await copyOn("Linux x86_64");
+  const linux = await copyOn("Linux");
   for (const hint of routineHints(linux)) expect(hint).not.toContain("Mac");
   expect(linux.zh.routines.zone).toBe("按执行电脑的本地时区运行，不按此浏览器的时区换算。");
   expect(linux.zh.stream.artifactReveal).toBe("在文件管理器中显示");
