@@ -26,6 +26,11 @@ semver = "1"
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# The clipboard for the terminal's Paste (`system_open::read_clipboard_text`): the same 0.18 that
+# Tauri's own GTK window resolves.
+gtk = "0.18"
+
 [target.'cfg(windows)'.dependencies]
 # Already resolved transitively (tauri/wry/tray-icon pull windows-sys 0.61 and
 # windows-core 0.61 themselves), so pinning our own use of them costs nothing

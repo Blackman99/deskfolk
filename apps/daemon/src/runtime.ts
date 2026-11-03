@@ -303,9 +303,11 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     void stopOrphanProcs(store, { log: bootLog }).catch(() => {});
     recoverLifecycle(store);
     // Remote credentials live in a file (ADR 0033). The compiled daemon always uses it and confirms
-    // through its window; source runs only with REAL_BOT_DEV_REMOTE=1, confirming by stand-in.
+    // through its window; source runs only with REAL_BOT_DEV_REMOTE=1, confirming by stand-in. The
+    // Linux window has no confirmation sheet yet, so its daemon keeps the sealed provider, whose
+    // status tells the settings card that remote access is not there yet on Linux.
     const dev = createDevRemote(options.dataDir);
-    const shipped = dev ? undefined : shippedRemoteNative(options.dataDir);
+    const shipped = dev || process.platform === "linux" ? undefined : shippedRemoteNative(options.dataDir);
     const devPairing = dev ? devPairingDispatch(dev.native) : undefined;
     const previousShutdown = store.previousShutdown;
     screen = new ScreenService({ store, ...options.screen });

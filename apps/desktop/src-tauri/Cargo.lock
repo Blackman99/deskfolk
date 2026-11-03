@@ -2837,6 +2837,7 @@ name = "real-bot-desktop"
 version = "0.3.0"
 dependencies = [
  "block2",
+ "gtk",
  "libc",
  "objc2",
  "objc2-app-kit",

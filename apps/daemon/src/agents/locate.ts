@@ -49,7 +49,8 @@ export async function locateAgent(deps: AgentLocateDeps): Promise<AgentLocateRes
     if (isExecutable(path)) return { found: { path, source: "known" }, error: null };
   }
   if (platform === "win32") return { found: null, error: `${deps.command} was not found on PATH or in the usual install places` };
-  const shell = deps.env.SHELL && deps.env.SHELL.startsWith("/") ? deps.env.SHELL : "/bin/zsh";
+  // zsh is the Mac's own login shell; on Linux it is often not installed, and bash nearly always is.
+  const shell = deps.env.SHELL && deps.env.SHELL.startsWith("/") ? deps.env.SHELL : platform === "linux" ? "/bin/bash" : "/bin/zsh";
   const fromShell = await (deps.loginShell ?? askLoginShell)(shell, deps.command);
   if (fromShell && isExecutable(fromShell)) return { found: { path: fromShell, source: "login_shell" }, error: null };
   return { found: null, error: `${deps.command} was not found on PATH, in the usual install places, or in your login shell` };
@@ -75,6 +76,8 @@ export function agentKnownPlaces(command: string, home: string, platform: string
     join(home, ".bun", "bin", command),
     join(home, ".volta", "bin", command),
     ...nvmBins(home).map((bin) => join(bin, command)),
+    // Homebrew on Linux, system-wide or in the home folder.
+    ...(platform === "linux" ? ["/home/linuxbrew/.linuxbrew/bin/" + command, join(home, ".linuxbrew", "bin", command)] : []),
   ];
 }
 

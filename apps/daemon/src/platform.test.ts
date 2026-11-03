@@ -65,6 +65,19 @@ describe("toolShell", () => {
     expect(shell.label).toBe("/bin/sh");
   });
 
+  test("macOS keeps /bin/sh even with a bash beside it: its /bin/sh is bash already", () => {
+    expect(toolShell({}, "darwin", () => true).argv("echo hi")).toEqual(["/bin/sh", "-c", "echo hi"]);
+  });
+
+  test("linux runs commands in /bin/bash when it is there, still with the POSIX prompts (kind sh)", () => {
+    const bash = toolShell({}, "linux", (path) => path === "/bin/bash");
+    expect(bash.kind).toBe("sh");
+    expect(bash.argv("[[ -n x ]] && echo hi")).toEqual(["/bin/bash", "-c", "[[ -n x ]] && echo hi"]);
+    expect(bash.label).toBe("/bin/bash");
+    const sh = toolShell({}, "linux", () => false);
+    expect(sh.argv("echo hi")).toEqual(["/bin/sh", "-c", "echo hi"]);
+  });
+
   test("REAL_BOT_TOOL_SHELL overrides everything else, as bash", () => {
     const env = { REAL_BOT_TOOL_SHELL: "D:\\tools\\bash.exe", ProgramFiles: "C:\\Program Files" };
     const shell = toolShell(env, "win32", (path) => path === "C:\\Program Files\\Git\\bin\\bash.exe");

@@ -1,4 +1,5 @@
 import { KEYCHAIN_NAME, KEYCHAIN_SERVICE } from "@real-bot/protocol";
+import { HttpError } from "./errors";
 import type { EndpointKeyStore } from "./store";
 
 function secretName(name?: string): string {
@@ -23,8 +24,22 @@ export function bunSecretBackend(service: string): SecretBackend {
   };
 }
 
+/**
+ * On Linux `Bun.secrets` is libsecret, which needs a Secret Service on the session bus — GNOME
+ * Keyring or KWallet, running and unlocked. A desktop without one (a bare window manager, a
+ * headless box) fails every save, so that failure says what is missing instead of a bare 500.
+ */
+export const LINUX_KEYRING_MISSING =
+  "Deskfolk keeps keys in the system keyring, and none answered: start GNOME Keyring or KWallet (and unlock it), then try again.";
+
+function keyringError(error: unknown, platform: string): unknown {
+  if (platform !== "linux") return error;
+  const reason = error instanceof Error && error.message ? ` (${error.message})` : "";
+  return new HttpError(503, "keyring_unavailable", `${LINUX_KEYRING_MISSING}${reason}`);
+}
+
 /** Each credential in its own entry. Used where the OS store never asks the person (Windows, Linux). */
-export function perNameKeyStore(backend: SecretBackend): EndpointKeyStore {
+export function perNameKeyStore(backend: SecretBackend, platform: string = process.platform): EndpointKeyStore {
   return {
     async get(name) {
       try {
@@ -34,10 +49,18 @@ export function perNameKeyStore(backend: SecretBackend): EndpointKeyStore {
       }
     },
     async set(value, name) {
-      await backend.set(secretName(name), value);
+      try {
+        await backend.set(secretName(name), value);
+      } catch (error) {
+        throw keyringError(error, platform);
+      }
     },
     async delete(name) {
-      await backend.delete(secretName(name));
+      try {
+        await backend.delete(secretName(name));
+      } catch (error) {
+        throw keyringError(error, platform);
+      }
     },
   };
 }

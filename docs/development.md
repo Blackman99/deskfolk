@@ -348,13 +348,27 @@ sudo apt-get install build-essential curl file patchelf libssl-dev libxdo-dev \
 pnpm --filter @real-bot/desktop tauri build --bundles deb,appimage
 ```
 
-`build:native` 在 Linux 上往 `native/` 里放两样：`bun build --compile --target=bun-linux-<arch>` 出的 `real-bot-daemon`，和 `apps/conpty-helper` 的 release 构建 `real-bot-pty`；`build.rs` 在 release 下检查的就是这两个（`native-package.ts` 的 `nativeFilesFor("linux")` 同一份清单）。远控还没有，所以不带 `real-bot-rtc`；也不签名。`tauri.linux.conf.json` 只出 `deb` 和 `appimage`（基础配置的 `targets: "all"` 在 Linux 上还会出 rpm），deb 依赖 `libayatana-appindicator3-1`（托盘），AppImage 不带 GStreamer（应用不放音视频）。窗口和 Windows 一样关掉 Tauri 自己的拖放（`dragDropEnabled: false`），文件拖进输入框走 WebKitGTK 的 HTML5 拖放。
+`build:native` 在 Linux 上往 `native/` 里放两样：`bun build --compile --target=bun-linux-<arch>` 出的 `real-bot-daemon`，和 `apps/conpty-helper` 的 release 构建 `real-bot-pty`；`build.rs` 在 release 下检查的就是这两个（`native-package.ts` 的 `nativeFilesFor("linux")` 同一份清单）。远控还没有，所以不带 `real-bot-rtc`；也不签名。`tauri.linux.conf.json` 只出 `deb` 和 `appimage`（基础配置的 `targets: "all"` 在 Linux 上还会出 rpm）。deb 的依赖（`libwebkit2gtk-4.1-0`、`libgtk-3-0`、托盘用的 `libayatana-appindicator3-1`）由 Tauri 自己写；我们只加两条 Recommends：系统密钥环（`gnome-keyring | kwalletmanager`）和文件选择框用的 xdg-desktop-portal 后端（`rfd` 在 Linux 上走 portal）。包装进 `/usr/lib/Deskfolk/native/`。AppImage 不带 GStreamer（应用不放音视频）。窗口和 Windows 一样关掉 Tauri 自己的拖放（`dragDropEnabled: false`），文件拖进输入框走 WebKitGTK 的 HTML5 拖放。
 
 窗：Linux 用系统标题栏，没有毛玻璃（`window_material` 答 `none`）。应用菜单和 Windows 一样画成窗里的菜单栏，快捷键只显示不注册，由页面自己接（`shortcut_item`），免得焦点不在页面时一个命令跑两次。托盘图标走 AppIndicator：Linux 上点托盘图标本身没有事件，「显示窗口」在它的菜单里；GNOME 默认不显示托盘，关窗后再启动一次应用，single-instance 插件会把已经开着的窗拿回来。
 
 更新检查（`updates.rs`）：从 AppImage 跑的（AppImage 运行时设了 `APPIMAGE`）找 `Deskfolk_<版本>_<arch>.AppImage`，否则找 `.deb`；x86_64 两者都拼 `amd64`，aarch64 时 deb 拼 `arm64`、AppImage 拼 `aarch64`。没有 Linux 包的 Release 不算新版。应用内下载安装只认 macOS 的 `.dmg`，Linux 上「下载更新」打开浏览器。
 
 源码跑、又用默认数据目录时，守护进程不用等装好的那份（`installed-app.ts` 在 Linux 上答 `null`）：每个 Linux 构建都带着 schema gate，装着的不可能比它更老。
+
+用系统打开、显示、剪贴板（`system_open.rs`）：打开文件和链接用 `xdg-open`，不等它返回（没有桌面助手时它会一直跑着被打开的程序，而这个命令在主线程上），另起线程回收；「在文件管理器中显示」调 D-Bus 的 `org.freedesktop.FileManager1.ShowItems`（Nautilus、Dolphin、Nemo、Caja、Thunar 都答），不行就 `xdg-open` 所在的文件夹。和 Windows 的 `AssocIsDangerous` 一样，`.desktop`、带执行位的文件、脚本、AppImage、`.jar`、`.exe` 这类打开就可能被运行的，一律改成显示，让人自己双击。终端右键菜单的粘贴读 GTK 剪贴板：这个命令不是 `async`，Tauri 让它跑在主线程上，`wait_for_text` 在等剪贴板主人回话时转主循环。
+
+移到废纸篓（`workspace-trash-linux.ts`）：按 freedesktop 的 Trash 规范自己写主目录废纸篓（`$XDG_DATA_HOME/Trash`，默认 `~/.local/share/Trash`）：先独占创建 `info/<名字>.trashinfo`（`Path` 按字节百分号编码，`DeletionDate` 用本地时间），再 `rename` 进 `files/`，重名依次加 ` 2`、` 3`；文件管理器能看到、能还原。跨盘（`EXDEV`，比如工作区在另一块盘或 tmpfs 上）时交给 `gio trash`，它认各个盘自己的 `.Trash-<uid>`；没有 `gio` 就逐个回答不在主目录那块盘上。每个路径各自给结果，和另外两个平台一样。
+
+密钥：端点 API key 和 MCP 凭据照旧走 `Bun.secrets`，Linux 上是 libsecret，要一个在会话总线上的 Secret Service（GNOME Keyring 或 KWallet，开着并已解锁）。没有时保存会失败，`secrets.ts` 把它换成 503 `keyring_unavailable`，说明要启动哪一个；不静默退回到文件存储。Bot 读不到它们：`keychains.ts`（两个凭据护栏共用）在 Linux 上还拦 `~/.local/share/keyrings`、`~/.local/share/kwalletd`、`~/.kde*/share/apps/kwallet`，以及 `secret-tool lookup|search`、`kwallet-query` 和任何点名 `org.freedesktop.secrets` / `org.kde.kwalletd*` 的命令。
+
+Bot 的 `shell` 工具在 Linux 上有 `/bin/bash` 就用 `/bin/bash -c`：macOS 的 `/bin/sh` 本来就是 bash，而 Debian / Ubuntu 的是 dash，模型写的 `[[ ]]`、数组、`<(...)` 在那里会失败。kind 仍是 `sh`，提示词还是 POSIX 的那份。找 `claude` / `codex` 等本机 agent 时，Linux 上多看 Homebrew 的 `/home/linuxbrew/.linuxbrew/bin` 和 `~/.linuxbrew/bin`，问 login shell 时没有 `$SHELL` 就用 `/bin/bash`。
+
+发给模型的图片：PATH 上有 ImageMagick（7 的 `magick`，或 6 的 `identify` + `convert`）就照 `sips` 那条路的规矩缩（长边 1568、不透明的转 JPEG 80、透明的留 PNG、`-auto-orient` 再 `-strip`），没有就原样发。缩略图和头像缩放还没有（它们只用 `sips`）。
+
+远控：Linux 的窗还没有确认框（`local_confirm.rs` 在 Linux 上答 unavailable），配不了设备，所以 Linux 上的守护进程一律用封口 provider，状态带 `platform_unsupported`，设置卡片写「Linux 版还不支持远程访问」，不给登记表。源码跑带 `REAL_BOT_DEV_REMOTE=1` 时仍是开发用的那条路。
+
+还没有的：桌面通知与角标、远程访问与远程屏幕、应用内下载安装更新、缩略图与头像缩放、工作时阻止空闲睡眠、系统代理（只认 `HTTPS_PROXY` / `ALL_PROXY` / `NO_PROXY`）、独立运行时、语音输入、arm64 / rpm / Flatpak / Snap 包、签名。
 
 终端会话的 pty 在 Linux 上由 `apps/conpty-helper` 的 unix 后端（`src/unix_impl.rs`）提供，产物同样叫 `real-bot-pty`，帧协议不变。它是 Swift 版 `PtyHelper` 的逐行移植：`forkpty` 拿控制终端，信号发给 `tcgetpgrp` 的前台进程组，关会话先 SIGHUP、两秒后 SIGKILL，谁回收子进程谁决定退出码（输出循环回收就是子进程自己的状态，关会话那边回收就是 0）。有两处有意的不同：线上的信号号码仍是 Darwin 的（守护进程 `pty.ts` 的 `SIGNO` 不变），helper 按本机重新编号，Linux 上 SIGTSTP 是 20，原样转发的 18 会变成 SIGCONT；子进程在 exec 前把 SIGPIPE 恢复成默认，因为 Rust 运行时在本进程里忽略了它，而被忽略的信号会穿过 exec 带给 shell（Swift 版现在就有这个问题：Deskfolk 终端里 `yes | head -1` 会多打一行 `Broken pipe`）。先编译一次：
 

@@ -51,6 +51,9 @@ test("isForeignHome rejects other users' homes and allows Shared and Volumes", (
   expect(isForeignHome("/Volumes/Disk", "/Users/bob")).toBe(false);
 });
 
+/** What a refused read says on this host: macOS asks once in Privacy & Security, Linux just denies. */
+const HOST_DENIED = process.platform === "darwin" ? "authorize once on the Mac" : "access is denied on this computer";
+
 test("listHostDir refuses another user's home", () => {
   const root = tmp();
   expect(() => listHostDir("/Users/not-this-user", { home: root })).toThrow(HttpError);
@@ -60,7 +63,7 @@ test("listHostDir refuses another user's home", () => {
     expect(error).toBeInstanceOf(HttpError);
     expect((error as HttpError).status).toBe(403);
     expect((error as HttpError).code).toBe("host_permission");
-    expect((error as HttpError).message).toBe("authorize once on the Mac");
+    expect((error as HttpError).message).toBe(HOST_DENIED);
   }
 });
 
@@ -78,7 +81,7 @@ test("TCC denial is a typed host_permission error and does not hang", () => {
     });
   } catch (error) {
     expect((error as HttpError).code).toBe("host_permission");
-    expect((error as HttpError).message).toBe("authorize once on the Mac");
+    expect((error as HttpError).message).toBe(HOST_DENIED);
   }
 });
 

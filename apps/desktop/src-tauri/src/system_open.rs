@@ -1,5 +1,7 @@
 //! Handing a path, a link or the clipboard's text to the operating system: Open and Show in
 //! Finder for workspace files, external links, and Paste in the terminal's right-click menu.
+//! macOS uses `open`, Windows the shell's own calls, Linux `xdg-open` and the file manager's
+//! `org.freedesktop.FileManager1` D-Bus interface.
 
 #[tauri::command]
 pub fn open_workspace_path(path: String, reveal: bool) -> Result<(), String> {
@@ -38,11 +40,113 @@ pub fn open_workspace_path(path: String, reveal: bool) -> Result<(), String> {
             windows_shell_open(&path)
         }
     }
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(target_os = "linux")]
+    {
+        // xdg-open hands a .desktop file, an executable or a script to whatever runs it on some
+        // desktops, and a file a Bot wrote is not one the person has looked at. Those are shown
+        // in the file manager instead, as on Windows, where running one is their own double-click.
+        if reveal || (target.is_file() && linux_runs_when_opened(target)) {
+            linux_reveal(target);
+            Ok(())
+        } else {
+            linux_xdg_open(&path)
+        }
+    }
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = reveal;
-        Err("open with system is only on macOS".into())
+        Err("open with system is only on macOS, Windows and Linux".into())
     }
+}
+
+/// Extensions a Linux desktop may run rather than show when the file is opened: launchers,
+/// scripts, programs, packages that install themselves, and Windows programs Wine would start.
+#[cfg(any(target_os = "linux", all(test, unix)))]
+const LINUX_RUNNABLE_EXTENSIONS: &[&str] = &[
+    "desktop", "sh", "bash", "zsh", "ksh", "csh", "fish", "run", "bin", "appimage", "jar", "py",
+    "pl", "rb", "x86_64", "exe", "msi", "com", "bat", "cmd", "flatpakref", "flatpakrepo",
+];
+
+/// A file whose execute bit is set, or whose extension a desktop may run when it is opened.
+#[cfg(any(target_os = "linux", all(test, unix)))]
+fn linux_runs_when_opened(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let executable = std::fs::metadata(path)
+        .map(|meta| meta.permissions().mode() & 0o111 != 0)
+        .unwrap_or(true);
+    let runnable_extension = path
+        .extension()
+        .map(|ext| ext.to_string_lossy().to_lowercase())
+        .is_some_and(|ext| LINUX_RUNNABLE_EXTENSIONS.contains(&ext.as_str()));
+    executable || runnable_extension
+}
+
+/// `file://` plus the path, every byte outside `[A-Za-z0-9/._~-]` percent-encoded. Commas too,
+/// which a URI may carry bare, because `dbus-send` reads `array:string:` items comma-separated.
+#[cfg(any(target_os = "linux", all(test, unix)))]
+fn linux_file_uri(path: &std::path::Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut uri = String::from("file://");
+    for &byte in path.as_os_str().as_bytes() {
+        if byte.is_ascii_alphanumeric() || b"/._~-".contains(&byte) {
+            uri.push(byte as char);
+        } else {
+            uri.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    uri
+}
+
+/// `xdg-open`, not waited for: with no desktop helper it may run the handler in the foreground
+/// for as long as that stays open, and this command runs on the main thread. A thread reaps it.
+#[cfg(target_os = "linux")]
+fn linux_xdg_open(target: &str) -> Result<(), String> {
+    let mut child = std::process::Command::new("xdg-open")
+        .arg(target)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|err| format!("xdg-open: {err}"))?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
+/// Shows the file or folder selected in the file manager (`FileManager1.ShowItems`, which
+/// Nautilus, Dolphin, Nemo, Caja and Thunar answer), else opens the folder it is in. Off the main
+/// thread: the call waits for the file manager to start.
+#[cfg(target_os = "linux")]
+fn linux_reveal(target: &std::path::Path) {
+    let uri = linux_file_uri(target);
+    let parent = target
+        .parent()
+        .unwrap_or(std::path::Path::new("/"))
+        .to_string_lossy()
+        .into_owned();
+    std::thread::spawn(move || {
+        let shown = std::process::Command::new("dbus-send")
+            .args([
+                "--session",
+                "--print-reply",
+                "--reply-timeout=10000",
+                "--dest=org.freedesktop.FileManager1",
+                "--type=method_call",
+                "/org/freedesktop/FileManager1",
+                "org.freedesktop.FileManager1.ShowItems",
+            ])
+            .arg(format!("array:string:{uri}"))
+            .arg("string:")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success());
+        if !shown {
+            let _ = linux_xdg_open(&parent);
+        }
+    });
 }
 
 /// Does Windows rate this file's type a security risk to open — executables,
@@ -158,15 +262,21 @@ pub fn open_external_url(url: String) -> Result<(), String> {
     {
         windows_shell_open(&url)
     }
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(target_os = "linux")]
     {
-        Err("open with system is only on macOS".into())
+        linux_xdg_open(&url)
+    }
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
+    {
+        Err("open with system is only on macOS, Windows and Linux".into())
     }
 }
 
 /// The pasteboard's text, for Paste in the terminal's right-click menu. WebKit's own
 /// `clipboard.readText` stops for a second confirming click, which no terminal asks for;
-/// ⌘V never comes here, it is the Edit menu's paste into the focused field.
+/// ⌘V never comes here, it is the Edit menu's paste into the focused field. A command that is
+/// not `async` runs on the main thread, which is where GTK's clipboard has to be read on Linux;
+/// `wait_for_text` turns the main loop while it waits for whichever app owns the clipboard.
 #[tauri::command]
 pub fn read_clipboard_text() -> Option<String> {
     #[cfg(target_os = "macos")]
@@ -181,7 +291,13 @@ pub fn read_clipboard_text() -> Option<String> {
     {
         windows_clipboard_text()
     }
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(target_os = "linux")]
+    {
+        gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD)
+            .wait_for_text()
+            .map(|text| text.to_string())
+    }
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         None
     }
@@ -245,6 +361,39 @@ fn windows_clipboard_text() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_linux_file_uri_encodes_everything_dbus_send_or_a_uri_could_misread() {
+        use std::path::Path;
+        assert_eq!(linux_file_uri(Path::new("/home/me/notes.md")), "file:///home/me/notes.md");
+        assert_eq!(
+            linux_file_uri(Path::new("/home/me/a b,c/目录#1.md")),
+            "file:///home/me/a%20b%2Cc/%E7%9B%AE%E5%BD%95%231.md"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_linux_might_run_is_shown_instead_of_opened() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("rb-open-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let write = |name: &str, mode: u32| {
+            let path = dir.join(name);
+            std::fs::write(&path, "x").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+            path
+        };
+        for risky in ["app.desktop", "install.SH", "tool.AppImage", "run.py", "setup.exe"] {
+            assert!(linux_runs_when_opened(&write(risky, 0o644)), "{risky}");
+        }
+        assert!(linux_runs_when_opened(&write("no-extension-but-executable", 0o755)));
+        for plain in ["notes.md", "report.pdf", "shot.png", "data.csv", "page.html", "Makefile"] {
+            assert!(!linux_runs_when_opened(&write(plain, 0o644)), "{plain}");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[cfg(windows)]
     #[test]

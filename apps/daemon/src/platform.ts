@@ -232,15 +232,21 @@ function powershellArgv(exe: string): (command: string) => string[] {
 }
 
 /**
- * What runs a model-issued `shell` command. Unchanged on POSIX (`/bin/sh -c <command>`, `"sh"`).
- * On win32: `REAL_BOT_TOOL_SHELL` wins outright; else Git Bash if one of the usual install spots
- * has it; else PowerShell (`pwsh.exe` on PATH, else the Windows PowerShell that always ships).
+ * What runs a model-issued `shell` command. On macOS `/bin/sh -c <command>`, `"sh"` — and macOS's
+ * `/bin/sh` is bash. On Linux `/bin/bash -c` when there is one: Debian's and Ubuntu's `/bin/sh` is
+ * dash, where the bash a model writes (`[[ ]]`, arrays, `{a,b}`, `<(...)`) fails; still `"sh"`, so
+ * the prompts keep their POSIX wording. On win32: `REAL_BOT_TOOL_SHELL` wins outright; else Git Bash
+ * if one of the usual install spots has it; else PowerShell (`pwsh.exe` on PATH, else the Windows
+ * PowerShell that always ships).
  */
 export function toolShell(
   env: Record<string, string | undefined> = process.env,
   platform: string = process.platform,
   exists: (path: string) => boolean = existsSync,
 ): ToolShell {
+  if (platform === "linux" && exists("/bin/bash")) {
+    return { kind: "sh", argv: (command) => ["/bin/bash", "-c", command], label: "/bin/bash" };
+  }
   if (platform !== "win32") {
     return { kind: "sh", argv: (command) => ["/bin/sh", "-c", command], label: "/bin/sh" };
   }

@@ -20,13 +20,14 @@ const CACHE_DIR = join(tmpdir(), "real-bot-vision");
  * the model as the same pixels a 300–500 KB JPEG at 1568 would; on a slow endpoint those bytes
  * are most of the wait before the first token — and a 4K screenshot can be past what a provider
  * takes for one picture at all. Opaque pictures become JPEG, transparent ones stay PNG so a
- * mockup's cut-outs survive, and nothing is ever scaled up. Uses `sips` on macOS and GDI+ through
- * PowerShell on Windows; elsewhere, or on any failure, the original file goes unchanged. Results
- * are cached by path, size and mtime, so a picture is converted once however many turns re-read it.
+ * mockup's cut-outs survive, and nothing is ever scaled up. Uses `sips` on macOS, GDI+ through
+ * PowerShell on Windows and ImageMagick on Linux when it is installed; elsewhere, or on any
+ * failure, the original file goes unchanged. Results are cached by path, size and mtime, so a
+ * picture is converted once however many turns re-read it.
  */
 export function visionImage(abs: string, mime: string, stat: { size: number; mtimeMs: number }): VisionImage {
   const original = (): VisionImage => ({ mime, bytes: readFileSync(abs) });
-  const shrink = process.platform === "darwin" ? shrinkWithSips : process.platform === "win32" ? shrinkWithGdiPlus : null;
+  const shrink = process.platform === "darwin" ? shrinkWithSips : process.platform === "win32" ? shrinkWithGdiPlus : process.platform === "linux" ? magickShrinker() : null;
   if (!shrink || mime === "image/gif" || stat.size <= VISION_SHRINK_OVER_BYTES) {
     return original();
   }
@@ -200,3 +201,56 @@ const shrinkWithGdiPlus: Shrinker = (abs, mime, scratchBase) => {
   if (answer === "unchanged") return "as-is";
   return CACHED_FORMATS.find(([ext]) => ext === answer) ?? null;
 };
+
+/**
+ * ImageMagick's two spellings: `magick` (7) runs `magick identify` and `magick <in> <out>`; 6, which
+ * Debian and Ubuntu still ship, has `identify` and `convert` on their own. Null without either.
+ */
+export function imageMagick(which: (name: string) => string | null = (name) => Bun.which(name) ?? null): { identify: string[]; convert: string[] } | null {
+  const seven = which("magick");
+  if (seven) return { identify: [seven, "identify"], convert: [seven] };
+  const identify = which("identify");
+  const convert = which("convert");
+  return identify && convert ? { identify: [identify], convert: [convert] } : null;
+}
+
+let magick: Shrinker | null | undefined;
+
+function magickShrinker(): Shrinker | null {
+  if (magick === undefined) {
+    const tool = imageMagick();
+    magick = tool ? shrinkWithMagick(tool) : null;
+  }
+  return magick;
+}
+
+/**
+ * The same decisions as the `sips` path, made by ImageMagick. `-auto-orient` puts a photo's EXIF
+ * turn into the pixels and `-strip` drops the tag with the rest, so a portrait shot reaches the model
+ * upright. `[0]` reads the first frame only; the path is absolute, so it cannot read as an option
+ * or a `format:` prefix.
+ */
+function shrinkWithMagick(tool: { identify: string[]; convert: string[] }): Shrinker {
+  return (abs, mime, scratchBase) => {
+    const [identify, ...identifyArgs] = tool.identify;
+    const probe = spawnSync(identify!, [...identifyArgs, "-format", "%w %h %[opaque]", `${abs}[0]`], {
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+    if (probe.status !== 0) return null;
+    const [width, height, opaqueWord] = probe.stdout.trim().split(/\s+/);
+    if (!Number(width) || !Number(height)) return null;
+    const opaque = /^true$/i.test(opaqueWord ?? "");
+    const shrinking = Math.max(Number(width), Number(height)) > VISION_LONG_EDGE;
+    if (!shrinking && !opaque && mime === "image/png") return "as-is";
+    const format = opaque ? CACHED_FORMATS[0] : CACHED_FORMATS[1];
+    const [convert, ...convertArgs] = tool.convert;
+    const args = [...convertArgs, `${abs}[0]`, "-auto-orient"];
+    if (shrinking) args.push("-resize", `${VISION_LONG_EDGE}x${VISION_LONG_EDGE}>`);
+    args.push("-strip");
+    if (opaque) args.push("-quality", "80");
+    args.push(`${format[0] === "jpg" ? "jpeg" : "png"}:${scratchBase}.${format[0]}`);
+    const run = spawnSync(convert!, args, { timeout: 20_000 });
+    return run.status === 0 ? format : null;
+  };
+}

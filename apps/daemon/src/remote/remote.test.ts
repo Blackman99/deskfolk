@@ -984,13 +984,16 @@ test("default native provider never reads credentials and local bearer has no se
   await expect(dispatchLocalSetup(remote, { operation: "read", material: "host_identity" })).rejects.toThrow();
 });
 
-test("with the sealed provider the status says why nothing can be set up: a source run needs the switch, on Windows too", async () => {
+test("with the sealed provider the status says why nothing can be set up: a source run needs the switch, on Windows too, and Linux has no remote access yet", async () => {
   const root = mkdtempSync(join(tmpdir(), "rc07-why-")), store = new Store({ filename: join(root, "db"), endpointKey: memoryKeyStore() });
   const api = createLocalApi({ store, token: "local", schedule: false });
   const mac = new RemoteController({ store, api, platform: "darwin" }), windows = new RemoteController({ store, api, platform: "win32" });
-  cleanup.push(async () => { mac.stop(); windows.stop(); api.quiesce.close(); await api.engine.close(); store.close(); rmSync(root, { recursive: true, force: true }); });
+  const linux = new RemoteController({ store, api, platform: "linux" });
+  cleanup.push(async () => { mac.stop(); windows.stop(); linux.stop(); api.quiesce.close(); await api.engine.close(); store.close(); rmSync(root, { recursive: true, force: true }); });
   expect(mac.status()).toEqual({ state: "off", diagnostic: "sealed_runtime_required", devices: 0 });
   expect(windows.status()).toEqual({ state: "off", diagnostic: "sealed_runtime_required", devices: 0 });
+  // The Linux app has no confirmation sheet to approve a device with: not there yet, whatever the build.
+  expect(linux.status()).toEqual({ state: "off", diagnostic: "platform_unsupported", devices: 0 });
 });
 
 test("connected device activity is recorded and local removal revokes the selected device", async () => {

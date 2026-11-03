@@ -18,7 +18,10 @@
     "targets": ["deb", "appimage"],
     "linux": {
       "deb": {
-        "depends": ["libayatana-appindicator3-1"],
+        "recommends": [
+          "gnome-keyring | kwalletmanager",
+          "xdg-desktop-portal-gtk | xdg-desktop-portal-gnome | xdg-desktop-portal-kde"
+        ],
         "section": "utils"
       },
       "appimage": {

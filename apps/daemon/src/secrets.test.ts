@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { KEYCHAIN_NAME } from "@real-bot/protocol";
-import { bundledKeyStore, KEYCHAIN_BUNDLE_NAME, perNameKeyStore, type SecretBackend } from "./secrets";
+import { HttpError } from "./errors";
+import { bundledKeyStore, KEYCHAIN_BUNDLE_NAME, LINUX_KEYRING_MISSING, perNameKeyStore, type SecretBackend } from "./secrets";
 
 /** A Keychain stand-in: each `get` of an entry that exists is one prompt for an ad-hoc signed daemon. */
 function fakeKeychain(initial: Record<string, string> = {}) {
@@ -200,5 +201,22 @@ describe("perNameKeyStore", () => {
     expect(await store.get("endpoint-api-key:a")).toBeNull();
     await store.delete("endpoint-api-key:a");
     expect(kc.entries.has("endpoint-api-key:a")).toBe(false);
+  });
+
+  test("on Linux a save with no keyring to take it names what is missing; elsewhere the error is the store's own", async () => {
+    const refused: SecretBackend = {
+      get: async () => { throw new Error("no Secret Service"); },
+      set: async () => { throw new Error("org.freedesktop.DBus.Error.ServiceUnknown"); },
+      delete: async () => { throw new Error("org.freedesktop.DBus.Error.ServiceUnknown"); },
+    };
+    const linux = perNameKeyStore(refused, "linux");
+    expect(await linux.get("endpoint-api-key:a")).toBeNull();
+    const saved = linux.set("sk-a", "endpoint-api-key:a");
+    await expect(saved).rejects.toBeInstanceOf(HttpError);
+    await expect(saved).rejects.toMatchObject({ status: 503, code: "keyring_unavailable" });
+    await expect(linux.set("sk-a", "endpoint-api-key:a")).rejects.toThrow(LINUX_KEYRING_MISSING);
+    await expect(linux.delete("endpoint-api-key:a")).rejects.toMatchObject({ code: "keyring_unavailable" });
+    const windows = perNameKeyStore(refused, "win32");
+    await expect(windows.set("sk-a", "endpoint-api-key:a")).rejects.toThrow("org.freedesktop.DBus.Error.ServiceUnknown");
   });
 });

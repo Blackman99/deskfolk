@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
-import { VISION_LONG_EDGE, VISION_SHRINK_OVER_BYTES, visionImage } from "./vision-image";
+import { imageMagick, VISION_LONG_EDGE, VISION_SHRINK_OVER_BYTES, visionImage } from "./vision-image";
 
 const PNG_1X1 = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -68,7 +68,8 @@ function longEdge(bytes: Buffer): number {
   return Math.max(width, height);
 }
 
-const shrinks = process.platform === "darwin" || process.platform === "win32";
+/** sips on macOS, GDI+ on Windows, ImageMagick on Linux when it is installed (the Ubuntu runner has it). */
+const shrinks = process.platform === "darwin" || process.platform === "win32" || (process.platform === "linux" && imageMagick() !== null);
 
 function write(dir: string, name: string, bytes: Buffer): { abs: string; stat: { size: number; mtimeMs: number } } {
   const abs = join(dir, name);
@@ -105,6 +106,14 @@ describe("visionImage", () => {
     const sent = visionImage(abs, "image/png", stat);
     expect(sent.mime).toBe("image/png");
     expect(longEdge(sent.bytes)).toBe(VISION_LONG_EDGE);
+  });
+
+  test("ImageMagick 7 is one command, 6 is two, and neither is none", () => {
+    const tools = (names: string[]) => (name: string) => (names.includes(name) ? `/usr/bin/${name}` : null);
+    expect(imageMagick(tools(["magick", "convert", "identify"]))).toEqual({ identify: ["/usr/bin/magick", "identify"], convert: ["/usr/bin/magick"] });
+    expect(imageMagick(tools(["convert", "identify"]))).toEqual({ identify: ["/usr/bin/identify"], convert: ["/usr/bin/convert"] });
+    expect(imageMagick(tools(["convert"]))).toBeNull();
+    expect(imageMagick(tools([]))).toBeNull();
   });
 
   // GDI+ writes no EXIF, so the orientation tag has to land in the pixels.

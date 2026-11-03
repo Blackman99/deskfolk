@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { WorkspaceTrashResult } from "@real-bot/protocol";
 import { HttpError } from "./errors";
 import { resolvePowerShell } from "./platform";
+import { trashOnLinux } from "./workspace-trash-linux";
 import { classifyPath } from "./workspace-paths";
 
 /** One request's worth; the tree lists at most 500 rows a folder, and a picked folder counts once. */
@@ -332,5 +333,6 @@ async function trashOnWindows(abs: string[]): Promise<string[]> {
 async function defaultTrashMover(abs: string[]): Promise<string[]> {
   if (process.platform === "win32") return trashOnWindows(abs);
   if (process.platform === "darwin") return trashOnMac(abs);
-  throw new HttpError(422, "unsupported", "moving to the Trash needs macOS or Windows");
+  if (process.platform === "linux") return trashOnLinux(abs);
+  throw new HttpError(422, "unsupported", "moving to the Trash needs macOS, Windows or Linux");
 }

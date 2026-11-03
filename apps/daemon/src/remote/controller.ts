@@ -72,8 +72,12 @@ export class RemoteController {
   constructor(private readonly options: RemoteControllerOptions) {
     this.native = options.native ?? remoteNative;
     // The sealed provider cannot be set up from any build yet: only a source run gets it, and that
-    // needs the dev switch. Say so, so the panel offers no form and names why.
-    if (this.native === remoteNative) this.statusValue = { state: "off", diagnostic: "sealed_runtime_required", devices: 0 };
+    // needs the dev switch — and the Linux app, whose window has no confirmation sheet to approve a
+    // device with. Say which, so the panel offers no form and names why.
+    if (this.native === remoteNative) {
+      const linux = (options.platform ?? process.platform) === "linux";
+      this.statusValue = { state: "off", diagnostic: linux ? "platform_unsupported" : "sealed_runtime_required", devices: 0 };
+    }
     this.trust = new RemoteTrust(options.store, this.native, options.now);
     this.push = new PushService({
       store: options.store,

@@ -162,9 +162,9 @@ function hostAbs(path: string, platform: NodeJS.Platform): string {
   return path.replace(/\/+$/, "") || "/";
 }
 
-/** macOS asks once in Privacy & Security; Windows just denies what the account may not read. */
+/** macOS asks once in Privacy & Security; Windows and Linux just deny what the account may not read. */
 function permissionMessage(platform: NodeJS.Platform): string {
-  return platform === "win32" ? "access is denied on this computer" : "authorize once on the Mac";
+  return platform === "darwin" ? "authorize once on the Mac" : "access is denied on this computer";
 }
 
 function isDenied(error: unknown): boolean {
