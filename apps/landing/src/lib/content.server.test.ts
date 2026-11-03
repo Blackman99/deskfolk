@@ -198,6 +198,7 @@ test('the search index has a section per term and per guide heading', () => {
   expect(handoff?.text).not.toContain('<');
   expect(zh.some((e) => e.href.startsWith('/gatekeeper#') && e.text.includes('xattr'))).toBe(true);
   expect(zh.some((e) => e.href.startsWith('/windows'))).toBe(true);
+  expect(zh.some((e) => e.href.startsWith('/linux'))).toBe(true);
   // Behavior details are searchable under their term.
   expect(zh.find((e) => e.href === '/manifesto/collaboration#term-plan')?.text).toContain('task_id');
   const en = getSearchIndex('en');

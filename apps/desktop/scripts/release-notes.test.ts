@@ -82,6 +82,7 @@ test("a notarized release says so instead of the unsigned note, and still names 
   const body = releaseBody(CHANGELOG, null, "0.2.0", true);
   expect(body).toContain("notarized by Apple");
   expect(body).toContain("SmartScreen");
+  expect(body).toContain("Linux AppImage and deb");
   expect(body).not.toContain("Unsigned macOS snapshot");
   expect(body.indexOf("- 新的一条。")).toBeLessThan(body.indexOf("notarized by Apple"));
   expect(releaseBody(CHANGELOG, null, "0.2.0")).not.toContain("notarized by Apple");

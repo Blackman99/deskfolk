@@ -38,7 +38,7 @@
   const neighbors = $derived(docsNeighbors(pageKey));
   const group = $derived(docsGroup(pageKey));
   const isTopic = $derived((MANIFESTO_TOPICS as readonly string[]).includes(pageKey));
-  const experimental = $derived(pageKey === 'remote' || pageKey === 'windows');
+  const experimental = $derived(pageKey === 'remote' || pageKey === 'windows' || pageKey === 'linux');
   const version = $derived((page.data as { version?: string }).version);
   /** The group names the page in its title, except where the group is the page itself. */
   const seoTitle = $derived(

@@ -6,6 +6,17 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A Linux preview: an AppImage and a deb
+
+- Experimental, x86_64 only: each release now carries `Deskfolk_<version>_amd64.AppImage` and `Deskfolk_<version>_amd64.deb`, unsigned, built on Ubuntu 22.04 (glibc 2.35 or newer). Installing it, where data and keys live and what is not there yet are in [Linux preview](docs/linux.md). It has been built and tested on GitHub's Ubuntu runners, not yet used end to end on a real Linux desktop.
+- Terminals work: a Rust pty helper (the Windows one's crate, with a forkpty backend) gives the shell a real controlling terminal, so Ctrl+C, job control and resizing behave as on the Mac. bash sessions report their folder too.
+- The data folder is `~/.local/share/real-bot` (or `$XDG_DATA_HOME/real-bot`); endpoint keys and MCP credentials go to the system keyring (GNOME Keyring or KWallet), and saving one with no keyring running says which to start.
+- Open uses the desktop's default app, Show highlights the file in the file manager, and Move to Trash uses your home Trash, where the file manager can put it back. A file a desktop might run when opened is shown instead, as on Windows.
+- A Bot's shell tool runs commands in bash, since Ubuntu's `/bin/sh` is dash.
+- The update check offers a Linux copy the package it came as (the AppImage or the deb) and opens it in the browser; a release without one is no update there.
+- Not on Linux yet: remote access (the card says so), desktop notifications, installing an update inside the app, image thumbnails, and arm64, rpm, Flatpak or Snap packages.
+- Found on the way, for Windows: a release build now checks that the remote screen's helper was built.
+
 ### Notices show in the top-right corner, with the time they have left
 
 - A notice ("Copied", "… is not in the project directory") no longer covers the bottom of the conversation, over the composer and the working line. It is a card in the top-right corner, under the pane tabs (on a phone, along the top), drawn like the rest of the window: the pane's own colour, a hairline edge and a soft shadow, in place of a pill in reverse colours that showed white in the dark theme.

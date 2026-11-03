@@ -19,14 +19,14 @@ import { fileURLToPath } from "node:url";
 /**
  * Said only when release.yml really notarizes: it sets `MACOS_NOTARIZED=true` when the repository
  * has the Developer ID certificate and all three notary secrets, and a notarization that fails
- * fails the macOS job, so no un-notarized `.dmg` ships under this note. The Windows job sets the
- * same value, so whichever job creates the release writes the same body.
+ * fails the macOS job, so no un-notarized `.dmg` ships under this note. The Windows and Linux jobs
+ * set the same value, so whichever job creates the release writes the same body.
  */
 const NOTARIZED_NOTE = `---
 
 The macOS \`.dmg\` builds are signed with Developer ID and notarized by Apple: they open with a double-click.
 
-The Windows installer is not signed yet: SmartScreen warns about an unknown publisher (More info → Run anyway). See CHANGELOG.md and ROADMAP.md.`;
+The Windows installer is not signed yet: SmartScreen warns about an unknown publisher (More info → Run anyway). The Linux AppImage and deb are an experimental preview (docs/linux.md). See CHANGELOG.md and ROADMAP.md.`;
 
 const UNSIGNED_NOTE = `---
 
@@ -39,7 +39,7 @@ pnpm install
 pnpm dev
 \`\`\`
 
-Windows and Linux are out of scope. See CHANGELOG.md and ROADMAP.md.`;
+The Windows installer and the Linux AppImage and deb are experimental previews (docs/windows.md, docs/linux.md). See CHANGELOG.md and ROADMAP.md.`;
 
 /**
  * The lines under `## <version>`, up to the next `## `. The heading itself stays out: the release

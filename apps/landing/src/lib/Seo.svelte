@@ -33,7 +33,7 @@
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',
       name: SITE_NAME,
-      operatingSystem: 'macOS, Windows',
+      operatingSystem: 'macOS, Windows, Linux',
       applicationCategory: 'DeveloperApplication',
       description,
       url,

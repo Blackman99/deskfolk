@@ -24,13 +24,13 @@
 ## 适合谁
 
 - **适合**：已经在用 Claude Code、Codex 这类本机 Agent，或会自己配模型端点和 API key 的独立开发者、技术型个人和小工作室，手上有多天、多步、要返工、人又不能一直盯着的活，比如多集 AI 视频（镜头、渲染、审片、返工）、每天定点出的新闻简报、一套发布物料。内置的视频引擎就是按这类活的真实记录调的；代码引擎背后的记录还少，它的数还是原来的默认。一个 Bot 单干也行，几个 Bot 分工留给真要分工的活。
-- **暂不适合**：一次问答、半小时就能做完的小活（一个 Bot 就够，也有更轻的工具）；几个人共用一套、要 Linux、要 Mac 睡眠时也接着干活（插电时有活在跑，应用不让 Mac 因为闲置睡着；合上盖子、用电池时它还是会睡），或者既没有本机 Agent、也不想自己接模型端点。Windows 有一条刚起步的实验性预览：每个 Release 都带未签名安装包，有些功能还没有——见下方「获取」。
+- **暂不适合**：一次问答、半小时就能做完的小活（一个 Bot 就够，也有更轻的工具）；几个人共用一套、要 Mac 睡眠时也接着干活（插电时有活在跑，应用不让 Mac 因为闲置睡着；合上盖子、用电池时它还是会睡），或者既没有本机 Agent、也不想自己接模型端点。Windows 和 Linux 各有一条刚起步的实验性预览：每个 Release 都带未签名的 Windows 安装包和 Linux 的 AppImage、deb，有些功能还没有——见下方「获取」。
 
 ## 它做什么
 
 - **持久的队友。** Bot 有名字、职责和边界，可以私聊、进群、被 `@` 点名、彼此交接；正在干活的 Bot 被队友 `@` 时不会被打断，下一步就读到这句话；你连着发几句、或改了一句已经发出去的话，它也在下一步读到；还没读到的那句可以撤回，或直接插入让它马上读。一个 Bot 单干也行，要分工时再让它把队友建出来。
 - **问不问由你定。** 权限模式四选一——只读、改动先问、自动（默认）、全部允许——说清 Bot 不问你就能做什么：自动下写文件、跑命令直接做，新建端点或 MCP、改内置提示词要你批准；某个 Bot 可以另选。工作区是所有 Bot 产出放在一起的地方，不是权限边界；等你的事标在会话列表上，配合 macOS 横幅和 Dock 角标。
-- **执行和文件在你自己的电脑上。** 窗口、守护进程、会话和共享工作区都在本机，密钥进钥匙串（Windows 上是凭据管理器）。模型和 MCP 服务器由你接：任意 OpenAI 兼容或 Anthropic 兼容的端点都行，也可以是本机的 Ollama、LM Studio（见[用本地模型](#用本地模型)），每一轮的上下文发给你配置的那个端点。
+- **执行和文件在你自己的电脑上。** 窗口、守护进程、会话和共享工作区都在本机，密钥进钥匙串（Windows 上是凭据管理器，Linux 上是系统密钥环）。模型和 MCP 服务器由你接：任意 OpenAI 兼容或 Anthropic 兼容的端点都行，也可以是本机的 Ollama、LM Studio（见[用本地模型](#用本地模型)），每一轮的上下文发给你配置的那个端点。
 - **也可以让你自己的 Claude Code 来跑一个 Bot。** 把 Bot 的运行方式设成 Claude Agent，它的每一轮就由你本机安装并登录的 Claude Code 用它自己的工具来跑，用量记在它登录的账号上（Claude 订阅或 API key）；批准、Stop、交付和审查和别的 Bot 一样。之后悬浮的用量挂件（和菜单栏）会显示你套餐的 5 小时、7 天窗口用了多少，数据由你的 Claude Code 自己读；Codex 的也在，其他 Agent 列今天跑了几轮。一台电脑上登录了几个 Claude 账号时，每个 Bot 可以各用你指定的那个（按 Claude Code 的配置目录）。也可以像在它自己的桌面端里那样，直接在一个项目目录里和它聊：侧栏「项目」一段按目录放这些会话，也能把终端里聊到一半的会话接过来，从停下的地方接着聊，终端里的原会话不受影响。这些在配对的手机上也都能设置。应用不登录 Claude、不碰它的凭据——[怎么用](behavior.md#claude-agent)。
 - **别的 Agent 也行。** 运行方式还能选你本机的 Codex、Grok、OpenCode、ZCode、Antigravity，或者你在设置里加的任何讲 ACP 的程序；用你自己的登录，权限模式、批准卡、交付和审查照旧，没先问就做了模式要问的事当场停下。Antigravity 拿不到应用的工具，只能用回复说话（[ADR 0079](adr/0079-local-agents.md)）。
 - **改成你自己的工作方式。** 上面四条写在代码里，不随什么改；挂在它们上面的都能换、能改。应用自己的环节怎么跑是引擎：书记员、收尾自检、整理、模型升级、完工复盘、反思开不开，回看隔多久、交几次没过就停下来问你这些数是多少；内置通用（默认）、视频、代码三套，按对话选（群的「操作」、私聊里 Bot 的「操作」），改了只存和内置不同的几项，也能以一套为底另建——[ADR 0085](adr/0085-engines.md)。不想要这一套，第四套「自由」不开规划和任务、不审交付、没人追进度，只留你的批准、叫停和花费——[ADR 0103](adr/0103-an-engine-can-work-in-no-jobs.md)。每个环节用哪个模型、哪段提示词，在 工具 → 分工 里一起设：一张图按什么时候跑画出这些环节，点开一个就地开关、改数、换模型、改提示词。Bot 每一轮读的系统指令和工具说明在 设置 → 提示词 里。提示词都能恢复默认，每次修改都能撤销，也可以让 Bot 提改动，在批准卡上由你放行；引擎目前只有你能改。代码要读的输出格式锁着，批准、叫停这些规矩不随提示词和引擎变——[怎么用](behavior.md#built-in-prompt)。
@@ -46,14 +46,14 @@
 
 ## 获取
 
-macOS 13（Ventura）或更新版本，支持 Apple 芯片与 Intel。Windows x64 有一条刚起步的实验性预览（见下文）；Linux 暂不支持。
+macOS 13（Ventura）或更新版本，支持 Apple 芯片与 Intel。Windows x64 和 Linux x86_64（glibc 2.35 及更新）各有一条刚起步的实验性预览（见下文）。
 
 - **要准备什么**：下面三样有一样就能开始。
   - **本机 Agent，不用 API key**：这台电脑上装好并登录的 Claude Code、Codex、Grok、OpenCode、Antigravity、ZCode（经社区的 `zcode-acp` 桥），或你在设置里加的任何讲 ACP 的程序。向导第 2 步列出找到且已登录的那些，选一个，Bot 就用你自己的登录和订阅跑（[ADR 0078](adr/0078-setup-on-claude-code.md)、[ADR 0079](adr/0079-local-agents.md)）。
   - **模型端点**：内置 Anthropic、小米 MiMo、千问（阿里云百炼）、DeepSeek，贴上 key 应用自己认出套餐；另有 OpenAI、OpenRouter 预设，或任意 OpenAI 兼容、Anthropic 兼容的地址。
   - **本机模型服务**：Ollama、LM Studio、llama.cpp 的 `llama-server`，不用 key（见[用本地模型](#用本地模型)）。
 - **下载**：[Releases](https://github.com/Blackman99/deskfolk/releases/latest) 提供 `.dmg`，不用另装别的。从 0.1.0-rc.16 起用 Developer ID 签名并经 Apple 公证，双击即可打开（旧版本见 [Gatekeeper FAQ](gatekeeper.zh.md)）。Windows 上运行同一个 Release 里的 `Deskfolk_<版本>_x64-setup.exe`：按当前用户安装，不要管理员权限；安装包没签名，SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」。
-- **更新**：有新版本时，桌面侧栏底部带文字的「设置」上出现小红点，在 设置 → 关于 里下载并安装（Windows 上暂时是「关于」跳到浏览器下载）。外观在 设置 → 通用 → 外观。
+- **更新**：有新版本时，桌面侧栏底部带文字的「设置」上出现小红点，在 设置 → 关于 里下载并安装（Windows 和 Linux 上暂时是「关于」跳到浏览器下载）。外观在 设置 → 通用 → 外观。
 - **在 macOS 上从源码启动**（Node 22+、pnpm 12.3.4、Bun 1.2+、Rust、Xcode Command Line Tools）：
 
 ```bash
@@ -65,6 +65,7 @@ pnpm dev
 
 - **在 Windows 上从源码启动：** 同样 `git clone` / `pnpm install` / `pnpm dev`，用 Rust 的 MSVC 工具链加 Visual Studio Build Tools（勾选 "Desktop development with C++"）代替 Xcode，另外先跑一次 `cargo build --manifest-path apps/conpty-helper/Cargo.toml` 编终端 helper。建议也装上 Git for Windows：Bot 的 shell 工具找得到 Git Bash 就在里面跑命令，找不到才用 PowerShell。本地打安装包用 `pnpm --filter @real-bot/desktop tauri build --bundles nsis`。
 - **Windows 上还没有的：** 独立运行时、应用内下载安装更新、桌面通知与角标、图片缩略图。数据在 `%LOCALAPPDATA%\real-bot`，密钥在 Windows 凭据管理器；装法、差异和缺口见 [Windows 预览版](windows.zh.md)，前置条件和打包见[开发说明](development.md#windows实验性)。
+- **在 Linux 上：** 从 [Releases](https://github.com/Blackman99/deskfolk/releases/latest) 下载 `Deskfolk_<版本>_amd64.AppImage`（加上执行权限直接运行）或 `Deskfolk_<版本>_amd64.deb`（`sudo apt install ./Deskfolk_<版本>_amd64.deb`）。数据在 `~/.local/share/real-bot`，密钥在系统密钥环（GNOME Keyring 或 KWallet）；Bot 的 shell 工具在 bash 里跑命令。Linux 上还没有：远程访问、桌面通知、应用内下载安装更新、图片缩略图。装法和差异见 [Linux 预览版](linux.zh.md)；从源码启动的前置条件和打包见[开发说明](development.md#linux实验性)。
 
 拿源码版干要跑几个小时的活（比如多镜头视频）时，用 `pnpm dev:steady` 代替 `pnpm dev`：守护进程不会因为改代码或 `git pull` 重启，进行中的轮次不会被打断。
 
@@ -83,7 +84,7 @@ Ollama、LM Studio、llama.cpp 的 `llama-server` 都能当端点用：向导里
 
 ## 状态
 
-macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 是刚起步的实验性预览，还有不少毛边和缺失功能（见上文「获取」）。Linux 暂不支持。远程访问是默认关闭的原型（Windows 上还没在真机试过）：日常功能和 Web Push 已在 Android Chrome 真机上走通；iOS 主屏幕和 WebAuthn 用户验证还没做真机验收，独立安全复核也没有通过；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准，Windows 上用 Windows Hello（[ADR 0033](adr/0033-remote-credentials-in-a-file.md)、[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）。
+macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 和 Linux 是刚起步的实验性预览，还有不少毛边和缺失功能（见上文「获取」）；Linux 还没在真的桌面上从头到尾用过。远程访问是默认关闭的原型（Windows 上还没在真机试过，Linux 上还没有）：日常功能和 Web Push 已在 Android Chrome 真机上走通；iOS 主屏幕和 WebAuthn 用户验证还没做真机验收，独立安全复核也没有通过；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准，Windows 上用 Windows Hello（[ADR 0033](adr/0033-remote-credentials-in-a-file.md)、[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）。
 
 [哪些已接入、哪些不做](#哪些已经接入哪些还在建哪些不做) · [路线图](../ROADMAP.md) · [领域语言](../CONTEXT.md) · [中继部署](deploy-remote.md)
 
@@ -93,11 +94,11 @@ macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 
 
 | | 已接入 | 正在建设 | 明确不做 |
 | --- | --- | --- | --- |
-| **运行时底座** | macOS 桌面窗（Windows 为实验性预览）、常驻守护进程、本地共享工作区、SQLite 持久化；关窗不停，你自己的终端会话也由守护进程持有 | 复杂真实场景下的长期稳定性验证 | 云电脑、云端计费、多用户 SaaS |
+| **运行时底座** | macOS 桌面窗（Windows、Linux 为实验性预览）、常驻守护进程、本地共享工作区、SQLite 持久化；关窗不停，你自己的终端会话也由守护进程持有 | 复杂真实场景下的长期稳定性验证 | 云电脑、云端计费、多用户 SaaS |
 | **桌面工作台** | 主栏任意分屏，标签装会话、终端、日程图或工作区；一件事一张流程图；等你的事标在会话列表上，macOS 横幅与 Dock 角标 | 几条会话同时可见时，只有当前那条会报在线，其余仍可能弹一次横幅 | 多窗口进程、手机上分屏 |
 | **Bot 形态** | 持久名册、私聊、多 Bot 群、@ 点名、参与判断、异步交接；出了问题按类型记成质量事件，教训由应用在调用前执行；你接受的活交付后，在里面出过错的 Bot 复盘一次，改进自己的记忆和技能 | 用长活实测这些保证：叫停之后还有没有副作用、规则丢没丢、打扰了你几次 | 用完即弃的对话框、中央裁决路由、轮数熔断 |
 | **模型与工具** | 多个 OpenAI 兼容或 Anthropic 兼容的端点，也可以让你本机登录的 Agent 跑一个 Bot（Claude Code、Codex、Grok、OpenCode、ZCode、Antigravity、自定义 ACP）；stdio 与 Streamable HTTP MCP；每个 Bot 有默认模型（按近 7 天用量推断，可以钉），要看图的活避开看不了图的模型，卡住了先提思考档、再沿你排的阶梯换模型；每轮的模型和原因记在流程图那一轮的卡片上 | 阶梯和提档在真实长活里的效果，还没有实测 | 绑定单一厂商、供应商目录、假装兼容所有实现 |
-| **安全与权限** | 应用和每个 Bot 的权限模式、批准卡、密钥进钥匙串（Windows 上是凭据管理器）、私聊 Stop | 更细粒度的 MCP 权限治理 | 把 Bot 当安全沙箱、假装已具备完全自主权限 |
+| **安全与权限** | 应用和每个 Bot 的权限模式、批准卡、密钥进钥匙串（Windows 上是凭据管理器，Linux 上是系统密钥环）、私聊 Stop | 更细粒度的 MCP 权限治理 | 把 Bot 当安全沙箱、假装已具备完全自主权限 |
 | **对话管理应用** | 改人设和技能、建 Bot 和群、配端点、模型名单和 MCP，都可由 Bot 通过工具完成 | 全部应用操作的对话覆盖（含首启向导） | 每件事都要手点深层菜单 |
 | **工作方式模板** | 底线（批准、叫停、花费）写在代码里，不随什么变；跑不跑一件件事、应用自己的哪些环节跑、带什么数是引擎，内置通用、视频、代码三套同一种工作方式，和不用它的自由，按对话选，改了只存差别，也能另建；每个环节的模型和提示词在分工页上一起设，每一轮的系统指令和工具说明在设置里，提示词能改、能撤销、能恢复默认；Bot 能只读地查本机记录，拿依据提改提示词，在批准卡上由你放行；代码要读的输出格式锁着 | Bot 提议改引擎（走批准卡片）、只能从固定效果清单里选的自定义环节、拿过去的话回放评估一次改动、引擎的修改记录能撤销；局面块、回路里的提示和转录文案也做成可改的提示词；用你改过的提示词跑评估 | 没人开口就在后台自我调优、Bot 不经你放行就改提示词或引擎、用提示词或引擎放宽批准或门禁 |
 | **远程访问** | 默认关闭的实验原型：自托管中继、端到端 Noise 加密；配对过的手机能看会话、回消息、处理批准、翻工作区、用终端；Android Chrome 真机上已走通，安装的应用即可登记中继、配对设备 | 独立安全复核，iOS 主屏幕 Web Push 与 WebAuthn 用户验证的真机验收，把远控凭据从文件搬进钥匙串的打包门；在这之前公网配对保持关闭 | 项目方运营的云端中继、把实验原型当成可用的远控 |

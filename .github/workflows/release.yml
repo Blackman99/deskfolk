@@ -61,6 +61,13 @@ jobs:
     with:
       skip-bundle: true
 
+  # The Linux half: linux.yml's crate and script checks on Ubuntu 22.04, without its own packages.
+  verify-linux:
+    name: Verify on Linux
+    uses: ./.github/workflows/linux.yml
+    with:
+      skip-bundle: true
+
   publish:
     name: Package macOS snapshot
     needs: verify
@@ -263,3 +270,73 @@ jobs:
           generateReleaseNotes: false
           uploadUpdaterJson: false
           args: --bundles nsis ${{ env.TAURI_SIGNING_ARGS }}
+
+  # Same release, same tag again: Deskfolk_<version>_amd64.AppImage and Deskfolk_<version>_amd64.deb,
+  # the assets the Linux update check looks for (the AppImage for a copy running as one, the deb
+  # otherwise). Ubuntu 22.04, so the AppImage runs on that glibc and newer. Unsigned: there is no
+  # Linux signing to configure. A failed job only holds back Linux users, as with Windows.
+  publish-linux:
+    name: Package Linux deb and AppImage
+    needs: [verify, verify-linux]
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/conpty-helper -> target
+            apps/desktop/src-tauri -> target
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl file patchelf libssl-dev libxdo-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Release notes from CHANGELOG
+        id: notes
+        env:
+          MACOS_NOTARIZED: ${{ secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+        run: |
+          {
+            echo 'body<<RELEASE_NOTES_EOF'
+            bun apps/desktop/scripts/release-notes.ts
+            echo
+            echo RELEASE_NOTES_EOF
+          } >> "$GITHUB_OUTPUT"
+
+      # linuxdeploy is itself an AppImage; extracting it instead of mounting it needs no FUSE.
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          tagName: v__VERSION__
+          releaseName: Deskfolk v__VERSION__
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generateReleaseNotes: false
+          uploadUpdaterJson: false
+          args: --bundles deb,appimage

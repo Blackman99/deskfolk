@@ -6,6 +6,17 @@
 
 ## Unreleased
 
+### Linux 预览版：AppImage 和 deb
+
+- 实验性，只有 x86_64：每个 Release 现在都带 `Deskfolk_<版本>_amd64.AppImage` 和 `Deskfolk_<版本>_amd64.deb`，没有签名，在 Ubuntu 22.04 上构建（glibc 2.35 及更新的发行版能跑）。怎么装、数据和密钥放在哪、还缺什么见 [Linux 预览版](docs/linux.zh.md)。它在 GitHub 的 Ubuntu 上构建和测试过，还没在真的 Linux 桌面上从头到尾用过。
+- 终端能用：一个 Rust 的 pty helper（就是 Windows 那个 crate，加了 forkpty 后端）让 shell 拿到真正的控制终端，Ctrl+C、作业控制和改窗口大小都和 Mac 上一样。bash 会话也会报告自己所在的文件夹。
+- 数据目录是 `~/.local/share/real-bot`（或 `$XDG_DATA_HOME/real-bot`）；端点密钥和 MCP 凭据存进系统密钥环（GNOME Keyring 或 KWallet），没有密钥环在跑时保存会提示要启动哪一个。
+- 「打开」用桌面的默认应用，「显示」在文件管理器里选中文件，「移到回收站」进主目录的回收站，文件管理器里能还原。打开就可能被运行的文件改成显示，和 Windows 一样。
+- Bot 的 shell 工具在 bash 里跑命令：Ubuntu 的 `/bin/sh` 是 dash。
+- 更新检查给 Linux 版找它自己那种包（AppImage 或 deb），在浏览器里打开；没有 Linux 包的 Release 不算新版。
+- Linux 上还没有：远程访问（卡片上会写明）、桌面通知、应用内下载安装更新、图片缩略图，以及 arm64、rpm、Flatpak、Snap 包。
+- 顺手修的 Windows 问题：发布构建现在也检查远程屏幕的 helper 编出来了没有。
+
 ### 提示改到右上角，并显示还剩多久
 
 - 提示（「已复制」「在项目目录里没找到 …」）不再压在对话底部、挡住输入框和「思考中」那一行，而是右上角、窗格标签栏下面的一张卡片（手机上贴着顶部）。样式和窗口里其他东西一致：面板的底色、细边、柔和的阴影，不再是深色主题下发白的反色胶囊。

@@ -46,6 +46,7 @@ export const GUIDE_SOURCES: Record<Guide, Record<Lang, string>> = {
   overview: { zh: 'docs/overview.zh.md', en: 'docs/overview.md' },
   gatekeeper: { zh: 'docs/gatekeeper.zh.md', en: 'docs/gatekeeper.md' },
   windows: { zh: 'docs/windows.zh.md', en: 'docs/windows.md' },
+  linux: { zh: 'docs/linux.zh.md', en: 'docs/linux.md' },
   routines: { zh: 'docs/routines.zh.md', en: 'docs/routines.md' },
   spend: { zh: 'docs/spend.zh.md', en: 'docs/spend.md' },
   remote: { zh: 'docs/remote-access.zh.md', en: 'docs/remote-access.md' }

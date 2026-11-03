@@ -2,7 +2,7 @@
 
 ## 状态与支持范围
 
-Deskfolk 当前是 **WIP**，面向 macOS 本地开发与试用（Windows 是实验性预览，远控在 Windows 上还没有），没有稳定版本的安全维护承诺、独立安全审计声明或响应时限保证。安全修复优先面向最新开发代码。请使用可丢弃数据和可信模型 / 工具，不要把它当作隔离不可信代码的执行环境。
+Deskfolk 当前是 **WIP**，面向 macOS 本地开发与试用（Windows 和 Linux 是实验性预览，远控在 Linux 上还没有），没有稳定版本的安全维护承诺、独立安全审计声明或响应时限保证。安全修复优先面向最新开发代码。请使用可丢弃数据和可信模型 / 工具，不要把它当作隔离不可信代码的执行环境。
 
 ## 实验性远控密码原型 / Experimental remote cryptography
 
@@ -34,7 +34,7 @@ Optional Web Push is Mac-outbound only. VAPID private material is the credential
 
 私密报告请包含：
 
-- 受影响的源码版本、操作系统（macOS / Windows）与工具链版本。
+- 受影响的源码版本、操作系统（macOS / Windows / Linux）与工具链版本。
 - 影响范围、最小复现步骤和预期安全边界。
 - 已脱敏的证据、可行的缓解办法（若有）。
 
@@ -60,9 +60,9 @@ Optional Web Push is Mac-outbound only. VAPID private material is the credential
 
 | 内容 | 当前存储方式 |
 | --- | --- |
-| 会话与应用状态 | `~/Library/Application Support/real-bot/state.sqlite`；Windows 上是 `%LOCALAPPDATA%\real-bot\state.sqlite` |
+| 会话与应用状态 | `~/Library/Application Support/real-bot/state.sqlite`；Windows 上是 `%LOCALAPPDATA%\real-bot\state.sqlite`，Linux 上是 `~/.local/share/real-bot/state.sqlite`（或 `$XDG_DATA_HOME/real-bot/`） |
 | 本机接口描述与 token | 同目录的 `local-api.json`；每次守护进程启动生成新 token，目录权限 `0700`、文件 `0600`；Windows 不用这两个权限位，靠 `%LOCALAPPDATA%` 默认只对当前用户开放的访问控制 |
-| 模型 API key 与 HTTP MCP Authorization | macOS 钥匙串（Windows 上是凭据管理器），由守护进程管理，不通过聊天正文配置 |
+| 模型 API key 与 HTTP MCP Authorization | macOS 钥匙串（Windows 上是凭据管理器，Linux 上是系统密钥环 / Secret Service），由守护进程管理，不通过聊天正文配置 |
 | 附件与产物 | 用户选择的共享工作区；上传附件位于 `inbox/` |
 | 超长工具结果 | 工作区 `tool-results/` 中的完整 JSON；可能含敏感信息，使用后按需清理 |
 
@@ -79,8 +79,8 @@ SQLite、附件与工具结果没有应用层加密承诺；依赖本机账户�
 
 ## English summary
 
-Deskfolk is WIP for local experimentation on macOS (Windows is an experimental preview, without remote access), with no stable-version security support or response-time guarantee. Report vulnerabilities through GitHub **Security → Report a vulnerability** when enabled. If unavailable, open an Issue requesting a private contact channel **without disclosing vulnerability details**. Maintainers must enable private reporting before public release; no dedicated security email is currently designated.
+Deskfolk is WIP for local experimentation on macOS (Windows and Linux are experimental previews; Linux has no remote access yet), with no stable-version security support or response-time guarantee. Report vulnerabilities through GitHub **Security → Report a vulnerability** when enabled. If unavailable, open an Issue requesting a private contact channel **without disclosing vulnerability details**. Maintainers must enable private reporting before public release; no dedicated security email is currently designated.
 
 Local execution does not mean offline or sandboxed execution. Remote model and MCP requests may transmit data, local MCP processes may access the network, all Bots share tools and files, and configured MCP calls are not individually approved. The workspace is not a permission boundary and a Bot's shell is not an OS sandbox: what a Bot may do is set by its permission mode (read-only, ask first, auto by default, allow all; per app and per Bot, ADR 0092), and under auto it writes files and runs commands anywhere your account can without asking. A Bot never reads a local agent's sign-in or recursively searches your whole home folder, in any mode. Single-file HTML preview runs scripts in an opaque-origin iframe (`allow-scripts`, no `allow-same-origin`) and is not an isolated execution environment. Stop and approval cannot undo completed effects or costs.
 
-State and local tokens live in the application support directory, provider and HTTP MCP credentials use the macOS Keychain (Credential Manager on Windows), and attachments and full tool results live in the selected workspace. There is no application-level encryption guarantee for these data files. `REAL_BOT_DATA_DIR` does not isolate Keychain / Credential Manager credentials or change the API port. On Windows the data folder is `%LOCALAPPDATA%\real-bot`, protected by that folder's per-user access control rather than mode bits, and the workspace shell runs in Git Bash or PowerShell; its outside-the-workspace check also covers drive letters, `..\`, `%VAR%`, `$env:` and network shares, and treats forms it cannot place as outside. Keep development services local, redact diagnostics, and rotate any exposed credentials immediately.
+State and local tokens live in the application support directory, provider and HTTP MCP credentials use the macOS Keychain (Credential Manager on Windows, the system keyring through the Secret Service on Linux), and attachments and full tool results live in the selected workspace. There is no application-level encryption guarantee for these data files. `REAL_BOT_DATA_DIR` does not isolate Keychain / Credential Manager credentials or change the API port. On Windows the data folder is `%LOCALAPPDATA%\real-bot`, protected by that folder's per-user access control rather than mode bits, and the workspace shell runs in Git Bash or PowerShell; its outside-the-workspace check also covers drive letters, `..\`, `%VAR%`, `$env:` and network shares, and treats forms it cannot place as outside. Keep development services local, redact diagnostics, and rotate any exposed credentials immediately.
