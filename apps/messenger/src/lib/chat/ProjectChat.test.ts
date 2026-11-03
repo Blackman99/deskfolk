@@ -122,19 +122,26 @@ const tuneLabels = (host: HTMLElement, level: string) => tuneRows(host, level).m
 const tuneRow = (host: HTMLElement, level: string, label: string) => tuneRows(host, level).find((row) => row.querySelector(".tune-row-label, .sheet-item-label")?.firstChild?.textContent?.trim() === label) ?? null;
 const tunes = (runtime: ReturnType<typeof fakeRuntime>) => runtime.calls.filter((c) => c.name === "tuneProjectSession").map((c) => c.args);
 
-test("one picker holds the model and its thinking level: the session's path opens at once, your settings' default first, one set elsewhere stays a choice", async () => {
+test("one picker holds the model and its thinking level: it opens on the models alone, a model's levels open beside it, and a level is the pick", async () => {
   const { host, runtime, close } = open(null);
   const trigger = tuneTrigger(host);
   expect(trigger?.textContent).toContain(t.project.modelDefault);
   expect(trigger?.textContent).toContain(t.project.effortDefault);
   expect(trigger?.getAttribute("title")).toContain(t.project.modelDefaultHint("Claude Code"));
   click(trigger);
-  // One account: its column is left out; the model's levels open beside the models.
+  // One account: its column is left out, and the models open alone.
   expect(host.querySelector('[data-tune-column="account"]')).toBeNull();
   expect(tuneLabels(host, "model")).toEqual([t.project.modelDefault, "sonnet", "opus", "haiku", "fable"]);
-  expect(tuneLabels(host, "effort")).toEqual([t.project.effortDefault, "低", "中", "高", "极高", "最大"]);
+  expect(host.querySelector('[data-tune-column="effort"]')).toBeNull();
   expect(tuneRow(host, "model", t.project.modelDefault)?.getAttribute("aria-selected")).toBe("true");
+  expect(tuneRow(host, "model", "opus")?.querySelector(".tune-more")).not.toBeNull();
+  // A model that takes levels opens them; nothing is taken yet.
   click(tuneRow(host, "model", "opus"));
+  await settle();
+  expect(tunes(runtime)).toEqual([]);
+  expect(tuneLabels(host, "effort")).toEqual([t.project.effortDefault, "低", "中", "高", "极高", "最大"]);
+  expect(tuneRow(host, "model", "opus")?.classList.contains("is-focus")).toBe(true);
+  click(tuneRow(host, "effort", t.project.effortDefault));
   await settle();
   expect(tunes(runtime)).toEqual([["proj-1", { model: "opus" }]]);
   expect(host.querySelector("[data-tune-column]")).toBeNull();
@@ -146,6 +153,7 @@ test("one picker holds the model and its thinking level: the session's path open
   expect(tuneTrigger(view.host)?.textContent).toContain("claude-opus-5-5");
   click(tuneTrigger(view.host));
   click(tuneRow(view.host, "model", t.project.modelDefault));
+  click(tuneRow(view.host, "effort", t.project.effortDefault));
   await settle();
   expect(tunes(pinned)).toEqual([["proj-1", { model: null }]]);
   view.close();
@@ -154,6 +162,7 @@ test("one picker holds the model and its thinking level: the session's path open
 test("the thinking level is the picker's last column, the default first", async () => {
   const { host, runtime, close } = open(null);
   click(tuneTrigger(host));
+  click(tuneRow(host, "model", t.project.modelDefault));
   click(tuneRow(host, "effort", "极高"));
   await settle();
   expect(tunes(runtime)).toEqual([["proj-1", { effort: "xhigh" }]]);
@@ -253,7 +262,7 @@ test("a file the agent cites opens where the Mac finds it under the project; one
   }
 });
 
-test("the account is the picker's first column; another account's models open beside it and a pick takes the path in one change", async () => {
+test("the account is the picker's first column and opens alone; an account opens its models beside it, and a pick takes the path in one change", async () => {
   const { forgetClaudeOptions } = await import("./project-agent-options.svelte.ts");
   forgetClaudeOptions();
   const session = aProjectSession({ project_config_dir: "/Users/a/.claude-b", project_model: "haiku" });
@@ -278,24 +287,39 @@ test("the account is the picker's first column; another account's models open be
   expect(trigger?.getAttribute("title")).toContain("Fastest");
   click(trigger);
   expect(tuneLabels(host, "account")).toEqual(["me@a.com", "team@b.com"]);
+  expect(host.querySelector('[data-tune-column="model"]')).toBeNull();
+  expect(tuneRow(host, "account", "team@b.com")?.getAttribute("aria-selected")).toBe("true");
+  // An account is never the pick: it opens its models, asked for then.
+  click(tuneRow(host, "account", "me@a.com"));
+  await settle();
+  expect(tunes(runtime)).toEqual([]);
+  expect(askedModels).toEqual(["/Users/a/.claude-b", null]);
   expect(tuneLabels(host, "model")).toEqual(["Default (recommended)", "Haiku 5.5"]);
   // What Claude Code says of each model sits under its name.
   expect(tuneRow(host, "model", "Haiku 5.5")?.querySelector(".tune-row-detail")?.textContent).toBe("Fastest");
-  expect(host.querySelector('[data-tune-column="effort"]')).toBeNull();
-  click(tuneRow(host, "account", "me@a.com"));
+  // Haiku has nothing under it: it is the pick, and takes the account with it.
+  expect(tuneRow(host, "model", "Haiku 5.5")?.querySelector(".tune-more")).toBeNull();
+  click(tuneRow(host, "model", "Haiku 5.5"));
   await settle();
   expect(tunes(runtime)).toEqual([["proj-1", { config_dir: null }]]);
 
-  // By the keys: to the accounts, up to the other one (its models are asked for), over to its models, up to the default, taken.
+  // By the keys: up to the other account, Right into its models, up to the default, Right into its levels, Enter takes it.
   click(trigger);
-  press(trigger, "ArrowLeft");
+  expect(host.querySelectorAll("[data-tune-column]")).toHaveLength(1);
   press(trigger, "ArrowUp");
-  await settle();
-  expect(askedModels).toEqual(["/Users/a/.claude-b", null]);
-  expect(tuneRow(host, "account", "me@a.com")?.classList.contains("is-focus")).toBe(true);
+  expect(host.querySelector('[data-tune-column="model"]')).toBeNull();
   press(trigger, "ArrowRight");
+  expect(tuneLabels(host, "model")).toEqual(["Default (recommended)", "Haiku 5.5"]);
+  expect(tuneRow(host, "account", "me@a.com")?.classList.contains("is-focus")).toBe(true);
+  expect(trigger?.getAttribute("aria-activedescendant")).toBe(tuneRow(host, "model", "Haiku 5.5")?.id);
   press(trigger, "ArrowUp");
-  // The default takes levels: they open beside it.
+  expect(host.querySelector('[data-tune-column="effort"]')).toBeNull();
+  press(trigger, "ArrowRight");
+  expect(tuneLabels(host, "effort")).toEqual([t.project.effortDefault, "低", "高"]);
+  // Left closes the column the keys were in.
+  press(trigger, "ArrowLeft");
+  expect(host.querySelector('[data-tune-column="effort"]')).toBeNull();
+  press(trigger, "Enter");
   expect(tuneLabels(host, "effort")).toEqual([t.project.effortDefault, "低", "高"]);
   press(trigger, "Enter");
   await settle();
@@ -320,19 +344,23 @@ test("a model that does not take the session's thinking level takes it back to t
   const { host, close } = render(ProjectChat, { runtime, t, selected: session });
   await settle();
   await settle();
-  const pick = (label: string) => {
-    click(tuneTrigger(host));
-    click(tuneRow(host, "model", label));
-  };
-  pick("Sonnet 5.5");
+  // Sonnet takes the session's 高: it is checked beside it, and taking it changes the model alone.
+  click(tuneTrigger(host));
+  click(tuneRow(host, "model", "Sonnet 5.5"));
+  expect(tuneRow(host, "effort", "高")?.getAttribute("aria-selected")).toBe("true");
+  click(tuneRow(host, "effort", "高"));
   await settle();
-  pick("Haiku 5.5");
+  // Haiku takes no level: it is the pick, and the level goes back to the default.
+  click(tuneTrigger(host));
+  click(tuneRow(host, "model", "Haiku 5.5"));
   await settle();
   expect(tunes(runtime)).toEqual([["proj-1", { model: "sonnet" }], ["proj-1", { model: "haiku", effort: null }]]);
 
-  // Down to Sonnet by the keys: its levels open beside it, the session's 高 checked; 中 there takes Sonnet with it.
+  // Down to Sonnet by the keys, Right into its levels, the session's 高 checked; 中 there takes Sonnet with it.
   click(tuneTrigger(host));
   press(tuneTrigger(host), "ArrowDown");
+  expect(host.querySelector('[data-tune-column="effort"]')).toBeNull();
+  press(tuneTrigger(host), "ArrowRight");
   expect(tuneLabels(host, "effort")).toEqual([t.project.effortDefault, "低", "中", "高"]);
   expect(tuneRow(host, "effort", "高")?.getAttribute("aria-selected")).toBe("true");
   click(tuneRow(host, "effort", "中"));
@@ -368,11 +396,14 @@ test("one account only: no account to pick; the account waits while a run is goi
   click(tuneRow(two.host, "account", "b@b.com"));
   await settle();
   expect(tunes(busy)).toEqual([]);
+  expect(two.host.querySelector('[data-tune-column="model"]')).toBeNull();
+  click(tuneRow(two.host, "account", "me@a.com"));
+  expect(tuneLabels(two.host, "model")).toContain("opus");
   two.close();
   forgetClaudeOptions();
 });
 
-test("on a phone the picker is a sheet: the three with what each is now, and a level of its own for each", async () => {
+test("on a phone the picker is a sheet that goes in a level at a time: the accounts, an account's models, a model's levels, Back going up one", async () => {
   const { forgetClaudeOptions } = await import("./project-agent-options.svelte.ts");
   forgetClaudeOptions();
   const previous = window.matchMedia;
@@ -395,17 +426,28 @@ test("on a phone the picker is a sheet: the three with what each is now, and a l
     };
     const { host, close } = render(ProjectChat, { runtime, t, selected: session });
     await settle();
+    const title = () => host.querySelector(".bottom-sheet-title")?.textContent;
+    const back = () => host.querySelector<HTMLElement>(`.bottom-sheet-head button[aria-label="${t.common.back}"]`);
     click(tuneTrigger(host));
-    const nav = [...host.querySelectorAll("[data-tune-level]")];
-    expect(nav.map((row) => row.getAttribute("data-tune-level"))).toEqual(["account", "model", "effort"]);
-    expect(nav[2]?.textContent).toContain("高");
-    click(nav[1]);
-    expect(host.querySelector(".bottom-sheet-title")?.textContent).toBe(t.project.modelLabel);
+    // The top level: the accounts, under whose session it is; nothing to go back to.
+    expect(title()).toBe("Claude Code");
+    expect(tuneLabels(host, "account")).toEqual(["me@a.com", "b@b.com"]);
+    expect(back()).toBeNull();
+    click(tuneRow(host, "account", "me@a.com"));
+    expect(tunes(runtime)).toEqual([]);
+    expect(title()).toBe("me@a.com");
+    expect(host.querySelector('[data-tune-column="account"]')).toBeNull();
+    expect(tuneLabels(host, "model")).toContain("sonnet");
     // Back goes up a level, not out of the sheet.
-    click(host.querySelector(`.bottom-sheet-head button[aria-label="${t.common.back}"]`));
-    expect(host.querySelectorAll("[data-tune-level]")).toHaveLength(3);
-    click(host.querySelector('[data-tune-level="model"]'));
+    click(back());
+    expect(title()).toBe("Claude Code");
+    expect(tuneLabels(host, "account")).toEqual(["me@a.com", "b@b.com"]);
+    click(tuneRow(host, "account", "me@a.com"));
     click(tuneRow(host, "model", "sonnet"));
+    expect(tunes(runtime)).toEqual([]);
+    expect(title()).toBe("sonnet");
+    expect(tuneRow(host, "effort", "高")?.getAttribute("aria-selected")).toBe("true");
+    click(tuneRow(host, "effort", "高"));
     await settle();
     expect(tunes(runtime)).toEqual([["proj-1", { model: "sonnet" }]]);
     expect(host.querySelector(".bottom-sheet-layer")).toBeNull();
@@ -528,8 +570,11 @@ test("a Codex session names Codex, has no plan mode or account, lists Codex's co
   click(trigger);
   expect(host.querySelector('[data-tune-column="account"]')).toBeNull();
   expect(tuneLabels(host, "model")).toEqual([t.project.modelDefault, "GPT-5.6 Terra", "GPT-5.6 Luna"]);
+  click(tuneRow(host, "model", "GPT-5.6 Luna"));
   expect(tuneLabels(host, "effort")).toEqual([t.project.effortDefault, "低", "中"]);
   click(tuneRow(host, "model", "GPT-5.6 Terra"));
+  expect(tuneLabels(host, "effort")).toEqual([t.project.effortDefault, "低", "中", "高", "极高", "最大"]);
+  click(tuneRow(host, "effort", t.project.effortDefault));
   await settle();
   expect(tunes(runtime)).toEqual([["proj-codex", { model: "gpt-5.6-terra" }]]);
   close();

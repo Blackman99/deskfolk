@@ -12,14 +12,19 @@
 	import { effortOn, effortRows, effortsShown, modelRows, tunePatch, type AgentTune, type TuneRow } from './project-agent-tune.ts';
 
 	/**
-	 * A project session's account, model and thinking level (ADR 0095) in one picker that cascades:
-	 * the accounts, the models of the one in focus, the levels of the model in focus, each column
-	 * opening beside the one before it, the session's own path open from the start. Pointing at a
-	 * row opens what is under it; a click takes the path up to that row and closes. On a phone a
-	 * sheet from the bottom: the three, each with what it is now, and a level of its own for each.
-	 * A Codex session (ADR 0099) has no account to pick: its models are the ones Codex lists.
+	 * A project session's account, model and thinking level (ADR 0095) in one picker that cascades
+	 * a level at a time: it opens on the accounts alone, and a row opens what is under it beside it
+	 * (an account its models, a model the levels it takes) when it is pointed at or clicked. Only a
+	 * row with nothing under it — a level, or a model that takes none — is a pick: it takes the
+	 * path up to it and closes. On a phone a sheet from the bottom that goes into a row the same
+	 * way, a level at a time, Back going up one. A Codex session (ADR 0099) has no account to pick:
+	 * the picker starts at the models Codex lists.
 	 */
 	type Level = 'account' | 'model' | 'effort';
+
+	/** Each column's width, so the field can keep room for every column that may open beside the first. */
+	const COLUMN_WIDTH: Record<Level, number> = { account: 264, model: 290, effort: 140 };
+	const COLUMN_GAP = 4;
 
 	type Props = {
 		t: Copy;
@@ -52,13 +57,15 @@
 	let focusAccount = $state('');
 	let focusModel = $state('');
 	let focusEffort = $state('');
+	/** How far the path is open: the columns side by side, or how deep the phone's sheet has gone. One is the first level alone. */
+	let depth = $state(1);
 	/** The column the arrow keys move in, and whether they moved last (its row is ringed then, not under a pointer). */
 	let active = $state<Level>('model');
 	let keyed = $state(false);
-	/** Where the phone's sheet is: the three (null), or one of them. */
-	let sheetLevel = $state<Level | null>(null);
-	/** A finger has no pointing: its first tap on a row with a column beside it opens that column. */
-	let touching = false;
+	/** Which way the phone's sheet went last, for the way its list slides in. */
+	let sheetStep = $state<'forward' | 'back'>('forward');
+	/** The width every column that may open takes, kept from the start so opening one never moves the others. */
+	let reserve = 0;
 
 	const nowList = $derived(ownModels ?? claudeModelsOf(tune.account || null));
 	const focusList = $derived(ownModels ?? claudeModelsOf(focusAccount || null));
@@ -71,9 +78,13 @@
 	);
 	const models = $derived(modelRows(focusList, tune.model, t.project.modelDefault, t.project.modelDefaultHint(agentName)));
 	const efforts = $derived(effortRows(focusList, focusModel, keptEffort, t.project.effortDefault, t.sidebar.thinkingLevels));
+	/** Every level along the path in focus; the ones open are the first `depth`. */
 	const levels = $derived(
 		[accounts ? 'account' : null, 'model', effortsShown(focusList, focusModel, keptEffort) ? 'effort' : null].filter((level): level is Level => level !== null)
 	);
+	const shown = $derived(levels.slice(0, Math.max(1, depth)));
+	/** The level the phone's sheet lists: the deepest one open. */
+	const sheetLevel = $derived(shown[shown.length - 1]!);
 
 	function rowsOf(level: Level): TuneRow[] {
 		return level === 'account' ? accountRows : level === 'model' ? models : efforts;
@@ -108,9 +119,13 @@
 		[accountLabel, modelNote ? `${modelLabel} · ${modelNote}` : modelLabel, effortShown ? effortLabel : null].filter(Boolean).join('\n')
 	);
 
-	function labelOf(level: Level): string {
-		return level === 'account' ? (accountLabel ?? '') : level === 'model' ? modelLabel : effortLabel;
-	}
+	/** The phone sheet's heading a level down: the row it went into (an account, a model). At the top, whose session it is. */
+	const sheetTitle = $derived.by(() => {
+		const at = shown.length - 1;
+		if (at === 0) return agentName;
+		const parent = shown[at - 1]!;
+		return rowsOf(parent).find((row) => row.value === focusOf(parent))?.label ?? agentName;
+	});
 
 	function focusAt(level: Level, value: string): void {
 		if (level === 'account') {
@@ -127,18 +142,41 @@
 		}
 	}
 
+	/** Where a level sits along the path: its column, counted from the first. */
+	function columnOf(level: Level): number {
+		return levels.indexOf(level);
+	}
+
+	/** Puts the path through a row and opens what is under it, if anything: its column beside it, or the sheet a level down. */
+	function openAt(level: Level, value: string): void {
+		focusAt(level, value);
+		const at = columnOf(level);
+		depth = opensMore(level, value) ? at + 2 : at + 1;
+	}
+
+	/** The column `level` opens on its own path's row, or the first one that can be taken when that row is not in it. */
+	function landIn(level: Level): void {
+		const rows = rowsOf(level);
+		if (!rows.some((row) => row.value === focusOf(level) && !row.disabled)) step(level, 'first');
+	}
+
 	function openPicker(): void {
 		if (disabled || open) return;
 		focusAccount = tune.account;
 		focusModel = tune.model;
 		focusEffort = tune.effort;
-		active = 'model';
+		depth = 1;
+		active = levels[0]!;
 		keyed = false;
-		sheetLevel = levels.length === 1 ? 'model' : null;
+		sheetStep = 'forward';
 		if (!phone.current && triggerEl) {
 			const rect = triggerEl.getBoundingClientRect();
 			const below = window.innerHeight - rect.bottom;
 			placeAbove = below < 280 && rect.top > below;
+			// Room for every column that may open: another account's models may take levels, so with accounts the levels count too.
+			const mayTakeLevels = Boolean(accounts) || models.some((row) => opensMore('model', row.value));
+			const widths = [accounts ? COLUMN_WIDTH.account : 0, COLUMN_WIDTH.model, mayTakeLevels ? COLUMN_WIDTH.effort : 0].filter(Boolean);
+			reserve = widths.reduce((sum, width) => sum + width, 0) + COLUMN_GAP * (widths.length - 1);
 			// The keys are read on the field, and WebKit does not focus a button it was clicked on.
 			triggerEl.focus({ preventScroll: true });
 		}
@@ -166,16 +204,24 @@
 		if (change) onpick(change);
 	}
 
+	/** A click or a tap: a row with something under it opens it (the sheet goes into it); a row with nothing under it is the pick. */
 	function press(level: Level, row: TuneRow): void {
 		if (row.disabled) return;
 		clearTimeout(hoverTimer);
 		active = level;
-		if (touching && !phone.current && row.value !== focusOf(level) && opensMore(level, row.value)) {
-			focusAt(level, row.value);
+		if (opensMore(level, row.value)) {
+			sheetStep = 'forward';
+			openAt(level, row.value);
 			return;
 		}
 		focusAt(level, row.value);
 		commit(level);
+	}
+
+	/** The phone sheet's Back: one level up. */
+	function sheetBack(): void {
+		sheetStep = 'back';
+		depth = Math.max(1, shown.length - 1);
 	}
 
 	/**
@@ -186,7 +232,7 @@
 	let hoverTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function hover(level: Level, row: TuneRow): void {
-		if (row.disabled || touching) return;
+		if (row.disabled) return;
 		clearTimeout(hoverTimer);
 		keyed = false;
 		if (level === 'effort') {
@@ -194,10 +240,15 @@
 			focusEffort = row.value;
 			return;
 		}
-		if (row.value === focusOf(level)) return;
+		// Back on the row whose column is open: it stays open, and so does anything beyond it.
+		const at = columnOf(level);
+		if (row.value === focusOf(level) && depth >= (opensMore(level, row.value) ? at + 2 : at + 1)) {
+			active = level;
+			return;
+		}
 		hoverTimer = setTimeout(() => {
 			active = level;
-			focusAt(level, row.value);
+			openAt(level, row.value);
 		}, HOVER_INTENT_MS);
 	}
 
@@ -212,6 +263,16 @@
 		if (next) focusAt(level, next.value);
 	}
 
+	/** Right, or Enter on a row with something under it: its column opens and the keys go into it. */
+	function enter(): boolean {
+		const at = columnOf(active);
+		if (at < 0 || !opensMore(active, focusOf(active))) return false;
+		depth = at + 2;
+		active = levels[at + 1]!;
+		landIn(active);
+		return true;
+	}
+
 	function onKeydown(event: KeyboardEvent): void {
 		if (disabled) return;
 		if (!open) {
@@ -222,7 +283,7 @@
 			return;
 		}
 		if (phone.current) return;
-		const at = levels.indexOf(active);
+		const at = columnOf(active);
 		if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'ArrowLeft', 'ArrowRight'].includes(event.key)) keyed = true;
 		switch (event.key) {
 			case 'Escape':
@@ -239,29 +300,39 @@
 			case 'End':
 				event.preventDefault();
 				step(active, event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : event.key === 'Home' ? 'first' : 'last');
+				// Another row: what was open beside the one before closes.
+				depth = at + 1;
 				return;
 			case 'ArrowRight':
 				event.preventDefault();
-				if (at >= 0 && at < levels.length - 1) active = levels[at + 1]!;
+				enter();
 				return;
 			case 'ArrowLeft':
+				// Back a column, closing the one the keys were in.
 				event.preventDefault();
-				if (at > 0) active = levels[at - 1]!;
+				if (at > 0) {
+					depth = at;
+					active = levels[at - 1]!;
+				}
 				return;
 			case 'Enter':
 			case ' ':
 				event.preventDefault();
-				commit(active);
+				if (!enter()) commit(active);
 				return;
 		}
 	}
 
 	// A column the keys were in can go: the model in focus may take no level.
 	$effect(() => {
-		if (open && !levels.includes(active)) active = levels[levels.length - 1]!;
+		if (open && !shown.includes(active)) active = shown[shown.length - 1]!;
 	});
 
-	/** In the top layer, against the window: over the field (or under it), kept inside the window, as tall as the room there. */
+	/**
+	 * In the top layer, against the window: over the field (or under it), as tall as the room there,
+	 * and far enough left that every column that may open fits in the window, so a column opening
+	 * never moves the ones before it.
+	 */
 	function place(): void {
 		const el = panelEl;
 		if (!el || !triggerEl) return;
@@ -270,8 +341,7 @@
 		const room = placeAbove ? rect.top - 12 : window.innerHeight - rect.bottom - 12;
 		el.style.setProperty('--tune-height', `${Math.max(220, Math.min(640, room))}px`);
 		el.style.maxWidth = `${viewportWidth - 16}px`;
-		const width = el.offsetWidth;
-		el.style.left = `${Math.max(8, Math.min(rect.left, viewportWidth - 8 - width))}px`;
+		el.style.left = `${Math.max(8, Math.min(rect.left, viewportWidth - 8 - reserve))}px`;
 		if (placeAbove) {
 			el.style.top = 'auto';
 			el.style.bottom = `${window.innerHeight - rect.top + 4}px`;
@@ -299,13 +369,6 @@
 			}
 			el.removeAttribute('popover');
 		};
-	});
-
-	// A column opening or closing changes the panel's width.
-	$effect(() => {
-		void levels.length;
-		void focusList;
-		if (open) place();
 	});
 
 	$effect(() => {
@@ -375,10 +438,9 @@
 			class:is-above={placeAbove}
 			role="group"
 			aria-label={t.project.tuneLabel}
-			onpointerdown={(event) => (touching = event.pointerType === 'touch')}
 		>
-			{#each levels as level (level)}
-				<div class="tune-column is-{level}" data-tune-column={level}>
+			{#each shown as level, at (level)}
+				<div class="tune-column is-{level}" style:width="{COLUMN_WIDTH[level]}px" data-tune-column={level}>
 					<div class="tune-heading" aria-hidden="true">{headingOf(level)}</div>
 					<ul id={`tune-${uid}-${level}`} class="tune-list" role="listbox" aria-label={headingOf(level)}>
 						{#each rowsOf(level) as row (row.value)}
@@ -389,7 +451,7 @@
 								id={rowId(level, row.value)}
 								class="tune-row"
 								class:is-checked={checked}
-								class:is-focus={row.value === focusOf(level)}
+								class:is-focus={at < shown.length - 1 && row.value === focusOf(level)}
 								class:is-keyed={keyed && active === level && row.value === focusOf(level)}
 								class:is-disabled={row.disabled}
 								role="option"
@@ -423,50 +485,49 @@
 
 	{#if open && phone.current}
 		<BottomSheet
-			title={sheetLevel ? headingOf(sheetLevel) : agentName}
+			title={sheetTitle}
 			closeLabel={t.common.close}
 			onClose={() => close()}
-			onBack={sheetLevel && levels.length > 1 ? () => (sheetLevel = null) : undefined}
+			onBack={shown.length > 1 ? sheetBack : undefined}
 			backLabel={t.common.back}
 		>
-			{#if sheetLevel === null}
-				{#each levels as level (level)}
-					<button type="button" class="sheet-item tune-sheet-nav" data-tune-level={level} onclick={() => (sheetLevel = level)}>
-						<span class="sheet-item-label">
-							{headingOf(level)}
-							<span class="sheet-item-detail">{labelOf(level)}</span>
-						</span>
-						<Icon name="chevron-right" />
-					</button>
-				{/each}
-				{#if accounts && accountLocked}
-					<p class="tune-note">{t.project.accountBusy}</p>
-				{/if}
-			{:else}
-				{@const level = sheetLevel}
-				<ul class="tune-sheet-list" role="listbox" aria-label={headingOf(level)} data-tune-column={level}>
-					{#each rowsOf(level) as row (row.value)}
-						<!-- svelte-ignore a11y_click_events_have_key_events -->
-						<li
-							class="sheet-item"
-							class:is-disabled={row.disabled}
-							role="option"
-							aria-selected={row.value === checkedOf(level)}
-							aria-disabled={row.disabled}
-							data-value={row.value}
-							onclick={() => press(level, row)}
-						>
-							<span class="sheet-item-label">
-								{row.label}
-								{#if row.detail}<span class="sheet-item-detail">{row.detail}</span>{/if}
-							</span>
-							{#if row.value === checkedOf(level)}
-								<Icon name="check" />
-							{/if}
-						</li>
-					{/each}
-				</ul>
-			{/if}
+			{@const level = sheetLevel}
+			<div class="tune-sheet">
+				{#key `${shown.length}:${level}`}
+					<div class="tune-sheet-step" class:is-back={sheetStep === 'back'}>
+						<div class="tune-sheet-heading" aria-hidden="true">{headingOf(level)}</div>
+						<ul class="tune-sheet-list" role="listbox" aria-label={headingOf(level)} data-tune-column={level}>
+							{#each rowsOf(level) as row (row.value)}
+								{@const checked = row.value === checkedOf(level)}
+								<!-- svelte-ignore a11y_click_events_have_key_events -->
+								<li
+									class="sheet-item"
+									class:is-disabled={row.disabled}
+									role="option"
+									aria-selected={checked}
+									aria-disabled={row.disabled}
+									data-value={row.value}
+									onclick={() => press(level, row)}
+								>
+									<span class="sheet-item-label">
+										{row.label}
+										{#if row.detail}<span class="sheet-item-detail">{row.detail}</span>{/if}
+									</span>
+									{#if checked}
+										<Icon name="check" class="tune-check" />
+									{/if}
+									{#if opensMore(level, row.value)}
+										<Icon name="chevron-right" class="tune-more" />
+									{/if}
+								</li>
+							{/each}
+						</ul>
+						{#if level === 'account' && accountLocked}
+							<p class="tune-note">{t.project.accountBusy}</p>
+						{/if}
+					</div>
+				{/key}
+			</div>
 		</BottomSheet>
 	{/if}
 </div>
@@ -554,22 +615,25 @@
 		color: var(--accent);
 	}
 
-	/* The columns side by side, in the top layer: placed by `place()`. */
+	/*
+	 * The columns side by side, in the top layer: placed by `place()`. Each is a card of its own, as
+	 * tall as its rows, lined up on the edge by the field (the foot when it opens upwards), so a
+	 * taller column opening beside one never moves its rows.
+	 */
 	.tune-panel {
 		position: absolute;
 		left: 0;
 		bottom: calc(100% + 4px);
 		z-index: 100;
 		display: flex;
-		align-items: stretch;
+		align-items: flex-end;
+		gap: 4px;
 		width: max-content;
-		background: var(--pane);
+		background: transparent;
 		color: var(--ink);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		box-shadow: var(--shadow-lg);
+		border: 0;
 		box-sizing: border-box;
-		overflow: hidden;
+		overflow: visible;
 		animation: tuneIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
@@ -581,6 +645,7 @@
 	}
 
 	.tune-panel:not(.is-above) {
+		align-items: flex-start;
 		animation-name: tuneInBelow;
 	}
 
@@ -594,30 +659,29 @@
 		to { opacity: 1; transform: none; }
 	}
 
+	/* Widths come from `COLUMN_WIDTH`, which `place()` keeps room for. */
 	.tune-column {
 		display: flex;
 		flex-direction: column;
+		flex: none;
 		min-width: 0;
 		max-height: var(--tune-height, 360px);
 		padding: 4px;
 		box-sizing: border-box;
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		box-shadow: var(--shadow-lg);
 	}
 
+	/* A column opening beside the one before it comes out of it. */
 	.tune-column + .tune-column {
-		border-left: 1px solid var(--line);
+		animation: tuneColumnIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	.tune-column.is-account {
-		width: 264px;
-		background: var(--line-subtle);
-	}
-
-	.tune-column.is-model {
-		width: 290px;
-	}
-
-	.tune-column.is-effort {
-		width: 140px;
+	@keyframes tuneColumnIn {
+		from { opacity: 0; transform: translateX(-6px); }
+		to { opacity: 1; transform: none; }
 	}
 
 	.tune-heading {
@@ -653,17 +717,10 @@
 		user-select: none;
 	}
 
-	/* The path in focus: its row in each column stands out, as the source column of the model picker does. */
+	/* The row under the pointer, and the row whose column is open beside it: the path so far. */
 	.tune-row:hover:not(.is-disabled),
 	.tune-row.is-focus {
-		background: var(--pane);
-		box-shadow: var(--shadow-xs);
-	}
-
-	.tune-column:not(.is-account) .tune-row:hover:not(.is-disabled),
-	.tune-column:not(.is-account) .tune-row.is-focus {
 		background: var(--line-subtle);
-		box-shadow: none;
 	}
 
 	.tune-row.is-keyed {
@@ -724,6 +781,36 @@
 		color: var(--muted);
 	}
 
+	/* A level down the phone's sheet slides in from the side it went to, inside the sheet. */
+	.tune-sheet {
+		overflow: hidden;
+	}
+
+	.tune-sheet-step {
+		animation: tuneStepIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.tune-sheet-step.is-back {
+		animation-name: tuneStepBack;
+	}
+
+	@keyframes tuneStepIn {
+		from { opacity: 0; transform: translateX(20px); }
+	}
+
+	@keyframes tuneStepBack {
+		from { opacity: 0; transform: translateX(-20px); }
+	}
+
+	.tune-sheet-heading {
+		padding: 2px 12px 6px;
+		font-size: 12px;
+		line-height: 1.3;
+		color: var(--muted);
+		user-select: none;
+		-webkit-user-select: none;
+	}
+
 	.tune-sheet-list {
 		margin: 0;
 		padding: 0;
@@ -740,7 +827,9 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.tune-panel {
+		.tune-panel,
+		.tune-column + .tune-column,
+		.tune-sheet-step {
 			animation: none;
 		}
 	}

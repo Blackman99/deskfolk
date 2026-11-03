@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The project session's picker opens a level at a time
+
+- The account, model and thinking level picker at the bottom of a project session's composer opened all three columns at once, and a click on an account or a model already took it. It now opens on the accounts alone (on the models, with one account), and pointing at or clicking a row opens what is under it beside it: an account its models, a model its thinking levels. Only a thinking level, or a model that takes none, is the pick; the session's own choices are checked along the way, and a column opening never moves the ones before it. On a phone the sheet goes in a level at a time, the accounts, then an account's models, then a model's levels, headed by the row you went into, with Back going up one.
+
 ### Routines in the calendar no longer cover the ones right after them
 
 - In the week and day views a routine is drawn 48px tall, so its avatar and two lines fit, but the calendar placed routines side by side by their 30 minutes. A routine therefore kept the whole column width and covered the routines that start when it ends, such as one at 8:30 over two at 9:00. An hour is now 96px tall, up from 56px, so a 30-minute routine is 48px on its own: the 8:30 one ends where the 9:00 ones begin and keeps the full width, and the two at 9:00 share the row. The grid is taller, so a day takes more scrolling. The calendar also places blocks by the height it draws now (svelte5plus-calendar 0.6.0), so a block made taller than its time no longer covers the next one.

@@ -347,11 +347,13 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 		});
 
 		/*
-		 * The account, model and thinking level are one cascading picker (2026-10-22): its columns
-		 * open over the composer, in the top layer, inside the window. WebKit does not focus a
-		 * button it was clicked on, and the keys are read on the picker's field: opening focuses it.
+		 * The account, model and thinking level are one cascading picker (2026-10-22) that opens a
+		 * level at a time (2026-11-03): over the composer, in the top layer, inside the window, the
+		 * accounts alone at first. A column opening beside one never moves the rows already there.
+		 * WebKit does not focus a button it was clicked on, and the keys are read on the picker's
+		 * field: opening focuses it.
 		 */
-		test('a project session\'s picker opens its columns over the composer, and takes the keys', async ({ baseURL }) => {
+		test('a project session\'s picker opens a column at a time over the composer, and takes the keys', async ({ baseURL }) => {
 			const browser = await engine.launch();
 			const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
 			await page.goto(`${baseURL}index.html?story=project-chat`);
@@ -369,13 +371,32 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 				return { above: Math.round(t.top - p.bottom), left: Math.round(p.left - t.left), inside: p.top >= 0 && p.right <= innerWidth };
 			});
 			expect(place).toEqual({ above: 4, left: 0, inside: true });
-			await expect(page.locator('[data-tune-column]')).toHaveCount(3);
-			// To the accounts, down to the other one, over to its models: the keys walk the cascade.
-			await page.keyboard.press('ArrowLeft');
+			await expect(page.locator('[data-tune-column]')).toHaveCount(1);
+			const rowAt = (selector: string) => page.locator(selector).first().evaluate((el) => {
+				const r = el.getBoundingClientRect();
+				return [Math.round(r.left), Math.round(r.top)];
+			});
+			const firstAccount = await rowAt('[data-tune-column="account"] .tune-row');
+			// Down to the other account, Right into its models: the keys walk the cascade.
 			await page.keyboard.press('ArrowDown');
 			await page.keyboard.press('ArrowRight');
+			await expect(page.locator('[data-tune-column]')).toHaveCount(2);
 			await expect(page.locator('[data-tune-column="account"] .tune-row.is-focus')).toHaveAttribute('data-value', '/Users/me/.claude-team');
 			await expect(page.locator('[data-tune-column="model"] .tune-row.is-keyed')).toHaveCount(1);
+			// Pointing at a model that takes levels opens them beside it.
+			await page.locator('[data-tune-column="model"] .tune-row[data-value="sonnet"]').hover();
+			await expect(page.locator('[data-tune-column]')).toHaveCount(3);
+			await expect(page.locator('[data-tune-column="effort"] [role=option]')).toHaveCount(5);
+			const firstModel = await rowAt('[data-tune-column="model"] .tune-row');
+			// Haiku takes none: its levels close.
+			await page.locator('[data-tune-column="model"] .tune-row[data-value="haiku"]').hover();
+			await expect(page.locator('[data-tune-column]')).toHaveCount(2);
+			// The columns before stayed where they were, and the whole of it is still in the window.
+			expect(await rowAt('[data-tune-column="account"] .tune-row')).toEqual(firstAccount);
+			expect(await rowAt('[data-tune-column="model"] .tune-row')).toEqual(firstModel);
+			await page.locator('[data-tune-column="model"] .tune-row[data-value="sonnet"]').hover();
+			await expect(page.locator('[data-tune-column]')).toHaveCount(3);
+			expect(await page.evaluate(() => document.querySelector('.tune-panel')!.getBoundingClientRect().right <= innerWidth)).toBe(true);
 			await page.keyboard.press('Escape');
 			await expect(panel).toHaveCount(0);
 			await browser.close();
