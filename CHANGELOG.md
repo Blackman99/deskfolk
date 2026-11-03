@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Routines in the calendar no longer cover the ones right after them
+
+- In the week and day views a routine is drawn 48px tall, so its avatar and two lines fit, but the calendar placed routines side by side by their 30 minutes. A routine therefore kept the whole column width and covered the routines that start when it ends, such as one at 8:30 over two at 9:00. An hour is now 96px tall, up from 56px, so a 30-minute routine is 48px on its own: the 8:30 one ends where the 9:00 ones begin and keeps the full width, and the two at 9:00 share the row. The grid is taller, so a day takes more scrolling. The calendar also places blocks by the height it draws now (svelte5plus-calendar 0.6.0), so a block made taller than its time no longer covers the next one.
+
 ### A Linux preview: an AppImage and a deb
 
 - Experimental, x86_64 only: each release now carries `Deskfolk_<version>_amd64.AppImage` and `Deskfolk_<version>_amd64.deb`, unsigned, built on Ubuntu 22.04 (glibc 2.35 or newer). Installing it, where data and keys live and what is not there yet are in [Linux preview](docs/linux.md). It has been built and tested on GitHub's Ubuntu runners, not yet used end to end on a real Linux desktop.

@@ -408,7 +408,8 @@
 			views={['week', 'day', 'month', 'agenda']}
 			firstDayOfWeek={1}
 			hour12={false}
-			hourHeight={56}
+			hourHeight={96}
+			eventMinHeight={48}
 			slotDuration={30}
 			snapDuration={15}
 			dayMaxEvents={4}
@@ -1284,9 +1285,11 @@
 		box-shadow: 0 2px 6px var(--accent-glow);
 	}
 
-	/* Event Blocks */
+	/* Event Blocks. A 30-minute routine is 48px at `hourHeight={96}`, room for the avatar
+	   and two lines. Any floor goes in the `eventMinHeight` prop, never a CSS min-height:
+	   the library packs overlapping blocks by the height it draws, and a CSS floor it
+	   cannot see lets a block cover the ones that start right after it. */
 	.calendar-stage :global(.s5c-block) {
-		min-height: 48px;
 		border-radius: var(--radius-sm);
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
 		border: 1px solid color-mix(in srgb, currentColor 25%, transparent);

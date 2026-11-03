@@ -2,7 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 minimumReleaseAgeExclude:
-  - svelte5plus-calendar@0.5.5
+  - svelte5plus-calendar@0.6.0
 # The Agent SDK ships Claude Code itself as a per-platform optional package (~230 MB). Deskfolk
 # always runs the user's own installed `claude` (ADR 0061), so those packages are dropped here
 # (`ignoredOptionalDependencies` does not skip them under pnpm 12).

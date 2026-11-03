@@ -32,7 +32,7 @@ THE SOFTWARE.
 
 ## svelte5plus-calendar
 
-The roster routine calendar in `apps/messenger` uses [svelte5plus-calendar](https://github.com/Blackman99/svelte5plus-calendar) 0.5.5, which is released under the MIT license:
+The roster routine calendar in `apps/messenger` uses [svelte5plus-calendar](https://github.com/Blackman99/svelte5plus-calendar) 0.6.0, which is released under the MIT license:
 
 ```text
 MIT License
