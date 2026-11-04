@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { playbookStep, type PlaybookResolved, type PlaybookStepId } from '@real-bot/protocol';
+	import { CUSTOM_STEPS_MAX, playbookStep, type CustomStep, type CustomStepView, type PlaybookHook, type PlaybookResolved, type PlaybookStepId } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import Icon from '../Icon.svelte';
-	import { layPlaybookFlow, paramText, stepDiffers, stepLocked, stepRole, type PlaybookCard, type PlaybookNodeId } from './playbook-flow.ts';
+	import PlaybookAddMenu from './PlaybookAddMenu.svelte';
+	import { isCustomNode, layPlaybookFlow, paramText, stepDiffers, stepLocked, stepRole, type PlaybookCard, type PlaybookNodeId } from './playbook-flow.ts';
 	import type { RoutingNodeView } from './routing-map.ts';
 
 	/**
@@ -10,6 +11,8 @@
 	 * sets steps off, its root card on top and the steps it sets off under it, each a small card
 	 * saying what it runs on now. A step that is off is dashed and dim, one that always runs has a
 	 * lock, one changed from its built-in a dot; a call's prompt conflict or unread answers a warning.
+	 * The steps of your own (ADR 0105) hang in the round of their moment after the built-in ones, marked
+	 * as yours, each round ending in a card that adds another.
 	 */
 	interface Props {
 		resolved: PlaybookResolved;
@@ -19,14 +22,37 @@
 		turnModel: string;
 		selected: PlaybookNodeId | null;
 		onpick: (node: PlaybookNodeId) => void;
+		/** The engine's steps of your own. */
+		own?: readonly CustomStepView[];
+		/** A draft is started from the add card's menu; absent, the map has no add cards. */
+		onadd?: (draft: CustomStep) => void;
 		t: Copy;
 	}
 
-	let { resolved, builtin, viewOf, turnModel, selected, onpick, t }: Props = $props();
+	let { resolved, builtin, viewOf, turnModel, selected, onpick, own = [], onadd, t }: Props = $props();
 	const c = $derived(t.playbooks);
 
 	let width = $state(0);
-	const layout = $derived(layPlaybookFlow(width || 360));
+	const layout = $derived(layPlaybookFlow(width || 360, own, onadd !== undefined));
+	const ownById = $derived(new Map(own.map((step) => [step.id as string, step])));
+	/** The add card whose menu is open. */
+	let menu = $state<{ hook: PlaybookHook; anchor: HTMLElement } | null>(null);
+
+	/** Why a step of your own does not run, when it does not. */
+	function ownOff(step: CustomStepView): string | null {
+		if (!step.on) return c.own.off;
+		return step.running ? null : c.own.noJobs;
+	}
+
+	function ownSaid(step: CustomStepView): string {
+		return `${c.own.moments[step.at]} · ${c.own.cardNo[step.then]}`;
+	}
+
+	function edgeOff(to: string): boolean {
+		if (to === 'turn') return false;
+		const mine = ownById.get(to);
+		return mine ? ownOff(mine) !== null : !resolved[to as PlaybookStepId]?.on;
+	}
 
 	/** A step's line under its name: off, else its model, else its first number. */
 	function said(step: PlaybookStepId): string {
@@ -58,7 +84,7 @@
 	<div class="playbook-flow" style:width="{layout.width}px" style:height="{layout.height}px">
 		<svg class="playbook-edges" width={layout.width} height={layout.height} aria-hidden="true">
 			{#each layout.edges as edge (edge.to)}
-				<path d={edge.d} class:is-off={edge.to !== 'turn' && !resolved[edge.to as PlaybookStepId]?.on}></path>
+				<path d={edge.d} class:is-off={edgeOff(edge.to)}></path>
 			{/each}
 		</svg>
 		{#each layout.cards as card (card.id)}
@@ -79,10 +105,53 @@
 					<span class="playbook-card-title">{c.hooks.turn}</span>
 					<span class="playbook-card-said">{turnModel}</span>
 				</button>
+			{:else if card.kind === 'add'}
+				<button
+					type="button"
+					class="playbook-card is-add"
+					style:left="{card.x}px"
+					style:top="{card.y}px"
+					style:width="{card.w}px"
+					style:height="{card.h}px"
+					aria-haspopup="menu"
+					aria-expanded={menu?.hook === card.hook}
+					data-playbook-add={card.hook}
+					onclick={(event) => (menu = menu?.hook === card.hook ? null : { hook: card.hook, anchor: event.currentTarget })}
+				>
+					<span class="playbook-card-title"><Icon name="plus" size={12} /> {c.own.add}</span>
+				</button>
 			{:else if card.kind === 'root'}
 				<div class="playbook-card is-root" style:left="{card.x}px" style:top="{card.y}px" style:width="{card.w}px" style:height="{card.h}px" data-playbook-round={card.hook}>
 					<span class="playbook-card-title">{rootLabel(card)}</span>
 				</div>
+			{:else if isCustomNode(card.node)}
+				{@const mine = ownById.get(card.node)}
+				{#if mine}
+					{@const why = ownOff(mine)}
+					<button
+						type="button"
+						class="playbook-card is-step is-own"
+						class:is-off={why !== null}
+						class:is-selected={selected === mine.id}
+						style:left="{card.x}px"
+						style:top="{card.y}px"
+						style:width="{card.w}px"
+						style:height="{card.h}px"
+						aria-pressed={selected === mine.id}
+						title={why ?? c.own.mineTitle}
+						data-playbook-node={mine.id}
+						data-playbook-own
+						data-on={why === null}
+						onclick={() => onpick(mine.id as PlaybookNodeId)}
+					>
+						<span class="playbook-card-head">
+							<span class="playbook-card-dot" aria-hidden="true"></span>
+							<span class="playbook-card-title">{mine.name}</span>
+							<span class="playbook-card-own">{c.own.mine}</span>
+						</span>
+						<span class="playbook-card-said">{why ?? ownSaid(mine)}</span>
+					</button>
+				{/if}
 			{:else}
 				{@const step = card.node as PlaybookStepId}
 				<button
@@ -116,6 +185,10 @@
 		{/each}
 	</div>
 </div>
+
+{#if menu && onadd}
+	<PlaybookAddMenu hook={menu.hook} anchor={menu.anchor} full={own.length >= CUSTOM_STEPS_MAX} {t} onClose={() => (menu = null)} onchoose={onadd} />
+{/if}
 
 <style>
 	.playbook-map {
@@ -242,6 +315,33 @@
 		font-weight: 600;
 		white-space: nowrap;
 		text-overflow: ellipsis;
+	}
+
+	/* A card that starts a step of your own: quieter than a step, no more than a place to press. */
+	.playbook-card.is-add {
+		align-items: center;
+		justify-content: center;
+		border-style: dotted;
+		background: transparent;
+		color: var(--muted);
+	}
+
+	.playbook-card.is-add .playbook-card-title {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-weight: 500;
+	}
+
+	.playbook-card.is-add:hover {
+		color: var(--ink);
+	}
+
+	.playbook-card-own {
+		flex: none;
+		color: var(--muted);
+		font-size: 10px;
 	}
 
 	.playbook-card-mark {

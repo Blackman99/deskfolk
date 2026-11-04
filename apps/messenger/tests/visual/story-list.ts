@@ -89,6 +89,7 @@ export const STORY_SIZES = {
 	'settings-prompts-tools': { width: 1000, height: 720 },
 	'settings-prompts-tools-narrow': { width: 390, height: 844 },
 	'roles': { width: 1000, height: 720 },
+	'roles-own-step': { width: 1000, height: 720 },
 	'roles-narrow': { width: 390, height: 844 },
 	'roles-narrow-tab': { width: 1000, height: 720 },
 	'settings-about': { width: 1000, height: 720 },

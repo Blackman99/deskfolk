@@ -1,13 +1,15 @@
 <script lang="ts">
-	import { tick, type Snippet } from 'svelte';
+	import { tick, untrack, type Snippet } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import {
 		builtinPlaybook,
 		emptyPlaybookDiff,
 		playbookDefaults,
 		type BuiltinModelRole,
+		type CustomStep,
 		type Locale,
 		type Playbook,
+		type PlaybookStepId,
 		type PromptSummary
 	} from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
@@ -18,6 +20,7 @@
 	import PlaybookHistory from './PlaybookHistory.svelte';
 	import PlaybookList from './PlaybookList.svelte';
 	import PlaybookMap from './PlaybookMap.svelte';
+	import CustomStepDetail from './CustomStepDetail.svelte';
 	import PlaybookStepDetail from './PlaybookStepDetail.svelte';
 	import PlaybookTurnPart from './PlaybookTurnPart.svelte';
 	import RoutingNode from './RoutingNode.svelte';
@@ -25,7 +28,7 @@
 	import { ModelLadder } from './model-ladder.svelte.ts';
 	import { firstLocale, type PromptView } from './prompts-view.ts';
 	import { askOnce, routingNodeView } from './routing-map.ts';
-	import { PLAYBOOK_ORDER, stepOfRole, stepRole, type PlaybookNodeId } from './playbook-flow.ts';
+	import { hookOfMoment, isCustomNode, PLAYBOOK_ROUNDS, playbookOrder, stepOfRole, stepRole, type PlaybookNodeId } from './playbook-flow.ts';
 	import { playbookName, Playbooks } from './playbooks.svelte.ts';
 
 	/**
@@ -135,11 +138,58 @@
 	});
 
 	const viewOf = (role: BuiltinModelRole) => routingNodeView(role, snapshot.settings, items);
-	const nameOf = (node: PlaybookNodeId) => (node === 'turn' ? c.turn.name : t.playbooks.steps[node]!.name);
+	/** The engine's steps of your own; an older daemon has none. */
+	const own = $derived(current?.custom_steps ?? []);
+	/** A step of your own being written, not saved yet (ADR 0105). */
+	let draft = $state<CustomStep | null>(null);
+	const nameOf = (node: PlaybookNodeId): string => {
+		if (node === 'turn') return c.turn.name;
+		if (isCustomNode(node)) return own.find((step) => step.id === node)?.name ?? (draft?.id === node ? draft.name : '');
+		return t.playbooks.steps[node]?.name ?? node;
+	};
+	/** The saved step the panel shows, or the draft; null once it is gone. */
+	const ownShown = $derived(isCustomNode(selected) ? (own.find((step) => step.id === selected) ?? null) : null);
+	const draftShown = $derived(ownShown === null && draft !== null && draft.id === selected ? draft : null);
+
+	/** Where the panel goes when the step of your own it showed is gone: its round's turn, or the round's first step. */
+	function leaveOwn(at: CustomStep['at']): void {
+		const hook = hookOfMoment(at);
+		selected = hook === 'turn' ? 'turn' : (PLAYBOOK_ROUNDS.find((round) => round.hook === hook)?.steps[0] ?? 'turn');
+		if (narrow) opened = false;
+	}
+
+	// Another engine shown: a draft was about the one before. A step of your own that is not in this one is gone from the panel.
+	$effect(() => {
+		void shownId;
+		untrack(() => (draft = null));
+	});
+	$effect(() => {
+		if (!isCustomNode(selected) || ownShown || draftShown || !current) return;
+		untrack(() => {
+			selected = 'turn';
+			if (narrow) opened = false;
+		});
+	});
+
+	function startDraft(step: CustomStep): void {
+		draft = step;
+		selected = step.id as PlaybookNodeId;
+		historyOf = null;
+		if (detailScroll) detailScroll.scrollTop = 0;
+		if (narrow) {
+			opened = true;
+			if (scroller) scroller.scrollTop = 0;
+		}
+	}
+
+	/** The step a call belongs to in this engine; a step of your own's call belongs to its first model step. */
+	function nodeOfRole(role: BuiltinModelRole): PlaybookNodeId | null {
+		return stepOfRole(role) ?? (role === 'custom_step' ? ((own.find((step) => step.run.kind === 'model')?.id as PlaybookNodeId | undefined) ?? null) : null);
+	}
 
 	let detailScroll = $state<HTMLElement>();
 	let mapCol = $state<HTMLElement>();
-	const order = PLAYBOOK_ORDER;
+	const order = $derived(playbookOrder(own));
 
 	function pick(node: PlaybookNodeId): void {
 		selected = node;
@@ -211,8 +261,9 @@
 		runtime.rolesTarget = null;
 		// Sent from a job's title row: that job's engine shown.
 		if (target.playbook) show(target.playbook);
-		if (target.role) {
-			selected = stepOfRole(target.role);
+		const node = target.role ? nodeOfRole(target.role) : null;
+		if (node) {
+			selected = node;
 			historyOf = null;
 			if (narrow) opened = true;
 		}
@@ -222,8 +273,9 @@
 	$effect(() => {
 		if (!focusEditor || !open || !openItem) return;
 		focusEditor = false;
-		if (openItem.role) {
-			selected = stepOfRole(openItem.role);
+		const node = openItem.role ? nodeOfRole(openItem.role) : null;
+		if (node) {
+			selected = node;
 			historyOf = null;
 			opened = true;
 		}
@@ -291,10 +343,38 @@
 				/>
 			{/if}
 		</section>
+	{:else if current && isCustomNode(selected)}
+		{@const mine = ownShown ?? draftShown}
+		{#if mine}
+			<CustomStepDetail
+				step={mine}
+				draft={ownShown === null}
+				running={ownShown?.running ?? true}
+				playbook={current}
+				{engineName}
+				api={runtime.client}
+				onsave={(diff) => playbooks.save(current.id, diff)}
+				oncancel={() => {
+					const at = draft?.at ?? 'turn_end';
+					draft = null;
+					leaveOwn(at);
+				}}
+				ondone={(what) => {
+					const at = mine.at;
+					draft = null;
+					if (what === 'deleted') leaveOwn(at);
+				}}
+				saving={playbooks.saving || playbooks.failed}
+				error={playbooks.error}
+				message={playbooks.message}
+				call={callPart}
+				{t}
+			/>
+		{/if}
 	{:else if current}
 		{@const role = stepRole(selected)}
 		<PlaybookStepDetail
-			step={selected}
+			step={selected as PlaybookStepId}
 			playbook={current}
 			{builtin}
 			{engineName}
@@ -310,7 +390,7 @@
 {/snippet}
 
 {#snippet callPart()}
-	{@const role = stepRole(selected)}
+	{@const role = isCustomNode(selected) ? 'custom_step' : stepRole(selected)}
 	{#if role}
 		<RoutingNode
 			{role}
@@ -349,7 +429,17 @@
 
 {#snippet map(picked: PlaybookNodeId | null)}
 	{#if current}
-		<PlaybookMap resolved={current.resolved} {builtin} {viewOf} {turnModel} selected={picked} onpick={pick} {t} />
+		<PlaybookMap
+			resolved={current.resolved}
+			{builtin}
+			{viewOf}
+			{turnModel}
+			selected={picked}
+			onpick={pick}
+			{own}
+			onadd={playbooks.failed ? undefined : startDraft}
+			{t}
+		/>
 	{/if}
 {/snippet}
 

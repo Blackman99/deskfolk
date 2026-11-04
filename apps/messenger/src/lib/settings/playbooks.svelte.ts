@@ -14,6 +14,8 @@ export class Playbooks {
   /** The engines could not be read at all: a daemon older than engines, or none to ask. */
   failed = $state(false);
   error = $state<PlaybookSaveError | null>(null);
+  /** What the daemon said when it refused a change as it stood (a step of your own it could not take); null otherwise. */
+  message = $state<string | null>(null);
   saving = $state(false);
 
   constructor(private readonly client: () => MessengerApi | null) {}
@@ -48,12 +50,15 @@ export class Playbooks {
     if (!api) return null;
     this.saving = true;
     this.error = null;
+    this.message = null;
     try {
       const out = await write(api);
       await this.load();
       return out;
     } catch (error) {
-      this.error = (error as { status?: number } | null)?.status === 409 ? "conflict" : "failed";
+      const status = (error as { status?: number } | null)?.status;
+      this.error = status === 409 ? "conflict" : "failed";
+      if (status === 422 && error instanceof Error && error.message) this.message = error.message;
       await this.load();
       return null;
     } finally {

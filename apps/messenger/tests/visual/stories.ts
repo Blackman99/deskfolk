@@ -3,7 +3,7 @@
  * this" and not "the database happened to contain that". No daemon, no WebSocket, no real rows.
  */
 import { flushSync, type Component } from 'svelte';
-import { emptyPlaybookDiff, resolvePlaybook, SPEECH_PRESETS, type Annotation, type BuiltinPlaybookId, type Playbook, type PlaybookDiff, type PlaybookList } from '@real-bot/protocol';
+import { customStepViews, emptyPlaybookDiff, resolvePlaybook, SPEECH_PRESETS, type Annotation, type BuiltinPlaybookId, type CustomStep, type Playbook, type PlaybookDiff, type PlaybookList } from '@real-bot/protocol';
 import { STORY_SIZES, type StoryName } from './story-list.ts';
 import { copyFor } from '../../src/lib/copy.ts';
 import Select from '../../src/lib/Select.svelte';
@@ -500,6 +500,20 @@ const playbookList = (): PlaybookList => {
 	return { default_id: 'video', items: [item('general'), item('video', { v: 1, steps: { settle: { params: { quiet_s: 90 } } } }), item('coding'), item('plain')] };
 };
 const playbooksClient = { listPlaybooks: async () => playbookList() };
+
+/** Steps of your own (ADR 0105) on 视频: a lint after writes, the tests before a turn ends, a probe of handed-in videos switched off. */
+const OWN_STEPS: CustomStep[] = [
+	{ id: 'u_storylint001', name: '写完 TS 跑 lint', on: true, at: 'after_effect', match: { tools: ['write_file'], paths: ['**/*.ts'] }, run: { kind: 'command', command: 'npx --no-install eslint $DESKFOLK_PATHS' }, then: 'note' },
+	{ id: 'u_storytests01', name: '收尾前跑测试', on: true, at: 'turn_end', run: { kind: 'command', command: 'pnpm test', timeout_s: 600 }, then: 'send_back' },
+	{ id: 'u_storyvideo01', name: '交上来的视频先量一下', on: false, at: 'handed_in', match: { paths: ['**/*.mp4'] }, run: { kind: 'command', command: 'for f in $DESKFOLK_PATHS; do ffprobe -v error "$f" || exit 1; done' }, then: 'gate' }
+];
+const ownPlaybookList = (): PlaybookList => {
+	const list = playbookList();
+	const video = list.items[1]!;
+	const diff: PlaybookDiff = { ...video.diff, custom_steps: OWN_STEPS };
+	list.items[1] = { ...video, diff, custom_steps: customStepViews(diff, video.resolved) };
+	return list;
+};
 
 function teamStepStory() {
 	return {
@@ -1443,6 +1457,12 @@ const defs: Record<StoryName, Story> = {
 		component: RolesPage as never,
 		props: { runtime: fakeRuntime(routingWorld, { client: routingClient }), t },
 		afterMount: routingNode('settle')
+	},
+	// Steps of your own on 视频 (ADR 0105): each in the round of its moment after the app's own, marked as yours, one switched off; the tests before a turn ends picked.
+	'roles-own-step': {
+		component: RolesPage as never,
+		props: { runtime: fakeRuntime(routingWorld, { client: { ...routingClient, listPlaybooks: async () => ownPlaybookList() } }), t },
+		afterMount: routingNode('u_storytests01')
 	},
 	// On a phone, Roles is a page in place of the list: the engine's map alone, its steps hung down a spine; a step opens as a page of its own.
 	'roles-narrow': {

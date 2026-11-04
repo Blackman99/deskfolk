@@ -54,6 +54,11 @@
 	/** Which use is shown, when the step stands for several; the newest to start with. */
 	let picked = $state<string | null>(null);
 	const step = $derived<TraceStep>(group.steps.find((row) => row.id === picked) ?? group.steps.at(-1)!);
+	/**
+	 * Whether the step made one of the app's model calls whose settings can be changed here: not a
+	 * step of your own that judged by a rule or a command (ADR 0105), which asked no model anything.
+	 */
+	const madeCall = $derived(step.verdict?.kind !== 'custom_step' || step.verdict.run === 'model');
 
 	/** Open from the start: the panel has the room. Folded, it stays folded from step to step. */
 	let rawOpen = $state(true);
@@ -104,6 +109,10 @@
 		</div>
 	{/if}
 	<p class="trace-step-detail-said">{stepSaid(step, t)}</p>
+	{#if step.custom_step}
+		<!-- A step of your own (ADR 0105): which moment it ran at. -->
+		<p class="trace-step-detail-note" data-step-moment={step.custom_step.at}>{t.playbooks.own.runAt(t.playbooks.own.moments[step.custom_step.at] ?? step.custom_step.at)}</p>
+	{/if}
 	{#if step.outcome !== 'ok' && step.verdict}
 		<p class="trace-step-detail-why">{t.traceSteps.failed(step.fail_kind)}</p>
 	{/if}
@@ -130,7 +139,7 @@
 	{/if}
 	{#if fetchRun && !step.cached}
 		<details class="trace-step-raw" bind:open={rawOpen}>
-			<summary>{t.traceSteps.raw}</summary>
+			<summary>{step.verdict?.kind === 'custom_step' && step.verdict.run === 'command' ? t.playbooks.own.commandOutput : t.traceSteps.raw}</summary>
 			{#if rawFailed}
 				<p class="trace-step-detail-note">{t.traceSteps.rawFailed}</p>
 			{:else if raw?.id !== step.id}
@@ -148,16 +157,16 @@
 		{#if step.message_id && step.session_id}
 			<button type="button" onclick={() => onJump(step.session_id!, step.message_id!)}>{t.traceSteps.jump}</button>
 		{/if}
-		{#if callEditor}
+		{#if callEditor && madeCall}
 			<button type="button" data-edit-call={step.role} aria-expanded={editing} onclick={() => (editing = !editing)}>
 				{editing ? t.traceSteps.editHide : t.traceSteps.edit}
 			</button>
 		{/if}
 	</div>
-	{#if editing && callEditor}
+	{#if editing && callEditor && madeCall}
 		<div class="trace-step-call" bind:this={callEl}>
 			<!-- Named here: on a narrow board the call's own card leaves its name to a page head. -->
-			<p class="trace-step-detail-note">{t.traceSteps.editNote(t.builtinModels.roles[step.role].name)}</p>
+			<p class="trace-step-detail-note">{t.traceSteps.editNote(t.builtinModels.roles[step.role]?.name ?? step.role)}</p>
 			{@render callEditor(step.role)}
 		</div>
 	{/if}

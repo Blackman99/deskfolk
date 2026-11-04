@@ -52,7 +52,14 @@ export function stepAnomalous(step: TraceStep): boolean {
   if (!verdict) return false;
   if (verdict.kind === "judge") return verdict.passed === false;
   if (verdict.kind === "organizer") return !verdict.applied;
+  // A step of your own that said no: a call refused, a turn sent back, a hand-over held (ADR 0105).
+  if (verdict.kind === "custom_step") return verdict.outcome === "fail";
   return false;
+}
+
+/** What a card's steps are folded by: the call and its prompt, or, for a step of your own, which step it is. */
+function foldKey(step: TraceStep, fallback: string | null): string {
+  return `${step.role}:${step.custom_step?.id ?? fallback ?? ""}`;
 }
 
 function byTime<T extends { created_at: string; id?: string }>(a: T, b: T): number {
@@ -96,7 +103,7 @@ export function attachSteps(nodes: readonly TaskTraceNode[], steps: readonly Tra
     const turn = step.turn_id ? turns.get(step.turn_id) : undefined;
     const line = step.message_id ? cardOfLine.get(step.message_id) : undefined;
     if (turn && step.role !== "judgement") {
-      hangUnder(turn.turn_id, step, `${step.role}:${step.prompt_id ?? ""}`);
+      hangUnder(turn.turn_id, step, foldKey(step, step.prompt_id));
     } else if (line && step.role === "judgement") {
       const byBot = judgements.get(line.turn_id) ?? new Map<string, TraceStepGroup>();
       const group = single(step);
@@ -140,7 +147,7 @@ export function attachSteps(nodes: readonly TaskTraceNode[], steps: readonly Tra
       else break;
     }
     if (!card) continue;
-    hangUnder(card.turn_id, step, `${step.role}:${step.check_run_id ?? step.prompt_id ?? ""}`);
+    hangUnder(card.turn_id, step, foldKey(step, step.check_run_id ?? step.prompt_id));
   }
   groups.sort(byTime);
   return { groups, parent };

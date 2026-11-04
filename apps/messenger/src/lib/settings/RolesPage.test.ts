@@ -577,3 +577,39 @@ test("on a phone, the system's Back steps out of a step's page before it leaves 
     restore();
   }
 });
+
+test("steps of your own hang in their round after the built-in ones, can be picked, and a template opens a draft that is not saved until Save", async () => {
+  const own = { id: "u_tests00002", name: "跑测试", on: true, at: "turn_end" as const, run: { kind: "command" as const, command: "pnpm test" }, then: "send_back" as const };
+  const offJobs = { ...own, id: "u_offjobs003", name: "量视频", at: "handed_in" as const, then: "gate" as const, on: false };
+  const server = engineServer();
+  const base = engines();
+  const general = base.items[0]!;
+  const withOwn: PlaybookList = { ...base, items: [{ ...general, diff: { ...general.diff, custom_steps: [own, offJobs] }, custom_steps: [{ ...own, running: true }, { ...offJobs, running: true }] }, ...base.items.slice(1)] };
+  const { host, close } = open({ client: quietClient({ listPlaybooks: async () => withOwn }) });
+  await settle();
+  // Built-in first, then yours, then the add card; the 21 built-in nodes and 2 of yours.
+  expect(host.querySelectorAll("[data-playbook-node]")).toHaveLength(23);
+  const turnCards = [...host.querySelectorAll('[data-playbook-node], [data-playbook-add="turn"]')];
+  expect(turnCards.map((el) => el.getAttribute("data-playbook-node") ?? "add").filter((id) => id === "u_tests00002" || id === "add")).toEqual(["u_tests00002", "add"]);
+  expect(node(host, "u_tests00002")?.textContent).toContain(t.playbooks.own.mine);
+  expect(node(host, "u_offjobs003")?.getAttribute("data-on")).toBe("false");
+  click(node(host, "u_tests00002"));
+  expect(host.querySelector('[data-custom-step="u_tests00002"]')).toBeTruthy();
+  expect(host.querySelector<HTMLInputElement>("[data-custom-name]")?.value).toBe("跑测试");
+  // ↓ walks from a built-in step into yours without trouble.
+  node(host, "u_tests00002")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+  flushSync();
+  expect(host.querySelector("[data-custom-step]")).toBeNull();
+  // Add card → menu → a template: a draft panel, nothing saved.
+  click(host.querySelector('[data-playbook-add="handed_in"]'));
+  const menu = document.querySelector('[data-playbook-add-menu="handed_in"]');
+  expect(menu?.querySelectorAll("[data-playbook-template]")).toHaveLength(2);
+  click(menu!.querySelector('[data-playbook-template="video"]'));
+  await settle();
+  expect(host.querySelector("[data-custom-draft]")).toBeTruthy();
+  expect(host.querySelector<HTMLInputElement>("[data-custom-name]")?.value).toBe(t.playbooks.own.templates.video!.name);
+  expect(server.saved).toHaveLength(0);
+  click(host.querySelector("[data-custom-cancel]"));
+  expect(host.querySelector("[data-custom-step]")).toBeNull();
+  close();
+});

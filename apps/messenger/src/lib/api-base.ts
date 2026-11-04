@@ -45,6 +45,9 @@ import type {
   PatchTicketRequest,
   Playbook,
   PlaybookDiff,
+  CustomStep,
+  CustomStepSample,
+  CustomStepTry,
   PlaybookImpact,
   PlaybookList,
   PlaybookRevision,
@@ -403,6 +406,11 @@ export abstract class ApiBase<Row extends PendingRow> {
   /** Your changes to an engine, as a whole diff from its built-in, guarded by the change you last saw. */
   async savePlaybook(id: string, diff: PlaybookDiff, ifRevision: string | null): Promise<Playbook> {
     return this.put<Playbook>(`/v1/playbooks/${encodeURIComponent(id)}`, { diff, if_revision: ifRevision });
+  }
+
+  /** A step of your own judged on a sample (ADR 0105): nothing is refused, sent back or recorded. Left out, the sample is the newest of its kind. */
+  async tryCustomStep(playbookId: string, step: CustomStep, sample?: CustomStepSample): Promise<CustomStepTry> {
+    return this.post<CustomStepTry>(`/v1/playbooks/${encodeURIComponent(playbookId)}/custom-steps/try`, { step, ...(sample ? { sample } : {}) });
   }
 
   /** One step of an engine back to its built-in, or the whole engine when `step` is null. */

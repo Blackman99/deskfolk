@@ -293,3 +293,17 @@ test("a card's children go along their rank so the one leading on stands under i
   expect(order(["a", "b"])).toEqual(["a", "_0", "b"]);
   expect(order(["a", "b", "c"])).toEqual(["a", "b", "c"]);
 });
+
+test("steps of your own in one turn are each a card of their own, and one that said no counts as gone wrong (ADR 0105)", () => {
+  const turn = node({ turn_id: "turn-1", created_at: at(0) });
+  const own = (id: string, name: string, outcome: "pass" | "fail", seconds: number) => step({ role: "custom_step", prompt_id: null, provider_id: null, model: null,
+    turn_id: "turn-1", created_at: at(seconds), custom_step: { id, name, at: "turn_end" },
+    verdict: { kind: "custom_step", run: "command", outcome, then: "send_back", applied: outcome === "fail", reason: outcome === "fail" ? "测试没过" : null } });
+  const tests1 = own("u_tests000001", "收尾前跑测试", "fail", 1);
+  const env = own("u_noenvfile01", "不许动 .env", "fail", 2);
+  const tests2 = own("u_tests000001", "收尾前跑测试", "pass", 3);
+  const { groups } = attachSteps([turn], [tests1, env, tests2]);
+  expect(groups.map((group) => group.steps.map((one) => one.custom_step!.name))).toEqual([["收尾前跑测试", "收尾前跑测试"], ["不许动 .env"]]);
+  expect(groups.every((group) => group.anomalous)).toBe(true);
+  expect(stepAnomalous(tests2)).toBe(false);
+});

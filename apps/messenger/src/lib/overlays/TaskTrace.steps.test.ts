@@ -155,6 +155,30 @@ test("an opened step names the engine it ran under and its revision (ADR 0085)",
   view.close();
 });
 
+test("a step of your own goes by its name, says which moment it ran at, and calls a command's raw text its output (ADR 0105)", async () => {
+  const trace = stepped();
+  trace.steps = [
+    step({
+      id: "c1",
+      role: "custom_step",
+      prompt_id: null,
+      model: null,
+      thinking_level: null,
+      custom_step: { id: "u_lint000001", name: "跑 lint", at: "after_effect" },
+      verdict: { kind: "custom_step", run: "command", outcome: "fail", then: "note", applied: true, reason: "2 errors", exit_code: 1 },
+    }),
+  ];
+  const view = open({ trace, pane: true });
+  await until(view.host, ".trace-step");
+  click(stepCards(view.host)[0]);
+  await settle();
+  const detail = view.host.querySelector(".trace-step-detail")!;
+  expect(detail.querySelector(".trace-step-detail-title")?.textContent).toBe("跑 lint");
+  expect(detail.querySelector("[data-step-moment]")?.textContent).toBe(copyFor("zh").playbooks.own.runAt("调用之后"));
+  expect(detail.querySelector(".trace-step-raw summary")?.textContent).toBe(copyFor("zh").playbooks.own.commandOutput);
+  view.close();
+});
+
 test("another step takes the panel over, and on a phone Back puts it away before leaving the board", async () => {
   const view = open({ trace: stepped() });
   await until(view.host, ".trace-step");
