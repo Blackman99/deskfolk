@@ -372,6 +372,12 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 				return { above: Math.round(t.top - p.bottom), left: Math.round(p.left - t.left), inside: p.top >= 0 && p.right <= innerWidth };
 			});
 			expect(place).toEqual({ above: 4, left: 0, inside: true });
+			// Walking the cascade never takes the panel out of the top layer and back.
+			await panel.evaluate((el) => {
+				const seen = window as unknown as { tuneToggles: number };
+				seen.tuneToggles = 0;
+				el.addEventListener('toggle', () => seen.tuneToggles++);
+			});
 			await expect(page.locator('[data-tune-column]')).toHaveCount(1);
 			const rowAt = (selector: string) => page.locator(selector).first().evaluate((el) => {
 				const r = el.getBoundingClientRect();
@@ -416,6 +422,7 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			await page.locator('[data-tune-column="model"] .tune-row[data-value="sonnet"]').hover();
 			await expect(page.locator('[data-tune-column]')).toHaveCount(3);
 			expect(await page.evaluate(() => document.querySelector('.tune-panel')!.getBoundingClientRect().right <= innerWidth)).toBe(true);
+			expect(await page.evaluate(() => (window as unknown as { tuneToggles: number }).tuneToggles)).toBe(0);
 			await page.keyboard.press('Escape');
 			await expect(panel).toHaveCount(0);
 			await browser.close();

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import type { ClaudeCodeModel, PatchProjectSessionRequest, ProjectAgent } from '@real-bot/protocol';
 	import BottomSheet from '../BottomSheet.svelte';
@@ -349,7 +350,8 @@
 			el.style.bottom = 'auto';
 			el.style.top = `${rect.bottom + 4}px`;
 		}
-		lineUp();
+		// Not read by the effect that shows the panel: a hover moving the path would take it out of the top layer and back.
+		untrack(lineUp);
 	}
 
 	/**
