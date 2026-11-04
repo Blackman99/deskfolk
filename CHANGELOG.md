@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Steps of your own in an engine
+
+- An engine can now carry steps you write yourself, at the moments the app already has: before or after a call with an effect (a write, a delete, a command, an MCP tool), as a turn ends, when work is handed in, after a hand-over is approved, and after you send one back ([ADR 0105](docs/adr/0105-steps-of-your-own.md)). A step judges by a rule (matching a path or a kind of tool is a no), by a command of yours (exit 0 passes; it reads what happened on stdin and `DESKFOLK_*` variables), or by a model reading the rule you wrote, and what a "no" does comes from a fixed list per moment: refuse the call, show the output to the Bot beside it, send the turn back to go on, hold a hand-over back as a failed check would, or tell you in a line no Bot reads. The app carries it out; a step that cannot judge lets things through.
+- On Roles, each round a step can join ends in "+ Add a step", with starter templates (leave .env alone, lint TypeScript after writing, run the tests before ending, probe handed-in videos, check the reply against your rules) and a blank step; a new one is a switched-off draft until you save it. Its panel sets the moment, what it looks at, how it judges and what a "no" does, and tries it on a sample without applying anything.
+- A send-back shares the end contract's two per segment, so a rule never keeps a Bot going round; with none left the turn ends and you are told. A step judging with a model runs on the new Steps of your own call's model, else the picture judge's, and its spend is listed as such. Each judgement is on the flow under the step's name.
+
 ### A picture waiting in the composer enlarges
 
 - A screenshot pasted into the composer, a picture picked or dropped there, or one dragged in from the file tree showed only as a small thumbnail on its chip until it was sent. A click on the thumbnail now enlarges it over the whole app, the way a picture in a message does, in a Bot's conversation and in a project session alike: a pasted one straight from the bytes already on this device, one from the workspace from its file on the Mac. Escape, ✕, a click or a phone's Back puts it away, and it goes by itself when its chip does, with ✕ on the chip or the send.
