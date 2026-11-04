@@ -122,6 +122,16 @@ add("POST", `${playbook}/custom-steps/try`, { step: tryPart(20_000), sample: try
 add("PATCH", playbook, { name: string, if_revision: nullable(string) }, ["name"], true);
 add("DELETE", playbook);
 add("PUT", "sessions/:id/playbook", { playbook_id: nullable(string) }, ["playbook_id"]);
+// Your interface profile (ADR 0106): read it with what windows found, change it as in Settings, its
+// history, the latest change taken back or any restored, and what the phone found after applying it.
+// The daemon checks a change's shape; this keeps its size in bounds (a stylesheet is up to 64 KB).
+const interfacePart = (max: number): Check => v => !!v && typeof v === "object" && !Array.isArray(v) && JSON.stringify(v).length <= max;
+get("interface");
+get("interface/revisions", { turn_id: id, approval_id: id, limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) });
+get("interface/revisions/:id");
+add("PATCH", "interface", { patch: interfacePart(200_000), if_revision: nullable(string), edit_session: string, reason: string }, ["patch"]);
+add("POST", "interface/revisions/:id/(undo|restore)", {});
+add("POST", "interface/window", { report: interfacePart(20_000) }, ["report"]);
 // Changing a line of yours after it went out, and what it said before (ADR 0063).
 add("PATCH", "messages/:id", { body: string }, ["body"]);
 // ADR 0069: take back a line no Bot has read yet, or have the working Bot read it now.

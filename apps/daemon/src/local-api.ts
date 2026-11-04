@@ -21,6 +21,7 @@ import { messageRoutes } from "./local-api/routes/messages";
 import { notificationRoutes } from "./local-api/routes/notifications";
 import { planRoutes } from "./local-api/routes/plans";
 import { playbookRoutes } from "./local-api/routes/playbooks";
+import { interfaceRoutes } from "./local-api/routes/interface";
 import { projectSessionRoutes } from "./local-api/routes/project-sessions";
 import { qualityAndPromptRoutes } from "./local-api/routes/quality-and-prompts";
 import { speechRoutes } from "./local-api/routes/speech";
@@ -875,6 +876,7 @@ function dispatch(
   const routed = systemRoutes(ctx)
     ?? projectSessionRoutes(ctx)
     ?? playbookRoutes(ctx)
+    ?? interfaceRoutes(ctx)
     ?? botAndSessionRoutes(ctx)
     ?? planRoutes(ctx)
     ?? qualityAndPromptRoutes(ctx)

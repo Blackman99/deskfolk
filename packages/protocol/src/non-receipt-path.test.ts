@@ -45,3 +45,10 @@ test("everything that writes a durable row still does", () => {
     expect(isNonReceiptPath(path)).toBe(false);
   }
 });
+
+/** What a window found after applying your interface is kept in memory only (ADR 0106); a change to it is a record. */
+test("a window's interface report carries no receipt", () => {
+  expect(isNonReceiptPath("/v1/interface/window")).toBe(true);
+  expect(isNonReceiptPath("/v1/interface")).toBe(false);
+  expect(isNonReceiptPath("/v1/interface/revisions/01J0000000000000000000000B/undo")).toBe(false);
+});

@@ -19,6 +19,9 @@ export const DENIED_TABLES: ReadonlySet<string> = new Set([
   "notification_devices",
   "terminals",
   "tool_places",
+  // Your interface profile and its history (ADR 0106): a Bot reads them through describe_interface.
+  "interface_profile",
+  "interface_revisions",
 ]);
 
 /** Every `remote_*` table is remote access's (device keys, push subscriptions, pairing); `sqlite_*` is SQLite's own. */

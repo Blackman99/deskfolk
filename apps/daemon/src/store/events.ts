@@ -1,6 +1,7 @@
 import { getAgentRun } from "./project-sessions";
 import type { ClientEvent, Judgement, Locale, Spend } from "@real-bot/protocol";
 import { defaultPlaybookId } from "./playbooks";
+import { interfaceState } from "./interface";
 import { listApprovals } from "./approvals";
 import { isBotOnlyLine } from "./check-backs";
 import { taskDetail } from "./plan-spec";
@@ -115,6 +116,13 @@ export function installChangeJournal(ctx: StoreContext): void {
     ctx.db.exec(`CREATE TEMP TRIGGER event_playbooks_${op} AFTER ${op} ON main.playbooks
       BEGIN INSERT INTO event_changes VALUES ('playbooks', NEW.id, '${op}', NULL); END`);
   }
+  // Your interface profile (ADR 0106): any change to it or its history is one change to the whole.
+  for (const table of ["interface_profile", "interface_revisions"]) {
+    for (const op of ["INSERT", "UPDATE"]) {
+      ctx.db.exec(`CREATE TEMP TRIGGER event_${table}_${op} AFTER ${op} ON main.${table}
+        BEGIN INSERT INTO event_changes VALUES ('interface', 'interface', '${op}', NULL); END`);
+    }
+  }
   // Built-in prompts (ADR 0064) have no id column: an edit, a merge, a reset or a conflict marked is
   // one change to that prompt in that language.
   for (const table of ["prompt_overrides", "prompt_revisions"]) {
@@ -215,6 +223,9 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
       case "settings": break;
       case "playbooks":
         out.push({ event: "playbook.changed", occurred_at, id, default_id: defaultPlaybookId(ctx) });
+        break;
+      case "interface":
+        out.push({ event: "interface.changed", occurred_at, ...interfaceState(ctx) });
         break;
       case "prompts": {
         const at = id.lastIndexOf(":");

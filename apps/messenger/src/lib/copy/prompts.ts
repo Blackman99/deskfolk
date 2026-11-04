@@ -17,6 +17,7 @@ export const zh = {
     annotations: "批注",
     setup: "端点、模型和 MCP",
     prompts: "提示词和本机记录",
+    interface: "界面",
   },
   groupSummary: (count: number, edited: number, conflict: boolean) =>
     `${count} 条${edited > 0 ? ` · 已改 ${edited}` : ""}${conflict ? " · 有冲突" : ""}`,
@@ -105,6 +106,7 @@ export const en: CopyShape<typeof zh> = {
     annotations: "Annotations",
     setup: "Endpoints, models and MCP",
     prompts: "Prompts and records",
+    interface: "Interface",
   },
   groupSummary: (count: number, edited: number, conflict: boolean) =>
     `${count === 1 ? "1 prompt" : `${count} prompts`}${edited > 0 ? ` · ${edited} edited` : ""}${conflict ? " · conflict" : ""}`,

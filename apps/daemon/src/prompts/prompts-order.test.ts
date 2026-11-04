@@ -52,6 +52,8 @@ describe("builtinTools order", () => {
       "describe_data",
       "query_data",
       "read_data_log",
+      "describe_interface",
+      "edit_interface",
     ]);
   });
 });

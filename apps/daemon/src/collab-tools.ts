@@ -4,6 +4,7 @@ import { addMember, askUser, checkBack, createDirect, createGroup, delegate, end
 import { addEndpoint, deleteEndpoint, listEndpoints, measureModelTool, updateEndpoint, updateModelSettings } from "./collab-tools/endpoints";
 import { assertActive } from "./collab-tools/guards";
 import { addMcpServer, deleteMcpServer, listMcpServers, updateMcpServer } from "./collab-tools/mcp";
+import { describeInterface, editInterface } from "./collab-tools/interface";
 import { forget, remember } from "./collab-tools/memory";
 import { createBot, listBots, updateProfile } from "./collab-tools/roster";
 import { createRoutine, deleteRoutine, listRoutines, updateRoutine } from "./collab-tools/routines";
@@ -201,6 +202,11 @@ export async function runCollabTool(
         return editPrompt(ctx, args);
       case "reset_prompt":
         return resetPrompt(ctx, args);
+      // Your interface (ADR 0106): reading is free; a change applies at once unless the Bot asks first.
+      case "describe_interface":
+        return describeInterface(ctx, args);
+      case "edit_interface":
+        return editInterface(ctx, args);
       // This machine's records, read-only (ADR 0065).
       case "describe_data":
         return await describeData(ctx, args);

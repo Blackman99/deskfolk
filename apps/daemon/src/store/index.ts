@@ -65,6 +65,7 @@ import * as organizerRuns from "./organizer-runs";
 import * as callRuns from "./call-runs";
 import * as toolPlaces from "./tool-places";
 import * as playbooks from "./playbooks";
+import * as interfaceProfile from "./interface";
 import * as providers from "./providers";
 import * as quotes from "./quotes";
 import * as requirements from "./requirements";
@@ -381,7 +382,8 @@ export class Store {
   readSnapshot(): Omit<RuntimeSnapshot, "event_instance_id" | "watermark_seq"> {
     return {
       credentialOperations: credentials.listCredentialOperations(this.ctx),
-      settings: settings.settingsCached(this.ctx), bots: this.listBots(), sessions: this.listSessions(),
+      settings: settings.settingsCached(this.ctx), interface: interfaceProfile.interfaceState(this.ctx),
+      bots: this.listBots(), sessions: this.listSessions(),
       liveAgentRuns: projectSessions.listLiveAgentRuns(this.ctx),
       approvals: this.listApprovals(), mcpServers: this.listMcpServers(),
       providers: providers.providersCached(this.ctx),
@@ -559,6 +561,18 @@ export class Store {
   readonly deletePlaybook = this.bind(playbooks.deletePlaybook);
   readonly listPlaybookRevisions = this.bind(playbooks.listPlaybookRevisions);
   readonly setSessionPlaybook = this.bind(playbooks.setSessionPlaybook);
+
+  // Interface profile (ADR 0106) ------------------------------------------------------------
+  readonly interfaceState = this.bind(interfaceProfile.interfaceState);
+  readonly interfaceRecord = this.bind(interfaceProfile.interfaceRecord);
+  readonly previewInterfacePatch = this.bind(interfaceProfile.previewInterfacePatch);
+  readonly changeInterface = this.bind(interfaceProfile.changeInterface);
+  readonly undoInterfaceRevision = this.bind(interfaceProfile.undoInterfaceRevision);
+  readonly restoreInterfaceRevision = this.bind(interfaceProfile.restoreInterfaceRevision);
+  readonly listInterfaceRevisions = this.bind(interfaceProfile.listInterfaceRevisions);
+  readonly getInterfaceRevision = this.bind(interfaceProfile.getInterfaceRevision);
+  readonly noteInterfaceWindow = this.bind(interfaceProfile.noteInterfaceWindow);
+  readonly interfaceWindows = this.bind(interfaceProfile.interfaceWindows);
 
   // Acceptance checks (可执行验收) ----------------------------------------------------------
   readonly getCheck = this.bind(acceptanceChecks.getCheck);

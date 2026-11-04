@@ -1289,6 +1289,33 @@ CREATE TABLE IF NOT EXISTS playbook_revisions (
 );
 CREATE INDEX IF NOT EXISTS playbook_revisions_playbook ON playbook_revisions (playbook_id, revision);
 
+-- Your interface profile (ADR 0106): one row, what you changed about how the app looks and works.
+CREATE TABLE IF NOT EXISTS interface_profile (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  profile TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- Every change to it, with the theme and language beside it: who (you, or a Bot you asked), why,
+-- what it was before and after. A sitting of Settings folds into one row while you keep typing.
+CREATE TABLE IF NOT EXISTS interface_revisions (
+  id TEXT PRIMARY KEY,
+  revision INTEGER NOT NULL,
+  op TEXT NOT NULL CHECK (op IN ('edit', 'reset', 'undo', 'restore')),
+  actor TEXT NOT NULL CHECK (actor IN ('user', 'bot')),
+  bot_id TEXT,
+  turn_id TEXT,
+  approval_id TEXT,
+  message_id TEXT,
+  reason TEXT,
+  edit_session TEXT,
+  app_version TEXT,
+  before TEXT NOT NULL,
+  after TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS notification_counters (
   name TEXT PRIMARY KEY,
   val INTEGER NOT NULL

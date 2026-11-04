@@ -2,6 +2,7 @@ import type { Approval, McpServer, Memory, Routine, Skill } from "./admin.ts";
 import type { Bot } from "./bots.ts";
 import type { ClientEvent } from "./events.ts";
 import type { Hold } from "./holds.ts";
+import type { InterfaceState } from "./interface.ts";
 import type { Provider } from "./providers.ts";
 import type { AgentRun, AgentRunToolInfo } from "./project-sessions.ts";
 import type { BotToolInfo } from "./bot-replay.ts";
@@ -53,6 +54,8 @@ export type RuntimeSnapshot = EventCursor & {
   remoteStatus?: { state: "off" | "native_unavailable" | "activation_gated" | "connecting" | "online" | "disconnected" | "trust_mismatch"; diagnostic: string | null; devices: number };
   credentialOperations?: CredentialOperation[];
   settings: Settings;
+  /** Your interface profile (ADR 0106); absent from a daemon older than it, where windows show the app's own. */
+  interface?: InterfaceState;
   bots: Bot[];
   sessions: SessionSummary[];
   /**
@@ -125,7 +128,8 @@ export type SequencedEvent = {
  * transcribes again. Your Claude Code's routes (ADR 0061) answer with what `claude` says after it
  * is looked up again, which takes seconds; setting its path or its account list sets the whole
  * value, so a repeat sets the same thing again. A step of your own tried on a sample (ADR 0105) may
- * run a command or a model for a while and stores nothing; a repeat only tries it again.
+ * run a command or a model for a while and stores nothing; a repeat only tries it again. What a
+ * window found after applying your interface (ADR 0106) is kept in memory only; a repeat says it again.
  */
 export function isNonReceiptPath(path: string): boolean {
   const withoutQuery = path.split("?")[0] ?? "";
@@ -133,6 +137,7 @@ export function isNonReceiptPath(path: string): boolean {
     || /^\/v1\/providers\/[^/]+\/speed-test$/.test(withoutQuery)
     || withoutQuery === "/v1/speech/transcribe"
     || /^\/v1\/playbooks\/[^/]+\/custom-steps\/try$/.test(withoutQuery)
+    || withoutQuery === "/v1/interface/window"
     || withoutQuery === "/v1/workspace/trash"
     || withoutQuery === "/v1/notification-presence"
     || withoutQuery.startsWith("/v1/runtime/claude-code/")

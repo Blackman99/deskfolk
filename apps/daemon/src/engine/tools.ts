@@ -66,6 +66,7 @@ const NO_EFFECT_TOOLS: ReadonlySet<string> = new Set([
   "describe_data",
   "query_data",
   "read_data_log",
+  "describe_interface",
   "end_turn",
 ]);
 

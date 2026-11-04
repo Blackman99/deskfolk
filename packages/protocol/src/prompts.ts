@@ -12,7 +12,7 @@ export type PromptGroup = "turn" | "agent" | "tool" | "call";
  * and ending turns, plans and hand-overs, the roster and conversations, a Bot's own profile, skills
  * and memory, routines, annotations, endpoints and MCP, and prompts and records.
  */
-export const TOOL_KINDS = ["files", "talk", "work", "roster", "self", "routines", "annotations", "setup", "prompts"] as const;
+export const TOOL_KINDS = ["files", "talk", "work", "roster", "self", "routines", "annotations", "setup", "prompts", "interface"] as const;
 export type ToolKind = (typeof TOOL_KINDS)[number];
 /** Shipped as is; edited; edited, and a newer default did not merge with it (yours stays in force). */
 export type PromptState = "default" | "edited" | "conflict";

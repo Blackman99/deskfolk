@@ -23,6 +23,18 @@ export function setupVerdict(ctx: ToolCtx): "allow" | "ask" {
 }
 
 /**
+ * The same for a change (ADR 0092): a change to your interface (ADR 0106) is one — it reaches no
+ * tool, endpoint or rule — so it goes ahead under auto and allow all, asks under ask first and is
+ * refused read-only.
+ */
+export function changeVerdict(ctx: ToolCtx): "allow" | "ask" {
+  if (ctx.approved) return "allow";
+  const verdict = verdictFor(ctx.store.permissionModeFor(ctx.botId), "change");
+  if (verdict === "refuse") throw new HttpError(403, "refused", READ_ONLY_REFUSAL);
+  return verdict;
+}
+
+/**
  * Hydration precedes the guarded transaction; started key writes retain their durable repair record.
  * A read-only Bot changes nothing here, removals and notes included (ADR 0092).
  */

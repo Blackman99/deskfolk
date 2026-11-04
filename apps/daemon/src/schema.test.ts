@@ -45,6 +45,8 @@ describe("schema", () => {
       "file_stages",
       "holds",
       "inbox_items",
+      "interface_profile",
+      "interface_revisions",
       "judgements",
       "lessons",
       "live_procs",

@@ -22,6 +22,7 @@ export * from "./routing.ts";
 export * from "./call-runs.ts";
 export * from "./playbooks.ts";
 export * from "./custom-steps.ts";
+export * from "./interface.ts";
 export * from "./quality.ts";
 export * from "./search.ts";
 export * from "./sync.ts";

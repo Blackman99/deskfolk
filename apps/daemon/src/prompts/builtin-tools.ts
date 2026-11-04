@@ -39,6 +39,7 @@ import {
   DELETE_MCP_SERVER,
 } from "./tools/catalog";
 import { DESCRIBE_DATA, QUERY_DATA, READ_DATA_LOG } from "./tools/data";
+import { DESCRIBE_INTERFACE, EDIT_INTERFACE } from "./tools/interface";
 
 export const TOOLS: ToolDef[] = [
   READ_FILE,
@@ -89,6 +90,8 @@ export const TOOLS: ToolDef[] = [
   DESCRIBE_DATA,
   QUERY_DATA,
   READ_DATA_LOG,
+  DESCRIBE_INTERFACE,
+  EDIT_INTERFACE,
 ];
 
 /**
@@ -116,6 +119,7 @@ const TOOLS_BY_KIND: Record<ToolKind, readonly ToolDef[]> = {
     DELETE_MCP_SERVER,
   ],
   prompts: [LIST_PROMPTS, READ_PROMPT, EDIT_PROMPT, RESET_PROMPT, DESCRIBE_DATA, QUERY_DATA, READ_DATA_LOG],
+  interface: [DESCRIBE_INTERFACE, EDIT_INTERFACE],
 };
 
 const KIND_OF: ReadonlyMap<string, ToolKind> = new Map(

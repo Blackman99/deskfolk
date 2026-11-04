@@ -3,6 +3,7 @@ import type { Bot } from "./bots.ts";
 import type { BuiltinModelRole } from "./models.ts";
 import type { Locale, USER_MEMBER } from "./constants.ts";
 import type { Hold } from "./holds.ts";
+import type { InterfaceState } from "./interface.ts";
 import type { FilingState, Message, MessageFiling } from "./messages.ts";
 import type { TaskDetail, Ticket } from "./plans.ts";
 import type { Provider } from "./providers.ts";
@@ -20,6 +21,8 @@ export type ClientEvent =
   | { event: "prompt.changed"; occurred_at: string; id: string; locale: Locale }
   /** An engine was changed, made or removed, or the default moved (ADR 0085): reload the engines. */
   | { event: "playbook.changed"; occurred_at: string; id: string; default_id: string }
+  /** Your interface profile changed (ADR 0106): every window applies it again. */
+  | ({ event: "interface.changed"; occurred_at: string } & InterfaceState)
   | ({ event: "settings.changed"; occurred_at: string } & Settings)
   | ({ event: "bot.upsert"; occurred_at: string } & Bot & { deleted_at: string | null })
   | ({ event: "session.upsert"; occurred_at: string } & SessionSummary)

@@ -274,6 +274,25 @@
       "mcp": ["github"],
       "trigger": "The retrospective says the video Bots keep turning anime adaptations into live-action looks and giving characters the wrong voices. How do we stop that?",
       "expect": { "first": ["reply", "list_bots", "describe_data", "query_data"], "forbid": ["edit_prompt", "reset_prompt", "list_prompts", "read_prompt", "create_skill", "update_skill", "remember"] }
+    },
+    {
+      "id": "builtin-zh-interface-accent",
+      "category": "builtin",
+      "locale": "zh",
+      "skills": ["daily-report"],
+      "mcp": ["github"],
+      "trigger": "界面的强调色换成紫色吧，再把回车发送改成 ⌘+回车 发送。",
+      "expect": { "first": ["describe_interface", "edit_interface"], "forbid": ["edit_prompt", "write_file", "shell", "update_profile"] },
+      "note": "改应用的样子和用法走界面方案（ADR 0106），不改提示词、不写文件。"
+    },
+    {
+      "id": "builtin-en-interface-font",
+      "category": "builtin",
+      "locale": "en",
+      "skills": ["release-en"],
+      "mcp": ["github"],
+      "trigger": "Make the sidebar a bit darker and use a serif font for messages.",
+      "expect": { "first": ["describe_interface", "edit_interface"], "forbid": ["edit_prompt", "write_file", "shell", "update_profile"] }
     }
   ]
 }
