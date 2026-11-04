@@ -1,5 +1,11 @@
 import type {
   AcceptanceCheckInput,
+  InterfaceCatalog,
+  InterfacePatch,
+  InterfaceResponse,
+  InterfaceRevision,
+  InterfaceRevisionHead,
+  InterfaceWindowReport,
   AnswerAskRequest,
   ApiFormat,
   Approval,
@@ -477,6 +483,43 @@ export abstract class ApiBase<Row extends PendingRow> {
 
   async restorePromptRevision(revisionId: string): Promise<PromptDetail> {
     return this.post<PromptDetail>(`/v1/prompt-revisions/${encodeURIComponent(revisionId)}/restore`, {});
+  }
+
+  /** Your interface profile (ADR 0106) with what each kind of window last found after applying it. */
+  async getInterface(): Promise<InterfaceResponse> {
+    return this.get<InterfaceResponse>("/v1/interface");
+  }
+
+  /** A change to it as Settings makes one: a sitting (`edit_session`) folds into one revision; `if_revision` guards a stale page. */
+  async patchInterface(body: { patch: InterfacePatch; if_revision?: string | null; edit_session?: string; reason?: string }): Promise<InterfaceResponse> {
+    return this.patch<InterfaceResponse>("/v1/interface", body);
+  }
+
+  /** Its changes, newest first; those one turn or one card made when asked. */
+  async listInterfaceRevisions(filter: { turn_id?: string; approval_id?: string; limit?: number } = {}): Promise<InterfaceRevisionHead[]> {
+    const query = new URLSearchParams();
+    if (filter.turn_id) query.set("turn_id", filter.turn_id);
+    if (filter.approval_id) query.set("approval_id", filter.approval_id);
+    if (filter.limit) query.set("limit", String(filter.limit));
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return (await this.get<{ items: InterfaceRevisionHead[] }>(`/v1/interface/revisions${suffix}`)).items;
+  }
+
+  async getInterfaceRevision(revisionId: string): Promise<InterfaceRevision> {
+    return this.get<InterfaceRevision>(`/v1/interface/revisions/${encodeURIComponent(revisionId)}`);
+  }
+
+  async undoInterfaceRevision(revisionId: string): Promise<InterfaceResponse> {
+    return this.post<InterfaceResponse>(`/v1/interface/revisions/${encodeURIComponent(revisionId)}/undo`, {});
+  }
+
+  async restoreInterfaceRevision(revisionId: string): Promise<InterfaceResponse> {
+    return this.post<InterfaceResponse>(`/v1/interface/revisions/${encodeURIComponent(revisionId)}/restore`, {});
+  }
+
+  /** What this window found after applying the interface, and on the desktop what the app has. */
+  async reportInterfaceWindow(body: { report: Omit<InterfaceWindowReport, "at">; catalog?: InterfaceCatalog }): Promise<void> {
+    await this.post<unknown>("/v1/interface/window", body);
   }
 
   /** Your edit of a plan's spec: the whole spec, guarded by the revision you edited from. */

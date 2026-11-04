@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
 	import type { Copy } from '../copy.ts';
+	import { interfaceBehaviour } from '../interface/behaviour.svelte.ts';
+	import { formatShortcut } from '../keymap.ts';
 	import type { ComposerAction } from './composer-mode.ts';
 	import type { SessionView } from '../session-view.svelte.ts';
 
@@ -75,7 +77,7 @@
 	disabled={primaryAction.disabled}
 	aria-busy={primaryAction.kind === 'send' && sendingShown ? 'true' : undefined}
 	aria-label={primaryAction.kind === 'stop' ? t.composer.stopGeneration : sendingShown ? t.composer.sending : t.composer.send}
-	title={primaryAction.kind === 'stop' ? t.composer.stopGeneration : sendingShown ? t.composer.sending : t.chat.sendHintShortcut}
+	title={primaryAction.kind === 'stop' ? t.composer.stopGeneration : sendingShown ? t.composer.sending : interfaceBehaviour().send_key === 'mod_enter' ? t.composer.modSendShortcut(formatShortcut(['mod', 'Enter'])) : t.chat.sendHintShortcut}
 	onclick={() => primaryAction.kind === 'stop' ? void onStop() : void onSend()}
 >
 	{#if primaryAction.kind === 'stop'}

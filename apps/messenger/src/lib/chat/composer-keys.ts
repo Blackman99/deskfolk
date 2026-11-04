@@ -1,5 +1,6 @@
 import type { SessionSummary } from "@real-bot/protocol";
 import type { SessionView } from "../session-view.svelte.ts";
+import { interfaceBehaviour } from "../interface/behaviour.svelte.ts";
 import { insertComposerNewline } from "./composer-editor.ts";
 import { COMPOSER_IME_IDLE, composerImeKeyAction, type ComposerImeState } from "./composer-ime.ts";
 import type { ComposerMentions } from "./composer-mentions.svelte.ts";
@@ -116,13 +117,15 @@ export function handleComposerKey(ev: KeyboardEvent, ctx: ComposerKeyContext): v
     }
   }
 
-  if ((ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) || (ev.key === "Enter" && !ev.shiftKey)) {
+  // Which key sends is yours to choose (ADR 0106): Enter, or ⌘/Ctrl+Enter with Enter a new line.
+  const modSends = interfaceBehaviour().send_key === "mod_enter";
+  if ((ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) || (ev.key === "Enter" && !ev.shiftKey && !modSends)) {
     ev.preventDefault();
     void ctx.send();
     return;
   }
 
-  if (ev.key === "Enter" && ev.shiftKey) {
+  if (ev.key === "Enter" && (ev.shiftKey || modSends)) {
     ev.preventDefault();
     if (editorEl) insertComposerNewline(editorEl);
     ctx.syncDraftFromEditor();

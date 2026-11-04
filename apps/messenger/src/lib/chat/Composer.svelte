@@ -24,6 +24,8 @@
 	import { workspaceDropTarget } from '../workspace-drag.svelte.ts';
 	import { ComposerAttachments, pastedFiles, uploadedShare } from './composer-attachments.svelte.ts';
 	import { handleComposerKey, type ComposerKeyContext } from './composer-keys.ts';
+	import { interfaceBehaviour } from '../interface/behaviour.svelte.ts';
+	import { formatShortcut } from '../keymap.ts';
 	import { ComposerMentions } from './composer-mentions.svelte.ts';
 	import { ComposerVoice, caretIn, insertHeardAt, spacedHeard } from './composer-voice.svelte.ts';
 	import ComposerAttachmentsBar from './ComposerAttachments.svelte';
@@ -37,6 +39,8 @@
 	import VoiceButton from './VoiceButton.svelte';
 	import VoiceStatus from './VoiceStatus.svelte';
 	import { conversationStopItems, type StopMenuItem } from './stop-menu.ts';
+
+	const MOD_ENTER = formatShortcut(['mod', 'Enter']);
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -186,8 +190,11 @@
 	 * older daemon — does it say to wait for the reply.
 	 */
 	const composerHint = $derived.by(() => {
-		if (selected?.kind === 'group' || !(liveTurn || pendingHere.length > 0)) return t.chat.sendHint;
+		// Which key sends is yours to choose (ADR 0106); the hint says the one in force.
+		const modSends = interfaceBehaviour().send_key === 'mod_enter';
+		if (selected?.kind === 'group' || !(liveTurn || pendingHere.length > 0)) return modSends ? t.composer.modSendHint(MOD_ENTER) : t.chat.sendHint;
 		const waits = (Boolean(liveTurn) && !snapshot.turnInbox) || (pendingHere.length > 0 && !snapshot.linesInOrder);
+		if (modSends) return waits ? t.composer.modWaitingHint : t.composer.modWorkingHint(MOD_ENTER);
 		return waits ? t.composer.waitingHint : t.composer.workingHint;
 	});
 

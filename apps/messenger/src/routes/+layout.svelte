@@ -9,6 +9,8 @@
 	import { copyFor } from '$lib/copy';
 	import { applyPlatformAttribute } from '$lib/platform';
 	import { applyThemeToDocument, themeManager } from '$lib/theme';
+	import { applyCachedInterface } from '$lib/interface/apply';
+	import { interfaceController } from '$lib/interface/controller.svelte';
 	import { HOSTED_MESSENGER } from '$lib/remote/mode';
 	import { isTauri } from '$lib/tauri';
 	import {
@@ -37,6 +39,10 @@
 	// Before the first render too: `tokens.css` keys dark mode off `data-theme` alone, and a
 	// system-dark window would otherwise draw its first frame light.
 	applyThemeToDocument(themeManager.resolved, themeManager.preference);
+	// And your interface profile as the last start left it (ADR 0106), so its look is there in the
+	// first frame too; the runtime puts the daemon's in once connected.
+	applyCachedInterface();
+	interfaceController.setAppVersion(version);
 	// Its own poll rather than `updated` from `$app/state`: that one is a boolean that latches,
 	// and dismissing one build and asking again for the next needs the version itself.
 	const updates = new BuildUpdates(version, () => fetchPublishedVersion(base));

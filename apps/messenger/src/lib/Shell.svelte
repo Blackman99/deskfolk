@@ -9,6 +9,8 @@
 	import { onMount, tick, untrack } from 'svelte';
 	import { composerLocked } from './chat/composer-mode.ts';
 	import { copyFor } from './copy.ts';
+	import { interfaceController } from './interface/controller.svelte.ts';
+	import { wireInterface } from './interface/wire.svelte.ts';
 	import ImageCopy from './ImageCopy.svelte';
 	import WorkspaceDragGhost from './WorkspaceDragGhost.svelte';
 	import ToastHost from './ToastHost.svelte';
@@ -104,7 +106,8 @@
 
 	const snapshot = $derived(runtime.snapshot);
 	const locale = $derived(snapshot.settings.locale === 'en' ? 'en' : 'zh');
-	const t = $derived(copyFor(locale));
+	// The app's words, with the ones you changed laid over them (ADR 0106).
+	const t = $derived(copyFor(locale, interfaceController.copyIn(locale)));
 	const botsById = $derived(new Map(snapshot.bots.map((b) => [b.id, b] as const)));
 	const visibleBots = $derived(snapshot.bots.filter((b) => !b.archived_at));
 	let pinnedSessionIds = $state<string[]>(loadPinnedIds());
@@ -123,6 +126,15 @@
 		if (snapshot.settings.theme) {
 			themeManager.syncFromSnapshot(snapshot.settings.theme);
 		}
+	});
+
+	// Your interface profile (ADR 0106): applied here, its floor kept, what this window found reported.
+	wireInterface({
+		connected: () => runtime.connection === 'connected',
+		api: () => runtime.client,
+		state: () => snapshot.interface,
+		bots: () => snapshot.bots,
+		t: () => t,
 	});
 
 	onMount(() => {

@@ -10,6 +10,8 @@
 
 ## 布局存本机，不进守护进程，也不进 URL
 
+2026-11-04 补记（[ADR 0106](0106-the-interface-is-yours-too.md)）：「布局存本机」对布局和拖出来的宽度照旧成立；每种窗口从哪打开不是几何，是偏好，搬进了守护进程里的界面方案，桌面各窗口跟它走。 / Addendum 2026-11-04 (ADR 0106): "the layout stays on the machine" still holds for the layout and dragged widths; where each kind of window opens is a preference, not geometry, and moved into the daemon's interface profile, which every desktop window follows.
+
 照仓库已有的惯例，没有例外：侧栏宽度、预览宽度、置顶会话全都在信使的 `localStorage` 里。布局按机器才说得通——27 寸上排好的四块窗格还原到笔记本上是错的，推给配对手机更没有意义。
 
 URL 仍然只描述一个视图：当前窗格正看着哪条会话。布局树塞不进查询串，也不该塞——塞了就等于给「哪块窗格在前面」造了第二个真相来源。旧链接（`?o=trace&k=`、`?o=workspace&w=`、`?p=`）照常能开，落进当前窗格。

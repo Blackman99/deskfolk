@@ -868,6 +868,20 @@ Bots can read what the app keeps on this machine, read-only, for the evidence be
 - **What can be read includes** other Bots' directs and memories (read-only, never into your context) and anything you ever pasted into a chat — keys belong on approval cards, not in chat.
 - **When**: only when you ask a Bot to analyze or improve something; what it finds goes into its own skills and memories, or into a built-in prompt through the approval card.
 
+<a id="interface"></a>
+## Interface profile
+
+How the app looks and works is yours to change, and a Bot changes it when you ask ([ADR 0106](adr/0106-the-interface-is-yours-too.md)):
+
+- **What changes**: tokens (any `--x` in `tokens.css`: colours, fonts, corners, shadows, the chat's width, for the light look, the dark one or both); behaviour (focus mode, where each kind of window opens on the desktop, Enter or ⌘/Ctrl+Enter to send, 24- or 12-hour time, motion as the system says or always reduced); a stylesheet of your own (up to 64 KB); words on screen (by where they sit, keeping every placeholder); and the theme and language. Dragged widths and the layout are not part of it and stay on the machine.
+- **Asking a Bot**: say it in a conversation — "make the accent purple", "a darker sidebar", "send with ⌘Enter". It reads the interface, its hooks and tokens with `describe_interface`, changes it with `edit_interface`, and a few seconds later reads the windows' reports. It is a change under the permission modes: under auto and allow all it applies in every window at once and its reply carries "Interface changed · Undo"; under ask first it waits on a `ui-edit` card you can try in a window first; read-only refuses it.
+- **Stable hooks**: a stylesheet uses `[data-ui="…"]` as selectors (the sidebar, a conversation row, the messages, your lines, a Bot's reply, the composer, an approval card, a pane, a tab, Settings, the flow board… some twenty-five), which stay the same across versions; class names may change, and selectors that stop matching after an update show in the report. The root's `data-surface="desktop|tablet|phone"` splits by device, `data-theme` by look.
+- **The floor**: Stop, the buttons of a card waiting on you, a question card, the way to Settings, pausing the custom interface and the undo buttons cannot be hidden. Each window checks after applying: hidden by the profile, nearly transparent, shrunk, not clickable or covered, and that window drops the tokens and CSS, says so once and reports it for the Bot. A button the app itself folded away does not count.
+- **Back to the default**: `?ui=default` in the address, or ⌥⇧⌘U (Ctrl+Alt+Shift+U on Windows and Linux), shows that window as the app ships until pressed again; the switch in Settings › Interface does it for every window, and "Put everything back" clears all four parts.
+- **Records**: every change records who made it, why, the whole profile before and after and the app's build. Only the latest change can be undone, and only while the interface still looks that way; any revision can be restored. Saves in one sitting of Settings fold into one; typing it back to how it was is a change of its own.
+- **Settings › Interface**: the switch, behaviour, tokens, the stylesheet (saved a second after you stop) with the hooks, changed words, the history, each kind of window's report, put everything back. The phone has it too.
+- **Out of reach**: the code editor, code highlighting and the PDF and Office previews know only light and dark; a few components define tokens of their own, which only a stylesheet reaches. Font sizes and spacing are not tokens, and there is no whole-window scale yet.
+
 <a id="spend"></a>
 ## Spend
 

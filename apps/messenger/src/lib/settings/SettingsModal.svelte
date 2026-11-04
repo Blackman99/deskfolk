@@ -27,6 +27,7 @@
 	import SettingsNav, { type SettingsTab } from './SettingsNav.svelte';
 	import GeneralTab from './GeneralTab.svelte';
 	import BehaviorTab from './BehaviorTab.svelte';
+	import InterfaceTab from './InterfaceTab.svelte';
 	import ProvidersTab from './ProvidersTab.svelte';
 	import ModelsTab from './ModelsTab.svelte';
 	import RemoteTab from './RemoteTab.svelte';
@@ -239,6 +240,8 @@
 			? t.settings.tabGeneral
 			: tab === 'behavior'
 				? t.settings.tabBehavior
+			: tab === 'interface'
+				? t.ui.tab
 			: tab === 'models'
 				? t.settings.tabModels
 				: tab === 'agents'
@@ -313,6 +316,11 @@
 	const behaviorTabVisible = $derived(workbench);
 	$effect(() => {
 		if (activeSettingsTab === 'behavior' && !behaviorTabVisible) activeSettingsTab = 'general';
+	});
+	/** The interface profile (ADR 0106) is the daemon's; one that predates it has nothing to show. */
+	const interfaceTabVisible = $derived(snapshot.interface !== null);
+	$effect(() => {
+		if (activeSettingsTab === 'interface' && !interfaceTabVisible) activeSettingsTab = 'general';
 	});
 	let workspaceSavedTick = $state(0);
 	const providerEditorController = new ProviderEditorController({
@@ -442,6 +450,7 @@
 				{lessonsTabVisible}
 				{remoteTabVisible}
 				{behaviorTabVisible}
+				{interfaceTabVisible}
 				{closeSettings}
 			/>
 
@@ -490,6 +499,8 @@
 					/>
 				{:else if activeSettingsTab === 'behavior' && behaviorTabVisible}
 					<BehaviorTab {t} />
+				{:else if activeSettingsTab === 'interface' && interfaceTabVisible}
+					<InterfaceTab {runtime} {t} {snapshot} {locale} phone={!workbench} />
 				{:else if activeSettingsTab === 'models'}
 					<ModelsTab bind:this={modelsTab} {runtime} {t} {snapshot} notices={settingsNotices}>
 						{#snippet endpoints()}

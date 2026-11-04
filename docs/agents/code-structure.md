@@ -48,6 +48,7 @@
   - **信使：工具函数**
     - 本地存储：`storage.ts` 的 `readStored` / `writeStored` / `forgetStored`；记住拖动宽度的 `persistedWidth`。
     - 小工具：`is-record.ts`、`locale-tag.ts`、`clipboard.ts` 的 `copyText`、`spend-format.ts`。
+    - 界面方案（ADR 0106）：`interface/controller.svelte.ts` 的 `interfaceController`（每个窗口一个，套用、底线、回报），读用法用 `interface/behaviour.svelte.ts` 的 `interfaceBehaviour()`，改过的字走 `copy.ts` 的 `copyFor(locale, overrides)`；校验和打补丁在协议包的 `applyInterfacePatch`，两端共用。
     - 交互：`pointer-drag.ts`（拖动改宽高）、`styles/shared.css` 的 `.split-handle`（拖动的分隔条长什么样：1px 细线、两侧 3px 的抓手、悬停和拖动时的浅色带）、`dismissable-menu.ts`（右键菜单的收起）、`menu-roving.ts`（菜单方向键）、`autosave.svelte.ts`（边输边存）。
   - **信使：组件**
     - `Button.svelte`、`IconButton.svelte`、`Icon.svelte`（图标表在 `icons.ts`）；右上角提示 `toast.svelte.ts` 的 `showToast`。

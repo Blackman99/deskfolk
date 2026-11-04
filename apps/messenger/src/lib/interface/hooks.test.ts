@@ -38,13 +38,8 @@ test("every data-ui hook is still in the markup", () => {
   }
 });
 
-// "interface-pause" and "interface-undo" come with components that are not written yet.
-const PENDING_FLOORS = ["interface-pause", "interface-undo"];
-
 test("every data-floor the app checks is still in the markup", () => {
-  const floors = UI_FLOORS.filter((name) => !PENDING_FLOORS.includes(name));
-  expect(floors).toEqual(["stop", "approval", "ask", "settings-entry"]);
-  for (const name of floors) {
+  for (const name of UI_FLOORS) {
     const found = SOURCES.some((source) => source.includes(`data-floor="${name}"`));
     expect({ floor: name, found }).toEqual({ floor: name, found: true });
   }

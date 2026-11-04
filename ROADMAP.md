@@ -15,7 +15,7 @@
 3. **首次上手先选一种活。** 向导的最后一步选一种工作方式（通用、视频或代码），按它建好一组 Bot 模板，两个以上再建一个群（2026-10-11）。之后和 Bot 的私聊里，第一条起手提示就是「交出去，明早看结果」：写一页工作区简报，再建一个每天早上的日程，第二天回来有东西可看（2026-10-12）。Mac 版从 0.1.0-rc.16 起用 Developer ID 签名并经 Apple 公证，双击即可打开。
 4. **外围功能只维护。** 远程访问（包括看屏）、日程、花费、全局搜索、工作台分屏：修 bug、跟着核心改动走，不再扩面，远程看屏这样的投入要更克制。产物的归档、预览和批注不在这里：它们和流程图、完工复盘一样是核心。远程访问的安全复核和真机验收照旧排着，不占核心的时间。
 5. **把「应用找你」做成可量的数。** 每件事打扰你几次、每次是不是真要你，口径按 [ADR 0058](docs/adr/0058-the-app-asks-only-when-it-needs-you.md)，进第二张实测表。
-6. **应用是你的工作方式模板。** 内置提示词能改，Bot 也能提改动、由你在批准卡上放行，每次修改都能撤销（[ADR 0064](docs/adr/0064-built-in-prompts-you-and-your-bots-can-edit.md)）；Bot 能只读地查本机记录，拿依据提改动（[ADR 0065](docs/adr/0065-bots-read-this-machines-records.md)）；跑不跑一件件事、应用自己的哪些环节跑、带什么数是引擎，内置通用、视频、代码三套和不用这一套的自由，按对话选，每个环节的模型和提示词在分工页上一起设，还能在应用已有的时机上加你自己的环节，按规则、命令或模型判，「不过」做什么只能从固定清单里选（[ADR 0082](docs/adr/0082-roles-page.md)、[ADR 0085](docs/adr/0085-engines.md)、[ADR 0103](docs/adr/0103-an-engine-can-work-in-no-jobs.md)、[ADR 0105](docs/adr/0105-steps-of-your-own.md)）。接下来：Bot 提议改引擎（走批准卡片）、拿过去的话回放来评估一次改动、引擎的修改记录能撤销；局面块、回路里的提示和转录文案也做成能改的提示词。
+6. **应用是你的工作方式模板。** 内置提示词能改，Bot 也能提改动、由你在批准卡上放行，每次修改都能撤销（[ADR 0064](docs/adr/0064-built-in-prompts-you-and-your-bots-can-edit.md)）；Bot 能只读地查本机记录，拿依据提改动（[ADR 0065](docs/adr/0065-bots-read-this-machines-records.md)）；跑不跑一件件事、应用自己的哪些环节跑、带什么数是引擎，内置通用、视频、代码三套和不用这一套的自由，按对话选，每个环节的模型和提示词在分工页上一起设，还能在应用已有的时机上加你自己的环节，按规则、命令或模型判，「不过」做什么只能从固定清单里选（[ADR 0082](docs/adr/0082-roles-page.md)、[ADR 0085](docs/adr/0085-engines.md)、[ADR 0103](docs/adr/0103-an-engine-can-work-in-no-jobs.md)、[ADR 0105](docs/adr/0105-steps-of-your-own.md)）。应用的样子和用法也归你：令牌、用法清单、自定义 CSS 和界面上的字，你或你让 Bot 改，底线盖不住（[ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)）。接下来：Bot 提议改引擎（走批准卡片）、拿过去的话回放来评估一次改动、引擎的修改记录能撤销；局面块、回路里的提示和转录文案也做成能改的提示词；快捷键重绑和整体缩放。
 
 不做的继续不做：云电脑、多用户、供应商目录、把 Bot 当安全边界。
 
@@ -77,6 +77,7 @@
 - Bot 管理 provider、模型名单与 MCP server；危险配置需要用户批准。
 - 内置提示词：你直接改（每一轮的在设置里，应用自己的调用的在分工页上）；Bot 用 `edit_prompt` 提，批准卡放行，能撤销（[ADR 0064](docs/adr/0064-built-in-prompts-you-and-your-bots-can-edit.md)）。
 - 本机记录：Bot 用 `describe_data` / `query_data` / `read_data_log` 只读地查应用存下的记录和守护进程日志，拿依据分析、提改动，常问的几种分析有现成的查询；密钥、远程访问和你的终端查不到（[ADR 0065](docs/adr/0065-bots-read-this-machines-records.md)）。
+- 界面方案：你在对话里说想要的样子和用法，Bot 用 `describe_interface` / `edit_interface` 改令牌、一份固定的用法清单、自定义 CSS 和界面上的字，所有窗口和手机共用，立刻生效、能撤销；停止、批准和设置入口由代码守着盖不住（[ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)）。
 - Bot 发消息、点名和交接，主动推进其他 Bot 的工作。
 
 接下来：

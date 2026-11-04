@@ -16,6 +16,11 @@ export const zh = {
   waitingHint: "回复结束后可发送 · Shift+Enter 换行",
   /** A direct whose Bot is at work, or still reading your last line: what you send now reaches it at its next step. */
   workingHint: "Enter ↵ 发送，它下一步就读到 · Shift+Enter 换行",
+  /** The same three when your interface sends with ⌘/Ctrl+Enter (ADR 0106); `key` is how this platform writes it. */
+  modSendHint: (key: string) => `${key} 发送 · Enter 换行`,
+  modWorkingHint: (key: string) => `${key} 发送，它下一步就读到 · Enter 换行`,
+  modWaitingHint: "回复结束后可发送 · Enter 换行",
+  modSendShortcut: (key: string) => `发送（${key}）`,
   attach: "添加附件",
   removeAttachment: "移除附件",
   /** On a file dragged in from the workspace tree: it goes out as its path. */
@@ -47,6 +52,10 @@ export const en: CopyShape<typeof zh> = {
   stopGeneration: "Stop reply",
   waitingHint: "Send after the reply ends · Shift+Enter for newline",
   workingHint: "Enter to send — it reads it at its next step · Shift+Enter for newline",
+  modSendHint: (key: string) => `${key} to send · Enter for newline`,
+  modWorkingHint: (key: string) => `${key} to send — it reads it at its next step · Enter for newline`,
+  modWaitingHint: "Send after the reply ends · Enter for newline",
+  modSendShortcut: (key: string) => `Send (${key})`,
   attach: "Add attachment",
   removeAttachment: "Remove attachment",
   workspaceRef: "The file in the workspace itself; nothing is copied",

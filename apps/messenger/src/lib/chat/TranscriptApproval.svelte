@@ -2,12 +2,14 @@
 	/** A request waiting on your approval in the transcript, with the key it may need and its buttons. */
 	import { modeAllowing, type ResolveApprovalAction } from '@real-bot/protocol';
 	import PromptEditCard from './PromptEditCard.svelte';
+	import InterfaceEditCard from './InterfaceEditCard.svelte';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
 	import {
 		approvalForMessage,
 		approvalNeedsSecret,
 		approvalSecretRequired,
+		isInterfaceEdit,
 		isPromptEdit,
 		isHttpMcpApproval
 	} from './approval-card.ts';
@@ -81,6 +83,9 @@
 			{#if isPromptEdit(card?.kind_key)}
 				<!-- A Bot's change to a built-in prompt (ADR 0064): the change itself, and once allowed, its Undo. -->
 				<PromptEditCard body={singleMsg.message.body} {t} approval={card ?? null} api={runtime.client} onOpenSettings={(target) => runtime.openPromptSettings(target)} />
+			{:else if isInterfaceEdit(card?.kind_key)}
+				<!-- A Bot's change to your interface (ADR 0106): what it changes, a way to try it here, and once allowed, its Undo. -->
+				<InterfaceEditCard body={singleMsg.message.body} {t} approval={card ?? null} api={runtime.client} recent={stage.snapshot.interface?.recent ?? []} />
 			{:else}
 				<div class="body">{singleMsg.message.body}</div>
 			{/if}

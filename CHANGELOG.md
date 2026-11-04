@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Change how the app looks and works by asking a Bot
+
+- Tell a Bot in any conversation how you want the app to look or work — "make the accent purple", "a darker sidebar", "send with ⌘Enter" — and it changes your interface profile with the new `describe_interface` / `edit_interface` tools ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)). The profile overrides the design tokens (colours, fonts, corners, shadows, for the light and dark looks), a fixed list of behaviour (focus mode, where each kind of window opens, Enter or ⌘/Ctrl+Enter to send, 12- or 24-hour time, reduced motion), a stylesheet of your own, and words on screen; the theme and language too. Every window and a paired phone follow one profile.
+- It is a change under the permission modes: under auto and allow all it applies at once and the Bot's reply carries "Interface changed · Undo"; under ask first it waits on a card you can try in a window before allowing; read-only refuses it. Every change records who made it, why, and the whole profile before and after; the latest can be undone and any can be restored.
+- Stop, the buttons of a card waiting on you, the way to Settings and the undo buttons cannot be hidden: a window where the profile hides one drops the tokens and CSS and says so. `?ui=default` in the address, or ⌥⇧⌘U (Ctrl+Alt+Shift+U on Windows and Linux), shows a window's default look until pressed again.
+- Settings › Interface shows the switch, behaviour, tokens, the stylesheet (with the stable `[data-ui="…"]` hooks it can use), changed words, the history and what each kind of window found after applying it. Focus mode and where windows open now live in the profile rather than in each window; the first window to connect carries its own choices in.
+
 ### Steps of your own in an engine
 
 - An engine can now carry steps you write yourself, at the moments the app already has: before or after a call with an effect (a write, a delete, a command, an MCP tool), as a turn ends, when work is handed in, after a hand-over is approved, and after you send one back ([ADR 0105](docs/adr/0105-steps-of-your-own.md)). A step judges by a rule (matching a path or a kind of tool is a no), by a command of yours (exit 0 passes; it reads what happened on stdin and `DESKFOLK_*` variables), or by a model reading the rule you wrote, and what a "no" does comes from a fixed list per moment: refuse the call, show the output to the Bot beside it, send the turn back to go on, hold a hand-over back as a failed check would, or tell you in a line no Bot reads. The app carries it out; a step that cannot judge lets things through.

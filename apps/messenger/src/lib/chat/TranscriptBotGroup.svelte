@@ -1,5 +1,6 @@
 <script lang="ts">
 	/** A Bot's replies in the transcript, one or a run of parts, and its working bubble while a turn runs. */
+	import InterfaceChangeChip from './InterfaceChangeChip.svelte';
 	import MessageAttachments from './MessageAttachments.svelte';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
 	import CommandActivity from './CommandActivity.svelte';
@@ -42,6 +43,10 @@
 	const botAuthor = $derived(stage.botsById.get(group.author));
 	const pal = $derived(botAvatarColor(group.author));
 	const isMulti = $derived(group.items.length > 1);
+	/** The turns this reply belongs to, for the interface changes they made. */
+	const turnIds = $derived(
+		group.items.flatMap((i) => (i.type === 'message' ? (i.message.turn_id ? [i.message.turn_id] : []) : i.type === 'streaming' ? [i.turn.id] : []))
+	);
 	const hasStreaming = $derived(group.items.some((i) => i.type === 'streaming'));
 
 	/** What a working turn is doing, once it has started a step: see turn-activity.ts. */
@@ -415,6 +420,7 @@
 				</div>
 			{/each}
 		</div>
+		<InterfaceChangeChip {turnIds} recent={stage.snapshot.interface?.recent ?? []} {t} api={runtime.client} />
 	</div>
 </div>
 

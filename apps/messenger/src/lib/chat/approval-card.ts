@@ -1,8 +1,13 @@
-import { isLocalEndpoint, type Approval, type Message } from "@real-bot/protocol";
+import { INTERFACE_EDIT_KIND, isLocalEndpoint, type Approval, type Message } from "@real-bot/protocol";
 
 /** A Bot's proposed change to a built-in prompt (ADR 0064): shown as a diff. */
 export function isPromptEdit(kindKey: string | null | undefined): boolean {
   return kindKey === "prompt-edit";
+}
+
+/** A Bot's proposed change to your interface profile (ADR 0106). */
+export function isInterfaceEdit(kindKey: string | null | undefined): boolean {
+  return kindKey === INTERFACE_EDIT_KIND;
 }
 
 export function needsEndpointKey(

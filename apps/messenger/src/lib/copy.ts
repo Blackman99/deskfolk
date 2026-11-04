@@ -45,6 +45,7 @@ import * as notificationsText from "./copy/notifications.ts";
 import * as permissionsText from "./copy/permissions.ts";
 import * as projectText from "./copy/project.ts";
 import * as taskmapText from "./copy/taskmap.ts";
+import * as uiText from "./copy/ui.ts";
 
 /** What the workspace is for (ADR 0092): where Bots' work is kept together, not a permission boundary. */
 export const WORKSPACE_COPY = {
@@ -98,6 +99,7 @@ const zh = {
   permissions: permissionsText.zh,
   project: projectText.zh,
   taskmap: taskmapText.zh,
+  ui: uiText.zh,
 };
 
 const en: CopyShape<typeof zh> = {
@@ -146,6 +148,7 @@ const en: CopyShape<typeof zh> = {
   permissions: permissionsText.en,
   project: projectText.en,
   taskmap: taskmapText.en,
+  ui: uiText.en,
 };
 
 export const COPY = { zh, en };
@@ -160,8 +163,74 @@ export function screenCopy(t: Copy, host: "mac" | "windows"): Copy["screen"] {
   return host === "windows" ? { ...t.screen, ...t.screenWindows } : t.screen;
 }
 
-export function copyFor(locale: Locale): Copy {
-  return locale === "en" ? en : zh;
+/**
+ * The app's words in a language, with the ones you changed (ADR 0106) laid over them. A change only
+ * takes where the app has words of its own at that key, and keeps every `{placeholder}` they had;
+ * the rest are left out (`copyOverrideProblem` says why). The result is cached per change set.
+ */
+export function copyFor(locale: Locale, overrides?: Readonly<Record<string, string>> | null): Copy {
+  const base = locale === "en" ? en : zh;
+  if (!overrides || Object.keys(overrides).length === 0) return base;
+  const cache = overridden.get(overrides);
+  const hit = cache?.get(locale);
+  if (hit) return hit;
+  const out = withCopyOverrides(base, overrides);
+  overridden.set(overrides, (cache ?? new Map()).set(locale, out));
+  return out;
+}
+
+const overridden = new WeakMap<object, Map<Locale, Copy>>();
+
+const PLACEHOLDER = /\{[a-zA-Z_][a-zA-Z0-9_]*\}/g;
+
+function wordsAt(base: unknown, key: string): unknown {
+  let at: unknown = base;
+  for (const part of key.split(".")) {
+    if (!at || typeof at !== "object" || !Object.hasOwn(at, part)) return undefined;
+    at = (at as Record<string, unknown>)[part];
+  }
+  return at;
+}
+
+/** Why a change of the app's words at `key` cannot take, or null. */
+export function copyOverrideProblem(base: Copy, key: string, text: string): string | null {
+  const own = wordsAt(base, key);
+  if (typeof own !== "string") return own === undefined ? "no words at that key" : "not plain words at that key";
+  const need = new Set(own.match(PLACEHOLDER) ?? []);
+  const have = new Set(text.match(PLACEHOLDER) ?? []);
+  for (const placeholder of need) if (!have.has(placeholder)) return `keeps ${placeholder}`;
+  for (const placeholder of have) if (!need.has(placeholder)) return `has no ${placeholder}`;
+  return null;
+}
+
+/** The app's words with the changes that can take laid over them; copies only the objects on their way. */
+export function withCopyOverrides(base: Copy, overrides: Readonly<Record<string, string>>): Copy {
+  const root: Record<string, unknown> = { ...(base as unknown as Record<string, unknown>) };
+  for (const [key, text] of Object.entries(overrides)) {
+    if (copyOverrideProblem(base, key, text)) continue;
+    const parts = key.split(".");
+    let into = root;
+    for (const part of parts.slice(0, -1)) {
+      const next = { ...(into[part] as Record<string, unknown>) };
+      into[part] = next;
+      into = next;
+    }
+    into[parts.at(-1)!] = text;
+  }
+  return root as unknown as Copy;
+}
+
+/** Every plain string of the app's words with its key, for a Bot looking up what to change. */
+export function copyLeaves(base: Copy): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (value: unknown, path: string) => {
+    if (typeof value === "string") out[path] = value;
+    else if (value && typeof value === "object" && !Array.isArray(value)) {
+      for (const [key, child] of Object.entries(value)) walk(child, path ? `${path}.${key}` : key);
+    }
+  };
+  walk(base, "");
+  return out;
 }
 
 /** Known thinking-level labels, falling back to the endpoint's own token. */

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	export type SettingsTab = 'general' | 'behavior' | 'models' | 'agents' | 'mcp' | 'prompts' | 'notifications' | 'lessons' | 'remote' | 'about';
+	export type SettingsTab = 'general' | 'behavior' | 'interface' | 'models' | 'agents' | 'mcp' | 'prompts' | 'notifications' | 'lessons' | 'remote' | 'about';
 </script>
 
 <script lang="ts">
@@ -20,6 +20,8 @@
 		remoteTabVisible: boolean;
 		/** Only with the desktop workbench: what it holds is where windows open there. */
 		behaviorTabVisible: boolean;
+		/** The daemon keeps an interface profile (ADR 0106). */
+		interfaceTabVisible?: boolean;
 		closeSettings: () => void;
 	};
 
@@ -34,6 +36,7 @@
 		lessonsTabVisible,
 		remoteTabVisible,
 		behaviorTabVisible,
+		interfaceTabVisible = false,
 		closeSettings
 	}: Props = $props();
 </script>
@@ -85,6 +88,18 @@
 			</button>
 		{/if}
 
+		{#if interfaceTabVisible}
+			<button
+				type="button"
+				class="settings-tab-btn"
+				class:is-active={activeSettingsTab === 'interface'}
+				data-settings-tab="interface"
+				onclick={() => openSettingsTab('interface')}
+			>
+				<Icon name="sliders" class="tab-icon" />
+				<span class="tab-name">{t.ui.tab}</span>
+			</button>
+		{/if}
 
 		<button
 			type="button"

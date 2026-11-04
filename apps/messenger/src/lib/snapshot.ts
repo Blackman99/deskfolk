@@ -12,6 +12,7 @@ import {
   type CredentialOperation,
   type DelegationView,
   type Hold,
+  type InterfaceState,
   type Judgement,
   type McpServer,
   type Memory,
@@ -29,6 +30,8 @@ import { noBuiltinModels } from "./settings/builtin-models.ts";
 export type Snapshot = {
   credentialOperations: CredentialOperation[];
   settings: Settings;
+  /** Your interface profile (ADR 0106); null from a daemon older than it, where windows show the app's own. */
+  interface: InterfaceState | null;
   bots: Bot[];
   sessions: SessionSummary[];
   mcpServers: McpServer[];
@@ -90,6 +93,7 @@ export function emptySnapshot(): Snapshot {
       wizard_complete: false,
     },
     credentialOperations: [],
+    interface: null,
     bots: [],
     sessions: [],
     mcpServers: [],
@@ -118,6 +122,7 @@ export function emptySnapshot(): Snapshot {
 export function fromRuntimeSnapshot(snapshot: RuntimeSnapshot): Snapshot {
   return {
     ...emptySnapshot(), ...snapshot,
+    interface: snapshot.interface ?? null,
     messages: snapshot.sessions.flatMap((session) => session.last_message ? [session.last_message] : []),
     turns: snapshot.sessions.flatMap((session) => session.live_turns ?? []),
     pendingJudgements: snapshot.sessions.flatMap((session) => session.pending_judgements ?? []),
@@ -141,6 +146,10 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
     case "settings.changed": {
       const { event: _e, occurred_at: _at, ...settings } = event;
       return { ...snapshot, settings };
+    }
+    case "interface.changed": {
+      const { event: _e, occurred_at: _at, ...state } = event;
+      return { ...snapshot, interface: state };
     }
     case "bot.upsert": {
       const { event: _e, occurred_at: _at, deleted_at, ...bot } = event;

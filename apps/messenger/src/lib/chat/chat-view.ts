@@ -1,3 +1,4 @@
+import { interfaceBehaviour } from "../interface/behaviour.svelte.ts";
 import {
   INTERRUPT_NOTE_BODY,
   UNREACHABLE_NOTE_BODIES,
@@ -146,26 +147,32 @@ export function formatLiveDuration(startedAt: string, nowMs: number = Date.now()
   return formatDurationMs(elapsed, part);
 }
 
-/** Formats ISO timestamp into local HH:mm (e.g. 14:05) */
-export function formatMessageTime(isoString: string): string {
+/** A clock reading in the time format your interface asks for (ADR 0106): `14:05`, or `2:05 PM`. */
+function clockOf(date: Date, format: "24h" | "12h", withSeconds = false): string {
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = withSeconds ? `:${String(date.getSeconds()).padStart(2, "0")}` : "";
+  if (format === "12h") {
+    const hours = date.getHours() % 12 || 12;
+    return `${hours}:${minutes}${seconds} ${date.getHours() < 12 ? "AM" : "PM"}`;
+  }
+  return `${String(date.getHours()).padStart(2, "0")}:${minutes}${seconds}`;
+}
+
+/** Formats ISO timestamp into local HH:mm (e.g. 14:05), or 2:05 PM in the 12-hour form. */
+export function formatMessageTime(isoString: string, format: "24h" | "12h" = interfaceBehaviour().time_format ?? "24h"): string {
   const date = new Date(isoString);
   if (isNaN(date.getTime())) return "";
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
+  return clockOf(date, format);
 }
 
 /** Formats ISO timestamp into full localized readable date/time (e.g. 2026-09-15 14:05:22) */
-export function formatFullTimestamp(isoString: string): string {
+export function formatFullTimestamp(isoString: string, format: "24h" | "12h" = interfaceBehaviour().time_format ?? "24h"): string {
   const date = new Date(isoString);
   if (isNaN(date.getTime())) return isoString;
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  const seconds = String(date.getSeconds()).padStart(2, "0");
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  return `${year}-${month}-${day} ${clockOf(date, format, true)}`;
 }
 
 /** Determines if two ISO date strings fall on different calendar days */

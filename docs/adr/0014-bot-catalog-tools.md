@@ -1,5 +1,7 @@
 # Bot 经轮次批准改名册级端点和 MCP
 
+部分被 [ADR 0106](0106-the-interface-is-yours-too.md) 取代（2026-11-04）：「仍然不归 Bot」里的语言和外观改了——你在对话里要，Bot 用 `edit_interface` 改界面方案（令牌、用法、自定义 CSS、界面上的字）和主题、语言，能撤销；通知仍只有你改。 / Superseded in part by ADR 0106 (2026-11-04): language and appearance are no longer kept from Bots — asked in a conversation, a Bot changes your interface profile and the theme and language with `edit_interface`, undoably; notifications stay yours alone.
+
 端点和 MCP 是账户级信任根，不是每 Bot 一份。Bot 可以 list / add / update / delete，但新建端点、改已有 URL、新增 MCP、改 command·args 必须每次批准，不能 Always allow；密钥只出现在批准卡的 resolve 请求里，不进工具参数、转录或事件。HTTP MCP 新增的批准卡 `requires_api_key` 为真：允许一次必须贴 Authorization，否则 `422`、卡仍 pending。默认端点的 URL / 密钥 / 删除仍只有你在设置里做——那是向导完成条件的根，不能让一轮工具拆掉。已配 MCP 的 `tools/call` 和往已有名单整表替换模型名仍直接干，信任点留在安装 / 改 URL。所有已启用且连接成功的 MCP 工具每次补全均可用，不按开轮触发条、消息语言或 Bot 身份筛选。新增、改连接或重新启用在当前轮次下一跳生效，其他 Bot 和后续会话同样可用；停用、删除后拒绝调用。此前只保留安装当轮的做法会让中文图片 / 视频请求和「再来一张」等后续消息失去工具，已移除。
 
 ## 2026-10-08：模型的属性和全局模型设置

@@ -2,6 +2,8 @@
 
 Status: implemented 2026-10-10, desktop workbench only. Amends one rule of [ADR 0025](0025-desktop-pane-workbench.md): opening something used to only add or replace a tab in the pane the keyboard is in, never split or float; now a new tab goes where its kind's choice says, and that choice can split or float.
 
+2026-11-04（[ADR 0106](0106-the-interface-is-yours-too.md)）：这些选择从每个窗口自己的存储搬进了界面方案，桌面各窗口共用，Bot 能照你说的改；第一个连上的窗口把它原来的选择带进去一次。浮窗上次的位置仍只存本机。 / 2026-11-04 (ADR 0106): these choices moved from each window's own storage into the interface profile, shared by every desktop window and changeable by a Bot when you ask; the first window to connect carries its old choices in once. Where a float was last left stays on the machine.
+
 你说的是（2026-10-10）：「支持配置给每种类型的窗口打开行为，包括会话，工具里的那些，流程图，看板，要点，产物等……行为包括：上下左右的某个方向分屏打开，浮窗打开，新标签页打开，替换标签页打开等等……给一组默认行为定义，本着方便使用的目标。」
 
 在这之前，打开规则写死在 `pane-open.ts`：新东西一律进当前窗格当新标签；只有一块窗格时会话才替换会话；从不自动分屏。于是点消息里的文件、开这件事的流程或看板，都会盖住正在读的会话，终端也挤在同一排标签里。/ Before this, everything new became a tab in the focused pane, so a message's file or the job's board covered the conversation you were reading, and terminals piled into the same strip.
