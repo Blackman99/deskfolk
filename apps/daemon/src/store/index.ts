@@ -533,6 +533,7 @@ export class Store {
   readonly recordCallRun = this.bind(callRuns.recordCallRun);
   readonly getCallRun = this.bind(callRuns.getCallRun);
   readonly traceSteps = this.bind(callRuns.traceSteps);
+  readonly customStepRunsForSubmission = this.bind(callRuns.customStepRunsForSubmission);
   // Where each Bot tool call worked, for the task map (ADR 0097) -----------------------------
   readonly beginToolPlace = this.bind(toolPlaces.beginToolPlace);
   readonly finishToolPlace = this.bind(toolPlaces.finishToolPlace);
@@ -547,6 +548,7 @@ export class Store {
   readonly jobsRunIn = this.bind(playbooks.jobsRunIn);
   readonly jobRuns = this.bind(playbooks.jobRuns);
   readonly toolsIn = this.bind(playbooks.toolsIn);
+  readonly customStepsAt = this.bind(playbooks.customStepsAt);
   readonly playbookImpact = this.bind(playbooks.playbookImpact);
   readonly savePlaybook = this.bind(playbooks.savePlaybook);
   readonly resetPlaybook = this.bind(playbooks.resetPlaybook);

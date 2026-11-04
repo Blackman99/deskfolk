@@ -166,15 +166,17 @@ export function isReaderClaudeModel(value: ReaderModel | null | undefined): valu
 /**
  * The calls the app makes on its own whose model you choose (ADR 0077), in the order Settings ›
  * Models › Built-in models shows them: reading your lines (读句), keeping the board in order (the
- * organizer, the scribe and the picture checks), the composer's suggestions, and four calls made as
- * a Bot — its judgement of whether to join, its reflection, its retrospective after a delivery and
- * the summary when its context is compacted.
+ * organizer, the scribe and the picture checks), the steps of your own that read your words with a
+ * model (ADR 0105), the composer's suggestions, and four calls made as a Bot — its judgement of
+ * whether to join, its reflection, its retrospective after a delivery and the summary when its
+ * context is compacted.
  */
 export const BUILTIN_MODEL_ROLES = [
   "reader",
   "organizer",
   "scribe",
   "judge",
+  "custom_step",
   "composer",
   "judgement",
   "reflection",

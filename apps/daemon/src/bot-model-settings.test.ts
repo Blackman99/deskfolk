@@ -99,7 +99,7 @@ test("every built-in call's model (ADR 0077) is listed, and a Bot sets the ones 
   const { store, ctx, cloud } = await fixture();
   const listed = await runCollabTool(ctx, "list_endpoints", {});
   expect((listed.data as { builtin_models: Record<string, unknown> }).builtin_models).toEqual({
-    reader: null, organizer: null, scribe: null, judge: null, composer: null, judgement: null, reflection: null, retrospective: null, compaction: null,
+    reader: null, organizer: null, scribe: null, judge: null, custom_step: null, composer: null, judgement: null, reflection: null, retrospective: null, compaction: null,
   });
 
   const set = await runCollabTool(ctx, "update_model_settings", { builtin_models: { scribe: { endpoint_id: cloud.id, model: "small" }, reflection: { endpoint_id: cloud.id, model: "big" } } });

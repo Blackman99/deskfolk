@@ -1215,6 +1215,9 @@ CREATE TABLE IF NOT EXISTS call_runs (
   -- The engine it ran under and its revision then (ADR 0085).
   playbook_id TEXT,
   playbook_revision INTEGER,
+  -- A step of your own (ADR 0105): {id, name, at} as JSON, and the hand-over it judged on a hand-in.
+  custom_step TEXT,
+  submission_id TEXT,
   created_at TEXT NOT NULL
 );
 

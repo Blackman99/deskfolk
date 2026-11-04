@@ -8,6 +8,9 @@
  */
 import {
   BUILTIN_PLAYBOOK_IDS,
+  compactCustomSteps,
+  customStepRuns,
+  customStepViews,
   DEFAULT_PLAYBOOK_ID,
   emptyPlaybookDiff,
   FILE_DROP_SESSION_ID,
@@ -17,8 +20,11 @@ import {
   PlaybookDiffError,
   playbookStep,
   resolvePlaybook,
+  validateCustomSteps,
   validatePlaybookDiff,
   type BuiltinPlaybookId,
+  type CustomStep,
+  type CustomStepAt,
   type EngineToolKind,
   type Playbook,
   type PlaybookDiff,
@@ -92,7 +98,31 @@ function withoutRetired(stored: PlaybookDiff): PlaybookDiff {
   if (stored.system && Object.keys(stored.system).length > 0) out.system = stored.system;
   const off = (stored.tools_off ?? []).filter(isEngineToolKind);
   if (off.length > 0) out.tools_off = off;
+  const steps = storedCustomSteps(stored.custom_steps);
+  if (steps.length > 0) out.custom_steps = steps;
   return out;
+}
+
+/**
+ * Steps of your own as stored (ADR 0105): each as a save would take it, one that no longer would
+ * passed over, so the API never hands back what the next save refuses. The row and revisions keep it.
+ */
+function storedCustomSteps(stored: unknown): CustomStep[] {
+  if (!Array.isArray(stored)) return [];
+  const refuse = (message: string): never => {
+    throw new Error(message);
+  };
+  try {
+    return compactCustomSteps(validateCustomSteps(stored, refuse));
+  } catch {
+    return compactCustomSteps(stored.flatMap((one) => {
+      try {
+        return validateCustomSteps([one], refuse);
+      } catch {
+        return [];
+      }
+    }).filter((step, index, all) => all.findIndex((other) => other.id === step.id) === index));
+  }
 }
 
 function row(ctx: StoreContext, id: string): PlaybookRow | null {
@@ -117,6 +147,7 @@ function toPlaybook(ctx: StoreContext, id: string, found: PlaybookRow | null): P
     revision_id: found ? latestRevisionId(ctx, id) : null,
     diff,
     resolved: resolvePlaybook(base, diff),
+    custom_steps: customStepViews(diff, resolvePlaybook(base, diff)),
     updated_at: found?.updated_at ?? null,
   };
 }
@@ -227,6 +258,18 @@ export function playbookParam(ctx: StoreContext, scope: PlaybookScope, step: Pla
 export function jobsRunIn(ctx: StoreContext, sessionId: string | null): boolean {
   if (readEngineLevel(ctx.db) < ENGINE_LEVELS.work_items) return true;
   return playbookFor(ctx, { sessionId }).resolved.jobs.on;
+}
+
+/**
+ * The steps of your own that run here at one moment (ADR 0105), in the order you made them: none at a
+ * moment about hand-overs where the engine has no jobs, none switched off.
+ */
+export function customStepsAt(ctx: StoreContext, scope: PlaybookScope, at: CustomStepAt): CustomStep[] {
+  const engine = playbookFor(ctx, scope);
+  const steps = engine.diff.custom_steps ?? [];
+  if (steps.length === 0) return [];
+  const jobs = readEngineLevel(ctx.db) < ENGINE_LEVELS.work_items || engine.resolved.jobs.on;
+  return steps.filter((step) => step.at === at && customStepRuns(step, jobs));
 }
 
 /** Which of the app's tools a conversation's Bots are offered, as `builtinTools` and the dispatch ask. */

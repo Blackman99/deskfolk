@@ -48,6 +48,8 @@ const EFFORT: Record<BuiltinModelRole, Effort> = {
   compaction: "little",
   organizer: "high",
   judge: "high",
+  // A step of your own may stand before every call a Bot makes: it answers as fast as it can.
+  custom_step: "least",
   reflection: "high",
   retrospective: "high",
 };

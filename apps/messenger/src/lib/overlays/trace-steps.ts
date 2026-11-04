@@ -184,7 +184,10 @@ export function anomalousCards(nodes: readonly TaskTraceNode[], steps: readonly 
 /** What a step is called on its card: the call, or which of its kinds when it has several. */
 export function stepTitle(step: TraceStep, t: Copy): string {
   if (step.verdict?.kind === "organizer") return step.verdict.mode === "settle" ? t.traceSteps.organizerSettle : t.traceSteps.organizerMessage;
-  return (step.prompt_id ? t.traceSteps.variant[step.prompt_id] : undefined) ?? t.builtinModels.roles[step.role].name;
+  // A step of your own goes by the name you gave it (ADR 0105).
+  if (step.custom_step) return step.custom_step.name;
+  // A call a newer app makes that this window has no name for still draws, by its id.
+  return (step.prompt_id ? t.traceSteps.variant[step.prompt_id] : undefined) ?? t.builtinModels.roles[step.role]?.name ?? step.role;
 }
 
 /** What a step concluded; for one that came to nothing, why. */

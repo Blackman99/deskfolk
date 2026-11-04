@@ -362,7 +362,7 @@ test('on Claude Code, saving puts every built-in call on the Claude model, saves
   const choice = { runner: 'claude_code', model: 'sonnet', config_dir: null };
   expect(saves).toEqual([
     { workspace_path: '/fixture' },
-    { builtin_models: { reader: choice, organizer: choice, scribe: choice, judge: choice, composer: choice,
+    { builtin_models: { reader: choice, organizer: choice, scribe: choice, judge: choice, custom_step: choice, composer: choice,
       judgement: choice, reflection: choice, retrospective: choice, compaction: choice } },
   ]);
   expect(calls.some((call) => call.name === 'createProvider' || call.name === 'patchProvider')).toBe(false);
@@ -427,7 +427,7 @@ test('on another local agent, saving puts every built-in call on its model and t
   await settle();
   const saves = calls.filter((call) => call.name === 'patchSettings').map((call) => call.args[0]);
   const choice = { runner: 'codex', model: 'gpt-5.6-luna', config_dir: null };
-  expect(saves.at(-1)).toEqual({ builtin_models: { reader: choice, organizer: choice, scribe: choice, judge: choice, composer: choice,
+  expect(saves.at(-1)).toEqual({ builtin_models: { reader: choice, organizer: choice, scribe: choice, judge: choice, custom_step: choice, composer: choice,
     judgement: choice, reflection: choice, retrospective: choice, compaction: choice } });
   expect(calls.some((call) => call.name === 'createProvider' || call.name === 'patchProvider')).toBe(false);
   expect(host.textContent).toContain(t.onboarding.botAgentHint.replace('{agent}', 'Codex'));

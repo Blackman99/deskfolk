@@ -74,6 +74,18 @@ function zhVerdict(verdict: CallRunVerdict): string {
       return verdict.proposed ? `提了一条${verdict.note ? `：${verdict.note}` : ""}` : "没有要改的";
     case "retrospective":
       return `找到 ${verdict.findings} 条，改了 ${verdict.changes} 处`;
+    case "custom_step": {
+      const said = verdict.outcome === "pass" ? "过了"
+        : verdict.outcome === "blocked" ? "命令在工作区外，没跑"
+          : verdict.outcome === "error" ? "没判断成，放行"
+            : !verdict.applied ? "没过"
+              : verdict.then === "refuse" ? "没过，拒掉了这次调用"
+                : verdict.then === "send_back" ? "没过，退回接着做"
+                  : verdict.then === "gate" ? "没过，交付退回"
+                    : verdict.then === "tell" ? "没过，告诉了你"
+                      : "没过，附给了 Bot";
+      return verdict.reason ? `${said}：${verdict.reason}` : said;
+    }
   }
 }
 
@@ -133,6 +145,18 @@ function enVerdict(verdict: CallRunVerdict): string {
       return verdict.proposed ? `Proposed one${verdict.note ? `: ${verdict.note}` : ""}` : "Nothing to change";
     case "retrospective":
       return `Found ${verdict.findings}, changed ${verdict.changes}`;
+    case "custom_step": {
+      const said = verdict.outcome === "pass" ? "Passed"
+        : verdict.outcome === "blocked" ? "The command is outside the workspace; not run"
+          : verdict.outcome === "error" ? "Could not judge; let through"
+            : !verdict.applied ? "Did not pass"
+              : verdict.then === "refuse" ? "Did not pass; the call was refused"
+                : verdict.then === "send_back" ? "Did not pass; sent back to go on"
+                  : verdict.then === "gate" ? "Did not pass; the hand-over went back"
+                    : verdict.then === "tell" ? "Did not pass; you were told"
+                      : "Did not pass; shown to the Bot";
+      return verdict.reason ? `${said}: ${verdict.reason}` : said;
+    }
   }
 }
 

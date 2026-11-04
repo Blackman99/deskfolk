@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { builtinPlaybook, type ClientEvent } from "@real-bot/protocol";
+import { builtinPlaybook, type ClientEvent, type CustomStep } from "@real-bot/protocol";
 import { Store } from ".";
 
 const stores: Store[] = [];
@@ -131,5 +131,70 @@ describe("engines", () => {
     expect(events.filter((event) => event.event === "playbook.changed")).toEqual([
       { event: "playbook.changed", occurred_at: expect.any(String), id: "coding", default_id: "general" },
     ]);
+  });
+});
+
+describe("steps of your own (ADR 0105)", () => {
+  const lint: CustomStep = { id: "u_lintafterwrite", name: "写完 TS 跑 lint", on: true, at: "after_effect", match: { tools: ["write_file"], paths: ["src/**/*.ts"] },
+    run: { kind: "command", command: "pnpm -s eslint $DESKFOLK_PATHS" }, then: "note" };
+  const gate: CustomStep = { id: "u_ffprobe0001", name: "量一下视频", on: true, at: "handed_in", match: { paths: ["**/*.mp4"] },
+    run: { kind: "command", command: "ffprobe -v error x.mp4" }, then: "gate" };
+
+  test("kept with the engine, saved the same twice as one revision, copied into an engine made from it", () => {
+    const { store, direct } = fixture();
+    const saved = store.savePlaybook("general", { diff: { steps: {}, custom_steps: [{ ...lint, name: " 写完 TS 跑 lint " }, gate] } });
+    expect(saved.revision).toBe(1);
+    expect(saved.diff.custom_steps).toEqual([lint, gate]);
+    expect(saved.custom_steps!.map((step) => [step.id, step.running])).toEqual([["u_lintafterwrite", true], ["u_ffprobe0001", true]]);
+    // The same steps, their fields in another order, change nothing.
+    const { then, ...rest } = lint;
+    const again = store.savePlaybook("general", { diff: JSON.parse(JSON.stringify({ steps: {}, custom_steps: [{ then, ...rest }, gate] })), ifRevision: saved.revision_id });
+    expect(again.revision).toBe(1);
+    expect(store.getPlaybook("general").diff.custom_steps).toEqual([lint, gate]);
+    const mine = store.createPlaybook({ from: "general", name: "带检查的" });
+    expect(mine.diff.custom_steps).toEqual([lint, gate]);
+    // What runs at a moment, where: the general engine has jobs, so a hand-in step runs.
+    expect(store.customStepsAt({ sessionId: direct.id }, "after_effect").map((step) => step.id)).toEqual(["u_lintafterwrite"]);
+    expect(store.customStepsAt({ sessionId: direct.id }, "handed_in").map((step) => step.id)).toEqual(["u_ffprobe0001"]);
+    expect(store.customStepsAt({ sessionId: direct.id }, "turn_end")).toEqual([]);
+  });
+
+  test("in an engine with no jobs a hand-in step stays as set but does not run; a switched-off one never runs", () => {
+    const { store, direct } = fixture();
+    // Below work items there is only the way that level runs, with jobs (ADR 0103).
+    store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', '8')");
+    const plainish = store.createPlaybook({ from: "plain", name: "自由加规矩" });
+    store.savePlaybook(plainish.id, { diff: { steps: {}, custom_steps: [lint, gate, { ...lint, id: "u_lintoff00001", on: false }] } });
+    store.setSessionPlaybook(direct.id, plainish.id);
+    expect(store.getPlaybook(plainish.id).custom_steps!.map((step) => [step.id, step.running])).toEqual([
+      ["u_lintafterwrite", true], ["u_ffprobe0001", false], ["u_lintoff00001", false],
+    ]);
+    expect(store.customStepsAt({ sessionId: direct.id }, "after_effect").map((step) => step.id)).toEqual(["u_lintafterwrite"]);
+    expect(store.customStepsAt({ sessionId: direct.id }, "handed_in")).toEqual([]);
+  });
+
+  test("a stored step a save would refuse is passed over when read, the rest kept", () => {
+    const { store } = fixture();
+    store.savePlaybook("coding", { diff: { steps: {}, custom_steps: [lint] } });
+    const stored = JSON.parse(store.db.query<{ diff: string }, []>("SELECT diff FROM playbooks WHERE id = 'coding'").get()!.diff);
+    stored.custom_steps.push({ ...gate, then: "refuse" });
+    store.db.run("UPDATE playbooks SET diff = ? WHERE id = 'coding'", [JSON.stringify(stored)]);
+    expect(store.getPlaybook("coding").diff.custom_steps).toEqual([lint]);
+  });
+
+  test("a step's call record says which step it was and the hand-over it judged; the latest per step is what counts", () => {
+    const { store, direct } = fixture();
+    const verdict = (outcome: "pass" | "fail") => ({ kind: "custom_step" as const, run: "command" as const, outcome, then: "gate" as const, applied: outcome === "fail", reason: null });
+    const first = store.recordCallRun({ role: "custom_step", sessionId: direct.id, outcome: "ok", verdict: verdict("fail"),
+      customStep: { id: gate.id, name: gate.name, at: "handed_in" }, submissionId: "sub-1", now: new Date("2026-11-04T01:00:00Z") });
+    expect(first).toMatchObject({ custom_step: { id: gate.id, name: "量一下视频", at: "handed_in" }, submission_id: "sub-1" });
+    expect(store.getCallRun(first.id)).toMatchObject({ custom_step: { id: gate.id }, submission_id: "sub-1" });
+    store.recordCallRun({ role: "custom_step", sessionId: direct.id, outcome: "ok", verdict: verdict("pass"),
+      customStep: { id: gate.id, name: gate.name, at: "handed_in" }, submissionId: "sub-1", now: new Date("2026-11-04T01:05:00Z") });
+    const runs = store.customStepRunsForSubmission("sub-1");
+    expect(runs.map((run) => run.verdict)).toEqual([verdict("pass")]);
+    // An app's own call carries neither field.
+    const own = store.recordCallRun({ role: "reader", sessionId: direct.id, outcome: "failed", verdict: null });
+    expect(store.getCallRun(own.id)).not.toHaveProperty("custom_step");
   });
 });

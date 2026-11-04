@@ -62,7 +62,7 @@ test("a chosen endpoint model runs its call on its own endpoint, thinking as muc
   await store.patchSettings({ builtin_models: Object.fromEntries(BUILTIN_MODEL_ROLES.map((role) => [role, sees])) });
   const on = { baseUrl: "https://strong.example/v1", apiKey: "k-strong", apiFormat: "anthropic" as const, workspaceId: null, providerId: strong.id, providerName: "Strong", model: "sees" };
   const levels: Record<BuiltinModelRole, string> = {
-    reader: "none", composer: "none", judgement: "none",
+    reader: "none", composer: "none", judgement: "none", custom_step: "none",
     scribe: "low", compaction: "low",
     organizer: "high", judge: "high", reflection: "high", retrospective: "high",
   };

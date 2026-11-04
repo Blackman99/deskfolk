@@ -15,7 +15,7 @@ const legacySettings = (over: Partial<Settings> = {}): Settings => {
 
 test("a fresh snapshot starts with no call set apart", () => {
   expect(noBuiltinModels()).toEqual({
-    reader: null, organizer: null, scribe: null, judge: null, composer: null,
+    reader: null, organizer: null, scribe: null, judge: null, custom_step: null, composer: null,
     judgement: null, reflection: null, retrospective: null, compaction: null,
   });
   expect(base.builtin_models).toEqual(noBuiltinModels());

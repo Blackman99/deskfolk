@@ -12,6 +12,7 @@
  * level (`engine_level`, ADR 0040), which is how far a data folder has been migrated.
  */
 import type { Locale } from "./constants.ts";
+import { compactCustomSteps, customStepRuns, validateCustomSteps, type CustomStep, type CustomStepView } from "./custom-steps.ts";
 import type { BuiltinModelRole } from "./models.ts";
 
 /** Where a step hangs: what sets it off, in the order Roles draws them. */
@@ -138,6 +139,12 @@ export function isEngineToolKind(value: unknown): value is EngineToolKind {
 /** The longest System section of its own an engine takes, in characters (the prompts' own check is tighter). */
 export const PLAYBOOK_SYSTEM_MAX = 50_000;
 
+/**
+ * The most a whole difference may hold, as JSON characters: two System sections at their longest and
+ * every step of your own at its longest fit (ADR 0105). The phone's route allows the same.
+ */
+export const PLAYBOOK_DIFF_MAX = 200_000;
+
 /** What an engine changes from what it is based on; only what differs. */
 export type PlaybookStepDiff = { on?: boolean; params?: Record<string, number> };
 export type PlaybookDiff = {
@@ -147,6 +154,8 @@ export type PlaybookDiff = {
   system?: Partial<Record<Locale, string>>;
   /** The groups of tools its Bots are not offered. */
   tools_off?: EngineToolKind[];
+  /** Steps of your own (ADR 0105), in the order you made them; no built-in has any. */
+  custom_steps?: CustomStep[];
 };
 
 export const BUILTIN_PLAYBOOK_IDS = ["general", "video", "coding", "plain"] as const;
@@ -264,7 +273,7 @@ export class PlaybookDiffError extends Error {}
  */
 export function validatePlaybookDiff(value: unknown, base: BuiltinPlaybookId): PlaybookDiff {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new PlaybookDiffError("diff must be an object");
-  const raw = value as { v?: unknown; steps?: unknown; system?: unknown; tools_off?: unknown };
+  const raw = value as { v?: unknown; steps?: unknown; system?: unknown; tools_off?: unknown; custom_steps?: unknown };
   if (raw.v !== undefined && raw.v !== 1) throw new PlaybookDiffError("diff.v must be 1");
   const steps = raw.steps ?? {};
   if (!steps || typeof steps !== "object" || Array.isArray(steps)) throw new PlaybookDiffError("diff.steps must be an object");
@@ -314,11 +323,18 @@ export function validatePlaybookDiff(value: unknown, base: BuiltinPlaybookId): P
     }
     out.tools_off = raw.tools_off as EngineToolKind[];
   }
+  if (raw.custom_steps !== undefined) {
+    out.custom_steps = validateCustomSteps(raw.custom_steps, (message) => {
+      throw new PlaybookDiffError(message);
+    });
+  }
   const set = applyDiff(builtinSettings(base), out);
   for (const step of PLAYBOOK_STEPS) {
     if (step.onWhile && !set[step.id].on && set[step.onWhile].on) throw new PlaybookDiffError(`${step.id} can only be off while ${step.onWhile} is off`);
   }
-  return compactPlaybookDiff(base, out);
+  const compact = compactPlaybookDiff(base, out);
+  if (JSON.stringify(compact).length > PLAYBOOK_DIFF_MAX) throw new PlaybookDiffError(`an engine's changes are at most ${PLAYBOOK_DIFF_MAX} characters`);
+  return compact;
 }
 
 /** A diff with only what differs from the built-in left in it. */
@@ -340,7 +356,13 @@ export function compactPlaybookDiff(base: BuiltinPlaybookId, diff: PlaybookDiff)
   }
   const off = ENGINE_TOOL_KINDS.filter((kind) => diff.tools_off?.includes(kind));
   if (off.length > 0) out.tools_off = off;
+  if (diff.custom_steps && diff.custom_steps.length > 0) out.custom_steps = compactCustomSteps(diff.custom_steps);
   return out;
+}
+
+/** An engine's steps of your own as the API shows them: each with whether it runs there. */
+export function customStepViews(diff: PlaybookDiff, resolved: PlaybookResolved): CustomStepView[] {
+  return (diff.custom_steps ?? []).map((step) => ({ ...step, running: customStepRuns(step, resolved.jobs.on) }));
 }
 
 /** An engine as the API shows it. */
@@ -360,6 +382,8 @@ export type Playbook = {
   diff: PlaybookDiff;
   /** What it runs. */
   resolved: PlaybookResolved;
+  /** Its steps of your own (ADR 0105); empty for one with none, and on a server from before them. */
+  custom_steps?: CustomStepView[];
   updated_at: string | null;
 };
 

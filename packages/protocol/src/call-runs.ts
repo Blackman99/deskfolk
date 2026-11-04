@@ -1,3 +1,4 @@
+import type { CustomStepRef, CustomStepRunKind, CustomStepThen } from "./custom-steps.ts";
 import type { BuiltinModelRole } from "./models.ts";
 
 /**
@@ -56,7 +57,21 @@ export type CallRunVerdict =
   | { kind: "compaction"; hops: number; kept_hops: number }
   | { kind: "judge"; mode: string; passed: boolean | null; note: string | null }
   | { kind: "reflection"; proposed: boolean; note: string | null }
-  | { kind: "retrospective"; findings: number; changes: number; summary: string | null };
+  | { kind: "retrospective"; findings: number; changes: number; summary: string | null }
+  /**
+   * A step of your own (ADR 0105): how it judged, what it said, and whether its "no" was carried out
+   * (`applied`: false when it said yes, could not judge, or a send-back had none left). `blocked` is a
+   * command that would run outside the workspace; `error` one that could not judge.
+   */
+  | {
+      kind: "custom_step";
+      run: CustomStepRunKind;
+      outcome: "pass" | "fail" | "error" | "blocked";
+      then: CustomStepThen;
+      applied: boolean;
+      reason: string | null;
+      exit_code?: number | null;
+    };
 
 /**
  * One use of one of the app's own model calls (ADR 0083): which call, what it was about, which
@@ -97,6 +112,10 @@ export type CallRun = {
   /** The engine it ran under and how many times that engine had been changed (ADR 0085); absent before it. */
   playbook_id?: string | null;
   playbook_revision?: number | null;
+  /** The step of your own it was (ADR 0105), by its name then; absent on the app's own calls. */
+  custom_step?: CustomStepRef | null;
+  /** The hand-over it judged, for a step on a hand-in; absent otherwise. */
+  submission_id?: string | null;
   created_at: string;
 };
 

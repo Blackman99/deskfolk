@@ -18,6 +18,7 @@ import { AGENT_PREFACE } from "./agent-system";
 import { ALL_TOOL_DEFS, toolDescription, toolKind } from "./builtin-tools";
 import { COMPACT_TEMPLATE } from "./compaction";
 import { COMPOSER_SUGGEST_FORMAT, COMPOSER_SUGGEST_TEMPLATE } from "./composer-suggestions";
+import { customStepFormat, customStepTemplate } from "./custom-step";
 import type { Placeholder } from "./fill";
 import { JUDGEMENT_FORMAT, JUDGEMENT_TEMPLATE } from "./judgement";
 import { ORGANIZER_FORMAT, ORGANIZER_TEMPLATE, ORGANIZER_TEMPLATE_UNDER_HOLDS } from "./organizer";
@@ -96,6 +97,7 @@ const CALL_ROLES: Record<string, BuiltinModelRole> = {
   "call.seams_text": "judge",
   "call.seams_digest": "judge",
   "call.standard": "judge",
+  "call.custom_step": "custom_step",
 };
 
 const BOTH: readonly Locale[] = ["zh", "en"];
@@ -318,6 +320,14 @@ const CALL_SLOTS: SlotDef[] = [
     (l) => standardJudgeTemplate(l),
     (l) => standardJudgeFormat(l),
     { placeholders: ["item", "rules", "format"] },
+  ),
+  call(
+    "call.custom_step",
+    { zh: "自定义环节", en: "Steps of your own" },
+    { zh: "你在引擎里挂的环节用模型判断时，你写的规矩外面的这一层：只判断过不过、为什么。", en: "The frame around the rule you wrote when a step of your own in an engine judges with a model: only whether it passes, and why not." },
+    BOTH,
+    (l) => customStepTemplate(l),
+    (l) => customStepFormat(l),
   ),
 ];
 

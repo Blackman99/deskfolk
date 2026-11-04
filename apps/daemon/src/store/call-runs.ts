@@ -4,7 +4,7 @@
  * path. Before this, a reading lived in a work-log payload, a judgement's model nowhere, a
  * composer's answer nowhere, and none of them said which prompt revision it ran with.
  */
-import type { BuiltinModelRole, CallRun, CallRunOutcome, CallRunVerdict, TraceStep } from "@real-bot/protocol";
+import type { BuiltinModelRole, CallRun, CallRunOutcome, CallRunVerdict, CustomStepRef, TraceStep } from "@real-bot/protocol";
 import { isoNow, ulid } from "../ids";
 import { playbookFor } from "./playbooks";
 import { type StoreContext } from "./shared";
@@ -50,6 +50,9 @@ export type CallRunInput = {
   cached?: boolean;
   spendId?: string | null;
   ms?: number | null;
+  /** A step of your own (ADR 0105), and the hand-over it judged on a hand-in. */
+  customStep?: CustomStepRef | null;
+  submissionId?: string | null;
   now?: Date;
 };
 
@@ -79,6 +82,8 @@ export function recordCallRun(ctx: StoreContext, input: CallRunInput): CallRun {
     cached: input.cached ?? false,
     spend_id: input.spendId ?? null,
     ms: input.ms === undefined || input.ms === null ? null : Math.max(0, Math.round(input.ms)),
+    ...(input.customStep ? { custom_step: { id: input.customStep.id, name: input.customStep.name, at: input.customStep.at } } : {}),
+    ...(input.submissionId ? { submission_id: input.submissionId } : {}),
     created_at: at.toISOString(),
   };
   // The engine it ran under (ADR 0085), as it stood when the call was written.
@@ -89,21 +94,27 @@ export function recordCallRun(ctx: StoreContext, input: CallRunInput): CallRun {
     `INSERT INTO call_runs (
        id, role, prompt_id, prompt_revision, prompt_locale, session_id, message_id, turn_id, task_id,
        ticket_id, bot_id, check_run_id, provider_id, model, thinking_level, outcome, fail_kind,
-       verdict, raw, cached, spend_id, ms, playbook_id, playbook_revision, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       verdict, raw, cached, spend_id, ms, playbook_id, playbook_revision, custom_step, submission_id, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.id, row.role, row.prompt_id, row.prompt_revision, row.prompt_locale, row.session_id,
       row.message_id, row.turn_id, row.task_id, row.ticket_id, row.bot_id, row.check_run_id,
       row.provider_id, row.model, row.thinking_level, row.outcome, row.fail_kind,
       row.verdict ? JSON.stringify(row.verdict) : null, row.raw, row.cached ? 1 : 0, row.spend_id,
-      row.ms, row.playbook_id, row.playbook_revision, row.created_at,
+      row.ms, row.playbook_id, row.playbook_revision, row.custom_step ? JSON.stringify(row.custom_step) : null,
+      row.submission_id ?? null, row.created_at,
     ],
   );
   if (row.session_id) pruneCallRuns(ctx, row.session_id);
   return row;
 }
 
-type CallRunRow = Omit<CallRun, "verdict" | "cached"> & { verdict: string | null; cached: number };
+type CallRunRow = Omit<CallRun, "verdict" | "cached" | "custom_step" | "submission_id"> & {
+  verdict: string | null;
+  cached: number;
+  custom_step?: string | null;
+  submission_id?: string | null;
+};
 
 function fromRow(row: CallRunRow): CallRun {
   let verdict: CallRunVerdict | null = null;
@@ -112,7 +123,26 @@ function fromRow(row: CallRunRow): CallRun {
   } catch {
     // a verdict that does not parse shows as none; the row still says how the call came out
   }
-  return { ...row, verdict, cached: row.cached === 1 };
+  const { custom_step: stepText, submission_id: submissionId, ...rest } = row;
+  let step: CustomStepRef | null = null;
+  try {
+    step = stepText ? (JSON.parse(stepText) as CustomStepRef) : null;
+  } catch {
+    // drawn as the app's own call it was made as
+  }
+  return { ...rest, verdict, cached: row.cached === 1, ...(step ? { custom_step: step } : {}), ...(submissionId ? { submission_id: submissionId } : {}) };
+}
+
+/**
+ * What the steps of your own on a hand-in said of one hand-over (ADR 0105), the latest per step:
+ * read where the hand-over is settled, as its checks' runs are.
+ */
+export function customStepRunsForSubmission(ctx: StoreContext, submissionId: string): CallRun[] {
+  const rows = ctx.db.query<CallRunRow, [string]>(`SELECT * FROM call_runs WHERE submission_id = ? AND custom_step IS NOT NULL
+    ORDER BY created_at, id`).all(submissionId).map(fromRow);
+  const latest = new Map<string, CallRun>();
+  for (const run of rows) latest.set(run.custom_step!.id, run);
+  return [...latest.values()];
 }
 
 function toStep(run: CallRun): TraceStep {

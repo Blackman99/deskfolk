@@ -126,10 +126,12 @@ export function settingsCached(ctx: StoreContext): Settings {
 /**
  * Set up on Claude Code alone (ADR 0078): every built-in call that can run on a Claude model is on
  * one, so the app has a model for each call it makes without an endpoint. Compaction is left out:
- * it only runs in an endpoint Bot's turn, and Claude Code compacts its own.
+ * it only runs in an endpoint Bot's turn, and Claude Code compacts its own. So are the steps of your
+ * own (ADR 0105), which run on the checks' model when none is chosen for them: added after you set
+ * up, they must not send you back through the wizard.
  */
 export function setUpOnClaudeCode(models: BuiltinModels): boolean {
-  return BUILTIN_MODEL_ROLES.every((role) => role === "compaction" || isReaderAgentModel(models[role]));
+  return BUILTIN_MODEL_ROLES.every((role) => role === "compaction" || role === "custom_step" || isReaderAgentModel(models[role]));
 }
 
 /** An endpoint a turn can be sent to: an address, and a key unless it is on this computer or network. */
