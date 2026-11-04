@@ -131,7 +131,7 @@
 
 <svelte:window onclick={handleWindowClick} />
 
-<header class="top" class:has-session={selected !== null}>
+<header data-ui="chat-header" class="top" class:has-session={selected !== null}>
 	{#if selected}
 		<div class="top-session-identity flex items-center gap-6 min-w-0 flex-1">
 			<button

@@ -46,6 +46,7 @@
 </script>
 
 <span
+	data-ui="avatar"
 	class="row-avatar size-{size} layout-{plan.layout} {customClass}"
 	class:is-group={session.kind === 'group'}
 	class:is-stack={avatars.length > 1}

@@ -928,10 +928,11 @@
 	};
 </script>
 
-<div class:has-message-index={showMessageIndex} class="stream-stage flex-1 min-h-0 relative flex flex-col bg-pane overflow-hidden">
+<div data-ui="chat" class:has-message-index={showMessageIndex} class="stream-stage flex-1 min-h-0 relative flex flex-col bg-pane overflow-hidden">
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
+		data-ui="transcript"
 		class="stream"
 		class:has-selected-message={selectedMessageId !== null}
 		bind:this={scroll.streamContainer}

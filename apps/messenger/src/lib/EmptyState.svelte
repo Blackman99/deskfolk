@@ -23,7 +23,7 @@
 	let { title, hint, size = 'page', level = 2, badge, children }: Props = $props();
 </script>
 
-<div class="empty-state" class:is-inline={size === 'inline'}>
+<div data-ui="empty-state" class="empty-state" class:is-inline={size === 'inline'}>
 	<div class="empty-art">
 		<BrandMark variant="art" size={size === 'page' ? 72 : 52} />
 		{#if badge}

@@ -626,6 +626,7 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <aside
+	data-ui="preview"
 	class="artifact-pane"
 	class:is-sheet={sheet}
 	class:is-tree-dragging={treeDragging}

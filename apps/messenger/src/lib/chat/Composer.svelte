@@ -470,7 +470,7 @@
 	<MentionPopup {mentions} {t} />
 {/if}
 
-<div class="composer-dock">
+<div data-ui="composer" class="composer-dock">
 {#if canSuggest && view && suggestionsShown}
 	<div class="composer-frost-shell composer-suggest-bar" role="group" aria-label={t.chat.suggestNext}>
 		<ComposerSuggestions suggestions={view.composerSuggestions} {t} {onPickPrompt} />

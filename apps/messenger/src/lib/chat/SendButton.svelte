@@ -54,6 +54,7 @@
 	<button
 		type="button"
 		class="composer-action stop"
+		data-floor="stop"
 		disabled={!connected}
 		aria-label={t.composer.stopGeneration}
 		title={t.composer.stopGeneration}
@@ -65,6 +66,8 @@
 <button
 	type="button"
 	class="composer-action"
+	data-ui="send-button"
+	data-floor={primaryAction.kind === "stop" ? "stop" : undefined}
 	class:send={primaryAction.kind === 'send'}
 	class:stop={primaryAction.kind === 'stop'}
 	class:is-sending={primaryAction.kind === 'send' && sendingShown}

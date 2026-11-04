@@ -60,7 +60,7 @@
 	}
 </script>
 
-<div class="ask-card" class:is-open={open} class:is-answered={answer !== null}>
+<div data-ui="ask-card" class="ask-card" class:is-open={open} class:is-answered={answer !== null}>
 	{#if options.length > 0}
 		{#if open}
 			<div class="ask-mode">{multi ? t.stream.askPickAny : t.stream.askPickOne}</div>
@@ -71,6 +71,7 @@
 				<button
 					type="button"
 					class="ask-option"
+					data-floor="ask"
 					class:is-on={on}
 					role={multi ? 'checkbox' : 'radio'}
 					aria-checked={on}
@@ -119,7 +120,7 @@
 				oncompositionend={() => (ime = composerImeOnEnd(Date.now()))}
 				onkeydown={onKeydown}
 			/>
-			<button type="button" class="ask-send" disabled={!canSubmit} onclick={submit}>{t.stream.reply}</button>
+			<button type="button" class="ask-send" data-floor="ask" disabled={!canSubmit} onclick={submit}>{t.stream.reply}</button>
 		</div>
 		{#if draft?.error}
 			<p class="ask-error">{draft.error}</p>

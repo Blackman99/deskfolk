@@ -100,6 +100,7 @@
 		bind:this={trigger}
 		type="button"
 		class="stop-menu-trigger"
+		data-floor="stop"
 		class:has-label={Boolean(label)}
 		class:is-sm={size === 'sm'}
 		aria-haspopup="menu"

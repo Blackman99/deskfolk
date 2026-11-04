@@ -743,6 +743,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
+	data-ui="workbench"
 	class="wb-root"
 	class:is-dragging={dragging}
 	class:is-solo={!wide}

@@ -81,6 +81,7 @@
 </script>
 
 <div
+	data-ui="flow-board"
 	class="trace-page"
 	transition:pageSlide
 	role="dialog"

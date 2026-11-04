@@ -186,7 +186,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<nav class="artifact-tree" aria-label={label} onkeydown={onKeydown}>
+<nav data-ui="workspace-tree" class="artifact-tree" aria-label={label} onkeydown={onKeydown}>
 	<ul class="artifact-tree-list list-none m-0 p-0">
 		{#if loading || failed || nodes.length === 0}
 			<li>{@render state(loading, failed, 0, onRetry)}</li>

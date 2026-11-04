@@ -321,10 +321,12 @@
 	class:is-raised={divided && focused}
 	class:is-empty={leaf.tabs.length === 0}
 	data-leaf={leaf.id}
+	data-ui="pane"
 	data-testid="wb-leaf"
 >
 	<div
 		class="wb-strip"
+		data-ui="tab-strip"
 		class:is-menu-open={newTabOpen}
 		class:is-bare={leaf.tabs.length === 0 && !onMenu && !onClosePane}
 		role="tablist"
@@ -348,6 +350,7 @@
 					     inside a button is invalid and svelte-check's a11y pass says so. -->
 					<div
 						class="wb-tab"
+						data-ui="tab"
 						role="presentation"
 						class:is-active={tab.id === leaf.activeTabId}
 						class:is-dragged={tab.id === draggedTab || leaf.id === draggedLeaf}

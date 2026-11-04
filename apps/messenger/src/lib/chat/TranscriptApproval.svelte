@@ -70,7 +70,7 @@
 		class:is-search-hit={stage.highlightedId === singleMsg.message.id}
 		class:is-arriving={stage.arriving.has(singleMsg.message.id)}
 	>
-		<article class="msg is-approval" class:is-pending={pending}>
+		<article data-ui="approval-card" class="msg is-approval" class:is-pending={pending}>
 			<!-- The head says whose request it is, and while it waits, that it waits on you. -->
 			<div class="who approval-head">
 				{#if pending}<Icon name="shield-check" size={12} />{/if}
@@ -120,14 +120,14 @@
 					</label>
 				{/if}
 				<div class="approval-acts flex gap-4 mt-7 flex-wrap">
-					<Button variant="primary" icon="check" onclick={() => void resolveApprovalCard(card, 'allow_once')}
+					<Button variant="primary" icon="check" data-floor="approval" onclick={() => void resolveApprovalCard(card, 'allow_once')}
 						>{t.stream.allowOnce}</Button
 					>
 					<!-- Allowed from now on (ADR 0092): this Bot moves to the mode in which this kind no longer asks. -->
-					<Button variant="secondary" onclick={() => void resolveApprovalCard(card, 'allow_from_now')}
+					<Button variant="secondary" data-floor="approval" onclick={() => void resolveApprovalCard(card, 'allow_from_now')}
 						>{t.permissions.allowFromNow}</Button
 					>
-					<Button variant="ghost" class="deny" onclick={() => void resolveApprovalCard(card, 'deny')}
+					<Button variant="ghost" class="deny" data-floor="approval" onclick={() => void resolveApprovalCard(card, 'deny')}
 						>{t.stream.deny}</Button
 					>
 				</div>

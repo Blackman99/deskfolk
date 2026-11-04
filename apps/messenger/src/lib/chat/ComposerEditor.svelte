@@ -40,6 +40,7 @@
 <div
 	bind:this={el}
 	class="composer-input"
+	data-ui="composer-input"
 	class:is-empty={empty}
 	role="textbox"
 	aria-multiline="true"

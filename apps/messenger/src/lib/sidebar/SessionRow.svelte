@@ -75,7 +75,7 @@
 	the rest of its menu (archiving a direct archives its Bot, so that stays one step further away).
 	They sit beside the row's button, never inside it: a button in a button is not a button.
 -->
-<div class="row-shell" class:has-actions={Boolean(onTogglePin)}>
+<div data-ui="session-row" class="row-shell" class:has-actions={Boolean(onTogglePin)}>
 
 <button
 	type="button"

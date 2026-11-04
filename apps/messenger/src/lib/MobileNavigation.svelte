@@ -14,7 +14,7 @@
 	} = $props();
 </script>
 
-<nav class="mobile-navigation" aria-label={t.sidebar.mainNavigation}>
+<nav class="mobile-navigation" data-ui="mobile-nav" aria-label={t.sidebar.mainNavigation}>
 	<button type="button" class:is-active={active === 'sessions'} aria-current={active === 'sessions' ? 'page' : undefined} onclick={() => onNavigate('sessions')}>
 		<Icon name="message" size={24} filled={active === 'sessions'} />
 		<span>{t.sidebar.botsTab}</span>
@@ -23,7 +23,7 @@
 		<Icon name="folder" size={24} filled={active === 'projects'} />
 		<span>{t.project.section}</span>
 	</button>
-	<button type="button" class:is-active={active === 'settings'} aria-current={active === 'settings' ? 'page' : undefined} onclick={() => onNavigate('settings')}>
+	<button type="button" class:is-active={active === 'settings'} data-floor="settings-entry" aria-current={active === 'settings' ? 'page' : undefined} onclick={() => onNavigate('settings')}>
 		<span class="navigation-icon">
 			<Icon name="settings" size={24} filled={active === 'settings'} />
 			{#if updateAvailable}<span class="navigation-update" aria-label={t.sidebar.updateAvailable}></span>{/if}

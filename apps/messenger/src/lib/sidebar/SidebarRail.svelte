@@ -183,7 +183,7 @@
 	);
 </script>
 
-<nav class="rail" aria-label={t.sidebar.sessions} data-tauri-drag-region={dragRegion}>
+<nav class="rail" data-ui="sidebar-rail" aria-label={t.sidebar.sessions} data-tauri-drag-region={dragRegion}>
 	<span class="rail-brand"><BrandMark size={26} /></span>
 	<RailTooltip
 		class="rail-action rail-expand"
@@ -289,6 +289,7 @@
 			class="rail-action rail-settings {runtime.settingsOpen ? 'is-active' : ''}"
 			label={[settingsTip]}
 			describedBy="rail-tip-settings"
+			data-floor="settings-entry"
 			onclick={onOpenSettings}
 		>
 			<Icon name="settings" />

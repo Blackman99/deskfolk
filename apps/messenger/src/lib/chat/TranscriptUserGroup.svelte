@@ -93,7 +93,7 @@
 	{/if}
 {/snippet}
 
-<div class="msg-wrap is-user" class:is-group={isMulti}>
+<div data-ui="bubble-you" class="msg-wrap is-user" class:is-group={isMulti}>
 	<div class="msg-content">
 		{#if isMulti && !stage.focus}
 			<div class="msg-header is-right">

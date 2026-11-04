@@ -88,6 +88,7 @@
 	<button
 		type="button"
 		class="foot-action foot-settings"
+		data-floor="settings-entry"
 		class:is-active={runtime.settingsOpen}
 		title={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}
 		aria-label={updateChecker.updateVisible ? `${t.sidebar.settings} · ${t.sidebar.updateAvailable}` : t.sidebar.settings}

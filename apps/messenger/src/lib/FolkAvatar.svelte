@@ -23,6 +23,7 @@
 </script>
 
 <span
+	data-ui="avatar"
 	class="folk is-{motion}"
 	class:is-mirrored={look.mirror}
 	class:has-raised-arm={look.wave}

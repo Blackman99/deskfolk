@@ -849,6 +849,7 @@
 <svelte:window onclickcapture={onWindowClick} />
 
 <div
+	data-ui="terminal"
 	class="terminal-pane"
 	class:is-gathered={!single}
 	onpointerdowncapture={(event) => (lastPointer = event.pointerType)}

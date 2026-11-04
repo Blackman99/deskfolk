@@ -354,7 +354,7 @@
 	</span>
 {/snippet}
 
-<aside class="side">
+<aside class="side" data-ui="sidebar">
 	<!-- The mark heads the list on a wider window; a phone's top bar is the page title instead. -->
 	{#if !phone}
 		<div class="brand-row" data-tauri-drag-region={dragRegion}>
@@ -404,7 +404,7 @@
 		<HoldsBar holds={myHolds} label={labelOf} {t} disabled={runtime.connection !== 'connected'} onLift={(hold) => runtime.liftHold(hold.id)} />
 	{/if}
 	<!-- The list's empty space moves the window, as the brand row does; its rows keep their clicks. -->
-	<div class="groups" data-tauri-drag-region={dragRegion} use:scrollbarIsNotDrag>
+	<div class="groups" data-ui="session-list" data-tauri-drag-region={dragRegion} use:scrollbarIsNotDrag>
 		{#if viewingArchived}
 			<div class="ghead archived-ghead flex items-center justify-between">
 				<span>{t.sidebar.archivedSessions}</span>

@@ -90,6 +90,7 @@
 </script>
 
 <div
+	data-ui="bubble-bot"
 	class="msg-wrap is-bot"
 	class:is-group={isMulti}
 	class:is-streaming-wrap={hasStreaming}
