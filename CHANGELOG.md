@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A picture waiting in the composer enlarges
+
+- A screenshot pasted into the composer, a picture picked or dropped there, or one dragged in from the file tree showed only as a small thumbnail on its chip until it was sent. A click on the thumbnail now enlarges it over the whole app, the way a picture in a message does, in a Bot's conversation and in a project session alike: a pasted one straight from the bytes already on this device, one from the workspace from its file on the Mac. Escape, ✕, a click or a phone's Back puts it away, and it goes by itself when its chip does, with ✕ on the chip or the send.
+
 ### The project session's picker opens a level at a time
 
 - The account, model and thinking level picker at the bottom of a project session's composer opened all three columns at once, and a click on an account or a model already took it. It now opens on the accounts alone (on the models, with one account), and pointing at or clicking a row opens what is under it beside it: an account its models, a model its thinking levels. Only a thinking level, or a model that takes none, is the pick; the session's own choices are checked along the way, and a column opening never moves the ones before it. On a phone the sheet goes in a level at a time, the accounts, then an account's models, then a model's levels, headed by the row you went into, with Back going up one.

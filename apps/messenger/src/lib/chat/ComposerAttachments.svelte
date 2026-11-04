@@ -5,9 +5,14 @@
 	import type { StagedAttachment, StagedWorkspacePath } from '../session-view.svelte.ts';
 	import FileIcon from '../overlays/FileIcon.svelte';
 	import { fileIconFor } from '../overlays/file-icon.ts';
+	import type { MessengerApi } from '../messenger-api.ts';
+	import MessageImageLightbox, { type ImageOrigin } from './MessageImageLightbox.svelte';
+	import { pictureOrigin, pictureStandIn } from './enlarged-images.ts';
 
 	type Props = {
 		t: Copy;
+		/** A staged workspace picture enlarges from the Mac's bytes; a pasted one is already here. */
+		api: MessengerApi | null;
 		pendingAttachments: StagedAttachment[];
 		pendingPaths: StagedWorkspacePath[];
 		/** A send from this conversation is in flight: the chips stay as the sign of it and cannot be taken back. */
@@ -17,7 +22,33 @@
 		onRemovePath: (id: string) => void;
 	};
 
-	let { t, pendingAttachments, pendingPaths, sending, uploadedPercent, onRemoveAttachment, onRemovePath }: Props = $props();
+	let { t, api, pendingAttachments, pendingPaths, sending, uploadedPercent, onRemoveAttachment, onRemovePath }: Props = $props();
+
+	/**
+	 * A staged picture enlarged over the whole app, the way one in a message is. Found by its row
+	 * each time: a send or ✕ revokes the row's object URL, and the enlargement goes with the row
+	 * instead of showing a picture that is no longer there.
+	 */
+	let enlarged = $state<{ id: string; origin: ImageOrigin | null; placeholder: string | null } | null>(null);
+	const enlargedFile = $derived.by(() => {
+		const id = enlarged?.id;
+		return id ? (pendingAttachments.find((row) => row.id === id && row.previewUrl) ?? null) : null;
+	});
+	const enlargedPath = $derived.by(() => {
+		const id = enlarged?.id;
+		return id && !enlargedFile ? (pendingPaths.find((row) => row.id === id && row.previewUrl) ?? null) : null;
+	});
+
+	function enlarge(id: string, ev: MouseEvent): void {
+		const from = ev.currentTarget instanceof HTMLElement ? ev.currentTarget : null;
+		enlarged = { id, origin: pictureOrigin(from), placeholder: pictureStandIn(from) };
+	}
+
+	/** The composer is a floating, click-through layer: `fixed` inside it would not cover the app or take a click. */
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return { destroy: () => node.remove() };
+	}
 </script>
 
 <div class="composer-attachments-bar">
@@ -25,7 +56,15 @@
 		{@const uploaded = uploadedPercent(att.file)}
 		<div class="composer-attachment-item" class:is-img={att.isImage}>
 			{#if att.isImage && att.previewUrl}
-				<img src={att.previewUrl} alt={att.name} class="attachment-preview-img" data-copy-image />
+				<button
+					type="button"
+					class="attachment-preview-btn"
+					title="{t.stream.artifactEnlarge} {att.name}"
+					aria-label="{t.stream.artifactEnlarge} {att.name}"
+					onclick={(ev) => enlarge(att.id, ev)}
+				>
+					<img src={att.previewUrl} alt={att.name} class="attachment-preview-img" data-copy-image />
+				</button>
 			{:else}
 				<div class="attachment-file-icon">
 					<Icon name="file" />
@@ -50,7 +89,16 @@
 	{#each pendingPaths as ref (ref.id)}
 		<div class="composer-attachment-item is-workspace-ref" class:is-img={Boolean(ref.previewUrl)} title="{ref.path} · {t.composer.workspaceRef}">
 			{#if ref.previewUrl}
-				<img src={ref.previewUrl} alt={ref.name} class="attachment-preview-img" />
+				<!-- Only a picture gets a preview (the Mac's 256 px copy); enlarged, the picture itself comes. -->
+				<button
+					type="button"
+					class="attachment-preview-btn"
+					title="{t.stream.artifactEnlarge} {ref.name}"
+					aria-label="{t.stream.artifactEnlarge} {ref.name}"
+					onclick={(ev) => enlarge(ref.id, ev)}
+				>
+					<img src={ref.previewUrl} alt={ref.name} class="attachment-preview-img" />
+				</button>
 			{:else}
 				<div class="attachment-file-icon">
 					<FileIcon icon={fileIconFor(ref.path, { isDir: ref.isDir })} size={16} />
@@ -73,6 +121,21 @@
 		</div>
 	{/each}
 </div>
+
+{#if enlargedFile || enlargedPath}
+	<div use:portal>
+		<MessageImageLightbox
+			src={enlargedFile?.previewUrl ?? null}
+			label={enlargedFile?.name ?? null}
+			relpath={enlargedPath?.path ?? null}
+			placeholder={enlargedPath ? (enlarged?.placeholder ?? null) : null}
+			origin={enlarged?.origin ?? null}
+			{api}
+			{t}
+			onClose={() => (enlarged = null)}
+		/>
+	</div>
+{/if}
 
 <style>
 	/* Pending Attachments in Composer */
@@ -99,6 +162,18 @@
 
 	.composer-attachment-item.is-img {
 		padding: 4px 8px 4px 4px;
+	}
+
+	/* The thumbnail opens the picture, as one in a message does. */
+	.attachment-preview-btn {
+		display: block;
+		flex-shrink: 0;
+		border-radius: var(--radius-sm);
+		cursor: zoom-in;
+	}
+
+	.attachment-preview-btn .attachment-preview-img {
+		display: block;
 	}
 
 	.attachment-preview-img {

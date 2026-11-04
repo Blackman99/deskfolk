@@ -519,6 +519,7 @@
 	{#if attachments.pendingAttachments.length > 0 || attachments.pendingPaths.length > 0}
 		<ComposerAttachmentsBar
 			{t}
+			api={runtime.client}
 			pendingAttachments={attachments.pendingAttachments}
 			pendingPaths={attachments.pendingPaths}
 			sending={view?.sending}

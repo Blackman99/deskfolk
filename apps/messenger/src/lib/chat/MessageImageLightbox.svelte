@@ -36,14 +36,17 @@
 		placeholder?: string | null;
 		/** Where the inline picture sits, so the enlargement can grow out of it. */
 		origin?: ImageOrigin | null;
+		/** The name for a picture neither an attachment nor a path names: a file staged in the composer. */
+		label?: string | null;
 		api: MessengerApi | null;
 		t: Copy;
 		onClose: () => void;
 	}
 
-	let { attachment = null, relpath = null, src = null, srcOriginalSize = null, placeholder = null, origin = null, api, t, onClose }: Props = $props();
+	let { attachment = null, relpath = null, src = null, srcOriginalSize = null, placeholder = null, origin = null, label = null, api, t, onClose }: Props = $props();
 
 	const name = $derived(
+		label ||
 		attachment?.original_filename ||
 			relpath?.split('/').pop() ||
 			attachment?.workspace_relpath ||

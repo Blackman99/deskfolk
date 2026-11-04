@@ -830,6 +830,7 @@
 				{#if staged.length > 0}
 					<ComposerAttachmentsBar
 						{t}
+						api={runtime.client}
 						pendingAttachments={staged}
 						pendingPaths={[]}
 						sending={view.sending}
