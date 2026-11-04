@@ -349,9 +349,10 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 		/*
 		 * The account, model and thinking level are one cascading picker (2026-10-22) that opens a
 		 * level at a time (2026-11-03): over the composer, in the top layer, inside the window, the
-		 * accounts alone at first. A column opening beside one never moves the rows already there.
-		 * WebKit does not focus a button it was clicked on, and the keys are read on the picker's
-		 * field: opening focuses it.
+		 * accounts alone at first. A column opening beside one never moves the rows already there,
+		 * and it opens by the row it came from (2026-11-04): its rows start level with that row,
+		 * unless that would take it past the composer's edge. WebKit does not focus a button it was
+		 * clicked on, and the keys are read on the picker's field: opening focuses it.
 		 */
 		test('a project session\'s picker opens a column at a time over the composer, and takes the keys', async ({ baseURL }) => {
 			const browser = await engine.launch();
@@ -388,6 +389,24 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			await expect(page.locator('[data-tune-column]')).toHaveCount(3);
 			await expect(page.locator('[data-tune-column="effort"] [role=option]')).toHaveCount(5);
 			const firstModel = await rowAt('[data-tune-column="model"] .tune-row');
+			// How far a column's rows start from the row it came from, and how far its card ends above the one before it.
+			const beside = (from: string, to: string, value: string) =>
+				page.evaluate(([from, to, value]) => {
+					const row = document.querySelector(`[data-tune-column="${from}"] .tune-row[data-value="${value}"]`)!.getBoundingClientRect();
+					const card = document.querySelector(`[data-tune-column="${to}"]`)!;
+					const list = card.querySelector('.tune-list')!.getBoundingClientRect();
+					const before = document.querySelector(`[data-tune-column="${from}"]`)!.getBoundingClientRect();
+					return { level: Math.round(list.top - row.top), foot: Math.round(before.bottom - card.getBoundingClientRect().bottom) };
+				}, [from, to, value]);
+			// The other account is the lowest row, and its models would run past the composer from there: they end on its edge.
+			expect((await beside('account', 'model', '/Users/me/.claude-team')).foot).toBe(0);
+			// So would Sonnet's levels, low in its column.
+			await expect.poll(async () => (await beside('model', 'effort', 'sonnet')).foot).toBe(0);
+			// Fable's fit: they start level with Fable, above the composer's edge.
+			await page.locator('[data-tune-column="model"] .tune-row[data-value="fable"]').hover();
+			await expect(page.locator('[data-tune-column="effort"] [role=option]')).toHaveCount(4);
+			await expect.poll(async () => (await beside('model', 'effort', 'fable')).level).toBe(0);
+			expect((await beside('model', 'effort', 'fable')).foot).toBeGreaterThan(0);
 			// Haiku takes none: its levels close.
 			await page.locator('[data-tune-column="model"] .tune-row[data-value="haiku"]').hover();
 			await expect(page.locator('[data-tune-column]')).toHaveCount(2);

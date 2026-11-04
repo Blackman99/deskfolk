@@ -9,6 +9,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### The project session's picker opens a level at a time
 
 - The account, model and thinking level picker at the bottom of a project session's composer opened all three columns at once, and a click on an account or a model already took it. It now opens on the accounts alone (on the models, with one account), and pointing at or clicking a row opens what is under it beside it: an account its models, a model its thinking levels. Only a thinking level, or a model that takes none, is the pick; the session's own choices are checked along the way, and a column opening never moves the ones before it. On a phone the sheet goes in a level at a time, the accounts, then an account's models, then a model's levels, headed by the row you went into, with Back going up one.
+- Each level opens beside the row it came from: a model's thinking levels start level with that model instead of sitting on the composer's edge, and move with the path when you point at another model. A level that would not fit that way moves back just enough, at most onto the composer's edge. A click in the room around the cards closes the picker.
 
 ### Routines in the calendar no longer cover the ones right after them
 

@@ -349,6 +349,38 @@
 			el.style.bottom = 'auto';
 			el.style.top = `${rect.bottom + 4}px`;
 		}
+		lineUp();
+	}
+
+	/**
+	 * The first column sits on the field's edge; each one after it opens beside the row it came
+	 * from, its first row level with that row, and moves back into the room over (or under) the
+	 * field when it would not fit there. Each column is placed before the next one reads its row.
+	 * The panel's opening scale skews what is read while it plays; it lines up again at its end.
+	 */
+	function lineUp(): void {
+		const el = panelEl;
+		if (!el || !triggerEl) return;
+		const rect = triggerEl.getBoundingClientRect();
+		const top = placeAbove ? 8 : rect.bottom + 4;
+		const bottom = placeAbove ? rect.top - 4 : window.innerHeight - 8;
+		shown.forEach((level, at) => {
+			const column = el.querySelector<HTMLElement>(`[data-tune-column="${level}"]`);
+			if (!column) return;
+			const box = column.getBoundingClientRect();
+			let columnTop = placeAbove ? bottom - box.height : top;
+			const parent = at > 0 ? shown[at - 1]! : null;
+			const row = parent ? document.getElementById(rowId(parent, focusOf(parent))) : null;
+			const list = column.querySelector('.tune-list');
+			if (row && list) {
+				// Where this card's rows start below its top.
+				const lead = list.getBoundingClientRect().top - box.top;
+				columnTop = Math.max(top, Math.min(row.getBoundingClientRect().top - lead, bottom - box.height));
+			}
+			const shift = Math.max(0, placeAbove ? bottom - columnTop - box.height : columnTop - top);
+			column.style.marginBottom = placeAbove ? `${shift}px` : '';
+			column.style.marginTop = placeAbove ? '' : `${shift}px`;
+		});
 	}
 
 	$effect(() => {
@@ -371,6 +403,13 @@
 		};
 	});
 
+	// A column opening or closing, the path moving to another row, or a list's rows changing (another account's models coming in) lines the columns up again.
+	$effect(() => {
+		if (!open || phone.current) return;
+		for (const level of shown) rowsOf(level);
+		lineUp();
+	});
+
 	$effect(() => {
 		if (!open || phone.current) return;
 		const outside = (event: PointerEvent) => {
@@ -378,8 +417,9 @@
 		};
 		const blur = () => close(false);
 		const reposition = (event: Event) => {
-			if (panelEl && event.target instanceof Node && panelEl.contains(event.target)) return;
-			place();
+			// A list scrolling inside: the column beside it follows its row.
+			if (panelEl && event.target instanceof Node && panelEl.contains(event.target)) lineUp();
+			else place();
 		};
 		document.addEventListener('pointerdown', outside);
 		window.addEventListener('blur', blur);
@@ -438,6 +478,7 @@
 			class:is-above={placeAbove}
 			role="group"
 			aria-label={t.project.tuneLabel}
+			onanimationend={lineUp}
 		>
 			{#each shown as level, at (level)}
 				<div class="tune-column is-{level}" style:width="{COLUMN_WIDTH[level]}px" data-tune-column={level}>
@@ -617,8 +658,9 @@
 
 	/*
 	 * The columns side by side, in the top layer: placed by `place()`. Each is a card of its own, as
-	 * tall as its rows, lined up on the edge by the field (the foot when it opens upwards), so a
-	 * taller column opening beside one never moves its rows.
+	 * tall as its rows, the first on the edge by the field (the foot when it opens upwards); a margin
+	 * from `lineUp()` moves each one after it beside the row it came from, so a column opening never
+	 * moves the ones before it. The room around the cards is not the picker's: a click there is outside.
 	 */
 	.tune-panel {
 		position: absolute;
@@ -634,6 +676,7 @@
 		border: 0;
 		box-sizing: border-box;
 		overflow: visible;
+		pointer-events: none;
 		animation: tuneIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
@@ -672,6 +715,7 @@
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-lg);
+		pointer-events: auto;
 	}
 
 	/* A column opening beside the one before it comes out of it. */
