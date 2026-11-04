@@ -5,6 +5,9 @@ import {
   type ClientEvent,
   type ComposerSuggestion,
   type ControlActionResult,
+  type CustomStep,
+  type CustomStepSample,
+  type CustomStepTry,
   type Hold,
   type Message,
   type ModelSpeed,
@@ -54,6 +57,7 @@ import { createReader } from "./reader";
 import { createScribe } from "./scribe";
 import { createJobPoller } from "./engine/jobs";
 import { createReflector } from "./engine/reflection";
+import { createCustomSteps } from "./engine/custom-steps";
 import { createRetrospector } from "./engine/retrospective";
 import type { TurnAdmission } from "./quiesce";
 import type { Store, UserQuote } from "./store";
@@ -170,6 +174,10 @@ export type TurnEngine = {
   reflect: (now?: Date) => void;
   /** Runs the next due retrospective of a delivered plan (ADR 0062, level 8), one at a time. */
   retrospect: (now?: Date) => void;
+  /** Runs approvals and your send-backs since the last look past the steps of your own after them (ADR 0105). */
+  settleSteps: () => void;
+  /** One step of your own judged on a sample, carried out and kept nowhere: the Roles panel's try (ADR 0105). */
+  tryCustomStep: (step: CustomStep, sample: CustomStepSample) => Promise<CustomStepTry>;
   suggestComposer: (sessionId: string, signal?: AbortSignal, guard?: () => void) => Promise<ComposerSuggestion[]>;
   /** Times one model and checks it calls tools, recording the speed in its entry (ADR 0067). */
   measureModel: (providerId: string, model: string, signal: AbortSignal) => Promise<ModelSpeed>;
@@ -421,6 +429,18 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     ablation,
   });
 
+  // Steps of your own (ADR 0105): judged on the model chosen for them, else the checks'; a hand-in's
+  // commands wait in the checks' lane.
+  const customSteps = createCustomSteps({
+    store,
+    completions,
+    claudeJudge: builtinClaude,
+    spend,
+    target: async () => (await builtinTarget("custom_step").catch(() => null)) ?? (await chosenOrDefault("judge").catch(() => null)),
+    publishMessage: core.publishMessage,
+    exclusive: (fn) => checks.exclusive(fn),
+  });
+
   const derivedChecks = createDerivedChecks({
     store,
     publishMessage: core.publishMessage,
@@ -543,6 +563,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     noteFiled: (messageId) => noteFiled(messageId),
     submissions: () => submissions,
     readBotLine: reader.botLine,
+    customSteps,
   });
 
   const fire = createFire({
@@ -618,7 +639,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     resolveAgent: options.resolveAgent,
     openApprovalCard: tools.openApprovalCard,
     beforeEffect: tools.beforeEffect,
+    afterEffect: tools.afterEffect,
     noteWrites: tools.noteWrites,
+    customSteps,
   });
 
   // Level 5's hand-overs and reviews (ADR 0046): checks run as a settle would, through the plan's runner.
@@ -638,6 +661,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     readBotLine: reader.botLine,
     // Late-bound: `stops` is built below; a complaint is only read once it is.
     liftOnSendBack: (line, producer, taskId, ticketId) => stops.liftOnSendBack(line, producer, taskId, ticketId),
+    customSteps,
   });
 
   const stops = createStop({
@@ -1008,6 +1032,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (options.admission?.draining) return;
       retrospector.retrospect(at);
     },
+    settleSteps() {
+      if (options.admission?.draining) return;
+      void core.track(customSteps.sweep().catch((error) => console.error("[steps] after approvals failed", error)));
+    },
+    tryCustomStep: (step, sample) => customSteps.tryStep(step, sample),
     capSpend(at = new Date()) {
       if (options.admission?.draining) return;
       capSpend(at);

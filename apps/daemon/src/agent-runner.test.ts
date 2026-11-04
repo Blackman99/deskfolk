@@ -29,7 +29,8 @@ function probeOf(status: ClaudeCodeStatus): ClaudeCodeProbe {
   return { last: () => status, current: async () => status, detect: async () => status };
 }
 
-type ToolUse = { allowed: boolean; reason?: string };
+/** `after`: what the app said beside the result (PostToolUse's additionalContext), when it said anything. */
+type ToolUse = { allowed: boolean; reason?: string; after?: string };
 
 /** What a scripted Claude Code session can do: read its next user message, call a tool the way Claude Code would, and the app's own tools. */
 type Script = (ctx: {
@@ -58,7 +59,7 @@ function scripted(script: Script, seen: { options?: Options; firstText?: string;
       for (const matcher of hooks[event] ?? []) {
         for (const hook of matcher.hooks) decision = await hook({ hook_event_name: event, session_id: "s", transcript_path: "/dev/null", cwd: options.cwd ?? root, ...input } as never, id, { signal: new AbortController().signal });
       }
-      return decision as { hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string } };
+      return decision as { hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string; additionalContext?: string } };
     };
     const useTool = async (name: string, input: Record<string, unknown>, run?: () => void): Promise<ToolUse> => {
       const id = `toolu_${++toolSeq}`;
@@ -71,9 +72,9 @@ function scripted(script: Script, seen: { options?: Options; firstText?: string;
         decision = "allow";
       }
       run?.();
-      await runHook("PostToolUse", { tool_name: name, tool_input: input, tool_response: "ok", tool_use_id: id }, id);
+      const post = await runHook("PostToolUse", { tool_name: name, tool_input: input, tool_response: "ok", tool_use_id: id }, id);
       await runHook("PostToolBatch", { tool_calls: [{ tool_name: name, tool_input: input, tool_use_id: id }] }, id);
-      return { allowed: true };
+      return { allowed: true, ...(post.hookSpecificOutput?.additionalContext ? { after: post.hookSpecificOutput.additionalContext } : {}) };
     };
     const begin = async (name: string, input: Record<string, unknown>): Promise<ToolUse & { id: string }> => {
       const id = `toolu_${++toolSeq}`;
@@ -772,4 +773,30 @@ test("直接插入 as a stop lands: the turn ends with the stop, and the line is
   // Nothing went in after the stop: the line waits, held, for the lift.
   expect(heard).toBeNull();
   expect(h.store.getMessage(line.id).delivery?.state).toBe("held");
+});
+
+test("steps of your own stand around Claude Code's calls too: a rule refuses one, a command after another is heard (ADR 0105)", async () => {
+  const uses: ToolUse[] = [];
+  const h = await harness(async function* ({ useTool, root }) {
+    uses.push(await useTool("Write", { file_path: join(root, ".env"), content: "KEY=1" }, () => writeFileSync(join(root, ".env"), "KEY=1")));
+    const file = join(root, "src", "a.ts");
+    uses.push(await useTool("Write", { file_path: file, content: "export {}" }, () => {
+      mkdirSync(join(root, "src"), { recursive: true });
+      writeFileSync(file, "export {}");
+    }));
+    yield result("好了");
+  });
+  const engine = h.store.createPlaybook({ from: "plain", name: "我的规矩" });
+  h.store.savePlaybook(engine.id, { diff: { ...engine.diff, custom_steps: [
+    { id: "u_noenvfile01", name: "不许动 .env", on: true, at: "before_effect", match: { paths: [".env"] }, run: { kind: "rule" }, then: "refuse" },
+    { id: "u_lintafterwrite", name: "写完 TS 跑 lint", on: true, at: "after_effect", match: { tools: ["write_file"], paths: ["src/**/*.ts"] },
+      run: { kind: "command", command: "echo \"lint: $DESKFOLK_PATHS\"; exit 1" }, then: "note" },
+  ] } });
+  h.store.setSessionPlaybook(h.session, engine.id);
+  await h.post("写两个文件");
+  expect(uses[0]).toMatchObject({ allowed: false });
+  expect(uses[0]!.reason).toContain("「不许动 .env」这一步拒掉了这次调用");
+  expect(existsSync(join(h.root, ".env"))).toBe(false);
+  expect(uses[1]).toMatchObject({ allowed: true });
+  expect(uses[1]!.after).toContain("lint: src/a.ts");
 });

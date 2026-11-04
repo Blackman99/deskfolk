@@ -64,6 +64,8 @@ export type PlanChecks = {
   afterSettle: (taskId: string) => Promise<void>;
   /** Kills whatever is running now (command checks included) and drops queued work. */
   abortAll: () => void;
+  /** The lane command checks run in, one at a time daemon-wide; a hand-in's steps of your own share it (ADR 0105). */
+  exclusive: <T>(fn: () => Promise<T>) => Promise<T>;
 };
 
 /** A plan's whole run gives up after this long; whatever is left over reads as `blocked`. */
@@ -287,5 +289,5 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
     rerun.clear();
   }
 
-  return { run, beforeSettle, afterSettle, abortAll };
+  return { run, beforeSettle, afterSettle, abortAll, exclusive: exclusiveCommand };
 }

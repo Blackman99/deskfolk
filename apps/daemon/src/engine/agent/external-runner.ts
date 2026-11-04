@@ -33,6 +33,7 @@ import { AGENT_MCP_PREFIX, AGENT_MCP_TOKEN_ENV, AGENT_MCP_URL_ENV, mintAgentMcp,
 import { agentMcpShim } from "../../agent-mcp/launch";
 import { claudeLaunch, killsTree } from "../../claude-code/spawn";
 import { readOnlyTools } from "../tools";
+import type { EffectCall } from "../custom-steps";
 import type { Live } from "../types";
 import type { AgentRunnerDeps, AgentTool, AgentToolBridge } from "../agent-runner";
 import type { AgentDriver, AgentEvent, AgentHost, AgentSession, AppTerminal, GateAnswer } from "./driver";
@@ -163,7 +164,7 @@ export async function runExternalSession(input: {
     bounces: 0,
   };
   /** Each of the agent's own calls the app saw before it ran, with what its records need. */
-  const pending = new Map<string, { appName: string; effect: boolean; begun?: boolean; startedAt: number; command?: string; snapshot?: Map<string, number> | null; gated: boolean }>();
+  const pending = new Map<string, { appName: string; effect: boolean; begun?: boolean; startedAt: number; command?: string; snapshot?: Map<string, number> | null; gated: boolean; call?: EffectCall }>();
   let session: AgentSession | null = null;
   let mcpToken: string | null = null;
   let resolveEnded: () => void = () => {};
@@ -283,15 +284,20 @@ export async function runExternalSession(input: {
     permission: store.permissionModeFor(current.bot_id),
   });
 
+  /** What steps of your own look at in a call (ADR 0105); this agent names no MCP tool of its own apart. */
+  const stepCallOf = (action: AppAction): EffectCall => ({ ...(action.appName === "shell" && action.command ? { command: action.command } : {}),
+    paths: action.paths.map((path) => absolute(action.cwd, path)), mcp: false });
+
   /** What the app decides about one call before it runs: the same rules and card as Claude Agent's. */
   const gate = async (callId: string, action: AppAction): Promise<GateAnswer> => {
     store.touchTurn(turnId);
     if (state.ended || !active(turnId, live)) return { kind: "deny", reason: en ? "this segment has ended" : "这一段已经结束了" };
     const decision = decideAction(action, policyContext());
     if (decision.kind === "deny") return { kind: "deny", reason: decision.reason };
+    const call = stepCallOf(action);
     if (decision.effect) {
       const before = live.workDir;
-      const gated = await deps.beforeEffect(current, live, decision.appName, callId);
+      const gated = await deps.beforeEffect(current, live, decision.appName, callId, call);
       if (!gated.ok) {
         if (gated.result.data?.ended === true) {
           state.endedByTool = true;
@@ -314,6 +320,7 @@ export async function runExternalSession(input: {
             : `（应用）这件事已经归到一项工作里，本轮工作目录现在是 ${abs.abs}，产物放这里。`;
         }
       }
+      if (gated.notes?.length) state.pendingNote = [state.pendingNote, ...gated.notes].filter(Boolean).join("\n\n");
     }
     if (decision.kind === "ask") {
       // One card at a time, and never beside a question or another of the app's tools (ADR 0061 decision 5).
@@ -327,7 +334,7 @@ export async function runExternalSession(input: {
       }
     }
     const snapshot = action.appName === "shell" && live.workDir ? snapshotWorkDir(root, live.workDir) : null;
-    pending.set(callId, { appName: decision.appName, effect: decision.effect, startedAt: Date.now(), gated: true, snapshot,
+    pending.set(callId, { appName: decision.appName, effect: decision.effect, startedAt: Date.now(), gated: true, snapshot, call,
       ...(action.appName === "shell" && action.command ? { command: action.command } : {}) });
     if (decision.effect && !beginEffect(callId, decision.appName)) {
       pending.delete(callId);
@@ -342,7 +349,8 @@ export async function runExternalSession(input: {
     if (pending.has(callId)) return true;
     const decision = decideAction(action, policyContext());
     if (decision.kind === "allow") {
-      pending.set(callId, { appName: decision.appName, effect: decision.effect, startedAt: Date.now(), gated: false,
+      // Never asked about, so no step of yours looked before it; the ones after it still do (ADR 0105).
+      pending.set(callId, { appName: decision.appName, effect: decision.effect, startedAt: Date.now(), gated: false, call: stepCallOf(action),
         ...(action.appName === "shell" && action.command ? { command: action.command } : {}) });
       if (decision.effect) beginEffect(callId, decision.appName);
       startFrame(callId, action);
@@ -410,6 +418,13 @@ export async function runExternalSession(input: {
     publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: callId, name: entry?.appName ?? action.appName, phase: "exited",
       duration_ms: entry ? Date.now() - entry.startedAt : undefined, exit_code: action.appName === "shell" ? (ok ? (exitCode ?? 0) : (exitCode ?? 1)) : null, ok });
     live.loop.push({ role: "tool", tool_call_id: callId, content: clip(output, LOOP_RESULT_MAX) });
+    // Steps of your own after a call (ADR 0105): what they say reaches the agent with its next result,
+    // since this agent hears of a call's end only once it is over.
+    if (entry?.effect && entry.call && deps.afterEffect) {
+      void deps.afterEffect(current, live, entry.appName, entry.call, { ok, output }).then((notes) => {
+        if (notes.length > 0) state.pendingNote = [state.pendingNote, ...notes].filter(Boolean).join("\n\n");
+      }).catch(() => {});
+    }
   };
 
   /** Calls a cut left open: closed as a stop closes what it cuts (ADR 0069). */

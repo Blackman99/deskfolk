@@ -549,6 +549,8 @@ export class Store {
   readonly jobRuns = this.bind(playbooks.jobRuns);
   readonly toolsIn = this.bind(playbooks.toolsIn);
   readonly customStepsAt = this.bind(playbooks.customStepsAt);
+  readonly customStepsSeen = this.bind(playbooks.customStepsSeen);
+  readonly markCustomStepsSeen = this.bind(playbooks.markCustomStepsSeen);
   readonly playbookImpact = this.bind(playbooks.playbookImpact);
   readonly savePlaybook = this.bind(playbooks.savePlaybook);
   readonly resetPlaybook = this.bind(playbooks.resetPlaybook);
@@ -658,6 +660,8 @@ export class Store {
   readonly markNeedsAttention = this.bind(desk.markNeedsAttention);
   readonly markWorkDirectoryUsed = this.bind(desk.markWorkDirectoryUsed);
   readonly finishWork = this.bind(endContract.finishWork);
+  readonly endBounceLeft = this.bind(endContract.endBounceLeft);
+  readonly bounceForSteps = this.bind(endContract.bounceForSteps);
   readonly segmentLastWord = this.bind(endContract.segmentLastWord);
   readonly segmentAnswering = this.bind(endContract.segmentAnswering);
   readonly goAheadRefused = this.bind(endContract.goAheadRefused);

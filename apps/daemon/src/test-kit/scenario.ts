@@ -253,6 +253,8 @@ export type JudgeKind =
   | "read_filing"
   /** A turn's context compaction (ADR 0068): answer the summary text. Unscripted, there is none and the turn fails as before. */
   | "compact"
+  /** A step of your own that judges with a model (ADR 0105): answer `{pass, reason}`. Unscripted, it cannot judge and lets things through. */
+  | "custom_step"
   | "other";
 
 /** What a scripted side-call is told: its kind, the parsed payload, and whose it is when that shows. */
@@ -492,6 +494,7 @@ const KIND_BY_PROMPT: Record<string, JudgeKind> = {
   "call.read_bot_line": "read_bot_line",
   "call.read_filing": "read_filing",
   "call.compact": "compact",
+  "call.custom_step": "custom_step",
 };
 
 function judgeKindOf(request: JudgeRequest): JudgeKind {

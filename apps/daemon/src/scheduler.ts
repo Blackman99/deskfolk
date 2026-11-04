@@ -75,6 +75,12 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
     } catch (error) {
       console.error("[retrospective] failed", error);
     }
+    // Steps of your own after an approval or a send-back of yours (ADR 0105).
+    try {
+      options.engine.settleSteps();
+    } catch (error) {
+      console.error("[steps] failed", error);
+    }
     for (const routine of options.store.listRoutines()) {
       try {
         options.engine.fireRoutine(routine.id, at);

@@ -1,6 +1,7 @@
 /** A hand-over's stored record, how it is read back, and the small facts every step asks of it. */
 import { HttpError } from "../errors";
 import { derivedNotGate } from "./acceptance-checks";
+import { customStepRunsForSubmission } from "./call-runs";
 import { spokenFor } from "./job-conversations";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { jsonColumnOr, requireNonEmpty, type StoreContext } from "./shared";
@@ -26,6 +27,8 @@ export type SubmissionCheck = {
   check_id: string; item: string; gate: boolean; yours: boolean; outcome: string; detail: string;
   /** Its last verdict came from a model looking at pictures: shown for reference, never a gate (from level 5, until calibrated). */
   reference?: "vision";
+  /** A step of your own in the engine (ADR 0105), not an acceptance check: `check_id` is the step's id. */
+  step?: true;
 };
 
 /** A gate you wrote or confirmed that passed: what backs an approval nobody else stands behind. */
@@ -193,6 +196,21 @@ export function checkResults(ctx: StoreContext, checkIds: readonly string[], sin
     // A check a reflection proposed is a gate but not yours (ADR 0051): adopting a card is not writing it.
     return [{ check_id: id, item: check.item, gate, yours: gate && (check.origin === "derived" || (check.source === "user" && check.origin !== "reflection")),
       outcome: run?.outcome ?? "not_run", detail: run?.detail ?? "", ...(vision ? { reference: "vision" as const } : {}) }];
+  });
+}
+
+/**
+ * What the engine's steps of your own on a hand-in said of it (ADR 0105), as checks: a step that
+ * judged is a gate, one that could not (an error, a command outside the workspace) holds nothing.
+ * None is yours in the sense `backs` reads: a rule of yours can hold a hand-over back, never let one
+ * through that nobody else stands behind.
+ */
+export function stepChecks(ctx: StoreContext, submissionId: string): SubmissionCheck[] {
+  return customStepRunsForSubmission(ctx, submissionId).flatMap((run) => {
+    if (run.verdict?.kind !== "custom_step" || !run.custom_step) return [];
+    const judged = run.verdict.outcome === "pass" || run.verdict.outcome === "fail";
+    return [{ check_id: run.custom_step.id, item: run.custom_step.name, gate: judged, yours: false, outcome: run.verdict.outcome,
+      detail: run.verdict.reason ?? "", step: true as const }];
   });
 }
 

@@ -218,15 +218,17 @@ const STREAM_READ_MAX = 1_000_000;
 
 /**
  * `/bin/sh -c command`, detached into its own process group so a timeout or an abort can take the
- * whole tree with it (`process.kill(-pid, …)`), not just the shell itself.
+ * whole tree with it (`process.kill(-pid, …)`), not just the shell itself. `input`, when given, is
+ * written to its stdin (a step of your own reads what happened there, ADR 0105); else stdin is closed.
  */
-function spawnCommand(
+export function spawnCommand(
   command: string,
   cwd: string,
   env: Record<string, string>,
   timeoutMs: number,
   signal?: AbortSignal,
   wake?: WakeWatch,
+  input?: string,
 ): Promise<SpawnResult> {
   return new Promise((resolve) => {
     let settled = false;
@@ -240,10 +242,15 @@ function spawnCommand(
     };
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn("/bin/sh", ["-c", command], { cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+      child = spawn("/bin/sh", ["-c", command], { cwd, env, detached: true, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
     } catch {
       finish({ exitCode: null, stdout: "", stderr: "", timedOut: false, aborted: false, spawnError: true });
       return;
+    }
+    if (input !== undefined && child.stdin) {
+      // A command that never reads its stdin closes it early: that is no failure of the command.
+      child.stdin.on("error", () => {});
+      child.stdin.end(input);
     }
     let stdout = "";
     let stderr = "";

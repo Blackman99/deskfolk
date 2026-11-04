@@ -1,3 +1,6 @@
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "bun:test";
 import type { Playbook, PlaybookList, PlaybookRevision, SessionDetail } from "@real-bot/protocol";
 import { auth, registerLocalApiCleanup, startLocalApi } from "./test-kit/local-api-harness";
@@ -71,4 +74,30 @@ test("engines over the local API: list, change with a revision guard, reset a st
 
   const settings = await call<{ default_playbook: string }>(h, "PATCH", "/v1/settings", { default_playbook: "video" });
   expect(settings.data.default_playbook).toBe("video");
+});
+
+test("a step of your own tried from the panel over the local API: judged on a sample, nothing saved, carried out or recorded (ADR 0105)", async () => {
+  const h = await startLocalApi();
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "step-try-")));
+  await h.store.patchSettings({ workspace_path: root });
+  const revisions = async () => (await call<{ items: unknown[] }>(h, "GET", "/v1/playbooks/general/revisions")).data.items.length;
+  const before = await revisions();
+  const rule = { id: "u_noenvfile01", name: "不许动 .env", on: false, at: "before_effect", match: { paths: ["**/.env", ".env"] }, run: { kind: "rule" }, then: "refuse" };
+  const hit = await call<{ outcome: string; reason: string | null; sample: { tool: string; paths: string[] } }>(h, "POST", "/v1/playbooks/general/custom-steps/try",
+    { step: rule, sample: { tool: "write_file", paths: [".env"] } });
+  expect(hit).toMatchObject({ status: 200, data: { outcome: "fail", reason: "碰到了「不许动 .env」管的 .env", sample: { tool: "write_file", paths: [".env"] } } });
+  const miss = await call<{ outcome: string }>(h, "POST", "/v1/playbooks/general/custom-steps/try", { step: rule, sample: { tool: "write_file", paths: ["notes.md"] } });
+  expect(miss.data.outcome).toBe("pass");
+  const command = await call<{ outcome: string; exit_code: number | null; output: string | null }>(h, "POST", "/v1/playbooks/general/custom-steps/try",
+    { step: { ...rule, at: "turn_end", match: undefined, run: { kind: "command", command: "grep -o '\"reply\":\"[^\"]*\"'; exit 2" }, then: "send_back" }, sample: { reply: "做完了" } });
+  expect(command).toMatchObject({ status: 200, data: { outcome: "fail", exit_code: 2, output: "\"reply\":\"做完了\"" } });
+  // A step a save would refuse is refused here too; an unknown engine is not found.
+  const bad = await call<{ error: { message: string } }>(h, "POST", "/v1/playbooks/general/custom-steps/try", { step: { ...rule, then: "gate" } });
+  expect(bad.status).toBe(422);
+  expect(bad.data.error.message).toContain("step.then must be one of refuse, note at before_effect");
+  expect((await call(h, "POST", "/v1/playbooks/01AAAAAAAAAAAAAAAAAAAAAAAA/custom-steps/try", { step: rule })).status).toBe(404);
+  // Nothing kept: no revision, no call record.
+  expect(await revisions()).toBe(before);
+  expect(h.store.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM call_runs").get()!.n).toBe(0);
+  rmSync(root, { recursive: true, force: true });
 });

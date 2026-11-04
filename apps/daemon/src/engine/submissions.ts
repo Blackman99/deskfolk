@@ -17,6 +17,7 @@ import { checkLines, inTicketDir, type SettledSubmission, type Store, type Store
 import { ENGINE_LEVELS } from "../store/schema-gate";
 import { classifyPath } from "../workspace-paths";
 import type { BotLineContext, BotLineReading, UserLineReading } from "../line-reading";
+import type { CustomSteps } from "./custom-steps";
 
 /** A file larger than this is not hashed, and so cannot be handed over (the supervisor's artifact limit). */
 const SUBMISSION_HASH_BYTES_MAX = 2 * 1024 ** 3;
@@ -48,6 +49,8 @@ export type SubmissionsDeps = {
    * card is — a Stop on its work in that job goes (engine/stop/go-on.ts `liftOnSendBack`).
    */
   liftOnSendBack?: (line: Message, producer: string, taskId: string, ticketId: string | null) => unknown[];
+  /** Steps of your own on a hand-in (ADR 0105), judged beside its checks; their verdicts are read where it settles. */
+  customSteps?: CustomSteps;
   log?: (line: string) => void;
 };
 
@@ -196,6 +199,12 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
 
   async function settle(submission: StoredSubmission, tell = false): Promise<SettledSubmission> {
     await runBound(submission, submission.created_at);
+    // Not inside runBound: a hand-over with no checks bound to it is what such a step is often for.
+    try {
+      await deps.customSteps?.onHandedIn(submission);
+    } catch (error) {
+      log(`[submissions] ${submission.id}: steps of your own did not run: ${error instanceof Error ? error.message : String(error)}`);
+    }
     const settled = store.settleSubmissionChecks(submission.id, undefined, { tell });
     dispatchQueued();
     return settled;

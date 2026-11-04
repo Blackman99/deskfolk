@@ -20,6 +20,7 @@ import { getTurn } from "./turns";
 import { getHold } from "./holds";
 import { getCallRun } from "./call-runs";
 import { GATE_SETTING_KEYS } from "./schema-gate";
+import { STEPS_SEEN_KEY } from "./playbooks";
 import { groupLeadState } from "./group-leads";
 import { getDelegationView } from "./delegation-view";
 import { toTicket, type TicketRow } from "./tickets";
@@ -35,8 +36,9 @@ export function installChangeJournal(ctx: StoreContext): void {
       if (table === "spend" && op === "UPDATE") continue;
       const row = op === "DELETE" ? "OLD" : "NEW";
       const id = table === "settings" ? "'settings'" : `${row}.id`;
-      // The version gate's rows are not settings anyone edits (see GATE_SETTING_KEYS).
-      const when = table === "settings" ? ` WHEN ${row}.key NOT IN (${GATE_SETTING_KEYS.map((key) => `'${key}'`).join(", ")})` : "";
+      // The version gate's rows are not settings anyone edits (see GATE_SETTING_KEYS), nor is the
+      // bookmark of how far the steps after approvals have looked (ADR 0105).
+      const when = table === "settings" ? ` WHEN ${row}.key NOT IN (${[...GATE_SETTING_KEYS, STEPS_SEEN_KEY].map((key) => `'${key}'`).join(", ")})` : "";
       // A ticket's "session" slot carries its plan, so a removed ticket can still say which board it left.
       const session = ["messages", "turns", "spend", "judgements", "notifications", "annotations", "tasks", "agent_runs"].includes(table)
         ? `${row}.session_id`

@@ -1,4 +1,4 @@
-import { isPlaybookStepId, type Locale } from "@real-bot/protocol";
+import { CUSTOM_STEP_TOOLS, isPlaybookStepId, validateCustomSteps, type CustomStepSample, type Locale } from "@real-bot/protocol";
 import { HttpError } from "../../errors";
 import { jsonResponse, matchPath } from "../../http";
 import { engineSystemDefault, promptProblemsError, promptSlot } from "../../prompts/book";
@@ -29,6 +29,33 @@ function checkedDiff(ctx: RouteCtx, id: string, value: unknown): unknown {
     texts[locale] = checked.text;
   }
   return { ...(value as object), system: texts };
+}
+
+/** A try's sample as sent: only what a step looks at, each field optional. */
+function trySample(value: unknown): CustomStepSample {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) throw new HttpError(422, "invalid_args", "sample must be an object");
+  const raw = value as Record<string, unknown>;
+  const out: CustomStepSample = {};
+  if (raw.tool !== undefined) {
+    if (!(CUSTOM_STEP_TOOLS as readonly unknown[]).includes(raw.tool)) throw new HttpError(422, "invalid_args", `sample.tool must be one of ${CUSTOM_STEP_TOOLS.join(", ")}`);
+    out.tool = raw.tool as CustomStepSample["tool"];
+  }
+  if (raw.command !== undefined) {
+    if (typeof raw.command !== "string" || raw.command.length > 4000) throw new HttpError(422, "invalid_args", "sample.command must be text");
+    out.command = raw.command;
+  }
+  if (raw.reply !== undefined) {
+    if (typeof raw.reply !== "string" || raw.reply.length > 20_000) throw new HttpError(422, "invalid_args", "sample.reply must be text");
+    out.reply = raw.reply;
+  }
+  if (raw.paths !== undefined) {
+    if (!Array.isArray(raw.paths) || raw.paths.length > 50 || raw.paths.some((path) => typeof path !== "string" || path.length > 1000)) {
+      throw new HttpError(422, "invalid_args", "sample.paths must be a list of paths");
+    }
+    out.paths = raw.paths as string[];
+  }
+  return out;
 }
 
 /**
@@ -66,6 +93,18 @@ export function playbookRoutes(ctx: RouteCtx): Response | Promise<Response> | nu
 
   params = matchPath(path, "/v1/playbooks/:id/revisions");
   if (params && method === "GET") return jsonResponse({ items: store.listPlaybookRevisions(params.id!) }, 200, null);
+
+  // A step of your own judged on a sample (ADR 0105): the step as drafted, refused, sent back,
+  // recorded nowhere. Not a write, and it may run a while, so it carries no receipt.
+  params = matchPath(path, "/v1/playbooks/:id/custom-steps/try");
+  if (params && method === "POST") {
+    store.getPlaybook(params.id!);
+    const [step] = validateCustomSteps([body.step], (message) => {
+      throw new HttpError(422, "invalid_args", message.replace("diff.custom_steps[0]", "step"));
+    });
+    const sample = trySample(body.sample);
+    return (async () => jsonResponse(await ctx.engine.tryCustomStep(step!, sample), 200, null))();
+  }
 
   params = matchPath(path, "/v1/playbooks/:id/reset");
   if (params && method === "POST") {

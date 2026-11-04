@@ -124,13 +124,15 @@ export type SequencedEvent = {
  * again. A transcription (ADR 0073) waits on the speech endpoint and stores nothing; a repeat only
  * transcribes again. Your Claude Code's routes (ADR 0061) answer with what `claude` says after it
  * is looked up again, which takes seconds; setting its path or its account list sets the whole
- * value, so a repeat sets the same thing again.
+ * value, so a repeat sets the same thing again. A step of your own tried on a sample (ADR 0105) may
+ * run a command or a model for a while and stores nothing; a repeat only tries it again.
  */
 export function isNonReceiptPath(path: string): boolean {
   const withoutQuery = path.split("?")[0] ?? "";
   return withoutQuery === "/v1/models/probe"
     || /^\/v1\/providers\/[^/]+\/speed-test$/.test(withoutQuery)
     || withoutQuery === "/v1/speech/transcribe"
+    || /^\/v1\/playbooks\/[^/]+\/custom-steps\/try$/.test(withoutQuery)
     || withoutQuery === "/v1/workspace/trash"
     || withoutQuery === "/v1/notification-presence"
     || withoutQuery.startsWith("/v1/runtime/claude-code/")

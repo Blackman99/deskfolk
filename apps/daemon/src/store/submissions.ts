@@ -38,7 +38,7 @@ import { awaitYourWord, letGoOfCard, markApprovalCard, markPassedLine, REVIEW_CA
 import { localeOf } from "./settings";
 import { LIVE_TURN_STATUSES, requireNonEmpty, type StoreContext } from "./shared";
 import { cleanVerdicts, framesRead, needsYourApproval, requiredItems, unbackedItems } from "./submission-evidence";
-import { backs, boundCheckIds, checkLines, checkResults, gateFailed, getSubmission, implicitSubmissionPaths, inTicketDir, listSubmissions, OPEN_STATES, ORIGIN_NEEDS_USER, plainPath, producerIsBot, producerSession, segmentModel, setPartStage, supervised, toSubmission, truncatedAnswer, yourDirectWith, type ReviewRecord, type Submission, type SubmissionArtifact, type SubmissionCheck, type SubmissionClaim, type SubmissionRow, type SubmissionState } from "./submission-rows";
+import { backs, boundCheckIds, checkLines, checkResults, gateFailed, stepChecks, getSubmission, implicitSubmissionPaths, inTicketDir, listSubmissions, OPEN_STATES, ORIGIN_NEEDS_USER, plainPath, producerIsBot, producerSession, segmentModel, setPartStage, supervised, toSubmission, truncatedAnswer, yourDirectWith, type ReviewRecord, type Submission, type SubmissionArtifact, type SubmissionCheck, type SubmissionClaim, type SubmissionRow, type SubmissionState } from "./submission-rows";
 import { isReservedTaskPath } from "./tasks";
 import { setTicketStage, settlePlanStage, STAGE_SQL, stagedTicket, ticketStage, type StagedTicketRow, type TicketStage } from "./ticket-stage";
 import { recordWorkEvent } from "./work-events";
@@ -438,7 +438,8 @@ export function settleSubmissionChecks(ctx: StoreContext, submissionId: string, 
     if (submission.state !== "checking") {
       return { submission, state: submission.state, failures: submission.checks.filter(gateFailed), reviewer: null };
     }
-    const checks = checkResults(ctx, boundCheckIds(ctx, submission), submission.created_at);
+    // The engine's steps of your own on a hand-in stand beside its checks (ADR 0105).
+    const checks = [...checkResults(ctx, boundCheckIds(ctx, submission), submission.created_at), ...stepChecks(ctx, submission.id)];
     const failures = checks.filter(gateFailed);
     let reviewer: string | null = null;
     if (failures.length > 0) {

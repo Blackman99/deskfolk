@@ -407,3 +407,35 @@ test("a built-in call's model can be another agent's, kept as chosen, and a cust
     store.close();
   }
 });
+
+test("a rule of yours refuses the agent's call before the app carries it out (ADR 0105)", async () => {
+  const h = await harness([[{ write: { path: "@CWD/.env", content: "KEY=1" } }, { say: "没写成" }]]);
+  const engine = h.store.createPlaybook({ from: "plain", name: "我的规矩" });
+  h.store.savePlaybook(engine.id, { diff: { ...engine.diff, custom_steps: [
+    { id: "u_noenvfile01", name: "不许动 .env", on: true, at: "before_effect", match: { paths: ["**/.env", ".env"] }, run: { kind: "rule" }, then: "refuse" },
+  ] } });
+  h.store.setSessionPlaybook(h.session, engine.id);
+  await h.post("写个 .env");
+  expect(String(h.seen().find((entry) => entry.wrote !== undefined || entry.error !== undefined)?.error)).toContain("不许动 .env");
+  expect(existsSync(join(h.root, ".env"))).toBe(false);
+});
+
+test("a call the agent made without asking is looked at by the steps after it, as no step could before (ADR 0105)", async () => {
+  const h = await harness([[{ unasked: { kind: "edit", title: "Edit notes", locations: [{ path: "@CWD/zz-notes.md" }] } }, { say: "改完了" }]]);
+  const engine = h.store.createPlaybook({ from: "plain", name: "我的规矩" });
+  h.store.savePlaybook(engine.id, { diff: { ...engine.diff, custom_steps: [
+    { id: "u_afterwrite01", name: "写完看一眼", on: true, at: "after_effect", match: { tools: ["write_file"] }, run: { kind: "command", command: "echo \"看了 $DESKFOLK_PATHS\"; exit 1" }, then: "note" },
+  ] } });
+  h.store.setSessionPlaybook(h.session, engine.id);
+  await h.post("改一下笔记");
+  let runs: Array<{ verdict: string | null }> = [];
+  for (let i = 0; i < 50 && runs.length === 0; i++) {
+    runs = h.store.db.query<{ verdict: string | null }, []>("SELECT verdict FROM call_runs WHERE role = 'custom_step'").all();
+    if (runs.length === 0) await Bun.sleep(20);
+  }
+  expect(runs).toHaveLength(1);
+  const verdict = JSON.parse(runs[0]!.verdict!) as { outcome: string; then: string; reason: string };
+  expect(verdict).toMatchObject({ outcome: "fail", then: "note" });
+  // The file it wrote, relative to the workspace (here inside the turn's work dir).
+  expect(verdict.reason).toMatch(/^看了 (.+\/)?zz-notes\.md$/);
+});

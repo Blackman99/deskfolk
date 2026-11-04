@@ -37,6 +37,7 @@ import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
 import type { BuiltinTargetOf } from "./builtin-models";
 import type { Tools } from "./tools";
+import type { CustomSteps } from "./custom-steps";
 import type { InboxEntry, Live } from "./types";
 import { isBotRunner, isTicketAgentModel, type Spend } from "@real-bot/protocol";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
@@ -119,7 +120,10 @@ export type LifecycleDeps = {
   resolveAgent?: AgentRunnerDeps["resolveAgent"];
   openApprovalCard: Tools["openApprovalCard"];
   beforeEffect: Tools["beforeEffect"];
+  afterEffect?: Tools["afterEffect"];
   noteWrites: Tools["noteWrites"];
+  /** Steps of your own as a turn ends (ADR 0105). */
+  customSteps?: CustomSteps;
 };
 
 export type Lifecycle = {
@@ -707,6 +711,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     executeTools,
     openApprovalCard: deps.openApprovalCard,
     beforeEffect: deps.beforeEffect,
+    ...(deps.afterEffect ? { afterEffect: deps.afterEffect } : {}),
     noteWrites: deps.noteWrites,
     settleClosingReply,
     completeSilent,

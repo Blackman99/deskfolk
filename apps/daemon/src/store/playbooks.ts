@@ -272,6 +272,26 @@ export function customStepsAt(ctx: StoreContext, scope: PlaybookScope, at: Custo
   return steps.filter((step) => step.at === at && customStepRuns(step, jobs));
 }
 
+/** A bookmark of the app's, not a setting you change: windows are not told when it moves (store/events.ts). */
+export const STEPS_SEEN_KEY = "custom_steps_seen_seq";
+
+/**
+ * How far the steps after an approval or a send-back of yours have looked through the work log
+ * (ADR 0105), by its seq. The first look starts from now: what was decided before steps of your own
+ * existed is not run past them.
+ */
+export function customStepsSeen(ctx: StoreContext): number {
+  const set = ctx.db.query<{ value: string }, []>(`SELECT value FROM settings WHERE key = '${STEPS_SEEN_KEY}'`).get()?.value;
+  if (set !== undefined && Number.isInteger(Number(set))) return Number(set);
+  const now = ctx.db.query<{ seq: number | null }, []>("SELECT MAX(seq) AS seq FROM work_events").get()?.seq ?? 0;
+  setSetting(ctx, STEPS_SEEN_KEY, String(now));
+  return now;
+}
+
+export function markCustomStepsSeen(ctx: StoreContext, seq: number): void {
+  setSetting(ctx, STEPS_SEEN_KEY, String(seq));
+}
+
 /** Which of the app's tools a conversation's Bots are offered, as `builtinTools` and the dispatch ask. */
 export function toolsIn(ctx: StoreContext, sessionId: string | null): { jobs: boolean; off: readonly EngineToolKind[] } {
   return { jobs: jobsRunIn(ctx, sessionId), off: playbookFor(ctx, { sessionId }).diff.tools_off ?? [] };

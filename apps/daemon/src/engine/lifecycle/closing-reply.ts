@@ -72,6 +72,25 @@ export function createClosingReply(deps: LifecycleDeps, endings: TurnEndings) {
     });
     if (!active(turnId, live)) return { kind: "inactive" };
     if (bounce) return { kind: "bounce", note: bounce };
+    // Steps of your own as the turn ends (ADR 0105), before anything is handed over or weighed. A
+    // send-back is about the work, not the words: they go out first, and the Bot hears it after.
+    let told: string[] = [];
+    if (deps.customSteps && current.mode !== "readonly") {
+      let ending: { bounce: string | null; tell: string[] } = { bounce: null, tell: [] };
+      try {
+        ending = await deps.customSteps.atTurnEnd(current, { reply: rawBody, files: live.producedPaths ?? live.writtenPaths }, live.abort.signal);
+      } catch (error) {
+        console.error(`[turn ${turnId}] steps at the ending failed`, error);
+      }
+      if (!active(turnId, live)) return { kind: "inactive" };
+      told = ending.tell;
+      if (ending.bounce) {
+        const sent = rawBody.trim() ? publishCitedBotMessage(current, live, turnId, rawBody) : null;
+        if (sent && !live.parentId) void track(handleParticipation(sent, { fromUser: false }));
+        for (const body of told) publishMessage(store.insertMessage({ sessionId: current.session_id, turnId, kind: "system", author: current.bot_id, body, hiddenFromBots: true }));
+        return { kind: "bounce", note: sent ? replyOutNote(live.locale, ending.bounce) : ending.bounce };
+      }
+    }
     // From level 5 a closing reply that hands files over goes out first, so what it cites is
     // handed over (the implicit submission) before the ending is weighed (§5.2). Words alone
     // are never inferred from a plain-text closing reply — that verbal hand-over once let
@@ -130,6 +149,8 @@ export function createClosingReply(deps: LifecycleDeps, endings: TurnEndings) {
       publishMessage(store.insertMessage({ sessionId: current.session_id, turnId, kind: "system", author: current.bot_id,
         body: endingLine, hiddenFromBots: true }));
     }
+    // So do the lines steps of your own have for you (ADR 0105).
+    for (const body of told) publishMessage(store.insertMessage({ sessionId: current.session_id, turnId, kind: "system", author: current.bot_id, body, hiddenFromBots: true }));
     if (message && live.writtenPaths.length > 0) observeTicket(turnId, current.bot_id, "delivered");
     const completed = store.setTurnStatus(turnId, "completed", executionOf(live));
     lives.delete(turnId);

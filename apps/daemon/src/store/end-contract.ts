@@ -433,6 +433,29 @@ function bounceLeft(ctx: StoreContext, turnId: string, opts: FinishWorkOptions):
 }
 
 /**
+ * Whether an ending of this segment may still be sent back (ADR 0105): the end contract's two per
+ * segment, which a step of your own shares, so no rule of yours can keep a Bot going round for good.
+ */
+export function endBounceLeft(ctx: StoreContext, turnId: string): boolean {
+  return Boolean(ctx.db.query("SELECT 1 FROM turns WHERE id = ?").get(turnId)) && bounceLeft(ctx, turnId, {});
+}
+
+/**
+ * Steps of your own send this ending back (ADR 0105), as the contract's own rules do: one of the
+ * segment's two send-backs, logged the same way. False, and nothing logged, when none is left or the
+ * segment is no longer running.
+ */
+export function bounceForSteps(ctx: StoreContext, turnId: string, stepIds: readonly string[]): boolean {
+  return ctx.commit(() => {
+    const turn = ctx.db.query<Actor, [string]>("SELECT * FROM turns WHERE id = ?").get(turnId);
+    if (!turn || turn.status !== "running" || !bounceLeft(ctx, turnId, {})) return false;
+    recordWorkEvent(ctx, { kind: "end.rejected", actor: "app", botId: turn.bot_id, taskId: turn.task_id,
+      ticketId: turn.ticket_id, turnId: turn.id, sessionId: turn.session_id, payload: { work_item_id: turn.work_item_id, code: "custom_step", steps: [...stepIds] } });
+    return true;
+  });
+}
+
+/**
  * Whether this segment was already told once not to stop for a go-ahead (ADR 0058), on an ending or
  * on `ask_user`: a second such question goes to the user, since the Bot holds it is theirs to answer.
  */

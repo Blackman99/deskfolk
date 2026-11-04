@@ -55,6 +55,7 @@ import { classifyPath } from "../workspace-paths";
 import { producedPaths, snapshotWorkDir } from "../workspace-tools";
 import { emptyReplyNote } from "../turn-pace";
 import { readOnlyTools, type Tools } from "./tools";
+import type { EffectCall } from "./custom-steps";
 import type { Live } from "./types";
 import type { Chains } from "./chains";
 import type { SpendTracker } from "./spend";
@@ -107,6 +108,8 @@ export type AgentRunnerDeps = {
   executeTools: Tools["executeTools"];
   openApprovalCard: Tools["openApprovalCard"];
   beforeEffect: Tools["beforeEffect"];
+  /** Steps of your own after a call (ADR 0105); absent in tests that build a runner alone. */
+  afterEffect?: Tools["afterEffect"];
   noteWrites: Tools["noteWrites"];
   settleClosingReply: (turnId: string, live: Live, current: Turn, content: string) => Promise<{ kind: "bounce"; note: string } | { kind: "ended" } | { kind: "inactive" }>;
   completeSilent: (turnId: string) => void;
@@ -483,7 +486,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       cut: null as { uuid: string; expect: number } | null,
     };
     /** What the effect gate and the approvals decided per tool call, read back when Claude Code asks. */
-    const pending = new Map<string, { approval?: { kind_key: string; target: string; summary: string }; appName: string; effect: boolean; snapshot?: Map<string, number> | null; begun?: boolean; startedAt: number; command?: string }>();
+    const pending = new Map<string, { approval?: { kind_key: string; target: string; summary: string }; appName: string; effect: boolean; snapshot?: Map<string, number> | null; begun?: boolean; startedAt: number; command?: string; call?: EffectCall }>();
     let session: AgentSession | null = null;
 
     const end = () => {
@@ -559,9 +562,14 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       });
       if (decision.kind === "deny") return deny(decision.reason);
       let context: string | undefined;
+      // What steps of your own look at (ADR 0105): its files as Claude Code names them, a Bash command, an MCP tool's.
+      const input = (raw.tool_input ?? {}) as Record<string, unknown>;
+      const written = writtenPathOf(input);
+      const call: EffectCall = { ...(raw.tool_name === "Bash" && typeof input.command === "string" ? { command: input.command } : {}),
+        paths: written ? [written] : [], mcp: raw.tool_name.startsWith("mcp__") };
       if (decision.effect) {
         const before = live.workDir;
-        const gate = await deps.beforeEffect(current, live, decision.appName, id);
+        const gate = await deps.beforeEffect(current, live, decision.appName, id, call);
         if (!gate.ok) {
           if (gate.result.data?.ended === true) {
             state.endedByTool = true;
@@ -584,9 +592,10 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
               : `（应用）这件事已经归到一项工作里，本轮工作目录现在是 ${abs.abs}，产物放这里。`;
           }
         }
+        if (gate.notes?.length) context = [context, ...gate.notes].filter(Boolean).join("\n\n");
       }
       const snapshot = raw.tool_name === "Bash" && live.workDir ? snapshotWorkDir(root, live.workDir) : null;
-      pending.set(id, { appName: decision.appName, effect: decision.effect, snapshot, startedAt: Date.now(),
+      pending.set(id, { appName: decision.appName, effect: decision.effect, snapshot, startedAt: Date.now(), call,
         ...(raw.tool_name === "Bash" && typeof (raw.tool_input as { command?: unknown } | undefined)?.command === "string"
           ? { command: (raw.tool_input as { command: string }).command } : {}),
         ...(decision.kind === "ask" ? { approval: decision.approval } : {}) });
@@ -679,6 +688,17 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
         duration_ms: entry ? Date.now() - entry.startedAt : undefined,
         exit_code: raw.tool_name === "Bash" ? (failed ? exitCodeOf(errorText) ?? 1 : 0) : null, ok: !failed });
       live.loop.push({ role: "tool", tool_call_id: id, content: clip(responseText, LOOP_RESULT_MAX) });
+      // Steps of your own after a call with an effect (ADR 0105): what they say, beside its result.
+      if (entry?.effect && entry.call && deps.afterEffect) {
+        const notes = await deps.afterEffect(current, live, appName, entry.call, { ok: !failed, output: responseText });
+        if (notes.length > 0) {
+          const additionalContext = notes.join("\n\n");
+          live.loop.push({ role: "user", content: additionalContext });
+          return failed
+            ? { hookSpecificOutput: { hookEventName: "PostToolUseFailure", additionalContext } }
+            : { hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext } };
+        }
+      }
       return {};
     };
 

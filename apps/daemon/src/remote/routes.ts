@@ -115,6 +115,10 @@ get(`${playbook}/system`, { locale: one("zh", "en") }, ["locale"]);
 add("POST", "playbooks", { from: string, name: string }, ["from", "name"]);
 add("PUT", playbook, { diff: playbookDiff, if_revision: nullable(string) }, ["diff"]);
 add("POST", `${playbook}/reset`, { step: nullable(string), if_revision: nullable(string) });
+// A step of your own tried on a sample (ADR 0105): the phone may write the steps, so it may try them.
+// The daemon checks both shapes; this only keeps their size in bounds.
+const tryPart = (max: number): Check => v => !!v && typeof v === "object" && !Array.isArray(v) && JSON.stringify(v).length <= max;
+add("POST", `${playbook}/custom-steps/try`, { step: tryPart(20_000), sample: tryPart(80_000) }, ["step"]);
 add("PATCH", playbook, { name: string, if_revision: nullable(string) }, ["name"], true);
 add("DELETE", playbook);
 add("PUT", "sessions/:id/playbook", { playbook_id: nullable(string) }, ["playbook_id"]);

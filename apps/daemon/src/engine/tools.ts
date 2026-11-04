@@ -31,6 +31,7 @@ import type { WakeWatch } from "../wake";
 import { classifyPath } from "../workspace-paths";
 import { isWorkspaceTool, runWorkspaceTool, type ShellStream } from "../workspace-tools";
 import type { Closing } from "./closing";
+import type { CustomSteps, EffectCall } from "./custom-steps";
 import { HELD_CALL, mayAct } from "./control";
 import type { Participation } from "./participation";
 import type { Submissions } from "./submissions";
@@ -120,6 +121,8 @@ export type ToolsDeps = {
   submissions?: () => Submissions;
   /** A Bot's line, read for what the app acts on (ADR 0055, `reader.ts`); absent, the word lists read it. */
   readBotLine?: (body: string, sessionId: string | null, context?: BotLineContext) => Promise<BotLineReading>;
+  /** Steps of your own (ADR 0105): around a call with an effect, and before an end_turn. */
+  customSteps?: CustomSteps;
 };
 
 export type Tools = {
@@ -159,12 +162,19 @@ export type Tools = {
     waitAsk: NonNullable<ToolResult["waitAsk"]>,
     toolCallId: string,
   ) => Promise<{ ask: Message; answer: AskAnswer | null }>;
+  /**
+   * What stands between a call and its effect. `call` is what steps of your own look at (ADR 0105);
+   * `notes` what they say beside a call they let through, for the Bot to hear with its result.
+   */
   beforeEffect: (
     turn: Turn,
     live: Live,
     name: string,
     callId?: string,
-  ) => Promise<{ ok: true; turn: Turn } | { ok: false; result: ToolResult }>;
+    call?: EffectCall,
+  ) => Promise<{ ok: true; turn: Turn; notes?: string[] } | { ok: false; result: ToolResult }>;
+  /** After a call with an effect: what steps of your own say of it, for the Bot to hear with its result (ADR 0105). */
+  afterEffect: (turn: Turn, live: Live, name: string, call: EffectCall, result: { ok: boolean; output: string }) => Promise<string[]>;
 };
 
 /** The endings a promise of more to come is weighed for (the end contract's `promised_later`). */
@@ -208,7 +218,7 @@ export function createTools(deps: ToolsDeps): Tools {
     const execution = store.getToolExecution({ turnId, toolCallId: callId });
     if (!execution || execution.finished_at || result.error?.code === "repeated_effect") return;
     const code = result.error?.code;
-    const refused = Boolean(code && ["denied", "invalid_args", "held", "refused", "not_a_member", "draining", "no_work_authority"].includes(code));
+    const refused = Boolean(code && ["denied", "invalid_args", "held", "refused", "not_a_member", "draining", "no_work_authority", "step_refused"].includes(code));
     const uncertain = live.abort.signal.aborted || (!result.ok && !refused && live.mcpTools.has(name))
       || Boolean(code && ["timeout", "unreachable", "interrupted", "crashed"].includes(code));
     store.finishToolExecution({ turnId, toolCallId: callId,
@@ -445,8 +455,9 @@ export function createTools(deps: ToolsDeps): Tools {
         ? { ok: true, data: admitPicture(live, pictures, result) }
         : { ok: false, error: result.error };
       // A closing-check bounce is a nudge and a call a hold refused never ran: neither is a tool that
-      // failed, and the review must not read them as one.
-      if (!result.ok && result.error?.code !== "closing_check" && result.error?.code !== "held") {
+      // failed, and the review must not read them as one. Nor is a call or an ending a step of your
+      // own refused or sent back (ADR 0105): your rule held it, the tool did not fail.
+      if (!result.ok && !["closing_check", "held", "step_refused", "custom_step"].includes(result.error?.code ?? "")) {
         noteFailure(live, call.name, args, fingerprint, result.error);
       }
       troubled(turnId, live, noteOutcome(live.trouble, call.name, result.ok, result.error));
@@ -604,14 +615,64 @@ export function createTools(deps: ToolsDeps): Tools {
     if (!offeredIn(name, store.toolsIn(turn.session_id))) {
       return toolFail("not_offered", "This conversation's engine leaves this tool out, so it does nothing here. Do the work another way, or say what you could not do.");
     }
-    const gate = await beforeEffect(turn, live, name, callId);
+    const call = effectCallOf(live, name, args);
+    const gate = await beforeEffect(turn, live, name, callId, call);
     if (!gate.ok) return gate.result;
     turn = gate.turn;
     // Level 5 (ADR 0046): a hand-over and a review are the engine's, which hashes, cites and runs checks.
     if ((name === "submit" || name === "review") && submissions) {
       return name === "submit" ? submissions().submit(turn.id, args) : submissions().review(turn.id, args);
     }
-    return dispatchAfterGate(turn, live, name, args, callId);
+    const result = await dispatchAfterGate(turn, live, name, args, callId);
+    if (!deps.customSteps || !hasEffect(live, name) || result.waitApproval || result.waitAsk) return withNotes(result, gate.notes ?? []);
+    const after = await afterEffect(turn, live, name, call, { ok: result.ok, output: resultText(result) });
+    return withNotes(result, [...(gate.notes ?? []), ...after]);
+  }
+
+  /**
+   * An ending a step at a turn's end looks at (ADR 0105): one that says the work is done or answered,
+   * or, where there are no jobs, one that names no reason. Not a Bot saying it is blocked or gave up.
+   */
+  function endsDone(turn: Turn, args: Record<string, unknown>): boolean {
+    if (args.reason === "done" || args.reason === "answered") return true;
+    return args.reason === undefined && !store.jobsRunIn(turn.session_id);
+  }
+
+  /** What steps of your own look at in one of the app's own calls (ADR 0105): its files, as named, and a shell's command. */
+  function effectCallOf(live: Live, name: string, args: Record<string, unknown>): EffectCall {
+    const path = typeof args.path === "string" ? args.path : null;
+    return {
+      ...(name === "shell" && typeof args.command === "string" ? { command: args.command } : {}),
+      paths: (name === "write_file" || name === "delete_file") && path ? [path] : [],
+      mcp: live.mcpTools.has(name),
+    };
+  }
+
+  /** A call's result as a step after it reads it: its words, or what it gave back. */
+  function resultText(result: ToolResult): string {
+    if (!result.ok) return result.error?.message ?? "";
+    try {
+      return JSON.stringify(result.data ?? {});
+    } catch {
+      return "";
+    }
+  }
+
+  /** The notes of steps of your own, heard with the call's result. */
+  function withNotes(result: ToolResult, notes: readonly string[]): ToolResult {
+    if (notes.length === 0) return result;
+    if (!result.ok) return { ...result, error: { code: result.error?.code ?? "failed", message: [result.error?.message ?? "", ...notes].filter(Boolean).join("\n\n") } };
+    return { ...result, data: { ...(result.data ?? {}), engine_steps: [...notes] } };
+  }
+
+  async function afterEffect(turn: Turn, live: Live, name: string, call: EffectCall, result: { ok: boolean; output: string }): Promise<string[]> {
+    if (!deps.customSteps) return [];
+    try {
+      return await deps.customSteps.afterCall(turn, name, call, result, live.abort.signal);
+    } catch (error) {
+      console.error(`[turn ${turn.id}] steps after ${name} failed`, error);
+      return [];
+    }
   }
 
   /**
@@ -626,7 +687,8 @@ export function createTools(deps: ToolsDeps): Tools {
     live: Live,
     name: string,
     callId?: string,
-  ): Promise<{ ok: true; turn: Turn } | { ok: false; result: ToolResult }> {
+    call?: EffectCall,
+  ): Promise<{ ok: true; turn: Turn; notes?: string[] } | { ok: false; result: ToolResult }> {
     // Desk segments may read and reply, but choosing a job precedes the first effect — unless your
     // line was read as something done where it was asked (ADR 0057).
     turn = store.getTurn(turn.id);
@@ -665,15 +727,28 @@ export function createTools(deps: ToolsDeps): Tools {
     }
     live.planDir = store.turnPlanDir(turn.id);
     live.workDir = store.turnWorkDir(turn.id);
+    let notes: string[] = [];
     if (hasEffect(live, name) && name !== "work_on" && name !== "send_message" && name !== "ask_user") {
       // Binding may have changed which hold applies; check the target immediately before acting.
       if (!mayAct(store, turn.id)) return { ok: false, result: toolFail("held", HELD_CALL) };
+      // Your own rules for a call (ADR 0105), once the floor has let it through and before anything
+      // is entered for it: a call one refuses never ran.
+      if (deps.customSteps && call) {
+        try {
+          const said = await deps.customSteps.beforeCall(turn, name, call, live.abort.signal);
+          if (said.refusal) return { ok: false, result: toolFail("step_refused", said.refusal) };
+          notes = said.notes;
+        } catch (error) {
+          console.error(`[turn ${turn.id}] steps before ${name} failed`, error);
+        }
+        if (!active(turn.id, live)) return { ok: false, result: toolFail("held", HELD_CALL) };
+      }
       if (turn.task_id) store.markWorkDirectoryUsed(turn.id);
       if (name === "write_file" || name === "delete_file" || name === "shell" || live.mcpTools.has(name)) {
         store.recordNewPlanEffectStarted({ turnId: turn.id, tool: name, toolCallId: callId });
       }
     }
-    return { ok: true, turn };
+    return { ok: true, turn, ...(notes.length > 0 ? { notes } : {}) };
   }
 
   /** The rest of `dispatchTool`, once `beforeEffect` let the call through. */
@@ -684,6 +759,20 @@ export function createTools(deps: ToolsDeps): Tools {
     args: Record<string, unknown>,
     callId?: string,
   ): Promise<ToolResult> {
+    // Steps of your own as a turn ends (ADR 0105): before the ending hands anything over or is weighed.
+    if (name === "end_turn" && deps.customSteps && turn.mode !== "readonly" && endsDone(turn, args)) {
+      try {
+        const ending = await deps.customSteps.atTurnEnd(turn, { reply: typeof args.answer === "string" && args.answer.trim() ? args.answer : store.segmentLastWord(turn.id, "") ?? null,
+          files: live.producedPaths ?? live.writtenPaths }, live.abort.signal);
+        for (const body of ending.tell) {
+          publishMessage(store.insertMessage({ sessionId: turn.session_id, turnId: turn.id, kind: "system", author: turn.bot_id, body, hiddenFromBots: true }));
+        }
+        if (ending.bounce) return toolFail("custom_step", ending.bounce);
+      } catch (error) {
+        console.error(`[turn ${turn.id}] steps before the ending failed`, error);
+      }
+      if (!active(turn.id, live)) return toolFail("held", HELD_CALL);
+    }
     if (name === "end_turn" && args.reason === "done" && submissions && store.capabilities().engine_level >= ENGINE_LEVELS.submissions && store.jobsRunIn(turn.session_id)) {
       // §5.2: an ending that says done hands over its new files first. A hand-over whose checks
       // fail comes back instead of the ending; the same files again hand nothing over, so asking
@@ -1073,5 +1162,6 @@ export function createTools(deps: ToolsDeps): Tools {
     openApprovalCard,
     openAskCard,
     beforeEffect,
+    afterEffect,
   };
 }
