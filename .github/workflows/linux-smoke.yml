@@ -1,0 +1,92 @@
+name: Linux smoke
+
+# The installed Linux app, end to end on a headless X server: build the deb, install it, start it
+# under tauri-driver + WebKitWebDriver and drive it (.github/linux-smoke/smoke.ts). Runs on pushes
+# to linux-compat and on demand.
+on:
+  push:
+    branches: [linux-compat]
+  workflow_dispatch:
+
+concurrency:
+  group: linux-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Installed app, driven on Xvfb
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/conpty-helper -> target
+            apps/desktop/src-tauri -> target
+
+      - name: Install system libraries and the X/WebDriver tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl file patchelf libssl-dev libxdo-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            xvfb xclip dbus-x11 webkit2gtk-driver
+
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --locked
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the deb
+        run: pnpm --filter @real-bot/desktop tauri build --bundles deb
+
+      - name: Install the deb
+        run: |
+          sudo apt-get install -y ./apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+          dpkg -L deskfolk | grep -E '^/usr/(bin|lib)/' | head -20
+
+      - name: Drive the installed app
+        env:
+          WEBKIT_DISABLE_DMABUF_RENDERER: 1
+          LIBGL_ALWAYS_SOFTWARE: 1
+          NO_AT_BRIDGE: 1
+        run: |
+          app=$(dpkg -L deskfolk | grep '^/usr/bin/' | head -1)
+          echo "app: $app"
+          mkdir -p smoke-out
+          dbus-run-session -- xvfb-run -a -s "-screen 0 1400x900x24" bash -c '
+            printf clip-from-x11 | xclip -selection clipboard &
+            tauri-driver > smoke-out/tauri-driver.log 2>&1 &
+            for i in $(seq 1 30); do curl -s http://127.0.0.1:4444/status >/dev/null && break; sleep 1; done
+            bun .github/linux-smoke/smoke.ts "'"$app"'" smoke-out
+          '
+
+      - name: The daemon's own log
+        if: always()
+        run: |
+          cp ~/.local/share/real-bot/daemon.log smoke-out/ 2>/dev/null || true
+          ls -la ~/.local/share/real-bot ~/.local/share/Trash/files 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-smoke
+          path: smoke-out
+          if-no-files-found: warn
