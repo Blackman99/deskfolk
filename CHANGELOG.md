@@ -9,6 +9,9 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### Your lines' bubble follows the accent you set
 
 - After changing the accent colour in Settings › Interface or through a Bot, the bubble of your own lines stayed the app's teal: it is a token of its own (`--you`), written out rather than taken from the accent. It now follows a changed accent unless you set it too: the accent itself in the light look, a step deeper in the dark one so white words still read ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)).
+### Remote access is no longer called experimental
+
+- Phone access through your own relay, its push reminders and the Mac screen have been verified, so the remote access guide, the overview and the roadmap describe it as a feature you can use: off by default, on macOS and Windows. Linux still has none.
 
 ### An enlarged picture covers the whole window again in a split
 

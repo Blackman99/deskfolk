@@ -1,8 +1,8 @@
-# Remote access (experimental)
+# Remote access
 
 [简体中文](remote-access.zh.md)
 
-> **Off by default, and not a finished feature.** Remote access is an experimental prototype. The installed app can set it up and pair devices: it keeps the Mac's remote identity in a private file in its data folder rather than the Keychain, and Touch ID (or your login password) approves each device ([ADR 0033](adr/0033-remote-credentials-in-a-file.md) says what that trades). The Windows preview does the same with Windows Hello approving ([ADR 0059](adr/0059-windows-remote-access-and-screen.md)), but has **not been tried on a real Windows PC yet**. Everyday use and Web Push work on a real Android phone in Chrome (verified from source; the installed app runs the same protocol on the same file). The independent security review (S-rev), real-device home-screen WebAuthn (G-uv), real-device iOS L1 and iOS home-screen Web Push (G-push) have **not passed**. Keep public pairing off whenever you are not pairing, and do not route anything through it you could not afford to expose.
+> **Off by default.** Turn it on when you want it. The installed app sets it up and pairs devices: it keeps the Mac's remote identity in a private file in its data folder rather than the Keychain, and Touch ID (or your login password) approves each device ([ADR 0033](adr/0033-remote-credentials-in-a-file.md) says what that trades). On Windows it works the same way, with Windows Hello approving ([ADR 0059](adr/0059-windows-remote-access-and-screen.md)); Linux does not have it yet. Keep public pairing off whenever you are not pairing.
 
 Remote access lets a phone, or a browser on another computer, reach the Deskfolk on your Mac: read and answer conversations, handle what is waiting on you, look through the workspace and type into your terminals. There is no Deskfolk cloud. You run the relay yourself, the Mac only ever dials out to it, and the relay passes along encrypted traffic it cannot read.
 

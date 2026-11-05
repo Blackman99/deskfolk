@@ -146,8 +146,8 @@ test('every guide renders in both languages from its own source', () => {
 test('the remote-access guide renders per language, with its links resolved from docs/', () => {
   const zh = getDocumentContent('remote', 'zh');
   const en = getDocumentContent('remote', 'en');
-  expect(zh.title).toBe('远程访问（实验性）');
-  expect(en.title).toBe('Remote access (experimental)');
+  expect(zh.title).toBe('远程访问');
+  expect(en.title).toBe('Remote access');
   expect(en.toc.some((e) => e.text === '3. Pair a phone')).toBe(true);
   // Unpublished sibling docs, parent-directory files and anchors point at the repository on GitHub.
   expect(en.contentHtml).toContain('href="https://github.com/Blackman99/deskfolk/blob/main/docs/deploy-remote.md#web-push-proxy"');
