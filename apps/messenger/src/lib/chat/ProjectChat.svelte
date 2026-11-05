@@ -638,8 +638,9 @@
 	}
 </script>
 
-<div class="project-chat flex-1 min-h-0 flex flex-col bg-pane" class:has-message-index={showMessageIndex} data-project-chat={selected.id}>
-	<div class="transcript" bind:this={scroller} onscroll={() => void onScroll()}>
+<!-- A Bot's conversation's hooks (ADR 0106): glass content and a stylesheet of yours reach this one too. -->
+<div data-ui="chat" class="project-chat flex-1 min-h-0 flex flex-col bg-pane" class:has-message-index={showMessageIndex} data-project-chat={selected.id}>
+	<div data-ui="transcript" class="transcript" bind:this={scroller} onscroll={() => void onScroll()}>
 		<div class="transcript-inner">
 			{#if view.hasOlderMessages}
 				<div class="earlier muted" role="status">{view.olderLoading ? t.stream.loadingEarlier : ' '}</div>

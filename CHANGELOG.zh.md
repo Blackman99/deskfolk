@@ -6,6 +6,10 @@
 
 ## Unreleased
 
+### 内容区玻璃也透到项目会话了
+
+- 打开「设置 › 界面 › 内容区玻璃」后分屏，Bot 对话透出了玻璃，旁边窗格里的项目会话（Claude Code、Codex）还是整块实色。项目会话现在和 Bot 对话一样不画自己的底，透出卡片的玻璃。它也挂上了 Bot 对话的 `[data-ui="chat"]` 和 `[data-ui="transcript"]` 钩子，你或 Bot 写的 CSS 选得到它（[ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)）。
+
 ### 内容区玻璃也透到会话头了
 
 - 打开「设置 › 界面 › 内容区玻璃」后，窗格里对话顶上的会话头（对方是谁、在做什么，置顶、流程、设置）还是一条实色横条压在玻璃卡片上。现在它跟卡片其余部分一起透出玻璃，下面那条细分隔线保留。这条会话头也挂上了 `[data-ui="chat-header"]` 钩子（以前只有手机上的会话头有），你或 Bot 写的 CSS 在桌面上也能选到它（[ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)）。

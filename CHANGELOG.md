@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Glass content reaches a project session
+
+- With Settings › Interface › Glass content on and the workbench split, a Bot's conversation let the glass through while a project session (Claude Code, Codex) in the next pane stayed solid. A project session now paints no ground of its own either and lets the card's glass through. It also carries a Bot conversation's `[data-ui="chat"]` and `[data-ui="transcript"]` hooks, so a stylesheet of yours (or a Bot's) reaches it ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)).
+
 ### Glass content reaches a conversation's header
 
 - With Settings › Interface › Glass content on, the header over a conversation in a pane (who it is with, what they are doing, pin, flow and settings) stayed a solid bar across the top of the glass card. It now lets the glass through with the rest of the card, keeping its hairline underneath. That header also carries the `[data-ui="chat-header"]` hook now, which before marked only the phone's header, so a stylesheet of yours (or a Bot's) reaches it on the desktop too ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)).

@@ -60,6 +60,14 @@ test("a conversation's header carries its hook in a pane as on the phone", () =>
   expect(marked.some((source) => source.includes('class="top"'))).toBe(true);
 });
 
+test("a project session carries a conversation's hooks, as a Bot's conversation does", () => {
+  // Without them glass content left a project session solid beside a glass Bot conversation.
+  const project = SOURCES.find((source) => source.includes('class="project-chat'));
+  expect(project).toBeDefined();
+  expect(project).toMatch(/<div data-ui="chat" class="project-chat[ "]/);
+  expect(project).toMatch(/<div data-ui="transcript" class="transcript"/);
+});
+
 test("every data-floor the app checks is still in the markup", () => {
   for (const name of UI_FLOORS) {
     const found = SOURCES.some((source) => source.includes(`data-floor="${name}"`));
