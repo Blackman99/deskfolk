@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A ceiling card can be ignored
+
+- When a ticket stops at the capability ceiling (the same requirement failing three times running, or you sending it back three times running), its card now offers "Ignore, carry on" beside Another way, Change the plan and Take it as it is: the work goes back to rework, the count starts over, and the Bot is told to carry on by what it was already told, with no new direction. A card already up and still asking gets the choice too. To stop being asked at all, turn the ceiling step off in the engine ([ADR 0046](docs/adr/0046-submissions-and-reviews.md)).
+
 ### A project session sends with the key you chose
 
 - With "⌘/Ctrl+Enter sends" picked in Settings › Interface › Behaviour, a Bot's conversation followed it while a project session (Claude Code, Codex) still sent on Enter. It now follows the setting too: Enter is a new line and ⌘/Ctrl+Enter sends. With the `/` command list open, Enter only fills the command in (as Tab does) and ⌘/Ctrl+Enter runs it ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)).

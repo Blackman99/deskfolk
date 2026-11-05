@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isoNow } from "../ids";
 import { Store } from ".";
+import { offerIgnoreOnOpenCeilingCards } from "./ceiling";
 import { ENGINE_LEVELS } from "./schema-gate";
 import { createHold, liftHold } from "./holds";
 import { checkLines } from "./submission-rows";
@@ -1383,7 +1384,7 @@ test("the same check failing three hand-overs in a row blocks the part, refuses 
   expect(ceilingCards(f)).toEqual([]);
   shotHandOver(f, produced.id, check.id, "fail", 3);
   const [card] = ceilingCards(f);
-  expect(card!.control).toMatchObject({ kind: "ceiling", part_key: expect.any(String), requirement_id: null, offer: ["another_way", "another_plan", "accept"] });
+  expect(card!.control).toMatchObject({ kind: "ceiling", part_key: expect.any(String), requirement_id: null, offer: ["another_way", "another_plan", "accept", "ignore"] });
   expect(card!.body).toContain("连续 3 次没过");
   expect(f.store.db.query("SELECT stage FROM ticket_parts").get()).toEqual({ stage: "blocked" });
   expect(f.store.ballHolder({ ticketId: f.ticket.id })).toMatchObject({ kind: "user", reason: "ceiling", ref: card!.id });
@@ -1423,7 +1424,7 @@ test("your send-backs count towards the ceiling, on the card or by what you say:
   const third = said(f, "脸还是假人偶");
   f.store.noteComplaint(third.id, objecting("脸还是假人偶"));
   const [card] = ceilingCards(f);
-  expect(card!.control).toMatchObject({ kind: "ceiling", part_key: null, requirement_id: null, offer: ["another_way", "another_plan", "accept"] });
+  expect(card!.control).toMatchObject({ kind: "ceiling", part_key: null, requirement_id: null, offer: ["another_way", "another_plan", "accept", "ignore"] });
   expect(card!.body).toContain("你连续退回了 3 次");
   expect(f.store.ballHolder({ ticketId: f.ticket.id })).toMatchObject({ kind: "user", reason: "ceiling", ref: card!.id });
   // The producer only hears that you are asked: it is not woken to try a fourth time.
@@ -1434,6 +1435,50 @@ test("your send-backs count towards the ceiling, on the card or by what you say:
   f.store.answerReworkCard(third.id, "undo");
   expect(f.store.getMessage(card!.id).control).toMatchObject({ offer: [], result: "你撤销了返工，不再问了。" });
   expect(f.store.ballHolder({ ticketId: f.ticket.id })).not.toMatchObject({ reason: "ceiling" });
+});
+
+test("ignoring a ceiling card lets the work go on as before: the producer is woken with no new direction, and the count starts over", () => {
+  const f = fixture();
+  // 2026-11-05: sent back three times on a blog theme's sample ticket, the user wanted to leave the card be.
+  for (const [n, words] of [[1, "还是打不开"], [2, "样式还是不对"], [3, "还是不行"]] as const) {
+    handedOver(f);
+    f.store.noteComplaint(said(f, words).id, objecting(words));
+    expect(ceilingCards(f)).toHaveLength(n === 3 ? 1 : 0);
+  }
+  const [card] = ceilingCards(f);
+  expect(card!.control).toMatchObject({ offer: expect.arrayContaining(["ignore"]) });
+
+  f.store.answerCeilingCard(card!.id, "ignore");
+  expect(f.store.getMessage(card!.id).control).toMatchObject({ acted: ["ignore"] });
+  expect(f.store.ballHolder({ ticketId: f.ticket.id })).not.toMatchObject({ reason: "ceiling" });
+  const told = f.store.db.query<{ body: string; wakes: number }, [string]>("SELECT body_snapshot AS body, wakes FROM inbox_items WHERE bot_id = ? ORDER BY seq DESC LIMIT 1").get(f.producer.id)!;
+  expect(told.body).toContain("不管天花板，照之前说的接着做");
+  expect(told.body).not.toContain("换一种做法");
+  expect(told.wakes).toBe(1);
+  expect(f.store.db.query("SELECT json_extract(payload, '$.action') AS action FROM work_events WHERE kind = 'ceiling.answered'").get()).toEqual({ action: "ignore" });
+
+  // The count starts over: one more send-back hands over again and asks nothing.
+  handedOver(f);
+  f.store.noteComplaint(said(f, "再改改").id, objecting("再改改"));
+  expect(ceilingCards(f)).toHaveLength(1);
+  expect(() => f.store.answerCeilingCard(card!.id, "another_way")).toThrow("no longer offers");
+});
+
+test("a ceiling card put up before 「忽略」 existed offers it once the database opens, and an answered or closed one does not", () => {
+  const f = fixture();
+  const old = (offer: string[], acted?: string[]) => f.store.db.query<{ id: string }, [string]>(`INSERT INTO messages (id, session_id, kind, author, body, created_at, control)
+    SELECT 'old-' || hex(randomblob(6)), session_id, 'system', author, body, created_at, ? FROM messages LIMIT 1 RETURNING id`)
+    .get(JSON.stringify({ kind: "ceiling", task_id: f.ticket.task_id, ticket_id: f.ticket.id, part_key: null, requirement_id: null, offer, ...(acted ? { acted } : {}) }))!.id;
+  said(f, "先有一句");
+  const open = old(["another_way", "another_plan", "accept"]);
+  const answered = old(["another_way", "another_plan", "accept"], ["accept"]);
+  const closed = old([]);
+  offerIgnoreOnOpenCeilingCards(f.store.db);
+  offerIgnoreOnOpenCeilingCards(f.store.db);
+  const offerOf = (id: string) => JSON.parse(f.store.db.query<{ control: string }, [string]>("SELECT control FROM messages WHERE id = ?").get(id)!.control).offer;
+  expect(offerOf(open)).toEqual(["another_way", "another_plan", "accept", "ignore"]);
+  expect(offerOf(answered)).toEqual(["another_way", "another_plan", "accept"]);
+  expect(offerOf(closed)).toEqual([]);
 });
 
 test("a hand-over a newer one replaced, or a reviewer's reject on no requirement, is not a send-back of yours", () => {
@@ -1487,7 +1532,7 @@ test("a requirement a review failed three times in a row offers to relax it; rel
     f.store.setTurnStatus(reviewing.id, "completed");
   }
   const [card] = ceilingCards(f);
-  expect(card!.control).toMatchObject({ requirement_id: nose.id, offer: ["another_way", "another_plan", "relax", "accept"] });
+  expect(card!.control).toMatchObject({ requirement_id: nose.id, offer: ["another_way", "another_plan", "relax", "accept", "ignore"] });
   expect(card!.body).toContain("要求 R-nose");
   f.store.answerCeilingCard(card!.id, "relax");
   expect(f.store.db.query("SELECT status FROM requirements WHERE id = ?").get(nose.id)).toEqual({ status: "waived" });
@@ -1588,7 +1633,7 @@ test("one part approved does not approve the ticket or lift another part's ceili
   expect(f.store.getSubmission(submission.id).state).toBe("approved");
   expect(f.store.db.query("SELECT key, stage FROM ticket_parts ORDER BY key").all()).toEqual([{ key: "shot_01", stage: "blocked" }, { key: "shot_02", stage: "approved" }]);
   expect(ticketRow(f).stage).toBe("doing");
-  expect(f.store.getMessage(card!.id).control).toMatchObject({ offer: ["another_way", "another_plan", "accept"] });
+  expect(f.store.getMessage(card!.id).control).toMatchObject({ offer: ["another_way", "another_plan", "accept", "ignore"] });
   expect(() => submitShot(f, produced.id, 1, "1".repeat(64))).toThrow("capability ceiling");
 });
 

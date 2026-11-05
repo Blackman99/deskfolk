@@ -124,6 +124,7 @@ export function createStopButtons(deps: StopDeps, reach: StopReach, carry: StopC
       case "another_plan":
       case "relax":
       case "accept":
+      case "ignore":
       case "rework":
       case "dismiss":
       case "confirm":

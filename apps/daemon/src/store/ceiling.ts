@@ -1,4 +1,5 @@
 /** The rework ceiling: a ticket that keeps failing the same way stops and asks you. */
+import type { Database } from "bun:sqlite";
 import { playbookDefaults, USER_MEMBER, type Message } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow } from "../ids";
@@ -25,8 +26,19 @@ export const CEILING_ATTEMPTS = playbookDefaults().ceiling.params.attempts!;
  */
 export const SENT_BACK_BY_YOU = "you";
 
-export type CeilingAction = "another_way" | "another_plan" | "relax" | "accept";
-const CEILING_ACTIONS: readonly CeilingAction[] = ["another_way", "another_plan", "relax", "accept"];
+export type CeilingAction = "another_way" | "another_plan" | "relax" | "accept" | "ignore";
+const CEILING_ACTIONS: readonly CeilingAction[] = ["another_way", "another_plan", "relax", "accept", "ignore"];
+
+/**
+ * 「忽略」 came after the first ceiling cards (2026-11-05): a card still asking offers it too, so one
+ * put up before then is not left without it.
+ */
+export function offerIgnoreOnOpenCeilingCards(db: Database): void {
+  db.run(`UPDATE messages SET control = json_set(control, '$.offer', json_insert(json_extract(control, '$.offer'), '$[#]', 'ignore'))
+    WHERE control LIKE '%"ceiling"%' AND json_extract(control, '$.kind') = 'ceiling'
+      AND json_array_length(COALESCE(json_extract(control, '$.acted'), '[]')) = 0 AND json_array_length(json_extract(control, '$.offer')) > 0
+      AND NOT EXISTS (SELECT 1 FROM json_each(control, '$.offer') WHERE value = 'ignore')`);
+}
 
 /** An open ceiling card on a ticket: about one of `partKeys`, or the ticket itself. Null when none waits. */
 export function openCeiling(ctx: StoreContext, ticketId: string, partKeys: readonly string[]): { id: string; part_key: string | null } | null {
@@ -224,7 +236,7 @@ function ceilingCard(ctx: StoreContext, submission: Submission, partKey: string 
       ? `Ticket ${number} "${ticket.title}"${unit} of ${plan.title} is stuck: ${why}. Trying again the same way is unlikely to help — how should it go on?`
       : `${plan.title} 的任务 ${number}「${ticket.title}」${unit}卡住了：${why}，照原样再试多半还是不过。要怎么办？`,
     control: { kind: "ceiling", task_id: submission.task_id, ticket_id: submission.ticket_id, part_key: partKey, requirement_id: requirementId,
-      offer: ["another_way", "another_plan", ...(requirementId ? ["relax" as const] : []), "accept"] },
+      offer: ["another_way", "another_plan", ...(requirementId ? ["relax" as const] : []), "accept", "ignore"] },
   });
   createNotification(ctx, { semantic_key: `ceiling:${message.id}`, kind: "ask", session_id: place, message_id: message.id, action_state: "open" });
   return message;
@@ -233,9 +245,10 @@ function ceilingCard(ctx: StoreContext, submission: Submission, partKey: string 
 /**
  * Your answer on a ceiling card (§6.6). Another way or another plan: the unit goes back to rework,
  * its producer is told which, and its count starts over. Relax: the requirement no longer holds for
- * this plan (waived — your press is the confirmation), then the same. Accept: the part is approved
- * as it is; a ticket whose every part is then approved or waived (or that has none) is approved,
- * and the plan may be delivered.
+ * this plan (waived — your press is the confirmation), then the same. Ignore: the same, with no new
+ * direction — the producer goes on from what it was already told. Accept: the part is approved as
+ * it is; a ticket whose every part is then approved or waived (or that has none) is approved, and
+ * the plan may be delivered.
  */
 export function answerCeilingCard(ctx: StoreContext, messageId: string, action: unknown): Message {
   return ctx.commit(() => {
@@ -272,8 +285,10 @@ export function answerCeilingCard(ctx: StoreContext, messageId: string, action: 
       const unit = partKey ? (en ? ` (part ${partKey})` : `（分件 ${partKey}）`) : "";
       const said: Record<CeilingAction, string> = en
         ? { another_way: "do it another way — a different method or tool, not the same attempt again", another_plan: "change the plan to get around the problem",
-          relax: "that requirement no longer holds for this plan", accept: "accept it as it is" }
-        : { another_way: "换一种做法——换方法或工具，别再照原样试", another_plan: "改方案，绕开这个问题", relax: "那条要求在这件事里不再要了", accept: "就用现在的" };
+          relax: "that requirement no longer holds for this plan", accept: "accept it as it is",
+          ignore: "ignore the ceiling and carry on as before, by what you were already told" }
+        : { another_way: "换一种做法——换方法或工具，别再照原样试", another_plan: "改方案，绕开这个问题", relax: "那条要求在这件事里不再要了", accept: "就用现在的",
+          ignore: "不管天花板，照之前说的接着做" };
       const body = en
         ? `(app) On the ceiling card for ticket "${ticket.title}"${unit} the user chose: ${said[chosen]}.${accepted ? "" : " Go on from there and hand it over again."}`
         : `（应用）任务「${ticket.title}」${unit}的天花板卡片上，用户选了：${said[chosen]}。${accepted ? "" : "照这个方向做完再交。"}`;

@@ -126,6 +126,7 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
       if (action === "another_plan") return [{ action, label: t.anotherPlan, primary: false }];
       if (action === "relax") return [{ action, label: t.relaxRequirement, primary: false }];
       if (action === "accept") return [{ action, label: t.acceptAsIs, primary: false }];
+      if (action === "ignore") return [{ action, label: t.ignoreCeiling, primary: false }];
       return [];
     });
     if (buttons.length > 0) return { state: "ask", prompt: null, buttons };

@@ -58,6 +58,7 @@ export const CONTROL_OFFERS = [
   "another_plan",
   "relax",
   "accept",
+  "ignore",
   "rework",
   "dismiss",
   "confirm",
@@ -242,7 +243,8 @@ export type MessageControl =
        * The capability ceiling (ADR 0046, §6.6): a part (null: the whole ticket) failed the same
        * requirement three hand-overs in a row, or was handed over more than six times. `another_way`
        * and `another_plan` send it back with that direction, `relax` waives `requirement_id` for the
-       * plan (offered only when there is one), `accept` takes it as it is.
+       * plan (offered only when there is one), `accept` takes it as it is, `ignore` lets it go on as
+       * before, with no new direction.
        */
       kind: "ceiling";
       task_id: string;

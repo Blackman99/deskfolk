@@ -208,7 +208,7 @@ test("a phone can press every button an app's line offers, the messenger's own t
   // model: the list here was written out once and fell behind, so every card added after it was
   // refused from the phone.
   const ok = (body: Record<string, unknown>) => validateBusiness({ v: 1, id, method: "POST", path: `/v1/messages/${id}/control`, body });
-  for (const action of ["approve", "reject", "confirm_item", "remove_item", "another_way", "another_plan", "relax", "accept", "rework", "dismiss", "confirm", "decline"]) {
+  for (const action of ["approve", "reject", "confirm_item", "remove_item", "another_way", "another_plan", "relax", "accept", "ignore", "rework", "dismiss", "confirm", "decline"]) {
     expect(() => ok({ action })).not.toThrow();
   }
   for (const action of CONTROL_OFFERS.filter((offer) => !CLIENT_ONLY_CONTROL_OFFERS.includes(offer))) {

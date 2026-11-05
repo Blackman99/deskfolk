@@ -323,6 +323,18 @@ test("a rework card asks first, then offers undo beside what it did (ADR 0046)",
   expect(controlBar({ ...sent, acted: ["undo"], result: undefined }, [], names, t)).toEqual({ state: "done", note: t.acted.undo });
 });
 
+test("a ceiling card offers its ways on, 忽略 last, and says which was pressed (ADR 0046)", () => {
+  const card: MessageControl = { kind: "ceiling", task_id: "task-1", ticket_id: "ticket-1", part_key: null, requirement_id: null, offer: ["another_way", "another_plan", "accept", "ignore"] };
+  expect(controlBar(card, [], names, t)).toEqual({ state: "ask", prompt: null, buttons: [
+    { action: "another_way", label: "换一种做法", primary: true },
+    { action: "another_plan", label: "改方案绕开它", primary: false },
+    { action: "accept", label: "就用现在的", primary: false },
+    { action: "ignore", label: "忽略，接着做", primary: false },
+  ] });
+  expect(controlBar({ ...card, acted: ["ignore"] }, [], names, t)).toEqual({ state: "done", note: "已忽略，接着做" });
+  expect(controlBar({ ...card, offer: [], result: "任务已通过，不再问了。" }, [], names, t)).toEqual({ state: "done", note: "任务已通过，不再问了。" });
+});
+
 test("a line of yours read as letting hand-overs through says what came of it, with nothing to press (ADR 0084)", () => {
   const line: MessageControl = { kind: "passed", submission_ids: ["s-1"], message_id: "m-1", offer: [], result: "已放行：EP01 的任务 01「母带」。" };
   expect(controlBar(line, [], names, t)).toEqual({ state: "done", note: "已放行：EP01 的任务 01「母带」。" });

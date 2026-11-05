@@ -6,6 +6,7 @@
 import type { Database } from "bun:sqlite";
 import { ulid } from "../ids";
 import { migrateAgentRunners } from "./agent-runner-migration";
+import { offerIgnoreOnOpenCeilingCards } from "./ceiling";
 import { migrateHoldSources } from "./hold-source-migration";
 import { migrateDelegations } from "./delegation-migration";
 import { migrateEndReasons } from "./end-reason-migration";
@@ -381,4 +382,5 @@ export function migrateSchema(db: Database): void {
   }
   lapseSupersededWorkQuestions(db);
   settleAnsweredLegacyCards(db);
+  offerIgnoreOnOpenCeilingCards(db);
 }
