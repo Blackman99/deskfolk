@@ -125,6 +125,12 @@ export function trackSurface(doc: Document = document, onChange?: (surface: Inte
   return () => query.removeEventListener("change", update);
 }
 
+/** Glass content cards (`styles/content-glass.css`), where the window has a material to show. */
+export function applyContentGlass(glass: "solid" | "frosted" | "clear" | undefined, doc: Document = document): void {
+  if (glass === "frosted" || glass === "clear") doc.documentElement.dataset.contentGlass = glass;
+  else delete doc.documentElement.dataset.contentGlass;
+}
+
 export function applyMotion(motion: "system" | "reduce" | undefined, doc: Document = document): void {
   if (motion === "reduce") doc.documentElement.dataset.motion = "reduce";
   else delete doc.documentElement.dataset.motion;

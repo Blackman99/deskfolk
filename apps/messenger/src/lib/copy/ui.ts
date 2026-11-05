@@ -45,6 +45,7 @@ export const zh = {
     time_format: { name: "时间", "24h": "24 小时制", "12h": "12 小时制" },
     motion: { name: "动效", system: "跟随系统", reduce: "一直减弱" },
     open_placement: { name: "窗口打开方式", hint: "在「设置 › 行为」里一种一种设" },
+    content_glass: { name: "内容区玻璃", hint: "内容卡片透出窗口的毛玻璃；只在有窗口材质的桌面上（macOS、Windows 11），菜单、弹窗、浮窗、编辑器和终端保持实色", solid: "实色", frosted: "磨砂", clear: "通透" },
     code_theme: { name: "代码配色", hint: "聊天里的代码块、命令输出和文件编辑器的高亮配色，连同它的底色；浅色、深色各选一个", light: "浅色", dark: "深色", appDefault: "应用自己的" },
   },
   css: {
@@ -157,6 +158,7 @@ export const en: CopyShape<typeof zh> = {
     time_format: { name: "Time", "24h": "24-hour", "12h": "12-hour" },
     motion: { name: "Motion", system: "As the system says", reduce: "Always reduced" },
     open_placement: { name: "Where windows open", hint: "Set kind by kind in Settings › Behavior" },
+    content_glass: { name: "Glass content", hint: "Content cards let the window's frosted glass through; only on a desktop whose window has a material (macOS, Windows 11), with menus, dialogs, floating panes, the editor and the terminal staying solid", solid: "Solid", frosted: "Frosted", clear: "Clear" },
     code_theme: { name: "Code colours", hint: "How code is highlighted in chat, command output and the file editor, its background too; one for each look", light: "Light", dark: "Dark", appDefault: "The app's own" },
   },
   css: {

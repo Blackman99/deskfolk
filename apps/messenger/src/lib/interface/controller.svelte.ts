@@ -22,6 +22,7 @@ import { adoptFocusMode, localFocusMode } from "../chat/focus-mode.svelte.ts";
 import { formatShortcut, isPrimaryModifier } from "../keymap.ts";
 import { openPlacements } from "../workbench/open-placement-store.svelte.ts";
 import {
+  applyContentGlass,
   applyInterfaceCss,
   applyMotion,
   cacheInterfaceCss,
@@ -233,6 +234,7 @@ class InterfaceController {
     const css = interfaceCss(this.profile);
     applyInterfaceCss(css, this.lookOn, document);
     applyMotion(this.behaviour.motion, document);
+    applyContentGlass(this.behaviour.content_glass, document);
     setInterfaceBehaviour(this.behaviour);
     // Code colours load their theme first; every painter repaints once it is in.
     void setCodeTheme(this.behaviour.code_theme).catch(() => {});

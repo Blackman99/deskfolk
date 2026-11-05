@@ -1,0 +1,60 @@
+/*
+ * Glass content (ADR 0106, the behaviour `content_glass`). Only on a window with a material
+ * (`data-material="glass"`: macOS, Windows 11; `window-chrome.ts`), where the gutters between the
+ * cards already show the window's frosted glass. Asked for, a content card lets that glass through
+ * — frosted keeps most of the card, clear lets more through — and what lies on the card paints no
+ * ground of its own, so there is one layer between you and the glass, not three. The blur is the
+ * window's own: no `backdrop-filter` here, which would shut pop-ups inside a pane into it.
+ *
+ * Menus, dialogs, popovers, floating panes, the editor and the terminal keep `--pane`, solid. A
+ * profile may set `--content-glass` (a percentage of the card kept) to tune either level, per look.
+ * Global because the card (`WorkbenchLeaf`) and what lies on it (`ChatStage`, `ArtifactPreview`,
+ * `TaskTrace`, `ArtifactTree`) are different components, joined only by their `data-ui` hooks.
+ */
+
+:root[data-material="glass"][data-content-glass="frosted"] {
+  --content-glass-mix: var(--content-glass, 78%);
+}
+
+:root[data-material="glass"][data-content-glass="clear"] {
+  --content-glass-mix: var(--content-glass, 50%);
+}
+
+/* Dark glass is lighter than dark cards (2026-10-19), so the dark card keeps more of itself. */
+:root[data-material="glass"][data-content-glass="frosted"][data-theme="dark"] {
+  --content-glass-mix: var(--content-glass, 84%);
+}
+
+:root[data-material="glass"][data-content-glass="clear"][data-theme="dark"] {
+  --content-glass-mix: var(--content-glass, 64%);
+}
+
+:root[data-material="glass"][data-content-glass] .wb-leaf[data-ui="pane"] > .wb-body {
+  background: color-mix(in srgb, var(--pane) var(--content-glass-mix), transparent);
+}
+
+/* The active tab is the card's own top, so it lets the same glass through. */
+:root[data-material="glass"][data-content-glass] .wb-leaf[data-ui="pane"] .wb-tab.is-active {
+  --wb-tab-surface: color-mix(in srgb, var(--pane) var(--content-glass-mix), transparent);
+  background: var(--wb-tab-surface);
+}
+
+/* Dark draws the tab strip as the card's head (`WorkbenchLeaf`): it is glass with the card. */
+:root[data-material="glass"][data-content-glass][data-theme="dark"] .wb-leaf[data-ui="pane"]:not(.is-empty) > .wb-strip {
+  background: color-mix(in srgb, var(--ground) var(--content-glass-mix), transparent);
+}
+
+/* What lies on the card: its ground is the card's. */
+:root[data-material="glass"][data-content-glass] .wb-body :is([data-ui="chat"], [data-ui="transcript"], [data-ui="preview"], [data-ui="flow-board"], [data-ui="workspace-tree"]) {
+  background: transparent;
+}
+
+/* A floating pane lies over other content, not over the window's glass: it stays solid. */
+:root[data-material="glass"][data-content-glass] .wb-float .wb-leaf[data-ui="pane"] > .wb-body {
+  background: var(--pane);
+}
+
+:root[data-material="glass"][data-content-glass] .wb-float .wb-leaf[data-ui="pane"] .wb-tab.is-active {
+  --wb-tab-surface: var(--pane);
+  background: var(--pane);
+}

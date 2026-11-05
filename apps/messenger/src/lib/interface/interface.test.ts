@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { applyInterfacePatch, emptyInterfaceProfile } from "@real-bot/protocol";
 import { COPY, copyFor, copyLeaves, copyOverrideProblem, withCopyOverrides } from "../copy.ts";
 import { formatFullTimestamp, formatMessageTime } from "../chat/chat-view.ts";
-import { applyInterfaceCss, applyMotion, followingAccent, cachedInterfaceCss, cacheInterfaceCss, defaultAskedInUrl, interfaceCss, INTERFACE_STYLE_ID, surfaceOf } from "./apply.ts";
+import { applyContentGlass, applyInterfaceCss, applyMotion, followingAccent, cachedInterfaceCss, cacheInterfaceCss, defaultAskedInUrl, interfaceCss, INTERFACE_STYLE_ID, surfaceOf } from "./apply.ts";
 import { interfaceBehaviour, setInterfaceBehaviour } from "./behaviour.svelte.ts";
 import { colorAlpha, floorProblem, floorsHiddenByProfile } from "./floor.ts";
 import { badTokens, topLevelBlocks, unmatchedSelectors } from "./report.ts";
@@ -58,6 +58,10 @@ describe("the profile as CSS (ADR 0106)", () => {
     expect(document.documentElement.dataset.motion).toBe("reduce");
     applyMotion("system");
     expect(document.documentElement.dataset.motion).toBeUndefined();
+    applyContentGlass("frosted");
+    expect(document.documentElement.dataset.contentGlass).toBe("frosted");
+    applyContentGlass("solid");
+    expect(document.documentElement.dataset.contentGlass).toBeUndefined();
   });
 });
 

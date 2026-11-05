@@ -19,6 +19,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### Remote access is no longer called experimental
 
 - Phone access through your own relay, its push reminders and the Mac screen have been verified, so the remote access guide, the overview and the roadmap describe it as a feature you can use: off by default, on macOS and Windows. Linux still has none.
+### Glass content cards
+
+- The content area can now let the window's frosted glass through, as the gutters between the panes already do: Settings › Interface › Glass content, solid (as before), frosted or clear, or ask a Bot ("make the content frosted glass"). The card lets the glass through by a share, and the conversation, a file's preview, the flow board and the file tree on it no longer paint a solid ground of their own; menus, dialogs, floating panes, the editor and the terminal stay solid. Only on a desktop whose window has a material (macOS, Windows 11). The token `--content-glass` tunes the share ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md), addendum 2026-11-05).
+- Until now this could not be done: the pane's card had no hook a stylesheet could reach, making `--pane` clear also cleared every menu, and `backdrop-filter` on hooks blurred nothing while shutting pop-ups into a pane. A Bot that writes `backdrop-filter`, `filter` or `transform` in a stylesheet is now told so in the tool's result.
 
 ### An enlarged picture covers the whole window again in a split
 

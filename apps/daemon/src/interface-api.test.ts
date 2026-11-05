@@ -88,6 +88,15 @@ test("the Bot's change applies at once under auto, waits on a ui-edit card under
   expect(head).toMatchObject({ actor: "bot", bot_id: bot.id, turn_id: turn.id, reason: "the user wants a purple accent", undoable: true });
   expect((await runCollabTool(ctx, "edit_interface", { reason: "again", tokens: { both: { "--accent": "#7c3aed" } } })).error?.code).toBe("no_change");
 
+  // Glass content is a behaviour; a stylesheet that shuts pop-ups into a pane is named back.
+  const glass = await runCollabTool(ctx, "edit_interface", { reason: "frosted content", behaviour: { content_glass: "frosted" } });
+  expect(glass.ok).toBe(true);
+  expect(glass.data!.warning).toBeUndefined();
+  const trapped = await runCollabTool(ctx, "edit_interface", { reason: "blur", css: { set: "[data-ui=\"pane\"] { backdrop-filter: blur(24px); }\n[data-ui=\"tab\"] { transform: none; }" } });
+  expect(String(trapped.data!.warning)).toContain("backdrop-filter");
+  expect(String(trapped.data!.warning)).not.toContain("transform");
+  expect(String(trapped.data!.warning)).toContain("content_glass");
+
   // Code colours, one look at a time.
   expect((await runCollabTool(ctx, "edit_interface", { reason: "dracula for code at night", behaviour: { code_theme: { dark: "dracula" } } })).ok).toBe(true);
   expect(store.interfaceRecord().profile.behaviour.code_theme).toEqual({ dark: "dracula" });

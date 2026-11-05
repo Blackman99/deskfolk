@@ -84,6 +84,13 @@ describe("interface profile (ADR 0106)", () => {
     expect(normalizeInterfaceProfile({ behaviour: { code_theme: { dark: "nord" } } }).behaviour).toEqual({ code_theme: { dark: "nord" } });
   });
 
+  test("content glass is solid, frosted or clear", () => {
+    const profile = applyInterfacePatch(emptyInterfaceProfile(), { behaviour: { content_glass: "frosted" } });
+    expect(profile.behaviour.content_glass).toBe("frosted");
+    expect(applyInterfacePatch(profile, { behaviour: { content_glass: null } }).behaviour.content_glass).toBeUndefined();
+    expect(patchError(() => applyInterfacePatch(profile, { behaviour: { content_glass: "glassy" } })).message).toContain("solid, frosted, clear");
+  });
+
   test("a reset puts parts back before the rest applies", () => {
     const start = applyInterfacePatch(emptyInterfaceProfile(), { tokens: { light: { "--accent": "red" } }, css: { set: "a{}" } });
     const next = applyInterfacePatch(start, { reset: ["tokens", "css"], tokens: { light: { "--bg": "white" } } });

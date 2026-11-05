@@ -111,9 +111,15 @@ export type InterfaceBehaviour = {
   motion?: "system" | "reduce";
   /** The colours code is highlighted in, per look; a look left out keeps the app's own. */
   code_theme?: InterfaceCodeTheme;
+  /**
+   * Whether the content cards let the window's glass through, on a desktop whose window has a
+   * material (macOS, Windows 11): solid as the app ships, frosted, or clear. Menus, dialogs,
+   * floating panes, the editor and the terminal stay solid.
+   */
+  content_glass?: "solid" | "frosted" | "clear";
 };
 
-export const INTERFACE_BEHAVIOUR_KEYS = ["focus_mode", "open_placement", "send_key", "time_format", "motion", "code_theme"] as const;
+export const INTERFACE_BEHAVIOUR_KEYS = ["focus_mode", "open_placement", "send_key", "time_format", "motion", "code_theme", "content_glass"] as const;
 export type InterfaceBehaviourKey = (typeof INTERFACE_BEHAVIOUR_KEYS)[number];
 
 /** What each behaviour takes and where it applies, for Settings and for a Bot reading the list. */
@@ -123,6 +129,7 @@ export const INTERFACE_BEHAVIOUR_SPECS: Record<InterfaceBehaviourKey, { values: 
   send_key: { values: ["enter", "mod_enter"], desktopOnly: false, zh: "回车发送，或 ⌘/Ctrl+回车 发送", en: "Enter sends, or ⌘/Ctrl+Enter sends" },
   time_format: { values: ["24h", "12h"], desktopOnly: false, zh: "消息时间按 24 小时或 12 小时制", en: "Message times in 24-hour or 12-hour form" },
   motion: { values: ["system", "reduce"], desktopOnly: false, zh: "动效跟随系统，或一直减弱", en: "Motion as the system says, or always reduced" },
+  content_glass: { values: ["solid", "frosted", "clear"], desktopOnly: true, zh: "内容区透出窗口的毛玻璃：实色、磨砂或通透；只在有窗口材质的桌面上（macOS、Windows 11），菜单、弹窗、浮窗、编辑器和终端保持实色。要内容区毛玻璃就用它，别在钩子上写 backdrop-filter", en: "Whether the content cards let the window's glass through: solid, frosted or clear; only on a desktop whose window has a material (macOS, Windows 11), with menus, dialogs, floating panes, the editor and the terminal staying solid. Use this for glass content, not backdrop-filter on hooks" },
   code_theme: { values: "per-look", desktopOnly: false, zh: "代码高亮的配色，浅色深色各选一个：聊天代码块、命令输出和文件编辑器都用它，连同它的底色", en: "The colours code is highlighted in, one per look: chat's code blocks, command output and the file editor all take it, its background too" },
 };
 

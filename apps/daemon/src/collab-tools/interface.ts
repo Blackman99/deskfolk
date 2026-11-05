@@ -115,6 +115,23 @@ export function describeInterface(ctx: ToolCtx, args: Record<string, unknown>): 
   return { ok: true, data, emitted: [] };
 }
 
+/**
+ * Properties that make an element the containing block of `position: fixed` inside it: on a hook
+ * around a pane's content they shut a lightbox or a menu that pops up there into the pane
+ * (2026-11-05). Named back to the Bot, not refused: on a small hook they are harmless.
+ */
+export function cssTraps(css: string): string[] {
+  const found = new Set<string>();
+  const declarations = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const match of declarations.matchAll(/(?:^|[;{\s])(-webkit-backdrop-filter|backdrop-filter|filter|transform|perspective|contain)\s*:\s*([^;}]*)/gi)) {
+    const property = match[1]!.toLowerCase().replace(/^-webkit-/, "");
+    const value = match[2]!.trim().toLowerCase();
+    if (value === "none" || value === "" || (property === "contain" && !/paint|layout|strict|content/.test(value))) continue;
+    found.add(property);
+  }
+  return [...found];
+}
+
 function requireReason(raw: unknown): string {
   const reason = typeof raw === "string" ? raw.trim() : "";
   if (!reason) throw new HttpError(422, "invalid_args", "reason is required: what the user asked for");
@@ -173,6 +190,7 @@ export function editInterface(ctx: ToolCtx, args: Record<string, unknown>): Tool
   const by = { actor: "bot" as const, botId: ctx.botId, turnId: ctx.turnId, approvalId: ctx.approvalId ?? null, messageId: ctx.approvalMessageId ?? null, reason };
   const result = typeof restore === "string" ? ctx.store.restoreInterfaceRevision(restore, by) : ctx.store.changeInterface(patch, by);
   if (!result.revision) return fail("no_change", "the interface already looks like that");
+  const traps = cssTraps(result.state.profile.css);
   return {
     ok: true,
     data: {
@@ -181,6 +199,11 @@ export function editInterface(ctx: ToolCtx, args: Record<string, unknown>): Tool
       applied: en(ctx)
         ? "Applied in every window. The user can undo it under your reply or in Settings › Interface. Read describe_interface in a few seconds for what the windows found."
         : "已在所有窗口生效；用户能在你的回复下或「设置 › 界面」撤销。过几秒用 describe_interface 看各窗口的回报。",
+      ...(traps.length ? {
+        warning: en(ctx)
+          ? `The stylesheet sets ${traps.join(", ")}: on a hook that holds a pane's content this shuts pictures and menus that pop up inside it to that pane. For glass content use behaviour.content_glass instead, and drop those rules.`
+          : `样式里写了 ${traps.join("、")}：写在装着窗格内容的钩子上，会把里面弹出的图片和菜单困在那个窗格里。要内容区毛玻璃改用 behaviour.content_glass，并去掉这几条。`,
+      } : {}),
     },
     emitted: [],
   };

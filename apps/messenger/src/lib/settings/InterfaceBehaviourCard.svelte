@@ -18,10 +18,11 @@
 	const c = $derived(t.ui.behaviour);
 
 	type Choice = { key: InterfaceBehaviourKey; value: string; label: string };
-	const rows = $derived<{ key: 'send_key' | 'time_format' | 'motion'; name: string; titleId: string; values: string[]; labels: Record<string, string> }[]>([
+	const rows = $derived<{ key: 'send_key' | 'time_format' | 'motion' | 'content_glass'; name: string; titleId: string; values: string[]; labels: Record<string, string>; hint?: string; desktopOnly?: boolean }[]>([
 		{ key: 'send_key', name: c.send_key.name, titleId: 'interface-send-key', values: ['enter', 'mod_enter'], labels: { enter: c.send_key.enter, mod_enter: c.send_key.mod_enter } },
 		{ key: 'time_format', name: c.time_format.name, titleId: 'interface-time-format', values: ['24h', '12h'], labels: { '24h': c.time_format['24h'], '12h': c.time_format['12h'] } },
-		{ key: 'motion', name: c.motion.name, titleId: 'interface-motion', values: ['system', 'reduce'], labels: { system: c.motion.system, reduce: c.motion.reduce } }
+		{ key: 'motion', name: c.motion.name, titleId: 'interface-motion', values: ['system', 'reduce'], labels: { system: c.motion.system, reduce: c.motion.reduce } },
+		{ key: 'content_glass', name: c.content_glass.name, titleId: 'interface-content-glass', values: ['frosted', 'clear'], labels: { frosted: c.content_glass.frosted, clear: c.content_glass.clear }, hint: c.content_glass.hint, desktopOnly: true }
 	]);
 
 	function choose(key: Choice['key'], value: string | null): void {
@@ -56,9 +57,9 @@
 				/>
 			</Switch>
 		</SettingsRow>
-		{#each rows as row (row.key)}
+		{#each rows.filter((row) => !(row.desktopOnly && phone)) as row (row.key)}
 			{@const current = behaviour[row.key] ?? null}
-			<SettingsRow title={row.name} titleId={row.titleId} desc="">
+			<SettingsRow title={row.name} titleId={row.titleId} desc={row.hint ?? ''}>
 				<div class="segmented-control" role="group" aria-labelledby={row.titleId} data-behaviour={row.key}>
 					<button type="button" class="segmented-btn" class:is-active={current === null} onclick={() => choose(row.key, null)}>
 						<span>{c.default}</span>
