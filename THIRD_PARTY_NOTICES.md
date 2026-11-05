@@ -307,6 +307,8 @@ The built-in connectors' marks and the speech services' (`apps/messenger/src/lib
 
 The local agents' marks (`apps/messenger/src/lib/settings/AgentLogo.svelte`) — Codex's, Grok's, OpenCode's, Antigravity's and Z.ai's (for ZCode, Zhipu's) — use the SVG paths of [lobe-icons](https://github.com/lobehub/lobe-icons) (`@lobehub/icons-static-svg` 1.95.1: `codex-color.svg`, `grok.svg`, `opencode.svg`, `antigravity-color.svg`, `zai.svg`), unaltered but for unique gradient, mask and filter ids, and placed on a tile. The marks are trademarks of OpenAI, xAI, the OpenCode project (SST), Google and Zhipu AI respectively, shown only to name the agent a Bot or a model runs on; they are not covered by this repository's MIT license. The lobe-icons drawings are released under the MIT license reproduced below.
 
+The website's home page (`apps/landing/static/logos/`, written by `apps/landing/scripts/logos/build.py`) shows the same agent and connector marks, taken from those two components and the Claude Spark (`ClaudeSpark.svelte`) unaltered and placed on the same tiles, to name what each socket of its models scene connects to. It adds OpenRouter's and Ollama's marks, the SVG paths of lobe-icons (`@lobehub/icons-static-svg` 1.95.1: `openrouter.svg`, `ollama.svg`, kept as published in `apps/landing/scripts/logos/lobe/`), unaltered and drawn on OpenRouter's indigo and on white; those marks are trademarks of OpenRouter, Inc. and Ollama respectively and are not covered by this repository's MIT license.
+
 ```text
 MIT License
 

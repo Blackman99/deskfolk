@@ -18,6 +18,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - The home page is no longer a looping clip of the app but a page of features to scroll through, one chapter each: any model (local agents you're signed in to and compatible endpoints), carrying on a Claude Code terminal session, files opening in place, panes, remote control, and usage and spend.
 - Mochi and Pudding ride along: they hop from chapter to chapter as you scroll and act each feature out; their eyes follow the pointer, and a click gets a line back.
 - Every chapter can be played with: drag the plug to change what Pudding runs on, drag a terminal session into the app, drop a file from your computer to preview it (it opens in the page only and is never uploaded), drag tabs to split panes, open a "phone" in a new window that controls Pudding here, and drag the usage ball until it tucks into an edge.
+- In the models chapter every socket wears its brand's mark, the same one the app draws: Claude Code, Codex, Grok, OpenCode, Antigravity, ZCode, Anthropic, DeepSeek, Qwen, Xiaomi MiMo, OpenRouter and Ollama.
 - On narrow screens the chapters simply follow one another; with reduced motion each shows its finished state and still takes input. The 30-second film is still behind "Watch the film" on the first screen.
 
 ### Remote access is no longer called experimental

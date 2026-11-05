@@ -1,10 +1,14 @@
 <script lang="ts">
+  import { base } from '$app/paths';
   import type { SceneCopy } from '../../copy';
   import { AGENT_IDS, ALL_IDS, ENDPOINT_IDS, type SocketId } from './beats';
 
   /**
    * The socket board: two labelled groups of sockets, one radiogroup, and the Custom socket's
-   * address form. It only shows state and reports what was picked; the plug is the scene's.
+   * address form. It only shows state and reports what was picked; the plug is the scene's. Each
+   * socket wears its brand's mark, the very one the app draws (static/logos, written by
+   * scripts/logos/build.py from the messenger's logo components); Custom is nobody's brand, so it
+   * gets a plain link glyph in the page's own ink.
    */
   let {
     copy,
@@ -73,6 +77,13 @@
     onkeydown={(e) => keys(e, id)}
   >
     <span class="hole" data-hole={id} aria-hidden="true"></span>
+    <span class="mark" class:is-custom={id === 'custom'} aria-hidden="true">
+      {#if id === 'custom'}
+        <svg viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2" /><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2" /></svg>
+      {:else}
+        <img src="{base}/logos/{id}.svg" alt="" width="24" height="24" decoding="async" draggable="false" />
+      {/if}
+    </span>
     <span class="name">{label(id)}</span>
     <span class="state" class:mono={id === 'custom' && connected === id}>
       {#if connected === id}{id === 'custom' && host ? host : connectedText}{/if}
@@ -167,11 +178,11 @@
     display: grid;
     grid-template-columns: auto 1fr;
     grid-template-rows: auto auto;
-    column-gap: 6px;
+    column-gap: 4px;
     align-items: center;
     min-width: 0;
     height: 38px;
-    padding: 0 6px;
+    padding: 0 5px;
     -webkit-user-select: none;
     user-select: none;
     text-align: left;
@@ -205,10 +216,15 @@
       0 0 18px -4px var(--teal);
   }
 
+  /* Narrow, the socket is a small port in the tile's bottom-right corner, under the name's line
+     and beside the short state line, leaving the width to the name; wide, it sits in front of the
+     mark (below). */
   .hole {
-    grid-row: 1 / 3;
-    width: 10px;
-    height: 10px;
+    position: absolute;
+    bottom: 6px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     background: var(--ground-2);
     box-shadow:
@@ -224,19 +240,57 @@
       0 0 0 2px var(--teal-line);
   }
 
+  /* The brand's mark, on its own tile in both themes, as in the app. */
+  .mark {
+    grid-row: 1 / 3;
+    display: block;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+  }
+
+  .mark img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    -webkit-user-drag: none;
+  }
+
+  .mark.is-custom {
+    padding: 3px;
+    box-sizing: border-box;
+    background: var(--ground-2);
+    box-shadow: 0 0 0 1px var(--line);
+  }
+
+  .mark.is-custom svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: var(--ink-2);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+  }
+
   .name {
     align-self: end;
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 560;
+    letter-spacing: -0.01em;
     line-height: 1.25;
   }
 
   .state {
     align-self: start;
+    padding-right: 10px;
     min-height: 13px;
     overflow: hidden;
     white-space: nowrap;
@@ -366,14 +420,31 @@
     }
 
     .socket {
+      grid-template-columns: auto auto 1fr;
       height: 48px;
-      padding: 0 10px;
-      column-gap: 9px;
+      padding: 0 8px;
+      column-gap: 7px;
+    }
+
+    .state {
+      padding-right: 0;
     }
 
     .hole {
-      width: 14px;
-      height: 14px;
+      position: static;
+      grid-row: 1 / 3;
+      width: 12px;
+      height: 12px;
+    }
+
+    .mark {
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+    }
+
+    .mark.is-custom {
+      padding: 4px;
     }
 
     .tiles {
@@ -381,7 +452,8 @@
     }
 
     .name {
-      font-size: 14px;
+      font-size: 13.5px;
+      letter-spacing: 0;
     }
   }
 
