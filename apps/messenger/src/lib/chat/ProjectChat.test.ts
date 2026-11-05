@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
 import type { ProjectPathLookup } from "@real-bot/protocol";
+import { setInterfaceBehaviour } from "../interface/behaviour.svelte.ts";
 import { aMessage, aProjectSession, anAgentRun, anAttachment, fakeRuntime } from "../test-fixtures.ts";
 import { toasts } from "../toast.svelte.ts";
 import { settle } from "../test-async.ts";
@@ -107,6 +108,28 @@ test("Enter sends the line, Shift+Enter and an input method's Enter do not", () 
   press(field, "Enter");
   expect(sent).toEqual([[{ sessionId: "proj-1" }]]);
   close();
+});
+
+test("with ⌘/Ctrl+Enter chosen to send, Enter is the field's new line and ⌘/Ctrl+Enter sends", () => {
+  setInterfaceBehaviour({ send_key: "mod_enter" });
+  try {
+    const sent: unknown[][] = [];
+    const { host, close } = open(null, { send: (...args: unknown[]) => { sent.push(args); return Promise.resolve(true); } });
+    const field = host.querySelector("textarea") as HTMLTextAreaElement;
+    fill(field, "再跑一次");
+    // Left to the field, which puts the new line in.
+    const plain = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    field.dispatchEvent(plain);
+    flushSync();
+    expect(plain.defaultPrevented).toBe(false);
+    expect(sent).toHaveLength(0);
+    press(field, "Enter", { metaKey: true });
+    press(field, "Enter", { ctrlKey: true });
+    expect(sent).toHaveLength(2);
+    close();
+  } finally {
+    setInterfaceBehaviour({});
+  }
 });
 
 test("opening the chat reads the session's newest run once", () => {
@@ -675,6 +698,27 @@ test("Enter runs the command picked; Esc closes the list and Enter then sends wh
   press(field, "Enter");
   expect(drafts).toEqual(["/context", "/zzz"]);
   close();
+});
+
+test("with ⌘/Ctrl+Enter chosen to send, Enter fills the command in and ⌘/Ctrl+Enter runs it", async () => {
+  setInterfaceBehaviour({ send_key: "mod_enter" });
+  try {
+    const drafts: string[] = [];
+    const { runtime, field, close } = withCommands({ send: () => { drafts.push(runtime.sessionView("proj-1").draft); return Promise.resolve(true); } });
+    fill(field, "/cont");
+    await settle();
+    press(field, "Enter");
+    await settle();
+    expect(drafts).toEqual([]);
+    expect(runtime.sessionView("proj-1").draft).toBe("/context ");
+    fill(field, "/cont");
+    await settle();
+    press(field, "Enter", { metaKey: true });
+    expect(drafts).toEqual(["/context"]);
+    close();
+  } finally {
+    setInterfaceBehaviour({});
+  }
 });
 
 test("a new summary of the session leaves the transcript where you scrolled to", async () => {

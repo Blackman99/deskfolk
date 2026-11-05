@@ -37,6 +37,7 @@
 	import VoiceStatus from './VoiceStatus.svelte';
 	import { ProjectCitedPaths } from './project-cited-path.ts';
 	import { showToast } from '../toast.svelte.ts';
+	import { interfaceBehaviour } from '../interface/behaviour.svelte.ts';
 	import { ComposerAttachments, pastedFiles, uploadedShare } from './composer-attachments.svelte.ts';
 	import ComposerAttachmentsBar from './ComposerAttachments.svelte';
 	import MessageAttachments from './MessageAttachments.svelte';
@@ -227,9 +228,10 @@
 			pickCommand(command, false);
 			return true;
 		}
+		// With ⌘/Ctrl+Enter the key that sends, Enter only fills the command in, as Tab does.
 		if (event.key === 'Enter' && !event.shiftKey) {
 			event.preventDefault();
-			pickCommand(command, true);
+			pickCommand(command, enterSends(event));
 			return true;
 		}
 		return false;
@@ -610,6 +612,16 @@
 	/** Enter that confirms a pinyin or kana candidate is the input method's, not a send. */
 	let ime = $state<ComposerImeState>(COMPOSER_IME_IDLE);
 
+	/**
+	 * Which key sends is yours to choose (ADR 0106), as in a Bot's composer: Enter, or ⌘/Ctrl+Enter
+	 * with Enter a new line. ⌘/Ctrl+Enter sends either way; Shift+Enter never does.
+	 */
+	function enterSends(event: KeyboardEvent): boolean {
+		if (event.key !== 'Enter') return false;
+		if (event.metaKey || event.ctrlKey) return true;
+		return !event.shiftKey && interfaceBehaviour().send_key !== 'mod_enter';
+	}
+
 	function onKey(event: KeyboardEvent): void {
 		const action = composerImeKeyAction(event, ime, Date.now());
 		if (action === 'swallow') event.preventDefault();
@@ -621,7 +633,8 @@
 			togglePlan();
 			return;
 		}
-		if (event.key !== 'Enter' || event.shiftKey) return;
+		// Enter that does not send is the field's own new line.
+		if (!enterSends(event)) return;
 		event.preventDefault();
 		void send();
 	}

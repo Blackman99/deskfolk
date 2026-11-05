@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A project session sends with the key you chose
+
+- With "⌘/Ctrl+Enter sends" picked in Settings › Interface › Behaviour, a Bot's conversation followed it while a project session (Claude Code, Codex) still sent on Enter. It now follows the setting too: Enter is a new line and ⌘/Ctrl+Enter sends. With the `/` command list open, Enter only fills the command in (as Tab does) and ⌘/Ctrl+Enter runs it ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)).
+
 ### Sidebar rows stay still when the list's scrollbar comes or goes
 
 - When a conversation added to or removed from the sidebar list made its scrollbar appear or disappear, every row stretched or squeezed sideways and settled back over a quarter of a second, with nothing having moved. Rows now animate only when they change place; a row that only got narrower or wider (by the scrollbar's width) stays still.
