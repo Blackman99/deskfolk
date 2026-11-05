@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Projects keep their order when a session starts
+
+- Starting a session, sending a line or reading in one project took that project to the top of the Projects section and pushed the others down; pressing a directory row's "+" left a different project under the pointer. Projects now go by when each got its first session, newest first, and the ones already listed stay put: only that project's own list of sessions changes (still newest first). A folder used for the first time comes in on top, and pinning a project's oldest session does not move the project either ([ADR 0095](docs/adr/0095-project-sessions.md) decision 27).
+
 ### Change how the app looks and works by asking a Bot
 
 - Tell a Bot in any conversation how you want the app to look or work — "make the accent purple", "a darker sidebar", "send with ⌘Enter" — and it changes your interface profile with the new `describe_interface` / `edit_interface` tools ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)). The profile overrides the design tokens (colours, fonts, corners, shadows, for the light and dark looks), a fixed list of behaviour (focus mode, where each kind of window opens, Enter or ⌘/Ctrl+Enter to send, 12- or 24-hour time, reduced motion), a stylesheet of your own, and words on screen; the theme and language too. Every window and a paired phone follow one profile.

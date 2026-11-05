@@ -31,12 +31,30 @@ export function projectAgentOf(session: SessionSummary): ProjectAgent {
   return session.project_agent ?? "claude_code";
 }
 
+/** When each directory got its first project session, read from every session that still exists. */
+function dirFirstSeen(all: readonly SessionSummary[]): Map<string, string> {
+  const first = new Map<string, string>();
+  for (const session of all) {
+    const dir = session.project_dir;
+    if (session.kind !== "project" || !dir) continue;
+    const seen = first.get(dir);
+    if (seen === undefined || session.created_at < seen) first.set(dir, session.created_at);
+  }
+  return first;
+}
+
 /**
- * Project sessions grouped by directory, whatever agent each ran. The directories run newest
- * first by their newest session, so the project you just worked in is on top; a session with no
- * directory is left out.
+ * Project sessions grouped by directory, whatever agent each ran; a session with no directory is
+ * left out. Inside a directory the sessions run newest first. The directories themselves keep
+ * their places: newest first by when each got its first session, so a new folder comes in on top,
+ * and a new session, a new line or a read in one directory moves only that directory's rows.
+ * `all` is every session (pinned, archived and filtered out too), so pinning a directory's oldest
+ * session or showing only the working ones does not move its directory either.
  */
-export function groupProjectSessions(sessions: readonly SessionSummary[]): ProjectDirGroup[] {
+export function groupProjectSessions(
+  sessions: readonly SessionSummary[],
+  all: readonly SessionSummary[] = sessions,
+): ProjectDirGroup[] {
   const byDir = new Map<string, ProjectDirGroup>();
   for (const session of sessions) {
     const dir = session.project_dir;
@@ -47,7 +65,15 @@ export function groupProjectSessions(sessions: readonly SessionSummary[]): Proje
   }
   const groups = [...byDir.values()];
   for (const group of groups) group.sessions.sort(newestFirst);
-  return groups.sort((a, b) => newestFirst(a.sessions[0]!, b.sessions[0]!));
+  const first = dirFirstSeen(all);
+  const firstOf = (group: ProjectDirGroup): string =>
+    first.get(group.dir) ?? group.sessions.reduce((min, s) => (s.created_at < min ? s.created_at : min), group.sessions[0]!.created_at);
+  return groups.sort((a, b) => {
+    const at = firstOf(a);
+    const bt = firstOf(b);
+    if (at !== bt) return at < bt ? 1 : -1;
+    return a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0;
+  });
 }
 
 /** The session a directory row's own actions go by: the open one when it is in this directory, else its newest. */

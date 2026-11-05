@@ -11,17 +11,45 @@ test("a directory is labelled by its last segment, either separator", () => {
   expect(projectDirLabel("/")).toBe("/");
 });
 
-test("project sessions group by directory, directories and sessions newest first", () => {
+test("project sessions group by directory, directories newest first by their first session, sessions by their latest activity", () => {
   const sessions = [
-    aProjectSession({ id: "a1", project_dir: "/w/a", updated_at: "2026-09-19T01:00:00.000Z" }),
-    aProjectSession({ id: "b1", project_dir: "/w/b", updated_at: "2026-09-19T03:00:00.000Z" }),
-    aProjectSession({ id: "a2", project_dir: "/w/a", updated_at: "2026-09-19T02:00:00.000Z" }),
+    aProjectSession({ id: "a1", project_dir: "/w/a", created_at: "2026-09-18T01:00:00.000Z", updated_at: "2026-09-19T01:00:00.000Z" }),
+    aProjectSession({ id: "b1", project_dir: "/w/b", created_at: "2026-09-18T02:00:00.000Z", updated_at: "2026-09-19T03:00:00.000Z" }),
+    aProjectSession({ id: "a2", project_dir: "/w/a", created_at: "2026-09-18T03:00:00.000Z", updated_at: "2026-09-19T02:00:00.000Z" }),
     aProjectSession({ id: "none", project_dir: null }),
   ];
   const groups = groupProjectSessions(sessions);
   expect(groups.map((g) => g.dir)).toEqual(["/w/b", "/w/a"]);
   expect(groups.map((g) => g.label)).toEqual(["b", "a"]);
   expect(groups[1]!.sessions.map((s) => s.id)).toEqual(["a2", "a1"]);
+});
+
+test("a new session, a new line or a read in one directory reorders only that directory's sessions", () => {
+  const a1 = aProjectSession({ id: "a1", project_dir: "/w/a", created_at: "2026-09-18T01:00:00.000Z", updated_at: "2026-09-18T01:00:00.000Z" });
+  const b1 = aProjectSession({ id: "b1", project_dir: "/w/b", created_at: "2026-09-18T02:00:00.000Z", updated_at: "2026-09-18T02:00:00.000Z" });
+  expect(groupProjectSessions([a1, b1]).map((g) => g.dir)).toEqual(["/w/b", "/w/a"]);
+  // A new session in the lower directory: it heads that directory, and the directory stays put.
+  const a2 = aProjectSession({ id: "a2", project_dir: "/w/a", created_at: "2026-09-20T00:00:00.000Z", updated_at: "2026-09-20T00:00:00.000Z" });
+  const after = groupProjectSessions([a1, b1, a2]);
+  expect(after.map((g) => g.dir)).toEqual(["/w/b", "/w/a"]);
+  expect(after[1]!.sessions.map((s) => s.id)).toEqual(["a2", "a1"]);
+  // A line or a read moves updated_at only.
+  expect(groupProjectSessions([{ ...a1, updated_at: "2026-09-21T00:00:00.000Z" }, b1]).map((g) => g.dir)).toEqual(["/w/b", "/w/a"]);
+  // A session in a folder never used before brings the folder in on top.
+  const c1 = aProjectSession({ id: "c1", project_dir: "/w/c", created_at: "2026-09-22T00:00:00.000Z", updated_at: "2026-09-22T00:00:00.000Z" });
+  expect(groupProjectSessions([a1, b1, a2, c1]).map((g) => g.dir)).toEqual(["/w/c", "/w/b", "/w/a"]);
+});
+
+test("a directory's place goes by all its sessions, so pinning or filtering out its oldest one does not move it", () => {
+  const a1 = aProjectSession({ id: "a1", project_dir: "/w/a", created_at: "2026-09-18T01:00:00.000Z" });
+  const a2 = aProjectSession({ id: "a2", project_dir: "/w/a", created_at: "2026-09-18T05:00:00.000Z" });
+  const b1 = aProjectSession({ id: "b1", project_dir: "/w/b", created_at: "2026-09-18T02:00:00.000Z" });
+  const all = [a1, a2, b1];
+  expect(groupProjectSessions(all).map((g) => g.dir)).toEqual(["/w/b", "/w/a"]);
+  // a1 pinned (or hidden by "working only"): /w/a lists only a2, and still keeps its place.
+  expect(groupProjectSessions([a2, b1], all).map((g) => g.dir)).toEqual(["/w/b", "/w/a"]);
+  // Without the whole list it would have read a2's time and jumped.
+  expect(groupProjectSessions([a2, b1]).map((g) => g.dir)).toEqual(["/w/a", "/w/b"]);
 });
 
 test("a project session is its own group, up with the pins once pinned, and never in the Bot lists", () => {

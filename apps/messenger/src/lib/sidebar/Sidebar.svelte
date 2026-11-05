@@ -177,7 +177,9 @@
 	/** A pinned session has no row to type in: while it is being renamed it stands under its directory again. */
 	const renamingPin = $derived(pinnedSessions.find((session) => session.id === renamingSessionId && session.kind === 'project'));
 	const projectGroups = $derived(
-		showProjects ? groupProjectSessions(renamingPin ? [...listed.project, renamingPin] : listed.project) : []
+		showProjects
+			? groupProjectSessions(renamingPin ? [...listed.project, renamingPin] : listed.project, snapshot.sessions)
+			: []
 	);
 	const nothingWorking = $derived(
 		workingIds !== null && !fileDrop && botRows.length === 0 && projectGroups.length === 0

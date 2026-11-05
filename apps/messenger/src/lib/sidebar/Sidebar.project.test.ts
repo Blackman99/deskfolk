@@ -17,7 +17,7 @@ function open(
     sessions: [
       aProjectSession({ id: "p1", name: "Fix login", project_dir: "/Users/a/proj", updated_at: "2026-09-19T02:00:00.000Z" }),
       aProjectSession({ id: "p2", name: null, project_dir: "/Users/a/proj", updated_at: "2026-09-19T01:00:00.000Z" }),
-      aProjectSession({ id: "p3", name: "Other", project_dir: "/Users/a/other", updated_at: "2026-09-18T01:00:00.000Z" }),
+      aProjectSession({ id: "p3", name: "Other", project_dir: "/Users/a/other", created_at: "2026-09-18T01:00:00.000Z", updated_at: "2026-09-18T01:00:00.000Z" }),
     ],
     agentRuns: { p1: anAgentRun({ session_id: "p1" }) },
     messages: [aMessage({ id: "m-p2", session_id: "p2", body: "把登录页的报错修一下" })],
@@ -263,6 +263,29 @@ test("a pinned project session moves up to the band in its agent's mark, saying 
   const rows = [...host.querySelectorAll('[data-project-dir="/Users/a/proj"] [data-project-session]')];
   expect(rows.map((r) => r.querySelector(".t")?.textContent)).toEqual([t.project.untitled]);
   close();
+});
+
+test("a directory keeps its place when a session starts in it, or when its oldest session is pinned", () => {
+  // p4 just started in the lower directory, newer than anything above it.
+  const sessions = [
+    aProjectSession({ id: "p1", name: "Fix login", project_dir: "/Users/a/proj", created_at: "2026-09-19T00:00:00.000Z", updated_at: "2026-09-19T02:00:00.000Z" }),
+    aProjectSession({ id: "p3", name: "Other", project_dir: "/Users/a/other", created_at: "2026-09-18T01:00:00.000Z", updated_at: "2026-09-18T01:00:00.000Z" }),
+    aProjectSession({ id: "p4", name: "New", project_dir: "/Users/a/other", created_at: "2026-09-20T00:00:00.000Z", updated_at: "2026-09-20T00:00:00.000Z" }),
+  ];
+  for (const pinnedSessionIds of [[], ["p3"]]) {
+    const { host, close } = render(Sidebar, {
+      runtime: fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions }), t, selected: null, pinnedSessionIds,
+      workspaceOpen: false, contextMenuSessionId: null,
+      onOpenContextMenu: () => {}, onToggleWorkspace: () => {}, onOpenRoutines: () => {}, onOpenSpend: () => {},
+      workbench: true, onNewTerminal: () => {}, onOpenSettings: () => {}, onCreateBot: () => {}, onCreateGroup: () => {},
+      onOpenSearch: () => {},
+    });
+    // Only the directory's own rows change; pinning p3, its oldest, does not move it either.
+    expect([...host.querySelectorAll("[data-project-dir]")].map((d) => d.getAttribute("data-project-dir"))).toEqual(["/Users/a/proj", "/Users/a/other"]);
+    const rows = [...host.querySelectorAll('[data-project-dir="/Users/a/other"] [data-project-session] .t')].map((r) => r.textContent);
+    expect(rows).toEqual(pinnedSessionIds.length ? ["New"] : ["New", "Other"]);
+    close();
+  }
 });
 
 test("with every session pinned their directories leave, and the list does not say there is nothing", () => {
