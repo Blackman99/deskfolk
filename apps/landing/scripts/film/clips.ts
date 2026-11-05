@@ -1,21 +1,19 @@
 /**
- * The homepage walkthrough's pictures, cut from live.ts films: every step's bars cropped to the
- * stage (the window without the film's titles around it), steps that run long sped up so none
- * lasts much past 10 s, H.264 at 30 fps without sound; the step where you walk away keeps only a
- * moment of the empty desktop it waited on and ends soon after the window is back; and the screen
- * the last step ends on (the chat, its flow board and the teaser side by side) as the first
- * screen's still. Clips keep the film's pixel density (live.ts records at 2×
- * by default), so the stage, at most 1480 CSS px wide, stays sharp on a high-density screen.
+ * Stills and clips of the real app, cut from live.ts films. By default only the still: the screen
+ * the last step ends on (the chat, its flow board and the teaser side by side), cropped to the
+ * stage, which the OG studio (/og/<lang>) and the README's desk shots start from. With `--steps`,
+ * also a clip of each step named: its bars cropped to the stage, sped up so none lasts much past
+ * 10 s, H.264 at 30 fps without sound; the step where you walk away keeps only a moment of the
+ * empty desktop it waited on and ends soon after the window is back. Both keep the film's pixel
+ * density (live.ts records at 2× by default).
  *
  *   node scripts/film/clips.ts [--from film-out] [--sets zh-light,zh-dark,en-light,en-dark] [--steps 4,6,9] [--away 6]
  *
  * Reads <from>/deskfolk-live-<lang>-<theme>.{silent.mp4,timeline.json,cues.json} (live.ts film, not the
- * recut) and writes static/media/walkthrough/<lang>-<theme>/{04,06,09.mp4,hero.jpg} (a clip for each of the
- * steps the home page's headline plays, `--steps`; Hero.svelte names the same files) plus
- * src/lib/demo/clips.json, which the walkthrough reads for each clip's speed and length.
+ * recut) and writes static/media/walkthrough/<lang>-<theme>/hero.jpg, plus <NN>.mp4 for each of `--steps`.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -28,7 +26,7 @@ const { values: opts } = parseArgs({
   options: {
     from: { type: 'string', default: path.join(LANDING, 'film-out') },
     sets: { type: 'string', default: 'zh-light,zh-dark,en-light,en-dark' },
-    steps: { type: 'string', default: '4,6,9' },
+    steps: { type: 'string', default: '' },
     away: { type: 'string', default: '6' }
   }
 });
@@ -61,12 +59,6 @@ const BACK_LEAD = 0.3;
 const BACK_SHOWN = 1.2;
 
 type Clip = { seconds: number; speed: number };
-type Manifest = { width: number; height: number; sets: Record<string, { steps: Clip[] }> };
-
-const manifestPath = path.join(LANDING, 'src/lib/demo/clips.json');
-const manifest: Manifest = existsSync(manifestPath)
-  ? JSON.parse(readFileSync(manifestPath, 'utf-8'))
-  : { width: STAGE.w, height: STAGE.h, sets: {} };
 
 /** The film's device pixels per CSS pixel: its width over the 1920 CSS px of the film page. */
 function scaleOf(film: string): number {
@@ -108,7 +100,7 @@ function awayStill(cues: Cue[], from: number, to: number): { cut: number; resume
   return { cut: still + AWAY_SECONDS - BACK_LEAD, resume, end };
 }
 
-const wanted = new Set(opts.steps.split(',').map(Number));
+const wanted = new Set(opts.steps.split(',').filter(Boolean).map(Number));
 const away = new Set(opts.away.split(',').filter(Boolean).map(Number));
 
 for (const set of opts.sets.split(',').filter(Boolean)) {
@@ -165,14 +157,7 @@ for (const set of opts.sets.split(',').filter(Boolean)) {
   ffmpeg(['-ss', (ends[ends.length - 1] - 0.2).toFixed(3), '-i', film, '-frames:v', '1', '-vf', crop, '-q:v', '3', hero]);
   bytes += statSync(hero).size;
 
-  manifest.sets[set] = { steps };
   console.log(
     `[clips] ${set} @${scale}×: ${steps.map((s, i) => [s, i] as const).filter(([, i]) => wanted.has(i + 1)).map(([s, i]) => `${i + 1}:${s.seconds}s${s.speed > 1 ? `@${s.speed}×` : ''}`).join(' ')} · ${(bytes / 1e6).toFixed(1)} MB`
   );
 }
-
-// The stage's size in CSS pixels, which the walkthrough lays out by; the clips carry more pixels.
-manifest.width = STAGE.w;
-manifest.height = STAGE.h;
-writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-console.log(`[clips] ${path.relative(LANDING, manifestPath)}`);
