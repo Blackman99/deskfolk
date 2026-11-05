@@ -84,9 +84,12 @@
         <img src="{base}/logos/{id}.svg" alt="" width="24" height="24" decoding="async" draggable="false" />
       {/if}
     </span>
-    <span class="name">{label(id)}</span>
-    <span class="state" class:mono={id === 'custom' && connected === id}>
-      {#if connected === id}{id === 'custom' && host ? host : connectedText}{/if}
+    <!-- The name, and under it the state once connected: one block, centred on the mark. -->
+    <span class="text">
+      <span class="name">{label(id)}</span>
+      {#if connected === id}
+        <span class="state" class:mono={id === 'custom'}>{id === 'custom' && host ? host : connectedText}</span>
+      {/if}
     </span>
   </button>
 {/snippet}
@@ -177,7 +180,6 @@
     position: relative;
     display: grid;
     grid-template-columns: auto 1fr;
-    grid-template-rows: auto auto;
     column-gap: 4px;
     align-items: center;
     min-width: 0;
@@ -221,10 +223,10 @@
      mark (below). */
   .hole {
     position: absolute;
-    bottom: 6px;
-    right: 6px;
-    width: 7px;
-    height: 7px;
+    bottom: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--ground-2);
     box-shadow:
@@ -242,7 +244,6 @@
 
   /* The brand's mark, on its own tile in both themes, as in the app. */
   .mark {
-    grid-row: 1 / 3;
     display: block;
     width: 16px;
     height: 16px;
@@ -276,8 +277,14 @@
     stroke-linecap: round;
   }
 
+  .text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+  }
+
   .name {
-    align-self: end;
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
@@ -289,9 +296,7 @@
   }
 
   .state {
-    align-self: start;
     padding-right: 10px;
-    min-height: 13px;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -432,7 +437,6 @@
 
     .hole {
       position: static;
-      grid-row: 1 / 3;
       width: 12px;
       height: 12px;
     }
