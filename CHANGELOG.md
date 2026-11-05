@@ -27,6 +27,9 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### Projects keep their order when a session starts
 
 - Starting a session, sending a line or reading in one project took that project to the top of the Projects section and pushed the others down; pressing a directory row's "+" left a different project under the pointer. Projects now go by when each got its first session, newest first, and the ones already listed stay put: only that project's own list of sessions changes (still newest first). A folder used for the first time comes in on top, and pinning a project's oldest session does not move the project either ([ADR 0095](docs/adr/0095-project-sessions.md) decision 27).
+### Code colours of your own
+
+- Code can now be highlighted in a theme you pick, one for the light look and one for the dark, from a fixed list of Shiki's themes (GitHub, Vitesse, One Light / One Dark Pro, Solarized, Catppuccin, Rosé Pine, Gruvbox, Everforest, Light+ / Dark+, Min, Dracula, Nord, Tokyo Night, Monokai). Chat's code blocks, command output and the file editor all take it, with the theme's own background and text colour; code already on screen is painted again. Choose under Settings › Interface › Code colours, or ask a Bot ("Dracula for code in dark mode"). Unset, chat keeps GitHub and the editor Vitesse ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md), addendum 2026-11-05).
 
 ### Change how the app looks and works by asking a Bot
 

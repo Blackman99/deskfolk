@@ -2,10 +2,12 @@
  * What the app has for a Bot to look things up in (ADR 0106): every design token with its default in
  * each look, read off the stylesheets this window loaded, and every plain string of its words. The
  * desktop window sends it once per connection; the daemon keeps it in memory for `describe_interface`.
+ * Neither your profile's sheet nor the code colours' surfaces count as the app's.
  */
 import type { InterfaceCatalog } from "@real-bot/protocol";
 import { COPY, copyLeaves } from "../copy.ts";
 import { INTERFACE_STYLE_ID } from "./apply.ts";
+import { CODE_THEME_STYLE_ID } from "./code-theme.ts";
 
 type TokenDefaults = { light: Map<string, string>; dark: Map<string, string> };
 
@@ -33,7 +35,8 @@ function walk(rules: CSSRuleList, into: TokenDefaults): void {
 export function tokenDefaults(doc: Document = document): TokenDefaults {
   const into: TokenDefaults = { light: new Map(), dark: new Map() };
   for (const sheet of Array.from(doc.styleSheets)) {
-    if ((sheet.ownerNode as Element | null)?.id === INTERFACE_STYLE_ID) continue;
+    const owner = (sheet.ownerNode as Element | null)?.id;
+    if (owner === INTERFACE_STYLE_ID || owner === CODE_THEME_STYLE_ID) continue;
     try {
       walk(sheet.cssRules, into);
     } catch {

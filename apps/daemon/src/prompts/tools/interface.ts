@@ -46,6 +46,7 @@ export const EDIT_INTERFACE: ToolDef = {
         send_key: { type: ["string", "null"], enum: ["enter", "mod_enter"], description: { zh: "哪个键发送。", en: "Which key sends." } },
         time_format: { type: ["string", "null"], enum: ["24h", "12h"], description: { zh: "时间格式。", en: "Time format." } },
         motion: { type: ["string", "null"], enum: ["system", "reduce"], description: { zh: "动效。", en: "Motion." } },
+        code_theme: MAP("代码高亮配色，按外观各选一个：{\"light\": \"solarized-light\", \"dark\": \"dracula\"}；名单见 describe_interface。", "Code colours, one per look: {\"light\": \"solarized-light\", \"dark\": \"dracula\"}; the list is in describe_interface."),
       },
     },
     css: {

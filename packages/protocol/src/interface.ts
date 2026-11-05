@@ -83,6 +83,20 @@ export const INTERFACE_OPEN_PLACEMENTS = [
 export type InterfaceOpenKind = (typeof INTERFACE_OPEN_KINDS)[number];
 export type InterfaceOpenPlacement = (typeof INTERFACE_OPEN_PLACEMENTS)[number];
 
+/**
+ * The colours code is highlighted in, from a fixed list per look (Shiki's own themes): chat's code
+ * blocks, a command's output and the file editor take the one chosen for the look in force, its
+ * background and text colour included, so each reads as its author made it. Unset, the app's own:
+ * GitHub in chat and output, Vitesse in the editor.
+ */
+export const INTERFACE_CODE_THEMES = {
+  light: ["github-light", "vitesse-light", "one-light", "solarized-light", "catppuccin-latte", "rose-pine-dawn", "gruvbox-light-medium", "everforest-light", "light-plus", "min-light"],
+  dark: ["github-dark", "vitesse-dark", "one-dark-pro", "dracula", "nord", "tokyo-night", "solarized-dark", "catppuccin-mocha", "rose-pine", "monokai", "gruvbox-dark-medium", "dark-plus", "min-dark"],
+} as const;
+export type InterfaceCodeThemeLight = (typeof INTERFACE_CODE_THEMES.light)[number];
+export type InterfaceCodeThemeDark = (typeof INTERFACE_CODE_THEMES.dark)[number];
+export type InterfaceCodeTheme = { light?: InterfaceCodeThemeLight; dark?: InterfaceCodeThemeDark };
+
 /** How the app works, from a fixed list: each key is absent until set, and absent is the app's default. */
 export type InterfaceBehaviour = {
   /** Hide times, durations, commands, model tags and Bot↔Bot entries in conversations. */
@@ -95,18 +109,21 @@ export type InterfaceBehaviour = {
   time_format?: "24h" | "12h";
   /** Whether the app moves as your system says, or always as little as it can. */
   motion?: "system" | "reduce";
+  /** The colours code is highlighted in, per look; a look left out keeps the app's own. */
+  code_theme?: InterfaceCodeTheme;
 };
 
-export const INTERFACE_BEHAVIOUR_KEYS = ["focus_mode", "open_placement", "send_key", "time_format", "motion"] as const;
+export const INTERFACE_BEHAVIOUR_KEYS = ["focus_mode", "open_placement", "send_key", "time_format", "motion", "code_theme"] as const;
 export type InterfaceBehaviourKey = (typeof INTERFACE_BEHAVIOUR_KEYS)[number];
 
 /** What each behaviour takes and where it applies, for Settings and for a Bot reading the list. */
-export const INTERFACE_BEHAVIOUR_SPECS: Record<InterfaceBehaviourKey, { values: readonly (string | boolean)[] | "per-kind"; desktopOnly: boolean; zh: string; en: string }> = {
+export const INTERFACE_BEHAVIOUR_SPECS: Record<InterfaceBehaviourKey, { values: readonly (string | boolean)[] | "per-kind" | "per-look"; desktopOnly: boolean; zh: string; en: string }> = {
   focus_mode: { values: [true, false], desktopOnly: false, zh: "专注模式：会话里不显示时间、耗时、跑过的命令、模型和 Bot↔Bot 往来", en: "Focus mode: conversations hide times, durations, commands, models and Bot↔Bot entries" },
   open_placement: { values: "per-kind", desktopOnly: true, zh: "每种窗口在桌面上从哪打开", en: "Where each kind of window opens on the desktop" },
   send_key: { values: ["enter", "mod_enter"], desktopOnly: false, zh: "回车发送，或 ⌘/Ctrl+回车 发送", en: "Enter sends, or ⌘/Ctrl+Enter sends" },
   time_format: { values: ["24h", "12h"], desktopOnly: false, zh: "消息时间按 24 小时或 12 小时制", en: "Message times in 24-hour or 12-hour form" },
   motion: { values: ["system", "reduce"], desktopOnly: false, zh: "动效跟随系统，或一直减弱", en: "Motion as the system says, or always reduced" },
+  code_theme: { values: "per-look", desktopOnly: false, zh: "代码高亮的配色，浅色深色各选一个：聊天代码块、命令输出和文件编辑器都用它，连同它的底色", en: "The colours code is highlighted in, one per look: chat's code blocks, command output and the file editor all take it, its background too" },
 };
 
 /** Tokens you set, by look. A token set in both is two entries, one in each. */
@@ -202,8 +219,9 @@ export type InterfaceCssEdit = { old: string; new: string } | { after: string; a
 export type InterfacePatch = {
   enabled?: boolean;
   tokens?: { light?: Record<string, string | null>; dark?: Record<string, string | null>; both?: Record<string, string | null> };
-  behaviour?: { [K in Exclude<InterfaceBehaviourKey, "open_placement">]?: InterfaceBehaviour[K] | null } & {
+  behaviour?: { [K in Exclude<InterfaceBehaviourKey, "open_placement" | "code_theme">]?: InterfaceBehaviour[K] | null } & {
     open_placement?: Partial<Record<InterfaceOpenKind, InterfaceOpenPlacement | null>> | null;
+    code_theme?: { light?: InterfaceCodeThemeLight | null; dark?: InterfaceCodeThemeDark | null } | null;
   };
   css?: { set: string } | { edits: InterfaceCssEdit[] };
   copy?: { zh?: Record<string, string | null>; en?: Record<string, string | null> };
@@ -289,6 +307,20 @@ function behaviourValue(key: InterfaceBehaviourKey, value: unknown): unknown {
         throw new InterfacePatchError("invalid_args", `behaviour.open_placement.${kind} must be one of ${INTERFACE_OPEN_PLACEMENTS.join(", ")}`);
       }
       out[kind as InterfaceOpenKind] = placement as InterfaceOpenPlacement;
+    }
+    return out;
+  }
+  if (key === "code_theme") {
+    if (!isRecord(value)) throw new InterfacePatchError("invalid_args", "behaviour.code_theme must be { light, dark }");
+    const out: InterfaceCodeTheme = {};
+    for (const [look, theme] of Object.entries(value)) {
+      if (look !== "light" && look !== "dark") throw new InterfacePatchError("invalid_args", `behaviour.code_theme.${look}: say light or dark`);
+      if (theme === null) continue;
+      const allowed = INTERFACE_CODE_THEMES[look] as readonly unknown[];
+      if (!allowed.includes(theme)) {
+        throw new InterfacePatchError("invalid_args", `behaviour.code_theme.${look} must be one of ${allowed.join(", ")}`);
+      }
+      (out as Record<string, unknown>)[look] = theme;
     }
     return out;
   }
@@ -422,14 +454,16 @@ export function applyInterfacePatch(current: InterfaceProfile, raw: unknown): In
       }
       const typed = key as InterfaceBehaviourKey;
       if (value === null) delete next.behaviour[typed];
-      else if (typed === "open_placement") {
-        const merged = { ...(next.behaviour.open_placement ?? {}) };
-        for (const [kind, placement] of Object.entries(value as Record<string, unknown>)) {
-          if (placement === null) delete merged[kind as InterfaceOpenKind];
+      else if (typed === "open_placement" || typed === "code_theme") {
+        // Each entry on its own: what the change leaves out stays, null takes one back.
+        const merged: Record<string, unknown> = { ...((next.behaviour[typed] as Record<string, unknown> | undefined) ?? {}) };
+        const checked = behaviourValue(typed, value) as Record<string, unknown>;
+        for (const [entry, choice] of Object.entries(value as Record<string, unknown>)) {
+          if (choice === null) delete merged[entry];
         }
-        Object.assign(merged, behaviourValue(typed, value));
-        if (Object.keys(merged).length === 0) delete next.behaviour.open_placement;
-        else next.behaviour.open_placement = merged;
+        Object.assign(merged, checked);
+        if (Object.keys(merged).length === 0) delete next.behaviour[typed];
+        else (next.behaviour as Record<string, unknown>)[typed] = merged;
       } else (next.behaviour as Record<string, unknown>)[typed] = behaviourValue(typed, value);
     }
   }

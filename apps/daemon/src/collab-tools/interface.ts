@@ -7,6 +7,7 @@
  */
 import {
   INTERFACE_BEHAVIOUR_SPECS,
+  INTERFACE_CODE_THEMES,
   INTERFACE_EDIT_KIND,
   INTERFACE_OPEN_KINDS,
   INTERFACE_OPEN_PLACEMENTS,
@@ -70,7 +71,9 @@ export function describeInterface(ctx: ToolCtx, args: Record<string, unknown>): 
     copy: profile.copy,
     behaviour_list: Object.entries(INTERFACE_BEHAVIOUR_SPECS).map(([key, spec]) => ({
       key,
-      values: spec.values === "per-kind" ? { kinds: INTERFACE_OPEN_KINDS, placements: INTERFACE_OPEN_PLACEMENTS } : spec.values,
+      values: spec.values === "per-kind"
+        ? { kinds: INTERFACE_OPEN_KINDS, placements: INTERFACE_OPEN_PLACEMENTS }
+        : spec.values === "per-look" ? INTERFACE_CODE_THEMES : spec.values,
       ...(spec.desktopOnly ? { desktop_only: true } : {}),
       what: english ? spec.en : spec.zh,
     })),

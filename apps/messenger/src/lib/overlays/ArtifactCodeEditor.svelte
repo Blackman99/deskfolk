@@ -443,7 +443,8 @@
 	.artifact-cm :global(.monaco-editor-background),
 
 	.artifact-cm :global(.monaco-editor) :global(.margin) {
-		background: var(--pane);
+		/* Your code colours (ADR 0106) bring their own surface; none chosen, the pane's. */
+		background: var(--code-surface, var(--pane));
 		--vscode-editorHoverWidget-background: var(--pane);
 		--vscode-editorHoverWidget-foreground: var(--ink);
 		--vscode-editorHoverWidget-border: var(--line);

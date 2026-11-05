@@ -45,6 +45,7 @@ export const zh = {
     time_format: { name: "时间", "24h": "24 小时制", "12h": "12 小时制" },
     motion: { name: "动效", system: "跟随系统", reduce: "一直减弱" },
     open_placement: { name: "窗口打开方式", hint: "在「设置 › 行为」里一种一种设" },
+    code_theme: { name: "代码配色", hint: "聊天里的代码块、命令输出和文件编辑器的高亮配色，连同它的底色；浅色、深色各选一个", light: "浅色", dark: "深色", appDefault: "应用自己的" },
   },
   css: {
     empty: "还没有自定义 CSS。",
@@ -156,6 +157,7 @@ export const en: CopyShape<typeof zh> = {
     time_format: { name: "Time", "24h": "24-hour", "12h": "12-hour" },
     motion: { name: "Motion", system: "As the system says", reduce: "Always reduced" },
     open_placement: { name: "Where windows open", hint: "Set kind by kind in Settings › Behavior" },
+    code_theme: { name: "Code colours", hint: "How code is highlighted in chat, command output and the file editor, its background too; one for each look", light: "Light", dark: "Dark", appDefault: "The app's own" },
   },
   css: {
     empty: "No custom CSS yet.",

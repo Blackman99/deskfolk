@@ -27,6 +27,9 @@
 ### 项目列表不再跟着新建会话换顺序
 
 - 在一个项目里新建会话、发一句话或读一下，原来会把这个项目顶到「项目」一段的最上面，其他项目跟着往下挪；在目录行上点「+」新开时，指针下面就换成了别的项目。现在项目按它第一次有会话的时间排，新的在前，已经列着的项目不再挪动，变的只是这个项目里的会话列表（照旧最近的在前）。头一回用的文件夹出现在最上面；置顶一个项目里最早的会话也不挪动这个项目（[ADR 0095](docs/adr/0095-project-sessions.md) 决定 27）。
+### 代码配色可以自己选
+
+- 代码高亮现在能用你选的主题，浅色、深色各一个，从一份固定的 Shiki 主题名单里挑（GitHub、Vitesse、One Light / One Dark Pro、Solarized、Catppuccin、Rosé Pine、Gruvbox、Everforest、Light+ / Dark+、Min、Dracula、Nord、Tokyo Night、Monokai）。聊天里的代码块、命令输出和文件编辑器都用它，连同主题自己的底色和正文色；屏幕上已有的代码会就地重画。在「设置 › 界面 › 代码配色」里选，或者跟 Bot 说（「深色下代码用 Dracula」）。没选时聊天照旧是 GitHub、编辑器是 Vitesse（[ADR 0106](docs/adr/0106-the-interface-is-yours-too.md) 2026-11-05 补记）。
 
 ### 让 Bot 改应用的样子和用法
 

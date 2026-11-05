@@ -163,8 +163,8 @@
 		overflow: auto;
 		border-radius: var(--radius-sm);
 		/* The same as a command's output under its message (CommandActivity.svelte). */
-		background: var(--chip);
-		color: var(--muted);
+		background: var(--code-surface, var(--chip));
+		color: var(--code-ink, var(--muted));
 		font-size: 11px;
 		line-height: 1.45;
 		white-space: pre-wrap;

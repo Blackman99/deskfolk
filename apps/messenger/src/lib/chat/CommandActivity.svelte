@@ -342,8 +342,9 @@
 		padding: 10px 14px 12px 32px;
 		overflow: auto;
 		border-top: 1px solid var(--line-subtle);
-		background: var(--chip);
-		color: var(--ink);
+		/* Your code colours (ADR 0106) bring their own surface; none chosen, the app's. */
+		background: var(--code-surface, var(--chip));
+		color: var(--code-ink, var(--ink));
 		font-size: 11.5px;
 		line-height: 1.6;
 		tab-size: 4;

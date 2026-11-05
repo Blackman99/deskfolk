@@ -2,7 +2,7 @@ import type { Action } from "svelte/action";
 import { tokensToHighlightedHtml } from "../css-highlight.ts";
 import { highlightLangFromPath, type HighlightLang } from "../highlight-lang.ts";
 import { HIGHLIGHT_CHAR_LIMIT } from "../highlight-mount.ts";
-import { ensureHighlightLang, getShikiHighlighter } from "../shiki-highlighter.ts";
+import { ensureHighlightLang, getShikiHighlighter, onCodeThemeChange } from "../shiki-highlighter.ts";
 import { commandLine } from "./command-line.ts";
 
 /** What a command's output is painted as: a grammar, or Shiki's own reading of colour codes. */
@@ -132,6 +132,12 @@ export const commandOutput: Action<HTMLElement, OutputParams> = (node, initial) 
   };
 
   show();
+  // Your code colours changed (ADR 0106): paint the same output again in them.
+  const stopThemes = onCodeThemeChange(() => {
+    if (!painted) return;
+    painted = false;
+    show();
+  });
   return {
     update(next) {
       params = next;
@@ -139,6 +145,7 @@ export const commandOutput: Action<HTMLElement, OutputParams> = (node, initial) 
     },
     destroy() {
       disposed = true;
+      stopThemes();
     },
   };
 };

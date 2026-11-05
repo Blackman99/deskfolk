@@ -33,6 +33,8 @@ import {
 import { interfaceCatalog, tokenDefaults } from "./catalog.ts";
 import { floorsHiddenByProfile, FLOOR_SELECTOR, type FloorFailure } from "./floor.ts";
 import { setInterfaceBehaviour } from "./behaviour.svelte.ts";
+import { paintCodeSurfaces } from "./code-theme.ts";
+import { onCodeThemeChange, setCodeTheme } from "../shiki-highlighter.ts";
 import { badTokens, droppedBlocks, unmatchedSelectors } from "./report.ts";
 
 export type InterfaceApi = {
@@ -122,6 +124,7 @@ class InterfaceController {
     });
     head.observe(document.head, { childList: true });
     this.stops.push(() => head.disconnect());
+    this.stops.push(onCodeThemeChange(() => void paintCodeSurfaces()));
     this.stops.push(trackSurface(document, (surface) => {
       this.surface = surface;
     }));
@@ -231,6 +234,8 @@ class InterfaceController {
     applyInterfaceCss(css, this.lookOn, document);
     applyMotion(this.behaviour.motion, document);
     setInterfaceBehaviour(this.behaviour);
+    // Code colours load their theme first; every painter repaints once it is in.
+    void setCodeTheme(this.behaviour.code_theme).catch(() => {});
     // Only the daemon's is kept for the next start; a card being tried is not yours yet.
     if (!this.trying && this.state) cacheInterfaceCss(css);
     this.watchFloors(css !== "" && this.lookOn);

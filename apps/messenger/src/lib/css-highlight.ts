@@ -1,5 +1,5 @@
 import type { HighlighterCore, ThemedToken } from "shiki/core";
-import { SHIKI_THEMES } from "./shiki-highlighter.ts";
+import { onCodeThemeChange, shikiThemes } from "./shiki-highlighter.ts";
 import type { HighlightLang } from "./highlight-lang.ts";
 
 export type CssHighlightHandle = {
@@ -66,7 +66,7 @@ export function tokensToHighlightedHtml(
 
   const tokenized = highlighter.codeToTokens(source, {
     lang,
-    themes: SHIKI_THEMES,
+    themes: shikiThemes(),
     cssVariablePrefix: "",
     defaultColor: false,
   });
@@ -145,12 +145,18 @@ export function mountCssHighlight(
   const update = watch ? throttle(paintNow, delay) : paintNow;
   if (watch) el.addEventListener("input", update);
   paintNow();
+  // Your code colours changed (ADR 0106): the same text, painted in them.
+  const stopThemes = onCodeThemeChange(() => {
+    last = "";
+    paintNow();
+  });
 
   return {
     update,
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      stopThemes();
       if (watch) el.removeEventListener("input", update);
     },
   };

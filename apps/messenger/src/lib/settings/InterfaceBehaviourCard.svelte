@@ -3,7 +3,10 @@
 	import type { Copy } from '../copy.ts';
 	import { focusMode } from '../chat/focus-mode.svelte.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import { INTERFACE_CODE_THEMES } from '@real-bot/protocol';
+	import Select from '../Select.svelte';
 	import Switch from '../Switch.svelte';
+	import { CODE_THEME_LABELS } from '../interface/code-theme.ts';
 	import { editInterfaceOrToast } from './interface-edit.ts';
 	import SettingsCard from './SettingsCard.svelte';
 	import SettingsRow from './SettingsRow.svelte';
@@ -23,6 +26,20 @@
 
 	function choose(key: Choice['key'], value: string | null): void {
 		void editInterfaceOrToast(runtime, { behaviour: { [key]: value } as never });
+	}
+
+	/** Code colours, one per look (ADR 0106); the first choice is the app's own. */
+	const codeLooks = $derived([
+		{ look: 'light' as const, label: c.code_theme.light, themes: INTERFACE_CODE_THEMES.light },
+		{ look: 'dark' as const, label: c.code_theme.dark, themes: INTERFACE_CODE_THEMES.dark }
+	]);
+
+	function codeOptions(themes: readonly string[]): { value: string; label: string }[] {
+		return [{ value: '', label: c.code_theme.appDefault }, ...themes.map((theme) => ({ value: theme, label: CODE_THEME_LABELS[theme as keyof typeof CODE_THEME_LABELS] ?? theme }))];
+	}
+
+	function chooseCode(look: 'light' | 'dark', value: string): void {
+		void editInterfaceOrToast(runtime, { behaviour: { code_theme: { [look]: value || null } } as never });
 	}
 </script>
 
@@ -54,6 +71,23 @@
 				</div>
 			</SettingsRow>
 		{/each}
+		<SettingsRow title={c.code_theme.name} titleId="interface-code-theme" desc={c.code_theme.hint}>
+			<div class="code-theme-pickers" role="group" aria-labelledby="interface-code-theme" data-behaviour="code_theme">
+				{#each codeLooks as row (row.look)}
+					<label class="code-theme-picker">
+						<span class="code-theme-look">{row.label}</span>
+						<Select
+							size="sm"
+							value={behaviour.code_theme?.[row.look] ?? ''}
+							options={codeOptions(row.themes)}
+							ariaLabel={`${c.code_theme.name} · ${row.label}`}
+							title={`${c.code_theme.name} · ${row.label}`}
+							onchange={(value) => chooseCode(row.look, value)}
+						/>
+					</label>
+				{/each}
+			</div>
+		</SettingsRow>
 		{#if !phone}
 			<SettingsRow title={c.open_placement.name} titleId="interface-open-placement" desc={c.open_placement.hint}>
 				<span class="interface-note">{c.desktopOnly}</span>
@@ -79,6 +113,37 @@
 	.interface-note {
 		font-size: var(--text-caption);
 		color: var(--muted);
+	}
+
+	.code-theme-pickers {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 12px;
+		justify-content: flex-end;
+	}
+
+	.code-theme-picker {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	.code-theme-look {
+		font-size: var(--text-caption);
+		color: var(--muted);
+		white-space: nowrap;
+	}
+
+	@media (max-width: 540px) {
+		.code-theme-pickers {
+			justify-content: stretch;
+			width: 100%;
+		}
+
+		.code-theme-picker {
+			flex: 1;
+		}
 	}
 
 	/* The same pill switcher as Settings › General's theme and language. */

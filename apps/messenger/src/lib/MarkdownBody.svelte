@@ -460,9 +460,10 @@
 		border-radius: var(--radius-xs);
 	}
 
+	/* Your code colours (ADR 0106) bring their own surface; none chosen, the app's. */
 	.md-body :global(pre) {
-		background: var(--chip);
-		color: var(--ink);
+		background: var(--code-surface, var(--chip));
+		color: var(--code-ink, var(--ink));
 		border: 1px solid var(--line);
 		padding: 8px 12px;
 		border-radius: var(--radius-sm);

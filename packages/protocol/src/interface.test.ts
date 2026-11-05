@@ -68,6 +68,22 @@ describe("interface profile (ADR 0106)", () => {
     expect(patchError(() => applyInterfacePatch(profile, { behaviour: { density: "compact" } })).message).toContain("not on the list");
   });
 
+  test("code colours come from a fixed list per look, each look on its own", () => {
+    let profile = applyInterfacePatch(emptyInterfaceProfile(), { behaviour: { code_theme: { dark: "dracula" } } });
+    expect(profile.behaviour.code_theme).toEqual({ dark: "dracula" });
+    profile = applyInterfacePatch(profile, { behaviour: { code_theme: { light: "solarized-light" } } });
+    expect(profile.behaviour.code_theme).toEqual({ dark: "dracula", light: "solarized-light" });
+    profile = applyInterfacePatch(profile, { behaviour: { code_theme: { dark: null } } });
+    expect(profile.behaviour.code_theme).toEqual({ light: "solarized-light" });
+    profile = applyInterfacePatch(profile, { behaviour: { code_theme: null } });
+    expect(profile.behaviour.code_theme).toBeUndefined();
+    // A dark theme for the light look, or one not on the list, is refused.
+    expect(patchError(() => applyInterfacePatch(profile, { behaviour: { code_theme: { light: "dracula" } } })).message).toContain("github-light");
+    expect(patchError(() => applyInterfacePatch(profile, { behaviour: { code_theme: { dark: "my-theme" } } })).code).toBe("invalid_args");
+    expect(patchError(() => applyInterfacePatch(profile, { behaviour: { code_theme: { sepia: "nord" } } })).message).toContain("light or dark");
+    expect(normalizeInterfaceProfile({ behaviour: { code_theme: { dark: "nord" } } }).behaviour).toEqual({ code_theme: { dark: "nord" } });
+  });
+
   test("a reset puts parts back before the rest applies", () => {
     const start = applyInterfacePatch(emptyInterfaceProfile(), { tokens: { light: { "--accent": "red" } }, css: { set: "a{}" } });
     const next = applyInterfacePatch(start, { reset: ["tokens", "css"], tokens: { light: { "--bg": "white" } } });

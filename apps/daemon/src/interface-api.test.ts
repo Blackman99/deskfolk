@@ -88,6 +88,11 @@ test("the Bot's change applies at once under auto, waits on a ui-edit card under
   expect(head).toMatchObject({ actor: "bot", bot_id: bot.id, turn_id: turn.id, reason: "the user wants a purple accent", undoable: true });
   expect((await runCollabTool(ctx, "edit_interface", { reason: "again", tokens: { both: { "--accent": "#7c3aed" } } })).error?.code).toBe("no_change");
 
+  // Code colours, one look at a time.
+  expect((await runCollabTool(ctx, "edit_interface", { reason: "dracula for code at night", behaviour: { code_theme: { dark: "dracula" } } })).ok).toBe(true);
+  expect(store.interfaceRecord().profile.behaviour.code_theme).toEqual({ dark: "dracula" });
+  expect((await runCollabTool(ctx, "edit_interface", { reason: "x", behaviour: { code_theme: { light: "dracula" } } })).error?.code).toBe("invalid_args");
+
   store.patchSettingsSync({ permission_mode: "ask_first" });
   const asked = await runCollabTool(ctx, "edit_interface", { reason: "a serif font", tokens: { both: { "--font": "Georgia, serif" } } });
   expect(asked.ok).toBe(false);
@@ -126,6 +131,8 @@ test("describe_interface shows the lists, the hooks, what windows found, and fin
   expect(read.data!.token_families).toEqual({ "--accent": 2 });
   expect(read.data!.found_words).toEqual([{ key: "composer.send", text: "发送" }]);
   expect(read.data!.windows).toEqual([{ surface: "desktop", at: expect.any(String), applied: true, revision_id: null, unmatched: [".gone"], dropped: 1, floor_failed: [{ floor: "stop", why: "display: none" }] }]);
+  const codeColours = (read.data!.behaviour_list as Array<{ key: string; values: unknown }>).find((row) => row.key === "code_theme");
+  expect(codeColours?.values).toMatchObject({ light: expect.arrayContaining(["github-light", "solarized-light"]), dark: expect.arrayContaining(["dracula", "nord"]) });
   const tokens = await runCollabTool(ctx, "describe_interface", { find: "#2dd4bf" });
   expect(tokens.data!.found_tokens).toEqual([{ name: "--accent", light: "#0f766e", dark: "#2dd4bf" }]);
   expect(JSON.stringify(read.data).length).toBeLessThan(8000);

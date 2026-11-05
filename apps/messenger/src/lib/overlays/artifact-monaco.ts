@@ -4,16 +4,18 @@ import { HIGHLIGHT_CHAR_LIMIT } from "../highlight-mount.ts";
 import { registerMatchingFolding } from "./monaco-folding.ts";
 import { installMonacoShortcutGuard, registerMonacoEditorFeatures } from "./monaco-features.ts";
 import { applyMonacoLanguageConfiguration } from "./monaco-language-config.ts";
-import { ensureHighlightLang, getShikiHighlighter, MONACO_SHIKI_THEMES } from "../shiki-highlighter.ts";
+import { ensureHighlightLang, getShikiHighlighter, MONACO_SHIKI_THEMES, monacoShikiThemes, onCodeThemeChange } from "../shiki-highlighter.ts";
 import { themeManager, type ResolvedTheme } from "../theme.ts";
 
+/** The editor's own colours; your code colours (ADR 0106) take their place when chosen. */
 export const MONACO_THEME = {
   light: MONACO_SHIKI_THEMES.light,
   dark: MONACO_SHIKI_THEMES.dark,
 } as const;
 
 export function monacoThemeName(resolved: ResolvedTheme): string {
-  return resolved === "dark" ? MONACO_THEME.dark : MONACO_THEME.light;
+  const themes = monacoShikiThemes();
+  return resolved === "dark" ? themes.dark : themes.light;
 }
 
 export function monacoLanguageFromPath(path: string): HighlightLang {
@@ -111,6 +113,8 @@ export async function ensureMonaco(): Promise<MonacoApi> {
     await registerMonacoEditorFeatures();
     registerMatchingFolding(monaco.languages);
     await bindShikiToMonaco(monaco);
+    // Your code colours changed: the newly loaded theme is handed to the editor and shown.
+    onCodeThemeChange(() => void bindShikiToMonaco(monaco).catch(() => {}));
     return monaco;
   })();
   return monacoReady;
