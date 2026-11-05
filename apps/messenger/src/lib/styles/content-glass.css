@@ -44,8 +44,11 @@
   background: color-mix(in srgb, var(--ground) var(--content-glass-mix), transparent);
 }
 
-/* What lies on the card: its ground is the card's. */
-:root[data-material="glass"][data-content-glass] .wb-body :is([data-ui="chat"], [data-ui="transcript"], [data-ui="preview"], [data-ui="flow-board"], [data-ui="workspace-tree"]) {
+/*
+ * What lies on the card: its ground is the card's. The conversation's header too: a solid bar
+ * across the top of a glass card reads as a lid on it.
+ */
+:root[data-material="glass"][data-content-glass] .wb-body :is([data-ui="chat"], [data-ui="chat-header"], [data-ui="transcript"], [data-ui="preview"], [data-ui="flow-board"], [data-ui="workspace-tree"]) {
   background: transparent;
 }
 

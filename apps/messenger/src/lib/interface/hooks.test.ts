@@ -38,6 +38,28 @@ test("every data-ui hook is still in the markup", () => {
   }
 });
 
+test("the hooks the app's own stylesheets select are in the markup", () => {
+  // Glass content (`content-glass.css`) reaches what lies on a card by its hooks: one that left
+  // the markup would leave that layer solid with nothing failing.
+  const styles = join(SRC, "lib", "styles");
+  const selected = new Set<string>();
+  for (const entry of readdirSync(styles)) {
+    if (!entry.endsWith(".css")) continue;
+    for (const match of readFileSync(join(styles, entry), "utf8").matchAll(/data-ui="([^"]+)"/g)) selected.add(match[1]);
+  }
+  expect(selected.has("chat-header")).toBe(true);
+  for (const name of selected) {
+    const found = SOURCES.some((source) => source.includes(`data-ui="${name}"`));
+    expect({ hook: name, found }).toEqual({ hook: name, found: true });
+  }
+});
+
+test("a conversation's header carries its hook in a pane as on the phone", () => {
+  const marked = SOURCES.filter((source) => source.includes('data-ui="chat-header"'));
+  expect(marked.some((source) => source.includes('class="pane-chat-bar"'))).toBe(true);
+  expect(marked.some((source) => source.includes('class="top"'))).toBe(true);
+});
+
 test("every data-floor the app checks is still in the markup", () => {
   for (const name of UI_FLOORS) {
     const found = SOURCES.some((source) => source.includes(`data-floor="${name}"`));

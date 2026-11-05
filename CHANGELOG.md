@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Glass content reaches a conversation's header
+
+- With Settings › Interface › Glass content on, the header over a conversation in a pane (who it is with, what they are doing, pin, flow and settings) stayed a solid bar across the top of the glass card. It now lets the glass through with the rest of the card, keeping its hairline underneath. That header also carries the `[data-ui="chat-header"]` hook now, which before marked only the phone's header, so a stylesheet of yours (or a Bot's) reaches it on the desktop too ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)).
+
 ### Settings › Interface fits the window
 
 - Settings › Interface was one page holding everything, nearly seven times the dialog's height with a long history or many tokens. It is now in five parts, as Models is: behaviour, tokens, custom CSS, the words on screen and the history (with what each kind of window found, putting everything back, and the key back to the default). The switch for the whole custom interface stays above them, so turning it off is never a tab away. On a phone the parts are a list, each row saying what it has changed, and a row opens as a page of its own ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)).

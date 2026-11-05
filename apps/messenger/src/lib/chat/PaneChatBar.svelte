@@ -83,7 +83,7 @@
 </script>
 
 {#if !isFileDropSession(session)}
-	<header class="pane-chat-bar">
+	<header data-ui="chat-header" class="pane-chat-bar">
 		<button
 			type="button"
 			class="bar-identity"
