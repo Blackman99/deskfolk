@@ -26,7 +26,7 @@
 	import BotAddMenu from './BotAddMenu.svelte';
 	import { newProjectIn, newProjectInFolder } from './project-actions.ts';
 	import { dirDisplay, dirSession, groupProjectSessions, isLiveRun, liveRunSessionIds, PROJECT_AGENTS, projectAgentOf } from './project-groups.ts';
-	import { flip } from 'svelte/animate';
+	import { moveFlip } from '../move-flip.ts';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from '../reduced-motion.ts';
 	import { isSessionPinned } from './pinned-sessions.ts';
@@ -115,7 +115,10 @@
 		onDragSession
 	}: Props = $props();
 
-	/** A row that moves up the list (a new message) slides there instead of jumping. */
+	/**
+	 * A row that moves up the list (a new message) slides there instead of jumping. One that only
+	 * changed width, as every row does when the list's scrollbar comes or goes, stays still.
+	 */
 	const rowFlip = () => ({ duration: prefersReducedMotion() ? 0 : 240, easing: cubicOut });
 
 	const snapshot = $derived(runtime.snapshot);
@@ -420,7 +423,7 @@
 				{#each archivedSessions as session (session.id)}
 					{@const status = statusOf(session)}
 					{@const unread = unreadOf(session)}
-					<div class="row-flip" animate:flip={rowFlip()}>
+					<div class="row-flip" animate:moveFlip={rowFlip()}>
 						<SessionRow
 							{session}
 							{t}
@@ -485,7 +488,7 @@
 			{#each botRows as session (session.id)}
 				{@const status = statusOf(session)}
 				{@const unread = unreadOf(session)}
-				<div class="row-flip" animate:flip={rowFlip()}>
+				<div class="row-flip" animate:moveFlip={rowFlip()}>
 					<SessionRow
 						{session}
 						{t}
@@ -595,7 +598,7 @@
 					{#if open || group.sessions.some((row) => row.id === renamingSessionId)}
 						<div class="project-sessions">
 							{#each group.sessions as session (session.id)}
-								<div class="row-flip" animate:flip={rowFlip()}>
+								<div class="row-flip" animate:moveFlip={rowFlip()}>
 									<ProjectSessionRow
 										{session}
 										{t}

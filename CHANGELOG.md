@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Sidebar rows stay still when the list's scrollbar comes or goes
+
+- When a conversation added to or removed from the sidebar list made its scrollbar appear or disappear, every row stretched or squeezed sideways and settled back over a quarter of a second, with nothing having moved. Rows now animate only when they change place; a row that only got narrower or wider (by the scrollbar's width) stays still.
+
 ### Glass content reaches a project session
 
 - With Settings › Interface › Glass content on and the workbench split, a Bot's conversation let the glass through while a project session (Claude Code, Codex) in the next pane stayed solid. A project session now paints no ground of its own either and lets the card's glass through. It also carries a Bot conversation's `[data-ui="chat"]` and `[data-ui="transcript"]` hooks, so a stylesheet of yours (or a Bot's) reaches it ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)).
