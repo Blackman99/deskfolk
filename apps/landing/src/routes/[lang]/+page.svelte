@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Hero from '$lib/demo/Hero.svelte';
+  import Home from '$lib/home/Home.svelte';
   import Seo from '$lib/Seo.svelte';
   import { DICT, type Lang } from '$lib/i18n';
 
@@ -10,4 +10,4 @@
 
 <Seo {lang} title={t.seo.title} description={t.seo.description} imageAlt={t.seo.imageAlt} softwareSchema />
 
-<Hero {t} {lang} version={data.version} />
+<Home {lang} version={data.version} />

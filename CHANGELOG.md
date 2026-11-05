@@ -9,6 +9,13 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### Your lines' bubble follows the accent you set
 
 - After changing the accent colour in Settings › Interface or through a Bot, the bubble of your own lines stayed the app's teal: it is a token of its own (`--you`), written out rather than taken from the accent. It now follows a changed accent unless you set it too: the accent itself in the light look, a step deeper in the dark one so white words still read ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)).
+### The home page shows six features
+
+- The home page is no longer a looping clip of the app but a page of features to scroll through, one chapter each: any model (local agents you're signed in to and compatible endpoints), carrying on a Claude Code terminal session, files opening in place, panes, remote control, and usage and spend.
+- Mochi and Pudding ride along: they hop from chapter to chapter as you scroll and act each feature out; their eyes follow the pointer, and a click gets a line back.
+- Every chapter can be played with: drag the plug to change what Pudding runs on, drag a terminal session into the app, drop a file from your computer to preview it (it opens in the page only and is never uploaded), drag tabs to split panes, open a "phone" in a new window that controls Pudding here, and drag the usage ball until it tucks into an edge.
+- On narrow screens the chapters simply follow one another; with reduced motion each shows its finished state and still takes input. The 30-second film is still behind "Watch the film" on the first screen.
+
 ### Remote access is no longer called experimental
 
 - Phone access through your own relay, its push reminders and the Mac screen have been verified, so the remote access guide, the overview and the roadmap describe it as a feature you can use: off by default, on macOS and Windows. Linux still has none.

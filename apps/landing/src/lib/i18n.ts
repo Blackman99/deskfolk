@@ -43,21 +43,6 @@ export type Dict = {
   };
   demo: {
     steps: StepCopy[];
-    /** What the first screen's still shows, for screen readers. */
-    stillLabel: string;
-  };
-  /** The home page: one screen, the headline as the demo's player. */
-  home: {
-    /** Each beat is one line of the headline and one clip of the real app. */
-    beats: { line: string; caption: string }[];
-    stageLabel: string;
-    download: string;
-    film: string;
-    filmDuration: string;
-    filmTitle: string;
-    filmDescription: string;
-    note: string;
-    close: string;
   };
   footer: {
     tagline: string;
@@ -139,7 +124,6 @@ const zh: Dict = {
     copied: '已复制'
   },
   demo: {
-    stillLabel: 'Deskfolk 窗口：左上是群聊「发布」，右上在播放做好的宣传短片，下面是这件事的看板和要点',
     steps: [
       {
         title: '先选工作区和模型端点',
@@ -196,21 +180,6 @@ const zh: Dict = {
         callout: '问一句「怎么样了」，制片自己回你。'
       }
     ]
-  },
-  home: {
-    beats: [
-      { line: '交出去。', caption: '一句话交代，它拆成任务；每一轮在做哪张、为什么，都画在流程图上。' },
-      { line: '离开。', caption: '关窗走开，应用替你盯着渲染。' },
-      { line: '回来看结果。', caption: '成片归在这件事、这张任务下，就在窗格里播；过了哪些检查，点开就看到。' }
-    ],
-    stageLabel: 'Deskfolk 真实界面演示',
-    download: '下载',
-    film: '看短片',
-    filmDuration: '0:30',
-    filmTitle: 'Deskfolk 短片',
-    filmDescription: '麻薯（你）一句话把活交给制片布丁：它拆成任务、写明谁做谁审；工作区外先问你；你走开，应用替你盯着；说停就停，下一句接着做；交上来的先过你确认过的检查，审片带依据判；回来看结果。',
-    note: 'macOS 已公证，Windows、Linux 预览版',
-    close: '关闭'
   },
   footer: {
     tagline: '本机运行的单人 agent 协作应用，支持 macOS，Windows 和 Linux 为预览版。',
@@ -352,7 +321,6 @@ const en: Dict = {
     copied: 'Copied'
   },
   demo: {
-    stillLabel: 'The Deskfolk window: the Launch group at the top left, the finished promo film playing beside it, and the job’s board and plan below',
     steps: [
       {
         title: 'Set the workspace and a model endpoint',
@@ -409,21 +377,6 @@ const en: Dict = {
         callout: 'Ask “How is it going?” and the Producer answers.'
       }
     ]
-  },
-  home: {
-    beats: [
-      { line: 'Hand it off.', caption: 'One line, and it lays out tickets; which one each turn works on, and why, is drawn on the flow.' },
-      { line: 'Walk away.', caption: 'Close the window; the app keeps an eye on the render.' },
-      { line: 'Return to results.', caption: 'The film is kept under its job and ticket and plays in a pane; the checks it passed are a click away.' }
-    ],
-    stageLabel: 'Deskfolk, the real app',
-    download: 'Download',
-    film: 'Watch the film',
-    filmDuration: '0:30',
-    filmTitle: 'The Deskfolk film',
-    filmDescription: 'Mochi (you) hands the job to Pudding, the Producer, in one line: it lays out tickets naming who makes and who reviews each; it asks before leaving the workspace; you walk away while the app keeps watch; say stop and it stops, your next line sets it going; what it hands in must pass the checks you confirmed, and the Reviewer rules with evidence; you come back to results.',
-    note: 'macOS notarized, Windows and Linux previews',
-    close: 'Close'
   },
   footer: {
     tagline: 'A single-user agent collaboration app for macOS, with Windows and Linux previews.',

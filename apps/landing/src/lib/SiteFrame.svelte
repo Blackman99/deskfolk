@@ -136,12 +136,6 @@
     flex-direction: column;
   }
 
-  /* The hero's stage grows with a wide screen, up to the clips' own 1480px beside the headline;
-     the nav and the footer line up with it. */
-  .site.home {
-    --page-max: 2080px;
-  }
-
   .nav {
     position: sticky;
     top: 0;
