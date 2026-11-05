@@ -26,6 +26,11 @@ export const zh = {
     history: "修改记录",
     report: "窗口回报",
   },
+  /** What a part holds, under its name in the phone's list of them. */
+  summary: {
+    allDefault: "都用默认",
+    changed: "改过 {n} 项",
+  },
   tokens: {
     empty: "还没改过令牌。",
     light: "浅色",
@@ -138,6 +143,10 @@ export const en: CopyShape<typeof zh> = {
     copy: "Words on screen",
     history: "Changes",
     report: "What windows found",
+  },
+  summary: {
+    allDefault: "All the app's own",
+    changed: "{n} changed",
   },
   tokens: {
     empty: "No tokens changed yet.",

@@ -1,8 +1,24 @@
-<script lang="ts">
+<script lang="ts" module>
 	import type { InterfaceRevisionHead } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { Snapshot } from '../snapshot.ts';
+
+	/** Who made a change: you, the Bot by name, or a Bot no longer on the roster. */
+	export function revisionWho(head: InterfaceRevisionHead, bots: Snapshot['bots'], c: Copy['ui']['history']): string {
+		if (head.actor === 'user') return c.you;
+		const bot = head.bot_id ? bots.find((item) => item.id === head.bot_id) : undefined;
+		return bot ? c.bot.replace('{name}', bot.name) : c.someBot;
+	}
+
+	/** When, as month, day and time of day. */
+	export function revisionWhen(iso: string, locale: 'zh' | 'en'): string {
+		const date = new Date(iso);
+		return Number.isNaN(date.getTime()) ? iso : date.toLocaleString(locale === 'en' ? 'en' : 'zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+	}
+</script>
+
+<script lang="ts">
+	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import Button from '../Button.svelte';
 	import { showToast } from '../toast.svelte.ts';
 	import SettingsCard from './SettingsCard.svelte';
@@ -15,16 +31,8 @@
 	const SHOWN_CHANGES = 3;
 	let busy = $state<string | null>(null);
 
-	function who(head: InterfaceRevisionHead): string {
-		if (head.actor === 'user') return c.you;
-		const bot = head.bot_id ? bots.find((item) => item.id === head.bot_id) : undefined;
-		return bot ? c.bot.replace('{name}', bot.name) : c.someBot;
-	}
-
-	function when(iso: string): string {
-		const date = new Date(iso);
-		return Number.isNaN(date.getTime()) ? iso : date.toLocaleString(locale === 'en' ? 'en' : 'zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-	}
+	const who = (head: InterfaceRevisionHead) => revisionWho(head, bots, c);
+	const when = (iso: string) => revisionWhen(iso, locale);
 
 	async function run(head: InterfaceRevisionHead, kind: 'undo' | 'restore'): Promise<void> {
 		const api = runtime.client;

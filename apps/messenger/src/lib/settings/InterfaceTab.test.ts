@@ -29,6 +29,12 @@ function aState(): InterfaceState {
   return { profile, revision: 2, revision_id: "r2", recent: [head(), head({ id: "r1", revision: 1, actor: "user", bot_id: null, undoable: false })] };
 }
 
+/** Opens a part of the page by its tab, as on a wide window. */
+async function pick(host: HTMLElement, section: string): Promise<void> {
+  click(host.querySelector(`[role="tab"][data-section="${section}"]`));
+  await sleep(0);
+}
+
 function setup(state: InterfaceState | null = aState()) {
   const calls: { name: string; args: unknown[] }[] = [];
   const answer: InterfaceResponse = { ...(state ?? aState()), reports: [{ at: "x", surface: "desktop", app_version: null, revision_id: "r2", applied: true, unmatched: [".nothing"], dropped: 2, bad_tokens: ["--bad"], floor_failed: [{ floor: "stop", why: "hidden" }] }] };
@@ -39,22 +45,74 @@ function setup(state: InterfaceState | null = aState()) {
   return { runtime, calls, snapshot: runtime.snapshot };
 }
 
-test("the page shows every section from the profile", async () => {
+test("the page shows every part of the profile, one tab at a time under the switch", async () => {
   const { runtime, snapshot } = setup();
   const { host, close } = render(InterfaceTab, { runtime, t, snapshot, locale: "zh" });
   await sleep(0);
-  const text = host.textContent ?? "";
-  for (const heading of Object.values(t.ui.sections)) expect(text).toContain(heading);
+  const tabs = [...host.querySelectorAll('[role="tab"]')].map((tab) => tab.getAttribute("data-section"));
+  expect(tabs).toEqual(["behaviour", "tokens", "css", "copy", "history"]);
+  expect(host.querySelector('[role="tab"][data-section="tokens"]')?.textContent).toContain("2");
+  expect(host.querySelector('[role="tab"][data-section="copy"]')?.textContent).toContain("1");
+  // The switch stays over every part; the page opens at the behaviour.
+  expect(host.querySelector('[data-floor="interface-pause"] #interface-enabled-toggle')).not.toBeNull();
+  expect(host.querySelector('[data-behaviour="send_key"] .is-active')?.textContent).toContain("Ctrl+回车");
+  expect(host.querySelector("[data-token]")).toBeNull();
+  expect(host.querySelector("textarea")).toBeNull();
+
+  await pick(host, "tokens");
   expect(host.querySelectorAll("[data-token]")).toHaveLength(2);
+  expect(host.querySelector("[data-behaviour]")).toBeNull();
+  await pick(host, "css");
   expect((host.querySelector("textarea") as HTMLTextAreaElement).value).toBe(".a { color: red }");
+  await pick(host, "copy");
   expect(host.querySelector('[data-copy-key="composer.send"]')?.textContent).toContain("发出去");
+  await pick(host, "history");
   expect(host.querySelector('[data-revision="r2"]')?.textContent).toContain("调优员");
   expect(host.querySelector('[data-revision="r2"]')?.textContent).toContain("还有 1 处");
   expect(host.querySelector('[data-revision="r1"]')?.textContent).toContain("你");
-  expect(host.querySelector('[data-behaviour="send_key"] .is-active')?.textContent).toContain("Ctrl+回车");
-  expect(host.querySelector('[data-floor="interface-pause"]')).not.toBeNull();
   expect(host.querySelector('[data-surface="desktop"]')?.textContent).toContain(".nothing");
+  expect(host.textContent).toContain(t.ui.sections.report);
+  expect(buttonByText(host, t.ui.resetAll)).not.toBeNull();
+  expect(host.querySelector('[data-floor="interface-pause"] #interface-enabled-toggle')).not.toBeNull();
   close();
+});
+
+test("on a phone the parts are a list, each opened as a page of its own and closed by Back", async () => {
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === "(max-width: 720px)",
+    media: query, onchange: null, addListener() {}, removeListener() {},
+    addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    const { runtime, snapshot } = setup();
+    const { host, app, close } = render(InterfaceTab, { runtime, t, snapshot, locale: "zh" });
+    const page = app as unknown as { sectionTitle(): string | null; backFromSection(): boolean };
+    await sleep(0);
+    expect(host.querySelector('[role="tab"]')).toBeNull();
+    expect(host.querySelector("#interface-enabled-toggle")).not.toBeNull();
+    const rows = [...host.querySelectorAll(".section-list-row")];
+    expect(rows.map((row) => row.getAttribute("data-section"))).toEqual(["behaviour", "tokens", "css", "copy", "history"]);
+    expect(rows[0].textContent).toContain("改过 1 项");
+    expect(rows[1].textContent).toContain("改过 2 项");
+    expect(rows[2].textContent).toContain("17 字");
+    expect(rows[4].textContent).toContain("调优员");
+    expect(page.sectionTitle()).toBeNull();
+
+    click(rows[1]);
+    await sleep(0);
+    expect(host.querySelectorAll("[data-token]")).toHaveLength(2);
+    expect(host.querySelector(".section-list-row")).toBeNull();
+    expect(page.sectionTitle()).toBe(t.ui.sections.tokens);
+
+    expect(page.backFromSection()).toBe(true);
+    await sleep(0);
+    expect(host.querySelector(".section-list-row")).not.toBeNull();
+    expect(page.backFromSection()).toBe(false);
+    close();
+  } finally {
+    window.matchMedia = previousMatchMedia;
+  }
 });
 
 test("the enabled switch and the behaviour choices patch the profile", async () => {
@@ -71,6 +129,7 @@ test("the enabled switch and the behaviour choices patch the profile", async () 
 test("removing a token sends null for that look", async () => {
   const { runtime, calls, snapshot } = setup();
   const { host, close } = render(InterfaceTab, { runtime, t, snapshot, locale: "zh" });
+  await pick(host, "tokens");
   click(host.querySelector('[data-token="--accent"][data-side="dark"] button'));
   await sleep(0);
   const patch = calls.find((call) => call.name === "patchInterface")!.args[0] as { patch: unknown };
@@ -81,6 +140,7 @@ test("removing a token sends null for that look", async () => {
 test("undo and restore call the revision endpoints; only an undoable change offers undo", async () => {
   const { runtime, calls, snapshot } = setup();
   const { host, close } = render(InterfaceTab, { runtime, t, snapshot, locale: "zh" });
+  await pick(host, "history");
   expect(host.querySelectorAll('[data-action="undo"]')).toHaveLength(1);
   click(host.querySelector('[data-revision="r2"] [data-action="undo"]'));
   await sleep(0);
@@ -93,6 +153,7 @@ test("undo and restore call the revision endpoints; only an undoable change offe
 test("putting everything back asks first, then resets the four parts", async () => {
   const { runtime, calls, snapshot } = setup();
   const { host, close } = render(InterfaceTab, { runtime, t, snapshot, locale: "zh" });
+  await pick(host, "history");
   click(buttonByText(host, t.ui.resetAll));
   expect(calls.some((call) => call.name === "patchInterface")).toBe(false);
   click(buttonByText(host, t.ui.resetAll));
@@ -105,6 +166,7 @@ test("putting everything back asks first, then resets the four parts", async () 
 test("the stylesheet saves a second after typing stops, against the revision it was loaded at", async () => {
   const { runtime, calls, snapshot } = setup();
   const { host, close } = render(InterfaceTab, { runtime, t, snapshot, locale: "zh" });
+  await pick(host, "css");
   const area = host.querySelector("textarea") as HTMLTextAreaElement;
   area.value = ".b {}";
   area.dispatchEvent(new Event("input", { bubbles: true }));

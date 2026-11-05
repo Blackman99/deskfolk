@@ -128,6 +128,7 @@
 
 	let mcpSettings = $state<McpSettings>();
 	let modelsTab = $state<ModelsTab>();
+	let interfaceTab = $state<InterfaceTab>();
 	let agentsTab = $state<AgentsTab>();
 
 	// Lessons the app learned (ADR 0050, engine level 8): the tab is there once there is one.
@@ -193,6 +194,7 @@
 		if (mcpSettings?.backFromEditor()) return true;
 		if (promptsSettings?.backFromEditor()) return true;
 		if (activeSettingsTab === 'models' && modelsTab?.backFromSection()) return true;
+		if (activeSettingsTab === 'interface' && interfaceTab?.backFromSection()) return true;
 		if (activeSettingsTab === 'agents' && agentsTab?.backFromSection()) return true;
 		if (activeSettingsTab === 'prompts' && promptsSettings?.backFromSection()) return true;
 		if (!mobileSettingsDetail) return false;
@@ -262,6 +264,8 @@
 	const mainTitle = $derived(
 		(activeSettingsTab === 'models'
 			? modelsTab?.sectionTitle()
+			: activeSettingsTab === 'interface'
+				? interfaceTab?.sectionTitle()
 			: activeSettingsTab === 'agents'
 				? agentsTab?.sectionTitle()
 				: activeSettingsTab === 'prompts'
@@ -477,9 +481,9 @@
 					>✕</button>
 				</div>
 
-			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'} class:is-prompts={activeSettingsTab === 'prompts'} class:is-models={activeSettingsTab === 'models'}>
-				<!-- Models and Prompts scroll their own page, so they show these there. -->
-				{#if activeSettingsTab !== 'models' && activeSettingsTab !== 'prompts'}{@render settingsNotices()}{/if}
+			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'} class:is-prompts={activeSettingsTab === 'prompts'} class:is-models={activeSettingsTab === 'models'} class:is-interface={activeSettingsTab === 'interface'}>
+				<!-- Models, Prompts and Interface scroll their own page, so they show these there. -->
+				{#if activeSettingsTab !== 'models' && activeSettingsTab !== 'prompts' && activeSettingsTab !== 'interface'}{@render settingsNotices()}{/if}
 
 				{#if activeSettingsTab === 'general'}
 					<GeneralTab
@@ -500,7 +504,7 @@
 				{:else if activeSettingsTab === 'behavior' && behaviorTabVisible}
 					<BehaviorTab {t} />
 				{:else if activeSettingsTab === 'interface' && interfaceTabVisible}
-					<InterfaceTab {runtime} {t} {snapshot} {locale} phone={!workbench} />
+					<InterfaceTab bind:this={interfaceTab} {runtime} {t} {snapshot} {locale} phone={!workbench} notices={settingsNotices} />
 				{:else if activeSettingsTab === 'models'}
 					<ModelsTab bind:this={modelsTab} {runtime} {t} {snapshot} notices={settingsNotices}>
 						{#snippet endpoints()}
@@ -645,9 +649,10 @@
 		padding: 18px 24px;
 	}
 
-	/* Models and Prompts keep their tabs above a scroll of their own. */
+	/* Models, Prompts and Interface keep their tabs above a scroll of their own. */
 	.settings-main > .modal-body.is-models,
-	.settings-main > .modal-body.is-prompts {
+	.settings-main > .modal-body.is-prompts,
+	.settings-main > .modal-body.is-interface {
 		padding: 0;
 		overflow: hidden;
 		display: flex;

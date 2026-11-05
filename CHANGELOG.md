@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Settings › Interface fits the window
+
+- Settings › Interface was one page holding everything, nearly seven times the dialog's height with a long history or many tokens. It is now in five parts, as Models is: behaviour, tokens, custom CSS, the words on screen and the history (with what each kind of window found, putting everything back, and the key back to the default). The switch for the whole custom interface stays above them, so turning it off is never a tab away. On a phone the parts are a list, each row saying what it has changed, and a row opens as a page of its own ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)).
+
 ### Your lines' bubble follows the accent you set
 
 - After changing the accent colour in Settings › Interface or through a Bot, the bubble of your own lines stayed the app's teal: it is a token of its own (`--you`), written out rather than taken from the accent. It now follows a changed accent unless you set it too: the accent itself in the light look, a step deeper in the dark one so white words still read ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)).
