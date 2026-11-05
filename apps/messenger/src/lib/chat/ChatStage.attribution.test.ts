@@ -31,7 +31,7 @@ test("no line says where it is filed, and its menu offers no way to change it, o
       expect(row.textContent).not.toContain("归属");
       row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
       flushSync();
-      const menu = host.querySelector(".msg-context-menu")!;
+      const menu = document.querySelector(".msg-context-menu")!;
       expect(menu.textContent).not.toContain("归属");
       expect(menu.querySelector('[data-job-view="trace"]')).not.toBeNull();
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));

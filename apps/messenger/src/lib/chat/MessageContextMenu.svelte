@@ -159,179 +159,198 @@
 			cleanup?.();
 		};
 	});
+
+	/**
+	 * On `<body>`, so the menu lands at the pointer it was opened from. Its place is the click's
+	 * `clientX` / `clientY`, the window's coordinates, and a stylesheet of your own (ADR 0106) with
+	 * a `backdrop-filter`, `filter` or `transform` on the conversation or its pane makes that the box
+	 * `fixed` resolves against: the menu opened a pane's width and a header's height away.
+	 */
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return { destroy: () => node.remove() };
+	}
 </script>
 
-{#if sheet}
-	<!-- Behind the sheet: a tap here lands outside the menu, which closes it. -->
-	<div class="msg-sheet-scrim" aria-hidden="true"></div>
-{/if}
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<div
-	bind:this={menuEl}
-	class="msg-context-menu"
-	class:is-sheet={sheet}
-	style={sheet ? undefined : `left: ${pos.x}px; top: ${pos.y}px;`}
-	role="menu"
-	tabindex="-1"
-	oncontextmenu={(e) => {
-		e.preventDefault();
-		e.stopPropagation();
-	}}
-	onclick={(e) => e.stopPropagation()}
-	onpointerdown={(e) => e.stopPropagation()}
->
-	{#if sheet}<span class="msg-sheet-grabber" aria-hidden="true"></span>{/if}
-	<div class="msg-reaction-row flex items-center justify-between px-1 py-[3px]">
-		{#each QUICK_EMOJIS as emoji}
-			<button
-				type="button"
-				class="msg-reaction-btn"
-				title={emoji}
-				onclick={() => {
-					onReaction(emoji);
-					onClose();
-				}}
-			>
-				{emoji}
-			</button>
-		{/each}
-	</div>
-
-	<div class="msg-context-divider" role="separator"></div>
-
-	<button
-		type="button"
-		class="msg-context-menu-item"
-		role="menuitem"
-		disabled={!data.canReply}
-		onclick={() => {
-			if (data.canReply) {
-				onReply();
-				onClose();
-			}
+<!-- Scrim and menu move to <body> together, as one node: see `portal`. -->
+<div class="msg-context-layer" use:portal>
+	{#if sheet}
+		<!-- Behind the sheet: a tap here lands outside the menu, which closes it. -->
+		<div class="msg-sheet-scrim" aria-hidden="true"></div>
+	{/if}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		bind:this={menuEl}
+		class="msg-context-menu"
+		class:is-sheet={sheet}
+		style={sheet ? undefined : `left: ${pos.x}px; top: ${pos.y}px;`}
+		role="menu"
+		tabindex="-1"
+		oncontextmenu={(e) => {
+			e.preventDefault();
+			e.stopPropagation();
 		}}
+		onclick={(e) => e.stopPropagation()}
+		onpointerdown={(e) => e.stopPropagation()}
 	>
-		<Icon name="reply" />
-		<span>{t.chat.replyMessage}</span>
+		{#if sheet}<span class="msg-sheet-grabber" aria-hidden="true"></span>{/if}
+		<div class="msg-reaction-row flex items-center justify-between px-1 py-[3px]">
+			{#each QUICK_EMOJIS as emoji}
+				<button
+					type="button"
+					class="msg-reaction-btn"
+					title={emoji}
+					onclick={() => {
+						onReaction(emoji);
+						onClose();
+					}}
+				>
+					{emoji}
+				</button>
+			{/each}
+		</div>
+
+		<div class="msg-context-divider" role="separator"></div>
+
+		<button
+			type="button"
+			class="msg-context-menu-item"
+			role="menuitem"
+			disabled={!data.canReply}
+			onclick={() => {
+				if (data.canReply) {
+					onReply();
+					onClose();
+				}
+			}}
+		>
+			<Icon name="reply" />
+			<span>{t.chat.replyMessage}</span>
+			</button>
+
+			{#if onEdit}
+				<button
+					type="button"
+					class="msg-context-menu-item"
+					role="menuitem"
+					onclick={() => {
+						onEdit();
+						onClose();
+					}}
+				>
+					<Icon name="edit" />
+					<span>{t.chat.editMessage}</span>
+				</button>
+			{/if}
+
+		<button
+			type="button"
+			class="msg-context-menu-item"
+			role="menuitem"
+			disabled={!data.canCopy}
+			onclick={() => {
+				if (data.canCopy) {
+					onCopy(selectedText || message.body);
+					onClose();
+				}
+			}}
+		>
+			<Icon name="copy" />
+			<span>{t.chat.copyMessage}</span>
 		</button>
 
-		{#if onEdit}
+		{#if onSelectText && data.canCopy}
 			<button
 				type="button"
 				class="msg-context-menu-item"
 				role="menuitem"
 				onclick={() => {
-					onEdit();
+					onSelectText();
 					onClose();
 				}}
 			>
-				<Icon name="edit" />
-				<span>{t.chat.editMessage}</span>
+				<Icon name="text-cursor" />
+				<span>{t.chat.selectText}</span>
 			</button>
 		{/if}
 
-	<button
-		type="button"
-		class="msg-context-menu-item"
-		role="menuitem"
-		disabled={!data.canCopy}
-		onclick={() => {
-			if (data.canCopy) {
-				onCopy(selectedText || message.body);
-				onClose();
-			}
-		}}
-	>
-		<Icon name="copy" />
-		<span>{t.chat.copyMessage}</span>
-	</button>
+		<button
+			type="button"
+			class="msg-context-menu-item"
+			role="menuitem"
+			disabled={!data.canOpenFileTree}
+			onclick={() => {
+				if (data.canOpenFileTree) {
+					onOpenFileTree(data.targetPath);
+					onClose();
+				}
+			}}
+			title={!data.canOpenFileTree ? t.chat.noAssociatedFiles : (data.targetPath ?? '')}
+		>
+			<Icon name="folder" />
+			<span>{t.chat.openAssociatedFileTree}</span>
+		</button>
 
-	{#if onSelectText && data.canCopy}
+		{#if data.canShowTrace || data.canShowLine}
+			<!-- The job this line is in, as one tab (ADR 0086), on this line's card; a line in no job has its own flow (ADR 0083). -->
+			<button
+				type="button"
+				class="msg-context-menu-item"
+				role="menuitem"
+				data-job-view="trace"
+				onclick={() => {
+					onShowTrace();
+					onClose();
+				}}
+			>
+				<Icon name="hierarchy" />
+				<span>{t.chat.jobView.trace}</span>
+			</button>
+		{/if}
+
+		{#if data.associatedFiles.length > 1}
+			<div class="msg-context-sublist flex flex-col gap-[1px] pl-6 pr-1 pb-1">
+				{#each data.associatedFiles.slice(0, 4) as file}
+					<button
+						type="button"
+						class="msg-context-subitem"
+						role="menuitem"
+						onclick={() => {
+							onOpenFileTree(file);
+							onClose();
+						}}
+						title={file}
+					>
+						<span class="subitem-bullet">›</span>
+						<span class="subitem-name overflow-hidden text-ellipsis whitespace-nowrap">{file}</span>
+					</button>
+				{/each}
+			</div>
+		{/if}
+
+		<div class="msg-context-divider" role="separator"></div>
+
 		<button
 			type="button"
 			class="msg-context-menu-item"
 			role="menuitem"
 			onclick={() => {
-				onSelectText();
+				onCopyId();
 				onClose();
 			}}
 		>
-			<Icon name="text-cursor" />
-			<span>{t.chat.selectText}</span>
+			<Icon name="hash" />
+			<span>{t.chat.copyMessageId}</span>
 		</button>
-	{/if}
-
-	<button
-		type="button"
-		class="msg-context-menu-item"
-		role="menuitem"
-		disabled={!data.canOpenFileTree}
-		onclick={() => {
-			if (data.canOpenFileTree) {
-				onOpenFileTree(data.targetPath);
-				onClose();
-			}
-		}}
-		title={!data.canOpenFileTree ? t.chat.noAssociatedFiles : (data.targetPath ?? '')}
-	>
-		<Icon name="folder" />
-		<span>{t.chat.openAssociatedFileTree}</span>
-	</button>
-
-	{#if data.canShowTrace || data.canShowLine}
-		<!-- The job this line is in, as one tab (ADR 0086), on this line's card; a line in no job has its own flow (ADR 0083). -->
-		<button
-			type="button"
-			class="msg-context-menu-item"
-			role="menuitem"
-			data-job-view="trace"
-			onclick={() => {
-				onShowTrace();
-				onClose();
-			}}
-		>
-			<Icon name="hierarchy" />
-			<span>{t.chat.jobView.trace}</span>
-		</button>
-	{/if}
-
-	{#if data.associatedFiles.length > 1}
-		<div class="msg-context-sublist flex flex-col gap-[1px] pl-6 pr-1 pb-1">
-			{#each data.associatedFiles.slice(0, 4) as file}
-				<button
-					type="button"
-					class="msg-context-subitem"
-					role="menuitem"
-					onclick={() => {
-						onOpenFileTree(file);
-						onClose();
-					}}
-					title={file}
-				>
-					<span class="subitem-bullet">›</span>
-					<span class="subitem-name overflow-hidden text-ellipsis whitespace-nowrap">{file}</span>
-				</button>
-			{/each}
-		</div>
-	{/if}
-
-	<div class="msg-context-divider" role="separator"></div>
-
-	<button
-		type="button"
-		class="msg-context-menu-item"
-		role="menuitem"
-		onclick={() => {
-			onCopyId();
-			onClose();
-		}}
-	>
-		<Icon name="hash" />
-		<span>{t.chat.copyMessageId}</span>
-	</button>
+	</div>
 </div>
 
 <style>
+	/* Lays nothing out: the scrim and the menu are `fixed` against the window. */
+	.msg-context-layer {
+		display: contents;
+	}
+
 	.msg-context-menu {
 		position: fixed;
 		z-index: 1000;

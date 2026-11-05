@@ -73,21 +73,21 @@ for (const [label, session] of [
 }
 
 test("an open image and its controls follow live theme changes", () => {
-  const { host, close } = render(MessageImageLightbox, {
+  const { close } = render(MessageImageLightbox, {
     attachment: picture, src: "blob:transparent", srcOriginalSize: 1024, api: null, t, onClose: () => {},
   });
   try {
-    const image = host.querySelector<HTMLImageElement>(".msg-image-full")!;
+    const image = document.querySelector<HTMLImageElement>(".msg-image-full")!;
     for (const theme of themes) {
       document.documentElement.dataset.theme = theme.name;
-      expect(getComputedStyle(host.querySelector(".msg-image-frame")!).backgroundColor).toBe(theme.pane);
+      expect(getComputedStyle(document.querySelector(".msg-image-frame")!).backgroundColor).toBe(theme.pane);
       expect(getComputedStyle(image).backgroundColor).toBe(theme.pane);
       for (const selector of [".msg-image-close", ".msg-image-original"]) {
-        const style = getComputedStyle(host.querySelector(selector)!);
+        const style = getComputedStyle(document.querySelector(selector)!);
         expect(style.backgroundColor).toBe(theme.control);
         expect(style.color).toBe(theme.ink);
       }
-      expect(host.querySelector(".msg-image-full")).toBe(image);
+      expect(document.querySelector(".msg-image-full")).toBe(image);
       expect(image.getAttribute("src")).toBe("blob:transparent");
     }
   } finally {
@@ -98,7 +98,7 @@ test("an open image and its controls follow live theme changes", () => {
 for (const theme of themes) {
   test(`${theme.name} image loading uses the theme surface and progress colour`, async () => {
     document.documentElement.dataset.theme = theme.name;
-    const { host, close } = render(MessageImageLightbox, {
+    const { close } = render(MessageImageLightbox, {
       attachment: picture,
       origin: { top: 20, left: 20, width: 36, height: 36 },
       api: { kind: "local", getAttachmentBlob: () => new Promise<Blob>(() => {}) } as never,
@@ -107,11 +107,11 @@ for (const theme of themes) {
     try {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       flushSync();
-      expect(getComputedStyle(host.querySelector(".msg-image-frame")!).backgroundColor).toBe(theme.pane);
-      const waiting = getComputedStyle(host.querySelector(".msg-image-waiting")!);
+      expect(getComputedStyle(document.querySelector(".msg-image-frame")!).backgroundColor).toBe(theme.pane);
+      const waiting = getComputedStyle(document.querySelector(".msg-image-waiting")!);
       expect(waiting.backgroundColor).toBe(theme.pane);
       expect(waiting.color).toBe(theme.ink);
-      expect(getComputedStyle(host.querySelector(".msg-image-loading-fill")!).backgroundColor).toBe(theme.accent);
+      expect(getComputedStyle(document.querySelector(".msg-image-loading-fill")!).backgroundColor).toBe(theme.accent);
     } finally {
       close();
     }
@@ -119,16 +119,16 @@ for (const theme of themes) {
 
   test(`${theme.name} image failure remains readable`, async () => {
     document.documentElement.dataset.theme = theme.name;
-    const { host, close } = render(MessageImageLightbox, {
+    const { close } = render(MessageImageLightbox, {
       attachment: picture,
       api: { kind: "local", getAttachmentBlob: async () => { throw new Error("missing"); } } as never,
       t, onClose: () => {},
     });
     try {
       await settle();
-      expect(host.querySelector(".msg-image-status")?.textContent).toBe(t.stream.artifactMissing);
-      expect(getComputedStyle(host.querySelector(".msg-image-status")!).color).toBe(theme.ink);
-      expect(getComputedStyle(host.querySelector(".msg-image-frame")!).backgroundColor).toBe(theme.pane);
+      expect(document.querySelector(".msg-image-status")?.textContent).toBe(t.stream.artifactMissing);
+      expect(getComputedStyle(document.querySelector(".msg-image-status")!).color).toBe(theme.ink);
+      expect(getComputedStyle(document.querySelector(".msg-image-frame")!).backgroundColor).toBe(theme.pane);
     } finally {
       close();
     }

@@ -43,12 +43,6 @@
 		const from = ev.currentTarget instanceof HTMLElement ? ev.currentTarget : null;
 		enlarged = { id, origin: pictureOrigin(from), placeholder: pictureStandIn(from) };
 	}
-
-	/** The composer is a floating, click-through layer: `fixed` inside it would not cover the app or take a click. */
-	function portal(node: HTMLElement) {
-		document.body.appendChild(node);
-		return { destroy: () => node.remove() };
-	}
 </script>
 
 <div class="composer-attachments-bar">
@@ -123,18 +117,17 @@
 </div>
 
 {#if enlargedFile || enlargedPath}
-	<div use:portal>
-		<MessageImageLightbox
-			src={enlargedFile?.previewUrl ?? null}
-			label={enlargedFile?.name ?? null}
-			relpath={enlargedPath?.path ?? null}
-			placeholder={enlargedPath ? (enlarged?.placeholder ?? null) : null}
-			origin={enlarged?.origin ?? null}
-			{api}
-			{t}
-			onClose={() => (enlarged = null)}
-		/>
-	</div>
+	<!-- Moves itself to <body>: the composer is a floating, click-through layer. -->
+	<MessageImageLightbox
+		src={enlargedFile?.previewUrl ?? null}
+		label={enlargedFile?.name ?? null}
+		relpath={enlargedPath?.path ?? null}
+		placeholder={enlargedPath ? (enlarged?.placeholder ?? null) : null}
+		origin={enlarged?.origin ?? null}
+		{api}
+		{t}
+		onClose={() => (enlarged = null)}
+	/>
 {/if}
 
 <style>

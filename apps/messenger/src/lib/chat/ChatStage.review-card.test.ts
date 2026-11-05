@@ -72,8 +72,11 @@ test("a card's chip opens its file over the whole app; the entry after the chips
 
     click(chips[0]);
     await settle();
-    const overlay = host.querySelector(".msg-file-overlay");
+    const overlay = document.querySelector(".msg-file-overlay");
     expect(overlay).not.toBeNull();
+    // On <body>, not in the conversation: glass of your own on a pane (ADR 0106) would shut it in.
+    expect(host.querySelector(".msg-file-overlay")).toBeNull();
+    expect(overlay?.parentElement).toBe(document.body);
     expect(overlay?.querySelector(".msg-file-name")?.textContent).toBe("master.mp4");
     for (let i = 0; i < 20 && !overlay?.querySelector(".artifact-pane"); i++) await settle();
     expect(overlay?.querySelector(".artifact-pane")).not.toBeNull();
@@ -82,11 +85,11 @@ test("a card's chip opens its file over the whole app; the entry after the chips
     expect(opened).toEqual([]);
     click(overlay?.querySelector(".msg-file-close"));
     await settle();
-    expect(host.querySelector(".msg-file-overlay")).toBeNull();
+    expect(document.querySelector(".msg-file-overlay")).toBeNull();
 
     click(row.querySelector(".attachment-bundle-btn"));
     expect(opened).toEqual([`${dir}/master.mp4`]);
-    expect(host.querySelector(".msg-file-overlay")).toBeNull();
+    expect(document.querySelector(".msg-file-overlay")).toBeNull();
   } finally { close(); }
 });
 
@@ -109,7 +112,7 @@ test("a chip for a file the card only names opens over the app from the workspac
   try {
     click(host.querySelector('[data-message-id="card"] .attachment-file-btn'));
     await settle();
-    const overlay = host.querySelector(".msg-file-overlay");
+    const overlay = document.querySelector(".msg-file-overlay");
     for (let i = 0; i < 20 && !overlay?.querySelector(".artifact-pane"); i++) await settle();
     expect(overlay?.querySelector(".artifact-pane")).not.toBeNull();
     expect(overlay?.querySelector(".msg-file-name")?.textContent).toBe("draft.md");

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### An enlarged picture covers the whole window again in a split
+
+- With glass of your own on the conversation (a `backdrop-filter` on `[data-ui="chat"]` or `[data-ui="pane"]` in your interface profile's stylesheet), clicking a picture in a reply darkened only that conversation's pane, and the picture itself landed a pane's width off the side of the window; in a split it could not be seen at all. The right-click menu on a message opened the same distance from the pointer, and a file opened from a card filled only its pane. A `backdrop-filter`, `filter` or `transform` makes an element the box `position: fixed` measures from, so all three now sit on the page itself rather than inside the conversation, and cover the window whatever a stylesheet does to the panes. Your glass is unchanged.
+
 ### Projects keep their order when a session starts
 
 - Starting a session, sending a line or reading in one project took that project to the top of the Projects section and pushed the others down; pressing a directory row's "+" left a different project under the pointer. Projects now go by when each got its first session, newest first, and the ones already listed stay put: only that project's own list of sessions changes (still newest first). A folder used for the first time comes in on top, and pinning a project's oldest session does not move the project either ([ADR 0095](docs/adr/0095-project-sessions.md) decision 27).

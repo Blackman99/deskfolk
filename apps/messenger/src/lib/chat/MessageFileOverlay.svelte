@@ -66,10 +66,20 @@
 	function onBackdrop(ev: MouseEvent): void {
 		if (ev.target === ev.currentTarget) close();
 	}
+
+	/**
+	 * On `<body>`, so it covers the window whatever it was opened from: a stylesheet of your own
+	 * (ADR 0106) with a `backdrop-filter`, `filter` or `transform` on the conversation or its pane
+	 * makes that the box `fixed` resolves against.
+	 */
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return { destroy: () => node.remove() };
+	}
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
-<div class="msg-file-overlay" role="presentation" onclick={onBackdrop}>
+<div class="msg-file-overlay" role="presentation" use:portal onclick={onBackdrop}>
 	<div class="msg-file-frame" role="dialog" aria-modal="true" aria-label={name}>
 		<!-- The phone's pane has its own bar, back and name; the desktop's has none, so this is it. -->
 		<header class="msg-file-head">

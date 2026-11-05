@@ -40,41 +40,62 @@ test("a remote enlargement shows the copy and swaps in the original on request",
     report = onProgress;
     return new Promise<Blob>((resolve) => { resolveOriginal = resolve; });
   });
-  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  const { close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
   try {
     await settle();
     // Nothing to stand in for it, so the 256 px copy comes first, then the 1600 px one.
     expect(asked.map((row) => row?.size)).toEqual(["thumb", "preview"]);
-    const copyUrl = host.querySelector<HTMLImageElement>(".msg-image-full")?.src;
+    const copyUrl = document.querySelector<HTMLImageElement>(".msg-image-full")?.src;
     expect(copyUrl).toBeTruthy();
-    const offer = host.querySelector<HTMLButtonElement>(".msg-image-original");
+    const offer = document.querySelector<HTMLButtonElement>(".msg-image-original");
     expect(offer?.textContent).toContain("查看原图（3.6 MB）");
     offer!.click();
     flushSync();
     expect(asked[2]?.size).toBeUndefined();
     report?.({ loaded: 1_048_576, total: ORIGINAL });
     flushSync();
-    expect(host.querySelector(".msg-image-original")?.textContent).toContain("正在载入原图 1.0 MB / 3.6 MB");
-    expect(host.querySelector<HTMLImageElement>(".msg-image-full")?.src).toBe(copyUrl);
+    expect(document.querySelector(".msg-image-original")?.textContent).toContain("正在载入原图 1.0 MB / 3.6 MB");
+    expect(document.querySelector<HTMLImageElement>(".msg-image-full")?.src).toBe(copyUrl);
     resolveOriginal(new Blob([new Uint8Array([9])], { type: "image/png" }));
     await settle();
-    expect(host.querySelector(".msg-image-original")).toBeNull();
-    expect(host.querySelector<HTMLImageElement>(".msg-image-full")?.src).not.toBe(copyUrl);
+    expect(document.querySelector(".msg-image-original")).toBeNull();
+    expect(document.querySelector<HTMLImageElement>(".msg-image-full")?.src).not.toBe(copyUrl);
   } finally {
     close();
+  }
+});
+
+/**
+ * Glass of your own on a conversation (ADR 0106) — `backdrop-filter` on `[data-ui="chat"]` — made
+ * that pane the box `fixed` resolves against: the enlargement covered one pane of a split, with the
+ * picture a pane's width off the side of it. It lives on `<body>`, and goes with the opener.
+ */
+test("the enlargement covers the window from <body>, not from inside the pane that opened it", async () => {
+  const { api } = fakeApi("local", async () => new Blob([new Uint8Array([1])], { type: "image/png" }));
+  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  let closed = false;
+  try {
+    await settle();
+    expect(host.querySelector(".msg-image-lightbox")).toBeNull();
+    expect(document.querySelector(".msg-image-lightbox")?.parentElement).toBe(document.body);
+    close();
+    closed = true;
+    expect(document.querySelector(".msg-image-lightbox")).toBeNull();
+  } finally {
+    if (!closed) close();
   }
 });
 
 /** On the Mac the read is free, so the enlargement is the original and offers nothing. */
 test("a local enlargement is the original", async () => {
   const { api, asked } = fakeApi("local", async () => new Blob([new Uint8Array([1])], { type: "image/png" }));
-  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  const { close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
   try {
     await settle();
     expect(asked).toHaveLength(1);
     expect(asked[0]?.size).toBeUndefined();
-    expect(host.querySelector(".msg-image-full")).not.toBeNull();
-    expect(host.querySelector(".msg-image-original")).toBeNull();
+    expect(document.querySelector(".msg-image-full")).not.toBeNull();
+    expect(document.querySelector(".msg-image-original")).toBeNull();
   } finally {
     close();
   }
@@ -83,7 +104,7 @@ test("a local enlargement is the original", async () => {
 /** The preview pane hands over its own copy; enlarged, it still offers the original. */
 test("a handed-over copy offers the original and fetches it here", async () => {
   const { api, asked } = fakeApi("remote", async () => new Blob([new Uint8Array([9])], { type: "image/png" }));
-  const { host, close } = render(MessageImageLightbox, {
+  const { close } = render(MessageImageLightbox, {
     attachment: picture,
     src: "blob:copy",
     srcOriginalSize: ORIGINAL,
@@ -94,13 +115,13 @@ test("a handed-over copy offers the original and fetches it here", async () => {
   try {
     await settle();
     expect(asked).toHaveLength(0);
-    expect(host.querySelector<HTMLImageElement>(".msg-image-full")?.getAttribute("src")).toBe("blob:copy");
-    host.querySelector<HTMLButtonElement>(".msg-image-original")!.click();
+    expect(document.querySelector<HTMLImageElement>(".msg-image-full")?.getAttribute("src")).toBe("blob:copy");
+    document.querySelector<HTMLButtonElement>(".msg-image-original")!.click();
     await settle();
     expect(asked).toHaveLength(1);
     expect(asked[0]?.size).toBeUndefined();
-    expect(host.querySelector<HTMLImageElement>(".msg-image-full")?.getAttribute("src")).not.toBe("blob:copy");
-    expect(host.querySelector(".msg-image-original")).toBeNull();
+    expect(document.querySelector<HTMLImageElement>(".msg-image-full")?.getAttribute("src")).not.toBe("blob:copy");
+    expect(document.querySelector(".msg-image-original")).toBeNull();
   } finally {
     close();
   }
@@ -110,11 +131,11 @@ test("a handed-over copy offers the original and fetches it here", async () => {
 test("closing the enlargement stops the original on its way", async () => {
   const { api, asked } = fakeApi("remote", (options) =>
     options?.size ? Promise.resolve(scaledCopy()) : new Promise<Blob>(() => {}));
-  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  const { close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
   let closed = false;
   try {
     await settle();
-    host.querySelector<HTMLButtonElement>(".msg-image-original")!.click();
+    document.querySelector<HTMLButtonElement>(".msg-image-original")!.click();
     flushSync();
     const original = asked.find((row) => row && !row.size);
     expect(original?.signal?.aborted).toBe(false);
@@ -138,27 +159,27 @@ test("a thumbnail on hand stands in at the picture's shape while the real one ar
     report = onProgress;
     return new Promise<Blob>((resolve) => { resolvePreview = resolve; });
   });
-  const { host, close } = render(MessageImageLightbox, {
+  const { close } = render(MessageImageLightbox, {
     attachment: picture, placeholder: "blob:chip-thumb", api: api as never, t, onClose: () => {},
   });
   try {
     await settle();
     // No second thumbnail: the one on hand says the shape.
     expect(asked.map((row) => row?.size)).toEqual(["preview"]);
-    const img = host.querySelector<HTMLImageElement>(".msg-image-full");
+    const img = document.querySelector<HTMLImageElement>(".msg-image-full");
     expect(img?.getAttribute("src")).toBe("blob:chip-thumb");
     report?.({ loaded: 102_400, total: 409_600 });
     flushSync();
-    const status = host.querySelector(".msg-image-progress");
+    const status = document.querySelector(".msg-image-progress");
     expect(status?.getAttribute("aria-busy")).toBe("true");
     expect(status?.textContent).toContain("100.0 KB / 400.0 KB");
-    expect(host.querySelector(".msg-image-frame")?.classList.contains("is-loading")).toBe(false);
+    expect(document.querySelector(".msg-image-frame")?.classList.contains("is-loading")).toBe(false);
     resolvePreview(scaledCopy());
     await settle();
     // The same element, now the real picture: nothing re-grows.
-    expect(host.querySelector(".msg-image-full")).toBe(img);
+    expect(document.querySelector(".msg-image-full")).toBe(img);
     expect(img?.getAttribute("src")).not.toBe("blob:chip-thumb");
-    expect(host.querySelector(".msg-image-progress")).toBeNull();
+    expect(document.querySelector(".msg-image-progress")).toBeNull();
   } finally {
     close();
   }
@@ -167,13 +188,13 @@ test("a thumbnail on hand stands in at the picture's shape while the real one ar
 /** A picture no bigger than its thumbnail is the thumbnail: one request, and done. */
 test("a remote picture already thumbnail-sized is fetched once", async () => {
   const { api, asked } = fakeApi("remote", async () => new Blob([new Uint8Array([7])], { type: "image/png" }));
-  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  const { close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
   try {
     await settle();
     expect(asked.map((row) => row?.size)).toEqual(["thumb"]);
-    expect(host.querySelector(".msg-image-full")).not.toBeNull();
-    expect(host.querySelector(".msg-image-original")).toBeNull();
-    expect(host.querySelector(".msg-image-progress, .msg-image-waiting")).toBeNull();
+    expect(document.querySelector(".msg-image-full")).not.toBeNull();
+    expect(document.querySelector(".msg-image-original")).toBeNull();
+    expect(document.querySelector(".msg-image-progress, .msg-image-waiting")).toBeNull();
   } finally {
     close();
   }
@@ -187,16 +208,16 @@ test("before the first pixels the frame waits in place and the progress shows mi
     return new Promise<Blob>(() => {});
   });
   const origin = { top: 40, left: 80, width: 36, height: 36 };
-  const { host, close } = render(MessageImageLightbox, { attachment: picture, origin, api: api as never, t, onClose: () => {} });
+  const { close } = render(MessageImageLightbox, { attachment: picture, origin, api: api as never, t, onClose: () => {} });
   try {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     flushSync();
-    expect(host.querySelector(".msg-image-lightbox")?.classList.contains("is-shown")).toBe(true);
-    const frame = host.querySelector<HTMLElement>(".msg-image-frame")!;
+    expect(document.querySelector(".msg-image-lightbox")?.classList.contains("is-shown")).toBe(true);
+    const frame = document.querySelector<HTMLElement>(".msg-image-frame")!;
     expect([frame.style.width, frame.style.height]).toEqual(["36px", "36px"]);
     report?.({ loaded: 1_048_576, total: 3_727_854 });
     flushSync();
-    expect(host.querySelector(".msg-image-waiting")?.textContent).toContain("1.0 MB / 3.6 MB");
+    expect(document.querySelector(".msg-image-waiting")?.textContent).toContain("1.0 MB / 3.6 MB");
     expect([frame.style.width, frame.style.height]).toEqual(["36px", "36px"]);
   } finally {
     close();
@@ -246,27 +267,27 @@ test("a remote save fetches the original once and hands it to the share sheet", 
   let resolveOriginal!: (blob: Blob) => void;
   const { api, asked } = fakeApi("remote", (options) =>
     options?.size ? Promise.resolve(scaledCopy()) : new Promise<Blob>((resolve) => { resolveOriginal = resolve; }));
-  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  const { close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
   try {
     await settle();
-    const save = host.querySelector<HTMLButtonElement>(".msg-image-save");
+    const save = document.querySelector<HTMLButtonElement>(".msg-image-save");
     expect(save?.getAttribute("aria-label")).toBe("下载原图");
-    const copyUrl = host.querySelector<HTMLImageElement>(".msg-image-full")?.src;
+    const copyUrl = document.querySelector<HTMLImageElement>(".msg-image-full")?.src;
     save!.click();
     flushSync();
     expect(asked).toHaveLength(3);
     expect(asked[2]?.size).toBeUndefined();
     expect(save?.disabled).toBe(true);
     // The offer shows the download a save started.
-    expect(host.querySelector(".msg-image-original")?.textContent).toContain("正在载入原图");
+    expect(document.querySelector(".msg-image-original")?.textContent).toContain("正在载入原图");
     resolveOriginal(new Blob([new Uint8Array([9])], { type: "image/png" }));
     await settle();
     expect(phone.shared).toHaveLength(1);
     expect(phone.shared[0]?.[0]?.name).toBe("frame.png");
     expect(phone.shared[0]?.[0]?.type).toBe("image/png");
-    expect(host.querySelector(".msg-image-original")).toBeNull();
-    expect(host.querySelector<HTMLImageElement>(".msg-image-full")?.src).not.toBe(copyUrl);
-    host.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
+    expect(document.querySelector(".msg-image-original")).toBeNull();
+    expect(document.querySelector<HTMLImageElement>(".msg-image-full")?.src).not.toBe(copyUrl);
+    document.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
     // Opened in the tap itself, before any await.
     expect(phone.shared).toHaveLength(2);
     await settle();
@@ -287,21 +308,21 @@ test("a share sheet refused after the wait asks for one more tap", async () => {
   });
   const { api, asked } = fakeApi("remote", async (options) =>
     options?.size ? scaledCopy() : new Blob([new Uint8Array([9])], { type: "image/png" }));
-  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  const { close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
   try {
     await settle();
-    host.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
+    document.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
     await settle();
     await settle();
     expect(phone.shared).toHaveLength(1);
-    expect(host.querySelector(".msg-image-caption")?.textContent).toBe("原图已取回，再点一次下载");
-    expect(host.querySelector(".msg-image-save")?.classList.contains("is-ready")).toBe(true);
-    host.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
+    expect(document.querySelector(".msg-image-caption")?.textContent).toBe("原图已取回，再点一次下载");
+    expect(document.querySelector(".msg-image-save")?.classList.contains("is-ready")).toBe(true);
+    document.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
     expect(phone.shared).toHaveLength(2);
     await settle();
     expect(asked).toHaveLength(3);
-    expect(host.querySelector(".msg-image-caption")?.textContent).toBe("frame.png");
-    expect(host.querySelector(".msg-image-save")?.classList.contains("is-ready")).toBe(false);
+    expect(document.querySelector(".msg-image-caption")?.textContent).toBe("frame.png");
+    expect(document.querySelector(".msg-image-save")?.classList.contains("is-ready")).toBe(false);
   } finally {
     close();
     phone.restore();
@@ -312,10 +333,10 @@ test("a share sheet refused after the wait asks for one more tap", async () => {
 test("a picture that is already the original is saved without another request", async () => {
   const phone = onAPhone(async () => {});
   const { api, asked } = fakeApi("remote", async () => new Blob([new Uint8Array([7])], { type: "image/png" }));
-  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  const { close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
   try {
     await settle();
-    host.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
+    document.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
     expect(phone.shared).toHaveLength(1);
     await settle();
     expect(asked).toHaveLength(1);
@@ -329,17 +350,17 @@ test("an original that does not come says so under the picture", async () => {
   const phone = onAPhone(async () => {});
   const { api } = fakeApi("remote", (options) =>
     options?.size ? Promise.resolve(scaledCopy()) : Promise.reject(new Error("too large")));
-  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  const { close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
   try {
     await settle();
-    host.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
+    document.querySelector<HTMLButtonElement>(".msg-image-save")!.click();
     await settle();
     await settle();
     expect(phone.shared).toHaveLength(0);
-    expect(host.querySelector(".msg-image-caption")?.textContent).toBe("没能下载原图");
-    expect(host.querySelector<HTMLButtonElement>(".msg-image-save")?.disabled).toBe(false);
+    expect(document.querySelector(".msg-image-caption")?.textContent).toBe("没能下载原图");
+    expect(document.querySelector<HTMLButtonElement>(".msg-image-save")?.disabled).toBe(false);
     // The copy stays, and so does the offer.
-    expect(host.querySelector(".msg-image-original")).not.toBeNull();
+    expect(document.querySelector(".msg-image-original")).not.toBeNull();
   } finally {
     close();
     phone.restore();
@@ -349,11 +370,11 @@ test("an original that does not come says so under the picture", async () => {
 /** On the Mac the file is already on this machine. */
 test("a local enlargement offers no save", async () => {
   const { api } = fakeApi("local", async () => new Blob([new Uint8Array([1])], { type: "image/png" }));
-  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
+  const { close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => {} });
   try {
     await settle();
-    expect(host.querySelector(".msg-image-full")).not.toBeNull();
-    expect(host.querySelector(".msg-image-save")).toBeNull();
+    expect(document.querySelector(".msg-image-full")).not.toBeNull();
+    expect(document.querySelector(".msg-image-save")).toBeNull();
   } finally {
     close();
   }
@@ -363,10 +384,10 @@ test("a local enlargement offers no save", async () => {
 test("a click on the enlarged picture closes it", async () => {
   const { api } = fakeApi("local", async () => new Blob([new Uint8Array([1])], { type: "image/png" }));
   let closed = 0;
-  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => { closed += 1; } });
+  const { close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => { closed += 1; } });
   try {
     await settle();
-    host.querySelector<HTMLImageElement>(".msg-image-full")!.click();
+    document.querySelector<HTMLImageElement>(".msg-image-full")!.click();
     flushSync();
     expect(closed).toBe(1);
   } finally {
@@ -389,10 +410,10 @@ function touch(target: Element, type: string, id: number, x: number, y: number):
 test("a pinch zooms the enlargement and a tap brings it back before closing", async () => {
   const { api } = fakeApi("local", async () => new Blob([new Uint8Array([1])], { type: "image/png" }));
   let closed = 0;
-  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => { closed += 1; } });
+  const { close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => { closed += 1; } });
   try {
     await settle();
-    const frame = host.querySelector<HTMLElement>(".msg-image-frame")!;
+    const frame = document.querySelector<HTMLElement>(".msg-image-frame")!;
     expect(frame.style.transform).toBe("");
     touch(frame, "pointerdown", 1, 400, 380);
     touch(frame, "pointerdown", 2, 500, 380);
@@ -423,11 +444,11 @@ test("a pinch zooms the enlargement and a tap brings it back before closing", as
 test("a pinch that starts off the picture zooms it, and the buttons keep their taps", async () => {
   const { api } = fakeApi("local", async () => new Blob([new Uint8Array([1])], { type: "image/png" }));
   let closed = 0;
-  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => { closed += 1; } });
+  const { close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => { closed += 1; } });
   try {
     await settle();
-    const stage = host.querySelector<HTMLElement>(".msg-image-lightbox")!;
-    const frame = host.querySelector<HTMLElement>(".msg-image-frame")!;
+    const stage = document.querySelector<HTMLElement>(".msg-image-lightbox")!;
+    const frame = document.querySelector<HTMLElement>(".msg-image-frame")!;
     touch(stage, "pointerdown", 1, 400, 140);
     touch(frame, "pointerdown", 2, 400, 380);
     touch(stage, "pointermove", 1, 400, 20);
@@ -436,7 +457,7 @@ test("a pinch that starts off the picture zooms it, and the buttons keep their t
     touch(stage, "pointerup", 1, 400, 20);
     touch(frame, "pointerup", 2, 400, 500);
     // A finger on ✕ is no part of a pinch.
-    const closeButton = host.querySelector<HTMLElement>(".msg-image-close")!;
+    const closeButton = document.querySelector<HTMLElement>(".msg-image-close")!;
     touch(closeButton, "pointerdown", 3, 990, 30);
     touch(stage, "pointerdown", 4, 400, 380);
     touch(stage, "pointermove", 4, 300, 380);

@@ -28,7 +28,7 @@ function stage(messages: Message[], opts: { messageEdits?: boolean; session?: Se
   const menuFor = (id: string) => {
     segment(id).querySelector(".msg")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
     flushSync();
-    return [...view.host.querySelectorAll(".msg-context-menu-item")].map((item) => item.textContent?.trim());
+    return [...document.querySelectorAll(".msg-context-menu-item")].map((item) => item.textContent?.trim());
   };
   return { ...view, runtime, session, segment, menuFor };
 }
@@ -61,7 +61,8 @@ test("编辑 turns the bubble into the editor on its words; Enter saves, Esc put
   const s = stage([yours()]);
   try {
     s.menuFor("line-1");
-    click(buttonByText(s.host, t.chat.editMessage));
+    // The menu sits on <body> (see MessageContextMenu's `portal`).
+    click(buttonByText(document.querySelector<HTMLElement>(".msg-context-menu")!, t.chat.editMessage));
     const field = s.segment("line-1").querySelector<HTMLTextAreaElement>(".msg-editor textarea")!;
     expect(field.value).toBe("片长 30 秒");
     expect(s.segment("line-1").querySelector(".msg.is-editing")).not.toBeNull();
@@ -93,7 +94,7 @@ test("inside the editor a right-click or long-press is the system's: no message 
     field.dispatchEvent(menu);
     flushSync();
     expect(menu.defaultPrevented).toBe(false);
-    expect(s.host.querySelector(".msg-context-menu")).toBeNull();
+    expect(document.querySelector(".msg-context-menu")).toBeNull();
   } finally {
     s.close();
   }

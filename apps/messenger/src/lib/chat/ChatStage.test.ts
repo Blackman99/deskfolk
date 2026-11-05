@@ -199,7 +199,7 @@ for (const kind of ["user", "bot", "ask", "system"] as const) {
       }
       body.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
       flushSync();
-      expect(host.querySelector(".msg-context-menu")).not.toBeNull();
+      expect(document.querySelector(".msg-context-menu")).not.toBeNull();
       expect(selection.toString()).toBe(selectedText);
     } finally {
       window.getSelection()?.removeAllRanges();
@@ -247,10 +247,10 @@ for (const kind of ["user", "bot", "ask", "system"] as const) {
       flushSync();
 
       expect(selection.toString()).toBe("");
-      expect(host.querySelector(".msg-context-menu")).not.toBeNull();
+      expect(document.querySelector(".msg-context-menu")).not.toBeNull();
 
       // Find the copy button in the context menu
-      const copyBtn = Array.from(host.querySelectorAll<HTMLButtonElement>(".msg-context-menu-item"))
+      const copyBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".msg-context-menu-item"))
         .find((btn) => btn.textContent?.includes(t.chat.copyMessage));
       expect(copyBtn).toBeDefined();
       copyBtn?.click();
@@ -306,7 +306,7 @@ for (const kind of ["user", "bot", "ask", "system"] as const) {
       flushSync();
 
       expect(selection.toString()).toBe("");
-      expect(host.querySelector(".msg-context-menu")).not.toBeNull();
+      expect(document.querySelector(".msg-context-menu")).not.toBeNull();
     } finally {
       window.matchMedia = origMatchMedia;
       window.getSelection()?.removeAllRanges();
@@ -327,21 +327,21 @@ for (const kind of ["user", "bot", "ask", "system"] as const) {
       runtime, t, selected: session,
       onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
     });
-    const selectText = () => [...host.querySelectorAll<HTMLButtonElement>(".msg-context-menu-item")]
+    const selectText = () => [...document.querySelectorAll<HTMLButtonElement>(".msg-context-menu-item")]
       .find((button) => button.textContent?.trim() === t.chat.selectText);
     try {
       const segment = host.querySelector(`[data-message-id="select-text-${kind}"]`)!;
       // A mouse selects in the bubble itself, so its menu has nothing to add.
       segment.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }));
       flushSync();
-      expect(host.querySelector(".msg-context-menu")).not.toBeNull();
+      expect(document.querySelector(".msg-context-menu")).not.toBeNull();
       expect(selectText()).toBeUndefined();
 
       segment.dispatchEvent(new Event("touchstart", { bubbles: true, cancelable: true }));
       segment.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
       flushSync();
       click(selectText());
-      expect(host.querySelector(".msg-context-menu")).toBeNull();
+      expect(document.querySelector(".msg-context-menu")).toBeNull();
       const page = host.querySelector(".message-text");
       expect(page).not.toBeNull();
       if (kind === "user" || kind === "bot") {
@@ -419,7 +419,7 @@ test("left clicking a message does not add is-selected class, right clicking sel
   botSegment.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
   flushSync();
   expect(botSegment.classList.contains("is-selected")).toBe(true);
-  expect(host.querySelector(".msg-context-menu")).not.toBeNull();
+  expect(document.querySelector(".msg-context-menu")).not.toBeNull();
 
   // Padding and margin must not change when selected (no shaking / layout shift)
   const afterPadding = window.getComputedStyle(botSegment).padding;
@@ -431,7 +431,7 @@ test("left clicking a message does not add is-selected class, right clicking sel
   await new Promise((resolve) => setTimeout(resolve, 20));
 
   // Context menu must remain open after attaching listeners (no flickering/auto-dismiss)
-  expect(host.querySelector(".msg-context-menu")).not.toBeNull();
+  expect(document.querySelector(".msg-context-menu")).not.toBeNull();
 
   // A rendered picture keeps this menu closed so its own menu can copy the pixels.
   const image = document.createElement("img");
@@ -444,7 +444,7 @@ test("left clicking a message does not add is-selected class, right clicking sel
   flushSync();
   expect(onPicture.defaultPrevented).toBe(false);
   expect(onPicture.cancelBubble).toBe(false);
-  expect(host.querySelector(".msg-context-menu")).toBeNull();
+  expect(document.querySelector(".msg-context-menu")).toBeNull();
   expect(botSegment.classList.contains("is-selected")).toBe(false);
   const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 2 });
   image.dispatchEvent(down);
@@ -454,7 +454,7 @@ test("left clicking a message does not add is-selected class, right clicking sel
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   flushSync();
   expect(botSegment.classList.contains("is-selected")).toBe(false);
-  expect(host.querySelector(".msg-context-menu")).toBeNull();
+  expect(document.querySelector(".msg-context-menu")).toBeNull();
 
   close();
 });
@@ -580,7 +580,7 @@ test("a slow picture waits in its thumbnail's box, with the bytes received shown
     thumb.getBoundingClientRect = () =>
       ({ top: 40, left: 80, width: 36, height: 36, right: 116, bottom: 76, x: 80, y: 40, toJSON() {} }) as DOMRect;
     click(chip);
-    const frame = host.querySelector<HTMLElement>(".msg-image-frame");
+    const frame = document.querySelector<HTMLElement>(".msg-image-frame");
     expect(frame).not.toBeNull();
     // The first paint keeps the thumbnail's box; the spinner is already inside it.
     expect(frame!.style.top).toBe("40px");
@@ -594,7 +594,7 @@ test("a slow picture waits in its thumbnail's box, with the bytes received shown
     // growing to a guessed one and resizing again when the picture comes.
     expect(frame!.style.width).toBe("36px");
     expect(frame!.style.height).toBe("36px");
-    expect(host.querySelector(".msg-image-waiting")?.textContent).toContain("正在打开文件…");
+    expect(document.querySelector(".msg-image-waiting")?.textContent).toContain("正在打开文件…");
     const loading = frame!.querySelector(".msg-image-loading");
     expect(loading?.getAttribute("aria-busy")).toBe("true");
     expect(loading?.textContent).toContain("正在打开文件…");
@@ -608,14 +608,14 @@ test("a slow picture waits in its thumbnail's box, with the bytes received shown
     expect(bar?.getAttribute("aria-valuenow")).toBe("50");
     expect(frame!.querySelector<HTMLElement>(".msg-image-loading-fill")?.style.width).toBe("50%");
     expect(frame!.textContent).toContain("2.0 KB / 4.0 KB");
-    expect(host.querySelector(".msg-image-waiting")?.textContent).toContain("2.0 KB / 4.0 KB");
+    expect(document.querySelector(".msg-image-waiting")?.textContent).toContain("2.0 KB / 4.0 KB");
     resolveBlob(new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }));
     await pending;
     await new Promise((resolve) => setTimeout(resolve, 0));
     flushSync();
-    expect(host.querySelector(".msg-image-loading")).toBeNull();
-    expect(host.querySelector(".msg-image-waiting")).toBeNull();
-    expect(host.querySelector(".msg-image-full")).not.toBeNull();
+    expect(document.querySelector(".msg-image-loading")).toBeNull();
+    expect(document.querySelector(".msg-image-waiting")).toBeNull();
+    expect(document.querySelector(".msg-image-full")).not.toBeNull();
   } finally {
     close();
   }
@@ -655,14 +655,14 @@ test("clicking a picture attachment opens it over the messages", () => {
   });
   try {
     click(host.querySelector(".attachment-file-btn"));
-    const stage = host.querySelector(".msg-image-lightbox");
+    const stage = document.querySelector(".msg-image-lightbox");
     expect(stage).not.toBeNull();
     expect(getComputedStyle(stage!).position).toBe("fixed");
     expect(stage?.getAttribute("role")).not.toBe("dialog");
-    expect(host.querySelector(".msg-image-frame")?.getAttribute("aria-label")).toBe("image.png");
+    expect(document.querySelector(".msg-image-frame")?.getAttribute("aria-label")).toBe("image.png");
     expect(opened).toEqual([]);
-    click(host.querySelector(".msg-image-close"));
-    expect(host.querySelector(".msg-image-lightbox")).toBeNull();
+    click(document.querySelector(".msg-image-close"));
+    expect(document.querySelector(".msg-image-lightbox")).toBeNull();
   } finally {
     close();
   }
@@ -690,7 +690,7 @@ test("a markdown image link opens over the messages and a text link still opens 
   try {
     const links = [...host.querySelectorAll("a")];
     click(links.find((link) => link.textContent?.includes("shot.png")));
-    expect(host.querySelector(".msg-image-lightbox")).not.toBeNull();
+    expect(document.querySelector(".msg-image-lightbox")).not.toBeNull();
     expect(opened).toEqual([]);
     click(links.find((link) => link.textContent?.includes("notes.md")));
     expect(opened).toEqual(["inbox/notes.md"]);
@@ -739,7 +739,7 @@ test("a picture a Bot names by its path is a thumbnail in the text, and it enlar
     // The small copy, queued behind whatever is opened on purpose — as an attachment's chip is.
     expect(asked[0]).toEqual({ path: "work/preview_v9/pair_c09.jpg", size: "thumb", background: true });
     click(chip);
-    expect(host.querySelector(".msg-image-lightbox")).not.toBeNull();
+    expect(document.querySelector(".msg-image-lightbox")).not.toBeNull();
     expect(opened).toEqual([]);
   } finally {
     close();

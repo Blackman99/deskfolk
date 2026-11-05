@@ -265,7 +265,7 @@ test("Escape closes a file opened over the app from a card, but not from inside 
   cleanups.push(close);
   await settle();
   const escape = (target: EventTarget) => target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-  const overlay = () => host.querySelector('.msg-file-overlay');
+  const overlay = () => document.querySelector('.msg-file-overlay');
 
   click(host.querySelector('[data-message-id="card"] .attachment-file-btn'));
   await settle();

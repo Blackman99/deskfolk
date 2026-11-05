@@ -517,9 +517,9 @@ test("a line of yours shows its picture in its bubble, and a click enlarges it",
   // No words, no empty line of them.
   expect(bubble.querySelector(".words") === null).toBe(true);
   expect(bubble.querySelector(".attachment-file-btn")?.getAttribute("title")).toBe("inbox/2026-10-21/shot.png");
-  expect(host.querySelector(".msg-image-lightbox") === null).toBe(true);
+  expect(document.querySelector(".msg-image-lightbox") === null).toBe(true);
   click(bubble.querySelector(".attachment-file-btn") as HTMLElement);
-  expect(host.querySelector(".msg-image-lightbox") === null).toBe(false);
+  expect(document.querySelector(".msg-image-lightbox") === null).toBe(false);
   close();
 });
 

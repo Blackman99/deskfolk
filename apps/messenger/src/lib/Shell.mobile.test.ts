@@ -398,11 +398,11 @@ test('mounted Shell: Back puts an enlarged picture away and leaves the conversat
     const back = (app as unknown as { backMobileLayer: () => boolean }).backMobileLayer;
 
     click(host.querySelector('.attachment-file-btn'));
-    expect(host.querySelector('.msg-image-lightbox')).not.toBeNull();
+    expect(document.querySelector('.msg-image-lightbox')).not.toBeNull();
     // The picture is not a page: Back closes it here and history stays put.
     expect(back()).toBe(true);
     flushSync();
-    expect(host.querySelector('.msg-image-lightbox')).toBeNull();
+    expect(document.querySelector('.msg-image-lightbox')).toBeNull();
     expect(runtime.selectedId).toBe(session.id);
     // With it gone, the next Back is the conversation's, and that one is history's.
     expect(back()).toBe(false);
@@ -438,7 +438,8 @@ test('mounted Shell: Back closes a message opened to select from and stays in th
     segment.dispatchEvent(new Event('touchstart', { bubbles: true }));
     segment.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     flushSync();
-    click(buttonByText(host, t.chat.selectText));
+    // The menu sits on <body> (see MessageContextMenu's `portal`).
+    click(buttonByText(document.querySelector<HTMLElement>('.msg-context-menu')!, t.chat.selectText));
     expect(host.querySelector('.message-text')).not.toBeNull();
     // The page is in no URL: Back closes it here, and the conversation is still open under it.
     expect(back()).toBe(true);

@@ -507,6 +507,18 @@
 		requestClose();
 	}
 
+	/**
+	 * The enlargement lives on `<body>`, wherever it was opened from. `fixed` resolves against the
+	 * nearest ancestor with a `transform`, `filter`, `backdrop-filter` or `contain`, and a
+	 * stylesheet of your own (ADR 0106) may put any of those on a conversation or a pane: glass
+	 * on `[data-ui="chat"]` shut the enlargement inside that pane, and placed the picture, measured
+	 * from the window, a pane's width off the side of it. The composer is such a layer too.
+	 */
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return { destroy: () => node.remove() };
+	}
+
 	function onBackdrop(ev: MouseEvent): void {
 		const target = ev.target;
 		if (!(target instanceof Element)) return;
@@ -550,6 +562,7 @@
 	class:is-back={phase === 'back'}
 	class:is-instant={instant}
 	role="presentation"
+	use:portal
 	onclick={onBackdrop}
 	onpointerdown={onStagePointerDown}
 	onpointermove={onStagePointerMove}

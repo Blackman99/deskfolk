@@ -42,7 +42,7 @@ test("a pasted picture enlarges from its thumbnail, named by its chip", () => {
     click(open);
     // Over the whole app, not inside the composer's click-through layer.
     expect(host.querySelector(".msg-image-lightbox")).toBeNull();
-    expect(lightbox()?.parentElement?.parentElement).toBe(document.body);
+    expect(lightbox()?.parentElement).toBe(document.body);
     expect(document.querySelector(".msg-image-full")?.getAttribute("src")).toBe("blob:shot");
     expect(document.querySelector(".msg-image-caption")?.textContent).toBe("image-0423.png");
     expect(document.querySelector(".msg-image-frame")?.getAttribute("aria-label")).toBe("image-0423.png");

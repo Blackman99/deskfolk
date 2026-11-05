@@ -74,8 +74,25 @@ function openMessageMenu(
     ...(opts.edit ? { onEdit: () => { calls.edit += 1; } } : {}),
   });
 
-  return { ...view, calls };
+  // The menu moves itself to <body> (see its `portal`), so its rows are read from that layer.
+  const layer = document.querySelector<HTMLElement>(".msg-context-layer")!;
+  return { ...view, host: layer, mount: view.host, calls };
 }
+
+/**
+ * Glass of your own on a conversation (ADR 0106) — `backdrop-filter` on `[data-ui="chat"]` — made
+ * the pane the box `fixed` resolves against, and a menu placed at the click's window coordinates
+ * opened a pane's width away. It lives on `<body>`, and goes with the stage that opened it.
+ */
+test("the menu sits on <body> at the pointer, not inside the pane that opened it", () => {
+  const { host, mount, close } = openMessageMenu(createTestMessage());
+  expect(mount.querySelector(".msg-context-menu")).toBeNull();
+  expect(host.parentElement).toBe(document.body);
+  const menu = host.querySelector<HTMLElement>(".msg-context-menu")!;
+  expect([menu.style.left, menu.style.top]).toEqual(["100px", "150px"]);
+  close();
+  expect(document.querySelector(".msg-context-layer, .msg-context-menu")).toBeNull();
+});
 
 test("clicking reply fires onReply and onClose", () => {
   const { host, calls, close } = openMessageMenu(createTestMessage());
