@@ -17,6 +17,27 @@ function declarations(tokens: Record<string, string>): string {
 }
 
 /**
+ * Your own lines' bubble (`--you`) is written out in `tokens.css` rather than taken from the
+ * accent: light it is the accent's own colour, dark a step deeper so white words read on it. A
+ * profile that changes the accent in a look but not the bubble has the bubble follow, the same way:
+ * light takes the accent and its text colour, dark the accent mixed 70% with black in oklab (the
+ * default accent comes out as the default bubble, #276c78 for #1b6b7a). Set `--you` to keep it apart.
+ */
+const YOU_FROM_ACCENT: Record<"light" | "dark", Record<string, string>> = {
+  light: { "--you": "var(--accent)", "--you-text": "var(--on-accent)" },
+  dark: { "--you": "color-mix(in oklab, var(--accent) 70%, black)" },
+};
+
+export function followingAccent(tokens: Record<string, string>, look: "light" | "dark"): Record<string, string> {
+  if (!("--accent" in tokens)) return tokens;
+  const out = { ...tokens };
+  for (const [name, value] of Object.entries(YOU_FROM_ACCENT[look])) {
+    if (!(name in tokens)) out[name] = value;
+  }
+  return out;
+}
+
+/**
  * The profile's look as CSS. The light tokens sit on `:root`, which the dark defaults outrank on a
  * dark page, so a light-only change stays light; the dark ones match the dark defaults' selectors
  * and come later, so they win there.
@@ -24,9 +45,9 @@ function declarations(tokens: Record<string, string>): string {
 export function interfaceCss(profile: InterfaceProfile): string {
   if (!profile.enabled) return "";
   const parts: string[] = [];
-  const light = declarations(profile.tokens.light);
+  const light = declarations(followingAccent(profile.tokens.light, "light"));
   if (light) parts.push(`:root {\n${light}\n}`);
-  const dark = declarations(profile.tokens.dark);
+  const dark = declarations(followingAccent(profile.tokens.dark, "dark"));
   if (dark) parts.push(`:root[data-theme="dark"],\n[data-theme="dark"] {\n${dark}\n}`);
   if (profile.css.trim()) parts.push(profile.css);
   return parts.join("\n\n");

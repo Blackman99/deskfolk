@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { applyInterfacePatch, emptyInterfaceProfile } from "@real-bot/protocol";
 import { COPY, copyFor, copyLeaves, copyOverrideProblem, withCopyOverrides } from "../copy.ts";
 import { formatFullTimestamp, formatMessageTime } from "../chat/chat-view.ts";
-import { applyInterfaceCss, applyMotion, cachedInterfaceCss, cacheInterfaceCss, defaultAskedInUrl, interfaceCss, INTERFACE_STYLE_ID, surfaceOf } from "./apply.ts";
+import { applyInterfaceCss, applyMotion, followingAccent, cachedInterfaceCss, cacheInterfaceCss, defaultAskedInUrl, interfaceCss, INTERFACE_STYLE_ID, surfaceOf } from "./apply.ts";
 import { interfaceBehaviour, setInterfaceBehaviour } from "./behaviour.svelte.ts";
 import { colorAlpha, floorProblem, floorsHiddenByProfile } from "./floor.ts";
 import { badTokens, topLevelBlocks, unmatchedSelectors } from "./report.ts";
@@ -21,9 +21,15 @@ describe("the profile as CSS (ADR 0106)", () => {
       tokens: { light: { "--accent": "#7c3aed" }, dark: { "--accent": "#a78bfa" } },
       css: { set: "[data-ui=\"sidebar\"] { opacity: 0.95; }" },
     });
-    expect(interfaceCss(profile)).toBe(":root {\n  --accent: #7c3aed;\n}\n\n:root[data-theme=\"dark\"],\n[data-theme=\"dark\"] {\n  --accent: #a78bfa;\n}\n\n[data-ui=\"sidebar\"] { opacity: 0.95; }");
+    expect(interfaceCss(profile)).toBe(":root {\n  --accent: #7c3aed;\n  --you: var(--accent);\n  --you-text: var(--on-accent);\n}\n\n:root[data-theme=\"dark\"],\n[data-theme=\"dark\"] {\n  --accent: #a78bfa;\n  --you: color-mix(in oklab, var(--accent) 70%, black);\n}\n\n[data-ui=\"sidebar\"] { opacity: 0.95; }");
     expect(interfaceCss({ ...profile, enabled: false })).toBe("");
     expect(interfaceCss(emptyInterfaceProfile())).toBe("");
+  });
+
+  test("your bubble follows a changed accent, unless you set it too", () => {
+    expect(followingAccent({ "--bg": "#fff" }, "light")).toEqual({ "--bg": "#fff" });
+    expect(followingAccent({ "--accent": "#0b7fc4" }, "light")).toEqual({ "--accent": "#0b7fc4", "--you": "var(--accent)", "--you-text": "var(--on-accent)" });
+    expect(followingAccent({ "--accent": "#4db8ff", "--you": "#123456" }, "dark")).toEqual({ "--accent": "#4db8ff", "--you": "#123456" });
   });
 
   test("goes in last as text, can be switched off, and leaves when empty", () => {

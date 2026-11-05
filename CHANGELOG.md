@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Your lines' bubble follows the accent you set
+
+- After changing the accent colour in Settings › Interface or through a Bot, the bubble of your own lines stayed the app's teal: it is a token of its own (`--you`), written out rather than taken from the accent. It now follows a changed accent unless you set it too: the accent itself in the light look, a step deeper in the dark one so white words still read ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)).
+
 ### An enlarged picture covers the whole window again in a split
 
 - With glass of your own on the conversation (a `backdrop-filter` on `[data-ui="chat"]` or `[data-ui="pane"]` in your interface profile's stylesheet), clicking a picture in a reply darkened only that conversation's pane, and the picture itself landed a pane's width off the side of the window; in a split it could not be seen at all. The right-click menu on a message opened the same distance from the pointer, and a file opened from a card filled only its pane. A `backdrop-filter`, `filter` or `transform` makes an element the box `position: fixed` measures from, so all three now sit on the page itself rather than inside the conversation, and cover the window whatever a stylesheet does to the panes. Your glass is unchanged.
