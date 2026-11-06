@@ -123,10 +123,13 @@ withHelper("a session opens, runs a command and reports its output", async () =>
 withHelper("the scrollback cursor is a byte offset", async () => {
   const h = await start();
   const { id } = await (await call(h, "POST", "/v1/terminals", { cwd: h.cwd })).json() as { id: string };
-  await call(h, "POST", `/v1/terminals/${id}/input`, { data: Buffer.from("echo FIRST_MARK\n").toString("base64") });
+  // What is typed never spells the mark: a pty echoes typed input before a slow shell (bash -l on
+  // CI's Linux) has printed its first prompt, so the echo of "echo FIRST_MARK" would pass for the
+  // command's output and the cursor would be taken before the shell had run anything.
+  await call(h, "POST", `/v1/terminals/${id}/input`, { data: Buffer.from("printf 'FIRST_%s\\n' MARK\n").toString("base64") });
   expect(await until(async () => (await scrollback(h, id)).includes("FIRST_MARK"))).toBe(true);
   const mark = (await (await call(h, "GET", `/v1/terminals/${id}`)).json() as { stream_end: number }).stream_end;
-  await call(h, "POST", `/v1/terminals/${id}/input`, { data: Buffer.from("echo SECOND_MARK\n").toString("base64") });
+  await call(h, "POST", `/v1/terminals/${id}/input`, { data: Buffer.from("printf 'SECOND_%s\\n' MARK\n").toString("base64") });
   expect(await until(async () => (await scrollback(h, id, mark)).includes("SECOND_MARK"))).toBe(true);
   expect(await scrollback(h, id, mark)).not.toContain("FIRST_MARK");
 });
