@@ -25,4 +25,5 @@ export const stories: Record<string, Story> = {
   "sidebar-rail": () => import("./sidebar-rail"),
   "settings-general": () => import("./settings-general"),
   "settings-prompts": () => import("./settings-prompts"),
+  taskmap: () => import("./taskmap"),
 };
