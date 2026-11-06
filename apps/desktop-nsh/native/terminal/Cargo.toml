@@ -1,0 +1,31 @@
+[package]
+name = "deskfolk-native-terminal"
+description = "NSH native component `deskfolk.terminal`: a terminal drawn natively (alacritty_terminal for the screen state, AppKit text drawing for the glyphs, NSTextInputClient for typing and input methods). No web view."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+alacritty_terminal = "0.26"
+base64 = "0.22"
+tungstenite = { version = "0.27", default-features = false, features = ["handshake"] }
+ureq = { version = "3", default-features = false, features = ["json"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nsh-platform-macos.workspace = true
+nsh-core.workspace = true
+objc2.workspace = true
+dispatch2.workspace = true
+objc2-foundation = { workspace = true, features = [
+    "NSString", "NSAttributedString", "NSDictionary", "NSArray", "NSGeometry", "NSRange", "NSValue",
+    "NSObject",
+] }
+objc2-app-kit = { workspace = true, features = [
+    "NSView", "NSResponder", "NSEvent", "NSFont", "NSColor", "NSGraphics", "NSStringDrawing",
+    "NSAttributedString", "NSTextInputClient", "NSTextInputContext", "NSWindow", "NSPasteboard",
+    "NSFontDescriptor", "NSBezierPath",
+] }

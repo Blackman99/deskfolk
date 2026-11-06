@@ -1,0 +1,45 @@
+[package]
+name = "deskfolk-nsh"
+description = "Deskfolk's native shell: AppKit windows hosting NSH views, with the window-level parts (material, tray, notifications) the Tauri shell had."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "deskfolk-nsh"
+path = "src/main.rs"
+
+[dependencies]
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+deskfolk-native-terminal = { path = "../native/terminal" }
+deskfolk-native-pdf = { path = "../native/pdf" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nsh-platform-macos.workspace = true
+nsh-engine.workspace = true
+nsh-core.workspace = true
+objc2.workspace = true
+block2.workspace = true
+dispatch2.workspace = true
+objc2-foundation = { workspace = true, features = [
+    "NSString", "NSArray", "NSDictionary", "NSError", "NSBundle", "NSNotification", "NSGeometry",
+    "NSObject", "NSURL", "NSProcessInfo", "NSRunLoop", "NSDate", "NSTimer", "NSData",
+] }
+objc2-app-kit = { workspace = true, features = [
+    "NSApplication", "NSWindow", "NSView", "NSResponder", "NSVisualEffectView", "NSMenu",
+    "NSMenuItem", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl",
+    "NSImage", "NSDockTile", "NSRunningApplication", "NSWorkspace", "NSGraphics", "NSEvent",
+    "NSScreen", "NSCell", "NSButtonCell", "NSTitlebarAccessoryViewController", "NSViewController",
+    "NSBitmapImageRep", "NSImageRep", "objc2-quartz-core", "objc2-core-graphics",
+] }
+objc2-quartz-core = { workspace = true, features = ["CALayer", "objc2-core-graphics"] }
+objc2-core-graphics = { workspace = true, features = ["CGBitmapContext", "CGColorSpace", "CGContext", "CGImage"] }
+objc2-core-foundation = { workspace = true, features = ["CFCGTypes"] }
+objc2-user-notifications = { version = "0.3.2", default-features = false, features = [
+    "std", "block2", "UNNotification", "UNNotificationContent", "UNNotificationRequest",
+    "UNNotificationResponse", "UNNotificationSettings", "UNNotificationSound",
+    "UNNotificationTrigger", "UNUserNotificationCenter",
+] }

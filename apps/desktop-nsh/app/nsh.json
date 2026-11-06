@@ -1,0 +1,18 @@
+{
+  "name": "Deskfolk Dev",
+  "id": "com.real-bot.desktop.nsh-dev",
+  "version": "0.0.0",
+  "build": 1,
+  "theme": "theme.json",
+  "appearance": "system",
+  "capabilities": {
+    "network": { "hosts": ["127.0.0.1"] },
+    "clipboard": true,
+    "host": ["shell.*"]
+  },
+  "resolve": {
+    "alias": {
+      "@real-bot/protocol": "../../../packages/protocol/src/index.ts"
+    }
+  }
+}
