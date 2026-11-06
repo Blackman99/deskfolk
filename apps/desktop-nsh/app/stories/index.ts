@@ -29,4 +29,5 @@ export const stories: Record<string, Story> = {
   "sidebar-rows": () => import("./sidebar-rows"),
   "sidebar-sheets": () => import("./sidebar-sheets"),
   "chat-transcript": () => import("./chat-transcript"),
+  "panels-b": () => import("./panels-b"),
 };
