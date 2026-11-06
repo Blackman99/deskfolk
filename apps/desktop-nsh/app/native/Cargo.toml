@@ -12,3 +12,9 @@ nsh-base = { version = "=0.4.0", default-features = false }
 vt100 = "0.16"
 base64 = "0.22"
 hayro = { version = "0.9", features = ["embed-fonts"] }
+serde_json.workspace = true
+serde.workspace = true
+calamine = { version = "0.38", features = ["dates"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
+quick-xml = "0.42"
+chrono = { version = "0.4", default-features = false }

@@ -5,15 +5,17 @@
 
 use nsh_core::prelude::*;
 
+mod office;
 mod palette;
 mod pdf;
 mod terminal;
 
+pub use office::Office;
 pub use pdf::Documents;
 pub use terminal::{TerminalGrid, TerminalGridElement, TerminalGridEvent, TerminalGridProps, Terminals, terminal_grid};
 
 /// What TSX may import from `deskfolk/native`.
 #[native_module("deskfolk/native")]
 fn native(registry: &mut Registry) {
-    registry.register::<TerminalGrid>().module::<Terminals>().module::<Documents>();
+    registry.register::<TerminalGrid>().module::<Terminals>().module::<Documents>().module::<Office>();
 }
