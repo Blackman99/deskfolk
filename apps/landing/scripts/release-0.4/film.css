@@ -1,0 +1,407 @@
+@font-face { font-family: "DF Sans"; src: url(/fonts/SFNS.ttf) format("truetype"); font-weight: 1 1000; }
+@font-face { font-family: "DF Mono"; src: url(/fonts/SFNSMono.ttf) format("truetype"); font-weight: 1 1000; }
+
+:root {
+  --bg: #eef1f2; --pane: #ffffff; --ink: #121c20; --ink2: #37444a; --muted: #5f6d74; --muted-l: #95a2a8;
+  --line: #e0e6e8; --line-s: #eff3f4; --accent: #146a7c; --tint: #e6f2f4; --accent-b: #b9d6dc;
+  --mustard: #f0ab3d; --ok: #16a34a; --danger: #dc2626; --warn: #d97706; --warn-text: #b45309;
+  --chip: #eff3f4;
+  /* more of the app's light tokens (apps/messenger/src/lib/styles/tokens.css); --tint and --accent-b stand for the
+     app's --accent-tint and --accent-border */
+  --ground: #f7f9f9; --line-hover: #c9d3d6; --accent-hover: #0f5462; --input-bg: #ffffff; --tab-strip: #e1e6e8;
+  --row-hover: rgba(18,28,32,.05); --accent-glow: rgba(20,106,124,.14); --you: #146a7c;
+  --field-focus: color-mix(in srgb, var(--accent) 70%, var(--line));
+  /* The app's surfaces are drawn at --k times their size in the app; each surface sets its own (film.js). A size
+     below is written as the app's px × --k. */
+  --k: 1.5;
+  --card-shadow: 0 0 0 calc(.5px * var(--k)) rgba(18,28,32,.13), 0 calc(1px * var(--k)) calc(3px * var(--k)) rgba(18,28,32,.06),
+    0 calc(12px * var(--k)) calc(32px * var(--k)) calc(-12px * var(--k)) rgba(18,28,32,.16);
+  --shadow-menu: 0 calc(12px * var(--k)) calc(30px * var(--k)) calc(-4px * var(--k)) rgba(18,28,32,.16), 0 calc(4px * var(--k)) calc(12px * var(--k)) calc(-2px * var(--k)) rgba(18,28,32,.08);
+  --shadow-pane: 0 0 0 calc(.5px * var(--k)) rgba(18,28,32,.14), 0 calc(1px * var(--k)) calc(3px * var(--k)) rgba(18,28,32,.07);
+  --sans: "DF Sans", "PingFang SC", sans-serif;
+  --mono: "DF Mono", "PingFang SC", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+body { font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; font-feature-settings: "kern"; }
+#stage { position: absolute; inset: 0; overflow: hidden; background: var(--bg); }
+.abs { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.mono { font-family: var(--mono); }
+.glyph { display: block; flex: none; }
+
+/* the room: soft teal light, a dot grid drifting, and the dusk the code scene's breakdown brings */
+#bgGlow { position: absolute; inset: -200px; background:
+  radial-gradient(900px 620px at 18% 12%, rgba(20,106,124,.10), transparent 70%),
+  radial-gradient(1100px 700px at 92% 96%, rgba(240,171,61,.10), transparent 70%); }
+#dots { position: absolute; left: -400px; top: -400px; width: 2720px; height: 1880px; opacity: .5;
+  background-image: radial-gradient(circle, rgba(18,28,32,.09) 1.6px, transparent 1.8px); background-size: 36px 36px; }
+#dusk { position: absolute; inset: 0; opacity: 0; background:
+  linear-gradient(180deg, rgba(31,53,84,.55), rgba(48,60,96,.38) 55%, rgba(20,34,52,.5)); }
+
+/* headline zone */
+.headline { position: absolute; left: 120px; top: 84px; font-size: 76px; font-weight: 700; letter-spacing: -1.5px; line-height: 1.1; white-space: nowrap; color: var(--ink); z-index: 20; }
+.headline.en { font-size: 66px; letter-spacing: -1.2px; }
+.subline { position: absolute; left: 124px; top: 186px; font-size: 32px; font-weight: 500; color: var(--muted); white-space: nowrap; z-index: 20; }
+
+/* the cast */
+.mascot { position: absolute; left: 0; top: 0; transform-origin: 0 0; z-index: 10; }
+.mascot img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.mascot .shadow { position: absolute; border-radius: 50%; background: radial-gradient(closest-side, rgba(18,28,32,.28), rgba(18,28,32,0)); }
+/* an avatar: one Bot's picture is a rounded square (--radius-bot, 30%) */
+.face { display: inline-block; flex: none; border-radius: 50%; background-color: #fff; background-repeat: no-repeat; border: calc(1px * var(--k)) solid var(--line); }
+.face.bot { border-radius: 30%; }
+
+.pane { background: var(--pane); border-radius: calc(14px * var(--k)); box-shadow: var(--card-shadow); }
+.pill { display: inline-flex; align-items: center; gap: 8px; border-radius: 99px; padding: 4px 16px; font-size: 22px; font-weight: 600; white-space: nowrap; }
+/* Button.svelte: primary, secondary, ghost, danger-soft, at size sm */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: calc(6px * var(--k)); height: calc(28px * var(--k)); padding: 0 calc(10px * var(--k)); border-radius: calc(8px * var(--k));
+  font-size: calc(12px * var(--k)); font-weight: 600; white-space: nowrap; color: var(--ink); }
+.btn.primary { background: var(--accent); color: #fff; box-shadow: inset 0 calc(1px * var(--k)) 0 rgba(255,255,255,.14), 0 calc(1px * var(--k)) calc(2px * var(--k)) color-mix(in srgb, var(--accent) 35%, transparent); }
+.btn.secondary { background: #fff; box-shadow: inset 0 0 0 calc(1px * var(--k)) var(--line), 0 calc(1px * var(--k)) calc(2px * var(--k)) rgba(18,28,32,.04); }
+.btn.ghost { color: var(--ink2); }
+.btn.danger { color: #b91c1c; background: #fef2f2; }
+.btn.pressed { scale: .94; }
+.mark { display: inline-block; flex: none; }
+.dot { display: inline-flex; align-items: center; justify-content: center; flex: none; border-radius: 50%; color: #fff; }
+/* pointer */
+#pointer { position: absolute; left: 0; top: 0; width: 44px; height: 60px; z-index: 50; filter: drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+#ripple { position: absolute; left: 0; top: 0; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 5px solid var(--accent); z-index: 49; opacity: 0; }
+
+/* end card */
+.word { font-size: 150px; font-weight: 700; letter-spacing: -5px; white-space: nowrap; }
+.tagline { font-size: 56px; font-weight: 650; letter-spacing: -.8px; white-space: nowrap; color: var(--ink2); }
+.cta { display: inline-flex; align-items: center; gap: 22px; height: 92px; padding: 0 44px; border-radius: 46px; background: var(--accent); color: #fff; font-size: 38px; font-weight: 650; white-space: nowrap; }
+.url { font-family: var(--mono); font-size: 40px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.fine { font-size: 26px; color: var(--ink2); white-space: nowrap; }
+.finer { font-size: 21px; color: #47545a; white-space: nowrap; }
+
+
+/* ================================================================ the 0.4.0 release film */
+/* 0–4: the name, the version turning over from 0.3.0, the platforms (Linux new) */
+.ver { font-family: var(--mono); font-size: 112px; font-weight: 700; letter-spacing: -3px; color: var(--accent); white-space: nowrap; line-height: 1.1; }
+.ver.small { font-size: 60px; letter-spacing: -1px; }
+.pill.count { font-size: 34px; padding: 8px 24px; gap: 10px; background: var(--tint); color: var(--accent); border: 2px solid var(--accent-b); }
+.ver .roll { display: inline-block; height: 1.1em; overflow: hidden; vertical-align: top; }
+.ver .roll .col { display: flex; flex-direction: column; }
+.ver .roll .col span { display: block; height: 1.1em; }
+.platform { display: inline-flex; align-items: center; gap: 14px; height: 74px; padding: 0 28px; border-radius: 37px; background: #fff; border: 2px solid var(--line);
+  font-size: 30px; font-weight: 600; color: var(--ink); white-space: nowrap; box-shadow: 0 16px 36px -24px rgba(18,28,32,.45); }
+.platform.quiet { color: var(--muted); }
+.platform .new { margin-left: 4px; padding: 3px 12px; border-radius: 99px; background: var(--mustard); color: #3b2a07; font-size: 20px; font-weight: 700; letter-spacing: .02em; }
+
+/* ---------------------------------------------------------------- a desktop window on glass (4–10, 10–14, 19–24)
+   The desk: a wallpaper behind the window, so the window's glass and the content card's glass read. The window
+   paints the same wallpaper blurred and washed (the system's material), then the shell's ground at its tint
+   (Shell.svelte: --ground at 30% light, 20% dark). Its pane: the tab strip on the glass (40 px, WorkbenchLeaf),
+   the card under it (margin 0 4 4, radius 14, --pane, --shadow-pane). Glass content (content-glass.css) mixes the
+   card with transparent: light frosted 78%, dark frosted 84%. */
+.desk { overflow: hidden; border-radius: 26px; box-shadow: 0 40px 90px -40px rgba(18,28,32,.45); }
+.wall { position: absolute; left: 0; top: 0; background:
+  radial-gradient(38% 46% at 16% 22%, #2f9db4, transparent 72%),
+  radial-gradient(44% 56% at 84% 20%, #f07f3c, transparent 72%),
+  radial-gradient(52% 62% at 58% 84%, #7d5ce0, transparent 74%),
+  radial-gradient(34% 40% at 12% 88%, #f2c14e, transparent 70%),
+  linear-gradient(160deg, #7fbccd, #e7a98d 55%, #a892e2); }
+.wall.night { background:
+  radial-gradient(38% 46% at 16% 22%, #145868, transparent 72%),
+  radial-gradient(40% 52% at 84% 18%, #6b3a2a, transparent 70%),
+  radial-gradient(46% 58% at 62% 86%, #3f2f73, transparent 72%),
+  linear-gradient(160deg, #0d1a20, #1b1620 55%, #15122a); }
+.win { overflow: hidden; border-radius: calc(12px * var(--k)); box-shadow: 0 0 0 1px rgba(18,28,32,.18), 0 30px 80px -24px rgba(18,28,32,.55); }
+.win .blur { position: absolute; filter: blur(34px) saturate(1.3); }
+.win .wash { position: absolute; inset: 0; background: rgba(246,248,249,.3); }
+.win.dark .wash { background: rgba(14,19,22,.62); }
+.win .shellg { position: absolute; inset: 0; background: color-mix(in srgb, var(--ground) 30%, transparent); }
+.win.dark .shellg { background: color-mix(in srgb, var(--ground) 20%, transparent); }
+.win .col { position: absolute; top: calc(6px * var(--k)); right: calc(4px * var(--k)); bottom: calc(4px * var(--k)); }
+.win.dark .col { top: calc(2px * var(--k)); }
+/* the pane's tab strip: bare tabs on the glass, the active one a pill on the pane's colour */
+.tabs { position: absolute; left: 0; right: 0; top: 0; height: calc(40px * var(--k)); display: flex; align-items: center; gap: calc(2px * var(--k)); padding: 0 calc(6px * var(--k)); }
+.tab { display: inline-flex; align-items: center; gap: calc(6px * var(--k)); height: calc(28px * var(--k)); padding: 0 calc(10px * var(--k)) 0 calc(6px * var(--k)); border-radius: calc(6px * var(--k));
+  font-size: calc(12px * var(--k)); font-weight: 500; color: var(--muted); white-space: nowrap; }
+.tab.on { background: var(--pane); color: var(--ink); box-shadow: var(--shadow-pane); }
+.tab .x { display: flex; color: var(--muted); margin-left: calc(2px * var(--k)); }
+.tabs .tplus { width: calc(24px * var(--k)); height: calc(24px * var(--k)); border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
+.tabs .tmore { margin-left: auto; width: calc(24px * var(--k)); height: calc(24px * var(--k)); display: grid; place-items: center; color: var(--muted); }
+.card { position: absolute; left: 0; right: 0; top: calc(40px * var(--k)); bottom: 0; border-radius: calc(14px * var(--k)); background: var(--pane); box-shadow: var(--shadow-pane); overflow: hidden; }
+/* the dark look on glass: the strip is a solid head joined to the card (WorkbenchLeaf.svelte) */
+.win.dark .tabs { background: var(--ground); border-radius: calc(14px * var(--k)) calc(14px * var(--k)) 0 0; }
+.win.dark .card { top: calc(40px * var(--k)); border-radius: 0 0 calc(14px * var(--k)) calc(14px * var(--k)); }
+
+/* the dark look's tokens (tokens.css :root[data-theme="dark"]) */
+.dark { --bg: #0f1416; --pane: #192125; --ground: #06090a; --ink: #eef2f3; --ink2: #c5cfd3; --muted: #8b989e; --line: #2e393e; --line-s: #1f282c;
+  --chip: #20292d; --accent: #45b0c3; --tint: rgba(69,176,195,.14); --you: #1b6b7a; --input-bg: #12181b; --row-hover: rgba(255,255,255,.05);
+  --shadow-pane: 0 0 0 calc(.5px * var(--k)) rgba(0,0,0,.5), 0 calc(1px * var(--k)) calc(3px * var(--k)) rgba(0,0,0,.3);
+  --shadow-menu: 0 calc(12px * var(--k)) calc(30px * var(--k)) calc(-4px * var(--k)) rgba(0,0,0,.55), 0 calc(4px * var(--k)) calc(12px * var(--k)) calc(-2px * var(--k)) rgba(0,0,0,.35);
+  color: var(--ink); }
+/* the look a Bot set in 4–10: the light accent family (the bubble follows --accent: apply.ts) */
+.purple { --accent: #6d4ae0; --accent-hover: #5a3bc4; --tint: #efeafc; --accent-b: #d3c8f5; --you: var(--accent); --accent-glow: rgba(109,74,224,.16); }
+
+/* the conversation's header (PaneChatBar.svelte): the Bot's picture and name, its status while busy, then Pin,
+   Trace, Map and settings at the right */
+.chd { position: absolute; left: 0; right: 0; top: 0; height: calc(57px * var(--k)); display: flex; align-items: center; gap: calc(10px * var(--k)); padding: calc(6px * var(--k)) calc(8px * var(--k)) calc(6px * var(--k)) calc(12px * var(--k));
+  border-bottom: calc(1px * var(--k)) solid var(--line-s); background: var(--pane); }
+.chd .who { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.chd .nm { font-size: calc(15px * var(--k)); font-weight: 650; line-height: 1.3; white-space: nowrap; }
+.chd .st2 { display: flex; align-items: center; gap: calc(6px * var(--k)); min-height: calc(16px * var(--k)); font-size: calc(12px * var(--k)); color: var(--accent); white-space: nowrap; }
+.chd .st2 .pd { width: calc(6px * var(--k)); height: calc(6px * var(--k)); border-radius: 50%; background: var(--accent); }
+.chd .mchip { font-family: var(--mono); font-size: calc(11px * var(--k)); color: var(--muted); padding: 0 calc(5px * var(--k)); border-radius: calc(4px * var(--k)); background: var(--chip); }
+.chd .acts { margin-left: auto; display: flex; align-items: center; gap: calc(2px * var(--k)); color: var(--muted); }
+.chd .ab { height: calc(32px * var(--k)); min-width: calc(32px * var(--k)); display: inline-flex; align-items: center; justify-content: center; gap: calc(5px * var(--k)); padding: 0 calc(8px * var(--k));
+  border-radius: calc(8px * var(--k)); font-size: calc(12px * var(--k)); font-weight: 500; white-space: nowrap; }
+/* glass content: the chat and its header paint no ground of their own (content-glass.css) */
+.glass .chd { background: transparent; }
+
+/* the transcript (TranscriptBotGroup, TranscriptUserGroup): a Bot's reply is plain text on the pane, no avatar or
+   name in a direct; yours a bubble in --you with its time under it */
+.tr { position: absolute; left: 0; right: 0; overflow: hidden; }
+.tri { position: absolute; left: 0; top: 0; right: 0; height: 3000px; }
+.reply { width: var(--colw); font-size: calc(14px * var(--k)); line-height: 1.55; padding: 0 calc(2px * var(--k)); color: var(--ink); }
+.reply p { margin: 0; }
+.reply code.i { font-family: var(--mono); font-size: .9em; padding: 0 calc(4px * var(--k)); border-radius: calc(4px * var(--k)); background: var(--chip); }
+.rfoot { width: var(--colw); display: flex; justify-content: flex-end; align-items: center; gap: calc(5px * var(--k)); font-size: calc(12px * var(--k)); color: var(--muted); white-space: nowrap; }
+.you { width: max-content; max-width: calc(var(--colw) * .8); padding: calc(10px * var(--k)) calc(14px * var(--k)); border-radius: calc(14px * var(--k)) calc(4px * var(--k)) calc(14px * var(--k)) calc(14px * var(--k));
+  background: var(--you); color: #fff; font-size: calc(14px * var(--k)); line-height: 1.5; box-shadow: 0 calc(1px * var(--k)) calc(2px * var(--k)) rgba(18,28,32,.06); }
+.youT { font-family: var(--mono); font-size: calc(11px * var(--k)); color: var(--muted); white-space: nowrap; }
+/* a running turn's last line: a pulsing dot, the step, the turn's time at the right end */
+.sfoot { width: var(--colw); display: flex; align-items: center; gap: calc(7px * var(--k)); color: var(--accent); font-size: calc(12px * var(--k)); font-weight: 500; white-space: nowrap; }
+.sfoot .pulse { flex: none; width: calc(7px * var(--k)); height: calc(7px * var(--k)); border-radius: 50%; background: var(--accent); }
+.sfoot .dur { margin-left: auto; display: inline-flex; align-items: center; gap: calc(5px * var(--k)); color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.cursor { display: inline-block; width: calc(7px * var(--k)); height: calc(14px * var(--k)); background: var(--accent); vertical-align: calc(-2px * var(--k)); margin-left: calc(2px * var(--k)); border-radius: 1px; }
+/* InterfaceChangeChip.svelte: the label, the first change as interfaceChanges() writes it, and Undo */
+.ichip { display: flex; align-items: baseline; gap: calc(8px * var(--k)); font-size: calc(12px * var(--k)); color: var(--muted); white-space: nowrap; }
+.ichip b { font-weight: 600; }
+.ichip .tx { color: var(--ink2); }
+.ichip .un { color: var(--accent); }
+/* a code block in a reply (MarkdownBody, code-blocks.ts): its language and Copy code over the code, the surface
+   --code-surface else --chip, the words the theme's */
+.codeb { margin: calc(6px * var(--k)) 0; padding: calc(8px * var(--k)) calc(12px * var(--k)); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(6px * var(--k));
+  background: var(--chip); color: var(--ink); font-family: var(--mono); font-size: calc(12px * var(--k)); line-height: 1.45; }
+.codeb .chead { display: flex; justify-content: space-between; align-items: center; padding: 0 0 calc(6px * var(--k)); margin-bottom: calc(6px * var(--k)); border-bottom: calc(1px * var(--k)) solid var(--line);
+  font-family: var(--sans); font-size: calc(11px * var(--k)); color: var(--muted); }
+.codeb .lang { text-transform: uppercase; font-size: calc(10px * var(--k)); font-weight: 600; letter-spacing: .04em; }
+.codeb .cp { display: inline-flex; align-items: center; gap: calc(4px * var(--k)); }
+.codeb pre { margin: 0; white-space: pre; font: inherit; }
+.codeb.dracula { background: #282a36; color: #f8f8f2; }
+
+/* the composer (Composer.svelte, wider than 480 px): the words on top; the clip, the Bot's picker, ✨ and send */
+.composer { display: flex; flex-wrap: wrap; align-items: center; column-gap: calc(4px * var(--k)); row-gap: calc(4px * var(--k));
+  padding: calc(8px * var(--k)) calc(8px * var(--k)) calc(6px * var(--k)); border-radius: calc(18px * var(--k));
+  background: var(--input-bg); border: calc(1px * var(--k)) solid var(--line); font-size: calc(14px * var(--k)); z-index: 3;
+  box-shadow: 0 calc(1px * var(--k)) calc(2px * var(--k)) rgba(18,28,32,.05), 0 calc(10px * var(--k)) calc(28px * var(--k)) calc(-12px * var(--k)) rgba(18,28,32,.22); }
+.composer.focus { border-color: var(--field-focus); }
+.composer .txt { order: -1; flex: 1 0 100%; min-height: calc(34px * var(--k)); padding: calc(6px * var(--k)) calc(10px * var(--k)) calc(2px * var(--k));
+  line-height: calc(22px * var(--k)); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.composer .ph { color: var(--muted); }
+.composer .caret { display: inline-block; width: calc(1.5px * var(--k)); height: calc(17px * var(--k)); background: var(--accent); vertical-align: calc(-3px * var(--k)); margin-left: calc(1px * var(--k)); border-radius: 2px; }
+.composer .caret.lead { margin: 0 calc(-1.5px * var(--k)) 0 0; }
+.composer .cb { width: calc(34px * var(--k)); height: calc(34px * var(--k)); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; color: var(--muted); }
+.composer .gap { flex: 1; }
+.composer .send { background: var(--accent); color: #fff; }
+.composer .send.off { background: var(--tint); color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.composer .send.stop { background: var(--ink); color: var(--pane); }
+.composer .sug.off { opacity: .45; }
+/* TunePicker's trigger: a small bordered box after the clip — the source's mark, model · level, the endpoint */
+.tune { display: inline-flex; align-items: center; gap: calc(8px * var(--k)); padding: calc(6px * var(--k)) calc(10px * var(--k)); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(10px * var(--k));
+  background: var(--input-bg); font-size: calc(13px * var(--k)); line-height: 1.4; color: var(--ink); font-weight: 500; white-space: nowrap; box-shadow: 0 1px 2px rgba(18,28,32,.05); }
+.tune.open { border-color: var(--field-focus); box-shadow: 0 0 0 calc(3px * var(--k)) var(--accent-glow); }
+.tune .sep { color: var(--muted); margin: 0 calc(1px * var(--k)); }
+.tune .aside { font-size: calc(12px * var(--k)); font-weight: 400; color: var(--muted); }
+.tune .arr { display: inline-flex; color: var(--muted); }
+.tune.open .arr { color: var(--accent); rotate: 180deg; }
+.srcmark { display: inline-flex; align-items: center; height: calc(16px * var(--k)); padding: 0 calc(4px * var(--k)); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(4px * var(--k));
+  background: var(--chip); color: var(--ink2); font-size: calc(10px * var(--k)); font-weight: 600; letter-spacing: .02em; line-height: 1; }
+/* the picker's columns, side by side over the field, each a card as tall as its rows, each after the first lined
+   up beside the row it came from (TunePicker.svelte place() and lineUp()) */
+.tpanel { display: flex; align-items: flex-end; gap: calc(4px * var(--k)); z-index: 12; }
+.tcol { flex: none; display: flex; flex-direction: column; padding: calc(4px * var(--k)); background: var(--pane); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(10px * var(--k));
+  box-shadow: var(--shadow-menu); }
+.tcol .th { padding: calc(6px * var(--k)) calc(8px * var(--k)) calc(4px * var(--k)); font-size: calc(11px * var(--k)); line-height: 1.3; color: var(--muted); }
+.trow { display: flex; align-items: center; gap: calc(6px * var(--k)); padding: calc(6px * var(--k)) calc(8px * var(--k)); border-radius: calc(6px * var(--k)); font-size: calc(13px * var(--k)); line-height: 1.35; color: var(--ink); }
+.trow.hot, .trow.focus { background: var(--line-s); }
+.trow.checked { color: var(--accent); }
+.trow .tt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.trow .tl { font-weight: 500; white-space: nowrap; }
+.trow.checked .tl { font-weight: 600; }
+.trow .td { font-size: calc(11px * var(--k)); color: var(--muted); white-space: nowrap; }
+.trow .ck { color: var(--accent); display: flex; }
+.trow .mo { color: var(--muted); display: flex; }
+
+/* a notice (ToastHost.svelte): a card in the top-right corner under the tabs, its mark, the words, ✕ in a ring
+   that empties as it runs out */
+.toast { display: flex; align-items: center; gap: calc(10px * var(--k)); width: calc(360px * var(--k)); padding: calc(8px * var(--k)) calc(8px * var(--k)) calc(8px * var(--k)) calc(12px * var(--k));
+  border: calc(1px * var(--k)) solid var(--line); border-radius: calc(14px * var(--k)); background: var(--pane); box-shadow: var(--shadow-menu); z-index: 14; }
+.toast .tm { display: flex; color: var(--muted); }
+.toast .tw { flex: 1; min-width: 0; font-size: calc(13px * var(--k)); font-weight: 500; line-height: calc(20px * var(--k)); padding: calc(4px * var(--k)) 0; color: var(--ink); }
+.toast .tx { position: relative; width: calc(28px * var(--k)); height: calc(28px * var(--k)); display: grid; place-items: center; color: var(--muted); flex: none; }
+.toast .tx svg.ring { position: absolute; inset: 0; rotate: -90deg; }
+.toast .ring circle { fill: none; stroke-width: 1.5; }
+.toast .ring .trk { stroke: var(--line); }
+.toast .ring .lft { stroke: var(--accent); stroke-linecap: round; }
+
+/* the sidebar (Sidebar.svelte) on the window's glass at its surface's --k: the mark with the switches at the far
+   end, search, the Bots section, Projects with a folder and its sessions */
+.sb { position: absolute; left: 0; top: 0; bottom: 0; display: flex; flex-direction: column; overflow: hidden; }
+.sb .brand { flex: none; display: flex; align-items: center; gap: calc(4px * var(--k)); height: calc(46px * var(--k)); padding: calc(6px * var(--k)) calc(10px * var(--k)) 0 calc(16px * var(--k)); }
+/* on macOS the window's traffic lights take the start of the row: it starts at 84 px (Sidebar.svelte) */
+.sb .brand { padding-left: calc(84px * var(--k)); }
+.sb .brand .mark + .tg { margin-left: auto; }
+.sb .tg { width: calc(30px * var(--k)); height: calc(30px * var(--k)); display: grid; place-items: center; border-radius: calc(6px * var(--k)); color: var(--muted); }
+.sb .lights { position: absolute; left: calc(20px * var(--k)); top: calc(20px * var(--k)); display: flex; gap: calc(8px * var(--k)); }
+.sb .lights i { width: calc(12px * var(--k)); height: calc(12px * var(--k)); border-radius: 50%; background: #ff5f57; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.12); }
+.sb .lights i:nth-child(2) { background: #febc2e; }
+.sb .lights i:nth-child(3) { background: #28c840; }
+.sb .srch { position: relative; flex: none; display: flex; align-items: center; justify-content: space-between; gap: calc(6px * var(--k)); height: calc(32px * var(--k));
+  margin: calc(4px * var(--k)) calc(10px * var(--k)) calc(6px * var(--k)); padding: 0 calc(8px * var(--k)) 0 calc(30px * var(--k)); border: calc(1px * var(--k)) solid var(--line);
+  border-radius: calc(8px * var(--k)); background: #fff; font-size: calc(13px * var(--k)); color: var(--muted); }
+.sb .srch .si { position: absolute; left: calc(9px * var(--k)); top: 50%; translate: 0 -50%; display: flex; color: var(--muted-l); }
+.sb .srch kbd { padding: calc(1px * var(--k)) calc(4px * var(--k)); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(4px * var(--k)); font: calc(10px * var(--k)) var(--sans); color: var(--muted); }
+.sb .groups { padding: 0 calc(8px * var(--k)); }
+.sb .ghead { display: flex; align-items: center; justify-content: space-between; padding: calc(14px * var(--k)) calc(10px * var(--k)) calc(4px * var(--k)); font-size: calc(12px * var(--k)); font-weight: 600; color: var(--muted); }
+.sb .ghead:first-child { padding-top: calc(6px * var(--k)); }
+.sb .gadd { width: calc(22px * var(--k)); height: calc(22px * var(--k)); display: inline-flex; align-items: center; justify-content: center; font-size: calc(15px * var(--k)); font-weight: 400; color: var(--muted); }
+.sb .dirrow { display: flex; align-items: center; }
+.sb .dhead { flex: 1; min-width: 0; display: flex; align-items: center; gap: calc(6px * var(--k)); min-height: calc(32px * var(--k)); padding: 0 calc(10px * var(--k)); font-size: calc(13px * var(--k)); font-weight: 600; color: var(--ink2); white-space: nowrap; }
+.sb .dhead .glyph { color: var(--muted); }
+.sb .psess { padding-left: calc(14px * var(--k)); }
+/* SessionRow.svelte: avatar, name and time, then the status (while at work) or else the last line; the open one a card */
+.row { display: grid; grid-template-columns: calc(40px * var(--k)) minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: calc(2px * var(--k)) calc(10px * var(--k));
+  padding: calc(8px * var(--k)) calc(10px * var(--k)); margin: calc(1px * var(--k)) 0; border-radius: calc(10px * var(--k)); border: calc(1px * var(--k)) solid transparent; }
+.row.on { background: var(--pane); border-color: var(--line); box-shadow: 0 calc(2px * var(--k)) calc(4px * var(--k)) rgba(18,28,32,.05); }
+.row .av { grid-column: 1; grid-row: 1 / 3; width: calc(40px * var(--k)); height: calc(40px * var(--k)); align-self: center; display: grid; place-items: center; }
+.row .t { grid-column: 2; grid-row: 1; min-width: 0; font-size: calc(14px * var(--k)); font-weight: 600; line-height: 1.5; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .rt { grid-column: 3; grid-row: 1; justify-self: end; align-self: center; font-size: calc(11px * var(--k)); line-height: 1.3; color: var(--muted); white-space: nowrap; }
+.row .rs { grid-column: 2 / 4; grid-row: 2; display: inline-flex; align-items: center; gap: calc(5px * var(--k)); min-width: 0; font-size: calc(12px * var(--k)); line-height: 1.4; white-space: nowrap; overflow: hidden; }
+.row .rs.idle { display: none; }
+.row.busy .s { display: none; }
+.row .rs i { flex: none; width: calc(6px * var(--k)); height: calc(6px * var(--k)); border-radius: 50%; background: var(--accent); }
+.row .rs .rst { color: var(--accent); font-weight: 600; }
+.row .s { grid-column: 2 / -1; grid-row: 2; min-width: 0; min-height: 1.4em; font-size: calc(12px * var(--k)); line-height: 1.4; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.atile { position: relative; width: calc(32px * var(--k)); height: calc(32px * var(--k)); border-radius: 30%; display: grid; place-items: center; background: var(--chip); border: calc(1px * var(--k)) solid var(--line); color: var(--ink2); }
+
+/* 14–19: Roles as a tab of its own (RolesPage, RoutingTab's wide layout): the engines down the left, the shown
+   built-in's line and the intro over the map, the map with its add cards (PlaybookMap), the picked step's panel */
+.roles { overflow: hidden; display: flex; flex-direction: column; }
+.rstrip { flex: none; height: calc(40px * var(--k)); background: var(--tab-strip); display: flex; align-items: flex-end; padding: 0 calc(8px * var(--k)); }
+.rtab { display: inline-flex; align-items: center; gap: calc(7px * var(--k)); height: calc(32px * var(--k)); padding: 0 calc(16px * var(--k)); border-radius: calc(9px * var(--k)) calc(9px * var(--k)) 0 0;
+  background: var(--pane); font-size: calc(13px * var(--k)); font-weight: 600; color: var(--ink); white-space: nowrap; }
+.rtab .glyph { color: var(--muted); }
+.rwide { flex: 1; min-height: 0; display: grid; grid-template-columns: clamp(calc(184px * var(--k)), 22%, calc(248px * var(--k))) minmax(0, 1fr); }
+.rlist { min-width: 0; overflow: hidden; padding: calc(10px * var(--k)) calc(8px * var(--k)) calc(16px * var(--k)); border-right: calc(1px * var(--k)) solid var(--line-s); }
+.rlhead { display: flex; align-items: center; justify-content: space-between; padding: calc(6px * var(--k)) calc(10px * var(--k)) calc(4px * var(--k)); font-size: calc(12px * var(--k)); font-weight: 600; color: var(--muted); }
+.rladd { width: calc(22px * var(--k)); height: calc(22px * var(--k)); display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.erow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: calc(2px * var(--k)) calc(10px * var(--k)); padding: calc(8px * var(--k)) calc(10px * var(--k)); margin: calc(1px * var(--k)) 0;
+  border-radius: calc(10px * var(--k)); border: calc(1px * var(--k)) solid transparent; }
+.erow.on { background: var(--tint); }
+.erow .en { display: flex; align-items: baseline; gap: calc(4px * var(--k)); min-width: 0; font-size: calc(14px * var(--k)); font-weight: 600; line-height: 1.5; color: var(--ink); }
+.erow .star { flex: none; font-size: calc(11px * var(--k)); color: var(--accent); }
+.erow .et { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.erow .el { grid-column: 1 / -1; min-width: 0; min-height: 1.4em; font-size: calc(12px * var(--k)); line-height: 1.4; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rmain { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.rtop { flex: none; display: flex; flex-direction: column; gap: calc(6px * var(--k)); padding: calc(16px * var(--k)) calc(24px * var(--k)) calc(12px * var(--k)); }
+.rhint { margin: 0; font-size: calc(13px * var(--k)); line-height: 1.5; color: var(--ink2); }
+.rintro { margin: 0; font-size: calc(12px * var(--k)); line-height: 1.5; color: var(--muted); }
+.rsplit { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(calc(320px * var(--k)), 46%, calc(420px * var(--k))); gap: calc(14px * var(--k)); padding: 0 calc(24px * var(--k)) calc(20px * var(--k)); }
+.rmapcol { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.pflow { position: relative; }
+.pedges { position: absolute; left: 0; top: 0; overflow: visible; }
+.pedges path { fill: none; stroke: var(--line-hover); stroke-width: 1.5; }
+.pedges path.off { stroke-dasharray: 4 4; opacity: .6; }
+.pcard { position: absolute; display: flex; flex-direction: column; justify-content: center; gap: calc(2px * var(--k)); padding: calc(6px * var(--k)) calc(10px * var(--k));
+  border: calc(1px * var(--k)) solid var(--line); border-radius: calc(10px * var(--k)); background: var(--pane); min-width: 0; }
+.pcard.root { align-items: center; background: var(--chip); font-size: calc(12px * var(--k)); font-weight: 600; }
+.pcard.turn { border-style: dashed; background: var(--pane); }
+.pcard.turn .cs { text-align: center; font-weight: 400; }
+.pcard.step { border-style: dashed; }
+.pcard.sel { border-style: solid; border-color: var(--accent); box-shadow: 0 0 0 calc(1px * var(--k)) var(--accent); }
+.pcard.off { opacity: .55; }
+.pcard.hot { background: var(--line-s); }
+/* the round's last card, which starts a step of your own: dotted, no more than a place to press */
+.pcard.add { align-items: center; justify-content: center; border-style: dotted; background: transparent; color: var(--muted); }
+.pcard.add.hot { background: var(--line-s); color: var(--ink); }
+.pcard.add .ct { flex: none; display: inline-flex; align-items: center; gap: calc(4px * var(--k)); font-weight: 500; }
+.pcard .ch { display: flex; align-items: center; gap: calc(6px * var(--k)); width: 100%; min-width: 0; }
+.pcard .cd { width: calc(6px * var(--k)); height: calc(6px * var(--k)); flex: none; border-radius: 50%; background: var(--ok); }
+.pcard.off .cd { background: var(--muted); }
+.pcard .ct { flex: 1; min-width: 0; overflow: hidden; font-size: calc(12px * var(--k)); font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.pcard.root .ct { flex: none; }
+.pcard .lk { flex: none; display: flex; color: var(--muted); }
+.pcard .own { flex: none; color: var(--muted); font-size: calc(10px * var(--k)); }
+.pcard .cs { width: 100%; overflow: hidden; color: var(--muted); font-size: calc(11px * var(--k)); white-space: nowrap; text-overflow: ellipsis; }
+.rdetail { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.rdetail > * { position: absolute; left: 0; right: 0; top: 0; }
+.pstep { display: flex; flex-direction: column; gap: calc(14px * var(--k)); padding: calc(14px * var(--k)); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(10px * var(--k));
+  background: var(--pane); box-shadow: 0 1px 2px rgba(18,28,32,.04); }
+.psh { display: flex; flex-direction: column; gap: calc(3px * var(--k)); }
+.psh h3 { margin: 0; font-size: calc(14px * var(--k)); font-weight: 600; }
+.phint { margin: 0; font-size: calc(12px * var(--k)); line-height: 1.45; color: var(--muted); }
+.ppart { display: flex; flex-direction: column; gap: calc(10px * var(--k)); padding-top: calc(12px * var(--k)); border-top: calc(1px * var(--k)) solid var(--line); }
+.ppart h4 { margin: 0; font-size: calc(12px * var(--k)); font-weight: 600; color: var(--ink2); }
+.psw { display: flex; align-items: center; gap: calc(10px * var(--k)); }
+/* Switch.svelte: 40 by 22, the thumb a lit disc that slides */
+.sw { position: relative; flex: none; width: calc(40px * var(--k)); height: calc(22px * var(--k)); border-radius: 99px; background: var(--line); box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
+.sw.on { background: var(--accent); }
+.sw .th { position: absolute; top: calc(2px * var(--k)); left: calc(2px * var(--k)); width: calc(18px * var(--k)); height: calc(18px * var(--k)); border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.22), 0 0 0 .5px rgba(0,0,0,.06); }
+.pstate { font-size: calc(12px * var(--k)); }
+/* the add card's menu (PlaybookAddMenu.svelte): the round's starting points, a separator, a blank step */
+.amenu { display: flex; flex-direction: column; gap: calc(2px * var(--k)); width: calc(280px * var(--k)); padding: calc(5px * var(--k)); border: calc(1px * var(--k)) solid var(--line);
+  border-radius: calc(10px * var(--k)); background: var(--pane); box-shadow: var(--shadow-menu); z-index: 13; }
+.amenu .at { margin: 0; padding: calc(4px * var(--k)) calc(10px * var(--k)); font-size: calc(11px * var(--k)); line-height: 1.45; color: var(--muted); }
+.amenu .ai { display: flex; flex-direction: column; align-items: flex-start; gap: calc(2px * var(--k)); padding: calc(6px * var(--k)) calc(10px * var(--k)); border-radius: calc(6px * var(--k));
+  font-size: calc(13px * var(--k)); font-weight: 500; line-height: 1.3; color: var(--ink); }
+.amenu .ai.hot { background: var(--line-s); color: var(--accent); }
+.amenu .ai .an { display: inline-flex; align-items: center; gap: calc(6px * var(--k)); }
+.amenu .ai .ah { font-size: calc(11px * var(--k)); font-weight: 400; line-height: 1.4; color: var(--muted); }
+.amenu .as { height: calc(1px * var(--k)); margin: calc(3px * var(--k)) calc(8px * var(--k)); background: var(--line-s); }
+/* a step of your own's panel (CustomStepDetail.svelte) */
+.own-step { display: flex; flex-direction: column; gap: calc(14px * var(--k)); padding: calc(14px * var(--k)); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(10px * var(--k));
+  background: var(--pane); box-shadow: 0 1px 2px rgba(18,28,32,.04); }
+.own-step h3 { margin: 0; font-size: calc(14px * var(--k)); font-weight: 600; }
+.own-head { display: flex; flex-direction: column; gap: calc(3px * var(--k)); }
+.own-hint { margin: 0; font-size: calc(12px * var(--k)); line-height: 1.45; color: var(--muted); }
+.own-note { margin: 0; font-size: calc(11px * var(--k)); line-height: 1.45; color: var(--muted); }
+.own-part { display: flex; flex-direction: column; gap: calc(10px * var(--k)); padding-top: calc(12px * var(--k)); border-top: calc(1px * var(--k)) solid var(--line); }
+.own-part h4 { margin: 0; font-size: calc(12px * var(--k)); font-weight: 600; color: var(--ink2); }
+.own-field { display: flex; flex-direction: column; gap: calc(4px * var(--k)); font-size: calc(12px * var(--k)); }
+.own-field.inline { flex-direction: row; align-items: center; justify-content: space-between; gap: calc(10px * var(--k)); }
+.own-label { font-size: calc(12px * var(--k)); font-weight: 600; color: var(--ink2); }
+.own-input { padding: calc(5px * var(--k)) calc(8px * var(--k)); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(6px * var(--k)); background: var(--input-bg); font-size: calc(12px * var(--k)); min-height: calc(26px * var(--k)); line-height: 1.3; }
+.own-input.num { width: calc(76px * var(--k)); text-align: right; }
+.own-input.text { min-height: calc(52px * var(--k)); line-height: 1.5; }
+.own-input.code { font-family: var(--mono); }
+.own-sel { display: flex; align-items: center; justify-content: space-between; }
+.own-sel .glyph { color: var(--muted); }
+.own-sw { display: flex; align-items: center; gap: calc(10px * var(--k)); font-size: calc(12px * var(--k)); }
+.own-kinds { display: inline-flex; align-self: flex-start; padding: calc(2px * var(--k)); border: calc(1px * var(--k)) solid var(--line); border-radius: calc(6px * var(--k)); background: var(--chip); }
+.own-kind { padding: calc(3px * var(--k)) calc(12px * var(--k)); border-radius: calc(4px * var(--k)); font-size: calc(12px * var(--k)); color: var(--ink2); }
+.own-kind.on { background: var(--pane); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(18,28,32,.08); }
+.own-inline { display: inline-flex; align-items: center; gap: calc(8px * var(--k)); }
+.own-actions { display: flex; flex-wrap: wrap; gap: calc(8px * var(--k)); }
+
+/* 24–26.5: and more */
+.morechip { display: inline-flex; align-items: center; gap: 18px; height: 84px; padding: 0 30px 0 22px; border-radius: 22px; background: #fff; border: 2px solid var(--line);
+  font-size: 30px; font-weight: 600; white-space: nowrap; box-shadow: 0 16px 36px -24px rgba(18,28,32,.45); }
+
+/* glass content (content-glass.css): the card and the active tab let the glass through by a share — light keeps
+   78% frosted, dark 84%; in dark the strip, the card's head, turns glass with it */
+.win.glass { --cg: 78%; }
+.win.dark.glass { --cg: 84%; }
+.win.glass .card, .win.glass .tab.on { background: color-mix(in srgb, var(--pane) var(--cg), transparent); }
+.win.dark.glass .tabs { background: color-mix(in srgb, var(--ground) var(--cg), transparent); }
+
+/* a code block's words as Shiki colours them: the app's own GitHub dark (on the app's --chip surface), then
+   Dracula with its own background and text colour (#282a36, #f8f8f2) */
+.codeb .kw, .codeb .op, .codeb .tp { color: #f97583; }
+.codeb .fn, .codeb .cls { color: #b392f0; }
+.codeb .pa { color: #ffab70; }
+.codeb .ty, .codeb .va, .codeb .nu { color: #79b8ff; }
+.codeb .st { color: #9ecbff; }
+.codeb .pu { color: #e1e4e8; }
+.codeb.dracula .kw, .codeb.dracula .op, .codeb.dracula .tp { color: #ff79c6; }
+.codeb.dracula .fn { color: #50fa7b; }
+.codeb.dracula .cls, .codeb.dracula .ty { color: #8be9fd; font-style: italic; }
+.codeb.dracula .pa { color: #ffb86c; font-style: italic; }
+.codeb.dracula .va, .codeb.dracula .pu { color: #f8f8f2; }
+.codeb.dracula .nu { color: #bd93f9; }
+.codeb.dracula .st { color: #f1fa8c; }
