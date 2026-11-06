@@ -42,6 +42,8 @@ export function glyphUri(key: string, color: string, size: number): string {
   const known = cache.get(cacheKey);
   if (known) return known;
   const svg = (GLYPHS[key] ?? "")
+    // HTML takes attribute values without quotes (`id=connector-qwen`); an SVG document does not.
+    .replace(/(\s[\w:-]+)=([^\s"'>]+)/g, '$1="$2"')
     .replace(/currentColor/g, color)
     .replace("<svg ", `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" `);
   const uri = `data:image/svg+xml,${encodeURIComponent(svg)}`;

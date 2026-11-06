@@ -66,9 +66,22 @@
 | `ToastHost.svelte` | `src/ui/ToastHost` | 外壳挂一个；发提示照信使用 `src/m/toast` 的函数 |
 | `ImageContextMenu.svelte` | `src/ui/ImageContextMenu` | 图片右键菜单 |
 | `BuildUpdateNotice.svelte`、`MobileNavigation.svelte` | `src/ui/` 同名 | 外壳用 |
-| 阴影、时长、字号 | `src/ui/styles` | `shadow("menu")`、`DURATION`、`TEXT` |
+| `FolkAvatar.svelte`、`SessionAvatar.svelte` | `src/ui/` 同名 | Bot 和对话的头像；存下来的头像用 `src/ui/AvatarPicture` |
+| `AvatarEditor.svelte` | `src/ui/AvatarEditor` | 选图、缩到 256 |
+| `BrandMark.svelte` | `src/ui/BrandMark` | |
+| `ModelPicker.svelte`、`ModelSourceMark.svelte` | `src/ui/` 同名 | 模型选择器（桌面弹出、手机底部弹出）、模型来源标志 |
+| `settings/AgentLogo.svelte`、`ConnectorLogo.svelte`、`ClaudeSpark.svelte` | `src/ui/settings/` 同名 | 三个都画在 `AgentLogo.tsx` 里，另两个文件是转出 |
+| `MarkdownBody.svelte` | `src/ui/MarkdownBody` | `source`、`options`（`mentionBots`、`extraPaths`、`streaming`）、`copyLabel`、`inverted`、`onOpenArtifact`、`onOpenImage`、`loadArtifactImage`、`onOpenProfile`、`hideStandaloneArtifactLinks`；文件和 Bot 画成小标签。信使的 `markdown.ts`（`renderMarkdown`）不在镜像里，NSH 这边是 `src/ui/markdown.ts` 的 `prepareMarkdown`；要 HTML 的地方都改用 `MarkdownBody` |
+| 弹窗框架 `.modal-backdrop` / `.modal-dialog` / `.modal-head` / `.modal-body` / `.modal-foot` | `src/ui/Modal` | `Modal`（`title`、`closeLabel`、`onClose`、`width`、`foot`、`pageOnPhone`、`busy`、`alert`）和底部按钮 `ModalAction`（`kind`：primary / secondary / deny，`busy`）；信使里用这套 class 的 16 个对话框都套它 |
+| `overlays/DangerDialog.svelte` | `src/ui/overlays/DangerDialog` | 危险操作确认，`copy`、`onDismiss`、`onConfirm`、`busy`、`optionChecked` |
+| `overlays/FileIcon.svelte` | `src/ui/overlays/FileIcon` | `icon={fileIconFor(path)}`（`src/m/overlays/file-icon.ts`） |
+| `<input type="checkbox">` | `src/ui/Checkbox` | 整行可点，`checked` + `onChange`、`label` |
+| 阴影、时长、字号、CSS 颜色 | `src/ui/styles` | `shadow("menu")`、`DURATION`、`TEXT`；镜像模块给的 `var(--x)` 颜色（头像色板）用 `cssColor()` 换成主题值 |
+| 字节转图片 | `src/ui/data-url` | `blobDataUrl(blob)`：NSH 没有 object URL，`Image` 吃 `data:` URL |
 
-头像、品牌标志、模型选择器（`FolkAvatar`、`SessionAvatar`、`AvatarEditor`、`BrandMark`、`ModelPicker`、`ModelSourceMark` 和设置里的 `AgentLogo`、`ConnectorLogo`、`ClaudeSpark`）合进来以后补在这张表里。
+两个信使的外壳级组件不单独移植：`ImageCopy.svelte`（document 级右键监听，NSH 没有 document）由显示图片的组件自己挂 `ImageContextMenu`；`WorkspaceDragGhost.svelte` 跟文件树拖动一起，由移植 `overlays/WorkspaceExplorer` 的任务做。
+
+样式的几个坑：Tailwind 的 `em` 单位不认（`px-[0.35em]` 会被忽略，换成 px）；`font-mono` 是平台自己的等宽字体，不要写具体字体名；文字里嵌的视图（小标签）用 `style={{ verticalAlign: "middle" }}` 对齐。
 
 ## 不要做的
 

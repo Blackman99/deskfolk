@@ -115,7 +115,9 @@ const theme = {
     theme: {
       radius: "10px",
       "font-sans": "system-ui",
-      "font-mono": "SF Mono, Menlo, Consolas, monospace",
+      // The platform's own monospace (SF Mono on a Mac, Consolas on Windows): a named family the
+      // system lacks falls back to the proportional system font.
+      "font-mono": "monospace",
     },
     light: { ...lightOut, ...builtins({ ...lightOut }) },
     dark: { ...darkOut, ...builtins({ ...lightOut, ...darkOut }) },

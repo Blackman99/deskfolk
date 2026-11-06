@@ -65,4 +65,4 @@ bun apps/desktop-nsh/scripts/terminal-probe.ts          # 终端：颜色、宽�
 
 Windows 和 Linux 不能在 Mac 上交叉编译，在 GitHub Actions 的 `.github/workflows/nsh-desktop.yml` 上构建、测试和冒烟（Linux 在 Xvfb 下）。
 
-开发版宿主的检查用参数（`dev.ts` 用环境变量传，macOS）：`--background`（不激活、不进台前调度、放到副显示器）、`--snapshots <dir>`（窗口自己渲染成 PNG；往 `<dir>/request` 写空行截图，写 `new-window`、`badge 3`、`notify 文本` 做对应的事）、`--open-session <id>`、`--pane chat|terminal|pdf`、`--pdf <path>`、`--fps`（NSH 帧监视，日志 `nsh::perf`）、`--scroll-probe`、`--terminal native`（换回 NSView 终端作对照）。自动检查不往屏幕注入键鼠事件，也不需要屏幕录制权限。
+开发版宿主的检查用参数（`dev.ts` 用环境变量传，macOS）：`--background`（不激活、不进台前调度、放到副显示器）、`--snapshots <dir>`（窗口自己渲染成 PNG；往 `<dir>/request` 写空行截图，写 `new-window`、`badge 3`、`notify 文本` 做对应的事）、`--open-session <id>`、`--pane chat|terminal|pdf`、`--pdf <path>`、`--fps`（NSH 帧监视，日志 `nsh::perf`）、`--scroll-probe`、`--terminal native`（换回 NSView 终端作对照）、`--story <名字>`（`DESKFOLK_STORY=<名字>`：编 `Story.tsx`，窗口只开 `stories/index.ts` 里那一屏）。自动检查不往屏幕注入键鼠事件，也不需要屏幕录制权限。

@@ -9,6 +9,7 @@
  *    its own (`com.real-bot.desktop.nsh-dev`): Notification Center needs one, and the stable app's
  *    permissions and window state stay apart.
  * 3. The app (`nsh build`), built again on every save under `app/`; the shell reloads it.
+ *    `DESKFOLK_STORY=<name>` builds `Story.tsx` instead and opens that one screen (stories/index.ts).
  *
  * Quitting the shell stops what this script started, and only that.
  */
@@ -22,7 +23,8 @@ import { DEV_APP_NAME, DEV_BUNDLE_ID, DEV_ORIGIN, devInstance } from "./dev-inst
 const root = resolve(import.meta.dir, "..");
 const repo = resolve(root, "../..");
 const build = join(root, "build");
-const appBuild = join(build, "app");
+const story = process.env.DESKFOLK_STORY;
+const appBuild = join(build, story ? "story" : "app");
 const bundleApp = join(build, `${DEV_APP_NAME}.app`);
 const executable = join(bundleApp, "Contents", "MacOS", "deskfolk-nsh");
 const nsh = process.env.NSH ?? join(homedir(), ".local", "bin", "nsh");
@@ -103,7 +105,7 @@ function infoPlist(): string {
 }
 
 function buildApp(): boolean {
-  const result = spawnSync(nsh, ["build", "App.tsx", "--out", appBuild], { cwd: join(root, "app"), stdio: "inherit" });
+  const result = spawnSync(nsh, ["build", story ? "Story.tsx" : "App.tsx", "--out", appBuild], { cwd: join(root, "app"), stdio: "inherit" });
   return result.status === 0;
 }
 
@@ -143,6 +145,7 @@ if (process.env.DESKFOLK_PDF) shellArgs.push("--pdf", process.env.DESKFOLK_PDF);
 if (process.env.DESKFOLK_FPS === "1") shellArgs.push("--fps");
 if (process.env.DESKFOLK_SCROLL_PROBE === "1") shellArgs.push("--scroll-probe");
 if (process.env.DESKFOLK_TERMINAL) shellArgs.push("--terminal", process.env.DESKFOLK_TERMINAL);
+if (story) shellArgs.push("--story", story);
 const shell = spawn(process.env.DESKFOLK_SHELL ?? executable, shellArgs, {
   cwd: root,
   stdio: "inherit",

@@ -13,6 +13,13 @@
       ]
     },
     "clipboard": true,
+    "openUrl": {
+      "schemes": [
+        "https",
+        "http",
+        "mailto"
+      ]
+    },
     "host": [
       "shell.*",
       "runtime.*",

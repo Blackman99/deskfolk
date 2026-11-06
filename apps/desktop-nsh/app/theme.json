@@ -3,7 +3,7 @@
     "theme": {
       "radius": "10px",
       "font-sans": "system-ui",
-      "font-mono": "SF Mono, Menlo, Consolas, monospace"
+      "font-mono": "monospace"
     },
     "light": {
       "bg": "#eef1f2",
