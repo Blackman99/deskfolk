@@ -46,7 +46,29 @@
 - 阴影不是令牌：`style={{ boxShadow: shadow("menu") }}`（`src/ui/styles`，按明暗自动换）。字号照信使写字面量（`text-[13px]`），对照表在 `styles.ts` 的 `TEXT`。
 - 状态用变体：`hover:`、`active:`、`disabled:`、`focus-visible:`、`group` 加 `group-hover:`、`selected:`、`dark:`。
 - 图标：`<Icon name="plus" size={16} class="tint-ink-muted" />`（`src/ui/Icon`），颜色只用 `tint-*` 类，悬停跟随用 `group-hover:tint-ink`。名字照 `src/m/icons.ts`。
-- 现成的组件先找 `src/ui/`（`Button`、`IconButton`、`Icon`、`Switch`、`tip`……）。没有的、几个区域都要用的，报告里说，不要各写一份。
+- 现成的组件先找 `src/ui/`（见下面「已经移植的共享组件」）。没有的、几个区域都要用的，报告里说，不要各写一份。
+
+## 已经移植的共享组件
+
+信使里被几个区域共用的组件，移植好的都在这里，直接导入，不要另写：
+
+| 信使 | NSH | 用法要点 |
+|---|---|---|
+| `Icon.svelte` | `src/ui/Icon` | `name`、`size`、`filled`、颜色只用 `class="tint-…"`；`iconUri()` 给 `Image` 用 |
+| `Button.svelte` | `src/ui/Button` | `variant`（primary / secondary / ghost / danger / danger-soft）、`size`、`icon`、`trailingIcon`、`onPress` |
+| `IconButton.svelte` | `src/ui/IconButton` | `icon`、`label`（必填，也是提示）、`size`（xs/sm/md/lg）、`pressed` |
+| `Switch.svelte` | `src/ui/Switch` | `value` + `onChange` |
+| 提示 `title=` | `src/ui/tip` | `tooltip={tip("…")}` |
+| `Select.svelte` | `src/ui/Select` | `value`、`options`（字符串或 `{ value, label, hint, group, disabled }`）、`onChange`；桌面弹出、手机底部弹出 |
+| `MultiSelect.svelte` | `src/ui/MultiSelect` | 多选，选中的成小标签 |
+| `BottomSheet.svelte` | `src/ui/BottomSheet` | `open`、`onClose`、`onBack`；行用同文件的 `SheetItem`、`SheetSeparator` |
+| `EmptyState.svelte` | `src/ui/EmptyState` | 空列表的说明和下一步 |
+| `ToastHost.svelte` | `src/ui/ToastHost` | 外壳挂一个；发提示照信使用 `src/m/toast` 的函数 |
+| `ImageContextMenu.svelte` | `src/ui/ImageContextMenu` | 图片右键菜单 |
+| `BuildUpdateNotice.svelte`、`MobileNavigation.svelte` | `src/ui/` 同名 | 外壳用 |
+| 阴影、时长、字号 | `src/ui/styles` | `shadow("menu")`、`DURATION`、`TEXT` |
+
+头像、品牌标志、模型选择器（`FolkAvatar`、`SessionAvatar`、`AvatarEditor`、`BrandMark`、`ModelPicker`、`ModelSourceMark` 和设置里的 `AgentLogo`、`ConnectorLogo`、`ClaudeSpark`）合进来以后补在这张表里。
 
 ## 不要做的
 
@@ -57,7 +79,7 @@
 
 ## 验证
 
-1. 类型检查：在 `apps/desktop-nsh/app` 里跑 `nsh check App.tsx`，零错误（PATH 里要有 `~/.local/bin` 和 `~/.cargo/bin`）。
+1. 类型检查：在 `apps/desktop-nsh/app` 里跑 `nsh check App.tsx` 和 `nsh check Story.tsx`，零错误（PATH 里要有 `~/.local/bin` 和 `~/.cargo/bin`）。故事只从 `Story.tsx` 进，`nsh check stories/x.tsx` 会在 `stories/` 下生成一个多余的 `.nsh/`，不要这样跑。
 2. 开一个故事：在 `app/stories/<区域>.tsx` 写一个默认导出的组件，把这个区域的界面摆出来，`stories/index.ts` 加一行登记。
 3. 写测试：`app/.ui/<区域>-<主题>.test.tsx`，用 `.ui/fixture.ts` 的 `openStory("<区域>")`（整个应用用 `openApp()`）。要什么数据就在测试里用 `api(method, path, body)` 现建（Bot、会话、消息、设置），夹具只预置了 Writer、Editor、Writer 的私聊（两行，其中一行带 Markdown）和「周报小组」。按 `testID`（`id:x`）、文字（`text:x`）找，`press`、`type`、`waitFor` 操作；测的是行为，不是像素。
 4. 在仓库根目录跑 `bun apps/desktop-nsh/scripts/ui-tests.ts <文件名的一部分>`，全部通过。
