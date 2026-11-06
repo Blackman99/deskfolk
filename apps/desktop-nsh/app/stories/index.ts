@@ -22,4 +22,5 @@ export const stories: Record<string, Story> = {
   "spend-a": () => import("./spend-a"),
   "settings-remote-ui": () => import("./settings-remote-ui"),
   "settings-providers": () => import("./settings-providers"),
+  "sidebar-rail": () => import("./sidebar-rail"),
 };
