@@ -35,4 +35,5 @@ export const stories: Record<string, Story> = {
   workbench: () => import("./workbench"),
   "panels-c": () => import("./panels-c"),
   office: () => import("./office"),
+  misc: () => import("./misc"),
 };
