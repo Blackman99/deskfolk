@@ -207,6 +207,16 @@ pub fn focus_newest() -> bool {
     })
 }
 
+/// Puts window `id` away, as its close button does (the messenger's `hide_main_window`: ⌘W with
+/// no tab left hides rather than quits).
+pub fn hide(id: u32) {
+    WINDOWS.with_borrow(|windows| {
+        if let Some(entry) = windows.iter().find(|e| e.id == id) {
+            entry.window.orderOut(None);
+        }
+    });
+}
+
 /// Every window draws itself into `dir/window-<id>.png` (development checks).
 pub fn snapshot_all(dir: &Path) {
     WINDOWS.with_borrow(|windows| {

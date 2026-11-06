@@ -14,6 +14,8 @@ mod notify;
 mod runtime;
 #[cfg(target_os = "macos")]
 mod snapshot;
+#[cfg(target_os = "macos")]
+mod system;
 #[cfg(windows)]
 mod win;
 #[cfg(target_os = "macos")]

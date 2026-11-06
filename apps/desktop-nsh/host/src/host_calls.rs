@@ -34,6 +34,16 @@ pub fn install(host: &HostChannel, window_id: u32) {
         call.resolve(json!({ "id": window_id, "notifications": crate::notify::available() }));
     });
 
+    // The messenger's Tauri commands the shell answers (`app/src/platform/tauri-bridge.ts`).
+    host.handle("tauri.pick_workspace_folder", |call: HostCall| {
+        on_main(move |mtm| crate::system::pick_folder(mtm, call));
+    });
+    host.handle("tauri.open_workspace_path", crate::system::open_path);
+    host.handle("tauri.hide_main_window", move |call: HostCall| {
+        call.resolve(Value::Null);
+        on_main(move |_| crate::window::hide(window_id));
+    });
+
     host.handle("shell.openExternal", |call: HostCall| {
         let Some(url) = call.data().as_str().map(str::to_owned) else {
             call.reject("a URL is required");
