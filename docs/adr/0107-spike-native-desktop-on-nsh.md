@@ -83,3 +83,22 @@ After the spike you settled the four questions: customisation through NSH's own 
 你定了：生成的 HTML 页面（幻灯片、带交互的页面）可以用 WebView 预览。这是应用里唯一的 WebView：产物预览和 HTML 批注里，NSH 的 `WebView` 以 `html` 直接显示页面源码（和信使的 iframe 一样，从运行时取源码，不让页面拿到本机令牌），批注的选取脚本经 `injectedJavaScript` 注入、`window.nsh.postMessage` 回传。`nsh.json` 加了 `capabilities.webview`，不列任何主机，所以 web view 只能显示内联页面、不能跳去别的网站。其余界面照旧全原生。
 
 You decided that a generated HTML page (slides, interactive pages) may be previewed in a WebView. It is the app's only one: the artifact preview and the HTML annotator show the page's source through NSH's `WebView` `html` (fetched from the runtime as the messenger's iframe does, so the page never sees the local token), with the annotation picker injected through `injectedJavaScript` and talking back through `window.nsh.postMessage`. `nsh.json` grants `capabilities.webview` with no hosts, so a web view shows inline pages and cannot navigate to other sites. Everything else stays native.
+
+## 补记 2026-11-06：Phase 1b 界面移植进行中 / Addendum 2026-11-06: Phase 1b, porting the screens
+
+信使的 335 个 Svelte 组件按依赖分成 37 个移植任务，一个任务一个工作树，叶子先做，每批合入前跑类型检查和界面测试（`apps/desktop-nsh/PORTING.md` 是规矩）。已合入：共用件（表单、弹层、头像、模型选择、Markdown 小标签、弹窗框架）、聊天的卡片、顶栏、输入框零件、图片与附件、批注（HTML 用 WebView）、计划、执行轨迹、任务地图、用量、花费第一批、会话设置面板第一批、侧栏导轨和会话行、设置的骨架、通用、提示词与通知、远程与界面、模型来源。随后是聊天记录、完整输入框、计划总面板、工作台、新建对话框、Agent 与流程设置，最后组装外壳（`Shell.svelte`）。
+
+途中补上的 NSH 缺口，各平台共用的在应用里、窗口层的在外壳里：
+- 滚轮：NSH 0.4 的视图收不到滚轮，外壳把滚轮、双指滚动和捏合转给应用，`onWheel` 按视图分发（形状照 DOM 的 `WheelEvent`）。
+- 桌面通知：Tauri 外壳的投递循环和四个命令搬进 macOS 外壳，路由和 JSON 不变。
+- 语音输入：外壳用 AVAudioRecorder 录 AAC，应用在桌面补上 `getUserMedia` 和 `MediaRecorder`，信使的录音逻辑原样跑。
+- 系统命令：选文件夹、打开或在访达显示、隐藏窗口在外壳；打开链接、剪贴板、窗口明暗用 NSH 的 `openUrl`、`Clipboard`、`setColorScheme`。
+- 引擎：`Intl.RelativeTimeFormat` 补了中英文；`Intl` 格式化器可以不带 `new` 调用；`derived` 改成和 Svelte 一样惰性；运行时在 `globalThis` 上认出桌面外壳。
+
+两项改了做法：Office 预览不用 `office2pdf`（实测带 Typst 后体积多约 45 MB，Word 表格排版重叠），改为 Rust 直接读文件，Excel 用 `calamine` 进 `DataTable`，Word 读成段落、列表、表格交给 `TextView`，PowerPoint 读出形状按比例摆放；终端等 NSH 自带的 `nsh/base` `Terminal`（longbridge/nsh#1111）合入后换上，期间不再扩展画布终端。
+
+The messenger's 335 Svelte components are ported in 37 dependency-ordered jobs, each in a worktree of its own, leaves first, every batch type-checked and screen-tested before it lands (`apps/desktop-nsh/PORTING.md` holds the rules). Landed so far: the shared pieces (forms, overlays, avatars, the model picker, Markdown chips, the modal frame), the chat's cards, header, composer parts, pictures and attachments, annotations (HTML in a WebView), the plan, the trace, the task map, usage, the first half of spend, the first half of the session drawer, the sidebar's rail and rows, and the settings skeleton, general, prompts and notifications, remote and interface, and providers. Next: the transcript, the full composer, the plan panel, the workbench, the create sheets, the agents and playbooks settings, and last the shell (`Shell.svelte`).
+
+NSH gaps filled on the way, cross-platform ones in the app and window-level ones in the shell: wheel events (NSH 0.4's views hear none; the shell forwards the wheel, two-finger scrolling and pinch, and `onWheel` dispatches them, shaped like the DOM's `WheelEvent`); desktop notifications (the Tauri shell's delivery loop and four commands, routes and JSON unchanged); voice input (the shell records AAC with AVAudioRecorder, the app provides `getUserMedia` and `MediaRecorder` over it); system commands (folder picker, open or reveal, hide window in the shell; links, clipboard and window theme through NSH's `openUrl`, `Clipboard`, `setColorScheme`); and the engine (`Intl.RelativeTimeFormat` for Chinese and English, `Intl` formatters callable without `new`, a lazy `derived` as Svelte's, the desktop shell recognised on `globalThis`).
+
+Two approaches changed. Office previews do not use `office2pdf` (Typst added about 45 MB and overlapped Word tables): Rust reads the files directly, Excel through `calamine` into `DataTable`, Word as paragraphs, lists and tables for `TextView`, PowerPoint as shapes placed to scale. The terminal waits for NSH's own `nsh/base` `Terminal` (longbridge/nsh#1111) and the canvas terminal is not extended meanwhile.
