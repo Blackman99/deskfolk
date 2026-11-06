@@ -5,4 +5,5 @@ type Story = () => Promise<{ default: () => JSX.Element }>;
 
 export const stories: Record<string, Story> = {
   kit: () => import("./kit"),
+  "kit-forms": () => import("./kit-forms"),
 };

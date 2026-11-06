@@ -1,6 +1,6 @@
 /target/
 /build/
-/app/.nsh/
+.nsh/
 /app/build/
 /node_modules/
 /app/e2e/.live-params.json
