@@ -37,3 +37,10 @@ test("relative times read as the browser's Intl.RelativeTimeFormat would", () =>
   expect(en.format(-5, "days")).toBe("5 days ago");
   expect(en.format(-1, "day")).toBe("yesterday");
 });
+
+test("Intl formatters may be called without new, as in a browser", () => {
+  const plain = (Intl.DateTimeFormat as unknown as (l: string, o: object) => Intl.DateTimeFormat)("en-US", { timeZone: "UTC", year: "numeric" });
+  expect(plain.format(new Date(0))).toBe("1970");
+  expect(new Intl.DateTimeFormat("en-US", { timeZone: "UTC", year: "numeric" }) instanceof Intl.DateTimeFormat).toBe(true);
+  expect(typeof Intl.DateTimeFormat.supportedLocalesOf).toBe("function");
+});

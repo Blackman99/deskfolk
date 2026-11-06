@@ -83,6 +83,30 @@ const kept = new Map<string, string>();
  * Installs the globals at once (`localStorage` empty until `loadStorage()` fills it). Imported for
  * its effect by `install.ts`, before anything that reads them.
  */
+/**
+ * `Intl.DateTimeFormat(...)` without `new` is a formatter in every browser (the spec allows it); the
+ * desktop engine's throws, and the messenger calls it that way (`notifications/parse.ts`
+ * `isIanaTimeZone`). Wrapped so a plain call constructs, with `instanceof` and the statics kept.
+ */
+function callableIntl(intl: Record<string, unknown>, name: string): void {
+  const Native = intl[name] as (new (...args: unknown[]) => object) & Record<string, unknown>;
+  if (typeof Native !== "function") return;
+  try {
+    (Native as unknown as (...args: unknown[]) => unknown)();
+    return;
+  } catch {
+    // Needs `new`: wrap it.
+  }
+  const Callable = function (this: unknown, ...args: unknown[]) {
+    return new Native(...args);
+  } as unknown as Record<string, unknown> & { prototype: object };
+  Callable.prototype = Native.prototype;
+  for (const key of ["supportedLocalesOf"]) {
+    if (typeof Native[key] === "function") Callable[key] = (Native[key] as (...a: unknown[]) => unknown).bind(Native);
+  }
+  intl[name] = Callable;
+}
+
 export function installGlobals(): void {
   if (installed) return;
   installed = true;
@@ -90,6 +114,8 @@ export function installGlobals(): void {
   if (typeof g.structuredClone !== "function") g.structuredClone = (value: unknown) => clone(value);
   const intl = g.Intl as Record<string, unknown> | undefined;
   if (intl && typeof intl.RelativeTimeFormat !== "function") intl.RelativeTimeFormat = RelativeTimeFormat;
+  if (intl) callableIntl(intl, "DateTimeFormat");
+  if (intl) callableIntl(intl, "NumberFormat");
   if (typeof g.navigator === "undefined") {
     const os = platform.os;
     g.navigator = {
