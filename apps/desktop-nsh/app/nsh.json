@@ -20,6 +20,7 @@
         "mailto"
       ]
     },
+    "webview": {},
     "host": [
       "shell.*",
       "runtime.*",

@@ -38,6 +38,7 @@
 | `tooltip` / `title=` | `<View tooltip={tip("…")}>`（`src/ui/tip`） |
 | 拖动改宽 | `PanResponder` 或 `nsh/base` 的 `ResizablePanelGroup` |
 | `{@html …}` / Markdown | `TextView`（`nsh/base`）的 `markdown`，不要拼 HTML |
+| 预览生成的 HTML 页面（`<iframe srcdoc>`、blob URL） | `WebView`（`nsh`）的 `html`；页面和应用之间用 `injectedJavaScript` 和 `window.nsh.postMessage` / `onMessage`、ref 的 `postMessage`。**只有 HTML 产物预览和 HTML 批注能用 WebView**，别的界面一律原生 |
 | 代码 | `Editor`、`DiffView`（`nsh/base`）；聊天里的代码块由 `TextView` 画 |
 
 ## 样式
