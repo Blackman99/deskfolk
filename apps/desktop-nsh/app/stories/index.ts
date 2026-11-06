@@ -20,4 +20,5 @@ export const stories: Record<string, Story> = {
   annotations: () => import("./annotations"),
   platform: () => import("./platform"),
   "spend-a": () => import("./spend-a"),
+  "settings-remote-ui": () => import("./settings-remote-ui"),
 };
