@@ -9,4 +9,5 @@ export const stories: Record<string, Story> = {
   "kit-identity": () => import("./kit-identity"),
   shared: () => import("./shared"),
   "settings-base": () => import("./settings-base"),
+  plan: () => import("./plan"),
 };
