@@ -30,4 +30,5 @@ export const stories: Record<string, Story> = {
   "sidebar-sheets": () => import("./sidebar-sheets"),
   "chat-transcript": () => import("./chat-transcript"),
   "panels-b": () => import("./panels-b"),
+  "spend-b": () => import("./spend-b"),
 };
