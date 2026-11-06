@@ -15,4 +15,5 @@ export const stories: Record<string, Story> = {
   "chat-media": () => import("./chat-media"),
   "chat-composer": () => import("./chat-composer"),
   usage: () => import("./usage"),
+  "chat-header": () => import("./chat-header"),
 };
