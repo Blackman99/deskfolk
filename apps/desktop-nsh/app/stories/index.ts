@@ -24,4 +24,5 @@ export const stories: Record<string, Story> = {
   "settings-providers": () => import("./settings-providers"),
   "sidebar-rail": () => import("./sidebar-rail"),
   "settings-general": () => import("./settings-general"),
+  "settings-prompts": () => import("./settings-prompts"),
 };
