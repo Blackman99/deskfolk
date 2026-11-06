@@ -23,7 +23,7 @@
 	import { describeStep, stepRow, type StepRow } from './turn-activity.ts';
 	import { ComposerVoice, spacedHeard } from './composer-voice.svelte.ts';
 	import { loadClaudeModels } from '../claude-models.svelte.ts';
-	import { accountChoices, claudeStatus, codexModels, loadClaudeStatus, loadCodexStatus } from './project-agent-options.svelte.ts';
+	import { accountChoices, claudeStatus, codexModels, loadAgentsStatus, loadClaudeStatus } from './project-agent-options.svelte.ts';
 	import AgentTune from './AgentTune.svelte';
 	import ProjectCommandMenu from './ProjectCommandMenu.svelte';
 	import ProjectPlanCard from './ProjectPlanCard.svelte';
@@ -130,7 +130,7 @@
 	$effect(() => {
 		const api = runtime.client;
 		const codex = agent === 'codex';
-		untrack(() => (codex ? loadCodexStatus(api) : loadClaudeStatus(api)));
+		untrack(() => (codex ? loadAgentsStatus(api) : loadClaudeStatus(api)));
 	});
 	$effect(() => {
 		const api = runtime.client;
@@ -913,6 +913,7 @@
 					<AgentTune
 						{t}
 						{agent}
+						{agentName}
 						models={agent === 'codex' ? codexModels() : undefined}
 						tune={{ account, model, effort }}
 						accounts={accountShown ? accountOptions : null}

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Icon from '../Icon.svelte';
 	import { tick } from 'svelte';
-	import { speechReady, type SessionSummary } from '@real-bot/protocol';
+	import { speechReady, type PatchBotRequest, type SessionSummary } from '@real-bot/protocol';
 	import { composerAction, composerLocked, justSent, lockedReason } from './composer-mode.ts';
 	import { keyboardInset } from './composer-inset.ts';
 	import {
@@ -28,6 +28,7 @@
 	import { formatShortcut } from '../keymap.ts';
 	import { ComposerMentions } from './composer-mentions.svelte.ts';
 	import { ComposerVoice, caretIn, insertHeardAt, spacedHeard } from './composer-voice.svelte.ts';
+	import BotTune from './BotTune.svelte';
 	import ComposerAttachmentsBar from './ComposerAttachments.svelte';
 	import ComposerEditor from './ComposerEditor.svelte';
 	import ComposerQuote from './ComposerQuote.svelte';
@@ -164,6 +165,21 @@
 	function pickStop(item: StopMenuItem): Promise<unknown> | void {
 		if (!selected) return;
 		return runtime.stopScope(item.choice.scope, item.choice.id, selected.id, { liftOnNext: item.choice.liftOnNext });
+	}
+
+	/**
+	 * A direct with a Bot you can write to picks the Bot's model on the tool row, as a project
+	 * session's composer does. It is the Bot's own, the one its profile sets: a pick holds wherever
+	 * the Bot works. A refusal says so under the box, in that Bot's direct only.
+	 */
+	const tuneBot = $derived(
+		selectedKind === 'you-bot' && !lockedComposer && !fileDrop && selectedPeerBot && !selectedPeerBot.archived_at ? selectedPeerBot : null
+	);
+	let tuneFailedFor = $state<string | null>(null);
+
+	async function tuneModel(botId: string, change: PatchBotRequest): Promise<void> {
+		const failure = await runtime.patchBot(botId, change);
+		tuneFailedFor = failure ? botId : tuneFailedFor === botId ? null : tuneFailedFor;
 	}
 
 	const lockedNotice = $derived.by(() => {
@@ -521,6 +537,8 @@
 
 	{#if view?.sendRefused}
 		<p class="field-error composer-refused" role="alert">{view.sendRefused === 'too_many_files' ? t.composer.tooManyFiles : t.composer.sendRefused}</p>
+	{:else if tuneBot && tuneFailedFor === tuneBot.id}
+		<p class="field-error composer-refused" role="alert">{t.composer.tuneFailed}</p>
 	{/if}
 
 	{#if attachments.pendingAttachments.length > 0 || attachments.pendingPaths.length > 0}
@@ -539,6 +557,7 @@
 	<div
 		class="composer-row flex items-end gap-2 w-full"
 		class:is-file-drop={fileDrop}
+		class:has-tune={Boolean(tuneBot)}
 		ondragover={attachments.onFileDragOver}
 		ondrop={attachments.onFileDrop}
 	>
@@ -559,6 +578,12 @@
 			onchange={attachments.onFileInputChange}
 			style="display: none;"
 		/>
+		{#if tuneBot}
+			{@const bot = tuneBot}
+			<div class="composer-tune">
+				<BotTune {runtime} {t} {bot} disabled={!connected} onpick={(change) => void tuneModel(bot.id, change)} />
+			</div>
+		{/if}
 		<ComposerEditor
 			bind:el={editorEl}
 			{placeholder}
@@ -822,6 +847,21 @@
 		cursor: not-allowed;
 	}
 
+	/*
+	 * The Bot's model, on the tool row after attach, as on a project session's. The slot takes the
+	 * row's free room, so the buttons after it keep to the right and the row never wraps for it;
+	 * the picker in it keeps to its text and is cut short first when the row is short of room.
+	 */
+	.composer-tune {
+		display: flex;
+		flex: 1 1 0;
+		min-width: 0;
+	}
+
+	.composer-row.has-tune .attach-btn {
+		margin-right: 0;
+	}
+
 	/* Out, or on the way: the same press puts them away. */
 	.suggest-btn.is-active,
 	.suggest-btn[aria-busy="true"],
@@ -990,6 +1030,18 @@
 			width: 34px;
 			height: 34px;
 			flex-basis: 34px;
+		}
+
+		/* With the Bot's model to pick there is a tool row here too, under the text, as wider. */
+		.composer-row.has-tune {
+			flex-wrap: wrap;
+			align-items: center;
+			row-gap: 2px;
+		}
+
+		.composer-row.has-tune > :global(.composer-editor-wrap) {
+			order: -1;
+			flex: 1 0 100%;
 		}
 
 		/*

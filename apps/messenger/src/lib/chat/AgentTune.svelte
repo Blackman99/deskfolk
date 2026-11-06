@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ClaudeCodeModel, PatchProjectSessionRequest, ProjectAgent } from '@real-bot/protocol';
+	import type { BotRunner, ClaudeCodeModel, PatchProjectSessionRequest } from '@real-bot/protocol';
 	import type { HTMLAttributes } from 'svelte/elements';
 	import { claudeModelsOf, loadClaudeModels, modelChoices, modelRowOf, type Choice } from '../claude-models.svelte.ts';
 	import type { Copy } from '../copy.ts';
@@ -10,16 +10,19 @@
 	import type { TuneFocus, TuneLevel, TuneRow, TuneTree } from './tune-picker.ts';
 
 	/**
-	 * A project session's account, model and thinking level (ADR 0095) in the composer's cascading
-	 * picker (`TunePicker.svelte`): the accounts, each account's models, each model's levels. A Codex
-	 * session (ADR 0099) has no account to pick: the picker starts at the models Codex lists.
+	 * An agent's account, model and thinking level in the composer's cascading picker
+	 * (`TunePicker.svelte`): the accounts, each account's models, each model's levels. A project
+	 * session's (ADR 0095), and a Bot's on a local agent in its direct (`BotTune.svelte`). With no
+	 * account to pick — Codex (ADR 0099), any agent but Claude — the picker starts at the models.
 	 */
 	type Props = Pick<HTMLAttributes<HTMLDivElement>, `data-${string}`> & {
 		t: Copy;
-		/** Whose session it is: its name and mark on the picker. */
-		agent: ProjectAgent;
+		/** Whose runs they are: its mark on the picker. */
+		agent: BotRunner;
+		/** Its name: the phone sheet's heading, and what "your settings" are of. */
+		agentName: string;
 		tune: AgentTune;
-		/** The agent's own models when it is not Claude Code (Codex's, as it lists them); left out, Claude Code's for the account. */
+		/** The agent's own models when it is not Claude Code (as it lists them); left out, Claude Code's for the account. */
 		models?: ClaudeCodeModel[];
 		/** Your accounts, with a second one to pick; null leaves the account out. */
 		accounts: Choice[] | null;
@@ -30,8 +33,7 @@
 		onpick: (change: PatchProjectSessionRequest) => void;
 	};
 
-	let { t, agent, tune, models: ownModels, accounts, accountLocked, disabled, client, onpick, ...attrs }: Props = $props();
-	const agentName = $derived(t.project.agentNames[agent]);
+	let { t, agent, agentName, tune, models: ownModels, accounts, accountLocked, disabled, client, onpick, ...attrs }: Props = $props();
 
 	/** Each column's width, so the field can keep room for every column that may open beside the first. */
 	const ACCOUNT: TuneLevel = $derived({ key: 'account', heading: t.project.accountLabel, width: 264, note: accountLocked ? t.project.accountBusy : null });

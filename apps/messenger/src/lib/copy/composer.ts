@@ -39,6 +39,12 @@ export const zh = {
   suggestNone: "这次没有起草出建议",
   redirect: (name: string) => `发送会改道眼前这轮（${name}）。已做完的不回滚。`,
   forkLive: (name: string) => `发送会另开一轮；${name} 当前轮继续。`,
+  /** The model picker in a Bot's direct: the Bot's own model, the one its profile sets, everywhere it works. */
+  tuneLabel: "Bot 的模型和思考等级",
+  /** A Bot on the app's own loop: the endpoints its model can come from, the first level of the picker. */
+  tuneEndpoint: "端点",
+  tuneAutomaticHint: "每条消息由应用挑模型",
+  tuneFailed: "模型没换成，再试一次。",
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -70,4 +76,8 @@ export const en: CopyShape<typeof zh> = {
   suggestNone: "No suggestions this time",
   redirect: (name: string) => `Send redirects the live turn (${name}). Done work is not rolled back.`,
   forkLive: (name: string) => `Send forks a new turn; ${name}'s current turn keeps running.`,
+  tuneLabel: "The Bot's model and thinking level",
+  tuneEndpoint: "Endpoint",
+  tuneAutomaticHint: "The app picks a model per message",
+  tuneFailed: "The model did not change; try again.",
 };

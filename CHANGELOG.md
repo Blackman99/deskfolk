@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Change a Bot's model from its direct
+
+- A direct with a Bot now has a model picker on the composer's tool row, beside the paperclip, that opens a level at a time like a project session's. A Bot on the app's own loop picks Automatic or an endpoint, then one of its models, then a thinking level, pinning the model and the level together; a Bot on Claude Code picks its account (when there is more than one), model and effort; a Bot on Codex, Grok, OpenCode or another local agent picks among the models that agent lists and the efforts it takes. It changes the Bot's own setting, the same as the Bot panel does, so the Bot runs on it in groups too. On a phone it sits with the paperclip on a row under the text and opens as a sheet from the bottom.
+
 ### A narrow Roles scrolls down its map again
 
 - When Roles was narrow (a tab beside a conversation, a narrow window, a phone), its map was squeezed to the height left on the screen and the steps below were cut off, with nothing to scroll. The map is now as tall as its steps and the page scrolls down to the last of them.

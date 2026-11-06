@@ -1,13 +1,15 @@
-import { isClaudeEffort, type AgentStatus, type ClaudeCodeModel, type ClaudeCodeStatus } from "@real-bot/protocol";
+import { isClaudeEffort, type AgentsStatusResponse, type ClaudeCodeModel, type ClaudeCodeStatus } from "@real-bot/protocol";
 import type { MessengerApi } from "../messenger-api.ts";
 import { forgetClaudeModels, type Choice } from "../claude-models.svelte.ts";
+import { agentStatusOf } from "../runner-choice.ts";
 
 /**
- * What a project session's composer offers besides Claude Code's models (`claude-models.svelte.ts`,
- * ADR 0095): your Claude accounts, and a Codex session's models (ADR 0099), each asked for once a page.
+ * What a composer's model picker offers besides Claude Code's models (`claude-models.svelte.ts`,
+ * ADR 0095): your Claude accounts, and your other local agents with the models each lists — a Codex
+ * session's (ADR 0099), a Bot's on one of them — each asked for once a page.
  */
 const claude = $state<{ status: ClaudeCodeStatus | null; asked: boolean }>({ status: null, asked: false });
-const codex = $state<{ status: AgentStatus | null; asked: boolean }>({ status: null, asked: false });
+const agents = $state<{ list: AgentsStatusResponse | null; asked: boolean }>({ list: null, asked: false });
 
 /** Asks for your Claude Code's accounts, once. */
 export function loadClaudeStatus(api: MessengerApi | null): void {
@@ -42,19 +44,24 @@ export function accountChoices(status: ClaudeCodeStatus | null, current: string,
   return choices;
 }
 
-/** Asks for your Codex as the daemon last saw it, with the models it lists (`GET /v1/runtime/agents`), once. */
-export function loadCodexStatus(api: Pick<MessengerApi, "agents"> | null): void {
-  if (!api || codex.asked) return;
-  codex.asked = true;
+/** Asks for your local agents as the daemon last saw them, with the models each lists (`GET /v1/runtime/agents`), once. */
+export function loadAgentsStatus(api: Pick<MessengerApi, "agents"> | null): void {
+  if (!api || agents.asked) return;
+  agents.asked = true;
   Promise.resolve()
     .then(() => api.agents())
-    // Once a page, answered or not: a Mac that cannot say offers only Codex's own default.
+    // Once a page, answered or not: a Mac that cannot say offers only each agent's own default.
     .then(
       (list) => {
-        codex.status = list.items.find((item) => item.runner === "codex") ?? null;
+        agents.list = list;
       },
       () => {},
     );
+}
+
+/** Your local agents once they came; null while asking, or when they could not be had. */
+export function agentsStatus(): AgentsStatusResponse | null {
+  return agents.list;
 }
 
 /**
@@ -62,7 +69,7 @@ export function loadCodexStatus(api: Pick<MessengerApi, "agents"> | null): void 
  * they came, or when Codex lists none: the picker then offers only what your Codex settings say.
  */
 export function codexModels(): ClaudeCodeModel[] {
-  return (codex.status?.models ?? []).map((model) => ({
+  return (agentStatusOf(agents.list, "codex")?.models ?? []).map((model) => ({
     value: model.id, display_name: model.name, description: "", resolved_model: null, efforts: model.efforts.filter(isClaudeEffort),
   }));
 }
@@ -72,6 +79,6 @@ export function forgetClaudeOptions(): void {
   forgetClaudeModels();
   claude.status = null;
   claude.asked = false;
-  codex.status = null;
-  codex.asked = false;
+  agents.list = null;
+  agents.asked = false;
 }

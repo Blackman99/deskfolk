@@ -256,7 +256,8 @@ test("✨ sits beside send, and steps aside once there is text or a file to send
   const order = [...row.children]
     .filter((el) => el.tagName !== "INPUT")
     .map((el) => el.classList[0]);
-  expect(order).toEqual(["attach-btn", "composer-editor-wrap", "suggest-btn", "composer-action"]);
+  // A direct's tool row has the Bot's model after attach (Composer.tune.test.ts).
+  expect(order).toEqual(["attach-btn", "composer-tune", "composer-editor-wrap", "suggest-btn", "composer-action"]);
   const button = host.querySelector(".suggest-btn")!;
   expect(button.classList.contains("steps-aside")).toBe(false);
   runtime.draft = "已经开始输入";
