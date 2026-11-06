@@ -32,4 +32,5 @@ export const stories: Record<string, Story> = {
   "panels-b": () => import("./panels-b"),
   "spend-b": () => import("./spend-b"),
   "settings-agents": () => import("./settings-agents"),
+  workbench: () => import("./workbench"),
 };
