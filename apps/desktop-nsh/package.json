@@ -11,7 +11,9 @@
     "dev": "bun scripts/dev.ts",
     "web": "bun scripts/web-dev.ts",
     "mirror": "bun scripts/port-messenger.ts",
-    "test": "bun test scripts && bun scripts/port-messenger.ts --check",
+    "theme": "bun scripts/theme-from-tokens.ts",
+    "ui": "bun scripts/ui-tests.ts",
+    "test": "bun test scripts && bun scripts/port-messenger.ts --check && bun scripts/theme-from-tokens.ts --check",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
