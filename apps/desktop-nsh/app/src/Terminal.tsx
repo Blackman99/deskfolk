@@ -7,11 +7,12 @@
  * until it commits); Return, Backspace and Escape through its key presses; arrows, Tab and Control
  * chords through `keymap` while the terminal has the keyboard.
  */
-import { cleanup, colorScheme, keymap, signal, View } from "nsh";
+import { cleanup, colorScheme, keymap, signal, View, type ViewRef } from "nsh";
 import { Input } from "nsh/base";
 import { TerminalGrid, Terminals } from "deskfolk/native";
 import type { StreamFrame } from "@real-bot/protocol";
 import { runtime } from "./runtime";
+import { onWheel } from "./platform/wheel";
 
 export function encode(text: string): string {
   const bytes = new TextEncoder().encode(text);
@@ -112,6 +113,23 @@ export function CanvasTerminal(props: { id: string; onExit?: () => void }) {
     await client.watchTerminal(id, screen.offset);
   })().catch((e) => console.error("terminal attach", String(e)));
 
+  // The wheel and two-finger scrolling move through the history, a line per cell height
+  // (`terminal.rs`: 1.25 × the font size), the remainder carried to the next event.
+  let area: ViewRef | undefined;
+  let carried = 0;
+  const FONT_SIZE = 13;
+  onWheel(
+    () => area,
+    (e) => {
+      const lines = carried - e.dy / Math.ceil(FONT_SIZE * 1.25);
+      const whole = Math.trunc(lines);
+      carried = lines - whole;
+      if (whole === 0) return;
+      Terminals.scroll(id, whole);
+      touched();
+    },
+  );
+
   let unbind: (() => void) | null = null;
   const bindKeys = () => {
     unbind?.();
@@ -128,10 +146,10 @@ export function CanvasTerminal(props: { id: string; onExit?: () => void }) {
   cleanup(() => unbind?.());
 
   return (
-    <View class="flex-1" onPress={() => input?.focus()} testID="terminal">
+    <View class="flex-1" onPress={() => input?.focus()} testID="terminal" ref={(node) => (area = node)}>
       <TerminalGrid
         id={id}
-        fontSize={13}
+        fontSize={FONT_SIZE}
         dark={colorScheme() === "dark"}
         focused={focused()}
         version={version()}

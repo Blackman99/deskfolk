@@ -19,6 +19,8 @@ mod system;
 #[cfg(windows)]
 mod win;
 #[cfg(target_os = "macos")]
+mod wheel;
+#[cfg(target_os = "macos")]
 mod window;
 
 struct Logger;

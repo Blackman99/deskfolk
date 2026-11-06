@@ -36,6 +36,7 @@ define_class!(
         fn did_finish_launching(&self, _notification: &NSNotification) {
             let mtm = self.mtm();
             new_window(mtm);
+            crate::wheel::install(mtm);
             crate::notify::setup(|id| log::info!("notification clicked: {id}"));
         }
 
@@ -261,6 +262,7 @@ fn watch_snapshot_requests(dir: PathBuf) {
                     ("", _) => crate::window::snapshot_all(&dir),
                     ("new-window", _) => new_window(mtm),
                     ("badge", label) => crate::notify::set_badge(mtm, Some(label)),
+                    ("wheel", args) => crate::window::wheel_first(args),
                     ("notify", body) => {
                         if let Err(why) = crate::notify::post("dev-check", "Deskfolk Dev", body) {
                             log::warn!("notify: {why}");

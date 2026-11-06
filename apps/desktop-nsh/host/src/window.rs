@@ -7,6 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
 
+use nsh_engine::HostChannel;
 use nsh_platform_macos::{AppOptions, AppView, AssetBase, Bundle, Limits};
 use objc2::rc::Retained;
 use objc2::runtime::{NSObject, NSObjectProtocol, ProtocolObject};
@@ -24,6 +25,7 @@ struct Entry {
     id: u32,
     window: Retained<NSWindow>,
     view: Rc<AppView>,
+    host: HostChannel,
 }
 
 thread_local! {
@@ -107,7 +109,7 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
     );
     window.setContentView(Some(&material));
 
-    let view = make_view(mtm, config, id);
+    let (view, host) = make_view(mtm, config, id);
     let content = view.view();
     content.setFrame(material.bounds());
     material.addSubview(&content);
@@ -141,13 +143,14 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
     } else {
         window.makeKeyAndOrderFront(None);
     }
-    WINDOWS.with_borrow_mut(|w| w.push(Entry { id, window, view }));
+    WINDOWS.with_borrow_mut(|w| w.push(Entry { id, window, view, host }));
     Some(id)
 }
 
-fn make_view(mtm: MainThreadMarker, config: &Config, id: u32) -> Rc<AppView> {
+fn make_view(mtm: MainThreadMarker, config: &Config, id: u32) -> (Rc<AppView>, HostChannel) {
     let host = crate::launch::channel(config, id);
     crate::host_calls::install(&host, id);
+    let events = host.clone();
 
     let view = AppView::new(
         mtm,
@@ -169,7 +172,7 @@ fn make_view(mtm: MainThreadMarker, config: &Config, id: u32) -> Rc<AppView> {
         deskfolk_native_terminal::Endpoint { port: config.endpoint.port, token: config.endpoint.token.clone() },
     );
     deskfolk_native_pdf::register(&view, mtm);
-    view
+    (view, events)
 }
 
 fn load_bundle(view: &AppView, path: &Path) -> bool {
@@ -205,6 +208,33 @@ pub fn focus_newest() -> bool {
         }
         None => false,
     })
+}
+
+/// Sends event `name` to the app in `window` (`host.on(name)`), if it is one of ours.
+pub fn send_event(window: &NSWindow, name: &str, data: serde_json::Value) {
+    WINDOWS.with_borrow(|windows| {
+        if let Some(entry) = windows.iter().find(|e| std::ptr::eq(&*e.window, window)) {
+            let _ = entry.host.send(name, data);
+        }
+    });
+}
+
+/// A wheel event in the first window, as `wheel <x> <y> <dy> [ctrl]` asks (development checks:
+/// the same path as a real one from `wheel.rs`, without touching the person's pointer).
+pub fn wheel_first(args: &str) {
+    let mut parts = args.split_whitespace();
+    let mut num = || parts.next().and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+    let (x, y, dy) = (num(), num(), num());
+    let ctrl = args.contains("ctrl");
+    WINDOWS.with_borrow(|windows| {
+        if let Some(entry) = windows.first() {
+            let data = serde_json::json!({
+                "x": x, "y": y, "dx": 0.0, "dy": dy, "ctrl": ctrl, "meta": false, "shift": false,
+                "alt": false, "pinch": false, "phase": null, "momentum": null,
+            });
+            let _ = entry.host.send("shell.wheel", data);
+        }
+    });
 }
 
 /// Puts window `id` away, as its close button does (the messenger's `hide_main_window`: ⌘W with
