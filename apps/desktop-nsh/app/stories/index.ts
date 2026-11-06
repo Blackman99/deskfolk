@@ -8,4 +8,5 @@ export const stories: Record<string, Story> = {
   "kit-forms": () => import("./kit-forms"),
   "kit-identity": () => import("./kit-identity"),
   shared: () => import("./shared"),
+  "settings-base": () => import("./settings-base"),
 };

@@ -57,7 +57,7 @@
 | `Icon.svelte` | `src/ui/Icon` | `name`、`size`、`filled`、颜色只用 `class="tint-…"`；`iconUri()` 给 `Image` 用 |
 | `Button.svelte` | `src/ui/Button` | `variant`（primary / secondary / ghost / danger / danger-soft）、`size`、`icon`、`trailingIcon`、`onPress` |
 | `IconButton.svelte` | `src/ui/IconButton` | `icon`、`label`（必填，也是提示）、`size`（xs/sm/md/lg）、`pressed` |
-| `Switch.svelte` | `src/ui/Switch` | `value` + `onChange` |
+| `Switch.svelte` | `src/ui/Switch` | `checked` + `onChange` |
 | 提示 `title=` | `src/ui/tip` | `tooltip={tip("…")}` |
 | `Select.svelte` | `src/ui/Select` | `value`、`options`（字符串或 `{ value, label, hint, group, disabled }`）、`onChange`；桌面弹出、手机底部弹出 |
 | `MultiSelect.svelte` | `src/ui/MultiSelect` | 多选，选中的成小标签 |
@@ -75,6 +75,7 @@
 | 弹窗框架 `.modal-backdrop` / `.modal-dialog` / `.modal-head` / `.modal-body` / `.modal-foot` | `src/ui/Modal` | `Modal`（`title`、`closeLabel`、`onClose`、`width`、`foot`、`pageOnPhone`、`busy`、`alert`）和底部按钮 `ModalAction`（`kind`：primary / secondary / deny，`busy`）；信使里用这套 class 的 16 个对话框都套它 |
 | `overlays/DangerDialog.svelte` | `src/ui/overlays/DangerDialog` | 危险操作确认，`copy`、`onDismiss`、`onConfirm`、`busy`、`optionChecked` |
 | `overlays/FileIcon.svelte` | `src/ui/overlays/FileIcon` | `icon={fileIconFor(path)}`（`src/m/overlays/file-icon.ts`） |
+| 设置页的骨架：`settings/SettingsCard`、`SettingsCardHeader`、`SettingsRow`、`SettingsSectionList`、`SettingsSectionTabs`、`SettingsSubpageButton`、`AutosaveState`、`HelpTip`、`WorkspaceField`、`WorkspacePicker`、`IndependentConfirm` | `src/ui/settings/` 同名 | 每个文件开头的注释写了 props；snippet 成了 `children`、`icon`、`after`、`end` 这些 JSX 参数。**一张卡片的最后一个 `SettingsRow` 要传 `last`**（NSH 没有 `:last-child`，不传会多一条分隔线） |
 | `<input type="checkbox">` | `src/ui/Checkbox` | 整行可点，`checked` + `onChange`、`label` |
 | 阴影、时长、字号、CSS 颜色 | `src/ui/styles` | `shadow("menu")`、`DURATION`、`TEXT`；镜像模块给的 `var(--x)` 颜色（头像色板）用 `cssColor()` 换成主题值 |
 | 字节转图片 | `src/ui/data-url` | `blobDataUrl(blob)`：NSH 没有 object URL，`Image` 吃 `data:` URL |
