@@ -10,4 +10,5 @@ export const stories: Record<string, Story> = {
   shared: () => import("./shared"),
   "settings-base": () => import("./settings-base"),
   plan: () => import("./plan"),
+  "panels-a": () => import("./panels-a"),
 };
