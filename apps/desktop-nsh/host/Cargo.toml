@@ -51,6 +51,7 @@ objc2-app-kit = { workspace = true, features = [
 objc2-quartz-core = { workspace = true, features = ["CALayer", "objc2-core-graphics"] }
 objc2-core-graphics = { workspace = true, features = ["CGBitmapContext", "CGColorSpace", "CGContext", "CGImage"] }
 objc2-core-foundation = { workspace = true, features = ["CFCGTypes"] }
+ureq = { version = "2", default-features = false, features = ["json", "tls"] }
 objc2-user-notifications = { version = "0.3.2", default-features = false, features = [
     "std", "block2", "UNNotification", "UNNotificationContent", "UNNotificationRequest",
     "UNNotificationResponse", "UNNotificationSettings", "UNNotificationSound",

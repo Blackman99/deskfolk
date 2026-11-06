@@ -44,6 +44,42 @@ pub fn install(host: &HostChannel, window_id: u32) {
         on_main(move |_| crate::window::hide(window_id));
     });
 
+    // The notification commands (`notification_loop.rs`). Those that wait on Notification Center
+    // answer from a thread of their own, so an engine thread never sits on the system's prompt.
+    host.handle("tauri.notification_permission_state", |call: HostCall| {
+        std::thread::spawn(move || {
+            let dto = crate::notification_loop::permission_state(crate::notification_loop::state());
+            call.resolve(json!(dto));
+        });
+    });
+    host.handle("tauri.request_notification_permission", |call: HostCall| {
+        std::thread::spawn(move || {
+            match crate::notification_loop::request_permission(crate::notification_loop::state()) {
+                Ok(dto) => call.resolve(json!(dto)),
+                Err(why) => call.reject(why),
+            }
+        });
+    });
+    host.handle("tauri.take_notification_intent", |call: HostCall| {
+        match crate::notification_loop::take_intent(crate::notification_loop::state()) {
+            Ok(intent) => call.resolve(json!(intent)),
+            Err(why) => call.reject(why),
+        }
+    });
+    host.handle("tauri.report_notification_view", move |call: HostCall| {
+        let report = serde_json::from_value(call.data()["report"].clone()).unwrap_or_default();
+        on_main(move |_| {
+            let facts = crate::notification_loop::report_view(
+                crate::notification_loop::state(),
+                window_id,
+                crate::window::facts(window_id),
+                report,
+                crate::notification_loop::endpoint(),
+            );
+            call.resolve(json!(facts));
+        });
+    });
+
     host.handle("shell.openExternal", |call: HostCall| {
         let Some(url) = call.data().as_str().map(str::to_owned) else {
             call.reject("a URL is required");

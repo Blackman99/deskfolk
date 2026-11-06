@@ -37,7 +37,20 @@ define_class!(
             let mtm = self.mtm();
             new_window(mtm);
             crate::wheel::install(mtm);
-            crate::notify::setup(|id| log::info!("notification clicked: {id}"));
+            crate::notify::setup(|click_ref| {
+                // A click brings the newest window forward and leaves the intent for the messenger.
+                let state = crate::notification_loop::state();
+                crate::notification_loop::on_click(state, &click_ref, || {
+                    DispatchQueue::main().exec_async(|| {
+                        if let Some(mtm) = MainThreadMarker::new() {
+                            show(mtm);
+                        }
+                    });
+                });
+            });
+            if let Some(endpoint) = CONFIG.with(|c| c.get().map(|config| config.endpoint.clone())) {
+                crate::notification_loop::start(endpoint);
+            }
         }
 
         #[unsafe(method(applicationShouldTerminateAfterLastWindowClosed:))]
@@ -55,6 +68,7 @@ define_class!(
 
         #[unsafe(method(applicationWillTerminate:))]
         fn will_terminate(&self, _notification: &NSNotification) {
+            crate::notification_loop::state().stop();
             crate::window::stop_all();
             crate::runtime::stop();
         }

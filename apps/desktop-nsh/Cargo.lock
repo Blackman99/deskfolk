@@ -949,7 +949,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tungstenite 0.27.0",
- "ureq",
+ "ureq 3.5.1",
 ]
 
 [[package]]
@@ -977,6 +977,7 @@ dependencies = [
  "objc2-user-notifications",
  "serde",
  "serde_json",
+ "ureq 2.12.1",
  "windows",
 ]
 
@@ -2740,7 +2741,7 @@ dependencies = [
  "tokio-tungstenite",
  "unicode-linebreak",
  "unicode-properties",
- "ureq",
+ "ureq 3.5.1",
  "url",
  "webpki-roots 1.0.11",
  "windows-sys 0.61.2",
@@ -2764,7 +2765,7 @@ dependencies = [
  "rustc-hash 2.1.3",
  "serde_json",
  "tokio",
- "ureq",
+ "ureq 3.5.1",
  "wgpu",
  "windows-sys 0.61.2",
 ]
@@ -5070,6 +5071,23 @@ name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
+
+[[package]]
+name = "ureq"
+version = "2.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02d1a66277ed75f640d608235660df48c8e3c19f3b4edb6a263315626cc3c01d"
+dependencies = [
+ "base64 0.22.1",
+ "log",
+ "once_cell",
+ "rustls",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
+ "url",
+ "webpki-roots 0.26.11",
+]
 
 [[package]]
 name = "ureq"

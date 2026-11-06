@@ -10,6 +10,10 @@ mod launch;
 #[cfg(target_os = "macos")]
 mod host_calls;
 #[cfg(target_os = "macos")]
+mod notification_loop;
+#[cfg(target_os = "macos")]
+mod notifications;
+#[cfg(target_os = "macos")]
 mod notify;
 mod runtime;
 #[cfg(target_os = "macos")]

@@ -210,6 +210,15 @@ pub fn focus_newest() -> bool {
     })
 }
 
+/// What the system says of window `id`: `(visible, key window, miniaturized)`; `None` once it is
+/// gone. Main thread.
+pub fn facts(id: u32) -> Option<(bool, bool, bool)> {
+    WINDOWS.with_borrow(|windows| {
+        let window = &windows.iter().find(|e| e.id == id)?.window;
+        Some((window.isVisible(), window.isKeyWindow(), window.isMiniaturized()))
+    })
+}
+
 /// Sends event `name` to the app in `window` (`host.on(name)`), if it is one of ours.
 pub fn send_event(window: &NSWindow, name: &str, data: serde_json::Value) {
     WINDOWS.with_borrow(|windows| {
