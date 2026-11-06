@@ -12,4 +12,5 @@ export const stories: Record<string, Story> = {
   plan: () => import("./plan"),
   "panels-a": () => import("./panels-a"),
   "chat-cards": () => import("./chat-cards"),
+  "chat-media": () => import("./chat-media"),
 };
