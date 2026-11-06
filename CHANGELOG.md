@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+(none)
+
+## 0.4.0 — 2026-11-06
+
+Change how the app looks and works by asking a Bot, with frosted glass content and code colours of your own; steps of your own in an engine; a model picker in a Bot's direct. Signed and notarized for macOS, with experimental previews beside the `.dmg`s: a still unsigned Windows installer and, new, a Linux AppImage and deb.
+
 ### Change a Bot's model from its direct
 
 - A direct with a Bot now has a model picker on the composer's tool row, beside the paperclip, that opens a level at a time like a project session's. A Bot on the app's own loop picks Automatic or an endpoint, then one of its models, then a thinking level, pinning the model and the level together; a Bot on Claude Code picks its account (when there is more than one), model and effort; a Bot on Codex, Grok, OpenCode or another local agent picks among the models that agent lists and the efforts it takes. It changes the Bot's own setting, the same as the Bot panel does, so the Bot runs on it in groups too. On a phone it sits with the paperclip on a row under the text and opens as a sheet from the bottom.
@@ -41,6 +47,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### Your lines' bubble follows the accent you set
 
 - After changing the accent colour in Settings › Interface or through a Bot, the bubble of your own lines stayed the app's teal: it is a token of its own (`--you`), written out rather than taken from the accent. It now follows a changed accent unless you set it too: the accent itself in the light look, a step deeper in the dark one so white words still read ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md)).
+
 ### The home page shows six features
 
 - The home page is no longer a looping clip of the app but a page of features to scroll through, one chapter each: any model (local agents you're signed in to and compatible endpoints), carrying on a Claude Code terminal session, files opening in place, panes, remote control, and usage and spend.
@@ -52,6 +59,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### Remote access is no longer called experimental
 
 - Phone access through your own relay, its push reminders and the Mac screen have been verified, so the remote access guide, the overview and the roadmap describe it as a feature you can use: off by default, on macOS and Windows. Linux still has none.
+
 ### Glass content cards
 
 - The content area can now let the window's frosted glass through, as the gutters between the panes already do: Settings › Interface › Glass content, solid (as before), frosted or clear, or ask a Bot ("make the content frosted glass"). The card lets the glass through by a share, and the conversation, a file's preview, the flow board and the file tree on it no longer paint a solid ground of their own; menus, dialogs, floating panes, the editor and the terminal stay solid. Only on a desktop whose window has a material (macOS, Windows 11). The token `--content-glass` tunes the share ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md), addendum 2026-11-05).
@@ -64,6 +72,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### Projects keep their order when a session starts
 
 - Starting a session, sending a line or reading in one project took that project to the top of the Projects section and pushed the others down; pressing a directory row's "+" left a different project under the pointer. Projects now go by when each got its first session, newest first, and the ones already listed stay put: only that project's own list of sessions changes (still newest first). A folder used for the first time comes in on top, and pinning a project's oldest session does not move the project either ([ADR 0095](docs/adr/0095-project-sessions.md) decision 27).
+
 ### Code colours of your own
 
 - Code can now be highlighted in a theme you pick, one for the light look and one for the dark, from a fixed list of Shiki's themes (GitHub, Vitesse, One Light / One Dark Pro, Solarized, Catppuccin, Rosé Pine, Gruvbox, Everforest, Light+ / Dark+, Min, Dracula, Nord, Tokyo Night, Monokai). Chat's code blocks, command output and the file editor all take it, with the theme's own background and text colour; code already on screen is painted again. Choose under Settings › Interface › Code colours, or ask a Bot ("Dracula for code in dark mode"). Unset, chat keeps GitHub and the editor Vitesse ([ADR 0106](docs/adr/0106-the-interface-is-yours-too.md), addendum 2026-11-05).

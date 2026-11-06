@@ -1,6 +1,6 @@
 [package]
 name = "real-bot-desktop"
-version = "0.3.0"
+version = "0.4.0"
 description = "Deskfolk window"
 license = "MIT"
 authors = ["Deskfolk contributors"]
