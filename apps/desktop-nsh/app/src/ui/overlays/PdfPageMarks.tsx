@@ -2,7 +2,9 @@
  * The overlay on one PDF page (`PdfPageMarks.svelte`): the page's drawn annotations as numbered
  * boxes (accent solid for open, dotted for a draft, grey for resolved, dashed when the file has
  * changed since), the box being dragged out, and the pending box with its four corner handles.
- * Positions are percentages of the page, so they follow any zoom.
+ * Positions are percentages of the page, so they follow any zoom. Under the annotations: the find
+ * matches on the page (the current one stronger) and the page's links, each a press target that
+ * lets a drag through while an annotation box is being chosen.
  *
  * The drags are PanResponders made by the viewer's gesture controller (`pdf-gestures.ts`), not the
  * Svelte's pointer callbacks; the controller reads `n` when a finger goes down, because a list row
@@ -16,6 +18,7 @@ import { narrowWindow } from "../Modal";
 import { cssColor, shadow } from "../styles";
 import { tip } from "../tip";
 import type { PdfGestures, PdfGestureView } from "./pdf-gestures";
+import type { FindBox, PdfLink } from "./pdf-text";
 import type { PdfViewerLabels } from "./PdfViewer";
 
 const HANDLES: Handle[] = ["nw", "ne", "sw", "se"];
@@ -38,6 +41,12 @@ export function PdfPageMarks(props: {
   onBadgePress: (id: string) => void;
   /** A long press on a badge shows its remark (a touch screen has no hover). */
   onBadgePeek: (id: string) => void;
+  /** The find matches on this page. */
+  finds: FindBox[];
+  /** This page's links. */
+  links: PdfLink[];
+  /** A press on a link. */
+  onLink: (link: PdfLink) => void;
 }) {
   const hit = narrowWindow() ? 40 : 16;
   const pending = () => (props.pendingShown && props.pendingShown.page === props.n ? props.pendingShown.box : null);
@@ -58,6 +67,29 @@ export function PdfPageMarks(props: {
       class="absolute"
       style={{ left: 0, top: 0, right: 0, bottom: 0, cursor: props.choosing ? "crosshair" : undefined }}
     >
+      <Each of={props.finds} key={(f: FindBox) => `${f.box.x}:${f.box.y}:${f.box.w}:${f.current}`}>
+        {(find: () => FindBox) => (
+          <View
+            testID={find().current ? "pdf-find-current" : "pdf-find-match"}
+            accessible={false}
+            style={{ ...boxStyle(find().box), pointerEvents: "none", margin: -1, padding: 1 }}
+            class={`rounded-(--radius-xs) ${find().current ? "bg-brand/42" : "bg-warn/38"}`}
+          />
+        )}
+      </Each>
+      <Each of={props.links} key={(l: PdfLink) => `${l.rect.x}:${l.rect.y}:${l.url ?? l.page}`}>
+        {(link: () => PdfLink) => (
+          <View
+            testID="pdf-link"
+            role="link"
+            accessibilityLabel={link().url ?? props.labels.goTo}
+            tooltip={tip(link().url ?? props.labels.goTo)}
+            onPress={() => props.onLink(link())}
+            style={{ ...boxStyle(link().rect), pointerEvents: props.choosing ? "none" : "auto", cursor: "pointer" }}
+            class="rounded-[2px] hover:bg-accent-glow"
+          />
+        )}
+      </Each>
       <Each of={props.marks} key={(mark: PdfMark) => mark.id}>
         {(mark: () => PdfMark) => (
           <View

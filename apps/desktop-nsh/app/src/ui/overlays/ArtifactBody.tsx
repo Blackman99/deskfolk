@@ -325,8 +325,7 @@ export function ArtifactBody(props: {
           onCancel={annot().escapeAnnotation}
           onHandle={(handle: PdfViewerHandle) =>
             props.onPdfViewer?.({
-              // The native viewer has no find bar (see PdfViewer).
-              openFind: () => {},
+              openFind: handle.openFind,
               closeFind: handle.closeFind,
             })
           }

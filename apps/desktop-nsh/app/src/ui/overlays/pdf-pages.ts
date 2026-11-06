@@ -6,8 +6,9 @@
  * zoom has settled), and the maths — fits, layout, current page, evictions — is the messenger's
  * `annotations/pdf-region.ts`, unchanged.
  *
- * Not here: the password form (hayro cannot decrypt, so an encrypted file is "broken"), the text
- * layer, links and find (the native module gives no text yet).
+ * A file that wants a password leaves the status at "password" (the native module keeps its
+ * bytes); `sendPassword` tries one and either opens it or says it is wrong. The text, links and crops
+ * the module reads back are in `pdf-text.ts`, reached through `text`.
  */
 import { Documents } from "deskfolk/native";
 import { cleanup, computed, effect, pixelRatio, signal, untracked, type ListRef } from "nsh";
@@ -29,12 +30,16 @@ import {
 } from "../../m/annotations/pdf-region.ts";
 import type { Size } from "../../m/annotations/region-box.ts";
 import { runtime } from "../../runtime";
+import { createPdfText } from "./pdf-text";
 
 /** Rendering waits this long after a zoom, so a pinch does not draw every step of the way. */
 export const ZOOM_SETTLE_MS = 120;
 
-/** Where a PDF is fetched from: the runtime's file endpoint (or any URL it answers) and its token. A new one opens a new document. */
-export type PdfSource = { url: string; token: string };
+/**
+ * Where a PDF comes from: the runtime's file endpoint (or any URL it answers) and its token, or its
+ * bytes (base64) with the password to try first. A new one opens a new document.
+ */
+export type PdfSource = { url: string; token: string } | { base64: string; password?: string };
 
 /** The source of a workspace file, on the runtime this window is connected to; null while it is not connected. */
 export function pdfSourceFor(path: string): PdfSource | null {
@@ -44,7 +49,7 @@ export function pdfSourceFor(path: string): PdfSource | null {
   return { url: `${origin}/v1/workspace/file?path=${encodeURIComponent(path)}`, token };
 }
 
-export type PdfStatus = "loading" | "ready" | "broken" | "failed";
+export type PdfStatus = "loading" | "password" | "ready" | "broken" | "failed";
 
 type Drawn = { px: number; uri: string; pixels: number; lastUsed: number };
 
@@ -68,9 +73,15 @@ export function createPdfPages(host: {
   const renderZoom = signal(1);
   /** Bumped per opened document: late answers from the previous one are dropped. */
   const docKey = signal("");
+  /** The file asked for a password and the last one tried was wrong. */
+  const passwordWrong = signal(false);
+  /** What is typed in the password field. */
+  const password = signal("");
 
   let docGen = 0;
+  /** The native module's id for the document, also while it waits for a password. */
   let docId = "";
+  const text = createPdfText({ docId: () => docKey(), sizes: () => sizes() });
   let pageInputFocused = false;
   let listRef: ListRef | null = null;
   let offset = 0;
@@ -104,6 +115,9 @@ export function createPdfPages(host: {
     docId = "";
     docKey.set("");
     forgetImages();
+    text.clear();
+    passwordWrong.set(false);
+    password.set("");
     if (settleTimer) clearTimeout(settleTimer);
     settleTimer = null;
     status.set("loading");
@@ -116,6 +130,23 @@ export function createPdfPages(host: {
     host.onReset();
   }
 
+  /** The pages' sizes came back: show the document. False when there were none. */
+  function ready(id: string, flat: number[]): boolean {
+    docId = id;
+    const list: Size[] = [];
+    for (let i = 0; i + 1 < flat.length; i += 2) list.push({ width: flat[i]! * PDF_TO_CSS_UNITS, height: flat[i + 1]! * PDF_TO_CSS_UNITS });
+    if (list.length === 0) {
+      Documents.closePdf(id);
+      docId = "";
+      status.set("broken");
+      return false;
+    }
+    sizes.set(list);
+    docKey.set(id);
+    status.set("ready");
+    return true;
+  }
+
   // A new source opens a new document.
   effect(() => {
     const source = host.source();
@@ -123,31 +154,52 @@ export function createPdfPages(host: {
     untracked(reset);
     if (!source) return;
     const id = `pdf-viewer-${++opened}`;
-    Documents.openPdf(id, source.url, source.token).then(
+    const opening = "url" in source ? Documents.openPdf(id, source.url, source.token) : Promise.resolve().then(() => Documents.openPdfBytes(id, source.base64, source.password ?? ""));
+    opening.then(
       (flat) => {
         if (gen !== docGen) {
           Documents.closePdf(id);
           return;
         }
-        docId = id;
-        const list: Size[] = [];
-        for (let i = 0; i + 1 < flat.length; i += 2) list.push({ width: flat[i]! * PDF_TO_CSS_UNITS, height: flat[i + 1]! * PDF_TO_CSS_UNITS });
-        if (list.length === 0) {
-          Documents.closePdf(id);
-          docId = "";
-          status.set("broken");
-          return;
-        }
-        sizes.set(list);
-        docKey.set(id);
-        status.set("ready");
+        ready(id, flat);
       },
       (error: unknown) => {
-        if (gen !== docGen) return;
-        status.set(String(error).includes("not a readable PDF") ? "broken" : "failed");
+        if (gen !== docGen) {
+          Documents.closePdf(id);
+          return;
+        }
+        const said = String(error);
+        if (said.includes("password required") || said.includes("wrong password")) {
+          // The module holds the bytes until the document is let go of.
+          docId = id;
+          passwordWrong.set(said.includes("wrong password"));
+          status.set("password");
+          return;
+        }
+        status.set(said.includes("not a readable PDF") ? "broken" : "failed");
       },
     );
   });
+
+  /** The password form was submitted: try what was typed; a wrong one asks again with the field empty. */
+  function sendPassword(): void {
+    const typed = password();
+    if (!typed || status() !== "password" || !docId) return;
+    const id = docId;
+    password.set("");
+    status.set("loading");
+    const gen = docGen;
+    // The module's answer is immediate; the status flips through "loading" for a frame at most.
+    Promise.resolve().then(() => {
+      if (gen !== docGen) return;
+      try {
+        ready(id, Documents.unlockPdf(id, typed));
+      } catch (error: unknown) {
+        passwordWrong.set(String(error).includes("wrong password"));
+        status.set(String(error).includes("wrong password") ? "password" : "failed");
+      }
+    });
+  }
   cleanup(() => {
     docGen += 1;
     if (docId) Documents.closePdf(docId);
@@ -272,6 +324,10 @@ export function createPdfPages(host: {
     pageInput,
     renderZoom,
     docKey,
+    text,
+    password,
+    passwordWrong,
+    sendPassword,
     numPages,
     pageNumbers,
     zoom,
