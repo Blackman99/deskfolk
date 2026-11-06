@@ -42,4 +42,5 @@ export const stories: Record<string, Story> = {
   "plan-panel": () => import("./plan-panel"),
   onboarding: () => import("./onboarding"),
   "remote-screen": () => import("./remote-screen"),
+  "settings-routing": () => import("./settings-routing"),
 };
