@@ -21,4 +21,5 @@ export const stories: Record<string, Story> = {
   platform: () => import("./platform"),
   "spend-a": () => import("./spend-a"),
   "settings-remote-ui": () => import("./settings-remote-ui"),
+  "settings-providers": () => import("./settings-providers"),
 };
