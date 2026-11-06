@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A narrow Roles scrolls down its map again
+
+- When Roles was narrow (a tab beside a conversation, a narrow window, a phone), its map was squeezed to the height left on the screen and the steps below were cut off, with nothing to scroll. The map is now as tall as its steps and the page scrolls down to the last of them.
+
 ### A ceiling card can be ignored
 
 - When a ticket stops at the capability ceiling (the same requirement failing three times running, or you sending it back three times running), its card now offers "Ignore, carry on" beside Another way, Change the plan and Take it as it is: the work goes back to rework, the count starts over, and the Bot is told to carry on by what it was already told, with no new direction. A card already up and still asking gets the choice too. To stop being asked at all, turn the ceiling step off in the engine ([ADR 0046](docs/adr/0046-submissions-and-reviews.md)).

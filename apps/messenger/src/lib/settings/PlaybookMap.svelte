@@ -193,6 +193,9 @@
 <style>
 	.playbook-map {
 		position: relative;
+		/* As tall as its board: in the narrow page's scrolling column a box that clips its own overflow
+		   would otherwise be squeezed to what is left of the screen, and the page would have nothing to scroll. */
+		flex: none;
 		width: 100%;
 		min-width: 0;
 		overflow-x: auto;
