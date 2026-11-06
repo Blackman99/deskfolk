@@ -45,4 +45,5 @@ export const stories: Record<string, Story> = {
   "settings-routing": () => import("./settings-routing"),
   artifacts: () => import("./artifacts"),
   "job-view": () => import("./job-view"),
+  "sidebar-main": () => import("./sidebar-main"),
 };
