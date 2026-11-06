@@ -156,15 +156,47 @@ export function nameOfUri(uri: string): string {
   }
 }
 
-/** Reads the local files a drop or a Finder copy names (`file:` URLs) into `File`s; one that cannot be read is left out. */
+const MIME_BY_EXTENSION: Record<string, string> = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", heic: "image/heic",
+  svg: "image/svg+xml", pdf: "application/pdf", txt: "text/plain", md: "text/markdown", csv: "text/csv",
+  json: "application/json", html: "text/html", htm: "text/html", xml: "application/xml", zip: "application/zip",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav", mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm",
+};
+
+/** The type a browser gives a dropped file of this name (it asks the system; here the extension tells). */
+export function mimeOfName(name: string): string {
+  const ext = name.toLowerCase().split(".").pop() ?? "";
+  return MIME_BY_EXTENSION[ext] ?? "";
+}
+
+/** A `file:` URL's path on this machine. */
+export function pathOfFileUri(uri: string): string | null {
+  if (!uri.startsWith("file:")) return null;
+  try {
+    return decodeURIComponent(new URL(uri).pathname);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads the local files a drop or a Finder copy names (`file:` URLs) into `File`s; one that cannot
+ * be read (a folder, a file that went away, one outside what nsh.json lets the app read) is left
+ * out. `fetch` takes no `file:` URL, so a desktop reads through `fs` (`capabilities.fs.read`).
+ */
 export async function filesFromUris(uris: readonly string[]): Promise<File[]> {
   const files: File[] = [];
   for (const uri of uris) {
+    const name = nameOfUri(uri);
     try {
-      const blob = await (await fetch(uri)).blob();
-      files.push(new File([blob], nameOfUri(uri), { type: blob.type }));
+      const path = pathOfFileUri(uri);
+      const bytes = path ? await (await import("fs/promises")).readFile(path) : new Uint8Array(await (await fetch(uri)).arrayBuffer());
+      files.push(new File([bytes as Uint8Array<ArrayBuffer>], name, { type: mimeOfName(name) }));
     } catch {
-      // Not readable here (a folder, a file that went away): nothing to stage.
+      // Not readable here: nothing to stage.
     }
   }
   return files;

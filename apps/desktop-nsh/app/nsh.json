@@ -14,6 +14,12 @@
     },
     "clipboard": true,
     "picker": true,
+    "fs": {
+      "read": [
+        "${homeDir}",
+        "/Volumes"
+      ]
+    },
     "openUrl": {
       "schemes": [
         "https",
