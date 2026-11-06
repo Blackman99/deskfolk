@@ -19,4 +19,5 @@ export const stories: Record<string, Story> = {
   trace: () => import("./trace"),
   annotations: () => import("./annotations"),
   platform: () => import("./platform"),
+  "spend-a": () => import("./spend-a"),
 };
