@@ -46,4 +46,5 @@ export const stories: Record<string, Story> = {
   artifacts: () => import("./artifacts"),
   "job-view": () => import("./job-view"),
   "sidebar-main": () => import("./sidebar-main"),
+  "chat-stage": () => import("./chat-stage"),
 };
