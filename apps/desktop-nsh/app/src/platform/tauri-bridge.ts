@@ -25,11 +25,22 @@ export function hostName(command: string): string {
 }
 
 /** The Tauri commands the app answers itself, with NSH, by their Tauri names. */
+/** System Settings' Sharing pane, where Screen Sharing is turned on for the remote screen: the one
+ * settings address the app may open (`system_open.rs` `SHARING_SETTINGS_URL`). */
+export const SHARING_SETTINGS_URL = "x-apple.systempreferences:com.apple.Sharing-Settings.extension";
+
+/** `system_open.rs` `is_allowed_external_url`: http(s), mailto and the Sharing pane, nothing padded
+ * or split by whitespace. */
+export function allowedExternalUrl(url: string): boolean {
+  if (!url || url.trim() !== url || /[\s\u0000-\u001f\u007f]/.test(url)) return false;
+  return url.startsWith("https://") || url.startsWith("http://") || url.startsWith("mailto:") || url === SHARING_SETTINGS_URL;
+}
+
 export const APP_COMMANDS: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
-  /** `system_open.rs` `open_external_url`: http(s) and mailto only. */
+  /** `system_open.rs` `open_external_url`. */
   open_external_url: async (args) => {
-    const url = String(args.url ?? "").trim();
-    if (!/^(https?:|mailto:)/i.test(url)) throw new Error("only http(s) and mailto links open outside");
+    const url = String(args.url ?? "");
+    if (!allowedExternalUrl(url)) throw new Error("url not allowed");
     await openUrl(url);
     return null;
   },

@@ -5,6 +5,7 @@
  * and a `matchMedia` that answers from the window's size.
  */
 import { locale, platform, Storage, windowSize } from "nsh";
+import { RelativeTimeFormat } from "./relative-time";
 
 type StorageLike = {
   readonly length: number;
@@ -87,6 +88,8 @@ export function installGlobals(): void {
   installed = true;
   const g = globalThis as Record<string, unknown>;
   if (typeof g.structuredClone !== "function") g.structuredClone = (value: unknown) => clone(value);
+  const intl = g.Intl as Record<string, unknown> | undefined;
+  if (intl && typeof intl.RelativeTimeFormat !== "function") intl.RelativeTimeFormat = RelativeTimeFormat;
   if (typeof g.navigator === "undefined") {
     const os = platform.os;
     g.navigator = {

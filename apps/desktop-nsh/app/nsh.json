@@ -17,7 +17,8 @@
       "schemes": [
         "https",
         "http",
-        "mailto"
+        "mailto",
+        "x-apple.systempreferences"
       ]
     },
     "webview": {},

@@ -26,3 +26,14 @@ test("structuredClone and navigator exist", () => {
   expect(JSON.stringify(copy)).toBe(JSON.stringify(value));
   expect(typeof g.navigator.platform).toBe("string");
 });
+
+test("relative times read as the browser's Intl.RelativeTimeFormat would", () => {
+  const zh = new Intl.RelativeTimeFormat("zh-CN", { numeric: "auto" });
+  expect(zh.format(0, "second")).toBe("现在");
+  expect(zh.format(-1, "day")).toBe("昨天");
+  expect(zh.format(-3, "hour")).toBe("3小时前");
+  const en = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  expect(en.format(-1, "minute")).toBe("1 minute ago");
+  expect(en.format(-5, "days")).toBe("5 days ago");
+  expect(en.format(-1, "day")).toBe("yesterday");
+});
