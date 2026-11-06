@@ -1,6 +1,6 @@
 [package]
 name = "deskfolk-app-native"
-description = "The Deskfolk app's own Rust for every NSH target (macOS, Windows, Linux, web): the terminal (vt100 + canvas) and PDF pages (hayro)."
+description = "The Deskfolk app's own Rust for every NSH target (macOS, Windows, Linux, web): the terminal (vt100 + canvas), PDF pages (hayro), Office files (calamine, zip, quick-xml) and the remote screen (an RFB client)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,3 +18,9 @@ calamine = { version = "0.38", features = ["dates"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
 quick-xml = "0.42"
 chrono = { version = "0.4", default-features = false }
+des = { version = "0.9.0", default-features = false }
+aes = { version = "0.9.4", default-features = false }
+md-5 = { version = "0.11.0", default-features = false }
+num-bigint = { version = "0.5.1", default-features = false }
+miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"] }
+jpeg-decoder = { version = "0.3.2", default-features = false }
