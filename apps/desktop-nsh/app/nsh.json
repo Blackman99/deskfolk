@@ -3,16 +3,27 @@
   "id": "com.real-bot.desktop.nsh-dev",
   "version": "0.0.0",
   "build": 1,
+  "rust": "native",
   "theme": "theme.json",
   "appearance": "system",
   "capabilities": {
-    "network": { "hosts": ["127.0.0.1"] },
+    "network": {
+      "hosts": [
+        "127.0.0.1"
+      ]
+    },
     "clipboard": true,
-    "host": ["shell.*"]
+    "host": [
+      "shell.*",
+      "runtime.*"
+    ]
   },
   "resolve": {
     "alias": {
       "@real-bot/protocol": "../../../packages/protocol/src/index.ts"
     }
+  },
+  "web": {
+    "host": "./web/host.js"
   }
 }

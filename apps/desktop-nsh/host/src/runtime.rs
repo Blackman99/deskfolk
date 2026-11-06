@@ -70,12 +70,19 @@ pub fn ensure(data_dir: &Path) -> Result<(), String> {
 /// Stops the runtime this shell started, and only that one.
 pub fn stop() {
     if let Some(mut child) = CHILD.lock().unwrap_or_else(|p| p.into_inner()).take() {
-        // SIGTERM lets it close its database; the runtime stops on it.
-        unsafe { libc_kill(child.id() as i32, 15) };
+        // SIGTERM lets it close its database; the runtime stops on it. Windows has no signal to
+        // send: the process is ended.
+        #[cfg(unix)]
+        unsafe {
+            libc_kill(child.id() as i32, 15)
+        };
+        #[cfg(not(unix))]
+        let _ = child.kill();
         let _ = child.wait();
     }
 }
 
+#[cfg(unix)]
 unsafe extern "C" {
     #[link_name = "kill"]
     fn libc_kill(pid: i32, signal: i32) -> i32;

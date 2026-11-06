@@ -1,9 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { KEYCHAIN_SERVICE, LOCAL_API_PORT } from "../../../packages/protocol/src/index.ts";
-import { assertApartFromStable, devInstance, stableDataDir } from "./dev-instance";
+import { assertApartFromStable, devDataDir, devInstance, stableDataDir } from "./dev-instance";
 
 describe("the dev instance stays apart from the stable one", () => {
   const home = "/Users/someone";
+
+  test("beside each platform's stable directory", () => {
+    expect(devDataDir(home, { platform: "darwin", env: {} })).toBe("/Users/someone/Library/Application Support/real-bot-nsh-dev");
+    expect(devDataDir("/home/a", { platform: "linux", env: {} })).toBe("/home/a/.local/share/real-bot-nsh-dev");
+    expect(devDataDir("C:\\Users\\a", { platform: "win32", env: { LOCALAPPDATA: "C:\\Users\\a\\AppData\\Local" } })).toBe(
+      "C:\\Users\\a\\AppData\\Local\\real-bot-nsh-dev",
+    );
+  });
 
   test("its own port, data directory and Keychain service", () => {
     const dev = devInstance(home);

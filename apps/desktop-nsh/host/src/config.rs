@@ -25,9 +25,11 @@ pub struct Config {
     pub fps: bool,
     /// Development checks: the open conversation scrolls itself end to end (with `fps`).
     pub scroll_probe: bool,
+    /// Development comparison: `native` runs the macOS NSView terminal instead of the canvas one.
+    pub terminal: Option<String>,
 }
 
-pub const USAGE: &str = "deskfolk-nsh [--bundle <bundle.js|bundle.nshc>] [--data-dir <runtime data dir>] [--watch] [--background] [--snapshots <dir>] [--open-session <id>] [--pane chat|terminal|pdf] [--pdf <path>] [--fps] [--scroll-probe]";
+pub const USAGE: &str = "deskfolk-nsh [--bundle <bundle.js|bundle.nshc>] [--data-dir <runtime data dir>] [--watch] [--background] [--snapshots <dir>] [--open-session <id>] [--pane chat|terminal|pdf] [--pdf <path>] [--fps] [--scroll-probe] [--terminal canvas|native]";
 
 pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
     let mut bundle = None;
@@ -40,6 +42,7 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
     let mut pdf = None;
     let mut fps = false;
     let mut scroll_probe = false;
+    let mut terminal = None;
     let mut args = args.skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -53,6 +56,7 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
             "--pdf" => pdf = args.next(),
             "--fps" => fps = true,
             "--scroll-probe" => scroll_probe = true,
+            "--terminal" => terminal = args.next(),
             // AppKit's own (`-NSDocumentRevisionsDebugMode YES`, …).
             other if other.starts_with('-') && !other.starts_with("--") => {
                 args.next();
@@ -79,6 +83,7 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
         pdf,
         fps,
         scroll_probe,
+        terminal,
     })
 }
 
@@ -89,8 +94,49 @@ fn packaged_bundle() -> Option<PathBuf> {
     bundle.exists().then_some(bundle)
 }
 
-/// The dev instance's data directory (`scripts/dev-instance.ts`), never the stable one.
+/// The dev instance's data directory (`scripts/dev-instance.ts`): beside the stable one, never it.
 fn dev_data_dir() -> PathBuf {
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-    home.join("Library").join("Application Support").join("real-bot-nsh-dev")
+    dev_data_dir_for(std::env::consts::OS, &|name| std::env::var(name).ok())
+}
+
+/// The stable instance's directory (`defaultAppDataDir` in `@real-bot/protocol`) with
+/// `-nsh-dev` added.
+pub fn dev_data_dir_for(os: &str, env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
+    const NAME: &str = "real-bot-nsh-dev";
+    let home = env("HOME").or_else(|| env("USERPROFILE")).map(PathBuf::from).unwrap_or_default();
+    match os {
+        "windows" => env("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(|| home.join("AppData").join("Local")).join(NAME),
+        "linux" => env("XDG_DATA_HOME")
+            .filter(|xdg| xdg.starts_with('/'))
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".local").join("share"))
+            .join(NAME),
+        _ => home.join("Library").join("Application Support").join(NAME),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dev_data_dir_for;
+    use std::path::PathBuf;
+
+    #[test]
+    fn beside_each_platforms_stable_directory() {
+        let env = |vars: &'static [(&'static str, &'static str)]| {
+            move |name: &str| vars.iter().find(|(k, _)| *k == name).map(|(_, v)| v.to_string())
+        };
+        assert_eq!(
+            dev_data_dir_for("macos", &env(&[("HOME", "/Users/a")])),
+            PathBuf::from("/Users/a/Library/Application Support/real-bot-nsh-dev")
+        );
+        assert_eq!(dev_data_dir_for("linux", &env(&[("HOME", "/home/a")])), PathBuf::from("/home/a/.local/share/real-bot-nsh-dev"));
+        assert_eq!(
+            dev_data_dir_for("linux", &env(&[("HOME", "/home/a"), ("XDG_DATA_HOME", "relative")])),
+            PathBuf::from("/home/a/.local/share/real-bot-nsh-dev")
+        );
+        assert_eq!(
+            dev_data_dir_for("windows", &env(&[("LOCALAPPDATA", "C:/Users/a/AppData/Local")])),
+            PathBuf::from("C:/Users/a/AppData/Local/real-bot-nsh-dev")
+        );
+    }
 }

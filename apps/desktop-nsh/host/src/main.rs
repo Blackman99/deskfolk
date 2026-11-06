@@ -4,6 +4,9 @@
 mod app;
 mod config;
 mod endpoint;
+#[cfg(target_os = "linux")]
+mod gtk;
+mod launch;
 #[cfg(target_os = "macos")]
 mod host_calls;
 #[cfg(target_os = "macos")]
@@ -11,6 +14,8 @@ mod notify;
 mod runtime;
 #[cfg(target_os = "macos")]
 mod snapshot;
+#[cfg(windows)]
+mod win;
 #[cfg(target_os = "macos")]
 mod window;
 
@@ -36,21 +41,25 @@ impl log::Log for Logger {
 
 static LOGGER: Logger = Logger;
 
-#[cfg(target_os = "macos")]
 fn main() -> std::process::ExitCode {
     let _ = log::set_logger(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Info));
-    match config::from_args(std::env::args()) {
-        Ok(config) => app::run(config),
+    let config = match config::from_args(std::env::args()) {
+        Ok(config) => config,
         Err(why) => {
             eprintln!("deskfolk-nsh: {why}");
-            std::process::ExitCode::FAILURE
+            return std::process::ExitCode::FAILURE;
         }
+    };
+    #[cfg(target_os = "macos")]
+    return app::run(config);
+    #[cfg(windows)]
+    return win::run(config);
+    #[cfg(target_os = "linux")]
+    return gtk::run(config);
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
+    {
+        let _ = config;
+        eprintln!("deskfolk-nsh runs on macOS, Windows and Linux");
+        std::process::ExitCode::FAILURE
     }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn main() -> std::process::ExitCode {
-    let _ = &LOGGER;
-    eprintln!("deskfolk-nsh runs on macOS only for now");
-    std::process::ExitCode::FAILURE
 }

@@ -142,6 +142,7 @@ if (process.env.DESKFOLK_PANE) shellArgs.push("--pane", process.env.DESKFOLK_PAN
 if (process.env.DESKFOLK_PDF) shellArgs.push("--pdf", process.env.DESKFOLK_PDF);
 if (process.env.DESKFOLK_FPS === "1") shellArgs.push("--fps");
 if (process.env.DESKFOLK_SCROLL_PROBE === "1") shellArgs.push("--scroll-probe");
+if (process.env.DESKFOLK_TERMINAL) shellArgs.push("--terminal", process.env.DESKFOLK_TERMINAL);
 const shell = spawn(process.env.DESKFOLK_SHELL ?? executable, shellArgs, {
   cwd: root,
   stdio: "inherit",

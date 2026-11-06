@@ -80,6 +80,8 @@ pub fn run(config: Config) -> std::process::ExitCode {
         let _ = c.set(config);
     });
 
+    // Once, before the first view: what the app's TSX may import, NSH's and the app's own crate.
+    nsh_platform_macos::set_ui_sets(vec![nsh_base::registry(), deskfolk_app_native::registry()]);
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
     let delegate: Retained<Delegate> = {

@@ -146,27 +146,7 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
 }
 
 fn make_view(mtm: MainThreadMarker, config: &Config, id: u32) -> Rc<AppView> {
-    let host = nsh_engine::HostChannel::new();
-    let mut params = serde_json::Map::new();
-    params.insert("origin".into(), config.endpoint.origin.clone().into());
-    params.insert("token".into(), config.endpoint.token.clone().into());
-    params.insert("windowId".into(), id.into());
-    params.insert("material".into(), "glass".into());
-    if id == 1 {
-        if let Some(session) = &config.open_session {
-            params.insert("openSession".into(), session.clone().into());
-        }
-        if let Some(pane) = &config.pane {
-            params.insert("pane".into(), pane.clone().into());
-        }
-        if let Some(pdf) = &config.pdf {
-            params.insert("pdfPath".into(), pdf.clone().into());
-        }
-        if config.scroll_probe {
-            params.insert("scrollProbe".into(), true.into());
-        }
-    }
-    host.set_params(params);
+    let host = crate::launch::channel(config, id);
     crate::host_calls::install(&host, id);
 
     let view = AppView::new(

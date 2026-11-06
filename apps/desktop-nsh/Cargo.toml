@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["host", "native/terminal", "native/pdf"]
+members = ["host", "native/terminal", "native/pdf", "app/native"]
 
 [workspace.package]
 version = "0.0.0"

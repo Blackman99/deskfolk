@@ -1,5 +1,5 @@
 /**
- * Runs `app/e2e/live.test.tsx` headless against the dev runtime (never the stable one): writes a
+ * Runs `app/e2e/live.e2e.tsx` headless against the dev runtime (never the stable one): writes a
  * line into the dev instance's first conversation so there is something to read, and hands the
  * test the dev runtime's address and token in a file it removes afterwards.
  *
@@ -36,7 +36,7 @@ const live = `${expect} · 实时`;
 writeFileSync(paramsFile, JSON.stringify({ origin, token: descriptor.token, session: session.id, expect, live }), { mode: 0o600 });
 try {
   const nsh = process.env.NSH ?? join(homedir(), ".local", "bin", "nsh");
-  const test = Bun.spawn([nsh, "test", "e2e/live.test.tsx"], { cwd: join(root, "app"), stdout: "inherit", stderr: "inherit" });
+  const test = Bun.spawn([nsh, "test", "e2e/live.e2e.tsx"], { cwd: join(root, "app"), stdout: "inherit", stderr: "inherit" });
   // Written while the test holds the conversation open: only the event stream can bring it in.
   await Bun.sleep(2500);
   const sent = await fetch(`${origin}/v1/sessions/${session.id}/messages`, { method: "POST", headers, body: JSON.stringify({ body: live }) });

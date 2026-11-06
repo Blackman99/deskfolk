@@ -16,7 +16,7 @@ import type {
   StreamFrame,
   Turn,
 } from "@real-bot/protocol";
-import { api, eventsUrl, token } from "./api";
+import { api, authToken, eventsUrl, ready } from "./api";
 
 export type Connection = "connecting" | "live" | "offline";
 
@@ -48,7 +48,10 @@ export function onStream(id: string, listener: (frame: StreamFrame) => void): ()
 }
 
 export function start(): void {
-  connect();
+  void ready().then(connect, (error) => {
+    console.error("no runtime address", String(error));
+    connection.set("offline");
+  });
 }
 
 function connect(): void {
@@ -57,7 +60,7 @@ function connect(): void {
   pending = [];
   const ws = new WebSocket(eventsUrl());
   socket = ws;
-  ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token, protocol: "sync-v1" }));
+  ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token: authToken(), protocol: "sync-v1" }));
   // The socket exists, so events from here on are buffered: the snapshot can be the baseline.
   void loadSnapshot();
   ws.onmessage = (event) => {
