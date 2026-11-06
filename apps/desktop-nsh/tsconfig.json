@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["scripts/**/*.ts", "../daemon/src/proxy-from-env.d.ts"]
+}
