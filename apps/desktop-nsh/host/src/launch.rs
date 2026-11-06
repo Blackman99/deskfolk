@@ -42,11 +42,52 @@ pub fn channel(config: &Config, window_id: u32) -> HostChannel {
     }
     // The messenger's Tauri commands (`app/src/platform/tauri-bridge.ts`), by their Tauri names.
     host.handle("tauri.local_api_endpoint", move |call: HostCall| call.resolve(endpoint.clone()));
-    host.handle("tauri.app_version", |call: HostCall| call.resolve(json!(env!("CARGO_PKG_VERSION"))));
+    host.handle("tauri.app_version", |call: HostCall| call.resolve(json!(crate::config::product_version())));
     host.handle("tauri.window_material", |call: HostCall| {
         call.resolve(json!(if cfg!(target_os = "macos") { "glass" } else { "none" }))
     });
+    install_portable(&host);
     host
+}
+
+/// The update check answers the same on every desktop (`updates::check`, on a thread of its own:
+/// it waits on the network). The rest of the update and system commands are the macOS shell's
+/// (`host_calls.rs`); the other desktops answer what the Tauri app answers for a copy that cannot
+/// install or register anything: launch-at-login off, no in-app install, no independent runtime
+/// and no remote pairing.
+fn install_portable(host: &HostChannel) {
+    host.handle("tauri.check_for_update", |call: HostCall| {
+        let force = call.data()["force"].as_bool().unwrap_or(false);
+        std::thread::spawn(move || match crate::updates::check(crate::config::product_version(), force) {
+            Ok(check) => call.resolve(json!(check)),
+            Err(why) => call.reject(why),
+        });
+    });
+    #[cfg(not(target_os = "macos"))]
+    {
+        host.handle("tauri.set_launch_at_login", |call: HostCall| call.resolve(json!(false)));
+        host.handle("tauri.can_install_update", |call: HostCall| call.resolve(json!(false)));
+        host.handle("tauri.update_install_state", |call: HostCall| call.resolve(idle_install_state()));
+        host.handle("tauri.cancel_update_install", |call: HostCall| call.resolve(idle_install_state()));
+        host.handle("tauri.start_update_install", |call: HostCall| call.reject("not-installed"));
+        for name in ["independent_runtime", "remote_local_setup", "remote_native_confirmation"] {
+            host.handle(format!("tauri.{name}"), |call: HostCall| call.reject("disabled"));
+        }
+        host.handle("tauri.independent_runtime_status", |call: HostCall| {
+            call.resolve(json!({
+                "enabled": false, "available": false, "diagnostic": "dev_does_not_install_agent",
+                "supervising": true, "writer": "down",
+                "drain": { "phase": "running", "remaining": [], "forced": false },
+                "error": null, "warning": null,
+            }))
+        });
+    }
+}
+
+/// `installer::InstallState::idle()` as the card reads it.
+#[cfg(not(target_os = "macos"))]
+fn idle_install_state() -> Value {
+    json!({ "phase": "idle", "downloaded": 0, "total": null, "version": null, "error": null, "detail": null })
 }
 
 #[cfg(test)]

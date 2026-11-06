@@ -70,6 +70,7 @@ define_class!(
         fn will_terminate(&self, _notification: &NSNotification) {
             crate::notification_loop::state().stop();
             crate::window::stop_all();
+            crate::remote_native::stop_helper();
             crate::runtime::stop();
         }
     }
@@ -91,6 +92,8 @@ pub fn run(config: Config) -> std::process::ExitCode {
     let mtm = MainThreadMarker::new().expect("the shell starts on the main thread");
     let watch = config.watch.then(|| config.bundle.clone());
     let snapshots = config.snapshots.clone();
+    // A packaged build joins the login items on launch (`register_login_item`); a dev build never.
+    crate::login_item::register_on_launch(&crate::dev_build::Identity::from_config(&config));
     CONFIG.with(|c| {
         let _ = c.set(config);
     });

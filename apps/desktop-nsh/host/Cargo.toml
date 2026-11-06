@@ -15,6 +15,9 @@ log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 base64 = "0.22"
+# The update check (`updates.rs`), on every desktop; the installer downloads with it too.
+ureq = { version = "2", default-features = false, features = ["json", "tls"] }
+semver = "1"
 deskfolk-native-terminal = { path = "../native/terminal" }
 deskfolk-native-pdf = { path = "../native/pdf" }
 deskfolk-app-native = { path = "../app/native" }
@@ -34,6 +37,8 @@ nsh-platform-linux = "=0.4.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 nsh-platform-macos.workspace = true
+# access(2), dlopen (the remote helper), dup2 (the daemon channel), getuid (launchctl domain).
+libc = "0.2"
 objc2.workspace = true
 block2.workspace = true
 dispatch2.workspace = true
@@ -52,7 +57,6 @@ objc2-app-kit = { workspace = true, features = [
 objc2-quartz-core = { workspace = true, features = ["CALayer", "objc2-core-graphics"] }
 objc2-core-graphics = { workspace = true, features = ["CGBitmapContext", "CGColorSpace", "CGContext", "CGImage"] }
 objc2-core-foundation = { workspace = true, features = ["CFCGTypes"] }
-ureq = { version = "2", default-features = false, features = ["json", "tls"] }
 objc2-av-foundation = { version = "0.3.2", default-features = false, features = [
     "std", "block2", "AVCaptureDevice", "AVMediaFormat",
 ] }

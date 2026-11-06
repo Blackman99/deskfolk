@@ -3,11 +3,13 @@
 //! the main queue.
 
 use dispatch2::DispatchQueue;
+use crate::dev_build::Identity;
 use nsh_engine::{HostCall, HostChannel};
 use objc2::MainThreadMarker;
 use serde_json::{Value, json};
 
-pub fn install(host: &HostChannel, window_id: u32) {
+pub fn install(host: &HostChannel, window_id: u32, identity: &Identity) {
+    install_system(host, identity);
     host.handle("shell.notify", |call: HostCall| {
         let data = call.data();
         let id = data["id"].as_str().unwrap_or("deskfolk").to_owned();
@@ -116,6 +118,82 @@ pub fn install(host: &HostChannel, window_id: u32) {
         }
         call.resolve(Value::Null);
         on_main(move |_| crate::app::open_url(&url));
+    });
+}
+
+/// Launch at login, the independent runtime, remote pairing on this Mac and the in-app update
+/// install: the Tauri app's `lib.rs`, `remote_native.rs` and `remote_setup.rs` commands. A dev
+/// build (`dev_build.rs`) answers each as the Tauri dev build does. The calls that wait on the
+/// system, a daemon or the network answer from a thread of their own.
+fn install_system(host: &HostChannel, identity: &Identity) {
+    let id = identity.clone();
+    host.handle("tauri.set_launch_at_login", move |call: HostCall| {
+        let enabled = call.data()["enabled"].as_bool().unwrap_or(false);
+        let id = id.clone();
+        on_main(move |_| match crate::login_item::set(&id, enabled) {
+            Ok(state) => call.resolve(json!(state)),
+            Err(why) => call.reject(why),
+        });
+    });
+
+    let id = identity.clone();
+    host.handle("tauri.independent_runtime_status", move |call: HostCall| {
+        let id = id.clone();
+        std::thread::spawn(move || call.resolve(json!(crate::independent::status(&id))));
+    });
+    let id = identity.clone();
+    host.handle("tauri.independent_runtime", move |call: HostCall| {
+        let id = id.clone();
+        std::thread::spawn(move || {
+            let request = serde_json::from_value::<crate::independent::Request>(call.data()["request"].clone());
+            match request.map_err(|_| "malformed".to_string()).and_then(|r| crate::independent::run(&id, &r)) {
+                Ok(status) => call.resolve(json!(status)),
+                Err(why) => call.reject(why),
+            }
+        });
+    });
+
+    let id = identity.clone();
+    host.handle("tauri.remote_local_setup", move |call: HostCall| {
+        let id = id.clone();
+        std::thread::spawn(move || match crate::remote_setup::local_setup(&id, call.data()["request"].clone()) {
+            Ok(reply) => call.resolve(reply),
+            Err(why) => call.reject(why),
+        });
+    });
+    let id = identity.clone();
+    host.handle("tauri.remote_native_confirmation", move |call: HostCall| {
+        let id = id.clone();
+        std::thread::spawn(move || {
+            let data = call.data();
+            let operation = serde_json::from_value(data["operation"].clone()).map_err(|_| "malformed".to_string());
+            let challenge = data["challenge"].as_str().map(str::to_owned);
+            match operation.and_then(|op| crate::remote_native::confirmation(&id, op, challenge)) {
+                Ok(done) => call.resolve(json!(done)),
+                Err(why) => call.reject(why),
+            }
+        });
+    });
+
+    let id = identity.clone();
+    host.handle("tauri.can_install_update", move |call: HostCall| {
+        let id = id.clone();
+        std::thread::spawn(move || call.resolve(json!(crate::update_commands::can_install(&id))));
+    });
+    host.handle("tauri.update_install_state", |call: HostCall| call.resolve(json!(crate::update_commands::state())));
+    host.handle("tauri.cancel_update_install", |call: HostCall| call.resolve(json!(crate::update_commands::cancel())));
+    let id = identity.clone();
+    host.handle("tauri.start_update_install", move |call: HostCall| {
+        let data = call.data();
+        let (url, version) = (data["url"].as_str().unwrap_or_default().to_owned(), data["version"].as_str().unwrap_or_default().to_owned());
+        let id = id.clone();
+        std::thread::spawn(move || {
+            let quit = || on_main(|mtm| objc2_app_kit::NSApplication::sharedApplication(mtm).terminate(None));
+            match crate::update_commands::start(&id, &url, &version, quit) {
+                Ok(state) => call.resolve(json!(state)),
+                Err(why) => call.reject(why),
+            }
+        });
     });
 }
 

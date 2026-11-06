@@ -120,9 +120,24 @@ pub fn dev_data_dir_for(os: &str, env: &dyn Fn(&str) -> Option<String>) -> PathB
     }
 }
 
+/// The product's version, the one the Tauri app ships under (its `tauri.conf.json`, one of the
+/// release's version lines): the crate's own is the workspace's `0.0.0`, against which every
+/// release would read as an update.
+pub fn product_version() -> &'static str {
+    static VERSION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        version_of(include_str!("../../../desktop/src-tauri/tauri.conf.json")).unwrap_or_else(|| "0.0.0".into())
+    });
+    &VERSION
+}
+
+fn version_of(conf: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(conf).ok()?;
+    Some(value.get("version")?.as_str()?.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::dev_data_dir_for;
+    use super::{dev_data_dir_for, product_version, version_of};
     use std::path::PathBuf;
 
     #[test]
@@ -143,5 +158,12 @@ mod tests {
             dev_data_dir_for("windows", &env(&[("LOCALAPPDATA", "C:/Users/a/AppData/Local")])),
             PathBuf::from("C:/Users/a/AppData/Local/real-bot-nsh-dev")
         );
+    }
+
+    #[test]
+    fn the_version_is_the_products() {
+        assert_eq!(version_of(r#"{"productName":"x","version":"1.2.3"}"#).as_deref(), Some("1.2.3"));
+        assert_eq!(version_of("{}"), None);
+        assert_ne!(product_version(), "0.0.0");
     }
 }

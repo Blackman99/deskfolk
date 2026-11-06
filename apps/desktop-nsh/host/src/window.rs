@@ -149,7 +149,7 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
 
 fn make_view(mtm: MainThreadMarker, config: &Config, id: u32) -> (Rc<AppView>, HostChannel) {
     let host = crate::launch::channel(config, id);
-    crate::host_calls::install(&host, id);
+    crate::host_calls::install(&host, id, &crate::dev_build::Identity::from_config(config));
     let events = host.clone();
 
     let view = AppView::new(

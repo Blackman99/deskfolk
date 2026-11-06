@@ -3,10 +3,20 @@
 #[cfg(target_os = "macos")]
 mod app;
 mod config;
+#[cfg(target_os = "macos")]
+mod dev_build;
 mod endpoint;
 #[cfg(target_os = "linux")]
 mod gtk;
+#[cfg(target_os = "macos")]
+mod independent;
+#[cfg(target_os = "macos")]
+mod installer;
 mod launch;
+#[cfg(target_os = "macos")]
+mod local_confirm;
+#[cfg(target_os = "macos")]
+mod login_item;
 #[cfg(target_os = "macos")]
 mod host_calls;
 #[cfg(target_os = "macos")]
@@ -17,11 +27,18 @@ mod notifications;
 mod notify;
 #[cfg(target_os = "macos")]
 mod recorder;
+#[cfg(target_os = "macos")]
+mod remote_native;
+#[cfg(target_os = "macos")]
+mod remote_setup;
 mod runtime;
 #[cfg(target_os = "macos")]
 mod snapshot;
 #[cfg(target_os = "macos")]
 mod system;
+#[cfg(target_os = "macos")]
+mod update_commands;
+mod updates;
 #[cfg(windows)]
 mod win;
 #[cfg(target_os = "macos")]
