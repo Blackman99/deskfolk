@@ -1,16 +1,14 @@
 import { CLAUDE_EFFORTS, type ClaudeCodeModel, type PatchProjectSessionRequest } from "@real-bot/protocol";
-import { effortChoices, modelChoices, modelRowOf, type Choice } from "../claude-models.svelte.ts";
+import { effortChoices, modelChoices, modelRowOf } from "../claude-models.svelte.ts";
+import type { TuneRow } from "./tune-picker.ts";
 
 /**
  * What a project session's runs go on (ADR 0095): its account, its model and its thinking level,
  * each '' for what your Claude Code settings say. The composer picks the three in one cascading
- * picker (`ProjectAgentTune.svelte`), since each depends on the one before it: an account lists its
- * own models, a model takes its own levels.
+ * picker (`ProjectAgentTune.svelte`, on `TunePicker.svelte`), since each depends on the one before
+ * it: an account lists its own models, a model takes its own levels.
  */
 export type AgentTune = { account: string; model: string; effort: string };
-
-/** A picker row: a choice, what Claude Code says of it under its name, and whether it can be taken now. */
-export type TuneRow = Choice & { detail?: string; disabled?: boolean };
 
 /** The models an account lists, each with what Claude Code says of it; your settings' default first. */
 export function modelRows(list: ClaudeCodeModel[] | null, current: string, defaultLabel: string, defaultHint: string): TuneRow[] {
