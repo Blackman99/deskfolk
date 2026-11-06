@@ -17,4 +17,5 @@ export const stories: Record<string, Story> = {
   usage: () => import("./usage"),
   "chat-header": () => import("./chat-header"),
   trace: () => import("./trace"),
+  annotations: () => import("./annotations"),
 };

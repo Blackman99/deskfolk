@@ -182,6 +182,9 @@ importers:
       '@real-bot/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      marked:
+        specifier: ^18.0.13
+        version: 18.0.13
     devDependencies:
       '@types/bun':
         specifier: 1.4.2
