@@ -85,6 +85,16 @@
 
 样式的几个坑：Tailwind 的 `em` 单位不认（`px-[0.35em]` 会被忽略，换成 px）；`font-mono` 是平台自己的等宽字体，不要写具体字体名；文字里嵌的视图（小标签）用 `style={{ verticalAlign: "middle" }}` 对齐。
 
+移植中踩到的 NSH 行为（先照这些写）：
+
+- `role` 只认 NSH 的 `AccessibilityRole`：没有 `dialog`、`alertdialog`、`status`，对话框用 `group` / `alert`，状态文字用 `text`，卡片用 `region`。
+- `Overlay`（和放在它里面的弹层）里，`<Each>` 画不出东西：那里的列表写成函数子节点 `{() => list().map((x) => …)}`。
+- `keymap` 同一个键只有最新绑定的那个生效：同时开着两个都绑 Escape 的东西，旧的听不到。焦点在输入框里还要响应的快捷键加 `{ when: "always" }`。
+- 键名没有 `"+"`、`"-"`：写 `plus`、`minus`。
+- `flex-shrink` 不认，写 `shrink`；CSS 变量做圆角（`rounded-(--radius-bot)`）要是主题里没有就换成具体值。
+- `If` 的函数子节点拿到的是读取函数，别把它存下来到别处再读：在用的地方直接从原数据取。
+- 弹层不知道背后的滚动：信使里「背后滚了就关」的菜单，这里靠点外面和 Escape 关。
+
 ## 不要做的
 
 - 不要跑任何 git 命令。
