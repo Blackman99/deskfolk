@@ -76,6 +76,7 @@ writeFileSync(
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>Voice input records what you say for the speech service you chose.</string>
 </dict>
 </plist>
 `,

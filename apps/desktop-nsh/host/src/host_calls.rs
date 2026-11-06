@@ -80,6 +80,31 @@ pub fn install(host: &HostChannel, window_id: u32) {
         });
     });
 
+    // Voice input's recording (`recorder.rs`), under `app/src/platform/media.ts`.
+    host.handle("shell.record.start", |call: HostCall| {
+        on_main(move |mtm| {
+            crate::recorder::start(mtm, move |result| match result {
+                Ok(()) => call.resolve(Value::Null),
+                Err(why) => call.reject(why),
+            })
+        });
+    });
+    host.handle("shell.record.level", |call: HostCall| {
+        on_main(move |_| call.resolve(json!(crate::recorder::level())));
+    });
+    host.handle("shell.record.stop", |call: HostCall| {
+        on_main(move |_| match crate::recorder::stop() {
+            Ok(value) => call.resolve(value),
+            Err(why) => call.reject(why),
+        });
+    });
+    host.handle("shell.record.cancel", |call: HostCall| {
+        on_main(move |_| {
+            crate::recorder::cancel();
+            call.resolve(Value::Null);
+        });
+    });
+
     host.handle("shell.openExternal", |call: HostCall| {
         let Some(url) = call.data().as_str().map(str::to_owned) else {
             call.reject("a URL is required");

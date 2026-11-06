@@ -5,8 +5,10 @@
  */
 import { installGlobals } from "./globals";
 import { installTauriBridge } from "./tauri-bridge";
+import { installMedia } from "./media";
 import { installWheel } from "./wheel";
 
 installGlobals();
 installTauriBridge();
 installWheel();
+installMedia();

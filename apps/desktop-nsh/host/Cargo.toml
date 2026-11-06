@@ -14,6 +14,7 @@ path = "src/main.rs"
 log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+base64 = "0.22"
 deskfolk-native-terminal = { path = "../native/terminal" }
 deskfolk-native-pdf = { path = "../native/pdf" }
 deskfolk-app-native = { path = "../app/native" }
@@ -52,6 +53,12 @@ objc2-quartz-core = { workspace = true, features = ["CALayer", "objc2-core-graph
 objc2-core-graphics = { workspace = true, features = ["CGBitmapContext", "CGColorSpace", "CGContext", "CGImage"] }
 objc2-core-foundation = { workspace = true, features = ["CFCGTypes"] }
 ureq = { version = "2", default-features = false, features = ["json", "tls"] }
+objc2-av-foundation = { version = "0.3.2", default-features = false, features = [
+    "std", "block2", "AVCaptureDevice", "AVMediaFormat",
+] }
+objc2-avf-audio = { version = "0.3.2", default-features = false, features = [
+    "std", "AVAudioRecorder", "AVAudioSettings",
+] }
 objc2-user-notifications = { version = "0.3.2", default-features = false, features = [
     "std", "block2", "UNNotification", "UNNotificationContent", "UNNotificationRequest",
     "UNNotificationResponse", "UNNotificationSettings", "UNNotificationSound",

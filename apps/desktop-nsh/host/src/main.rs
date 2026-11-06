@@ -15,6 +15,8 @@ mod notification_loop;
 mod notifications;
 #[cfg(target_os = "macos")]
 mod notify;
+#[cfg(target_os = "macos")]
+mod recorder;
 mod runtime;
 #[cfg(target_os = "macos")]
 mod snapshot;
