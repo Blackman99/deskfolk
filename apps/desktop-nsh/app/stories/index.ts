@@ -37,4 +37,5 @@ export const stories: Record<string, Story> = {
   office: () => import("./office"),
   misc: () => import("./misc"),
   "chat-composer-2": () => import("./chat-composer-2"),
+  "files-pdf": () => import("./files-pdf"),
 };
