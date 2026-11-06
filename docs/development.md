@@ -381,6 +381,10 @@ cargo build --manifest-path apps/conpty-helper/Cargo.toml
 
 终端开的 shell：`$SHELL`，没有就用账户自己的 shell（`/etc/passwd`），再没有就 `/bin/bash`、`/bin/sh`，都按 login shell 起；macOS 仍在没有 `$SHELL` 时用 `/bin/zsh`。环境在 POSIX 白名单之外多放行桌面会话的变量（`DISPLAY`、`WAYLAND_DISPLAY`、`XAUTHORITY`、`DBUS_SESSION_BUS_ADDRESS`、`XDG_RUNTIME_DIR`、各个 `XDG_*_HOME` / `XDG_*_DIRS`、`XDG_CURRENT_DESKTOP`、`XDG_SESSION_TYPE`），MCP 服务器的 stdio 环境也一样；没有 `LANG` / `LC_ALL` 时设 `C.UTF-8`（`en_US.UTF-8` 在很多发行版上没生成）。bash 会话的 cwd 也会跟：守护进程把一个发 OSC 7 的函数作为导出函数（`BASH_FUNC__real_bot_report_cwd%%`，bash 4.4 起认）放进环境，再让 `PROMPT_COMMAND` 调它，原来就有的 `PROMPT_COMMAND` 接在后面；编码和 zsh 钩子一样，`[/._~A-Za-z0-9-]` 以外的字节一律百分号编码。启动文件里直接给 `PROMPT_COMMAND` 赋值的（比如 Fedora 的 `/etc/bashrc` 在某些终端下会这么做）会把钩子盖掉，那时会话的 cwd 停在打开时的目录，别的都不受影响。
 
+## NSH 原生桌面端（试做，`nsh-spike` 分支）
+
+`apps/desktop-nsh` 是用 [NSH](https://nsh.dev) 0.4.0 把桌面端换成原生界面的 Phase 0 试做（[ADR 0107](adr/0107-spike-native-desktop-on-nsh.md)）：Rust 宿主管窗口、托盘、通知，NSH 画界面，终端和 PDF 是自己写的原生组件，不用 WebView。它有自己的一整套实例，和装好的稳定版并存：端口 17990、数据目录 `~/Library/Application Support/real-bot-nsh-dev`、钥匙串服务 `com.real-bot.daemon.nsh-dev`、bundle id `com.real-bot.desktop.nsh-dev`；守护进程源码没改，`scripts/dev-runtime.ts` 用 `startRuntime` 起一份。一条命令起开发版：`bun apps/desktop-nsh/scripts/dev.ts`。跑它时不要同时跑根目录的 `pnpm dev`（会和稳定版抢 17890）。它不在 pnpm 工作区的测试链里，测试和检查命令见 [`apps/desktop-nsh/README.md`](../apps/desktop-nsh/README.md)。
+
 ## 命令
 
 ```bash

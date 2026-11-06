@@ -1,0 +1,63 @@
+# 试做：桌面端换成 NSH 原生界面 / Spike: a native desktop on NSH
+
+Status: proposed 2026-11-06。Phase 0 试做在 `nsh-spike` 分支完成，自动能验的都验了；剩下几项要你亲手看（见「还没验的」），之后定「换」还是「暂不换」。代码在 [`apps/desktop-nsh`](../../apps/desktop-nsh/README.md)。
+
+Status: proposed 2026-11-06. Phase 0 is done on the `nsh-spike` branch and everything that can be checked without you has been; a few things need your own eyes and hands (see "Not yet checked") before the call is go or not yet. The code is in `apps/desktop-nsh`.
+
+## 背景 / Background
+
+2026-11-06 你说「用 nsh 重写应用」，又补了两条：开发期间稳定版要独立运行、开发版单独起来调试；NSH 没有的功能补上基于它的原生实现，最好不出现 WebView。NSH 是 longbridge 的 Native Shell（nsh.dev，Apache-2.0）：界面用 Rust 或 TSX 写，TSX 跑在 QuickJS 上，每个平台画自己的原生控件（macOS 上是 AppKit + Core Animation + CoreText），没有 DOM 和 CSS。0.4.0 发布于 2026-11-04，第一版是 10-17。桌面端现在是 Tauri 2 + Svelte 5（`apps/messenger` 约 17 万行，`apps/desktop/src-tauri` 约 1.15 万行）；守护进程、协议、relay 不在这次范围里。
+
+On 2026-11-06 you asked to rewrite the app with nsh, then added two rules: during development the installed stable build runs on its own and the dev build is started separately; whatever NSH lacks gets a native implementation built on it, preferably with no WebView anywhere. NSH is longbridge's Native Shell: UI in Rust or TSX (QuickJS), each platform's own views (AppKit, Core Animation and CoreText on macOS), no DOM, no CSS; 0.4.0 shipped 2026-11-04, the first release 10-17. Today's desktop is Tauri 2 + Svelte 5; the daemon, the protocol and the relay are out of scope.
+
+## 试做了什么 / What the spike built
+
+- **宿主（Rust，嵌入模式）**：自己建 NSWindow，背后垫 `NSVisualEffectView`（sidebar 材质，和 Tauri 窗口同一种），标题栏透明、内容铺到标题栏下；每个窗口一个 NSH `AppView`，各自连守护进程，内存里不共享，和每个 Tauri 窗口各跑一份页面一样。菜单栏、托盘（`NSStatusItem`）、系统通知（`UNUserNotificationCenter`，照 `notifications_macos.rs` 写）、Dock 角标都在宿主里。守护进程的地址和 token 由宿主读开发数据目录的 `local-api.json`，经 NSH 的 `host.params` 交给界面。 / **The shell (Rust, embedding):** its own NSWindow over the sidebar material, a transparent title bar, one NSH `AppView` per window talking to the runtime on its own; menu bar, tray, notifications and the Dock badge live in the shell; the runtime's address and token reach the UI through `host.params`.
+- **原生组件**：`deskfolk.terminal`（`alacritty_terminal` 管屏幕状态，自绘 NSView，`NSTextInputClient` 收键盘和输入法，自己连事件流和终端接口，字节不经过 JS）和 `deskfolk.pdf`（PDFKit 的 `PDFView`）。都按 NSH 的 `NativeComponent` 写、用 `AppView::register_component` 注册，接口只有小数据，可以提给上游。 / **Native components:** a terminal (alacritty_terminal state, an NSView of our own, `NSTextInputClient`, its own socket so bytes never touch JS) and a PDF view (PDFKit), both NSH `NativeComponent`s with data-only interfaces.
+- **界面（TSX）**：会话列表、对话（`List` 倒序虚拟化，`TextView` 渲染 Markdown、可跨块选中、代码块自带高亮）、输入框、终端和 PDF 面板。数据层照信使的 `event-sync.ts`：一条 sync-v1 socket，快照做基线，按序号接事件，断档、实例变了或 `resnapshot` 就重拉。`@real-bot/protocol` 经 `nsh.json` 的 `resolve.alias` 直接用，类型和值都行（值导入后 bundle 只多 1.7 KB）。 / **The UI (TSX):** the list, a conversation (inverted virtualised `List`, `TextView` for Markdown with selection and highlighted code), the composer, the terminal and PDF panes; the data layer follows the messenger's `event-sync.ts`; `@real-bot/protocol` is used directly through a `resolve.alias`, types and values alike.
+- **开发版和稳定版并存**：开发版用 17990、`real-bot-nsh-dev` 数据目录、钥匙串服务 `com.real-bot.daemon.nsh-dev`、bundle id `com.real-bot.desktop.nsh-dev`。守护进程源码一行没改：`dev-runtime.ts` 用 `startRuntime({ dataDir, bind, endpointKey, supervisor: "none" })` 起，和 `ui-fixture.ts`、`demo-studio.ts` 一样。计划原本写「同一服务另起一项」，试做中发现 `bundledKeyStore` 会读同一服务下旧格式的单项、在改和删时把它们删掉，而那些是稳定版的，所以改成了另一个服务。 / **Side by side with stable:** port 17990, its own data directory, Keychain service and bundle id, and no daemon source changed. The plan said "another entry under the same service"; `bundledKeyStore` reads and deletes the legacy per-name items of its service, which are stable's, so the dev build got a service of its own.
+
+## 过关清单 / The gates
+
+| 条件 / Gate | 结果 / Result | 证据 / Evidence |
+|---|---|---|
+| 打包的 `.app` 启动、连上 17990 | 过 / pass | `package.ts --measure 3`：第一份快照在启动后 789 / 276 / 307 ms 到 |
+| 稳定版和开发版互不影响 | 过 / pass | 前后对照：17890 上一直是 pid 40167；稳定版 `local-api.json` 的哈希和修改时间不变；开发运行时没有一条连 17890 的连接；单测 `dev-instance.test.ts`、宿主 `endpoint`/`runtime` 测试拒绝 17890 |
+| 没有 WebView | 过，有一条说明 / pass, with a note | 二进制不链接 WebKit（`otool -L` 只有 AppKit、CoreGraphics、CoreText、Foundation、IOKit、ImageIO、Metal、PDFKit、QuartzCore、UserNotifications、CoreFoundation），依赖树里没有 wry；运行时不创建 WebView：启动后没有新的 WebContent 进程，没有 `~/Library/WebKit/<bundle id>`。但进程里映射着 WebKit 的镜像，NSH 自带的 `nsh-macos-host` 也一样，是系统框架带进来的，不是我们或 NSH 的 WebView（NSH 的 WebView 是首次使用时才 `dlopen`） |
+| 毛玻璃、隐藏标题栏、第二个窗口、托盘、通知、Dock 角标 | 做出来了；一半要你看 / built; half need your eyes | 第二个窗口错开 28pt 打开；角标设成「3」读回是「3」；Notification Center 收下了横幅，但「Deskfolk Dev」还没有通知权限；托盘项建出来了（有按钮、有符号、visible）。毛玻璃由窗口服务器画，自绘截图看不到 |
+| 列表和对话随事件实时更新 | 过 / pass | `e2e-live.ts`：对话开着时外面写一条，靠事件流出现；无头测试 4 条（列表、打开渲染 Markdown、发送、回车发送） |
+| 1000 条消息滚动不卡 | 过 / pass | release、60Hz 屏，一行一帧从最新滚到最旧再回来，翻页一路加载 1003 条：33 s，平均 59.5 帧，最低 58，每秒 p95 最差 4.34 ms，单帧最差 9.49 ms，超预算 0%，新建 1288 行，峰值 154 MB；120Hz 屏上同样的滚动 118–120 帧 |
+| 跨块选中复制 | 要你看 / needs you | `TextView selectable` 已开 |
+| 中文输入法 | 要你试 / needs you | 输入框：NSH 文档写明组字时回车不提交，macOS 上 `onChange` 带组字文本；终端：`NSTextInputClient` 的 marked text 画在光标处、候选框位置走 `firstRectForCharacterRange` |
+| 原生终端：60fps、vim/top、输入法 | 画面过，手感和输入法要你试 / drawing passes; feel and IME need you | 20 万行刷屏时 debug 构建 52 帧/秒、平均 4.1 ms、p95 5.0 ms；16 色、216 色、中英文宽字符对齐、vim（备用屏、语法色）、top（反白表头）都对 |
+| 原生 PDF | 读出来了，显示和交互要你看 / opens; display and use need you | 200 页、读出首行；PDFKit 分块绘制，自绘截图抓不到页面 |
+| TSX 直接用 `@real-bot/protocol` | 过 / pass | 类型和值都行 |
+| Developer ID 签名、公证 | 签名过，公证要你的 profile / signed; notarising needs your profile | Gatekeeper：`Unnotarized Developer ID`，origin 是你的 Developer ID；钥匙串里的 notarytool profile 我不碰 |
+| 启动和内存不比 Tauri 差 | 内存过；启动只量了这边 / memory passes; start-up measured on this side only | 开发版单窗口 33–37 MB（`footprint`）；稳定版此刻 909 MB（主进程 58 + WebKit GPU 200 + WebContent 643 + Networking 8，用了 50 分钟、开着 7 个终端，负载不同，只能看量级）。Tauri 版的冷启动没量：要重开你在用的稳定版 |
+
+## 试做里发现的 / Found on the way
+
+- NSH 0.4 的嵌入宿主连 dev server 的函数是 `pub(crate)`，自己的宿主用不了它的热更新；开发版改成 `nsh build`（约 10 ms）后宿主监听 bundle 重新 `load`。 / Embedding hosts cannot use NSH's dev-server client in 0.4; the dev loop rebuilds (`nsh build`, ~10 ms) and the shell reloads.
+- NSH 文档（main 分支）写的 `AppOptions::notifications` 在 0.4.0 里没有，通知由宿主自己做。 / `AppOptions::notifications` in NSH's docs is not in 0.4.0; the shell posts notifications itself.
+- 翻页：List 每次接近末尾只问一次，加载中再来的请求不能丢（`loadOlder` 记下来，这一页到了再接着拉）。 / The list asks once per approach to its end, so an ask during a load is kept and served.
+- 终端组件连本机要关掉环境代理（ureq 默认读 `HTTP_PROXY`）。 / The terminal's HTTP client ignores environment proxies.
+- `dev.ts` 被 SIGTERM 停掉时要连带停子进程，不然开发运行时留成孤儿。 / `dev.ts` stops its children on SIGTERM too.
+- 这个终端环境没有屏幕录制权限，自动检查改由宿主自己把窗口渲染成 PNG（`--snapshots`），不碰你的屏幕；台前调度会把没激活的窗口收成缩略图，`--background` 的窗口因此不参与台前调度、放在副显示器。 / Checks render the window from inside the shell (no Screen Recording, no input on your screen); background windows stay out of Stage Manager.
+
+## 还没验的 / Not yet checked
+
+都要你在「Deskfolk Dev」里亲手做：`bun apps/desktop-nsh/scripts/dev.ts` 打开后，(1) 输入框和终端里用拼音各打几句，看组字、选词、回车；(2) 终端的手感（打字延迟、滚动回看、粘贴）；(3) PDF 面板打开一份 PDF，滚动、缩放、选字；(4) 对话里拖选几段跨块文字复制；(5) 菜单栏右上角有没有托盘图标（两个人的符号）；(6) 系统设置 › 通知 里允许「Deskfolk Dev」后，Dock 角标和横幅；(7) 窗口的毛玻璃看着和稳定版是否一样。公证：告诉我 notarytool 的 profile 名，或自己跑 `package.ts --sign developer-id --notarize <profile>`。
+
+All in Deskfolk Dev (`bun apps/desktop-nsh/scripts/dev.ts`): pinyin in the composer and the terminal; the terminal's feel; a PDF scrolled, zoomed, selected; a cross-block selection copied; the tray icon; the badge and a banner once notifications are allowed; the glass next to stable's. Notarising needs your notarytool profile.
+
+## 建议 / Recommendation
+
+建议**换**，进 Phase 1，条件是上面七项你看过没有大问题。理由：最担心的几样（终端、长列表、Markdown、实时同步、并存隔离）在原生上都做出来了，性能有余量；NSH 缺的窗口级功能宿主一两百行就补上；不用 WebView 的要求能守住。代价也要说清：NSH 才三周大（0.1 → 0.4 用了 18 天），API 还会动；剩下的补件（Office 预览、远程屏幕、音视频、流程图）和 17 万行界面的逐屏迁移是几个月的活；界面方案（ADR 0106）的自定义 CSS 在原生界面里没有对应物，要另写 ADR 改成「按钩子改样式」；Windows 和 Linux 的原生组件要各写一份。计划里的四个拍板项（自定义 CSS、手机端、Windows/Linux、Office 预览）仍待你定。
+
+Go to Phase 1 if the seven checks above hold. The riskiest pieces (terminal, long lists, Markdown, live sync, side-by-side isolation) work natively with headroom; the window-level gaps took a couple of hundred lines in the shell; no-WebView holds. The costs: NSH is three weeks old and its API will move; the remaining components and the screen-by-screen port of ~170k lines are months of work; ADR 0106's custom CSS has no native counterpart and needs an ADR of its own; Windows and Linux need their own native components. The plan's four open decisions still stand.
+
+## 补记 2026-11-06：四项决定 / Addendum 2026-11-06: the four decisions
+
+你看完试做后定了四件事：自定义界面走 NSH 自己的机制；手机端完整走 NSH（web 输出）；Windows 和 Linux 同步做，用 NSH 编出来的版本；Office 预览先找现成库，没有就自己实现。随之而来的改变：补件不再只写 macOS 的 NSView，要跟着 NSH 出到所有目标。终端改成「纯 Rust 屏幕状态 + NSH `Canvas` 绘制 + 隐藏 `input()` 收输入法」，macOS 的 NSView 版留作快速路径；PDF 用纯 Rust 的 `hayro`（加密文件交给系统兜底）；Word 和 PowerPoint 先用 `office2pdf` 转 PDF 再交给 hayro，和 `rdocx`/`rpptx` 对照后再定；Excel 用 `umya-spreadsheet` 读、NSH 的 `DataTable` 画。手机的加密传输、WebAuthn、IndexedDB、推送放进 NSH 的 `web.host` 页面模块，直接用 `packages/remote`；中继改发 NSH 的 web 包。自定义界面分三层：令牌走 `set_theme_overrides`（web 播放器缺这个接口，给上游提）；自定义 CSS 换成「按钩子挂 Tailwind 类名」；新增 Bot 写的 TSX 界面模块，经检查、签名后在沙箱 view 里运行。Windows 和 Linux 不能在 Mac 上交叉编译，在 CI 上构建。第一步是 Phase 1a 的四项验证：Canvas 终端的帧率、hayro 在原生和 wasm 上、同一份 TSX 出 web 包连开发运行时、Windows 和 Linux 宿主在 CI 上构建。
+
+After the spike you settled the four questions: customisation through NSH's own means; the phone fully on NSH via its web output; Windows and Linux in parallel from NSH's own builds; Office previews from existing libraries where they fit, else our own. So the gap fillers must reach every target: the terminal becomes pure-Rust screen state drawn on NSH's `Canvas` with a hidden `input()` for input methods (the macOS NSView stays as a fast path); PDF uses pure-Rust `hayro` with system fallbacks for encrypted files; Word and PowerPoint go through `office2pdf` to PDF, compared against `rdocx`/`rpptx`; Excel is read with `umya-spreadsheet` and drawn in NSH's `DataTable`. The phone's encrypted transport, WebAuthn, IndexedDB and push live in NSH's `web.host` page module on top of `packages/remote`, and the relay serves NSH's web package. Customisation has three layers: tokens via `set_theme_overrides` (the web player lacks it; to be proposed upstream), custom CSS replaced by Tailwind classes per hook, and Bot-written TSX modules checked, signed and run in a sandboxed view. Windows and Linux build in CI, since NSH does not cross-compile. Next: Phase 1a's four checks.
