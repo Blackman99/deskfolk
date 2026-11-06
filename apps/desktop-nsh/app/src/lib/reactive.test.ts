@@ -72,3 +72,54 @@ test("class instances and other non-plain values are left alone", () => {
   const map = new Map([["a", 1]]);
   expect(deep(map)).toBe(map);
 });
+
+test("a derived field may read what the constructor sets after it, as Svelte's lazy $derived may", () => {
+  class Ledger {
+    readonly #input: { now: number };
+    readonly total = derived(() => this.#input.now * 2);
+    constructor(now: number) {
+      this.#input = { now };
+    }
+  }
+  expect(new Ledger(21).total.get()).toBe(42);
+});
+
+test("a derived first read inside an effect keeps following its signals after the effect runs again", () => {
+  const n = signal(1);
+  const other = signal(0);
+  const twice = derived(() => n() * 2);
+  const seen: number[] = [];
+  effect(() => {
+    other();
+    seen.push(twice.get());
+  });
+  other.set(1);
+  n.set(5);
+  expect(twice.get()).toBe(10);
+  expect(seen[seen.length - 1]).toBe(10);
+});
+
+test("a derived is computed once until what it read changes", () => {
+  let runs = 0;
+  const n = signal(1);
+  const twice = derived(() => {
+    runs++;
+    return n() * 2;
+  });
+  expect(runs).toBe(0);
+  twice.get();
+  twice.get();
+  expect(runs).toBe(1);
+  n.set(2);
+  expect(twice.get()).toBe(4);
+  expect(runs).toBe(2);
+});
+
+test("a derived first read while another derived computes", () => {
+  const n = signal(3);
+  const inner = derived(() => n() + 1);
+  const outer = derived(() => inner.get() * 10);
+  expect(outer.get()).toBe(40);
+  n.set(4);
+  expect(outer.get()).toBe(50);
+});

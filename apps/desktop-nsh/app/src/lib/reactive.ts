@@ -128,8 +128,18 @@ export function rawState<T>(initial?: T): Box<T | undefined> {
 
 /** `$derived.by(fn)`. */
 export function derived<T>(fn: () => T): { get(): T } {
-  const c = computed(() => fn());
-  return { get: () => c() };
+  // Svelte's `$derived` is lazy: nothing runs until something reads it, so a class field may read
+  // what the constructor sets after it. NSH's `computed` runs at once. This one runs `fn` only once
+  // asked, through a signal its first run reads; the computed is still made here, so it has the
+  // owner `derived` was called under (a store's, a component's), not whatever first reads it.
+  const asked = signal(false);
+  const c = computed(() => (asked() ? fn() : undefined));
+  return {
+    get: () => {
+      if (!untracked(asked)) asked.set(true);
+      return c() as T;
+    },
+  };
 }
 
 /** `$effect(fn)`. */
