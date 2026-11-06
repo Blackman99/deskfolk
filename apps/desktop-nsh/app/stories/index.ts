@@ -40,4 +40,5 @@ export const stories: Record<string, Story> = {
   "files-pdf": () => import("./files-pdf"),
   "settings-playbooks": () => import("./settings-playbooks"),
   "plan-panel": () => import("./plan-panel"),
+  onboarding: () => import("./onboarding"),
 };
