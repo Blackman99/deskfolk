@@ -26,4 +26,5 @@ export const stories: Record<string, Story> = {
   "settings-general": () => import("./settings-general"),
   "settings-prompts": () => import("./settings-prompts"),
   taskmap: () => import("./taskmap"),
+  "sidebar-rows": () => import("./sidebar-rows"),
 };
