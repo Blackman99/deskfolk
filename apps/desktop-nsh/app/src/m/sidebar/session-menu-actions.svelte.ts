@@ -1,0 +1,224 @@
+// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
+// Source: b42f48f21aa33a9a
+import { state } from "../../lib/reactive";
+/**
+ * The session context menu: which row it is open on, and what each of its items does.
+ *
+ * Lives beside `Shell.svelte` rather than inside it, the way `workbench/shell-workbench.svelte.ts`
+ * and `overlays/danger-confirm.svelte.ts` do: the constructor takes getters for whatever it needs
+ * to read from that Shell instance, and never snapshots them. The handlers are arrow fields
+ * because the shell hands them to components as callbacks.
+ */
+import type { Attachment, Bot, SessionSummary } from "@real-bot/protocol";
+import type { ShellDangerConfirm } from "../overlays/danger-confirm.svelte.ts";
+import type { ShellArtifact } from "../overlays/shell-artifact.svelte.ts";
+import type { MessengerRuntime } from "../runtime.svelte.ts";
+import { deriveSessionContextMenu } from "./session-context-menu.ts";
+import { projectDirLabel } from "./project-groups.ts";
+import { classifySession, isFileDropSession, youBotPeer } from "./session-groups.ts";
+
+export type ShellSessionMenuDeps = {
+  runtime: () => MessengerRuntime;
+  botsById: () => ReadonlyMap<string, Bot>;
+  danger: () => ShellDangerConfirm;
+  togglePin: (sessionId: string) => void;
+  openProfile: (botId: string, sessionId?: string) => void;
+  /** Opens a path in the preview: a tab of its own on the workbench, the conversation's preview elsewhere. */
+  openArtifact: ShellArtifact["openArtifactPath"];
+};
+
+export class ShellSessionMenu {
+  private readonly getRuntime: () => MessengerRuntime;
+  private readonly getBotsById: () => ReadonlyMap<string, Bot>;
+  private readonly getDanger: () => ShellDangerConfirm;
+  private readonly togglePin: (sessionId: string) => void;
+  private readonly openProfile: (botId: string, sessionId?: string) => void;
+  private readonly openArtifact: ShellArtifact["openArtifactPath"];
+
+  #contextMenu$s = state<{
+    session: SessionSummary;
+    x: number;
+    y: number;
+  } | null>(null);
+	get contextMenu(): {
+    session: SessionSummary;
+    x: number;
+    y: number;
+  } | null { return this.#contextMenu$s.get(); }
+	set contextMenu(value: {
+    session: SessionSummary;
+    x: number;
+    y: number;
+  } | null) { this.#contextMenu$s.set(value); }
+  private contextMenuEpoch = 0;
+
+  constructor(deps: ShellSessionMenuDeps) {
+    this.getRuntime = deps.runtime;
+    this.getBotsById = deps.botsById;
+    this.getDanger = deps.danger;
+    this.togglePin = deps.togglePin;
+    this.openProfile = deps.openProfile;
+    this.openArtifact = deps.openArtifact;
+  }
+
+  openContextMenu = (e: MouseEvent, session: SessionSummary): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    this.contextMenuEpoch += 1;
+    this.contextMenu = {
+      session,
+      x: e.clientX,
+      y: e.clientY,
+    };
+  };
+
+  /**
+   * Deferred so the click that picked a menu item does not fall through onto the session row
+   * underneath once the menu unmounts. The epoch ignores a stale close after a new menu opens.
+   */
+  closeContextMenu = (): void => {
+    const epoch = this.contextMenuEpoch;
+    setTimeout(() => {
+      if (this.contextMenuEpoch === epoch) this.contextMenu = null;
+    }, 0);
+  };
+
+  closeContextMenuNow = (): void => {
+    this.contextMenuEpoch += 1;
+    this.contextMenu = null;
+  };
+
+  handleMenuTogglePin = (sessionId: string): void => {
+    this.togglePin(sessionId);
+  };
+
+  /**
+   * The row's latest job. On a wide window it is the conversation's one flow tab, and the pane on
+   * screen keeps its conversation; a phone opens the job's page over the conversation, so that
+   * one comes up first.
+   */
+  handleMenuShowJobView = async (session: SessionSummary): Promise<void> => {
+    const runtime = this.getRuntime();
+    if (isFileDropSession(session)) return;
+    if (!runtime.paneOpener && runtime.selectedId !== session.id) await runtime.selectSession(session.id);
+    runtime.openTrace(null, null, { sessionId: session.id });
+  };
+
+  /** The project session whose sidebar row is being renamed (ADR 0095); null when none. */
+  #renamingSessionId$s = state<string | null>(null);
+	get renamingSessionId(): string | null { return this.#renamingSessionId$s.get(); }
+	set renamingSessionId(value: string | null) { this.#renamingSessionId$s.set(value); }
+
+  handleMenuRename = (session: SessionSummary): void => {
+    if (session.kind !== "project") return;
+    this.renamingSessionId = session.id;
+  };
+
+  /**
+   * The row's new name, or null to leave it as it was. False keeps the row editing: the name did
+   * not go through. The new name comes back with the session's own event.
+   */
+  finishRename = async (sessionId: string, name: string | null): Promise<boolean> => {
+    if (name !== null && (await this.getRuntime().patchSession(sessionId, { name }))) return false;
+    if (this.renamingSessionId === sessionId) this.renamingSessionId = null;
+    return true;
+  };
+
+  /**
+   * The row's task map, in a pane: a project session's agent (ADR 0096) or a conversation's Bots
+   * (ADR 0097). There is no page of it on a phone yet.
+   */
+  handleMenuShowMap = (session: SessionSummary): void => {
+    const runtime = this.getRuntime();
+    if (isFileDropSession(session)) return;
+    runtime.paneOpener?.({ kind: "map", sessionId: session.id });
+  };
+
+  /**
+   * A project session's directory in the preview (ADR 0095), with the project's tree beside it read
+   * a level at a time, as a file it opened comes with. The row says it is a folder, so the preview
+   * lists what is in it rather than reading it as a file. A preview off the workbench is the open
+   * conversation's, and the tree is that conversation's project, so that one comes up first.
+   */
+  handleMenuOpenProjectDir = async (session: SessionSummary): Promise<void> => {
+    const dir = session.kind === "project" ? session.project_dir : null;
+    if (!dir) return;
+    const runtime = this.getRuntime();
+    if (!runtime.paneOpener && runtime.selectedId !== session.id) await runtime.selectSession(session.id);
+    const row: Attachment = {
+      id: `virtual-project-${dir}`, message_id: "", workspace_relpath: dir,
+      original_filename: projectDirLabel(dir), created_at: "", is_dir: true,
+    };
+    this.openArtifact(dir, undefined, null, false, null, [row], session.id);
+  };
+
+  /**
+   * A shell started in a project session's directory: a tab of its own on the workbench, the
+   * terminal page elsewhere. It belongs to no conversation, so the one on screen stays.
+   */
+  handleMenuOpenProjectTerminal = (session: SessionSummary): void => {
+    const dir = session.kind === "project" ? session.project_dir : null;
+    if (!dir) return;
+    void this.getRuntime().openTerminalAt(dir);
+  };
+
+  handleMenuViewInfo = async (session: SessionSummary): Promise<void> => {
+    const runtime = this.getRuntime();
+    if (isFileDropSession(session)) return;
+    if (runtime.selectedId !== session.id) {
+      await runtime.selectSession(session.id);
+    }
+    const kind = classifySession(session);
+    if (kind === "you-bot") {
+      const peer = youBotPeer(session);
+      if (peer) {
+        this.openProfile(peer);
+        return;
+      }
+    }
+    runtime.openSessionSettings();
+  };
+
+  handleMenuClearHistory = (session: SessionSummary): void => {
+    this.closeContextMenuNow();
+    this.getDanger().openClearHistoryConfirm(session.id, "menu");
+  };
+
+  handleMenuToggleArchive = async (session: SessionSummary): Promise<void> => {
+    const runtime = this.getRuntime();
+    // A group and a project session are archived themselves; a direct is archived with its Bot.
+    if (session.kind === "group" || session.kind === "project") {
+      if (session.archived_at) {
+        await runtime.restoreSession(session.id);
+      } else {
+        await runtime.archiveSession(session.id);
+      }
+      return;
+    }
+    const peerId = youBotPeer(session);
+    if (!peerId) return;
+    const bot = this.getBotsById().get(peerId);
+    if (!bot) return;
+    if (bot.archived_at) {
+      await runtime.restoreBot(bot.id);
+    } else {
+      await runtime.archiveBot(bot.id);
+    }
+  };
+
+  handleMenuDelete = (session: SessionSummary): void => {
+    this.closeContextMenuNow();
+    const data = deriveSessionContextMenu(session, false, this.getBotsById());
+    if (data.delete.kind === "group" && data.delete.targetId) {
+      this.getDanger().openDeleteGroupConfirm(data.delete.targetId, "menu");
+      return;
+    }
+    if (data.delete.kind === "bot" && data.delete.targetId) {
+      this.getDanger().openDeleteBotConfirm(data.delete.targetId, "menu");
+      return;
+    }
+    if (data.delete.kind === "project" && data.delete.targetId) {
+      this.getDanger().openDeleteProjectConfirm(data.delete.targetId, "menu");
+    }
+  };
+}

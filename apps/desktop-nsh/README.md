@@ -7,11 +7,24 @@
 | 位置 | 是什么 |
 |---|---|
 | `app/` | NSH 的 TSX 界面：会话列表、对话（`TextView` 渲染 Markdown）、输入框、终端和 PDF 面板。`@real-bot/protocol` 经 `nsh.json` 的 `resolve.alias` 直接用 |
+| `app/src/m/` | 信使逻辑的镜像（`apps/messenger/src/lib` 同样的相对路径），见下面「信使逻辑怎么复用」 |
+| `app/src/lib/reactive.ts` | Svelte 5 的 rune 在 NSH signal 上的实现：`state`（深层响应，数组 push、改字段都看得见）、`rawState`、`derived`、`effect`、`untrack`、`tick`、`snapshot` |
+| `app/src/platform/` | 信使逻辑要读的浏览器全局（桌面上的 QuickJS 没有）：同步的 `localStorage`（存在 NSH 的 `Storage` 里，启动时整个读进来）、`sessionStorage`、`navigator`、`structuredClone`、`matchMedia` |
 | `app/native/` | 应用自己的 Rust crate（`nsh.json` `"rust"`，TSX 里 `import … from "deskfolk/native"`），桌面三家和 web 的 wasm 都编进去：终端（`vt100` 管屏幕，`Canvas` 画）和 PDF（`hayro` 渲染页面） |
 | `app/web/host.js` | web 上页面一侧的宿主（`nsh.json` `web.host`）：回答 `runtime.endpoint`。手机的版本以后经中继的加密通道回答 |
 | `host/` | 每个桌面自己的外壳（`deskfolk-nsh`）：macOS（AppKit 窗口、侧栏毛玻璃、菜单栏、托盘、通知、Dock 角标）、Windows（Win32 窗口 + 子窗口 `AppView`，骨架）、Linux（GTK 4，骨架）；读开发运行时的地址，不连 17890 |
 | `native/terminal/`、`native/pdf/` | macOS 专用的原生组件（NSView 终端、PDFKit），Phase 0 留下的，作对照和以后加密 PDF 的兜底 |
 | `scripts/` | 开发实例（`dev-instance.ts`）、开发运行时（`dev-runtime.ts`）、桌面开发版（`dev.ts`）、web 开发版（`web-dev.ts`）、打包（`package.ts`）、检查脚本（`ci-smoke.ts`、`e2e-live.ts`、`terminal-probe.ts`） |
+
+## 信使逻辑怎么复用
+
+信使 `apps/messenger/src/lib` 里不碰 DOM 的逻辑（接口客户端 `local-api.ts`、快照归约 `snapshot.ts`、文案 `copy.ts`、会话分组、工作台布局……）原样用，界面重写。`bun apps/desktop-nsh/scripts/port-messenger.ts` 把它镜像进 `app/src/m/`：
+
+- 不碰 DOM、导入链里没有 rune 的模块：一行转发（`export * from "<原文件>"`），每次运行重写，不要手改。
+- rune store（`*.svelte.ts`）和导入链碰到它们的模块：翻译件。codemod 把 class 字段的 `$state` / `$derived` 换成 `reactive.ts` 的 getter/setter，`$effect` 换成 `effect`，`svelte` 的 `untrack` / `tick` 也指过去；模块级的 `$state` 和导入 `.svelte` 组件类型的地方手改。翻译件只生成一次，之后手改；头部的 `// Source:` 记着它是从原文件哪一版翻的。
+- 用不上的不镜像：Monaco、pdf.js 的查看器、xterm、DOMPurify 的 Markdown、测试工具。
+- `app/mirror.test.ts`（生成的）在 QuickJS 里把镜像的每个模块都加载一遍。
+- `--check` 不写文件：转发缺了或旧了、原文件没了、翻译件落后于原文件（`Source` 对不上），都报错退出；`pnpm --filter @real-bot/desktop-nsh test` 和 CI 都跑它。信使改了逻辑，重跑一次脚本；改了被翻译的 store，照着改翻译件再更新 `Source`。
 
 ## 和稳定版并存
 
@@ -40,7 +53,7 @@ bun apps/desktop-nsh/scripts/package.ts --sign developer-id [--notarize <notaryt
 测试：
 
 ```sh
-cd apps/desktop-nsh && bun test scripts                 # 开发实例的隔离
+pnpm --filter @real-bot/desktop-nsh test              # 开发实例的隔离；信使镜像是否跟上（--check）
 cd apps/desktop-nsh && cargo test --workspace           # 宿主、app/native（终端去重、调色板）、原生组件
 cd apps/desktop-nsh/app && nsh check App.tsx && nsh test # 类型检查；无头界面测试（网络打桩）和 app/native 的测试
 bun apps/desktop-nsh/scripts/ci-smoke.ts <宿主可执行文件> apps/desktop-nsh/build/app/bundle.js   # 宿主打开、界面跑起来、拿到开发运行时的第一份快照

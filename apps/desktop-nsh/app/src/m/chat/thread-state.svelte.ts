@@ -1,0 +1,190 @@
+// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
+// Source: a905218b0fe981a5
+import { state } from "../../lib/reactive";
+import type { GroupLeadState } from "@real-bot/protocol";
+import { ApiError } from "../api.ts";
+import type { MessengerApi } from "../messenger-api.ts";
+import type { Connection } from "../runtime.svelte.ts";
+import type { Snapshot } from "../snapshot.ts";
+import type { AttributionPlan } from "./attribution.ts";
+
+/**
+ * What this sub-store reaches back into the runtime for, read at call time: the client and the
+ * connection a read rides on, the snapshot delegations are read into, the failure mapping a group
+ * lead's write shares with every sheet, and `loadAttributionPlans` as the runtime answers to it.
+ */
+export interface ThreadStateHost {
+  readonly api: MessengerApi | null;
+  readonly connection: Connection;
+  snapshot: Snapshot;
+  sheetFailure(error: unknown, api: MessengerApi): ApiError | null;
+  loadAttributionPlans(sessionId: string, messageId?: string): Promise<void>;
+}
+
+/**
+ * What a conversation's thread panes read beside the transcript, each keyed by conversation and
+ * guarded against reads that went stale: its delegations, a group's lead, and the jobs a line can
+ * be filed under. The events that change them are applied in `MessengerRuntime.ingest`, which
+ * forwards every field and method here under the same names; this reaches back in through
+ * {@link ThreadStateHost}.
+ */
+export class ThreadState {
+  constructor(private readonly host: ThreadStateHost) {}
+
+  #delegationLoading$s = state<Record<string, boolean>>({});
+	get delegationLoading(): Record<string, boolean> { return this.#delegationLoading$s.get(); }
+	set delegationLoading(value: Record<string, boolean>) { this.#delegationLoading$s.set(value); }
+  #delegationLoadError$s = state<Record<string, boolean>>({});
+	get delegationLoadError(): Record<string, boolean> { return this.#delegationLoadError$s.get(); }
+	set delegationLoadError(value: Record<string, boolean>) { this.#delegationLoadError$s.set(value); }
+  #delegationUnsupported$s = state<Record<string, boolean>>({});
+	get delegationUnsupported(): Record<string, boolean> { return this.#delegationUnsupported$s.get(); }
+	set delegationUnsupported(value: Record<string, boolean>) { this.#delegationUnsupported$s.set(value); }
+  readonly delegationReadSeq = new Map<string, number>();
+  delegationEventSeq = 0;
+  readonly delegationEventRevisions = new Map<string, number>();
+  /** Full snapshots omit thread collections: visible panes re-read once per installation. */
+  #delegationSnapshotEpoch$s = state(0);
+	get delegationSnapshotEpoch() { return this.#delegationSnapshotEpoch$s.get(); }
+	set delegationSnapshotEpoch(value) { this.#delegationSnapshotEpoch$s.set(value); }
+
+  /** These are persisted views, never inferred from a Bot's text. */
+  async loadDelegations(sessionId: string): Promise<void> {
+    const api = this.host.api;
+    if (!api || this.host.connection !== "connected") return;
+    const seq = (this.delegationReadSeq.get(sessionId) ?? 0) + 1;
+    this.delegationReadSeq.set(sessionId, seq);
+    const epoch = this.delegationSnapshotEpoch;
+    const eventSeq = this.delegationEventSeq;
+    const changed = (id: string) => (this.delegationEventRevisions.get(id) ?? 0) > eventSeq;
+    const current = () => this.host.api === api && this.delegationReadSeq.get(sessionId) === seq && this.delegationSnapshotEpoch === epoch;
+    this.delegationLoading = { ...this.delegationLoading, [sessionId]: true };
+    this.delegationLoadError = { ...this.delegationLoadError, [sessionId]: false };
+    try {
+      const { items } = await api.delegations(sessionId);
+      if (!current()) return;
+      // Events received during this unsequenced GET win; untouched siblings still hydrate.
+      // A subsequent read can refresh linked IDs and history-cleared projections.
+      this.host.snapshot = { ...this.host.snapshot, delegations: [
+        ...this.host.snapshot.delegations.filter((row) => row.thread_session_id !== sessionId || changed(row.id)),
+        ...items.filter((row) => row.thread_session_id === sessionId && !changed(row.id)),
+      ] };
+      this.delegationUnsupported = { ...this.delegationUnsupported, [sessionId]: false };
+    } catch (error) {
+      if (!current()) return;
+      if (this.host.snapshot.delegations.some((row) => row.thread_session_id === sessionId && changed(row.id))) return;
+      const unsupported = error instanceof ApiError && error.status === 404;
+      this.delegationUnsupported = { ...this.delegationUnsupported, [sessionId]: unsupported };
+      this.delegationLoadError = { ...this.delegationLoadError, [sessionId]: !unsupported };
+    } finally {
+      if (current()) this.delegationLoading = { ...this.delegationLoading, [sessionId]: false };
+    }
+  }
+
+  #groupLeads$s = state<Record<string, GroupLeadState>>({});
+	get groupLeads(): Record<string, GroupLeadState> { return this.#groupLeads$s.get(); }
+	set groupLeads(value: Record<string, GroupLeadState>) { this.#groupLeads$s.set(value); }
+  #groupLeadLoading$s = state<Record<string, boolean>>({});
+	get groupLeadLoading(): Record<string, boolean> { return this.#groupLeadLoading$s.get(); }
+	set groupLeadLoading(value: Record<string, boolean>) { this.#groupLeadLoading$s.set(value); }
+  #groupLeadLoadError$s = state<Record<string, boolean>>({});
+	get groupLeadLoadError(): Record<string, boolean> { return this.#groupLeadLoadError$s.get(); }
+	set groupLeadLoadError(value: Record<string, boolean>) { this.#groupLeadLoadError$s.set(value); }
+  #groupLeadUnsupported$s = state<Record<string, boolean>>({});
+	get groupLeadUnsupported(): Record<string, boolean> { return this.#groupLeadUnsupported$s.get(); }
+	set groupLeadUnsupported(value: Record<string, boolean>) { this.#groupLeadUnsupported$s.set(value); }
+  readonly groupLeadSeq = new Map<string, number>();
+  private readonly groupLeadWrites = new Map<string, number>();
+  private readonly groupLeadPending = new Set<string>();
+  readonly groupLeadRevision = new Map<string, number>();
+
+  /** Reading evidence never confirms a leader. A PUT can supersede an older GET. */
+  async loadGroupLead(sessionId: string): Promise<void> {
+    const api = this.host.api;
+    if (!api || this.host.connection !== "connected" || this.groupLeadPending.has(sessionId)) return;
+    const seq = (this.groupLeadSeq.get(sessionId) ?? 0) + 1;
+    this.groupLeadSeq.set(sessionId, seq);
+    this.groupLeadLoading = { ...this.groupLeadLoading, [sessionId]: true };
+    this.groupLeadLoadError = { ...this.groupLeadLoadError, [sessionId]: false };
+    try {
+      const state = await api.groupLead(sessionId);
+      if (this.host.api === api && this.groupLeadSeq.get(sessionId) === seq) {
+        this.groupLeads = { ...this.groupLeads, [sessionId]: state };
+        this.groupLeadUnsupported = { ...this.groupLeadUnsupported, [sessionId]: false };
+      }
+    } catch (error) {
+      if (this.host.api === api && this.groupLeadSeq.get(sessionId) === seq) {
+        const unsupported = error instanceof ApiError && error.status === 404;
+        this.groupLeadUnsupported = { ...this.groupLeadUnsupported, [sessionId]: unsupported };
+        this.groupLeadLoadError = { ...this.groupLeadLoadError, [sessionId]: !unsupported };
+      }
+    } finally {
+      if (this.groupLeadSeq.get(sessionId) === seq) this.groupLeadLoading = { ...this.groupLeadLoading, [sessionId]: false };
+    }
+  }
+
+  async confirmGroupLead(sessionId: string, botId: string | null): Promise<ApiError | null> {
+    const api = this.host.api;
+    if (!api || this.host.connection !== "connected") return new ApiError(0, "disconnected", "Group lead not saved");
+    const revision = this.groupLeadRevision.get(sessionId) ?? 0;
+    const seq = (this.groupLeadWrites.get(sessionId) ?? 0) + 1;
+    this.groupLeadWrites.set(sessionId, seq);
+    this.groupLeadPending.add(sessionId);
+    this.groupLeadSeq.set(sessionId, (this.groupLeadSeq.get(sessionId) ?? 0) + 1);
+    this.groupLeadLoading = { ...this.groupLeadLoading, [sessionId]: false };
+    try {
+      const state = await api.confirmGroupLead(sessionId, botId);
+      if (this.host.api !== api || this.groupLeadWrites.get(sessionId) !== seq) return new ApiError(0, "disconnected", "Group lead result unconfirmed");
+      if ((this.groupLeadRevision.get(sessionId) ?? 0) === revision) this.groupLeads = { ...this.groupLeads, [sessionId]: state };
+      return null;
+    } catch (error) {
+      return this.host.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Group lead result unconfirmed");
+    } finally {
+      if (this.groupLeadWrites.get(sessionId) === seq) this.groupLeadPending.delete(sessionId);
+    }
+  }
+
+  #attributionPlans$s = state<Record<string, AttributionPlan[]>>({});
+	get attributionPlans(): Record<string, AttributionPlan[]> { return this.#attributionPlans$s.get(); }
+	set attributionPlans(value: Record<string, AttributionPlan[]>) { this.#attributionPlans$s.set(value); }
+  #attributionLoading$s = state<Record<string, boolean>>({});
+	get attributionLoading(): Record<string, boolean> { return this.#attributionLoading$s.get(); }
+	set attributionLoading(value: Record<string, boolean>) { this.#attributionLoading$s.set(value); }
+  #attributionLoadError$s = state<Record<string, boolean>>({});
+	get attributionLoadError(): Record<string, boolean> { return this.#attributionLoadError$s.get(); }
+	set attributionLoadError(value: Record<string, boolean>) { this.#attributionLoadError$s.set(value); }
+  private readonly attributionLoadSeq = new Map<string, number>();
+
+  /** Every job in the workspace with its tickets, by name: what a Bot's question about a job is named from. */
+  async loadAttributionPlans(sessionId: string, messageId?: string): Promise<void> {
+    const api = this.host.api;
+    const message = messageId ?? this.host.snapshot.messages.find((row) => row.session_id === sessionId && (row.kind === "user" || row.kind === "bot" || row.control?.kind === "work_question"))?.id;
+    if (!api || this.host.connection !== "connected" || !message) return;
+    const seq = (this.attributionLoadSeq.get(sessionId) ?? 0) + 1;
+    this.attributionLoadSeq.set(sessionId, seq);
+    this.attributionLoading = { ...this.attributionLoading, [sessionId]: true };
+    this.attributionLoadError = { ...this.attributionLoadError, [sessionId]: false };
+    try {
+      const { items: plans } = await api.attributionPlans(message);
+      if (this.host.api !== api || this.attributionLoadSeq.get(sessionId) !== seq) return;
+      this.attributionPlans = { ...this.attributionPlans, [sessionId]: plans };
+    } catch {
+      if (this.host.api === api && this.attributionLoadSeq.get(sessionId) === seq) this.attributionLoadError = { ...this.attributionLoadError, [sessionId]: true };
+    } finally {
+      if (this.attributionLoadSeq.get(sessionId) === seq) this.attributionLoading = { ...this.attributionLoading, [sessionId]: false };
+    }
+  }
+
+  renameAttributionPlan(id: string, title: string): void {
+    let changed = false;
+    const next: Record<string, AttributionPlan[]> = {};
+    for (const [session, plans] of Object.entries(this.attributionPlans)) {
+      next[session] = plans.map((plan) => {
+        if (plan.id !== id || plan.title === title) return plan;
+        changed = true;
+        return { ...plan, title };
+      });
+    }
+    if (changed) this.attributionPlans = next;
+  }
+}

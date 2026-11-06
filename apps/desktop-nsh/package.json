@@ -1,0 +1,24 @@
+{
+  "name": "@real-bot/desktop-nsh",
+  "license": "MIT",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "bun scripts/dev.ts",
+    "web": "bun scripts/web-dev.ts",
+    "mirror": "bun scripts/port-messenger.ts",
+    "test": "bun test scripts && bun scripts/port-messenger.ts --check",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@real-bot/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "^6.0.3"
+  }
+}

@@ -10,6 +10,7 @@ on:
     paths:
       - apps/desktop-nsh/**
       - apps/daemon/**
+      - apps/messenger/src/lib/**
       - packages/protocol/**
       - .github/workflows/nsh-desktop.yml
   workflow_dispatch:
@@ -79,9 +80,10 @@ jobs:
       - name: nsh version
         run: nsh --version
 
-      - name: Dev instance scripts
-        working-directory: apps/desktop-nsh
-        run: bun test scripts
+      - name: Dev instance scripts, the messenger mirror, the scripts' types
+        run: |
+          pnpm --filter @real-bot/desktop-nsh test
+          pnpm --filter @real-bot/desktop-nsh typecheck
 
       - name: Rust tests (shell, components, the app's crate)
         working-directory: apps/desktop-nsh

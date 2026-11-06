@@ -1,0 +1,404 @@
+// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
+// Source: bb767aeeea809fc9
+import {
+  THINKING_LEVELS,
+  isAgentEffort,
+  isAgentModelName,
+  isClaudeModelName,
+  isPermissionMode,
+  isThinkingLevel,
+  sortThinkingLevels,
+  type AgentsStatusResponse,
+  type BotRunner,
+  type ClaudeCodeModel,
+  type CreateBotRequest,
+  type CreateGroupRequest,
+  type ThinkingLevel,
+} from "@real-bot/protocol";
+import { claudeModelOptions } from "../claude-models.svelte.ts";
+import type { Copy } from "../copy.ts";
+import { sourceRows, type PickerData, type PickerRow, type PickerSource } from "../model-picker.ts";
+import { agentPickerSources, claudePickerSource, endpointPickerSources, type EndpointLike } from "../model-picker-sources.ts";
+import { agentSource } from "../model-source.ts";
+import { agentLabelOf, agentStatusOf, parseRunnerValue } from "../runner-choice.ts";
+import { modelSelectValue, parseModelSelectValue } from "../settings/provider-form.ts";
+
+export type CreateBotDraft = {
+  name: string;
+  duties: string;
+  boundaries: string;
+  avatar?: string | null;
+  model: string;
+  /** Pinned thinking level; `''` lets the app pick. Omit to leave the field out of the request. */
+  thinkingLevel?: string;
+  /**
+   * Who runs its turns (ADR 0061, ADR 0079): `''` the app, a runner's name for a local agent, or
+   * `custom:<id>` for one of your own ACP agents (see `runner-choice.ts`). Omit to leave it out.
+   */
+  runner?: string;
+  /** The local agent's model and effort; `''` leaves them to the agent. Omit to leave them out. */
+  agentModel?: string;
+  agentEffort?: string;
+  /** The account on that agent (a listed config directory); `''` the daemon's own environment. Omit to leave it out. */
+  agentConfigDir?: string;
+  /** Its own permission mode (ADR 0092); `''` follows the app's. Omit to leave it out. */
+  permissionMode?: string;
+};
+
+export type CreateBotFieldErrors = {
+  name?: "empty" | "conflict";
+  duties?: "empty";
+  boundaries?: "empty";
+  model?: "empty" | "invalid";
+  thinkingLevel?: "invalid";
+  agentModel?: "invalid";
+  agentEffort?: "invalid";
+  agentConfigDir?: "invalid";
+  /** Runs on one of your own ACP agents, and none is picked (or the one picked is gone). */
+  agentCustomId?: "invalid";
+};
+
+export type CreateBotPlan =
+  | { ok: true; body: CreateBotRequest }
+  | { ok: false; errors: CreateBotFieldErrors };
+
+export type CreateGroupDraft = {
+  name: string;
+  members: string[];
+};
+
+export type CreateGroupFieldErrors = {
+  name?: "empty";
+  members?: "too_few";
+};
+
+export type CreateGroupPlan =
+  | { ok: true; body: CreateGroupRequest }
+  | { ok: false; errors: CreateGroupFieldErrors };
+
+export function planCreateBot(
+  draft: CreateBotDraft,
+  allowedModels: readonly string[] = [],
+): CreateBotPlan {
+  const name = draft.name.trim();
+  const duties = draft.duties.trim();
+  const boundaries = draft.boundaries.trim();
+  const avatar = draft.avatar?.trim();
+  const rawModel = draft.model.trim();
+  const parsed = parseModelSelectValue(rawModel);
+  const rawThinking = draft.thinkingLevel === undefined ? undefined : draft.thinkingLevel.trim();
+  const errors: CreateBotFieldErrors = {};
+  if (name.length === 0) errors.name = "empty";
+  if (duties.length === 0) errors.duties = "empty";
+  if (boundaries.length === 0) errors.boundaries = "empty";
+  if (rawModel.length > 0) {
+    const encoded = parsed.provider_id
+      ? modelSelectValue(parsed.provider_id, parsed.model)
+      : parsed.model;
+    if (!allowedModels.includes(encoded) && !allowedModels.includes(parsed.model)) {
+      errors.model = "invalid";
+    }
+  }
+  if (rawThinking !== undefined && rawThinking.length > 0 && !isThinkingLevel(rawThinking)) {
+    errors.thinkingLevel = "invalid";
+  }
+  // The app's own loop reads the agent fields as Claude's, as the daemon does; any other agent names its own.
+  const { runner, customId } = parseRunnerValue(draft.runner);
+  const agentRunner = runner ?? "claude_code";
+  const agentModel = draft.agentModel?.trim();
+  const agentEffort = draft.agentEffort?.trim();
+  if (agentModel && !(agentRunner === "claude_code" ? isClaudeModelName(agentModel) : isAgentModelName(agentModel))) errors.agentModel = "invalid";
+  if (agentEffort && !isAgentEffort(agentRunner, agentEffort)) errors.agentEffort = "invalid";
+  if (runner === "custom" && !customId) errors.agentCustomId = "invalid";
+  if (errors.name || errors.duties || errors.boundaries || errors.model || errors.thinkingLevel || errors.agentModel || errors.agentEffort || errors.agentCustomId) {
+    return { ok: false, errors };
+  }
+  const body: CreateBotRequest = {
+    name,
+    duties,
+    boundaries,
+    model: parsed.model.length > 0 ? parsed.model : null,
+    provider_id: parsed.provider_id,
+  };
+  if (rawThinking !== undefined) {
+    body.thinking_level = rawThinking.length > 0 && isThinkingLevel(rawThinking) ? rawThinking : null;
+  }
+  if (avatar && avatar.length > 0) {
+    body.avatar = avatar;
+  }
+  if (draft.runner !== undefined) body.runner = runner;
+  // Only a daemon that knows custom agents is ever sent the field.
+  if (runner === "custom") body.agent_custom_id = customId;
+  if (agentModel !== undefined) body.agent_model = agentModel.length > 0 ? agentModel : null;
+  if (agentEffort !== undefined) body.agent_effort = agentEffort && isAgentEffort(agentRunner, agentEffort) ? agentEffort : null;
+  if (draft.agentConfigDir !== undefined) body.agent_config_dir = draft.agentConfigDir.trim() || null;
+  if (draft.permissionMode !== undefined) body.permission_mode = isPermissionMode(draft.permissionMode) ? draft.permissionMode : null;
+  return {
+    ok: true,
+    body,
+  };
+}
+
+export function planCreateGroup(draft: CreateGroupDraft): CreateGroupPlan {
+  const name = draft.name.trim();
+  const members = uniqueIds(draft.members);
+  const errors: CreateGroupFieldErrors = {};
+  if (name.length === 0) errors.name = "empty";
+  if (members.length < 2) errors.members = "too_few";
+  if (errors.name || errors.members) return { ok: false, errors };
+  return { ok: true, body: { name, members } };
+}
+
+/** Both the create sheet and the profile drawer report a bad Bot name; same two cases. */
+export function botNameErrorCopy(
+  kind: CreateBotFieldErrors["name"],
+  copy: { nameEmpty: string; nameConflict: string },
+): string {
+  if (kind === "empty") return copy.nameEmpty;
+  if (kind === "conflict") return copy.nameConflict;
+  return "";
+}
+
+export function mapCreateBotError(
+  status: number,
+  message: string,
+): CreateBotFieldErrors | { top: true } {
+  if (status === 409 || message === "that name is already used") return { name: "conflict" };
+  if (message === "name is required") return { name: "empty" };
+  if (
+    message === "model must be one of endpoint_models" ||
+    message === "model must be one of the provider models"
+  ) {
+    return { model: "invalid" };
+  }
+  if (message.startsWith("thinking_level")) return { thinkingLevel: "invalid" };
+  if (message.startsWith("agent_model")) return { agentModel: "invalid" };
+  // An agent that takes no effort level says so by its own name first (`OpenCode takes no effort level: agent_effort must be null`).
+  if (message.startsWith("agent_effort") || message.includes("agent_effort must be")) return { agentEffort: "invalid" };
+  if (message.startsWith("agent_config_dir")) return { agentConfigDir: "invalid" };
+  if (message.startsWith("agent_custom_id")) return { agentCustomId: "invalid" };
+  return { top: true };
+}
+
+/** Every value a model picker offers, the rows that are not models too: what a save checks a pinned model against. */
+export function pickerValues(data: PickerData): string[] {
+  return [...data.specials, ...data.sources.flatMap(sourceRows)].map((row) => row.value);
+}
+
+/** A Bot on the app's own loop picks among every endpoint's models (`provider::model`); "automatic" stands above them. */
+export function endpointModelPicker(providers: readonly EndpointLike[], t: Copy): PickerData {
+  return {
+    specials: [{ value: "", label: t.sidebar.botModelDefault }],
+    sources: endpointPickerSources(providers, t, modelSelectValue),
+  };
+}
+
+/**
+ * A Bot on Claude Agent picks among the models Claude Code lists for its account (the value is the
+ * model's own, an alias or a full id), its aliases until the list comes; a name it already holds
+ * that is none of them stays a row, so it still reads.
+ */
+export function claudeModelPicker(t: Copy, current: string, list: ClaudeCodeModel[] | null = null): PickerData {
+  const models = claudeModelOptions(list);
+  const specials: PickerRow[] = [{ value: "", label: t.sidebar.botAgentModelDefault }];
+  if (current && !models.some((model) => model.value === current)) specials.push({ value: current, label: current });
+  return { specials, sources: [claudePickerSource(t, (model) => model, models)] };
+}
+
+/**
+ * A Bot on another local agent picks among the models that agent lists, or types one it knows (the
+ * value is the plain name). With nothing listed to type into — the agent not found, signed out, or
+ * not asked (the phone) — a source of its own takes the typed name, so a model can still be set.
+ */
+export function agentModelPicker(agents: AgentsStatusResponse | null, t: Copy, runner: BotRunner, customId: string | null, current: string): PickerData {
+  const status = agentStatusOf(agents, runner, customId);
+  const name = agentLabelOf(runner, customId, agents);
+  let sources = agentPickerSources(agents, t, (_runner, model) => model, { only: { runner, customId }, typed: true });
+  if (sources.length === 0) {
+    const typeOnly: PickerSource = {
+      key: `agent:${runner}${customId ? `:${customId}` : ""}`,
+      label: name,
+      mark: agentSource(runner, name),
+      note: t.modelPicker.typeShort,
+      groups: [],
+      custom: (typed) => (isAgentModelName(typed) ? typed : null),
+    };
+    sources = [typeOnly];
+  }
+  const specials: PickerRow[] = [{ value: "", label: t.sidebar.botAgentModelDefaultOf(name), ...(status?.default_model ? { detail: status.default_model } : {}) }];
+  if (current && !sources.some((source) => sourceRows(source).some((row) => row.value === current))) specials.push({ value: current, label: current });
+  return { specials, sources };
+}
+
+/**
+ * Order a freshly pinned model's level is chosen in: the same preference the app itself applies to
+ * an ordinary message, so pinning a model does not quietly change how hard it thinks.
+ */
+const PIN_PREFERENCE = ["low", "medium", "none", "high"];
+
+/** The level a model lands on when it is pinned without one. Empty only when it offers none. */
+export function defaultThinkingLevel(levels: readonly string[]): string {
+  if (levels.length === 0) return "";
+  return PIN_PREFERENCE.find((level) => levels.includes(level)) ?? levels[0]!;
+}
+
+/**
+ * Model and thinking level move together. Automatic means the app picks both per message; pinning a
+ * model means pinning a level too, so the panel can never sit in a half-chosen state. A model swap
+ * keeps the level when the new model offers it and otherwise falls to that model's default.
+ */
+export function applyModelPin(
+  modelValue: string,
+  thinkingLevel: string,
+  providers: readonly {
+    id: string;
+    model_catalog: readonly { name: string; thinking_levels: readonly ThinkingLevel[] }[];
+  }[],
+): { model: string; thinkingLevel: string } {
+  if (modelValue.length === 0) return { model: "", thinkingLevel: "" };
+  const levels = pinnableThinkingLevels(modelValue, providers) as readonly string[];
+  const kept = thinkingLevel && levels.includes(thinkingLevel) ? thinkingLevel : defaultThinkingLevel(levels);
+  return { model: modelValue, thinkingLevel: kept };
+}
+
+/** Thinking levels a Bot may pin for the picked model: the catalog's list, or every known level when nothing is pinned. */
+export function pinnableThinkingLevels(
+  modelValue: string,
+  providers: readonly {
+    id: string;
+    model_catalog: readonly { name: string; thinking_levels: readonly ThinkingLevel[] }[];
+  }[],
+): ThinkingLevel[] {
+  const parsed = parseModelSelectValue(modelValue);
+  const scoped = parsed.provider_id
+    ? providers.filter((provider) => provider.id === parsed.provider_id)
+    : providers;
+  if (parsed.model.length === 0) {
+    const union: string[] = [];
+    for (const provider of scoped) {
+      for (const entry of provider.model_catalog) {
+        union.push(...(entry.thinking_levels.length > 0 ? entry.thinking_levels : THINKING_LEVELS));
+      }
+    }
+    const sorted = sortThinkingLevels(union);
+    return sorted.length > 0 ? sorted : [...THINKING_LEVELS];
+  }
+  const entries = scoped
+    .flatMap((provider) => provider.model_catalog)
+    .filter((entry) => entry.name === parsed.model);
+  if (entries.length === 0) return [...THINKING_LEVELS];
+  const union: string[] = [];
+  for (const entry of entries) {
+    union.push(...(entry.thinking_levels.length > 0 ? entry.thinking_levels : THINKING_LEVELS));
+  }
+  const sorted = sortThinkingLevels(union);
+  return sorted.length > 0 ? sorted : [...THINKING_LEVELS];
+}
+
+export function mapCreateGroupError(
+  _status: number,
+  message: string,
+): CreateGroupFieldErrors | { top: true } {
+  if (message === "name is required") return { name: "empty" };
+  if (
+    message === "a group needs at least two bots" ||
+    message === "members must include at least two bots"
+  ) {
+    return { members: "too_few" };
+  }
+  return { top: true };
+}
+
+export type SkillDraft = {
+  name: string;
+  description: string;
+  body: string;
+  /** MCP server names the body relies on, as typed: comma / newline separated. */
+  uses: string;
+  enabled: boolean;
+};
+
+export type SkillFieldErrors = {
+  name?: "empty" | "conflict";
+  description?: "empty";
+  body?: "empty";
+};
+
+export type SkillPlan =
+  | { ok: true; body: { name: string; description: string; body: string; uses: string[]; enabled: boolean } }
+  | { ok: false; errors: SkillFieldErrors };
+
+export function emptySkillDraft(): SkillDraft {
+  return { name: "", description: "", body: "", uses: "", enabled: true };
+}
+
+export function skillDraftDirty(draft: SkillDraft, baseline: SkillDraft): boolean {
+  return (
+    draft.name !== baseline.name ||
+    draft.description !== baseline.description ||
+    draft.body !== baseline.body ||
+    draft.uses !== baseline.uses ||
+    draft.enabled !== baseline.enabled
+  );
+}
+
+/** Splits the typed server list on commas (ASCII or CJK), semicolons, or newlines; dedupes case-insensitively. */
+export function parseSkillUses(raw: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const part of raw.split(/[\n,，、;；]+/)) {
+    const name = part.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+export function formatSkillUses(uses: readonly string[]): string {
+  return uses.join(", ");
+}
+
+export function reconcileSkillDraft(
+  draft: SkillDraft,
+  baseline: SkillDraft,
+  incoming: SkillDraft,
+): { draft: SkillDraft; baseline: SkillDraft } {
+  return {
+    draft: skillDraftDirty(draft, baseline) ? draft : incoming,
+    baseline: incoming,
+  };
+}
+
+export function planSkill(draft: SkillDraft): SkillPlan {
+  const name = draft.name.trim();
+  const description = draft.description.trim();
+  const body = draft.body.trim();
+  const errors: SkillFieldErrors = {};
+  if (name.length === 0) errors.name = "empty";
+  if (description.length === 0) errors.description = "empty";
+  if (body.length === 0) errors.body = "empty";
+  if (errors.name || errors.description || errors.body) return { ok: false, errors };
+  return { ok: true, body: { name, description, body, uses: parseSkillUses(draft.uses ?? ""), enabled: draft.enabled } };
+}
+
+export function mapSkillError(status: number, message: string): SkillFieldErrors | { top: true } {
+  if (status === 409 || message === "that skill name is already used") return { name: "conflict" };
+  if (message === "name is required") return { name: "empty" };
+  if (message === "description is required") return { description: "empty" };
+  if (message === "body is required") return { body: "empty" };
+  return { top: true };
+}
+
+function uniqueIds(ids: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
