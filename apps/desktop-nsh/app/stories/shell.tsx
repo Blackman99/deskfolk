@@ -9,6 +9,20 @@ import { runtime } from "../src/runtime";
 import { Button } from "../src/ui/Button";
 import { Shell } from "../src/ui/shell/Shell";
 
+/**
+ * The shell past onboarding whatever the runtime says, so the story shows the window itself on any
+ * runtime (the dev instance's wizard may be unfinished); onboarding has a story of its own.
+ */
+const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(runtime), "snapshot")!;
+Object.defineProperty(runtime, "snapshot", {
+  configurable: true,
+  set: descriptor.set,
+  get() {
+    const snap = descriptor.get!.call(runtime);
+    return snap.settings.wizard_complete ? snap : { ...snap, settings: { ...snap.settings, wizard_complete: true } };
+  },
+});
+
 export default function ShellStory() {
   const state = () =>
     [

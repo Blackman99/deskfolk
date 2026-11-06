@@ -20,11 +20,15 @@ test("wide: the sidebar beside the workbench; a conversation picked in the list 
   const app = await open({ width: 1280 });
   expect(app.shows("id:shell-sidebar")).toBe(true);
   expect(app.shows("id:sidebar-split")).toBe(true);
+  // The phone's bottom bar stays off a desktop window, even with nothing open.
+  expect(app.shows("id:mobile-nav")).toBe(false);
   await app.press(`id:session-${seeded.writerDirect}`);
   await app.waitUntil(() => has(app, `selected:${seeded.writerDirect}`));
   await app.waitFor("id:composer-drop", { timeout: 10_000 });
   // The tab's bar: its job and its map, the same actions as under its ⋯.
   await app.waitUntil(() => app.texts().includes(t.plan.segmentTrace) && app.texts().includes(t.taskmap.open));
+  // The tab itself, in the strip (the workbench is handed the layout as plain objects).
+  await app.waitFor("id:chat-tab-name");
   expect(app.shows("id:mobile-nav")).toBe(false);
 });
 

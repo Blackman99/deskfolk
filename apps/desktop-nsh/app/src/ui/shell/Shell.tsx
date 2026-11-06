@@ -18,7 +18,8 @@
  * FOLLOWUPS), the interface profile (ADR 0106, `wireInterface`), and focus restoring.
  */
 import type { SessionSummary } from "@real-bot/protocol";
-import { PanResponder, Text, View } from "nsh";
+import { computed, PanResponder, Text, View } from "nsh";
+import { snapshot } from "../../lib/reactive";
 import { isSessionPinned } from "../../m/sidebar/pinned-sessions.ts";
 import { spendCopyFor } from "../../m/spend/spend-copy.ts";
 import { updateChecker } from "../../m/update-checker.svelte.ts";
@@ -232,7 +233,8 @@ function ShellBody(props: { s: ShellState }) {
           )}
         </ShellPreview>
       </View>
-      <If when={s.mobileNavigationVisible()}>
+      {/* The phone's bottom bar: narrow windows only (the Svelte hid it above 680 points by CSS). */}
+      <If when={s.narrow() && s.mobileNavigationVisible()}>
         <MobileNavigation active={s.mobileDestination()} updateAvailable={updateChecker.updateVisible} onNavigate={s.navigateMobile} />
       </If>
       <ShellLayers s={s} />
@@ -293,6 +295,12 @@ function ShellWorkbench(props: { s: ShellState }) {
   const s = props.s;
   const t = () => s.t();
   const workbench = s.workbench;
+  /**
+   * The layout as plain objects: the mirrored workbench keeps it in a deep `state()`, and `Each`
+   * over a reactive proxy's arrays draws nothing (PORTING.md). Every change replaces the whole
+   * layout (the tree's operations are pure), so the top-level read is the one to follow.
+   */
+  const layout = computed(() => snapshot(workbench.layout));
   /** What a conversation's tab offers: pin, its job, its map, its settings (a project: its map). Drawn in the tab's bar and under its ⋯. */
   const chatBarActions = (leafId: string, tab: WorkbenchTab): PaneBarAction[] => {
     const content = contentOfTab(tab);
@@ -336,7 +344,7 @@ function ShellWorkbench(props: { s: ShellState }) {
 
   return (
     <Workbench
-      layout={workbench.layout}
+      layout={layout()}
       mins={paneMin}
       wide={true}
       tabName={workbench.paneTitle}
