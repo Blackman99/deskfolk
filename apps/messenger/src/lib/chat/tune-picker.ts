@@ -3,7 +3,7 @@ import type { Choice } from "../claude-models.svelte.ts";
 /**
  * What a cascading picker in a composer (`TunePicker.svelte`) lists: what a conversation's runs go
  * on — an account, a model, a thinking level — where each level depends on the row picked before
- * it. A project session's (`ProjectAgentTune.svelte`) and a Bot's direct's (`BotTune.svelte`) say
+ * it. A project session's (`AgentTune.svelte`) and a Bot's direct's (`BotTune.svelte`) say
  * what is under each row; the picker opens, places and walks the columns the same for both.
  */
 

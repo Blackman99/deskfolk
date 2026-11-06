@@ -17,7 +17,7 @@
 	 * is pointed at or clicked. Only a row with nothing under it — a level, or a model that takes
 	 * none — is a pick: it takes the path up to it and closes. On a phone a sheet from the bottom
 	 * that goes into a row the same way, a level at a time, Back going up one. What each level lists
-	 * and what a pick changes is the tree's: a project session's (`ProjectAgentTune.svelte`), a Bot's
+	 * and what a pick changes is the tree's: a project session's (`AgentTune.svelte`), a Bot's
 	 * direct's (`BotTune.svelte`).
 	 */
 	const COLUMN_GAP = 4;

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { ClaudeCodeModel, PatchProjectSessionRequest, ProjectAgent } from '@real-bot/protocol';
+	import type { HTMLAttributes } from 'svelte/elements';
 	import { claudeModelsOf, loadClaudeModels, modelChoices, modelRowOf, type Choice } from '../claude-models.svelte.ts';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
@@ -13,7 +14,7 @@
 	 * picker (`TunePicker.svelte`): the accounts, each account's models, each model's levels. A Codex
 	 * session (ADR 0099) has no account to pick: the picker starts at the models Codex lists.
 	 */
-	type Props = {
+	type Props = Pick<HTMLAttributes<HTMLDivElement>, `data-${string}`> & {
 		t: Copy;
 		/** Whose session it is: its name and mark on the picker. */
 		agent: ProjectAgent;
@@ -29,7 +30,7 @@
 		onpick: (change: PatchProjectSessionRequest) => void;
 	};
 
-	let { t, agent, tune, models: ownModels, accounts, accountLocked, disabled, client, onpick }: Props = $props();
+	let { t, agent, tune, models: ownModels, accounts, accountLocked, disabled, client, onpick, ...attrs }: Props = $props();
 	const agentName = $derived(t.project.agentNames[agent]);
 
 	/** Each column's width, so the field can keep room for every column that may open beside the first. */
@@ -107,5 +108,5 @@
 	title={triggerTitle}
 	sheetTitle={agentName}
 	{disabled}
-	data-project-tune=""
+	{...attrs}
 />

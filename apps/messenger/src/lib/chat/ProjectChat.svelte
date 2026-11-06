@@ -24,7 +24,7 @@
 	import { ComposerVoice, spacedHeard } from './composer-voice.svelte.ts';
 	import { loadClaudeModels } from '../claude-models.svelte.ts';
 	import { accountChoices, claudeStatus, codexModels, loadClaudeStatus, loadCodexStatus } from './project-agent-options.svelte.ts';
-	import ProjectAgentTune from './ProjectAgentTune.svelte';
+	import AgentTune from './AgentTune.svelte';
 	import ProjectCommandMenu from './ProjectCommandMenu.svelte';
 	import ProjectPlanCard from './ProjectPlanCard.svelte';
 	import ProjectSubagentDialog from './ProjectSubagentDialog.svelte';
@@ -112,7 +112,7 @@
 
 	/**
 	 * The account its next run spends, the model its runs ask for and their thinking level, each the
-	 * session's own and kept with it, picked in one cascading picker (`ProjectAgentTune`). The models
+	 * session's own and kept with it, picked in one cascading picker (`AgentTune`). The models
 	 * are the ones your Claude Code lists for that account, as its `/model` does, its default first
 	 * for what your settings say; one set elsewhere stays a choice. The thinking levels are the ones
 	 * the picked model takes. A model or level change reaches a run going now from its next step; an
@@ -910,7 +910,7 @@
 						</button>
 					{/if}
 					<!-- An account changes for the next run: Claude Code keeps the session under the account it ran on. -->
-					<ProjectAgentTune
+					<AgentTune
 						{t}
 						{agent}
 						models={agent === 'codex' ? codexModels() : undefined}
@@ -920,6 +920,7 @@
 						disabled={!connected}
 						client={runtime.client}
 						onpick={(change) => void tune(change)}
+						data-project-tune=""
 					/>
 					<span class="tools-gap"></span>
 					{#if voiceOffered || voice.busy}

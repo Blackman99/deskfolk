@@ -5,7 +5,7 @@ import type { TuneRow } from "./tune-picker.ts";
 /**
  * What a project session's runs go on (ADR 0095): its account, its model and its thinking level,
  * each '' for what your Claude Code settings say. The composer picks the three in one cascading
- * picker (`ProjectAgentTune.svelte`, on `TunePicker.svelte`), since each depends on the one before
+ * picker (`AgentTune.svelte`, on `TunePicker.svelte`), since each depends on the one before
  * it: an account lists its own models, a model takes its own levels.
  */
 export type AgentTune = { account: string; model: string; effort: string };
