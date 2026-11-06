@@ -5,7 +5,7 @@
 ## 一个组件怎么对应
 
 - 信使的 `apps/messenger/src/lib/<区域>/<Name>.svelte` 对应 `app/src/ui/<区域>/<Name>.tsx`，同名，一个组件一个文件。顶层的（`src/lib/Select.svelte`）对应 `app/src/ui/<Name>.tsx`。
-- 组件导出同名函数：`export function SessionRow(props: {...})`。props 的名字和含义照 Svelte 组件的 `Props`；`bind:x` 改成 `x` 加 `onXChange`（或照 nsh/base 的 `value` / `onChange`）；Svelte 的 snippet 改成 `children` 或 render 函数（`(item) => JSX.Element`）。
+- 组件导出同名函数：`export function SessionRow(props: {...})`。props 的名字和含义照 Svelte 组件的 `Props`，但 `runtime` 和 `t` 这两个不传：组件里直接 `import { runtime, copy }`，`t.x` 写成 `copy().x`（每个窗口只有一个运行时和一份文案，外壳接线就简单了）；`bind:x` 改成 `x` 加 `onXChange`（或照 nsh/base 的 `value` / `onChange`）；Svelte 的 snippet 改成 `children` 或 render 函数（`(item) => JSX.Element`）。
 - 行为、结构、文案、`data-testid` 都照原样：`data-testid="x"` 写成 `testID="x"`，测试按它找。信使的组件测试（`*.test.ts`）说明了它该怎么表现，移植时读一读。
 - 单个文件不超过 2000 行（`scripts/line-budget.ts`），过了 1000 行先想清楚拆到哪。
 
