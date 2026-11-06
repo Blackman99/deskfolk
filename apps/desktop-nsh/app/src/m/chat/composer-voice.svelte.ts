@@ -33,35 +33,27 @@ export function spacedHeard(before: string, heard: string): string {
 	return /[\p{Script=Latin}\p{N}.,!?;:)]/u.test(last) && /[\p{Script=Latin}\p{N}]/u.test(first) ? ` ${heard}` : heard;
 }
 
-/** A copy of the selection when it is inside the editor, else null. */
-export function caretIn(editor: HTMLElement | null): Range | null {
-	const sel = typeof window !== 'undefined' ? window.getSelection() : null;
-	return editor && sel && sel.rangeCount > 0 && editor.contains(sel.anchorNode) ? sel.getRangeAt(0).cloneRange() : null;
+/** A selection in the box, as offsets into its text. */
+export type Caret = { start: number; end: number };
+
+/** The selection the box reports, clamped to its text; null when it reports none. (The box is an `Input`: text and offsets, no DOM ranges.) */
+export function caretIn(value: string, selection: Caret | null | undefined): Caret | null {
+	if (!selection) return null;
+	const start = Math.max(0, Math.min(value.length, Math.min(selection.start, selection.end)));
+	const end = Math.max(start, Math.min(value.length, Math.max(selection.start, selection.end)));
+	return { start, end };
 }
 
 /**
- * Puts what was heard into the editor like a paste: at `caret` while it is still inside, else at
- * the end; the caret follows it when the editor has the focus. The caller syncs the draft.
+ * Puts what was heard into the text like a paste: in place of the selection at `caret` (clamped to
+ * the text, which may have changed since), else at the end. Returns the new text and where the caret
+ * goes: just after what was heard.
  */
-export function insertHeardAt(editor: HTMLElement, caret: Range | null, heard: string): void {
-	const at = caret && editor.contains(caret.startContainer) ? caret : document.createRange();
-	if (at !== caret) {
-		at.selectNodeContents(editor);
-		at.collapse(false);
-	}
-	const lead = document.createRange();
-	lead.setStart(editor, 0);
-	lead.setEnd(at.startContainer, at.startOffset);
-	const node = document.createTextNode(spacedHeard(lead.toString(), heard));
-	at.deleteContents();
-	at.insertNode(node);
-	if (document.activeElement !== editor) return;
-	const sel = window.getSelection();
-	const after = document.createRange();
-	after.setStartAfter(node);
-	after.collapse(true);
-	sel?.removeAllRanges();
-	sel?.addRange(after);
+export function insertHeardAt(value: string, caret: Caret | null, heard: string): { text: string; caret: number } {
+	const at = caretIn(value, caret) ?? { start: value.length, end: value.length };
+	const before = value.slice(0, at.start);
+	const text = spacedHeard(before, heard);
+	return { text: before + text + value.slice(at.end), caret: before.length + text.length };
 }
 
 /** What to say for a failed transcription, from the daemon's error code (`speech.ts` there). */

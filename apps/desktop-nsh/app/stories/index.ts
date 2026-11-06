@@ -36,4 +36,5 @@ export const stories: Record<string, Story> = {
   "panels-c": () => import("./panels-c"),
   office: () => import("./office"),
   misc: () => import("./misc"),
+  "chat-composer-2": () => import("./chat-composer-2"),
 };

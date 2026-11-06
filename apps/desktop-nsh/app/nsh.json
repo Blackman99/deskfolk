@@ -13,6 +13,7 @@
       ]
     },
     "clipboard": true,
+    "picker": true,
     "openUrl": {
       "schemes": [
         "https",
