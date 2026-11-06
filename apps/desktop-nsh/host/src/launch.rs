@@ -23,6 +23,7 @@ pub fn params(config: &Config, window_id: u32) -> Map<String, Value> {
         set("pane", config.pane.as_ref());
         set("pdfPath", config.pdf.as_ref());
         set("terminal", config.terminal.as_ref());
+        set("story", config.story.as_ref());
         if config.scroll_probe {
             params.insert("scrollProbe".into(), true.into());
         }
@@ -69,6 +70,7 @@ mod tests {
             fps: false,
             scroll_probe: false,
             terminal: None,
+            story: None,
         }
     }
 

@@ -14,9 +14,19 @@ export const seeded = fixture as {
   workspace: string;
 };
 
+/** The app on the fixture's runtime. */
 export function openApp(options: Partial<OpenOptions> = {}) {
+  return openEntry("../App.tsx", {}, options);
+}
+
+/** One screen on its own (`stories/index.ts`), on the fixture's runtime. */
+export function openStory(name: string, options: Partial<OpenOptions> = {}) {
+  return openEntry("../Story.tsx", { story: name }, options);
+}
+
+function openEntry(entry: string, params: Record<string, unknown>, options: Partial<OpenOptions>) {
   const endpoint = { origin: seeded.origin, token: seeded.token };
-  return open("../App.tsx", {
+  return open(entry, {
     platform: "macos",
     width: 1100,
     height: 760,
@@ -24,7 +34,7 @@ export function openApp(options: Partial<OpenOptions> = {}) {
     network: "live",
     ...options,
     host: {
-      params: { ...endpoint, windowId: 1, material: "none" },
+      params: { ...endpoint, windowId: 1, material: "none", ...params },
       handlers: {
         "tauri.local_api_endpoint": endpoint,
         "tauri.app_version": "0.0.0",
@@ -32,4 +42,15 @@ export function openApp(options: Partial<OpenOptions> = {}) {
       },
     },
   });
+}
+
+/** Calls the fixture's runtime directly, to seed what a test needs. */
+export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${seeded.origin}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${seeded.token}`, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${method} ${path} → ${res.status} ${await res.text()}`);
+  return (res.status === 204 ? null : await res.json()) as T;
 }

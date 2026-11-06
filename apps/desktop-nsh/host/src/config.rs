@@ -27,9 +27,11 @@ pub struct Config {
     pub scroll_probe: bool,
     /// Development comparison: `native` runs the macOS NSView terminal instead of the canvas one.
     pub terminal: Option<String>,
+    /// Development: the bundle is `Story.tsx`'s and this names the screen it opens.
+    pub story: Option<String>,
 }
 
-pub const USAGE: &str = "deskfolk-nsh [--bundle <bundle.js|bundle.nshc>] [--data-dir <runtime data dir>] [--watch] [--background] [--snapshots <dir>] [--open-session <id>] [--pane chat|terminal|pdf] [--pdf <path>] [--fps] [--scroll-probe] [--terminal canvas|native]";
+pub const USAGE: &str = "deskfolk-nsh [--bundle <bundle.js|bundle.nshc>] [--data-dir <runtime data dir>] [--watch] [--background] [--snapshots <dir>] [--open-session <id>] [--pane chat|terminal|pdf] [--pdf <path>] [--fps] [--scroll-probe] [--terminal canvas|native] [--story <name>]";
 
 pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
     let mut bundle = None;
@@ -43,6 +45,7 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
     let mut fps = false;
     let mut scroll_probe = false;
     let mut terminal = None;
+    let mut story = None;
     let mut args = args.skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -57,6 +60,7 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
             "--fps" => fps = true,
             "--scroll-probe" => scroll_probe = true,
             "--terminal" => terminal = args.next(),
+            "--story" => story = args.next(),
             // AppKit's own (`-NSDocumentRevisionsDebugMode YES`, …).
             other if other.starts_with('-') && !other.starts_with("--") => {
                 args.next();
@@ -84,6 +88,7 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
         fps,
         scroll_probe,
         terminal,
+        story,
     })
 }
 
