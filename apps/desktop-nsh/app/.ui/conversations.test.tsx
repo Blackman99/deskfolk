@@ -22,8 +22,8 @@ test("sending goes through the runtime and the line comes back by the event stre
   await app.press(`id:session-${seeded.writerDirect}`);
   await app.waitFor("text:帮我写个摘要", { timeout: 10_000 });
   const line = `测试一句 ${Date.now()}`;
-  await app.type("id:composer", line);
-  await app.press("text:发送");
+  await app.type("id:composer-input", line);
+  await app.press("id:send-button");
   await app.waitFor(`text:${line}`, { timeout: 10_000 });
-  await app.waitUntil(() => app.value("id:composer") === "");
+  await app.waitUntil(() => app.value("id:composer-input") === "");
 });

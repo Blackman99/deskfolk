@@ -47,4 +47,5 @@ export const stories: Record<string, Story> = {
   "job-view": () => import("./job-view"),
   "sidebar-main": () => import("./sidebar-main"),
   "chat-stage": () => import("./chat-stage"),
+  shell: () => import("./shell"),
 };

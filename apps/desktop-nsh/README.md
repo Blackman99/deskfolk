@@ -6,7 +6,7 @@
 
 | 位置 | 是什么 |
 |---|---|
-| `app/` | NSH 的 TSX 界面，读信使的运行时（`src/runtime.ts` 里的 `MessengerRuntime`，每个窗口一个）：会话列表、对话（`TextView` 渲染 Markdown）、输入框、终端和 PDF 面板。`@real-bot/protocol` 经 `nsh.json` 的 `resolve.alias` 直接用 |
+| `app/` | NSH 的 TSX 界面，读信使的运行时（`src/runtime.ts` 里的 `MessengerRuntime`，每个窗口一个）。窗口是信使的外壳（`src/ui/shell/`：`shell-state.ts` 管层和返回、侧栏宽度、置顶、搜索、抽屉草稿，`Shell.tsx` 摆版面，`shell-keys.ts` 是窗口自己的键）：桌面宽窗是侧栏、工作台（每个标签由 `ui/workbench/PaneContentHost.tsx` 换成对话、日程、花费、用量、分工、地图、终端、工作区、任务看板或文件预览）和预览栏；手机和窄窗是名单铺满、页面盖在上面、底栏导航；平板上的托管页是侧栏加单页。`@real-bot/protocol` 经 `nsh.json` 的 `resolve.alias` 直接用 |
 | `app/.ui/` | 界面测试：`scripts/ui-tests.ts` 起一个隔离的运行时（临时数据目录、空闲端口、内存钥匙串、不跑日程、模型端点立刻拒绝），预置 Bot 和会话，再无头跑这里的测试。隐藏目录，所以普通的 `nsh test` 不跑它们 |
 | `app/src/m/` | 信使逻辑的镜像（`apps/messenger/src/lib` 同样的相对路径），见下面「信使逻辑怎么复用」 |
 | `app/src/lib/reactive.ts` | Svelte 5 的 rune 在 NSH signal 上的实现：`state`（深层响应，数组 push、改字段都看得见）、`rawState`、`derived`、`effect`、`untrack`、`tick`、`snapshot` |
@@ -66,4 +66,4 @@ bun apps/desktop-nsh/scripts/terminal-probe.ts          # 终端：颜色、宽�
 
 Windows 和 Linux 不能在 Mac 上交叉编译，在 GitHub Actions 的 `.github/workflows/nsh-desktop.yml` 上构建、测试和冒烟（Linux 在 Xvfb 下）。
 
-开发版宿主的检查用参数（`dev.ts` 用环境变量传，macOS）：`--background`（不激活、不进台前调度、放到副显示器）、`--snapshots <dir>`（窗口自己渲染成 PNG；往 `<dir>/request` 写空行截图，写 `new-window`、`badge 3`、`notify 文本` 做对应的事，写 `wheel <x> <y> <dy> [ctrl]` 在第一个窗口里模拟一次滚轮）、`--open-session <id>`、`--pane chat|terminal|pdf`、`--pdf <path>`、`--fps`（NSH 帧监视，日志 `nsh::perf`）、`--scroll-probe`、`--terminal native`（换回 NSView 终端作对照）、`--story <名字>`（`DESKFOLK_STORY=<名字>`：编 `Story.tsx`，窗口只开 `stories/index.ts` 里那一屏）。自动检查不往屏幕注入键鼠事件，也不需要屏幕录制权限。
+开发版宿主的检查用参数（`dev.ts` 用环境变量传，macOS）：`--background`（不激活、不进台前调度、放到副显示器）、`--snapshots <dir>`（窗口自己渲染成 PNG；往 `<dir>/request` 写空行截图，写 `new-window`、`badge 3`、`notify 文本` 做对应的事，写 `wheel <x> <y> <dy> [ctrl]` 在第一个窗口里模拟一次滚轮）、`--open-session <id>`、`--pane terminal|pdf`（不开外壳，只开试做期的终端或 PDF 面板，给 `terminal-probe.ts` 和帧率探针用）、`--pdf <path>`、`--fps`（NSH 帧监视，日志 `nsh::perf`）、`--scroll-probe`、`--terminal native`（换回 NSView 终端作对照）、`--story <名字>`（`DESKFOLK_STORY=<名字>`：编 `Story.tsx`，窗口只开 `stories/index.ts` 里那一屏）。自动检查不往屏幕注入键鼠事件，也不需要屏幕录制权限。
