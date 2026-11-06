@@ -43,4 +43,5 @@ export const stories: Record<string, Story> = {
   onboarding: () => import("./onboarding"),
   "remote-screen": () => import("./remote-screen"),
   "settings-routing": () => import("./settings-routing"),
+  artifacts: () => import("./artifacts"),
 };
