@@ -31,4 +31,5 @@ export const stories: Record<string, Story> = {
   "chat-transcript": () => import("./chat-transcript"),
   "panels-b": () => import("./panels-b"),
   "spend-b": () => import("./spend-b"),
+  "settings-agents": () => import("./settings-agents"),
 };
