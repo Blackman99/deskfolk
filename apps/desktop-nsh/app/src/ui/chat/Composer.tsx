@@ -148,9 +148,8 @@ export function Composer(props: {
     api: () => runtime.client,
     t: () => copy(),
     sessionId: () => props.selected?.id ?? null,
-    // The box reports no selection yet (`ComposerEditorHandle` has none): the end of the draft is where it lands.
     markCaret: () => {
-      voiceCaret = (editor as (ComposerEditorHandle & { selection?: () => Caret }) | null)?.selection?.() ?? null;
+      voiceCaret = editor?.selection() ?? null;
     },
     insert: (sessionId, heard) => {
       const caret = voiceCaret;

@@ -26,7 +26,12 @@ import { MentionPopup } from "./MentionPopup";
 import { ProjectCommandMenu } from "./ProjectCommandMenu";
 
 /** What the owner can do to the box from outside: a quote reply or a starter chip lands the caret here. */
-export type ComposerEditorHandle = { focus(): void; setSelection(start: number, end?: number): void };
+export type ComposerEditorHandle = {
+  focus(): void;
+  setSelection(start: number, end?: number): void;
+  /** The selection now, as offsets into the draft (where a voice transcript goes in). */
+  selection(): { start: number; end: number };
+};
 
 export function ComposerEditor(props: {
   /** The draft. */
@@ -55,6 +60,8 @@ export function ComposerEditor(props: {
 }) {
   const phone = () => !platform.desktop;
   const caret = signal(0);
+  /** Where the selection starts; `caret` is where it ends. */
+  const selStart = signal(0);
   const composing = signal(false);
   const ime = { state: COMPOSER_IME_IDLE as ComposerImeState };
   const input = signal<InputRef | null>(null);
@@ -206,7 +213,18 @@ export function ComposerEditor(props: {
         testID={props.testID ?? "composer-input"}
         ref={(node: InputRef | null) => {
           input.set(node);
-          props.onHandle?.(node ? { focus: () => node.focus(), setSelection: (a, b) => node.setSelection(a, b) } : null);
+          props.onHandle?.(
+            node
+              ? {
+                  focus: () => node.focus(),
+                  setSelection: (a, b) => node.setSelection(a, b),
+                  selection: () => {
+                    const end = Math.min(caret(), props.value.length);
+                    return { start: Math.min(selStart(), end), end };
+                  },
+                }
+              : null,
+          );
         }}
         value={props.value}
         placeholder={props.placeholder}
@@ -219,7 +237,10 @@ export function ComposerEditor(props: {
           caret.set(caretAfterEdit(props.value, e.value));
           props.onChange(e.value);
         }}
-        onSelectionChange={(e) => caret.set(e.end)}
+        onSelectionChange={(e) => {
+          selStart.set(e.start);
+          caret.set(e.end);
+        }}
         onSubmit={() => submit()}
         onPaste={(e) => props.onPaste?.(e)}
         onCompositionChange={(e) => {
