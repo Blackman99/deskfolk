@@ -3,10 +3,9 @@
  * business; it sizes itself from the board's shape and the viewport it is drawn over. A press
  * slides the view there, a drag carries the frame.
  *
- * The wheel over the map was the board's in the messenger (`onWheel`); NSH's views hear no wheel,
- * so the map takes presses and drags only.
+ * The wheel over the map is the board's (`onWheel`), so the corner is not a dead spot for scrolling.
  */
-import { Canvas, View, signal, token, type CanvasRenderingContext2D, type CanvasSize } from "nsh";
+import { Canvas, View, signal, token, type CanvasRenderingContext2D, type CanvasSize, type ViewRef } from "nsh";
 import type { TaskTraceNode } from "@real-bot/protocol";
 import { traceNodeShape, type TraceFlow, type TraceView } from "../../m/overlays/task-trace.ts";
 import {
@@ -18,6 +17,8 @@ import {
   type MinimapFrame,
   type TraceRect,
 } from "../../m/overlays/trace-minimap.ts";
+import { onWheel } from "../../platform/wheel";
+import type { ShellWheel } from "../../platform/wheel";
 import { tip } from "../tip";
 
 /** How a card stands out on the map: as it does on the board, lit, dimmed or asked for. */
@@ -52,7 +53,11 @@ export function TraceMinimap(props: {
   hint: string;
   /** Put the view's middle on this board point; a press slides there, a drag follows the pointer. */
   onCentre: (point: { x: number; y: number }, glide: boolean) => void;
+  /** The wheel over the map is the board's; `event.x`, `event.y` are in the window. */
+  onWheel: (event: ShellWheel) => void;
 }) {
+  let mapRef: ViewRef | null = null;
+  onWheel(() => mapRef, (e) => props.onWheel(e));
   /**
    * The map as it was when pressed. It draws the view's frame along with the board, so a drag that
    * takes the frame off the board would rescale the map under the pointer; it holds still until
@@ -163,6 +168,7 @@ export function TraceMinimap(props: {
       {(at: () => MinimapFrame) => (
         <View
           testID="trace-minimap"
+          ref={(node: ViewRef) => (mapRef = node)}
           tooltip={tip(props.hint)}
           accessibilityElementsHidden
           class="overflow-hidden rounded-(--radius-md) border border-line bg-pane"

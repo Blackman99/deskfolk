@@ -1,9 +1,12 @@
 /**
  * The ledger's header (`SpendHeader.svelte`): title, the period picker and Refresh, the custom
  * dates, the filter chips, and the two sections as underline tabs. The ledger and the section are
- * the view's; this reads the ledger and calls back.
+ * the view's; this reads the ledger and calls back. With a tab focused, Left / Right move to the
+ * other tab and Home / End to the first / last (`sectionKey` of `SpendView.svelte`), the focus going
+ * with them; NSH views take no key events, so the keys are bound through `keymap` while a tab has
+ * the focus (as the model ladder's grips do).
  */
-import { Text, View, windowSize } from "nsh";
+import { Text, View, effect, keymap, signal, untracked, windowSize, type ViewRef } from "nsh";
 import { DatePicker } from "nsh/base";
 import type { MessengerApi } from "../../m/messenger-api.ts";
 import type { SpendCopy } from "../../m/spend/spend-copy.ts";
@@ -31,6 +34,27 @@ export function SpendHeader(props: {
   narrow?: boolean;
 }) {
   const narrow = () => props.narrow ?? narrowWindow();
+
+  /** The tab that has the keyboard focus, if any. */
+  const tabFocus = signal<(typeof SECTIONS)[number] | null>(null);
+  const tabs: Partial<Record<(typeof SECTIONS)[number], ViewRef>> = {};
+  effect(() => {
+    const current = tabFocus();
+    if (current === null) return;
+    const go = (next: (typeof SECTIONS)[number]) => {
+      props.switchSection(next);
+      tabFocus.set(next);
+      tabs[next]?.focus();
+    };
+    const other = current === "overview" ? "details" : "overview";
+    const off = [
+      keymap.bind("left", () => go(other), { when: "always" }),
+      keymap.bind("right", () => go(other), { when: "always" }),
+      keymap.bind("home", () => go("overview"), { when: "always" }),
+      keymap.bind("end", () => go("details"), { when: "always" }),
+    ];
+    return () => off.forEach((fn) => fn());
+  });
   const copy = () => props.copy;
 
   function rangeMessage(issue: SpendRangeIssue): string {
@@ -168,8 +192,15 @@ export function SpendHeader(props: {
             <View
               testID={`spend-tab-${name}`}
               role="tab"
+              focusable
+              ref={(node: ViewRef) => (tabs[name] = node)}
               accessibilityState={{ selected: props.section === name }}
-              onPress={() => props.switchSection(name)}
+              onFocus={() => tabFocus.set(name)}
+              onBlur={() => untracked(() => tabFocus() === name && tabFocus.set(null))}
+              onPress={() => {
+                tabFocus.set(name);
+                props.switchSection(name);
+              }}
               class={`items-center border-b-2 ${narrow() ? "flex-1 justify-center min-h-[44px] pt-[10px] pb-2" : "min-h-[36px] pt-2 pb-[7px] px-[2px] justify-center"} ${props.section === name ? "border-brand" : "border-transparent"}`}
             >
               <Text

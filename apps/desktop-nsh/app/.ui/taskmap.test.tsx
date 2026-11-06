@@ -162,3 +162,28 @@ test("on a phone the jobs open as a sheet, the one-question ones folded into a r
   await app.press("id:trace-job-task-3");
   await app.waitUntil(() => app.texts().includes("task:task-3"));
 });
+
+test("the wheel zooms the town about the pointer, a pinch too, and a sideways swipe turns it", async () => {
+  const app = await opened();
+  const zoom = () => app.texts().find((x) => /^\d+%$/.test(x));
+  const send = (dx: number, dy: number, ctrl = false) =>
+    app.host.send("shell.wheel", { x: 500, y: 350, dx, dy, ctrl, meta: false, shift: false, alt: false, pinch: ctrl, phase: null, momentum: null });
+  const was = zoom();
+  // A wheel forward (negative) zooms in; the town starts fitted, so zooming out has nowhere to go.
+  await send(0, -120);
+  await app.waitUntil(() => zoom() !== was, { timeout: 5000 });
+  const zoomed = Number.parseInt(zoom() ?? "0", 10);
+  expect(zoomed).toBeGreaterThan(Number.parseInt(was ?? "0", 10));
+  await send(0, -40, true);
+  await app.waitUntil(() => Number.parseInt(zoom() ?? "0", 10) > zoomed, { timeout: 5000 });
+  const pinched = Number.parseInt(zoom() ?? "0", 10);
+  await send(0, 60, true);
+  await app.waitUntil(() => Number.parseInt(zoom() ?? "0", 10) < pinched, { timeout: 5000 });
+  // A sideways swipe turns it (and does not zoom).
+  const level = zoom();
+  expect(app.texts()).toContain("0°");
+  await send(100, 5);
+  await app.waitUntil(() => !app.texts().includes("0°"), { timeout: 5000 });
+  expect(app.texts().some((x) => x === "24°" || x === "336°")).toBe(true);
+  expect(zoom()).toBe(level);
+});

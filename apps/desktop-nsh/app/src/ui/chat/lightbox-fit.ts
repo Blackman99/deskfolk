@@ -5,6 +5,8 @@
  */
 import type { ViewRef } from "nsh";
 import type { ImageOrigin } from "../../m/chat/enlarged-images.ts";
+import { panBy, restView, settleView, zoomAround, zoomLimit, type PictureView, type Point } from "../../m/chat/image-zoom.ts";
+import type { ShellWheel } from "../../platform/wheel";
 
 export type { ImageOrigin };
 
@@ -60,4 +62,28 @@ export async function originOf(node: ViewRef | null | undefined): Promise<ImageO
   const { width, height } = found.bounds.size;
   if (width < 2 || height < 2) return null;
   return { top: found.pagePosition.y, left: found.pagePosition.x, width, height };
+}
+
+/**
+ * What a wheel does to the zoomed picture: ⌘/Ctrl + wheel and a trackpad pinch zoom about the
+ * pointer (a pinch's `dy` is `-100·ln(scale)`), a mouse wheel zooms about it too, and two fingers
+ * sliding on a trackpad pan a picture that is larger than its box. `view` is null back at the fit.
+ * Null result: the wheel changes nothing (a slide over a picture at rest).
+ */
+export function wheelView(
+  stage: ImageOrigin,
+  rest: ImageOrigin,
+  current: PictureView | null,
+  e: Pick<ShellWheel, "dx" | "dy" | "ctrl" | "meta" | "phase">,
+  at: Point,
+  naturalWidth: number,
+): { view: PictureView | null } | null {
+  const from = current ? settleView(stage, rest, current) : restView(rest);
+  if (!e.ctrl && !e.meta && e.phase !== null) {
+    if (!current || current.scale <= 1) return null;
+    return { view: panBy(stage, rest, from, { x: -e.dx, y: -e.dy }) };
+  }
+  const step = Math.exp(-e.dy / (e.ctrl || e.meta ? 100 : 300));
+  const next = zoomAround(stage, rest, from, at, from.scale * step, zoomLimit(rest, naturalWidth, 1));
+  return { view: next.scale < 1.05 ? null : next };
 }

@@ -184,3 +184,50 @@ test("a step picked on the board opens its panel, which shows the answer and the
   await app.press("id:trace-step-s2");
   await app.waitFor("id:trace-step-detail", { state: "gone" });
 });
+
+const wheel = (x: number, y: number, dy: number, mods: { ctrl?: boolean; meta?: boolean; dx?: number } = {}) => ({
+  x, y, dx: mods.dx ?? 0, dy, ctrl: mods.ctrl ?? false, meta: mods.meta ?? false, shift: false, alt: false, pinch: false, phase: null, momentum: null,
+});
+
+/** The camera as the story's `view` button logs it: `[scale, x, y]`. */
+async function camera(app: Awaited<ReturnType<typeof board>>): Promise<number[]> {
+  await app.press("id:story-view");
+  const line = app.texts().find((text) => text.includes("view:")) ?? "";
+  const last = line.split(" ").filter((part) => part.startsWith("view:")).pop() ?? "";
+  return last.slice(5).split("/").map(Number);
+}
+
+/** The camera once it satisfies `ok` (a forwarded wheel is measured, then handled, a moment after it is sent). */
+async function cameraWhen(app: Awaited<ReturnType<typeof board>>, ok: (view: number[]) => boolean): Promise<number[]> {
+  for (let i = 0; i < 40; i++) {
+    const view = await camera(app);
+    if (ok(view)) return view;
+    await app.wait(50);
+  }
+  throw new Error(`the camera never got there: ${(await camera(app)).join("/")}`);
+}
+
+test("a plain wheel pans the board and ⌘ or Ctrl with the wheel (or a pinch) zooms about the pointer", async () => {
+  const app = await board();
+  const [scale0, x0, y0] = await camera(app);
+  // A plain wheel goes down the board: the board moves up under the viewport.
+  await app.host.send("shell.wheel", wheel(300, 700, 60));
+  const panned = await cameraWhen(app, (v) => v[2] === y0! - 60);
+  expect(panned[0]).toBe(scale0);
+  await app.host.send("shell.wheel", wheel(300, 700, 0, { dx: 40 }));
+  await cameraWhen(app, (v) => v[1] === x0! - 40);
+  // ⌘ + wheel zooms (a negative step zooms in), and Ctrl does the same: a pinch is Ctrl + wheel.
+  await app.host.send("shell.wheel", wheel(300, 700, -100, { meta: true }));
+  const zoomed = (await cameraWhen(app, (v) => v[0]! > scale0!))[0]!;
+  await app.host.send("shell.wheel", wheel(300, 700, 100, { ctrl: true }));
+  await cameraWhen(app, (v) => v[0]! < zoomed);
+});
+
+test("a wheel over the minimap is the board's", async () => {
+  const app = await board();
+  await app.waitFor("id:trace-minimap");
+  const [, , y0] = await camera(app);
+  // The map sits in the viewport's bottom right corner (1100 × 1500 window).
+  await app.host.send("shell.wheel", wheel(1080, 1400, 50));
+  await cameraWhen(app, (v) => v[2]! < y0!);
+});

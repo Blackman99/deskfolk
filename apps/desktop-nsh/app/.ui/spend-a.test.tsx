@@ -174,6 +174,25 @@ test("the sections switch from the tabs", async () => {
   await app.waitUntil(() => state(app).section === "overview");
 });
 
+test("with a tab focused, Left, Right, Home and End move between the sections", async () => {
+  const app = await open();
+  // Without a tab focused the keys are nobody's.
+  await app.keyboard.press("right");
+  expect(state(app).section).toBe("overview");
+  await app.press("id:spend-tab-overview");
+  await app.keyboard.press("right");
+  await app.waitUntil(() => state(app).section === "details");
+  await app.keyboard.press("left");
+  await app.waitUntil(() => state(app).section === "overview");
+  await app.keyboard.press("end");
+  await app.waitUntil(() => state(app).section === "details");
+  // The focus went with the section, so the keys keep working from there.
+  await app.keyboard.press("home");
+  await app.waitUntil(() => state(app).section === "overview");
+  await app.keyboard.press("right");
+  await app.waitUntil(() => state(app).section === "details");
+});
+
 test("on a phone the header is one bar with a back button, and the categories stack", async () => {
   const app = await open({ width: 400, height: 760 });
   expect(app.shows("id:spend-back")).toBe(true);

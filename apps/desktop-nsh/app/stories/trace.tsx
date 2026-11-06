@@ -307,7 +307,6 @@ export default function Trace() {
           onPress={() => {
             failing.set(true);
             void job.load("task-1");
-  const openGroup = () => (job.trace && job.openStep ? (attachSteps(job.trace.nodes, job.trace.steps ?? []).groups.find((row) => row.id === job.openStep) ?? null) : null);
           }}
         >
           fail
@@ -322,13 +321,23 @@ export default function Trace() {
           onPress={() => {
             empty.set(true);
             void job.load("task-1");
-  const openGroup = () => (job.trace && job.openStep ? (attachSteps(job.trace.nodes, job.trace.steps ?? []).groups.find((row) => row.id === job.openStep) ?? null) : null);
           }}
         >
           empty
         </Button>
         <Button testID="story-focus" size="sm" variant="secondary" onPress={() => focus.set({ token: focus().token + 1, turn: "t1" })}>
           focus
+        </Button>
+        <Button
+          testID="story-view"
+          size="sm"
+          variant="secondary"
+          onPress={() => {
+            const v = handle?.view();
+            if (v) note(`view:${v.scale.toFixed(3)}/${Math.round(v.x)}/${Math.round(v.y)}`);
+          }}
+        >
+          view
         </Button>
         <Button testID="story-ticket" size="sm" variant="secondary" onPress={() => void handle?.showTicket("tk-1")}>
           ticket

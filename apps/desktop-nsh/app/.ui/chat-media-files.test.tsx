@@ -1,5 +1,7 @@
 /** A message's file chips, the picture enlargement and the composer's staged files. */
 import { expect, test } from "nsh/test";
+import { zoomLimit } from "../src/m/chat/image-zoom.ts";
+import { wheelView } from "../src/ui/chat/lightbox-fit";
 import { openStory } from "./fixture";
 
 /** What the story's fake runtime was asked for, one entry each. */
@@ -80,6 +82,53 @@ test("the desktop's + and - keys zoom the enlargement and 0 brings it back", asy
   await app.keyboard.press("0");
   expect(app.shows("id:msg-image-full")).toBe(true);
   await app.keyboard.press("escape");
+  await app.waitFor("id:msg-image-lightbox", { state: "gone" });
+});
+
+const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
+const stageBox = { top: 0, left: 0, width: 1100, height: 760 };
+const restBox = { top: 60, left: 50, width: 1000, height: 640 };
+const still = { dx: 0, dy: 0, ctrl: false, meta: false, phase: null as string | null };
+
+test("a pinch or a wheel zooms the enlargement about the pointer, and out to the fit it rests", () => {
+  // A pinch in (ctrl + a negative step) keeps the picture's point under the pointer where it is.
+  const small = restBox;
+  const pointer = { x: 400, y: 300 };
+  // (Both axes end up larger than the stage, where the maths keeps the point exactly; smaller, it rests in proportion.)
+  const pinched = wheelView(stageBox, small, null, { ...still, dy: -30, ctrl: true }, pointer, 2000)!.view!;
+  expect(near(pinched.scale, Math.exp(0.3))).toBe(true);
+  expect(near(pinched.x + 0.35 * pinched.scale * small.width, pointer.x)).toBe(true);
+  expect(near(pinched.y + 0.375 * pinched.scale * small.height, pointer.y)).toBe(true);
+  const middle = { x: 550, y: 350 };
+  const centred = wheelView(stageBox, small, null, { ...still, dy: -30, meta: true }, middle, 2000)!.view!;
+  expect(near(centred.scale, pinched.scale)).toBe(true);
+  expect(near(centred.x + (centred.scale * small.width) / 2, middle.x)).toBe(true);
+  // A mouse wheel zooms too (gentler), and zooming back out past the fit rests at the fit.
+  const wheeled = wheelView(stageBox, restBox, null, { ...still, dy: -120 }, middle, 2000)!.view!;
+  expect(wheeled.scale).toBeGreaterThan(1.05);
+  expect(wheelView(stageBox, restBox, wheeled, { ...still, dy: 600 }, middle, 2000)!.view).toBeNull();
+  // The zoom stops at its limit.
+  const far = wheelView(stageBox, restBox, null, { ...still, dy: -100000, ctrl: true }, middle, 2000)!.view!;
+  expect(far.scale).toBeLessThanOrEqual(zoomLimit(restBox, 2000, 1) + 1e-9);
+});
+
+test("two fingers sliding on a trackpad pan a zoomed picture and leave one at rest alone", () => {
+  const middle = { x: 550, y: 350 };
+  const slide = { ...still, dx: 0, dy: 30, phase: "changed" };
+  expect(wheelView(stageBox, restBox, null, slide, middle, 2000)).toBeNull();
+  const zoomed = wheelView(stageBox, restBox, null, { ...still, dy: -30, ctrl: true }, middle, 2000)!.view!;
+  const moved = wheelView(stageBox, restBox, zoomed, slide, middle, 2000)!.view!;
+  expect(moved.scale).toBe(zoomed.scale);
+  expect(near(moved.y, zoomed.y - 30)).toBe(true);
+});
+
+test("a wheel before the picture's shape is known does nothing: the tap still closes", async () => {
+  const app = await openStory("chat-media");
+  await app.waitFor("id:attachment-chip-thumb", { timeout: 10_000 });
+  await app.press("id:attachment-chip-thumb");
+  await app.waitFor("id:msg-image-full");
+  await app.host.send("shell.wheel", { x: 550, y: 380, dx: 0, dy: -100, ctrl: true, meta: false, shift: false, alt: false, pinch: false, phase: null, momentum: null });
+  await app.press("id:msg-image-full");
   await app.waitFor("id:msg-image-lightbox", { state: "gone" });
 });
 

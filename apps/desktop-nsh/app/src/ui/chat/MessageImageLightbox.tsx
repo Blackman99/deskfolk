@@ -7,14 +7,17 @@
  * Zoom is the messenger's own maths (`src/m/chat/image-zoom.ts`): the frame keeps the box it was
  * fitted to and is scaled and moved with a transform. Fingers (PanResponder) pinch and drag it;
  * a tap brings a zoomed picture back and the next closes. Where there are no fingers (a desktop)
- * `+` / `-` / `0` zoom about the middle: the Svelte one has no desktop zoom at all. Escape, the
- * phone's Back and a tap close it.
+ * `+` / `-` / `0` zoom about the middle, and the wheel (`src/platform/wheel`) zooms about the
+ * pointer: the Svelte one has no desktop zoom at all. A trackpad pinch (ctrl + wheel) zooms the
+ * same way; two fingers sliding on a trackpad pan a zoomed picture. Escape, the phone's Back and a
+ * tap close it.
  *
  * Bytes come through the runtime client and are shown as `data:` URLs (`blobDataUrl`): NSH has no
  * object URLs for them, so nothing is revoked. A right click (long press) on the picture offers
  * Copy image (`ImageContextMenu`).
  */
-import { cleanup, effect, Image, keymap, Overlay, PanResponder, reduceMotion, signal, Text, untracked, View, windowSize, computed } from "nsh";
+import { cleanup, effect, Image, keymap, Overlay, PanResponder, reduceMotion, signal, Text, untracked, View, windowSize, computed, type ViewRef } from "nsh";
+import type { ShellWheel } from "../../platform/wheel";
 import type { Attachment } from "@real-bot/protocol";
 import { originalSizeForBlob } from "../../m/api.ts";
 import { formatFileSize } from "../../m/chat/attachments.ts";
@@ -25,10 +28,11 @@ import type { MessengerApi } from "../../m/messenger-api.ts";
 import { artifactKind, svgDisplayBlob } from "../../m/overlays/artifacts.ts";
 import { saveFile } from "../../m/save-file.ts";
 import { copy } from "../../runtime";
+import { onWheel } from "../../platform/wheel";
 import { Icon } from "../Icon";
 import { ImageContextMenu } from "../ImageContextMenu";
 import { blobDataUrl } from "../data-url";
-import { fitPicture, OFFER_RESERVE, placeholderBox, roomForCopy, type ImageOrigin } from "./lightbox-fit";
+import { fitPicture, OFFER_RESERVE, placeholderBox, roomForCopy, wheelView, type ImageOrigin } from "./lightbox-fit";
 
 export type { ImageOrigin };
 
@@ -438,6 +442,19 @@ export function MessageImageLightbox(props: {
     if (zoom() && zoom()!.scale < 1.05) zoom.set(null);
   }
 
+  /**
+   * The wheel: ⌘/Ctrl + wheel and a pinch zoom about the pointer (a pinch's `dy` is its zoom step,
+   * 100 per e-fold), a mouse wheel zooms too, and two fingers sliding on a trackpad pan a zoomed picture.
+   */
+  function wheelOver(e: ShellWheel, at: Point): void {
+    const rest = settled();
+    if (!rest || !ready()) return;
+    const next = wheelView(stage(), rest, zoom(), e, at, natural()?.width ?? 0);
+    if (next) zoom.set(next.view);
+  }
+  let stageRef: ViewRef | null = null;
+  onWheel(() => stageRef, (e) => wheelOver(e, { x: e.x, y: e.y }));
+
   /** A tap anywhere but the buttons: zoomed in it goes back to the whole picture; the next one closes. */
   function tap(): void {
     if (Date.now() < swallowPressUntil) return;
@@ -458,7 +475,7 @@ export function MessageImageLightbox(props: {
         testID="msg-image-lightbox"
         class={`flex-1 transition-colors duration-[220ms] ${hot() ? "bg-bg/90" : "bg-transparent"}`}
       >
-        <View testID="msg-image-stage" class="absolute inset-0" onPress={() => tap()} {...pan.panHandlers}>
+        <View testID="msg-image-stage" ref={(node: ViewRef) => (stageRef = node)} class="absolute inset-0" onPress={() => tap()} {...pan.panHandlers}>
           {/* The frame grows out of the clicked picture. The dialog role stays on the picture's box. */}
           <View
             role="group"

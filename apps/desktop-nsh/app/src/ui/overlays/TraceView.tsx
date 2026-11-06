@@ -9,8 +9,8 @@
  * the box `onLayout` measured. The cards are views placed on a board that is moved and scaled by a
  * transform; the lines are a `Canvas` under them (`trace-edges.tsx`).
  *
- * Not carried over: the wheel (⌘/Ctrl + wheel to zoom, a plain wheel to pan), which NSH's views do
- * not hear; the zoom buttons, a pinch and a drag do the same work.
+ * The wheel comes from `src/platform/wheel`: ⌘/Ctrl + wheel and a trackpad pinch zoom about the
+ * pointer, a plain wheel pans; a wheel over the minimap is forwarded here too.
  */
 import { Text, View, cleanup, computed, effect, signal, token, untracked, type ViewRef } from "nsh";
 import type { Attachment, Bot, Provider, SessionSummary, TaskTraceNode, Ticket } from "@real-bot/protocol";
@@ -55,7 +55,8 @@ import { TraceMinimap } from "./TraceMinimap";
 import { TraceRound } from "./TraceRound";
 import { TraceRouteDetail } from "./TraceRouteDetail";
 import { TraceStepCard } from "./TraceStepCard";
-import { traceGestures, viewportStandIn } from "./trace-gestures";
+import { onWheel } from "../../platform/wheel";
+import { domWheel, traceGestures, viewportStandIn } from "./trace-gestures";
 import { TraceEdges } from "./trace-edges";
 import { TraceTools } from "./trace-tools";
 import { minimapToneOf, placeOf, routeCompactOf, ticketLightOf, ticketOf } from "./trace-view-helpers";
@@ -68,6 +69,8 @@ export type TraceViewHandle = {
   showCard: (turnId: string) => Promise<void>;
   /** Escape, from the job around the board: an unfolded model choice closes first. True when one did. */
   closeRoute: () => boolean;
+  /** Where the camera is: the zoom and the board's offset in the viewport. */
+  view: () => { scale: number; x: number; y: number };
   /** Another job is about to be on screen: keep this one's board, take the next one up as it was left, or fresh. */
   switchBoard: (session: string, next: string | null) => void;
 };
@@ -187,6 +190,7 @@ export function TraceView(props: {
     setBox: (id, box) => boxes.set({ ...boxes(), [id]: box }),
   });
   const gestures = traceGestures(canvas, () => origin());
+  onWheel(() => viewportRef, (e, at) => canvas.onWheel(domWheel(e, at)));
 
   function measureOrigin(): void {
     void viewportRef?.measure().then((m) => {
@@ -381,6 +385,7 @@ export function TraceView(props: {
   }
 
   const handle: TraceViewHandle = {
+    view: () => ({ ...canvas.view }),
     async showTicket(id) {
       const latest = latestTurnOfTicket(shown()?.nodes ?? [], id);
       selectTicket(id);
@@ -649,6 +654,7 @@ export function TraceView(props: {
             toneOf={(node) => minimapToneOf(node, lighting(), job.selectedTicket, focusedTurn())}
             hint={t().trace.minimapHint}
             onCentre={(point, glide) => canvas.centreOn(point, glide)}
+            onWheel={(e) => canvas.onWheel(domWheel(e, { x: e.x - origin().x, y: e.y - origin().y }))}
           />
         </View>
       </If>

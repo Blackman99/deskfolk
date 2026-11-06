@@ -5,11 +5,13 @@
  * the camera takes (a drag pans, two fingers pinch). The camera's own maths — the drag threshold,
  * the zoom about a point, the slides — runs unchanged.
  *
- * Not carried over: the wheel (⌘/Ctrl + wheel to zoom, a plain wheel to pan). NSH's views hear no
- * wheel; the zoom buttons, a pinch and a drag do the same work.
+ * The wheel (⌘/Ctrl + wheel to zoom about the pointer, a plain wheel to pan, a trackpad pinch as
+ * ctrl + wheel) comes from `src/platform/wheel` and is shaped by `domWheel` into what the camera's
+ * `onWheel` reads.
  */
 import { PanResponder, type GestureResponderEvent, type PanResponderGestureState, type PanResponderInstance, type TouchPoint } from "nsh";
 import type { TraceCanvas } from "../../m/overlays/trace-canvas.svelte.ts";
+import type { ShellWheel } from "../../platform/wheel";
 
 export type Measured = { width: number; height: number; toolsHeight: number };
 
@@ -87,4 +89,23 @@ export function traceGestures(canvas: TraceCanvas, origin: () => { x: number; y:
     onPanResponderRelease: end,
     onPanResponderTerminate: end,
   });
+}
+
+/**
+ * The shell's wheel as the camera's `onWheel` reads a DOM one. `at` is the point in the viewport,
+ * which is the camera's origin (`viewportStandIn` lies at 0, 0), so it goes in as the client point.
+ */
+export function domWheel(e: ShellWheel, at: { x: number; y: number }): WheelEvent {
+  return {
+    deltaX: e.dx,
+    deltaY: e.dy,
+    deltaMode: 0,
+    ctrlKey: e.ctrl,
+    metaKey: e.meta,
+    shiftKey: e.shift,
+    altKey: e.alt,
+    clientX: at.x,
+    clientY: at.y,
+    preventDefault: () => {},
+  } as unknown as WheelEvent;
 }

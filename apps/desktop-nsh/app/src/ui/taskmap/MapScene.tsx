@@ -6,17 +6,19 @@
  * views at the town's scale. The pointer is read here and handed up as pans, turns and picks; the
  * camera's arithmetic lives with the map.
  */
-import { Canvas, Easing, Image, PanResponder, Path2D, Text, View, colorScheme, createMotion, effect, reduceMotion, signal, token, type JSX, type Motion } from "nsh";
+import { Canvas, Easing, Image, PanResponder, Path2D, Text, View, colorScheme, createMotion, effect, reduceMotion, signal, token, type JSX, type Motion, type ViewRef } from "nsh";
 import type { Copy } from "../../m/copy";
 import type { ModelSource } from "../../m/model-source";
 import type { Frame, FrameActor, FrameBlock } from "../../m/taskmap/frame";
 import type { DrawnFigure } from "../../m/taskmap/scene/figures";
 import { mix } from "../../m/taskmap/scene/geometry";
+import { onWheel } from "../../platform/wheel";
 import { tip } from "../tip";
 import { cssColor } from "../styles";
 import { glide } from "./glide";
 import { MapFigure } from "./MapFigure";
 import { MapLogo } from "./MapLogo";
+import { wheelMove } from "./scene-wheel";
 
 type T = Copy["taskmap"];
 type Cam = { tx: number; ty: number; k: number };
@@ -223,6 +225,17 @@ export function MapScene(props: {
     moved = false;
     last = { x: 0, y: 0 };
   }
+
+  // --- The wheel zooms and a sideways swipe turns ---
+  let sceneRef: ViewRef | null = null;
+  onWheel(
+    () => sceneRef,
+    (e, at) => {
+      const move = wheelMove(e);
+      if ("turn" in move) props.onTurn(move.turn);
+      else props.onZoom(move.zoom, at.x, at.y);
+    },
+  );
 
   // --- The camera and the walk glide to where they are asked ---
   const shownCam = glide(() => [cam().tx, cam().ty, cam().k], () => props.camMs);
@@ -455,6 +468,7 @@ export function MapScene(props: {
   return (
     <View
       testID="taskmap-view"
+      ref={(node: ViewRef) => (sceneRef = node)}
       role="group"
       accessibilityState={{ busy: panning() }}
       class="absolute left-0 top-0 right-0 bottom-0 overflow-hidden"
