@@ -35,7 +35,16 @@ pub fn channel(config: &Config, window_id: u32) -> HostChannel {
     let host = HostChannel::new();
     host.set_params(params(config, window_id));
     let endpoint = json!({ "origin": config.endpoint.origin, "token": config.endpoint.token });
-    host.handle("runtime.endpoint", move |call: HostCall| call.resolve(endpoint.clone()));
+    {
+        let endpoint = endpoint.clone();
+        host.handle("runtime.endpoint", move |call: HostCall| call.resolve(endpoint.clone()));
+    }
+    // The messenger's Tauri commands (`app/src/platform/tauri-bridge.ts`), by their Tauri names.
+    host.handle("tauri.local_api_endpoint", move |call: HostCall| call.resolve(endpoint.clone()));
+    host.handle("tauri.app_version", |call: HostCall| call.resolve(json!(env!("CARGO_PKG_VERSION"))));
+    host.handle("tauri.window_material", |call: HostCall| {
+        call.resolve(json!(if cfg!(target_os = "macos") { "glass" } else { "none" }))
+    });
     host
 }
 

@@ -11,8 +11,7 @@ import { cleanup, colorScheme, keymap, signal, View } from "nsh";
 import { Input } from "nsh/base";
 import { TerminalGrid, Terminals } from "deskfolk/native";
 import type { StreamFrame } from "@real-bot/protocol";
-import { api } from "./api";
-import { onStream } from "./sync";
+import { runtime } from "./runtime";
 
 export function encode(text: string): string {
   const bytes = new TextEncoder().encode(text);
@@ -89,12 +88,10 @@ export function CanvasTerminal(props: { id: string; onExit?: () => void }) {
 
   const send = (text: string) => {
     if (!text) return;
-    void api(`/v1/terminals/${id}/input`, { method: "POST", body: { data: encode(text) } }).catch((e) =>
-      console.error("terminal input", String(e)),
-    );
+    void runtime.client?.terminalInput(id, encode(text)).catch((e) => console.error("terminal input", String(e)));
   };
 
-  const stop = onStream(id, (frame) => {
+  const stop = runtime.onStream(id, (frame) => {
     if (!attached) {
       early.push(frame);
       return;
@@ -105,12 +102,14 @@ export function CanvasTerminal(props: { id: string; onExit?: () => void }) {
   cleanup(stop);
 
   void (async () => {
-    const screen = await api<{ offset: number; data: string; rows: number; cols: number }>(`/v1/terminals/${id}/screen`);
+    const client = runtime.client;
+    if (!client) throw new Error("not connected");
+    const screen = await client.terminalScreen(id);
     Terminals.reset(id, screen.rows, screen.cols, screen.data, screen.offset);
     attached = true;
     for (const frame of early.splice(0)) Terminals.feed(id, frame.data, frame.offset);
     touched();
-    await api(`/v1/terminals/${id}/watch`, { method: "POST", body: { from: screen.offset } });
+    await client.watchTerminal(id, screen.offset);
   })().catch((e) => console.error("terminal attach", String(e)));
 
   let unbind: (() => void) | null = null;
@@ -136,7 +135,7 @@ export function CanvasTerminal(props: { id: string; onExit?: () => void }) {
         dark={colorScheme() === "dark"}
         focused={focused()}
         version={version()}
-        onResize={(e) => void api(`/v1/terminals/${id}/resize`, { method: "POST", body: { rows: e.rows, cols: e.cols } })}
+        onResize={(e) => void runtime.client?.terminalResize(id, e.rows, e.cols)}
       />
       <Input
         ref={(node) => (input = node)}

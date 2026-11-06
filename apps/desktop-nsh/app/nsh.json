@@ -15,7 +15,8 @@
     "clipboard": true,
     "host": [
       "shell.*",
-      "runtime.*"
+      "runtime.*",
+      "tauri.*"
     ]
   },
   "resolve": {

@@ -4,3 +4,4 @@
 /app/build/
 /node_modules/
 /app/e2e/.live-params.json
+/app/.ui/.fixture.json

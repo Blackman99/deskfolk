@@ -3,19 +3,22 @@ import { colorScheme, computed, effect, Image, List, signal, Text, View } from "
 import { Documents } from "deskfolk/native";
 import { Input } from "nsh/base";
 import type { Terminal as TerminalInfo } from "@real-bot/protocol";
-import { api, apiOrigin, authToken, initialPdf, nativeTerminal, ready } from "./api";
+import { initialPdf, nativeTerminal } from "./launch";
 import { Terminal } from "./native";
+import { runtime } from "./runtime";
 import { CanvasTerminal } from "./Terminal";
-import { workspacePath } from "./sync";
+
+const workspacePath = () => runtime.snapshot.settings.workspace_path;
 
 export function TerminalPane() {
   const terminalId = signal<string | null>(null);
   const error = signal<string | null>(null);
   const ensure = async (cwd: string) => {
     try {
-      const list = await api<{ items: TerminalInfo[] }>("/v1/terminals");
-      const live = list.items.find((t) => t.status === "live");
-      const terminal = live ?? (await api<TerminalInfo>("/v1/terminals", { method: "POST", body: { cwd, rows: 30, cols: 100 } }));
+      const client = runtime.client;
+      if (!client) return;
+      const live = (await client.terminals()).find((t: TerminalInfo) => t.status === "live");
+      const terminal = live ?? (await client.openTerminal(cwd, 30, 100));
       terminalId.set(terminal.id);
     } catch (e) {
       error.set(String(e));
@@ -63,9 +66,11 @@ export function PdfPane() {
     const id = `pdf-${++opened}`;
     status.set("正在打开…");
     try {
-      await ready();
+      const client = runtime.client;
+      if (!client || client.kind !== "local") throw new Error("not connected");
       const started = Date.now();
-      const sizes = await Documents.openPdf(id, `${apiOrigin()}/v1/workspace/file?path=${encodeURIComponent(file)}`, authToken());
+      const { origin, token } = client.endpoint;
+      const sizes = await Documents.openPdf(id, `${origin}/v1/workspace/file?path=${encodeURIComponent(file)}`, token);
       const list = [];
       for (let i = 0; i < sizes.length; i += 2) list.push({ index: i / 2, width: sizes[i]!, height: sizes[i + 1]! });
       pdfId.set(id);

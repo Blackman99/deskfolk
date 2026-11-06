@@ -1,10 +1,34 @@
 /** The open conversation: its lines (an inverted list, newest at the bottom) and the composer. */
-import { effect, List, type ListRef, signal, Text, View } from "nsh";
+import { effect, List, type ListRef, Text, View } from "nsh";
 import { Input, TextView } from "nsh/base";
 import type { Message, Turn } from "@real-bot/protocol";
-import { scrollProbe } from "./api";
-import { bots, liveTurns, loadOlder, messages, olderCursor, send } from "./sync";
-import { authorName, clock } from "./titles";
+import { USER_MEMBER } from "@real-bot/protocol";
+import { isLiveStatus } from "./m/chat/transcript.ts";
+import { scrollProbe } from "./launch";
+import { runtime } from "./runtime";
+import { clock } from "./Sidebar";
+
+/** The open conversation's lines, newest first (the inverted list's order). */
+function messages(): Message[] {
+  const id = runtime.selectedId;
+  return runtime.snapshot.messages
+    .filter((m) => m.session_id === id && (m.kind as string) !== "profile_change" && !m.withdrawn_at)
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+}
+
+function liveTurns(): Turn[] {
+  const id = runtime.selectedId;
+  return runtime.snapshot.turns.filter((t) => t.session_id === id && isLiveStatus(t.status));
+}
+
+function olderCursor(): string | null {
+  return runtime.activeView?.messageNext ?? null;
+}
+
+function authorName(author: string): string {
+  if (author === USER_MEMBER) return "你";
+  return runtime.snapshot.bots.find((b) => b.id === author)?.name ?? "Bot";
+}
 
 type Row = { kind: "message"; id: string; message: Message } | { kind: "turn"; id: string; turn: Turn };
 
@@ -25,7 +49,7 @@ export function Transcript() {
       class="flex-1"
       contentClass="px-6 py-4 gap-4"
       estimatedItemSize={96}
-      onLoadMore={() => void loadOlder()}
+      onLoadMore={() => void runtime.loadOlderMessages()}
       empty={<Text class="px-6 py-10 text-[13px] text-muted-foreground">这里还没有消息</Text>}
     >
       {(row) => <RowView row={row()} />}
@@ -81,14 +105,14 @@ function RowView(props: { row: Row }) {
 }
 
 function Line(props: { message: Message }) {
-  const mine = () => props.message.author === "user";
+  const mine = () => props.message.author === USER_MEMBER;
   return (
     <If
       when={mine()}
       else={
         <View class="gap-1 max-w-[760px]">
           <View class="flex-row items-baseline gap-2">
-            <Text class="text-[13px] font-semibold text-foreground">{authorName(props.message.author, bots())}</Text>
+            <Text class="text-[13px] font-semibold text-foreground">{authorName(props.message.author)}</Text>
             <Text class="text-[11px] text-muted-foreground">{clock(props.message.created_at)}</Text>
           </View>
           <TextView markdown={props.message.body} selectable class="text-[14px] text-foreground" />
@@ -114,7 +138,7 @@ function LiveTurn(props: { turn: Turn }) {
   return (
     <View class="gap-1 max-w-[760px]">
       <View class="flex-row items-baseline gap-2">
-        <Text class="text-[13px] font-semibold text-foreground">{authorName(props.turn.bot_id, bots())}</Text>
+        <Text class="text-[13px] font-semibold text-foreground">{authorName(props.turn.bot_id)}</Text>
         <Text class="text-[11px] text-primary">
           {props.turn.status === "running" ? "正在回复…" : "等你处理"}
         </Text>
@@ -128,27 +152,18 @@ function LiveTurn(props: { turn: Turn }) {
   );
 }
 
+/** The open conversation's draft is the runtime's (`runtime.draft`), so it survives switching away. */
 export function Composer() {
-  const draft = signal("");
-  const busy = signal(false);
+  const busy = () => runtime.activeView?.sending ?? false;
   const submit = async () => {
-    const body = draft().trim();
-    if (!body || busy()) return;
-    busy.set(true);
-    try {
-      await send(body);
-      draft.set("");
-    } catch (error) {
-      console.error("send failed", String(error));
-    } finally {
-      busy.set(false);
-    }
+    if (!runtime.draft.trim() || busy()) return;
+    await runtime.send();
   };
   return (
     <View class="border-t border-border px-4 py-3 flex-row items-end gap-2">
       <Input
-        value={draft()}
-        onChange={(e) => draft.set(e.value)}
+        value={runtime.draft}
+        onChange={(e) => (runtime.draft = e.value)}
         onSubmit={() => void submit()}
         submitBehavior="submit"
         multiline
@@ -160,7 +175,7 @@ export function Composer() {
         role="button"
         onPress={() => void submit()}
         class="h-[36px] rounded-[10px] bg-primary px-4 items-center justify-center active:bg-primary/90"
-        style={{ opacity: busy() || !draft().trim() ? 0.5 : 1 }}
+        style={{ opacity: busy() || !runtime.draft.trim() ? 0.5 : 1 }}
       >
         <Text class="text-[13px] font-medium text-primary-foreground">发送</Text>
       </View>

@@ -95,6 +95,9 @@ jobs:
           nsh check App.tsx
           nsh test
 
+      - name: Screen tests against an isolated runtime
+        run: bun apps/desktop-nsh/scripts/ui-tests.ts
+
       - name: Build the shell and the bundle
         working-directory: apps/desktop-nsh
         run: |
