@@ -9,6 +9,13 @@ export type RequestScope = {
   deviceId: string; requestId: string; requireRevision?: boolean;
   /** Transport-owned current-principal check, never derived from request JSON. */
   guard?: () => void;
+  /**
+   * The request brought no id of its own and was given one here, so nothing can ask for it again:
+   * it runs as any write does but keeps no receipt, unless it writes a credential (a credential's
+   * pending entry is finished through its receipt). The desktop's notification polls are such
+   * writes, one every two seconds, and their receipts were most of the table.
+   */
+  ephemeral?: boolean;
 };
 export type ReceiptResponse = { status: number; body: string | null; headers?: Record<string, string> };
 export type KeyOperation = { name: string; field: string; value: string };
@@ -80,7 +87,7 @@ export class Receipts {
         work = await prepare();
       } catch (error) {
         const response = responseRecord(fromError(error, null));
-        this.tx.run(() => this.save(scope, digest, method, path, response, []));
+        this.tx.run(() => this.keep(scope, digest, method, path, response, []));
         return response;
       }
       let response: ReceiptResponse;
@@ -89,14 +96,14 @@ export class Receipts {
           scope.guard?.();
           const result = work();
           for (const op of keyOps) this.keys.markPending(op.name, op.value, scope);
-          this.save(scope, digest, method, path, result, keyOps);
+          this.keep(scope, digest, method, path, result, keyOps);
           return result;
         });
       } catch (error) {
         // A post-commit filesystem failure must retain the committed receipt for recovery.
         if (this.lookup(scope)) throw error;
         response = responseRecord(fromError(error, null));
-        this.tx.run(() => this.save(scope, digest, method, path, response, []));
+        this.tx.run(() => this.keep(scope, digest, method, path, response, []));
         return response;
       }
       return keyOps.length ? this.finishKeys(scope, keyOps, response) : response;
@@ -105,6 +112,12 @@ export class Receipts {
     this.running.set(key, promise);
     try { return await promise; }
     finally { this.running.delete(key); }
+  }
+
+  /** Saves the receipt, unless nothing can ask for it again and no credential waits on it. */
+  private keep(scope: RequestScope, digest: string, method: string, path: string, response: ReceiptResponse, ops: KeyOperation[]): void {
+    if (scope.ephemeral && ops.length === 0) return;
+    this.save(scope, digest, method, path, response, ops);
   }
 
   private save(scope: RequestScope, digest: string, method: string, path: string, response: ReceiptResponse, ops: KeyOperation[]): void {

@@ -383,4 +383,18 @@ export function migrateSchema(db: Database): void {
   lapseSupersededWorkQuestions(db);
   settleAnsweredLegacyCards(db);
   offerIgnoreOnOpenCeilingCards(db);
+  dropDesktopPollReceipts(db);
+}
+
+/**
+ * The desktop shell's notification polls kept a receipt every two seconds, under ids made up for
+ * them that nothing can ask for again (1.6 million on one database after a few weeks). They keep
+ * none now (`RequestScope.ephemeral`); those already kept go. The shell sends no request id on these,
+ * so none of them can be a tombstone a retry would need.
+ */
+function dropDesktopPollReceipts(db: Database): void {
+  db.run(`DELETE FROM request_receipts WHERE device_id = 'local' AND path IN (
+    '/v1/notifications/desktop/claim', '/v1/notifications/desktop/revalidate',
+    '/v1/notifications/desktop/report', '/v1/notifications/desktop/reconcile'
+  )`);
 }

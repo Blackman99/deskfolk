@@ -24,7 +24,7 @@ async function fixture(keys: EndpointKeyStore = memoryKeyStore()) {
     method, headers: { Authorization: "Bearer fixture", "X-Request-Id": id, ...(body instanceof FormData ? {} : { "Content-Type": "application/json" }), ...headers },
     body: method === "GET" ? undefined : body instanceof FormData ? body : JSON.stringify(body ?? {}),
   });
-  return { root, filename, store, api, call };
+  return { root, filename, store, api, call, port: server.port };
 }
 
 test("RFC8785 fixed serialization, UTF-16 order, and invalid I-JSON", () => {
@@ -262,4 +262,46 @@ test("pruning reads only the receipts that still keep a body, through an index, 
   store.receipts.prune(now, 4);
   const kept = store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM request_receipts WHERE state = 'complete'").get()!.n;
   expect(kept).toBe(4);
+});
+
+test("a local write that brings no request id runs but keeps no receipt; one that brings an id keeps it", async () => {
+  const { store, port, call } = await fixture();
+  const bare = (method: string, path: string, body: unknown) => fetch(`http://127.0.0.1:${port}${path}`, {
+    method, headers: { Authorization: "Bearer fixture", "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const kept = (path: string) => store.db.query<{ n: number }, [string]>("SELECT COUNT(*) n FROM request_receipts WHERE path = ?").get(path)!.n;
+  // The desktop shell's claim, as it sends it every two seconds: no id.
+  expect((await bare("POST", "/v1/notifications/desktop/claim", { owner_id: "shell", permission: "denied" })).status).toBe(204);
+  expect((await bare("POST", "/v1/notifications/desktop/claim", { owner_id: "shell", permission: "denied" })).status).toBe(204);
+  expect(kept("/v1/notifications/desktop/claim")).toBe(0);
+  // A write without an id still commits.
+  expect((await bare("PATCH", "/v1/settings", { locale: "en" })).status).toBe(200);
+  expect((await store.settings()).locale).toBe("en");
+  expect(kept("/v1/settings")).toBe(0);
+  // With an id it keeps its receipt, for a retry to replay.
+  const id = ulid();
+  expect((await call("POST", "/v1/notifications/desktop/claim", { owner_id: "shell", permission: "denied" }, id)).status).toBe(204);
+  expect(kept("/v1/notifications/desktop/claim")).toBe(1);
+});
+
+test("the receipts the desktop's polls kept go on the next start, and the others stay", async () => {
+  const root = mkdtempSync(join(tmpdir(), "rc02-test-"));
+  const filename = join(root, "test.sqlite");
+  cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+  const first = new Store({ filename, endpointKey: memoryKeyStore() });
+  const insert = first.db.prepare(`INSERT INTO request_receipts (device_id, request_id, payload_sha256, method, path, state, status, body, headers, key_ops, created_at)
+    VALUES (?, ?, 'x', 'POST', ?, 'expired', 204, NULL, '{}', NULL, 1)`);
+  for (const path of ["/v1/notifications/desktop/claim", "/v1/notifications/desktop/revalidate", "/v1/notifications/desktop/report", "/v1/notifications/desktop/reconcile"]) {
+    insert.run("local", ulid(), path);
+  }
+  insert.run("local", ulid(), "/v1/sessions/s1/read");
+  insert.run("phone-1", ulid(), "/v1/notifications/desktop/claim");
+  first.close();
+  const again = new Store({ filename, endpointKey: memoryKeyStore() });
+  const left = again.db.query<{ device_id: string; path: string }, []>("SELECT device_id, path FROM request_receipts ORDER BY path").all();
+  again.close();
+  expect(left).toEqual([
+    { device_id: "phone-1", path: "/v1/notifications/desktop/claim" },
+    { device_id: "local", path: "/v1/sessions/s1/read" },
+  ]);
 });

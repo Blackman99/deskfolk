@@ -774,8 +774,9 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       // Quit stops the processes. The rows stay, so the next start puts each shell back where it was.
       if (request.method === "POST" && path === "/v1/runtime/quit") terminals.shutdown();
       const isMutation = ["POST", "PATCH", "PUT", "DELETE"].includes(request.method) && !isNonReceiptPath(path);
+      const suppliedId = request.headers.get("X-Request-Id");
       const response = isMutation
-        ? await mutate(request, url, { deviceId: "local", requestId: request.headers.get("X-Request-Id") ?? ulid() })
+        ? await mutate(request, url, { deviceId: "local", requestId: suppliedId ?? ulid(), ephemeral: suppliedId === null })
         : await readBusiness(request, url);
       if (origin && originState === "allowed") {
         const headers = new Headers(response.headers);
