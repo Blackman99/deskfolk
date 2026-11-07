@@ -7,7 +7,7 @@
  * fed through `onTabDrag` in the window's coordinates, and so is the strip's own (`onStripDrag`),
  * which moves a floating pane or the whole pane's tabs. The tab's ⋯ and × stay out of the tab order.
  */
-import { effect, PanResponder, Scroll, signal, untracked, View, type PressEvent, type ScrollRef, type ViewRef } from "nsh";
+import { cleanup, effect, PanResponder, Scroll, signal, untracked, View, type PressEvent, type ScrollRef, type ViewRef } from "nsh";
 import { copy } from "../../runtime";
 import { onWheel } from "../../platform/wheel";
 import type { LeafNode } from "../../m/workbench/layout-types.ts";
@@ -206,6 +206,12 @@ export function LeafStrip(props: StripProps) {
       () => (swallowUntil = Date.now() + 300),
     );
     let moreRef: ViewRef | null = null;
+    // The strip outlives the tabs it shows: a tab that goes takes its entries with it (a ref kept here kept its views).
+    cleanup(() => {
+      tabRefs.delete(tabId);
+      const { [tabId]: _gone, ...rest } = untracked(widths);
+      widths.set(rest);
+    });
     return (
       <View
         testID={`wb-tab-${tabId}`}

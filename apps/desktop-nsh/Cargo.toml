@@ -14,8 +14,11 @@ publish = false
 nsh-platform-macos = "=0.4.0"
 nsh-engine = { version = "=0.4.0", default-features = false }
 nsh-core = "=0.4.0"
-# NSH's own objc2 line; Cargo unifies the features.
-objc2 = "0.6.5"
+# NSH's own objc2 line; Cargo unifies the features. In a debug build objc2 looks every message's
+# method up and checks its encoding before sending it (`class_getInstanceMethod` on each send):
+# the top of the main thread's samples during a live resize. The feature turns the check off (a
+# release build has none anyway).
+objc2 = { version = "0.6.5", features = ["disable-encoding-assertions"] }
 block2 = "0.6.2"
 dispatch2 = "0.3.1"
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std"] }
