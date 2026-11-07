@@ -293,8 +293,14 @@ export function Composer(props: {
     </View>
   );
 
+  /**
+   * The text on a line of its own above the tool row: always where the composer is wide, and where
+   * it is docked (a phone) too once the row carries the Bot's model, as the Svelte's `.has-tune`
+   * row wraps the editor to the top; a docked row without one keeps the text between its buttons.
+   */
+  const editorAbove = () => wide() || Boolean(tuneBot());
   const editorBox = () => (
-    <View class={wide() ? "w-full min-w-0" : "flex-1 min-w-0"}>
+    <View class={editorAbove() ? "w-full min-w-0" : "flex-1 min-w-0"}>
       <ComposerEditor
         value={view()?.draft ?? ""}
         onChange={(text) => {
@@ -373,7 +379,7 @@ export function Composer(props: {
               />
             </If>
 
-            <If when={toolRow() && wide()}>{editorBox()}</If>
+            <If when={toolRow() && editorAbove()}>{editorBox()}</If>
             <If when={toolRow()}>
               <View class="flex-row items-center w-full gap-2">
                 <ToolButton
@@ -384,11 +390,11 @@ export function Composer(props: {
                   onPress={() => void pickFiles()}
                 />
                 <If when={tuneBot()}>
-                  <View class={`${wide() ? "" : "flex-1 "}min-w-0 flex-row`}>
+                  <View class="min-w-0 flex-row">
                     <BotTune bot={tuneBot()!} disabled={!connected()} onPick={(change) => void tuneModel(tuneBot()!.id, change)} />
                   </View>
                 </If>
-                <If when={wide()} else={editorBox()}>
+                <If when={editorAbove()} else={editorBox()}>
                   <View class="flex-1" />
                 </If>
                 <If when={voiceOffered() || voice.busy}>
