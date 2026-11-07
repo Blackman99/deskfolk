@@ -14,8 +14,7 @@
  *
  * Not here, against the Svelte: `ImageCopy` (one DOM listener for every picture's right click;
  * NSH pictures carry their own `ImageContextMenu`), the pages' slide transitions, dragging a
- * conversation from the sidebar onto the workbench (the rows report a press, not a pan:
- * FOLLOWUPS), the interface profile (ADR 0106, `wireInterface`), and focus restoring.
+ * the interface profile (ADR 0106, `wireInterface`), and focus restoring.
  */
 import type { SessionSummary } from "@real-bot/protocol";
 import { computed, PanResponder, Text, View } from "nsh";
@@ -64,9 +63,10 @@ import { NewPaneMenu } from "../workbench/NewPaneMenu";
 import { PaneContentHost } from "../workbench/PaneContentHost";
 import { PaneTabLabel } from "../workbench/PaneTabLabel";
 import type { TabAction } from "../workbench/types";
-import { Workbench } from "../workbench/Workbench";
+import { Workbench, type WorkbenchApi } from "../workbench/Workbench";
 import { WorkspaceDragGhost } from "../WorkspaceDragGhost";
 import { bindShellKeys } from "./shell-keys";
+import { createSessionDrag } from "./session-drag";
 import { createShellState, type ShellState } from "./shell-state";
 
 export function Shell() {
@@ -86,6 +86,8 @@ function ShellBody(props: { s: ShellState }) {
   const snapshot = () => s.snapshot();
   const artifact = s.artifact;
   const workbench = s.workbench;
+  /** A conversation pulled out of the roster onto the workbench: only where the workbench is. */
+  const sessionDrag = createSessionDrag({ source: workbench.sessionDragSource, titleOf: s.titleOf });
   /** A page covers the roster on a phone while one is open. */
   const pageOpen = () => Boolean(runtime.routinesOpen || runtime.spendOpen || runtime.terminalOpen || runtime.screenOpen || s.selected());
 
@@ -137,6 +139,7 @@ function ShellBody(props: { s: ShellState }) {
               onNewTerminal={() => void workbench.openNewTerminal(null)}
               onOpenArchived={s.openArchivedFromRail}
               onOpenSettings={() => runtime.openSettings()}
+              onDragSession={s.wide() ? sessionDrag.drag : undefined}
             />
           </View>
         </If>
@@ -174,6 +177,7 @@ function ShellBody(props: { s: ShellState }) {
               onCreateGroup={s.openCreateGroup}
               onCollapse={s.sidebarColumn() ? s.toggleSidebar : undefined}
               onHandle={(handle) => s.setSidebarHandle(handle)}
+              onDragSession={s.wide() ? sessionDrag.drag : undefined}
             />
           </View>
           <If when={s.sidebarColumn()}>
@@ -195,7 +199,7 @@ function ShellBody(props: { s: ShellState }) {
             style={!s.sidebarColumn() ? { zIndex: 10 } : undefined}
           >
             <If when={s.wide()} else={<MainPages s={s} />}>
-              <ShellWorkbench s={s} />
+              <ShellWorkbench s={s} onApi={sessionDrag.setApi} />
             </If>
           </View>
         </If>
@@ -291,7 +295,7 @@ function MainPages(props: { s: ShellState }) {
 }
 
 /** The desktop's workbench, with every tab's body, label, bar and menus. */
-function ShellWorkbench(props: { s: ShellState }) {
+function ShellWorkbench(props: { s: ShellState; onApi: (api: WorkbenchApi) => void }) {
   const s = props.s;
   const t = () => s.t();
   const workbench = s.workbench;
@@ -347,6 +351,7 @@ function ShellWorkbench(props: { s: ShellState }) {
       layout={layout()}
       mins={paneMin}
       wide={true}
+      onApi={props.onApi}
       tabName={workbench.paneTitle}
       tabActions={chatTabActions}
       onLayout={workbench.commitLayout}

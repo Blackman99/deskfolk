@@ -8,8 +8,8 @@
  * Props the Svelte one `bind:`s become a value and an `on…Change` (`toolsMenuOpen`, `createMenuOpen`);
  * `bind:this` + `showArchived()` is `onHandle`, called once with `{ showArchived }`. `runtime` and `t`
  * are the app's. A context menu is asked for with its place in the window: `onOpenContextMenu(at,
- * session)`; `onDragSession(event, session)` hears the press that may become a drag into the
- * workbench, and the shell turns it into the workbench's `dragIn`.
+ * session)`; `onDragSession(phase, point, session)` hears a row pulled out of the list (start, moves, end
+ * or cancel, in the window's coordinates), and the shell turns it into the workbench's `dragIn`.
  *
  * Not ported: a row sliding when it moves up the list (`moveFlip`), the window click that closed the
  * create menu (its sheet has its own backdrop), the glass-tint grey override, and the list's empty
@@ -54,7 +54,7 @@ import { ToolsToggle } from "./ToolsToggle";
 import { WorkingFilter } from "./WorkingFilter";
 import { SidebarList, type SidebarListEnv } from "./sidebar-list";
 import { listRows } from "./sidebar-list-model";
-import type { PressEvent } from "nsh";
+import type { SessionDragHandler } from "./session-drag";
 
 /** What the shell can call on the list from outside it (the Svelte component's exported `showArchived`). */
 export type SidebarHandle = { showArchived: () => void };
@@ -96,7 +96,7 @@ export function Sidebar(props: {
   /** Puts the list away. Only where it can be: the desktop workbench, which has a way back. */
   onCollapse?: () => void;
   /** A press on a conversation that may become a drag into the workbench: only where there is one. */
-  onDragSession?: (event: PressEvent, session: SessionSummary) => void;
+  onDragSession?: SessionDragHandler;
   /** Called once with the handle (`showArchived`). */
   onHandle?: (handle: SidebarHandle) => void;
 }) {

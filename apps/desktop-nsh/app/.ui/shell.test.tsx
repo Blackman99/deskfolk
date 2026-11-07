@@ -32,6 +32,15 @@ test("wide: the sidebar beside the workbench; a conversation picked in the list 
   expect(app.shows("id:mobile-nav")).toBe(false);
 });
 
+test("wide: a conversation pulled from the list onto the workbench opens as a tab where it is let go", async () => {
+  const app = await open({ width: 1280 });
+  expect(app.count("id:chat-tab-name")).toBe(0);
+  await app.drag(`id:session-${seeded.writerDirect}`, { x: 700, y: 120 });
+  await app.waitFor("id:chat-tab-name", { timeout: 10_000 });
+  await app.waitFor("id:composer-drop", { timeout: 10_000 });
+  expect(app.count("id:chat-tab-name")).toBe(1);
+});
+
 test("⌘K opens search and Escape puts it away; Escape also closes the settings window", async () => {
   const app = await open({ width: 1280 });
   await app.keyboard.press("mod+k");

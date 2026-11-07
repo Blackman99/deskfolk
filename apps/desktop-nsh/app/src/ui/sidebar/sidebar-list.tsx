@@ -7,7 +7,8 @@
  * Not ported: a row that moves up the list sliding there (`moveFlip`); a recycled list has no
  * sibling to animate from.
  */
-import { List, platform, Text, View, type PressEvent, type ViewRef } from "nsh";
+import { List, platform, Text, View, type ViewRef } from "nsh";
+import type { SessionDragHandler } from "./session-drag";
 import type { Bot, ProjectAgent, SessionSummary } from "@real-bot/protocol";
 import { isSessionPinned } from "../../m/sidebar/pinned-sessions";
 import { PROJECT_AGENTS, projectAgentOf, type ProjectDirGroup } from "../../m/sidebar/project-groups";
@@ -43,7 +44,7 @@ export type SidebarListEnv = {
   onOpenContextMenu: (at: MenuAt, session: SessionSummary) => void;
   onTogglePin?: (sessionId: string) => void;
   onRenameSession?: (sessionId: string, name: string | null) => Promise<boolean>;
-  onDragSession?: (event: PressEvent, session: SessionSummary) => void;
+  onDragSession?: SessionDragHandler;
   closeArchived: () => void;
   /** The + of a section, with the view it hangs the menu from. */
   onSectionAdd: (section: "bots" | "projects", anchor: ViewRef | null) => void;
@@ -92,7 +93,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
         botStatus={e.botStatusOf}
         onSelect={() => e.onSelect(session())}
         onContextMenu={(at) => e.onOpenContextMenu(at, session())}
-        onPointerDown={e.onDragSession ? (ev) => e.onDragSession?.(ev, session()) : undefined}
+        onDrag={e.onDragSession ? (phase, point) => e.onDragSession?.(phase, point, session()) : undefined}
         pinned={variant() === "bot" ? isSessionPinned(e.pinnedSessionIds(), session().id) : undefined}
         onTogglePin={variant() === "bot" && e.onTogglePin ? () => e.onTogglePin?.(session().id) : undefined}
       />
@@ -121,7 +122,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
           botStatus={e.botStatusOf}
           onSelect={() => e.onSelect(session())}
           onContextMenu={(at) => e.onOpenContextMenu(at, session())}
-          onPointerDown={e.onDragSession ? (ev) => e.onDragSession?.(ev, session()) : undefined}
+          onDrag={e.onDragSession ? (phase, point) => e.onDragSession?.(phase, point, session()) : undefined}
           pinned={isSessionPinned(e.pinnedSessionIds(), session().id)}
           onTogglePin={e.onTogglePin ? () => e.onTogglePin?.(session().id) : undefined}
         />

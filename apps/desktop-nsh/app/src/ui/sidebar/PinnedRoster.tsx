@@ -7,7 +7,7 @@
  * or unread shows its count on the corner. `runtime` is the window's, not a prop.
  */
 import { Scroll, signal, Text, token, View } from "nsh";
-import type { PressEvent } from "nsh";
+import { sessionPan, type SessionDragHandler } from "./session-drag";
 import type { Bot, SessionSummary } from "@real-bot/protocol";
 import { projectAgentOf } from "../../m/sidebar/project-groups";
 import { isFileDropSession } from "../../m/sidebar/session-groups";
@@ -31,7 +31,7 @@ function PinnedItem(props: {
   unread: number;
   title: string;
   archivedSuffix: string;
-  onDragSession?: (event: PressEvent, session: SessionSummary) => void;
+  onDragSession?: SessionDragHandler;
 }) {
   const t = () => copy();
   const active = () => runtime.selectedId === props.session.id;
@@ -54,7 +54,7 @@ function PinnedItem(props: {
       onPress={() => void runtime.selectSession(props.session.id)}
       onContextMenu={(e) => props.onContextMenu({ x: e.pagePosition.x, y: e.pagePosition.y }, props.session)}
       onLongPress={(e) => props.onContextMenu({ x: e.pagePosition.x, y: e.pagePosition.y }, props.session)}
-      onPressDown={props.onDragSession ? (e) => props.onDragSession?.(e, props.session) : undefined}
+      {...sessionPan(() => (props.onDragSession ? (phase, point) => props.onDragSession?.(phase, point, props.session) : undefined))}
       class={`items-center justify-start gap-[3px] w-[58px] h-[60px] shrink-0 pt-1 px-[2px] pb-[2px] rounded-(--radius-md) border active:scale-[0.97] ${frame()}`}
       style={{ boxShadow: shadow("xs") }}
     >
@@ -128,7 +128,7 @@ export function PinnedRoster(props: {
   titleOf: (session: SessionSummary) => string;
   archivedSuffix: (session: SessionSummary) => string;
   /** A press on a pin that may become a drag into the workbench: only where there is one. */
-  onDragSession?: (event: PressEvent, session: SessionSummary) => void;
+  onDragSession?: SessionDragHandler;
 }) {
   const expanded = signal(false);
   const items = () =>

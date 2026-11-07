@@ -9,7 +9,8 @@
  * Svelte `onkeydown` the tools button used for ArrowUp / ArrowDown; it hears the two keys only while
  * the button has the focus.
  */
-import { cleanup, effect, keymap, Overlay, signal, Text, untracked, View, windowSize, type ContextMenuEvent, type JSX, type PressEvent, type ViewRef } from "nsh";
+import { cleanup, effect, keymap, Overlay, signal, Text, untracked, View, windowSize, type ContextMenuEvent, type JSX, type ViewRef } from "nsh";
+import { sessionPan, type SessionDrag } from "./session-drag";
 import { shadow } from "../styles";
 
 /** Long enough that a pass across the rail does not light every tip; short enough to feel waiting. */
@@ -42,8 +43,8 @@ export function RailTooltip(props: {
   pressed?: boolean;
   onPress?: () => void;
   onContextMenu?: (e: ContextMenuEvent) => void;
-  /** A press that may become a drag (the Svelte `onpointerdown`). */
-  onPressDown?: (e: PressEvent) => void;
+  /** The button pulled away (a conversation onto the workbench); a press that does not travel is `onPress`. */
+  onDrag?: SessionDrag;
   /** ArrowUp / ArrowDown while the button has the focus. */
   onArrow?: (key: "up" | "down") => void;
   onAnchor?: (node: ViewRef) => void;
@@ -193,10 +194,8 @@ export function RailTooltip(props: {
         onMouseLeave={onMouseLeave}
         onFocus={onFocus}
         onBlur={onBlur}
-        onPressDown={(e) => {
-          hide();
-          props.onPressDown?.(e);
-        }}
+        onPressDown={() => hide()}
+        {...sessionPan(() => props.onDrag)}
         onPress={onPress}
         onContextMenu={(e) => {
           hide();

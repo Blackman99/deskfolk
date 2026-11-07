@@ -8,7 +8,8 @@
  * are the app's (`runtime`, `copy()`).
  */
 import type { SessionSummary } from "@real-bot/protocol";
-import { Scroll, signal, Text, token, View, type ContextMenuEvent, type PressEvent, type ViewRef } from "nsh";
+import { Scroll, signal, Text, token, View, type ContextMenuEvent, type ViewRef } from "nsh";
+import type { SessionDragHandler } from "./session-drag";
 import { titleBar } from "nsh/desktop";
 import { copy, runtime } from "../../runtime";
 import { formatShortcut } from "../../m/keymap";
@@ -51,7 +52,7 @@ export function SidebarRail(props: {
   /** The folded list has no search field; this opens the same search the field does. */
   onOpenSearch: () => void;
   /** A press on an avatar that may become a drag into the workbench: only where there is one. */
-  onDragSession?: (event: PressEvent, session: SessionSummary) => void;
+  onDragSession?: SessionDragHandler;
 }) {
   const snapshot = () => runtime.snapshot;
   const botsById = () => new Map(snapshot().bots.map((b) => [b.id, b] as const));
@@ -149,7 +150,7 @@ export function SidebarRail(props: {
         current={on()}
         onPress={() => void runtime.selectSession(session.id)}
         onContextMenu={(e) => props.onOpenContextMenu(e, session)}
-        onPressDown={props.onDragSession ? (e) => props.onDragSession?.(e, session) : undefined}
+        onDrag={props.onDragSession ? (phase, point) => props.onDragSession?.(phase, point, session) : undefined}
       >
         <If
           when={isFileDropSession(session)}

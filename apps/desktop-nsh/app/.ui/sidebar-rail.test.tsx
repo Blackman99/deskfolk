@@ -10,7 +10,7 @@ const open = async (options: Parameters<typeof openStory>[1] = { height: 900 }) 
   await app.waitFor(`id:rail-session-${seeded.group}`, { timeout: 15_000 });
   return app;
 };
-const log = (app: App) => app.texts().find((x) => x === "—" || /^(rail-|search|expand|menu:|drag:|workspace-toggle|lift|create|spend|routines|usage|roles|terminal|foot-|narrow-|archived|fab|screen)/.test(x)) ?? "";
+const log = (app: App) => app.texts().find((x) => x === "—" || /^(rail-|search|expand|menu:|drag(-end|-cancel)?:|workspace-toggle|lift|create|spend|routines|usage|roles|terminal|foot-|narrow-|archived|fab|screen)/.test(x)) ?? "";
 const state = (app: App) => app.texts().find((x) => x.startsWith("selected:")) ?? "";
 const rail = (id: string) => `id:rail-session-${id}`;
 
@@ -54,6 +54,10 @@ test("an avatar opens its conversation, its menu and the start of a drag; the ra
   await app.waitUntil(() => state(app).includes(`selected:${seeded.group}`));
   await app.rightClick(rail(seeded.writerDirect));
   await app.waitUntil(() => log(app).includes("menu:direct"));
+  // A press that stays put selected it and began nothing; pulled away, it is a drag.
+  expect(log(app).startsWith("drag")).toBe(false);
+  await app.drag(rail(seeded.writerDirect), { x: 90, y: 0 });
+  await app.waitUntil(() => log(app).includes("drag-end:direct"));
   await app.press("id:rail-expand");
   await app.waitUntil(() => log(app).includes("expand"));
   await app.press("id:rail-search");

@@ -200,7 +200,7 @@ export default function SidebarMainStory() {
             onCreateBot={() => say("create-bot")}
             onCreateGroup={() => say("create-group")}
             onCollapse={collapsible() ? () => say("collapse") : undefined}
-            onDragSession={dragEnabled() ? (_e, session) => say(`drag:${idOf(session.id)}`) : undefined}
+            onDragSession={dragEnabled() ? (phase, _point, session) => say(`drag${phase === "start" ? "" : `-${phase}`}:${idOf(session.id)}`) : undefined}
             onHandle={(h) => {
               handle = h;
             }}

@@ -9,7 +9,7 @@ import { effect, keymap, signal, Text, token, View } from "nsh";
 import { Input } from "nsh/base";
 import type { InputRef } from "nsh";
 import type { Bot, ProjectAgent, SessionSummary } from "@real-bot/protocol";
-import type { PressEvent } from "nsh";
+import type { SessionDrag } from "./session-drag";
 import type { SessionStatusResult } from "../../m/sidebar/session-status";
 import { copy } from "../../runtime";
 import { narrowWindow } from "../Modal";
@@ -42,7 +42,7 @@ export function ProjectSessionRow(props: {
   botStatus: (botId: string) => SessionStatusResult | undefined;
   onSelect: () => void;
   onContextMenu: (at: MenuAt) => void;
-  onPointerDown?: (e: PressEvent) => void;
+  onDrag?: SessionDrag;
   pinned?: boolean;
   onTogglePin?: () => void;
 }) {
@@ -111,7 +111,7 @@ export function ProjectSessionRow(props: {
           botStatus={props.botStatus}
           onSelect={props.onSelect}
           onContextMenu={props.onContextMenu}
-          onPointerDown={props.onPointerDown}
+          onDrag={props.onDrag}
           pinned={props.pinned}
           onTogglePin={props.onTogglePin}
         />

@@ -143,7 +143,7 @@ export default function SidebarRailStory() {
             say("rail-settings");
           }}
           onOpenSearch={() => say("search")}
-          onDragSession={(_e, session) => say(`drag:${session.id === direct()?.id ? "direct" : "group"}`)}
+          onDragSession={(phase, _point, session) => say(`drag${phase === "start" ? "" : `-${phase}`}:${session.id === direct()?.id ? "direct" : "group"}`)}
         />
       </View>
       <Scroll class="flex-1 min-w-0">

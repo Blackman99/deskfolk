@@ -15,7 +15,7 @@
  */
 import { platform, signal, Text, token, View } from "nsh";
 import type { Bot, ProjectAgent, SessionSummary } from "@real-bot/protocol";
-import type { PressEvent } from "nsh";
+import { sessionPan, type SessionDrag } from "./session-drag";
 import type { SessionStatusResult } from "../../m/sidebar/session-status";
 import { unreadBadge } from "../../m/sidebar/unread";
 import { copy } from "../../runtime";
@@ -86,8 +86,8 @@ export function SessionRow(props: {
   onSelect: () => void;
   /** The menu was asked for (right click, a long press, ⋯), at this place in the window. */
   onContextMenu: (at: MenuAt) => void;
-  /** A press that may become a drag into the workbench: only where there is one. */
-  onPointerDown?: (e: PressEvent) => void;
+  /** The row pulled onto the workbench: only where there is one. A press that does not travel is still `onSelect`. */
+  onDrag?: SessionDrag;
   /** Whether the row is pinned; with `onTogglePin`, the row offers pin and ⋯ under the pointer. */
   pinned?: boolean;
   onTogglePin?: () => void;
@@ -122,7 +122,7 @@ export function SessionRow(props: {
         onPress={() => props.onSelect()}
         onContextMenu={(e) => props.onContextMenu(at(e))}
         onLongPress={phone() || !platform.desktop ? (e) => props.onContextMenu(at(e)) : undefined}
-        onPressDown={props.onPointerDown ? (e) => props.onPointerDown?.(e) : undefined}
+        {...sessionPan(() => props.onDrag)}
         delayLongPress={450}
         class={`flex-row items-center active:scale-[0.985] ${rowClass()} ${props.archived ? "opacity-[0.85]" : ""}`}
         style={props.on && !phone() ? { boxShadow: shadow("sm") } : undefined}

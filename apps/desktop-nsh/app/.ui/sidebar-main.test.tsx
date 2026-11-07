@@ -48,18 +48,20 @@ test("the list heads itself with the mark, the switches and a search; the conver
   await app.waitUntil(() => logged(app, "search"));
 });
 
-test("a press selects a conversation, a right-click asks for its menu, a press-down is handed on for dragging", async () => {
+test("a press selects a conversation, a right-click asks for its menu, a row pulled away is handed on for dragging", async () => {
   const app = await open();
   await app.press(`id:session-${seeded.writerDirect}`);
   await app.waitUntil(() => stateText(app).includes(`selected:${seeded.writerDirect}`));
   await app.rightClick(`id:session-${seeded.group}`);
   await app.waitUntil(() => logged(app, "menu:group"));
-  await app.press(`id:session-${seeded.group}`);
-  await app.waitUntil(() => logged(app, "drag:group"));
+  // A press that stays put is a press, not a drag.
+  expect(logText(app).includes("drag:")).toBe(false);
+  await app.drag(`id:session-${seeded.group}`, { x: 120, y: 0 });
+  await app.waitUntil(() => logged(app, "drag:group") && logged(app, "drag-end:group"));
   await app.press("id:toggle-drag");
   const before = logText(app);
-  await app.press(`id:session-${seeded.writerDirect}`);
-  await app.waitUntil(() => stateText(app).includes(`selected:${seeded.writerDirect}`));
+  await app.drag(`id:session-${seeded.writerDirect}`, { x: 120, y: 0 });
+  await app.wait(200);
   expect(logText(app)).toBe(before);
 });
 
