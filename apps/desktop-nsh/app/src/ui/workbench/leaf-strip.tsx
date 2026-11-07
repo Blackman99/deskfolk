@@ -108,6 +108,11 @@ export function LeafStrip(props: StripProps) {
   let blockStripDrag = false;
 
   const widthOf = (id: string) => widths()[id] ?? 0;
+  const widthsOfShown = (): Record<string, number> => {
+    const kept: Record<string, number> = {};
+    for (const tab of leaf().tabs) if (tab.id in widths()) kept[tab.id] = widths()[tab.id]!;
+    return kept;
+  };
   const contentWidth = () => leaf().tabs.reduce((sum, tab) => sum + widthOf(tab.id), 0);
   const moreStart = () => scroll() > 1;
   const moreEnd = () => viewWidth() > 0 && scroll() < contentWidth() - viewWidth() - 1;
@@ -206,19 +211,16 @@ export function LeafStrip(props: StripProps) {
       () => (swallowUntil = Date.now() + 300),
     );
     let moreRef: ViewRef | null = null;
-    // The strip outlives the tabs it shows: a tab that goes takes its entries with it (a ref kept here kept its views).
-    cleanup(() => {
-      tabRefs.delete(tabId);
-      const { [tabId]: _gone, ...rest } = untracked(widths);
-      widths.set(rest);
-    });
+    // The strip outlives the tabs it shows: a tab that goes takes its ref with it (a ref kept here kept its views).
+    cleanup(() => tabRefs.delete(tabId));
     return (
       <View
         testID={`wb-tab-${tabId}`}
         ref={(node) => tabRefs.set(tabId, node)}
         onLayout={(e) => {
           const w = e.bounds.size.width;
-          if (widths()[tabId] !== w) widths.set({ ...widths(), [tabId]: w });
+          // Only the tabs still shown keep a width (dropped here, not as a tab goes: no write while it is torn down).
+          if (widths()[tabId] !== w) widths.set({ ...widthsOfShown(), [tabId]: w });
         }}
         onMouseEnter={() => hovered.set(tabId)}
         onMouseLeave={() => hovered() === tabId && hovered.set(null)}
