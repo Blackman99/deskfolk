@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Setup and Settings keep the models you are picking
+
+- Any change to the saved settings, even one about something else (the theme, launch at login, setup's own save of the workspace a moment earlier), put the saved workspace, endpoint, models and default model back into setup and the settings, wiping what you had picked and not yet saved. A field now follows the saved settings only when its saved value changed.
+
 ### No more half-second stalls after weeks of use
 
 - Every change the app makes (sending a line, marking a conversation read, the desktop's notification check every two seconds) leaves a request receipt, and each one first tidied the receipts it keeps bodies for by reading through all of them. After a few weeks there were over a million, so each change took about 400 ms and, while it ran, held up every other request: switching conversations or opening a file could wait that long at random, every couple of seconds. An index now leads that tidy-up straight to the few receipts it touches, about 6 ms however many have piled up. It is built once, on the first start after updating (under a second on a large database).
