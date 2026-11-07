@@ -234,7 +234,11 @@ export function PaneContentHost(props: {
                       class="h-full min-h-0 overflow-hidden border-l border-line bg-pane"
                       style={{ width: drawerWidth(), boxShadow: shadow("sheet-end") }}
                     >
-                      {props.settingsSide(s().id, open().botId ?? null)}
+                      {/* Made again only for another conversation or Bot: called in this insert, it read the
+                          session row and was made again whenever the conversation updated. */}
+                      <Each of={[`${s().id}:${open().botId ?? ""}`]} key={(k) => k}>
+                        {() => untracked(() => props.settingsSide(s().id, open().botId ?? null))}
+                      </Each>
                     </View>
                   </View>
                 )}

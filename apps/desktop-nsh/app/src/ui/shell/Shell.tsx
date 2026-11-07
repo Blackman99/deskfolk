@@ -377,20 +377,33 @@ function ShellWorkbench(props: { s: ShellState; onApi: (api: WorkbenchApi) => vo
           onCloseSide={s.closePaneSide}
           settingsSide={settingsSide}
           chatBar={(barTab, barLeaf) => {
-            const content = contentOfTab(barTab);
-            const session = content?.kind === "chat" ? s.sessionsById().get(content.sessionId) : undefined;
-            return session ? <PaneChatBar session={session} actions={chatBarActions(barLeaf, barTab)} /> : <View />;
+            // Read inside the `If`, not here: the pane calls this in a tracked insert, and the tab's
+            // params and the session list read here made the bar again on every layout commit and
+            // every session update (each streamed line updates its session's last message).
+            const session = () => {
+              const content = contentOfTab(barTab);
+              return content?.kind === "chat" ? s.sessionsById().get(content.sessionId) : undefined;
+            };
+            return (
+              <If when={session()} else={<View />}>
+                {(row) => <PaneChatBar session={row()} actions={chatBarActions(barLeaf, barTab)} />}
+              </If>
+            );
           }}
           onCreateBot={s.openCreateBot}
         />
       )}
       tabLabel={(tab) => {
-        const content = contentOfTab(tab);
-        const session = content?.kind === "chat" ? s.sessionsById().get(content.sessionId) : undefined;
-        return session ? (
-          <ChatTabLabel session={session} title={workbench.paneTitle(tab)} />
-        ) : (
-          <PaneTabLabel kind={content?.kind ?? null} title={workbench.paneTitle(tab)} />
+        // Read inside the `If`, as the chat bar's: here, in the strip's tracked insert, they made the
+        // label again on every layout commit and every session update.
+        const session = () => {
+          const content = contentOfTab(tab);
+          return content?.kind === "chat" ? s.sessionsById().get(content.sessionId) : undefined;
+        };
+        return (
+          <If when={session()} else={<PaneTabLabel kind={contentOfTab(tab)?.kind ?? null} title={workbench.paneTitle(tab)} />}>
+            {(row) => <ChatTabLabel session={row()} title={workbench.paneTitle(tab)} />}
+          </If>
         );
       }}
       emptyLead={() => (
