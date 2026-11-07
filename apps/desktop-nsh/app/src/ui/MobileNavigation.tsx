@@ -1,11 +1,14 @@
 /**
  * A phone's bottom bar (`MobileNavigation.svelte`): your Bots' conversations, the project sessions
  * (ADR 0095), settings. The workspace is one of the Tools, not a destination of its own. The caller
- * mounts it on a phone; there is no media query to hide it.
+ * mounts it on a phone; there is no media query to hide it. It is the `mobile-nav` hook, and its
+ * Settings tab is one of the floor (ADR 0108).
  */
-import { safeArea, Text, View } from "nsh";
+import { safeArea, Text, View, type ViewRef } from "nsh";
 import { copy } from "../runtime";
 import { Icon, type IconName } from "./Icon";
+import { floor } from "./interface/floor";
+import { ui } from "./interface/hooks";
 
 export type Destination = "sessions" | "projects" | "settings";
 
@@ -14,9 +17,13 @@ export function MobileNavigation(props: {
   updateAvailable?: boolean;
   onNavigate: (destination: Destination) => void;
 }) {
+  const settingsFloor = floor("settings-entry", () => ({ ink: props.active === "settings" ? "brand" : "ink-muted", ground: ["pane"] }));
   const tab = (destination: Destination, icon: IconName, label: () => string, testID: string) => (
     <View
       role="button"
+      ref={(node: ViewRef) => {
+        if (destination === "settings") settingsFloor(node);
+      }}
       testID={testID}
       accessibilityLabel={label()}
       accessibilityState={{ selected: props.active === destination }}
@@ -41,7 +48,7 @@ export function MobileNavigation(props: {
       role="navigation"
       accessibilityLabel={copy().sidebar.mainNavigation}
       testID="mobile-nav"
-      class="flex-row w-full px-3 pt-[3px] border-t border-line-subtle bg-pane"
+      class={ui("mobile-nav", "flex-row w-full px-3 pt-[3px] border-t border-line-subtle bg-pane")}
       style={{ height: 60 + safeArea().bottom, paddingBottom: 3 + safeArea().bottom }}
     >
       <View class="flex-1">{tab("sessions", "message", () => copy().sidebar.botsTab, "nav-sessions")}</View>

@@ -5,7 +5,8 @@
  * box when it hops or waves. With reduced motion each status keeps a still pose: raised hand, closed
  * eyes, frown.
  */
-import { Easing, Image, Text, View, createMotion, effect, reduceMotion, signal, token, type Motion, type MotionSpec } from "nsh";
+import { Easing, Image, Text, View, createMotion, effect, signal, token, type Motion, type MotionSpec } from "nsh";
+import { reduceMotion } from "./interface/motion";
 import { FOLK_GEOMETRY, FOLK_RAISED_ARM_DEG, folkHash, folkLayerSrc, folkLook } from "@real-bot/protocol";
 import type { FolkMotion } from "../m/folk-motion";
 

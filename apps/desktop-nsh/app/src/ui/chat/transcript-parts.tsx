@@ -8,7 +8,8 @@
  * segment (`onMouseEnter` / `onMouseLeave`), absolutely placed on the segment's top edge so it never
  * moves the layout. On a phone (window 680 wide or less) it has no job: the long press opens the menu.
  */
-import { createMotion, reduceMotion, Text, token, View, type JSX, type Point, type ViewStyle } from "nsh";
+import { createMotion, Text, token, View, type JSX, type Point, type ViewStyle } from "nsh";
+import { reduceMotion } from "../interface/motion";
 import type { Bot, Message } from "@real-bot/protocol";
 import { avatarSrc, botAvatarColor } from "../../m/avatar.ts";
 import { QUICK_REACTIONS } from "../../m/chat/quick-reactions.ts";

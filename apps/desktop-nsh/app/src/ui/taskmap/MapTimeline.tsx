@@ -2,7 +2,8 @@
  * The map's clock (`MapTimeline.svelte`, ADR 0096): play, speed, back to live, one lane per
  * character with its failures as dots, the moments as marks, and a slider over the squeezed time.
  */
-import { Canvas, Easing, Image, Path2D, Text, View, createMotion, effect, reduceMotion, signal, token } from "nsh";
+import { Canvas, Easing, Image, Path2D, Text, View, createMotion, effect, signal, token } from "nsh";
+import { reduceMotion } from "../interface/motion";
 import { Slider } from "nsh/base";
 import type { Copy } from "../../m/copy";
 import type { Timeline } from "../../m/taskmap/timeline";

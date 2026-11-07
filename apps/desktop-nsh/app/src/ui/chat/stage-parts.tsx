@@ -4,7 +4,8 @@
  * transcript shows while it comes over the relay, the date line, the "New" line, the line above
  * the first message while an earlier page is on its way, and the row that draws one group.
  */
-import { createMotion, effect, reduceMotion, Text, View } from "nsh";
+import { createMotion, effect, Text, View } from "nsh";
+import { reduceMotion } from "../interface/motion";
 import type { SessionSummary } from "@real-bot/protocol";
 import { formatDateDivider } from "../../m/chat/chat-view.ts";
 import type { TranscriptItem } from "../../m/chat/transcript.ts";

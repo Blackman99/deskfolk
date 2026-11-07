@@ -11,7 +11,8 @@ import { updateChecker } from "../../m/update-checker.svelte";
 import { Icon } from "../Icon";
 import { shadow } from "../styles";
 import { tip } from "../tip";
-import { FOOT_ICONS_ONLY, FOOT_TIGHT, footActionClass, footActionInk } from "./foot-action";
+import { floor } from "../interface/floor";
+import { FOOT_ICONS_ONLY, FOOT_TIGHT, footActionClass, footActionInk, settingsEntryColours } from "./foot-action";
 import { ToolsToggle } from "./ToolsToggle";
 
 const PADDING = 16;
@@ -94,6 +95,7 @@ export function SidebarFoot(props: {
       />
       <View
         role="button"
+        ref={floor("settings-entry", () => settingsEntryColours(runtime.settingsOpen))}
         testID="foot-settings"
         tooltip={tip(settingsLabel())}
         accessibilityLabel={settingsLabel()}

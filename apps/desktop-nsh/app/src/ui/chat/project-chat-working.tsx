@@ -4,7 +4,8 @@
  * long; the approval it waits on under it (the plan's own card, or a Bot's approval card) and why an
  * answer did not go. The step opens what is going on now when there is more to show than it says.
  */
-import { createMotion, effect, reduceMotion, Text, View } from "nsh";
+import { createMotion, effect, Text, View } from "nsh";
+import { reduceMotion } from "../interface/motion";
 import { focusMode } from "../../m/chat/focus-mode.svelte.ts";
 import { formatLiveDuration } from "../../m/chat/chat-view.ts";
 import { copy } from "../../runtime";

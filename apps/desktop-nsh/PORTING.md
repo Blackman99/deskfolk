@@ -36,6 +36,8 @@
 | `window` / `document` 的事件、`addEventListener("keydown")` | `keymap.bind("mod+k", fn)`（`nsh`），组件卸载时自动解绑 |
 | `matchMedia` / `@media (max-width: 680px)` / 容器查询 | 断点用 `widthAtMost(680)`（`src/platform/viewport.ts`，缓存的布尔值，窗口跨过断点才通知读者；`narrowWindow()` 就是它），别写 `windowSize().width <= 680`：改窗口大小时每一帧都会让读者重跑，一百多处加起来让排版落后窗口好几秒。要真实尺寸（弹层宽高）才读 `windowSize()`；自己的宽度用 `onLayout` 量；手机布局看 `platform.desktop` 和宽度 |
 | `tooltip` / `title=` | `<View tooltip={tip("…")}>`（`src/ui/tip`） |
+| `data-ui="x"`（界面钩子） | `class={ui("x", "…原来的类名")}`（`src/ui/interface/hooks`，ADR 0108） |
+| `data-floor="x"`（底线） | `ref={floor("x", { ink: "字或图标的令牌", ground: ["底下的令牌", …] })}`（`src/ui/interface/floor`，底从下往上写，颜色可以是函数、不是底线时返回 null）；`Button` 用 `floor="x"`（再加 `floorOn` 说它放在哪种底上，默认 `pane`） |
 | 拖动改宽 | `PanResponder` 或 `nsh/base` 的 `ResizablePanelGroup` |
 | `{@html …}` / Markdown | `TextView`（`nsh/base`）的 `markdown`，不要拼 HTML |
 | 预览生成的 HTML 页面（`<iframe srcdoc>`、blob URL） | `WebView`（`nsh`）的 `html`；页面和应用之间用 `injectedJavaScript` 和 `window.nsh.postMessage` / `onMessage`、ref 的 `postMessage`。**只有 HTML 产物预览和 HTML 批注能用 WebView**，别的界面一律原生 |
@@ -80,6 +82,7 @@
 | `<input type="checkbox">` | `src/ui/Checkbox` | 整行可点，`checked` + `onChange`、`label` |
 | 阴影、时长、字号、CSS 颜色 | `src/ui/styles` | `shadow("menu")`、`DURATION`、`TEXT`；镜像模块给的 `var(--x)` 颜色（头像色板）用 `cssColor()` 换成主题值 |
 | 字节转图片 | `src/ui/data-url` | `blobDataUrl(blob)`：NSH 没有 object URL，`Image` 吃 `data:` URL |
+| 界面方案（ADR 0108） | `src/ui/interface/` | 钩子 `ui()`、底线 `floor()`、动效开关 `reduceMotion()`（`motion.ts`：方案说「一直减弱」或系统要求时为真；**别从 `nsh` 导入 `reduceMotion`**，它只听系统）；令牌由 `theme.ts` 换进主题，组件照旧写 `bg-pane` 这些类 |
 
 两个信使的外壳级组件不单独移植：`ImageCopy.svelte`（document 级右键监听，NSH 没有 document）由显示图片的组件自己挂 `ImageContextMenu`；`WorkspaceDragGhost.svelte` 跟文件树拖动一起，由移植 `overlays/WorkspaceExplorer` 的任务做。
 
@@ -100,6 +103,7 @@
 - `RichEditor` 有焦点时，应用级 `keymap.bind`（连 `{ when: "always" }` 也一样）不触发：在测试宿主里，一个没用到的 `mod+j` 在 `RichEditor` 有焦点时不响应，换成 `Input` 就响应。`RichEditor` 里的 Enter 只会分段。要在它里面接管按键，用 `RichEditorPlugin(key).captureKeys(["Enter", "ArrowUp", "Mod-Enter"], handler)` 放进 `createRichEditor({ plugins })`：`capturing` 为真时原生编辑器吞掉这些键、事后把键名交给 handler（所以「是否吞」要在按下之前由 `capturing` 定好，例如 Backspace 只在光标紧挨小标签时设 `capturing`）。一个插件的 `capturing` 管它所有的键，不同条件的键拆成不同插件；同一个键可以出现在几个插件里，开着的那个起作用。例子：`ui/chat/ComposerEditor.tsx`。
 - 弹层不知道背后的滚动：信使里「背后滚了就关」的菜单，这里靠点外面和 Escape 关。
 - 窗口是否有焦点、是否在后台（信使的 `document.hasFocus()`、`visibilityState`）：从 `src/platform/lifecycle` 导入 `lifecycle`，不要从 `nsh` 导入——NSH 0.4 的 web 包里 `nsh` 模块没有 `lifecycle`，调用就抛错；平台那份在桌面上就是 NSH 的，web 上读页面。
+- `ref` 只能是函数（或 `let` 变量）：`ref={undefined}`、`ref={条件 ? fn : undefined}` 会在运行时抛错。只在某些情况下才要的 ref，写成总是存在的函数，里面再判断。
 
 ## 不要做的
 

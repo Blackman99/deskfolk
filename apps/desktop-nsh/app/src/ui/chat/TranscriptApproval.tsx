@@ -2,7 +2,8 @@
  * A request waiting on your approval in the transcript (`TranscriptApproval.svelte`), with the key it
  * may need and its buttons. Waiting, the head says it waits on you, in the warn tint; answered, the
  * card settles into its outcome. A Bot's change to a built-in prompt or to your interface carries
- * its own card (`PromptEditCard`, `InterfaceEditCard`).
+ * its own card (`PromptEditCard`, `InterfaceEditCard`). The card is the `approval-card` hook and its
+ * three buttons are of the floor (ADR 0108).
  */
 import { Text, View } from "nsh";
 import { Input } from "nsh/base";
@@ -20,6 +21,7 @@ import type { TranscriptStage } from "../../m/chat/transcript-stage.ts";
 import { copy, runtime } from "../../runtime";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
+import { ui } from "../interface/hooks";
 import { shadow } from "../styles";
 import { InterfaceEditCard } from "./InterfaceEditCard";
 import { PromptEditCard } from "./PromptEditCard";
@@ -79,7 +81,7 @@ export function TranscriptApproval(props: { group: TranscriptGroup; stage: Trans
                   <View
                     testID="approval-card"
                     selectable
-                    class={`self-stretch overflow-hidden bg-pane border rounded-(--radius-lg) ${pending() ? "border-warn-line" : "border-line"}`}
+                    class={ui("approval-card", `self-stretch overflow-hidden bg-pane border rounded-(--radius-lg) ${pending() ? "border-warn-line" : "border-line"}`)}
                     style={{ boxShadow: shadow(pending() ? "sm" : "xs") }}
                   >
                     <View
@@ -180,14 +182,14 @@ export function TranscriptApproval(props: { group: TranscriptGroup; stage: Trans
                                 </View>
                               </If>
                               <View class="flex-row flex-wrap gap-[8px] mt-[10px]">
-                                <Button testID="approval-allow-once" variant="primary" icon="check" onPress={() => void resolveApprovalCard(open(), "allow_once")}>
+                                <Button testID="approval-allow-once" floor="approval" variant="primary" icon="check" onPress={() => void resolveApprovalCard(open(), "allow_once")}>
                                   {t().stream.allowOnce}
                                 </Button>
                                 {/* Allowed from now on (ADR 0092): this Bot moves to the mode in which this kind no longer asks. */}
-                                <Button testID="approval-allow-from-now" variant="secondary" onPress={() => void resolveApprovalCard(open(), "allow_from_now")}>
+                                <Button testID="approval-allow-from-now" floor="approval" variant="secondary" onPress={() => void resolveApprovalCard(open(), "allow_from_now")}>
                                   {t().permissions.allowFromNow}
                                 </Button>
-                                <Button testID="approval-deny" variant="ghost" onPress={() => void resolveApprovalCard(open(), "deny")}>
+                                <Button testID="approval-deny" floor="approval" variant="ghost" onPress={() => void resolveApprovalCard(open(), "deny")}>
                                   {t().stream.deny}
                                 </Button>
                               </View>

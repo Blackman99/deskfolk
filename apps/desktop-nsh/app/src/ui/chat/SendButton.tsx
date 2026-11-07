@@ -4,7 +4,8 @@
  * thing to stop, greyed into the accent's tint with nothing to send, and busy once a send has been
  * in flight past `SENDING_SHOW_MS`: then a spinner, or a ring filling clockwise from twelve o'clock
  * as the files go out. Where the composer is narrow it steps aside, with nothing to send, for what
- * can be pressed instead. `data-floor` has no NSH counterpart and is left out.
+ * can be pressed instead. Stop is one of the floor (`data-floor="stop"`, here `floor()`, ADR 0108),
+ * the main button only while it is a Stop; the main button is the `send-button` hook.
  */
 import { Canvas, effect, signal, token, View } from "nsh";
 import type { ComposerAction } from "../../m/chat/composer-mode";
@@ -13,8 +14,13 @@ import { formatShortcut } from "../../m/keymap";
 import type { SessionView } from "../../m/session-view.svelte";
 import { copy } from "../../runtime";
 import { Icon } from "../Icon";
+import { floor } from "../interface/floor";
+import { ui } from "../interface/hooks";
 import { tip } from "../tip";
 import { narrowWindow } from "../Modal";
+
+/** Stop's glyph and fill (`tint-pane` on `bg-ink`). */
+const STOP_COLOURS = { ink: "pane", ground: ["ink"] };
 
 /** A send the machine next door answers at once shows nothing; one still on its way after this long says so on the button. */
 export const SENDING_SHOW_MS = 250;
@@ -77,6 +83,7 @@ export function SendButton(props: {
       <If when={props.directStop}>
         <View
           role="button"
+          ref={floor("stop", STOP_COLOURS)}
           testID="stop-button"
           tooltip={tip(copy().composer.stopGeneration)}
           accessibilityLabel={copy().composer.stopGeneration}
@@ -90,13 +97,14 @@ export function SendButton(props: {
       <If when={!props.stepsAside}>
         <View
           role="button"
+          ref={floor("stop", () => (kind() === "stop" ? STOP_COLOURS : null))}
           testID="send-button"
           tooltip={tip(hint())}
           accessibilityLabel={label()}
           accessibilityState={{ busy: busy(), disabled: props.primaryAction.disabled }}
           disabled={props.primaryAction.disabled}
           onPress={() => (kind() === "stop" ? props.onStop() : props.onSend())}
-          class={`shrink-0 items-center justify-center rounded-full active:scale-[0.92] ${size()} ${look().bg} ${props.directStop && narrowWindow() ? "ml-1" : ""}`}
+          class={ui("send-button", `shrink-0 items-center justify-center rounded-full active:scale-[0.92] ${size()} ${look().bg} ${props.directStop && narrowWindow() ? "ml-1" : ""}`)}
         >
           <If when={kind() === "stop"} else={<SendGlyph busy={busy()} fraction={fraction()} tint={look().tint} />}>
             <Icon name="stop" class={look().tint} />

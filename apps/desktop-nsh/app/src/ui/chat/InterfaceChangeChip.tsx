@@ -1,8 +1,12 @@
-/** Under a Bot's reply: the interface change it made without a card, and the way back (ADR 0106). Not a message (`InterfaceChangeChip.svelte`). */
+/**
+ * Under a Bot's reply: the interface change it made without a card, and the way back (ADR 0106). Not a
+ * message (`InterfaceChangeChip.svelte`). Its Undo is one of the floor (ADR 0108).
+ */
 import { signal, Text, View } from "nsh";
 import type { InterfaceRevisionHead } from "@real-bot/protocol";
 import type { MessengerApi } from "../../m/messenger-api";
 import { copy } from "../../runtime";
+import { floor } from "../interface/floor";
 import { tip } from "../tip";
 
 export function InterfaceChangeChip(props: {
@@ -50,6 +54,7 @@ export function InterfaceChangeChip(props: {
               >
                 <View
                   role="button"
+                  ref={floor("interface-undo", { ink: "brand", ground: ["pane"] })}
                   testID="interface-undo"
                   disabled={busy() === head().id}
                   onPress={() => void undo(head().id)}

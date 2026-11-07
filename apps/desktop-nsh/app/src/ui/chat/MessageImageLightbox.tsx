@@ -16,7 +16,8 @@
  * object URLs for them, so nothing is revoked. A right click (long press) on the picture offers
  * Copy image (`ImageContextMenu`).
  */
-import { cleanup, effect, Image, keymap, Overlay, PanResponder, reduceMotion, signal, Text, untracked, View, windowSize, computed, type ViewRef } from "nsh";
+import { cleanup, effect, Image, keymap, Overlay, PanResponder, signal, Text, untracked, View, windowSize, computed, type ViewRef } from "nsh";
+import { reduceMotion } from "../interface/motion";
 import type { ShellWheel } from "../../platform/wheel";
 import type { Attachment } from "@real-bot/protocol";
 import { originalSizeForBlob } from "../../m/api.ts";

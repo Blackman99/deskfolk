@@ -4,7 +4,8 @@
  * end: this row only says who is thinking about it. "Thinking" is the mark's two teammates taking
  * turns: two overlapping circles, one swelling as the other shrinks.
  */
-import { createMotion, effect, reduceMotion, Text, View } from "nsh";
+import { createMotion, effect, Text, View } from "nsh";
+import { reduceMotion } from "../interface/motion";
 import type { Bot } from "@real-bot/protocol";
 import type { ReplyingEntry } from "../../m/chat/transcript";
 import { shadow } from "../styles";

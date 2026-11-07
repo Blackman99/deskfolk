@@ -21,3 +21,11 @@ export function footActionInk(active: boolean | undefined): { text: string; tint
 /** The list's footer width (its content box) under which the row tightens, and under which it keeps icons only. */
 export const FOOT_TIGHT = 283;
 export const FOOT_ICONS_ONLY = 223;
+
+/**
+ * The way to Settings as one of the floor (ADR 0108): the token its icon is drawn in and its grounds,
+ * the sidebar's own under the open state's tint. Shared by the footer and the folded rail.
+ */
+export function settingsEntryColours(active: boolean | undefined): { ink: string; ground: string[] } {
+  return active ? { ink: "brand", ground: ["sidebar-bg", "accent-tint"] } : { ink: "ink-muted", ground: ["sidebar-bg"] };
+}

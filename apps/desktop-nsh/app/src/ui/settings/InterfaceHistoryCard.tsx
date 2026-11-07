@@ -4,7 +4,7 @@
  * (exported from the Svelte module script) are in `interface-history.ts`.
  *
  * Props: `recent` (the newest revision heads); `bots` (to name who); `locale`. Test ids:
- * `revision-<id>`, `revision-undo-<id>`, `revision-restore-<id>`.
+ * `revision-<id>`, `revision-undo-<id>`, `revision-restore-<id>`. Undo is one of the floor (ADR 0108).
  */
 import { signal, Text, View } from "nsh";
 import type { InterfaceRevisionHead } from "@real-bot/protocol";
@@ -64,7 +64,7 @@ export function InterfaceHistoryCard(props: { recent: InterfaceRevisionHead[]; b
                 </View>
                 <View class="flex-row flex-wrap justify-end gap-1 shrink-0">
                   <If when={head().undoable}>
-                    <Button size="sm" variant="secondary" testID={`revision-undo-${head().id}`} disabled={busy() !== null} onPress={() => void run(head(), "undo")}>
+                    <Button size="sm" variant="secondary" floor="interface-undo" testID={`revision-undo-${head().id}`} disabled={busy() !== null} onPress={() => void run(head(), "undo")}>
                       {c().undo}
                     </Button>
                   </If>

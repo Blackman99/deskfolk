@@ -51,4 +51,5 @@ export const stories: Record<string, Story> = {
   viewport: () => import("./viewport"),
   "job-keys": () => import("./job-keys"),
   "phone-web": () => import("./phone-web"),
+  interface: () => import("./interface"),
 };

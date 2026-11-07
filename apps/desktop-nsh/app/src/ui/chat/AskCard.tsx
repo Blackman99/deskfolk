@@ -1,7 +1,8 @@
 /**
  * What sits under a Bot's question (`AskCard.svelte`): the choices it offered, a line for your own
  * answer, and, once you answered, what you chose and wrote, kept on the card. The answer is never
- * posted as a message of yours; this card is where it stays.
+ * posted as a message of yours; this card is where it stays. The card is the `ask-card` hook, and
+ * while it waits on you its choices and its Reply are of the floor (ADR 0108).
  */
 import { Text, View } from "nsh";
 import { Input } from "nsh/base";
@@ -17,6 +18,8 @@ import { toggleAskChoice } from "../../m/notifications/ask-state.ts";
 import type { AskDraftRecord } from "../../m/notifications/types.ts";
 import { copy } from "../../runtime";
 import { Icon } from "../Icon";
+import { floor } from "../interface/floor";
+import { ui } from "../interface/hooks";
 import { tip } from "../tip";
 
 export function AskCard(props: {
@@ -56,7 +59,7 @@ export function AskCard(props: {
   }
 
   return (
-    <View testID="ask-card" class="gap-[8px] mt-[10px]">
+    <View testID="ask-card" class={ui("ask-card", "gap-[8px] mt-[10px]")}>
       <If when={options().length > 0}>
         <If when={open()}>
           <Text testID="ask-mode" class="text-[12px] font-semibold text-ink-muted">{multi() ? t().stream.askPickAny : t().stream.askPickOne}</Text>
@@ -68,6 +71,7 @@ export function AskCard(props: {
               return (
                 <View
                   role={multi() ? "checkbox" : "radio"}
+                  ref={floor("ask", () => (open() ? { ink: "ink", ground: ["pane", on() ? "accent-tint" : "chip"] } : null))}
                   testID="ask-option"
                   accessibilityLabel={option().label}
                   accessibilityState={{ checked: on(), disabled: !open() }}
@@ -120,6 +124,7 @@ export function AskCard(props: {
               />
               <View
                 role="button"
+                ref={floor("ask", { ink: "on-accent", ground: ["pane", "brand"] })}
                 testID="ask-send"
                 disabled={!canSubmit()}
                 onPress={submit}

@@ -27,7 +27,9 @@ import { BrandMark } from "../BrandMark";
 import { Icon, type IconName } from "../Icon";
 import { SessionAvatar } from "../SessionAvatar";
 import { AgentLogo } from "../settings/AgentLogo";
+import { floor } from "../interface/floor";
 import { dismissRailTips, RailTooltip } from "./RailTooltip";
+import { settingsEntryColours } from "./foot-action";
 import { ToolsMenu } from "./ToolsMenu";
 
 export function SidebarRail(props: {
@@ -132,6 +134,8 @@ export function SidebarRail(props: {
 
   const ACTION = "group w-[40px] h-[36px] items-center justify-center border border-transparent rounded-(--radius-sm) hover:border-line";
   const action = (active: boolean | undefined, margin = "mx-[12px]") => `${ACTION} ${margin} ${active ? "bg-accent-tint border-accent-border" : ""}`;
+  /** The way to Settings is one of the floor (ADR 0108): marked once, its button handed over by the tooltip. */
+  const settingsFloor = floor("settings-entry", () => settingsEntryColours(runtime.settingsOpen));
   const glyph = (name: IconName, active: boolean | undefined) => <Icon name={name} class={active ? "tint-brand" : "tint-ink-muted group-hover:tint-ink"} />;
 
   const item = (session: SessionSummary) => {
@@ -279,6 +283,7 @@ export function SidebarRail(props: {
           </RailTooltip>
           <RailTooltip
             testID="rail-settings"
+            onAnchor={settingsFloor}
             class={`relative ${action(runtime.settingsOpen, "")}`}
             label={[settingsTip()]}
             describedBy="rail-tip-settings"

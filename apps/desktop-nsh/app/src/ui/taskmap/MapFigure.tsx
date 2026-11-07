@@ -4,7 +4,8 @@
  * character does its own work, with what it wears and holds (`figure-motions.ts`). The box is in
  * the town's units: the scene scales it with the camera, so nothing here knows the zoom.
  */
-import { Image, View, createMotion, effect, reduceMotion, type Motion, type MotionSpec, type ViewRef } from "nsh";
+import { Image, View, createMotion, effect, type Motion, type MotionSpec, type ViewRef } from "nsh";
+import { reduceMotion } from "../interface/motion";
 import type { FolkMotion } from "../../m/folk-motion";
 import { figureOrigin, type DrawnFigure, type FigureImage } from "../../m/taskmap/scene/figures";
 import { FX, WORK_FX, WORK_STILL, figureSpecs, type Fx, type Part } from "./figure-motions";

@@ -3,8 +3,10 @@
  * `secondary` beside it, `ghost` for the quiet way out, `danger` to confirm a loss, `danger-soft` to
  * offer one. Heights 28 / 32 / 40 (`sm` / `md` / `lg`).
  */
-import { Text, View, type JSX } from "nsh";
+import { Text, View, type JSX, type ViewRef } from "nsh";
+import type { UiFloor } from "@real-bot/protocol";
 import { Icon, type IconName } from "./Icon";
+import { floor as markFloor } from "./interface/floor";
 import { shadow } from "./styles";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "danger-soft";
@@ -33,6 +35,10 @@ const TINT: Record<ButtonVariant, string> = {
   "danger-soft": "tint-danger-text",
 };
 
+/** The theme tokens behind `BOX` and `INK`, for the floor's contrast check (null: no fill of its own). */
+const BOX_TOKEN: Record<ButtonVariant, string | null> = { primary: "brand", secondary: "btn-secondary-bg", ghost: null, danger: "danger", "danger-soft": null };
+const INK_TOKEN: Record<ButtonVariant, string> = { primary: "on-accent", secondary: "ink", ghost: "ink-secondary", danger: "on-danger", "danger-soft": "danger-text" };
+
 const SIZE = {
   sm: { box: "h-[28px] px-[10px] rounded-[7px]", text: "text-[12px]" },
   md: { box: "h-[32px] px-[12px] rounded-[8px]", text: "text-[13px]" },
@@ -49,14 +55,26 @@ export function Button(props: {
   class?: string;
   testID?: string;
   label?: string;
+  /** Marks the button as one of the floor (ADR 0108): its variant's colours are checked over `floorOn`. */
+  floor?: UiFloor;
+  /** The theme token of the surface the button sits on (default `pane`), under a ghost button's words. */
+  floorOn?: string;
   children?: JSX.Element;
 }) {
   const variant = () => props.variant ?? "secondary";
   const size = () => SIZE[props.size ?? "md"];
   const iconSize = () => (props.size === "lg" ? 20 : 16);
+  const floorColours = () => {
+    const box = BOX_TOKEN[variant()];
+    return { ink: INK_TOKEN[variant()], ground: box ? [props.floorOn ?? "pane", box] : [props.floorOn ?? "pane"] };
+  };
+  // NSH takes a `ref` that is a function (or a `let`), never undefined: one that marks only a floor.
+  const marked = props.floor ? markFloor(props.floor, floorColours) : null;
+  const floorRef = (node: ViewRef) => marked?.(node);
   return (
     <View
       role="button"
+      ref={floorRef}
       testID={props.testID}
       accessibilityLabel={props.label}
       disabled={props.disabled}

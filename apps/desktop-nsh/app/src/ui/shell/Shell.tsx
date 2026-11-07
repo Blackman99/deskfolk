@@ -13,8 +13,9 @@
  *   bottom bar on the roster's own pages.
  *
  * Not here, against the Svelte: `ImageCopy` (one DOM listener for every picture's right click;
- * NSH pictures carry their own `ImageContextMenu`), the pages' slide transitions, dragging a
- * the interface profile (ADR 0106, `wireInterface`), and focus restoring.
+ * NSH pictures carry their own `ImageContextMenu`), the pages' slide transitions and focus
+ * restoring. A conversation dragged from the sidebar comes onto the workbench through
+ * `session-drag.ts`; the interface profile is applied from `shell-state.ts` (ADR 0108).
  */
 import type { SessionSummary } from "@real-bot/protocol";
 import { computed, PanResponder, Text, View } from "nsh";

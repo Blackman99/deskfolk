@@ -4,8 +4,9 @@
  * Its parts (behaviour, tokens, CSS, words, history and reports) are tabs on a wide window and a list
  * on a phone, so none sits below the others; the switch for the whole of it stays over them.
  *
- * The cards edit the same profile through `runtime`; applying it to the NSH app is a separate task,
- * so changing a token, a rule or a word here saves it and nothing in this app changes look yet.
+ * The cards edit the same profile through `runtime`, which every window applies (ADR 0108): tokens,
+ * behaviour and words take here at once; the stylesheet is the Svelte app's and does nothing in NSH.
+ * The switch and "show yours here again" are of the floor.
  *
  * Props: `snapshot`; `locale`; `phone` (no workbench: the desktop-only rows are left out); `notices`
  * (what the dialog says over any page: pending credentials, a failed save, setup not done);
@@ -22,6 +23,7 @@ import type { Snapshot } from "../../m/snapshot.ts";
 import { editInterfaceOrToast } from "../../m/settings/interface-edit.ts";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
+import { floor } from "../interface/floor";
 import { narrowWindow } from "../Modal";
 import { Switch } from "../Switch";
 import { InterfaceBehaviourCard } from "./InterfaceBehaviourCard";
@@ -145,19 +147,22 @@ export function InterfaceTab(props: {
           <Text class="text-[13px] text-warn-text">{pausedWhy()}</Text>
         </View>
         <If when={interfaceController.pausedBy !== "url"}>
-          <Button size="sm" variant="secondary" testID="interface-resume" onPress={() => interfaceController.resume()}>{c().resumeHere}</Button>
+          <Button size="sm" variant="secondary" floor="interface-pause" floorOn="warn-bg" testID="interface-resume" onPress={() => interfaceController.resume()}>{c().resumeHere}</Button>
         </If>
       </View>
     </If>
   );
 
+  /** The switch for the whole of it is one of the floor (ADR 0108): its thumb on its track. */
   const enabledSwitch = () => (
-    <Switch
-      testID="interface-enabled-toggle"
-      label={c().enabled}
-      checked={iface()?.profile.enabled ?? true}
-      onChange={(enabled) => void editInterfaceOrToast(runtime, { enabled })}
-    />
+    <View ref={floor("interface-pause", () => ({ ink: "switch-thumb", ground: ["pane", (iface()?.profile.enabled ?? true) ? "brand" : "line"] }))}>
+      <Switch
+        testID="interface-enabled-toggle"
+        label={c().enabled}
+        checked={iface()?.profile.enabled ?? true}
+        onChange={(enabled) => void editInterfaceOrToast(runtime, { enabled })}
+      />
+    </View>
   );
 
   const intro = () => (

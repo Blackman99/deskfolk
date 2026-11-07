@@ -1,5 +1,6 @@
 /** The words and colours the chat headers and chips share: roster and status labels from the copy, status inks. */
-import { createMotion, effect, reduceMotion, token, type Motion } from "nsh";
+import { createMotion, effect, token, type Motion } from "nsh";
+import { reduceMotion } from "../interface/motion";
 import type { StatusLabels } from "../../m/sidebar/session-status";
 import type { RosterLabels } from "../../m/sidebar/session-title";
 import type { Copy } from "../../m/copy";

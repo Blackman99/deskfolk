@@ -8,7 +8,8 @@
  * What differs from the Svelte script: no DOM (`document.querySelector`, focus restoring, the
  * window's `keydown`): the keys are `keymap` bindings in `Shell.tsx`, the shell's size comes from
  * its own layout, and the narrow breakpoint is the window's width (`watchNarrow` listened to the
- * same query).
+ * same query). The interface profile is wired with NSH's side of it (`ui/interface/look.ts`, ADR
+ * 0108); its words reach every screen through `copy()`, which is `t` here.
  */
 import { batch, computed, effect, setColorScheme, signal, untracked, windowSize } from "nsh";
 import type { Bot, SearchHit, SessionSummary } from "@real-bot/protocol";
@@ -41,6 +42,7 @@ import type { GroupDetailDraft } from "../../m/panels/group-edit.ts";
 import type { ProviderEditorState } from "../../m/settings/provider-form.ts";
 import { WINDOW_CHROME } from "../../m/window-chrome.ts";
 import { widthAtMost } from "../../platform/viewport";
+import { wireInterfaceHere } from "../interface/look";
 
 /** What a pane hosting a file answers the shell (the preview column, the workspace page). */
 export type PaneHandle = {
@@ -90,6 +92,15 @@ export function createShellState() {
     const theme = snapshot().settings.theme;
     if (theme === "light" || theme === "dark") setColorScheme(theme);
     else if (theme === "system") setColorScheme("system");
+  });
+
+  // --- your interface profile (ADR 0106; on NSH, ADR 0108): painted, its floor kept, its way back bound ---
+  wireInterfaceHere({
+    connected: () => runtime.connection === "connected",
+    api: () => runtime.client,
+    state: () => snapshot().interface ?? null,
+    bots: () => snapshot().bots,
+    t: () => t(),
   });
 
   // --- the shell's size: the narrow window is the phone layout (≤ 680 points wide) ---

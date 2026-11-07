@@ -4,7 +4,8 @@
  * background tasks). Picking one hands it to the owner, which makes the stop; a refusal it hands back
  * is said by the button until your next press. On a desktop an nsh/base `Menu` (arrow keys, Escape
  * and a press outside are NSH's); on a phone the choices open as a sheet from the bottom
- * (`BottomSheet`). Nothing left to choose closes it.
+ * (`BottomSheet`). Nothing left to choose closes it. The button is one of the floor (`floor()`,
+ * ADR 0108).
  */
 import { effect, signal, Text, View } from "nsh";
 import { Menu, MenuItem } from "nsh/base";
@@ -12,6 +13,7 @@ import { copy } from "../../runtime";
 import type { StopMenuItem } from "../../m/chat/stop-menu";
 import { BottomSheet, SheetItem } from "../BottomSheet";
 import { Icon } from "../Icon";
+import { floor } from "../interface/floor";
 import { shadow } from "../styles";
 import { tip } from "../tip";
 import { narrowWindow as phoneSheet } from "../Modal";
@@ -52,6 +54,7 @@ export function StopMenu<Item extends { key: string; label: string } = StopMenuI
   const trigger = (
     <View
       role="button"
+      ref={floor("stop", { ink: "ink-secondary", ground: ["pane"] })}
       testID="stop-menu"
       tooltip={tip(copy().control.menu)}
       accessibilityLabel={copy().control.menu}

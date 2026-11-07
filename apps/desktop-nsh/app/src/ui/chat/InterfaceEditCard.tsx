@@ -2,16 +2,20 @@
  * A Bot's change to your interface waiting on a card (ADR 0106, `InterfaceEditCard.svelte`): what it
  * changes, a way to try it here, and once allowed, its Undo.
  */
-import { cleanup, effect, signal, Text, View } from "nsh";
+import { cleanup, effect, signal, Text, View, type ViewRef } from "nsh";
 import type { Approval, InterfaceRevisionHead } from "@real-bot/protocol";
 import { parseInterfaceCard } from "../../m/chat/interface-card.ts";
 import { interfaceController } from "../../m/interface/controller.svelte.ts";
 import type { MessengerApi } from "../../m/messenger-api.ts";
 import { copy } from "../../runtime";
+import { floor } from "../interface/floor";
 
-function Link(props: { testID?: string; disabled?: boolean; onPress: () => void; children: string }) {
+/** A quiet text button in the accent; `undo` marks it as the floor's way to undo the change (ADR 0108). */
+function Link(props: { testID?: string; disabled?: boolean; undo?: boolean; onPress: () => void; children: string }) {
+  const marked = props.undo ? floor("interface-undo", { ink: "brand", ground: ["pane"] }) : null;
+  const floorRef = (node: ViewRef) => marked?.(node);
   return (
-    <View role="button" testID={props.testID} disabled={props.disabled} onPress={props.onPress} class="disabled:opacity-[0.6]">
+    <View role="button" ref={floorRef} testID={props.testID} disabled={props.disabled} onPress={props.onPress} class="disabled:opacity-[0.6]">
       <Text class="text-[12px] text-brand">{props.children}</Text>
     </View>
   );
@@ -134,7 +138,7 @@ export function InterfaceEditCard(props: {
               else={
                 <If when={head()?.undoable}>
                   <View class="flex-row flex-wrap mt-[2px]">
-                    <Link testID="interface-undo" disabled={busy()} onPress={() => void undo()}>
+                    <Link testID="interface-undo" undo disabled={busy()} onPress={() => void undo()}>
                       {chip().undo}
                     </Link>
                   </View>

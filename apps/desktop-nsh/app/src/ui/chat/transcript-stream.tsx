@@ -7,7 +7,8 @@
  * Like a finished reply it sits on the page flat, no bubble: the cues that it is working are the
  * portrait's glow (the group's), the pulse, the cursor and the last line.
  */
-import { createMotion, effect, reduceMotion, Text, View } from "nsh";
+import { createMotion, effect, Text, View } from "nsh";
+import { reduceMotion } from "../interface/motion";
 import type { Bot, Turn } from "@real-bot/protocol";
 import { formatLiveDuration } from "../../m/chat/chat-view.ts";
 import type { CommandRow } from "../../m/chat/command-activity.ts";

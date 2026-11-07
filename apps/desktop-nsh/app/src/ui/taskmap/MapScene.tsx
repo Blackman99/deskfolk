@@ -6,7 +6,8 @@
  * views at the town's scale. The pointer is read here and handed up as pans, turns and picks; the
  * camera's arithmetic lives with the map.
  */
-import { Canvas, Easing, Image, PanResponder, Path2D, Text, View, colorScheme, createMotion, effect, reduceMotion, signal, token, type JSX, type Motion, type ViewRef } from "nsh";
+import { Canvas, Easing, Image, PanResponder, Path2D, Text, View, colorScheme, createMotion, effect, signal, token, type JSX, type Motion, type ViewRef } from "nsh";
+import { reduceMotion } from "../interface/motion";
 import type { Copy } from "../../m/copy";
 import type { ModelSource } from "../../m/model-source";
 import type { Frame, FrameActor, FrameBlock } from "../../m/taskmap/frame";

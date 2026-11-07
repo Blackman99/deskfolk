@@ -5,11 +5,16 @@
  * `runtime.snapshot` and call its actions.
  */
 import { copyFor } from "./m/copy.ts";
+import { interfaceController } from "./m/interface/controller.svelte.ts";
 import { MessengerRuntime } from "./m/runtime.svelte.ts";
 
 export const runtime = new MessengerRuntime();
 
-/** The copy for the runtime's language (the interface profile's words come with its screens). */
+/**
+ * The copy for the runtime's language, with the words your interface profile changed laid over it
+ * (ADR 0106, `Shell.svelte`'s `t`): not while the profile is off or the address asks for the default.
+ */
 export function copy() {
-  return copyFor(runtime.snapshot.settings.locale);
+  const locale = runtime.snapshot.settings.locale === "en" ? "en" : "zh";
+  return copyFor(locale, interfaceController.copyIn(locale));
 }

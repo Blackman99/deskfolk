@@ -6,12 +6,15 @@ import { effect } from "../../lib/reactive";
  * feeds it the daemon's profile whenever the snapshot moves (only once connected, so a start never
  * drops the look it painted from the last one), and says in a toast when a Bot changed it from
  * elsewhere, when a floor made this window drop it, and when a key paused or resumed it.
+ *
+ * What differs from the Svelte (ADR 0108): `look`, the platform's side of the controller (painting,
+ * floors, the key, the kind of window), is handed through to `start()`; the controller touches no page.
  */
 import { onMount, untrack } from "../../lib/reactive";
 import type { Bot, InterfaceState } from "@real-bot/protocol";
 import type { Copy } from "../copy.ts";
 import { showToast } from "../toast.svelte.ts";
-import { escapeKeyLabel, interfaceController, type InterfaceApi } from "./controller.svelte.ts";
+import { escapeKeyLabel, interfaceController, type InterfaceApi, type InterfaceLook } from "./controller.svelte.ts";
 
 export function wireInterface(source: {
   connected: () => boolean;
@@ -19,11 +22,13 @@ export function wireInterface(source: {
   state: () => InterfaceState | null;
   bots: () => readonly Bot[];
   t: () => Copy;
+  look?: InterfaceLook;
 }): void {
   let lastSeen: string | null | undefined;
 
   onMount(() => interfaceController.start({
     api: source.api(),
+    look: source.look ?? null,
     notices: {
       floorFailed: (failures) => {
         const t = source.t();

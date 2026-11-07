@@ -9,6 +9,17 @@ import { state } from "../../lib/reactive";
  *
  * One per window. `Shell` starts it and feeds it each snapshot; the behaviour readers
  * (`interfaceBehaviour`) and the settings read it.
+ *
+ * What differs from the Svelte (ADR 0108): this controller touches no page. NSH has no DOM on the
+ * desktops, and on the web it runs on NSH's own page, where the original's `<style>`, root
+ * attributes, `MutationObserver`s, window `keydown` and catalog read off the stylesheets would
+ * change and report NSH's page instead of the app. Everything the original did to the document
+ * comes from an `InterfaceLook` the platform hands to `start()`: painting the profile (NSH: the
+ * theme's tokens), measuring the floors (NSH: the contrast of each `floor()` against its grounds),
+ * the way-back key, the kind of window, and (milestone 2) the report and the catalog. Without one
+ * nothing is painted or reported, and the behaviour still applies. The floor check is asynchronous
+ * (views are measured), so a profile applied meanwhile wins over a stale answer. Code colours,
+ * glass content and the stylesheet cache are the look's to do (none in milestone 1).
  */
 import {
   applyInterfacePatch,
@@ -24,22 +35,9 @@ import {
 import { adoptFocusMode, localFocusMode } from "../chat/focus-mode.svelte.ts";
 import { formatShortcut, isPrimaryModifier } from "../keymap.ts";
 import { openPlacements } from "../workbench/open-placement-store.svelte.ts";
-import {
-  applyContentGlass,
-  applyInterfaceCss,
-  applyMotion,
-  cacheInterfaceCss,
-  defaultAskedInUrl,
-  interfaceCss,
-  INTERFACE_STYLE_ID,
-  trackSurface,
-} from "./apply.ts";
-import { interfaceCatalog, tokenDefaults } from "./catalog.ts";
-import { floorsHiddenByProfile, FLOOR_SELECTOR, type FloorFailure } from "./floor.ts";
+import { defaultAskedInUrl } from "./apply.ts";
+import type { FloorFailure } from "./floor.ts";
 import { setInterfaceBehaviour } from "./behaviour.svelte.ts";
-import { paintCodeSurfaces } from "./code-theme.ts";
-import { onCodeThemeChange, setCodeTheme } from "../shiki-highlighter.ts";
-import { badTokens, droppedBlocks, unmatchedSelectors } from "./report.ts";
 
 export type InterfaceApi = {
   patchInterface(body: { patch: InterfacePatch; reason?: string }): Promise<unknown>;
@@ -47,6 +45,23 @@ export type InterfaceApi = {
 };
 
 export type PausedBy = "url" | "key" | "floor";
+
+/** What the platform does for the controller where the original used the document (ADR 0108). */
+export type InterfaceLook = {
+  /** Puts the profile's look in force (`on`), or the app's own (`on` false). */
+  paint(profile: InterfaceProfile, on: boolean): void;
+  /** The floors the look in force hides that the app's own does not; empty when none. */
+  floorsHidden(): Promise<FloorFailure[]>;
+  /**
+   * Starts listening: `escape` on the way-back key, `floors` when a floor appears or the look
+   * changes under one, `surface` with the kind of window now and on every change. Returns the stop.
+   */
+  start(hooks: { escape: () => void; floors: () => void; surface: (surface: InterfaceSurface) => void }): () => void;
+  /** What this window found for the daemon beside the floors; absent: nothing is reported. */
+  found?(profile: InterfaceProfile, on: boolean): Pick<InterfaceWindowReport, "unmatched" | "dropped" | "bad_tokens">;
+  /** What the app has for a Bot to look things up in, sent once per connection by a desktop window. */
+  catalog?(appVersion: string | null): InterfaceCatalog;
+};
 
 /** Settles after a change before the floor is checked and the report sent: layout and fonts first. */
 const SETTLE_MS = 400;
@@ -91,11 +106,13 @@ class InterfaceController {
   private api: InterfaceApi | null = null;
   private appVersion: string | null = null;
   private notices: InterfaceNotices = {};
+  private look: InterfaceLook | null = null;
   private catalogSent = false;
   private started = false;
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
   private observeTimer: ReturnType<typeof setTimeout> | null = null;
-  private observer: MutationObserver | null = null;
+  /** Counts the applies: a floor check begun before the latest one answers about a look gone by. */
+  private applied = 0;
   private stops: Array<() => void> = [];
 
   /** The profile in force here: one being tried, else the daemon's. */
@@ -124,38 +141,32 @@ class InterfaceController {
     this.appVersion = version;
   }
 
-  start(options: { api: InterfaceApi | null; notices?: InterfaceNotices }): () => void {
+  start(options: { api: InterfaceApi | null; notices?: InterfaceNotices; look?: InterfaceLook | null }): () => void {
     this.api = options.api;
     this.notices = options.notices ?? {};
     this.catalogSent = false;
-    if (this.started || typeof window === "undefined") return () => this.stop();
+    if (this.started) return () => this.stop();
     this.started = true;
-    // A sheet loaded later (a view opened for the first time) would come after the profile's and
-    // win its ties: the profile's moves back to the end.
-    const head = new MutationObserver(() => {
-      const style = document.getElementById(INTERFACE_STYLE_ID);
-      if (style && document.head.lastElementChild !== style) document.head.appendChild(style);
-    });
-    head.observe(document.head, { childList: true });
-    this.stops.push(() => head.disconnect());
-    this.stops.push(onCodeThemeChange(() => void paintCodeSurfaces()));
-    this.stops.push(trackSurface(document, (surface) => {
-      this.surface = surface;
-    }));
-    const onKey = (event: KeyboardEvent) => {
-      if (!isEscapeKey(event)) return;
-      event.preventDefault();
-      if (this.pausedBy === null) {
-        this.pausedBy = "key";
-        this.apply();
-        this.notices.paused?.();
-      } else {
-        this.resume();
-      }
-    };
-    // Capture: no handler of the page, and nothing a stylesheet does, comes before it.
-    window.addEventListener("keydown", onKey, true);
-    this.stops.push(() => window.removeEventListener("keydown", onKey, true));
+    this.look = options.look ?? null;
+    if (this.look) {
+      this.stops.push(this.look.start({
+        escape: () => {
+          if (this.pausedBy === null) {
+            this.pausedBy = "key";
+            this.apply();
+            this.notices.paused?.();
+          } else {
+            this.resume();
+          }
+        },
+        floors: () => this.floorsMayHaveMoved(),
+        surface: (surface) => {
+          this.surface = surface;
+        },
+      }));
+    }
+    // A sync before the look was handed in set the behaviour but painted nothing.
+    this.apply();
     return () => this.stop();
   }
 
@@ -167,10 +178,9 @@ class InterfaceController {
 
   private stop(): void {
     for (const stop of this.stops.splice(0)) stop();
-    this.observer?.disconnect();
-    this.observer = null;
     if (this.settleTimer) clearTimeout(this.settleTimer);
     if (this.observeTimer) clearTimeout(this.observeTimer);
+    this.look = null;
     this.started = false;
   }
 
@@ -241,19 +251,12 @@ class InterfaceController {
     this.apply();
   }
 
-  /** Puts the profile in force on the page, then checks the floor and reports once things settle. */
+  /** Puts the profile in force through the look, then checks the floor and reports once things settle. */
   apply(): void {
-    if (typeof document === "undefined") return;
-    const css = interfaceCss(this.profile);
-    applyInterfaceCss(css, this.lookOn, document);
-    applyMotion(this.behaviour.motion, document);
-    applyContentGlass(this.behaviour.content_glass, document);
+    this.applied += 1;
     setInterfaceBehaviour(this.behaviour);
-    // Code colours load their theme first; every painter repaints once it is in.
-    void setCodeTheme(this.behaviour.code_theme).catch(() => {});
-    // Only the daemon's is kept for the next start; a card being tried is not yours yet.
-    if (!this.trying && this.state) cacheInterfaceCss(css);
-    this.watchFloors(css !== "" && this.lookOn);
+    if (!this.look) return;
+    this.look.paint(this.profile, this.lookOn);
     this.schedule();
   }
 
@@ -261,40 +264,30 @@ class InterfaceController {
     if (this.settleTimer) clearTimeout(this.settleTimer);
     this.settleTimer = setTimeout(() => {
       this.settleTimer = null;
-      this.checkFloors();
-      void this.report();
+      void this.checkFloors().then(() => this.report());
     }, SETTLE_MS);
   }
 
-  private watchFloors(on: boolean): void {
-    if (!on || typeof MutationObserver === "undefined") {
-      this.observer?.disconnect();
-      this.observer = null;
-      return;
-    }
-    if (this.observer) return;
-    this.observer = new MutationObserver((records) => {
-      const appeared = records.some((record) => Array.from(record.addedNodes).some((node) =>
-        node instanceof Element && (node.matches(FLOOR_SELECTOR) || node.querySelector(FLOOR_SELECTOR) !== null)));
-      if (!appeared) return;
-      if (this.observeTimer) clearTimeout(this.observeTimer);
-      this.observeTimer = setTimeout(() => {
-        this.observeTimer = null;
-        if (this.checkFloors()) void this.report();
-      }, OBSERVE_DEBOUNCE_MS);
-    });
-    this.observer.observe(document.body, { childList: true, subtree: true });
+  /** A floor appeared, or the look changed under one: checked once things settle. */
+  private floorsMayHaveMoved(): void {
+    if (!this.lookOn) return;
+    if (this.observeTimer) clearTimeout(this.observeTimer);
+    this.observeTimer = setTimeout(() => {
+      this.observeTimer = null;
+      void this.checkFloors().then((dropped) => {
+        if (dropped) void this.report();
+      });
+    }, OBSERVE_DEBOUNCE_MS);
   }
 
   /** Drops the look in this window when it hides a floor; true when it did. */
-  checkFloors(): boolean {
-    if (typeof document === "undefined" || !this.lookOn) return false;
-    const style = document.getElementById(INTERFACE_STYLE_ID) as HTMLStyleElement | null;
-    if (!style) return false;
-    const hidden = floorsHiddenByProfile((on) => {
-      style.media = on ? "all" : "not all";
-    });
-    if (hidden.length === 0) return false;
+  async checkFloors(): Promise<boolean> {
+    const look = this.look;
+    if (!look || !this.lookOn) return false;
+    const at = this.applied;
+    const hidden = await look.floorsHidden();
+    // Another profile, the key or a stop came meanwhile: the answer is about a look no longer in force.
+    if (hidden.length === 0 || at !== this.applied || !this.lookOn) return false;
     this.pausedBy = "floor";
     this.floorFailed = hidden;
     // A card being tried that hides a floor is not tried any longer.
@@ -304,28 +297,24 @@ class InterfaceController {
     return true;
   }
 
-  /** What this window found, and on the desktop the catalog once per connection. */
+  /** What this window found, and on the desktop the catalog once per connection, when the look tells them. */
   async report(): Promise<void> {
     const api = this.api;
-    if (!api || !this.state || typeof document === "undefined") return;
-    const profile = this.state.profile;
-    const style = document.getElementById(INTERFACE_STYLE_ID) as HTMLStyleElement | null;
+    const look = this.look;
+    if (!api || !this.state || !look?.found) return;
     const on = this.lookOn && !this.trying;
-    const defaults = tokenDefaults(document);
     const report: Omit<InterfaceWindowReport, "at"> = {
       surface: this.surface,
       app_version: this.appVersion,
       revision_id: this.state.revision_id,
       applied: on,
-      unmatched: on && profile.css.trim() ? unmatchedSelectors(style?.sheet ?? null, document) : [],
-      dropped: profile.css.trim() ? droppedBlocks(profile.css) ?? 0 : 0,
-      bad_tokens: badTokens(profile, new Map([...defaults.dark, ...defaults.light])),
+      ...look.found(this.state.profile, on),
       floor_failed: this.pausedBy === "floor" ? this.floorFailed : [],
     };
-    const withCatalog = this.surface === "desktop" && !this.catalogSent;
+    const catalog = this.surface === "desktop" && !this.catalogSent ? look.catalog?.(this.appVersion) : undefined;
     try {
-      await api.reportInterfaceWindow(withCatalog ? { report, catalog: interfaceCatalog(this.appVersion, document) } : { report });
-      if (withCatalog) this.catalogSent = true;
+      await api.reportInterfaceWindow(catalog ? { report, catalog } : { report });
+      if (catalog) this.catalogSent = true;
     } catch {
       // The next change reports again.
     }
