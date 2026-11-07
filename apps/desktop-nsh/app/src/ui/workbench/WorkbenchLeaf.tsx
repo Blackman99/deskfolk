@@ -192,9 +192,13 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
         }}
       >
         <Each of={activeIds()} key={(id) => id}>
-          {(id) => (
-            <View class="flex-1 min-h-0">{props.tabBody(liveTab(leaf, id()), leaf().id)}</View>
-          )}
+          {(id) => {
+            // Called once per tab, untracked: read inside the insert, `leaf()` made every layout commit
+            // (a new leaf object each time) build the pane's content again, and that mount committed
+            // the layout again — a pane dragged in from the sidebar never stopped remounting.
+            const body = untracked(() => props.tabBody(liveTab(leaf, id()), leaf().id));
+            return <View class="flex-1 min-h-0">{body}</View>;
+          }}
         </Each>
         <If when={activeIds().length === 0}>
           <EmptyPane

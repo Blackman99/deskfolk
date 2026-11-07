@@ -2,10 +2,10 @@
  * The workbench: a layout of three panes (two tabbed, one stacked beside) built from the mirrored
  * layout-tree helpers, placeholder views for the tab bodies, the + menu with the running terminals the
  * story supplies, and a readout of the layout (`wb-state`) a test reads after a split, a drag, a
- * float or a close. The shell's own render props (conversations, the file tree, a terminal) are not
+ * float or a close, and how many times each tab's body was built (`wb-mounts`). The shell's own render props (conversations, the file tree, a terminal) are not
  * here: the workbench takes them as functions.
  */
-import { signal, Text, View } from "nsh";
+import { signal, Text, untracked, View } from "nsh";
 import type { Terminal } from "@real-bot/protocol";
 import { copy } from "../src/runtime";
 import { Button } from "../src/ui/Button";
@@ -54,6 +54,9 @@ export default function WorkbenchStory() {
   let seq = 0;
   const freshId = () => `story-${++seq}`;
   const commit = (next: WorkbenchLayout) => layout.set(next);
+  /** Times each tab's body was built: a commit that keeps the tab must not build it again. */
+  const mounts = signal<Record<string, number>>({});
+  const mounted = (id: string) => untracked(() => mounts.set({ ...mounts(), [id]: (mounts()[id] ?? 0) + 1 }));
   let api: WorkbenchApi | null = null;
 
   /** More tabs than the first pane's strip can show, so it scrolls. */
@@ -106,8 +109,13 @@ export default function WorkbenchStory() {
         <Button variant="secondary" testID="story-dragin" onPress={dragIn}>
           drag in
         </Button>
+        {/* The same layout as new objects, as the shell's `snapshot(workbench.layout)` hands over on every commit. */}
+        <Button variant="secondary" testID="story-copy" onPress={() => commit(JSON.parse(JSON.stringify(layout())) as WorkbenchLayout)}>
+          copy
+        </Button>
         <Text testID="wb-state" class="flex-1 text-[11px] text-ink-muted">{describe(layout())}</Text>
         <Text testID="wb-note" class="text-[11px] text-ink-muted">{`${pinned() ? "pinned" : "loose"} ${copied()} ${log()}`}</Text>
+        <Text testID="wb-mounts" class="text-[11px] text-ink-muted">{`mounts ${Object.entries(mounts()).map(([id, n]) => `${id}=${n}`).join(",")}`}</Text>
       </View>
       <View class="flex-1 min-h-0">
         <Workbench
@@ -122,12 +130,15 @@ export default function WorkbenchStory() {
           tabActions={tabActions}
           paneEdit={paneEdit}
           onApi={(handle) => (api = handle)}
-          tabBody={(t, leafId) => (
-            <View testID={`body-${t.id}`} onPress={() => {}} class="flex-1 p-4 gap-1">
-              <Text class="text-[14px] font-semibold text-ink">{t.params.title ?? t.kind}</Text>
-              <Text class="text-[12px] text-ink-muted">{`${t.kind} · ${leafId}`}</Text>
-            </View>
-          )}
+          tabBody={(t, leafId) => {
+            mounted(t.id);
+            return (
+              <View testID={`body-${t.id}`} onPress={() => {}} class="flex-1 p-4 gap-1">
+                <Text class="text-[14px] font-semibold text-ink">{t.params.title ?? t.kind}</Text>
+                <Text class="text-[12px] text-ink-muted">{`${t.kind} · ${leafId}`}</Text>
+              </View>
+            );
+          }}
           tabLabel={(t) => <PaneTabLabel kind={t.kind as PaneKind} title={t.params.title ?? t.kind} />}
           emptyLead={() => (
             <Button variant="primary" icon="user-plus" testID="story-empty-lead" onPress={() => log.set("lead")}>

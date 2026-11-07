@@ -162,3 +162,18 @@ test("a conversation pulled in from the list is made a tab in the pane where it 
   expect(app.texts()).toContain("外来");
   await app.waitFor("id:body-t9");
 });
+
+test("a commit that hands the same layout over as new objects keeps every pane's body; a tab brought forward builds only its own", async () => {
+  const app = await open();
+  const mounts = () => app.texts().find((t) => t.startsWith("mounts "))!;
+  expect(mounts()).toBe("mounts t1=1,t4=1,t5=1");
+  // The shell's layout is a fresh copy after every commit; the panes are the same panes.
+  await app.press("id:story-copy");
+  await app.press("id:story-copy");
+  await app.press("id:body-t4");
+  expect(state(app)).toContain("focus=b");
+  expect(mounts()).toBe("mounts t1=1,t4=1,t5=1");
+  await app.press("id:wb-tab-button-t2");
+  await app.waitFor("id:body-t2");
+  expect(mounts()).toBe("mounts t1=1,t4=1,t5=1,t2=1");
+});
