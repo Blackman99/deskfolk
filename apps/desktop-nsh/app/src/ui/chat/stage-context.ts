@@ -13,7 +13,7 @@ import { buildMessageLookup, groupTranscript, restartAnnounced } from "../../m/c
 import { composerLocked } from "../../m/chat/composer-mode.ts";
 import { handedOverPaths } from "../../m/overlays/artifacts.ts";
 import { messageDisplayBody } from "../../m/chat/message-body.ts";
-import { INDEX_MIN_MARKS, messageIndexMarks } from "../../m/chat/message-index.ts";
+import { INDEX_MIN_MARKS, messageIndexMarks, sameIndexMarks } from "../../m/chat/message-index.ts";
 import { ReadMark } from "../../m/chat/read-mark.ts";
 import { composeTranscript, isLiveStatus } from "../../m/chat/transcript.ts";
 import type { TranscriptStage } from "../../m/chat/transcript-stage.ts";
@@ -137,7 +137,8 @@ export function createStageContext(selected: () => SessionSummary | null) {
     }
     return new Set(last.values());
   });
-  const indexMarks = computed(() => messageIndexMarks(stream()));
+  // The stream changes with every streamed token; the marks only with the messages, so an equal list is the old one.
+  const indexMarks = computed(() => messageIndexMarks(stream()), { equals: sameIndexMarks });
   const showMessageIndex = () => indexMarks().length >= INDEX_MIN_MARKS || Boolean(view()?.hasOlderMessages);
   const liveTurnsHere = computed(() => {
     const s = selected();

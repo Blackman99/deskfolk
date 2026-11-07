@@ -6,12 +6,12 @@
  * A pin working shows the brand dot on its portrait and a brand frame; a conversation waiting on you
  * or unread shows its count on the corner. `runtime` is the window's, not a prop.
  */
-import { Scroll, signal, Text, token, View } from "nsh";
+import { computed, Scroll, signal, Text, token, View } from "nsh";
 import { sessionPan, type SessionDragHandler } from "./session-drag";
 import type { Bot, SessionSummary } from "@real-bot/protocol";
 import { projectAgentOf } from "../../m/sidebar/project-groups";
 import { isFileDropSession } from "../../m/sidebar/session-groups";
-import type { SessionStatusResult } from "../../m/sidebar/session-status";
+import { sameSessionStatus, type SessionStatusResult } from "../../m/sidebar/session-status";
 import { unreadBadge } from "../../m/sidebar/unread";
 import { copy, runtime } from "../../runtime";
 import { Icon } from "../Icon";
@@ -132,20 +132,23 @@ export function PinnedRoster(props: {
 }) {
   const expanded = signal(false);
   const items = () =>
-    props.pinnedSessions.map((s) => (
-      <PinnedItem
-        session={s}
-        contextOpen={props.contextMenuSessionId === s.id}
-        onContextMenu={props.onOpenContextMenu}
-        botsById={props.botsById}
-        botStatusOf={props.botStatusOf}
-        status={props.statusOf(s)}
-        unread={props.unreadOf(s)}
-        title={props.titleOf(s)}
-        archivedSuffix={props.archivedSuffix(s)}
-        onDragSession={props.onDragSession}
-      />
-    ));
+    props.pinnedSessions.map((s) => {
+      const status = computed(() => props.statusOf(s), { equals: sameSessionStatus });
+      return (
+        <PinnedItem
+          session={s}
+          contextOpen={props.contextMenuSessionId === s.id}
+          onContextMenu={props.onOpenContextMenu}
+          botsById={props.botsById}
+          botStatusOf={props.botStatusOf}
+          status={status()}
+          unread={props.unreadOf(s)}
+          title={props.titleOf(s)}
+          archivedSuffix={props.archivedSuffix(s)}
+          onDragSession={props.onDragSession}
+        />
+      );
+    });
   return (
     <View testID="pinned-roster" accessibilityLabel={copy().sidebar.pinned} class="flex-row items-center">
       <If

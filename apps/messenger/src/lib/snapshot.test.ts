@@ -904,3 +904,23 @@ test("the snapshot says whether your lines are taken in order and can be changed
   snapshot = applyEvent(snapshot, { event: "message.upsert", occurred_at: "t2", ...line, body: "片长 45 秒", edited_at: "t2" });
   expect(snapshot.messages.filter((message) => message.id === "line-1")).toEqual([{ ...line, body: "片长 45 秒", edited_at: "t2" }]);
 });
+
+test("an event that changes no item of an array hands back the same array, so views keyed on it keep their work", () => {
+  const message = { id: "m1", session_id: "s1", turn_id: null, parent_id: null, kind: "bot", author: "writer", body: "hi", source_turn_id: null, created_at: "t", attachments: [] };
+  const session = { id: "s1", last_message: { ...message, id: "m0" } };
+  const base = { ...emptySnapshot(), messages: [message], sessions: [session] } as unknown as ReturnType<typeof emptySnapshot>;
+  // A turn's status changes and no interrupted note is under it: the messages are the same array.
+  const turned = applyEvent(base, {
+    event: "turn.upsert", occurred_at: "t", id: "turn-1", session_id: "s1", bot_id: "writer", status: "running",
+    trigger_message_id: "m1", last_activity_at: "t", created_at: "t", updated_at: "t", partial_text: "",
+  });
+  expect(turned.messages).toBe(base.messages);
+  // A message edited that is no session's last: the sessions are the same array.
+  const edited = applyEvent(base, { event: "message.upsert", occurred_at: "t", ...message, body: "hi!" } as never);
+  expect(edited.sessions).toBe(base.sessions);
+  expect(edited.messages[0]?.body).toBe("hi!");
+  // The session's last message edited: a new array with the new row.
+  const last = applyEvent(base, { event: "message.upsert", occurred_at: "t", ...session.last_message, body: "edited" } as never);
+  expect(last.sessions).not.toBe(base.sessions);
+  expect(last.sessions[0]?.last_message?.body).toBe("edited");
+});

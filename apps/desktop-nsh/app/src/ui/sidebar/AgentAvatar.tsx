@@ -4,7 +4,7 @@
  * run's status dot on its corner where a Bot's avatar carries its own. The box is the avatar's full
  * size, so the text and the row's height stay a Bot's.
  */
-import { createMotion, effect, token, View } from "nsh";
+import { computed, createMotion, effect, token, View } from "nsh";
 import type { ProjectAgent } from "@real-bot/protocol";
 import type { SessionStatusResult } from "../../m/sidebar/session-status";
 import { AgentLogo } from "../settings/AgentLogo";
@@ -37,10 +37,12 @@ export function AgentAvatar(props: {
   const edge = () => props.edge ?? rowAvatarEdge();
   const logo = () => Math.round(edge() * 0.8);
   const shown = () => (props.status && props.status.kind !== "idle" ? props.status : null);
-  const pulsing = () => {
+  // A boolean of its own: the status is a new object with every streamed token, and the effect below
+  // restarted the animation each time (eight avatars, half a millisecond each, per token).
+  const pulsing = computed(() => {
     const s = shown();
     return Boolean(s && (s.isBusy || s.kind === "running" || s.kind === "replying"));
-  };
+  });
 
   const pulse = createMotion();
   effect(() => {

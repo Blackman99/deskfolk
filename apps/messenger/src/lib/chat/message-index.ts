@@ -21,6 +21,21 @@ export function indexPreview(body: string, limit = 180): string {
 }
 
 /** Message identities survive mounting windows and live output updates. */
+/**
+ * A message's preview, worked out again only when its body or attachments changed: the marks are made
+ * again with every streamed token, and the previews were most of their cost. Checked against the
+ * body, not only the object: a message can change in place.
+ */
+const previews = new WeakMap<object, { body: string; files: number; preview: string }>();
+
+function previewOf(message: Extract<TranscriptItem, { type: "message" }>["message"]): string {
+  const held = previews.get(message);
+  if (held && held.body === message.body && held.files === message.attachments.length) return held.preview;
+  const preview = indexPreview(message.body) || message.attachments.map((file) => file.original_filename).join(", ");
+  previews.set(message, { body: message.body, files: message.attachments.length, preview });
+  return preview;
+}
+
 export function messageIndexMarks(items: readonly TranscriptItem[]): IndexMark[] {
   return items.flatMap((item, index) => {
     if (item.type !== "message" || isHiddenTranscriptKind(item.message.kind)) return [];
@@ -28,9 +43,21 @@ export function messageIndexMarks(items: readonly TranscriptItem[]): IndexMark[]
     return [{
       id: message.id, index, author: message.author, kind: message.kind,
       created_at: message.created_at,
-      preview: indexPreview(message.body) || message.attachments.map((file) => file.original_filename).join(", "),
+      preview: previewOf(message),
     }];
   });
+}
+
+/** Whether two lists of marks say the same, so a list made again from the same messages can keep the old one. */
+export function sameIndexMarks(a: readonly IndexMark[], b: readonly IndexMark[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!;
+    const y = b[i]!;
+    if (x.id !== y.id || x.index !== y.index || x.preview !== y.preview || x.author !== y.author || x.kind !== y.kind || x.created_at !== y.created_at) return false;
+  }
+  return true;
 }
 
 export function activeIndexMark(

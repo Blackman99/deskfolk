@@ -7,12 +7,12 @@
  * Not ported: a row that moves up the list sliding there (`moveFlip`); a recycled list has no
  * sibling to animate from.
  */
-import { List, platform, Text, View, type ViewRef } from "nsh";
+import { computed, List, platform, Text, View, type ViewRef } from "nsh";
 import type { SessionDragHandler } from "./session-drag";
 import type { Bot, ProjectAgent, SessionSummary } from "@real-bot/protocol";
 import { isSessionPinned } from "../../m/sidebar/pinned-sessions";
 import { PROJECT_AGENTS, projectAgentOf, type ProjectDirGroup } from "../../m/sidebar/project-groups";
-import type { SessionStatusResult } from "../../m/sidebar/session-status";
+import { sameSessionStatus, type SessionStatusResult } from "../../m/sidebar/session-status";
 import { copy } from "../../runtime";
 import { Button } from "../Button";
 import { EmptyState } from "../EmptyState";
@@ -73,7 +73,9 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
   function Session(p: { row: Extract<ListRow, { kind: "session" }> }) {
     const e = env();
     const session = () => p.row.session;
-    const status = () => e.statusOf(session());
+    // Once per change, and kept when equal: it reads every turn, approval and message, so each streamed
+    // token made every row work it out again in each binding that read it.
+    const status = computed(() => e.statusOf(session()), { equals: sameSessionStatus });
     const variant = () => p.row.variant;
     return (
       <SessionRow
@@ -103,6 +105,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
   function Project(p: { row: Extract<ListRow, { kind: "project" }> }) {
     const e = env();
     const session = () => p.row.session;
+    const status = computed(() => e.projectStatusOf(session()), { equals: sameSessionStatus });
     return (
       <View class="pl-[14px]">
         <ProjectSessionRow
@@ -115,7 +118,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
           renaming={e.renamingSessionId() === session().id}
           onRename={e.onRenameSession ? (name) => e.onRenameSession!(session().id, name) : undefined}
           time={e.timeOf(session())}
-          status={e.projectStatusOf(session())}
+          status={status()}
           preview={e.previewOf(session()) || t().sidebar.noMessages}
           unread={e.unreadOf(session())}
           bots={e.botsById()}

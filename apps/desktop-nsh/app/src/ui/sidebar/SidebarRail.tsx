@@ -8,7 +8,7 @@
  * are the app's (`runtime`, `copy()`).
  */
 import type { SessionSummary } from "@real-bot/protocol";
-import { Scroll, signal, Text, token, View, type ContextMenuEvent, type ViewRef } from "nsh";
+import { computed, Scroll, signal, Text, token, View, type ContextMenuEvent, type ViewRef } from "nsh";
 import type { SessionDragHandler } from "./session-drag";
 import { titleBar } from "nsh/desktop";
 import { copy, runtime } from "../../runtime";
@@ -19,7 +19,7 @@ import { usageWidget } from "../../m/usage/usage-widget.svelte";
 import { directElsewhere } from "../../m/sidebar/bot-elsewhere";
 import { isLiveRun, liveRunSessionIds, projectAgentOf } from "../../m/sidebar/project-groups";
 import { groupSessions, isFileDropSession, isSessionArchived } from "../../m/sidebar/session-groups";
-import { botWorkStatus, sidebarStatus } from "../../m/sidebar/session-status";
+import { botWorkStatus, sameSessionStatus, sidebarStatus } from "../../m/sidebar/session-status";
 import { sessionTitle } from "../../m/sidebar/session-title";
 import { sessionUnreadCount, unreadBadge } from "../../m/sidebar/unread";
 import { loadWorkingOnly, onlyWorking, saveWorkingOnly, workingOrUnreadIds } from "../../m/sidebar/working-only";
@@ -140,7 +140,7 @@ export function SidebarRail(props: {
 
   const item = (session: SessionSummary) => {
     const title = () => sessionTitle(session, botsById(), rosterLabels());
-    const status = () => statusOf(session);
+    const status = computed(() => statusOf(session), { equals: sameSessionStatus });
     const unread = () => sessionUnreadCount(session);
     const on = () => runtime.selectedId === session.id;
     const lit = () => on() || props.contextMenuSessionId === session.id;
