@@ -260,7 +260,8 @@ fn watch_bundle(path: PathBuf) {
 }
 
 /// Development checks: `<dir>/request` asks the shell for something, by its first line: empty for
-/// a picture of every window, `new-window`, `badge <label>` (empty clears), `notify <text>`.
+/// a picture of every window, `new-window`, `badge <label>` (empty clears), `notify <text>`,
+/// `wheel <x> <y> <dy> [ctrl]`, `resize <w> <h> [steps] [ms]`.
 fn watch_snapshot_requests(dir: PathBuf) {
     let _ = std::fs::create_dir_all(&dir);
     std::thread::spawn(move || {
@@ -280,6 +281,7 @@ fn watch_snapshot_requests(dir: PathBuf) {
                     ("new-window", _) => new_window(mtm),
                     ("badge", label) => crate::notify::set_badge(mtm, Some(label)),
                     ("wheel", args) => crate::window::wheel_first(args),
+                    ("resize", args) => crate::window::resize_first(args),
                     ("notify", body) => {
                         if let Err(why) = crate::notify::post("dev-check", "Deskfolk Dev", body) {
                             log::warn!("notify: {why}");

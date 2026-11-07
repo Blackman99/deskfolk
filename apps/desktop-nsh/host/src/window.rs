@@ -246,6 +246,42 @@ pub fn wheel_first(args: &str) {
     });
 }
 
+/// Resizes the first window's content to `w` x `h` points in `steps` steps, one every `ms`
+/// milliseconds, as `resize <w> <h> [steps] [ms]` asks (development checks: a live resize, as a
+/// drag of the window's edge makes, without touching the person's pointer; read it with `--fps`).
+pub fn resize_first(args: &str) {
+    let nums: Vec<f64> = args.split_whitespace().filter_map(|v| v.parse().ok()).collect();
+    let (Some(&w), Some(&h)) = (nums.first(), nums.get(1)) else {
+        log::warn!("resize: want <w> <h> [steps] [ms]");
+        return;
+    };
+    let steps = nums.get(2).copied().unwrap_or(1.0).max(1.0) as u32;
+    let every = std::time::Duration::from_millis(nums.get(3).copied().unwrap_or(16.0).max(1.0) as u64);
+    let Some((w0, h0)) = WINDOWS.with_borrow(|windows| {
+        windows.first().map(|e| {
+            let size = e.window.contentRectForFrameRect(e.window.frame()).size;
+            (size.width, size.height)
+        })
+    }) else {
+        return;
+    };
+    std::thread::spawn(move || {
+        for i in 1..=steps {
+            let t = f64::from(i) / f64::from(steps);
+            let size = NSSize::new(w0 + (w - w0) * t, h0 + (h - h0) * t);
+            dispatch2::DispatchQueue::main().exec_async(move || {
+                WINDOWS.with_borrow(|windows| {
+                    if let Some(entry) = windows.first() {
+                        entry.window.setContentSize(size);
+                    }
+                });
+            });
+            std::thread::sleep(every);
+        }
+        log::info!("resize done: {w}x{h} in {steps} steps");
+    });
+}
+
 /// Puts window `id` away, as its close button does (the messenger's `hide_main_window`: ⌘W with
 /// no tab left hides rather than quits).
 pub fn hide(id: u32) {

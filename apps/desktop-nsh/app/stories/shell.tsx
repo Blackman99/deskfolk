@@ -2,9 +2,11 @@
  * The whole window (`Shell`) on the runtime's own conversations, at whatever size the test opens
  * it. `shell-state` reads back what a test checks (the open conversation, which layers are up);
  * the buttons are the test's hands where a press in the shell is not enough (the test cannot
- * reach the network itself).
+ * reach the network itself). `--open-session <id>` opens that conversation, for looking at one in a
+ * real window.
  */
-import { Text, View } from "nsh";
+import { effect, Text, View } from "nsh";
+import { initialSession } from "../src/launch";
 import { runtime } from "../src/runtime";
 import { Button } from "../src/ui/Button";
 import { Shell } from "../src/ui/shell/Shell";
@@ -24,6 +26,13 @@ Object.defineProperty(runtime, "snapshot", {
 });
 
 export default function ShellStory() {
+  // `--open-session <id>` (the shell's development flag) opens that conversation once connected, as the app's own window does.
+  let opened = false;
+  effect(() => {
+    if (opened || !initialSession || runtime.connection !== "connected") return;
+    opened = true;
+    void runtime.selectSession(initialSession);
+  });
   const state = () =>
     [
       `selected:${runtime.selectedId ?? "-"}`,
