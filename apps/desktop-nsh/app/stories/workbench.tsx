@@ -7,7 +7,9 @@
  */
 import { signal, Text, View } from "nsh";
 import type { Terminal } from "@real-bot/protocol";
+import { copy } from "../src/runtime";
 import { Button } from "../src/ui/Button";
+import { statusLabel } from "../src/m/overlays/terminals.ts";
 import { narrowWindow } from "../src/ui/Modal";
 import { NewPaneMenu, type NewPaneHost } from "../src/ui/workbench/NewPaneMenu";
 import { PaneTabLabel } from "../src/ui/workbench/PaneTabLabel";
@@ -39,8 +41,9 @@ export function describe(layout: WorkbenchLayout): string {
 }
 
 const TERMINALS = [
-  { id: "term-1", cwd: "/work/api", title: "api server" },
-  { id: "term-2", cwd: "/work/web", title: "vite" },
+  { id: "term-1", cwd: "/work/api", title: "api server", status: "live", exit_code: null },
+  { id: "term-2", cwd: "/work/web", title: "vite", status: "live", exit_code: null },
+  { id: "term-3", cwd: "/work/ci", title: "build", status: "exited", exit_code: 2 },
 ] as unknown as Terminal[];
 
 export default function WorkbenchStory() {
@@ -70,7 +73,11 @@ export default function WorkbenchStory() {
   /** What the shell's workbench does for the + menu: open content in a pane as a new tab. */
   const host: NewPaneHost = {
     untabbedTerminals: TERMINALS,
-    terminalName: (row: Terminal) => row.title,
+    // The shell's own naming: the title, then how a finished session ended.
+    terminalName: (row: Terminal) => {
+      const status = statusLabel(row, copy());
+      return status ? `${row.title} · ${status}` : row.title;
+    },
     openNewTerminal: async (leafId: string | null) => {
       if (leafId) commit(addTab(layout(), leafId, tab(freshId(), "terminal", "zsh")));
     },

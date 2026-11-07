@@ -172,3 +172,12 @@ test("a press outside the + menu closes it, the + again closes it too", async ()
   await app.press("id:wb-new-tab >> nth=0");
   await app.waitFor("id:wb-new-menu", { state: "gone" });
 });
+
+test("a finished terminal in the + menu is named with how it ended, the exit code included", async () => {
+  const app = await open();
+  await app.press("id:wb-new-tab >> nth=0");
+  await app.waitFor("id:wb-new-menu");
+  expect(app.texts()).toContain("build · 已结束 · 退出码 2");
+  // A live session carries no suffix.
+  expect(app.texts()).toContain("vite");
+});
