@@ -5,6 +5,12 @@
 
 use nsh_core::prelude::*;
 
+#[cfg(not(target_arch = "wasm32"))]
+mod office;
+// The web's `Office`: the same functions, answering that there are no previews there yet
+// (`office_web.rs`, and the note on `zip` in `Cargo.toml`).
+#[cfg(target_arch = "wasm32")]
+#[path = "office_web.rs"]
 mod office;
 mod palette;
 mod pdf;

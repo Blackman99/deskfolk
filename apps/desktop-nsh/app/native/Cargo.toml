@@ -14,8 +14,6 @@ base64 = "0.22"
 hayro = { version = "0.9", features = ["embed-fonts"] }
 serde_json.workspace = true
 serde.workspace = true
-calamine = { version = "0.38", features = ["dates"] }
-zip = { version = "9", default-features = false, features = ["deflate"] }
 quick-xml = "0.42"
 chrono = { version = "0.4", default-features = false }
 des = { version = "0.9.0", default-features = false }
@@ -24,3 +22,10 @@ md-5 = { version = "0.11.0", default-features = false }
 num-bigint = { version = "0.5.1", default-features = false }
 miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"] }
 jpeg-decoder = { version = "0.3.2", default-features = false }
+
+# Office previews (`src/office`), off the web for now: on wasm32 `zip` 9 (which `calamine` 0.38
+# requires) turns on `getrandom` 0.4's `wasm_js`, and under the `getrandom_backend="custom"` cfg
+# NSH adds to every web build `getrandom` 0.4 does not compile. The web gets `src/office_web.rs`.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+calamine = { version = "0.38", features = ["dates"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
