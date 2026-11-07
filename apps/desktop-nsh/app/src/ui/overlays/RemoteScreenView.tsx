@@ -13,7 +13,8 @@
  * Not carried over: the page's own scrolling above a soft keyboard (`RemoteScreenPane` leaves it to
  * the window) and the haptic tick when a drag begins (NSH has none).
  */
-import { cleanup, effect, lifecycle, pixelRatio, Text, View } from "nsh";
+import { cleanup, effect, pixelRatio, Text, View } from "nsh";
+import { lifecycle } from "../../platform/lifecycle";
 import { IconButton } from "../IconButton";
 import { copy } from "../../runtime";
 import { screenCopy } from "../../m/copy.ts";

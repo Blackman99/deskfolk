@@ -7,8 +7,9 @@
  * `report`: a window gaining or losing the focus tells the shell where the reader is
  * (`runtime.reportDesktopNotificationView`), as ChatStage does.
  */
-import { cleanup, effect, lifecycle, untracked } from "nsh";
+import { cleanup, effect, untracked } from "nsh";
 import { desktopReadingMode, transcriptReadingReady, TRANSCRIPT_VISIBLE_MS } from "../../m/notifications/reading.ts";
+import { lifecycle } from "../../platform/lifecycle";
 import { runtime } from "../../runtime";
 
 export function trackReading(opts: {
