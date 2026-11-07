@@ -1,6 +1,9 @@
 import { expect, test } from "nsh/test";
 import { openStory } from "./fixture";
 
+/** The box's text, as the story echoes the owner's draft (the test host's `value` follows typing only, not a document the app sets). */
+const draft = (app: { texts(): string[] }): string => (app.texts().find((t) => t.startsWith("draft:")) ?? "draft:").slice("draft:".length);
+
 const open = async () => {
   const app = await openStory("chat-composer-2");
   await app.waitFor("id:composer-input", { timeout: 15_000 });
@@ -88,7 +91,7 @@ test("a send with a staged file goes out with it and the chip goes after", async
     await app.press("id:send-button");
     await app.waitUntil(() => app.texts().some((t) => t.startsWith("sent:1 files:")), { timeout: 15_000 });
     await app.waitFor("id:composer-attachment", { state: "gone" });
-    await app.waitUntil(() => app.value("id:composer-input") === "");
+    await app.waitUntil(() => draft(app) === "");
   } finally {
     await app.press("id:story-cleanup");
     await app.waitUntil(() => app.texts().includes("session:direct"));
@@ -116,7 +119,7 @@ test("record, stop: what was heard is added to the draft, and nothing is sent", 
   await app.press("id:voice-button");
   await app.waitFor("id:voice-status");
   await app.press("id:voice-button");
-  await app.waitUntil(() => app.value("id:composer-input") === "Hi 你好，世界", { timeout: 10_000 });
+  await app.waitUntil(() => draft(app) === "Hi 你好，世界", { timeout: 10_000 });
   expect(app.texts()).toContain("sent:0");
 });
 
@@ -129,5 +132,5 @@ test("a recording cancelled drops it", async () => {
   await app.waitFor("id:voice-status");
   await app.press("id:voice-cancel");
   await app.waitFor("id:voice-status", { state: "gone" });
-  expect(app.value("id:composer-input")).toBe("");
+  expect(draft(app)).toBe("");
 });

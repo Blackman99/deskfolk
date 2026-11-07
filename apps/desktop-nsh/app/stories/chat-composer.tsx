@@ -38,6 +38,9 @@ const QUOTED = { id: "m1", author: USER_MEMBER, body: "把周报第二段再收�
 export default function ChatComposer() {
   const draft = signal("");
   const sent = signal(0);
+  const lastSent = signal("—");
+  const chips = signal("—");
+  let handle: { chips(): { id: string; label: string }[] } | null = null;
   const editable = signal(true);
   const picked = signal("—");
   const stopped = signal("—");
@@ -71,8 +74,10 @@ export default function ChatComposer() {
               editable={editable()}
               isGroup
               mentionBots={BOTS}
+              onHandle={(h) => (handle = h)}
               onSend={() => {
                 if (!draft().trim()) return;
+                lastSent.set(draft());
                 sent.set(sent() + 1);
                 draft.set("");
               }}
@@ -91,6 +96,9 @@ export default function ChatComposer() {
           </View>
         </View>
         <Text testID="draft" class="text-[12px] text-ink-muted">{`draft:${draft()}`}</Text>
+        <Text testID="last-sent" class="text-[12px] text-ink-muted">{`last:${lastSent()}`}</Text>
+        <Text testID="chips" class="text-[12px] text-ink-muted">{`chips:${chips()}`}</Text>
+        <Button testID="read-chips" variant="secondary" onPress={() => chips.set(handle ? handle.chips().map((c) => `${c.id}=${c.label}`).join(",") || "none" : "no-handle")}>read chips</Button>
         <Text testID="sent" class="text-[12px] text-ink-muted">{`sent:${sent()}`}</Text>
         <View class="flex-row gap-2 flex-wrap">
           <Button testID="toggle-editable" variant="secondary" onPress={() => editable.set(!editable())}>lock</Button>

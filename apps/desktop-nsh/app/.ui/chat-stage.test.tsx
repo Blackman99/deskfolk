@@ -36,7 +36,7 @@ test("an empty conversation is the welcome; a line sent from the composer replac
   try {
     const line = `stage ${Date.now()}`;
     await app.type("id:composer-input", line);
-    await app.submit("id:composer-input");
+    await app.keyboard.press("enter");
     await app.waitFor(`text:${line}`, { timeout: 15_000 });
     expect(app.shows("id:chat-welcome")).toBe(false);
     expect(app.shows("id:transcript")).toBe(true);

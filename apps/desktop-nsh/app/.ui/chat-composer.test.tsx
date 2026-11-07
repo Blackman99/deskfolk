@@ -1,6 +1,9 @@
 import { expect, test } from "nsh/test";
 import { openStory } from "./fixture";
 
+/** The box's text, as the story echoes the owner's draft (the test host's `value` follows typing only, not a document the app sets). */
+const draft = (app: { texts(): string[] }): string => (app.texts().find((t) => t.startsWith("draft:")) ?? "draft:").slice("draft:".length);
+
 const open = async () => {
   const app = await openStory("chat-composer");
   await app.waitFor("id:composer-input", { timeout: 10_000 });
@@ -9,21 +12,24 @@ const open = async () => {
 
 test("Enter sends the draft and clears the box; an empty one sends nothing", async () => {
   const app = await open();
-  await app.submit("id:composer-input");
+  await app.keyboard.press("enter");
   expect(app.texts()).toContain("sent:0");
   await app.type("id:composer-input", "你好");
   await app.waitUntil(() => app.texts().includes("draft:你好"));
-  await app.submit("id:composer-input");
+  await app.keyboard.press("enter");
   await app.waitUntil(() => app.texts().includes("sent:1"));
-  await app.waitUntil(() => app.value("id:composer-input") === "");
+  await app.waitUntil(() => draft(app) === "");
 });
 
 test("a locked box takes nothing", async () => {
   const app = await open();
   await app.press("id:toggle-editable");
-  expect(app.enabled("id:composer-input")).toBe(false);
+  await app.type("id:composer-input", "locked").catch(() => undefined);
+  await app.keyboard.press("enter");
+  expect(draft(app)).toBe("");
   await app.press("id:toggle-editable");
-  expect(app.enabled("id:composer-input")).toBe(true);
+  await app.type("id:composer-input", "open");
+  await app.waitUntil(() => draft(app) === "open");
 });
 
 test("an @ offers the Bots, a pick puts the name in the box, Esc-less typing narrows the list", async () => {
@@ -36,13 +42,75 @@ test("an @ offers the Bots, a pick puts the name in the box, Esc-less typing nar
   await app.waitFor("id:mention-bot-writer", { state: "gone" });
   await app.press("id:mention-bot-editor");
   await app.waitFor("id:mention-popup", { state: "gone" });
-  await app.waitUntil(() => (app.value("id:composer-input") ?? "").startsWith("请 @Editor"));
+  await app.waitUntil(() => draft(app).startsWith("请 @Editor"));
+});
+
+const chipsOf = async (app: Awaited<ReturnType<typeof open>>): Promise<string> => {
+  await app.press("id:read-chips");
+  await app.waitUntil(() => app.texts().some((t) => t.startsWith("chips:") && t !== "chips:—"));
+  return (app.texts().find((t) => t.startsWith("chips:")) ?? "").slice("chips:".length);
+};
+
+/** A mention picked from the list: `请 @Editor ` with Editor as one chip. */
+const pickEditor = async (app: Awaited<ReturnType<typeof open>>) => {
+  await app.type("id:composer-input", "请 @");
+  await app.waitFor("id:mention-popup");
+  await app.type("id:composer-input", "Edi");
+  await app.press("id:mention-bot-editor");
+  await app.waitFor("id:mention-popup", { state: "gone" });
+  await app.waitUntil(() => draft(app) === "请 @Editor ");
+};
+
+test("a picked mention is one chip carrying the member's id, not the typed @Edi", async () => {
+  const app = await open();
+  await pickEditor(app);
+  expect(await chipsOf(app)).toBe("bot-editor=Editor");
+});
+
+test("Backspace takes a chip away whole, with the space after it; text before it stays", async () => {
+  const app = await open();
+  await pickEditor(app);
+  await app.keyboard.press("backspace");
+  await app.waitUntil(() => draft(app) === "请 ");
+  expect(await chipsOf(app)).toBe("none");
+  // Plain text still goes one character at a time.
+  await app.keyboard.press("backspace");
+  await app.waitUntil(() => draft(app) === "请");
+});
+
+test("the sent text carries the mention as @Name, as the messenger sends it", async () => {
+  const app = await open();
+  await pickEditor(app);
+  await app.type("id:composer-input", "看看");
+  await app.waitUntil(() => draft(app) === "请 @Editor 看看");
+  await app.keyboard.press("enter");
+  await app.waitUntil(() => app.texts().includes("sent:1"));
+  expect(app.texts()).toContain("last:请 @Editor 看看");
+  await app.waitUntil(() => draft(app) === "");
+});
+
+test("the @ list's keys: arrows move, Enter and Tab choose, and nothing is sent by the pick", async () => {
+  const app = await open();
+  await app.type("id:composer-input", "@");
+  await app.waitFor("id:mention-popup");
+  await app.keyboard.press("down");
+  await app.keyboard.press("enter");
+  await app.waitFor("id:mention-popup", { state: "gone" });
+  await app.waitUntil(() => draft(app) === "@Writer ");
+  expect(app.texts()).toContain("sent:0");
+  await app.type("id:composer-input", "a");
+  await app.waitUntil(() => draft(app) === "@Writer a", { timeout: 3000 });
+  await app.type("id:composer-input", " @");
+  await app.waitFor("id:mention-popup");
+  await app.keyboard.press("tab");
+  await app.waitUntil(() => draft(app) === "@Writer a @everyone ");
+  expect(app.texts()).toContain("sent:0");
 });
 
 test("a suggestion drafts its line into the box", async () => {
   const app = await open();
   await app.press("text:换个语气");
-  await app.waitUntil(() => app.value("id:composer-input") === "换个更轻松的语气");
+  await app.waitUntil(() => draft(app) === "换个更轻松的语气");
 });
 
 test("the quote names whose line it is and goes with its ✕", async () => {

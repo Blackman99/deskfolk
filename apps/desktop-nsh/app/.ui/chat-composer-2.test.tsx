@@ -1,6 +1,9 @@
 import { expect, test } from "nsh/test";
 import { openStory } from "./fixture";
 
+/** The box's text, as the story echoes the owner's draft (the test host's `value` follows typing only, not a document the app sets). */
+const draft = (app: { texts(): string[] }): string => (app.texts().find((t) => t.startsWith("draft:")) ?? "draft:").slice("draft:".length);
+
 const open = async () => {
   const app = await openStory("chat-composer-2");
   await app.waitFor("id:composer-input", { timeout: 15_000 });
@@ -14,12 +17,12 @@ test("typing is the conversation's draft; Enter sends it to the runtime and the 
   await app.waitUntil(() => app.texts().includes(`draft:${line}`));
   // The line goes into a group the story makes (and deletes), so the fixture's conversations stay as they were.
   await app.press("id:story-scratch");
-  await app.waitUntil(() => app.texts().includes("session:scratch") && app.value("id:composer-input") === "", { timeout: 10_000 });
+  await app.waitUntil(() => app.texts().includes("session:scratch") && draft(app) === "", { timeout: 10_000 });
   await app.type("id:composer-input", line);
   try {
-    await app.submit("id:composer-input");
+    await app.keyboard.press("enter");
     await app.waitUntil(() => app.texts().some((t) => t.startsWith("sent:1")), { timeout: 10_000 });
-    await app.waitUntil(() => app.value("id:composer-input") === "");
+    await app.waitUntil(() => draft(app) === "");
     await app.press("id:story-read");
     await app.waitUntil(() => app.texts().some((t) => t.startsWith("read:") && t.includes(line)), { timeout: 10_000 });
   } finally {
@@ -31,7 +34,7 @@ test("typing is the conversation's draft; Enter sends it to the runtime and the 
 test("an empty box sends nothing, and Send greys until there is something to send", async () => {
   const app = await open();
   expect(app.enabled("id:send-button")).toBe(false);
-  await app.submit("id:composer-input");
+  await app.keyboard.press("enter");
   expect(app.texts().some((t) => t.startsWith("sent:"))).toBe(true);
   expect(app.texts()).toContain("sent:0");
   await app.type("id:composer-input", "hi");
@@ -42,9 +45,9 @@ test("the draft stays with its conversation when you look at another", async () 
   const app = await open();
   await app.type("id:composer-input", "留在这里");
   await app.press("id:story-group");
-  await app.waitUntil(() => app.texts().includes("session:group") && app.value("id:composer-input") === "");
+  await app.waitUntil(() => app.texts().includes("session:group") && draft(app) === "");
   await app.press("id:story-direct");
-  await app.waitUntil(() => app.value("id:composer-input") === "留在这里");
+  await app.waitUntil(() => draft(app) === "留在这里");
 });
 
 test("a group's @ offers everyone and its Bots; a direct's offers the Bots you can write to", async () => {
@@ -57,9 +60,9 @@ test("a group's @ offers everyone and its Bots; a direct's offers the Bots you c
   await app.type("id:composer-input", "Edi");
   await app.press("text:@Editor");
   await app.waitFor("id:mention-popup", { state: "gone" });
-  await app.waitUntil(() => (app.value("id:composer-input") ?? "").startsWith("请 @Editor"));
+  await app.waitUntil(() => draft(app).startsWith("请 @Editor"));
   await app.press("id:story-direct");
-  await app.waitUntil(() => app.value("id:composer-input") === "");
+  await app.waitUntil(() => draft(app) === "");
   await app.type("id:composer-input", "@");
   await app.waitFor("id:mention-popup");
   expect(app.shows("id:mention-everyone")).toBe(false);
@@ -79,7 +82,7 @@ test("suggestions draft their line into the box", async () => {
   expect(app.shows("id:suggest-chip")).toBe(false);
   await app.press("id:story-suggest");
   await app.press("text:换个语气");
-  await app.waitUntil(() => app.value("id:composer-input") === "换个更轻松的语气");
+  await app.waitUntil(() => draft(app) === "换个更轻松的语气");
 });
 
 test("a press that finds nothing to suggest says so where the chips would be, then lets it go", async () => {

@@ -23,7 +23,9 @@ test("sending goes through the runtime and the line comes back by the event stre
   await app.waitFor("text:帮我写个摘要", { timeout: 10_000 });
   const line = `测试一句 ${Date.now()}`;
   await app.type("id:composer-input", line);
+  await app.waitUntil(() => app.enabled("id:send-button"));
   await app.press("id:send-button");
   await app.waitFor(`text:${line}`, { timeout: 10_000 });
-  await app.waitUntil(() => app.value("id:composer-input") === "");
+  // The draft is cleared: with nothing to send the button goes back to disabled (the rich editor's text is not an `app.value`).
+  await app.waitUntil(() => !app.enabled("id:send-button"));
 });

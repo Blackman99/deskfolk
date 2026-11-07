@@ -1,29 +1,46 @@
 /**
- * The message box (`ComposerEditor.svelte`): an nsh/base `Input` that grows with its text up to a
- * cap, then scrolls. Enter sends, Shift+Enter breaks a line (with the interface profile's `mod_enter`
- * it is the other way round: ⌘/Ctrl+Enter sends); nothing is sent while an input method is composing,
- * nor in the moment after it committed (`composer-ime.ts`). Typing `@` offers the Bots (`MentionPopup`)
+ * The message box (`ComposerEditor.svelte`): an nsh/base `RichEditor` that grows with its text up to
+ * a cap, then scrolls. A picked mention is an inline chip, one atom (the document's `mention` node,
+ * carrying the member id) that Backspace and Delete take away whole, with the space after it, and
+ * that the draft reads as `@Name` (`composer-doc.ts`), as the Svelte contenteditable serialises its
+ * chips. Enter sends, Shift+Enter breaks a line (with the interface profile's `mod_enter` it is the
+ * other way round: ⌘/Ctrl+Enter sends); nothing is sent while an input method is composing, nor in
+ * the moment after it committed (`composer-ime.ts`). Typing `@` offers the Bots (`MentionPopup`)
  * and, in a project session, a `/` that opens the line offers the agent's commands
  * (`ProjectCommandMenu`); ↑↓ move in the list, Enter or Tab choose, Esc or a press elsewhere closes it
  * until the text changes. ↑ in an empty box asks the owner to open your newest line for changing.
  *
- * The Svelte one is a contenteditable that turns `@Name` into inline chips with a close button; an
- * `Input` holds text only, so a mention stays `@Name ` in the box (the draft the Svelte serialised
- * to is the same text). The draft is the owner's: `value` and `onChange`.
+ * The draft is the owner's string (`value` and `onChange`); the editor's document follows it when the
+ * owner changes it (a quote, a suggestion, a send that clears it), turning each `@Name` of a Bot the
+ * list names into a chip. Not as the Svelte one: a chip has no avatar and no close button (the
+ * editor has no node views for the app), and a `@Name` typed by hand stays text until picked.
  */
-import { computed, effect, keymap, Overlay, platform, signal, untracked, View, windowSize, type ViewRef } from "nsh";
-import { Input } from "nsh/base";
-import type { InputRef, PasteEvent } from "nsh/types";
+import { cleanup, computed, effect, Overlay, platform, signal, untracked, View, windowSize, type ViewRef } from "nsh";
+import { baseKeymap, command, createRichEditor, defineSchema, deleteRange, history, insertContentAt, keymap as editorKeymap, RichEditor, RichEditorPlugin, setTextSelection, withMention } from "nsh/base";
+import type { RichEditorRef, RichEditorSession, RichNodeJSON } from "nsh/base";
+import type { PasteEvent } from "nsh/types";
 import type { Bot, ClaudeCodeCommand } from "@real-bot/protocol";
 import { COMPOSER_IME_IDLE, composerImeKeyAction, composerImeOnEnd, composerImeOnStart, type ComposerImeState } from "../../m/chat/composer-ime";
 import type { MentionCandidate } from "../../m/chat/composer-mentions.svelte";
 import { loadProjectCommands, matchCommands, projectCommandsOf, slashQuery, withCommand } from "../../m/chat/project-commands.svelte";
-import { applyMentionCandidate, detectMentionTrigger } from "../../m/chat/mention-popup";
+import { detectMentionTrigger } from "../../m/chat/mention-popup";
 import { interfaceBehaviour } from "../../m/interface/behaviour.svelte";
 import { copy, runtime } from "../../runtime";
-import { boxHeight, caretAfterEdit, mentionCandidatesFor } from "./composer-editor";
+import { backspaceRange, chipNode, chipsOf, deleteRange as chipDeleteRange, docFromText, offsetToPos, posToOffset, textOfDoc, type DocNode } from "./composer-doc";
+import { boxHeight, mentionCandidatesFor } from "./composer-editor";
 import { MentionPopup } from "./MentionPopup";
 import { ProjectCommandMenu } from "./ProjectCommandMenu";
+
+/** Paragraphs of text and chips: the composer's whole schema. */
+const SCHEMA = withMention(
+  defineSchema({
+    nodes: {
+      doc: { content: "paragraph+" },
+      paragraph: { content: "inline*", group: "block", parseDOM: [{ tag: "p" }], toDOM: ["p", 0] },
+      text: { group: "inline" },
+    },
+  }),
+);
 
 /** What the owner can do to the box from outside: a quote reply or a starter chip lands the caret here. */
 export type ComposerEditorHandle = {
@@ -31,6 +48,8 @@ export type ComposerEditorHandle = {
   setSelection(start: number, end?: number): void;
   /** The selection now, as offsets into the draft (where a voice transcript goes in). */
   selection(): { start: number; end: number };
+  /** The chips now, in order (the member ids a send carries; tests read them). */
+  chips(): { id: string; label: string }[];
 };
 
 export function ComposerEditor(props: {
@@ -59,23 +78,117 @@ export function ComposerEditor(props: {
   testID?: string;
 }) {
   const phone = () => !platform.desktop;
-  const caret = signal(0);
-  /** Where the selection starts; `caret` is where it ends. */
-  const selStart = signal(0);
+  /** Who a draft's `@Name` may be a chip for: the Bots the @ list offers. */
+  const roster = (): { id: string; name: string }[] => (props.mentionBots ?? []).map((bot) => ({ id: bot.id, name: bot.name }));
+  const asDoc = (text: string) => docFromText(text, roster()) as unknown as RichNodeJSON[];
+
+  /** The draft the editor last held or was given: the owner's value is the editor's own change until it differs. */
+  let known = props.value;
+  /** The captured keys (see `// --- keys ---`): created with the session, handled and switched on below. */
+  type KeyPlugin = { plugin: RichEditorPlugin; handler: (key: string) => void };
+  const keyPlugin = (name: string, keys: string[]): KeyPlugin => {
+    const entry: KeyPlugin = { plugin: undefined as unknown as RichEditorPlugin, handler: () => {} };
+    entry.plugin = new RichEditorPlugin(`composer-${name}`).captureKeys(keys, (key) => entry.handler(key));
+    return entry;
+  };
+  const keyPlugins = {
+    list: keyPlugin("list", ["ArrowDown", "ArrowUp", "Tab"]),
+    enter: keyPlugin("enter", ["Enter"]),
+    modEnter: keyPlugin("mod-enter", ["Mod-Enter"]),
+    up: keyPlugin("up", ["ArrowUp"]),
+    back: keyPlugin("backspace", ["Backspace"]),
+    del: keyPlugin("delete", ["Delete"]),
+  };
+  const session: RichEditorSession = createRichEditor({
+    schema: SCHEMA,
+    doc: { type: "doc", content: asDoc(props.value) },
+    // Shift+Enter breaks the line (Enter does too, unless the keymap below takes it to send).
+    plugins: [history(), editorKeymap({ "Shift-Enter": command("splitBlock") }), ...Object.values(keyPlugins).map((k) => k.plugin), baseKeymap()],
+    editable: props.editable,
+  });
+  cleanup(() => session.dispose());
   const composing = signal(false);
   const ime = { state: COMPOSER_IME_IDLE as ComposerImeState };
-  const input = signal<InputRef | null>(null);
-  const contentHeight = signal(0);
+  const editorRef = signal<RichEditorRef | null>(null);
+  /** Bumped by every change of the document or the selection: what the derived values below follow. */
+  const tick = signal(0);
+  const docOf = (): { content?: DocNode[] } => session.doc as unknown as { content?: DocNode[] };
+  /** The selection now, as draft offsets (read straight from the editor: the owner's handle needs it at once). */
+  const selectionNow = (): { start: number; end: number } => {
+    const doc = docOf();
+    const sel = session.selection as unknown as { anchor?: number; head?: number };
+    const head = sel.head ?? 1;
+    const anchor = sel.anchor ?? head;
+    return { start: posToOffset(doc, Math.min(anchor, head)), end: posToOffset(doc, Math.max(anchor, head)) };
+  };
+  const view = computed(() => {
+    tick();
+    const selection = selectionNow();
+    const doc = docOf();
+    return { selection, caret: selection.end, doc, text: textOfDoc(doc) };
+  });
+  const contentHeight = computed(() => {
+    tick();
+    const doc = docOf();
+    const end = offsetToPos(doc, Number.MAX_SAFE_INTEGER);
+    try {
+      const at = session.coordsAtPos(end) as { y: number; height: number } | null;
+      if (at) return Math.max(0, at.y + at.height - 6);
+    } catch {
+      // Not laid out yet: the lines count stands in.
+    }
+    return textOfDoc(doc).split("\n").length * 22;
+  });
   const box = (): number => boxHeight(contentHeight(), phone(), windowSize().height);
-  const at = () => Math.min(caret(), props.value.length);
+  const at = () => view().caret;
   const editable = () => props.editable;
+
+  // The editor to the owner: each change of the document hands the draft up.
+  const changed = (): void => {
+    const text = session.getText();
+    if (text !== known) {
+      known = text;
+      props.onChange(text);
+    }
+  };
+  let wasComposing = false;
+  const follow = (): void => {
+    tick.set(tick() + 1);
+    const now = session.composing;
+    if (now !== wasComposing) {
+      wasComposing = now;
+      composing.set(now);
+      ime.state = now ? composerImeOnStart() : composerImeOnEnd(performance.now());
+    }
+  };
+  session.on("revision", () => {
+    changed();
+    follow();
+  });
+  session.on("selectionUpdate", follow);
+  session.on("transaction", follow);
+
+  // The owner to the editor: a draft the editor did not make (a quote, a suggestion, a send that cleared it) replaces the document.
+  effect(() => {
+    const text = props.value;
+    untracked(() => {
+      if (text === known) return;
+      known = text;
+      session.setContent(asDoc(text) as unknown as RichNodeJSON[]);
+      session.run(setTextSelection(offsetToPos(docOf(), Number.MAX_SAFE_INTEGER)));
+      tick.set(tick() + 1);
+    });
+  });
+  effect(() => {
+    session.setEditable(props.editable);
+  });
 
   // --- the @ list ---
   const mentionClosed = signal<{ anchor: number; query: string } | null>(null);
   const highlight = signal(0);
   const trig = (): { anchor: number; query: string } | null => {
     if (!editable() || props.fileDrop) return null;
-    const found = detectMentionTrigger(props.value, at());
+    const found = detectMentionTrigger(view().text, at());
     return found.active ? { anchor: found.anchorIndex, query: found.query } : null;
   };
   const trigKey = computed(() => {
@@ -107,10 +220,11 @@ export function ComposerEditor(props: {
   function pickMention(candidate: MentionCandidate): void {
     const t = trig();
     if (!t) return;
-    const next = applyMentionCandidate(props.value, t.anchor, at(), candidate.name);
-    props.onChange(next.nextDraft);
-    caret.set(next.nextCursor);
-    place(next.nextCursor);
+    const doc = docOf();
+    // `@Name ` where `@query` was, as `applyMentionCandidate` makes the draft: the chip reads as `@Name`, the space is text.
+    const range = { from: offsetToPos(doc, t.anchor), to: offsetToPos(doc, at()) };
+    session.run(insertContentAt(range, [chipNode({ id: candidate.id, label: candidate.name }), { type: "text", text: " " }]));
+    session.focus();
   }
 
   // --- the / list (a project session's commands) ---
@@ -140,7 +254,6 @@ export function ComposerEditor(props: {
   function pickCommand(command: ClaudeCodeCommand, run: boolean): void {
     const next = withCommand(props.value, command.name, run);
     props.onChange(next.text);
-    caret.set(next.caret);
     if (run) {
       props.onSend();
       return;
@@ -148,48 +261,82 @@ export function ComposerEditor(props: {
     place(next.caret);
   }
 
-  /** The caret after the text the owner has just set. */
+  /** The caret after the text the owner has just set (the editor takes the draft in its next turn). */
   function place(position: number): void {
     setTimeout(() => {
-      input()?.focus();
-      input()?.setSelection(position);
+      session.focus();
+      const doc = docOf();
+      session.run(setTextSelection(offsetToPos(doc, position)));
     }, 0);
   }
 
   // --- keys ---
-  // While a list is open the arrows, Tab and Enter are the list's: the input does not use them itself in a way that matters here.
-  effect(() => {
-    if (!editable()) return;
-    const off: (() => void)[] = [];
-    const bind = (stroke: string, fn: () => void, repeat = false) => off.push(keymap.bind(stroke, fn, { when: "always", repeat }));
-    if (mentionOpen()) {
-      const count = () => candidates().length;
-      bind("down", () => highlight.set((activeMention() + 1) % count()), true);
-      bind("up", () => highlight.set((activeMention() - 1 + count()) % count()), true);
-      const choose = () => {
-        const candidate = candidates()[activeMention()];
-        if (candidate) pickMention(candidate);
-      };
-      bind("enter", choose);
-      bind("tab", choose);
-    } else if (commandsListed()) {
-      const count = () => commandMatches().length;
-      bind("down", () => commandActive.set((activeCommand() + 1) % count()), true);
-      bind("up", () => commandActive.set((activeCommand() + count() - 1) % count()), true);
-      // With ⌘/Ctrl+Enter the key that sends, Enter only fills the command in, as Tab does.
-      bind("enter", () => pickCommand(commandMatches()[activeCommand()]!, enterSends()));
-      bind("tab", () => pickCommand(commandMatches()[activeCommand()]!, false));
-    } else if (props.onEditLast && !props.value.trim()) {
-      bind("up", () => void props.onEditLast?.());
-    }
-    bind("mod+enter", () => submit());
-    return () => off.forEach((fn) => fn());
+  // The editor swallows app-level `keymap` bindings while it has the focus, so its keys are `RichEditorPlugin.captureKeys`:
+  // the native editor consumes them while the plugin is `capturing` and tells the handler after. One plugin per
+  // condition, since a plugin captures all its keys or none.
+  const listOpen = () => mentionOpen() || commandsListed();
+  const capture = (entry: KeyPlugin, handler: (key: string) => void, on: () => boolean) => {
+    entry.handler = handler;
+    effect(() => {
+      entry.plugin.capturing = editable() && on();
+    });
+  };
+  const chooseMention = () => {
+    const candidate = candidates()[activeMention()];
+    if (candidate) pickMention(candidate);
+  };
+  capture(
+    keyPlugins.list,
+    (key) => {
+      if (mentionOpen()) {
+        const count = candidates().length;
+        if (key === "ArrowDown") highlight.set((activeMention() + 1) % count);
+        else if (key === "ArrowUp") highlight.set((activeMention() - 1 + count) % count);
+        else chooseMention();
+      } else if (commandsListed()) {
+        const count = commandMatches().length;
+        if (key === "ArrowDown") commandActive.set((activeCommand() + 1) % count);
+        else if (key === "ArrowUp") commandActive.set((activeCommand() + count - 1) % count);
+        else pickCommand(commandMatches()[activeCommand()]!, false);
+      }
+    },
+    listOpen,
+  );
+  // Enter: a list's choice; else, unless ⌘/Ctrl+Enter is the send key, a send (with `mod_enter` the editor's own keymap breaks the line).
+  capture(
+    keyPlugins.enter,
+    () => {
+      if (mentionOpen()) chooseMention();
+      else if (commandsListed()) pickCommand(commandMatches()[activeCommand()]!, enterSends());
+      else submit();
+    },
+    () => listOpen() || enterSends(),
+  );
+  capture(keyPlugins.modEnter, () => submit(), () => true);
+  capture(keyPlugins.up, () => void props.onEditLast?.(), () => !listOpen() && !!props.onEditLast && !props.value.trim());
+  // A chip goes whole: Backspace right after it (or after the space that follows it) and Delete right before it take the
+  // chip and that space away. The keys are captured only where the caret is next to a chip.
+  const caretNow = (): number => (session.selection as unknown as { head?: number }).head ?? 0;
+  const collapsed = (): boolean => {
+    const sel = session.selection as unknown as { anchor?: number; head?: number };
+    return sel.anchor === undefined || sel.anchor === sel.head;
+  };
+  const take = (range: { from: number; to: number } | null) => {
+    if (range) session.run(deleteRange(range));
+  };
+  capture(keyPlugins.back, () => take(backspaceRange(docOf(), caretNow())), () => {
+    tick();
+    return !composing() && collapsed() && backspaceRange(docOf(), caretNow()) !== null;
+  });
+  capture(keyPlugins.del, () => take(chipDeleteRange(docOf(), caretNow())), () => {
+    tick();
+    return !composing() && collapsed() && chipDeleteRange(docOf(), caretNow()) !== null;
   });
 
   /** Enter, unless an input method is composing or just committed (the Enter that confirms a candidate must not send). */
   function submit(): void {
     if (!editable()) return;
-    const action = composerImeKeyAction({ isComposing: composing(), key: "Enter", keyCode: 13 }, ime.state, performance.now());
+    const action = composerImeKeyAction({ isComposing: session.composing, key: "Enter", keyCode: 13 }, ime.state, performance.now());
     if (action === "swallow") {
       ime.state = COMPOSER_IME_IDLE;
       return;
@@ -205,55 +352,44 @@ export function ComposerEditor(props: {
   };
 
   const popupWidth = (max: number) => Math.min(max, Math.max(240, windowSize().width - 32));
-  const anchor = (): ViewRef | null => input() as unknown as ViewRef | null;
+  const anchor = (): ViewRef | null => editorRef()?.node ?? null;
+
+  /** What a paste brings besides text: files go to the attachments (the editor reports them, inserts nothing). */
+  const pasted = (event: { paste: { files: { name: string; mime: string; data: Uint8Array }[]; uris: string[] } }): void => {
+    const files = event.paste.files.map((file) => new File([file.data as unknown as BlobPart], file.name, { type: file.mime }));
+    props.onPaste?.({ files, uris: event.paste.uris } as unknown as PasteEvent);
+  };
 
   return (
     <View class="flex-1 min-w-0">
-      <Input
+      <RichEditor
         testID={props.testID ?? "composer-input"}
-        ref={(node: InputRef | null) => {
-          input.set(node);
+        editor={session}
+        ref={(node: RichEditorRef | null) => {
+          editorRef.set(node);
           props.onHandle?.(
             node
               ? {
-                  focus: () => node.focus(),
-                  setSelection: (a, b) => node.setSelection(a, b),
-                  selection: () => {
-                    const end = Math.min(caret(), props.value.length);
-                    return { start: Math.min(selStart(), end), end };
+                  focus: () => session.focus(),
+                  setSelection: (a, b) => {
+                    const doc = docOf();
+                    session.run(setTextSelection(offsetToPos(doc, a), offsetToPos(doc, b ?? a)));
                   },
+                  selection: () => selectionNow(),
+                  chips: () => chipsOf(docOf()).map(({ id, label }) => ({ id, label })),
                 }
               : null,
           );
         }}
-        value={props.value}
         placeholder={props.placeholder}
         accessibilityLabel={props.placeholder}
-        multiline
-        submitBehavior={interfaceBehaviour().send_key === "mod_enter" ? "newline" : "submit"}
-        pasteBehavior={editable() ? "insert" : "report"}
-        readonly={!editable()}
-        onChange={(e) => {
-          caret.set(caretAfterEdit(props.value, e.value));
-          props.onChange(e.value);
+        editable={editable()}
+        onPasteFiles={pasted}
+        classes={{
+          content: phone() ? "text-[15px] px-1 py-[9px]" : "text-[14px] pl-1 pr-[6px] py-[6px]",
+          nodes: { mention: "bg-accent-tint text-accent-hover font-semibold rounded-full px-[6px]" },
         }}
-        onSelectionChange={(e) => {
-          selStart.set(e.start);
-          caret.set(e.end);
-        }}
-        onSubmit={() => submit()}
-        onPaste={(e) => props.onPaste?.(e)}
-        onCompositionChange={(e) => {
-          if (e.composing) {
-            composing.set(true);
-            if (!ime.state.composing) ime.state = composerImeOnStart();
-          } else {
-            composing.set(false);
-            ime.state = composerImeOnEnd(performance.now());
-          }
-        }}
-        onContentSizeChange={(e) => contentHeight.set(e.size.height)}
-        class={`min-w-0 text-ink placeholder:text-ink-muted ${phone() ? "text-[15px] px-1 py-[9px]" : "text-[14px] pl-1 pr-[6px] py-[6px]"} ${editable() ? "" : "opacity-[0.45]"}`}
+        class={`min-w-0 text-ink ${editable() ? "" : "opacity-[0.45]"}`}
         style={{ height: box() }}
       />
       <If when={anchor() && mentionOpen()}>
