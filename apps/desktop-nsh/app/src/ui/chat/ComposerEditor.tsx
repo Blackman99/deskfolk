@@ -106,7 +106,14 @@ export function ComposerEditor(props: {
     plugins: [history(), editorKeymap({ "Shift-Enter": command("splitBlock") }), ...Object.values(keyPlugins).map((k) => k.plugin), baseKeymap()],
     editable: props.editable,
   });
-  cleanup(() => session.dispose());
+  cleanup(() => {
+    session.dispose();
+    // A captured key's handler sits in a table of the engine's own, which lets it go only with its
+    // plugin, and the handler reaches the plugin back (and, through this component, the whole
+    // conversation around it): left to the collector, nothing ever went, and every conversation
+    // switch kept a whole stage's native views alive.
+    for (const entry of Object.values(keyPlugins)) entry.plugin.dispose();
+  });
   const composing = signal(false);
   const ime = { state: COMPOSER_IME_IDLE as ComposerImeState };
   const editorRef = signal<RichEditorRef | null>(null);
