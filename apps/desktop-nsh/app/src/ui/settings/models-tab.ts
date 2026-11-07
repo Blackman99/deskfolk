@@ -5,7 +5,8 @@
  * `createModelsState()`, gives it to `<ModelsTab state={…}>` and calls the two functions for its
  * page head and its Back.
  */
-import { signal, windowSize } from "nsh";
+import { signal } from "nsh";
+import { widthAtMost } from "../../platform/viewport";
 
 export type ModelsSection = "endpoints" | "speech";
 
@@ -13,7 +14,7 @@ export type ModelsSection = "endpoints" | "speech";
 export const MODELS_SECTIONS: readonly ModelsSection[] = ["endpoints", "speech"];
 
 /** The messenger's breakpoint for this page. */
-export const modelsPhone = () => windowSize().width <= 720;
+export const modelsPhone = () => widthAtMost(720);
 
 export function createModelsState(label: (of: ModelsSection) => string) {
   const picked = signal<ModelsSection>("endpoints");

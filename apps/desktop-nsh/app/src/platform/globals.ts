@@ -6,6 +6,7 @@
  */
 import { locale, platform, Storage, windowSize } from "nsh";
 import { RelativeTimeFormat } from "./relative-time";
+import { widthAtMost } from "./viewport";
 
 type StorageLike = {
   readonly length: number;
@@ -76,6 +77,22 @@ export function mediaMatches(query: string, width: number): boolean {
   return all;
 }
 
+/**
+ * `mediaMatches` against the live window, reading only what the query asks: a `max-width` through
+ * the cached breakpoints (`viewport.ts`), so a reader hears a resize only when it crosses one, and
+ * nothing of the window at all for queries that are not about its width.
+ */
+function liveMediaMatches(query: string): boolean {
+  let all = true;
+  for (const part of query.split(/\band\b/)) {
+    const max = /max-width:\s*(\d+(?:\.\d+)?)px/.exec(part);
+    if (max) all &&= widthAtMost(Number(max[1]));
+    else if (/min-width/.test(part)) all &&= mediaMatches(part, windowSize().width);
+    else all &&= mediaMatches(part, 0);
+  }
+  return all;
+}
+
 let installed = false;
 const kept = new Map<string, string>();
 
@@ -134,7 +151,7 @@ export function installGlobals(): void {
   if (typeof g.matchMedia !== "function") {
     g.matchMedia = (query: string) => ({
       get matches() {
-        return mediaMatches(query, windowSize().width);
+        return liveMediaMatches(query);
       },
       media: query,
       addEventListener() {},

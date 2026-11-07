@@ -9,13 +9,14 @@
  * `playbook-template-<id>` (`blank` for the blank one).
  */
 import { CUSTOM_STEPS_MAX, type CustomStep, type PlaybookHook } from "@real-bot/protocol";
-import { Overlay, Text, View, windowSize, type ViewRef } from "nsh";
+import { Overlay, Text, View, type ViewRef } from "nsh";
 import { copy } from "../../runtime";
 import { blankStep, templateStep, templatesFor, type CustomStepTemplateId } from "../../m/settings/custom-step-templates.ts";
 import { rovingMenu } from "../sidebar/menu-roving";
 import { BottomSheet, SheetItem, SheetSeparator } from "../BottomSheet";
 import { Icon } from "../Icon";
 import { shadow } from "../styles";
+import { widthAtMost } from "../../platform/viewport";
 
 export function PlaybookAddMenu(props: {
   hook: PlaybookHook;
@@ -26,7 +27,7 @@ export function PlaybookAddMenu(props: {
   onchoose: (step: CustomStep) => void;
 }) {
   const c = () => copy().playbooks.own;
-  const phone = () => windowSize().width <= 720;
+  const phone = () => widthAtMost(720);
   const roving = rovingMenu({ open: () => !phone() && !props.full, keys: () => [...templatesFor(props.hook), "blank"], onTab: () => close() });
 
   function choose(step: CustomStep): void {

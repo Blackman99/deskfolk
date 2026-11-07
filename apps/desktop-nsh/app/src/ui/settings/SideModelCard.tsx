@@ -13,7 +13,7 @@
  * Test ids: `side-model-<kind>`, `side-model-picker`, `side-model-error`, `side-model-account`,
  * `side-model-claude-note`, `side-model-agent-note`.
  */
-import { effect, signal, Text, untracked, View, windowSize } from "nsh";
+import { effect, signal, Text, untracked, View } from "nsh";
 import {
   isReaderAgentModel,
   isReaderClaudeModel,
@@ -36,6 +36,7 @@ import { agentAccountOptions, agentAccountsOf, agentLabelOf, agentModelsOf, agen
 import { ModelPicker } from "../ModelPicker";
 import { Select } from "../Select";
 import { shadow } from "../styles";
+import { widthAtMost } from "../../platform/viewport";
 
 const FOLLOW = "";
 const key = (row: ReaderModel) =>
@@ -68,7 +69,7 @@ export function SideModelCard(props: {
   /** The account a Claude model is picked on: the one already chosen, else the computer's default (''). */
   const pickedAccount = signal("");
   const framed = () => props.framed !== false;
-  const phone = () => windowSize().width <= 720;
+  const phone = () => widthAtMost(720);
 
   void props.claude?.status?.().then(
     (status) => claudeStatus.set(status),

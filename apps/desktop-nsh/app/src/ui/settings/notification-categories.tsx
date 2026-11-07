@@ -6,7 +6,7 @@
  * Props: `policy` (null before it loaded: every category reads on); `loading`; `onToggle(key)`.
  * Test ids: `notif-cat-${key}` (the switch), `notif-cat-count`.
  */
-import { Text, View, windowSize } from "nsh";
+import { Text, View } from "nsh";
 import type { NotificationPolicy } from "../../m/notifications/types.ts";
 import { copy, runtime } from "../../runtime";
 import { Icon } from "../Icon";
@@ -14,6 +14,7 @@ import { Switch } from "../Switch";
 import { SettingsCard } from "./SettingsCard";
 import { SettingsCardHeader } from "./SettingsCardHeader";
 import { CATEGORY_LOOK, categoryList, type CategoryKey } from "./notification-view";
+import { widthAtMost } from "../../platform/viewport";
 
 export function CardIcon(props: { name: Parameters<typeof Icon>[0]["name"] }) {
   return (
@@ -43,7 +44,7 @@ export function NotificationCategories(props: {
   const rows = () => categoryList(props.policy?.categories, t(), locale());
   const active = () => (props.policy ? Object.values(props.policy.categories).filter(Boolean).length : 0);
   // Two columns while the card has room (the Svelte's container query at 480px).
-  const wide = () => windowSize().width > 600;
+  const wide = () => !widthAtMost(600);
   const row = (cat: ReturnType<typeof rows>[number], at: number, total: number) => {
     const look = CATEGORY_LOOK[cat.key];
     const lastRow = wide() ? at >= total - 2 : at === total - 1;

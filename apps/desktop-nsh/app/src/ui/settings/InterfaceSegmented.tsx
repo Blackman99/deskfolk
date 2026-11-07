@@ -6,8 +6,9 @@
  * Props: `options` (`{ value, label, testID }`); `value` (the pressed one; `null` for none);
  * `onPick(value)`; `ariaLabel`; `testID` (the group's).
  */
-import { Text, View, windowSize } from "nsh";
+import { Text, View } from "nsh";
 import { shadow } from "../styles";
+import { widthAtMost } from "../../platform/viewport";
 
 export type SegmentedOption<V extends string> = { value: V; label: string; testID?: string };
 
@@ -18,7 +19,7 @@ export function InterfaceSegmented<V extends string>(props: {
   ariaLabel?: string;
   testID?: string;
 }) {
-  const wide = () => windowSize().width <= 540;
+  const wide = () => widthAtMost(540);
   return (
     <View
       role="group"

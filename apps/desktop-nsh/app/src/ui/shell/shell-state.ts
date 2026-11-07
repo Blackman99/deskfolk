@@ -40,6 +40,7 @@ import { closeChatSide, settingsSide, toggleChatSide } from "../../m/workbench/p
 import type { GroupDetailDraft } from "../../m/panels/group-edit.ts";
 import type { ProviderEditorState } from "../../m/settings/provider-form.ts";
 import { WINDOW_CHROME } from "../../m/window-chrome.ts";
+import { widthAtMost } from "../../platform/viewport";
 
 /** What a pane hosting a file answers the shell (the preview column, the workspace page). */
 export type PaneHandle = {
@@ -94,7 +95,7 @@ export function createShellState() {
   // --- the shell's size: the narrow window is the phone layout (≤ 680 points wide) ---
   const shellWidth = signal(Number.POSITIVE_INFINITY);
   const shellHeight = signal(0);
-  const narrow = () => windowSize().width <= NARROW_MAX_WIDTH;
+  const narrow = () => widthAtMost(NARROW_MAX_WIDTH);
   const wide = () => isWorkbenchSurface(narrow());
   const isMobile = () => shellWidth() <= NARROW_MAX_WIDTH;
   /** The stand-in for the Svelte shell's element: the helpers read only its size. */

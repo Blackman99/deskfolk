@@ -16,10 +16,12 @@ import { Dialog } from "nsh/base";
 import { Icon, type IconName } from "./Icon";
 import { IconButton } from "./IconButton";
 import { shadow } from "./styles";
+import { widthAtMost } from "../platform/viewport";
 
 /** The messenger's phone breakpoint (`@media (max-width: 680px)`). */
 export const PHONE_WIDTH = 680;
-export const narrowWindow = () => windowSize().width <= PHONE_WIDTH;
+/** The phone layout, cached (`platform/viewport.ts`): readers update when the window crosses it, not on every resize frame. */
+export const narrowWindow = () => widthAtMost(PHONE_WIDTH);
 
 export function Modal(props: {
   /** The heading (`h2`), and the dialog's name for a screen reader. */

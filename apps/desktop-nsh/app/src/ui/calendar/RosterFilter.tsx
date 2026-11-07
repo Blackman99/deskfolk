@@ -6,7 +6,7 @@
  * nothing is written.
  */
 import type { Bot } from "@real-bot/protocol";
-import { effect, keymap, Scroll, signal, Text, View, windowSize, type ScrollRef } from "nsh";
+import { effect, keymap, Scroll, signal, Text, View, type ScrollRef } from "nsh";
 import { Input, Popover } from "nsh/base";
 import { copy } from "../../runtime";
 import { BottomSheet } from "../BottomSheet";
@@ -14,9 +14,10 @@ import { Icon } from "../Icon";
 import { cssColor, shadow } from "../styles";
 import type { CalSource } from "./calendar-dates";
 import { SmallFace } from "./EventFace";
+import { widthAtMost } from "../../platform/viewport";
 
 /** `PHONE_SHEET_QUERY` (`bottom-sheet.ts`): what drops down opens as a sheet at this width or less. */
-const phone = () => windowSize().width <= 720;
+const phone = () => widthAtMost(720);
 
 export function RosterFilter(props: {
   sources: readonly CalSource[];

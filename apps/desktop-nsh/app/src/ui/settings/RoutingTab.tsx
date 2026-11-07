@@ -22,7 +22,7 @@
  * keyboard shortcut; NSH views take no key events), and the picked node is not given the focus.
  */
 import { builtinPlaybook, emptyPlaybookDiff, playbookDefaults, type BuiltinModelRole, type CustomStep, type Locale, type Playbook, type PlaybookStepId, type PromptSummary } from "@real-bot/protocol";
-import { computed, effect, keymap, Scroll, signal, Text, untracked, View, windowSize, type JSX, type ScrollRef } from "nsh";
+import { computed, effect, keymap, Scroll, signal, Text, untracked, View, type JSX, type ScrollRef } from "nsh";
 import { copy, runtime } from "../../runtime";
 import { firstLocale, type PromptView } from "../../m/settings/prompts-view.ts";
 import { askOnce, routingNodeView } from "../../m/settings/routing-map.ts";
@@ -39,6 +39,7 @@ import { PlaybookStepDetail } from "./PlaybookStepDetail";
 import { PlaybookTurnPart } from "./PlaybookTurnPart";
 import { PromptEditorPage } from "./PromptEditorPage";
 import { RoutingNode } from "./RoutingNode";
+import { widthAtMost } from "../../platform/viewport";
 
 export type RoutingTabHandle = {
   sectionTitle: () => string | null;
@@ -67,7 +68,7 @@ export function RoutingTab(props: {
    * The engines' list beside the map and the picked step needs a little more room than the two did.
    */
   const width = signal(0);
-  const narrow = () => (width() > 0 ? width() <= 760 : windowSize().width <= 720);
+  const narrow = () => (width() > 0 ? width() <= 760 : widthAtMost(720));
   const providers = () => snapshot().providers;
   const botNames = () => new Map(snapshot().bots.map((bot) => [bot.id, bot.name] as const));
 

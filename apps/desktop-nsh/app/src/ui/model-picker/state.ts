@@ -3,7 +3,7 @@
  * (`ModelPicker.tsx`, `Sheet.tsx`) both read: the open state, the search, where the keys are, the
  * sheet's level. The picking logic itself is `src/m/model-picker.ts`'s.
  */
-import { computed, effect, signal, windowSize } from "nsh";
+import { computed, effect, signal } from "nsh";
 import { copy } from "../../runtime";
 import {
   findPicked,
@@ -15,6 +15,7 @@ import {
   type PickerRow,
   type PickerSource,
 } from "../../m/model-picker";
+import { widthAtMost } from "../../platform/viewport";
 
 /** A source shows its groups as a level of their own on the phone once it lists this many. */
 export const SHEET_GROUPS_AT = 30;
@@ -44,7 +45,7 @@ export function createPicker(o: PickerOptions) {
   const sheetSource = signal<string | null>(null);
   const sheetGroup = signal<string | null>(null);
 
-  const phone = () => windowSize().width <= 720;
+  const phone = () => widthAtMost(720);
   const picked = computed(() => findPicked(o.data(), o.value()));
   const specials = () => o.data().specials;
   const sources = () => o.data().sources;

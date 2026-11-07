@@ -3,18 +3,19 @@
  * under the pane tabs (the top of the window on a phone), the store being `src/m/toast.svelte.ts`.
  * A pointer on the card or focus in it holds the countdown; ✕ closes it; an action runs and closes.
  */
-import { Overlay, safeArea, Text, View, windowSize } from "nsh";
+import { Overlay, safeArea, Text, View } from "nsh";
 import { toasts, type ToastTone } from "../m/toast.svelte.ts";
 import { copy } from "../runtime";
 import { Icon, type IconName } from "./Icon";
 import { IconButton } from "./IconButton";
 import { shadow } from "./styles";
+import { widthAtMost } from "../platform/viewport";
 
 const GLYPHS: Record<ToastTone, IconName> = { neutral: "check-circle", info: "info", error: "alert-circle" };
 const TINT: Record<ToastTone, string> = { neutral: "tint-ok", info: "tint-ink-muted", error: "tint-danger" };
 
 export function ToastHost() {
-  const phone = () => windowSize().width <= 680;
+  const phone = () => widthAtMost(680);
   return (
     <If when={toasts.current}>
       {(toast) => (

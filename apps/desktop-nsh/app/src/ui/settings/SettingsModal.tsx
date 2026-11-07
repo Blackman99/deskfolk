@@ -55,6 +55,7 @@ import { ProvidersTab } from "./ProvidersTab";
 import { PromptsSettings, type PromptsSettingsApi } from "./PromptsSettings";
 import { RemoteTab } from "./RemoteTab";
 import { SettingsNav, type SettingsTab } from "./SettingsNav";
+import { widthAtMost } from "../../platform/viewport";
 
 /** What the shell calls on the window: its Back, and the endpoint editor's. */
 export type SettingsModalHandle = {
@@ -66,7 +67,7 @@ export type SettingsModalHandle = {
 type Patch = { locale?: "zh" | "en"; theme?: "system" | "light" | "dark"; launch_at_login?: boolean };
 
 /** The phone breakpoint `SettingsNav` and the Svelte window share. */
-const phone = () => windowSize().width <= 720;
+const phone = () => widthAtMost(720);
 
 export function SettingsModal(props: {
   mobileSettingsDetail?: boolean;

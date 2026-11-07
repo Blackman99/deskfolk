@@ -8,7 +8,8 @@
  * control); `last` (the row is the card's last: no rule under it, 2px of room instead of 12; the
  * Svelte `:last-child`, which NSH has no selector for, so the caller says it).
  */
-import { Text, View, windowSize, type JSX } from "nsh";
+import { Text, View, type JSX } from "nsh";
+import { widthAtMost } from "../../platform/viewport";
 
 export function SettingsRow(props: {
   title: string;
@@ -20,7 +21,7 @@ export function SettingsRow(props: {
   testID?: string;
   children?: JSX.Element;
 }) {
-  const stacked = () => windowSize().width <= 540;
+  const stacked = () => widthAtMost(540);
   const title = () => (
     <Text testID={props.titleId} class="text-[13px] font-medium text-ink leading-[1.3]">
       {props.title}

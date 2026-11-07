@@ -48,4 +48,5 @@ export const stories: Record<string, Story> = {
   "sidebar-main": () => import("./sidebar-main"),
   "chat-stage": () => import("./chat-stage"),
   shell: () => import("./shell"),
+  viewport: () => import("./viewport"),
 };

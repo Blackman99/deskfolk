@@ -34,7 +34,7 @@
 | 滚动区 | `Scroll`；要定位、要虚拟化的用 `List` 和它的 ref（`scrollToIndex`、`scrollToEnd`） |
 | `bind:this` 拿 DOM 元素 | `ref={(node) => …}` 拿 NSH 的 ref（`focus()`、`measure()`、`scrollTo()`），没有 DOM |
 | `window` / `document` 的事件、`addEventListener("keydown")` | `keymap.bind("mod+k", fn)`（`nsh`），组件卸载时自动解绑 |
-| `matchMedia` / `@media (max-width: 680px)` / 容器查询 | `windowSize().width`（`nsh`）或 `onLayout` 量自己的宽度；手机布局看 `platform.desktop` 和宽度 |
+| `matchMedia` / `@media (max-width: 680px)` / 容器查询 | 断点用 `widthAtMost(680)`（`src/platform/viewport.ts`，缓存的布尔值，窗口跨过断点才通知读者；`narrowWindow()` 就是它），别写 `windowSize().width <= 680`：改窗口大小时每一帧都会让读者重跑，一百多处加起来让排版落后窗口好几秒。要真实尺寸（弹层宽高）才读 `windowSize()`；自己的宽度用 `onLayout` 量；手机布局看 `platform.desktop` 和宽度 |
 | `tooltip` / `title=` | `<View tooltip={tip("…")}>`（`src/ui/tip`） |
 | 拖动改宽 | `PanResponder` 或 `nsh/base` 的 `ResizablePanelGroup` |
 | `{@html …}` / Markdown | `TextView`（`nsh/base`）的 `markdown`，不要拼 HTML |

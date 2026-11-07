@@ -14,7 +14,7 @@
  * `speech-language`, `speech-key`, `speech-key-linked`, `speech-key-unlink`, `speech-key-clear`,
  * `speech-status`, `speech-error`.
  */
-import { effect, signal, Text, View, windowSize } from "nsh";
+import { effect, signal, Text, View } from "nsh";
 import { Input } from "nsh/base";
 import {
   SPEECH_FORMATS,
@@ -36,6 +36,7 @@ import { offeredShortcuts, type SpeechShortcut } from "../../m/settings/speech-s
 import { Select } from "../Select";
 import { Switch } from "../Switch";
 import { AutosaveState } from "./AutosaveState";
+import { widthAtMost } from "../../platform/viewport";
 
 /** What a speech endpoint still lacks before the microphone shows; null once it has it all. */
 export function speechMissing(speech: SpeechSettings, s: Copy["speech"]): string | null {
@@ -89,7 +90,7 @@ export function SpeechCard(props: {
     return speechMissing(current, s()) ?? s().ready;
   };
   /** Two columns on a wide window, one on a phone. */
-  const half = (): { width: `${number}%` } => ({ width: windowSize().width <= 720 ? "100%" : "48.5%" });
+  const half = (): { width: `${number}%` } => ({ width: widthAtMost(720) ? "100%" : "48.5%" });
   const wide: { width: `${number}%` } = { width: "100%" };
 
   async function save(body: PatchSpeechRequest): Promise<boolean> {

@@ -3,15 +3,16 @@
  * of the window offering a reload, which can be waved off. `updates` is the mirrored `BuildUpdates`;
  * `onReload` is what "reload" does here (a page's `location.reload()` has no counterpart in NSH).
  */
-import { Overlay, safeArea, Text, View, windowSize } from "nsh";
+import { Overlay, safeArea, Text, View } from "nsh";
 import type { BuildUpdates } from "../m/build-version.svelte.ts";
 import { copy } from "../runtime";
 import { Icon } from "./Icon";
 import { IconButton } from "./IconButton";
 import { shadow } from "./styles";
+import { widthAtMost } from "../platform/viewport";
 
 export function BuildUpdateNotice(props: { updates: BuildUpdates; onReload: () => void }) {
-  const phone = () => windowSize().width <= 680;
+  const phone = () => widthAtMost(680);
   return (
     <If when={props.updates.offered}>
       <Overlay class="left-0 right-0 items-center" style={{ bottom: safeArea().bottom + (phone() ? 72 : 16) }}>

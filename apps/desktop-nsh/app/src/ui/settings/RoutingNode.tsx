@@ -11,7 +11,7 @@
  * `routing-part-model`, `routing-part-prompts`.
  */
 import { BOT_BUILTIN_MODEL_ROLES, type AgentsStatusResponse, type BuiltinModelRole, type ClaudeCodeStatus, type Locale, type PromptSummary, type Provider, type Settings, type SettingsPatch } from "@real-bot/protocol";
-import { Text, View, windowSize } from "nsh";
+import { Text, View } from "nsh";
 import { copy } from "../../runtime";
 import type { MessengerApi } from "../../m/messenger-api.ts";
 import { builtinModelsOf, builtinPatch } from "../../m/settings/builtin-models.ts";
@@ -19,6 +19,7 @@ import type { RoutingNodeView } from "../../m/settings/routing-map.ts";
 import { shadow } from "../styles";
 import { PromptRowList } from "./PromptRowList";
 import { SideModelCard } from "./SideModelCard";
+import { widthAtMost } from "../../platform/viewport";
 
 export function RoutingNode(props: {
   role: BuiltinModelRole;
@@ -39,7 +40,7 @@ export function RoutingNode(props: {
 }) {
   const t = () => copy();
   const c = () => t().routing;
-  const phone = () => windowSize().width <= 720;
+  const phone = () => widthAtMost(720);
   const name = () => t().builtinModels.roles[props.role].name;
   const legacy = () => builtinModelsOf(props.settings).legacy;
   // An older daemon runs the organizer on an endpoint's model only.

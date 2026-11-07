@@ -9,7 +9,7 @@
  * and `onBusyChange`; its exported `create()` is handed to `onApi` once, for the footer's button.
  */
 import { BUILTIN_PLAYBOOK_IDS, type BuiltinPlaybookId } from "@real-bot/protocol";
-import { effect, signal, Text, View, windowSize, type JSX } from "nsh";
+import { effect, signal, Text, View, type JSX } from "nsh";
 import { Input } from "nsh/base";
 import { copy, runtime } from "../../runtime";
 import type { TeamMember } from "../../m/admin-mutations.svelte.ts";
@@ -18,6 +18,7 @@ import { templatesFor, type BotTemplateId } from "../../m/bot-templates.ts";
 import { botNameErrorCopy, mapCreateBotError, planCreateBot, type CreateBotDraft, type CreateBotFieldErrors } from "../../m/panels/create-form.ts";
 import { rosterLetter } from "../../m/sidebar/roster-letter.ts";
 import { cssColor, shadow } from "../styles";
+import { widthAtMost } from "../../platform/viewport";
 
 type Pick = { id: BotTemplateId; on: boolean; lead: boolean; name: string; duties: string; boundaries: string; made: TeamMember["made"] };
 type Problem = { id: BotTemplateId; errors: CreateBotFieldErrors; top: boolean };
@@ -147,7 +148,7 @@ export function TeamStep(props: {
   }
   props.onApi?.({ create });
 
-  const narrow = () => windowSize().width <= 520;
+  const narrow = () => widthAtMost(520);
 
   return (
     <View testID="team-step" class="flex-col gap-[18px]">

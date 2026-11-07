@@ -6,7 +6,7 @@
  * with them; NSH views take no key events, so the keys are bound through `keymap` while a tab has
  * the focus (as the model ladder's grips do).
  */
-import { Text, View, effect, keymap, signal, untracked, windowSize, type ViewRef } from "nsh";
+import { Text, View, effect, keymap, signal, untracked, type ViewRef } from "nsh";
 import { DatePicker } from "nsh/base";
 import type { MessengerApi } from "../../m/messenger-api.ts";
 import type { SpendCopy } from "../../m/spend/spend-copy.ts";
@@ -17,6 +17,7 @@ import { narrowWindow } from "../Modal";
 import { Select } from "../Select";
 import { tip } from "../tip";
 import { SpendIcon } from "./SpendIcon";
+import { widthAtMost } from "../../platform/viewport";
 
 const RANGES: SpendRangePreset[] = ["today", "last7", "last30", "all", "custom"];
 const SECTIONS = ["overview", "details"] as const;
@@ -211,7 +212,7 @@ export function SpendHeader(props: {
             </View>
           ))}
         </View>
-        <If when={!narrow() || windowSize().width > 360}>
+        <If when={!narrow() || !widthAtMost(360)}>
           <Text
             testID="spend-update-status"
             class={`text-[11px] text-ink-muted ${narrow() ? "absolute right-2 -top-[14px]" : "self-center"}`}

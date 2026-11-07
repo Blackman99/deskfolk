@@ -14,12 +14,13 @@
  * Not carried over: the slide of the sidebar over the dialog on a phone (the dialog's page
  * transition), and the safe-area padding (NSH's window already keeps clear of it).
  */
-import { Scroll, Text, View, windowSize } from "nsh";
+import { Scroll, Text, View } from "nsh";
 import { copy, runtime } from "../../runtime";
 import { updateChecker } from "../../m/update-checker.svelte.ts";
 import { Icon } from "../Icon";
 import { tip } from "../tip";
 import { navTabs, type NavTab, type SettingsTab } from "./settings-nav";
+import { widthAtMost } from "../../platform/viewport";
 
 export type { SettingsTab };
 
@@ -37,7 +38,7 @@ export function SettingsNav(props: {
 }) {
   const t = () => copy();
   const snapshot = () => runtime.snapshot;
-  const phone = () => windowSize().width <= 720;
+  const phone = () => widthAtMost(720);
   const tabs = () =>
     navTabs(t(), {
       providers: snapshot().providers.length,

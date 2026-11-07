@@ -31,7 +31,7 @@ import {
   type ModelLadderRung,
   type Provider,
 } from "@real-bot/protocol";
-import { colorScheme, effect, keymap, PanResponder, signal, Text, token, untracked, View, windowSize } from "nsh";
+import { colorScheme, effect, keymap, PanResponder, signal, Text, token, untracked, View } from "nsh";
 import { copy } from "../../runtime";
 import { thinkingLevelLabel } from "../../m/copy.ts";
 import { claudeModelOptions, claudeModelsOf, effortChoices, loadClaudeModels } from "../../m/claude-models.svelte.ts";
@@ -50,6 +50,7 @@ import { Select } from "../Select";
 import { shadow } from "../styles";
 import { tip } from "../tip";
 import { mixColors } from "../spend/spend-style";
+import { widthAtMost } from "../../platform/viewport";
 
 /** How far a press moves before it is a drag rather than a press on the grip. */
 const DRAG_PX = 4;
@@ -71,7 +72,7 @@ export function ModelLadderCard(props: {
 }) {
   const t = () => copy();
   const ladder = props.ladder;
-  const phone = () => windowSize().width <= 720;
+  const phone = () => widthAtMost(720);
 
   const claudeStatus = signal<ClaudeCodeStatus | null>(null);
   const agentsFound = signal<AgentsStatusResponse | null>(null);

@@ -11,7 +11,7 @@
  * `locale-<zh|en>`, `focus-mode-toggle`, `launch-at-login-toggle`, `independent-runtime-toggle`,
  * `independent-reason`, `workspace-badge`, `workspace-readonly-path`, `workspace-error`.
  */
-import { Text, View, windowSize, type JSX } from "nsh";
+import { Text, View, type JSX } from "nsh";
 import { DEFAULT_PERMISSION_MODE } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
 import { WORKSPACE_COPY } from "../../m/copy.ts";
@@ -26,6 +26,7 @@ import { SettingsCard } from "./SettingsCard";
 import { SettingsCardHeader } from "./SettingsCardHeader";
 import { SettingsRow } from "./SettingsRow";
 import { WorkspacePicker } from "./WorkspacePicker";
+import { widthAtMost } from "../../platform/viewport";
 
 type Patch = { locale?: "zh" | "en"; theme?: "system" | "light" | "dark"; launch_at_login?: boolean };
 
@@ -70,7 +71,7 @@ export function GeneralTab(props: {
 }) {
   const t = () => copy();
   const snapshot = () => runtime.snapshot;
-  const stretch = () => windowSize().width <= 540;
+  const stretch = () => widthAtMost(540);
   const workspaceRemoteBrowse = () => Boolean(runtime.remote);
 
   function fieldCopy(kind: FieldErrorKind | undefined, empty: string, invalid: string): string {
@@ -93,7 +94,7 @@ export function GeneralTab(props: {
   };
 
   return (
-    <View testID="settings-general" class={`flex-col ${windowSize().width <= 720 ? "gap-3" : "gap-[14px]"}`}>
+    <View testID="settings-general" class={`flex-col ${widthAtMost(720) ? "gap-3" : "gap-[14px]"}`}>
       <SettingsCard testID="settings-card-workspace">
         <SettingsCardHeader
           title={t().settings.sectionWorkspace}

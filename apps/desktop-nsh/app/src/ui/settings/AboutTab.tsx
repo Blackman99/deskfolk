@@ -12,7 +12,7 @@
  * `about-update-download`, `about-update-notes`, `about-update-ignore`.
  */
 import { Progress } from "nsh/base";
-import { Scroll, Text, View, windowSize } from "nsh";
+import { Scroll, Text, View } from "nsh";
 import { copy } from "../../runtime";
 import { updateChecker } from "../../m/update-checker.svelte.ts";
 import { formatBytes, installErrorCopyKey, installPercent, installPhaseCopyKey } from "../../m/updates.ts";
@@ -22,6 +22,7 @@ import { Button } from "../Button";
 import { Icon } from "../Icon";
 import { shadow } from "../styles";
 import { SettingsCard } from "./SettingsCard";
+import { widthAtMost } from "../../platform/viewport";
 
 export function AboutTab(props: { locale: "zh" | "en" }) {
   const t = () => copy();
@@ -41,10 +42,10 @@ export function AboutTab(props: { locale: "zh" | "en" }) {
   };
   const installPercentValue = () => installPercent(checker.install);
   const installErrorLabel = () => t().settings[installErrorCopyKey(checker.install.error)];
-  const narrow = () => windowSize().width <= 540;
+  const narrow = () => widthAtMost(540);
 
   return (
-    <View testID="settings-about" class={`flex-col ${windowSize().width <= 720 ? "gap-3" : "gap-[14px]"}`}>
+    <View testID="settings-about" class={`flex-col ${widthAtMost(720) ? "gap-3" : "gap-[14px]"}`}>
       <SettingsCard testID="settings-card-about">
         {/* One block: the pane is already titled About, so the card leads with the app itself. */}
         <View class="flex-row flex-wrap items-center gap-[14px]">
