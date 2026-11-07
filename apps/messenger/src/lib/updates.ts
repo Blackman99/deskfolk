@@ -1,3 +1,4 @@
+import { localStore } from "./storage.ts";
 import { readTauriInternals, type TauriInternals } from "./tauri.ts";
 
 export type UpdateCheck = {
@@ -82,8 +83,7 @@ export async function openExternalUrl(
 }
 
 export function defaultStorage(): UpdateStorage | null {
-  if (typeof window === "undefined" || !window.localStorage) return null;
-  return window.localStorage;
+  return localStore();
 }
 
 export function loadIgnoredVersion(

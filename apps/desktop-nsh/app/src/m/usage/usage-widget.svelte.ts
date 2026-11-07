@@ -24,7 +24,7 @@ function share(value: unknown): number | null {
 
 export function readUsageWidget(): Stored {
   try {
-    const raw = JSON.parse(window.localStorage.getItem(KEY) ?? "null") as { place?: Record<string, unknown>; hidden?: unknown } | null;
+    const raw = JSON.parse(localStorage.getItem(KEY) ?? "null") as { place?: Record<string, unknown>; hidden?: unknown } | null;
     const place = raw?.place;
     const top = share(place?.top);
     let read: UsageWidgetPlace = USAGE_WIDGET_DEFAULT;
@@ -38,7 +38,7 @@ export function readUsageWidget(): Stored {
 
 function write(stored: Stored): void {
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(stored));
+    localStorage.setItem(KEY, JSON.stringify(stored));
   } catch {
     // A private window or blocked storage: the widget still works, only it forgets its place.
   }
@@ -57,7 +57,7 @@ class UsageWidgetState {
 	set open(value) { this.#open$s.set(value); }
 
   constructor() {
-    const stored = typeof window === "undefined" ? null : readUsageWidget();
+    const stored = typeof localStorage === "undefined" ? null : readUsageWidget();
     if (stored) {
       this.place = stored.place;
       this.hidden = stored.hidden;
