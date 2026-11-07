@@ -1229,11 +1229,24 @@ export class MessengerRuntime {
     endpoint_models: string[];
     endpoint_default_model: string | null;
   }): void {
-    this.workspacePath = settings.workspace_path ?? "";
-    this.endpointUrl = settings.endpoint_base_url ?? "";
-    this.endpointModelsText = settings.endpoint_models.join("\n");
-    this.endpointDefaultModel = settings.endpoint_default_model ?? "";
+    // A field follows the saved settings when the saved value changed, not on every `settings.changed`:
+    // one about anything else (the theme, a save of the workspace a moment ago) wiped what you were
+    // picking in setup or the settings, and setup's own saves arrive late enough to do it.
+    const saved = {
+      workspacePath: settings.workspace_path ?? "",
+      endpointUrl: settings.endpoint_base_url ?? "",
+      endpointModelsText: settings.endpoint_models.join("\n"),
+      endpointDefaultModel: settings.endpoint_default_model ?? "",
+    };
+    const last = this.syncedSettings;
+    if (!last || last.workspacePath !== saved.workspacePath) this.workspacePath = saved.workspacePath;
+    if (!last || last.endpointUrl !== saved.endpointUrl) this.endpointUrl = saved.endpointUrl;
+    if (!last || last.endpointModelsText !== saved.endpointModelsText) this.endpointModelsText = saved.endpointModelsText;
+    if (!last || last.endpointDefaultModel !== saved.endpointDefaultModel) this.endpointDefaultModel = saved.endpointDefaultModel;
+    this.syncedSettings = saved;
   }
+  /** What the settings draft last took from the saved settings. */
+  private syncedSettings: { workspacePath: string; endpointUrl: string; endpointModelsText: string; endpointDefaultModel: string } | null = null;
 
   private ingest(event: ClientEvent, frame?: SequencedEvent): void {
     if (frame) this.api?.observeCredentialFrame(frame);
