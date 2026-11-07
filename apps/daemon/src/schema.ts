@@ -75,6 +75,10 @@ CREATE TABLE IF NOT EXISTS request_receipts (
   PRIMARY KEY (device_id, request_id)
 );
 CREATE INDEX IF NOT EXISTS receipts_created ON request_receipts(created_at);
+-- Every write prunes the receipts it keeps bodies for (Receipts.prune), which reads only the
+-- 'complete' ones: without this it scanned every receipt, and the desktop's claim every two seconds
+-- leaves one each time, so after weeks a write cost 400 ms and held up every other request.
+CREATE INDEX IF NOT EXISTS receipts_state_created ON request_receipts(state, created_at);
 CREATE TABLE IF NOT EXISTS request_meta (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   settings_rev INTEGER NOT NULL DEFAULT 0
