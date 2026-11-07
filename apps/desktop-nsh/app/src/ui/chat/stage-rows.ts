@@ -9,6 +9,7 @@
  */
 import type { ScrollEvent } from "nsh";
 import { isDifferentDay, type TranscriptGroup } from "../../m/chat/chat-view.ts";
+import type { ReplyingEntry, TranscriptItem } from "../../m/chat/transcript.ts";
 import { STREAM_NEAR_BOTTOM_PX } from "../../m/chat/stream-scroll.ts";
 import type { HiddenWaiting } from "./waiting-jump";
 import { hiddenWaiting } from "./waiting-jump";
@@ -46,6 +47,70 @@ export function stageRows(
 /** The list's order: the newest row first. */
 export function invertedRows(rows: readonly StageRow[]): StageRow[] {
   return rows.slice().reverse();
+}
+
+/**
+ * Hands back each row's previous object while what it shows is the same. NSH's `List` tells its
+ * items apart by identity (`keyExtractor` only names them to viewability), so a row made anew is
+ * built anew; and the rows are made anew whenever the snapshot's messages or turns change, a line
+ * in another pane's conversation included. Lines and turns that did not change keep their objects
+ * through the snapshot's events, so a row is the same when its items hold the same ones (or ones
+ * fetched again that say the same).
+ */
+export function createRowKeeper(): (rows: readonly StageRow[]) => StageRow[] {
+  let kept = new Map<string, StageRow>();
+  return (rows) => {
+    const next = new Map<string, StageRow>();
+    const out = rows.map((row) => {
+      const before = kept.get(row.id);
+      const keep = before && sameRow(before, row) ? before : row;
+      next.set(row.id, keep);
+      return keep;
+    });
+    kept = next;
+    return out;
+  };
+}
+
+function sameRow(a: StageRow, b: StageRow): boolean {
+  if (a.kind !== "group" || b.kind !== "group") return a.kind === b.kind;
+  return a.date === b.date && a.fresh === b.fresh && sameGroup(a.group, b.group);
+}
+
+function sameGroup(a: TranscriptGroup, b: TranscriptGroup): boolean {
+  return (
+    a.id === b.id &&
+    a.kind === b.kind &&
+    a.author === b.author &&
+    a.created_at === b.created_at &&
+    a.items.length === b.items.length &&
+    a.items.every((item, index) => sameItem(item, b.items[index]!))
+  );
+}
+
+function sameItem(a: TranscriptItem, b: TranscriptItem): boolean {
+  if (a.type === "message" && b.type === "message") return sameRecord(a.message, b.message) && sameEntries(a.replying, b.replying);
+  if (a.type === "streaming" && b.type === "streaming") return sameRecord(a.turn, b.turn);
+  if (a.type === "replying" && b.type === "replying") return a.trigger_message_id === b.trigger_message_id && sameEntries(a.entries, b.entries);
+  return false;
+}
+
+/**
+ * The same line or turn: the same object, or one fetched again that says the same (selecting a
+ * conversation, as making its pane the current one does, loads its page anew). Compared as JSON
+ * only when the objects differ; a different order of keys just makes the row anew.
+ */
+function sameRecord(a: object, b: object): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
+}
+
+function sameEntries(a: readonly ReplyingEntry[] | undefined, b: readonly ReplyingEntry[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((entry, index) => {
+    const other = b[index]!;
+    return entry.bot_id === other.bot_id && entry.created_at === other.created_at && entry.judgement_id === other.judgement_id;
+  });
 }
 
 /** Whether the group (a row of `groups`) holds the message. */

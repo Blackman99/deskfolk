@@ -18,7 +18,7 @@
  * press is `onContextMenu` of the groups; the selected text of the menu is not read (NSH has no
  * selection to ask for); the file overlay has no preview inside (see `stage-overlays`).
  */
-import { cleanup, List, signal, View, type ViewRef } from "nsh";
+import { cleanup, computed, List, signal, View, type ViewRef } from "nsh";
 import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
 import { Button } from "../Button";
@@ -34,7 +34,7 @@ import { createStageContext } from "./stage-context";
 import { StageOverlays } from "./stage-overlays";
 import { DelegationBlock, HistoryLoading, StageRowView } from "./stage-parts";
 import { trackReading } from "./stage-reading";
-import { activeMessageId, hiddenWaitingFromRows, inverseIndexOf, invertedRows, stageRows } from "./stage-rows";
+import { activeMessageId, createRowKeeper, hiddenWaitingFromRows, inverseIndexOf, invertedRows, stageRows } from "./stage-rows";
 import { createStageScroll } from "./stage-scroll";
 
 export function ChatStage(props: {
@@ -64,7 +64,9 @@ export function ChatStage(props: {
 
   const hasOlder = () => Boolean(view()?.hasOlderMessages);
   const rows = () => stageRows(ctx.groups(), { earlier: hasOlder(), delegations: ctx.delegationsShown(), newMarkId: ctx.newMarkId() });
-  const inverted = () => invertedRows(rows());
+  /** Newest first, each row the object it was while it shows the same (the list rebuilds a new one). */
+  const keepRows = createRowKeeper();
+  const inverted = computed(() => keepRows(invertedRows(rows())));
 
   const scroll = createStageScroll({
     sessionId: ctx.sessionId,
