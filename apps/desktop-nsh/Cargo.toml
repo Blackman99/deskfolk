@@ -31,3 +31,10 @@ log = "0.4"
 [profile.release]
 lto = "thin"
 codegen-units = 4
+
+# The dev build's dependencies optimised: NSH's layout, text and the QuickJS engine (its C through
+# cc, at the package's opt-level) run several times slower unoptimised, and the window's layout
+# fell behind live resizes and divider drags. The app's own crates stay unoptimised, so their
+# rebuilds stay quick.
+[profile.dev.package."*"]
+opt-level = 3
