@@ -50,4 +50,5 @@ export const stories: Record<string, Story> = {
   shell: () => import("./shell"),
   viewport: () => import("./viewport"),
   "job-keys": () => import("./job-keys"),
+  "phone-web": () => import("./phone-web"),
 };
