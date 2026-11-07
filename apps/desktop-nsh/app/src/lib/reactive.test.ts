@@ -1,6 +1,6 @@
 import { computed, effect, signal } from "nsh";
 import { expect, test } from "nsh/test";
-import { deep, derived, rawState, snapshot, state } from "./reactive";
+import { deep, derived, rawState, reconciledState, snapshot, state } from "./reactive";
 
 test("a field's new value is seen", () => {
   const count = state(0);
@@ -122,4 +122,86 @@ test("a derived first read while another derived computes", () => {
   expect(outer.get()).toBe(40);
   n.set(4);
   expect(outer.get()).toBe(50);
+});
+
+type Snap = { rows: { id: string; n: number }[]; settings: { locale: string }; extra?: string };
+const snap = (): Snap => ({ rows: [{ id: "a", n: 1 }, { id: "b", n: 2 }], settings: { locale: "zh" } });
+
+test("a reconciled value replaced whole runs only the readers of what changed", () => {
+  const box = reconciledState<Snap>(snap());
+  let rowReads = 0;
+  let localeReads = 0;
+  const rows = computed(() => {
+    rowReads++;
+    return box.get().rows.map((r) => `${r.id}${r.n}`).join(",");
+  });
+  const locale = computed(() => {
+    localeReads++;
+    return box.get().settings.locale;
+  });
+  expect(rows()).toBe("a1,b2");
+  expect(locale()).toBe("zh");
+  const held = box.get();
+  // An event that changes one row, sharing the rest, as `applyEvent` returns it.
+  const before = box.get();
+  box.set({ ...before, rows: before.rows.map((r) => (r.id === "b" ? { ...r, n: 3 } : r)) });
+  expect(rows()).toBe("a1,b3");
+  expect(locale()).toBe("zh");
+  expect(localeReads).toBe(1);
+  expect(rowReads).toBe(2);
+  // The same value, the same proxy: nothing reads it again.
+  expect(box.get()).toBe(held);
+  box.set({ ...box.get() });
+  expect(rows()).toBe("a1,b3");
+  expect(rowReads).toBe(2);
+});
+
+test("a changed array under a reconciled value is a new array, as identity caches expect; an unchanged one is kept", () => {
+  const box = reconciledState<Snap>(snap());
+  const settings = box.get().settings;
+  const rows = box.get().rows;
+  let firstReads = 0;
+  const first = computed(() => {
+    firstReads++;
+    return box.get().rows[0]?.n;
+  });
+  const count = computed(() => box.get().rows.length);
+  expect(first()).toBe(1);
+  const cur = box.get();
+  box.set({ ...cur, rows: [cur.rows[0]!, { id: "b", n: 5 }, { id: "c", n: 6 }] });
+  expect(box.get().rows).not.toBe(rows);
+  expect(box.get().settings).toBe(settings);
+  expect(count()).toBe(3);
+  expect(box.get().rows[1]!.n).toBe(5);
+  expect(first()).toBe(1);
+  box.set({ ...box.get(), rows: [box.get().rows[0]!] });
+  expect(count()).toBe(1);
+  expect(box.get().rows[1]).toBe(undefined);
+});
+
+test("a reconciled record is replaced, not merged, and a dropped key is heard", () => {
+  const box = reconciledState<Snap>({ ...snap(), extra: "x" });
+  const settings = box.get().settings;
+  const extra = computed(() => box.get().extra);
+  expect(extra()).toBe("x");
+  const { extra: _gone, ...rest } = box.get();
+  box.set({ ...rest, settings: { locale: "en" } });
+  expect(box.get().settings).not.toBe(settings);
+  expect(settings.locale).toBe("zh");
+  expect(box.get().settings.locale).toBe("en");
+  expect(extra()).toBe(undefined);
+});
+
+test("one reconciled set runs an effect that read two changed keys once", () => {
+  const box = reconciledState<Snap>(snap());
+  let runs = 0;
+  effect(() => {
+    void box.get().settings.locale;
+    void box.get().rows.length;
+    runs++;
+  });
+  expect(runs).toBe(1);
+  const cur = box.get();
+  box.set({ ...cur, settings: { locale: "en" }, rows: [...cur.rows, { id: "c", n: 3 }] });
+  expect(runs).toBe(2);
 });

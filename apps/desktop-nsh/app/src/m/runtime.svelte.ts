@@ -1,6 +1,6 @@
 // Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
 // Source: d4fac32880c9d461
-import { state } from "../lib/reactive";
+import { reconciledState, state } from "../lib/reactive";
 import type {
   ApiFormat,
   Attachment,
@@ -344,7 +344,8 @@ export class MessengerRuntime {
   #connection$s = state<Connection>("connecting");
 	get connection(): Connection { return this.#connection$s.get(); }
 	set connection(value: Connection) { this.#connection$s.set(value); }
-  #snapshot$s = state<Snapshot>(emptySnapshot());
+  // Every event replaces the snapshot; written into the one held, only what read the parts that changed runs (lib/reactive.ts).
+  #snapshot$s = reconciledState<Snapshot>(emptySnapshot());
 	get snapshot(): Snapshot { return this.#snapshot$s.get(); }
 	set snapshot(value: Snapshot) { this.#snapshot$s.set(value); }
   #selectedIdValue$s = state<string | null>(null);

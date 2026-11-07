@@ -8,7 +8,7 @@
  * - `derived(fn)` is `$derived.by(fn)` (and `$derived(expr)` as `derived(() => expr)`).
  * - `effect(fn)` is `$effect(fn)`; `untrack`, `tick` and `snapshot` (`$state.snapshot`) as in Svelte.
  */
-import { computed, effect as nshEffect, signal, untracked, type Signal } from "nsh";
+import { batch, computed, effect as nshEffect, signal, untracked, type Signal } from "nsh";
 
 const RAW = Symbol("deskfolk.raw");
 const PROXIES = new WeakMap<object, object>();
@@ -116,6 +116,42 @@ export function state<T = undefined>(): Box<T | undefined>;
 export function state<T>(initial?: T): Box<T | undefined> {
   const s = signal<T | undefined>(deep(initial), { equals: (a, b) => Object.is(a, b) });
   return { get: () => s(), set: (value) => s.set(deep(value)) };
+}
+
+/**
+ * A `state()` holding an object that is replaced whole as a rule (the runtime's snapshot: every event
+ * returns a new one that shares what did not change), written into the object it holds instead: only
+ * the top keys whose value is not the same object are set. Replacing the whole object ran everything
+ * that read any of it; this runs only the readers of the keys that changed — on QuickJS that was 28–64
+ * ms of JSX bindings per event, whatever the event was.
+ *
+ * Below the top nothing changes: a changed array or record arrives as a new object, as before, so the
+ * caches that tell a change by identity (`transcript.ts`'s sorted messages, `chat-view.ts`'s lookup,
+ * NSH's `List`) keep working. Writing into the arrays too broke exactly those. What is lost against
+ * `state()`: the held object keeps its identity, so a reader comparing it with an earlier copy sees no
+ * change, and an earlier reference to it changes under its holder.
+ */
+export function reconciledState<T extends object>(initial: T): Box<T> {
+  const s = signal<T>(deep(initial), { equals: (a, b) => Object.is(a, b) });
+  return {
+    get: () => s(),
+    set: (value) => {
+      const held = untracked(s);
+      if (!plain(value) || Array.isArray(value) || !plain(held) || Array.isArray(held) || Object.is(held, value)) {
+        s.set(deep(value));
+        return;
+      }
+      // Untracked: an effect that writes the value must not come to depend on the keys written.
+      batch(() => untracked(() => assignChanged(held as Record<string, unknown>, value as Record<string, unknown>)));
+    },
+  };
+}
+
+/** Sets on the deep proxy `target` the keys of `next` whose value is not the same object, and drops the ones `next` lacks. */
+function assignChanged(target: Record<string, unknown>, next: Record<string, unknown>): void {
+  const held = (target as Record<PropertyKey, unknown>)[RAW] as Record<string, unknown>;
+  for (const key of Object.keys(next)) if (!Object.is(held[key], next[key])) target[key] = next[key];
+  for (const key of Object.keys(held)) if (!Object.prototype.hasOwnProperty.call(next, key)) delete target[key];
 }
 
 /** `$state.raw(initial)`: only a new value is seen. */
