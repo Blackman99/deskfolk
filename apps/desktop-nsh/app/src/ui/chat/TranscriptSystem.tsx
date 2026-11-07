@@ -134,11 +134,16 @@ function Row(props: {
             when={msg().control?.kind === "work_question" ? (msg().control as WorkQuestionControl) : null}
             else={
               <>
-                <View class="flex-row items-start gap-2 max-w-full">
-                  <If when={isUnreachable()} else={<If when={isInterrupt()}><Icon name="square" size={12} class="shrink-0 mt-[2px] tint-ink-muted" /></If>}>
-                    <Icon name="alert-circle" size={16} class="shrink-0 tint-warn" />
+                {/*
+                  The icon sits in the text's left margin rather than beside it in a row: NSH 0.4 sizes
+                  wrapping text in a row inside a box that hugs its content at the text's one-line width,
+                  so a long note ran out of its card over what follows (PORTING.md).
+                */}
+                <View class="max-w-full" style={{ paddingLeft: isUnreachable() ? 24 : isInterrupt() ? 20 : 0 }}>
+                  <If when={isUnreachable()} else={<If when={isInterrupt()}><Icon name="square" size={12} class="absolute left-0 top-[3px] tint-ink-muted" /></If>}>
+                    <Icon name="alert-circle" size={16} class="absolute left-0 top-[1px] tint-warn" />
                   </If>
-                  <Text testID="system-body" class={`shrink text-[13px] leading-[1.4] ${isUnreachable() ? "text-warn-text" : "text-ink-secondary"}`}>
+                  <Text testID="system-body" class={`text-[13px] leading-[1.4] ${isUnreachable() ? "text-warn-text" : "text-ink-secondary"}`}>
                     {msg().body}
                   </Text>
                 </View>
