@@ -4,7 +4,7 @@
  * said it; what the plan inherits from the rest of its conversation; what waits for you; the old
  * rules nobody found your words for. Each press goes to the daemon and the plan comes back.
  */
-import { platform, signal, Text, View, type JSX } from "nsh";
+import { platform, signal, Text, View, type JSX, type ViewRef } from "nsh";
 import type { PlanRequirement, RequirementAction, TaskDetail } from "@real-bot/protocol";
 import type { MessengerApi } from "../../m/messenger-api.ts";
 import { requirementTicket, ticketBinding } from "../../m/overlays/plan-board.ts";
@@ -40,6 +40,8 @@ export function PlanRequirements(props: {
   selectedTicket?: string | null;
   /** An entry held to one ticket names it; pressing the name shows that ticket. Absent, the name is plain text. */
   onShowTicket?: (ticketId: string) => void;
+  /** Hands out the view of the group waiting on you (「待你确认」), for the panel to scroll to. */
+  onProposedRef?: (node: ViewRef | null) => void;
 }) {
   const r = () => copy().plan.requirements;
   const groups = () => requirementGroups(props.detail.requirements ?? []);
@@ -179,7 +181,11 @@ export function PlanRequirements(props: {
   );
 
   const aside = (title: string, hint: string | null, entries: () => readonly PlanRequirement[], id: string, excluded = false): JSX.Element => (
-    <View testID={`requirements-${id}`} class="gap-[5px] pt-2 border-t border-dashed border-line">
+    <View
+      testID={`requirements-${id}`}
+      ref={id === "proposed" ? (node: ViewRef | null) => props.onProposedRef?.(node) : undefined}
+      class="gap-[5px] pt-2 border-t border-dashed border-line"
+    >
       <Text class="text-[11px] font-semibold text-ink-muted">{title}</Text>
       <If when={hint}>
         <Text class="text-[11px] text-ink-muted">{hint}</Text>

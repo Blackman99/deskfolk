@@ -198,6 +198,9 @@ export default function PlanPanel() {
         onShowTickets={(status) => said(`tickets:${status}`)}
         bots={BOTS}
         deletedLabel="已删除"
+        onScrollToProposed={(target) => {
+          void target.measure().then((box) => said(`scrollToProposed:${box ? "measured" : "gone"}`));
+        }}
       />
     </Scroll>
   );

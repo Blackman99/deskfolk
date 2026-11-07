@@ -109,7 +109,7 @@ function trace(): TaskTraceData {
       trigger_message_id: "b2",
       focus_message_id: "b3",
       summary: "审片被停了",
-      created_at: AT(33),
+      created_at: AT(75),
       ticket_id: "tk-3",
     }),
   ];

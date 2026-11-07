@@ -4,7 +4,7 @@
  * run-all, and the spec's version history. Every call goes through the runtime client and the plan
  * comes back whole (`onSaved`).
  */
-import { signal } from "nsh";
+import { signal, type ViewRef } from "nsh";
 import type { Bot, TaskDetail, TaskSpecRevision, TicketStatus } from "@real-bot/protocol";
 import type { MessengerApi } from "../../m/messenger-api.ts";
 import { parseSpecLines, specLines, specWithGoal, specWithLines, type SpecListField } from "../../m/overlays/plan-board.ts";
@@ -34,6 +34,11 @@ export type PlanSpecPanelProps = {
   /** The Bots, for the name on a retrospective (ADR 0062). */
   bots?: readonly Bot[];
   deletedLabel?: string;
+  /**
+   * Scroll the proposed requirements group (the one 「待你确认」 names) into view: the panel never
+   * scrolls itself, so its parent does, given the group's view. Absent, the line is plain text.
+   */
+  onScrollToProposed?: (target: ViewRef) => void;
 };
 
 export type PlanSpecState = ReturnType<typeof createPlanSpecState>;

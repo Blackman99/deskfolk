@@ -2,10 +2,10 @@
  * Beside the trace, what is picked in the job (`overlays/JobInspector.svelte`, ADR 0086): a step of
  * the app's own, with its call; a ticket, with what it answers to and its settings; or, with nothing
  * picked, the whole job's spec. The host says which, since on a narrow job the switch above decides
- * it. The spec scrolls here (`PlanSpecPanel` never scrolls itself); its 「待你确认」 line cannot yet
- * scroll to the proposed group, as the panel has no hook for it (see the report).
+ * it. The spec scrolls here (`PlanSpecPanel` never scrolls itself); its 「待你确认」 line asks this
+ * scroll, through `onScrollToProposed`, to bring the proposed group to the top.
  */
-import type { JSX } from "nsh";
+import type { JSX, ScrollRef } from "nsh";
 import { Scroll, Text, View, signal } from "nsh";
 import type { Bot, BuiltinModelRole, TaskTraceNode, TicketStatus, TicketWithArtifacts } from "@real-bot/protocol";
 import { copy } from "../../runtime";
@@ -27,6 +27,7 @@ import { TicketConfirm } from "./TicketConfirm";
 import { TicketDepends } from "./TicketDepends";
 import { TicketDetail } from "./TicketDetail";
 import { TraceStepDetail } from "./TraceStepDetail";
+import { scrollViewToTop } from "./scroll-to-view";
 import { TicketLink } from "./ticket-parts";
 
 /**
@@ -76,6 +77,9 @@ export function JobInspector(props: {
 }) {
   const t = () => copy();
   const job = props.job;
+  // The spec's scroll and where it is, for 「待你确认」 to scroll to the proposed group.
+  let specScroll: ScrollRef | null = null;
+  let specOffset = 0;
   const botsById = () => new Map(props.bots.map((bot) => [bot.id, bot] as const));
   const ticket = () => (job.selectedTicket ? (job.detail?.tickets.find((row) => row.id === job.selectedTicket) ?? null) : null);
   const latest = () => {
@@ -266,7 +270,12 @@ export function JobInspector(props: {
                   </If>
                 </>,
               )}
-              <Scroll class="flex-1 min-h-0" testID="insp-body-spec">
+              <Scroll
+                class="flex-1 min-h-0"
+                testID="insp-body-spec"
+                ref={(node: ScrollRef | null) => (specScroll = node)}
+                onScroll={(e) => (specOffset = e.offset.y)}
+              >
                 <If when={!held() && ((props.division?.length ?? 0) > 0 || props.engine)}>
                   {/* Who does what: the Bots on the job's tickets, then the app's own steps. */}
                   <View testID="insp-job" class="gap-[14px] px-4 py-3 border-b border-line-subtle">
@@ -297,6 +306,7 @@ export function JobInspector(props: {
                   onShowTickets={props.onShowTickets}
                   bots={props.bots.slice()}
                   deletedLabel={props.deletedLabel}
+                  onScrollToProposed={(target) => void scrollViewToTop(specScroll, specOffset, target)}
                 />
               </Scroll>
             </>

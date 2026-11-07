@@ -118,7 +118,7 @@ function AttentionTag(props: { warn?: boolean; children: string }) {
 }
 
 /** What needs you: drawn only when something does, so its colour means something. */
-export function PlanAttention(props: { panel: PlanSpecPanelProps; spec: PlanSpec }) {
+export function PlanAttention(props: { panel: PlanSpecPanelProps; spec: PlanSpec; onShowWaiting?: () => void }) {
   const t = () => copy().plan;
   const detail = () => props.panel.detail;
   const attention = () => planAttention(detail());
@@ -191,7 +191,12 @@ export function PlanAttention(props: { panel: PlanSpecPanelProps; spec: PlanSpec
             ))
           }
           <If when={attention().waitingRequirements > 0}>
-            <View testID="plan-spec-attention-waiting" class="flex-row items-center gap-2 min-w-0">
+            <View
+              testID="plan-spec-attention-waiting"
+              role={props.onShowWaiting ? "button" : undefined}
+              onPress={props.onShowWaiting}
+              class="flex-row items-center gap-2 min-w-0"
+            >
               <AttentionTag warn>{t().requirements.proposed}</AttentionTag>
               <Text class="shrink text-[12px] font-semibold text-ink">{t().spec.attentionWaiting(attention().waitingRequirements)}</Text>
             </View>

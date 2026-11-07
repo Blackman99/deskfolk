@@ -16,7 +16,7 @@ import { tip } from "../tip";
 import { TicketConfirm } from "./TicketConfirm";
 import { TicketDepends } from "./TicketDepends";
 import { TicketDetail } from "./TicketDetail";
-import { cardDrag, type CardDrag } from "./ticket-list-drag";
+import { cardDrag, type CardDrag, type EdgeScroller } from "./ticket-list-drag";
 import { ActorDot, STATUS_TEXT, TicketLink, StatusPill } from "./ticket-parts";
 
 /** A card's border, its accent edge and its tint, by the column it is drawn in. */
@@ -49,9 +49,13 @@ export function TicketCard(props: {
   /** What a drag of this card needs from the board: the column views, and where the drag and the drop go. */
   drag: {
     columns: () => Partial<Record<TicketStatus, ViewRef | null>>;
+    boardScroll?: () => EdgeScroller | null;
+    columnScroll?: (status: TicketStatus) => EdgeScroller | null;
     onDrag: (drag: CardDrag | null) => void;
     onDrop: (ticket: TicketWithArtifacts, status: TicketStatus) => void;
   };
+  /** The card's main button, for the board to walk the focus between columns (Left / Right). */
+  focus?: { ref: (node: ViewRef | null) => void; onFocusChange: (focused: boolean) => void; focusNow?: () => void };
   onSelect: () => void;
   onJump: (sessionId: string, messageId: string) => void;
   onOpenArtifacts: (ticket: TicketWithArtifacts) => void;
@@ -65,6 +69,8 @@ export function TicketCard(props: {
     from: () => props.edits.columnOfTicket(ticket()),
     busy: () => props.edits.patchingId === ticket().id,
     columns: () => props.drag.columns(),
+    boardScroll: props.drag.boardScroll,
+    columnScroll: props.drag.columnScroll,
     onDrag: (next) => props.drag.onDrag(next),
     onDrop: (status) => props.drag.onDrop(ticket(), status),
   });
@@ -105,10 +111,19 @@ export function TicketCard(props: {
       <View class="flex-row flex-wrap items-start gap-x-[6px] gap-y-1 min-w-0">
         <View
           role="button"
+          focusable
           testID={`ticket-main-${ticket().id}`}
           accessibilityLabel={ticket().title}
           accessibilityState={{ pressed: props.picked }}
-          onPress={props.onSelect}
+          ref={(node: ViewRef | null) => props.focus?.ref(node)}
+          onFocus={() => props.focus?.onFocusChange(true)}
+          onBlur={() => props.focus?.onFocusChange(false)}
+          onPress={() => {
+            // A press hands the card the focus, so Left / Right walk from it.
+            props.focus?.onFocusChange(true);
+            props.focus?.focusNow?.();
+            props.onSelect();
+          }}
           class="group flex-row items-start gap-[6px] min-w-0"
           style={{ flexGrow: 1, flexShrink: 1, flexBasis: 140 }}
         >

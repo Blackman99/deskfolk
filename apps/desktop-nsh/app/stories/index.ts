@@ -49,4 +49,5 @@ export const stories: Record<string, Story> = {
   "chat-stage": () => import("./chat-stage"),
   shell: () => import("./shell"),
   viewport: () => import("./viewport"),
+  "job-keys": () => import("./job-keys"),
 };

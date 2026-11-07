@@ -141,3 +141,16 @@ test("Escape while a card is in hand drops nothing", async () => {
   await app.wait(300);
   expect(logged("patch:tk-4")).toBe(false);
 });
+
+test("a card held at the board's right edge scrolls the board under it, so it lands in a column that was out of sight", async () => {
+  // Narrow enough that the five columns run past the pane.
+  const { app, logged } = await job(760);
+  await app.press("id:rail-expand");
+  await app.waitFor("id:ticket-row-tk-4");
+  await app.dragAndHold("id:ticket-main-tk-4", { x: 600, y: 0 });
+  await app.waitFor("id:ticket-ghost");
+  // Held still, the board keeps moving under it.
+  await app.wait(1500);
+  await app.drop();
+  await app.waitUntil(() => logged('patch:tk-4:{"status":"parked"'));
+});

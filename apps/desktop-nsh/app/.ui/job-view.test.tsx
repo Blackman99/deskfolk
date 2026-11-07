@@ -122,3 +122,11 @@ test("narrow: the three parts are one at a time behind the switch, and a pick co
   await app.press("id:trace-step-close");
   await app.waitFor("id:trace-step-detail", { state: "gone" });
 });
+
+test("the rail's lane has a hint over each gap saying how long the job sat still", async () => {
+  const { app } = await job();
+  expect(app.shows("id:rail-row-tk-1 >> id:rail-lane-gap")).toBe(true);
+  await app.hover("id:rail-row-tk-1 >> id:rail-lane-gap");
+  await app.wait(600);
+  expect(app.texts()).toContain("停了 44 分钟");
+});

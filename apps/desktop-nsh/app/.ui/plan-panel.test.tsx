@@ -150,3 +150,10 @@ test("on a phone width the panel is one column with the same parts", async () =>
   expect(app.shows("id:plan-spec-list-acceptance")).toBe(true);
   expect(app.shows("id:plan-spec-about")).toBe(true);
 });
+
+test("「待你确认」 hands the proposed group to the parent to scroll to", async () => {
+  const { app, logged } = await opened();
+  expect(app.shows("id:requirements-proposed")).toBe(true);
+  await app.press("id:plan-spec-attention-waiting");
+  await app.waitUntil(() => logged("scrollToProposed:measured"));
+});

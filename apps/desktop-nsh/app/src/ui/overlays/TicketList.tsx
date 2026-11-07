@@ -4,14 +4,17 @@
  * picks its ticket, its status is a menu, and a press that travels drags it to another column. The
  * board scrolls sideways when the columns do not fit the pane.
  *
- * Not carried over: the board scrolling under a card held at its edge, Left/Right moving the focus
- * between columns, and the card that had the focus keeping it as it moves (NSH's focus order is the
- * card's own); a lit column is brought into view by scrolling the board to it.
+ * A card's button with the focus hears Left / Right (bound through `keymap` while it has it, as NSH
+ * views take no key events) and passes the focus to the neighbouring column; held at the board's
+ * edge, a dragged card scrolls the board under it (`ticket-list-drag`). A lit column is brought into
+ * view by scrolling the board to it. Not carried over: the card that had the focus keeping it as it
+ * moves to another column.
  */
-import { Scroll, Text, View, effect, signal, token, type ScrollRef, type ViewRef } from "nsh";
+import { Scroll, Text, View, effect, keymap, signal, token, type ScrollRef, type ViewRef } from "nsh";
 import type { Bot, Provider, TaskDetail, TaskTraceNode, Ticket, TicketStatus, TicketWithArtifacts } from "@real-bot/protocol";
 import type { MessengerApi } from "../../m/messenger-api.ts";
 import {
+  TICKET_STATUS_ORDER,
   boardState,
   completionPercentage,
   countedTicketCount,
@@ -60,6 +63,8 @@ export function TicketList(props: {
   edits?: TicketEdits;
   /** Whether the picked card unfolds what it answers to and its settings; off where the inspector shows them. */
   details?: boolean;
+  /** Which card has the keyboard focus (null: none), for a host that wants to know. */
+  onFocusCard?: (ticketId: string | null) => void;
 }) {
   const t = () => copy();
   const filter = () => props.statusFilter ?? "all";
@@ -86,6 +91,13 @@ export function TicketList(props: {
   /** The column views, so a drag can read where each one is and a lit column can be scrolled to. */
   const columnViews: Partial<Record<TicketStatus, ViewRef | null>> = {};
   let boardScroll: ScrollRef | null = null;
+  /** How far the board is scrolled across and each column down, for a card held at an edge. */
+  let boardOffset = 0;
+  const columnScrolls: Partial<Record<TicketStatus, { ref: ScrollRef | null; y: number }>> = {};
+  /** The cards' main buttons, and the one that has the keyboard focus, for Left / Right. */
+  const cardViews = new Map<string, ViewRef>();
+  const focusedCard = signal<string | null>(null);
+  effect(() => props.onFocusCard?.(focusedCard()));
   const board = signal({ width: 0, height: 0 });
 
   const counted = () => countedTicketCount(props.detail.ticket_counts);
@@ -119,6 +131,28 @@ export function TicketList(props: {
     if (status === "all") return;
     const index = columns().findIndex((column) => column.status === status);
     boardScroll?.scrollTo({ x: Math.max(0, index * (columnWidth() + GAP)), animated: true });
+  });
+
+  /** Left / Right pass the focus to the neighbouring column's card (the nearest below this one's number), changing no status. */
+  function moveFocus(ticketId: string, direction: 1 | -1): void {
+    const ticket = tickets().find((row) => row.id === ticketId);
+    if (!ticket) return;
+    const index = TICKET_STATUS_ORDER.indexOf(edits.columnOfTicket(ticket));
+    const next = TICKET_STATUS_ORDER[index + direction];
+    if (!next) return;
+    const cards = columns().find((column) => column.status === next)?.tickets ?? [];
+    const at = cards.findIndex((row) => row.seq >= ticket.seq);
+    const target = cards[at >= 0 ? at : 0];
+    if (target) cardViews.get(target.id)?.focus();
+  }
+  effect(() => {
+    const current = focusedCard();
+    if (current === null) return;
+    const off = [
+      keymap.bind("left", () => moveFocus(current, -1), { when: "always" }),
+      keymap.bind("right", () => moveFocus(current, 1), { when: "always" }),
+    ];
+    return () => off.forEach((fn) => fn());
   });
 
   const dependsOpen = signal<string | null>(null);
@@ -192,6 +226,7 @@ export function TicketList(props: {
             testID="ticket-board"
             class="flex-1 min-w-0 min-h-0"
             ref={(node) => (boardScroll = node as ScrollRef | null)}
+            onScroll={(e) => (boardOffset = e.offset.x)}
             contentClass="flex-row"
             contentStyle={{ gap: GAP }}
           >
@@ -221,7 +256,15 @@ export function TicketList(props: {
                       </View>
                     </If>
                   </View>
-                  <Scroll class="flex-1 min-h-0" contentClass="gap-2 px-2 pb-2">
+                  <Scroll
+                    class="flex-1 min-h-0"
+                    contentClass="gap-2 px-2 pb-2"
+                    ref={(node) => (columnScrolls[column().status] = { ref: node as ScrollRef | null, y: columnScrolls[column().status]?.y ?? 0 })}
+                    onScroll={(e) => {
+                      const at = columnScrolls[column().status];
+                      if (at) at.y = e.offset.y;
+                    }}
+                  >
                     <If when={column().tickets.length === 0}>
                       <Text class="text-[11px] text-ink-muted">{t().plan.board.emptyColumn}</Text>
                     </If>
@@ -244,8 +287,21 @@ export function TicketList(props: {
                           onDependsOpenChange={(id) => dependsOpen.set(id)}
                           drag={{
                             columns: () => columnViews,
+                            boardScroll: () => ({ ref: boardScroll, offset: () => boardOffset }),
+                            columnScroll: (status) => {
+                              const at = columnScrolls[status];
+                              return at ? { ref: at.ref, offset: () => at.y } : null;
+                            },
                             onDrag: (next) => drag.set(next),
                             onDrop: (row, status) => edits.requestStatus(row, status),
+                          }}
+                          focus={{
+                            ref: (node) => (node ? cardViews.set(ticket().id, node) : cardViews.delete(ticket().id)),
+                            focusNow: () => cardViews.get(ticket().id)?.focus(),
+                            onFocusChange: (focused) => {
+                              if (focused) focusedCard.set(ticket().id);
+                              else if (focusedCard() === ticket().id) focusedCard.set(null);
+                            },
                           }}
                           onSelect={() => select(ticket().id)}
                           onJump={props.onJump}

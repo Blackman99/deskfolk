@@ -4,7 +4,7 @@
  * its versions, and its retrospective go down a side column. Narrow, the two make one column, the
  * overview right under the goal. The panel never scrolls itself: its parent does.
  */
-import { signal, Text, View } from "nsh";
+import { signal, Text, View, type ViewRef } from "nsh";
 import { countsEntries } from "../../m/overlays/plan-board.ts";
 import { copy } from "../../runtime";
 import { PlanRequirements } from "./PlanRequirements";
@@ -29,6 +29,11 @@ export function PlanSpecPanel(props: PlanSpecPanelProps) {
   const detail = () => props.detail;
   const focusTicket = () => (props.selectedTicket ? (detail().tickets.find((tk) => tk.id === props.selectedTicket) ?? null) : null);
   const groups = () => checkGroups(detail());
+  // The group waiting on you, so 「待你确认」 can have the parent scroll to it.
+  let proposed: ViewRef | null = null;
+  const showWaiting = () => {
+    if (proposed) props.onScrollToProposed?.(proposed);
+  };
 
   const emptyCard = () => (
     <View testID="plan-spec-empty" class="gap-[6px] p-3 rounded-(--radius-md) bg-line-subtle">
@@ -63,7 +68,7 @@ export function PlanSpecPanel(props: PlanSpecPanelProps) {
         {() => {
           const spec = detail().spec;
           const goal = spec ? <PlanGoal panel={props} state={state} spec={spec} /> : null;
-          const attention = spec ? <PlanAttention panel={props} spec={spec} /> : null;
+          const attention = spec ? <PlanAttention panel={props} spec={spec} onShowWaiting={props.onScrollToProposed ? showWaiting : undefined} /> : null;
           const main = (
             <View class="gap-3 min-w-0">
               {spec ? (
@@ -77,6 +82,7 @@ export function PlanSpecPanel(props: PlanSpecPanelProps) {
                       onJump={props.onJump}
                       selectedTicket={focusTicket()?.id ?? null}
                       onShowTicket={props.onShowTicket}
+                      onProposedRef={(node) => (proposed = node)}
                     />
                   </If>
                 </>

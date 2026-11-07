@@ -8,10 +8,11 @@
  * The lane is a `Canvas` (the messenger drew an SVG of a 1000-unit viewBox); a press on a row says
  * where on the lane it landed from the row's own press position and the lane's measured frame.
  *
- * Not carried over: the hover hint on a gap (the minutes the job sat still) — a canvas has no
- * per-shape tooltip; Up/Down between rows is NSH's own focus order.
+ * A gap's hover hint (the minutes the job sat still) is a small view laid over the canvas where the
+ * gap is drawn, since a canvas has no per-shape tooltip. Up / Down between rows are bound through
+ * `keymap` while a row has the focus (NSH views take no key events).
  */
-import { Canvas, Scroll, Text, View, signal, token } from "nsh";
+import { Canvas, Scroll, Text, View, effect, keymap, signal, token, type ViewRef } from "nsh";
 import type { Bot, TaskDetail, TicketStatus, TicketWithArtifacts } from "@real-bot/protocol";
 import { copy } from "../../runtime";
 import { actorFace, actorName, completionPercentage, countedTicketCount, openTicketCount, parkedTicketCount, ticketTag } from "../../m/overlays/plan-board.ts";
@@ -46,6 +47,8 @@ export function TicketRail(props: {
   onPickMark: (ticketId: string | null, mark: LaneMark) => void;
   onClearFilter: () => void;
   onExpand: () => void;
+  /** Which row has the keyboard focus (null: none), for a host that wants to know. */
+  onFocusRow?: (ticketId: string | null) => void;
 }) {
   const t = () => copy();
   const botsById = () => new Map(props.bots.map((bot) => [bot.id, bot] as const));
@@ -57,6 +60,24 @@ export function TicketRail(props: {
   const done = () => completionPercentage(props.detail.ticket_counts);
   const markWidth = () => Math.max(laneMarkWidth(props.lanes) * 1000 * 0.8, 3);
   const gapWidth = () => laneMarkWidth(props.lanes) * 1000 * LANE_GAP_UNITS;
+  /** The rows' views and the one with the keyboard focus, for Up / Down to walk between them. */
+  const rowViews = new Map<string, ViewRef>();
+  const focusedRow = signal<string | null>(null);
+  effect(() => props.onFocusRow?.(focusedRow()));
+  effect(() => {
+    const current = focusedRow();
+    if (current === null) return;
+    const walk = (direction: 1 | -1) => {
+      const rows = tickets();
+      const next = rows[rows.findIndex((row) => row.id === current) + direction];
+      if (next) rowViews.get(next.id)?.focus();
+    };
+    const off = [
+      keymap.bind("down", () => walk(1), { when: "always", repeat: true }),
+      keymap.bind("up", () => walk(-1), { when: "always", repeat: true }),
+    ];
+    return () => off.forEach((fn) => fn());
+  });
   const nameOf = (actor: string) => actorName(actor, botsById(), props.youLabel, props.deletedLabel);
 
   /**
@@ -82,13 +103,17 @@ export function TicketRail(props: {
 
   function Lane(lane: { marks: () => readonly LaneMark[]; label: string; onFrame: (frame: Frame) => void }) {
     return (
+      <View
+        class="w-full"
+        style={{ height: 10 }}
+        onLayout={(e) => lane.onFrame({ x: e.bounds.origin.x, y: e.bounds.origin.y, width: e.bounds.size.width, height: e.bounds.size.height })}
+      >
       <Canvas
         role="image"
         accessibilityLabel={lane.label}
         testID="rail-lane"
         class="w-full"
         style={{ height: 10 }}
-        onLayout={(e) => lane.onFrame({ x: e.bounds.origin.x, y: e.bounds.origin.y, width: e.bounds.size.width, height: e.bounds.size.height })}
         draw={(cx, size) => {
           const unit = size.width / 1000;
           cx.clearRect(0, 0, size.width, size.height);
@@ -125,6 +150,21 @@ export function TicketRail(props: {
           }
         }}
       />
+      <Each of={props.lanes.gaps.slice()} key={(gap) => gap.col}>
+        {(gap) => (
+          <View
+            testID="rail-lane-gap"
+            tooltip={tip(t().plan.job.gap(gap().ms / 60_000))}
+            class="absolute top-0 min-w-[4px]"
+            style={{
+              left: `${(laneX(props.lanes, gap().col) * 1000 - gapWidth()) / 10}%`,
+              width: `${(gapWidth() * 0.5) / 10}%`,
+              height: 10,
+            }}
+          />
+        )}
+      </Each>
+      </View>
     );
   }
 
@@ -206,10 +246,19 @@ export function TicketRail(props: {
             return (
               <View
                 role="button"
+                focusable
                 testID={`rail-row-${ticket().id}`}
                 accessibilityLabel={ticket().title}
                 accessibilityState={{ selected: picked() }}
-                onPress={(e) => press(ticket(), laneAt(e.position, frame()))}
+                ref={(node: ViewRef | null) => (node ? rowViews.set(ticket().id, node) : rowViews.delete(ticket().id))}
+                onFocus={() => focusedRow.set(ticket().id)}
+                onBlur={() => focusedRow() === ticket().id && focusedRow.set(null)}
+                onPress={(e) => {
+                  // A press hands the row the focus, so Up / Down walk from it.
+                  focusedRow.set(ticket().id);
+                  rowViews.get(ticket().id)?.focus();
+                  press(ticket(), laneAt(e.position, frame()));
+                }}
                 class={`w-full gap-[5px] pt-[7px] pr-[10px] pb-[6px] pl-3 border-b border-line-subtle focus-visible:bg-line-subtle ${picked() ? "bg-accent-tint" : "hover:bg-line-subtle"}`}
               >
                 <View class="flex-row items-center gap-[6px] min-w-0">
