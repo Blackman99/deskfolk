@@ -242,3 +242,24 @@ test("injected scope binds devices, requires revisions, and exposes no runtime H
   expect(() => h.store.transaction(() => Promise.resolve())).toThrow("synchronous");
   expect(h.store.db.inTransaction).toBe(false);
 });
+
+test("pruning reads only the receipts that still keep a body, through an index, however many expired ones pile up", async () => {
+  const { store } = await fixture();
+  // The desktop's claim leaves a receipt every two seconds; most of them are long expired.
+  const insert = store.db.prepare(`INSERT INTO request_receipts (device_id, request_id, payload_sha256, method, path, state, status, body, headers, key_ops, created_at)
+    VALUES ('local', ?, 'x', 'POST', '/v1/notifications/desktop/claim', ?, 204, NULL, '{}', NULL, ?)`);
+  const now = Date.now();
+  store.db.transaction(() => {
+    for (let i = 0; i < 5_000; i++) insert.run(`R${i}`, i < 4_990 ? "expired" : "complete", now - 5_000 + i);
+  })();
+  const plan = store.db
+    .query<{ detail: string }, []>(`EXPLAIN QUERY PLAN SELECT rowid FROM request_receipts WHERE state = 'complete' AND status != 202 ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET 20000`)
+    .all()
+    .map((row) => row.detail)
+    .join(" | ");
+  expect(plan).toContain("receipts_state_created");
+  expect(plan).not.toMatch(/SCAN request_receipts(?! USING)/);
+  store.receipts.prune(now, 4);
+  const kept = store.db.query<{ n: number }, []>("SELECT COUNT(*) n FROM request_receipts WHERE state = 'complete'").get()!.n;
+  expect(kept).toBe(4);
+});
