@@ -392,9 +392,9 @@ export class SessionHistory {
       this.sessionDetailId = id;
       this.sessionMessageNext = detail.messages.next ?? null;
     }
-    this.host.snapshot = {
-      ...this.host.snapshot,
-      sessions: this.host.snapshot.sessions.map((s) =>
+    const current = this.host.snapshot;
+    const fresh = {
+      sessions: current.sessions.map((s) =>
         s.id === id
           ? {
               id: detail.id,
@@ -430,22 +430,50 @@ export class SessionHistory {
             }
           : s,
       ),
-      messages: [
-        ...this.host.snapshot.messages.filter((m) => m.session_id !== id),
-        ...detail.messages.items,
-      ],
-      turns: [
-        ...this.host.snapshot.turns.filter((t) => t.session_id !== id),
-        ...detail.turns,
-      ],
-      judgements: [
-        ...this.host.snapshot.judgements.filter((j) => j.session_id !== id),
-        ...judgements,
-      ],
-      pendingJudgements: [
-        ...this.host.snapshot.pendingJudgements.filter((j) => j.session_id !== id),
-        ...(detail.pending_judgements ?? []),
-      ],
+    };
+    // A page read again (selecting a conversation, as making its pane the current one does) mostly says
+    // what is already here: each row that says the same stays the object it was, and an array that
+    // gained nothing stays as it was, so nothing that reads them works it out anew.
+    this.host.snapshot = {
+      ...current,
+      sessions: keepSame(current.sessions, fresh.sessions),
+      messages: mergeSessionRows(current.messages, id, detail.messages.items),
+      turns: mergeSessionRows(current.turns, id, detail.turns),
+      judgements: mergeSessionRows(current.judgements, id, judgements),
+      pendingJudgements: mergeSessionRows(current.pendingJudgements, id, detail.pending_judgements ?? []),
     };
   }
+}
+
+/** `next`, with each item that says the same as the one at its index in `current` kept, and `current` itself when all do. */
+function keepSame<T>(current: readonly T[], next: readonly T[]): T[] {
+  let same = current.length === next.length;
+  const out = next.map((item, index) => {
+    const before = current[index];
+    if (before !== undefined && (before === item || JSON.stringify(before) === JSON.stringify(item))) return before;
+    same = false;
+    return item;
+  });
+  return same ? (current as T[]) : out;
+}
+
+/**
+ * A conversation's rows replaced by the page just read: each row that says the same as the one of
+ * its id here stays that object, and when the page adds, drops and changes nothing the array stays.
+ */
+function mergeSessionRows<T extends { id: string; session_id?: string | null }>(current: readonly T[], sessionId: string, incoming: readonly T[]): T[] {
+  const before = new Map<string, T>();
+  const rest: T[] = [];
+  for (const row of current) {
+    if (row.session_id === sessionId) before.set(row.id, row);
+    else rest.push(row);
+  }
+  let same = before.size === incoming.length;
+  const kept = incoming.map((row) => {
+    const old = before.get(row.id);
+    if (old && (old === row || JSON.stringify(old) === JSON.stringify(row))) return old;
+    same = false;
+    return row;
+  });
+  return same ? (current as T[]) : [...rest, ...kept];
 }
