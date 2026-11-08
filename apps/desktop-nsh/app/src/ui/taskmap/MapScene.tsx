@@ -303,10 +303,14 @@ export function MapScene(props: {
   );
 
   // --- The world canvas: ground, trees, lamps, buildings ---
+  // As big as the scene has been, not as it is: what it draws follows the camera alone, and a canvas
+  // drawn again on every resize drew the whole town on every pixel a divider moved. The scene clips it.
+  const canvasW = signal(0);
+  const canvasH = signal(0);
   const ground = (
     <Canvas
-      class="absolute left-0 top-0 right-0 bottom-0"
-      style={{ pointerEvents: "none" }}
+      class="absolute left-0 top-0"
+      style={{ width: canvasW(), height: canvasH(), pointerEvents: "none" }}
       draw={(cx) => {
         const f = frame();
         const c = view();
@@ -473,6 +477,10 @@ export function MapScene(props: {
       role="group"
       accessibilityState={{ busy: panning() }}
       class="absolute left-0 top-0 right-0 bottom-0 overflow-hidden"
+      onLayout={(e) => {
+        if (e.bounds.size.width > canvasW()) canvasW.set(Math.ceil(e.bounds.size.width));
+        if (e.bounds.size.height > canvasH()) canvasH.set(Math.ceil(e.bounds.size.height));
+      }}
       {...pan.panHandlers}
       onPressDown={(e) => {
         turning = e.modifiers.shift || e.modifiers.alt;

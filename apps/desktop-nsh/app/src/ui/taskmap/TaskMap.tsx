@@ -52,7 +52,10 @@ export function TaskMap(props: {
 }) {
   const t = () => copy();
   const session = () => props.session;
-  const bots = () => session().kind !== "project";
+  // The pane hands over a new summary of the conversation on every change to it (each streamed line):
+  // what reads it reads these, which change only with another conversation, so nothing is read anew.
+  const sessionId = computed(() => session().id);
+  const bots = computed(() => session().kind !== "project");
   const client = (): TaskMapClient | null => props.client ?? runtime.client;
   const agentCalls = () => props.agentCalls ?? runtime.agentCalls;
   // A Bot map's places are the workspace's: its root, where messages, questions and plans are made, and what lies outside it.
@@ -68,11 +71,11 @@ export function TaskMap(props: {
         }
       : m;
   });
-  const agent = () => session().project_agent ?? "claude_code";
+  const agent = computed(() => session().project_agent ?? "claude_code");
+  const projectDir = computed(() => session().project_dir ?? null);
   const agentName = () => t().project.agentNames[agent()];
 
   // --- Which plan: the one picked here, else the one asked for if the conversation has it, else its newest work ---
-  const sessionId = () => session().id;
   const jobs = signal<SessionTaskSummary[]>([]);
   const jobsRead = signal(false);
   const chosenPlan = signal<string | null>(null);
@@ -141,12 +144,12 @@ export function TaskMap(props: {
         data = fromPlanReplay(replay);
         truncated.set(replay.truncated);
       } else if (bots()) {
-        const replay = await api.sessionReplay(session().id);
+        const replay = await api.sessionReplay(sessionId());
         if (mine !== seq) return;
         data = fromSessionReplay(replay);
         truncated.set(replay.truncated);
       } else {
-        const replay = await api.projectReplay(session().id);
+        const replay = await api.projectReplay(sessionId());
         if (mine !== seq) return;
         data = fromAgentReplay(replay, agent());
       }
@@ -177,7 +180,7 @@ export function TaskMap(props: {
     });
   });
 
-  const run = () => runtime.snapshot.agentRuns[session().id] ?? null;
+  const run = () => runtime.snapshot.agentRuns[sessionId()] ?? null;
   const working = (status: string) => status === "running" || status === "waiting_approval" || status === "waiting_ask";
   // A project session runs while its agent's run does; a plan while any of its turns does, wherever;
   // a conversation with no plan while any of its turns does.
@@ -186,14 +189,14 @@ export function TaskMap(props: {
       ? run()?.status === "running" || run()?.status === "waiting_approval"
       : planId()
         ? runtime.snapshot.turns.some((turn) => turn.task_id === planId() && working(turn.status))
-        : runtime.snapshot.turns.some((turn) => turn.session_id === session().id && working(turn.status)),
+        : runtime.snapshot.turns.some((turn) => turn.session_id === sessionId() && working(turn.status)),
   );
   // Which live calls are this map's: a plan's are its turns' — as the turn says now, so one filed into
   // the plan mid-turn brings its earlier calls — in any conversation; otherwise the conversation's own.
   const turnsById = computed(() => new Map(runtime.snapshot.turns.map((turn) => [turn.id, turn])));
   const belongs = (call: LiveCall): boolean =>
-    planId() ? (turnsById().get(call.turnId)?.task_id ?? call.taskId) === planId() : call.sessionId === session().id;
-  const liveOf = (): LiveCall[] => (planId() ? agentCalls().all() : agentCalls().callsOf(session().id));
+    planId() ? (turnsById().get(call.turnId)?.task_id ?? call.taskId) === planId() : call.sessionId === sessionId();
+  const liveOf = (): LiveCall[] => (planId() ? agentCalls().all() : agentCalls().callsOf(sessionId()));
   // A run that ends has written its calls down; a reconnect may have missed frames.
   let wasLive = false;
   effect(() => {
@@ -208,7 +211,7 @@ export function TaskMap(props: {
       untracked(() => {
         const b = base();
         const shown = b?.source.kind === "plan" ? b.source.sessions : [];
-        for (const id of new Set([session().id, ...shown])) agentCalls().forget(id);
+        for (const id of new Set([sessionId(), ...shown])) agentCalls().forget(id);
         void load();
       });
     }
@@ -303,6 +306,10 @@ export function TaskMap(props: {
     return { k, tx: (w - (b.x0 + b.x1) * k) / 2, ty: (h - (b.y0 + b.y1) * k) / 2 };
   }
   let fittedOnce = false;
+  // A pane grown past the town zooms in to fit once it stops: a zoom lays out every plate anew, and a
+  // divider in hand grows the pane by the pixel.
+  let refit: ReturnType<typeof setTimeout> | undefined;
+  cleanup(() => clearTimeout(refit));
   effect(() => {
     const { w, h } = size();
     if (!w || !h) return;
@@ -310,7 +317,12 @@ export function TaskMap(props: {
       if (!fittedOnce) {
         fittedOnce = true;
         cam.set(fitted());
-      } else if (cam().k < kMin()) cam.set(clamp({ ...cam(), k: kMin() }));
+        return;
+      }
+      clearTimeout(refit);
+      refit = setTimeout(() => {
+        if (cam().k < kMin()) cam.set(clamp({ ...cam(), k: kMin() }));
+      }, 150);
     });
   });
 
@@ -519,7 +531,7 @@ export function TaskMap(props: {
   const regionLabels = computed(() => ({
     ext: islandLabel("ext", bots() ? `${tm().places.service} · ${tm().places.outside}` : `${tm().places.outside} · ${tm().places.claude_home}`),
     ws: islandLabel("ws", `${tm().places.git} · ${tm().places.other}`),
-    town: `${((planSource()?.dir ?? (bots() ? runtime.snapshot.settings.workspace_path : session().project_dir)) ?? "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? ""}/`,
+    town: `${((planSource()?.dir ?? (bots() ? runtime.snapshot.settings.workspace_path : projectDir())) ?? "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? ""}/`,
   }));
   const wide = () => width() >= 760;
   const compact = () => size().w < 560 || size().h < 460;
