@@ -41,3 +41,8 @@ codegen-units = 4
 # rebuilds stay quick.
 [profile.dev.package."*"]
 opt-level = 3
+
+# Except the app's native crate: it prepares every chat bubble's Markdown (`app/native/src/markdown`),
+# on every render and every streamed token, and unoptimised that is a third of its speed.
+[profile.dev.package.deskfolk-app-native]
+opt-level = 3

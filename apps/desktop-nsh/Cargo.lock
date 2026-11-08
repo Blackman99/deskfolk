@@ -990,6 +990,7 @@ dependencies = [
  "nsh-core",
  "num-bigint",
  "quick-xml",
+ "regex",
  "serde",
  "serde_json",
  "vt100",

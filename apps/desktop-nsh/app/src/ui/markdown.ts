@@ -4,7 +4,14 @@
  * Bot become elements (`<artifact path>`, `<mention id>`) that `MarkdownBody` draws as chips through
  * `TextView`'s extensions. No HTML is built and nothing is sanitised here: `TextView` reads the
  * Markdown natively and runs nothing in it.
+ *
+ * `prepareMarkdown` is Rust (`app/native/src/markdown`, `deskfolk/native`'s `Markdown`): it runs on
+ * every bubble render and every streamed token, and the regexes it is made of are 8 to 30 times
+ * slower in QuickJS than in a browser's engine. The passes below stay as `prepareMarkdownJs`, the
+ * reference `markdown-native.test.ts` holds the Rust to byte for byte, and what runs where the
+ * native module is missing.
  */
+import { Markdown } from "deskfolk/native";
 import { linkifyWorkspacePaths, looksLikeWorkspaceHref, parseArtifactHref } from "../m/overlays/artifacts.ts";
 import { linkifyRosterMentions, parseMentionHref, type MentionableBot } from "../m/chat/mention-chips.ts";
 
@@ -92,7 +99,7 @@ function chipsIn(part: string, hidden: ReadonlySet<string>): string {
  * messenger links them, those links as chip elements, and the standalone lines that only repeat a
  * file shown elsewhere (`hidden`, a message's attachment cards) dropped.
  */
-export function prepareMarkdown(source: string, options: RenderMarkdownOptions = {}, hidden: readonly string[] = []): string {
+export function prepareMarkdownJs(source: string, options: RenderMarkdownOptions = {}, hidden: readonly string[] = []): string {
   if (!source && !(options.extraPaths && options.extraPaths.length > 0)) return "";
   const linked = linkifyWorkspacePaths(source, options.extraPaths ?? []);
   const mentioned = linkifyRosterMentions(linked, options.mentionBots ?? [], { members: options.mentionMembers });
@@ -100,6 +107,41 @@ export function prepareMarkdown(source: string, options: RenderMarkdownOptions =
   return splitFences(mentioned)
     .map((part) => (part.fence ? part.text : chipsIn(part.text, hiddenSet)))
     .join("");
+}
+
+/**
+ * The options as the Rust reads them: the extra paths and each roster's ids and names. Turning the
+ * whole options into JSON on every call cost more than the Rust pass itself (each Bot carries its
+ * whole record), so a bubble's options, and each roster, are turned into JSON once.
+ */
+const optionsJsonOf = new WeakMap<RenderMarkdownOptions, string>();
+const rosterJsonOf = new WeakMap<readonly MentionableBot[], string>();
+function rosterJson(roster: readonly MentionableBot[]): string {
+  let json = rosterJsonOf.get(roster);
+  if (json === undefined) {
+    json = JSON.stringify(roster.map((bot) => ({ id: bot.id, name: bot.name })));
+    rosterJsonOf.set(roster, json);
+  }
+  return json;
+}
+function optionsJson(options: RenderMarkdownOptions): string {
+  let json = optionsJsonOf.get(options);
+  if (json === undefined) {
+    const parts: string[] = [];
+    if (options.extraPaths) parts.push(`"extraPaths":${JSON.stringify(options.extraPaths)}`);
+    if (options.mentionBots) parts.push(`"mentionBots":${rosterJson(options.mentionBots)}`);
+    if (options.mentionMembers) parts.push(`"mentionMembers":${rosterJson(options.mentionMembers)}`);
+    json = `{${parts.join(",")}}`;
+    optionsJsonOf.set(options, json);
+  }
+  return json;
+}
+
+/** The same string as `prepareMarkdownJs`, made in Rust. */
+export function prepareMarkdown(source: string, options: RenderMarkdownOptions = {}, hidden: readonly string[] = []): string {
+  if (!source) return "";
+  if (!Markdown) return prepareMarkdownJs(source, options, hidden);
+  return Markdown.prepareMarkdown(source, optionsJson(options), [...hidden]);
 }
 
 /** A mention's id when it names nobody on the roster: the token as written. */
