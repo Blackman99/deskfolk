@@ -99,6 +99,57 @@ test("a second file lists both in the tree, and picking a row opens that file", 
   await app.waitUntil(() => !app.shows("id:artifact-tree-column"));
 });
 
+test("switching between code files with no edit asks nothing, and undo stays in the file", async () => {
+  const app = await opened("ts", "id:artifact-code-editor");
+  // The sheet's bar carries the unsaved mark (the desktop's is on the workbench tab).
+  await app.press("id:story-sheet");
+  await app.waitFor("id:artifact-pane-head");
+  await app.waitFor("id:artifact-tree-column");
+  const ts = path(app);
+  await app.press("id:story-make-py");
+  await app.waitUntil(() => current(app) === "current:hello.py", { timeout: LOAD_MS });
+  const py = path(app);
+  await app.waitUntil(() => app.texts().some((text) => text.includes("def hello")), { timeout: LOAD_MS });
+  await app.press(`id:artifact-tree-row:${ts}`);
+  await app.waitUntil(() => current(app) === "current:sum.ts", { timeout: LOAD_MS });
+  await app.waitUntil(() => app.texts().some((text) => text.includes("export function sum")), { timeout: LOAD_MS });
+  expect(app.shows("id:artifact-dirty-dot")).toBe(false);
+  // Undo takes back this file's edit, and has nothing of the last file to bring back.
+  await app.type("id:artifact-editor", "x");
+  await app.waitFor("id:artifact-dirty-dot");
+  await app.keyboard.press("mod+z");
+  await app.waitUntil(() => !app.shows("id:artifact-dirty-dot"));
+  await app.keyboard.press("mod+z");
+  await app.wait(100);
+  expect(app.shows("id:artifact-dirty-dot")).toBe(false);
+  expect(app.texts().some((text) => text.includes("def hello"))).toBe(false);
+  // And going back is not held up by an edit nobody made.
+  await app.press(`id:artifact-tree-row:${py}`);
+  await app.waitUntil(() => current(app) === "current:hello.py", { timeout: LOAD_MS });
+  expect(app.shows("id:artifact-dirty-dialog")).toBe(false);
+});
+
+test("a file with the same text as the last one starts a history of its own", async () => {
+  const app = await opened("ts", "id:artifact-code-editor");
+  await app.press("id:story-sheet");
+  await app.waitFor("id:artifact-pane-head");
+  await app.waitFor("id:artifact-tree-column");
+  const ts = path(app);
+  await app.press("id:story-make-same");
+  await app.waitUntil(() => current(app) === "current:sum-copy.ts", { timeout: LOAD_MS });
+  // An edit taken back leaves it to be done again, in this file only.
+  await app.type("id:artifact-editor", "x");
+  await app.waitFor("id:artifact-dirty-dot");
+  await app.keyboard.press("mod+z");
+  await app.waitUntil(() => !app.shows("id:artifact-dirty-dot"));
+  await app.press(`id:artifact-tree-row:${ts}`);
+  await app.waitUntil(() => current(app) === "current:sum.ts", { timeout: LOAD_MS });
+  await app.type("id:artifact-editor", "");
+  await app.keyboard.press("mod+shift+z");
+  await app.wait(100);
+  expect(app.shows("id:artifact-dirty-dot")).toBe(false);
+});
+
 test("the phone's list opens as a sheet and a picked file closes it", async () => {
   const app = await openStory("artifacts", { width: 420, height: 760 });
   await app.waitFor("id:artifacts", { timeout: 15_000 });

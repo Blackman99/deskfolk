@@ -5,6 +5,19 @@
  * numbers). The text is a signal mirrored from `onChange`, so `getValue` and `isDirty` are sync;
  * the buffer is unsaved whenever it differs from `baseline` (what is on disk).
  *
+ * The Editor keeps its own text (`defaultValue`), and `onChange` only reports it. Controlling it
+ * (`value` set again from `onChange`) lost typing: the value comes back to the editor a frame
+ * late, as an edit of its own, over the keys typed since.
+ *
+ * Text from outside (the file read again with nothing unsaved, a discard) makes a new Editor rather
+ * than `setValue`, and so does another file, even one with the same text. The Editor's `setValue`
+ * is an edit undo takes back, so after a switch ⌘Z would bring the last file's text into this one,
+ * and a save would write it there. Monaco's `setValue` began a new history.
+ *
+ * What is on disk follows `baseline` whenever it changes. The loader sets the text and then the
+ * disk text, and in between the buffer looked unsaved. It stayed so, and the next switch asked
+ * about an edit nobody made.
+ *
  * TSX has no `bind:this`/exports: the methods the Svelte exports come out as an
  * `ArtifactEditorHandle`, handed to `handle` once mounted and `null` when it goes.
  * Not ported: `loadMonaco` (no Monaco here); Monaco's find widget is a small find bar of
@@ -12,7 +25,7 @@
  * `openReplace` opens the same bar). A drawn annotation moves with edits, but a click on its
  * mark finds it by where it was drawn.
  */
-import { Overlay, Text, View, cleanup, effect, signal, type Bounds } from "nsh";
+import { Overlay, Text, View, cleanup, effect, signal, untracked, type Bounds } from "nsh";
 import { Editor, Input, type EditorDecoration, type EditorRef, type EditorSelection } from "nsh/base";
 import type { Annotation } from "@real-bot/protocol";
 import { wholeLineRange, type EditorRange } from "../../m/annotations/text-range.ts";
@@ -70,6 +83,10 @@ export function ArtifactCodeEditor(props: {
 }) {
   const text = signal(foldLineEndings(props.code));
   const saved = signal(foldLineEndings(props.baseline ?? props.code));
+  /** Counts the texts put in from outside: each one is a new Editor, with a history of its own. */
+  const generation = signal(0);
+  /** The last text from outside (`code`, a discard). The buffer holds the person's own edits while it differs. */
+  let loaded = text();
   const findOpen = signal(false);
   const query = signal("");
   const count = signal<{ current: number; total: number }>({ current: 0, total: 0 });
@@ -111,14 +128,24 @@ export function ArtifactCodeEditor(props: {
     syncDirty();
   };
 
+  /** Puts `folded` in from outside: a new Editor holding it. Whether one was made. */
+  const replace = (folded: string): boolean => {
+    loaded = folded;
+    if (folded === text()) return false;
+    text.set(folded);
+    generation.set(generation() + 1);
+    return true;
+  };
+  /** The file the Editor's history belongs to. */
+  let historyPath = props.path;
+
   const handle: ArtifactEditorHandle = {
     getValue: () => text(),
     isDirty: dirty,
     markSaved,
     revert: (value) => {
       const folded = foldLineEndings(value);
-      text.set(folded);
-      editor?.setValue(folded);
+      replace(folded);
       markSaved(folded);
     },
     openFind: () => findOpen.set(true),
@@ -140,18 +167,26 @@ export function ArtifactCodeEditor(props: {
     if (flashTimer) clearTimeout(flashTimer);
   });
 
-  // A new `code` (the file read again) replaces a buffer with nothing unsaved in it.
-  let lastCode = props.code;
+  // A new `code` (another file, or this one read again) replaces a buffer with none of the person's
+  // edits in it; what is on disk is `baseline`'s, whichever of the two changed first. Another file
+  // is a new Editor even when its text is the same (two empty files): its history is not this one's.
   effect(() => {
-    const doc = props.code;
-    if (doc === lastCode) return;
-    lastCode = doc;
-    if (dirty()) return;
-    const folded = foldLineEndings(doc);
-    text.set(folded);
-    editor?.setValue(folded);
-    saved.set(foldLineEndings(props.baseline ?? doc));
-    syncDirty();
+    const doc = foldLineEndings(props.code);
+    const disk = foldLineEndings(props.baseline ?? props.code);
+    const path = props.path;
+    untracked(() => {
+      let made = false;
+      if (doc !== loaded) {
+        if (text() === loaded) made = replace(doc);
+        else loaded = doc;
+      }
+      if (path !== historyPath) {
+        historyPath = path;
+        if (!made) generation.set(generation() + 1);
+      }
+      saved.set(disk);
+      syncDirty();
+    });
   });
 
   effect(() => {
@@ -187,6 +222,36 @@ export function ArtifactCodeEditor(props: {
     editor?.setSelections([{ anchor: whole.start, head: whole.end }]);
   };
 
+  /** One Editor, holding the text as it is when it is made. */
+  const editorView = () => (
+    <Editor
+      testID="artifact-editor"
+      ref={(node: EditorRef) => {
+        editor = node;
+      }}
+      class="flex-1 min-h-0 bg-pane"
+      defaultValue={untracked(text)}
+      language={baseName(props.path)}
+      readOnly={props.readOnly === true}
+      softWrap={props.wrap}
+      fontSize={12}
+      lineHeight={18}
+      tabSize={2}
+      scrollBeyondLastLine={false}
+      decorations={decorations()}
+      gutterDecorationsWidth={4}
+      search={findOpen() && query() !== "" ? { query: query() } : null}
+      accessibilityLabel={baseName(props.path)}
+      onSearchChange={(e) => count.set({ current: e.result.current ?? 0, total: e.result.count })}
+      onChange={(e) => {
+        text.set(e.value);
+        syncDirty();
+      }}
+      onSelectionChange={(e) => void onSelection(e.selections)}
+      onLineNumberPress={(e) => onLineNumber(e.line)}
+    />
+  );
+
   return (
     <View class="min-h-[280px] flex-1 h-full relative flex-col" testID="artifact-code-editor">
       <If when={findOpen()}>
@@ -206,32 +271,9 @@ export function ArtifactCodeEditor(props: {
           <IconButton icon="x" size="sm" label={copy().common.close} testID="artifact-find-close" onPress={() => void handle.closeFind()} />
         </View>
       </If>
-      <Editor
-        testID="artifact-editor"
-        ref={(node: EditorRef) => {
-          editor = node;
-        }}
-        class="flex-1 min-h-0 bg-pane"
-        value={text()}
-        language={baseName(props.path)}
-        readOnly={props.readOnly === true}
-        softWrap={props.wrap}
-        fontSize={12}
-        lineHeight={18}
-        tabSize={2}
-        scrollBeyondLastLine={false}
-        decorations={decorations()}
-        gutterDecorationsWidth={4}
-        search={findOpen() && query() !== "" ? { query: query() } : null}
-        accessibilityLabel={baseName(props.path)}
-        onSearchChange={(e) => count.set({ current: e.result.current ?? 0, total: e.result.count })}
-        onChange={(e) => {
-          text.set(e.value);
-          syncDirty();
-        }}
-        onSelectionChange={(e) => void onSelection(e.selections)}
-        onLineNumberPress={(e) => onLineNumber(e.line)}
-      />
+      <Each of={[generation()]} key={(g) => g}>
+        {() => editorView()}
+      </Each>
       <If when={pending()}>
         {(p) => (
           <Overlay anchor={p().anchor} placement="bottom" align="end" offset={4} margin={8}>

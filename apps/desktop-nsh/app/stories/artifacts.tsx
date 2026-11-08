@@ -30,10 +30,12 @@ const SAMPLES: Record<string, { name: string; mime: string; body: BlobPart }> = 
   png: { name: "dot.png", mime: "image/png", body: PNG },
   md: { name: "notes.md", mime: "text/markdown", body: "# Notes\n\nA line of **notes** the Bot wrote.\n\n- first\n- second\n" },
   ts: { name: "sum.ts", mime: "text/plain", body: "export function sum(a: number, b: number): number {\n  return a + b;\n}\n" },
+  same: { name: "sum-copy.ts", mime: "text/plain", body: "export function sum(a: number, b: number): number {\n  return a + b;\n}\n" },
+  py: { name: "hello.py", mime: "text/plain", body: "def hello():\n    return 'hi'\n" },
   bin: { name: "data.bin", mime: "application/octet-stream", body: "\u0000\u0001\u0002 not text" },
   pdf: { name: "story.pdf", mime: "application/pdf", body: samplePdf([[612, 792], [792, 612]]) },
 };
-type Sample = "md" | "ts" | "bin" | "pdf" | "png";
+type Sample = "md" | "ts" | "same" | "py" | "bin" | "pdf" | "png";
 
 export default function Artifacts() {
   const part = signal<Part>("preview");
