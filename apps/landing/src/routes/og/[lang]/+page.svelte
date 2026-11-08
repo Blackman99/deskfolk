@@ -2,6 +2,7 @@
   import { dev } from '$app/environment';
   import { base } from '$app/paths';
   import Logo from '$lib/Logo.svelte';
+  import { HOME } from '$lib/home/copy';
   import { DICT, type Lang } from '$lib/i18n';
   import { GITHUB_OWNER, GITHUB_REPO } from '$lib/site';
 
@@ -36,10 +37,12 @@
         <span class="brand-name">Deskfolk</span>
         <span class="wip">{t.nav.wip}</span>
       </div>
+      <!-- As on the home page's first screen: what it is above the tagline. -->
+      <p class="descriptor">{t.hero.descriptor}</p>
       <h1>
         {#each t.hero.headlineLines as line, i}{#if i > 0}<br />{/if}<span>{line}</span>{/each}
       </h1>
-      <p class="tagline">{t.footer.tagline}{lang === 'zh' ? ' MIT 开源。' : ' Open source under MIT.'}</p>
+      <p class="tagline">{HOME[lang].hero.note}<br />{lang === 'zh' ? 'MIT 协议开源' : 'MIT licensed'}</p>
       <p class="url">{siteLabel}</p>
     </div>
     <!-- The homepage's first-screen still: the real app, four panes at the end of step 9. -->
@@ -111,8 +114,17 @@
     padding: 3px 12px;
   }
 
+  .descriptor {
+    margin: 40px 0 0;
+    font-size: 22px;
+    font-weight: 650;
+    line-height: 1.35;
+    color: var(--teal-2);
+    text-wrap: balance;
+  }
+
   h1 {
-    margin: 48px 0 0;
+    margin: 14px 0 0;
     font-size: 58px;
     line-height: 1.22;
   }

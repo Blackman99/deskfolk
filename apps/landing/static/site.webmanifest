@@ -1,7 +1,7 @@
 {
   "name": "Deskfolk",
   "short_name": "Deskfolk",
-  "description": "A single-user agent collaboration app for your Mac.",
+  "description": "Open source alternative for Grok Bot + Codex/Claude GUI.",
   "start_url": "./",
   "display": "browser",
   "background_color": "#eef1f2",

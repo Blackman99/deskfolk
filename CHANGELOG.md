@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The site says what Deskfolk is: an open source alternative for Grok Bot + Codex/Claude GUI
+
+- The repository's description is now "Open source alternative for Grok Bot + Codex/Claude GUI", and the website says the same: above the headline on the first screen, in the page title and search description, in the footer and the web app manifest. The headline, "Hand it off. Walk away. Return to results.", stays.
+- The Open Graph images and the repository's social preview were captured again with that line above the headline; under it is now just the platforms and the MIT licence.
+
 ### Setup and Settings keep the models you are picking
 
 - Any change to the saved settings, even one about something else (the theme, launch at login, setup's own save of the workspace a moment earlier), put the saved workspace, endpoint, models and default model back into setup and the settings, wiping what you had picked and not yet saved. A field now follows the saved settings only when its saved value changed.

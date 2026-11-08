@@ -8,7 +8,7 @@
   import Stand from './Stand.svelte';
 
   /**
-   * The first screen: the tagline, the download, and Mochi and Pudding at their desk, Pudding
+   * The first screen: what Deskfolk is in one line (the repository's description), the tagline, the download, and Mochi and Pudding at their desk, Pudding
    * typing away and saying what the page goes on to show. The six chapters are listed under the
    * tagline as links down the page; the 30-second film is one button away for whoever wants it.
    */
@@ -16,6 +16,7 @@
 
   const stage = useStage();
   const copy = $derived(stage.copy);
+  const descriptor = $derived(DICT[lang].hero.descriptor);
   const headline = $derived(DICT[lang].hero.headlineLines);
   let el: HTMLElement | undefined = $state();
   let film: VideoDialog | undefined = $state();
@@ -51,6 +52,7 @@
 <section class="hero" bind:this={el} aria-labelledby="hero-title">
   <div class="page grid">
     <div class="copy">
+      <p class="descriptor">{descriptor}</p>
       <h1 class="display headline" id="hero-title">
         {#each headline as l}
           <span>{l}</span>
@@ -142,6 +144,14 @@
 
   .copy:lang(en) {
     --fit: 10.6cqi;
+  }
+
+  .descriptor {
+    margin: 0 0 14px;
+    font-size: clamp(14px, 1.15vw, 16px);
+    font-weight: 650;
+    color: var(--teal-2);
+    line-height: 1.4;
   }
 
   .headline {
