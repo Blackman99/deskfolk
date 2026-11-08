@@ -270,3 +270,23 @@ Every bubble render and every streamed token goes through `prepareMarkdown` (pat
 Once wired in, turning the whole options into JSON on every call (each Bot with its whole record) cost more than the Rust pass: a bubble's options and each roster are now turned into JSON once (remembered by object, ids and names only). In the app, a 6,422-character message goes 1.22 → 0.28 ms with the same result; the Markdown in one conversation switch goes 2.7–7.6 → 0.3–3.0 ms.
 
 Merging the snapshot stays: merging a page of 60 lines into a snapshot of 2,400 takes 0.15 ms the first time and 0.76 ms when the same page is read again (and a history read in this connection is no longer read again); moving it into Rust would save under a millisecond and add a serialisation across the boundary.
+
+## 补记 2026-11-09（四）：和 Tauri 的同场对比 / Addendum 2026-11-09 (4): side by side with Tauri
+
+Tauri 版的界面是信使（Svelte）在 WKWebView 里跑。对比时用信使的生产构建，放进 Playwright 的 WebKit（同一种引擎，JavaScriptCore 带 JIT），和 NSH 连同一个开发守护进程、同一份数据，跑同样的测量（同一组六个对话，先各打开一次，再各打开一次；流式输出和 NSH 一样向运行时注入事件，每个 token 都算到界面更新和排版之后）。没有用真正的 Tauri 程序：那要在屏幕上操作它。
+
+| | Tauri 的界面（WebKit） | NSH 调试版 | NSH 发布版 |
+| --- | ---: | ---: | ---: |
+| 启动到连上、拿到列表 | 848–1,052 ms | 581–592 ms | 571–600 ms |
+| 内存（进程合计） | 约 512 MB | 约 237 MB | 约 221 MB |
+| 第一次打开对话：内容出现 | 13–67 ms | 13–24 ms | 11–19 ms |
+| 第一次打开对话：最终上屏 | 107–246 ms | 78–172 ms | 79–192 ms |
+| 再次打开对话：内容出现 | 48–78 ms | 15–26 ms | 17–26 ms |
+| 再次打开对话：最终上屏 | 92–149 ms | 58–107 ms | 55–110 ms |
+| 一个流式 token | 12 ms | 14 ms | 14 ms |
+
+启动和内存 NSH 占优；切换对话 NSH 现在更快，但这主要是今天的改动（一个对话台、读过的不再重读、侧栏和对话台不重做没变的行），信使本身每次选中都重读那一页；流式输出 Tauri 略快。同样的 JS 在 QuickJS 里仍比 JavaScriptCore 慢 3–30 倍，NSH 是靠少做事和原生视图追上的。拖动分隔条、滚动、打字的跟手程度这里没有同场比。
+
+The Tauri build's interface is the messenger (Svelte) in a WKWebView. For the comparison the messenger's production build ran in Playwright's WebKit (the same engine, JavaScriptCore with its JIT), against the same dev daemon and data as NSH, with the same measurements (the same six conversations, each opened once and then again; streaming by events handed to the runtime as in NSH, each token counted through the interface update and layout). The real Tauri program was not used: that would take driving it on the screen.
+
+NSH leads on start-up and memory; it now switches conversations faster, mostly through today's changes (one stage, histories not read again, the sidebar and the stage not rebuilding rows that did not change), while the messenger still reads the page again on every pick; Tauri streams slightly faster. The same JavaScript is still 3–30 times slower in QuickJS than in JavaScriptCore; NSH catches up by doing less and by drawing with native views. Dragging dividers, scrolling and typing latency were not compared side by side here.
