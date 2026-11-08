@@ -330,6 +330,49 @@ pub fn drag_first(args: &str) {
     });
 }
 
+/// Keys typed into the first window, as `keys <text>` asks (development checks): each character a
+/// key down and up sent to the window, so its first responder takes them as a person's typing
+/// would, without touching the person's keyboard. `\n` is Return, `\b` Backspace, `\t` Tab.
+pub fn keys_first(args: &str) {
+    let text = args.replace("\\n", "\n").replace("\\b", "\u{8}").replace("\\t", "\t");
+    // NSEventType: key down 10, up 11. Key codes: Return 36, Tab 48, Backspace 51; a character's
+    // own code does not matter to text input, which reads the characters.
+    let post = |kind: usize, ch: char| {
+        dispatch2::DispatchQueue::main().exec_async(move || {
+            WINDOWS.with_borrow(|windows| {
+                let Some(entry) = windows.first() else { return };
+                let (chars, code): (String, u16) = match ch {
+                    '\n' => ("\r".into(), 36),
+                    '\t' => ("\t".into(), 48),
+                    '\u{8}' => ("\u{7f}".into(), 51),
+                    other => (other.to_string(), 0),
+                };
+                let chars = NSString::from_str(&chars);
+                let uptime = objc2_foundation::NSProcessInfo::processInfo().systemUptime();
+                let number = entry.window.windowNumber();
+                // SAFETY: NSEvent's class method with its declared argument types (NSUInteger type and
+                // flags, NSTimeInterval, NSInteger window number, a null graphics context, NSString
+                // characters, BOOL repeat, unsigned short key code).
+                let event: Option<Retained<objc2_app_kit::NSEvent>> = unsafe {
+                    msg_send![<objc2_app_kit::NSEvent as objc2::ClassType>::class(), keyEventWithType: kind, location: NSPoint::new(0.0, 0.0), modifierFlags: 0usize, timestamp: uptime, windowNumber: number, context: std::ptr::null::<objc2::runtime::AnyObject>(), characters: &*chars, charactersIgnoringModifiers: &*chars, isARepeat: false, keyCode: code]
+                };
+                if let Some(event) = event {
+                    entry.window.sendEvent(&event);
+                }
+            });
+        });
+    };
+    std::thread::spawn(move || {
+        log::info!("keys {text:?}");
+        for ch in text.chars() {
+            post(10, ch);
+            std::thread::sleep(std::time::Duration::from_millis(30));
+            post(11, ch);
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+    });
+}
+
 /// Puts window `id` away, as its close button does (the messenger's `hide_main_window`: ⌘W with
 /// no tab left hides rather than quits).
 pub fn hide(id: u32) {

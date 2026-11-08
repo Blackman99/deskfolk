@@ -283,6 +283,7 @@ fn watch_snapshot_requests(dir: PathBuf) {
                     ("wheel", args) => crate::window::wheel_first(args),
                     ("resize", args) => crate::window::resize_first(args),
                     ("drag", args) => crate::window::drag_first(args),
+                    ("keys", args) => crate::window::keys_first(args),
                     ("notify", body) => {
                         if let Err(why) = crate::notify::post("dev-check", "Deskfolk Dev", body) {
                             log::warn!("notify: {why}");
