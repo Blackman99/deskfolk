@@ -31,6 +31,7 @@ import { floor } from "../interface/floor";
 import { dismissRailTips, RailTooltip } from "./RailTooltip";
 import { settingsEntryColours } from "./foot-action";
 import { ToolsMenu } from "./ToolsMenu";
+import { previewIndex, statusMessages } from "./sidebar-previews";
 
 export function SidebarRail(props: {
   pinnedSessionIds: string[];
@@ -92,8 +93,10 @@ export function SidebarRail(props: {
     return [l.pinned, l.fileDrop ? [l.fileDrop] : [], l.bots, l.project].filter((section) => section.length > 0);
   };
 
+  /** Each conversation's newest message, from one pass over the messages (each rail item read them all). */
+  const index = computed(() => previewIndex(snapshot().messages, snapshot().turns));
   const statusOf = (session: SessionSummary) =>
-    sidebarStatus(session, snapshot().turns, snapshot().approvals, statusLabels(), snapshot().pendingJudgements, snapshot().messages);
+    sidebarStatus(session, snapshot().turns, snapshot().approvals, statusLabels(), snapshot().pendingJudgements, statusMessages(index(), session));
   const botStatusOf = (botId: string) => botWorkStatus(botId, snapshot().turns, snapshot().approvals, statusLabels(), snapshot().pendingJudgements);
 
   const archivedCount = () => snapshot().sessions.filter((session) => isSessionArchived(session, botsById())).length;

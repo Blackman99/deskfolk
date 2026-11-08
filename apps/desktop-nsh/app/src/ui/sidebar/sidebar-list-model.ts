@@ -78,3 +78,34 @@ export function listRows(input: ListInput): ListRow[] {
   if (input.projectsEmpty) rows.push({ kind: "projects-empty", key: "projects-empty" });
   return rows;
 }
+
+/**
+ * Hands back each row's previous object while it says the same. NSH's `List` tells its items apart
+ * by identity, and the rows were made anew whenever the selection or any conversation changed (each
+ * streamed line updates its session): every visible row was built again, each working out its
+ * status and its line anew, on every conversation switch and every update.
+ */
+export function createListRowKeeper(): (rows: readonly ListRow[]) => ListRow[] {
+  let kept = new Map<string, ListRow>();
+  return (rows) => {
+    const next = new Map<string, ListRow>();
+    const out = rows.map((row) => {
+      const before = kept.get(row.key);
+      const keep = before && sameValue(before, row, 2) ? before : row;
+      next.set(row.key, keep);
+      return keep;
+    });
+    kept = next;
+    return out;
+  };
+}
+
+/** The same: one object, or arrays of the same items, or (`depth` levels down) objects whose fields are. */
+function sameValue(a: unknown, b: unknown, depth: number): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((item, index) => item === b[index]);
+  if (depth === 0 || !a || !b || typeof a !== "object" || typeof b !== "object" || Array.isArray(a) || Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  return ka.every((key) => sameValue((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key], depth - 1));
+}

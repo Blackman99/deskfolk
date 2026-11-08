@@ -15,10 +15,9 @@
  * create menu (its sheet has its own backdrop), the glass-tint grey override, and the list's empty
  * space dragging the window (the list asks for `windowDrag`, its rows keep their presses).
  */
-import { cleanup, effect, safeArea, signal, Text, View, type ViewRef } from "nsh";
+import { cleanup, computed, effect, safeArea, signal, Text, View, type ViewRef } from "nsh";
 import { titleBar } from "nsh/desktop";
 import type { Hold, SessionSummary } from "@real-bot/protocol";
-import { latestPreview } from "../../m/chat/transcript";
 import { formatShortcut } from "../../m/keymap";
 import { searchShortcutLabel } from "../../m/search/shortcuts";
 import { usageWidget } from "../../m/usage/usage-widget.svelte";
@@ -53,7 +52,8 @@ import { ToolsMenu } from "./ToolsMenu";
 import { ToolsToggle } from "./ToolsToggle";
 import { WorkingFilter } from "./WorkingFilter";
 import { SidebarList, type SidebarListEnv } from "./sidebar-list";
-import { listRows } from "./sidebar-list-model";
+import { createListRowKeeper, listRows } from "./sidebar-list-model";
+import { previewIndex, previewOf as lineOf, statusMessages } from "./sidebar-previews";
 import type { SessionDragHandler } from "./session-drag";
 
 /** What the shell can call on the list from outside it (the Svelte component's exported `showArchived`). */
@@ -103,9 +103,10 @@ export function Sidebar(props: {
   const t = () => copy();
   const phone = () => narrowWindow();
   const snapshot = () => runtime.snapshot;
-  const botsById = () => new Map(snapshot().bots.map((b) => [b.id, b] as const));
-  const sessionsById = () => new Map(snapshot().sessions.map((s) => [s.id, s] as const));
-  const aliveBotIds = () => new Set(snapshot().bots.map((b) => b.id));
+  // Made once per change, not on every read: each row read them, on every token streamed anywhere.
+  const botsById = computed(() => new Map(snapshot().bots.map((b) => [b.id, b] as const)));
+  const sessionsById = computed(() => new Map(snapshot().sessions.map((s) => [s.id, s] as const)));
+  const aliveBotIds = computed(() => new Set(snapshot().bots.map((b) => b.id)));
   const rosterLabels = () => ({ deleted: t().top.deleted, archived: t().top.archived, fileDrop: t().sidebar.fileDrop, projectUntitled: t().project.untitled });
   const statusLabels = () => ({
     running: t().sidebar.statusRunning,
@@ -216,9 +217,11 @@ export function Sidebar(props: {
   const toolsAnchor = signal<ViewRef | null>(null);
   const toolsFocusLast = signal(false);
 
+  /** Every row's line from one pass over the messages and turns (`sidebar-previews.ts`). */
+  const previews = computed(() => previewIndex(snapshot().messages, snapshot().turns));
   const titleOf = (session: SessionSummary) => sessionTitle(session, botsById(), rosterLabels());
   const statusOf = (session: SessionSummary) =>
-    sidebarStatus(session, snapshot().turns, snapshot().approvals, statusLabels(), snapshot().pendingJudgements, snapshot().messages);
+    sidebarStatus(session, snapshot().turns, snapshot().approvals, statusLabels(), snapshot().pendingJudgements, statusMessages(previews(), session));
   /** A project session has runs, not turns: its run while one is live, else what its row would say anyway. */
   const projectStatusOf = (session: SessionSummary) => agentRunStatus(snapshot().agentRuns[session.id], statusLabels()) ?? statusOf(session);
 
@@ -227,11 +230,34 @@ export function Sidebar(props: {
   const labelOf = (hold: Hold) => holdLabel(hold, { bots: botsById(), sessions: sessionsById(), roster: rosterLabels(), t: t().control });
 
   /** Your direct's row, quiet here, with its Bot at work in another conversation: where. */
+  /**
+   * Answers kept until what they read changes: every row and every avatar in it asked again on each
+   * token streamed anywhere (a Bot's work status thirty times a token, where it is at work a dozen).
+   */
+  const workMemo = computed(() => {
+    void snapshot().turns;
+    void snapshot().approvals;
+    void snapshot().pendingJudgements;
+    void snapshot().sessions;
+    void botsById();
+    void t();
+    return { elsewhere: new Map<string, string | null>(), bots: new Map<string, ReturnType<typeof botWorkStatus>>() };
+  });
   const elsewhereOf = (session: SessionSummary, status: ReturnType<typeof statusOf>): string | null => {
     if (status.kind !== "idle") return null;
-    return directElsewhere(session, false, snapshot(), botsById(), statusLabels(), rosterLabels(), t().sidebar.elsewhere);
+    const memo = workMemo().elsewhere;
+    if (!memo.has(session.id)) memo.set(session.id, directElsewhere(session, false, snapshot(), botsById(), statusLabels(), rosterLabels(), t().sidebar.elsewhere));
+    return memo.get(session.id)!;
   };
-  const botStatusOf = (botId: string) => botWorkStatus(botId, snapshot().turns, snapshot().approvals, statusLabels(), snapshot().pendingJudgements);
+  const botStatusOf = (botId: string) => {
+    const memo = workMemo().bots;
+    let status = memo.get(botId);
+    if (!status) {
+      status = botWorkStatus(botId, snapshot().turns, snapshot().approvals, statusLabels(), snapshot().pendingJudgements);
+      memo.set(botId, status);
+    }
+    return status;
+  };
 
   /** The time beside each name only has to be right to the minute: a slow tick, not every snapshot. */
   const listNow = signal(Date.now());
@@ -239,7 +265,18 @@ export function Sidebar(props: {
   cleanup(() => clearInterval(timer));
   const timeOf = (session: SessionSummary) => formatListTime(listTimeSource(session), listNow(), snapshot().settings.locale === "en" ? "en" : "zh");
   const unreadOf = (session: SessionSummary) => sessionUnreadCount(session, runtime.selectedId);
-  const previewOf = (session: SessionSummary) => plainPreview(latestPreview(snapshot().messages, session.id, session, snapshot().turns, 400));
+  /** A row's line as plain text; the same text gives the same line without working it out again. */
+  const plainOf = new Map<string, string>();
+  const previewOf = (session: SessionSummary) => {
+    const raw = lineOf(previews(), session, 400);
+    let plain = plainOf.get(raw);
+    if (plain === undefined) {
+      if (plainOf.size > 400) plainOf.clear();
+      plain = plainPreview(raw);
+      plainOf.set(raw, plain);
+    }
+    return plain;
+  };
   const archivedSuffix = (session: SessionSummary): string => {
     if (isFileDropSession(session)) return "";
     if (session.archived_at) return ` · ${t().top.archived}`;
@@ -248,8 +285,10 @@ export function Sidebar(props: {
     return botsById().get(peer)?.archived_at ? ` · ${t().top.archived}` : "";
   };
 
-  const rows = () =>
-    listRows({
+  /** The rows, each the object it was while it says the same (the list builds a new one again). */
+  const keepRows = createListRowKeeper();
+  const rows = computed(() =>
+    keepRows(listRows({
       viewingArchived: viewingArchived(),
       phone: phone(),
       archived: archivedSessions(),
@@ -267,7 +306,8 @@ export function Sidebar(props: {
       projectsEmpty: projectsEmpty(),
       labels: { fileDrop: t().sidebar.fileDrop, bots: t().sidebar.botsTab, projects: t().project.section, workingEmpty: t().sidebar.workingEmpty },
       workingHint: pinnedWorking() ? t().sidebar.workingEmptyPinned : t().sidebar.workingEmpty,
-    });
+    })),
+  );
 
   const env: SidebarListEnv = {
     get phone() {
