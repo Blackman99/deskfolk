@@ -25,3 +25,29 @@ export function liveTab(leaf: () => LeafNode, id: string): WorkbenchTab {
     },
   };
 }
+
+/**
+ * The pane's active tab, followed: the tab a conversation's body is handed when every conversation
+ * the pane shows is drawn by one stage (`WorkbenchLeaf`). Picking another conversation replaces the
+ * tab, with a new id; the stage stays and turns to it.
+ */
+export function liveActiveTab(leaf: () => LeafNode): WorkbenchTab {
+  let last: WorkbenchTab | undefined;
+  const current = (): WorkbenchTab => {
+    const l = leaf();
+    const found = l.tabs.find((tab) => tab.id === l.activeTabId);
+    if (found) last = found;
+    return last ?? { id: "", kind: "", params: {} };
+  };
+  return {
+    get id() {
+      return current().id;
+    },
+    get kind() {
+      return current().kind;
+    },
+    get params() {
+      return current().params;
+    },
+  };
+}

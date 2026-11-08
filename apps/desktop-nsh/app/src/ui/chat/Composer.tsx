@@ -303,8 +303,15 @@ export function Composer(props: {
    * row wraps the editor to the top; a docked row without one keeps the text between its buttons.
    */
   const editorAbove = () => wide() || Boolean(tuneBot());
+  // One editor per conversation: the box stays across a switch of conversations (the stage turns to
+  // the next one), but its undo history, its input method state and its lists are the conversation's.
   const editorBox = () => (
     <View class={editorAbove() ? "w-full min-w-0" : "flex-1 min-w-0"}>
+      <Each of={[props.selected?.id ?? ""]} key={(id: string) => id}>
+        {() => {
+          // The editor going and the next one coming may be told in either order: each clears only its own handle.
+          let mine: ComposerEditorHandle | null = null;
+          return (
       <ComposerEditor
         value={view()?.draft ?? ""}
         onChange={(text) => {
@@ -319,8 +326,14 @@ export function Composer(props: {
         onSend={() => void send()}
         onEditLast={props.onEditLast}
         onPaste={onPaste}
-        onHandle={(handle) => (editor = handle)}
+        onHandle={(handle) => {
+          if (handle) editor = mine = handle;
+          else if (editor === mine) editor = null;
+        }}
       />
+          );
+        }}
+      </Each>
     </View>
   );
 

@@ -20,7 +20,10 @@ import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";
 import { EmptyPane, NewTabMenu } from "./leaf-menus";
 import { LeafStrip } from "./leaf-strip";
-import { liveTab } from "./live-tab";
+import { liveActiveTab, liveTab } from "./live-tab";
+
+/** The one body every conversation of a pane is drawn in (`bodyKeys`). */
+const CHAT_BODY = "\u0000chat";
 import { PaneContextMenu } from "./PaneContextMenu";
 import type { DragPhase, DragPoint, LeafRender, MenuRender, RowRegistry, TabAction, TabBody, TabClosing, TabLabel, WorkbenchTab } from "./types";
 
@@ -107,6 +110,16 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
   };
 
   const activeIds = () => (leaf().activeTabId && leaf().tabs.some((tab) => tab.id === leaf().activeTabId) ? [leaf().activeTabId!] : []);
+  /**
+   * What the body is made for: the active tab, except that every conversation is one body. Picking
+   * another conversation replaces the tab (a new id), and a body per tab built the whole stage, its
+   * header and its message box again on every pick; one stage turns to the conversation instead.
+   */
+  const bodyKeys = () => {
+    const id = activeIds()[0];
+    if (!id) return [];
+    return [leaf().tabs.find((tab) => tab.id === id)?.kind === "chat" ? CHAT_BODY : id];
+  };
 
   const bodyClass = () => {
     if (props.floating || narrow()) return "bg-pane";
@@ -191,12 +204,12 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
           boxShadow: props.floating || narrow() ? undefined : shadow(dimmed() ? "pane-flat" : "pane"),
         }}
       >
-        <Each of={activeIds()} key={(id) => id}>
+        <Each of={bodyKeys()} key={(id) => id}>
           {(id) => {
-            // Called once per tab, untracked: read inside the insert, `leaf()` made every layout commit
+            // Called once per body, untracked: read inside the insert, `leaf()` made every layout commit
             // (a new leaf object each time) build the pane's content again, and that mount committed
             // the layout again — a pane dragged in from the sidebar never stopped remounting.
-            const body = untracked(() => props.tabBody(liveTab(leaf, id()), leaf().id));
+            const body = untracked(() => props.tabBody(id() === CHAT_BODY ? liveActiveTab(leaf) : liveTab(leaf, id()), leaf().id));
             return <View class="flex-1 min-h-0">{body}</View>;
           }}
         </Each>
