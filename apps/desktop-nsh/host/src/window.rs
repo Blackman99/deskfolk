@@ -282,6 +282,54 @@ pub fn resize_first(args: &str) {
     });
 }
 
+/// A left-button drag through the first window from `(x0, y0)` to `(x1, y1)` (points from its
+/// top left) in `steps` moves, one every `ms` milliseconds, as `drag <x0> <y0> <x1> <y1> [steps]
+/// [ms]` asks (development checks: a divider or a crossing dragged as the pointer would, posted to
+/// this window alone, so the person's pointer stays where it is). Each event's posting time is
+/// logged as wall-clock milliseconds, to set beside when the app saw it.
+pub fn drag_first(args: &str) {
+    let nums: Vec<f64> = args.split_whitespace().filter_map(|v| v.parse().ok()).collect();
+    let (Some(&x0), Some(&y0), Some(&x1), Some(&y1)) = (nums.first(), nums.get(1), nums.get(2), nums.get(3)) else {
+        log::warn!("drag: want <x0> <y0> <x1> <y1> [steps] [ms]");
+        return;
+    };
+    let steps = nums.get(4).copied().unwrap_or(30.0).max(1.0) as u32;
+    let every = std::time::Duration::from_millis(nums.get(5).copied().unwrap_or(8.0).max(1.0) as u64);
+    // NSEventType: left mouse down 1, up 2, dragged 6.
+    let post = |kind: usize, x: f64, y: f64| {
+        dispatch2::DispatchQueue::main().exec_async(move || {
+            WINDOWS.with_borrow(|windows| {
+                let Some(entry) = windows.first() else { return };
+                let height = entry.window.frame().size.height;
+                let at = NSPoint::new(x, height - y);
+                let uptime = objc2_foundation::NSProcessInfo::processInfo().systemUptime();
+                let number = entry.window.windowNumber();
+                // SAFETY: NSEvent's class method with its declared argument types (NSUInteger type and
+                // flags, NSTimeInterval, NSInteger window and event numbers, a null graphics context).
+                let event: Option<Retained<objc2_app_kit::NSEvent>> = unsafe {
+                    msg_send![<objc2_app_kit::NSEvent as objc2::ClassType>::class(), mouseEventWithType: kind, location: at, modifierFlags: 0usize, timestamp: uptime, windowNumber: number, context: std::ptr::null::<objc2::runtime::AnyObject>(), eventNumber: 0isize, clickCount: 1isize, pressure: 1.0f32]
+                };
+                if let Some(event) = event {
+                    entry.window.sendEvent(&event);
+                }
+            });
+        });
+    };
+    std::thread::spawn(move || {
+        let wall = || std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+        log::info!("drag down {} at {:.0},{:.0}", wall(), x0, y0);
+        post(1, x0, y0);
+        std::thread::sleep(every);
+        for i in 1..=steps {
+            let t = f64::from(i) / f64::from(steps);
+            post(6, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+            std::thread::sleep(every);
+        }
+        log::info!("drag up {} at {:.0},{:.0}", wall(), x1, y1);
+        post(2, x1, y1);
+    });
+}
+
 /// Puts window `id` away, as its close button does (the messenger's `hide_main_window`: ⌘W with
 /// no tab left hides rather than quits).
 pub fn hide(id: u32) {
