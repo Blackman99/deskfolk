@@ -83,6 +83,14 @@ export class SessionHistory {
   sessionLoad = Promise.resolve();
 
   /**
+   * The connection each conversation's history was read in. The event stream carries every
+   * conversation's lines, not only the one selected, so a history read in this connection is still
+   * current when it is selected again, and is not read again (a new connection, a gap or a link to a
+   * message reads it again).
+   */
+  private readIn = new Map<string, number>();
+
+  /**
    * The Bot↔Bot direct open in its popup over the conversation you are in, or null (ADR 0091). It is
    * read there and nowhere else: never the selection, a pane or a row of the list.
    */
@@ -137,8 +145,11 @@ export class SessionHistory {
       return;
     }
     this.host.selectedId = id;
-    this.sessionDetailId = null;
-    this.sessionMessageNext = null;
+    const current = !messageId && view.detailLoaded && this.readIn.get(id) === connection && Boolean(api && sync);
+    if (!current) {
+      this.sessionDetailId = null;
+      this.sessionMessageNext = null;
+    }
     // The reply you were aiming and the chips offered stay with the conversation, like its draft:
     // clicking into another pane is not leaving this one. Opening one drafts nothing: that is ✨.
     if (this.host.focusedTurnId) {
@@ -154,6 +165,13 @@ export class SessionHistory {
       };
     }
     if (!api || !sync) return;
+    if (current) {
+      // Read in this connection and kept current by its events since. A read of it still on its way
+      // has gone stale with this selection and will not clear its own flag.
+      view.historyLoading = false;
+      if (!this.host.notificationCapabilities.bounded_read_v1) await this.host.markSessionRead(id);
+      return;
+    }
     this.host.historyLoading = true;
     this.sessionLoad = this.sessionLoad.catch(() => {}).then(async () => {
       if (selection !== view.loadSeq || this.host.connectionSeq !== connection ||
@@ -385,6 +403,7 @@ export class SessionHistory {
     judgements: Snapshot["judgements"],
     detached?: SessionView,
   ): void {
+    this.readIn.set(id, this.host.connectionSeq);
     if (detached) {
       detached.detailLoaded = true;
       detached.messageNext = detail.messages.next ?? null;
