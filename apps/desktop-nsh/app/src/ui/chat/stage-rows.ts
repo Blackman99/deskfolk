@@ -90,7 +90,9 @@ function sameGroup(a: TranscriptGroup, b: TranscriptGroup): boolean {
 
 function sameItem(a: TranscriptItem, b: TranscriptItem): boolean {
   if (a.type === "message" && b.type === "message") return sameRecord(a.message, b.message) && sameEntries(a.replying, b.replying);
-  if (a.type === "streaming" && b.type === "streaming") return sameRecord(a.turn, b.turn);
+  // A turn at work is the same item through all it streams: its reply reads the turn live (`TranscriptBotGroup`),
+  // so a token does not make the whole row (portrait, name, every line of the group) anew.
+  if (a.type === "streaming" && b.type === "streaming") return a.turn.id === b.turn.id;
   if (a.type === "replying" && b.type === "replying") return a.trigger_message_id === b.trigger_message_id && sameEntries(a.entries, b.entries);
   return false;
 }

@@ -2,7 +2,7 @@
  * Where a model comes from, or whose a speech service is, in front of its name in a picker (see
  * `src/m/model-source.ts`): a vendor's or agent's logo, the Claude spark, or "Custom".
  */
-import { Text, View } from "nsh";
+import { Text, untracked, View } from "nsh";
 import type { ModelSource } from "../m/model-source";
 import { Icon } from "./Icon";
 import { AgentLogo, ClaudeSpark, ConnectorLogo } from "./settings/AgentLogo";
@@ -20,6 +20,11 @@ export function ModelSourceMark(props: {
     const source = s();
     return source.kind === "connector" || source.kind === "vendor" ? source.id : source.kind;
   };
+  /** What the mark draws, as one key. */
+  const markKey = () => {
+    const source = s() as { kind: string; id?: string; runner?: string; name?: string };
+    return `${source.kind}|${source.id ?? ""}|${source.runner ?? ""}|${source.name ?? ""}|${props.tile ? 1 : 0}|${size()}`;
+  };
   return (
     <View
       testID={`model-source-${kind()}`}
@@ -27,7 +32,10 @@ export function ModelSourceMark(props: {
       class="items-center justify-center shrink-0 flex-row"
       style={{ minWidth: size(), height: size() }}
     >
-      {(() => {
+      {/* Drawn again only when what it draws changes: the source arrives as a new object on every
+          snapshot (each streamed token), and the logo was made again each time. */}
+      <Each of={[markKey()]} key={(k: string) => k}>
+        {() => untracked(() => {
         const source = s();
         if (source.kind === "connector" || source.kind === "vendor") return <ConnectorLogo id={source.id} size={size()} />;
         if (source.kind === "claude-agent" && props.tile) return <AgentLogo runner="claude_code" size={size()} />;
@@ -46,7 +54,8 @@ export function ModelSourceMark(props: {
             <Text class="text-[10px] font-semibold text-ink-secondary">{source.name}</Text>
           </View>
         );
-      })()}
+        })}
+      </Each>
     </View>
   );
 }

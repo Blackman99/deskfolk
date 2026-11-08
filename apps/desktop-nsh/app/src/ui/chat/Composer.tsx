@@ -15,7 +15,7 @@
  * floating card's margin 12 up to 680, as the container queries say; at 480 and under it is a bar
  * across the bottom rather than a card.
  */
-import { cleanup, effect, Picker, platform, signal, Text, View } from "nsh";
+import { cleanup, computed, effect, Picker, platform, signal, Text, View } from "nsh";
 import type { PasteEvent } from "nsh/types";
 import { speechReady, type PatchBotRequest, type SessionSummary } from "@real-bot/protocol";
 import { interfaceBehaviour } from "../../m/interface/behaviour.svelte";
@@ -95,15 +95,6 @@ export function Composer(props: {
   const tuneFailedFor = signal<string | null>(null);
   let sentAt: number | null = null;
 
-  const d = () =>
-    deriveComposer({
-      snapshot: snapshot(),
-      connected: connected(),
-      session: props.selected,
-      view: view(),
-      botsById: botsById(),
-      staged: files.pendingAttachments.length + files.pendingPaths.length,
-    });
 
   // --- staged files ---
   const files = new StagedFiles({
@@ -116,6 +107,18 @@ export function Composer(props: {
     // No DOM box to focus: the editor's own handle does it.
     editorEl: () => ({ focus: () => editor?.focus() }) as unknown as HTMLDivElement,
   });
+
+  // Worked out once per change: every binding of the box reads it (two hundred reads a streamed token).
+  const d = computed(() =>
+    deriveComposer({
+      snapshot: snapshot(),
+      connected: connected(),
+      session: props.selected,
+      view: view(),
+      botsById: botsById(),
+      staged: files.pendingAttachments.length + files.pendingPaths.length,
+    }),
+  );
   const canStage = () => Boolean(props.selected) && !d().locked && connected() && !view()?.sending;
 
   async function pickFiles(): Promise<void> {

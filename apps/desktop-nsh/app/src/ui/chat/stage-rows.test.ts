@@ -38,13 +38,14 @@ test("only the row whose line changed is a new object", () => {
   expect(next[2]!.kind === "group" && next[2]!.group.items[0]!.type === "message" && next[2]!.group.items[0]!.message.body).toBe("two, edited");
 });
 
-test("a streamed turn, a new line in a group, the date and the New line each make the row anew", () => {
+test("a turn streaming keeps its row; a new line in a group, the date and the New line each make it anew", () => {
   const keep = createRowKeeper();
   const a = message("m1", "one");
   const turn = { id: "t1", text: "he" } as unknown as Turn;
   const first = keep(rowsOf([group("g1", [{ type: "message", message: a }, { type: "streaming", turn }])]));
+  // Its reply reads the turn live: a token is not a new row.
   const streamed = keep(rowsOf([group("g1", [{ type: "message", message: a }, { type: "streaming", turn: { ...turn, text: "hello" } as Turn }])]));
-  expect(streamed[1]).not.toBe(first[1]);
+  expect(streamed[1]).toBe(first[1]);
   const grown = keep(rowsOf([group("g1", [{ type: "message", message: a }, { type: "streaming", turn: streamed[1]!.kind === "group" ? (streamed[1]!.group.items[1] as { turn: Turn }).turn : turn }, { type: "message", message: message("m3", "three") }])]));
   expect(grown[1]).not.toBe(streamed[1]);
   const marked = keep(rowsOf([group("g1", (grown[1] as { group: TranscriptGroup }).group.items)], "m1"));

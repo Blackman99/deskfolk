@@ -92,11 +92,18 @@ function Part(props: { item: TranscriptItem; last: boolean; multi: boolean; bot:
   return (
     <>
       <If when={streaming()}>
-        {(live: () => Extract<TranscriptItem, { type: "streaming" }>) => (
-          <View testID={`bot-part-${live().turn.id}`} class="w-full" style={{ opacity: arrive.opacity, transform: [...arrive.transform] }}>
-            <StreamingReply turn={live().turn} bot={props.bot} stage={props.stage} />
-          </View>
-        )}
+        {(live: () => Extract<TranscriptItem, { type: "streaming" }>) => {
+          // The row keeps its object through the turn's tokens (`stage-rows.ts`): what it has said is read here, live.
+          const turn = () => {
+            const id = live().turn.id;
+            return runtime.snapshot.turns.find((candidate) => candidate.id === id) ?? live().turn;
+          };
+          return (
+            <View testID={`bot-part-${live().turn.id}`} class="w-full" style={{ opacity: arrive.opacity, transform: [...arrive.transform] }}>
+              <StreamingReply turn={turn()} bot={props.bot} stage={props.stage} />
+            </View>
+          );
+        }}
       </If>
       <If when={message()}>
         {(entry: () => MessageItem) => <Reply item={entry()} last={props.last} stage={props.stage} onContextMenu={props.onContextMenu} />}
