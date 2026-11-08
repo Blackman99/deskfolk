@@ -5,7 +5,7 @@
  * (`UsageBoard.svelte`). The messenger's grid is rows of flex here: agents fill a row by the
  * columns they span, an agent's cards fill rows of its span.
  */
-import { signal, Text, View } from "nsh";
+import { computed, signal, Text, View } from "nsh";
 import type { UsageAgent, UsageWindow } from "@real-bot/protocol";
 import { copy } from "../../runtime";
 import {
@@ -72,8 +72,10 @@ export function UsageBoard(props: {
   meter?: "bar" | "dial";
 }) {
   const width = signal(0);
-  const columns = () => boardColumns(width());
-  const split = () => usageSplit(props.agents);
+  // Kept while they say the same: the bands are made again when either changes, and the width moves
+  // by the pixel while a divider is dragged.
+  const columns = computed(() => boardColumns(width()));
+  const split = computed(() => usageSplit(props.agents));
   const name = (agent: UsageAgent) => (agent.runner === "claude_code" ? "Claude" : agent.label);
   const today = (agent: UsageAgent) => copy().usage.today(String(agent.today.turns), usageTokenText(agent.today.tokens));
   const meter = () => props.meter ?? "dial";

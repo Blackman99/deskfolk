@@ -15,7 +15,7 @@
  * `playbook-locked-<step>`, `playbook-round-<hook>`, `playbook-add-<hook>`.
  */
 import { CUSTOM_STEPS_MAX, playbookStep, type CustomStep, type CustomStepView, type PlaybookHook, type PlaybookResolved, type PlaybookStepId } from "@real-bot/protocol";
-import { Canvas, computed, Path2D, Scroll, signal, Text, token, View, type CanvasRenderingContext2D, type ViewRef } from "nsh";
+import { Canvas, computed, Path2D, Scroll, signal, Text, token, untracked, View, type CanvasRenderingContext2D, type ViewRef } from "nsh";
 import { copy } from "../../runtime";
 import { isCustomNode, layPlaybookFlow, paramText, stepDiffers, stepLocked, stepRole, type PlaybookCard, type PlaybookNodeId } from "../../m/settings/playbook-flow.ts";
 import type { RoutingNodeView } from "../../m/settings/routing-map.ts";
@@ -82,21 +82,23 @@ export function PlaybookMap(props: {
   }
 
   const frame = (card: PlaybookCard) => ({ left: card.x, top: card.y, width: card.w, height: card.h });
+  // Each card is passed by accessor: the layout follows the map's width, and a card read once was made
+  // again (its icons and all) on every pixel a divider moved; now only its frame follows.
   const base = "absolute justify-center gap-[2px] px-[10px] py-[6px] border rounded-(--radius-md) min-w-0";
   const title = "flex-1 min-w-0 text-[12px] font-semibold text-ink line-clamp-1";
   const saidClass = "w-full text-[11px] text-ink-muted line-clamp-1";
   const pickedStyle = (on: boolean) => (on ? { boxShadow: `0 0 0 1px ${token("brand")}` } : undefined);
 
-  const addCard = (card: PlaybookCard) => (
+  const addCard = (card: () => PlaybookCard) => (
     <View
       role="button"
-      testID={`playbook-add-${card.hook}`}
-      ref={(node: ViewRef) => addRefs.set(card.hook, node)}
+      testID={`playbook-add-${card().hook}`}
+      ref={(node: ViewRef) => addRefs.set(card().hook, node)}
       accessibilityLabel={c().own.add}
-      accessibilityState={{ expanded: menu()?.hook === card.hook }}
-      onPress={() => menu.set(menu()?.hook === card.hook ? null : { hook: card.hook, anchor: addRefs.get(card.hook) ?? null })}
+      accessibilityState={{ expanded: menu()?.hook === card().hook }}
+      onPress={() => menu.set(menu()?.hook === card().hook ? null : { hook: card().hook, anchor: addRefs.get(card().hook) ?? null })}
       class={`${base} group items-center border-dotted border-line hover:bg-line-subtle`}
-      style={frame(card)}
+      style={frame(card())}
     >
       <View class="flex-row items-center gap-1">
         <Icon name="plus" size={12} class="tint-ink-muted group-hover:tint-ink" />
@@ -105,7 +107,7 @@ export function PlaybookMap(props: {
     </View>
   );
 
-  const turnCard = (card: PlaybookCard) => (
+  const turnCard = (card: () => PlaybookCard) => (
     <View
       role="button"
       testID="playbook-node-turn"
@@ -113,44 +115,44 @@ export function PlaybookMap(props: {
       accessibilityState={{ pressed: props.selected === "turn" }}
       onPress={() => props.onpick("turn")}
       class={`${base} items-center bg-chip border-dashed hover:bg-line-subtle ${props.selected === "turn" ? "border-brand" : "border-line"}`}
-      style={{ ...frame(card), ...pickedStyle(props.selected === "turn") }}
+      style={{ ...frame(card()), ...pickedStyle(props.selected === "turn") }}
     >
       <Text testID="playbook-round-turn" class="text-[12px] font-semibold text-ink line-clamp-1">{c().hooks.turn}</Text>
       <Text testID="playbook-said-turn" class="text-[11px] text-ink-muted line-clamp-1">{props.turnModel}</Text>
     </View>
   );
 
-  const rootCard = (card: PlaybookCard) => (
-    <View testID={`playbook-round-${card.hook}`} class={`${base} items-center bg-chip border-line`} style={frame(card)}>
-      <Text class="text-[12px] font-semibold text-ink line-clamp-1">{c().hooks[card.hook]!}</Text>
+  const rootCard = (card: () => PlaybookCard) => (
+    <View testID={`playbook-round-${card().hook}`} class={`${base} items-center bg-chip border-line`} style={frame(card())}>
+      <Text class="text-[12px] font-semibold text-ink line-clamp-1">{c().hooks[card().hook]!}</Text>
     </View>
   );
 
-  const ownCard = (card: PlaybookCard, mine: CustomStepView) => {
-    const why = () => ownOff(mine);
-    const id = mine.id as PlaybookNodeId;
+  const ownCard = (card: () => PlaybookCard, mine: () => CustomStepView) => {
+    const why = () => ownOff(mine());
+    const id = untracked(mine).id as PlaybookNodeId;
     return (
       <View
         role="button"
-        testID={`playbook-node-${mine.id}`}
-        accessibilityLabel={mine.name}
+        testID={`playbook-node-${id}`}
+        accessibilityLabel={mine().name}
         accessibilityState={{ pressed: props.selected === id }}
         tooltip={tip(why() ?? c().own.mineTitle)}
         onPress={() => props.onpick(id)}
         class={`${base} border-dashed hover:bg-line-subtle bg-pane ${props.selected === id ? "border-brand" : "border-line"} ${why() !== null ? "opacity-[0.55]" : ""}`}
-        style={{ ...frame(card), ...pickedStyle(props.selected === id) }}
+        style={{ ...frame(card()), ...pickedStyle(props.selected === id) }}
       >
         <View class="flex-row items-center gap-[6px] w-full min-w-0">
           <View class={`w-[6px] h-[6px] shrink-0 rounded-full ${why() === null ? "bg-ok" : "bg-ink-muted"}`} />
-          <Text class={title}>{mine.name}</Text>
+          <Text class={title}>{mine().name}</Text>
           <Text class="shrink-0 text-[10px] text-ink-muted">{c().own.mine}</Text>
         </View>
-        <Text testID={`playbook-said-${mine.id}`} class={saidClass}>{why() ?? ownSaid(mine)}</Text>
+        <Text testID={`playbook-said-${id}`} class={saidClass}>{why() ?? ownSaid(mine())}</Text>
       </View>
     );
   };
 
-  const stepCard = (card: PlaybookCard, step: PlaybookStepId) => (
+  const stepCard = (card: () => PlaybookCard, step: PlaybookStepId) => (
     <View
       role="button"
       testID={`playbook-node-${step}`}
@@ -158,7 +160,7 @@ export function PlaybookMap(props: {
       accessibilityState={{ pressed: props.selected === step }}
       onPress={() => props.onpick(step)}
       class={`${base} border-dashed hover:bg-line-subtle bg-pane ${props.selected === step ? "border-brand" : "border-line"} ${props.resolved[step].on ? "" : "opacity-[0.55]"}`}
-      style={{ ...frame(card), ...pickedStyle(props.selected === step) }}
+      style={{ ...frame(card()), ...pickedStyle(props.selected === step) }}
     >
       <View class="flex-row items-center gap-[6px] w-full min-w-0">
         <View class={`w-[6px] h-[6px] shrink-0 rounded-full ${!props.resolved[step].on ? "bg-ink-muted" : warned(step) ? "bg-warn" : "bg-ok"}`} />
@@ -176,15 +178,21 @@ export function PlaybookMap(props: {
     </View>
   );
 
-  const cardFor = (card: PlaybookCard) => {
-    if (card.node === "turn") return turnCard(card);
-    if (card.kind === "add") return addCard(card);
-    if (card.kind === "root") return rootCard(card);
-    if (isCustomNode(card.node)) {
-      const mine = ownById().get(card.node);
-      return mine ? ownCard(card, mine) : null;
+  /** What a card is never changes under its id (its node, its kind); only where it stands does. */
+  const cardFor = (card: () => PlaybookCard) => {
+    const first = untracked(card);
+    if (first.node === "turn") return turnCard(card);
+    if (first.kind === "add") return addCard(card);
+    if (first.kind === "root") return rootCard(card);
+    if (isCustomNode(first.node)) {
+      const node = first.node;
+      return (
+        <If when={ownById().get(node)}>
+          {(mine) => ownCard(card, mine)}
+        </If>
+      );
     }
-    return stepCard(card, card.node as PlaybookStepId);
+    return stepCard(card, first.node as PlaybookStepId);
   };
 
   return (
@@ -211,7 +219,9 @@ export function PlaybookMap(props: {
                 cx.setLineDash([]);
               }}
             />
-            {() => layout().cards.map((card) => cardFor(card))}
+            <Each of={layout().cards} key={(card) => card.id}>
+              {(card) => cardFor(card)}
+            </Each>
           </View>
         </Scroll>
       </View>
