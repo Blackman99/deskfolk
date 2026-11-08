@@ -29,6 +29,7 @@ import { MapHud } from "./MapHud";
 import { MapScene } from "./MapScene";
 import { MapSide } from "./MapSide";
 import { MapTimeline } from "./MapTimeline";
+import { settled } from "../workbench/drag-settle";
 
 type Cam = { tx: number; ty: number; k: number };
 
@@ -533,8 +534,8 @@ export function TaskMap(props: {
     ws: islandLabel("ws", `${tm().places.git} · ${tm().places.other}`),
     town: `${((planSource()?.dir ?? (bots() ? runtime.snapshot.settings.workspace_path : projectDir())) ?? "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? ""}/`,
   }));
-  const wide = () => width() >= 760;
-  const compact = () => size().w < 560 || size().h < 460;
+  const wide = settled(() => width() >= 760);
+  const compact = settled(() => size().w < 560 || size().h < 460);
   const across = () => planSource()?.sessions.length ?? 0;
   const shownJob = () => jobs().find((job) => job.id === planId()) ?? null;
   const colors = () => (data() ? data()!.characters.map((_, b) => colorOf(b)) : []);

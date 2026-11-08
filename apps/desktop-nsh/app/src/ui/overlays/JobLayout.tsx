@@ -43,6 +43,7 @@ import { BoardHead, JobChip, JobSegments, SplitHandle } from "./job-layout-parts
 import { TicketList } from "./TicketList";
 import { TicketRail } from "./TicketRail";
 import { TraceView, type PaneBox, type TraceViewHandle } from "./TraceView";
+import { settled } from "../workbench/drag-settle";
 
 type Style = Record<string, unknown>;
 const HIDDEN: Style = { visibility: "hidden", pointerEvents: "none" };
@@ -143,7 +144,7 @@ export function JobLayout(props: {
   const bodySize = signal({ width: 0, height: 0 });
   const flowSize = signal({ width: 0, height: 0 });
   const width = () => props.width ?? measuredWidth();
-  const mode = () => jobLayoutMode(width(), host());
+  const mode = settled(() => jobLayoutMode(width(), host()));
   const narrow = () => mode() === "narrow";
   const medium = () => mode() === "medium";
   /** Medium: the spec over the trace's right edge, asked for from the title row's 要点. */

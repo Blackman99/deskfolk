@@ -19,6 +19,7 @@ import {
   type SpendTrendField,
 } from "../../m/spend/spend-trend.ts";
 import { categoryColor } from "./spend-style";
+import { settled } from "../workbench/drag-settle";
 
 /** Chart words that the ledger copy does not already name. */
 function chartWords(locale: "zh" | "en") {
@@ -220,8 +221,8 @@ export function SpendTrend(props: {
   }
 
   // The container's breakpoints (560 and 450 points), on the component's own box.
-  const wide = () => width() >= 560;
-  const tight = () => width() > 0 && width() <= 450;
+  const wide = settled(() => width() >= 560);
+  const tight = settled(() => width() > 0 && width() <= 450);
   const plotHeight = () => (wide() ? 210 : tight() ? 150 : 180);
 
   const swatch = (category: SpendCategory) => <View class="w-[8px] h-[8px] rounded-[2px] shrink-0" style={{ backgroundColor: categoryColor(category) }} />;

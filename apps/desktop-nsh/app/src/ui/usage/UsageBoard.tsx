@@ -20,6 +20,7 @@ import { AgentLogo } from "../settings/AgentLogo";
 import { tip } from "../tip";
 import { UsageBar } from "./UsageBar";
 import { UsageGauge } from "./UsageGauge";
+import { settled } from "../workbench/drag-settle";
 
 /** The narrowest an account card gets; as many columns as fit, an agent's accounts side by side. */
 const CARD_MIN = 360;
@@ -74,7 +75,7 @@ export function UsageBoard(props: {
   const width = signal(0);
   // Kept while they say the same: the bands are made again when either changes, and the width moves
   // by the pixel while a divider is dragged.
-  const columns = computed(() => boardColumns(width()));
+  const columns = settled(() => boardColumns(width()));
   const split = computed(() => usageSplit(props.agents));
   const name = (agent: UsageAgent) => (agent.runner === "claude_code" ? "Claude" : agent.label);
   const today = (agent: UsageAgent) => copy().usage.today(String(agent.today.turns), usageTokenText(agent.today.tokens));

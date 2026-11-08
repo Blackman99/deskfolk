@@ -14,6 +14,7 @@ import { copy } from "../../runtime";
 import type { FloatFrame, LeafNode, PaneMin, Rect } from "../../m/workbench/layout-types.ts";
 import { clampFrame, moveFrame, resizeFrame, type Handle } from "../../m/workbench/float-frame.ts";
 import { dragGate } from "../../m/workbench/pane-resize.svelte.ts";
+import { paneResize } from "./drag-settle";
 import { shadow } from "../styles";
 import { WorkbenchLeaf, type WorkbenchLeafProps } from "./WorkbenchLeaf";
 import type { DragPhase, DragPoint } from "./types";
@@ -65,6 +66,7 @@ export function WorkbenchFloat(props: WorkbenchFloatProps) {
       origin = placed();
       latest = origin;
       dragGate.begin();
+      paneResize.begin();
     };
     const to = (dx: number, dy: number) => {
       latest = step(origin, dx, dy);
@@ -78,6 +80,7 @@ export function WorkbenchFloat(props: WorkbenchFloatProps) {
         if (commit && changed) props.onFrame(leaf().id, latest);
       } finally {
         dragGate.end();
+        paneResize.end();
         live.set(null);
       }
     };

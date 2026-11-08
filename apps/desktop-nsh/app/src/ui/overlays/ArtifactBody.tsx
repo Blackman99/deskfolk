@@ -48,6 +48,7 @@ import { FileIcon } from "./FileIcon";
 import { OfficeViewer } from "./OfficeViewer";
 import { PdfViewer, type PdfViewerHandle } from "./PdfViewer";
 import { pdfSourceFor, type PdfSource } from "./pdf-pages";
+import { settled } from "../workbench/drag-settle";
 
 export type { ArtifactEditorHandle };
 export type ArtifactPdfHandle = { openFind: () => void; closeFind: () => boolean };
@@ -121,7 +122,7 @@ export function ArtifactBody(props: {
     return { ok: g.ok, adapter: g.ok ? g.adapter : null, reason: g.ok ? null : g.reason };
   };
   const width = signal(0);
-  const stacked = () => width() > 0 && width() <= STACK_WIDTH;
+  const stacked = settled(() => width() > 0 && width() <= STACK_WIDTH);
   const annotsOpen = () => annot().annotOpen && props.mode !== "workspace";
   const editing = () => props.sourceMode && loader().text !== null;
   const picture = dataUrlOf(() => ((props.kind === "image" || props.kind === "svg") && !loader().loading ? loader().shownBlob : loader().shownBlob));

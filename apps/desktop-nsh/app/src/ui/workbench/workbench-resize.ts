@@ -10,6 +10,7 @@ import type { MinSizeLookup, WorkbenchLayout } from "../../m/workbench/layout-ty
 import type { LayoutGeometry } from "../../m/workbench/layout-geometry.ts";
 import { beginJunctionDrag, beginSashDrag, resizeJunction, resizeSash, type JunctionDrag, type SashDrag } from "../../m/workbench/layout-resize.ts";
 import { dragGate } from "../../m/workbench/pane-resize.svelte.ts";
+import { paneResize } from "./drag-settle";
 import type { DragPhase, DragPoint } from "./types";
 
 export function createResizer(ctx: {
@@ -32,6 +33,7 @@ export function createResizer(ctx: {
     draggingSash.set(null);
     draggingJunction.set(null);
     dragGate.end();
+    paneResize.end();
   }
 
   function sash(sashId: string, phase: DragPhase, point: DragPoint): void {
@@ -48,6 +50,7 @@ export function createResizer(ctx: {
       };
       draggingSash.set(sashId);
       dragGate.begin();
+      paneResize.begin();
       return;
     }
     if (!session) return;
@@ -79,6 +82,7 @@ export function createResizer(ctx: {
       };
       draggingJunction.set(junctionId);
       dragGate.begin();
+      paneResize.begin();
       return;
     }
     if (!session) return;

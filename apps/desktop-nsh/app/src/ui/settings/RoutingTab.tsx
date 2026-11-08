@@ -40,6 +40,7 @@ import { PlaybookTurnPart } from "./PlaybookTurnPart";
 import { PromptEditorPage } from "./PromptEditorPage";
 import { RoutingNode } from "./RoutingNode";
 import { widthAtMost } from "../../platform/viewport";
+import { settled } from "../workbench/drag-settle";
 
 export type RoutingTabHandle = {
   sectionTitle: () => string | null;
@@ -68,7 +69,7 @@ export function RoutingTab(props: {
    * The engines' list beside the map and the picked step needs a little more room than the two did.
    */
   const width = signal(0);
-  const narrow = () => (width() > 0 ? width() <= 760 : widthAtMost(720));
+  const narrow = settled(() => (width() > 0 ? width() <= 760 : widthAtMost(720)));
   const providers = () => snapshot().providers;
   const botNames = () => new Map(snapshot().bots.map((bot) => [bot.id, bot.name] as const));
 

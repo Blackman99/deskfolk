@@ -23,6 +23,7 @@ import { SpendGroupTable } from "./SpendGroupTable";
 import { SpendHeader } from "./SpendHeader";
 import { SpendIcon } from "./SpendIcon";
 import { SpendSummary } from "./SpendSummary";
+import { settled } from "../workbench/drag-settle";
 
 /** The container query's breakpoints. */
 const NARROW_AT = 620;
@@ -74,8 +75,8 @@ export function SpendView(props: {
 
   /** The width the ledger is given; until it is measured, the window's. */
   const width = signal<number | null>(null);
-  const narrow = () => (width() == null ? narrowWindow() : width()! <= NARROW_AT);
-  const wide = () => (width() == null ? !narrowWindow() : width()! >= WIDE_AT);
+  const narrow = settled(() => (width() == null ? narrowWindow() : width()! <= NARROW_AT));
+  const wide = settled(() => (width() == null ? !narrowWindow() : width()! >= WIDE_AT));
 
   const section = signal<"overview" | "details">("overview");
   let scroll: ScrollRef | null = null;

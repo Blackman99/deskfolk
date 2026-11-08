@@ -36,6 +36,7 @@ import { DelegationBlock, HistoryLoading, StageRowView } from "./stage-parts";
 import { trackReading } from "./stage-reading";
 import { activeMessageId, createRowKeeper, hiddenWaitingFromRows, inverseIndexOf, invertedRows, stageRows } from "./stage-rows";
 import { createStageScroll } from "./stage-scroll";
+import { settled } from "../workbench/drag-settle";
 
 export function ChatStage(props: {
   selected: SessionSummary | null;
@@ -105,7 +106,7 @@ export function ChatStage(props: {
     if (empty() && ctx.delegations().length === 0) return "welcome";
     return "list";
   };
-  const phone = () => width() > 0 && width() <= 680;
+  const phone = settled(() => width() > 0 && width() <= 680);
   const sideRoom = () => (ctx.showMessageIndex() && !narrowWindow() ? 40 : phone() ? 12 : 24);
   const openArtifact = (path: string, messageId?: string) => props.onOpenArtifact(path, undefined, messageId);
 

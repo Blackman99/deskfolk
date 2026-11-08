@@ -43,6 +43,7 @@ import { VoiceStatus } from "./VoiceStatus";
 import { WaitingJump } from "./WaitingJump";
 import { deriveComposer, composerHintOf, filesFromUris, lockedNoticeOf, mentionBotsOf, placeholderOf, suggestTitleOf } from "./composer-state";
 import type { HiddenWaiting } from "./waiting-jump";
+import { settled } from "../workbench/drag-settle";
 
 /** What the owner can do to the composer from outside: a quote reply or a starter chip lands the caret here; the file tree stages what is dragged out of it. */
 export type ComposerHandle = {
@@ -87,8 +88,8 @@ export function Composer(props: {
   const visibleBots = () => snapshot().bots.filter((bot) => !bot.archived_at);
   const connected = () => runtime.connection === "connected";
   const width = signal(0);
-  const docked = () => width() > 0 && width() <= DOCKED;
-  const wide = () => width() > DOCKED;
+  const docked = settled(() => width() > 0 && width() <= DOCKED);
+  const wide = settled(() => width() > DOCKED);
 
   let editor: ComposerEditorHandle | null = null;
   const tuneFailedFor = signal<string | null>(null);

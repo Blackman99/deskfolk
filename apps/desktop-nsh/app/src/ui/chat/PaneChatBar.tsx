@@ -18,6 +18,7 @@ import { AgentLogo } from "../settings/AgentLogo";
 import { tip } from "../tip";
 import { BotElsewhere } from "./BotElsewhere";
 import { pulseMotion, rosterLabelsOf, statusFill, statusInk, statusLabelsOf } from "./labels";
+import { settled } from "../workbench/drag-settle";
 
 /** One of the tab's actions. The workbench owns no icons: the host names one of the app's. */
 export type PaneBarAction = {
@@ -67,8 +68,8 @@ export function PaneChatBar(props: {
 
   /** A narrow pane keeps the pills and the icons; the words go first (560), then the pills' words (420). */
   const width = signal(1000);
-  const roomy = () => width() > 560;
-  const wide = () => width() > 420;
+  const roomy = settled(() => width() > 560);
+  const wide = settled(() => width() > 420);
   const pulse = pulseMotion(() => true, 1800);
   const Pulse = (p: { fill: string }) => <View accessible={false} class={`w-[6px] h-[6px] rounded-full ${p.fill}`} style={{ opacity: pulse.opacity }} />;
 

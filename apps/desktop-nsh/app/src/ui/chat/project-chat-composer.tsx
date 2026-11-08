@@ -31,6 +31,7 @@ import { VoiceButton } from "./VoiceButton";
 import { VoiceStatus } from "./VoiceStatus";
 import { codexModels } from "../../m/chat/project-agent-options.svelte";
 import type { ProjectState } from "./project-chat-state";
+import { settled } from "../workbench/drag-settle";
 
 export function ProjectComposer(props: {
   selected: SessionSummary;
@@ -122,7 +123,7 @@ export function ProjectComposer(props: {
   const off = keymap.bind("shift+tab", () => s().caps().plan && s().togglePlan(), { when: "always" });
   cleanup(off);
 
-  const docked = () => width() > 0 && width() <= 480;
+  const docked = settled(() => width() > 0 && width() <= 480);
   const edge = () => (width() <= 680 ? 12 : 24);
   const refused = () => {
     if (view().sendRefused === "too_many_files") return t().composer.tooManyFiles;

@@ -33,6 +33,7 @@ import { createProjectState } from "./project-chat-state";
 import { ProjectWorking } from "./project-chat-working";
 import { trackReading } from "./stage-reading";
 import { createStageScroll } from "./stage-scroll";
+import { settled } from "../workbench/drag-settle";
 
 export function ProjectChat(props: {
   selected: SessionSummary;
@@ -95,7 +96,7 @@ export function ProjectChat(props: {
   trackReading({ sessionId: state.sessionId, lastMessageId: lastLineId, atLatest: scroll.stick });
 
   const empty = () => lines().length === 0 && !state.live() && !view().historyLoading;
-  const phone = () => width() > 0 && width() <= 680;
+  const phone = settled(() => width() > 0 && width() <= 680);
   const sideRoom = () => (showMessageIndex() && !narrowWindow() ? 40 : phone() ? 12 : 24);
 
   function openImage(attachment: Attachment, from?: unknown): void {
