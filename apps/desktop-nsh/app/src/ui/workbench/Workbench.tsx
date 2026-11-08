@@ -145,6 +145,11 @@ export function Workbench(props: WorkbenchProps) {
     });
   };
   const dividing = () => resizer.draggingSash() !== null || resizer.draggingJunction() !== null;
+  /**
+   * The crossing in hand, by its slot's key: its geometry id names where it stands along its divider,
+   * so moving it along changed the id, and the handle being dragged went to the others' look (hidden).
+   */
+  const heldJunction = signal<string | null>(null);
 
   /** The floating panes in a fixed document order; `z` alone says which is on top. */
   const floatingInPlace = () => [...layout().floating].sort((a, b) => (a.leaf.id < b.leaf.id ? -1 : a.leaf.id > b.leaf.id ? 1 : 0));
@@ -331,9 +336,18 @@ export function Workbench(props: WorkbenchProps) {
             <Each of={junctions()} key={(slot) => slot.key}>
               {(slot) => {
                 const junction = () => slot().junction;
-                const held = () => resizer.draggingJunction() === junction().id;
+                const held = () => heldJunction() === slot().key && resizer.draggingJunction() !== null;
                 let started = false;
-                const pan = PanResponderFor(() => junction().id, resizer.junction, () => started, (v) => (started = v));
+                const pan = PanResponderFor(
+                  () => junction().id,
+                  (id, phase, point) => {
+                    if (phase === "start") heldJunction.set(slot().key);
+                    else if (phase !== "move") heldJunction.set(null);
+                    resizer.junction(id, phase, point);
+                  },
+                  () => started,
+                  (v) => (started = v),
+                );
                 return (
                   <View
                     role="button"
