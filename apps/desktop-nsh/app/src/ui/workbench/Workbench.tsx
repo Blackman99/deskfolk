@@ -14,7 +14,7 @@
  * a tab is not heard (a press carries no button); a conversation pulled in from the sidebar starts
  * through `onApi`'s `dragIn`, which the list row's own gesture drives.
  */
-import { effect, PanResponder, signal, Text, token, View, type ViewRef } from "nsh";
+import { computed, effect, PanResponder, signal, Text, token, View, type ViewRef } from "nsh";
 import { copy } from "../../runtime";
 import { onWheel } from "../../platform/wheel";
 import type { FloatFrame, LayoutNode, MinSizeLookup, Rect, WorkbenchLayout } from "../../m/workbench/layout-types.ts";
@@ -31,6 +31,7 @@ import { WorkbenchLeaf } from "./WorkbenchLeaf";
 import { createPaneDrag, type DragSession } from "./workbench-drag";
 import { bindWorkbenchKeys, createOps } from "./workbench-ops";
 import { createResizer } from "./workbench-resize";
+import { createLayoutSharer } from "./layout-share";
 import type { DragPhase, DragPoint, LeafRender, MenuRender, RowRegistry, TabAction, TabBody, TabLabel, WorkbenchTab } from "./types";
 
 /** What the shell calls on the workbench from outside it. */
@@ -88,7 +89,9 @@ function brandAt(alpha: number): string {
 
 export function Workbench(props: WorkbenchProps) {
   const t = () => copy().pane;
-  const layout = () => props.layout;
+  /** The layout with each pane, tab and params object kept while it says the same (`layout-share.ts`). */
+  const share = createLayoutSharer();
+  const layout = computed(() => share(props.layout));
   const wide = () => props.wide;
   let hostRef: ViewRef | null = null;
   const viewport = signal<Rect>({ x: 0, y: 0, width: 0, height: 0 });
@@ -127,7 +130,10 @@ export function Workbench(props: WorkbenchProps) {
   const resizer = createResizer({ layout, geometry, mins: props.mins, commit });
 
   /** The arrangement being drawn: the real one, or what a divider in hand would leave. */
-  const view = () => resizer.live() ?? layout();
+  const view = computed(() => {
+    const live = resizer.live();
+    return live ? share(live) : layout();
+  });
   const viewGeometry = () => (viewport().width > 0 && viewport().height > 0 ? computeGeometry(view(), viewport(), props.mins) : null);
   /** The crossings, each keyed by its divider and its place along it: the key outlives the move, which changes the geometry's own id. */
   const junctions = () => {

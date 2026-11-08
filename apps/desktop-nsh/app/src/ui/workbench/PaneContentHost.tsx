@@ -19,7 +19,7 @@ import { isPlaceholderAttachment } from "../../m/overlays/artifacts.ts";
 import { sanitizePreviewPath } from "../../m/session-url.ts";
 import { classifySession, isFileDropSession } from "../../m/sidebar/session-groups.ts";
 import type { WorkbenchTab } from "../../m/workbench/layout-types.ts";
-import { contentOfTab, type PaneContent } from "../../m/workbench/pane-content.ts";
+import { contentOfTab, contentsEqual, type PaneContent } from "../../m/workbench/pane-content.ts";
 import { previewContext, type PreviewHandle } from "../../m/workbench/preview-context.ts";
 import { copy, runtime } from "../../runtime";
 import { RoutineCalendar } from "../calendar/RoutineCalendar";
@@ -71,15 +71,21 @@ export function PaneContentHost(props: {
 }) {
   const t = () => copy();
   const snapshot = () => runtime.snapshot;
-  const content = computed(() => contentOfTab(props.tab));
+  // Kept while it says the same: the tab's params arrive as a new object on many a layout change, and
+  // each one had every view below read its conversation (a task map its whole plan) anew.
+  const content = computed(() => contentOfTab(props.tab), { equals: (a, b) => a === b || (a !== null && b !== null && contentsEqual(a, b)) });
   const kind = () => content()?.kind ?? null;
   const locale = () => (snapshot().settings.locale === "en" ? "en" : "zh");
   const botsById = computed(() => new Map(snapshot().bots.map((b) => [b.id, b] as const)));
 
-  const preview = computed(() => {
-    const c = content();
-    return c?.kind === "preview" ? previewContext(c, snapshot().messages) : null;
-  });
+  // Read again on every message anywhere; kept while it says the same, so the preview is not handed new files each time.
+  const preview = computed(
+    () => {
+      const c = content();
+      return c?.kind === "preview" ? previewContext(c, snapshot().messages) : null;
+    },
+    { equals: (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b) },
+  );
   const previewSessionId = () => {
     const c = content();
     return c?.kind === "preview" ? (c.sessionId ?? runtime.selectedId ?? null) : null;
@@ -141,6 +147,11 @@ export function PaneContentHost(props: {
     const c = content();
     if (c?.kind !== "trace" || c.taskId === taskId) return;
     props.onUpdateContent?.({ ...c, taskId });
+  };
+  /** The plan the map tab asks for, followed (read once, it missed another plan asked of the same tab). */
+  const mapTaskId = () => {
+    const c = content();
+    return c?.kind === "map" ? (c.taskId ?? null) : null;
   };
   const mapTask = (taskId: string) => {
     const c = content();
@@ -270,10 +281,7 @@ export function PaneContentHost(props: {
         <RolesPage host="pane" />
       </If>
       <If when={kind() === "map" && session() && !isFileDropSession(session()!) ? session() : null}>
-        {(s) => {
-          const c = content();
-          return <TaskMap session={s()} taskId={c?.kind === "map" ? (c.taskId ?? null) : null} onTask={mapTask} />;
-        }}
+        {(s) => <TaskMap session={s()} taskId={mapTaskId()} onTask={mapTask} />}
       </If>
       <If when={kind() === "terminal"}>
         <PaneTerminal

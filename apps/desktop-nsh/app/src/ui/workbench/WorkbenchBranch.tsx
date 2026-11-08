@@ -10,7 +10,7 @@
  * line can be aimed at without a gutter taking room. No transition on the tracks, ever: a drag has
  * to follow the pointer exactly.
  */
-import { PanResponder, View } from "nsh";
+import { computed, PanResponder, View } from "nsh";
 import { copy } from "../../runtime";
 import { WB_SASH_PX, type LayoutNode, type MinSizeLookup } from "../../m/workbench/layout-types.ts";
 import { minSize } from "../../m/workbench/layout-geometry.ts";
@@ -121,11 +121,28 @@ export function WorkbenchBranch(props: WorkbenchBranchProps) {
     >
       {(current) => {
         const row = () => current().axis === "row";
-        /** The children with a divider before every one but the first; keyed so a pane keeps its content. */
-        const slots = (): Slot[] =>
-          current().children.flatMap((child, index) =>
-            index === 0 ? [{ key: child.id, child, sash: false }] : [{ key: `sash-${child.id}`, child, sash: true }, { key: child.id, child, sash: false }],
-          );
+        /**
+         * The children with a divider before every one but the first; keyed so a pane keeps its content.
+         * A slot keeps its object while its child is the same one (`layout-share.ts` keeps those): a new
+         * slot on every move of a divider had everything a pane reads through it work again.
+         */
+        let kept = new Map<string, Slot>();
+        const slots = computed((): Slot[] => {
+          const seen = new Map<string, Slot>();
+          const out: Slot[] = [];
+          const add = (key: string, child: LayoutNode, sash: boolean) => {
+            const before = kept.get(key);
+            const slot = before && before.child === child && before.sash === sash ? before : { key, child, sash };
+            seen.set(key, slot);
+            out.push(slot);
+          };
+          current().children.forEach((child, index) => {
+            if (index > 0) add(`sash-${child.id}`, child, true);
+            add(child.id, child, false);
+          });
+          kept = seen;
+          return out;
+        });
         return (
           <View testID={`wb-branch-${current().id}`} class={`flex-1 min-w-0 min-h-0 overflow-hidden ${row() ? "flex-row" : "flex-col"}`}>
             <Each of={slots()} key={(slot) => slot.key}>
