@@ -6,7 +6,7 @@
 
 | 位置 | 是什么 |
 |---|---|
-| `app/` | NSH 的 TSX 界面，读信使的运行时（`src/runtime.ts` 里的 `MessengerRuntime`，每个窗口一个）。窗口是信使的外壳（`src/ui/shell/`：`shell-state.ts` 管层和返回、侧栏宽度、置顶、搜索、抽屉草稿，`Shell.tsx` 摆版面，`shell-keys.ts` 是窗口自己的键）：桌面宽窗是侧栏、工作台（每个标签由 `ui/workbench/PaneContentHost.tsx` 换成对话、日程、花费、用量、分工、地图、终端、工作区、任务看板或文件预览）和预览栏；手机和窄窗是名单铺满、页面盖在上面、底栏导航；平板上的托管页是侧栏加单页。`@real-bot/protocol` 经 `nsh.json` 的 `resolve.alias` 直接用 |
+| `app/` | NSH 的 TSX 界面，读信使的运行时（`src/runtime.ts` 里的 `MessengerRuntime`，每个窗口一个）。窗口是信使的外壳（`src/ui/shell/`：`shell-state.ts` 管层和返回、侧栏宽度、置顶、搜索、抽屉草稿，`Shell.tsx` 摆版面，`shell-keys.ts` 是窗口自己的键）：桌面宽窗是侧栏、工作台（每个标签由 `ui/workbench/PaneContentHost.tsx` 换成对话、日程、花费、用量、分工、地图、终端、工作区、任务看板或文件预览）和预览栏；手机和窄窗是名单铺满、页面盖在上面、底栏导航；平板上的托管页是侧栏加单页。第一次连上运行时之前，窗口是连接页（`ui/shell/ConnectionScreen.tsx`，照信使 `+page.svelte`：连接中转圈，连不上给「重试」），外壳等第一份快照到了才挂上，之后断线也留着：空快照里引导没做完，早挂上会让每次启动都闪一下初次使用的引导。`@real-bot/protocol` 经 `nsh.json` 的 `resolve.alias` 直接用 |
 | `app/src/ui/interface/` | 你的界面方案在 NSH 上（[ADR 0108](../../docs/adr/0108-interface-profile-on-nsh.md)）：方案的令牌叠在 `theme.json` 上、重算 NSH 自己的令牌，经 NSH 内部的 `setup()` 运行时换进主题（只有 `theme.ts` 调它）；底线元素用 `floor()` 标出，套用后查字和底的对比度，只算方案造成的；⌥⇧⌘U 让这个窗口回到默认；`ui()` 是钩子，`reduceMotion()` 听方案也听系统。镜像的控制器不碰页面，平台这一侧由 `look.ts` 交给它，外壳在 `shell-state.ts` 接上 |
 | `app/.ui/` | 界面测试：`scripts/ui-tests.ts` 起一个隔离的运行时（临时数据目录、空闲端口、内存钥匙串、不跑日程、模型端点立刻拒绝），预置 Bot 和会话，再无头跑这里的测试。隐藏目录，所以普通的 `nsh test` 不跑它们 |
 | `app/src/m/` | 信使逻辑的镜像（`apps/messenger/src/lib` 同样的相对路径），见下面「信使逻辑怎么复用」 |

@@ -3,15 +3,21 @@
  * The hosted build (`Hosted.tsx`, the phone's page) shows the pairing screen until this device is
  * enrolled, as the messenger's `+page.svelte` does, then the same shell on the remote client.
  *
+ * As there too, the shell waits for the first connection behind `ConnectionScreen` (connecting, or
+ * unreachable with a Retry): before it the snapshot is the empty one, whose settings say the
+ * first-run onboarding is not done, and every start showed the onboarding for a moment. Once the
+ * shell has been up it stays through a lost connection.
+ *
  * Two development checks open one of the spike's panes alone instead (`--pane terminal` for
  * `scripts/terminal-probe.ts` and the frame-rate probe, `--pane pdf` with `--pdf <path>`), until
  * the terminal moves to NSH's own and the probes follow it.
  */
-import { effect } from "nsh";
+import { effect, signal } from "nsh";
 import { initialPane, initialSession } from "./launch";
 import { runtime } from "./runtime";
 import { PdfPane, TerminalPane } from "./Tools";
 import { PairingScreen } from "./ui/remote/PairingScreen";
+import { ConnectionScreen } from "./ui/shell/ConnectionScreen";
 import { Shell } from "./ui/shell/Shell";
 import { warmCodeColors } from "./ui/code-colors";
 
@@ -35,16 +41,26 @@ export function Main() {
       void runtime.selectSession(wanted);
     });
   }
+  if (initialPane === "terminal") return <TerminalPane />;
+  if (initialPane === "pdf") return <PdfPane />;
+  // Set at the first connection (the first snapshot is in by then) and never unset.
+  const shellShown = signal(false);
+  effect(() => {
+    if (runtime.connection === "connected") shellShown.set(true);
+  });
+  const shell = (
+    <If when={shellShown()} else={<ConnectionScreen />}>
+      <Shell />
+    </If>
+  );
   if (runtime.hosted) {
     // Not enrolled is not a connection problem: this device has nothing to connect with yet.
     const pairing = () => runtime.connection !== "connected" && !runtime.enrolled;
     return (
-      <If when={pairing()} else={<Shell />}>
+      <If when={pairing()} else={shell}>
         <PairingScreen />
       </If>
     );
   }
-  if (initialPane === "terminal") return <TerminalPane />;
-  if (initialPane === "pdf") return <PdfPane />;
-  return <Shell />;
+  return shell;
 }
