@@ -405,6 +405,114 @@ pub fn keys_first(args: &str) {
     });
 }
 
+/// One key with modifiers in the first window, as `chord <keystroke>` asks (development checks):
+/// `cmd+backspace`, `alt+left`, `escape`, `ctrl+c`. Posted to the app's event queue like a key from
+/// the keyboard, so the app's key monitors (NSH's keymap) see it before the window does; `keys`
+/// sends straight to the window, past them.
+pub fn chord_first(args: &str, mtm: MainThreadMarker) {
+    let Some((flags, code, chars)) = chord(args) else {
+        log::warn!("chord: want [cmd+][alt+][ctrl+][shift+]<backspace|delete|escape|enter|tab|left|right|up|down|home|end|a-z>, not {args:?}");
+        return;
+    };
+    WINDOWS.with_borrow(|windows| {
+        let Some(entry) = windows.first() else { return };
+        let app = objc2_app_kit::NSApplication::sharedApplication(mtm);
+        let chars = NSString::from_str(&chars);
+        let number = entry.window.windowNumber();
+        // NSEventType: key down 10, up 11.
+        for kind in [10usize, 11] {
+            let uptime = objc2_foundation::NSProcessInfo::processInfo().systemUptime();
+            // SAFETY: as in `keys_first`; `postEvent:atStart:` takes the event and a BOOL.
+            unsafe {
+                let event: Option<Retained<objc2_app_kit::NSEvent>> = msg_send![<objc2_app_kit::NSEvent as objc2::ClassType>::class(), keyEventWithType: kind, location: NSPoint::new(0.0, 0.0), modifierFlags: flags, timestamp: uptime, windowNumber: number, context: std::ptr::null::<objc2::runtime::AnyObject>(), characters: &*chars, charactersIgnoringModifiers: &*chars, isARepeat: false, keyCode: code];
+                if let Some(event) = event {
+                    let _: () = msg_send![&*app, postEvent: &*event, atStart: false];
+                }
+            }
+        }
+    });
+    log::info!("chord {args}");
+}
+
+/// A chord's modifier flags, virtual key code and characters (`chord_first`).
+fn chord(keystroke: &str) -> Option<(usize, u16, String)> {
+    let parts: Vec<&str> = keystroke.trim().split('+').collect();
+    let (key, modifiers) = parts.split_last()?;
+    let mut flags = 0usize;
+    for modifier in modifiers {
+        // NSEventModifierFlags: Shift, Control, Option, Command.
+        flags |= match modifier.to_ascii_lowercase().as_str() {
+            "cmd" | "command" | "super" | "meta" => 1 << 20,
+            "alt" | "option" | "opt" => 1 << 19,
+            "ctrl" | "control" => 1 << 18,
+            "shift" => 1 << 17,
+            _ => return None,
+        };
+    }
+    // The arrows and the keys around them carry the function key's flag, the arrows also the
+    // numeric pad's, as from a keyboard; their characters are AppKit's function-key characters.
+    const FUNCTION: usize = 1 << 23;
+    const ARROW: usize = FUNCTION | 1 << 21;
+    let (code, chars, extra): (u16, String, usize) = match key.to_ascii_lowercase().as_str() {
+        "backspace" => (51, "\u{7f}".into(), 0),
+        "delete" => (117, "\u{f728}".into(), FUNCTION),
+        "escape" => (53, "\u{1b}".into(), 0),
+        "enter" | "return" => (36, "\r".into(), 0),
+        "tab" => (48, "\t".into(), 0),
+        "left" => (123, "\u{f702}".into(), ARROW),
+        "right" => (124, "\u{f703}".into(), ARROW),
+        "down" => (125, "\u{f701}".into(), ARROW),
+        "up" => (126, "\u{f700}".into(), ARROW),
+        "home" => (115, "\u{f729}".into(), FUNCTION),
+        "end" => (119, "\u{f72b}".into(), FUNCTION),
+        letter if letter.len() == 1 && letter.as_bytes()[0].is_ascii_lowercase() => {
+            // The US layout's virtual key codes of a to z.
+            const CODES: [u16; 26] = [0, 11, 8, 2, 14, 3, 5, 4, 34, 38, 40, 37, 46, 45, 31, 35, 12, 15, 1, 17, 32, 9, 13, 7, 16, 6];
+            (CODES[(letter.as_bytes()[0] - b'a') as usize], letter.into(), 0)
+        }
+        _ => return None,
+    };
+    Some((flags | extra, code, chars))
+}
+
+/// An input method's composition in the first window's focused text input, as `compose <text>`
+/// (marked text; empty ends it without committing anything) and `commit <text>` (inserts the text,
+/// ending the composition) ask (development checks): the field editor's `NSTextInputClient`
+/// methods, called as an input method calls them. Logs where the candidate window would open
+/// (`firstRectForCharacterRange:`), from the window's top-left.
+pub fn compose_first(args: &str, commit: bool) {
+    WINDOWS.with_borrow(|windows| {
+        let Some(entry) = windows.first() else { return };
+        let Some(responder) = entry.window.firstResponder() else {
+            log::warn!("compose: nothing has the keyboard focus");
+            return;
+        };
+        if !responder.respondsToSelector(objc2::sel!(setMarkedText:selectedRange:replacementRange:)) {
+            log::warn!("compose: the keyboard focus is not in a text input");
+            return;
+        }
+        let text = NSString::from_str(args);
+        let nowhere = objc2_foundation::NSRange::new(objc2_foundation::NSNotFound as usize, 0);
+        // SAFETY: NSTextInputClient's methods, which the responder answers (checked above), with
+        // their declared argument types (an NSString for `id`, NSRanges, a null NSRangePointer).
+        let rect: NSRect = unsafe {
+            if commit {
+                let _: () = msg_send![&*responder, insertText: &*text, replacementRange: nowhere];
+            } else {
+                let caret = objc2_foundation::NSRange::new(text.length(), 0);
+                let _: () = msg_send![&*responder, setMarkedText: &*text, selectedRange: caret, replacementRange: nowhere];
+            }
+            let start = objc2_foundation::NSRange::new(0, 0);
+            msg_send![&*responder, firstRectForCharacterRange: start, actualRange: std::ptr::null_mut::<objc2_foundation::NSRange>()]
+        };
+        let frame = entry.window.frame();
+        let x = rect.origin.x - frame.origin.x;
+        let y = frame.origin.y + frame.size.height - (rect.origin.y + rect.size.height);
+        let what = if commit { "commit" } else { "compose" };
+        log::info!("{what} {args:?}: candidates at {x:.0},{y:.0} ({:.0}×{:.0}) from the window's top-left", rect.size.width, rect.size.height);
+    });
+}
+
 /// Puts window `id` away, as its close button does (the messenger's `hide_main_window`: ⌘W with
 /// no tab left hides rather than quits).
 pub fn hide(id: u32) {

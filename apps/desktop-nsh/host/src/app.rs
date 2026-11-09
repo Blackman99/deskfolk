@@ -317,7 +317,7 @@ fn watch_bundle(path: PathBuf) {
 /// Development checks: `<dir>/request` asks the shell for something, by its first line: empty for
 /// a picture of every window, `new-window`, `badge <label>` (empty clears), `notify <text>`,
 /// `wheel <x> <y> <dy> [ctrl]`, `resize <w> <h> [steps] [ms]`, `drag <x0> <y0> <x1> <y1> [steps] [ms]`,
-/// `tray [title]`.
+/// `keys <text>`, `chord <keystroke>`, `compose [text]`, `commit <text>`, `tray [title]`.
 fn watch_snapshot_requests(dir: PathBuf) {
     let _ = std::fs::create_dir_all(&dir);
     std::thread::spawn(move || {
@@ -340,6 +340,9 @@ fn watch_snapshot_requests(dir: PathBuf) {
                     ("resize", args) => crate::window::resize_first(args),
                     ("drag", args) => crate::window::drag_first(args),
                     ("keys", args) => crate::window::keys_first(args),
+                    ("chord", keystroke) => crate::window::chord_first(keystroke, mtm),
+                    ("compose", text) => crate::window::compose_first(text, false),
+                    ("commit", text) => crate::window::compose_first(text, true),
                     ("tray", title) => tray_request(mtm, title),
                     ("notify", body) => {
                         if let Err(why) = crate::notify::post("dev-check", "Deskfolk Dev", body) {

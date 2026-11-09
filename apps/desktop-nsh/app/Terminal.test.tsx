@@ -23,3 +23,13 @@ test("keys send VT sequences, application cursor keys when asked", () => {
   expect(keyBytes("ctrl+z", false)).toBe("\x1a");
   expect(keyBytes("mod+k", false)).toBe(null);
 });
+
+test("Escape and macOS's line editing keys send what Terminal.app, iTerm2 and Ghostty send", () => {
+  expect(keyBytes("escape", false)).toBe("\x1b");
+  expect(keyBytes("cmd+backspace", false)).toBe("\x15");
+  expect(keyBytes("cmd+left", true)).toBe("\x01");
+  expect(keyBytes("cmd+right", true)).toBe("\x05");
+  expect(keyBytes("alt+left", false)).toBe("\x1bb");
+  expect(keyBytes("alt+right", false)).toBe("\x1bf");
+  expect(keyBytes("alt+backspace", false)).toBe("\x1b\x7f");
+});

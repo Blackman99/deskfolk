@@ -25,6 +25,8 @@ struct Screen {
     parser: vt100::Parser,
     /// The stream offset the screen has reached.
     next: u64,
+    /// A cell's size in points, as the grid last drew it (`Terminals.caret`).
+    cell: Option<(f32, f32)>,
 }
 
 thread_local! {
@@ -36,7 +38,7 @@ fn screen(id: &str) -> Rc<RefCell<Screen>> {
         screens
             .entry(id.to_owned())
             .or_insert_with(|| {
-                Rc::new(RefCell::new(Screen { parser: vt100::Parser::new(24, 80, SCROLLBACK), next: 0 }))
+                Rc::new(RefCell::new(Screen { parser: vt100::Parser::new(24, 80, SCROLLBACK), next: 0, cell: None }))
             })
             .clone()
     })
@@ -99,6 +101,18 @@ impl Terminals {
         vec![screen.parser.screen().application_cursor(), screen.parser.screen().bracketed_paste()]
     }
 
+    /// Where the cursor of `id` is drawn, in points from the grid's top-left: `[x, y, cell width,
+    /// cell height]`, or empty while the view is back in the history or before the grid has drawn
+    /// (it measures the cells: a module call cannot, outside the reactive runtime). A program that
+    /// hides the cursor still has one: an input method composes there.
+    pub fn caret(id: String) -> Vec<f64> {
+        let screen = screen(&id);
+        let screen = screen.borrow();
+        let Some(cell) = screen.cell else { return Vec::new() };
+        let s = screen.parser.screen();
+        caret_box(s.cursor_position(), s.size().0, s.scrollback() == 0, cell)
+    }
+
     /// Forgets terminal `id`.
     pub fn close(id: String) {
         SCREENS.with_borrow_mut(|screens| screens.remove(&id));
@@ -119,6 +133,10 @@ pub struct TerminalGridProps {
     pub focused: Prop<bool>,
     /// Moved by the app after every change it makes through `Terminals`: the screen is drawn again.
     pub version: Prop<f64>,
+    /// What an input method is composing (pinyin before a character is chosen): drawn at the
+    /// cursor, underlined, the cursor after it.
+    #[prop(default)]
+    pub preedit: Prop<SharedString>,
 }
 
 /// The events of a [`TerminalGrid`].
@@ -133,6 +151,21 @@ fn font(size: f64) -> String {
     format!("{size}px Menlo, Consolas, \"DejaVu Sans Mono\", monospace")
 }
 
+/// A cell's width and height at `font_size`, in points.
+fn cell_size(font_size: f64) -> (f32, f32) {
+    let width = measure_text(&font(font_size), "M").0;
+    (width.max(1.0), (font_size as f32 * 1.25).ceil())
+}
+
+/// The cursor's box (`Terminals.caret`): `[x, y, width, height]` of the cell at `(row, col)`, or
+/// empty when it is not on the screen shown.
+fn caret_box((row, col): (u16, u16), rows: u16, live: bool, (cw, ch): (f32, f32)) -> Vec<f64> {
+    if !live || row >= rows {
+        return Vec::new();
+    }
+    vec![(PAD + col as f32 * cw) as f64, (PAD + row as f32 * ch) as f64, cw as f64, ch as f64]
+}
+
 /// One of the runtime's terminals, drawn: fills its element; reports the rows and columns that fit.
 #[component]
 pub fn TerminalGrid(props: TerminalGridProps, cx: Scope<TerminalGridEvent>) -> impl IntoElement {
@@ -141,11 +174,7 @@ pub fn TerminalGrid(props: TerminalGridProps, cx: Scope<TerminalGridEvent>) -> i
     let area = signal((0.0_f32, 0.0_f32));
     // Moves when a layout changed the screen's size (after the screen is let go).
     let resized_tick = signal(0_u64);
-    let cell = move || {
-        let size = props.font_size.get();
-        let width = measure_text(&font(size), "M").0;
-        (width.max(1.0), (size as f32 * 1.25).ceil())
-    };
+    let cell = move || cell_size(props.font_size.get());
     let resized = {
         let shared = shared.clone();
         move |frame: &Bounds<Points>| {
@@ -171,18 +200,20 @@ pub fn TerminalGrid(props: TerminalGridProps, cx: Scope<TerminalGridEvent>) -> i
     let draw = move || {
         props.version.get();
         resized_tick.get();
-        let screen = shared.borrow();
+        let mut screen = shared.borrow_mut();
         let palette = Palette::new(props.dark.get());
         let (w, h) = area.get();
         let (cw, ch) = cell();
+        screen.cell = Some((cw, ch));
         let font = font(props.font_size.get());
-        paint(&screen.parser, &palette, &font, (cw, ch), (w, h), props.focused.get())
+        let preedit = props.preedit.get();
+        paint(&screen.parser, &palette, &font, (cw, ch), (w, h), props.focused.get(), &preedit)
     };
     canvas(draw).flex_1().on_layout(resized)
 }
 
-/// The drawing of a screen: the ground, the cells by runs, the cursor.
-fn paint(parser: &vt100::Parser, palette: &Palette, font: &str, cell: (f32, f32), area: (f32, f32), focused: bool) -> Painter {
+/// The drawing of a screen: the ground, the cells by runs, what an input method composes, the cursor.
+fn paint(parser: &vt100::Parser, palette: &Palette, font: &str, cell: (f32, f32), area: (f32, f32), focused: bool, preedit: &str) -> Painter {
     let (cw, ch) = cell;
     let screen = parser.screen();
     let (rows, cols) = screen.size();
@@ -237,9 +268,23 @@ fn paint(parser: &vt100::Parser, palette: &Palette, font: &str, cell: (f32, f32)
         p = flush(p, &mut run, run_at, run_look, y, cw, font);
     }
     let (cursor_row, cursor_col) = screen.cursor_position();
-    if !screen.hide_cursor() && screen.scrollback() == 0 && cursor_row < rows {
-        let x = PAD + cursor_col as f32 * cw;
-        let y = PAD + cursor_row as f32 * ch;
+    let live = screen.scrollback() == 0 && cursor_row < rows;
+    let mut x = PAD + cursor_col as f32 * cw;
+    let y = PAD + cursor_row as f32 * ch;
+    // A composition covers the cells from the cursor on, on the ground, underlined (as AppKit marks
+    // it); the cursor follows it. Drawn even where a program hides the cursor: it composes there.
+    if live && !preedit.is_empty() {
+        let width = measure_text(font, preedit).0.max(cw);
+        let (fg, bg) = (palette.foreground, palette.background);
+        p = p
+            .fill_color(rgb(hex(bg)))
+            .fill_rect(x, y, width, ch)
+            .fill_color(rgb(hex(fg)))
+            .fill_text(preedit, x, y)
+            .fill_rect(x, y + ch - 1.5, width, 1.0);
+        x += width;
+    }
+    if !screen.hide_cursor() && live {
         let (r, g, b) = palette.cursor;
         p = if focused {
             p.fill_color(rgba(r, g, b, 0.55)).fill_rect(x, y, cw, ch)
@@ -271,7 +316,15 @@ fn draw_text(p: Painter, text: &str, x: f32, y: f32, look: (Rgb, bool), font: &s
 
 #[cfg(test)]
 mod tests {
-    use super::unseen;
+    use super::{caret_box, unseen};
+
+    #[test]
+    fn the_caret_is_the_cursor_cell_on_the_live_screen_only() {
+        assert_eq!(caret_box((2, 3), 24, true, (8.0, 17.0)), vec![32.0, 42.0, 8.0, 17.0]);
+        assert_eq!(caret_box((0, 0), 24, true, (8.0, 17.0)), vec![8.0, 8.0, 8.0, 17.0]);
+        assert!(caret_box((2, 3), 24, false, (8.0, 17.0)).is_empty(), "back in the history");
+        assert!(caret_box((24, 0), 24, true, (8.0, 17.0)).is_empty(), "below the screen");
+    }
 
     #[test]
     fn frames_already_on_screen_are_dropped_and_overlaps_trimmed() {

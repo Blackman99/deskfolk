@@ -3,9 +3,12 @@
  * screen; this file attaches it to the runtime the way the messenger's `TerminalView.svelte` does
  * (the screen's replay, then `watch` from its offset, stream frames after it) and takes the keys.
  *
- * Keys: typed text and input methods arrive through a hidden input (composition stays in the input
- * until it commits); Return, Backspace and Escape through its key presses; arrows, Tab and Control
- * chords through `keymap` while the terminal has the keyboard.
+ * Keys: typed text and input methods arrive through a hidden input, kept on the cursor's cell so an
+ * input method's candidates open there; what it composes is drawn by the grid at the cursor and
+ * sent once committed. Return and Backspace come through the input's key presses; arrows, Tab,
+ * Escape, Control chords and macOS's line editing (⌘⌫, ⌘←, ⌥←, ...) through `keymap` while the
+ * terminal has the keyboard, except while an input method composes: `keymap` sees keys before the
+ * input does, so those keys would leave the input method for the shell.
  */
 import { cleanup, colorScheme, keymap, signal, View, type ViewRef } from "nsh";
 import { Input } from "nsh/base";
@@ -53,6 +56,24 @@ export function keyBytes(keystroke: string, appCursor: boolean): string | null {
       return "\x1b[6~";
     case "delete":
       return "\x1b[3~";
+    // Escape is the terminal's: the input would take it as "leave the field" and drop the keyboard.
+    case "escape":
+      return "\x1b";
+    // macOS's line editing, as Terminal.app, iTerm2 and Ghostty send it: ⌘⌫ deletes to the line's
+    // start (Ctrl-U), ⌘← / ⌘→ go to its start and end (Ctrl-A / Ctrl-E), ⌥← / ⌥→ a word back and
+    // forward (Meta-b / Meta-f), ⌥⌫ deletes the word before the cursor (Meta-Backspace).
+    case "cmd+backspace":
+      return "\x15";
+    case "cmd+left":
+      return "\x01";
+    case "cmd+right":
+      return "\x05";
+    case "alt+left":
+      return "\x1bb";
+    case "alt+right":
+      return "\x1bf";
+    case "alt+backspace":
+      return "\x1b\x7f";
   }
   const ctrl = /^ctrl\+([a-z])$/.exec(keystroke);
   if (ctrl) return String.fromCharCode(ctrl[1]!.charCodeAt(0) - 96);
@@ -60,7 +81,8 @@ export function keyBytes(keystroke: string, appCursor: boolean): string | null {
 }
 
 const KEYSTROKES = [
-  "up", "down", "left", "right", "tab", "shift+tab", "home", "end", "pageup", "pagedown", "delete",
+  "up", "down", "left", "right", "tab", "shift+tab", "home", "end", "pageup", "pagedown", "delete", "escape",
+  "cmd+backspace", "cmd+left", "cmd+right", "alt+left", "alt+right", "alt+backspace",
   ..."abcdefghijklmnopqrstuvwxyz".split("").map((c) => `ctrl+${c}`),
 ];
 
@@ -80,7 +102,11 @@ export function CanvasTerminal(props: { id: string; onExit?: () => void }) {
     }, 16);
   };
   const draft = signal("");
+  // An input method's composition: whether one is open, and what it holds (the grid draws that).
   let composing = false;
+  const composition = signal("");
+  // What the input holds, as its last change said (a composition's commit comes before its end).
+  let field = "";
   // What of the input's text has gone to the pty already; the input is emptied after each change.
   let sent = "";
   let attached = false;
@@ -147,6 +173,36 @@ export function CanvasTerminal(props: { id: string; onExit?: () => void }) {
     },
   );
 
+  // Where the cursor is drawn (`[x, y, width, height]` from the grid's top-left; empty while the view
+  // is back in the history), read again after every change. A shell built before `caret` has none.
+  const caret = (): number[] => {
+    version();
+    return Terminals.caret?.(id) ?? [];
+  };
+  // The input sits on the cursor's cell, a cell tall and wide enough that a composition does not
+  // scroll it, so an input method opens its candidates under the cursor; it stays invisible (the
+  // grid draws the composition) and lets presses through to the terminal.
+  const inputBox = () => {
+    const [x, y, , height] = caret();
+    return x === undefined || y === undefined || height === undefined
+      ? { position: "absolute" as const, left: 0, bottom: 0, width: 2, height: 2, opacity: 0, pointerEvents: "none" as const }
+      : { position: "absolute" as const, left: x, top: y, width: 320, height, opacity: 0, pointerEvents: "none" as const };
+  };
+
+  // The input's text as a change, past what was sent; emptied on the next turn.
+  const typed = (text: string) => {
+    if (text.startsWith(sent)) send(text.slice(sent.length));
+    // Shorter: a Backspace edited the input; its key press already went to the pty.
+    sent = text;
+    if (text) {
+      setTimeout(() => {
+        sent = "";
+        field = "";
+        draft.set("");
+      }, 0);
+    }
+  };
+
   let unbind: (() => void) | null = null;
   const bindKeys = () => {
     unbind?.();
@@ -170,6 +226,7 @@ export function CanvasTerminal(props: { id: string; onExit?: () => void }) {
         dark={colorScheme() === "dark"}
         focused={focused()}
         version={version()}
+        preedit={composition()}
         onResize={(e) => void runtime.client?.terminalResize(id, e.rows, e.cols)}
       />
       <Input
@@ -186,29 +243,38 @@ export function CanvasTerminal(props: { id: string; onExit?: () => void }) {
           unbind = null;
         }}
         onCompositionChange={(e) => {
+          const ended = composing && !e.composing;
           composing = e.composing;
-        }}
-        onChange={(e) => {
-          draft.set(e.value);
-          if (composing) return;
-          const text = e.value;
-          if (text.startsWith(sent)) send(text.slice(sent.length));
-          // Shorter: a Backspace edited the input; its key press already went to the pty.
-          sent = text;
-          if (text) {
-            setTimeout(() => {
-              sent = "";
-              draft.set("");
-            }, 0);
+          composition.set(e.composing ? e.text : "");
+          // While it composes, the keys are the input method's: arrows and Tab pick candidates,
+          // Escape cancels.
+          if (e.composing) {
+            unbind?.();
+            unbind = null;
+          } else if (focused() && !unbind) bindKeys();
+          // What it committed came in the input's last change, before this end: send it now.
+          if (ended) {
+            draft.set(field);
+            typed(field);
           }
         }}
+        onChange={(e) => {
+          field = e.value;
+          // A commit comes while the composition is still open; it is sent when that ends. A value
+          // set meanwhile would wait for the end and land on what the user types next.
+          if (composing) return;
+          draft.set(e.value);
+          typed(e.value);
+        }}
         onKeyPress={(e) => {
+          // Backspace while composing edits the composition (emptying it reports one too).
+          if (composing) return;
           if (e.key === "Enter") send("\r");
           else if (e.key === "Backspace") send("\x7f");
           else if (e.key === "Escape") send("\x1b");
         }}
         submitBehavior="submit"
-        style={{ position: "absolute", left: 0, bottom: 0, width: 2, height: 2, opacity: 0 }}
+        style={inputBox()}
       />
     </View>
   );
