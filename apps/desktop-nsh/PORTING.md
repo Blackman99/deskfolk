@@ -97,6 +97,7 @@
 - `flex-shrink` 不认，写 `shrink`；CSS 变量做圆角（`rounded-(--radius-bot)`）要是主题里没有就换成具体值。
 - `If` 的函数子节点拿到的是读取函数，别把它存下来到别处再读：在用的地方直接从原数据取。
 - **NSH 的视图收不到滚轮**（只有它自己的 `Scroll` / `List` 能滚）。要自己缩放、平移、滚动的视图（画布、看图、轨迹、地图、终端回滚）用 `src/platform/wheel` 的 `onWheel(() => ref, (e, at) => …)`：外壳把滚轮、触控板双指滚动和捏合转给应用，事件照 DOM 的 `WheelEvent`（`dy` 向下为正，捏合是 `ctrl` 加 `dy = -100·ln(倍数)`），`at` 是视图里的坐标。信使里 `onwheel` 的处理照搬过来就行。
+- **倒置 `List` 的 `scrollToIndex` 里，`viewPosition` 是镜像的**：0 是那一行的下沿对齐视口下沿，1 是它的上沿对齐视口上沿。回到底部曾写成 `{ index: 0, viewPosition: 1 }`，最新一条比视口矮时被夹到底部，看不出毛病；比视口高（长回复、大代码块）就停在它的开头，下半截在视口外（距底部 = 行高 + 顶部内边距 − 视口高）。要「到底」写 `viewPosition: 0` 加一个超过底部内边距的 `viewOffset`，列表会按内容夹取。`scrollToOffset` 对独立列表不夹取，别拿它去「够到底」。`stories/stage-scroll.tsx` 和 `.ui/stage-scroll.test.tsx` 拿最新一行 900pt 高的列表量落点。
 - 会换行的长文字别放进横排（`flex-row`），尤其当外面的框按内容收缩（`self-start`、`items-start` 的父级）：NSH 0.4 按文字不换行时的宽度算高度，框比文字矮，后面的东西压到文字上。文字直接放进纵向的框；旁边要有图标就让图标 `absolute` 放在文字的左边距里（`TranscriptSystem.tsx` 的系统卡片）。给文字加 `flex-1 min-w-0` 更糟：框缩成一条，文字不见。
 - `<Each of={…}>` 吃 `state()` 的深层代理数组时什么都画不出来：写 `of={list.slice()}`（或 `snapshot(list)`）。组件内部 `Each` 的东西也一样：把镜像类里的 `state()` 整个交给移植好的组件（比如 `ShellWorkbench.layout` 交给 `Workbench`，它在里面 `Each` 每个窗格的 `tabs`）之前，先 `computed(() => snapshot(x))` 变成普通对象；故事里传的是普通对象，测不出来。
 - 桌面引擎的 `Intl` 只有 `DateTimeFormat` 和 `NumberFormat`；`RelativeTimeFormat` 由 `src/platform/relative-time.ts` 补了中英文，`PluralRules`、`Collator`、`ListFormat`、`Segmenter` 都没有，用到的话报告里说。

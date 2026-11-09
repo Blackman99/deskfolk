@@ -27,6 +27,9 @@ export type StageScrollDeps = {
   loadOlder: () => void;
 };
 
+/** More than any inset under the newest row (`paddingTop` of the inverted list, 14 or 20): a `viewOffset` this big is clamped to the foot. */
+const PAST_THE_FOOT = 10_000;
+
 export function createStageScroll(deps: StageScrollDeps) {
   let list: ListRef | undefined;
   const stick = signal(true);
@@ -43,11 +46,17 @@ export function createStageScroll(deps: StageScrollDeps) {
     showBottom.set(!near);
   }
 
-  /** Newest line first in the list: its first row, at the foot of the view. */
+  /**
+   * Newest line first in the list: its first row, at the foot of the view. `viewPosition` is
+   * mirrored on an inverted list: 0 puts the row's lower edge at the view's lower edge, 1 its upper
+   * edge at the view's upper edge, which for a newest line taller than the view stops at its head
+   * with the rest below. So 0, and an offset past the inset under that row (the list clamps a jump
+   * to its content): the foot, however tall the row.
+   */
   function scrollToBottom(animated = true): void {
     setNear(true);
     jumping = animated;
-    list?.scrollToIndex({ index: 0, animated, viewPosition: 1 });
+    list?.scrollToIndex({ index: 0, animated, viewPosition: 0, viewOffset: PAST_THE_FOOT });
     if (animated) setTimeout(() => (jumping = false), 600);
   }
 

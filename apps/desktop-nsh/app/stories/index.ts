@@ -49,6 +49,7 @@ export const stories: Record<string, Story> = {
   "chat-stage": () => import("./chat-stage"),
   shell: () => import("./shell"),
   viewport: () => import("./viewport"),
+  "stage-scroll": () => import("./stage-scroll"),
   "job-keys": () => import("./job-keys"),
   "phone-web": () => import("./phone-web"),
   interface: () => import("./interface"),
