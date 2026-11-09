@@ -41,7 +41,7 @@
 | 钥匙串服务 | `com.real-bot.daemon` | `com.real-bot.daemon.nsh-dev` |
 | 应用 id | `com.real-bot.desktop` | `com.real-bot.desktop.nsh-dev`（「Deskfolk Dev」） |
 
-开发版不退回去连 17890（`dev-instance.test.ts`、宿主的 `endpoint` 测试）；不装登录项和 launchd，不检查更新，定时任务默认关（`--schedule` 打开）。开发期间不要跑根目录的 `pnpm dev`，它的源码守护进程会和稳定版抢 17890。
+开发版不退回去连 17890（`dev-instance.test.ts`、宿主的 `endpoint` 测试）；不装登录项和 launchd，不检查更新，定时任务默认关（`--schedule` 打开）。默认的 Claude 账号和从访达打开的应用一样是 `~/.claude`：开发运行时启动时去掉继承来的 `CLAUDE_CONFIG_DIR`（源码守护进程不去掉，见 `docs/development.md`「几个账号」），所以从某个 Bot 的 Claude Code 里起开发版，不会把那个 Bot 的账号当成默认；别的账号照常在设置里列出。开发期间不要跑根目录的 `pnpm dev`，它的源码守护进程会和稳定版抢 17890。
 
 ## 命令
 

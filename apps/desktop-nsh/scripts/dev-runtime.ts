@@ -22,6 +22,15 @@ import { assertApartFromStable, DEV_ORIGIN, devInstance, stableDataDir } from ".
 const instance = devInstance();
 assertApartFromStable(instance);
 
+// The default Claude account is the one the app finds opened from Finder (`~/.claude`), not the one
+// of whoever started this: a Bot's Claude Code runs with its own account's `CLAUDE_CONFIG_DIR`, and a
+// dev runtime it started took that account for the default, listing it twice beside the same account
+// added by hand. Other accounts are listed in Settings, as in the installed app.
+if (process.env.CLAUDE_CONFIG_DIR) {
+  console.warn(`not taking CLAUDE_CONFIG_DIR=${process.env.CLAUDE_CONFIG_DIR} as the default Claude account; it stays ~/.claude`);
+  delete process.env.CLAUDE_CONFIG_DIR;
+}
+
 const schedule = process.argv.includes("--schedule");
 const seed = process.argv.includes("--seed-from-stable");
 
