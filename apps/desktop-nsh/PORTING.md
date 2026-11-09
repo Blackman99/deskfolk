@@ -52,6 +52,7 @@
 - 图标：`<Icon name="plus" size={16} class="tint-ink-muted" />`（`src/ui/Icon`），颜色只用 `tint-*` 类，悬停跟随用 `group-hover:tint-ink`。名字照 `src/m/icons.ts`。
 - 现成的组件先找 `src/ui/`（见下面「已经移植的共享组件」）。没有的、几个区域都要用的，报告里说，不要各写一份。
 - `transition-*`（`transition-all` 也一样）只动颜色、透明度、transform、阴影、圆角，**不动位置和尺寸**：Svelte 里 `transition: top/left/width/height` 的地方照搬过来会直接跳。要动框的位置、大小，在改它的那一次提交之前调 `LayoutAnimation.configureNext({ duration, update: { type: "easeInEaseOut" } })`（只给 `update`，新插入的不跟着动）。它管的是整次提交，同一次里别处的布局变化也会一起动；窗口缩放时别调。例子：`ui/chat/MessageImageLightbox.tsx` 的 `frameBox` 那个 effect。
+- 盖在别的视图上的透明层（标注层这类）不会把按压让给下面的兄弟视图：Svelte 里 `pointer-events: none` 的层，这里要写 `pointerEvents: "box-none"`（自己不接，子视图照接），否则下面的 `onPress` 永远收不到。`app.press(selector)` 直接按指定的视图，测不出这种遮挡。
 
 ## 已经移植的共享组件
 

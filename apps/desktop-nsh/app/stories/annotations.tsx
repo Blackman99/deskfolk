@@ -174,6 +174,8 @@ export default function Annotations() {
               note("cancel");
               pendingImage.set(null);
             }}
+            openLabel="放大 pic.png"
+            onOpen={(from) => note(`open:${from ? "from" : "none"}`)}
           />
         </If>
         <If when={kind() === "markdown"}>

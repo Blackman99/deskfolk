@@ -87,8 +87,12 @@ export function ImageAnnotator(props: {
   onPendingChange?: (anchor: ImageRegionAnchor) => void;
   /** Escape while choosing, or with a box pending. */
   onCancel?: () => void;
-  /** Outside annotate mode, and with no box waiting, a press on the picture enlarges it; left out, the picture is only a picture. */
-  onOpen?: () => void;
+  /**
+   * Outside annotate mode, and with no box waiting, a press on the picture enlarges it; left out,
+   * the picture is only a picture. `from` is the picture's own view, for the enlargement to grow
+   * out of (`imageOrigin`).
+   */
+  onOpen?: (from: ViewRef | null) => void;
   /** The enlarge button's name. */
   openLabel?: string;
   /**
@@ -118,6 +122,7 @@ export function ImageAnnotator(props: {
   /** Where the layer's top left is on the surface, so a finger's page position is a place on the picture. */
   let origin = { x: 0, y: 0 };
   let layerRef: ViewRef | null = null;
+  let pictureRef: ViewRef | null = null;
   let seenPending: ImageRegionAnchor | null | undefined = undefined;
   let seenSrc: string | undefined = undefined;
   let peekHide: ReturnType<typeof setTimeout> | null = null;
@@ -380,9 +385,10 @@ export function ImageAnnotator(props: {
       <View
         role={props.onOpen ? "button" : undefined}
         testID="image-annotator-picture"
+        ref={(node: ViewRef) => (pictureRef = node)}
         accessibilityLabel={props.openLabel}
         onPress={() => {
-          if (openable()) props.onOpen?.();
+          if (openable()) props.onOpen?.(pictureRef);
         }}
         class="absolute"
         style={drawn() ? { left: drawn()!.left, top: 0, width: drawn()!.width, height: drawn()!.height } : { left: 0, top: 0, width: "100%", height: "100%" }}
@@ -413,7 +419,16 @@ export function ImageAnnotator(props: {
             onLayout={() => measure()}
             {...layerPan.panHandlers}
             class="absolute"
-            style={{ left: d().left, top: d().top, width: d().width, height: d().height }}
+            // Over the picture: outside annotate mode a press goes through to it (it enlarges), and
+            // only the marks and the pending box, its children, take presses of their own.
+            style={{
+              left: d().left,
+              top: d().top,
+              width: d().width,
+              height: d().height,
+              pointerEvents: creating() ? "auto" : "box-none",
+              cursor: creating() ? "crosshair" : undefined,
+            }}
           >
             <Each of={marks()} key={(mark: RegionMark) => mark.id}>
               {(mark: () => RegionMark) => (

@@ -34,6 +34,16 @@ test("with annotating off nothing can be drawn on the picture, but its marks sta
   expect(last(app)).toBe("—");
 });
 
+test("outside annotate mode a press on the picture enlarges it from where it sits; in annotate mode it does not", async () => {
+  const app = await show("image", "id:image-annotator-picture");
+  await app.waitFor("id:image-annotator-layer");
+  await app.press("id:image-annotator-picture");
+  expect(last(app)).toBe("—");
+  await app.press("id:story-annotating");
+  await app.press("id:image-annotator-picture");
+  await app.waitUntil(() => last(app) === "open:from");
+});
+
 test("Markdown is drawn block by block; a block picked in annotate mode offers the button and hands over its source lines", async () => {
   const app = await show("markdown", "id:markdown-annotator");
   await app.waitFor("id:markdown-block-1");

@@ -114,7 +114,7 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
   const attachment = () => props.attachment ?? null;
   const api = () => props.api;
 
-  const enlarged = signal<{ from: string; relpath: string; own: boolean; origin: ImageOrigin | null; placeholder: string | null } | null>(null);
+  const enlarged = signal<{ from: string; relpath: string; own: boolean; origin: ImageOrigin | null; shown: string | null } | null>(null);
   const shownEnlarged = computed(() => {
     const e = enlarged();
     return e && e.from === relpath() ? e : null;
@@ -292,10 +292,13 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
     showSource.set(false);
   });
 
-  /** Enlarges a picture over the app: this file when it is an image (`own`), or one in this Markdown. */
-  function enlarge(image: string, own: boolean, _picture: unknown): void {
-    // No element to grow from here: the picture opens fitted, with nothing to stand in for it.
-    enlarged.set({ from: relpath(), relpath: image, own, origin: null, placeholder: null });
+  /**
+   * Enlarges a picture over the app: this file when it is an image (`own`), growing out of where it
+   * sits here and showing what is on screen here at once (`shown`, a `data:` URL; the loader's
+   * object URL is nothing `Image` shows), or one in this Markdown, which opens fitted.
+   */
+  function enlarge(image: string, own: boolean, origin: ImageOrigin | null, shown: string | null): void {
+    enlarged.set({ from: relpath(), relpath: image, own, origin, shown: own ? shown : null });
   }
 
   /** Opens this tree row with the system, or reveals it in Finder; a failure stays a quiet hint on the preview. */
@@ -718,9 +721,8 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
           <MessageImageLightbox
             attachment={shown().own ? attachment() : null}
             relpath={shown().relpath}
-            src={shown().own ? loader.shownBlob : null}
-            srcOriginalSize={shown().own ? loader.reducedFrom : null}
-            placeholder={shown().placeholder}
+            src={shown().shown}
+            srcOriginalSize={shown().shown ? loader.reducedFrom : null}
             origin={shown().origin}
             api={api()}
             onClose={() => enlarged.set(null)}

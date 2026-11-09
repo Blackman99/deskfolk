@@ -10,7 +10,9 @@
  * - `bind:editor` / `bind:pdfViewer` are `onEditor` / `onPdfViewer` (called with the handle).
  * - A picture and its SVG are shown from a `data:` URL: the loader's object URL (`shownBlob`) is
  *   read back into one, since NSH's `Image` takes no object URLs.
- * - `enlarge`'s third argument (the box the lightbox grows from) is `null`: the annotators report none.
+ * - `enlarge` hands the lightbox where the file's own picture sits (it grows out of it) and that
+ *   picture as a `data:` URL (the loader's object URL is nothing `Image` shows). A picture in the
+ *   Markdown opens with no origin: the Markdown reports none.
  * - The PDF is fetched by the native module from `pdfSourceFor(relpath)` (a workspace file) or the
  *   attachment's content URL, both on the local runtime; a remote runtime gives no source.
  * - An Office file is read by path (a local workspace file) or from the loader's bytes as Base64.
@@ -39,6 +41,7 @@ import { HtmlAnnotator } from "../annotations/HtmlAnnotator";
 import { ImageAnnotator } from "../annotations/ImageAnnotator";
 import { MarkdownAnnotator } from "../annotations/MarkdownAnnotator";
 import { MediaAnnotator } from "../annotations/MediaAnnotator";
+import { imageOrigin } from "../chat/image-origin";
 import type { ImageOrigin } from "../chat/lightbox-fit";
 import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";
@@ -104,8 +107,11 @@ export function ArtifactBody(props: {
   onEditor?: (handle: ArtifactEditorHandle | null) => void;
   onPdfViewer?: (handle: ArtifactPdfHandle | null) => void;
   onEditorDirty: (next: boolean) => void;
-  /** Grows a picture in the lightbox; `origin` (where it grows from) is always null here. */
-  enlarge: (image: string, own: boolean, origin?: ImageOrigin | null) => void;
+  /**
+   * Grows a picture in the lightbox: `origin` is where it grows from (null for one in the
+   * Markdown), `shown` the file's own picture as on screen here, a `data:` URL.
+   */
+  enlarge: (image: string, own: boolean, origin: ImageOrigin | null, shown: string | null) => void;
   openMarkdownPath: (path: string) => void;
   openOnDisk: (path: string, reveal: boolean) => Promise<void>;
   /** A cited folder's entries, once the Mac listed it; the folder's page lists them. */
@@ -281,7 +287,10 @@ export function ArtifactBody(props: {
             onPendingChange={annot().movePending}
             onCancel={annot().escapeAnnotation}
             openLabel={`${t().artifactEnlarge} ${props.relpath.split("/").pop() ?? props.relpath}`}
-            onOpen={() => props.enlarge(props.relpath, true, null)}
+            onOpen={(from) => {
+              const shown = picture();
+              void imageOrigin(from).then((origin) => props.enlarge(props.relpath, true, origin, shown));
+            }}
           />
         </If>
       );
@@ -380,7 +389,7 @@ export function ArtifactBody(props: {
           copyLabel={copy().chat.copyCode}
           copiedLabel={copy().chat.copied}
           onOpenArtifact={props.openMarkdownPath}
-          onOpenImage={(path) => props.enlarge(path, false, null)}
+          onOpenImage={(path) => props.enlarge(path, false, null, null)}
           loadArtifactImage={(path, signal) => {
             if (!props.api) return Promise.reject(new Error("API unavailable"));
             // A picture inside a note is a 72 px chip: the 256 px copy is plenty, and tapping it

@@ -32,6 +32,22 @@ test("a picture opens in the image annotator, not as a download", async () => {
   expect(app.shows("id:artifact-code-editor")).toBe(false);
 });
 
+test("a press on the previewed picture enlarges it over the app, showing the preview's copy at once; ✕ closes it", async () => {
+  const app = await story();
+  await app.press("id:story-make-png");
+  await app.waitUntil(() => current(app) === "current:dot.png", { timeout: LOAD_MS });
+  await app.waitUntil(() => !app.shows("id:artifact-loading"), { timeout: LOAD_MS });
+  await app.waitFor("id:image-annotator-picture", { timeout: LOAD_MS });
+  await app.press("id:image-annotator-picture");
+  await app.waitFor("id:msg-image-lightbox");
+  // The preview's own picture is handed over: nothing is fetched, nothing waits.
+  await app.waitFor("id:msg-image-full");
+  expect(app.shows("id:msg-image-loading")).toBe(false);
+  await app.press("id:msg-image-close");
+  await app.waitFor("id:msg-image-lightbox", { state: "gone" });
+  expect(app.shows("id:image-annotator-picture")).toBe(true);
+});
+
 test("dragging a tree row shows a chip with its name, and letting go on a drop target hands the path over", async () => {
   const app = await story();
   await app.press("id:story-make-ts");
