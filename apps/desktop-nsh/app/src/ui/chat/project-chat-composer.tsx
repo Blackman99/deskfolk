@@ -140,9 +140,10 @@ export function ProjectComposer(props: {
       onLayout={(e) => width.set(e.bounds.size.width)}
     >
       <View class={`w-full min-w-0 ${docked() ? "bg-input-bg border-t border-line" : "max-w-[800px]"}`}>
+        {/* Focused, it keeps its focus border under the pointer, as a Bot's composer does (`Composer`). */}
         <View
           testID="project-composer-card"
-          class={`w-full min-w-0 border bg-input-bg px-2 py-[6px] ${docked() ? "border-0" : "rounded-[18px] border-line hover:border-line-hover focus-within:border-field-focus-border"}`}
+          class={`w-full min-w-0 border bg-input-bg px-2 py-[6px] ${docked() ? "border-0" : "rounded-[18px] border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"}`}
           style={docked() ? undefined : { boxShadow: shadow("raised") }}
         >
           <If when={refused()}>

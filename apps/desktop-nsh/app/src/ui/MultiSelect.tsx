@@ -51,7 +51,9 @@ export function MultiSelect(props: {
     <Combobox
       multiple
       testID={props.testID}
-      class={`w-full min-h-[36px] flex-row items-center gap-[5px] pl-[6px] pr-[6px] py-[5px] bg-input-bg border rounded-(--radius-md) hover:border-line-hover focus-within:border-field-focus-border disabled:opacity-[0.55] disabled:bg-line-subtle ${open() ? "border-field-focus-border" : props.error ? "border-danger-line" : "border-line"} ${props.class ?? ""}`}
+      // Open or focused, the field keeps its focus border under the pointer, as the messenger's `:focus-within` and
+      // `.is-open` rules outrank its `:hover`: NSH ranks `hover:` above `focus-within:` and above a plain class.
+      class={`w-full min-h-[36px] flex-row items-center gap-[5px] pl-[6px] pr-[6px] py-[5px] bg-input-bg border rounded-(--radius-md) focus-within:border-field-focus-border hover:focus-within:border-field-focus-border disabled:opacity-[0.55] disabled:bg-line-subtle ${open() ? "border-field-focus-border" : `hover:border-line-hover ${props.error ? "border-danger-line" : "border-line"}`} ${props.class ?? ""}`}
       style={{ boxShadow: shadow("xs") }}
       items={options().map((o) => ({ value: o.value, title: o.label, disabled: o.disabled, group: o.group }))}
       value={values()}

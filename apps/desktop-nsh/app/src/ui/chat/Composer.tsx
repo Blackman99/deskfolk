@@ -356,10 +356,12 @@ export function Composer(props: {
         </If>
 
         <View class="w-full relative">
+          {/* Focused, the box keeps its focus border under the pointer (`:hover:not(:focus-within)`): NSH ranks
+              `hover:` above `focus-within:`, so a click into the box showed the hover border until the pointer left. */}
           <View
             testID="composer-card"
             onFileDrop={(e) => onFileDrop(e.uris)}
-            class={`w-full min-w-0 border bg-input-bg ${d().locked ? "bg-sidebar-bg border-dashed px-[14px] py-[10px]" : docked() ? "px-2 py-[6px]" : "px-2 py-[6px]"} ${docked() ? "border-0" : d().locked ? "rounded-[18px] border-line" : "rounded-[18px] border-line hover:border-line-hover focus-within:border-field-focus-border"}`}
+            class={`w-full min-w-0 border bg-input-bg ${d().locked ? "bg-sidebar-bg border-dashed px-[14px] py-[10px]" : docked() ? "px-2 py-[6px]" : "px-2 py-[6px]"} ${docked() ? "border-0" : d().locked ? "rounded-[18px] border-line" : "rounded-[18px] border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"}`}
             style={docked() ? undefined : { boxShadow: shadow("raised") }}
           >
             <If when={quoteTarget()}>{(message) => <ComposerQuote message={message()} botsById={botsById()} onCancel={() => { const current = view(); if (current) current.replyingToId = null; }} />}</If>
