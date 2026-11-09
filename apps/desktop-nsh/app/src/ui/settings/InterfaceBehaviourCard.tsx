@@ -86,8 +86,12 @@ export function InterfaceBehaviourCard(props: { behaviour: InterfaceBehaviour; p
               {(row) => (
                 <View class={`flex-row items-center gap-[6px] min-w-0 ${narrowWindow() ? "grow" : ""}`}>
                   <Text class="text-[12px] text-ink-muted">{row().label}</Text>
+                  {/* `Select` is `w-full`: beside the label it takes the whole picker's width. NSH's
+                      flex items don't shrink by default (the browser's do), so it gives the label's
+                      width back here. */}
                   <Select
                     size="sm"
+                    class="shrink min-w-0"
                     testID={`behaviour-code_theme-${row().look}`}
                     value={props.behaviour.code_theme?.[row().look] ?? ""}
                     options={codeOptions(row().themes)}
