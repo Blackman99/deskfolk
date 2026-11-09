@@ -16,7 +16,7 @@
 import { signal, effect, untracked, View, type PressEvent, type ViewRef } from "nsh";
 import { copy } from "../../runtime";
 import type { LeafNode } from "../../m/workbench/layout-types.ts";
-import { contentGlassShare, darkGlass, glassOf, InPaneBody } from "../glass";
+import { contentGlassShare, darkGlass, GLASS_EDGE, glassOf, InPaneBody } from "../glass";
 import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";
 import { EmptyPane, NewTabMenu } from "./leaf-menus";
@@ -133,7 +133,7 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
 
   const bodyClass = () => {
     if (props.floating || narrow()) return "bg-pane";
-    const ground = glassShare() === null ? "bg-pane" : "";
+    const ground = glassShare() === null ? "bg-pane" : GLASS_EDGE;
     if (head()) return `mx-1 mb-1 rounded-b-(--radius-lg) ${ground}`;
     return `mx-1 mb-1 rounded-(--radius-lg) ${ground} ${cornerStrip() ? "mt-1" : ""}`;
   };
@@ -222,7 +222,7 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
         class={`flex-1 min-h-0 overflow-hidden ${bodyClass()}`}
         style={{
           borderRadius: props.floating ? 0 : undefined,
-          boxShadow: props.floating || narrow() ? undefined : shadow(dimmed() ? "pane-flat" : "pane"),
+          boxShadow: props.floating || narrow() || glassShare() !== null ? undefined : shadow(dimmed() ? "pane-flat" : "pane"),
           backgroundColor: glassShare() === null ? undefined : glassOf("pane", glassShare()!),
         }}
       >

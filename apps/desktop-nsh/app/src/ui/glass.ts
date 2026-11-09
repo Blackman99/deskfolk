@@ -49,6 +49,15 @@ export function contentGlassShare(): number | null {
   return null;
 }
 
+/**
+ * The hairline round a glass card and its active tab: `--shadow-pane`'s 0.5 pt ring, drawn as a
+ * border. Under a ground that is not opaque NSH 0.4.0 masks an outer shadow to outside the box, and
+ * at the corners that mask is stepped: the ring showed through as a hard bright arc on every rounded
+ * corner. A border is the layer's own and follows its corners. The shadow's soft drop goes through
+ * the same mask, so a glass card goes without it.
+ */
+export const GLASS_EDGE = "border-[0.5px] border-ink/14 dark:border-ink/11";
+
 /** Token `name` with only `share` percent of it kept: a glass card's ground. Reactive, like `token`. */
 export function glassOf(name: "pane" | "ground", share: number): string {
   return `color-mix(in srgb, ${String(token(name))} ${share}%, transparent)`;

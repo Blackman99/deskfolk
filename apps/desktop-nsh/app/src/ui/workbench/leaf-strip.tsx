@@ -12,7 +12,7 @@ import { copy } from "../../runtime";
 import { onWheel } from "../../platform/wheel";
 import type { LeafNode } from "../../m/workbench/layout-types.ts";
 import { WB_DRAG_THRESHOLD_PX } from "../../m/workbench/drop-zones.ts";
-import { contentGlassShare, glassOf } from "../glass";
+import { contentGlassShare, GLASS_EDGE, glassOf } from "../glass";
 import { Icon } from "../Icon";
 import { shadow } from "../styles";
 import { tip } from "../tip";
@@ -230,11 +230,11 @@ export function LeafStrip(props: StripProps) {
         onMouseEnter={() => hovered.set(tabId)}
         onMouseLeave={() => hovered() === tabId && hovered.set(null)}
         onContextMenu={(e) => props.onPaneMenu?.({ leafId: leaf().id, tabId, x: e.pagePosition.x, y: e.pagePosition.y })}
-        class={`flex-none flex-row items-center pl-2 pr-[2px] ${props.narrow() ? "rounded-t-(--radius-md)" : "rounded-(--radius-sm)"} ${active() ? (glassShare() === null ? "bg-pane" : "") : hovered() === tabId ? "bg-row-hover" : ""}`}
+        class={`flex-none flex-row items-center pl-2 pr-[2px] ${props.narrow() ? "rounded-t-(--radius-md)" : "rounded-(--radius-sm)"} ${active() ? (glassShare() === null ? "bg-pane" : GLASS_EDGE) : hovered() === tabId ? "bg-row-hover" : ""}`}
         style={{
           height: tabHeight(),
           opacity: dragged() ? 0.45 : 1,
-          boxShadow: active() && !props.narrow() ? shadow("pane") : undefined,
+          boxShadow: active() && !props.narrow() && glassShare() === null ? shadow("pane") : undefined,
           backgroundColor: active() && glassShare() !== null ? glassOf("pane", glassShare()!) : undefined,
         }}
       >
