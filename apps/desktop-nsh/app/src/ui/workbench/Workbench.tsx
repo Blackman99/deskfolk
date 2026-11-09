@@ -14,7 +14,7 @@
  * a tab is not heard (a press carries no button); a conversation pulled in from the sidebar starts
  * through `onApi`'s `dragIn`, which the list row's own gesture drives.
  */
-import { computed, effect, PanResponder, signal, Text, token, View, type ViewRef } from "nsh";
+import { computed, effect, PanResponder, signal, Text, View, type ViewRef } from "nsh";
 import { copy } from "../../runtime";
 import { onWheel } from "../../platform/wheel";
 import type { FloatFrame, LayoutNode, MinSizeLookup, Rect, WorkbenchLayout } from "../../m/workbench/layout-types.ts";
@@ -23,7 +23,6 @@ import { leafById, tiledLeaves } from "../../m/workbench/layout-tree.ts";
 import type { Point } from "../../m/workbench/drop-zones.ts";
 import { beginIncomingDrag, beginLeafDrag, beginTabDrag, type IncomingTab } from "../../m/workbench/tab-drag.ts";
 import type { PaneEdit } from "../../m/workbench/pane-edit.ts";
-import { shadow } from "../styles";
 import { PaneContextMenu } from "./PaneContextMenu";
 import { WorkbenchBranch } from "./WorkbenchBranch";
 import { WorkbenchFloat } from "./WorkbenchFloat";
@@ -80,12 +79,6 @@ export type WorkbenchProps = {
 };
 
 type PaneMenu = { leafId: string; tabId: string | null; x: number; y: number; seq: number; edit: PaneEdit | null; canCopy: boolean };
-
-/** The brand colour at `alpha` (0..255), for the drop box the pane under it still shows through. */
-function brandAt(alpha: number): string {
-  const color = String(token("brand"));
-  return /^#[0-9a-f]{6}$/i.test(color) ? `${color}${alpha.toString(16).padStart(2, "0")}` : color;
-}
 
 export function Workbench(props: WorkbenchProps) {
   const t = () => copy().pane;
@@ -372,19 +365,18 @@ export function Workbench(props: WorkbenchProps) {
           {/* What a drag shows goes over the floating panes too: their strips are drop targets. */}
           <View accessible={false} class="absolute left-0 top-0 right-0 bottom-0" style={{ zIndex: 150, pointerEvents: "none" }}>
             <If when={drag.indicator() && !drag.idleGap()}>
+              {/* See-through, so the pane it is about to land on still shows under it: the brand at 14%
+                  inside a 2px brand edge. Between two tabs it is a caret, not a box. (`token()` gives
+                  `#rrggbbaa`, so an alpha is written as the class's `/14`, never appended to it.) */}
               <View
                 testID="wb-drop"
                 accessible={false}
-                class="absolute"
+                class={`absolute ${drag.onTabGap() ? "bg-brand rounded-[1px]" : "bg-brand/14 border-2 border-brand rounded-(--radius-sm)"}`}
                 style={{
                   left: drag.indicator()!.x,
                   top: drag.indicator()!.y,
                   width: drag.indicator()!.width,
                   height: drag.indicator()!.height,
-                  backgroundColor: drag.onTabGap() ? token("brand") : brandAt(0x24),
-                  borderWidth: drag.onTabGap() ? 0 : 2,
-                  borderColor: token("brand"),
-                  borderRadius: drag.onTabGap() ? 1 : 4,
                 }}
               />
             </If>
@@ -394,9 +386,10 @@ export function Workbench(props: WorkbenchProps) {
                   testID="wb-ghost"
                   accessible={false}
                   class="absolute px-2 py-[2px] rounded-(--radius-sm) bg-pane"
-                  style={{ left: ghost().x + 12, top: ghost().y + 12, boxShadow: shadow("md") }}
+                  style={{ left: ghost().x + 12, top: ghost().y + 12, boxShadow: "0 4px 12px rgb(0 0 0 / 0.2)" }}
                 >
-                  <Text class="text-[12px] text-ink">{ghost().label}</Text>
+                  {/* One line even at the window's edge, where the room left would wrap it. */}
+                  <Text class="text-[12px] text-ink whitespace-nowrap">{ghost().label}</Text>
                 </View>
               )}
             </If>

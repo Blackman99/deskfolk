@@ -46,6 +46,7 @@
 ## 样式
 
 - 类名用 Tailwind，令牌就是 `tokens.css` 的名字：`var(--ink)` → `text-ink`，`var(--pane)` → `bg-pane`，`var(--line)` → `border-line`，`var(--radius-md)` → `rounded-(--radius-md)`。两个改了名：`--accent` 是 `brand`（`bg-brand`、`text-brand`），`--muted` 是 `ink-muted`。`accent-tint`、`accent-hover` 这些照原名。
+- 半透明色用类名的 `/NN`：`color-mix(in srgb, var(--accent) 14%, transparent)` → `bg-brand/14`。不要拿 `token()` 的值自己拼透明度，它给的是 `#rrggbbaa`，按 `#rrggbb` 拼会落空，变成不透明（拖拽分屏的落点框就这样盖住了窗格）。
 - 阴影不是令牌：`style={{ boxShadow: shadow("menu") }}`（`src/ui/styles`，按明暗自动换）。字号照信使写字面量（`text-[13px]`），对照表在 `styles.ts` 的 `TEXT`。
 - 状态用变体：`hover:`、`active:`、`disabled:`、`focus-visible:`、`group` 加 `group-hover:`、`selected:`、`dark:`。
 - 图标：`<Icon name="plus" size={16} class="tint-ink-muted" />`（`src/ui/Icon`），颜色只用 `tint-*` 类，悬停跟随用 `group-hover:tint-ink`。名字照 `src/m/icons.ts`。
