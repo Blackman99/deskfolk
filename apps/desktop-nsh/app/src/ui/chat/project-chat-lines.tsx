@@ -87,7 +87,10 @@ export function ProjectLine(props: {
       </If>
       <If when={who() === "agent"}>
         <View testID="project-line-agent" class="items-start w-full">
-          <MarkdownBody source={msg().body} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={(path) => s().openCited(path, msg().id)} />
+          {/* The whole line wide, as a wrapping paragraph is in the messenger. Left to fit its text, NSH
+              narrowed it to its widest line yet kept the heights measured at the full width: a paragraph
+              that wrapped once more than measured ran under the time, and its last line was cut. */}
+          <MarkdownBody class="self-stretch" source={msg().body} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={(path) => s().openCited(path, msg().id)} />
           <View class="self-stretch mt-[3px]">
             <If when={kept().length > 0} else={time()}>
               <View class="mt-[5px]">

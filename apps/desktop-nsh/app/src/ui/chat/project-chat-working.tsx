@@ -99,7 +99,9 @@ export function ProjectWorking(props: { state: ProjectState }) {
         <View class="w-full gap-[14px]">
           <View testID="project-working" role="text" class="w-full items-start">
             <If when={live().partial}>
+              {/* The whole line wide, as a finished line's (`ProjectLine`): fitted to its text it was cut short. */}
               <MarkdownBody
+                class="self-stretch"
                 source={live().partial ?? ""}
                 options={{ streaming: true }}
                 copyLabel={t().chat.copyCode}
