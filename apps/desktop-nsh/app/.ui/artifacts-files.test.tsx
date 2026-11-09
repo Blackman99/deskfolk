@@ -69,6 +69,33 @@ test("right-clicking a tree row opens its menu at the pointer, and Escape closes
   await app.waitUntil(() => !app.shows("id:artifact-tree-menu"));
 });
 
+test("⌘-clicking a second row picks both, and the menu then acts on the two", async () => {
+  const app = await story();
+  await app.press("id:story-make-ts");
+  await app.waitFor("id:artifact-code-editor", { timeout: LOAD_MS });
+  const ts = path(app);
+  await app.press("id:story-make-py");
+  await app.waitUntil(() => current(app) === "current:hello.py", { timeout: LOAD_MS });
+  const py = path(app);
+  await app.waitFor(`id:artifact-tree-row:${ts}`);
+  // One row: the menu offers to open it.
+  await app.rightClick(`id:artifact-tree-row:${py}`);
+  await app.waitFor("id:artifact-tree-menu");
+  expect(app.shows("id:artifact-tree-menu-open")).toBe(true);
+  await app.keyboard.press("escape");
+  await app.waitUntil(() => !app.shows("id:artifact-tree-menu"));
+  // The file on screen and a ⌘-clicked one: the menu is for several, and the file stays open.
+  await app.keyboard.down("mod");
+  await app.press(`id:artifact-tree-row:${ts}`);
+  await app.keyboard.up("mod");
+  expect(current(app)).toBe("current:hello.py");
+  await app.rightClick(`id:artifact-tree-row:${ts}`);
+  await app.waitFor("id:artifact-tree-menu");
+  expect(app.shows("id:artifact-tree-menu-open")).toBe(false);
+  await app.keyboard.press("escape");
+  await app.waitUntil(() => !app.shows("id:artifact-tree-menu"));
+});
+
 afterAll(async () => {
   const app = await story();
   await app.press("id:story-clean");

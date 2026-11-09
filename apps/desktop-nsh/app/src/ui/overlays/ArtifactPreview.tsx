@@ -13,7 +13,7 @@
  * (list open) and the save shortcut are `keymap`; opening a file with the system or in Finder is the
  * Tauri command `open_workspace_path` the shell bridges (`openWorkspacePath`).
  */
-import { cleanup, colorScheme, computed, Clipboard, effect, keymap, PanResponder, Scroll, signal, Text, untracked, View } from "nsh";
+import { cleanup, colorScheme, computed, Clipboard, effect, keymap, PanResponder, signal, Text, untracked, View, windowSize } from "nsh";
 import type { Annotation, Attachment, CreateAnnotationRequest, PatchAnnotationRequest, SessionSummary } from "@real-bot/protocol";
 import { ANNOTATION_BATCH_MAX } from "@real-bot/protocol";
 import { ApiError } from "../../m/api.ts";
@@ -602,7 +602,10 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
         </View>
         <If when={treeOpen()}>
           <BottomSheet title={treeLabel()} closeLabel={t().common.close} onClose={() => treeOpen.set(false)}>
-            <Scroll class="shrink min-h-0">{treeView()}</Scroll>
+            {/* The tree scrolls itself and makes the rows in view, so it needs a height: most of the screen. */}
+            <View class="shrink min-h-0" style={{ height: Math.round(windowSize().height * 0.6) }}>
+              {treeView()}
+            </View>
           </BottomSheet>
         </If>
       </If>

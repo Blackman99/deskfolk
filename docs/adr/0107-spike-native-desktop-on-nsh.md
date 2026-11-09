@@ -290,3 +290,21 @@ Tauri 版的界面是信使（Svelte）在 WKWebView 里跑。对比时用信使
 The Tauri build's interface is the messenger (Svelte) in a WKWebView. For the comparison the messenger's production build ran in Playwright's WebKit (the same engine, JavaScriptCore with its JIT), against the same dev daemon and data as NSH, with the same measurements (the same six conversations, each opened once and then again; streaming by events handed to the runtime as in NSH, each token counted through the interface update and layout). The real Tauri program was not used: that would take driving it on the screen.
 
 NSH leads on start-up and memory; it now switches conversations faster, mostly through today's changes (one stage, histories not read again, the sidebar and the stage not rebuilding rows that did not change), while the messenger still reads the page again on every pick; Tauri streams slightly faster. The same JavaScript is still 3–30 times slower in QuickJS than in JavaScriptCore; NSH catches up by doing less and by drawing with native views. Dragging dividers, scrolling and typing latency were not compared side by side here.
+
+## 补记 2026-11-09（五）：代码编辑器丢字，和文件树换成 NSH 的 `Tree` / Addendum 2026-11-09 (5): the code editor lost typing, and the file tree moves onto NSH's `Tree`
+
+nsh/base 的 `Editor` 不能受控（`value` 再从 `onChange` 写回）：写回的值晚一帧到，被编辑器当成一次新的编辑，盖掉其间打的字，真实窗口里打的字一个个被撤回；无头测试的 `type` 每个键都等应用安静，测不出来（宿主加了 `keys` 开发检查，往窗口发真实按键）。编辑器现在自己保管文本。`EditorRef.setValue` 是一次可撤销的编辑，所以外来的文本（换文件、重读、丢弃）都换一个新的 `Editor`，否则换文件后 ⌘Z 会把上一个文件的内容撤回来。加载器先写文本、再写磁盘文本，NSH 的 effect 在两次写之间就跑（Svelte 会合并），磁盘那一侧必须单独跟着 `baseline`，否则没改过的文件也被当成未保存。
+
+文件树原来用 `Each` 画每一行：不管在不在视野里都建，开合一个文件夹全部重建，每一行的高亮还要把整棵树走一遍。同一棵 1,740 行的树，在后台窗口里：
+
+| | `Each`（原来） | `Tree`（现在） |
+| --- | ---: | ---: |
+| 显示出来 | 2.1 s（建 1,740 行） | 51 ms（建可见的 64 行） |
+| 点选一个文件 | 3.5 s | 14–24 ms |
+| 合上 / 打开一个文件夹 | 2.5 s / 2.5 s，每次重建全部行 | 14–42 ms，只建新进视野的行 |
+
+现在的 `ArtifactTree` 用 `Tree` 的虚拟列表、原生滚动和键盘（方向键、Home/End、按字母跳、回车打开），行的样子和按法仍是自己的（`renderItem`）：行自己的按压先于 `Tree` 的，所以 ⌘/Shift 多选、右键菜单、拖到输入框照旧；文件夹的加载中、失败、空和截断说明是它下面的条目，懒加载还没列过的文件夹带一条加载中，才能展开。手机的底部弹层给树一个高度（窗口的六成），它才知道哪些行在视野里。
+
+`Editor` in nsh/base must not be controlled (`value` set again from `onChange`): the value comes back a frame late as an edit of its own, over the keys typed since, and in the real window typing was taken back key by key; headless `type` waits for quiet after every key, so the tests could not see it (the host gained a `keys` development check that posts real key events to the window). The editor now keeps its own text. `EditorRef.setValue` is an edit undo takes back, so text from outside (another file, a re-read, a discard) gets a new `Editor`; otherwise ⌘Z after a switch brought the last file's text back. The loader writes the text and then the disk text, and NSH's effects run between the two writes (Svelte batched them), so the disk side must follow `baseline` on its own, or an untouched file reads as unsaved.
+
+The file tree drew every row with `Each`: made whether in view or not, all made again when a folder opened or closed, and each row's highlight walked the whole tree. On one 1,740-row tree in a background window: shown 2.1 s → 51 ms (1,740 rows made → the 64 in view); a pick 3.5 s → 14–24 ms; closing / opening a folder 2.5 s each, every row rebuilt → 14–42 ms, only the rows coming into view made. `ArtifactTree` now uses `Tree`'s virtual list, native scrolling and keys (arrows, Home/End, typeahead, Return opens); the rows' look and presses stay its own (`renderItem`): a row's own press is heard instead of the Tree's, so ⌘/Shift picks, the context menu and dragging to a composer work as before; a folder's loading, failed, empty and truncation lines are items under it, and a lazy folder not yet listed carries a loading line so that it can open. The phone's bottom sheet gives the tree a height (six tenths of the window), which it needs to know which rows are in view.
