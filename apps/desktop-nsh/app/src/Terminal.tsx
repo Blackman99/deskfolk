@@ -87,9 +87,26 @@ export function CanvasTerminal(props: { id: string; onExit?: () => void }) {
   let input: { focus(): void } | undefined;
   const early: StreamFrame[] = [];
 
+  // One request at a time, what was typed meanwhile sent together after it. A request per key, all
+  // in flight at once, reached the shell out of order: `exit 3⏎` typed quickly ran as `xi3⏎`.
+  let unsent = "";
+  let sending = false;
   const send = (text: string) => {
     if (!text) return;
-    void runtime.client?.terminalInput(id, encode(text)).catch((e) => console.error("terminal input", String(e)));
+    unsent += text;
+    if (sending) return;
+    sending = true;
+    void (async () => {
+      while (unsent) {
+        const chunk = unsent;
+        unsent = "";
+        const client = runtime.client;
+        if (!client) break;
+        await client.terminalInput(id, encode(chunk)).catch((e) => console.error("terminal input", String(e)));
+      }
+      unsent = "";
+      sending = false;
+    })();
   };
 
   const stop = runtime.onStream(id, (frame) => {
