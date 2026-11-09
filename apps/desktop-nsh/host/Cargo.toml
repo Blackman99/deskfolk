@@ -56,7 +56,8 @@ objc2-app-kit = { workspace = true, features = [
 ] }
 objc2-quartz-core = { workspace = true, features = ["CALayer", "objc2-core-graphics"] }
 objc2-core-graphics = { workspace = true, features = ["CGBitmapContext", "CGColorSpace", "CGContext", "CGImage"] }
-objc2-core-foundation = { workspace = true, features = ["CFCGTypes"] }
+# CFPreferences: the app's own `AppleFontSmoothing` (`app.rs`, `text_like_the_messenger`).
+objc2-core-foundation = { workspace = true, features = ["CFCGTypes", "CFNumber", "CFPreferences", "CFString"] }
 objc2-av-foundation = { version = "0.3.2", default-features = false, features = [
     "std", "block2", "AVCaptureDevice", "AVMediaFormat",
 ] }

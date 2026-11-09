@@ -97,8 +97,27 @@ define_class!(
     }
 );
 
+/// Text as light as the messenger's. Its CSS sets `-webkit-font-smoothing: antialiased`, which turns
+/// off macOS's font smoothing, the stem darkening CoreText adds by default; NSH draws with that
+/// default, about 18% more ink on the same text (WebKit's `auto` and `antialiased` match CoreText
+/// with smoothing on and off exactly). CoreGraphics takes its default from the app's own
+/// `AppleFontSmoothing` preference: a launch argument or a registered default does not reach it,
+/// so the app's domain holds 0, written before anything is drawn.
+fn text_like_the_messenger() {
+    use objc2_core_foundation::{CFNumber, CFPreferencesAppSynchronize, CFPreferencesSetAppValue, CFString, kCFPreferencesCurrentApplication};
+    let key = CFString::from_static_str("AppleFontSmoothing");
+    let off = CFNumber::new_i32(0);
+    // SAFETY: the preference holds a number, and a CFNumber is a property list; the application id
+    // is CoreFoundation's own constant.
+    unsafe {
+        CFPreferencesSetAppValue(&key, Some(&**off), kCFPreferencesCurrentApplication);
+        CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication);
+    }
+}
+
 pub fn run(config: Config) -> std::process::ExitCode {
     let mtm = MainThreadMarker::new().expect("the shell starts on the main thread");
+    text_like_the_messenger();
     let watch = config.watch.then(|| config.bundle.clone());
     let snapshots = config.snapshots.clone();
     // A packaged build joins the login items on launch (`register_login_item`); a dev build never.
