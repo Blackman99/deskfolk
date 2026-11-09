@@ -43,6 +43,7 @@ import { ArtifactTreeMenu } from "./ArtifactTreeMenu";
 import { DangerDialog } from "./DangerDialog";
 import { FileDownload } from "./FileDownload";
 import type { ArtifactPane } from "./ShellPreview";
+import { onGlassCard } from "../glass";
 
 type PendingNav = null | { kind: "close"; afterClose?: () => void } | { kind: "node"; node: ArtifactTreeNode } | { kind: "leave"; after: () => void };
 
@@ -106,6 +107,8 @@ function held<T extends object>(source: T): T {
 export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
   const props = held(hosted);
   const t = () => copy();
+  /** On a glass card (`glass.ts`) this leaves its ground to the card, as `content-glass.css` does. */
+  const glassCard = onGlassCard();
   const relpath = () => props.relpath;
   const mode = () => props.mode ?? "cited";
   const attachment = () => props.attachment ?? null;
@@ -510,7 +513,7 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
       role="region"
       testID="artifact-preview"
       accessibilityLabel={mode() === "workspace" ? t().stream.workspaceExplorer : t().stream.artifactPreview}
-      class="flex-1 min-w-0 min-h-0 bg-pane"
+      class={`flex-1 min-w-0 min-h-0 ${glassCard() ? "" : "bg-pane"}`}
       onLayout={(e) => paneWidth.set(e.bounds.size.width || Number.POSITIVE_INFINITY)}
     >
       {/* The desktop names and closes this pane on the workbench tab, so the bar is a phone's (or a sheet's). */}

@@ -37,6 +37,7 @@ import { trackReading } from "./stage-reading";
 import { activeMessageId, createRowKeeper, hiddenWaitingFromRows, inverseIndexOf, invertedRows, stageRows } from "./stage-rows";
 import { createStageScroll } from "./stage-scroll";
 import { settled } from "../workbench/drag-settle";
+import { onGlassCard } from "../glass";
 
 export function ChatStage(props: {
   selected: SessionSummary | null;
@@ -45,6 +46,8 @@ export function ChatStage(props: {
   onCreateBot: () => void;
 }) {
   const t = () => copy();
+  /** On a glass card (`glass.ts`) this leaves its ground to the card, as `content-glass.css` does. */
+  const glassCard = onGlassCard();
   const selected = () => props.selected;
   const ctx = createStageContext(selected);
   const view = ctx.view;
@@ -113,7 +116,7 @@ export function ChatStage(props: {
   return (
     <View
       testID="chat-stage"
-      class="flex-1 min-h-0 relative bg-pane overflow-hidden"
+      class={`flex-1 min-h-0 relative overflow-hidden ${glassCard() ? "" : "bg-pane"}`}
       onLayout={(e) => {
         width.set(e.bounds.size.width);
         stageHeight.set(e.bounds.size.height);
@@ -147,7 +150,7 @@ export function ChatStage(props: {
                 each={inverted()}
                 inverted
                 keyExtractor={(row) => row.id}
-                class="flex-1 bg-pane"
+                class={`flex-1 ${glassCard() ? "" : "bg-pane"}`}
                 contentClass="py-5 gap-4"
                 contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20 }}
                 estimatedItemSize={96}

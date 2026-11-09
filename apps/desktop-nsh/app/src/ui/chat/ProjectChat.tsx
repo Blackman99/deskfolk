@@ -34,6 +34,7 @@ import { ProjectWorking } from "./project-chat-working";
 import { trackReading } from "./stage-reading";
 import { createStageScroll } from "./stage-scroll";
 import { settled } from "../workbench/drag-settle";
+import { onGlassCard } from "../glass";
 
 export function ProjectChat(props: {
   selected: SessionSummary;
@@ -41,6 +42,8 @@ export function ProjectChat(props: {
   onOpenArtifact: (relpath: string, att?: Attachment, messageId?: string) => void;
 }) {
   const t = () => copy();
+  /** On a glass card (`glass.ts`) this leaves its ground to the card, as `content-glass.css` does. */
+  const glassCard = onGlassCard();
   const selected = () => props.selected;
   const state = createProjectState(selected, (...args) => props.onOpenArtifact(...args));
   const view = state.view;
@@ -106,7 +109,7 @@ export function ProjectChat(props: {
   return (
     <View
       testID="project-chat"
-      class="flex-1 min-h-0 relative bg-pane overflow-hidden"
+      class={`flex-1 min-h-0 relative overflow-hidden ${glassCard() ? "" : "bg-pane"}`}
       onLayout={(e) => {
         width.set(e.bounds.size.width);
         stageHeight.set(e.bounds.size.height);
@@ -128,7 +131,7 @@ export function ProjectChat(props: {
                 each={inverted()}
                 inverted
                 keyExtractor={(row) => row.id}
-                class="flex-1 bg-pane"
+                class={`flex-1 ${glassCard() ? "" : "bg-pane"}`}
                 contentClass="py-5 gap-[14px]"
                 contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20 }}
                 estimatedItemSize={80}

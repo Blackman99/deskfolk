@@ -31,6 +31,7 @@ import { FileIcon } from "./FileIcon";
 import { treeRange, visibleTreePaths } from "../../m/overlays/artifact-tree.ts";
 import { pressWorkspacePaths } from "../workspace-drag";
 import { tip } from "../tip";
+import { onGlassCard } from "../glass";
 
 /** The lines that are not files: ids no path can be. */
 const STATE = "\u0000state:";
@@ -70,6 +71,8 @@ export function ArtifactTree(props: {
   expandedLazy?: Set<string>;
   onExpandedLazyChange?: (next: Set<string>) => void;
 }) {
+  /** On a glass card (`glass.ts`) this leaves its ground to the card, as `content-glass.css` does. */
+  const glassCard = onGlassCard();
   /** Rows picked with ⌘/Ctrl or Shift. Empty: the file on screen is the one highlighted. */
   const picked = signal<string[]>([]);
   let anchor: string | null = null;
@@ -350,7 +353,7 @@ export function ArtifactTree(props: {
     });
 
   return (
-    <View testID="workspace-tree" class="min-w-0 flex-1 bg-sidebar-bg border-r border-line">
+    <View testID="workspace-tree" class={`min-w-0 flex-1 ${glassCard() ? "" : "bg-sidebar-bg"} border-r border-line`}>
       <Tree
         ref={(ref: TreeRef) => {
           tree = ref;

@@ -18,8 +18,9 @@ import { state } from "../../lib/reactive";
  * theme's tokens), measuring the floors (NSH: the contrast of each `floor()` against its grounds),
  * the way-back key, the kind of window, and (milestone 2) the report and the catalog. Without one
  * nothing is painted or reported, and the behaviour still applies. The floor check is asynchronous
- * (views are measured), so a profile applied meanwhile wins over a stale answer. Code colours,
- * glass content and the stylesheet cache are the look's to do (none in milestone 1).
+ * (views are measured), so a profile applied meanwhile wins over a stale answer. Code colours and
+ * the stylesheet cache are the look's to do (none in milestone 1); glass content reads the
+ * behaviour in `ui/glass.ts`.
  */
 import {
   applyInterfacePatch,

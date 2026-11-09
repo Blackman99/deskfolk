@@ -16,7 +16,7 @@
 import { signal, effect, untracked, View, type PressEvent, type ViewRef } from "nsh";
 import { copy } from "../../runtime";
 import type { LeafNode } from "../../m/workbench/layout-types.ts";
-import { darkGlass } from "../glass";
+import { contentGlassShare, darkGlass, glassOf, InPaneBody } from "../glass";
 import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";
 import { EmptyPane, NewTabMenu } from "./leaf-menus";
@@ -89,6 +89,8 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
    * ground above it too, and only the gutters show the glass (`glass.ts`).
    */
   const head = () => darkGlass() && !props.floating && !narrow() && !empty();
+  /** A docked card lets the glass through when glass content is asked for (`glass.ts`); a floating one lies over other content and stays solid. */
+  const glassShare = () => (props.floating || narrow() ? null : contentGlassShare());
 
   const newTabOpen = signal(false);
   const newTabFilter = signal("");
@@ -131,8 +133,9 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
 
   const bodyClass = () => {
     if (props.floating || narrow()) return "bg-pane";
-    if (head()) return "mx-1 mb-1 rounded-b-(--radius-lg) bg-pane";
-    return `mx-1 mb-1 rounded-(--radius-lg) bg-pane ${cornerStrip() ? "mt-1" : ""}`;
+    const ground = glassShare() === null ? "bg-pane" : "";
+    if (head()) return `mx-1 mb-1 rounded-b-(--radius-lg) ${ground}`;
+    return `mx-1 mb-1 rounded-(--radius-lg) ${ground} ${cornerStrip() ? "mt-1" : ""}`;
   };
 
   return (
@@ -153,7 +156,11 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
       </If>
       {/* The head's band, under the strip: a quiet pane fades its tabs, not the band. */}
       <If when={head()}>
-        <View accessible={false} class="absolute left-1 right-1 top-1 h-[40px] rounded-t-(--radius-lg) bg-ground" style={{ pointerEvents: "none" }} />
+        <View
+          accessible={false}
+          class={`absolute left-1 right-1 top-1 h-[40px] rounded-t-(--radius-lg) ${glassShare() === null ? "bg-ground" : ""}`}
+          style={{ pointerEvents: "none", backgroundColor: glassShare() === null ? undefined : glassOf("ground", glassShare()!) }}
+        />
       </If>
       <If when={!(empty() && !props.onMenu && !props.onClosePane && !props.floating)}>
         <LeafStrip
@@ -216,17 +223,20 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
         style={{
           borderRadius: props.floating ? 0 : undefined,
           boxShadow: props.floating || narrow() ? undefined : shadow(dimmed() ? "pane-flat" : "pane"),
+          backgroundColor: glassShare() === null ? undefined : glassOf("pane", glassShare()!),
         }}
       >
-        <Each of={bodyKeys()} key={(id) => id}>
-          {(id) => {
-            // Called once per body, untracked: read inside the insert, `leaf()` made every layout commit
-            // (a new leaf object each time) build the pane's content again, and that mount committed
-            // the layout again — a pane dragged in from the sidebar never stopped remounting.
-            const body = untracked(() => props.tabBody(id() === CHAT_BODY ? liveActiveTab(leaf) : liveTab(leaf, id()), leaf().id));
-            return <View class="flex-1 min-h-0">{body}</View>;
-          }}
-        </Each>
+        <InPaneBody.Provider value={true}>
+          <Each of={bodyKeys()} key={(id) => id}>
+            {(id) => {
+              // Called once per body, untracked: read inside the insert, `leaf()` made every layout commit
+              // (a new leaf object each time) build the pane's content again, and that mount committed
+              // the layout again — a pane dragged in from the sidebar never stopped remounting.
+              const body = untracked(() => props.tabBody(id() === CHAT_BODY ? liveActiveTab(leaf) : liveTab(leaf, id()), leaf().id));
+              return <View class="flex-1 min-h-0">{body}</View>;
+            }}
+          </Each>
+        </InPaneBody.Provider>
         <If when={activeIds().length === 0}>
           <EmptyPane
             leafId={leaf().id}
