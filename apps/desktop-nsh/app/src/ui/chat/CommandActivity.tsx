@@ -4,10 +4,14 @@
  * it prints; it joins this list when it ends. One command's output opens at a time, and only when
  * you ask for it; a command that printed nothing is a plain line.
  *
- * Output is drawn as plain monospaced text: Shiki's highlighting (`command-output.ts`) paints HTML.
+ * Output is painted as the messenger paints it (`command-output.ts`'s `outputLang`: a viewed file by
+ * its name, JSON and diffs by their look, anything else as a log), in the code colours of chat
+ * (`code-colors.tsx`). Output with colour codes of its own is shown plain, without them.
  */
-import { effect, Scroll, signal, Text, View, type JSX, type ScrollRef } from "nsh";
+import { computed, effect, Scroll, signal, Text, View, type JSX, type ScrollRef } from "nsh";
 import { formatDuration, type CommandRow } from "../../m/chat/command-activity.ts";
+import { outputLang } from "../../m/chat/command-output.ts";
+import { codeColorsAvailable, codeSurface, codeTheme, colorSpans, highlightCode } from "../code-colors";
 import { commandLine, splitProgram } from "../../m/chat/command-line.ts";
 import { copy } from "../../runtime";
 import { Icon } from "../Icon";
@@ -16,6 +20,23 @@ import { shadow } from "../styles";
 import { tip } from "../tip";
 
 const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
+
+/** A finished command's output, in the colours of how it reads. */
+function OutputText(props: { text: string; command: string | null }) {
+  const runs = computed(() => {
+    if (!codeColorsAvailable()) return null;
+    const lang = outputLang(props.command, props.text);
+    return lang === "ansi" ? null : highlightCode(props.text, lang, codeTheme("chat"));
+  });
+  return (
+    <Text
+      class={`py-[10px] pr-[14px] text-[11.5px] leading-[1.6] font-mono text-ink ${narrowWindow() ? "pl-[14px]" : "pl-[32px]"}`}
+      style={runs() ? { color: codeSurface()?.fg ?? runs()!.fg } : undefined}
+    >
+      {runs() ? colorSpans(props.text, runs()!) : props.text.replace(ANSI, "")}
+    </Text>
+  );
+}
 
 function isFailed(row: CommandRow): boolean {
   if (row.endedAs) return false;
@@ -139,12 +160,12 @@ export function CommandActivity(props: {
                         </View>
                       </If>
                       <If when={open()}>
-                        <Scroll testID="command-output" class="max-h-[230px] border-t border-line-subtle bg-code-bg">
-                          <Text
-                            class={`py-[10px] pr-[14px] text-[11.5px] leading-[1.6] font-mono text-ink ${narrowWindow() ? "pl-[14px]" : "pl-[32px]"}`}
-                          >
-                            {row().text.replace(ANSI, "")}
-                          </Text>
+                        <Scroll
+                          testID="command-output"
+                          class="max-h-[230px] border-t border-line-subtle bg-code-bg"
+                          style={codeSurface() ? { backgroundColor: codeSurface()!.bg } : undefined}
+                        >
+                          <OutputText text={row().text} command={row().command ?? null} />
                         </Scroll>
                       </If>
                     </View>

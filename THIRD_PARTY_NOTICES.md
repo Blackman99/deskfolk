@@ -405,3 +405,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
+
+## giallo
+
+Code colours in `apps/desktop-nsh` (`app/native/src/highlight.rs`) use [giallo](https://github.com/getzola/giallo) 0.6.0, used unmodified and linked into the desktop builds, released under the European Union Public Licence v. 1.2 (EUPL-1.2). Its source is at <https://github.com/getzola/giallo> and on crates.io; the licence text is in the crate's `LICENSE` file and at <https://interoperable-europe.ec.europa.eu/collection/eupl/eupl-text-eupl-12>. Its built-in grammars and themes are those of [shikijs/textmate-grammars-themes](https://github.com/shikijs/textmate-grammars-themes), each under the licence that repository lists for it.

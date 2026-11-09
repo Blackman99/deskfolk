@@ -12,12 +12,14 @@ mod office;
 #[cfg(target_arch = "wasm32")]
 #[path = "office_web.rs"]
 mod office;
+mod highlight;
 mod markdown;
 mod palette;
 mod pdf;
 mod rfb;
 mod terminal;
 
+pub use highlight::{CodeColors, CodeColorsElement, CodeColorsProps, Highlight, code_colors};
 pub use markdown::Markdown;
 pub use office::Office;
 pub use pdf::Documents;
@@ -27,5 +29,5 @@ pub use terminal::{TerminalGrid, TerminalGridElement, TerminalGridEvent, Termina
 /// What TSX may import from `deskfolk/native`.
 #[native_module("deskfolk/native")]
 fn native(registry: &mut Registry) {
-    registry.register::<TerminalGrid>().module::<Terminals>().module::<Documents>().module::<Markdown>().module::<Office>().module::<Screens>();
+    registry.register::<TerminalGrid>().register::<CodeColors>().module::<Terminals>().module::<Documents>().module::<Markdown>().module::<Highlight>().module::<Office>().module::<Screens>();
 }

@@ -1,6 +1,17 @@
 import { expect, test } from "nsh/test";
 import { openStory } from "./fixture";
 
+test("a code block takes the messenger's code colours, GitHub's light and dark", async () => {
+  const app = await openStory("shared");
+  await app.waitFor("id:md", { timeout: 10_000 });
+  await app.setColorScheme("light");
+  await app.waitUntil(() => app.spanStyle("id:md >> text:const").color.toLowerCase() === "#d73a49ff");
+  // The number, in GitHub's constant blue.
+  expect(app.spanStyle("id:md >> text:1;").color.toLowerCase()).toBe("#005cc5ff");
+  await app.setColorScheme("dark");
+  await app.waitUntil(() => app.spanStyle("id:md >> text:const").color.toLowerCase() === "#f97583ff");
+});
+
 test("Markdown names a file, a picture and Bots as chips that open them", async () => {
   const app = await openStory("shared");
   await app.waitFor("id:md", { timeout: 10_000 });

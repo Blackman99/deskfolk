@@ -13,9 +13,12 @@ import { runtime } from "./runtime";
 import { PdfPane, TerminalPane } from "./Tools";
 import { PairingScreen } from "./ui/remote/PairingScreen";
 import { Shell } from "./ui/shell/Shell";
+import { warmCodeColors } from "./ui/code-colors";
 
 export function Main() {
   runtime.start();
+  // The code colours' grammars and themes, read while the runtime connects.
+  warmCodeColors();
   // What start-up checks wait for (scripts/ci-smoke.ts, package.ts --measure): the first snapshot.
   let announced = false;
   effect(() => {

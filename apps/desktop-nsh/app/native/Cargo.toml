@@ -1,6 +1,6 @@
 [package]
 name = "deskfolk-app-native"
-description = "The Deskfolk app's own Rust for every NSH target (macOS, Windows, Linux, web): the terminal (vt100 + canvas), PDF pages (hayro), Office files (calamine, zip, quick-xml) and the remote screen (an RFB client)."
+description = "The Deskfolk app's own Rust for every NSH target (macOS, Windows, Linux, web): the terminal (vt100 + canvas), PDF pages (hayro), Office files (calamine, zip, quick-xml), the remote screen (an RFB client) and code colours (giallo)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -29,5 +29,9 @@ jpeg-decoder = { version = "0.3.2", default-features = false }
 # requires) turns on `getrandom` 0.4's `wasm_js`, and under the `getrandom_backend="custom"` cfg
 # NSH adds to every web build `getrandom` 0.4 does not compile. The web gets `src/office_web.rs`.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Code colours (`src/highlight.rs`): VS Code's TextMate grammars with Shiki's themes, as the
+# messenger's Shiki paints code. Its built-in grammars and themes come as a zstd dump (C), so not on
+# the web for now. EUPL-1.2.
+giallo = { version = "=0.6.0", features = ["dump"] }
 calamine = { version = "0.38", features = ["dates"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }

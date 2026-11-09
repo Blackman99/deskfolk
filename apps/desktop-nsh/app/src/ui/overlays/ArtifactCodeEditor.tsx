@@ -18,6 +18,11 @@
  * disk text, and in between the buffer looked unsaved. It stayed so, and the next switch asked
  * about an edit nobody made.
  *
+ * The colours are the messenger's (`code-colors.tsx`: Vitesse, or the code theme your interface
+ * chose, with its surface), as decorations over the Editor's own highlighting turned off. They are
+ * read again a moment after the last edit; meanwhile the Editor carries them with the text. Past
+ * `CODE_COLORS_LIMIT`, or where there are none (the web), the Editor's own colours stay.
+ *
  * TSX has no `bind:this`/exports: the methods the Svelte exports come out as an
  * `ArtifactEditorHandle`, handed to `handle` once mounted and `null` when it goes.
  * Not ported: `loadMonaco` (no Monaco here); Monaco's find widget is a small find bar of
@@ -25,12 +30,13 @@
  * `openReplace` opens the same bar). A drawn annotation moves with edits, but a click on its
  * mark finds it by where it was drawn.
  */
-import { Overlay, Text, View, cleanup, effect, signal, untracked, type Bounds } from "nsh";
+import { Overlay, Text, View, cleanup, computed, effect, signal, untracked, type Bounds } from "nsh";
 import { Editor, Input, type EditorDecoration, type EditorRef, type EditorSelection } from "nsh/base";
 import type { Annotation } from "@real-bot/protocol";
 import { wholeLineRange, type EditorRange } from "../../m/annotations/text-range.ts";
 import { baseName } from "../../m/paths.ts";
 import { copy } from "../../runtime";
+import { codeColorsAvailable, codeSurface, codeTheme, colorDecorations, highlightCode } from "../code-colors";
 import { IconButton } from "../IconButton";
 import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";
@@ -106,12 +112,35 @@ export function ArtifactCodeEditor(props: {
   };
   syncDirty();
 
-  const marks = () => annotationDecorations(props.annotations ?? [], text());
-  const decorations = (): EditorDecoration[] => {
-    const m = marks();
-    drawn = m.drawn;
-    return [...m.decorations, ...flash()];
+  /** The text the colours were read from: the buffer a moment after the last edit, at once when it comes from outside. */
+  const colorSource = signal(text());
+  let colorTimer: ReturnType<typeof setTimeout> | null = null;
+  const colorSoon = (value: string) => {
+    if (colorTimer) clearTimeout(colorTimer);
+    colorTimer = setTimeout(() => {
+      colorTimer = null;
+      colorSource.set(value);
+    }, 150);
   };
+  const runs = computed(() => (codeColorsAvailable() ? highlightCode(colorSource(), baseName(props.path), codeTheme("editor"), false) : null));
+  const colorDecos = computed(() => {
+    const r = runs();
+    return r ? colorDecorations(r) : [];
+  });
+  const surface = () => codeSurface();
+
+  const marks = () => annotationDecorations(props.annotations ?? [], text());
+  /** The same array while nothing in it changed: the Editor takes a new one whole, colours and all. */
+  const decorations = computed(
+    (): EditorDecoration[] => {
+      const m = marks();
+      drawn = m.drawn;
+      const colors = colorDecos();
+      const lit = flash();
+      return m.decorations.length === 0 && lit.length === 0 ? colors : [...colors, ...m.decorations, ...lit];
+    },
+    { equals: (a, b) => a === b || (a.length === b.length && a.every((d, i) => d === b[i])) },
+  );
 
   const revealAnnotation = (id: string) => {
     const item = marks().drawn.find((d) => d.id === id);
@@ -133,6 +162,8 @@ export function ArtifactCodeEditor(props: {
     loaded = folded;
     if (folded === text()) return false;
     text.set(folded);
+    if (colorTimer) clearTimeout(colorTimer);
+    colorSource.set(folded);
     generation.set(generation() + 1);
     return true;
   };
@@ -165,6 +196,7 @@ export function ArtifactCodeEditor(props: {
   cleanup(() => {
     props.handle?.(null);
     if (flashTimer) clearTimeout(flashTimer);
+    if (colorTimer) clearTimeout(colorTimer);
   });
 
   // A new `code` (another file, or this one read again) replaces a buffer with none of the person's
@@ -230,6 +262,7 @@ export function ArtifactCodeEditor(props: {
         editor = node;
       }}
       class="flex-1 min-h-0 bg-pane"
+      style={surface() ? { backgroundColor: surface()!.bg } : undefined}
       defaultValue={untracked(text)}
       language={baseName(props.path)}
       readOnly={props.readOnly === true}
@@ -238,6 +271,8 @@ export function ArtifactCodeEditor(props: {
       lineHeight={18}
       tabSize={2}
       scrollBeyondLastLine={false}
+      highlighting={runs() === null}
+      styles={runs() ? { content: { color: surface()?.fg ?? runs()!.fg } } : undefined}
       decorations={decorations()}
       gutterDecorationsWidth={4}
       search={findOpen() && query() !== "" ? { query: query() } : null}
@@ -246,6 +281,7 @@ export function ArtifactCodeEditor(props: {
       onChange={(e) => {
         text.set(e.value);
         syncDirty();
+        colorSoon(e.value);
       }}
       onSelectionChange={(e) => void onSelection(e.selections)}
       onLineNumberPress={(e) => onLineNumber(e.line)}
