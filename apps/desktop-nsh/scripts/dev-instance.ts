@@ -3,8 +3,10 @@
  * so the installed stable Deskfolk keeps 17890, its data and its credentials while this one is
  * debugged beside it. Nothing here may fall back to the stable instance's values.
  */
+import { spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { defaultAppDataDir, KEYCHAIN_SERVICE, LOCAL_API_BIND, LOCAL_API_PORT } from "../../../packages/protocol/src/index.ts";
 
 export const DEV_HOST = "127.0.0.1";
@@ -16,6 +18,43 @@ export const DEV_ORIGIN = `http://${DEV_BIND}`;
 export const DEV_KEYCHAIN_SERVICE = `${KEYCHAIN_SERVICE}.nsh-dev`;
 export const DEV_BUNDLE_ID = "com.real-bot.desktop.nsh-dev";
 export const DEV_APP_NAME = "Deskfolk Dev";
+
+/**
+ * The app's icon, the one every build wears (`apps/desktop/scripts/app-icon` makes it), and its
+ * name in a bundle's Resources (`CFBundleIconFile`; the shell also sets it on the Dock from there).
+ */
+export const APP_ICON = resolve(import.meta.dir, "../../desktop/src-tauri/icons/icon.icns");
+export const APP_ICON_FILE = "icon.icns";
+
+/** Puts the app icon in `app`'s Resources; true when it was missing or different. */
+export function placeAppIcon(app: string, icon: string = APP_ICON): boolean {
+  const resources = join(app, "Contents", "Resources");
+  const target = join(resources, APP_ICON_FILE);
+  const bytes = readFileSync(icon);
+  try {
+    if (readFileSync(target).equals(bytes)) return false;
+  } catch {
+    // Not there yet.
+  }
+  mkdirSync(resources, { recursive: true });
+  writeFileSync(target, bytes);
+  return true;
+}
+
+/**
+ * Launch Services and the icon cache keep what they read when they first saw a bundle, and the
+ * icon cache goes by the bundle directory's own mtime, which writing files inside it never moves:
+ * a dev app first seen without an icon stayed blank (the Tauri shell's `dev_bundle.rs` met this).
+ * So the directory's time moves, then the bundle is registered again.
+ */
+export function registerAppIcon(app: string, now: Date = new Date()): void {
+  utimesSync(app, now, now);
+  spawnSync(
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+    ["-f", app],
+    { stdio: "ignore" },
+  );
+}
 
 type Where = { platform?: string; env?: Record<string, string | undefined> };
 

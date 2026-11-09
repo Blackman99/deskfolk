@@ -18,7 +18,7 @@ import { copyFileSync, existsSync, mkdirSync, watch, writeFileSync } from "node:
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { LOCAL_API_NAME } from "../../../packages/protocol/src/index.ts";
-import { DEV_APP_NAME, DEV_BUNDLE_ID, DEV_ORIGIN, devInstance } from "./dev-instance";
+import { APP_ICON_FILE, DEV_APP_NAME, DEV_BUNDLE_ID, DEV_ORIGIN, devInstance, placeAppIcon, registerAppIcon } from "./dev-instance";
 
 const root = resolve(import.meta.dir, "..");
 const repo = resolve(root, "../..");
@@ -80,9 +80,11 @@ function buildShell(): void {
   run(cargo, ["build", "-p", "deskfolk-nsh"], root);
   mkdirSync(dirname(executable), { recursive: true });
   copyFileSync(join(root, "target", "debug", "deskfolk-nsh"), executable);
+  const iconChanged = placeAppIcon(bundleApp);
   writeFileSync(join(bundleApp, "Contents", "Info.plist"), infoPlist());
-  // Ad hoc, like `nsh package`: enough for this Mac's Notification Center.
+  // Ad hoc, like `nsh package`: enough for this Mac's Notification Center. It seals the icon too.
   run("codesign", ["--force", "--sign", "-", bundleApp], root);
+  if (iconChanged) registerAppIcon(bundleApp);
 }
 
 function infoPlist(): string {
@@ -94,6 +96,7 @@ function infoPlist(): string {
   <key>CFBundleName</key><string>${DEV_APP_NAME}</string>
   <key>CFBundleDisplayName</key><string>${DEV_APP_NAME}</string>
   <key>CFBundleExecutable</key><string>deskfolk-nsh</string>
+  <key>CFBundleIconFile</key><string>${APP_ICON_FILE}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.0.0</string>
   <key>CFBundleVersion</key><string>1</string>

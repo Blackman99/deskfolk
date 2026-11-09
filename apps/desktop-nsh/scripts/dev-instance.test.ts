@@ -1,6 +1,18 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { KEYCHAIN_SERVICE, LOCAL_API_PORT } from "../../../packages/protocol/src/index.ts";
-import { assertApartFromStable, devDataDir, devInstance, stableDataDir } from "./dev-instance";
+import {
+  APP_ICON,
+  APP_ICON_FILE,
+  assertApartFromStable,
+  DEV_APP_NAME,
+  devDataDir,
+  devInstance,
+  placeAppIcon,
+  stableDataDir,
+} from "./dev-instance";
 
 describe("the dev instance stays apart from the stable one", () => {
   const home = "/Users/someone";
@@ -35,5 +47,31 @@ describe("the dev instance stays apart from the stable one", () => {
   test("refuses the stable Keychain service", () => {
     const dev = { ...devInstance(home), keychainService: KEYCHAIN_SERVICE };
     expect(() => assertApartFromStable(dev, home)).toThrow(/stable Keychain service/);
+  });
+});
+
+describe("the dev app wears the app's icon", () => {
+  test("placed once in Resources, again only when it changes", () => {
+    const app = join(mkdtempSync(join(tmpdir(), "nsh-dev-icon-")), `${DEV_APP_NAME}.app`);
+    try {
+      expect(placeAppIcon(app)).toBe(true);
+      const placed = join(app, "Contents", "Resources", APP_ICON_FILE);
+      expect(readFileSync(placed).equals(readFileSync(APP_ICON))).toBe(true);
+      expect(placeAppIcon(app)).toBe(false);
+      writeFileSync(placed, "stale");
+      expect(placeAppIcon(app)).toBe(true);
+      expect(readFileSync(placed).equals(readFileSync(APP_ICON))).toBe(true);
+    } finally {
+      rmSync(dirname(app), { recursive: true, force: true });
+    }
+  });
+
+  test("is the icns every build wears, named in both bundles' Info.plist", () => {
+    expect(readFileSync(APP_ICON).subarray(0, 4).toString("latin1")).toBe("icns");
+    for (const script of ["dev.ts", "package.ts"]) {
+      const source = readFileSync(join(import.meta.dir, script), "utf8");
+      expect(source).toContain("<key>CFBundleIconFile</key><string>${APP_ICON_FILE}</string>");
+      expect(source).toContain("placeAppIcon(");
+    }
   });
 });

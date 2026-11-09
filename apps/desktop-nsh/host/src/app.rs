@@ -9,11 +9,12 @@ use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, ProtocolObject, Sel};
 use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
+use objc2::{AllocAnyThread, Message};
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSEventModifierFlags, NSImage,
-    NSMenu, NSMenuItem, NSStatusBar, NSStatusItem, NSWorkspace,
+    NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSControlStateValueOn, NSEventModifierFlags,
+    NSImage, NSMenu, NSMenuItem, NSStatusBar, NSStatusItem, NSWorkspace,
 };
-use objc2_foundation::{NSNotification, NSString, NSURL};
+use objc2_foundation::{NSBundle, NSNotification, NSString, NSURL};
 
 use crate::config::Config;
 
@@ -85,6 +86,14 @@ define_class!(
         fn show_window_action(&self, _sender: Option<&AnyObject>) {
             show(self.mtm());
         }
+
+        /// The menu bar menu's "查看全部用量…": a window forward, and its usage tab open. The app
+        /// keeps an event until it listens, so a window opened just now gets it too.
+        #[unsafe(method(showUsage:))]
+        fn show_usage_action(&self, _sender: Option<&AnyObject>) {
+            show(self.mtm());
+            crate::window::send_to_newest("tauri.event.pane-command", serde_json::json!("view-usage"));
+        }
     }
 );
 
@@ -102,14 +111,16 @@ pub fn run(config: Config) -> std::process::ExitCode {
     nsh_platform_macos::set_ui_sets(vec![nsh_base::registry(), deskfolk_app_native::registry()]);
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+    dock_icon(&app);
     let delegate: Retained<Delegate> = {
         let this = Delegate::alloc(mtm).set_ivars(());
         unsafe { msg_send![super(this), init] }
     };
     app.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
     app.setMainMenu(Some(&main_menu(mtm, &delegate)));
+    let data_dir = CONFIG.with(|c| c.get().map(|config| config.data_dir.clone()));
     TRAY.with(|t| {
-        let _ = t.set(tray(mtm, &delegate));
+        let _ = t.set(tray(mtm, &delegate, data_dir));
     });
     DELEGATE.with(|d| {
         let _ = d.set(delegate);
@@ -140,6 +151,23 @@ pub fn new_window(mtm: MainThreadMarker) {
 
 fn background() -> bool {
     CONFIG.with(|c| c.get().is_some_and(|config| config.background))
+}
+
+/// The app's icon in the Dock and the app switcher, from the bundle's own (`scripts/dev.ts` and
+/// `scripts/package.ts` put it there). Launch Services keeps the icon it read when it first saw a
+/// bundle, so a dev app it met without one would stay blank; set here, the Dock shows it anyway.
+/// A bare binary (the smoke check) has none and keeps the system's.
+fn dock_icon(app: &NSApplication) {
+    let path = NSBundle::mainBundle().pathForResource_ofType(Some(&NSString::from_str("icon")), Some(&NSString::from_str("icns")));
+    let image = path.and_then(|path| NSImage::initWithContentsOfFile(NSImage::alloc(), &path));
+    match image {
+        Some(image) => {
+            // SAFETY: the main thread, before the run loop; AppKit keeps its own reference.
+            unsafe { app.setApplicationIconImage(Some(&image)) };
+            log::info!("dock icon from the bundle's icon.icns");
+        }
+        None => log::info!("no icon.icns in the bundle; the Dock shows the system's"),
+    }
 }
 
 fn show(mtm: MainThreadMarker) {
@@ -209,18 +237,16 @@ fn main_menu(mtm: MainThreadMarker, delegate: &Delegate) -> Retained<NSMenu> {
     bar
 }
 
-/// The menu bar extra: show, a new window, quit.
-fn tray(mtm: MainThreadMarker, delegate: &Delegate) -> Retained<NSStatusItem> {
+/// The menu bar extra: what is used of your plans (`usage_tray.rs`), show, a new window, quit.
+/// It wears the Tauri app's mark, tinted by the menu bar like its own items.
+fn tray(mtm: MainThreadMarker, delegate: &Delegate, data_dir: Option<PathBuf>) -> Retained<NSStatusItem> {
     // NSVariableStatusItemLength.
     let status = NSStatusBar::systemStatusBar().statusItemWithLength(-1.0);
     if let Some(button) = status.button(mtm) {
-        let symbol = NSImage::imageWithSystemSymbolName_accessibilityDescription(
-            &NSString::from_str("person.2.fill"),
-            Some(&NSString::from_str("Deskfolk Dev")),
-        );
-        match symbol {
+        match crate::usage_tray::image_of(crate::usage_tray::MARK, crate::usage_tray::MARK_PX, crate::usage_tray::MARK_PT) {
             Some(image) => {
                 image.setTemplate(true);
+                image.setAccessibilityDescription(Some(&NSString::from_str("Deskfolk Dev")));
                 button.setImage(Some(&image));
             }
             None => button.setTitle(&NSString::from_str("DF")),
@@ -232,6 +258,10 @@ fn tray(mtm: MainThreadMarker, delegate: &Delegate) -> Retained<NSStatusItem> {
     menu.addItem(&NSMenuItem::separatorItem(mtm));
     menu.addItem(&item(mtm, "Quit Deskfolk Dev", Some(sel!(terminate:)), ""));
     status.setMenu(Some(&menu));
+    if let Some(data_dir) = data_dir {
+        let target: Retained<NSObject> = Retained::into_super(delegate.retain());
+        crate::usage_tray::start(menu.clone(), target, data_dir);
+    }
     match status.button(mtm).and_then(|b| b.window().map(|w| (b.image().is_some(), w.frame()))) {
         Some((image, frame)) => log::info!(
             "tray item in the menu bar at {:.0},{:.0} ({:.0}x{:.0}), symbol {image}, visible {}",
@@ -240,6 +270,31 @@ fn tray(mtm: MainThreadMarker, delegate: &Delegate) -> Retained<NSStatusItem> {
         None => log::warn!("tray item has no button window"),
     }
     status
+}
+
+/// Development checks: `tray` logs the menu bar menu's items, each with whether it wears an icon;
+/// `tray <title>` then picks the first item whose title starts with `title`, as a click would. The
+/// menu is never opened on the screen.
+fn tray_request(mtm: MainThreadMarker, title: &str) {
+    TRAY.with(|t| {
+        let Some(menu) = t.get().and_then(|status| status.menu(mtm)) else {
+            log::warn!("tray: no menu");
+            return;
+        };
+        let items = menu.itemArray();
+        for (index, item) in items.iter().enumerate() {
+            let icon = item.state() == NSControlStateValueOn && item.onStateImage().is_some();
+            let shown = if item.isSeparatorItem() { "—".to_string() } else { item.title().to_string() };
+            log::info!("tray item {index}: {shown}{}", if icon { " [icon]" } else { "" });
+        }
+        if title.is_empty() {
+            return;
+        }
+        match items.iter().position(|item| item.title().to_string().starts_with(title)) {
+            Some(index) => menu.performActionForItemAtIndex(index as isize),
+            None => log::warn!("tray: no item starts with {title}"),
+        }
+    });
 }
 
 /// The dev loop: `scripts/dev.ts` rebuilds the bundle on save; every window loads it again.
@@ -261,7 +316,8 @@ fn watch_bundle(path: PathBuf) {
 
 /// Development checks: `<dir>/request` asks the shell for something, by its first line: empty for
 /// a picture of every window, `new-window`, `badge <label>` (empty clears), `notify <text>`,
-/// `wheel <x> <y> <dy> [ctrl]`, `resize <w> <h> [steps] [ms]`, `drag <x0> <y0> <x1> <y1> [steps] [ms]`.
+/// `wheel <x> <y> <dy> [ctrl]`, `resize <w> <h> [steps] [ms]`, `drag <x0> <y0> <x1> <y1> [steps] [ms]`,
+/// `tray [title]`.
 fn watch_snapshot_requests(dir: PathBuf) {
     let _ = std::fs::create_dir_all(&dir);
     std::thread::spawn(move || {
@@ -284,6 +340,7 @@ fn watch_snapshot_requests(dir: PathBuf) {
                     ("resize", args) => crate::window::resize_first(args),
                     ("drag", args) => crate::window::drag_first(args),
                     ("keys", args) => crate::window::keys_first(args),
+                    ("tray", title) => tray_request(mtm, title),
                     ("notify", body) => {
                         if let Err(why) = crate::notify::post("dev-check", "Deskfolk Dev", body) {
                             log::warn!("notify: {why}");

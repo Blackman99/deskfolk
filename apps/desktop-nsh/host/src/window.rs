@@ -237,6 +237,15 @@ pub fn facts(id: u32) -> Option<(bool, bool, bool)> {
     })
 }
 
+/// Sends event `name` to the app in the newest window, the one `focus_newest` brings forward.
+pub fn send_to_newest(name: &str, data: serde_json::Value) {
+    WINDOWS.with_borrow(|windows| {
+        if let Some(entry) = windows.last() {
+            let _ = entry.host.send(name, data);
+        }
+    });
+}
+
 /// Sends event `name` to the app in `window` (`host.on(name)`), if it is one of ours.
 pub fn send_event(window: &NSWindow, name: &str, data: serde_json::Value) {
     WINDOWS.with_borrow(|windows| {

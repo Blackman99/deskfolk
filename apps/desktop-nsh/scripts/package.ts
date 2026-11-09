@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { DEV_APP_NAME, DEV_BUNDLE_ID } from "./dev-instance";
+import { APP_ICON_FILE, DEV_APP_NAME, DEV_BUNDLE_ID, placeAppIcon } from "./dev-instance";
 
 const root = resolve(import.meta.dir, "..");
 const repo = resolve(root, "../..");
@@ -61,6 +61,7 @@ mkdirSync(join(contents, "MacOS"), { recursive: true });
 mkdirSync(join(contents, "Resources"), { recursive: true });
 cpSync(join(root, "target", "release", "deskfolk-nsh"), join(contents, "MacOS", "deskfolk-nsh"));
 cpSync(join(out, "app"), join(contents, "Resources", "app"), { recursive: true, filter: (p) => !p.endsWith(".js.map") });
+placeAppIcon(app);
 writeFileSync(
   join(contents, "Info.plist"),
   `<?xml version="1.0" encoding="UTF-8"?>
@@ -71,6 +72,7 @@ writeFileSync(
   <key>CFBundleName</key><string>${DEV_APP_NAME}</string>
   <key>CFBundleDisplayName</key><string>${DEV_APP_NAME}</string>
   <key>CFBundleExecutable</key><string>deskfolk-nsh</string>
+  <key>CFBundleIconFile</key><string>${APP_ICON_FILE}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.0.0</string>
   <key>CFBundleVersion</key><string>1</string>
