@@ -9,10 +9,14 @@
  * `tune-picker-state.ts`.
  *
  * Different from the Svelte one: the columns sit in an nsh/base `Popover` on the trigger, each next
- * column level with the row it came from by the measured row positions (`columnTops`), not by
+ * column level with the row it came from by the measured row positions (`columnShifts`), not by
  * reading rects; the keyboard opens it by pressing the trigger (Return or Space), not ↑↓.
+ *
+ * The popover is placed by its size, its edge on the trigger: the columns line up on that edge (their
+ * feet when it opens upwards) and each one after the first stands off it by a margin, so a taller
+ * column opening grows the panel away from the trigger and the ones already open stay where they are.
  */
-import { Scroll, Text, View, effect, keymap, signal, type ViewRef } from "nsh";
+import { Scroll, Text, View, effect, keymap, signal } from "nsh";
 import { Popover } from "nsh/base";
 import type { ModelSource } from "../../m/model-source";
 import type { TuneRow, TuneTree } from "../../m/chat/tune-picker";
@@ -23,9 +27,7 @@ import { ModelSourceMark } from "../ModelSourceMark";
 import { shadow } from "../styles";
 import { tip } from "../tip";
 import { narrowWindow as phoneSheet } from "../Modal";
-import { columnTops, createTune, type ColumnBox } from "./tune-picker-state";
-
-const COLUMN_HEIGHT = 420;
+import { columnHeight, columnShifts, createTune, type ColumnFrame } from "./tune-picker-state";
 
 export function TunePicker(props: {
   tree: TuneTree;
@@ -45,20 +47,26 @@ export function TunePicker(props: {
 }) {
   const tune = createTune({ tree: () => props.tree, disabled: () => props.disabled, phone: phoneSheet, sheetTitle: () => props.sheetTitle });
   const phone = phoneSheet;
-  const boxes = signal<Record<string, ColumnBox | undefined>>({});
+  const frames = signal<Record<string, ColumnFrame | undefined>>({});
+  /** Where the popover went and the room it has there (`onPosition`); the room is null until it says. */
+  const side = signal<"top" | "bottom">("top");
+  const room = signal<number | null>(null);
 
-  function measure(key: string, patch: (box: ColumnBox) => ColumnBox): void {
-    const now = boxes()[key] ?? { height: 0, listTop: 0, rows: {} };
+  function measure(key: string, patch: (frame: ColumnFrame) => ColumnFrame): void {
+    const now = frames()[key] ?? { height: 0, listTop: 0, scroll: 0, rows: {} };
     const next = patch(now);
-    if (next.height === now.height && next.listTop === now.listTop && JSON.stringify(next.rows) === JSON.stringify(now.rows)) return;
-    boxes.set({ ...boxes(), [key]: next });
+    if (next.height === now.height && next.listTop === now.listTop && next.scroll === now.scroll && JSON.stringify(next.rows) === JSON.stringify(now.rows)) return;
+    frames.set({ ...frames(), [key]: next });
   }
-  const tops = () =>
-    columnTops(
+  const shifts = () =>
+    columnShifts(
       tune.shown().map((level) => level.key),
       tune.focusOf,
-      boxes(),
+      frames(),
+      side(),
+      room(),
     );
+  const height = () => columnHeight(room());
 
   // The keys the picker keeps while its columns are open.
   effect(() => {
@@ -137,26 +145,42 @@ export function TunePicker(props: {
   };
 
   const Panel = () => (
-    <View testID="tune-panel" accessibilityLabel={props.label} class="flex-row items-start gap-1">
+    <View testID="tune-panel" accessibilityLabel={props.label} class={`flex-row gap-1 ${side() === "top" ? "items-end" : "items-start"}`}>
       <Each of={tune.shown()} key={(level) => level.key}>
-        {(level, at) => (
-          <View
-            testID={`tune-column-${level().key}`}
-            onLayout={(e) => measure(level().key, (box) => ({ ...box, height: e.bounds.size.height }))}
-            class="p-1 bg-pane border border-line rounded-(--radius-md)"
-            style={{ width: level().width, maxHeight: COLUMN_HEIGHT, marginTop: tops()[at()] ?? 0, boxShadow: shadow("lg") }}
-          >
-            <Text class="px-2 pt-[6px] pb-1 text-[11px] text-ink-muted">{level().heading}</Text>
-            <Scroll style={{ maxHeight: COLUMN_HEIGHT - 60 }} onLayout={(e) => measure(level().key, (box) => ({ ...box, listTop: e.bounds.origin.y }))}>
-              <View accessibilityLabel={level().heading}>
-                <Each of={tune.rowsOf(level().key)} key={(row) => row.value}>
-                  {(row) => <Row level={level().key} row={row()} at={at()} details={level().details} leaf={level().leaf} />}
-                </Each>
-              </View>
-            </Scroll>
-            <If when={level().note}>{(note) => <Text class="mx-2 my-1 text-[11px] text-ink-muted">{note()}</Text>}</If>
-          </View>
-        )}
+        {(level, at) => {
+          const shift = () => shifts()[at()] ?? 0;
+          // A column beside another waits unseen for its first measure, not drawn a frame on the edge first.
+          const measured = () => at() === 0 || (frames()[level().key]?.height ?? 0) > 0;
+          return (
+            <View
+              testID={`tune-column-${level().key}`}
+              onLayout={(e) => measure(level().key, (frame) => ({ ...frame, height: e.bounds.size.height }))}
+              class="p-1 bg-pane border border-line rounded-(--radius-md)"
+              style={{
+                width: level().width,
+                maxHeight: height(),
+                marginBottom: side() === "top" ? shift() : 0,
+                marginTop: side() === "bottom" ? shift() : 0,
+                opacity: measured() ? 1 : 0,
+                boxShadow: shadow("lg"),
+              }}
+            >
+              <Text class="px-2 pt-[6px] pb-1 text-[11px] text-ink-muted">{level().heading}</Text>
+              <Scroll
+                style={{ maxHeight: height() - 60 }}
+                onLayout={(e) => measure(level().key, (frame) => ({ ...frame, listTop: e.bounds.origin.y }))}
+                onScroll={(e) => measure(level().key, (frame) => ({ ...frame, scroll: e.offset.y }))}
+              >
+                <View accessibilityLabel={level().heading}>
+                  <Each of={tune.rowsOf(level().key)} key={(row) => row.value}>
+                    {(row) => <Row level={level().key} row={row()} at={at()} details={level().details} leaf={level().leaf} />}
+                  </Each>
+                </View>
+              </Scroll>
+              <If when={level().note}>{(note) => <Text class="mx-2 my-1 text-[11px] text-ink-muted">{note()}</Text>}</If>
+            </View>
+          );
+        }}
       </Each>
     </View>
   );
@@ -173,6 +197,11 @@ export function TunePicker(props: {
           placement="top"
           align="start"
           offset={4}
+          margin={8}
+          onPosition={(e) => {
+            if (e.placement === "top" || e.placement === "bottom") side.set(e.placement);
+            room.set(Math.floor(e.available.height));
+          }}
           closeOnEscape
           onOpenChange={(e) => {
             if (e.open) tune.openPicker();

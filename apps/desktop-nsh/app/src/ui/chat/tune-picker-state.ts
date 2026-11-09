@@ -206,35 +206,50 @@ export function createTune(options: { tree: () => TuneTree; disabled: () => bool
 
 export type Tune = ReturnType<typeof createTune>;
 
-/** One column's measured pieces, for lining a column up with the row it came from. */
-export type ColumnBox = { height: number; listTop: number; rows: Record<string, number> };
+/** One column's measured pieces: its height, where its list starts in it, how far that list is scrolled, and where each row starts in the list. */
+export type ColumnFrame = { height: number; listTop: number; scroll: number; rows: Record<string, number> };
+
+/** A column's tallest: the room on the trigger's side, kept between these (`--tune-height` in the Svelte one). */
+export const COLUMN_MIN = 220;
+export const COLUMN_MAX = 640;
+/** Before the popover says how much room it has. */
+export const COLUMN_HEIGHT = 420;
+
+export function columnHeight(room: number | null): number {
+  return room === null ? COLUMN_HEIGHT : Math.max(COLUMN_MIN, Math.min(COLUMN_MAX, room));
+}
 
 /**
- * Each column's top margin so it opens level with the row it came from (`lineUp()` in the Svelte
- * one, which measured the DOM): the first column on the edge, each next one's first row level with
- * its parent's focused row, held inside the room the columns so far take.
+ * How far each column stands off the trigger's edge (`lineUp()` in the Svelte one, which measured
+ * the DOM). The first sits on the edge, so a column opening or closing never moves it; each next
+ * one's first row is level with the row it came from, the parent's list scrolled as it is, moved
+ * back to the edge when that would put it past it (over the composer) and back into `room` when it
+ * would leave it. `side` is where the popover went: "top", the columns stand on the edge with their
+ * feet; "bottom", they hang from it by their heads. `room` is the popover's room on that side, null
+ * until it says.
  */
-export function columnTops(keys: readonly string[], focusOf: (level: string) => string, boxes: Record<string, ColumnBox | undefined>): number[] {
-  const tops: number[] = [];
-  let bottom = 0;
+export function columnShifts(
+  keys: readonly string[],
+  focusOf: (level: string) => string,
+  frames: Record<string, ColumnFrame | undefined>,
+  side: "top" | "bottom",
+  room: number | null,
+): number[] {
+  const shifts: number[] = [];
   keys.forEach((key, at) => {
-    const box = boxes[key];
-    if (at === 0 || !box) {
-      tops.push(0);
-      bottom = Math.max(bottom, box?.height ?? 0);
+    const frame = frames[key];
+    const parentKey = at > 0 ? keys[at - 1]! : null;
+    const parent = parentKey === null ? undefined : frames[parentKey];
+    const rowY = parentKey === null ? undefined : parent?.rows[focusOf(parentKey)];
+    if (!frame || !parent || rowY === undefined) {
+      shifts.push(0);
       return;
     }
-    const parentKey = keys[at - 1]!;
-    const parent = boxes[parentKey];
-    const rowY = parent?.rows[focusOf(parentKey)];
-    if (!parent || rowY === undefined) {
-      tops.push(0);
-      return;
-    }
-    const wanted = tops[at - 1]! + parent.listTop + rowY - box.listTop;
-    const top = Math.max(0, Math.min(wanted, Math.max(0, bottom - box.height)));
-    tops.push(top);
-    bottom = Math.max(bottom, top + box.height);
+    // Where the parent's row starts, down from the parent column's head.
+    const row = parent.listTop + rowY - parent.scroll;
+    const wanted = side === "top" ? shifts[at - 1]! + parent.height - row - frame.height + frame.listTop : shifts[at - 1]! + row - frame.listTop;
+    const most = room === null ? Infinity : room - frame.height;
+    shifts.push(Math.max(0, Math.min(wanted, most)));
   });
-  return tops;
+  return shifts;
 }
