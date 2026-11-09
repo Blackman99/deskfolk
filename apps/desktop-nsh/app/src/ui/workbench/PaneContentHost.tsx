@@ -290,7 +290,6 @@ export function PaneContentHost(props: {
             return c?.kind === "terminal" ? (c.terminalId ?? null) : null;
           })()}
           onBind={(id) => props.onBindTerminal(props.leafId, props.tab.id, id)}
-          onClose={() => props.onRemoveTab(props.leafId, props.tab.id)}
         />
       </If>
       <If when={kind() === "workspace"}>

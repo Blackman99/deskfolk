@@ -62,7 +62,7 @@ bun apps/desktop-nsh/scripts/package.ts --sign developer-id [--notarize <notaryt
 pnpm --filter @real-bot/desktop-nsh test              # 开发实例的隔离；信使镜像是否跟上（--check）
 cd apps/desktop-nsh && cargo test --workspace           # 宿主、app/native（终端去重、调色板）、原生组件
 cd apps/desktop-nsh/app && nsh check App.tsx && nsh test # 类型检查；无头界面测试（网络打桩）和 app/native 的测试
-bun apps/desktop-nsh/scripts/ui-tests.ts [名字]          # 界面测试，连一个隔离的真运行时（不是开发实例，也不是稳定版）
+bun apps/desktop-nsh/scripts/ui-tests.ts [名字]          # 界面测试，连一个隔离的真运行时（不是开发实例，也不是稳定版）；终端标签的测试要起真 shell，找不到 pty helper 就跳过（REAL_BOT_PTY_HELPER 指向别处的构建）
 bun apps/desktop-nsh/scripts/ci-smoke.ts <宿主可执行文件> apps/desktop-nsh/build/app/bundle.js   # 宿主打开、界面跑起来、拿到开发运行时的第一份快照
 bun apps/desktop-nsh/scripts/e2e-live.ts                # 无头连真实开发运行时：列表、打开、实时事件
 bun apps/desktop-nsh/scripts/phone-web-e2e.ts [--no-build] [--browser chromium|webkit] [--shots <目录>]   # 手机版全程，全在本机：自己的中继（TLS 边缘同源提供页面）、隔离的 Mac（REAL_BOT_DEV_REMOTE=1）、无头浏览器配对，再在外壳里走手机宽度的名单、打开、发送、实时更新、返回、重载仍登记，和平板宽度的一栏加一页；截图按浏览器命名

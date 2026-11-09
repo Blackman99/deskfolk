@@ -13,11 +13,22 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node
 import { createServer } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { ptyHelperPath } from "../../daemon/src/pty";
 import { startRuntime } from "../../daemon/src/runtime";
 import { memoryKeyStore } from "../../daemon/src/secrets";
 
 const root = resolve(import.meta.dir, "..");
 const filter = process.argv[2];
+
+/** Whether this runtime can start a shell; without the helper the terminal tests are skipped. */
+function hasPtyHelper(): boolean {
+  try {
+    ptyHelperPath();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function freePort(): Promise<number> {
   return new Promise((done, fail) => {
@@ -90,6 +101,7 @@ try {
     group: group.id,
     workspace,
     projectDir,
+    pty: hasPtyHelper(),
   };
   writeFileSync(join(root, "app", ".ui", ".fixture.json"), JSON.stringify(fixture), { mode: 0o600 });
 

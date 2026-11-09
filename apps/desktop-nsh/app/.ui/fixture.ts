@@ -14,6 +14,8 @@ export const seeded = fixture as {
   workspace: string;
   /** A directory outside the workspace holding `src/main.py`, for a project session a test makes. */
   projectDir: string;
+  /** Whether the runtime can start a shell: a built pty helper (README); the terminal tests need one. */
+  pty: boolean;
 };
 
 /** The app on the fixture's runtime. */
