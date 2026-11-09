@@ -98,7 +98,10 @@ export function ChatTabLabel(props: {
           </View>
         </If>
       </View>
-      <Text testID="chat-tab-name" class="min-w-0 shrink line-clamp-1">{props.title}</Text>
+      {/* The idle ink a tab that is not shown reads in (`.wb-tab-button`); the shown tab's in full ink, as `PaneTabLabel`'s. */}
+      <Text testID="chat-tab-name" class="min-w-0 shrink line-clamp-1 text-[12px] text-tab-idle-ink group-selected:text-ink">
+        {props.title}
+      </Text>
     </View>
   );
 }
