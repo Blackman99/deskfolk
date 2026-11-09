@@ -70,7 +70,7 @@ export function HoldsBar(props: {
                   accessibilityLabel={copy().control.lift}
                   disabled={props.disabled || lifting() === hold().id}
                   onPress={() => void lift(hold())}
-                  class={`shrink-0 items-center justify-center px-2 bg-pane border border-accent-border rounded-(--radius-sm) hover:bg-brand hover:border-brand group disabled:opacity-[0.5] ${touch() ? "h-[32px] px-3" : "h-[22px]"}`}
+                  class={`cursor-pointer select-none disabled:cursor-default shrink-0 items-center justify-center px-2 bg-pane border border-accent-border rounded-(--radius-sm) hover:bg-brand hover:border-brand group disabled:opacity-[0.5] ${touch() ? "h-[32px] px-3" : "h-[22px]"}`}
                 >
                   <Text class="text-[11px] font-medium text-brand group-hover:text-on-accent">{copy().control.lift}</Text>
                 </View>

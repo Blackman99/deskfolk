@@ -92,7 +92,7 @@ export function MapHud(props: {
             role="button"
             testID="taskmap-following"
             onPress={() => props.onStopFollow()}
-            class="absolute right-[10px] top-2 px-[10px] py-1 rounded-(--radius-md) bg-pane border border-accent-border"
+            class="cursor-pointer select-none absolute right-[10px] top-2 px-[10px] py-1 rounded-(--radius-md) bg-pane border border-accent-border"
           >
             <Text class="text-[13px] text-ink">{props.t.following(name())}</Text>
           </View>
@@ -169,7 +169,7 @@ export function MapHud(props: {
                   role="button"
                   testID={`taskmap-visit-${trip().call}`}
                   onPress={() => props.onJump(trip().v)}
-                  class="flex-row items-center gap-[6px] w-full h-[22px] px-[6px] rounded-(--radius-sm) hover:bg-row-hover"
+                  class="cursor-pointer select-none flex-row items-center gap-[6px] w-full h-[22px] px-[6px] rounded-(--radius-sm) hover:bg-row-hover"
                 >
                   <Text class="font-mono text-[11px] text-ink-muted">{props.when(trip().at)}</Text>
                   <Text class="shrink-0 text-[11px] font-semibold" style={{ color: cssColor(props.who(trip().who).color) }}>
@@ -202,7 +202,7 @@ export function MapHud(props: {
           tooltip={tip(dialLabel())}
           {...pan.panHandlers}
           onPress={() => { if (!dragged && Date.now() - dragEnd > 150) props.onFace(); }}
-          class="w-[32px] h-[32px] rounded-full items-center justify-center border border-line bg-pane"
+          class="cursor-pointer select-none w-[32px] h-[32px] rounded-full items-center justify-center border border-line bg-pane"
         >
           <Canvas
             style={{ width: 24, height: 24, pointerEvents: "none" }}
@@ -237,7 +237,7 @@ export function MapHud(props: {
           testID="taskmap-reset"
           accessibilityLabel={props.t.controls.reset}
           onPress={() => props.onReset()}
-          class="flex-row items-center gap-1 min-h-[28px] px-2 rounded-(--radius-sm) border border-line bg-pane hover:bg-row-hover"
+          class="cursor-pointer select-none flex-row items-center gap-1 min-h-[28px] px-2 rounded-(--radius-sm) border border-line bg-pane hover:bg-row-hover"
         >
           <Icon name="fit" size={16} class="tint-ink" />
           <If when={!props.compact}>
@@ -257,7 +257,7 @@ function HudButton(props: { label: string; disabled?: boolean; grow?: boolean; t
       testID={props.testID}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class={`flex-row items-center justify-center min-h-[28px] px-2 rounded-(--radius-sm) border border-line bg-pane hover:bg-row-hover disabled:opacity-[0.45] ${props.grow ? "flex-1" : ""}`}
+      class={`cursor-pointer select-none disabled:cursor-default flex-row items-center justify-center min-h-[28px] px-2 rounded-(--radius-sm) border border-line bg-pane hover:bg-row-hover disabled:opacity-[0.45] ${props.grow ? "flex-1" : ""}`}
     >
       <Text class="text-[13px] font-semibold text-ink">{props.label}</Text>
     </View>

@@ -33,7 +33,7 @@ export function SettingsSectionTabs<S extends string>(props: {
               testID={`${props.id}-tab-${of()}`}
               selected={props.active === of()}
               onPress={() => props.onPick(of())}
-              class="group shrink-0 flex-row items-center gap-[7px] min-h-[44px] px-2 pt-[10px] pb-[8px] border-b-2 border-transparent selected:border-brand focus-visible:border-brand"
+              class="cursor-pointer select-none group shrink-0 flex-row items-center gap-[7px] min-h-[44px] px-2 pt-[10px] pb-[8px] border-b-2 border-transparent selected:border-brand focus-visible:border-brand"
             >
               {props.icon(of(), 15, props.active === of())}
               <Text class="text-[13px] font-medium line-clamp-1 text-ink-secondary group-hover:text-ink group-selected:text-brand group-selected:font-semibold">

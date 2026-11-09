@@ -85,7 +85,7 @@ export function SheetItem(props: {
       accessibilityState={{ selected: props.active, disabled: props.disabled }}
       disabled={props.disabled}
       onPress={() => props.onPress?.()}
-      class="flex-row items-center gap-3 w-full min-h-[48px] px-3 py-[10px] rounded-(--radius-md) active:bg-line-subtle disabled:opacity-[0.45]"
+      class="cursor-pointer select-none disabled:cursor-default flex-row items-center gap-3 w-full min-h-[48px] px-3 py-[10px] rounded-(--radius-md) active:bg-line-subtle disabled:opacity-[0.45]"
     >
       <If when={props.icon}>{(name) => <Icon name={name()} size={20} class={tint()} />}</If>
       <View class="flex-1 min-w-0">

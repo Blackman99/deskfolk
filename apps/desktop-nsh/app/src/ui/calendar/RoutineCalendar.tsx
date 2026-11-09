@@ -86,7 +86,7 @@ export function RoutineCalendar() {
             testID="calendar-back"
             accessibilityLabel={t().common.back}
             onPress={() => runtime.closeRoutines()}
-            class="flex-row items-center gap-[6px] px-[10px] py-[6px] border border-line rounded-(--radius-sm) bg-btn-secondary-bg hover:bg-line-subtle active:scale-[0.98]"
+            class="cursor-pointer select-none flex-row items-center gap-[6px] px-[10px] py-[6px] border border-line rounded-(--radius-sm) bg-btn-secondary-bg hover:bg-line-subtle active:scale-[0.98]"
           >
             <Icon name="chevron-left" size={16} class="tint-ink" />
             <If when={!narrowWindow()}>
@@ -113,7 +113,7 @@ export function RoutineCalendar() {
           accessibilityLabel={en() ? "Schedule info" : "日程规则说明"}
           accessibilityState={{ expanded: showInfo(), selected: showInfo() }}
           onPress={() => showInfo.set(!showInfo())}
-          class={`flex-row items-center gap-[5px] px-[10px] py-[5px] border rounded-(--radius-sm) hover:bg-line-subtle ${showInfo() ? "bg-accent-tint border-accent-border" : "bg-btn-secondary-bg border-line"}`}
+          class={`cursor-pointer select-none flex-row items-center gap-[5px] px-[10px] py-[5px] border rounded-(--radius-sm) hover:bg-line-subtle ${showInfo() ? "bg-accent-tint border-accent-border" : "bg-btn-secondary-bg border-line"}`}
         >
           <Icon name="info" size={16} class={showInfo() ? "tint-brand" : "tint-ink-muted"} />
           <Text class={`text-[12px] font-medium ${showInfo() ? "text-brand" : "text-ink-muted"}`}>{en() ? "Rules" : "规则"}</Text>
@@ -152,7 +152,7 @@ export function RoutineCalendar() {
           testID="calendar-today"
           accessibilityLabel={words().today}
           onPress={() => date.set(new Date())}
-          class="px-3 py-[5px] border border-line rounded-(--radius-sm) bg-btn-secondary-bg hover:bg-line-subtle"
+          class="cursor-pointer select-none px-3 py-[5px] border border-line rounded-(--radius-sm) bg-btn-secondary-bg hover:bg-line-subtle"
         >
           <Text class="text-[13px] font-medium text-ink">{words().today}</Text>
         </View>
@@ -169,7 +169,7 @@ export function RoutineCalendar() {
                 accessibilityLabel={words()[v()]}
                 accessibilityState={{ selected: view() === v() }}
                 onPress={() => view.set(v())}
-                class={`px-3 py-[5px] ${view() === v() ? "bg-accent-tint" : "bg-btn-secondary-bg hover:bg-line-subtle"}`}
+                class={`cursor-pointer select-none px-3 py-[5px] ${view() === v() ? "bg-accent-tint" : "bg-btn-secondary-bg hover:bg-line-subtle"}`}
               >
                 <Text class={`text-[13px] ${view() === v() ? "text-brand font-semibold" : "text-ink"}`}>{words()[v()]}</Text>
               </View>

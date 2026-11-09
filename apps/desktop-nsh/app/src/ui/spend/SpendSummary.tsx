@@ -220,7 +220,7 @@ export function SpendSummary(props: {
             role="button"
             accessibilityState={{ expanded: open() }}
             onPress={() => open.update((v) => !v)}
-            class={`group flex-row items-start gap-2 py-[10px] ${narrow() ? "px-4" : "px-5"}`}
+            class={`cursor-pointer select-none group flex-row items-start gap-2 py-[10px] ${narrow() ? "px-4" : "px-5"}`}
           >
             <View class="h-[18px] justify-center">
               <SpendIcon name="info" size={12} class="tint-ink-muted" />

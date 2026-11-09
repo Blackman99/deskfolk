@@ -192,7 +192,7 @@ export function PlaybookStepDetail(props: {
             testID="playbook-reset"
             disabled={props.saving}
             onPress={() => props.onreset(props.step)}
-            class="self-start group disabled:opacity-[0.5]"
+            class="cursor-pointer select-none disabled:cursor-default self-start group disabled:opacity-[0.5]"
           >
             <Text class="text-[12px] text-brand group-hover:underline">{c().resetStep}</Text>
           </View>

@@ -98,7 +98,7 @@ export function JobInspector(props: {
       accessibilityState={box.pressed === undefined ? undefined : { selected: box.pressed }}
       tooltip={tip(box.label)}
       onPress={box.onPress}
-      class={`shrink-0 w-6 h-6 items-center justify-center rounded-(--radius-sm) border hover:bg-line-subtle hover:border-line ${box.pressed ? "bg-line-subtle border-line" : "border-transparent"}`}
+      class={`cursor-pointer select-none shrink-0 w-6 h-6 items-center justify-center rounded-(--radius-sm) border hover:bg-line-subtle hover:border-line ${box.pressed ? "bg-line-subtle border-line" : "border-transparent"}`}
     >
       <Icon name={box.icon} size={12} class="tint-ink-muted" />
     </View>
@@ -257,7 +257,7 @@ export function JobInspector(props: {
                         role="button"
                         testID="insp-back"
                         onPress={() => props.onSpecHeldChange(false)}
-                        class="flex-1 min-w-0 flex-row items-center gap-1 px-1 py-[2px] self-start rounded-(--radius-sm) hover:bg-accent-tint"
+                        class="cursor-pointer select-none flex-1 min-w-0 flex-row items-center gap-1 px-1 py-[2px] self-start rounded-(--radius-sm) hover:bg-accent-tint"
                       >
                         <Icon name="chevron-left" size={12} class="tint-brand" />
                         <Text class="text-[12px] font-semibold text-brand line-clamp-1">{t().plan.job.backToTicket(`#${ticketTag(picked().seq)}`)}</Text>

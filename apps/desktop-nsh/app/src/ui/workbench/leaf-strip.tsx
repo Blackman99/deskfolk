@@ -247,7 +247,7 @@ export function LeafStrip(props: StripProps) {
             if (Date.now() < swallowUntil) return;
             props.onActivate(leaf().id, tabId);
           }}
-          class="group max-w-[180px] h-full pr-1 justify-center"
+          class="cursor-pointer select-none group max-w-[180px] h-full pr-1 justify-center"
           {...pan.panHandlers}
         >
           {props.tabLabel(liveTab(leaf, tabId))}
@@ -266,7 +266,7 @@ export function LeafStrip(props: StripProps) {
               if (moreRef) props.onToggleMore(tabId, moreRef);
             }}
             {...ownTouch}
-            class={`w-[18px] h-[18px] shrink-0 rounded-full items-center justify-center hover:bg-row-hover ${open() ? "bg-row-hover" : ""}`}
+            class={`cursor-pointer select-none w-[18px] h-[18px] shrink-0 rounded-full items-center justify-center hover:bg-row-hover ${open() ? "bg-row-hover" : ""}`}
             style={{ opacity: shown() || open() ? 1 : 0 }}
           >
             <Icon name="more" size={12} class="tint-ink-muted" />
@@ -280,7 +280,7 @@ export function LeafStrip(props: StripProps) {
           tooltip={tip(t().closeTab)}
           onPress={() => props.onCloseTab(leaf().id, tabId)}
           {...ownTouch}
-          class="w-[18px] h-[18px] mr-[2px] shrink-0 rounded-full items-center justify-center hover:bg-row-hover"
+          class="cursor-pointer select-none w-[18px] h-[18px] mr-[2px] shrink-0 rounded-full items-center justify-center hover:bg-row-hover"
           style={{ opacity: shown() ? 1 : 0 }}
         >
           <Icon name="x" size={12} class="tint-ink-muted" />
@@ -299,7 +299,7 @@ export function LeafStrip(props: StripProps) {
       onPress={onPress}
       {...ownTouch}
       {...extra}
-      class="w-6 h-6 mb-[2px] shrink-0 rounded-full items-center justify-center hover:bg-row-hover"
+      class="cursor-pointer select-none w-6 h-6 mb-[2px] shrink-0 rounded-full items-center justify-center hover:bg-row-hover"
     >
       <Icon name={icon} size={icon === "x" ? 12 : 16} class="tint-ink-muted" />
     </View>
@@ -343,7 +343,7 @@ export function LeafStrip(props: StripProps) {
             tooltip={tip(t().tabsBack)}
             onPress={() => stepTabs(-1)}
             {...ownTouch}
-            class="absolute left-[6px] w-5 h-5 rounded-full bg-pane items-center justify-center z-10"
+            class="cursor-pointer select-none absolute left-[6px] w-5 h-5 rounded-full bg-pane items-center justify-center z-10"
             style={{ top: "50%", marginTop: -10, boxShadow: shadow("pane") }}
           >
             <Icon name="chevron-left" size={12} class="tint-ink hover:tint-brand" />
@@ -358,7 +358,7 @@ export function LeafStrip(props: StripProps) {
             tooltip={tip(t().tabsForward)}
             onPress={() => stepTabs(1)}
             {...ownTouch}
-            class="absolute right-[2px] w-5 h-5 rounded-full bg-pane items-center justify-center z-10"
+            class="cursor-pointer select-none absolute right-[2px] w-5 h-5 rounded-full bg-pane items-center justify-center z-10"
             style={{ top: "50%", marginTop: -10, boxShadow: shadow("pane") }}
           >
             <Icon name="chevron-right" size={12} class="tint-ink hover:tint-brand" />

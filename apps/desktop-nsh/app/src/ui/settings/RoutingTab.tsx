@@ -322,7 +322,7 @@ export function RoutingTab(props: {
 
   const hint = "text-[12px] leading-[1.45] text-ink-muted";
   const link = (testID: string, label: string, onPress: () => void) => (
-    <View role="button" testID={testID} accessibilityLabel={label} onPress={onPress} class="self-start">
+    <View role="button" testID={testID} accessibilityLabel={label} onPress={onPress} class="cursor-pointer select-none self-start">
       <Text class="text-[12px] text-brand hover:underline">{label}</Text>
     </View>
   );
@@ -496,7 +496,7 @@ export function RoutingTab(props: {
         >
           <View testID="routing-subpage" class="flex-col">
             <If when={props.ownBack}>
-              <View role="button" testID="routing-back" accessibilityLabel={`‹ ${c().backToMap}`} onPress={() => opened.set(false)} class="self-start mb-3">
+              <View role="button" testID="routing-back" accessibilityLabel={`‹ ${c().backToMap}`} onPress={() => opened.set(false)} class="cursor-pointer select-none self-start mb-3">
                 <Text class="text-[12px] text-brand hover:underline">{`‹ ${c().backToMap}`}</Text>
               </View>
             </If>

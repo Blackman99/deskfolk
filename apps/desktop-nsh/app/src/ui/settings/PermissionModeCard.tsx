@@ -72,7 +72,7 @@ export function PermissionModeCard(props: {
               checked={shown() === option()}
               disabled={busy()}
               onChange={() => void choose(option())}
-              class={`group flex-row items-start gap-[10px] px-3 py-[9px] border rounded-(--radius-md) disabled:opacity-[0.6] ${
+              class={`cursor-pointer select-none disabled:cursor-default group flex-row items-start gap-[10px] px-3 py-[9px] border rounded-(--radius-md) disabled:opacity-[0.6] ${
                 shown() === option() ? "border-brand bg-accent-tint" : "border-line-subtle hover:border-line-hover"
               }`}
             >

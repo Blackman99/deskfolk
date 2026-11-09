@@ -404,7 +404,7 @@ export function ModelLadderCard(props: {
               tooltip={tip(t().modelLadder.remove(rung.model))}
               disabled={ladder.busy}
               onPress={() => void ladder.save(ladder.rungs.filter((_, at) => at !== index()))}
-              class={`${buttonClass} disabled:opacity-[0.4]`}
+              class={`cursor-pointer select-none disabled:cursor-default ${buttonClass} disabled:opacity-[0.4]`}
             >
               <Text class={`text-ink-muted ${phone() ? "text-[18px]" : "text-[16px]"}`}>×</Text>
             </View>
@@ -419,7 +419,7 @@ export function ModelLadderCard(props: {
               onPress={() => gripFocus.set(index())}
               onFocus={() => gripFocus.set(index())}
               onBlur={() => untracked(() => gripFocus() === index() && gripFocus.set(null))}
-              class={buttonClass}
+              class={`cursor-grab select-none ${buttonClass}`}
               {...pan.panHandlers}
             >
               <Icon name="grip" size={12} filled class={held() ? "tint-brand" : "tint-ink-muted"} />

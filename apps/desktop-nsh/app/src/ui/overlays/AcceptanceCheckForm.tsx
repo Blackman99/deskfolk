@@ -142,7 +142,7 @@ export function AcceptanceCheckForm(props: {
               accessibilityState={{ selected: kind() === k() }}
               disabled={saving()}
               onPress={() => selectKind(k())}
-              class={`group rounded-full border px-[10px] disabled:opacity-60 ${narrowWindow() ? "min-h-[36px] py-[6px] justify-center" : "py-[5px]"} ${
+              class={`cursor-pointer select-none disabled:cursor-default group rounded-full border px-[10px] disabled:opacity-60 ${narrowWindow() ? "min-h-[36px] py-[6px] justify-center" : "py-[5px]"} ${
                 kind() === k() ? "bg-brand border-brand" : "bg-chip border-line hover:border-accent-border"
               }`}
             >
@@ -186,7 +186,7 @@ export function AcceptanceCheckForm(props: {
           testID="check-form-expect-toggle"
           accessibilityState={{ expanded: expectOpen() }}
           onPress={() => expectOpen.set(!expectOpen())}
-          class="self-start py-[2px]"
+          class="cursor-pointer select-none self-start py-[2px]"
         >
           <Text class="text-[12px] font-medium text-brand">{`${expectOpen() ? "▾" : "▸"} ${t().expectStdoutToggle}`}</Text>
         </View>

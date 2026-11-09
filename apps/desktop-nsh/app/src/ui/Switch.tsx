@@ -20,7 +20,7 @@ export function Switch(props: {
       accessibilityLabel={props.label}
       testID={props.testID}
       onChange={(e) => props.onChange(e.checked)}
-      class="flex-row items-center gap-2 disabled:opacity-[0.5]"
+      class="cursor-pointer select-none disabled:cursor-default flex-row items-center gap-2 disabled:opacity-[0.5]"
       trackClass="w-[40px] h-[22px] rounded-full bg-line checked:bg-brand justify-center px-[2px]"
       thumbClass="w-[18px] h-[18px] rounded-full bg-switch-thumb checked:translate-x-[18px]"
     >

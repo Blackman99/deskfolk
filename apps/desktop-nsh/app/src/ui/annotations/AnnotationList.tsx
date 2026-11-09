@@ -126,7 +126,7 @@ export function AnnotationList(props: {
               testID={`annotation-filter-${key}`}
               accessibilityState={{ selected: filter() === key }}
               onPress={() => filter.set(key)}
-              class={`flex-1 flex-row items-center justify-center gap-1 px-[6px] rounded-[7px] ${narrowWindow() ? "min-h-[32px]" : "min-h-[26px]"} ${filter() === key ? "bg-pane" : "bg-transparent"}`}
+              class={`cursor-pointer select-none flex-1 flex-row items-center justify-center gap-1 px-[6px] rounded-[7px] ${narrowWindow() ? "min-h-[32px]" : "min-h-[26px]"} ${filter() === key ? "bg-pane" : "bg-transparent"}`}
               style={{ boxShadow: filter() === key ? shadow("xs") : undefined }}
             >
               <If when={key !== "all"}>
@@ -225,7 +225,7 @@ function Row(props: {
         tooltip={tip(props.focused ? t().annotationDeselect : t().annotationGoTo)}
         accessibilityLabel={props.focused ? t().annotationDeselect : t().annotationGoTo}
         onPress={() => props.onReveal(row())}
-        class="gap-[6px] pt-[10px] pr-3 pb-2 pl-[15px]"
+        class="cursor-pointer select-none gap-[6px] pt-[10px] pr-3 pb-2 pl-[15px]"
       >
         <View class="flex-row items-center justify-between gap-1">
           <View class="flex-1 flex-row items-center gap-1 min-w-0">

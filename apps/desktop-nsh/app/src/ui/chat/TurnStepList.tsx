@@ -46,7 +46,7 @@ export function TurnStepList(props: {
                     else={<Text class="flex-1 min-w-0 text-[12px] leading-[1.45] text-ink">{row().text}</Text>}
                   >
                     {(open: () => () => void) => (
-                      <View role="button" testID="turn-step-open" onPress={() => open()()} class="group flex-1 min-w-0">
+                      <View role="button" testID="turn-step-open" onPress={() => open()()} class="cursor-pointer select-none group flex-1 min-w-0">
                         <Text class="text-[12px] leading-[1.45] text-ink group-hover:text-brand">{row().text}</Text>
                       </View>
                     )}

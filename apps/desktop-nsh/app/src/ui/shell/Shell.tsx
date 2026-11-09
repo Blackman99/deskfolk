@@ -456,7 +456,7 @@ function PaneOpen(props: { label: string; disabled?: boolean; onPress: () => voi
       role="button"
       accessibilityLabel={props.label}
       accessibilityState={{ disabled: props.disabled ?? false }}
-      class="rounded-[8px] px-3 py-[6px] hover:bg-line-subtle"
+      class="cursor-pointer select-none rounded-[8px] px-3 py-[6px] hover:bg-line-subtle"
       classList={{ "opacity-50": props.disabled ?? false }}
       onPress={() => {
         if (!props.disabled) props.onPress();

@@ -57,7 +57,7 @@ export function TraceRound(props: {
       accessibilityState={{ expanded: !round().folded }}
       tooltip={tip(hint())}
       onPress={props.onToggle}
-      class={`absolute px-[10px] ${hasOutcome() ? "flex-col justify-center gap-[5px]" : `flex-row items-center gap-[6px] ${round().folded ? "" : "justify-center"}`} border ${
+      class={`cursor-pointer select-none absolute px-[10px] ${hasOutcome() ? "flex-col justify-center gap-[5px]" : `flex-row items-center gap-[6px] ${round().folded ? "" : "justify-center"}`} border ${
         round().folded ? "border-line bg-pane rounded-(--radius-md)" : "border-line rounded-full hover:bg-line-subtle"
       }`}
       style={{

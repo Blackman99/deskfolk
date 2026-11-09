@@ -57,7 +57,7 @@ export function ImageContextMenu(props: { src: string; x: number; y: number; onC
             testID="image-context-copy"
             disabled={copying()}
             onPress={run}
-            class="w-full min-h-[32px] px-[10px] py-[6px] rounded-(--radius-sm) justify-center hover:bg-line-subtle focus-visible:bg-line-subtle group disabled:opacity-[0.7]"
+            class="cursor-pointer select-none disabled:cursor-default w-full min-h-[32px] px-[10px] py-[6px] rounded-(--radius-sm) justify-center hover:bg-line-subtle focus-visible:bg-line-subtle group disabled:opacity-[0.7]"
           >
             <Text class="text-[13px] font-medium text-ink group-hover:text-brand">{label()}</Text>
           </View>

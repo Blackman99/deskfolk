@@ -55,7 +55,7 @@ function LevelChip(props: { testID: string; active: boolean; label: string; onPr
       accessibilityLabel={props.label}
       accessibilityState={{ checked: props.active }}
       onPress={() => props.onPress()}
-      class={`px-[11px] py-[5px] rounded-(--radius-sm) border ${props.active ? "bg-brand border-brand" : "bg-chip border-line hover:border-accent-border hover:bg-accent-tint"}`}
+      class={`cursor-pointer select-none px-[11px] py-[5px] rounded-(--radius-sm) border ${props.active ? "bg-brand border-brand" : "bg-chip border-line hover:border-accent-border hover:bg-accent-tint"}`}
     >
       <Text class={`text-[12px] ${props.active ? "font-medium text-on-accent" : "text-ink-secondary"}`}>{props.label}</Text>
     </View>

@@ -576,7 +576,7 @@ export function MessageImageLightbox(props: {
             tooltip={undefined}
             disabled={saving()}
             onPress={() => void save()}
-            class={`absolute top-4 right-[60px] z-[1] w-9 h-9 rounded-full border border-line items-center justify-center hover:bg-btn-secondary-hover ${saveNote() === "tap" ? "bg-brand" : "bg-btn-secondary-bg"} ${chrome()}`}
+            class={`cursor-pointer select-none disabled:cursor-default absolute top-4 right-[60px] z-[1] w-9 h-9 rounded-full border border-line items-center justify-center hover:bg-btn-secondary-hover ${saveNote() === "tap" ? "bg-brand" : "bg-btn-secondary-bg"} ${chrome()}`}
           >
             <If when={saving()} else={<Icon name="download" size={16} class={saveNote() === "tap" ? "tint-on-accent" : "tint-ink"} />}>
               <Icon name="spinner" size={16} class="animate-spin tint-brand" />
@@ -588,7 +588,7 @@ export function MessageImageLightbox(props: {
           testID="msg-image-close"
           accessibilityLabel={t().common.close}
           onPress={() => requestClose()}
-          class={`absolute top-4 right-4 z-[1] w-9 h-9 rounded-full border border-line bg-btn-secondary-bg items-center justify-center hover:bg-btn-secondary-hover ${chrome()}`}
+          class={`cursor-pointer select-none absolute top-4 right-4 z-[1] w-9 h-9 rounded-full border border-line bg-btn-secondary-bg items-center justify-center hover:bg-btn-secondary-hover ${chrome()}`}
         >
           <Icon name="x" size={16} class="tint-ink" />
         </View>
@@ -600,7 +600,7 @@ export function MessageImageLightbox(props: {
               accessibilityState={{ busy: originalProgress() !== null }}
               disabled={originalProgress() !== null}
               onPress={() => loadOriginal()}
-              class="h-8 px-[14px] rounded-full border border-line bg-btn-secondary-bg hover:bg-btn-secondary-hover justify-center"
+              class="cursor-pointer select-none disabled:cursor-default h-8 px-[14px] rounded-full border border-line bg-btn-secondary-bg hover:bg-btn-secondary-hover justify-center"
               style={{ maxWidth: windowSize().width - 48 }}
             >
               <Text class="text-[12px] font-semibold text-ink line-clamp-1 tabular-nums">

@@ -21,7 +21,7 @@ export function WorkingFilter(props: { workingOnly: boolean; toggleWorkingOnly: 
       accessibilityLabel={copy().sidebar.workingOnly}
       accessibilityState={{ pressed: on() }}
       onPress={() => props.toggleWorkingOnly()}
-      class={`group shrink-0 items-center justify-center focus-visible:border-brand ${box()}`}
+      class={`cursor-pointer select-none group shrink-0 items-center justify-center focus-visible:border-brand ${box()}`}
     >
       <Icon name="activity" class={on() ? "tint-brand" : phone() ? "tint-ink-secondary" : `${SIDE_MUTED_TINT} group-hover:tint-ink`} />
     </View>

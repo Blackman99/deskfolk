@@ -64,7 +64,7 @@ function ProgressField(props: { panel: PlanSpecPanelProps; state: PlanSpecState;
             accessibilityState={{ expanded: s.doneShown() }}
             tooltip={tip(s.doneShown() ? t().spec.collapse : t().spec.expand)}
             onPress={() => s.doneOpen.set(!s.doneShown())}
-            class="flex-row items-center gap-[6px] min-w-0"
+            class="cursor-pointer select-none flex-row items-center gap-[6px] min-w-0"
           >
             {head()}
             <Icon name="chevron-down" size={12} class="tint-ink-muted" />
@@ -146,7 +146,7 @@ function History(props: { panel: PlanSpecPanelProps; state: PlanSpecState }) {
                           role="button"
                           testID={`plan-spec-revision-jump-${rev().revision}`}
                           onPress={() => props.panel.onJump(rev().session_id!, rev().source_message_id!)}
-                          class="group flex-row items-center gap-[3px]"
+                          class="cursor-pointer select-none group flex-row items-center gap-[3px]"
                         >
                           <Icon name="arrow-up-right" size={12} class="tint-brand" />
                           <Text class="text-[11px] text-brand group-hover:underline">{t().jumpToMessage}</Text>
@@ -208,7 +208,7 @@ export function PlanAbout(props: { panel: PlanSpecPanelProps; state: PlanSpecSta
             testID="plan-spec-history-toggle"
             accessibilityState={{ expanded: s.historyOpen() }}
             onPress={() => void s.toggleHistory()}
-            class="group flex-row items-center gap-1 shrink-0"
+            class="cursor-pointer select-none group flex-row items-center gap-1 shrink-0"
           >
             <Icon name="history" size={12} class="tint-ink-muted group-hover:tint-brand" />
             <Text class="text-[11px] font-medium text-ink-muted group-hover:text-brand">{t().history}</Text>

@@ -201,7 +201,7 @@ export function SkillEditor(props: {
                 accessibilityLabel={t().skillDelete}
                 disabled={props.skillBusy}
                 onPress={() => props.openDeleteSkillConfirm(id())}
-                class="flex-row items-center justify-center gap-2 w-full min-h-[44px] rounded-(--radius-md) border border-danger-line bg-danger-bg disabled:opacity-[0.45]"
+                class="cursor-pointer select-none disabled:cursor-default flex-row items-center justify-center gap-2 w-full min-h-[44px] rounded-(--radius-md) border border-danger-line bg-danger-bg disabled:opacity-[0.45]"
               >
                 <Icon name="trash" class="tint-danger-text" />
                 <Text class="text-[14px] font-semibold text-danger-text">{t().skillDelete}</Text>

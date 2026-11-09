@@ -77,7 +77,7 @@ export function AskCard(props: {
                   accessibilityState={{ checked: on(), disabled: !open() }}
                   disabled={!open()}
                   onPress={() => toggle(option().label)}
-                  class={`flex-row items-start gap-[10px] w-full min-h-[38px] px-[11px] py-[8px] border rounded-(--radius-sm) ${
+                  class={`cursor-pointer select-none disabled:cursor-default flex-row items-start gap-[10px] w-full min-h-[38px] px-[11px] py-[8px] border rounded-(--radius-sm) ${
                     on() ? "border-brand bg-accent-tint" : `border-line bg-chip ${open() ? "hover:border-accent-border hover:bg-input-bg" : ""}`
                   } ${!open() && !on() ? "opacity-[0.55]" : ""}`}
                 >
@@ -128,7 +128,7 @@ export function AskCard(props: {
                 testID="ask-send"
                 disabled={!canSubmit()}
                 onPress={submit}
-                class="shrink-0 px-[13px] py-[7px] rounded-(--radius-sm) bg-brand hover:bg-accent-hover disabled:opacity-[0.45] items-center justify-center"
+                class="cursor-pointer select-none disabled:cursor-default shrink-0 px-[13px] py-[7px] rounded-(--radius-sm) bg-brand hover:bg-accent-hover disabled:opacity-[0.45] items-center justify-center"
               >
                 <Text class="text-[13px] font-semibold text-on-accent">{t().stream.reply}</Text>
               </View>

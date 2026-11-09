@@ -57,7 +57,7 @@ export function ProjectWorking(props: { state: ProjectState }) {
         accessibilityState={{ expanded: s().stepsOpen() }}
         tooltip={tip(`${full}\n${t().chat.activity.showSteps}`)}
         onPress={() => s().stepsOpen.set(!s().stepsOpen())}
-        class="group flex-row items-center gap-[4px] shrink min-w-0"
+        class="cursor-pointer select-none group flex-row items-center gap-[4px] shrink min-w-0"
       >
         <Text class="shrink min-w-0 text-[12px] font-medium text-brand group-hover:text-ink line-clamp-1">{text}</Text>
         <Icon name="chevron-down" size={12} class={`shrink-0 tint-brand ${s().stepsOpen() ? "rotate-180" : ""}`} />

@@ -44,7 +44,7 @@ export function StepPrimary(props: { label: string; testID?: string; disabled?: 
       accessibilityState={{ disabled: props.disabled === true }}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class={`px-[18px] justify-center rounded-(--radius-md) bg-brand hover:bg-accent-hover disabled:opacity-[0.6] ${narrowWindow() ? "min-h-11" : "py-2"}`}
+      class={`cursor-pointer select-none disabled:cursor-default px-[18px] justify-center rounded-(--radius-md) bg-brand hover:bg-accent-hover disabled:opacity-[0.6] ${narrowWindow() ? "min-h-11" : "py-2"}`}
     >
       <Text class="text-[13px] font-semibold text-on-accent">{props.label}</Text>
     </View>
@@ -61,7 +61,7 @@ export function StepSecondary(props: { label: string; testID?: string; disabled?
       accessibilityState={{ disabled: props.disabled === true }}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class={`px-[14px] justify-center border border-line rounded-(--radius-md) bg-btn-secondary-bg hover:bg-line-subtle hover:border-line-hover disabled:opacity-[0.6] ${narrowWindow() ? "min-h-11" : "py-[7px]"}`}
+      class={`cursor-pointer select-none disabled:cursor-default px-[14px] justify-center border border-line rounded-(--radius-md) bg-btn-secondary-bg hover:bg-line-subtle hover:border-line-hover disabled:opacity-[0.6] ${narrowWindow() ? "min-h-11" : "py-[7px]"}`}
     >
       <Text class="text-[13px] font-medium text-ink-secondary">{props.label}</Text>
     </View>
@@ -88,7 +88,7 @@ export function ModeCards<T extends string>(props: {
             accessibilityState={{ checked: props.value === option()[0], disabled: props.disabled === true }}
             disabled={props.disabled}
             onPress={() => props.onPick(option()[0])}
-            class={`flex-1 min-w-0 gap-1 px-[14px] py-3 rounded-(--radius-md) border bg-pane disabled:opacity-[0.7] ${props.value === option()[0] ? "border-brand" : "border-line hover:border-line-hover"}`}
+            class={`cursor-pointer select-none disabled:cursor-default flex-1 min-w-0 gap-1 px-[14px] py-3 rounded-(--radius-md) border bg-pane disabled:opacity-[0.7] ${props.value === option()[0] ? "border-brand" : "border-line hover:border-line-hover"}`}
           >
             <Text class="text-[14px] font-semibold text-ink">{option()[1]}</Text>
             <Text class="text-[12px] leading-[1.45] text-ink-muted">{option()[2]}</Text>

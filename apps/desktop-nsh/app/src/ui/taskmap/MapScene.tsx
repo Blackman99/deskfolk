@@ -476,7 +476,7 @@ export function MapScene(props: {
       ref={(node: ViewRef) => (sceneRef = node)}
       role="group"
       accessibilityState={{ busy: panning() }}
-      class="absolute left-0 top-0 right-0 bottom-0 overflow-hidden"
+      class={`absolute left-0 top-0 right-0 bottom-0 overflow-hidden ${props.hover >= 0 ? "cursor-pointer" : "cursor-grab"}`}
       onLayout={(e) => {
         if (e.bounds.size.width > canvasW()) canvasW.set(Math.ceil(e.bounds.size.width));
         if (e.bounds.size.height > canvasH()) canvasH.set(Math.ceil(e.bounds.size.height));
@@ -568,7 +568,7 @@ export function MapScene(props: {
           }}
           onMouseEnter={() => props.onHover(p.q)}
           onMouseLeave={() => props.onHover(-1)}
-          class={`items-center px-[7px] pt-[2px] pb-[3px] rounded-[8px] border bg-pane/95 ${on() ? "border-ink" : hot() ? "border-muted-light" : "border-line"}`}
+          class={`cursor-pointer select-none items-center px-[7px] pt-[2px] pb-[3px] rounded-[8px] border bg-pane/95 ${on() ? "border-ink" : hot() ? "border-muted-light" : "border-line"}`}
           style={{ maxWidth: 180, boxShadow: "0 1px 3px rgba(18,28,32,.14)" }}
         >
           <If when={b().flag}>
@@ -661,7 +661,7 @@ export function MapScene(props: {
         </If>
         <If when={a().present}>
           <View
-            role="button"
+            role="button" class="cursor-pointer select-none"
             testID={`taskmap-actor-hit-${a().b}`}
             accessibilityLabel={props.follow === a().b ? props.t.stopFollowOf(a().short) : props.t.followOf(a().short)}
             onPress={() => props.onFollow(a().b)}

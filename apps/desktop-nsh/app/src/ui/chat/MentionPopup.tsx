@@ -60,7 +60,7 @@ export function MentionPopup(props: {
               onMouseEnter={() => props.onHover(idx())}
               onPress={() => props.onPick(cand())}
               onLayout={(e) => bounds.set(idx(), { y: e.bounds.origin.y, height: e.bounds.size.height })}
-              class={`flex-row items-center gap-[10px] px-[10px] py-2 rounded-(--radius-md) ${idx() === props.highlight ? "bg-accent-tint" : ""}`}
+              class={`cursor-pointer select-none flex-row items-center gap-[10px] px-[10px] py-2 rounded-(--radius-md) ${idx() === props.highlight ? "bg-accent-tint" : ""}`}
             >
               <Avatar cand={cand()} />
               <View class="flex-1 min-w-0">

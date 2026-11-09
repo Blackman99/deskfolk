@@ -199,7 +199,7 @@ export function JobHeader(props: {
                                 testID={`job-hold-lift-${hold().id}`}
                                 disabled={props.controlsDisabled}
                                 onPress={() => void liftFromBoard(hold())}
-                                class="group shrink-0 px-[7px] py-px rounded-full border border-accent-border bg-pane hover:bg-brand hover:border-brand disabled:opacity-[0.5]"
+                                class="cursor-pointer select-none disabled:cursor-default group shrink-0 px-[7px] py-px rounded-full border border-accent-border bg-pane hover:bg-brand hover:border-brand disabled:opacity-[0.5]"
                               >
                                 <Text class="text-[11px] font-medium text-brand group-hover:text-on-accent">{t().control.lift}</Text>
                               </View>
@@ -233,7 +233,7 @@ export function JobHeader(props: {
               accessibilityLabel={t().common.close}
               tooltip={tip(t().common.close)}
               onPress={() => props.onClose?.()}
-              class="w-7 h-7 items-center justify-center rounded-(--radius-sm) hover:bg-line-subtle"
+              class="cursor-pointer select-none w-7 h-7 items-center justify-center rounded-(--radius-sm) hover:bg-line-subtle"
             >
               <Icon name="x" size={16} class="tint-ink-muted" />
             </View>

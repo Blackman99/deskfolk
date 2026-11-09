@@ -77,7 +77,7 @@ export function SessionContextMenu(props: {
             accessibilityState={{ disabled: p.disabled }}
             disabled={p.disabled}
             onPress={p.onPress}
-            class={`group flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) disabled:opacity-[0.4] ${p.danger ? "hover:bg-danger-bg" : "hover:bg-line-subtle"}`}
+            class={`cursor-pointer select-none disabled:cursor-default group flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) disabled:opacity-[0.4] ${p.danger ? "hover:bg-danger-bg" : "hover:bg-line-subtle"}`}
           >
             <Icon
               name={p.icon}

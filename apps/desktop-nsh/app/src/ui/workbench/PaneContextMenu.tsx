@@ -215,7 +215,7 @@ export function PaneContextMenu(props: {
       onPress={pick(row.run)}
       onFocus={() => roving.focused(row.key)}
       onBlur={() => roving.blurred(row.key)}
-      class="flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle focus-visible:bg-line-subtle group disabled:opacity-[0.4]"
+      class="cursor-pointer select-none disabled:cursor-default flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle focus-visible:bg-line-subtle group disabled:opacity-[0.4]"
     >
       {row.icon === "none" ? (
         <View accessible={false} class="w-4 h-4" />

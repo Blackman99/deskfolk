@@ -37,7 +37,7 @@ export function RelayGuide(props: { locale: "zh" | "en" }) {
         testID="relay-guide-summary"
         accessibilityState={{ expanded: open() }}
         onPress={() => open.set(!open())}
-        class="flex-row items-center gap-[6px] px-3 py-2"
+        class="cursor-pointer select-none flex-row items-center gap-[6px] px-3 py-2"
       >
         <Icon name={open() ? "chevron-down" : "chevron-right"} size={12} class="tint-brand" />
         <Text class="text-[13px] font-semibold text-brand">{t().remote.relayGuideSummary}</Text>

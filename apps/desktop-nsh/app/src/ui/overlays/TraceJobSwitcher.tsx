@@ -115,7 +115,7 @@ export function TraceJobSwitcher(props: {
           if (node) rows.push(node);
         }}
         onPress={() => props.onSelectJob(job().id)}
-        class={`flex-row items-start w-full rounded-(--radius-sm) border focus:bg-chip hover:bg-chip ${phone() ? "gap-3 min-h-[56px] px-3 py-[10px] rounded-(--radius-md)" : "gap-2 px-2 py-[6px]"} ${current() ? "bg-accent-tint border-accent-border" : "border-transparent"}`}
+        class={`cursor-pointer select-none flex-row items-start w-full rounded-(--radius-sm) border focus:bg-chip hover:bg-chip ${phone() ? "gap-3 min-h-[56px] px-3 py-[10px] rounded-(--radius-md)" : "gap-2 px-2 py-[6px]"} ${current() ? "bg-accent-tint border-accent-border" : "border-transparent"}`}
       >
         <View class="shrink-0 w-[14px] h-[14px] mt-[2px] items-center justify-center">
           <If when={current()}>
@@ -145,7 +145,7 @@ export function TraceJobSwitcher(props: {
           testID="trace-job-fold"
           accessibilityState={{ expanded: foldOpen() }}
           onPress={() => foldOpen.set(!foldOpen())}
-          class="flex-row items-center w-full gap-3 min-h-[56px] px-3 py-[10px] rounded-(--radius-md) hover:bg-chip"
+          class="cursor-pointer select-none flex-row items-center w-full gap-3 min-h-[56px] px-3 py-[10px] rounded-(--radius-md) hover:bg-chip"
         >
           <Icon name="chevron-right" size={12} class={foldOpen() ? "tint-ink-muted rotate-90" : "tint-ink-muted"} />
           <Text class="text-[15px] text-ink-muted">{t().plan.oneShotJobs(folded().length)}</Text>
@@ -165,7 +165,7 @@ export function TraceJobSwitcher(props: {
       accessibilityState={{ expanded: open() }}
       tooltip={tip(props.heading)}
       onPress={() => setOpen(!open())}
-      class="flex-row items-center gap-[6px] min-w-0 px-[6px] py-[3px] rounded-(--radius-sm) border border-transparent hover:bg-chip hover:border-line-subtle"
+      class="cursor-pointer select-none flex-row items-center gap-[6px] min-w-0 px-[6px] py-[3px] rounded-(--radius-sm) border border-transparent hover:bg-chip hover:border-line-subtle"
     >
       <Text role="header" class="shrink min-w-0 text-[14px] font-semibold text-ink line-clamp-1">{props.heading}</Text>
       <Icon name="chevron-down" size={12} class={open() ? "tint-ink-muted rotate-180" : "tint-ink-muted"} />
@@ -202,7 +202,7 @@ export function TraceJobSwitcher(props: {
                           }}
                           onMouseEnter={() => kind.set(entry().key)}
                           onPress={() => kind.set(entry().key)}
-                          class={`flex-row items-center gap-[6px] w-full px-2 py-[7px] rounded-(--radius-sm) ${entry().key === kind() ? "bg-pane" : ""}`}
+                          class={`cursor-pointer select-none flex-row items-center gap-[6px] w-full px-2 py-[7px] rounded-(--radius-sm) ${entry().key === kind() ? "bg-pane" : ""}`}
                           style={entry().key === kind() ? { boxShadow: shadow("xs") } : undefined}
                         >
                           <Text class={`flex-1 min-w-0 text-[12px] font-medium line-clamp-1 ${entry().key === kind() ? "text-ink" : "text-ink-secondary"}`}>{t().plan.jobKinds[entry().key]}</Text>

@@ -24,7 +24,7 @@ export function ScrollBottomButton(props: { shown: boolean; onScrollToBottom?: (
         accessibilityLabel={copy().chat.scrollToBottom}
         disabled={!props.shown}
         onPress={() => props.onScrollToBottom?.()}
-        class="group w-[32px] h-[32px] rounded-full items-center justify-center bg-input-bg border border-line hover:bg-line-subtle transition-transform duration-[220ms]"
+        class="cursor-pointer select-none disabled:cursor-default group w-[32px] h-[32px] rounded-full items-center justify-center bg-input-bg border border-line hover:bg-line-subtle transition-transform duration-[220ms]"
         style={{ transform: props.shown ? "translateY(0px)" : "translateY(76px)" }}
       >
         <Icon name="chevron-down" class="tint-ink-muted group-hover:tint-brand" />

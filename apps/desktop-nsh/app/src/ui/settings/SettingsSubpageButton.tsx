@@ -33,7 +33,7 @@ export function SettingsSubpageButton(props: {
         tooltip={tip(hover())}
         disabled={props.disabled}
         onPress={() => props.onPress()}
-        class="w-10 h-11 shrink-0 items-center justify-center rounded-(--radius-md) active:bg-row-hover disabled:opacity-[0.45]"
+        class="cursor-pointer select-none disabled:cursor-default w-10 h-11 shrink-0 items-center justify-center rounded-(--radius-md) active:bg-row-hover disabled:opacity-[0.45]"
       >
         <If when={props.kind === "back"} else={<Text class="text-[16px] text-ink-muted">✕</Text>}>
           <Icon name="chevron-left" size={20} class="tint-brand" />

@@ -53,7 +53,7 @@ function Segment(props: { testID: string; active: boolean; children: string; onP
       accessibilityLabel={props.children}
       accessibilityState={{ selected: props.active }}
       onPress={() => props.onPress()}
-      class={`items-center justify-center ${narrowWindow() ? "flex-1 min-h-11 rounded-(--radius-sm)" : "px-2 py-[3px]"} ${props.active ? (narrowWindow() ? "bg-pane" : "bg-accent-tint") : narrowWindow() ? "" : "bg-btn-secondary-bg"}`}
+      class={`cursor-pointer select-none items-center justify-center ${narrowWindow() ? "flex-1 min-h-11 rounded-(--radius-sm)" : "px-2 py-[3px]"} ${props.active ? (narrowWindow() ? "bg-pane" : "bg-accent-tint") : narrowWindow() ? "" : "bg-btn-secondary-bg"}`}
     >
       <Text class={`${narrowWindow() ? "text-[14px]" : "text-[11px]"} ${props.active ? (narrowWindow() ? "font-semibold text-ink" : "font-semibold text-brand") : "font-medium text-ink-secondary"}`}>
         {props.children}
@@ -180,7 +180,7 @@ export function ProviderModelList(props: {
             accessibilityLabel={name}
             accessibilityState={{ checked: on() }}
             onPress={() => props.onChange(toggleDraftModel(props.draft, name))}
-            class={`flex-1 min-w-0 flex-row items-center rounded-(--radius-sm) hover:bg-line-subtle ${narrowWindow() ? "gap-3 p-3 min-h-16" : "gap-2 px-2 py-[6px]"}`}
+            class={`cursor-pointer select-none flex-1 min-w-0 flex-row items-center rounded-(--radius-sm) hover:bg-line-subtle ${narrowWindow() ? "gap-3 p-3 min-h-16" : "gap-2 px-2 py-[6px]"}`}
           >
             <View class={`items-center justify-center shrink-0 border ${narrowWindow() ? "w-[22px] h-[22px] rounded-[7px]" : "w-[15px] h-[15px] rounded-(--radius-xs)"} ${on() ? "bg-brand border-brand" : "bg-input-bg border-line-hover"}`}>
               <If when={on()}>
@@ -206,7 +206,7 @@ export function ProviderModelList(props: {
               accessibilityLabel={t().modelAttrsToggle(name)}
               accessibilityState={{ expanded: open() }}
               onPress={() => toggleExpanded(name)}
-              class={`shrink-0 flex-row items-center gap-1 mr-[2px] rounded-(--radius-sm) hover:bg-line-subtle ${narrowWindow() ? "min-w-14 min-h-12 justify-center px-2" : "max-w-[55%] px-[6px] py-1"}`}
+              class={`cursor-pointer select-none shrink-0 flex-row items-center gap-1 mr-[2px] rounded-(--radius-sm) hover:bg-line-subtle ${narrowWindow() ? "min-w-14 min-h-12 justify-center px-2" : "max-w-[55%] px-[6px] py-1"}`}
             >
               <If when={!narrowWindow() && attr().price.trim()}>
                 <Pill tone="price">{attr().price.trim()}</Pill>
@@ -298,7 +298,7 @@ export function ProviderModelList(props: {
               accessibilityState={{ disabled: props.fetching || !canProbe() }}
               disabled={props.fetching || !canProbe()}
               onPress={() => props.onFetch()}
-              class={`shrink-0 border border-accent-border bg-accent-tint rounded-full hover:bg-brand disabled:opacity-[0.6] ${narrowWindow() ? "min-h-11 px-3 justify-center rounded-(--radius-md) bg-pane border-line" : "px-2 py-[2px]"}`}
+              class={`cursor-pointer select-none disabled:cursor-default shrink-0 border border-accent-border bg-accent-tint rounded-full hover:bg-brand disabled:opacity-[0.6] ${narrowWindow() ? "min-h-11 px-3 justify-center rounded-(--radius-md) bg-pane border-line" : "px-2 py-[2px]"}`}
             >
               <Text class={`${narrowWindow() ? "text-[13px]" : "text-[11px]"} font-semibold text-brand`}>
                 {props.fetching ? t().modelsFetching : `↻ ${props.draft.availableModels.length > 0 ? t().modelsRefetch : t().modelsFetch}`}
@@ -342,7 +342,7 @@ export function ProviderModelList(props: {
                         accessibilityLabel={t().modelsClearSearch}
                         tooltip={tip(t().modelsClearSearch)}
                         onPress={() => filterQuery.set("")}
-                        class="absolute right-0 top-0 bottom-0 w-9 items-center justify-center"
+                        class="cursor-pointer select-none absolute right-0 top-0 bottom-0 w-9 items-center justify-center"
                       >
                         <Text class="text-[18px] text-ink-muted">×</Text>
                       </View>

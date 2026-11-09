@@ -183,7 +183,7 @@ export function GlobalSearch(props: {
             testID="search-cancel"
             accessibilityLabel={t().searchCancel}
             onPress={close}
-            class={`flex-row items-center justify-center gap-[6px] rounded-(--radius-sm) hover:bg-row-hover ${phone() ? "min-w-[44px] min-h-[44px] px-2" : "min-h-[36px] p-[6px]"}`}
+            class={`cursor-pointer select-none flex-row items-center justify-center gap-[6px] rounded-(--radius-sm) hover:bg-row-hover ${phone() ? "min-w-[44px] min-h-[44px] px-2" : "min-h-[36px] p-[6px]"}`}
           >
             <Text class={`${phone() ? "text-[14px] text-brand" : "text-[12px] text-ink-muted"}`}>{t().searchCancel}</Text>
             <If when={!phone()}>
@@ -201,7 +201,7 @@ export function GlobalSearch(props: {
                 accessibilityLabel={item().label}
                 accessibilityState={{ selected: category() === item().key }}
                 onPress={() => changeCategory(item().key)}
-                class={`shrink-0 justify-center border rounded-(--radius-sm) ${phone() ? "min-h-[40px] px-[11px]" : "px-[11px] py-[5px]"} ${category() === item().key ? "bg-accent-tint border-accent-border" : "border-transparent hover:bg-row-hover"}`}
+                class={`cursor-pointer select-none shrink-0 justify-center border rounded-(--radius-sm) ${phone() ? "min-h-[40px] px-[11px]" : "px-[11px] py-[5px]"} ${category() === item().key ? "bg-accent-tint border-accent-border" : "border-transparent hover:bg-row-hover"}`}
               >
                 <Text class={`${phone() ? "text-[13px]" : "text-[12px]"} ${category() === item().key ? "text-brand" : "text-ink-muted"}`}>{item().label}</Text>
               </View>
@@ -298,7 +298,7 @@ function State(props: { hits: () => SearchHit[]; connected: () => boolean; queri
                 testID="search-retry"
                 accessibilityLabel={t().searchRetry}
                 onPress={() => void runtime.runSearch(runtime.searchQuery)}
-                class="mt-1 mb-[30px] px-[14px] py-[6px] border border-line rounded-(--radius-sm) bg-btn-secondary-bg hover:bg-line-subtle"
+                class="cursor-pointer select-none mt-1 mb-[30px] px-[14px] py-[6px] border border-line rounded-(--radius-sm) bg-btn-secondary-bg hover:bg-line-subtle"
               >
                 <Text class="text-[13px] text-ink">{t().searchRetry}</Text>
               </View>
@@ -346,7 +346,7 @@ function Hit(props: {
       onPress={props.onPress}
       onMouseEnter={props.onHover}
       onLayout={(e) => props.onLayout({ y: e.bounds.origin.y, height: e.bounds.size.height })}
-      class={`flex-row items-center gap-3 px-3 py-[10px] border rounded-(--radius-sm) ${phone ? "min-h-[68px] gap-[10px]" : "min-h-[60px]"} ${props.available ? "" : "opacity-[0.65]"} ${props.selected ? "bg-accent-tint border-accent-border" : "border-transparent"}`}
+      class={`cursor-pointer select-none flex-row items-center gap-3 px-3 py-[10px] border rounded-(--radius-sm) ${phone ? "min-h-[68px] gap-[10px]" : "min-h-[60px]"} ${props.available ? "" : "opacity-[0.65]"} ${props.selected ? "bg-accent-tint border-accent-border" : "border-transparent"}`}
     >
       <View class="w-[32px] h-[32px] items-center justify-center shrink-0">
         <If

@@ -53,7 +53,7 @@ export function HelpTip(props: { text: string; label: string; testID?: string })
             if (pinned()) close();
             else pinned.set(true);
           }}
-          class={`w-4 h-4 shrink-0 items-center justify-center rounded-full border ${open() ? "border-ink-muted" : "border-line"}`}
+          class={`cursor-pointer select-none w-4 h-4 shrink-0 items-center justify-center rounded-full border ${open() ? "border-ink-muted" : "border-line"}`}
         >
           <Text class={`text-[10px] font-semibold leading-[10px] ${open() ? "text-ink" : "text-ink-muted"}`}>?</Text>
         </View>

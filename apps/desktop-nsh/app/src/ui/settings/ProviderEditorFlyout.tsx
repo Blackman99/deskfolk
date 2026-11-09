@@ -121,7 +121,7 @@ export function ProviderEditorFlyout(props: {
                   accessibilityLabel={t().settings.retry}
                   disabled={props.providerSaving}
                   onPress={() => editor() && void props.persistProviderEditor(editor()!)}
-                  class="min-h-11 px-3 justify-center rounded-(--radius-sm) bg-danger-bg disabled:opacity-[0.45]"
+                  class="cursor-pointer select-none disabled:cursor-default min-h-11 px-3 justify-center rounded-(--radius-sm) bg-danger-bg disabled:opacity-[0.45]"
                 >
                   <Text class="text-[13px] text-danger-text">{t().settings.retry}</Text>
                 </View>

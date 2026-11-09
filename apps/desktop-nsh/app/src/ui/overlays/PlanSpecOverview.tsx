@@ -22,7 +22,7 @@ function StateChip(props: { status: TicketStatus; count: number; onPress?: () =>
       role={props.onPress ? "button" : undefined}
       testID={`plan-ticket-state-${props.status}`}
       onPress={props.onPress}
-      class={`group flex-row items-center gap-1 px-2 py-px border border-line rounded-full bg-pane ${props.onPress ? "hover:border-accent-border" : ""}`}
+      class={`group flex-row items-center gap-1 px-2 py-px border border-line rounded-full bg-pane ${props.onPress ? "cursor-pointer select-none hover:border-accent-border" : ""}`}
     >
       <View class={`w-[6px] h-[6px] rounded-full ${DOT[props.status]}`} />
       <Text class={`text-[11px] text-ink-secondary ${props.onPress ? "group-hover:text-brand" : ""}`}>

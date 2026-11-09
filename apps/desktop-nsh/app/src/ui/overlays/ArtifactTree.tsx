@@ -285,7 +285,7 @@ export function ArtifactTree(props: {
               testID="artifact-tree-retry"
               accessibilityLabel={props.retryLabel}
               onPress={() => line()?.retry?.()}
-              class="self-start min-h-[32px] px-[10px] py-1 items-center justify-center border border-line rounded-(--radius-sm) bg-pane hover:bg-row-hover"
+              class="cursor-pointer select-none self-start min-h-[32px] px-[10px] py-1 items-center justify-center border border-line rounded-(--radius-sm) bg-pane hover:bg-row-hover"
             >
               <Text class="text-[12px] text-brand">{props.retryLabel}</Text>
             </View>
@@ -325,7 +325,7 @@ export function ArtifactTree(props: {
           if (n) onRowMenu(n, e.pagePosition);
         }}
         {...(pan ? pan.panHandlers : {})}
-        class={`flex-row items-center gap-1 w-full py-1 pr-[10px] ${lit() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
+        class={`cursor-pointer select-none flex-row items-center gap-1 w-full py-1 pr-[10px] ${lit() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
         style={{ paddingLeft: 8 + depth * 12 }}
       >
         <If when={isDir()}>

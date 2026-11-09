@@ -30,7 +30,7 @@ export function Agenda(props: {
                   testID={`agenda-day-${group().key}`}
                   accessibilityLabel={agendaDayLabel(group().day, props.locale)}
                   onPress={() => props.onOpenDay(group().day)}
-                  class={`items-start ${narrowWindow() ? "w-[72px] min-h-[44px]" : "w-[120px]"}`}
+                  class={`cursor-pointer select-none items-start ${narrowWindow() ? "w-[72px] min-h-[44px]" : "w-[120px]"}`}
                 >
                   <Text class={`text-[24px] font-medium ${isSameDay(group().day, new Date()) ? "text-brand" : "text-ink"}`}>{String(group().day.getDate())}</Text>
                   <Text class="text-[12px] text-ink-muted">{agendaDayLabel(group().day, props.locale)}</Text>
@@ -43,7 +43,7 @@ export function Agenda(props: {
                         testID={`agenda-event-${event().id}`}
                         accessibilityLabel={`${botOfEvent(event(), props.bots)?.name ?? ""} ${event().title}`}
                         onPress={() => props.onOpen(event())}
-                        class={`flex-row items-center gap-[10px] px-[10px] py-2 rounded-(--radius-sm) hover:bg-line-subtle ${isPaused(event()) ? "opacity-[0.6]" : ""} ${narrowWindow() ? "min-h-[44px]" : ""}`}
+                        class={`cursor-pointer select-none flex-row items-center gap-[10px] px-[10px] py-2 rounded-(--radius-sm) hover:bg-line-subtle ${isPaused(event()) ? "opacity-[0.6]" : ""} ${narrowWindow() ? "min-h-[44px]" : ""}`}
                       >
                         <View class="w-[8px] h-[8px] rounded-full" style={{ backgroundColor: cssColor(event().color ?? "") }} accessible={false} />
                         <Text class="text-[12px] text-ink-muted">{`${clock(event().start)} – ${clock(event().end)}`}</Text>

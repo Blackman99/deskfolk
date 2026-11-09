@@ -198,7 +198,7 @@ export function MemoryCard(props: {
                         accessibilityLabel={`${t().sidebar.memoryEdit}: ${memory().subject}`}
                         tooltip={tip(t().sidebar.memoryEdit)}
                         onPress={() => openEdit(memory())}
-                        class="group flex-row items-center gap-[6px] min-w-0 shrink"
+                        class="cursor-pointer select-none group flex-row items-center gap-[6px] min-w-0 shrink"
                       >
                         <Text class={`font-semibold text-ink group-hover:text-brand line-clamp-1 ${phone() ? "text-[15px]" : "text-[13px]"}`}>{memory().subject}</Text>
                         <If when={!memory().enabled}>
@@ -232,7 +232,7 @@ export function MemoryCard(props: {
                             accessibilityLabel={t().sidebar.memoryEdit}
                             tooltip={tip(t().sidebar.memoryEdit)}
                             onPress={() => openEdit(memory())}
-                            class="group w-[24px] h-[24px] items-center justify-center rounded-(--radius-sm) hover:bg-line-subtle"
+                            class="cursor-pointer select-none group w-[24px] h-[24px] items-center justify-center rounded-(--radius-sm) hover:bg-line-subtle"
                           >
                             <Icon name="edit" size={16} class="tint-ink-muted group-hover:tint-ink" />
                           </View>
@@ -242,14 +242,14 @@ export function MemoryCard(props: {
                             accessibilityLabel={t().sidebar.memoryDelete}
                             tooltip={tip(t().sidebar.memoryDelete)}
                             onPress={() => confirmDelete(memory())}
-                            class="group w-[24px] h-[24px] items-center justify-center rounded-(--radius-sm) hover:bg-line-subtle"
+                            class="cursor-pointer select-none group w-[24px] h-[24px] items-center justify-center rounded-(--radius-sm) hover:bg-line-subtle"
                           >
                             <Icon name="trash" size={16} class="tint-ink-muted group-hover:tint-danger" />
                           </View>
                         </View>
                       </If>
                     </View>
-                    <View role={phone() ? "button" : undefined} accessibilityLabel={phone() ? t().sidebar.memoryEdit : undefined} onPress={phone() ? () => openEdit(memory()) : undefined}>
+                    <View role={phone() ? "button" : undefined} accessibilityLabel={phone() ? t().sidebar.memoryEdit : undefined} onPress={phone() ? () => openEdit(memory()) : undefined} class={phone() ? "cursor-pointer select-none" : undefined}>
                       <Text class={`text-ink-secondary ${phone() ? "text-[14px] leading-[1.5]" : "text-[13px] leading-[1.5]"}`}>{memory().body}</Text>
                     </View>
                     <View class="flex-row flex-wrap items-center gap-1">
@@ -265,7 +265,7 @@ export function MemoryCard(props: {
                             testID={`memory-origin-${memory().id}`}
                             tooltip={tip(t().sidebar.memoryJump)}
                             onPress={() => jump(o().session.id, o().messageId)}
-                            class="group flex-row items-center gap-[3px] min-w-0 shrink"
+                            class="cursor-pointer select-none group flex-row items-center gap-[3px] min-w-0 shrink"
                           >
                             <Icon name="message" size={12} class="tint-ink-muted group-hover:tint-brand" />
                             <Text class="text-[11px] text-ink-muted group-hover:text-brand line-clamp-1">{t().sidebar.memoryFormedIn(o().label)}</Text>
@@ -290,7 +290,7 @@ export function MemoryCard(props: {
               }}
             </Each>
             <If when={memories().length > VISIBLE}>
-              <View role="button" testID="memory-more" onPress={() => expanded.set(!expanded())} class="group self-start py-[2px]">
+              <View role="button" testID="memory-more" onPress={() => expanded.set(!expanded())} class="cursor-pointer select-none group self-start py-[2px]">
                 <Text class="text-[12px] font-semibold text-ink-muted group-hover:text-brand">
                   {expanded() ? t().sidebar.memoryCollapse : t().sidebar.memoryShowAll(memories().length)}
                 </Text>
@@ -402,7 +402,7 @@ export function MemoryCard(props: {
                                 closeEdit();
                                 jump(o().session.id, o().messageId);
                               }}
-                              class="group flex-row items-center gap-[6px] px-[10px] py-2 rounded-(--radius-sm) border border-line bg-sidebar-bg hover:border-brand"
+                              class="cursor-pointer select-none group flex-row items-center gap-[6px] px-[10px] py-2 rounded-(--radius-sm) border border-line bg-sidebar-bg hover:border-brand"
                             >
                               <Icon name="message" size={16} class="tint-ink-secondary group-hover:tint-brand" />
                               <Text class="flex-1 min-w-0 text-[13px] text-ink-secondary group-hover:text-brand">{t().sidebar.memoryFormedIn(o().label)}</Text>
@@ -445,7 +445,7 @@ export function MemoryCard(props: {
                         closeEdit();
                         confirmDelete(memory);
                       }}
-                      class="flex-row items-center justify-center gap-2 w-full min-h-[44px] rounded-(--radius-md) border border-danger-line bg-danger-bg disabled:opacity-[0.45]"
+                      class="cursor-pointer select-none disabled:cursor-default flex-row items-center justify-center gap-2 w-full min-h-[44px] rounded-(--radius-md) border border-danger-line bg-danger-bg disabled:opacity-[0.45]"
                     >
                       <Icon name="trash" class="tint-danger-text" />
                       <Text class="text-[14px] font-semibold text-danger-text">{t().sidebar.memoryDelete}</Text>

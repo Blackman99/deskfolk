@@ -79,7 +79,7 @@ export function MultiSelect(props: {
                     accessibilityLabel={`${props.removeLabel ?? ""} ${opt().label}`}
                     disabled={props.disabled}
                     onPress={() => commit(toggleValue(values(), opt().value))}
-                    class="w-[15px] h-[15px] rounded-full items-center justify-center opacity-70 hover:opacity-100 hover:bg-accent-border"
+                    class="cursor-pointer select-none disabled:cursor-default w-[15px] h-[15px] rounded-full items-center justify-center opacity-70 hover:opacity-100 hover:bg-accent-border"
                   >
                     <Icon name="x" size={12} class="tint-brand" />
                   </View>
@@ -91,7 +91,7 @@ export function MultiSelect(props: {
       }
       inputClass="flex-1 min-w-[60px] px-1 py-[2px] text-[14px] text-ink bg-transparent"
       triggerButton={
-        <View testID={props.testID ? `${props.testID}-trigger` : undefined} class="px-1 py-1" accessible={false}>
+        <View testID={props.testID ? `${props.testID}-trigger` : undefined} class="cursor-pointer px-1 py-1" accessible={false}>
           <Icon name="chevron-down" size={12} class={open() ? "tint-brand rotate-180" : "tint-ink-muted"} />
         </View>
       }
@@ -99,7 +99,7 @@ export function MultiSelect(props: {
       popupStyle={{ boxShadow: shadow("lg") }}
       backdropClass="bg-modal-backdrop"
       groupClass="px-[10px] pt-2 pb-[3px] text-[11px] text-ink-muted"
-      itemClass={`group flex-row items-center rounded-(--radius-sm) focus:bg-line-subtle disabled:opacity-[0.45] ${phone() ? "min-h-[48px] px-3 py-2" : "px-[10px] py-[7px]"}`}
+      itemClass={`cursor-pointer select-none disabled:cursor-default group flex-row items-center rounded-(--radius-sm) focus:bg-line-subtle disabled:opacity-[0.45] ${phone() ? "min-h-[48px] px-3 py-2" : "px-[10px] py-[7px]"}`}
       empty={
         <Text class="px-3 py-[10px] text-[13px] text-ink-muted text-center">
           {options().length === 0 ? (props.emptyLabel ?? "") : (props.noMatchLabel ?? "")}

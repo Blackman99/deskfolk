@@ -65,7 +65,7 @@ export function ProjectCommandMenu(props: {
                   onMouseEnter={() => props.onHover(index())}
                   onPress={() => props.onPick(command())}
                   onLayout={(e) => bounds.set(index(), { y: e.bounds.origin.y, height: e.bounds.size.height })}
-                  class={`flex-row ${platform.desktop ? "items-baseline" : "flex-wrap"} gap-2 w-full min-w-0 px-[10px] ${platform.desktop ? "py-[7px]" : "py-[9px]"} rounded-(--radius-md) ${index() === props.active ? "bg-accent-tint" : ""}`}
+                  class={`cursor-pointer select-none flex-row ${platform.desktop ? "items-baseline" : "flex-wrap"} gap-2 w-full min-w-0 px-[10px] ${platform.desktop ? "py-[7px]" : "py-[9px]"} rounded-(--radius-md) ${index() === props.active ? "bg-accent-tint" : ""}`}
                 >
                   <Text class={`shrink-0 font-mono text-[13px] font-semibold ${index() === props.active ? "text-brand" : "text-ink"}`}>{`/${command().name}`}</Text>
                   <If when={command().argument_hint}>

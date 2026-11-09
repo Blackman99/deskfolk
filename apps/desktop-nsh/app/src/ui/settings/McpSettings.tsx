@@ -257,7 +257,7 @@ export function McpSettings(props: { closeSettings?: () => void; registerBack?: 
             testID="mcp-add"
             accessibilityLabel={t().sectionMcpAdd}
             onPress={() => openEditor()}
-            class="shrink-0 border border-line rounded-(--radius-sm) bg-pane px-[10px] py-[7px] hover:border-accent-border hover:bg-accent-tint"
+            class="cursor-pointer select-none shrink-0 border border-line rounded-(--radius-sm) bg-pane px-[10px] py-[7px] hover:border-accent-border hover:bg-accent-tint"
           >
             <Text class="text-[13px] font-semibold text-brand">{t().sectionMcpAdd}</Text>
           </View>
@@ -268,7 +268,7 @@ export function McpSettings(props: { closeSettings?: () => void; registerBack?: 
               <TextField testID="mcp-search" label={t().mcpSearch} placeholder={t().mcpSearch} value={query()} onInput={(value) => query.set(value)} />
             </View>
             <If when={query()}>
-              <View role="button" testID="mcp-search-clear" accessibilityLabel={t().mcpClearSearch} onPress={() => query.set("")} class="shrink-0 justify-center">
+              <View role="button" testID="mcp-search-clear" accessibilityLabel={t().mcpClearSearch} onPress={() => query.set("")} class="cursor-pointer select-none shrink-0 justify-center">
                 <Text class="text-[12px] font-medium text-brand">{t().mcpClearSearch}</Text>
               </View>
             </If>
@@ -295,7 +295,7 @@ export function McpSettings(props: { closeSettings?: () => void; registerBack?: 
                 testID={`mcp-server-${server().id}`}
                 accessibilityLabel={`${t().mcpEdit}: ${server().name}`}
                 onPress={() => openEditor(server())}
-                class="flex-col gap-[6px] flex-1 min-w-0 p-3 rounded-(--radius-md)"
+                class="cursor-pointer select-none flex-col gap-[6px] flex-1 min-w-0 p-3 rounded-(--radius-md)"
               >
                 <Text tooltip={tip(server().name)} class="text-[14px] font-semibold text-ink line-clamp-1">
                   {server().name}

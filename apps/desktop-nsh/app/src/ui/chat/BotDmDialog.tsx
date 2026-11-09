@@ -93,7 +93,7 @@ export function BotDmDialog(props: {
               accessibilityLabel={line().tip}
               tooltip={tip(line().tip)}
               onPress={goToSource}
-              class="group flex-row items-center gap-1 min-w-0 shrink"
+              class="cursor-pointer select-none group flex-row items-center gap-1 min-w-0 shrink"
             >
               <Text accessible={false} class="text-[12px] text-ink-muted group-hover:text-brand">{line().mark}</Text>
               <Text class="text-[12px] text-ink-muted group-hover:text-brand line-clamp-1">{line().text}</Text>

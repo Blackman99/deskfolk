@@ -67,7 +67,7 @@ export function SettingsHead(props: {
           testID="sheet-back"
           accessibilityLabel={props.narrow ? copy().common.back : backText()}
           onPress={() => props.onBack()}
-          class={`flex-row items-center justify-start rounded-(--radius-sm) hover:bg-accent-tint ${props.narrow ? "w-[44px] h-[44px] justify-center rounded-(--radius-md)" : "flex-1 min-w-0 gap-[6px] px-[6px] py-1"}`}
+          class={`cursor-pointer select-none flex-row items-center justify-start rounded-(--radius-sm) hover:bg-accent-tint ${props.narrow ? "w-[44px] h-[44px] justify-center rounded-(--radius-md)" : "flex-1 min-w-0 gap-[6px] px-[6px] py-1"}`}
         >
           <Icon name="chevron-left" size={20} class="tint-brand" />
           <If when={!props.narrow}>

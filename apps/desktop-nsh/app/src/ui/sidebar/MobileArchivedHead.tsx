@@ -22,7 +22,7 @@ export function MobileArchivedHead(props: { count: number; onBack: () => void })
           tooltip={tip(copy().sidebar.backToSessions)}
           accessibilityLabel={copy().sidebar.backToSessions}
           onPress={() => props.onBack()}
-          class="w-[38px] h-[38px] items-center justify-center rounded-(--radius-md) shrink-0 active:bg-row-hover"
+          class="cursor-pointer select-none w-[38px] h-[38px] items-center justify-center rounded-(--radius-md) shrink-0 active:bg-row-hover"
         >
           <Icon name="chevron-left" size={20} class="tint-brand" />
         </View>

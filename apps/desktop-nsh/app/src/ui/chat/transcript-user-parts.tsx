@@ -20,7 +20,7 @@ export function LineButton(props: { label: string; title?: string; disabled?: bo
       accessibilityLabel={props.label}
       disabled={props.disabled}
       onPress={props.onPress}
-      class="group"
+      class="cursor-pointer select-none disabled:cursor-default group"
     >
       <Text class={`text-[11px] ${props.disabled ? "text-ink-muted" : "text-brand group-hover:text-accent-hover group-hover:underline"}`}>{props.label}</Text>
     </View>
@@ -56,7 +56,7 @@ export function MessageFoot(props: { message: Message; stage: TranscriptStage })
             accessibilityState={{ expanded: open() }}
             tooltip={tip(t().chat.editedAt(formatFullTimestamp(props.message.edited_at ?? props.message.created_at)))}
             onPress={() => void stage().toggleVersions(props.message)}
-            class="group"
+            class="cursor-pointer select-none group"
           >
             <Text class={`text-[11px] ${open() ? "text-ink underline" : "text-ink-muted group-hover:text-ink group-hover:underline"}`}>{t().chat.edited}</Text>
           </View>

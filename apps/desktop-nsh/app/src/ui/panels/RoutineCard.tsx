@@ -53,7 +53,7 @@ function Chip(props: { testID: string; label: string; disabled: boolean; onPress
       accessibilityLabel={props.label}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class="group min-h-[26px] px-2 py-[2px] justify-center rounded-(--radius-sm) border border-line bg-sidebar-bg hover:border-brand disabled:opacity-[0.55]"
+      class="cursor-pointer select-none disabled:cursor-default group min-h-[26px] px-2 py-[2px] justify-center rounded-(--radius-sm) border border-line bg-sidebar-bg hover:border-brand disabled:opacity-[0.55]"
     >
       <Text class="text-[12px] font-medium text-ink-muted group-hover:text-brand">{props.label}</Text>
     </View>
@@ -244,7 +244,7 @@ export function RoutineCard(props: { bot: Bot; onApi?: (api: RoutineCardApi) => 
       accessibilityLabel={t().routines.add}
       disabled={disabled()}
       onPress={() => open()}
-      class="group flex-row items-center justify-center gap-[6px] w-full min-h-[44px] px-[14px] rounded-(--radius-lg) border border-dashed border-line hover:border-brand hover:bg-accent-tint disabled:opacity-[0.55]"
+      class="cursor-pointer select-none disabled:cursor-default group flex-row items-center justify-center gap-[6px] w-full min-h-[44px] px-[14px] rounded-(--radius-lg) border border-dashed border-line hover:border-brand hover:bg-accent-tint disabled:opacity-[0.55]"
     >
       <Icon name="plus" size={12} class="tint-ink-muted group-hover:tint-brand" />
       <Text class="text-[13px] font-semibold text-ink-muted group-hover:text-brand">{t().routines.add}</Text>
@@ -310,7 +310,7 @@ export function RoutineCard(props: { bot: Bot; onApi?: (api: RoutineCardApi) => 
               accessibilityState={{ checked: draft().kind === kind, disabled: disabled() }}
               disabled={disabled()}
               onPress={() => set({ kind })}
-              class={`flex-1 flex-row items-center justify-center gap-[6px] min-h-[40px] rounded-(--radius-md) ${draft().kind === kind ? "bg-brand" : ""}`}
+              class={`cursor-pointer select-none disabled:cursor-default flex-1 flex-row items-center justify-center gap-[6px] min-h-[40px] rounded-(--radius-md) ${draft().kind === kind ? "bg-brand" : ""}`}
             >
               <Icon name={kind === "daily" ? "clock" : "calendar"} class={draft().kind === kind ? "tint-on-accent" : "tint-ink-muted"} />
               <Text class={`text-[14px] font-semibold ${draft().kind === kind ? "text-on-accent" : "text-ink-muted"}`}>
@@ -339,7 +339,7 @@ export function RoutineCard(props: { bot: Bot; onApi?: (api: RoutineCardApi) => 
                   accessibilityState={{ checked: draft().weekdays.includes(day), disabled: disabled() }}
                   disabled={disabled()}
                   onPress={() => toggleDay(day)}
-                  class={`flex-1 min-w-0 min-h-[44px] items-center justify-center rounded-full border ${draft().weekdays.includes(day) ? "bg-brand border-brand" : "bg-pane border-line"}`}
+                  class={`cursor-pointer select-none disabled:cursor-default flex-1 min-w-0 min-h-[44px] items-center justify-center rounded-full border ${draft().weekdays.includes(day) ? "bg-brand border-brand" : "bg-pane border-line"}`}
                 >
                   <Text class={`text-[14px] font-bold ${draft().weekdays.includes(day) ? "text-on-accent" : "text-ink"}`}>{t().routines.daysShort[day]}</Text>
                 </View>
@@ -423,7 +423,7 @@ export function RoutineCard(props: { bot: Bot; onApi?: (api: RoutineCardApi) => 
                 deleting.set(row());
                 failure.set("");
               }}
-              class="flex-row items-center justify-center gap-2 w-full min-h-[44px] rounded-(--radius-md) border border-danger-line bg-danger-bg disabled:opacity-[0.55]"
+              class="cursor-pointer select-none disabled:cursor-default flex-row items-center justify-center gap-2 w-full min-h-[44px] rounded-(--radius-md) border border-danger-line bg-danger-bg disabled:opacity-[0.55]"
             >
               <Icon name="trash" class="tint-danger-text" />
               <Text class="text-[14px] font-semibold text-danger-text">{t().routines.remove}</Text>
@@ -493,7 +493,7 @@ export function RoutineCard(props: { bot: Bot; onApi?: (api: RoutineCardApi) => 
                         accessibilityLabel={`${t().routines.edit}: ${row().title}`}
                         disabled={disabled()}
                         onPress={() => open(row())}
-                        class={`flex-row items-center gap-[14px] flex-1 min-w-0 ${phone() ? "min-h-[52px]" : "min-h-[40px]"}`}
+                        class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[14px] flex-1 min-w-0 ${phone() ? "min-h-[52px]" : "min-h-[40px]"}`}
                       >
                         <Text class={`font-bold ${phone() ? "text-[24px] w-[68px]" : "text-[22px]"} ${row().enabled ? "text-ink" : "text-ink-muted"}`}>{row().schedule.time}</Text>
                         <View class="flex-col gap-1 flex-1 min-w-0">
@@ -529,7 +529,7 @@ export function RoutineCard(props: { bot: Bot; onApi?: (api: RoutineCardApi) => 
                             deleting.set(row());
                             failure.set("");
                           }}
-                          class="group w-[32px] h-[32px] items-center justify-center rounded-(--radius-md) hover:bg-danger-bg disabled:opacity-[0.55]"
+                          class="cursor-pointer select-none disabled:cursor-default group w-[32px] h-[32px] items-center justify-center rounded-(--radius-md) hover:bg-danger-bg disabled:opacity-[0.55]"
                         >
                           <Icon name="trash" class="tint-ink-muted group-hover:tint-danger-text" />
                         </View>

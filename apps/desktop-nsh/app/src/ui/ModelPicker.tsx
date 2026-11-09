@@ -110,7 +110,7 @@ export function ModelPicker(props: {
       disabled={props.disabled}
       onLayout={(e) => width.set(e.bounds.size.width)}
       onPress={() => (picker.phone() ? (picker.open() ? picker.close() : picker.openPicker()) : undefined)}
-      class={`w-full flex-row items-center gap-[8px] rounded-(--radius-md) border bg-input-bg disabled:opacity-[0.55] ${
+      class={`cursor-pointer select-none disabled:cursor-default w-full flex-row items-center gap-[8px] rounded-(--radius-md) border bg-input-bg disabled:opacity-[0.55] ${
         small() ? "px-[10px] py-[6px]" : "px-[12px] py-[8px]"
       } ${props.error ? "border-danger-line" : picker.open() ? "border-field-focus-border" : "border-line hover:border-line-hover hover:bg-line-subtle"} ${props.class ?? ""}`}
       style={{ boxShadow: shadow("xs") }}
@@ -168,7 +168,7 @@ export function ModelPicker(props: {
                               picker.activate(source());
                               picker.column.set("rows");
                             }}
-                            class={`flex-row items-center gap-[8px] w-full px-[8px] py-[7px] rounded-(--radius-sm) disabled:opacity-[0.5] ${
+                            class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[8px] w-full px-[8px] py-[7px] rounded-(--radius-sm) disabled:opacity-[0.5] ${
                               active() ? "bg-pane" : ""
                             } ${picker.column() === "sources" && active() ? "border-2 border-accent-border" : ""}`}
                             style={active() ? { boxShadow: shadow("xs") } : undefined}

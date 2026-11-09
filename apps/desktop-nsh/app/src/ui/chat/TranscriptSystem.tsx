@@ -195,7 +195,7 @@ function Row(props: {
                 tooltip={tip(continueHint())}
                 disabled={!stage.connected || stage.view?.sending}
                 onPress={() => void runtime.continueInterrupt(msg().id, stage.selected?.id)}
-                class="group flex-row items-center gap-[6px] h-[28px] px-[12px] bg-accent-tint border border-accent-border rounded-(--radius-sm) hover:bg-brand hover:border-brand active:bg-accent-active disabled:opacity-50"
+                class="cursor-pointer select-none disabled:cursor-default group flex-row items-center gap-[6px] h-[28px] px-[12px] bg-accent-tint border border-accent-border rounded-(--radius-sm) hover:bg-brand hover:border-brand active:bg-accent-active disabled:opacity-50"
               >
                 <Icon name="play" size={12} class="shrink-0 tint-brand group-hover:tint-on-accent" />
                 <Text class="text-[12px] font-medium text-brand group-hover:text-on-accent">{t().stream.continueInterrupt}</Text>

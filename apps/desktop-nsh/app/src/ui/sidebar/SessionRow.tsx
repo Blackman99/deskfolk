@@ -125,7 +125,7 @@ export function SessionRow(props: {
         onLongPress={phone() || !platform.desktop ? (e) => props.onContextMenu(at(e)) : undefined}
         {...sessionPan(() => props.onDrag)}
         delayLongPress={450}
-        class={`flex-row items-center active:scale-[0.985] ${rowClass()} ${props.archived ? "opacity-[0.85]" : ""}`}
+        class={`cursor-pointer select-none flex-row items-center active:scale-[0.985] ${rowClass()} ${props.archived ? "opacity-[0.85]" : ""}`}
         style={props.on && !phone() ? { boxShadow: shadow("sm") } : undefined}
       >
         <If
@@ -213,7 +213,7 @@ export function SessionRow(props: {
               accessibilityState={{ selected: props.pinned === true }}
               tooltip={tip(props.pinned ? t().sidebar.unpin : t().sidebar.pin)}
               onPress={() => props.onTogglePin?.()}
-              class="group w-[26px] h-[26px] rounded-[7px] items-center justify-center hover:bg-row-hover active:scale-[0.9]"
+              class="cursor-pointer select-none group w-[26px] h-[26px] rounded-[7px] items-center justify-center hover:bg-row-hover active:scale-[0.9]"
             >
               <Icon name="pin" size={16} class={props.pinned ? "tint-brand" : `${SIDE_MUTED_TINT} group-hover:tint-ink`} />
             </View>
@@ -223,7 +223,7 @@ export function SessionRow(props: {
               accessibilityLabel={t().chat.moreActions}
               tooltip={tip(t().chat.moreActions)}
               onPress={(e) => props.onContextMenu(at(e))}
-              class="group w-[26px] h-[26px] rounded-[7px] items-center justify-center hover:bg-row-hover active:scale-[0.9]"
+              class="cursor-pointer select-none group w-[26px] h-[26px] rounded-[7px] items-center justify-center hover:bg-row-hover active:scale-[0.9]"
             >
               <Icon name="more" size={16} class={`${SIDE_MUTED_TINT} group-hover:tint-ink`} />
             </View>

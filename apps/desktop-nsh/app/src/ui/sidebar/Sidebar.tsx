@@ -419,7 +419,7 @@ export function Sidebar(props: {
                   accessibilityLabel={t().sidebar.hide}
                   accessibilityState={{ expanded: true }}
                   onPress={() => collapse()()}
-                  class="group shrink-0 w-[30px] h-[30px] items-center justify-center rounded-(--radius-sm) hover:bg-row-hover"
+                  class="cursor-pointer select-none group shrink-0 w-[30px] h-[30px] items-center justify-center rounded-(--radius-sm) hover:bg-row-hover"
                 >
                   <Icon name="sidebar-close" class={`${SIDE_MUTED_TINT} group-hover:tint-ink`} />
                 </View>
@@ -474,7 +474,7 @@ export function Sidebar(props: {
                               testID="search-trigger"
                               accessibilityLabel={t().sidebar.globalSearch}
                               onPress={() => props.onOpenSearch()}
-                              class={`flex-1 min-w-0 flex-row items-center justify-between gap-[6px] border ${
+                              class={`cursor-pointer select-none flex-1 min-w-0 flex-row items-center justify-between gap-[6px] border ${
                                 phone()
                                   ? "h-[38px] pl-[34px] pr-[14px] rounded-full bg-pane border-line active:bg-row-hover"
                                   : // On the ground beside the cards a tinted well, not a field (`Sidebar.svelte` `.search:not(:focus)`): a

@@ -67,7 +67,7 @@ export function AboutTab(props: { locale: "zh" | "en" }) {
                 accessibilityLabel={checker.status === "checking" ? t().settings.checkingUpdates : t().settings.checkUpdates}
                 disabled={checker.status === "checking"}
                 onPress={() => void checker.checkNow()}
-                class="group flex-row items-center justify-center gap-[6px] px-3 py-[5px] bg-btn-secondary-bg hover:bg-btn-secondary-hover border border-line rounded-(--radius-md) disabled:opacity-[0.65]"
+                class="cursor-pointer select-none disabled:cursor-default group flex-row items-center justify-center gap-[6px] px-3 py-[5px] bg-btn-secondary-bg hover:bg-btn-secondary-hover border border-line rounded-(--radius-md) disabled:opacity-[0.65]"
                 style={{ boxShadow: shadow("xs") }}
               >
                 <If when={checker.status === "checking"}>

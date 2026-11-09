@@ -176,7 +176,7 @@ export function MarkdownAnnotator(props: {
                 role={choosing() || on().length > 0 ? "button" : undefined}
                 tooltip={on().length > 0 && !choosing() ? tip(on().map(markTitle).join("\n\n")) : undefined}
                 onPress={() => press(block(), index(), on())}
-                class={`min-w-0 rounded-(--radius-sm) ${
+                class={`${choosing() || on().length > 0 ? "cursor-pointer " : ""}min-w-0 rounded-(--radius-sm) ${
                   sel() || isPending(block()) ? "border border-dashed border-brand bg-brand/18" : "border border-transparent"
                 } ${
                   !sel() && !isPending(block()) && strongest()
@@ -207,7 +207,7 @@ export function MarkdownAnnotator(props: {
                         accessibilityLabel={props.labels.mark(m().n, markTitle(m()))}
                         tooltip={tip(markTitle(m()))}
                         onPress={() => props.onPick(m().id)}
-                        class={`min-w-[18px] h-[18px] px-1 rounded-full items-center justify-center border ${
+                        class={`cursor-pointer select-none min-w-[18px] h-[18px] px-1 rounded-full items-center justify-center border ${
                           m().status === "draft" ? "bg-pane border-dotted border-brand" : m().status === "resolved" ? "bg-ink-muted border-ink-muted" : "bg-brand border-brand"
                         } ${m().stale ? "border-dashed" : ""}`}
                       >
@@ -222,7 +222,7 @@ export function MarkdownAnnotator(props: {
                   role="button"
                   testID="markdown-annotate-button"
                   onPress={() => annotate(block())}
-                  class="self-end mt-1 px-3 h-[28px] items-center justify-center rounded-(--radius-sm) bg-brand active:bg-accent-active"
+                  class="cursor-pointer select-none self-end mt-1 px-3 h-[28px] items-center justify-center rounded-(--radius-sm) bg-brand active:bg-accent-active"
                 >
                   <Text class="text-[12px] font-semibold text-on-accent">{props.labels.annotate}</Text>
                 </View>

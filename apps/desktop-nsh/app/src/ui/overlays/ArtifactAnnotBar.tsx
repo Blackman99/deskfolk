@@ -80,7 +80,7 @@ export function ArtifactAnnotBar(props: {
             testID="artifact-source-toggle"
             accessibilityState={{ selected: props.showSource }}
             onPress={props.toggleSource}
-            class={`shrink-0 flex-row items-center gap-[5px] px-[10px] rounded-full border border-line bg-btn-secondary-bg hover:border-line-hover hover:bg-btn-secondary-hover ${btnHeight()}`}
+            class={`cursor-pointer select-none shrink-0 flex-row items-center gap-[5px] px-[10px] rounded-full border border-line bg-btn-secondary-bg hover:border-line-hover hover:bg-btn-secondary-hover ${btnHeight()}`}
           >
             <Icon name={props.showSource ? "eye" : "code"} size={12} class="tint-ink-secondary" />
             <Text class="text-[12px] font-medium text-ink-secondary">{props.showSource ? t().artifactRendered : t().artifactSource}</Text>
@@ -93,7 +93,7 @@ export function ArtifactAnnotBar(props: {
             accessibilityState={{ selected: props.annot.annotMode, disabled: props.loader.originalProgress !== null || props.loader.loading }}
             disabled={props.loader.originalProgress !== null || props.loader.loading}
             onPress={() => void props.annot.toggleAnnotMode()}
-            class={`shrink-0 flex-row items-center gap-[5px] px-[10px] rounded-full border disabled:opacity-60 ${btnHeight()} ${props.annot.annotMode ? "bg-brand border-brand hover:bg-accent-hover" : "border-line bg-btn-secondary-bg hover:border-line-hover hover:bg-btn-secondary-hover"}`}
+            class={`cursor-pointer select-none disabled:cursor-default shrink-0 flex-row items-center gap-[5px] px-[10px] rounded-full border disabled:opacity-60 ${btnHeight()} ${props.annot.annotMode ? "bg-brand border-brand hover:bg-accent-hover" : "border-line bg-btn-secondary-bg hover:border-line-hover hover:bg-btn-secondary-hover"}`}
           >
             <Icon name="target" size={12} class={props.annot.annotMode ? "tint-on-accent" : "tint-ink-secondary"} />
             <Text class={`text-[12px] font-medium ${props.annot.annotMode ? "text-on-accent" : "text-ink-secondary"}`}>
@@ -109,7 +109,7 @@ export function ArtifactAnnotBar(props: {
             onPress={() => {
               props.annot.annotOpen = !props.annot.annotOpen;
             }}
-            class={`shrink-0 flex-row items-center gap-[5px] px-[10px] rounded-full border ${btnHeight()} ${props.annot.annotOpen ? "bg-accent-tint border-accent-border" : "border-line bg-btn-secondary-bg hover:border-line-hover hover:bg-btn-secondary-hover"}`}
+            class={`cursor-pointer select-none shrink-0 flex-row items-center gap-[5px] px-[10px] rounded-full border ${btnHeight()} ${props.annot.annotOpen ? "bg-accent-tint border-accent-border" : "border-line bg-btn-secondary-bg hover:border-line-hover hover:bg-btn-secondary-hover"}`}
           >
             <Icon name="message" size={12} class={props.annot.annotOpen ? "tint-brand" : "tint-ink-secondary"} />
             <Text class={`text-[12px] font-medium ${props.annot.annotOpen ? "text-brand" : "text-ink-secondary"}`}>

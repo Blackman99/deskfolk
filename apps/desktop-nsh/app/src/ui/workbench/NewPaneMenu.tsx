@@ -34,7 +34,7 @@ export function NewPaneRow(props: {
       disabled={props.disabled}
       tooltip={props.meta ? tip(props.meta) : undefined}
       onPress={props.onPress}
-      class="flex-row items-center gap-2 w-full min-h-[32px] px-2 py-[5px] rounded-(--radius-md) hover:bg-row-hover focus-visible:bg-row-hover disabled:opacity-[0.6]"
+      class="cursor-pointer select-none disabled:cursor-default flex-row items-center gap-2 w-full min-h-[32px] px-2 py-[5px] rounded-(--radius-md) hover:bg-row-hover focus-visible:bg-row-hover disabled:opacity-[0.6]"
     >
       <View accessible={false} class={`w-[22px] h-[22px] shrink-0 items-center justify-center rounded-(--radius-sm) ${props.quiet ? "bg-bg" : "bg-accent-tint"}`}>
         <Icon name={props.icon} size={16} class={props.quiet ? "tint-ink-muted" : "tint-brand"} />

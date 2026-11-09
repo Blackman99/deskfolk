@@ -152,7 +152,7 @@ export function SpendGroupTable(props: {
             role="button"
             disabled={inactive()}
             onPress={() => ledger().drillGroup(group())}
-            class="group shrink min-w-0 min-h-[28px] justify-center"
+            class="cursor-pointer select-none disabled:cursor-default group shrink min-w-0 min-h-[28px] justify-center"
           >
             <Text
               class={`font-semibold ${narrowRow ? "text-[14px] line-clamp-1" : "text-[13px]"} ${inactive() || group().deleted ? "text-ink-muted" : "text-ink group-hover:text-brand"}`}
@@ -170,7 +170,7 @@ export function SpendGroupTable(props: {
               tooltip={tip(copy().openSession)}
               accessibilityLabel={copy().openSession}
               onPress={() => props.onOpenSession?.(group().id!)}
-              class={`group items-center justify-center shrink-0 rounded-(--radius-sm) hover:bg-line-subtle ${narrowRow ? "w-[40px] h-[40px]" : "w-[28px] h-[28px]"}`}
+              class={`cursor-pointer select-none group items-center justify-center shrink-0 rounded-(--radius-sm) hover:bg-line-subtle ${narrowRow ? "w-[40px] h-[40px]" : "w-[28px] h-[28px]"}`}
             >
               <Icon name="arrow-right" size={12} class="tint-ink-muted group-hover:tint-brand" />
             </View>
@@ -227,7 +227,7 @@ export function SpendGroupTable(props: {
       role="button"
       disabled={inactive()}
       onPress={() => ledger().drillGroup(group())}
-      class="border-t border-line-subtle px-[14px] pt-[11px] pb-3 gap-[2px] active:bg-row-hover"
+      class="cursor-pointer select-none disabled:cursor-default border-t border-line-subtle px-[14px] pt-[11px] pb-3 gap-[2px] active:bg-row-hover"
     >
       <View class="flex-row items-center gap-3">
         <View class="flex-1 min-w-0 gap-[2px]">
@@ -285,7 +285,7 @@ export function SpendGroupTable(props: {
               onPress={() => {
                 ledger().view.dir = ledger().view.dir === "asc" ? "desc" : "asc";
               }}
-              class="w-[30px] h-[30px] items-center justify-center rounded-full bg-line-subtle"
+              class="cursor-pointer select-none w-[30px] h-[30px] items-center justify-center rounded-full bg-line-subtle"
             >
               <Text class="text-[13px] text-ink">{ledger().view.dir === "asc" ? "↑" : "↓"}</Text>
             </View>
@@ -303,7 +303,7 @@ export function SpendGroupTable(props: {
                 accessibilityLabel={copy().sortBy(columnLabel(column()))}
                 accessibilityState={{ selected: ledger().view.sort === column().key }}
                 onPress={() => sortBy(column().key)}
-                class={`group min-h-[24px] justify-center ${column().key === "name" ? "items-start" : "items-end"}`}
+                class={`cursor-pointer select-none group min-h-[24px] justify-center ${column().key === "name" ? "items-start" : "items-end"}`}
                 style={columnStyle(column())}
               >
                 <Text class="text-[12px] font-medium text-ink-muted group-hover:text-ink">{`${columnLabel(column())}${sortMark(column().key)}`}</Text>
@@ -326,7 +326,7 @@ export function SpendGroupTable(props: {
             role="button"
             accessibilityState={{ expanded: showAll() }}
             onPress={() => showAll.set(!showAll())}
-            class="group min-h-[28px] justify-center px-1"
+            class="cursor-pointer select-none group min-h-[28px] justify-center px-1"
           >
             <Text class="text-[12px] font-medium text-brand group-hover:underline">{showAll() ? copy().showFewerRows : copy().showAllRows(sortedGroups().length)}</Text>
           </View>

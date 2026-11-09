@@ -57,7 +57,7 @@ export function CreateFab(props: {
           accessibilityLabel={copy().sidebar.createMenu}
           accessibilityState={{ expanded: props.createMenuOpen }}
           onPress={() => props.onCreateMenuOpenChange(!props.createMenuOpen)}
-          class={`w-[52px] h-[52px] rounded-full items-center justify-center bg-brand active:bg-accent-hover active:scale-[0.94] transition-transform duration-[160ms] ${props.createMenuOpen ? "rotate-45" : ""}`}
+          class={`cursor-pointer select-none w-[52px] h-[52px] rounded-full items-center justify-center bg-brand active:bg-accent-hover active:scale-[0.94] transition-transform duration-[160ms] ${props.createMenuOpen ? "rotate-45" : ""}`}
           style={{ boxShadow: shadow("lg") }}
         >
           <Icon name="plus" size={24} class="tint-on-accent" />

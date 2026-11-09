@@ -68,7 +68,7 @@ export function ReplyingIndicator(props: {
           accessibilityLabel={bot()?.name}
           tooltip={tip(bot()?.name ?? "")}
           onPress={() => props.onOpenProfile?.(entry.bot_id)}
-          class={`flex-row items-center ${single ? "gap-[6px]" : "gap-[5px]"} ${frame} ${single ? "" : "hover:bg-line-hover hover:border-muted-light active:scale-[0.98]"}`}
+          class={`cursor-pointer select-none flex-row items-center ${single ? "gap-[6px]" : "gap-[5px]"} ${frame} ${single ? "" : "hover:bg-line-hover hover:border-muted-light active:scale-[0.98]"}`}
         >
           {face}
           {name}

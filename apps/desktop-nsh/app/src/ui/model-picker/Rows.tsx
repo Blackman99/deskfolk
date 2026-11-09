@@ -30,7 +30,7 @@ export function ModelRow(props: {
       onPress={() => props.onPick(props.row)}
       onMouseEnter={() => props.onHover?.()}
       onLayout={(e) => props.onLayout?.({ y: e.bounds.origin.y, height: e.bounds.size.height })}
-      class={`flex-row items-center gap-[8px] rounded-(--radius-sm) disabled:opacity-[0.45] ${
+      class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[8px] rounded-(--radius-sm) disabled:opacity-[0.45] ${
         props.phone ? "min-h-[48px] px-[12px] py-[8px]" : "px-[10px] py-[6px]"
       } ${props.selected ? `bg-accent-tint ${props.active ? "border border-accent-border" : ""}` : props.active ? "bg-line-subtle" : "hover:bg-line-subtle active:bg-line-subtle"}`}
     >

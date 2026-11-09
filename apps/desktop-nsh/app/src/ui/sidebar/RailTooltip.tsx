@@ -201,7 +201,7 @@ export function RailTooltip(props: {
           hide();
           props.onContextMenu?.(e);
         }}
-        class={`${props.class ?? ""} ${enabled() ? "" : "opacity-[0.35]"}`}
+        class={`cursor-pointer select-none ${props.class ?? ""} ${enabled() ? "" : "opacity-[0.35]"}`}
       >
         {props.children}
       </View>

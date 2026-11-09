@@ -93,7 +93,7 @@ export function RoutineDetail(props: {
               testID="detail-close"
               accessibilityLabel={t().common.close}
               onPress={props.onClose}
-              class="px-[18px] py-2 rounded-(--radius-md) border border-line bg-btn-secondary-bg hover:bg-line-subtle"
+              class="cursor-pointer select-none px-[18px] py-2 rounded-(--radius-md) border border-line bg-btn-secondary-bg hover:bg-line-subtle"
             >
               <Text class="text-[13px] font-semibold text-ink">{t().common.close}</Text>
             </View>

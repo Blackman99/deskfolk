@@ -108,7 +108,7 @@ export function ArtifactTreeMenu(props: {
                         accessibilityLabel={entry.label}
                         ref={(node: ViewRef) => void refs.push(node)}
                         onPress={pick(entry.run)}
-                        class={`flex-row items-center w-full px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle focus:bg-line-subtle ${entry.danger ? "hover:bg-danger-bg group" : "group"}`}
+                        class={`cursor-pointer select-none flex-row items-center w-full px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle focus:bg-line-subtle ${entry.danger ? "hover:bg-danger-bg group" : "group"}`}
                       >
                         <Text class={`text-[13px] font-medium ${entry.danger ? "text-ink group-hover:text-danger-text" : "text-ink group-hover:text-brand"}`}>
                           {entry.label}

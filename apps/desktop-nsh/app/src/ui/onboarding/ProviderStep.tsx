@@ -78,7 +78,7 @@ function EndpointForm(props: { w: Wizard }) {
                 accessibilityLabel={label()}
                 accessibilityState={{ selected: active() }}
                 onPress={() => w.applyPreset(preset())}
-                class={`flex-row items-center gap-[6px] py-[5px] rounded-full border ${connector() ? "pl-[6px] pr-3" : "px-3"} ${
+                class={`cursor-pointer select-none flex-row items-center gap-[6px] py-[5px] rounded-full border ${connector() ? "pl-[6px] pr-3" : "px-3"} ${
                   active() ? "bg-brand border-brand" : "bg-chip border-chip-line hover:bg-pane hover:border-line-hover"
                 }`}
               >

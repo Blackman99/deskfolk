@@ -28,7 +28,7 @@ export function VoiceButton(props: { voice: ComposerVoice; disabled: boolean }) 
       accessibilityState={{ selected: listening(), busy: busy(), disabled: props.voice.phase === "transcribing" || (props.disabled && props.voice.phase === "idle") }}
       disabled={props.voice.phase === "transcribing" || (props.disabled && props.voice.phase === "idle")}
       onPress={() => void props.voice.toggle()}
-      class={`group shrink-0 items-center justify-center rounded-full active:scale-[0.96] disabled:opacity-[0.4] ${narrowWindow() ? "w-[40px] h-[40px]" : "w-[34px] h-[34px]"} ${listening() ? "bg-danger-bg" : "hover:bg-line-subtle"}`}
+      class={`cursor-pointer select-none disabled:cursor-default group shrink-0 items-center justify-center rounded-full active:scale-[0.96] disabled:opacity-[0.4] ${narrowWindow() ? "w-[40px] h-[40px]" : "w-[34px] h-[34px]"} ${listening() ? "bg-danger-bg" : "hover:bg-line-subtle"}`}
     >
       <If when={listening()}>
         <View

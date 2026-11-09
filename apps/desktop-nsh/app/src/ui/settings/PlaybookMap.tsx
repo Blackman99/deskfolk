@@ -97,7 +97,7 @@ export function PlaybookMap(props: {
       accessibilityLabel={c().own.add}
       accessibilityState={{ expanded: menu()?.hook === card().hook }}
       onPress={() => menu.set(menu()?.hook === card().hook ? null : { hook: card().hook, anchor: addRefs.get(card().hook) ?? null })}
-      class={`${base} group items-center border-dotted border-line hover:bg-line-subtle`}
+      class={`cursor-pointer select-none ${base} group items-center border-dotted border-line hover:bg-line-subtle`}
       style={frame(card())}
     >
       <View class="flex-row items-center gap-1">
@@ -114,7 +114,7 @@ export function PlaybookMap(props: {
       accessibilityLabel={c().hooks.turn}
       accessibilityState={{ pressed: props.selected === "turn" }}
       onPress={() => props.onpick("turn")}
-      class={`${base} items-center bg-chip border-dashed hover:bg-line-subtle ${props.selected === "turn" ? "border-brand" : "border-line"}`}
+      class={`cursor-pointer select-none ${base} items-center bg-chip border-dashed hover:bg-line-subtle ${props.selected === "turn" ? "border-brand" : "border-line"}`}
       style={{ ...frame(card()), ...pickedStyle(props.selected === "turn") }}
     >
       <Text testID="playbook-round-turn" class="text-[12px] font-semibold text-ink line-clamp-1">{c().hooks.turn}</Text>
@@ -139,7 +139,7 @@ export function PlaybookMap(props: {
         accessibilityState={{ pressed: props.selected === id }}
         tooltip={tip(why() ?? c().own.mineTitle)}
         onPress={() => props.onpick(id)}
-        class={`${base} border-dashed hover:bg-line-subtle bg-pane ${props.selected === id ? "border-brand" : "border-line"} ${why() !== null ? "opacity-[0.55]" : ""}`}
+        class={`cursor-pointer select-none ${base} border-dashed hover:bg-line-subtle bg-pane ${props.selected === id ? "border-brand" : "border-line"} ${why() !== null ? "opacity-[0.55]" : ""}`}
         style={{ ...frame(card()), ...pickedStyle(props.selected === id) }}
       >
         <View class="flex-row items-center gap-[6px] w-full min-w-0">
@@ -159,7 +159,7 @@ export function PlaybookMap(props: {
       accessibilityLabel={c().steps[step]!.name}
       accessibilityState={{ pressed: props.selected === step }}
       onPress={() => props.onpick(step)}
-      class={`${base} border-dashed hover:bg-line-subtle bg-pane ${props.selected === step ? "border-brand" : "border-line"} ${props.resolved[step].on ? "" : "opacity-[0.55]"}`}
+      class={`cursor-pointer select-none ${base} border-dashed hover:bg-line-subtle bg-pane ${props.selected === step ? "border-brand" : "border-line"} ${props.resolved[step].on ? "" : "opacity-[0.55]"}`}
       style={{ ...frame(card()), ...pickedStyle(props.selected === step) }}
     >
       <View class="flex-row items-center gap-[6px] w-full min-w-0">

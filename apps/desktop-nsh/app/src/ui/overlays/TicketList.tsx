@@ -250,7 +250,7 @@ export function TicketList(props: {
                         role="button"
                         testID="board-focus-clear"
                         onPress={() => props.onStatusFilterChange?.("all")}
-                        class="ml-auto"
+                        class="cursor-pointer select-none ml-auto"
                       >
                         <Text class="text-[11px] text-brand">{t().plan.board.focusClear}</Text>
                       </View>

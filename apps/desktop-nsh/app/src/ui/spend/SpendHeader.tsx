@@ -72,6 +72,7 @@ export function SpendHeader(props: {
         <DatePicker
           value={value()}
           accessibilityLabel={label}
+          itemClass="cursor-pointer select-none"
           onChange={(e) => {
             props.ledger.view[which] = typeof e.value === "string" ? e.value.slice(0, 10) : "";
           }}
@@ -80,7 +81,7 @@ export function SpendHeader(props: {
               testID={testID}
               role="button"
               accessibilityLabel={label}
-              class={`flex-row items-center gap-2 w-full px-[10px] border rounded-(--radius-sm) bg-input-bg hover:border-line-hover ${narrow() ? "h-[40px]" : "h-[38px]"} ${props.ledger.rangeIssue ? "border-danger" : "border-line"}`}
+              class={`cursor-pointer select-none flex-row items-center gap-2 w-full px-[10px] border rounded-(--radius-sm) bg-input-bg hover:border-line-hover ${narrow() ? "h-[40px]" : "h-[38px]"} ${props.ledger.rangeIssue ? "border-danger" : "border-line"}`}
             >
               <SpendIcon name="calendar" size={12} />
               <Text class="flex-1 text-[12px] text-ink">{value() ?? copy().dash}</Text>
@@ -129,7 +130,7 @@ export function SpendHeader(props: {
             accessibilityLabel={copy().refresh}
             disabled={props.ledger.loading || !!props.ledger.rangeIssue || !props.api}
             onPress={() => props.ledger.refresh()}
-            class={`group items-center justify-center shrink-0 disabled:opacity-[0.4] hover:bg-line-subtle ${narrow() ? "w-[44px] h-[44px] rounded-full" : "w-[38px] h-[38px] border border-line rounded-(--radius-sm) bg-pane hover:border-line-hover"}`}
+            class={`cursor-pointer select-none disabled:cursor-default group items-center justify-center shrink-0 disabled:opacity-[0.4] hover:bg-line-subtle ${narrow() ? "w-[44px] h-[44px] rounded-full" : "w-[38px] h-[38px] border border-line rounded-(--radius-sm) bg-pane hover:border-line-hover"}`}
           >
             <SpendIcon name="refresh" class={`${props.ledger.loading ? "animate-spin " : ""}tint-ink-muted group-hover:tint-ink`} />
           </View>
@@ -167,7 +168,7 @@ export function SpendHeader(props: {
                 role="button"
                 accessibilityLabel={copy().clearFilter(chip().label)}
                 onPress={() => chip().clear()}
-                class={`group flex-row items-center gap-[6px] max-w-[320px] px-[10px] border border-accent-border rounded-full bg-accent-tint hover:opacity-80 ${narrow() ? "min-h-[44px] py-[6px] px-3" : "min-h-[32px] py-1"}`}
+                class={`cursor-pointer select-none group flex-row items-center gap-[6px] max-w-[320px] px-[10px] border border-accent-border rounded-full bg-accent-tint hover:opacity-80 ${narrow() ? "min-h-[44px] py-[6px] px-3" : "min-h-[32px] py-1"}`}
               >
                 <Text class="shrink text-[12px] font-medium text-brand line-clamp-1">{chip().label}</Text>
                 <SpendIcon name="close" size={12} class="tint-brand opacity-80" />
@@ -180,7 +181,7 @@ export function SpendHeader(props: {
             onPress={() => {
               props.ledger.drill = {};
             }}
-            class="group flex-row items-center min-h-[32px] px-1"
+            class="cursor-pointer select-none group flex-row items-center min-h-[32px] px-1"
           >
             <Text class="text-[12px] font-medium text-ink-muted group-hover:text-ink">{copy().clearAll}</Text>
           </View>
@@ -202,7 +203,7 @@ export function SpendHeader(props: {
                 tabFocus.set(name);
                 props.switchSection(name);
               }}
-              class={`items-center border-b-2 ${narrow() ? "flex-1 justify-center min-h-[44px] pt-[10px] pb-2" : "min-h-[36px] pt-2 pb-[7px] px-[2px] justify-center"} ${props.section === name ? "border-brand" : "border-transparent"}`}
+              class={`cursor-pointer select-none items-center border-b-2 ${narrow() ? "flex-1 justify-center min-h-[44px] pt-[10px] pb-2" : "min-h-[36px] pt-2 pb-[7px] px-[2px] justify-center"} ${props.section === name ? "border-brand" : "border-transparent"}`}
             >
               <Text
                 class={`${narrow() ? "text-[14px]" : "text-[13px]"} ${props.section === name ? `font-semibold ${narrow() ? "text-brand" : "text-ink"}` : `font-medium ${narrow() ? "text-ink-secondary" : "text-ink-muted"}`}`}

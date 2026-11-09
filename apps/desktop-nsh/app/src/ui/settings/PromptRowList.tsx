@@ -50,7 +50,7 @@ export function PromptRowList(props: {
         testID={`prompt-${item.id}`}
         accessibilityLabel={item.title[props.ui]}
         onPress={() => props.onOpen(item)}
-        class={`group gap-[10px] pl-3 pr-[10px] hover:bg-row-hover focus-visible:border focus-visible:border-brand ${index > 0 ? "border-t border-line-subtle" : ""} ${stacked() ? "flex-row items-center py-[10px]" : "flex-row items-center py-[9px] gap-[14px]"}`}
+        class={`cursor-pointer select-none group gap-[10px] pl-3 pr-[10px] hover:bg-row-hover focus-visible:border focus-visible:border-brand ${index > 0 ? "border-t border-line-subtle" : ""} ${stacked() ? "flex-row items-center py-[10px]" : "flex-row items-center py-[9px] gap-[14px]"}`}
       >
         <View class={`min-w-0 shrink grow ${stacked() ? "flex-col gap-[2px]" : "flex-row items-center gap-[14px]"}`}>
           <Text class={`min-w-0 text-[13px] font-semibold text-ink line-clamp-1 ${stacked() ? "" : "w-[36%] shrink-0"}`}>{item.title[props.ui]}</Text>

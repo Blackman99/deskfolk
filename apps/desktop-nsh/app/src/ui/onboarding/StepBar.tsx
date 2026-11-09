@@ -15,7 +15,7 @@ function Item(props: { n: 1 | 2 | 3 | 4; label: string; step: number; disabled: 
       accessibilityState={{ selected: active(), disabled: props.disabled }}
       disabled={props.disabled}
       onPress={() => props.onPress?.()}
-      class="flex-row items-center gap-2 px-2 py-1 rounded-(--radius-md) hover:bg-row-hover"
+      class="cursor-pointer select-none disabled:cursor-default flex-row items-center gap-2 px-2 py-1 rounded-(--radius-md) hover:bg-row-hover"
     >
       <View
         class={`w-[26px] h-[26px] rounded-full items-center justify-center shrink-0 border ${

@@ -124,7 +124,7 @@ export function StreamingReply(props: { turn: Turn; bot: Bot | undefined; stage:
                   accessibilityState={{ expanded: open() }}
                   tooltip={tip(`${line().full}\n${t().chat.activity.showSteps}`)}
                   onPress={toggle}
-                  class="group flex-row items-center gap-[4px] shrink min-w-0"
+                  class="cursor-pointer select-none group flex-row items-center gap-[4px] shrink min-w-0"
                 >
                   <Text class="shrink min-w-0 text-[12px] font-medium text-brand group-hover:text-ink line-clamp-1">{line().text}</Text>
                   <Icon name="chevron-down" size={12} class={`shrink-0 tint-brand ${open() ? "rotate-180" : ""}`} />

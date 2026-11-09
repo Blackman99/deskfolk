@@ -71,7 +71,7 @@ export function BotPortrait(props: { bot: Bot | undefined; author: string; stage
             accessibilityLabel={copy().top.botSettings}
             tooltip={tip(copy().top.botSettings)}
             onPress={() => props.stage.onOpenProfile(bot().id)}
-            class="hover:scale-[1.06]"
+            class="cursor-pointer select-none hover:scale-[1.06]"
           >
             {face()}
           </View>
@@ -91,7 +91,7 @@ export function SenderName(props: { bot: Bot | undefined; label: string; stage: 
           testID={props.testID ?? "sender-name"}
           tooltip={tip(copy().top.botSettings)}
           onPress={() => props.stage.onOpenProfile(bot().id)}
-          class="group min-w-0 shrink"
+          class="cursor-pointer select-none group min-w-0 shrink"
         >
           <Text class="text-[13px] font-semibold text-ink group-hover:text-brand line-clamp-1">{props.label}</Text>
         </View>
@@ -161,7 +161,7 @@ export function MessageToolbar(props: {
                 accessibilityLabel={t().chat.reactWith(emoji())}
                 tooltip={tip(emoji())}
                 onPress={() => void runtime.toggleReaction(props.message.id, emoji())}
-                class="w-[24px] h-[24px] rounded-[7px] items-center justify-center hover:bg-row-hover hover:scale-[1.15] active:scale-[0.95]"
+                class="cursor-pointer select-none w-[24px] h-[24px] rounded-[7px] items-center justify-center hover:bg-row-hover hover:scale-[1.15] active:scale-[0.95]"
               >
                 <Text class="text-[14px]">{emoji()}</Text>
               </View>
@@ -177,7 +177,7 @@ export function MessageToolbar(props: {
             accessibilityLabel={t().chat.replyMessage}
             tooltip={tip(t().chat.replyMessage)}
             onPress={() => props.stage.startQuoteReply(props.message)}
-            class={`group ${PILL_BUTTON}`}
+            class={`cursor-pointer select-none group ${PILL_BUTTON}`}
           >
             <Icon name="reply" size={12} class="tint-ink-muted group-hover:tint-ink" />
           </View>
@@ -189,7 +189,7 @@ export function MessageToolbar(props: {
             accessibilityLabel={t().chat.editThisLine}
             tooltip={tip(t().chat.editMessage)}
             onPress={() => props.onEdit?.()}
-            class={`group ${PILL_BUTTON}`}
+            class={`cursor-pointer select-none group ${PILL_BUTTON}`}
           >
             <Icon name="edit" size={12} class="tint-ink-muted group-hover:tint-ink" />
           </View>
@@ -200,7 +200,7 @@ export function MessageToolbar(props: {
           accessibilityLabel={t().chat.copyMessage}
           tooltip={tip(t().chat.copyMessage)}
           onPress={() => props.stage.copyMessageBody(props.message.id, props.message.body)}
-          class={`group ${PILL_BUTTON}`}
+          class={`cursor-pointer select-none group ${PILL_BUTTON}`}
         >
           <If when={copied()} else={<Icon name="copy" size={12} class="tint-ink-muted group-hover:tint-ink" />}>
             <Text class="text-[11px] font-semibold text-ok">{`✓ ${t().chat.copied}`}</Text>
@@ -212,7 +212,7 @@ export function MessageToolbar(props: {
           accessibilityLabel={t().chat.moreActions}
           tooltip={tip(t().chat.moreActions)}
           onPress={(e) => props.onMenu?.(props.message, e.pagePosition)}
-          class={`group ${PILL_BUTTON}`}
+          class={`cursor-pointer select-none group ${PILL_BUTTON}`}
         >
           <Icon name="more" size={12} class="tint-ink-muted group-hover:tint-ink" />
         </View>

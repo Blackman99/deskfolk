@@ -57,7 +57,7 @@ export function ChatWelcome(props: {
                   accessibilityLabel={settingsLabel()}
                   tooltip={tip(settingsLabel())}
                   onPress={() => props.onOpenProfile(bot().id)}
-                  class="group items-center px-[16px] py-[8px] rounded-(--radius-lg) hover:bg-line-subtle"
+                  class="cursor-pointer select-none group items-center px-[16px] py-[8px] rounded-(--radius-lg) hover:bg-line-subtle"
                 >
                   <View class="mb-[10px]" style={{ boxShadow: shadow("sm") }}>
                     <BotFace id={bot().id} name={bot().name} avatar={bot().avatar} size={58} border={2} letterSize={24} />
@@ -92,7 +92,7 @@ export function ChatWelcome(props: {
                           testID={`starter-${starter().id}`}
                           disabled={props.lockedComposer}
                           onPress={() => props.pickStarterPrompt(starter().prompt)}
-                          class={`flex-row items-center gap-[12px] pl-[10px] pr-[14px] py-[10px] rounded-(--radius-lg) bg-pane border hover:border-accent-border active:scale-[0.99] disabled:opacity-[0.5] ${
+                          class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[12px] pl-[10px] pr-[14px] py-[10px] rounded-(--radius-lg) bg-pane border hover:border-accent-border active:scale-[0.99] disabled:opacity-[0.5] ${
                             starter().id === "hand-off" ? "border-accent-border" : "border-line"
                           }`}
                           style={{ boxShadow: shadow("xs") }}

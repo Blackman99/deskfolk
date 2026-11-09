@@ -88,7 +88,7 @@ export function TraceRouteDetail(props: {
           accessibilityLabel={t().trace.outputClose}
           tooltip={tip(t().trace.outputClose)}
           onPress={props.onClose}
-          class="ml-auto w-[20px] h-[20px] items-center justify-center rounded-(--radius-sm) hover:bg-line-subtle"
+          class="cursor-pointer select-none ml-auto w-[20px] h-[20px] items-center justify-center rounded-(--radius-sm) hover:bg-line-subtle"
         >
           <Icon name="x" size={12} />
         </View>
@@ -126,7 +126,7 @@ export function TraceRouteDetail(props: {
                 testID={`trace-route-note-${note().message_id}`}
                 tooltip={tip(t().routes.jump)}
                 onPress={() => props.onJump(props.node.session_id, note().message_id)}
-                class="flex-row items-start gap-[6px] w-full px-[7px] py-[5px] border border-line rounded-(--radius-sm) bg-chip hover:border-accent-border"
+                class="cursor-pointer select-none flex-row items-start gap-[6px] w-full px-[7px] py-[5px] border border-line rounded-(--radius-sm) bg-chip hover:border-accent-border"
               >
                 <Text class="flex-1 min-w-0 text-[12px] leading-[17px] text-ink">{note().body}</Text>
                 <Text tooltip={tip(formatFullTimestamp(note().created_at))} class="shrink-0 pt-[1px] text-[10px] text-ink-muted font-mono">
@@ -177,7 +177,7 @@ export function TraceRouteDetail(props: {
             disabled={markBusy()}
             tooltip={tip(t().routes.markModelHint)}
             onPress={() => void toggleMark()}
-            class={`px-[9px] py-[2px] border rounded-full disabled:opacity-[0.6] ${
+            class={`cursor-pointer select-none disabled:cursor-default px-[9px] py-[2px] border rounded-full disabled:opacity-[0.6] ${
               marked() ? "border-warn-line bg-warn-bg" : "border-line bg-pane hover:border-accent-border"
             }`}
           >

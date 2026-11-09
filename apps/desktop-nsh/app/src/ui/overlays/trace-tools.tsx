@@ -44,7 +44,7 @@ function Highlight(props: {
       accessibilityState={{ pressed: on() }}
       tooltip={props.tooltip ? tip(props.tooltip) : undefined}
       onPress={props.onPress}
-      class={`flex-row items-center gap-[4px] min-h-[28px] px-[9px] border rounded-full ${frame()}`}
+      class={`cursor-pointer select-none flex-row items-center gap-[4px] min-h-[28px] px-[9px] border rounded-full ${frame()}`}
       style={{ boxShadow: shadow("xs") }}
     >
       <If when={props.icon}>{(name: () => IconName) => <Icon name={name()} size={12} class={tint()} />}</If>
@@ -65,7 +65,7 @@ function ZoomStep(props: { testID: string; label: string; disabled: boolean; tex
       disabled={props.disabled}
       tooltip={tip(props.label)}
       onPress={props.onPress}
-      class="min-w-[28px] h-[26px] px-[6px] items-center justify-center rounded-full hover:bg-line-subtle disabled:opacity-[0.4]"
+      class="cursor-pointer select-none disabled:cursor-default min-w-[28px] h-[26px] px-[6px] items-center justify-center rounded-full hover:bg-line-subtle disabled:opacity-[0.4]"
     >
       <Text class="text-[12px] font-medium text-ink-muted">{props.text}</Text>
     </View>
@@ -81,7 +81,7 @@ function ZoomIcon(props: { testID: string; label: string; icon: IconName; presse
       accessibilityState={props.pressed === undefined ? undefined : { pressed: props.pressed }}
       tooltip={tip(props.label)}
       onPress={props.onPress}
-      class="min-w-[28px] h-[26px] px-[6px] items-center justify-center rounded-full hover:bg-line-subtle"
+      class="cursor-pointer select-none min-w-[28px] h-[26px] px-[6px] items-center justify-center rounded-full hover:bg-line-subtle"
     >
       <Icon name={props.icon} class={props.pressed ? "tint-brand" : "tint-ink-muted"} />
     </View>
@@ -193,7 +193,7 @@ export function TraceTools(props: {
           accessibilityLabel={t().trace.zoomReset}
           tooltip={tip(t().trace.zoomReset)}
           onPress={() => props.onZoom(1)}
-          class="min-w-[48px] h-[26px] px-[6px] items-center justify-center rounded-full hover:bg-line-subtle"
+          class="cursor-pointer select-none min-w-[48px] h-[26px] px-[6px] items-center justify-center rounded-full hover:bg-line-subtle"
         >
           <Text class="text-[12px] font-medium text-ink-muted">{`${Math.round(props.scale * 100)}%`}</Text>
         </View>

@@ -93,7 +93,7 @@ export function TicketLink(props: {
       tooltip={props.title ? tip(props.title) : undefined}
       disabled={props.disabled}
       onPress={props.onPress}
-      class="group flex-row items-center gap-1 px-1 py-[3px] rounded-(--radius-xs) hover:bg-accent-tint disabled:opacity-[0.5]"
+      class="cursor-pointer select-none disabled:cursor-default group flex-row items-center gap-1 px-1 py-[3px] rounded-(--radius-xs) hover:bg-accent-tint disabled:opacity-[0.5]"
     >
       <If when={props.icon}>{(icon) => <Icon name={icon()} size={12} class="tint-ink-muted group-hover:tint-brand" />}</If>
       <Text class="font-medium text-ink-muted group-hover:text-brand" style={{ fontSize: props.size ?? 11 }}>
@@ -124,7 +124,7 @@ export function StatusPill(props: { ticket: TicketWithArtifacts; label: string; 
       onPress={() => {
         if (narrowWindow()) open.set(!open());
       }}
-      class={`shrink-0 flex-row items-center gap-1 pl-[7px] pr-1 py-[2px] rounded-full border border-transparent hover:bg-line-subtle hover:border-line disabled:opacity-[0.5] ${STATUS_TEXT[props.ticket.status]}`}
+      class={`cursor-pointer select-none disabled:cursor-default shrink-0 flex-row items-center gap-1 pl-[7px] pr-1 py-[2px] rounded-full border border-transparent hover:bg-line-subtle hover:border-line disabled:opacity-[0.5] ${STATUS_TEXT[props.ticket.status]}`}
     >
       <View class={`w-[6px] h-[6px] rounded-full ${STATUS_DOT[props.ticket.status]}`} />
       <Text class={`text-[11px] font-semibold ${STATUS_TEXT[props.ticket.status]}`}>{props.label}</Text>
@@ -150,7 +150,7 @@ export function StatusPill(props: { ticket: TicketWithArtifacts; label: string; 
                 testID={`ticket-status-${option().value}`}
                 accessibilityLabel={option().label}
                 onSelect={() => pick(option().value)}
-                class="px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-chip focus:bg-chip"
+                class="cursor-pointer select-none px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-chip focus:bg-chip"
               >
                 <Text class={`text-[12px] ${option().value === props.ticket.status ? "font-semibold text-brand" : "text-ink"}`}>{option().label}</Text>
               </MenuItem>

@@ -57,7 +57,7 @@ function Action(props: { testID: string; label: string; disabled?: boolean; prim
       testID={props.testID}
       disabled={props.disabled}
       onPress={props.onPress}
-      class={`group rounded-(--radius-sm) border px-[9px] disabled:opacity-[0.55] ${narrowWindow() ? "min-h-[36px] py-[6px] justify-center" : "py-1"} ${
+      class={`cursor-pointer select-none disabled:cursor-default group rounded-(--radius-sm) border px-[9px] disabled:opacity-[0.55] ${narrowWindow() ? "min-h-[36px] py-[6px] justify-center" : "py-1"} ${
         props.primary ? "border-accent-border bg-accent-tint" : "border-line bg-chip"
       } ${props.danger ? "hover:border-danger-line hover:bg-danger-bg" : "hover:border-accent-border hover:bg-accent-tint"}`}
     >
@@ -159,7 +159,7 @@ export function AcceptanceCheckRow(props: {
         accessibilityState={{ expanded: expanded() }}
         tooltip={tip(describeCheck(props.check, copy()))}
         onPress={() => expanded.set(!expanded())}
-        class={`flex-row items-center gap-1 shrink-0 self-start rounded-full border px-2 py-[3px] ${PILL[badge()]}`}
+        class={`cursor-pointer select-none flex-row items-center gap-1 shrink-0 self-start rounded-full border px-2 py-[3px] ${PILL[badge()]}`}
       >
         <Text class="text-[10px] font-semibold leading-none">{GLYPH[badge()]}</Text>
         <Text testID="check-pill-label" class="text-[11px] font-semibold leading-none">{pillLabel()}</Text>

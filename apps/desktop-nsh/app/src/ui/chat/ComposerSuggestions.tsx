@@ -27,7 +27,7 @@ export function ComposerSuggestions(props: { suggestions: readonly ComposerSugge
                 tooltip={tip(suggestion().prompt)}
                 accessibilityLabel={suggestion().label}
                 onPress={() => props.onPickPrompt(suggestion().prompt)}
-                class="shrink-0 px-[10px] py-1 rounded-full bg-chip border border-line hover:bg-accent-tint hover:border-accent-border group"
+                class="cursor-pointer select-none shrink-0 px-[10px] py-1 rounded-full bg-chip border border-line hover:bg-accent-tint hover:border-accent-border group"
               >
                 <Text class="text-[12px] font-medium text-ink group-hover:text-brand">{suggestion().label}</Text>
               </View>

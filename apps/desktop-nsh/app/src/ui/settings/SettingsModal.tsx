@@ -396,7 +396,7 @@ export function SettingsModal(props: {
           <Text role="text" class="text-[12px] text-ink">
             {en() ? "Credential/request result pending. Retry only when ready; no automatic replay." : "凭据或请求结果待确认。准备好后手动重试，不会自动重放。"}
           </Text>
-          <View role="button" testID="credential-retry" onPress={() => void runtime.retryPendingMutation()} class="self-start px-3 py-[6px] border border-line rounded-(--radius-sm)">
+          <View role="button" testID="credential-retry" onPress={() => void runtime.retryPendingMutation()} class="cursor-pointer select-none self-start px-3 py-[6px] border border-line rounded-(--radius-sm)">
             <Text class="text-[12px] text-ink">{en() ? "Retry original request" : "重试原请求"}</Text>
           </View>
         </View>
@@ -423,12 +423,12 @@ export function SettingsModal(props: {
                 testID={`credential-save-${op().id}`}
                 disabled={!repairValues()[op().id]}
                 onPress={() => void resolveCredential(op(), "repair")}
-                class="self-start px-3 py-[6px] border border-line rounded-(--radius-sm) disabled:opacity-[0.45]"
+                class="cursor-pointer select-none disabled:cursor-default self-start px-3 py-[6px] border border-line rounded-(--radius-sm) disabled:opacity-[0.45]"
               >
                 <Text class="text-[12px] text-ink">{en() ? "Save credential only" : "仅保存凭据"}</Text>
               </View>
             </If>
-            <View role="button" testID={`credential-cancel-${op().id}`} onPress={() => void resolveCredential(op(), "cancel")} class="self-start px-3 py-[6px] border border-line rounded-(--radius-sm)">
+            <View role="button" testID={`credential-cancel-${op().id}`} onPress={() => void resolveCredential(op(), "cancel")} class="cursor-pointer select-none self-start px-3 py-[6px] border border-line rounded-(--radius-sm)">
               <Text class="text-[12px] text-ink">{en() ? "Cancel and clear credential" : "取消并清除凭据"}</Text>
             </View>
           </View>

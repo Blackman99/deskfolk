@@ -49,7 +49,7 @@ export function ToastHost() {
                     action().run();
                     toasts.dismiss();
                   }}
-                  class={`px-[10px] rounded-(--radius-sm) items-center justify-center hover:bg-accent-tint ${phone() ? "h-[40px]" : "h-[28px]"}`}
+                  class={`cursor-pointer select-none px-[10px] rounded-(--radius-sm) items-center justify-center hover:bg-accent-tint ${phone() ? "h-[40px]" : "h-[28px]"}`}
                 >
                   <Text class="text-[13px] font-semibold text-brand">{action().label}</Text>
                 </View>

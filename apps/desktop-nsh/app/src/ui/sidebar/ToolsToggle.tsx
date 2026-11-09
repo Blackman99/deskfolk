@@ -56,7 +56,7 @@ export function ToolsToggle(props: {
       onLayout={(e) => props.onWidth?.(e.bounds.size.width)}
       onPress={() => props.onOpenChange(!open())}
       hoverStyle={props.phone ? undefined : { boxShadow: shadow("xs") }}
-      class={`group ${
+      class={`cursor-pointer select-none group ${
         props.phone
           ? `w-[38px] h-[38px] items-center justify-center rounded-(--radius-md) border ${open() ? "bg-row-hover border-line-hover" : "bg-pane border-line active:bg-row-hover"}`
           : footActionClass({ active: open(), tight: props.tight, iconsOnly: props.iconsOnly })

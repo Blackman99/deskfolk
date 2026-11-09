@@ -89,7 +89,7 @@ export function SendButton(props: {
           accessibilityLabel={copy().composer.stopGeneration}
           disabled={!props.connected}
           onPress={() => props.onStop()}
-          class={`shrink-0 items-center justify-center rounded-full bg-ink hover:bg-ink-secondary active:scale-[0.92] disabled:opacity-[0.5] ${size()}`}
+          class={`cursor-pointer select-none disabled:cursor-default shrink-0 items-center justify-center rounded-full bg-ink hover:bg-ink-secondary active:scale-[0.92] disabled:opacity-[0.5] ${size()}`}
         >
           <Icon name="stop" class="tint-pane" />
         </View>
@@ -104,7 +104,7 @@ export function SendButton(props: {
           accessibilityState={{ busy: busy(), disabled: props.primaryAction.disabled }}
           disabled={props.primaryAction.disabled}
           onPress={() => (kind() === "stop" ? props.onStop() : props.onSend())}
-          class={ui("send-button", `shrink-0 items-center justify-center rounded-full active:scale-[0.92] ${size()} ${look().bg} ${props.directStop && narrowWindow() ? "ml-1" : ""}`)}
+          class={ui("send-button", `cursor-pointer select-none disabled:cursor-default shrink-0 items-center justify-center rounded-full active:scale-[0.92] ${size()} ${look().bg} ${props.directStop && narrowWindow() ? "ml-1" : ""}`)}
         >
           <If when={kind() === "stop"} else={<SendGlyph busy={busy()} fraction={fraction()} tint={look().tint} />}>
             <Icon name="stop" class={look().tint} />

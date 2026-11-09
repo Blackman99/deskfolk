@@ -15,7 +15,7 @@ function Link(props: { testID?: string; disabled?: boolean; undo?: boolean; onPr
   const marked = props.undo ? floor("interface-undo", { ink: "brand", ground: ["pane"] }) : null;
   const floorRef = (node: ViewRef) => marked?.(node);
   return (
-    <View role="button" ref={floorRef} testID={props.testID} disabled={props.disabled} onPress={props.onPress} class="disabled:opacity-[0.6]">
+    <View role="button" ref={floorRef} testID={props.testID} disabled={props.disabled} onPress={props.onPress} class="cursor-pointer select-none disabled:cursor-default disabled:opacity-[0.6]">
       <Text class="text-[12px] text-brand">{props.children}</Text>
     </View>
   );

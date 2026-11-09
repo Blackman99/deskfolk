@@ -420,7 +420,7 @@ export function HtmlAnnotator(props: {
                       accessibilityLabel={props.labels.markLabel(d().n)}
                       tooltip={tip(chipTitle(d().row, d().n))}
                       onPress={() => props.onPick(d().row.id)}
-                      class={`items-center justify-center rounded-full border px-[6px] ${narrowWindow() ? "min-w-[40px] min-h-[40px]" : "min-w-[22px] h-[22px]"} ${
+                      class={`cursor-pointer select-none items-center justify-center rounded-full border px-[6px] ${narrowWindow() ? "min-w-[40px] min-h-[40px]" : "min-w-[22px] h-[22px]"} ${
                         d().row.status === "draft"
                           ? "bg-pane border-dotted border-brand"
                           : d().row.status === "resolved"
@@ -549,7 +549,7 @@ export function HtmlAnnotator(props: {
                   accessibilityState={{ pressed: device() === option() }}
                   tooltip={tip(props.labels.viewport[option()])}
                   onPress={() => pickDevice(option())}
-                  class={`group flex-row items-center justify-center gap-[5px] rounded-full ${narrowWindow() ? "min-w-[40px]" : ""} ${
+                  class={`cursor-pointer select-none group flex-row items-center justify-center gap-[5px] rounded-full ${narrowWindow() ? "min-w-[40px]" : ""} ${
                     stageWidth() <= 440 ? "px-2" : "pl-2 pr-[9px]"
                   } ${device() === option() ? "bg-accent-tint" : ""}`}
                   style={{ height: barHeight() - 6 }}
@@ -583,7 +583,7 @@ export function HtmlAnnotator(props: {
               accessibilityState={{ pressed: enlarged() }}
               tooltip={tip(enlarged() ? props.labels.viewport.shrink : props.labels.viewport.enlarge)}
               onPress={() => enlarged.set(!enlarged())}
-              class="group items-center justify-center px-[7px] border-l border-line"
+              class="cursor-pointer select-none group items-center justify-center px-[7px] border-l border-line"
               style={{ height: barHeight() - 6 }}
             >
               <Icon name={enlarged() ? "minimize" : "maximize"} size={16} class="tint-ink-secondary group-hover:tint-brand" />
@@ -602,7 +602,7 @@ function NavButton(props: { testID: string; label: string; disabled: boolean; on
       testID={props.testID}
       accessibilityState={{ disabled: props.disabled }}
       onPress={props.disabled ? undefined : props.onPress}
-      class={`shrink-0 items-center justify-center px-[10px] border border-line rounded-(--radius-sm) bg-btn-secondary-bg ${
+      class={`cursor-pointer select-none shrink-0 items-center justify-center px-[10px] border border-line rounded-(--radius-sm) bg-btn-secondary-bg ${
         narrowWindow() ? "min-w-[40px] min-h-[40px]" : "h-6"
       } ${props.disabled ? "opacity-50" : "hover:border-line-hover"}`}
     >

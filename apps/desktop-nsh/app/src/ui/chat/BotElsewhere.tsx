@@ -102,7 +102,7 @@ export function BotElsewhere(props: {
         if (places().length === 1) go(places()[0]!);
         else if (narrowWindow()) open.set(!open());
       }}
-      class={`flex-row items-center gap-[6px] min-w-0 h-[26px] pl-[10px] pr-[8px] rounded-full active:scale-[0.97] ${PILL[lead()] ?? "bg-accent-tint"}`}
+      class={`cursor-pointer select-none flex-row items-center gap-[6px] min-w-0 h-[26px] pl-[10px] pr-[8px] rounded-full active:scale-[0.97] ${PILL[lead()] ?? "bg-accent-tint"}`}
     >
       <View class={`shrink-0 w-[6px] h-[6px] rounded-full ${lead() === "waiting_approval" ? "bg-warn-text" : lead() === "waiting_ask" ? "bg-purple-text" : "bg-brand"}`} style={{ opacity: dot.opacity }} accessible={false} />
       <Text testID="elsewhere-text" class={`min-w-0 shrink text-[12px] font-semibold line-clamp-1 ${PILL_INK[lead()] ?? "text-brand"}`}>{line()}</Text>
@@ -133,7 +133,7 @@ export function BotElsewhere(props: {
                   testID={`elsewhere-place-${place().session.id}`}
                   accessibilityLabel={sessionTitle(place().session, botsById(), roster())}
                   onSelect={() => go(place())}
-                  class="flex-row items-baseline gap-[8px] px-[10px] py-[7px] rounded-(--radius-sm) hover:bg-chip focus-visible:bg-chip"
+                  class="cursor-pointer select-none flex-row items-baseline gap-[8px] px-[10px] py-[7px] rounded-(--radius-sm) hover:bg-chip focus-visible:bg-chip"
                 >
                   {row(place())}
                 </MenuItem>
@@ -151,7 +151,7 @@ export function BotElsewhere(props: {
                     testID={`elsewhere-place-${place().session.id}`}
                     accessibilityLabel={sessionTitle(place().session, botsById(), roster())}
                     onPress={() => go(place())}
-                    class="flex-row items-baseline gap-[8px] w-full p-[12px] rounded-(--radius-sm) active:bg-chip"
+                    class="cursor-pointer select-none flex-row items-baseline gap-[8px] w-full p-[12px] rounded-(--radius-sm) active:bg-chip"
                   >
                     {row(place())}
                   </View>

@@ -79,7 +79,7 @@ export function Button(props: {
       accessibilityLabel={props.label}
       disabled={props.disabled}
       onPress={() => props.onPress?.()}
-      class={`group flex-row items-center justify-center gap-[6px] shrink-0 active:scale-[0.97] disabled:opacity-[0.45] ${BOX[variant()]} ${size().box} ${props.class ?? ""}`}
+      class={`cursor-pointer select-none disabled:cursor-default group flex-row items-center justify-center gap-[6px] shrink-0 active:scale-[0.97] disabled:opacity-[0.45] ${BOX[variant()]} ${size().box} ${props.class ?? ""}`}
       style={{ boxShadow: variant() === "secondary" ? shadow("xs") : undefined }}
     >
       <If when={props.icon}>{(name) => <Icon name={name()} size={iconSize()} class={TINT[variant()]} />}</If>

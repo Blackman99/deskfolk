@@ -73,7 +73,7 @@ export function PlaybookMenu(props: {
       onFocus={() => roving.focused(key)}
       onBlur={() => roving.blurred(key)}
       onPress={() => choose(action)}
-      class={`group flex-row items-center gap-2 px-[10px] py-[6px] rounded-(--radius-sm) disabled:opacity-[0.4] ${extra?.danger ? "hover:bg-danger-bg focus:bg-danger-bg" : "hover:bg-line-subtle focus:bg-line-subtle"}`}
+      class={`cursor-pointer select-none disabled:cursor-default group flex-row items-center gap-2 px-[10px] py-[6px] rounded-(--radius-sm) disabled:opacity-[0.4] ${extra?.danger ? "hover:bg-danger-bg focus:bg-danger-bg" : "hover:bg-line-subtle focus:bg-line-subtle"}`}
     >
       <Icon name={icon} class={extra?.danger ? "tint-ink-muted group-hover:tint-danger-text" : "tint-ink-muted group-hover:tint-brand"} />
       <Text class={`text-[13px] font-medium text-ink ${extra?.danger ? "group-hover:text-danger-text" : "group-hover:text-brand"}`}>{label}</Text>

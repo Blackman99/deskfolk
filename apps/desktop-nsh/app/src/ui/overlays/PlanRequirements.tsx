@@ -24,7 +24,7 @@ const SHOWN = 10;
 
 function LinkText(props: { testID?: string; label: string; tooltip?: string; onPress: () => void }) {
   return (
-    <View role="button" testID={props.testID} tooltip={props.tooltip ? tip(props.tooltip) : undefined} onPress={props.onPress} class="group">
+    <View role="button" testID={props.testID} tooltip={props.tooltip ? tip(props.tooltip) : undefined} onPress={props.onPress} class="cursor-pointer select-none group">
       <Text class="text-[11px] leading-[1.5] text-brand group-hover:underline">{props.label}</Text>
     </View>
   );
@@ -149,7 +149,7 @@ export function PlanRequirements(props: {
                       disabled={pending() !== null}
                       accessibilityState={{ busy: pending() === `${entry().id}:${action()}` }}
                       onPress={() => void press(entry(), action())}
-                      class={`group min-h-[20px] px-[7px] justify-center rounded-(--radius-sm) border disabled:opacity-[0.55] ${narrowWindow() ? "min-h-[32px] px-[10px] py-1" : ""} ${
+                      class={`cursor-pointer select-none disabled:cursor-default group min-h-[20px] px-[7px] justify-center rounded-(--radius-sm) border disabled:opacity-[0.55] ${narrowWindow() ? "min-h-[32px] px-[10px] py-1" : ""} ${
                         action() === "confirm" ? "border-brand bg-brand" : "border-line bg-chip hover:border-accent-border hover:bg-accent-tint"
                       }`}
                     >
@@ -215,7 +215,7 @@ export function PlanRequirements(props: {
         <If when={groups().own.length > 0}>
           {list(ownShown)}
           <If when={ownHidden() > 0 || (showAll() && groups().own.length > SHOWN)}>
-            <View role="button" testID="requirements-more" accessibilityState={{ expanded: showAll() }} onPress={() => showAll.set(!showAll())} class="self-start py-[2px] group">
+            <View role="button" testID="requirements-more" accessibilityState={{ expanded: showAll() }} onPress={() => showAll.set(!showAll())} class="cursor-pointer select-none self-start py-[2px] group">
               <Text class="text-[11px] font-semibold text-brand group-hover:underline">
                 {showAll() ? r().showFewer : r().showAll(ownHidden())}
               </Text>

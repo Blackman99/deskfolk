@@ -58,7 +58,7 @@ export function InterfaceChangeChip(props: {
                   testID="interface-undo"
                   disabled={busy() === head().id}
                   onPress={() => void undo(head().id)}
-                  class="shrink-0 disabled:opacity-[0.6]"
+                  class="cursor-pointer select-none disabled:cursor-default shrink-0 disabled:opacity-[0.6]"
                 >
                   <Text class="text-[12px] text-brand">{chip().undo}</Text>
                 </View>

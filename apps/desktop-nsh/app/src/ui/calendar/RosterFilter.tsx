@@ -130,7 +130,7 @@ export function RosterFilter(props: {
                     onPress={() => props.onToggle(source.id)}
                     onMouseEnter={() => highlight.set(idx)}
                     onLayout={(e) => rows.set(idx, { y: e.bounds.origin.y, height: e.bounds.size.height })}
-                    class={`flex-row items-center gap-2 px-2 rounded-(--radius-sm) ${phone() ? "min-h-[48px]" : "min-h-[34px]"} ${idx === activeIndex() ? "bg-line-subtle" : ""}`}
+                    class={`cursor-pointer select-none flex-row items-center gap-2 px-2 rounded-(--radius-sm) ${phone() ? "min-h-[48px]" : "min-h-[34px]"} ${idx === activeIndex() ? "bg-line-subtle" : ""}`}
                   >
                     <View class={`w-[16px] h-[16px] rounded-[4px] border items-center justify-center shrink-0 ${source.visible ? "bg-brand border-brand" : "border-line-hover"}`} accessible={false}>
                       <If when={source.visible}>
@@ -158,7 +158,7 @@ export function RosterFilter(props: {
       accessibilityLabel={t().filter}
       accessibilityState={{ expanded: open() }}
       onPress={phone() ? toggleOpen : undefined}
-      class={`flex-row items-center gap-[6px] px-[10px] py-[5px] border rounded-(--radius-sm) bg-btn-secondary-bg hover:bg-line-subtle ${props.hidden.size > 0 ? "border-accent-border" : "border-line"}`}
+      class={`cursor-pointer select-none flex-row items-center gap-[6px] px-[10px] py-[5px] border rounded-(--radius-sm) bg-btn-secondary-bg hover:bg-line-subtle ${props.hidden.size > 0 ? "border-accent-border" : "border-line"}`}
     >
       <Icon name="funnel" size={16} class="tint-ink-muted" />
       <Text class="text-[12px] font-medium text-ink">{t().filter}</Text>
@@ -194,7 +194,7 @@ export function RosterFilter(props: {
           testID="roster-filter-reset"
           accessibilityLabel={t().filterReset}
           onPress={props.onShowAll}
-          class="px-2 py-1 rounded-(--radius-sm) hover:bg-line-subtle"
+          class="cursor-pointer select-none px-2 py-1 rounded-(--radius-sm) hover:bg-line-subtle"
         >
           <Text class="text-[12px] text-brand">{t().filterReset}</Text>
         </View>

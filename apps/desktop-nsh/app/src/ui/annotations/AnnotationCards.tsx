@@ -31,7 +31,7 @@ export function AnnotationCards(props: {
     <View testID="annotation-cards" class="mt-[6px] gap-1">
       <If when={props.sourceLabel}>
         {(label: () => string) => (
-          <View role="link" testID="annotation-source" class="self-start" onPress={() => props.onOpenSource?.()}>
+          <View role="link" testID="annotation-source" class="cursor-pointer self-start" onPress={() => props.onOpenSource?.()}>
             <Text class="text-[11px] text-white/90 underline">{label()}</Text>
           </View>
         )}
@@ -71,7 +71,7 @@ function Card(props: CardProps) {
         tooltip={tip(copy().chat.annotationOpenFile)}
         accessibilityLabel={copy().chat.annotationOpenFile}
         onPress={() => props.onOpen(row())}
-        class="flex-1 min-w-0 gap-[3px]"
+        class="cursor-pointer select-none flex-1 min-w-0 gap-[3px]"
       >
         <View class="flex-row items-center gap-1 min-w-0">
           <FileIcon icon={fileIconFor(row().relpath)} size={16} />
@@ -105,7 +105,7 @@ function Card(props: CardProps) {
           testID="annotation-toggle"
           tooltip={tip(row().status === "open" ? copy().stream.annotationResolve : copy().stream.annotationReopen)}
           onPress={() => props.onToggleStatus?.(row(), row().status === "open" ? "resolved" : "open")}
-          class={`${badgeBox()} hover:bg-white/10`}
+          class={`cursor-pointer select-none ${badgeBox()} hover:bg-white/10`}
         >
           <Text class={`text-[10px] text-white ${row().status === "open" ? "font-semibold" : ""}`}>{statusLabel(copy(), row().status)}</Text>
         </View>

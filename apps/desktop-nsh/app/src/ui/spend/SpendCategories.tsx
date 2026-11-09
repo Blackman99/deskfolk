@@ -98,7 +98,7 @@ export function SpendCategories(props: {
                   role="button"
                   disabled={props.ledger.loading}
                   onPress={() => props.ledger.drillCategory(row().category)}
-                  class="group flex-1 min-w-0 flex-row items-center gap-2 min-h-[24px]"
+                  class="cursor-pointer select-none disabled:cursor-default group flex-1 min-w-0 flex-row items-center gap-2 min-h-[24px]"
                 >
                   <View class="w-[8px] h-[8px] rounded-[2px] shrink-0" style={{ backgroundColor: categoryColor(row().category) }} />
                   <Text class="shrink text-[13px] font-semibold text-ink line-clamp-1 group-hover:text-brand">{copy().category[row().category]}</Text>
@@ -112,7 +112,7 @@ export function SpendCategories(props: {
                     accessibilityLabel={props.ledger.expanded[row().category] ? copy().collapse : copy().expand}
                     accessibilityState={{ expanded: !!props.ledger.expanded[row().category] }}
                     onPress={() => props.ledger.toggleCategory(row().category)}
-                    class="w-[28px] h-[28px] items-center justify-center shrink-0 rounded-(--radius-sm) hover:bg-line-subtle"
+                    class="cursor-pointer select-none w-[28px] h-[28px] items-center justify-center shrink-0 rounded-(--radius-sm) hover:bg-line-subtle"
                   >
                     <SpendIcon name="chevron" size={12} class={props.ledger.expanded[row().category] ? "rotate-180 tint-ink-muted" : "tint-ink-muted"} />
                   </View>
@@ -135,7 +135,7 @@ export function SpendCategories(props: {
                             role="button"
                             disabled={props.ledger.loading}
                             onPress={() => props.ledger.drillKind(kind().kind)}
-                            class="group flex-1 min-w-0 min-h-[24px] justify-center px-1"
+                            class="cursor-pointer select-none disabled:cursor-default group flex-1 min-w-0 min-h-[24px] justify-center px-1"
                           >
                             <Text class="text-[12px] font-medium text-brand group-hover:underline">{copy().kind[kind().kind]}</Text>
                           </View>

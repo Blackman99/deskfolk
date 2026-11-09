@@ -105,7 +105,7 @@ export function ToolsMenu(props: {
         onFocus={() => roving.focused(key)}
         onBlur={() => roving.blurred(key)}
         onPress={() => choose(action)}
-        class={`flex-row items-center gap-[10px] shrink-0 px-[10px] rounded-(--radius-sm) hover:bg-line-subtle focus:bg-line-subtle ${big() ? "min-h-[44px]" : "min-h-[38px]"}`}
+        class={`cursor-pointer select-none flex-row items-center gap-[10px] shrink-0 px-[10px] rounded-(--radius-sm) hover:bg-line-subtle focus:bg-line-subtle ${big() ? "min-h-[44px]" : "min-h-[38px]"}`}
       >
         <Icon name={icon} class="tint-ink-muted shrink-0" />
         <Text class={`flex-1 min-w-0 font-medium text-ink line-clamp-1 ${big() ? "text-[14px]" : "text-[13px]"}`}>{label()}</Text>

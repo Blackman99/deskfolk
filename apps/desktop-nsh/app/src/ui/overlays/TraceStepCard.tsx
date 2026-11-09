@@ -32,7 +32,7 @@ export function TraceStepCard(props: {
       onPress={props.onToggle}
       onMouseEnter={() => hover.set(true)}
       onMouseLeave={() => hover.set(false)}
-      class={`relative w-full items-start gap-[2px] py-[6px] ${props.dim ? "opacity-[0.32]" : ""}`}
+      class={`cursor-pointer select-none relative w-full items-start gap-[2px] py-[6px] ${props.dim ? "opacity-[0.32]" : ""}`}
       style={{ paddingLeft: SLANT + 7, paddingRight: SLANT + 7 }}
     >
       <TraceShape

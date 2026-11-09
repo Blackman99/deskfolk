@@ -102,7 +102,7 @@ export function ChatHeader(props: {
       accessibilityState={{ selected: opts.active, expanded: opts.expanded }}
       tooltip={tip(opts.tip)}
       onPress={opts.onPress}
-      class={`group flex-row items-center gap-[5px] px-[10px] py-[5px] rounded-(--radius-sm) border ${
+      class={`cursor-pointer select-none group flex-row items-center gap-[5px] px-[10px] py-[5px] rounded-(--radius-sm) border ${
         opts.active ? "bg-accent-tint border-accent-border" : "bg-btn-secondary-bg border-line hover:bg-line-subtle hover:border-line-hover"
       }`}
     >
@@ -241,13 +241,13 @@ export function ChatHeader(props: {
                 role="button"
                 testID="setup-guide-pill"
                 onPress={() => props.onShowOnboarding()}
-                class="px-[12px] py-[4px] rounded-full bg-warn-bg border border-warn-line hover:border-warn"
+                class="cursor-pointer select-none px-[12px] py-[4px] rounded-full bg-warn-bg border border-warn-line hover:border-warn"
               >
                 <Text class="text-[12px] font-semibold text-warn-text">{t().onboarding.reopenGuide}</Text>
               </View>
             </If>
             <If when={visibleBots().length === 0}>
-              <View role="button" testID="empty-roster" onPress={() => props.onCreateBot()} class="ml-auto group">
+              <View role="button" testID="empty-roster" onPress={() => props.onCreateBot()} class="cursor-pointer select-none ml-auto group">
                 <Text class="text-[13px] text-ink-muted underline group-hover:text-brand">{t().top.emptyRoster}</Text>
               </View>
             </If>
@@ -264,7 +264,7 @@ export function ChatHeader(props: {
                   accessibilityLabel={t().sidebar.backToSessions}
                   tooltip={tip(t().sidebar.backToSessions)}
                   onPress={() => (runtime.selectedId = null)}
-                  class="items-center justify-center shrink-0 w-[48px] min-h-[64px] active:bg-line-subtle hover:bg-line-subtle"
+                  class="cursor-pointer select-none items-center justify-center shrink-0 w-[48px] min-h-[64px] active:bg-line-subtle hover:bg-line-subtle"
                 >
                   <Icon name="chevron-left" size={20} class="tint-ink-secondary" />
                 </View>
@@ -282,7 +282,7 @@ export function ChatHeader(props: {
                         accessibilityState={{ expanded: settingsOpen() }}
                         tooltip={tip(settingsLabel())}
                         onPress={() => props.onToggleSessionSettings()}
-                        class={`flex-row items-center flex-1 min-w-0 ${narrow() ? "gap-[10px] px-[6px] py-[8px]" : "gap-[12px] px-[8px] py-[4px] -m-[4px] rounded-(--radius-md)"} ${
+                        class={`cursor-pointer select-none flex-row items-center flex-1 min-w-0 ${narrow() ? "gap-[10px] px-[6px] py-[8px]" : "gap-[12px] px-[8px] py-[4px] -m-[4px] rounded-(--radius-md)"} ${
                           settingsOpen() ? "bg-line-subtle" : "hover:bg-line-subtle"
                         }`}
                       >
@@ -351,7 +351,7 @@ export function ChatHeader(props: {
                   accessibilityState={{ expanded: mobileActionsOpen() }}
                   tooltip={tip(t().top.moreActions)}
                   onPress={() => mobileActionsOpen.set(!mobileActionsOpen())}
-                  class={`items-center justify-center w-[48px] min-h-[64px] h-full ${
+                  class={`cursor-pointer select-none items-center justify-center w-[48px] min-h-[64px] h-full ${
                     mobileActionsOpen() || runtime.traceOpen || settingsOpen() || pinned() ? "bg-line-subtle" : ""
                   }`}
                 >

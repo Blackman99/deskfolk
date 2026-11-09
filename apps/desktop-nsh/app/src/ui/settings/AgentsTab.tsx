@@ -263,7 +263,7 @@ export function AgentsTab(props: {
           accessibilityLabel={row().label}
           accessibilityState={phone() ? undefined : { expanded: open() }}
           onPress={() => toggle(row())}
-          class={`flex-row items-center gap-3 hover:bg-line-subtle ${phone() ? "min-h-14 px-3 py-[10px]" : "px-[14px] py-[10px]"}`}
+          class={`cursor-pointer select-none flex-row items-center gap-3 hover:bg-line-subtle ${phone() ? "min-h-14 px-3 py-[10px]" : "px-[14px] py-[10px]"}`}
         >
           <AgentLogo runner={row().runner} size={28} />
           <View class="flex-1 min-w-0 flex-col gap-[2px]">
@@ -347,7 +347,7 @@ export function AgentsTab(props: {
                   testID="agents-missing-toggle"
                   accessibilityState={{ expanded: missingShown() }}
                   onPress={() => missingShown.set(!missingShown())}
-                  class="self-start flex-row items-center gap-[6px] py-[2px]"
+                  class="cursor-pointer select-none self-start flex-row items-center gap-[6px] py-[2px]"
                 >
                   <Icon name={missingShown() ? "chevron-down" : "chevron-right"} size={16} class="tint-ink-muted" />
                   <Text class="text-[12px] text-ink-secondary">{t().agents.list.missingGroup(missingRows().length)}</Text>

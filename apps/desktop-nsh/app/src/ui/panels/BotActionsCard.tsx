@@ -18,7 +18,7 @@ function ActionButton(props: { testID: string; icon: IconName; deny?: boolean; o
       testID={props.testID}
       accessibilityLabel={props.children}
       onPress={() => props.onPress()}
-      class={`group flex-row items-center justify-center gap-[6px] px-[14px] py-[6px] rounded-(--radius-md) border shrink-0 ${
+      class={`cursor-pointer select-none group flex-row items-center justify-center gap-[6px] px-[14px] py-[6px] rounded-(--radius-md) border shrink-0 ${
         props.deny
           ? "bg-danger-bg border-danger-line hover:bg-danger hover:border-danger"
           : "bg-btn-secondary-bg border-line hover:bg-line-subtle hover:border-line-hover"

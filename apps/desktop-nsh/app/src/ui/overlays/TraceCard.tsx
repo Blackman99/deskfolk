@@ -144,7 +144,7 @@ export function TraceCard(props: {
         onPress={props.onOpen}
         onMouseEnter={() => hover.set(true)}
         onMouseLeave={() => hover.set(false)}
-        class={`w-full items-start gap-[4px] py-[9px] ${!decision() ? "hover:bg-line-subtle" : ""}`}
+        class={`cursor-pointer select-none w-full items-start gap-[4px] py-[9px] ${!decision() ? "hover:bg-line-subtle" : ""}`}
         style={{ paddingLeft: inset(), paddingRight: inset() }}
       >
         <View class="flex-row items-center gap-[6px] w-full" style={{ paddingRight: chip() ? 70 : 0 }}>
@@ -222,7 +222,7 @@ export function TraceCard(props: {
                   accessibilityState={{ expanded: props.routeOpen }}
                   tooltip={tip(copy().routes.cardToggle)}
                   onPress={props.onToggleRoute}
-                  class={`flex-row items-center gap-[6px] w-full px-[8px] py-[4px] border rounded-(--radius-sm) ${
+                  class={`cursor-pointer select-none flex-row items-center gap-[6px] w-full px-[8px] py-[4px] border rounded-(--radius-sm) ${
                     props.routeOpen ? "border-accent-border bg-accent-tint" : "border-line bg-chip hover:border-accent-border hover:bg-accent-tint"
                   }`}
                 >
@@ -263,7 +263,7 @@ export function TraceCard(props: {
               accessibilityState={{ expanded: props.routeOpen }}
               tooltip={tip(`${route().model} · ${copy().routes.thinkingPrefix} ${route().thinkingLabel} · ${route().signatureLabel}\n${copy().routes.cardToggle}`)}
               onPress={props.onToggleRoute}
-              class={`absolute rounded-(--radius-sm) px-[6px] justify-center ${props.routeOpen ? "bg-chip" : "hover:bg-chip"}`}
+              class={`cursor-pointer select-none absolute rounded-(--radius-sm) px-[6px] justify-center ${props.routeOpen ? "bg-chip" : "hover:bg-chip"}`}
               style={{ top: 9, right: 8, maxWidth: 76, height: 22 }}
             >
               <Text class="text-[10px] text-ink-muted font-mono line-clamp-1">{route().model}</Text>
@@ -278,7 +278,7 @@ export function TraceCard(props: {
             testID={`trace-card-files-${node().turn_id}`}
             tooltip={tip(node().artifacts.length > 1 ? node().artifacts.map((a) => a.path).join("\n") : node().artifacts[0]!.path)}
             onPress={props.onOpenArtifacts}
-            class="flex-row items-center gap-[8px] w-full px-[10px] py-[6px] bg-chip border border-line rounded-(--radius-md) hover:border-accent-border hover:bg-line-subtle"
+            class="cursor-pointer select-none flex-row items-center gap-[8px] w-full px-[10px] py-[6px] bg-chip border border-line rounded-(--radius-md) hover:border-accent-border hover:bg-line-subtle"
           >
             <Icon name={bundle() ? "folder" : "file"} class="tint-brand" />
             <View class="flex-1 min-w-0">

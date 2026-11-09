@@ -76,7 +76,7 @@ export function SidebarFoot(props: {
         onLayout={(e) => workspaceWidth.set(e.bounds.size.width)}
         onPress={() => props.onToggleWorkspace()}
         hoverStyle={{ boxShadow: shadow("xs") }}
-        class={`group ${footActionClass({ active: props.workspaceOpen, tight: tight(), iconsOnly: iconsOnly() })}`}
+        class={`cursor-pointer select-none disabled:cursor-default group ${footActionClass({ active: props.workspaceOpen, tight: tight(), iconsOnly: iconsOnly() })}`}
       >
         <Icon name="folder" class={workspaceInk().tint} />
         <If when={!iconsOnly()}>
@@ -103,7 +103,7 @@ export function SidebarFoot(props: {
         onLayout={(e) => settingsWidth.set(e.bounds.size.width)}
         onPress={() => props.onOpenSettings()}
         hoverStyle={{ boxShadow: shadow("xs") }}
-        class={`group ml-auto ${footActionClass({ active: runtime.settingsOpen, tight: tight(), iconsOnly: iconsOnly() })}`}
+        class={`cursor-pointer select-none group ml-auto ${footActionClass({ active: runtime.settingsOpen, tight: tight(), iconsOnly: iconsOnly() })}`}
       >
         <Icon name="settings" class={settingsInk().tint} />
         <If when={!iconsOnly()}>

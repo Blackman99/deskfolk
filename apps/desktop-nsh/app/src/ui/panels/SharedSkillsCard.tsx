@@ -25,7 +25,7 @@ function Pill(props: { testID?: string; primary?: boolean; disabled?: boolean; o
       accessibilityLabel={props.children}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class="group px-[10px] py-[2px] rounded-full border bg-pane hover:border-accent-border disabled:opacity-[0.6] border-line"
+      class="cursor-pointer select-none disabled:cursor-default group px-[10px] py-[2px] rounded-full border bg-pane hover:border-accent-border disabled:opacity-[0.6] border-line"
     >
       <Text class={`text-[12px] group-hover:text-brand ${props.primary ? "text-brand" : "text-ink-secondary"}`}>{props.children}</Text>
     </View>

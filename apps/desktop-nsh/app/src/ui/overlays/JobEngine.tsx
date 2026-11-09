@@ -34,7 +34,7 @@ export function JobEngine(props: {
         {`${props.off.length > 0 ? c().off(props.off.join("、")) : c().allOn} · ${c().sessions(props.sessions)}`}
       </Text>
       <If when={props.onOpen}>
-        <View role="button" testID="job-engine-open" onPress={() => props.onOpen?.()} class="group">
+        <View role="button" testID="job-engine-open" onPress={() => props.onOpen?.()} class="cursor-pointer select-none group">
           <Text class="text-[12px] font-semibold text-brand group-hover:underline">{c().open}</Text>
         </View>
       </If>

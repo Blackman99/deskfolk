@@ -63,7 +63,7 @@ export function Select(props: {
       disabled={props.disabled}
       cleanable={props.clearable && Boolean(current()) && !props.disabled}
       clearButtonAccessibilityLabel={props.closeLabel ?? "Clear"}
-      clearButtonClass="absolute right-[30px] top-[50%] w-[16px] h-[16px] -mt-[8px] rounded-full items-center justify-center hover:bg-line-subtle"
+      clearButtonClass="cursor-pointer absolute right-[30px] top-[50%] w-[16px] h-[16px] -mt-[8px] rounded-full items-center justify-center hover:bg-line-subtle"
       clearButton={<Icon name="x" size={12} class="tint-ink-muted" />}
       accessibilityLabel={props.ariaLabel ?? props.title ?? props.placeholder}
       placement={props.placement === "top" ? "top" : "bottom"}
@@ -72,7 +72,7 @@ export function Select(props: {
       popupStyle={{ boxShadow: shadow("lg") }}
       backdropClass="bg-modal-backdrop"
       groupClass={`px-[10px] pt-2 pb-[3px] text-ink-muted ${phone() ? "text-[12px]" : "text-[11px]"}`}
-      itemClass={`group flex-row items-center rounded-(--radius-sm) focus:bg-line-subtle selected:bg-accent-tint disabled:opacity-[0.45] ${phone() ? "min-h-[48px] px-3 py-[10px]" : sm() ? "px-2 py-[5px]" : "px-[10px] py-[7px]"}`}
+      itemClass={`cursor-pointer select-none disabled:cursor-default group flex-row items-center rounded-(--radius-sm) focus:bg-line-subtle selected:bg-accent-tint disabled:opacity-[0.45] ${phone() ? "min-h-[48px] px-3 py-[10px]" : sm() ? "px-2 py-[5px]" : "px-[10px] py-[7px]"}`}
       empty={
         <Text class="py-5 px-6 text-[13px] text-ink-muted text-center">{props.noOptionsLabel ?? "暂无选项"}</Text>
       }
@@ -90,7 +90,7 @@ export function Select(props: {
       trigger={
         <View
           testID={props.testID}
-          class={`flex-row items-center justify-between gap-2 w-full bg-input-bg border rounded-(--radius-md) hover:border-line-hover hover:bg-line-subtle focus-visible:border-field-focus-border disabled:opacity-[0.55] disabled:bg-line-subtle ${open() ? "border-field-focus-border" : props.error ? "border-danger-line" : "border-line"} ${sm() ? "px-[10px] py-[6px]" : "px-3 py-2"}`}
+          class={`cursor-pointer select-none disabled:cursor-default flex-row items-center justify-between gap-2 w-full bg-input-bg border rounded-(--radius-md) hover:border-line-hover hover:bg-line-subtle focus-visible:border-field-focus-border disabled:opacity-[0.55] disabled:bg-line-subtle ${open() ? "border-field-focus-border" : props.error ? "border-danger-line" : "border-line"} ${sm() ? "px-[10px] py-[6px]" : "px-3 py-2"}`}
           style={{ boxShadow: props.disabled ? undefined : shadow("xs") }}
         >
           <Text class={`flex-1 line-clamp-1 ${sm() ? "text-[13px]" : "text-[14px]"} ${isPlaceholder() ? "text-ink-muted font-normal" : "text-ink font-medium"}`}>

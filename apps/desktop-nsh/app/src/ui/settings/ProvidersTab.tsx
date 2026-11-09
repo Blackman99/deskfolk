@@ -39,7 +39,7 @@ function Action(props: { testID: string; label: string; hover?: string; icon: "s
       accessibilityLabel={props.label}
       tooltip={tip(props.hover ?? props.label)}
       onPress={() => props.onPress()}
-      class={`group flex-row items-center justify-center gap-1 rounded-(--radius-sm) ${
+      class={`cursor-pointer select-none group flex-row items-center justify-center gap-1 rounded-(--radius-sm) ${
         narrowWindow()
           ? `${props.danger ? "w-[52px]" : "flex-1"} min-h-12 p-2 gap-[6px]`
           : props.danger
@@ -194,7 +194,7 @@ function ProviderCard(props: {
         testID={`provider-models-${provider().id}`}
         accessibilityLabel={`${t().settings.providerModels}: ${provider().name}`}
         onPress={() => props.openProviderModels(provider().id)}
-        class={`flex-row items-center rounded-(--radius-sm) hover:bg-line-subtle ${phone() ? "gap-2 min-h-14 px-4 py-3 border-t border-line-subtle rounded-none" : "gap-[6px] w-[84px] justify-end py-1 pl-2 pr-[6px] min-h-7"}`}
+        class={`cursor-pointer select-none flex-row items-center rounded-(--radius-sm) hover:bg-line-subtle ${phone() ? "gap-2 min-h-14 px-4 py-3 border-t border-line-subtle rounded-none" : "gap-[6px] w-[84px] justify-end py-1 pl-2 pr-[6px] min-h-7"}`}
       >
         <If when={phone()}>
           <Text class="text-[15px] font-semibold text-ink">{t().settings.providerModels}</Text>
@@ -248,7 +248,7 @@ export function ProvidersTab(props: {
           testID="provider-add"
           accessibilityLabel={t().providerAdd}
           onPress={() => props.openAddProvider()}
-          class={`flex-row items-center justify-center gap-[6px] shrink-0 hover:bg-accent-tint ${
+          class={`cursor-pointer select-none flex-row items-center justify-center gap-[6px] shrink-0 hover:bg-accent-tint ${
             phone()
               ? "w-full min-h-12 px-4 py-[10px] border border-accent-border rounded-(--radius-md) bg-accent-tint"
               : "px-3 py-[6px] rounded-(--radius-sm) border-[1.5px] border-dashed border-line bg-sidebar-bg hover:border-brand"

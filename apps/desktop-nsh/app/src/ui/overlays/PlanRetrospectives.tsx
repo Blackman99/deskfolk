@@ -92,7 +92,7 @@ export function PlanRetrospectives(props: {
               disabled={pending() !== null}
               accessibilityState={{ busy: pending() === key() }}
               onPress={() => void undo(rowProps.retrospective(), rowProps.index)}
-              class={`group shrink-0 px-2 justify-center rounded-(--radius-sm) border border-line bg-chip hover:border-accent-border hover:bg-accent-tint disabled:opacity-[0.55] ${
+              class={`cursor-pointer select-none disabled:cursor-default group shrink-0 px-2 justify-center rounded-(--radius-sm) border border-line bg-chip hover:border-accent-border hover:bg-accent-tint disabled:opacity-[0.55] ${
                 narrowWindow() ? "min-h-[32px] py-1 px-[10px]" : "min-h-[24px] py-[2px]"
               }`}
             >
@@ -107,7 +107,7 @@ export function PlanRetrospectives(props: {
           <Text class="text-[11px] text-ink-muted">{change().why}</Text>
         </If>
         <If when={hasDiff()}>
-          <View role="button" testID={`retro-diff-toggle-${rowProps.index}`} accessibilityState={{ expanded: diff() }} onPress={() => diff.set(!diff())} class="self-start">
+          <View role="button" testID={`retro-diff-toggle-${rowProps.index}`} accessibilityState={{ expanded: diff() }} onPress={() => diff.set(!diff())} class="cursor-pointer select-none self-start">
             <Text class="text-[11px] text-brand">{`${diff() ? "▾" : "▸"} ${c().showDiff}`}</Text>
           </View>
           <If when={diff()}>

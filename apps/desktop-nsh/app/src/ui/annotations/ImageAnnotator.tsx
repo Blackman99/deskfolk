@@ -390,7 +390,7 @@ export function ImageAnnotator(props: {
         onPress={() => {
           if (openable()) props.onOpen?.(pictureRef);
         }}
-        class="absolute"
+        class={props.onOpen ? "absolute cursor-pointer" : "absolute"}
         style={drawn() ? { left: drawn()!.left, top: 0, width: drawn()!.width, height: drawn()!.height } : { left: 0, top: 0, width: "100%", height: "100%" }}
       >
         <Image
@@ -441,7 +441,7 @@ export function ImageAnnotator(props: {
                   onLongPress={() => peek(mark().id)}
                   // While annotating the boxes let a drag through; their numbers still open them.
                   style={{ ...boxStyle(mark().box), pointerEvents: creating() ? "none" : "auto", boxShadow: flashId() === mark().id ? "0 0 0 6px rgba(0,128,128,0.35)" : undefined }}
-                  class={`border-2 rounded-[2px] ${
+                  class={`cursor-pointer select-none border-2 rounded-[2px] ${
                     mark().status === "resolved" ? "border-ink-muted/75 bg-ink-muted/10" : mark().status === "draft" ? "border-brand bg-brand/8" : "border-brand bg-brand/14"
                   } ${mark().status === "draft" ? "border-dotted" : mark().stale ? "border-dashed" : ""}`}
                 >
@@ -450,7 +450,7 @@ export function ImageAnnotator(props: {
                     role="button"
                     onPress={() => onMarkPress(mark().id)}
                     style={{ position: "absolute", left: -9, top: -9, pointerEvents: "auto", boxShadow: shadow("md") }}
-                    class={`min-w-[18px] h-[18px] px-1 rounded-full items-center justify-center border ${
+                    class={`cursor-pointer select-none min-w-[18px] h-[18px] px-1 rounded-full items-center justify-center border ${
                       mark().status === "draft" ? "bg-pane border-dotted border-brand" : mark().stale ? "border-dashed border-pane" : "border-transparent"
                     } ${mark().status === "resolved" ? "bg-ink-muted" : mark().status === "draft" ? "" : "bg-brand"}`}
                   >

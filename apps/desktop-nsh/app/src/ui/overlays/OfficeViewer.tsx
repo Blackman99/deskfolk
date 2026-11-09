@@ -243,7 +243,7 @@ function PageButton(props: { label: string; glyph: string; disabled: boolean; on
       accessibilityState={{ disabled: props.disabled }}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class="items-center justify-center min-w-[32px] min-h-[32px] rounded-[5px] border border-line bg-pane hover:bg-row-hover disabled:opacity-[0.4]"
+      class="cursor-pointer select-none disabled:cursor-default items-center justify-center min-w-[32px] min-h-[32px] rounded-[5px] border border-line bg-pane hover:bg-row-hover disabled:opacity-[0.4]"
     >
       <Text class="text-[20px] text-ink">{props.glyph}</Text>
     </View>

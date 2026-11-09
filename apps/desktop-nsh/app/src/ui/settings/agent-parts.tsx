@@ -176,7 +176,7 @@ export function QuietButton(props: { label: string; testID?: string; disabled?: 
       accessibilityState={{ disabled: props.disabled === true }}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class={`items-center justify-center rounded-(--radius-sm) hover:bg-line-subtle disabled:opacity-[0.4] ${narrowWindow() ? "min-h-11 px-3" : "px-2 py-[3px]"}`}
+      class={`cursor-pointer select-none disabled:cursor-default items-center justify-center rounded-(--radius-sm) hover:bg-line-subtle disabled:opacity-[0.4] ${narrowWindow() ? "min-h-11 px-3" : "px-2 py-[3px]"}`}
     >
       <Text class={`${narrowWindow() ? "text-[13px]" : "text-[11px]"} font-medium text-ink-secondary`}>{props.label}</Text>
     </View>

@@ -114,7 +114,7 @@ export function PairingScreen(props: { origin?: string }) {
             accessibilityState={{ disabled: blocked(), busy: runtime.pairingBusy }}
             disabled={blocked()}
             onPress={() => void submit()}
-            class="min-h-[44px] items-center justify-center rounded-(--radius-md) bg-brand px-[14px] py-2"
+            class="cursor-pointer select-none disabled:cursor-default min-h-[44px] items-center justify-center rounded-(--radius-md) bg-brand px-[14px] py-2"
           >
             <Text class="text-[14px] font-semibold text-on-accent">{runtime.pairingBusy ? t().pairWaiting : t().pairSubmit}</Text>
           </View>

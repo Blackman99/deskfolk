@@ -291,7 +291,7 @@ export function Composer(props: {
       accessibilityState={{ disabled: p.disabled, selected: p.active, busy: p.busy }}
       disabled={p.disabled}
       onPress={p.onPress}
-      class={`group shrink-0 items-center justify-center rounded-full active:scale-[0.96] disabled:opacity-[0.4] ${tool()} ${p.active ? "bg-accent-tint" : "hover:bg-line-subtle"}`}
+      class={`cursor-pointer select-none disabled:cursor-default group shrink-0 items-center justify-center rounded-full active:scale-[0.96] disabled:opacity-[0.4] ${tool()} ${p.active ? "bg-accent-tint" : "hover:bg-line-subtle"}`}
     >
       <Icon name={p.icon} size={p.icon === "paperclip" ? 20 : 16} class={`${p.icon === "spinner" ? "animate-spin " : ""}${p.active || p.busy ? "tint-brand" : "tint-ink-muted group-hover:tint-ink"}`} />
     </View>

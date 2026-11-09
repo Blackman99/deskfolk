@@ -60,7 +60,7 @@ export function MapTimeline(props: {
           accessibilityLabel={label()}
           tooltip={tip(label())}
           onPress={() => props.onToggle()}
-          class="w-[32px] h-[32px] rounded-full items-center justify-center bg-brand hover:bg-accent-hover"
+          class="cursor-pointer select-none w-[32px] h-[32px] rounded-full items-center justify-center bg-brand hover:bg-accent-hover"
         >
           <Image src={props.playing ? PAUSE : PLAY} style={{ width: 14, height: 14, tintColor: token("on-accent") }} accessible={false} />
         </View>
@@ -72,7 +72,7 @@ export function MapTimeline(props: {
               testID={`taskmap-speed-${s()}`}
               accessibilityState={{ selected: s() === props.speed }}
               onPress={() => props.onSpeed(s())}
-              class={`min-h-[26px] px-2 justify-center rounded-(--radius-sm) border ${s() === props.speed ? "bg-brand border-brand" : "bg-pane border-line"}`}
+              class={`cursor-pointer select-none min-h-[26px] px-2 justify-center rounded-(--radius-sm) border ${s() === props.speed ? "bg-brand border-brand" : "bg-pane border-line"}`}
             >
               <Text class={`text-[13px] font-semibold ${s() === props.speed ? "text-on-accent" : "text-ink"}`}>{`${s()}×`}</Text>
             </View>
@@ -86,7 +86,7 @@ export function MapTimeline(props: {
                 role="button"
                 testID="taskmap-to-live"
                 onPress={() => props.onLive()}
-                class="min-h-[26px] px-2 justify-center rounded-(--radius-sm) border bg-pane border-line"
+                class="cursor-pointer select-none min-h-[26px] px-2 justify-center rounded-(--radius-sm) border bg-pane border-line"
               >
                 <Text class="text-[13px] font-semibold text-ink">{props.t.controls.toLive}</Text>
               </View>

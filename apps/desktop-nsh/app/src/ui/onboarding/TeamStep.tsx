@@ -165,7 +165,7 @@ export function TeamStep(props: {
                 accessibilityState={{ checked: playbook() === id(), disabled: busy() || started() }}
                 disabled={busy() || started()}
                 onPress={() => pickWay(id())}
-                class={`flex-1 min-w-0 gap-1 px-[14px] py-3 rounded-(--radius-lg) border bg-pane hover:border-line-hover disabled:opacity-[0.7] ${playbook() === id() ? "border-brand" : "border-line"}`}
+                class={`cursor-pointer select-none disabled:cursor-default flex-1 min-w-0 gap-1 px-[14px] py-3 rounded-(--radius-lg) border bg-pane hover:border-line-hover disabled:opacity-[0.7] ${playbook() === id() ? "border-brand" : "border-line"}`}
                 style={{ boxShadow: playbook() === id() ? undefined : shadow("xs") }}
               >
                 <Text class="text-[14px] font-semibold text-ink">{copy().playbooks.builtin[id()]}</Text>
@@ -199,7 +199,7 @@ export function TeamStep(props: {
                       accessibilityState={{ checked: pick().on, disabled: locked() }}
                       disabled={locked()}
                       onPress={() => update(pick().id, { on: !pick().on })}
-                      class="flex-1 min-w-0 flex-row items-center gap-[10px]"
+                      class="cursor-pointer select-none disabled:cursor-default flex-1 min-w-0 flex-row items-center gap-[10px]"
                     >
                       <View class={`w-[18px] h-[18px] rounded-[4px] border items-center justify-center shrink-0 ${pick().on ? "bg-brand border-brand" : "bg-input-bg border-line-hover"}`}>
                         <If when={pick().on}>
@@ -240,7 +240,7 @@ export function TeamStep(props: {
                       accessibilityState={{ expanded: editing() === pick().id, disabled: locked() }}
                       disabled={locked()}
                       onPress={() => editing.set(editing() === pick().id ? null : pick().id)}
-                      class="shrink-0 h-[28px] px-[10px] rounded-[7px] justify-center hover:bg-accent-tint disabled:opacity-[0.5]"
+                      class="cursor-pointer select-none disabled:cursor-default shrink-0 h-[28px] px-[10px] rounded-[7px] justify-center hover:bg-accent-tint disabled:opacity-[0.5]"
                     >
                       <Text class="text-[12px] font-semibold text-brand">{editing() === pick().id ? c().done : c().edit}</Text>
                     </View>

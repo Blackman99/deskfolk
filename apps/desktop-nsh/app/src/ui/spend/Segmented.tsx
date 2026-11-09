@@ -22,7 +22,7 @@ export function Segmented<T extends string>(props: {
           role="button"
           accessibilityState={{ pressed: props.value === item.value }}
           onPress={() => props.onChange(item.value)}
-          class={`items-center justify-center min-h-[26px] px-3 py-[2px] rounded-(--radius-xs) ${props.value === item.value ? "bg-pane" : "group"}`}
+          class={`cursor-pointer select-none items-center justify-center min-h-[26px] px-3 py-[2px] rounded-(--radius-xs) ${props.value === item.value ? "bg-pane" : "group"}`}
           style={props.value === item.value ? { boxShadow: shadow("xs") } : undefined}
         >
           <Text class={`text-[12px] ${props.value === item.value ? "font-semibold text-ink" : "font-medium text-ink-muted"}`}>{item.label}</Text>

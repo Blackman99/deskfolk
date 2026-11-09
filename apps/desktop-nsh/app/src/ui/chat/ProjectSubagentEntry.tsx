@@ -29,7 +29,7 @@ export function ProjectSubagentEntry(props: { tasks: readonly AgentRunTask[]; on
       accessibilityLabel={nameOf(task)}
       tooltip={tip(nameOf(task))}
       onPress={() => props.onOpen(task)}
-      class={`group flex-row items-center gap-[5px] min-w-0 max-w-full ${
+      class={`cursor-pointer select-none group flex-row items-center gap-[5px] min-w-0 max-w-full ${
         single ? "" : "pl-[5px] pr-[8px] py-[2.5px] border border-line rounded-full bg-bg hover:bg-line-hover hover:border-muted-light"
       }`}
     >

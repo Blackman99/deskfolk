@@ -154,7 +154,7 @@ export function SpeechCard(props: {
       accessibilityLabel={text}
       disabled={autosave.saving}
       onPress={onPress}
-      class="shrink-0 px-[10px] py-[5px] rounded-(--radius-sm) bg-sidebar-bg border border-line group disabled:opacity-[0.55]"
+      class="cursor-pointer select-none disabled:cursor-default shrink-0 px-[10px] py-[5px] rounded-(--radius-sm) bg-sidebar-bg border border-line group disabled:opacity-[0.55]"
     >
       <Text class="text-[12px] text-ink-secondary group-hover:text-danger-text">{text}</Text>
     </View>
@@ -187,7 +187,7 @@ export function SpeechCard(props: {
               accessibilityLabel={s().shortcutUse}
               disabled={autosave.saving}
               onPress={() => useShortcut(shortcut())}
-              class="shrink-0 px-[10px] py-[5px] rounded-(--radius-sm) bg-brand disabled:opacity-[0.55]"
+              class="cursor-pointer select-none disabled:cursor-default shrink-0 px-[10px] py-[5px] rounded-(--radius-sm) bg-brand disabled:opacity-[0.55]"
             >
               <Text class="text-[12px] font-semibold text-on-accent">{s().shortcutUse}</Text>
             </View>

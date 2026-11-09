@@ -124,7 +124,7 @@ export function TicketCard(props: {
             props.focus?.focusNow?.();
             props.onSelect();
           }}
-          class="group flex-row items-start gap-[6px] min-w-0"
+          class="cursor-pointer select-none group flex-row items-start gap-[6px] min-w-0"
           style={{ flexGrow: 1, flexShrink: 1, flexBasis: 140 }}
         >
           <View class="shrink-0 px-[5px] rounded-(--radius-xs) bg-line-subtle">
@@ -158,7 +158,7 @@ export function TicketCard(props: {
         </If>
       </View>
       {/* The rest of the card picks it too, as the title does. */}
-      <View testID={`ticket-body-${ticket().id}`} onPress={props.onSelect} class="gap-[5px] min-w-0">
+      <View testID={`ticket-body-${ticket().id}`} onPress={props.onSelect} class="cursor-pointer select-none gap-[5px] min-w-0">
         <View class="flex-row flex-wrap items-center gap-y-[2px] min-w-0">
           {/* Set aside or dropped, it is nobody's: no 「X做的」 for work never done. */}
           <If when={ticket().status !== "parked"}>

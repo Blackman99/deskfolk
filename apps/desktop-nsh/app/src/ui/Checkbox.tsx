@@ -25,7 +25,7 @@ export function Checkbox(props: {
       accessibilityState={{ checked: props.checked, disabled: props.disabled === true }}
       disabled={props.disabled}
       onPress={() => props.onChange(!props.checked)}
-      class={`group flex-row items-center gap-2 disabled:opacity-[0.45] ${props.class ?? ""}`}
+      class={`cursor-pointer select-none disabled:cursor-default group flex-row items-center gap-2 disabled:opacity-[0.45] ${props.class ?? ""}`}
     >
       <View
         class={`w-[14px] h-[14px] rounded-[4px] border items-center justify-center shrink-0 ${props.checked ? "bg-brand border-brand" : "bg-input-bg border-line-hover group-hover:border-brand"}`}

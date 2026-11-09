@@ -24,7 +24,7 @@ export function QuoteRef(props: {
           const q = quoted();
           if (q) void runtime.setHighlightedMessage(q.id, props.selected?.id);
         }}
-        class="w-full mb-[8px] px-[10px] py-[6px] gap-[2px] overflow-hidden"
+        class="cursor-pointer select-none w-full mb-[8px] px-[10px] py-[6px] gap-[2px] overflow-hidden"
         style={{ borderTopRightRadius: 8, borderBottomRightRadius: 8, borderLeftWidth: 2, borderLeftColor: ink() }}
       >
         <View style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: ink(), opacity: 0.08 }} accessible={false} />

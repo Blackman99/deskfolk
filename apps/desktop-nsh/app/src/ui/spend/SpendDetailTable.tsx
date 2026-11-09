@@ -119,7 +119,7 @@ export function SpendDetailTable(props: {
       tooltip={tip(copy().openTrigger)}
       accessibilityLabel={copy().openTrigger}
       onPress={() => props.onOpenTrigger?.(row().session_id, row().trigger_message_id!)}
-      class="group items-center justify-center shrink-0 w-[28px] h-[28px] rounded-(--radius-sm) hover:bg-line-subtle"
+      class="cursor-pointer select-none group items-center justify-center shrink-0 w-[28px] h-[28px] rounded-(--radius-sm) hover:bg-line-subtle"
     >
       <Icon name="arrow-right" size={12} class="tint-ink-muted group-hover:tint-brand" />
     </View>
@@ -188,7 +188,7 @@ export function SpendDetailTable(props: {
       testID={`spend-detail-${row().id}`}
       role={canOpen(row()) ? "button" : undefined}
       onPress={canOpen(row()) ? () => props.onOpenTrigger?.(row().session_id, row().trigger_message_id!) : undefined}
-      class={`flex-row items-center gap-2 border-t border-line-subtle pl-[14px] pr-[10px] py-[10px] active:bg-row-hover ${row().session_deleted || row().bot_deleted ? "opacity-70" : ""}`}
+      class={`${canOpen(row()) ? "cursor-pointer select-none " : ""}flex-row items-center gap-2 border-t border-line-subtle pl-[14px] pr-[10px] py-[10px] active:bg-row-hover ${row().session_deleted || row().bot_deleted ? "opacity-70" : ""}`}
     >
       <View class="flex-1 min-w-0 gap-1">
         <View class="flex-row items-center justify-between gap-2 min-w-0">

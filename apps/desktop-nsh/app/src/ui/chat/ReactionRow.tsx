@@ -21,7 +21,7 @@ export function ReactionRow(props: {
               testID={`reaction-${rx().emoji}`}
               accessibilityState={{ selected: rx().userReacted }}
               onPress={props.lockedComposer ? undefined : () => void runtime.toggleReaction(props.message.id, rx().emoji)}
-              class={`flex-row items-center gap-[4px] px-[8px] py-[2px] rounded-full border ${
+              class={`${props.lockedComposer ? "" : "cursor-pointer select-none "}flex-row items-center gap-[4px] px-[8px] py-[2px] rounded-full border ${
                 rx().userReacted ? "bg-accent-tint border-accent-border" : props.lockedComposer ? "bg-reaction-bg border-line" : "bg-reaction-bg border-line hover:bg-line-subtle hover:border-line-hover"
               }`}
             >

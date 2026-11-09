@@ -198,7 +198,7 @@ export function MapSide(props: {
                       accessibilityState={{ selected: i() === props.quest }}
                       onLayout={(e) => { rows[i()] = { y: e.bounds.origin.y, h: e.bounds.size.height }; }}
                       onPress={() => props.onJump(q().v)}
-                      class={`flex-row gap-2 items-start w-full px-[6px] py-[5px] rounded-(--radius-sm) border ${i() === props.quest ? "bg-accent-tint border-accent-border" : "border-transparent hover:bg-row-hover"}`}
+                      class={`cursor-pointer select-none flex-row gap-2 items-start w-full px-[6px] py-[5px] rounded-(--radius-sm) border ${i() === props.quest ? "bg-accent-tint border-accent-border" : "border-transparent hover:bg-row-hover"}`}
                       style={{ opacity: i() > props.quest ? 0.55 : 1 }}
                     >
                       <Text class="font-mono text-[13px] text-ink-muted">{props.when(q().at)}</Text>
@@ -230,7 +230,7 @@ export function MapSide(props: {
                       testID={`taskmap-moment-${i()}`}
                       accessibilityState={{ selected: i() === props.live }}
                       onPress={() => props.onJump(Math.max(0, m().v - 1))}
-                      class={`flex-row gap-2 items-start w-full px-[6px] py-[5px] rounded-(--radius-sm) border ${i() === props.live ? "bg-accent-tint border-accent-border" : "border-transparent hover:bg-row-hover"}`}
+                      class={`cursor-pointer select-none flex-row gap-2 items-start w-full px-[6px] py-[5px] rounded-(--radius-sm) border ${i() === props.live ? "bg-accent-tint border-accent-border" : "border-transparent hover:bg-row-hover"}`}
                     >
                       <View class="w-[8px] h-[8px] rounded-full shrink-0 mt-[5px]" style={{ backgroundColor: cssColor(m().color) }} />
                       <View class="flex-1 min-w-0">
@@ -259,7 +259,7 @@ function FollowButton(props: { on: boolean; disabled?: boolean; label: string; t
       accessibilityState={{ selected: props.on, disabled: props.disabled }}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class={`ml-auto shrink-0 min-h-[24px] px-2 justify-center rounded-(--radius-sm) border disabled:opacity-[0.45] ${props.on ? "bg-brand border-brand" : "bg-pane border-line"}`}
+      class={`cursor-pointer select-none disabled:cursor-default ml-auto shrink-0 min-h-[24px] px-2 justify-center rounded-(--radius-sm) border disabled:opacity-[0.45] ${props.on ? "bg-brand border-brand" : "bg-pane border-line"}`}
     >
       <Text class={`text-[11px] font-semibold ${props.on ? "text-on-accent" : "text-ink"}`}>{props.text}</Text>
     </View>

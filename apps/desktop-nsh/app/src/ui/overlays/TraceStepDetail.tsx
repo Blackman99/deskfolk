@@ -34,7 +34,7 @@ function JsonTree(props: { name?: string; value: unknown; depth: number }) {
       }
     >
       <View>
-        <View role="button" onPress={() => open.set(!open())} accessibilityState={{ expanded: open() }} class="flex-row items-center gap-[2px]">
+        <View role="button" onPress={() => open.set(!open())} accessibilityState={{ expanded: open() }} class="cursor-pointer select-none flex-row items-center gap-[2px]">
           <View style={{ transform: open() ? "rotate(90deg)" : "none" }}>
             <Icon name="chevron-right" size={12} />
           </View>
@@ -70,7 +70,7 @@ function Link(props: { testID: string; pressed?: boolean; onPress: () => void; c
       testID={props.testID}
       accessibilityState={props.pressed === undefined ? undefined : { expanded: props.pressed }}
       onPress={props.onPress}
-      class="px-[8px] py-[3px] border border-line rounded-(--radius-sm) hover:bg-accent-tint"
+      class="cursor-pointer select-none px-[8px] py-[3px] border border-line rounded-(--radius-sm) hover:bg-accent-tint"
     >
       <Text class="text-[11px] text-brand">{props.children}</Text>
     </View>
@@ -140,7 +140,7 @@ export function TraceStepDetail(props: {
               accessibilityLabel={t().traceSteps.close}
               tooltip={tip(t().traceSteps.close)}
               onPress={props.onClose}
-              class="w-[20px] h-[20px] items-center justify-center rounded-(--radius-sm) hover:bg-line-subtle"
+              class="cursor-pointer select-none w-[20px] h-[20px] items-center justify-center rounded-(--radius-sm) hover:bg-line-subtle"
             >
               <Icon name="x" size={12} />
             </View>
@@ -155,7 +155,7 @@ export function TraceStepDetail(props: {
                     accessibilityState={{ selected: use().id === step().id }}
                     tooltip={tip(t().traceSteps.useOf(index() + 1, props.group.steps.length))}
                     onPress={() => picked.set(use().id)}
-                    class={`min-w-[22px] items-center px-[6px] border rounded-(--radius-sm) ${
+                    class={`cursor-pointer select-none min-w-[22px] items-center px-[6px] border rounded-(--radius-sm) ${
                       use().id === step().id ? "border-brand" : use().outcome !== "ok" ? "border-warn" : "border-line"
                     }`}
                   >
@@ -208,7 +208,7 @@ export function TraceStepDetail(props: {
                 testID="trace-step-raw-toggle"
                 accessibilityState={{ expanded: rawOpen() }}
                 onPress={() => rawOpen.set(!rawOpen())}
-                class="flex-row items-center gap-[2px]"
+                class="cursor-pointer select-none flex-row items-center gap-[2px]"
               >
                 <View style={{ transform: rawOpen() ? "rotate(90deg)" : "none" }}>
                   <Icon name="chevron-right" size={12} />

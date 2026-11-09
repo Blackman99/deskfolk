@@ -98,7 +98,7 @@ export function TicketDetail(props: {
               role="button"
               testID="ticket-owes-spec"
               onPress={() => props.onShowSpec?.()}
-              class="group flex-row items-center gap-1 px-[7px] py-1 min-h-[22px] rounded-(--radius-sm) border border-accent-border bg-pane hover:bg-brand hover:border-brand"
+              class="cursor-pointer select-none group flex-row items-center gap-1 px-[7px] py-1 min-h-[22px] rounded-(--radius-sm) border border-accent-border bg-pane hover:bg-brand hover:border-brand"
             >
               <Icon name="file" size={12} class="tint-brand group-hover:tint-on-accent" />
               <Text class="text-[11px] font-medium text-brand group-hover:text-on-accent">{t().plan.links.showSpec}</Text>
@@ -178,7 +178,7 @@ export function TicketDetail(props: {
                 accessibilityState={{ expanded: depends() }}
                 tooltip={tip(t().plan.dependsHint)}
                 onPress={() => props.onDependsOpenChange(depends() ? null : props.ticket.id)}
-                class={`flex-1 min-w-0 flex-row items-center justify-between gap-[6px] px-2 py-[3px] rounded-(--radius-sm) border bg-input-bg hover:border-accent-border ${depends() ? "border-accent-border" : "border-line"}`}
+                class={`cursor-pointer select-none flex-1 min-w-0 flex-row items-center justify-between gap-[6px] px-2 py-[3px] rounded-(--radius-sm) border bg-input-bg hover:border-accent-border ${depends() ? "border-accent-border" : "border-line"}`}
               >
                 <Text class="flex-1 min-w-0 text-[12px] text-ink line-clamp-1">
                   {dependsTags(props.ticket, props.detail.tickets) ?? t().plan.dependsNothing}
@@ -216,7 +216,7 @@ export function TicketDetail(props: {
                 testID="ticket-reviewer-hint-go"
                 disabled={props.edits.patchingId === props.ticket.id}
                 onPress={() => void props.edits.changeReviewer(props.ticket, h().bot)}
-                class="group px-2 py-[2px] rounded-(--radius-sm) border border-accent-border bg-pane hover:bg-brand hover:border-brand disabled:opacity-[0.5]"
+                class="cursor-pointer select-none disabled:cursor-default group px-2 py-[2px] rounded-(--radius-sm) border border-accent-border bg-pane hover:bg-brand hover:border-brand disabled:opacity-[0.5]"
               >
                 <Text class="text-[11.5px] font-semibold text-brand group-hover:text-on-accent">{t().plan.job.makeReviewer(nameOf(h().bot))}</Text>
               </View>

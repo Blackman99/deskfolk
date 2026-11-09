@@ -109,7 +109,7 @@ export function Chip(props: {
       accessibilityState={{ selected: props.active === true, checked: props.active === true, disabled: props.disabled === true }}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class={`items-center justify-center border rounded-full active:scale-[0.97] disabled:opacity-[0.45] ${phone() ? "min-h-11 px-[14px] py-2 rounded-(--radius-md)" : "px-[11px] py-1"} ${
+      class={`cursor-pointer select-none disabled:cursor-default items-center justify-center border rounded-full active:scale-[0.97] disabled:opacity-[0.45] ${phone() ? "min-h-11 px-[14px] py-2 rounded-(--radius-md)" : "px-[11px] py-1"} ${
         props.active
           ? "bg-brand border-brand"
           : `${props.add ? "border-dashed bg-transparent" : "bg-chip"} border-line hover:border-accent-border hover:bg-accent-tint`
@@ -132,7 +132,7 @@ export function XsButton(props: { label: string; disabled?: boolean; testID?: st
       accessibilityState={{ disabled: props.disabled === true }}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class={`items-center justify-center border rounded-(--radius-sm) disabled:opacity-[0.4] ${narrowWindow() ? "min-h-11 px-3" : "px-2 py-[3px]"} ${
+      class={`cursor-pointer select-none disabled:cursor-default items-center justify-center border rounded-(--radius-sm) disabled:opacity-[0.4] ${narrowWindow() ? "min-h-11 px-3" : "px-2 py-[3px]"} ${
         props.primary ? "bg-brand border-brand" : "bg-btn-secondary-bg border-line hover:bg-line-subtle hover:border-line-hover"
       }`}
     >
@@ -150,7 +150,7 @@ export function TextAction(props: { label: string; testID?: string; disabled?: b
       accessibilityLabel={props.label}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class={`self-start justify-center disabled:opacity-[0.45] ${narrowWindow() ? "min-h-11" : ""}`}
+      class={`cursor-pointer select-none disabled:cursor-default self-start justify-center disabled:opacity-[0.45] ${narrowWindow() ? "min-h-11" : ""}`}
     >
       <Text class={`${narrowWindow() ? "text-[14px]" : "text-[12px]"} font-medium text-brand`}>{props.label}</Text>
     </View>

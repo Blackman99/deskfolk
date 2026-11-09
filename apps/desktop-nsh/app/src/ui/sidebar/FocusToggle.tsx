@@ -25,7 +25,7 @@ export function FocusToggle() {
       accessibilityLabel={copy().settings.focusMode}
       accessibilityState={{ pressed: on() }}
       onPress={() => focusMode.toggle()}
-      class={`group shrink-0 items-center justify-center focus-visible:border-brand ${box()}`}
+      class={`cursor-pointer select-none group shrink-0 items-center justify-center focus-visible:border-brand ${box()}`}
     >
       <Icon name="target" class={on() ? "tint-brand" : phone() ? "tint-ink-secondary" : `${SIDE_MUTED_TINT} group-hover:tint-ink`} />
     </View>

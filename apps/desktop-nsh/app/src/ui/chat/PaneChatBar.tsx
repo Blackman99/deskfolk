@@ -82,7 +82,7 @@ export function PaneChatBar(props: {
       testID={`bar-pill-${id}`}
       accessibilityLabel={label}
       onPress={() => jump(to)}
-      class={`flex-row items-center h-[26px] rounded-full active:scale-[0.97] border ${wide() ? "gap-[5px] pl-[8px] pr-[10px]" : "px-[8px]"} ${
+      class={`cursor-pointer select-none flex-row items-center h-[26px] rounded-full active:scale-[0.97] border ${wide() ? "gap-[5px] pl-[8px] pr-[10px]" : "px-[8px]"} ${
         id === "approval" ? "bg-warn-bg border-warn-line hover:border-warn" : "bg-purple-bg border-purple-line hover:border-purple"
       }`}
     >
@@ -108,7 +108,7 @@ export function PaneChatBar(props: {
           tooltip={tip(settingsAction()?.label ?? "")}
           disabled={!settingsAction()}
           onPress={() => settingsAction()?.run()}
-          class={`flex-row items-center gap-[10px] min-w-0 shrink pl-[4px] pr-[10px] py-[4px] rounded-(--radius-md) ${
+          class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[10px] min-w-0 shrink pl-[4px] pr-[10px] py-[4px] rounded-(--radius-md) ${
             settingsAction()?.active ? "bg-row-hover" : "hover:bg-row-hover"
           }`}
         >
@@ -192,7 +192,7 @@ export function PaneChatBar(props: {
                 accessibilityState={action().id === "pin" ? { selected: Boolean(action().active) } : undefined}
                 tooltip={tip(action().label)}
                 onPress={() => action().run()}
-                class={`group flex-row items-center justify-center gap-[6px] min-w-[32px] h-[32px] px-[8px] rounded-[8px] active:scale-[0.94] ${
+                class={`cursor-pointer select-none group flex-row items-center justify-center gap-[6px] min-w-[32px] h-[32px] px-[8px] rounded-[8px] active:scale-[0.94] ${
                   action().active ? "bg-accent-tint" : "hover:bg-row-hover"
                 }`}
               >

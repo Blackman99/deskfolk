@@ -20,7 +20,7 @@ function Tile(props: { width: number; testID: string; name: string; blurb: strin
       testID={props.testID}
       accessibilityLabel={`${props.name} ${props.blurb}`}
       onPress={() => props.onPress()}
-      class={`flex-row items-center gap-3 min-w-0 p-3 border border-line rounded-(--radius-md) bg-pane hover:border-accent-border hover:bg-accent-tint ${narrowWindow() ? "min-h-16" : ""}`}
+      class={`cursor-pointer select-none flex-row items-center gap-3 min-w-0 p-3 border border-line rounded-(--radius-md) bg-pane hover:border-accent-border hover:bg-accent-tint ${narrowWindow() ? "min-h-16" : ""}`}
       style={{ width: props.width }}
     >
       {props.mark}

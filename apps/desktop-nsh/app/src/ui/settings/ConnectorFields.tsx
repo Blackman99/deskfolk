@@ -156,7 +156,7 @@ export function ConnectorFields(props: {
         testID={`${props.fieldPrefix}-use-custom`}
         accessibilityLabel={t().connectors.useCustom}
         onPress={() => props.patch({ connector: null, baseUrl: props.draft.baseUrl || connector().plans[0]!.baseUrl })}
-        class={`self-start justify-center ${narrowWindow() ? "min-h-11" : ""}`}
+        class={`cursor-pointer select-none self-start justify-center ${narrowWindow() ? "min-h-11" : ""}`}
       >
         <Text class={`${narrowWindow() ? "text-[14px]" : "text-[12px]"} text-ink-muted underline hover:text-brand`}>{t().connectors.useCustom}</Text>
       </View>

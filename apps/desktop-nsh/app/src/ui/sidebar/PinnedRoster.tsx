@@ -56,7 +56,7 @@ function PinnedItem(props: {
       onContextMenu={(e) => props.onContextMenu({ x: e.pagePosition.x, y: e.pagePosition.y }, props.session)}
       onLongPress={(e) => props.onContextMenu({ x: e.pagePosition.x, y: e.pagePosition.y }, props.session)}
       {...sessionPan(() => (props.onDragSession ? (phase, point) => props.onDragSession?.(phase, point, props.session) : undefined))}
-      class={`items-center justify-start gap-[3px] w-[58px] h-[60px] shrink-0 pt-1 px-[2px] pb-[2px] rounded-(--radius-md) border active:scale-[0.97] ${frame()}`}
+      class={`cursor-pointer select-none items-center justify-start gap-[3px] w-[58px] h-[60px] shrink-0 pt-1 px-[2px] pb-[2px] rounded-(--radius-md) border active:scale-[0.97] ${frame()}`}
       style={{ boxShadow: shadow("xs") }}
     >
       <View class="relative items-center justify-center shrink-0" style={{ width: 36, height: 36 }}>
@@ -171,7 +171,7 @@ export function PinnedRoster(props: {
           accessibilityLabel={expanded() ? copy().sidebar.collapse : copy().sidebar.expand}
           tooltip={tip(expanded() ? copy().sidebar.collapse : copy().sidebar.expand)}
           onPress={() => expanded.set(!expanded())}
-          class="group w-[28px] h-[28px] mr-[10px] shrink-0 items-center justify-center rounded-(--radius-sm) border border-line bg-btn-secondary-bg hover:border-line-hover hover:bg-line-subtle"
+          class="cursor-pointer select-none group w-[28px] h-[28px] mr-[10px] shrink-0 items-center justify-center rounded-(--radius-sm) border border-line bg-btn-secondary-bg hover:border-line-hover hover:bg-line-subtle"
           style={{ boxShadow: shadow("xs") }}
         >
           <Icon name={expanded() ? "chevron-up" : "chevron-down"} size={12} class={`${SIDE_MUTED_TINT} group-hover:tint-ink`} />

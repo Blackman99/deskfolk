@@ -19,7 +19,7 @@ export function TextButton(props: {
       accessibilityState={{ selected: on() }}
       tooltip={props.tooltip}
       onPress={props.onPress}
-      class={`shrink-0 rounded-(--radius-sm) ${props.small ? "px-1 py-[2px]" : "px-2 py-[6px]"} ${on() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
+      class={`cursor-pointer select-none shrink-0 rounded-(--radius-sm) ${props.small ? "px-1 py-[2px]" : "px-2 py-[6px]"} ${on() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
     >
       {typeof props.children === "string" ? (
         <Text class={`text-[13px] ${on() ? "text-brand" : "text-ink"}`}>{props.children}</Text>

@@ -187,7 +187,7 @@ export function ProjectComposer(props: {
               accessibilityLabel={t().composer.attach}
               disabled={!connected() || Boolean(view().sending)}
               onPress={() => void pickFiles()}
-              class="group shrink-0 w-[34px] h-[34px] items-center justify-center rounded-full active:scale-[0.96] disabled:opacity-[0.4] hover:bg-line-subtle"
+              class="cursor-pointer select-none disabled:cursor-default group shrink-0 w-[34px] h-[34px] items-center justify-center rounded-full active:scale-[0.96] disabled:opacity-[0.4] hover:bg-line-subtle"
             >
               <Icon name="paperclip" size={20} class="tint-ink-muted group-hover:tint-ink" />
             </View>
@@ -201,7 +201,7 @@ export function ProjectComposer(props: {
                 accessibilityState={{ selected: s().planning(), disabled: !connected() }}
                 disabled={!connected()}
                 onPress={s().togglePlan}
-                class={`group shrink-0 flex-row items-center gap-1 h-[28px] pl-[7px] pr-[9px] rounded-full border disabled:opacity-[0.4] ${s().planning() ? "bg-accent-tint border-accent-border" : "border-transparent hover:bg-line-subtle"}`}
+                class={`cursor-pointer select-none disabled:cursor-default group shrink-0 flex-row items-center gap-1 h-[28px] pl-[7px] pr-[9px] rounded-full border disabled:opacity-[0.4] ${s().planning() ? "bg-accent-tint border-accent-border" : "border-transparent hover:bg-line-subtle"}`}
               >
                 <Icon name="list" size={16} class={s().planning() ? "tint-brand" : "tint-ink-muted group-hover:tint-ink"} />
                 <Text class={`text-[12px] font-medium ${s().planning() ? "text-brand" : "text-ink-muted group-hover:text-ink"}`}>{t().project.plan}</Text>

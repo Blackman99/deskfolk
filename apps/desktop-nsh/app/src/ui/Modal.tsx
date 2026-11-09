@@ -150,7 +150,7 @@ export function ModalAction(props: {
       accessibilityState={{ disabled: props.disabled === true, busy: props.busy === true }}
       disabled={props.disabled || props.busy}
       onPress={() => props.onPress()}
-      class={`flex-row items-center justify-center gap-[6px] border rounded-(--radius-md) px-[18px] active:scale-[0.97] disabled:opacity-[0.45] ${narrowWindow() ? "flex-1 min-h-[46px]" : "py-2"} ${look().box}`}
+      class={`cursor-pointer select-none disabled:cursor-default flex-row items-center justify-center gap-[6px] border rounded-(--radius-md) px-[18px] active:scale-[0.97] disabled:opacity-[0.45] ${narrowWindow() ? "flex-1 min-h-[46px]" : "py-2"} ${look().box}`}
       style={{ boxShadow: props.kind === "primary" ? undefined : shadow("xs") }}
     >
       <If when={props.busy}>

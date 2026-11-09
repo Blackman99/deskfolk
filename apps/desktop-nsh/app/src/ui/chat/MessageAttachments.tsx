@@ -128,7 +128,7 @@ export function MessageAttachments(props: {
       testID="attachment-bundle"
       accessibilityLabel={rows().map((row) => row.workspace_relpath).join("\n")}
       onPress={openBundle}
-      class="mt-4 flex-row items-center gap-2 px-3 py-2 bg-pane border border-line hover:border-brand rounded-(--radius-md) max-w-[280px]"
+      class="cursor-pointer select-none mt-4 flex-row items-center gap-2 px-3 py-2 bg-pane border border-line hover:border-brand rounded-(--radius-md) max-w-[280px]"
     >
       <Icon name="folder" size={20} class="tint-brand" />
       <View class="min-w-0 max-w-[170px]">
@@ -153,7 +153,7 @@ export function MessageAttachments(props: {
         accessibilityLabel={att().workspace_relpath}
         accessibilityState={{ busy: pending() }}
         onPress={() => openRow(att(), node)}
-        class="flex-row items-center gap-2 px-3 py-2 bg-pane border border-line hover:border-brand rounded-(--radius-md) max-w-full"
+        class="cursor-pointer select-none flex-row items-center gap-2 px-3 py-2 bg-pane border border-line hover:border-brand rounded-(--radius-md) max-w-full"
       >
         <If
           when={thumb()}

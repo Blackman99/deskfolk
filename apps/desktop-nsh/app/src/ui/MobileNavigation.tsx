@@ -28,7 +28,7 @@ export function MobileNavigation(props: {
       accessibilityLabel={label()}
       accessibilityState={{ selected: props.active === destination }}
       onPress={() => props.onNavigate(destination)}
-      class="items-center justify-center gap-1 min-w-[44px] min-h-[48px] px-2 py-[3px] rounded-(--radius-md) active:bg-row-hover active:scale-[0.96]"
+      class="cursor-pointer select-none items-center justify-center gap-1 min-w-[44px] min-h-[48px] px-2 py-[3px] rounded-(--radius-md) active:bg-row-hover active:scale-[0.96]"
     >
       <View>
         <Icon name={icon} size={24} filled={props.active === destination} class={props.active === destination ? "tint-brand" : "tint-ink-muted"} />

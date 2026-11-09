@@ -47,7 +47,7 @@ function Segment(props: { testID: string; active: boolean; label: string; icon?:
       accessibilityLabel={props.label}
       accessibilityState={{ selected: props.active }}
       onPress={() => props.onPress()}
-      class={`group flex-row items-center justify-center gap-[6px] px-[11px] py-[5px] rounded-(--radius-sm) ${props.stretch ? "grow basis-0" : ""} ${
+      class={`cursor-pointer select-none group flex-row items-center justify-center gap-[6px] px-[11px] py-[5px] rounded-(--radius-sm) ${props.stretch ? "grow basis-0" : ""} ${
         props.active ? "bg-pane" : "hover:bg-line-subtle"
       }`}
     >

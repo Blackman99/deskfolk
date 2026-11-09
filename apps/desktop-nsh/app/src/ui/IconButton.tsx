@@ -35,7 +35,7 @@ export function IconButton(props: {
         accessibilityState={{ selected: on(), disabled: props.disabled }}
         disabled={props.disabled}
         onPress={() => props.onPress?.()}
-        class={`group items-center justify-center shrink-0 active:scale-[0.92] disabled:opacity-[0.4] ${SIZE[props.size ?? "md"]} ${on() ? "bg-accent-tint" : "hover:bg-row-hover"} ${props.class ?? ""}`}
+        class={`cursor-pointer select-none disabled:cursor-default group items-center justify-center shrink-0 active:scale-[0.92] disabled:opacity-[0.4] ${SIZE[props.size ?? "md"]} ${on() ? "bg-accent-tint" : "hover:bg-row-hover"} ${props.class ?? ""}`}
       >
         <Icon
           name={props.icon}

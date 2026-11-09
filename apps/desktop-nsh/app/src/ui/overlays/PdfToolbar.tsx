@@ -23,7 +23,7 @@ function ToolButton(props: { label: string; testID: string; onPress: () => void;
       accessibilityLabel={props.label}
       tooltip={tip(props.label)}
       onPress={props.onPress}
-      class={`items-center justify-center rounded-(--radius-sm) border border-line bg-btn-secondary-bg hover:bg-btn-secondary-hover active:scale-[0.96] px-[6px] ${narrowWindow() ? "min-w-[40px] h-[40px]" : "min-w-[26px] h-[26px]"}`}
+      class={`cursor-pointer select-none items-center justify-center rounded-(--radius-sm) border border-line bg-btn-secondary-bg hover:bg-btn-secondary-hover active:scale-[0.96] px-[6px] ${narrowWindow() ? "min-w-[40px] h-[40px]" : "min-w-[26px] h-[26px]"}`}
     >
       <Text class="text-[13px] text-ink">{props.children}</Text>
     </View>

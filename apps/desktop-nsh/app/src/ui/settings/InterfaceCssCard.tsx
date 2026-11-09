@@ -140,7 +140,7 @@ export function InterfaceCssCard(props: { iface: InterfaceState; locale: "zh" | 
           testID="css-hooks-toggle"
           accessibilityState={{ expanded: hooksOpen() }}
           onPress={() => hooksOpen.set(!hooksOpen())}
-          class="flex-row items-center gap-[6px] self-start"
+          class="cursor-pointer select-none flex-row items-center gap-[6px] self-start"
         >
           <Icon name={hooksOpen() ? "chevron-down" : "chevron-right"} size={12} class="tint-ink-secondary" />
           <Text class="text-[12px] font-semibold text-ink-secondary">{c().hooks}</Text>

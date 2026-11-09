@@ -102,7 +102,7 @@ export function NotificationDeviceCard(props: {
             testID="notif-repair"
             disabled={props.deviceLoading || runtime.pushBusy}
             onPress={() => props.onRepair()}
-            class="shrink-0 px-3 py-[5px] rounded-(--radius-sm) bg-warn disabled:opacity-[0.5]"
+            class="cursor-pointer select-none disabled:cursor-default shrink-0 px-3 py-[5px] rounded-(--radius-sm) bg-warn disabled:opacity-[0.5]"
           >
             <Text class="text-[12px] font-semibold text-on-warn">{n().repairButton}</Text>
           </View>

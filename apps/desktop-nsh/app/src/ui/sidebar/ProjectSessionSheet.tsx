@@ -68,7 +68,7 @@ export function ProjectSessionSheet(props: { mode?: "new" | "import"; agent?: Pr
                 accessibilityLabel={t().project.agentNames[each()]}
                 accessibilityState={{ checked: agent() === each() }}
                 onPress={() => agent.set(each())}
-                class={`flex-row items-center gap-2 border rounded-(--radius-md) pl-2 pr-[14px] py-[6px] hover:bg-row-hover ${narrowWindow() ? "min-h-[44px]" : "min-h-[40px]"} ${agent() === each() ? "border-brand bg-accent-tint" : "border-line bg-pane"}`}
+                class={`cursor-pointer select-none flex-row items-center gap-2 border rounded-(--radius-md) pl-2 pr-[14px] py-[6px] hover:bg-row-hover ${narrowWindow() ? "min-h-[44px]" : "min-h-[40px]"} ${agent() === each() ? "border-brand bg-accent-tint" : "border-line bg-pane"}`}
               >
                 <AgentLogo runner={each()} size={20} />
                 <Text class="text-[13px] font-semibold text-ink">{t().project.agentNames[each()]}</Text>

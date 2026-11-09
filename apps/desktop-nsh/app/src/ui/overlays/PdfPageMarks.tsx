@@ -112,7 +112,7 @@ export function PdfPageMarks(props: {
               onPress={() => props.onBadgePress(mark().id)}
               onLongPress={() => props.onBadgePeek(mark().id)}
               style={{ position: "absolute", left: -11, top: -11, pointerEvents: "auto", boxShadow: shadow("md") }}
-              class={`min-w-[18px] h-[18px] px-[5px] rounded-full items-center justify-center ${
+              class={`cursor-pointer select-none min-w-[18px] h-[18px] px-[5px] rounded-full items-center justify-center ${
                 mark().status === "draft" ? "bg-pane border-2 border-brand" : mark().status === "resolved" ? "bg-ink-muted" : "bg-brand"
               }`}
             >

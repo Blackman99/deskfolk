@@ -86,7 +86,7 @@ export function WeekGrid(props: {
                         testID={`calendar-event-${p().event.id}`}
                         accessibilityLabel={`${botOfEvent(p().event, props.bots)?.name ?? ""} ${p().event.title}`}
                         onPress={() => props.onOpen(p().event)}
-                        class={`absolute rounded-(--radius-xs) border border-line bg-pane px-[6px] py-1 hover:bg-line-subtle overflow-hidden ${isPaused(p().event) ? "border-dashed" : ""}`}
+                        class={`cursor-pointer select-none absolute rounded-(--radius-xs) border border-line bg-pane px-[6px] py-1 hover:bg-line-subtle overflow-hidden ${isPaused(p().event) ? "border-dashed" : ""}`}
                         style={{
                           top: (p().startMin / 60) * HOUR_HEIGHT,
                           height: Math.max(((p().endMin - p().startMin) / 60) * HOUR_HEIGHT, EVENT_MIN_HEIGHT),

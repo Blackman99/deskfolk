@@ -36,7 +36,7 @@ export function WorkspaceStep(props: { w: Wizard; locale: "zh" | "en" }) {
           testID="onboarding-workspace-default"
           accessibilityLabel={t().onboarding.useDefaultWorkspace}
           onPress={() => set("~/deskfolk-workspace")}
-          class="self-start"
+          class="cursor-pointer select-none self-start"
         >
           <Text class="text-[12px] font-medium text-brand">{t().onboarding.useDefaultWorkspace}</Text>
         </View>

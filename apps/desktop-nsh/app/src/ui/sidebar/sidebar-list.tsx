@@ -156,7 +156,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
           accessibilityLabel={t().project.toggleDir(group().label)}
           accessibilityState={{ expanded: p.row.open }}
           onPress={() => e.toggleDir(group().dir)}
-          class={`group flex-1 min-w-0 flex-row items-center gap-[6px] px-[10px] py-1 rounded-(--radius-md) hover:bg-row-hover ${phone() ? "min-h-[44px] pl-[14px]" : "min-h-[32px]"}`}
+          class={`cursor-pointer select-none group flex-1 min-w-0 flex-row items-center gap-[6px] px-[10px] py-1 rounded-(--radius-md) hover:bg-row-hover ${phone() ? "min-h-[44px] pl-[14px]" : "min-h-[32px]"}`}
         >
           <Icon name={p.row.open ? "chevron-down" : "chevron-right"} size={12} class="tint-ink-secondary" />
           <Icon name="folder" size={16} class="tint-ink-secondary" />
@@ -175,7 +175,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
           accessibilityLabel={t().project.newHere(group().label)}
           accessibilityState={{ expanded: e.dirAddExpanded(group().dir) }}
           onPress={() => e.onDirAdd(group(), add)}
-          class={`group shrink-0 items-center justify-center mr-[6px] rounded-(--radius-sm) hover:bg-line-subtle ${phone() ? "w-[40px] h-[40px]" : "w-[26px] h-[26px]"} ${hoverOnly() ? "opacity-0 group-hover:opacity-100 focus-visible:opacity-100" : ""}`}
+          class={`cursor-pointer select-none group shrink-0 items-center justify-center mr-[6px] rounded-(--radius-sm) hover:bg-line-subtle ${phone() ? "w-[40px] h-[40px]" : "w-[26px] h-[26px]"} ${hoverOnly() ? "opacity-0 group-hover:opacity-100 focus-visible:opacity-100" : ""}`}
         >
           <Icon name="plus" size={16} class={`${SIDE_MUTED_TINT} group-hover:tint-brand`} />
         </View>
@@ -202,7 +202,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
               accessibilityLabel={which() === "bots" ? t().sidebar.createMenu : t().project.add}
               accessibilityState={{ expanded: e.sectionMenuOpen(which()) }}
               onPress={() => e.onSectionAdd(which(), plus)}
-              class="w-[22px] h-[22px] rounded-(--radius-sm) items-center justify-center hover:bg-line-subtle group"
+              class="cursor-pointer select-none w-[22px] h-[22px] rounded-(--radius-sm) items-center justify-center hover:bg-line-subtle group"
             >
               <Text class={`text-[15px] ${SIDE_MUTED_TEXT} group-hover:text-brand`}>+</Text>
             </View>
@@ -231,7 +231,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
             testID="back-to-sessions"
             accessibilityLabel={t().sidebar.backToSessions}
             onPress={() => env().closeArchived()}
-            class="px-1 py-[2px] rounded-(--radius-sm) hover:bg-line-subtle"
+            class="cursor-pointer select-none px-1 py-[2px] rounded-(--radius-sm) hover:bg-line-subtle"
           >
             <Text class="text-[11px] font-medium text-brand">{t().sidebar.backToSessions}</Text>
           </View>

@@ -71,7 +71,7 @@ export function WorkspaceView(props: {
       role="button"
       testID={testID}
       onPress={() => onPress?.()}
-      class="min-h-[44px] m-2 px-4 py-2 items-center justify-center border border-line rounded-(--radius-md) bg-pane"
+      class="cursor-pointer select-none min-h-[44px] m-2 px-4 py-2 items-center justify-center border border-line rounded-(--radius-md) bg-pane"
     >
       <Text class="text-[14px] text-brand">{label}</Text>
     </View>

@@ -121,7 +121,7 @@ export function SheetNav(props: { testID: string; mark?: PickerSource["mark"]; l
       accessibilityLabel={props.label}
       disabled={props.disabled}
       onPress={props.onPress}
-      class="flex-row items-center gap-[12px] min-h-[48px] px-[12px] py-[8px] rounded-(--radius-md) active:bg-line-subtle disabled:opacity-[0.5]"
+      class="cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[12px] min-h-[48px] px-[12px] py-[8px] rounded-(--radius-md) active:bg-line-subtle disabled:opacity-[0.5]"
     >
       <If when={props.mark}>{(mark) => <ModelSourceMark source={mark()} tile size={28} />}</If>
       <View class="flex-1 min-w-0">

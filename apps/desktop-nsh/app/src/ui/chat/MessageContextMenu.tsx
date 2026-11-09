@@ -94,7 +94,7 @@ export function MessageContextMenu(props: {
             accessibilityLabel={emoji()}
             tooltip={sheet ? undefined : tip(emoji())}
             onPress={act(() => props.onReaction(emoji()))}
-            class={`items-center justify-center ${sheet ? "w-12 h-12 rounded-full bg-line-subtle active:scale-[0.92]" : "w-7 h-7 rounded-(--radius-sm) hover:bg-line-subtle hover:scale-[1.2]"}`}
+            class={`cursor-pointer select-none items-center justify-center ${sheet ? "w-12 h-12 rounded-full bg-line-subtle active:scale-[0.92]" : "w-7 h-7 rounded-(--radius-sm) hover:bg-line-subtle hover:scale-[1.2]"}`}
           >
             <Text class={sheet ? "text-[24px]" : "text-[16px]"}>{emoji()}</Text>
           </View>
@@ -134,7 +134,7 @@ export function MessageContextMenu(props: {
                   tooltip={row().hint?.() ? tip(row().hint!()!) : undefined}
                   disabled={!row().enabled()}
                   onPress={act(row().run)}
-                  class="flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle group disabled:opacity-[0.45]"
+                  class="cursor-pointer select-none disabled:cursor-default flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle group disabled:opacity-[0.45]"
                 >
                   <Icon name={row().icon} size={16} class="tint-ink opacity-75 group-hover:tint-brand group-hover:opacity-100" />
                   <Text class="text-[13px] font-medium text-ink group-hover:text-brand">{row().label()}</Text>
@@ -150,7 +150,7 @@ export function MessageContextMenu(props: {
                       testID="msg-context-subitem"
                       accessibilityLabel={file()}
                       onPress={act(() => props.onOpenFileTree(file()))}
-                      class="flex-row items-center gap-1 px-[6px] py-[3px] rounded-(--radius-sm) hover:bg-line-subtle group"
+                      class="cursor-pointer select-none flex-row items-center gap-1 px-[6px] py-[3px] rounded-(--radius-sm) hover:bg-line-subtle group"
                     >
                       <Text class="text-[11px] font-bold text-ink-secondary opacity-60">›</Text>
                       <Text class="flex-1 min-w-0 text-[11px] text-ink-secondary group-hover:text-brand line-clamp-1">{file()}</Text>
@@ -165,7 +165,7 @@ export function MessageContextMenu(props: {
               testID="msg-context-copy-id"
               accessibilityLabel={t().chat.copyMessageId}
               onPress={act(() => props.onCopyId())}
-              class="flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle group"
+              class="cursor-pointer select-none flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle group"
             >
               <Icon name="hash" size={16} class="tint-ink opacity-75 group-hover:tint-brand group-hover:opacity-100" />
               <Text class="text-[13px] font-medium text-ink group-hover:text-brand">{t().chat.copyMessageId}</Text>
@@ -198,7 +198,7 @@ export function MessageContextMenu(props: {
                     testID="msg-context-subitem"
                     accessibilityLabel={file()}
                     onPress={act(() => props.onOpenFileTree(file()))}
-                    class="flex-row items-center gap-1 px-[6px] min-h-[36px] rounded-(--radius-sm) active:bg-line-subtle"
+                    class="cursor-pointer select-none flex-row items-center gap-1 px-[6px] min-h-[36px] rounded-(--radius-sm) active:bg-line-subtle"
                   >
                     <Text class="text-[12px] font-bold text-ink-secondary opacity-60">›</Text>
                     <Text class="flex-1 min-w-0 text-[13px] text-ink-secondary line-clamp-1">{file()}</Text>

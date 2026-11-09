@@ -263,7 +263,7 @@ export function SpendTrend(props: {
                       onPress={() => select(plotKey, index())}
                       onMouseEnter={() => select(plotKey, index())}
                       onFocus={() => select(plotKey, index())}
-                      class={`flex-1 min-w-0 h-full items-center justify-end rounded-(--radius-sm) ${active() ? "bg-accent-tint" : "hover:bg-line-subtle"}`}
+                      class={`cursor-pointer select-none flex-1 min-w-0 h-full items-center justify-end rounded-(--radius-sm) ${active() ? "bg-accent-tint" : "hover:bg-line-subtle"}`}
                     >
                       <Canvas
                         accessible={false}

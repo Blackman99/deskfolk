@@ -90,7 +90,7 @@ export function TunePicker(props: {
       accessibilityState={{ expanded: tune.open(), disabled: props.disabled }}
       disabled={props.disabled}
       onPress={() => (tune.open() ? tune.close() : tune.openPicker())}
-      class={`flex-row items-center gap-2 w-full px-[10px] py-[6px] bg-input-bg border rounded-(--radius-md) hover:border-line-hover hover:bg-line-subtle disabled:opacity-[0.55] disabled:bg-line-subtle ${tune.open() ? "border-field-focus-border" : "border-line"}`}
+      class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-2 w-full px-[10px] py-[6px] bg-input-bg border rounded-(--radius-md) hover:border-line-hover hover:bg-line-subtle disabled:opacity-[0.55] disabled:bg-line-subtle ${tune.open() ? "border-field-focus-border" : "border-line"}`}
       style={{ boxShadow: props.disabled ? undefined : shadow("xs") }}
     >
       <If when={props.mark}>{(mark) => <ModelSourceMark source={mark()} />}</If>
@@ -126,7 +126,7 @@ export function TunePicker(props: {
         onMouseEnter={() => tune.hover(rowProps.level, rowProps.row)}
         onPress={() => tune.press(rowProps.level, rowProps.row)}
         onLayout={(e) => measure(rowProps.level, (box) => ({ ...box, rows: { ...box.rows, [rowProps.row.value]: e.bounds.origin.y } }))}
-        class={`flex-row items-center gap-[6px] px-2 py-[6px] rounded-(--radius-sm) disabled:opacity-[0.45] ${focused() ? "bg-line-subtle" : "hover:bg-line-subtle"} ${keyed() ? "border-2 border-accent-border" : ""}`}
+        class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[6px] px-2 py-[6px] rounded-(--radius-sm) disabled:opacity-[0.45] ${focused() ? "bg-line-subtle" : "hover:bg-line-subtle"} ${keyed() ? "border-2 border-accent-border" : ""}`}
       >
         <View class="flex-1 min-w-0">
           <Text class={`text-[13px] line-clamp-1 ${checked() ? "font-semibold text-brand" : "font-medium text-ink"}`}>{rowProps.row.label}</Text>

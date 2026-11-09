@@ -31,7 +31,7 @@ function SmallButton(props: { label: string; disabled?: boolean; onPress: () => 
       accessibilityState={{ disabled: props.disabled === true }}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class="justify-center px-3 py-[6px] rounded-(--radius-md) bg-chip border border-chip-line hover:bg-pane hover:border-line-hover group disabled:opacity-[0.7]"
+      class="cursor-pointer select-none disabled:cursor-default justify-center px-3 py-[6px] rounded-(--radius-md) bg-chip border border-chip-line hover:bg-pane hover:border-line-hover group disabled:opacity-[0.7]"
     >
       <Text class="text-[12px] font-medium text-ink-secondary group-hover:text-brand">{props.label}</Text>
     </View>
@@ -133,7 +133,7 @@ export function WorkspacePicker(props: {
           tooltip={tip(display() || props.emptyLabel)}
           disabled={busy()}
           onPress={() => void choose()}
-          class="flex-1 min-w-[192px] flex-row items-center gap-2 px-3 py-2 rounded-(--radius-md) bg-input-bg border border-line hover:border-line-hover focus-visible:border-field-focus-border disabled:opacity-[0.7]"
+          class="cursor-pointer select-none disabled:cursor-default flex-1 min-w-[192px] flex-row items-center gap-2 px-3 py-2 rounded-(--radius-md) bg-input-bg border border-line hover:border-line-hover focus-visible:border-field-focus-border disabled:opacity-[0.7]"
         >
           <Icon name="folder" size={16} class="tint-ink-muted" />
           <Text class={`flex-1 min-w-0 line-clamp-1 font-mono text-[13px] ${display() ? "text-ink" : "text-ink-muted"}`}>
@@ -192,7 +192,7 @@ export function WorkspacePicker(props: {
                       testID={`host-browse-item:${row().name}`}
                       accessibilityLabel={row().name}
                       onPress={() => void load(row().path)}
-                      class="w-full px-2 py-[6px] rounded-(--radius-sm) hover:bg-row-hover"
+                      class="cursor-pointer select-none w-full px-2 py-[6px] rounded-(--radius-sm) hover:bg-row-hover"
                     >
                       <Text class="line-clamp-1 font-mono text-[13px] text-ink">
                         {row().name}

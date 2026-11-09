@@ -66,7 +66,7 @@ export function TranscriptAsk(props: {
                   ))}
                 >
                   {(b: () => NonNullable<ReturnType<typeof bot>>) => (
-                    <View role="button" testID="ask-avatar" tooltip={tip(t().top.botSettings)} onPress={() => props.stage.onOpenProfile(b().id)} class="hover:scale-[1.06]">
+                    <View role="button" testID="ask-avatar" tooltip={tip(t().top.botSettings)} onPress={() => props.stage.onOpenProfile(b().id)} class="cursor-pointer select-none hover:scale-[1.06]">
                       {avatar(() => (
                         <If when={avatarSrc(b().avatar)} else={<Text class="text-[13px] font-bold" style={{ color: cssColor(pal().text) }}>{rosterLetter(b().name)}</Text>}>
                           <AvatarPicture avatar={b().avatar} alt={b().name} />
@@ -81,7 +81,7 @@ export function TranscriptAsk(props: {
               <View class="flex-row items-center gap-[6px] mb-[4px] px-[2px]">
                 <If when={!props.stage.sidesSayWho}>
                   <If when={bot()} else={<Text class="text-[13px] font-bold text-ink">{props.stage.who(msg())}</Text>}>
-                    <View role="button" testID="ask-sender" tooltip={tip(t().top.botSettings)} onPress={() => props.stage.onOpenProfile(msg().author)} class="group min-w-0">
+                    <View role="button" testID="ask-sender" tooltip={tip(t().top.botSettings)} onPress={() => props.stage.onOpenProfile(msg().author)} class="cursor-pointer select-none group min-w-0">
                       <Text class="text-[13px] font-bold text-ink group-hover:text-brand line-clamp-1">{props.stage.who(msg())}</Text>
                     </View>
                   </If>

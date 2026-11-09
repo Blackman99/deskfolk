@@ -10,7 +10,7 @@ import { copy } from "../../runtime";
 
 export function VoiceStatus(props: { voice: ComposerVoice }) {
   const act = (label: string, onPress: () => void, testID: string) => (
-    <View role="button" testID={testID} accessibilityLabel={label} onPress={onPress} class="shrink-0 px-2 py-[2px] rounded-(--radius-sm) hover:bg-line-subtle group">
+    <View role="button" testID={testID} accessibilityLabel={label} onPress={onPress} class="cursor-pointer select-none shrink-0 px-2 py-[2px] rounded-(--radius-sm) hover:bg-line-subtle group">
       <Text class="text-[12px] font-medium text-ink-secondary group-hover:text-ink">{label}</Text>
     </View>
   );

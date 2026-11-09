@@ -100,7 +100,7 @@ function RowAction(props: { testID: string; label: string; icon?: IconName; hint
       disabled={props.disabled}
       tooltip={props.hint ? tip(props.hint) : undefined}
       onPress={() => props.onPress()}
-      class={`group flex-row items-center gap-1 px-2 py-1 rounded-(--radius-sm) border shrink-0 disabled:opacity-[0.45] ${
+      class={`cursor-pointer select-none disabled:cursor-default group flex-row items-center gap-1 px-2 py-1 rounded-(--radius-sm) border shrink-0 disabled:opacity-[0.45] ${
         props.danger
           ? "border-transparent hover:bg-danger-bg hover:border-danger-line"
           : on()
@@ -126,7 +126,7 @@ function ActionButton(props: { testID: string; icon: IconName; deny?: boolean; o
       testID={props.testID}
       accessibilityLabel={props.children}
       onPress={() => props.onPress()}
-      class={`group flex-row items-center justify-center gap-[6px] px-[14px] py-[6px] rounded-(--radius-md) border shrink-0 ${
+      class={`cursor-pointer select-none group flex-row items-center justify-center gap-[6px] px-[14px] py-[6px] rounded-(--radius-md) border shrink-0 ${
         props.deny ? "bg-btn-secondary-bg border-danger-line hover:bg-danger-bg hover:border-danger" : "bg-btn-secondary-bg border-line hover:bg-line-subtle hover:border-line-hover"
       }`}
     >
@@ -273,7 +273,7 @@ export function GroupPane(props: {
                     accessibilityLabel={memberLabel(rowProps.botId)}
                     tooltip={tip(zh() ? "查看并编辑 Bot 人设" : "View & edit bot profile")}
                     onPress={() => props.onOpenProfile(row().id)}
-                    class="group max-w-full"
+                    class="cursor-pointer select-none group max-w-full"
                   >
                     <Text class="text-[13px] font-semibold text-ink group-hover:text-brand line-clamp-1">{memberLabel(rowProps.botId)}</Text>
                   </View>
@@ -345,7 +345,7 @@ export function GroupPane(props: {
                     testID={`group-section-${row().id}`}
                     accessibilityLabel={row().name}
                     onPress={() => openSection(row().id)}
-                    class={`flex-row items-center gap-[10px] min-h-[54px] px-[14px] bg-pane active:bg-row-hover ${index() > 0 ? "border-t border-line" : ""}`}
+                    class={`cursor-pointer select-none flex-row items-center gap-[10px] min-h-[54px] px-[14px] bg-pane active:bg-row-hover ${index() > 0 ? "border-t border-line" : ""}`}
                   >
                     <Icon name={row().icon} size={20} class={row().danger ? "tint-danger" : "tint-ink-muted"} />
                     <Text class="flex-1 min-w-0 text-[15px] font-medium text-ink">{row().name}</Text>
@@ -370,7 +370,7 @@ export function GroupPane(props: {
                 testID="group-detail-back"
                 accessibilityLabel={t().detail.backToSections}
                 onPress={() => backFromDetail()}
-                class="w-[44px] h-[44px] items-center justify-center rounded-(--radius-md) shrink-0 active:bg-row-hover"
+                class="cursor-pointer select-none w-[44px] h-[44px] items-center justify-center rounded-(--radius-md) shrink-0 active:bg-row-hover"
               >
                 <Icon name="chevron-left" size={20} class="tint-brand" />
               </View>
@@ -423,7 +423,7 @@ export function GroupPane(props: {
                             accessibilityLabel={t().groupLead.retry}
                             disabled={leadPending()}
                             onPress={() => void runtime.loadGroupLead(selected().id)}
-                            class="pl-1 disabled:opacity-[0.45]"
+                            class="cursor-pointer select-none disabled:cursor-default pl-1 disabled:opacity-[0.45]"
                           >
                             <Text class="text-[12px] text-brand underline">{t().groupLead.retry}</Text>
                           </View>
@@ -459,7 +459,7 @@ export function GroupPane(props: {
                           accessibilityLabel={t().detail.pullIn}
                           disabled={!props.detail.pullPick}
                           onPress={() => void pullInMember()}
-                          class={`group flex-row items-center gap-[5px] px-3 py-[6px] rounded-(--radius-md) border shrink-0 ${
+                          class={`cursor-pointer select-none disabled:cursor-default group flex-row items-center gap-[5px] px-3 py-[6px] rounded-(--radius-md) border shrink-0 ${
                             props.detail.pullPick ? "bg-accent-tint border-accent-border hover:bg-brand hover:border-brand" : "bg-line-subtle border-line opacity-[0.45]"
                           }`}
                         >

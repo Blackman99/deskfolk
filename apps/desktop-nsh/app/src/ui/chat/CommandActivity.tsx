@@ -110,7 +110,7 @@ export function CommandActivity(props: {
             testID="command-summary"
             accessibilityState={{ expanded: expanded() }}
             onPress={() => expanded.set(!expanded())}
-            class="group flex-row items-center gap-[6px] max-w-full py-[2px]"
+            class="cursor-pointer select-none group flex-row items-center gap-[6px] max-w-full py-[2px]"
           >
             <Icon name="terminal" size={16} class={expanded() ? "tint-ink-secondary" : "tint-ink-muted group-hover:tint-ink-secondary"} />
             <Text class={`text-[12px] ${expanded() ? "text-ink-secondary" : "text-ink-muted group-hover:text-ink-secondary"}`}>
@@ -154,7 +154,7 @@ export function CommandActivity(props: {
                           accessibilityState={{ expanded: open() }}
                           tooltip={tip(row().command ?? row().name)}
                           onPress={() => opened.set(opened() === row().id ? null : row().id)}
-                          class={`flex-row items-center gap-[8px] w-full min-h-[30px] px-[10px] hover:bg-row-hover ${open() ? "bg-row-hover" : ""}`}
+                          class={`cursor-pointer select-none flex-row items-center gap-[8px] w-full min-h-[30px] px-[10px] hover:bg-row-hover ${open() ? "bg-row-hover" : ""}`}
                         >
                           <Line row={row()} openable open={open()} />
                         </View>

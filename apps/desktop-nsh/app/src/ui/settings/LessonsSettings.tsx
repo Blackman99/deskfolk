@@ -22,7 +22,7 @@ function LessonButton(props: { label: string; testID: string; disabled: boolean;
       testID={props.testID}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class="group px-[10px] py-[3px] border border-line rounded-(--radius-full) bg-pane hover:border-accent-border disabled:opacity-[0.6]"
+      class="cursor-pointer select-none disabled:cursor-default group px-[10px] py-[3px] border border-line rounded-(--radius-full) bg-pane hover:border-accent-border disabled:opacity-[0.6]"
     >
       <Text class="text-[12px] text-ink-secondary group-hover:text-brand">{props.label}</Text>
     </View>

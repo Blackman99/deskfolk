@@ -43,7 +43,7 @@ export function LocaleSwitch(props: { locale: "zh" | "en" }) {
             accessibilityState={{ selected: props.locale === option()[0], disabled: busy() }}
             disabled={busy()}
             onPress={() => void pick(option()[0])}
-            class={`px-[9px] py-[3px] rounded-(--radius-sm) disabled:opacity-[0.7] ${props.locale === option()[0] ? "bg-pane" : "hover:bg-line-subtle"}`}
+            class={`cursor-pointer select-none disabled:cursor-default px-[9px] py-[3px] rounded-(--radius-sm) disabled:opacity-[0.7] ${props.locale === option()[0] ? "bg-pane" : "hover:bg-line-subtle"}`}
           >
             <Text class={`text-[12px] ${props.locale === option()[0] ? "text-brand font-semibold" : "text-ink-muted font-medium"}`}>{option()[1]}</Text>
           </View>

@@ -71,7 +71,7 @@ export function PlaybookAddMenu(props: {
                       onFocus={() => roving.focused(id)}
                       onBlur={() => roving.blurred(id)}
                       onPress={() => chooseTemplate(id)}
-                      class="items-start gap-[2px] px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle focus:bg-line-subtle group"
+                      class="cursor-pointer select-none items-start gap-[2px] px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle focus:bg-line-subtle group"
                     >
                       <Text class="text-[13px] font-medium text-ink group-hover:text-brand">{c().templates[id]!.name}</Text>
                       <Text class="text-[11px] leading-[1.4] text-ink-muted">{c().templates[id]!.hint}</Text>
@@ -86,7 +86,7 @@ export function PlaybookAddMenu(props: {
                     onFocus={() => roving.focused("blank")}
                     onBlur={() => roving.blurred("blank")}
                     onPress={chooseBlank}
-                    class="px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle focus:bg-line-subtle group"
+                    class="cursor-pointer select-none px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle focus:bg-line-subtle group"
                   >
                     <View class="flex-row items-center gap-[6px]">
                       <Icon name="plus" size={12} class="tint-ink-muted group-hover:tint-brand" />

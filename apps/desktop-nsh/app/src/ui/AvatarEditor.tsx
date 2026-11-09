@@ -161,7 +161,7 @@ export function AvatarEditor(props: {
             accessibilityLabel={copy().sidebar.botAvatarCustom}
             disabled={uploading()}
             onPress={() => void upload()}
-            class="rounded-full hover:opacity-90 disabled:opacity-[0.6]"
+            class="cursor-pointer select-none disabled:cursor-default rounded-full hover:opacity-90 disabled:opacity-[0.6]"
           >
             {preview()}
           </View>
@@ -206,7 +206,7 @@ export function AvatarEditor(props: {
                     testID={`avatar-variant-${v()}`}
                     accessibilityState={{ selected: variant() === v() }}
                     onPress={() => pickVariant(v())}
-                    class={`px-[7px] py-[2px] rounded-(--radius-lg) border ${variant() === v() ? "bg-ink border-ink" : "border-line hover:border-line-hover"}`}
+                    class={`cursor-pointer select-none px-[7px] py-[2px] rounded-(--radius-lg) border ${variant() === v() ? "bg-ink border-ink" : "border-line hover:border-line-hover"}`}
                   >
                     <Text class={`text-[11px] ${variant() === v() ? "font-semibold text-pane" : "text-ink-muted"}`}>
                       {copy().common.you === "你" ? VARIANT_LABELS[v()].zh : VARIANT_LABELS[v()].en}

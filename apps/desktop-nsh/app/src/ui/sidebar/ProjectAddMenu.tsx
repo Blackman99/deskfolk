@@ -104,7 +104,7 @@ function Open(props: Parameters<typeof ProjectAddMenu>[0]): JSX.Element {
       accessibilityLabel={entry.label}
       onPress={choose(entry.run)}
       onMouseEnter={() => active.set(flat().indexOf(entry))}
-      class={`flex-row items-center gap-[10px] min-h-[36px] px-[10px] rounded-(--radius-sm) hover:bg-row-hover ${flat()[active()]?.id === entry.id ? "bg-row-hover" : ""}`}
+      class={`cursor-pointer select-none flex-row items-center gap-[10px] min-h-[36px] px-[10px] rounded-(--radius-sm) hover:bg-row-hover ${flat()[active()]?.id === entry.id ? "bg-row-hover" : ""}`}
     >
       <If when={entry.agent} else={<Icon name={entry.icon ?? "plus"} size={16} class="tint-ink-muted" />}>
         {(agent) => <AgentLogo runner={agent()} size={18} />}

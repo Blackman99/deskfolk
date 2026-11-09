@@ -238,7 +238,7 @@ export function UsageWidget() {
                 accessibilityLabel={copy().usage.widget}
                 accessibilityState={{ expanded: expanded() }}
                 tooltip={tip(usageWidget.open ? copy().usage.close : copy().usage.show)}
-                class="w-[46px] h-[46px] shrink-0 rounded-full items-center justify-center"
+                class="cursor-pointer select-none w-[46px] h-[46px] shrink-0 rounded-full items-center justify-center"
                 onPress={onBallPress}
                 onContextMenu={(e) => menuAt.set({ x: e.pagePosition.x, y: e.pagePosition.y })}
                 onFocus={focused}
@@ -283,7 +283,7 @@ export function UsageWidget() {
                             role="button"
                             accessibilityLabel={label()}
                             accessibilityValue={{ text: tone() }}
-                            class={`w-[42px] h-[42px] rounded-full items-center justify-center hover:bg-row-hover ${shownAgent() && key(shownAgent()!) === key(agent) ? "bg-row-hover" : ""}`}
+                            class={`cursor-pointer select-none w-[42px] h-[42px] rounded-full items-center justify-center hover:bg-row-hover ${shownAgent() && key(shownAgent()!) === key(agent) ? "bg-row-hover" : ""}`}
                             onMouseEnter={() => pointAt(agent)}
                             onFocus={() => {
                               focused();
@@ -356,7 +356,7 @@ export function UsageWidget() {
                             const api = client();
                             if (api) void feed.load(api, true);
                           }}
-                          class="shrink-0 px-[8px] py-[3px] border border-line rounded-(--radius-md) hover:bg-row-hover disabled:opacity-[0.6]"
+                          class="cursor-pointer select-none disabled:cursor-default shrink-0 px-[8px] py-[3px] border border-line rounded-(--radius-md) hover:bg-row-hover disabled:opacity-[0.6]"
                         >
                           <Text class="text-[11px] text-ink">{feed.busy ? copy().usage.refreshing : copy().usage.refresh}</Text>
                         </View>
@@ -381,7 +381,7 @@ export function UsageWidget() {
                       role="menuitem"
                       testID="usage-menu-hide"
                       onPress={hide}
-                      class="px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-row-hover focus-visible:bg-row-hover"
+                      class="cursor-pointer select-none px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-row-hover focus-visible:bg-row-hover"
                     >
                       <Text class="text-[12px] text-ink">{copy().usage.hide}</Text>
                     </View>

@@ -186,7 +186,7 @@ export function TicketRail(props: {
         role={onPress ? "button" : undefined}
         tooltip={hint ? tip(hint) : undefined}
         onPress={onPress ? (e) => onPress(laneAt(e.position, frame())) : undefined}
-        class={`w-full gap-[5px] pt-[7px] pr-[10px] pb-[6px] pl-3 border-b border-line-subtle ${onPress ? "hover:bg-line-subtle" : ""}`}
+        class={`w-full gap-[5px] pt-[7px] pr-[10px] pb-[6px] pl-3 border-b border-line-subtle ${onPress ? "cursor-pointer select-none hover:bg-line-subtle" : ""}`}
       >
         <View class="flex-row items-center gap-[6px] min-w-0">
           <Text class="flex-1 min-w-0 text-[12px] text-ink-muted line-clamp-1">{label}</Text>
@@ -217,7 +217,7 @@ export function TicketRail(props: {
           accessibilityLabel={t().plan.job.expandBoard}
           tooltip={tip(t().plan.job.expandBoard)}
           onPress={() => props.onExpand()}
-          class="w-6 h-6 items-center justify-center rounded-(--radius-sm) border border-transparent hover:bg-line-subtle hover:border-line"
+          class="cursor-pointer select-none w-6 h-6 items-center justify-center rounded-(--radius-sm) border border-transparent hover:bg-line-subtle hover:border-line"
         >
           <Icon name="kanban" size={16} class="tint-ink-muted" />
         </View>
@@ -227,7 +227,7 @@ export function TicketRail(props: {
           <Text class="shrink min-w-0 text-[11px] text-brand">
             {props.statusFilter === "all" ? "" : t().plan.job.filtered(t().plan.ticketStatus[props.statusFilter])}
           </Text>
-          <View role="button" testID="rail-filter-clear" onPress={() => props.onClearFilter()}>
+          <View role="button" class="cursor-pointer select-none" testID="rail-filter-clear" onPress={() => props.onClearFilter()}>
             <Text class="text-[11px] font-semibold text-brand">{t().plan.job.clearFilter}</Text>
           </View>
         </View>
@@ -259,7 +259,7 @@ export function TicketRail(props: {
                   rowViews.get(ticket().id)?.focus();
                   press(ticket(), laneAt(e.position, frame()));
                 }}
-                class={`w-full gap-[5px] pt-[7px] pr-[10px] pb-[6px] pl-3 border-b border-line-subtle focus-visible:bg-line-subtle ${picked() ? "bg-accent-tint" : "hover:bg-line-subtle"}`}
+                class={`cursor-pointer select-none w-full gap-[5px] pt-[7px] pr-[10px] pb-[6px] pl-3 border-b border-line-subtle focus-visible:bg-line-subtle ${picked() ? "bg-accent-tint" : "hover:bg-line-subtle"}`}
               >
                 <View class="flex-row items-center gap-[6px] min-w-0">
                   <Text class="shrink-0 text-[11px] font-mono text-ink-muted">{ticketTag(ticket().seq)}</Text>

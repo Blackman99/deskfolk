@@ -31,7 +31,7 @@ export function AgentStep(props: { w: Wizard }) {
                   w.agentPick.set(option().value);
                   w.agentModel.set("");
                 }}
-                class={`flex-row items-center gap-[6px] pl-[6px] pr-3 py-[5px] rounded-full border ${
+                class={`cursor-pointer select-none flex-row items-center gap-[6px] pl-[6px] pr-3 py-[5px] rounded-full border ${
                   w.agentPick() === option().value ? "bg-brand border-brand" : "bg-chip border-chip-line hover:bg-pane hover:border-line-hover"
                 }`}
               >

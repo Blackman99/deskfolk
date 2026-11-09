@@ -63,7 +63,7 @@ export function ScreenKeys(props: { screen: ScreenController }) {
           accessibilityLabel={words().keyboard}
           accessibilityState={{ selected: screen.keyboardUp() }}
           onPress={toggleKeyboard}
-          class={`grow basis-0 min-w-[30px] h-[36px] items-center justify-center rounded-(--radius-sm) border bg-input-bg ${screen.keyboardUp() ? "border-brand" : "border-line"}`}
+          class={`cursor-pointer select-none grow basis-0 min-w-[30px] h-[36px] items-center justify-center rounded-(--radius-sm) border bg-input-bg ${screen.keyboardUp() ? "border-brand" : "border-line"}`}
         >
           <Icon name="keyboard" size={20} class={screen.keyboardUp() ? "tint-brand" : "tint-ink"} />
         </View>
@@ -75,7 +75,7 @@ export function ScreenKeys(props: { screen: ScreenController }) {
               accessibilityLabel={words().modifier(modifier().name)}
               accessibilityState={{ selected: screen.armed().includes(modifier().id) }}
               onPress={() => screen.toggleModifier(modifier().id)}
-              class={`grow basis-0 min-w-[30px] h-[36px] items-center justify-center rounded-(--radius-sm) border bg-input-bg ${screen.armed().includes(modifier().id) ? "border-brand" : "border-line"}`}
+              class={`cursor-pointer select-none grow basis-0 min-w-[30px] h-[36px] items-center justify-center rounded-(--radius-sm) border bg-input-bg ${screen.armed().includes(modifier().id) ? "border-brand" : "border-line"}`}
             >
               <Text class={`text-[15px] ${screen.armed().includes(modifier().id) ? "text-brand" : "text-ink"}`}>{modifier().label}</Text>
             </View>
@@ -87,7 +87,7 @@ export function ScreenKeys(props: { screen: ScreenController }) {
               role="button"
               testID={`screen-key-${key().id}`}
               onPress={() => press(send, key().keysym, screen.takeArmed())}
-              class="grow basis-0 min-w-[30px] h-[36px] items-center justify-center rounded-(--radius-sm) border border-line bg-input-bg"
+              class="cursor-pointer select-none grow basis-0 min-w-[30px] h-[36px] items-center justify-center rounded-(--radius-sm) border border-line bg-input-bg"
             >
               <Text class="text-[15px] text-ink">{key().label}</Text>
             </View>

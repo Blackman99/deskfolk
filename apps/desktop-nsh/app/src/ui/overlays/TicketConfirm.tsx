@@ -25,7 +25,7 @@ export function TicketConfirm(props: { ticket: TicketWithArtifacts; edits: Ticke
                   role="button"
                   testID="ticket-confirm-go"
                   onPress={() => props.edits.queueMove(props.ticket.id, move().status)}
-                  class="px-2 py-[2px] rounded-(--radius-sm) border border-warn-line bg-pane"
+                  class="cursor-pointer select-none px-2 py-[2px] rounded-(--radius-sm) border border-warn-line bg-pane"
                 >
                   <Text class="text-[11px] font-semibold text-warn-text">{copy().plan.board.moveAnyway}</Text>
                 </View>
@@ -33,7 +33,7 @@ export function TicketConfirm(props: { ticket: TicketWithArtifacts; edits: Ticke
                   role="button"
                   testID="ticket-confirm-keep"
                   onPress={() => props.edits.keepCard(props.ticket.id)}
-                  class="px-2 py-[2px] rounded-(--radius-sm) border border-line bg-pane"
+                  class="cursor-pointer select-none px-2 py-[2px] rounded-(--radius-sm) border border-line bg-pane"
                 >
                   <Text class="text-[11px] text-ink">{copy().plan.board.keep}</Text>
                 </View>

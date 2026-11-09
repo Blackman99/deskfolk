@@ -25,7 +25,7 @@ function Action(props: { testID: string; kind?: "danger" | "primary"; disabled?:
       disabled={props.disabled}
       accessibilityState={{ expanded: props.expanded, disabled: props.disabled }}
       onPress={props.onPress}
-      class="group disabled:opacity-[0.5]"
+      class="cursor-pointer select-none disabled:cursor-default group disabled:opacity-[0.5]"
     >
       <Text class={`text-[12px] group-hover:underline ${props.kind === "danger" ? "text-danger-text" : "text-brand"} ${props.kind === "primary" ? "font-semibold" : ""}`}>{props.children}</Text>
     </View>
@@ -124,7 +124,7 @@ export function PlaybookHeader(props: {
               accessibilityLabel={playbookName(item, c().builtin)}
               accessibilityState={{ selected: item.id === props.shown }}
               onPress={() => props.onshow(item.id)}
-              class={`flex-row items-center gap-1 px-3 py-1 border rounded-full hover:bg-line-subtle ${item.id === props.shown ? "border-brand bg-accent-tint" : "border-line bg-pane"}`}
+              class={`cursor-pointer select-none flex-row items-center gap-1 px-3 py-1 border rounded-full hover:bg-line-subtle ${item.id === props.shown ? "border-brand bg-accent-tint" : "border-line bg-pane"}`}
             >
               <If when={item.id === props.playbooks.defaultId}>
                 <View role="image" accessibilityLabel={c().isDefault} tooltip={tip(c().isDefault)}>

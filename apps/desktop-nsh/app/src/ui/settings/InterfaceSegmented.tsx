@@ -35,7 +35,7 @@ export function InterfaceSegmented<V extends string>(props: {
             accessibilityLabel={option().label}
             accessibilityState={{ selected: props.value === option().value }}
             onPress={() => props.onPick(option().value)}
-            class={`flex-row items-center justify-center px-[11px] py-[5px] rounded-(--radius-sm) ${wide() ? "grow shrink basis-0" : ""} ${
+            class={`cursor-pointer select-none flex-row items-center justify-center px-[11px] py-[5px] rounded-(--radius-sm) ${wide() ? "grow shrink basis-0" : ""} ${
               props.value === option().value ? "bg-pane" : "hover:bg-line-subtle"
             }`}
             style={{ boxShadow: props.value === option().value ? shadow("xs") : undefined }}

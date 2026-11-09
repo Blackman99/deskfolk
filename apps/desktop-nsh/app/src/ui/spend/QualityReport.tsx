@@ -238,7 +238,7 @@ export function QualityReport(props: {
                       accessibilityLabel={`${bot().name ?? copy().deleted} · ${open()[bot().id] ? copy().hideLines : copy().showLines}`}
                       accessibilityState={{ expanded: !!open()[bot().id] }}
                       onPress={() => open.set({ ...open(), [bot().id]: !open()[bot().id] })}
-                      class={`group flex-row items-center gap-2 min-w-0 shrink ${narrow() ? "min-h-[32px]" : "min-h-[40px]"}`}
+                      class={`cursor-pointer select-none group flex-row items-center gap-2 min-w-0 shrink ${narrow() ? "min-h-[32px]" : "min-h-[40px]"}`}
                     >
                       <SpendIcon name="chevron" size={12} class={open()[bot().id] ? "tint-ink-muted" : "-rotate-90 tint-ink-muted"} />
                       <SpendBotFace id={bot().id} name={bot().name} bot={props.botOf?.(bot().id) ?? null} size={24} />
@@ -287,7 +287,7 @@ export function QualityReport(props: {
               role="button"
               accessibilityState={{ expanded: showAll() }}
               onPress={() => showAll.set(!showAll())}
-              class="group min-h-[28px] justify-center px-[6px]"
+              class="cursor-pointer select-none group min-h-[28px] justify-center px-[6px]"
             >
               <Text class="text-[12px] font-medium text-brand group-hover:underline">{showAll() ? copy().showFewer : copy().showAll(bots().length)}</Text>
             </View>

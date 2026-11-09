@@ -45,8 +45,8 @@ export function BotTabNav(props: {
               onPress={() => props.switchTab(tab().id)}
               class={
                 phone()
-                  ? `relative flex-row items-center gap-[10px] min-h-[54px] px-[14px] bg-pane active:bg-row-hover ${index() > 0 ? "border-t border-line" : ""}`
-                  : `flex-1 min-w-0 flex-row items-center justify-center gap-[5px] min-h-[40px] pt-[10px] pb-[8px] px-1 border-b-2 hover:bg-row-hover ${active() ? "border-brand" : "border-transparent"}`
+                  ? `cursor-pointer select-none relative flex-row items-center gap-[10px] min-h-[54px] px-[14px] bg-pane active:bg-row-hover ${index() > 0 ? "border-t border-line" : ""}`
+                  : `cursor-pointer select-none flex-1 min-w-0 flex-row items-center justify-center gap-[5px] min-h-[40px] pt-[10px] pb-[8px] px-1 border-b-2 hover:bg-row-hover ${active() ? "border-brand" : "border-transparent"}`
               }
             >
               <Icon name={tab().icon} size={phone() ? 20 : 16} class={active() && !phone() ? "tint-brand" : "tint-ink-muted"} />

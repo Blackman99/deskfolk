@@ -210,7 +210,7 @@ export function ArtifactBody(props: {
             role="button"
             testID="artifact-unsupported-open"
             onPress={() => void props.openOnDisk(props.relpath, false)}
-            class="mt-[6px] h-[32px] px-4 items-center justify-center border border-accent-border rounded-full bg-accent-tint hover:border-brand"
+            class="cursor-pointer select-none mt-[6px] h-[32px] px-4 items-center justify-center border border-accent-border rounded-full bg-accent-tint hover:border-brand"
           >
             <Text class="text-[13px] font-semibold text-brand">{t().artifactOpenSystem}</Text>
           </View>
@@ -234,7 +234,7 @@ export function ArtifactBody(props: {
                   role="button"
                   testID="artifact-dir-entry"
                   onPress={() => props.onOpenEntry?.(entry())}
-                  class="flex-row items-center gap-[10px] w-full min-h-[36px] px-[10px] py-[6px] rounded-(--radius-md) hover:bg-row-hover"
+                  class="cursor-pointer select-none flex-row items-center gap-[10px] w-full min-h-[36px] px-[10px] py-[6px] rounded-(--radius-md) hover:bg-row-hover"
                 >
                   <FileIcon icon={fileIconFor(entry().path, { isDir: entry().kind === "dir" })} />
                   <Text class="flex-1 min-w-0 text-[13px] text-ink line-clamp-1">{entry().name}</Text>
@@ -434,7 +434,7 @@ export function ArtifactBody(props: {
             disabled={loader().originalProgress !== null}
             onPress={() => void loader().loadOriginal()}
             style={{ boxShadow: shadow("xs") }}
-            class={`absolute top-3 self-center z-[4] flex-row items-center gap-[5px] px-[10px] pl-2 rounded-full border border-line bg-pane/90 hover:border-accent-border hover:bg-accent-tint ${narrowWindow() ? "h-[36px]" : "h-[28px]"}`}
+            class={`cursor-pointer select-none disabled:cursor-default absolute top-3 self-center z-[4] flex-row items-center gap-[5px] px-[10px] pl-2 rounded-full border border-line bg-pane/90 hover:border-accent-border hover:bg-accent-tint ${narrowWindow() ? "h-[36px]" : "h-[28px]"}`}
           >
             <Icon name="image" size={16} class="tint-ink-secondary" />
             <Text class="text-[12px] font-semibold text-ink-secondary">

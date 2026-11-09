@@ -54,7 +54,7 @@ export function MonthGrid(props: {
                             testID={`calendar-event-${event().id}`}
                             accessibilityLabel={`${botOfEvent(event(), props.bots)?.name ?? ""} ${event().title}`}
                             onPress={() => props.onOpen(event())}
-                            class={`flex-row items-center gap-1 px-1 py-[2px] rounded-(--radius-xs) hover:bg-line-subtle ${isPaused(event()) ? "opacity-[0.6]" : ""}`}
+                            class={`cursor-pointer select-none flex-row items-center gap-1 px-1 py-[2px] rounded-(--radius-xs) hover:bg-line-subtle ${isPaused(event()) ? "opacity-[0.6]" : ""}`}
                           >
                             <View class="w-[6px] h-[6px] rounded-full" style={{ backgroundColor: cssColor(event().color ?? "") }} accessible={false} />
                             <If when={botOfEvent(event(), props.bots)}>{(bot) => <SmallFace bot={bot()} size={14} />}</If>
@@ -68,7 +68,7 @@ export function MonthGrid(props: {
                           role="button"
                           testID={`calendar-more-${day().getTime()}`}
                           onPress={() => props.onOpenDay(day())}
-                          class="px-1 rounded-(--radius-xs) hover:bg-line-subtle"
+                          class="cursor-pointer select-none px-1 rounded-(--radius-xs) hover:bg-line-subtle"
                         >
                           <Text class="text-[11px] font-medium text-ink-muted">{TOOLBAR[props.locale].more(events().length - shown().length)}</Text>
                         </View>

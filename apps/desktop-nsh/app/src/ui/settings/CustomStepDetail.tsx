@@ -338,7 +338,7 @@ export function CustomStepDetail(props: {
                   accessibilityLabel={c().kinds[one]}
                   accessibilityState={{ checked: kind() === one }}
                   onPress={() => setKind(one)}
-                  class={`px-3 py-[3px] rounded-[4px] ${kind() === one ? "bg-pane" : ""}`}
+                  class={`cursor-pointer select-none px-3 py-[3px] rounded-[4px] ${kind() === one ? "bg-pane" : ""}`}
                 >
                   <Text class={`text-[12px] ${kind() === one ? "font-semibold text-ink" : "text-ink-secondary"}`}>{c().kinds[one]}</Text>
                 </View>

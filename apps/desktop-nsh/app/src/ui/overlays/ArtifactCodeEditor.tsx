@@ -334,7 +334,7 @@ export function ArtifactCodeEditor(props: {
                 pending.set(null);
                 props.onAnnotate?.(range, text());
               }}
-              class={`px-[10px] bg-brand border border-accent-border rounded-full ${narrowWindow() ? "py-1" : "py-[2px]"}`}
+              class={`cursor-pointer select-none px-[10px] bg-brand border border-accent-border rounded-full ${narrowWindow() ? "py-1" : "py-[2px]"}`}
               style={{ boxShadow: shadow("md") }}
             >
               <Text class="text-[12px] font-semibold text-on-accent">{props.annotateLabel ?? ""}</Text>

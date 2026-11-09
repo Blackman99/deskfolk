@@ -188,10 +188,10 @@ function ArtifactChip(props: {
           tooltip={tip(props.path)}
           onPress={() => props.onPress(props.path)}
           style={{ verticalAlign: "middle" }}
-          class={`flex-row items-center gap-1 px-[7px] py-[2px] mx-[1px] rounded-(--radius-sm) border ${props.inverted ? "bg-white/18 border-white/35 hover:bg-white/28" : "bg-brand/7 border-brand/17 hover:bg-accent-tint hover:border-accent-border"}`}
+          class={`cursor-pointer flex-row items-center gap-1 px-[7px] py-[2px] mx-[1px] rounded-(--radius-sm) border ${props.inverted ? "bg-white/18 border-white/35 hover:bg-white/28" : "bg-brand/7 border-brand/17 hover:bg-accent-tint hover:border-accent-border"}`}
         >
           <FileIcon icon={fileIconFor(props.path)} size={12} />
-          <Text class={`text-[13px] ${props.inverted ? "text-white" : "text-accent-hover"}`}>{name()}</Text>
+          <Text class={`cursor-pointer text-[13px] ${props.inverted ? "text-white" : "text-accent-hover"}`}>{name()}</Text>
         </View>
       }
     >
@@ -202,12 +202,12 @@ function ArtifactChip(props: {
         tooltip={tip(props.path)}
         onPress={() => props.onPress(props.path)}
         style={{ verticalAlign: "middle" }}
-        class={`flex-row items-center gap-2 max-w-[240px] p-[5px] my-[2px] rounded-(--radius-md) border ${props.inverted ? "bg-white/14 border-white/30 hover:border-white/70" : "bg-pane border-line hover:border-brand"}`}
+        class={`cursor-pointer flex-row items-center gap-2 max-w-[240px] p-[5px] my-[2px] rounded-(--radius-md) border ${props.inverted ? "bg-white/14 border-white/30 hover:border-white/70" : "bg-pane border-line hover:border-brand"}`}
       >
         <If when={thumb()} else={<View class="w-[72px] h-[54px] rounded-[6px] bg-line-subtle shrink-0" />}>
           {(url: () => string | null | false) => <Image src={url() as string} class="w-[72px] h-[54px] rounded-[6px] shrink-0" style={{ objectFit: "cover" }} accessibilityLabel={name()} />}
         </If>
-        <Text class={`min-w-0 shrink text-[13px] line-clamp-1 ${props.inverted ? "text-white" : "text-ink-secondary"}`}>{name()}</Text>
+        <Text class={`cursor-pointer min-w-0 shrink text-[13px] line-clamp-1 ${props.inverted ? "text-white" : "text-ink-secondary"}`}>{name()}</Text>
       </View>
     </If>
   );
@@ -235,7 +235,7 @@ function MentionChip(props: { id: string; label: string; inverted: boolean; unre
         accessibilityLabel={`@${name()}`}
         onPress={everyone() ? undefined : () => props.onPress(props.id)}
         style={{ verticalAlign: "middle" }}
-        class={`flex-row items-center gap-1 pl-[3px] pr-[7px] py-[1px] mx-[1px] rounded-full border ${props.inverted ? "bg-white/12 border-white/35 hover:bg-white/20" : "bg-accent-tint border-accent-border hover:bg-accent-border"}`}
+        class={`${everyone() ? "" : "cursor-pointer "}flex-row items-center gap-1 pl-[3px] pr-[7px] py-[1px] mx-[1px] rounded-full border ${props.inverted ? "bg-white/12 border-white/35 hover:bg-white/20" : "bg-accent-tint border-accent-border hover:bg-accent-border"}`}
       >
         <If
           when={!everyone()}
@@ -245,12 +245,12 @@ function MentionChip(props: { id: string; label: string; inverted: boolean; unre
             class="w-[16px] h-[16px] rounded-full items-center justify-center border"
             style={{ backgroundColor: cssColor(palette().bg), borderColor: cssColor(palette().border) }}
           >
-            <Text class="text-[10px] font-bold leading-none" style={{ color: cssColor(palette().text) }}>
+            <Text class="cursor-pointer text-[10px] font-bold leading-none" style={{ color: cssColor(palette().text) }}>
               {rosterLetter(name()) || "?"}
             </Text>
           </View>
         </If>
-        <Text class={`text-[13px] font-semibold leading-[1.2] ${props.inverted ? "text-white" : "text-accent-hover"}`}>{`@${name()}`}</Text>
+        <Text class={`${everyone() ? "" : "cursor-pointer "}text-[13px] font-semibold leading-[1.2] ${props.inverted ? "text-white" : "text-accent-hover"}`}>{`@${name()}`}</Text>
       </View>
     </If>
   );

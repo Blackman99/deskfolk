@@ -40,7 +40,7 @@ export function SkillsCard(props: {
             accessibilityLabel={copy().sidebar.skillAdd}
             tooltip={tip(copy().sidebar.skillAdd)}
             onPress={() => props.openAddSkill()}
-            class="group flex-row items-center gap-1 px-[10px] py-1 rounded-(--radius-md) border border-line bg-btn-secondary-bg hover:bg-line-subtle hover:border-brand"
+            class="cursor-pointer select-none group flex-row items-center gap-1 px-[10px] py-1 rounded-(--radius-md) border border-line bg-btn-secondary-bg hover:bg-line-subtle hover:border-brand"
           >
             <Icon name="plus" size={12} class="tint-ink-secondary group-hover:tint-brand" />
             <Text class="text-[12px] font-semibold text-ink-secondary group-hover:text-brand">{copy().sidebar.skillAdd}</Text>
@@ -79,7 +79,7 @@ export function SkillsCard(props: {
                   testID={`skill-open-${skill().id}`}
                   accessibilityLabel={label(copy().sidebar.skillEdit)}
                   onPress={() => props.openEditSkill(skill().id)}
-                  class={`group flex-row items-center gap-[10px] flex-1 min-w-0 p-1 rounded-(--radius-sm) ${phone() ? "min-h-[52px] p-0" : ""}`}
+                  class={`cursor-pointer select-none group flex-row items-center gap-[10px] flex-1 min-w-0 p-1 rounded-(--radius-sm) ${phone() ? "min-h-[52px] p-0" : ""}`}
                 >
                   <View
                     class={`items-center justify-center shrink-0 ${phone() ? "w-[36px] h-[36px] rounded-(--radius-md)" : "w-[28px] h-[28px] rounded-(--radius-sm)"} ${skill().enabled ? "bg-accent-tint" : "bg-line-subtle"}`}
@@ -136,7 +136,7 @@ export function SkillsCard(props: {
                       accessibilityLabel={label(copy().sidebar.skillEdit)}
                       tooltip={tip(copy().sidebar.skillEdit)}
                       onPress={() => props.openEditSkill(skill().id)}
-                      class="group w-[26px] h-[26px] items-center justify-center rounded-(--radius-sm) border border-line bg-btn-secondary-bg hover:bg-line-subtle hover:border-brand"
+                      class="cursor-pointer select-none group w-[26px] h-[26px] items-center justify-center rounded-(--radius-sm) border border-line bg-btn-secondary-bg hover:bg-line-subtle hover:border-brand"
                     >
                       <Icon name="edit" size={16} class="tint-ink-secondary group-hover:tint-brand" />
                     </View>
@@ -146,7 +146,7 @@ export function SkillsCard(props: {
                       accessibilityLabel={label(copy().sidebar.skillDelete)}
                       tooltip={tip(copy().sidebar.skillDelete)}
                       onPress={() => props.openDeleteSkillConfirm(skill().id)}
-                      class="group w-[26px] h-[26px] items-center justify-center rounded-(--radius-sm) border border-line bg-btn-secondary-bg hover:bg-danger-bg hover:border-danger-line"
+                      class="cursor-pointer select-none group w-[26px] h-[26px] items-center justify-center rounded-(--radius-sm) border border-line bg-btn-secondary-bg hover:bg-danger-bg hover:border-danger-line"
                     >
                       <Icon name="trash" size={16} class="tint-ink-secondary group-hover:tint-danger-text" />
                     </View>

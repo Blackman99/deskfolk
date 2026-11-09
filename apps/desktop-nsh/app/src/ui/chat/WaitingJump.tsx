@@ -26,7 +26,7 @@ export function WaitingJump(props: { hidden: HiddenWaiting; onJump: (id: string)
         testID="waiting-jump"
         accessibilityLabel={label()}
         onPress={() => props.onJump(props.hidden.items[0]!.id)}
-        class={`flex-row items-center self-start gap-[6px] h-[32px] pl-[10px] pr-3 rounded-full border active:scale-[0.97] ${ask() ? "bg-purple-bg border-purple-line hover:border-purple" : "bg-warn-bg border-warn-line hover:border-warn"}`}
+        class={`cursor-pointer select-none flex-row items-center self-start gap-[6px] h-[32px] pl-[10px] pr-3 rounded-full border active:scale-[0.97] ${ask() ? "bg-purple-bg border-purple-line hover:border-purple" : "bg-warn-bg border-warn-line hover:border-warn"}`}
         style={{ boxShadow: shadow("md") }}
       >
         <Icon name={approvals() ? "shield-check" : "help-circle"} size={12} class={ask() ? "tint-purple-text" : "tint-warn-text"} />

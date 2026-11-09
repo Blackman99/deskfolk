@@ -66,7 +66,7 @@ export function StopMenu<Item extends { key: string; label: string } = StopMenuI
           open.set(!open());
         }
       }}
-      class={`flex-row items-center justify-center gap-1 bg-pane border hover:border-ink-secondary disabled:opacity-[0.5] ${open() ? "border-ink-secondary" : "border-line"} ${
+      class={`cursor-pointer select-none disabled:cursor-default flex-row items-center justify-center gap-1 bg-pane border hover:border-ink-secondary disabled:opacity-[0.5] ${open() ? "border-ink-secondary" : "border-line"} ${
         props.label ? "px-[10px] rounded-(--radius-sm)" : "px-2 rounded-full"
       } ${small() ? "h-[26px] min-w-[26px]" : "h-[34px] min-w-[34px]"}`}
     >
@@ -98,7 +98,7 @@ export function StopMenu<Item extends { key: string; label: string } = StopMenuI
                 testID={`stop-item-${item().key}`}
                 accessibilityLabel={item().label}
                 onSelect={() => void pick(item())}
-                class="px-[10px] py-[7px] rounded-(--radius-sm) hover:bg-chip focus:bg-chip"
+                class="cursor-pointer select-none px-[10px] py-[7px] rounded-(--radius-sm) hover:bg-chip focus:bg-chip"
               >
                 <Text class="text-[13px] text-ink line-clamp-1">{item().label}</Text>
               </MenuItem>

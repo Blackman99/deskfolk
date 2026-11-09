@@ -101,8 +101,8 @@ export function FileDownload(props: {
             onPress={() => void download()}
             class={
               variant() === "compact"
-                ? `shrink-0 h-[26px] px-[10px] items-center justify-center border rounded-full disabled:opacity-80 ${note() === "tap" ? "bg-brand border-brand" : "border-line bg-btn-secondary-bg hover:border-accent-border hover:bg-accent-tint"}`
-                : `mt-[6px] h-[32px] px-4 items-center justify-center border rounded-full disabled:opacity-80 ${note() === "tap" ? "bg-brand border-brand" : "border-accent-border bg-accent-tint hover:border-brand"}`
+                ? `cursor-pointer select-none disabled:cursor-default shrink-0 h-[26px] px-[10px] items-center justify-center border rounded-full disabled:opacity-80 ${note() === "tap" ? "bg-brand border-brand" : "border-line bg-btn-secondary-bg hover:border-accent-border hover:bg-accent-tint"}`
+                : `cursor-pointer select-none disabled:cursor-default mt-[6px] h-[32px] px-4 items-center justify-center border rounded-full disabled:opacity-80 ${note() === "tap" ? "bg-brand border-brand" : "border-accent-border bg-accent-tint hover:border-brand"}`
             }
           >
             <Text
@@ -131,7 +131,7 @@ export function FileDownload(props: {
         accessibilityState={{ busy: busy(), disabled: busy() }}
         disabled={busy()}
         onPress={() => void download()}
-        class={`shrink-0 items-center justify-center rounded-(--radius-md) ${note() === "tap" ? "bg-brand" : "bg-transparent hover:bg-line-subtle active:bg-line-subtle"}`}
+        class={`cursor-pointer select-none disabled:cursor-default shrink-0 items-center justify-center rounded-(--radius-md) ${note() === "tap" ? "bg-brand" : "bg-transparent hover:bg-line-subtle active:bg-line-subtle"}`}
         style={{ width: iconSize(), height: iconSize() }}
       >
         <If

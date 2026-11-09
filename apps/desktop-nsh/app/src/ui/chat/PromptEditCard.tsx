@@ -14,7 +14,7 @@ const SHORT = 12;
 
 function Link(props: { testID?: string; disabled?: boolean; onPress: () => void; children: string }) {
   return (
-    <View role="button" testID={props.testID} disabled={props.disabled} onPress={props.onPress} class="self-start disabled:opacity-[0.6]">
+    <View role="button" testID={props.testID} disabled={props.disabled} onPress={props.onPress} class="cursor-pointer select-none disabled:cursor-default self-start disabled:opacity-[0.6]">
       <Text class="text-[12px] text-brand">{props.children}</Text>
     </View>
   );

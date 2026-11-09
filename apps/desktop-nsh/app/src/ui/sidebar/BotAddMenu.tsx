@@ -38,7 +38,7 @@ export function BotAddMenu(props: {
       onFocus={() => roving.focused(key)}
       onBlur={() => roving.blurred(key)}
       onPress={() => choose(action)}
-      class="group flex-row items-center gap-[10px] min-h-[36px] px-[10px] rounded-(--radius-sm) hover:bg-row-hover focus:bg-row-hover"
+      class="cursor-pointer select-none group flex-row items-center gap-[10px] min-h-[36px] px-[10px] rounded-(--radius-sm) hover:bg-row-hover focus:bg-row-hover"
     >
       <Icon name={icon} class="tint-ink-muted" />
       <Text class="text-[13px] font-medium text-ink">{label()}</Text>

@@ -69,7 +69,7 @@ export function Onboarding(props: { onDismiss?: () => void; holding?: boolean; o
         {/* Skip footer link: setup is still to do. Past the save it is, and the Bot step skips itself. */}
         <If when={props.onDismiss && !w.setupSaved()}>
           <View class="items-center mt-2">
-            <View role="button" testID="onboarding-skip" accessibilityLabel={t().skip} onPress={() => props.onDismiss?.()} class="px-2 py-1">
+            <View role="button" testID="onboarding-skip" accessibilityLabel={t().skip} onPress={() => props.onDismiss?.()} class="cursor-pointer select-none px-2 py-1">
               <Text class="text-[13px] text-ink-muted hover:text-ink">{t().skip}</Text>
             </View>
           </View>

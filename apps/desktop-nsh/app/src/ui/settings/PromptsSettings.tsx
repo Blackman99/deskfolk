@@ -171,7 +171,7 @@ export function PromptsSettings(props: {
         accessibilityLabel={chip.tone === "default" ? item.title[ui()] : `${item.title[ui()]}, ${chip.label}`}
         tooltip={chip.tone === "default" ? undefined : tip(chip.label)}
         onPress={() => openEditor(item)}
-        class="group flex-row items-center gap-[6px] px-2 py-[5px] rounded-(--radius-sm) hover:bg-row-hover"
+        class="cursor-pointer select-none group flex-row items-center gap-[6px] px-2 py-[5px] rounded-(--radius-sm) hover:bg-row-hover"
         style={{ width: narrowWindow() ? 140 : 156 }}
       >
         <Text class="min-w-0 shrink text-[12px] leading-[1.5] text-ink-secondary group-hover:text-ink font-mono line-clamp-1">{item.title[ui()]}</Text>
@@ -221,7 +221,7 @@ export function PromptsSettings(props: {
           <If when={moved() && props.openRouting}>
             <Text testID="prompts-moved" class="text-[12px] leading-[1.5] text-ink-muted">
               {`${t().routing.promptsMoved} `}
-              <View role="button" testID="prompts-to-routing" onPress={() => props.openRouting?.()} style={{ verticalAlign: "middle" }}>
+              <View role="button" class="cursor-pointer select-none" testID="prompts-to-routing" onPress={() => props.openRouting?.()} style={{ verticalAlign: "middle" }}>
                 <Text class="text-[12px] text-brand">{t().routing.toRouting}</Text>
               </View>
             </Text>
@@ -244,7 +244,7 @@ export function PromptsSettings(props: {
                   testID="prompts-filter-all"
                   accessibilityState={{ selected: !editedOnly() }}
                   onPress={() => onlyEdited.set(false)}
-                  class={`px-[10px] py-1 rounded-(--radius-sm) ${!editedOnly() ? "bg-pane" : ""}`}
+                  class={`cursor-pointer select-none px-[10px] py-1 rounded-(--radius-sm) ${!editedOnly() ? "bg-pane" : ""}`}
                 >
                   <Text class={`text-[12px] ${!editedOnly() ? "font-semibold text-brand" : "font-medium text-ink-muted"}`}>{c().filter.all}</Text>
                 </View>
@@ -253,7 +253,7 @@ export function PromptsSettings(props: {
                   testID="prompts-filter-edited"
                   accessibilityState={{ selected: editedOnly() }}
                   onPress={() => onlyEdited.set(true)}
-                  class={`flex-row items-center gap-[5px] px-[10px] py-1 rounded-(--radius-sm) ${editedOnly() ? "bg-pane" : ""}`}
+                  class={`cursor-pointer select-none flex-row items-center gap-[5px] px-[10px] py-1 rounded-(--radius-sm) ${editedOnly() ? "bg-pane" : ""}`}
                 >
                   <Text class={`text-[12px] ${editedOnly() ? "font-semibold text-brand" : "font-medium text-ink-muted"}`}>{c().filter.edited}</Text>
                   <View testID="prompts-filter-count" class={`min-w-4 px-[5px] rounded-(--radius-full) items-center ${counts().conflict ? "bg-warn-bg" : "bg-accent-tint"}`}>

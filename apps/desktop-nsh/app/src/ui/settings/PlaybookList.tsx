@@ -170,7 +170,7 @@ export function PlaybookList(props: {
           ref={(node: ViewRef) => rowRefs.set(item.id, node)}
           onPress={() => props.onshow(item.id)}
           onContextMenu={(e) => openMenu(item.id, rowRefs.get(item.id) ?? null, { x: e.pagePosition.x, y: e.pagePosition.y })}
-          class={`px-[10px] py-2 my-px gap-[2px] border border-transparent rounded-(--radius-md) active:scale-[0.985] ${on() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
+          class={`cursor-pointer select-none px-[10px] py-2 my-px gap-[2px] border border-transparent rounded-(--radius-md) active:scale-[0.985] ${on() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
         >
           <View class="flex-row items-baseline gap-[10px]">
             <View class="flex-1 min-w-0 flex-row items-baseline gap-1">
@@ -194,7 +194,7 @@ export function PlaybookList(props: {
           accessibilityState={{ expanded: menu()?.id === item.id }}
           ref={(node: ViewRef) => rowRefs.set(`more:${item.id}`, node)}
           onPress={() => openMenu(item.id, rowRefs.get(`more:${item.id}`) ?? null, null)}
-          class={`absolute top-[9px] right-2 w-[26px] h-[26px] items-center justify-center rounded-[7px] ${platform.desktop ? `bg-pane border border-line ${menu()?.id === item.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"}` : ""}`}
+          class={`cursor-pointer select-none absolute top-[9px] right-2 w-[26px] h-[26px] items-center justify-center rounded-[7px] ${platform.desktop ? `bg-pane border border-line ${menu()?.id === item.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"}` : ""}`}
         >
           <Icon name="more" class="tint-ink-muted" />
         </View>

@@ -121,7 +121,7 @@ function EndpointModels(props: { w: Wizard }) {
                           accessibilityLabel={model()}
                           accessibilityState={{ checked: on() }}
                           onPress={() => w.toggleModelSelection(model())}
-                          class={`flex-row items-center gap-[5px] px-[10px] py-1 rounded-(--radius-sm) border ${on() ? "bg-accent-tint border-brand" : "bg-btn-secondary-bg border-line hover:border-line-hover"}`}
+                          class={`cursor-pointer select-none flex-row items-center gap-[5px] px-[10px] py-1 rounded-(--radius-sm) border ${on() ? "bg-accent-tint border-brand" : "bg-btn-secondary-bg border-line hover:border-line-hover"}`}
                         >
                           <Text class="text-[11px] font-bold min-w-[20px] text-brand">{on() ? "✓" : ""}</Text>
                           <Text class={`font-mono text-[12px] ${on() ? "font-semibold text-brand" : "text-ink-secondary"}`}>{model()}</Text>

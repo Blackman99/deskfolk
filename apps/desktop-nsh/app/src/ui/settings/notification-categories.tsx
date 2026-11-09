@@ -58,7 +58,7 @@ export function NotificationCategories(props: {
           accessibilityLabel={cat.label}
           disabled={props.loading}
           onPress={() => props.onToggle(cat.key)}
-          class="flex-row items-center gap-[10px] min-w-0 flex-1 px-[6px]"
+          class="cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[10px] min-w-0 flex-1 px-[6px]"
         >
           <View class={`w-8 h-8 rounded-(--radius-sm) items-center justify-center shrink-0 ${look.box}`}>
             <Icon name={look.icon} size={16} class={look.tint} />

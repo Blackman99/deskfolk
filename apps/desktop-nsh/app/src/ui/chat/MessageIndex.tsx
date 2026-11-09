@@ -132,7 +132,7 @@ export function MessageIndex(props: {
           leave();
         }}
         onPress={() => jump(mark)}
-        class="w-[28px] items-center justify-center"
+        class="cursor-pointer select-none w-[28px] items-center justify-center"
         style={{ height: ROW }}
       >
         <View
@@ -173,7 +173,7 @@ export function MessageIndex(props: {
               tooltip={tip(props.earlierLabel ?? "")}
               disabled={props.loading}
               onPress={() => props.onLoadEarlier?.()}
-              class="w-[28px] h-[24px] items-center justify-center shrink-0"
+              class="cursor-pointer select-none disabled:cursor-default w-[28px] h-[24px] items-center justify-center shrink-0"
             >
               <Text class="text-[12px] text-ink-muted">{props.loading ? "⋯" : "↑"}</Text>
             </View>
@@ -205,7 +205,7 @@ export function MessageIndex(props: {
                 onPress={() => jump(mark())}
                 onMouseEnter={() => clearTimeout(closeTimer)}
                 onMouseLeave={leave}
-                class="px-[14px] py-[12px] bg-pane border border-line rounded-(--radius-md) hover:border-line-hover"
+                class="cursor-pointer select-none px-[14px] py-[12px] bg-pane border border-line rounded-(--radius-md) hover:border-line-hover"
                 style={{ width: Math.min(320, windowSize().width - 80), boxShadow: shadow("md") }}
               >
                 <Text testID="message-index-preview" class="text-[13px] text-ink line-clamp-4">{mark().preview || props.emptyLabel}</Text>

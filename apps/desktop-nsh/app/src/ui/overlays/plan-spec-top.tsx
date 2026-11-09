@@ -48,7 +48,7 @@ export function PlanFocus(props: { panel: PlanSpecPanelProps; ticket: TaskDetail
             testID="plan-spec-focus-ticket"
             tooltip={tip(l().showTicket(label()))}
             onPress={() => props.panel.onShowTicket?.(tk().id)}
-            class="flex-row items-center gap-[5px] flex-1 min-w-0"
+            class="cursor-pointer select-none flex-row items-center gap-[5px] flex-1 min-w-0"
           >
             {body()}
           </View>
@@ -60,7 +60,7 @@ export function PlanFocus(props: { panel: PlanSpecPanelProps; ticket: TaskDetail
             accessibilityLabel={l().clearFocus}
             tooltip={tip(l().clearFocus)}
             onPress={() => props.panel.onClearTicket?.()}
-            class="shrink-0 items-center justify-center w-[22px] h-[22px] rounded-full hover:bg-pane"
+            class="cursor-pointer select-none shrink-0 items-center justify-center w-[22px] h-[22px] rounded-full hover:bg-pane"
           >
             <Icon name="x" size={12} class="tint-ink-muted" />
           </View>
@@ -161,7 +161,7 @@ export function PlanAttention(props: { panel: PlanSpecPanelProps; spec: PlanSpec
                         testID="plan-spec-attention-ticket"
                         tooltip={tip(t().links.showTicket(`${ticketTag(tk.seq)} ${tk.title}`))}
                         onPress={() => props.panel.onShowTicket?.(tk.id)}
-                        class="flex-row items-center gap-[5px] shrink min-w-0"
+                        class="cursor-pointer select-none flex-row items-center gap-[5px] shrink min-w-0"
                       >
                         {subject}
                       </View>
@@ -195,7 +195,7 @@ export function PlanAttention(props: { panel: PlanSpecPanelProps; spec: PlanSpec
               testID="plan-spec-attention-waiting"
               role={props.onShowWaiting ? "button" : undefined}
               onPress={props.onShowWaiting}
-              class="flex-row items-center gap-2 min-w-0"
+              class={`${props.onShowWaiting ? "cursor-pointer select-none " : ""}flex-row items-center gap-2 min-w-0`}
             >
               <AttentionTag warn>{t().requirements.proposed}</AttentionTag>
               <Text class="shrink text-[12px] font-semibold text-ink">{t().spec.attentionWaiting(attention().waitingRequirements)}</Text>

@@ -459,7 +459,7 @@ export function ProfilePane(props: {
                 testID="bot-detail-back"
                 accessibilityLabel={t().detail.backToSections}
                 onPress={() => backFromDetail()}
-                class="w-[44px] h-[44px] items-center justify-center rounded-(--radius-md) shrink-0 active:bg-row-hover"
+                class="cursor-pointer select-none w-[44px] h-[44px] items-center justify-center rounded-(--radius-md) shrink-0 active:bg-row-hover"
               >
                 <Icon name="chevron-left" size={20} class="tint-brand" />
               </View>
@@ -477,7 +477,7 @@ export function ProfilePane(props: {
                 <SettingsSubject variant="line" bot={props.bot} />
               </View>
               <If when={activeTab() === "skills"}>
-                <View role="button" testID="bot-detail-action" onPress={openAddSkill} class="flex-row items-center gap-1 shrink-0 h-[40px] px-[10px] rounded-(--radius-md) active:bg-row-hover">
+                <View role="button" testID="bot-detail-action" onPress={openAddSkill} class="cursor-pointer select-none flex-row items-center gap-1 shrink-0 h-[40px] px-[10px] rounded-(--radius-md) active:bg-row-hover">
                   <Icon name="plus" class="tint-brand" />
                   <Text class="text-[15px] font-semibold text-brand">{t().sidebar.skillAdd}</Text>
                 </View>
@@ -490,7 +490,7 @@ export function ProfilePane(props: {
                   onPress={() => {
                     if (routineCard()?.canAdd()) routineCard()?.addRoutine();
                   }}
-                  class={`flex-row items-center gap-1 shrink-0 h-[40px] px-[10px] rounded-(--radius-md) active:bg-row-hover ${routineCard()?.canAdd() ? "" : "opacity-[0.45]"}`}
+                  class={`cursor-pointer select-none flex-row items-center gap-1 shrink-0 h-[40px] px-[10px] rounded-(--radius-md) active:bg-row-hover ${routineCard()?.canAdd() ? "" : "opacity-[0.45]"}`}
                 >
                   <Icon name="plus" class="tint-brand" />
                   <Text class="text-[15px] font-semibold text-brand">{t().routines.add}</Text>

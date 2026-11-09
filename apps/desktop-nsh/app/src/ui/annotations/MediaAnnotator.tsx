@@ -236,7 +236,7 @@ export function MediaAnnotator(props: {
               const s = scale();
               if (width > 0 && s !== null) seek(Math.round(Math.min(1, Math.max(0, e.position.x / width)) * s));
             }}
-            class="rounded-(--radius-sm) bg-line-subtle"
+            class="cursor-pointer rounded-(--radius-sm) bg-line-subtle"
             style={{ height: layout().lanes * laneH() }}
           >
             <If when={props.pending && spanCheck()?.ok && props.pending.end_ms === undefined}>
@@ -261,7 +261,7 @@ export function MediaAnnotator(props: {
                   accessibilityLabel={markTitle(mark(), props.labels.stale)}
                   tooltip={tip(markTitle(mark(), props.labels.stale))}
                   onPress={() => pick(mark())}
-                  class={`flex-row items-center ${mark().end_ms === null ? "justify-center" : "justify-start"}`}
+                  class={`cursor-pointer select-none flex-row items-center ${mark().end_ms === null ? "justify-center" : "justify-start"}`}
                   style={{ ...markBox(mark()), boxShadow: flashId() === mark().id ? "0 0 0 3px rgba(0,128,128,0.4)" : undefined }}
                 >
                   <If when={mark().end_ms !== null}>

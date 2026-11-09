@@ -28,7 +28,7 @@ export function SettingsSectionList<S extends string>(props: {
             testID={`section-${of()}`}
             accessibilityLabel={props.label(of())}
             onPress={() => props.onPick(of())}
-            class="relative flex-row items-center gap-3 w-full min-h-16 px-[14px] py-[10px] bg-pane active:bg-row-hover"
+            class="cursor-pointer select-none relative flex-row items-center gap-3 w-full min-h-16 px-[14px] py-[10px] bg-pane active:bg-row-hover"
           >
             <If when={index() > 0}>
               <View class="absolute left-[45px] right-0 top-0 h-px bg-line" />

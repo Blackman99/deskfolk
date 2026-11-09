@@ -103,7 +103,7 @@ export function SpendCap(props: {
             role="button"
             disabled={saving()}
             onPress={() => void save(null)}
-            class="items-center justify-center h-[32px] px-3 border border-line rounded-(--radius-sm) hover:bg-line-subtle hover:border-line-hover disabled:opacity-[0.5]"
+            class="cursor-pointer select-none disabled:cursor-default items-center justify-center h-[32px] px-3 border border-line rounded-(--radius-sm) hover:bg-line-subtle hover:border-line-hover disabled:opacity-[0.5]"
           >
             <Text class="text-[13px] text-ink">{props.copy.cap.clear}</Text>
           </View>

@@ -28,7 +28,7 @@ export function BuildUpdateNotice(props: { updates: BuildUpdates; onReload: () =
             role="button"
             testID="build-update-reload"
             onPress={() => props.onReload()}
-            class={`px-[14px] rounded-full bg-brand hover:bg-accent-hover items-center justify-center ${phone() ? "h-[44px] px-[18px]" : "h-[30px]"}`}
+            class={`cursor-pointer select-none px-[14px] rounded-full bg-brand hover:bg-accent-hover items-center justify-center ${phone() ? "h-[44px] px-[18px]" : "h-[30px]"}`}
           >
             <Text class="text-[13px] font-semibold text-on-accent">{copy().common.updateReload}</Text>
           </View>

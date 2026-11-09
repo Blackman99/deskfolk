@@ -528,7 +528,7 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
             accessibilityLabel={t().common.back}
             tooltip={tip(t().common.back)}
             onPress={() => requestClose()}
-            class="w-[48px] items-center justify-center hover:bg-line-subtle"
+            class="cursor-pointer select-none w-[48px] items-center justify-center hover:bg-line-subtle"
           >
             <Icon name="chevron-left" size={20} class="tint-ink-secondary" />
           </View>
@@ -604,7 +604,7 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
             accessibilityLabel={treeLabel()}
             accessibilityState={{ expanded: treeOpen() }}
             onPress={() => treeOpen.set(!treeOpen())}
-            class={`flex-row items-center justify-between gap-2 min-h-[40px] px-3 border rounded-(--radius-md) ${treeOpen() ? "border-line-hover bg-chip" : "border-line bg-btn-secondary-bg"}`}
+            class={`cursor-pointer select-none flex-row items-center justify-between gap-2 min-h-[40px] px-3 border rounded-(--radius-md) ${treeOpen() ? "border-line-hover bg-chip" : "border-line bg-btn-secondary-bg"}`}
           >
             <Text class="shrink text-[13px] line-clamp-1 font-semibold text-ink">
               {treeLabel()}

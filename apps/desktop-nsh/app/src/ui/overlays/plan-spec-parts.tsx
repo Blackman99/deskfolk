@@ -33,7 +33,7 @@ export function SmallBtn(props: {
       tooltip={props.tooltip ? tip(props.tooltip) : undefined}
       disabled={props.disabled}
       onPress={props.onPress}
-      class={`group shrink-0 flex-row items-center justify-center gap-[3px] border rounded-(--radius-sm) px-[7px] py-[3px] hover:border-accent-border hover:bg-accent-tint disabled:opacity-[0.55] ${
+      class={`cursor-pointer select-none disabled:cursor-default group shrink-0 flex-row items-center justify-center gap-[3px] border rounded-(--radius-sm) px-[7px] py-[3px] hover:border-accent-border hover:bg-accent-tint disabled:opacity-[0.55] ${
         narrowWindow() ? "min-h-[30px]" : "min-h-[24px]"
       } ${props.accent ? "border-accent-border bg-accent-tint" : "border-line bg-chip"}`}
     >
@@ -72,7 +72,7 @@ export function SaveCancel(props: { state: PlanSpecState; disabledSave?: boolean
         testID={`${props.testID}-save`}
         disabled={s.saving() || props.disabledSave}
         onPress={() => void s.save()}
-        class={`items-center justify-center border border-brand rounded-(--radius-sm) bg-brand px-[11px] py-[5px] hover:bg-accent-hover disabled:opacity-[0.55] ${narrowWindow() ? "min-h-[36px]" : "min-h-[28px]"}`}
+        class={`cursor-pointer select-none disabled:cursor-default items-center justify-center border border-brand rounded-(--radius-sm) bg-brand px-[11px] py-[5px] hover:bg-accent-hover disabled:opacity-[0.55] ${narrowWindow() ? "min-h-[36px]" : "min-h-[28px]"}`}
       >
         <Text class="text-[12px] font-medium text-on-accent">{t().save}</Text>
       </View>
@@ -81,7 +81,7 @@ export function SaveCancel(props: { state: PlanSpecState; disabledSave?: boolean
         testID={`${props.testID}-cancel`}
         disabled={s.saving()}
         onPress={s.cancelEdit}
-        class={`items-center justify-center border border-line rounded-(--radius-sm) bg-chip px-[11px] py-[5px] hover:bg-line-subtle hover:border-line-hover disabled:opacity-[0.55] ${narrowWindow() ? "min-h-[36px]" : "min-h-[28px]"}`}
+        class={`cursor-pointer select-none disabled:cursor-default items-center justify-center border border-line rounded-(--radius-sm) bg-chip px-[11px] py-[5px] hover:bg-line-subtle hover:border-line-hover disabled:opacity-[0.55] ${narrowWindow() ? "min-h-[36px]" : "min-h-[28px]"}`}
       >
         <Text class="text-[12px] font-medium text-ink-secondary">{t().cancel}</Text>
       </View>
@@ -103,7 +103,7 @@ export function TicketRef(props: { seq: number; mine?: boolean; tooltip?: string
       testID={props.testID}
       tooltip={props.tooltip ? tip(props.tooltip) : undefined}
       onPress={props.onPress}
-      class={`group ${box} ${props.mine ? "" : "hover:border-accent-border"}`}
+      class={`cursor-pointer select-none group ${box} ${props.mine ? "" : "hover:border-accent-border"}`}
     >
       {body}
     </View>

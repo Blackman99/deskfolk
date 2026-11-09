@@ -46,7 +46,7 @@ function PillButton(props: { label: string; testID: string; disabled?: boolean; 
       testID={props.testID}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class={`group px-[10px] py-[3px] border rounded-(--radius-full) bg-pane hover:border-accent-border disabled:opacity-[0.6] ${props.danger ? "border-danger-line" : "border-line"}`}
+      class={`cursor-pointer select-none disabled:cursor-default group px-[10px] py-[3px] border rounded-(--radius-full) bg-pane hover:border-accent-border disabled:opacity-[0.6] ${props.danger ? "border-danger-line" : "border-line"}`}
     >
       <Text class={`text-[12px] ${props.danger ? "text-danger-text" : "text-ink-secondary group-hover:text-brand"}`}>{props.label}</Text>
     </View>
@@ -55,7 +55,7 @@ function PillButton(props: { label: string; testID: string; disabled?: boolean; 
 
 function LinkButton(props: { label: string; testID: string; disabled?: boolean; onPress: () => void }) {
   return (
-    <View role="button" testID={props.testID} disabled={props.disabled} onPress={() => props.onPress()} class="disabled:opacity-[0.6]">
+    <View role="button" testID={props.testID} disabled={props.disabled} onPress={() => props.onPress()} class="cursor-pointer select-none disabled:cursor-default disabled:opacity-[0.6]">
       <Text class="text-[12px] text-brand">{props.label}</Text>
     </View>
   );
@@ -328,7 +328,7 @@ export function PromptEditor(props: {
                           testID={`prompt-locale-${state.locale}`}
                           accessibilityState={{ selected: state.locale === props.locale }}
                           onPress={() => switchLocale(state.locale)}
-                          class={`px-[10px] py-[2px] rounded-(--radius-sm) ${state.locale === props.locale ? "bg-pane" : ""}`}
+                          class={`cursor-pointer select-none px-[10px] py-[2px] rounded-(--radius-sm) ${state.locale === props.locale ? "bg-pane" : ""}`}
                         >
                           <Text class={`text-[12px] ${state.locale === props.locale ? "font-semibold text-brand" : "text-ink-muted"}`}>
                             {`${c().language[state.locale]}${state.state !== "default" ? " •" : ""}`}
@@ -352,7 +352,7 @@ export function PromptEditor(props: {
                   "prompt-stale",
                   <>
                     <Text class="text-[12px] leading-[1.45] text-warn-text">{c().changedElsewhere}</Text>
-                    <View role="button" testID="prompt-copy-mine" onPress={() => void copyStale()}>
+                    <View role="button" class="cursor-pointer select-none" testID="prompt-copy-mine" onPress={() => void copyStale()}>
                       <Text class="text-[12px] text-brand">{copied() ? c().copied : c().copyMine}</Text>
                     </View>
                   </>,
@@ -409,7 +409,7 @@ export function PromptEditor(props: {
                       testID={`prompt-tab-${name}`}
                       selected={props.view === name}
                       onPress={() => showView(name)}
-                      class={`group flex-row items-center gap-[6px] border-b-2 ${narrowWindow() ? "px-2 pt-[10px] pb-[11px]" : "px-[10px] pt-2 pb-[9px]"} ${props.view === name ? "border-brand" : "border-transparent"}`}
+                      class={`cursor-pointer select-none group flex-row items-center gap-[6px] border-b-2 ${narrowWindow() ? "px-2 pt-[10px] pb-[11px]" : "px-[10px] pt-2 pb-[9px]"} ${props.view === name ? "border-brand" : "border-transparent"}`}
                     >
                       <Text class={`text-[13px] ${props.view === name ? "font-semibold text-ink" : "font-medium text-ink-muted group-hover:text-ink"}`}>{c().view[name]}</Text>
                       <If when={name === "history" && d().revisions.length > 0}>
@@ -481,7 +481,7 @@ export function PromptEditor(props: {
                     </If>
                     <If when={d().format}>
                       <View class="flex-col gap-[6px]">
-                        <View role="button" testID="prompt-format-toggle" accessibilityState={{ expanded: showFormat() }} onPress={() => showFormat.set(!showFormat())} class="flex-row items-center gap-1 self-start">
+                        <View role="button" testID="prompt-format-toggle" accessibilityState={{ expanded: showFormat() }} onPress={() => showFormat.set(!showFormat())} class="cursor-pointer select-none flex-row items-center gap-1 self-start">
                           <Icon name={showFormat() ? "chevron-down" : "chevron-right"} size={12} class="tint-ink" />
                           <Text class="text-[12px] font-semibold text-ink">{c().formatTitle}</Text>
                         </View>

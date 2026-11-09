@@ -58,7 +58,7 @@ export function ComposerAttachments(props: {
         tooltip={undefined}
         onPress={() => void enlarge(thumb.id, node, thumb.url)}
         onContextMenu={(e) => menu.set({ src: thumb.url, x: e.pagePosition.x, y: e.pagePosition.y })}
-        class="shrink-0 rounded-(--radius-sm)"
+        class="cursor-pointer select-none shrink-0 rounded-(--radius-sm)"
       >
         <Image
           src={thumb.url}
@@ -77,7 +77,7 @@ export function ComposerAttachments(props: {
       accessibilityLabel={`${copy().composer.removeAttachment} ${remove.name}`}
       disabled={props.sending}
       onPress={remove.onPress}
-      class="w-6 h-6 rounded-full items-center justify-center shrink-0 bg-ink/10 hover:bg-danger active:scale-90 group disabled:opacity-[0.4]"
+      class="cursor-pointer select-none disabled:cursor-default w-6 h-6 rounded-full items-center justify-center shrink-0 bg-ink/10 hover:bg-danger active:scale-90 group disabled:opacity-[0.4]"
     >
       <Icon name="x" size={12} class="tint-ink-muted group-hover:tint-on-danger" />
     </View>

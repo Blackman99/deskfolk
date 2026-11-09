@@ -43,7 +43,7 @@ export function SheetView(props: { book: Spreadsheet; index: number; onIndex: (i
               accessibilityLabel={tab.name}
               accessibilityState={{ selected: props.index === index }}
               onPress={() => props.onIndex(index)}
-              class={`shrink-0 max-w-[220px] px-[10px] py-[6px] rounded-[5px] border ${props.index === index ? "border-brand bg-accent-tint" : "border-line bg-pane hover:bg-row-hover"}`}
+              class={`cursor-pointer select-none shrink-0 max-w-[220px] px-[10px] py-[6px] rounded-[5px] border ${props.index === index ? "border-brand bg-accent-tint" : "border-line bg-pane hover:bg-row-hover"}`}
             >
               <Text class={`text-[12px] line-clamp-1 ${props.index === index ? "text-brand" : "text-ink"}`}>{tab.name}</Text>
             </View>

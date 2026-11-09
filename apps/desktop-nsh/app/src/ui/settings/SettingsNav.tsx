@@ -93,7 +93,7 @@ export function SettingsNav(props: {
         accessibilityState={{ selected: active() }}
         tooltip={hover() ? tip(hover()!) : undefined}
         onPress={() => props.openSettingsTab(tab().id)}
-        class={`group relative flex-row items-center w-full ${
+        class={`cursor-pointer select-none group relative flex-row items-center w-full ${
           phone()
             ? `gap-[10px] min-h-[54px] px-[14px] bg-pane active:bg-row-hover ${index() === 0 ? "rounded-t-(--radius-lg)" : ""} ${index() === tabs().length - 1 ? "rounded-b-(--radius-lg)" : ""}`
             : `gap-[10px] px-3 py-[9px] border border-transparent rounded-(--radius-md) ${lit() ? "bg-accent-tint" : "hover:bg-row-hover"}`
@@ -140,7 +140,7 @@ export function SettingsNav(props: {
               accessibilityLabel={t().common.close}
               tooltip={tip(t().common.close)}
               onPress={() => props.closeSettings()}
-              class="w-9 h-9 items-center justify-center rounded-(--radius-md) active:bg-row-hover"
+              class="cursor-pointer select-none w-9 h-9 items-center justify-center rounded-(--radius-md) active:bg-row-hover"
             >
               <Text class="text-[16px] text-ink-muted">✕</Text>
             </View>

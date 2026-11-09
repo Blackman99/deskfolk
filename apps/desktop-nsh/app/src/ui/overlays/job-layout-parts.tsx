@@ -37,7 +37,7 @@ export function JobChip(props: {
       tooltip={props.title ? tip(props.title) : undefined}
       disabled={props.disabled}
       onPress={props.onPress}
-      class={`shrink-0 px-[9px] py-[2px] rounded-full border ${box()}`}
+      class={`cursor-pointer select-none disabled:cursor-default shrink-0 px-[9px] py-[2px] rounded-full border ${box()}`}
     >
       <Text class={`text-[11.5px] ${ink()}`}>{props.label}</Text>
     </View>
@@ -65,7 +65,7 @@ export function JobSegments(props: {
       accessibilityLabel={label(kind)}
       accessibilityState={{ selected: props.shown === kind }}
       onPress={() => props.onChoose(kind)}
-      class={`flex-1 flex-row items-center justify-center gap-[5px] min-w-0 min-h-[32px] px-3 py-[3px] rounded-full ${props.shown === kind ? "bg-pane" : ""}`}
+      class={`cursor-pointer select-none flex-1 flex-row items-center justify-center gap-[5px] min-w-0 min-h-[32px] px-3 py-[3px] rounded-full ${props.shown === kind ? "bg-pane" : ""}`}
     >
       <Icon name={SEGMENT_ICON[kind]} size={12} class={props.shown === kind ? "tint-ink" : "tint-ink-muted"} />
       <Text class={`text-[13px] font-semibold ${props.shown === kind ? "text-ink" : "text-ink-muted"}`}>{label(kind)}</Text>
@@ -133,7 +133,7 @@ export function BoardHead(props: { onClose: () => void }) {
         role="button"
         testID="job-board-close"
         onPress={props.onClose}
-        class="px-2 py-[3px] rounded-full border border-line bg-pane hover:border-accent-border"
+        class="cursor-pointer select-none px-2 py-[3px] rounded-full border border-line bg-pane hover:border-accent-border"
       >
         <Text class="text-[12px] text-ink-secondary">{copy().plan.job.collapseBoard}</Text>
       </View>

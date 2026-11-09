@@ -49,7 +49,7 @@ export function BotDmEntry(props: {
       accessibilityLabel={titleOf(session)}
       tooltip={tip(titleOf(session))}
       onPress={() => props.onOpen(session.id)}
-      class={`flex-row items-center ${plain ? "gap-[6px]" : "gap-[5px]"} ${
+      class={`cursor-pointer select-none flex-row items-center ${plain ? "gap-[6px]" : "gap-[5px]"} ${
         plain ? "" : "pl-[3px] pr-[8px] py-[2.5px] bg-bg border border-line rounded-full hover:bg-line-hover hover:border-muted-light active:scale-[0.98]"
       }`}
     >
@@ -65,7 +65,7 @@ export function BotDmEntry(props: {
     <If when={props.sessions.length > 0}>
       <View testID="bot-dm-entry" class="flex-row flex-wrap items-center justify-center self-stretch gap-x-[10px] gap-y-[4px] my-[10px]">
         <If when={props.onShowTrace && props.traceLabel}>
-          <View role="button" testID="bot-dm-trace" onPress={() => props.onShowTrace?.()} class="px-[4px]">
+          <View role="button" testID="bot-dm-trace" onPress={() => props.onShowTrace?.()} class="cursor-pointer select-none px-[4px]">
             <Text class="text-[12px] text-brand">{props.traceLabel}</Text>
           </View>
         </If>
@@ -94,7 +94,7 @@ export function BotDmEntry(props: {
                       accessibilityLabel={titleOf(last())}
                       tooltip={tip(titleOf(last()))}
                       onPress={() => props.onOpen(last().id)}
-                      class="px-[8px] py-[2.5px] bg-bg border border-line rounded-full hover:bg-line-hover hover:border-muted-light"
+                      class="cursor-pointer select-none px-[8px] py-[2.5px] bg-bg border border-line rounded-full hover:bg-line-hover hover:border-muted-light"
                     >
                       <Text class="text-[12px] font-medium text-ink-muted">+{overflow()}</Text>
                     </View>
