@@ -15,8 +15,14 @@
  * Bytes come through the runtime client and are shown as `data:` URLs (`blobDataUrl`): NSH has no
  * object URLs for them, so nothing is revoked. A right click (long press) on the picture offers
  * Copy image (`ImageContextMenu`).
+ *
+ * Motion: NSH's `transition-*` animates colours, opacity, transforms, shadows and corners, never a
+ * view's place or size, so the frame's moves (growing out of the thumbnail, fitting the picture once
+ * its shape is known, shrinking back) are a native layout animation (`LayoutAnimation.configureNext`)
+ * of the commit that moves it. With no thumbnail to grow from (a picture in a Markdown body) the frame
+ * fades in and out from a little smaller; the Svelte's simply appears there.
  */
-import { cleanup, effect, Image, keymap, Overlay, PanResponder, signal, Text, untracked, View, windowSize, computed, type ViewRef } from "nsh";
+import { cleanup, effect, Image, keymap, LayoutAnimation, Overlay, PanResponder, signal, Text, untracked, View, windowSize, computed, type ViewRef } from "nsh";
 import { reduceMotion } from "../interface/motion";
 import type { ShellWheel } from "../../platform/wheel";
 import type { Attachment } from "@real-bot/protocol";
@@ -39,6 +45,10 @@ export type { ImageOrigin };
 
 /** How long the frame takes to grow and to shrink back, in milliseconds. */
 const GROW_MS = 220;
+/** How small a frame with no thumbnail to grow from is as it fades in and out. */
+const FADE_SCALE = 0.96;
+
+const sameBox = (a: ImageOrigin, b: ImageOrigin) => a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height;
 
 export function MessageImageLightbox(props: {
   /** When set, bytes come from this attachment (or a workspace GET for a handoff chip). */
@@ -112,7 +122,6 @@ export function MessageImageLightbox(props: {
 
   /** Where the picture rests: fitted once its shape is known; a centred box when nothing is coming to wait for. */
   const settled = computed((): ImageOrigin | null => {
-    if (phase() === "back") return null;
     const shape = natural();
     if (displayed() && shape && shape.width > 0 && shape.height > 0) return fitPicture(stage(), shape, reserveOffer() ? OFFER_RESERVE : 0);
     if (grown() && (!props.origin || failed() || !displayed())) {
@@ -124,24 +133,51 @@ export function MessageImageLightbox(props: {
   });
   const waitingInPlace = () => grown() && phase() !== "back" && loading() && !displayed() && Boolean(props.origin) && !failed();
 
-  const frameBox = (): ImageOrigin | null => {
-    if (phase() === "back") return props.origin ?? null;
-    if (!grown() || !settled()) return props.origin ?? settled();
-    return settled();
-  };
+  /** The frame's box: the thumbnail's before it grows and as it shrinks back; with none, where it rests (it fades instead). */
+  const frameBox = computed((): ImageOrigin => {
+    const rest = settled() ?? placeholderBox(stage());
+    if (phase() === "back") return props.origin ?? rest;
+    if (!grown() || !settled()) return props.origin ?? rest;
+    return rest;
+  });
+  /** No thumbnail to grow from: the frame fades in and out instead. */
+  const fades = () => !props.origin && !instant();
+  const faded = () => fades() && (!grown() || phase() === "back");
 
   /** Pinched on a phone (see image-zoom.ts). Null at rest. */
   const zoom = signal<PictureView | null>(null);
   const pinching = signal(false);
   const zoomed = () => zoom() !== null && zoom()!.scale > 1;
-  const zoomSteps = () => {
+  /** The frame's transform: the zoom, or (fading) a little smaller about its middle; always three steps, so one eases into the next. */
+  const frameSteps = () => {
+    const box = frameBox();
+    if (faded()) {
+      const shrink = 1 - FADE_SCALE;
+      return [{ translateX: (box.width * shrink) / 2 }, { translateY: (box.height * shrink) / 2 }, { scale: FADE_SCALE }];
+    }
     const rest = settled();
     const view = zoom();
-    if (!view || !rest || !grown() || phase() !== "open" || !displayed()) return undefined;
+    if (!view || !rest || !grown() || phase() !== "open" || !displayed()) return [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }];
     const now = settleView(stage(), rest, view);
-    if (now.scale === 1 && now.x === rest.left && now.y === rest.top) return undefined;
     return [{ translateX: now.x - rest.left }, { translateY: now.y - rest.top }, { scale: now.scale }];
   };
+
+  // The frame's moves are a native layout animation of the commit that makes them (NSH's
+  // transitions move no layout). A resized window and a pinch move it at once.
+  let lastBox: ImageOrigin | null = null;
+  let lastStage = "";
+  effect(() => {
+    const box = frameBox();
+    const now = stage();
+    const stageKey = `${now.width}x${now.height}`;
+    untracked(() => {
+      if (lastBox && !sameBox(lastBox, box) && stageKey === lastStage && !instant() && !pinching()) {
+        LayoutAnimation.configureNext({ duration: GROW_MS, update: { type: "easeInEaseOut" } });
+      }
+      lastBox = box;
+      lastStage = stageKey;
+    });
+  });
 
   function fetchPicture(
     client: MessengerApi,
@@ -308,10 +344,10 @@ export function MessageImageLightbox(props: {
 
   // The phone's Back closes this, the way ✕ does, instead of leaving the page under it.
   cleanup(holdBack(requestClose));
-  if (instant() || !props.origin) {
+  if (instant()) {
     grown.set(true);
   } else {
-    // Let the first frame paint at the thumbnail's rectangle, then grow.
+    // Let the first frame paint at the thumbnail's rectangle (or faded out), then grow (fade in).
     setTimeout(() => grown.set(true), 32);
   }
   cleanup(() => {
@@ -323,9 +359,9 @@ export function MessageImageLightbox(props: {
   function requestClose(): void {
     if (closing) return;
     closing = true;
-    // Back to the fitted box first: the frame shrinks into the thumbnail unscaled.
+    // Back to the fitted box first: the frame shrinks into the thumbnail (or fades) unscaled.
     zoom.set(null);
-    if (instant() || !props.origin || !grown()) {
+    if (instant() || !grown()) {
       props.onClose();
       return;
     }
@@ -482,13 +518,14 @@ export function MessageImageLightbox(props: {
             role="group"
             testID="msg-image-frame"
             accessibilityLabel={name() || path()}
-            class={`absolute overflow-hidden bg-pane ${pinching() ? "" : "transition-all duration-[220ms]"} ${hot() ? "rounded-(--radius-lg)" : "rounded-(--radius-sm)"}`}
+            class={`absolute overflow-hidden bg-pane ${pinching() ? "" : "transition-all duration-[220ms]"} ${hot() ? "rounded-(--radius-lg)" : "rounded-(--radius-sm)"} ${faded() ? "opacity-0" : "opacity-100"}`}
             style={{
-              ...(frameBox()
-                ? { top: frameBox()!.top, left: frameBox()!.left, width: frameBox()!.width, height: frameBox()!.height }
-                : { top: stage().height * 0.1, left: (stage().width - Math.min(960, stage().width - 48)) / 2, width: Math.min(960, stage().width - 48), height: stage().height * 0.8 }),
+              top: frameBox().top,
+              left: frameBox().left,
+              width: frameBox().width,
+              height: frameBox().height,
               transformOrigin: "0 0",
-              transform: zoomSteps(),
+              transform: frameSteps(),
             }}
           >
             <If
@@ -508,7 +545,7 @@ export function MessageImageLightbox(props: {
                     src={shownUrl()}
                     accessibilityLabel={name() || path()}
                     class="w-full h-full bg-pane"
-                    style={{ objectFit: "cover" }}
+                    style={{ objectFit: "cover", cursor: "zoom-out" }}
                     onLoad={(e) => natural.set({ width: e.size.width, height: e.size.height })}
                     onContextMenu={(e) => menuAt.set(e.pagePosition)}
                     onLongPress={(e) => menuAt.set(e.pagePosition)}
