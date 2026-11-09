@@ -82,12 +82,16 @@ function groundGlass(all: Map<string, string>): Record<string, string> {
 }
 
 /**
- * The sidebar's quiet grey on the material (`Sidebar.svelte`: `.side` under `data-material="glass"`
- * and dark sets `--muted: #a8b3b8`). Dark glass is lighter than the dark ground was, so there it
- * goes up a step and a preview line keeps 4:1 at the glass's bright end; light keeps its own.
- * Not in tokens.css (a selector's, not the root's), so named here: `text-ink-muted-glass`.
+ * The sidebar's quiet greys on the material (`Sidebar.svelte`: `.side` under `data-material="glass"`
+ * and dark sets `--muted: #a8b3b8; --muted-light: #8b989e`). Dark glass is lighter than the dark
+ * ground was, so there they go up a step: a preview line keeps 4:1 at the glass's bright end and
+ * the search icon stays legible; light keeps its own. Not in tokens.css (a selector's, not the
+ * root's), so named here: `text-ink-muted-glass`, `tint-muted-light-glass`.
  */
-const MUTED_ON_GLASS = { light: { "ink-muted-glass": "var(--ink-muted)" }, dark: { "ink-muted-glass": "#a8b3b8" } };
+const MUTED_ON_GLASS = {
+  light: { "ink-muted-glass": "var(--ink-muted)", "muted-light-glass": "var(--muted-light)" },
+  dark: { "ink-muted-glass": "#a8b3b8", "muted-light-glass": "#8b989e" },
+};
 
 const light = block(/:root\s*\{/);
 const dark = block(/:root\[data-theme="dark"\]/);

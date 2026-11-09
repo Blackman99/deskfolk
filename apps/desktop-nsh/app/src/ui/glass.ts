@@ -32,6 +32,8 @@ export function darkGlass(): boolean {
  */
 export const SIDE_MUTED_TEXT = windowGlass ? "text-ink-muted-glass" : "text-ink-muted";
 export const SIDE_MUTED_TINT = windowGlass ? "tint-ink-muted-glass" : "tint-ink-muted";
+/** The sidebar's quieter grey (the search icon), `muted-light`, raised the same way on the material. */
+export const SIDE_MUTED_LIGHT_TINT = windowGlass ? "tint-muted-light-glass" : "tint-muted-light";
 
 /**
  * How much of a glass card is kept, in percent, or null where the cards are solid (no material, or

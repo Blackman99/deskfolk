@@ -55,7 +55,7 @@ import { SidebarList, type SidebarListEnv } from "./sidebar-list";
 import { createListRowKeeper, listRows } from "./sidebar-list-model";
 import { previewIndex, previewOf as lineOf, statusMessages } from "./sidebar-previews";
 import type { SessionDragHandler } from "./session-drag";
-import { SIDE_MUTED_TEXT, SIDE_MUTED_TINT } from "../glass";
+import { SIDE_MUTED_LIGHT_TINT, SIDE_MUTED_TEXT, SIDE_MUTED_TINT } from "../glass";
 
 /** What the shell can call on the list from outside it (the Svelte component's exported `showArchived`). */
 export type SidebarHandle = { showArchived: () => void };
@@ -477,11 +477,14 @@ export function Sidebar(props: {
                               class={`flex-1 min-w-0 flex-row items-center justify-between gap-[6px] border ${
                                 phone()
                                   ? "h-[38px] pl-[34px] pr-[14px] rounded-full bg-pane border-line active:bg-row-hover"
-                                  : "h-[34px] pl-8 pr-3 rounded-(--radius-md) bg-line-subtle border-transparent hover:bg-row-hover"
+                                  : // On the ground beside the cards a tinted well, not a field (`Sidebar.svelte` `.search:not(:focus)`): a
+                                    // share of the ink over whatever is under it, the window's glass too. As tall as the Svelte one
+                                    // (8 + 19.5 + 8 and its border).
+                                    "h-[37.5px] pl-8 pr-3 rounded-(--radius-md) bg-ink/5.5 border-transparent hover:bg-ink/8"
                               }`}
                             >
                               <View accessible={false} class={`absolute top-0 bottom-0 items-center justify-center ${phone() ? "left-3" : "left-[10px]"}`}>
-                                <Icon name="search" class={SIDE_MUTED_TINT} />
+                                <Icon name="search" class={SIDE_MUTED_LIGHT_TINT} />
                               </View>
                               <Text class={`${SIDE_MUTED_TEXT} ${phone() ? "text-[14px]" : "text-[13px]"}`}>{t().sidebar.searchShort}</Text>
                               <If when={!kbdHidden()}>
