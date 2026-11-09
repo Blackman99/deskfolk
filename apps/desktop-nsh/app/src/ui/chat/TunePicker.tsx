@@ -161,10 +161,14 @@ export function TunePicker(props: {
     </View>
   );
 
+  // `shrink` on the picker and on the popover's own box: NSH's flex items keep their content's width
+  // unless told to give way (CSS's default `flex-shrink: 1` is 0 here), and the closed picker ran
+  // past the send button instead of cutting its account first.
   return (
-    <View class="min-w-0 max-w-[460px]">
+    <View class="shrink min-w-0 max-w-[460px]">
       <If when={!phone()} else={<>{trigger}</>}>
         <Popover
+          class="shrink min-w-0"
           open={tune.open()}
           placement="top"
           align="start"

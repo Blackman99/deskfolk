@@ -407,7 +407,7 @@ export function Composer(props: {
                   onPress={() => void pickFiles()}
                 />
                 <If when={tuneBot()}>
-                  <View class="min-w-0 flex-row">
+                  <View class="shrink min-w-0 flex-row">
                     <BotTune bot={tuneBot()!} disabled={!connected()} onPick={(change) => void tuneModel(tuneBot()!.id, change)} />
                   </View>
                 </If>
