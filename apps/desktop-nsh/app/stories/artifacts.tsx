@@ -6,8 +6,11 @@
  * the others join `siblings`, so the tree lists them. An attachment's copy sits in the workspace
  * (`inbox/`), so saving an edit really overwrites it; `story-read` reads that file back.
  * `story-clean` takes the session away again. One part shows at a time (`story-show-<part>`): preview, workspace, parts.
+ * `story-make-project` makes a project session (named "artifacts", so `story-clean` takes it away) on
+ * the directory the tests seed (`host.params.projectDir`) and opens its `src/main.py`;
+ * `story-read-project` reads that file back.
  */
-import { cleanup, Scroll, signal, Text, View, type ViewRef } from "nsh";
+import { cleanup, host, Scroll, signal, Text, View, type ViewRef } from "nsh";
 import type { Attachment } from "@real-bot/protocol";
 import { ShellArtifact } from "../src/m/overlays/shell-artifact.svelte.ts";
 import { runtime } from "../src/runtime";
@@ -20,7 +23,7 @@ import { ShellPreview } from "../src/ui/overlays/ShellPreview";
 import { WorkspaceView } from "../src/ui/overlays/WorkspaceView";
 import { samplePdf } from "./files-pdf";
 
-const PARTS = ["preview", "workspace", "parts", "shell", "host"] as const;
+const PARTS = ["preview", "workspace", "parts", "shell", "host", "project"] as const;
 type Part = (typeof PARTS)[number];
 
 /** A one-pixel PNG. */
@@ -124,6 +127,31 @@ export default function Artifacts() {
     }
   };
 
+  /** The project session's file the tests seed, outside the workspace. */
+  const projectDir = String((host.params as { projectDir?: string }).projectDir ?? "");
+  const projectFile = projectDir ? `${projectDir}/src/main.py` : "";
+  const makeProject = async () => {
+    const client = runtime.client;
+    if (!client || !projectDir) return;
+    try {
+      const made = await client.createProjectSession({ dir: projectDir });
+      await client.patchSession(made.id, { name: "artifacts" });
+      part.set("project");
+      state.set("project:made");
+    } catch (e) {
+      state.set(`error:${String(e)}`);
+    }
+  };
+  const readProject = async () => {
+    const client = runtime.client;
+    if (!client || !projectFile) return;
+    try {
+      state.set(`read:${JSON.stringify(await (await client.getWorkspaceFileBlob(projectFile)).text())}`);
+    } catch (e) {
+      state.set(`read-error:${String(e)}`);
+    }
+  };
+
   const button = (id: string, label: string, onPress: () => void) => (
     <View role="button" testID={id} onPress={onPress} class="px-2 py-1 border border-line rounded-(--radius-sm)">
       <Text class="text-[12px] text-ink">{label}</Text>
@@ -137,6 +165,8 @@ export default function Artifacts() {
         {(Object.keys(SAMPLES) as Sample[]).map((which) => button(`story-make-${which}`, which, () => void upload(which)))}
         {button("story-clean", "clean", () => void clean())}
         {button("story-read", "read", () => void read())}
+        {button("story-make-project", "make project", () => void makeProject())}
+        {button("story-read-project", "read project", () => void readProject())}
         {button("story-sheet", "sheet", () => sheet.set(!sheet()))}
         {button("story-no-tree", "no tree", () => noTree.set(!noTree()))}
         <Text testID="story-state" class="text-[12px] text-ink-muted">{`state:${state()}`}</Text>
@@ -172,6 +202,20 @@ export default function Artifacts() {
               <Text class="text-ink-muted">no file</Text>
             </View>
           </If>
+        </View>
+      </If>
+      <If when={part() === "project"}>
+        <View class="flex-1 min-h-0">
+          <ArtifactPreview
+            relpath={projectFile}
+            projectDir={projectDir}
+            api={runtime.client}
+            workspacePath={runtime.snapshot.settings.workspace_path ?? null}
+            sheet
+            onClose={() => logLine("project-close")}
+            onSelect={(next) => logLine(`project-select:${next.workspace_relpath}`)}
+            onOpenTerminal={(dir) => logLine(`terminal:${dir}`)}
+          />
         </View>
       </If>
       <If when={part() === "workspace"}>

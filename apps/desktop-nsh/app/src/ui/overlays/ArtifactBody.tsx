@@ -111,8 +111,8 @@ export function ArtifactBody(props: {
   /** A cited folder's entries, once the Mac listed it; the folder's page lists them. */
   dirEntries?: ArtifactTreeNode[] | null;
   onOpenEntry?: (node: ArtifactTreeNode) => void;
-  /** Whether this file can be saved from here; one elsewhere on the Mac is only read. */
-  inWorkspace?: boolean;
+  /** Whether this file can be saved from here (the workspace's, or a project session's); one elsewhere on the Mac is only read. */
+  writable?: boolean;
 }) {
   const t = () => copy().stream;
   const loader = () => props.loader;
@@ -245,7 +245,7 @@ export function ArtifactBody(props: {
             annotateLabel={t().annotationAdd}
             onAnnotate={annot().offerAnnotation}
             onPickAnnotation={annot().pickAnnotation}
-            readOnly={props.inWorkspace === false || loader().textEncoding !== "utf-8"}
+            readOnly={props.writable === false || loader().textEncoding !== "utf-8"}
             handle={(handle) => props.onEditor?.(handle)}
           />
         </If>

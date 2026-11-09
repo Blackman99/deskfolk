@@ -12,6 +12,8 @@ export const seeded = fixture as {
   editorDirect: string;
   group: string;
   workspace: string;
+  /** A directory outside the workspace holding `src/main.py`, for a project session a test makes. */
+  projectDir: string;
 };
 
 /** The app on the fixture's runtime. */
@@ -19,9 +21,9 @@ export function openApp(options: Partial<OpenOptions> = {}) {
   return openEntry("../App.tsx", {}, options);
 }
 
-/** One screen on its own (`stories/index.ts`), on the fixture's runtime. */
-export function openStory(name: string, options: Partial<OpenOptions> = {}) {
-  return openEntry("../Story.tsx", { story: name }, options);
+/** One screen on its own (`stories/index.ts`), on the fixture's runtime; `params` reach it as `host.params`. */
+export function openStory(name: string, options: Partial<OpenOptions> = {}, params: Record<string, unknown> = {}) {
+  return openEntry("../Story.tsx", { ...params, story: name }, options);
 }
 
 function openEntry(entry: string, params: Record<string, unknown>, options: Partial<OpenOptions>) {

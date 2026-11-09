@@ -226,8 +226,14 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
   const downloadKey = () => `${byteSource()}:${attachment()?.id ?? ""}:${relpath()}`;
   /** A file opened from elsewhere on the Mac reads like any other, but saving and notes stay in the workspace. */
   const inWorkspace = () => citedInWorkspace(props.workspacePath ?? null, relpath(), treeSrc.home);
+  /**
+   * A file in the project session's directory (ADR 0095) is edited and saved where it is, as a
+   * workspace file is (the daemon writes inside a project's directory too); notes stay the
+   * workspace's. The Svelte kept such a file read-only.
+   */
+  const writable = () => inWorkspace() || treeSrc.projectRoot !== null;
   const canSave = () =>
-    Boolean(api() && relpath() && inWorkspace() && canShowSource() && loader.text !== null && loader.textEncoding === "utf-8" && (sourceMode() || loader.text !== loader.diskText));
+    Boolean(api() && relpath() && writable() && canShowSource() && loader.text !== null && loader.textEncoding === "utf-8" && (sourceMode() || loader.text !== loader.diskText));
   /** Unsaved: the editor's buffer in the source view, the text the rendered view shows otherwise. */
   const dirty = computed(() => (sourceMode() && editor() ? editorDirty() : loader.text !== null && loader.diskText !== null && loader.text !== loader.diskText));
   dirtyOf = dirty;
@@ -654,7 +660,7 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
           enlarge={enlarge}
           openMarkdownPath={openMarkdownPath}
           openOnDisk={openOnDisk}
-          inWorkspace={inWorkspace()}
+          writable={writable()}
         />
       </View>
       <If when={mode() !== "workspace"}>

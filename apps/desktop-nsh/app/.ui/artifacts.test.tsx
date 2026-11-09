@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "nsh/test";
-import { openStory } from "./fixture";
+import { openStory, seeded } from "./fixture";
 
 type App = Awaited<ReturnType<typeof openStory>>;
 
@@ -148,6 +148,25 @@ test("a file with the same text as the last one starts a history of its own", as
   await app.keyboard.press("mod+shift+z");
   await app.wait(100);
   expect(app.shows("id:artifact-dirty-dot")).toBe(false);
+});
+
+test("a project session's file opens editable, outside the workspace, and is saved where it is", async () => {
+  const app = await openStory("artifacts", {}, { projectDir: seeded.projectDir });
+  await app.waitFor("id:artifacts", { timeout: 15_000 });
+  await app.press("id:story-make-project");
+  await app.waitFor("id:artifact-code-editor", { timeout: LOAD_MS });
+  await app.waitUntil(() => app.texts().some((text) => text.includes("def main")), { timeout: LOAD_MS });
+  // The project's tree, with its file.
+  await app.waitFor("id:artifact-tree-column");
+  await app.type("id:artifact-editor", "# edited\n");
+  await app.waitFor("id:artifact-dirty-dot");
+  await app.keyboard.press("mod+s");
+  await app.waitUntil(() => !app.shows("id:artifact-dirty-dot"), { timeout: LOAD_MS });
+  expect(app.shows("id:artifact-save-error")).toBe(false);
+  await app.press("id:story-read-project");
+  await app.waitUntil(() => state(app).startsWith("state:read"), { timeout: LOAD_MS });
+  expect(state(app)).toContain("# edited");
+  expect(state(app)).toContain("def main");
 });
 
 test("the phone's list opens as a sheet and a picked file closes it", async () => {

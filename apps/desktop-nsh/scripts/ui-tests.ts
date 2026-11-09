@@ -2,9 +2,10 @@
  * The app's screen tests against a real, isolated runtime: a throwaway data directory, a free
  * loopback port, an in-memory keystore, the scheduler off and a model endpoint that refuses at once
  * (a line sent from a test makes a turn that fails fast; no model is called). Seeds two Bots, a
- * direct with Markdown in it and a group, writes what the tests need to `app/.ui/.fixture.json`,
- * runs every `app/.ui/*.test.tsx` headless (a hidden directory, so a plain `nsh test` leaves them
- * out), and stops the runtime. Never the dev or stable instance.
+ * direct with Markdown in it and a group, and a directory for a project session, writes what
+ * the tests need to `app/.ui/.fixture.json`, runs every `app/.ui/*.test.tsx` headless (a hidden
+ * directory, so a plain `nsh test` leaves them out), and stops the runtime. Never the dev or
+ * stable instance.
  *
  *   bun apps/desktop-nsh/scripts/ui-tests.ts [name filter]
  */
@@ -75,6 +76,11 @@ try {
   });
   store.setTurnStatus(turn.id, "completed");
   const group = (await api("POST", "/v1/sessions", { name: "周报小组", members: [writer.bot.id, editor.bot.id] })) as { id: string };
+  // A directory outside the workspace with a file to edit, for a project session a test makes on
+  // it (ADR 0095) and takes away again: a seeded one would show in every sidebar.
+  const projectDir = join(dataDir, "project");
+  mkdirSync(join(projectDir, "src"), { recursive: true });
+  writeFileSync(join(projectDir, "src", "main.py"), "def main():\n    return 1\n");
 
   const fixture = {
     origin: handle.origin,
@@ -83,6 +89,7 @@ try {
     editorDirect: editor.direct_session.id,
     group: group.id,
     workspace,
+    projectDir,
   };
   writeFileSync(join(root, "app", ".ui", ".fixture.json"), JSON.stringify(fixture), { mode: 0o600 });
 
