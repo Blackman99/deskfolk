@@ -28,19 +28,22 @@ export function openStory(name: string, options: Partial<OpenOptions> = {}, para
 
 function openEntry(entry: string, params: Record<string, unknown>, options: Partial<OpenOptions>) {
   const endpoint = { origin: seeded.origin, token: seeded.token };
+  // `options.host.handlers` answer more of the shell's commands than the three every screen needs.
+  const { host: extra, ...rest } = options;
   return open(entry, {
     platform: "macos",
     width: 1100,
     height: 760,
     locale: "zh-CN",
     network: "live",
-    ...options,
+    ...rest,
     host: {
       params: { ...endpoint, windowId: 1, material: "none", ...params },
       handlers: {
         "tauri.local_api_endpoint": endpoint,
         "tauri.app_version": "0.0.0",
         "tauri.window_material": "none",
+        ...extra?.handlers,
       },
     },
   });

@@ -61,8 +61,12 @@ export function trackReading(opts: {
       overlayBlocksTranscript: runtime.settingsOpen || runtime.workspaceOpen,
     };
     const mode = desktopReadingMode(runtime.isDesktopShell, runtime.nativeCapabilities);
-    const nativeFacts = runtime.isDesktopShell ? runtime.nativeFocusFacts : null;
-    if (!transcriptReadingReady(facts, mode, nativeFacts) || !atLatest) return;
+    // Not `runtime.nativeFocusFacts`: the messenger asks the shell whether its window is key because
+    // the page's `document.hasFocus()` can say yes to a window that is not. Here `lifecycle()` is
+    // the shell's own word, and the facts only move when a report reaches the shell (a window event
+    // of the page's, which NSH has none of): they stay at "nothing visible, nothing focused" and,
+    // read as a gate, kept every conversation unread.
+    if (!transcriptReadingReady(facts, mode, null) || !atLatest) return;
     timer = setTimeout(() => {
       timer = null;
       if (lifecycle() === "active" && untracked(() => opts.sessionId()) === id) void runtime.submitBoundedRead(id, last, noticeMark);
