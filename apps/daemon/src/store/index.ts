@@ -431,6 +431,7 @@ export class Store {
   // Project sessions (ADR 0095) -----------------------------------------------------------
   readonly createProjectSession = this.bind(projectSessions.createProjectSession);
   readonly projectOf = this.bind(projectSessions.projectOf);
+  readonly projectDirs = this.bind(projectSessions.projectDirs);
   readonly recordProjectAgentSession = this.bind(projectSessions.recordProjectAgentSession);
   readonly tuneProjectSession = this.bind(projectSessions.tuneProjectSession);
   readonly nameProjectSessionIfUnnamed = this.bind(projectSessions.nameProjectSessionIfUnnamed);

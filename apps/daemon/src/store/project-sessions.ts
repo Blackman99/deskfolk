@@ -75,6 +75,14 @@ export type ProjectOf = {
   mode: ProjectAgentMode | null;
 };
 
+/** Every project session's directory: where, besides the workspace, the app may save a file. */
+export function projectDirs(ctx: StoreContext): string[] {
+  return ctx.db
+    .query<{ project_dir: string }, []>(`SELECT DISTINCT project_dir FROM sessions WHERE kind = 'project' AND project_dir IS NOT NULL AND project_dir != ''`)
+    .all()
+    .map((row) => row.project_dir);
+}
+
 /** A project session's directory and agent, or null for any other conversation. */
 export function projectOf(ctx: StoreContext, sessionId: string): ProjectOf | null {
   const row = ctx.db
