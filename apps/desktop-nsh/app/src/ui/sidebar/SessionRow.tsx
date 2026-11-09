@@ -25,6 +25,7 @@ import { SessionAvatar } from "../SessionAvatar";
 import { shadow } from "../styles";
 import { tip } from "../tip";
 import { AgentAvatar, rowAvatarEdge } from "./AgentAvatar";
+import { SIDE_MUTED_TEXT, SIDE_MUTED_TINT } from "../glass";
 
 export type MenuAt = { x: number; y: number };
 
@@ -152,7 +153,7 @@ export function SessionRow(props: {
             </Text>
             <Text
               testID="row-time"
-              class={`${phone() ? "text-[12px]" : "text-[11px]"} leading-[17px] ${unreadOn() ? "text-mustard-ink font-semibold" : "text-ink-muted"} ${showActions() ? "opacity-0" : ""}`}
+              class={`${phone() ? "text-[12px]" : "text-[11px]"} leading-[17px] ${unreadOn() ? "text-mustard-ink font-semibold" : SIDE_MUTED_TEXT} ${showActions() ? "opacity-0" : ""}`}
             >
               {props.time}
             </Text>
@@ -163,7 +164,7 @@ export function SessionRow(props: {
               else={
                 <Text
                   testID="row-preview"
-                  class={`flex-1 min-w-0 line-clamp-1 ${phone() ? "text-[13px]" : "text-[12px]"} ${props.elsewhere ? "text-brand" : "text-ink-muted"}`}
+                  class={`flex-1 min-w-0 line-clamp-1 ${phone() ? "text-[13px]" : "text-[12px]"} ${props.elsewhere ? "text-brand" : SIDE_MUTED_TEXT}`}
                 >
                   {props.elsewhere ?? props.preview}
                 </Text>
@@ -171,7 +172,7 @@ export function SessionRow(props: {
             >
               <View testID="row-status" class="flex-1 min-w-0 flex-row items-center gap-[5px]">
                 <View class={`w-[6px] h-[6px] rounded-full shrink-0 ${STATUS_DOT[props.status.kind] ?? "bg-ok"}`} />
-                <Text class={`min-w-0 line-clamp-1 ${phone() ? "text-[13px]" : "text-[12px]"} ${STATUS_TEXT[props.status.kind] ?? "text-ink-muted"}`}>
+                <Text class={`min-w-0 line-clamp-1 ${phone() ? "text-[13px]" : "text-[12px]"} ${STATUS_TEXT[props.status.kind] ?? SIDE_MUTED_TEXT}`}>
                   {props.status.label}
                 </Text>
                 <If when={(props.showCount ?? true) && props.status.count}>
@@ -214,7 +215,7 @@ export function SessionRow(props: {
               onPress={() => props.onTogglePin?.()}
               class="group w-[26px] h-[26px] rounded-[7px] items-center justify-center hover:bg-row-hover active:scale-[0.9]"
             >
-              <Icon name="pin" size={16} class={props.pinned ? "tint-brand" : "tint-ink-muted group-hover:tint-ink"} />
+              <Icon name="pin" size={16} class={props.pinned ? "tint-brand" : `${SIDE_MUTED_TINT} group-hover:tint-ink`} />
             </View>
             <View
               role="button"
@@ -224,7 +225,7 @@ export function SessionRow(props: {
               onPress={(e) => props.onContextMenu(at(e))}
               class="group w-[26px] h-[26px] rounded-[7px] items-center justify-center hover:bg-row-hover active:scale-[0.9]"
             >
-              <Icon name="more" size={16} class="tint-ink-muted group-hover:tint-ink" />
+              <Icon name="more" size={16} class={`${SIDE_MUTED_TINT} group-hover:tint-ink`} />
             </View>
           </View>
         </View>

@@ -63,6 +63,8 @@ export type StripProps = {
   /** Beside the phone layout the tabs are pills on the window's ground; on a phone they sit on a band. */
   narrow: () => boolean;
   floating: boolean;
+  /** Dark on the window's material the strip is the card's head (`WorkbenchLeaf` draws the band): 4 points in from the leaf's edges. */
+  head?: () => boolean;
   /** Another pane is the current one: this one steps back, its strip half faded. */
   dimmed: () => boolean;
   /** A floating pane's tabs leave this much of the bar bare, to take hold of. */
@@ -309,7 +311,7 @@ export function LeafStrip(props: StripProps) {
       onTouchStartCapture={() => (blockStripDrag = false)}
       onPress={(e) => props.onStripPress?.(leaf().id, e)}
       focusable={false}
-      class={`flex-row items-center ${bg()} ${leaf().tabs.length === 0 && !props.floating ? "absolute top-1 right-1 pr-1 z-10" : "w-full"}`}
+      class={`flex-row items-center ${bg()} ${leaf().tabs.length === 0 && !props.floating ? "absolute top-1 right-1 pr-1 z-10" : props.head?.() ? "self-stretch mt-1 mx-1" : "w-full"}`}
       style={{ height: leaf().tabs.length === 0 && !props.floating ? 32 : height(), cursor: props.floating ? "grab" : undefined, opacity: props.dimmed() ? 0.5 : 1 }}
       {...stripPan.panHandlers}
     >

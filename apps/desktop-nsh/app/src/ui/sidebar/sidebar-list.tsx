@@ -22,6 +22,7 @@ import { dismissRailTips } from "./RailTooltip";
 import { ProjectSessionRow } from "./ProjectSessionRow";
 import { SessionRow, type MenuAt } from "./SessionRow";
 import type { ListRow } from "./sidebar-list-model";
+import { SIDE_MUTED_TEXT, SIDE_MUTED_TINT } from "../glass";
 
 /** What the list asks the sidebar: how to word a session and what its rows do. */
 export type SidebarListEnv = {
@@ -176,7 +177,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
           onPress={() => e.onDirAdd(group(), add)}
           class={`group shrink-0 items-center justify-center mr-[6px] rounded-(--radius-sm) hover:bg-line-subtle ${phone() ? "w-[40px] h-[40px]" : "w-[26px] h-[26px]"} ${hoverOnly() ? "opacity-0 group-hover:opacity-100 focus-visible:opacity-100" : ""}`}
         >
-          <Icon name="plus" size={16} class="tint-ink-muted group-hover:tint-brand" />
+          <Icon name="plus" size={16} class={`${SIDE_MUTED_TINT} group-hover:tint-brand`} />
         </View>
       </View>
     );
@@ -188,7 +189,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
     const section = () => p.row.add;
     return (
       <View testID={p.row.key} class={`flex-row items-center justify-between ${phone() ? "px-[14px] pb-1" : "px-[10px] pb-1"} ${p.row.first ? "pt-[6px]" : phone() ? "pt-3" : "pt-[14px]"}`}>
-        <Text class="text-[12px] font-semibold text-ink-muted">{p.row.title}</Text>
+        <Text class={`text-[12px] font-semibold ${SIDE_MUTED_TEXT}`}>{p.row.title}</Text>
         <If when={section()}>
           {(which) => (
             <View
@@ -203,7 +204,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
               onPress={() => e.onSectionAdd(which(), plus)}
               class="w-[22px] h-[22px] rounded-(--radius-sm) items-center justify-center hover:bg-line-subtle group"
             >
-              <Text class="text-[15px] text-ink-muted group-hover:text-brand">+</Text>
+              <Text class={`text-[15px] ${SIDE_MUTED_TEXT} group-hover:text-brand`}>+</Text>
             </View>
           )}
         </If>
@@ -213,7 +214,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
 
   function Note(p: { text: string; testID?: string }) {
     return (
-      <Text testID={p.testID} class={`text-center text-ink-muted px-5 py-9 ${phone() ? "text-[13px]" : "text-[12px]"}`}>
+      <Text testID={p.testID} class={`text-center ${SIDE_MUTED_TEXT} px-5 py-9 ${phone() ? "text-[13px]" : "text-[12px]"}`}>
         {p.text}
       </Text>
     );
@@ -224,7 +225,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
       <If when={rowOf(item(), "ghead")}>{(row) => <Heading row={row()} />}</If>
       <If when={rowOf(item(), "archived-ghead")}>
         <View testID="archived-ghead" class="flex-row items-center justify-between px-[10px] pt-[6px] pb-1">
-          <Text class="text-[12px] font-semibold text-ink-muted">{t().sidebar.archivedSessions}</Text>
+          <Text class={`text-[12px] font-semibold ${SIDE_MUTED_TEXT}`}>{t().sidebar.archivedSessions}</Text>
           <View
             role="button"
             testID="back-to-sessions"

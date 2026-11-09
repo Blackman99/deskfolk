@@ -55,6 +55,7 @@ import { SidebarList, type SidebarListEnv } from "./sidebar-list";
 import { createListRowKeeper, listRows } from "./sidebar-list-model";
 import { previewIndex, previewOf as lineOf, statusMessages } from "./sidebar-previews";
 import type { SessionDragHandler } from "./session-drag";
+import { SIDE_MUTED_TEXT, SIDE_MUTED_TINT } from "../glass";
 
 /** What the shell can call on the list from outside it (the Svelte component's exported `showArchived`). */
 export type SidebarHandle = { showArchived: () => void };
@@ -420,7 +421,7 @@ export function Sidebar(props: {
                   onPress={() => collapse()()}
                   class="group shrink-0 w-[30px] h-[30px] items-center justify-center rounded-(--radius-sm) hover:bg-row-hover"
                 >
-                  <Icon name="sidebar-close" class="tint-ink-muted group-hover:tint-ink" />
+                  <Icon name="sidebar-close" class={`${SIDE_MUTED_TINT} group-hover:tint-ink`} />
                 </View>
               )}
             </If>
@@ -480,12 +481,12 @@ export function Sidebar(props: {
                               }`}
                             >
                               <View accessible={false} class={`absolute top-0 bottom-0 items-center justify-center ${phone() ? "left-3" : "left-[10px]"}`}>
-                                <Icon name="search" class="tint-ink-muted" />
+                                <Icon name="search" class={SIDE_MUTED_TINT} />
                               </View>
-                              <Text class={`text-ink-muted ${phone() ? "text-[14px]" : "text-[13px]"}`}>{t().sidebar.searchShort}</Text>
+                              <Text class={`${SIDE_MUTED_TEXT} ${phone() ? "text-[14px]" : "text-[13px]"}`}>{t().sidebar.searchShort}</Text>
                               <If when={!kbdHidden()}>
                                 <View accessible={false} class="shrink-0 px-1 py-[1px] border border-line rounded-(--radius-xs)">
-                                  <Text class="text-[10px] text-ink-muted">{searchShortcutLabel()}</Text>
+                                  <Text class={`text-[10px] ${SIDE_MUTED_TEXT}`}>{searchShortcutLabel()}</Text>
                                 </View>
                               </If>
                             </View>

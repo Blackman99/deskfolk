@@ -10,12 +10,13 @@
  * (`WorkbenchFloat`) and its strip is its title bar.
  *
  * Tab bodies and labels are the host's render props: the workbench never imports a content component.
- * Not carried over: the strip's edge fades (the arrows at its ends say there is more), the glass-dark
- * strip head, and Delete / Backspace / arrow keys moving along the tabs (Tab walks the controls).
+ * Not carried over: the strip's edge fades (the arrows at its ends say there is more), and Delete /
+ * Backspace / arrow keys moving along the tabs (Tab walks the controls).
  */
 import { signal, effect, untracked, View, type PressEvent, type ViewRef } from "nsh";
 import { copy } from "../../runtime";
 import type { LeafNode } from "../../m/workbench/layout-types.ts";
+import { darkGlass } from "../glass";
 import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";
 import { EmptyPane, NewTabMenu } from "./leaf-menus";
@@ -81,6 +82,13 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
   const canOpen = () => Boolean(props.menuActions ?? props.emptyActions);
   /** The strip of an empty pane sits in the card's corner: the card starts at the gutter like the window's edge. */
   const cornerStrip = () => empty() && !props.floating && !narrow();
+  /**
+   * Dark on the window's material the ground lets most of the glass through, and glass that clear
+   * takes the colour of whatever is behind each part: two panes' tab rows came out one blue and one
+   * orange. So there the strip is the card's head, a solid band joined to the body, 4 points off the
+   * ground above it too, and only the gutters show the glass (`glass.ts`).
+   */
+  const head = () => darkGlass() && !props.floating && !narrow() && !empty();
 
   const newTabOpen = signal(false);
   const newTabFilter = signal("");
@@ -123,6 +131,7 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
 
   const bodyClass = () => {
     if (props.floating || narrow()) return "bg-pane";
+    if (head()) return "mx-1 mb-1 rounded-b-(--radius-lg) bg-pane";
     return `mx-1 mb-1 rounded-(--radius-lg) bg-pane ${cornerStrip() ? "mt-1" : ""}`;
   };
 
@@ -139,14 +148,19 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
         <View
           accessible={false}
           class="absolute left-1 right-1 bottom-1 rounded-(--radius-lg)"
-          style={{ top: cornerStrip() ? 4 : 40, boxShadow: shadow("pane-lift"), pointerEvents: "none" }}
+          style={{ top: cornerStrip() || head() ? 4 : 40, boxShadow: shadow("pane-lift"), pointerEvents: "none" }}
         />
+      </If>
+      {/* The head's band, under the strip: a quiet pane fades its tabs, not the band. */}
+      <If when={head()}>
+        <View accessible={false} class="absolute left-1 right-1 top-1 h-[40px] rounded-t-(--radius-lg) bg-ground" style={{ pointerEvents: "none" }} />
       </If>
       <If when={!(empty() && !props.onMenu && !props.onClosePane && !props.floating)}>
         <LeafStrip
           leaf={leaf}
           narrow={narrow}
           floating={Boolean(props.floating)}
+          head={head}
           dimmed={dimmed}
           maxTabsWidth={props.floating ? () => Math.max(0, width() - 76) : undefined}
           tabLabel={props.tabLabel}

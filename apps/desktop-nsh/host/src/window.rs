@@ -15,7 +15,7 @@ use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::{
     NSAutoresizingMaskOptions, NSBackingStoreType, NSScreen, NSVisualEffectBlendingMode,
     NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindow, NSWindowCollectionBehavior,
-    NSWindowDelegate, NSWindowStyleMask, NSWindowTitleVisibility,
+    NSWindowDelegate, NSWindowOrderingMode, NSWindowStyleMask, NSWindowTitleVisibility,
 };
 use objc2_foundation::{NSNotification, NSPoint, NSRect, NSSize, NSString};
 
@@ -115,20 +115,25 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
     window.setTitlebarAppearsTransparent(true);
     window.setMinSize(NSSize::new(720.0, 480.0));
 
-    // The material: what the Tauri window got from `windowEffects: ["sidebar"]`.
-    let material = NSVisualEffectView::initWithFrame(NSVisualEffectView::alloc(mtm), frame);
+    let (view, host) = make_view(mtm, config, id);
+    let content = view.view();
+    content.setFrame(frame);
+    window.setContentView(Some(&content));
+
+    // The material: what the Tauri window got from `windowEffects: ["sidebar"]`. It lies inside
+    // the view that holds the app, under the app, not behind that view: NSH 0.4.0 paints that
+    // view's layer opaque (black or white by the scheme) wherever the app's top view is not
+    // opaque itself (`follow_background`), and the shell's ground over the glass is not. Upstream
+    // keeps an embedded view clear since (longbridge/nsh#1084, after v0.4.0); with that release
+    // the material can go back behind the app.
+    let material = NSVisualEffectView::initWithFrame(NSVisualEffectView::alloc(mtm), content.bounds());
     material.setMaterial(NSVisualEffectMaterial::Sidebar);
     material.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
     material.setState(NSVisualEffectState::Active);
     material.setAutoresizingMask(
         NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
     );
-    window.setContentView(Some(&material));
-
-    let (view, host) = make_view(mtm, config, id);
-    let content = view.view();
-    content.setFrame(material.bounds());
-    material.addSubview(&content);
+    content.addSubview_positioned_relativeTo(&material, NSWindowOrderingMode::Below, None);
     if !load_bundle(&view, &config.bundle) {
         return None;
     }

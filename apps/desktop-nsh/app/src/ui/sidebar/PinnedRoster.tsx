@@ -20,6 +20,7 @@ import { shadow } from "../styles";
 import { tip } from "../tip";
 import { AgentAvatar } from "./AgentAvatar";
 import type { MenuAt } from "./SessionRow";
+import { SIDE_MUTED_TINT } from "../glass";
 
 function PinnedItem(props: {
   session: SessionSummary;
@@ -173,7 +174,7 @@ export function PinnedRoster(props: {
           class="group w-[28px] h-[28px] mr-[10px] shrink-0 items-center justify-center rounded-(--radius-sm) border border-line bg-btn-secondary-bg hover:border-line-hover hover:bg-line-subtle"
           style={{ boxShadow: shadow("xs") }}
         >
-          <Icon name={expanded() ? "chevron-up" : "chevron-down"} size={12} class="tint-ink-muted group-hover:tint-ink" />
+          <Icon name={expanded() ? "chevron-up" : "chevron-down"} size={12} class={`${SIDE_MUTED_TINT} group-hover:tint-ink`} />
         </View>
       </If>
     </View>

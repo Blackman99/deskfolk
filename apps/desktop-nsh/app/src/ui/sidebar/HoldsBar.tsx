@@ -10,6 +10,7 @@ import { formatFullTimestamp, formatMessageTime } from "../../m/chat/chat-view";
 import { copy } from "../../runtime";
 import { Icon } from "../Icon";
 import { tip } from "../tip";
+import { SIDE_MUTED_TEXT } from "../glass";
 
 export function HoldsBar(props: {
   holds: readonly Hold[];
@@ -41,7 +42,7 @@ export function HoldsBar(props: {
         <View class="flex-row items-center gap-[6px]">
           <Icon name="pause" size={12} class="tint-ink-secondary" />
           <Text class="text-[12px] font-semibold text-ink-secondary">{copy().control.holdsTitle}</Text>
-          <Text testID="holds-count" class="text-[12px] font-medium text-ink-muted">{String(props.holds.length)}</Text>
+          <Text testID="holds-count" class={`text-[12px] font-medium ${SIDE_MUTED_TEXT}`}>{String(props.holds.length)}</Text>
         </View>
         <Scroll class="mt-1" style={{ maxHeight: 132 }}>
           <Each of={props.holds} key={(hold) => hold.id}>
@@ -59,7 +60,7 @@ export function HoldsBar(props: {
                 </If>
                 <If
                   when={liftFailed() === hold().id}
-                  else={<Text class="shrink-0 font-mono text-[11px] text-ink-muted">{formatMessageTime(hold().created_at)}</Text>}
+                  else={<Text class={`shrink-0 font-mono text-[11px] ${SIDE_MUTED_TEXT}`}>{formatMessageTime(hold().created_at)}</Text>}
                 >
                   <Text role="text" testID={`hold-failed-${hold().id}`} class="shrink-0 text-[11px] text-danger-text">{copy().control.failed}</Text>
                 </If>

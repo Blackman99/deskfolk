@@ -4,6 +4,7 @@ import { copy } from "../../runtime";
 import { Icon } from "../Icon";
 import { narrowWindow } from "../Modal";
 import { tip } from "../tip";
+import { SIDE_MUTED_TINT } from "../glass";
 
 export function WorkingFilter(props: { workingOnly: boolean; toggleWorkingOnly: () => void }) {
   const on = () => props.workingOnly;
@@ -22,7 +23,7 @@ export function WorkingFilter(props: { workingOnly: boolean; toggleWorkingOnly: 
       onPress={() => props.toggleWorkingOnly()}
       class={`group shrink-0 items-center justify-center focus-visible:border-brand ${box()}`}
     >
-      <Icon name="activity" class={on() ? "tint-brand" : phone() ? "tint-ink-secondary" : "tint-ink-muted group-hover:tint-ink"} />
+      <Icon name="activity" class={on() ? "tint-brand" : phone() ? "tint-ink-secondary" : `${SIDE_MUTED_TINT} group-hover:tint-ink`} />
     </View>
   );
 }

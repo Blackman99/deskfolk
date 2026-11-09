@@ -17,6 +17,7 @@ import { shadow } from "../styles";
 import { tip } from "../tip";
 import { AgentAvatar } from "./AgentAvatar";
 import { SessionRow, type MenuAt } from "./SessionRow";
+import { SIDE_MUTED_TEXT } from "../glass";
 
 export function ProjectSessionRow(props: {
   session: SessionSummary;
@@ -149,7 +150,7 @@ export function ProjectSessionRow(props: {
             onBlur={() => void commit()}
             class={`min-w-0 px-[6px] -ml-[7px] rounded-(--radius-sm) bg-input-bg text-ink font-semibold border ${failed() ? "border-danger" : "border-field-focus-border"} ${phone() ? "h-[24px] text-[16px]" : "h-[21px] text-[14px]"}`}
           />
-          <Text testID="row-preview" class={`mt-[2px] line-clamp-1 text-ink-muted ${phone() ? "text-[13px] h-[18px]" : "text-[12px] h-[17px]"}`}>
+          <Text testID="row-preview" class={`mt-[2px] line-clamp-1 ${SIDE_MUTED_TEXT} ${phone() ? "text-[13px] h-[18px]" : "text-[12px] h-[17px]"}`}>
             {props.preview}
           </Text>
         </View>

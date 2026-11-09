@@ -69,6 +69,8 @@ import { WorkspaceDragGhost } from "../WorkspaceDragGhost";
 import { bindShellKeys } from "./shell-keys";
 import { createSessionDrag } from "./session-drag";
 import { createShellState, type ShellState } from "./shell-state";
+import { WINDOW_CHROME } from "../../m/window-chrome";
+import { darkGlass, windowGlass } from "../glass";
 
 export function Shell() {
   const s = createShellState();
@@ -110,9 +112,17 @@ function ShellBody(props: { s: ShellState }) {
     onPanResponderTerminationRequest: () => false,
   });
 
+  /**
+   * Beside the phone layout the sidebar and the gutters around the cards are one ground; on a
+   * window with material only part of it covers the glass, so the glass shows through (`glass.ts`).
+   */
+  const ground = () => (s.narrow() ? "bg-sidebar-bg" : windowGlass ? "bg-ground-glass" : "bg-ground");
+  /** Beside the workbench the column is ground, each pane its own card; on macOS the tabs' centre line meets the lights' (26 pt), and the dark heads keep 4 pt above them. */
+  const mainTop = () => (WINDOW_CHROME !== "mac" ? 0 : darkGlass() ? 2 : 6);
+
   return (
     <View
-      class="flex-1 min-h-0 min-w-0 bg-sidebar-bg"
+      class={`flex-1 min-h-0 min-w-0 ${ground()}`}
       onLayout={(e) => {
         s.shellWidth.set(e.bounds.size.width);
         s.shellHeight.set(e.bounds.size.height);
@@ -195,9 +205,9 @@ function ShellBody(props: { s: ShellState }) {
         <If when={s.sidebarColumn() || pageOpen()}>
           <View
             testID="shell-main"
-            class="min-w-0 min-h-0 bg-pane"
-            classList={{ "flex-1": s.sidebarColumn(), "absolute inset-0": !s.sidebarColumn() }}
-            style={!s.sidebarColumn() ? { zIndex: 10 } : undefined}
+            class="min-w-0 min-h-0"
+            classList={{ "flex-1": s.sidebarColumn(), "absolute inset-0": !s.sidebarColumn(), "bg-pane": !s.wide(), "mr-1 mb-1": s.wide() }}
+            style={!s.sidebarColumn() ? { zIndex: 10 } : s.wide() ? { marginTop: mainTop() } : undefined}
           >
             <If when={s.wide()} else={<MainPages s={s} />}>
               <ShellWorkbench s={s} onApi={sessionDrag.setApi} />

@@ -32,6 +32,7 @@ import { dismissRailTips, RailTooltip } from "./RailTooltip";
 import { settingsEntryColours } from "./foot-action";
 import { ToolsMenu } from "./ToolsMenu";
 import { previewIndex, statusMessages } from "./sidebar-previews";
+import { SIDE_MUTED_TINT } from "../glass";
 
 export function SidebarRail(props: {
   pinnedSessionIds: string[];
@@ -139,7 +140,7 @@ export function SidebarRail(props: {
   const action = (active: boolean | undefined, margin = "mx-[12px]") => `${ACTION} ${margin} ${active ? "bg-accent-tint border-accent-border" : ""}`;
   /** The way to Settings is one of the floor (ADR 0108): marked once, its button handed over by the tooltip. */
   const settingsFloor = floor("settings-entry", () => settingsEntryColours(runtime.settingsOpen));
-  const glyph = (name: IconName, active: boolean | undefined) => <Icon name={name} class={active ? "tint-brand" : "tint-ink-muted group-hover:tint-ink"} />;
+  const glyph = (name: IconName, active: boolean | undefined) => <Icon name={name} class={active ? "tint-brand" : `${SIDE_MUTED_TINT} group-hover:tint-ink`} />;
 
   const item = (session: SessionSummary) => {
     const title = () => sessionTitle(session, botsById(), rosterLabels());

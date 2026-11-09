@@ -8,6 +8,7 @@ import { focusMode } from "../../m/chat/focus-mode.svelte";
 import { Icon } from "../Icon";
 import { narrowWindow } from "../Modal";
 import { tip } from "../tip";
+import { SIDE_MUTED_TINT } from "../glass";
 
 export function FocusToggle() {
   const on = () => focusMode.on;
@@ -26,7 +27,7 @@ export function FocusToggle() {
       onPress={() => focusMode.toggle()}
       class={`group shrink-0 items-center justify-center focus-visible:border-brand ${box()}`}
     >
-      <Icon name="target" class={on() ? "tint-brand" : phone() ? "tint-ink-secondary" : "tint-ink-muted group-hover:tint-ink"} />
+      <Icon name="target" class={on() ? "tint-brand" : phone() ? "tint-ink-secondary" : `${SIDE_MUTED_TINT} group-hover:tint-ink`} />
     </View>
   );
 }

@@ -71,12 +71,30 @@ function convert(tokens: Map<string, string>, all: Map<string, string>): Record<
   return outTokens;
 }
 
+/**
+ * `--ground-tint` is a share, not a colour, so NSH has no token for it. What it is for is: the ground
+ * over the window's material (`Shell.svelte`, `color-mix(--ground --ground-tint, transparent)`),
+ * so that colour is the token, `bg-ground-glass`, in each look.
+ */
+function groundGlass(all: Map<string, string>): Record<string, string> {
+  const tint = all.get("ground-tint");
+  return tint ? { "ground-glass": `color-mix(in srgb, var(--ground) ${tint}, transparent)` } : {};
+}
+
+/**
+ * The sidebar's quiet grey on the material (`Sidebar.svelte`: `.side` under `data-material="glass"`
+ * and dark sets `--muted: #a8b3b8`). Dark glass is lighter than the dark ground was, so there it
+ * goes up a step and a preview line keeps 4:1 at the glass's bright end; light keeps its own.
+ * Not in tokens.css (a selector's, not the root's), so named here: `text-ink-muted-glass`.
+ */
+const MUTED_ON_GLASS = { light: { "ink-muted-glass": "var(--ink-muted)" }, dark: { "ink-muted-glass": "#a8b3b8" } };
+
 const light = block(/:root\s*\{/);
 const dark = block(/:root\[data-theme="dark"\]/);
 const allLight = new Map(light);
 const allDark = new Map([...light, ...dark]);
-const lightOut = convert(light, allLight);
-const darkOut = convert(dark, allDark);
+const lightOut = { ...convert(light, allLight), ...groundGlass(allLight), ...MUTED_ON_GLASS.light };
+const darkOut = { ...convert(dark, allDark), ...groundGlass(allDark), ...MUTED_ON_GLASS.dark };
 
 /** NSH's own tokens, from the messenger's, so `nsh/base` wears the brand. */
 function builtins(t: Record<string, string>): Record<string, string> {
