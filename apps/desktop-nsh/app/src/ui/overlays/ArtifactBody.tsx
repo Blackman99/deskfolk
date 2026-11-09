@@ -18,7 +18,7 @@
  *   (`bodyEl`) NSH does not have, so it is not followed.
  * - The pane's width query (`@container artifact-main`, 720) is the body's own measured width.
  */
-import { cleanup, effect, Scroll, signal, Text, View } from "nsh";
+import { cleanup, computed, effect, Scroll, signal, Text, View } from "nsh";
 import type { Annotation, Attachment } from "@real-bot/protocol";
 import { describeAnchor } from "@real-bot/protocol";
 import { formatFileSize } from "../../m/chat/attachments.ts";
@@ -125,6 +125,15 @@ export function ArtifactBody(props: {
   const stacked = settled(() => width() > 0 && width() <= STACK_WIDTH);
   const annotsOpen = () => annot().annotOpen && props.mode !== "workspace";
   const editing = () => props.sourceMode && loader().text !== null;
+  /**
+   * What makes the body (`body()`, a tracked insert) again: the workspace's empty state, and in the
+   * workspace another file of a kind not shown as source, as reading the path there always did.
+   * Another file in the source editor keeps the editor, which takes the file once its text has
+   * arrived (`textPath`): made again on the pick, it held the last file's text under the new name
+   * and was made once more when the text came.
+   */
+  const noFile = computed(() => props.mode === "workspace" && !props.relpath);
+  const bodyPath = computed(() => (props.mode === "workspace" && !props.sourceMode ? props.relpath : null));
   const picture = dataUrlOf(() => ((props.kind === "image" || props.kind === "svg") && !loader().loading ? loader().shownBlob : loader().shownBlob));
 
   /** An Office file's bytes as Base64, when it is not a local workspace file the viewer can read by path. */
@@ -207,7 +216,8 @@ export function ArtifactBody(props: {
   /** One body per kind, in the Svelte's order. */
   const body = () => {
     if (loader().missing) return scrolling(() => muted(() => t().artifactMissing));
-    if (props.mode === "workspace" && !props.relpath) return scrolling(() => muted(() => t().workspacePickFile));
+    void bodyPath();
+    if (noFile()) return scrolling(() => muted(() => t().workspacePickFile));
     if (props.kind === "directory") {
       return scrolling(() => (
         <If when={props.dirEntries && props.dirEntries.length > 0} else={muted(() => (props.mode === "workspace" ? t().workspaceEmpty : t().artifactDirectory))}>
@@ -235,7 +245,7 @@ export function ArtifactBody(props: {
           <ArtifactCodeEditor
             code={loader().text ?? ""}
             baseline={loader().diskText}
-            path={props.relpath}
+            path={loader().textPath ?? props.relpath}
             wrap={props.wrap}
             onDirty={props.onEditorDirty}
             annotations={props.drawnRows}
@@ -424,7 +434,7 @@ export function ArtifactBody(props: {
           </View>
         </If>
         <View class={`flex-1 min-h-0 ${editing() ? "" : narrowWindow() ? "p-3" : "p-4"}`}>
-          <If when={loader().loading}>{loadingOverlay()}</If>
+          <If when={loader().loadingLong}>{loadingOverlay()}</If>
           <If when={props.treeSrc.truncatedHint && props.mode === "workspace"}>{muted(() => t().workspaceTruncated)}</If>
           {() => body()}
           <If when={loader().openHint}>{muted(() => t().artifactOpenUnavailable)}</If>

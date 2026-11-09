@@ -2,6 +2,7 @@
 // Source: a3be9dff5e9841b4
 import { derived, effect, state } from "../../lib/reactive";
 import { untrack } from "../../lib/reactive";
+import { batch } from "nsh";
 import type { Attachment } from "@real-bot/protocol";
 import { etagForBlob, originalSizeForBlob } from "../api.ts";
 import { contentShaFromEtag } from "../annotations/model.ts";
@@ -51,6 +52,23 @@ export class ArtifactLoader {
   #text$s = state<string | null>(null);
 	get text(): string | null { return this.#text$s.get(); }
 	set text(value: string | null) { this.#text$s.set(value); }
+  /**
+   * Which file `text` holds (NSH). Picking another file changes `relpath` at once while its text is
+   * still on the way; the editor follows this rather than `relpath`, so it keeps the file it shows
+   * until the next one has arrived and then makes one view for it, not one for the old text under
+   * the new name and another when the text lands. Written with `text` in one batch.
+   */
+  #textPath$s = state<string | null>(null);
+	get textPath(): string | null { return this.#textPath$s.get(); }
+	set textPath(value: string | null) { this.#textPath$s.set(value); }
+  /**
+   * A load that has taken long enough to say so (NSH): the loading veil waits this long, so a file
+   * read in a few milliseconds swaps in place, as a native editor's does, without a flash of it.
+   */
+  #loadingLong$s = state(false);
+	get loadingLong() { return this.#loadingLong$s.get(); }
+	set loadingLong(value) { this.#loadingLong$s.set(value); }
+  #slowTimer: ReturnType<typeof setTimeout> | null = null;
   #missing$s = state(false);
 	get missing() { return this.#missing$s.get(); }
 	set missing(value) { this.#missing$s.set(value); }
@@ -142,6 +160,32 @@ export class ArtifactLoader {
     this.#h = host;
   }
 
+  /** A file's text, as read and as on disk, and which file it is: one change, so nothing sees half of it. */
+  #setText(text: string | null, path: string | null): void {
+    batch(() => {
+      this.text = text;
+      this.diskText = text;
+      this.textPath = text === null ? null : path;
+    });
+  }
+
+  /** How long a load may take before the pane says it is loading. */
+  static readonly SLOW_MS = 250;
+
+  #startSlow(gen: number): void {
+    if (this.#slowTimer) clearTimeout(this.#slowTimer);
+    this.#slowTimer = setTimeout(() => {
+      this.#slowTimer = null;
+      if (gen === this.loadGen && this.loading) this.loadingLong = true;
+    }, ArtifactLoader.SLOW_MS);
+  }
+
+  #endSlow(): void {
+    if (this.#slowTimer) clearTimeout(this.#slowTimer);
+    this.#slowTimer = null;
+    this.loadingLong = false;
+  }
+
   /**
    * Starts loading whatever file is shown, and again whenever it changes. Called where the pane's
    * other effects begin, so it runs after the ones above it as it always has.
@@ -166,6 +210,7 @@ export class ArtifactLoader {
   /** The pane is going away: whatever is still in flight belongs to a file that is gone. */
   destroy(): void {
     this.loadGen += 1;
+    this.#endSlow();
     this.revoke();
     this.loadAbort?.abort();
   }
@@ -205,13 +250,14 @@ export class ArtifactLoader {
     this.originalProgress = null;
     if (!source || !api || previewKind === "directory" || !isInAppPreviewKind(previewKind)) {
       if (gen !== this.loadGen) return;
+      this.#endSlow();
       this.loading = false;
       this.revoke();
-      this.text = null;
-      this.diskText = null;
+      this.#setText(null, null);
       return;
     }
     this.loading = true;
+    this.#startSlow(gen);
     const abort = new AbortController();
     this.loadAbort = abort;
     const size = previewKind === "image" && api.kind === "remote" ? ("preview" as const) : undefined;
@@ -241,8 +287,7 @@ export class ArtifactLoader {
           this.streamed = true;
           this.blobUrl = stream.url;
           this.blobPath = path;
-          this.text = null;
-          this.diskText = null;
+          this.#setText(null, null);
           return;
         }
       }
@@ -269,11 +314,9 @@ export class ArtifactLoader {
           this.liveBlob = next;
           this.blobUrl = next;
           this.blobPath = path;
-          this.text = null;
-          this.diskText = null;
+          this.#setText(null, null);
         } else {
-          this.text = raw;
-          this.diskText = raw;
+          this.#setText(raw, path);
         }
         return;
       }
@@ -282,8 +325,7 @@ export class ArtifactLoader {
         if (gen !== this.loadGen) return;
         this.textEncoding = encoding;
         // The HTML view builds its own sandboxed blob from the text (and a picker, in annotate mode).
-        this.text = raw;
-        this.diskText = raw;
+        this.#setText(raw, path);
         return;
       }
       const next = URL.createObjectURL(blob);
@@ -294,14 +336,16 @@ export class ArtifactLoader {
       this.pdfBlob = previewKind === "pdf" ? blob : null;
       this.officeBlob = isOfficeKind(previewKind) ? blob : null;
       this.blobPath = path;
-      this.text = null;
-      this.diskText = null;
+      this.#setText(null, null);
     } catch {
       if (gen !== this.loadGen) return;
       this.loadedKey = null;
       this.missing = true;
     } finally {
-      if (gen === this.loadGen) this.loading = false;
+      if (gen === this.loadGen) {
+        this.loading = false;
+        this.#endSlow();
+      }
     }
   }
 
@@ -351,11 +395,11 @@ export class ArtifactLoader {
     this.loadAbort?.abort();
     this.loadAbort = null;
     this.revoke();
-    this.text = null;
-    this.diskText = null;
+    this.#setText(null, null);
     this.original = null;
     this.progress = null;
     this.loading = false;
+    this.#endSlow();
     this.loadedKey = null;
     this.missing = true;
   }

@@ -112,17 +112,25 @@ export function ArtifactCodeEditor(props: {
   };
   syncDirty();
 
-  /** The text the colours were read from: the buffer a moment after the last edit, at once when it comes from outside. */
-  const colorSource = signal(text());
+  /**
+   * The text the colours were read from, with the file it is (its language): the buffer a moment
+   * after the last edit, at once when it comes from outside. One value: another file brings its
+   * name and its text together, and reading the name apart coloured the last file's text as the
+   * next one's first.
+   */
+  const colorSource = signal({ text: text(), path: props.path });
   let colorTimer: ReturnType<typeof setTimeout> | null = null;
   const colorSoon = (value: string) => {
     if (colorTimer) clearTimeout(colorTimer);
     colorTimer = setTimeout(() => {
       colorTimer = null;
-      colorSource.set(value);
+      colorSource.set({ text: value, path: historyPath });
     }, 150);
   };
-  const runs = computed(() => (codeColorsAvailable() ? highlightCode(colorSource(), baseName(props.path), codeTheme("editor"), false) : null));
+  const runs = computed(() => {
+    const source = colorSource();
+    return codeColorsAvailable() ? highlightCode(source.text, baseName(source.path), codeTheme("editor"), false) : null;
+  });
   const colorDecos = computed(() => {
     const r = runs();
     return r ? colorDecorations(r) : [];
@@ -157,13 +165,13 @@ export function ArtifactCodeEditor(props: {
     syncDirty();
   };
 
-  /** Puts `folded` in from outside: a new Editor holding it. Whether one was made. */
-  const replace = (folded: string): boolean => {
+  /** Puts `folded` (of file `path`) in from outside: a new Editor holding it. Whether one was made. */
+  const replace = (folded: string, path: string = historyPath): boolean => {
     loaded = folded;
     if (folded === text()) return false;
     text.set(folded);
     if (colorTimer) clearTimeout(colorTimer);
-    colorSource.set(folded);
+    colorSource.set({ text: folded, path });
     generation.set(generation() + 1);
     return true;
   };
@@ -209,12 +217,17 @@ export function ArtifactCodeEditor(props: {
     untracked(() => {
       let made = false;
       if (doc !== loaded) {
-        if (text() === loaded) made = replace(doc);
+        if (text() === loaded) made = replace(doc, path);
         else loaded = doc;
       }
       if (path !== historyPath) {
         historyPath = path;
-        if (!made) generation.set(generation() + 1);
+        if (!made) {
+          // The same text as another file: a new Editor all the same, coloured as this one.
+          if (colorTimer) clearTimeout(colorTimer);
+          colorSource.set({ text: text(), path });
+          generation.set(generation() + 1);
+        }
       }
       saved.set(disk);
       syncDirty();
