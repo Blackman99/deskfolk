@@ -16,7 +16,6 @@
  * space dragging the window (the list asks for `windowDrag`, its rows keep their presses).
  */
 import { cleanup, computed, effect, safeArea, signal, Text, View, type ViewRef } from "nsh";
-import { titleBar } from "nsh/desktop";
 import type { Hold, SessionSummary } from "@real-bot/protocol";
 import { formatShortcut } from "../../m/keymap";
 import { searchShortcutLabel } from "../../m/search/shortcuts";
@@ -32,6 +31,7 @@ import { agentRunStatus, botWorkStatus, sidebarStatus } from "../../m/sidebar/se
 import { sessionTitle } from "../../m/sidebar/session-title";
 import { sessionUnreadCount } from "../../m/sidebar/unread";
 import { loadWorkingOnly, onlyWorking, saveWorkingOnly, workingOrUnreadIds } from "../../m/sidebar/working-only";
+import { WINDOW_CHROME } from "../../m/window-chrome";
 import { copy, runtime } from "../../runtime";
 import { BrandMark } from "../BrandMark";
 import { Icon } from "../Icon";
@@ -366,8 +366,9 @@ export function Sidebar(props: {
     onImportProject: () => runtime.openCreateProject("import"),
   };
 
-  // The macOS traffic lights take the start of the brand row.
-  const mac = () => titleBar().left > 0;
+  // The macOS traffic lights take the start of the brand row: the host places them where the Tauri
+  // window had them (\`window.rs\`, from \`tauri.macos.conf.json\`), whether or not they show (full screen).
+  const mac = () => WINDOW_CHROME === "mac";
   const brandWidth = signal(0);
   const searchWidth = signal(0);
   /** Behind the traffic lights a list at its narrowest has no room for the mark and its buttons. */

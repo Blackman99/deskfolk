@@ -52,8 +52,24 @@ define_class!(
                 Some(windows.remove(at))
             });
             if let Some(entry) = gone {
+                crate::traffic_lights::release(MainThreadMarker::from(self), &entry.window);
                 entry.view.stop();
                 log::info!("window {} closed", entry.id);
+            }
+        }
+
+        #[unsafe(method(windowDidResize:))]
+        fn window_did_resize(&self, notification: &NSNotification) {
+            if let Some(window) = notification.object().and_then(|o| o.downcast::<NSWindow>().ok()) {
+                crate::traffic_lights::place(&window);
+            }
+        }
+
+        // AppKit lays the title bar out anew on the way out of full screen.
+        #[unsafe(method(windowDidExitFullScreen:))]
+        fn window_did_exit_full_screen(&self, notification: &NSNotification) {
+            if let Some(window) = notification.object().and_then(|o| o.downcast::<NSWindow>().ok()) {
+                crate::traffic_lights::keep(MainThreadMarker::from(self), &window);
             }
         }
     }
@@ -118,6 +134,8 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
     }
 
     window.setDelegate(Some(ProtocolObject::from_ref(&*Delegate::shared(mtm))));
+    // Where the Tauri window had them, beside the sidebar's mark (`traffic_lights.rs`).
+    crate::traffic_lights::keep(mtm, &window);
     // Cascade from the newest window, like any document app.
     let newest = WINDOWS.with_borrow(|w| w.last().map(|e| e.window.frame().origin));
     match newest {

@@ -37,6 +37,8 @@ mod snapshot;
 #[cfg(target_os = "macos")]
 mod system;
 #[cfg(target_os = "macos")]
+mod traffic_lights;
+#[cfg(target_os = "macos")]
 mod update_commands;
 mod updates;
 #[cfg(windows)]

@@ -10,7 +10,6 @@
 import type { SessionSummary } from "@real-bot/protocol";
 import { computed, Scroll, signal, Text, token, View, type ContextMenuEvent, type ViewRef } from "nsh";
 import type { SessionDragHandler } from "./session-drag";
-import { titleBar } from "nsh/desktop";
 import { copy, runtime } from "../../runtime";
 import { formatShortcut } from "../../m/keymap";
 import { searchShortcutLabel } from "../../m/search/shortcuts";
@@ -23,6 +22,7 @@ import { botWorkStatus, sameSessionStatus, sidebarStatus } from "../../m/sidebar
 import { sessionTitle } from "../../m/sidebar/session-title";
 import { sessionUnreadCount, unreadBadge } from "../../m/sidebar/unread";
 import { loadWorkingOnly, onlyWorking, saveWorkingOnly, workingOrUnreadIds } from "../../m/sidebar/working-only";
+import { WINDOW_CHROME } from "../../m/window-chrome";
 import { BrandMark } from "../BrandMark";
 import { Icon, type IconName } from "../Icon";
 import { SessionAvatar } from "../SessionAvatar";
@@ -130,10 +130,10 @@ export function SidebarRail(props: {
   const workspaceSet = () => Boolean(snapshot().settings.workspace_path);
   const settingsTip = () => (updateChecker.updateVisible ? `${copy().sidebar.settings} · ${copy().sidebar.updateAvailable}` : copy().sidebar.settings);
   /**
-   * Where the window hides its title bar and the traffic lights sit over the rail's top (`titleBar().left`,
-   * 0 while the system shows its bar), the rail makes room for them and the mark gives them its place.
+   * Where the window hides its title bar and the traffic lights sit over the rail's top (macOS: the host
+   * places them as the Tauri window did), the rail makes room for them and the mark gives them its place.
    */
-  const mac = () => titleBar().left > 0;
+  const mac = () => WINDOW_CHROME === "mac";
 
   const ACTION = "group w-[40px] h-[36px] items-center justify-center border border-transparent rounded-(--radius-sm) hover:border-line";
   const action = (active: boolean | undefined, margin = "mx-[12px]") => `${ACTION} ${margin} ${active ? "bg-accent-tint border-accent-border" : ""}`;
@@ -204,7 +204,7 @@ export function SidebarRail(props: {
         accessibilityLabel={copy().sidebar.sessions}
         desktop={{ windowDrag: true }}
         class={`flex-1 min-w-0 min-h-0 overflow-hidden items-start ${mac() ? "pl-[10px]" : ""}`}
-        style={{ paddingTop: mac() ? Math.max(40, titleBar().height) : 0 }}
+        style={{ paddingTop: mac() ? 40 : 0 }}
       >
         {/* The mark heads the folded list too, where the full one shows it beside the name. */}
         <If when={!mac()}>
