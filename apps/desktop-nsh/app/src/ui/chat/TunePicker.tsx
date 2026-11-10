@@ -15,9 +15,15 @@
  * The popover is placed by its size, its edge on the trigger: the columns line up on that edge (their
  * feet when it opens upwards) and each one after the first stands off it by a margin, so a taller
  * column opening grows the panel away from the trigger and the ones already open stay where they are.
+ *
+ * A press outside closes it, the message box and the sidebar's empty space included: NSH tells the
+ * popover of neither (`platform/press.ts`), so the picker also closes on the shell's presses that
+ * land outside its columns and its trigger. Not in a modal (the Bot↔Bot direct's): a frame measured
+ * there is the dialog's, not the window's, and a press on a row would read as outside.
  */
-import { Scroll, Text, View, effect, keymap, signal } from "nsh";
+import { Scroll, Text, View, effect, keymap, signal, type ViewRef } from "nsh";
 import { Popover } from "nsh/base";
+import { frameOf, onPressOutside } from "../../platform/press";
 import type { ModelSource } from "../../m/model-source";
 import type { TuneRow, TuneTree } from "../../m/chat/tune-picker";
 import { copy } from "../../runtime";
@@ -26,7 +32,7 @@ import { Icon } from "../Icon";
 import { ModelSourceMark } from "../ModelSourceMark";
 import { shadow } from "../styles";
 import { tip } from "../tip";
-import { narrowWindow as phoneSheet } from "../Modal";
+import { InModal, narrowWindow as phoneSheet } from "../Modal";
 import { columnHeight, columnShifts, createTune, type ColumnFrame } from "./tune-picker-state";
 
 export function TunePicker(props: {
@@ -51,6 +57,9 @@ export function TunePicker(props: {
   /** Where the popover went and the room it has there (`onPosition`); the room is null until it says. */
   const side = signal<"top" | "bottom">("top");
   const room = signal<number | null>(null);
+  /** The columns and the trigger, measured at a press to tell whether it was outside both. */
+  let panelRef: ViewRef | null = null;
+  let triggerRef: ViewRef | null = null;
 
   function measure(key: string, patch: (frame: ColumnFrame) => ColumnFrame): void {
     const now = frames()[key] ?? { height: 0, listTop: 0, scroll: 0, rows: {} };
@@ -80,11 +89,25 @@ export function TunePicker(props: {
     tune.settleActive();
   });
   effect(() => () => tune.stop());
+  const inModal = InModal();
+  // Both are read at the press: the columns grow as they open, and the box grows with its text and
+  // moves the trigger. Pressing the trigger toggles the picker itself, on release, so a press there
+  // is not outside.
+  onPressOutside(
+    async () => {
+      if (!tune.open() || phone() || inModal) return [];
+      return Promise.all([panelRef, triggerRef].map((view) => frameOf(view)));
+    },
+    () => {
+      if (tune.open() && !phone() && !inModal) tune.close();
+    },
+  );
 
   const trigger = (
     <View
       role="button"
       testID={props.testID ?? "tune-trigger"}
+      ref={(node: ViewRef) => (triggerRef = node)}
       tooltip={tip(props.title)}
       accessibilityLabel={props.label}
       accessibilityState={{ expanded: tune.open(), disabled: props.disabled }}
@@ -145,7 +168,7 @@ export function TunePicker(props: {
   };
 
   const Panel = () => (
-    <View testID="tune-panel" accessibilityLabel={props.label} class={`flex-row gap-1 ${side() === "top" ? "items-end" : "items-start"}`}>
+    <View testID="tune-panel" ref={(node: ViewRef) => (panelRef = node)} accessibilityLabel={props.label} class={`flex-row gap-1 ${side() === "top" ? "items-end" : "items-start"}`}>
       <Each of={tune.shown()} key={(level) => level.key}>
         {(level, at) => {
           const shift = () => shifts()[at()] ?? 0;

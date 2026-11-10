@@ -38,6 +38,7 @@ define_class!(
             let mtm = self.mtm();
             new_window(mtm);
             crate::wheel::install(mtm);
+            crate::press::install(mtm);
             crate::notify::setup(|click_ref| {
                 // A click brings the newest window forward and leaves the intent for the messenger.
                 let state = crate::notification_loop::state();

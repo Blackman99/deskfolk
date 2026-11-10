@@ -28,6 +28,8 @@ mod notifications;
 #[cfg(target_os = "macos")]
 mod notify;
 #[cfg(target_os = "macos")]
+mod press;
+#[cfg(target_os = "macos")]
 mod recorder;
 #[cfg(target_os = "macos")]
 mod remote_native;

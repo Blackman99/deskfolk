@@ -11,12 +11,19 @@
  * `pageOnPhone` is the messenger's `page-on-phone`: in a window 680 wide or less the dialog is the
  * whole page, its ✕ a back chevron, and only the foot's first action (full width) shows.
  */
-import { Scroll, Text, View, windowSize, type JSX } from "nsh";
+import { context, Scroll, Text, View, windowSize, type JSX } from "nsh";
 import { Dialog } from "nsh/base";
 import { Icon, type IconName } from "./Icon";
 import { IconButton } from "./IconButton";
 import { shadow } from "./styles";
 import { widthAtMost } from "../platform/viewport";
+
+/**
+ * Inside a modal's card. A view there measures (`ViewRef.measure()`) from the dialog's own root,
+ * not the window, so what compares a measured frame with the window's points (the shell's presses,
+ * `platform/press.ts`) cannot tell where it is.
+ */
+export const InModal = context(false);
 
 /** The messenger's phone breakpoint (`@media (max-width: 680px)`). */
 export const PHONE_WIDTH = 680;
@@ -79,44 +86,46 @@ export function Modal(props: {
         boxShadow: page() ? undefined : "0 24px 56px -12px rgba(18, 28, 32, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)",
       }}
     >
-      <View
-        testID={props.testID}
-        role={props.alert ? "alert" : "group"}
-        accessibilityLabel={props.title}
-        accessibilityState={{ busy: props.busy === true }}
-        class="flex-col shrink min-h-0"
-      >
+      <InModal.Provider value={true}>
         <View
-          class={`flex-row items-center border-b border-line bg-pane ${page() ? "h-[52px] pl-1 pr-[6px] gap-[2px]" : "px-5 py-[14px] justify-between gap-3"}`}
+          testID={props.testID}
+          role={props.alert ? "alert" : "group"}
+          accessibilityLabel={props.title}
+          accessibilityState={{ busy: props.busy === true }}
+          class="flex-col shrink min-h-0"
         >
-          <If when={page()}>
-            <IconButton icon="chevron-left" size="lg" label={props.backLabel ?? props.closeLabel} testID="modal-back" onPress={close} />
-          </If>
-          <View class="flex-1 min-w-0 flex-col gap-[1px]">
-            <Text role="header" class="text-[16px] font-bold text-ink line-clamp-1">
-              {props.title}
-            </Text>
-            <If when={page() && props.subject}>{props.subject}</If>
+          <View
+            class={`flex-row items-center border-b border-line bg-pane ${page() ? "h-[52px] pl-1 pr-[6px] gap-[2px]" : "px-5 py-[14px] justify-between gap-3"}`}
+          >
+            <If when={page()}>
+              <IconButton icon="chevron-left" size="lg" label={props.backLabel ?? props.closeLabel} testID="modal-back" onPress={close} />
+            </If>
+            <View class="flex-1 min-w-0 flex-col gap-[1px]">
+              <Text role="header" class="text-[16px] font-bold text-ink line-clamp-1">
+                {props.title}
+              </Text>
+              <If when={page() && props.subject}>{props.subject}</If>
+            </View>
+            {props.headExtra}
+            <If when={!page()}>
+              <IconButton icon="x" size="sm" label={props.closeLabel} testID="modal-close" disabled={props.busy} onPress={close} />
+            </If>
           </View>
-          {props.headExtra}
-          <If when={!page()}>
-            <IconButton icon="x" size="sm" label={props.closeLabel} testID="modal-close" disabled={props.busy} onPress={close} />
+          <If
+            when={props.scroll !== false}
+            else={<View class={`flex-col shrink min-h-0 ${props.bodyClass ?? "px-5 py-[18px] gap-[14px]"}`}>{props.children}</View>}
+          >
+            <Scroll class="shrink min-h-0">
+              <View class={`flex-col ${props.bodyClass ?? "px-5 py-[18px] gap-[14px]"}`}>{props.children}</View>
+            </Scroll>
+          </If>
+          <If when={props.foot}>
+            <View class={`flex-row justify-end gap-[10px] border-t border-line bg-sidebar-bg ${page() || narrowWindow() ? "px-4 py-3" : "px-5 py-[14px]"}`}>
+              {props.foot}
+            </View>
           </If>
         </View>
-        <If
-          when={props.scroll !== false}
-          else={<View class={`flex-col shrink min-h-0 ${props.bodyClass ?? "px-5 py-[18px] gap-[14px]"}`}>{props.children}</View>}
-        >
-          <Scroll class="shrink min-h-0">
-            <View class={`flex-col ${props.bodyClass ?? "px-5 py-[18px] gap-[14px]"}`}>{props.children}</View>
-          </Scroll>
-        </If>
-        <If when={props.foot}>
-          <View class={`flex-row justify-end gap-[10px] border-t border-line bg-sidebar-bg ${page() || narrowWindow() ? "px-4 py-3" : "px-5 py-[14px]"}`}>
-            {props.foot}
-          </View>
-        </If>
-      </View>
+      </InModal.Provider>
     </Dialog>
   );
 }
