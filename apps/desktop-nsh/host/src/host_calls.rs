@@ -32,7 +32,13 @@ pub fn install(host: &HostChannel, window_id: u32, identity: &Identity) {
         on_main(|mtm| crate::app::new_window(mtm));
     });
 
-    // A press elsewhere takes the keyboard from the field that edits (`press.rs`).
+    // A press elsewhere takes the keyboard from the field that edits (`press.rs`): by itself, or,
+    // while the app shows a list that keeps the focus (`shell.keepers`), when the app asks.
+    host.handle("shell.keepers", move |call: HostCall| {
+        let count = call.data().as_u64().unwrap_or(0);
+        call.resolve(Value::Null);
+        crate::press::set_keepers(window_id, count);
+    });
     host.handle("shell.blur", |call: HostCall| {
         let number = call.data().as_u64();
         call.resolve(Value::Null);

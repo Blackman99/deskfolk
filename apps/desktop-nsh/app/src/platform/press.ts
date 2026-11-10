@@ -14,10 +14,10 @@
  * outside. Closing must be safe to repeat: where NSH does see the press, both close.
  *
  * A press elsewhere also takes the keyboard from a text field, as a page's `mousedown` does (NSH
- * leaves it in the field, as AppKit apps do): the shell marks a primary press on the app's own
- * views while a field edits (`unfocus`), and unless the press lands where the focus stays, the
- * field is let go (`shell.blur`). Where it stays are the messenger's `preventDefault` places, each
- * kept by its component while it shows:
+ * leaves it in the field, as AppKit apps do): the shell lets the field go as the button goes down
+ * (`host/src/press.rs`). While a list that picks for the field shows (the messenger's
+ * `preventDefault` places, each kept by its component while it shows), the shell marks such a
+ * press instead (`unfocus`) and the field goes (`shell.blur`) unless the press is in the list:
  *
  *   keepFocusIn(() => frameOf(area));
  */
@@ -58,6 +58,7 @@ export function outsideAll(boxes: ReadonlyArray<Box | null | undefined>, x: numb
 /** Listens for the shell's presses; once, outside any component, so no unmount stops it. */
 export function installPress(): void {
   if (!host.available()) return;
+  reportKeepers();
   host.on("shell.press", (data) => {
     const event = data as unknown as ShellPress;
     for (const listener of [...listeners]) listener(event);
@@ -82,7 +83,16 @@ async function unfocusUnlessKept(event: ShellPress, number: number): Promise<voi
  */
 export function keepFocusIn(boxes: Boxes): void {
   keepers.add(boxes);
-  cleanup(() => keepers.delete(boxes));
+  reportKeepers();
+  cleanup(() => {
+    keepers.delete(boxes);
+    reportKeepers();
+  });
+}
+
+/** Tells the shell how many lists keep the focus now: with none, it lets a field go by itself. */
+function reportKeepers(): void {
+  if (host.available()) void host.call("shell.keepers", keepers.size).catch(() => undefined);
 }
 
 /**

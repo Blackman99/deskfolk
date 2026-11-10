@@ -11,28 +11,35 @@
 //! `shell.wheel`'s); `button` is 0 for the primary button, 2 for the secondary one (a right click
 //! or a control-click), 1 for any other. The event goes on to AppKit untouched.
 //!
-//! A press also tells whether it may take the keyboard from a text field (`unfocus`). NSH leaves the
-//! focus in a field that edits when a click lands elsewhere, as AppKit apps do; the messenger's
-//! fields lose it, as a page's do on a `mousedown` outside them, and the app's code (blur commits,
-//! the message box's focus look, keys that act once no field edits) is the messenger's. So a
-//! primary press on the app's own views (not on a hosted AppKit view: a field, a scroller) while a
-//! text view edits carries its number, and the app, unless the press is somewhere it keeps the
-//! focus (lists that pick for the field: the messenger's `preventDefault` places), asks
-//! `shell.blur` with it ([`blur`]). The field goes only if that press is still the latest, its
-//! button is still down and the same field still has the keyboard: a press that moved the focus on
-//! meanwhile keeps it where it went, and once the button is up the app's own press handlers (which
-//! run on the release, and may focus that very field: quoting a line into the message box) have
-//! had their say, so a late answer changes nothing (the answer takes well under a millisecond, a
-//! click about a tenth of a second). A window has one field editor for all its single-line fields,
-//! so the field is the editor and the field it edits (its delegate).
+//! A press also takes the keyboard from a text field. NSH leaves the focus in a field that edits
+//! when a click lands elsewhere, as AppKit apps do (upstream's main too); the messenger's fields
+//! lose it, as a page's do on a `mousedown` outside them, and the app's code (blur commits, the
+//! message box's focus look, keys that act once no field edits) is the messenger's. So a primary
+//! press on the app's own views (not on a hosted AppKit view: a field, a scroller) while a text
+//! view edits lets the field go ([`let_go`]), there and then, before NSH hears of the press: its
+//! press handlers (which may focus a field again: quoting a line into the message box) come after.
+//!
+//! While the app shows a list that picks for a field (the @ list, the / commands, a filter's rows:
+//! the messenger's `preventDefault` places, `keepFocusIn` in `app/src/platform/press.ts`, counted
+//! here through `shell.keepers`), the app decides: the press carries its number (`unfocus`), and
+//! the app asks `shell.blur` with it unless the press is in such a list ([`blur`]). The field goes
+//! only if that press is still the latest, its button is still down and the same field still has
+//! the keyboard: once the button is up, the app's press handlers have had their say. (A tap whose
+//! release comes before the answer keeps the field, which only happens while a list is open; the
+//! answer takes well under a millisecond, but a tap's down and up can come together.) A window has
+//! one field editor for all its single-line fields, so the field is the editor and the field it
+//! edits (its delegate).
 //!
 //! Some views draw their own text and type through a hidden field (a sink): the message box and
-//! the code editor (nsh/base's `RichEditor`, `Editor`), `TimeField`, the terminal, the remote
-//! screen's keyboard. A press anywhere in such a view is a press in the field: a sink (a field a
-//! point or two wide or tall, or fully transparent) keeps the keyboard for presses inside the view
-//! that holds it ([`sink_owner`]).
+//! the code editor (nsh/base's `RichEditor`, `Editor`), the terminal, the remote screen's keyboard.
+//! A press anywhere in such a view is a press in the field: a sink (a field a point or two wide or
+//! tall, or fully transparent) keeps the keyboard for presses inside the view that holds it
+//! ([`sink_owner`]). (`TimeField` and `OtpInput` lay their transparent field over the whole
+//! control, so a press on them lands in the field itself.)
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::sync::Mutex;
 use std::ptr::NonNull;
 
 use block2::RcBlock;
@@ -54,6 +61,22 @@ thread_local! {
     static COUNT: Cell<u64> = const { Cell::new(0) };
     /// The number of the latest press whose primary button came up.
     static RELEASED: Cell<u64> = const { Cell::new(0) };
+}
+
+/// How many lists that keep the focus (`keepFocusIn`) each window's app shows (`shell.keepers`,
+/// from the engine's thread).
+static KEEPERS: Mutex<Option<HashMap<u32, u64>>> = Mutex::new(None);
+
+/// `shell.keepers`: window `window`'s app now shows `count` lists that keep the focus.
+pub fn set_keepers(window: u32, count: u64) {
+    let mut keepers = KEEPERS.lock().unwrap_or_else(|e| e.into_inner());
+    keepers.get_or_insert_with(HashMap::new).insert(window, count);
+}
+
+/// Whether some app shows a list that keeps the focus: then the app decides about a press.
+fn keepers_shown() -> bool {
+    let keepers = KEEPERS.lock().unwrap_or_else(|e| e.into_inner());
+    keepers.as_ref().is_some_and(|k| k.values().any(|&n| n > 0))
 }
 
 /// NSH's own views (`nsh-platform-macos` `view.rs`): the root's `hitTest:` returns one of these for
@@ -81,7 +104,12 @@ pub fn install(mtm: MainThreadMarker) {
                 c.set(c.get() + 1);
                 c.get()
             });
-            let field = if button == 0 { editing_elsewhere(&window, e) } else { None };
+            let mut field = if button == 0 { editing_elsewhere(&window, e) } else { None };
+            if !keepers_shown()
+                && let Some(view) = field.take()
+            {
+                let_go(&window, &view);
+            }
             let unfocus = field.as_ref().map_or(Value::Null, |_| json!(number));
             LATEST.with_borrow_mut(|latest| {
                 *latest = (number, field.as_deref().map(|view| Field { view: Weak::from(view), edits: edited_by(view) }));
@@ -171,16 +199,22 @@ pub fn blur(number: u64) {
     if !same_view || edited_by(&field) != edits {
         return;
     }
+    let_go(&window, &field);
+}
+
+/// `field` gives up the keyboard to NSH's root, as NSH's own `blur()` does, its composition
+/// committed first.
+fn let_go(window: &NSWindow, field: &NSTextView) {
     // NSH's root: the outermost of its views around the field.
     let mut root: Option<Retained<NSView>> = None;
-    let mut at = superview(&field);
+    let mut at = superview(field);
     while let Some(view) = at {
         if view.class().name().to_str() == Ok(NSH_VIEWS[0]) {
             root = Some(view.clone());
         }
         at = superview(&view);
     }
-    commit_marked(&field);
+    commit_marked(field);
     window.makeFirstResponder(None);
     if let Some(root) = root {
         window.makeFirstResponder(Some(&root));
