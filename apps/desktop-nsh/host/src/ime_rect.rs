@@ -11,8 +11,9 @@
 //! The shell wraps `NSTextView`'s method: when AppKit's rect has no height, it answers the top line
 //! of what the view shows instead, in screen coordinates. For the sink that is the line at the
 //! caret, which is what the first composition got. A rect AppKit can tell is passed on untouched.
-//! Remove this when an NSH release no longer keeps committed text in the sink (no upstream change
-//! for it yet).
+//! NSH fixed it the same way after 0.4.0 (longbridge/nsh#1502: the multiline input's text view
+//! answers its visible rect when AppKit answers zero), in nightly but in no release yet. Remove
+//! this with an NSH release that has it.
 
 use std::sync::OnceLock;
 
