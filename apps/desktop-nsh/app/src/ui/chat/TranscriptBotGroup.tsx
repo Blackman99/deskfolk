@@ -8,7 +8,8 @@
  *
  * Differences from the Svelte group (which took DOM events): a secondary press, and the hover pill's
  * "more", go to `onContextMenu(message, position)` for the shell to open the message's menu; the
- * pill shows while the pointer is over a part (`message-pill`); a part's commands are read when
+ * pill shows while the pointer is over a part (`message-pill`), and so does the part's hover ground
+ * (the stage's rule in the Svelte); a part's commands are read when
  * it mounts (the virtualised list mounts what is near) instead of when an observer sees it; the
  * found-line pulse is a still ring; `data-ui="bubble-bot"` (a profile CSS hook) has no counterpart.
  */
@@ -122,6 +123,12 @@ function Reply(props: { item: MessageItem; last: boolean; stage: TranscriptStage
   const self = signal<ViewRef | null>(null);
   const arrive = arriveMotion(() => stage.arriving.has(transcriptItemKey(props.item)));
   const ringed = () => stage.highlightedId === msg().id || stage.selectedMessageId === msg().id;
+  /**
+   * Which reply, or which part of one, the pointer is on (ChatStage.svelte): a reply has no bubble,
+   * so under the pointer the part takes a row's faint ground. It steps aside for the ring, and while
+   * a message's menu is open, so the ring alone says which one that is for.
+   */
+  const grounded = () => hover.hot() && !ringed() && stage.selectedMessageId === null;
   /** The turn whose commands this part hosts, if it is this part. */
   const ranIn = () => (msg().turn_id && stage.commandHosts.has(msg().id) ? msg().turn_id : null);
   const duration = () => calculateBotDuration(msg(), stage.snapshot.messages, stage.snapshot.turns, stage.messageLookup);
@@ -194,7 +201,7 @@ function Reply(props: { item: MessageItem; last: boolean; stage: TranscriptStage
       ref={(node: ViewRef) => self.set(node)}
       {...hover.message}
       onContextMenu={(e) => props.onContextMenu?.(msg(), e.pagePosition)}
-      class={`relative w-full ${ringed() ? "rounded-[16px]" : ""}`}
+      class={`relative w-full transition-colors duration-[120ms] ${ringed() ? "rounded-[16px]" : ""} ${grounded() ? "bg-row-hover" : ""}`}
       style={{ ...ringStyle(ringed()), opacity: arrive.opacity, transform: [...arrive.transform] }}
     >
       {/* An overlay on this part's top edge (`message-pill`), above the rows around it. */}
