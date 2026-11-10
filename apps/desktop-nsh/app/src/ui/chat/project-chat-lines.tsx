@@ -1,8 +1,13 @@
 /**
  * The lines of a project session's transcript (`ProjectChat.svelte`): the app's, centred in a chip;
  * yours on the right in a bubble with its files; the agent's on the left as Markdown with the
- * commands it ran folded under it (and a way into its subagents) and the time. A day line above the
- * first line of each day, and the line that says an earlier page is on its way.
+ * commands it ran folded under it (and a way into its subagents). A day line above the first line
+ * of each day, and the line that says an earlier page is on its way.
+ *
+ * Not as the messenger: an agent line's time stands in a column of its own on its left, level with
+ * its first line, rather than on a line of its own under it. The transcript is one selection
+ * (`ProjectChat`), and the times, the day lines and the earlier line stay out of it, so a drag runs
+ * from one line into the next and copies the words alone.
  */
 import { Text, View } from "nsh";
 import type { Message } from "@real-bot/protocol";
@@ -28,7 +33,7 @@ function DayLine(props: { at: string; locale: "en" | "zh" }) {
   return (
     <View testID="project-day" class="relative items-center justify-center mt-[10px] w-full">
       <View class="absolute left-0 right-0 h-[1px] bg-line-subtle" />
-      <Text class="px-3 bg-pane text-[11px] font-semibold text-ink-muted">{formatDateDivider(props.at, props.locale)}</Text>
+      <Text class="select-none px-3 bg-pane text-[11px] font-semibold text-ink-muted">{formatDateDivider(props.at, props.locale)}</Text>
     </View>
   );
 }
@@ -36,10 +41,13 @@ function DayLine(props: { at: string; locale: "en" | "zh" }) {
 export function EarlierLine(props: { loading: boolean }) {
   return (
     <View role="text" testID="project-earlier" class="items-center w-full">
-      <Text class="text-[12px] text-ink-muted">{props.loading ? copy().stream.loadingEarlier : " "}</Text>
+      <Text class="select-none text-[12px] text-ink-muted">{props.loading ? copy().stream.loadingEarlier : " "}</Text>
     </View>
   );
 }
+
+/** The column an agent line's time stands in, the gap to the words included. */
+const TIME_COLUMN = 44;
 
 export function ProjectLine(props: {
   message: Message;
@@ -54,8 +62,11 @@ export function ProjectLine(props: {
   const who = () => lineOf(msg());
   const hosted = () => s().placed().byLine.get(msg().id) ?? [];
   const kept = () => (focusMode.on ? [] : s().keptRows(hosted()));
+  // Out of the transcript's selection: a drag across lines passes over it and copies the words alone.
   const time = () => (
-    <Text testID="project-line-time" class="text-[11px] text-ink-muted">{formatMessageTime(msg().created_at)}</Text>
+    <Text testID="project-line-time" class="select-none text-[11px] text-ink-muted" style={{ fontVariant: ["tabular-nums"] }}>
+      {formatMessageTime(msg().created_at)}
+    </Text>
   );
   return (
     <View testID={`project-line-${msg().id}`} class="w-full gap-[14px]">
@@ -86,18 +97,21 @@ export function ProjectLine(props: {
         </View>
       </If>
       <If when={who() === "agent"}>
-        <View testID="project-line-agent" class="items-start w-full">
+        <View testID="project-line-agent" class="relative items-start w-full" style={{ paddingLeft: TIME_COLUMN }}>
+          {/* The time in the column on the left, level with the first line. Placed, not a row's first
+              item: in a row NSH 0.4 measures a wrapping paragraph at its unwrapped width. */}
+          <View testID="project-line-time-column" class="absolute left-0 top-[4px]" style={{ width: TIME_COLUMN - 8 }}>
+            {time()}
+          </View>
           {/* The whole line wide, as a wrapping paragraph is in the messenger. Left to fit its text, NSH
               narrowed it to its widest line yet kept the heights measured at the full width: a paragraph
-              that wrapped once more than measured ran under the time, and its last line was cut. */}
+              that wrapped once more than measured ran under what followed it, and its last line was cut. */}
           <MarkdownBody class="self-stretch" source={msg().body} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={(path) => s().openCited(path, msg().id)} />
-          <View class="self-stretch mt-[3px]">
-            <If when={kept().length > 0} else={time()}>
-              <View class="mt-[5px]">
-                <CommandActivity rows={kept()} beside={time()} />
-              </View>
-            </If>
-          </View>
+          <If when={kept().length > 0}>
+            <View class="self-stretch mt-[8px]">
+              <CommandActivity rows={kept()} />
+            </View>
+          </If>
           <If when={!focusMode.on}>
             <ProjectSubagentEntry tasks={hosted().filter((task) => task.kind === "subagent")} onOpen={(task) => s().subagentOpen.set(task.id)} />
           </If>

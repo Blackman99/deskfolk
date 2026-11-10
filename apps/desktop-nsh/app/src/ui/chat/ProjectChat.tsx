@@ -115,7 +115,10 @@ export function ProjectChat(props: {
         stageHeight.set(e.bounds.size.height);
       }}
     >
-      <View class="flex-1 min-h-0">
+      {/* One selection across the lines, as the messenger's page is: a drag runs from one line into the
+          next (each Markdown body alone stopped it at its end). On this view: a List takes no
+          `selectable` of its own. */}
+      <View class="flex-1 min-h-0" selectable>
         <If when={empty()}>
           <Text testID="project-empty" class="my-10 text-center text-[13px] text-ink-muted">
             {t().project.empty(state.agentName())}

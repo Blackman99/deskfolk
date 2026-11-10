@@ -120,6 +120,7 @@
   - 信使里还有一处直接读 `document` 的地方：`runtime.reportDesktopNotificationView`、`sendPresenceHeartbeat`。NSH 没有 `document`，前者在 `try` 里抛错被吞，从不到达宿主，后者开头就返回。所以 `runtime.nativeFocusFacts` 永远停在初始的「什么都不可见、什么都没焦点」，**不要拿它当闸**：会话的已读（`ui/chat/stage-reading.ts`）曾因此在桌面上一条都读不了，项目会话的未读标记一直在。已读只认 `lifecycle()`。
   - 在场上报（宿主把「哪个会话在看」告诉守护进程，用来压掉正在看的会话的桌面通知）因此在 NSH 上还没接通；要接，把这两处改成读 `lifecycle()`，并先看通知抑制的行为。
 - `ref` 只能是函数（或 `let` 变量）：`ref={undefined}`、`ref={条件 ? fn : undefined}` 会在运行时抛错。只在某些情况下才要的 ref，写成总是存在的函数，里面再判断。
+- **跨几段文字的选择要一个外层选区**：每个 `selectable` 视图（`MarkdownBody` 自己就是）各管各的选区，拖选到它的末尾就停，进不了下一条消息。要像网页那样一路选下去，在外面包一个 `<View selectable>`（里面的选区并进外层的）；`List` 不认 `selectable`（JS 只把它交给 `View`），包在 `List` 外面。不该进选区的字（时间、日期线）写 `select-none`，拖选从上面跨过去，复制出来也没有它们。NSH 会把列表回收的单元格按位置排回阅读顺序，倒置列表也对。例子：`ui/chat/ProjectChat.tsx`、`ui/chat/project-chat-lines.tsx`。
 
 ## 不要做的
 
