@@ -100,8 +100,9 @@ export function MapSide(props: {
             </If>
           </View>
           <View class="flex-1 min-w-0 gap-[3px]">
+            {/* The name gives way and wraps, as `<strong>` does in a flex row: items don't shrink in NSH, so it pushed the follow button off the card. */}
             <View class="flex-row items-center gap-[6px]">
-              <Text class="text-[14px] font-bold text-ink">{name()}</Text>
+              <Text class="shrink min-w-0 text-[14px] font-bold text-ink">{name()}</Text>
               <Text class={`text-[11px] font-semibold rounded-full px-2 py-px ${CHIP[p.main.status]!.bg} ${CHIP[p.main.status]!.ink}`}>{statusText(p.main, t())}</Text>
               <FollowButton
                 testID={`taskmap-follow-${p.main.b}`}
@@ -151,7 +152,7 @@ export function MapSide(props: {
                   </View>
                   <View class="flex-1 min-w-0 gap-[3px]">
                     <View class="flex-row items-center gap-[6px]">
-                      <Text class="text-[14px] font-bold" style={{ color: cssColor(props.colors[sub().b] ?? "#146a7c") }}>{sub().short}</Text>
+                      <Text class="shrink min-w-0 text-[14px] font-bold" style={{ color: cssColor(props.colors[sub().b] ?? "#146a7c") }}>{sub().short}</Text>
                       <Text class={`text-[11px] font-semibold rounded-full px-2 py-px ${CHIP[sub().status]!.bg} ${CHIP[sub().status]!.ink}`}>{statusText(sub(), t())}</Text>
                     </View>
                     <Text class="text-[13px] text-ink-muted line-clamp-1">{`${sub().description ?? ""}${sub().modelShort ? ` · ${sub().modelShort}` : ""}`}</Text>

@@ -101,6 +101,7 @@
 - `keymap` 同一个键只有最新绑定的那个生效：同时开着两个都绑 Escape 的东西，旧的听不到。焦点在输入框里还要响应的快捷键加 `{ when: "always" }`。
 - 键名没有 `"+"`、`"-"`：写 `plus`、`minus`。
 - `flex-shrink` 不认，写 `shrink`；CSS 变量做圆角（`rounded-(--radius-bot)`）要是主题里没有就换成具体值。
+- 横排里的子项默认不收缩（照 RN，`flex-shrink` 是 0）：CSS 里会让位、折行的 `<strong>` / `<span>`，在这里按一整行的宽度排开，把后面的东西挤出框外（任务地图侧栏的名字曾把「跟随」挤出卡片）。要让位的那段文字写 `shrink min-w-0`；所在的纵列宽度由外面定（`flex-1`）时，它照常折行，行跟着长高，不会碰上后面那条说的高度问题。
 - `If` 的函数子节点拿到的是读取函数，别把它存下来到别处再读：在用的地方直接从原数据取。
 - **NSH 的视图收不到滚轮**（只有它自己的 `Scroll` / `List` 能滚）。要自己缩放、平移、滚动的视图（画布、看图、轨迹、地图、终端回滚）用 `src/platform/wheel` 的 `onWheel(() => ref, (e, at) => …)`：外壳把滚轮、触控板双指滚动和捏合转给应用，事件照 DOM 的 `WheelEvent`（`dy` 向下为正，捏合是 `ctrl` 加 `dy = -100·ln(倍数)`），`at` 是视图里的坐标。信使里 `onwheel` 的处理照搬过来就行。
 - **倒置 `List` 的 `scrollToIndex` 里，`viewPosition` 是镜像的**：0 是那一行的下沿对齐视口下沿，1 是它的上沿对齐视口上沿。回到底部曾写成 `{ index: 0, viewPosition: 1 }`，最新一条比视口矮时被夹到底部，看不出毛病；比视口高（长回复、大代码块）就停在它的开头，下半截在视口外（距底部 = 行高 + 顶部内边距 − 视口高）。要「到底」写 `viewPosition: 0` 加一个超过底部内边距的 `viewOffset`，列表会按内容夹取。`scrollToOffset` 对独立列表不夹取，别拿它去「够到底」。`stories/stage-scroll.tsx` 和 `.ui/stage-scroll.test.tsx` 拿最新一行 900pt 高的列表量落点。
