@@ -17,7 +17,7 @@
  */
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 
 const app = resolve(import.meta.dir, "../app");
@@ -40,6 +40,9 @@ const PLAIN = new Map<string, string>([
   // Its style comes from `gripStyle`, which gives each grip its resize cursor.
   ["src/ui/workbench/WorkbenchFloat.tsx wb-grip-", "a resize grip"],
 ]);
+
+/** A source's path under `app/`, with forward slashes on every platform, as `PLAIN` names it. */
+const appPath = (file: string) => relative(app, file).split(sep).join("/");
 
 function sources(): string[] {
   const out = [join(app, "App.tsx"), join(app, "Hosted.tsx")];
@@ -73,7 +76,7 @@ function misses(): string[] {
   for (const file of sources()) {
     const sf = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const base = baseImports(sf);
-    const rel = relative(app, file);
+    const rel = appPath(file);
     const visit = (node: ts.Node) => {
       if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
         const attr = (name: string) =>
@@ -113,7 +116,7 @@ test("every view on the plain list still exists", () => {
     const src = readFileSync(file, "utf8");
     for (const key of PLAIN.keys()) {
       const [path, id] = key.split(" ");
-      if (relative(app, file) === path && src.includes(id)) ids.add(key);
+      if (appPath(file) === path && src.includes(id)) ids.add(key);
     }
   }
   expect([...PLAIN.keys()].filter((key) => !ids.has(key))).toEqual([]);
