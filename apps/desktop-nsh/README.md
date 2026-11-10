@@ -1,6 +1,6 @@
 # apps/desktop-nsh：NSH 原生客户端（试做）
 
-> **试做，只在 `nsh-spike` 分支。** 用 longbridge 的 [Native Shell（NSH）](https://nsh.dev) 0.4.0 重写客户端：一份 TSX 界面，跑在 macOS、Windows、Linux 的原生窗口里，也编成 web 包给手机和平板；NSH 没有的东西在它上面补，不用 WebView。结论和数字见 [ADR 0107](../../docs/adr/0107-spike-native-desktop-on-nsh.md)。
+> **试做，只在 `nsh-spike` 分支。** 用 longbridge 的 [Native Shell（NSH）](https://nsh.dev) 重写客户端（跟上游 `main` 的一个提交，见下面「NSH 的版本」）：一份 TSX 界面，跑在 macOS、Windows、Linux 的原生窗口里，也编成 web 包给手机和平板；NSH 没有的东西在它上面补，不用 WebView。结论和数字见 [ADR 0107](../../docs/adr/0107-spike-native-desktop-on-nsh.md)。
 
 ## 结构
 
@@ -45,7 +45,9 @@
 
 ## 命令
 
-需要：`nsh` 0.4.0（`curl -fsSL https://nsh.dev/install.sh | NSH_VERSION=v0.4.0 sh`）、Rust、Bun、Xcode 命令行工具；web 包还要 `rustup target add wasm32-unknown-unknown` 和 `rustup component add llvm-tools`（`llvm-ar`）；终端要一份 pty helper（macOS `apps/runtime-helper` 的 `swift build`，Linux 和 Windows `apps/conpty-helper`）。跑 `nsh test` / `nsh check` 时 `cargo` 要在 PATH 上（它们会编 `app/native`）。
+需要：Rust、Bun、Xcode 命令行工具（`nsh` 命令行由脚本自己从源码编，见下面「NSH 的版本」）；web 包还要 `rustup target add wasm32-unknown-unknown` 和 `rustup component add llvm-tools`（`llvm-ar`）；终端要一份 pty helper（macOS `apps/runtime-helper` 的 `swift build`，Linux 和 Windows `apps/conpty-helper`）。跑 `nsh test` / `nsh check` 时 `cargo` 要在 PATH 上（它们会编 `app/native`）。
+
+**NSH 的版本**：宿主和 `app/native` 用的 NSH crate 都从上游 `main` 的同一个提交来（`Cargo.toml` 里 `nsh-*` 的 `rev`），`nsh` 命令行也必须是这个提交编出来的：bundle 格式和引擎要对得上，`app/native` 的胶水代码也是它生成的。`scripts/nsh-cli.ts` 读这个 `rev`，在 `~/.cache/deskfolk-nsh/<rev>`（`DESKFOLK_NSH_CACHE` 可改）里浅克隆这个提交、`cargo build --release --locked -p nsh-cli`，每个提交只编一次（几分钟）；`dev.ts`、`ui-tests.ts` 和其余脚本都从它拿命令行，缺了就先编，`NSH=<路径>` 照样能指定别的。它不碰 `~/.local/bin/nsh`。下面命令里手敲的 `nsh` 指的是这一个：`$(bun apps/desktop-nsh/scripts/nsh-cli.ts --check)`。换到更新的 NSH：把所有 `nsh-*` 的 `rev` 一起改掉，`cargo update -p nsh-core` 让 `Cargo.lock` 跟上，再跑一遍测试；CI（`.github/workflows/nsh-desktop.yml`）按同一个 `rev` 编命令行。
 
 ```sh
 bun apps/desktop-nsh/scripts/dev.ts            # 起开发运行时（没起的话）、编宿主、编界面，打开「Deskfolk Dev」；改 app/ 自动重载

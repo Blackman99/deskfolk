@@ -19,6 +19,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { LOCAL_API_NAME } from "../../../packages/protocol/src/index.ts";
 import { APP_ICON_FILE, DEV_APP_NAME, DEV_BUNDLE_ID, DEV_ORIGIN, devInstance, placeAppIcon, registerAppIcon } from "./dev-instance";
+import { nshCli } from "./nsh-cli";
 
 const root = resolve(import.meta.dir, "..");
 const repo = resolve(root, "../..");
@@ -27,7 +28,7 @@ const story = process.env.DESKFOLK_STORY;
 const appBuild = join(build, story ? "story" : "app");
 const bundleApp = join(build, `${DEV_APP_NAME}.app`);
 const executable = join(bundleApp, "Contents", "MacOS", "deskfolk-nsh");
-const nsh = process.env.NSH ?? join(homedir(), ".local", "bin", "nsh");
+const nsh = nshCli({ build: true });
 const cargo = process.env.CARGO ?? join(homedir(), ".cargo", "bin", "cargo");
 const instance = devInstance();
 const children: ChildProcess[] = [];

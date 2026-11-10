@@ -14,6 +14,9 @@ async function openModal(width = 1100, height = 900) {
 const settings = (app: App) => (app.texts().find((t) => t.startsWith("settings:")) ?? "").slice("settings:".length);
 const title = (app: App) => app.texts().find((t) => t === "设置") ?? "";
 const restore = async (app: App) => {
+  // On a phone settings is the whole window, over the story's buttons: Back walks out of it first
+  // (one level at a time), as a person would.
+  for (let i = 0; i < 6 && app.shows("id:settings-modal"); i++) await app.back().catch(() => undefined);
   await app.press("id:story-cleanup");
   await app.waitFor("text:log:cleaned", { timeout: 15_000 });
 };
@@ -117,7 +120,7 @@ test("on a phone the nav is the first page, a tab opens one level deeper, and Ba
     await app.waitFor("id:settings-nav");
     expect(settings(app)).toBe("open:list:ok");
     // At the list there is nothing to step out of: the shell's Back leaves settings.
-    await app.press("id:story-settings-back");
+    await app.keyboard.press("mod+shift+b");
     await app.waitUntil(() => app.texts().includes("log:back:false"));
   } finally {
     await restore(app);
@@ -132,11 +135,11 @@ test("on a phone Models lists its sections, a section opens under its name, and 
     await app.press("id:section-endpoints");
     await app.waitFor("id:models-panel");
     expect(app.texts()).toContain("端点");
-    await app.press("id:story-settings-back");
+    await app.keyboard.press("mod+shift+b");
     await app.waitUntil(() => app.texts().includes("log:back:true"));
     await app.waitFor("id:section-endpoints");
     expect(settings(app)).toBe("open:detail:ok");
-    await app.press("id:story-settings-back");
+    await app.keyboard.press("mod+shift+b");
     await app.waitFor("id:settings-nav");
     expect(settings(app)).toBe("open:list:ok");
     // ✕ on a page steps out as Back does; on the list it closes settings.
@@ -169,7 +172,7 @@ test("on a phone the endpoint editor is a page over settings and Back leaves it 
     await app.waitFor("id:provider-add");
     await app.press("id:provider-add");
     await app.waitFor("id:provider-editor");
-    await app.press("id:story-settings-back");
+    await app.keyboard.press("mod+shift+b");
     await app.waitUntil(() => app.texts().includes("log:back:true"));
     await app.waitFor("id:provider-editor", { state: "gone", timeout: 15_000 });
     expect(app.shows("id:models-panel")).toBe(true);

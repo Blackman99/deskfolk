@@ -9,10 +9,11 @@
  * agent the story answers for, since the fixture daemon has no endpoint to list models from.
  * `story-add-provider` makes a real endpoint on the runtime (`T-routing`, two models) and
  * `story-read` reads what the daemon holds into `story-probe`; `story-cleanup` takes back what a test
- * changed.
+ * changed. The shell's Back is `story-settings-back`, and `mod+shift+b` too: on a phone settings is
+ * the whole window, over the story's buttons, as the phone's Back is no button either.
  */
 import type { AgentsStatusResponse, ClaudeCodeStatus, ModelLadderRung, Provider } from "@real-bot/protocol";
-import { Scroll, signal, Text, View } from "nsh";
+import { cleanup as onCleanup, keymap, Scroll, signal, Text, View } from "nsh";
 import { copy, runtime } from "../src/runtime";
 import { dangerCopy } from "../src/m/overlays/danger-confirm.ts";
 import type { ProviderEditorState } from "../src/m/settings/provider-form.ts";
@@ -83,6 +84,8 @@ export default function SettingsRouting() {
   const mobileDetail = signal(false);
   const deleting = signal<string | null>(null);
   let handle: SettingsModalHandle | null = null;
+  const settingsBack = () => log.set(`back:${handle?.backWithinSettings()}`);
+  onCleanup(keymap.bind("mod+shift+b", settingsBack, { when: "always" }));
 
   async function patchImmediate(patch: { locale?: "zh" | "en"; theme?: "system" | "light" | "dark"; launch_at_login?: boolean }): Promise<boolean> {
     saveFailed.set(false);
@@ -160,7 +163,7 @@ export default function SettingsRouting() {
         {button("story-cleanup", "cleanup", () => void cleanup())}
         {button("story-add-provider", "add endpoint", () => void addProvider())}
         {button("story-pending", "pending", () => (runtime.pendingMutation = runtime.pendingMutation ? null : { id: "m-1", code: "unknown" }))}
-        {button("story-settings-back", "settings back", () => log.set(`back:${handle?.backWithinSettings()}`))}
+        {button("story-settings-back", "settings back", settingsBack)}
         <Text testID="story-log" class="text-[12px] text-ink-muted">{`log:${log()}`}</Text>
         <Text testID="story-roles-back" class="text-[12px] text-ink-muted">{`roles-back:${roleBack()}`}</Text>
         <Text testID="story-ladder" class="text-[12px] text-ink-muted">{`ladder:${saved()}`}</Text>

@@ -140,6 +140,8 @@ test("the categories show their share; a category with several lines opens, and 
   expect(app.shows("id:spend-kinds-feedback")).toBe(false);
   await app.press("id:spend-category-toggle-feedback");
   await app.waitFor("id:spend-kinds-feedback");
+  // The opened lines run past the page's fold, over the story's bar: scrolled up into view, as by hand.
+  await app.scroll("id:spend-kind-route_learn", 240);
   await app.press("id:spend-kind-route_learn");
   await app.waitFor("id:spend-chip-kind");
   expect((state(app).drill as { kind: string[] }).kind).toEqual(["route_learn"]);

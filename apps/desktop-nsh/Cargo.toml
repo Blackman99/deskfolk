@@ -9,11 +9,18 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
-# NSH, pinned to the CLI that builds the bundles (`nsh --version`): the bundle format and the
-# engine must match.
-nsh-platform-macos = "=0.4.0"
-nsh-engine = { version = "=0.4.0", default-features = false }
-nsh-core = "=0.4.0"
+# NSH from its `main`, at one commit (`rev`), the same for every crate and for the CLI that
+# builds the bundles: the bundle format and the engine must match, and the CLI writes the glue the
+# app's crate builds with. `scripts/nsh-cli.ts` builds that CLI from this `rev` (CI does too); to
+# move to a newer NSH, change the `rev` of all of them at once and rebuild. The CLI reads the app's
+# crate's declared Git dependency to build its tests against the same checkout, which a
+# `[patch.crates-io]` table would hide from it.
+nsh-platform-macos = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3" }
+nsh-platform-windows = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3" }
+nsh-platform-linux = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3" }
+nsh-engine = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3", default-features = false }
+nsh-core = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3" }
+nsh-base = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3", default-features = false }
 # NSH's own objc2 line; Cargo unifies the features. In a debug build objc2 looks every message's
 # method up and checks its encoding before sending it (`class_getInstanceMethod` on each send):
 # the top of the main thread's samples during a live resize. The feature turns the check off (a

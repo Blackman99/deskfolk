@@ -10,6 +10,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { RuntimeSnapshot } from "../../../packages/protocol/src/index.ts";
 import { assertApartFromStable, devInstance } from "./dev-instance";
+import { nshCli } from "./nsh-cli";
 
 const root = resolve(import.meta.dir, "..");
 const instance = devInstance();
@@ -35,7 +36,7 @@ const paramsFile = join(root, "app", "e2e", ".live-params.json");
 const live = `${expect} · 实时`;
 writeFileSync(paramsFile, JSON.stringify({ origin, token: descriptor.token, session: session.id, expect, live }), { mode: 0o600 });
 try {
-  const nsh = process.env.NSH ?? join(homedir(), ".local", "bin", "nsh");
+  const nsh = nshCli({ build: true });
   const test = Bun.spawn([nsh, "test", "e2e/live.e2e.tsx"], { cwd: join(root, "app"), stdout: "inherit", stderr: "inherit" });
   // Written while the test holds the conversation open: only the event stream can bring it in.
   await Bun.sleep(2500);

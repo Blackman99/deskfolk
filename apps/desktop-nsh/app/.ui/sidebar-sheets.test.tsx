@@ -83,6 +83,8 @@ test("the runner picker offers Claude Agent and shows its hint; the model field 
   await app.waitFor("id:bot-model");
   expect(app.shows("id:bot-agent-model")).toBe(false);
   await app.waitFor("id:bot-model-hint");
+  // The runner lies past the sheet's fold, under its foot: scrolled up into view, as by hand.
+  await app.scroll("id:bot-runner", 240);
   await app.press("id:bot-runner");
   await app.waitFor("text:Claude Agent（你本机的 Claude Code）");
   await app.press("text:Claude Agent（你本机的 Claude Code）");

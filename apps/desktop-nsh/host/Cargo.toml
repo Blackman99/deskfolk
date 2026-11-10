@@ -23,17 +23,17 @@ deskfolk-native-pdf = { path = "../native/pdf" }
 deskfolk-app-native = { path = "../app/native" }
 nsh-engine.workspace = true
 nsh-core.workspace = true
-nsh-base = { version = "=0.4.0", default-features = false }
+nsh-base.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-nsh-platform-windows = "=0.4.0"
+nsh-platform-windows.workspace = true
 windows = { version = "0.62", features = [
     "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_Ole",
     "Win32_UI_WindowsAndMessaging",
 ] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-nsh-platform-linux = "=0.4.0"
+nsh-platform-linux.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 nsh-platform-macos.workspace = true

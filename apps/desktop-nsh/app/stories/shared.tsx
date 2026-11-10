@@ -13,10 +13,13 @@ import { DangerDialog } from "../src/ui/overlays/DangerDialog";
 import { FileIcon } from "../src/ui/overlays/FileIcon";
 import { fileIconFor } from "../src/m/overlays/file-icon.ts";
 
+// The picture's paragraph comes last: the headless runner lays a paragraph out a line tall
+// whatever its inline cards (`ApproxTextEngine`), so a block after it would lie over the card's
+// middle and take its press; a real window grows the line to the card.
 const SOURCE = [
   "## 周报草稿",
   "",
-  "已写进 `notes/weekly.md`，图表见 `charts/trend.png`。请 @Editor 看一下，有问题找 @Nobody。",
+  "已写进 `notes/weekly.md`。请 @Editor 看一下，有问题找 @Nobody。",
   "",
   "- 第一条 **加粗**",
   "- 第二条 [官网](https://example.com)",
@@ -30,6 +33,8 @@ const SOURCE = [
   "| 列 | 值 |",
   "|---|---|",
   "| a | 1 |",
+  "",
+  "图表见 `charts/trend.png`。",
 ].join("\n");
 
 const BOTS = [{ id: "bot-editor", name: "Editor" }];

@@ -30,6 +30,7 @@ import { hostSigningFingerprint } from "../../messenger/src/lib/remote/fingerpri
 import { base64url, encodePairingCode, randomBytes, type PairingQr } from "../../../packages/remote/src/index.ts";
 import { certificate, RELAY_ROUTES, startEdge } from "./phone-edge";
 import { FORBIDDEN_PORTS, freePort } from "./phone-runtime";
+import { nshCli } from "./nsh-cli";
 
 const root = resolve(import.meta.dir, "..");
 const repo = resolve(root, "../..");
@@ -66,7 +67,7 @@ function build(): void {
   const llvmAr = spawnSync("find", [join(homedir(), ".rustup", "toolchains"), "-name", "llvm-ar", "-path", "*apple-darwin/bin/*"], { encoding: "utf8" })
     .stdout.split("\n")
     .find(Boolean);
-  const nsh = process.env.NSH ?? join(homedir(), ".local", "bin", "nsh");
+  const nsh = nshCli({ build: true });
   run([nsh, "package", "Hosted.tsx", "--target", "web", "--out", join(root, "build", "phone")], join(root, "app"), {
     ...process.env,
     PATH: `${join(homedir(), ".cargo", "bin")}:${process.env.PATH ?? ""}`,

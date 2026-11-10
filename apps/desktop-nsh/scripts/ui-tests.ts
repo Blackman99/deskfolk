@@ -16,6 +16,7 @@ import { join, resolve } from "node:path";
 import { ptyHelperPath } from "../../daemon/src/pty";
 import { startRuntime } from "../../daemon/src/runtime";
 import { memoryKeyStore } from "../../daemon/src/secrets";
+import { nshCli } from "./nsh-cli";
 
 const root = resolve(import.meta.dir, "..");
 const filter = process.argv[2];
@@ -105,7 +106,7 @@ try {
   };
   writeFileSync(join(root, "app", ".ui", ".fixture.json"), JSON.stringify(fixture), { mode: 0o600 });
 
-  const nsh = process.env.NSH ?? join(homedir(), ".local", "bin", "nsh");
+  const nsh = nshCli({ build: true });
   const files = readdirSync(join(root, "app", ".ui"))
     .filter((f) => f.endsWith(".test.tsx") && (!filter || f.includes(filter)))
     .sort();

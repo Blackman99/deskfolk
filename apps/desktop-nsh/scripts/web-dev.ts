@@ -11,6 +11,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join, normalize, resolve } from "node:path";
 import { assertApartFromStable, DEV_APP_NAME, devInstance } from "./dev-instance";
+import { nshCli } from "./nsh-cli";
 
 export const WEB_DEV_PORT = 17991;
 const root = resolve(import.meta.dir, "..");
@@ -26,7 +27,7 @@ function llvmAr(): string | undefined {
 }
 
 if (!process.argv.includes("--no-build")) {
-  const nsh = process.env.NSH ?? join(homedir(), ".local", "bin", "nsh");
+  const nsh = nshCli({ build: true });
   const env = {
     ...process.env,
     PATH: `${join(homedir(), ".cargo", "bin")}:${process.env.PATH ?? ""}`,

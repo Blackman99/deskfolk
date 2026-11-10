@@ -6,6 +6,7 @@
   "rust": "native",
   "theme": "theme.json",
   "appearance": "system",
+  "locales": ["zh"],
   "capabilities": {
     "network": {
       "hosts": [
@@ -13,6 +14,7 @@
       ]
     },
     "clipboard": true,
+    "statusBar": true,
     "picker": true,
     "fs": {
       "read": [

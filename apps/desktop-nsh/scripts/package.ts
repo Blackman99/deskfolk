@@ -16,13 +16,14 @@ import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { APP_ICON_FILE, DEV_APP_NAME, DEV_BUNDLE_ID, placeAppIcon } from "./dev-instance";
+import { nshCli } from "./nsh-cli";
 
 const root = resolve(import.meta.dir, "..");
 const repo = resolve(root, "../..");
 const out = join(root, "build", "release");
 const app = join(out, `${DEV_APP_NAME}.app`);
 const dmg = join(out, "Deskfolk-Dev.dmg");
-const nsh = process.env.NSH ?? join(homedir(), ".local", "bin", "nsh");
+const nsh = nshCli({ build: true });
 const cargo = process.env.CARGO ?? join(homedir(), ".cargo", "bin", "cargo");
 const arg = (name: string) => {
   const at = process.argv.indexOf(name);

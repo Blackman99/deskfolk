@@ -131,9 +131,9 @@
 
 ## 验证
 
-1. 类型检查：在 `apps/desktop-nsh/app` 里跑 `nsh check App.tsx` 和 `nsh check Story.tsx`，零错误（PATH 里要有 `~/.local/bin` 和 `~/.cargo/bin`）。故事只从 `Story.tsx` 进，`nsh check stories/x.tsx` 会在 `stories/` 下生成一个多余的 `.nsh/`，不要这样跑。
+1. 类型检查：在 `apps/desktop-nsh/app` 里跑 `nsh check App.tsx` 和 `nsh check Story.tsx`，零错误。这里的 `nsh` 是 `bun apps/desktop-nsh/scripts/nsh-cli.ts --check` 给出的那一个（和宿主同一个 NSH 提交编的，见 README「NSH 的版本」），不是 `~/.local/bin/nsh`；PATH 里要有 `~/.cargo/bin`。故事只从 `Story.tsx` 进，`nsh check stories/x.tsx` 会在 `stories/` 下生成一个多余的 `.nsh/`，不要这样跑。
 2. 开一个故事：在 `app/stories/<区域>.tsx` 写一个默认导出的组件，把这个区域的界面摆出来，`stories/index.ts` 加一行登记。
-3. 写测试：`app/.ui/<区域>-<主题>.test.tsx`，用 `.ui/fixture.ts` 的 `openStory("<区域>")`（整个应用用 `openApp()`）。测试本身连不了网（`nsh test` 的测试宿主没有网络栈，`.ui/fixture.ts` 的 `api()` 在那里会报错）：要造数据或读回运行时里的值，在故事里放按钮，经 `runtime.client` 去做，测试按按钮再读屏幕上的字（参照 `stories/settings-general.tsx` 的 `story-read`）。夹具只预置了 Writer、Editor、Writer 的私聊（两行，其中一行带 Markdown）和「周报小组」。按 `testID`（`id:x`）、文字（`text:x`）找，`press`、`type`、`waitFor` 操作；测的是行为，不是像素。
+3. 写测试：`app/.ui/<区域>-<主题>.test.tsx`，用 `.ui/fixture.ts` 的 `openStory("<区域>")`（整个应用用 `openApp()`）。测试本身连不了网（`nsh test` 的测试宿主没有网络栈，`.ui/fixture.ts` 的 `api()` 在那里会报错）：要造数据或读回运行时里的值，在故事里放按钮，经 `runtime.client` 去做，测试按按钮再读屏幕上的字（参照 `stories/settings-general.tsx` 的 `story-read`）。夹具只预置了 Writer、Editor、Writer 的私聊（两行，其中一行带 Markdown）和「周报小组」。按 `testID`（`id:x`）、文字（`text:x`）找，`press`、`type`、`waitFor` 操作；测的是行为，不是像素。`press` 会先看手指落点上画的是不是目标：被别的视图盖住就失败（`` `id:x` is covered: a press there reaches … ``），和真人点不到一样。真盖住了就改界面（引导页的语言切换曾被欢迎区压住，`z-[1]`）；目标在滚动区外，先 `app.scroll("id:x", 距离)` 把它滚进来；手机尺寸下整页的弹层盖住故事的按钮，先 `app.back()` 退出来，或者给故事的动作配一个快捷键（`keymap.bind`，测试里 `app.keyboard.press`）。无头运行器的文字是估算的（`ApproxTextEngine`），段落不会为行内的卡片撑高，后面的块会压在卡片上，真窗口里没有这回事：故事里把这种卡片放在最后一段。
 4. 在仓库根目录跑 `bun apps/desktop-nsh/scripts/ui-tests.ts <文件名的一部分>`，全部通过。
 5. 跑 `bun scripts/line-budget.ts`，通过。
 

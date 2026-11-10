@@ -22,8 +22,11 @@ concurrency:
 permissions:
   contents: read
 
+# The `nsh` CLI comes from the NSH commit `apps/desktop-nsh/Cargo.toml` pins its crates to, built
+# by `scripts/nsh-cli.ts` (the bundle format and the engine must match). Its cache is keyed by
+# that commit.
 env:
-  NSH_VERSION: v0.4.0
+  DESKFOLK_NSH_CACHE: ${{ github.workspace }}/../nsh-cli-cache
 
 jobs:
   desktop:
@@ -57,25 +60,27 @@ jobs:
         with:
           workspaces: apps/desktop-nsh -> target
 
+      - name: The pinned NSH commit
+        id: nsh
+        run: echo "rev=$(grep -m1 '^nsh-core' apps/desktop-nsh/Cargo.toml | sed -E 's/.*rev = "([0-9a-f]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the nsh CLI of that commit
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DESKFOLK_NSH_CACHE }}
+          key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
+
       - name: Install system libraries (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev clang pkg-config xvfb dbus-x11
 
-      - name: Install nsh (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          curl -fsSL https://nsh.dev/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Install nsh (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          irm https://nsh.dev/install.ps1 | iex
-          "$env:LOCALAPPDATA\nsh\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build nsh at the pinned commit
+        run: |
+          nsh="$(bun apps/desktop-nsh/scripts/nsh-cli.ts | tail -1)"
+          dirname "$nsh" >> "$GITHUB_PATH"
 
       - name: nsh version
         run: nsh --version
