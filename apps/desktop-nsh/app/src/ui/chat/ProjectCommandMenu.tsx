@@ -5,9 +5,10 @@
  * Esc closes); a press fills it in. While the list is loading, failed or empty it says so. The editor
  * places it (an `Overlay` over the box).
  */
-import { Scroll, Text, View, effect, platform, type ScrollRef } from "nsh";
+import { Scroll, Text, View, effect, platform, type ScrollRef, type ViewRef } from "nsh";
 import type { ClaudeCodeCommand } from "@real-bot/protocol";
 import type { ProjectCommandsState } from "../../m/chat/project-commands.svelte";
+import { frameOf, keepFocusIn } from "../../platform/press";
 import { copy } from "../../runtime";
 import { shadow } from "../styles";
 import { tip } from "../tip";
@@ -35,8 +36,12 @@ export function ProjectCommandMenu(props: {
     else if (at.y + at.height > viewport.y + viewport.height) scroller.ref.scrollTo({ y: at.y + at.height - viewport.height });
   });
   const note = (text: string) => <Text role="text" testID="command-note" class="px-[10px] py-2 text-[12px] text-ink-muted">{text}</Text>;
+  // Picking keeps the typing in the message box (the messenger's `onmousedown` `preventDefault`).
+  let menu: ViewRef | undefined;
+  keepFocusIn(() => frameOf(menu));
   return (
     <View
+      ref={(node) => (menu = node)}
       testID="command-menu"
       class="bg-pane border border-line rounded-(--radius-lg) p-[6px]"
       style={{ width: props.width ?? 520, boxShadow: shadow("menu") }}

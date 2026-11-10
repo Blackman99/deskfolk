@@ -32,6 +32,15 @@ pub fn install(host: &HostChannel, window_id: u32, identity: &Identity) {
         on_main(|mtm| crate::app::new_window(mtm));
     });
 
+    // A press elsewhere takes the keyboard from the field that edits (`press.rs`).
+    host.handle("shell.blur", |call: HostCall| {
+        let number = call.data().as_u64();
+        call.resolve(Value::Null);
+        if let Some(number) = number {
+            on_main(move |_| crate::press::blur(number));
+        }
+    });
+
     host.handle("shell.windowInfo", move |call: HostCall| {
         call.resolve(json!({ "id": window_id, "notifications": crate::notify::available() }));
     });

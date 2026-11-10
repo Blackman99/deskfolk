@@ -6,8 +6,9 @@
  * nothing is written.
  */
 import type { Bot } from "@real-bot/protocol";
-import { effect, keymap, Scroll, signal, Text, View, type ScrollRef } from "nsh";
+import { effect, keymap, Scroll, signal, Text, View, type ScrollRef, type ViewRef } from "nsh";
 import { Input, Popover } from "nsh/base";
+import { frameOf, keepFocusIn } from "../../platform/press";
 import { copy } from "../../runtime";
 import { BottomSheet } from "../BottomSheet";
 import { Icon } from "../Icon";
@@ -89,8 +90,11 @@ export function RosterFilter(props: {
     else if (at.y + at.height > viewport.y + viewport.height) scroller.scrollTo({ y: at.y + at.height - viewport.height });
   });
 
+  // Picking in the list keeps the typing in the search above it (the messenger's `preventDefault` on the rows).
+  let bodyView: ViewRef | undefined;
+  keepFocusIn(() => frameOf(bodyView));
   const body = () => (
-    <View testID="roster-filter-body">
+    <View testID="roster-filter-body" ref={(node) => (bodyView = node)}>
       <Input
         testID="roster-filter-search"
         accessibilityLabel={t().filterSearch}

@@ -6,10 +6,11 @@
  * shows: the candidates, the highlighted row, and what pointing and picking do. The editor places
  * it (an `Overlay` over the caret).
  */
-import { Scroll, Text, View, effect, type ScrollRef } from "nsh";
+import { Scroll, Text, View, effect, type ScrollRef, type ViewRef } from "nsh";
 import { botAvatarColor, avatarSrc } from "../../m/avatar";
 import type { MentionCandidate } from "../../m/chat/composer-mentions.svelte";
 import { rosterLetter } from "../../m/sidebar/roster-letter";
+import { frameOf, keepFocusIn } from "../../platform/press";
 import { copy } from "../../runtime";
 import { AvatarPicture } from "../AvatarPicture";
 import { shadow, cssColor } from "../styles";
@@ -36,8 +37,12 @@ export function MentionPopup(props: {
     if (at.y < viewport.y) scroller.ref.scrollTo({ y: at.y });
     else if (at.y + at.height > viewport.y + viewport.height) scroller.ref.scrollTo({ y: at.y + at.height - viewport.height });
   });
+  // Picking keeps the typing in the message box (the messenger's `onmousedown` `preventDefault`).
+  let list: ViewRef | undefined;
+  keepFocusIn(() => frameOf(list));
   return (
     <View
+      ref={(node) => (list = node)}
       testID="mention-popup"
       role="list"
       class="bg-pane border border-line rounded-(--radius-lg) p-[6px] gap-[2px]"
