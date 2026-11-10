@@ -6,7 +6,8 @@
  * Bot could run on, the form starts on the agent the setup chose (ADR 0078, ADR 0079).
  *
  * Props: `onClose`. The Bot is made through `runtime.createBot`, which closes the sheet itself when
- * it lands; a refusal is shown on its field, or on top.
+ * it lands; a refusal is shown on its field, or on top. Making one takes seconds, so while it runs
+ * the Create button turns and says so, and nothing closes the sheet, as `DangerDialog` does for a delete.
  */
 import { effect, signal, Text, untracked, View } from "nsh";
 import { AGENT_KINDS, BUILTIN_PLAYBOOK_IDS, type AgentsStatusResponse } from "@real-bot/protocol";
@@ -52,6 +53,8 @@ export function CreateBotSheet(props: { onClose: () => void }) {
   const set = (patch: Partial<CreateBotDraft>) => draft.set({ ...draft(), ...patch });
   const errors = signal<CreateBotFieldErrors>({});
   const failed = signal(false);
+  /** The daemon is making the Bot: a second press would make a second one. */
+  const saving = signal(false);
 
   /** What the daemon finds of your other local agents; the runner picker lists them. Asked once, on opening. */
   const agents = signal<AgentsStatusResponse | null>(null);
@@ -125,6 +128,7 @@ export function CreateBotSheet(props: { onClose: () => void }) {
   }
 
   async function save(): Promise<void> {
+    if (saving()) return;
     failed.set(false);
     errors.set({});
     const plan = planCreateBot(draft(), modelValues());
@@ -133,11 +137,16 @@ export function CreateBotSheet(props: { onClose: () => void }) {
       return;
     }
     const id = playbookId();
-    const error = await runtime.createBot(id && playbooks.list ? { ...plan.body, playbook_id: id } : plan.body);
-    if (!error) return;
-    const mapped = mapCreateBotError(error.status, error.message);
-    if ("top" in mapped) failed.set(true);
-    else errors.set(mapped);
+    saving.set(true);
+    try {
+      const error = await runtime.createBot(id && playbooks.list ? { ...plan.body, playbook_id: id } : plan.body);
+      if (!error) return;
+      const mapped = mapCreateBotError(error.status, error.message);
+      if ("top" in mapped) failed.set(true);
+      else errors.set(mapped);
+    } finally {
+      saving.set(false);
+    }
   }
 
   return (
@@ -150,13 +159,14 @@ export function CreateBotSheet(props: { onClose: () => void }) {
       width={500}
       maxHeight={0.88}
       onClose={props.onClose}
+      busy={saving()}
       bodyClass={narrowWindow() ? "px-4 py-[18px] gap-4" : "px-6 py-5 gap-4"}
       foot={
         <>
-          <ModalAction kind="primary" testID="bot-save" onPress={() => void save()}>
-            {t().sidebar.create}
+          <ModalAction kind="primary" testID="bot-save" busy={saving()} onPress={() => void save()}>
+            {saving() ? t().common.creating : t().sidebar.create}
           </ModalAction>
-          <ModalAction testID="bot-cancel" onPress={props.onClose}>
+          <ModalAction testID="bot-cancel" disabled={saving()} onPress={props.onClose}>
             {t().common.close}
           </ModalAction>
         </>

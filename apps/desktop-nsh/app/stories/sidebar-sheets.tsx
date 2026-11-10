@@ -3,13 +3,27 @@
  * (and carrying a terminal session on). The shell mounts them from the runtime's own flags
  * (`createBotOpen`, `createGroupOpen`, `createProjectOpen`), as `Shell.svelte` does; the buttons
  * here set them as the sidebar's menus do. `story-read` asks the runtime itself (a fresh GET of the
- * snapshot) what exists, so a test can see what a sheet created.
+ * snapshot) what exists, so a test can see what a sheet created. `host.params.slowCreate` (ms) holds
+ * `runtime.createBot` that long before it asks the runtime, so a test sees the sheet while a Bot is
+ * being made.
  */
-import { Scroll, signal, Text, View } from "nsh";
+import { host, Scroll, signal, Text, View } from "nsh";
 import { runtime } from "../src/runtime";
 import { CreateBotSheet } from "../src/ui/sidebar/CreateBotSheet";
 import { CreateGroupSheet } from "../src/ui/sidebar/CreateGroupSheet";
 import { ProjectSessionSheet } from "../src/ui/sidebar/ProjectSessionSheet";
+
+const slowCreate = Number((host.params as { slowCreate?: number }).slowCreate ?? 0);
+if (slowCreate > 0) {
+  const real = runtime.createBot.bind(runtime);
+  Object.defineProperty(runtime, "createBot", {
+    configurable: true,
+    value: async (body: Parameters<typeof real>[0]) => {
+      await new Promise((resolve) => setTimeout(resolve, slowCreate));
+      return real(body);
+    },
+  });
+}
 
 function StoryButton(props: { id: string; label: string; onPress: () => void }) {
   return (

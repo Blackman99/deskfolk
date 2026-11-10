@@ -39,6 +39,26 @@ test("the new-Bot form asks for what is missing, then makes the Bot", async () =
   expect(made?.duties).toBe("整理表格");
 });
 
+test("while the Bot is being made the Create button turns and says so, and nothing closes the sheet", async () => {
+  const app = await openStory("sidebar-sheets", {}, { slowCreate: 2500 });
+  await app.waitFor("id:story-read", { timeout: 15_000 });
+  await app.press("id:story-open-bot");
+  await app.waitFor("id:create-bot-sheet");
+  await app.type("id:bot-name", "Slowpoke");
+  await app.type("id:bot-duties", "慢慢整理");
+  await app.type("id:bot-boundaries", "不删文件");
+  await app.press("id:bot-save");
+  await app.waitUntil(() => app.texts().includes("正在创建…"));
+  expect(app.enabled("id:bot-save")).toBe(false);
+  expect(app.enabled("id:bot-cancel")).toBe(false);
+  expect(app.enabled("id:modal-close")).toBe(false);
+  await app.keyboard.press("escape");
+  expect(app.shows("id:create-bot-sheet")).toBe(true);
+  // Once it lands the sheet closes on its own, and there is one Bot of that name, not two.
+  await app.waitFor("id:create-bot-sheet", { state: "gone", timeout: 10_000 });
+  expect((await read(app)).bots.filter((bot) => bot.name === "Slowpoke")).toHaveLength(1);
+});
+
 test("a template fills the fields and marks itself; Close leaves without making anything", async () => {
   const app = await open();
   const before = (await read(app)).bots.length;
