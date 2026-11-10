@@ -33,8 +33,11 @@ export function ChatWelcome(props: {
     ];
   };
 
+  // A definite width: NSH sizes a self-centred box from its children's flex basis, and a starter's
+  // `flex-1` label has a basis of 0, so the box shrank to the avatar's width and the labels ran one
+  // character a line. The browser grew it to the starters' max-content, i.e. 460 whenever they show.
   return (
-    <View testID="chat-welcome" class="items-center self-center max-w-[460px] px-[40px] py-[64px] m-auto">
+    <View testID="chat-welcome" class="items-center self-center w-full max-w-[460px] px-[40px] py-[64px] m-auto">
       <If
         when={props.fileDrop}
         else={
