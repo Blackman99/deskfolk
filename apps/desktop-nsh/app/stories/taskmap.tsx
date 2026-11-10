@@ -3,8 +3,8 @@
  * a subagent that failed once), a Bot conversation's plan (the fixture's Writer and Editor in the
  * group and in Writer's direct, with two more jobs to switch to), and a conversation with no record.
  * The replays are protocol objects held here and served by a fake client in place of the runtime's;
- * a button lands a live call on the project map. What the screen reports (`task:<id>`) is written
- * to `taskmap-log`.
+ * a button lands a live call on the project map. What the screen reports (`task:<id>`), and a right
+ * click that reaches the pane round it (`pane-menu`), is written to `taskmap-log`.
  */
 import { Scroll, Text, View, computed, signal } from "nsh";
 import type {
@@ -181,7 +181,8 @@ export default function TaskMapStory() {
           <Text testID="taskmap-log" class="text-[11px] text-ink-muted">{log().join(" ")}</Text>
         </Scroll>
       </View>
-      <View class="flex-1 min-h-0">
+      {/* Hears a right click as the workbench pane round a map does (`WorkbenchLeaf`), to see what reaches it. */}
+      <View class="flex-1 min-h-0" onContextMenu={() => log.set([...log(), "pane-menu"])}>
         <If when={mode() === "project"}>
           <TaskMap session={PROJECT} client={projectClient} agentCalls={projectCalls} />
         </If>

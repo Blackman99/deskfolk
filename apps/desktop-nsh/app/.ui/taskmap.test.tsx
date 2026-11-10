@@ -101,6 +101,16 @@ test("the controls turn and zoom the town, and following a character shows its c
   await app.waitFor("id:taskmap-following", { state: "gone" });
 });
 
+test("a right click on the town stays the map's (it turns it); beside the town the pane's menu still opens", async () => {
+  const app = await opened();
+  // The story's frame round the map listens as a workbench pane does, and logs `pane-menu`.
+  await app.rightClick("id:taskmap-view");
+  await app.wait(100);
+  expect(has(app, "pane-menu")).toBe(false);
+  await app.rightClick("id:taskmap-lead-0");
+  await app.waitUntil(() => has(app, "pane-menu"));
+});
+
 test("a call seen live lands on the map before any replay holds it", async () => {
   const app = await opened();
   await app.press("id:taskmap-live-call");

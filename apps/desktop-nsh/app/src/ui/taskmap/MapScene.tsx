@@ -482,6 +482,9 @@ export function MapScene(props: {
         if (e.bounds.size.height > canvasH()) canvasH.set(Math.ceil(e.bounds.size.height));
       }}
       {...pan.panHandlers}
+      // The right button turns the town (`onMouseMove`): heard here, the press never reaches the
+      // pane's menu around the map, as the Svelte scene's `preventDefault` kept it from the pane.
+      onContextMenu={() => {}}
       onPressDown={(e) => {
         turning = e.modifiers.shift || e.modifiers.alt;
         last = { x: 0, y: 0 };
