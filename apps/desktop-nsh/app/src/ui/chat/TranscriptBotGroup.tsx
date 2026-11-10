@@ -205,7 +205,7 @@ function Reply(props: { item: MessageItem; last: boolean; stage: TranscriptStage
           copyLabel={t().chat.copyCode}
           copiedLabel={t().chat.copied}
           onOpenArtifact={(path) => stage.onOpenArtifact(path, undefined, msg().id)}
-          onOpenImage={(path) => stage.openBodyImage(msg(), path)}
+          onOpenImage={(path, from) => stage.openBodyImage(msg(), path, from as never)}
           loadArtifactImage={stage.loadBodyImage}
           onOpenProfile={stage.onOpenProfile}
         />

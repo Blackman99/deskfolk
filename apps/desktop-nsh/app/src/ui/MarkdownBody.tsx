@@ -3,7 +3,8 @@
  * messenger's look (`.md-body`: 14px at 1.55, code on its wash, tables with lines, quotes with a
  * bar). A file the text names is a chip — its kind's icon and its name on a wash of the accent, a
  * picture a card with its thumbnail once it is fetched — and a Bot it names is a chip with its
- * letter; pressing one opens the file, the picture or the profile. Other links open outside.
+ * letter; pressing one opens the file, the picture or the profile. Other links open outside. A
+ * picture's chip has the magnifier and hands its thumbnail to the enlargement, which grows out of it.
  *
  * `inverted` is your own bubble: light text on the accent.
  *
@@ -11,7 +12,7 @@
  * view colours them natively, in GitHub's light and dark or the code theme your interface chose,
  * which also brings its surface. Your own bubble keeps its code white on its wash, as before.
  */
-import { cleanup, computed, Image, openUrl, signal, Text, View, type JSX } from "nsh";
+import { cleanup, computed, Image, openUrl, signal, Text, View, type JSX, type ViewRef } from "nsh";
 import { TextView } from "nsh/base";
 import { CodeColors } from "deskfolk/native";
 import { artifactKind, svgDisplayBlob } from "../m/overlays/artifacts.ts";
@@ -20,6 +21,7 @@ import { botAvatarColor } from "../m/avatar.ts";
 import { rosterLetter } from "../m/sidebar/roster-letter.ts";
 import { codeColorsAvailable, codeSurface, codeThemes } from "./code-colors";
 import { blobDataUrl } from "./data-url";
+import type { PressedPicture } from "./chat/image-origin";
 import { linkTarget, prepareMarkdown, unresolvedToken, type RenderMarkdownOptions } from "./markdown";
 import { FileIcon } from "./overlays/FileIcon";
 import { cssColor } from "./styles";
@@ -46,8 +48,8 @@ export function MarkdownBody(props: {
   inverted?: boolean;
   class?: string;
   onOpenArtifact?: (relpath: string) => void;
-  /** A picture stays in the app. */
-  onOpenImage?: (relpath: string) => void;
+  /** A picture stays in the app. `from` is its chip's thumbnail, when it was pressed on one. */
+  onOpenImage?: (relpath: string, from?: PressedPicture) => void;
   /** Bytes for a picture's chip. `signal` aborts once this text is gone. */
   loadArtifactImage?: (relpath: string, signal: AbortSignal) => Promise<Blob>;
   /** Files shown elsewhere (the message's cards): a line that is only one of them is left out. */
@@ -62,8 +64,8 @@ export function MarkdownBody(props: {
   const loads = new AbortController();
   cleanup(() => loads.abort());
 
-  function openArtifact(path: string): void {
-    if (props.onOpenImage && isPicture(path)) props.onOpenImage(path);
+  function openArtifact(path: string, from?: PressedPicture): void {
+    if (props.onOpenImage && isPicture(path)) props.onOpenImage(path, from);
     else props.onOpenArtifact?.(path);
   }
 
@@ -163,11 +165,14 @@ function ArtifactChip(props: {
   inverted: boolean;
   load?: (relpath: string, signal: AbortSignal) => Promise<Blob>;
   signal: AbortSignal;
-  onPress: (path: string) => void;
+  onPress: (path: string, from?: PressedPicture) => void;
 }) {
   const picture = () => Boolean(props.load) && isPicture(props.path);
   /** The thumbnail: `null` loading, a URL loaded, `false` failed (a plain chip then). */
   const thumb = signal<string | null | false>(null);
+  /** The thumbnail's view (its grey box while it loads): the enlargement grows out of it, as the Svelte's grows out of the `img`. */
+  let picView: ViewRef | null = null;
+  const pressed = (): PressedPicture => ({ view: picView, shown: typeof thumb() === "string" ? (thumb() as string) : null });
   // The label is the path itself when the text wrote the path: the chip shows the file's name.
   const name = () => (props.label.trim() === props.path ? baseName(props.path) : props.label);
   if (picture()) {
@@ -200,14 +205,14 @@ function ArtifactChip(props: {
         testID="md-artifact-image"
         accessibilityLabel={props.path}
         tooltip={tip(props.path)}
-        onPress={() => props.onPress(props.path)}
+        onPress={() => props.onPress(props.path, pressed())}
         style={{ verticalAlign: "middle" }}
-        class={`cursor-pointer flex-row items-center gap-2 max-w-[240px] p-[5px] my-[2px] rounded-(--radius-md) border ${props.inverted ? "bg-white/14 border-white/30 hover:border-white/70" : "bg-pane border-line hover:border-brand"}`}
+        class={`cursor-zoom-in flex-row items-center gap-2 max-w-[240px] p-[5px] my-[2px] rounded-(--radius-md) border ${props.inverted ? "bg-white/14 border-white/30 hover:border-white/70" : "bg-pane border-line hover:border-brand"}`}
       >
-        <If when={thumb()} else={<View class="w-[72px] h-[54px] rounded-[6px] bg-line-subtle shrink-0" />}>
-          {(url: () => string | null | false) => <Image src={url() as string} class="w-[72px] h-[54px] rounded-[6px] shrink-0" style={{ objectFit: "cover" }} accessibilityLabel={name()} />}
+        <If when={thumb()} else={<View ref={(n: ViewRef) => (picView = n)} class="w-[72px] h-[54px] rounded-[6px] bg-line-subtle shrink-0" />}>
+          {(url: () => string | null | false) => <Image ref={(n: ViewRef) => (picView = n)} src={url() as string} class="w-[72px] h-[54px] rounded-[6px] shrink-0" style={{ objectFit: "cover" }} accessibilityLabel={name()} />}
         </If>
-        <Text class={`cursor-pointer min-w-0 shrink text-[13px] line-clamp-1 ${props.inverted ? "text-white" : "text-ink-secondary"}`}>{name()}</Text>
+        <Text class={`cursor-zoom-in min-w-0 shrink text-[13px] line-clamp-1 ${props.inverted ? "text-white" : "text-ink-secondary"}`}>{name()}</Text>
       </View>
     </If>
   );

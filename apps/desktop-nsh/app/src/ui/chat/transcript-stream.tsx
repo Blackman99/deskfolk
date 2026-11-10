@@ -84,7 +84,7 @@ export function StreamingReply(props: { turn: Turn; bot: Bot | undefined; stage:
           copyLabel={t().chat.copyCode}
           copiedLabel={t().chat.copied}
           onOpenArtifact={(path) => stage().onOpenArtifact(path)}
-          onOpenImage={(path) => stage().openInlineImage(null, path, null)}
+          onOpenImage={(path, from) => stage().openInlineImage(null, path, from as never)}
           onOpenProfile={stage().onOpenProfile}
         >
           <Cursor />

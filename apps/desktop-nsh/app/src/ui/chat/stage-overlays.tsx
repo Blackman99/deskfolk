@@ -37,6 +37,7 @@ export function StageOverlays(props: {
             attachment={shown().attachment}
             relpath={shown().relpath}
             origin={shown().origin}
+            placeholder={shown().placeholder}
             api={runtime.client}
             onClose={() => a().inlineImage.set(null)}
           />
@@ -96,7 +97,7 @@ export function StageOverlays(props: {
                   a().textSheetId.set(null);
                   props.onOpenArtifact(path, undefined, shown().id);
                 }}
-                onOpenImage={(path) => a().openBodyImage(shown(), path)}
+                onOpenImage={(path, from) => a().openBodyImage(shown(), path, from)}
                 loadArtifactImage={a().loadBodyImage}
                 onOpenProfile={(id) => {
                   a().textSheetId.set(null);

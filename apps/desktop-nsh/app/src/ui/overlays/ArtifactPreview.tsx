@@ -114,7 +114,7 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
   const attachment = () => props.attachment ?? null;
   const api = () => props.api;
 
-  const enlarged = signal<{ from: string; relpath: string; own: boolean; origin: ImageOrigin | null; shown: string | null } | null>(null);
+  const enlarged = signal<{ from: string; relpath: string; own: boolean; origin: ImageOrigin | null; shown: string | null; placeholder: string | null } | null>(null);
   const shownEnlarged = computed(() => {
     const e = enlarged();
     return e && e.from === relpath() ? e : null;
@@ -295,10 +295,11 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
   /**
    * Enlarges a picture over the app: this file when it is an image (`own`), growing out of where it
    * sits here and showing what is on screen here at once (`shown`, a `data:` URL; the loader's
-   * object URL is nothing `Image` shows), or one in this Markdown, which opens fitted.
+   * object URL is nothing `Image` shows), or one in this Markdown, growing out of its chip and
+   * starting from the chip's 256 px copy (`placeholder`) while its bytes come, as the Svelte does.
    */
   function enlarge(image: string, own: boolean, origin: ImageOrigin | null, shown: string | null): void {
-    enlarged.set({ from: relpath(), relpath: image, own, origin, shown: own ? shown : null });
+    enlarged.set({ from: relpath(), relpath: image, own, origin, shown: own ? shown : null, placeholder: own ? null : shown });
   }
 
   /** Opens this tree row with the system, or reveals it in Finder; a failure stays a quiet hint on the preview. */
@@ -723,6 +724,7 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
             relpath={shown().relpath}
             src={shown().shown}
             srcOriginalSize={shown().shown ? loader.reducedFrom : null}
+            placeholder={shown().placeholder}
             origin={shown().origin}
             api={api()}
             onClose={() => enlarged.set(null)}

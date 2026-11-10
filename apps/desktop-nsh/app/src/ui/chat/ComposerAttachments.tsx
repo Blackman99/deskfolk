@@ -58,7 +58,7 @@ export function ComposerAttachments(props: {
         tooltip={undefined}
         onPress={() => void enlarge(thumb.id, node, thumb.url)}
         onContextMenu={(e) => menu.set({ src: thumb.url, x: e.pagePosition.x, y: e.pagePosition.y })}
-        class="cursor-pointer select-none shrink-0 rounded-(--radius-sm)"
+        class="cursor-zoom-in select-none shrink-0 rounded-(--radius-sm)"
       >
         <Image
           src={thumb.url}

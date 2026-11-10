@@ -17,6 +17,7 @@ import { effectiveLines } from "../../m/annotations/model.ts";
 import { normalizeSource } from "../../m/annotations/markdown-lines.ts";
 import { anchorFromSelection } from "../../m/annotations/text-range.ts";
 import type { EncodedCrop } from "../../m/annotations/region-box.ts";
+import type { PressedPicture } from "../chat/image-origin";
 import { MarkdownBody } from "../MarkdownBody";
 import { tip } from "../tip";
 import { markdownBlocks, type MarkdownBlock } from "./markdown-blocks";
@@ -68,7 +69,7 @@ export function MarkdownAnnotator(props: {
   copyLabel: string;
   copiedLabel: string;
   onOpenArtifact?: (relpath: string) => void;
-  onOpenImage?: (relpath: string) => void;
+  onOpenImage?: (relpath: string, from?: PressedPicture) => void;
   loadArtifactImage?: (relpath: string, signal: AbortSignal) => Promise<Blob>;
   testID?: string;
 }) {

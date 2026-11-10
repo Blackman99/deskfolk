@@ -24,10 +24,15 @@ test("Markdown names a file, a picture and Bots as chips that open them", async 
   await app.waitUntil(() => app.texts().includes("profile:bot-editor"));
   await app.press("id:md >> text:weekly.md");
   await app.waitUntil(() => app.texts().includes("artifact:notes/weekly.md"));
-  // A picture is a card with its thumbnail once fetched, and opens in the app.
+  // A picture is a card with its thumbnail once fetched, and opens in the app, handing over its
+  // thumbnail: the enlargement grows out of it and starts from it, as the Svelte's does.
   await app.waitFor("id:md-artifact-image");
+  await app.waitUntil(() => app.texts().includes("trend.png"));
   await app.press("id:md-artifact-image");
-  await app.waitUntil(() => app.texts().includes("image:charts/trend.png"));
+  await app.waitUntil(() => app.texts().some((line) => line.startsWith("image:charts/trend.png from:thumb:shown origin:72x54")));
+  await app.waitFor("id:msg-image-full");
+  await app.press("id:msg-image-full");
+  await app.waitFor("id:msg-image-lightbox", { state: "gone" });
 });
 
 test("a modal closes by its ✕ and by its action", async () => {

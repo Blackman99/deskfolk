@@ -15,7 +15,7 @@ import { MessageAttachments } from "./MessageAttachments";
 import { ProjectSubagentEntry } from "./ProjectSubagentEntry";
 import { lineOf, type ProjectState } from "./project-chat-state";
 import type { Attachment } from "@real-bot/protocol";
-import type { ViewRef } from "nsh";
+import type { PressedPicture } from "./image-origin";
 
 export type ProjectRow =
   | { id: "earlier"; kind: "earlier" }
@@ -46,7 +46,7 @@ export function ProjectLine(props: {
   date: string | null;
   state: ProjectState;
   onOpenArtifact: (relpath: string, att?: Attachment, messageId?: string) => void;
-  onOpenImage: (att: Attachment, from?: ViewRef) => void;
+  onOpenImage: (att: Attachment, from?: PressedPicture) => void;
 }) {
   const t = () => copy();
   const s = () => props.state;

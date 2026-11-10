@@ -94,7 +94,7 @@ export default function ChatMedia() {
   const menu = signal<{ sheet: boolean; selected: string | null; edit: boolean } | null>(null);
   const text = signal(false);
   const file = signal<Attachment | null>(null);
-  const lightbox = signal<{ att: Attachment; origin: ImageOrigin | null } | null>(null);
+  const lightbox = signal<{ att: Attachment; origin: ImageOrigin | null; placeholder: string | null } | null>(null);
   const staged = signal<StagedAttachment[]>([
     { id: "s-1", file: {} as File, name: "screenshot.png", size: 48_000, isImage: true, previewUrl: PIXEL_URL },
     { id: "s-2", file: {} as File, name: "notes.txt", size: 1_300, isImage: false, previewUrl: null },
@@ -115,8 +115,9 @@ export default function ChatMedia() {
             api={api()}
             onPreview={(att) => note(`preview:${att.workspace_relpath}`)}
             onOpenImage={(att, from) => {
-              note(`image:${att.workspace_relpath}`);
-              void originOf(from).then((origin) => lightbox.set({ att, origin }));
+              // What the chip handed over: its thumbnail's view and what it shows (the enlargement's stand-in).
+              note(`image:${att.workspace_relpath} from:${from?.view ? "thumb" : "none"}:${from?.shown?.startsWith("data:") ? "shown" : "none"}`);
+              void originOf(from?.view).then((origin) => lightbox.set({ att, origin, placeholder: from?.shown ?? null }));
             }}
             onOpenFile={(att) => file.set(att)}
           />
@@ -188,8 +189,8 @@ export default function ChatMedia() {
         )}
       </If>
       <If when={lightbox()}>
-        {(open: () => { att: Attachment; origin: ImageOrigin | null }) => (
-          <MessageImageLightbox attachment={open().att} origin={open().origin} api={api()} onClose={() => lightbox.set(null)} />
+        {(open: () => { att: Attachment; origin: ImageOrigin | null; placeholder: string | null }) => (
+          <MessageImageLightbox attachment={open().att} origin={open().origin} placeholder={open().placeholder} api={api()} onClose={() => lightbox.set(null)} />
         )}
       </If>
     </View>

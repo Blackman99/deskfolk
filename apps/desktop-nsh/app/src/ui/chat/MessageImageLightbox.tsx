@@ -6,7 +6,8 @@
  *
  * Zoom is the messenger's own maths (`src/m/chat/image-zoom.ts`): the frame keeps the box it was
  * fitted to and is scaled and moved with a transform. Fingers (PanResponder) pinch and drag it;
- * a tap brings a zoomed picture back and the next closes. Where there are no fingers (a desktop)
+ * a tap (or a click on the picture, whose cursor is the magnifier's minus) brings a zoomed picture
+ * back and the next closes. Where there are no fingers (a desktop)
  * `+` / `-` / `0` zoom about the middle, and the wheel (`src/platform/wheel`) zooms about the
  * pointer: the Svelte one has no desktop zoom at all. A trackpad pinch (ctrl + wheel) zooms the
  * same way; two fingers sliding on a trackpad pan a zoomed picture. Escape, the phone's Back and a
@@ -19,8 +20,11 @@
  * Motion: NSH's `transition-*` animates colours, opacity, transforms, shadows and corners, never a
  * view's place or size, so the frame's moves (growing out of the thumbnail, fitting the picture once
  * its shape is known, shrinking back) are a native layout animation (`LayoutAnimation.configureNext`)
- * of the commit that moves it. With no thumbnail to grow from (a picture in a Markdown body) the frame
- * fades in and out from a little smaller; the Svelte's simply appears there.
+ * of the commit that moves it. Every opener hands over the thumbnail it was pressed on (the picture
+ * inside a chip, not the chip; a Markdown chip's too) and what it shows (`placeholder`), so the frame
+ * grows at once at the picture's proportions, as the Svelte's does. With nothing to grow from (a
+ * thumbnail that was never drawn) the frame fades in and out from a little smaller; the Svelte's
+ * simply appears there.
  */
 import { cleanup, effect, Image, keymap, LayoutAnimation, Overlay, PanResponder, signal, Text, untracked, View, windowSize, computed, type ViewRef } from "nsh";
 import { reduceMotion } from "../interface/motion";
@@ -546,6 +550,9 @@ export function MessageImageLightbox(props: {
                     accessibilityLabel={name() || path()}
                     class="w-full h-full bg-pane"
                     style={{ objectFit: "cover", cursor: "zoom-out" }}
+                    // Its long press (the copy menu) makes it the press's target, so the tap that
+                    // closes is its own too: the stage's under it never hears a press on the picture.
+                    onPress={() => tap()}
                     onLoad={(e) => natural.set({ width: e.size.width, height: e.size.height })}
                     onContextMenu={(e) => menuAt.set(e.pagePosition)}
                     onLongPress={(e) => menuAt.set(e.pagePosition)}

@@ -142,7 +142,7 @@ function Segment(props: {
                   copiedLabel={t().chat.copied}
                   inverted
                   onOpenArtifact={(path) => stage.onOpenArtifact(path, undefined, msg().id)}
-                  onOpenImage={(path) => stage.openBodyImage(msg(), path)}
+                  onOpenImage={(path, from) => stage.openBodyImage(msg(), path, from as never)}
                   loadArtifactImage={stage.loadBodyImage}
                   onOpenProfile={stage.onOpenProfile}
                 />

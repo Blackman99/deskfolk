@@ -10,9 +10,9 @@
  * - `bind:editor` / `bind:pdfViewer` are `onEditor` / `onPdfViewer` (called with the handle).
  * - A picture and its SVG are shown from a `data:` URL: the loader's object URL (`shownBlob`) is
  *   read back into one, since NSH's `Image` takes no object URLs.
- * - `enlarge` hands the lightbox where the file's own picture sits (it grows out of it) and that
- *   picture as a `data:` URL (the loader's object URL is nothing `Image` shows). A picture in the
- *   Markdown opens with no origin: the Markdown reports none.
+ * - `enlarge` hands the lightbox where the picture sits (it grows out of it) and what it shows
+ *   there as a `data:` URL (the loader's object URL is nothing `Image` shows): the file's own
+ *   picture, or a picture's chip in the Markdown, whose thumbnail the enlargement starts from.
  * - The PDF is fetched by the native module from `pdfSourceFor(relpath)` (a workspace file) or the
  *   attachment's content URL, both on the local runtime; a remote runtime gives no source.
  * - An Office file is read by path (a local workspace file) or from the loader's bytes as Base64.
@@ -108,8 +108,8 @@ export function ArtifactBody(props: {
   onPdfViewer?: (handle: ArtifactPdfHandle | null) => void;
   onEditorDirty: (next: boolean) => void;
   /**
-   * Grows a picture in the lightbox: `origin` is where it grows from (null for one in the
-   * Markdown), `shown` the file's own picture as on screen here, a `data:` URL.
+   * Grows a picture in the lightbox: `origin` is where it grows from, `shown` what is on screen
+   * there (the file's own picture, or a Markdown chip's thumbnail), a `data:` URL.
    */
   enlarge: (image: string, own: boolean, origin: ImageOrigin | null, shown: string | null) => void;
   openMarkdownPath: (path: string) => void;
@@ -389,7 +389,7 @@ export function ArtifactBody(props: {
           copyLabel={copy().chat.copyCode}
           copiedLabel={copy().chat.copied}
           onOpenArtifact={props.openMarkdownPath}
-          onOpenImage={(path) => props.enlarge(path, false, null, null)}
+          onOpenImage={(path, from) => void imageOrigin(from?.view).then((origin) => props.enlarge(path, false, origin, from?.shown ?? null))}
           loadArtifactImage={(path, signal) => {
             if (!props.api) return Promise.reject(new Error("API unavailable"));
             // A picture inside a note is a 72 px chip: the 256 px copy is plenty, and tapping it

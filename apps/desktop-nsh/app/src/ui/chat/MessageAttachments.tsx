@@ -2,8 +2,8 @@
  * The files a message carries (`MessageAttachments.svelte`): a chip for each, a picture's with its
  * thumbnail, the whole lot as one bundle entry when there are several (or, on the app's own cards,
  * the first few chips and then the bundle). A picture opens enlarged in the app (`onOpenImage`,
- * handed the chip to grow out of), another file over the whole app (`onOpenFile`), anything else in
- * the preview (`onPreview`).
+ * handed the chip's thumbnail to grow out of and to start from; its chip has the magnifier), another
+ * file over the whole app (`onOpenFile`), anything else in the preview (`onPreview`).
  *
  * A chip asks for the Mac's 256 px copy as soon as it is drawn: the Svelte one waited until the chip
  * scrolled near (`whenVisible`, an IntersectionObserver); a message's few chips are cheap, and a
@@ -20,6 +20,7 @@ import { Icon } from "../Icon";
 import { ImageContextMenu } from "../ImageContextMenu";
 import { blobDataUrl } from "../data-url";
 import { FileIcon } from "../overlays/FileIcon";
+import type { PressedPicture } from "./image-origin";
 
 /** How many files an app card shows as chips; the entry after them opens every one. */
 const CARD_CHIPS = 5;
@@ -30,8 +31,8 @@ export function MessageAttachments(props: {
   body?: string | null;
   api: MessengerApi | null;
   onPreview: (att: Attachment) => void;
-  /** A picture stays in the app. `from` is the chip the picture grows out of. */
-  onOpenImage?: (att: Attachment, from?: ViewRef) => void;
+  /** A picture stays in the app. `from` is the chip's thumbnail, which the enlargement grows out of. */
+  onOpenImage?: (att: Attachment, from?: PressedPicture) => void;
   /** Any other file opened from its own chip, over the whole app the way a picture is. */
   onOpenFile?: (att: Attachment) => void;
   /** The app's own cards: the first few files each a chip, and after them the entry to all of them. */
@@ -110,9 +111,12 @@ export function MessageAttachments(props: {
     if (list.length > 0) props.onPreview(firstPreviewable(list));
   }
 
-  function openRow(att: Attachment, from: ViewRef | null): void {
-    if (props.onOpenImage && isInlineImageName(att.original_filename, { isDir: att.is_dir })) {
-      props.onOpenImage(att, from ?? undefined);
+  /** The chip opens its picture enlarged (the rest open as files). */
+  const enlarges = (att: Attachment) => Boolean(props.onOpenImage) && isInlineImageName(att.original_filename, { isDir: att.is_dir });
+
+  function openRow(att: Attachment, from: PressedPicture): void {
+    if (enlarges(att)) {
+      props.onOpenImage!(att, from);
       return;
     }
     if (props.onOpenFile && !att.is_dir) {
@@ -140,6 +144,8 @@ export function MessageAttachments(props: {
 
   function Chip(chip: { att: Attachment }) {
     let node: ViewRef | null = null;
+    /** The thumbnail, or its spinner while it comes: the enlargement grows out of it, as the Svelte's grows out of the `img`. */
+    let picture: ViewRef | null = null;
     const att = () => chip.att;
     // A picture is fetched once its chip is drawn.
     untracked(() => void loadThumb(att()));
@@ -152,8 +158,8 @@ export function MessageAttachments(props: {
         testID="attachment-chip"
         accessibilityLabel={att().workspace_relpath}
         accessibilityState={{ busy: pending() }}
-        onPress={() => openRow(att(), node)}
-        class="cursor-pointer select-none flex-row items-center gap-2 px-3 py-2 bg-pane border border-line hover:border-brand rounded-(--radius-md) max-w-full"
+        onPress={() => openRow(att(), { view: thumb() || pending() ? picture : node, shown: thumb() ?? null })}
+        class={`${enlarges(att()) ? "cursor-zoom-in" : "cursor-pointer"} select-none flex-row items-center gap-2 px-3 py-2 bg-pane border border-line hover:border-brand rounded-(--radius-md) max-w-full`}
       >
         <If
           when={thumb()}
@@ -166,7 +172,7 @@ export function MessageAttachments(props: {
                 </View>
               }
             >
-              <View testID="attachment-chip-pending" accessibilityLabel={copy().stream.artifactLoading} class="w-9 h-9 rounded-(--radius-sm) bg-line-subtle items-center justify-center shrink-0">
+              <View ref={(n: ViewRef) => (picture = n)} testID="attachment-chip-pending" accessibilityLabel={copy().stream.artifactLoading} class="w-9 h-9 rounded-(--radius-sm) bg-line-subtle items-center justify-center shrink-0">
                 <Icon name="spinner" size={16} class="animate-spin tint-brand" />
               </View>
             </If>
@@ -174,6 +180,7 @@ export function MessageAttachments(props: {
         >
           {(url: () => string) => (
             <Image
+              ref={(n: ViewRef) => (picture = n)}
               testID="attachment-chip-thumb"
               src={url()}
               class="w-9 h-9 rounded-(--radius-sm) bg-line-subtle shrink-0"

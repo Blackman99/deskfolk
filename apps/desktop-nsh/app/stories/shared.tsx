@@ -1,7 +1,13 @@
-/** The pieces every area shares: Markdown with file and Bot chips, file icons, the modal frame, the confirmation. */
+/**
+ * The pieces every area shares: Markdown with file and Bot chips, file icons, the modal frame, the
+ * confirmation. The picture's chip opens the enlargement as a conversation does, growing out of the
+ * chip's thumbnail; `opened` says what the chip handed over and where the frame grows from.
+ */
 import { signal, Text, View } from "nsh";
 import { Button } from "../src/ui/Button";
 import { MarkdownBody } from "../src/ui/MarkdownBody";
+import { imageOrigin } from "../src/ui/chat/image-origin";
+import { MessageImageLightbox, type ImageOrigin } from "../src/ui/chat/MessageImageLightbox";
 import { Modal, ModalAction } from "../src/ui/Modal";
 import { DangerDialog } from "../src/ui/overlays/DangerDialog";
 import { FileIcon } from "../src/ui/overlays/FileIcon";
@@ -34,6 +40,7 @@ const PIXEL = new Uint8Array([
 
 export default function Shared() {
   const opened = signal("");
+  const enlarged = signal<{ path: string; origin: ImageOrigin | null; shown: string | null } | null>(null);
   const modal = signal(false);
   const danger = signal(false);
   const busy = signal(false);
@@ -48,7 +55,13 @@ export default function Shared() {
             copyLabel="复制"
             options={{ mentionBots: BOTS, unresolvedMentionTitle: "不在这个对话里" }}
             onOpenArtifact={(path) => opened.set(`artifact:${path}`)}
-            onOpenImage={(path) => opened.set(`image:${path}`)}
+            onOpenImage={(path, from) => {
+              opened.set(`image:${path} from:${from?.view ? "thumb" : "none"}:${from?.shown?.startsWith("data:") ? "shown" : "none"}`);
+              void imageOrigin(from?.view).then((origin) => {
+                opened.set(`${opened()} origin:${origin ? `${Math.round(origin.width)}x${Math.round(origin.height)}` : "none"}`);
+                enlarged.set({ path, origin, shown: from?.shown ?? null });
+              });
+            }}
             onOpenProfile={(id) => opened.set(`profile:${id}`)}
             loadArtifactImage={async () => new Blob([PIXEL], { type: "image/png" })}
           />
@@ -85,6 +98,11 @@ export default function Shared() {
         >
           <Text class="text-[14px] text-ink">对话框的内容</Text>
         </Modal>
+      </If>
+      <If when={enlarged()}>
+        {(e: () => { path: string; origin: ImageOrigin | null; shown: string | null }) => (
+          <MessageImageLightbox relpath={e().path} src={e().shown} origin={e().origin} api={null} onClose={() => enlarged.set(null)} />
+        )}
       </If>
       <If when={danger()}>
         <DangerDialog

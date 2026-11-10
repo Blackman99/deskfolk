@@ -390,7 +390,7 @@ export function ImageAnnotator(props: {
         onPress={() => {
           if (openable()) props.onOpen?.(pictureRef);
         }}
-        class={props.onOpen ? "absolute cursor-pointer" : "absolute"}
+        class={openable() ? "absolute cursor-zoom-in" : "absolute"}
         style={drawn() ? { left: drawn()!.left, top: 0, width: drawn()!.width, height: drawn()!.height } : { left: 0, top: 0, width: "100%", height: "100%" }}
       >
         <Image

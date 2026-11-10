@@ -41,6 +41,8 @@ test("a picture opens enlarged: the real bytes load, the name is its caption, th
   expect(app.shows("id:msg-image-original")).toBe(false);
   expect(app.shows("id:msg-image-save")).toBe(false);
   expect(asked(app).some((line) => line === "attachment att-chart")).toBe(true);
+  // The chip handed over its thumbnail, not itself: the frame grows out of the picture and starts from it.
+  expect(app.texts().some((line) => line.includes("image:images/chart.png from:thumb:shown"))).toBe(true);
   await app.press("id:msg-image-full");
   await app.waitFor("id:msg-image-lightbox", { state: "gone" });
 });

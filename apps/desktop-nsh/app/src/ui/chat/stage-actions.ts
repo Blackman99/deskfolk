@@ -4,7 +4,7 @@
  * quoting, changing and taking back a line, earlier versions, copying, and the message's menu.
  * Their state lives here, not in the rows: the list recycles rows, and a row that remounts finds it again.
  */
-import { Clipboard, computed, effect, platform, signal, type Point, type ViewRef } from "nsh";
+import { Clipboard, computed, effect, platform, signal, type Point } from "nsh";
 import type { Annotation, Attachment, ControlOffer, Message, SessionSummary } from "@real-bot/protocol";
 import { canEditMessage, lastEditableLine } from "../../m/chat/message-edit.ts";
 import { extractAssociatedFiles } from "../../m/chat/message-context-menu.ts";
@@ -13,13 +13,13 @@ import { queuedLine as queuedLineOf, type QueuedLine } from "../../m/chat/queued
 import type { VersionsShown } from "../../m/chat/transcript-stage.ts";
 import { showToast } from "../../m/toast.svelte.ts";
 import { copy, runtime } from "../../runtime";
-import { imageOrigin } from "./image-origin";
+import { imageOrigin, type PressedPicture } from "./image-origin";
 import type { ImageOrigin } from "./MessageImageLightbox";
 import type { StageContext } from "./stage-context";
 
 type OpenArtifact = (relpath: string, att?: Attachment, messageId?: string, forceTree?: boolean) => void;
 
-export type OpenImage = { sessionId: string | null; attachment: Attachment | null; relpath: string | null; origin: ImageOrigin | null };
+export type OpenImage = { sessionId: string | null; attachment: Attachment | null; relpath: string | null; origin: ImageOrigin | null; placeholder: string | null };
 export type OpenFile = { sessionId: string | null; attachment: Attachment | null; relpath: string; messageId: string };
 export type MessageMenu = { message: Message; x: number; y: number; selectedText: string | null; touch: boolean };
 
@@ -108,10 +108,13 @@ export function createStageActions(
     closeMenu();
   }
 
-  /** `from`: the view the picture was pressed in; the enlargement grows out of where it sits. */
-  function openInlineImage(attachment: Attachment | null, relpath: string | null, from?: ViewRef | null): void {
-    void imageOrigin(from).then((origin) => {
-      inlineImage.set({ sessionId: selected()?.id ?? null, attachment, relpath, origin });
+  /**
+   * `from`: the picture that was pressed (the shared stage type calls it an element). The enlargement
+   * grows out of where it sits and starts from what it shows there.
+   */
+  function openInlineImage(attachment: Attachment | null, relpath: string | null, from?: PressedPicture | null): void {
+    void imageOrigin(from?.view).then((origin) => {
+      inlineImage.set({ sessionId: selected()?.id ?? null, attachment, relpath, origin, placeholder: from?.shown ?? null });
       closeMenu();
     });
   }
@@ -123,7 +126,7 @@ export function createStageActions(
     return client.getWorkspaceFileBlob(relpath, undefined, { background: true, signal, size: "thumb" });
   }
 
-  function openBodyImage(message: Message, path: string, from?: ViewRef | null): void {
+  function openBodyImage(message: Message, path: string, from?: PressedPicture | null): void {
     const attachment = message.attachments.find((row) => row.workspace_relpath === path && !row.is_dir) ?? null;
     openInlineImage(attachment, path, from);
   }

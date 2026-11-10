@@ -23,7 +23,7 @@ import { INDEX_MIN_MARKS, messageIndexMarks, type IndexMark } from "../../m/chat
 import { USER_MEMBER } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
 import { narrowWindow } from "../Modal";
-import { imageOrigin } from "./image-origin";
+import { imageOrigin, type PressedPicture } from "./image-origin";
 import { MessageImageLightbox, type ImageOrigin } from "./MessageImageLightbox";
 import { MessageIndex } from "./MessageIndex";
 import { ProjectSubagentDialog } from "./ProjectSubagentDialog";
@@ -49,7 +49,7 @@ export function ProjectChat(props: {
   const view = state.view;
   const width = signal(0);
   const stageHeight = signal(0);
-  const image = signal<{ sessionId: string; attachment: Attachment; origin: ImageOrigin | null } | null>(null);
+  const image = signal<{ sessionId: string; attachment: Attachment; origin: ImageOrigin | null; placeholder: string | null } | null>(null);
 
   const hasOlder = () => Boolean(view().hasOlderMessages);
   const lines = state.lines;
@@ -102,8 +102,8 @@ export function ProjectChat(props: {
   const phone = settled(() => width() > 0 && width() <= 680);
   const sideRoom = () => (showMessageIndex() && !narrowWindow() ? 40 : phone() ? 12 : 24);
 
-  function openImage(attachment: Attachment, from?: unknown): void {
-    void imageOrigin(from as never).then((origin) => image.set({ sessionId: selected().id, attachment, origin }));
+  function openImage(attachment: Attachment, from?: PressedPicture): void {
+    void imageOrigin(from?.view).then((origin) => image.set({ sessionId: selected().id, attachment, origin, placeholder: from?.shown ?? null }));
   }
 
   return (
@@ -197,7 +197,7 @@ export function ProjectChat(props: {
       </If>
       <If when={image() && image()!.sessionId === selected().id ? image() : null}>
         {(shown: () => NonNullable<ReturnType<typeof image>>) => (
-          <MessageImageLightbox attachment={shown().attachment} relpath={shown().attachment.workspace_relpath} origin={shown().origin} api={runtime.client} onClose={() => image.set(null)} />
+          <MessageImageLightbox attachment={shown().attachment} relpath={shown().attachment.workspace_relpath} origin={shown().origin} placeholder={shown().placeholder} api={runtime.client} onClose={() => image.set(null)} />
         )}
       </If>
     </View>
