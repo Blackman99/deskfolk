@@ -18,7 +18,7 @@
  * press is `onContextMenu` of the groups; the selected text of the menu is not read (NSH has no
  * selection to ask for); the file overlay has no preview inside (see `stage-overlays`).
  */
-import { cleanup, computed, List, signal, View, type ViewRef } from "nsh";
+import { cleanup, computed, List, Scroll, signal, View, type ViewRef } from "nsh";
 import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
 import { Button } from "../Button";
@@ -221,7 +221,11 @@ export function ChatStage(props: {
   );
 }
 
-/** The welcome of an empty conversation, picking a starter fills the draft. */
+/**
+ * The welcome of an empty conversation, picking a starter fills the draft. It scrolls as the Svelte
+ * `.stream` around it did: a stage shorter than the welcome hid the last starters under the composer.
+ * `grow` keeps the content at least the stage's height, so a welcome that fits stays centred (`m-auto`).
+ */
 function StageWelcome(props: {
   ctx: ReturnType<typeof createStageContext>;
   stage: ReturnType<typeof createStageActions>;
@@ -231,17 +235,19 @@ function StageWelcome(props: {
   return (
     <If when={props.selected}>
       {(session: () => SessionSummary) => (
-        <ChatWelcome
-          selected={session()}
-          selectedKind={props.ctx.selectedKind()}
-          selectedPeerBot={props.ctx.selectedPeerBot()}
-          locale={props.ctx.locale()}
-          fileDrop={props.ctx.fileDrop()}
-          lockedComposer={props.ctx.lockedComposer()}
-          onOpenProfile={props.onOpenProfile}
-          pickStarterPrompt={props.stage.pickStarterPrompt}
-          titleOf={props.ctx.titleOf}
-        />
+        <Scroll testID="welcome-scroll" class="flex-1 min-h-0" contentClass="grow">
+          <ChatWelcome
+            selected={session()}
+            selectedKind={props.ctx.selectedKind()}
+            selectedPeerBot={props.ctx.selectedPeerBot()}
+            locale={props.ctx.locale()}
+            fileDrop={props.ctx.fileDrop()}
+            lockedComposer={props.ctx.lockedComposer()}
+            onOpenProfile={props.onOpenProfile}
+            pickStarterPrompt={props.stage.pickStarterPrompt}
+            titleOf={props.ctx.titleOf}
+          />
+        </Scroll>
       )}
     </If>
   );
