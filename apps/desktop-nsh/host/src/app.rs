@@ -128,7 +128,8 @@ pub fn run(config: Config) -> std::process::ExitCode {
 
     // Once, before the first view: what the app's TSX may import, NSH's and the app's own crate.
     nsh_platform_macos::set_ui_sets(vec![nsh_base::registry(), deskfolk_app_native::registry()]);
-    let app = NSApplication::sharedApplication(mtm);
+    // The shell's own application class: keys typed while an input method composes reach it (`ime_keys.rs`).
+    let app = crate::ime_keys::application(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
     dock_icon(&app);
     let delegate: Retained<Delegate> = {
