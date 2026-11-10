@@ -141,9 +141,9 @@ function ShellBody(props: { s: ShellState }) {
           testID="shell-sidebar-frame"
           class="h-full min-h-0"
           classList={{ "flex-1": !s.sidebarColumn(), "overflow-hidden": s.sidebarColumn() }}
-          style={s.sidebarColumn() ? { width: s.sidebarHidden() ? s.railWidth : s.sidebarWidth() } : undefined}
+          style={s.sidebarColumn() ? { width: s.sidebarFrameWidth() } : undefined}
         >
-          <If when={s.sidebarHidden()}>
+          <If when={s.sidebarRail()}>
             <View style={{ width: s.railWidth }} class="h-full">
               <SidebarRail
                 pinnedSessionIds={s.pinnedSessionIds()}
@@ -165,7 +165,7 @@ function ShellBody(props: { s: ShellState }) {
               />
             </View>
           </If>
-          <If when={!s.sidebarHidden()}>
+          <If when={!s.sidebarRail()}>
             <View
               testID="shell-sidebar"
               class="h-full min-h-0"

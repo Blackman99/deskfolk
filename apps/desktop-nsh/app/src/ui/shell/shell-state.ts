@@ -11,7 +11,7 @@
  * same query). The interface profile is wired with NSH's side of it (`ui/interface/look.ts`, ADR
  * 0108); its words reach every screen through `copy()`, which is `t` here.
  */
-import { batch, computed, effect, LayoutAnimation, setColorScheme, signal, untracked, windowSize } from "nsh";
+import { batch, cleanup, computed, effect, setColorScheme, signal, untracked, windowSize } from "nsh";
 import type { Bot, SearchHit, SessionSummary } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
 import { dangerCopy, shouldDropConfirm } from "../../m/overlays/danger-confirm.ts";
@@ -44,6 +44,7 @@ import { WINDOW_CHROME } from "../../m/window-chrome.ts";
 import { widthAtMost } from "../../platform/viewport";
 import { wireInterfaceHere } from "../interface/look";
 import { reduceMotion } from "../interface/motion";
+import { sidebarFoldAt } from "./sidebar-fold";
 
 /** What a pane hosting a file answers the shell (the preview column, the workspace page). */
 export type PaneHandle = {
@@ -127,24 +128,48 @@ export function createShellState() {
   const createMenuOpen = signal(false);
   let sidebarHandle: { showArchived(): void } | null = null;
   /**
-   * Folding eases the column between the sidebar's width and the rail's over the quarter second of
-   * the Svelte shell's grid transition. NSH moves no layout by a `transition`, so the fold's commit
-   * is a layout animation: every view it moves eases to its new place, the panes beside the column
-   * with it. Armed here only: crossing into the phone layout and dragging the split stay instant.
+   * Folding moves the column's edge between the sidebar's width and the rail's a frame at a time,
+   * over the quarter second of the Svelte shell's grid transition, and what is beside it is laid out
+   * afresh at each frame, as a drag of the split lays it out. Closing, the sidebar stays and the edge
+   * closes over it; the rail takes its place once the edge has come to rest. Opening, the sidebar is
+   * there at once and the edge uncovers it. `null` at rest.
    *
-   * What that costs: a pane's lines are wrapped anew at once, and the views inside them (a path's
-   * chip in a reply) slide to their new places over the quarter second, across the text.
-   * Stepping the width a frame at a time instead (each frame laid out afresh, as a drag of the split)
-   * kept every frame's lines whole but took some 40 ms for each of its first steps beside a long
-   * reply: six or seven places in all, against a place every frame this way.
+   * Not NSH's `LayoutAnimation`: it laid the panes out at their end width at once and eased each of
+   * their views there on its own, so a reply jumped up or down and its path chips slid across its
+   * text. Not with reduced motion, not across the phone layout, not for a drag of the split.
    */
-  const SIDEBAR_FOLD_MS = 250;
+  const sidebarFoldWidth = signal<number | null>(null);
+  let foldFrame = 0;
+  /** The width of the sidebar's frame where it is a column. */
+  const sidebarFrameWidth = () => sidebarFoldWidth() ?? (sidebarHidden() ? railWidth : sidebarWidth());
+  /** Whether the frame holds the rail: folded, and the fold at rest. */
+  const sidebarRail = () => sidebarHidden() && sidebarFoldWidth() === null;
+  function foldSidebar(from: number): void {
+    cancelAnimationFrame(foldFrame);
+    const to = sidebarHidden() ? railWidth : sidebarWidth();
+    if (!sidebarColumn() || reduceMotion() || from === to) {
+      sidebarFoldWidth.set(null);
+      return;
+    }
+    sidebarFoldWidth.set(from);
+    // The clock starts at the first frame drawn after the fold, so mounting the sidebar takes none of it.
+    let start = -1;
+    const step = (now: number) => {
+      if (start < 0) start = now;
+      const width = sidebarFoldAt(from, to, now - start);
+      sidebarFoldWidth.set(width);
+      if (width !== null) foldFrame = requestAnimationFrame(step);
+    };
+    foldFrame = requestAnimationFrame(step);
+  }
+  cleanup(() => cancelAnimationFrame(foldFrame));
   function toggleSidebar(): void {
     const next = !sidebarCollapsed();
-    if (sidebarColumn() && !reduceMotion()) LayoutAnimation.configureNext({ duration: SIDEBAR_FOLD_MS, update: { type: "easeOut" } });
+    const from = sidebarFrameWidth();
     batch(() => {
       toolsMenuOpen.set(false);
       sidebarCollapsed.set(next);
+      foldSidebar(from);
     });
     saveSidebarCollapsed(next);
   }
@@ -654,6 +679,8 @@ export function createShellState() {
     sidebarDragging,
     sidebarWidth,
     sidebarCollapsed,
+    sidebarFrameWidth,
+    sidebarRail,
     sidebarColumn,
     sidebarHidden,
     railWidth,
