@@ -11,7 +11,7 @@
  * same query). The interface profile is wired with NSH's side of it (`ui/interface/look.ts`, ADR
  * 0108); its words reach every screen through `copy()`, which is `t` here.
  */
-import { batch, computed, effect, setColorScheme, signal, untracked, windowSize } from "nsh";
+import { batch, computed, effect, LayoutAnimation, setColorScheme, signal, untracked, windowSize } from "nsh";
 import type { Bot, SearchHit, SessionSummary } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
 import { dangerCopy, shouldDropConfirm } from "../../m/overlays/danger-confirm.ts";
@@ -43,6 +43,7 @@ import type { ProviderEditorState } from "../../m/settings/provider-form.ts";
 import { WINDOW_CHROME } from "../../m/window-chrome.ts";
 import { widthAtMost } from "../../platform/viewport";
 import { wireInterfaceHere } from "../interface/look";
+import { reduceMotion } from "../interface/motion";
 
 /** What a pane hosting a file answers the shell (the preview column, the workspace page). */
 export type PaneHandle = {
@@ -125,10 +126,26 @@ export function createShellState() {
   const toolsMenuOpen = signal(false);
   const createMenuOpen = signal(false);
   let sidebarHandle: { showArchived(): void } | null = null;
+  /**
+   * Folding eases the column between the sidebar's width and the rail's over the quarter second of
+   * the Svelte shell's grid transition. NSH moves no layout by a `transition`, so the fold's commit
+   * is a layout animation: every view it moves eases to its new place, the panes beside the column
+   * with it. Armed here only: crossing into the phone layout and dragging the split stay instant.
+   *
+   * What that costs: a pane's lines are wrapped anew at once, and the views inside them (a path's
+   * chip in a reply) slide to their new places over the quarter second, across the text.
+   * Stepping the width a frame at a time instead (each frame laid out afresh, as a drag of the split)
+   * kept every frame's lines whole but took some 40 ms for each of its first steps beside a long
+   * reply: six or seven places in all, against a place every frame this way.
+   */
+  const SIDEBAR_FOLD_MS = 250;
   function toggleSidebar(): void {
     const next = !sidebarCollapsed();
-    toolsMenuOpen.set(false);
-    sidebarCollapsed.set(next);
+    if (sidebarColumn() && !reduceMotion()) LayoutAnimation.configureNext({ duration: SIDEBAR_FOLD_MS, update: { type: "easeOut" } });
+    batch(() => {
+      toolsMenuOpen.set(false);
+      sidebarCollapsed.set(next);
+    });
     saveSidebarCollapsed(next);
   }
   function openArchivedFromRail(): void {

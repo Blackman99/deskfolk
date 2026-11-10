@@ -131,75 +131,87 @@ function ShellBody(props: { s: ShellState }) {
       <WorkspaceDragGhost />
       <ToastHost />
       <View class="flex-1 min-h-0 flex-row">
-        {/* The sidebar: a column (or its rail) beside the main column, or the whole roster on a phone. */}
-        <If when={s.sidebarHidden()}>
-          <View style={{ width: s.railWidth }} class="h-full">
-            <SidebarRail
-              pinnedSessionIds={s.pinnedSessionIds()}
-              toolsMenuOpen={s.toolsMenuOpen()}
-              onToolsMenuOpenChange={(open) => s.toolsMenuOpen.set(open)}
-              workspaceOpen={runtime.workspaceOpen}
-              contextMenuSessionId={s.sessionMenu.contextMenu?.session.id ?? null}
-              onOpenContextMenu={(e, session) => openMenuAt({ x: e.pagePosition.x, y: e.pagePosition.y }, session)}
-              onExpand={s.toggleSidebar}
-              onOpenSearch={s.openGlobalSearch}
-              onToggleWorkspace={artifact.toggleWorkspaceExplorer}
-              onOpenRoutines={artifact.openRoutinesFromUi}
-              onOpenSpend={artifact.openSpendFromUi}
-              workbench={s.wide()}
-              onNewTerminal={() => void workbench.openNewTerminal(null)}
-              onOpenArchived={s.openArchivedFromRail}
-              onOpenSettings={() => runtime.openSettings()}
-              onDragSession={s.wide() ? sessionDrag.drag : undefined}
-            />
-          </View>
-        </If>
-        <If when={!s.sidebarHidden()}>
-          <View
-            testID="shell-sidebar"
-            class="h-full min-h-0"
-            classList={{ "flex-1": !s.sidebarColumn() }}
-            style={s.sidebarColumn() ? { width: s.sidebarWidth() } : undefined}
-          >
-            <Sidebar
-              selected={s.selected()}
-              pinnedSessionIds={s.pinnedSessionIds()}
-              searchOpen={s.searchOpen()}
-              onOpenSearch={s.openGlobalSearch}
-              createMenuOpen={s.createMenuOpen()}
-              onCreateMenuOpenChange={(open) => s.createMenuOpen.set(open)}
-              toolsMenuOpen={s.toolsMenuOpen()}
-              onToolsMenuOpenChange={(open) => s.toolsMenuOpen.set(open)}
-              workspaceOpen={runtime.workspaceOpen}
-              contextMenuSessionId={s.sessionMenu.contextMenu?.session.id ?? null}
-              renamingSessionId={s.sessionMenu.renamingSessionId}
-              phoneList={s.phoneList()}
-              onRenameSession={s.sessionMenu.finishRename}
-              onOpenContextMenu={openMenuAt}
-              onTogglePin={s.sessionMenu.handleMenuTogglePin}
-              onOpenProjectDir={(session) => void s.sessionMenu.handleMenuOpenProjectDir(session)}
-              onToggleWorkspace={artifact.toggleWorkspaceExplorer}
-              onOpenRoutines={artifact.openRoutinesFromUi}
-              onOpenSpend={artifact.openSpendFromUi}
-              workbench={s.wide()}
-              onNewTerminal={() => void workbench.openNewTerminal(null)}
-              onOpenSettings={() => runtime.openSettings()}
-              onCreateBot={s.openCreateBot}
-              onCreateGroup={s.openCreateGroup}
-              onCollapse={s.sidebarColumn() ? s.toggleSidebar : undefined}
-              onHandle={(handle) => s.setSidebarHandle(handle)}
-              onDragSession={s.wide() ? sessionDrag.drag : undefined}
-            />
-          </View>
-          <If when={s.sidebarColumn()}>
-            <View
-              testID="sidebar-split"
-              accessibilityLabel={t().sidebar.resize}
-              class="w-[6px] h-full ml-[-3px] mr-[-3px] cursor-col-resize"
-              style={{ zIndex: 5 }}
-              {...sidebarPan.panHandlers}
-            />
+        {/*
+          * The sidebar: a column (or its rail) beside the main column, or the whole roster on a phone.
+          * One frame holds either: as a column its width is the rail's or the sidebar's, and folding
+          * eases it between the two (`toggleSidebar`), the one shown drawn at its own width and cut
+          * at the frame's edge.
+          */}
+        <View
+          testID="shell-sidebar-frame"
+          class="h-full min-h-0"
+          classList={{ "flex-1": !s.sidebarColumn(), "overflow-hidden": s.sidebarColumn() }}
+          style={s.sidebarColumn() ? { width: s.sidebarHidden() ? s.railWidth : s.sidebarWidth() } : undefined}
+        >
+          <If when={s.sidebarHidden()}>
+            <View style={{ width: s.railWidth }} class="h-full">
+              <SidebarRail
+                pinnedSessionIds={s.pinnedSessionIds()}
+                toolsMenuOpen={s.toolsMenuOpen()}
+                onToolsMenuOpenChange={(open) => s.toolsMenuOpen.set(open)}
+                workspaceOpen={runtime.workspaceOpen}
+                contextMenuSessionId={s.sessionMenu.contextMenu?.session.id ?? null}
+                onOpenContextMenu={(e, session) => openMenuAt({ x: e.pagePosition.x, y: e.pagePosition.y }, session)}
+                onExpand={s.toggleSidebar}
+                onOpenSearch={s.openGlobalSearch}
+                onToggleWorkspace={artifact.toggleWorkspaceExplorer}
+                onOpenRoutines={artifact.openRoutinesFromUi}
+                onOpenSpend={artifact.openSpendFromUi}
+                workbench={s.wide()}
+                onNewTerminal={() => void workbench.openNewTerminal(null)}
+                onOpenArchived={s.openArchivedFromRail}
+                onOpenSettings={() => runtime.openSettings()}
+                onDragSession={s.wide() ? sessionDrag.drag : undefined}
+              />
+            </View>
           </If>
+          <If when={!s.sidebarHidden()}>
+            <View
+              testID="shell-sidebar"
+              class="h-full min-h-0"
+              classList={{ "flex-1": !s.sidebarColumn() }}
+              style={s.sidebarColumn() ? { width: s.sidebarWidth() } : undefined}
+            >
+              <Sidebar
+                selected={s.selected()}
+                pinnedSessionIds={s.pinnedSessionIds()}
+                searchOpen={s.searchOpen()}
+                onOpenSearch={s.openGlobalSearch}
+                createMenuOpen={s.createMenuOpen()}
+                onCreateMenuOpenChange={(open) => s.createMenuOpen.set(open)}
+                toolsMenuOpen={s.toolsMenuOpen()}
+                onToolsMenuOpenChange={(open) => s.toolsMenuOpen.set(open)}
+                workspaceOpen={runtime.workspaceOpen}
+                contextMenuSessionId={s.sessionMenu.contextMenu?.session.id ?? null}
+                renamingSessionId={s.sessionMenu.renamingSessionId}
+                phoneList={s.phoneList()}
+                onRenameSession={s.sessionMenu.finishRename}
+                onOpenContextMenu={openMenuAt}
+                onTogglePin={s.sessionMenu.handleMenuTogglePin}
+                onOpenProjectDir={(session) => void s.sessionMenu.handleMenuOpenProjectDir(session)}
+                onToggleWorkspace={artifact.toggleWorkspaceExplorer}
+                onOpenRoutines={artifact.openRoutinesFromUi}
+                onOpenSpend={artifact.openSpendFromUi}
+                workbench={s.wide()}
+                onNewTerminal={() => void workbench.openNewTerminal(null)}
+                onOpenSettings={() => runtime.openSettings()}
+                onCreateBot={s.openCreateBot}
+                onCreateGroup={s.openCreateGroup}
+                onCollapse={s.sidebarColumn() ? s.toggleSidebar : undefined}
+                onHandle={(handle) => s.setSidebarHandle(handle)}
+                onDragSession={s.wide() ? sessionDrag.drag : undefined}
+              />
+            </View>
+          </If>
+        </View>
+        <If when={!s.sidebarHidden() && s.sidebarColumn()}>
+          <View
+            testID="sidebar-split"
+            accessibilityLabel={t().sidebar.resize}
+            class="w-[6px] h-full ml-[-3px] mr-[-3px] cursor-col-resize"
+            style={{ zIndex: 5 }}
+            {...sidebarPan.panHandlers}
+          />
         </If>
         {/* The main column: the workbench on a desktop; one page at a time elsewhere. */}
         <If when={s.sidebarColumn() || pageOpen()}>
