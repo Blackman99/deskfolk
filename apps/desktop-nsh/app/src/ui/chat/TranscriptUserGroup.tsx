@@ -11,7 +11,7 @@
  * still ring; the run's dashed divider is a solid hairline; `data-ui="bubble-you"` (a profile CSS
  * hook) has no counterpart.
  */
-import { signal, Text, View } from "nsh";
+import { signal, Text, View, type ViewRef } from "nsh";
 import type { TranscriptGroup } from "../../m/chat/chat-view.ts";
 import { transcriptItemKey, type TranscriptItem } from "../../m/chat/transcript.ts";
 import type { TranscriptStage } from "../../m/chat/transcript-stage.ts";
@@ -27,6 +27,7 @@ import { MessageEditor } from "./MessageEditor";
 import { QuoteRef } from "./QuoteRef";
 import { ReactionRow } from "./ReactionRow";
 import { ReplyingIndicator } from "./ReplyingIndicator";
+import { messageHover, MessagePill } from "./message-pill";
 import { arriveMotion, MessageToolbar, ringStyle, toolbarWanted, type MessageMenuHandler } from "./transcript-parts";
 import { LineButton, MessageFoot, QueuedRow, VersionsBlock } from "./transcript-user-parts";
 
@@ -76,7 +77,9 @@ function Segment(props: {
   const t = () => copy();
   const stage = props.stage;
   const msg = () => props.item().message;
-  const hovered = signal(false);
+  const hover = messageHover();
+  /** The bubble: the pill stands on its top edge. */
+  const bubble = signal<ViewRef | null>(null);
   const editing = () => stage.editingHere(msg());
   const arrive = arriveMotion(() => stage.arriving.has(transcriptItemKey(props.item())));
   const ringed = () => stage.highlightedId === msg().id || stage.selectedMessageId === msg().id;
@@ -89,8 +92,7 @@ function Segment(props: {
     <>
       <View
         testID={`msg-${msg().id}`}
-        onMouseEnter={() => hovered.set(true)}
-        onMouseLeave={() => hovered.set(false)}
+        {...hover.message}
         onContextMenu={(e) => props.onContextMenu?.(msg(), e.pagePosition)}
         class={`relative items-end ${editing() ? "w-full" : narrowWindow() ? "max-w-full" : "max-w-[80%]"} ${ringed() ? "rounded-[16px]" : ""} ${
           grouped() ? "mt-[4px] pt-[8px] border-t border-line-subtle" : ""
@@ -114,6 +116,7 @@ function Segment(props: {
         >
           <View
             testID="msg-bubble"
+            ref={(node: ViewRef) => bubble.set(node)}
             selectable
             class={`max-w-full px-[14px] py-[10px] border ${editing() ? "w-full bg-pane border-accent-border" : "bg-you border-transparent"} ${
               grouped()
@@ -122,14 +125,16 @@ function Segment(props: {
             }`}
             style={editing() ? undefined : { boxShadow: shadow("xs") }}
           >
-            <If when={hovered() && !editing() && toolbarWanted()}>
-              <MessageToolbar
-                message={msg()}
-                stage={stage}
-                side="you"
-                onMenu={props.onContextMenu}
-                onEdit={stage.editable(msg()) ? () => stage.startEdit(msg()) : undefined}
-              />
+            {/* An overlay on the bubble's top edge (`message-pill`), above the rows around it. */}
+            <If when={hover.shown() && !editing() && toolbarWanted() && bubble() !== null}>
+              <MessagePill anchor={bubble()!} hover={hover}>
+                <MessageToolbar
+                  message={msg()}
+                  stage={stage}
+                  onMenu={props.onContextMenu}
+                  onEdit={stage.editable(msg()) ? () => stage.startEdit(msg()) : undefined}
+                />
+              </MessagePill>
             </If>
             <QuoteRef message={msg()} selected={stage.selected} messageLookup={stage.messageLookup} who={stage.who} inverted={!editing()} />
             <If

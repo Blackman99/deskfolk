@@ -37,23 +37,26 @@ test("a line no Bot has read yet says so, and can be read now or taken back", as
   await app.waitUntil(() => app.texts().includes("insert:you-3"));
 });
 
+// The pill is an overlay over its line (`message-pill.tsx`), outside the line's views for a
+// selector: one pill is up at a time, so it is named on its own.
 test("the hover pill shows over a line and copies it, quotes it, opens its menu", async () => {
   const app = await open("user");
   await app.waitFor("id:run-annotated");
-  expect(app.shows("id:run-annotated >> id:msg-toolbar")).toBe(false);
+  expect(app.shows("id:msg-toolbar")).toBe(false);
   await app.hover("id:run-annotated >> id:msg-bubble");
-  await app.waitFor("id:run-annotated >> id:msg-toolbar");
-  await app.press("id:run-annotated >> id:act-copy");
+  await app.waitFor("id:msg-toolbar");
+  await app.press("id:msg-toolbar >> id:act-copy");
   await app.waitUntil(() => app.texts().includes("copy:批注发出去了"));
   await app.waitFor(`text:✓ ${t.chat.copied}`);
-  await app.press("id:run-annotated >> id:act-reply");
+  await app.press("id:msg-toolbar >> id:act-reply");
   await app.waitUntil(() => app.texts().includes("quote:you-annotated"));
-  await app.press("id:run-annotated >> id:act-more");
+  await app.press("id:msg-toolbar >> id:act-more");
   await app.waitUntil(() => app.texts().some((line) => line.startsWith("menu:you-annotated")));
-  // A line that already quotes another cannot be quoted again.
+  // A line that already quotes another cannot be quoted again. The last line's pill lingers a moment first.
   await app.hover("id:run-quote >> id:msg-bubble");
-  await app.waitFor("id:run-quote >> id:msg-toolbar");
-  expect(app.shows("id:run-quote >> id:act-reply")).toBe(false);
+  await app.wait(400);
+  expect(app.count("id:msg-toolbar")).toBe(1);
+  expect(app.shows("id:msg-toolbar >> id:act-reply")).toBe(false);
 });
 
 test("a right click on a line asks the shell for its menu", async () => {
@@ -67,11 +70,11 @@ test("a line is changed in place: the pill's edit swaps the words for a field", 
   const app = await open("user");
   await app.waitFor("id:run-edit");
   await app.hover("id:run-edit >> id:msg-bubble");
-  await app.press("id:run-edit >> id:act-edit");
+  await app.press("id:msg-toolbar >> id:act-edit");
   await app.waitFor("id:run-edit >> id:msg-editor");
   expect(app.value("id:run-edit >> id:msg-editor-field")).toBe("待改的一句");
   // While it is a field the pill is gone.
-  expect(app.shows("id:run-edit >> id:msg-toolbar")).toBe(false);
+  expect(app.shows("id:msg-toolbar")).toBe(false);
 });
 
 test("a taken-back line is a notice with the way back to its words", async () => {
@@ -88,9 +91,9 @@ test("a locked conversation leaves no reaction, reply or take-back", async () =>
   await app.press("id:toggle-locked");
   await app.waitFor("id:run-quote");
   await app.hover("id:run-annotated >> id:msg-bubble");
-  await app.waitFor("id:run-annotated >> id:msg-toolbar");
-  expect(app.shows("id:run-annotated >> id:act-reply")).toBe(false);
-  expect(app.shows("id:run-annotated >> id:react-👍")).toBe(false);
+  await app.waitFor("id:msg-toolbar");
+  expect(app.shows("id:msg-toolbar >> id:act-reply")).toBe(false);
+  expect(app.shows("id:msg-toolbar >> id:react-👍")).toBe(false);
   expect(app.shows("id:run-you >> id:msg-withdraw")).toBe(false);
 });
 
@@ -118,10 +121,27 @@ test("the hover pill of a Bot's part carries the part's time and copies the mess
   const app = await open("bot");
   await app.waitFor("id:run-bot >> id:msg-bot-1");
   await app.hover("id:run-bot >> id:msg-bot-1");
-  await app.waitFor("id:run-bot >> id:msg-bot-1 >> id:msg-toolbar");
-  expect(app.shows("id:run-bot >> id:msg-bot-1 >> id:msg-when-peek")).toBe(true);
-  await app.press("id:run-bot >> id:msg-bot-1 >> id:act-copy");
+  await app.waitFor("id:msg-toolbar");
+  expect(app.shows("id:msg-toolbar >> id:msg-when-peek")).toBe(true);
+  await app.press("id:msg-toolbar >> id:act-copy");
   await app.waitUntil(() => app.texts().some((line) => line.startsWith("copy:周报的")));
+});
+
+test("the pill stays while the pointer rests on it, and lingers a moment after it leaves", async () => {
+  const app = await open("bot");
+  await app.waitFor("id:run-bot >> id:msg-bot-1");
+  await app.hover("id:run-bot >> id:msg-bot-1");
+  await app.waitFor("id:msg-toolbar");
+  // Off the part onto its pill: it stays past the grace.
+  await app.hover("id:msg-toolbar");
+  await app.wait(400);
+  expect(app.count("id:msg-toolbar")).toBe(1);
+  // Off both: still there a moment (a slanted path to it leaves the part first), then gone.
+  await app.hover("id:show-user");
+  await app.wait(60);
+  expect(app.count("id:msg-toolbar")).toBe(1);
+  await app.wait(400);
+  expect(app.count("id:msg-toolbar")).toBe(0);
 });
 
 test("a working bubble shows what it has said, its cursor, and where it is", async () => {

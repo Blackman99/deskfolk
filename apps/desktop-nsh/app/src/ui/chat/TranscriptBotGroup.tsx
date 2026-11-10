@@ -8,11 +8,11 @@
  *
  * Differences from the Svelte group (which took DOM events): a secondary press, and the hover pill's
  * "more", go to `onContextMenu(message, position)` for the shell to open the message's menu; the
- * pill shows while the pointer is over a part (`transcript-parts`); a part's commands are read when
+ * pill shows while the pointer is over a part (`message-pill`); a part's commands are read when
  * it mounts (the virtualised list mounts what is near) instead of when an observer sees it; the
  * found-line pulse is a still ring; `data-ui="bubble-bot"` (a profile CSS hook) has no counterpart.
  */
-import { effect, signal, Text, untracked, View } from "nsh";
+import { effect, signal, Text, untracked, View, type ViewRef } from "nsh";
 import type { Bot } from "@real-bot/protocol";
 import { calculateBotDuration, formatDurationMs, formatFullTimestamp, formatMessageTime, type TranscriptGroup } from "../../m/chat/chat-view.ts";
 import { transcriptItemKey, type TranscriptItem } from "../../m/chat/transcript.ts";
@@ -29,6 +29,7 @@ import { MessageAttachments } from "./MessageAttachments";
 import { QuoteRef } from "./QuoteRef";
 import { ReactionRow } from "./ReactionRow";
 import { ReplyingIndicator } from "./ReplyingIndicator";
+import { messageHover, MessagePill } from "./message-pill";
 import { StreamingReply } from "./transcript-stream";
 import { arriveMotion, Badge, BotPortrait, MessageToolbar, ringStyle, SenderName, toolbarWanted, type MessageMenuHandler } from "./transcript-parts";
 
@@ -116,7 +117,9 @@ function Reply(props: { item: MessageItem; last: boolean; stage: TranscriptStage
   const t = () => copy();
   const stage = props.stage;
   const msg = () => props.item.message;
-  const hovered = signal(false);
+  const hover = messageHover();
+  /** The part: the pill stands on its top edge. */
+  const self = signal<ViewRef | null>(null);
   const arrive = arriveMotion(() => stage.arriving.has(transcriptItemKey(props.item)));
   const ringed = () => stage.highlightedId === msg().id || stage.selectedMessageId === msg().id;
   /** The turn whose commands this part hosts, if it is this part. */
@@ -188,16 +191,19 @@ function Reply(props: { item: MessageItem; last: boolean; stage: TranscriptStage
   return (
     <View
       testID={`msg-${msg().id}`}
-      onMouseEnter={() => hovered.set(true)}
-      onMouseLeave={() => hovered.set(false)}
+      ref={(node: ViewRef) => self.set(node)}
+      {...hover.message}
       onContextMenu={(e) => props.onContextMenu?.(msg(), e.pagePosition)}
       class={`relative w-full ${ringed() ? "rounded-[16px]" : ""}`}
       style={{ ...ringStyle(ringed()), opacity: arrive.opacity, transform: [...arrive.transform] }}
     >
+      {/* An overlay on this part's top edge (`message-pill`), above the rows around it. */}
+      <If when={hover.shown() && toolbarWanted() && self() !== null}>
+        <MessagePill anchor={self()!} hover={hover}>
+          <MessageToolbar message={msg()} stage={stage} onMenu={props.onContextMenu} extra={peek()} />
+        </MessagePill>
+      </If>
       <View testID="msg-reply" selectable class="w-full px-[2px]">
-        <If when={hovered() && toolbarWanted()}>
-          <MessageToolbar message={msg()} stage={stage} side="bot" onMenu={props.onContextMenu} extra={peek()} />
-        </If>
         <QuoteRef message={msg()} selected={stage.selected} messageLookup={stage.messageLookup} who={stage.who} />
         <MarkdownBody
           source={stage.messageBody(msg())}

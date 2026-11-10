@@ -5,8 +5,9 @@
  * hover pill of a message (quick reactions, reply, edit, copy, more).
  *
  * The pill of the Svelte groups is a CSS-hover strip; here it is drawn while the pointer is over the
- * segment (`onMouseEnter` / `onMouseLeave`), absolutely placed on the segment's top edge so it never
- * moves the layout. On a phone (window 680 wide or less) it has no job: the long press opens the menu.
+ * segment (`onMouseEnter` / `onMouseLeave`), in an overlay on the segment's top edge
+ * (`message-pill.tsx`) so it never moves the layout and no row above covers it. On a phone (window
+ * 680 wide or less) it has no job: the long press opens the menu.
  */
 import { createMotion, Text, token, View, type JSX, type Point, type ViewStyle } from "nsh";
 import { reduceMotion } from "../interface/motion";
@@ -127,16 +128,14 @@ export function arriveMotion(on: () => boolean) {
 const PILL_BUTTON = "min-w-[24px] h-[24px] px-[5px] rounded-[7px] flex-row items-center justify-center gap-[4px] hover:bg-row-hover active:scale-[0.92]";
 
 /**
- * The pill that stands on a message's top edge while the pointer is over it. `top`: how far above
- * the segment (your bubble's steps a little onto it). `extra`: a Bot's middle part keeps its time
- * here. `onEdit` is given for a line of yours that can still be changed.
+ * What the pill that stands on a message's top edge holds while the pointer is over it (placed by
+ * `MessagePill`). `extra`: a Bot's middle part keeps its time here. `onEdit` is given for a line of
+ * yours that can still be changed.
  */
 export function MessageToolbar(props: {
   message: Message;
   stage: TranscriptStage;
   onMenu?: MessageMenuHandler;
-  /** Your own bubble's: reply and edit, on the right. */
-  side: "you" | "bot";
   extra?: JSX.Element;
   onEdit?: () => void;
 }) {
@@ -144,78 +143,72 @@ export function MessageToolbar(props: {
   const copied = () => props.stage.copiedMessageId === props.message.id;
   return (
     <View
-      testID="msg-toolbar"
-      class={`absolute z-10 ${props.side === "you" ? "right-[8px]" : "left-[8px] right-[8px] items-end"}`}
-      style={{ top: props.side === "you" ? -26 : -30 }}
+      class="flex-row items-center gap-[1px] p-[2px] bg-pane border border-line rounded-(--radius-md)"
+      style={{ boxShadow: shadow("md") }}
     >
+      <If when={!props.stage.lockedComposer}>
+        <Each of={[...QUICK_REACTIONS]}>
+          {(emoji) => (
+            <View
+              role="button"
+              testID={`react-${emoji()}`}
+              accessibilityLabel={t().chat.reactWith(emoji())}
+              tooltip={tip(emoji())}
+              onPress={() => void runtime.toggleReaction(props.message.id, emoji())}
+              class="cursor-pointer select-none w-[24px] h-[24px] rounded-[7px] items-center justify-center hover:bg-row-hover hover:scale-[1.15] active:scale-[0.95]"
+            >
+              <Text class="text-[14px]">{emoji()}</Text>
+            </View>
+          )}
+        </Each>
+        <View class="w-px h-[14px] mx-[3px] bg-line" accessible={false} />
+      </If>
+      {props.extra}
+      <If when={canQuoteReply(props.message) && !props.stage.lockedComposer}>
+        <View
+          role="button"
+          testID="act-reply"
+          accessibilityLabel={t().chat.replyMessage}
+          tooltip={tip(t().chat.replyMessage)}
+          onPress={() => props.stage.startQuoteReply(props.message)}
+          class={`cursor-pointer select-none group ${PILL_BUTTON}`}
+        >
+          <Icon name="reply" size={12} class="tint-ink-muted group-hover:tint-ink" />
+        </View>
+      </If>
+      <If when={props.onEdit}>
+        <View
+          role="button"
+          testID="act-edit"
+          accessibilityLabel={t().chat.editThisLine}
+          tooltip={tip(t().chat.editMessage)}
+          onPress={() => props.onEdit?.()}
+          class={`cursor-pointer select-none group ${PILL_BUTTON}`}
+        >
+          <Icon name="edit" size={12} class="tint-ink-muted group-hover:tint-ink" />
+        </View>
+      </If>
       <View
-        class="flex-row items-center gap-[1px] p-[2px] bg-pane border border-line rounded-(--radius-md)"
-        style={{ boxShadow: shadow("md") }}
+        role="button"
+        testID="act-copy"
+        accessibilityLabel={t().chat.copyMessage}
+        tooltip={tip(t().chat.copyMessage)}
+        onPress={() => props.stage.copyMessageBody(props.message.id, props.message.body)}
+        class={`cursor-pointer select-none group ${PILL_BUTTON}`}
       >
-        <If when={!props.stage.lockedComposer}>
-          <Each of={[...QUICK_REACTIONS]}>
-            {(emoji) => (
-              <View
-                role="button"
-                testID={`react-${emoji()}`}
-                accessibilityLabel={t().chat.reactWith(emoji())}
-                tooltip={tip(emoji())}
-                onPress={() => void runtime.toggleReaction(props.message.id, emoji())}
-                class="cursor-pointer select-none w-[24px] h-[24px] rounded-[7px] items-center justify-center hover:bg-row-hover hover:scale-[1.15] active:scale-[0.95]"
-              >
-                <Text class="text-[14px]">{emoji()}</Text>
-              </View>
-            )}
-          </Each>
-          <View class="w-px h-[14px] mx-[3px] bg-line" accessible={false} />
+        <If when={copied()} else={<Icon name="copy" size={12} class="tint-ink-muted group-hover:tint-ink" />}>
+          <Text class="text-[11px] font-semibold text-ok">{`✓ ${t().chat.copied}`}</Text>
         </If>
-        {props.extra}
-        <If when={canQuoteReply(props.message) && !props.stage.lockedComposer}>
-          <View
-            role="button"
-            testID="act-reply"
-            accessibilityLabel={t().chat.replyMessage}
-            tooltip={tip(t().chat.replyMessage)}
-            onPress={() => props.stage.startQuoteReply(props.message)}
-            class={`cursor-pointer select-none group ${PILL_BUTTON}`}
-          >
-            <Icon name="reply" size={12} class="tint-ink-muted group-hover:tint-ink" />
-          </View>
-        </If>
-        <If when={props.onEdit}>
-          <View
-            role="button"
-            testID="act-edit"
-            accessibilityLabel={t().chat.editThisLine}
-            tooltip={tip(t().chat.editMessage)}
-            onPress={() => props.onEdit?.()}
-            class={`cursor-pointer select-none group ${PILL_BUTTON}`}
-          >
-            <Icon name="edit" size={12} class="tint-ink-muted group-hover:tint-ink" />
-          </View>
-        </If>
-        <View
-          role="button"
-          testID="act-copy"
-          accessibilityLabel={t().chat.copyMessage}
-          tooltip={tip(t().chat.copyMessage)}
-          onPress={() => props.stage.copyMessageBody(props.message.id, props.message.body)}
-          class={`cursor-pointer select-none group ${PILL_BUTTON}`}
-        >
-          <If when={copied()} else={<Icon name="copy" size={12} class="tint-ink-muted group-hover:tint-ink" />}>
-            <Text class="text-[11px] font-semibold text-ok">{`✓ ${t().chat.copied}`}</Text>
-          </If>
-        </View>
-        <View
-          role="button"
-          testID="act-more"
-          accessibilityLabel={t().chat.moreActions}
-          tooltip={tip(t().chat.moreActions)}
-          onPress={(e) => props.onMenu?.(props.message, e.pagePosition)}
-          class={`cursor-pointer select-none group ${PILL_BUTTON}`}
-        >
-          <Icon name="more" size={12} class="tint-ink-muted group-hover:tint-ink" />
-        </View>
+      </View>
+      <View
+        role="button"
+        testID="act-more"
+        accessibilityLabel={t().chat.moreActions}
+        tooltip={tip(t().chat.moreActions)}
+        onPress={(e) => props.onMenu?.(props.message, e.pagePosition)}
+        class={`cursor-pointer select-none group ${PILL_BUTTON}`}
+      >
+        <Icon name="more" size={12} class="tint-ink-muted group-hover:tint-ink" />
       </View>
     </View>
   );

@@ -35,6 +35,7 @@ import { StageOverlays } from "./stage-overlays";
 import { DelegationBlock, HistoryLoading, StageRowView } from "./stage-parts";
 import { trackReading } from "./stage-reading";
 import { activeMessageId, createRowKeeper, hiddenWaitingFromRows, inverseIndexOf, invertedRows, stageRows } from "./stage-rows";
+import { TranscriptClip } from "./message-pill";
 import { createStageScroll } from "./stage-scroll";
 import { settled } from "../workbench/drag-settle";
 import { onGlassCard } from "../glass";
@@ -143,33 +144,42 @@ export function ChatStage(props: {
         <If when={mode() === "list"}>
           {/* Another conversation is another list: it opens at its newest line. */}
           <Each of={[ctx.sessionId()]} key={(id: string | null) => id ?? ""}>
-            {() => (
-              <List
-                testID="transcript"
-                ref={scroll.ref}
-                each={inverted()}
-                inverted
-                keyExtractor={(row) => row.id}
-                class={`flex-1 ${glassCard() ? "" : "bg-pane"}`}
-                contentClass="py-5 gap-4"
-                contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20 }}
-                estimatedItemSize={96}
-                onScroll={scroll.onScroll}
-                onViewableItemsChange={(info) => scroll.onViewable(info.viewableItems.map((token) => token.index))}
-                onLoadMore={scroll.onLoadMore}
-              >
-                {(row) => (
-                  <StageRowView
-                    row={row()}
-                    stage={stage}
-                    ctx={ctx}
-                    loadingEarlier={Boolean(view()?.olderLoading)}
-                    onContextMenu={actions.openMenu}
-                    onOpenArtifact={openArtifact}
-                  />
-                )}
-              </List>
-            )}
+            {() => {
+              // A message's hover pill is an overlay: it shows only inside this list's frame.
+              let listNode: ViewRef | null = null;
+              return (
+                <TranscriptClip.Provider value={() => listNode}>
+                  <List
+                    testID="transcript"
+                    ref={(node) => {
+                      listNode = node;
+                      scroll.ref(node);
+                    }}
+                    each={inverted()}
+                    inverted
+                    keyExtractor={(row) => row.id}
+                    class={`flex-1 ${glassCard() ? "" : "bg-pane"}`}
+                    contentClass="py-5 gap-4"
+                    contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20 }}
+                    estimatedItemSize={96}
+                    onScroll={scroll.onScroll}
+                    onViewableItemsChange={(info) => scroll.onViewable(info.viewableItems.map((token) => token.index))}
+                    onLoadMore={scroll.onLoadMore}
+                  >
+                    {(row) => (
+                      <StageRowView
+                        row={row()}
+                        stage={stage}
+                        ctx={ctx}
+                        loadingEarlier={Boolean(view()?.olderLoading)}
+                        onContextMenu={actions.openMenu}
+                        onOpenArtifact={openArtifact}
+                      />
+                    )}
+                  </List>
+                </TranscriptClip.Provider>
+              );
+            }}
           </Each>
         </If>
         <If when={ctx.showMessageIndex() && selected()}>
