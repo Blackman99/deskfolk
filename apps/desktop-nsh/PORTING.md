@@ -99,7 +99,7 @@
 - `role` 只认 NSH 的 `AccessibilityRole`：没有 `dialog`、`alertdialog`、`status`，对话框用 `group` / `alert`，状态文字用 `text`，卡片用 `region`。
 - `Overlay`（和放在它里面的弹层）里，`<Each>` 画不出东西：那里的列表写成函数子节点 `{() => list().map((x) => …)}`。
 - `keymap` 同一个键只有最新绑定的那个生效：同时开着两个都绑 Escape 的东西，旧的听不到。焦点在输入框里还要响应的快捷键加 `{ when: "always" }`。
-- **输入法组字时，不带 ⌘、⌃ 的键归输入法**，`keymap` 听不到（连 `{ when: "always" }` 也一样）：NSH 0.4.0 的 keymap 比输入框先看到按键，消息框（`RichEditor`）自己绑的退格、回车、方向键会把它们从拼音那里拿走，宿主的 `NSApplication` 子类（`host/src/ime_keys.rs`）在组字时把这些键直接交给窗口。带 ⌘、⌃ 的照旧先过 keymap，组字时要不要响应，处理函数自己看（`Terminal.tsx` 组字时解除绑定）。别想着再加一个按键监视器排到 NSH 前面：AppKit 调本地监视器的顺序不固定。
+- **输入法组字时，不带 ⌘、⌃ 的键归输入法**，`keymap` 听不到（连 `{ when: "always" }` 也一样）：NSH 0.4.0 的 keymap 比输入框先看到按键，消息框（`RichEditor`）自己绑的退格、回车、方向键会把它们从拼音那里拿走，宿主的 `NSApplication` 子类（`host/src/ime_keys.rs`）在组字时把这些键直接交给窗口。带 ⌘、⌃ 的照旧先过 keymap，组字时要不要响应，处理函数自己看（`Terminal.tsx` 组字时解除绑定）。别想着再加一个按键监视器排到 NSH 前面：AppKit 调本地监视器的顺序不固定。候选框开在屏幕左下角也不是应用的事：消息框藏起来的输入框留着已上屏的字，AppKit 答不出组字的位置，宿主（`host/src/ime_rect.rs`）改报光标那一行；要看输入法拿到的位置，用开发检查的 `compose`。
 - 键名没有 `"+"`、`"-"`：写 `plus`、`minus`。
 - `flex-shrink` 不认，写 `shrink`；CSS 变量做圆角（`rounded-(--radius-bot)`）要是主题里没有就换成具体值。
 - 横排里的子项默认不收缩（照 RN，`flex-shrink` 是 0）：CSS 里会让位、折行的 `<strong>` / `<span>`，在这里按一整行的宽度排开，把后面的东西挤出框外（任务地图侧栏的名字曾把「跟随」挤出卡片）。要让位的那段文字写 `shrink min-w-0`；所在的纵列宽度由外面定（`flex-1`）时，它照常折行，行跟着长高，不会碰上后面那条说的高度问题。

@@ -11,6 +11,8 @@ mod gtk;
 #[cfg(target_os = "macos")]
 mod ime_keys;
 #[cfg(target_os = "macos")]
+mod ime_rect;
+#[cfg(target_os = "macos")]
 mod independent;
 #[cfg(target_os = "macos")]
 mod installer;

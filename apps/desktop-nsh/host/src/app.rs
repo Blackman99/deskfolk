@@ -131,6 +131,8 @@ pub fn run(config: Config) -> std::process::ExitCode {
     nsh_platform_macos::set_ui_sets(vec![nsh_base::registry(), deskfolk_app_native::registry()]);
     // The shell's own application class: keys typed while an input method composes reach it (`ime_keys.rs`).
     let app = crate::ime_keys::application(mtm);
+    // Input methods' candidates under the caret when the text view cannot tell where (`ime_rect.rs`).
+    crate::ime_rect::install();
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
     dock_icon(&app);
     let delegate: Retained<Delegate> = {

@@ -502,8 +502,15 @@ pub fn compose_first(args: &str, commit: bool) {
                 let caret = objc2_foundation::NSRange::new(text.length(), 0);
                 let _: () = msg_send![&*responder, setMarkedText: &*text, selectedRange: caret, replacementRange: nowhere];
             }
-            let start = objc2_foundation::NSRange::new(0, 0);
-            msg_send![&*responder, firstRectForCharacterRange: start, actualRange: std::ptr::null_mut::<objc2_foundation::NSRange>()]
+            // What an input method asks: the composition's place (the caret's with none).
+            let marked: objc2_foundation::NSRange = msg_send![&*responder, markedRange];
+            let at = if marked.location == objc2_foundation::NSNotFound as usize {
+                let selected: objc2_foundation::NSRange = msg_send![&*responder, selectedRange];
+                objc2_foundation::NSRange::new(selected.location, 0)
+            } else {
+                marked
+            };
+            msg_send![&*responder, firstRectForCharacterRange: at, actualRange: std::ptr::null_mut::<objc2_foundation::NSRange>()]
         };
         let frame = entry.window.frame();
         let x = rect.origin.x - frame.origin.x;
