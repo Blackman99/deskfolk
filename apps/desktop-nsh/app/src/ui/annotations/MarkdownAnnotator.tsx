@@ -20,7 +20,7 @@ import type { EncodedCrop } from "../../m/annotations/region-box.ts";
 import type { PressedPicture } from "../chat/image-origin";
 import { MarkdownBody } from "../MarkdownBody";
 import { tip } from "../tip";
-import { markdownBlocks, type MarkdownBlock } from "./markdown-blocks";
+import { markdownBlocksOffThread, type MarkdownBlock } from "./markdown-blocks";
 
 /** Everything this surface says; the preview passes it in from `copy.ts`. */
 export type MarkdownAnnotatorLabels = {
@@ -81,7 +81,17 @@ export function MarkdownAnnotator(props: {
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
 
   const choosing = () => props.active && props.enabled;
-  const blocks = computed(() => markdownBlocks(props.source));
+  // Read off the engine thread (`markdownBlocksOffThread`); the last file's blocks stay up until
+  // this one's have come.
+  const blocks = signal<MarkdownBlock[]>([]);
+  let blocksGen = 0;
+  effect(() => {
+    const source = props.source;
+    const mine = ++blocksGen;
+    void markdownBlocksOffThread(source).then((next) => {
+      if (mine === blocksGen) blocks.set(next);
+    });
+  });
   const marks = (): Mark[] => {
     const out: Mark[] = [];
     props.annotations.forEach((row, index) => {

@@ -99,3 +99,24 @@ fn a_long_text_of_everything_stays_linear_enough() {
     assert!(out.contains("<mention id=\"b\">@Bob</mention>"));
     assert!(started.elapsed().as_secs() < 10);
 }
+
+#[test]
+fn blocks_are_the_top_level_ones_with_their_lines() {
+    use super::blocks::{block_lines, block_lines_json};
+    let source = "---\ntitle: a\n---\n\n# Head\n\npara one\nstill one\n\n- a\n\n- b\n\n```js\nx\n\ny\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n";
+    assert_eq!(block_lines(source), vec![(1, 3), (5, 5), (7, 8), (10, 12), (14, 18), (20, 22)]);
+    assert_eq!(block_lines_json("one\n\ntwo"), "[[1,1],[3,3]]");
+    assert_eq!(block_lines_json(""), "[]");
+}
+
+#[test]
+fn a_long_report_splits_in_milliseconds() {
+    let section = "## 第 1 节\n\nthe quick brown fox 风沙 客栈 戏台 `code` **bold** and more words to fill the line\n\n- 列表 1\n- `code` **bold**\n\n";
+    let source = section.repeat(6000);
+    let started = std::time::Instant::now();
+    let lines = super::blocks::block_lines(&source);
+    let took = started.elapsed();
+    assert_eq!(lines.len(), 18000);
+    eprintln!("markdown blocks: {} chars in {:?}", source.chars().count(), took);
+    assert!(took.as_millis() < 3000);
+}

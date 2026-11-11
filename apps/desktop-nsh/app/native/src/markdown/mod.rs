@@ -13,6 +13,7 @@
 //!
 //! Pure Rust, so it builds for the web's wasm32 as it does for the desktops.
 
+mod blocks;
 mod js;
 mod links;
 mod mentions;
@@ -256,5 +257,11 @@ impl Markdown {
     /// standalone link lines are dropped.
     pub fn prepare_markdown(source: String, options: String, hidden: Vec<String>) -> String {
         prepare(&source, &options, &hidden)
+    }
+
+    /// `markdownBlocks(source)`: the file's top-level blocks as `[[startLine, endLine], …]` (JSON,
+    /// 1-based, both included), parsed on a blocking thread so a long file never holds the engine.
+    pub async fn markdown_blocks(source: String) -> Result<String, String> {
+        blocking(move || blocks::block_lines_json(&source)).await.map_err(|error| error.to_string())
     }
 }

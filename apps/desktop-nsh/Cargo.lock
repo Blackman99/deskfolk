@@ -1112,6 +1112,7 @@ dependencies = [
  "hayro",
  "jpeg-decoder",
  "libghostty-vt",
+ "markdown",
  "md-5",
  "miniz_oxide 0.9.1",
  "nsh-base",

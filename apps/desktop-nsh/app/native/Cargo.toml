@@ -13,6 +13,8 @@ nsh-base = { workspace = true, features = ["term"] }
 vt100 = "0.16"
 base64 = "0.22"
 hayro = { version = "0.9", features = ["embed-fonts"] }
+# The top-level blocks of a Markdown file (`src/markdown/blocks.rs`): the parser NSH's `TextView` uses.
+markdown = "1.0.0"
 serde_json.workspace = true
 # `\p{Nd}` for the Markdown pass (`src/markdown`), with only that table: the rest of it is hand-written.
 regex = { version = "1", default-features = false, features = ["std", "unicode-gencat"] }
