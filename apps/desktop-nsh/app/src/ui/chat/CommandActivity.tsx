@@ -97,6 +97,8 @@ export function CommandActivity(props: {
   // time it opens it starts at its end, as the messenger's does.
   let list: ScrollRef | undefined;
   let atEnd = true;
+  // From the list's mount to its first layout (the Scroll's `onLayout`).
+  let placing = false;
   const toEnd = () => list?.scrollTo({ y: 1_000_000, animated: false });
   effect(() => {
     void done().length;
@@ -133,14 +135,18 @@ export function CommandActivity(props: {
               ref={(node) => {
                 list = node;
                 atEnd = true;
+                placing = true;
               }}
               class="max-h-[372px]"
               // Going to the end once it has its place is also what makes the rows show. NSH (rev 7a2c11e0,
               // upstream main too) looks for the held-back content of a scroll view before a List places the
               // row the scroll view is in, so a card opened in a transcript row stayed an empty box until
-              // something else laid the window out again. A scroll command makes it look again.
+              // something else laid the window out again. A scroll command makes it look again. Only the
+              // first layout: the card grows when an output opens, and that must not scroll it away.
               onLayout={() => {
-                if (atEnd) toEnd();
+                if (!placing) return;
+                placing = false;
+                toEnd();
               }}
               onScroll={(e) => {
                 atEnd = e.contentSize.height - e.offset.y - e.size.height < 8;
