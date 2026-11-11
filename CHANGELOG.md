@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A reply's commands show as soon as you open them
+
+- In the native (NSH) desktop build, opening a reply's "1 command" line in a conversation showed an empty box, and the commands appeared only when something else in the window moved: streamed text, a hover, the clock. Nothing was loading; the list was held back by the native toolkit and not looked at again. The commands now show at once, and a long list opens at its latest command, as it does in the Tauri app. The Tauri app is unchanged.
+
 ### The composer's Stop no longer outshines Send
 
 - In the native (NSH) desktop build, Stop in the composer was a solid disc: white in the dark theme and black in the light one, the loudest thing in the window. It is now a quiet secondary button, the same weight as Send beside it, whether it sits beside Send in a direct or takes Send's place.

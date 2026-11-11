@@ -123,6 +123,7 @@
 - `ref` 只能是函数（或 `let` 变量）：`ref={undefined}`、`ref={条件 ? fn : undefined}` 会在运行时抛错。只在某些情况下才要的 ref，写成总是存在的函数，里面再判断。
 - **跨几段文字的选择要一个外层选区**：每个 `selectable` 视图（`MarkdownBody` 自己就是）各管各的选区，拖选到它的末尾就停，进不了下一条消息。要像网页那样一路选下去，在外面包一个 `<View selectable>`（里面的选区并进外层的）；`List` 不认 `selectable`（JS 只把它交给 `View`），包在 `List` 外面。不该进选区的字（时间、日期线）写 `select-none`，拖选从上面跨过去，复制出来也没有它们。NSH 会把列表回收的单元格按位置排回阅读顺序，倒置列表也对。例子：`ui/chat/ProjectChat.tsx`、`ui/chat/project-chat-lines.tsx`。
 - **拖窗口的区域（`desktop={{ windowDrag: true }}`）由按下的那一点往外找**：最近的写了 `windowDrag` 的视图说了算；在那之前碰到带 `onPress`、`onTouch*`、responder 的视图或输入框，这一点就是按钮，不拖窗口。所以拖窗口的那块自己别挂这些（挂了的话同一视图上 `windowDrag` 先算，但别靠这个）；里面没挂任何处理的包装视图（标签的内边距、⋯ 和 × 旁边的空隙）会一路找到外面的 `windowDrag`，按在那里就拖走窗口，要算作按钮的给它写 `windowDrag: false`。按住拖超过几点才交给系统拖窗口，原地点一下仍作为按下交给应用，双击照系统标题栏缩放。系统拖窗口跟的是真的鼠标：开发检查里合成的拖动（`drag`、`postEvent`）拖不动窗口，只能看出按下没交给应用。例子：`ui/workbench/leaf-strip.tsx`（平铺窗格标签条的空白）、`ui/sidebar/Sidebar.tsx`。
+- **`List` 的一行里后来才挂上的 `Scroll`，内容会一直是空的**：`Scroll` 只先做视口附近的内容，其余的等内核再核对；这次核对排在列表给单元格摆位之前，刚挂上的 `Scroll` 还没有位置，被跳过，之后要等窗口里别的东西让页面重排才补上（对话里展开的命令卡片曾这样空着，见 ADR 0107 补记二十七）。这种 `Scroll` 拿到位置时（`onLayout`）发一次 `scrollTo`，内核就会重新核对它，内容不用滚也行。挂载时就由 effect 滚一次的（`TurnStepList`）不受影响。无头测试关了这种裁剪，测不出来，要在真窗口里看。例子：`ui/chat/CommandActivity.tsx`。
 
 ## 不要做的
 

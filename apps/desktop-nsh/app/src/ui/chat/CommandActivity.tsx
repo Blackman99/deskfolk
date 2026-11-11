@@ -93,12 +93,14 @@ export function CommandActivity(props: {
   const expanded = signal(false);
   const opened = signal<string | null>(null);
 
-  // The list follows new commands the way a terminal does, unless you have scrolled up to read.
+  // The list follows new commands the way a terminal does, unless you have scrolled up to read. Each
+  // time it opens it starts at its end, as the messenger's does.
   let list: ScrollRef | undefined;
   let atEnd = true;
+  const toEnd = () => list?.scrollTo({ y: 1_000_000, animated: false });
   effect(() => {
     void done().length;
-    if (atEnd) setTimeout(() => list?.scrollTo({ y: 1_000_000, animated: false }), 0);
+    if (atEnd) setTimeout(toEnd, 0);
   });
 
   return (
@@ -128,8 +130,18 @@ export function CommandActivity(props: {
         <If when={expanded()}>
           <View testID="command-card" class="self-stretch overflow-hidden border border-line rounded-(--radius-md) bg-pane" style={{ boxShadow: shadow("xs") }}>
             <Scroll
-              ref={(node) => (list = node)}
+              ref={(node) => {
+                list = node;
+                atEnd = true;
+              }}
               class="max-h-[372px]"
+              // Going to the end once it has its place is also what makes the rows show. NSH (rev 7a2c11e0,
+              // upstream main too) looks for the held-back content of a scroll view before a List places the
+              // row the scroll view is in, so a card opened in a transcript row stayed an empty box until
+              // something else laid the window out again. A scroll command makes it look again.
+              onLayout={() => {
+                if (atEnd) toEnd();
+              }}
               onScroll={(e) => {
                 atEnd = e.contentSize.height - e.offset.y - e.size.height < 8;
               }}
