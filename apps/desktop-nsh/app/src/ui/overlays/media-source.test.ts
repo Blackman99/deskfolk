@@ -1,6 +1,6 @@
 /** A video or audio preview hands the desktop player a path it can open, and the web the loaded bytes. */
 import { expect, test } from "nsh/test";
-import { localFilePath, mediaSource } from "./media-source";
+import { localFilePath, mediaFilePath, mediaSource } from "./media-source";
 
 const base = { web: false, local: true, workspaceRoot: "/Users/me/ws", blobUrl: "blob:nsh/1" };
 
@@ -30,4 +30,18 @@ test("Windows roots join with their own separator", () => {
   expect(localFilePath("work\\a.mp4", "C:\\Users\\me\\ws\\")).toBe("C:\\Users\\me\\ws\\work\\a.mp4");
   expect(localFilePath("work/a.mp4", "C:\\Users\\me\\ws")).toBe("C:\\Users\\me\\ws\\work\\a.mp4");
   expect(localFilePath("D:\\clips\\a.mp4", "C:\\ws")).toBe("D:\\clips\\a.mp4");
+});
+
+test("the file the loader leaves unread is the one the player opens; the rest are read", () => {
+  const where = { web: false, local: true, workspaceRoot: "/Users/me/ws" };
+  expect(mediaFilePath({ ...where, relpath: "work/edit/master.mp4" })).toBe("/Users/me/ws/work/edit/master.mp4");
+  expect(mediaFilePath({ ...where, relpath: "/Users/me/site/a.mp4" })).toBe("/Users/me/site/a.mp4");
+  expect(mediaFilePath({ ...where, web: true, relpath: "a.mp4" })).toBeNull();
+  expect(mediaFilePath({ ...where, local: false, relpath: "a.mp4" })).toBeNull();
+  expect(mediaFilePath({ ...where, relpath: "~/Movies/a.mp4" })).toBeNull();
+  expect(mediaFilePath({ ...where, workspaceRoot: null, relpath: "a.mp4" })).toBeNull();
+  for (const relpath of ["work/edit/master.mp4", "/Users/me/site/a.mp4", "~/a.mp4"]) {
+    const path = mediaFilePath({ ...where, relpath });
+    expect(mediaSource({ ...where, relpath, blobUrl: "blob:nsh/1" })).toBe(path ?? "blob:nsh/1");
+  }
 });

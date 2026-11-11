@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A large video opens at once in the file preview
+
+- In the native (NSH) desktop build, opening a large video in the file preview held the window on "Opening file…" for a minute or more (about 77 seconds for a 104 MB clip). The whole file was read into the app first, and then turned into text for the picture view, which a video never uses. A video or an audio file on this computer now opens at once and plays from where it is, and files that are not pictures, such as PDFs, are no longer turned into that text. The phone's preview and the Tauri app are unchanged.
+
 ### The native app's web build starts again
 
 - The native (NSH) build for the web, which the phone is moving to, stopped at "This app could not start" on every load since 2026-11-11: right at start it asked the page for a desktop-only service (the one that keeps a text field focused while a pick list shows), the page refused at once, and the toolkit could not take a refusal in that moment. The web build no longer asks for it, and the page now refuses anything it lacks a moment later, which the toolkit takes. The desktop builds and the Tauri app are unchanged.

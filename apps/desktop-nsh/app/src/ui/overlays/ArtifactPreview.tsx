@@ -13,7 +13,7 @@
  * (list open) and the save shortcut are `keymap`; opening a file with the system or in Finder is the
  * Tauri command `open_workspace_path` the shell bridges (`openWorkspacePath`).
  */
-import { cleanup, colorScheme, computed, Clipboard, effect, keymap, PanResponder, signal, Text, untracked, View, windowSize } from "nsh";
+import { cleanup, colorScheme, computed, Clipboard, effect, keymap, PanResponder, platform, signal, Text, untracked, View, windowSize } from "nsh";
 import type { Annotation, Attachment, CreateAnnotationRequest, PatchAnnotationRequest, SessionSummary } from "@real-bot/protocol";
 import { ANNOTATION_BATCH_MAX } from "@real-bot/protocol";
 import { ApiError } from "../../m/api.ts";
@@ -28,7 +28,7 @@ import { absWorkspacePath, artifactByteSource, artifactKind, citedInWorkspace, i
 import { openWorkspacePath } from "../../m/overlays/open-workspace.ts";
 import { baseName } from "../../m/paths.ts";
 import { isTauri } from "../../m/tauri.ts";
-import { copy } from "../../runtime";
+import { copy, runtime } from "../../runtime";
 import { AnnotationSendBar } from "../annotations/AnnotationSendBar";
 import { BottomSheet } from "../BottomSheet";
 import { Icon } from "../Icon";
@@ -42,6 +42,7 @@ import { ArtifactTree } from "./ArtifactTree";
 import { ArtifactTreeMenu } from "./ArtifactTreeMenu";
 import { DangerDialog } from "./DangerDialog";
 import { FileDownload } from "./FileDownload";
+import { mediaFilePath } from "./media-source";
 import type { ArtifactPane } from "./ShellPreview";
 import { onGlassCard } from "../glass";
 
@@ -152,6 +153,9 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
     attachment,
     kind: () => kindOf(),
     byteSource: () => byteSourceOf(),
+    // The same file `ArtifactBody` hands the player (`mediaSource`).
+    mediaFile: (path) =>
+      mediaFilePath({ web: platform.os === "web", local: api()?.kind === "local", relpath: path, workspaceRoot: runtime.snapshot.settings.workspace_path }),
   });
   const annot = new ArtifactAnnotations({
     relpath,

@@ -146,7 +146,9 @@ export function ArtifactBody(props: {
    */
   const noFile = computed(() => props.mode === "workspace" && !props.relpath);
   const bodyPath = computed(() => (props.mode === "workspace" && !props.sourceMode ? props.relpath : null));
-  const picture = dataUrlOf(() => ((props.kind === "image" || props.kind === "svg") && !loader().loading ? loader().shownBlob : loader().shownBlob));
+  // A picture's bytes only: any other file's (a video, a PDF) were read into a `data:` URL too, the
+  // whole file Base64'd on the JS thread, and the window hung for a minute on a 100 MB video.
+  const picture = dataUrlOf(() => (props.kind === "image" || props.kind === "svg" ? loader().shownBlob : null));
 
   /** An Office file's bytes as Base64, when it is not a local workspace file the viewer can read by path. */
   const officeBase64 = signal<string | null>(null);

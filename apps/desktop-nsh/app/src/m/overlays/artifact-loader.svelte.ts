@@ -6,6 +6,7 @@ import { batch } from "nsh";
 import type { Attachment } from "@real-bot/protocol";
 import { etagForBlob, originalSizeForBlob } from "../api.ts";
 import { contentShaFromEtag } from "../annotations/model.ts";
+import type { LocalApi } from "../local-api.ts";
 import type { MessengerApi } from "../messenger-api.ts";
 import type { MediaSourceHandle } from "../remote/media-source.ts";
 import { formatFileSize } from "../chat/attachments.ts";
@@ -30,6 +31,12 @@ export interface ArtifactLoaderHost {
   attachment: () => Attachment | null;
   kind: () => ArtifactKind;
   byteSource: () => ReturnType<typeof artifactByteSource>;
+  /**
+   * NSH: the file a video or an audio file plays from where it lies (`mediaFilePath`), or null.
+   * For such a file the loader reads no bytes: the player opens it, and the pane takes the path for
+   * its source.
+   */
+  mediaFile?: (path: string) => string | null;
 }
 
 /** The bytes of the file on screen: what is loading, what has arrived, and the object URLs and hash that go with them. */
@@ -291,6 +298,29 @@ export class ArtifactLoader {
           return;
         }
       }
+      // NSH: a clip on this computer plays from where it lies, so its bytes are not read here. All
+      // of them went through the JS first, for a copy the player never used: a 100 MB video
+      // waited minutes behind "Opening file…". The hash an annotation is saved against still comes,
+      // after the player is up.
+      const onDisk = previewKind === "audio" || previewKind === "video" ? untrack(() => this.#h.mediaFile?.(path) ?? null) : null;
+      if (onDisk && api.kind === "local") {
+        this.revoke();
+        batch(() => {
+          this.blobUrl = onDisk;
+          this.blobPath = path;
+          this.progress = null;
+          this.loading = false;
+        });
+        this.#endSlow();
+        this.#setText(null, null);
+        const etag = await localFileEtag(api, source === "attachment" && att ? { attachmentId: att.id } : { path }, abort.signal);
+        if (gen !== this.loadGen || etag === null) return;
+        batch(() => {
+          this.loadedEtag = etag;
+          this.hashFresh = true;
+        });
+        return;
+      }
       const blob =
         source === "attachment" && att
           ? await this.#h.api()!.getAttachmentBlob(att.id, onProgress, { signal: abort.signal, size })
@@ -402,5 +432,26 @@ export class ArtifactLoader {
     this.#endSlow();
     this.loadedKey = null;
     this.missing = true;
+  }
+}
+
+/**
+ * NSH: a file's hash, the one an annotation is saved against, without its bytes. The runtime's
+ * file GET names it in its `ETag` (the sha256 of the whole file; a range's would be the range's), so
+ * the answer is read up to its headers and its body is let go. Null when it does not come.
+ */
+async function localFileEtag(api: LocalApi, target: { path: string } | { attachmentId: string }, signal: AbortSignal): Promise<string | null> {
+  const { origin, token } = api.endpoint;
+  const url =
+    "attachmentId" in target
+      ? `${origin}/v1/attachments/${target.attachmentId}/content`
+      : `${origin}/v1/workspace/file?path=${encodeURIComponent(target.path)}`;
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal });
+    const etag = res.ok ? res.headers.get("ETag") : null;
+    void res.body?.cancel().catch(() => {});
+    return etag;
+  } catch {
+    return null;
   }
 }
