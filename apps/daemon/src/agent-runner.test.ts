@@ -143,7 +143,7 @@ afterEach(async () => {
   while (closes.length) await closes.pop()!();
 });
 
-async function harness(script: Script, opts: { status?: ClaudeCodeStatus; runner?: "claude_code" | null; configDir?: string; permissionMode?: "read_only" | "ask_first" | "auto" | "allow_all" } = {}) {
+async function harness(script: Script, opts: { status?: ClaudeCodeStatus; runner?: "claude_code" | null; configDir?: string; listed?: string[]; permissionMode?: "read_only" | "ask_first" | "auto" | "allow_all" } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-runner-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
   const events: ClientEvent[] = [];
@@ -179,7 +179,7 @@ async function harness(script: Script, opts: { status?: ClaudeCodeStatus; runner
     store.close();
     rmSync(root, { recursive: true, force: true });
   });
-  if (opts.configDir) store.setClaudeCodeConfigDirs([opts.configDir]);
+  if (opts.listed ?? opts.configDir) store.setClaudeCodeConfigDirs(opts.listed ?? [opts.configDir!]);
   const bot = store.createBot({ name: "Coder", duties: "write code", boundaries: "stay in the workspace", runner: opts.runner === undefined ? "claude_code" : opts.runner, agent_model: "sonnet",
     agent_config_dir: opts.configDir ?? null, permission_mode: opts.permissionMode ?? null });
   const session = bot.direct_session.id;
@@ -557,6 +557,136 @@ test("a request the limit stopped fails as the limit, with when it resets, whate
   expect(h.lines("bot")).toEqual([]);
   const line = h.lines("system").find((body) => body.includes("用量额度用完了"));
   expect(line).toContain("重置");
+});
+
+// --- ADR 0110: another account, and picking up at the reset ----------------------------------------
+
+const TEAM_DIR = "/opt/zz-claude-b";
+const ownAccount = { config_dir: null, config_directory: "/x/.claude", logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "pro@a.c", error: null, login_command: "" };
+const teamAccount = { ...ownAccount, config_dir: TEAM_DIR, config_directory: TEAM_DIR, subscription_type: "team", email: "team@a.c" };
+const twoAccounts: ClaudeCodeStatus = { ...signedIn, email: "pro@a.c", accounts: [ownAccount, teamAccount] };
+
+/** Claude Code's way of saying the plan's limit turned the request away, resetting at `resetsAt` (seconds). */
+function* limitHit(resetsAt: number | null, error = "rate_limit"): Generator<SDKMessage> {
+  if (resetsAt !== null) yield { type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt, rateLimitType: "five_hour" }, uuid: crypto.randomUUID(), session_id: "s" } as unknown as SDKMessage;
+  yield { ...(assistant("You've hit your limit") as object), error } as unknown as SDKMessage;
+  yield { ...(result("You've hit your limit", 0) as object), is_error: true } as unknown as SDKMessage;
+}
+
+const inHours = (hours: number) => Math.floor(Date.now() / 1000) + hours * 3600;
+
+test("out of usage mid-turn, the turn goes on on another of your accounts, told what was done, with no line about it", async () => {
+  const resetsAt = inHours(3);
+  const sessions: Array<{ dir: string | undefined; first: string }> = [];
+  const h = await harness(async function* ({ options, first, useTool }) {
+    const content = first.message.content;
+    sessions.push({ dir: options.env?.CLAUDE_CONFIG_DIR, first: Array.isArray(content) ? content.map((part) => (part.type === "text" ? part.text : "")).join("\n") : String(content) });
+    if (sessions.length === 1) {
+      // As Claude Code does: the step's call comes first, then its hooks run.
+      yield { type: "assistant", parent_tool_use_id: null, uuid: crypto.randomUUID(), session_id: "s",
+        message: { id: "msg_step", role: "assistant", content: [{ type: "tool_use", id: "toolu_step", name: "Bash", input: { command: "echo step-one" } }] } } as unknown as SDKMessage;
+      await useTool("Bash", { command: "echo step-one" });
+      yield* limitHit(resetsAt);
+      return;
+    }
+    yield result("换了账号做完了。");
+  }, { status: twoAccounts, listed: [TEAM_DIR] });
+  await h.post("干活");
+  expect(sessions.map((entry) => entry.dir)).toEqual([process.env.CLAUDE_CONFIG_DIR, TEAM_DIR]);
+  expect(sessions[1]!.first).toContain("换了用户的另一个账号");
+  expect(sessions[1]!.first).toContain("echo step-one");
+  expect(h.lines("bot")).toEqual(["换了账号做完了。"]);
+  expect(h.lines("system").some((body) => body.includes("用量额度"))).toBe(false);
+  // The account that ran out is noted until its reset; the move is on the record.
+  const outs = h.store.accountsOut();
+  expect(outs).toHaveLength(1);
+  expect(outs[0]).toMatchObject({ runner: "claude_code", email: "pro@a.c", until: resetsAt * 1000, known: true });
+  const switched = h.store.db.query<{ payload: string }, []>("SELECT payload FROM work_events WHERE kind = 'agent.account_switched'").all();
+  expect(switched).toHaveLength(1);
+  expect(JSON.parse(switched[0]!.payload).to).toBe(TEAM_DIR);
+  expect(h.store.limitResumes()).toEqual([]);
+});
+
+test("an account already out runs the next turn on another one from the start, and a request that goes through clears its note", async () => {
+  const dirs: Array<string | undefined> = [];
+  const h = await harness(async function* ({ options }) {
+    dirs.push(options.env?.CLAUDE_CONFIG_DIR);
+    yield result("好了");
+  }, { status: twoAccounts, listed: [TEAM_DIR], configDir: TEAM_DIR });
+  h.store.markAccountOut({ runner: "claude_code", dir: TEAM_DIR, email: "team@a.c", until: Date.now() + 3_600_000, known: true });
+  await h.post("干活");
+  expect(dirs).toEqual([process.env.CLAUDE_CONFIG_DIR]);
+  expect(h.lines("bot")).toEqual(["好了"]);
+  // Out too, the Bot's own account is tried anyway; it went through, so it is not out any more.
+  h.store.markAccountOut({ runner: "claude_code", dir: "/x/.claude", email: "pro@a.c", until: Date.now() + 3_600_000, known: true });
+  await h.post("再来");
+  expect(dirs.at(-1)).toBe(TEAM_DIR);
+  expect(h.store.accountsOut().map((row) => row.email)).toEqual(["pro@a.c"]);
+});
+
+test("out of usage on every account, the line says when it picks up, asks nothing, and the work goes on by itself then", async () => {
+  const resetsAt = inHours(2);
+  let calls = 0;
+  const h = await harness(async function* () {
+    calls += 1;
+    if (calls === 1) {
+      yield* limitHit(resetsAt);
+      return;
+    }
+    yield result("额度回来了，接着做完了。");
+  });
+  await h.post("干活");
+  const line = h.lines("system").find((body) => body.includes("用量额度用完了"));
+  expect(line).toContain("重置，到时自动接着做");
+  const failed = h.store.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM notifications WHERE kind = 'failure'").get();
+  expect(failed?.n ?? 0).toBe(0);
+  const [due] = h.store.limitResumes();
+  expect(due?.at).toBe(resetsAt * 1000 + 60_000);
+
+  // Not yet: nothing starts.
+  h.engine.resumeAfterLimits(new Date(resetsAt * 1000 - 60_000));
+  expect(calls).toBe(1);
+  expect(h.store.limitResumes()).toHaveLength(1);
+
+  const done = h.completed();
+  h.engine.resumeAfterLimits(new Date(resetsAt * 1000 + 61_000));
+  await done;
+  expect(calls).toBe(2);
+  expect(h.lines("bot")).toEqual(["额度回来了，接着做完了。"]);
+  expect(h.store.limitResumes()).toEqual([]);
+  const continued = h.store.db.query<{ source_turn_id: string | null }, [string]>("SELECT source_turn_id FROM messages WHERE body = ?").get(line!);
+  expect(continued?.source_turn_id).toBeTruthy();
+});
+
+test("a pick-up is let go once the work moved on, and nothing is scheduled without a reset", async () => {
+  const resetsAt = inHours(2);
+  let calls = 0;
+  const h = await harness(async function* () {
+    calls += 1;
+    if (calls === 1) {
+      yield* limitHit(resetsAt);
+      return;
+    }
+    yield result("好了");
+  });
+  await h.post("干活");
+  expect(h.store.limitResumes()).toHaveLength(1);
+  // You spoke and it got through (the limit was over sooner): the pick-up has nothing left to do.
+  await h.post("现在呢");
+  h.engine.resumeAfterLimits(new Date(resetsAt * 1000 + 61_000));
+  expect(calls).toBe(2);
+  expect(h.store.limitResumes()).toEqual([]);
+
+  // A billing stop says no reset: the line is as before, and asks for you.
+  const billing = await harness(async function* () {
+    yield* limitHit(null, "billing_error");
+  });
+  await billing.post("干活");
+  const line = billing.lines("system").find((body) => body.includes("用量额度用完了"));
+  expect(line).toBeDefined();
+  expect(line).not.toContain("自动接着做");
+  expect(billing.store.limitResumes()).toEqual([]);
+  expect(billing.store.accountsOut()[0]?.known).toBe(false);
 });
 
 test("only the user chooses what runs a Bot", () => {

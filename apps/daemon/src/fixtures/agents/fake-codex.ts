@@ -40,6 +40,7 @@ type Step =
   | { fileChange: string; burst?: boolean }
   | { unasked: string }
   | { tool: { name: string; args?: Record<string, unknown> } }
+  | { limits: { resetsAt: number } }
   | { usage: { input: number; output: number; cached: number; last?: { input: number; output: number; cached: number } } }
   | { fail: { message: string; codexErrorInfo?: unknown; errorNotice?: boolean } }
   | { hang: true }
@@ -166,6 +167,9 @@ async function play(steps: Step[], turnId: string, review = false): Promise<void
       const out = await rpc.request<{ contentItems?: Array<{ text?: string }>; success?: boolean }>("item/tool/call", { threadId: THREAD_ID, turnId, callId, tool: step.tool.name, arguments: step.tool.args ?? {} });
       log({ tool: step.tool.name, out });
       notify("item/completed", { threadId: THREAD_ID, turnId, item: { ...item, status: out?.success === false ? "failed" : "completed" } });
+    } else if ("limits" in step) {
+      // Codex's account notice once its plan's limit is reached: which window, and when it resets (seconds).
+      notify("account/rateLimits/updated", { rateLimits: { rateLimitReachedType: "primary", primary: { resetsAt: step.limits.resetsAt } } });
     } else if ("usage" in step) {
       notify("thread/tokenUsage/updated", { threadId: THREAD_ID, turnId, tokenUsage: { total: breakdown(step.usage), last: breakdown(step.usage.last ?? step.usage) } });
     } else if ("fail" in step) {

@@ -40,8 +40,11 @@ export type AgentEvent =
    * otherwise this call's own. Tokens it does not report are 0; `costUsd` null when it says no price.
    */
   | { type: "usage"; model: string; input: number; output: number; cached: number; costUsd: number | null; cumulative: boolean }
-  /** Its plan's limit stopped a request, and when it resets (null: it did not say). */
-  | { type: "limit"; reset: string | null }
+  /**
+   * Its plan's limit stopped a request, and when it resets (null: it did not say): as the line says
+   * it, and in ms for the work to pick up by itself then (ADR 0110).
+   */
+  | { type: "limit"; reset: string | null; resetsAt?: number | null }
   /** The prompt in progress ended. */
   | { type: "result"; result: AgentResult };
 

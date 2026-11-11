@@ -19,6 +19,9 @@ import type { ClaudeCodeProbe } from "./probe";
 import { withSystemProxy } from "./proxy";
 import { claudeLaunch, killsTree } from "./spawn";
 import { accountOf, claudeChildEnv } from "./status";
+import { accountDir, pickClaudeAccount, seatOf } from "./account-pick";
+import type { AccountOut } from "../store/account-limits";
+import { LIMIT_GUESS_MS, resetMs } from "../engine/agent/account-switch";
 
 /** Claude readings running at once. */
 export const CLAUDE_READING_SLOTS = 2;
@@ -80,6 +83,11 @@ export type ClaudeReadingDeps = {
   query?: ReadingQuery;
   spawnProcess?: (options: SpawnOptions) => SpawnedProcess;
   slots?: number;
+  /**
+   * Your accounts' plan limits (ADR 0110): a call names one account, and runs on another of yours
+   * while that one is out of usage; a call its limit turns away notes the account out.
+   */
+  accounts?: { listed: () => string[]; outs: () => AccountOut[]; markOut: (entry: AccountOut) => void };
 };
 
 async function loadQuery(): Promise<ReadingQuery> {
@@ -165,8 +173,13 @@ export function createClaudeJudge(deps: ClaudeReadingDeps): ClaudeJudge {
     } catch {
       return unavailable;
     }
+    if (!status?.path) return unavailable;
+    // The account it names, or another of yours while that one is out of usage (ADR 0110).
+    const picked = deps.accounts ? pickClaudeAccount({ status, listed: deps.accounts.listed(), preferred: target.configDir, outs: deps.accounts.outs() }) : null;
+    // Null is an account too (the daemon's own environment): only no pick at all keeps the one named.
+    const configDir = picked ? picked.configDir : target.configDir;
     // As a Bot's turn is judged: the account it names, or the daemon's own when the status has none for it.
-    if (!status?.path || (accountOf(status, target.configDir) ?? status).logged_in === false) return unavailable;
+    if ((accountOf(status, configDir) ?? status).logged_in === false) return unavailable;
     if (!(await slot(signal))) return failed;
     const abort = new AbortController();
     const onAbort = () => abort.abort();
@@ -174,7 +187,7 @@ export function createClaudeJudge(deps: ClaudeReadingDeps): ClaudeJudge {
     if (signal.aborted) abort.abort();
     let session: ReturnType<ReadingQuery> | null = null;
     try {
-      const env = withSystemProxy(claudeChildEnv(process.env, target.configDir), status);
+      const env = withSystemProxy(claudeChildEnv(process.env, configDir), status);
       env.CLAUDE_AGENT_SDK_CLIENT_APP = `deskfolk/${typeof daemonPackage.version === "string" ? daemonPackage.version : "dev"}`;
       const query = deps.query ?? (await loadQuery());
       session = query({
@@ -200,6 +213,17 @@ export function createClaudeJudge(deps: ClaudeReadingDeps): ClaudeJudge {
       });
       let answer: ClaudeReadingAnswer = failed;
       for await (const message of session) {
+        if (message.type === "rate_limit_event") {
+          const info = message.rate_limit_info;
+          const carried = info.isUsingOverage === true || info.overageStatus === "allowed" || info.overageStatus === "allowed_warning";
+          if (info.status === "rejected" && !carried && deps.accounts) {
+            const at = resetMs(info.resetsAt);
+            const seat = seatOf(status, configDir);
+            const known = at !== null && at > Date.now();
+            deps.accounts.markOut({ runner: "claude_code", dir: accountDir(configDir), email: seat.email, until: known ? at! : Date.now() + LIMIT_GUESS_MS, known });
+          }
+          continue;
+        }
         if (message.type !== "result") continue;
         const usage = usageOf(message);
         // An error result carries its reason, which is otherwise lost: on 2026-10-14 every reading failed

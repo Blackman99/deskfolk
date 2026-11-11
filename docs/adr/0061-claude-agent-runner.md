@@ -135,3 +135,7 @@ Claude Agent is no longer the only local agent: Codex, Grok, OpenCode, DSH, ZCod
 ## 补记 / Addendum (2026-10-17, no step limit)
 
 **步数不设上限 / No step limit.** 上一条补记的「到引擎的跳数上限收起工具」去掉，连同 `AGENT_TURNS_PAST_LIMIT` 和 `maxTurns`（见 [ADR 0085](0085-engines.md) 的补记）：一段干多久都行，`PreToolUse` 不再因为步数拒掉工具，SDK 也不会再回 `error_max_turns`。和应用自己的循环一样，长活不会因为走了多少步半路停下。 / The previous addendum's "the tools go at the engine's hop limit" is gone, with `AGENT_TURNS_PAST_LIMIT` and `maxTurns` ([ADR 0085](0085-engines.md)'s addendum): a segment runs for as long as it works, `PreToolUse` no longer refuses a tool for the step count, and the SDK no longer returns `error_max_turns`. As on the app's own loop, long work is not stopped mid-way by how many steps it took.
+
+## 补记 / Addendum (2026-11-12, another account)
+
+**额度用完换账号，都用完到点接着做 / Out of usage: another account, or the reset.** 上面账号补记里留着没做的「自动」，你开口要了：一轮被套餐额度挡下时，同一轮在你列出的另一个登录着、没用完的 Claude 账号上开新会话接着做（带上前一个会话做过什么）；开跑前指定的账号已知用完，一开始就用别的；都用完了，失败行写明什么时候、到时自己接着做。Bot 的账号设置不变。见 [ADR 0110](0110-out-of-usage-another-account-or-the-reset.md)。 / The "auto" the accounts addendum left until you asked, you asked for: a turn the plan's limit turns away goes on in a new session on another listed Claude account that is signed in and not out (told what the session before did); a turn whose account is known to be out starts on another; with every account out, the failure line says when it picks up by itself, and it does. The Bot's own account setting is unchanged. See [ADR 0110](0110-out-of-usage-another-account-or-the-reset.md).

@@ -48,6 +48,7 @@ import * as modelDefaults from "./model-defaults";
 import * as modelLadder from "./model-ladder";
 import * as claudeCode from "./claude-code";
 import * as agents from "./agents";
+import * as accountLimits from "./account-limits";
 import * as escalation from "./escalation";
 import * as toolExecutions from "./tool-executions";
 import * as workQuestions from "./work-questions";
@@ -730,6 +731,14 @@ export class Store {
   readonly agentStatusMemory = this.bind(agents.agentStatusMemory);
   readonly rememberAgentStatuses = this.bind(agents.rememberAgentStatuses);
   readonly customAgent = this.bind(agents.customAgent);
+  /** Accounts out of usage and the failure lines that pick up by themselves at a reset (ADR 0110). */
+  readonly accountsOut = this.bind(accountLimits.accountsOut);
+  readonly markAccountOut = this.bind(accountLimits.markAccountOut);
+  readonly clearAccountOut = this.bind(accountLimits.clearAccountOut);
+  readonly limitResumes = this.bind(accountLimits.limitResumes);
+  readonly addLimitResume = this.bind(accountLimits.addLimitResume);
+  readonly dropLimitResume = this.bind(accountLimits.dropLimitResume);
+  readonly limitResumeStale = this.bind(accountLimits.limitResumeStale);
   readonly setCustomAgents = this.bind(agents.setCustomAgents);
   readonly botDefault = this.bind(modelDefaults.botDefault);
   readonly ensureBotDefault = this.bind(modelDefaults.ensureBotDefault);

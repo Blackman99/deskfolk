@@ -152,6 +152,8 @@ export async function runExternalSession(input: {
     endedByTool: false,
     emptyNudged: false,
     failure: null as { kind: FailKind; detail?: string | null } | null,
+    /** When the plan's limit that stopped it resets, in ms, when the agent said (ADR 0110). */
+    resetsAt: null as number | null,
     billed: new Map<string, ModelTotals>(),
     stderr: "",
     model: settings.model,
@@ -613,6 +615,7 @@ export async function runExternalSession(input: {
         return;
       case "limit":
         state.failure ??= { kind: "agent_limit", detail: event.reset };
+        state.resetsAt ??= event.resetsAt ?? null;
         return;
       case "result":
         await onResult(event.result);
@@ -744,6 +747,9 @@ export async function runExternalSession(input: {
     return;
   }
   if (state.failure) {
+    // No other account to go on with here: only Claude Code's accounts are switched between. The
+    // work picks up by itself when the agent's own limit resets, when it said when (ADR 0110).
+    if (state.failure.kind === "agent_limit" && state.resetsAt !== null && state.resetsAt > Date.now()) live.resumeAt = state.resetsAt;
     deps.failTurn(turnId, state.failure.kind, state.failure.detail ?? null);
     return;
   }

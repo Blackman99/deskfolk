@@ -166,6 +166,12 @@ export type TurnEngine = {
    * supervisor's level and while draining.
    */
   supervise: (now?: Date) => void;
+  /**
+   * Work that ran out of usage on every account picks up by itself (ADR 0110), from the scheduler's
+   * tick: each failure line due by `now` continues as its Continue would, unless the work moved on
+   * since; a stop still holds it. Off while draining, and a due one waits for the next tick then.
+   */
+  resumeAfterLimits: (now?: Date) => void;
   /** The day's spend cap (ADR 0088), from the scheduler's tick: stops every Bot once today has cost what you set. */
   capSpend: (now?: Date) => void;
   /** One round of the external-job poller (ADR 0047), from the scheduler's tick: off below level 6. */
@@ -295,6 +301,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     ablation,
   });
 
+  /** Your Claude accounts' plan limits, for the built-in calls that run on Claude Code (ADR 0110). */
+  const claudeAccounts = {
+    listed: () => store.claudeCodeConfigDirs(),
+    outs: () => store.accountsOut(),
+    markOut: (entry: Parameters<Store["markAccountOut"]>[0]) => store.markAccountOut(entry),
+  };
   // Each built-in call's model (ADR 0077): the one chosen in Settings, else what it ran on before.
   const builtinTarget: BuiltinTargetOf = createBuiltinTargets({ store, credentials: routing.credentials });
   /** The model chosen for a call, else the default endpoint's default model, as the board's calls always ran. */
@@ -308,7 +320,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   // long settle never holds up a line's reading (ADR 0077).
   // Built-in calls on your local agents (ADR 0077, ADR 0079): Claude Code's, or another agent's.
   const otherAgents = createAgentJudge({ store });
-  const builtinClaude = eitherJudge(createClaudeJudge({ claudeCode: options.claudeCode, slots: CLAUDE_BUILTIN_SLOTS }), otherAgents);
+  const builtinClaude = eitherJudge(createClaudeJudge({ claudeCode: options.claudeCode, slots: CLAUDE_BUILTIN_SLOTS, accounts: claudeAccounts }), otherAgents);
 
   const organizer = createOrganizer({
     store,
@@ -355,7 +367,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         responded,
       });
     },
-    claudeJudge: eitherJudge(createClaudeJudge({ claudeCode: options.claudeCode }), otherAgents),
+    claudeJudge: eitherJudge(createClaudeJudge({ claudeCode: options.claudeCode, accounts: claudeAccounts }), otherAgents),
     recordClaudeSpend({ sessionId, model, usage, providerName }) {
       return spend.recordClaudeSpend({ kind: "organize", purpose: "reader", owner: spend.spendOwner(sessionId, null), model, usage, ...(providerName ? { providerName } : {}) });
     },
@@ -1063,6 +1075,29 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       }
       if (continued.length > 0) for (const message of store.settleRestartNotices(continued)) core.publishMessage(message);
       lifecycle.dispatchQueued();
+    },
+    resumeAfterLimits(at = new Date()) {
+      if (options.admission?.draining) return;
+      let resumed = false;
+      for (const due of store.limitResumes()) {
+        if (due.at > at.getTime()) break;
+        if (store.limitResumeStale(due.turn_id)) {
+          store.dropLimitResume(due.message_id);
+          continue;
+        }
+        try {
+          const turn = lifecycle.continueFromInterrupt(due.message_id);
+          resumed = true;
+          store.recordWorkEvent({ kind: "agent.resumed", actor: "app", botId: turn.bot_id, taskId: turn.task_id, ticketId: turn.ticket_id,
+            turnId: turn.id, sessionId: turn.session_id, payload: { after: due.turn_id, line: due.message_id } });
+        } catch (error) {
+          // Draining: the same line next tick. Refused for good — continued already, held by a stop,
+          // the Bot or the conversation gone, the job at work again — it is let go.
+          if (error instanceof HttpError && error.code === "draining") return;
+        }
+        store.dropLimitResume(due.message_id);
+      }
+      if (resumed) lifecycle.dispatchQueued();
     },
     sweepStalledTurns(at) {
       lifecycle.sweepStalledTurns(at);

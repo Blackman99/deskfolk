@@ -263,8 +263,8 @@ _Avoid_: 每轮重新挑, 为一个不用你定的默认出卡片问你, 拿已�
 _Avoid_: 供应商目录, 判断用另一个名字, 每轮自选, 思考等级永远只由应用选, 不钉模型只钉思考等级, 钉了模型却不定思考等级, 名册级共享的路由经验, 用关键词认模型反馈, 一句话就把一个模型永久钉死, 把选模型做成打分公式
 
 **Claude Agent**：
-一个 Bot 的运行方式之一：它的每一轮不走应用自己的循环，而由你本机安装并登录的 Claude Code（通过 Agent SDK）来跑，用 Claude Code 自己的工具干活，用它登录的账号（Claude 订阅或 API key）计用量。应用照旧管权限模式和你的批准、Stop、收尾契约、交付和审查，自己的协作工具以 `mcp__deskfolk__` 交给它；应用自己的判断仍用端点。只有你能在 Bot 面板里切换运行方式；应用不提供 Claude 登录、不碰它的凭据，只在设置里显示它用的是哪种凭据。细节见[行为说明·Claude Agent](docs/behavior.md#claude-agent)和 [ADR 0061](docs/adr/0061-claude-agent-runner.md)。
-_Avoid_: Claude Code 引擎（品牌名不当功能名）, 用订阅令牌直连接口, 在应用里登录 Claude, 把 Claude Code 当成补全端点, Bot 自己切换运行方式
+一个 Bot 的运行方式之一：它的每一轮不走应用自己的循环，而由你本机安装并登录的 Claude Code（通过 Agent SDK）来跑，用 Claude Code 自己的工具干活，用它登录的账号（Claude 订阅或 API key）计用量。应用照旧管权限模式和你的批准、Stop、收尾契约、交付和审查，自己的协作工具以 `mcp__deskfolk__` 交给它；应用自己的判断仍用端点。只有你能在 Bot 面板里切换运行方式；应用不提供 Claude 登录、不碰它的凭据，只在设置里显示它用的是哪种凭据。账号的额度用完时，同一轮换到你列出的另一个登录着、没用完的 Claude 账号开新会话接着做；都用完了，失败行写明什么时候、到时自己接着做（[ADR 0110](docs/adr/0110-out-of-usage-another-account-or-the-reset.md)）。细节见[行为说明·Claude Agent](docs/behavior.md#claude-agent)和 [ADR 0061](docs/adr/0061-claude-agent-runner.md)。
+_Avoid_: Claude Code 引擎（品牌名不当功能名）, 用订阅令牌直连接口, 在应用里登录 Claude, 把 Claude Code 当成补全端点, Bot 自己切换运行方式, 额度用完转到别的 Agent, 额度用完改掉 Bot 的账号设置
 
 **本机 Agent（Local agent）**：
 一个 Bot 的运行方式：它的每一轮由你本机安装并登录的一个 Agent 程序来跑——Claude Code（即 Claude Agent）、Codex、Grok、OpenCode、ZCode、Antigravity，或者你自己列的一个讲 ACP 的命令——用那个 Agent 自己的工具干活、用它登录的账号计用量。应用照旧管权限模式和你的批准、Stop、收尾契约、交付和审查：能在调用前拦的都拦，拦不住、事后才知道的，按权限模式本该问或不许的就停下这一轮；应用自己的协作工具通过 MCP（Codex 是它的 dynamic tools）交给它，Antigravity 拿不到，只能用收尾回复。只有你能在 Bot 面板里切换；应用不提供登录、不碰凭据、不改它的配置。内置调用和模型阶梯也能选这些 Agent 的模型。细节见[行为说明·本机 Agent](docs/behavior.md#本机-agent)和 [ADR 0079](docs/adr/0079-local-agents.md)。

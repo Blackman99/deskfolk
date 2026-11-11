@@ -26,7 +26,7 @@ import type {
   SpawnedProcess,
   SpawnOptions,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { BotRunner, ClaudeEffort, ClientEvent, Message, ModelLadderAgentRung, Spend, Turn } from "@real-bot/protocol";
+import type { BotRunner, ClaudeCodeStatus, ClaudeEffort, ClientEvent, Message, ModelLadderAgentRung, Spend, Turn } from "@real-bot/protocol";
 import { agentMcpPort } from "../agent-mcp/bridge";
 import { resultTotals, type ModelTotals } from "../claude-code/model-usage";
 import { resolveAgent as resolveLocalAgent, type ResolvedAgent } from "../agents/runtime";
@@ -37,6 +37,9 @@ import { withSystemProxy } from "../claude-code/proxy";
 import { claudeLaunch, killsTree } from "../claude-code/spawn";
 import { defaultConfigDir, tildeDir } from "../claude-code/account";
 import { accountOf, claudeChildEnv } from "../claude-code/status";
+import { accountDir, pickClaudeAccount, seatOf, soonestBack } from "../claude-code/account-pick";
+import { carryNote, LIMIT_GUESS_MS, resetMs } from "./agent/account-switch";
+import { lineTime } from "../prompts/transcript-copy";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
 import { AGENT_READONLY_TOOLS, AGENT_WORK_TOOLS, appToolName, decideAgentCall } from "../claude-code/policy";
 import { READ_ONLY_REFUSAL, changeVerdict } from "../permission-gate";
@@ -133,6 +136,16 @@ export type AgentRunner = {
 
 /** What a Claude Agent turn asks Claude Code for: the model, the effort, and the account it spends. */
 type AgentSettings = { model: string | null; effort: string | null; configDir: string | null; baseReason: string | null };
+
+/** How one session of a turn ended when the turn may go on: its account's plan limit turned it away. */
+type SessionEnd = { limit: { detail: string | null; resetsAt: number | null } } | null;
+
+/**
+ * A session after the first in the same turn (ADR 0110): the turn's route and chains are already
+ * recorded, the lead is the turn's own up to `leadUntil` in its loop, and `carry` says what the
+ * session before did.
+ */
+type SessionRerun = { leadUntil: number; carry: string };
 
 /** A queue the session reads its user messages from; it stays open until the segment is over. */
 export function inputQueue<T>() {
@@ -365,9 +378,65 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     }
     if (!(await slot(turnId, live))) return;
     try {
-      await runSession(turnId, live, current, bot, settings, status.path, status, root);
+      await runOnAccounts(turnId, live, current, bot, settings, status, root);
     } finally {
       release();
+    }
+  }
+
+  /**
+   * The turn's sessions, account by account (ADR 0110): on the account it names while that one is
+   * not out of usage, else on another of yours that is signed in and not out. A session its plan's
+   * limit turns away notes the account out until its reset and the turn goes on, in a new session
+   * on the next account, told what the one before did. With no account left, the turn fails as out
+   * of usage and picks up by itself when the soonest of them resets.
+   */
+  async function runOnAccounts(turnId: string, live: Live, first: Turn, bot: ReturnType<Store["getBot"]>, settings: AgentSettings,
+    status: ClaudeCodeStatus, root: string): Promise<void> {
+    const listed = store.claudeCodeConfigDirs();
+    const tried: string[] = [];
+    const picked = pickClaudeAccount({ status, listed, preferred: settings.configDir, outs: store.accountsOut() });
+    // Null is an account too (the daemon's own environment): only no pick at all keeps the Bot's.
+    let configDir = picked ? picked.configDir : settings.configDir;
+    if (picked?.switched) noteSwitch(turnId, first, settings.configDir, configDir, null);
+    const leadUntil = live.loop.length;
+    let current = first;
+    let rerun: SessionRerun | undefined;
+    for (;;) {
+      const ended = await runSession(turnId, live, current, bot, { ...settings, configDir }, status.path!, status, root, rerun);
+      if (!ended) return;
+      const seat = seatOf(status, configDir);
+      const known = ended.limit.resetsAt !== null && ended.limit.resetsAt > Date.now();
+      store.markAccountOut({ runner: "claude_code", dir: seat.dir, email: seat.email,
+        until: known ? ended.limit.resetsAt! : Date.now() + LIMIT_GUESS_MS, known });
+      tried.push(seat.dir);
+      const next = active(turnId, live)
+        ? pickClaudeAccount({ status, listed, preferred: settings.configDir, outs: store.accountsOut(), tried }) : null;
+      if (!next) {
+        const back = soonestBack(status, listed, store.accountsOut());
+        if (back !== null) live.resumeAt = back;
+        deps.failTurn(turnId, "agent_limit", ended.limit.detail);
+        return;
+      }
+      noteSwitch(turnId, current, configDir, next.configDir, ended.limit.resetsAt);
+      configDir = next.configDir;
+      try {
+        current = store.getTurn(turnId);
+      } catch {
+        return;
+      }
+      rerun = { leadUntil, carry: carryNote(live.locale ?? "zh", live.loop.slice(leadUntil)) };
+    }
+  }
+
+  /** On the record, not in the conversation: whose account the turn spends moved (ADR 0110). */
+  function noteSwitch(turnId: string, turn: Turn, from: string | null, to: string | null, resetsAt: number | null): void {
+    try {
+      store.recordWorkEvent({ kind: "agent.account_switched", actor: "app", botId: turn.bot_id, taskId: turn.task_id, ticketId: turn.ticket_id,
+        turnId, sessionId: turn.session_id, payload: { runner: "claude_code", from: accountDir(from), to: accountDir(to),
+          ...(resetsAt ? { resets_at: new Date(resetsAt).toISOString() } : {}) } });
+    } catch {
+      // a record, not the work
     }
   }
 
@@ -410,7 +479,8 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     executable: string,
     network: Parameters<typeof withSystemProxy>[1],
     root: string,
-  ): Promise<void> {
+    rerun?: SessionRerun,
+  ): Promise<SessionEnd> {
     const locale = live.locale ?? "zh";
     const en = locale === "en";
     const sessionId = current.session_id;
@@ -423,7 +493,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     }
     // The route row says what the turn ran on, so its hop and failure counts are kept; it never
     // feeds a Bot's endpoint default (`reason_code` claude_code). A climb onto a ladder rung says so beside it.
-    try {
+    if (!rerun) try {
       store.recordTurnRoute({
         turnId,
         decision: { providerId: "", model: settings.model ?? "default", thinkingLevel: settings.effort ?? "default",
@@ -433,8 +503,10 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     } catch {
       // best-effort, as for the hop loop
     }
-    deps.closeChain(sessionId, current.bot_id);
-    deps.holdChain(sessionId, current.bot_id);
+    if (!rerun) {
+      deps.closeChain(sessionId, current.bot_id);
+      deps.holdChain(sessionId, current.bot_id);
+    }
 
     // Where it works: the turn's work dir, or its plan's, or the workspace root until a desk segment binds a job.
     const cwdRel = live.workDir ?? live.planDir ?? ".";
@@ -448,7 +520,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
 
     // The app's own tools, as the hop loop would offer them, less the five Claude Code has its own of.
     const listed = deps.mcp ? await deps.mcp.listForTurn() : { tools: [], guides: [] };
-    if (!active(turnId, live)) return;
+    if (!active(turnId, live)) return null;
     const inEngine = store.toolsIn(current.session_id);
     const { jobs } = inEngine;
     const offered = [...builtinTools(locale, level, editedToolDescription(promptPage(store, locale)), inEngine).filter((tool) => !OWN_FILE_TOOLS.has(tool.function.name)), ...listed.tools];
@@ -469,8 +541,8 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       endedByTool: false,
       emptyNudged: false,
       failure: null as { kind: FailKind; detail?: string | null } | null,
-      /** The plan's limit turned a request away: when it resets, and whether extra usage carried on. */
-      limit: null as { reset: string | null; carried: boolean } | null,
+      /** The plan's limit turned a request away: when it resets (as said, and in ms), and whether extra usage carried on. */
+      limit: null as { reset: string | null; resetsAt: number | null; carried: boolean } | null,
       lastResult: null as SDKResultMessage | null,
       /** Per model, what the spend rows already carry: a result's usage is the session's so far. */
       billed: new Map<string, ModelTotals>(),
@@ -840,7 +912,8 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     const parts = assembleAgentTurnInput(store, { sessionId, botId: current.bot_id, turnId, triggerMessageId: current.trigger_message_id, locale });
     const lead: string[] = [];
     if (live.interrupt) lead.push(INTERRUPT_FLAG);
-    for (const row of live.loop) if (row.role === "user" && typeof row.content === "string") lead.push(row.content);
+    for (const row of rerun ? live.loop.slice(0, rerun.leadUntil) : live.loop) if (row.role === "user" && typeof row.content === "string") lead.push(row.content);
+    if (rerun) lead.push(rerun.carry);
     const content: Array<{ type: "text"; text: string } | { type: "image"; source: { type: "base64"; media_type: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; data: string } }> = [];
     if (lead.length > 0) content.push({ type: "text", text: lead.join("\n\n") });
     for (const part of parts) {
@@ -909,9 +982,9 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     } catch (error) {
       console.error(`[turn ${turnId}] could not load the Agent SDK`, error);
       deps.failTurn(turnId, "agent_exited", en ? "the Agent SDK could not be loaded" : "Agent SDK 载入失败");
-      return;
+      return null;
     }
-    if (!active(turnId, live)) return;
+    if (!active(turnId, live)) return null;
     live.streaming = true;
     publishTurn(store.getTurn(turnId), "");
     let iterationError: unknown = null;
@@ -942,20 +1015,43 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
 
     if (live.abort.signal.aborted) {
       lives.delete(turnId);
-      return;
+      return null;
     }
     if (state.endedByTool) {
       // As the hop loop does when a tool ended the segment (`end_turn`, a merge, a wait).
       deps.completeSilent(turnId);
-      return;
+      return null;
+    }
+    if (state.failure?.kind === "agent_limit" && isLive(turnId)) {
+      // The account's limit, not the turn's end: whoever runs the turn decides whether another account goes on (ADR 0110).
+      closeLeftTools();
+      return { limit: { detail: state.failure.detail ?? null, resetsAt: state.limit?.resetsAt ?? null } };
     }
     if (state.failure) {
       deps.failTurn(turnId, state.failure.kind, state.failure.detail ?? null);
-      return;
+      return null;
     }
     if (!state.ended && isLive(turnId)) {
       if (iterationError) console.error(`[turn ${turnId}] Claude Code session ended`, iterationError, state.stderr.slice(-2000));
       deps.failTurn(turnId, "agent_exited", lastLine(state.stderr));
+    }
+    return null;
+
+    /** Calls the limit left unreported: closed as a stop closes them, their effect unknown. */
+    function closeLeftTools(): void {
+      for (const [id, entry] of pending) {
+        pending.delete(id);
+        if (entry.begun) {
+          try {
+            store.finishToolExecution({ turnId, toolCallId: id, outcome: "unknown", errorCode: "agent_limit" });
+          } catch {
+            // the ledger row may already be closed by a stop
+          }
+        }
+        if (live.runningTool?.id === id) live.runningTool = null;
+        publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id, name: entry.appName, phase: "exited",
+          duration_ms: Date.now() - entry.startedAt, exit_code: null, ok: false });
+      }
     }
 
     async function onMessage(message: SDKMessage): Promise<void> {
@@ -973,7 +1069,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
           // request the limit really stopped comes back as an error, which then says when it resets.
           const info = (message as { rate_limit_info?: { status?: string; resetsAt?: number; overageStatus?: string; isUsingOverage?: boolean } }).rate_limit_info;
           if (info?.status === "rejected") {
-            state.limit = { reset: resetText(info.resetsAt, locale),
+            state.limit = { reset: resetText(info.resetsAt, locale), resetsAt: resetMs(info.resetsAt),
               carried: info.isUsingOverage === true || info.overageStatus === "allowed" || info.overageStatus === "allowed_warning" };
           }
           return;
@@ -1012,6 +1108,14 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
           state.lastResult = message;
           state.busy = false;
           recordAgentSpend(turnId, current, message, state);
+          // A request went through on this account: whatever held it out is over (ADR 0110).
+          if (message.subtype === "success" && !message.is_error && !state.failure) {
+            try {
+              store.clearAccountOut("claude_code", accountDir(settings.configDir));
+            } catch {
+              // a note for the picker, not the work
+            }
+          }
           if (state.ended) return;
           if (state.cut) {
             const stamped = message as { user_message_uuid?: string; user_message_uuids?: string[] };
@@ -1117,9 +1221,9 @@ function relOrAbs(root: string, path: string): string {
 }
 
 function resetText(resetsAt: number | undefined, locale: "zh" | "en"): string | null {
-  if (!resetsAt) return null;
-  const at = new Date(resetsAt * (resetsAt < 1e12 ? 1000 : 1));
-  const time = at.toLocaleString(locale === "en" ? "en-US" : "zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const at = resetMs(resetsAt);
+  if (at === null) return null;
+  const time = lineTime(at, locale);
   return locale === "en" ? `resets ${time}` : `${time} 重置`;
 }
 

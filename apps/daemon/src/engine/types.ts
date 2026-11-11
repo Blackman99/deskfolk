@@ -113,6 +113,11 @@ export type Live = {
    * failures are worded with that name. Unset for Claude Agent and the app's own loop.
    */
   agentLabel?: string;
+  /**
+   * Out of usage on every account it could run on (ADR 0110): when the soonest of them resets, in ms.
+   * The failure line then says it picks up by itself, and the scheduler continues it at that time.
+   */
+  resumeAt?: number;
   /** The last hop failed and went again with a note (hop-limits.ts); failing again in a row ends the turn. */
   retried?: boolean;
   /** The last reply was cut off at the output cap and the turn carried on from it; cut again in a row, it fails. */

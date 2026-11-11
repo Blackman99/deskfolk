@@ -85,6 +85,23 @@ export function contextFullDetail(locale: Locale, cut: { estimated: number; read
   return parts.join(en ? "; " : "，");
 }
 
+/** A time as the failure lines say it: 「11/5 13:10」, "11/5, 01:10 PM". */
+export function lineTime(at: number, locale: Locale): string {
+  return new Date(at).toLocaleString(locale === "en" ? "en-US" : "zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * An out-of-usage line's detail when the work picks up by itself (ADR 0110): at the reset it names,
+ * or at `at` when that is another account's sooner one.
+ */
+export function pickUpDetail(locale: Locale, detail: string | null | undefined, at: number): string {
+  const en = locale === "en";
+  const time = lineTime(at, locale);
+  if (detail?.includes(time)) return en ? `${detail}; it picks up by itself then` : `${detail}，到时自动接着做`;
+  const own = en ? `picks up by itself at ${time}` : `${time} 自动接着做`;
+  return detail ? (en ? `${detail}; ${own}` : `${detail}；${own}`) : own;
+}
+
 /**
  * `detail` says more where the kind alone cannot, e.g. when a usage limit resets. `agent`: the local
  * agent other than Claude Code the turn ran on, named in its own failures.

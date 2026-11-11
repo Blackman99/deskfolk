@@ -19,7 +19,7 @@ On 2026-11-10 an MV in your direct with the video director: once scene one's sam
 
 ## 取舍 / Trade-offs
 
-- **额度重置后不会自己接着做。** 监督器不知道重置时间（只有失败行里的文字），所以等你一句话；Claude Code 的 `resetsAt` 在 `agent-runner.ts` 里拿得到，要自动接着做可以从那里接。 / **Nothing resumes on its own after the reset**: your word does. `resetsAt` is available in `agent-runner.ts` if that is wanted later.
+- **额度重置后不会自己接着做。** 监督器不知道重置时间（只有失败行里的文字），所以等你一句话；Claude Code 的 `resetsAt` 在 `agent-runner.ts` 里拿得到，要自动接着做可以从那里接。 / **Nothing resumes on its own after the reset**: your word does. `resetsAt` is available in `agent-runner.ts` if that is wanted later.（2026-11-12 起由 [ADR 0110](0110-out-of-usage-another-account-or-the-reset.md) 改掉：先换你的另一个账号，都用完就到重置时间自己接着做。 / Changed on 2026-11-12 by [ADR 0110](0110-out-of-usage-another-account-or-the-reset.md): another of your accounts goes on first, and with none left the work picks up at the reset by itself.）
 - **黄金路径评测**把监督器的静默停下（工作记录里没有行的那种）也算作一次需要你的介入。 / The golden-path eval counts the silent stall as an intervention.
 - **样片的水准不再由你亲自定。** 照样片检查对照的是通过了的样片，可能是审查者或检查放行的；你不认可样片时，照常说哪里不好，它就返工，或让负责人换样片。 / **The bar is no longer set by you in person**; say what is wrong with the sample and it is reworked, or the sample moves.
 

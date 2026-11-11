@@ -57,6 +57,13 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
     // With the lid shut macOS wakes itself for a few seconds at a time, often before Wi-Fi is back;
     // a routine fired then fails as unreachable in three seconds and its catch-up is spent.
     if (!wake.settled(at.getTime())) return;
+    // Work out of usage on every account picks up once a limit resets (ADR 0110); after the lid
+    // check, so it does not start in a dark wake and fail as unreachable.
+    try {
+      options.engine.resumeAfterLimits(at);
+    } catch (error) {
+      console.error("[limits] resume failed", error);
+    }
     // External jobs (ADR 0047): the daemon asks the media server itself, once for every waiter.
     try {
       options.engine.pollJobs(at);

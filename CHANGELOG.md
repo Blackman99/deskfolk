@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Out of Claude usage, work goes on on your other account, or picks up at the reset
+
+- A Bot on Claude Agent whose account hits its five-hour or weekly limit no longer stops with 「这一轮没写完：Claude 的用量额度用完了」 while another Claude account you listed in Settings › Agents, signed in on a Claude plan, has room (one billed per token is never moved to): the same turn goes on there in a new session, told what was already done, with no line in the conversation. The next turns start on that account until the first one resets; the Bot's own account setting is unchanged. Built-in calls on Claude (line reading, the organizer, …) switch the same way.
+- With every account out, the failure line says when the work picks up (「…（11/5 13:10 重置，到时自动接着做）」) and it continues by itself then, as if you pressed its Continue; no notification. Pressing Continue earlier, saying something that gets through, or a stop of yours lets it go. Codex turns pick up at a reset Codex reports too. Project sessions are unchanged. ([ADR 0110](docs/adr/0110-out-of-usage-another-account-or-the-reset.md))
+
 ### Split panes stay in a small window
 
 - In the native (NSH) desktop build, with several panes side by side, a window too narrow for all of them pushed the last ones off its right edge: a usage page on the right was cut to a strip or not seen at all. Each pane kept its own minimum width (a conversation 360, the usage page 280) whether the window had room or not. When the window is too small for every pane's minimum, they now all give up the same share and stay in the window, as in the Tauri app; a wider window gives each its own minimum again.

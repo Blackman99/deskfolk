@@ -2,6 +2,8 @@
 import { type Turn, USER_MEMBER } from "@real-bot/protocol";
 import { AGENT_OUT_FAILS, isRetriedFailure, retryNote } from "../../hop-limits";
 import { type FailKind, completionFailBody } from "../../prompts";
+import { pickUpDetail } from "../../prompts/transcript-copy";
+import { RESUME_MARGIN_MS } from "../agent/account-switch";
 import { isoNow } from "../../ids";
 import { MODEL_FAIL_SHAPES } from "../../store/quality";
 import type { TurnExecution } from "../../store/routing";
@@ -78,7 +80,10 @@ export function createTurnEndings(deps: LifecycleDeps) {
     if (live?.abort.signal.aborted || !["running", "waiting_ask", "waiting_approval"].includes(current.status)) return;
     const locale = store.settingsCached().locale;
     const now = isoNow();
-    const body = completionFailBody(locale, kind, detail, live?.agentLabel ?? null);
+    // Out of usage on every account it could run on, with a reset known (ADR 0110): the line says
+    // when the work picks up, and it does so by itself then; nothing is asked of you.
+    const resumeAt = kind === "agent_limit" && live?.resumeAt ? live.resumeAt : null;
+    const body = completionFailBody(locale, kind, resumeAt !== null ? pickUpDetail(locale, detail, resumeAt) : detail, live?.agentLabel ?? null);
     const parentId = live?.parentId ?? null;
     const { message, completed, repeat } = store.transaction(() => {
       // The same failure again, with nothing said since where it would go and the line there still
@@ -108,8 +113,11 @@ export function createTurnEndings(deps: LifecycleDeps) {
       // What only you can fix — Claude Code missing, signed out, out of usage — is not retried for
       // you: it would fail the same way until you do (ADR 0061).
       if (!USER_FIX_FAILS.has(kind)) store.markSegmentCutOff(turnId, kind);
+      // A hidden repeat leaves it to the line it repeats: that one's Continue is the one to use.
+      if (resumeAt !== null && !repeat) store.addLimitResume({ message_id: message.id, turn_id: turnId, at: resumeAt + RESUME_MARGIN_MS });
       // Work the supervisor takes up is retried without you; it tells you when it stops retrying.
-      if (!repeat && store.isPresent(current.session_id, USER_MEMBER) && !store.supervisorTakesUp(turnId)) {
+      // Work that picks up by itself at a reset asks nothing of you either.
+      if (!repeat && resumeAt === null && store.isPresent(current.session_id, USER_MEMBER) && !store.supervisorTakesUp(turnId)) {
         store.createNotification({
           semantic_key: `failure:${turnId}`,
           kind: "failure",

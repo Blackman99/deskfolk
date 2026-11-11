@@ -21,6 +21,7 @@ import { agentTrace } from "../trace";
 import { rpcPeer } from "../jsonrpc";
 import { absoluteFrom, unwrapShell, type AppAction } from "../policy";
 import { AgentStartError } from "./acp";
+import { resetMs } from "../account-switch";
 
 const INIT_TIMEOUT_MS = 60_000;
 
@@ -199,7 +200,7 @@ async function codexSession(host: AgentHost, child: ChildProcess, first: AgentIn
       }
       case "account/rateLimits/updated": {
         const limits = (p.rateLimits ?? {}) as { rateLimitReachedType?: unknown; primary?: { resetsAt?: number } };
-        if (limits.rateLimitReachedType) await emit({ type: "limit", reset: resetText(limits.primary?.resetsAt, host.locale) });
+        if (limits.rateLimitReachedType) await emit({ type: "limit", reset: resetText(limits.primary?.resetsAt, host.locale), resetsAt: resetMs(limits.primary?.resetsAt) });
         return;
       }
       case "error": {

@@ -26,7 +26,7 @@ export const zh = {
   accounts: {
     heading: "账号",
     help: "关于账号",
-    hint: "每个账号一个 Claude Code 配置目录（CLAUDE_CONFIG_DIR）。这台电脑上登录了不止一个 Claude 账号时，把其他账号的目录加在这里，再在 Bot 面板里给每个 Bot 选它花哪个账号的额度；没选的 Bot 用默认账号。登录在终端里做，Deskfolk 只记目录。每个账号下是它的用量，只在有 Bot 用它时显示。",
+    hint: "每个账号一个 Claude Code 配置目录（CLAUDE_CONFIG_DIR）。这台电脑上登录了不止一个 Claude 账号时，把其他账号的目录加在这里，再在 Bot 面板里给每个 Bot 选它花哪个账号的额度；没选的 Bot 用默认账号。一个账号的额度用完时，用它的 Bot 换到这里另一个登录着、还有额度的账号接着做；都用完了，到重置时间自己接着做。登录在终端里做，Deskfolk 只记目录。每个账号下是它的用量，只在有 Bot 用它时显示。",
     defaultTag: "默认",
     placeholder: "配置目录，例如 ~/.claude-b",
     add: "添加",
@@ -70,7 +70,7 @@ export const en: CopyShape<typeof zh> = {
   accounts: {
     heading: "Accounts",
     help: "About accounts",
-    hint: "Each account is a Claude Code config directory (CLAUDE_CONFIG_DIR). When more than one Claude account is signed in on this computer, add the others' directories here, then pick in each Bot's panel whose plan it spends; a Bot left alone uses the default account. Signing in happens in a terminal; Deskfolk keeps only the directory. Under each account is its usage, shown once a Bot runs on it.",
+    hint: "Each account is a Claude Code config directory (CLAUDE_CONFIG_DIR). When more than one Claude account is signed in on this computer, add the others' directories here, then pick in each Bot's panel whose plan it spends; a Bot left alone uses the default account. When an account runs out of usage, its Bots go on on another account here that is signed in and has room; with every account out, they pick up by themselves at the reset. Signing in happens in a terminal; Deskfolk keeps only the directory. Under each account is its usage, shown once a Bot runs on it.",
     defaultTag: "Default",
     placeholder: "Config directory, such as ~/.claude-b",
     add: "Add",

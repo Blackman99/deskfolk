@@ -278,6 +278,24 @@ test("a turn that failed on the plan's usage limit fails as the agent's limit", 
   expect(h.lines("bot")).toEqual([]);
 });
 
+test("a limit Codex says the reset of picks up by itself then; one it does not, waits for you (ADR 0110)", async () => {
+  const resetsAt = Math.floor(Date.now() / 1000) + 7200;
+  const h = await harness({ turns: [[{ limits: { resetsAt } }, { fail: { message: "Something went wrong", codexErrorInfo: "usageLimitExceeded" } }]] });
+  await h.post("hi");
+  // Nothing is asked of you, so no notification: the route says how it ended.
+  expect(h.failKind()).toBeUndefined();
+  expect(h.store.db.query<{ fail_kind: string }, []>("SELECT fail_kind FROM turn_route_decisions").get()?.fail_kind).toBe("agent_limit");
+  expect(h.lines("system").join("\n")).toContain("到时自动接着做");
+  expect(h.store.limitResumes().map((row) => row.at)).toEqual([resetsAt * 1000 + 60_000]);
+  // Only Claude Code's accounts are switched between: nothing is noted for another agent's.
+  expect(h.store.accountsOut()).toEqual([]);
+
+  const unsaid = await harness({ turns: [[{ fail: { message: "Something went wrong", codexErrorInfo: "usageLimitExceeded" } }]] });
+  await unsaid.post("hi");
+  expect(unsaid.lines("system").join("\n")).not.toContain("自动接着做");
+  expect(unsaid.store.limitResumes()).toEqual([]);
+});
+
 test("a limit Codex reported as an error notice, its info a one-key object, is the limit too", async () => {
   const h = await harness({ turns: [[{ fail: { message: "Rate limited", codexErrorInfo: { rateLimitExceeded: {} }, errorNotice: true } }]] });
   await h.post("hi");

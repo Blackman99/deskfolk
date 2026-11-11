@@ -126,3 +126,29 @@ test("a reading given up while it runs is aborted", async () => {
   expect((await pending).fail).toBe("claude_failed");
   expect(aborted).toBe(true);
 });
+
+test("a call names one account and runs on another of yours while that one is out of usage; a limit it meets notes the account out (ADR 0110)", async () => {
+  const both: ClaudeCodeStatus = { ...status, email: "pro@a.c", accounts: [
+    { config_dir: null, config_directory: null, ...own, email: "pro@a.c", error: null, login_command: "claude auth login" },
+    { config_dir: "/opt/claude-b", config_directory: "/opt/claude-b", ...own, email: "team@a.c", error: null, login_command: "x" },
+  ] };
+  const outs: import("../store/account-limits").AccountOut[] = [];
+  const accounts = { listed: () => ["/opt/claude-b"], outs: () => outs.filter((row) => row.until > Date.now()), markOut: (entry: (typeof outs)[number]) => { outs.push(entry); } };
+  const seen: Array<{ prompt: unknown; options: Options }> = [];
+  const resetsAt = Math.floor(Date.now() / 1000) + 7200;
+  let calls = 0;
+  const judge = createClaudeJudge({ claudeCode: probeOf(both), accounts, query: fakeQuery(() => {
+    calls += 1;
+    if (calls > 1) return [success("B")];
+    return [
+      { type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt }, uuid: "u", session_id: "s" } as unknown as SDKMessage,
+      { type: "result", subtype: "success", is_error: true, result: "You've hit your session limit", usage: { input_tokens: 0, output_tokens: 0 }, total_cost_usd: 0 } as unknown as SDKMessage,
+    ];
+  }, seen) });
+  expect((await judge(asked)).fail).toBe("claude_failed");
+  expect(outs).toEqual([{ runner: "claude_code", dir: expect.any(String), email: "pro@a.c", until: resetsAt * 1000, known: true }]);
+  expect(seen[0]!.options.env!.CLAUDE_CONFIG_DIR).toBe(process.env.CLAUDE_CONFIG_DIR);
+  // The next call goes to the other account.
+  expect(await judge(asked)).toMatchObject({ content: "B", fail: null });
+  expect(seen[1]!.options.env!.CLAUDE_CONFIG_DIR).toBe("/opt/claude-b");
+});
