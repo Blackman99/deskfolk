@@ -4,8 +4,13 @@
  * new-tab menu, the pane's ⋯ and the × of an empty pane.
  *
  * A tab is pressed to activate it and dragged (past 4 points) to move it: the drag is the host's,
- * fed through `onTabDrag` in the window's coordinates, and so is the strip's own (`onStripDrag`),
- * which moves a floating pane or the whole pane's tabs. The tab's ⋯ and × stay out of the tab order.
+ * fed through `onTabDrag` in the window's coordinates. The tab's ⋯ and × stay out of the tab order.
+ *
+ * The strip's bare part is the window's title bar in a tiled pane (`windowDrag`): held, it moves the
+ * whole window, and a double press zooms it, as the system's title bar does; only a tab moves what
+ * the pane shows. Not as the messenger, where it carries the whole pane, every tab. A floating pane's
+ * bar is that pane's own title bar (`onStripDrag`, `onStripPress`): it moves the pane, a double press
+ * docks it.
  */
 import { cleanup, effect, PanResponder, Scroll, signal, untracked, View, windowSize, type PressEvent, type ScrollRef, type ViewRef } from "nsh";
 import { titleBar } from "nsh/desktop";
@@ -214,6 +219,20 @@ export function LeafStrip(props: StripProps) {
   /** Wraps a strip control so that pressing it never starts a drag of the pane. */
   const ownTouch = { onTouchStart: () => (blockStripDrag = true) };
 
+  /**
+   * What the bare strip answers. A floating pane's bar moves and docks that pane. A tiled pane's is
+   * the window's title bar, with no press, touch or pan of its own: those would keep it a button
+   * where NSH looks for the nearest `windowDrag`. Its right click still opens the pane's menu (on
+   * Windows and Linux a drag region's own listener keeps the window menu away).
+   */
+  const stripHandlers = props.floating
+    ? { onTouchStartCapture: () => (blockStripDrag = false), onPress: (e: PressEvent) => props.onStripPress?.(leaf().id, e), ...stripPan.panHandlers }
+    : {
+        desktop: { windowDrag: true },
+        onContextMenu: (e: { pagePosition: { x: number; y: number } }) =>
+          props.onPaneMenu?.({ leafId: leaf().id, tabId: null, x: e.pagePosition.x, y: e.pagePosition.y }),
+      };
+
   let swallowUntil = 0;
   const tabView = (tabId: string) => {
     const tab = () => leaf().tabs.find((candidate) => candidate.id === tabId)!;
@@ -238,6 +257,8 @@ export function LeafStrip(props: StripProps) {
       <View
         testID={`wb-tab-${tabId}`}
         ref={(node) => tabRefs.set(tabId, node)}
+        // The whole tab is the tab's, its padding and the room round ⋯ and × too: not the strip's window drag.
+        desktop={{ windowDrag: false }}
         onLayout={(e) => {
           const w = e.bounds.size.width;
           // Only the tabs still shown keep a width (dropped here, not as a tab goes: no write while it is torn down).
@@ -329,12 +350,10 @@ export function LeafStrip(props: StripProps) {
       accessibilityLabel={t().tabsIn.replace("{name}", t().title)}
       ref={(node) => (stripRef = node)}
       onLayout={measurePlace}
-      onTouchStartCapture={() => (blockStripDrag = false)}
-      onPress={(e) => props.onStripPress?.(leaf().id, e)}
       focusable={false}
       class={`flex-row items-center ${bg()} ${leaf().tabs.length === 0 && !props.floating ? "absolute top-1 right-1 pr-1 z-10" : props.head?.() ? "self-stretch mt-1 mx-1" : "w-full"}`}
       style={{ height: leaf().tabs.length === 0 && !props.floating ? 32 : height(), cursor: props.floating ? "grab" : undefined, opacity: props.dimmed() ? 0.5 : 1, paddingRight: controlsRoom() || undefined }}
-      {...stripPan.panHandlers}
+      {...stripHandlers}
     >
       <View class="flex-row self-stretch min-w-0 shrink ml-1 relative" style={{ maxWidth: props.maxTabsWidth?.() }}>
         <Scroll

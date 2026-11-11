@@ -21,7 +21,7 @@ import type { FloatFrame, LayoutNode, MinSizeLookup, Rect, WorkbenchLayout } fro
 import { computeGeometry } from "../../m/workbench/layout-geometry.ts";
 import { leafById, tiledLeaves } from "../../m/workbench/layout-tree.ts";
 import type { Point } from "../../m/workbench/drop-zones.ts";
-import { beginIncomingDrag, beginLeafDrag, beginTabDrag, type IncomingTab } from "../../m/workbench/tab-drag.ts";
+import { beginIncomingDrag, beginTabDrag, type IncomingTab } from "../../m/workbench/tab-drag.ts";
 import type { PaneEdit } from "../../m/workbench/pane-edit.ts";
 import { PaneContextMenu } from "./PaneContextMenu";
 import { WorkbenchBranch } from "./WorkbenchBranch";
@@ -183,7 +183,7 @@ export function Workbench(props: WorkbenchProps) {
     dragIn: (from, label, point) => (wide() ? drag.begin(beginIncomingDrag(from, point), label, true) : null),
   });
 
-  // The strip's drags: a tab, or the whole pane by its bare part.
+  // The strip's drags: a tab. A tiled strip's bare part moves the window (`leaf-strip`), not the pane.
   let session: DragSession | null = null;
   const run = (start: () => DragSession) => (phase: DragPhase, point: DragPoint) => {
     if (phase === "start") session = start();
@@ -195,8 +195,6 @@ export function Workbench(props: WorkbenchProps) {
   };
   const onTabDrag = (leafId: string, tabId: string, phase: DragPhase, point: DragPoint) =>
     run(() => drag.begin(beginTabDrag(leafId, tabId, { x: point.x, y: point.y }), ops.nameOf(leafId, tabId)))(phase, point);
-  const onStripDrag = (leafId: string, phase: DragPhase, point: DragPoint) =>
-    run(() => drag.begin(beginLeafDrag(leafId, { x: point.x, y: point.y }), ops.nameOf(leafId, null)))(phase, point);
 
   // A right click anywhere in a pane opens its menu, unless something inside has already answered it.
   const paneMenu = signal<PaneMenu | null>(null);
@@ -281,7 +279,6 @@ export function Workbench(props: WorkbenchProps) {
           draggedTab={drag.draggedTab()}
           draggedLeaf={drag.draggedLeaf()}
           onTabDrag={onTabDrag}
-          onStripDrag={onStripDrag}
           onPaneMenu={openPaneMenu}
           onMenu={props.onMenu}
           emptyActions={props.emptyActions}

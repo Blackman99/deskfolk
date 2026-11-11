@@ -54,13 +54,24 @@ test("dragging a tab back onto its own pane's middle changes nothing", async () 
   expect(app.shows("id:wb-drop")).toBe(false);
 });
 
-test("a pane's bare strip carries the whole pane, every tab, to where it is let go", async () => {
+test("a tiled pane's bare strip is the window's title bar: dragging it carries no pane, and its right click is the pane's menu", async () => {
   const app = await open();
+  // The layout, not which pane is current: a press in pane b makes it the current one, as anywhere in it.
+  const panes = () => state(app).replace(/ focus=.*$/, "");
+  const before = panes();
+  // The window moves under a real pointer (the platform's `windowDrag`); here, nothing of the layout does.
   await app.dragAndHold("id:wb-strip-b", { x: -400, y: 160 });
+  expect(app.shows("id:wb-ghost")).toBe(false);
+  expect(app.shows("id:wb-drop")).toBe(false);
+  await app.drop();
+  expect(panes()).toBe(before);
+  // A tab still carries itself, from the same strip.
+  await app.dragAndHold("id:wb-tab-button-t4", { x: -400, y: 160 });
   expect(app.shows("id:wb-ghost")).toBe(true);
   await app.drop();
   expect(state(app)).toMatch(/a\[[^\]]*t4[^\]]*\]/);
-  expect(state(app)).not.toContain("b[");
+  await app.rightClick("id:wb-strip-a");
+  await app.waitFor("id:wb-split-down");
 });
 
 test("a tab floated from its menu leaves a floating pane; it is moved by its title bar and pulled open by its corner", async () => {

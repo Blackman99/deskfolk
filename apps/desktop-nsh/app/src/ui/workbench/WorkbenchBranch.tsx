@@ -19,7 +19,8 @@ import { WorkbenchLeaf, type WorkbenchLeafProps } from "./WorkbenchLeaf";
 import type { DragPhase, DragPoint } from "./types";
 
 /** What a branch hands down to every leaf under it, unchanged. */
-export type BranchShared = Omit<WorkbenchLeafProps, "leaf" | "focused" | "divided" | "floating">;
+/** A tiled pane's strip moves the window by its bare part, never the pane (`leaf-strip`): no strip drag or press here. */
+export type BranchShared = Omit<WorkbenchLeafProps, "leaf" | "focused" | "divided" | "floating" | "onStripDrag" | "onStripPress">;
 
 export type WorkbenchBranchProps = BranchShared & {
   node: LayoutNode;
@@ -106,7 +107,6 @@ export function WorkbenchBranch(props: WorkbenchBranchProps) {
               draggedTab={props.draggedTab}
               draggedLeaf={props.draggedLeaf}
               onTabDrag={props.onTabDrag}
-              onStripDrag={props.onStripDrag}
               onPaneMenu={props.onPaneMenu}
               onMenu={props.onMenu}
               emptyActions={props.emptyActions}
@@ -181,7 +181,6 @@ export function WorkbenchBranch(props: WorkbenchBranchProps) {
                           draggedTab={props.draggedTab}
                           draggedLeaf={props.draggedLeaf}
                           onTabDrag={props.onTabDrag}
-                          onStripDrag={props.onStripDrag}
                           onPaneMenu={props.onPaneMenu}
                           onMenu={props.onMenu}
                           emptyActions={props.emptyActions}
