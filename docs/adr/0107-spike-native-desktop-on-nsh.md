@@ -518,6 +518,7 @@ Checked in a background check copy (shell and CLI built from upstream `main`'s c
 `app/src/NshTerminal.tsx` 把它接到运行时上：
 
 - `Terminal` 按布局自己定行列。所以第一次 `onResize` 之后，先让 pty 改成这个大小，再取屏幕回放，回放就是按这个大小画的。
+- 上游只在行列和起始的 80×24 不同时才发 `onResize`，正好排成 80×24 时一次也不发，视图就一直不接上（在 661×432pt 的框里实测，画面是空的）。所以第一次布局 100ms 后还没等到大小，就按 80×24 接上（longbridge/nsh#1630）。
 - 之后和画布终端一样，按偏移跳过已经画过的帧。
 - 字节用一个流式的 `TextDecoder` 解成文字，一个字被拆在两帧里也能拼回来。
 - 按键和画布终端走同一个排队发送（`terminalSender`，先在一个单独的提交里抽出来）。
@@ -530,14 +531,14 @@ Checked in a background check copy (shell and CLI built from upstream `main`'s c
 |---|---|---|
 | 程序的查询只回答一次（DA1、DSR 6） | 过 | 过。靠 `Quiet`；不加它会答两次，见 `vt.rs` |
 | 普通输入、上屏后马上回车、组字清空、组字时按方向键、Esc | 过 | 过 |
-| ⌘⌫、⌘← | 过 | 不过：上游没绑这几个键（longbridge/nsh#1627） |
+| ⌘⌫、⌘← | 过 | 不过：上游没绑这几个键（longbridge/nsh#1627）；⌘← 那项前面一项留下了半行，⌘→ 没测，这两个以 `keys.rs` 为准 |
 | 组字中的拼音 | 画在光标处，带下划线 | 不画 |
 | 候选框位置 | 光标所在的格子 | 每次都在窗口左下角 (0, 743)，1×17（#1626） |
 | 中文对齐（13pt，一格 8.1pt） | 每个 `\|` 都在自己的格子上 | 20 个汉字后面的 `\|` 左移 61pt（7.6 格）（#1628） |
 
-中文对齐那一项的原因：底色块和光标按格子放，字是一整行流排的。一个汉字只有约 12.9pt 宽，而它占的两格是 16.2pt；中英文交界处 Core Text 还会多加约 1.7pt 的间距。所以 `ab中cd文ef` 这种两种偏差刚好抵消，纯中文的一行偏得最多。反显的格子最明显：底色块在自己的格子上，字左移 30pt。
+中文对齐那一项的原因：底色块和光标按格子放，字是一整行流排的。一个汉字只有约 12.9pt 宽，而它占的两格是 16.2pt；中英文交界处还会多出约 1.7pt（从这几行的数字拟合出来的，多半是 Core Text 的中西文间距）。所以 `ab中cd文ef` 这种两种偏差刚好抵消，纯中文的一行偏得最多。反显的格子最明显：底色块在自己的格子上，字左移 30pt。
 
-**还差什么。** 所以默认还是画布终端。上游把这三处修好以后（或者我们给上游提修复），再换成默认，删掉 `TerminalGrid`、`Terminals` 和 `CanvasTerminal`。另外两处在换之前要决定：
+**还差什么。** 应用这边补不了：组件不报焦点变化，外面包一层 `View` 也收不到隐藏输入框的 `onFocus`（试过），键位表也不能按焦点限定，所以 ⌘ 键没法只在终端有键盘时绑。所以默认还是画布终端。上游把这三处修好以后（或者我们给上游提修复），再换成默认，删掉 `TerminalGrid`、`Terminals` 和 `CanvasTerminal`。另外两处在换之前要决定：
 
 - 16 色是 VS Code 的固定配色，不跟我们的 `palette.rs`。可以在 `Quiet` 里把 0–15 换成我们的颜色，但模拟器不知道当前是深色还是浅色。
 - `VtEmulator` 会丢掉零宽字符（组合附加符、ZWJ 表情），也不重排。
@@ -550,7 +551,9 @@ Checked in a background check copy (shell and CLI built from upstream `main`'s c
 - `NshTerminal.test.tsx` 三项在 NSH 的运行时里通过：base64、按偏移跳过、拆开的字拼回。
 - `nsh check App.tsx` 无错误。
 - 后台检查：画布终端 8/8，NSH `Terminal` 6/8，没过的两项都是 ⌘ 键。
-- 开发版当前的旧宿主配新 bundle：不加开关 8/8，加了开关只显示提示。
+- 开发版当前的旧宿主配新 bundle：不加开关 8/8，加了开关只显示提示。这一项是用开发版 .app 里正在跑的那份二进制和它刚发布的 bundle 测的。
+- `nsh package --target web` 编过（`app/native` 编成 wasm）。
+- `cargo test --workspace`、`nsh test`（155 过、1 跳过）、desktop-nsh 的脚本测试（18 项）和 `terminal-pane` 界面测试都过。全量 `ui-tests.ts` 没有跑。
 
 The pinned upstream commit (addendum 16) has nsh/base's `Terminal` (#1111). You asked whether the terminal can move to it completely. The answer was not yet, and the recommended order was followed: wire it in, measure the gaps, report upstream only what only NSH can change, and keep the canvas terminal as the default.
 
@@ -566,6 +569,7 @@ The pinned upstream commit (addendum 16) has nsh/base's `Terminal` (#1111). You 
 `app/src/NshTerminal.tsx` attaches it to the runtime:
 
 - `Terminal` sizes itself from its layout. So after the first `onResize`, the pty takes that size before the screen's replay is fetched, and the replay is drawn for it.
+- Upstream fires `onResize` only when the size differs from the 80 × 24 it starts at, so a terminal laid out at exactly 80 × 24 never fires it and the view never attaches (measured in a 661 × 432 pt box: a blank view). So a terminal that has no size 100 ms after its first layout attaches at 80 × 24 (longbridge/nsh#1630).
 - After that, frames already on the screen are skipped by offset, as in the canvas terminal.
 - One streaming `TextDecoder` turns the bytes into text, so a character split across two frames comes out whole.
 - Keys go through the same send queue as the canvas terminal's (`terminalSender`, extracted first in a commit of its own).
@@ -578,14 +582,14 @@ The pinned upstream commit (addendum 16) has nsh/base's `Terminal` (#1111). You 
 |---|---|---|
 | The program's queries answered once (DA1, DSR 6) | pass | pass, through `Quiet`; without it they are answered twice (`vt.rs`) |
 | Typing, Enter right after a commit, a cleared composition, arrows while composing, Escape | pass | pass |
-| ⌘⌫, ⌘← | pass | fail: upstream binds neither (longbridge/nsh#1627) |
+| ⌘⌫, ⌘← | pass | fail: upstream binds neither (longbridge/nsh#1627). The ⌘← case followed a half-typed line and ⌘→ was not run, so for those two `keys.rs` is the evidence |
 | The composition while composing | drawn at the cursor, underlined | not drawn |
 | Where the candidates open | the cursor's cell | the window's bottom-left corner every time, (0, 743), 1×17 (#1626) |
 | CJK alignment (13 pt, 8.1 pt cells) | every `\|` on its cell | after 20 CJK characters, `\|` 61 pt (7.6 cells) to the left (#1628) |
 
-The cause of the alignment row: backgrounds and the cursor are placed by cell, while a line's text flows. A CJK character advances about 12.9 pt where its two cells are 16.2 pt, and Core Text adds about 1.7 pt where CJK meets Latin text. So in `ab中cd文ef` the two cancel out, and a line of CJK alone drifts the most. An inverse cell shows it best: its box sits on its cell while its glyph is 30 pt to the left.
+The cause of the alignment row: backgrounds and the cursor are placed by cell, while a line's text flows. A CJK character advances about 12.9 pt where its two cells are 16.2 pt, and about 1.7 pt more appears where CJK meets Latin text (fitted from these lines; likely Core Text's CJK–Latin spacing). So in `ab中cd文ef` the two cancel out, and a line of CJK alone drifts the most. An inverse cell shows it best: its box sits on its cell while its glyph is 30 pt to the left.
 
-**What is still missing.** The canvas terminal stays the default. Once upstream fixes these three, or we send it fixes, the default changes and `TerminalGrid`, `Terminals` and `CanvasTerminal` go. Two more points need a decision before the swap:
+**What is still missing.** The app cannot make up for these. The component reports no focus change; a `View` wrapped around it gets no `onFocus` when its hidden input takes the keyboard (tried); and the keymap cannot be scoped to a focus, so the ⌘ keys cannot be bound only while the terminal has the keyboard. The canvas terminal stays the default. Once upstream fixes these three, or we send it fixes, the default changes and `TerminalGrid`, `Terminals` and `CanvasTerminal` go. Two more points need a decision before the swap:
 
 - The 16 colours are VS Code's fixed palette, not our `palette.rs`. `Quiet` could map 0–15 to ours, but an emulator does not know the appearance.
 - `VtEmulator` drops zero-width characters (combining marks, ZWJ emoji) and does not reflow.
@@ -598,7 +602,9 @@ The Ghostty work of addendum (8)'s worktree (`libghostty-vt`) could implement up
 - `NshTerminal.test.tsx`'s three tests pass in NSH's runtime: base64, skipping by offset, a split character made whole.
 - `nsh check App.tsx` has no errors.
 - The background check: the canvas terminal passes 8/8, NSH's `Terminal` 6/8, failing only the two ⌘ keys.
-- The dev build's current, older shell with the new bundle: 8/8 without the flag, and with the flag only the notice.
+- The dev build's current, older shell with the new bundle: 8/8 without the flag, and with the flag only the notice. This used the binary inside the running dev `.app` and the bundle it had just published.
+- `nsh package --target web` builds (`app/native` compiled to wasm).
+- `cargo test --workspace`, `nsh test` (155 pass, 1 skipped), desktop-nsh's 18 script tests and the `terminal-pane` screen tests pass. The full `ui-tests.ts` run was not done.
 
 ## 补记 2026-11-11（十九）：消息之间没有间距 / Addendum 2026-11-11 (19): no room between the lines
 

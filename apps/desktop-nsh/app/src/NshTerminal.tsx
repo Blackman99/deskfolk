@@ -91,6 +91,18 @@ export function NshTerminal(props: { id: string; onExit?: () => void }) {
     })().catch((e) => console.error("terminal attach", String(e)));
   };
 
+  // `Terminal` reports a size only when it differs from the 80 × 24 it starts at, so laid out at
+  // exactly that size it says nothing (`Term::resize`, longbridge/nsh#1630). Once it has been laid
+  // out, a terminal that heard no size by then attaches at that one.
+  let laidOut = false;
+  const firstLayout = () => {
+    if (laidOut) return;
+    laidOut = true;
+    setTimeout(() => {
+      if (!attaching) resized(80, 24);
+    }, 100);
+  };
+
   return (
     <Emulators>
       <Terminal
@@ -104,6 +116,7 @@ export function NshTerminal(props: { id: string; onExit?: () => void }) {
         class="flex-1 min-h-0 p-2"
         onData={(e) => send(e.data)}
         onResize={(e) => resized(e.cols, e.rows)}
+        onLayout={firstLayout}
       />
     </Emulators>
   );
