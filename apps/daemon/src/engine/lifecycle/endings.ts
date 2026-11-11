@@ -1,6 +1,6 @@
 /** How a turn ends other than by its closing reply: failed, retried, crashed or interrupted, and what it was running on. */
 import { type Turn, USER_MEMBER } from "@real-bot/protocol";
-import { isRetriedFailure, retryNote } from "../../hop-limits";
+import { AGENT_OUT_FAILS, isRetriedFailure, retryNote } from "../../hop-limits";
 import { type FailKind, completionFailBody } from "../../prompts";
 import { isoNow } from "../../ids";
 import { MODEL_FAIL_SHAPES } from "../../store/quality";
@@ -12,7 +12,7 @@ import type { LifecycleDeps } from "../lifecycle";
  * Local agent failures only the user can clear (ADR 0061, ADR 0079): the supervisor does not retry
  * them. A turn stopped for doing unasked what needed your OK is yours to look at, not to repeat.
  */
-const USER_FIX_FAILS: ReadonlySet<FailKind> = new Set<FailKind>(["agent_missing", "agent_signed_out", "agent_limit", "agent_unguarded"]);
+const USER_FIX_FAILS: ReadonlySet<string> = new Set([...AGENT_OUT_FAILS, "agent_unguarded"]);
 
 export function createTurnEndings(deps: LifecycleDeps) {
   const { store, publishMessage, publishTurn, lives } = deps;
@@ -78,14 +78,21 @@ export function createTurnEndings(deps: LifecycleDeps) {
     if (live?.abort.signal.aborted || !["running", "waiting_ask", "waiting_approval"].includes(current.status)) return;
     const locale = store.settingsCached().locale;
     const now = isoNow();
-    const { message, completed } = store.transaction(() => {
+    const body = completionFailBody(locale, kind, detail, live?.agentLabel ?? null);
+    const parentId = live?.parentId ?? null;
+    const { message, completed, repeat } = store.transaction(() => {
+      // The same failure again, with nothing said since where it would go, adds nothing to the
+      // conversation: the turn keeps it as its own line, which only the Bot reads (`bot_only`), and
+      // you get no second notification. Its Continue is the line above, which still works.
+      const repeat = store.repeatsLastLine({ sessionId: current.session_id, parentId, author: current.bot_id, body });
       const message = store.insertMessage({
         sessionId: current.session_id,
         turnId,
-        parentId: live?.parentId ?? null,
+        parentId,
         kind: "system",
         author: current.bot_id,
-        body: completionFailBody(locale, kind, detail, live?.agentLabel ?? null),
+        body,
+        botOnly: repeat,
       });
       store.voidPendingTurnActions(turnId, "turn_failed", now);
       store.finishTurnRoute(turnId, "failed", kind, executionOf(live));
@@ -101,7 +108,7 @@ export function createTurnEndings(deps: LifecycleDeps) {
       // you: it would fail the same way until you do (ADR 0061).
       if (!USER_FIX_FAILS.has(kind)) store.markSegmentCutOff(turnId, kind);
       // Work the supervisor takes up is retried without you; it tells you when it stops retrying.
-      if (store.isPresent(current.session_id, USER_MEMBER) && !store.supervisorTakesUp(turnId)) {
+      if (!repeat && store.isPresent(current.session_id, USER_MEMBER) && !store.supervisorTakesUp(turnId)) {
         store.createNotification({
           semantic_key: `failure:${turnId}`,
           kind: "failure",
@@ -113,9 +120,9 @@ export function createTurnEndings(deps: LifecycleDeps) {
           fail_kind: kind,
         });
       }
-      return { message, completed: store.setTurnStatus(turnId, "completed") };
+      return { message, completed: store.setTurnStatus(turnId, "completed"), repeat };
     });
-    publishMessage(message);
+    if (!repeat) publishMessage(message);
     publishTurn(completed, null);
   }
 

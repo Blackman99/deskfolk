@@ -9,6 +9,7 @@
  */
 import { isContinuableNote, playbookDefaults, USER_MEMBER, type Message, type SupervisorControl, type SupervisorNoticeCode } from "@real-bot/protocol";
 import { HttpError } from "../errors";
+import { AGENT_OUT_FAILS } from "../hop-limits";
 import { isoPlus, ulid } from "../ids";
 import { supervisorNoticeBody, type RestartArrangement } from "../prompts/control-copy";
 import { supervisorJobLabel, supervisorWakeNote } from "../prompts/transcript-copy";
@@ -159,6 +160,20 @@ function beforeSupervision(since: number | null, updatedAt: string): boolean {
 
 function botAlive(ctx: StoreContext, botId: string): boolean {
   return Boolean(ctx.db.query("SELECT 1 FROM bots WHERE id = ? AND archived_at IS NULL AND deleted_at IS NULL").get(botId));
+}
+
+/**
+ * Whether the Bot's local agent cannot run just now: the last turn of it that ended failed because
+ * its agent is not on this computer, signed out or out of usage (`AGENT_OUT_FAILS`, ADR 0061). Such
+ * a failure is not retried for you, and a call-back would only fail the same way at once: on
+ * 2026-11-10 视频导演 was called back to each of four open scenes, twice, in twenty minutes, each
+ * call ending on the same usage limit. A turn of it that ends any other way — your word, its
+ * Continue — makes it callable again.
+ */
+function agentOut(ctx: StoreContext, botId: string): boolean {
+  const last = ctx.db.query<{ outcome: string | null; fail_kind: string | null }, [string]>(`SELECT outcome, fail_kind FROM turn_route_decisions
+    WHERE bot_id = ? AND finished_at IS NOT NULL ORDER BY finished_at DESC, rowid DESC LIMIT 1`).get(botId);
+  return last?.outcome === "failed" && AGENT_OUT_FAILS.has(last.fail_kind ?? "");
 }
 
 /**
@@ -606,6 +621,7 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
     const taskId = work.task_id!;
     if (beforeSupervision(since, work.updated_at) || !botAlive(ctx, work.bot_id) || !picksUp(ctx, taskId)) continue;
     if (heldWork(ctx, work)) { result.deferred.push({ workItemId: work.id, reason: "held" }); continue; }
+    if (agentOut(ctx, work.bot_id)) { result.deferred.push({ workItemId: work.id, reason: "agent_out" }); continue; }
     if (work.ticket_id) {
       const holder = ballHolder(ctx, { ticketId: work.ticket_id });
       if (holder.kind === "closed" || (holder.kind === "user" && (holder.reason === "held" || holder.reason === "held_dependency"))
@@ -774,6 +790,9 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
     if (!picksUp(ctx, ticket.task_id)) continue;
     const holder = ballHolder(ctx, { ticketId: ticket.id });
     if (holder.kind !== "owner" && holder.kind !== "lead" && holder.kind !== "delegation" && holder.kind !== "reviewer") continue;
+    // Before the quiet window and a ticket whose turn has come alike: on 2026-11-10 three scenes
+    // nobody had started were called seconds apart, each failing on the same usage limit.
+    if (agentOut(ctx, holder.botId)) continue;
     if (dependenciesPending(ctx, ticket)) continue;
     const item = holder.workItemId ? workRow(ctx, holder.workItemId) : null;
     if (item && item.state !== "idle") continue;

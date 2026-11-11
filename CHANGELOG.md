@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Running out of usage no longer floods the conversation with failures
+
+- When a local agent (Claude Code and the like) is out of usage, signed out or missing, the supervisor no longer calls its Bot back to the tickets it left open. On 2026-11-10 the video director, out of usage, was called back to four scenes twice each within 20 minutes, every call failing at once, and its direct got ten "This turn did not finish: Claude usage limit reached (resets …)" in a row. It is called back again once a turn of it ends some other way (your word, Continue). Nothing resumes on its own after the reset: say something and it goes on.
+- When another wake (a job's result, a check-back) fails it the same way again, a failure line identical to the conversation's last line no longer shows and raises no new notification; it is kept for the Bot only, and Continue on the line above still works.
+
 ### A conversation's header line and date lines show on see-through cards
 
 - In the native (NSH) desktop build, the line under a conversation's header and the lines either side of a date in the transcript were a fixed colour one step off the solid card. With content glass on (most of all "clear" in dark) the card shows the window's glass, and those lines came within a few levels of it and all but vanished, while the date sat on a box of the solid card's colour: a dark box on the glass (a white one in light). The lines are now the text colour at a tenth, so they show on glass and on solid cards alike, and the date has nothing under it: the lines stop short of it. On solid cards the lines come out a step stronger than before. The Tauri app is unchanged.

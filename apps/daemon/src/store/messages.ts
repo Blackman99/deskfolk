@@ -183,6 +183,21 @@ function postMessageRows(ctx: StoreContext, sessionId: string, input: { body: st
   return hydrateMessage(ctx, ctx.db.query<MessageRow, [string]>(`SELECT * FROM messages WHERE id = ?`).get(id)!);
 }
 
+/**
+ * Whether a system line from `author` would only say again the last line you can see where it would
+ * go: the newest listed line of the main conversation, or of the thread under `parentId`. On
+ * 2026-11-10 視频导演 ran out of usage and every wake after that failed at once, each with its own
+ * 「这一轮没写完：Claude 的用量额度用完了（…重置）」 — ten in a row, with nothing between them.
+ */
+export function repeatsLastLine(ctx: StoreContext, input: { sessionId: string; parentId: string | null; author: string; body: string }): boolean {
+  const last = ctx.db.query<{ kind: string; author: string; body: string }, [string, string | null]>(
+    `SELECT kind, author, body FROM messages
+     WHERE session_id = ? AND parent_id IS ? AND kind != 'profile_change' AND withdrawn_at IS NULL AND ${notBotOnlyLine()}
+     ORDER BY created_at DESC, id DESC LIMIT 1`,
+  ).get(input.sessionId, input.parentId);
+  return last?.kind === "system" && last.author === input.author && last.body === input.body;
+}
+
 export function insertMessage(
   ctx: StoreContext,
   input: {

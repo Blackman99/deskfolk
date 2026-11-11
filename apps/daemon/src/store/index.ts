@@ -936,6 +936,7 @@ export class Store {
   readonly postMessage = (...args: Parameters<Bound<typeof messages.postMessage>>) => messages.postMessage(this.ctx, ...args);
   readonly assertUserMayPost = this.bind(messages.assertUserMayPost);
   readonly insertMessage = this.bind(messages.insertMessage);
+  readonly repeatsLastLine = this.bind(messages.repeatsLastLine);
   readonly getMessage = this.bind(messages.getMessage);
   readonly setMessageControl = this.bind(messages.setMessageControl);
   readonly recordAskAnswer = this.bind(messages.recordAskAnswer);
