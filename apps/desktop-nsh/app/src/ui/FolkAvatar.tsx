@@ -9,6 +9,7 @@ import { Easing, Image, Text, View, createMotion, effect, signal, token, type Mo
 import { reduceMotion } from "./interface/motion";
 import { FOLK_GEOMETRY, FOLK_RAISED_ARM_DEG, folkHash, folkLayerSrc, folkLook, folkPart, type FolkPart } from "@real-bot/protocol";
 import type { FolkMotion } from "../m/folk-motion";
+import { figureSpecs, WORK_STILL, type Specs } from "./taskmap/figure-motions";
 
 const origin = ([x, y]: readonly [number, number]) => `${x * 100}% ${y * 100}%`;
 const FILL = { position: "absolute", left: 0, top: 0, width: "100%", height: "100%", pointerEvents: "none" } as const;
@@ -24,6 +25,28 @@ function loop(m: Motion, on: () => boolean, spec: () => MotionSpec | null): void
 }
 
 const step = Easing.steps(1);
+
+/**
+ * A character's work, as it works on the task map (`figureSpecs`), for an avatar `edge` points
+ * wide: the angles carry over, the distances (box points of a map figure, whose body is some 45 of
+ * them; here it is 0.19 m of the 0.31 m square) are scaled to it.
+ */
+function avatarWork(motion: FolkMotion, character: Parameters<typeof figureSpecs>[2], edge: number): Specs {
+  const k = (edge * (0.19 / 0.31)) / 45;
+  const scaled = (spec: MotionSpec | undefined): MotionSpec | undefined => {
+    if (!spec || !Array.isArray(spec.keyframes)) return spec;
+    return {
+      ...spec,
+      keyframes: spec.keyframes.map((frame) => ({
+        ...frame,
+        ...(typeof frame.translateX === "number" ? { translateX: frame.translateX * k } : {}),
+        ...(typeof frame.translateY === "number" ? { translateY: frame.translateY * k } : {}),
+      })),
+    };
+  };
+  const specs = figureSpecs(motion, true, character, 0);
+  return { fig: scaled(specs.fig), antenna: specs.antenna, armL: specs.armL, armR: specs.armR, heldL: specs.heldL, heldR: specs.heldR };
+}
 
 export function FolkAvatar(props: {
   /** The Bot's stored avatar (a folk's SVG, whose mask id holds the name hash). */
@@ -49,6 +72,9 @@ export function FolkAvatar(props: {
   const fig = createMotion();
   const armL = createMotion();
   const armR = createMotion();
+  const heldL = createMotion();
+  const heldR = createMotion();
+  const antennaM = createMotion();
   const eyes = createMotion();
   const eyesClosed = createMotion();
   const mouthA = createMotion();
@@ -56,21 +82,27 @@ export function FolkAvatar(props: {
   const shadowM = createMotion();
   const markM = [createMotion(), createMotion(), createMotion()];
 
+  // Thinking or replying, it works its own way, as its character does on the task map.
+  const working = () => is("running") || is("replying");
+  const work = () => avatarWork(motion(), look().character, edge());
   loop(fig, () => motion() !== "idle", () => {
     switch (motion()) {
-      case "running": return { duration: 2800, keyframes: { rotate: ["-4deg", "4deg"] }, direction: "alternate", easing: Easing.inOut(Easing.ease) };
-      case "replying": return { duration: 500, keyframes: { translateY: [0, -0.03 * edge()], scaleX: [1, 0.99], scaleY: [1, 1.01] }, direction: "alternate" };
+      case "running":
+      case "replying": return work().fig ?? null;
       case "waiting": return { duration: 1500, keyframes: { translateY: [0, 0, -0.11 * edge(), 0, 0], scaleX: [1, 1.06, 0.97, 1.05, 1], scaleY: [1, 0.93, 1.04, 0.95, 1] } };
       case "failed": return { duration: 3200, keyframes: { rotate: ["-3deg", "-1deg"] }, direction: "alternate", easing: Easing.inOut(Easing.ease) };
       case "held": return { duration: 3600, keyframes: { scaleX: [1, 1.025], scaleY: [1, 0.985] }, direction: "alternate" };
       default: return null;
     }
   });
-  loop(armL, () => is("replying"), () => ({ duration: 260, keyframes: { rotate: ["0deg", "-24deg"] }, direction: "alternate" }));
-  loop(armR, () => is("replying") || is("waiting"), () =>
-    is("waiting")
-      ? { duration: 500, keyframes: { rotate: ["-112deg", "-146deg"] }, direction: "alternate" }
-      : { duration: 260, delay: 130, keyframes: { rotate: ["0deg", "24deg"] }, direction: "alternate" });
+  loop(armL, working, () => work().armL ?? null);
+  loop(armR, () => working() || is("waiting"), () =>
+    is("waiting") ? { duration: 500, keyframes: { rotate: ["-112deg", "-146deg"] }, direction: "alternate" } : (work().armR ?? null));
+  loop(heldL, working, () => work().heldL ?? null);
+  loop(heldR, working, () => work().heldR ?? null);
+  loop(antennaM, working, () => work().antenna ?? null);
+  /** An arm a character keeps still at work (matcha's), in degrees. */
+  const stillArmL = () => (working() && !still() ? (WORK_STILL[look().character]?.armL ?? 0) : 0);
   // Every folk blinks now and then; asleep it keeps its eyes shut.
   loop(eyes, () => !is("held"), () => ({
     duration: 5200,
@@ -111,11 +143,15 @@ export function FolkAvatar(props: {
       <View style={{ ...FILL, transform: [{ scaleX: look().mirror ? -1 : 1 }] }}>
         <View style={{ ...FILL, transformOrigin: "50% 98%", transform: [...figPose(), ...fig.transform] }}>
           <Image src={part("body")!} style={FILL} />
-          <If when={part("antenna")}>{(src) => <Image src={src()} style={FILL} />}</If>
-          {/* Each arm turns about its shoulder with what its hand holds. */}
-          <View style={{ ...FILL, transformOrigin: origin(FOLK_GEOMETRY.shoulderL), transform: [...armL.transform] }}>
+          <If when={part("antenna")}>
+            {(src) => <Image src={src()} style={{ ...FILL, transformOrigin: origin(FOLK_GEOMETRY.antenna), transform: [...antennaM.transform] }} />}
+          </If>
+          {/* Each arm turns about its shoulder with what its hand holds, which turns about the hand. */}
+          <View style={{ ...FILL, transformOrigin: origin(FOLK_GEOMETRY.shoulderL), transform: [{ rotate: `${stillArmL()}deg` }, ...armL.transform] }}>
             <Image src={part("arm-l")!} style={FILL} />
-            <If when={part("held-l")}>{(src) => <Image src={src()} style={FILL} />}</If>
+            <If when={part("held-l")}>
+              {(src) => <Image src={src()} style={{ ...FILL, transformOrigin: origin(FOLK_GEOMETRY.handL), transform: [...heldL.transform] }} />}
+            </If>
           </View>
           <View
             style={{
@@ -125,7 +161,9 @@ export function FolkAvatar(props: {
             }}
           >
             <Image src={part("arm-r")!} style={FILL} />
-            <If when={part("held-r")}>{(src) => <Image src={src()} style={FILL} />}</If>
+            <If when={part("held-r")}>
+              {(src) => <Image src={src()} style={{ ...FILL, transformOrigin: origin(FOLK_GEOMETRY.handR), transform: [...heldR.transform] }} />}
+            </If>
           </View>
           <Image
             src={folkLayerSrc(`eyes-${look().eyes}`)}

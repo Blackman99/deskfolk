@@ -28,13 +28,17 @@
 
 <span
 	data-ui="avatar"
-	class="folk is-{motion}"
+	class="folk is-{motion} folk-c-{look.character}"
+	class:is-working={motion === 'running' || motion === 'replying'}
 	class:is-mirrored={look.mirror}
 	class:has-raised-arm={look.wave}
 	style:--folk-blink={blink}
 	style:--folk-shoulder-l={origin(FOLK_GEOMETRY.shoulderL)}
 	style:--folk-shoulder-r={origin(FOLK_GEOMETRY.shoulderR)}
 	style:--folk-mouth={origin(FOLK_GEOMETRY.mouth)}
+	style:--folk-hand-l={origin(FOLK_GEOMETRY.handL)}
+	style:--folk-hand-r={origin(FOLK_GEOMETRY.handR)}
+	style:--folk-antenna={origin(FOLK_GEOMETRY.antenna)}
 	style:--folk-raised="{-FOLK_RAISED_ARM_DEG}deg"
 	aria-hidden="true"
 >
@@ -180,11 +184,7 @@
 		transform: rotate(var(--folk-raised));
 	}
 
-	/* 思考中: a slow sway, eyes up, three dots over the head */
-	.is-running .folk-fig {
-		animation: folk-sway 2.8s ease-in-out infinite;
-	}
-
+	/* 思考中: eyes up, three dots over the head, and its own work (below) */
 	.is-running .folk-eyes,
 	.is-running .folk-eyes-closed {
 		translate: 0 -2.5%;
@@ -203,29 +203,12 @@
 		animation-delay: 0.4s;
 	}
 
-	@keyframes folk-sway {
-		0%, 100% { transform: rotate(-4deg); }
-		50% { transform: rotate(4deg); }
-	}
-
 	@keyframes folk-dot {
 		0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
 		30% { opacity: 1; transform: translateY(-3px); }
 	}
 
-	/* 回复中: a quick bob, arms typing, mouth talking */
-	.is-replying .folk-fig {
-		animation: folk-bob 0.5s ease-in-out infinite;
-	}
-
-	.is-replying .folk-arm-l {
-		animation: folk-type-l 0.26s ease-in-out infinite;
-	}
-
-	.is-replying .folk-arm-r {
-		animation: folk-type-r 0.26s ease-in-out 0.13s infinite;
-	}
-
+	/* 回复中: mouth talking, and its own work (below) */
 	.is-replying .folk-mouth:not(.folk-talk) {
 		animation: folk-talk-a 0.34s steps(1) infinite;
 	}
@@ -234,20 +217,79 @@
 		animation: folk-talk-b 0.34s steps(1) infinite;
 	}
 
-	@keyframes folk-bob {
-		0%, 100% { transform: translateY(0); }
-		50% { transform: translateY(-3%) scale(0.99, 1.01); }
+	/*
+	 * Thinking or replying, each character works its own way, as it does at work on the task map
+	 * (MapFigure.svelte): Pudding types under its swaying antenna, taro grooves to its headphones,
+	 * sakura paints, matcha whisks, caramel hammers, sesame reads and pushes up its glasses,
+	 * blueberry floats and waves its wand. What a hand holds turns about the hand.
+	 */
+	.folk-antenna {
+		transform-origin: var(--folk-antenna);
 	}
 
-	@keyframes folk-type-l {
-		0%, 100% { transform: rotate(0); }
-		50% { transform: rotate(-24deg); }
+	.folk-held-l {
+		transform-origin: var(--folk-hand-l);
 	}
 
-	@keyframes folk-type-r {
-		0%, 100% { transform: rotate(0); }
-		50% { transform: rotate(24deg); }
+	.folk-held-r {
+		transform-origin: var(--folk-hand-r);
 	}
+
+	.is-working.folk-c-pudding .folk-fig { animation: folk-w-bob 0.36s ease-in-out infinite alternate; }
+	.is-working.folk-c-pudding .folk-arm-l { animation: folk-w-type-l 0.17s ease-in-out infinite alternate; }
+	.is-working.folk-c-pudding .folk-arm-r { animation: folk-w-type-r 0.17s ease-in-out 0.08s infinite alternate; }
+	.is-working.folk-c-pudding .folk-antenna { animation: folk-w-antenna 0.8s ease-in-out infinite alternate; }
+
+	.is-working.folk-c-taro .folk-fig { animation: folk-w-groove 1s ease-in-out infinite; }
+	.is-working.folk-c-taro .folk-arm-r { animation: folk-w-tap-r 0.5s ease-in-out infinite alternate; }
+	.is-working.folk-c-taro .folk-arm-l { animation: folk-w-tap-l 0.5s ease-in-out 0.25s infinite alternate; }
+
+	.is-working.folk-c-sakura .folk-fig { animation: folk-w-lean 2.4s ease-in-out infinite; }
+	.is-working.folk-c-sakura .folk-arm-r { animation: folk-w-paint-arm 2.4s ease-in-out infinite; }
+	.is-working.folk-c-sakura .folk-held-r { animation: folk-w-paint 2.4s ease-in-out infinite; }
+	.is-working.folk-c-sakura .folk-arm-l { animation: folk-w-palette 2.4s ease-in-out infinite; }
+
+	.is-working.folk-c-matcha .folk-fig { animation: folk-w-jig 0.28s ease-in-out infinite alternate; }
+	.is-working.folk-c-matcha .folk-arm-r { animation: folk-w-whisk-arm 0.28s ease-in-out infinite alternate; }
+	.is-working.folk-c-matcha .folk-held-r { animation: folk-w-whisk 0.14s ease-in-out infinite alternate; }
+	.is-working.folk-c-matcha .folk-arm-l { transform: rotate(-12deg); }
+
+	.is-working.folk-c-caramel .folk-fig { animation: folk-w-thud 1.2s linear infinite; }
+	.is-working.folk-c-caramel .folk-arm-r { animation: folk-w-hammer-arm 1.2s ease-in-out infinite; }
+	.is-working.folk-c-caramel .folk-held-r { animation: folk-w-hammer 1.2s ease-in-out infinite; }
+
+	.is-working.folk-c-sesame .folk-fig { animation: folk-w-read 3s ease-in-out infinite; }
+	.is-working.folk-c-sesame .folk-arm-l { animation: folk-w-book 3s ease-in-out infinite; }
+	.is-working.folk-c-sesame .folk-arm-r { animation: folk-w-glasses 6s ease-in-out infinite; }
+
+	.is-working.folk-c-blueberry .folk-fig { animation: folk-w-float 2s ease-in-out infinite alternate; }
+	.is-working.folk-c-blueberry .folk-arm-r { animation: folk-w-cast 1.6s ease-in-out infinite alternate; }
+	.is-working.folk-c-blueberry .folk-held-r { animation: folk-w-wand 1.6s linear infinite; }
+	.is-working.folk-c-blueberry .folk-arm-l { animation: folk-w-tap-l 1.6s ease-in-out infinite alternate; }
+
+	@keyframes folk-w-bob { from { transform: translateY(0); } to { transform: translateY(-2.5%); } }
+	@keyframes folk-w-type-l { from { transform: rotate(0deg); } to { transform: rotate(-22deg); } }
+	@keyframes folk-w-type-r { from { transform: rotate(0deg); } to { transform: rotate(22deg); } }
+	@keyframes folk-w-antenna { from { transform: rotate(-8deg); } to { transform: rotate(8deg); } }
+	@keyframes folk-w-groove { 0%, 100% { transform: rotate(-3deg); } 25%, 75% { transform: translateY(-1.2%) rotate(0deg); } 50% { transform: rotate(3deg); } }
+	@keyframes folk-w-tap-r { from { transform: rotate(0deg); } to { transform: rotate(-7deg); } }
+	@keyframes folk-w-tap-l { from { transform: rotate(0deg); } to { transform: rotate(-12deg); } }
+	@keyframes folk-w-lean { 0%, 100% { transform: rotate(0deg); } 20%, 60% { transform: rotate(2.5deg); } 82% { transform: rotate(-2deg); } }
+	@keyframes folk-w-paint-arm { 0%, 100% { transform: rotate(0deg); } 12%, 36%, 60% { transform: rotate(-26deg); } 24%, 48% { transform: rotate(-16deg); } 72% { transform: rotate(0deg); } }
+	@keyframes folk-w-paint { 0%, 100% { transform: rotate(0deg); } 12% { transform: rotate(-34deg); } 24% { transform: rotate(22deg); } 36% { transform: rotate(-36deg); } 48% { transform: rotate(20deg); } 60% { transform: rotate(-30deg); } 72% { transform: rotate(0deg); } }
+	@keyframes folk-w-palette { 0%, 100% { transform: rotate(0deg); } 10%, 64% { transform: rotate(-14deg); } 78% { transform: rotate(0deg); } }
+	@keyframes folk-w-jig { from { transform: translateY(0); } to { transform: translateY(-1%); } }
+	@keyframes folk-w-whisk-arm { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
+	@keyframes folk-w-whisk { from { transform: rotate(-24deg); } to { transform: rotate(18deg); } }
+	@keyframes folk-w-thud { 0%, 54%, 74%, 100% { transform: none; } 58% { transform: scale(1.03, 0.96); } 66% { transform: scale(0.99, 1.01); } }
+	@keyframes folk-w-hammer-arm { 0%, 66%, 100% { transform: rotate(0deg); } 44% { transform: rotate(-28deg); } 56% { transform: rotate(4deg); } }
+	@keyframes folk-w-hammer { 0%, 100% { transform: rotate(20deg); } 44% { transform: rotate(-50deg); } 56% { transform: rotate(82deg); } 62% { transform: rotate(72deg); } 68% { transform: rotate(80deg); } }
+	@keyframes folk-w-read { 0%, 100% { transform: rotate(-1deg); } 50% { transform: translateY(0.4%) rotate(-2.5deg); } }
+	@keyframes folk-w-book { 0%, 100% { transform: rotate(-26deg); } 50% { transform: rotate(-31deg); } }
+	@keyframes folk-w-glasses { 0%, 72%, 90%, 100% { transform: rotate(0deg); } 78%, 84% { transform: rotate(68deg); } 81% { transform: rotate(64deg); } }
+	@keyframes folk-w-float { from { transform: translateY(0); } to { transform: translateY(-3%); } }
+	@keyframes folk-w-cast { from { transform: rotate(-30deg); } to { transform: rotate(-62deg); } }
+	@keyframes folk-w-wand { 0%, 100% { transform: rotate(-30deg); } 25% { transform: rotate(10deg); } 50% { transform: rotate(32deg); } 75% { transform: rotate(-4deg); } }
 
 	@keyframes folk-talk-a {
 		0% { opacity: 1; }
