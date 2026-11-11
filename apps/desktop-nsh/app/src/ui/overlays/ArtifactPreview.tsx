@@ -24,7 +24,7 @@ import { ArtifactLoader } from "../../m/overlays/artifact-loader.svelte.ts";
 import { ArtifactTreeSource } from "../../m/overlays/artifact-tree-source.svelte.ts";
 import { clampArtifactTreeWidth, loadArtifactTreeWidth, saveArtifactTreeWidth } from "../../m/overlays/artifact-tree-width.ts";
 import type { ArtifactTreeNode } from "../../m/overlays/artifact-tree.ts";
-import { absWorkspacePath, artifactByteSource, artifactKind, citedInWorkspace, isInAppPreviewKind, tooLargeToRender, type ArtifactKind } from "../../m/overlays/artifacts.ts";
+import { absWorkspacePath, artifactByteSource, artifactKind, citedInWorkspace, isInAppPreviewKind, isOfficeKind, tooLargeToRender, type ArtifactKind } from "../../m/overlays/artifacts.ts";
 import { openWorkspacePath } from "../../m/overlays/open-workspace.ts";
 import { baseName } from "../../m/paths.ts";
 import { isTauri } from "../../m/tauri.ts";
@@ -43,6 +43,8 @@ import { ArtifactTreeMenu } from "./ArtifactTreeMenu";
 import { DangerDialog } from "./DangerDialog";
 import { FileDownload } from "./FileDownload";
 import { mediaFilePath } from "./media-source";
+import { officeSourceOf } from "./office-model";
+import { pdfSourceOf } from "./pdf-pages";
 import type { ArtifactPane } from "./ShellPreview";
 import { onGlassCard } from "../glass";
 
@@ -154,8 +156,13 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
     kind: () => kindOf(),
     byteSource: () => byteSourceOf(),
     // The same file `ArtifactBody` hands the player (`mediaSource`).
-    mediaFile: (path) =>
+    localFile: (path) =>
       mediaFilePath({ web: platform.os === "web", local: api()?.kind === "local", relpath: path, workspaceRoot: runtime.snapshot.settings.workspace_path }),
+    // The same sources `ArtifactBody` hands the PDF and Office viewers.
+    viewerFetches: (path, kind, source, att) =>
+      kind === "pdf"
+        ? pdfSourceOf({ relpath: path, byteSource: source, attachment: att }) !== null
+        : isOfficeKind(kind) && officeSourceOf({ relpath: path, byteSource: source, attachmentId: att?.id, local: api()?.kind === "local" }) !== null,
   });
   const annot = new ArtifactAnnotations({
     relpath,

@@ -29,6 +29,8 @@ import {
   type ZoomMode,
 } from "../../m/annotations/pdf-region.ts";
 import type { Size } from "../../m/annotations/region-box.ts";
+import type { Attachment } from "@real-bot/protocol";
+import type { artifactByteSource } from "../../m/overlays/artifacts.ts";
 import { runtime } from "../../runtime";
 import { createPdfText } from "./pdf-text";
 
@@ -47,6 +49,24 @@ export function pdfSourceFor(path: string): PdfSource | null {
   if (!client || client.kind !== "local") return null;
   const { origin, token } = client.endpoint;
   return { url: `${origin}/v1/workspace/file?path=${encodeURIComponent(path)}`, token };
+}
+
+/**
+ * Where the native module reads a PDF from: an attachment's content, or the workspace file, on the
+ * runtime this window is connected to when it is on this computer; null otherwise. The loader reads
+ * no bytes for a file this gives a source for (`ArtifactLoaderHost.viewerFetches`).
+ */
+export function pdfSourceOf(file: {
+  relpath: string;
+  byteSource: ReturnType<typeof artifactByteSource>;
+  attachment: Attachment | null | undefined;
+}): PdfSource | null {
+  if (file.byteSource === "attachment" && file.attachment) {
+    const client = runtime.client;
+    if (!client || client.kind !== "local") return null;
+    return { url: `${client.endpoint.origin}/v1/attachments/${file.attachment.id}/content`, token: client.endpoint.token };
+  }
+  return pdfSourceFor(file.relpath);
 }
 
 export type PdfStatus = "loading" | "password" | "ready" | "broken" | "failed";

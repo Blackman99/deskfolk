@@ -32,12 +32,23 @@ export interface ArtifactLoaderHost {
   kind: () => ArtifactKind;
   byteSource: () => ReturnType<typeof artifactByteSource>;
   /**
-   * NSH: the file a video or an audio file plays from where it lies (`mediaFilePath`), or null.
-   * For such a file the loader reads no bytes: the player opens it, and the pane takes the path for
-   * its source.
+   * NSH: the file on this computer a video, an audio file or a picture is shown from where it lies
+   * (`mediaFilePath`), or null. For such a file the loader reads no bytes: the native player or
+   * image view opens it, and the pane takes the path for its source.
    */
-  mediaFile?: (path: string) => string | null;
+  localFile?: (path: string) => string | null;
+  /**
+   * NSH: whether the native viewer fetches this PDF or Office file from the runtime itself
+   * (`pdfSourceOf`, `officeSourceOf`), so the loader reads no bytes for it.
+   */
+  viewerFetches?: (path: string, kind: ArtifactKind, source: ReturnType<typeof artifactByteSource>, att: Attachment | null) => boolean;
 }
+
+/**
+ * Past this long, a file's hash is asked for after the viewer has asked for the file: the runtime
+ * answers one file GET at a time, and the viewer's is the one the reader is waiting on.
+ */
+const HASH_AFTER_VIEWER_MS = 300;
 
 /** The bytes of the file on screen: what is loading, what has arrived, and the object URLs and hash that go with them. */
 export class ArtifactLoader {
@@ -153,9 +164,21 @@ export class ArtifactLoader {
 	set officeBlob(value: Blob | null) { this.#officeBlob$s.set(value); }
   #shownOffice$s = derived(() => this.blobPath === this.#h.relpath() ? this.officeBlob : null);
 	get shownOffice() { return this.#shownOffice$s.get(); }
-  /** The PDF's bytes only while they are the file on screen's, like `shownBlob`. */
-  #shownPdf$s = derived(() => this.blobPath === this.#h.relpath() ? this.pdfBlob : null);
+  /** NSH: the file on screen is fetched by its native viewer itself, its bytes never read here (`viewerFetches`). */
+  #byViewer$s = state(false);
+	get byViewer() { return this.#byViewer$s.get(); }
+	set byViewer(value) { this.#byViewer$s.set(value); }
+  /** NSH: whether the file on screen is fetched by its native viewer itself (a PDF, an Office file). */
+  #shownByViewer$s = derived(() => this.blobPath === this.#h.relpath() && this.byViewer);
+	get shownByViewer() { return this.#shownByViewer$s.get(); }
+  /** Whether the PDF on screen can be shown: its bytes are here, or the viewer fetches them itself. */
+  #shownPdf$s = derived(() => this.blobPath === this.#h.relpath() && (this.pdfBlob !== null || this.byViewer));
 	get shownPdf() { return this.#shownPdf$s.get(); }
+  /**
+   * NSH: a picture whose path the image view could not open (outside the folders the app may read,
+   * say), so it is shown from its bytes, as before; its path while it is the file on screen.
+   */
+  #bytesFor: string | null = null;
   /** An SVG's source, kept so an image annotation can size a drawing that declares no size. */
   #svgRaw$s = state<string | null>(null);
 	get svgRaw(): string | null { return this.#svgRaw$s.get(); }
@@ -229,6 +252,7 @@ export class ArtifactLoader {
     this.liveBlob = null;
     this.blobUrl = null;
     this.pdfBlob = null;
+    this.byViewer = false;
     this.officeBlob = null;
     this.blobPath = null;
   }
@@ -298,33 +322,52 @@ export class ArtifactLoader {
           return;
         }
       }
-      // NSH: a clip on this computer plays from where it lies, so its bytes are not read here. All
-      // of them went through the JS first, for a copy the player never used: a 100 MB video
-      // waited minutes behind "Opening file…". The hash an annotation is saved against still comes,
-      // after the player is up.
-      const onDisk = previewKind === "audio" || previewKind === "video" ? untrack(() => this.#h.mediaFile?.(path) ?? null) : null;
-      if (onDisk && api.kind === "local") {
+      // NSH: a clip or a picture on this computer is shown from where it lies, and a PDF or an Office
+      // file is fetched by its native viewer, so their bytes are not read here. Through the JS they
+      // held the window: a 100 MB video or PDF behind "Opening file…", a 24 MB picture for seconds
+      // while it was turned into a `data:` URL. The hash an annotation is saved against still comes,
+      // after the file is up.
+      const local = api.kind === "local" && this.#bytesFor !== path;
+      const onDisk =
+        local && (previewKind === "audio" || previewKind === "video" || previewKind === "image")
+          ? untrack(() => this.#h.localFile?.(path) ?? null)
+          : null;
+      const byViewer = local && !onDisk && untrack(() => this.#h.viewerFetches?.(path, previewKind, source, att) ?? false);
+      if ((onDisk || byViewer) && api.kind === "local") {
         this.revoke();
         batch(() => {
           this.blobUrl = onDisk;
+          this.byViewer = byViewer;
           this.blobPath = path;
           this.progress = null;
           this.loading = false;
         });
         this.#endSlow();
         this.#setText(null, null);
-        const etag = await localFileEtag(api, source === "attachment" && att ? { attachmentId: att.id } : { path }, abort.signal);
-        if (gen !== this.loadGen || etag === null) return;
+        if (byViewer) await new Promise((done) => setTimeout(done, HASH_AFTER_VIEWER_MS));
+        if (gen !== this.loadGen) return;
+        const head = await localFileHead(api, source === "attachment" && att ? { attachmentId: att.id } : { path }, abort.signal);
+        if (gen !== this.loadGen) return;
+        if (head.gone) {
+          this.loadedKey = null;
+          this.missing = true;
+          return;
+        }
+        if (head.etag === null) return;
         batch(() => {
-          this.loadedEtag = etag;
+          this.loadedEtag = head.etag;
           this.hashFresh = true;
         });
         return;
       }
+      // NSH: on this computer the bytes come in one read (`response.blob()`): following each chunk
+      // for the progress bar copied every byte through the JS twice more, three seconds and
+      // gigabytes for a 100 MB file, for a load that takes a moment.
+      const progress = api.kind === "local" ? undefined : onProgress;
       const blob =
         source === "attachment" && att
-          ? await this.#h.api()!.getAttachmentBlob(att.id, onProgress, { signal: abort.signal, size })
-          : await this.#h.api()!.getWorkspaceFileBlob(path, onProgress, { signal: abort.signal, size });
+          ? await this.#h.api()!.getAttachmentBlob(att.id, progress, { signal: abort.signal, size })
+          : await this.#h.api()!.getWorkspaceFileBlob(path, progress, { signal: abort.signal, size });
       if (gen !== this.loadGen) return;
       this.loadedEtag = etagForBlob(blob);
       this.hashFresh = true;
@@ -364,6 +407,7 @@ export class ArtifactLoader {
       this.blobUrl = next;
       // pdf.js reads the bytes, not a URL.
       this.pdfBlob = previewKind === "pdf" ? blob : null;
+      this.byViewer = false;
       this.officeBlob = isOfficeKind(previewKind) ? blob : null;
       this.blobPath = path;
       this.#setText(null, null);
@@ -419,6 +463,20 @@ export class ArtifactLoader {
     }
   }
 
+  /**
+   * NSH: the image view could not open the picture by its path (outside the folders the app may
+   * read): show it from its bytes, as before.
+   */
+  bytesInstead(): void {
+    const path = this.#h.relpath();
+    if (this.#bytesFor === path || this.blobPath !== path) return;
+    this.#bytesFor = path;
+    const kind = untrack(() => this.#h.kind());
+    const source = untrack(() => this.#h.byteSource());
+    const att = untrack(() => this.#h.attachment());
+    void this.loadPreview(path, kind, source, att);
+  }
+
   /** The file on screen went to the Trash, so what the pane holds of it goes too, unsaved edits included. */
   showGone(): void {
     this.loadGen += 1;
@@ -438,9 +496,14 @@ export class ArtifactLoader {
 /**
  * NSH: a file's hash, the one an annotation is saved against, without its bytes. The runtime's
  * file GET names it in its `ETag` (the sha256 of the whole file; a range's would be the range's), so
- * the answer is read up to its headers and its body is let go. Null when it does not come.
+ * the answer is read up to its headers and its body is let go. `gone` when the runtime says there
+ * is no such file (the loader's own read said so before); the hash is null when it does not come.
  */
-async function localFileEtag(api: LocalApi, target: { path: string } | { attachmentId: string }, signal: AbortSignal): Promise<string | null> {
+async function localFileHead(
+  api: LocalApi,
+  target: { path: string } | { attachmentId: string },
+  signal: AbortSignal,
+): Promise<{ etag: string | null; gone: boolean }> {
   const { origin, token } = api.endpoint;
   const url =
     "attachmentId" in target
@@ -450,8 +513,8 @@ async function localFileEtag(api: LocalApi, target: { path: string } | { attachm
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal });
     const etag = res.ok ? res.headers.get("ETag") : null;
     void res.body?.cancel().catch(() => {});
-    return etag;
+    return { etag, gone: res.status === 404 };
   } catch {
-    return null;
+    return { etag: null, gone: false };
   }
 }

@@ -49,9 +49,10 @@ import { ArtifactCodeEditor, type ArtifactEditorHandle } from "./ArtifactCodeEdi
 import { FileDownload } from "./FileDownload";
 import { FileIcon } from "./FileIcon";
 import { OfficeViewer } from "./OfficeViewer";
+import { officeSourceOf } from "./office-model";
 import { PdfViewer, type PdfViewerHandle } from "./PdfViewer";
-import { mediaSource } from "./media-source";
-import { pdfSourceFor, type PdfSource } from "./pdf-pages";
+import { isAbsolutePath, mediaSource } from "./media-source";
+import { pdfSourceOf, type PdfSource } from "./pdf-pages";
 import { settled } from "../workbench/drag-settle";
 
 export type { ArtifactEditorHandle };
@@ -67,7 +68,8 @@ function dataUrlOf(url: () => string | null) {
   effect(() => {
     const next = url();
     const mine = ++gen;
-    if (!next || next.startsWith("data:")) {
+    // A path is the file itself (on this computer): the image view reads and decodes it.
+    if (!next || next.startsWith("data:") || isAbsolutePath(next)) {
       shown.set(next);
       return;
     }
@@ -150,14 +152,15 @@ export function ArtifactBody(props: {
   // whole file Base64'd on the JS thread, and the window hung for a minute on a 100 MB video.
   const picture = dataUrlOf(() => (props.kind === "image" || props.kind === "svg" ? loader().shownBlob : null));
 
-  /** An Office file's bytes as Base64, when it is not a local workspace file the viewer can read by path. */
+  /** An Office file's bytes as Base64, when the native viewer cannot fetch it from the runtime itself. */
   const officeBase64 = signal<string | null>(null);
   let officeGen = 0;
-  const officeByPath = () => props.byteSource !== "attachment" && props.api?.kind === "local";
+  const officeSource = () =>
+    officeSourceOf({ relpath: props.relpath, byteSource: props.byteSource, attachmentId: props.attachment?.id, local: props.api?.kind === "local" });
   effect(() => {
     const blob = loader().shownOffice;
     const mine = ++officeGen;
-    if (!blob || officeByPath()) {
+    if (!blob || officeSource()) {
       officeBase64.set(null);
       return;
     }
@@ -167,14 +170,7 @@ export function ArtifactBody(props: {
   });
 
   /** Where the native PDF module reads from: the workspace file, or the attachment's content. */
-  const pdfSource = (): PdfSource | null => {
-    const client = runtime.client;
-    if (props.byteSource === "attachment" && props.attachment) {
-      if (!client || client.kind !== "local") return null;
-      return { url: `${client.endpoint.origin}/v1/attachments/${props.attachment.id}/content`, token: client.endpoint.token };
-    }
-    return pdfSourceFor(props.relpath);
-  };
+  const pdfSource = (): PdfSource | null => pdfSourceOf({ relpath: props.relpath, byteSource: props.byteSource, attachment: props.attachment });
 
   cleanup(() => {
     props.onEditor?.(null);
@@ -287,13 +283,14 @@ export function ArtifactBody(props: {
             focusId={annot().annotFocus}
             focusSeq={annot().annotFocusSeq}
             active={annot().annotMode}
-            enabled={gate().ok && gate().adapter === "image" && !annot().pendingDraft && loader().reducedFrom === null}
+            enabled={gate().ok && gate().adapter === "image" && !annot().pendingDraft && loader().reducedFrom === null && loader().contentSha !== null}
             labels={t().annotImage}
             onDraft={(draft) => annot().offerDraft("image_region", draft.anchor, draft.crop)}
             onPick={annot().pickAnnotation}
             pending={annot().pendingOf("image_region")}
             onPendingChange={annot().movePending}
             onCancel={annot().escapeAnnotation}
+            onError={() => loader().bytesInstead()}
             openLabel={`${t().artifactEnlarge} ${props.relpath.split("/").pop() ?? props.relpath}`}
             onOpen={(from) => {
               const shown = picture();
@@ -333,11 +330,11 @@ export function ArtifactBody(props: {
     }
     if (isOfficeKind(props.kind)) {
       return (
-        <If when={loader().shownOffice && !loader().loading && (officeByPath() || officeBase64() !== null)}>
+        <If when={(loader().shownOffice || loader().shownByViewer) && !loader().loading && (officeSource() || officeBase64() !== null)}>
           <OfficeViewer
             kind={props.kind as "word" | "spreadsheet" | "presentation"}
             title={props.relpath}
-            {...(officeByPath() ? { path: props.relpath } : { base64: officeBase64() ?? "" })}
+            {...(officeSource() ?? { base64: officeBase64() ?? "" })}
           />
         </If>
       );
@@ -351,7 +348,7 @@ export function ArtifactBody(props: {
           focusId={annot().annotFocus}
           focusSeq={annot().annotFocusSeq}
           active={annot().annotMode}
-          enabled={gate().ok && gate().adapter === "pdf" && !annot().pendingDraft}
+          enabled={gate().ok && gate().adapter === "pdf" && !annot().pendingDraft && loader().contentSha !== null}
           onDraft={(draft) => annot().offerDraft("pdf_region", draft.anchor, draft.crop)}
           onPick={annot().pickAnnotation}
           pending={annot().pendingOf("pdf_region")}

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Large files open in the preview without holding the window
+
+- In the native (NSH) desktop build, a large PDF, Office file or picture held the window while it opened: its bytes went through the app first (a 105 MB PDF froze the window for 3 seconds and took 2.5 GB, a 24 MB picture 4.8 seconds). On this computer a picture now opens from where it is, a PDF, Word, Excel or PowerPoint file is read by its viewer directly, and a text file comes in one read. A picture the app may not read from its folder still opens as before.
+
 ### A large video opens at once in the file preview
 
 - In the native (NSH) desktop build, opening a large video in the file preview held the window on "Opening file…" for a minute or more (about 77 seconds for a 104 MB clip). The whole file was read into the app first, and then turned into text for the picture view, which a video never uses. A video or an audio file on this computer now opens at once and plays from where it is, and files that are not pictures, such as PDFs, are no longer turned into that text. The phone's preview and the Tauri app are unchanged.

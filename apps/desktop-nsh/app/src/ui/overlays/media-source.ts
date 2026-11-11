@@ -30,7 +30,8 @@ export function localFilePath(relpath: string, workspaceRoot: string | null | un
  * The file the player opens where it lies: on a desktop whose runtime is on this computer, the file
  * by its path (an attachment's content is the same file, `/v1/attachments/:id/content` reads it
  * where it lies). Null on the web, for a remote runtime and for a path it cannot place; those play
- * the loaded bytes. The loader reads no bytes for a file this names (`ArtifactLoaderHost.mediaFile`).
+ * the loaded bytes. The loader reads no bytes for a file this names (`ArtifactLoaderHost.localFile`); a picture
+ * by its path too.
  */
 export function mediaFilePath(input: {
   web: boolean;

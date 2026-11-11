@@ -48,8 +48,23 @@ export type DeckModel = { kind: "presentation"; width: number; height: number; s
 export type SheetModel = Spreadsheet & { kind: "spreadsheet" };
 export type OfficeModel = WordModel | SheetModel | DeckModel;
 
-/** Where a file comes from: a path the runtime serves, or the bytes themselves (Base64). */
-export type OfficeSource = { path: string; base64?: undefined } | { base64: string; path?: undefined };
+/** Where a file comes from: a path the runtime serves, an attachment's content it serves, or the bytes themselves (Base64). */
+export type OfficeSource =
+  | { path: string; attachmentId?: undefined; base64?: undefined }
+  | { attachmentId: string; path?: undefined; base64?: undefined }
+  | { base64: string; path?: undefined; attachmentId?: undefined };
+
+/**
+ * Where the native module reads an Office file from on the runtime this window is connected to,
+ * when it is on this computer: an attachment's content, or the workspace file; null otherwise, and
+ * the viewer is handed the bytes. The loader reads no bytes for a file this gives a source for
+ * (`ArtifactLoaderHost.viewerFetches`).
+ */
+export function officeSourceOf(file: { relpath: string; byteSource: string | null; attachmentId: string | null | undefined; local: boolean }): OfficeSource | null {
+  if (!file.local) return null;
+  if (file.byteSource === "attachment" && file.attachmentId) return { attachmentId: file.attachmentId };
+  return file.relpath ? { path: file.relpath } : null;
+}
 
 /** The reasons a file does not open: too large or expanding too far, or anything else. */
 export type OfficeFailure = "limit" | "error";
@@ -74,7 +89,11 @@ export async function openOffice(id: string, kind: OfficeKind, source: OfficeSou
     const client = runtime.client;
     if (!client || client.kind !== "local") throw new Error("not connected");
     const { origin, token } = client.endpoint;
-    json = await Office.openOffice(id, `${origin}/v1/workspace/file?path=${encodeURIComponent(source.path)}`, token, kind);
+    const url =
+      source.attachmentId !== undefined
+        ? `${origin}/v1/attachments/${source.attachmentId}/content`
+        : `${origin}/v1/workspace/file?path=${encodeURIComponent(source.path)}`;
+    json = await Office.openOffice(id, url, token, kind);
   }
   return JSON.parse(json) as OfficeModel;
 }

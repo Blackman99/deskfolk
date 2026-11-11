@@ -91,6 +91,8 @@ export function ImageAnnotator(props: {
   onPendingChange?: (anchor: ImageRegionAnchor) => void;
   /** Escape while choosing, or with a box pending. */
   onCancel?: () => void;
+  /** The image view could not open `src` (a path outside the folders the app may read, say). */
+  onError?: () => void;
   /**
    * Outside annotate mode, and with no box waiting, a press on the picture enlarges it; left out,
    * the picture is only a picture. `from` is the picture's own view, for the enlargement to grow
@@ -400,6 +402,7 @@ export function ImageAnnotator(props: {
       >
         <Image
           src={props.src}
+          onError={() => props.onError?.()}
           accessibilityLabel={props.alt}
           style={{ width: "100%", height: "100%", objectFit: "contain" }}
           onLoad={(e) =>

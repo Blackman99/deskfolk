@@ -54,6 +54,8 @@ const SLIDE_KEYS: Record<string, string> = {
 export function OfficeViewer(props: {
   /** The file in the runtime's workspace (or an absolute path the runtime can read). */
   path?: string;
+  /** Or an attachment the runtime serves. */
+  attachmentId?: string;
   /** Or the file's own bytes, Base64. */
   base64?: string;
   kind: OfficeKind;
@@ -71,7 +73,7 @@ export function OfficeViewer(props: {
   const retry = signal(0);
   const slideBox = signal({ width: 0, height: 0 });
 
-  const fileKey = computed(() => `${props.kind}\u0000${props.path ?? ""}\u0000${props.base64 ?? ""}`);
+  const fileKey = computed(() => `${props.kind}\u0000${props.path ?? ""}\u0000${props.attachmentId ?? ""}\u0000${props.base64 ?? ""}`);
   const deck = (): DeckModel | null => {
     const m = model();
     return m && m.kind === "presentation" ? m : null;
@@ -91,7 +93,9 @@ export function OfficeViewer(props: {
     const id = nextOfficeId();
     let live = true;
     const kind = untracked(() => props.kind);
-    const source: OfficeSource = untracked(() => (props.base64 !== undefined ? { base64: props.base64 } : { path: props.path ?? "" }));
+    const source: OfficeSource = untracked(() =>
+      props.base64 !== undefined ? { base64: props.base64 } : props.attachmentId !== undefined ? { attachmentId: props.attachmentId } : { path: props.path ?? "" },
+    );
     batch(() => {
       enlarged.set(false);
       phase.set("loading");
