@@ -10,7 +10,27 @@
  * app polls its render, and the story must not run ahead of that.
  */
 import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import type { Frame, Locator, Page } from 'playwright';
+
+/**
+ * Stills of a passing moment taken from another client on the same daemon (the README's desktop
+ * shots come from the native app this way): with `FILM_HOLD_DIR` set, the story stops at the named
+ * moment (`ask`: the approval card up; `stop`: your stop and your change said, the Producer back at
+ * it; `done`: every ticket through), writes `<dir>/<name>.ready` with the ids it knows, and goes on
+ * once `<dir>/<name>.go` appears. Nothing presses a card meanwhile. Unset, it does nothing.
+ */
+async function holdFor(name: string, info: Record<string, unknown>, log: (msg: string) => void, settleMs = 0): Promise<void> {
+  const dir = process.env.FILM_HOLD_DIR;
+  if (!dir) return;
+  await new Promise((r) => setTimeout(r, settleMs));
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, `${name}.ready`), JSON.stringify(info, null, 2));
+  log(`held at ${name}: waiting for ${path.join(dir, `${name}.go`)}`);
+  while (!existsSync(path.join(dir, `${name}.go`))) await new Promise((r) => setTimeout(r, 500));
+  log(`going on from ${name}`);
+}
 
 export type Lang = 'zh' | 'en';
 
@@ -490,6 +510,7 @@ export async function playStory(s: Stage): Promise<void> {
   await follow();
   await s.focus(approval);
   await s.hold(1400);
+  await holdFor('ask', { lang: s.lang, group: group.id, plan: plan.id, producer: producer.id, reviewer: reviewer.id }, s.log);
   await s.attempt('approve', () => s.click(approval.getByRole('button', { name: re('以后都直接干', 'Allow from now on') })));
   await s.focus(null);
   await follow();
@@ -658,6 +679,9 @@ export async function playStory(s: Stage): Promise<void> {
     500
   ).catch(() => s.log('the Producer is not at work on your change yet'));
   await s.hold(1200);
+  // Your stop and then your change, the Producer back at it (a stop writes nothing in the
+  // conversation since ADR 0101): the README's stop still.
+  await holdFor('stop', { lang: s.lang, group: group.id, plan: plan.id }, s.log, 3000);
 
   /* 8 · Done has a definition: checks the app runs, a review with evidence, your word */
   await s.scene(8);
@@ -713,6 +737,8 @@ export async function playStory(s: Stage): Promise<void> {
   await until('nobody at work', async () => !(await sessions()).some((x: any) => (x.live_turns ?? []).length > 0), 3 * 60_000, 1000).catch(() => {});
   await until('the plan written up after the review', async () => settledSinceApproval(plan.id), 3 * 60_000, 1000).catch(() => s.log('no write-up after the review'));
   await s.hold(1500);
+  // Every ticket through on the checks and the Reviewer's word, before you ask how it went.
+  await holdFor('done', { lang: s.lang, group: group.id, plan: plan.id }, s.log);
 
   /* 9 · Back to the result: ask how it went, see it on the board, play it beside the chat */
   await s.scene(9);

@@ -5,9 +5,10 @@
  *   node scripts/film/desk.ts --demo /private/tmp/deskfolk-demo --out ../../docs/assets [--shots map,project]
  *
  * Writes app-<lang>-map.jpg and app-<lang>-project.jpg, 1480×924 CSS px at 2× like the shots cut
- * from the film, in the take's language and theme. Run it right after the take whose look the
- * README keeps (zh-light for the Chinese one, en-dark for the English one), before the next take
- * wipes the folder, and after phone.ts.
+ * from the film, in the take's language and theme. Run it right after the take, before the next
+ * take wipes the folder, and after phone.ts. Since 2026-11-11 the README's desktop shots are taken
+ * from the native (NSH) app on the take's data instead; `--shots project` still runs the project
+ * session they show.
  *
  * map: the group's job as a town (the conversation header's Map), dragged beside the chat, at a
  * moment in the replay when the Bots are at work. The town's light follows the clock of the moment
