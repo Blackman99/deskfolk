@@ -42,3 +42,15 @@ test("a dialog's scrim keeps the wheel from the views under it", async () => {
   await app.host.send("shell.wheel", wheel(50, 50, 40));
   await app.waitUntil(() => app.texts().includes("outer:40"));
 });
+
+test("a full-window overlay's layer reaches a view its content makes through a render prop", async () => {
+  const app = await openStory("platform");
+  await app.waitFor("id:wheel-outer", { timeout: 10_000 });
+  await app.press("id:wheel-open-overlay");
+  await app.waitFor("id:wheel-overlay");
+  await app.host.send("shell.wheel", wheel(50, 50, 40));
+  // Inside the box the render prop filled, under the overlay's layer.
+  await app.host.send("shell.wheel", wheel(550, 350, 40));
+  await app.waitUntil(() => app.texts().includes("overlay:40"));
+  expect(app.texts()).toContain("outer:0");
+});

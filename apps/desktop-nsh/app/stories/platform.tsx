@@ -1,10 +1,11 @@
-/** The platform pieces NSH leaves to the app: wheel events forwarded by the shell, and a dialog over them. */
-import { signal, Text, View, type ViewRef } from "nsh";
+/** The platform pieces NSH leaves to the app: wheel events forwarded by the shell, and popups over them. */
+import { Overlay, signal, Text, View, windowSize, type JSX, type ViewRef } from "nsh";
 import { onWheel } from "../src/platform/wheel";
+import { WheelLayer } from "../src/platform/wheel-layer";
 import { Modal } from "../src/ui/Modal";
 
-/** A view inside the dialog that adds up the wheel it hears. */
-function DialogWheel() {
+/** A view inside a popup that adds up the wheel it hears, shown as `<name>:<sum>`. */
+function WheelSum(props: { name: string; class?: string; height?: number }) {
   const sum = signal(0);
   let view: ViewRef | undefined;
   onWheel(
@@ -12,10 +13,15 @@ function DialogWheel() {
     (e) => sum.update((v) => v + e.dy),
   );
   return (
-    <View testID="wheel-dialog" ref={(n) => (view = n)} class="bg-line" style={{ height: 200 }}>
-      <Text testID="wheel-dialog-sum">{`dialog:${sum()}`}</Text>
+    <View testID={`wheel-${props.name}`} ref={(n) => (view = n)} class={`bg-line ${props.class ?? ""}`} style={{ height: props.height }}>
+      <Text>{`${props.name}:${sum()}`}</Text>
     </View>
   );
+}
+
+/** Lays out what its render prop makes, as `WorkspaceView` mounts the preview it is handed. */
+function RenderProp(props: { children: (box: string) => JSX.Element }) {
+  return <View class="absolute flex-col" style={{ left: 300, top: 200, width: 500, height: 300 }}>{props.children("flex-1")}</View>;
 }
 
 export default function Platform() {
@@ -23,6 +29,7 @@ export default function Platform() {
   const inner = signal(0);
   const zoom = signal(1);
   const dialog = signal(false);
+  const overlay = signal(false);
   let outerView: ViewRef | undefined;
   let innerView: ViewRef | undefined;
   onWheel(
@@ -48,11 +55,23 @@ export default function Platform() {
         <View testID="wheel-open-dialog" role="button" onPress={() => dialog.set(true)}>
           <Text>open dialog</Text>
         </View>
+        <View testID="wheel-open-overlay" role="button" onPress={() => overlay.set(true)}>
+          <Text>open overlay</Text>
+        </View>
       </View>
       <If when={dialog()}>
         <Modal title="Wheel" closeLabel="Close" onClose={() => dialog.set(false)}>
-          <DialogWheel />
+          <WheelSum name="dialog" height={200} />
         </Modal>
+      </If>
+      <If when={overlay()}>
+        <Overlay style={{ width: windowSize().width, height: windowSize().height }}>
+          <WheelLayer>
+            <View testID="wheel-overlay-scrim" class="flex-1 bg-bg/90" onPress={() => overlay.set(false)}>
+              <RenderProp>{(box) => <WheelSum name="overlay" class={box} />}</RenderProp>
+            </View>
+          </WheelLayer>
+        </Overlay>
       </If>
     </View>
   );
