@@ -23,13 +23,16 @@ permissions:
   contents: read
 
 env:
-  NSH_VERSION: v0.4.0
+  # The `nsh` CLI is built from the same upstream commit the Rust crates are locked to
+  # (`apps/desktop-nsh/Cargo.lock`): the bundle format and the engine must match.
+  NSH_REPO: https://github.com/longbridge/nsh
 
 jobs:
   desktop:
     name: NSH desktop (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # A cache miss builds the nsh CLI first (~30 minutes).
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -61,18 +64,29 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev clang pkg-config xvfb dbus-x11
 
-      - name: Install nsh (Linux)
-        if: runner.os == 'Linux'
+      - name: NSH commit (from Cargo.lock)
+        id: nsh
         run: |
-          curl -fsSL https://nsh.dev/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          rev=$(grep -m1 -oE 'longbridge/nsh\?[^#"]*#[0-9a-f]{40}' apps/desktop-nsh/Cargo.lock | cut -d'#' -f2)
+          if [ -z "$rev" ]; then echo "::error::no longbridge/nsh git source in apps/desktop-nsh/Cargo.lock"; exit 1; fi
+          # On Windows `pwd -W` gives the home as C:/Users/..., which the cache action and PATH take.
+          home=$(cd ~ && (pwd -W 2>/dev/null || pwd))
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+          echo "root=$home/.nsh-cli" >> "$GITHUB_OUTPUT"
+          echo "$home/.nsh-cli/bin" >> "$GITHUB_PATH"
 
-      - name: Install nsh (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          irm https://nsh.dev/install.ps1 | iex
-          "$env:LOCALAPPDATA\nsh\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      # Its own install root, apart from ~/.cargo/bin (which rust-cache keeps by the lockfile), keyed
+      # by OS and commit: a cache hit skips the ~30-minute release build.
+      - name: Cache nsh
+        id: nsh-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.nsh.outputs.root }}
+          key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
+
+      - name: Build nsh
+        if: steps.nsh-cache.outputs.cache-hit != 'true'
+        run: cargo install --git "$NSH_REPO" --rev ${{ steps.nsh.outputs.rev }} nsh-cli --locked --root "${{ steps.nsh.outputs.root }}"
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
