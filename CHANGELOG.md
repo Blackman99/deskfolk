@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The composer's Stop no longer outshines Send
+
+- In the native (NSH) desktop build, Stop in the composer was a solid disc: white in the dark theme and black in the light one, the loudest thing in the window. It is now a quiet secondary button, the same weight as Send beside it, whether it sits beside Send in a direct or takes Send's place.
+- With several things to stop, the button beside Send matches it, and its menu shows an icon for what each choice stops (the run, a background task, the group, a Bot, the job, every Bot), with lines between stopping everything here, its parts and every Bot. Long task names are cut to one line, and the button's tip no longer covers the open menu. The Tauri app is unchanged.
+
 ### A large job's sample no longer waits for your approval
 
 - The rest of a large job starts once its sample is handed over, not once you say the sample passes; the sample's own hand-over goes like any other: its reviewer, a check of yours, else your word. On 2026-11-10 the video director's second scene was refused for over an hour while 「继续」, 「第一场放过」 and an answer on a question card each failed to count as approval, until the Bot had you type 「第一场样片通过」 word for word. The Bot's situation now says not to ask you to approve the sample; standard checks against it and your word on the job's last part stay ([ADR 0109](docs/adr/0109-the-app-says-less-when-work-stops.md)).

@@ -39,6 +39,9 @@ const TINT: Record<ButtonVariant, string> = {
 const BOX_TOKEN: Record<ButtonVariant, string | null> = { primary: "brand", secondary: "btn-secondary-bg", ghost: null, danger: "danger", "danger-soft": null };
 const INK_TOKEN: Record<ButtonVariant, string> = { primary: "on-accent", secondary: "ink", ghost: "ink-secondary", danger: "on-danger", "danger-soft": "danger-text" };
 
+/** The secondary look for a control drawn by hand (the composer's round Stop): its box and glyph classes, and the tokens its floor reads. */
+export const SECONDARY_LOOK = { box: BOX.secondary, tint: TINT.secondary, ink: INK_TOKEN.secondary, ground: "btn-secondary-bg" };
+
 const SIZE = {
   sm: { box: "h-[28px] px-[10px] rounded-[7px]", text: "text-[12px]" },
   md: { box: "h-[32px] px-[12px] rounded-[8px]", text: "text-[13px]" },

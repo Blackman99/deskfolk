@@ -6,17 +6,40 @@
  * and a press outside are NSH's); on a phone the choices open as a sheet from the bottom
  * (`BottomSheet`). Nothing left to choose closes it. The button is one of the floor (`floor()`,
  * ADR 0108).
+ *
+ * Unlike the Svelte one (2026-11-11): beside the composer's Send the button is the composer's Stop,
+ * a secondary button with a chevron; each choice has an icon of what it stops, and lines part the
+ * whole conversation, its parts and every Bot, as the session menu draws its rows. Its tip goes
+ * while the menu is open.
  */
 import { effect, signal, Text, View } from "nsh";
-import { Menu, MenuItem } from "nsh/base";
+import { Menu, MenuItem, MenuSeparator } from "nsh/base";
 import { copy } from "../../runtime";
 import type { StopMenuItem } from "../../m/chat/stop-menu";
-import { BottomSheet, SheetItem } from "../BottomSheet";
-import { Icon } from "../Icon";
+import { BottomSheet, SheetItem, SheetSeparator } from "../BottomSheet";
+import { SECONDARY_LOOK } from "../Button";
+import { Icon, type IconName } from "../Icon";
 import { floor } from "../interface/floor";
 import { shadow } from "../styles";
 import { tip } from "../tip";
 import { narrowWindow as phoneSheet } from "../Modal";
+
+/** What a choice stops, by its key: the run, a background task, a conversation, a Bot, a job, every Bot. */
+export function stopIcon(key: string): IconName {
+  if (key.startsWith("task:")) return "terminal";
+  if (key.startsWith("session:")) return "message";
+  if (key.startsWith("bot:")) return "bot";
+  if (key.startsWith("plan:")) return "kanban";
+  if (key === "global") return "users";
+  return "stop";
+}
+
+/** A line goes before choice `i`: after the whole conversation (its run, the group), and before every Bot. */
+export function stopBreakBefore(items: readonly { key: string }[], i: number): boolean {
+  if (i === 0) return false;
+  const before = items[i - 1]!.key;
+  return items[i]!.key === "global" || before === "run" || before.startsWith("session:");
+}
 
 export function StopMenu<Item extends { key: string; label: string } = StopMenuItem>(props: {
   items: readonly Item[];
@@ -35,6 +58,8 @@ export function StopMenu<Item extends { key: string; label: string } = StopMenuI
   const below = () => props.placement === "below";
   const small = () => props.size === "sm";
   const off = () => props.disabled || props.items.length === 0;
+  /** Beside the composer's Send: the composer's Stop, with a chevron. */
+  const composer = () => !small() && !props.label;
 
   // Nothing left to choose (it was all stopped meanwhile): the menu goes with it.
   effect(() => {
@@ -51,12 +76,18 @@ export function StopMenu<Item extends { key: string; label: string } = StopMenuI
     }
   }
 
+  /** Open reads as hovered (`hover:` outranks a plain class, so both say the same). */
+  const box = () =>
+    composer()
+      ? `${SECONDARY_LOOK.box} rounded-full px-[10px] gap-[5px] ${open() ? "bg-btn-secondary-hover border-line-hover" : ""}`
+      : `bg-pane border hover:border-ink-secondary gap-1 ${open() ? "border-ink-secondary" : "border-line"} ${props.label ? "px-[10px] rounded-(--radius-sm)" : "px-2 rounded-full"}`;
+
   const trigger = (
     <View
       role="button"
-      ref={floor("stop", { ink: "ink-secondary", ground: ["pane"] })}
+      ref={floor("stop", () => (composer() ? { ink: SECONDARY_LOOK.ink, ground: ["input-bg", SECONDARY_LOOK.ground] } : { ink: "ink-secondary", ground: ["pane"] }))}
       testID="stop-menu"
-      tooltip={tip(copy().control.menu)}
+      tooltip={open() ? undefined : tip(copy().control.menu)}
       accessibilityLabel={copy().control.menu}
       accessibilityState={{ expanded: open(), disabled: off() }}
       disabled={off()}
@@ -66,13 +97,11 @@ export function StopMenu<Item extends { key: string; label: string } = StopMenuI
           open.set(!open());
         }
       }}
-      class={`cursor-pointer select-none disabled:cursor-default flex-row items-center justify-center gap-1 bg-pane border hover:border-ink-secondary disabled:opacity-[0.5] ${open() ? "border-ink-secondary" : "border-line"} ${
-        props.label ? "px-[10px] rounded-(--radius-sm)" : "px-2 rounded-full"
-      } ${small() ? "h-[26px] min-w-[26px]" : "h-[34px] min-w-[34px]"}`}
+      class={`cursor-pointer select-none disabled:cursor-default flex-row items-center justify-center disabled:opacity-[0.5] ${box()} ${small() ? "h-[26px] min-w-[26px]" : "h-[34px] min-w-[34px]"}`}
     >
-      <Icon name="stop" size={12} class="tint-ink-secondary" />
+      <Icon name="stop" size={composer() ? 16 : 12} class={composer() ? SECONDARY_LOOK.tint : "tint-ink-secondary"} />
       <If when={props.label}>{(label) => <Text class="text-[12px] font-medium text-ink-secondary">{label()}</Text>}</If>
-      <Icon name={below() ? "chevron-down" : "chevron-up"} size={12} class="tint-ink-secondary" />
+      <Icon name={below() ? "chevron-down" : "chevron-up"} size={12} class={composer() ? "tint-ink-muted" : "tint-ink-secondary"} />
     </View>
   );
 
@@ -89,19 +118,25 @@ export function StopMenu<Item extends { key: string; label: string } = StopMenuI
             open.set(e.open);
           }}
           trigger={trigger}
-          popupClass="min-w-[200px] max-w-[320px] p-1 bg-pane border border-line rounded-(--radius-md)"
+          popupClass="min-w-[220px] max-w-[340px] p-1 bg-pane border border-line rounded-(--radius-md)"
           popupStyle={{ boxShadow: shadow("menu") }}
         >
           <Each of={props.items} key={(item) => item.key}>
-            {(item) => (
-              <MenuItem
-                testID={`stop-item-${item().key}`}
-                accessibilityLabel={item().label}
-                onSelect={() => void pick(item())}
-                class="cursor-pointer select-none px-[10px] py-[7px] rounded-(--radius-sm) hover:bg-chip focus:bg-chip"
-              >
-                <Text class="text-[13px] text-ink line-clamp-1">{item().label}</Text>
-              </MenuItem>
+            {(item, index) => (
+              <>
+                <If when={stopBreakBefore(props.items, index())}>
+                  <MenuSeparator class="h-[1px] bg-line-subtle my-[3px] mx-2" />
+                </If>
+                <MenuItem
+                  testID={`stop-item-${item().key}`}
+                  accessibilityLabel={item().label}
+                  onSelect={() => void pick(item())}
+                  class="cursor-pointer select-none group flex-row items-center gap-2 px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle focus:bg-line-subtle"
+                >
+                  <Icon name={stopIcon(item().key)} size={16} class="tint-ink opacity-75 group-hover:tint-brand group-focus:tint-brand" />
+                  <Text class="flex-1 shrink min-w-0 text-[13px] font-medium text-ink line-clamp-1 group-hover:text-brand group-focus:text-brand">{item().label}</Text>
+                </MenuItem>
+              </>
             )}
           </Each>
         </Menu>
@@ -110,7 +145,14 @@ export function StopMenu<Item extends { key: string; label: string } = StopMenuI
         <BottomSheet title={copy().control.menu} closeLabel={copy().common.close} onClose={() => open.set(false)}>
           <View role="menu" accessibilityLabel={copy().control.menu}>
             <Each of={props.items} key={(item) => item.key}>
-              {(item) => <SheetItem role="menuitem" testID={`stop-item-${item().key}`} icon="stop" label={item().label} onPress={() => void pick(item())} />}
+              {(item, index) => (
+                <>
+                  <If when={stopBreakBefore(props.items, index())}>
+                    <SheetSeparator />
+                  </If>
+                  <SheetItem role="menuitem" testID={`stop-item-${item().key}`} icon={stopIcon(item().key)} label={item().label} onPress={() => void pick(item())} />
+                </>
+              )}
             </Each>
           </View>
         </BottomSheet>

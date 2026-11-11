@@ -55,7 +55,7 @@ export default function InterfaceStory() {
         <Chip id="apply-sample" label="sample" onPress={edit(RESET_THEN(SAMPLE))} />
         <Chip id="apply-floor-break" label="hide Stop" onPress={edit(RESET_THEN({ tokens: { light: { "--ink": "#ffffff" } }, copy: { zh: { "composer.send": "发出去" } } }))} />
         <Chip id="apply-hide-approve" label="hide Allow" onPress={edit(RESET_THEN({ tokens: { light: { "--on-accent": "#146a7c" } } }))} />
-        <Chip id="apply-dark-break" label="hide Stop in dark" onPress={edit(RESET_THEN({ tokens: { dark: { "--pane": APP_THEME.cssVars.dark.ink! } } }))} />
+        <Chip id="apply-dark-break" label="hide Stop in dark" onPress={edit(RESET_THEN({ tokens: { dark: { "--btn-secondary-bg": APP_THEME.cssVars.dark.ink! } } }))} />
         <Chip id="apply-unreadable" label="unreadable" onPress={edit(RESET_THEN({ tokens: { light: { "--pane": "banana", "--accent": "#7040c0" } } }))} />
         <Chip id="apply-off" label="off" onPress={edit({ enabled: false })} />
         <Chip id="reset" label="reset" onPress={edit(RESET)} />
@@ -67,6 +67,7 @@ export default function InterfaceStory() {
         {line("token-you", () => `you=${read("you")}`)}
         {line("token-pane", () => `pane=${read("pane")}`)}
         {line("token-ink", () => `ink=${read("ink")}`)}
+        {line("token-secondary", () => `secondary=${read("btn-secondary-bg")}`)}
         <Text testID="brand-ink" class="text-[13px] text-brand">brand-ink</Text>
         {line("behaviour", () => `behaviour=${JSON.stringify(interfaceBehaviour())}`)}
         {line("motion", () => `motion=${reduceMotion()}`)}

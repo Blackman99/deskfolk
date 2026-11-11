@@ -135,7 +135,7 @@ test("a profile that leaves Stop unreadable is dropped in this window; words sta
   await press(app, "id:apply-floor-break");
   await app.waitUntil(() => line(app, "paused=") === "paused=floor", { timeout: 6000 });
   expect(line(app, "floors=")).toBe("floors=stop");
-  expect(line(app, "why=")).toContain("pane on ink");
+  expect(line(app, "why=")).toContain("ink on btn-secondary-bg");
   expect(line(app, "ink=")).toBe(`ink=${hex(APP.light.ink!)}`);
   expect(line(app, "words=")).toBe("words=发出去");
   await app.waitFor("text:" + t.ui.toast.floorFailed.replace("{floor}", t.ui.floors.stop));
@@ -163,7 +163,7 @@ test("a profile that hides Stop only in the dark look is caught when the window 
   await app.setColorScheme("dark");
   await app.waitUntil(() => line(app, "paused=") === "paused=floor", { timeout: 6000 });
   expect(line(app, "floors=")).toBe("floors=stop");
-  expect(line(app, "pane=")).toBe(`pane=${hex(APP.dark.pane!)}`);
+  expect(line(app, "secondary=")).toBe(`secondary=${hex(APP.dark["btn-secondary-bg"]!)}`);
 });
 
 test("switched off, the window shows the app's look and words; the behaviour holds", async () => {

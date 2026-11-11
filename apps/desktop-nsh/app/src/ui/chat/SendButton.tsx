@@ -1,11 +1,15 @@
 /**
  * The composer's send button (`SendButton.svelte`), and beside it a direct's own Stop while its Bot
- * has a turn going here. The main button is Send (the accent), Stop (ink) while a reply is the main
+ * has a turn going here. The main button is Send (the accent), Stop while a reply is the main
  * thing to stop, greyed into the accent's tint with nothing to send, and busy once a send has been
  * in flight past `SENDING_SHOW_MS`: then a spinner, or a ring filling clockwise from twelve o'clock
  * as the files go out. Where the composer is narrow it steps aside, with nothing to send, for what
  * can be pressed instead. Stop is one of the floor (`data-floor="stop"`, here `floor()`, ADR 0108),
  * the main button only while it is a Stop; the main button is the `send-button` hook.
+ *
+ * Unlike the Svelte one, Stop is a secondary button (`SECONDARY_LOOK`: the button fill, a line round
+ * it, the glyph in ink), not a disc of solid ink: in the dark look that disc was white, the loudest
+ * thing in the window (2026-11-11). The accent stays Send's.
  */
 import { Canvas, effect, signal, token, View } from "nsh";
 import type { ComposerAction } from "../../m/chat/composer-mode";
@@ -13,14 +17,15 @@ import { interfaceBehaviour } from "../../m/interface/behaviour.svelte";
 import { formatShortcut } from "../../m/keymap";
 import type { SessionView } from "../../m/session-view.svelte";
 import { copy } from "../../runtime";
+import { SECONDARY_LOOK } from "../Button";
 import { Icon } from "../Icon";
 import { floor } from "../interface/floor";
 import { ui } from "../interface/hooks";
 import { tip } from "../tip";
 import { narrowWindow } from "../Modal";
 
-/** Stop's glyph and fill (`tint-pane` on `bg-ink`). */
-const STOP_COLOURS = { ink: "pane", ground: ["ink"] };
+/** Stop's glyph and grounds, bottom first: the secondary button's fill over the composer's field. */
+const STOP_COLOURS = { ink: SECONDARY_LOOK.ink, ground: ["input-bg", SECONDARY_LOOK.ground] };
 
 /** A send the machine next door answers at once shows nothing; one still on its way after this long says so on the button. */
 export const SENDING_SHOW_MS = 250;
@@ -70,10 +75,10 @@ export function SendButton(props: {
     if (sendingShown()) return t.composer.sending;
     return interfaceBehaviour().send_key === "mod_enter" ? t.composer.modSendShortcut(formatShortcut(["mod", "Enter"])) : t.chat.sendHintShortcut;
   };
-  /** The look: Stop in ink, Send in the accent, the disabled Send in the accent's tint (kept solid while it is sending). */
+  /** The look: Stop a secondary button, Send in the accent, the disabled Send in the accent's tint (kept solid while it is sending). */
   const look = () => {
     const disabled = props.primaryAction.disabled;
-    if (kind() === "stop") return { bg: "bg-ink hover:bg-ink-secondary", tint: "tint-pane" };
+    if (kind() === "stop") return { bg: SECONDARY_LOOK.box, tint: SECONDARY_LOOK.tint };
     if (disabled && !busy()) return { bg: "bg-accent-tint", tint: "tint-brand opacity-[0.55]" };
     return { bg: "bg-brand hover:bg-accent-hover", tint: "tint-on-accent" };
   };
@@ -89,9 +94,9 @@ export function SendButton(props: {
           accessibilityLabel={copy().composer.stopGeneration}
           disabled={!props.connected}
           onPress={() => props.onStop()}
-          class={`cursor-pointer select-none disabled:cursor-default shrink-0 items-center justify-center rounded-full bg-ink hover:bg-ink-secondary active:scale-[0.92] disabled:opacity-[0.5] ${size()}`}
+          class={`cursor-pointer select-none disabled:cursor-default shrink-0 items-center justify-center rounded-full active:scale-[0.92] disabled:opacity-[0.5] ${SECONDARY_LOOK.box} ${size()}`}
         >
-          <Icon name="stop" class="tint-pane" />
+          <Icon name="stop" class={SECONDARY_LOOK.tint} />
         </View>
       </If>
       <If when={!props.stepsAside}>
