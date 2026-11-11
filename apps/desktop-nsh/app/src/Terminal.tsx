@@ -80,6 +80,33 @@ export function keyBytes(keystroke: string, appCursor: boolean): string | null {
   return null;
 }
 
+/**
+ * What sends text to terminal `id`'s pty: one request at a time, what was typed meanwhile sent
+ * together after it. A request per key, all in flight at once, reached the shell out of order:
+ * `exit 3⏎` typed quickly ran as `xi3⏎`.
+ */
+export function terminalSender(id: string): (text: string) => void {
+  let unsent = "";
+  let sending = false;
+  return (text: string) => {
+    if (!text) return;
+    unsent += text;
+    if (sending) return;
+    sending = true;
+    void (async () => {
+      while (unsent) {
+        const chunk = unsent;
+        unsent = "";
+        const client = runtime.client;
+        if (!client) break;
+        await client.terminalInput(id, encode(chunk)).catch((e) => console.error("terminal input", String(e)));
+      }
+      unsent = "";
+      sending = false;
+    })();
+  };
+}
+
 const KEYSTROKES = [
   "up", "down", "left", "right", "tab", "shift+tab", "home", "end", "pageup", "pagedown", "delete", "escape",
   "cmd+backspace", "cmd+left", "cmd+right", "alt+left", "alt+right", "alt+backspace",
@@ -113,27 +140,7 @@ export function CanvasTerminal(props: { id: string; onExit?: () => void }) {
   let input: { focus(): void } | undefined;
   const early: StreamFrame[] = [];
 
-  // One request at a time, what was typed meanwhile sent together after it. A request per key, all
-  // in flight at once, reached the shell out of order: `exit 3⏎` typed quickly ran as `xi3⏎`.
-  let unsent = "";
-  let sending = false;
-  const send = (text: string) => {
-    if (!text) return;
-    unsent += text;
-    if (sending) return;
-    sending = true;
-    void (async () => {
-      while (unsent) {
-        const chunk = unsent;
-        unsent = "";
-        const client = runtime.client;
-        if (!client) break;
-        await client.terminalInput(id, encode(chunk)).catch((e) => console.error("terminal input", String(e)));
-      }
-      unsent = "";
-      sending = false;
-    })();
-  };
+  const send = terminalSender(id);
 
   const stop = runtime.onStream(id, (frame) => {
     if (!attached) {
