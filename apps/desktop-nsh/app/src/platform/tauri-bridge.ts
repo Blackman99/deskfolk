@@ -6,11 +6,12 @@
  *
  * A few commands need no shell, because NSH does them on every target: links open with `openUrl`,
  * the clipboard's text comes from `Clipboard`, the window theme is the app's colour scheme
- * (`APP_COMMANDS`). The rest go to the shell.
+ * (`setLook`, which on macOS also tells the shell's window) (`APP_COMMANDS`). The rest go to the shell.
  *
  * Installed only where a shell hosts the app (`host.available()`, not the web).
  */
-import { Clipboard, host, openUrl, platform, setColorScheme } from "nsh";
+import { Clipboard, host, openUrl, platform } from "nsh";
+import { setLook } from "./appearance";
 
 type Callback = (payload: unknown) => void;
 
@@ -49,7 +50,7 @@ export const APP_COMMANDS: Record<string, (args: Record<string, unknown>) => Pro
   /** The window's appearance (`window-chrome.ts` `syncWindowTheme`): null follows the system. */
   "plugin:window|set_theme": async (args) => {
     const value = args.value;
-    setColorScheme(value === "light" || value === "dark" ? value : "system");
+    setLook(value === "light" || value === "dark" ? value : "system");
     return null;
   },
 };

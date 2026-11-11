@@ -11,7 +11,7 @@
  * same query). The interface profile is wired with NSH's side of it (`ui/interface/look.ts`, ADR
  * 0108); its words reach every screen through `copy()`, which is `t` here.
  */
-import { batch, cleanup, computed, effect, setColorScheme, signal, untracked, windowSize } from "nsh";
+import { batch, cleanup, computed, effect, signal, untracked, windowSize } from "nsh";
 import type { Bot, SearchHit, SessionSummary } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
 import { dangerCopy, shouldDropConfirm } from "../../m/overlays/danger-confirm.ts";
@@ -41,6 +41,7 @@ import { closeChatSide, settingsSide, toggleChatSide } from "../../m/workbench/p
 import type { GroupDetailDraft } from "../../m/panels/group-edit.ts";
 import type { ProviderEditorState } from "../../m/settings/provider-form.ts";
 import { WINDOW_CHROME } from "../../m/window-chrome.ts";
+import { setLook } from "../../platform/appearance";
 import { widthAtMost } from "../../platform/viewport";
 import { wireInterfaceHere } from "../interface/look";
 import { reduceMotion } from "../interface/motion";
@@ -92,8 +93,7 @@ export function createShellState() {
   // --- the window's look: the setting decides, the system when it says so ---
   effect(() => {
     const theme = snapshot().settings.theme;
-    if (theme === "light" || theme === "dark") setColorScheme(theme);
-    else if (theme === "system") setColorScheme("system");
+    if (theme === "light" || theme === "dark" || theme === "system") setLook(theme);
   });
 
   // --- your interface profile (ADR 0106; on NSH, ADR 0108): painted, its floor kept, its way back bound ---

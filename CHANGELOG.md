@@ -19,6 +19,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - The desktop app rewritten on Native Shell (NSH) is now on the main branch as `apps/desktop-nsh`: native windows with no web view, one interface for the desktop and, through its web build, the phone ([ADR 0107](docs/adr/0107-spike-native-desktop-on-nsh.md)). It runs on macOS; Windows and Linux are still skeletons. It is not in the releases: run it from source with `bun apps/desktop-nsh/scripts/dev.ts`, beside the installed app on a port, data folder and Keychain item of its own, or with `--stable-instance` in the installed app's place, on your own conversations, settings and remote access. The installed app stays the release until the native build matches it.
 
+### The native build's light look on a Mac in Dark Mode
+
+- In the native (NSH) desktop build on macOS, the light theme with the system in Dark Mode drew light-theme ink on dark window glass: the sidebar's grey labels, previews and search were barely readable, and with see-through cards the conversation turned grey. The window and its glass now take the app's light or dark setting, as the Tauri app's did, and follow the system again when the setting does.
+
 ### Annotate a project session's files
 
 - In the native (NSH) desktop build, a file in a project session's directory now takes annotations as a Bot's artifact does: mark the spot in the preview, collect a batch and send it. It hangs on the agent's reply the file was opened from (or its latest one), and the batch goes out as your next line to Claude Code or Codex, with every annotation spelled out after your words (path, where, the quoted text, your note) and each region's crop as a picture. The cards stay under your line, and only you mark them handled. Before, a project's file opened read-only for notes, and a note could only hang on a Bot's message. The first start after updating rebuilds the annotations table once so it can hold annotations with no Bot ([ADR 0095](docs/adr/0095-project-sessions.md) decision 28).

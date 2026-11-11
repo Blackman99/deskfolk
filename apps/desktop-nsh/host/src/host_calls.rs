@@ -47,6 +47,14 @@ pub fn install(host: &HostChannel, window_id: u32, identity: &Identity) {
         }
     });
 
+    // The app's look on the window around it (`platform/appearance.ts`): "light", "dark", or null
+    // for the system's. NSH sets it on its own views only; the window and the material are ours.
+    host.handle("shell.appearance", move |call: HostCall| {
+        let look = call.data().as_str().map(str::to_owned);
+        call.resolve(Value::Null);
+        on_main(move |_| crate::window::set_appearance(window_id, look.as_deref()));
+    });
+
     host.handle("shell.windowInfo", move |call: HostCall| {
         call.resolve(json!({ "id": window_id, "notifications": crate::notify::available() }));
     });

@@ -13,6 +13,7 @@ use objc2::rc::Retained;
 use objc2::runtime::{NSObject, NSObjectProtocol, ProtocolObject};
 use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::{
+    NSAppearance, NSAppearanceCustomization, NSAppearanceName, NSAppearanceNameAqua, NSAppearanceNameDarkAqua,
     NSAutoresizingMaskOptions, NSBackingStoreType, NSScreen, NSVisualEffectBlendingMode,
     NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindow, NSWindowCollectionBehavior,
     NSWindowDelegate, NSWindowOrderingMode, NSWindowStyleMask, NSWindowTitleVisibility,
@@ -231,6 +232,30 @@ pub fn focus_newest() -> bool {
         }
         None => false,
     })
+}
+
+/// Window `id` in the app's look (`shell.appearance`): `"light"`, `"dark"`, or the system's for
+/// anything else. NSH puts the look the app sets (`setColorScheme`) on its own views, not on the
+/// window it is embedded in, so the material under the app and the traffic lights kept the
+/// system's: with the system in Dark, the light app's grey ink lay on dark glass.
+pub fn set_appearance(id: u32, look: Option<&str>) {
+    let appearance = appearance_name(look).and_then(NSAppearance::appearanceNamed);
+    WINDOWS.with_borrow(|windows| {
+        if let Some(entry) = windows.iter().find(|e| e.id == id) {
+            entry.window.setAppearance(appearance.as_deref());
+            log::info!("window {id} look {}", look.unwrap_or("system"));
+        }
+    });
+}
+
+/// AppKit's name for `look`; `None` follows the system.
+fn appearance_name(look: Option<&str>) -> Option<&'static NSAppearanceName> {
+    // SAFETY: immutable AppKit constants.
+    match look {
+        Some("light") => Some(unsafe { NSAppearanceNameAqua }),
+        Some("dark") => Some(unsafe { NSAppearanceNameDarkAqua }),
+        _ => None,
+    }
 }
 
 /// What the system says of window `id`: `(visible, key window, miniaturized)`; `None` once it is
@@ -549,4 +574,18 @@ pub fn stop_all() {
             entry.view.stop();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::appearance_name;
+
+    #[test]
+    fn a_look_names_its_appearance_and_anything_else_follows_the_system() {
+        let name = |look| appearance_name(look).map(|n| n.to_string());
+        assert_eq!(name(Some("light")).as_deref(), Some("NSAppearanceNameAqua"));
+        assert_eq!(name(Some("dark")).as_deref(), Some("NSAppearanceNameDarkAqua"));
+        assert_eq!(name(Some("system")), None);
+        assert_eq!(name(None), None);
+    }
 }

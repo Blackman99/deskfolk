@@ -56,7 +56,7 @@ objc2-app-kit = { workspace = true, features = [
     "NSImage", "NSDockTile", "NSRunningApplication", "NSWorkspace", "NSGraphics", "NSEvent",
     "NSScreen", "NSCell", "NSButtonCell", "NSTitlebarAccessoryViewController", "NSViewController",
     "NSBitmapImageRep", "NSImageRep", "NSOpenPanel", "NSSavePanel", "NSPanel", "objc2-quartz-core",
-    "objc2-core-graphics", "block2", "NSText", "NSTextView", "NSTextInputClient",
+    "objc2-core-graphics", "block2", "NSText", "NSTextView", "NSTextInputClient", "NSAppearance",
 ] }
 objc2-quartz-core = { workspace = true, features = ["CALayer", "objc2-core-graphics"] }
 objc2-core-graphics = { workspace = true, features = ["CGBitmapContext", "CGColorSpace", "CGContext", "CGImage"] }
