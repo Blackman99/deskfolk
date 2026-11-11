@@ -12,7 +12,7 @@ pub fn params(config: &Config, window_id: u32) -> Map<String, Value> {
     params.insert("origin".into(), config.endpoint.origin.clone().into());
     params.insert("token".into(), config.endpoint.token.clone().into());
     params.insert("windowId".into(), window_id.into());
-    params.insert("material".into(), if cfg!(target_os = "macos") { "glass" } else { "none" }.into());
+    params.insert("material".into(), material().into());
     if window_id == 1 {
         let mut set = |name: &str, value: Option<&String>| {
             if let Some(value) = value {
@@ -31,6 +31,18 @@ pub fn params(config: &Config, window_id: u32) -> Map<String, Value> {
     params
 }
 
+/// What is behind the app (`ui/glass.ts`): the sidebar material on macOS (`window.rs`), Mica on
+/// Windows 11 22H2 and later (`win.rs`), nothing elsewhere.
+fn material() -> &'static str {
+    #[cfg(target_os = "macos")]
+    let glass = true;
+    #[cfg(windows)]
+    let glass = crate::win::has_material();
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let glass = false;
+    if glass { "glass" } else { "none" }
+}
+
 /// A window's channel: its launch parameters and the host functions every desktop answers.
 pub fn channel(config: &Config, window_id: u32) -> HostChannel {
     let host = HostChannel::new();
@@ -43,9 +55,7 @@ pub fn channel(config: &Config, window_id: u32) -> HostChannel {
     // The messenger's Tauri commands (`app/src/platform/tauri-bridge.ts`), by their Tauri names.
     host.handle("tauri.local_api_endpoint", move |call: HostCall| call.resolve(endpoint.clone()));
     host.handle("tauri.app_version", |call: HostCall| call.resolve(json!(crate::config::product_version())));
-    host.handle("tauri.window_material", |call: HostCall| {
-        call.resolve(json!(if cfg!(target_os = "macos") { "glass" } else { "none" }))
-    });
+    host.handle("tauri.window_material", |call: HostCall| call.resolve(json!(material())));
     install_portable(&host);
     host
 }

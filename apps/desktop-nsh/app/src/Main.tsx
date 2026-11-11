@@ -22,6 +22,9 @@ import { Shell } from "./ui/shell/Shell";
 import { warmCodeColors } from "./ui/code-colors";
 
 export function Main() {
+  // On Windows the window's controls go into the app as on macOS: no title bar of the system's, the
+  // caption buttons drawn over the top right (`titleBar().right`), the top rows' empty space dragging.
+  // The shell opens the window that way (`host/src/win.rs`), with Mica behind it where there is some.
   runtime.start();
   // The code colours' grammars and themes, read while the runtime connects.
   warmCodeColors();

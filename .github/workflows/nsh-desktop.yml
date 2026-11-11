@@ -32,7 +32,8 @@ jobs:
   desktop:
     name: NSH desktop (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # A cache miss builds the nsh CLI first (~30 minutes).
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:

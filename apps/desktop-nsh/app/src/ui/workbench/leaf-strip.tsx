@@ -7,7 +7,8 @@
  * fed through `onTabDrag` in the window's coordinates, and so is the strip's own (`onStripDrag`),
  * which moves a floating pane or the whole pane's tabs. The tab's ⋯ and × stay out of the tab order.
  */
-import { cleanup, effect, PanResponder, Scroll, signal, untracked, View, type PressEvent, type ScrollRef, type ViewRef } from "nsh";
+import { cleanup, effect, PanResponder, Scroll, signal, untracked, View, windowSize, type PressEvent, type ScrollRef, type ViewRef } from "nsh";
+import { titleBar } from "nsh/desktop";
 import { copy } from "../../runtime";
 import { onWheel } from "../../platform/wheel";
 import type { LeafNode } from "../../m/workbench/layout-types.ts";
@@ -108,6 +109,21 @@ export function LeafStrip(props: StripProps) {
   const hovered = signal<string | null>(null);
   let rowRef: ScrollRef | null = null;
   let stripRef: ViewRef | null = null;
+  /** Where the strip is in the window (its top and its right end), measured after each layout. */
+  const placed = signal<{ top: number; right: number } | null>(null);
+  const measurePlace = () =>
+    void stripRef?.measure().then((m) => placed.set(m ? { top: m.pagePosition.y, right: m.pagePosition.x + m.bounds.size.width } : null));
+  /**
+   * Room for the window's controls where the app hides the title bar and they sit over this strip's
+   * end (Windows' caption buttons at the top right; `titleBar()` is all 0 elsewhere): its last
+   * buttons stay clear of them.
+   */
+  const controlsRoom = () => {
+    const bar = titleBar();
+    const at = placed();
+    if (!bar.right || !at || at.top >= bar.height) return 0;
+    return at.right >= windowSize().width - bar.right ? bar.right : 0;
+  };
   const tabRefs = new Map<string, ViewRef>();
   /** A press that began on one of the strip's own buttons does not move the pane. */
   let blockStripDrag = false;
@@ -312,11 +328,12 @@ export function LeafStrip(props: StripProps) {
       testID={`wb-strip-${leaf().id}`}
       accessibilityLabel={t().tabsIn.replace("{name}", t().title)}
       ref={(node) => (stripRef = node)}
+      onLayout={measurePlace}
       onTouchStartCapture={() => (blockStripDrag = false)}
       onPress={(e) => props.onStripPress?.(leaf().id, e)}
       focusable={false}
       class={`flex-row items-center ${bg()} ${leaf().tabs.length === 0 && !props.floating ? "absolute top-1 right-1 pr-1 z-10" : props.head?.() ? "self-stretch mt-1 mx-1" : "w-full"}`}
-      style={{ height: leaf().tabs.length === 0 && !props.floating ? 32 : height(), cursor: props.floating ? "grab" : undefined, opacity: props.dimmed() ? 0.5 : 1 }}
+      style={{ height: leaf().tabs.length === 0 && !props.floating ? 32 : height(), cursor: props.floating ? "grab" : undefined, opacity: props.dimmed() ? 0.5 : 1, paddingRight: controlsRoom() || undefined }}
       {...stripPan.panHandlers}
     >
       <View class="flex-row self-stretch min-w-0 shrink ml-1 relative" style={{ maxWidth: props.maxTabsWidth?.() }}>
