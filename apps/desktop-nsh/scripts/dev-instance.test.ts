@@ -1,17 +1,25 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { KEYCHAIN_SERVICE, LOCAL_API_PORT } from "../../../packages/protocol/src/index.ts";
+import { KEYCHAIN_SERVICE, LOCAL_API_BIND, LOCAL_API_PORT } from "../../../packages/protocol/src/index.ts";
 import {
   APP_ICON,
   APP_ICON_FILE,
   assertApartFromStable,
+  chosenInstance,
   DEV_APP_NAME,
   devDataDir,
   devInstance,
+  installedRuntime,
+  isInstalledCommand,
+  originOf,
   placeAppIcon,
+  sharedRemoteHost,
+  STABLE_INSTANCE_FLAG,
   stableDataDir,
+  stableInstance,
 } from "./dev-instance";
 
 describe("the dev instance stays apart from the stable one", () => {
@@ -47,6 +55,68 @@ describe("the dev instance stays apart from the stable one", () => {
   test("refuses the stable Keychain service", () => {
     const dev = { ...devInstance(home), keychainService: KEYCHAIN_SERVICE };
     expect(() => assertApartFromStable(dev, home)).toThrow(/stable Keychain service/);
+  });
+});
+
+describe("--stable-instance: the NSH build as the one you use", () => {
+  const home = "/Users/someone";
+
+  test("only when asked for by name", () => {
+    expect(chosenInstance(["bun", "dev.ts"], home)).toEqual(devInstance(home));
+    expect(chosenInstance(["bun", "dev.ts", "--schedule"], home)).toEqual(devInstance(home));
+    expect(chosenInstance(["bun", "dev.ts", STABLE_INSTANCE_FLAG], home)).toEqual(stableInstance(home));
+  });
+
+  test("is the stable instance's port, data directory and Keychain service", () => {
+    const stable = stableInstance(home, { platform: "darwin", env: {} });
+    expect(stable).toEqual({
+      bind: LOCAL_API_BIND,
+      port: LOCAL_API_PORT,
+      dataDir: "/Users/someone/Library/Application Support/real-bot",
+      keychainService: KEYCHAIN_SERVICE,
+    });
+    expect(originOf(stable)).toBe("http://127.0.0.1:17890");
+    expect(() => assertApartFromStable(stable, home, { platform: "darwin", env: {} })).toThrow();
+  });
+
+  test("takes the installed app's runtime for what it is", () => {
+    expect(isInstalledCommand("/Applications/Deskfolk.app/Contents/MacOS/real-bot-daemon --desktop-remote-channel")).toBe(true);
+    expect(isInstalledCommand("/Users/someone/.bun/bin/bun apps/desktop-nsh/scripts/dev-runtime.ts --stable-instance")).toBe(false);
+    expect(isInstalledCommand("")).toBe(false);
+  });
+
+  test("a dev database seeded from the stable one shares its relay host; its own does not", () => {
+    const root = mkdtempSync(join(tmpdir(), "nsh-shared-remote-"));
+    const make = (name: string, host?: string) => {
+      const dir = join(root, name);
+      mkdirSync(dir);
+      if (host === undefined) return dir;
+      const db = new Database(join(dir, "state.sqlite"));
+      db.run("CREATE TABLE remote_host (singleton INTEGER PRIMARY KEY, host_id TEXT)");
+      db.run("INSERT INTO remote_host VALUES (1, ?)", [host]);
+      db.close();
+      return dir;
+    };
+    try {
+      const stable = make("stable", "H1");
+      expect(sharedRemoteHost(make("seeded", "H1"), stable)).toBe("H1");
+      expect(sharedRemoteHost(make("own", "H2"), stable)).toBeUndefined();
+      expect(sharedRemoteHost(make("fresh"), stable)).toBeUndefined();
+      expect(sharedRemoteHost(make("seeded2", "H1"), join(root, "missing"))).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a directory nobody holds has no installed runtime", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nsh-stable-holder-"));
+    try {
+      expect(installedRuntime(dir)).toBeUndefined();
+      writeFileSync(join(dir, "local-api.json"), JSON.stringify({ pid: process.pid, port: LOCAL_API_PORT, token: "t" }));
+      expect(installedRuntime(dir)).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

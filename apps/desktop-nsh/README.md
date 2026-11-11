@@ -16,7 +16,7 @@
 | `app/nsh.json` 的能力 | 网络只连 `127.0.0.1`（运行时）；剪贴板；系统的图片选择（`picker`）；读用户目录和 `/Volumes`（`fs.read`：拖进来、从访达复制的文件是 `file:` 地址，`fetch` 不收，经 `fs` 读）；打开 http(s)、mailto 和系统设置的共享面板（`openUrl`）；只显示内联页面的 web view（HTML 产物预览）；外壳的 `shell.*`、`runtime.*`、`tauri.*` |
 | `app/web/host.js` | web 上页面一侧的宿主（`nsh.json` `web.host`）：回答 `runtime.endpoint`。`nsh package` 原样复制它、不打包它的导入，所以它必须自成一体。手机版不经它：配对、加密通道和设备存储都在 TSX 自己的 realm 里跑（web 上那是页面里一个隐藏的同源 iframe，浏览器的全局都在），见 ADR 0107「Phase 1c」 |
 | `app/Hosted.tsx` | 手机版（托管）的入口：先设信使的托管开关（`src/platform/hosted.ts`，等于 `REAL_BOT_HOSTED=1`），再跑 `App.tsx`。没配对时窗口（`src/Main.tsx`）是配对页（`src/ui/remote/PairingScreen.tsx`），配对后经中继的加密通道连 Mac（信使的 `RemoteApi`，`src/m/remote/*`），窗口就是桌面同一个外壳 `Shell`：手机宽度名单铺满、对话盖上去、底栏导航，平板宽度名单一栏加一页，托管版永远没有工作台（`isWorkbenchSurface(narrow, HOSTED_MESSENGER)`）。`nsh package Hosted.tsx --target web` 打包；桌面和本机 web 版仍从 `App.tsx` 进，不受影响 |
-| `host/` | 每个桌面自己的外壳（`deskfolk-nsh`）：macOS（AppKit 窗口、侧栏毛玻璃（材质垫在装着应用的视图里、应用底下，不在它后面：NSH 0.4.0 在应用顶层不是实色时把那个视图涂成黑或白，上游 longbridge/nsh#1084 已改，发版后可挪回；界面照 `ui/glass.ts` 让玻璃透出来）、输入法组字时的按键直接交给窗口（`ime_keys.rs`，应用自己的 `NSApplication` 子类：NSH 0.4.0 的 keymap 会先拿走消息框绑的退格、回车、方向键，上游 longbridge/nsh#1387 已改，发版后去掉）、输入法候选框的位置（`ime_rect.rs`：消息框藏起来的输入框留着已上屏的字，从第二次组字起 AppKit 算不出组字的位置、答了零，候选框跑到屏幕左下角；答零时改报这个文本视图露出的那一行）、红绿灯放在 Tauri 窗口放的位置（`traffic_lights.rs`，照 `tauri.macos.conf.json` 的 `trafficLightPosition`，AppKit 重排标题栏后放回去；界面按 `WINDOW_CHROME` 给它们让位）、菜单栏、托盘（`usage_tray.rs`，照 Tauri 外壳的 `usage_tray.rs`：图标是 Tauri 托盘的那个标记，菜单顶上每个账号一行用量，带 Agent 的标记和按用量填满的圆环，每分钟读一次 `/v1/usage`，最多八行，「查看全部用量…」把窗口提到前面并打开用量标签）、通知、Dock 角标、应用图标（`dev.ts` 和 `package.ts` 把 Tauri 的 `icons/icon.icns` 放进 `.app` 的 Resources 并写进 `CFBundleIconFile`，`dev.ts` 第一次放时让 Launch Services 重新登记；宿主启动时也从 bundle 里读出来设到 Dock 上））、Windows（NSH 的 `run_app` 开的窗口，骨架：界面照 Mac 把窗口按钮收进应用，宿主建窗口前就设好隐藏标题栏（`win.rs` 的 `with_main_window`）；Windows 11 22H2 起、透明效果开着、有硬件显卡时窗口背后是 Mica，界面照 `ui/glass.ts` 让它透出来，否则窗口和界面都是实色（没显卡时 DWM 不画材质，透出来是黑的），`DESKFOLK_WINDOW_MATERIAL=mica|none` 强制开关；窗口保留系统边框，Windows 11 上是系统的圆角，最大化时直角，最小化、最大化、关闭由 NSH 画在右上角，顶到右上角的标签栏按 `titleBar().right` 给它们让位，拖动窗口用侧栏的 `windowDrag` 区域）、Linux（GTK 4，骨架）；读开发运行时的地址，不连 17890 |
+| `host/` | 每个桌面自己的外壳（`deskfolk-nsh`）：macOS（AppKit 窗口、侧栏毛玻璃（材质垫在装着应用的视图里、应用底下，不在它后面：NSH 0.4.0 在应用顶层不是实色时把那个视图涂成黑或白，上游 longbridge/nsh#1084 已改，发版后可挪回；界面照 `ui/glass.ts` 让玻璃透出来）、输入法组字时的按键直接交给窗口（`ime_keys.rs`，应用自己的 `NSApplication` 子类：NSH 0.4.0 的 keymap 会先拿走消息框绑的退格、回车、方向键，上游 longbridge/nsh#1387 已改，发版后去掉）、输入法候选框的位置（`ime_rect.rs`：消息框藏起来的输入框留着已上屏的字，从第二次组字起 AppKit 算不出组字的位置、答了零，候选框跑到屏幕左下角；答零时改报这个文本视图露出的那一行）、红绿灯放在 Tauri 窗口放的位置（`traffic_lights.rs`，照 `tauri.macos.conf.json` 的 `trafficLightPosition`，AppKit 重排标题栏后放回去；界面按 `WINDOW_CHROME` 给它们让位）、菜单栏、托盘（`usage_tray.rs`，照 Tauri 外壳的 `usage_tray.rs`：图标是 Tauri 托盘的那个标记，菜单顶上每个账号一行用量，带 Agent 的标记和按用量填满的圆环，每分钟读一次 `/v1/usage`，最多八行，「查看全部用量…」把窗口提到前面并打开用量标签）、通知、Dock 角标、应用图标（`dev.ts` 和 `package.ts` 把 Tauri 的 `icons/icon.icns` 放进 `.app` 的 Resources 并写进 `CFBundleIconFile`，`dev.ts` 第一次放时让 Launch Services 重新登记；宿主启动时也从 bundle 里读出来设到 Dock 上））、Windows（NSH 的 `run_app` 开的窗口，骨架：界面照 Mac 把窗口按钮收进应用，宿主建窗口前就设好隐藏标题栏（`win.rs` 的 `with_main_window`）；Windows 11 22H2 起、透明效果开着、有硬件显卡时窗口背后是 Mica，界面照 `ui/glass.ts` 让它透出来，否则窗口和界面都是实色（没显卡时 DWM 不画材质，透出来是黑的），`DESKFOLK_WINDOW_MATERIAL=mica|none` 强制开关；窗口保留系统边框，Windows 11 上是系统的圆角，最大化时直角，最小化、最大化、关闭由 NSH 画在右上角，顶到右上角的标签栏按 `titleBar().right` 给它们让位，拖动窗口用侧栏的 `windowDrag` 区域）、Linux（GTK 4，骨架）；读开发运行时的地址，不连 17890（带 `--stable-instance` 时反过来，只连 17890，见「当日常用的版本」） |
 | `native/terminal/`、`native/pdf/` | macOS 专用的原生组件（NSView 终端、PDFKit），Phase 0 留下的，作对照和以后加密 PDF 的兜底 |
 | `scripts/` | 开发实例（`dev-instance.ts`）、开发运行时（`dev-runtime.ts`）、桌面开发版（`dev.ts`）、Ghostty 的构建缓存（`ghostty.ts`）、web 开发版（`web-dev.ts`）、打包（`package.ts`）、检查脚本（`ci-smoke.ts`、`e2e-live.ts`、`terminal-probe.ts`、手机版端到端 `phone-web-e2e.ts` 和它的 Mac `phone-runtime.ts`、TLS 边缘 `phone-edge.ts`） |
 
@@ -41,7 +41,13 @@
 | 钥匙串服务 | `com.real-bot.daemon` | `com.real-bot.daemon.nsh-dev` |
 | 应用 id | `com.real-bot.desktop` | `com.real-bot.desktop.nsh-dev`（「Deskfolk Dev」） |
 
-开发版不退回去连 17890（`dev-instance.test.ts`、宿主的 `endpoint` 测试）；不装登录项和 launchd，不检查更新，定时任务默认关（`--schedule` 打开）。默认的 Claude 账号和从访达打开的应用一样是 `~/.claude`：开发运行时启动时去掉继承来的 `CLAUDE_CONFIG_DIR`（源码守护进程不去掉，见 `docs/development.md`「几个账号」），所以从某个 Bot 的 Claude Code 里起开发版，不会把那个 Bot 的账号当成默认；别的账号照常在设置里列出。开发期间不要跑根目录的 `pnpm dev`，它的源码守护进程会和稳定版抢 17890。
+开发版不退回去连 17890（`dev-instance.test.ts`、宿主的 `endpoint` 测试）；开发库里的中继注册要是从稳定版拷来的（同一个主机 id，却没有它的密钥），开发运行时不开远程，环境里有 `REAL_BOT_DEV_REMOTE=1` 也一样；不装登录项和 launchd，不检查更新，定时任务默认关（`--schedule` 打开）。默认的 Claude 账号和从访达打开的应用一样是 `~/.claude`：开发运行时启动时去掉继承来的 `CLAUDE_CONFIG_DIR`（源码守护进程不去掉，见 `docs/development.md`「几个账号」），所以从某个 Bot 的 Claude Code 里起开发版，不会把那个 Bot 的账号当成默认；别的账号照常在设置里列出。开发期间不要跑根目录的 `pnpm dev`，它的源码守护进程会和稳定版抢 17890。
+
+### 当日常用的版本：`--stable-instance`
+
+`bun apps/desktop-nsh/scripts/dev.ts --stable-instance` 让 NSH 版顶替装好的稳定版，接上你自己的对话、设置和远程控制：运行时还是源码起的守护进程，但用稳定版那一套（17890、标准数据目录、`com.real-bot.daemon` 钥匙串服务），定时任务和防休眠打开；远程控制用数据目录里 `dev-remote/credentials.json` 那个身份，已经配对的手机照常连，源码运行时要 `REAL_BOT_DEV_REMOTE=1` 才读它，脚本自己设上（设好就从环境里拿掉，Bot 跑的命令不继承），所以配对和移除设备在设置面板里确认，不弹 Touch ID。窗口还是「Deskfolk Dev」，改 `app/` 照样热重载；登录项、更新、独立运行仍按开发版回答（不装、不换、不开）。宿主只有带着 `--stable-instance` 才连 17890，而且只连 17890；不带时照旧拒绝它。
+
+它是顶替，不是并存：装好的稳定版开着时（`local-api.json` 里的进程跑在某个 `.app` 里）两个脚本都拒绝启动，先退出稳定版；稳定版要是登录时自动启动，也会先占住 17890。数据库第一次被这一版的守护进程打开时补上这一版的迁移（几秒）。窗口自己的偏好（工作台布局、侧栏宽度、置顶）存在 `<数据目录>/nsh/com.real-bot.desktop.nsh-dev/storage.json`，和 Tauri 窗口的 WebKit localStorage 是两份。`dev-runtime.ts --stable-instance` 可以单独起运行时，关窗口不影响它；由 `dev.ts` 顺带起的，关窗口时一起停。
 
 ## 命令
 
@@ -55,6 +61,7 @@
 bun apps/desktop-nsh/scripts/dev.ts            # 起开发运行时（没起的话）、编宿主、编界面，打开「Deskfolk Dev」；改 app/ 自动重载
                                                # 宿主是调试构建，但依赖（NSH、QuickJS、排版）按 opt-level 3 编（Cargo.toml 的 profile.dev.package."*"），第一次编要几分钟
 bun apps/desktop-nsh/scripts/dev.ts --seed-from-stable   # 空数据目录时从稳定版的库拷一份快照（只读拷贝；Bot 仍指向你真实的工作区）
+bun apps/desktop-nsh/scripts/dev.ts --stable-instance    # 当日常用的版本：顶替稳定版，用你自己的对话、设置和远程控制（见上面）
 bun apps/desktop-nsh/scripts/web-dev.ts        # 编 web 包（app/native 编成 wasm）并在 http://127.0.0.1:17991/ 提供，连开发运行时
 cd apps/desktop-nsh/app && nsh package Hosted.tsx --target web --out ../build/phone   # 手机版（托管）的 web 包，由中继的来源提供
 bun apps/desktop-nsh/scripts/package.ts --sign developer-id [--notarize <notarytool profile>] [--measure 3]

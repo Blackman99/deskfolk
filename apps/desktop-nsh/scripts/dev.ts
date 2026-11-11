@@ -2,6 +2,11 @@
  * One command for the NSH dev build, beside the installed stable Deskfolk:
  *
  *   bun apps/desktop-nsh/scripts/dev.ts [--schedule] [--seed-from-stable]
+ *   bun apps/desktop-nsh/scripts/dev.ts --stable-instance
+ *
+ * `--stable-instance` makes this the build you use: the same window, on the stable instance (your
+ * conversations, settings and remote access on 17890; see dev-runtime.ts), in place of the installed
+ * app, which must not be running.
  *
  * 1. The dev runtime (dev-runtime.ts) on 17990 with its own data directory, unless one already
  *    answers there.
@@ -18,7 +23,17 @@ import { copyFileSync, existsSync, mkdirSync, watch, writeFileSync } from "node:
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { LOCAL_API_NAME } from "../../../packages/protocol/src/index.ts";
-import { APP_ICON_FILE, DEV_APP_NAME, DEV_BUNDLE_ID, DEV_ORIGIN, devInstance, placeAppIcon, registerAppIcon } from "./dev-instance";
+import {
+  APP_ICON_FILE,
+  chosenInstance,
+  DEV_APP_NAME,
+  DEV_BUNDLE_ID,
+  installedRuntime,
+  originOf,
+  placeAppIcon,
+  registerAppIcon,
+  STABLE_INSTANCE_FLAG,
+} from "./dev-instance";
 import { ghosttyEnv } from "./ghostty";
 import { nshCli } from "./nsh-cli";
 
@@ -31,7 +46,10 @@ const bundleApp = join(build, `${DEV_APP_NAME}.app`);
 const executable = join(bundleApp, "Contents", "MacOS", "deskfolk-nsh");
 const nsh = nshCli({ build: true });
 const cargo = process.env.CARGO ?? join(homedir(), ".cargo", "bin", "cargo");
-const instance = devInstance();
+const stable = process.argv.includes(STABLE_INSTANCE_FLAG);
+const instance = chosenInstance();
+const origin = originOf(instance);
+const runtimeName = stable ? "stable-instance runtime" : "dev runtime";
 const children: ChildProcess[] = [];
 
 function run(command: string, args: string[], cwd: string, env?: Record<string, string>): void {
@@ -41,7 +59,7 @@ function run(command: string, args: string[], cwd: string, env?: Record<string, 
 
 async function runtimeUp(): Promise<boolean> {
   try {
-    const res = await fetch(`${DEV_ORIGIN}/v1/health`, { signal: AbortSignal.timeout(400) });
+    const res = await fetch(`${origin}/v1/health`, { signal: AbortSignal.timeout(400) });
     const body = (await res.json()) as { ok?: unknown; name?: unknown };
     return body.ok === true && body.name === LOCAL_API_NAME;
   } catch {
@@ -63,8 +81,10 @@ function ptyHelper(): string | undefined {
 }
 
 async function startRuntime(): Promise<void> {
+  const installed = stable ? installedRuntime(instance.dataDir) : undefined;
+  if (installed) throw new Error(`the installed Deskfolk's runtime (pid ${installed.pid}) holds ${instance.dataDir}; quit Deskfolk first`);
   if (await runtimeUp()) {
-    console.log(`dev runtime already on ${DEV_ORIGIN}`);
+    console.log(`${runtimeName} already on ${origin}`);
     return;
   }
   const args = [join(root, "scripts", "dev-runtime.ts"), ...process.argv.slice(2)];
@@ -74,8 +94,9 @@ async function startRuntime(): Promise<void> {
   else console.warn("no real-bot-pty build found; terminals will not open (swift build in apps/runtime-helper)");
   const child = spawn(process.execPath, args, { cwd: repo, stdio: "inherit", env });
   children.push(child);
-  for (let i = 0; i < 60 && !(await runtimeUp()); i++) await Bun.sleep(250);
-  if (!(await runtimeUp())) throw new Error("the dev runtime did not come up");
+  // A database a release behind migrates first (seconds on a large one).
+  for (let i = 0; i < 240 && child.exitCode === null && !(await runtimeUp()); i++) await Bun.sleep(250);
+  if (!(await runtimeUp())) throw new Error(`the ${runtimeName} did not come up`);
 }
 
 function buildShell(): void {
@@ -148,6 +169,7 @@ buildShell();
 if (!buildApp()) throw new Error("nsh build failed");
 watchApp();
 const shellArgs = ["--bundle", join(appBuild, "bundle.js"), "--data-dir", instance.dataDir, "--watch"];
+if (stable) shellArgs.push(STABLE_INSTANCE_FLAG);
 if (process.env.DESKFOLK_BACKGROUND === "1") shellArgs.push("--background");
 if (process.env.DESKFOLK_SNAPSHOTS) shellArgs.push("--snapshots", process.env.DESKFOLK_SNAPSHOTS);
 if (process.env.DESKFOLK_OPEN_SESSION) shellArgs.push("--open-session", process.env.DESKFOLK_OPEN_SESSION);

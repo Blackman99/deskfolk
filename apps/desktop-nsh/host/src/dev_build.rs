@@ -16,7 +16,7 @@ pub const DEV_SUFFIX: &str = ".nsh-dev";
 pub struct Identity {
     pub bundle_id: String,
     pub data_dir: PathBuf,
-    /// The port of the runtime this shell talks to (never 17890).
+    /// The port of the runtime this shell talks to (17890 only with `--stable-instance`).
     pub port: u16,
     pub version: &'static str,
 }

@@ -2,6 +2,8 @@
 //! packaged dev build, started by the shell itself when nothing answers (the command is baked in at
 //! build time, the way the Tauri shell's debug build runs the daemon from source). It never starts
 //! or reaches the stable instance: the port comes from the dev data directory and 17890 is refused.
+//! With `--stable-instance` it is the other way round: 17890 only, and never started by the shell
+//! (`scripts/dev-runtime.ts --stable-instance` runs it, in place of the installed app's).
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -10,13 +12,17 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use crate::endpoint::{self, STABLE_PORT};
+use crate::endpoint::{self, Instance};
 
 static CHILD: Mutex<Option<Child>> = Mutex::new(None);
 
 /// Whether a runtime of ours answers on `port`.
 pub fn healthy(port: u16) -> bool {
-    if port == STABLE_PORT {
+    healthy_as(port, endpoint::instance())
+}
+
+fn healthy_as(port: u16, instance: Instance) -> bool {
+    if !instance.allows(port) {
         return false;
     }
     let Ok(mut stream) = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(300)) else {
@@ -43,6 +49,12 @@ pub fn ensure(data_dir: &Path) -> Result<(), String> {
         if healthy(found.port) {
             return Ok(());
         }
+    }
+    if endpoint::instance() == Instance::Stable {
+        return Err(format!(
+            "no runtime answers on 17890 for {}; start it with scripts/dev-runtime.ts --stable-instance",
+            data_dir.display()
+        ));
     }
     let Some((bun, script)) = baked_command() else {
         return Err(format!("no dev runtime answers for {}; start it with scripts/dev-runtime.ts", data_dir.display()));
@@ -92,6 +104,11 @@ unsafe extern "C" {
 mod tests {
     #[test]
     fn the_stable_port_is_never_healthy_to_us() {
-        assert!(!super::healthy(super::STABLE_PORT));
+        assert!(!super::healthy(crate::endpoint::STABLE_PORT));
+    }
+
+    #[test]
+    fn the_stable_instance_never_takes_another_port_for_its_runtime() {
+        assert!(!super::healthy_as(17990, super::Instance::Stable));
     }
 }

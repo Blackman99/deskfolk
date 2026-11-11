@@ -127,7 +127,7 @@
 ## 不要做的
 
 - 不要跑任何 git 命令。
-- 不要碰 17890（装好的稳定版）和 17990（开发实例），不要起 `scripts/dev.ts`、`dev-runtime.ts`；测试只用 `scripts/ui-tests.ts`（它自己起一个隔离的运行时，用空闲端口）。
+- 不要碰 17890（你日常用的那一份：装好的稳定版，或 `--stable-instance` 起的 NSH 版）和 17990（开发实例），不要起 `scripts/dev.ts`、`dev-runtime.ts`；测试只用 `scripts/ui-tests.ts`（它自己起一个隔离的运行时，用空闲端口）。
 - 不要改 `src/m/`、`src/platform/`、`src/runtime.ts`、`host/`、`native/`、`app/native/`、`nsh.json`、`theme.json`，也不要跑 `pnpm install`。要改它们，写进报告。
 - 不要往别的区域的目录里写文件。
 

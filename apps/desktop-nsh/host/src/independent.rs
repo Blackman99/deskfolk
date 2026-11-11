@@ -8,8 +8,8 @@
 //! refused with a reason, so the mutating half of `handoff.rs` (drain, plist, `launchctl
 //! bootstrap`) has no caller there and is not copied. What differs from Tauri is whose files it
 //! names: this shell's own data directory (`real-bot-nsh-dev`), its runtime's port (17990, probed
-//! with `runtime::healthy`, which refuses 17890) and its own launchd label, never the stable
-//! app's `com.real-bot.runtime`.
+//! with `runtime::healthy`, which refuses 17890 unless the shell runs with `--stable-instance`) and
+//! its own launchd label, never the stable app's `com.real-bot.runtime`.
 //!
 //! `independent_runtime` (the operations) takes the Tauri app's `BundledNativeCaller`, which
 //! refuses a development build with `disabled`; `independent_runtime_status` has no such guard.
