@@ -142,7 +142,9 @@ export function ChatStage(props: {
           </View>
         </If>
         <If when={mode() === "list"}>
-          {/* Another conversation is another list: it opens at its newest line. */}
+          {/* Another conversation is another list: it opens at its newest line. All its padding and the
+              gap between rows are in `contentStyle`: a List that has one drops `contentClass`'s whole,
+              and the rows touched. Inverted, `paddingTop` is the end by the composer. */}
           <Each of={[ctx.sessionId()]} key={(id: string | null) => id ?? ""}>
             {() => {
               // A message's hover pill is an overlay: it shows only inside this list's frame.
@@ -159,8 +161,7 @@ export function ChatStage(props: {
                     inverted
                     keyExtractor={(row) => row.id}
                     class={`flex-1 ${glassCard() ? "" : "bg-pane"}`}
-                    contentClass="py-5 gap-4"
-                    contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20 }}
+                    contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20, paddingBottom: phone() ? 14 : 20, gap: 16 }}
                     estimatedItemSize={96}
                     onScroll={scroll.onScroll}
                     onViewableItemsChange={(info) => scroll.onViewable(info.viewableItems.map((token) => token.index))}

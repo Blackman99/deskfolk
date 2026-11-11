@@ -1,6 +1,6 @@
 /**
  * Where `createStageScroll`'s jump to the bottom lands, on an inverted `List` set up as the chat
- * stage's is (`ChatStage.tsx`: `py-5` and a 20pt top inset, a 16pt gap, 96pt estimates). Rows are
+ * stage's is (`ChatStage.tsx`: 20pt at both ends, a 16pt gap, 96pt estimates). Rows are
  * plain blocks of a height of their own, the newest (index 0) as tall as the story says, so a newest
  * line taller than the window can be told from a short one. `distance` is the stage's own reading,
  * how far the view is from the newest line, from the list's last scroll event.
@@ -45,8 +45,7 @@ export default function StageScrollStory() {
         inverted
         keyExtractor={(row: Row) => row.id}
         class="flex-1 bg-pane"
-        contentClass="py-5 gap-4"
-        contentStyle={{ paddingLeft: 24, paddingRight: 24, paddingTop: 20 }}
+        contentStyle={{ paddingLeft: 24, paddingRight: 24, paddingTop: 20, paddingBottom: 20, gap: 16 }}
         estimatedItemSize={96}
         onScroll={scroll.onScroll}
       >

@@ -125,7 +125,9 @@ export function ProjectChat(props: {
           </Text>
         </If>
         <If when={!empty()}>
-          {/* Another conversation is another list: it opens at its newest line. */}
+          {/* Another conversation is another list: it opens at its newest line. All its padding and the
+              gap between lines are in `contentStyle`: a List that has one drops `contentClass`'s whole,
+              and the lines touched. Inverted, `paddingTop` is the end by the composer. */}
           <Each of={[state.sessionId()]} key={(id: string) => id}>
             {() => (
               <List
@@ -135,8 +137,7 @@ export function ProjectChat(props: {
                 inverted
                 keyExtractor={(row) => row.id}
                 class={`flex-1 ${glassCard() ? "" : "bg-pane"}`}
-                contentClass="py-5 gap-[14px]"
-                contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20 }}
+                contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20, paddingBottom: phone() ? 14 : 20, gap: 14 }}
                 estimatedItemSize={80}
                 onScroll={scroll.onScroll}
                 onViewableItemsChange={(info) => scroll.onViewable(info.viewableItems.map((token) => token.index))}
