@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Split panes stay in a small window
+
+- In the native (NSH) desktop build, with several panes side by side, a window too narrow for all of them pushed the last ones off its right edge: a usage page on the right was cut to a strip or not seen at all. Each pane kept its own minimum width (a conversation 360, the usage page 280) whether the window had room or not. When the window is too small for every pane's minimum, they now all give up the same share and stay in the window, as in the Tauri app; a wider window gives each its own minimum again.
+
 ### Large files open in the preview without holding the window
 
 - In the native (NSH) desktop build, a large PDF, Office file or picture held the window while it opened: its bytes went through the app first (a 105 MB PDF froze the window for 3 seconds and took 2.5 GB, a 24 MB picture 4.8 seconds). On this computer a picture now opens from where it is, a PDF, Word, Excel or PowerPoint file is read by its viewer directly, and a text file comes in one read. A picture the app may not read from its folder still opens as before.

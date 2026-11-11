@@ -49,6 +49,8 @@ const TERMINALS = [
 export default function WorkbenchStory() {
   const layout = signal<WorkbenchLayout>(initial());
   const pinned = signal(false);
+  /** Minimums the window cannot hold side by side (the first pane alone wider than it), as a small window has them. */
+  const tight = signal(false);
   const copied = signal("");
   const log = signal("");
   let seq = 0;
@@ -110,6 +112,9 @@ export default function WorkbenchStory() {
           drag in
         </Button>
         {/* The same layout as new objects, as the shell's `snapshot(workbench.layout)` hands over on every commit. */}
+        <Button variant="secondary" testID="story-tight" onPress={() => tight.set(!tight())}>
+          tight
+        </Button>
         <Button variant="secondary" testID="story-copy" onPress={() => commit(JSON.parse(JSON.stringify(layout())) as WorkbenchLayout)}>
           copy
         </Button>
@@ -120,7 +125,7 @@ export default function WorkbenchStory() {
       <View class="flex-1 min-h-0">
         <Workbench
           layout={layout()}
-          mins={() => ({ width: 160, height: 120 })}
+          mins={() => ({ width: tight() ? 1000 : 160, height: 120 })}
           wide={!narrowWindow()}
           tabName={(t) => t.params.title ?? t.kind}
           onLayout={commit}

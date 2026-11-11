@@ -5,15 +5,18 @@
  *
  * The Svelte grid's `minmax(<min>px, <w>fr)` tracks are flex items here: `flex-grow` is the weight,
  * the basis zero, the floor the child's minimum size; the engine's "find the size of an fr" loop is
- * the water-filling `allocate()` reproduces for the handles. The dividers are real children, the
+ * the water-filling `allocate()` reproduces for the handles. When the branch is too small for every
+ * child's floor, the floors shrink by one ratio (`cell-floors.ts`), as the grid's tracks did, so no
+ * pane is pushed out past the window's edge. The dividers are real children, the
  * one-pixel seam between two panes, and only their hit area reaches three points into each, so the
  * line can be aimed at without a gutter taking room. No transition on the tracks, ever: a drag has
  * to follow the pointer exactly.
  */
 import { computed, PanResponder, View } from "nsh";
 import { copy } from "../../runtime";
-import { WB_SASH_PX, type LayoutNode, type MinSizeLookup } from "../../m/workbench/layout-types.ts";
-import { minSize } from "../../m/workbench/layout-geometry.ts";
+import { WB_SASH_PX, type LayoutNode, type MinSizeLookup, type Rect } from "../../m/workbench/layout-types.ts";
+import { contentExtent, minSize } from "../../m/workbench/layout-geometry.ts";
+import { cellFloors } from "./cell-floors";
 import { narrowWindow } from "../Modal";
 import { WorkbenchLeaf, type WorkbenchLeafProps } from "./WorkbenchLeaf";
 import type { DragPhase, DragPoint } from "./types";
@@ -32,6 +35,8 @@ export type WorkbenchBranchProps = BranchShared & {
   onSashDrag: (sashId: string, phase: DragPhase, point: DragPoint) => void;
   /** The divider being dragged right now, so it keeps the accent while the pointer is down. */
   draggingSash?: string | null;
+  /** Where a branch lies in the workbench (`computeGeometry`), or null before it is measured. */
+  branchRect: (branchId: string) => Rect | null;
 };
 
 export function Sash(props: { id: string; vertical: boolean; active: boolean; onDrag: (phase: DragPhase, point: DragPoint) => void }) {
@@ -143,6 +148,16 @@ export function WorkbenchBranch(props: WorkbenchBranchProps) {
           kept = seen;
           return out;
         });
+        /** Each child's floor along the axis, shrunk alike when the branch cannot hold them all. */
+        const floors = computed(() => {
+          const node = current();
+          const along = node.children.map((child) => {
+            const min = minSize(child, props.mins);
+            return row() ? min.width : min.height;
+          });
+          const rect = props.branchRect(node.id);
+          return cellFloors(along, rect ? contentExtent(node, rect) : null);
+        });
         return (
           <View testID={`wb-branch-${current().id}`} class={`flex-1 min-w-0 min-h-0 overflow-hidden ${row() ? "flex-row" : "flex-col"}`}>
             <Each of={slots()} key={(slot) => slot.key}>
@@ -160,7 +175,7 @@ export function WorkbenchBranch(props: WorkbenchBranchProps) {
                           flexGrow: current().weights[index()] ?? 1,
                           flexShrink: 1,
                           flexBasis: 0,
-                          ...(row() ? { minWidth: minSize(slot().child, props.mins).width } : { minHeight: minSize(slot().child, props.mins).height }),
+                          ...(row() ? { minWidth: floors()[index()] ?? 0 } : { minHeight: floors()[index()] ?? 0 }),
                         }}
                       >
                         <WorkbenchBranch
@@ -178,6 +193,7 @@ export function WorkbenchBranch(props: WorkbenchBranchProps) {
                           onClosePane={props.onClosePane}
                           onSashDrag={props.onSashDrag}
                           draggingSash={props.draggingSash}
+                          branchRect={props.branchRect}
                           draggedTab={props.draggedTab}
                           draggedLeaf={props.draggedLeaf}
                           onTabDrag={props.onTabDrag}

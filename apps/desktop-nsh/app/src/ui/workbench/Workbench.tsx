@@ -276,6 +276,7 @@ export function Workbench(props: WorkbenchProps) {
           onClosePane={closable(layout().root.id) ? ops.closePane : undefined}
           onSashDrag={resizer.sash}
           draggingSash={resizer.draggingSash()}
+          branchRect={(id) => viewGeometry()?.branches.get(id) ?? null}
           draggedTab={drag.draggedTab()}
           draggedLeaf={drag.draggedLeaf()}
           onTabDrag={onTabDrag}

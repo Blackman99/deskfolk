@@ -177,3 +177,15 @@ test("a commit that hands the same layout over as new objects keeps every pane's
   await app.waitFor("id:body-t2");
   expect(mounts()).toBe("mounts t1=1,t4=1,t5=1,t2=1");
 });
+
+test("a window too small for every pane's minimum shrinks them all alike; the far pane stays in it", async () => {
+  const app = await openStory("workbench");
+  await app.waitFor("id:wb-state", { timeout: 15_000 });
+  await app.setViewport(900, 700);
+  await app.press("id:story-tight");
+  // The first pane asks for more than the window: with the floors as they stood, the column beside
+  // it ran off the right edge and its tabs were out of sight.
+  for (const id of ["t2", "t4", "t5"]) expect(app.shows(`id:wb-tab-${id}`)).toBe(true);
+  await app.press("id:wb-tab-button-t5");
+  expect(app.texts().find((t) => t.includes("float="))).toMatch(/focus=d/);
+});
