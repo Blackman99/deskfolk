@@ -501,3 +501,101 @@ Addendum (15) moved the time to the left because you named the wrong side: you w
 Against the Tauri version: rendering the messenger's `project-chat` visual story in Playwright's WebKit (the messenger on main, the one in the Tauri window) and measuring, an agent line that ran no commands has its time under it on the left (line box 12–488, time 12–41). Here it goes to the right end either way, as you asked; only a line with commands matches Tauri exactly. The messenger was not changed.
 
 Checked in a background check copy (shell and CLI built from upstream `main`'s commit, as addendum (16) set up), on the project session of the `chat-stage` story: the agent line's 17:31 sits at the right end of the line under it, on the same right edge as the 17:30 under the user bubble; a drag from the agent line's first line to the user bubble below selects the agent line, "已切到新的一天" and the dragged-over characters of the bubble, with the three times and the day line left out. The project and chat stage screen tests and `bun test scripts` (18) pass.
+
+## 补记 2026-11-11（十八）：先把 NSH 自己的 `Terminal` 接上，放在 `--terminal nsh` 后面 / Addendum 2026-11-11 (18): NSH's own `Terminal`, wired in behind `--terminal nsh`
+
+补记（十六）锁定的上游提交里已经有 nsh/base 的 `Terminal`（#1111）。你问终端能不能彻底换成它，回答是现在还不能，然后按建议的顺序做了：先接上，量出差距，只有上游能改的报上去，默认仍用画布终端。
+
+**怎么接。** `app/native` 新加 `RuntimeTerminals`（`nsh_terminal.rs`），用 `provide_context` 给它下面的 `Terminal` 一个模拟器：NSH 自己的 `VtEmulator`，去掉它对程序查询的回答（`Quiet`）。不去掉不行：
+
+- `Terminal` 把模拟器的回答和按键放在同一个 `onData` 里发出，TSX 分不出哪个是哪个。
+- 运行时的屏幕（`terminal-screen.ts`）已经替所有窗格回答了，窗格再答一遍，就等于往程序里多敲一份。
+
+`CodeColors` 给代码块配色用的也是这个办法：Rust 组件提供 context，TSX 的子组件拿到。
+
+`app/native` 的 `nsh-base` 依赖自己声明了 `term` 特性。单独编这个 crate 时平台 crate 不在依赖里，这个特性不会被带上。`nsh-cli.test.ts` 也相应放宽，允许这种只经工作区、只多加特性的写法。
+
+`app/src/NshTerminal.tsx` 把它接到运行时上：
+
+- `Terminal` 按布局自己定行列。所以第一次 `onResize` 之后，先让 pty 改成这个大小，再取屏幕回放，回放就是按这个大小画的。
+- 之后和画布终端一样，按偏移跳过已经画过的帧。
+- 字节用一个流式的 `TextDecoder` 解成文字，一个字被拆在两帧里也能拼回来。
+- 按键和画布终端走同一个排队发送（`terminalSender`，先在一个单独的提交里抽出来）。
+
+`--terminal nsh`（`DESKFOLK_TERMINAL=nsh`）会把工作台的终端标签和 `--pane terminal` 都换成它。`RuntimeTerminals` 是按名字查的，没有用具名导入：`dev.ts --watch` 会先把 TSX 发出去，宿主要等重启才重编，具名导入会让旧宿主上整个 bundle 都加载失败（实测报 `Could not find export 'RuntimeTerminals'`）。现在旧宿主上查不到它，面板里只显示一行提示。
+
+**量的结果。** 在隔离的运行时里开后台窗口，用补记（八）的检查，加了两步：查询只答一次，以及中文对齐。回车和 ⌘ 键用 `chord` 走应用的事件队列，和真键盘一样先经过 NSH 的键位表。上游 `Terminal` 的回车只认键位表：直接发给窗口的回车会落进单行的隐藏输入，结束编辑，焦点也跟着丢了。
+
+| 检查 | 画布终端 | NSH `Terminal` |
+|---|---|---|
+| 程序的查询只回答一次（DA1、DSR 6） | 过 | 过。靠 `Quiet`；不加它会答两次，见 `vt.rs` |
+| 普通输入、上屏后马上回车、组字清空、组字时按方向键、Esc | 过 | 过 |
+| ⌘⌫、⌘← | 过 | 不过：上游没绑这几个键（longbridge/nsh#1627） |
+| 组字中的拼音 | 画在光标处，带下划线 | 不画 |
+| 候选框位置 | 光标所在的格子 | 每次都在窗口左下角 (0, 743)，1×17（#1626） |
+| 中文对齐（13pt，一格 8.1pt） | 每个 `\|` 都在自己的格子上 | 20 个汉字后面的 `\|` 左移 61pt（7.6 格）（#1628） |
+
+中文对齐那一项的原因：底色块和光标按格子放，字是一整行流排的。一个汉字只有约 12.9pt 宽，而它占的两格是 16.2pt；中英文交界处 Core Text 还会多加约 1.7pt 的间距。所以 `ab中cd文ef` 这种两种偏差刚好抵消，纯中文的一行偏得最多。反显的格子最明显：底色块在自己的格子上，字左移 30pt。
+
+**还差什么。** 所以默认还是画布终端。上游把这三处修好以后（或者我们给上游提修复），再换成默认，删掉 `TerminalGrid`、`Terminals` 和 `CanvasTerminal`。另外两处在换之前要决定：
+
+- 16 色是 VS Code 的固定配色，不跟我们的 `palette.rs`。可以在 `Quiet` 里把 0–15 换成我们的颜色，但模拟器不知道当前是深色还是浅色。
+- `VtEmulator` 会丢掉零宽字符（组合附加符、ZWJ 表情），也不重排。
+
+补记（八）那个工作区里的 Ghostty（`libghostty-vt`）可以改成实现上游的 `TerminalEmulator`，装进 `RuntimeTerminals`，后两样就都解决了。它要 Zig 工具链、CI 和许可声明，这次没有动。
+
+**验证。**
+
+- `app/native` 的两个新测试：`Quiet` 吞掉 DSR 6、DA1 的回答，标题和响铃照常；屏幕照旧。
+- `NshTerminal.test.tsx` 三项在 NSH 的运行时里通过：base64、按偏移跳过、拆开的字拼回。
+- `nsh check App.tsx` 无错误。
+- 后台检查：画布终端 8/8，NSH `Terminal` 6/8，没过的两项都是 ⌘ 键。
+- 开发版当前的旧宿主配新 bundle：不加开关 8/8，加了开关只显示提示。
+
+The pinned upstream commit (addendum 16) has nsh/base's `Terminal` (#1111). You asked whether the terminal can move to it completely. The answer was not yet, and the recommended order was followed: wire it in, measure the gaps, report upstream only what only NSH can change, and keep the canvas terminal as the default.
+
+**How it is wired.** `app/native` adds `RuntimeTerminals` (`nsh_terminal.rs`). It uses `provide_context` to give the `Terminal`s below it an emulator: NSH's own `VtEmulator` with its answers to the program's queries dropped (`Quiet`). They have to be dropped:
+
+- `Terminal` sends its emulator's answers through `onData`, mixed with the keys, so TSX cannot tell them apart.
+- The runtime's screen (`terminal-screen.ts`) already answers for every pane, so a pane that answered too would type a second answer into the program.
+
+`CodeColors` colours code blocks the same way: a Rust component provides a context that the TSX children receive.
+
+`app/native`'s `nsh-base` dependency declares the `term` feature itself, because built alone the crate has no platform crate to bring it in. `nsh-cli.test.ts` now also accepts a dependency that comes through the workspace and only adds features.
+
+`app/src/NshTerminal.tsx` attaches it to the runtime:
+
+- `Terminal` sizes itself from its layout. So after the first `onResize`, the pty takes that size before the screen's replay is fetched, and the replay is drawn for it.
+- After that, frames already on the screen are skipped by offset, as in the canvas terminal.
+- One streaming `TextDecoder` turns the bytes into text, so a character split across two frames comes out whole.
+- Keys go through the same send queue as the canvas terminal's (`terminalSender`, extracted first in a commit of its own).
+
+`--terminal nsh` (`DESKFOLK_TERMINAL=nsh`) puts it in the workbench's terminal tabs and in `--pane terminal`. `RuntimeTerminals` is looked up by name, not imported by name. `dev.ts --watch` publishes TSX ahead of a shell rebuild, which waits for a restart, and a named import made the whole bundle fail on an older shell (measured: `Could not find export 'RuntimeTerminals'`). On an older shell the pane now shows a one-line notice.
+
+**Measurements.** A background window on an isolated runtime ran the check of addendum (8), plus two steps: queries answered once, and CJK alignment. Enter and the ⌘ keys go through the app's event queue (`chord`), as a real keyboard's do, so NSH's keymap sees them first. NSH's `Terminal` takes Enter only from its keymap: an Enter sent straight to the window lands in its single-line hidden input, which ends editing and drops the focus.
+
+| Check | Canvas terminal | NSH `Terminal` |
+|---|---|---|
+| The program's queries answered once (DA1, DSR 6) | pass | pass, through `Quiet`; without it they are answered twice (`vt.rs`) |
+| Typing, Enter right after a commit, a cleared composition, arrows while composing, Escape | pass | pass |
+| ⌘⌫, ⌘← | pass | fail: upstream binds neither (longbridge/nsh#1627) |
+| The composition while composing | drawn at the cursor, underlined | not drawn |
+| Where the candidates open | the cursor's cell | the window's bottom-left corner every time, (0, 743), 1×17 (#1626) |
+| CJK alignment (13 pt, 8.1 pt cells) | every `\|` on its cell | after 20 CJK characters, `\|` 61 pt (7.6 cells) to the left (#1628) |
+
+The cause of the alignment row: backgrounds and the cursor are placed by cell, while a line's text flows. A CJK character advances about 12.9 pt where its two cells are 16.2 pt, and Core Text adds about 1.7 pt where CJK meets Latin text. So in `ab中cd文ef` the two cancel out, and a line of CJK alone drifts the most. An inverse cell shows it best: its box sits on its cell while its glyph is 30 pt to the left.
+
+**What is still missing.** The canvas terminal stays the default. Once upstream fixes these three, or we send it fixes, the default changes and `TerminalGrid`, `Terminals` and `CanvasTerminal` go. Two more points need a decision before the swap:
+
+- The 16 colours are VS Code's fixed palette, not our `palette.rs`. `Quiet` could map 0–15 to ours, but an emulator does not know the appearance.
+- `VtEmulator` drops zero-width characters (combining marks, ZWJ emoji) and does not reflow.
+
+The Ghostty work of addendum (8)'s worktree (`libghostty-vt`) could implement upstream's `TerminalEmulator` and go into `RuntimeTerminals`, which would settle both. It brings the Zig toolchain, CI and licence notices, and was left out of this change.
+
+**Checks.**
+
+- Two new `app/native` tests: `Quiet` drops the DSR 6 and DA1 answers and keeps the title and the bell; the screen is unchanged.
+- `NshTerminal.test.tsx`'s three tests pass in NSH's runtime: base64, skipping by offset, a split character made whole.
+- `nsh check App.tsx` has no errors.
+- The background check: the canvas terminal passes 8/8, NSH's `Terminal` 6/8, failing only the two ⌘ keys.
+- The dev build's current, older shell with the new bundle: 8/8 without the flag, and with the flag only the notice.

@@ -22,7 +22,8 @@ describe("the NSH the shell and the CLI come from", () => {
     for (const crate of ["host", "app/native", "native/terminal", "native/pdf"]) {
       const manifest = readFileSync(join(root, crate, "Cargo.toml"), "utf8");
       for (const line of manifest.split("\n").filter((l) => /^nsh-[a-z-]+\s*[=.]/.test(l.trim()))) {
-        expect(line.trim()).toMatch(/^nsh-[a-z-]+\.workspace = true$/);
+        // Features of their own are theirs to ask for (app/native: `term`); the source never is.
+        expect(line.trim()).toMatch(/^nsh-[a-z-]+(\.workspace = true| = \{ workspace = true, features = \[[^\]]*\] \})$/);
       }
     }
   });

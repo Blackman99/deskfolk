@@ -1,7 +1,8 @@
 /**
  * A terminal tab: a head saying where the shell is and how it is, with Stop and 结束会话 (the
  * workbench head of `TerminalView.svelte`), over the spike's terminal (`src/Terminal.tsx` on a
- * canvas, or the macOS native view under `DESKFOLK_NATIVE_TERMINAL`) on the runtime's pty. The
+ * canvas; NSH's own `Terminal` under `--terminal nsh`, the macOS native view under
+ * `--terminal native`) on the runtime's pty. The
  * tab's own session when it names one, else a new shell in the workspace, which the tab then
  * remembers (`onBind`).
  *
@@ -9,15 +10,17 @@
  * press while it is running. A shell that exits keeps its tab, its last screen and how it ended
  * showing, until 结束会话 forgets it. Once the runtime drops the session the workbench drops the tab.
  *
- * The emulator below the head stands in until NSH's own `Terminal` (`nsh/base`, longbridge/nsh#1111)
- * ships in a pinned NSH; that swap keeps the head. No tab row of sessions, no search, no copy menu
- * here.
+ * The canvas terminal below the head stands in until NSH's own `Terminal` (`nsh/base`,
+ * longbridge/nsh#1111, in the pinned NSH but behind `--terminal nsh`: `src/NshTerminal.tsx` says
+ * what it lacks) can take its place; that swap keeps the head. No tab row of sessions, no search,
+ * no copy menu here.
  */
 import { colorScheme, effect, signal, Text, untracked, View } from "nsh";
 import type { Terminal as TerminalRow } from "@real-bot/protocol";
-import { nativeTerminal } from "../../launch";
+import { nativeTerminal, nshTerminal } from "../../launch";
 import { statusLabel } from "../../m/overlays/terminals.ts";
 import { Terminal } from "../../native";
+import { NshTerminal } from "../../NshTerminal";
 import { copy, runtime } from "../../runtime";
 import { CanvasTerminal } from "../../Terminal";
 import { Button } from "../Button";
@@ -143,6 +146,8 @@ export function PaneTerminal(props: { terminalId: string | null; onBind: (id: st
               onError={(e: { message: string }) => error.set(e.message)}
               style={{ flex: 1 }}
             />
+          ) : nshTerminal ? (
+            <NshTerminal id={id()} onExit={exited} />
           ) : (
             <CanvasTerminal id={id()} onExit={exited} />
           )
