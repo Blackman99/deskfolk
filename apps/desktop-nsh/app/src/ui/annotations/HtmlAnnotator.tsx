@@ -15,7 +15,7 @@
  * horizontal scroll); the page is not given the keyboard on entering annotate mode (a web view
  * takes focus from a press in it).
  */
-import { cleanup, effect, keymap, Scroll, signal, Storage, Text, untracked, View, WebView, type WebViewRef } from "nsh";
+import { cleanup, computed, effect, keymap, Scroll, signal, Storage, Text, untracked, View, WebView, type WebViewRef } from "nsh";
 import type { Annotation, HtmlElementAnchor } from "@real-bot/protocol";
 import { annotatorSource, focusMessage, marksMessage, navMessage, newChannel, pickerMarks, type PickerMark } from "../../m/annotations/html-picker.ts";
 import type { EncodedCrop } from "../../m/annotations/region-box.ts";
@@ -157,11 +157,14 @@ export function HtmlAnnotator(props: {
   const injecting = () => props.active || props.pending != null;
   const picking = () => props.active && props.enabled;
   const marks = () => pickerMarks(props.annotations);
+  // Read once per page, from its head: run on every layout, the scans of a 20 MB page held the
+  // window for five seconds (QuickJS regexes, a pass each).
+  const pageViewport = computed(() => viewportMeta(headOf(props.html)));
   const layout = () =>
     fitViewport(
       device(),
       { width: roomWidth(), height: roomHeight() },
-      pageLayoutWidth(device(), viewportMeta(props.html), contentWidth()),
+      pageLayoutWidth(device(), pageViewport(), contentWidth()),
       enlarged() ? ENLARGED_MAX_SCALE : 1,
     );
   const drawn = (): Drawn[] =>
@@ -609,4 +612,16 @@ function NavButton(props: { testID: string; label: string; disabled: boolean; on
       <Text class="text-[12px] text-ink">{props.label}</Text>
     </View>
   );
+}
+
+/** How far into a page without a `<body>` its viewport `<meta>` is looked for. */
+const HEAD_SCAN = 256 * 1024;
+
+/**
+ * The part of a page its viewport `<meta>` is in: up to its `<body>`, or its first 256 KiB when it
+ * has none. The rest (a report's megabytes of data, say) cannot hold it.
+ */
+export function headOf(html: string): string {
+  const at = [html.indexOf("<body"), html.indexOf("<BODY"), html.indexOf("<Body")].filter((i) => i >= 0);
+  return html.slice(0, at.length > 0 ? Math.min(...at) : HEAD_SCAN);
 }

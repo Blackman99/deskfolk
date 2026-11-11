@@ -10,6 +10,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - In the native (NSH) desktop build, a large PDF, Office file or picture held the window while it opened: its bytes went through the app first (a 105 MB PDF froze the window for 3 seconds and took 2.5 GB, a 24 MB picture 4.8 seconds). On this computer a picture now opens from where it is, a PDF, Word, Excel or PowerPoint file is read by its viewer directly, and a text file comes in one read. A picture the app may not read from its folder still opens as before.
 - A long Markdown file renders without holding the window: a 480 000-character report froze it for 44 seconds and now opens in a tenth of a second; a 60 000-character one took over two seconds. The blocks are now found by the same parser the text is drawn with, outside the window's thread. A window started before this update finds them as before until it is restarted.
+- A large HTML page opens without the five-second hold (20 MB: 5.6 s, now 0.45 s), and a large text file without the repeated passes over its line endings (100 MB: 5.3 s, now about 1.6 s, the rest being the editor's own layout).
 
 ### A large video opens at once in the file preview
 

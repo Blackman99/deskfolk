@@ -6,9 +6,13 @@ import type { EditorDecoration, EditorPosition, EditorRange as NshRange, EditorS
 import type { Annotation } from "@real-bot/protocol";
 import { decorationClass, isEmptyRange, rangeForAnnotation, type EditorRange } from "../../m/annotations/text-range.ts";
 
-/** The Editor folds `\r\n` and a lone `\r` to `\n`; a buffer is measured the same way. */
+/**
+ * The Editor folds `\r\n` and a lone `\r` to `\n`; a buffer is measured the same way. A text with
+ * no `\r` is returned as it is: the regex pass costs QuickJS most of a second on a 100 MB log, and
+ * the editor folds its text several times over.
+ */
 export function foldLineEndings(text: string): string {
-  return text.replace(/\r\n?/g, "\n");
+  return text.indexOf("\r") < 0 ? text : text.replace(/\r\n?/g, "\n");
 }
 
 export function toNshRange(range: EditorRange): NshRange {

@@ -228,7 +228,8 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
   const titleName = () => attachment()?.original_filename ?? (relpath() ? (relpath().split("/").pop() ?? relpath()) : t().stream.workspaceExplorer);
   const canShowSource = () => kind() === "text" || kind() === "markdown" || kind() === "html";
   /** Too much text to render without holding the window: Markdown and HTML open as source, with no switch. */
-  const renderTooLarge = () => loader.text !== null && tooLargeToRender(kind(), loader.text);
+  // Once per text: a page's visible text is measured with a regex pass over all of it.
+  const renderTooLarge = computed(() => loader.text !== null && tooLargeToRender(kind(), loader.text));
   const sourceMode = computed(() => kind() === "text" || (canShowSource() && (showSource() || renderTooLarge())));
   const byteSource = computed(() => artifactByteSource({ mode: mode(), relpath: relpath(), attachment: attachment() }));
   byteSourceOf = byteSource;
