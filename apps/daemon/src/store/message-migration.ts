@@ -19,6 +19,50 @@ export function migrateAnnotations(db: Database): void {
 }
 
 /**
+ * A project session's annotations hang on its agent's line, not a Bot's (ADR 0095 decision 28), so
+ * `bot_id` may be null. The table is rebuilt from its own current definition with that one NOT NULL
+ * dropped, as `migrateNullableTaskSession` does for tasks: foreign keys off, every row copied in one
+ * transaction, its indexes made again, and the foreign-key check compared before and after so a
+ * dangling row the database already had cannot stop the daemon starting.
+ */
+export function migrateNullableAnnotationBot(db: Database): void {
+  const column = db
+    .query<{ notnull: number }, []>(`SELECT "notnull" FROM pragma_table_info('annotations') WHERE name = 'bot_id'`)
+    .get();
+  if (!column || column.notnull === 0) return;
+  const table = db.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'annotations'`).get()!.sql;
+  const relaxed = table.replace(/\bbot_id\s+TEXT\s+NOT\s+NULL\b/i, "bot_id TEXT");
+  if (relaxed === table) throw new Error("annotations.bot_id is NOT NULL but its definition does not say so in a known way");
+  const createNew = relaxed.replace(/^CREATE TABLE\s+(?:"annotations"|annotations\b)/i, "CREATE TABLE annotations_new");
+  if (createNew === relaxed) throw new Error("annotations has a definition this migration does not know how to copy");
+  const own = db
+    .query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE tbl_name = 'annotations' AND type IN ('index', 'trigger') AND sql IS NOT NULL`)
+    .all();
+  const columns = db
+    .query<{ name: string }, []>(`SELECT name FROM pragma_table_info('annotations')`)
+    .all()
+    .map((col) => `"${col.name}"`)
+    .join(", ");
+  const dangling = () => db.query(`PRAGMA foreign_key_check(annotations)`).all().length;
+  db.run(`PRAGMA foreign_keys = OFF`);
+  db.run(`PRAGMA legacy_alter_table = ON`);
+  try {
+    db.transaction(() => {
+      const before = dangling();
+      db.run(createNew);
+      db.run(`INSERT INTO annotations_new (${columns}) SELECT ${columns} FROM annotations`);
+      db.run(`DROP TABLE annotations`);
+      db.run(`ALTER TABLE annotations_new RENAME TO annotations`);
+      for (const { sql } of own) db.run(sql);
+      if (dangling() > before) throw new Error("annotations rebuild broke a foreign key");
+    })();
+  } finally {
+    db.run(`PRAGMA legacy_alter_table = OFF`);
+    db.run(`PRAGMA foreign_keys = ON`);
+  }
+}
+
+/**
  * A question carries the choices its Bot offered and, once you answer, your answer. Questions
  * asked before this have neither; their answers stay the separate messages they were posted as.
  */

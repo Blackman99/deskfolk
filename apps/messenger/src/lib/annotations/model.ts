@@ -141,6 +141,7 @@ export function draftsForView(rows: readonly Annotation[], viewedSessionId: stri
     .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
 }
 
+/** Drafts by the session they go to, with the Bots they are for (none for a project session's). */
 export function groupByDestination(drafts: readonly Annotation[]): Array<{ sessionId: string; botIds: string[]; drafts: Annotation[] }> {
   const groups = new Map<string, { sessionId: string; botIds: string[]; drafts: Annotation[] }>();
   for (const draft of drafts) {
@@ -150,7 +151,7 @@ export function groupByDestination(drafts: readonly Annotation[]): Array<{ sessi
       groups.set(draft.session_id, group);
     }
     group.drafts.push(draft);
-    if (!group.botIds.includes(draft.bot_id)) group.botIds.push(draft.bot_id);
+    if (draft.bot_id !== null && !group.botIds.includes(draft.bot_id)) group.botIds.push(draft.bot_id);
   }
   return [...groups.values()];
 }

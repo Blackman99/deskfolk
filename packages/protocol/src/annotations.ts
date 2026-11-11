@@ -122,8 +122,10 @@ export type Annotation = {
   target_message_id: string;
   target_session_id: string;
   target_turn_id: string | null;
-  /** 交付的 Bot。 */
-  bot_id: string;
+  /**
+   * 交付的 Bot。项目会话里的批注没有 Bot：挂在 Agent 的回复上，为空（ADR 0095 决定 28）。
+   */
+  bot_id: string | null;
   /** 发往哪个会话。 */
   session_id: string;
   /** 发出去的那条消息；草稿时为空。 */
@@ -140,7 +142,8 @@ export type Annotation = {
   stale?: AnnotationStale;
   /**
    * 批注所在的文件：相对工作区、解析掉符号链接和大小写。`relpath` 是引用时的写法，同一个文件
-   * 换一种写法引用时靠它认出来。老数据可能没有。
+   * 换一种写法引用时靠它认出来。老数据可能没有。项目会话里的批注，`relpath` 是项目目录里文件的
+   * 绝对路径，这里是它解析后的绝对路径。
    */
   file_key?: string | null;
 };

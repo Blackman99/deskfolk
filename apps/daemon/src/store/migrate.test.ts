@@ -686,6 +686,65 @@ describe("a database an earlier build created", () => {
   });
 });
 
+describe("annotations from before project sessions took them (ADR 0095 decision 28)", () => {
+  test("bot_id NOT NULL is rebuilt nullable with every row and index kept, and a project session's annotation then saves", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
+    const file = join(dir, "state.sqlite");
+    try {
+      const seeded = new Store({ filename: file });
+      seeded.patchSettingsSync({ workspace_path: join(dir, "workspace") });
+      const writer = seeded.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const direct = writer.direct_session.id;
+      const delivery = seeded.insertMessage({ sessionId: direct, kind: "bot", author: writer.bot.id, body: "写好了" });
+      const now = isoNow();
+      const insert = (id: string, botId: string | null) => `INSERT INTO annotations (id, status, relpath, file_key, anchor_kind, anchor, content_sha256, target_message_id, target_session_id, bot_id, session_id, body, created_at, updated_at)
+        VALUES ('${id}', 'draft', 'report.md', 'report.md', 'media_time', '{"start_ms":1000}', '${"0".repeat(64)}', '${delivery.id}', '${direct}', ${botId === null ? "NULL" : `'${botId}'`}, '${direct}', '太快了', '${now}', '${now}')`;
+      const kept = ulid();
+      seeded.db.run(insert(kept, writer.bot.id));
+      seeded.close();
+
+      // Put the table back in the shape every earlier build made.
+      const old = new Database(file, { strict: true });
+      const shape = old.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'annotations'`).get()!.sql;
+      const own = old.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE tbl_name = 'annotations' AND type IN ('index', 'trigger') AND sql IS NOT NULL`).all();
+      old.run(`PRAGMA foreign_keys = OFF`);
+      old.run(`PRAGMA legacy_alter_table = ON`);
+      old.run(shape.replace(/^CREATE TABLE (?:IF NOT EXISTS )?annotations\b/, "CREATE TABLE annotations_old").replace(/bot_id TEXT REFERENCES/, "bot_id TEXT NOT NULL REFERENCES"));
+      old.run(`INSERT INTO annotations_old SELECT * FROM annotations`);
+      old.run(`DROP TABLE annotations`);
+      old.run(`ALTER TABLE annotations_old RENAME TO annotations`);
+      for (const { sql } of own) old.run(sql);
+      expect(old.query<{ notnull: number }, []>(`SELECT "notnull" FROM pragma_table_info('annotations') WHERE name = 'bot_id'`).get()!.notnull).toBe(1);
+      expect(() => old.run(insert(ulid(), null))).toThrow(/NOT NULL/);
+      old.close();
+
+      const store = new Store({ filename: file });
+      expect(store.db.query<{ notnull: number }, []>(`SELECT "notnull" FROM pragma_table_info('annotations') WHERE name = 'bot_id'`).get()!.notnull).toBe(0);
+      expect(store.getAnnotation(kept)).toMatchObject({ bot_id: writer.bot.id, body: "太快了", relpath: "report.md" });
+      const objects = store.db
+        .query<{ name: string }, []>(`SELECT name FROM sqlite_master WHERE tbl_name = 'annotations' AND type IN ('index', 'trigger') AND sql IS NOT NULL ORDER BY name`)
+        .all()
+        .map((row) => row.name);
+      expect(objects).toEqual(own.map((row) => row.sql.match(/^CREATE (?:INDEX|TRIGGER)(?: IF NOT EXISTS)? (\w+)/)![1]!).sort());
+      store.db.run(insert(ulid(), null));
+      expect(store.db.query<{ foreign_keys: number }, []>(`PRAGMA foreign_keys`).get()).toEqual({ foreign_keys: 1 });
+      expect(store.db.query(`PRAGMA foreign_key_check`).all()).toEqual([]);
+      store.close();
+
+      // Reopening finds the column nullable and leaves the table alone.
+      const before = new Database(file, { strict: true });
+      const rebuilt = before.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'annotations'`).get()!.sql;
+      before.close();
+      new Store({ filename: file }).close();
+      const after = new Database(file, { strict: true });
+      expect(after.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'annotations'`).get()!.sql).toBe(rebuilt);
+      after.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("bots from before local agents besides Claude Code (ADR 0079)", () => {
   test("the runner and effort CHECKs go, every Bot and what points at it stays, and a Codex or Grok Bot then saves", () => {
     const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));

@@ -411,7 +411,8 @@ CREATE TABLE IF NOT EXISTS annotations (
   target_message_id TEXT NOT NULL REFERENCES messages (id),
   target_session_id TEXT NOT NULL REFERENCES sessions (id),
   target_turn_id TEXT,
-  bot_id TEXT NOT NULL REFERENCES bots (id),
+  -- The Bot that delivered the file; null on a project session's, which hangs on its agent's line (ADR 0095).
+  bot_id TEXT REFERENCES bots (id),
   session_id TEXT NOT NULL REFERENCES sessions (id),
   message_id TEXT REFERENCES messages (id),
   body TEXT NOT NULL,

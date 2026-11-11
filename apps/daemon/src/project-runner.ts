@@ -17,6 +17,7 @@ import { homedir } from "node:os";
 import { placeOfCall } from "./claude-code/tool-place";
 import { modelOf } from "./claude-code/replay";
 import { changeVerdict } from "./permission-gate";
+import { agentAnnotations } from "./annotation-context";
 import { accountOf, claudeChildEnv } from "./claude-code/status";
 import { AGENT_BACKGROUND_TOOLS, AGENT_WORK_TOOLS, decideAgentCall } from "./claude-code/policy";
 import { backgroundTaskOf, createTaskBoard, type TaskBoard, type TaskCall } from "./claude-code/task-board";
@@ -200,10 +201,12 @@ function pictureOf(abs: string, att: Attachment): ImageBlock | null {
  * Your line as Claude Code reads it: its pictures first, as a paste into Claude Code sends them,
  * then your words. Any other file, or a picture too big or of a type it does not take, is named by
  * its path on this computer: the app keeps what you send in its inbox, not in the session's
- * directory, so a relative path would point nowhere.
+ * directory, so a relative path would point nowhere. A batch of annotations (ADR 0095 decision 28)
+ * adds each one after your words and its crop among the pictures.
  */
 function lineContent(store: Store, message: Message, en: boolean): LineContent {
-  if (message.attachments.length === 0) return message.body;
+  const notes = agentAnnotations(store, message.id, en ? "en" : "zh");
+  if (message.attachments.length === 0 && !notes) return message.body;
   const pictures: ImageBlock[] = [];
   const named: string[] = [];
   for (const att of message.attachments) {
@@ -217,7 +220,10 @@ function lineContent(store: Store, message: Message, en: boolean): LineContent {
     if (picture) pictures.push(picture);
     else named.push(`${en ? "Attached: " : "附件："}${abs}`);
   }
-  const text = [message.body.trim() ? message.body : "", ...named].filter(Boolean).join("\n\n");
+  for (const crop of notes?.crops ?? []) {
+    pictures.push({ type: "image", source: { type: "base64", media_type: crop.mime as ImageBlock["source"]["media_type"], data: Buffer.from(crop.bytes).toString("base64") } });
+  }
+  const text = [message.body.trim() ? message.body : "", ...named, notes?.text ?? ""].filter(Boolean).join("\n\n");
   // The API takes no empty text block: a line of pictures alone is just them.
   if (pictures.length === 0) return text || message.body;
   return text ? [...pictures, { type: "text", text }] : pictures;

@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { isProjectAgent, isProjectAgentMode, USER_MEMBER, type AgentRun, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
+import { isProjectAgent, isProjectAgentMode, PROJECT_AGENT_AUTHOR, USER_MEMBER, type AgentRun, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
 import type { ClaudeSessionRead } from "../claude-code/sessions";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
@@ -8,7 +8,7 @@ import { getSession } from "./sessions";
 import { jsonColumnOr, sessionRow, type StoreContext } from "./shared";
 
 /** Who a project session's agent lines are by: no Bot, so no Bot id (ADR 0095). */
-export const AGENT_AUTHOR = "agent";
+export const AGENT_AUTHOR = PROJECT_AGENT_AUTHOR;
 
 /**
  * Project sessions (ADR 0095). A `sessions` table made before them says `kind IN ('direct',

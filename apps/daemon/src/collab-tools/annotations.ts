@@ -46,8 +46,9 @@ export function listAnnotations(ctx: ToolCtx, args: Record<string, unknown>): To
   if (!["open", "resolved", "all"].includes(status)) return fail("invalid_args", "status must be open, resolved, or all");
   // By status in the query itself: drafts are the user's until sent, and are never even read here.
   const statuses: AnnotationStatus[] = status === "all" ? ["open", "resolved"] : [status as AnnotationStatus];
+  // A project session's annotations (no Bot) are its agent's, never a Bot's to handle.
   const query = (filter: AnnotationFilter = {}): Annotation[] => {
-    const found = statuses.flatMap((one) => ctx.store.listAnnotations({ ...filter, status: one }));
+    const found = statuses.flatMap((one) => ctx.store.listAnnotations({ ...filter, status: one })).filter((row) => row.bot_id !== null);
     return statuses.length > 1 ? found.sort(byCreation) : found;
   };
   const path = optionalString(args.path);
@@ -105,7 +106,7 @@ export function listAnnotations(ctx: ToolCtx, args: Record<string, unknown>): To
   const items = rows.slice(0, ANNOTATION_LIST_MAX).map((row) => ({
     id: row.id,
     // The Bot it was handed to — the one that delivered the file. Handle yours; leave another Bot's to it.
-    for_bot: botName(row.bot_id) ?? (locale === "en" ? "a deleted Bot" : "已删除的 Bot"),
+    for_bot: botName(row.bot_id!) ?? (locale === "en" ? "a deleted Bot" : "已删除的 Bot"),
     path: row.relpath,
     kind: row.anchor_kind,
     position: describeAnchor(row.anchor_kind, row.anchor, locale),

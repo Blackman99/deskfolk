@@ -252,7 +252,8 @@ export function messageRoutes(ctx: RouteCtx): Response | Promise<Response> | nul
     return jsonResponse(att, 200, null);
   }
 
-  // Annotations: drafts you keep on an artifact, sent as one quoted reply that wakes the Bot.
+  // Annotations: drafts you keep on an artifact, sent as one quoted reply that wakes the Bot (or,
+  // in a project session, as your next line to its agent).
   if (method === "GET" && path === "/v1/annotations") {
     const q = url.searchParams;
     const filter: AnnotationFilter = {};
@@ -270,7 +271,9 @@ export function messageRoutes(ctx: RouteCtx): Response | Promise<Response> | nul
     options.admission?.assertNew();
     const sent = store.sendAnnotations(input.body as SendAnnotationsRequest);
     publish({ event: "message.created", occurred_at: occurred(), ...sent.message });
-    store.afterCommit(() => { void engine.handleInboundMessage(sent.message, { fromUser: true }); });
+    // In a project session the batch is your line to its agent, as one typed there is (ADR 0095).
+    if (store.projectOf(sent.message.session_id) !== null) store.afterCommit(() => { projects.heard(sent.message); });
+    else store.afterCommit(() => { void engine.handleInboundMessage(sent.message, { fromUser: true }); });
     return jsonResponse(sent, 201, null);
   }
   params = matchPath(path, "/v1/annotations/:id/crop");

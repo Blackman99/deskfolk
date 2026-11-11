@@ -99,8 +99,13 @@ export function annotationLines(
     ? ` · ${c.resolved(oneLine(resolver), annotation.resolved_note === null ? null : oneLine(annotation.resolved_note))}`
     : "";
   // Which Bot the batch was handed to: in a group, one batch can carry annotations for several.
-  const owner = botName(annotation.bot_id);
-  const lines = [`[${c.tag} ${index}/${total} · id=${annotation.id} · ${c.forBot(owner === null ? null : oneLine(owner))}] ${oneLine(annotation.relpath)} · ${kind}${status}`];
+  // A project session's agent (no Bot, ADR 0095 decision 28) is the only one there and has no tool
+  // that takes an id, so its lines name neither.
+  const owner = annotation.bot_id === null ? undefined : botName(annotation.bot_id);
+  const tag = owner === undefined
+    ? `[${c.tag} ${index}/${total}]`
+    : `[${c.tag} ${index}/${total} · id=${annotation.id} · ${c.forBot(owner === null ? null : oneLine(owner))}]`;
+  const lines = [`${tag} ${oneLine(annotation.relpath)} · ${kind}${status}`];
   // The selector, the text and the markup are the page's; the position line quotes the first two.
   const element = annotation.anchor_kind === "html_element" ? oneLineElement(annotation.anchor as HtmlElementAnchor) : null;
   let where = describeAnchor(annotation.anchor_kind, element ?? annotation.anchor, l as AnnotationLocale);
@@ -141,9 +146,9 @@ export function annotationContext(
   store: Store,
   messageId: string,
   locale: Locale,
-): { text: string; images: ChatContentPart[]; textFor: (sent: number) => string } {
+): { text: string; images: ChatContentPart[]; crops: AnnotationCropBytes[]; textFor: (sent: number) => string } {
   const annotations = store.annotationsOfMessage(messageId);
-  if (annotations.length === 0) return { text: "", images: [], textFor: () => "" };
+  if (annotations.length === 0) return { text: "", images: [], crops: [], textFor: () => "" };
   const names = new Map<string, string | null>();
   const botName = (id: string): string | null => {
     if (names.has(id)) return names.get(id) ?? null;
@@ -157,6 +162,7 @@ export function annotationContext(
     return name;
   };
   const images: ChatContentPart[] = [];
+  const crops: AnnotationCropBytes[] = [];
   /** Which annotation each crop belongs to, in the order the crops are sent. */
   const cropOf: number[] = [];
   annotations.forEach((annotation, i) => {
@@ -164,6 +170,7 @@ export function annotationContext(
     const crop = store.annotationCrop(annotation.id);
     if (!crop) return;
     images.push({ type: "image_url", image_url: { url: `data:${crop.mime};base64,${Buffer.from(crop.bytes).toString("base64")}` } });
+    crops.push({ id: annotation.id, mime: crop.mime, bytes: crop.bytes });
     cropOf.push(i);
   });
   const textFor = (sent: number): string => {
@@ -173,5 +180,24 @@ export function annotationContext(
     );
     return `\n\n${blocks.join("\n")}`;
   };
-  return { text: textFor(images.length), images, textFor };
+  return { text: textFor(images.length), images, crops, textFor };
+}
+
+/** One annotation's crop, as stored. */
+export type AnnotationCropBytes = { id: string; mime: string; bytes: Uint8Array };
+
+const AGENT_LEAD = {
+  zh: "（下面是我在文件上写的批注：每条有路径、位置、引文和我的意见，框选的区域附了裁图。）",
+  en: "(My annotations on files follow: each gives the path, where it is, the quoted text and my note; a marked region comes with its crop.)",
+} as const;
+
+/**
+ * A project session's batch as its agent reads it (ADR 0095 decision 28), after your words: a lead
+ * line in your voice, since the agent has no prompt of the app's that explains the format, then
+ * every annotation spelled out, and their crops in the same order. Null for a line that carries none.
+ */
+export function agentAnnotations(store: Store, messageId: string, locale: Locale): { text: string; crops: AnnotationCropBytes[] } | null {
+  const context = annotationContext(store, messageId, locale);
+  if (!context.text) return null;
+  return { text: `${AGENT_LEAD[locale === "en" ? "en" : "zh"]}\n${context.text.trimStart()}`, crops: context.crops };
 }
