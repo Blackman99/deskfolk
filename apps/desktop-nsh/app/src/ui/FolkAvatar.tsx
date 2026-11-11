@@ -7,12 +7,12 @@
  */
 import { Easing, Image, Text, View, createMotion, effect, signal, token, type Motion, type MotionSpec } from "nsh";
 import { reduceMotion } from "./interface/motion";
-import { FOLK_GEOMETRY, FOLK_RAISED_ARM_DEG, folkHash, folkLayerSrc, folkLook } from "@real-bot/protocol";
+import { FOLK_GEOMETRY, FOLK_RAISED_ARM_DEG, folkHash, folkLayerSrc, folkLook, folkPart, type FolkPart } from "@real-bot/protocol";
 import type { FolkMotion } from "../m/folk-motion";
 
 const origin = ([x, y]: readonly [number, number]) => `${x * 100}% ${y * 100}%`;
 const FILL = { position: "absolute", left: 0, top: 0, width: "100%", height: "100%", pointerEvents: "none" } as const;
-const SWEAT = "M80 26C76 33 76 37 80 37C84 37 84 33 80 26Z";
+const SWEAT = "M76 40C72 47 72 51 76 51C80 51 80 47 76 40Z";
 
 /** Plays `spec` over and over on `m` while `on()` holds, and rests it after. */
 function loop(m: Motion, on: () => boolean, spec: () => MotionSpec | null): void {
@@ -34,6 +34,11 @@ export function FolkAvatar(props: {
   const motion = () => props.motion ?? "idle";
   const hash = () => folkHash(props.avatar) ?? 0;
   const look = () => folkLook(hash());
+  /** The character's own layer for a part, as an image source, or null when it has none. */
+  const part = (name: FolkPart) => {
+    const layer = folkPart(look(), name);
+    return layer ? folkLayerSrc(layer) : null;
+  };
   /** Folks in one list blink out of step. */
   const blinkDelay = () => (hash() % 52) * 100;
   const is = (kind: FolkMotion) => motion() === kind;
@@ -91,7 +96,7 @@ export function FolkAvatar(props: {
   // The poses it keeps with no motion: a raised hand, closed eyes, a frown, eyes up or down.
   const raised = () => (look().wave && is("idle")) || (still() && is("waiting"));
   const closed = () => is("held");
-  const eyeShift = () => (is("running") ? -0.035 : is("failed") ? 0.012 : 0) * edge();
+  const eyeShift = () => (is("running") ? -0.025 : is("failed") ? 0.009 : 0) * edge();
   const frown = () => (is("failed") ? -1 : 1);
   const figPose = () => (is("failed") ? [{ scaleX: 1.04 }, { scaleY: 0.95 }] : []);
   const mark = (i: number) => markM[i]!;
@@ -101,23 +106,27 @@ export function FolkAvatar(props: {
     <View testID={props.testID} accessible={false} class="relative w-full h-full" style={{ overflow: "visible" }} onLayout={(e) => edge.set(e.bounds.size.width)}>
       <View
         class="rounded-full bg-folk-shadow"
-        style={{ position: "absolute", left: "18%", right: "18%", bottom: "-2%", height: "9%", pointerEvents: "none", transform: [...shadowM.transform], opacity: shadowM.opacity }}
+        style={{ position: "absolute", left: "27%", right: "27%", bottom: "-2%", height: "9%", pointerEvents: "none", transform: [...shadowM.transform], opacity: shadowM.opacity }}
       />
       <View style={{ ...FILL, transform: [{ scaleX: look().mirror ? -1 : 1 }] }}>
         <View style={{ ...FILL, transformOrigin: "50% 98%", transform: [...figPose(), ...fig.transform] }}>
-          <Image src={folkLayerSrc("body")} style={FILL} />
-          <Image
-            src={folkLayerSrc("arm-l")}
-            style={{ ...FILL, transformOrigin: origin(FOLK_GEOMETRY.shoulderL), transform: [...armL.transform] }}
-          />
-          <Image
-            src={folkLayerSrc("arm-r")}
+          <Image src={part("body")!} style={FILL} />
+          <If when={part("antenna")}>{(src) => <Image src={src()} style={FILL} />}</If>
+          {/* Each arm turns about its shoulder with what its hand holds. */}
+          <View style={{ ...FILL, transformOrigin: origin(FOLK_GEOMETRY.shoulderL), transform: [...armL.transform] }}>
+            <Image src={part("arm-l")!} style={FILL} />
+            <If when={part("held-l")}>{(src) => <Image src={src()} style={FILL} />}</If>
+          </View>
+          <View
             style={{
               ...FILL,
               transformOrigin: origin(FOLK_GEOMETRY.shoulderR),
               transform: [{ rotate: raised() ? `${-FOLK_RAISED_ARM_DEG}deg` : is("waiting") ? "-128deg" : "0deg" }, ...armR.transform],
             }}
-          />
+          >
+            <Image src={part("arm-r")!} style={FILL} />
+            <If when={part("held-r")}>{(src) => <Image src={src()} style={FILL} />}</If>
+          </View>
           <Image
             src={folkLayerSrc(`eyes-${look().eyes}`)}
             style={{ ...FILL, opacity: closed() ? 0 : eyes.opacity, transform: [{ translateY: eyeShift() }] }}
@@ -134,7 +143,7 @@ export function FolkAvatar(props: {
             src={folkLayerSrc("mouth-open")}
             style={{ ...FILL, transformOrigin: origin(FOLK_GEOMETRY.mouth), opacity: is("replying") ? mouthB.opacity : 0 }}
           />
-          <If when={look().accessory}>{(acc) => <Image src={folkLayerSrc(`acc-${acc()}`)} style={FILL} />}</If>
+          <If when={part("front")}>{(src) => <Image src={src()} style={FILL} />}</If>
         </View>
       </View>
       <If when={is("running")}>

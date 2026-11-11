@@ -16,7 +16,7 @@ import {
   mimeFromAvatarFile,
   sessionAvatars,
 } from "./avatar.ts";
-import { folkLayerSrc, generateBoringAvatar, hashCode, type Bot, type SessionSummary } from "@real-bot/protocol";
+import { folkLayerSrc, folkLook, folkPart, generateBoringAvatar, hashCode, type Bot, type SessionSummary } from "@real-bot/protocol";
 
 describe("botAvatarColor", () => {
   test("is deterministic for the same seed", () => {
@@ -206,7 +206,7 @@ describe("folk avatars", () => {
     const src = avatarSrc(firstFolk);
     expect(src).toBe(avatarSrc(generateBoringAvatar({ name: "Writer" })));
     expect(src).not.toContain(encodeURIComponent("#cbe1e6"));
-    expect(src).toContain(encodeURIComponent(folkLayerSrc("arm-l")));
+    expect(src).toContain(encodeURIComponent(folkLayerSrc(folkPart(folkLook(hashCode("Writer")), "arm-l"))));
   });
 
   test("only generated folks count as folk avatars", () => {

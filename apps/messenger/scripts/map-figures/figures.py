@@ -22,6 +22,12 @@ Run with Blender 5.2 (headless):
   Blender -b --factory-startup --python figures.py -- OUT_DIR [layer,...]
 then `python3 build.py OUT_DIR` writes src/lib/taskmap/scene/figure-assets.ts.
 FIG_SIZE and FIG_SAMPLES (defaults 512 and 256) make quicker drafts; FIG_EL tries another camera height.
+
+The same characters are a Bot's folk avatar (packages/protocol/src/folk-avatar.ts), seen front on by the
+avatar's camera: with FIG_VIEW=avatar this renders the avatar's layers instead (every character but
+Mochi, whose white stands for you, and no pin), framed wide enough for the tallest hat and what the
+hands hold; then `python3 packages/protocol/scripts/folk-avatar/build.py OUT_DIR` writes
+src/folk-avatar-assets.ts.
 """
 import bpy, bmesh, math, os, sys, json
 from bpy_extras.object_utils import world_to_camera_view
@@ -36,6 +42,12 @@ EL = float(os.environ.get('FIG_EL', '30'))  # the town's camera is 30 degrees ab
 TURN = -25         # its face to you, a little of its right side showing
 FRAME = 0.34       # orthographic frame width, metres; the body is 0.19 tall, the tallest hat 0.3
 CENTER_Z = 0.133
+VIEW = os.environ.get('FIG_VIEW', 'map')
+if VIEW == 'avatar':
+    # The avatar's camera (render.py's setup_scene), front on, its frame widened from the bare folk's
+    # 0.225 so the wizard's hat and the palette stay in the square.
+    EL, TURN, FRAME, CENTER_Z = 8, 0, 0.31, 0.15
+AVATAR_SKIP = {'mochi'}  # Mochi's white is you; no Bot wears it
 SIZE = int(os.environ.get('FIG_SIZE', '512'))
 SAMPLES = int(os.environ.get('FIG_SAMPLES', '256'))
 
@@ -481,6 +493,8 @@ def render(out, name, build, holdout):
 def layers():
     out = []
     for cid, color, opts, wear, hold_l, hold_r, parts in CHARACTERS:
+        if VIEW == 'avatar' and cid in AVATAR_SKIP:
+            continue
         def dressed(cid=cid, color=color, opts=opts, wear=wear):
             f = new_folk(color, opts)
             f.body()
@@ -510,7 +524,8 @@ def layers():
     for style in ('smile', 'open', 'cat'):
         out.append((f'mouth-{style}', lambda s=style: (lambda f: (f.body(), f.mouth(s), f)[2])(new_folk()), True))
     # Drawn over the body and under the arms: it stands proud of the body, so nothing hides it.
-    out.append(('pin', lambda: (lambda f: (pin(f), f)[1])(new_folk()), False))
+    if VIEW != 'avatar':
+        out.append(('pin', lambda: (lambda f: (pin(f), f)[1])(new_folk()), False))
     return out
 
 

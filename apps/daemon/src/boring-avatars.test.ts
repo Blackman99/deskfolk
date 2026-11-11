@@ -6,11 +6,14 @@ import {
   hashCode,
   DEFAULT_BORING_PALETTES,
   FOLK_FILLS,
+  FOLK_CHARACTERS,
   FOLK_RAISED_ARM_DEG,
   compactFolkAvatar,
   folkAvatar,
   folkHash,
+  folkLayerSrc,
   folkLook,
+  folkPart,
   renderFolk,
 } from "@real-bot/protocol";
 
@@ -123,17 +126,47 @@ describe("folk avatar", () => {
     expect(folkLook(hashCode("Researcher"))).toEqual(folkLook(hashCode("Researcher")));
     expect(FOLK_FILLS).toHaveLength(7);
     const look = folkLook(hashCode("Writer"));
-    expect(Object.keys(look).sort()).toEqual(["accessory", "eyes", "fill", "mirror", "mouth", "wave"]);
+    expect(Object.keys(look).sort()).toEqual(["accessory", "character", "eyes", "fill", "mirror", "mouth", "wave"]);
   });
 
-  test("a raised arm turns about the shoulder; a folk in headphones never raises one", () => {
+  test("a folk keeps the face and the way it faces that its name drew before folks became characters", () => {
+    // Recorded from folkLook before the character trait: the character is the last pick, so these stay.
+    const before: Record<string, Omit<ReturnType<typeof folkLook>, "character">> = {
+      Producer: { fill: "#ebd4db", eyes: "happy", mouth: "smile", accessory: null, wave: false, mirror: false },
+      Reviewer: { fill: "#cfe2ef", eyes: "happy", mouth: "smile", accessory: "antenna", wave: false, mirror: false },
+      Researcher: { fill: "#cbe1e6", eyes: "dot", mouth: "smile", accessory: null, wave: false, mirror: true },
+      制片: { fill: "#d0e3d5", eyes: "wink", mouth: "cat", accessory: "bow", wave: true, mirror: false },
+    };
+    for (const [name, look] of Object.entries(before)) {
+      const { character, wave, ...rest } = folkLook(hashCode(name));
+      const { wave: waved, ...was } = look;
+      expect(rest).toEqual(was);
+      // A raised arm stays raised, but for taro, whose arm would pass through its headphones.
+      expect(wave).toBe(waved && character !== "taro");
+    }
+  });
+
+  test("a folk is one of the map's characters but Mochi, drawn with what it wears and holds", () => {
+    const characters = new Set(names.map((name) => folkLook(hashCode(name)).character));
+    expect([...characters].sort()).toEqual([...FOLK_CHARACTERS].sort());
+    expect(FOLK_CHARACTERS as readonly string[]).not.toContain("mochi");
+    const name = names.find((n) => folkLook(hashCode(n)).character === "caramel")!;
+    const svg = renderFolk(hashCode(name), 80, "");
+    for (const layer of ["caramel-body", "caramel-arm-l", "caramel-arm-r", "caramel-held-r"] as const) expect(svg).toContain(folkLayerSrc(layer));
+    expect(svg).not.toContain(folkLayerSrc("pudding-body"));
+    expect(folkPart({ character: "pudding" }, "antenna")).toBe("pudding-antenna");
+    expect(folkPart({ character: "sesame" }, "front")).toBe("sesame-front");
+    expect(folkPart({ character: "taro" }, "held-l")).toBeNull();
+  });
+
+  test("a raised arm turns about the shoulder with what its hand holds; taro, in headphones, never raises one", () => {
     const raised = names.find((name) => folkLook(hashCode(name)).wave)!;
     const lowered = names.find((name) => !folkLook(hashCode(name)).wave)!;
     expect(renderFolk(hashCode(raised), 80, "")).toContain(`transform="rotate(-${FOLK_RAISED_ARM_DEG} `);
     expect(renderFolk(hashCode(lowered), 80, "")).not.toContain("transform=\"rotate(");
-    const withHeadphones = names.map((name) => folkLook(hashCode(name))).filter((look) => look.accessory === "headphones");
-    expect(withHeadphones.length).toBeGreaterThan(0);
-    expect(withHeadphones.every((look) => !look.wave)).toBe(true);
+    const taro = names.map((name) => folkLook(hashCode(name))).filter((look) => look.character === "taro");
+    expect(taro.length).toBeGreaterThan(0);
+    expect(taro.every((look) => !look.wave)).toBe(true);
   });
 
   test("the name hash reads back from a folk avatar, old or new, and from nothing else", () => {

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { folkLayerSrc, folkLook, generateBoringAvatar, hashCode } from "@real-bot/protocol";
+import { folkLayerSrc, folkLook, folkPart, generateBoringAvatar, hashCode } from "@real-bot/protocol";
 import FolkAvatar from "./FolkAvatar.svelte";
 import { render } from "./test-render.ts";
 
@@ -10,22 +10,34 @@ function mount(name: string, motion?: string) {
 }
 
 test("it stacks the layers its picture is drawn from, plus closed eyes and an open mouth to move", () => {
-  const name = names.find((n) => folkLook(hashCode(n)).accessory)!;
+  const name = names.find((n) => folkLook(hashCode(n)).character === "sakura")!;
   const look = folkLook(hashCode(name));
   const { host, close } = mount(name);
   const srcs = [...host.querySelectorAll("img")].map((img) => img.getAttribute("src"));
   expect(srcs).toEqual([
-    folkLayerSrc("body"),
-    folkLayerSrc("arm-l"),
-    folkLayerSrc("arm-r"),
+    folkLayerSrc("sakura-body"),
+    folkLayerSrc("sakura-arm-l"),
+    folkLayerSrc("sakura-held-l"),
+    folkLayerSrc("sakura-arm-r"),
+    folkLayerSrc("sakura-held-r"),
     folkLayerSrc(`eyes-${look.eyes}`),
     folkLayerSrc("eyes-closed"),
     folkLayerSrc(`mouth-${look.mouth}`),
     folkLayerSrc("mouth-open"),
-    folkLayerSrc(`acc-${look.accessory!}`),
   ]);
   expect(host.querySelector(".folk")?.getAttribute("aria-hidden")).toBe("true");
   close();
+});
+
+test("it is its own character: Pudding's antenna, sesame's glasses over its face, what each hand holds turning with that arm", () => {
+  const pudding = mount(names.find((n) => folkLook(hashCode(n)).character === "pudding")!);
+  expect([...pudding.host.querySelectorAll("img")].map((img) => img.getAttribute("src")).slice(0, 2)).toEqual([folkLayerSrc("pudding-body"), folkLayerSrc("pudding-antenna")]);
+  pudding.close();
+  const sesame = mount(names.find((n) => folkLook(hashCode(n)).character === "sesame")!);
+  const srcs = [...sesame.host.querySelectorAll("img")].map((img) => img.getAttribute("src"));
+  expect(srcs.at(-1)).toBe(folkLayerSrc("sesame-front"));
+  expect(sesame.host.querySelector(".folk-arm-l .folk-held-l")?.getAttribute("src")).toBe(folkLayerSrc("sesame-held-l"));
+  sesame.close();
 });
 
 test("each motion marks the folk, and only thinking, failing and sleeping draw something over it", () => {

@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { folkLook, generateBoringAvatar } from "@real-bot/protocol";
+import { folkAvatar, folkLook, generateBoringAvatar, hashCode } from "@real-bot/protocol";
 import { faceColor } from "./draw.ts";
 import { FIGURE_GEOMETRY, FIGURE_LAYERS } from "./figure-assets.ts";
-import { assignFigures, drawFigure, FIGURE_FOOT, FIGURE_IDS, figureFace, figureTint } from "./figures.ts";
+import { assignFigures, drawFigure, FIGURE_FOOT, FIGURE_IDS, figureFace, figureOfAvatar, figureTint } from "./figures.ts";
 import { rgb } from "./geometry.ts";
 
 test("each character of a map gets its own figure, and the same character always the same one", () => {
@@ -12,6 +12,21 @@ test("each character of a map gets its own figure, and the same character always
   expect(assignFigures(keys)).toEqual(looks);
   // A ninth character reuses a figure rather than having none.
   expect(FIGURE_IDS).toContain(assignFigures([...keys, "bot-i"])[8]!);
+});
+
+test("a Bot whose avatar is a folk is that character on the map, unless one before it took it", () => {
+  const svg = generateBoringAvatar({ name: "Writer" });
+  expect(figureOfAvatar(svg)).toBe(folkLook(hashCode("Writer")).character);
+  expect(figureOfAvatar(folkAvatar(hashCode("Producer"), 80, ""))).toBe(folkLook(hashCode("Producer")).character);
+  expect(figureOfAvatar("data:image/jpeg;base64,AAAA")).toBeNull();
+  expect(figureOfAvatar(null)).toBeNull();
+  const keys = ["bot-a", "bot-b", "bot-c"];
+  const figures = assignFigures(keys, ["taro", "taro", null]);
+  expect(figures[0]).toBe("taro");
+  expect(figures[1]).not.toBe("taro");
+  expect(new Set(figures).size).toBe(3);
+  // Without a preference a character keeps the figure its key gives it.
+  expect(assignFigures(["bot-c"], [null])).toEqual(assignFigures(["bot-c"]));
 });
 
 test("every figure has its layers, stands on its feet in its box, and wears its pin on its body", () => {

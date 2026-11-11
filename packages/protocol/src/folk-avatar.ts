@@ -3,13 +3,28 @@ import { FOLK_GEOMETRY, FOLK_LAYER_EDGE, FOLK_LAYERS, type FolkLayer } from "./f
 /**
  * The round fills the first folk stood on, one per avatar family in tokens.css (`--av-N-*`) but
  * mustard. The folk stands on nothing now; `folkLook` still draws this trait first so that every
- * name keeps the face, accessory and pose it was given then.
+ * name keeps the face and pose it was given then.
  */
 export const FOLK_FILLS = ["#cbe1e6", "#f1d4c8", "#d0e3d5", "#e1d4e7", "#d7dee1", "#cfe2ef", "#ebd4db"] as const;
 
 const EYES = ["dot", "happy", "wink"] as const;
 const MOUTHS = ["smile", "open", "cat"] as const;
+/** What the first folks wore on their heads. A character wears its own now; the pick stays so the picks after it keep their digits. */
 const ACCESSORIES = [null, "sprout", "antenna", "bow", "headphones"] as const;
+
+/**
+ * Who a Bot's folk is: one of the task map's characters (`taskmap/scene/figures.ts`), each in its own
+ * colour, with what it wears and what it holds, and its own way of working. Pudding with its antenna;
+ * taro in headphones with a clipboard; sakura in a beret with palette and brush; matcha in a chef's hat
+ * with a whisk; caramel in a hard hat with a hammer; sesame in glasses with a pencil and a book;
+ * blueberry in a wizard's hat with a wand. Not Mochi, whose white stands for you. A Bot is the same
+ * character on its avatar and on the map.
+ */
+export const FOLK_CHARACTERS = ["pudding", "taro", "sakura", "matcha", "caramel", "sesame", "blueberry"] as const;
+export type FolkCharacter = (typeof FOLK_CHARACTERS)[number];
+
+/** Characters that never rest with an arm up: taro's would pass through its headphones. */
+const KEEPS_ARMS_DOWN: ReadonlySet<FolkCharacter> = new Set(["taro"]);
 
 /** How far a raised arm turns up about its shoulder, counter-clockwise: nearly straight up. */
 export const FOLK_RAISED_ARM_DEG = 160;
@@ -18,10 +33,12 @@ export type FolkLook = {
   fill: (typeof FOLK_FILLS)[number];
   eyes: (typeof EYES)[number];
   mouth: (typeof MOUTHS)[number];
+  /** Drawn no more (the character wears its own); kept so the name's other picks stay where they were. */
   accessory: (typeof ACCESSORIES)[number];
-  /** At rest, its right arm (its left, mirrored) is up. */
+  /** At rest, its right arm (its left, mirrored) is up, with what that hand holds. */
   wave: boolean;
   mirror: boolean;
+  character: FolkCharacter;
 };
 
 /** murmur3's finaliser: spreads a name hash over all 32 bits so short names vary too. */
@@ -48,16 +65,38 @@ export function folkLook(hash: number): FolkLook {
   const mouth = pick(MOUTHS);
   const accessory = pick(ACCESSORIES);
   const mirror = pick([false, true]);
-  // A third of them raise an arm; the raised arm would pass through an ear cup, so not with headphones.
-  const wave = pick([true, false, false]) && accessory !== "headphones";
-  return { fill, eyes, mouth, accessory, wave, mirror };
+  // A third of them raise an arm.
+  const raised = pick([true, false, false]);
+  // Drawn last, so every name kept the face it had before folks became the map's characters.
+  const character = pick(FOLK_CHARACTERS);
+  return { fill, eyes, mouth, accessory, wave: raised && !KEEPS_ARMS_DOWN.has(character), mirror, character };
 }
 
-/** The layers a look stacks, back to front, before any motion. */
+export type FolkPart = "body" | "antenna" | "arm-l" | "held-l" | "arm-r" | "held-r" | "front";
+
+/** A character's own layer for `part`, or null when it has none (only some hold things, wear glasses, have an antenna). */
+export function folkPart(look: Pick<FolkLook, "character">, part: FolkPart): FolkLayer | null {
+  const layer = `${look.character}-${part}`;
+  return layer in FOLK_LAYERS ? (layer as FolkLayer) : null;
+}
+
+/**
+ * The layers a look stacks, back to front, before any motion: the body with what it wears, its
+ * antenna, each arm with what that hand holds, the face, and what sits over the face (glasses).
+ */
 export function folkLayers(look: FolkLook): FolkLayer[] {
-  const layers: FolkLayer[] = ["body", "arm-l", "arm-r", `eyes-${look.eyes}`, `mouth-${look.mouth}`];
-  if (look.accessory) layers.push(`acc-${look.accessory}`);
-  return layers;
+  const parts: (FolkLayer | null)[] = [
+    folkPart(look, "body"),
+    folkPart(look, "antenna"),
+    folkPart(look, "arm-l"),
+    folkPart(look, "held-l"),
+    folkPart(look, "arm-r"),
+    folkPart(look, "held-r"),
+    `eyes-${look.eyes}`,
+    `mouth-${look.mouth}`,
+    folkPart(look, "front"),
+  ];
+  return parts.filter((layer): layer is FolkLayer => layer !== null);
 }
 
 export function folkLayerSrc(layer: FolkLayer): string {
@@ -105,16 +144,18 @@ export function compactFolkAvatar(avatar: string): string {
 }
 
 /**
- * The folk drawn: Pudding, the Deskfolk mascot (the mark's mustard teammate), rendered in 3D and
- * varied by name. It has no fill and fills its square; the mask only carries the name hash.
+ * The folk drawn: Pudding, the Deskfolk mascot (the mark's mustard teammate), or another of the task
+ * map's characters, rendered in 3D and varied by name. It has no fill and fills its square; the mask
+ * only carries the name hash.
  */
 export function renderFolk(hash: number, size: number, titleTag: string): string {
   const look = folkLook(hash);
   const edge = FOLK_LAYER_EDGE;
   const [armX, armY] = FOLK_GEOMETRY.shoulderR;
+  const raisedLayers = new Set([folkPart(look, "arm-r"), folkPart(look, "held-r")]);
   const images = folkLayers(look)
     .map((layer) => {
-      const raised = layer === "arm-r" && look.wave
+      const raised = raisedLayers.has(layer) && look.wave
         ? ` transform="rotate(${-FOLK_RAISED_ARM_DEG} ${armX * edge} ${armY * edge})"`
         : "";
       return `<image href="${folkLayerSrc(layer)}" width="${edge}" height="${edge}"${raised} />`;

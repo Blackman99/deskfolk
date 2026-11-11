@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A Bot's avatar is one of the task map's characters
+
+- Every Bot's default avatar was the same mustard Pudding, with only its face and a sprout, antenna, bow or headphones changing, so a roster of Bots looked alike. A Bot's avatar is now one of the task map's characters, chosen by its name: Pudding with its antenna, taro in headphones with a clipboard, sakura in a beret with palette and brush, matcha in a chef's hat with a whisk, caramel in a hard hat with a hammer, sesame in glasses with a pencil and a book, blueberry in a wizard's hat with a wand (Mochi's white stays yours). Each has its own colour, what it wears and what it holds; a raised hand raises what it holds. An existing Bot keeps its face and the way it faces, but most become another character, and the old sprout, bow and headphones are gone. On a task map a Bot is the same character as on its avatar, unless a Bot before it on that map already is.
+
 ### Out of Claude usage, work goes on on your other account, or picks up at the reset
 
 - A Bot on Claude Agent whose account hits its five-hour or weekly limit no longer stops with 「这一轮没写完：Claude 的用量额度用完了」 while another Claude account you listed in Settings › Agents, signed in on a Claude plan, has room (one billed per token is never moved to): the same turn goes on there in a new session, told what was already done, with no line in the conversation. The next turns start on that account until the first one resets; the Bot's own account setting is unchanged. Built-in calls on Claude (line reading, the organizer, …) switch the same way.

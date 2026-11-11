@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { FOLK_GEOMETRY, FOLK_RAISED_ARM_DEG, folkHash, folkLayerSrc, folkLook } from '@real-bot/protocol';
+	import { FOLK_GEOMETRY, FOLK_RAISED_ARM_DEG, folkHash, folkLayerSrc, folkLook, folkPart, type FolkPart } from '@real-bot/protocol';
 	import type { FolkMotion } from './folk-motion.ts';
 
 	/**
@@ -17,6 +17,10 @@
 
 	const hash = $derived(folkHash(avatar) ?? 0);
 	const look = $derived(folkLook(hash));
+	const part = (name: FolkPart) => {
+		const layer = folkPart(look, name);
+		return layer ? folkLayerSrc(layer) : null;
+	};
 	// Folks in one list blink out of step.
 	const blink = $derived(`${-(hash % 52) / 10}s`);
 	const origin = ([x, y]: readonly [number, number]) => `${x * 100}% ${y * 100}%`;
@@ -37,15 +41,29 @@
 	<span class="folk-shadow"></span>
 	<span class="folk-flip">
 		<span class="folk-fig">
-			<img src={folkLayerSrc('body')} alt="" />
-			<img class="folk-arm-l" src={folkLayerSrc('arm-l')} alt="" />
-			<img class="folk-arm-r" src={folkLayerSrc('arm-r')} alt="" />
+			<img src={part('body')} alt="" />
+			{#if part('antenna')}
+				<img class="folk-antenna" src={part('antenna')} alt="" />
+			{/if}
+			<!-- Each arm turns about its shoulder with what its hand holds. -->
+			<span class="folk-limb folk-arm-l">
+				<img src={part('arm-l')} alt="" />
+				{#if part('held-l')}
+					<img class="folk-held-l" src={part('held-l')} alt="" />
+				{/if}
+			</span>
+			<span class="folk-limb folk-arm-r">
+				<img src={part('arm-r')} alt="" />
+				{#if part('held-r')}
+					<img class="folk-held-r" src={part('held-r')} alt="" />
+				{/if}
+			</span>
 			<img class="folk-eyes" src={folkLayerSrc(`eyes-${look.eyes}`)} alt="" />
 			<img class="folk-eyes-closed" src={folkLayerSrc('eyes-closed')} alt="" />
 			<img class="folk-mouth" src={folkLayerSrc(`mouth-${look.mouth}`)} alt="" />
 			<img class="folk-mouth folk-talk" src={folkLayerSrc('mouth-open')} alt="" />
-			{#if look.accessory}
-				<img src={folkLayerSrc(`acc-${look.accessory}`)} alt="" />
+			{#if part('front')}
+				<img class="folk-front" src={part('front')} alt="" />
 			{/if}
 		</span>
 	</span>
@@ -57,7 +75,7 @@
 		</svg>
 	{:else if motion === 'failed'}
 		<svg class="folk-mark" viewBox="0 0 100 100">
-			<path class="folk-sweat" d="M80 26C76 33 76 37 80 37C84 37 84 33 80 26Z" />
+			<path class="folk-sweat" d="M76 40C72 47 72 51 76 51C80 51 80 47 76 40Z" />
 		</svg>
 	{:else if motion === 'held'}
 		<svg class="folk-mark" viewBox="0 0 100 100">
@@ -77,7 +95,8 @@
 	}
 
 	.folk-flip,
-	.folk-fig {
+	.folk-fig,
+	.folk-limb {
 		position: absolute;
 		inset: 0;
 	}
@@ -115,8 +134,8 @@
 
 	.folk-shadow {
 		position: absolute;
-		left: 18%;
-		right: 18%;
+		left: 27%;
+		right: 27%;
 		bottom: -2%;
 		height: 9%;
 		border-radius: 50%;
@@ -168,7 +187,7 @@
 
 	.is-running .folk-eyes,
 	.is-running .folk-eyes-closed {
-		translate: 0 -3.5%;
+		translate: 0 -2.5%;
 	}
 
 	.folk-dot {
@@ -283,7 +302,7 @@
 
 	.is-failed .folk-eyes,
 	.is-failed .folk-eyes-closed {
-		translate: 0 1.2%;
+		translate: 0 0.9%;
 	}
 
 	.folk-sweat {

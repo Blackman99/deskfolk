@@ -28,6 +28,12 @@ export function figureFace(avatar: string | null | undefined): FigureFace {
   return { eyes, mouth };
 }
 
+/** The character a folk avatar is, so a Bot is the same one on the map as on its avatar; null for any other avatar or none. */
+export function figureOfAvatar(avatar: string | null | undefined): FigureId | null {
+  const hash = folkHash(avatar);
+  return hash === null ? null : folkLook(hash).character;
+}
+
 /**
  * Where a figure stands in its actor box (58 × 64; seen from above, the front of its feet is ~10 px lower),
  * and the side of the square its picture is drawn in.
@@ -171,11 +177,19 @@ function hash(s: string): number {
 /**
  * Each character's figure, by its key (a Bot's id, a subagent's): the same character always gets the
  * same one on a map of the same company, and no two characters of one map share one while there are
- * any left.
+ * any left. A character with a `preferred` figure (the one its folk avatar is) gets that one unless an
+ * earlier character already has it.
  */
-export function assignFigures(keys: readonly string[]): FigureId[] {
+export function assignFigures(keys: readonly string[], preferred: readonly (FigureId | null)[] = []): FigureId[] {
   const taken = new Set<FigureId>();
-  return keys.map((key) => {
+  const wanted = keys.map((_, i) => {
+    const figure = preferred[i] ?? null;
+    if (figure === null || taken.has(figure)) return null;
+    taken.add(figure);
+    return figure;
+  });
+  return keys.map((key, i) => {
+    if (wanted[i]) return wanted[i]!;
     let s = hash(key) % FIGURE_IDS.length;
     for (let i = 0; i < FIGURE_IDS.length && taken.has(FIGURE_IDS[s]!); i++) s = (s + 1) % FIGURE_IDS.length;
     if (taken.size >= FIGURE_IDS.length) taken.clear();

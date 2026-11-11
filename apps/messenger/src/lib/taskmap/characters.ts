@@ -4,7 +4,7 @@ import type { Copy } from "../copy.ts";
 import { activeMembers, classifySession } from "../sidebar/session-groups.ts";
 import { agentSource, endpointSource, runnerSource, type ModelSource } from "../model-source.ts";
 import type { MapData } from "./map-data.ts";
-import { assignFigures, figureFace, type FigureFace, type FigureId } from "./scene/figures.ts";
+import { assignFigures, figureFace, figureOfAvatar, type FigureFace, type FigureId } from "./scene/figures.ts";
 
 /**
  * How each character of a map looks: its name, its figure (one no other character of the map has),
@@ -25,8 +25,12 @@ export function botSource(bot: Pick<Bot, "runner" | "provider_id" | "name">, pro
 
 /** A Bot's avatar as an image, as the sidebar shows it (its own, or the one its name gives), and the face it lends a figure. */
 function avatarOf(avatar: string | null | undefined, name: string): { avatar: string | null; face: FigureFace } {
-  const shown = avatarSrc(avatar) ? avatar : generateBoringAvatar({ name });
+  const shown = shownAvatar(avatar, name);
   return { avatar: avatarSrc(shown), face: figureFace(shown) };
+}
+
+function shownAvatar(avatar: string | null | undefined, name: string): string {
+  return avatarSrc(avatar) ? avatar! : generateBoringAvatar({ name });
 }
 
 /**
@@ -38,7 +42,14 @@ export function characterLooks(
   data: MapData,
   input: { agentName: string; bots: readonly Bot[]; providers: readonly Provider[]; defaultProviderId: string | null; t: Copy },
 ): CharacterLook[] {
-  const figures = assignFigures(data.characters.map((c) => c.key));
+  // A Bot whose avatar is a folk is that same character on the map, while no one before it is.
+  const preferred = data.source.kind === "project"
+    ? []
+    : data.characters.map((c) => {
+        const bot = input.bots.find((b) => b.id === c.key);
+        return figureOfAvatar(bot ? shownAvatar(bot.avatar, bot.name) : shownAvatar(null, c.key));
+      });
+  const figures = assignFigures(data.characters.map((c) => c.key), preferred);
   if (data.source.kind === "project") {
     const source = agentSource(data.source.agent, input.agentName);
     return data.characters.map((c, i) => ({ name: i === 0 ? input.agentName : (c.description ?? c.key), figure: figures[i]!, face: figureFace(null), avatar: null, source }));
