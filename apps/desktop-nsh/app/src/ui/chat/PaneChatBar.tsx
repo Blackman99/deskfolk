@@ -19,7 +19,7 @@ import { tip } from "../tip";
 import { BotElsewhere } from "./BotElsewhere";
 import { pulseMotion, rosterLabelsOf, statusFill, statusInk, statusLabelsOf } from "./labels";
 import { settled } from "../workbench/drag-settle";
-import { onGlassCard } from "../glass";
+import { onGlassCard, SEAM_BORDER } from "../glass";
 
 /** One of the tab's actions. The workbench owns no icons: the host names one of the app's. */
 export type PaneBarAction = {
@@ -99,7 +99,7 @@ export function PaneChatBar(props: {
         testID="pane-chat-bar"
         role="header"
         onLayout={(e) => width.set(e.bounds.size.width)}
-        class={`flex-row items-center shrink-0 gap-[10px] min-h-[52px] pl-[12px] pr-[8px] py-[6px] ${glassCard() ? "" : "bg-pane"} border-b border-line-subtle`}
+        class={`flex-row items-center shrink-0 gap-[10px] min-h-[52px] pl-[12px] pr-[8px] py-[6px] ${glassCard() ? "" : "bg-pane"} border-b ${SEAM_BORDER}`}
       >
         <View
           role="button"

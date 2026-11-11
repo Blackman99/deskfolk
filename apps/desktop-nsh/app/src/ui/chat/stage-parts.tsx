@@ -12,6 +12,7 @@ import type { TranscriptItem } from "../../m/chat/transcript.ts";
 import type { TranscriptStage } from "../../m/chat/transcript-stage.ts";
 import { copy, runtime } from "../../runtime";
 import { Button } from "../Button";
+import { SEAM_LINE } from "../glass";
 import { DelegationRecords } from "./DelegationRecords";
 import { ReplyingIndicator } from "./ReplyingIndicator";
 import { TranscriptApproval } from "./TranscriptApproval";
@@ -82,11 +83,16 @@ export function HistoryLoading() {
   );
 }
 
+/**
+ * The day, with a line either side of it. The lines stop short of the words rather than run under a
+ * patch of `pane`: on a glass card that patch was a dark box on the glass.
+ */
 function DateDivider(props: { at: string; locale: "en" | "zh" }) {
   return (
-    <View testID="date-divider" class="relative items-center justify-center mt-6 mb-2 w-full">
-      <View class="absolute left-0 right-0 h-[1px] bg-line-subtle" />
-      <Text class="px-3 bg-pane text-[11px] font-semibold text-ink-muted">{formatDateDivider(props.at, props.locale)}</Text>
+    <View testID="date-divider" class="flex-row items-center gap-3 mt-6 mb-2 w-full">
+      <View class={`flex-1 h-[1px] ${SEAM_LINE}`} />
+      <Text class="text-[11px] font-semibold text-ink-muted">{formatDateDivider(props.at, props.locale)}</Text>
+      <View class={`flex-1 h-[1px] ${SEAM_LINE}`} />
     </View>
   );
 }

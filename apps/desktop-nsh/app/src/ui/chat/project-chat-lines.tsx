@@ -17,6 +17,7 @@ import { formatDateDivider, formatMessageTime } from "../../m/chat/chat-view.ts"
 import { copy, runtime } from "../../runtime";
 import { AnnotationCards } from "../annotations/AnnotationCards";
 import { CommandActivity } from "./CommandActivity";
+import { SEAM_LINE } from "../glass";
 import { MarkdownBody } from "../MarkdownBody";
 import { MessageAttachments } from "./MessageAttachments";
 import { ProjectSubagentEntry } from "./ProjectSubagentEntry";
@@ -31,11 +32,13 @@ export type ProjectRow =
   | { id: "tasks"; kind: "tasks" }
   | { id: "working"; kind: "working" };
 
+/** The day, a line either side, stopping short of the words (no patch of `pane` under them: on glass it was a box). */
 function DayLine(props: { at: string; locale: "en" | "zh" }) {
   return (
-    <View testID="project-day" class="relative items-center justify-center mt-[10px] w-full">
-      <View class="absolute left-0 right-0 h-[1px] bg-line-subtle" />
-      <Text class="select-none px-3 bg-pane text-[11px] font-semibold text-ink-muted">{formatDateDivider(props.at, props.locale)}</Text>
+    <View testID="project-day" class="flex-row items-center gap-3 mt-[10px] w-full">
+      <View class={`flex-1 h-[1px] ${SEAM_LINE}`} />
+      <Text class="select-none text-[11px] font-semibold text-ink-muted">{formatDateDivider(props.at, props.locale)}</Text>
+      <View class={`flex-1 h-[1px] ${SEAM_LINE}`} />
     </View>
   );
 }
