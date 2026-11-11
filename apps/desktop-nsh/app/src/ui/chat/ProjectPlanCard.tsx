@@ -88,7 +88,9 @@ export function ProjectPlanCard(props: {
           <View class={isFull ? "p-[24px]" : "px-[16px] py-[12px]"}>
             <View style={isFull ? { maxWidth: READING_WIDTH, width: "100%", alignSelf: "center" } : undefined}>
               <If when={hasPlan()} else={<Text testID="plan-empty" class="text-[13px] text-ink-muted">{t().project.planEmpty}</Text>}>
-                <MarkdownBody testID="plan-body" source={props.approval.summary} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={openPath} />
+                {/* In the conversation it is part of the transcript's selection, which leaves a right click
+                    to the pane's menu (`pane-menu.ts`); over the whole window it is an area of its own. */}
+                <MarkdownBody testID="plan-body" selectable={isFull} source={props.approval.summary} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={openPath} />
               </If>
             </View>
           </View>

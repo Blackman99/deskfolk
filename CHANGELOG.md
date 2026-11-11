@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A right click in a project session opens the pane's menu again
+
+- In the native (NSH) desktop build, a right click anywhere in a project session's conversation showed only Copy and Select All, never the pane's menu (split, float, close). The conversation is one selection, so a drag can run from one line into the next, and the native toolkit gives a right click inside a selection its own text menu before the pane hears it. A right click on the conversation, words included, now opens the pane's menu, as in the Tauri app; selecting across lines and ⌘C work as before. Copy is no longer in the right click there: copy with ⌘C, as in the Tauri app. The Tauri app is unchanged.
+
 ### A reply's commands show as soon as you open them
 
 - In the native (NSH) desktop build, opening a reply's "1 command" line in a conversation showed an empty box, and the commands appeared only when something else in the window moved: streamed text, a hover, the clock. Nothing was loading; the list was held back by the native toolkit and not looked at again. The commands now show at once, and a long list opens at its latest command, as it does in the Tauri app. The Tauri app is unchanged.

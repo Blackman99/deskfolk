@@ -34,6 +34,7 @@ import { ProjectWorking } from "./project-chat-working";
 import { trackReading } from "./stage-reading";
 import { createStageScroll } from "./stage-scroll";
 import { settled } from "../workbench/drag-settle";
+import { PaneMenu } from "../workbench/pane-menu";
 import { onGlassCard } from "../glass";
 
 export function ProjectChat(props: {
@@ -44,6 +45,8 @@ export function ProjectChat(props: {
   const t = () => copy();
   /** On a glass card (`glass.ts`) this leaves its ground to the card, as `content-glass.css` does. */
   const glassCard = onGlassCard();
+  /** In a pane, a right click on the transcript opens the pane's menu (`pane-menu.ts`); elsewhere NSH's Copy menu. */
+  const paneMenu = PaneMenu();
   const selected = () => props.selected;
   const state = createProjectState(selected, (...args) => props.onOpenArtifact(...args));
   const view = state.view;
@@ -117,8 +120,9 @@ export function ProjectChat(props: {
     >
       {/* One selection across the lines, as the messenger's page is: a drag runs from one line into the
           next (each Markdown body alone stopped it at its end). On this view: a List takes no
-          `selectable` of its own. */}
-      <View class="flex-1 min-h-0" selectable>
+          `selectable` of its own. A selection area stops a right click before the pane hears it, so
+          this view opens the pane's menu itself, and the lines in it are no areas of their own. */}
+      <View class="flex-1 min-h-0" selectable onContextMenu={paneMenu ? (e) => paneMenu(e.pagePosition) : undefined}>
         <If when={empty()}>
           <Text testID="project-empty" class="my-10 text-center text-[13px] text-ink-muted">
             {t().project.empty(state.agentName())}

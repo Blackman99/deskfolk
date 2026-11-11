@@ -50,5 +50,6 @@ export function ProjectTaskSteps(props: {
     };
   });
 
-  return <TurnStepList id={props.id} title={props.title} rows={props.rows} outputOf={(task) => outputs()[task] || null} onClose={props.onClose} />;
+  // In the transcript's one selection (`ProjectChat`), so a right click reaches the pane's menu.
+  return <TurnStepList id={props.id} title={props.title} rows={props.rows} outputOf={(task) => outputs()[task] || null} selectable={false} onClose={props.onClose} />;
 }

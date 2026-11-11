@@ -26,6 +26,7 @@ import { liveActiveTab, liveTab } from "./live-tab";
 /** The one body every conversation of a pane is drawn in (`bodyKeys`). */
 const CHAT_BODY = "\u0000chat";
 import { PaneContextMenu } from "./PaneContextMenu";
+import { PaneMenu, type OpenPaneMenu } from "./pane-menu";
 import type { DragPhase, DragPoint, LeafRender, MenuRender, RowRegistry, TabAction, TabBody, TabClosing, TabLabel, WorkbenchTab } from "./types";
 
 export type WorkbenchLeafProps = {
@@ -131,6 +132,9 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
     return [leaf().tabs.find((tab) => tab.id === id)?.kind === "chat" ? CHAT_BODY : id];
   };
 
+  /** For a body whose selection area would stop a right click before it reaches this pane (`pane-menu.ts`). */
+  const openPaneMenu: OpenPaneMenu = (at) => props.onPaneMenu?.({ leafId: leaf().id, tabId: null, x: at.x, y: at.y });
+
   const bodyClass = () => {
     if (props.floating || narrow()) return "bg-pane";
     const ground = glassShare() === null ? "bg-pane" : GLASS_EDGE;
@@ -227,15 +231,17 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
         }}
       >
         <InPaneBody.Provider value={true}>
-          <Each of={bodyKeys()} key={(id) => id}>
-            {(id) => {
-              // Called once per body, untracked: read inside the insert, `leaf()` made every layout commit
-              // (a new leaf object each time) build the pane's content again, and that mount committed
-              // the layout again — a pane dragged in from the sidebar never stopped remounting.
-              const body = untracked(() => props.tabBody(id() === CHAT_BODY ? liveActiveTab(leaf) : liveTab(leaf, id()), leaf().id));
-              return <View class="flex-1 min-h-0">{body}</View>;
-            }}
-          </Each>
+          <PaneMenu.Provider value={openPaneMenu}>
+            <Each of={bodyKeys()} key={(id) => id}>
+              {(id) => {
+                // Called once per body, untracked: read inside the insert, `leaf()` made every layout commit
+                // (a new leaf object each time) build the pane's content again, and that mount committed
+                // the layout again — a pane dragged in from the sidebar never stopped remounting.
+                const body = untracked(() => props.tabBody(id() === CHAT_BODY ? liveActiveTab(leaf) : liveTab(leaf, id()), leaf().id));
+                return <View class="flex-1 min-h-0">{body}</View>;
+              }}
+            </Each>
+          </PaneMenu.Provider>
         </InPaneBody.Provider>
         <If when={activeIds().length === 0}>
           <EmptyPane

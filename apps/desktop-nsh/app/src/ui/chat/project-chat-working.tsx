@@ -102,6 +102,7 @@ export function ProjectWorking(props: { state: ProjectState }) {
               {/* The whole line wide, as a finished line's (`ProjectLine`): fitted to its text it was cut short. */}
               <MarkdownBody
                 class="self-stretch"
+                selectable={false}
                 source={live().partial ?? ""}
                 options={{ streaming: true }}
                 copyLabel={t().chat.copyCode}
@@ -153,7 +154,8 @@ export function ProjectWorking(props: { state: ProjectState }) {
                       <Text class="text-[12px] text-ink-secondary">{`· ${s().agentName()}`}</Text>
                     </View>
                     <View class="px-4 pt-3 pb-[14px] gap-[10px]">
-                      <View selectable>
+                      {/* In the transcript's selection; an area of its own would take the right click (`pane-menu.ts`). */}
+                      <View>
                         <Text testID="project-approval-summary" class="font-mono text-[12px] leading-[1.5] text-ink">{approval().summary}</Text>
                       </View>
                       <View class="flex-row flex-wrap gap-2">

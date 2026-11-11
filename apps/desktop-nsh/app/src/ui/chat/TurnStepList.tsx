@@ -13,6 +13,11 @@ export function TurnStepList(props: {
   rows: StepRow[];
   /** What a command has printed, while this conversation is the one watching it. */
   outputOf?: (callId: string) => string | null;
+  /**
+   * Its text is a selection area of its own (default true). False inside a transcript that is one
+   * area: it joins it, and a right click goes to that area's `onContextMenu` (`workbench/pane-menu.ts`).
+   */
+  selectable?: boolean;
   onClose: () => void;
 }) {
   let list: ScrollRef | undefined;
@@ -25,7 +30,7 @@ export function TurnStepList(props: {
   return (
     <View
       testID={props.id ?? "turn-steps"}
-      selectable
+      selectable={props.selectable !== false}
       accessibilityLabel={props.title}
       class="w-full max-w-[560px] mt-[6px] px-[10px] pt-[8px] pb-[9px] bg-pane border border-line rounded-(--radius-lg)"
       style={{ boxShadow: shadow("sm") }}

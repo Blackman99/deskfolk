@@ -8,7 +8,9 @@
  * the right end of the command card's line when it ran commands (the messenger's `.command-beside`).
  * Not as the messenger, whose agent line without commands has its time under it on the left. The
  * transcript is one selection (`ProjectChat`), and the times, the day lines and the earlier line
- * stay out of it, so a drag runs from one line into the next and copies the words alone.
+ * stay out of it, so a drag runs from one line into the next and copies the words alone. No line is a
+ * selection area of its own (no `selectable` view, Markdown with `selectable={false}`): the nearest
+ * area takes a right click before the pane hears it (`pane-menu.ts`).
  */
 import { Text, View } from "nsh";
 import type { Annotation, Message } from "@real-bot/protocol";
@@ -85,7 +87,8 @@ export function ProjectLine(props: {
         <View testID="project-line-you" class="items-end w-full">
           <View class="max-w-[88%] px-[14px] py-[10px] rounded-[16px] bg-you gap-2">
             <If when={msg().body}>
-              <View selectable>
+              {/* In the transcript's selection, as no area of its own: an area here would take the right click (`pane-menu.ts`). */}
+              <View>
                 <Text testID="project-words" class="text-[14px] text-you-foreground">{msg().body}</Text>
               </View>
             </If>
@@ -118,7 +121,7 @@ export function ProjectLine(props: {
           {/* The whole line wide, as a wrapping paragraph is in the messenger. Left to fit its text, NSH
               narrowed it to its widest line yet kept the heights measured at the full width: a paragraph
               that wrapped once more than measured ran under what followed it, and its last line was cut. */}
-          <MarkdownBody class="self-stretch" source={msg().body} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={(path) => s().openCited(path, msg().id)} />
+          <MarkdownBody class="self-stretch" selectable={false} source={msg().body} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={(path) => s().openCited(path, msg().id)} />
           {/* The time at the right end: of its own line, or of the command card's. */}
           <If
             when={kept().length > 0}

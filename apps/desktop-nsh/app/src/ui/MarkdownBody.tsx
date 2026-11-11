@@ -55,7 +55,11 @@ export function MarkdownBody(props: {
   /** Files shown elsewhere (the message's cards): a line that is only one of them is left out. */
   hideStandaloneArtifactLinks?: string[];
   onOpenProfile?: (botId: string) => void;
-  /** Text can be selected and copied (default true). */
+  /**
+   * Text can be selected and copied (default true): the text is a selection area of its own. False
+   * inside an outer `<View selectable>` still selects, as part of that area, and leaves a right click
+   * to the area's `onContextMenu` rather than NSH's Copy menu (`workbench/pane-menu.ts`).
+   */
   selectable?: boolean;
   testID?: string;
   children?: JSX.Element;
