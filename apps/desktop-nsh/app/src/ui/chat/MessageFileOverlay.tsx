@@ -19,6 +19,7 @@ import { IconButton } from "../IconButton";
 import { narrowWindow } from "../Modal";
 import { FileIcon } from "../overlays/FileIcon";
 import { shadow } from "../styles";
+import { WheelLayer } from "../../platform/wheel-layer";
 
 export type FileOverlayContext = {
   attachment: () => Attachment | null;
@@ -86,39 +87,41 @@ export function MessageFileOverlay(props: {
       onCancel={close}
       style={{ width: windowSize().width, height: windowSize().height }}
     >
-      <View
-        testID="msg-file-overlay"
-        onPress={() => close()}
-        class={`flex-1 items-center justify-center bg-bg/90 ${phone() ? "p-0" : "p-6"}`}
-      >
+      <WheelLayer>
         <View
-          role="group"
-          testID="msg-file-frame"
-          accessibilityLabel={name()}
-          // A press inside the frame is not a press on the scrim.
-          onPress={() => {}}
-          focusable={false}
-          class={`overflow-hidden bg-pane ${phone() ? "w-full h-full" : "border border-line rounded-(--radius-lg)"}`}
-          style={
-            phone()
-              ? undefined
-              : { width: Math.min(1100, windowSize().width - 48), height: Math.min(windowSize().height * 0.88, windowSize().height - 48), boxShadow: shadow("lg") }
-          }
+          testID="msg-file-overlay"
+          onPress={() => close()}
+          class={`flex-1 items-center justify-center bg-bg/90 ${phone() ? "p-0" : "p-6"}`}
         >
-          <If when={!phone()}>
-            <View class="flex-row items-center gap-2 min-h-[48px] pl-4 pr-2 border-b border-line shrink-0">
-              <FileIcon icon={fileIconFor(shownPath(), { isDir: shownAttachment()?.is_dir === true })} size={16} />
-              <Text testID="msg-file-name" class="flex-1 min-w-0 text-[13px] font-semibold text-ink line-clamp-1">
-                {name()}
-              </Text>
-              <IconButton icon="x" size="md" label={copy().common.close} testID="msg-file-close" class="rounded-full" onPress={close} />
+          <View
+            role="group"
+            testID="msg-file-frame"
+            accessibilityLabel={name()}
+            // A press inside the frame is not a press on the scrim.
+            onPress={() => {}}
+            focusable={false}
+            class={`overflow-hidden bg-pane ${phone() ? "w-full h-full" : "border border-line rounded-(--radius-lg)"}`}
+            style={
+              phone()
+                ? undefined
+                : { width: Math.min(1100, windowSize().width - 48), height: Math.min(windowSize().height * 0.88, windowSize().height - 48), boxShadow: shadow("lg") }
+            }
+          >
+            <If when={!phone()}>
+              <View class="flex-row items-center gap-2 min-h-[48px] pl-4 pr-2 border-b border-line shrink-0">
+                <FileIcon icon={fileIconFor(shownPath(), { isDir: shownAttachment()?.is_dir === true })} size={16} />
+                <Text testID="msg-file-name" class="flex-1 min-w-0 text-[13px] font-semibold text-ink line-clamp-1">
+                  {name()}
+                </Text>
+                <IconButton icon="x" size="md" label={copy().common.close} testID="msg-file-close" class="rounded-full" onPress={close} />
+              </View>
+            </If>
+            <View testID="msg-file-body" class="flex-1 min-h-0">
+              {props.children?.(ctx)}
             </View>
-          </If>
-          <View testID="msg-file-body" class="flex-1 min-h-0">
-            {props.children?.(ctx)}
           </View>
         </View>
-      </View>
+      </WheelLayer>
     </Overlay>
   );
 }

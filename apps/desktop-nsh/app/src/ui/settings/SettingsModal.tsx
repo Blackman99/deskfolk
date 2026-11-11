@@ -56,6 +56,7 @@ import { PromptsSettings, type PromptsSettingsApi } from "./PromptsSettings";
 import { RemoteTab } from "./RemoteTab";
 import { SettingsNav, type SettingsTab } from "./SettingsNav";
 import { widthAtMost } from "../../platform/viewport";
+import { WheelLayer } from "../../platform/wheel-layer";
 
 /** What the shell calls on the window: its Back, and the endpoint editor's. */
 export type SettingsModalHandle = {
@@ -618,13 +619,15 @@ export function SettingsModal(props: {
             boxShadow: phone() ? undefined : "0 24px 56px -12px rgba(18, 28, 32, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)",
           }}
         >
-          <View testID="settings-modal" role="group" accessibilityLabel={t().settings.title} class="flex-1 min-h-0 flex-row">
-            <If when={phone()} else={<>{nav()}{main()}</>}>
-              <If when={mobileDetail()} else={nav()}>
-                {main()}
+          <WheelLayer>
+            <View testID="settings-modal" role="group" accessibilityLabel={t().settings.title} class="flex-1 min-h-0 flex-row">
+              <If when={phone()} else={<>{nav()}{main()}</>}>
+                <If when={mobileDetail()} else={nav()}>
+                  {main()}
+                </If>
               </If>
-            </If>
-          </View>
+            </View>
+          </WheelLayer>
         </Dialog>
       </If>
       <ProviderEditorFlyout

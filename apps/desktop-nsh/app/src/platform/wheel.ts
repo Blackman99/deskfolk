@@ -13,8 +13,14 @@
  *   onWheel(() => boardRef, (e, at) => { if (e.ctrl || e.meta) zoomAround(at, Math.exp(-e.dy / 100)); else pan(e.dx, e.dy); });
  *
  * Call it while a component renders: the view stops hearing when the component goes.
+ *
+ * A popup over the window (a dialog, a full-window overlay) takes the wheel from everything under
+ * it, as a scrim does in the browser: the shell forwards wheels over a scrim too, and without this
+ * a wheel there scrolled the terminal, the tab row or the board beneath. Each such popup opens a
+ * layer (`WheelLayer` in `wheel-layer.tsx`, or `openWheelLayer` in its own body), and only the
+ * views of the newest open layer hear the wheel; with none open, the window's own views do.
  */
-import { cleanup, host, type ViewRef } from "nsh";
+import { cleanup, context, host, type ViewRef } from "nsh";
 
 export type ShellWheel = {
   x: number;
@@ -36,7 +42,34 @@ export type ShellWheel = {
 export type WheelHandler = (event: ShellWheel, at: { x: number; y: number }) => void;
 
 type Rect = { x: number; y: number; width: number; height: number };
-type Region = { view: () => ViewRef | null | undefined; handler: WheelHandler; rect: Rect | null };
+type Region = { view: () => ViewRef | null | undefined; handler: WheelHandler; rect: Rect | null; layer: number };
+
+/** The popup layer a component renders in: 0 the window itself, else the id `openWheelLayer` gave the popup around it. */
+export const WheelLayerContext = context(0);
+
+/** The open layers' ids, oldest first: the newest is drawn on top (NSH presents popups in order). */
+const openLayers: number[] = [];
+let lastLayer = 0;
+
+/**
+ * Opens a popup layer for the calling component's life and returns its id. Provide it as
+ * `WheelLayerContext` around the popup's content (or pass it to `onWheel`) so the views in the
+ * popup keep hearing the wheel while nothing under it does.
+ */
+export function openWheelLayer(): number {
+  const id = ++lastLayer;
+  openLayers.push(id);
+  cleanup(() => {
+    const at = openLayers.indexOf(id);
+    if (at >= 0) openLayers.splice(at, 1);
+  });
+  return id;
+}
+
+/** The newest open layer, the one whose views hear the wheel (0: no popup is open). */
+export function topWheelLayer(): number {
+  return openLayers.at(-1) ?? 0;
+}
 
 const regions = new Set<Region>();
 let measuredAt = 0;
@@ -52,11 +85,15 @@ async function measureAll(): Promise<void> {
   );
 }
 
-/** The innermost region under `(x, y)`: the smallest that contains it. */
-export function regionAt<T extends { rect: Rect | null }>(all: Iterable<T>, x: number, y: number): T | null {
+/**
+ * The innermost region under `(x, y)`: the smallest that contains it, among those of layer `top`
+ * (what a popup covers hears nothing, wherever the pointer is).
+ */
+export function regionAt<T extends { rect: Rect | null; layer?: number }>(all: Iterable<T>, x: number, y: number, top = 0): T | null {
   let best: T | null = null;
   let area = Infinity;
   for (const region of all) {
+    if ((region.layer ?? 0) !== top) continue;
     const r = region.rect;
     if (!r || x < r.x || y < r.y || x >= r.x + r.width || y >= r.y + r.height) continue;
     const a = r.width * r.height;
@@ -75,7 +112,7 @@ async function dispatch(event: ShellWheel): Promise<void> {
     measuredAt = now;
     await measureAll();
   }
-  const region = regionAt(regions, event.x, event.y);
+  const region = regionAt(regions, event.x, event.y, topWheelLayer());
   if (!region?.rect) return;
   region.handler(event, { x: event.x - region.rect.x, y: event.y - region.rect.y });
 }
@@ -86,9 +123,12 @@ export function installWheel(): void {
   host.on("shell.wheel", (data) => void dispatch(data as unknown as ShellWheel));
 }
 
-/** `view`'s wheel events go to `handler` while the calling component lives. */
-export function onWheel(view: () => ViewRef | null | undefined, handler: WheelHandler): void {
-  const region: Region = { view, handler, rect: null };
+/**
+ * `view`'s wheel events go to `handler` while the calling component lives, and while no popup
+ * newer than its `layer` (the one it renders in, by default) is open.
+ */
+export function onWheel(view: () => ViewRef | null | undefined, handler: WheelHandler, layer = WheelLayerContext()): void {
+  const region: Region = { view, handler, rect: null, layer };
   regions.add(region);
   measuredAt = 0;
   cleanup(() => regions.delete(region));

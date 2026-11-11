@@ -17,6 +17,7 @@ import { Icon } from "../Icon";
 import { IconButton } from "../IconButton";
 import { MarkdownBody } from "../MarkdownBody";
 import { shadow } from "../styles";
+import { WheelLayer } from "../../platform/wheel-layer";
 
 const READING_WIDTH = 760;
 
@@ -140,9 +141,11 @@ export function ProjectPlanCard(props: {
           class="bg-pane overflow-hidden"
           style={{ width: windowSize().width, height: windowSize().height }}
         >
-          <View testID="plan-card-full" class="flex-1 bg-pane">
-            {card(true)}
-          </View>
+          <WheelLayer>
+            <View testID="plan-card-full" class="flex-1 bg-pane">
+              {card(true)}
+            </View>
+          </WheelLayer>
         </Dialog>
       </If>
     </>

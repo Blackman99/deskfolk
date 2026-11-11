@@ -33,6 +33,7 @@ import {
   type OfficeModel,
   type OfficeSource,
 } from "./office-model";
+import { WheelLayer } from "../../platform/wheel-layer";
 
 type Phase = "loading" | "ready" | "error" | "limit";
 
@@ -227,7 +228,9 @@ export function OfficeViewer(props: {
           class="m-auto bg-pane overflow-hidden"
           style={{ width: windowSize().width, height: windowSize().height }}
         >
-          <View testID="office-fullscreen" class="flex-1 min-h-0">{content()}</View>
+          <WheelLayer>
+            <View testID="office-fullscreen" class="flex-1 min-h-0">{content()}</View>
+          </WheelLayer>
         </Dialog>
       </If>
     </View>

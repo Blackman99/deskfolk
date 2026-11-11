@@ -24,3 +24,21 @@ test("a pinch arrives as a ctrl wheel whose step is its zoom", async () => {
   await app.host.send("shell.wheel", wheel(50, 50, -100 * Math.log(1.25), true));
   await app.waitUntil(() => app.texts().includes("zoom:1.25"));
 });
+
+test("a dialog's scrim keeps the wheel from the views under it", async () => {
+  const app = await openStory("platform");
+  await app.waitFor("id:wheel-outer", { timeout: 10_000 });
+  await app.press("id:wheel-open-dialog");
+  await app.waitFor("id:wheel-dialog");
+  // On the scrim, over the outer box: it hears nothing.
+  await app.host.send("shell.wheel", wheel(50, 50, 40));
+  // In the middle of the window, inside the dialog's own view: that view hears it.
+  await app.host.send("shell.wheel", wheel(550, 380, 40));
+  await app.waitUntil(() => app.texts().includes("dialog:40"));
+  expect(app.texts()).toContain("outer:0");
+  // Closed, the outer box hears the wheel again.
+  await app.press("id:modal-close");
+  await app.waitUntil(() => !app.shows("id:wheel-dialog"));
+  await app.host.send("shell.wheel", wheel(50, 50, 40));
+  await app.waitUntil(() => app.texts().includes("outer:40"));
+});

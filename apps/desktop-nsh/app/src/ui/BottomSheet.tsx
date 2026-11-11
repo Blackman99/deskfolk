@@ -12,6 +12,7 @@ import { Sheet } from "nsh/base";
 import { Icon, type IconName } from "./Icon";
 import { IconButton } from "./IconButton";
 import { shadow } from "./styles";
+import { WheelLayer } from "../platform/wheel-layer";
 
 export function BottomSheet(props: {
   /** The heading, and the sheet's name for a screen reader. None: just the grip. */
@@ -43,21 +44,23 @@ export function BottomSheet(props: {
       popupClass={`bg-pane rounded-t-[16px] max-h-[86%] ${props.class ?? ""}`}
       popupStyle={{ boxShadow: shadow("lg"), paddingBottom: safeArea().bottom }}
     >
-      <View testID={props.testID} accessibilityLabel={props.title ?? props.label ?? undefined} class="shrink min-h-0">
-        <View class="w-[36px] h-[4px] rounded-full bg-line self-center mt-[8px] mb-[4px]" accessible={false} />
-        <If when={props.title}>
-          {(title) => (
-            <View class={`flex-row items-center gap-2 pt-[2px] pb-[6px] pr-2 ${props.onBack ? "pl-1" : "pl-5"}`}>
-              <If when={props.onBack}>
-                <IconButton icon="chevron-left" size="lg" testID="bottom-sheet-back" label={props.backLabel ?? ""} class="rounded-full" onPress={() => props.onBack?.()} />
-              </If>
-              <Text role="header" class="flex-1 min-w-0 text-[16px] font-semibold text-ink line-clamp-1">{title()}</Text>
-              <IconButton icon="x" size="lg" label={props.closeLabel} testID="bottom-sheet-close" class="rounded-full" onPress={() => props.onClose()} />
-            </View>
-          )}
-        </If>
-        <Scroll class="shrink min-h-0 px-2 pt-1 pb-3">{props.children}</Scroll>
-      </View>
+      <WheelLayer>
+        <View testID={props.testID} accessibilityLabel={props.title ?? props.label ?? undefined} class="shrink min-h-0">
+          <View class="w-[36px] h-[4px] rounded-full bg-line self-center mt-[8px] mb-[4px]" accessible={false} />
+          <If when={props.title}>
+            {(title) => (
+              <View class={`flex-row items-center gap-2 pt-[2px] pb-[6px] pr-2 ${props.onBack ? "pl-1" : "pl-5"}`}>
+                <If when={props.onBack}>
+                  <IconButton icon="chevron-left" size="lg" testID="bottom-sheet-back" label={props.backLabel ?? ""} class="rounded-full" onPress={() => props.onBack?.()} />
+                </If>
+                <Text role="header" class="flex-1 min-w-0 text-[16px] font-semibold text-ink line-clamp-1">{title()}</Text>
+                <IconButton icon="x" size="lg" label={props.closeLabel} testID="bottom-sheet-close" class="rounded-full" onPress={() => props.onClose()} />
+              </View>
+            )}
+          </If>
+          <Scroll class="shrink min-h-0 px-2 pt-1 pb-3">{props.children}</Scroll>
+        </View>
+      </WheelLayer>
     </Sheet>
   );
 }

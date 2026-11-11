@@ -39,7 +39,7 @@ import type { MessengerApi } from "../../m/messenger-api.ts";
 import { artifactKind, svgDisplayBlob } from "../../m/overlays/artifacts.ts";
 import { saveFile } from "../../m/save-file.ts";
 import { copy } from "../../runtime";
-import { onWheel } from "../../platform/wheel";
+import { onWheel, openWheelLayer } from "../../platform/wheel";
 import { Icon } from "../Icon";
 import { ImageContextMenu } from "../ImageContextMenu";
 import { blobDataUrl } from "../data-url";
@@ -494,7 +494,8 @@ export function MessageImageLightbox(props: {
     if (next) zoom.set(next.view);
   }
   let stageRef: ViewRef | null = null;
-  onWheel(() => stageRef, (e) => wheelOver(e, { x: e.x, y: e.y }));
+  // Over the whole window: while it is open the wheel zooms the picture and reaches nothing under it.
+  onWheel(() => stageRef, (e) => wheelOver(e, { x: e.x, y: e.y }), openWheelLayer());
 
   /** A tap anywhere but the buttons: zoomed in it goes back to the whole picture; the next one closes. */
   function tap(): void {

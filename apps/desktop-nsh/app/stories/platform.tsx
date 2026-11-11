@@ -1,11 +1,28 @@
-/** The platform pieces NSH leaves to the app: wheel events forwarded by the shell. */
+/** The platform pieces NSH leaves to the app: wheel events forwarded by the shell, and a dialog over them. */
 import { signal, Text, View, type ViewRef } from "nsh";
 import { onWheel } from "../src/platform/wheel";
+import { Modal } from "../src/ui/Modal";
+
+/** A view inside the dialog that adds up the wheel it hears. */
+function DialogWheel() {
+  const sum = signal(0);
+  let view: ViewRef | undefined;
+  onWheel(
+    () => view,
+    (e) => sum.update((v) => v + e.dy),
+  );
+  return (
+    <View testID="wheel-dialog" ref={(n) => (view = n)} class="bg-line" style={{ height: 200 }}>
+      <Text testID="wheel-dialog-sum">{`dialog:${sum()}`}</Text>
+    </View>
+  );
+}
 
 export default function Platform() {
   const outer = signal(0);
   const inner = signal(0);
   const zoom = signal(1);
+  const dialog = signal(false);
   let outerView: ViewRef | undefined;
   let innerView: ViewRef | undefined;
   onWheel(
@@ -28,7 +45,15 @@ export default function Platform() {
         <Text testID="wheel-outer-sum">{`outer:${outer()}`}</Text>
         <Text testID="wheel-inner-at">{`inner:${inner()}`}</Text>
         <Text testID="wheel-zoom">{`zoom:${zoom()}`}</Text>
+        <View testID="wheel-open-dialog" role="button" onPress={() => dialog.set(true)}>
+          <Text>open dialog</Text>
+        </View>
       </View>
+      <If when={dialog()}>
+        <Modal title="Wheel" closeLabel="Close" onClose={() => dialog.set(false)}>
+          <DialogWheel />
+        </Modal>
+      </If>
     </View>
   );
 }

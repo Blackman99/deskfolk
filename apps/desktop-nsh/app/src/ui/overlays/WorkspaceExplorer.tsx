@@ -14,6 +14,7 @@ import { copy } from "../../runtime";
 import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";
 import { WorkspaceView, type WorkspaceHandle, type WorkspacePreviewProps } from "./WorkspaceView";
+import { WheelLayer } from "../../platform/wheel-layer";
 
 export function WorkspaceExplorer(props: {
   api: MessengerApi | null;
@@ -56,42 +57,44 @@ export function WorkspaceExplorer(props: {
     <Overlay
       style={{ left: 0, top: 0, right: 0, bottom: narrow() ? 60 + safeArea().bottom : 0 }}
     >
-      <View
-        role="group"
-        testID="workspace-overlay"
-        accessibilityLabel={copy().stream.workspaceExplorer}
-        class="flex-1 flex-row justify-end"
-      >
+      <WheelLayer>
         <View
-          testID="workspace-backdrop"
-          accessible={false}
-          onPress={requestClose}
-          class={`flex-1 ${narrow() ? "" : "bg-modal-backdrop"}`}
-        />
-        <View
-          testID="workspace-pane"
-          class={`min-w-0 overflow-hidden bg-pane ${narrow() ? "" : "border-l border-line"}`}
-          style={{
-            width: narrow() ? windowSize().width : Math.min(1400, windowSize().width - 72),
-            boxShadow: narrow() ? undefined : shadow("sheet-end"),
-          }}
+          role="group"
+          testID="workspace-overlay"
+          accessibilityLabel={copy().stream.workspaceExplorer}
+          class="flex-1 flex-row justify-end"
         >
-          <WorkspaceView
-            api={props.api}
-            workspacePath={props.workspacePath}
-            selected={props.selected}
-            onClose={props.onClose}
-            onSelect={props.onSelect}
-            onOpenSettings={props.onOpenSettings}
-            onOpenTerminal={props.onOpenTerminal}
-            onHandle={(handle) => {
-              view = handle;
+          <View
+            testID="workspace-backdrop"
+            accessible={false}
+            onPress={requestClose}
+            class={`flex-1 ${narrow() ? "" : "bg-modal-backdrop"}`}
+          />
+          <View
+            testID="workspace-pane"
+            class={`min-w-0 overflow-hidden bg-pane ${narrow() ? "" : "border-l border-line"}`}
+            style={{
+              width: narrow() ? windowSize().width : Math.min(1400, windowSize().width - 72),
+              boxShadow: narrow() ? undefined : shadow("sheet-end"),
             }}
           >
-            {props.children}
-          </WorkspaceView>
+            <WorkspaceView
+              api={props.api}
+              workspacePath={props.workspacePath}
+              selected={props.selected}
+              onClose={props.onClose}
+              onSelect={props.onSelect}
+              onOpenSettings={props.onOpenSettings}
+              onOpenTerminal={props.onOpenTerminal}
+              onHandle={(handle) => {
+                view = handle;
+              }}
+            >
+              {props.children}
+            </WorkspaceView>
+          </View>
         </View>
-      </View>
+      </WheelLayer>
     </Overlay>
   );
 }

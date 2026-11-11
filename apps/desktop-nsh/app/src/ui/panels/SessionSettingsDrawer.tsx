@@ -25,6 +25,7 @@ import { shadow } from "../styles";
 import { GroupPane } from "./GroupPane";
 import { ProfilePane, type ProfilePaneApi } from "./ProfilePane";
 import { SettingsHead } from "./SettingsHead";
+import { WheelLayer } from "../../platform/wheel-layer";
 
 export type SessionSettingsDrawerProps = {
   narrow: boolean;
@@ -173,71 +174,73 @@ export function SessionSettingsDrawer(props: SessionSettingsDrawerProps) {
       class="bg-transparent"
       style={{ width: windowSize().width, height: windowSize().height }}
     >
-      <View class="flex-1 flex-row">
-        <If when={!props.narrow}>
+      <WheelLayer>
+        <View class="flex-1 flex-row">
+          <If when={!props.narrow}>
+            <View
+              testID="profile-backdrop"
+              accessible={false}
+              class="flex-1 bg-modal-backdrop"
+              onPress={() => {
+                if (props.danger.drawerHasDanger) return;
+                runtime.closeSessionSettings();
+              }}
+            />
+          </If>
           <View
-            testID="profile-backdrop"
-            accessible={false}
-            class="flex-1 bg-modal-backdrop"
-            onPress={() => {
-              if (props.danger.drawerHasDanger) return;
-              runtime.closeSessionSettings();
+            testID="session-settings"
+            class={`min-h-0 bg-bg overflow-hidden ${props.narrow ? "border-l-0" : "border-l border-line"}`}
+            style={{
+              width: props.narrow ? windowSize().width : Math.min(460, Math.round(windowSize().width * 0.94)),
+              boxShadow: props.narrow ? undefined : shadow("sheet-end"),
             }}
-          />
-        </If>
-        <View
-          testID="session-settings"
-          class={`min-h-0 bg-bg overflow-hidden ${props.narrow ? "border-l-0" : "border-l border-line"}`}
-          style={{
-            width: props.narrow ? windowSize().width : Math.min(460, Math.round(windowSize().width * 0.94)),
-            boxShadow: props.narrow ? undefined : shadow("sheet-end"),
-          }}
-        >
-          <If when={!headHidden()}>
-            <View class={headBox(props.nestedProfile)}>
-              <SettingsHead
-                group={props.selectedKind === "group"}
-                nested={props.nestedProfile}
-                onBack={() => (props.narrow ? runtime.closeSessionSettings() : props.closeNestedProfile())}
-                onClose={props.closeCurrentDrawerScreen}
-                groupSession={props.selectedKind === "group" && !props.nestedProfile && props.selected ? props.selected : null}
-                subjectBot={props.profileBot}
-                subjectSession={props.selected}
-                narrow={props.narrow}
-                botsById={props.botsById}
-                detail={props.groupDetail}
-                onDetailChange={props.onGroupDetailChange}
-              />
-            </View>
-          </If>
-          <If
-            when={props.profileBot}
-            else={
-              <If when={props.selected}>
-                {(row) => (
-                  <GroupPane
-                    selected={row()}
-                    detail={props.groupDetail}
-                    onDetailChange={props.onGroupDetailChange}
-                    mobileDetail={props.paneMobileDetail}
-                    onMobileDetailChange={props.onPaneMobileDetailChange}
-                    onOpenProfile={(id) => props.openProfile(id)}
-                    onDeleteGroup={() => props.danger.openDeleteGroupConfirm()}
-                    onClearHistory={() => props.danger.openClearHistoryConfirm()}
-                  />
-                )}
-              </If>
-            }
           >
-            {(bot) =>
-              profile(() => props.profileBot ?? bot(), () => props.selectedKind, {
-                onDeleteBot: () => props.danger.openDeleteBotConfirm(),
-                onClearHistory: () => props.danger.openClearHistoryConfirm(),
-              })
-            }
-          </If>
+            <If when={!headHidden()}>
+              <View class={headBox(props.nestedProfile)}>
+                <SettingsHead
+                  group={props.selectedKind === "group"}
+                  nested={props.nestedProfile}
+                  onBack={() => (props.narrow ? runtime.closeSessionSettings() : props.closeNestedProfile())}
+                  onClose={props.closeCurrentDrawerScreen}
+                  groupSession={props.selectedKind === "group" && !props.nestedProfile && props.selected ? props.selected : null}
+                  subjectBot={props.profileBot}
+                  subjectSession={props.selected}
+                  narrow={props.narrow}
+                  botsById={props.botsById}
+                  detail={props.groupDetail}
+                  onDetailChange={props.onGroupDetailChange}
+                />
+              </View>
+            </If>
+            <If
+              when={props.profileBot}
+              else={
+                <If when={props.selected}>
+                  {(row) => (
+                    <GroupPane
+                      selected={row()}
+                      detail={props.groupDetail}
+                      onDetailChange={props.onGroupDetailChange}
+                      mobileDetail={props.paneMobileDetail}
+                      onMobileDetailChange={props.onPaneMobileDetailChange}
+                      onOpenProfile={(id) => props.openProfile(id)}
+                      onDeleteGroup={() => props.danger.openDeleteGroupConfirm()}
+                      onClearHistory={() => props.danger.openClearHistoryConfirm()}
+                    />
+                  )}
+                </If>
+              }
+            >
+              {(bot) =>
+                profile(() => props.profileBot ?? bot(), () => props.selectedKind, {
+                  onDeleteBot: () => props.danger.openDeleteBotConfirm(),
+                  onClearHistory: () => props.danger.openClearHistoryConfirm(),
+                })
+              }
+            </If>
+          </View>
         </View>
-      </View>
+      </WheelLayer>
     </Dialog>
   );
 

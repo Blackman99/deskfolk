@@ -25,6 +25,7 @@ import { narrowWindow } from "../Modal";
 import { SessionAvatar } from "../SessionAvatar";
 import { shadow } from "../styles";
 import { tip } from "../tip";
+import { WheelLayer } from "../../platform/wheel-layer";
 
 export type GlobalSearchApi = { focusQuery: () => void };
 
@@ -148,105 +149,107 @@ export function GlobalSearch(props: {
         boxShadow: phone() ? undefined : shadow("lg"),
       }}
     >
-      <View testID="global-search" role="group" accessibilityLabel={t().globalSearch} class="flex-col shrink min-h-0">
-        <View class={`flex-row items-center gap-[10px] border-b border-line ${phone() ? "pl-4 pr-3 py-[6px] gap-2" : "px-4 py-3"}`}>
-          <Icon name="search" size={20} class="tint-ink-muted" />
-          <Input
-            ref={(node: InputRef | null) => (input = node)}
-            testID="global-search-input"
-            accessibilityLabel={t().search}
-            placeholder={t().search}
-            value={runtime.searchQuery}
-            autoFocus
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            submitBehavior="submit"
-            onChange={(e) => void runtime.runSearch(e.value)}
-            onSubmit={submit}
-            onCompositionChange={(e) => composing.set(e.composing)}
-            class={`flex-1 min-w-0 text-ink ${phone() ? "py-3 text-[16px]" : "py-[9px] text-[16px]"}`}
-          />
-          <If when={runtime.searchQuery}>
-            <IconButton
-              icon="x"
-              label={t().searchClear}
-              testID="search-clear"
-              onPress={() => {
-                void runtime.runSearch("");
-                input?.focus();
-              }}
+      <WheelLayer>
+        <View testID="global-search" role="group" accessibilityLabel={t().globalSearch} class="flex-col shrink min-h-0">
+          <View class={`flex-row items-center gap-[10px] border-b border-line ${phone() ? "pl-4 pr-3 py-[6px] gap-2" : "px-4 py-3"}`}>
+            <Icon name="search" size={20} class="tint-ink-muted" />
+            <Input
+              ref={(node: InputRef | null) => (input = node)}
+              testID="global-search-input"
+              accessibilityLabel={t().search}
+              placeholder={t().search}
+              value={runtime.searchQuery}
+              autoFocus
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              submitBehavior="submit"
+              onChange={(e) => void runtime.runSearch(e.value)}
+              onSubmit={submit}
+              onCompositionChange={(e) => composing.set(e.composing)}
+              class={`flex-1 min-w-0 text-ink ${phone() ? "py-3 text-[16px]" : "py-[9px] text-[16px]"}`}
             />
-          </If>
-          <View
-            role="button"
-            testID="search-cancel"
-            accessibilityLabel={t().searchCancel}
-            onPress={close}
-            class={`cursor-pointer select-none flex-row items-center justify-center gap-[6px] rounded-(--radius-sm) hover:bg-row-hover ${phone() ? "min-w-[44px] min-h-[44px] px-2" : "min-h-[36px] p-[6px]"}`}
-          >
-            <Text class={`${phone() ? "text-[14px] text-brand" : "text-[12px] text-ink-muted"}`}>{t().searchCancel}</Text>
-            <If when={!phone()}>
-              <Kbd>Esc</Kbd>
+            <If when={runtime.searchQuery}>
+              <IconButton
+                icon="x"
+                label={t().searchClear}
+                testID="search-clear"
+                onPress={() => {
+                  void runtime.runSearch("");
+                  input?.focus();
+                }}
+              />
             </If>
-          </View>
-        </View>
-
-        <View role="group" accessibilityLabel={t().globalSearch} class={`flex-row gap-1 border-b border-line-subtle ${phone() ? "px-3 py-2" : "px-[14px] py-[10px]"}`}>
-          <Each of={categories()} key={(item) => item.key}>
-            {(item) => (
-              <View
-                role="button"
-                testID={`search-category-${item().key}`}
-                accessibilityLabel={item().label}
-                accessibilityState={{ selected: category() === item().key }}
-                onPress={() => changeCategory(item().key)}
-                class={`cursor-pointer select-none shrink-0 justify-center border rounded-(--radius-sm) ${phone() ? "min-h-[40px] px-[11px]" : "px-[11px] py-[5px]"} ${category() === item().key ? "bg-accent-tint border-accent-border" : "border-transparent hover:bg-row-hover"}`}
-              >
-                <Text class={`${phone() ? "text-[13px]" : "text-[12px]"} ${category() === item().key ? "text-brand" : "text-ink-muted"}`}>{item().label}</Text>
-              </View>
-            )}
-          </Each>
-        </View>
-
-        <Scroll
-          class="shrink min-h-0 px-2 pb-2"
-          ref={(node: ScrollRef | null) => (scroller.ref = node)}
-          onLayout={(e) => (viewport.height = e.bounds.size.height)}
-          onScroll={(e) => (viewport.y = e.offset.y)}
-        >
-          <State hits={hits} connected={connected} queried={queried} />
-          <View testID="search-results" role="list" accessibilityLabel={t().globalSearch} accessibilityState={{ busy: runtime.searchLoading }}>
-            {() =>
-              hits().map((hit, index) => (
-                <Hit
-                  hit={hit}
-                  index={index}
-                  selected={active() === index}
-                  available={available()[index] === true}
-                  onHover={() => available()[index] && active.set(index)}
-                  onPress={() => choose(hit)}
-                  onLayout={(b) => bounds.set(index, b)}
-                  bots={bots()}
-                  sessions={sessions()}
-                  labels={labels()}
-                />
-              ))
-            }
-          </View>
-        </Scroll>
-
-        <If when={!phone()}>
-          <View class="flex-row items-center gap-[14px] px-[18px] py-[10px] border-t border-line">
-            <Text class="text-[11px] text-ink-muted">{`↑↓ ${t().searchNavigate}`}</Text>
-            <Text class="text-[11px] text-ink-muted">{`↵ ${t().searchOpen}`}</Text>
-            <View class="flex-1" />
-            <View tooltip={tip(t().searchEverywhere)}>
-              <Text class="text-[11px] text-ink-muted">{searchShortcutLabel(true)}</Text>
+            <View
+              role="button"
+              testID="search-cancel"
+              accessibilityLabel={t().searchCancel}
+              onPress={close}
+              class={`cursor-pointer select-none flex-row items-center justify-center gap-[6px] rounded-(--radius-sm) hover:bg-row-hover ${phone() ? "min-w-[44px] min-h-[44px] px-2" : "min-h-[36px] p-[6px]"}`}
+            >
+              <Text class={`${phone() ? "text-[14px] text-brand" : "text-[12px] text-ink-muted"}`}>{t().searchCancel}</Text>
+              <If when={!phone()}>
+                <Kbd>Esc</Kbd>
+              </If>
             </View>
           </View>
-        </If>
-      </View>
+
+          <View role="group" accessibilityLabel={t().globalSearch} class={`flex-row gap-1 border-b border-line-subtle ${phone() ? "px-3 py-2" : "px-[14px] py-[10px]"}`}>
+            <Each of={categories()} key={(item) => item.key}>
+              {(item) => (
+                <View
+                  role="button"
+                  testID={`search-category-${item().key}`}
+                  accessibilityLabel={item().label}
+                  accessibilityState={{ selected: category() === item().key }}
+                  onPress={() => changeCategory(item().key)}
+                  class={`cursor-pointer select-none shrink-0 justify-center border rounded-(--radius-sm) ${phone() ? "min-h-[40px] px-[11px]" : "px-[11px] py-[5px]"} ${category() === item().key ? "bg-accent-tint border-accent-border" : "border-transparent hover:bg-row-hover"}`}
+                >
+                  <Text class={`${phone() ? "text-[13px]" : "text-[12px]"} ${category() === item().key ? "text-brand" : "text-ink-muted"}`}>{item().label}</Text>
+                </View>
+              )}
+            </Each>
+          </View>
+
+          <Scroll
+            class="shrink min-h-0 px-2 pb-2"
+            ref={(node: ScrollRef | null) => (scroller.ref = node)}
+            onLayout={(e) => (viewport.height = e.bounds.size.height)}
+            onScroll={(e) => (viewport.y = e.offset.y)}
+          >
+            <State hits={hits} connected={connected} queried={queried} />
+            <View testID="search-results" role="list" accessibilityLabel={t().globalSearch} accessibilityState={{ busy: runtime.searchLoading }}>
+              {() =>
+                hits().map((hit, index) => (
+                  <Hit
+                    hit={hit}
+                    index={index}
+                    selected={active() === index}
+                    available={available()[index] === true}
+                    onHover={() => available()[index] && active.set(index)}
+                    onPress={() => choose(hit)}
+                    onLayout={(b) => bounds.set(index, b)}
+                    bots={bots()}
+                    sessions={sessions()}
+                    labels={labels()}
+                  />
+                ))
+              }
+            </View>
+          </Scroll>
+
+          <If when={!phone()}>
+            <View class="flex-row items-center gap-[14px] px-[18px] py-[10px] border-t border-line">
+              <Text class="text-[11px] text-ink-muted">{`↑↓ ${t().searchNavigate}`}</Text>
+              <Text class="text-[11px] text-ink-muted">{`↵ ${t().searchOpen}`}</Text>
+              <View class="flex-1" />
+              <View tooltip={tip(t().searchEverywhere)}>
+                <Text class="text-[11px] text-ink-muted">{searchShortcutLabel(true)}</Text>
+              </View>
+            </View>
+          </If>
+        </View>
+      </WheelLayer>
     </Dialog>
   );
 }
