@@ -22,7 +22,7 @@ mod terminal;
 
 pub use highlight::{CodeColors, CodeColorsElement, CodeColorsProps, Highlight, code_colors};
 pub use markdown::Markdown;
-pub use nsh_terminal::{Quiet, RuntimeTerminals, RuntimeTerminalsElement, RuntimeTerminalsProps, runtime_terminals};
+pub use nsh_terminal::{RuntimeEmulator, RuntimeTerminals, RuntimeTerminalsElement, RuntimeTerminalsProps, runtime_terminals};
 pub use office::Office;
 pub use pdf::Documents;
 pub use rfb::Screens;

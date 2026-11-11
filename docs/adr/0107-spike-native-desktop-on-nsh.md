@@ -619,3 +619,43 @@ You reported that the room above your lines was wrong: in the screenshot the age
 Both lists now put all their padding and the gap in `contentStyle`: 14 pt between a project session's lines and 16 pt between a Bot conversation's rows, as the messenger's `.transcript-inner` and `.stream-inner` have; 20 pt at each end (14 pt when narrow). In an inverted list `paddingTop` is the end by the composer, and that end keeps its value. `stories/stage-scroll.tsx` copied the same pattern and changed with them. The new `scripts/list-content.test.ts` reads the source and fails on a `List` naming both `contentClass` and `contentStyle`; run against the code before the fix it names exactly these two. PORTING has the rule.
 
 Checked in a background check copy on the `chat-stage` story, reading blank pixel rows from window snapshots. In the check's worktree the project session got an agent line ending in file chips followed by a user line, the arrangement in the screenshot, and the Bot direct was seeded with five alternating lines. Project session: the time line to the next user bubble 2.5 pt → 16.5 pt, the system line to a bubble 5.5 → 19.5, a bubble's time to the agent line 5 → 19 and 7 → 21, each 14 pt more. Bot direct: the "duration · time" line under a reply to the next bubble 1.5 → 17.5, a time to the Bot's reply 7 → 23 and 5 → 21, each 16 pt more. The newest line stays where it was in both. Lines one person sent in a row, folded into one group, keep the group's own spacing, unchanged (the `bulk` story's 130). `nsh check App.tsx`, `bun test scripts` (19) and the whole screen-test suite (87 files, 694 tests; the terminal pane's 2 skip in a worktree, which has no pty) pass.
+
+## 补记 2026-11-11（二十）：NSH 终端用应用自己的配色 / Addendum 2026-11-11 (20): the NSH terminal in the app's own colours
+
+补记（十八）留下的两个问题，你都定了：一是配色用我们自己的，二是 Ghostty 那份做进来。这里先记配色。
+
+`--terminal nsh` 下的终端，现在和画布终端一样，用 `palette.rs`（品牌方向 A 的卡片底色和墨色，加一套配在上面的 ANSI 色）：
+
+- `RuntimeTerminals` 多了一个 `dark` 属性。它给出的模拟器（原来的 `Quiet` 改名成 `RuntimeEmulator`，仍然丢掉对程序查询的回答）在交出每一行时改颜色：
+  - 16 个 ANSI 色换成调色板里的；
+  - 没指定颜色的字用调色板的墨色；
+  - 反显而没有底色的格子，底色补上调色板的底色，换过来以后读起来是墨色。
+  - 256 色的色块、灰阶和 24 位色照程序给的。
+- 行按原样缓存，取出时才换颜色。`Terminal` 在画一行时读 `dark`，所以切换外观时每一行跟着重画，不用重新喂字节。
+- `RuntimeTerminals` 自己铺上调色板的底色；光标用 `bg-brand/55`，品牌色在两种外观下正好就是画布终端的光标色。
+
+验证：
+
+- 新的故事 `terminal-palette` 和界面测试：亮色下红字是 `#c62828`、墨色 `#121c20`、反显字 `#ffffff`；运行中切到暗色，变成 `#ef6b6b`、`#eef2f3`、`#192125`。
+- 后台真窗口，暗色：底色和画布终端截图里的一样（[32,44,49]，原来是灰色 [74,74,74]），黄底格子 (252,200,45) 和画布终端逐像素相同，原来是 VS Code 的 (234,230,13)。
+- 一个有独立 bundle id、强制亮色的检查副本：白底，黄底格子是亮色调色板的 (194,103,4)。
+- `app/native` 的四个测试过。
+
+Addendum (18) left two questions, and you settled both: our own colours, and the Ghostty work brought in. This part records the colours.
+
+The terminal behind `--terminal nsh` now draws in `palette.rs`, as the canvas terminal does: brand direction A's card ground and ink, and an ANSI set tuned to sit on them.
+
+- `RuntimeTerminals` takes a `dark` prop. The emulator it hands out (`Quiet`, renamed `RuntimeEmulator`, still drops the program's replies) recolours each line as it gives it:
+  - the sixteen ANSI colours become the palette's;
+  - text with no colour takes the palette's ink;
+  - an inverse cell with no ground takes the palette's ground, so that swapped it reads as ink.
+  - The cube, the greys and 24-bit colours stay as the program asked.
+- Lines are kept unmapped and recoloured on the way out. `Terminal` reads `dark` where it draws a row, so every row redraws when the appearance changes, with no bytes fed again.
+- `RuntimeTerminals` lays the palette's ground itself. The cursor is `bg-brand/55`; the brand colour is, in both appearances, the canvas terminal's cursor colour.
+
+Checks:
+
+- A new story, `terminal-palette`, and its screen test: in light, red text is `#c62828`, ink `#121c20` and inverse text `#ffffff`; switched to dark while running, they are `#ef6b6b`, `#eef2f3` and `#192125`.
+- A real background window in dark: the ground matches the canvas terminal's capture ([32,44,49], grey [74,74,74] before), and a yellow-ground cell is (252,200,45), the canvas terminal's to the pixel; it was VS Code's (234,230,13).
+- A check copy with its own bundle id forced to light: a white ground, and the yellow-ground cell in the light palette's (194,103,4).
+- `app/native`'s four tests pass.

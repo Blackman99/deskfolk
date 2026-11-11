@@ -52,7 +52,8 @@ impl Palette {
         }
     }
 
-    fn indexed(&self, index: u8) -> Rgb {
+    /// The colour of 256-colour index `index`: the sixteen of this palette, then the cube and the greys.
+    pub fn indexed(&self, index: u8) -> Rgb {
         match index {
             0..=15 => self.ansi[index as usize],
             16..=231 => {

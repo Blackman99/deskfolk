@@ -9,9 +9,10 @@
  * already on the screen skipped. The replay is asked for once the terminal has laid out and the
  * pty has taken that size, so the runtime draws it for these rows and columns (`Terminal` sizes
  * itself; it takes no size from the app). `RuntimeTerminals` (`deskfolk/native`) gives it an
- * emulator that never answers the program: the runtime's screen does that for every pane.
+ * emulator that never answers the program (the runtime's screen does that for every pane) and draws
+ * in the app's palette, as the canvas terminal does.
  */
-import { cleanup, Text } from "nsh";
+import { cleanup, colorScheme, Text } from "nsh";
 import { Terminal, type TerminalRef } from "nsh/base";
 import * as native from "deskfolk/native";
 import type { StreamFrame } from "@real-bot/protocol";
@@ -104,7 +105,7 @@ export function NshTerminal(props: { id: string; onExit?: () => void }) {
   };
 
   return (
-    <Emulators>
+    <Emulators dark={colorScheme() === "dark"}>
       <Terminal
         ref={(r) => (term = r)}
         testID="terminal"
@@ -112,7 +113,7 @@ export function NshTerminal(props: { id: string; onExit?: () => void }) {
         scrollback={10000}
         fontSize={13}
         lineHeight={17}
-        cursorClass="bg-foreground/50"
+        cursorClass="bg-brand/55"
         class="flex-1 min-h-0 p-2"
         onData={(e) => send(e.data)}
         onResize={(e) => resized(e.cols, e.rows)}
