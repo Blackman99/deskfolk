@@ -25,6 +25,39 @@ test("the picture draws its mark numbered, a press on it picks it, and a drag in
   await app.waitFor("id:image-handle-se");
 });
 
+/** The story's `draft:box left,top width×height`, in the picture's pixels. */
+const drawnBox = (line: string) => {
+  const m = /^draft:box (\d+),(\d+) (\d+)×(\d+)$/.exec(line);
+  if (!m) throw new Error(`not a drawn box: ${line}`);
+  const [x, y, w, h] = m.slice(1).map(Number);
+  return { x, y, w, h };
+};
+
+// The release's own gesture state has no finger left (moveX/moveY read 0): a box finished from it
+// ran from the picture's top left to where the finger went down.
+test("a drawn box runs from where the drag began to where it was let go", async () => {
+  const app = await show("image", "id:image-annotator-picture");
+  await app.waitFor("id:image-annotator-layer");
+  // The finger lands on the middle of the 400×250 picture.
+  await app.drag("id:image-annotator-layer", { x: 90, y: 30 });
+  await app.waitUntil(() => last(app).startsWith("draft:"));
+  const box = drawnBox(last(app));
+  expect(Math.abs(box.x - 200)).toBeLessThanOrEqual(2);
+  expect(Math.abs(box.y - 125)).toBeLessThanOrEqual(2);
+  // However the picture is scaled, the box keeps the drag's shape.
+  expect(Math.abs(box.w / box.h - 3)).toBeLessThan(0.2);
+});
+
+test("a press in annotate mode makes a small box on the spot", async () => {
+  const app = await show("image", "id:image-annotator-picture");
+  await app.waitFor("id:image-annotator-layer");
+  // The layer has no `onPress` for the driver's press: a finger that barely moves is the same click.
+  await app.drag("id:image-annotator-layer", { x: 2, y: 1 });
+  await app.waitUntil(() => last(app).startsWith("draft:"));
+  // 4% of the short side, centred on the middle of the 400×250 picture.
+  expect(drawnBox(last(app))).toEqual({ x: 195, y: 120, w: 10, h: 10 });
+});
+
 test("with annotating off nothing can be drawn on the picture, but its marks stay", async () => {
   const app = await show("image", "id:image-annotator-picture");
   await app.press("id:story-annotating");

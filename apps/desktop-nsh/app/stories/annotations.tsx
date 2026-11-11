@@ -166,7 +166,10 @@ export default function Annotations() {
             pending={pendingImage()}
             onPendingChange={(a) => pendingImage.set(a as never)}
             onDraft={(d) => {
-              note(`draft:${d.anchor.w > 0 ? "box" : "point"}`);
+              // The box in the picture's own pixels: left, top, width × height.
+              const a = d.anchor;
+              const px = (v: number, of: number) => Math.round(v * of);
+              note(`draft:${a.w > 0 ? "box" : "point"} ${px(a.x, a.natural_width)},${px(a.y, a.natural_height)} ${px(a.w, a.natural_width)}×${px(a.h, a.natural_height)}`);
               pendingImage.set(d.anchor as never);
             }}
             onPick={(id) => note(`pick:${id}`)}

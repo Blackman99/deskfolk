@@ -52,7 +52,11 @@ const FLASH_MS = 1400;
 const PEEK_SHOW_MS = 3000;
 
 type Gesture =
-  | { kind: "new"; start: NormPoint; from: { x: number; y: number } }
+  /**
+   * `to` is where the finger last moved, on the layer: the box ends there. The release's own gesture
+   * state is no place (its `moveX`, `moveY` are of the fingers still down, none, so 0).
+   */
+  | { kind: "new"; start: NormPoint; from: { x: number; y: number }; to: { x: number; y: number } }
   | { kind: "move"; box: NormBox }
   /** `grab` is the corner minus where the handle was pressed, so the corner does not jump. */
   | { kind: "resize"; handle: Handle; box: NormBox; grab: NormPoint };
@@ -200,6 +204,7 @@ export function ImageAnnotator(props: {
     if (!gs || d.width <= 0) return;
     if (gs.kind === "new") {
       const to = at(g);
+      gs.to = to;
       if (!liveBox() && isClick(gs.from, to)) return;
       liveBox.set(boxBetween(gs.start, toNorm(to.x, to.y, d)));
     } else if (gs.kind === "move") {
@@ -210,7 +215,7 @@ export function ImageAnnotator(props: {
     }
   }
 
-  function release(g: PanResponderGestureState): void {
+  function release(): void {
     const gs = gesture;
     if (!gs) return;
     const moved = localPending();
@@ -219,7 +224,7 @@ export function ImageAnnotator(props: {
     if (gs.kind === "new") {
       const size = natural();
       if (d.width <= 0 || !size) return;
-      const to = at(g);
+      const to = gs.to;
       propose(finishNewBox({ client: gs.from, norm: gs.start }, { client: to, norm: toNorm(to.x, to.y, d) }, size));
       return;
     }
@@ -241,10 +246,10 @@ export function ImageAnnotator(props: {
       origin = { x: e.pageX - e.locationX, y: e.pageY - e.locationY };
       const from = { x: g.x0 - origin.x, y: g.y0 - origin.y };
       const d = local();
-      begin({ kind: "new", from, start: toNorm(from.x, from.y, d) });
+      begin({ kind: "new", from, to: from, start: toNorm(from.x, from.y, d) });
     },
     onPanResponderMove: (_e, g) => move(g),
-    onPanResponderRelease: (_e, g) => release(g),
+    onPanResponderRelease: () => release(),
     onPanResponderTerminate: () => abort(),
     onPanResponderTerminationRequest: () => false,
   });
@@ -258,7 +263,7 @@ export function ImageAnnotator(props: {
       if (box) begin({ kind: "move", box });
     },
     onPanResponderMove: (_e, g) => move(g),
-    onPanResponderRelease: (_e, g) => release(g),
+    onPanResponderRelease: () => release(),
     onPanResponderTerminate: () => abort(),
     onPanResponderTerminationRequest: () => false,
   });
@@ -275,7 +280,7 @@ export function ImageAnnotator(props: {
         begin({ kind: "resize", handle, box, grab: { x: corner.x - point.x, y: corner.y - point.y } });
       },
       onPanResponderMove: (_e, g) => move(g),
-      onPanResponderRelease: (_e, g) => release(g),
+      onPanResponderRelease: () => release(),
       onPanResponderTerminate: () => abort(),
       onPanResponderTerminationRequest: () => false,
     });
