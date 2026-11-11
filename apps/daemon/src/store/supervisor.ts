@@ -60,7 +60,7 @@ export type BallHolder =
   | { kind: "app"; reason: "approval"; ref: string }
   /** From level 6: a render the daemon polls; its result wakes whoever waits on it (ADR 0047). */
   | { kind: "app"; reason: "job"; ref: string }
-  /** From level 5: a ticket it waits for is not through yet (the sample until you approve it, ADR 0060); nobody starts it meanwhile. */
+  /** From level 5: a ticket it waits for is not handed over yet (ADR 0060, the sample too since ADR 0109); nobody starts it meanwhile. */
   | { kind: "app"; reason: "waits"; ref: string }
   | { kind: "user"; reason: "ask" | "blocked" | "held" | "held_dependency" | "review" | "ceiling" | "unclaimed"; ref?: string };
 
@@ -310,7 +310,7 @@ function submissionHolder(ctx: StoreContext, ticket: TicketRow): BallHolder | nu
  * one does not hold it: set aside, it will never be done, and waiting for it would never end.
  */
 function dependenciesPending(ctx: StoreContext, ticket: TicketRow): boolean {
-  // From level 5 the rule is `waitingOn`'s (ADR 0060): another ticket holds it until handed over, the sample until approved.
+  // From level 5 the rule is `waitingOn`'s (ADR 0060): another ticket holds it until handed over, the sample too (ADR 0109).
   if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.submissions) return waitingOn(ctx, ticket.id) !== null;
   let parsed: unknown;
   try { parsed = JSON.parse(ticket.depends_on); } catch { return true; }

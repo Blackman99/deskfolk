@@ -130,7 +130,7 @@ export function agentRunStatus(run: AgentRun | null | undefined, labels: StatusL
 }
 
 /**
- * A card that waits on your press with no turn open on it — a sample to approve, a question the
+ * A card that waits on your press with no turn open on it — a hand-over to approve, a question the
  * work stopped on — counts toward the Dock badge read or not, so the row says where it is. Not a
  * Bot at work (`isWorkingStatus` reads live turns only), and it outranks how the last turn ended.
  */

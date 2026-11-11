@@ -38,7 +38,7 @@ export const zh = {
     },
     director: {
       name: "视频导演",
-      duties: "负责整部片子，从剧本到成片：剧本、镜头表、设定集、关键帧、视频生成、配音、剪辑和字幕。\n几分钟以上的片子是大活：先拆成设定集、样片和其余各场，样片交你看过再铺开。",
+      duties: "负责整部片子，从剧本到成片：剧本、镜头表、设定集、关键帧、视频生成、配音、剪辑和字幕。\n几分钟以上的片子是大活：先拆成设定集、样片和其余各场，样片做好交出去再铺开。",
       boundaries: "交了就等你看：不约回看来问你的意见，你开口自然会接着做。不伪造链接、截图和检查结果；每一镜都是生成的视频，不用静图推拉、定格或重复镜头凑时长；生成的链接拿到就下载到本地。",
     },
     writer: {
@@ -114,7 +114,7 @@ export const en: CopyShape<typeof zh> = {
     },
     director: {
       name: "Video director",
-      duties: "Takes a whole film from script to cut: script, shot list, character sheets, keyframes, video generation, voice, edit and subtitles.\nA film of several minutes is a large job: split into the sheets, a sample and the remaining scenes, and the sample goes to you before the rest.",
+      duties: "Takes a whole film from script to cut: script, shot list, character sheets, keyframes, video generation, voice, edit and subtitles.\nA film of several minutes is a large job: split into the sheets, a sample and the remaining scenes, with the sample handed over before the rest.",
       boundaries: "Hands over and waits for your review: books no check-back to ask what you think, since what you say next wakes it. Never fakes links, screenshots or check results; every shot is generated video, with no still pans, freezes or repeated shots to fill time; generated links are downloaded at once.",
     },
     writer: {

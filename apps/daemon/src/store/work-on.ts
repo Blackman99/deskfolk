@@ -124,11 +124,11 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
     // A ticket its lead dropped (作废) is not taken up again by working on it.
     const dropped = ticketId ? droppedWhy(ctx, ticketId) : null;
     if (dropped !== null) throw new HttpError(409, "dropped", `that ticket was dropped (${dropped}): work on another ticket of the job, or on the job as a whole`);
-    // A ticket waiting for another not through yet — the sample until the user approves it (ADR 0060) — is not started.
+    // A ticket waiting for another not handed over yet (ADR 0060; the sample too, ADR 0109) is not started.
     const waited = ticketId ? waitingOn(ctx, ticketId) : null;
     if (waited) {
       throw new HttpError(409, "waits_for", `this ticket waits for ticket #${String(waited.seq).padStart(2, "0")} "${waited.title}"${waited.sample
-        ? ", the job's sample, which the user has not approved yet" : ", which has not been handed over yet"}: work on that one, or on the job as a whole`);
+        ? ", the job's sample," : ","} which has not been handed over yet: work on that one, or on the job as a whole`);
     }
 
     const others: Array<{ taskId: string; ticketId: string | null }> = [];

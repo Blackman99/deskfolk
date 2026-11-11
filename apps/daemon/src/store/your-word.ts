@@ -10,7 +10,6 @@ import type { Message } from "@real-bot/protocol";
 import { isoNow } from "../ids";
 import type { ReadingSource } from "../line-reading";
 import { allJobConversations, jobConversations } from "./job-conversations";
-import { yoursToApprove } from "./large-jobs";
 import { markPassedLine } from "./review-cards";
 import type { StoreContext } from "./shared";
 import { boundCheckIds, checkResults, fileNames, getSubmission, supervised, toSubmission, truncatedAnswer, type AwaitingYou, type Submission, type SubmissionRow } from "./submission-rows";
@@ -30,8 +29,6 @@ export type WaitingHandOver = {
   ticket: string;
   /** The files' names, the words handed over, or that the organizer read the ticket as done. */
   what: string;
-  /** A large job's sample: only a clear yes lets it through (the rest of the job waits on it). */
-  sample: boolean;
   created_at: string;
 };
 
@@ -69,7 +66,7 @@ export function waitingOnYourWord(ctx: StoreContext, input: { sessionId: string;
       : submission.origin === "organizer" ? "（没交文件：整理跳读成这张任务做完了）"
       : fileNames(submission, false);
     shown.push({ submission_id: submission.id, bot: names?.bot ?? submission.bot_id, job: names?.job ?? "", ticket: names?.ticket ?? "",
-      what, sample: yoursToApprove(ctx, submission.ticket_id) === "sample", created_at: submission.created_at });
+      what, created_at: submission.created_at });
   }
   return shown.reverse();
 }

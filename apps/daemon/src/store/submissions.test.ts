@@ -736,7 +736,7 @@ test("words handed over in place of a file — the producer's, on a ticket no fi
   const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   expect(tick.moved).toMatchObject([{ id: answered.submission.id, state: "submitted", awaiting: { kind: "approval" } }]);
   expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() })).toMatchObject([{ submission_id: answered.submission.id, bot: "Director",
-    job: "EP01", ticket: "06 母带", what: "「三个选题：雪原、灯塔、潮汐」", sample: false }]);
+    job: "EP01", ticket: "06 母带", what: "「三个选题：雪原、灯塔、潮汐」" }]);
   letThrough(f, [answered.submission.id]);
   expect(f.store.getSubmission(answered.submission.id).state).toBe("approved");
 
@@ -1063,16 +1063,18 @@ function endedAt(f: Fixture, turnId: string, at: string) {
   f.store.db.run("UPDATE turns SET updated_at = ? WHERE id = ?", [at, turnId]);
 }
 
-test("a large job's sample waits on your word while its Bot goes on with the rest, and a reading is told it is the sample", () => {
+test("a sample with nothing behind it waits on your word like any hand-over, and a reading is not told it is the sample", () => {
+  // ADR 0109: the sample's 放行 needed a clear yes of yours, and the rest of the job waited on it.
   const f = fixture();
   f.store.db.run("UPDATE tickets SET sample = 1 WHERE id = ?", [f.ticket.id]);
   const next = f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id });
   const { submission } = handedOver(f);
-  // Preparing the next part does not keep the sample, which everything else waits on, from your word.
   segment(f, f.producer.id, next.id);
   superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval" } });
-  expect(f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() })).toMatchObject([{ submission_id: submission.id, sample: true }]);
+  const shown = f.store.waitingOnYourWord({ sessionId: f.room.id, before: isoNow() });
+  expect(shown).toMatchObject([{ submission_id: submission.id }]);
+  expect(shown[0]).not.toHaveProperty("sample");
   expect(reviewCards(f)).toBe(0);
 });
 

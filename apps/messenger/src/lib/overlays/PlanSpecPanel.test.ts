@@ -789,7 +789,7 @@ test("a job not written up yet can still be named", () => {
 test("a large job says so under its name, with what showed it, and you can call it off (ADR 0060)", async () => {
   const view = open({ detail: aDetail({ scale: { value: "large", by: "reader", at: "2026-10-04T00:00:00.000Z", why: "20 分钟", unit: "一场" } }) });
   const line = view.host.querySelector(".plan-spec-scale");
-  expect(line?.textContent).toContain("大活：先拆成几件（每件一场），先做样片给你放行，再铺开。");
+  expect(line?.textContent).toContain("大活：先拆成几件（每件一场），先做样片，再照它铺开。");
   expect(line?.textContent).toContain("从你说的「20 分钟」认出来的。");
   click([...line!.querySelectorAll("button")].find((button) => button.textContent?.trim() === t.plan.spec.scaleNotLarge));
   await settle();

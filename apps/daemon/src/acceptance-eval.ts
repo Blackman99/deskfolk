@@ -399,7 +399,7 @@ export function describeCheck(
   locale: Locale,
 ): string {
   const zh = locale === "zh";
-  if (check.standard_of) return zh ? "交上来的和放行的样片对照，看是否达到同样的水准" : "Compares what is handed over with the approved sample for the same standard";
+  if (check.standard_of) return zh ? "交上来的和通过的样片对照，看是否达到同样的水准" : "Compares what is handed over with the approved sample for the same standard";
   if (check.kind === "measure") {
     const what = check.measure ? measureLabel(check.measure, locale) : "";
     if (!check.path) return zh ? `${what}（${unboundNote(locale)}）` : `${what} (${unboundNote(locale)})`;

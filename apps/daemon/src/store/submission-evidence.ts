@@ -122,7 +122,7 @@ export type UnbackedItem = RequiredItem & { checks: SubmissionCheck[] };
 
 /**
  * Whether a hand-over waits on your 放行 with every required item met: nobody made it (an
- * organizer's reading, words handed over), it is a large job's sample or last part (ADR 0060), or
+ * organizer's reading, words handed over), it is a large job's last part (ADR 0060), or
  * nothing stands behind it — no gate of yours passed, and no reviewer on another model gave evidence
  * on what you asked (ADR 0046).
  */

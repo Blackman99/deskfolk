@@ -2,6 +2,8 @@ import { afterEach, expect, test } from "bun:test";
 import { isoNow } from "../ids";
 import { Store } from ".";
 import { ENGINE_LEVELS } from "./schema-gate";
+import { planFacts } from "../context/plan-facts";
+import { planLines } from "../context/plan-lines";
 import { yoursToApprove } from "./large-jobs";
 import { superviseSubmissions, UNREVIEWED_AFTER_MS } from "./submissions";
 
@@ -147,7 +149,7 @@ test("a large job not laid out refuses generating and handing over, and a layout
   expect(other.store.planItems({ turnId: other.turnOf(other.lead.id), items: [{ title: "海报", owner: "导演" }] }).tickets).toHaveLength(1);
 });
 
-test("laid out, everything but the sample and what it needs first waits for it; nothing starts on them until you approve it", () => {
+test("laid out, everything but the sample and what it needs first waits for it; nothing starts on them until it is handed over", () => {
   const f = fixture();
   large(f);
   const { result, sheet, sample, two, three, cut } = layOut(f);
@@ -161,7 +163,7 @@ test("laid out, everything but the sample and what it needs first waits for it; 
   expect(f.store.waitingOn(three.ticket_id)).toMatchObject({ id: sample.ticket_id, sample: true });
   expect(f.store.ballHolder({ ticketId: three.ticket_id })).toEqual({ kind: "app", reason: "waits", ref: sample.ticket_id });
   const writing = f.turnOf(f.writer.id);
-  expect(() => f.store.workOn({ turnId: writing, plan: f.plan.id, ticket: three.ticket_id })).toThrow("the job's sample, which the user has not approved yet");
+  expect(() => f.store.workOn({ turnId: writing, plan: f.plan.id, ticket: three.ticket_id })).toThrow("the job's sample, which has not been handed over yet");
   const onIt = f.turnOf(f.writer.id, three.ticket_id);
   expect(f.store.largeJobRefusal(onIt)).toMatchObject({ code: "waits_for" });
   expect(() => f.store.prepareSubmission({ turnId: onIt, origin: "submit", artifacts: [{ path: `${ticket(f, three.ticket_id).dir}/scene.mp4`, sha256: hash(1) }] }))
@@ -173,6 +175,11 @@ test("laid out, everything but the sample and what it needs first waits for it; 
   expect(board.scale).toMatchObject({ value: "large", by: "reader" });
   expect(board.tickets.find((row) => row.id === three.ticket_id)).toMatchObject({ sample: false, ball: { kind: "app", reason: "waits", waits_for: sample.ticket_id } });
   expect(board.tickets.find((row) => row.id === sample.ticket_id)?.sample).toBe(true);
+  // Handed over is enough (ADR 0109): the scenes start with no word of yours on the sample.
+  sheetDone(f, sheet.ticket_id);
+  handOver(f, sample.ticket_id, f.lead.id, 2);
+  expect(f.store.waitingOn(three.ticket_id)).toBeNull();
+  expect(f.store.largeJobRefusal(f.turnOf(f.writer.id, three.ticket_id))).toBeNull();
 });
 
 test("a ticket that waits for another (not the sample) may start once that one is handed over, not only once approved", () => {
@@ -186,25 +193,21 @@ test("a ticket that waits for another (not the sample) may start once that one i
   expect(f.store.waitingOn(second!.ticket_id)).toBeNull();
 });
 
-test("the sample waits on your word even with a passing check of yours behind it; its Bot hears what it took; approving it holds the rest to it", () => {
+test("the sample goes by the usual rules: a passing check of yours lets it through with nobody asked, and its approval holds the rest to it", () => {
+  // Until ADR 0109 it waited on your word whatever backed it, and the rest of the job waited with it.
   const f = fixture();
   large(f);
   const { sheet, sample, two, three, cut } = layOut(f);
   expect(f.store.waitingOn(sample.ticket_id)).toMatchObject({ id: sheet.ticket_id, sample: false });
   sheetDone(f, sheet.ticket_id);
   gateOn(f, sample.ticket_id);
+  expect(yoursToApprove(f.ctx, sample.ticket_id)).toBeNull();
   const submission = handOver(f, sample.ticket_id, f.lead.id, 2);
-  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
-  const waiting = f.store.getSubmission(submission.id);
-  expect(waiting.state).toBe("submitted");
-  expect(waiting.awaiting?.kind).toBe("approval");
-  // No card: its Bot hears what it took with its hand-over, and tells you.
-  expect(waiting.awaiting?.message_id).toBeNull();
-  expect(f.store.sampleReport(sample.ticket_id, "zh")).toContain("剩下 3 件");
-  expect(f.store.sampleReport(two.ticket_id, "zh")).toBeNull();
-  // Nothing is held to it before you approve it.
+  expect(f.store.waitingOn(three.ticket_id)).toBeNull();
+  // Nothing is held to it before it is approved.
   expect(f.store.db.query("SELECT COUNT(*) AS n FROM acceptance_checks WHERE standard_of IS NOT NULL").get()).toEqual({ n: 0 });
-  approveByWord(f, submission.id);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "approved", awaiting: null });
   expect(ticket(f, sample.ticket_id).stage).toBe("approved");
   const standards = f.store.db.query<{ ticket_id: string; kind: string; origin: string; source: string; item: string }, [string]>(
     "SELECT ticket_id, kind, origin, source, item FROM acceptance_checks WHERE standard_of = ? ORDER BY ticket_id").all(sample.ticket_id);
@@ -213,6 +216,25 @@ test("the sample waits on your word even with a passing check of yours behind it
   expect(standards[0]!.item).toContain("样片 #02「第一场」");
   expect(f.store.waitingOn(three.ticket_id)).toBeNull();
   expect(f.store.waitingOn(sheet.ticket_id)).toBeNull();
+});
+
+test("the situation tells the sample's Bot to go on with no word from the user, before and after it is handed over", () => {
+  // 2026-11-10: told the sample was the user's to approve, 视频导演 asked for 「第一场样片通过」 four times.
+  const f = fixture();
+  large(f);
+  const { sheet, sample } = layOut(f);
+  const situation = (locale: "zh" | "en") => {
+    const trigger = f.store.insertMessage({ sessionId: f.room.id, kind: "system", author: f.lead.id, body: "看看" });
+    const facts = planFacts(f.store, { taskId: f.plan.id, turnId: null, triggerMessageId: trigger.id, botId: f.lead.id, sessionId: f.room.id, locale })!;
+    return planLines(facts, locale).join("\n");
+  };
+  expect(situation("zh")).toContain("还没交出去；等它的各件在它交出去之后开工");
+  expect(situation("zh")).toContain("不要请用户放行");
+  expect(situation("en")).toContain("do not ask them to approve it");
+  expect(situation("zh")).not.toContain("还没放行");
+  sheetDone(f, sheet.ticket_id);
+  handOver(f, sample.ticket_id, f.lead.id, 2);
+  expect(situation("zh")).toContain("已交出去；等它的各件照常开工");
 });
 
 test("a standard check holds a hand-over only once it judged it: not run is waited for, a pass backs it, a fail sends it back, unjudged holds nothing", () => {
@@ -296,16 +318,6 @@ test("once what a ticket waits for is through, the supervisor calls its owner at
   const next = f.store.supervisorTick({ now: isoNow() });
   expect(next.wakes.map((wake) => [wake.ticketId, wake.botId])).toContainEqual([three.ticket_id, f.writer.id]);
   void quiet;
-});
-
-test("the sample's sums leave the model's cost unsaid when the endpoint reports none", async () => {
-  const { sampleSumsLines } = await import("./large-jobs");
-  expect(sampleSumsLines({ minutes: 4, segments: 2, modelUsd: null, externalCalls: 0, remaining: 3 }, "zh"))
-    .toBe("样片做了约 4 分钟（2 段）。按样片的规模粗算，剩下 3 件约 12 分钟。");
-  expect(sampleSumsLines({ minutes: 4, segments: 2, modelUsd: 0.5, externalCalls: 6, remaining: 3 }, "zh"))
-    .toBe("样片做了约 4 分钟（2 段）、模型费约 $0.50、出图出视频这类外部调用 6 次（费用以各服务为准）。按样片的规模粗算，剩下 3 件约 12 分钟、模型费约 $1.50、外部调用约 18 次。");
-  expect(sampleSumsLines({ minutes: 4, segments: 1, modelUsd: 0, externalCalls: 0, remaining: 0 }, "en"))
-    .toBe("The sample took about 4 min of work (1 segment).");
 });
 
 /** The checks held to `sampleId` still standing, by the ticket each is on. */

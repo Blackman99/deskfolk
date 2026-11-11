@@ -37,7 +37,7 @@ export function ballLabel(
 ): string | null {
   const ball = ticket.ball;
   if (!ball) return null;
-  // Waiting for another ticket (ADR 0060): which one, and whether it is the sample you approve.
+  // Waiting for another ticket to be handed over (ADR 0060): which one, and whether it is the sample.
   if (ball.kind === "app" && ball.reason === "waits" && ball.waits_for) {
     const other = detail.tickets.find((row) => row.id === ball.waits_for);
     return other ? t.plan.ballWaits(`#${ticketTag(other.seq)}`, Boolean(other.sample)) : null;

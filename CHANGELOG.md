@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A large job's sample no longer waits for your approval
+
+- The rest of a large job starts once its sample is handed over, not once you say the sample passes; the sample's own hand-over goes like any other: its reviewer, a check of yours, else your word. On 2026-11-10 the video director's second scene was refused for over an hour while 「继续」, 「第一场放过」 and an answer on a question card each failed to count as approval, until the Bot had you type 「第一场样片通过」 word for word. The Bot's situation now says not to ask you to approve the sample; standard checks against it and your word on the job's last part stay ([ADR 0109](docs/adr/0109-the-app-says-less-when-work-stops.md)).
+- On the board a ticket waiting for the sample reads "Waits for sample #02 to be handed over", and "Make it the sample" no longer says you approve it.
+
 ### No more "This has stopped"
 
 - When the supervisor's two call-backs move nothing it still stops, but it no longer posts "This has stopped: …" in the conversation or sends a "stopped" notification; it is recorded in the work log only, and your next word to the Bot goes on. A job with several open tickets used to get one line per ticket, four at once. The two notices that need your check stay: pick-ups used up, and a last step with no known outcome ([ADR 0109](docs/adr/0109-the-app-says-less-when-work-stops.md)).

@@ -28,13 +28,13 @@ export const zh = {
     ceiling: "卡在能力天花板，等你决定",
     unclaimed: "没人在做，等你派"
   } as Record<string, string | ((name: string) => string)>,
-  /** A ticket waiting for another not through yet (ADR 0060): the sample until you approve it, any other until it is handed over. */
-  ballWaits: (tag: string, sample: boolean) => sample ? `等样片 ${tag} 你放行` : `等 ${tag} 先交`,
+  /** A ticket waiting for another not handed over yet (ADR 0060; the sample too, ADR 0109). */
+  ballWaits: (tag: string, sample: boolean) => sample ? `等样片 ${tag} 先交` : `等 ${tag} 先交`,
   sample: "样片",
-  sampleHint: "先做的那一件：按整件事的水准做足、由你放行；其余各件等它，交上来时拿它对照",
+  sampleHint: "先做的那一件：按整件事的水准做足；其余各件等它交出去，交上来时拿它对照",
   /** On a card that is not the sample, in a large job or one that has a sample: make it the sample instead. */
   makeSample: "设为样片",
-  makeSampleHint: "改让这一件当样片：原来的样片不再是样片，挂在它上面的检查也撤下；要你来放行这一件",
+  makeSampleHint: "改让这一件当样片：原来的样片不再是样片，挂在它上面的检查也撤下",
   dependsOn: (tags: string) => `要等 ${tags} 先完成`,
   editDepends: "依赖",
   dependsHint: "这张任务要等哪些先完成（监督器不会先叫醒它）",
@@ -59,7 +59,7 @@ export const zh = {
     renamedGoal: (goal: string) => `目标还写着「${goal}」，Bot 照目标做；对不上就一起改。`,
     editGoal: "改目标",
     /** A large job (ADR 0060), and your word on it. */
-    scaleLarge: (unit: string | null) => `大活：先拆成几件${unit ? `（每件${unit}）` : ""}，先做样片给你放行，再铺开。`,
+    scaleLarge: (unit: string | null) => `大活：先拆成几件${unit ? `（每件${unit}）` : ""}，先做样片，再照它铺开。`,
     scaleWhy: { reader: (why: string | null) => why ? `从你说的「${why}」认出来的。` : "从你的话认出来的。",
       signal: (why: string | null) => why ? `${why}，应用认出来的。` : "做了好几段还没有一件通过，应用认出来的。",
       user: (_why: string | null) => "你定的。" },
@@ -431,12 +431,12 @@ export const en: CopyShape<typeof zh> = {
     ceiling: "At the capability ceiling, waiting on you",
     unclaimed: "Nobody is on it; yours to hand out"
   } as Record<string, string | ((name: string) => string)>,
-  ballWaits: (tag: string, sample: boolean) => sample ? `Waits for you to approve sample ${tag}` : `Waits for ${tag} to be handed over`,
+  ballWaits: (tag: string, sample: boolean) => sample ? `Waits for sample ${tag} to be handed over` : `Waits for ${tag} to be handed over`,
   sample: "Sample",
-  sampleHint: "Made first, to the whole job's standard, for you to approve; the others wait for it and are compared with it",
+  sampleHint: "Made first, to the whole job's standard; the others wait for it to be handed over and are compared with it",
   /** On a card that is not the sample, in a large job or one that has a sample: make it the sample instead. */
   makeSample: "Make it the sample",
-  makeSampleHint: "Make this one the sample instead: the old sample stops being it, the checks held to it come down, and you approve this one",
+  makeSampleHint: "Make this one the sample instead: the old sample stops being it, and the checks held to it come down",
   dependsOn: (tags: string) => `Waits for ${tags}`,
   editDepends: "Depends on",
   dependsHint: "Which tickets this one waits for (the supervisor wakes nobody to it before they are done)",
@@ -458,7 +458,7 @@ export const en: CopyShape<typeof zh> = {
     nameHint: "What this job is called in the app and in every Bot's picture; its folder keeps its name.",
     renamedGoal: (goal: string) => `The goal still reads "${goal}", and the Bots work to the goal; change it too if it no longer fits.`,
     editGoal: "Edit the goal",
-    scaleLarge: (unit: string | null) => `A large job: laid out in parts${unit ? ` (${unit} each)` : ""}, with a sample made first for you to approve before the rest.`,
+    scaleLarge: (unit: string | null) => `A large job: laid out in parts${unit ? ` (${unit} each)` : ""}, with a sample made first and the rest after it.`,
     scaleWhy: { reader: (why: string | null) => why ? `Read from your words "${why}".` : "Read from your words.",
       signal: (why: string | null) => why ? `${why}: the app took it as one.` : "Several segments with nothing approved: the app took it as one.",
       user: (_why: string | null) => "Your call." },

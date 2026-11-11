@@ -14,7 +14,16 @@ On 2026-11-10 an MV in your direct with the video director: once scene one's sam
 2. **「这件事停下了」不再出现 / No more 「这件事停下了」.** 监督器叫回两次没进展时照旧停下不再叫，但只记在工作记录里（`supervisor.notice`，`message_id` 为空），不贴行、不发通知，每个进展周期一次。你对这个 Bot 说话就接着做，和 ADR 0101 的叫停一样是隐式的。要你做点什么的两种照旧：一小时续跑用完（`retry_budget`）、最后一步结果不明（`unknown_effect`，防重复提交）。0–3 级的规划叫回（`plan-watch`）本来就不贴行，没动。
    The supervisor still stops after two call-backs that moved nothing, but records it only (`supervisor.notice` with no message): no line, no notification, once per progress cycle. Your next word to the Bot goes on, as implicitly as a stop (ADR 0101). The two notices that ask something of you stay: `retry_budget` and `unknown_effect`. The level 0–3 plan watch posts no line already and is unchanged.
 
+3. **样片不再等你放行 / The sample no longer waits for your approval.** 样片还是大活里先做、按整件事的水准做足的那一件，其余各件还是等它，但只等到它**交出去**（已交付、审查中、已通过，或交过之后返工），和等别的任务一样（`waitingOn`）。样片自己的交付照普通规则走：有审查者就审，有你确认过的检查撑着就直接放行，都没有才等你一句话——而这时其余各件已经在做了。读句不再被告知哪份是样片，也没有「样片要明确认可」那一条；`submit` 不再返回样片花了多少（`sampleReport`、`sampleSums` 删掉）。照样片检查保留：样片通过（不论是谁放行的）后，其余各件交上来时照它对照。大活的最后一件仍然等你的话。局面里写明：样片往下做不用等用户表态，不要请用户放行。
+   The sample is still the unit made first to the whole job's standard and the rest still wait for it, but only until it is **handed over**, like any dependency. Its own hand-over goes by the usual rules (reviewer, a check of yours, else your word — by then the rest are under way). The reader is no longer told which hand-over is the sample, and the clear-yes rule is gone; `submit` no longer reports what the sample took. Standard checks stay, made once the sample is approved by whoever approves it. The job's last part still waits on your word. The situation tells the Bot not to ask you to approve the sample.
+
 ## 取舍 / Trade-offs
 
 - **额度重置后不会自己接着做。** 监督器不知道重置时间（只有失败行里的文字），所以等你一句话；Claude Code 的 `resetsAt` 在 `agent-runner.ts` 里拿得到，要自动接着做可以从那里接。 / **Nothing resumes on its own after the reset**: your word does. `resetsAt` is available in `agent-runner.ts` if that is wanted later.
 - **黄金路径评测**把监督器的静默停下（工作记录里没有行的那种）也算作一次需要你的介入。 / The golden-path eval counts the silent stall as an intervention.
+- **样片的水准不再由你亲自定。** 照样片检查对照的是通过了的样片，可能是审查者或检查放行的；你不认可样片时，照常说哪里不好，它就返工，或让负责人换样片。 / **The bar is no longer set by you in person**; say what is wrong with the sample and it is reworked, or the sample moves.
+
+## 数据 / Your data
+
+视频导演的职责、「关键帧出片」技能、一条记忆（「样片放行只认用户在输入框发的普通消息…」）和工作区 `film-kit/README.md` 里也写着样片交你放行，同日按这条改掉或停用（职责和技能的修改有修订记录，可撤销）。
+The video director's duties, its 关键帧出片 skill, a memory about how to get the sample approved, and the workspace's `film-kit/README.md` said the same; they were changed or disabled the same day, with revisions kept.

@@ -315,7 +315,7 @@ const CALL_SLOTS: SlotDef[] = [
   call(
     "call.standard",
     { zh: "照样片检查", en: "Sample standard check" },
-    { zh: "大活里交上来的一部分有没有达到你放行的样片的水准。", en: "Whether a part of a large job keeps the standard of the sample you approved." },
+    { zh: "大活里交上来的一部分有没有达到样片的水准。", en: "Whether a part of a large job keeps the standard of its sample." },
     BOTH,
     (l) => standardJudgeTemplate(l),
     (l) => standardJudgeFormat(l),

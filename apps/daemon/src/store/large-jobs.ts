@@ -1,17 +1,17 @@
 /**
  * 大活 (large jobs, ADR 0060): a job too big to make well in one go is laid out before anything is
  * made — its units as tickets, one of them the sample, made first to the full standard — and the
- * sample is yours to approve before the rest start. Each later ticket's hand-over is then compared
- * with the sample (a standard check, 照样片), and the job's last hand-over is yours again. On
+ * rest start once the sample is handed over, like any ticket after the one it waits for (ADR 0109:
+ * the sample no longer waits on your 放行). Each later ticket's hand-over is then compared with the
+ * sample's approved one (a standard check, 照样片), and the job's last hand-over is yours. On
  * 2026-10-04 a 20-minute episode went as one ticket through nine segments and came back as 90% still
  * pictures under camera moves: nothing had asked for a first unit to look at, and the only checks
  * measured what was easy (length, loudness).
  *
  * This module is what that rests on: the plan's size as read (by the reader from your words, by the
  * signal of work going round on it with nothing through, or by you), its sample, what a ticket waits
- * for, the refusals a segment meets before the layout and on a ticket still waiting, the sample's
- * standard checks, and the sums the sample's card shows. From engine level 5, where tickets have
- * stages and `plan_items` exists.
+ * for, the refusals a segment meets before the layout and on a ticket still waiting, and the sample's
+ * standard checks. From engine level 5, where tickets have stages and `plan_items` exists.
  */
 import type { PlanScale } from "@real-bot/protocol";
 import { HttpError } from "../errors";
@@ -120,10 +120,13 @@ export function layoutMissing(ctx: StoreContext, taskId: string): boolean {
 export type Waited = { id: string; seq: number; title: string; sample: boolean };
 
 /**
- * The first ticket this one waits for that is not through: the sample until it is approved; any
- * other until it was handed over (submitted, in review, approved, or back in rework after a
- * hand-over) — waiting for every approval would hold each next ticket on your card. A dropped or
- * parked ticket never holds anything: set aside, it would never come. Null when nothing holds it.
+ * The first ticket this one waits for that is not through: until it was handed over (submitted, in
+ * review, approved, or back in rework after a hand-over) — waiting for every approval would hold
+ * each next ticket on your card. The sample too, since 2026-11-11 (ADR 0109): it used to hold the
+ * rest until you approved it, and on 2026-11-10 an MV's second scene sat refused for an hour while
+ * 「继续」, a question card's answer and 「第一场放过」 each failed to read as that approval. A
+ * dropped or parked ticket never holds anything: set aside, it would never come. Null when nothing
+ * holds it.
  */
 export function waitingOn(ctx: StoreContext, ticketId: string): Waited | null {
   if (!on(ctx)) return null;
@@ -134,7 +137,7 @@ export function waitingOn(ctx: StoreContext, ticketId: string): Waited | null {
       `SELECT t.id, t.seq, t.title, t.sample, ${STAGE("t")} AS stage FROM tickets t WHERE t.id = ? AND t.task_id = ?`).get(id, row.task_id);
     if (!dep) continue;
     const through = dep.stage === "approved" || dep.stage === "dropped"
-      || (dep.sample !== 1 && (dep.stage === "submitted" || dep.stage === "in_review" || dep.stage === "rework"));
+      || dep.stage === "submitted" || dep.stage === "in_review" || dep.stage === "rework";
     if (!through) return { id: dep.id, seq: dep.seq, title: dep.title, sample: dep.sample === 1 };
   }
   return null;
@@ -159,7 +162,7 @@ export function largeJobRefusal(ctx: StoreContext, turnId: string): LargeJobRefu
       + (sample
         ? `Its sample, ticket #${nn(sample.seq)} "${sample.title}", has nothing waiting for it yet: the plan's lead lays out the rest of the units with plan_items. `
         : `Before anything is generated or handed over, the plan's lead lays it out with plan_items: the units${scale?.unit ? ` (${scale.unit} each)` : ""}, `
-          + "one of them marked sample: true — made first, to the full standard, for the user to approve — the rest waiting for it, and the last one putting them together. ")
+          + "one of them marked sample: true — made first, to the full standard — the rest waiting for it to be handed over, and the last one putting them together. ")
       + "Reading files, writing notes and scripts and running local commands go on as usual; if you are not the lead, end your turn saying so." };
   }
   if (turn.ticket_id) {
@@ -170,9 +173,8 @@ export function largeJobRefusal(ctx: StoreContext, turnId: string): LargeJobRefu
     }
     const dep = waitingOn(ctx, turn.ticket_id);
     if (dep) {
-      return { code: "waits_for", message: dep.sample
-        ? `this ticket waits for the sample, ticket #${nn(dep.seq)} "${dep.title}", which the user has not approved yet: nothing is generated or handed over on it until they do. Work on the sample, or end your turn.`
-        : `this ticket waits for ticket #${nn(dep.seq)} "${dep.title}", which has not been handed over yet: nothing is generated or handed over on it until it is. Work on that one, or end your turn.` };
+      return { code: "waits_for", message: `this ticket waits for ${dep.sample ? "the sample, " : ""}ticket #${nn(dep.seq)} "${dep.title}", which has not been handed over yet: `
+        + "nothing is generated or handed over on it until it is. Work on that one, or end your turn." };
     }
   }
   return null;
@@ -209,10 +211,11 @@ export function waitOnSample(ctx: StoreContext, taskId: string, now: string = is
 }
 
 /**
- * Once the sample is approved, each ticket waiting for it is held to it: a standard check (照样片)
- * on the ticket, which compares what it hands over with the sample's approved hand-over. Made by the
- * app from your approval, so it is yours (`source = 'user'`, `origin = 'sample'`); you can delete one
- * on the board like any check. Returns the checks made.
+ * Once the sample is approved — by its reviewer, its checks or your word, like any ticket — each
+ * ticket waiting for it is held to it: a standard check (照样片) on the ticket, which compares what
+ * it hands over with the sample's approved hand-over. The app makes it for the standard the job set
+ * itself, so it counts as yours (`source = 'user'`, `origin = 'sample'`); you can delete one on the
+ * board like any check. Returns the checks made.
  */
 export function syncStandardChecks(ctx: StoreContext, taskId: string, now: string = isoNow()): string[] {
   const sample = sampleOf(ctx, taskId);
@@ -253,7 +256,7 @@ export function droppedWhy(ctx: StoreContext, ticketId: string): string | null {
  * Refused while the old sample has a hand-over out (its card would still say "sample"). The old one
  * stops being the sample; tickets still open stop waiting for it (the new one is then put ahead of
  * them by `waitOnSample`); its standard checks are taken down (`removed_by = 'resample'`, their runs
- * kept). The new sample is yours to approve like any, and the rest are held to it once you do.
+ * kept). The rest are held to the new sample once it is approved.
  * Returns the old sample's id and the checks taken down; nothing when the sample is already `to`.
  */
 export function resample(ctx: StoreContext, input: { taskId: string; to: string; reason: string | null; actor: string; turnId?: string | null; now?: string }):
@@ -290,77 +293,19 @@ export function resample(ctx: StoreContext, input: { taskId: string; to: string;
 
 /**
  * Whose approval a hand-over of this ticket needs in a large job, past any reviewer: yours, when it
- * is the sample (the standard is yours to set), or when it is the last ticket of a laid-out large
- * job left to approve (approving it delivers the job). Null otherwise.
+ * is the last ticket of a laid-out large job left to approve (approving it delivers the job). Null
+ * otherwise. The sample needed yours too until 2026-11-11 (ADR 0109); it now goes by the usual rules.
  */
-export function yoursToApprove(ctx: StoreContext, ticketId: string): "sample" | "last" | null {
+export function yoursToApprove(ctx: StoreContext, ticketId: string): "last" | null {
   if (!on(ctx)) return null;
-  const ticket = ctx.db.query<{ task_id: string; sample: number }, [string]>("SELECT task_id, sample FROM tickets WHERE id = ?").get(ticketId);
+  const ticket = ctx.db.query<{ task_id: string }, [string]>("SELECT task_id FROM tickets WHERE id = ?").get(ticketId);
   if (!ticket || !goesBySize(ctx, ticket.task_id)) return null;
   const plan = ctx.db.query<{ scale: string | null; routine_id: string | null }, [string]>("SELECT scale, routine_id FROM tasks WHERE id = ?").get(ticket.task_id);
   if (!plan || plan.routine_id) return null;
-  if (ticket.sample === 1) return "sample";
   if (plan.scale !== "large" || !sampleOf(ctx, ticket.task_id)) return null;
   const others = ctx.db.query<{ n: number }, [string, string]>(`SELECT COUNT(*) AS n FROM tickets t WHERE t.task_id = ? AND t.id <> ?
     AND ${STAGE("t")} NOT IN ('approved', 'dropped')`).get(ticket.task_id, ticketId)!.n;
   return others === 0 ? "last" : null;
-}
-
-export type SampleSums = {
-  /** Minutes of work segments on the sample. */
-  minutes: number;
-  segments: number;
-  /** Model spend on the sample, in USD; external services (images, video) are not in it. Null when no row carries a cost (an endpoint that reports none). */
-  modelUsd: number | null;
-  /** Calls with side effects to an MCP server (generating images or video, say): their cost is the server's to say. */
-  externalCalls: number;
-  /** Tickets waiting for the sample, not through. */
-  remaining: number;
-};
-
-/** What the sample took: the sums of its segments, and how many tickets wait for it. */
-export function sampleSums(ctx: StoreContext, sampleId: string): SampleSums {
-  const ticket = ctx.db.query<{ task_id: string }, [string]>("SELECT task_id FROM tickets WHERE id = ?").get(sampleId);
-  const segments = ctx.db.query<{ created_at: string; updated_at: string }, [string]>(`SELECT created_at, updated_at FROM turns
-    WHERE ticket_id = ? AND IFNULL(mode, 'work') <> 'readonly'`).all(sampleId);
-  const ms = segments.reduce((sum, row) => sum + Math.max(0, Date.parse(row.updated_at) - Date.parse(row.created_at)), 0);
-  const usd = ctx.db.query<{ usd: number | null }, [string]>(`SELECT SUM(COALESCE(sp.cost_usd_ticks, sp.estimated_cost_usd_ticks)) / 1e10 AS usd
-    FROM spend sp JOIN turns t ON t.id = sp.turn_id WHERE t.ticket_id = ?`).get(sampleId)?.usd ?? null;
-  const external = ctx.db.query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM tool_executions WHERE ticket_id = ? AND side_effect = 1
-    AND tool LIKE 'mcp\\_%' ESCAPE '\\' AND outcome = 'succeeded'`).get(sampleId)!.n;
-  const remaining = ticket ? waitingFor(ctx, ticket.task_id, sampleId).filter((row) => row.stage !== "approved").length : 0;
-  return { minutes: Math.round(ms / 60_000), segments: segments.length, modelUsd: usd, externalCalls: external, remaining };
-}
-
-/**
- * What the sample handed over on `ticketId` took, and what the rest would at that size, in words; null
- * when it is not a large job's sample. Its Bot hears it with its hand-over, to tell you as it shows
- * you the sample (ADR 0084: no card says it any more).
- */
-export function sampleReport(ctx: StoreContext, ticketId: string, locale: "zh" | "en"): string | null {
-  return yoursToApprove(ctx, ticketId) === "sample" ? sampleSumsLines(sampleSums(ctx, ticketId), locale) : null;
-}
-
-/** The lines on what the sample took and what the rest would, at that size. */
-export function sampleSumsLines(sums: SampleSums, locale: "zh" | "en"): string {
-  const usd = (value: number) => `$${value < 10 ? value.toFixed(2) : value.toFixed(0)}`;
-  // An endpoint that reports no cost leaves the model's share unsaid rather than "$0.00".
-  const cost = sums.modelUsd !== null && sums.modelUsd > 0 ? sums.modelUsd : null;
-  const k = sums.remaining;
-  if (locale === "en") {
-    const took = `The sample took about ${sums.minutes} min of work (${sums.segments} segment${sums.segments === 1 ? "" : "s"})`
-      + (cost !== null ? `, ${usd(cost)} of model use` : "")
-      + (sums.externalCalls > 0 ? ` and ${sums.externalCalls} generating call${sums.externalCalls === 1 ? "" : "s"} (images, video and the like — their cost is the service's)` : "") + ".";
-    return k > 0
-      ? `${took} At that size the other ${k} would take about ${sums.minutes * k} min${cost !== null ? ` and ${usd(cost * k)}` : ""}${sums.externalCalls > 0 ? `, with about ${sums.externalCalls * k} generating calls` : ""}.`
-      : took;
-  }
-  const took = `样片做了约 ${sums.minutes} 分钟（${sums.segments} 段）`
-    + (cost !== null ? `、模型费约 ${usd(cost)}` : "")
-    + (sums.externalCalls > 0 ? `、出图出视频这类外部调用 ${sums.externalCalls} 次（费用以各服务为准）` : "") + "。";
-  return k > 0
-    ? `${took}按样片的规模粗算，剩下 ${k} 件约 ${sums.minutes * k} 分钟${cost !== null ? `、模型费约 ${usd(cost * k)}` : ""}${sums.externalCalls > 0 ? `、外部调用约 ${sums.externalCalls * k} 次` : ""}。`
-    : took;
 }
 
 /**

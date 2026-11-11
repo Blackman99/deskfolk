@@ -789,7 +789,6 @@ export class Store {
   readonly largeJobRefusal = this.bind(largeJobs.largeJobRefusal);
   readonly layoutMissing = this.bind(largeJobs.layoutMissing);
   readonly sampleOf = this.bind(largeJobs.sampleOf);
-  readonly sampleReport = this.bind(largeJobs.sampleReport);
   readonly waitingOn = this.bind(largeJobs.waitingOn);
   readonly signalFacts = this.bind(largeJobs.signalFacts);
   readonly standardSides = this.bind(largeJobs.standardSides);

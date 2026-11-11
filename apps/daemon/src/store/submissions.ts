@@ -570,7 +570,7 @@ export function reviewSubmission(ctx: StoreContext, input: {
       // What you raised twice or more that a pass on the producer's own model leaves on nothing; an
       // organizer's reading or an answer, which nobody made; a hand-over no confirmed check backs,
       // when the reviewer runs on the producer's own model or gave no evidence for anything — one
-      // Bot passing another's claim; a large job's sample or last part (ADR 0060). Any of these leaves
+      // Bot passing another's claim; a large job's last part (ADR 0060). Any of these leaves
       // the clean approve waiting on your word (ADR 0084), its verdict kept with it.
       // (Every gate passed by here: a failing or unrun one refused the approval above.)
       const open = sameModel && !unattended ? unbackedItems(ctx, { ...submission, checks }, "raised") : [];
@@ -583,7 +583,6 @@ export function reviewSubmission(ctx: StoreContext, input: {
         const items = open.map((item) => `requirement ${item.requirement_id} 「${item.quote}」 was raised ${item.times_raised} times, and you run on the producer's own model: your pass needs a passing check or the user's word${item.checks.length > 0 ? ` (the app measured: ${checkLines(item.checks, "en").join("; ")})` : ""}`);
         const yours = yoursToApprove(ctx, submission.ticket_id);
         const why = ORIGIN_NEEDS_USER.includes(submission.origin) ? `submission ${submission.id} is a ${submission.origin === "answer" ? "words" : "organizer"} hand-over`
-          : yours === "sample" ? `submission ${submission.id} is the job's sample, which sets the standard for the rest`
           : yours === "last" ? `submission ${submission.id} is the large job's last hand-over, which delivers it`
           : `no check the user confirmed backs submission ${submission.id}, and ${sameModel ? "you run on the producer's own model" : "your verdicts carry no evidence"}`;
         return { ok: false, code: "awaiting_user",
@@ -778,7 +777,7 @@ function takeUpAwaiting(ctx: StoreContext, submission: Submission, now: string):
   // you said about the picture too: the line that opened a picture job is always such an item, and
   // it put every one made in one go on a card (2026-10-07). A line of yours said since does not hold
   // it either: what the Bot makes of that goes the same way once this one is through. A large job's
-  // sample and last part are always yours (ADR 0060).
+  // last part is always yours (ADR 0060); its sample is not, since ADR 0109.
   if (!awaiting && doneInOneGo(ctx, submission) && !yoursToApprove(ctx, submission.ticket_id)) {
     approve(ctx, submission, null, checks, now, checks.some(backs) ? "no_reviewer" : "one_go");
     return { submission: getSubmission(ctx, submission.id), unrun: [] };

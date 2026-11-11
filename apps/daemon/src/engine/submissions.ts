@@ -253,10 +253,8 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
           notEnded = error instanceof Error ? error.message : String(error);
         }
       }
-      // The sample of a large job: what it took and what the rest would, for the Bot to tell you as it shows it to you.
-      const sample = store.sampleReport(settled.submission.ticket_id, lang);
       return { ok: true, data: { submission_id: settled.submission.id, state: settled.state, reviewer: settled.reviewer, checks: lines,
-        ...(sample ? { sample } : {}), ...(ended ? { ended: true } : {}), ...(notEnded ? { not_ended: notEnded } : {}) }, emitted };
+        ...(ended ? { ended: true } : {}), ...(notEnded ? { not_ended: notEnded } : {}) }, emitted };
     } catch (error) {
       return failure(error);
     }

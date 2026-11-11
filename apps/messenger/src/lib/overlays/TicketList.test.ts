@@ -575,7 +575,7 @@ test("an approved ticket says who made it, a dropped one is nobody's, and neithe
   view.close();
 });
 
-test("a large job's sample carries its tag, and a ticket waiting for it says it waits for your approval of it (ADR 0060)", () => {
+test("a large job's sample carries its tag, and a ticket waiting for it says it waits for it to be handed over (ADR 0060, 0109)", () => {
   const view = open({
     detail: aDetail({
       supervision_on: true,
@@ -589,7 +589,7 @@ test("a large job's sample carries its tag, and a ticket waiting for it says it 
   });
   expect(rowFor(view.host, "第一场").querySelector(".ticket-sample")?.textContent).toBe(t.plan.sample);
   expect(rowFor(view.host, "第二场").querySelector(".ticket-sample")).toBeNull();
-  expect(rowFor(view.host, "第二场").querySelector(".ticket-ball")?.textContent).toBe("等样片 #02 你放行");
+  expect(rowFor(view.host, "第二场").querySelector(".ticket-ball")?.textContent).toBe("等样片 #02 先交");
   expect(rowFor(view.host, "配乐").querySelector(".ticket-ball")?.textContent).toBe("等 #01 先交");
   view.close();
 });

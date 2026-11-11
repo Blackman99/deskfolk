@@ -30,17 +30,23 @@ function largeJobLines(large: NonNullable<PlanFacts["large"]>, locale: Locale): 
   if (!large.laid_out) {
     lines.push(en
       ? `This is a large job${large.why ? ` (the user: 「${large.why}」)` : ""}. Lay it out before making anything: the plan's lead calls plan_items with the units${large.unit ? ` (${large.unit} each)` : ""}, `
-        + "one of them sample: true — made first, to the full standard the whole job needs, for the user to approve — the rest waiting for it, and a last one that puts them together. "
+        + "one of them sample: true — made first, to the full standard the whole job needs — the rest waiting for it to be handed over, and a last one that puts them together. "
         + "Until then the app refuses generating calls (images, video and other MCP calls with side effects) and hand-overs; reading, notes, scripts and local commands go on."
       : `这是件大活${large.why ? `（用户说的「${large.why}」）` : ""}。先拆再做：规划负责人用 plan_items 拆成几件${large.unit ? `（每件${large.unit}）` : ""}，`
-        + "其中一件标 sample: true 作样片——先做、按整件事要的水准做足、交给用户放行——其余各件等它，最后一件负责组装。"
+        + "其中一件标 sample: true 作样片——先做、按整件事要的水准做足——其余各件等它交出去，最后一件负责组装。"
         + "拆好之前，应用会拒绝出图、出视频这类有副作用的外部调用和交付；读文件、写笔记和脚本、跑本地命令照常。");
   }
   if (large.sample) {
-    const approved = large.sample.stage === "approved";
+    // Since ADR 0109 the sample waits on no word of the user's: the rest go on once it is handed over.
+    const stage = large.sample.stage;
+    const state = stage === "approved"
+      ? en ? "approved; every other unit is compared with it when handed over" : "已通过；其余各件交上来时拿它对照水准"
+      : stage === "todo" || stage === "doing"
+        ? en ? "not handed over yet; the units waiting for it start once it is" : "还没交出去；等它的各件在它交出去之后开工"
+        : en ? "handed over; the units waiting for it go on, and are compared with it once it is approved" : "已交出去；等它的各件照常开工，它通过后交上来的各件拿它对照水准";
     lines.push(en
-      ? `Sample: ticket #${n(large.sample.seq)} "${large.sample.title}" — ${approved ? "approved by the user; every other unit is compared with it when handed over. If the user turns down the direction it set, lay the job out again with plan_items: mark the new direction's item sample: true and drop the tickets of the old one" : "not approved yet; the units waiting for it do not start until the user approves it"}.`
-      : `样片：任务 #${n(large.sample.seq)}「${large.sample.title}」——${approved ? "用户已放行；其余各件交上来时拿它对照水准。用户否掉了它定下的方向时，用 plan_items 重新拆：新方向的那一项标 sample: true，旧方向留下的任务用 drop 作废" : "还没放行；等它的各件在用户放行前不开工"}。`);
+      ? `Sample: ticket #${n(large.sample.seq)} "${large.sample.title}" — ${state}. It needs no word from the user to go on: do not ask them to approve it or wait for them. If the user turns down the direction it set, lay the job out again with plan_items: mark the new direction's item sample: true and drop the tickets of the old one.`
+      : `样片：任务 #${n(large.sample.seq)}「${large.sample.title}」——${state}。往下做不用等用户表态，不要请用户放行，也不要停下来等他。用户否掉了它定下的方向时，用 plan_items 重新拆：新方向的那一项标 sample: true，旧方向留下的任务用 drop 作废。`);
   }
   if (large.waiting_on) {
     lines.push(en

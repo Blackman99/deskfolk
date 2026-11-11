@@ -26,7 +26,7 @@ export type AcceptanceCheckSource = "organizer" | "user";
  * what it stands on, and the organizer never touches it.
  */
 /** `reflection`: a check a Bot's reflection proposed and you adopted (ADR 0051) — a gate, but not yours until you edit it. */
-/** `sample`: a standard check (照样片, ADR 0060) the app made when you approved a large job's sample — yours, as the sample it holds to is. */
+/** `sample`: a standard check (照样片, ADR 0060) the app made when a large job's sample was approved — counted as yours, the standard the job set itself. */
 export type AcceptanceCheckOrigin = "derived" | "organizer" | "user" | "reflection" | "sample";
 
 /** Where a check from your words stands: offered to you, or a gate you confirmed. */
@@ -113,7 +113,7 @@ export type AcceptanceCheck = {
   derived_state?: DerivedCheckState | null;
   /**
    * A standard check (照样片, ADR 0060): the sample ticket this ticket's hand-over is compared with —
-   * kind `continuity`, made by the app when you approve the sample. Null on every other check.
+   * kind `continuity`, made by the app when the sample is approved. Null on every other check.
    */
   standard_of?: string | null;
   created_at: string;

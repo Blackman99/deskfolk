@@ -1,13 +1,13 @@
 /**
- * 照样片 (a standard check, ADR 0060): one unit of a large job held to the sample you approved.
+ * 照样片 (a standard check, ADR 0060): one unit of a large job held to its approved sample.
  * The content differs from unit to unit; what is compared is the craft and the form — a moving
  * picture where the sample moved, as many different pictures for the length, the sound and
  * subtitles the sample had, prose as finished as the sample's. The app gathers the evidence itself
  * (frames, a count of different pictures, image thumbnails, text excerpts) from the sample's
  * approved hand-over and the unit's latest one, and a model compares them.
  *
- * Unlike a seams check on pictures it is a gate (ADR 0046 keeps those a reference): you set the bar
- * by approving the sample, the comparison is relative rather than absolute, and the judge is told
+ * Unlike a seams check on pictures it is a gate (ADR 0046 keeps those a reference): the job set its
+ * own bar with the sample, the comparison is relative rather than absolute, and the judge is told
  * to pass whatever it is unsure of. A judgement it could not make (no model, your stop, today's
  * picture budget spent, nothing handed over yet) is neither a pass nor a fail, and holds nothing.
  */
@@ -118,8 +118,8 @@ export function standardJudgeFormat(locale: Locale): string {
 export function standardJudgeTemplate(locale: Locale): string {
   if (locale !== "en") {
     return [
-      `你在核对一件大活里的一部分有没有达到用户放行的样片的水准，为这条验收作证：{item}`,
-      "先给的是样片（用户亲自看过并放行，就是要达到的水准），后给的是这次交上来的那一部分。两者内容不同是正常的（不同的场、章、页）；只比做工和形式：",
+      `你在核对一件大活里的一部分有没有达到样片的水准，为这条验收作证：{item}`,
+      "先给的是样片（整件事先做、已经通过的那一件，就是要达到的水准），后给的是这次交上来的那一部分。两者内容不同是正常的（不同的场、章、页）；只比做工和形式：",
       [
         "1. 形式：样片是什么东西，这次是不是同样的东西。样片画面在动，这次却大多是静止图片加推拉摇移，就是没达到；样片是成段的正文，这次只有提纲，也是没达到。",
         "2. 丰富度：按长度折算，这次不同画面、不同内容的多少不比样片少太多；同一张画面、同一段话反复出现是没达到。",
@@ -132,8 +132,8 @@ export function standardJudgeTemplate(locale: Locale): string {
     ].join("\n\n");
   }
   return [
-    `You are checking whether one part of a large job keeps the standard of the sample the user approved, to prove this acceptance line: {item}`,
-    "First comes the sample (the user looked at it and approved it: it is the bar), then the part handed over now. Their content differs, as it should (another scene, chapter or page); compare only the craft and the form:",
+    `You are checking whether one part of a large job keeps the standard of its sample, to prove this acceptance line: {item}`,
+    "First comes the sample (the part made first and approved: it is the bar), then the part handed over now. Their content differs, as it should (another scene, chapter or page); compare only the craft and the form:",
     [
       "1. Form: is this the same kind of thing as the sample? Mostly still pictures under camera moves where the sample's picture moves falls short; an outline where the sample is finished prose falls short.",
       "2. Richness: for its length, not far fewer different pictures or different content than the sample; the same picture or passage over and over falls short.",

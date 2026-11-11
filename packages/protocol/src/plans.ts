@@ -131,7 +131,7 @@ export type Ticket = {
   model_override?: TicketModel | null;
   /**
    * The job's sample (样片, ADR 0060): the one unit made first to the full standard, which the job's
-   * other tickets wait for and are compared with; you approve it yourself. Absent from older daemons.
+   * other tickets wait for (until it is handed over, ADR 0109) and are compared with. Absent from older daemons.
    */
   sample?: boolean;
   /**
@@ -420,7 +420,7 @@ export type TaskDetail = SessionTaskSummary & {
   routing_on?: boolean;
   /**
    * Whether this is a large job (大活, ADR 0060): one laid out before anything is made, with a sample
-   * you approve first. Null when nothing has read it as either. Absent from older daemons.
+   * made first. Null when nothing has read it as either. Absent from older daemons.
    */
   scale?: PlanScale | null;
   /** From level 5: the Bots that can review this plan's tickets (in its conversation, not archived); a ticket's owner is left out on its row. */
@@ -542,7 +542,7 @@ export type PatchTicketRequest = {
   model_override?: TicketModel | null;
   /**
    * `true`: this ticket is the job's sample from now on (ADR 0060, 2026-10-10) — the old one stops
-   * being it and the checks held to it come down; you approve the new one. Only `true` is taken.
+   * being it and the checks held to it come down. Only `true` is taken.
    */
   sample?: true;
   if_revision?: number;

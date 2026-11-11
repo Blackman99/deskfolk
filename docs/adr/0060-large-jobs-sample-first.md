@@ -2,6 +2,8 @@
 
 Status: implemented 2026-10-04, at engine level 5 (`ENGINE_LEVELS.submissions`, where tickets have stages and `plan_items` exists). Builds on [ADR 0053](0053-plan-items.md) (plan_items), [ADR 0046](0046-submissions-and-reviews.md) (submissions) and [ADR 0036](0036-acceptance-checks-run-by-the-daemon.md) (checks); one exception to ADR 0046's "pictures are only a reference".
 
+Amended 2026-11-11 by [ADR 0109](0109-the-app-says-less-when-work-stops.md): the sample no longer waits for your approval (decisions 4 and 5 below); the rest wait only for it to be handed over, and it is approved by the usual rules. / 样片不再等你放行，其余各件只等它交出去。
+
 2026-10-04，你让视频导演做一整集 20 分钟的动画。它把整集当一张任务，一个人跑了 9 段、308 次模型调用，交上来一份 1200 秒的成片：339 刀里只有 40 个素材，1076 秒（90%）是静态图片加推拉摇移，8 段真视频各被反复剪进去 5–7 次，同一张图出现 23 次；25 句配音被写死在 95、125、170 秒这样的整数时间点上，和画面对不上。唯一的验收检查（黑场、冻帧、响度、镜长）全过。你打了 3 分，说「这不是视频，是 PPT」。
 
 On 2026-10-04 you asked the video director for a whole 20-minute episode. It made the episode as one ticket, alone, over 9 segments and 308 model calls, and handed in a 1200-second cut: 339 cuts of only 40 sources, 1076 s (90%) still pictures under zooms and pans, its 8 real clips each cut in 5–7 times, one picture shown 23 times; 25 voice lines pinned to round timestamps (95, 125, 170 s) with no tie to the picture. Its only check (black, frozen frames, loudness, shot length) passed. You scored it 3 out of 100: "this is not a video, it is a slideshow".

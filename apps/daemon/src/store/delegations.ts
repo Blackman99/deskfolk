@@ -439,7 +439,7 @@ export function delegateWork(ctx: StoreContext, input: {
     const waited = input.expects === "deliverable" && ticketId ? waitingOn(ctx, ticketId) : null;
     if (waited) {
       throw new HttpError(409, "waits_for", `that ticket waits for ticket #${String(waited.seq).padStart(2, "0")} "${waited.title}"${waited.sample
-        ? ", the job's sample, which the user has not approved yet" : ", which has not been handed over yet"}: ask for it once that one is through`);
+        ? ", the job's sample," : ","} which has not been handed over yet: ask for it once that one is through`);
     }
     const threadId = thread(ctx, from, target.id, now);
     const recipientHome = planHome && isPresent(ctx, planHome, target.id) ? planHome

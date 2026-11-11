@@ -39,7 +39,7 @@ const REASON_MAX = 200;
 export type PlanItemsResult = {
   tickets: Array<{
     ticket_id: string; seq: number; title: string; owner: string | null; reviewer: string | null; depends_on: string[]; parts: string[]; created: boolean;
-    /** The job's sample (ADR 0060): made first, approved by the user, and what the rest wait for. */
+    /** The job's sample (ADR 0060): made first, and what the rest wait for (to be handed over, ADR 0109). */
     sample?: true;
     /** What was asked but left as it was: an owner or reviewer already set. */
     kept?: Array<"owner" | "reviewer">;
@@ -377,7 +377,7 @@ export function planItems(ctx: StoreContext, input: { turnId: string; items: unk
     if (layoutMissing(ctx, taskId)) {
       const scale = planScale(ctx, taskId);
       throw new HttpError(422, "invalid_args", `this job is a large one${scale?.unit ? ` (${scale.unit} a unit)` : ""}: lay it out as several tickets, one of them `
-        + "marked sample: true (made first, to the full standard, for the user to approve) and the others waiting for it; nothing was changed");
+        + "marked sample: true (made first, to the full standard) and the others waiting for it; nothing was changed");
     }
     syncStandardChecks(ctx, taskId, now);
     recordWorkEvent(ctx, { kind: "plan.items", actor: turn.bot_id, botId: turn.bot_id, taskId, turnId: input.turnId,

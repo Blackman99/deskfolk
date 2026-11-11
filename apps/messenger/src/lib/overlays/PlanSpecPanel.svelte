@@ -362,7 +362,7 @@
 					<button type="button" class="plan-spec-edit-btn" onclick={startEditGoal}>{t.plan.spec.editGoal}</button>
 				</p>
 			{/if}
-			<!-- A large job (ADR 0060): laid out before anything is made, its sample yours to approve; yours to call off. -->
+			<!-- A large job (ADR 0060): laid out before anything is made, its sample first; yours to call off. -->
 			{#if detail.scale?.value === 'large'}
 				<p class="plan-spec-scale is-large">
 					<span>{t.plan.spec.scaleLarge(detail.scale.unit)} {t.plan.spec.scaleWhy[detail.scale.by](detail.scale.why)}</span>
