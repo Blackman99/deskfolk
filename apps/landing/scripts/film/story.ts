@@ -327,13 +327,26 @@ export async function playStory(s: Stage): Promise<void> {
   // so a line to the group goes to it and it may lay out the tickets.
   await s.api('PATCH', `/v1/bots/${reviewer.id}`, { model: t.reviewerModel });
   await s.api('PUT', `/v1/sessions/${group.id}/lead`, { bot_id: producer.id, confirmed: true });
-  const groupRow = app.locator('.groups .row', { hasText: t.groupName }).first();
+  // By its name alone: a Bot's row can carry the group's name in its last line ("…the group Launch has you…").
+  const groupRow = app.locator('.groups .row').filter({ has: app.locator('.t', { hasText: new RegExp(`^${t.groupName}$`) }) }).first();
   await groupRow.waitFor({ timeout: 60_000 });
+  /**
+   * The group opened from its row, and made sure of: the roster sorts by the latest activity, so a
+   * row can move between being found and being clicked. The goal must not go to the Producer's direct.
+   */
+  const openGroup = async () => {
+    for (let i = 0; i < 5; i++) {
+      await s.click(groupRow);
+      if (await until('the group open', async () => app.url().includes(`s=${group.id}`), 3000, 200).then(() => true, () => false)) return;
+      s.log('the group row moved under the click: clicking it again');
+    }
+    throw new Error('the group would not open');
+  };
   // A group a Bot makes follows the default engine, general. This job is a film: in the group's
   // actions it goes on video, before the goal is said, so the scribe writes your asks down from it.
   const engineOf = async () => (await sessions()).find((x: any) => x.id === group.id)?.playbook_id ?? null;
   await s.attempt('group engine', async () => {
-    await s.click(groupRow);
+    await openGroup();
     await composer().waitFor();
     // Group settings: a side of the conversation's pane, toggled from its tab's menu.
     const groupTab = app
@@ -365,7 +378,7 @@ export async function playStory(s: Stage): Promise<void> {
 
   /* 4 · The job goes to the group: the Producer lays it out in tickets, the Reviewer on each */
   await s.scene(4);
-  await s.click(groupRow);
+  await openGroup();
   await composer().waitFor();
   await s.type(composer(), t.goal);
   await s.press(composer(), 'Enter');
