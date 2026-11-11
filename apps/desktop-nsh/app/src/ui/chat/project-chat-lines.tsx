@@ -4,10 +4,11 @@
  * commands it ran folded under it (and a way into its subagents). A day line above the first line
  * of each day, and the line that says an earlier page is on its way.
  *
- * Not as the messenger: an agent line's time stands in a column of its own on its left, level with
- * its first line, rather than on a line of its own under it. The transcript is one selection
- * (`ProjectChat`), and the times, the day lines and the earlier line stay out of it, so a drag runs
- * from one line into the next and copies the words alone.
+ * An agent line's time sits at the right end of the line under it, as a Bot reply's does, and at
+ * the right end of the command card's line when it ran commands (the messenger's `.command-beside`).
+ * Not as the messenger, whose agent line without commands has its time under it on the left. The
+ * transcript is one selection (`ProjectChat`), and the times, the day lines and the earlier line
+ * stay out of it, so a drag runs from one line into the next and copies the words alone.
  */
 import { Text, View } from "nsh";
 import type { Message } from "@real-bot/protocol";
@@ -45,9 +46,6 @@ export function EarlierLine(props: { loading: boolean }) {
     </View>
   );
 }
-
-/** The column an agent line's time stands in, the gap to the words included. */
-const TIME_COLUMN = 44;
 
 export function ProjectLine(props: {
   message: Message;
@@ -97,19 +95,22 @@ export function ProjectLine(props: {
         </View>
       </If>
       <If when={who() === "agent"}>
-        <View testID="project-line-agent" class="relative items-start w-full" style={{ paddingLeft: TIME_COLUMN }}>
-          {/* The time in the column on the left, level with the first line. Placed, not a row's first
-              item: in a row NSH 0.4 measures a wrapping paragraph at its unwrapped width. */}
-          <View testID="project-line-time-column" class="absolute left-0 top-[4px]" style={{ width: TIME_COLUMN - 8 }}>
-            {time()}
-          </View>
+        <View testID="project-line-agent" class="items-start w-full">
           {/* The whole line wide, as a wrapping paragraph is in the messenger. Left to fit its text, NSH
               narrowed it to its widest line yet kept the heights measured at the full width: a paragraph
               that wrapped once more than measured ran under what followed it, and its last line was cut. */}
           <MarkdownBody class="self-stretch" source={msg().body} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={(path) => s().openCited(path, msg().id)} />
-          <If when={kept().length > 0}>
+          {/* The time at the right end: of its own line, or of the command card's. */}
+          <If
+            when={kept().length > 0}
+            else={
+              <View testID="project-line-foot" class="self-stretch flex-row justify-end mt-[3px]">
+                {time()}
+              </View>
+            }
+          >
             <View class="self-stretch mt-[8px]">
-              <CommandActivity rows={kept()} />
+              <CommandActivity rows={kept()} beside={<View class="ml-auto">{time()}</View>} />
             </View>
           </If>
           <If when={!focusMode.on}>

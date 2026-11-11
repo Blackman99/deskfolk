@@ -487,3 +487,17 @@ The two bridges of addenda (12) and (13) (`ime_keys.rs`, `ime_rect.rs`), the men
 Checked: `cargo test --workspace` passes (shell 112, `app/native` 78, components 9); `nsh check App.tsx` has no errors and the `app/.nsh/rust` it writes points at the Git checkout of the same commit; `nsh test` passes 150 with 1 skipped; the full `ui-tests.ts` run passes all 693 tests in 84 files (8 failed before the changes above, each a covered press); desktop-nsh's 18 script tests pass. A 0.4.0 check copy and a `main` one, on the same data at the same window size, differed only in the weekdays before `locales` and not at all after it (the usage card's 「5 小时」 wrapping a character per line is in both, an old issue).
 
 To move to a newer NSH: change the `rev` of every `nsh-*` at once, run `cargo update -p nsh-core` and the whole test suite; `scripts/nsh-cli.ts` builds a CLI for the new commit. The dev build has to be restarted to use the new shell and CLI.
+
+## 补记 2026-11-11（十七）：项目会话的时间放回右端 / Addendum 2026-11-11 (17): a project line's time goes to the right end
+
+补记（十五）把时间挪到了左边，是你说错了方向：你要的是右侧，和 Tauri 版对齐。现在助手消息的时间在消息下面那一行的最右端，跑过命令时在命令卡片那一行的最右端（和信使的 `.command-beside` 一样），左边那一列去掉了。跨消息拖选的改动保留：整个列表还是一个选区，时间、日期线不进选区。
+
+和 Tauri 版的差别：用 Playwright 的 WebKit 渲染信使的 `project-chat` 视觉故事（main 上的信使，就是 Tauri 窗口里的那份）量了一下，没跑命令的助手消息，时间在消息下面靠左（行框 12–488，时间 12–41）。这里按你的话一律放右端，只有跑过命令的那种和 Tauri 一模一样。信使没改。
+
+验证：后台检查副本（宿主和 CLI 都按补记（十六）用上游 `main` 那个提交编），`chat-stage` 故事里的项目会话：助手消息的 17:31 在消息下面的最右端，和用户气泡下的 17:30 对齐在同一条右边线上；从助手消息第一行拖到下面的用户气泡，选中助手消息、「已切到新的一天」和气泡里拖到的字，三个时间和日期线都没进选区。项目会话和对话台的界面测试、`bun test scripts`（18 项）都过。
+
+Addendum (15) moved the time to the left because you named the wrong side: you wanted it on the right, as in the Tauri version. An agent line's time now sits at the right end of the line under it, or at the right end of the command card's line when it ran commands (as the messenger's `.command-beside`); the left column is gone. The selection change stays: the list is one selection, and the times and day lines stay out of it.
+
+Against the Tauri version: rendering the messenger's `project-chat` visual story in Playwright's WebKit (the messenger on main, the one in the Tauri window) and measuring, an agent line that ran no commands has its time under it on the left (line box 12–488, time 12–41). Here it goes to the right end either way, as you asked; only a line with commands matches Tauri exactly. The messenger was not changed.
+
+Checked in a background check copy (shell and CLI built from upstream `main`'s commit, as addendum (16) set up), on the project session of the `chat-stage` story: the agent line's 17:31 sits at the right end of the line under it, on the same right edge as the 17:30 under the user bubble; a drag from the agent line's first line to the user bubble below selects the agent line, "已切到新的一天" and the dragged-over characters of the bubble, with the three times and the day line left out. The project and chat stage screen tests and `bun test scripts` (18) pass.
