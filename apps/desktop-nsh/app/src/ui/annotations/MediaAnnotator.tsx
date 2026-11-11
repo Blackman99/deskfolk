@@ -26,6 +26,7 @@ import {
 import type { EncodedCrop } from "../../m/annotations/region-box.ts";
 import { Button } from "../Button";
 import { narrowWindow } from "../Modal";
+import { videoBox, type Size } from "./media-fit";
 import { tip } from "../tip";
 
 /** Every string this annotator shows; the preview hands them in from its copy. */
@@ -88,6 +89,11 @@ export function MediaAnnotator(props: {
   const total = signal(props.durationSeconds ?? Number.NaN);
   /** The player has reported its metadata once: an unknown duration after that is worth a word. */
   const metaSeen = signal(false);
+  /** The video's own size, the room the annotator has and what stands below the picture: its box. */
+  const natural = signal<Size | null>(null);
+  const room = signal<Size>({ width: 0, height: 0 });
+  const below = signal(0);
+  const box = () => (props.kind === "video" ? videoBox(natural(), room(), below(), 6) : null);
   const flashId = signal<string | null>(null);
   /** Where the pending point was set: a span grows from here, whichever way the person seeks. */
   const spanOrigin = signal<number | null>(null);
@@ -200,7 +206,13 @@ export function MediaAnnotator(props: {
     } ${mark.stale ? "border-dashed" : ""}`;
 
   return (
-    <View testID={props.testID ?? "media-annotator"} class="gap-[6px] w-full min-h-0">
+    <View
+      testID={props.testID ?? "media-annotator"}
+      class={`gap-[6px] w-full min-h-0 ${props.kind === "video" ? "flex-1" : ""}`}
+      onLayout={(e) => {
+        if (props.kind === "video") room.set({ width: e.bounds.size.width, height: e.bounds.size.height });
+      }}
+    >
       <Video
         testID="media-annotator-player"
         ref={(node: VideoRef) => (player = node)}
@@ -211,135 +223,140 @@ export function MediaAnnotator(props: {
         onLoad={(e) => {
           metaSeen.set(true);
           total.set(e.duration);
+          if (e.size?.width > 0 && e.size?.height > 0) natural.set({ width: e.size.width, height: e.size.height });
         }}
         onProgress={(e) => {
           now.set(Number.isFinite(e.currentTime) ? e.currentTime : 0);
           total.set(e.duration);
         }}
         onError={() => props.onError?.()}
-        class={`w-full rounded-(--radius-md) ${props.kind === "video" ? "min-h-[96px] flex-1" : "h-[54px]"}`}
+        class={`rounded-(--radius-md) ${props.kind === "video" ? (box() ? "self-center" : "w-full h-[96px]") : "w-full h-[54px]"}`}
+        style={box() ?? undefined}
       />
 
-      <If when={showTimeline() && scale() !== null}>
-        <View
-          role="group"
-          testID="media-timeline"
-          accessibilityLabel={props.labels.timeline}
-          class="px-2 py-[6px] border border-line rounded-(--radius-md) bg-pane"
-        >
+      <View class="gap-[6px] w-full" onLayout={(e) => below.set(e.bounds.size.height)}>
+
+        <If when={showTimeline() && scale() !== null}>
           <View
-            testID="media-timeline-lanes"
-            onLayout={(e) => trackPx.set(e.bounds.size.width)}
-            // A press on the bare timeline is a shortcut that seeks there; the player's own controls stay the keyboard way.
-            onPress={(e) => {
-              const width = trackPx();
-              const s = scale();
-              if (width > 0 && s !== null) seek(Math.round(Math.min(1, Math.max(0, e.position.x / width)) * s));
-            }}
-            class="cursor-pointer rounded-(--radius-sm) bg-line-subtle"
-            style={{ height: layout().lanes * laneH() }}
+            role="group"
+            testID="media-timeline"
+            accessibilityLabel={props.labels.timeline}
+            class="px-2 py-[6px] border border-line rounded-(--radius-md) bg-pane"
           >
-            <If when={props.pending && spanCheck()?.ok && props.pending.end_ms === undefined}>
-              <View
-                accessible={false}
-                testID="media-annot-preview"
-                class="absolute top-0 bottom-0 border border-dashed border-accent-border bg-accent-tint"
-                style={{
-                  left: pct(percentOf((spanCheck() as { anchor: MediaTimeAnchor }).anchor.start_ms, scale()!)),
-                  width: pct(
-                    percentOf((spanCheck() as { anchor: MediaTimeAnchor }).anchor.end_ms ?? 0, scale()!) -
-                      percentOf((spanCheck() as { anchor: MediaTimeAnchor }).anchor.start_ms, scale()!),
-                  ),
-                }}
-              />
-            </If>
-            <Each of={layout().marks} key={(mark: TimelineMark) => mark.id}>
-              {(mark: () => TimelineMark) => (
-                <View
-                  role="button"
-                  testID={`media-mark-${mark().id}`}
-                  accessibilityLabel={markTitle(mark(), props.labels.stale)}
-                  tooltip={tip(markTitle(mark(), props.labels.stale))}
-                  onPress={() => pick(mark())}
-                  class={`cursor-pointer select-none flex-row items-center ${mark().end_ms === null ? "justify-center" : "justify-start"}`}
-                  style={{ ...markBox(mark()), boxShadow: flashId() === mark().id ? "0 0 0 3px rgba(0,128,128,0.4)" : undefined }}
-                >
-                  <If when={mark().end_ms !== null}>
-                    <View
-                      accessible={false}
-                      class={`absolute left-0 right-0 h-[8px] rounded-[3px] border ${
-                        mark().status === "resolved" ? "border-ink-muted bg-ink-muted/55" : mark().status === "draft" ? "border-dotted border-brand bg-brand/18" : "border-brand bg-brand/70"
-                      } ${mark().stale ? "border-dashed" : ""}`}
-                      style={{ top: (laneH() - 8) / 2 }}
-                    />
-                  </If>
-                  <View accessible={false} class={badgeClass(mark())}>
-                    <Text class={`font-mono text-[10px] font-semibold ${mark().status === "draft" ? "text-brand" : "text-white"}`}>{String(mark().n)}</Text>
-                  </View>
-                </View>
-              )}
-            </Each>
-            <If when={props.pending}>
-              {(held: () => MediaTimeAnchor) => (
+            <View
+              testID="media-timeline-lanes"
+              onLayout={(e) => trackPx.set(e.bounds.size.width)}
+              // A press on the bare timeline is a shortcut that seeks there; the player's own controls stay the keyboard way.
+              onPress={(e) => {
+                const width = trackPx();
+                const s = scale();
+                if (width > 0 && s !== null) seek(Math.round(Math.min(1, Math.max(0, e.position.x / width)) * s));
+              }}
+              class="cursor-pointer rounded-(--radius-sm) bg-line-subtle"
+              style={{ height: layout().lanes * laneH() }}
+            >
+              <If when={props.pending && spanCheck()?.ok && props.pending.end_ms === undefined}>
                 <View
                   accessible={false}
-                  testID="media-pending"
-                  class={held().end_ms === undefined ? "absolute top-0 bottom-0 w-[2px] border-l-2 border-dashed border-brand" : "absolute top-0 bottom-0 border border-dashed border-brand bg-brand/30 rounded-(--radius-sm)"}
-                  style={
-                    held().end_ms === undefined
-                      ? { left: pct(percentOf(held().start_ms, scale()!)) }
-                      : { left: pct(percentOf(held().start_ms, scale()!)), width: pct(percentOf(held().end_ms!, scale()!) - percentOf(held().start_ms, scale()!)) }
-                  }
+                  testID="media-annot-preview"
+                  class="absolute top-0 bottom-0 border border-dashed border-accent-border bg-accent-tint"
+                  style={{
+                    left: pct(percentOf((spanCheck() as { anchor: MediaTimeAnchor }).anchor.start_ms, scale()!)),
+                    width: pct(
+                      percentOf((spanCheck() as { anchor: MediaTimeAnchor }).anchor.end_ms ?? 0, scale()!) -
+                        percentOf((spanCheck() as { anchor: MediaTimeAnchor }).anchor.start_ms, scale()!),
+                    ),
+                  }}
                 />
-              )}
-            </If>
-            <If when={dur() !== null}>
-              <View
-                accessible={false}
-                testID="media-playhead"
-                class="absolute top-0 bottom-0 w-[2px] bg-ink"
-                style={{ left: pct(percentOf(secondsToMs(now()), dur()!)) }}
-              />
-            </If>
+              </If>
+              <Each of={layout().marks} key={(mark: TimelineMark) => mark.id}>
+                {(mark: () => TimelineMark) => (
+                  <View
+                    role="button"
+                    testID={`media-mark-${mark().id}`}
+                    accessibilityLabel={markTitle(mark(), props.labels.stale)}
+                    tooltip={tip(markTitle(mark(), props.labels.stale))}
+                    onPress={() => pick(mark())}
+                    class={`cursor-pointer select-none flex-row items-center ${mark().end_ms === null ? "justify-center" : "justify-start"}`}
+                    style={{ ...markBox(mark()), boxShadow: flashId() === mark().id ? "0 0 0 3px rgba(0,128,128,0.4)" : undefined }}
+                  >
+                    <If when={mark().end_ms !== null}>
+                      <View
+                        accessible={false}
+                        class={`absolute left-0 right-0 h-[8px] rounded-[3px] border ${
+                          mark().status === "resolved" ? "border-ink-muted bg-ink-muted/55" : mark().status === "draft" ? "border-dotted border-brand bg-brand/18" : "border-brand bg-brand/70"
+                        } ${mark().stale ? "border-dashed" : ""}`}
+                        style={{ top: (laneH() - 8) / 2 }}
+                      />
+                    </If>
+                    <View accessible={false} class={badgeClass(mark())}>
+                      <Text class={`font-mono text-[10px] font-semibold ${mark().status === "draft" ? "text-brand" : "text-white"}`}>{String(mark().n)}</Text>
+                    </View>
+                  </View>
+                )}
+              </Each>
+              <If when={props.pending}>
+                {(held: () => MediaTimeAnchor) => (
+                  <View
+                    accessible={false}
+                    testID="media-pending"
+                    class={held().end_ms === undefined ? "absolute top-0 bottom-0 w-[2px] border-l-2 border-dashed border-brand" : "absolute top-0 bottom-0 border border-dashed border-brand bg-brand/30 rounded-(--radius-sm)"}
+                    style={
+                      held().end_ms === undefined
+                        ? { left: pct(percentOf(held().start_ms, scale()!)) }
+                        : { left: pct(percentOf(held().start_ms, scale()!)), width: pct(percentOf(held().end_ms!, scale()!) - percentOf(held().start_ms, scale()!)) }
+                    }
+                  />
+                )}
+              </If>
+              <If when={dur() !== null}>
+                <View
+                  accessible={false}
+                  testID="media-playhead"
+                  class="absolute top-0 bottom-0 w-[2px] bg-ink"
+                  style={{ left: pct(percentOf(secondsToMs(now()), dur()!)) }}
+                />
+              </If>
+            </View>
           </View>
-        </View>
-      </If>
+        </If>
 
-      <If when={props.pending || props.enabled}>
-        <View class="flex-row flex-wrap items-center gap-[6px]">
-          <If
-            when={props.pending}
-            else={
-              <>
-                <View tooltip={tip(dur() === null ? props.labels.durationUnknown : props.labels.markHereHint)}>
-                  <Button testID="media-mark-here" size={narrowWindow() ? "lg" : "sm"} disabled={dur() === null} onPress={markHere}>
-                    {props.labels.markHere}
-                  </Button>
-                </View>
-                <If when={dur() === null && metaSeen()}>
-                  <Text testID="media-hint" class="text-[11px] text-ink-muted">{props.labels.durationUnknown}</Text>
-                </If>
-              </>
-            }
-          >
-            {(held: () => MediaTimeAnchor) => (
-              <>
-                <Text testID="media-pending-label" tooltip={tip(props.labels.pending)} class="font-mono text-[11px] text-ink">{timeLabel(held())}</Text>
-                <If when={canExtend()}>
-                  <View tooltip={tip(props.labels.endHereHint)}>
-                    <Button testID="media-end-here" variant="primary" size={narrowWindow() ? "lg" : "sm"} disabled={!spanCheck()?.ok} onPress={endHere}>
-                      {props.labels.endHere}
+        <If when={props.pending || props.enabled}>
+          <View class="flex-row flex-wrap items-center gap-[6px]">
+            <If
+              when={props.pending}
+              else={
+                <>
+                  <View tooltip={tip(dur() === null ? props.labels.durationUnknown : props.labels.markHereHint)}>
+                    <Button testID="media-mark-here" size={narrowWindow() ? "lg" : "sm"} disabled={dur() === null} onPress={markHere}>
+                      {props.labels.markHere}
                     </Button>
                   </View>
-                </If>
-                <If when={canExtend() ? spanHint() : null}>
-                  {(hint: () => string) => <Text testID="media-hint" class="text-[11px] text-ink-muted">{hint()}</Text>}
-                </If>
-              </>
-            )}
-          </If>
-        </View>
-      </If>
+                  <If when={dur() === null && metaSeen()}>
+                    <Text testID="media-hint" class="text-[11px] text-ink-muted">{props.labels.durationUnknown}</Text>
+                  </If>
+                </>
+              }
+            >
+              {(held: () => MediaTimeAnchor) => (
+                <>
+                  <Text testID="media-pending-label" tooltip={tip(props.labels.pending)} class="font-mono text-[11px] text-ink">{timeLabel(held())}</Text>
+                  <If when={canExtend()}>
+                    <View tooltip={tip(props.labels.endHereHint)}>
+                      <Button testID="media-end-here" variant="primary" size={narrowWindow() ? "lg" : "sm"} disabled={!spanCheck()?.ok} onPress={endHere}>
+                        {props.labels.endHere}
+                      </Button>
+                    </View>
+                  </If>
+                  <If when={canExtend() ? spanHint() : null}>
+                    {(hint: () => string) => <Text testID="media-hint" class="text-[11px] text-ink-muted">{hint()}</Text>}
+                  </If>
+                </>
+              )}
+            </If>
+          </View>
+        </If>
+      </View>
     </View>
   );
 }

@@ -20,7 +20,7 @@
  *   (`bodyEl`) NSH does not have, so it is not followed.
  * - The pane's width query (`@container artifact-main`, 720) is the body's own measured width.
  */
-import { cleanup, computed, effect, Scroll, signal, Text, View } from "nsh";
+import { cleanup, computed, effect, platform, Scroll, signal, Text, View } from "nsh";
 import type { Annotation, Attachment } from "@real-bot/protocol";
 import { describeAnchor } from "@real-bot/protocol";
 import { formatFileSize } from "../../m/chat/attachments.ts";
@@ -50,6 +50,7 @@ import { FileDownload } from "./FileDownload";
 import { FileIcon } from "./FileIcon";
 import { OfficeViewer } from "./OfficeViewer";
 import { PdfViewer, type PdfViewerHandle } from "./PdfViewer";
+import { mediaSource } from "./media-source";
 import { pdfSourceFor, type PdfSource } from "./pdf-pages";
 import { settled } from "../workbench/drag-settle";
 
@@ -303,7 +304,13 @@ export function ArtifactBody(props: {
     if ((props.kind === "audio" || props.kind === "video") && loader().shownBlob) {
       return (
         <MediaAnnotator
-          src={loader().shownBlob ?? ""}
+          src={mediaSource({
+            web: platform.os === "web",
+            local: props.api?.kind === "local",
+            relpath: props.relpath,
+            workspaceRoot: runtime.snapshot.settings.workspace_path,
+            blobUrl: loader().shownBlob,
+          })}
           kind={props.kind as "audio" | "video"}
           annotations={props.viewAnnotations}
           focusId={annot().annotFocus}
