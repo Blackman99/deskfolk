@@ -11,6 +11,10 @@ On 2026-11-10 an MV in your direct with the video director: once scene one's sam
 1. **额度用完不再叫回，同样的失败只显示一次 / Out of usage: no call-backs, and the same failure shows once.** ADR 0061 说只有你能解决的失败（没找到 Claude Code、没登录、用量用完）不替你重试，但监督器的「没人推的任务」叫回绕过了这一条。现在一个 Bot 最近一次结束的一轮是这几种失败（`AGENT_OUT_FAILS`）时，监督器不叫回它、也不续跑它的工作，直到它有一轮以别的方式结束（你说话、你按继续）。作业结果、回看这类别的叫醒照常；它们又失败、而且失败行和会话里你能看到的最后一行一字不差时，这一行只留给 Bot（`bot_only`），不显示、不推送、不另发通知；那一轮的「继续」用上面那条。
    ADR 0061 does not retry what only you can fix, but the supervisor's call-backs to quiet tickets went round it. A Bot whose last ended turn failed that way (`AGENT_OUT_FAILS`) is no longer called back or picked up until a turn of it ends some other way. Other wakes still run; a failure line identical to the last line you can see there is kept Bot-only, with no publish and no notification, and Continue on the line above still works.
 
+2. **「这件事停下了」不再出现 / No more 「这件事停下了」.** 监督器叫回两次没进展时照旧停下不再叫，但只记在工作记录里（`supervisor.notice`，`message_id` 为空），不贴行、不发通知，每个进展周期一次。你对这个 Bot 说话就接着做，和 ADR 0101 的叫停一样是隐式的。要你做点什么的两种照旧：一小时续跑用完（`retry_budget`）、最后一步结果不明（`unknown_effect`，防重复提交）。0–3 级的规划叫回（`plan-watch`）本来就不贴行，没动。
+   The supervisor still stops after two call-backs that moved nothing, but records it only (`supervisor.notice` with no message): no line, no notification, once per progress cycle. Your next word to the Bot goes on, as implicitly as a stop (ADR 0101). The two notices that ask something of you stay: `retry_budget` and `unknown_effect`. The level 0–3 plan watch posts no line already and is unchanged.
+
 ## 取舍 / Trade-offs
 
 - **额度重置后不会自己接着做。** 监督器不知道重置时间（只有失败行里的文字），所以等你一句话；Claude Code 的 `resetsAt` 在 `agent-runner.ts` 里拿得到，要自动接着做可以从那里接。 / **Nothing resumes on its own after the reset**: your word does. `resetsAt` is available in `agent-runner.ts` if that is wanted later.
+- **黄金路径评测**把监督器的静默停下（工作记录里没有行的那种）也算作一次需要你的介入。 / The golden-path eval counts the silent stall as an intervention.

@@ -184,13 +184,15 @@ test("two call-backs per progress cycle: words do not renew it, a stage change o
   f.store.patchTicketByUser(f.ticket.id, { spec: "改了说明" });
   const third = f.store.supervisorTick({ now: at(6 * MIN) });
   expect(third.wakes).toEqual([]);
-  expect(third.messages).toHaveLength(1);
-  expect(third.messages[0]).toMatchObject({ kind: "system", session_id: f.room.id,
-    control: { kind: "supervisor", code: "stalled", task_id: f.plan.id, ticket_id: f.ticket.id } });
-  expect(third.messages[0]!.body).toContain("这件事停下了");
-  expect(f.store.db.query("SELECT kind, fail_kind, action_state FROM notifications WHERE message_id = ?").get(third.messages[0]!.id))
-    .toEqual({ kind: "failure", fail_kind: "stalled_plan", action_state: "open" });
+  // It stops calling quietly (2026-11-11): no 「这件事停下了」 line, no notification; the work log
+  // keeps the stop, once per cycle.
+  expect(third.messages).toEqual([]);
+  expect(f.store.db.query("SELECT 1 FROM messages WHERE body LIKE '这件事停下了%'").all()).toEqual([]);
+  expect(f.store.db.query("SELECT 1 FROM notifications WHERE fail_kind = 'stalled_plan'").all()).toEqual([]);
+  expect(f.store.db.query(`SELECT json_extract(payload, '$.code') AS code, json_extract(payload, '$.message_id') AS message_id
+    FROM work_events WHERE kind = 'supervisor.notice'`).all()).toEqual([{ code: "stalled", message_id: null }]);
   expect(f.store.supervisorTick({ now: at(6 * MIN + 15_000) }).messages).toEqual([]);
+  expect(f.store.db.query("SELECT COUNT(*) AS n FROM work_events WHERE kind = 'supervisor.notice'").get()).toEqual({ n: 1 });
   // You moved the ticket on the board: a new cycle.
   f.store.patchTicketByUser(f.ticket.id, { status: "doing" });
   const renewed = f.store.supervisorTick({ now: at(8 * MIN) }).wakes;

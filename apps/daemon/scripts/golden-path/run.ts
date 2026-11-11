@@ -28,7 +28,7 @@ import { judgeCoverage, lastBotWords } from "../goal-coverage-judge";
 import { scoreAttribution, type AttributionResult } from "./attribution";
 import { runChecks } from "./checks";
 import { htmlForJudge, isAppFile, judgedFiles } from "./deliveries";
-import { countInterventions, endedStalled, STALLED_PLAN, type Interventions } from "./interventions";
+import { countInterventions, endedStalled, SILENT_STALL, STALLED_PLAN, type Interventions } from "./interventions";
 import {
   ablationLeaks,
   classifyFailure,
@@ -589,7 +589,8 @@ function collect(store: Store, sessionId: string | null, taskMessageId: string |
     const stalls = store.db
       .query<{ created_at: string }, [string, string]>(
         `SELECT n.created_at FROM notifications n JOIN messages m ON m.id = n.message_id
-         WHERE n.kind = 'failure' AND n.fail_kind = ? AND m.task_id = ?`,
+         WHERE n.kind = 'failure' AND n.fail_kind = ?1 AND m.task_id = ?2
+         UNION ALL SELECT at FROM work_events WHERE ${SILENT_STALL} AND task_id = ?2`,
       )
       .all(STALLED_PLAN, planId)
       .map((row) => row.created_at);
@@ -619,7 +620,11 @@ function collect(store: Store, sessionId: string | null, taskMessageId: string |
   const interventions = countInterventions({
     approvals: store.db.query<{ status: string; kind_key: string | null }, []>(`SELECT status, kind_key FROM approvals`).all(),
     asks: store.db.query<{ id: string }, []>(`SELECT id FROM messages WHERE kind = 'ask'`).all(),
-    notifications: store.db.query<{ kind: string; fail_kind: string | null }, []>(`SELECT kind, fail_kind FROM notifications`).all(),
+    notifications: [
+      ...store.db.query<{ kind: string; fail_kind: string | null }, []>(`SELECT kind, fail_kind FROM notifications`).all(),
+      ...store.db.query<{ kind: string; fail_kind: string | null }, [string]>(`SELECT 'failure' AS kind, ? AS fail_kind FROM work_events WHERE ${SILENT_STALL}`)
+        .all(STALLED_PLAN),
+    ],
     checkBacks: store.db.query<{ kind: string | null }, []>(`SELECT kind FROM check_backs`).all(),
     routes: store.db.query<{ outcome: string | null }, []>(`SELECT outcome FROM turn_route_decisions`).all(),
     turns: store.db.query<{ status: string }, []>(`SELECT status FROM turns`).all(),

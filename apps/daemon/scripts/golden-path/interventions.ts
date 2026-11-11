@@ -5,7 +5,8 @@
  * - an approval card (`approvals`, any status: a card that appeared is a card you had to answer);
  * - a question to you (`messages.kind = 'ask'`, the messenger's "等你回答");
  * - a plan that stopped and told you so (`notifications.kind = 'failure'` with
- *   `fail_kind = 'stalled_plan'`, ADR 0031's "这件事停下了").
+ *   `fail_kind = 'stalled_plan'`, ADR 0031's "这件事停下了"), or, from the supervisor's level, stopped
+ *   without telling you ({@link SILENT_STALL}, ADR 0109): it still waits on your word.
  *
  * Plan nudges (`check_backs.kind = 'plan_nudge'`) are counted too but kept out of the total: the
  * app calls a Bot back on its own, nobody has to act. Failed and interrupted turns are reported
@@ -39,6 +40,8 @@ export type Interventions = {
 };
 
 export const STALLED_PLAN = "stalled_plan";
+/** A `work_events` filter: the supervisor's stall, recorded with no line or notification (ADR 0109). */
+export const SILENT_STALL = "kind = 'supervisor.notice' AND json_extract(payload, '$.code') = 'stalled' AND json_extract(payload, '$.message_id') IS NULL";
 export const PLAN_NUDGE = "plan_nudge";
 
 export function countInterventions(rows: InterventionRows): Interventions {

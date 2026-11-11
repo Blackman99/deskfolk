@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### No more "This has stopped"
+
+- When the supervisor's two call-backs move nothing it still stops, but it no longer posts "This has stopped: …" in the conversation or sends a "stopped" notification; it is recorded in the work log only, and your next word to the Bot goes on. A job with several open tickets used to get one line per ticket, four at once. The two notices that need your check stay: pick-ups used up, and a last step with no known outcome ([ADR 0109](docs/adr/0109-the-app-says-less-when-work-stops.md)).
+
 ### Running out of usage no longer floods the conversation with failures
 
 - When a local agent (Claude Code and the like) is out of usage, signed out or missing, the supervisor no longer calls its Bot back to the tickets it left open. On 2026-11-10 the video director, out of usage, was called back to four scenes twice each within 20 minutes, every call failing at once, and its direct got ten "This turn did not finish: Claude usage limit reached (resets …)" in a row. It is called back again once a turn of it ends some other way (your word, Continue). Nothing resumes on its own after the reset: say something and it goes on.

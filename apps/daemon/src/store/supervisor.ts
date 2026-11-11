@@ -457,6 +457,11 @@ function placeToTell(ctx: StoreContext, botId: string, candidates: ReadonlyArray
  * The supervisor's line and notification about a job it will not move on its own (ADR 0045),
  * once per `key`. With no conversation of yours to put it in, the notice is still recorded, so
  * the next tick does not look for one again.
+ *
+ * A job that went quiet after its call-backs (`stalled`) is recorded only: no line, no notification
+ * (ADR 0109). On 2026-11-10 one MV job put four 「这件事停下了：…」 under 视频导演 within ten minutes,
+ * one per open scene; it stopping is the app's own bookkeeping, like a stop of yours (ADR 0101), and
+ * your next word to the Bot goes on with it. The two that ask something of you stay.
  */
 function notice(ctx: StoreContext, result: SupervisorTickResult, input: {
   key: string; code: SupervisorNoticeCode; taskId: string; ticketId: string | null; workItemId: string | null; botId: string;
@@ -465,7 +470,7 @@ function notice(ctx: StoreContext, result: SupervisorTickResult, input: {
   if (ctx.db.query("SELECT 1 FROM work_events WHERE kind = 'supervisor.notice' AND json_extract(payload, '$.key') = ?").get(input.key)) return;
   const sessionId = placeToTell(ctx, input.botId, input.places);
   let messageId: string | null = null;
-  if (sessionId) {
+  if (sessionId && input.code !== "stalled") {
     const control: SupervisorControl = { kind: "supervisor", code: input.code, task_id: input.taskId, ticket_id: input.ticketId,
       work_item_id: input.workItemId, offer: [] };
     const message = insertMessage(ctx, { sessionId, kind: "system", author: input.botId, body: input.body, hiddenFromBots: true, control });
