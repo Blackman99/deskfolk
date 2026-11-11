@@ -19,6 +19,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { LOCAL_API_NAME } from "../../../packages/protocol/src/index.ts";
 import { APP_ICON_FILE, DEV_APP_NAME, DEV_BUNDLE_ID, DEV_ORIGIN, devInstance, placeAppIcon, registerAppIcon } from "./dev-instance";
+import { ghosttyEnv } from "./ghostty";
 import { nshCli } from "./nsh-cli";
 
 const root = resolve(import.meta.dir, "..");
@@ -33,8 +34,8 @@ const cargo = process.env.CARGO ?? join(homedir(), ".cargo", "bin", "cargo");
 const instance = devInstance();
 const children: ChildProcess[] = [];
 
-function run(command: string, args: string[], cwd: string): void {
-  const result = spawnSync(command, args, { cwd, stdio: "inherit" });
+function run(command: string, args: string[], cwd: string, env?: Record<string, string>): void {
+  const result = spawnSync(command, args, { cwd, stdio: "inherit", env: env ? { ...process.env, ...env } : process.env });
   if (result.status !== 0) throw new Error(`${command} ${args.join(" ")} failed (${result.status})`);
 }
 
@@ -78,7 +79,12 @@ async function startRuntime(): Promise<void> {
 }
 
 function buildShell(): void {
-  run(cargo, ["build", "-p", "deskfolk-nsh"], root);
+  // The NSH terminal (`--terminal nsh`) on Ghostty's emulator when Zig 0.15 and Ghostty's sources
+  // are at hand (scripts/ghostty.ts), always with the same env; else on NSH's own.
+  const ghostty = ghosttyEnv();
+  if ("missing" in ghostty) console.log(`the NSH terminal runs on NSH's own emulator: ${ghostty.missing}`);
+  const features = "env" in ghostty ? ["--features", "ghostty"] : [];
+  run(cargo, ["build", "-p", "deskfolk-nsh", ...features], root, "env" in ghostty ? ghostty.env : undefined);
   mkdirSync(dirname(executable), { recursive: true });
   copyFileSync(join(root, "target", "debug", "deskfolk-nsh"), executable);
   const iconChanged = placeAppIcon(bundleApp);

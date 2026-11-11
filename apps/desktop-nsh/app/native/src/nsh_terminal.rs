@@ -14,7 +14,7 @@
 
 use nsh_base::{
     TerminalColor, TerminalCursor, TerminalEmulator, TerminalEmulatorEvent, TerminalEmulatorFactory, TerminalLine,
-    TerminalModes, TerminalSize, TerminalStyle, VtEmulator,
+    TerminalModes, TerminalSize, TerminalStyle,
 };
 use nsh_core::prelude::*;
 
@@ -105,13 +105,25 @@ pub struct RuntimeTerminalsProps {
     pub children: Prop<Children>,
 }
 
-/// Gives the `Terminal`s below it the runtime's emulator ([`RuntimeEmulator`] over `VtEmulator`),
-/// on the palette's ground; fills its parent.
+/// The emulator under [`RuntimeEmulator`]: Ghostty's on the desktops when the crate is built with
+/// the `ghostty` feature (`ghostty.rs`), else NSH's own.
+#[cfg(all(feature = "ghostty", not(target_arch = "wasm32")))]
+fn emulator(size: TerminalSize, scrollback: usize) -> crate::ghostty::GhosttyEmulator {
+    crate::ghostty::GhosttyEmulator::new(size, scrollback)
+}
+
+#[cfg(not(all(feature = "ghostty", not(target_arch = "wasm32"))))]
+fn emulator(size: TerminalSize, scrollback: usize) -> nsh_base::VtEmulator {
+    nsh_base::VtEmulator::new(size, scrollback)
+}
+
+/// Gives the `Terminal`s below it the runtime's emulator ([`RuntimeEmulator`] over Ghostty's or
+/// `VtEmulator`), on the palette's ground; fills its parent.
 #[component]
 pub fn RuntimeTerminals(props: RuntimeTerminalsProps, _cx: Scope<NoEvent>) -> impl IntoElement {
     let dark = computed(move || props.dark.get());
     provide_context(TerminalEmulatorFactory::new(move |size, scrollback| {
-        Box::new(RuntimeEmulator::new(VtEmulator::new(size, scrollback), dark))
+        Box::new(RuntimeEmulator::new(emulator(size, scrollback), dark))
     }));
     view()
         .flex_1()

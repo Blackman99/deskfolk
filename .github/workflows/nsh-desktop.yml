@@ -94,6 +94,22 @@ jobs:
         working-directory: apps/desktop-nsh
         run: cargo test --workspace
 
+      # Ghostty's emulator for the NSH terminal, behind the `ghostty` feature: Ghostty builds with
+      # Zig 0.15 only, from its sources at the commit `libghostty-vt-sys` pins (scripts/ghostty.ts).
+      # Linux only for now: it has not been built on Windows yet.
+      - uses: mlugg/setup-zig@v2
+        if: runner.os == 'Linux'
+        with:
+          version: 0.15.2
+
+      - name: Ghostty's emulator (the `ghostty` feature)
+        if: runner.os == 'Linux'
+        working-directory: apps/desktop-nsh
+        run: |
+          bun scripts/ghostty.ts
+          eval "$(bun scripts/ghostty.ts --check --shell)"
+          cargo test -p deskfolk-app-native --features ghostty ghostty
+
       - name: Type-check and headless UI tests
         working-directory: apps/desktop-nsh/app
         run: |

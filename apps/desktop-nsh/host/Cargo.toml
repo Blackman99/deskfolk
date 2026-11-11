@@ -10,6 +10,10 @@ publish.workspace = true
 name = "deskfolk-nsh"
 path = "src/main.rs"
 
+[features]
+# The NSH terminal (`--terminal nsh`) on Ghostty's emulator: see `app/native`'s `ghostty`.
+ghostty = ["deskfolk-app-native/ghostty"]
+
 [dependencies]
 log.workspace = true
 serde.workspace = true

@@ -12,6 +12,9 @@ mod office;
 #[cfg(target_arch = "wasm32")]
 #[path = "office_web.rs"]
 mod office;
+// Ghostty's emulator for `RuntimeTerminals` (`nsh_terminal.rs`), with the `ghostty` feature.
+#[cfg(all(feature = "ghostty", not(target_arch = "wasm32")))]
+mod ghostty;
 mod highlight;
 mod markdown;
 mod nsh_terminal;

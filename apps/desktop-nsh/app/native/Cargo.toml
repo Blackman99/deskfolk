@@ -36,3 +36,12 @@ jpeg-decoder = { version = "0.3.2", default-features = false }
 giallo = { version = "=0.6.0", features = ["dump"] }
 calamine = { version = "0.38", features = ["dates"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
+# Ghostty's terminal emulator, behind the `ghostty` feature below. MIT OR Apache-2.0; Ghostty MIT.
+libghostty-vt = { version = "=0.2.2", optional = true }
+
+[features]
+# Ghostty's terminal emulator for `RuntimeTerminals` on the desktops (`src/ghostty.rs`), in place of
+# NSH's own `VtEmulator`. It builds from Ghostty's Zig sources and needs Zig 0.15 (see
+# `scripts/ghostty.ts`), so it is off unless asked for: the host's `ghostty` feature, which `dev.ts`
+# turns on when it finds Zig 0.15. Its build knows no wasm32, so the web keeps `VtEmulator`.
+ghostty = ["dep:libghostty-vt"]

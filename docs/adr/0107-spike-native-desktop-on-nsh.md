@@ -659,3 +659,51 @@ Checks:
 - A real background window in dark: the ground matches the canvas terminal's capture ([32,44,49], grey [74,74,74] before), and a yellow-ground cell is (252,200,45), the canvas terminal's to the pixel; it was VS Code's (234,230,13).
 - A check copy with its own bundle id forced to light: a white ground, and the yellow-ground cell in the light palette's (194,103,4).
 - `app/native`'s four tests pass.
+
+## 补记 2026-11-11（二十一）：NSH 终端可以跑在 Ghostty 的模拟器上 / Addendum 2026-11-11 (21): the NSH terminal on Ghostty's emulator
+
+补记（八）那个工作区里给画布终端换的 Ghostty（`libghostty-vt`），现在改成实现上游的 `TerminalEmulator`，放进了 `RuntimeTerminals`。旧工作区没动，那里的改动还是未提交的。
+
+**为什么放在特性后面。** Ghostty 只认 Zig 0.15。这台 Mac 的 PATH 上是 0.17，0.15 是 Homebrew 的 keg-only。没有现成源码时，`libghostty-vt-sys` 的构建会 clone Ghostty，再用 Zig 自己的 HTTP 客户端取依赖，而它经代理会 400。要是每次编 `app/native` 都要这些，`nsh check`、`nsh test`、`cargo test`、别的会话的 worktree 都会坏，只为了一个放在 `--terminal nsh` 后面的东西不值得。所以：
+
+- `app/native` 的 `ghostty` 特性默认关，宿主的 `ghostty` 特性把它打开。`nsh` 命令行生成的胶水 crate（describe、无头测试运行器、web）都不带它，`nsh check` 和 `nsh test` 不需要 Zig。
+- 没有这个特性时，`RuntimeTerminals` 用 NSH 自己的 `VtEmulator`；web 永远用它（Ghostty 的构建不认 wasm32）。
+- `scripts/ghostty.ts` 把 Ghostty 的源码（`libghostty-vt-sys` 0.2.2 钉的提交 `a887df42`）和它的 Zig 包放进 `~/.cache/deskfolk-nsh/ghostty/<提交>`，Zig 包不走代理取，这台机器上一次约十秒。它给出一组固定的环境变量：0.15 的 Zig 排在 PATH 最前、`GHOSTTY_SOURCE_DIR`、`GHOSTTY_ZIG_SYSTEM_DIR`。构建脚本会在这些变量变了时重跑，所以每次都给同一组。
+- `dev.ts` 找到 Zig 0.15 和这份缓存时带上 `ghostty` 编宿主，否则照常编并说一句。打包脚本不带：打出来的应用不用 `--terminal nsh`。
+- CI 只在 Linux 上装 Zig 0.15，跑 `ghostty.ts` 和带特性的测试。Windows 上没编过 Ghostty，先不加。这一步要推送以后才知道过不过。
+- 证明构建不联网：从全新的目标目录、代理全指向打不通的端口、`cargo --offline`，用脚本准备的缓存编过，测试也过。
+
+**怎么读行。** `Terminal` 按行号要行，最旧的回滚行是 0，和它的列表一样。Ghostty 读得快的办法是 render state，可它只读视口。所以要哪一行，就把视口滚到那一页（`ScrollViewport::Row`）、整页读出来、留到下一次输出或改大小，再滚回实时的屏幕。列表停在实时屏幕时，每次变化读一页；往上翻历史时多读一两页。行数从不少于最后一次要的行数，因为 `Terminal` 拿行数减行数，是无符号的。程序的查询不回答（没接 `on_pty_write`），标题按变化报出来。
+
+**验证。**
+
+- 11 个 Ghostty 的测试，拿 Ghostty 自己按格取值（`grid_ref(Point::Screen)`）当标准逐行比对：历史乱序读、输出之后重新读、超出回滚上限被裁掉之后、备用屏幕、窄了又宽的重排；还有宽字符、颜色和属性、按颜色擦除的格子、模式和标题、组合附加符和 ZWJ 表情。
+- 不带特性 82 个测试过，带特性 93 个过。
+- 真窗口（带特性的宿主，`--terminal nsh`）：输入检查 6/8，和 `VtEmulator` 一样，没过的仍是两个 ⌘ 键（等 longbridge/nsh#1633）。
+- 和 `VtEmulator` 同场对照：
+  - Ghostty 留住了组合附加符（é café ñ），ZWJ 一家人是一个字形；`VtEmulator` 丢掉附加符（e cafe n），一家人拆成三个人，后面的列往右挪。
+  - 窗口先窄后宽，Ghostty 把长行接回整行；`VtEmulator` 把窄的时候切掉的部分丢了。
+  - Ghostty 改宽度后 zsh 的整行提示符留下几段残影。这是补记（八）记过的已知现象，Ghostty 嵌入时不替 shell 清提示行，信使的 xterm.js 也一样；`VtEmulator` 这里是干净的。
+
+The Ghostty work of addendum (8)'s worktree, which swapped the canvas terminal's screen to `libghostty-vt`, now implements upstream's `TerminalEmulator` and sits inside `RuntimeTerminals`. The old worktree was left alone; its changes are still uncommitted.
+
+**Why behind a feature.** Ghostty takes Zig 0.15 only. This Mac's PATH has 0.17, and 0.15 is Homebrew's keg-only one. With no source given, `libghostty-vt-sys`'s build clones Ghostty and fetches its packages with Zig's own HTTP client, which fails through the proxy (400). Needing all that for every build of `app/native` would break `nsh check`, `nsh test`, `cargo test` and other sessions' worktrees, for something behind `--terminal nsh`. So:
+
+- `app/native`'s `ghostty` feature is off by default, and the shell's `ghostty` feature turns it on. The glue crates the `nsh` CLI generates (describe, the headless test runner, web) leave it off, so `nsh check` and `nsh test` need no Zig.
+- Without the feature `RuntimeTerminals` keeps NSH's `VtEmulator`, and the web always does (Ghostty's build knows no wasm32).
+- `scripts/ghostty.ts` puts Ghostty's sources (commit `a887df42`, the one `libghostty-vt-sys` 0.2.2 pins) and its Zig packages in `~/.cache/deskfolk-nsh/ghostty/<commit>`, fetching the packages without the proxy (about ten seconds here). It gives one fixed env: Zig 0.15 first on PATH, `GHOSTTY_SOURCE_DIR`, `GHOSTTY_ZIG_SYSTEM_DIR`. The build script runs again when any of these change, so the same set is given every time.
+- `dev.ts` builds the shell with `ghostty` when it finds Zig 0.15 and the cache, and otherwise builds as before and says so. Packaging leaves it out: the packaged app does not use `--terminal nsh`.
+- CI installs Zig 0.15 on Linux only and runs `ghostty.ts` and the feature's tests. Ghostty has not been built on Windows, so it is left out there. Whether the step passes will be known after a push.
+- The build fetches nothing: from a fresh target directory, with every proxy variable pointing at a dead port and `cargo --offline`, the cache the script prepared built and its tests passed.
+
+**How lines are read.** `Terminal` asks for lines by number, the oldest scrollback line first, as its list shows them. Ghostty's fast way to read is its render state, which reads the viewport. So a line is read with its page: the viewport moves to that page (`ScrollViewport::Row`), is read whole and kept until the next output or resize, and moves back to the live screen. A list on the live screen reads one page per change; scrolled into the history, one or two more. The line count is never below the rows last asked for, because `Terminal` subtracts the rows from it unsigned. The program's queries go unanswered (no `on_pty_write`), and the title is reported when it changes.
+
+**Checks.**
+
+- Eleven Ghostty tests check the page reads line by line against Ghostty's own cell lookup (`grid_ref(Point::Screen)`): history read out of order, output after a read, history pruned past its size, the alternate screen, and a reflow from narrow to wide. They also cover wide characters, colours and attributes, cells erased in a colour, modes and the title, combining marks and ZWJ emoji.
+- 82 tests pass without the feature and 93 with it.
+- In a real window (the shell built with the feature, `--terminal nsh`), the input checks pass 6 of 8, as with `VtEmulator`. The two that fail are still the ⌘ keys, which wait for longbridge/nsh#1633.
+- Side by side with `VtEmulator`:
+  - Ghostty keeps combining marks (é café ñ) and draws a ZWJ family as one glyph. `VtEmulator` drops the marks (e cafe n) and splits the family into three people, which pushes the columns after it to the right.
+  - Narrowed and then widened, Ghostty joins the long line back into one row. `VtEmulator` loses what the narrow width cut off.
+  - After a resize, Ghostty leaves a few copies of zsh's full-width prompt behind. This is the known effect noted in addendum (8): embedded Ghostty does not clear the prompt for the shell, and the messenger's xterm.js does the same. `VtEmulator` is clean there.

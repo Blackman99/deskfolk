@@ -53,3 +53,9 @@ opt-level = 3
 # on every render and every streamed token, and unoptimised that is a third of its speed.
 [profile.dev.package.deskfolk-app-native]
 opt-level = 3
+
+# And Ghostty's terminal (the `ghostty` feature; `libghostty-vt-sys` builds it with Zig): its build
+# script picks Zig's Debug mode whenever the package carries debug info, and a Debug Ghostty is many
+# times slower.
+[profile.dev.package.libghostty-vt-sys]
+debug = false
