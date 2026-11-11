@@ -17,6 +17,13 @@ export type SessionStatusResult = {
   count?: number;
 };
 
+/** Whether two statuses say the same: a row made again for every streamed token keeps its old one. */
+export function sameSessionStatus(a: SessionStatusResult | undefined, b: SessionStatusResult | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.kind === b.kind && a.label === b.label && a.isBusy === b.isBusy && a.count === b.count;
+}
+
 export type StatusLabels = {
   running: string;
   replying: string;

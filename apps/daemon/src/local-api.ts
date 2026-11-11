@@ -50,7 +50,7 @@ import { createTurnEngine, type TurnEngine } from "./turn-engine";
 import type { ProjectRunner } from "./project-runner";
 import { projectCodexOf } from "./project-runner-codex";
 import { createProjectRunners } from "./project-runners";
-import { locateWorkspaceFile } from "./workspace-browse";
+import { locateWorkspaceFile, writableTarget } from "./workspace-browse";
 export type { LocalApi, LocalApiOptions } from "./local-api/types";
 
 const AUTH_TIMEOUT_MS = 5_000;
@@ -355,12 +355,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         if (posting) options.store.assertUserMayPost(posting.id!);
         if (parsed.files.some((file) => !file.staged)) options.store.prepareAttachments(parsed.files);
         if (request.method === "PUT" && url.pathname === "/v1/workspace/file" && typeof parsed.body.path === "string" && typeof parsed.body.content === "string" && Buffer.byteLength(parsed.body.content) <= 1_000_000) {
-          const root = options.store.workspacePath();
-          if (root) {
-            const located = locateWorkspaceFile(root, parsed.body.path);
-            stagedWrite = options.store.prepareFile(root, located.abs, parsed.body.content);
-            parsed.stagedWrite = stagedWrite;
-          }
+          const target = writableTarget(options.store.workspacePath(), options.store.projectDirs(), parsed.body.path);
+          const located = locateWorkspaceFile(target.root, target.rel);
+          stagedWrite = options.store.prepareFile(target.root, located.abs, parsed.body.content);
+          parsed.stagedWrite = stagedWrite;
         }
         return () => {
           checkRevision(options.store, request, url, parsed.body, scope);

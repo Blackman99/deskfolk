@@ -4,7 +4,7 @@
  * logs what it was sent and how its approvals were answered.
  */
 import { afterEach, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentReplay, AgentRun, ClaudeCodeCommandList, ClientEvent, SessionDetail, ToolFrame } from "@real-bot/protocol";
@@ -13,6 +13,7 @@ import type { ClaudeCommandList } from "./claude-code/commands";
 import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
 import { validateBusiness } from "./remote/routes";
+import { sha256 } from "./request-digest";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 
@@ -238,6 +239,29 @@ test("a line's pictures reach Codex by their path, ahead of its words; any other
     { type: "localImage", path: picture },
     { type: "text", text: `这是什么颜色\n\n附件：${notes}`, text_elements: [] },
   ]);
+});
+
+test("a batch of annotations reaches Codex spelled out after your words, each crop as a picture by its path", async () => {
+  const h = start([{ turns: [[{ say: "改好了" }]] }]);
+  const id = await h.open();
+  writeFileSync(join(h.dir, "a.ts"), "const a = 1;\n");
+  const line = h.store.insertAgentLine(id, { kind: "bot", body: "看过 a.ts 了" });
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+  const draft = await h.call<{ id: string }>("POST", "/v1/annotations", {
+    target_message_id: line.id, relpath: join(h.dir, "a.ts"), anchor_kind: "text_range",
+    anchor: { start_line: 1, start_col: 1, end_line: 1, end_col: 13, quote: "const a = 1;", prefix: "", suffix: "\n" },
+    content_sha256: sha256(new TextEncoder().encode("const a = 1;\n")), body: "改成 let", crop: { mime: "image/png", base64: png.toString("base64") },
+  });
+  expect(draft.status).toBe(201);
+  expect((await h.call("POST", "/v1/annotations/send", { session_id: id, body: "看看", annotation_ids: [draft.body.id] })).status).toBe(201);
+  await h.settled(id);
+  const [picture, text] = h.sent(0, "turn/start")[0]!.input as Array<{ type: string; path?: string; text?: string }>;
+  expect(picture!.type).toBe("localImage");
+  expect(readFileSync(picture!.path!).equals(png)).toBe(true);
+  expect(text!.text!.startsWith("看看\n\n（下面是我在文件上写的批注")).toBe(true);
+  expect(text!.text).toContain(`[批注 1/1] ${join(h.dir, "a.ts")} · 文本`);
+  expect(text!.text).toContain("意见：改成 let");
+  rmSync(picture!.path!, { force: true });
 });
 
 test("each command and file change reaches the windows as a tool frame with where it works", async () => {

@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { isProjectAgent, isProjectAgentMode, USER_MEMBER, type AgentRun, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
+import { isProjectAgent, isProjectAgentMode, PROJECT_AGENT_AUTHOR, USER_MEMBER, type AgentRun, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
 import type { ClaudeSessionRead } from "../claude-code/sessions";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
@@ -8,7 +8,7 @@ import { getSession } from "./sessions";
 import { jsonColumnOr, sessionRow, type StoreContext } from "./shared";
 
 /** Who a project session's agent lines are by: no Bot, so no Bot id (ADR 0095). */
-export const AGENT_AUTHOR = "agent";
+export const AGENT_AUTHOR = PROJECT_AGENT_AUTHOR;
 
 /**
  * Project sessions (ADR 0095). A `sessions` table made before them says `kind IN ('direct',
@@ -74,6 +74,14 @@ export type ProjectOf = {
   /** `plan` while plan mode is on (ADR 0098): its runs start in it. */
   mode: ProjectAgentMode | null;
 };
+
+/** Every project session's directory: where, besides the workspace, the app may save a file. */
+export function projectDirs(ctx: StoreContext): string[] {
+  return ctx.db
+    .query<{ project_dir: string }, []>(`SELECT DISTINCT project_dir FROM sessions WHERE kind = 'project' AND project_dir IS NOT NULL AND project_dir != ''`)
+    .all()
+    .map((row) => row.project_dir);
+}
 
 /** A project session's directory and agent, or null for any other conversation. */
 export function projectOf(ctx: StoreContext, sessionId: string): ProjectOf | null {

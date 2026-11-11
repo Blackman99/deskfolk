@@ -11,6 +11,7 @@
  * the screen.
  */
 import { injectAtHeadStart, isChannel, nonceAttr } from "../annotations/html-picker.ts";
+import { readStored, writeStored } from "../storage.ts";
 
 export type ViewportDevice = "desktop" | "tablet" | "phone";
 
@@ -263,20 +264,11 @@ function isDevice(value: unknown): value is ViewportDevice {
 
 /** The device this viewer last picked; a laptop until they pick one. */
 export function loadViewportDevice(): ViewportDevice {
-  if (typeof window === "undefined") return DEFAULT_DEVICE;
-  try {
-    const raw = window.localStorage?.getItem(STORAGE_KEY);
-    return isDevice(raw) ? raw : DEFAULT_DEVICE;
-  } catch {
-    return DEFAULT_DEVICE;
-  }
+  const raw = readStored(STORAGE_KEY);
+  return isDevice(raw) ? raw : DEFAULT_DEVICE;
 }
 
+/** Private windows and blocked storage just forget the choice. */
 export function saveViewportDevice(device: ViewportDevice): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage?.setItem(STORAGE_KEY, device);
-  } catch {
-    // Private windows and blocked storage just forget the choice.
-  }
+  writeStored(STORAGE_KEY, device);
 }

@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallbackMatcher, Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { Database } from "bun:sqlite";
-import type { AgentReplay, AgentRun, ClaudeCodeStatus, ClientEvent, ProjectPathLookup, SessionDetail, ToolFrame } from "@real-bot/protocol";
+import type { AgentReplay, AgentRun, Annotation, ClaudeCodeStatus, ClientEvent, Message, ProjectPathLookup, SessionDetail, ToolFrame } from "@real-bot/protocol";
 import { claudeProjectKey } from "./claude-code/memory-dir";
 import type { ClaudeCommandList } from "./claude-code/commands";
 import type { ClaudeModelList } from "./claude-code/models";
@@ -13,6 +13,7 @@ import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
 import type { ProjectQuery } from "./project-runner";
 import { validateBusiness } from "./remote/routes";
+import { sha256 } from "./request-digest";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 import { migrateProjectSessions } from "./store/project-sessions";
@@ -385,6 +386,104 @@ test("a line's pictures reach Claude Code as images ahead of its words; any othe
   expect(h.store.getSession(id).name).toBe("这是什么颜色");
   // Quotes and workspace paths are a Bot conversation's.
   expect((await h.call("POST", `/v1/sessions/${id}/messages`, { body: "看这个", paths: ["notes.md"] })).status).toBe(422);
+});
+
+test("annotations in a project session hang on the agent's line and go out as your next line, each spelled out for Claude Code with its crop", async () => {
+  const h = start(async ({ line }) => `答：${line.split("\n")[0]}`);
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  const code = "const a = 1;\nconst b = 2;\n";
+  mkdirSync(join(h.dir, "src"));
+  const file = join(h.dir, "src", "a.ts");
+  writeFileSync(file, code);
+  await h.say(id, "看看 src/a.ts");
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  const reply = h.store.db.query<{ id: string }, [string]>(`SELECT id FROM messages WHERE session_id = ? AND author = 'agent'`).get(id)!;
+  const draft = (overrides: Record<string, unknown> = {}) => ({
+    target_message_id: reply.id,
+    relpath: file,
+    anchor_kind: "text_range",
+    anchor: { start_line: 2, start_col: 1, end_line: 2, end_col: 13, quote: "const b = 2;", prefix: "const a = 1;\n", suffix: "\n" },
+    content_sha256: sha256(new TextEncoder().encode(code)),
+    body: "这里改成 let",
+    ...overrides,
+  });
+
+  // No Bot: it hangs on the agent's line, in this session, keyed by the file's absolute path.
+  const first = await h.call<Annotation>("POST", "/v1/annotations", draft());
+  expect(first.status).toBe(201);
+  expect(first.body).toMatchObject({ status: "draft", bot_id: null, session_id: id, target_session_id: id, relpath: file, file_key: realpathSync(file) });
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+  const second = await h.call<Annotation>("POST", "/v1/annotations", draft({ body: "第二行也看看", crop: { mime: "image/png", base64: png.toString("base64") } }));
+  expect(second.status).toBe(201);
+
+  // Only a file inside this session's directory, named absolute: not the workspace's, not elsewhere.
+  const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), "project-session-other-")));
+  closes.push(() => rmSync(elsewhere, { recursive: true, force: true }));
+  writeFileSync(join(elsewhere, "a.ts"), code);
+  for (const relpath of ["src/a.ts", join(elsewhere, "a.ts"), join(h.dir, "src"), join(h.dir, "missing.ts"), `${h.dir}/../${elsewhere.split("/").at(-1)}/a.ts`]) {
+    expect((await h.call("POST", "/v1/annotations", draft({ relpath }))).status).toBe(422);
+  }
+  // The preview finds them by the path it opened; a Bot's `read_file` never counts them.
+  const listed = await h.call<{ items: Annotation[] }>("GET", `/v1/annotations?relpath=${encodeURIComponent(file)}`);
+  expect(listed.body.items.map((row) => row.id)).toEqual([first.body.id, second.body.id]);
+  expect(listed.body.items[0]!.stale).toBeNull();
+
+  const sent = await h.call<{ message: Message; annotations: Annotation[] }>("POST", "/v1/annotations/send", { session_id: id, body: "按这两条改", annotation_ids: [first.body.id, second.body.id] });
+  expect(sent.status).toBe(201);
+  // Your line, as one typed in the composer: no quote, no @.
+  expect(sent.body.message).toMatchObject({ session_id: id, kind: "user", body: "按这两条改", parent_id: null });
+  expect(sent.body.annotations.map((row) => row.status)).toEqual(["open", "open"]);
+  expect(h.store.openAnnotationCount(file)).toBe(0);
+  await h.until(() => h.seen.lines.length === 2);
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  const read = h.seen.lines[1]!;
+  expect(read.startsWith("[image/png]\n按这两条改\n\n（下面是我在文件上写的批注")).toBe(true);
+  expect(read).toContain(`[批注 1/2] ${file} · 文本`);
+  expect(read).toContain("引文：const b = 2;");
+  expect(read).toContain("意见：这里改成 let");
+  expect(read).toContain(`[批注 2/2] ${file} · 文本`);
+  expect(read).toContain("（附区域裁图）");
+  // No Bot's id or name: the agent has no tool that takes one.
+  expect(read).not.toContain("id=");
+  expect(h.store.db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM turns`).get()?.n).toBe(0);
+
+  // Only you mark it handled; the file changing shows on it.
+  expect(() => h.store.resolveAnnotationByBot(first.body.id, "some-bot", "改了")).toThrow();
+  expect((await h.call<Annotation>("PATCH", `/v1/annotations/${first.body.id}`, { status: "resolved" })).body).toMatchObject({ status: "resolved", resolved_by: "user" });
+  writeFileSync(file, "// top\nconst a = 1;\nconst b = 2;\n");
+  expect((await h.call<Annotation>("GET", `/v1/annotations/${second.body.id}`)).body.stale).toMatchObject({ kind: "moved", start_line: 3 });
+
+  // A batch with nothing added is the annotations alone.
+  const third = (await h.call<Annotation>("POST", "/v1/annotations", draft({ content_sha256: sha256(readFileSync(file)), anchor: { start_line: 1, start_col: 1, end_line: 1, end_col: 7, quote: "// top", prefix: "", suffix: "\n" }, body: "删掉" }))).body;
+  const bare = await h.call<{ message: Message }>("POST", "/v1/annotations/send", { session_id: id, body: "", annotation_ids: [third.id] });
+  expect(bare.body.message.body).toBe("");
+  await h.until(() => h.seen.lines.length === 3);
+  expect(h.seen.lines[2]!.startsWith("（下面是我在文件上写的批注")).toBe(true);
+  expect(h.seen.lines[2]).toContain("意见：删掉");
+  await h.until(async () => (await h.run(id))?.status === "completed");
+
+  // Clearing the session takes its annotations with it.
+  expect((await h.call("POST", `/v1/sessions/${id}/clear`, {})).status).toBe(204);
+  expect(h.store.db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM annotations`).get()?.n).toBe(0);
+});
+
+test("an annotation on a Bot's line still takes workspace files only, and a project's agent line only its own directory's", async () => {
+  const h = start(async () => "好");
+  const ws = realpathSync(mkdtempSync(join(tmpdir(), "project-session-ws-")));
+  closes.push(() => rmSync(ws, { recursive: true, force: true }));
+  await h.store.patchSettings({ workspace_path: ws, endpoint_base_url: "https://fixture.invalid/v1", endpoint_api_key: "fixture", endpoint_models: ["fixture"], endpoint_default_model: "fixture" });
+  writeFileSync(join(h.dir, "a.md"), "x\n");
+  const created = h.store.createBot({ name: "Writer", duties: "write", boundaries: "none", model: "fixture", thinking_level: "low" });
+  const delivery = h.store.insertMessage({ sessionId: created.direct_session.id, kind: "bot", author: created.bot.id, body: "看看" });
+  const body = { target_message_id: delivery.id, relpath: join(h.dir, "a.md"), anchor_kind: "text_range", anchor: { start_line: 1, start_col: 1, end_line: 1, end_col: 2, quote: "x", prefix: "", suffix: "\n" }, content_sha256: sha256(new TextEncoder().encode("x\n")), body: "?" };
+  // A project's file is not a Bot's to change.
+  expect((await h.call("POST", "/v1/annotations", body)).status).toBe(422);
+  // Another project's agent line does not take this project's file.
+  const other = realpathSync(mkdtempSync(join(tmpdir(), "project-session-other-")));
+  closes.push(() => rmSync(other, { recursive: true, force: true }));
+  const otherId = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: other })).body.id;
+  const line = h.store.insertAgentLine(otherId, { kind: "bot", body: "好" });
+  expect((await h.call("POST", "/v1/annotations", { ...body, target_message_id: line.id })).status).toBe(422);
 });
 
 test("Claude Code missing fails the run with a line that says so", async () => {

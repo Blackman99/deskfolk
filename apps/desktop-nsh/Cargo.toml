@@ -1,0 +1,61 @@
+[workspace]
+resolver = "3"
+members = ["host", "native/terminal", "native/pdf", "app/native"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+# NSH from its `main`, at one commit (`rev`), the same for every crate and for the CLI that
+# builds the bundles: the bundle format and the engine must match, and the CLI writes the glue the
+# app's crate builds with. `scripts/nsh-cli.ts` builds that CLI from this `rev` (CI does too); to
+# move to a newer NSH, change the `rev` of all of them at once and rebuild. The CLI reads the app's
+# crate's declared Git dependency to build its tests against the same checkout, which a
+# `[patch.crates-io]` table would hide from it.
+nsh-platform-macos = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3" }
+nsh-platform-windows = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3" }
+nsh-platform-linux = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3" }
+nsh-engine = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3", default-features = false }
+nsh-core = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3" }
+nsh-base = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3", default-features = false }
+# NSH's own objc2 line; Cargo unifies the features. In a debug build objc2 looks every message's
+# method up and checks its encoding before sending it (`class_getInstanceMethod` on each send):
+# the top of the main thread's samples during a live resize. The feature turns the check off (a
+# release build has none anyway).
+objc2 = { version = "0.6.5", features = ["disable-encoding-assertions"] }
+block2 = "0.6.2"
+dispatch2 = "0.3.1"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std"] }
+objc2-quartz-core = { version = "0.3.2", default-features = false, features = ["std"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std"] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std"] }
+objc2-core-text = { version = "0.3.2", default-features = false, features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+
+# The dev build's dependencies optimised: NSH's layout, text and the QuickJS engine (its C through
+# cc, at the package's opt-level) run several times slower unoptimised, and the window's layout
+# fell behind live resizes and divider drags. The app's own crates stay unoptimised, so their
+# rebuilds stay quick.
+[profile.dev.package."*"]
+opt-level = 3
+
+# Except the app's native crate: it prepares every chat bubble's Markdown (`app/native/src/markdown`),
+# on every render and every streamed token, and unoptimised that is a third of its speed.
+[profile.dev.package.deskfolk-app-native]
+opt-level = 3
+
+# And Ghostty's terminal (the `ghostty` feature; `libghostty-vt-sys` builds it with Zig): its build
+# script picks Zig's Debug mode whenever the package carries debug info, and a Debug Ghostty is many
+# times slower.
+[profile.dev.package.libghostty-vt-sys]
+debug = false

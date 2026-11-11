@@ -177,6 +177,22 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  apps/desktop-nsh:
+    dependencies:
+      '@real-bot/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      marked:
+        specifier: ^18.0.13
+        version: 18.0.13
+    devDependencies:
+      '@types/bun':
+        specifier: 1.4.2
+        version: 1.4.2
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   apps/landing:
     dependencies:
       '@real-bot/protocol':

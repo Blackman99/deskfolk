@@ -1,0 +1,14 @@
+{
+  "extends": "./.nsh/tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "nsh": ["./.nsh/types/nsh/index.d.ts"],
+      "nsh/*": ["./.nsh/types/nsh/*.d.ts"],
+      "@real-bot/protocol": ["../../../packages/protocol/src/index.ts"],
+      "*": ["./.nsh/types/*.d.ts"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["e2e/**", "build/**"]
+}

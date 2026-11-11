@@ -1,0 +1,47 @@
+[package]
+name = "deskfolk-app-native"
+description = "The Deskfolk app's own Rust for every NSH target (macOS, Windows, Linux, web): the terminal (vt100 + canvas), PDF pages (hayro), Office files (calamine, zip, quick-xml), the remote screen (an RFB client) and code colours (giallo)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nsh-core.workspace = true
+# `term`: NSH's own `Terminal` and its emulator, which `RuntimeTerminals` hands its terminals.
+nsh-base = { workspace = true, features = ["term"] }
+vt100 = "0.16"
+base64 = "0.22"
+hayro = { version = "0.9", features = ["embed-fonts"] }
+serde_json.workspace = true
+# `\p{Nd}` for the Markdown pass (`src/markdown`), with only that table: the rest of it is hand-written.
+regex = { version = "1", default-features = false, features = ["std", "unicode-gencat"] }
+serde.workspace = true
+quick-xml = "0.42"
+chrono = { version = "0.4", default-features = false }
+des = { version = "0.9.0", default-features = false }
+aes = { version = "0.9.4", default-features = false }
+md-5 = { version = "0.11.0", default-features = false }
+num-bigint = { version = "0.5.1", default-features = false }
+miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"] }
+jpeg-decoder = { version = "0.3.2", default-features = false }
+
+# Office previews (`src/office`), off the web for now: on wasm32 `zip` 9 (which `calamine` 0.38
+# requires) turns on `getrandom` 0.4's `wasm_js`, and under the `getrandom_backend="custom"` cfg
+# NSH adds to every web build `getrandom` 0.4 does not compile. The web gets `src/office_web.rs`.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Code colours (`src/highlight.rs`): VS Code's TextMate grammars with Shiki's themes, as the
+# messenger's Shiki paints code. Its built-in grammars and themes come as a zstd dump (C), so not on
+# the web for now. EUPL-1.2.
+giallo = { version = "=0.6.0", features = ["dump"] }
+calamine = { version = "0.38", features = ["dates"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
+# Ghostty's terminal emulator, behind the `ghostty` feature below. MIT OR Apache-2.0; Ghostty MIT.
+libghostty-vt = { version = "=0.2.2", optional = true }
+
+[features]
+# Ghostty's terminal emulator for `RuntimeTerminals` on the desktops (`src/ghostty.rs`), in place of
+# NSH's own `VtEmulator`. It builds from Ghostty's Zig sources and needs Zig 0.15 (see
+# `scripts/ghostty.ts`), so it is off unless asked for: the host's `ghostty` feature, which `dev.ts`
+# turns on when it finds Zig 0.15. Its build knows no wasm32, so the web keeps `VtEmulator`.
+ghostty = ["dep:libghostty-vt"]

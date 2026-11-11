@@ -33,7 +33,7 @@ _Avoid_: 统计第一名自动任命, Bot 自封负责人, 负责人替你解除
 _Avoid_: 把几件不相干的事混成一条协作私聊, 用户是 Bot↔Bot 私聊发言者, 所有私聊发言必叫醒对方
 
 **项目会话（Project session）**：
-你和本机的一个 Agent（Claude Code 或 Codex）在一个项目目录里的对话，和 Agent 自己的桌面端一样；没有 Bot。可以选目录新开，Claude Code 的还能接着你在终端里开过的会话（从原会话开分支，原会话不变）。应用只管权限模式、模型、思考等级、Stop 和打 `/` 列出的命令（Codex 的是应用替它执行的几条和它的 skill），Claude Code 的还有账号、计划模式和它放到后台的命令、监视与子代理（在对话里看得到、打得开，和 Bot 私聊里的工作一样）：没有工作、流程图、整理、交付审查和叫停；Agent 自己记着历史，应用每轮只发你的新话。侧栏「项目」一段按目录分组。细节见[行为说明·项目会话](docs/behavior.md#project-sessions)、[ADR 0095](docs/adr/0095-project-sessions.md)、[ADR 0098](docs/adr/0098-plan-mode-and-commands-in-project-sessions.md) 和 [ADR 0099](docs/adr/0099-codex-in-project-sessions.md)。
+你和本机的一个 Agent（Claude Code 或 Codex）在一个项目目录里的对话，和 Agent 自己的桌面端一样；没有 Bot。可以选目录新开，Claude Code 的还能接着你在终端里开过的会话（从原会话开分支，原会话不变）。应用只管权限模式、模型、思考等级、Stop 和打 `/` 列出的命令（Codex 的是应用替它执行的几条和它的 skill），Claude Code 的还有账号、计划模式和它放到后台的命令、监视与子代理（在对话里看得到、打得开，和 Bot 私聊里的工作一样）：没有工作、流程图、整理、交付审查和叫停；Agent 自己记着历史，应用每轮只发你的新话。项目目录里的文件可以批注，一批发出是你的一句话。侧栏「项目」一段按目录分组。细节见[行为说明·项目会话](docs/behavior.md#project-sessions)、[ADR 0095](docs/adr/0095-project-sessions.md)、[ADR 0098](docs/adr/0098-plan-mode-and-commands-in-project-sessions.md) 和 [ADR 0099](docs/adr/0099-codex-in-project-sessions.md)。
 _Avoid_: 把项目会话叫成 Bot, 给项目会话开工作或流程图, 打「停下」当 Stop, 改写终端里的原会话
 
 **任务地图（Task map）**：
@@ -335,7 +335,7 @@ _Avoid_: 隐藏即暂停（归档不等于 Stop）
 _Avoid_: 闸门, ConsentGate, 按路径在不在工作区分危险不危险
 
 **工作区外（Outside the workspace）**：
-路径 `realpath` 之后不落在工作区根前缀下。工作区内的 symlink 跟目标走：目标在区外就是区外。它管的是路径怎么解析、产物挂不挂得上、批注写不写得了，不管权限：Bot 在工作区外读写要不要问看它的权限模式（[ADR 0092](docs/adr/0092-permission-modes.md)）；你自己从消息里打开工作区外的文件或文件夹不用批准，只读（[ADR 0090](docs/adr/0090-the-workspace-bounds-bots-not-you.md)）。
+路径 `realpath` 之后不落在工作区根前缀下。工作区内的 symlink 跟目标走：目标在区外就是区外。它管的是路径怎么解析、产物挂不挂得上、批注写不写得了，不管权限：Bot 在工作区外读写要不要问看它的权限模式（[ADR 0092](docs/adr/0092-permission-modes.md)）；你自己从消息里打开工作区外的文件或文件夹不用批准，只读（[ADR 0090](docs/adr/0090-the-workspace-bounds-bots-not-you.md)）；项目会话目录里的文件例外：能保存，也能在那个会话里批注（[ADR 0095](docs/adr/0095-project-sessions.md)）。
 _Avoid_: 只做字符串前缀, 按 inode / 硬链接判定, 工作区外就要批准
 
 **Bot 的壳（Bot shell）**：
@@ -385,7 +385,7 @@ _Avoid_: @ 了却不进群, 未知名隐式建 Bot
 _Avoid_: 资产库, Artifact 表, 快照副本, 每 Bot 产物目录, `@文件`
 
 **批注（Annotation）**：
-你对某个产物的某一处写的一句意见，挂在一个工作区相对路径、一个锚点和交出这个产物的那条消息上。先是草稿，Bot 看不见；攒够一批一起发出，合成一条引用交付消息的回复并 @ 交出它的 Bot；发出后是「待处理」，Bot 或你把它标成「已处理」，已处理的可以重新打开。批注不是产物的快照：只记下当时的引文、位置和文件哈希，不保存旧文件；只批工作区内的文件，链接类产物不能批注。细节见[行为说明·批注](docs/behavior.md#annotation)。
+你对某个产物的某一处写的一句意见，挂在一个工作区相对路径、一个锚点和交出这个产物的那条消息上。先是草稿，Bot 看不见；攒够一批一起发出，合成一条引用交付消息的回复并 @ 交出它的 Bot；发出后是「待处理」，Bot 或你把它标成「已处理」，已处理的可以重新打开。批注不是产物的快照：只记下当时的引文、位置和文件哈希，不保存旧文件；只批工作区内的文件，链接类产物不能批注。项目会话里没有 Bot：批的是项目目录里的文件，挂在它的绝对路径和 Agent 的一条回复上，一批发出是你给它的一句话（不引用、不 @），只有你标已处理（[ADR 0095](docs/adr/0095-project-sessions.md) 决定 28）。细节见[行为说明·批注](docs/behavior.md#annotation)。
 _Avoid_: 评论（留给以后可能有的多人场景）, 审阅, 新的消息种类, 批注存旧版本, 每条批注单独叫醒一次, Bot 给你批注
 
 **附件（Attachment）**：

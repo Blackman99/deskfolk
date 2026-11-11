@@ -13,11 +13,13 @@
  * (`PROJECT_AGENT_CAPS`).
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 import { isAgentEffort, type AgentRunApproval, type AgentRunToolInfo, type Message, type ToolFrame } from "@real-bot/protocol";
 import daemonPackage from "../package.json";
 import { askSkills, codexBuiltinOf, type CodexBuiltin, type CodexSkill } from "./agents/codex-commands";
+import { agentAnnotations, type AnnotationCropBytes } from "./annotation-context";
 import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
 import { placeOfCall } from "./claude-code/tool-place";
 import { claudeLaunch, killsTree } from "./claude-code/spawn";
@@ -80,11 +82,29 @@ const ACTIVITY_MAX = 160;
 const PARTIAL_MAX = 4000;
 
 /**
+ * Where an annotation's crop goes for Codex, which takes a picture by its path only: written out
+ * under the system's temporary folder, one file per annotation. Null when it cannot be written.
+ */
+function cropFile(crop: AnnotationCropBytes): string | null {
+  try {
+    const dir = join(tmpdir(), "deskfolk-annotation-crops");
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, `${crop.id}.${crop.mime === "image/png" ? "png" : "jpg"}`);
+    writeFileSync(path, crop.bytes);
+    return path;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Your line as Codex reads it: its pictures by their path on this computer (Codex opens them
  * itself, as a picture pasted into it), then your words, with any other file named by its path —
- * the app keeps what you send in its inbox, not in the session's directory.
+ * the app keeps what you send in its inbox, not in the session's directory. A batch of annotations
+ * (ADR 0095 decision 28) adds each one after your words and its crop among the pictures.
  */
 function lineInput(store: Store, message: Message, en: boolean): CodexInput[] {
+  const notes = agentAnnotations(store, message.id, en ? "en" : "zh");
   const pictures: CodexInput[] = [];
   const named: string[] = [];
   for (const att of message.attachments) {
@@ -97,7 +117,11 @@ function lineInput(store: Store, message: Message, en: boolean): CodexInput[] {
     if (pictureMime(att.original_filename) ?? pictureMime(abs)) pictures.push({ type: "localImage", path: abs });
     else named.push(`${en ? "Attached: " : "附件："}${abs}`);
   }
-  const text = [message.body.trim() ? message.body : "", ...named].filter(Boolean).join("\n\n");
+  for (const crop of notes?.crops ?? []) {
+    const path = cropFile(crop);
+    if (path) pictures.push({ type: "localImage", path });
+  }
+  const text = [message.body.trim() ? message.body : "", ...named, notes?.text ?? ""].filter(Boolean).join("\n\n");
   return [...pictures, ...(text || pictures.length === 0 ? [{ type: "text" as const, text: text || message.body, text_elements: [] as [] }] : [])];
 }
 

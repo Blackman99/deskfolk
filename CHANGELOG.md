@@ -15,6 +15,14 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - Any change to the saved settings, even one about something else (the theme, launch at login, setup's own save of the workspace a moment earlier), put the saved workspace, endpoint, models and default model back into setup and the settings, wiping what you had picked and not yet saved. A field now follows the saved settings only when its saved value changed.
 
+### A native desktop build joins the main branch (preview, from source)
+
+- The desktop app rewritten on Native Shell (NSH) is now on the main branch as `apps/desktop-nsh`: native windows with no web view, one interface for the desktop and, through its web build, the phone ([ADR 0107](docs/adr/0107-spike-native-desktop-on-nsh.md)). It runs on macOS; Windows and Linux are still skeletons. It is not in the releases: run it from source with `bun apps/desktop-nsh/scripts/dev.ts`, beside the installed app on a port, data folder and Keychain item of its own, or with `--stable-instance` in the installed app's place, on your own conversations, settings and remote access. The installed app stays the release until the native build matches it.
+
+### Annotate a project session's files
+
+- In the native (NSH) desktop build, a file in a project session's directory now takes annotations as a Bot's artifact does: mark the spot in the preview, collect a batch and send it. It hangs on the agent's reply the file was opened from (or its latest one), and the batch goes out as your next line to Claude Code or Codex, with every annotation spelled out after your words (path, where, the quoted text, your note) and each region's crop as a picture. The cards stay under your line, and only you mark them handled. Before, a project's file opened read-only for notes, and a note could only hang on a Bot's message. The first start after updating rebuilds the annotations table once so it can hold annotations with no Bot ([ADR 0095](docs/adr/0095-project-sessions.md) decision 28).
+
 ### No more half-second stalls after weeks of use
 
 - Every change the app makes (sending a line, marking a conversation read, the desktop's notification check every two seconds) leaves a request receipt, and each one first tidied the receipts it keeps bodies for by reading through all of them. After a few weeks there were over a million, so each change took about 400 ms and, while it ran, held up every other request: switching conversations or opening a file could wait that long at random, every couple of seconds. An index now leads that tidy-up straight to the few receipts it touches, about 6 ms however many have piled up. It is built once, on the first start after updating (under a second on a large database).

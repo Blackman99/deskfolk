@@ -1,0 +1,48 @@
+{
+  "name": "Deskfolk Dev",
+  "id": "com.real-bot.desktop.nsh-dev",
+  "version": "0.0.0",
+  "build": 1,
+  "rust": "native",
+  "theme": "theme.json",
+  "appearance": "system",
+  "locales": ["zh"],
+  "capabilities": {
+    "network": {
+      "hosts": [
+        "127.0.0.1"
+      ]
+    },
+    "clipboard": true,
+    "statusBar": true,
+    "picker": true,
+    "fs": {
+      "read": [
+        "${homeDir}",
+        "/Volumes"
+      ]
+    },
+    "openUrl": {
+      "schemes": [
+        "https",
+        "http",
+        "mailto",
+        "x-apple.systempreferences"
+      ]
+    },
+    "webview": {},
+    "host": [
+      "shell.*",
+      "runtime.*",
+      "tauri.*"
+    ]
+  },
+  "resolve": {
+    "alias": {
+      "@real-bot/protocol": "../../../packages/protocol/src/index.ts"
+    }
+  },
+  "web": {
+    "host": "./web/host.js"
+  }
+}

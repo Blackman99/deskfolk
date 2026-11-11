@@ -3,6 +3,9 @@
  * 先是草稿，Bot 看不见；攒够一批一起发出，合成一条引用交付消息的回复并 @ 交出它的 Bot。发出后是
  * 「待处理」，Bot 或你把它标成「已处理」。批注不是产物的快照：只记下当时的引文、位置和哈希，
  * 陈旧与否每次现算（`packages/protocol` 的 `annotationStale`）。
+ *
+ * 项目会话里（ADR 0095 决定 28）没有 Bot：批注挂在项目目录里文件的绝对路径和 Agent 的一条回复上，
+ * `bot_id` 为空；一批发出是你在这个会话里的一句话，不引用、不 @，Agent 收到的是这句话加上每条批注。
  */
 import { createHash } from "node:crypto";
 import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync, realpathSync, statSync, type Stats } from "node:fs";
@@ -33,9 +36,11 @@ import {
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
+import { classifyPath, expandHome, isAbsoluteHostPath } from "../workspace-paths";
 import { getBot, listBots } from "./bots";
 import { hydrateMessage, resolveAttachmentLocation } from "./messages";
 import { recordQuote } from "./quotes";
+import { AGENT_AUTHOR, projectDirs, projectOf } from "./project-sessions";
 import { createDirect } from "./sessions";
 import { isPresent, messageRow, requireString, sessionRow, touchSession, workspacePath, type MessageRow, type StoreContext } from "./shared";
 import { taskOfTurn } from "./tasks";
@@ -51,7 +56,7 @@ type AnnotationRow = {
   target_message_id: string;
   target_session_id: string;
   target_turn_id: string | null;
-  bot_id: string;
+  bot_id: string | null;
   session_id: string;
   message_id: string | null;
   body: string;
@@ -133,8 +138,44 @@ function readText(abs: string): string | null {
   }
 }
 
+/**
+ * A file in a project session's directory, named by its absolute path as the preview opened it
+ * (ADR 0095 decision 28): where it is on disk, symlinks resolved. Null for a relative path or one in
+ * no project; `dirs` narrows the search to one session's directory, as creating an annotation does.
+ */
+function projectFile(ctx: StoreContext, path: string, dirs?: readonly string[]): { abs: string; isDir: boolean } | null {
+  const expanded = expandHome(path);
+  if (!isAbsoluteHostPath(expanded)) return null;
+  for (const dir of dirs ?? projectDirs(ctx)) {
+    try {
+      const classified = classifyPath(dir, expanded);
+      if (classified.zone !== "inside") continue;
+      return { abs: classified.abs, isDir: existsSync(classified.abs) && statSync(classified.abs).isDirectory() };
+    } catch {
+      // A project directory that is gone.
+    }
+  }
+  return null;
+}
+
+/** A project file's key: its absolute path with symlinks and letter case resolved, never a workspace-relative one. */
+function projectKey(ctx: StoreContext, path: string, dirs?: readonly string[]): string | null {
+  const file = projectFile(ctx, path, dirs);
+  if (!file) return null;
+  try {
+    return existsSync(file.abs) ? realpathSync(file.abs) : file.abs;
+  } catch {
+    return file.abs;
+  }
+}
+
+/** Where an annotated file is: in the workspace, or in a project session's directory. */
+function locateAnnotated(ctx: StoreContext, relpath: string): { abs: string; isDir: boolean } | null {
+  return resolveAttachmentLocation(ctx, relpath) ?? projectFile(ctx, relpath);
+}
+
 function currentContent(ctx: StoreContext, relpath: string): CurrentContent {
-  const located = resolveAttachmentLocation(ctx, relpath);
+  const located = locateAnnotated(ctx, relpath);
   if (!located || located.isDir) return { exists: false };
   let hashed: { sha256: string; size: number };
   try {
@@ -199,8 +240,10 @@ function resolvedPath(ctx: StoreContext, path: string): string | null {
  */
 function pathMatch(ctx: StoreContext, path: string): { sql: string; args: string[] } {
   const cited = normalizeCitedPath(path) ?? path;
-  const key = resolvedPath(ctx, cited);
-  return key ? { sql: "(relpath = ? OR file_key = ?)", args: [cited, key] } : { sql: "relpath = ?", args: [cited] };
+  // A project's file is keyed by its absolute path; the same file may sit in the workspace too.
+  const keys = [...new Set([resolvedPath(ctx, cited), projectKey(ctx, cited)].filter((key): key is string => key !== null))];
+  if (keys.length === 0) return { sql: "relpath = ?", args: [cited] };
+  return { sql: `(relpath = ? OR file_key IN (${keys.map(() => "?").join(", ")}))`, args: [cited, ...keys] };
 }
 
 function toAnnotation(row: AnnotationRow, probe: FileProbe | null): Annotation {
@@ -284,11 +327,11 @@ export function annotationsOfMessage(ctx: StoreContext, messageId: string): Anno
   return listAnnotations(ctx, { message_id: messageId });
 }
 
-/** Annotations still waiting on a file; `read_file` names the count. */
+/** Annotations still waiting on a file for a Bot; `read_file` names the count. A project session's are its agent's. */
 export function openAnnotationCount(ctx: StoreContext, relpath: string): number {
   const match = pathMatch(ctx, relpath);
   const row = ctx.db
-    .query<{ n: number }, string[]>(`SELECT COUNT(*) AS n FROM annotations WHERE ${match.sql} AND status = 'open'`)
+    .query<{ n: number }, string[]>(`SELECT COUNT(*) AS n FROM annotations WHERE ${match.sql} AND status = 'open' AND bot_id IS NOT NULL`)
     .get(...match.args);
   return row?.n ?? 0;
 }
@@ -354,14 +397,25 @@ function checkAnchor(kind: unknown, anchor: unknown): { kind: AnnotationAnchorKi
  * inside the workspace is still a workspace file. The path is stored as it was cited, so the preview of that citation
  * and the card that opens it spell it the same way; the file it resolves to ({@link resolvedPath})
  * is stored beside it, and `read_file`'s pending count and a path filter match either.
+ *
+ * In a project session (`projectDir` set) it is the other way round: only a file inside that
+ * session's directory, named by its absolute path, which is what its agent works on; its key is the
+ * resolved absolute path, so a Bot's tools never take it for a workspace file.
  */
-export function checkAnnotatedPath(ctx: StoreContext, value: unknown): { relpath: string; fileKey: string } {
+export function checkAnnotatedPath(ctx: StoreContext, value: unknown, projectDir: string | null = null): { relpath: string; fileKey: string } {
   const raw = requireString("relpath", value);
   const cited = normalizeCitedPath(raw);
   if (!cited || cited === ".") throw new HttpError(422, "invalid_args", "relpath must name a file");
   // `C:\notes.md` starts like a one-letter scheme; a drive path is a file, not a link.
   if ((/^[a-z][a-z0-9+.-]*:/i.test(cited) && !looksLikeHostAbsolutePath(cited)) || cited.includes("://")) {
     throw new HttpError(422, "invalid_args", "only workspace files can be annotated, not links");
+  }
+  if (projectDir !== null) {
+    const file = projectFile(ctx, cited, [projectDir]);
+    if (!file) throw new HttpError(422, "invalid_args", "relpath must be an absolute path inside this project session's directory");
+    if (!existsSync(file.abs)) throw new HttpError(422, "invalid_args", "the file does not exist");
+    if (file.isDir) throw new HttpError(422, "invalid_args", "relpath must name a file, not a directory");
+    return { relpath: cited, fileKey: projectKey(ctx, cited, [projectDir]) ?? file.abs };
   }
   const located = resolveAttachmentLocation(ctx, cited);
   if (!located) throw new HttpError(422, "invalid_args", "relpath must stay inside the workspace");
@@ -375,20 +429,26 @@ export function checkAnnotatedPath(ctx: StoreContext, value: unknown): { relpath
 /**
  * 挂到谁：交付消息必须是 Bot 的消息；批注挂在它和交出它的 Bot 上。发往的会话是交付消息所在的会话，
  * 除非那是一条你不在的 Bot↔Bot 私聊——那就发到你和交付 Bot 的私聊里（没有就建一条）。
+ * 项目会话里是 Agent 的一条回复：没有 Bot，发往的就是这个项目会话，文件得在它的目录里。
  */
-function targetOf(ctx: StoreContext, messageId: unknown): { target: MessageRow; botId: string; sessionId: string } {
+function targetOf(ctx: StoreContext, messageId: unknown): { target: MessageRow; botId: string | null; sessionId: string; projectDir: string | null } {
   const target = messageRow(ctx, requireString("target_message_id", messageId));
+  if (target.kind === "bot" && target.author === AGENT_AUTHOR) {
+    const project = projectOf(ctx, target.session_id);
+    if (!project) throw new HttpError(422, "invalid_args", "annotations hang on a Bot's message");
+    return { target, botId: null, sessionId: target.session_id, projectDir: project.dir };
+  }
   if (target.kind !== "bot" || target.author === USER_MEMBER) {
     throw new HttpError(422, "invalid_args", "annotations hang on a Bot's message");
   }
   const botId = getBot(ctx, target.author).id;
   const sessionId = isPresent(ctx, target.session_id, USER_MEMBER) ? target.session_id : createDirect(ctx, USER_MEMBER, botId).id;
-  return { target, botId, sessionId };
+  return { target, botId, sessionId, projectDir: null };
 }
 
 export function createAnnotation(ctx: StoreContext, input: CreateAnnotationRequest): Annotation {
-  const { target, botId, sessionId } = targetOf(ctx, input.target_message_id);
-  const { relpath, fileKey } = checkAnnotatedPath(ctx, input.relpath);
+  const { target, botId, sessionId, projectDir } = targetOf(ctx, input.target_message_id);
+  const { relpath, fileKey } = checkAnnotatedPath(ctx, input.relpath, projectDir);
   const { kind, anchor } = checkAnchor(input.anchor_kind, input.anchor);
   const sha = checkSha(input.content_sha256);
   const body = checkBody(input.body);
@@ -459,6 +519,8 @@ export function resolveAnnotationByBot(ctx: StoreContext, id: string, botId: str
   const text = typeof note === "string" ? note.trim() : "";
   if (!text) throw new HttpError(422, "invalid_args", "note is required: say what changed");
   if (row.status === "draft") throw new HttpError(422, "invalid_args", "this annotation has not been sent yet");
+  // A project session's annotation is its agent's, and only you mark it (ADR 0095 decision 28).
+  if (row.bot_id === null) throw new HttpError(422, "invalid_args", "this annotation is a project session's, not a Bot's");
   if (row.status === "resolved") throw new HttpError(409, "conflict", "this annotation is already resolved");
   const now = isoNow();
   ctx.db.run(`UPDATE annotations SET status = 'resolved', resolved_by = ?, resolved_note = ?, resolved_at = ?, updated_at = ? WHERE id = ?`, [
@@ -504,6 +566,7 @@ function sendAnnotationsRows(ctx: StoreContext, input: SendAnnotationsRequest): 
     if (row.status !== "draft") throw new HttpError(422, "invalid_args", `annotation ${row.id} was already sent`);
     if (row.session_id !== sessionId) throw new HttpError(422, "invalid_args", `annotation ${row.id} is not for this session`);
   }
+  if (projectOf(ctx, sessionId) !== null) return sendToAgent(ctx, sessionId, summary, rows);
   // The quoted delivery is the newest one in the batch; the cards name each of their own.
   const targets = new Map<string, MessageRow>();
   for (const row of rows) if (!targets.has(row.target_message_id)) targets.set(row.target_message_id, messageRow(ctx, row.target_message_id));
@@ -512,7 +575,7 @@ function sendAnnotationsRows(ctx: StoreContext, input: SendAnnotationsRequest): 
   const parentId = sameSession ? (latest.parent_id ?? latest.id) : null;
   const sourceId = sameSession ? null : latest.id;
   // Every delivering Bot is named, once.
-  const botIds = [...new Set(rows.map((row) => row.bot_id))];
+  const botIds = [...new Set(rows.map((row) => row.bot_id).filter((id): id is string => id !== null))];
   const names: string[] = [];
   for (const botId of botIds) {
     try {
@@ -551,6 +614,33 @@ function sendAnnotationsRows(ctx: StoreContext, input: SendAnnotationsRequest): 
   return {
     message: hydrateMessage(ctx, messageRow(ctx, id)),
     annotations: ids.map((annotationId) => getAnnotation(ctx, annotationId, probe)),
+  };
+}
+
+/**
+ * A project session's batch (ADR 0095 decision 28): your line in that session, as one typed in its
+ * composer is — no quote, no `@`, no job, which only a Bot's conversation has — with the annotations
+ * under it. What you added is kept as your words; with nothing added the line is empty and the cards
+ * carry it. The agent reads the line with every annotation spelled out (`annotation-context.ts`).
+ */
+function sendToAgent(ctx: StoreContext, sessionId: string, summary: string, rows: AnnotationRow[]): { message: Message; annotations: Annotation[] } {
+  const now = isoNow();
+  const id = ulid();
+  ctx.db.run(
+    `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, created_at)
+     VALUES (?, ?, NULL, NULL, 'user', ?, ?, NULL, ?)`,
+    [id, sessionId, USER_MEMBER, summary, now],
+  );
+  for (const row of rows) {
+    ctx.db.run(`UPDATE annotations SET status = 'open', message_id = ?, updated_at = ? WHERE id = ?`, [id, now, row.id]);
+  }
+  if (summary) recordQuote(ctx, { via: "message", body: summary, messageId: id, sessionId, now });
+  for (const row of rows) recordQuote(ctx, { via: "annotation", body: row.body, messageId: id, sessionId, now });
+  touchSession(ctx, sessionId, now);
+  const probe = new FileProbe(ctx);
+  return {
+    message: hydrateMessage(ctx, messageRow(ctx, id)),
+    annotations: rows.map((row) => getAnnotation(ctx, row.id, probe)),
   };
 }
 

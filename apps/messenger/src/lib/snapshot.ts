@@ -245,7 +245,7 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
       return {
         ...snapshot,
         messages: upsert(snapshot.messages, message),
-        sessions: snapshot.sessions.map((s) => s.last_message?.id === message.id ? { ...s, last_message: message } : s),
+        sessions: mapChanged(snapshot.sessions, (s) => s.last_message?.id === message.id ? { ...s, last_message: message } : s),
       };
     }
     case "message.created": {
@@ -272,7 +272,7 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
       return {
         ...snapshot,
         turns: upsert(snapshot.turns, turn),
-        messages: snapshot.messages.map((message) =>
+        messages: mapChanged(snapshot.messages, (message) =>
           message.id === turn.trigger_message_id &&
           message.kind === "system" &&
           message.body === INTERRUPT_NOTE_BODY &&
@@ -458,6 +458,25 @@ export function keepNewestRun(runs: Record<string, AgentRun>, run: AgentRun): Re
   if (held && held.id !== run.id && held.created_at > run.created_at) return runs;
   if (held && held.id === run.id && held.updated_at > run.updated_at) return runs;
   return { ...runs, [run.session_id]: run };
+}
+
+/**
+ * `list.map(fn)`, or `list` itself when `fn` returned every item unchanged: a view that tells a change
+ * by the array (the sorted transcript, the message lookup) then keeps what it worked out, and the NSH
+ * app's snapshot runs no reader of an untouched key.
+ */
+function mapChanged<T>(list: T[], fn: (item: T) => T): T[] {
+  let out: T[] | null = null;
+  for (let i = 0; i < list.length; i++) {
+    const before = list[i]!;
+    const after = fn(before);
+    if (out) out.push(after);
+    else if (after !== before) {
+      out = list.slice(0, i);
+      out.push(after);
+    }
+  }
+  return out ?? list;
 }
 
 function upsert<T extends { id: string }>(list: T[], item: T): T[] {

@@ -131,6 +131,31 @@ export function locateWorkspaceFile(
   };
 }
 
+/**
+ * Where `PUT /v1/workspace/file` writes `input`: a workspace file (relative, or absolute inside
+ * the workspace), or a file named by its absolute path inside a project session's directory
+ * (`projectDirs`, ADR 0095), written under that directory's own rules: the code a project's agent
+ * works on is yours to edit there too. Anywhere else stays read-only.
+ */
+export function writableTarget(workspace: string | null, projectDirs: readonly string[], input: string): { root: string; rel: string } {
+  const expanded = expandHome(input.trim());
+  if (isAbsoluteHostPath(expanded)) {
+    if (workspace && classifyPath(workspace, expanded).zone === "inside") return { root: workspace, rel: input };
+    for (const dir of projectDirs) {
+      let classified;
+      try {
+        classified = classifyPath(dir, expanded);
+      } catch {
+        continue; // A project directory that is gone.
+      }
+      if (classified.zone === "inside") return { root: dir, rel: classified.rel };
+    }
+    throw new HttpError(422, "invalid_args", "path is outside the workspace and every project");
+  }
+  if (!workspace) throw new HttpError(422, "invalid_args", "workspace is not set");
+  return { root: workspace, rel: input };
+}
+
 /** Overwrite an existing inside-workspace UTF-8 file. Does not create, delete, or rename. */
 export function writeWorkspaceFile(root: string, relInput: string, content: string, ifMatch?: string | null, stage?: (abs: string, content: string) => void): { rel: string; etag: string } {
   if (typeof content !== "string") {

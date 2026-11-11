@@ -2,6 +2,10 @@
 
 Status: implemented 2026-10-15. Changes what the file routes (`GET /v1/workspace/tree`, `GET /v1/workspace/file`) and the preview open; nothing about what Bots may do outside the workspace changes.
 
+部分被 [ADR 0095](0095-project-sessions.md) 的补记取代（2026-11-09）：项目会话目录里的文件可以保存，「只读」只剩工作区和项目目录之外的文件。 / Superseded in part by ADR 0095's addendum (2026-11-09): a file in a project session's directory can be saved; read-only now means outside the workspace and every project.
+
+部分被 [ADR 0095](0095-project-sessions.md) 决定 28 取代（2026-11-11）：项目会话目录里的文件在那个会话里可以批注，批注挂在 Agent 的回复上。 / Superseded in part by ADR 0095 decision 28 (2026-11-11): a file in a project session's directory can be annotated in that session, the annotation hanging on the agent's reply.
+
 部分被 [ADR 0092](0092-permission-modes.md) 取代（2026-10-16）：「Bot 读写工作区外照旧要批准」不再成立，Bot 要不要等批准由权限模式决定，和在不在工作区无关。 / Superseded in part by ADR 0092 (2026-10-16): a Bot no longer needs your OK because a path is outside the workspace; its permission mode decides.
 
 2026-10-15 一个 Bot 把 landing 页加进 `~/my-projects/curio`（工作区外的一个仓库），回复里写了 `[~/my-projects/curio](~/my-projects/curio)` 和 `[lumen-landing/index.html](lumen-landing/index.html)`。前一个点开报「路径在工作区外」，后一个按工作区解析、找不到；`/` 开头的路径干脆不是链接。你说：「工作区外的文件，文件夹也要支持打开，工作区只是一个用来约束 bot 们工作大致范围的地方。」

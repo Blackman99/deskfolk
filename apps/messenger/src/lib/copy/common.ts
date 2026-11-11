@@ -9,6 +9,7 @@ export const zh = {
   updateReady: "有新版本",
   updateReload: "刷新",
   deleting: "正在删除…",
+  creating: "正在创建…",
   clearing: "正在清空…",
 };
 
@@ -21,5 +22,6 @@ export const en: CopyShape<typeof zh> = {
   updateReady: "A new version is ready",
   updateReload: "Reload",
   deleting: "Deleting…",
+  creating: "Creating…",
   clearing: "Clearing…",
 };

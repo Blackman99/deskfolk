@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { auth, registerLocalApiCleanup, startLocalApi } from "./test-kit/local-api-harness";
 
 registerLocalApiCleanup();
@@ -202,6 +202,38 @@ describe("empty roster and settings", () => {
     expect(putOutside.status).toBe(422);
 
     rmSync(ws, { recursive: true, force: true });
+  });
+
+  test("a file in a project session's directory is saved where it is; one elsewhere stays read-only", async () => {
+    const h = await start();
+    const project = mkdtempSync(join(tmpdir(), "real-bot-project-"));
+    mkdirSync(join(project, "src"));
+    writeFileSync(join(project, "src", "app.ts"), "export const a = 1;\n");
+    const elsewhere = mkdtempSync(join(tmpdir(), "real-bot-elsewhere-"));
+    writeFileSync(join(elsewhere, "notes.md"), "# elsewhere\n");
+    const put = (path: string, content: string, headers: Record<string, string> = {}) =>
+      fetch(`${h.origin}/v1/workspace/file`, {
+        method: "PUT",
+        headers: auth(h, { "Content-Type": "application/json", ...headers }),
+        body: JSON.stringify({ path, content }),
+      });
+    // Before a project session works there, it is a file elsewhere: read-only.
+    expect((await put(join(project, "src", "app.ts"), "x")).status).toBe(422);
+    h.store.createProjectSession({ dir: project, agent: "claude_code", configDir: null, locale: "en" });
+    // With no workspace set, the project's file is still saved, with an etag as a workspace file is.
+    const saved = await put(join(project, "src", "app.ts"), "export const a = 2;\n");
+    expect(saved.status).toBe(204);
+    expect(saved.headers.get("ETag")).toBeTruthy();
+    expect(readFileSync(join(project, "src", "app.ts"), "utf8")).toBe("export const a = 2;\n");
+    expect((await put(join(project, "src", "app.ts"), "y", { "If-Match": `"${"0".repeat(64)}"` })).status).toBe(409);
+    expect((await put(join(project, "src", "new.ts"), "x")).status).toBe(404);
+    // Leaving the project, or a file elsewhere, stays read-only; nothing is left staged in the project.
+    expect((await put(`${project}/../${basename(elsewhere)}/notes.md`, "x")).status).toBe(422);
+    expect((await put(join(elsewhere, "notes.md"), "x")).status).toBe(422);
+    expect(readFileSync(join(elsewhere, "notes.md"), "utf8")).toBe("# elsewhere\n");
+    expect(readdirSync(join(project, "src"))).toEqual(["app.ts"]);
+    rmSync(project, { recursive: true, force: true });
+    rmSync(elsewhere, { recursive: true, force: true });
   });
 
   test("workspace files and folders move to the Trash, and nothing outside the workspace does", async () => {

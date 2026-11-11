@@ -12,7 +12,7 @@ import { parseImageVariant } from "../../image-variant";
 import { readLocalModels } from "../../local-model";
 import { probeEndpointModels, withLocalFacts } from "../../probe-models";
 import { resolveApiFormat, resolveWorkspaceId } from "../../store/shared";
-import { listCitedDir, locateCitedFile, writeWorkspaceFile } from "../../workspace-browse";
+import { listCitedDir, locateCitedFile, writableTarget, writeWorkspaceFile } from "../../workspace-browse";
 import { trashWorkspacePaths } from "../../workspace-trash";
 import { fileResponse, occurred, publishBotModelChanges } from "../helpers";
 import type { RouteCtx } from "../route-ctx";
@@ -185,8 +185,6 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
   }
 
   if (method === "PUT" && path === "/v1/workspace/file") {
-    const root = store.workspacePath();
-    if (!root) throw new HttpError(422, "invalid_args", "workspace is not set");
     const body = (input.body) as { path?: unknown; content?: unknown };
     if (typeof body.path !== "string" || body.path.trim().length === 0) {
       throw new HttpError(422, "invalid_args", "path is required");
@@ -194,7 +192,9 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
     if (typeof body.content !== "string") {
       throw new HttpError(422, "invalid_args", "content must be a string");
     }
-    const result = writeWorkspaceFile(root, body.path, body.content, request.headers.get("If-Match"), (abs) => {
+    // The workspace's file, or one in a project session's directory.
+    const target = writableTarget(store.workspacePath(), store.projectDirs(), body.path);
+    const result = writeWorkspaceFile(target.root, target.rel, body.content, request.headers.get("If-Match"), (abs) => {
       if (!input.stagedWrite) throw new Error("file must be staged");
       // Joined natively: `abs` is `C:\ws\a.md` on Windows, and `final_rel` is always `/`-separated.
       if (abs !== join(input.stagedWrite.root, ...input.stagedWrite.final_rel.split("/"))) throw new HttpError(409, "conflict", "workspace target changed");

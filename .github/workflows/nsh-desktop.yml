@@ -1,0 +1,159 @@
+name: NSH desktop
+
+# The NSH rewrite's desktop shell on Windows and Linux (ADR 0107, Phase 1a): NSH builds each
+# desktop on its own OS only, so these runners are where the two are built and checked.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/desktop-nsh/**
+      - apps/daemon/**
+      - apps/messenger/src/lib/**
+      - packages/protocol/**
+      - .github/workflows/nsh-desktop.yml
+  workflow_dispatch:
+
+concurrency:
+  group: nsh-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# The `nsh` CLI comes from the NSH commit `apps/desktop-nsh/Cargo.toml` pins its crates to, built
+# by `scripts/nsh-cli.ts` (the bundle format and the engine must match). Its cache is keyed by
+# that commit.
+env:
+  DESKFOLK_NSH_CACHE: ${{ github.workspace }}/../nsh-cli-cache
+
+jobs:
+  desktop:
+    name: NSH desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # A cache miss builds the nsh CLI first (~30 minutes).
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop-nsh -> target
+
+      - name: The pinned NSH commit
+        id: nsh
+        run: echo "rev=$(grep -m1 '^nsh-core' apps/desktop-nsh/Cargo.toml | sed -E 's/.*rev = "([0-9a-f]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      # Restored and saved as two steps, so a build is kept even when a later step fails
+      # (`actions/cache` saves only at the end of a job that passed): a cache hit skips the
+      # ~30-minute release build.
+      - name: Restore the nsh CLI of that commit
+        id: nsh-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.DESKFOLK_NSH_CACHE }}
+          key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
+
+      - name: Install system libraries (Linux)
+        if: runner.os == 'Linux'
+        # GStreamer: NSH's Linux platform plays media with it (as upstream's own Linux CI installs).
+        run: >-
+          sudo apt-get update && sudo apt-get install -y libgtk-4-dev clang pkg-config xvfb dbus-x11
+          libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build nsh at the pinned commit
+        run: |
+          nsh="$(bun apps/desktop-nsh/scripts/nsh-cli.ts | tail -1)"
+          dirname "$nsh" >> "$GITHUB_PATH"
+
+      - name: Save the nsh CLI of that commit
+        if: steps.nsh-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.DESKFOLK_NSH_CACHE }}
+          key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
+
+      - name: nsh version
+        run: nsh --version
+
+      - name: Dev instance scripts, the messenger mirror, the scripts' types
+        run: |
+          pnpm --filter @real-bot/desktop-nsh test
+          pnpm --filter @real-bot/desktop-nsh typecheck
+
+      - name: Rust tests (shell, components, the app's crate)
+        working-directory: apps/desktop-nsh
+        run: cargo test --workspace
+
+      # Ghostty's emulator for the NSH terminal, behind the `ghostty` feature: Ghostty builds with
+      # Zig 0.15 only, from its sources at the commit `libghostty-vt-sys` pins (scripts/ghostty.ts).
+      # Linux only for now: it has not been built on Windows yet.
+      - uses: mlugg/setup-zig@v2
+        if: runner.os == 'Linux'
+        with:
+          version: 0.15.2
+
+      - name: Ghostty's emulator (the `ghostty` feature)
+        if: runner.os == 'Linux'
+        working-directory: apps/desktop-nsh
+        run: |
+          bun scripts/ghostty.ts
+          eval "$(bun scripts/ghostty.ts --check --shell)"
+          cargo test -p deskfolk-app-native --features ghostty ghostty
+
+      - name: Type-check and headless UI tests
+        working-directory: apps/desktop-nsh/app
+        run: |
+          nsh check App.tsx
+          nsh test
+
+      - name: Screen tests against an isolated runtime
+        run: bun apps/desktop-nsh/scripts/ui-tests.ts
+
+      - name: Build the shell and the bundle
+        working-directory: apps/desktop-nsh
+        run: |
+          cargo build -p deskfolk-nsh
+          (cd app && nsh build App.tsx --out ../build/app)
+
+      - name: Windows binary imports (no web view)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dumpbin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "Hostx64\\x64" } | Select-Object -First 1
+          & $dumpbin.FullName /dependents apps\desktop-nsh\target\debug\deskfolk-nsh.exe
+
+      - name: Linux binary libraries (no web view)
+        if: runner.os == 'Linux'
+        run: ldd apps/desktop-nsh/target/debug/deskfolk-nsh | grep -iE "webkit|gtk|javascriptcore" || true
+
+      - name: Smoke (Linux, under Xvfb)
+        if: runner.os == 'Linux'
+        run: dbus-run-session -- xvfb-run -a -s "-screen 0 1280x900x24" bun apps/desktop-nsh/scripts/ci-smoke.ts apps/desktop-nsh/target/debug/deskfolk-nsh apps/desktop-nsh/build/app/bundle.js --timeout 180
+
+      - name: Smoke (Windows)
+        if: runner.os == 'Windows'
+        run: bun apps/desktop-nsh/scripts/ci-smoke.ts apps/desktop-nsh/target/debug/deskfolk-nsh.exe apps/desktop-nsh/build/app/bundle.js --timeout 180

@@ -9,6 +9,9 @@ import type { ClaudeEffort } from "./bots.ts";
 export const PROJECT_AGENTS = ["claude_code", "codex"] as const;
 export type ProjectAgent = (typeof PROJECT_AGENTS)[number];
 
+/** Who a project session's agent lines are by: no Bot, the session's agent. */
+export const PROJECT_AGENT_AUTHOR = "agent";
+
 export function isProjectAgent(value: unknown): value is ProjectAgent {
   return typeof value === "string" && (PROJECT_AGENTS as readonly string[]).includes(value);
 }

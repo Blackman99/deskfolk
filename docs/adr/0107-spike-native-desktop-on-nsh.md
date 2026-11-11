@@ -1,0 +1,751 @@
+# 试做：桌面端换成 NSH 原生界面 / Spike: a native desktop on NSH
+
+Status: proposed 2026-11-06。Phase 0 试做在 `nsh-spike` 分支完成，自动能验的都验了；剩下几项要你亲手看（见「还没验的」），之后定「换」还是「暂不换」。代码在 [`apps/desktop-nsh`](../../apps/desktop-nsh/README.md)。
+
+Status: proposed 2026-11-06. Phase 0 is done on the `nsh-spike` branch and everything that can be checked without you has been; a few things need your own eyes and hands (see "Not yet checked") before the call is go or not yet. The code is in `apps/desktop-nsh`.
+
+## 背景 / Background
+
+2026-11-06 你说「用 nsh 重写应用」，又补了两条：开发期间稳定版要独立运行、开发版单独起来调试；NSH 没有的功能补上基于它的原生实现，最好不出现 WebView。NSH 是 longbridge 的 Native Shell（nsh.dev，Apache-2.0）：界面用 Rust 或 TSX 写，TSX 跑在 QuickJS 上，每个平台画自己的原生控件（macOS 上是 AppKit + Core Animation + CoreText），没有 DOM 和 CSS。0.4.0 发布于 2026-11-04，第一版是 10-17。桌面端现在是 Tauri 2 + Svelte 5（`apps/messenger` 约 17 万行，`apps/desktop/src-tauri` 约 1.15 万行）；守护进程、协议、relay 不在这次范围里。
+
+On 2026-11-06 you asked to rewrite the app with nsh, then added two rules: during development the installed stable build runs on its own and the dev build is started separately; whatever NSH lacks gets a native implementation built on it, preferably with no WebView anywhere. NSH is longbridge's Native Shell: UI in Rust or TSX (QuickJS), each platform's own views (AppKit, Core Animation and CoreText on macOS), no DOM, no CSS; 0.4.0 shipped 2026-11-04, the first release 10-17. Today's desktop is Tauri 2 + Svelte 5; the daemon, the protocol and the relay are out of scope.
+
+## 试做了什么 / What the spike built
+
+- **宿主（Rust，嵌入模式）**：自己建 NSWindow，背后垫 `NSVisualEffectView`（sidebar 材质，和 Tauri 窗口同一种），标题栏透明、内容铺到标题栏下；每个窗口一个 NSH `AppView`，各自连守护进程，内存里不共享，和每个 Tauri 窗口各跑一份页面一样。菜单栏、托盘（`NSStatusItem`）、系统通知（`UNUserNotificationCenter`，照 `notifications_macos.rs` 写）、Dock 角标都在宿主里。守护进程的地址和 token 由宿主读开发数据目录的 `local-api.json`，经 NSH 的 `host.params` 交给界面。 / **The shell (Rust, embedding):** its own NSWindow over the sidebar material, a transparent title bar, one NSH `AppView` per window talking to the runtime on its own; menu bar, tray, notifications and the Dock badge live in the shell; the runtime's address and token reach the UI through `host.params`.
+- **原生组件**：`deskfolk.terminal`（`alacritty_terminal` 管屏幕状态，自绘 NSView，`NSTextInputClient` 收键盘和输入法，自己连事件流和终端接口，字节不经过 JS）和 `deskfolk.pdf`（PDFKit 的 `PDFView`）。都按 NSH 的 `NativeComponent` 写、用 `AppView::register_component` 注册，接口只有小数据，可以提给上游。 / **Native components:** a terminal (alacritty_terminal state, an NSView of our own, `NSTextInputClient`, its own socket so bytes never touch JS) and a PDF view (PDFKit), both NSH `NativeComponent`s with data-only interfaces.
+- **界面（TSX）**：会话列表、对话（`List` 倒序虚拟化，`TextView` 渲染 Markdown、可跨块选中、代码块自带高亮）、输入框、终端和 PDF 面板。数据层照信使的 `event-sync.ts`：一条 sync-v1 socket，快照做基线，按序号接事件，断档、实例变了或 `resnapshot` 就重拉。`@real-bot/protocol` 经 `nsh.json` 的 `resolve.alias` 直接用，类型和值都行（值导入后 bundle 只多 1.7 KB）。 / **The UI (TSX):** the list, a conversation (inverted virtualised `List`, `TextView` for Markdown with selection and highlighted code), the composer, the terminal and PDF panes; the data layer follows the messenger's `event-sync.ts`; `@real-bot/protocol` is used directly through a `resolve.alias`, types and values alike.
+- **开发版和稳定版并存**：开发版用 17990、`real-bot-nsh-dev` 数据目录、钥匙串服务 `com.real-bot.daemon.nsh-dev`、bundle id `com.real-bot.desktop.nsh-dev`。守护进程源码一行没改：`dev-runtime.ts` 用 `startRuntime({ dataDir, bind, endpointKey, supervisor: "none" })` 起，和 `ui-fixture.ts`、`demo-studio.ts` 一样。计划原本写「同一服务另起一项」，试做中发现 `bundledKeyStore` 会读同一服务下旧格式的单项、在改和删时把它们删掉，而那些是稳定版的，所以改成了另一个服务。 / **Side by side with stable:** port 17990, its own data directory, Keychain service and bundle id, and no daemon source changed. The plan said "another entry under the same service"; `bundledKeyStore` reads and deletes the legacy per-name items of its service, which are stable's, so the dev build got a service of its own.
+
+## 过关清单 / The gates
+
+| 条件 / Gate | 结果 / Result | 证据 / Evidence |
+|---|---|---|
+| 打包的 `.app` 启动、连上 17990 | 过 / pass | `package.ts --measure 3`：第一份快照在启动后 789 / 276 / 307 ms 到 |
+| 稳定版和开发版互不影响 | 过 / pass | 前后对照：17890 上一直是 pid 40167；稳定版 `local-api.json` 的哈希和修改时间不变；开发运行时没有一条连 17890 的连接；单测 `dev-instance.test.ts`、宿主 `endpoint`/`runtime` 测试拒绝 17890 |
+| 没有 WebView | 过，有一条说明 / pass, with a note | 二进制不链接 WebKit（`otool -L` 只有 AppKit、CoreGraphics、CoreText、Foundation、IOKit、ImageIO、Metal、PDFKit、QuartzCore、UserNotifications、CoreFoundation），依赖树里没有 wry；运行时不创建 WebView：启动后没有新的 WebContent 进程，没有 `~/Library/WebKit/<bundle id>`。但进程里映射着 WebKit 的镜像，NSH 自带的 `nsh-macos-host` 也一样，是系统框架带进来的，不是我们或 NSH 的 WebView（NSH 的 WebView 是首次使用时才 `dlopen`） |
+| 毛玻璃、隐藏标题栏、第二个窗口、托盘、通知、Dock 角标 | 做出来了；一半要你看 / built; half need your eyes | 第二个窗口错开 28pt 打开；角标设成「3」读回是「3」；Notification Center 收下了横幅，但「Deskfolk Dev」还没有通知权限；托盘项建出来了（有按钮、有符号、visible）。毛玻璃由窗口服务器画，自绘截图看不到 |
+| 列表和对话随事件实时更新 | 过 / pass | `e2e-live.ts`：对话开着时外面写一条，靠事件流出现；无头测试 4 条（列表、打开渲染 Markdown、发送、回车发送） |
+| 1000 条消息滚动不卡 | 过 / pass | release、60Hz 屏，一行一帧从最新滚到最旧再回来，翻页一路加载 1003 条：33 s，平均 59.5 帧，最低 58，每秒 p95 最差 4.34 ms，单帧最差 9.49 ms，超预算 0%，新建 1288 行，峰值 154 MB；120Hz 屏上同样的滚动 118–120 帧 |
+| 跨块选中复制 | 要你看 / needs you | `TextView selectable` 已开 |
+| 中文输入法 | 要你试 / needs you | 输入框：NSH 文档写明组字时回车不提交，macOS 上 `onChange` 带组字文本；终端：`NSTextInputClient` 的 marked text 画在光标处、候选框位置走 `firstRectForCharacterRange` |
+| 原生终端：60fps、vim/top、输入法 | 画面过，手感和输入法要你试 / drawing passes; feel and IME need you | 20 万行刷屏时 debug 构建 52 帧/秒、平均 4.1 ms、p95 5.0 ms；16 色、216 色、中英文宽字符对齐、vim（备用屏、语法色）、top（反白表头）都对 |
+| 原生 PDF | 读出来了，显示和交互要你看 / opens; display and use need you | 200 页、读出首行；PDFKit 分块绘制，自绘截图抓不到页面 |
+| TSX 直接用 `@real-bot/protocol` | 过 / pass | 类型和值都行 |
+| Developer ID 签名、公证 | 签名过，公证要你的 profile / signed; notarising needs your profile | Gatekeeper：`Unnotarized Developer ID`，origin 是你的 Developer ID；钥匙串里的 notarytool profile 我不碰 |
+| 启动和内存不比 Tauri 差 | 内存过；启动只量了这边 / memory passes; start-up measured on this side only | 开发版单窗口 33–37 MB（`footprint`）；稳定版此刻 909 MB（主进程 58 + WebKit GPU 200 + WebContent 643 + Networking 8，用了 50 分钟、开着 7 个终端，负载不同，只能看量级）。Tauri 版的冷启动没量：要重开你在用的稳定版 |
+
+## 试做里发现的 / Found on the way
+
+- NSH 0.4 的嵌入宿主连 dev server 的函数是 `pub(crate)`，自己的宿主用不了它的热更新；开发版改成 `nsh build`（约 10 ms）后宿主监听 bundle 重新 `load`。 / Embedding hosts cannot use NSH's dev-server client in 0.4; the dev loop rebuilds (`nsh build`, ~10 ms) and the shell reloads.
+- NSH 文档（main 分支）写的 `AppOptions::notifications` 在 0.4.0 里没有，通知由宿主自己做。 / `AppOptions::notifications` in NSH's docs is not in 0.4.0; the shell posts notifications itself.
+- 翻页：List 每次接近末尾只问一次，加载中再来的请求不能丢（`loadOlder` 记下来，这一页到了再接着拉）。 / The list asks once per approach to its end, so an ask during a load is kept and served.
+- 终端组件连本机要关掉环境代理（ureq 默认读 `HTTP_PROXY`）。 / The terminal's HTTP client ignores environment proxies.
+- `dev.ts` 被 SIGTERM 停掉时要连带停子进程，不然开发运行时留成孤儿。 / `dev.ts` stops its children on SIGTERM too.
+- 这个终端环境没有屏幕录制权限，自动检查改由宿主自己把窗口渲染成 PNG（`--snapshots`），不碰你的屏幕；台前调度会把没激活的窗口收成缩略图，`--background` 的窗口因此不参与台前调度、放在副显示器。 / Checks render the window from inside the shell (no Screen Recording, no input on your screen); background windows stay out of Stage Manager.
+
+## 还没验的 / Not yet checked
+
+都要你在「Deskfolk Dev」里亲手做：`bun apps/desktop-nsh/scripts/dev.ts` 打开后，(1) 输入框和终端里用拼音各打几句，看组字、选词、回车；(2) 终端的手感（打字延迟、滚动回看、粘贴）；(3) PDF 面板打开一份 PDF，滚动、缩放、选字；(4) 对话里拖选几段跨块文字复制；(5) 菜单栏右上角有没有托盘图标（两个人的符号）；(6) 系统设置 › 通知 里允许「Deskfolk Dev」后，Dock 角标和横幅；(7) 窗口的毛玻璃看着和稳定版是否一样。公证：告诉我 notarytool 的 profile 名，或自己跑 `package.ts --sign developer-id --notarize <profile>`。
+
+All in Deskfolk Dev (`bun apps/desktop-nsh/scripts/dev.ts`): pinyin in the composer and the terminal; the terminal's feel; a PDF scrolled, zoomed, selected; a cross-block selection copied; the tray icon; the badge and a banner once notifications are allowed; the glass next to stable's. Notarising needs your notarytool profile.
+
+## 建议 / Recommendation
+
+建议**换**，进 Phase 1，条件是上面七项你看过没有大问题。理由：最担心的几样（终端、长列表、Markdown、实时同步、并存隔离）在原生上都做出来了，性能有余量；NSH 缺的窗口级功能宿主一两百行就补上；不用 WebView 的要求能守住。代价也要说清：NSH 才三周大（0.1 → 0.4 用了 18 天），API 还会动；剩下的补件（Office 预览、远程屏幕、音视频、流程图）和 17 万行界面的逐屏迁移是几个月的活；界面方案（ADR 0106）的自定义 CSS 在原生界面里没有对应物，要另写 ADR 改成「按钩子改样式」；Windows 和 Linux 的原生组件要各写一份。计划里的四个拍板项（自定义 CSS、手机端、Windows/Linux、Office 预览）仍待你定。
+
+Go to Phase 1 if the seven checks above hold. The riskiest pieces (terminal, long lists, Markdown, live sync, side-by-side isolation) work natively with headroom; the window-level gaps took a couple of hundred lines in the shell; no-WebView holds. The costs: NSH is three weeks old and its API will move; the remaining components and the screen-by-screen port of ~170k lines are months of work; ADR 0106's custom CSS has no native counterpart and needs an ADR of its own; Windows and Linux need their own native components. The plan's four open decisions still stand.
+
+## 补记 2026-11-06：四项决定 / Addendum 2026-11-06: the four decisions
+
+你看完试做后定了四件事：自定义界面走 NSH 自己的机制；手机端完整走 NSH（web 输出）；Windows 和 Linux 同步做，用 NSH 编出来的版本；Office 预览先找现成库，没有就自己实现。随之而来的改变：补件不再只写 macOS 的 NSView，要跟着 NSH 出到所有目标。终端改成「纯 Rust 屏幕状态 + NSH `Canvas` 绘制 + 隐藏 `input()` 收输入法」，macOS 的 NSView 版留作快速路径；PDF 用纯 Rust 的 `hayro`（加密文件交给系统兜底）；Word 和 PowerPoint 先用 `office2pdf` 转 PDF 再交给 hayro，和 `rdocx`/`rpptx` 对照后再定；Excel 用 `umya-spreadsheet` 读、NSH 的 `DataTable` 画。手机的加密传输、WebAuthn、IndexedDB、推送放进 NSH 的 `web.host` 页面模块，直接用 `packages/remote`；中继改发 NSH 的 web 包。自定义界面分三层：令牌走 `set_theme_overrides`（web 播放器缺这个接口，给上游提）；自定义 CSS 换成「按钩子挂 Tailwind 类名」；新增 Bot 写的 TSX 界面模块，经检查、签名后在沙箱 view 里运行。Windows 和 Linux 不能在 Mac 上交叉编译，在 CI 上构建。第一步是 Phase 1a 的四项验证：Canvas 终端的帧率、hayro 在原生和 wasm 上、同一份 TSX 出 web 包连开发运行时、Windows 和 Linux 宿主在 CI 上构建。
+
+After the spike you settled the four questions: customisation through NSH's own means; the phone fully on NSH via its web output; Windows and Linux in parallel from NSH's own builds; Office previews from existing libraries where they fit, else our own. So the gap fillers must reach every target: the terminal becomes pure-Rust screen state drawn on NSH's `Canvas` with a hidden `input()` for input methods (the macOS NSView stays as a fast path); PDF uses pure-Rust `hayro` with system fallbacks for encrypted files; Word and PowerPoint go through `office2pdf` to PDF, compared against `rdocx`/`rpptx`; Excel is read with `umya-spreadsheet` and drawn in NSH's `DataTable`. The phone's encrypted transport, WebAuthn, IndexedDB and push live in NSH's `web.host` page module on top of `packages/remote`, and the relay serves NSH's web package. Customisation has three layers: tokens via `set_theme_overrides` (the web player lacks it; to be proposed upstream), custom CSS replaced by Tailwind classes per hook, and Bot-written TSX modules checked, signed and run in a sandboxed view. Windows and Linux build in CI, since NSH does not cross-compile. Next: Phase 1a's four checks.
+
+## 补记 2026-11-06：Phase 1a 跨平台地基 / Addendum 2026-11-06: Phase 1a, the cross-platform groundwork
+
+| 项 / Item | 结果 / Result |
+|---|---|
+| Canvas 终端（macOS 和 web） | 过。屏幕状态换成 `vt100`（`alacritty_terminal` 编不进 wasm），放进应用自己的 crate `app/native`，用 NSH 的 `Canvas` 画；键盘走隐藏的 `Input`（输入法在里面组字）加 `keymap`。macOS release：每帧主线程画 Canvas 2–4.7 ms，NSH core 每次提交 0.16–0.24 ms；20 万行刷屏约 2 秒追上；vim、top、16/256 色、宽字符都对。web（无头 Chromium）：刷屏时 6 秒 361 帧，帧间隔 p95 16.8 ms，不掉帧。debug 构建慢上千倍（一次提交约 200 ms），性能只看 release。重绘按帧合并（16 ms 一次）。web 上量的字宽和浏览器实际字宽略有出入，粗体段前会多一点空 |
+| hayro PDF（原生和 wasm） | 过，有一条要跟进。原生：200 页文档打开 28 ms，一页（约 1700 像素宽）渲染 29–31 ms。wasm：打开 18 ms，一页 272–317 ms，而且在页面主线程上，手机上翻 PDF 会卡，要放进 Worker 或开 wasm SIMD（Phase 1e）。每页 PNG 约 1 MB，以后换更省的格式 |
+| 同一份 TSX 出 web 包，连开发运行时 | 过。`scripts/web-dev.ts` 同源提供 web 包和端点；页面宿主 `app/web/host.js` 回答 `runtime.endpoint`。首屏列表 163 ms，1000 条的对话、终端、PDF 都能用，控制台无错。wasm 引擎带上 `app/native`（vt100、hayro 和内嵌字体）后 12.5 MB，brotli 3.38 MB |
+| Windows 和 Linux 宿主骨架在 CI 上构建 | 代码和工作流写好（`host/src/win.rs`、`host/src/gtk.rs`、`.github/workflows/nsh-desktop.yml`、`scripts/ci-smoke.ts`）；宿主的跨平台部分（参数、端点、开发运行时、各系统的数据目录）抽了出来，macOS 上冒烟通过。等推到 GitHub 后在 Windows 和 Ubuntu 24.04 上跑。NSH 的 Linux 后端默认不带 WebKit；Windows 后端无条件依赖 `webview2-com-sys`，工作流会列出二进制的依赖 |
+
+| Item | Result |
+|---|---|
+| Canvas terminal (macOS and web) | Pass. The screen moved to `vt100` (`alacritty_terminal` does not build for wasm) in the app's own crate, drawn on NSH's `Canvas`; keys through a hidden `Input` (where input methods compose) and `keymap`. macOS release: 2–4.7 ms of canvas per frame on the main thread, 0.16–0.24 ms of core per commit; 200,000 lines caught up in about 2 s; vim, top, 16/256 colours and wide characters right. Web (headless Chromium): 361 frames in 6 s while flooding, p95 gap 16.8 ms, none dropped. Debug builds are about a thousand times slower; only release numbers count. Redraws coalesce to one per 16 ms. On the web the measured cell width and the browser's glyphs differ slightly. |
+| hayro PDF (native and wasm) | Pass, with a follow-up. Native: a 200-page file opens in 28 ms, a page (~1700 px wide) renders in 29–31 ms. Wasm: opens in 18 ms, a page takes 272–317 ms on the page's main thread — a worker or wasm SIMD is due in Phase 1e. A page's PNG is about 1 MB. |
+| One TSX, a web package, the dev runtime | Pass. `scripts/web-dev.ts` serves the package and the endpoint same-origin; the page host `app/web/host.js` answers `runtime.endpoint`. The list shows in 163 ms; the 1000-line conversation, the terminal and PDFs work; no console errors. The wasm engine with `app/native` is 12.5 MB, 3.38 MB brotli. |
+| Windows and Linux shells in CI | Code and workflow written; the shell's cross-platform parts extracted; smoke passes on macOS. Runs on Windows and Ubuntu 24.04 once pushed. NSH's Linux backend has no WebKit by default; the Windows one depends on `webview2-com-sys`, and the workflow lists the binary's dependencies. |
+
+## 补记 2026-11-06：HTML 预览用 WebView / Addendum 2026-11-06: HTML previews use a WebView
+
+你定了：生成的 HTML 页面（幻灯片、带交互的页面）可以用 WebView 预览。这是应用里唯一的 WebView：产物预览和 HTML 批注里，NSH 的 `WebView` 以 `html` 直接显示页面源码（和信使的 iframe 一样，从运行时取源码，不让页面拿到本机令牌），批注的选取脚本经 `injectedJavaScript` 注入、`window.nsh.postMessage` 回传。`nsh.json` 加了 `capabilities.webview`，不列任何主机，所以 web view 只能显示内联页面、不能跳去别的网站。其余界面照旧全原生。
+
+You decided that a generated HTML page (slides, interactive pages) may be previewed in a WebView. It is the app's only one: the artifact preview and the HTML annotator show the page's source through NSH's `WebView` `html` (fetched from the runtime as the messenger's iframe does, so the page never sees the local token), with the annotation picker injected through `injectedJavaScript` and talking back through `window.nsh.postMessage`. `nsh.json` grants `capabilities.webview` with no hosts, so a web view shows inline pages and cannot navigate to other sites. Everything else stays native.
+
+## 补记 2026-11-06：Phase 1b 界面移植进行中 / Addendum 2026-11-06: Phase 1b, porting the screens
+
+信使的 335 个 Svelte 组件按依赖分成 37 个移植任务，一个任务一个工作树，叶子先做，每批合入前跑类型检查和界面测试（`apps/desktop-nsh/PORTING.md` 是规矩）。已合入：共用件（表单、弹层、头像、模型选择、Markdown 小标签、弹窗框架）、聊天的卡片、顶栏、输入框零件、图片与附件、批注（HTML 用 WebView）、计划、执行轨迹、任务地图、用量、花费第一批、会话设置面板第一批、侧栏导轨和会话行、设置的骨架、通用、提示词与通知、远程与界面、模型来源。随后是聊天记录、完整输入框、计划总面板、工作台、新建对话框、Agent 与流程设置，最后组装外壳（`Shell.svelte`）。
+
+途中补上的 NSH 缺口，各平台共用的在应用里、窗口层的在外壳里：
+- 滚轮：NSH 0.4 的视图收不到滚轮，外壳把滚轮、双指滚动和捏合转给应用，`onWheel` 按视图分发（形状照 DOM 的 `WheelEvent`）。
+- 桌面通知：Tauri 外壳的投递循环和四个命令搬进 macOS 外壳，路由和 JSON 不变。
+- 语音输入：外壳用 AVAudioRecorder 录 AAC，应用在桌面补上 `getUserMedia` 和 `MediaRecorder`，信使的录音逻辑原样跑。
+- 系统命令：选文件夹、打开或在访达显示、隐藏窗口在外壳；打开链接、剪贴板、窗口明暗用 NSH 的 `openUrl`、`Clipboard`、`setColorScheme`。
+- 引擎：`Intl.RelativeTimeFormat` 补了中英文；`Intl` 格式化器可以不带 `new` 调用；`derived` 改成和 Svelte 一样惰性；运行时在 `globalThis` 上认出桌面外壳。
+
+两项改了做法：Office 预览不用 `office2pdf`（实测带 Typst 后体积多约 45 MB，Word 表格排版重叠），改为 Rust 直接读文件，Excel 用 `calamine` 进 `DataTable`，Word 读成段落、列表、表格交给 `TextView`，PowerPoint 读出形状按比例摆放；终端等 NSH 自带的 `nsh/base` `Terminal`（longbridge/nsh#1111）合入后换上，期间不再扩展画布终端。
+
+The messenger's 335 Svelte components are ported in 37 dependency-ordered jobs, each in a worktree of its own, leaves first, every batch type-checked and screen-tested before it lands (`apps/desktop-nsh/PORTING.md` holds the rules). Landed so far: the shared pieces (forms, overlays, avatars, the model picker, Markdown chips, the modal frame), the chat's cards, header, composer parts, pictures and attachments, annotations (HTML in a WebView), the plan, the trace, the task map, usage, the first half of spend, the first half of the session drawer, the sidebar's rail and rows, and the settings skeleton, general, prompts and notifications, remote and interface, and providers. Next: the transcript, the full composer, the plan panel, the workbench, the create sheets, the agents and playbooks settings, and last the shell (`Shell.svelte`).
+
+NSH gaps filled on the way, cross-platform ones in the app and window-level ones in the shell: wheel events (NSH 0.4's views hear none; the shell forwards the wheel, two-finger scrolling and pinch, and `onWheel` dispatches them, shaped like the DOM's `WheelEvent`); desktop notifications (the Tauri shell's delivery loop and four commands, routes and JSON unchanged); voice input (the shell records AAC with AVAudioRecorder, the app provides `getUserMedia` and `MediaRecorder` over it); system commands (folder picker, open or reveal, hide window in the shell; links, clipboard and window theme through NSH's `openUrl`, `Clipboard`, `setColorScheme`); and the engine (`Intl.RelativeTimeFormat` for Chinese and English, `Intl` formatters callable without `new`, a lazy `derived` as Svelte's, the desktop shell recognised on `globalThis`).
+
+Two approaches changed. Office previews do not use `office2pdf` (Typst added about 45 MB and overlapped Word tables): Rust reads the files directly, Excel through `calamine` into `DataTable`, Word as paragraphs, lists and tables for `TextView`, PowerPoint as shapes placed to scale. The terminal waits for NSH's own `nsh/base` `Terminal` (longbridge/nsh#1111) and the canvas terminal is not extended meanwhile.
+
+**外壳接上（2026-11-06 晚）。** 聊天记录、完整输入框、Bot↔Bot 弹窗、任务看板、侧栏都已合入，`Shell.svelte` 移成 `src/ui/shell/`：状态和返回顺序（`shell-state.ts`）照搬，四个已拆出的助手类（工作台、预览、会话菜单、危险确认）原样复用；版面改成显式的弹性布局（宽窗：侧栏、工作台、预览栏；窄窗：名单铺满、页面盖上去、底栏），窗口的键改成 `keymap` 绑定，靠「新绑定优先」让打开的层先接 Escape。应用入口现在就是外壳，`--pane terminal|pdf` 只给探针用。没跟过来的：`ImageCopy`（NSH 的图片各自带菜单）、页面滑动动画、从侧栏把会话拖进工作台（行只报按下，不报拖动）、界面方案的应用（ADR 0106）。宿主也补齐了剩下的十个 Tauri 命令（登录项、独立运行、本机远程配对、更新），开发版的回答和 Tauri 开发版一致。
+
+**The shell is in (late 2026-11-06).** With the transcript, the full composer, the Bot↔Bot popup, the job board and the sidebar landed, `Shell.svelte` moved to `src/ui/shell/`: its state and ways back (`shell-state.ts`) carried over as they were, its four helper classes (workbench, preview, session menu, danger confirm) reused unchanged; the layout became explicit flex (wide: sidebar, workbench, preview column; narrow: the roster full-window, pages over it, the bottom bar), and the window's keys became `keymap` bindings, the newest binding winning so an open layer takes Escape first. The app's entry is the shell now; `--pane terminal|pdf` remains for the probes. Not carried over: `ImageCopy` (NSH pictures carry their own menu), page slide transitions, dragging a conversation from the sidebar onto the workbench (rows report a press, not a drag), and applying the interface profile (ADR 0106). The host also answers the last ten Tauri commands (login item, independent runtime, pairing on this Mac, updates), a dev build answering as the Tauri dev build does.
+
+## 补记 2026-11-06：Phase 1c 手机走 NSH web——传输 / Addendum 2026-11-06: Phase 1c, the phone on NSH web — transport
+
+先查清两件事，再定加密通道放哪。结论推翻了「四项决定」那条补记里「手机的加密传输、WebAuthn、IndexedDB、推送放进 `web.host` 页面模块」的写法：它们放在 TSX 自己的运行环境里，页面模块保持很薄。
+
+**一、`nsh package --target web` 不打包 `web.host` 的依赖。** 实测（一个小探针应用，宿主模块里一个相对导入、一个包名导入）：打包只把 `web/host.js` 原样复制成 `host.<摘要>.js`，导入留给浏览器去解析——相对导入 404（被导入的文件没有复制进站点），包名导入无法解析（没有 import map）；宿主模块一加载失败，整个应用就停在「This app could not be loaded」。所以 `host.js` 要么自己完整，要么先用 `bun build` 打成一个文件再交给 `nsh package`。
+
+**二、web 上 TSX 跑在页面里一个隐藏的同源 `<iframe>`（`about:blank`）中，用浏览器自己的 JS 引擎。** 见 NSH 的 `nsh-platform-web/web/browser/runtime.js`（`frame = document.createElement("iframe")`，只有页面本身是不透明来源时才退回页面的 realm）和 `realm.js`（「保留浏览器的 WebCrypto，只给这个 realm 添 NSH 的工具函数」）。探针在无头 Chromium 和 WebKit 里读到的一样：`WebSocket`、`crypto.subtle`（SHA-256 能算）、`indexedDB`（能打开库）、`navigator.credentials`、`PublicKeyCredential`、`Notification`、`navigator.serviceWorker`、`navigator.locks`、`BroadcastChannel`、`localStorage`、`document` 都在，`isSecureContext` 为真，相对地址的 `fetch` 按页面地址解析。和顶层页面不同的几处：`location.href` 是 `about:blank`、`location.origin` 是 `"null"`（`self.origin` 和 `parent.location.origin` 是页面的来源）；`window !== top`；这个隐藏的框架收不到 `focus` / `blur`；`host.params` 是 `{}`。`nsh.json` 的 `capabilities.network` 在 web 上不拦浏览器自己的 `fetch` / `WebSocket`（只有 `asset:/` 和测试会话走引擎的网络）。
+
+**分工。** 加密通道、配对、设备存储（IndexedDB）和 WebAuthn 都留在 TSX 的 realm 里，直接用信使已有的代码：镜像的 `src/m/remote/*` 就是 `packages/remote` 和信使 `remote/*` 的一行转发，`RemoteApi` 照旧继承 `ApiBase`、照旧是运行时的客户端，连接循环、`EventSync`、断线续传和信使托管版一模一样，不重写加密，也不改线上格式。不放进 `web.host` 的理由：那样要先把 `packages/remote` 打成单文件（第一条），而且每个请求和事件都要穿过 `host.call` / `host.on`——只能传 JSON，`host.call` 默认 30 秒超时、最多 1024 个在途，运行时也就不能再直接用 `RemoteApi`。页面模块（`app/web/host.js`）因此只做 realm 看不到的页面级的事；托管版里没有任何地方调它。设备存储在 realm 里打开的 IndexedDB 和页面同源，所以和同一来源上的信使托管版是同一个库（`real-bot-remote`）。
+
+**托管还是本机：构建开关。** 和信使的 `REAL_BOT_HOSTED=1` 一样是构建时决定的：手机用另一个入口 `Hosted.tsx`，它先导入 `src/platform/hosted.ts`（在任何 `src/m` 模块求值之前设 `globalThis.__REAL_BOT_HOSTED__ = true`，信使的 `remote/mode.ts` 由此得出 `HOSTED_MESSENGER`，运行时的 `runtime.hosted` 跟着为真），再跑 `App.tsx`。桌面和本机的 web 开发版仍从 `App.tsx` 进，开关为假，窗口和以前一样。打包：`nsh package Hosted.tsx --target web`（`scripts/phone-web-e2e.ts` 就是这样打的）。托管时窗口（`src/Main.tsx`）照信使 `+page.svelte` 的 `showPairing`——托管、没连上、设备没登记——显示配对页（`src/ui/remote/PairingScreen.tsx`，`remote/PairingScreen.svelte` 的移植）；登记后就是桌面用的同一个外壳 `Shell`（`src/ui/shell/`），只是运行时的客户端换成了远程的 `RemoteApi`。版面由外壳自己按宽度和托管开关定：手机宽度（≤ 680）名单铺满、对话盖在上面、顶上有返回、底下有底栏；平板宽度是名单一栏加旁边一页——镜像的 `m/workbench/surface.ts` 里 `isWorkbenchSurface(narrow, HOSTED_MESSENGER)` 让托管版永远没有工作台，所以终端、文件预览这些要本机端点的标签页也不会出现。
+
+**配对内容里的来源。** 紧凑的 `rb1…` 配对码不带中继地址：设备用自己被提供的来源当中继（`decodePairingCode(code, relayOrigin)`），所以一段粘贴的内容没法把设备引到别的中继。信使的 `parsePairingQr` 读 `location.origin`，在 NSH 的 realm 里是 `"null"`，紧凑码会一律被判无效。配对页因此先用 realm 的 `self.origin`（就是页面的来源）解出紧凑码，再把解出的完整 JSON 交给信使的 `previewPairing` / `runtime.submitPairing`（信使本来就接受 JSON 形式，用于缩短之前复制的内容）；来源仍然只来自页面，不来自粘贴的文字。信使的代码一行没改。
+
+**途中发现：web 包编不出来。** Office 预览加进来的 `zip` 9（`calamine` 0.38 要求 `zip` ^9，不能降级）在 wasm32 上无条件依赖 `getrandom` 0.4 并打开 `wasm_js`；NSH 编 web 运行时总会追加 `--cfg getrandom_backend="custom"`（`RUSTFLAGS` 盖不掉），而 `getrandom` 0.4.1/0.4.3 在这种组合下 `error.rs` 引用了没编进来的 `Error::WEB_CRYPTO`，编译失败——`App.tsx` 的 web 包同样编不出来，不只是手机的。这次的处理：`app/native` 的 `calamine` 和 `zip` 只在非 wasm32 目标上依赖，web 上的 `Office` 是同名同签名的占位模块，每个函数都答「web 上还没有 Office 预览」（查看器本来就把失败显示成错误状态；托管版连的是远程客户端，原来的 Office 预览也只认本机端点）。正经的修法在上游：`getrandom` 修正这个 cfg，或 NSH 不再对 0.4 强加 `custom` 后端（或提供 `__getrandom_v04_custom`）。
+
+**还要在 Milestone 2 验证的。** WebAuthn 要瞬时用户激活：按 HTML 规范，页面上的一次点按也会激活同源的子框架，所以 realm 里的 `navigator.credentials` 应该能用，但要实测（尤其 iOS Safari）；rpId 取页面来源的域名。出席状态：信使靠 `window` 的 `focus` / `blur` 报「正在看」，隐藏的框架收不到，要由 `host.js` 把页面的 `focus` / `blur` 经 `player.hostEvent` 转给 realm。推送的 service worker 要由页面注册（`navigator.serviceWorker` 在 realm 里也有，但作用域和控制者是页面的）。
+
+**接上外壳（2026-11-07）。** 这条补记最初写下时外壳还没移植，托管版有一个自己的窗口 `src/Phone.tsx`（试做的会话列表和对话，窄窗一次一栏）。外壳合入后它删掉了，`Main.tsx` 里的托管分支只剩「配对页还是外壳」这一个判断，手机和平板的版面都是外壳自己的。端到端（`scripts/phone-web-e2e.ts`，无头 Chromium 和 WebKit 各一遍）现在走的是外壳：配对 → 名单 → 打开对话 → 从手机发一行（Mac 的库里读回）→ Mac 上写的一行实时到达 → 返回 → 重载仍是登记过的 → 同一页拉到平板宽度，名单成一栏、对话在旁边、没有返回也没有工作台。外壳跑起来以后露出一个 NSH web 的缺口：`nsh` 模块在 web 上没有 `lifecycle`（页面把它报给引擎，应用的 realm 拿不到），对话的「已读」效果一调就抛 `TypeError`，本机 web 版也一样；现在由 `src/platform/lifecycle.ts` 补上——桌面上就是 NSH 的，web 上读页面的 `visibilityState` 和 `hasFocus()`（隐藏的框架自己收不到焦点，所以问的是父页面），两处用到的地方（`stage-reading.ts`、`RemoteScreenView.tsx`）改从这里导入。端到端两种浏览器里页面的控制台都没有错误和警告。信使登记之后还会显示的几样没有跟过来，留到 Milestone 2：连接中 / 连不上的整页、断线时盖在外壳上的提示条和重试（桌面窗口也还没有），和另一个标签页占着时的接管页（`tabRole === "standby"`）。
+
+First the two unknowns, then where the encrypted channel goes. The result reverses the "four decisions" addendum's line that the phone's transport, WebAuthn, IndexedDB and push live in the `web.host` page module: they live in the TSX realm, and the page module stays thin.
+
+**1. `nsh package --target web` does not bundle the `web.host` module's imports.** Measured with a probe app whose host module had one relative and one bare import: packaging copies `web/host.js` verbatim as `host.<digest>.js` and leaves imports to the browser — the relative one 404s (the imported file is not copied), the bare one cannot resolve (no import map) — and a host module that fails to load stops the whole app ("This app could not be loaded"). So `host.js` must be self-contained, or prebuilt into one file with `bun build` before `nsh package`.
+
+**2. On the web the TSX runs on the browser's own engine, in a hidden same-origin `<iframe>` (`about:blank`) inside the page.** See NSH's `nsh-platform-web/web/browser/runtime.js` (it creates the frame; only a page with an opaque origin runs the app in its own realm) and `realm.js` ("keep browser WebCrypto and extend only this app realm"). The probe read the same in headless Chromium and WebKit: `WebSocket`, `crypto.subtle` (a SHA-256 digest), `indexedDB` (a database opened), `navigator.credentials`, `PublicKeyCredential`, `Notification`, `navigator.serviceWorker`, `navigator.locks`, `BroadcastChannel`, `localStorage` and `document` are all there, `isSecureContext` is true, a relative `fetch` resolves against the page. Unlike a top-level page: `location.href` is `about:blank` and `location.origin` is `"null"` (`self.origin` and `parent.location.origin` are the page's); `window !== top`; the hidden frame never gets `focus` / `blur`; `host.params` is `{}`. `capabilities.network` does not gate the browser's own `fetch` / `WebSocket` on the web (only `asset:/` and test sessions go through the engine's network).
+
+**The split.** The encrypted channel, pairing, the device store (IndexedDB) and WebAuthn stay in the TSX realm, on the messenger's code as it is: the mirrored `src/m/remote/*` are one-line re-exports of `packages/remote` and the messenger's `remote/*`, `RemoteApi` still extends `ApiBase` and is still the runtime's client, and the connection loop, `EventSync` and resume run exactly as in the messenger's hosted build — no crypto rewritten, no wire format touched. Not the `web.host` module, because that would first need `packages/remote` bundled into one file (finding 1) and would push every request and event through `host.call` / `host.on` — JSON only, a 30 s default timeout, at most 1024 in flight — so the runtime could no longer use `RemoteApi` directly. The page module (`app/web/host.js`) therefore only does page-level things the realm cannot see; nothing in the hosted build calls it. The IndexedDB the realm opens is the page's origin's, so it is the same database (`real-bot-remote`) the messenger's hosted build uses on that origin.
+
+**Hosted or local: a build switch.** Decided at build time, as the messenger's `REAL_BOT_HOSTED=1` is: the phone has its own entry, `Hosted.tsx`, which first imports `src/platform/hosted.ts` (it sets `globalThis.__REAL_BOT_HOSTED__ = true` before any `src/m` module is evaluated, which the messenger's `remote/mode.ts` turns into `HOSTED_MESSENGER`, and so `runtime.hosted`) and then runs `App.tsx`. The desktop and the local web dev build still enter through `App.tsx` with the switch off, and their window is as it was. Packaging: `nsh package Hosted.tsx --target web` (as `scripts/phone-web-e2e.ts` does). When hosted, the window (`src/Main.tsx`) shows the pairing screen under the messenger's `+page.svelte` `showPairing` — hosted, not connected, device not enrolled — (`src/ui/remote/PairingScreen.tsx`, the port of `remote/PairingScreen.svelte`); once enrolled it is the same `Shell` the desktop runs (`src/ui/shell/`), on the remote client (`RemoteApi`) instead of the local one. The shell lays itself out by width and the hosted switch: at a phone's width (680 or less) the roster fills the window, a conversation covers it with Back at the top, and the bottom bar is under the roster; at a tablet's width the roster is a column beside one page — `isWorkbenchSurface(narrow, HOSTED_MESSENGER)` in the mirrored `m/workbench/surface.ts` keeps the hosted build off the workbench, so the tabs that need the local endpoint (terminal, file previews) never appear.
+
+**The origin in a pairing code.** A compact `rb1…` code carries no relay address: the device takes the origin it is served from as the relay (`decodePairingCode(code, relayOrigin)`), so pasted text can never aim it at another relay. The messenger's `parsePairingQr` reads `location.origin`, which is `"null"` in NSH's realm, so every compact code would read as invalid. The pairing screen therefore decodes a compact code with the realm's `self.origin` (the page's origin) and hands the decoded JSON to the messenger's `previewPairing` / `runtime.submitPairing` (the messenger already accepts the JSON form, for offers copied before the codes were shortened); the origin still comes only from the page, never from the pasted text. No messenger code changed.
+
+**Found on the way: the web package did not build.** `zip` 9, brought in by the Office previews (`calamine` 0.38 requires `zip` ^9, so no downgrade), depends on `getrandom` 0.4 with `wasm_js` on wasm32 unconditionally; NSH always appends `--cfg getrandom_backend="custom"` to its wasm builds (`RUSTFLAGS` cannot override it), and `getrandom` 0.4.1 and 0.4.3 then fail to compile (`error.rs` names `Error::WEB_CRYPTO`, which that backend does not define) — so `App.tsx`'s web package failed too, not only the phone's. The fix here: `app/native` depends on `calamine` and `zip` only off wasm32, and the web gets a placeholder `Office` module with the same functions, each answering "no Office previews on the web yet" (the viewer already shows a failure as its error state, and it only ever opened files over the local endpoint, which a hosted page does not have). The real fix is upstream: `getrandom` correcting that cfg, or NSH not forcing the `custom` backend on 0.4 (or providing `__getrandom_v04_custom`).
+
+**To verify in Milestone 2.** WebAuthn needs transient user activation; per the HTML spec a press on the page also activates its same-origin child frames, so `navigator.credentials` in the realm should work, but it must be tried (iOS Safari above all); the rpId is the page origin's domain. Presence: the messenger reports "looking" from `window` `focus` / `blur`, which the hidden frame never gets; `host.js` should forward the page's `focus` / `blur` to the realm through `player.hostEvent`. Push: the service worker must be registered by the page (`navigator.serviceWorker` exists in the realm, but scope and controller are the page's).
+
+**On the shell (2026-11-07).** When this addendum was first written the shell had not been ported, and the hosted build had a window of its own, `src/Phone.tsx` (the spike's list and conversation, one column at a time when narrow). With the shell landed it is gone: the hosted branch in `Main.tsx` is one choice, the pairing screen or the shell, and the phone's and the tablet's layouts are the shell's own. The end-to-end run (`scripts/phone-web-e2e.ts`, once in headless Chromium and once in WebKit) now goes through the shell: pairing → the roster → a conversation → a line sent from the phone (read back from the Mac's database) → a line written on the Mac arriving live → Back → a reload still enrolled → the same page at a tablet's width, the roster a column with the conversation beside it, no Back and no workbench. Running the shell there showed an NSH web gap: the `nsh` module has no `lifecycle` on the web (the page reports one to the engine, the app's realm never gets it), so the conversation's reading effect threw a `TypeError` as it ran, in the local web build too. `src/platform/lifecycle.ts` fills it: NSH's own on a desktop, and on the web the page's `visibilityState` and `hasFocus()` (the hidden frame gets no focus of its own, so the parent page is asked); its two readers (`stage-reading.ts`, `RemoteScreenView.tsx`) import it from there. Both browsers' consoles now stay free of errors and warnings through the run. What the messenger still shows once enrolled is not here yet, for Milestone 2: the connecting / unreachable full-page screens, the banner and Retry laid over the shell when the link drops (the desktop window lacks them too), and the take-over page when another tab holds the link (`tabRole === "standby"`).
+
+## 补记 2026-11-07：外壳补齐的两项和改窗口大小的卡顿 / Addendum 2026-11-07: the shell's two missing pieces, and resize lag
+
+上面「外壳接上」里写着没跟过来的两项已经补上：从侧栏把会话拖进工作台（行报出拖动，`shell/session-drag.ts` 交给工作台的 `dragIn`），和界面方案的应用（[ADR 0108](0108-interface-profile-on-nsh.md)，`shell-state.ts` 里接上）。另外，拖窗口边和分隔线时界面落后几秒：开发版外壳整个没开优化，加上全应用一百多处「窗口是否窄于某宽度」的读取每帧都重跑；现在开发构建的依赖按 opt-level 3 编，断点改成缓存的布尔值（`src/platform/viewport.ts`），实测拉窗口时 58–60 帧。
+
+The two pieces "The shell is in" left out are in: a conversation dragged from the sidebar onto the workbench (rows report a drag; `shell/session-drag.ts` hands it to the workbench's `dragIn`), and the interface profile applied ([ADR 0108](0108-interface-profile-on-nsh.md), wired in `shell-state.ts`). Separately, live resizes and divider drags lagged seconds behind: the dev shell was built wholly unoptimised, and a hundred-odd readers of "is the window narrower than N" re-ran on every frame; dependencies now build at opt-level 3 in dev, and the breakpoints are cached booleans (`src/platform/viewport.ts`), measured at 58–60 fps through a live resize.
+
+## 补记 2026-11-07：多窗格停不下来的重建，和每个事件的固定代价 / Addendum 2026-11-07: panes that never stopped remounting, and what every event costs
+
+从侧栏拖进第二个对话后，应用不碰也越来越卡（实测 25 秒内存从 190 MB 涨到 1.4 GB，帧率到个位数），拖分隔线也拖不动。原因是窗格的内容在一个被追踪的插入里建出来：`WorkbenchLeaf.tsx` 的 `{props.tabBody(liveTab(leaf, id()), leaf().id)}` 读了 `leaf()`，外壳每次提交布局都交来一份新拷贝（`Shell.tsx` 的 `snapshot(workbench.layout)`），于是每次提交都把每个窗格的对话整个重建，重建时的 effect 又提交布局，循环不止。`tabBody` 现在在 `untracked` 里调用一次，和 `live-tab.ts` 的本意一样（每个标签只调一次，读到的字段自己跟着变）；工作台的故事加了「拷贝布局」和每个标签被建几次的读数，测试守住「新拷贝不重建」。修好后拖入只挂载一次，之后静止；同类写法还有 `PaneContentHost.tsx` 的 `settingsSide`（设置抽屉开着时会话一更新就重建），待改。
+
+另量了每个运行时事件的固定代价（开发构建，QuickJS 解释执行，`nsh-js` 0.4 没有带上 `quickjs-jit-runtime`）：`runtime.snapshot` 是深层状态，事件来了整个替换，读过它的东西全部重跑。一次内容没变的替换，只开侧栏 28 ms，开项目会话 43 ms，开一段 118 条已加载的对话 64 ms；显式的 `computed` / `effect` 只占其中 4.5 / 16.9 ms，其余在 JSX 绑定里。原型里把替换改成按容器只写变了的键和下标：没变的事件 66 → 0.2 ms，一条消息更新（流式输出的形状）66 → 22 ms。这一步改的是全应用读快照的约定，未合入。
+
+After a second conversation was dragged in from the sidebar the app slowed on its own (memory 190 MB → 1.4 GB in 25 s, single-digit fps) and dividers would not drag. Each pane's content was built inside a tracked insert: `WorkbenchLeaf.tsx`'s `{props.tabBody(liveTab(leaf, id()), leaf().id)}` read `leaf()`, the shell hands the workbench a fresh copy on every commit (`snapshot(workbench.layout)` in `Shell.tsx`), so every commit rebuilt every pane's conversation, and the effects of that mount committed the layout again. `tabBody` is now called once, untracked, as `live-tab.ts` intended (one call per tab; what it reads follows on its own); the workbench story gained a "copy" button and a per-tab mount count, and a screen test holds that a copied layout rebuilds nothing. Dragged in, the panes now mount once and go quiet. The same shape remains in `PaneContentHost.tsx` (`settingsSide`: the settings drawer rebuilds whenever its conversation updates).
+
+Measured too, the fixed cost of each runtime event (dev build; QuickJS is interpreted, `nsh-js` 0.4 does not bring in `quickjs-jit-runtime`): `runtime.snapshot` is deep state replaced whole on every event, so everything that read it runs again. An unchanged replacement costs 28 ms with only the sidebar, 43 ms with a project session, 64 ms with a conversation of 118 loaded messages; explicit `computed` / `effect` account for 4.5 / 16.9 ms of that, the rest is JSX bindings. A prototype that writes a replacement into the existing proxy container by container (only changed keys and indices) took an unchanged event from 66 to 0.2 ms and one message updated (the streaming shape) from 66 to 22 ms. It changes how the whole app reads the snapshot and is not merged.
+
+## 补记 2026-11-07（二）：快照按顶层写入，流式的每一段，和守护进程每两秒的半秒 / Addendum 2026-11-07 (2): the snapshot written by its top keys, each streamed token, and the daemon's half-second every two seconds
+
+上一段的原型合入时改了形状：`runtime.snapshot` 换成 `lib/reactive.ts` 的 `reconciledState`，事件交来的新快照只把**顶层**变了的键写进原来那个对象，下面的数组和记录照旧整个换新。按下标写进数组的原型让数组保持原身份，而信使有两处缓存靠数组身份认变化（`transcript.ts` 的排好序的消息、`chat-view.ts` 的查找表），NSH 的 `List` 也按身份算增删：对话流因此不再增长，列表以为到了底，连翻六页把整段历史拉了下来。上一段写的「一条消息更新 66 → 22 ms（流式的形状）」量错了：那次重复写入的正文没变，而流式的每一段是 `turn.token`，不是消息更新。
+
+同一份开发数据、同一次构建里前后对比（单窗格开一段已加载 118 条的对话）：不改消息的事件 66–72 → 0.1–0.3 ms；流式的每一段（`turn.token`）66–81 → 29–37 ms；一条消息更新 65–72 → 27–34 ms，两个窗格时 91–99 → 37–44 ms；切换一次对话里写快照的时间 160–217 → 55–76 ms。后三项还靠这些：窗格的对话栏和标签名只建一次（`Shell.tsx` 在 `If` 里读会话，不在被追踪的插入里），设置抽屉按「会话 + Bot」建一次（`PaneContentHost.tsx`）；消息索引在标记没变时交回原来的列表，预览按消息缓存（`message-index.ts`，对照正文，消息可能原地改）；头像的脉动跟一个布尔值（`AgentAvatar.tsx`）；侧栏每行的状态各自记一次、相等就不往下传（`sameSessionStatus`）；`applyEvent` 在一项都没变时交回原数组（`turn.upsert` 每次都重做了 `messages`，`message.upsert` 每次都重做了 `sessions`）。另外，信使的 `storage.ts` 改从 `globalThis` 读 `localStorage`：NSH 的 realm 没有 `window`，十几项偏好（工作台布局、置顶会话、侧栏宽度……）和用量小球的位置之前都没存下来。还有一处顺带修掉：`syncSettingsDraft` 收到任何 `settings.changed` 都把保存的设置整份写回向导和设置的草稿，一次换主题、或向导自己稍晚到的那次保存，就会冲掉正在勾的模型；现在每个字段只在保存的值变了时才跟着变（新手引导「模型」那一步的界面测试原本就偶尔输掉这场竞争，应用每个事件做得少了以后每次都输）。
+
+剩下那半秒不在应用里。切换对话时会话快照的请求在应用里要约 300 ms，守护进程自己只要 2–20 ms：外壳的通知循环每两秒 `POST /v1/notifications/desktop/claim` 一次，每次写操作都先 `Receipts.prune`，而 `request_receipts` 已有 162 万行（160 万是认领留下的），整理时没有可用的索引，每次扫一遍约 400 ms，期间守护进程的事件循环被占住，同时进来的请求一起等。`main` 上给 `(state, created_at)` 加了索引（400 → 6 ms），Tauri 版用的是同一个循环。回执本身只增不删（每天约 4.3 万条），删不删旧的、这几个轮询接口要不要回执，待定。
+
+The last addendum's prototype went in reshaped: `runtime.snapshot` is now `lib/reactive.ts`'s `reconciledState`, which writes only the **top** keys that changed into the object it holds; arrays and records below still arrive whole and new. Writing into the arrays item by item kept their identity, and two messenger caches tell a change by it (`transcript.ts`'s sorted messages, `chat-view.ts`'s lookup), as NSH's `List` does for its splices: the transcript stopped growing, the list thought it had reached the end and paged in the whole history. The last addendum's "one message updated, 66 → 22 ms (the streaming shape)" was mismeasured: the repeated write did not change the body, and a streamed token is `turn.token`, not a message update.
+
+Before and after, one dev data set and one build (one pane, a conversation with 118 loaded messages): an event that touches no message 66–72 → 0.1–0.3 ms; each streamed token (`turn.token`) 66–81 → 29–37 ms; one message updated 65–72 → 27–34 ms, 91–99 → 37–44 ms with two panes; writing the snapshot during one conversation switch 160–217 → 55–76 ms. The last three also take: the pane's chat bar and tab label made once (`Shell.tsx` reads the session inside an `If`, not in the tracked insert), the settings drawer made once per conversation and Bot (`PaneContentHost.tsx`); the message index handing back its old list when the marks did not change, previews kept per message (`message-index.ts`, checked against the body, as a message can change in place); the avatar's pulse following a boolean (`AgentAvatar.tsx`); each sidebar row's status kept once and passed on only when it differs (`sameSessionStatus`); `applyEvent` handing back an array when none of its items changed (`turn.upsert` remade `messages` every time, `message.upsert` remade `sessions`). And the messenger's `storage.ts` reads `localStorage` off `globalThis`: the NSH realm has no `window`, so a dozen preferences (the workbench layout, pinned conversations, the sidebar's width…) and the usage widget's place were never kept. One more, found on the way: `syncSettingsDraft` put the whole saved settings back into the setup and settings drafts on any `settings.changed`, so a theme change, or setup's own save arriving a moment late, wiped the models being picked; each field now follows the saved value only when it changed (the models step's screen test lost that race now and then, and every time once the app did less per event).
+
+The half-second left is not in the app. A switch's session snapshot request took about 300 ms in the app and 2–20 ms in the daemon: the shell's notification loop posts `/v1/notifications/desktop/claim` every two seconds, every write runs `Receipts.prune` first, and `request_receipts` held 1.62 million rows (1.6 million from the claim) with no index the prune could use, about 400 ms per scan, the daemon's event loop held for all of it and every request arriving meanwhile waiting. `main` gains an index on `(state, created_at)` (400 → 6 ms); the Tauri build runs the same loop. The receipts themselves only grow (about 43,000 a day); whether to drop old ones, and whether these polls should take receipts at all, is open.
+
+## 补记 2026-11-08：越用越卡——每切一次对话，留下一整个对话台 / Addendum 2026-11-08: slower with use — every switch kept a whole stage alive
+
+切换对话越多越卡，拖窗口越不跟手，是因为旧的对话台从来没被释放。外壳每选一个对话就给工作台换一个新标签，`ChatStage` 整个重建；旧的那棵树卸载了，原生视图却还在：开发数据上每秒切一次，40 秒里 `NshView` 从 3163 涨到 20479，内存 367 → 934 MB。每一帧 NSH 都要把挂着的视图过一遍，于是越积越慢。
+
+原因在消息框。`ComposerEditor` 用 `RichEditorPlugin.captureKeys` 接六组按键；NSH 把按键的处理函数存在 nsh-base 自己的一张线程表里（`rich_editor/js/plugins.rs` 的 `HOOKS`），只在插件的 Rust 值释放时（JS 对象被回收或 `dispose()`）才删。处理函数又通过 `entry.plugin` 引回这个插件，并经由组件的作用域连到 `Composer`、`ChatStage` 和每一行；JS 对象活着，它的原生视图就活着（另做的故事：全局数组留住 200 个视图的引用，卸载 80 次后 `NshView` 403 → 16203）。这张表是回收器的根，这个环永远收不掉。逐项排除过：关掉整个消息框或只换掉 `ComposerEditor` 就不漏，单独去掉插件、按键、ref、浮层、粘贴、高度、事件监听都还漏，`ComposerEditor` 的逻辑全留、只把原生编辑器换成 `View` 照样漏。修法：卸载时对每个插件调 `dispose()`（`ComposerEditor.test.tsx` 守着）。同样切 30 次后强制回收一次：单独的对话台 11809 → 163 个视图，整个外壳 10418 → 829；接着改窗口大小，平均一帧 97 → 33–38 ms，最长 1506 → 307 ms。
+
+还有三件在 NSH 里，待报上游：一个插件的处理函数引回自己就永远不放（要么表里存弱引用，要么让会话的 `dispose()` 连带它的插件）；`RichEditor` 每挂载一次留下一个 `NSTextView`（光秃秃的故事里也一样，不连带别的视图）；卸载的子树要等 QuickJS 的环回收，而回收只看 JS 堆涨了多少，原生视图占的内存不算，`Host::collect_garbage()` 在 macOS 上没人调，空闲时也不跑，修好之后两次回收之间仍能攒下几千个视图。外壳每选一次就重建整个对话台本身也是浪费，另行处理。
+
+Switching conversations made the app slower the more it was done, and resizing the window less and less responsive, because old stages were never freed. Each pick replaces the workbench tab with a new one, so `ChatStage` is built afresh; the old tree unmounted but its native views stayed: switching once a second on the dev data, `NshView` went 3163 → 20479 in 40 s, memory 367 → 934 MB, and NSH walks the views it holds every frame.
+
+The cause is the message box. `ComposerEditor` takes six sets of keys with `RichEditorPlugin.captureKeys`; NSH keeps a captured key's handler in a thread table of nsh-base's own (`HOOKS` in `rich_editor/js/plugins.rs`) and drops it only when the plugin's Rust value goes (the JS object collected, or `dispose()`). The handler reaches that plugin back through `entry.plugin`, and through the component's scope `Composer`, `ChatStage` and every row; a live JS object keeps its native view alive (a story holding 200 views' refs in a global array: `NshView` 403 → 16203 over 80 unmounts). The table is a root to the collector, so the cycle never goes. Ruled out one by one: without the composer, or with `ComposerEditor` alone swapped out, nothing leaks; dropping the plugins, the keys, the ref, the overlays, paste, the height or the listeners one at a time still leaks, and all of `ComposerEditor`'s logic with the native editor swapped for a `View` leaks the same. The fix disposes each plugin on unmount (guarded by `ComposerEditor.test.tsx`). After the same 30 switches and one forced collection: the stage alone 11809 → 163 views, the whole shell 10418 → 829; a window resize right after, mean frame 97 → 33–38 ms, longest 1506 → 307 ms.
+
+Three things are NSH's, to report upstream: a plugin whose handler reaches itself is never let go (hold the table's functions weakly, or have a session's `dispose()` take its plugins); `RichEditor` leaves one `NSTextView` per mount (in a bare story too, with no other views attached); and an unmounted subtree waits for QuickJS's cycle collector, which runs on JS heap growth alone, the native views' memory not counted, while `Host::collect_garbage()` has no caller on macOS and nothing runs it when idle, so even fixed, thousands of views can wait between collections. The shell rebuilding the whole stage on every pick is waste of its own, handled apart.
+
+## 补记 2026-11-08（二）：动一个窗格，另一个窗格的行整排重建 / Addendum 2026-11-08 (2): touching one pane rebuilt the other's rows
+
+NSH 的 `List` 按对象身份认数据项，`keyExtractor` 只给可见性回调起名字：一个新对象就是一行新的，拆掉重建。对话台的行由 `stageRows` 每次全新做出，而它读的 `stream()` 跟着快照里**所有**会话的 `messages`、`turns`、`pendingJudgements` 走：另一个窗格的对话加载、流式输出、发送，这边的可见行就全部重建一遍。点一下或滚一下窗格会让它成为当前窗格并选中它的对话，选中又把那一页重新拉一遍（新对象，内容不变），于是两个窗格都重建。两窗格的故事里程序化地操作左窗格：换焦点时左 6 行、右 5 行重新挂载，换回来右边 6 行。`stage-rows.ts` 的 `createRowKeeper` 在内容没变时交回上一次的行对象：同一种行、同样的日期和「新」线，组里每一项是同一条消息或同一个 turn（对象不同就比 JSON，重新拉回来的一页也算同一条）。之后换焦点时另一个窗格不再重建；被点的窗格只有第一次加载出完整历史时挂上新出现的行；拖分隔条、滚动、在窗格 1 换对话，窗格 2 都不动。流式输出时也只有正在输出的那一行重建。
+
+NSH's `List` tells its items apart by identity (`keyExtractor` only names them to viewability): a new object is a new row, torn down and built again. The stage's rows were made anew by `stageRows` every time, from a `stream()` that follows the snapshot's `messages`, `turns` and `pendingJudgements` of **every** conversation, so another pane's conversation loading, streaming or sending rebuilt every visible row here. A press or a scroll in a pane makes it the current one and selects its conversation, and selecting fetches its page again (new objects, the same lines), so both panes rebuilt. In a two-pane story acting on the left pane by script: a focus change remounted 6 rows on the left and 5 on the right, and changing back 6 on the right. `createRowKeeper` in `stage-rows.ts` hands back a row's previous object while it shows the same: the same kind, the same date and "New" line, each item of its group the same line or turn (compared as JSON when the objects differ, so a page fetched again counts as the same). Since then a focus change rebuilds nothing in the other pane; the pane pressed mounts only the rows that appear when its whole history first loads; dragging the divider, scrolling, or changing pane 1's conversation leaves pane 2 alone; and streaming rebuilds only the row being streamed.
+
+## 补记 2026-11-08（三）：标签条留住的旧标签，和调试构建里 objc2 的消息检查 / Addendum 2026-11-08 (3): old tabs the strip kept, and objc2's message checks in the debug build
+
+修好消息框之后，外壳里仍然每切一次对话多出 12 个 `NshView`、12 个 `CALayer`（切 10、30、60 次再强制回收：1429、1669、2029），每次提交的挂载项也跟着涨。JS 这边每个组件都正常卸载了（挂载减卸载，每样都是 1）。留住它们的是 `leaf-strip.tsx`：标签条比它显示的标签活得久，`tabRefs` 按标签 id 存每个标签的 `ViewRef`、`widths` 存宽度，标签关了也不删；而外壳每选一次对话就换一个新标签，旧标签的视图就一直被这张表留着。标签卸载时删掉它的两项后，切 10 次和 30 次都是 1309 个。
+
+接着在切换之后对缩放采样（每步之前先静置 15 秒；`--fps` 的分布取最近 120 次提交，空闲时提交少，会混进切换时的大提交，所以按线程采样比）：主线程最热的是 `getMethodNoSuper_nolock` 和 `objc2_encode` 的解析比较，即 objc2 在调试构建里每发一条消息都先查方法、核对编码。工作区的 `objc2` 打开 `disable-encoding-assertions`（发布构建本来就没有这项检查）后，缩放时主线程的忙碌占比：刚启动 43% → 24%，切过 30 次 72% → 42%。切过 10、30、60 次之后再缩放，主线程忙碌 504、477、502 个样本，等引擎排版 230、235、238：不再随使用增长。剩下比刚启动时多出的一截是一次性的（访问过的对话的内容装进来了，排版多了约七成），不是泄漏。
+
+After the composer fix the shell still kept 12 `NshView`s and 12 `CALayer`s per conversation switch (after 10, 30 and 60 switches and a forced collection: 1429, 1669, 2029), and the mount items per commit grew with them, while on the JS side every component unmounted (mounted minus unmounted: 1 of each). `leaf-strip.tsx` held them: the strip outlives the tabs it shows, and its `tabRefs` (each tab's `ViewRef` by tab id) and `widths` kept a tab's entries after it closed, while the shell opens a new tab on every pick. A tab now takes its two entries with it: 1309 views after 10 switches and after 30.
+
+Sampling a resize after the switches (each after 15 s at rest; `--fps` takes its distributions over the last 120 commits, which at rest still hold the switches' big ones, so threads were sampled instead): the top of the main thread was `getMethodNoSuper_nolock` and `objc2_encode`'s parsing and comparing, objc2 looking each message's method up and checking its encoding in a debug build. With `disable-encoding-assertions` on the workspace's `objc2` (a release build has no such check), the main thread's busy share during a resize went 43% → 24% just launched and 72% → 42% after 30 switches. After 10, 30 and 60 switches a resize keeps the main thread busy for 504, 477 and 502 samples, 230, 235 and 238 of them waiting on the engine's layout: it no longer grows with use. What it costs above a fresh launch is a one-off (the visited conversations' content loaded, about 70% more layout), not a leak.
+
+## 补记 2026-11-08（四）：拖分隔条时任务地图不停重读，各视图逐像素重建 / Addendum 2026-11-08 (4): the task map read itself anew on every divider move, and views rebuilt by the pixel
+
+两个分屏、一边对话一边任务地图，程序化地拖分隔条 60 步：要 2.8 秒（每步约 47 ms），地图场景 `MapScene` 重建了 94 次，引擎线程九成以上在忙。链条是：每次布局变化（分隔条每动一下也是）标签的参数都是新对象，`PaneContentHost` 的 `content` 每次都算作变了；`If` 的访问器跟着再触发，`TaskMap` 里读 `props.session` 的那个 effect 重跑，清空计划列表、重新向守护进程要计划和回放，地图的数据先空再回来（`ready` 来回翻），场景整个重建。会话本身每更新一次（流式输出的每一行）也一样。
+
+修法分三层。工作台：`layout-share.ts` 让没变的窗格、标签、参数和浮动窗格保持原对象，提交的布局和拖动中的布局都过一遍；`WorkbenchBranch` 的 slot 在子节点不变时也复用（新 slot 让空窗格里的菜单和按钮每步重建，每步 14 行 `NewPaneRow`）。窗格内容：`content` 按 `contentsEqual` 比较，预览上下文按内容比较，地图的 `taskId` 改成跟随的 getter（原来只读一次，同一个标签换了计划也看不到）。各视图：`TaskMap` 读会话的 id 和种类而不是会话对象；窗格变大后的「缩放不得小于铺满」等尺寸停下 150 ms 再做（一次缩放要重排所有铭牌）；`MapScene` 的世界画布只增不减（它画什么只看相机，窗格每变一个像素就重画整座城），由场景裁掉多出的部分。用量面板的 `columns` 原是逐像素重算的普通函数，读它的跟踪插入每步重建全部用量条（每步 8 条）；剧本流程图的卡片由 `layout()` 一次性 map 出来，宽度一变全部重建（每步 10 个图标），现在按卡片 id 用带 key 的 `Each`，只有位置跟着变。
+
+验证：给 UI 层全部 397 个导出组件加挂载计数，对对话、地图、日程、用量、角色、花费、工作区、空窗格各拖 120 步，拖动期间没有组件重建（花费页一个下拉框、两个图标）。同样的拖动，地图 2.8 秒 → 1.2 秒，场景重建 94 → 0，画布绘制的样本 113 → 5，引擎忙碌九成以上 → 约一半；用量和角色页的主线程从约 97% 降到七成上下，空窗格 96% → 7%。拖标签换窗格时移动过程中没有重建；松手时被移动的标签内容重挂一次（换了一个窗格容器，NSH 不能把原生视图搬到另一个父节点下）。剩下的是内容真的要随宽度重新排版的那部分。
+
+Two panes, chat beside the task map, the divider dragged 60 steps by script: 2.8 s (about 47 ms a step), the scene `MapScene` built 94 times, the engine thread busy nine tenths of the time. The chain: on each layout change (each move of a divider among them) a tab's params were a new object, so `PaneContentHost`'s `content` counted as changed every time; the `If`'s accessor fired again, and `TaskMap`'s effect that read `props.session` ran again, emptied the plan list and asked the daemon for the plans and the replay anew, the map's data went and came back (`ready` flipping), and the scene was built again. Each update of the conversation itself (each streamed line) did the same.
+
+Three layers of fix. The workbench: `layout-share.ts` keeps unchanged panes, tabs, params and floating panes as the objects they were, for the committed layout and the one in hand alike; `WorkbenchBranch` keeps a slot while its child is the same (a new slot rebuilt an empty pane's menu and buttons on every move, 14 `NewPaneRow`s a step). The pane's content: `content` compares by `contentsEqual`, the preview context by value, and the map's `taskId` is a getter that follows (read once, the same tab asked for another plan went unseen). The views: `TaskMap` reads the conversation's id and kind, not the object; the "zoom no less than fitting" a grown pane takes waits for the size to rest 150 ms (a zoom lays every plate out anew); `MapScene`'s world canvas only grows (what it draws follows the camera alone, and every pixel a pane changed redrew the town), the scene clipping the rest. The usage board's `columns` was a plain function of the width, and the tracked insert reading it rebuilt every usage bar each step (8 a step); the playbook map made its cards with one `map` over `layout()` and rebuilt them all as the width changed (10 icons a step), now a keyed `Each` by card id where only the frame follows.
+
+Checked by counting mounts in all 397 exported UI components while dragging 120 steps beside chat, map, routines, usage, roles, spend, workspace and an empty pane: nothing mounts during the drags (the spend page one picker and two icons). The same drag beside the map: 2.8 s → 1.2 s, scene builds 94 → 0, canvas drawing samples 113 → 5, the engine from over nine tenths busy to about half; the usage and roles pages' main thread from about 97% to around 70%, the empty pane 96% → 7%. A tab carried to the other pane mounts nothing while it moves; at the drop the moved tab's content mounts once (it changes pane containers, and NSH cannot move native views to another parent). What remains is the content that really has to lay out again at another width.
+
+## 补记 2026-11-08（五）：拖交汇手柄 / Addendum 2026-11-08 (5): dragging a crossing
+
+三个及以上窗格时拖中间的交汇手柄不跟手。外壳加了开发检查 `drag <x0> <y0> <x1> <y1> [步数] [间隔毫秒]`：合成鼠标按下、拖动、松开事件，只发给这扇窗口，走真实的手势，不动人的光标，并记下按下和松开的时刻。用它拖 90 步（每 8 ms 一步）：应用的布局在最后一个事件后约 10 ms 内跟上，松手后 8–20 ms 提交，没有越积越多的延迟；交汇点每次要同时改几个窗格的尺寸，所以合并掉的移动更多（分隔条 79–84 次生效，T 形 68–74，四宫格 50–68）。
+
+找到两处交汇点自己的问题。被按住的手柄是拿开始时的几何 id 和当前的比，而那个 id 带着交汇点在分隔线上的位置（`…@481`）：一沿着分隔线拖，id 就变了，被拖的菱形换成其他手柄拖动中的样子，也就是隐身。现在按 slot 的 key 认。另一处是按宽度换结构的视图：四宫格里每格都窄，拖动时跨过阈值，比如地图在 760 处换宽窄布局，场景、HUD、侧栏、时间轴就在拖动中整块重建。`drag-settle.ts` 的 `settled()` 让这些开关在手动改窗格尺寸时（分隔条、交汇点、浮动窗格的边）保持原样，松手后才切换一次；窗格本身照样跟着指针变大小。这样处理的有：任务地图的宽窄和紧凑、消息框的停靠和宽、对话台的手机布局、对话栏的按钮、项目对话和它的消息框、角色页的窄视图、花费页和趋势图、用量的列数、流程看板的布局模式、文件预览的上下堆叠。验证：按住期间没有组件重建，地图在松手后切换一次。改完后分隔条、T 形、四宫格拖动时主线程忙 56–69%、引擎 48–56%，三者相当。
+
+Dragging the middle crossing with three or more panes did not keep up with the pointer. The shell gains a development check, `drag <x0> <y0> <x1> <y1> [steps] [ms]`: mouse down, drags and up synthesised and sent to this window alone, through the real gesture, the person's pointer untouched, the down and up times logged. Over 90 moves 8 ms apart the app's layout caught up within about 10 ms of the last event and committed 8–20 ms after the release, with no growing lag; a crossing resizes several panes at once, so more moves were folded together (79–84 applied for a divider, 68–74 for a T, 50–68 for a grid of four).
+
+Two faults were the crossing's own. The handle in hand was matched by the geometry id it started with, and that id carries where the crossing stands along its divider (`…@481`): moving along it changed the id, and the dragged diamond took the look the other handles have during a drag, which is hidden. It is matched by its slot's key now. The other was the views that change shape at a width: in a grid every pane is narrow, a drag crossed their thresholds, and the task map, switching layout at 760, rebuilt its scene, HUD, side and timeline mid-drag. `settled()` in `drag-settle.ts` holds such switches while a pane is resized by hand (a divider, a crossing, a floating pane's edge) and lets them switch once on release; the panes still take their size with the pointer. It holds the task map's wide and compact, the message box's docked and wide, the chat stage's phone layout, the chat bar's buttons, the project chat and its box, the roles page's narrow view, the spend page and its trend, the usage board's columns, the job board's layout mode and the preview's stacking. Checked: nothing mounts while the crossing is held, and the map switches once after the release. Afterwards a divider, a T and a grid keep the main thread 56–69% and the engine 48–56% busy alike.
+
+## 补记 2026-11-09：为什么总觉得比 Tauri 慢 / Addendum 2026-11-09: why it keeps feeling slower than Tauri
+
+引擎先量。同一份信使逻辑在 Bun（JavaScriptCore 带 JIT，和 WKWebView 同一引擎）与 NSH 的 QuickJS（解释执行）里各跑一遍：解析 2.3 MB 的快照 JSON 2.5 → 7.9 ms（3 倍），一个流式 token 的 `applyEvent` 3 倍，一条消息更新 6.5 倍，遍历、排序、建索引 5 倍，密集的纯 JS 循环 34 倍，准备一段 markdown（385–4620 字）0.04–0.12 → 0.33–3.7 ms（8–30 倍）。NSH 带的 `quickjs-jit` 有实验性的 JIT（`quickjs-jit-runtime`），0.4 没接上；按它自己的测量，对象和方法调用多的代码仍只有 Bun 的 1–3%。构建方式不是原因：发布版的外壳加 `--release` 的包，切换对话 115–248 ms，调试版 132–255 ms，几乎一样（QuickJS 的 C 在调试构建里已按依赖开优化）。所以同样的事 NSH 做起来贵几倍，应用自己多做的每一份都被放大。
+
+照这个思路量了两件最常做的事。切换对话：`selectedId` 一变，侧栏的行列表（经 `onlyWorking(…, selectedId)`）整个重做成新对象，`List` 按身份认，所有可见行重建，每行又扫一遍全部已加载的消息算预览和状态：工作台收到选中之前已经过了 19–37 ms，访问过的对话越多越久。拉回来的一页（`applySessionDetail`）即使内容没变也全是新对象，读消息的一切重算一遍，33–66 ms。流式输出的一个 token 要 42 ms：消息框的 `deriveComposer` 是普通函数，被每个绑定各算一遍（一个 token 242 次，12.5 ms），侧栏每行、每个头像各问一遍 Bot 的工作状态，一个型号徽标每个 token 重建一次。
+
+改法都是让没变的东西不重做：侧栏的行按 key 留住原对象（`createListRowKeeper`），各行的预览和状态读一份每次变化只算一遍的索引（`sidebar-previews.ts`，测试对照 `latestPreview` 和 `sidebarStatus`），Bot 的工作状态和「在别处」在同一份数据里只算一次；`applySessionDetail` 合并时说同样内容的行保留原对象，什么都没变就不换数组；`deriveComposer` 改成 `computed`；正在输出的回复按 turn id 保留行、从快照里实时读它；型号徽标按它画的内容作 key。结果：切换对话时工作台在 6–12 ms 收到选中（不再随使用增长），行在 17–35 ms 出现（原 30–59），再次打开一个对话的合并 47–66 → 2–7 ms、最终上屏 98–255 → 81–160 ms；一个 token 42 → 13.5 ms，期间不再重建任何组件。
+
+还剩的：引擎本身的差距是根本，能做的是少做事和把重的纯逻辑挪进 Rust（markdown 的准备、快照的合并），以及每选一个对话就重建整个对话台、每次选中都重拉那一页这两处设计上的重复。
+
+The engine first. The same messenger logic in Bun (JavaScriptCore with its JIT, the engine WKWebView runs) and in NSH's QuickJS (an interpreter): parsing a 2.3 MB snapshot 2.5 → 7.9 ms (3×), one streamed token's `applyEvent` 3×, a message update 6.5×, filtering, sorting and indexing 5×, a tight loop of plain JS 34×, preparing a reply's markdown (385–4,620 characters) 0.04–0.12 → 0.33–3.7 ms (8–30×). NSH's `quickjs-jit` has an experimental JIT (`quickjs-jit-runtime`) that 0.4 does not wire in; by its own measurements, code heavy in objects and method calls still runs at 1–3% of Bun. The build is not it: a release shell with a `--release` bundle switches conversations in 115–248 ms against 132–255 ms for the debug build (QuickJS's C is already optimised as a dependency there). The same work costs several times as much in NSH, so whatever the app does twice costs that much more.
+
+Measured on the two things done most. A conversation switch: when `selectedId` changed, the sidebar's rows (through `onlyWorking(…, selectedId)`) were made anew, `List` tells items by identity, every visible row was built again, and each scanned every loaded message for its line and status: 19–37 ms passed before the workbench heard of the selection, more the more conversations had been opened. The page read back (`applySessionDetail`) came as new objects even when it said the same, and everything that reads messages worked again, 33–66 ms. One streamed token cost 42 ms: the message box's `deriveComposer` was a plain function worked out by each binding that read it (242 times a token, 12.5 ms), every row and avatar of the sidebar asked a Bot's work status again, and a model badge was rebuilt every token.
+
+The fixes all keep what did not change from being done again: the sidebar's rows keep their objects by key (`createListRowKeeper`), each row's line and status read one index worked out once per change (`sidebar-previews.ts`, tested against `latestPreview` and `sidebarStatus`), a Bot's work status and where it is at work are worked out once per change; `applySessionDetail` keeps each row that says the same and an array that gained nothing; `deriveComposer` is a `computed`; a reply being streamed keeps its row by turn id and reads the turn live; the model badge is keyed by what it draws. Results: on a switch the workbench hears of the selection at 6–12 ms (no longer growing with use), the rows show at 17–35 ms (was 30–59), a conversation opened again merges in 2–7 ms (was 47–66) and is fully drawn at 81–160 ms (was 98–255); a token costs 13.5 ms (was 42) and mounts nothing.
+
+What remains: the engine gap is the root, and what helps is doing less and moving heavy pure logic into Rust (preparing markdown, merging snapshots), plus two repeats by design, rebuilding the whole stage for each conversation picked and reading its page again on every pick.
+
+## 补记 2026-11-09（二）：一个对话台，和不再重读的历史 / Addendum 2026-11-09 (2): one stage, and histories not read again
+
+选一个对话会把窗格里的标签换成新的（新 id），而窗格的内容按标签 id 建，所以每选一次，对话台、它的头部和消息框整个重建。现在一个窗格里的对话共用一个内容（`WorkbenchLeaf` 的 `bodyKeys`，用跟随当前标签的 `liveActiveTab`），对话台原地转到新的对话：消息列表本来就按对话重建，滚动也本来就会回到最新一行；消息框里的编辑器仍然一个对话一个（撤销记录、输入法和列表都是那个对话的）。切换十二次，对话台只挂载一次；同步部分 24–38 → 12–25 ms，行出现 17–35 → 11–24 ms。
+
+每次选中还会把那个对话的一页重新读一遍。事件流把每个对话的行都推过来（守护进程不按对话过滤），本次连接里读过的历史一直是新的，所以再选它时不再读（`SessionHistory` 记下每个对话是在哪次连接里读的；换了连接、出现空缺或者要跳到某条消息时照旧读，`session-history.test.ts` 守着）。再次打开一个对话：数据在 16–24 ms 就绪（原来要等请求和合并），最终上屏 59–103 ms；多窗格时点一下窗格也不再重读。
+
+Picking a conversation replaces the pane's tab (a new id), and a pane's content was built per tab id, so every pick built the stage, its header and its message box again. A pane's conversations now share one content (`bodyKeys` in `WorkbenchLeaf`, handed `liveActiveTab`, which follows the active tab), and the stage turns to the next conversation in place: its list was already rebuilt per conversation and its scroll already went back to the newest line; the message box keeps one editor per conversation (its undo history, input method state and lists are that conversation's). Over twelve switches the stage mounts once; the synchronous part goes 24–38 → 12–25 ms and the rows show at 11–24 ms (was 17–35).
+
+Every pick also read the conversation's page again. The event stream carries every conversation's lines (the daemon does not filter them by conversation), so a history read in this connection stays current and is not read again when picked again (`SessionHistory` records the connection each was read in; a new connection, a gap or a link to a message reads it again; `session-history.test.ts` guards it). A conversation opened again has its data at 16–24 ms (it waited for the read and the merge before) and is drawn at 59–103 ms; with several panes, pressing a pane no longer reads it again either.
+
+## 补记 2026-11-09（三）：Markdown 的准备挪进 Rust，快照合并留在 JS / Addendum 2026-11-09 (3): preparing Markdown moves to Rust, merging the snapshot stays in JS
+
+每个气泡渲染、每个流式 token 都要过 `prepareMarkdown`（路径和 @Bot 链接成芯片），它由一串正则组成，在 QuickJS 里比 JavaScriptCore 慢 8–30 倍。现在它在应用的原生 crate 里（`app/native/src/markdown/`，`deskfolk/native` 的 `Markdown`）：手写的扫描照搬 JS 正则的语义（JS 的空白、`\p{Nd}`、`decodeURIComponent`），纯 Rust，web 的 wasm 也编；TypeScript 版留作 `prepareMarkdownJs`，`markdown-native.test.ts` 用信使、协议和守护进程测试里的 372 段文字 × 7 组选项、3,300 段生成的文字和边界输入逐字节对照两者（另在 Bun 里对过约 11.8 万例），全部一致；唯一不同的是让 TS 无限递归的输入（正文里本身带占位符），Rust 停在 64 层。应用自己的 crate 在开发构建里原来不开优化，这个 crate 现在开（`[profile.dev.package.deskfolk-app-native]`）。
+
+接上之后发现，每次调用把选项整个转成 JSON（每个 Bot 带着整条记录）比 Rust 那一遍还贵：每个气泡的选项、每份名单现在只转一次（按对象身份记下，只留 `id` 和 `name`）。在应用里，一条 6,422 字的消息 1.22 → 0.28 ms，结果相同；一次切换对话花在 Markdown 上的时间 2.7–7.6 → 0.3–3.0 ms。
+
+快照合并不挪：把一页 60 条并进 2,400 条的快照，第一次 0.15 ms，同样内容再读一次 0.76 ms（而现在本次连接里读过的不再重读），挪进 Rust 省下的不到一毫秒，还要多一次跨边界的序列化。
+
+Every bubble render and every streamed token goes through `prepareMarkdown` (paths and @Bot links turned into chips), a chain of regexes 8–30 times slower in QuickJS than in JavaScriptCore. It now lives in the app's native crate (`app/native/src/markdown/`, `deskfolk/native`'s `Markdown`): hand-written scans that keep the JS regexes' meaning (JS's white space, `\p{Nd}`, `decodeURIComponent`), pure Rust, built for the web's wasm too; the TypeScript stays as `prepareMarkdownJs`, and `markdown-native.test.ts` compares the two byte for byte over 372 texts from the messenger's, protocol's and daemon's tests × 7 option sets, 3,300 generated texts and edge inputs (plus about 118,000 cases run in Bun), all identical; the one difference is an input that sends the TS into endless recursion (a source that already holds a placeholder), where the Rust stops at 64 levels. The app's own crates were unoptimised in the dev build; this one is optimised now (`[profile.dev.package.deskfolk-app-native]`).
+
+Once wired in, turning the whole options into JSON on every call (each Bot with its whole record) cost more than the Rust pass: a bubble's options and each roster are now turned into JSON once (remembered by object, ids and names only). In the app, a 6,422-character message goes 1.22 → 0.28 ms with the same result; the Markdown in one conversation switch goes 2.7–7.6 → 0.3–3.0 ms.
+
+Merging the snapshot stays: merging a page of 60 lines into a snapshot of 2,400 takes 0.15 ms the first time and 0.76 ms when the same page is read again (and a history read in this connection is no longer read again); moving it into Rust would save under a millisecond and add a serialisation across the boundary.
+
+## 补记 2026-11-09（四）：和 Tauri 的同场对比 / Addendum 2026-11-09 (4): side by side with Tauri
+
+Tauri 版的界面是信使（Svelte）在 WKWebView 里跑。对比时用信使的生产构建，放进 Playwright 的 WebKit（同一种引擎，JavaScriptCore 带 JIT），和 NSH 连同一个开发守护进程、同一份数据，跑同样的测量（同一组六个对话，先各打开一次，再各打开一次；流式输出和 NSH 一样向运行时注入事件，每个 token 都算到界面更新和排版之后）。没有用真正的 Tauri 程序：那要在屏幕上操作它。
+
+| | Tauri 的界面（WebKit） | NSH 调试版 | NSH 发布版 |
+| --- | ---: | ---: | ---: |
+| 启动到连上、拿到列表 | 848–1,052 ms | 581–592 ms | 571–600 ms |
+| 内存（进程合计） | 约 512 MB | 约 237 MB | 约 221 MB |
+| 第一次打开对话：内容出现 | 13–67 ms | 13–24 ms | 11–19 ms |
+| 第一次打开对话：最终上屏 | 107–246 ms | 78–172 ms | 79–192 ms |
+| 再次打开对话：内容出现 | 48–78 ms | 15–26 ms | 17–26 ms |
+| 再次打开对话：最终上屏 | 92–149 ms | 58–107 ms | 55–110 ms |
+| 一个流式 token | 12 ms | 14 ms | 14 ms |
+
+启动和内存 NSH 占优；切换对话 NSH 现在更快，但这主要是今天的改动（一个对话台、读过的不再重读、侧栏和对话台不重做没变的行），信使本身每次选中都重读那一页；流式输出 Tauri 略快。同样的 JS 在 QuickJS 里仍比 JavaScriptCore 慢 3–30 倍，NSH 是靠少做事和原生视图追上的。拖动分隔条、滚动、打字的跟手程度这里没有同场比。
+
+The Tauri build's interface is the messenger (Svelte) in a WKWebView. For the comparison the messenger's production build ran in Playwright's WebKit (the same engine, JavaScriptCore with its JIT), against the same dev daemon and data as NSH, with the same measurements (the same six conversations, each opened once and then again; streaming by events handed to the runtime as in NSH, each token counted through the interface update and layout). The real Tauri program was not used: that would take driving it on the screen.
+
+NSH leads on start-up and memory; it now switches conversations faster, mostly through today's changes (one stage, histories not read again, the sidebar and the stage not rebuilding rows that did not change), while the messenger still reads the page again on every pick; Tauri streams slightly faster. The same JavaScript is still 3–30 times slower in QuickJS than in JavaScriptCore; NSH catches up by doing less and by drawing with native views. Dragging dividers, scrolling and typing latency were not compared side by side here.
+
+## 补记 2026-11-09（五）：代码编辑器丢字，和文件树换成 NSH 的 `Tree` / Addendum 2026-11-09 (5): the code editor lost typing, and the file tree moves onto NSH's `Tree`
+
+nsh/base 的 `Editor` 不能受控（`value` 再从 `onChange` 写回）：写回的值晚一帧到，被编辑器当成一次新的编辑，盖掉其间打的字，真实窗口里打的字一个个被撤回；无头测试的 `type` 每个键都等应用安静，测不出来（宿主加了 `keys` 开发检查，往窗口发真实按键）。编辑器现在自己保管文本。`EditorRef.setValue` 是一次可撤销的编辑，所以外来的文本（换文件、重读、丢弃）都换一个新的 `Editor`，否则换文件后 ⌘Z 会把上一个文件的内容撤回来。加载器先写文本、再写磁盘文本，NSH 的 effect 在两次写之间就跑（Svelte 会合并），磁盘那一侧必须单独跟着 `baseline`，否则没改过的文件也被当成未保存。
+
+文件树原来用 `Each` 画每一行：不管在不在视野里都建，开合一个文件夹全部重建，每一行的高亮还要把整棵树走一遍。同一棵 1,740 行的树，在后台窗口里：
+
+| | `Each`（原来） | `Tree`（现在） |
+| --- | ---: | ---: |
+| 显示出来 | 2.1 s（建 1,740 行） | 51 ms（建可见的 64 行） |
+| 点选一个文件 | 3.5 s | 14–24 ms |
+| 合上 / 打开一个文件夹 | 2.5 s / 2.5 s，每次重建全部行 | 14–42 ms，只建新进视野的行 |
+
+现在的 `ArtifactTree` 用 `Tree` 的虚拟列表、原生滚动和键盘（方向键、Home/End、按字母跳、回车打开），行的样子和按法仍是自己的（`renderItem`）：行自己的按压先于 `Tree` 的，所以 ⌘/Shift 多选、右键菜单、拖到输入框照旧；文件夹的加载中、失败、空和截断说明是它下面的条目，懒加载还没列过的文件夹带一条加载中，才能展开。手机的底部弹层给树一个高度（窗口的六成），它才知道哪些行在视野里。
+
+`Editor` in nsh/base must not be controlled (`value` set again from `onChange`): the value comes back a frame late as an edit of its own, over the keys typed since, and in the real window typing was taken back key by key; headless `type` waits for quiet after every key, so the tests could not see it (the host gained a `keys` development check that posts real key events to the window). The editor now keeps its own text. `EditorRef.setValue` is an edit undo takes back, so text from outside (another file, a re-read, a discard) gets a new `Editor`; otherwise ⌘Z after a switch brought the last file's text back. The loader writes the text and then the disk text, and NSH's effects run between the two writes (Svelte batched them), so the disk side must follow `baseline` on its own, or an untouched file reads as unsaved.
+
+The file tree drew every row with `Each`: made whether in view or not, all made again when a folder opened or closed, and each row's highlight walked the whole tree. On one 1,740-row tree in a background window: shown 2.1 s → 51 ms (1,740 rows made → the 64 in view); a pick 3.5 s → 14–24 ms; closing / opening a folder 2.5 s each, every row rebuilt → 14–42 ms, only the rows coming into view made. `ArtifactTree` now uses `Tree`'s virtual list, native scrolling and keys (arrows, Home/End, typeahead, Return opens); the rows' look and presses stay its own (`renderItem`): a row's own press is heard instead of the Tree's, so ⌘/Shift picks, the context menu and dragging to a composer work as before; a folder's loading, failed, empty and truncation lines are items under it, and a lazy folder not yet listed carries a loading line so that it can open. The phone's bottom sheet gives the tree a height (six tenths of the window), which it needs to know which rows are in view.
+
+## 补记 2026-11-09（六）：代码配色和信使的 Shiki 对齐 / Addendum 2026-11-09 (6): code colours that match the messenger's Shiki
+
+NSH 0.4 的代码高亮（编辑器和 `TextView` 的代码块共用）是 syntect 加 bat 的 Sublime 语法，把作用域归成 8 种，颜色写死在 `nsh-base` 里，不接主题；所以 NSH 版的代码既不是信使的 GitHub / Vitesse，界面配置里的「代码配色」也不起作用。只换颜色不够：拿同一批文件逐字符对 Shiki，syntect 的语法在 TSX 上 97% 同色，Python 85–92%，Rust 51–68%，JSON 67%，Markdown 47–52%，而且一个 16 KB 的 TSX 要 435 ms。`giallo`（Zola 的作者写的，用 VS Code 的 TextMate 语法和 Shiki 自己的语法与主题）在 TSX、Python、JSON 上 100% 同色，Rust 99.4–100%（Markdown 87%，差在嵌入的代码块上：比对时 Shiki 只载了 markdown 一种语言），同样的文件热起来 1–6 ms，整套语法和主题读一次约 20 ms。
+
+现在：`app/native/src/highlight.rs` 用 `giallo`。聊天的代码块由 `CodeColors` 着色，它把 NSH 留给 Rust 视图的 `CodeHighlighter` 交给下面的文本视图，复制按钮、选择和排版仍是 `TextView` 自己的，浅色和深色一次算出、跟着外观走；编辑器关掉自带高亮，按运行区段加颜色装饰（12 KB 的 Python 着色 3 ms、2,584 个装饰 1 ms，最后一次编辑后 150 ms 重读，其间装饰随文本移动）；命令输出按信使的 `outputLang` 选语法。默认聊天和命令输出用 GitHub、编辑器用 Vitesse，界面选了代码配色就都用它，并用它的底色。`giallo` 是 EUPL-1.2（弱著作权保留），原样链接进桌面构建，已记入 `THIRD_PARTY_NOTICES.md`；它的内置语法和主题用 zstd 压缩，web 构建暂时不带，那里沿用 NSH 的颜色。
+
+NSH 0.4's code highlighting (shared by the editor and `TextView`'s code blocks) is syntect with bat's Sublime syntaxes, folding scopes into eight kinds with colours fixed in `nsh-base`, and takes no theme; so NSH's code had neither the messenger's GitHub / Vitesse colours nor the interface's code theme. Swapping colours was not enough: compared character by character with Shiki on the same files, syntect's grammars agree on 97% in TSX, 85–92% in Python, 51–68% in Rust, 67% in JSON and 47–52% in Markdown, and a 16 KB TSX file took 435 ms. `giallo` (by Zola's author, on VS Code's TextMate grammars and Shiki's own grammars and themes) agrees on 100% in TSX, Python and JSON and 99.4–100% in Rust (87% in Markdown, the difference being embedded code blocks, as the comparison loaded only markdown into Shiki), and takes 1–6 ms on the same files once warm, about 20 ms to read its grammars and themes once.
+
+Now `app/native/src/highlight.rs` uses `giallo`. Chat's code blocks are coloured by `CodeColors`, which hands the text views below it the `CodeHighlighter` NSH keeps for Rust views, so the copy button, selection and layout stay `TextView`'s own, with light and dark worked out at once to follow the appearance; the editor turns its own highlighting off and takes colour decorations per run (a 12 KB Python file colours in 3 ms, its 2,584 decorations made in 1 ms, read again 150 ms after the last edit while the decorations move with the text); a command's output takes its grammar from the messenger's `outputLang`. Chat and command output default to GitHub and the editor to Vitesse; a code theme your interface chose takes all of them, with its surface. `giallo` is EUPL-1.2 (weak copyleft), linked unmodified into the desktop builds and recorded in `THIRD_PARTY_NOTICES.md`; its built-in grammars and themes are zstd-compressed, so the web build leaves it out for now and keeps NSH's colours.
+
+## 补记 2026-11-09（七）：托盘的用量和应用图标 / Addendum 2026-11-09 (7): the tray's usage lines and the app icon
+
+托盘原先只有「显示 / 新窗口 / 退出」，顶着一个系统符号；Dock 里的「Deskfolk Dev」是空白图标，因为 `dev.ts` 和 `package.ts` 生成的 `.app` 没有图标。现在托盘照 Tauri 外壳的 `usage_tray.rs`（ADR 0061、0079、0080）：图标是 Tauri 托盘那个单色标记，菜单顶上每个账号一行（`Claude Max · 邮箱　5h 24% · 7d 3%`，Agent 的标记套在按最紧的窗口填满的圆环里；未登录、没查到的照说；只报今天记录的 Agent 合一行），最多八行，然后「查看全部用量…」：把窗口提到前面，给它发信使的 `pane-command` `view-usage`，打开用量标签。NSH 的 `HostChannel::send` 会把事件留到应用开始听，所以刚打开的窗口也收得到。每分钟读一次 `/v1/usage`，每次重读运行时的描述文件（重启后 token 会换）；读失败保留上次的行，描述文件没了就去掉。文字、顺序和图标的算法连同测试原样搬过来，只把 Tauri 的菜单换成 AppKit 的调用；macOS 27 不画菜单项的图片，照 Tauri 把图标放在「开」状态的那一栏。应用图标：两个脚本把 Tauri 的 `icons/icon.icns` 放进 Resources 并写进 `CFBundleIconFile`；Launch Services 记着第一次见到 bundle 时的图标，`dev.ts` 第一次放图标时挪动 bundle 目录的时间并重新登记；宿主启动时也从 bundle 读出图标设到 Dock 上。标记和图标都读 Tauri 树里的那一份（`apps/desktop/scripts/app-icon` 在那里生成），不复制。验证：一份后台的检查副本连开发运行时，菜单里是六行用量和「查看全部用量…」，前五行带图标；用新的 `tray <标题>` 检查请求选中「查看全部用量…」后，窗口自绘的截图从空窗格变成用量标签，数字和菜单一致。
+
+The tray had only Show / New Window / Quit under a system symbol, and "Deskfolk Dev" was a blank tile in the Dock, as the `.app` that `dev.ts` and `package.ts` make had no icon. The tray now follows the Tauri shell's `usage_tray.rs` (ADR 0061, 0079, 0080): the Tauri tray's one-ink mark, and at the top of the menu one line per account (`Claude Max · email　5h 24% · 7d 3%`, the agent's mark inside a ring as full as the tightest window; signed out or unreadable said so; agents that only report today's records share a line), eight at most, then "查看全部用量…", which brings a window forward and sends it the messenger's `pane-command` `view-usage`, opening the usage tab. NSH's `HostChannel::send` keeps an event until the app listens, so a window opened just then gets it too. `/v1/usage` is asked once a minute, reading the runtime's descriptor each time (its token changes on a restart); a failed ask keeps the last lines, a missing descriptor clears them. The words, their order and the icon drawing came over with their tests; only Tauri's menu calls became AppKit's, and as in Tauri the icon sits in the "on" state column, since macOS 27 draws no menu item image. The app icon: both scripts put the Tauri `icons/icon.icns` in Resources and name it in `CFBundleIconFile`; Launch Services keeps the icon it first saw for a bundle, so `dev.ts` moves the bundle directory's time and registers it again when it first places the icon, and the shell also sets the bundle's icon on the Dock at launch. The mark and the icon are read from the Tauri tree, where `apps/desktop/scripts/app-icon` makes them, not copied. Checked with a background copy against the dev runtime: six usage lines and "查看全部用量…" in the menu, the first five with icons; picking "查看全部用量…" through the new `tray <title>` check request turned the window's own snapshot from an empty pane into the usage tab, with the menu's numbers.
+
+## 补记 2026-11-10（八）：终端里的中文输入和 macOS 的行编辑键 / Addendum 2026-11-10 (8): Chinese input and macOS line editing in the terminal
+
+你报告终端里看不到输入的中文，⌘⌫ 也删不了行。用新加的开发检查（下面）在一个隔离运行时上复现，原因有五个，都在画布终端的输入一侧（`app/src/Terminal.tsx`）：
+1. 上屏的字没有发出去。NSH 先用 `onChange` 报上屏的文字，再报组字结束，而 `onChange` 在组字中一律不发，所以「你好」要等下一个按键才和它一起发出。现在组字结束时把输入框里的文字补发出去。
+2. 组字时看不到拼音。隐藏的输入框在左下角、2×2 点、全透明，输入法的拼音画在里面，候选框也开在那里。现在 `TerminalGrid` 有 `preedit`，在光标处画组字的文字（底色、下划线，光标跟在后面；程序隐藏了光标也画，Claude Code 这类界面就是这样）；输入框挪到光标那一格（`Terminals.caret`，格子尺寸在绘制时记下，模块调用里量不了字），候选框就开在光标下面。
+3. 组字时方向键、Tab、Escape 被 shell 拿走。NSH 的 keymap 是窗口级的按键监视器，比输入框先看到按键，`when: "always"` 的绑定会把选词的方向键直接发给 shell。现在组字期间解除绑定，结束后再绑上。
+4. 把拼音删到空时 NSH 报一次 Backspace，shell 那边被多删一个字。组字期间忽略按键报告。
+5. ⌘⌫ 没有绑定，空输入框里它什么也删不到；Escape 走输入框的「离开输入框」，终端因此丢了键盘。现在绑上 macOS 的行编辑键，和 Terminal.app、iTerm2、Ghostty 发的一样：⌘⌫ `\x15`、⌘← / ⌘→ `\x01` / `\x05`、⌥← / ⌥→ `ESC b` / `ESC f`、⌥⌫ `ESC DEL`，Escape 也由 keymap 发 `\x1b`。
+
+开发检查（宿主的 `--snapshots` 请求，`host/src/window.rs`）：`chord <按键>` 经应用的事件队列发带修饰键的按键，keymap 能看到（`keys` 直接发给窗口，绕过它）；`compose <文本>` / `commit <文本>` 直接调 field editor 的 `setMarkedText:` / `insertText:`，像输入法那样组字和上屏，并记下 `firstRectForCharacterRange:` 给出的候选框位置。验证：同一套七项检查（打字、上屏、拼音删空、组字时按方向键、⌘⌫、Escape、⌘←），每项都看 shell 实际打印的输出，改之前一项过、六项不过，改之后七项都过；候选框从窗口左下角移到光标那一格，并跟着光标换行；组字截图里拼音带下划线画在光标处。新的 TSX 跑在旧宿主上也不出错（旧宿主不认 `preedit` 和 `caret`，照旧能打字），所以热加载后到重启开发版之前不会坏。
+
+NSH 自带的 `nsh/base` `Terminal` 换上时，这些都要重新核对：它有自己的按键编码（`keys.rs`）和隐藏输入，这里的输入一侧不会跟过去，上面五个问题要在它上面再测一遍，不能默认它没有。
+
+You reported that Chinese typed into the terminal did not show and ⌘⌫ deleted nothing. Reproduced with new development checks (below) on an isolated runtime, there were five causes, all on the canvas terminal's input side (`app/src/Terminal.tsx`): (1) committed text was not sent: NSH reports the committed text in `onChange` before the composition's end, and `onChange` sent nothing while composing, so 你好 waited for the next key and went with it; the input's text is now sent when the composition ends. (2) Nothing showed while composing: the hidden input sat in the bottom-left corner, 2×2 points and transparent, with the pinyin inside it and the candidate window opening there; `TerminalGrid` now has `preedit`, drawn at the cursor (on the ground, underlined, the cursor after it; also where a program hides the cursor, as Claude Code-style interfaces do), and the input moves to the cursor's cell (`Terminals.caret`, from the cell size recorded while drawing, since a module call cannot measure text), so candidates open under the cursor. (3) Arrows, Tab and Escape went to the shell while composing: NSH's keymap is a window-level key monitor that sees keys before the input, so `when: "always"` bindings sent the candidate-picking arrows to the shell; the bindings are now removed while composing and restored after. (4) Emptying the pinyin reported a Backspace, deleting a character in the shell; key reports are ignored while composing. (5) ⌘⌫ had no binding and deletes nothing in an empty input, and Escape took the input's "leave the field", dropping the terminal's keyboard; macOS line editing is now bound as Terminal.app, iTerm2 and Ghostty send it: ⌘⌫ `\x15`, ⌘← / ⌘→ `\x01` / `\x05`, ⌥← / ⌥→ `ESC b` / `ESC f`, ⌥⌫ `ESC DEL`, and Escape sends `\x1b` through the keymap.
+
+Development checks (the host's `--snapshots` requests, `host/src/window.rs`): `chord <keystroke>` posts a key with modifiers through the app's event queue, where the keymap sees it (`keys` sends to the window, past it); `compose <text>` / `commit <text>` call the field editor's `setMarkedText:` / `insertText:` as an input method does and log the candidate window's place from `firstRectForCharacterRange:`. Checked with one set of seven checks (typing, a commit, emptied pinyin, an arrow while composing, ⌘⌫, Escape, ⌘←), each reading what the shell printed: one passed and six failed before, all seven pass after; the candidate window moved from the window's bottom-left corner to the cursor's cell and follows the cursor across lines; the composing snapshot shows the pinyin underlined at the cursor. The new TSX also runs on the old shell (which ignores `preedit` and has no `caret`, and still types), so the hot reload does not break anything before the dev build is restarted.
+
+When NSH's own `nsh/base` `Terminal` replaces this, all of it needs checking again: it has its own key encoding (`keys.rs`) and hidden input, the input side here does not carry over, and the five problems above must be tested on it, not assumed absent.
+
+## 补记 2026-11-10（九）：文字的粗细和 Tauri 版一致 / Addendum 2026-11-10 (9): text as light as in the Tauri version
+
+你觉得 NSH 版所有文字都比 Tauri 版偏重。两边字体、字号一样（系统字体，中文回落到苹方），差在 macOS 的字体平滑：信使的 `base.css` 给整页设了 `-webkit-font-smoothing: antialiased`，关掉了平滑；NSH 用 CoreText 按默认画字，平滑开着，笔画会被加粗。同一段中英文量墨量（每个像素离底色多远，加起来）：CoreText 默认 7170、关平滑 6088；WebKit `auto` 7170、`antialiased` 6088，两两完全相等，平滑多出约 18%。
+
+CoreGraphics 的默认取自应用自己的 `AppleFontSmoothing` 偏好；启动参数 `-AppleFontSmoothing 0` 和注册的默认值都到不了它，写进应用自己的偏好域才行，而且在同一个进程里写完就生效。所以宿主在启动时、画任何东西之前把它设为 0（`host/src/app.rs`，`text_like_the_messenger`），只动 Deskfolk 自己的偏好，不碰系统设置。同一屏（侧栏、对话里的中英文、加粗、输入框）在新旧宿主下各截一张：有差异的像素上墨量少 32%，正文从接近半粗变回常规，加粗的字仍然看得出是粗体。终端的画布文字和输入框也一起变细，和信使的 xterm、输入框一致。
+
+只在 macOS 上：Windows 和 Linux 的文字引擎没有这一步加粗。NSH 自己目前没有对应的选项（像 Tailwind 的 `antialiased`）；以后有了，就改用它，去掉这条偏好。
+
+You found all of the NSH version's text heavier than the Tauri version's. Both use the same font and sizes (the system font, PingFang for Chinese); the difference is macOS's font smoothing: the messenger's `base.css` sets `-webkit-font-smoothing: antialiased` on the page, turning it off, while NSH draws with CoreText's default, smoothing on, which thickens the strokes. On one line of Chinese and English, ink (each pixel's distance from the ground, summed) was 7170 for CoreText's default and 6088 with smoothing off; 7170 for WebKit's `auto` and 6088 for `antialiased`, pair for pair the same: smoothing adds about 18%.
+
+CoreGraphics takes its default from the app's own `AppleFontSmoothing` preference; neither a `-AppleFontSmoothing 0` launch argument nor a registered default reaches it, a value in the app's own domain does, and within the same process. So the shell sets it to 0 at launch, before anything is drawn (`host/src/app.rs`, `text_like_the_messenger`), touching only Deskfolk's own preferences, not the system's. One screen (the sidebar, Chinese and English in a conversation, bold, the composer) snapshotted with the old and the new shell: 32% less ink on the pixels that differ, body text back from near-semibold to regular, bold still reading as bold. The terminal's canvas text and the inputs get lighter too, as the messenger's xterm and inputs are.
+
+macOS only: the Windows and Linux text engines add no such thickening. NSH has no option of its own for this yet (like Tailwind's `antialiased`); once it has, that replaces the preference.
+
+## 补记 2026-11-10（十）：能按的东西没有手形指针 / Addendum 2026-11-10 (10): no pointing hand over what can be pressed
+
+你报告 NSH 版里能点的东西，鼠标移上去都不变成手形。原因在两边的两处差别：
+1. 信使靠 `styles/base.css` 里一条 `button { cursor: pointer }` 给所有按钮手形。NSH 没有能选中「所有按钮」的规则：视图自己的 `class` 或 `style` 写了 `cursor` 才换指针，`nsh/base` 的 `Tab`、`MenuItem`、`Radio`、`Switch`、`Link` 和列表的选项也把指针留给应用。所以移植里一处手形都没有。
+2. CSS 的 `cursor` 会继承，按钮里的字跟着按钮是手形。NSH（`nsh-platform-macos` 的 `cursor_at`）从最里面的视图往外找，可选的文字先给 I 形。在可选文字的区域里（聊天气泡、`MarkdownBody`），按钮写了手形，它上面的字照样是 I 形。
+
+现在每个能按的东西都写出指针。`role` 能按的视图写 `cursor-pointer select-none`，能禁用的再加 `disabled:cursor-default`：禁用的按钮是箭头，这一点和 Tauri 不同（信使里禁用的按钮多数也是手形）。`select-none` 让按钮的字不进选区，手形才露出来；链接的字要能选，就把 `cursor-pointer` 写到字上。`nsh/base` 的标签、菜单项、单选、开关，和 `Select`、`Combobox`、`DatePicker` 的触发器与选项也写上。任务地图照 `.tm-view`：拖动处是张开的手，建筑上是手形。遮罩、标签条的底、只为挡住点击的视图和终端保留箭头。`scripts/press-cursor.test.ts` 读源码找没写指针的（改之前 418 处），`PORTING.md` 写了规则。
+
+验证：截图里没有指针，所以给检查副本的宿主临时加了一个请求（没有提交）：把鼠标移到窗口里的一点，400 ms 后读 `+[NSCursor currentCursor]`。按钮的各种样式、图标按钮、表情回应、排队消息的「直接插入」「撤回」、头像、问答卡的选项（字上和整行）、Markdown 里的文件和 @ 小标签是手形；消息正文和问答卡的问题是 I 形；禁用的发送按钮、普通文字和空白处是箭头。同一串点连测两遍结果一样；紧接在截图请求之后读，头几次会不准。
+
+You reported that nothing you can click in the NSH build turns the pointer into a hand. Two differences between the stacks: (1) the messenger gives every button the hand with one rule, `button { cursor: pointer }` in `styles/base.css`, and NSH has no rule that reaches every button: a view changes the pointer only when its own `class` or `style` names a cursor, and nsh/base's `Tab`, `MenuItem`, `Radio`, `Switch`, `Link` and list items leave it to the app, so the port showed the hand nowhere; (2) CSS's `cursor` is inherited, so a button's words show its hand, while NSH (`cursor_at` in `nsh-platform-macos`) looks from the innermost view outwards and gives selectable text the I-beam first, so inside a selectable area (a chat bubble, `MarkdownBody`) a button that names the hand still showed the I-beam over its words. Every pressable now names the pointer. A view whose `role` can be pressed says `cursor-pointer select-none`, plus `disabled:cursor-default` where it can be disabled: a disabled button keeps the arrow, unlike Tauri, where most disabled buttons kept the hand. `select-none` keeps a button's words out of a selection, which lets the hand through; a link's words stay selectable and carry `cursor-pointer` themselves. nsh/base's tabs, menu items, radio and switch, and the triggers and items of `Select`, `Combobox` and `DatePicker` say it too. The task map follows `.tm-view`: the open hand for its drag, the pointing one over a building. Backdrops, the strip behind the tabs, views that only stop a press and the terminal keep the arrow. `scripts/press-cursor.test.ts` reads the source for pressables that name no cursor (418 before this change), and `PORTING.md` has the rule. Checked with a temporary request in the check copy's shell, not committed, that moves the mouse to a point in the window and reads `+[NSCursor currentCursor]` 400 ms later: Button variants, icon buttons, reactions, a queued line's actions, avatars, Ask options (on the words and the row) and Markdown's file and mention chips show the hand; message text and the Ask question the I-beam; a disabled send button, plain text and empty space the arrow. The same points read twice gave the same answers; read right after a snapshot request, the first few were off.
+
+## 补记 2026-11-10（十一）：放大图片的指针、过渡和点击关闭 / Addendum 2026-11-10 (11): the enlarged picture's cursors, motion and click to close
+
+你报告了三处和 Tauri 版不一样。
+- **指针**：会话里的图片按下去是手形，应该是放大镜（+），别处能放大图片的地方也一样。补记（十）给所有能按的东西都写了 `cursor-pointer`，图片也在里面；信使在这几处写的是 `cursor: zoom-in`。现在 Markdown 的图片小标签（框和字）、消息里的图片附件、输入框里待发的图片、文件预览里的图片（不在批注模式、没有待定的框时）是 `zoom-in`，放大后的图片照旧是 `zoom-out`。消息里的附件，信使不分图片和文件都是手形；这里放大图片的那些也换成了放大镜，文件还是手形。
+- **点击图片不关**：放大后的 `Image` 挂了 `onLongPress`（复制菜单），NSH 的 `has_press` 把长按也算作按的监听，于是它成了点击的目标；它自己没有 `onPress`，点击就没了，落不到下面舞台上那个「点一下就关」。无头测试的 `press("id:msg-image-full")` 不走这条命中路径，所以一直是绿的。现在图片自己也调同一个 `tap()`。
+- **过渡**：回复里的 Markdown 图片放大时是淡入，信使是从缩略图长出来的。`MarkdownBody` 的 `onOpenImage` 只交出路径，灯箱拿不到起点，就退回了淡入。消息附件交出的是整个小标签，信使用的是里面的 `img`；而且哪处都没有交出缩略图，灯箱只能停在缩略图的位置等字节到了才长。现在打开放大的地方都交出 `PressedPicture`：缩略图自己的视图（还在载入时是它的占位框），和它正显示的 `data:` URL。灯箱从那里长出来，先显示这张缩略图，按图片的比例一次长到位，和信使的 `pictureOrigin` / `pictureStandIn` 一样。会话、项目会话、系统消息、流式回复、消息正文的整页查看、文件预览和 Markdown 批注里的 Markdown 都改了。
+
+验证：在后台检查副本里用补记（十）的临时请求读指针（同一点读两遍）。消息附件的图片和名字、输入框的图片是 `zoom-in`，文件附件和文件夹条目是手形；放大后图片上是 `zoom-out`，背景是箭头；文件预览里的图片是 `zoom-in`，图上的批注框是手形，批注模式下整张图是十字。用真实的鼠标事件点放大后的图片：改之前不关，改之后关了。过渡是对窗口连拍 25 帧（每 40 ms 起一次 `screencapture -l`），量每帧里图片的外框：Markdown 小标签的图从缩略图（72×54）长到 157×142、397×390、630×629，最后居中停在 663×663；点图片关闭时缩回 549、450、96×80，最后回到 72×54；消息附件从 36×36 的缩略图开始，不再从整个小标签开始。
+
+You reported three differences from the Tauri version.
+- **Cursors**: a picture in the conversation showed the hand where it should show the magnifier (+), and so did the other places that enlarge a picture. Addendum (10) gave every pressable `cursor-pointer`, pictures included, while the messenger writes `cursor: zoom-in` there. Markdown's picture chip (box and words), a message's picture attachments, the composer's staged pictures and the file preview's picture (outside annotate mode, with no box pending) now say `zoom-in`; the enlarged picture keeps `zoom-out`. The messenger gives a message's attachment chips the hand whether they hold a picture or a file; here the ones that enlarge a picture take the magnifier and files keep the hand.
+- **A click on the picture did not close it**: the enlarged `Image` carries `onLongPress` (the copy menu), and NSH's `has_press` counts a long press as a press listener, so the picture became the click's target. With no `onPress` of its own the click went nowhere, and the stage under it, whose tap closes, never heard it. The headless `press("id:msg-image-full")` does not take this hit path, so the test stayed green. The picture now calls the same `tap()` itself.
+- **Motion**: a Markdown picture in a reply faded in where the messenger's grows out of its thumbnail. `MarkdownBody`'s `onOpenImage` handed over the path only, so the lightbox had nowhere to grow from and fell back to the fade. A message's attachment handed over the whole chip where the messenger uses the `img` inside it, and no opener handed over the thumbnail, so the frame waited in the thumbnail's place until the bytes came before growing. Every opener now hands over a `PressedPicture`: the thumbnail's own view (its placeholder box while it loads) and the `data:` URL it shows. The lightbox grows out of it, starts from that thumbnail and grows once at the picture's proportions, as the messenger's `pictureOrigin` / `pictureStandIn` do. Conversations, project sessions, system lines, streamed replies, the whole-text sheet, the file preview and the Markdown annotator all changed.
+
+Checked in the background check copy with addendum (10)'s temporary request, each point read twice. A message's picture attachment (picture and name) and the composer's pictures show `zoom-in`; a file attachment and the folder entry the hand; the enlarged picture `zoom-out` and its backdrop the arrow; the file preview's picture `zoom-in`, a mark on it the hand, and in annotate mode the crosshair over all of it. A click with real mouse events on the enlarged picture left it open before the change and closes it after. For the motion, 25 frames of the window (a `screencapture -l` started every 40 ms) and the picture's bounding box in each: the Markdown chip's picture grows from its thumbnail (72×54) through 157×142, 397×390 and 630×629 to 663×663 in the middle; a click on it shrinks it through 549, 450 and 96×80 back to 72×54; a message attachment starts from its 36×36 thumbnail rather than the whole chip.
+
+## 补记 2026-11-10（十二）：消息框里组字时删不了拼音 / Addendum 2026-11-10 (12): the pinyin could not be deleted in the message box
+
+你报告在输入框里打中文，还没按空格选字时退格删不了。原因在 NSH 0.4.0：keymap 是本地按键监视器，按键先过它才到输入框；消息框（`RichEditor`）有焦点时，自己用 `When::Always` 绑了退格、Delete、回车、Escape、Tab 和方向键，于是组字时这些键被 keymap 拿走，交给编辑器，而编辑器组字时不处理按键，键就这样没了：拼音删不了，只有空格能出来；回车、选词的方向键也一样。补记（八）在终端里遇到的是同一件事，那里是应用自己的绑定，组字时解除就行；消息框的绑定在 NSH 里面，应用够不着。上游已经修了（longbridge/nsh#1387：输入框里有组字文字时，keymap 不碰任何键），还没发版。
+
+先试了在宿主里再加一个按键监视器，抢在 NSH 前面把这些键交给窗口：时灵时不灵。AppKit 调本地监视器的顺序不固定（40 个监视器跑 5 次，没有一次按添加的顺序），大约一半的启动里 NSH 的先跑，按键根本到不了我们这边。现在宿主用自己的 `NSApplication` 子类（`host/src/ime_keys.rs`），在 `sendEvent:` 里、所有监视器之前判断：按下的键不带 ⌘ 和 ⌃，窗口的焦点是有组字文字的文本视图，就直接交给窗口，和 AppKit 过完监视器后的做法一样。带 ⌘、⌃ 的照旧走原路，菜单快捷键先试。NSH 发了包含 #1387 的版本就把这个子类去掉。
+
+验证：后台检查副本连一个隔离运行时，开一个 Bot 的对话，点进消息框，用补记（八）的开发检查组字（`compose`）、经事件队列按键（`chord`），每项最后按回车，从库里读发出去的那条消息。七项：组字时退格（没有真输入法，文本视图会删掉拼音最后一个字母并上屏，所以期望 `abnZ`）、不组字时退格、输入法把拼音删空、组字时回车、超过 256 字节让编辑器清空隐藏输入框之后再把拼音删空和按退格（前面的字一个都不能少）、上屏后回车。改之前三项不过：组字时退格（发出 `abniZ`，退格没了）、组字时回车（发出 `xY`，回车没了，拼音一直留到被清掉）、清空隐藏输入框之后组字时退格；改之后连续启动 8 次，七项全过，组字时的退格和回车每次都由子类交给了窗口。真输入法（拼音）里按退格只删一个字母、不上屏，这一步要你在自己的输入法里试。
+
+You reported that Backspace did nothing in the message box while Chinese was being typed and no candidate had been picked with Space yet. The cause is NSH 0.4.0: its keymap is a local key monitor, so keys reach it before the input. The message box (`RichEditor`) binds Backspace, Delete, Return, Escape, Tab and the arrows with `When::Always` while it has the focus. While composing, those keys were therefore taken by the keymap and handed to the editor, which ignores keys during a composition, so they were lost: the pinyin could not be shortened and only Space got out of it, and Return and the candidate-picking arrows went the same way. Addendum (8) met the same thing in the terminal, where the bindings were the app's own and could be removed while composing; the message box's bindings are inside NSH, out of the app's reach. Upstream has fixed it (longbridge/nsh#1387: the keymap leaves every key alone while the focused text view has marked text), but not released it.
+
+A second key monitor in the shell, meant to hand these keys to the window ahead of NSH's, worked only some of the time. AppKit calls local monitors in no fixed order (40 monitors over 5 runs, never once in the order they were added), so in about half the launches NSH's ran first and the key never reached ours. The shell now uses its own `NSApplication` subclass (`host/src/ime_keys.rs`), whose `sendEvent:` decides ahead of every monitor: a key without Command or Control, while the window's focused text view has marked text, goes straight to the window, as AppKit sends it after the monitors. Keys with Command or Control go the usual way, so menu shortcuts are tried first. The subclass goes once an NSH release contains #1387.
+
+Checked in a background check copy against an isolated runtime, in a Bot's conversation with the message box clicked into, using addendum (8)'s development checks to compose (`compose`) and press keys through the event queue (`chord`); each case ends with Return and reads the sent message from the store. Seven cases: Backspace while composing (with no real input method the text view drops the pinyin's last letter and commits the rest, so `abnZ` is expected), Backspace with no composition, the input method emptying the pinyin, Return while composing, emptying the pinyin and pressing Backspace after the editor has emptied its hidden input past 256 bytes (nothing before the composition may go), and Return after a commit. Before the change three failed: Backspace while composing (it sent `abniZ`: the Backspace was lost), Return while composing (it sent `xY`: the Return was lost and the pinyin stayed until cleared), and Backspace while composing after the hidden input was emptied; after it, 8 separate launches passed all seven, with the subclass handing the composing Backspace and Return to the window every time. In a real input method (Pinyin) Backspace should delete one letter and commit nothing; that last step is yours to try in your own input method.
+
+## 补记 2026-11-10（十三）：第二次组字起候选框跑到屏幕左下角 / Addendum 2026-11-10 (13): from the second composition on, the candidates opened in the screen's bottom-left corner
+
+你报告第一次输入中文正常，确认后再次输入，候选列表就跑到屏幕左下角。原因在 NSH 0.4.0 的 `RichEditor`：打字和组字都落在一个藏起来的输入框（sink）里，它是一个只有 1 pt 宽的多行文本视图，跟着光标走；已上屏的字它留着，攒满 256 字节才清空。1 pt 宽，每个字各占一行，视图往下长，露出来的只有光标那一行。输入法问组字那一段在哪（`firstRectForCharacterRange:actualRange:`）：第一次组字从第 0 个字开始，答得出来；上屏之后，下一次组字从已有的字后面开始，那几行没露出来，AppKit 答了 `{0, 0, 0, 0}`，候选框就开在屏幕原点，也就是左下角。上游当天用同样的办法修了（longbridge/nsh#1502：多行输入的文本视图在 AppKit 答零时改报自己露出的部分），已进 nightly，还没发正式版。
+
+宿主现在给 `NSTextView` 的这个方法包了一层（`host/src/ime_rect.rs`）：先照常问 AppKit，答出来的矩形有高度就原样交回；没有高度时，改报这个文本视图露出来的最上面一行（最高 20 pt）在屏幕上的位置。对 sink 来说就是光标那一行，正是第一次组字拿到的位置。NSH 发了包含 #1502 的版本就把它去掉。开发检查的 `compose` 以前问的是第 0 个字的位置，那里一直答得出来，所以看不出这个问题；现在它和输入法一样，问组字的那一段。
+
+验证：后台检查副本连一个隔离运行时，开一个 Bot 的对话，点进消息框，依次组字 `a`、`ajinka`，上屏「啊金卡」，再组字 `a`、`ajin`，上屏「啊金」，再组字 `sh`，每步记下输入法问到的位置。改之前，第一次组字在光标处（窗口坐标 311,671，1×16），上屏之后每一次都是 `0,0 0×0`；改之后每一次都有位置，横坐标跟着光标走（311、352、353、380），纵坐标和第一次一样。补记（十二）的七项检查照样全过。候选框本身是输入法画的，没有真输入法时看不到；在自己的拼音输入法里连续打两段中文看一下。
+
+You reported that the first Chinese you typed was fine, but after confirming it the next composition's candidate list opened in the screen's bottom-left corner. The cause is NSH 0.4.0's `RichEditor`: typing and composing land in a hidden input (the sink), a multiline text view one point wide that follows the caret. It keeps the committed text until it holds 256 bytes. One point wide, every character is a line of its own; the view grows downwards while only the line at the caret shows. An input method asks where the composition is (`firstRectForCharacterRange:actualRange:`). The first composition starts at character 0, which AppKit can place. After a commit the next composition starts after the text already there, on lines that don't show, and AppKit answered `{0, 0, 0, 0}`, so the candidates opened at the screen's origin: its bottom-left corner. Upstream fixed it the same way that day (longbridge/nsh#1502: the multiline input's text view answers its visible part when AppKit answers zero); it is in nightly, in no release yet.
+
+The shell now wraps that `NSTextView` method (`host/src/ime_rect.rs`). It asks AppKit as before and passes on any rect that has a height. When it has none, it answers the top line the text view shows (at most 20 pt), in screen coordinates. For the sink that is the line at the caret, which is what the first composition got. It goes once an NSH release contains #1502. The development `compose` check used to ask for character 0, which could always be placed, so it never showed this; it now asks for the composition, as an input method does.
+
+Checked in a background check copy against an isolated runtime, in a Bot's conversation with the message box clicked into: compose `a`, `ajinka`, commit 「啊金卡」, compose `a`, `ajin`, commit 「啊金」, compose `sh`, logging the place the input method is given at each step. Before the change the first composition was at the caret (window point 311,671, 1×16) and every one after a commit at `0,0 0×0`. After it every one has a place, x following the caret (311, 352, 353, 380) and y the same as the first. Addendum (12)'s seven checks still all pass. The candidate window itself is the input method's and doesn't appear without a real one; type two runs of Chinese in a row in your own Pinyin input method to see it.
+
+## 补记 2026-11-10（十四）：点别处，输入框不失焦 / Addendum 2026-11-10 (14): a press elsewhere left the keyboard in the field
+
+你报告输入框聚焦后，点别的地方也不会失去焦点。这是 NSH 有意的：和 AppKit 应用一样，点在输入框以外时焦点留在输入框里（`nsh-platform-macos` `view.rs` 的 `acceptsFirstResponder`：「A click outside a field that edits leaves the focus in it, as desktop apps do」），上游现在的 main 也一样，所以这不是等 NSH 发版就会消失的问题。信使是网页，点别处输入框就失焦，应用的代码（失焦时保存、消息框的聚焦样式、没有输入框在编辑时才响应的按键）是照这个写的。后果：点了对话区或侧栏，后面打的字还进消息框；设置里的输入框不会因为点了别处而保存。
+
+做法分两半。外壳（`host/src/press.rs`，已经把每次按下转给应用）在有输入框在编辑、左键按在应用自己的视图上时（按在别的输入框、滚动条这类原生视图上不算），给这次按下编号；应用（`app/src/platform/press.ts`）收到后，除非按在登记了要留住焦点的地方，就请外壳让输入框失焦（`shell.blur`）。外壳只在这次按下仍是最新一次、按键还没松开、还是那个输入框有焦点时才动手：应用自己的按下处理在松开时才跑，可能正要把焦点放回同一个输入框（引用一行到消息框），晚到的请求就不再动它；量下来请求在按下后约 0.3 ms 就到，一次点击约 0.1 秒。单行输入框共用窗口的一个 field editor，所以认输入框时连它正在编辑的那个框一起认。
+
+两类地方要留住焦点。一是自绘文字、靠隐藏输入打字的视图：消息框（`RichEditor`）、代码编辑器（`Editor`）、终端、远程屏幕的键盘。点在它们里面就是点在输入框里，但命中的是 NSH 的视图。外壳认出隐藏输入（宽或高不到 2pt，或完全透明），按在装着它的那个视图里就不算别处，不用每个组件登记。二是信使在 `onmousedown` 里 `preventDefault` 的地方：@ 列表、/ 命令列表、日历筛选的行，它们替输入框挑东西，点了焦点要留在输入框里；这几个组件用 `keepFocusIn` 登记自己的框。
+
+另一个坑：组字到一半点别处，失焦时 NSH 0.4.0 处理拼音的顺序不对，消息框里「ab」加组字中的「ni」点开后发出「aniZ」，丢了「b」。上游在 0.4.0 之后修了（longbridge/nsh#1507，`commit_marked`），外壳失焦前照它的做法先提交组字：丢掉输入法的会话，再把拼音按提交插进去。
+
+验证：后台检查副本连隔离运行时，经事件队列发真的鼠标按下（临时的 `qdrag` 请求，没有提交，`drag` 直接发给窗口，外壳的按下转发看不到），每步读焦点在哪个视图上，最后从库里读发出的消息或看截图。改之前：消息框里打字后点对话区或侧栏空白，再打的字还进消息框（发出 `abZ`、`cdZ`）；设置「提示词」页的搜索框点空白处和标签后焦点都还在，再打的字进了框（`abcZ`）；代码编辑器点对话区后再打的字进了文件（`first lineABC`）。改之后：这几处都失焦（`ab`、`cd`、`abc`、`first lineAB`）；点在消息框里、在消息框里拖选、点代码编辑器里面焦点都留着；@ 列表点标题焦点留着，点「@Writer」选中后接着打字，发出 `@Writer Z`；组字到一半点别处，发出 `abniZ`，单行输入框里留下 `abni`。宿主测试 112 项、`bun test scripts` 14 项、消息框和日历的界面测试 21 项都过。
+
+You reported that once a field had the keyboard, a click elsewhere did not take it away. NSH does this on purpose: as in AppKit apps, a click outside a field leaves the focus in it (`acceptsFirstResponder` in `nsh-platform-macos`'s `view.rs`: "A click outside a field that edits leaves the focus in it, as desktop apps do"), and upstream's main still does, so no NSH release will change it. The messenger is a page, where a click elsewhere blurs the field, and the app's code (saving on blur, the message box's focus look, keys that act only while no field edits) is written for that. So after a click on the conversation or the sidebar, typing still went into the message box, and a settings field did not save on a click elsewhere.
+
+The fix has two halves. The shell (`host/src/press.rs`, which already forwards every press to the app) numbers a left press on the app's own views while a field edits (a press on another field or a scroller, hosted AppKit views, does not count); the app (`app/src/platform/press.ts`), unless the press is in a place registered to keep the focus, asks the shell to let the field go (`shell.blur`). The shell does it only if that press is still the latest, its button is still down and the same field still has the keyboard: the app's own press handlers run on the release and may be putting the focus back into that very field (quoting a line into the message box), so a late answer changes nothing; the answer came about 0.3 ms after the press, a click lasts about a tenth of a second. Single-line fields share the window's one field editor, so a field is told by the editor and the field it edits.
+
+Two kinds of place keep the focus. Views that draw their own text and type through a hidden field: the message box (`RichEditor`), the code editor (`Editor`), the terminal, the remote screen's keyboard. A press inside one is a press in its field, though it hits an NSH view; the shell recognises the hidden field (under 2 pt wide or tall, or fully transparent) and does not count a press inside the view that holds it, so no component registers. And the messenger's `onmousedown` `preventDefault` places: the @ list, the / commands, the calendar filter's rows, which pick for a field and keep the focus in it; these register their boxes with `keepFocusIn`.
+
+One more trap: pressing away mid-composition, NSH 0.4.0 took the pinyin out of order as the field let go: "ab" plus the composing "ni" in the message box, pressed away and back, sent "aniZ", losing the "b". Upstream fixed this after 0.4.0 (longbridge/nsh#1507, `commit_marked`); before letting the field go the shell commits the composition the same way: the input method's session dropped, the pinyin inserted as its commit would be.
+
+Checked in a background check copy against an isolated runtime, with real mouse presses through the event queue (a temporary `qdrag` request, not committed; `drag` sends to the window, where the shell's press forwarding never sees it), reading which view has the focus after each step and then the sent message from the store or a snapshot. Before: typing in the message box and pressing the conversation or the sidebar's empty space, later typing still went in (`abZ`, `cdZ`); the settings Prompts page's search field kept the focus through a press on empty space and on a tab, and later typing went in (`abcZ`); after a press on the conversation, typing went into the code editor's file (`first lineABC`). After: all of these let go (`ab`, `cd`, `abc`, `first lineAB`); a press or a drag in the message box and a press inside the code editor keep the focus; a press on the @ list's header keeps it, and picking "@Writer" then typing sent `@Writer Z`; pressing away mid-composition sent `abniZ`, and a single-line field kept `abni`. Host tests (112), `bun test scripts` (14) and the message box and calendar screen tests (21) pass.
+
+补充（同日）：上面「按键还没松开才动手」那道闸挡掉了轻点。按下和松开间隔 0 ms 的点击（触控板轻点就是这样）里，松开比应用的回复先到，失焦请求被丢掉，连试三次焦点都留在消息框里（发出 `abZ`）。现在外壳在按下的那一刻自己让输入框失焦，不经应用，应用的按下处理反正排在后面；只有开着 `keepFocusIn` 登记的列表时（应用用 `shell.keepers` 报数量），才走编号、问应用那条路，那时轻点仍可能留住焦点，但只发生在列表开着的那一会儿。另外，上面把 `TimeField` 算进「靠隐藏输入打字」的组件是错的：它和 `OtpInput` 的透明输入框盖满整个控件，按在上面命中的就是输入框本身。补测：轻点对话区三次都失焦（发出 `ab`）；@ 列表开着时点别处失焦；终端里换位置点按（含轻点）焦点一直在终端；「新建群」的成员多选点选项照样勾上、列表不关，输入框失焦，和信使一样；前面的消息框、设置搜索框、代码编辑器、组字中点别处都重测过。远程屏幕的键盘没有现场测：它的隐藏输入和画面同在 `screen-pane` 里，按代码看点画面会留住键盘。日历筛选的行只跑了无头测试，那里看不到 `shell.press`。
+
+Follow-up (same day): the "button still down" gate above dropped taps. With down and up 0 ms apart (a trackpad tap), the release came before the app's answer and the blur was dropped; three tries left the focus in the message box (it sent `abZ`). The shell now lets the field go itself as the button goes down, without asking the app, whose press handlers come after anyway; only while a list registered with `keepFocusIn` shows (the app reports the count with `shell.keepers`) does a press carry a number for the app to decide, and only then can a tap still leave the focus. Also, counting `TimeField` among the views that type through a hidden field was wrong: its transparent field, like `OtpInput`'s, covers the whole control, so a press on it lands in the field itself. Checked again: three taps on the conversation all let go (`ab`); with the @ list open, a press elsewhere lets go; presses at other places in the terminal, taps included, keep its keyboard; in "新建群" picking a member still ticks it and keeps the list open while the field lets go, as in the messenger; the message box, the settings search field, the code editor and pressing away mid-composition were run again. The remote screen's keyboard was not checked live: its hidden field sits in `screen-pane` with the picture, so by the code a press on the picture keeps the keyboard. The calendar filter's rows ran only headless, where `shell.press` never comes.
+
+## 补记 2026-11-11（十五）：项目会话里时间挪到左边，拖选能跨过几条消息 / Addendum 2026-11-11 (15): a project line's time moves to the left, and a drag runs across lines
+
+你报告项目会话里消息的时间应该显示在左侧，而且现在它会阻断选中文字。原来照信使，助手每条消息的时间在消息下面单独一行，靠左；每条消息的 Markdown 是自己的一个选区，拖选到它的末尾就停，正好停在那行时间上，进不了下一条。
+
+现在助手消息的时间放在左边一列（`project-chat-lines.tsx`，44pt，和第一行齐平），不再单独占一行；跑过的命令卡片原来把时间放在右端，现在卡片不再带时间。时间按 PORTING 的规则绝对定位在左边距里，不做横排的第一项：NSH 0.4 在横排里按不换行的宽度量会换行的段落。整个项目会话的列表外面包了一个 `<View selectable>`（`ProjectChat.tsx`），所有消息的文字合成一个选区；时间、日期线、「更早的消息」那行写 `select-none`，拖选从上面跨过去，复制出来也没有它们。直接给 `List` 写 `selectable` 不起作用：JS 只把这个属性交给 `View`，第一次就是这么试的，拖选照样停在一条消息末尾。你自己的消息仍是右边的气泡，时间在气泡下面靠右。信使里时间还在消息下面，没跟着改。
+
+验证：后台检查副本连隔离运行时，开 `chat-stage` 故事里的项目会话，经事件队列发真实的鼠标拖动，看窗口截图里的选区。改之前：从助手消息第一行拖到下面的用户气泡，只选中那条助手消息，停在它的时间上。改之后：时间在左边一列和第一行齐平；同样的拖动选中助手消息、「已切到新的一天」和用户气泡里拖到的那几个字，时间和日期线没被选中；一条消息里面的拖选照旧。项目会话和对话台的界面测试、`bun test scripts` 都过。Bot 对话里每条回复也是自己的选区，同样不能跨消息拖选，这次没动。
+
+You reported that a project session's message times should sit on the left, and that they blocked selecting text. Following the messenger, each agent line's time stood on a line of its own under it, on the left; each line's Markdown was a selection of its own, so a drag stopped at its end, right on that time, and never reached the next line.
+
+An agent line's time now stands in a column on its left (`project-chat-lines.tsx`, 44 pt, level with the first line) instead of on a line of its own; the command card under a line, which carried the time at its right end, no longer does. The time is placed in the left padding, as PORTING says, not made a row's first item: in a row NSH 0.4 measures a wrapping paragraph at its unwrapped width. The project transcript's list is wrapped in a `<View selectable>` (`ProjectChat.tsx`), so all the lines' texts share one selection; the times, the day lines and the earlier line are `select-none`, so a drag passes over them and copies leave them out. `selectable` on the `List` itself does nothing (JS gives the prop to `View` only): that was the first try, and a drag still stopped at a line's end. Your own lines stay bubbles on the right with the time under them. The messenger keeps its times under the lines; it was not changed.
+
+Checked in a background check copy against an isolated runtime, on the project session of the `chat-stage` story, with real mouse drags through the event queue, reading the selection from the window's snapshot. Before: a drag from the agent line's first line to the user bubble below selected that agent line only and stopped on its time. After: the time stands in the left column level with the first line; the same drag selects the agent line, "已切到新的一天" and the dragged-over characters of the user bubble, leaving the time and the day line out; a drag inside one line selects as before. The project and chat stage screen tests and `bun test scripts` pass. A Bot conversation's replies are each a selection of their own too, with the same stop at each reply; they were not changed here.
+
+## 补记 2026-11-11（十六）：跟上游 `main`，不等发版 / Addendum 2026-11-11 (16): on NSH's `main`, not its releases
+
+你让把本地开发用的 NSH 直接换成上游主分支。补记（十二）（十三）和点外部收起菜单的问题，上游 `main` 都已经修了（#1387、#1502、#901），还有 #1084（透明的 AppView 背景）和 #1111（nsh/base 的 `Terminal`），但都不在 0.4.0 里，下一个正式版什么时候出不知道。
+
+换法：宿主、`app/native` 和两个原生组件用的 NSH crate，全部改成上游仓库同一个提交的 git 依赖（`apps/desktop-nsh/Cargo.toml` 的 `rev`，现在是 `7a2c11e0`，当天 `main` 的头），`Cargo.lock` 记下这个提交。`nsh` 命令行必须是同一个提交编出来的：bundle 格式要和引擎对得上，`app/native` 的胶水和 `nsh test` 的运行器也是它生成、它编的。新的 `scripts/nsh-cli.ts` 读这个 `rev`，在 `~/.cache/deskfolk-nsh/<rev>` 浅克隆这个提交，`cargo build --release --locked -p nsh-cli`（第一次约 10 分钟），所有脚本（`dev.ts`、`ui-tests.ts`、`package.ts` 等）都从它拿命令行。不用上游的 `install.sh --source`：它会把 `~/.local/bin/nsh` 换掉，别的检出和稳定版的检查都在用那一个。用 git 依赖而不用 `[patch.crates-io]`：命令行读 `app/native` 声明的依赖来决定测试运行器和胶水从哪份源码编，补丁表它看不见，会悄悄拿 crates.io 的 0.4.0 去编。CI（`nsh-desktop.yml`）也按这个 `rev` 编命令行，并按提交缓存。
+
+主分支版本号还是 0.4.0，`=0.4.0` 这种写法什么也约束不了，所以测试（`scripts/nsh-cli.test.ts`）守着三件事：所有 `nsh-*` 是同一个 `rev`，各 crate 只经工作区拿 NSH，`Cargo.lock` 里 NSH 只有这一个来源。
+
+主分支带来的两处要应用自己改：`Intl` 只内置英语，别的语言要在 `nsh.json` 的 `locales` 里列出来才带数据（#1234），否则侧边栏和用量里的星期变成 `Fri`、`Sun, 10:00`，现在列了 `zh`；状态栏要 `capabilities.statusBar`（手机布局用），不授权每次都被拒并打警告，现在授权了。代码不用改：宿主一次编过，没有告警。
+
+主分支的无头测试驱动会先看手指落点上画的是不是目标，被盖住就让那一步失败。它查出一个真问题：引导页卡片右上角的语言切换是卡片的第一个子元素，后面的欢迎区占满卡片宽度、画在它上面，「English」那半边点不到，现在给它 `z-[1]`（单独一个提交）。另外四处是测试按了真人够不着的地方：手机尺寸下整页的设置盖住了故事的按钮（先用返回退出来；故事的「设置返回」也接 `mod+shift+b`），两个目标在面板的折线以下（先滚进来）。无头的文字引擎（`ApproxTextEngine`）量段落只按行数，不为行内卡片撑高，`shared` 故事里图片卡片被下一段列表压住，真窗口里不会，所以把那一段挪到最后。PORTING.md 的「验证」写了这几条。
+
+补记（十二）（十三）的两个桥（`ime_keys.rs`、`ime_rect.rs`）、`press.rs` 里点外部收起菜单的那部分和不透明表面的退路，现在和上游的修复同时在，互不打架（`ime_rect` 先答出一行，上游的覆盖就不再改它；菜单重复关闭是安全的）。它们要一个个去掉、一个个验证，另起提交；`press.rs` 还管着补记（十四）的点别处失焦，那部分留着。
+
+验证：`cargo test --workspace` 全过（宿主 112、`app/native` 78、组件 9）；`nsh check App.tsx` 无错误，它生成的 `app/.nsh/rust` 指向同一提交的 git 检出；`nsh test` 150 过、1 跳过；`ui-tests.ts` 全量 84 个文件、693 个测试全过（换之前 8 个失败，都是上面那种遮挡）；desktop-nsh 的脚本测试 18 个全过。用同一份数据、同样大小的窗口各起一个 0.4.0 和主分支的检查副本对照截图：加 `locales` 之前只有星期不同，加了以后一样（用量卡片里「5 小时」竖着折行，两边都有，是原来的问题）。
+
+要换到更新的 NSH：把所有 `nsh-*` 的 `rev` 一起改掉，`cargo update -p nsh-core`，跑一遍全部测试；`scripts/nsh-cli.ts` 会为新提交编一个命令行。开发版要重启才用上新的宿主和命令行。
+
+You asked for local development to use NSH's upstream `main` directly. Addenda (12) and (13), and menus that a click outside did not close, are fixed on `main` (#1387, #1502, #901), as are #1084 (transparent AppView backgrounds) and #1111 (nsh/base's `Terminal`); none is in 0.4.0, and there is no date for the next release.
+
+How: the NSH crates of the shell, `app/native` and the two native components are now Git dependencies on one commit of the upstream repository (`rev` in `apps/desktop-nsh/Cargo.toml`, now `7a2c11e0`, the head of `main` that day), recorded in `Cargo.lock`. The `nsh` CLI must be built from the same commit: the bundle format must match the engine, and the CLI writes `app/native`'s glue and builds the `nsh test` runner. The new `scripts/nsh-cli.ts` reads that `rev`, makes a shallow clone of the commit in `~/.cache/deskfolk-nsh/<rev>` and runs `cargo build --release --locked -p nsh-cli` (about 10 minutes the first time); every script (`dev.ts`, `ui-tests.ts`, `package.ts` and the rest) takes its CLI from it. Upstream's `install.sh --source` is not used: it replaces `~/.local/bin/nsh`, which other checkouts and the stable checks use. Git dependencies rather than `[patch.crates-io]`: the CLI reads `app/native`'s declared dependencies to decide which source the test runner and the glue build from, a patch table is invisible to it, and it would quietly build them from crates.io's 0.4.0. CI (`nsh-desktop.yml`) builds its CLI from the same `rev` and caches it by commit.
+
+`main` still says version 0.4.0, so a `=0.4.0` requirement constrains nothing; a test (`scripts/nsh-cli.test.ts`) holds the three things that matter: every `nsh-*` has one `rev`, the crates take NSH only through the workspace, and `Cargo.lock` has that one source of NSH and no other.
+
+Two things on `main` needed the app's own change. `Intl` builds in English only; other languages carry their data only when `nsh.json`'s `locales` lists them (#1234), else the weekdays in the sidebar and the usage pane read `Fri`, `Sun, 10:00`; it now lists `zh`. The status bar needs `capabilities.statusBar` (the phone layout uses it); ungranted, every request was denied with a warning; it is now granted. No code changed: the shell built at once, without warnings.
+
+main's headless test driver checks what is drawn where the finger lands and fails the step when the target is covered. It found one real fault: the onboarding card's language switch, in the card's top right corner, is the card's first child, and the welcome block after it spans the card's width over it, so the English half took no click; it now has `z-[1]` (a commit of its own). Four tests pressed what a person could not reach: story buttons under the phone-size settings page (Back walks out first, and the story's settings Back also answers `mod+shift+b`), and two targets below their pane's fold (scrolled into view first). The headless text engine (`ApproxTextEngine`) measures a paragraph by its lines and never grows a line for an inline card, so in the `shared` story the next list lay over the picture card, which a real window does not do; that paragraph moved last. PORTING.md's checks describe these.
+
+The two bridges of addenda (12) and (13) (`ime_keys.rs`, `ime_rect.rs`), the menu-closing part of `press.rs` and the opaque-surface fallback now run beside upstream's fixes and do not fight them (`ime_rect` answers a line first, so upstream's override leaves it; closing a menu twice is safe). Each goes in a commit of its own, with its own check; `press.rs` also carries addendum (14)'s unfocusing on a press elsewhere, which stays.
+
+Checked: `cargo test --workspace` passes (shell 112, `app/native` 78, components 9); `nsh check App.tsx` has no errors and the `app/.nsh/rust` it writes points at the Git checkout of the same commit; `nsh test` passes 150 with 1 skipped; the full `ui-tests.ts` run passes all 693 tests in 84 files (8 failed before the changes above, each a covered press); desktop-nsh's 18 script tests pass. A 0.4.0 check copy and a `main` one, on the same data at the same window size, differed only in the weekdays before `locales` and not at all after it (the usage card's 「5 小时」 wrapping a character per line is in both, an old issue).
+
+To move to a newer NSH: change the `rev` of every `nsh-*` at once, run `cargo update -p nsh-core` and the whole test suite; `scripts/nsh-cli.ts` builds a CLI for the new commit. The dev build has to be restarted to use the new shell and CLI.
+
+## 补记 2026-11-11（十七）：项目会话的时间放回右端 / Addendum 2026-11-11 (17): a project line's time goes to the right end
+
+补记（十五）把时间挪到了左边，是你说错了方向：你要的是右侧，和 Tauri 版对齐。现在助手消息的时间在消息下面那一行的最右端，跑过命令时在命令卡片那一行的最右端（和信使的 `.command-beside` 一样），左边那一列去掉了。跨消息拖选的改动保留：整个列表还是一个选区，时间、日期线不进选区。
+
+和 Tauri 版的差别：用 Playwright 的 WebKit 渲染信使的 `project-chat` 视觉故事（main 上的信使，就是 Tauri 窗口里的那份）量了一下，没跑命令的助手消息，时间在消息下面靠左（行框 12–488，时间 12–41）。这里按你的话一律放右端，只有跑过命令的那种和 Tauri 一模一样。信使没改。
+
+验证：后台检查副本（宿主和 CLI 都按补记（十六）用上游 `main` 那个提交编），`chat-stage` 故事里的项目会话：助手消息的 17:31 在消息下面的最右端，和用户气泡下的 17:30 对齐在同一条右边线上；从助手消息第一行拖到下面的用户气泡，选中助手消息、「已切到新的一天」和气泡里拖到的字，三个时间和日期线都没进选区。项目会话和对话台的界面测试、`bun test scripts`（18 项）都过。
+
+Addendum (15) moved the time to the left because you named the wrong side: you wanted it on the right, as in the Tauri version. An agent line's time now sits at the right end of the line under it, or at the right end of the command card's line when it ran commands (as the messenger's `.command-beside`); the left column is gone. The selection change stays: the list is one selection, and the times and day lines stay out of it.
+
+Against the Tauri version: rendering the messenger's `project-chat` visual story in Playwright's WebKit (the messenger on main, the one in the Tauri window) and measuring, an agent line that ran no commands has its time under it on the left (line box 12–488, time 12–41). Here it goes to the right end either way, as you asked; only a line with commands matches Tauri exactly. The messenger was not changed.
+
+Checked in a background check copy (shell and CLI built from upstream `main`'s commit, as addendum (16) set up), on the project session of the `chat-stage` story: the agent line's 17:31 sits at the right end of the line under it, on the same right edge as the 17:30 under the user bubble; a drag from the agent line's first line to the user bubble below selects the agent line, "已切到新的一天" and the dragged-over characters of the bubble, with the three times and the day line left out. The project and chat stage screen tests and `bun test scripts` (18) pass.
+
+## 补记 2026-11-11（十八）：先把 NSH 自己的 `Terminal` 接上，放在 `--terminal nsh` 后面 / Addendum 2026-11-11 (18): NSH's own `Terminal`, wired in behind `--terminal nsh`
+
+补记（十六）锁定的上游提交里已经有 nsh/base 的 `Terminal`（#1111）。你问终端能不能彻底换成它，回答是现在还不能，然后按建议的顺序做了：先接上，量出差距，只有上游能改的报上去，默认仍用画布终端。
+
+**怎么接。** `app/native` 新加 `RuntimeTerminals`（`nsh_terminal.rs`），用 `provide_context` 给它下面的 `Terminal` 一个模拟器：NSH 自己的 `VtEmulator`，去掉它对程序查询的回答（`Quiet`）。不去掉不行：
+
+- `Terminal` 把模拟器的回答和按键放在同一个 `onData` 里发出，TSX 分不出哪个是哪个。
+- 运行时的屏幕（`terminal-screen.ts`）已经替所有窗格回答了，窗格再答一遍，就等于往程序里多敲一份。
+
+`CodeColors` 给代码块配色用的也是这个办法：Rust 组件提供 context，TSX 的子组件拿到。
+
+`app/native` 的 `nsh-base` 依赖自己声明了 `term` 特性。单独编这个 crate 时平台 crate 不在依赖里，这个特性不会被带上。`nsh-cli.test.ts` 也相应放宽，允许这种只经工作区、只多加特性的写法。
+
+`app/src/NshTerminal.tsx` 把它接到运行时上：
+
+- `Terminal` 按布局自己定行列。所以第一次 `onResize` 之后，先让 pty 改成这个大小，再取屏幕回放，回放就是按这个大小画的。
+- 上游只在行列和起始的 80×24 不同时才发 `onResize`，正好排成 80×24 时一次也不发，视图就一直不接上（在 661×432pt 的框里实测，画面是空的）。所以第一次布局 100ms 后还没等到大小，就按 80×24 接上（longbridge/nsh#1630）。
+- 之后和画布终端一样，按偏移跳过已经画过的帧。
+- 字节用一个流式的 `TextDecoder` 解成文字，一个字被拆在两帧里也能拼回来。
+- 按键和画布终端走同一个排队发送（`terminalSender`，先在一个单独的提交里抽出来）。
+
+`--terminal nsh`（`DESKFOLK_TERMINAL=nsh`）会把工作台的终端标签和 `--pane terminal` 都换成它。`RuntimeTerminals` 是按名字查的，没有用具名导入：`dev.ts --watch` 会先把 TSX 发出去，宿主要等重启才重编，具名导入会让旧宿主上整个 bundle 都加载失败（实测报 `Could not find export 'RuntimeTerminals'`）。现在旧宿主上查不到它，面板里只显示一行提示。
+
+**量的结果。** 在隔离的运行时里开后台窗口，用补记（八）的检查，加了两步：查询只答一次，以及中文对齐。回车和 ⌘ 键用 `chord` 走应用的事件队列，和真键盘一样先经过 NSH 的键位表。上游 `Terminal` 的回车只认键位表：直接发给窗口的回车会落进单行的隐藏输入，结束编辑，焦点也跟着丢了。
+
+| 检查 | 画布终端 | NSH `Terminal` |
+|---|---|---|
+| 程序的查询只回答一次（DA1、DSR 6） | 过 | 过。靠 `Quiet`；不加它会答两次，见 `vt.rs` |
+| 普通输入、上屏后马上回车、组字清空、组字时按方向键、Esc | 过 | 过 |
+| ⌘⌫、⌘← | 过 | 不过：上游没绑这几个键（longbridge/nsh#1627）；⌘← 那项前面一项留下了半行，⌘→ 没测，这两个以 `keys.rs` 为准 |
+| 组字中的拼音 | 画在光标处，带下划线 | 不画 |
+| 候选框位置 | 光标所在的格子 | 每次都在窗口左下角 (0, 743)，1×17（#1626） |
+| 中文对齐（13pt，一格 8.1pt） | 每个 `\|` 都在自己的格子上 | 20 个汉字后面的 `\|` 左移 61pt（7.6 格）（#1628） |
+
+中文对齐那一项的原因：底色块和光标按格子放，字是一整行流排的。一个汉字只有约 12.9pt 宽，而它占的两格是 16.2pt；中英文交界处还会多出约 1.7pt（从这几行的数字拟合出来的，多半是 Core Text 的中西文间距）。所以 `ab中cd文ef` 这种两种偏差刚好抵消，纯中文的一行偏得最多。反显的格子最明显：底色块在自己的格子上，字左移 30pt。
+
+**还差什么。** 应用这边补不了：组件不报焦点变化，外面包一层 `View` 也收不到隐藏输入框的 `onFocus`（试过），键位表也不能按焦点限定，所以 ⌘ 键没法只在终端有键盘时绑。所以默认还是画布终端。上游把这三处修好以后（或者我们给上游提修复），再换成默认，删掉 `TerminalGrid`、`Terminals` 和 `CanvasTerminal`。另外两处在换之前要决定：
+
+- 16 色是 VS Code 的固定配色，不跟我们的 `palette.rs`。可以在 `Quiet` 里把 0–15 换成我们的颜色，但模拟器不知道当前是深色还是浅色。
+- `VtEmulator` 会丢掉零宽字符（组合附加符、ZWJ 表情），也不重排。
+
+补记（八）那个工作区里的 Ghostty（`libghostty-vt`）可以改成实现上游的 `TerminalEmulator`，装进 `RuntimeTerminals`，后两样就都解决了。它要 Zig 工具链、CI 和许可声明，这次没有动。
+
+**验证。**
+
+- `app/native` 的两个新测试：`Quiet` 吞掉 DSR 6、DA1 的回答，标题和响铃照常；屏幕照旧。
+- `NshTerminal.test.tsx` 三项在 NSH 的运行时里通过：base64、按偏移跳过、拆开的字拼回。
+- `nsh check App.tsx` 无错误。
+- 后台检查：画布终端 8/8，NSH `Terminal` 6/8，没过的两项都是 ⌘ 键。
+- 开发版当前的旧宿主配新 bundle：不加开关 8/8，加了开关只显示提示。这一项是用开发版 .app 里正在跑的那份二进制和它刚发布的 bundle 测的。
+- `nsh package --target web` 编过（`app/native` 编成 wasm）。
+- `cargo test --workspace`、`nsh test`（155 过、1 跳过）、desktop-nsh 的脚本测试（18 项）和 `terminal-pane` 界面测试都过。全量 `ui-tests.ts` 没有跑。
+
+The pinned upstream commit (addendum 16) has nsh/base's `Terminal` (#1111). You asked whether the terminal can move to it completely. The answer was not yet, and the recommended order was followed: wire it in, measure the gaps, report upstream only what only NSH can change, and keep the canvas terminal as the default.
+
+**How it is wired.** `app/native` adds `RuntimeTerminals` (`nsh_terminal.rs`). It uses `provide_context` to give the `Terminal`s below it an emulator: NSH's own `VtEmulator` with its answers to the program's queries dropped (`Quiet`). They have to be dropped:
+
+- `Terminal` sends its emulator's answers through `onData`, mixed with the keys, so TSX cannot tell them apart.
+- The runtime's screen (`terminal-screen.ts`) already answers for every pane, so a pane that answered too would type a second answer into the program.
+
+`CodeColors` colours code blocks the same way: a Rust component provides a context that the TSX children receive.
+
+`app/native`'s `nsh-base` dependency declares the `term` feature itself, because built alone the crate has no platform crate to bring it in. `nsh-cli.test.ts` now also accepts a dependency that comes through the workspace and only adds features.
+
+`app/src/NshTerminal.tsx` attaches it to the runtime:
+
+- `Terminal` sizes itself from its layout. So after the first `onResize`, the pty takes that size before the screen's replay is fetched, and the replay is drawn for it.
+- Upstream fires `onResize` only when the size differs from the 80 × 24 it starts at, so a terminal laid out at exactly 80 × 24 never fires it and the view never attaches (measured in a 661 × 432 pt box: a blank view). So a terminal that has no size 100 ms after its first layout attaches at 80 × 24 (longbridge/nsh#1630).
+- After that, frames already on the screen are skipped by offset, as in the canvas terminal.
+- One streaming `TextDecoder` turns the bytes into text, so a character split across two frames comes out whole.
+- Keys go through the same send queue as the canvas terminal's (`terminalSender`, extracted first in a commit of its own).
+
+`--terminal nsh` (`DESKFOLK_TERMINAL=nsh`) puts it in the workbench's terminal tabs and in `--pane terminal`. `RuntimeTerminals` is looked up by name, not imported by name. `dev.ts --watch` publishes TSX ahead of a shell rebuild, which waits for a restart, and a named import made the whole bundle fail on an older shell (measured: `Could not find export 'RuntimeTerminals'`). On an older shell the pane now shows a one-line notice.
+
+**Measurements.** A background window on an isolated runtime ran the check of addendum (8), plus two steps: queries answered once, and CJK alignment. Enter and the ⌘ keys go through the app's event queue (`chord`), as a real keyboard's do, so NSH's keymap sees them first. NSH's `Terminal` takes Enter only from its keymap: an Enter sent straight to the window lands in its single-line hidden input, which ends editing and drops the focus.
+
+| Check | Canvas terminal | NSH `Terminal` |
+|---|---|---|
+| The program's queries answered once (DA1, DSR 6) | pass | pass, through `Quiet`; without it they are answered twice (`vt.rs`) |
+| Typing, Enter right after a commit, a cleared composition, arrows while composing, Escape | pass | pass |
+| ⌘⌫, ⌘← | pass | fail: upstream binds neither (longbridge/nsh#1627). The ⌘← case followed a half-typed line and ⌘→ was not run, so for those two `keys.rs` is the evidence |
+| The composition while composing | drawn at the cursor, underlined | not drawn |
+| Where the candidates open | the cursor's cell | the window's bottom-left corner every time, (0, 743), 1×17 (#1626) |
+| CJK alignment (13 pt, 8.1 pt cells) | every `\|` on its cell | after 20 CJK characters, `\|` 61 pt (7.6 cells) to the left (#1628) |
+
+The cause of the alignment row: backgrounds and the cursor are placed by cell, while a line's text flows. A CJK character advances about 12.9 pt where its two cells are 16.2 pt, and about 1.7 pt more appears where CJK meets Latin text (fitted from these lines; likely Core Text's CJK–Latin spacing). So in `ab中cd文ef` the two cancel out, and a line of CJK alone drifts the most. An inverse cell shows it best: its box sits on its cell while its glyph is 30 pt to the left.
+
+**What is still missing.** The app cannot make up for these. The component reports no focus change; a `View` wrapped around it gets no `onFocus` when its hidden input takes the keyboard (tried); and the keymap cannot be scoped to a focus, so the ⌘ keys cannot be bound only while the terminal has the keyboard. The canvas terminal stays the default. Once upstream fixes these three, or we send it fixes, the default changes and `TerminalGrid`, `Terminals` and `CanvasTerminal` go. Two more points need a decision before the swap:
+
+- The 16 colours are VS Code's fixed palette, not our `palette.rs`. `Quiet` could map 0–15 to ours, but an emulator does not know the appearance.
+- `VtEmulator` drops zero-width characters (combining marks, ZWJ emoji) and does not reflow.
+
+The Ghostty work of addendum (8)'s worktree (`libghostty-vt`) could implement upstream's `TerminalEmulator` and go into `RuntimeTerminals`, which would settle both. It brings the Zig toolchain, CI and licence notices, and was left out of this change.
+
+**Checks.**
+
+- Two new `app/native` tests: `Quiet` drops the DSR 6 and DA1 answers and keeps the title and the bell; the screen is unchanged.
+- `NshTerminal.test.tsx`'s three tests pass in NSH's runtime: base64, skipping by offset, a split character made whole.
+- `nsh check App.tsx` has no errors.
+- The background check: the canvas terminal passes 8/8, NSH's `Terminal` 6/8, failing only the two ⌘ keys.
+- The dev build's current, older shell with the new bundle: 8/8 without the flag, and with the flag only the notice. This used the binary inside the running dev `.app` and the bundle it had just published.
+- `nsh package --target web` builds (`app/native` compiled to wasm).
+- `cargo test --workspace`, `nsh test` (155 pass, 1 skipped), desktop-nsh's 18 script tests and the `terminal-pane` screen tests pass. The full `ui-tests.ts` run was not done.
+
+## 补记 2026-11-11（十九）：消息之间没有间距 / Addendum 2026-11-11 (19): no room between the lines
+
+你报告用户消息上方的间距不合理：截图里助手回复的最后一行（带两个文件小标签）和下面你的气泡几乎贴在一起。毛病不在项目会话的行，在列表。两个对话列表（`ProjectChat.tsx`、`ChatStage.tsx`）写的是 `contentClass="py-5 gap-[14px]"`（Bot 对话是 `gap-4`），旁边又有一个只写了左右和顶部内边距的 `contentStyle`。NSH 的 `List` 只要 `contentStyle` 里有东西，就整份丢掉 `contentClass` 给的内边距和间距（`nsh-core` 的 `ListState::apply_content`，0.4.0 和现在钉的 `main` 都这样），所以从首次移植起，行与行之间就是 0，最早一行上方也没有内边距。以前助手消息下面单独一行的时间把它和下一条隔开，看不太出来；补记（十五）把时间挪走以后才露出来。补记（十七）把时间放回下面，但时间那一行和下一条气泡仍是贴着的。
+
+现在两个列表的内边距和行间距都写在 `contentStyle` 里：项目会话行间 14pt，Bot 对话 16pt，和信使的 `.transcript-inner`、`.stream-inner` 一样；两端各 20pt（窄时 14pt）。倒置列表里 `paddingTop` 是靠消息框的那一端，这一端的数值没变。`stories/stage-scroll.tsx` 照抄了同样的写法，一起改了。新加的 `scripts/list-content.test.ts` 读源码，同一个 `List` 上既有 `contentClass` 又有 `contentStyle` 就报错；拿改之前的代码跑，它报出的正是这两处。PORTING 加了这条规则。
+
+验证：后台检查副本，`chat-stage` 故事，截窗口快照，按像素行量空白。检查用的 worktree 里给项目会话临时加了一条末尾带文件小标签的助手消息和紧跟的用户消息，也就是截图里那种排列；Bot 私聊里种了交替的五条消息。项目会话：时间那一行到下一条用户气泡 2.5pt → 16.5pt，系统行到气泡 5.5 → 19.5，气泡下的时间到助手消息 5 → 19、7 → 21，每处多 14pt。Bot 私聊：回复下面「耗时 · 时间」那一行到下一条气泡 1.5 → 17.5，时间到 Bot 回复 7 → 23、5 → 21，每处多 16pt。两边最新一行的位置都没变。同一个人连发、并在一组里的几条，组内间距由行自己管，前后一样（`bulk` 的 130 条）。`nsh check App.tsx`、`bun test scripts`（19 项）、界面测试全套（87 个文件 694 项；终端窗格的 2 项在 worktree 里没有 pty，照例跳过）都过。
+
+You reported that the room above your lines was wrong: in the screenshot the agent reply's last line (with two file chips) nearly touched your bubble below it. The fault was in the list, not the project session's lines. Both transcripts (`ProjectChat.tsx`, `ChatStage.tsx`) said `contentClass="py-5 gap-[14px]"` (`gap-4` for a Bot conversation) beside a `contentStyle` holding only the side and top padding. Once a `List`'s `contentStyle` holds anything, NSH drops `contentClass`'s padding and gaps whole (`nsh-core`'s `ListState::apply_content`, in 0.4.0 and in the pinned `main` alike), so since the first port the rows had no gap between them and the oldest row no room above it. The time on a line of its own under each agent line kept the lines apart and hid it; addendum (15) moved the time away and showed it. Addendum (17) put the time back underneath, but that time line still touched the next bubble.
+
+Both lists now put all their padding and the gap in `contentStyle`: 14 pt between a project session's lines and 16 pt between a Bot conversation's rows, as the messenger's `.transcript-inner` and `.stream-inner` have; 20 pt at each end (14 pt when narrow). In an inverted list `paddingTop` is the end by the composer, and that end keeps its value. `stories/stage-scroll.tsx` copied the same pattern and changed with them. The new `scripts/list-content.test.ts` reads the source and fails on a `List` naming both `contentClass` and `contentStyle`; run against the code before the fix it names exactly these two. PORTING has the rule.
+
+Checked in a background check copy on the `chat-stage` story, reading blank pixel rows from window snapshots. In the check's worktree the project session got an agent line ending in file chips followed by a user line, the arrangement in the screenshot, and the Bot direct was seeded with five alternating lines. Project session: the time line to the next user bubble 2.5 pt → 16.5 pt, the system line to a bubble 5.5 → 19.5, a bubble's time to the agent line 5 → 19 and 7 → 21, each 14 pt more. Bot direct: the "duration · time" line under a reply to the next bubble 1.5 → 17.5, a time to the Bot's reply 7 → 23 and 5 → 21, each 16 pt more. The newest line stays where it was in both. Lines one person sent in a row, folded into one group, keep the group's own spacing, unchanged (the `bulk` story's 130). `nsh check App.tsx`, `bun test scripts` (19) and the whole screen-test suite (87 files, 694 tests; the terminal pane's 2 skip in a worktree, which has no pty) pass.
+
+## 补记 2026-11-11（二十）：NSH 终端用应用自己的配色 / Addendum 2026-11-11 (20): the NSH terminal in the app's own colours
+
+补记（十八）留下的两个问题，你都定了：一是配色用我们自己的，二是 Ghostty 那份做进来。这里先记配色。
+
+`--terminal nsh` 下的终端，现在和画布终端一样，用 `palette.rs`（品牌方向 A 的卡片底色和墨色，加一套配在上面的 ANSI 色）：
+
+- `RuntimeTerminals` 多了一个 `dark` 属性。它给出的模拟器（原来的 `Quiet` 改名成 `RuntimeEmulator`，仍然丢掉对程序查询的回答）在交出每一行时改颜色：
+  - 16 个 ANSI 色换成调色板里的；
+  - 没指定颜色的字用调色板的墨色；
+  - 反显而没有底色的格子，底色补上调色板的底色，换过来以后读起来是墨色。
+  - 256 色的色块、灰阶和 24 位色照程序给的。
+- 行按原样缓存，取出时才换颜色。`Terminal` 在画一行时读 `dark`，所以切换外观时每一行跟着重画，不用重新喂字节。
+- `RuntimeTerminals` 自己铺上调色板的底色；光标用 `bg-brand/55`，品牌色在两种外观下正好就是画布终端的光标色。
+
+验证：
+
+- 新的故事 `terminal-palette` 和界面测试：亮色下红字是 `#c62828`、墨色 `#121c20`、反显字 `#ffffff`；运行中切到暗色，变成 `#ef6b6b`、`#eef2f3`、`#192125`。
+- 后台真窗口，暗色：底色和画布终端截图里的一样（[32,44,49]，原来是灰色 [74,74,74]），黄底格子 (252,200,45) 和画布终端逐像素相同，原来是 VS Code 的 (234,230,13)。
+- 一个有独立 bundle id、强制亮色的检查副本：白底，黄底格子是亮色调色板的 (194,103,4)。
+- `app/native` 的四个测试过。
+
+Addendum (18) left two questions, and you settled both: our own colours, and the Ghostty work brought in. This part records the colours.
+
+The terminal behind `--terminal nsh` now draws in `palette.rs`, as the canvas terminal does: brand direction A's card ground and ink, and an ANSI set tuned to sit on them.
+
+- `RuntimeTerminals` takes a `dark` prop. The emulator it hands out (`Quiet`, renamed `RuntimeEmulator`, still drops the program's replies) recolours each line as it gives it:
+  - the sixteen ANSI colours become the palette's;
+  - text with no colour takes the palette's ink;
+  - an inverse cell with no ground takes the palette's ground, so that swapped it reads as ink.
+  - The cube, the greys and 24-bit colours stay as the program asked.
+- Lines are kept unmapped and recoloured on the way out. `Terminal` reads `dark` where it draws a row, so every row redraws when the appearance changes, with no bytes fed again.
+- `RuntimeTerminals` lays the palette's ground itself. The cursor is `bg-brand/55`; the brand colour is, in both appearances, the canvas terminal's cursor colour.
+
+Checks:
+
+- A new story, `terminal-palette`, and its screen test: in light, red text is `#c62828`, ink `#121c20` and inverse text `#ffffff`; switched to dark while running, they are `#ef6b6b`, `#eef2f3` and `#192125`.
+- A real background window in dark: the ground matches the canvas terminal's capture ([32,44,49], grey [74,74,74] before), and a yellow-ground cell is (252,200,45), the canvas terminal's to the pixel; it was VS Code's (234,230,13).
+- A check copy with its own bundle id forced to light: a white ground, and the yellow-ground cell in the light palette's (194,103,4).
+- `app/native`'s four tests pass.
+
+## 补记 2026-11-11（二十一）：NSH 终端可以跑在 Ghostty 的模拟器上 / Addendum 2026-11-11 (21): the NSH terminal on Ghostty's emulator
+
+补记（八）那个工作区里给画布终端换的 Ghostty（`libghostty-vt`），现在改成实现上游的 `TerminalEmulator`，放进了 `RuntimeTerminals`。旧工作区没动，那里的改动还是未提交的。
+
+**为什么放在特性后面。** Ghostty 只认 Zig 0.15。这台 Mac 的 PATH 上是 0.17，0.15 是 Homebrew 的 keg-only。没有现成源码时，`libghostty-vt-sys` 的构建会 clone Ghostty，再用 Zig 自己的 HTTP 客户端取依赖，而它经代理会 400。要是每次编 `app/native` 都要这些，`nsh check`、`nsh test`、`cargo test`、别的会话的 worktree 都会坏，只为了一个放在 `--terminal nsh` 后面的东西不值得。所以：
+
+- `app/native` 的 `ghostty` 特性默认关，宿主的 `ghostty` 特性把它打开。`nsh` 命令行生成的胶水 crate（describe、无头测试运行器、web）都不带它，`nsh check` 和 `nsh test` 不需要 Zig。
+- 没有这个特性时，`RuntimeTerminals` 用 NSH 自己的 `VtEmulator`；web 永远用它（Ghostty 的构建不认 wasm32）。
+- `scripts/ghostty.ts` 把 Ghostty 的源码（`libghostty-vt-sys` 0.2.2 钉的提交 `a887df42`）和它的 Zig 包放进 `~/.cache/deskfolk-nsh/ghostty/<提交>`，Zig 包不走代理取，这台机器上一次约十秒。它给出一组固定的环境变量：0.15 的 Zig 排在 PATH 最前、`GHOSTTY_SOURCE_DIR`、`GHOSTTY_ZIG_SYSTEM_DIR`。构建脚本会在这些变量变了时重跑，所以每次都给同一组。
+- `dev.ts` 找到 Zig 0.15 和这份缓存时带上 `ghostty` 编宿主，否则照常编并说一句。打包脚本不带：打出来的应用不用 `--terminal nsh`。
+- CI 只在 Linux 上装 Zig 0.15，跑 `ghostty.ts` 和带特性的测试。Windows 上没编过 Ghostty，先不加。这一步要推送以后才知道过不过。
+- 证明构建不联网：从全新的目标目录、代理全指向打不通的端口、`cargo --offline`，用脚本准备的缓存编过，测试也过。
+
+**怎么读行。** `Terminal` 按行号要行，最旧的回滚行是 0，和它的列表一样。Ghostty 读得快的办法是 render state，可它只读视口。所以要哪一行，就把视口滚到那一页（`ScrollViewport::Row`）、整页读出来、留到下一次输出或改大小，再滚回实时的屏幕。列表停在实时屏幕时，每次变化读一页；往上翻历史时多读一两页。行数从不少于最后一次要的行数，因为 `Terminal` 拿行数减行数，是无符号的。程序的查询不回答（没接 `on_pty_write`），标题按变化报出来。
+
+**验证。**
+
+- 11 个 Ghostty 的测试，拿 Ghostty 自己按格取值（`grid_ref(Point::Screen)`）当标准逐行比对：历史乱序读、输出之后重新读、超出回滚上限被裁掉之后、备用屏幕、窄了又宽的重排；还有宽字符、颜色和属性、按颜色擦除的格子、模式和标题、组合附加符和 ZWJ 表情。
+- 不带特性 82 个测试过，带特性 93 个过。
+- 真窗口（带特性的宿主，`--terminal nsh`）：输入检查 6/8，和 `VtEmulator` 一样，没过的仍是两个 ⌘ 键（等 longbridge/nsh#1633）。
+- 和 `VtEmulator` 同场对照：
+  - Ghostty 留住了组合附加符（é café ñ），ZWJ 一家人是一个字形；`VtEmulator` 丢掉附加符（e cafe n），一家人拆成三个人，后面的列往右挪。
+  - 窗口先窄后宽，Ghostty 把长行接回整行；`VtEmulator` 把窄的时候切掉的部分丢了。
+  - Ghostty 改宽度后 zsh 的整行提示符留下几段残影。这是补记（八）记过的已知现象，Ghostty 嵌入时不替 shell 清提示行，信使的 xterm.js 也一样；`VtEmulator` 这里是干净的。
+
+The Ghostty work of addendum (8)'s worktree, which swapped the canvas terminal's screen to `libghostty-vt`, now implements upstream's `TerminalEmulator` and sits inside `RuntimeTerminals`. The old worktree was left alone; its changes are still uncommitted.
+
+**Why behind a feature.** Ghostty takes Zig 0.15 only. This Mac's PATH has 0.17, and 0.15 is Homebrew's keg-only one. With no source given, `libghostty-vt-sys`'s build clones Ghostty and fetches its packages with Zig's own HTTP client, which fails through the proxy (400). Needing all that for every build of `app/native` would break `nsh check`, `nsh test`, `cargo test` and other sessions' worktrees, for something behind `--terminal nsh`. So:
+
+- `app/native`'s `ghostty` feature is off by default, and the shell's `ghostty` feature turns it on. The glue crates the `nsh` CLI generates (describe, the headless test runner, web) leave it off, so `nsh check` and `nsh test` need no Zig.
+- Without the feature `RuntimeTerminals` keeps NSH's `VtEmulator`, and the web always does (Ghostty's build knows no wasm32).
+- `scripts/ghostty.ts` puts Ghostty's sources (commit `a887df42`, the one `libghostty-vt-sys` 0.2.2 pins) and its Zig packages in `~/.cache/deskfolk-nsh/ghostty/<commit>`, fetching the packages without the proxy (about ten seconds here). It gives one fixed env: Zig 0.15 first on PATH, `GHOSTTY_SOURCE_DIR`, `GHOSTTY_ZIG_SYSTEM_DIR`. The build script runs again when any of these change, so the same set is given every time.
+- `dev.ts` builds the shell with `ghostty` when it finds Zig 0.15 and the cache, and otherwise builds as before and says so. Packaging leaves it out: the packaged app does not use `--terminal nsh`.
+- CI installs Zig 0.15 on Linux only and runs `ghostty.ts` and the feature's tests. Ghostty has not been built on Windows, so it is left out there. Whether the step passes will be known after a push.
+- The build fetches nothing: from a fresh target directory, with every proxy variable pointing at a dead port and `cargo --offline`, the cache the script prepared built and its tests passed.
+
+**How lines are read.** `Terminal` asks for lines by number, the oldest scrollback line first, as its list shows them. Ghostty's fast way to read is its render state, which reads the viewport. So a line is read with its page: the viewport moves to that page (`ScrollViewport::Row`), is read whole and kept until the next output or resize, and moves back to the live screen. A list on the live screen reads one page per change; scrolled into the history, one or two more. The line count is never below the rows last asked for, because `Terminal` subtracts the rows from it unsigned. The program's queries go unanswered (no `on_pty_write`), and the title is reported when it changes.
+
+**Checks.**
+
+- Eleven Ghostty tests check the page reads line by line against Ghostty's own cell lookup (`grid_ref(Point::Screen)`): history read out of order, output after a read, history pruned past its size, the alternate screen, and a reflow from narrow to wide. They also cover wide characters, colours and attributes, cells erased in a colour, modes and the title, combining marks and ZWJ emoji.
+- 82 tests pass without the feature and 93 with it.
+- In a real window (the shell built with the feature, `--terminal nsh`), the input checks pass 6 of 8, as with `VtEmulator`. The two that fail are still the ⌘ keys, which wait for longbridge/nsh#1633.
+- Side by side with `VtEmulator`:
+  - Ghostty keeps combining marks (é café ñ) and draws a ZWJ family as one glyph. `VtEmulator` drops the marks (e cafe n) and splits the family into three people, which pushes the columns after it to the right.
+  - Narrowed and then widened, Ghostty joins the long line back into one row. `VtEmulator` loses what the narrow width cut off.
+  - After a resize, Ghostty leaves a few copies of zsh's full-width prompt behind. This is the known effect noted in addendum (8): embedded Ghostty does not clear the prompt for the shell, and the messenger's xterm.js does the same. `VtEmulator` is clean there.
+
+## 补记 2026-11-11（二十二）：标签条的空白拖的是整个窗口 / Addendum 2026-11-11 (22): a strip's bare part moves the window
+
+你要窗口顶部这块（窗格标签条上标签和 + 右边的空白）拖的是整个应用窗口，而不是里面的窗格，只有标签本身拖内容。原来照信使，按住平铺窗格标签条的空白拖的是整块窗格，它的标签一起走（`behavior.md` 的「窗格」）。
+
+现在平铺窗格的标签条（`leaf-strip.tsx`）带 `windowDrag`，像系统标题栏：按住拖走整个窗口，双击照系统设置缩放（或最小化），原地点一下仍是在这块窗格里点一下，它成为当前窗格。标签条自己不再挂按压、触摸和拖动（NSH 往外找最近的 `windowDrag` 时，先碰到这些就当按钮），右键照旧是窗格菜单（挂在标签条自己身上：Windows 和 Linux 上拖窗口区域外层的右键监听挡不住系统的窗口菜单）。标签外框写了 `windowDrag: false`：它的内边距和 ⋯、× 旁的空隙算标签的，不拖窗口。`Workbench` 不再给平铺窗格传 `onStripDrag`，拖整块窗格（「整个窗格 · N 个标签页」）就没有了：要挪一块窗格，一个个拖标签，最后一个拖走时窗格合拢。浮动窗格不变：它的标签栏是它自己的标题栏，按住空白拖着它走，双击停靠回布局。Windows 的标题栏现在也藏起来了，最小化、最大化、关闭由 NSH 画在右上角，标签条给它们留出宽度（e89045e7），那里拖窗口靠的也是这块空白和侧边栏；没在 Windows 上实机看过。信使没改，Tauri 版仍是拖整块窗格。
+
+验证：后台检查副本跑 `workbench` 故事，宿主临时加了一个经 `postEvent` 走应用事件队列的 `qdrag` 请求（NSH 拖窗口区域的跟踪循环只看得见队列里的事件；没提交）。改之后，在窗格 b 标签条空白处拖到左下：布局和当前窗格都没变（`a[*t1,t2,t3] … b[*t4] d[*t5] focus=a`），按下没交给应用；同样拖 b 的标签，标签照旧进了 a；在空白处原地点一下，那块窗格成为当前窗格。改之前同样在空白处一拖，b 整块并进了 a。窗口本身被拖走这一半没测到：系统拖窗口跟的是真的鼠标，合成事件下窗口位置前后不变，而检查不动你的鼠标。Windows、Linux 上的右键也没在实机上看。`nsh check App.tsx`、`bun test scripts`、界面测试全套（88 个文件 697 项；终端窗格的 2 项在 worktree 里没有 pty，照例跳过）都过；`workbench-drag` 里「空白处拖走整块窗格」那条换成了「空白处拖动不带走窗格、标签照旧拖、右键是窗格菜单」。
+
+You wanted the top of the window (a pane strip's bare part, right of the tabs and the +) to move the whole app window rather than the pane inside it, with only the tabs moving content. Following the messenger, a drag on a tiled pane strip's bare part carried the whole pane, every tab with it (`behavior.md`, "Pane").
+
+A tiled pane's strip (`leaf-strip.tsx`) now carries `windowDrag`, like the system title bar: held, it moves the whole window; a double press zooms it (or minimises, as the system setting says); a press in place is still a press in that pane and makes it current. The strip itself no longer takes presses, touches or a pan (NSH, looking outward for the nearest `windowDrag`, takes a view with those as a button), and its right click is still the pane's menu (on the strip itself: on Windows and Linux an outer listener does not keep the window menu off a drag region). A tab's frame says `windowDrag: false`, so its padding and the room round ⋯ and × belong to the tab. `Workbench` no longer gives tiled panes `onStripDrag`, so carrying a whole pane ("整个窗格 · N 个标签页") is gone: a pane moves tab by tab, and closes when its last tab leaves. Floating panes are unchanged: their bar is their own title bar, a drag on its bare part moves the pane and a double press docks it. Windows now hides its title bar too: NSH draws minimise, maximise and close at the top right and the strip leaves them their width (e89045e7), so there as well the window is moved by this bare part and the sidebar; not seen on a Windows machine. The messenger was not changed; the Tauri version still carries the pane.
+
+Checked in a background check copy on the `workbench` story, through a temporary `qdrag` request that posts the events through the app's queue (the tracking loop of NSH's drag region sees only queued events; not committed). After: a drag from pane b strip's bare part down and left left the layout and the current pane as they were (`a[*t1,t2,t3] … b[*t4] d[*t5] focus=a`), the press never reaching the app; the same drag on b's tab still moved it into a; a press in place on the bare part made that pane current. Before, the same drag on the bare part carried b whole into a. The window itself being moved was not seen: the system's window drag follows the real pointer, and under synthetic events the window's frame stayed put, while the check never moves your pointer. The right click on Windows and Linux was not seen on a machine either. `nsh check App.tsx`, `bun test scripts` and the whole screen-test suite (88 files, 697 tests; the terminal pane's 2 skip in a worktree, which has no pty) pass; in `workbench-drag` the case "the bare strip carries the whole pane" became "a drag on the bare strip carries no pane, a tab still moves, the right click is the pane's menu".
+
+## 补记 2026-11-11（二十三）：NSH 版当日常用的版本，接回你自己的数据 / Addendum 2026-11-11 (23): the NSH build as the one you use, on your own data
+
+你要把 NSH 版当开发期间的正式版用，接回之前所有的对话、配置和远程控制。在这之前它一直是另一套（17990、`real-bot-nsh-dev`、`com.real-bot.daemon.nsh-dev`），11 月 7 日从稳定版拷过一份库，之后两边各写各的。
+
+现在 `dev.ts --stable-instance`（运行时单独起是 `dev-runtime.ts --stable-instance`）让 NSH 版顶替装好的稳定版，而不是在它旁边：源码守护进程用稳定版那一套（17890、标准数据目录、`com.real-bot.daemon` 钥匙串服务，和 `apps/daemon` 的 `main.ts` 一样读密钥），定时任务和防休眠打开；远程控制用数据目录 `dev-remote/credentials.json` 里那个身份，源码运行时要 `REAL_BOT_DEV_REMOTE=1` 才读它，脚本设上、运行时起来后就从环境里拿掉，Bot 跑的命令不继承。配对和移除设备因此在设置面板里确认，不弹 Touch ID；已经配对的手机不受影响。宿主多了一个 `Instance`：默认 `Dev`，照旧拒绝 17890；带 `--stable-instance` 是 `Stable`，只认 17890，也不自己起运行时。登录项、更新、独立运行仍按开发版回答。装好的稳定版的运行时占着数据目录时（`local-api.json` 里的进程跑在 `.app` 里），两个脚本都拒绝启动。
+
+接回的时候：
+
+- **对话。** 稳定版的库先 `VACUUM INTO` 备份成 `state.before-nsh-cutover-20261111.sqlite`。开发库里有 7 个项目会话（83 条消息，NSH 开发本身的对话，窗口里的标签就是它们）只在开发库里。按外键和 `*_id` 列查过是一个闭合的集合（会话、参与者、消息、附件、`user_quotes`、`agent_runs`、`spend`），ID 不冲突、没有指向集合外的引用、两边列相同，就在副本上预演、再对真库导入：消息逐条插入、`message_seq` 交给 `messages_assign_seq` 按原来的顺序重新编号（6214–6296），已读位置跟着挪到新编号的末尾，外键和完整性检查都过。通识那条直接对话里开发库多出的两条（一问一答）没搬：直接对话有轮次和记忆，不是闭合的。开发库原样留着。
+- **迁移。** 这一版的守护进程第一次打开稳定版的库，补上 `migrateNullableAnnotationBot` 和清掉桌面轮询留下的 174 万条请求回执，在副本上量过约 3 秒。
+- **配置。** 设置在库里；两个模型端点的密钥经 `bunKeyStore` 都读得到，没有弹窗（`credentials` 条目的分区列表里有 bun 的 `teamid:7FRXF46ZSN`）。窗口自己的偏好用 NSH 开发版的那份（`nsh/com.real-bot.desktop.nsh-dev/storage.json` 拷到稳定版目录），从 Tauri 窗口的 localStorage 补上它没有的主题和预览栏宽度。
+- **远程。** 两份 `credentials.json` 的密钥完全不同：稳定版那份 11 月 6 日写的，计数 6；开发库那份今天 09:18 新生成，计数 1，而开发库里的中继注册是从稳定版拷来的同一个主机 id。手机最后一次（今天 08:50）连的是稳定版，所以稳定版那份才是中继认的。开发库原样留着，但开发运行时（不带 `--stable-instance`）现在发现自己的中继主机 id 和稳定版的一样时不开远程，即使环境里有 `REAL_BOT_DEV_REMOTE=1`（你的 `~/.zshrc` 全局导出了它），免得中继看到同一个主机拿着两套密钥。
+
+验证：运行时起来后 `remoteStatus` 是 `online`、2 台设备；库里 232 个会话（225 + 7）；窗口日志 `ready: 81 conversations`，窗口截图里侧栏是稳定版的 7 个 Bot，工作台打开的是导入的项目会话、内容完整。起来后一分钟内「curio 每日上新一件展品」日程照常触发了开发助手，这是定时任务打开后的正常行为。运行时找得到 `~/.local/bin/claude`，默认账号和另一个账号都已登录，那一轮照常往外写字。装好的 0.4.0 读得了改过的库：在它的一份副本上起 `v0.4.0` 的源码运行时，快照、导入的会话和批注都正常返回，所以登录时自动启动的旧版不会读坏它，只是会先占住 17890。`bun test scripts`（27 项，新加 5 项）、`tsc`、宿主 `cargo test`（116 项）、行数预算都过。
+
+You wanted the NSH build to be the one you use during development, with all your earlier conversations, settings and remote control back. Until now it was a separate instance (17990, `real-bot-nsh-dev`, `com.real-bot.daemon.nsh-dev`), seeded from the stable database on 7 November, after which the two diverged.
+
+`dev.ts --stable-instance` (or `dev-runtime.ts --stable-instance` for the runtime on its own) now runs the NSH build in place of the installed app, not beside it. The source daemon takes the stable instance's port 17890, standard data directory and `com.real-bot.daemon` Keychain service, reading keys as `apps/daemon`'s `main.ts` does, with the scheduler and keep-awake on. Remote control uses the identity in the data directory's `dev-remote/credentials.json`. A source runtime loads it only with `REAL_BOT_DEV_REMOTE=1`, so the script sets it and drops it from the environment once the runtime is up, keeping it out of Bots' commands. Pairing and removing a device are therefore confirmed in the settings panel, not by Touch ID; phones already paired are unaffected. The shell gains an `Instance`: `Dev` by default, still refusing 17890; `Stable` with `--stable-instance`, accepting 17890 only and never starting a runtime itself. Login item, updates and the independent runtime still answer as a dev build. Both scripts refuse while the installed app's runtime holds the data directory (its `local-api.json` names a process inside an `.app`).
+
+Taking the data back:
+
+- **Conversations.** The stable database was first backed up with `VACUUM INTO` as `state.before-nsh-cutover-20261111.sqlite`. Seven project sessions (83 messages, the conversations about NSH development itself, which the window's tabs point at) existed only in the dev database. Traced by foreign keys and `*_id` columns, they form a closed set (sessions, participants, messages, attachments, `user_quotes`, `agent_runs`, `spend`): no id collisions, no references outside the set, identical columns on both sides. The import was rehearsed on a copy and then run on the real database. Messages went in one at a time so `messages_assign_seq` renumbered them in their old order (6214–6296); each session's read position moved to its new last number; the foreign-key and integrity checks pass. The two extra lines in the dev copy of the 通识 direct conversation (one question, one answer) were not moved: a direct conversation has turns and memory and is not a closed set. The dev database is left as it was.
+- **Migration.** This build's daemon, opening the stable database for the first time, adds `migrateNullableAnnotationBot` and drops the 1.74 million request receipts the desktop polls had left; about 3 s, measured on a copy.
+- **Settings.** They live in the database. Both model endpoints' keys resolve through `bunKeyStore` without a prompt (the `credentials` entry's partition list holds bun's `teamid:7FRXF46ZSN`). Window preferences are the NSH dev window's own (`nsh/com.real-bot.desktop.nsh-dev/storage.json`, copied into the stable directory), plus the theme and preview width from the Tauri window's localStorage, which it lacked.
+- **Remote.** The two `credentials.json` files hold entirely different keys: the stable one written on 6 November with counter 6, the dev one generated today at 09:18 with counter 1, while the dev database's relay registration is the same host id copied from stable. The phone last connected (today 08:50) to the stable instance, so the stable file is the one the relay knows. The dev database stays as it is, but a dev runtime (without `--stable-instance`) now keeps remote off when its relay host id is the stable one's, even with `REAL_BOT_DEV_REMOTE=1` in the environment (your `~/.zshrc` exports it), so the relay never sees one host with two sets of keys.
+
+Checked: once up, `remoteStatus` is `online` with 2 devices; the database holds 232 sessions (225 + 7); the window logs `ready: 81 conversations`, and its snapshot shows the stable instance's seven Bots in the sidebar and the imported project sessions open in the workbench, whole. Within a minute the "curio 每日上新一件展品" routine fired for 开发助手 as scheduled, which is what the scheduler being on means. The runtime finds `~/.local/bin/claude` with the default and the second account signed in, and that turn went on writing. The installed 0.4.0 can read the changed database: a `v0.4.0` source runtime on a copy of it answered the snapshot, the imported sessions and the annotations, so the old app starting at login would not misread it, only take 17890 first. `bun test scripts` (27 tests, 5 new), `tsc`, the shell's `cargo test` (116) and the line budget pass.

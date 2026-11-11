@@ -1,0 +1,75 @@
+[package]
+name = "deskfolk-nsh"
+description = "Deskfolk's native shell: each desktop's own windows hosting NSH views (AppKit, Win32, GTK), with the window-level parts NSH leaves to the app."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "deskfolk-nsh"
+path = "src/main.rs"
+
+[features]
+# The NSH terminal (`--terminal nsh`) on Ghostty's emulator: see `app/native`'s `ghostty`.
+ghostty = ["deskfolk-app-native/ghostty"]
+
+[dependencies]
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+base64 = "0.22"
+# The update check (`updates.rs`), on every desktop; the installer downloads with it too.
+ureq = { version = "2", default-features = false, features = ["json", "tls"] }
+semver = "1"
+deskfolk-native-terminal = { path = "../native/terminal" }
+deskfolk-native-pdf = { path = "../native/pdf" }
+deskfolk-app-native = { path = "../app/native" }
+nsh-engine.workspace = true
+nsh-core.workspace = true
+nsh-base.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+nsh-platform-windows.workspace = true
+windows = { version = "0.62", features = [
+    "Win32_Foundation", "Win32_Graphics_Dxgi", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_Ole",
+    "Win32_System_Registry", "Win32_UI_WindowsAndMessaging",
+] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nsh-platform-linux.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nsh-platform-macos.workspace = true
+# access(2), dlopen (the remote helper), dup2 (the daemon channel), getuid (launchctl domain).
+libc = "0.2"
+objc2.workspace = true
+block2.workspace = true
+dispatch2.workspace = true
+objc2-foundation = { workspace = true, features = [
+    "NSString", "NSArray", "NSDictionary", "NSError", "NSBundle", "NSNotification", "NSGeometry",
+    "NSObject", "NSURL", "NSProcessInfo", "NSRunLoop", "NSDate", "NSTimer", "NSData",
+] }
+objc2-app-kit = { workspace = true, features = [
+    "NSApplication", "NSWindow", "NSView", "NSResponder", "NSVisualEffectView", "NSMenu",
+    "NSMenuItem", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl",
+    "NSImage", "NSDockTile", "NSRunningApplication", "NSWorkspace", "NSGraphics", "NSEvent",
+    "NSScreen", "NSCell", "NSButtonCell", "NSTitlebarAccessoryViewController", "NSViewController",
+    "NSBitmapImageRep", "NSImageRep", "NSOpenPanel", "NSSavePanel", "NSPanel", "objc2-quartz-core",
+    "objc2-core-graphics", "block2", "NSText", "NSTextView", "NSTextInputClient",
+] }
+objc2-quartz-core = { workspace = true, features = ["CALayer", "objc2-core-graphics"] }
+objc2-core-graphics = { workspace = true, features = ["CGBitmapContext", "CGColorSpace", "CGContext", "CGImage"] }
+# CFPreferences: the app's own `AppleFontSmoothing` (`app.rs`, `text_like_the_messenger`).
+objc2-core-foundation = { workspace = true, features = ["CFCGTypes", "CFNumber", "CFPreferences", "CFString"] }
+objc2-av-foundation = { version = "0.3.2", default-features = false, features = [
+    "std", "block2", "AVCaptureDevice", "AVMediaFormat",
+] }
+objc2-avf-audio = { version = "0.3.2", default-features = false, features = [
+    "std", "AVAudioRecorder", "AVAudioSettings",
+] }
+objc2-user-notifications = { version = "0.3.2", default-features = false, features = [
+    "std", "block2", "UNNotification", "UNNotificationContent", "UNNotificationRequest",
+    "UNNotificationResponse", "UNNotificationSettings", "UNNotificationSound",
+    "UNNotificationTrigger", "UNUserNotificationCenter",
+] }

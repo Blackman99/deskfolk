@@ -1,13 +1,24 @@
 /**
  * Guarded `localStorage`: a server render, a window without storage, or a read or write that
  * throws (a private window, blocked site data) all come back as "nothing kept" instead of an error.
+ * Read off `globalThis`, not `window`: the NSH app's realm has a `localStorage` and no `window`.
  */
+
+/** The storage, or null where there is none or touching it throws. */
+export function localStore(): Storage | null {
+  try {
+    return (globalThis as { localStorage?: Storage }).localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /** The stored string, or null when nothing is kept or storage is unavailable. */
 export function readStored(key: string): string | null {
-  if (typeof window === "undefined" || !window.localStorage) return null;
+  const kept = localStore();
+  if (!kept) return null;
   try {
-    return window.localStorage.getItem(key);
+    return kept.getItem(key);
   } catch {
     return null;
   }
@@ -15,9 +26,10 @@ export function readStored(key: string): string | null {
 
 /** Keeps `value` under `key`; a refusing storage is ignored. */
 export function writeStored(key: string, value: string): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
+  const kept = localStore();
+  if (!kept) return;
   try {
-    window.localStorage.setItem(key, value);
+    kept.setItem(key, value);
   } catch {
     // A private window or blocked storage: the choice just is not kept.
   }
@@ -25,9 +37,10 @@ export function writeStored(key: string, value: string): void {
 
 /** Drops `key`; a refusing storage is ignored. */
 export function forgetStored(key: string): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
+  const kept = localStore();
+  if (!kept) return;
   try {
-    window.localStorage.removeItem(key);
+    kept.removeItem(key);
   } catch {
     // Nothing kept, nothing to forget.
   }

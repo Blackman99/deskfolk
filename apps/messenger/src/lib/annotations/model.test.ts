@@ -204,6 +204,41 @@ test("the gate picks the adapter for the view, needs a target, and refuses unsav
   expect(annotateGate({ target, kind: "image", sourceMode: false, dirty: true })).toEqual({ ok: true, adapter: "image" });
 });
 
+test("in a project session a file hangs on the agent line it was opened from, else the agent's latest line (ADR 0095 decision 28)", () => {
+  const first = aMessage({ id: "m-1", kind: "bot", author: "agent", session_id: "proj", created_at: "2026-11-11T00:00:00.000Z", body: "看过 `src/a.ts` 了" });
+  const mine = aMessage({ id: "m-me", kind: "user", session_id: "proj", created_at: "2026-11-11T00:01:00.000Z", body: "改一下" });
+  const latest = aMessage({ id: "m-2", kind: "bot", author: "agent", session_id: "proj", created_at: "2026-11-11T00:02:00.000Z", body: "改好了" });
+  const other = aMessage({ id: "m-x", kind: "bot", author: "agent", session_id: "proj-2", created_at: "2026-11-11T00:03:00.000Z", body: "别的会话" });
+  const messages = [first, mine, latest, other];
+  const scope = { sessionId: "proj" };
+  // No Bot: the agent line itself.
+  expect(targetFromMessage(first)).toEqual({ messageId: "m-1", sessionId: "proj", turnId: null, botId: null });
+  expect(targetFor(messages, "/code/src/a.ts", first, scope)).toEqual({ messageId: "m-1", sessionId: "proj", turnId: null, botId: null });
+  // Opened from the tree, from your own line, or from nowhere: the agent's latest line here.
+  expect(targetFor(messages, "/code/src/b.ts", undefined, scope)?.messageId).toBe("m-2");
+  expect(targetFor(messages, "/code/src/b.ts", mine, scope)?.messageId).toBe("m-2");
+  // The project's preview is shared by its sessions: a line of another session's does not count here.
+  const otherOwner = aMessage({ id: "m-o", kind: "bot", author: "agent", session_id: "proj-2", created_at: "2026-11-11T00:04:00.000Z", body: "看过 `src/a.ts`" });
+  expect(targetFor([...messages, otherOwner], "/code/src/a.ts", otherOwner, scope)?.messageId).toBe("m-2");
+  // Before it has said anything there is nothing to hang on; a Bot's conversation is as before.
+  expect(targetFor([mine], "/code/src/b.ts", undefined, scope)).toBeNull();
+  expect(targetFor([aMessage({ id: "m-b", kind: "bot", author: "bot-a", session_id: "sess-1", body: "好" })], "notes.md", undefined, { sessionId: "sess-1" })).toBeNull();
+});
+
+test("the gate lets a project session's agent line take a file in its project, and nothing else", () => {
+  const agent = { messageId: "m1", sessionId: "proj", turnId: null, botId: null };
+  const bot = { messageId: "m2", sessionId: "s1", turnId: null, botId: "bot-1" };
+  expect(annotateGate({ target: agent, kind: "text", sourceMode: true, dirty: false, outside: true, inProject: true })).toEqual({ ok: true, adapter: "text" });
+  // A pasted picture in /tmp, say, is not the project's; nor does a view that knows no project (the Svelte) take one.
+  expect(annotateGate({ target: agent, kind: "text", sourceMode: true, dirty: false, outside: true, inProject: false })).toEqual({ ok: false, reason: "outside" });
+  expect(annotateGate({ target: agent, kind: "text", sourceMode: true, dirty: false, outside: false })).toEqual({ ok: false, reason: "outside" });
+  // A Bot's delivery still takes workspace files only.
+  expect(annotateGate({ target: bot, kind: "text", sourceMode: true, dirty: false, outside: true, inProject: true })).toEqual({ ok: false, reason: "outside" });
+  // A project's file before the agent has replied says why.
+  expect(annotateGate({ target: null, kind: "text", sourceMode: true, dirty: false, outside: true, inProject: true })).toEqual({ ok: false, reason: "no-agent-line" });
+  expect(annotateGate({ target: agent, kind: "text", sourceMode: true, dirty: true, outside: true, inProject: true })).toEqual({ ok: false, reason: "dirty" });
+});
+
 test("a reply that lands after newer events does not paint over them; a fresh read wins a tie", () => {
   const sent = row({ id: "a", status: "open", updated_at: "2026-09-23T00:00:01.000Z" });
   const resolved = row({ id: "a", status: "resolved", resolved_by: "bot-1", updated_at: "2026-09-23T00:00:02.000Z" });

@@ -18,7 +18,7 @@ import { migrateLargeJobs } from "./large-job-migration";
 import { migrateLessons } from "./lessons";
 import { migrateMessageEdits } from "./message-edits";
 import { migrateMessageWithdraw } from "./message-withdraw";
-import { backfillQuotes, migrateAnnotations, migrateAskChoices, migrateMessageControl } from "./message-migration";
+import { backfillQuotes, migrateAnnotations, migrateAskChoices, migrateMessageControl, migrateNullableAnnotationBot } from "./message-migration";
 import { migrateModelDefaults } from "./model-defaults";
 import { migrateNotifications } from "./notification-migration";
 import { migrateAcceptanceCheckKinds, migrateDerivedChecks, migrateNullableTaskSession, migratePlans, migrateRequirements, migrateTaskBriefs } from "./plan-migration";
@@ -300,6 +300,7 @@ export function migrateSchema(db: Database): void {
   migrateAcceptanceCheckKinds(db);
   migrateDerivedChecks(db);
   migrateAnnotations(db);
+  migrateNullableAnnotationBot(db);
   migrateAskChoices(db);
   migrateMessageControl(db);
   migrateMessageEdits(db);
