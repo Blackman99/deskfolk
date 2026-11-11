@@ -12,8 +12,7 @@
  * `scripts/terminal-probe.ts` and the frame-rate probe, `--pane pdf` with `--pdf <path>`), until
  * the terminal moves to NSH's own and the probes follow it.
  */
-import { effect, platform, signal } from "nsh";
-import { Window } from "nsh/desktop";
+import { effect, signal } from "nsh";
 import { initialPane, initialSession } from "./launch";
 import { runtime } from "./runtime";
 import { PdfPane, TerminalPane } from "./Tools";
@@ -25,7 +24,7 @@ import { warmCodeColors } from "./ui/code-colors";
 export function Main() {
   // On Windows the window's controls go into the app as on macOS: no title bar of the system's, the
   // caption buttons drawn over the top right (`titleBar().right`), the top rows' empty space dragging.
-  if (platform.os === "windows") Window.setTitleBar({ style: "hidden" });
+  // The shell opens the window that way (`host/src/win.rs`), with Mica behind it where there is some.
   runtime.start();
   // The code colours' grammars and themes, read while the runtime connects.
   warmCodeColors();
