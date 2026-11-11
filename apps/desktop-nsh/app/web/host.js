@@ -20,7 +20,10 @@ function endpoint() {
 
 export async function createHost() {
   return {
-    call(name, args) {
+    // Async, so a name it does not know rejects later instead of throwing in the caller's turn:
+    // NSH can make a host call while it holds the app (laying out a screen), and an answer that
+    // came back at once re-entered it and panicked ("RefCell already borrowed").
+    async call(name, args) {
       const f = functions.get(name);
       if (!f) throw new Error(`no host function ${name}`);
       return f(args);

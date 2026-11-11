@@ -21,7 +21,7 @@
  *
  *   keepFocusIn(() => frameOf(area));
  */
-import { cleanup, host, type ViewRef } from "nsh";
+import { cleanup, host, platform, type ViewRef } from "nsh";
 
 export type ShellPress = {
   /** Window points from its top left (`ViewRef.measure()`'s page coordinates). */
@@ -55,9 +55,18 @@ export function outsideAll(boxes: ReadonlyArray<Box | null | undefined>, x: numb
   return !boxes.some((b) => b && x >= b.x && y >= b.y && x < b.x + b.width && y < b.y + b.height);
 }
 
+/**
+ * Whether there is a shell to talk to: a desktop's. On the web the host is the page's own
+ * (`web/host.js`), which answers none of `shell.*`; asked there anyway, it threw while NSH was
+ * laying out the first screen, and the app panicked before it showed (RefCell already borrowed).
+ */
+function shell(): boolean {
+  return platform.os !== "web" && host.available();
+}
+
 /** Listens for the shell's presses; once, outside any component, so no unmount stops it. */
 export function installPress(): void {
-  if (!host.available()) return;
+  if (!shell()) return;
   reportKeepers();
   host.on("shell.press", (data) => {
     const event = data as unknown as ShellPress;
@@ -92,7 +101,7 @@ export function keepFocusIn(boxes: Boxes): void {
 
 /** Tells the shell how many lists keep the focus now: with none, it lets a field go by itself. */
 function reportKeepers(): void {
-  if (host.available()) void host.call("shell.keepers", keepers.size).catch(() => undefined);
+  if (shell()) void host.call("shell.keepers", keepers.size).catch(() => undefined);
 }
 
 /**

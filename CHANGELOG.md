@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The native app's web build starts again
+
+- The native (NSH) build for the web, which the phone is moving to, stopped at "This app could not start" on every load since 2026-11-11: right at start it asked the page for a desktop-only service (the one that keeps a text field focused while a pick list shows), the page refused at once, and the toolkit could not take a refusal in that moment. The web build no longer asks for it, and the page now refuses anything it lacks a moment later, which the toolkit takes. The desktop builds and the Tauri app are unchanged.
+
 ### A job shows the engine its conversation is on
 
 - In the native (NSH) desktop build, a job's tab could say its group ran on the default engine (General, with its steps) when the group was on another one, such as Video: opening the conversation rebuilt its row in the sidebar's list without the engine, and the job read the default until the next change to the conversation came in. The engine is now kept. The Tauri app had the same gap in its code; there the read that follows opening a conversation usually put the engine back.
