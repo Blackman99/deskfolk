@@ -29,32 +29,32 @@
 </p>
 
 <p align="center">
-  <img alt="要不要先问你，按权限模式来" src="docs/assets/app-zh-ask.jpg"><br>
+  <img alt="要不要先问你，按权限模式来：一个窗口分成四格，群里你放行过的卡片、一个 Claude Code 项目会话、这件事的任务地图和一个终端" src="docs/assets/app-zh-ask.jpg"><br>
   <sub>要不要先问你，按权限模式来</sub>
 </p>
 
 <p align="center">
-  <img alt="说停就停，下一句接着做" src="docs/assets/app-zh-stop.jpg"><br>
+  <img alt="说停就停，下一句接着做：群里你的叫停和改动、这件事的流程、一个项目会话，还有日程上 Bot 的例行事务" src="docs/assets/app-zh-stop.jpg"><br>
   <sub>说停就停，下一句接着做</sub>
 </p>
 
 <p align="center">
-  <img alt="做完有定义：检查、审查和你的放行" src="docs/assets/app-zh-done.jpg"><br>
+  <img alt="做完有定义：检查、审查和你的放行。这件事的流程、交上来的成片、审片通过的群聊，和花了多少" src="docs/assets/app-zh-done.jpg"><br>
   <sub>做完有定义：检查、审查和你的放行</sub>
 </p>
 
 <p align="center">
-  <img alt="回来看结果：会话、成品、看板摆在一起" src="docs/assets/app-zh-desk.jpg"><br>
+  <img alt="回来看结果：会话和成片并排，下面是每张任务都在的看板和整件事" src="docs/assets/app-zh-desk.jpg"><br>
   <sub>回来看结果：会话、成品、看板摆在一起</sub>
 </p>
 
 <p align="center">
-  <img alt="活在哪儿干的：这件事画成一座文件夹小镇，一步步回放" src="docs/assets/app-zh-map.jpg"><br>
+  <img alt="活在哪儿干的：这件事和项目会话各自的文件夹小镇、两个会话、一个终端和接下来的日程，一个窗口分成六格" src="docs/assets/app-zh-map.jpg"><br>
   <sub>活在哪儿干的：这件事画成一座文件夹小镇，一步步回放</sub>
 </p>
 
 <p align="center">
-  <img alt="项目会话：在你的文件夹里直接用 Claude Code 或 Codex，和 Bot 在同一个窗口" src="docs/assets/app-zh-project.jpg"><br>
+  <img alt="项目会话：在你的文件夹里用 Claude Code，它改的页面、终端和它的任务地图，旁边是 Bot 的角色页和它们的群，在同一个窗口" src="docs/assets/app-zh-project.jpg"><br>
   <sub>项目会话：在你的文件夹里直接用 Claude Code 或 Codex，和 Bot 在同一个窗口</sub>
 </p>
 

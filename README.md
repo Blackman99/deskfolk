@@ -29,32 +29,32 @@
 </p>
 
 <p align="center">
-  <img alt="It asks you first, as much as its permission mode says" src="docs/assets/app-en-ask.jpg"><br>
+  <img alt="It asks you first, as much as its permission mode says: one window split four ways, the group with the card you allowed, a Claude Code project session, the job's task map and a terminal" src="docs/assets/app-en-ask.jpg"><br>
   <sub>It asks you first, as much as its permission mode says</sub>
 </p>
 
 <p align="center">
-  <img alt="Say stop and it stops; your next line sets it going" src="docs/assets/app-en-stop.jpg"><br>
+  <img alt="Say stop and it stops; your next line sets it going: your stop and your change in the group, the job's flow, a project session and the Bots' routines on the calendar" src="docs/assets/app-en-stop.jpg"><br>
   <sub>Say stop and it stops; your next line sets it going</sub>
 </p>
 
 <p align="center">
-  <img alt="Done has a definition: checks, a review, your OK" src="docs/assets/app-en-done.jpg"><br>
+  <img alt="Done has a definition: checks, a review, your OK. The job's flow, the film it handed in, the group where the Reviewer passed it, and what it cost" src="docs/assets/app-en-done.jpg"><br>
   <sub>Done has a definition: checks, a review, your OK</sub>
 </p>
 
 <p align="center">
-  <img alt="Come back to results: the chat, the work and the board together" src="docs/assets/app-en-desk.jpg"><br>
+  <img alt="Come back to results: the chat and the film side by side, the board with every ticket and the whole job below" src="docs/assets/app-en-desk.jpg"><br>
   <sub>Come back to results: the chat, the work and the board together</sub>
 </p>
 
 <p align="center">
-  <img alt="Where the work went: the job as a town of its folders, played back step by step" src="docs/assets/app-en-map.jpg"><br>
+  <img alt="Where the work went: the job's town of folders and the project session's, both conversations, a terminal and the routines ahead, in one window split six ways" src="docs/assets/app-en-map.jpg"><br>
   <sub>Where the work went: the job as a town of its folders, played back step by step</sub>
 </p>
 
 <p align="center">
-  <img alt="Project sessions: Claude Code or Codex in a folder of yours, in the same window as your Bots" src="docs/assets/app-en-project.jpg"><br>
+  <img alt="Project sessions: Claude Code in a folder of yours, the page it changed, a terminal and its task map, beside the Bots' roles and their group, in one window" src="docs/assets/app-en-project.jpg"><br>
   <sub>Project sessions: Claude Code or Codex in a folder of yours, in the same window as your Bots</sub>
 </p>
 
