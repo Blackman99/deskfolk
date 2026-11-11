@@ -88,7 +88,12 @@ export function PaneContentHost(props: {
   );
   const previewSessionId = () => {
     const c = content();
-    return c?.kind === "preview" ? (c.sessionId ?? runtime.selectedId ?? null) : null;
+    if (c?.kind !== "preview") return null;
+    // A project's preview is shared by its sessions (ADR 0095 decision 18): what you annotate in it
+    // goes to the one you are in, when that is one of them (decision 28), not the one that last opened it.
+    const selected = runtime.selectedId;
+    if (c.projectDir && selected && projectDirOf(snapshot().sessions, selected) === c.projectDir) return selected;
+    return c.sessionId ?? selected ?? null;
   };
   /** 挂到谁: the message the preview came from when it handed this path over, else the latest Bot message in its conversation that did. */
   const annotationTarget = computed(() => {

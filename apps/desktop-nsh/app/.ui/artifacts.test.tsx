@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "nsh/test";
+import { copyFor } from "../src/m/copy.ts";
 import { openStory, seeded } from "./fixture";
 
 type App = Awaited<ReturnType<typeof openStory>>;
@@ -167,6 +168,20 @@ test("a project session's file opens editable, outside the workspace, and is sav
   await app.waitUntil(() => state(app).startsWith("state:read"), { timeout: LOAD_MS });
   expect(state(app)).toContain("# edited");
   expect(state(app)).toContain("def main");
+});
+
+test("a project session's file takes annotations once there is an agent line to hang them on", async () => {
+  const t = copyFor("zh").stream;
+  const app = await openStory("artifacts", {}, { projectDir: seeded.projectDir });
+  await app.waitFor("id:artifacts", { timeout: 15_000 });
+  await app.press("id:story-make-project");
+  await app.waitFor("id:artifact-code-editor", { timeout: LOAD_MS });
+  // Outside the workspace, yet not refused as elsewhere on the Mac: the agent has not replied yet.
+  await app.waitUntil(() => app.texts().includes(t.annotationNoAgentLine), { timeout: LOAD_MS });
+  expect(app.shows("id:annotation-toggle")).toBe(true);
+  await app.press("id:story-project-target");
+  await app.waitUntil(() => app.texts().includes(t.annotationAddHint), { timeout: LOAD_MS });
+  expect(app.texts()).not.toContain(t.annotationNoAgentLine);
 });
 
 test("the phone's list opens as a sheet and a picked file closes it", async () => {

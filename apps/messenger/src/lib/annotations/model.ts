@@ -3,6 +3,7 @@
  * 从预览打开的方式推出「挂到谁」；以及能不能在当前预览里加批注。
  */
 import {
+  PROJECT_AGENT_AUTHOR,
   USER_MEMBER,
   describeAnchor,
   normalizeCitedPath,
@@ -25,7 +26,8 @@ export type AnnotationTarget = {
   messageId: string;
   sessionId: string;
   turnId: string | null;
-  botId: string;
+  /** The Bot that delivered it; null for a project session's agent line (ADR 0095 decision 28). */
+  botId: string | null;
 };
 
 export function filterAnnotations(rows: readonly Annotation[], filter: AnnotationListFilter): Annotation[] {
@@ -212,10 +214,25 @@ export function contentShaFromEtag(etag: string | null | undefined): string | nu
   return /^[0-9a-f]{64}$/.test(bare) ? bare : null;
 }
 
-/** The message a preview hangs on: the one it was opened from, when that is a Bot's. */
+/** The message a preview hangs on: the one it was opened from, when that is a Bot's or a project session's agent's. */
 export function targetFromMessage(message: Message | null | undefined): AnnotationTarget | null {
   if (!message || message.kind !== "bot" || message.author === USER_MEMBER) return null;
-  return { messageId: message.id, sessionId: message.session_id, turnId: message.turn_id, botId: message.author };
+  const botId = message.author === PROJECT_AGENT_AUTHOR ? null : message.author;
+  return { messageId: message.id, sessionId: message.session_id, turnId: message.turn_id, botId };
+}
+
+function isAgentLine(message: Message): boolean {
+  return message.kind === "bot" && message.author === PROJECT_AGENT_AUTHOR;
+}
+
+/** A project session's newest agent line; null anywhere else, or before it has said anything. */
+function latestAgentLine(messages: readonly Message[], sessionId: string | null): Message | null {
+  let latest: Message | null = null;
+  for (const message of messages) {
+    if (message.session_id !== sessionId || !isAgentLine(message)) continue;
+    if (!latest || message.created_at > latest.created_at || (message.created_at === latest.created_at && message.id > latest.id)) latest = message;
+  }
+  return latest;
 }
 
 type CitesPath = (message: Message, relpath: string) => boolean;
@@ -280,6 +297,10 @@ function linksTo(message: Message, relpath: string): boolean {
  * 别的 Bot 交出的文件、你自己上传的文件）按 `deliveryFor` 找——同一会话里最近交出它的 Bot 消息，先找
  * 那件事里的。没有哪条交出过，再照这个顺序看链接了它的：先是打开预览的那条，再是最近的。交出的总比只
  * 链接的先：评审 Bot 链接了别人交出的文件，批注仍回到交出它的那位。两样都没有的文件没有去处。
+ *
+ * 项目会话里（ADR 0095 决定 28）Agent 不交出文件，也很少给链接：项目目录里的文件挂到打开它的那条
+ * Agent 回复上，不是从回复里打开的，就挂到这个会话里 Agent 最新的一条；它还没说过话就没有去处。
+ * 一个项目的预览由它的各个会话共用：打开它的回复不在 `scope` 这个会话里，就不算。
  */
 export function targetFor(
   messages: readonly Message[],
@@ -287,12 +308,14 @@ export function targetFor(
   owner: Message | null | undefined,
   scope: { sessionId: string | null; taskId?: string | null },
 ): AnnotationTarget | null {
+  const from = owner && isAgentLine(owner) && owner.session_id !== scope.sessionId ? null : owner;
   for (const cites of [handsOver, linksTo]) {
-    const own = owner && cites(owner, relpath) ? targetFromMessage(owner) : null;
+    const own = from && cites(from, relpath) ? targetFromMessage(from) : null;
     const found = own ?? targetFromMessage(latestCiting(messages, relpath, scope, cites));
     if (found) return found;
   }
-  return null;
+  if (from && isAgentLine(from)) return targetFromMessage(from);
+  return targetFromMessage(latestAgentLine(messages, scope.sessionId));
 }
 
 /** Which anchor adapter the view on screen uses; null for a kind nothing can be annotated on. */
@@ -318,18 +341,23 @@ export const ADAPTER_ANCHOR_KIND = {
   media: "media_time",
 } as const satisfies Record<AnnotationAdapter, Annotation["anchor_kind"]>;
 
-export type AnnotateGate = { ok: true; adapter: AnnotationAdapter } | { ok: false; reason: "no-target" | "dirty" | "kind" | "outside" };
+export type AnnotateGate = { ok: true; adapter: AnnotationAdapter } | { ok: false; reason: "no-target" | "no-agent-line" | "dirty" | "kind" | "outside" };
 
 /**
  * Whether the preview on screen can take a new annotation, and if not, why. Unsaved edits block
  * every text-backed view: an anchor must point at text that is on disk.
+ *
+ * Whose the note would be decides where the file must be: a Bot's delivery takes a workspace file
+ * (`outside` says it is not one); a project session's agent line a file in that project's directory
+ * (`inProject`, ADR 0095 decision 28). A project's file with no agent line yet to hang on says so.
  */
-export function annotateGate(input: { target: AnnotationTarget | null; kind: ArtifactKind; sourceMode: boolean; dirty: boolean; outside?: boolean }): AnnotateGate {
+export function annotateGate(input: { target: AnnotationTarget | null; kind: ArtifactKind; sourceMode: boolean; dirty: boolean; outside?: boolean; inProject?: boolean }): AnnotateGate {
   const adapter = adapterFor(input.kind, input.sourceMode);
   if (!adapter) return { ok: false, reason: "kind" };
-  // A file opened from elsewhere on the Mac: a note on it has no Bot that could act on it.
-  if (input.outside) return { ok: false, reason: "outside" };
-  if (!input.target) return { ok: false, reason: "no-target" };
+  const agent = input.target ? input.target.botId === null : Boolean(input.inProject);
+  // A file opened from elsewhere on the Mac: a note on it has nobody who could act on it.
+  if (agent ? !input.inProject : input.outside) return { ok: false, reason: "outside" };
+  if (!input.target) return { ok: false, reason: agent ? "no-agent-line" : "no-target" };
   const textBacked = input.kind === "text" || input.kind === "markdown" || input.kind === "html";
   if (input.dirty && textBacked) return { ok: false, reason: "dirty" };
   return { ok: true, adapter };

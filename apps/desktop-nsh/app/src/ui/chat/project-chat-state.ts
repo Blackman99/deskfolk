@@ -2,8 +2,9 @@
  * What a project session's conversation reads of the runtime (the script of `ProjectChat.svelte`
  * apart from its composer's keys and scrolling): the lines, the run going on and the approval it
  * waits on, the agent's whose session it is, the tuning of its account, model and thinking level,
- * plan mode, what it runs beside its reply (tasks, commands, steps), what Stop offers, and where a
- * path the agent cites opens. Accessors that stay live; the pieces of the screen read them.
+ * plan mode, what it runs beside its reply (tasks, commands, steps), what Stop offers, where a
+ * path the agent cites opens, and the annotations a line of yours sent (ADR 0095 decision 28).
+ * Accessors that stay live; the pieces of the screen read them.
  */
 import { computed, effect, signal, untracked } from "nsh";
 import {
@@ -12,11 +13,13 @@ import {
   PROJECT_AGENT_CAPS,
   USER_MEMBER,
   type AgentRunTask,
+  type Annotation,
   type Attachment,
   type Message,
   type PatchProjectSessionRequest,
   type SessionSummary,
 } from "@real-bot/protocol";
+import { annotationsByMessage } from "../../m/annotations/model.ts";
 import { ProjectCitedPaths } from "../../m/chat/project-cited-path.ts";
 import { accountChoices, claudeStatus, loadAgentsStatus, loadClaudeStatus } from "../../m/chat/project-agent-options.svelte.ts";
 import { isCommandTask, placeTasks, sessionTasks, taskCommandRow, taskStepRow, type TaskStopItem } from "../../m/chat/project-tasks.ts";
@@ -229,6 +232,24 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
     });
   }
 
+  // --- annotations: a batch you sent is a line of yours with its cards, as in a Bot's conversation ---
+  const annotationIndex = computed(() => annotationsByMessage(snapshot().annotations));
+  const annotationsOf = (messageId: string): Annotation[] | undefined => annotationIndex().get(messageId);
+  const cardErrors = signal<Record<string, string>>({});
+  /** Only you mark one handled here: the agent has no tool for it. */
+  async function toggleAnnotation(messageId: string, row: Annotation, status: "open" | "resolved"): Promise<void> {
+    const failed = await runtime.patchAnnotation(row.id, { status });
+    const { [messageId]: _dropped, ...rest } = cardErrors();
+    cardErrors.set(failed ? { ...rest, [messageId]: t().stream.annotationSaveFailed } : rest);
+  }
+  /** A card opens its file at the note, from the agent line it hangs on. */
+  function openAnnotation(row: Annotation): void {
+    // Through null, so opening the card that already has focus goes to it again.
+    runtime.annotationFocusId = null;
+    runtime.annotationFocusId = row.id;
+    onOpenArtifact(row.relpath, undefined, row.target_message_id);
+  }
+
   return {
     snapshot,
     sessionId,
@@ -270,6 +291,10 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
     answer,
     stop,
     openCited,
+    annotationsOf,
+    cardErrors,
+    toggleAnnotation,
+    openAnnotation,
   };
 }
 

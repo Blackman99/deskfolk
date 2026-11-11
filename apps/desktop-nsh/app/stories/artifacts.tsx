@@ -8,7 +8,8 @@
  * `story-clean` takes the session away again. One part shows at a time (`story-show-<part>`): preview, workspace, parts.
  * `story-make-project` makes a project session (named "artifacts", so `story-clean` takes it away) on
  * the directory the tests seed (`host.params.projectDir`) and opens its `src/main.py`;
- * `story-read-project` reads that file back.
+ * `story-read-project` reads that file back; `story-project-target` hangs it on an agent line, as
+ * a project session's reply would (ADR 0095 decision 28), to show the annotation gate open.
  */
 import { cleanup, host, Scroll, signal, Text, View, type ViewRef } from "nsh";
 import type { Attachment } from "@real-bot/protocol";
@@ -49,6 +50,8 @@ export default function Artifacts() {
   const current = signal<Attachment | null>(null);
   const sheet = signal(false);
   const noTree = signal(false);
+  /** The agent line a project's file would hang on; none until the story says so. */
+  const projectTarget = signal<{ messageId: string; sessionId: string; turnId: null; botId: null } | null>(null);
   const menu = signal<{ count: number } | null>(null);
   const dialog = signal(false);
   const artifact = new ShellArtifact({
@@ -167,6 +170,7 @@ export default function Artifacts() {
         {button("story-read", "read", () => void read())}
         {button("story-make-project", "make project", () => void makeProject())}
         {button("story-read-project", "read project", () => void readProject())}
+        {button("story-project-target", "agent line", () => projectTarget.set({ messageId: "agent-line", sessionId: "project", turnId: null, botId: null }))}
         {button("story-sheet", "sheet", () => sheet.set(!sheet()))}
         {button("story-no-tree", "no tree", () => noTree.set(!noTree()))}
         <Text testID="story-state" class="text-[12px] text-ink-muted">{`state:${state()}`}</Text>
@@ -209,6 +213,7 @@ export default function Artifacts() {
           <ArtifactPreview
             relpath={projectFile}
             projectDir={projectDir}
+            target={projectTarget()}
             api={runtime.client}
             workspacePath={runtime.snapshot.settings.workspace_path ?? null}
             sheet

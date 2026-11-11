@@ -51,8 +51,8 @@ export function AnnotationList(props: {
   onDelete: (row: Annotation) => void;
   onToggleStatus: (row: Annotation, status: "open" | "resolved") => void;
   onClose?: () => void;
-  /** Nothing here can be annotated (no Bot handed the file over): the empty list says so. */
-  noTarget?: boolean;
+  /** Why nothing can be annotated here: no Bot handed the file over, or a project session's agent has not replied yet. */
+  noTarget?: "no-target" | "no-agent-line" | null;
 }) {
   const filter = signal<AnnotationListFilter>("all");
   const editingId = signal<string | null>(null);
@@ -75,7 +75,8 @@ export function AnnotationList(props: {
     if (filter() === "open") return { title: t.annotationsEmptyOpen, hint: t.annotationsEmptyOpenHint };
     if (filter() === "resolved") return { title: t.annotationsEmptyResolved, hint: t.annotationsEmptyResolvedHint };
     if (filter() === "draft") return { title: t.annotationsEmptyDraft, hint: t.annotationsEmptyDraftHint };
-    return { title: t.annotationsEmpty, hint: props.noTarget ? t.annotationNoTarget : t.annotationsEmptyHint };
+    const hint = props.noTarget === "no-target" ? t.annotationNoTarget : props.noTarget === "no-agent-line" ? t.annotationNoAgentLine : t.annotationsEmptyHint;
+    return { title: t.annotationsEmpty, hint };
   };
   const markNumber = (row: Annotation) => {
     const index = props.annotations.findIndex((a) => a.id === row.id);

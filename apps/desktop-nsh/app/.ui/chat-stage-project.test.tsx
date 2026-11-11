@@ -4,7 +4,7 @@ import { copyFor } from "../src/m/copy.ts";
 import { openStory } from "./fixture";
 
 const t = copyFor("zh");
-const said = (app: any): string => app.texts().find((x: string) => /^(sent:|tune:|answer:|stop|profile:|artifact:|create-bot|cleaned|—)/.test(x)) ?? "";
+const said = (app: any): string => app.texts().find((x: string) => /^(sent:|tune:|answer:|stop|profile:|artifact:|annotation:|create-bot|cleaned|—)/.test(x)) ?? "";
 
 async function project() {
   const app = await openStory("chat-stage");
@@ -53,6 +53,19 @@ test("the plan switch in the box tunes the session's mode", async () => {
   await app.waitUntil(() => app.texts().includes("plan-mode:on"), { timeout: 10_000 });
   await app.press("id:project-plan");
   await app.waitUntil(() => app.texts().includes("plan-mode:off"), { timeout: 10_000 });
+});
+
+test("a batch of annotations sent in a project session shows as cards under your line: they open the file, and you mark them handled", async () => {
+  const app = await project();
+  await app.press("id:story-annotated");
+  await app.waitFor("text:按这两条改", { timeout: 10_000 });
+  await app.waitFor("id:annotation-card-pa-1", { timeout: 10_000 });
+  expect(app.shows("id:annotation-card-pa-2")).toBe(true);
+  expect(app.texts()).toContain("这里改成 let");
+  await app.press("id:annotation-card-pa-1 >> id:annotation-toggle");
+  await app.waitUntil(() => said(app) === "annotation:pa-1:resolved", { timeout: 10_000 });
+  await app.press("id:annotation-card-pa-2 >> id:annotation-card-open");
+  await app.waitUntil(() => said(app) === "artifact:/Users/dev/my-projects/real-bot/src/a.ts", { timeout: 10_000 });
 });
 
 test("a Bot↔Bot direct opens in a popup with its lines and delegation records, and closes", async () => {

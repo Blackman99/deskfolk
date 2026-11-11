@@ -5,12 +5,13 @@
  * `story-cleanup` deletes it); `BotDmDialog` on a Bot↔Bot direct and `ProjectChat` on a project
  * session, both synthetic (the runtime makes neither without a real agent): they are laid over the
  * runtime's snapshot like `chat-composer-2` does, and what would go to the daemon for them
- * (`send`, `tuneProjectSession`, the run's answer and stop) is answered here and logged under `said`.
+ * (`send`, `tuneProjectSession`, the run's answer and stop, a project card's status) is answered here and
+ * logged under `said`; `story-annotated` adds a batch of annotations you sent in the project session.
  * Lines go in through `runtime.client` into the scratch group only: one posted into the fixture's
  * Writer direct would start a turn there and leave it unfinished for every later test.
  */
 import { computed, Scroll, signal, Text, View } from "nsh";
-import { USER_MEMBER, type AgentRun, type Bot, type DelegationView, type Message, type SessionSummary } from "@real-bot/protocol";
+import { USER_MEMBER, type AgentRun, type Annotation, type Bot, type DelegationView, type Message, type SessionSummary } from "@real-bot/protocol";
 import { classifySession, youBotPeer } from "../src/m/sidebar/session-groups";
 import { runtime } from "../src/runtime";
 import { BotDmDialog } from "../src/ui/chat/BotDmDialog";
@@ -28,6 +29,9 @@ const popup = signal(false);
 const runOn = signal<"" | "running" | "approval" | "plan">("");
 const planMode = signal(false);
 const projectLines = signal<Message[]>([]);
+/** The batch of annotations in the project session (ADR 0095 decision 28), and each card's status. */
+const annotated = signal(false);
+const annotationStatus = signal<Record<string, "open" | "resolved">>({ "pa-1": "open", "pa-2": "open" });
 
 const PROJECT_ID = "project-story";
 const BOTDM_ID = "botdm-story";
@@ -123,8 +127,39 @@ function projectBase(): Message[] {
     line({ id: "pj-2", session_id: PROJECT_ID, kind: "bot", author: "claude-code", body: "好的，我看了 README：\n\n- 安装一节有 **三段**\n- 可以合成一段\n\n改好后告诉你。", created_at: "2026-10-19T09:31:00.000Z" }),
     line({ id: "pj-3", session_id: PROJECT_ID, kind: "system", author: "app", body: "已切到新的一天", created_at: D2 }),
     line({ id: "pj-4", session_id: PROJECT_ID, body: "再看一下测试", created_at: "2026-10-20T09:31:00.000Z" }),
+    ...(annotated() ? [line({ id: "pj-5", session_id: PROJECT_ID, body: "按这两条改", created_at: "2026-10-20T09:33:00.000Z" })] : []),
     ...projectLines(),
   ];
+}
+
+const PROJECT_FILE = "/Users/dev/my-projects/real-bot/src/a.ts";
+
+function projectAnnotations(): Annotation[] {
+  if (!annotated()) return [];
+  const row = (id: string, body: string, line: number): Annotation => ({
+    id,
+    status: annotationStatus()[id] ?? "open",
+    relpath: PROJECT_FILE,
+    file_key: PROJECT_FILE,
+    anchor_kind: "text_range",
+    anchor: { start_line: line, start_col: 1, end_line: line, end_col: 13, quote: "const b = 2;", prefix: "", suffix: "" },
+    content_sha256: "0".repeat(64),
+    target_message_id: "pj-2",
+    target_session_id: PROJECT_ID,
+    target_turn_id: null,
+    bot_id: null,
+    session_id: PROJECT_ID,
+    message_id: "pj-5",
+    body,
+    crop_mime: null,
+    resolved_by: annotationStatus()[id] === "resolved" ? USER_MEMBER : null,
+    resolved_note: null,
+    resolved_at: null,
+    created_at: D2,
+    updated_at: D2,
+    stale: null,
+  });
+  return [row("pa-1", "这里改成 let", 2), row("pa-2", "第二行也看看", 3)];
 }
 
 function projectRun(): AgentRun | null {
@@ -155,6 +190,7 @@ const overlaid = computed(() => {
     messages: [...snap.messages, ...(dm ? botDmLines() : []), ...(project ? projectBase() : [])],
     delegations: [...snap.delegations, ...DELEGATION()],
     agentRuns: run ? { ...snap.agentRuns, [PROJECT_ID]: run } : snap.agentRuns,
+    annotations: [...snap.annotations, ...projectAnnotations()],
   };
   return out;
 });
@@ -172,6 +208,7 @@ Object.defineProperty(runtime, "snapshot", {
       messages: value.messages.filter((row: Message) => !own.has(row.session_id)),
       delegations: value.delegations.filter((row: DelegationView) => row.id !== "deleg-1"),
       agentRuns: runs,
+      annotations: value.annotations.filter((row: Annotation) => row.session_id !== PROJECT_ID),
     });
   },
   get: () => overlaid(),
@@ -207,6 +244,15 @@ proto.stopAgentRun = function () {
   return Promise.resolve(null);
 };
 proto.loadProjectRun = () => Promise.resolve();
+// Only you mark a project session's annotation handled; the story keeps the status here.
+const realPatchAnnotation = proto.patchAnnotation!;
+proto.patchAnnotation = function (this: unknown, ...args: unknown[]) {
+  const [id, patch] = args as [string, { status?: "open" | "resolved" }];
+  if (id !== "pa-1" && id !== "pa-2") return realPatchAnnotation.apply(this, args);
+  if (patch.status) annotationStatus.set({ ...annotationStatus(), [id]: patch.status });
+  said.set(`annotation:${id}:${patch.status ?? ""}`);
+  return Promise.resolve(null);
+};
 // The Bot↔Bot direct's delegations are held here.
 const realLoadDelegations = proto.loadDelegations!;
 proto.loadDelegations = function (this: unknown, ...args: unknown[]) {
@@ -300,6 +346,7 @@ export default function ChatStageStory() {
             {button("story-run", "run", () => runOn.set("running"))}
             {button("story-approval", "approval", () => runOn.set("approval"))}
             {button("story-plan", "plan card", () => runOn.set("plan"))}
+            {button("story-annotated", "annotated", () => annotated.set(true))}
             {button("show-popup", "popup", () => popup.set(true))}
             {button("story-cleanup", "clean up", () => void cleanup())}
           </View>

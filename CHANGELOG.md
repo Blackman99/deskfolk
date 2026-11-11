@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Annotate a project session's files
+
+- In the native (NSH) desktop build, a file in a project session's directory now takes annotations as a Bot's artifact does: mark the spot in the preview, collect a batch and send it. It hangs on the agent's reply the file was opened from (or its latest one), and the batch goes out as your next line to Claude Code or Codex, with every annotation spelled out after your words (path, where, the quoted text, your note) and each region's crop as a picture. The cards stay under your line, and only you mark them handled. Before, a project's file opened read-only for notes, and a note could only hang on a Bot's message. The first start after updating rebuilds the annotations table once so it can hold annotations with no Bot ([ADR 0095](docs/adr/0095-project-sessions.md) decision 28).
+
 ### No more half-second stalls after weeks of use
 
 - Every change the app makes (sending a line, marking a conversation read, the desktop's notification check every two seconds) leaves a request receipt, and each one first tidied the receipts it keeps bodies for by reading through all of them. After a few weeks there were over a million, so each change took about 400 ms and, while it ran, held up every other request: switching conversations or opening a file could wait that long at random, every couple of seconds. An index now leads that tidy-up straight to the few receipts it touches, about 6 ms however many have piled up. It is built once, on the first start after updating (under a second on a large database).

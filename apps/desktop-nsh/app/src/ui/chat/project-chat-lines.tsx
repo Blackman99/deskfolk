@@ -11,10 +11,11 @@
  * stay out of it, so a drag runs from one line into the next and copies the words alone.
  */
 import { Text, View } from "nsh";
-import type { Message } from "@real-bot/protocol";
+import type { Annotation, Message } from "@real-bot/protocol";
 import { focusMode } from "../../m/chat/focus-mode.svelte.ts";
 import { formatDateDivider, formatMessageTime } from "../../m/chat/chat-view.ts";
 import { copy, runtime } from "../../runtime";
+import { AnnotationCards } from "../annotations/AnnotationCards";
 import { CommandActivity } from "./CommandActivity";
 import { MarkdownBody } from "../MarkdownBody";
 import { MessageAttachments } from "./MessageAttachments";
@@ -46,6 +47,9 @@ export function EarlierLine(props: { loading: boolean }) {
     </View>
   );
 }
+
+/** A project session has no Bot: its cards name only you as who handled one. */
+const NO_BOTS: ReadonlyMap<string, { name: string }> = new Map();
 
 export function ProjectLine(props: {
   message: Message;
@@ -89,6 +93,18 @@ export function ProjectLine(props: {
                 onPreview={(att) => props.onOpenArtifact(att.workspace_relpath, att, msg().id)}
                 onOpenImage={props.onOpenImage}
               />
+            </If>
+            <If when={s().annotationsOf(msg().id)}>
+              {(rows: () => Annotation[]) => (
+                <AnnotationCards
+                  annotations={rows()}
+                  locale={s().locale()}
+                  bots={NO_BOTS}
+                  onOpen={s().openAnnotation}
+                  onToggleStatus={(row, status) => void s().toggleAnnotation(msg().id, row, status)}
+                  error={s().cardErrors()[msg().id] ?? null}
+                />
+              )}
             </If>
           </View>
           <View class="mt-[3px]">{time()}</View>

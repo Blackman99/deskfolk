@@ -84,6 +84,11 @@ function dataUrlOf(url: () => string | null) {
   return shown;
 }
 
+/** Why the list cannot take a note here, when it is about where the note would go. */
+function noTargetOf(gate: { ok: boolean; reason?: string | null }): "no-target" | "no-agent-line" | null {
+  return !gate.ok && (gate.reason === "no-target" || gate.reason === "no-agent-line") ? gate.reason : null;
+}
+
 export function ArtifactBody(props: {
   locale: "zh" | "en";
   bots: ReadonlyMap<string, { name: string }>;
@@ -481,7 +486,7 @@ export function ArtifactBody(props: {
             onClose={() => {
               annot().annotOpen = false;
             }}
-            noTarget={!gate().ok && gate().reason === "no-target"}
+            noTarget={noTargetOf(gate())}
           />
         </View>
       </If>

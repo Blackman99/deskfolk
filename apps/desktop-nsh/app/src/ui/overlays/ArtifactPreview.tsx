@@ -227,12 +227,12 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
   const canDownload = () =>
     remoteClient() && Boolean(relpath()) && kind() !== "directory" && isInAppPreviewKind(kind()) && attachment()?.exists !== false && !loader.missing;
   const downloadKey = () => `${byteSource()}:${attachment()?.id ?? ""}:${relpath()}`;
-  /** A file opened from elsewhere on the Mac reads like any other, but saving and notes stay in the workspace. */
+  /** A file opened from elsewhere on the Mac reads like any other, but saving and a Bot's notes stay in the workspace. */
   const inWorkspace = () => citedInWorkspace(props.workspacePath ?? null, relpath(), treeSrc.home);
   /**
    * A file in the project session's directory (ADR 0095) is edited and saved where it is, as a
-   * workspace file is (the daemon writes inside a project's directory too); notes stay the
-   * workspace's. The Svelte kept such a file read-only.
+   * workspace file is (the daemon writes inside a project's directory too), and takes notes for
+   * the session's agent (decision 28). The Svelte kept such a file read-only.
    */
   const writable = () => inWorkspace() || treeSrc.projectRoot !== null;
   const canSave = () =>
@@ -240,7 +240,9 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
   /** Unsaved: the editor's buffer in the source view, the text the rendered view shows otherwise. */
   const dirty = computed(() => (sourceMode() && editor() ? editorDirty() : loader.text !== null && loader.diskText !== null && loader.text !== loader.diskText));
   dirtyOf = dirty;
-  const gate = computed(() => annotateGate({ target: mode() === "workspace" ? null : (props.target ?? null), kind: kind(), sourceMode: sourceMode(), dirty: dirty(), outside: !inWorkspace() }));
+  const gate = computed(() =>
+    annotateGate({ target: mode() === "workspace" ? null : (props.target ?? null), kind: kind(), sourceMode: sourceMode(), dirty: dirty(), outside: !inWorkspace(), inProject: treeSrc.projectRoot !== null }),
+  );
   gateOf = gate;
   const viewAdapter = () => adapterFor(kind(), sourceMode());
   const drawnRows = computed(() => drawnAnnotations(annot.fileAnnotations, { showResolved: annot.annotShowResolved, revealedId: annot.annotRevealedResolved }));
@@ -269,12 +271,12 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
     return mode() !== "workspace" && (annot.fileAnnotations.length > 0 || g.ok || (g.reason !== "kind" && g.reason !== "outside"));
   };
   const showAnnotMode = () => mode() !== "workspace" && needsMode() && gate().ok;
-  const annotHint = (): "" | "dirty" | "no-target" | "streamed" | null => {
+  const annotHint = (): "" | "dirty" | "no-target" | "no-agent-line" | "streamed" | null => {
     const g = gate();
     if (mode() !== "workspace" && g.ok && g.adapter === "media" && loader.streamed && !loader.loading && loader.contentSha === null) return "streamed";
     if (mode() === "workspace" || !sourceMode() || loader.text === null) return null;
     if (g.ok) return "";
-    return g.reason === "dirty" || g.reason === "no-target" ? g.reason : null;
+    return g.reason === "dirty" || g.reason === "no-target" || g.reason === "no-agent-line" ? g.reason : null;
   };
 
   loader.watchLoad();

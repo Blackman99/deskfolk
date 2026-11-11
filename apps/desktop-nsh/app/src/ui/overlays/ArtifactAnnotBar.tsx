@@ -31,7 +31,7 @@ export function ArtifactAnnotBar(props: {
   canDownload: boolean;
   showAnnotToggle: boolean;
   showAnnotMode: boolean;
-  annotHint: "" | "dirty" | "no-target" | "streamed" | null;
+  annotHint: "" | "dirty" | "no-target" | "no-agent-line" | "streamed" | null;
   /** Said in the hint's place: why this file is read-only, or shown as source. */
   fileNotice: string | null;
   showSourceToggle: boolean;
@@ -49,6 +49,7 @@ export function ArtifactAnnotBar(props: {
   const btnHeight = () => (narrowWindow() ? "h-[32px]" : "h-[26px]");
   const hint = () => {
     const h = props.annotHint;
+    if (h === "no-agent-line") return t().annotationNoAgentLine;
     return h === "dirty" ? t().annotationDirtyHint : h === "no-target" ? t().annotationNoTarget : h === "streamed" ? t().annotationStreamedHint : t().annotationAddHint;
   };
 
