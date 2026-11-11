@@ -9,7 +9,7 @@
 import { Image, Scroll, Text, View } from "nsh";
 import { TextView, type TextViewBlock, type TextViewCustomNode, type TextViewImage } from "nsh/base";
 import { narrowWindow } from "../Modal";
-import { officePicture } from "./office-model";
+import { officePictureLive } from "./office-model";
 
 const INK = "#171717";
 const PAPER = "#ffffff";
@@ -22,11 +22,11 @@ type TableData = {
 
 function Blocks(props: { id: string; blocks: TextViewBlock[]; align?: "center" | "right" }) {
   const renderImage = (image: TextViewImage) => {
-    const src = officePicture(props.id, image.src);
-    return src ? (
-      <Image src={src} accessibilityLabel={image.alt} style={{ width: image.width as number | undefined, height: image.height as number | undefined, maxWidth: "100%" }} />
-    ) : (
-      <Text class="text-[13px]" style={{ color: INK }}>{image.alt ?? ""}</Text>
+    const src = officePictureLive(props.id, image.src);
+    return (
+      <If when={src() !== ""} else={<Text class="text-[13px]" style={{ color: INK }}>{image.alt ?? ""}</Text>}>
+        <Image src={src() ?? ""} accessibilityLabel={image.alt} style={{ width: image.width as number | undefined, height: image.height as number | undefined, maxWidth: "100%" }} />
+      </If>
     );
   };
   const renderCustom = (node: TextViewCustomNode) => {

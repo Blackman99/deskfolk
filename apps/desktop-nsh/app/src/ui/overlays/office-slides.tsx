@@ -6,7 +6,7 @@
  */
 import { Image, Text, View, type JSX } from "nsh";
 import { slideZoom } from "../../m/overlays/office/slides.ts";
-import { officePicture, type DeckModel, type SlideParagraph, type SlideShape } from "./office-model";
+import { officePictureLive, type DeckModel, type SlideParagraph, type SlideShape } from "./office-model";
 
 const ALIGN = { l: "left", ctr: "center", r: "right", just: "justify" } as const;
 const ANCHOR = { t: "flex-start", ctr: "center", b: "flex-end" } as const;
@@ -54,11 +54,11 @@ function ShapeView(props: { shape: SlideShape; id: string; s: number }): JSX.Ele
   const frame = { position: "absolute" as const, left: shape.x * s, top: shape.y * s, width: shape.w * s, height: shape.h * s };
   const turn = shape.rot ? { transform: `rotate(${shape.rot}deg)` } : {};
   if (shape.type === "picture") {
-    const src = officePicture(props.id, shape.src ?? "");
-    return src ? (
-      <Image src={src} accessibilityLabel={shape.alt} style={{ ...frame, ...turn, objectFit: "fill" }} />
-    ) : (
-      <View style={frame} />
+    const src = officePictureLive(props.id, shape.src ?? "");
+    return (
+      <If when={src()} else={<View style={frame} />}>
+        <Image src={src() ?? ""} accessibilityLabel={shape.alt} style={{ ...frame, ...turn, objectFit: "fill" }} />
+      </If>
     );
   }
   if (shape.geom === "line") {

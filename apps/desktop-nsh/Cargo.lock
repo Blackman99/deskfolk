@@ -1110,6 +1110,7 @@ dependencies = [
  "des",
  "giallo",
  "hayro",
+ "image",
  "jpeg-decoder",
  "libghostty-vt",
  "markdown",

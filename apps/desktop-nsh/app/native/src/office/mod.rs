@@ -6,6 +6,7 @@
 //! `office_image` turns one into a data URL when the view needs it.
 
 mod archive;
+mod picture;
 mod color;
 mod sheet;
 mod slides;
@@ -14,7 +15,7 @@ mod xml;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
@@ -24,7 +25,8 @@ use nsh_core::prelude::*;
 pub use archive::{Kind, OFFICE_MAX_BYTES};
 
 thread_local! {
-    static OPEN: RefCell<HashMap<String, Rc<RefCell<archive::Package>>>> = RefCell::new(HashMap::new());
+    /// Shared with the blocking threads a picture is read on (`office_image_async`).
+    static OPEN: RefCell<HashMap<String, Arc<Mutex<archive::Package>>>> = RefCell::new(HashMap::new());
 }
 
 /// The model of `data` as JSON, and the package when pictures are to be read from it later.
@@ -71,7 +73,12 @@ impl Office {
         if !response.ok() {
             return Err(format!("the runtime answered {}", response.status()));
         }
-        Self::open_office_bytes(id, kind_name(kind).into(), B64.encode(&response.body))
+        // Read on a blocking thread, from the bytes as they came: a 300 000-row sheet held the
+        // engine for a quarter of a second, after a Base64 round trip of the whole file.
+        let body = response.body;
+        let (json, pkg) = blocking(move || model(kind, body)).await.map_err(|e| e.to_string())??;
+        keep(id, pkg);
+        Ok(json)
     }
 
     /// As `open_office`, from the file's bytes in Base64.
@@ -79,20 +86,28 @@ impl Office {
         let kind = Kind::parse(&kind)?;
         let data = B64.decode(base64.trim()).map_err(|_| archive::INVALID.to_string())?;
         let (json, pkg) = model(kind, data)?;
-        OPEN.with_borrow_mut(|open| {
-            open.remove(&id);
-            if let Some(pkg) = pkg {
-                open.insert(id, Rc::new(RefCell::new(pkg)));
-            }
-        });
+        keep(id, pkg);
         Ok(json)
     }
 
     /// The picture `part` of Office document `id` as a data URL.
     pub fn office_image(id: String, part: String) -> Result<String, String> {
         let pkg = OPEN.with_borrow(|open| open.get(&id).cloned()).ok_or("the document is not open")?;
-        let bytes = pkg.borrow_mut().read(&part).ok_or("no such picture")?;
+        let bytes = pkg.lock().map_err(|e| e.to_string())?.read(&part).ok_or("no such picture")?;
         Ok(format!("data:{};base64,{}", archive::mime_of(&part), B64.encode(bytes)))
+    }
+
+    /// The same, read on a blocking thread and, past `max` pixels on its longer side, scaled down
+    /// to it: a photo pasted into a document at full size (8000 pixels, 24 MB) was decoded from its
+    /// data URL on the engine thread each time the page was drawn.
+    pub async fn office_image_async(id: String, part: String, max: f64) -> Result<String, String> {
+        let pkg = OPEN.with_borrow(|open| open.get(&id).cloned()).ok_or("the document is not open")?;
+        blocking(move || {
+            let bytes = pkg.lock().map_err(|e| e.to_string())?.read(&part).ok_or("no such picture")?;
+            Ok(picture::data_url(&part, bytes, max as u32))
+        })
+        .await
+        .map_err(|e| e.to_string())?
     }
 
     /// Forgets Office document `id`.
@@ -101,12 +116,14 @@ impl Office {
     }
 }
 
-fn kind_name(kind: Kind) -> &'static str {
-    match kind {
-        Kind::Word => "word",
-        Kind::Spreadsheet => "spreadsheet",
-        Kind::Presentation => "presentation",
-    }
+/// Files the package of document `id`, for its pictures; a document without one forgets the last.
+fn keep(id: String, pkg: Option<archive::Package>) {
+    OPEN.with_borrow_mut(|open| {
+        open.remove(&id);
+        if let Some(pkg) = pkg {
+            open.insert(id, Arc::new(Mutex::new(pkg)));
+        }
+    });
 }
 
 #[cfg(test)]

@@ -34,6 +34,12 @@ import type { artifactByteSource } from "../../m/overlays/artifacts.ts";
 import { runtime } from "../../runtime";
 import { createPdfText } from "./pdf-text";
 
+/**
+ * Draws a page on a blocking thread (`renderPdfPageAsync` in `app/native/src/pdf`), when this
+ * build's host has it; an older host draws on the engine thread, as before.
+ */
+const renderAsync = (Documents as unknown as { renderPdfPageAsync?: (id: string, index: number, width: number) => Promise<string> }).renderPdfPageAsync;
+
 /** Rendering waits this long after a zoom, so a pinch does not draw every step of the way. */
 export const ZOOM_SETTLE_MS = 120;
 
@@ -111,6 +117,10 @@ export function createPdfPages(host: {
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
   const drawn = new Map<number, Drawn>();
   let useClock = 0;
+  /** Pages being drawn off the engine thread, at the width asked for. */
+  const drawing = new Map<number, number>();
+  /** Bumped when a page drawn off the engine thread lands, so the rows read it. */
+  const landed = signal(0);
 
   const numPages = () => sizes().length;
   const pageNumbers = computed(() => Array.from({ length: sizes().length }, (_, i) => i + 1));
@@ -128,6 +138,7 @@ export function createPdfPages(host: {
 
   function forgetImages(): void {
     drawn.clear();
+    drawing.clear();
   }
 
   function reset(): void {
@@ -307,6 +318,7 @@ export function createPdfPages(host: {
    * while it is near the page on screen; the pixels and page count are bounded as in the messenger.
    */
   function pageImage(n: number): string {
+    void landed();
     const id = docKey();
     if (!id || n < 1 || n > numPages()) return "";
     const size = sizes()[n - 1]!;
@@ -319,12 +331,36 @@ export function createPdfPages(host: {
       had.lastUsed = ++useClock;
       return had.uri;
     }
+    if (typeof renderAsync === "function") {
+      // Drawn off the engine thread; the page keeps its drawing at the last zoom until then.
+      if (drawing.get(n) !== px) {
+        drawing.set(n, px);
+        void renderAsync(id, n - 1, px).then(
+          (uri) => {
+            if (drawing.get(n) !== px || untracked(docKey) !== id) return;
+            drawing.delete(n);
+            keep(n, px, uri, size);
+            landed.set(untracked(landed) + 1);
+          },
+          () => {
+            if (drawing.get(n) === px) drawing.delete(n);
+          },
+        );
+      }
+      return had?.uri ?? "";
+    }
     let uri = "";
     try {
       uri = Documents.renderPdfPage(id, n - 1, px);
     } catch {
       return "";
     }
+    keep(n, px, uri, size);
+    return uri;
+  }
+
+  /** Keeps page `n`'s drawing and lets go of the ones far from the page on screen. */
+  function keep(n: number, px: number, uri: string, size: Size): void {
     drawn.set(n, { px, uri, pixels: px * Math.round((px * size.height) / Math.max(1, size.width)), lastUsed: ++useClock });
     const near = new Set<number>();
     const at = untracked(currentPage);
@@ -332,7 +368,6 @@ export function createPdfPages(host: {
     near.add(n);
     const rows = [...drawn.entries()].map(([page, d]) => ({ page, pixels: d.pixels, lastUsed: d.lastUsed }));
     for (const page of pickEvictions(rows, near)) drawn.delete(page);
-    return uri;
   }
 
   return {

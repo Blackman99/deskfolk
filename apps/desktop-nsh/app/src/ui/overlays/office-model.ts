@@ -4,6 +4,7 @@
  * (`m/overlays/office/spreadsheet.ts`); the Word and PowerPoint models are the ones the viewer's
  * parts draw (`office-document.tsx`, `office-slides.tsx`).
  */
+import { signal } from "nsh";
 import { Office } from "deskfolk/native";
 import type { TextViewBlock } from "nsh/base";
 import { runtime } from "../../runtime";
@@ -99,6 +100,7 @@ export async function openOffice(id: string, kind: OfficeKind, source: OfficeSou
 }
 
 export function closeOffice(id: string): void {
+  forgetPictures(id);
   Office.closeOffice(id);
 }
 
@@ -109,4 +111,42 @@ export function officePicture(id: string, src: string): string {
   } catch {
     return "";
   }
+}
+
+/** How large a document's picture is handed to the image view, in pixels on its longer side. */
+export const OFFICE_PICTURE_MAX = 2560;
+
+/** Reads a picture off the engine thread and scaled to `OFFICE_PICTURE_MAX`, when this build's host can. */
+const pictureAsync = (Office as unknown as { officeImageAsync?: (id: string, part: string, max: number) => Promise<string> }).officeImageAsync;
+
+const pictures = new Map<string, ReturnType<typeof signal<string | null>>>();
+
+/**
+ * `officePicture`, read off the engine thread: null while it is on the way, then the data URL, or
+ * "" when there is none. A full-size photo in a document (24 MB) was decoded on the engine thread
+ * each time its page was drawn. An older host reads it as before.
+ */
+export function officePictureLive(id: string, src: string): () => string | null {
+  if (typeof pictureAsync !== "function") {
+    const now = officePicture(id, src);
+    return () => now;
+  }
+  const key = `${id}\u0000${src}`;
+  let held = pictures.get(key);
+  if (!held) {
+    const made = signal<string | null>(null);
+    held = made;
+    pictures.set(key, made);
+    void pictureAsync(id, src.replace(/^office-image:/, ""), OFFICE_PICTURE_MAX).then(
+      (url) => made.set(url),
+      () => made.set(""),
+    );
+  }
+  const live = held;
+  return () => live() ?? null;
+}
+
+/** Lets go of the pictures read for document `id`. */
+function forgetPictures(id: string): void {
+  for (const key of [...pictures.keys()]) if (key.startsWith(`${id}\u0000`)) pictures.delete(key);
 }

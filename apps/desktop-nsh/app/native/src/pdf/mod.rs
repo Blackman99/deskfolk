@@ -28,6 +28,7 @@ mod tests;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
@@ -41,7 +42,8 @@ use nsh_core::prelude::*;
 
 /// An open document and what has been read from it so far (per page, as JSON).
 pub(crate) struct Doc {
-    pub(crate) pdf: Pdf,
+    /// Shared with the blocking threads a page is drawn on (`render_pdf_page_async`).
+    pub(crate) pdf: Arc<Pdf>,
     texts: RefCell<HashMap<usize, Rc<String>>>,
     links: RefCell<HashMap<usize, Rc<String>>>,
 }
@@ -61,29 +63,71 @@ fn doc(id: &str) -> Result<Rc<Doc>, String> {
     PDFS.with_borrow(|pdfs| pdfs.get(id).cloned()).ok_or_else(|| "the PDF is not open".to_string())
 }
 
-/// Opens `data` with `password` as `id`; its pages' sizes in points, `[w0, h0, w1, h1, …]`.
-/// `retry` says the password was typed by the reader, so a refusal means a wrong one.
-fn open(id: String, data: Vec<u8>, password: &str, retry: bool) -> Result<Vec<f64>, String> {
-    let pdf = match Pdf::new_with_password(data.clone(), password) {
-        Ok(pdf) => pdf,
-        Err(LoadPdfError::Decryption(DecryptionError::PasswordProtected)) => {
-            LOCKED.with_borrow_mut(|locked| locked.insert(id, data));
-            return Err(if retry { WRONG_PASSWORD } else { PASSWORD_REQUIRED }.to_string());
+/// What reading a file's bytes as a PDF came to: the document and its pages' sizes in points
+/// (`[w0, h0, w1, h1, …]`), a file that wants a password (its bytes, kept for `unlock_pdf`), or why
+/// it is not one. Made on any thread; `keep` files it on the engine's.
+enum Parsed {
+    Ready(Pdf, Vec<f64>),
+    Locked(Vec<u8>),
+    Broken(String),
+}
+
+fn parse(data: Vec<u8>, password: &str) -> Parsed {
+    match Pdf::new_with_password(data.clone(), password) {
+        Ok(pdf) => {
+            let sizes = pdf
+                .pages()
+                .iter()
+                .flat_map(|page| {
+                    let (w, h) = page.render_dimensions();
+                    [w as f64, h as f64]
+                })
+                .collect();
+            Parsed::Ready(pdf, sizes)
         }
-        Err(e) => return Err(format!("not a readable PDF: {e:?}")),
-    };
-    let sizes = pdf
-        .pages()
-        .iter()
-        .flat_map(|page| {
-            let (w, h) = page.render_dimensions();
-            [w as f64, h as f64]
-        })
-        .collect();
-    LOCKED.with_borrow_mut(|locked| locked.remove(&id));
-    let doc = Doc { pdf, texts: RefCell::new(HashMap::new()), links: RefCell::new(HashMap::new()) };
-    PDFS.with_borrow_mut(|pdfs| pdfs.insert(id, Rc::new(doc)));
-    Ok(sizes)
+        Err(LoadPdfError::Decryption(DecryptionError::PasswordProtected)) => Parsed::Locked(data),
+        Err(e) => Parsed::Broken(format!("not a readable PDF: {e:?}")),
+    }
+}
+
+/// Files `parsed` as `id`; its pages' sizes. `retry` says the password was typed by the reader,
+/// so a refusal means a wrong one.
+fn keep(id: String, parsed: Parsed, retry: bool) -> Result<Vec<f64>, String> {
+    match parsed {
+        Parsed::Ready(pdf, sizes) => {
+            LOCKED.with_borrow_mut(|locked| locked.remove(&id));
+            let doc = Doc { pdf: Arc::new(pdf), texts: RefCell::new(HashMap::new()), links: RefCell::new(HashMap::new()) };
+            PDFS.with_borrow_mut(|pdfs| pdfs.insert(id, Rc::new(doc)));
+            Ok(sizes)
+        }
+        Parsed::Locked(data) => {
+            LOCKED.with_borrow_mut(|locked| locked.insert(id, data));
+            Err(if retry { WRONG_PASSWORD } else { PASSWORD_REQUIRED }.to_string())
+        }
+        Parsed::Broken(why) => Err(why),
+    }
+}
+
+/// Opens `data` with `password` as `id`, on this thread; its pages' sizes in points.
+fn open(id: String, data: Vec<u8>, password: &str, retry: bool) -> Result<Vec<f64>, String> {
+    keep(id, parse(data, password), retry)
+}
+
+/// Page `index` (from 0) of `pdf`, `width` pixels wide, as a PNG data URL.
+fn render_page(pdf: &Pdf, index: f64, width: f64) -> Result<String, String> {
+    let pages = pdf.pages();
+    let page = pages.get(index as usize).ok_or("no such page")?;
+    let (page_width, _) = page.render_dimensions();
+    let scale = (width as f32 / page_width).clamp(0.1, 8.0);
+    let pixmap = render(
+        page,
+        &RenderCache::new(),
+        &InterpreterSettings::default(),
+        &RenderSettings::default(),
+        &PixmapSettings { x_scale: scale, y_scale: scale, bg_color: WHITE },
+    );
+    let png = pixmap.into_png().map_err(|e| format!("cannot encode the page: {e:?}"))?;
+    Ok(format!("data:image/png;base64,{}", B64.encode(png)))
 }
 
 /// Documents the app previews.
@@ -100,7 +144,10 @@ impl Documents {
         if !response.ok() {
             return Err(format!("the runtime answered {}", response.status()));
         }
-        open(id, response.body, "", false)
+        // Read on a blocking thread: a large file's cross-reference table holds the engine otherwise.
+        let body = response.body;
+        let parsed = blocking(move || parse(body, "")).await.map_err(|e| e.to_string())?;
+        keep(id, parsed, false)
     }
 
     /// The same for a file whose bytes the caller has (base64), optionally with a password.
@@ -118,20 +165,14 @@ impl Documents {
 
     /// Page `index` (from 0) of PDF `id`, `width` pixels wide, as a PNG data URL.
     pub fn render_pdf_page(id: String, index: f64, width: f64) -> Result<String, String> {
-        let doc = doc(&id)?;
-        let pages = doc.pdf.pages();
-        let page = pages.get(index as usize).ok_or("no such page")?;
-        let (page_width, _) = page.render_dimensions();
-        let scale = (width as f32 / page_width).clamp(0.1, 8.0);
-        let pixmap = render(
-            page,
-            &RenderCache::new(),
-            &InterpreterSettings::default(),
-            &RenderSettings::default(),
-            &PixmapSettings { x_scale: scale, y_scale: scale, bg_color: WHITE },
-        );
-        let png = pixmap.into_png().map_err(|e| format!("cannot encode the page: {e:?}"))?;
-        Ok(format!("data:image/png;base64,{}", B64.encode(png)))
+        render_page(&doc(&id)?.pdf, index, width)
+    }
+
+    /// The same, drawn on a blocking thread: a page of a scanned file takes 100 ms or more, which
+    /// held the engine on every page scrolled into view.
+    pub async fn render_pdf_page_async(id: String, index: f64, width: f64) -> Result<String, String> {
+        let pdf = doc(&id)?.pdf.clone();
+        blocking(move || render_page(&pdf, index, width)).await.map_err(|e| e.to_string())?
     }
 
     /// The text of page `index` (from 0) as JSON: `[{"s": text, "x", "y", "w", "h": box normalised

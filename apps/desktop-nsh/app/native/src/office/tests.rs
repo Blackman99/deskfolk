@@ -305,3 +305,32 @@ fn a_zip_bomb_and_a_foreign_file_are_refused() {
     let refs: Vec<(&str, &str)> = many.iter().map(|(n, b)| (n.as_str(), *b)).collect();
     assert_eq!(model(Kind::Word, package(&refs)).unwrap_err(), "office-limit");
 }
+
+#[test]
+fn a_full_size_picture_is_scaled_down_and_a_small_one_kept() {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as B64;
+    let png = |w: u32, h: u32, alpha: bool| {
+        let mut out = std::io::Cursor::new(Vec::new());
+        let picture = if alpha {
+            image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(w, h, image::Rgba([10, 20, 30, 128])))
+        } else {
+            image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(w, h, image::Rgb([10, 20, 30])))
+        };
+        picture.write_to(&mut out, image::ImageFormat::Png).unwrap();
+        out.into_inner()
+    };
+    let decode = |url: &str| {
+        let (head, data) = url.split_once(',').unwrap();
+        (head.to_string(), image::load_from_memory(&B64.decode(data).unwrap()).unwrap())
+    };
+    let (head, big) = decode(&super::picture::data_url("ppt/media/photo.png", png(3000, 600, false), 1000));
+    assert_eq!(head, "data:image/jpeg;base64");
+    assert_eq!((big.width(), big.height()), (1000, 200));
+    let (head, clear) = decode(&super::picture::data_url("word/media/logo.png", png(2400, 2400, true), 1000));
+    assert_eq!(head, "data:image/png;base64");
+    assert_eq!((clear.width(), clear.height()), (1000, 1000));
+    let small = png(40, 30, false);
+    assert_eq!(super::picture::data_url("word/media/dot.png", small.clone(), 1000), format!("data:image/png;base64,{}", B64.encode(small)));
+    assert_eq!(super::picture::data_url("word/media/a.emf", vec![1, 2, 3], 1000), format!("data:{};base64,AQID", super::archive::mime_of("word/media/a.emf")));
+}
