@@ -23,7 +23,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### Running out of usage no longer floods the conversation with failures
 
 - When a local agent (Claude Code and the like) is out of usage, signed out or missing, the supervisor no longer calls its Bot back to the tickets it left open. On 2026-11-10 the video director, out of usage, was called back to four scenes twice each within 20 minutes, every call failing at once, and its direct got ten "This turn did not finish: Claude usage limit reached (resets …)" in a row. It is called back again once a turn of it ends some other way (your word, Continue). Nothing resumes on its own after the reset: say something and it goes on.
-- When another wake (a job's result, a check-back) fails it the same way again, a failure line identical to the conversation's last line no longer shows and raises no new notification; it is kept for the Bot only, and Continue on the line above still works.
+- When another wake (a job's result, a check-back) fails it the same way again, a failure line identical to the conversation's last line no longer shows and raises no new notification; it is kept for the Bot only, and Continue on the line above still works. When pressing Continue fails the same way, that failure still shows, with a Continue of its own.
 
 ### A conversation's header line and date lines show on see-through cards
 

@@ -795,14 +795,14 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
     if (!picksUp(ctx, ticket.task_id)) continue;
     const holder = ballHolder(ctx, { ticketId: ticket.id });
     if (holder.kind !== "owner" && holder.kind !== "lead" && holder.kind !== "delegation" && holder.kind !== "reviewer") continue;
-    // Before the quiet window and a ticket whose turn has come alike: on 2026-11-10 three scenes
-    // nobody had started were called seconds apart, each failing on the same usage limit.
-    if (agentOut(ctx, holder.botId)) continue;
     if (dependenciesPending(ctx, ticket)) continue;
     const item = holder.workItemId ? workRow(ctx, holder.workItemId) : null;
     if (item && item.state !== "idle") continue;
     if (item && heldWork(ctx, item)) continue;
     if (engaged(ctx, holder.botId, ticket.task_id, ticket.id, item?.id ?? null)) continue;
+    // Before the quiet window and a ticket whose turn has come alike: on 2026-11-10 three scenes
+    // nobody had started were called seconds apart, each failing on the same usage limit.
+    if (agentOut(ctx, holder.botId)) continue;
     const quiet = quietDeadline(ctx, ticket);
     // Its turn has come (ADR 0060): a ticket nobody has started, every ticket it waits for through,
     // is called at once rather than after the quiet window — a laid-out job goes on when the part

@@ -81,9 +81,10 @@ export function createTurnEndings(deps: LifecycleDeps) {
     const body = completionFailBody(locale, kind, detail, live?.agentLabel ?? null);
     const parentId = live?.parentId ?? null;
     const { message, completed, repeat } = store.transaction(() => {
-      // The same failure again, with nothing said since where it would go, adds nothing to the
-      // conversation: the turn keeps it as its own line, which only the Bot reads (`bot_only`), and
-      // you get no second notification. Its Continue is the line above, which still works.
+      // The same failure again, with nothing said since where it would go and the line there still
+      // offering its Continue, adds nothing to the conversation: the turn keeps it as its own line,
+      // which only the Bot reads (`bot_only`), and you get no second notification. The failure of a
+      // Continue — yours or the supervisor's — always shows, since the line it came from is spent.
       const repeat = store.repeatsLastLine({ sessionId: current.session_id, parentId, author: current.bot_id, body });
       const message = store.insertMessage({
         sessionId: current.session_id,

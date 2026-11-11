@@ -48,7 +48,7 @@ test("out of usage: no call-backs until a turn ends otherwise, and the same fail
   h.store.createTicket({ taskId: plan.id, title: "第三场", worker: bot!.id });
   const seed = h.store.insertMessage({ sessionId: dm, kind: "bot", author: bot!.id, body: "第二场的镜头表写好了" });
   h.store.db.run("UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?", [plan.id, ticket.id, seed.id]);
-  h.script(bot!).reply(failed("agent_limit"), failed("agent_limit"));
+  h.script(bot!).reply(failed("agent_limit"), failed("agent_limit"), failed("agent_limit"));
   h.script(bot!).handle(answerAll);
 
   h.postUser(dm, "接着出第二场", { parentId: seed.id });
@@ -73,6 +73,17 @@ test("out of usage: no call-backs until a turn ends otherwise, and the same fail
   expect(h.turns(bot!)).toHaveLength(2);
   expect(failureLines(h, dm)).toEqual([{ bot_only: 0 }, { bot_only: 1 }]);
   expect(h.store.db.query("SELECT COUNT(*) AS n FROM notifications WHERE kind = 'failure' AND session_id = ?").get(dm)).toEqual({ n: 1 });
+
+  // Continue on the line you can see, failing the same way again: that line's Continue is spent, so
+  // this failure shows, with a Continue of its own; nothing is hidden behind a button you pressed.
+  const shown = h.store.db.query<{ id: string }, [string, string]>("SELECT id FROM messages WHERE session_id = ? AND body = ? AND bot_only = 0")
+    .get(dm, OUT)!;
+  h.engine.continueFromInterrupt(shown.id, { byYou: true });
+  await h.waitIdle();
+  expect(h.turns(bot!)).toHaveLength(3);
+  expect(failureLines(h, dm)).toEqual([{ bot_only: 0 }, { bot_only: 1 }, { bot_only: 0 }]);
+  expect(h.store.db.query("SELECT source_turn_id FROM messages WHERE session_id = ? AND body = ? AND bot_only = 0 ORDER BY message_seq DESC LIMIT 1")
+    .get(dm, OUT)).toEqual({ source_turn_id: null });
 
   // Your word gets it going, and once a turn of it ends otherwise the call-backs reach it again.
   h.postUser(dm, "额度恢复了，继续");

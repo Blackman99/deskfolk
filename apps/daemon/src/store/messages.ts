@@ -185,17 +185,19 @@ function postMessageRows(ctx: StoreContext, sessionId: string, input: { body: st
 
 /**
  * Whether a system line from `author` would only say again the last line you can see where it would
- * go: the newest listed line of the main conversation, or of the thread under `parentId`. On
- * 2026-11-10 視频导演 ran out of usage and every wake after that failed at once, each with its own
- * 「这一轮没写完：Claude 的用量额度用完了（…重置）」 — ten in a row, with nothing between them.
+ * go — the newest listed line of the main conversation, or of the thread under `parentId` — while
+ * that line still offers its Continue. On 2026-11-10 视频导演 ran out of usage and every wake after
+ * that failed at once, each with its own 「这一轮没写完：Claude 的用量额度用完了（…重置）」 — ten
+ * in a row, with nothing between them. A line already continued (by your press, or the supervisor's)
+ * is not one to fall back on: the failure of that Continue shows, with a Continue of its own.
  */
 export function repeatsLastLine(ctx: StoreContext, input: { sessionId: string; parentId: string | null; author: string; body: string }): boolean {
-  const last = ctx.db.query<{ kind: string; author: string; body: string }, [string, string | null]>(
-    `SELECT kind, author, body FROM messages
+  const last = ctx.db.query<{ kind: string; author: string; body: string; source_turn_id: string | null }, [string, string | null]>(
+    `SELECT kind, author, body, source_turn_id FROM messages
      WHERE session_id = ? AND parent_id IS ? AND kind != 'profile_change' AND withdrawn_at IS NULL AND ${notBotOnlyLine()}
      ORDER BY created_at DESC, id DESC LIMIT 1`,
   ).get(input.sessionId, input.parentId);
-  return last?.kind === "system" && last.author === input.author && last.body === input.body;
+  return last?.kind === "system" && last.author === input.author && last.body === input.body && last.source_turn_id === null;
 }
 
 export function insertMessage(
