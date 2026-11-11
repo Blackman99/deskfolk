@@ -27,7 +27,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ### A conversation's header line and date lines show on see-through cards
 
-- In the native (NSH) desktop build, the line under a conversation's header and the lines either side of a date in the transcript were a fixed colour one step off the solid card. With content glass on (most of all "clear" in dark) the card shows the window's glass, and those lines came within a few levels of it and all but vanished, while the date sat on a box of the solid card's colour: a dark box on the glass (a white one in light). The lines are now the text colour at a tenth, so they show on glass and on solid cards alike, and the date has nothing under it: the lines stop short of it. On solid cards the lines come out a step stronger than before. The Tauri app is unchanged.
+- In the native (NSH) desktop build, the line under a conversation's header and the lines either side of a date in the transcript were a fixed colour one step off the solid card. With content glass on (most of all "clear" in dark) the card shows the window's glass, and those lines came within a few levels of it and all but vanished, while the date sat on a box of the solid card's colour: a dark box on the glass (a white one in light). The lines are now the text colour at a share (a tenth in dark, a little over a twentieth in light, where a tenth stood out), so they show on glass and on solid cards alike, and the date has nothing under it: the lines stop short of it. On solid dark cards the lines come out a step stronger than before; in light they are about as strong as the old line on white. The Tauri app is unchanged.
 
 ### A dialog's scrim no longer scrolls what is under it
 

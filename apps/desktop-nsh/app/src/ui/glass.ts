@@ -63,10 +63,11 @@ export const GLASS_EDGE = "border-[0.5px] border-ink/14 dark:border-ink/11";
  * The ink at a share, not `line-subtle`, so it reads on whatever is under it. `line-subtle` is a
  * colour a step off the solid `pane`; on a glass card the ground is the glass, often as light as that
  * colour, and the line was gone (dark, `content_glass` clear: some 5 levels from the ground). On a
- * solid dark card this comes out near `line`, a step above `line-subtle`.
+ * solid dark card this comes out near `line`, a step above `line-subtle`. Light takes less of the ink:
+ * a tenth stood out on the light glass, six in a hundred is about what `line-subtle` was on white.
  */
-export const SEAM_LINE = "bg-ink/10";
-export const SEAM_BORDER = "border-ink/10";
+export const SEAM_LINE = "bg-ink/6 dark:bg-ink/10";
+export const SEAM_BORDER = "border-ink/6 dark:border-ink/10";
 
 /** Token `name` with only `share` percent of it kept: a glass card's ground. Reactive, like `token`. */
 export function glassOf(name: "pane" | "ground", share: number): string {
