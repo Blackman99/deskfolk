@@ -31,6 +31,22 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
 
+# NSH straight from upstream main (https://github.com/longbridge/nsh) instead of the crates.io
+# release. Every NSH crate is patched together, so the platforms and the engine resolve to the
+# same commit. Build the `nsh` CLI from the same commit: the bundle format and the engine must match.
+[patch.crates-io]
+nsh-base = { git = "https://github.com/longbridge/nsh", branch = "main" }
+nsh-core = { git = "https://github.com/longbridge/nsh", branch = "main" }
+nsh-engine = { git = "https://github.com/longbridge/nsh", branch = "main" }
+nsh-i18n = { git = "https://github.com/longbridge/nsh", branch = "main" }
+nsh-js = { git = "https://github.com/longbridge/nsh", branch = "main" }
+nsh-macros = { git = "https://github.com/longbridge/nsh", branch = "main" }
+nsh-package = { git = "https://github.com/longbridge/nsh", branch = "main" }
+nsh-platform-apple = { git = "https://github.com/longbridge/nsh", branch = "main" }
+nsh-platform-linux = { git = "https://github.com/longbridge/nsh", branch = "main" }
+nsh-platform-macos = { git = "https://github.com/longbridge/nsh", branch = "main" }
+nsh-platform-windows = { git = "https://github.com/longbridge/nsh", branch = "main" }
+
 [profile.release]
 lto = "thin"
 codegen-units = 4
