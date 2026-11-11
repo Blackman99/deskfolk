@@ -408,6 +408,9 @@ export class SessionHistory {
               unread_count: detail.unread_count ?? s.unread_count ?? 0,
               waiting_on_you: s.waiting_on_you ?? null,
               notification_preference: detail.notification_preference ?? s.notification_preference,
+              // The conversation's engine (ADR 0085): the job's inspector and the engine pickers read it
+              // from here. Null is a choice (back to the default); a detail without it keeps the row's.
+              playbook_id: detail.playbook_id !== undefined ? detail.playbook_id : (s.playbook_id ?? null),
               // A project session's directory and agent (ADR 0095): the sidebar groups by them, the header shows them.
               ...(detail.kind === "project"
                 ? {

@@ -518,6 +518,34 @@ test("late session detail cannot erase events or changes in other sessions", asy
   expect(runtime.connection).toBe("connected");
 });
 
+test("a conversation's engine survives reading its detail, and a detail without one keeps the row's", async () => {
+  // The row rebuilt from the detail named its fields one by one and left the engine out: opening a
+  // group on video made every job of it read as the default engine until the next session event.
+  const { runtime } = await connected(async () => ({
+    ...emptySnapshot(), ...cursor, bots: [aBot()], sessions: [aDirect({ playbook_id: "video" })],
+  }));
+  await until(() => runtime.connection === "connected");
+  const engine = () => runtime.snapshot.sessions.find((s) => s.id === "direct-1")?.playbook_id;
+  expect(engine()).toBe("video");
+  const read = (session: Record<string, unknown>) => {
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      if (String(url).endsWith("/snapshot")) return Response.json({ ...cursor, session: { ...session, messages: { items: [], next: null }, turns: [] }, judgements: [] });
+      return Response.json({ items: [] });
+    }) as typeof fetch;
+  };
+
+  read({ ...aDirect({ playbook_id: "video" }) });
+  await runtime.selectSession("direct-1");
+  expect(engine()).toBe("video");
+
+  // A daemon whose detail says nothing of engines.
+  const { playbook_id: _engine, ...older } = aDirect({ playbook_id: "video" });
+  read(older);
+  runtime.selectedId = null;
+  await runtime.selectSession("direct-1");
+  expect(engine()).toBe("video");
+});
+
 for (const lateClear of [false, true]) test(`HTTP detail ahead of WebSocket waits through its watermark (${lateClear ? "clear" : "reaction"})`, async () => {
   const { runtime } = await connected();
   await until(() => runtime.connection === "connected");
