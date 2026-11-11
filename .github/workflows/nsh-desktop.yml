@@ -65,15 +65,22 @@ jobs:
         id: nsh
         run: echo "rev=$(grep -m1 '^nsh-core' apps/desktop-nsh/Cargo.toml | sed -E 's/.*rev = "([0-9a-f]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
-      - name: Cache the nsh CLI of that commit
-        uses: actions/cache@v4
+      # Restored and saved as two steps, so a build is kept even when a later step fails
+      # (`actions/cache` saves only at the end of a job that passed): a cache hit skips the
+      # ~30-minute release build.
+      - name: Restore the nsh CLI of that commit
+        id: nsh-cache
+        uses: actions/cache/restore@v4
         with:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
           key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
 
       - name: Install system libraries (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev clang pkg-config xvfb dbus-x11
+        # GStreamer: NSH's Linux platform plays media with it (as upstream's own Linux CI installs).
+        run: >-
+          sudo apt-get update && sudo apt-get install -y libgtk-4-dev clang pkg-config xvfb dbus-x11
+          libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
@@ -82,6 +89,13 @@ jobs:
         run: |
           nsh="$(bun apps/desktop-nsh/scripts/nsh-cli.ts | tail -1)"
           dirname "$nsh" >> "$GITHUB_PATH"
+
+      - name: Save the nsh CLI of that commit
+        if: steps.nsh-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.DESKFOLK_NSH_CACHE }}
+          key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
 
       - name: nsh version
         run: nsh --version
