@@ -303,9 +303,15 @@ export function createStageActions(
     }, 1800);
   }
 
-  /** A secondary press, or the pill's "more": the message's menu at the pointer (a sheet where a finger pressed). */
-  function openMenu(message: Message, at: Point): void {
-    menu.set({ message, x: at.x, y: at.y, selectedText: null, touch: !platform.desktop });
+  /**
+   * A secondary press, or the pill's "more": the message's menu at the pointer (a sheet where a finger
+   * pressed). `selected`, what is selected in the line, is what the menu's Copy takes; a finger's
+   * press could not select, and its sheet offers the text on a page instead (ChatStage.svelte).
+   */
+  function openMenu(message: Message, at: Point, selected?: string): void {
+    const touch = !platform.desktop;
+    const text = touch ? "" : (selected ?? "").trim();
+    menu.set({ message, x: at.x, y: at.y, selectedText: text || null, touch });
   }
 
   function openFileTree(targetPath: string | null, message: Message): void {

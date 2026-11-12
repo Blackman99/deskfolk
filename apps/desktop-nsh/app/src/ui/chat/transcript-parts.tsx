@@ -24,8 +24,33 @@ import { narrowWindow } from "../Modal";
 import { cssColor, shadow } from "../styles";
 import { tip } from "../tip";
 
-/** A secondary press on a message (right click, long press) or the pill's "more": the shell opens the message's menu at `position`. */
-export type MessageMenuHandler = (message: Message, position: Point) => void;
+/**
+ * A secondary press on a message (right click, long press) or the pill's "more": the shell opens the
+ * message's menu at `position`. `selected` is what is selected in the line, for the menu's Copy.
+ */
+export type MessageMenuHandler = (message: Message, position: Point, selected?: string) => void;
+
+/**
+ * Spread on a line's one `selectable` view: its words select, and a right click on them still opens
+ * the line's menu. NSH sends a right click to the nearest view around the pointer that listens to
+ * `onContextMenu`, but a selectable view or selectable text met first shows NSH's own Copy menu
+ * instead, and the line's menu never opens. On the same view the listener comes first, so the line's
+ * selectable view listens itself, and nothing inside it is a selection of its own (`MarkdownBody
+ * selectable={false}` still selects, as part of this view). What is selected in the line goes with
+ * the press, so the menu's Copy takes that part, as the Svelte stage read the window's selection.
+ * `scripts/line-menu.test.ts` holds the rows to this.
+ */
+export function lineSelection(open: (at: Point, selected: string) => void) {
+  // Plain, not a signal: nothing draws it, and it is reported again whenever its box moves.
+  let selected = "";
+  return {
+    selectable: true as const,
+    onSelectionChange: (e: { text: string }) => {
+      selected = e.text;
+    },
+    onContextMenu: (e: { pagePosition: Point }) => open(e.pagePosition, selected),
+  };
+}
 
 /** The 32px portrait of a Bot (or `?` for one that is gone); pressing it opens the Bot's profile. `glow`: it is working. */
 export function BotPortrait(props: { bot: Bot | undefined; author: string; stage: TranscriptStage; glow?: boolean; testID?: string }) {

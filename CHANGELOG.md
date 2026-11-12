@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A right click on a message opens its menu again
+
+- In the native (NSH) desktop build, a right click on a Bot's reply (its words, its code, the blank beside a short line), on your own bubble, on an app's note or on a Bot's question showed only "Copy / Select All", and the message's menu (reactions, reply, copy, the job's flow, copy the message ID) never opened; only the line under a reply did. Now a right click anywhere on a message opens its menu, as in the Tauri app. With part of a message selected, the menu's 复制内容 copies that part, and the selection stays.
+
 ### Usage cards no longer spill over the next agent
 
 - In the native (NSH) desktop build, where an agent's accounts stack one above the other (a narrow usage tab, the phone's usage page), every card got the same height: a card with one line had room left over, and a card with more lines let its last ones spill out over the next agent's name (a Claude Team card's last bar over the Codex heading). Each card is now as tall as what it shows, as in the Tauri app; cards side by side in one row still line up at the bottom.

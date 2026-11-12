@@ -15,8 +15,8 @@
  * what is near); the composer sits under the list in the column instead of floating over it (no
  * backdrop blur to see the transcript through), so no room is kept for it; the index strip's active
  * tick and the waiting chip read which rows are viewable instead of measuring rectangles; a secondary
- * press is `onContextMenu` of the groups; the selected text of the menu is not read (NSH has no
- * selection to ask for); the file overlay has no preview inside (see `stage-overlays`).
+ * press is `onContextMenu` of the groups, and the menu's selected text is what the line's selection
+ * last reported (`lineSelection`); the file overlay has no preview inside (see `stage-overlays`).
  */
 import { cleanup, computed, List, Scroll, signal, View, type ViewRef } from "nsh";
 import type { Attachment, SessionSummary } from "@real-bot/protocol";

@@ -6,7 +6,8 @@
  *
  * The Svelte row's text-selection handlers (`mousedown`, `touchstart`, `contextmenu` through the
  * stage) took DOM events; here a secondary press goes to `onContextMenu` with where it was, for
- * the shell to open the message's menu. A row that has just arrived rises into place; a found line
+ * the shell to open the message's menu, on the card's words through the selection they are in
+ * (`lineSelection`). A row that has just arrived rises into place; a found line
  * keeps its ring without the pulse.
  */
 import { Text, View } from "nsh";
@@ -31,7 +32,7 @@ import { ControlActions } from "./ControlActions";
 import { MessageAttachments } from "./MessageAttachments";
 import { ReplyingIndicator } from "./ReplyingIndicator";
 import { WorkQuestionCard } from "./WorkQuestionCard";
-import { arriveMotion, Badge, BotPortrait, ringStyle, SenderName, type MessageMenuHandler } from "./transcript-parts";
+import { arriveMotion, Badge, BotPortrait, lineSelection, ringStyle, SenderName, type MessageMenuHandler } from "./transcript-parts";
 
 export function TranscriptSystem(props: {
   group: TranscriptGroup;
@@ -124,7 +125,7 @@ function Row(props: {
           testID="system-card"
           role="region"
           accessibilityLabel={appLine() ? t().chat.appLineLabel : undefined}
-          selectable
+          {...lineSelection((at, selected) => props.onContextMenu?.(msg(), at, selected))}
           class={`self-start max-w-full items-start gap-[6px] border rounded-(--radius-md) ${
             showContinue() ? "px-[14px] py-[10px] bg-pane border-line" : isUnreachable() ? "px-[12px] py-[8px] bg-warn-bg border-warn-line" : "px-[12px] py-[8px] bg-line-subtle border-line"
           }`}

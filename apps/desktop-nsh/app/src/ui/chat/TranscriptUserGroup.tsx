@@ -6,7 +6,8 @@
  * and the way back to its words; a line being changed is a field in place (`MessageEditor`).
  *
  * Differences from the Svelte row (which took DOM events): a secondary press, and the hover pill's
- * "more", go to `onContextMenu(message, position)` for the shell to open the message's menu; the
+ * "more", go to `onContextMenu(message, position)` for the shell to open the message's menu (in the
+ * bubble too, through the selection it is: `lineSelection`); the
  * pill shows while the pointer is over the line (`transcript-parts`); the found-line pulse is a
  * still ring; the run's dashed divider is a solid hairline; `data-ui="bubble-you"` (a profile CSS
  * hook) has no counterpart.
@@ -28,7 +29,7 @@ import { QuoteRef } from "./QuoteRef";
 import { ReactionRow } from "./ReactionRow";
 import { ReplyingIndicator } from "./ReplyingIndicator";
 import { messageHover, MessagePill } from "./message-pill";
-import { arriveMotion, MessageToolbar, ringStyle, toolbarWanted, type MessageMenuHandler } from "./transcript-parts";
+import { arriveMotion, lineSelection, MessageToolbar, ringStyle, toolbarWanted, type MessageMenuHandler } from "./transcript-parts";
 import { LineButton, MessageFoot, QueuedRow, VersionsBlock } from "./transcript-user-parts";
 
 export function TranscriptUserGroup(props: {
@@ -117,7 +118,7 @@ function Segment(props: {
           <View
             testID="msg-bubble"
             ref={(node: ViewRef) => bubble.set(node)}
-            selectable
+            {...lineSelection((at, selected) => props.onContextMenu?.(msg(), at, selected))}
             class={`max-w-full px-[14px] py-[10px] border ${editing() ? "w-full bg-pane border-accent-border" : "bg-you border-transparent"} ${
               grouped()
                 ? "rounded-tl-(--radius-lg) rounded-tr-(--radius-md) rounded-br-(--radius-lg) rounded-bl-(--radius-lg)"
@@ -141,6 +142,7 @@ function Segment(props: {
               when={editing() && stage.view && stage.selected ? { view: stage.view!, id: stage.selected!.id } : null}
               else={
                 <MarkdownBody
+                  selectable={false}
                   source={stage.messageBody(msg())}
                   options={stage.markdownOpts(msg())}
                   copyLabel={t().chat.copyCode}

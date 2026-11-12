@@ -5,10 +5,10 @@
  *
  * The row's text-selection handlers of the Svelte one (`mousedown`, `touchstart`, `contextmenu`
  * through the stage) took DOM events; here a secondary press goes to `onContextMenu` with where it
- * was, for the shell to open the message's menu.
+ * was, for the shell to open the message's menu, on the card's words through the selection they are
+ * in (`lineSelection`).
  */
 import { Image, Text, View } from "nsh";
-import type { Point } from "nsh";
 import type { Message } from "@real-bot/protocol";
 import { avatarSrc, botAvatarColor } from "../../m/avatar.ts";
 import { formatFullTimestamp, formatMessageTime, type TranscriptGroup } from "../../m/chat/chat-view.ts";
@@ -21,12 +21,13 @@ import { Icon } from "../Icon";
 import { cssColor, shadow } from "../styles";
 import { tip } from "../tip";
 import { AskCard } from "./AskCard";
+import { lineSelection, type MessageMenuHandler } from "./transcript-parts";
 
 export function TranscriptAsk(props: {
   group: TranscriptGroup;
   stage: TranscriptStage;
   /** A secondary press (right click, long press) on the row: the message's menu, at `position`. */
-  onContextMenu?: (message: Message, position: Point) => void;
+  onContextMenu?: MessageMenuHandler;
 }) {
   const t = () => copy();
   const single = () => props.group.items[0];
@@ -96,7 +97,8 @@ export function TranscriptAsk(props: {
                 </If>
               </View>
               <View
-                testID="ask-bubble" selectable
+                testID="ask-bubble"
+                {...lineSelection((at, selected) => props.onContextMenu?.(msg(), at, selected))}
                 class={`self-start w-full max-w-[440px] px-[16px] py-[14px] bg-pane border rounded-(--radius-lg) ${waiting() ? "border-purple-line" : "border-line"}`}
                 style={{ boxShadow: shadow(waiting() ? "sm" : "xs") }}
               >

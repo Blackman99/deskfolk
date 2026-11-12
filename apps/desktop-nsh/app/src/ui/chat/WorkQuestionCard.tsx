@@ -2,6 +2,9 @@
  * A job's question for you, in the transcript (`WorkQuestionCard.svelte`): what it asks, a box for
  * the answer while it can still be answered, and the answer kept on the card once it is saved. A
  * job that went on without an answer says so and takes none.
+ *
+ * Its words select as part of the system card it sits in (`TranscriptSystem`), which opens the
+ * line's menu on a right click: a `selectable` of its own would stop that click first.
  */
 import { signal, Text, View } from "nsh";
 import { Input } from "nsh/base";
@@ -49,7 +52,7 @@ export function WorkQuestionCard(props: {
   }
 
   return (
-    <View testID="work-question-card" selectable accessibilityLabel={lapsed() ? t().lapsedTitle : t().title} class="w-full min-w-0 gap-[8px]">
+    <View testID="work-question-card" accessibilityLabel={lapsed() ? t().lapsedTitle : t().title} class="w-full min-w-0 gap-[8px]">
       <Text class={`text-[14px] font-semibold ${lapsed() ? "text-ink-secondary" : "text-ink"}`}>{lapsed() ? t().lapsedTitle : t().title}</Text>
       <Text class="text-[12px] text-ink-muted">{t().context(props.botName, props.planName, ticketShown())}</Text>
       <Text testID="work-question-text" class={`text-[14px] leading-[1.6] ${lapsed() ? "text-ink-secondary" : "text-ink"}`}>{props.control.question}</Text>

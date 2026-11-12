@@ -7,7 +7,8 @@
  * under the run (`InterfaceChangeChip`).
  *
  * Differences from the Svelte group (which took DOM events): a secondary press, and the hover pill's
- * "more", go to `onContextMenu(message, position)` for the shell to open the message's menu; the
+ * "more", go to `onContextMenu(message, position)` for the shell to open the message's menu (on the
+ * reply's words too, through the selection they are in: `lineSelection`); the
  * pill shows while the pointer is over a part (`message-pill`), and so does the part's hover ground
  * (the stage's rule in the Svelte); a part's commands are read when
  * it mounts (the virtualised list mounts what is near) instead of when an observer sees it; the
@@ -32,7 +33,7 @@ import { ReactionRow } from "./ReactionRow";
 import { ReplyingIndicator } from "./ReplyingIndicator";
 import { messageHover, MessagePill } from "./message-pill";
 import { StreamingReply } from "./transcript-stream";
-import { arriveMotion, Badge, BotPortrait, MessageToolbar, ringStyle, SenderName, toolbarWanted, type MessageMenuHandler } from "./transcript-parts";
+import { arriveMotion, Badge, BotPortrait, lineSelection, MessageToolbar, ringStyle, SenderName, toolbarWanted, type MessageMenuHandler } from "./transcript-parts";
 
 type MessageItem = Extract<TranscriptItem, { type: "message" }>;
 
@@ -210,9 +211,10 @@ function Reply(props: { item: MessageItem; last: boolean; stage: TranscriptStage
           <MessageToolbar message={msg()} stage={stage} onMenu={props.onContextMenu} extra={peek()} />
         </MessagePill>
       </If>
-      <View testID="msg-reply" selectable class="w-full px-[2px]">
+      <View testID="msg-reply" {...lineSelection((at, selected) => props.onContextMenu?.(msg(), at, selected))} class="w-full px-[2px]">
         <QuoteRef message={msg()} selected={stage.selected} messageLookup={stage.messageLookup} who={stage.who} />
         <MarkdownBody
+          selectable={false}
           source={stage.messageBody(msg())}
           options={stage.markdownOpts(msg())}
           copyLabel={t().chat.copyCode}
