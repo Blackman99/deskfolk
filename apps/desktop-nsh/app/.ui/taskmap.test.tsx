@@ -113,6 +113,9 @@ test("a right click on the town stays the map's (it turns it); beside the town t
 
 test("a call seen live lands on the map before any replay holds it", async () => {
   const app = await opened();
+  // A call landed before the runtime connects is forgotten with the connection's reload, and the
+  // story's own replay does not hold it (on Windows' runners the map drew before the connection).
+  await app.waitUntil(() => app.texts().includes("conn:connected"), { timeout: 15_000 });
   await app.press("id:taskmap-live-call");
   await app.waitUntil(() => app.texts().includes(t.controls.step(26, 26)));
 });

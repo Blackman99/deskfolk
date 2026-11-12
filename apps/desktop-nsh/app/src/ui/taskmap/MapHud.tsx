@@ -75,7 +75,12 @@ export function MapHud(props: {
   const picked = () => props.picked;
 
   return (
-    <View class="absolute left-0 top-0 right-0 bottom-0" style={{ pointerEvents: "box-none", zIndex: 600 }}>
+    // The testID is what keeps the town under it pressable inside a scroll view (the pane's narrow
+    // layout): NSH makes a view its scroll view culled when it comes into sight, and sends the new
+    // view its props only when it has some of its own, so a style's `pointerEvents` alone was lost
+    // and this layer, over the whole town, took every press and move (on Windows the map could not
+    // be dragged). Any prop of its own does; the testID also names it to tests.
+    <View testID="taskmap-hud" class="absolute left-0 top-0 right-0 bottom-0" style={{ pointerEvents: "box-none", zIndex: 600 }}>
       <If when={!props.compact}>
         <View
           testID="taskmap-hint"
