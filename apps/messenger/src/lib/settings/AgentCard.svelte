@@ -147,9 +147,6 @@
 	{#if status.error && status.path}
 		<p class="agent-note" data-agent-error>{status.error}</p>
 	{/if}
-	{#if status.runner === 'antigravity'}
-		<p class="agent-note" data-agent-note="antigravity">{t.agents.noteAntigravity}</p>
-	{/if}
 	{#if status.runner === 'zcode'}
 		<p class="agent-note" data-agent-note="zcode">{t.agents.noteZcode}</p>
 	{/if}

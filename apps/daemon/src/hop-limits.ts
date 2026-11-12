@@ -296,12 +296,12 @@ export function isRetriedFailure(kind: string): kind is RetriedFailure {
 }
 
 /**
- * The failures that leave a Bot's local agent unable to run at all — not on this computer, signed
- * out, out of usage (ADR 0061) — until you see to it or its limit resets. Nothing retries them for
+ * The failures that leave a Bot's local agent unable to run at all — not on this computer, too old
+ * to run a turn, signed out, out of usage (ADR 0061) — until you see to it or its limit resets. Nothing retries them for
  * you, and the supervisor calls no Bot back while its last turn ended on one: every call would fail
  * the same way at once (2026-11-10, ten in twenty minutes).
  */
-export const AGENT_OUT_FAILS: ReadonlySet<string> = new Set(["agent_missing", "agent_signed_out", "agent_limit"]);
+export const AGENT_OUT_FAILS: ReadonlySet<string> = new Set(["agent_missing", "agent_outdated", "agent_signed_out", "agent_limit"]);
 
 /**
  * The note a failed hop goes again with. The failed output itself stays out of the loop: a loop

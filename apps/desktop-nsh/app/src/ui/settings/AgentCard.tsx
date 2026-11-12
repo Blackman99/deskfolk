@@ -194,9 +194,6 @@ export function AgentCard(props: {
       <If when={props.status.error && props.status.path}>
         <AgentNote testID="agent-error">{props.status.error ?? ""}</AgentNote>
       </If>
-      <If when={props.status.runner === "antigravity"}>
-        <AgentNote testID="agent-note-antigravity">{t().noteAntigravity}</AgentNote>
-      </If>
       <If when={props.status.runner === "zcode"}>
         <AgentNote testID="agent-note-zcode">{t().noteZcode}</AgentNote>
       </If>

@@ -681,12 +681,11 @@
 
 	/**
 	 * What 直接插入 cuts depends on who runs the Bot: a local agent (ADR 0079) stops a running command
-	 * too, except Antigravity's print mode, which cannot be cut short — there the line waits.
+	 * too.
 	 */
 	function insertTitle(message: Message): string {
 		if (message.delivery?.state === 'held') return t.chat.insertNowHeldTitle;
 		const bot = message.delivery ? botsById.get(message.delivery.bot_id) : undefined;
-		if (bot?.runner === 'antigravity') return t.chat.insertNowWaitsTitle;
 		return bot?.runner ? t.chat.insertNowAgentTitle : t.chat.insertNowLoopTitle;
 	}
 

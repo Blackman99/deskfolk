@@ -1,7 +1,8 @@
 /**
  * Which driver runs each local agent other than Claude Code, and how (ADR 0079). The ACP agents
  * differ only in how a turn's model and effort reach them and in what keeps a Bot's turn asking
- * before it acts; Codex and Antigravity have drivers of their own.
+ * before it acts; Codex has a driver of its own, and Antigravity's (`agy.ts`) is the ACP one behind
+ * a version check.
  */
 import type { BotRunner } from "@real-bot/protocol";
 import type { AgentDriver } from "../driver";

@@ -28,6 +28,7 @@ export const FAIL_REASON = {
   crashed: { zh: "运行时出错", en: "The runtime errored" },
   // A Claude Agent turn's own (ADR 0061): about the user's Claude Code, not an endpoint or a model.
   agent_missing: { zh: "这台电脑上没找到 Claude Code（claude）", en: "Claude Code (claude) was not found on this computer" },
+  agent_outdated: { zh: "本机的 Claude Code 版本太旧，更新后再继续", en: "Your Claude Code is too old: update it, then go on" },
   agent_signed_out: { zh: "本机的 Claude Code 没通过认证：在终端里运行 claude，确认它能用后再继续", en: "Your Claude Code could not authenticate: run claude in a terminal, check it works, then go on" },
   agent_limit: { zh: "Claude 的用量额度用完了", en: "Claude usage limit reached" },
   agent_exited: { zh: "Claude Code 中途退出了", en: "Claude Code exited mid-turn" },
@@ -44,6 +45,7 @@ export const FAIL_REASON = {
  */
 const AGENT_FAIL_REASON: Partial<Record<FailKind, { zh: (agent: string) => string; en: (agent: string) => string }>> = {
   agent_missing: { zh: (agent) => `这台电脑上没找到 ${agent}`, en: (agent) => `${agent} was not found on this computer` },
+  agent_outdated: { zh: (agent) => `本机的 ${agent} 版本太旧，更新后再继续`, en: (agent) => `Your ${agent} is too old: update it, then go on` },
   agent_signed_out: {
     zh: (agent) => `本机的 ${agent} 没通过认证：在终端里登录它，确认能用后再继续`,
     en: (agent) => `Your ${agent} could not authenticate: sign it in from a terminal, check it works, then go on`,

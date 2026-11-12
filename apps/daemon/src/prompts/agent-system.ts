@@ -72,7 +72,7 @@ This turn is run by the user's own {agent}. Every Deskfolk tool the System secti
 - Your last reply in this turn that calls no tool is the message you post, and it passes the closing check the System section describes; text in the same message as a tool call is never sent.
 - Never read, change or print any agent's own settings or credentials (~/.codex, ~/.grok, ~/.claude, ~/.config/opencode, ~/.local/share/opencode, ~/.dsh, ~/.gemini, the keychain), never run {agent}'s own command, and do not use background tasks: run commands and subtasks to the end in the foreground.`;
 
-/** For an agent the app cannot hand its tools to (Antigravity's print mode): the reply is all there is. */
+/** For an agent the app cannot hand its tools to (a driver without `appTools`): the reply is all there is. */
 const REPLY_ONLY_PREFACE_ZH = `# 在这一轮里
 
 这一轮由用户自己的 {agent} 运行。它拿不到 Deskfolk 的工具：下面系统指令里的 end_turn、ask_user、submit、delegate 等这里都用不了，你最后的回复就是发到会话里的消息，交付、转交和提问都在回复里写明，由用户来处理。

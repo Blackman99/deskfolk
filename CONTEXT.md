@@ -267,7 +267,7 @@ _Avoid_: 供应商目录, 判断用另一个名字, 每轮自选, 思考等级�
 _Avoid_: Claude Code 引擎（品牌名不当功能名）, 用订阅令牌直连接口, 在应用里登录 Claude, 把 Claude Code 当成补全端点, Bot 自己切换运行方式, 额度用完转到别的 Agent, 额度用完改掉 Bot 的账号设置
 
 **本机 Agent（Local agent）**：
-一个 Bot 的运行方式：它的每一轮由你本机安装并登录的一个 Agent 程序来跑——Claude Code（即 Claude Agent）、Codex、Grok、OpenCode、ZCode、Antigravity，或者你自己列的一个讲 ACP 的命令——用那个 Agent 自己的工具干活、用它登录的账号计用量。应用照旧管权限模式和你的批准、Stop、收尾契约、交付和审查：能在调用前拦的都拦，拦不住、事后才知道的，按权限模式本该问或不许的就停下这一轮；应用自己的协作工具通过 MCP（Codex 是它的 dynamic tools）交给它，Antigravity 拿不到，只能用收尾回复。只有你能在 Bot 面板里切换；应用不提供登录、不碰凭据、不改它的配置。内置调用和模型阶梯也能选这些 Agent 的模型。细节见[行为说明·本机 Agent](docs/behavior.md#本机-agent)和 [ADR 0079](docs/adr/0079-local-agents.md)。
+一个 Bot 的运行方式：它的每一轮由你本机安装并登录的一个 Agent 程序来跑——Claude Code（即 Claude Agent）、Codex、Grok、OpenCode、ZCode、Antigravity，或者你自己列的一个讲 ACP 的命令——用那个 Agent 自己的工具干活、用它登录的账号计用量。应用照旧管权限模式和你的批准、Stop、收尾契约、交付和审查：能在调用前拦的都拦，拦不住、事后才知道的，按权限模式本该问或不许的就停下这一轮；应用自己的协作工具通过 MCP（Codex 是它的 dynamic tools）交给它。只有你能在 Bot 面板里切换；应用不提供登录、不碰凭据、不改它的配置。内置调用和模型阶梯也能选这些 Agent 的模型。细节见[行为说明·本机 Agent](docs/behavior.md#本机-agent)和 [ADR 0079](docs/adr/0079-local-agents.md)。
 _Avoid_: 把 Agent 当补全端点, 在应用里登录 Agent, 改写 Agent 的配置文件, 读 Agent 的令牌, Bot 自己切换运行方式, 拿不到工具时假装交付
 
 **向导**：

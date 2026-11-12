@@ -263,15 +263,13 @@ test("a config directory the daemon refuses says why, with its words under ours"
   view.close();
 });
 
-test("Antigravity says it cannot use Deskfolk's tools, ZCode that it runs through the bridge; the others say neither", () => {
+test("ZCode says it runs through the bridge; the others, Antigravity too since it gets Deskfolk's tools, say nothing", () => {
   const agy = open({ status: status({ runner: "antigravity", label: "Antigravity" }) });
-  expect(agy.host.querySelector('[data-agent-note="antigravity"]')?.textContent).toBe(t.agents.noteAntigravity);
-  expect(agy.host.querySelector('[data-agent-note="zcode"]')).toBeNull();
+  expect(agy.host.querySelector("[data-agent-note]")).toBeNull();
   agy.close();
 
   const zcode = open({ status: status({ runner: "zcode", label: "ZCode" }) });
   expect(zcode.host.querySelector('[data-agent-note="zcode"]')?.textContent).toContain("zcode-acp");
-  expect(zcode.host.querySelector('[data-agent-note="antigravity"]')).toBeNull();
   zcode.close();
 
   const codex = open();

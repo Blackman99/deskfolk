@@ -527,6 +527,7 @@ test("the model choice log covers every fail kind the daemon can record", () => 
     "agent_exited",
     "agent_limit",
     "agent_missing",
+    "agent_outdated",
     "agent_signed_out",
     "agent_unguarded",
     "busy",

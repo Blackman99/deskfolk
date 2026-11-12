@@ -181,3 +181,20 @@ test("fill replaces each placeholder in one pass and leaves the rest", () => {
   expect(fill("{item} / {rules} / {format}", { item: "a {rules} $&", rules: "b" })).toBe("a {rules} $& / b / {format}");
   expect(fill('{"id": 1} {unknown}', { item: "x" })).toBe('{"id": 1} {unknown}');
 });
+
+test("every array a built-in tool takes names its items: Gemini refuses the whole request otherwise (Antigravity, 2026-11-12)", () => {
+  const missing: string[] = [];
+  const walk = (schema: unknown, at: string) => {
+    if (!schema || typeof schema !== "object") return;
+    const node = schema as { type?: unknown; items?: unknown; properties?: Record<string, unknown>; anyOf?: unknown[]; oneOf?: unknown[] };
+    const types = Array.isArray(node.type) ? node.type : [node.type];
+    if (types.includes("array") && !node.items) missing.push(at);
+    for (const [key, value] of Object.entries(node.properties ?? {})) walk(value, `${at}.${key}`);
+    if (node.items) walk(node.items, `${at}[]`);
+    for (const value of [...(node.anyOf ?? []), ...(node.oneOf ?? [])]) walk(value, at);
+  };
+  for (const locale of ["zh", "en"] as const) {
+    for (const tool of builtinTools(locale, 9)) walk(tool.function.parameters, tool.function.name);
+  }
+  expect(missing).toEqual([]);
+});

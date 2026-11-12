@@ -439,3 +439,17 @@ test("a call the agent made without asking is looked at by the steps after it, a
   // The file it wrote, relative to the workspace (here inside the turn's work dir).
   expect(verdict.reason).toMatch(/^看了 (.+\/)?zz-notes\.md$/);
 });
+
+test("an option is set to a value it offers, read in any case, or to what was asked when it lists none; a prompt's tokens count its cache and thinking", async () => {
+  const { offers, usageOf } = await import("./engine/agent/drivers/acp");
+  const levels = { id: "thought_level", options: [{ value: "low", name: "Low" }, { value: "high", name: "High" }] };
+  expect(offers(levels, "high")).toBe("high");
+  expect(offers(levels, "High")).toBe("high");
+  expect(offers(levels, "max")).toBeNull();
+  expect(offers({ id: "model", options: [] }, "grok-fake")).toBe("grok-fake");
+  // Grouped options, as some agents send their model select.
+  expect(offers({ id: "model", options: [{ group: "g", options: [{ value: "m-1", name: "M 1" }] }] }, "m-1")).toBe("m-1");
+  expect(usageOf({ inputTokens: 100, cachedReadTokens: 40, outputTokens: 20, thoughtTokens: 5 })).toEqual({ input: 140, output: 25, cached: 40 });
+  expect(usageOf({ inputTokens: 0, outputTokens: 0 })).toBeNull();
+  expect(usageOf(undefined)).toBeNull();
+});

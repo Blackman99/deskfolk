@@ -164,8 +164,8 @@ function botAlive(ctx: StoreContext, botId: string): boolean {
 
 /**
  * Whether the Bot's local agent cannot run just now: the last turn of it that ended failed because
- * its agent is not on this computer, signed out or out of usage (`AGENT_OUT_FAILS`, ADR 0061). Such
- * a failure is not retried for you, and a call-back would only fail the same way at once: on
+ * its agent is not on this computer, too old, signed out or out of usage (`AGENT_OUT_FAILS`, ADR
+ * 0061). Such a failure is not retried for you, and a call-back would only fail the same way at once: on
  * 2026-11-10 视频导演 was called back to each of four open scenes, twice, in twenty minutes, each
  * call ending on the same usage limit. A turn of it that ends any other way — your word, its
  * Continue — makes it callable again.

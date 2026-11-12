@@ -8,7 +8,7 @@ import type { SessionDetail } from "./sessions.ts";
  * OpenAI-compatible endpoint. Any other value is a local agent: an agent CLI you installed and
  * signed in to yourself, run unmodified on this computer — `claude_code` is your Claude Code through
  * the Agent SDK ("Claude Agent"), `codex` your Codex through its app-server, `grok`, `opencode`
- * and `zcode` theirs over the Agent Client Protocol, `antigravity` your `agy` in print mode,
+ * and `zcode` theirs over the Agent Client Protocol, `antigravity` your `agy` over it too (`agy acp`),
  * and `custom` an ACP command you named (`agent_custom_id`). Each runs on `agent_model` and
  * `agent_effort` (null: the agent's own defaults) and, where the agent has config directories, the
  * account in `agent_config_dir` (null: whichever one it finds in the daemon's environment). The
@@ -17,11 +17,8 @@ import type { SessionDetail } from "./sessions.ts";
 export const BOT_RUNNERS = ["claude_code", "codex", "grok", "opencode", "antigravity", "zcode", "custom"] as const;
 export type BotRunner = (typeof BOT_RUNNERS)[number];
 
-/**
- * How the app talks to a local agent: the Agent SDK (Claude Code), Codex's app-server, the Agent
- * Client Protocol, or `agy`'s print mode with its NDJSON events.
- */
-export type AgentProtocol = "claude_sdk" | "codex_app_server" | "acp" | "agy_print";
+/** How the app talks to a local agent: the Agent SDK (Claude Code), Codex's app-server, or the Agent Client Protocol. */
+export type AgentProtocol = "claude_sdk" | "codex_app_server" | "acp";
 
 /** What every client knows of a local agent before asking it anything (ADR 0079). */
 export type AgentKindInfo = {
@@ -42,7 +39,7 @@ export type AgentKindInfo = {
   configDirVar: string | null;
   /** Its plan reports usage windows the app can show (Claude's, Codex's, Grok's, Antigravity's); the others show spend only. */
   planUsage: boolean;
-  /** The app's own tools (end_turn, submit, ask_user, …) reach it; not true of `agy`'s print mode. */
+  /** The app's own tools (end_turn, submit, ask_user, …) reach it; every agent's do today. */
   appTools: boolean;
 };
 
@@ -56,8 +53,8 @@ export const AGENT_KINDS: Record<BotRunner, AgentKindInfo> = {
     efforts: ["low", "medium", "high", "xhigh"], modelAliases: [], configDirVar: null, planUsage: true, appTools: true },
   opencode: { runner: "opencode", label: "OpenCode", protocol: "acp", command: "opencode",
     efforts: [], modelAliases: [], configDirVar: null, planUsage: false, appTools: true },
-  antigravity: { runner: "antigravity", label: "Antigravity", protocol: "agy_print", command: "agy",
-    efforts: ["low", "medium", "high", "xhigh", "max"], modelAliases: [], configDirVar: null, planUsage: true, appTools: false },
+  antigravity: { runner: "antigravity", label: "Antigravity", protocol: "acp", command: "agy",
+    efforts: ["low", "medium", "high"], modelAliases: [], configDirVar: null, planUsage: true, appTools: true },
   zcode: { runner: "zcode", label: "ZCode", protocol: "acp", command: "zcode-acp",
     efforts: [], modelAliases: [], configDirVar: null, planUsage: false, appTools: true },
   custom: { runner: "custom", label: "ACP Agent", protocol: "acp", command: null,

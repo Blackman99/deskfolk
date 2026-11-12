@@ -116,7 +116,7 @@ test("the runner picker offers every local agent the daemon finds, and the form 
   close();
 });
 
-test("one of your own ACP agents is created as runner custom with its id; Antigravity is told it cannot use Deskfolk's tools", async () => {
+test("one of your own ACP agents is created as runner custom with its id; Antigravity, which gets Deskfolk's tools, carries no note", async () => {
   const { host, runtime, close } = openWithAgents(found());
   await sleep(30);
   click(host.querySelector("#bot-runner"));
@@ -129,7 +129,7 @@ test("one of your own ACP agents is created as runner custom with its id; Antigr
   click(host.querySelector("#bot-runner"));
   click([...host.querySelectorAll("#bot-runner-listbox [role=option]")].find((row) => rowText(row) === "Antigravity") ?? null);
   await sleep(0);
-  expect(host.querySelector("[data-runner-note]")?.textContent).toBe(t.sidebar.botRunnerNoAppTools("Antigravity"));
+  expect(host.querySelector("[data-runner-note]")).toBeNull();
   close();
 });
 

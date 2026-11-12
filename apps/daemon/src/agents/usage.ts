@@ -15,6 +15,7 @@ import { claudeLaunch } from "../claude-code/spawn";
 import { rpcPeer } from "../engine/agent/jsonrpc";
 import type { Store } from "../store";
 import daemonPackage from "../../package.json";
+import { agyAtLeast, AGY_QUOTA_SINCE } from "./agy-version";
 import { resolveAgent } from "./runtime";
 import type { OtherRunner } from "./status";
 
@@ -228,15 +229,9 @@ async function askGrokBilling(env: Record<string, string>, executable: string, a
   }
 }
 
-/** The first `agy` that answers `-p "/quota"` itself instead of sending it to the model. */
-const AGY_QUOTA_SINCE = [1, 1, 11];
-
-/** Whether an `agy --version` is at least 1.1.11. */
+/** Whether an `agy --version` is at least 1.1.11, the first to answer `-p "/quota"` itself. */
 export function agyAnswersQuota(version: string): boolean {
-  const parts = version.match(/(\d+)\.(\d+)\.(\d+)/)?.slice(1).map(Number);
-  if (!parts) return false;
-  for (let i = 0; i < 3; i += 1) if (parts[i] !== AGY_QUOTA_SINCE[i]) return parts[i]! > AGY_QUOTA_SINCE[i]!;
-  return true;
+  return agyAtLeast(version, AGY_QUOTA_SINCE);
 }
 
 /**

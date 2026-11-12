@@ -33,6 +33,22 @@ export type AcpProfile = {
   env?(host: AgentHost): Record<string, string>;
   /** The model and effort set as flags: not set again over the protocol. */
   modelByFlag?: boolean;
+  /** It lists its models itself (`agy models`): a session's model select is not kept for Settings. */
+  ownModelList?: boolean;
+  /** The session mode a Bot's turn runs in (`agy`'s `default`: it asks as its own settings say). */
+  mode?: string;
+  /**
+   * A call reported already under way (`in_progress`) that it never asked about is checked then, not
+   * once it is over: `agy` under `always-proceed` reports each of its own calls that way and asks
+   * nothing (measured 2026-11-12). A call still `pending` may yet be asked about, so it waits.
+   */
+  checkUnaskedAtStart?: boolean;
+  /**
+   * The agent's own failure notice when a prompt's whole reply is one (`agy acp` ends a failed
+   * prompt with `end_turn` and a "⚠ …" line as its words, measured 2026-11-12); null for words of
+   * the model. Such a prompt fails the turn instead of being posted.
+   */
+  failureIn?(reply: string): string | null;
 };
 
 type ToolRecord = {
@@ -93,6 +109,8 @@ async function acpSession(host: AgentHost, child: ChildProcess, first: AgentInpu
   let messageSeq = 0;
   let localSeq = 0;
   let canSeeImages = false;
+  /** The session's options as the agent last said them: a model of another kind offers other levels. */
+  let configOptions: Array<Record<string, unknown>> = [];
   const queue: AgentInputPart[][] = [];
 
   const emit = (event: AgentEvent) => host.emit(event);
@@ -284,8 +302,9 @@ async function acpSession(host: AgentHost, child: ChildProcess, first: AgentInpu
   /** What a tool call does, as the app counts it, from its kind, the files it names and its input. */
   function actionOf(record: ToolRecord): AppAction {
     const raw = record.rawInput ?? {};
-    const command = typeof raw.command === "string" ? raw.command : typeof raw.cmd === "string" ? raw.cmd : null;
-    const cwd = typeof raw.cwd === "string" && raw.cwd ? raw.cwd : host.cwd;
+    // `agy` names them as its print mode did: `CommandLine`, `Cwd`, `Path` (measured 2026-11-12).
+    const command = typeof raw.command === "string" ? raw.command : typeof raw.cmd === "string" ? raw.cmd : typeof raw.CommandLine === "string" ? raw.CommandLine : null;
+    const cwd = typeof raw.cwd === "string" && raw.cwd ? raw.cwd : typeof raw.Cwd === "string" && raw.Cwd ? raw.Cwd : host.cwd;
     const paths = record.locations.length > 0 ? record.locations : pathsOf(raw);
     const name: AppActionName = record.kind === "execute" || (command && record.kind !== "read")
       ? "shell"
@@ -311,6 +330,7 @@ async function acpSession(host: AgentHost, child: ChildProcess, first: AgentInpu
     // A tool call is noted at once, before any request that follows it is answered: an fs or
     // terminal request then finds the call it belongs to.
     if (update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update") noteTool(update);
+    if (update.sessionUpdate === "config_option_update" && Array.isArray(update.configOptions)) configOptions = update.configOptions as Array<Record<string, unknown>>;
     void onUpdate(update);
   });
 
@@ -340,11 +360,13 @@ async function acpSession(host: AgentHost, child: ChildProcess, first: AgentInpu
           said = "";
         }
         // Checked once it is over, not when it says it is under way: OpenCode reports a call in progress
-        // before it asks permission for it (measured 2026-10-10).
+        // before it asks permission for it (measured 2026-10-10). With `checkUnaskedAtStart`, a call
+        // reported under way is checked then.
         const over = record.status === "completed" || record.status === "failed";
+        const due = over || (profile.checkUnaskedAtStart === true && record.status === "in_progress");
         // A call reported after the app already read, wrote or ran just what it names was the app's doing.
         if (over && !record.covered && !record.gated && alreadyHandled(actionOf(record))) record.covered = true;
-        if (over && !record.started && !record.covered && !record.gated) {
+        if (due && !record.started && !record.covered && !record.gated) {
           record.started = true;
           await emit({ type: "tool_started", callId: record.id, action: actionOf(record), gated: false });
         }
@@ -386,7 +408,7 @@ async function acpSession(host: AgentHost, child: ChildProcess, first: AgentInpu
       mcpServers.push({ name: "deskfolk", command: mount.command, args: mount.args, env: Object.entries(mount.env).map(([name, value]) => ({ name, value })) });
     }
   }
-  let created: { sessionId?: string; configOptions?: Array<Record<string, unknown>>; models?: { availableModels?: Array<{ modelId?: string }> } };
+  let created: { sessionId?: string; configOptions?: Array<Record<string, unknown>>; models?: { availableModels?: Array<{ modelId?: string }> }; modes?: { currentModeId?: string } };
   try {
     created = await rpc.request("session/new", {
       cwd: host.cwd,
@@ -402,7 +424,7 @@ async function acpSession(host: AgentHost, child: ChildProcess, first: AgentInpu
   // The models it offers, kept for Settings: an ACP agent lists them nowhere else (ZCode, your own).
   try {
     const offered = modelsOffered(created);
-    if (offered.models.length > 0) noteAgentModels(host.runner as Exclude<typeof host.runner, "claude_code">, host.custom?.id ?? null, offered.models, offered.current);
+    if (offered.models.length > 0 && !profile.ownModelList) noteAgentModels(host.runner as Exclude<typeof host.runner, "claude_code">, host.custom?.id ?? null, offered.models, offered.current);
   } catch {
     // a convenience
   }
@@ -410,31 +432,59 @@ async function acpSession(host: AgentHost, child: ChildProcess, first: AgentInpu
     child.kill("SIGTERM");
     throw new Error("the agent opened no session");
   }
+  configOptions = Array.isArray(created.configOptions) ? created.configOptions : [];
   if (!profile.modelByFlag) await configure(created);
+  if (profile.mode) await setMode(profile.mode, created);
+
+  function byCategory(category: string): Record<string, unknown> | undefined {
+    return configOptions.find((option) => option.category === category || option.id === category);
+  }
+  async function set(option: Record<string, unknown> | undefined, value: string | null): Promise<void> {
+    if (!option || !value || typeof option.id !== "string") return;
+    try {
+      const answer = await rpc.request<{ configOptions?: Array<Record<string, unknown>> }>("session/set_config_option", { sessionId, configId: option.id, value }, 30_000);
+      if (Array.isArray(answer?.configOptions) && answer.configOptions.length > 0) configOptions = answer.configOptions;
+    } catch (error) {
+      host.stderr(`could not set ${option.id} to ${value}: ${error instanceof Error ? error.message : String(error)}\n`);
+    }
+  }
 
   async function configure(result: typeof created): Promise<void> {
-    const options = Array.isArray(result.configOptions) ? result.configOptions : [];
-    const byCategory = (category: string) => options.find((option) => option.category === category || option.id === category);
-    const set = async (option: Record<string, unknown> | undefined, value: string | null) => {
-      if (!option || !value || typeof option.id !== "string") return;
-      try {
-        await rpc.request("session/set_config_option", { sessionId, configId: option.id, value }, 30_000);
-      } catch (error) {
-        host.stderr(`could not set ${option.id} to ${value}: ${error instanceof Error ? error.message : String(error)}\n`);
-      }
-    };
     if (host.model) {
       const option = byCategory("model");
-      if (option) await set(option, host.model);
-      else if (result.models?.availableModels?.some((model) => model.modelId === host.model)) {
+      const listed = result.models?.availableModels?.some((model) => model.modelId === host.model) === true;
+      if (option && offers(option, host.model) === host.model) await set(option, host.model);
+      // A model its select does not name but its model list does (`agy`'s `gemini-3.8-flash-high`,
+      // the model and its thinking level in one, measured 2026-11-12).
+      else if (listed) {
         try {
           await rpc.request("session/set_model", { sessionId, modelId: host.model }, 30_000);
-        } catch {
-          // the agent's own model stays
+        } catch (error) {
+          host.stderr(`could not set the model to ${host.model}: ${error instanceof Error ? error.message : String(error)}\n`);
         }
+      } else if (option) await set(option, host.model);
+    }
+    if (host.effort) {
+      const option = byCategory("thought_level") ?? byCategory("reasoning_effort");
+      const value = option ? offers(option, host.effort) : null;
+      if (value) await set(option, value);
+      // Not offered for this model (`agy` offers no thinking level for Claude): its own level stays.
+      else if (option) host.stderr(`${String(option.id)} offers no ${host.effort}; the agent's own level stays\n`);
+    }
+  }
+
+  async function setMode(mode: string, result: { modes?: { currentModeId?: string } }): Promise<void> {
+    const option = byCategory("mode");
+    const current = typeof option?.currentValue === "string" ? option.currentValue : result.modes?.currentModeId ?? null;
+    if (current === mode) return;
+    if (option) await set(option, mode);
+    else if (result.modes) {
+      try {
+        await rpc.request("session/set_mode", { sessionId, modeId: mode }, 30_000);
+      } catch (error) {
+        host.stderr(`could not set the mode to ${mode}: ${error instanceof Error ? error.message : String(error)}\n`);
       }
     }
-    if (host.effort) await set(byCategory("thought_level") ?? byCategory("reasoning_effort"), host.effort);
   }
 
   const toBlocks = (input: AgentInputPart[], lead: string | null) => {
@@ -463,12 +513,19 @@ async function acpSession(host: AgentHost, child: ChildProcess, first: AgentInpu
     lead = null;
     let result: AgentEvent & { type: "result" };
     try {
-      const answer = await rpc.request<{ stopReason?: string }>("session/prompt", { sessionId, prompt: blocks });
+      const answer = await rpc.request<{ stopReason?: string; usage?: PromptUsage }>("session/prompt", { sessionId, prompt: blocks });
       await updates;
+      const usage = usageOf(answer?.usage);
+      if (usage) await emit({ type: "usage", model: host.model ?? "", ...usage, costUsd: null, cumulative: false });
       const stop = answer?.stopReason;
       if (stop === "cancelled" || cancelled) result = { type: "result", result: { kind: "cancelled" } };
       else if (stop === "max_turn_requests") result = { type: "result", result: { kind: "error", failKind: "stuck", detail: null } };
-      else result = { type: "result", result: { kind: "reply", text: said } };
+      else {
+        const failure = profile.failureIn?.(said) ?? null;
+        result = failure
+          ? { type: "result", result: { kind: "error", ...classifyAcpError(new Error(failure)) } }
+          : { type: "result", result: { kind: "reply", text: said } };
+      }
     } catch (error) {
       await updates;
       if (cancelled && !rpc.closed) result = { type: "result", result: { kind: "cancelled" } };
@@ -518,6 +575,9 @@ export function classifyAcpError(error: unknown): { failKind: FailKind; detail: 
   const detail = message.trim() ? message.trim().split(/\r?\n/)[0]!.slice(0, 200) : null;
   if (/insufficient balance|quota|rate.?limit|usage limit|credits? (?:exhausted|used up)|billing|exceeded your|too many requests/i.test(message)) return { failKind: "agent_limit", detail };
   if ((error instanceof RpcError && error.code === -32000) || /auth|log ?in|sign ?in|credential|unauthori[sz]ed|forbidden/i.test(message)) return { failKind: "agent_signed_out", detail };
+  // An account the service turned off (`agy`: "disabled in this account for violation of Terms of
+  // Service"): only you can see to it, and asking again only knocks on it again.
+  if (/disabled in this account|terms of service|not eligible for this service/i.test(message)) return { failKind: "agent_signed_out", detail };
   return { failKind: "agent_exited", detail };
 }
 
@@ -556,7 +616,7 @@ function textOfRaw(raw: unknown): string | null {
 }
 
 function pathsOf(raw: Record<string, unknown>): string[] {
-  const keys = ["path", "file_path", "filePath", "target_file", "AbsolutePath", "TargetFile", "file"];
+  const keys = ["path", "file_path", "filePath", "target_file", "AbsolutePath", "TargetFile", "file", "Path", "File", "DirectoryPath", "SearchPath"];
   const out: string[] = [];
   for (const key of keys) if (typeof raw[key] === "string" && raw[key]) out.push(raw[key] as string);
   if (Array.isArray(raw.files)) {
@@ -592,4 +652,34 @@ export function modelsOffered(created: { configOptions?: Array<Record<string, un
     models: listed.flatMap((model) => (model.modelId ? [{ id: model.modelId, name: model.name ?? model.modelId, efforts: (model._meta?.reasoningEfforts ?? []).flatMap((effort) => (effort.id ? [effort.id] : [])) }] : [])),
     current: created.models?.currentModelId ?? null,
   };
+}
+
+/** What a prompt's answer says it used (ACP `PromptResponse.usage`, as `agy` 1.5.6 sends it). */
+type PromptUsage = { inputTokens?: number; outputTokens?: number; cachedReadTokens?: number; cachedWriteTokens?: number; thoughtTokens?: number; totalTokens?: number };
+
+/**
+ * One prompt's tokens as the app counts them: input with what came from the cache, output with the
+ * thinking (as `agy`'s print mode reported them); null when it said nothing.
+ */
+export function usageOf(usage: PromptUsage | null | undefined): { input: number; output: number; cached: number } | null {
+  if (!usage || typeof usage !== "object") return null;
+  const n = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+  const cached = n(usage.cachedReadTokens);
+  const input = n(usage.inputTokens) + cached;
+  const output = n(usage.outputTokens) + n(usage.thoughtTokens);
+  return input + output > 0 ? { input, output, cached } : null;
+}
+
+/**
+ * The value a select option offers for `wanted`: the same value, else one whose value or name reads
+ * the same in any case; `wanted` itself when it lists none (it may take what it does not list); null
+ * when it lists others only.
+ */
+export function offers(option: Record<string, unknown>, wanted: string): string | null {
+  const listed = Array.isArray(option.options) ? (option.options as Array<Record<string, unknown>>).flatMap((entry) => (Array.isArray(entry.options) ? entry.options as Array<Record<string, unknown>> : [entry])) : [];
+  if (listed.length === 0) return wanted;
+  const values = listed.flatMap((entry) => (typeof entry.value === "string" ? [{ value: entry.value, name: typeof entry.name === "string" ? entry.name : entry.value }] : []));
+  if (values.some((entry) => entry.value === wanted)) return wanted;
+  const lower = wanted.toLowerCase();
+  return values.find((entry) => entry.value.toLowerCase() === lower || entry.name.toLowerCase() === lower)?.value ?? null;
 }

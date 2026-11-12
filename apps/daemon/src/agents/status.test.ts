@@ -93,3 +93,28 @@ test("what was seen is kept, and after a restart shown at once while it is looke
   expect(shown.items.find((item) => item.runner === "codex")?.version).toBe("1");
   restarted.release();
 });
+
+test("an agy too old for `agy acp` is signed in and lists its models, yet its card says Antigravity Bots need a newer one", async () => {
+  const { chmodSync, mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { describeAgent } = await import("./status");
+  const dir = mkdtempSync(join(tmpdir(), "agy-status-"));
+  const agy = join(dir, "agy");
+  const fake = (version: string) => {
+    writeFileSync(agy, `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${version}"; exit 0; fi\nprintf 'gemini-3.8-flash-high\\tGemini 3.8 Flash (High)\\n'\n`);
+    chmodSync(agy, 0o755);
+  };
+  const deps = { path: () => agy, configDirs: () => [], customAgents: () => [] as CustomAgent[], env: { PATH: "/usr/bin:/bin" } };
+  try {
+    fake("1.4.2");
+    const old = await describeAgent("antigravity", null, deps);
+    expect(old.logged_in).toBe(true);
+    expect(old.models.map((model) => model.id)).toEqual(["gemini-3.8-flash-high"]);
+    expect(old.error).toBe("agy 1.4.2: Antigravity Bots need 1.5.4 or later");
+    fake("1.5.6");
+    expect((await describeAgent("antigravity", null, deps)).error).toBeNull();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

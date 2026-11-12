@@ -253,7 +253,6 @@ export function createStageActions(
   function insertTitle(message: Message): string {
     if (message.delivery?.state === "held") return t().chat.insertNowHeldTitle;
     const bot = message.delivery ? ctx.botsById().get(message.delivery.bot_id) : undefined;
-    if (bot?.runner === "antigravity") return t().chat.insertNowWaitsTitle;
     return bot?.runner ? t().chat.insertNowAgentTitle : t().chat.insertNowLoopTitle;
   }
 

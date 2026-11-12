@@ -130,7 +130,7 @@ export function createAgentJudge(deps: {
               session?.close();
             } else if (event.type === "result") {
               if (event.result.kind === "reply" && event.result.text.trim()) settle({ content: event.result.text, usage, fail: null });
-              else settle({ content: null, usage, fail: event.result.kind === "error" && (event.result.failKind === "agent_missing" || event.result.failKind === "agent_signed_out") ? "claude_unavailable" : "claude_failed" });
+              else settle({ content: null, usage, fail: event.result.kind === "error" && (event.result.failKind === "agent_missing" || event.result.failKind === "agent_outdated" || event.result.failKind === "agent_signed_out") ? "claude_unavailable" : "claude_failed" });
             }
           },
           stderr: () => {},

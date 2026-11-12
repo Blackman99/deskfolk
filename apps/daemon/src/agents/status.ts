@@ -12,6 +12,7 @@ import { maskProxy } from "../claude-code/proxy";
 import { claudeLaunch } from "../claude-code/spawn";
 import { rpcPeer } from "../engine/agent/jsonrpc";
 import daemonPackage from "../../package.json";
+import { agyTooOld } from "./agy-version";
 import { AGENT_LAUNCH } from "./registry";
 import { forgetLocatedAgent, resolveAgent } from "./runtime";
 
@@ -189,6 +190,8 @@ export async function describeAgent(runner: OtherRunner, custom: CustomAgent | n
         break;
       }
       case "antigravity": {
+        // Too old for `agy acp`: a Bot's turn would not start, so the card says so.
+        const old = base.version !== null ? agyTooOld(base.version, "en") : null;
         const listed = await run(resolved.executable, ["models"], resolved.env);
         const models = listed.out.split(/\r?\n/).flatMap((line) => {
           const match = /^(\S+)\t(.+)$/.exec(line.trim());
@@ -201,6 +204,7 @@ export async function describeAgent(runner: OtherRunner, custom: CustomAgent | n
           base.logged_in = /log ?in|sign ?in|auth/i.test(listed.err + listed.out) ? false : null;
           base.error = firstLine(listed.err || listed.out) ?? null;
         }
+        if (old) base.error = old;
         break;
       }
       case "zcode":

@@ -805,7 +805,7 @@ test("choosing Codex saves runner codex; its effort is then one Codex takes, and
   onCodex.close();
 });
 
-test("the effort radios follow the agent: Grok stops at extra high, Antigravity goes up to max, OpenCode and your own ACP agents have none", async () => {
+test("the effort radios follow the agent: Grok stops at extra high, Antigravity at high, OpenCode and your own ACP agents have none", async () => {
   const levels = async (runner: BotRunner, extra: Partial<Parameters<typeof aBot>[0]> = {}, agents = withAcp(agentItems())) => {
     const view = openOnAgent(aBot({ runner, ...extra }), agents);
     await sleep(30);
@@ -814,7 +814,7 @@ test("the effort radios follow the agent: Grok stops at extra high, Antigravity 
     return out;
   };
   expect((await levels("grok")).radios).toEqual(["默认", "低", "中", "高", "极高"]);
-  expect((await levels("antigravity")).radios).toEqual(["默认", "低", "中", "高", "极高", "最大"]);
+  expect((await levels("antigravity")).radios).toEqual(["默认", "低", "中", "高"]);
   const opencode = await levels("opencode");
   expect(opencode.radios).toEqual([]);
   expect(opencode.none).toBe(t.sidebar.botAgentNoEffort("OpenCode"));
@@ -837,12 +837,13 @@ test("moving a Bot to another agent clears its model and account, and keeps its 
   expect(lastSave(toGrok.runtime)).toMatchObject({ runner: "grok", agent_model: null, agent_effort: null, agent_config_dir: null });
   toGrok.close();
 
-  const toAgy = openOnAgent(bot, withAcp(agentItems()));
+  // Antigravity takes "high", which it offers its Gemini models.
+  const toAgy = openOnAgent(aBot({ ...bot, agent_effort: "high" }), withAcp(agentItems()));
   await sleep(30);
   click(toAgy.host.querySelector("#profile-runner"));
   click(runnerRows(toAgy.host).find((row) => words(row) === "Antigravity") ?? null);
   await sleep(200);
-  expect(lastSave(toAgy.runtime)).toMatchObject({ runner: "antigravity", agent_model: null, agent_effort: "max", agent_config_dir: null });
+  expect(lastSave(toAgy.runtime)).toMatchObject({ runner: "antigravity", agent_model: null, agent_effort: "high", agent_config_dir: null });
   toAgy.close();
 
   const toApp = openOnAgent(bot, withAcp(agentItems()));
@@ -974,7 +975,7 @@ test("a model the agent does not list stays a row of its own; an agent that list
   phone.close();
 });
 
-test("an agent that is not found, signed out, or cannot be asked says what to do, and Antigravity says it cannot use Deskfolk's tools", async () => {
+test("an agent that is not found, signed out, or cannot be asked says what to do; Antigravity, which gets Deskfolk's tools, carries no note", async () => {
   const missing = openOnAgent(aBot({ runner: "codex" }), withAcp(agentItems({ codex: { path: null } })));
   await sleep(30);
   expect(missing.host.querySelector("[data-runner-missing]")?.textContent).toContain("没找到 Codex（codex）");
@@ -994,7 +995,7 @@ test("an agent that is not found, signed out, or cannot be asked says what to do
   unreachable.close();
   const agy = openOnAgent(aBot({ runner: "antigravity" }), withAcp(agentItems()));
   await sleep(30);
-  expect(agy.host.querySelector("[data-runner-note]")?.textContent).toBe(t.sidebar.botRunnerNoAppTools("Antigravity"));
+  expect(agy.host.querySelector("[data-runner-note]")).toBeNull();
   agy.close();
 });
 

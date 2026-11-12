@@ -351,6 +351,16 @@ export const END_TURN: ToolDef = {
   properties: {
     inbox: {
       type: "array",
+      // Gemini refuses a tool whose array names no items (Antigravity, 2026-11-12: every turn failed on it).
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          disposition: { type: "string", enum: ["adopted", "answered", "declined", "deferred"] },
+          note: { type: "string" },
+        },
+        required: ["id", "disposition"],
+      },
       description: {
         zh: "这一轮读到的用户的话，每条一项：id 是收件提示里的编号（如 U12），disposition 是 adopted、answered、declined、deferred 之一，note 是一句说明，不采纳时必填。",
         en: "Each line of the user's this turn read: id is the label in the inbox note (U12), disposition is adopted, answered, declined or deferred, and note is one line, required when declining.",

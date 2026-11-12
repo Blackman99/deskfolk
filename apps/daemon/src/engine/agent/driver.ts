@@ -1,6 +1,6 @@
 /**
  * A local agent other than Claude Code, as the app drives it (ADR 0079). A driver speaks one
- * protocol — the Agent Client Protocol, Codex's app-server, `agy`'s print mode — and turns what the
+ * protocol — the Agent Client Protocol (Antigravity's `agy acp` too), Codex's app-server — and turns what the
  * agent does into the few things the app keeps for every turn: what it said, which of its own tools
  * it ran and with what effect, what it cost, how it ended. Everything else a turn has — the
  * Bot's permission mode and your approvals, holds and Stop, the effect ledger, the app's tools, the

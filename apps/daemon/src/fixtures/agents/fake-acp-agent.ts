@@ -7,8 +7,12 @@
  * Steps: `{ say }` a chunk of the reply; `{ read: path }`, `{ write: { path, content } }`,
  * `{ run: command }` through the app; `{ ask: { kind, title, rawInput, locations } }` a permission
  * request for a call it then runs (or not) itself; `{ unasked: { kind, title, rawInput, locations } }`
- * a call it runs without asking; `{ tool: { name, args } }` one of the app's tools over MCP;
+ * a call it runs without asking (`holdMs`: how long it takes, reported as under way at once, as
+ * `agy` does); `{ tool: { name, args } }` one of the app's tools over MCP;
  * `{ wait: ms }`; `{ fail: { code, message } }` the prompt fails; `{ hang: true }` until cancelled.
+ *
+ * The script may also shape `session/new`'s answer (`newSession.result`: models, modes, options, as
+ * `agy acp` sends them) and what each prompt's answer says it used (`usage`).
  */
 import { appendFileSync } from "node:fs";
 import { rpcPeer, RpcError } from "../../engine/agent/jsonrpc";
@@ -19,7 +23,7 @@ type Step =
   | { write: { path: string; content: string } }
   | { run: string }
   | { ask: { kind: string; title: string; rawInput?: Record<string, unknown>; locations?: Array<{ path: string }> } }
-  | { unasked: { kind: string; title: string; rawInput?: Record<string, unknown>; locations?: Array<{ path: string }> } }
+  | { unasked: { kind: string; title: string; rawInput?: Record<string, unknown>; locations?: Array<{ path: string }>; holdMs?: number } }
   | { tool: { name: string; args?: Record<string, unknown> } }
   | { wait: number }
   | { fail: { code: number; message: string } }
@@ -27,13 +31,14 @@ type Step =
   /** Grok's shape (2026-10-10): the read reported with no kind, another call beside it, then the app's read. */
   | { sideRead: string };
 
-type Script = { newSession?: { fail?: { code: number; message: string } }; http?: boolean; prompts: Step[][] };
+type Script = { newSession?: { fail?: { code: number; message: string }; result?: Record<string, unknown> }; http?: boolean; usage?: Record<string, number>; prompts: Step[][] };
 
 const script = JSON.parse(process.env.FAKE_ACP_SCRIPT ?? '{"prompts":[]}') as Script;
 const log = (entry: Record<string, unknown>) => {
   if (process.env.FAKE_ACP_LOG) appendFileSync(process.env.FAKE_ACP_LOG, `${JSON.stringify(entry)}\n`);
 };
 const rpc = rpcPeer(process.stdin, process.stdout, { jsonrpc: true });
+log({ argv: process.argv.slice(2), cwd: process.cwd() });
 let mcpUrl: string | null = null;
 let promptIndex = 0;
 let cancelled = false;
@@ -107,10 +112,13 @@ rpc.onRequest(async (method, params) => {
       const stdio = servers.find((server) => !server.type && server.command);
       if (stdio) startStdioMcp(stdio as { command: string; args?: string[]; env?: Array<{ name: string; value: string }> });
       sessionId = "fake-session-1";
-      return { sessionId, configOptions: [{ id: "model", name: "Model", category: "model", type: "select", currentValue: "fake-default", options: [] }] };
+      return { sessionId, configOptions: [{ id: "model", name: "Model", category: "model", type: "select", currentValue: "fake-default", options: [] }], ...(script.newSession?.result ?? {}) };
     }
     case "session/set_config_option":
       return { configOptions: [] };
+    case "session/set_model":
+    case "session/set_mode":
+      return {};
     case "session/close":
       return {};
     case "session/prompt": {
@@ -169,9 +177,9 @@ rpc.onRequest(async (method, params) => {
           if (allowed) update({ sessionUpdate: "tool_call_update", toolCallId: id, status: "completed", rawOutput: { output: "done" } });
         } else if ("unasked" in step) {
           const id = `call_${++toolSeq}`;
-          update({ sessionUpdate: "tool_call", toolCallId: id, title: step.unasked.title, kind: step.unasked.kind, status: "pending", rawInput: step.unasked.rawInput ?? {}, locations: step.unasked.locations ?? [] });
-          update({ sessionUpdate: "tool_call_update", toolCallId: id, status: "in_progress" });
-          await new Promise((resolve) => setTimeout(resolve, 20));
+          update({ sessionUpdate: "tool_call", toolCallId: id, title: step.unasked.title, kind: step.unasked.kind, status: step.unasked.holdMs ? "in_progress" : "pending", rawInput: step.unasked.rawInput ?? {}, locations: step.unasked.locations ?? [] });
+          if (!step.unasked.holdMs) update({ sessionUpdate: "tool_call_update", toolCallId: id, status: "in_progress" });
+          await new Promise((resolve) => setTimeout(resolve, step.unasked.holdMs ?? 20));
           update({ sessionUpdate: "tool_call_update", toolCallId: id, status: "completed" });
           log({ unasked: step.unasked.title });
         } else if ("tool" in step) {
@@ -202,7 +210,7 @@ rpc.onRequest(async (method, params) => {
         }
         await new Promise((resolve) => setTimeout(resolve, 5));
       }
-      return { stopReason: cancelled ? "cancelled" : "end_turn" };
+      return { stopReason: cancelled ? "cancelled" : "end_turn", ...(script.usage ? { usage: script.usage } : {}) };
     }
     default:
       throw new RpcError(-32601, `no ${method}`);

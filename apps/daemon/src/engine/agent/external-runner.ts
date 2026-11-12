@@ -129,7 +129,7 @@ export async function runExternalSession(input: {
   }
 
   // The app's own tools, less the five every agent has its own of — or none, for an agent the app
-  // cannot hand them to (Antigravity's print mode).
+  // cannot hand them to (a driver without `appTools`).
   const listed = driver.caps.appTools && deps.mcp ? await deps.mcp.listForTurn() : { tools: [], guides: [] };
   if (!active(turnId, live)) return;
   const inEngine = store.toolsIn(current.session_id);
@@ -665,7 +665,7 @@ export async function runExternalSession(input: {
     const settled = await deps.settleClosingReply(turnId, live, current, reply);
     if (settled.kind === "bounce") {
       state.bounces += 1;
-      // An agent without the app's tools (Antigravity's print mode) can never submit or end_turn
+      // An agent without the app's tools (a driver without `appTools`) can never submit or end_turn
       // as an ending may ask: once its words went out with the second bounce, the segment is over.
       if (!driver.caps.appTools && state.bounces >= 2) {
         state.endedByTool = true;

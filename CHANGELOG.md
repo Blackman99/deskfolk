@@ -6,6 +6,15 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Antigravity Bots can use Deskfolk's tools
+
+- Antigravity Bots ran on `agy`'s print mode, which could not be given the app's tools: they spoke only through their closing reply, leaving hand-overs, passes and questions in it for you, a segment ended after its second bounce, insert-now could not cut them short, and pictures never reached them. They now run on `agy acp` (the Agent Client Protocol) and, like Grok and OpenCode, get the app's tools through an MCP server named deskfolk: they can end a turn, hand in work, delegate and ask you with `ask_user`; insert-now and Stop cut the step they are on; pictures reach them. They still run on your own sign-in and plan.
+- The model names Bots already keep still work (such as `gemini-3.8-flash-high`), and the effort is set to the levels `agy` offers for that model: low, medium and high for Gemini, none for Claude models, which then keep their own. The effort choices are now low, medium and high. Spend is still recorded in tokens.
+- It still works with the permission you set in `agy`: what it asks about, the app answers by the permission mode; under `always-proceed` it asks nothing first, so the app runs it sandboxed and checks each call as soon as it reports it under way, stopping the turn on one the permission mode would have asked about or refused.
+- agy 1.5.4 or later is needed. An older agy no longer runs Antigravity Bots: the turn does not start, its failure line says "Your Antigravity is too old" and which version it needs, and its row in Settings › Agents says to update; like a missing or signed-out agent, this is not retried.
+- Errors of `agy`'s own (a model out of capacity, busy servers, a turned-off account, each written as "⚠ …" lines in place of a reply) are no longer posted in the conversation as the Bot's words: the turn fails, its failure line quoting the last of them, and a turned-off account, like a signed-out one, is left to you and not retried.
+- The app's own `end_turn` tool now spells out what each `inbox` entry holds: Gemini refuses a tool whose array does not say what it contains, which failed every Antigravity turn on Gemini.
+
 ### A subagent's popup keeps its size, and an empty one is no longer a thin strip
 
 - In the native (NSH) desktop build, the popup that opens a project session's subagent took the height of what it had to show. A subagent that had done nothing yet, or whose record could not be read, opened as a wide, flat strip with "It has not done anything yet" at one end and its time at the other, and a popup that was being read grew in jumps as the subagent's steps came in. The popup is now as tall as in the Tauri app whatever it holds, and while there is nothing to show, where the subagent is and how long it has run (or "Reading…", "Could not read it", "Its record can no longer be read") sit in its middle. On a phone it is the whole page, as before.
