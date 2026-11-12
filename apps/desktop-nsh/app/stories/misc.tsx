@@ -37,6 +37,25 @@ export default function Misc() {
   let team: TeamStepApi | null = null;
   const locale = () => (runtime.snapshot.settings.locale === "en" ? "en" : "zh");
 
+  /** The search as a one-letter query leaves it on a long history: `count` message hits (`many-<i>`),
+   * each with some Markdown in it, in a conversation that can be opened except for the first
+   * `closed`, whose conversation is gone. */
+  const openWithMany = (count: number, closed = 0) => {
+    const session = runtime.snapshot.sessions[0];
+    runtime.searchQuery = "a";
+    runtime.searchError = false;
+    runtime.searchLoading = false;
+    runtime.searchHits = Array.from({ length: count }, (_, i) => ({
+      kind: "message" as const,
+      id: `many-${i}`,
+      snippet: `Line ${i}: **a** summary with \`code\`, a [link](https://example.com) and enough words after it to fill two lines of the row`,
+      session_id: i < closed ? "gone" : session?.id,
+      session_title: session?.name ?? "Writer",
+      parent_id: null,
+    }));
+    searchOpen.set(true);
+  };
+
   /** What the runtime itself says (a fresh GET), for the test to read. */
   const read = async () => {
     const api = runtime.client;
@@ -142,6 +161,8 @@ export default function Misc() {
       <If when={part() === "search"}>
         <View class="p-4 gap-2">
           <Btn id="story-open-search" label="open search" onPress={() => searchOpen.set(true)} />
+          <Btn id="story-open-many" label="open with 2000 hits" onPress={() => openWithMany(2000)} />
+          <Btn id="story-open-many-closed" label="open with 2000 hits, the first 49 gone" onPress={() => openWithMany(2000, 49)} />
           <Text testID="story-picked" class="text-[12px] text-ink-muted">{`picked:${picked()}`}</Text>
           <If when={searchOpen()}>
             <GlobalSearch

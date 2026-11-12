@@ -9,6 +9,13 @@ const open = async () => {
   await app.waitFor("id:global-search-input");
   return app;
 };
+/** The story without the search open yet: the long lists open from their own buttons. */
+const story = async () => {
+  const app = await openStory("misc");
+  await app.waitFor("id:story-show-search", { timeout: 10_000 });
+  await app.press("id:story-show-search");
+  return app;
+};
 const picked = (app: Awaited<ReturnType<typeof open>>) => app.texts().find((text) => text.startsWith("picked:")) ?? "";
 
 test("before a query it says what it searches; a query finds the seeded messages, grouped by kind", async () => {
@@ -67,6 +74,42 @@ test("the arrows move among the hits; Escape and Cancel close without a choice",
   await app.waitFor("id:global-search-input");
   await app.press("id:search-cancel");
   await app.waitFor("id:global-search-input", { state: "gone" });
+});
+
+test("a one-letter query's thousands of hits get rows a page at a time, more as the list is scrolled", async () => {
+  const app = await story();
+  await app.press("id:story-open-many");
+  await app.waitFor("id:search-hit-0");
+  // Every hit used to get a row at once, and a row asked of every hit whether it can be opened.
+  expect(app.count("id:search-results >> role:option")).toBe(50);
+  expect(app.texts().some((text) => text.includes("2000"))).toBe(true);
+  // To the end of the rows there are: the next page comes within a screen of it.
+  await app.scroll("id:search-results", 6000);
+  await app.waitUntil(() => app.count("id:search-results >> role:option") > 50);
+  expect(app.count("id:search-results >> role:option")).toBe(100);
+});
+
+test("the arrows go on into the next page, and up from the first stays rather than going round", async () => {
+  const app = await story();
+  // The first 49 hits are in a conversation that is gone, so the list starts on the 50th, its last row.
+  await app.press("id:story-open-many-closed");
+  await app.waitFor("id:search-hit-0");
+  expect(app.count("id:search-results >> role:option")).toBe(50);
+  await app.keyboard.press("down");
+  expect(app.count("id:search-results >> role:option")).toBe(100);
+  await app.submit("id:global-search-input");
+  await app.waitFor("id:global-search-input", { state: "gone" });
+  expect(picked(app)).toContain('"messageId":"many-50"');
+
+  await app.press("id:story-open-many-closed");
+  await app.waitFor("id:search-hit-0");
+  await app.keyboard.press("down");
+  await app.keyboard.press("up");
+  // Going round would land on the 100th, which is not the last of the 2000.
+  await app.keyboard.press("up");
+  await app.submit("id:global-search-input");
+  await app.waitFor("id:global-search-input", { state: "gone" });
+  expect(picked(app)).toContain('"messageId":"many-49"');
 });
 
 test("on a phone the search fills the window and drops the footer", async () => {

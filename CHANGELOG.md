@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Search no longer freezes the window
+
+- In the native (NSH) desktop build, ⌘K search froze the window as soon as a query found many messages: the first letter typed finds most of a long history (1 687 messages for "a", 2 315 for "的" on this computer), every one of them got a row at once, and each row asked of every hit whether it can be opened, so each step of the work took longer than two seconds and the window stopped answering. The search now shows the first 50 hits and adds 50 more as you scroll near the end or as the arrows go past the last one; those two queries show their first rows in about a tenth and a fifth of a second. The count above the list is still the full count.
+- Moving through the hits with the arrows or the pointer only changes the look of the rows it leaves and reaches, rather than making the list again, and the list no longer jumps back to its first hit while a Bot is replying elsewhere.
+- With more hits than rows, ↑ on the first hit stays there instead of going round to the last row shown, which is not the last hit. The row the arrows reach is now shown whole; its lower edge could stay under the bottom of the list.
+
 ### The `/` list in a project session shows its commands again, and offers what a command takes
 
 - In the native (NSH) desktop build, typing `/` in a project session opened the command list with nothing in it, only the key hints; a letter more brought the commands back. Now a bare `/` lists them all.

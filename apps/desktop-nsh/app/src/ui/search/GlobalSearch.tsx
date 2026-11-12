@@ -10,7 +10,7 @@
  * Svelte one's `opener` (the control to give focus back to) is a `ViewRef`, and its exported
  * `focusQuery()` is handed to `onApi` once. On a phone (≤ 680) it fills the window.
  */
-import { effect, keymap, safeArea, Scroll, signal, Text, View, windowSize, type InputRef, type ScrollRef, type ViewRef } from "nsh";
+import { computed, effect, keymap, safeArea, Scroll, signal, Text, untracked, View, windowSize, type InputRef, type ScrollRef, type ViewRef } from "nsh";
 import { Dialog, Input } from "nsh/base";
 import type { Bot, SearchHit, SearchKind, SessionSummary } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
@@ -32,7 +32,13 @@ export type GlobalSearchApi = { focusQuery: () => void };
 type Category = SearchKind | "all";
 const KINDS = ["bot", "session", "message", "file", "routine"] as const;
 
+/** Rows made at a time. A one-letter query can find thousands of messages, and a row is a few
+ * native views each; the rest get rows as the list is scrolled or walked towards its end. */
+const PAGE = 50;
+
 const glyph = (kind: SearchKind | "search"): IconName => (kind === "search" ? "search" : kind === "file" ? "file" : kind === "routine" ? "calendar" : "message-lines");
+
+const sameFlags = (a: readonly boolean[], b: readonly boolean[]) => a.length === b.length && a.every((flag, i) => flag === b[i]);
 
 export function GlobalSearch(props: {
   onClose: () => void;
@@ -46,29 +52,63 @@ export function GlobalSearch(props: {
   const category = signal<Category>("all");
   const active = signal(-1);
   const composing = signal(false);
+  /** How many hits have rows: a page at first, a page more each time the list nears its end. */
+  const shown = signal(PAGE);
   let input: InputRef | null = null;
   let returnFocus = true;
   const scroller: { ref: ScrollRef | null } = { ref: null };
+  /** Each row's frame in the list of rows, by index. */
   const bounds = new Map<number, { y: number; height: number }>();
-  const viewport = { y: 0, height: 0 };
+  /** The scroll offset, the height shown, and where the rows start under what stands over them. */
+  const viewport = { y: 0, height: 0, top: 0 };
+  /** A row the arrows moved to before it was laid out: shown once its frame is known. */
+  let revealPending = -1;
 
+  // Each of these is worked out once per change and shared by every row that reads it: a one-letter
+  // query finds thousands of messages, and plain functions here ran once per row per read.
   const snapshot = () => runtime.snapshot;
-  const bots = () => new Map(snapshot().bots.map((bot) => [bot.id, bot]));
-  const sessions = () => new Map(snapshot().sessions.map((session) => [session.id, session]));
-  const labels = () => ({ bot: t().searchKindBot, session: t().searchKindSession, message: t().searchKindMessage, file: t().searchKindFile, routine: t().searchKindRoutine });
-  const categories = () => [{ key: "all" as Category, label: t().searchAll }, ...KINDS.map((key) => ({ key: key as Category, label: labels()[key] }))];
+  const bots = computed(() => new Map(snapshot().bots.map((bot) => [bot.id, bot])));
+  const sessions = computed(() => new Map(snapshot().sessions.map((session) => [session.id, session])));
+  const labels = computed(() => ({ bot: t().searchKindBot, session: t().searchKindSession, message: t().searchKindMessage, file: t().searchKindFile, routine: t().searchKindRoutine }));
+  const categories = computed(() => [{ key: "all" as Category, label: t().searchAll }, ...KINDS.map((key) => ({ key: key as Category, label: labels()[key] }))]);
   const connected = () => runtime.connection === "connected";
   const queried = () => Boolean(runtime.searchQuery.trim());
-  const hits = (): SearchHit[] =>
-    connected() && !runtime.searchLoading && !runtime.searchError ? runtime.searchHits.filter((hit) => category() === "all" || hit.kind === category()) : [];
-  const available = () => hits().map((hit) => canOpenSearchHit(hit, snapshot().sessions, snapshot().routines, snapshot().bots));
+  const hits = computed((): SearchHit[] =>
+    connected() && !runtime.searchLoading && !runtime.searchError ? runtime.searchHits.filter((hit) => category() === "all" || hit.kind === category()) : [],
+  );
+  /** The hits that have rows; the same objects, so a page more keeps the rows already made. */
+  const visible = computed(() => hits().slice(0, shown()));
+  const more = () => shown() < hits().length;
+  /** Whether each row can be opened, for the rows there are; kept while no row's answer changed. */
+  const available = computed(
+    () => {
+      const { sessions, routines, bots } = snapshot();
+      return visible().map((hit) => canOpenSearchHit(hit, sessions, routines, bots));
+    },
+    { equals: sameFlags },
+  );
 
   // A new list starts on its first row that can be opened, at the top.
   effect(() => {
-    void hits();
-    active.set(nextSearchIndex(available(), -1, 1));
+    const list = hits();
+    untracked(() => {
+      bounds.clear();
+      revealPending = -1;
+      const { sessions, routines, bots } = snapshot();
+      const first = list.findIndex((hit) => canOpenSearchHit(hit, sessions, routines, bots));
+      shown.set(Math.max(PAGE, first + 1));
+      active.set(first);
+    });
     scroller.ref?.scrollTo({ y: 0, animated: false });
   });
+
+  /** Gives the list a page more when its last row comes within a screen of the bottom; not before
+   * that row is laid out, as the list it replaced (the intro, say) was short. */
+  const growNearEnd = () => {
+    const last = bounds.get(visible().length - 1);
+    if (!more() || !last || viewport.height === 0) return;
+    if (viewport.y + viewport.height * 2 >= viewport.top + last.y + last.height) shown.set(shown() + PAGE);
+  };
 
   /** Focuses the query and selects it, so typing replaces it. */
   function focusQuery(): void {
@@ -95,20 +135,45 @@ export function GlobalSearch(props: {
     input?.focus();
   }
 
-  /** Keeps the row the arrows are on in view. */
+  /** Keeps the row the arrows are on in view (`scrollIntoView({ block: 'nearest' })`); a row not laid
+   * out yet is shown when it is. */
   const reveal = (index: number) => {
     const at = bounds.get(index);
-    if (!at || !scroller.ref || viewport.height === 0) return;
-    if (at.y < viewport.y) scroller.ref.scrollTo({ y: at.y });
-    else if (at.y + at.height > viewport.y + viewport.height) scroller.ref.scrollTo({ y: at.y + at.height - viewport.height });
+    if (!at || !scroller.ref || viewport.height === 0) {
+      revealPending = index;
+      return;
+    }
+    revealPending = -1;
+    const y = viewport.top + at.y;
+    if (y < viewport.y) scroller.ref.scrollTo({ y });
+    else if (y + at.height > viewport.y + viewport.height) scroller.ref.scrollTo({ y: y + at.height - viewport.height });
   };
-  effect(() => reveal(active()));
+  const laidOut = (index: number, at: { y: number; height: number }) => {
+    bounds.set(index, at);
+    if (index === revealPending) reveal(index);
+    if (index === visible().length - 1) growNearEnd();
+  };
+
+  /** The row the arrows go to next, round from the end to the start as before once every hit has a
+   * row. Until then, down past the last row goes on into the next page, and up from the first stays
+   * there rather than going round to a row that is not the last. */
+  const step = (direction: 1 | -1): number => {
+    const from = active();
+    if (direction === -1) {
+      if (more() && !available().slice(0, Math.max(from, 0)).some(Boolean)) return from;
+      return nextSearchIndex(available(), from, -1);
+    }
+    while (more() && !available().slice(from + 1).some(Boolean)) shown.set(shown() + PAGE);
+    return nextSearchIndex(available(), from, 1);
+  };
 
   // The arrows walk the hits while the query has the focus; nothing is moved while an input method composes.
   effect(() => {
     const move = (direction: 1 | -1) => {
       if (composing()) return;
-      active.set(nextSearchIndex(available(), active(), direction));
+      const next = step(direction);
+      active.set(next);
+      reveal(next);
     };
     const off = [
       keymap.bind("down", () => move(1), { when: "always", repeat: true }),
@@ -214,27 +279,40 @@ export function GlobalSearch(props: {
           <Scroll
             class="shrink min-h-0 px-2 pb-2"
             ref={(node: ScrollRef | null) => (scroller.ref = node)}
-            onLayout={(e) => (viewport.height = e.bounds.size.height)}
-            onScroll={(e) => (viewport.y = e.offset.y)}
+            onLayout={(e) => {
+              viewport.height = e.bounds.size.height;
+              growNearEnd();
+            }}
+            onScroll={(e) => {
+              viewport.y = e.offset.y;
+              growNearEnd();
+            }}
           >
             <State hits={hits} connected={connected} queried={queried} />
-            <View testID="search-results" role="list" accessibilityLabel={t().globalSearch} accessibilityState={{ busy: runtime.searchLoading }}>
-              {() =>
-                hits().map((hit, index) => (
+            <View
+              testID="search-results"
+              role="list"
+              accessibilityLabel={t().globalSearch}
+              accessibilityState={{ busy: runtime.searchLoading }}
+              onLayout={(e) => (viewport.top = e.bounds.origin.y)}
+            >
+              {/* Rows are kept by hit: the arrows and the pointer change a row's look, not the list. */}
+              <Each of={visible()}>
+                {(hit, index) => (
                   <Hit
-                    hit={hit}
-                    index={index}
-                    selected={active() === index}
-                    available={available()[index] === true}
-                    onHover={() => available()[index] && active.set(index)}
-                    onPress={() => choose(hit)}
-                    onLayout={(b) => bounds.set(index, b)}
+                    hit={hit()}
+                    index={index()}
+                    selected={active() === index()}
+                    available={available()[index()] === true}
+                    onHover={() => available()[index()] && active.set(index())}
+                    onPress={() => choose(hit())}
+                    onLayout={(b) => laidOut(index(), b)}
                     bots={bots()}
                     sessions={sessions()}
                     labels={labels()}
                   />
-                ))
-              }
+                )}
+              </Each>
             </View>
           </Scroll>
 
