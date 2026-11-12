@@ -91,7 +91,45 @@ fn install_portable(host: &HostChannel) {
                 "error": null, "warning": null,
             }))
         });
+        install_notification_commands(host);
     }
+}
+
+/// The notification commands where the shell has no system notifications yet (Windows, Linux):
+/// the macOS shell's names and JSON shapes (`notification_loop.rs`), answering a shell that knows
+/// its window's focus (`nativeReadingV1`: the app reads it from NSH's `lifecycle()`) but posts no
+/// banners (`nativeDeliveryV1` off, permission `default`, no clicked banner). Without an answer to
+/// `notification_permission_state` the messenger took the shell for one that cannot tell whether
+/// its window is read (`desktopReadingMode` → `explicit_only`), and no conversation was ever marked
+/// read on its own.
+#[cfg(not(target_os = "macos"))]
+fn install_notification_commands(host: &HostChannel) {
+    host.handle("tauri.notification_permission_state", |call: HostCall| call.resolve(permission_state()));
+    host.handle("tauri.request_notification_permission", |call: HostCall| call.resolve(permission_state()));
+    host.handle("tauri.take_notification_intent", |call: HostCall| call.resolve(Value::Null));
+    host.handle("tauri.report_notification_view", |call: HostCall| {
+        let facts = view_facts(&call.data()["report"]);
+        call.resolve(facts)
+    });
+}
+
+/// `NotificationPermissionStateDto` for a shell that reads but does not deliver.
+#[cfg(not(target_os = "macos"))]
+fn permission_state() -> Value {
+    json!({
+        "permission": "default", "nativeReadingV1": true, "nativeDeliveryV1": false,
+        "coldClickQualified": false, "operational": false, "gatedReason": "native_delivery_unavailable",
+        "attentionCount": 0,
+    })
+}
+
+/// `NativeFocusFacts` from the messenger's own report (`visible`, `focused`): with no presence to
+/// tell the runtime, the window's facts are the ones the app reported.
+#[cfg(not(target_os = "macos"))]
+fn view_facts(report: &Value) -> Value {
+    let visible = report["visible"].as_bool().unwrap_or(true);
+    let focused = visible && report["focused"].as_bool().unwrap_or(false);
+    json!({ "visible": visible, "focused": focused, "minimized": !visible, "effectiveFocused": focused })
 }
 
 /// `installer::InstallState::idle()` as the card reads it.
@@ -133,5 +171,25 @@ mod tests {
         let second = params(&config(), 2);
         assert_eq!(second["token"], "t");
         assert!(second.get("openSession").is_none());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn a_shell_without_banners_still_reads() {
+        // `desktopReadingMode` reads `nativeReadingV1`: without it nothing is marked read on its own.
+        let state = permission_state();
+        assert_eq!(state["nativeReadingV1"], true);
+        assert_eq!(state["nativeDeliveryV1"], false);
+        assert_eq!(state["permission"], "default");
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn the_view_facts_are_the_reported_ones() {
+        let focused = view_facts(&serde_json::json!({ "visible": true, "focused": true }));
+        assert_eq!(focused, serde_json::json!({ "visible": true, "focused": true, "minimized": false, "effectiveFocused": true }));
+        let hidden = view_facts(&serde_json::json!({ "visible": false, "focused": true }));
+        assert_eq!(hidden["effectiveFocused"], false);
+        assert_eq!(view_facts(&Value::Null)["focused"], false);
     }
 }
