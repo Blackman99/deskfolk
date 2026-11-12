@@ -36,6 +36,7 @@ import {
 } from "./dev-instance";
 import { ghosttyEnv } from "./ghostty";
 import { nshCli } from "./nsh-cli";
+import { trimTargets } from "./trim-target";
 
 const root = resolve(import.meta.dir, "..");
 const repo = resolve(root, "../..");
@@ -48,6 +49,7 @@ const mac = process.platform === "darwin";
 const executable = mac
   ? join(bundleApp, "Contents", "MacOS", "deskfolk-nsh")
   : join(root, "target", "debug", process.platform === "win32" ? "deskfolk-nsh.exe" : "deskfolk-nsh");
+trimTargets();
 const nsh = nshCli({ build: true });
 const cargo = process.env.CARGO ?? join(homedir(), ".cargo", "bin", "cargo");
 const stable = process.argv.includes(STABLE_INSTANCE_FLAG);

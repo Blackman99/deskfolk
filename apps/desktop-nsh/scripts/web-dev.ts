@@ -12,6 +12,7 @@ import { homedir } from "node:os";
 import { extname, join, normalize, resolve } from "node:path";
 import { assertApartFromStable, DEV_APP_NAME, devInstance } from "./dev-instance";
 import { nshCli } from "./nsh-cli";
+import { trimTargets } from "./trim-target";
 
 export const WEB_DEV_PORT = 17991;
 const root = resolve(import.meta.dir, "..");
@@ -27,6 +28,7 @@ function llvmAr(): string | undefined {
 }
 
 if (!process.argv.includes("--no-build")) {
+  trimTargets();
   const nsh = nshCli({ build: true });
   const env = {
     ...process.env,
