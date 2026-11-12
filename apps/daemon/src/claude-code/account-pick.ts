@@ -84,10 +84,14 @@ export function pickClaudeAccount(input: {
 
 /**
  * When the soonest of your signed-in accounts is back, by the resets the agent itself reported; null
- * when none said (a billing stop, an account on hold), and nothing is scheduled then.
+ * when none said (a billing stop, an account on hold), and nothing is scheduled then. `current`, the
+ * account that just ran out, counts however the status reads it: it is the one the work runs on.
  */
-export function soonestBack(status: ClaudeCodeStatus, listed: readonly string[], outs: readonly AccountOut[], env?: Record<string, string | undefined>): number | null {
-  const times = claudeSeats(status, listed, env).filter((seat) => seat.signedIn && seat.plan).flatMap((seat) => {
+export function soonestBack(status: ClaudeCodeStatus, listed: readonly string[], outs: readonly AccountOut[], env?: Record<string, string | undefined>,
+  current?: Pick<ClaudeAccountSeat, "dir" | "email">): number | null {
+  const seats: Array<Pick<ClaudeAccountSeat, "dir" | "email">> = claudeSeats(status, listed, env).filter((seat) => seat.signedIn && seat.plan);
+  if (current) seats.push(current);
+  const times = seats.flatMap((seat) => {
     const note = outNote(seat, outs);
     return note?.known ? [note.until] : [];
   });

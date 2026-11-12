@@ -739,6 +739,9 @@ export class Store {
   readonly addLimitResume = this.bind(accountLimits.addLimitResume);
   readonly dropLimitResume = this.bind(accountLimits.dropLimitResume);
   readonly limitResumeStale = this.bind(accountLimits.limitResumeStale);
+  readonly projectResumes = this.bind(accountLimits.projectResumes);
+  readonly addProjectResume = this.bind(accountLimits.addProjectResume);
+  readonly dropProjectResume = this.bind(accountLimits.dropProjectResume);
   readonly setCustomAgents = this.bind(agents.setCustomAgents);
   readonly botDefault = this.bind(modelDefaults.botDefault);
   readonly ensureBotDefault = this.bind(modelDefaults.ensureBotDefault);

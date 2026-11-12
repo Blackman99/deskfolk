@@ -14,7 +14,8 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### Out of Claude usage, work goes on on your other account, or picks up at the reset
 
 - A Bot on Claude Agent whose account hits its five-hour or weekly limit no longer stops with 「这一轮没写完：Claude 的用量额度用完了」 while another Claude account you listed in Settings › Agents, signed in on a Claude plan, has room (one billed per token is never moved to): the same turn goes on there in a new session, told what was already done, with no line in the conversation. The next turns start on that account until the first one resets; the Bot's own account setting is unchanged. Built-in calls on Claude (line reading, the organizer, …) switch the same way.
-- With every account out, the failure line says when the work picks up (「…（11/5 13:10 重置，到时自动接着做）」) and it continues by itself then, as if you pressed its Continue; no notification. Pressing Continue earlier, saying something that gets through, or a stop of yours lets it go. Codex turns pick up at a reset Codex reports too. Project sessions are unchanged. ([ADR 0110](docs/adr/0110-out-of-usage-another-account-or-the-reset.md))
+- With every account out, the failure line says when the work picks up (「…（11/5 13:10 重置，到时自动接着做）」) and it continues by itself then, as if you pressed its Continue; no notification. Pressing Continue earlier, saying something that gets through, or a stop of yours lets it go. Codex turns pick up at a reset Codex reports too.
+- Project sessions too: a Claude Code session out of usage moves itself to another of your plan accounts (its session copied there, as picking the account in the composer does), says so in one line and goes on, quoting what you had not had an answer to; with every account out, it says when and picks up by itself then. Codex sessions pick up at a reset Codex reports. ([ADR 0110](docs/adr/0110-out-of-usage-another-account-or-the-reset.md))
 
 ### Split panes stay in a small window
 

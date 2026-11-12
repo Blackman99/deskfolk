@@ -70,6 +70,8 @@ export type RuntimeOptions = {
    * live check's wrapper that records what Claude Code said. `main.ts` never sets it.
    */
   agentQuery?: import("./engine/agent-runner").AgentQuery;
+  /** The same for a project session's Claude Code (ADR 0095): a live check's stand-in. `main.ts` never sets it. */
+  projectQuery?: import("./project-runner").ProjectQuery;
 };
 
 export type RuntimeHandle = {
@@ -327,6 +329,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       keepAwake: options.keepAwake,
       ablation: options.ablation,
       agentQuery: options.agentQuery,
+      ...(options.projectQuery ? { projectQuery: options.projectQuery } : {}),
       installedApp,
       log: bootLog,
       // Before the scheduler's first tick, a line for each job the restart cut off where you will

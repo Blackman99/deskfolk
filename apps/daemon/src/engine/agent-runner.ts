@@ -413,7 +413,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       const next = active(turnId, live)
         ? pickClaudeAccount({ status, listed, preferred: settings.configDir, outs: store.accountsOut(), tried }) : null;
       if (!next) {
-        const back = soonestBack(status, listed, store.accountsOut());
+        const back = soonestBack(status, listed, store.accountsOut(), undefined, seat);
         if (back !== null) live.resumeAt = back;
         deps.failTurn(turnId, "agent_limit", ended.limit.detail);
         return;

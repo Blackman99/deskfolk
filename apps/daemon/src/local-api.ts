@@ -277,6 +277,8 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       : startScheduler({
           store: options.store,
           engine,
+          // Off while the runtime drains, as the engine's own pick-ups are.
+          projects: { resumeAfterLimits: (at) => { if (!options.admission?.draining) projects.resumeAfterLimits?.(at); } },
           now: options.now,
           keepAwake: options.keepAwake ? keepAwake() : undefined,
         });

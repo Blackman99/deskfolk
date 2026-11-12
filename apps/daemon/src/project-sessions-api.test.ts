@@ -84,11 +84,12 @@ function scripted(seen: Seen, step: Step, ownSession = "own-1", preface: (line: 
   };
 }
 
-function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[]; claudeModels?: ClaudeModelList; claudeCommands?: ClaudeCommandList; query?: ProjectQuery } = {}) {
+function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[]; claudeModels?: ClaudeModelList; claudeCommands?: ClaudeCommandList; query?: ProjectQuery; status?: ClaudeCodeStatus } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "project-session-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
   const seen: Seen = { options: [], lines: [], closed: 0, models: [], efforts: [], modes: [], verdicts: [] };
-  const api = createLocalApi({ store, token: "project-test", schedule: false, claudeCode: probe, projectQuery: opts.query ?? scripted(seen, step, opts.ownSession, opts.preface),
+  const claudeCode: ClaudeCodeProbe = opts.status ? { last: () => opts.status!, current: async () => opts.status!, detect: async () => opts.status! } : probe;
+  const api = createLocalApi({ store, token: "project-test", schedule: false, claudeCode, projectQuery: opts.query ?? scripted(seen, step, opts.ownSession, opts.preface),
     ...(opts.claudeModels ? { claudeModels: opts.claudeModels } : {}), ...(opts.claudeCommands ? { claudeCommands: opts.claudeCommands } : {}) });
   const events: ClientEvent[] = [];
   api.subscribeSync((frame) => { if (frame.type === "event") events.push(frame.payload); });
@@ -643,6 +644,124 @@ test("the account does not change under a run still writing its session", async 
   release();
   await h.until(async () => (await h.run(id))?.status === "completed");
   expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { config_dir: homeB })).status).toBe(200);
+});
+
+// --- ADR 0110: out of usage, another account or the reset ---------------------------------------
+
+/**
+ * Signed in on a Claude plan: each directory given, and the daemon's own environment unless `ownByKey`
+ * puts that one on an API key, which is never moved to: a test must not write into your real account.
+ */
+function accountsStatus(dirs: string[], opts: { ownByKey?: boolean } = {}): ClaudeCodeStatus {
+  const account = (dir: string | null, email: string, method = "claude.ai") => ({ config_dir: dir, config_directory: dir, logged_in: true, auth_method: method, subscription_type: "max", email, error: null, login_command: "" });
+  return { ...signedIn, email: "own@a.c", auth_method: "claude.ai",
+    accounts: [account(null, "own@a.c", opts.ownByKey ? "api_key" : "claude.ai"), ...dirs.map((dir, at) => account(dir, `acct${at}@a.c`))] } as unknown as ClaudeCodeStatus;
+}
+
+/**
+ * A Claude Code whose requests on `outOn` (a config directory, or "own" for the daemon's) are turned
+ * away by the plan's limit, resetting at `resetsAt` (seconds); anywhere else each line is answered.
+ */
+function limitedQuery(seen: { runs: Array<{ dir: string | undefined; lines: string[] }> }, outOn: () => string | null, resetsAt: number): ProjectQuery {
+  return ({ prompt, options }) => {
+    const run = { dir: options.env?.CLAUDE_CONFIG_DIR, lines: [] as string[] };
+    seen.runs.push(run);
+    let closed = false;
+    const generator = (async function* (): AsyncGenerator<SDKMessage> {
+      yield { type: "system", subtype: "init", session_id: "own-1", model: "claude-sonnet-5", uuid: crypto.randomUUID() } as unknown as SDKMessage;
+      for await (const message of prompt as AsyncIterable<SDKUserMessage>) {
+        if (closed) break;
+        const content = message.message.content;
+        run.lines.push(typeof content === "string" ? content : content.map((part) => (part.type === "text" ? part.text : "")).join("\n"));
+        const out = outOn();
+        if (out !== null && (run.dir ?? "own") === out) {
+          yield { type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt, rateLimitType: "five_hour" }, uuid: crypto.randomUUID(), session_id: "own-1" } as unknown as SDKMessage;
+          yield { type: "assistant", parent_tool_use_id: null, error: "rate_limit", uuid: crypto.randomUUID(), session_id: "own-1",
+            message: { id: "m", role: "assistant", content: [{ type: "text", text: "You've hit your limit" }] } } as unknown as SDKMessage;
+          yield { type: "result", subtype: "success", result: "You've hit your limit", is_error: true, session_id: "own-1", uuid: crypto.randomUUID() } as unknown as SDKMessage;
+          continue;
+        }
+        yield { type: "result", subtype: "success", result: `接着做完了（${run.dir ? "另一个账号" : "默认账号"}）`, is_error: false, session_id: "own-1", uuid: crypto.randomUUID() } as unknown as SDKMessage;
+      }
+    })();
+    return Object.assign(generator, { close: () => { closed = true; } });
+  };
+}
+
+test("out of usage, a project session moves to another of your accounts, carries its session there and goes on by itself", async () => {
+  const homeA = mkdtempSync(join(tmpdir(), "claude-a-"));
+  const homeB = mkdtempSync(join(tmpdir(), "claude-b-"));
+  closes.push(async () => { rmSync(homeA, { recursive: true, force: true }); rmSync(homeB, { recursive: true, force: true }); });
+  const seen = { runs: [] as Array<{ dir: string | undefined; lines: string[] }> };
+  const resetsAt = Math.floor(Date.now() / 1000) + 3 * 3600;
+  const h = start(async () => "", { status: accountsStatus([homeA, homeB], { ownByKey: true }), query: limitedQuery(seen, () => homeA, resetsAt) });
+  h.store.setClaudeCodeConfigDirs([homeA, homeB]);
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir, config_dir: homeA })).body.id;
+  // An earlier run on A left its session there.
+  mkdirSync(join(homeA, "projects", "-work-app"), { recursive: true });
+  writeFileSync(join(homeA, "projects", "-work-app", "own-1.jsonl"), '{"type":"user"}\n');
+  h.store.recordProjectAgentSession(id, "own-1");
+
+  await h.say(id, "把测试补齐");
+  await h.until(() => h.lines(id).some((line) => line.body.startsWith("接着做完了")));
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(seen.runs.map((run) => run.dir)).toEqual([homeA, homeB]);
+  // The run on B resumes the session carried there, told why and what was left.
+  expect(readFileSync(join(homeB, "projects", "-work-app", "own-1.jsonl"), "utf8")).toBe('{"type":"user"}\n');
+  expect(h.seen.options).toEqual([]);
+  expect(seen.runs[1]!.lines[0]).toContain("现在会话换到了用户的另一个账号");
+  expect(seen.runs[1]!.lines[0]).toContain("「把测试补齐」");
+  expect(h.store.projectOf(id)?.configDir).toBe(homeB);
+  const system = h.lines(id).filter((line) => line.kind === "system").map((line) => line.body);
+  expect(system.some((body) => body.includes("换到") && body.includes("接着做") && body.includes("重置"))).toBe(true);
+  expect(system.some((body) => body.includes("出错停下了"))).toBe(false);
+  expect(h.store.accountsOut().map((row) => row.dir)).toEqual([homeA]);
+
+  // A new session on A, now noted out, starts on another account from its first run.
+  const other = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir, config_dir: homeA })).body.id;
+  await h.say(other, "再来一个");
+  await h.until(() => h.lines(other).some((line) => line.body.startsWith("接着做完了")));
+  expect(seen.runs.at(-1)!.dir).toBe(homeB);
+  expect(seen.runs.filter((run) => run.dir === homeA)).toHaveLength(1);
+});
+
+test("out of usage on every account, a project session says when it picks up, and does then unless you spoke first", async () => {
+  const seen = { runs: [] as Array<{ dir: string | undefined; lines: string[] }> };
+  const resetsAt = Math.floor(Date.now() / 1000) + 2 * 3600;
+  let out: string | null = "own";
+  const h = start(async () => "", { status: accountsStatus([]), query: limitedQuery(seen, () => out, resetsAt) });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(id, "整理日志");
+  await h.until(async () => (await h.run(id))?.status === "failed");
+  const line = h.lines(id).find((row) => row.kind === "system")?.body ?? "";
+  expect(line).toContain("Claude 的用量额度用完了");
+  expect(line).toContain("重置，到时自动接着做");
+  expect(h.store.projectResumes().map((row) => row.at)).toEqual([resetsAt * 1000 + 60_000]);
+
+  // Not yet: nothing starts.
+  h.api.projects.resumeAfterLimits!(new Date(resetsAt * 1000));
+  expect(seen.runs).toHaveLength(1);
+  out = null;
+  h.api.projects.resumeAfterLimits!(new Date(resetsAt * 1000 + 61_000));
+  await h.until(() => h.lines(id).some((row) => row.body.startsWith("接着做完了")));
+  expect(seen.runs).toHaveLength(2);
+  expect(seen.runs[1]!.lines[0]).toContain("现在额度恢复了");
+  expect(seen.runs[1]!.lines[0]).toContain("「整理日志」");
+  expect(h.store.projectResumes()).toEqual([]);
+
+  // You spoke before the reset: the pick-up has nothing left to do.
+  out = "own";
+  const second = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(second, "第二件");
+  await h.until(async () => (await h.run(second))?.status === "failed");
+  out = null;
+  await h.say(second, "现在呢");
+  await h.until(async () => (await h.run(second))?.status === "completed");
+  const runs = seen.runs.length;
+  h.api.projects.resumeAfterLimits!(new Date(resetsAt * 1000 + 61_000));
+  await Bun.sleep(30);
+  expect(seen.runs).toHaveLength(runs);
+  expect(h.store.projectResumes()).toEqual([]);
 });
 
 test("each account's models are asked of Claude Code, and only a listed account's", async () => {

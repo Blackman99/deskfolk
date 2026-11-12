@@ -24,6 +24,9 @@ import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
 import { placeOfCall } from "./claude-code/tool-place";
 import { claudeLaunch, killsTree } from "./claude-code/spawn";
 import { classifyCodexError } from "./engine/agent/drivers/codex";
+import { resetMs, RESUME_MARGIN_MS } from "./engine/agent/account-switch";
+import { lineTime, pickUpDetail } from "./prompts/transcript-copy";
+import { continueNote, outOfUsageLine } from "./project-limits";
 import { rpcPeer, type RpcPeer } from "./engine/agent/jsonrpc";
 import { absoluteFrom, decideAction, unwrapShell, type AppAction } from "./engine/agent/policy";
 import { agentTrace } from "./engine/agent/trace";
@@ -250,21 +253,26 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
 
   function heard(message: Message): void {
     const sessionId = message.session_id;
-    const project = store.projectOf(sessionId);
-    if (!project) return;
+    if (!store.projectOf(sessionId)) return;
     const command = slashCommandOf(message.body);
     // A command names nothing: the session takes its name from the first thing you ask.
     if (!command) store.nameProjectSessionIfUnnamed(sessionId, message.body);
+    startRun(sessionId, () => ({
+      input: lineInput(store, message, locale() === "en"),
+      command: command ? { name: command, rest: message.body.trim().slice(command.length + 1).trim() } : null,
+    }));
+  }
+
+  /** Into the session's live run, or the start of a new one: your line, or what the app says to go on after a limit (ADR 0110). */
+  function startRun(sessionId: string, lineOf: () => Queued): void {
+    if (!store.projectOf(sessionId)) return;
     const live = lives.get(sessionId);
     if (live && (live.stopped || live.closing)) {
       // Winding down: the line opens the next run once this one is gone.
-      void live.done.then(() => heard(message));
+      void live.done.then(() => startRun(sessionId, lineOf));
       return;
     }
-    const line: Queued = {
-      input: lineInput(store, message, locale() === "en"),
-      command: command ? { name: command, rest: message.body.trim().slice(command.length + 1).trim() } : null,
-    };
+    const line = lineOf();
     if (live) {
       // A turn going now takes words at its next step, as Codex's own steer does. A command, and
       // anything sent after one still waiting, waits for the turn's end: it is a turn of its own.
@@ -366,6 +374,9 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     /** What a review found, as Codex closes it (`exitedReviewMode`): the reply to `/review`. */
     let reviewText: string | null = null;
     let failure: string | null = null;
+    /** Its plan's limit stopped the turn (ADR 0110), and when it resets, when Codex said. */
+    let limitHit = false;
+    let resetsAt: number | null = null;
     let turnDone: ((turn: TurnEnd) => void) | null = null;
     /** The skills Codex loads here, asked the first time a line names one. */
     let skills: CodexSkill[] | null = null;
@@ -472,6 +483,11 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     rpc.onNotification((method, params) => {
       const p = (params ?? {}) as Record<string, unknown>;
       if (method === "thread/tokenUsage/updated") return bill(p);
+      if (method === "account/rateLimits/updated") {
+        const limits = (p.rateLimits ?? {}) as { rateLimitReachedType?: unknown; primary?: { resetsAt?: number } };
+        if (limits.rateLimitReachedType) resetsAt = resetMs(limits.primary?.resetsAt);
+        return;
+      }
       if (method === "turn/started") {
         const turn = (p.turn ?? {}) as { id?: unknown };
         if (typeof turn.id === "string") ours.add(turn.id);
@@ -527,7 +543,10 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       }
       if (method === "error") {
         const error = (p.error ?? {}) as { message?: string; codexErrorInfo?: unknown };
-        if (p.willRetry !== true && !agentOf(p)) failure = codexFailure(error);
+        if (p.willRetry !== true && !agentOf(p)) {
+          failure = codexFailure(error);
+          if (classifyCodexError(error).failKind === "agent_limit") limitHit = true;
+        }
         return;
       }
       // A compaction's turn is named only here: Stop needs it to interrupt.
@@ -610,6 +629,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         }
         if (end.status !== "completed") {
           failure ??= end.error ? codexFailure(end.error) : end.status ?? "error";
+          if (end.error && classifyCodexError(end.error).failKind === "agent_limit") limitHit = true;
           return false;
         }
         const reply = (reviewText ?? (finalText || lastText)).trim();
@@ -707,6 +727,13 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       live.abort.abort();
     }
     if (live.stopped) return;
+    // Out of usage with a reset Codex said (ADR 0110): the line says when it picks up, and it does then.
+    if (failure && limitHit && resetsAt !== null && resetsAt > Date.now()) {
+      const en = locale() === "en";
+      fail(live, outOfUsageLine(locale(), pickUpDetail(locale(), en ? `resets ${lineTime(resetsAt, "en")}` : `${lineTime(resetsAt, "zh")} 重置`, resetsAt), "Codex"));
+      store.addProjectResume({ session_id: live.sessionId, run_id: live.runId, at: resetsAt + RESUME_MARGIN_MS, lines: [] });
+      return;
+    }
     if (failure) return fail(live, failure);
     update(live.runId, { status: "completed", activity: null, partial: null, approval: null });
   }
@@ -730,6 +757,17 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
 
   return {
     heard,
+    resumeAfterLimits(now = new Date()) {
+      for (const due of store.projectResumes()) {
+        if (due.at > now.getTime()) break;
+        const project = store.projectOf(due.session_id);
+        if (!project || project.agent !== "codex") continue;
+        store.dropProjectResume(due.session_id);
+        // You spoke since, or a run is going: the session has moved on.
+        if (lives.has(due.session_id) || store.latestAgentRun(due.session_id)?.id !== due.run_id) continue;
+        startRun(due.session_id, () => ({ input: [{ type: "text", text: continueNote(locale(), "reset", [], "Codex"), text_elements: [] }], command: null }));
+      }
+    },
     answer(runId, allow) {
       const run = store.getAgentRun(runId);
       const live = liveRun(runId);

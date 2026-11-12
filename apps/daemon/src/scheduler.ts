@@ -20,6 +20,8 @@ export type SchedulerOptions = {
   wake?: WakeWatch;
   /** Holds a Mac on power out of idle sleep while work is under way; only the daemon itself passes one. */
   keepAwake?: KeepAwake;
+  /** Project sessions out of usage that pick up at a reset (ADR 0110); absent where no project runner runs. */
+  projects?: { resumeAfterLimits?: (now?: Date) => void };
 };
 
 export function startScheduler(options: SchedulerOptions): Scheduler {
@@ -61,6 +63,7 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
     // check, so it does not start in a dark wake and fail as unreachable.
     try {
       options.engine.resumeAfterLimits(at);
+      options.projects?.resumeAfterLimits?.(at);
     } catch (error) {
       console.error("[limits] resume failed", error);
     }

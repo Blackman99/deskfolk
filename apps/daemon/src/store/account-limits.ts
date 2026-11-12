@@ -9,6 +9,7 @@ import { setSetting, type StoreContext } from "./shared";
 
 const OUT_KEY = "agent_accounts_out";
 const RESUMES_KEY = "agent_limit_resumes";
+const PROJECT_RESUMES_KEY = "project_limit_resumes";
 /** More resumes than this are old ones nobody cleared; the oldest go first. */
 const RESUMES_MAX = 64;
 
@@ -93,4 +94,33 @@ export function limitResumeStale(ctx: StoreContext, turnId: string): boolean {
       WHERE t.session_id = ? AND t.bot_id = ? AND t.id != ? AND t.created_at >= ? AND t.task_id IS ?`,
   ).all(cut.session_id, cut.bot_id, turnId, cut.created_at, cut.task_id);
   return later.some((row) => !(row.outcome === "failed" && row.fail_kind === "agent_limit"));
+}
+
+/**
+ * A project session that picks up by itself at `at` (ms), ADR 0110: the run that ran out, and your
+ * lines it had not answered (message ids, read again when it fires). One per session.
+ */
+export type ProjectResume = { session_id: string; run_id: string; at: number; lines: string[] };
+
+function isProjectResume(value: unknown): value is ProjectResume {
+  const row = value as Partial<ProjectResume> | null;
+  return Boolean(row) && typeof row!.session_id === "string" && typeof row!.run_id === "string" && typeof row!.at === "number"
+    && Array.isArray(row!.lines) && row!.lines.every((id) => typeof id === "string");
+}
+
+/** Every project session waiting to pick up by itself, soonest first. */
+export function projectResumes(ctx: StoreContext): ProjectResume[] {
+  const value = read(ctx, PROJECT_RESUMES_KEY);
+  return (Array.isArray(value) ? value.filter(isProjectResume) : []).sort((a, b) => a.at - b.at);
+}
+
+export function addProjectResume(ctx: StoreContext, row: ProjectResume): void {
+  const kept = projectResumes(ctx).filter((entry) => entry.session_id !== row.session_id);
+  setSetting(ctx, PROJECT_RESUMES_KEY, JSON.stringify([...kept, row].sort((a, b) => a.at - b.at).slice(-RESUMES_MAX)));
+}
+
+export function dropProjectResume(ctx: StoreContext, sessionId: string): void {
+  const all = projectResumes(ctx);
+  const kept = all.filter((entry) => entry.session_id !== sessionId);
+  if (kept.length !== all.length) setSetting(ctx, PROJECT_RESUMES_KEY, kept.length > 0 ? JSON.stringify(kept) : "");
 }

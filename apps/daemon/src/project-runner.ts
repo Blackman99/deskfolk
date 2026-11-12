@@ -12,7 +12,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import type { CanUseTool, HookCallbackMatcher, HookInput, HookJSONOutput, Options, PermissionResult, SDKMessage, SDKResultMessage, SDKUserMessage, SpawnedProcess, SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
-import { isClaudeEffort, PLAN_APPROVAL_KIND, type AgentRun, type AgentRunApproval, type AgentRunToolInfo, type Attachment, type ClaudeEffort, type Message, type ProjectAgentMode, type ToolFrame } from "@real-bot/protocol";
+import { isClaudeEffort, PLAN_APPROVAL_KIND, type AgentRun, type ClaudeCodeStatus, type AgentRunApproval, type AgentRunToolInfo, type Attachment, type ClaudeEffort, type Message, type ProjectAgentMode, type ToolFrame } from "@real-bot/protocol";
 import { homedir } from "node:os";
 import { placeOfCall } from "./claude-code/tool-place";
 import { modelOf } from "./claude-code/replay";
@@ -29,6 +29,10 @@ import { claudeMemoryDirs, claudePlanDirs } from "./claude-code/memory-dir";
 import { carriedTotals, resultTotals, type ModelTotals } from "./claude-code/model-usage";
 import { findClaudeSessionFile } from "./claude-code/sessions";
 import { inputQueue, LIMIT_ERRORS, SIGNED_OUT_ERRORS, userMessage } from "./engine/agent-runner";
+import { outNote, pickClaudeAccount, seatOf, soonestBack } from "./claude-code/account-pick";
+import { LIMIT_GUESS_MS, resetMs, RESUME_MARGIN_MS } from "./engine/agent/account-switch";
+import { lineTime, pickUpDetail } from "./prompts/transcript-copy";
+import { continueNote, EXIT_WAIT_MS, moveProjectAccount, outOfUsageLine, switchedLine } from "./project-limits";
 import { recordLiveProc } from "./live-procs";
 import { pictureMime } from "./loop-pictures";
 import type { Store } from "./store";
@@ -87,6 +91,11 @@ export type ProjectRunner = {
   stopTask(runId: string, taskId: string): AgentRun;
   /** What a task of the live run has printed so far, asked of the agent; null when it cannot be asked. */
   taskOutput(runId: string, taskId: string): Promise<{ output: string; total_bytes: number } | null>;
+  /**
+   * Sessions out of usage on every account pick up by themselves (ADR 0110), from the scheduler's
+   * tick: each one due by `now` whose run is still its last starts a run that goes on. Claude Code's only.
+   */
+  resumeAfterLimits?(now?: Date): void;
   /** Resolves once every run started so far has ended (tests). */
   idle(): Promise<void>;
   close(): void;
@@ -102,7 +111,7 @@ type Live = {
    * by, and the command it runs (`compact`) or null. Claude Code folds a line sent mid-step into the
    * step it is on, so one result can answer several.
    */
-  sent: Array<{ uuid: string; command: string | null }>;
+  sent: Array<{ uuid: string; command: string | null; messageId: string | null }>;
   /**
    * The approvals waiting on you, oldest first, and how to answer each: Claude Code can ask about
    * two calls at once (it runs independent tools in parallel). The first is the card; answering it
@@ -180,6 +189,7 @@ export function firstLine(text: string): string | null {
 
 type ImageBlock = { type: "image"; source: { type: "base64"; media_type: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; data: string } };
 type LineContent = SDKUserMessage["message"]["content"];
+type Project = NonNullable<ReturnType<Store["projectOf"]>>;
 
 /** What the Messages API takes as one picture; a bigger one goes by its path. */
 const PICTURE_BYTES_MAX = 5_000_000;
@@ -268,6 +278,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
   const { store } = deps;
   const lives = new Map<string, Live>();
   const settling = new Set<Promise<void>>();
+  /** Each session's last Claude Code process ending: a session is copied to another account only after (ADR 0110). */
+  const exits = new Map<string, Promise<void>>();
 
   // Each write reaches the windows and phones as its event through the store's change journal.
   const update = (runId: string, patch: Parameters<Store["updateAgentRun"]>[1]) => store.updateAgentRun(runId, patch);
@@ -303,21 +315,30 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
 
   function heard(message: Message): void {
     const sessionId = message.session_id;
-    const project = store.projectOf(sessionId);
-    if (!project) return;
+    if (!store.projectOf(sessionId)) return;
     // A command names nothing: the session takes its name from the first thing you ask.
     if (!commandOf(message.body)) store.nameProjectSessionIfUnnamed(sessionId, message.body);
+    startRun(sessionId, () => lineContent(store, message, locale() === "en"), message.id);
+  }
+
+  /**
+   * Into the session's live run, or the start of a new one: your line (`messageId`), or what the app
+   * says to go on after a limit (null). The content is made when it goes in.
+   */
+  function startRun(sessionId: string, contentOf: () => LineContent, messageId: string | null): void {
+    const project = store.projectOf(sessionId);
+    if (!project) return;
     const live = lives.get(sessionId);
     if (live && (live.stopped || live.closing)) {
       // Winding down: the line opens the next run once this one is gone.
-      void live.done.then(() => heard(message));
+      void live.done.then(() => startRun(sessionId, contentOf, messageId));
       return;
     }
     if (live) {
       // A plan waiting on you is not approved by what you say next: it is what to change.
       if (live.waiting[0]?.approval.kind_key === PLAN_APPROVAL_KIND) live.waiting.shift()!.resolve("revise");
       // Read at Claude Code's next step: folded into the step it is on, or answered on its own.
-      send(live, lineContent(store, message, locale() === "en"));
+      send(live, contentOf(), messageId);
       setIdle(live, false);
       return;
     }
@@ -332,7 +353,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       board: createTaskBoard((id) => (id ? taskCalls.get(id) : undefined)), idle: false, lists: false,
     };
     lives.set(sessionId, fresh);
-    send(fresh, lineContent(store, message, locale() === "en"));
+    send(fresh, contentOf(), messageId);
     const running = runSession(fresh, project, taskCalls).catch((error) => {
       console.error(`[project ${sessionId}] run failed`, error);
       if (!fresh.stopped) fail(fresh, firstLine(String(error)) ?? "error");
@@ -344,9 +365,9 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     void running.finally(() => settling.delete(running));
   }
 
-  function send(live: Live, content: LineContent): void {
+  function send(live: Live, content: LineContent, messageId: string | null = null): void {
     const uuid = crypto.randomUUID();
-    live.sent.push({ uuid, command: commandOf(content) });
+    live.sent.push({ uuid, command: commandOf(content), messageId });
     live.input.push({ ...userMessage(content), uuid });
   }
 
@@ -377,10 +398,19 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     postLine(live.sessionId, "system", locale() === "en" ? `Claude Code stopped: ${detail}` : `Claude Code 出错停下了：${detail}`);
   }
 
-  async function runSession(live: Live, project: NonNullable<ReturnType<Store["projectOf"]>>, taskCalls: Map<string, TaskCall>): Promise<void> {
+  async function runSession(live: Live, start: NonNullable<ReturnType<Store["projectOf"]>>, taskCalls: Map<string, TaskCall>): Promise<void> {
     const en = locale() === "en";
+    let project = start;
     const status = deps.claudeCode ? await deps.claudeCode.current() : null;
     if (!status?.path) return fail(live, en ? "Claude Code was not found on this computer" : "这台电脑上没找到 Claude Code");
+    // Its account known to be out of usage (ADR 0110): the session moves to another of yours first.
+    const picked = pickClaudeAccount({ status, listed: store.claudeCodeConfigDirs(), preferred: project.configDir, outs: store.accountsOut() });
+    if (picked?.switched) {
+      await exited(live.sessionId);
+      if (live.stopped) return;
+      const note = outNote(seatOf(status, project.configDir), store.accountsOut());
+      project = moveTo(live.sessionId, project, picked.configDir, note?.known ? note.until : null) ?? project;
+    }
     if ((accountOf(status, project.configDir) ?? status).logged_in === false) {
       const where = project.configDir ? tildeDir(project.configDir) : null;
       return fail(live, en ? (where ? `the Claude account in ${where} is not signed in` : "Claude Code is not signed in")
@@ -505,7 +535,12 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     const billed = (carried ? carriedTotals(carried) : null) ?? new Map<string, ModelTotals>();
     const options: Options = {
       pathToClaudeCodeExecutable: status.path,
-      spawnClaudeCodeProcess: (spawnOptions) => (deps.spawnProcess ?? spawnRecorded)(spawnOptions),
+      spawnClaudeCodeProcess: (spawnOptions) => {
+        const child = (deps.spawnProcess ?? spawnRecorded)(spawnOptions);
+        // Its end, so a move to another account copies the session only once it has stopped writing it.
+        exits.set(live.sessionId, child.exitCode !== null ? Promise.resolve() : new Promise<void>((resolve) => child.once("exit", () => resolve())));
+        return child;
+      },
       cwd: project.dir,
       env,
       // As in your terminal: your settings and CLAUDE.md, Claude Code's own system prompt.
@@ -536,6 +571,11 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     }
     if (live.stopped) return;
     let failure: string | null = null;
+    /** The plan's limit turned a request away (ADR 0110): when it resets, and whether extra usage carried on. */
+    let limit: { resetsAt: number | null; carried: boolean } | null = null;
+    let limitHit = false;
+    /** Your lines the failed result had taken: one the limit turned away is still unanswered. */
+    let turnedAway: Live["sent"] = [];
     const session = query({ prompt: live.input.iterable, options });
     live.query = session;
     /** Nothing of yours left to answer and nothing going in the background: the run is over. Its input closed, Claude Code winds down by itself. */
@@ -575,6 +615,15 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           if (live.board.noteResult(message)) publishTasks(live);
           continue;
         }
+        if (message.type === "rate_limit_event") {
+          // Only news on its own: with extra usage on, Claude Code goes on past the plan's limit.
+          const info = message.rate_limit_info;
+          if (info?.status === "rejected") {
+            limit = { resetsAt: resetMs(info.resetsAt),
+              carried: info.isUsingOverage === true || info.overageStatus === "allowed" || info.overageStatus === "allowed_warning" };
+          }
+          continue;
+        }
         if (message.type === "system" && message.subtype === "status") {
           live.mode = modeOf(message) ?? live.mode;
           // `/compact` says it is at it; nothing else on screen would.
@@ -599,6 +648,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           if (error) {
             // Claude Code's own line about a request that failed: the failure, never a reply.
             if (SIGNED_OUT_ERRORS.has(error) || LIMIT_ERRORS.has(error)) failure = firstLine(text) ?? error;
+            if (LIMIT_ERRORS.has(error)) limitHit = true;
             continue;
           }
           if (text.trim()) {
@@ -621,8 +671,12 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           bill(live, message, billed, models.main);
           if (message.subtype !== "success" || message.is_error || failure) {
             failure ??= message.subtype === "success" ? firstLine(message.result ?? "") ?? "error" : message.errors?.[0] ?? message.subtype;
+            if (limit && !limit.carried) limitHit = true;
+            turnedAway = answered;
             break;
           }
+          // A request went through on this account: whatever held it out is over (ADR 0110).
+          store.clearAccountOut("claude_code", seatOf(status, project.configDir).dir);
           if ((message.result ?? "").trim()) postLine(live.sessionId, "bot", message.result!.trim());
           // A command that answers nothing (`/compact`, `/clear`) still says it ran.
           else if (command) postLine(live.sessionId, "system", commandRan(command, en));
@@ -648,8 +702,91 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       }
     }
     if (live.stopped) return;
+    if (failure && limitHit) return outOfUsage(live, project, status, failure, limit?.resetsAt ?? null, [...turnedAway, ...live.sent]);
     if (failure) return fail(live, failure);
     update(live.runId, { status: "completed", activity: null, partial: null, approval: null });
+  }
+
+  /** Resolves once the session's last Claude Code has exited, or after `EXIT_WAIT_MS`. */
+  async function exited(sessionId: string): Promise<void> {
+    const exit = exits.get(sessionId);
+    if (!exit) return;
+    await Promise.race([exit, new Promise<void>((resolve) => setTimeout(resolve, EXIT_WAIT_MS).unref?.())]);
+  }
+
+  /** Moves the session to another account and says so in one line; the project as it now is, or null when it is gone. */
+  function moveTo(sessionId: string, project: Project, to: string | null, resetsAt: number | null): Project | null {
+    const en = locale() === "en";
+    const name = (dir: string | null) => (dir ? tildeDir(dir) : en ? "the default account" : "默认账号");
+    try {
+      moveProjectAccount(store, sessionId, project, to);
+      postLine(sessionId, "system", switchedLine(locale(), name(project.configDir), name(to),
+        resetsAt ? (en ? `resets ${lineTime(resetsAt, "en")}` : `${lineTime(resetsAt, "zh")} 重置`) : null));
+    } catch (error) {
+      console.error(`[project ${sessionId}] could not move to another account`, error);
+      return null;
+    }
+    return store.projectOf(sessionId);
+  }
+
+  /**
+   * The run's request was turned away by its account's plan limit (ADR 0110): the account is noted
+   * out, and the session moves to another of yours and goes on there, told what was left; with none
+   * left, the line says when it picks up by itself, and it does then. With no reset said, it stops
+   * as any failure does.
+   */
+  function outOfUsage(live: Live, project: Project, status: ClaudeCodeStatus, detail: string, resetsAt: number | null, unanswered: Live["sent"]): void {
+    const run = store.getAgentRun(live.runId);
+    if (!["running", "waiting_approval"].includes(run.status)) return;
+    const seat = seatOf(status, project.configDir);
+    const known = resetsAt !== null && resetsAt > Date.now();
+    store.markAccountOut({ runner: "claude_code", dir: seat.dir, email: seat.email, until: known ? resetsAt! : Date.now() + LIMIT_GUESS_MS, known });
+    const lines = unanswered.flatMap((line) => (line.messageId ? [line.messageId] : []));
+    const listed = store.claudeCodeConfigDirs();
+    const next = pickClaudeAccount({ status, listed, preferred: project.configDir, outs: store.accountsOut() });
+    if (next?.switched) {
+      keepSaid(live);
+      update(live.runId, { status: "failed", activity: null, partial: null, approval: null, error: detail });
+      void (async () => {
+        await exited(live.sessionId);
+        // A line of yours meanwhile started a run that moved the session already.
+        if (store.projectOf(live.sessionId)?.configDir === project.configDir && !moveTo(live.sessionId, project, next.configDir, known ? resetsAt : null)) return;
+        startRun(live.sessionId, () => continueNote(locale(), "switched", messagesOf(lines)), null);
+      })();
+      return;
+    }
+    const back = soonestBack(status, listed, store.accountsOut(), undefined, seat);
+    if (back === null) return fail(live, detail);
+    const en = locale() === "en";
+    const reset = known ? (en ? `resets ${lineTime(resetsAt!, "en")}` : `${lineTime(resetsAt!, "zh")} 重置`) : null;
+    fail(live, outOfUsageLine(locale(), pickUpDetail(locale(), reset, back)));
+    store.addProjectResume({ session_id: live.sessionId, run_id: live.runId, at: back + RESUME_MARGIN_MS, lines });
+  }
+
+  /** Your lines by id, those still there. */
+  function messagesOf(ids: readonly string[]): Message[] {
+    return ids.flatMap((id) => {
+      try {
+        return [store.getMessage(id)];
+      } catch {
+        return [];
+      }
+    });
+  }
+
+  /** Sessions out of usage on every account pick up by themselves once the soonest reset is past (ADR 0110). */
+  function resumeAfterLimits(now: Date = new Date()): void {
+    for (const due of store.projectResumes()) {
+      if (due.at > now.getTime()) break;
+      const project = store.projectOf(due.session_id);
+      // Codex's own runner takes its sessions' (project-runner-codex.ts).
+      if (project?.agent === "codex") continue;
+      store.dropProjectResume(due.session_id);
+      if (!project) continue;
+      // You spoke since, or stopped it, or a run is going: the session has moved on.
+      if (lives.has(due.session_id) || store.latestAgentRun(due.session_id)?.id !== due.run_id) continue;
+      startRun(due.session_id, () => continueNote(locale(), "reset", messagesOf(due.lines)), null);
+    }
   }
 
   /**
@@ -688,6 +825,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
 
   return {
     heard,
+    resumeAfterLimits,
     answer(runId, allow) {
       const run = store.getAgentRun(runId);
       let live: Live;

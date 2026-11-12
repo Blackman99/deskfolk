@@ -208,6 +208,26 @@ test("a failed turn keeps what Codex had said, then says why", async () => {
   expect(h.lines(id).map((line) => [line.kind, line.body])).toEqual([["user", "你好"], ["bot", "先看一下"], ["system", "Codex 出错停下了：boom"]]);
 });
 
+test("a turn Codex's plan limit stopped, with its reset said, picks up by itself then (ADR 0110)", async () => {
+  const resetsAt = Math.floor(Date.now() / 1000) + 7200;
+  const h = start([
+    { turns: [[{ limits: { resetsAt } }, { fail: { message: "You've hit your usage limit", codexErrorInfo: "usageLimitExceeded", errorNotice: true } }]] },
+    { turns: [[{ say: "额度回来了，接着做完了" }]] },
+  ]);
+  const id = await h.open();
+  await h.say(id, "跑一遍测试");
+  await h.settled(id);
+  const line = h.lines(id).find((row) => row.kind === "system")?.body ?? "";
+  expect(line).toContain("Codex 的用量额度用完了");
+  expect(line).toContain("重置，到时自动接着做");
+  expect(h.store.projectResumes().map((row) => row.at)).toEqual([resetsAt * 1000 + 60_000]);
+  h.api.projects.resumeAfterLimits!(new Date(resetsAt * 1000 + 61_000));
+  await h.until(() => h.lines(id).some((row) => row.body === "额度回来了，接着做完了"));
+  const asked = h.sent(1, "turn/start").map((params) => JSON.stringify(params.input));
+  expect(asked.some((input) => input.includes("现在额度恢复了"))).toBe(true);
+  expect(h.store.projectResumes()).toEqual([]);
+});
+
 test("a line sent while a turn is going is steered into it", async () => {
   const h = start([{ turns: [[{ sleep: 400 }, { say: "两句都答了" }]] }]);
   const id = await h.open();
