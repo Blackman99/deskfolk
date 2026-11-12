@@ -51,6 +51,8 @@ mod updates;
 mod usage_tray;
 #[cfg(windows)]
 mod win;
+#[cfg(windows)]
+mod win_wheel;
 #[cfg(target_os = "macos")]
 mod wheel;
 #[cfg(target_os = "macos")]

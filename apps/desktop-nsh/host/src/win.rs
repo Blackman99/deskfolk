@@ -35,6 +35,9 @@ pub fn run(config: Config) -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    let host = crate::launch::channel(&config, 1);
+    // The wheel for the views that zoom or scroll themselves (`win_wheel.rs`).
+    crate::win_wheel::install(host.clone());
     let options = AppOptions {
         app_id: config.bundle_id.clone(),
         title: config.app_name.clone(),
@@ -42,7 +45,7 @@ pub fn run(config: Config) -> std::process::ExitCode {
         limits: Limits::standalone(),
         data_dir: Some(config.data_dir.join("nsh")),
         asset_base: config.bundle.parent().map(|dir| AssetBase::Directory(dir.join("assets"))),
-        host: crate::launch::channel(&config, 1),
+        host,
         fps: config.fps,
         ..AppOptions::default()
     };
