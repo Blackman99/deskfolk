@@ -139,8 +139,11 @@ export function UsageBoard(props: {
           <Text testID="usage-board-agent-name" class="text-[15px] font-semibold text-ink">{name(agent)}</Text>
           <Text testID="usage-agent-today" class="shrink min-w-0 text-[12px] text-ink-muted line-clamp-1">{today(agent)}</Text>
         </View>
+        {/* Each row of cards as tall as its own tallest (the grid's auto rows): `grow`, never `flex-1`,
+            whose zero basis split the band evenly, a short card's row lending a tall one room it then
+            overflowed. Only a band beside a taller one has room over, and it has one row to take it. */}
         {chunk(agent.accounts, span).map((accounts) => (
-          <View class="flex-1 flex-row gap-[12px]">
+          <View class="grow flex-row gap-[12px]">
             {accounts.map((account) => card(agent, account))}
             {Array.from({ length: span - accounts.length }, () => (
               <View class="flex-1 basis-0" />

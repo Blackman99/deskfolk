@@ -43,7 +43,9 @@ const codex: UsageAgent = {
   custom_id: null,
   label: "Codex",
   today: { turns: 0, tokens: 0, estimated_usd: 0 },
-  accounts: [account(null, null, "plus", [[300, null, 92]]), account("/x/.codex-b", null, "plus", [[300, null, 10]])],
+  // Uneven on purpose: in one column each card keeps its own height, the short one's room never
+  // lent to the tall one.
+  accounts: [account(null, null, "plus", [[300, null, 92]]), account("/x/.codex-b", null, "plus", [[300, null, 10], [10_080, null, 61], [43_200, null, 27]])],
 };
 const grok: UsageAgent = { runner: "grok", custom_id: null, label: "Grok", today: { turns: 12, tokens: 340_000, estimated_usd: 0 }, accounts: [] };
 const AGENTS = [claude, codex, grok];

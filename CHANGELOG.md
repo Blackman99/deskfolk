@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Usage cards no longer spill over the next agent
+
+- In the native (NSH) desktop build, where an agent's accounts stack one above the other (a narrow usage tab, the phone's usage page), every card got the same height: a card with one line had room left over, and a card with more lines let its last ones spill out over the next agent's name (a Claude Team card's last bar over the Codex heading). Each card is now as tall as what it shows, as in the Tauri app; cards side by side in one row still line up at the bottom.
+
 ### A Bot's avatar is one of the task map's characters
 
 - Every Bot's default avatar was the same mustard Pudding, with only its face and a sprout, antenna, bow or headphones changing, so a roster of Bots looked alike. A Bot's avatar is now one of the task map's characters, chosen by its name: Pudding with its antenna, taro in headphones with a clipboard, sakura in a beret with palette and brush, matcha in a chef's hat with a whisk, caramel in a hard hat with a hammer, sesame in glasses with a pencil and a book, blueberry in a wizard's hat with a wand (Mochi's white stays yours). Each has its own colour, what it wears and what it holds; a raised hand raises what it holds. An existing Bot keeps its face and the way it faces, but most become another character, and the old sprout, bow and headphones are gone. On a task map a Bot is the same character as on its avatar, unless a Bot before it on that map already is.
