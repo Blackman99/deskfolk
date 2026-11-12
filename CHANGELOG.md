@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The `/` list in a project session shows its commands again, and offers what a command takes
+
+- In the native (NSH) desktop build, typing `/` in a project session opened the command list with nothing in it, only the key hints; a letter more brought the commands back. Now a bare `/` lists them all.
+- A command whose argument has set choices now offers them once its name is in: `/advisor` the models it can consult (fable, opus, sonnet, off), `/fast` on and off, `/code-review` its levels, `/mcp` reconnect, enable or disable. Picking such a command from the list fills it in and shows its choices instead of sending it bare; type to narrow them, ↑↓ and Enter or Tab to take one, or Enter with none highlighted to send the command as it stands. An argument no choice starts with is sent as typed.
+
 ### A right click on a message opens its menu again
 
 - In the native (NSH) desktop build, a right click on a Bot's reply (its words, its code, the blank beside a short line), on your own bubble, on an app's note or on a Bot's question showed only "Copy / Select All", and the message's menu (reactions, reply, copy, the job's flow, copy the message ID) never opened; only the line under a reply did. Now a right click anywhere on a message opens its menu, as in the Tauri app. With part of a message selected, the menu's 复制内容 copies that part, and the selection stays.

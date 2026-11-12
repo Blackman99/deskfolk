@@ -97,7 +97,7 @@
 移植中踩到的 NSH 行为（先照这些写）：
 
 - `role` 只认 NSH 的 `AccessibilityRole`：没有 `dialog`、`alertdialog`、`status`，对话框用 `group` / `alert`，状态文字用 `text`，卡片用 `region`。
-- `Overlay`（和放在它里面的弹层）里，`<Each>` 画不出东西：那里的列表写成函数子节点 `{() => list().map((x) => …)}`。
+- `Overlay`（和放在它里面的弹层）里的 `<Each>` 吃普通数组能画出来（钉住的 7a2c11e0 上核对过：项目会话的命令列表和参数候选都是 Overlay 里的 `Each`）。画不出来时先看交进去的是不是 `state()` 的深层代理数组（见下面那条），而不是改成函数子节点。
 - `keymap` 同一个键只有最新绑定的那个生效：同时开着两个都绑 Escape 的东西，旧的听不到。焦点在输入框里还要响应的快捷键加 `{ when: "always" }`。
 - **输入法组字时，不带 ⌘、⌃ 的键归输入法**，`keymap` 听不到（连 `{ when: "always" }` 也一样）：NSH 0.4.0 的 keymap 比输入框先看到按键，消息框（`RichEditor`）自己绑的退格、回车、方向键会把它们从拼音那里拿走，宿主的 `NSApplication` 子类（`host/src/ime_keys.rs`）在组字时把这些键直接交给窗口。带 ⌘、⌃ 的照旧先过 keymap，组字时要不要响应，处理函数自己看（`Terminal.tsx` 组字时解除绑定）。别想着再加一个按键监视器排到 NSH 前面：AppKit 调本地监视器的顺序不固定。候选框开在屏幕左下角也不是应用的事：消息框藏起来的输入框留着已上屏的字，AppKit 答不出组字的位置，宿主（`host/src/ime_rect.rs`）改报光标那一行；要看输入法拿到的位置，用开发检查的 `compose`。
 - 键名没有 `"+"`、`"-"`：写 `plus`、`minus`。
@@ -113,7 +113,7 @@
 - 信使里靠内容撑宽的居中块（`self-center` / `m-auto`、带 `max-w-[…]`、没写宽度），在 NSH 里按子项的 flex-basis 定宽：里面横排的 `flex-1` 文字 basis 是 0，不算宽度，块就缩到其余子项（头像）那么宽，文字一字一行地竖下去（空会话的欢迎页曾缩成一条，建议卡片压到消息框底下）。浏览器里它被文字的 max-content 撑到上限，写成 `w-full max-w-[…]` 就一样。例子：`ui/chat/ChatWelcome.tsx`。
 - 信使里网格的自动行（不写行高的 `grid-template-rows`、`subgrid`）在这里拆成纵列里的一排排横排时，每排写 `grow`，别写 `flex-1`：纵列按内容定高时，`flex-1` 的 basis 是 0，几排平分整列的高度，矮的那排空出一截，高的那排装不下，最后几行压到下面的东西上（用量页窄到一个 Agent 的几个账号上下排时，Team 卡的最后一行曾压住 Codex 的标题）。`grow` 先按各排的内容排，只把多出来的高度（旁边更高的块撑出来的）分下去。例子：`ui/usage/UsageBoard.tsx`。
 - 信使里一个滚动容器先后装着几种状态（`.stream` 里的消息列表、空会话的欢迎页），移植时拆成几个分支，每个分支都要自己能滚：只有列表那支是 `List`，欢迎页曾放在不滚的 `View` 里，舞台一矮，后面的建议卡片就压到消息框底下够不着。要在放得下时居中，写 `<Scroll class="flex-1 min-h-0" contentClass="grow">`，里面的块照旧 `m-auto`。例子：`ui/chat/ChatStage.tsx` 的 `StageWelcome`。
-- `<Each of={…}>` 吃 `state()` 的深层代理数组时什么都画不出来：写 `of={list.slice()}`（或 `snapshot(list)`）。组件内部 `Each` 的东西也一样：把镜像类里的 `state()` 整个交给移植好的组件（比如 `ShellWorkbench.layout` 交给 `Workbench`，它在里面 `Each` 每个窗格的 `tabs`）之前，先 `computed(() => snapshot(x))` 变成普通对象；故事里传的是普通对象，测不出来。
+- `<Each of={…}>` 吃 `state()` 的深层代理数组时什么都画不出来：写 `of={list.slice()}`（或 `snapshot(list)`）。组件内部 `Each` 的东西也一样：把镜像类里的 `state()` 整个交给移植好的组件（比如 `ShellWorkbench.layout` 交给 `Workbench`，它在里面 `Each` 每个窗格的 `tabs`）之前，先 `computed(() => snapshot(x))` 变成普通对象；故事里传的是普通对象，测不出来。例子：项目会话的命令列表只打 `/` 时，`matchCommands` 原样交出仓库里的代理数组，列表是空的，多打一个字母才出来（ADR 0107 补记三十三）。
 - 桌面引擎的 `Intl` 只有 `DateTimeFormat` 和 `NumberFormat`；`RelativeTimeFormat` 由 `src/platform/relative-time.ts` 补了中英文，`PluralRules`、`Collator`、`ListFormat`、`Segmenter` 都没有，用到的话报告里说。
 - `RichEditor` 有焦点时，应用级 `keymap.bind`（连 `{ when: "always" }` 也一样）不触发：在测试宿主里，一个没用到的 `mod+j` 在 `RichEditor` 有焦点时不响应，换成 `Input` 就响应。`RichEditor` 里的 Enter 只会分段。要在它里面接管按键，用 `RichEditorPlugin(key).captureKeys(["Enter", "ArrowUp", "Mod-Enter"], handler)` 放进 `createRichEditor({ plugins })`：`capturing` 为真时原生编辑器吞掉这些键、事后把键名交给 handler（所以「是否吞」要在按下之前由 `capturing` 定好，例如 Backspace 只在光标紧挨小标签时设 `capturing`）。一个插件的 `capturing` 管它所有的键，不同条件的键拆成不同插件；同一个键可以出现在几个插件里，开着的那个起作用。例子：`ui/chat/ComposerEditor.tsx`。
 - 弹层不知道背后的滚动：信使里「背后滚了就关」的菜单，这里靠点外面和 Escape 关。

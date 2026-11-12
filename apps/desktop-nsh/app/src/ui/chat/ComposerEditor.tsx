@@ -7,8 +7,10 @@
  * other way round: ⌘/Ctrl+Enter sends); nothing is sent while an input method is composing, nor in
  * the moment after it committed (`composer-ime.ts`). Typing `@` offers the Bots (`MentionPopup`)
  * and, in a project session, a `/` that opens the line offers the agent's commands
- * (`ProjectCommandMenu`); ↑↓ move in the list, Enter or Tab choose, Esc or a press elsewhere closes it
- * until the text changes. ↑ in an empty box asks the owner to open your newest line for changing.
+ * (`ProjectCommandMenu`), and once a command is in, the choices its hint names for what follows it
+ * (`CommandChoiceMenu`, `command-arguments`); ↑↓ move in the list, Enter or Tab choose, Esc or a
+ * press elsewhere closes it until the text changes. A command with choices is filled in, never sent
+ * bare, when picked; its choices start with none highlighted, so Enter still sends it as it stands. ↑ in an empty box asks the owner to open your newest line for changing.
  *
  * The draft is the owner's string (`value` and `onChange`); the editor's document follows it when the
  * owner changes it (a quote, a suggestion, a send that clears it), turning each `@Name` of a Bot the
@@ -29,7 +31,8 @@ import { copy, runtime } from "../../runtime";
 import { backspaceRange, chipNode, chipsOf, deleteRange as chipDeleteRange, docFromText, offsetToPos, posToOffset, textOfDoc, type DocNode } from "./composer-doc";
 import { boxHeight, mentionCandidatesFor } from "./composer-editor";
 import { MentionPopup } from "./MentionPopup";
-import { ProjectCommandMenu } from "./ProjectCommandMenu";
+import { argumentQuery, matchArguments, takesChoices, withArgument, type ArgumentQuery } from "./command-arguments";
+import { CommandChoiceMenu, ProjectCommandMenu } from "./ProjectCommandMenu";
 
 /** Paragraphs of text and chips: the composer's whole schema. */
 const SCHEMA = withMention(
@@ -246,8 +249,10 @@ export function ComposerEditor(props: {
     return Array.isArray(state) && query !== null ? matchCommands(state, query) : [];
   };
   const commandsListed = () => commandsShown() && commandMatches().length > 0;
+  /** The caret in the first word after a command's name: its choices may be asked for. */
+  const inArgument = () => /^\/\S+ +\S*$/.test(props.value.slice(0, at()));
   effect(() => {
-    if (!commandsShown() || !props.commands) return;
+    if (!props.commands || !(commandsShown() || inArgument())) return;
     loadProjectCommands(runtime.client, props.commands.sessionId);
   });
   effect(() => {
@@ -257,8 +262,49 @@ export function ComposerEditor(props: {
   const activeCommand = () => Math.min(commandActive(), Math.max(0, commandMatches().length - 1));
   const enterSends = () => interfaceBehaviour().send_key !== "mod_enter";
 
-  /** A picked command fills the line's first word; `run` sends it as it stands. */
-  function pickCommand(command: ClaudeCodeCommand, run: boolean): void {
+  // --- a command's choices (what its hint names for the word after its name) ---
+  const argument = (): ArgumentQuery | null => {
+    if (!props.commands || !editable() || commandQuery() !== null || closedAt() === props.value || !inArgument()) return null;
+    const state = projectCommandsOf(props.commands.sessionId);
+    return Array.isArray(state) ? argumentQuery(props.value, at(), state) : null;
+  };
+  const choices = (): string[] => {
+    const found = argument();
+    return found ? matchArguments(found) : [];
+  };
+  const choicesShown = () => choices().length > 0;
+  /** The highlighted choice: none while nothing is typed, so Enter sends the command bare; the first fit once you type. */
+  const choiceActive = signal(-1);
+  const choiceKey = computed(() => {
+    const found = argument();
+    return found ? `${found.command.name} ${found.query}` : null;
+  });
+  effect(() => {
+    const key = choiceKey();
+    untracked(() => choiceActive.set(key && !key.endsWith(" ") ? 0 : -1));
+  });
+  const activeChoice = () => Math.min(choiceActive(), choices().length - 1);
+  const choicePicked = () => choicesShown() && activeChoice() >= 0;
+
+  /** A picked choice takes the typed word's place; `run` sends the line as it then stands. */
+  function pickChoice(choice: string, run: boolean): void {
+    const found = argument();
+    if (!found) return;
+    const next = withArgument(props.value, found, choice);
+    props.onChange(next.text);
+    if (run) {
+      props.onSend();
+      return;
+    }
+    place(next.caret);
+  }
+
+  /**
+   * A picked command fills the line's first word; `run` sends it as it stands, unless it has choices
+   * to offer after its name (`/advisor`'s models): then it is filled in and they follow.
+   */
+  function pickCommand(command: ClaudeCodeCommand, wantRun: boolean): void {
+    const run = wantRun && !takesChoices(command);
     const next = withCommand(props.value, command.name, run);
     props.onChange(next.text);
     if (run) {
@@ -281,7 +327,7 @@ export function ComposerEditor(props: {
   // The editor swallows app-level `keymap` bindings while it has the focus, so its keys are `RichEditorPlugin.captureKeys`:
   // the native editor consumes them while the plugin is `capturing` and tells the handler after. One plugin per
   // condition, since a plugin captures all its keys or none.
-  const listOpen = () => mentionOpen() || commandsListed();
+  const listOpen = () => mentionOpen() || commandsListed() || choicesShown();
   const capture = (entry: KeyPlugin, handler: (key: string) => void, on: () => boolean) => {
     entry.handler = handler;
     effect(() => {
@@ -305,6 +351,12 @@ export function ComposerEditor(props: {
         if (key === "ArrowDown") commandActive.set((activeCommand() + 1) % count);
         else if (key === "ArrowUp") commandActive.set((activeCommand() + count - 1) % count);
         else pickCommand(commandMatches()[activeCommand()]!, false);
+      } else if (choicesShown()) {
+        const count = choices().length;
+        const now = activeChoice();
+        if (key === "ArrowDown") choiceActive.set((now + 1) % count);
+        else if (key === "ArrowUp") choiceActive.set(now <= 0 ? count - 1 : now - 1);
+        else pickChoice(choices()[Math.max(0, now)]!, false);
       }
     },
     listOpen,
@@ -315,9 +367,10 @@ export function ComposerEditor(props: {
     () => {
       if (mentionOpen()) chooseMention();
       else if (commandsListed()) pickCommand(commandMatches()[activeCommand()]!, enterSends());
+      else if (choicePicked()) pickChoice(choices()[activeChoice()]!, enterSends());
       else submit();
     },
-    () => listOpen() || enterSends(),
+    () => mentionOpen() || commandsListed() || choicePicked() || enterSends(),
   );
   capture(keyPlugins.modEnter, () => submit(), () => true);
   capture(keyPlugins.up, () => void props.onEditLast?.(), () => !listOpen() && !!props.onEditLast && !props.value.trim());
@@ -355,7 +408,7 @@ export function ComposerEditor(props: {
   const closeLists = () => {
     const t = trig();
     if (t && mentionOpen()) mentionClosed.set(t);
-    if (commandsShown()) closedAt.set(props.value);
+    if (commandsShown() || choicesShown()) closedAt.set(props.value);
   };
 
   const popupWidth = (max: number) => Math.min(max, Math.max(240, windowSize().width - 32));
@@ -422,6 +475,20 @@ export function ComposerEditor(props: {
             onPick={(command) => pickCommand(command, false)}
           />
         </Overlay>
+      </If>
+      <If when={anchor() && !mentionOpen() && !commandsShown() && choicesShown() ? argument() : null}>
+        {(found: () => ArgumentQuery) => (
+          <Overlay anchor={anchor()} placement="top" align="start" offset={6} margin={8} onPressOutside={closeLists} onCancel={closeLists}>
+            <CommandChoiceMenu
+              command={found().command}
+              choices={choices()}
+              active={activeChoice()}
+              width={popupWidth(520)}
+              onHover={(i) => choiceActive.set(i)}
+              onPick={(choice) => pickChoice(choice, false)}
+            />
+          </Overlay>
+        )}
       </If>
     </View>
   );

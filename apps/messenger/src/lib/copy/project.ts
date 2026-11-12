@@ -100,6 +100,7 @@ export const zh = {
   commandsFailed: (agent: string) => `读不到命令列表；直接输入的命令照样发给 ${agent}。`,
   commandsNone: (agent: string) => `没有对得上的命令；回车照样发给 ${agent}。`,
   commandKeys: { move: "选择", fill: "补全", run: "执行", close: "关闭" },
+  commandChoicesLabel: (command: string) => `/${command} 可以接的参数`,
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -197,4 +198,5 @@ export const en: CopyShape<typeof zh> = {
   commandsFailed: (agent: string) => `Could not read the commands; a command you type still goes to ${agent}.`,
   commandsNone: (agent: string) => `No command matches; Enter still sends it to ${agent}.`,
   commandKeys: { move: "Move", fill: "Fill in", run: "Run", close: "Close" },
+  commandChoicesLabel: (command: string) => `What /${command} takes`,
 };

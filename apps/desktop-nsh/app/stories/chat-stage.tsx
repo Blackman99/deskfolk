@@ -6,13 +6,14 @@
  * session, both synthetic (the runtime makes neither without a real agent): they are laid over the
  * runtime's snapshot like `chat-composer-2` does, and what would go to the daemon for them
  * (`send`, `tuneProjectSession`, the run's answer and stop, a project card's status) is answered here and
- * logged under `said`; `story-annotated` adds a batch of annotations you sent in the project session.
+ * logged under `said`, and its agent's `/` list (`projectCommands`) a moment after it is asked; `story-annotated` adds a batch of annotations you sent in the project session.
  * Lines go in through `runtime.client` into the scratch group only: one posted into the fixture's
  * Writer direct would start a turn there and leave it unfinished for every later test.
  */
 import { computed, Scroll, signal, Text, View } from "nsh";
-import { USER_MEMBER, type AgentRun, type Annotation, type Bot, type DelegationView, type Message, type SessionSummary } from "@real-bot/protocol";
+import { USER_MEMBER, type AgentRun, type Annotation, type Bot, type ClaudeCodeCommand, type DelegationView, type Message, type SessionSummary } from "@real-bot/protocol";
 import { classifySession, youBotPeer } from "../src/m/sidebar/session-groups";
+import { ApiBase } from "../src/m/api-base.ts";
 import { runtime } from "../src/runtime";
 import { BotDmDialog } from "../src/ui/chat/BotDmDialog";
 import { ChatStage } from "../src/ui/chat/ChatStage";
@@ -252,6 +253,20 @@ proto.patchAnnotation = function (this: unknown, ...args: unknown[]) {
   if (patch.status) annotationStatus.set({ ...annotationStatus(), [id]: patch.status });
   said.set(`annotation:${id}:${patch.status ?? ""}`);
   return Promise.resolve(null);
+};
+// The agent's / list for the project session, a moment after it is asked as the daemon answers it: one command
+// takes nothing, one free text, two have choices in their hints (as Claude Code writes /advisor's and /fast's).
+const PROJECT_COMMANDS: ClaudeCodeCommand[] = [
+  { name: "compact", description: "Free up context by summarizing the conversation so far", argument_hint: "<optional custom summarization instructions>", aliases: [] },
+  { name: "advisor", description: "Let Claude consult a stronger model at key moments", argument_hint: "[fable|opus|sonnet|off]", aliases: [] },
+  { name: "fast", description: "Toggle fast mode", argument_hint: "[on|off]", aliases: [] },
+  { name: "review", description: "Review a pull request", argument_hint: "<pr>", aliases: [] },
+];
+const api = ApiBase.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
+const realCommands = api.projectCommands!;
+api.projectCommands = function (this: unknown, ...args: unknown[]) {
+  if (args[0] !== PROJECT_ID) return realCommands.apply(this, args);
+  return new Promise((done) => setTimeout(() => done({ commands: PROJECT_COMMANDS, checked_at: D2, error: null }), 150));
 };
 // The Bot↔Bot direct's delegations are held here.
 const realLoadDelegations = proto.loadDelegations!;

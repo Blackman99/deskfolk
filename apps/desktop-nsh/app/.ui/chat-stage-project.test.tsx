@@ -33,6 +33,47 @@ test("a line typed in the box goes to the daemon's send and joins the lines", as
   expect(app.value("id:project-input")).toBe("");
 });
 
+test("a / opens the agent's commands, and a command with choices goes on to them", async () => {
+  const app = await project();
+  // The list comes from the session's store a moment later, as it does from the daemon.
+  await app.type("id:project-input", "/");
+  await app.waitFor("id:command-compact", { timeout: 10_000 });
+  expect(app.shows("id:command-advisor")).toBe(true);
+  // A command whose hint names choices is filled in, and its choices follow.
+  await app.press("id:command-advisor");
+  await app.waitFor("id:command-choice-opus", { timeout: 5_000 });
+  // The box reads back only what was typed; the line a pick writes is on screen.
+  await app.waitUntil(() => app.texts().includes("/advisor "));
+  for (const option of ["fable", "sonnet", "off"]) expect(app.shows(`id:command-choice-${option}`)).toBe(true);
+  // Typing narrows them by their start; a pick takes the typed word's place and the list goes.
+  await app.type("id:project-input", "o");
+  await app.waitUntil(() => !app.shows("id:command-choice-fable"));
+  expect(app.shows("id:command-choice-off")).toBe(true);
+  await app.press("id:command-choice-off");
+  await app.waitFor("id:command-choices", { state: "gone" });
+  await app.waitUntil(() => app.texts().includes("/advisor off"));
+  await app.submit("id:project-input");
+  await app.waitUntil(() => said(app) === "sent:/advisor off", { timeout: 10_000 });
+});
+
+test("Enter on a command with choices fills it in; an argument no choice starts with goes as typed", async () => {
+  const app = await project();
+  await app.type("id:project-input", "/fa");
+  await app.waitFor("id:command-fast", { timeout: 10_000 });
+  await app.keyboard.press("enter");
+  await app.waitFor("id:command-choice-on", { timeout: 5_000 });
+  await app.waitUntil(() => app.texts().includes("/fast "));
+  // Nothing is picked until you move or type: Enter sends the bare command.
+  await app.keyboard.press("enter");
+  await app.waitUntil(() => said(app).startsWith("sent:/fast"), { timeout: 10_000 });
+  await app.type("id:project-input", "/review 12");
+  await app.wait(400);
+  expect(app.shows("id:command-choices")).toBe(false);
+  expect(app.shows("id:command-menu")).toBe(false);
+  await app.submit("id:project-input");
+  await app.waitUntil(() => said(app) === "sent:/review 12", { timeout: 10_000 });
+});
+
 test("a run in flight is a working bubble; an approval waiting is answered from its card", async () => {
   const app = await project();
   await app.press("id:story-run");
