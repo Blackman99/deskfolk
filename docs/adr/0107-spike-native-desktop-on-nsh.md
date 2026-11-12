@@ -921,3 +921,49 @@ The empty list was the app's. The daemon was fine: `GET /v1/project-sessions/:id
 The choices come from the argument hints Claude Code writes: `/advisor` is `[fable|opus|sonnet|off]`, `/fast` is `[on|off]`, and `/code-review` starts with `[low|medium|high|xhigh|max]`. A new file, `ui/chat/command-arguments.ts`, reads the alternatives of a hint's first group, each by its first word; placeholders like `<tokens>` and phrases are not choices. A hint with no `|` (`[name]`, `<file>`, `key=value`, Codex's `[instructions]`) offers none. Checked against the 62 hints of this session: `/advisor`, `/fast`, `/code-review`, `/mcp` (reconnect, enable, disable), `/design` (consent, revoke) and `/autocompact` (auto only) offer choices, and the unit tests hold these. With the caret in the first word after a command's name, and the command in the list by its name or an alias, `CommandChoiceMenu` lists the choices that start with what is typed, under the command's name and description. The rules: picking such a command in the command list (press, Tab or Enter) fills it in and its choices follow, never sending it bare. No choice is highlighted at first, so Enter still sends the command as it stands (these arguments are optional); typing highlights the first fit. ↑↓ move, Tab fills in, and Enter takes the highlighted one and sends as the Enter-sends setting says. When the typed word already is the one fit, the list closes; when no choice starts with it, there is no list and the keys behave as usual. Typing `/advisor ` before the command list was read also reads it. The daemon and the protocol are unchanged; the copy gains `commandChoicesLabel` (shared by the messenger and the NSH app). The Tauri app (the messenger) does not get this.
 
 Checks: the `chat-stage` story answers the project session's command list (four: one taking nothing, one free text, two with choices) a moment after it is asked, as it answers `send`, so the real store path runs. Two screen tests in `chat-stage-project`: `/` lists the commands, picking `/advisor` shows its four choices, typing `o` narrows them, picking `off` sends `/advisor off`; Enter on `/fast` fills it in, Enter again sends the bare command, and `/review 12` opens no menu and is sent as typed. Before the fix the first timed out waiting for `/compact` (only the key hints on screen), and the second failed because Enter sent the command. In a real window (background check copy, isolated runtime, the same story): a bare `/` listed the four; `/adv` and Tab left `/advisor ` in the box with fable, opus, sonnet and off under it, none highlighted; Down and Enter sent `/advisor fable`; `/fast o` listed on (highlighted) and off; Esc closed it and kept the text; `/compact` and Enter sent as before; `/review 12` went as typed. `nsh check` (App and Story), the `command-arguments` unit tests (5), all 88 screen test files (704 tests; the 2 terminal tests skip as usual), `bun test scripts`, `port-messenger --check` and the messenger's copy tests pass.
+
+## 补记 2026-11-12（三十四）：⌘K 搜索卡死 / Addendum 2026-11-12 (34): ⌘K search froze the window
+
+你说搜索功能会直接卡死。
+
+原因在应用里。`GlobalSearch.tsx` 照 PORTING.md 对照表把 `$derived` 写成了普通函数。`available()` 每读一次就把所有结果过一遍 `canOpenSearchHit`（每次都扫会话列表），而每一行都读它，一次渲染就是结果数的平方次判断。所有结果又在同一个跟踪插入里一次建成行，这个插入还读 `active()` 和整个快照，所以方向键、悬停、别处的每个事件都会重建整个列表。守护进程的 `/v1/search` 不限条数，一个字母就能搜到长历史里的大半消息：真实数据库上「a」1687 条、「的」2315 条（1–1.5 MB），守护进程本身 70–300 ms。Svelte 版的 `$derived` 是记忆化的，`#each` 带 key，WebKit 里一次建两千行也不慢，所以只有 NSH 版卡死。
+
+改法：
+- 派生值都换成 `computed`。`available` 只算已经建出来的行，答案没变时保持原值（`equals`）。
+- 行改成按结果对象带 key 的 `Each`，选中和能否打开在每一行里读。
+- 一次只建 50 行；最后一行进入离底部一屏之内，或方向键走过最后一行时，再加 50 行。
+- 重置到第一条只跟着结果走，不再跟着快照走（以前别处有 Bot 回复，选中项就跳回第一条）。
+- 方向键走到的行照 Svelte 版的 `scrollIntoView({ block: 'nearest' })` 露出来（悬停不滚），并算上列表上方计数那一行的高度（以前下边缘会藏在底边下面）。
+- 结果还没全部建成行时，在第一条上按 ↑ 停在原地，不绕到已建的最后一行。
+
+检查：
+- `misc` 故事加了两个按钮，往搜索里放 2000 条结果，其中一个的前 49 条所在的会话已不存在。修之前，500 条就让一次 JS 调用超过测试的 2 秒上限而被打断。
+- 两条新的界面测试：只有 50 行，滚到底变成 100 行；方向键从第 50 行走到第 51 行（行数变成 100），↑ 停在第一条能打开的结果上。
+- 真实规模在数据库副本上量：`sqlite3 .backup` 复制，删掉 `remote_host`、`live_procs`，起隔离运行时，在同一个故事里输入。修之前「a」「的」都被 2 秒上限打断；修之后从输入到第一行分别 126 ms、202 ms，只建 50 行。临时计数显示，方向键和悬停不再新建行；会话更新后选中项不变（修之前跳回第一条）。
+- `tsc`、`bun test scripts`、`port-messenger --check` 和全部 88 个界面测试文件都通过。
+
+还剩：
+- 真实数据里约 35% 的消息结果所在的会话不在快照里（灰着显示，打不开），最长连续 308 条（「的」）。方向键穿过这样一段时，一次按键会连着加几页（约 300 行），会顿一下，没有量过。
+- `/v1/search` 仍不限条数，每次按键都传 1–1.5 MB。要限条数得改守护进程，改后要在空闲时重启运行时。
+
+You said the search froze the window.
+
+The cause was the app's. `GlobalSearch.tsx` had turned `$derived` into plain functions, as the PORTING.md table allowed. Each read of `available()` ran `canOpenSearchHit` over every hit (each scanning the sessions), and every row read it, so one render made hits² checks. Every hit got a row at once in one tracked insert, which also read `active()` and the whole snapshot, so each arrow key, hover and event elsewhere rebuilt the whole list. The daemon's `/v1/search` has no cap, and one letter finds most of a long history: on the real database "a" gives 1687 hits and "的" 2315 (1–1.5 MB), with 70–300 ms in the daemon. The Svelte version's `$derived` is memoised and its `#each` keyed, and WebKit makes two thousand rows quickly, so only the NSH build froze.
+
+The fix:
+- Every derived value is a `computed`. `available` covers only the rows there are and keeps its value while no answer changed (`equals`).
+- Rows are a keyed `Each` by hit, reading selection and availability per row.
+- 50 rows are made at a time; 50 more come when the last row is within a screen of the bottom, or when the arrows go past it.
+- The reset to the first hit follows the hits, not the snapshot (a Bot replying elsewhere used to send the selection back to the first hit).
+- The arrows reveal the row they reach as the Svelte version's `scrollIntoView({ block: 'nearest' })` does (hover does not scroll), counting the count line above the rows (a row's lower edge used to stay under the bottom).
+- While not every hit has a row, ↑ on the first stays there rather than going round to the last row made.
+
+Checks:
+- Two `misc` story buttons put 2000 hits in the search, one with the first 49 in a conversation that is gone. Before the fix, 500 hits already ran one JS call past the test's 2 s budget, and it was interrupted.
+- Two new screen tests: 50 rows, and 100 after scrolling to the end; the arrows go from row 50 to row 51 (100 rows), and ↑ stays on the first hit that can be opened.
+- At real size, on a copy of the database: copied with `sqlite3 .backup`, `remote_host` and `live_procs` emptied, an isolated runtime, typing in the same story. Before the fix both "a" and "的" were interrupted at the 2 s budget. After it, the first row shows 126 ms and 202 ms after typing, with 50 rows made. A temporary counter showed no new rows on arrows or hover, and the selection staying put after a session update (it went back to the first hit before).
+- `tsc`, `bun test scripts`, `port-messenger --check` and all 88 screen test files pass.
+
+Left:
+- About 35% of the message hits on the real data are in conversations not in the snapshot (shown greyed, not openable), with runs of up to 308 in a row ("的"). Arrowing down across such a run adds several pages in one press (about 300 rows), a hitch that was not measured.
+- `/v1/search` is still uncapped, 1–1.5 MB per keystroke. Capping it is a daemon change, and the runtime then needs a restart while idle.

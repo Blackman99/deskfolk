@@ -22,11 +22,11 @@
 |---|---|
 | `let { a, b } = $props()` | `function X(props: {...})`，在 JSX 里读 `props.a`；**不要解构 props**（解构只读一次，不会跟着变） |
 | `let x = $state(0)` | `const x = signal(0)`；读 `x()`，写 `x.set(v)` |
-| `$derived(expr)` / `$derived.by(fn)` | `computed(() => expr)` 或直接写函数 `const v = () => expr` |
+| `$derived(expr)` / `$derived.by(fn)` | `computed(() => expr)`；直接写函数 `const v = () => expr` 只适合便宜、读的地方少的值。**函数不记忆**：每读一次算一次，每一行都读的派生值（`available()[index]`）就成了 行数 × 整份的计算（⌘K 搜索曾因此卡死，`ui/search/GlobalSearch.tsx`） |
 | `$effect(fn)` | `effect(fn)`（`nsh`），清理用返回函数或 `cleanup` |
 | `onMount` / `onDestroy` | 组件函数体里直接做 / `cleanup(fn)` |
 | `{#if a}…{:else}…{/if}` | `<If when={a} else={…}>…</If>`；要用值时 `{(v) => …v()…}` |
-| `{#each list as item (item.id)}` | `<Each of={list} key={(i) => i.id}>{(item) => …item()…}</Each>`；长列表（会话、消息、文件）用 `List`（虚拟化） |
+| `{#each list as item (item.id)}` | `<Each of={list} key={(i) => i.id}>{(item) => …item()…}</Each>`；长列表（会话、消息、文件）用 `List`（虚拟化）。条数没有上限、又放在按内容定高的卡片里（搜索结果）时，分页建行：先建一页，滚近底部再加（`GlobalSearch.tsx`）。选中、悬停这类每行的状态在行里读，别放进 `{() => list.map(…)}` 这样的跟踪插入，否则一变就重建整个列表 |
 | `<div>` / `<span>` / `<p>` | `View` / `Text`（文字必须在 `Text` 里） |
 | `<button onclick>` | `<View role="button" onPress>`，或用 `src/ui/Button`、`IconButton` |
 | `<input bind:value>` / `<textarea>` | `Input`（`nsh/base`）：`value` + `onChange`，`multiline`，`onSubmit`，`onKeyPress`；输入法组字时不要提交（`onCompositionChange`） |
