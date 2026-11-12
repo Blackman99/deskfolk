@@ -21,7 +21,7 @@ pub struct Config {
     pub open_session: Option<String>,
     pub pane: Option<String>,
     pub pdf: Option<String>,
-    /// NSH's performance monitor, logged once a second (target `nsh::perf`).
+    /// NSH's performance monitor, logged once a second (target `nsh::fps`).
     pub fps: bool,
     /// Development checks: the open conversation scrolls itself end to end (with `fps`).
     pub scroll_probe: bool,
