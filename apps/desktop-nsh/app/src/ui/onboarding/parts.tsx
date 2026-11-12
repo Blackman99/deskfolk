@@ -1,10 +1,12 @@
 /**
  * The small pieces every step of the wizard is made of (the scoped CSS of `Onboarding.svelte`): a
- * step's heading, its footer and the two buttons in it, and the radio cards that choose a way
- * (how setup reaches a model; how the last step starts).
+ * step's heading, its footer and the two buttons in it, and the segmented switch that chooses a way
+ * (how setup reaches a model; how the last step starts; the way of working). The Svelte wizard
+ * still draws those as cards with every description shown (`.connect-modes`).
  */
 import { Text, View, type JSX } from "nsh";
 import { narrowWindow } from "../Modal";
+import { shadow } from "../styles";
 
 /** `.step-pane-header`: the step's title and what it is for. */
 export function StepHead(props: { title: string; desc?: string; testID?: string }) {
@@ -68,33 +70,54 @@ export function StepSecondary(props: { label: string; testID?: string; disabled?
   );
 }
 
-/** `.connect-modes`: two cards of which one is on, side by side (one under the other on a narrow window). */
-export function ModeCards<T extends string>(props: {
+/**
+ * A choice of a few ways as one segmented row, with only the chosen way's line under it: the
+ * cards' every description at once made the last step longer than the window. The options are
+ * radios (`<idPrefix>-<value>`), as the cards' were; the whole explanation stays in reach as the
+ * group's accessibility hint.
+ */
+export function WaySwitch<T extends string>(props: {
   label: string;
   value: T;
   options: readonly (readonly [T, string, string])[];
   idPrefix: string;
+  hint?: string;
   disabled?: boolean;
   onPick: (value: T) => void;
 }) {
+  const chosen = () => props.options.find((option) => option[0] === props.value);
   return (
-    <View role="radiogroup" accessibilityLabel={props.label} class={`gap-[10px] ${narrowWindow() ? "flex-col" : "flex-row"}`}>
-      <Each of={props.options.slice()} key={(option) => option[0]}>
-        {(option) => (
-          <View
-            role="radio"
-            testID={`${props.idPrefix}-${option()[0]}`}
-            accessibilityLabel={option()[1]}
-            accessibilityState={{ checked: props.value === option()[0], disabled: props.disabled === true }}
-            disabled={props.disabled}
-            onPress={() => props.onPick(option()[0])}
-            class={`cursor-pointer select-none disabled:cursor-default flex-1 min-w-0 gap-1 px-[14px] py-3 rounded-(--radius-md) border bg-pane disabled:opacity-[0.7] ${props.value === option()[0] ? "border-brand" : "border-line hover:border-line-hover"}`}
-          >
-            <Text class="text-[14px] font-semibold text-ink">{option()[1]}</Text>
-            <Text class="text-[12px] leading-[1.45] text-ink-muted">{option()[2]}</Text>
-          </View>
-        )}
-      </Each>
+    <View class="flex-col gap-[6px]">
+      <View
+        role="radiogroup"
+        accessibilityLabel={props.label}
+        accessibilityHint={props.hint}
+        class="flex-row items-center self-start max-w-full p-[3px] gap-[2px] bg-chip border border-chip-line rounded-(--radius-md)"
+      >
+        <Each of={props.options.slice()} key={(option) => option[0]}>
+          {(option) => {
+            const on = () => props.value === option()[0];
+            return (
+              <View
+                role="radio"
+                testID={`${props.idPrefix}-${option()[0]}`}
+                accessibilityLabel={option()[1]}
+                accessibilityHint={option()[2]}
+                accessibilityState={{ checked: on(), disabled: props.disabled === true }}
+                disabled={props.disabled}
+                onPress={() => props.onPick(option()[0])}
+                class={`cursor-pointer select-none disabled:cursor-default shrink min-w-0 items-center justify-center px-3 rounded-(--radius-sm) disabled:opacity-[0.7] ${narrowWindow() ? "min-h-10 grow basis-0" : "py-[6px]"} ${on() ? "bg-pane" : "hover:bg-line-subtle"}`}
+                style={{ boxShadow: on() ? shadow("xs") : undefined }}
+              >
+                <Text class={`text-[13px] line-clamp-1 ${on() ? "font-semibold text-brand" : "font-medium text-ink-muted"}`}>{option()[1]}</Text>
+              </View>
+            );
+          }}
+        </Each>
+      </View>
+      <If when={chosen()}>
+        {(option) => <Text class="text-[12px] leading-[1.45] text-ink-muted">{option()[2]}</Text>}
+      </If>
     </View>
   );
 }

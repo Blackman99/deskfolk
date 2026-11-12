@@ -10,6 +10,7 @@
  * The step pane's slide between steps is not ported (no pane animation primitive).
  */
 import { safeArea, Scroll, Text, View } from "nsh";
+import { titleBar } from "nsh/desktop";
 import { copy } from "../runtime";
 import { BrandMark } from "./BrandMark";
 import { narrowWindow } from "./Modal";
@@ -30,6 +31,7 @@ export function Onboarding(props: { onDismiss?: () => void; holding?: boolean; o
   const phone = () => narrowWindow();
 
   return (
+    <View class="flex-1 min-h-0">
     <Scroll testID="onboarding-screen" class="flex-1 min-h-0 bg-bg" contentClass={`grow justify-center items-center ${phone() ? "" : "p-10"}`}>
       <View
         testID="onboarding-card"
@@ -37,11 +39,24 @@ export function Onboarding(props: { onDismiss?: () => void; holding?: boolean; o
         style={{ ...(phone() ? { paddingTop: 20 + safeArea().top, paddingBottom: 20 + safeArea().bottom } : { boxShadow: shadow("lg") }) }}
       >
         <LocaleSwitch locale={locale()} />
-        <View class="items-center gap-3">
-          <BrandMark size={52} />
-          <Text role="header" class="text-[24px] font-bold text-ink text-center">{t().welcome}</Text>
-          <Text class="text-[13px] text-ink-muted text-center max-w-[480px] leading-[1.45]">{t().subtitle}</Text>
-        </View>
+        {/* The welcome is said once, on the first step; past it the heading shrinks to one line and
+            the room goes to the step itself. */}
+        <If
+          when={w.step() === 1}
+          else={
+            // On a phone the language switch shares this band at the right: start at the left, clear of it.
+            <View class={`flex-row items-center gap-[10px] min-h-[30px] ${phone() ? "justify-start pr-[110px]" : "justify-center"}`}>
+              <BrandMark size={26} />
+              <Text role="header" class="text-[16px] font-bold text-ink">{t().welcome}</Text>
+            </View>
+          }
+        >
+          <View class="items-center gap-3">
+            <BrandMark size={52} />
+            <Text role="header" class="text-[24px] font-bold text-ink text-center">{t().welcome}</Text>
+            <Text class="text-[13px] text-ink-muted text-center max-w-[480px] leading-[1.45]">{t().subtitle}</Text>
+          </View>
+        </If>
 
         <StepBar w={w} />
 
@@ -76,5 +91,15 @@ export function Onboarding(props: { onDismiss?: () => void; holding?: boolean; o
         </If>
       </View>
     </Scroll>
+    {/* The title bar's room, held to move the window: on Windows there is no system title bar and a
+        mark on the Scroll is lost under its native scroller. Clear of the caption buttons
+        (`titleBar().right`); 0 tall on macOS, whose transparent title bar AppKit drags by itself. */}
+    <View
+      testID="onboarding-drag"
+      desktop={{ windowDrag: true }}
+      class="absolute top-0 left-0"
+      style={{ right: titleBar().right, height: titleBar().height }}
+    />
+    </View>
   );
 }
