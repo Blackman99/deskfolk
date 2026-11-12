@@ -126,6 +126,10 @@ const ALL = Object.values(M);
 const TASK = { id: "task-1", kind: "subagent", status: "running", description: "查周报数据来源", agent_type: "Explore", run_id: "run-1", tool_uses: 2, tokens: 1200, started_at: "2026-10-20T09:31:00.000Z", activity: null } as unknown as AgentRunTask;
 const TASK_DONE = { ...TASK, id: "task-2", status: "completed", description: "汇总" } as AgentRunTask;
 const TASK_LOST = { ...TASK, id: "task-3", status: "completed", description: "读不到的" } as AgentRunTask;
+/** Running and nothing to read yet: no prompt, no model, no calls (the flat card it once was). */
+const TASK_EMPTY = { ...TASK, id: "task-4", description: "Wait for the full screen test run and total it", agent_type: null, tool_uses: null, tokens: null } as AgentRunTask;
+/** Empty on its first read, its trail there on the next. */
+const TASK_LATE = { ...TASK, id: "task-5", description: "后来才有动作" } as AgentRunTask;
 const DETAIL = {
   task: TASK,
   output: null,
@@ -266,13 +270,18 @@ export default function ChatTranscript() {
 
   const menu = (m: Message, at: { x: number; y: number }) => note(`menu:${m.id}@${Math.round(at.x) >= 0 ? "ok" : ""}`);
 
-  // The popup reads the subagent through the runtime's client; the story answers for its three tasks.
+  // The popup reads the subagent through the runtime's client; the story answers for its tasks.
   const show = (task: AgentRunTask) => {
     const client = runtime.client as unknown as { agentTaskDetail: (run: string, id: string) => Promise<AgentTaskDetail> } | null;
+    let lateReads = 0;
     if (client) {
       client.agentTaskDetail = async (_run, id) => {
         if (id === TASK_LOST.id) throw new Error("gone");
-        return id === TASK_DONE.id ? ({ ...DETAIL, task: TASK_DONE, steps: [] } as AgentTaskDetail) : DETAIL;
+        if (id === TASK_DONE.id) return { ...DETAIL, task: TASK_DONE, steps: [] } as AgentTaskDetail;
+        const empty = { ...DETAIL, task, prompt: null, model: null, steps: [] } as AgentTaskDetail;
+        if (id === TASK_EMPTY.id) return empty;
+        if (id === TASK_LATE.id) return (lateReads += 1) === 1 ? empty : { ...DETAIL, task };
+        return DETAIL;
       };
     }
     open.set(task);
@@ -351,6 +360,12 @@ export default function ChatTranscript() {
             </Button>
             <Button testID="open-lost" size="sm" variant="secondary" onPress={() => show(TASK_LOST)}>
               lost
+            </Button>
+            <Button testID="open-empty" size="sm" variant="secondary" onPress={() => show(TASK_EMPTY)}>
+              empty
+            </Button>
+            <Button testID="open-late" size="sm" variant="secondary" onPress={() => show(TASK_LATE)}>
+              late
             </Button>
           </View>
         </If>

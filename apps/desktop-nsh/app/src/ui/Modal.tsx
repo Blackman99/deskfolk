@@ -45,6 +45,11 @@ export function Modal(props: {
   width?: number;
   /** Its height cap on a desktop, as a share of the window (default 0.86). */
   maxHeight?: number;
+  /**
+   * The card is that tall whatever its body holds (`min(maxHeight, 100dvh - 48px)`), and the body
+   * fills it: a transcript read while it grows keeps its frame, and an empty one can centre a note.
+   */
+  fill?: boolean;
   /** The whole page in a narrow window (`page-on-phone`); a confirmation stays a dialog. */
   pageOnPhone?: boolean;
   /** The back chevron's name in that page (`t.common.back`). */
@@ -68,6 +73,8 @@ export function Modal(props: {
   };
   const cardWidth = () => (narrowWindow() ? windowSize().width - (page() ? 0 : 32) : Math.min(props.width ?? 520, windowSize().width - 48));
   const cardMaxHeight = () => (page() ? windowSize().height : Math.round(windowSize().height * (props.maxHeight ?? 0.86)));
+  const cardHeight = () => (page() ? windowSize().height : props.fill ? Math.min(cardMaxHeight(), windowSize().height - 48) : undefined);
+  const grows = () => (props.fill ? "flex-1 min-h-0" : "shrink min-h-0");
   return (
     <Dialog
       open
@@ -83,7 +90,7 @@ export function Modal(props: {
       style={{
         width: cardWidth(),
         maxHeight: cardMaxHeight(),
-        height: page() ? windowSize().height : undefined,
+        height: cardHeight(),
         boxShadow: page() ? undefined : "0 24px 56px -12px rgba(18, 28, 32, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)",
       }}
     >
@@ -94,7 +101,7 @@ export function Modal(props: {
             role={props.alert ? "alert" : "group"}
             accessibilityLabel={props.title}
             accessibilityState={{ busy: props.busy === true }}
-            class="flex-col shrink min-h-0"
+            class={`flex-col ${grows()}`}
           >
             <View
               class={`flex-row items-center border-b border-line bg-pane ${page() ? "h-[52px] pl-1 pr-[6px] gap-[2px]" : "px-5 py-[14px] justify-between gap-3"}`}
@@ -115,11 +122,21 @@ export function Modal(props: {
             </View>
             <If
               when={props.scroll !== false}
-              else={<View class={`flex-col shrink min-h-0 ${props.bodyClass ?? "px-5 py-[18px] gap-[14px]"}`}>{props.children}</View>}
+              else={<View class={`flex-col ${grows()} ${props.bodyClass ?? "px-5 py-[18px] gap-[14px]"}`}>{props.children}</View>}
             >
-              <Scroll class="shrink min-h-0">
-                <View class={`flex-col ${props.bodyClass ?? "px-5 py-[18px] gap-[14px]"}`}>{props.children}</View>
-              </Scroll>
+              <If
+                when={props.fill}
+                else={
+                  <Scroll class="shrink min-h-0">
+                    <View class={`flex-col ${props.bodyClass ?? "px-5 py-[18px] gap-[14px]"}`}>{props.children}</View>
+                  </Scroll>
+                }
+              >
+                {/* `grow`: the content is at least the body's height, so a note can sit in its middle. */}
+                <Scroll class="flex-1 min-h-0" contentClass={`grow flex-col ${props.bodyClass ?? "px-5 py-[18px] gap-[14px]"}`}>
+                  {props.children}
+                </Scroll>
+              </If>
             </If>
             <If when={props.foot}>
               <View class={`flex-row justify-end gap-[10px] border-t border-line bg-sidebar-bg ${page() || narrowWindow() ? "px-4 py-3" : "px-5 py-[14px]"}`}>

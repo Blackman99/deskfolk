@@ -218,3 +218,22 @@ test("a subagent that is done keeps no foot, and one that cannot be read says so
   await app.press("id:open-lost");
   await app.waitFor(`text:${t.project.taskReadFailed}`, { timeout: 10_000 });
 });
+
+test("a running subagent with nothing to read yet says where it is, and its trail takes over once there", async () => {
+  const app = await open("dialog");
+  await app.press("id:open-empty");
+  await app.waitFor("id:subagent-foot", { timeout: 10_000 });
+  expect(app.texts()).toContain(t.project.taskNoSteps);
+  expect(app.shows("id:subagent-prompt")).toBe(false);
+  expect(app.shows("id:subagent-facts")).toBe(false);
+  await app.press("id:modal-close");
+  await app.waitUntil(() => !app.shows("id:subagent-foot"));
+  // Empty on its first read, read again while it runs: the transcript and its foot follow.
+  await app.press("id:open-late");
+  await app.waitFor(`text:${t.project.taskNoSteps}`, { timeout: 10_000 });
+  await app.waitFor("id:subagent-prompt", { timeout: 10_000 });
+  await app.waitFor("id:subagent-say");
+  expect(app.texts()).toContain("pnpm build");
+  expect(app.shows(`text:${t.project.taskNoSteps}`)).toBe(false);
+  expect(app.count("id:subagent-foot")).toBe(1);
+});

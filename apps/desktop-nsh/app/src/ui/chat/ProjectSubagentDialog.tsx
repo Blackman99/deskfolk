@@ -7,9 +7,11 @@
  *
  * It is `Modal` underneath (the whole page in a narrow window, the phone's Back closing it first
  * through `holdBack`). The facts line the Svelte head carries under the title sits at the top of
- * the body on a desktop, and under the title in the narrow page.
+ * the body on a desktop, and under the title in the narrow page. The card keeps the Svelte one's
+ * height (`fill`), so it does not jump as the trail is read again; until there is a trail to read,
+ * where it is and for how long sit in its middle.
  */
-import { cleanup, effect, signal, Text, View } from "nsh";
+import { cleanup, effect, signal, Text, View, type JSX } from "nsh";
 import type { AgentRunTask, AgentTaskDetail } from "@real-bot/protocol";
 import { formatLiveDuration } from "../../m/chat/chat-view.ts";
 import { holdBack } from "../../m/chat/message-text-pages.ts";
@@ -92,6 +94,23 @@ export function ProjectSubagentDialog(props: {
     </If>
   );
 
+  const step = () => onCall() ?? props.task.activity ?? (blocks().length === 0 ? t().project.taskNoSteps : t().sidebar.statusRunning);
+  const pulseDot = () => <View class="shrink-0 w-[7px] h-[7px] rounded-full bg-brand" style={{ opacity: pulse.opacity }} accessible={false} />;
+  const elapsed = () => (
+    <View class="flex-row items-center gap-[6px] shrink-0">
+      <Icon name="clock" size={12} class="tint-ink-muted" />
+      <Text class="text-[12px] text-ink-muted">{formatLiveDuration(props.task.started_at, nowMs(), t().chat.spanPart)}</Text>
+    </View>
+  );
+  /** Nothing to read yet, or any more: the one line there is sits in the middle of the card, not alone at its top. */
+  const centred = (children: JSX.Element) => <View class="flex-1 items-center justify-center gap-2 px-6 pb-10">{children}</View>;
+  /** `text` is read where it shows, so a note follows what it says (loading, then failed). */
+  const note = (text: () => string) => (
+    <Text role="text" testID="subagent-note" class="text-[13px] text-ink-muted text-center">
+      {text()}
+    </Text>
+  );
+
   return (
     <Modal
       testID={`subagent-dialog-${props.task.id}`}
@@ -101,21 +120,30 @@ export function ProjectSubagentDialog(props: {
       onClose={props.onClose}
       width={960}
       maxHeight={0.92}
+      fill
       pageOnPhone
       subject={factsLine()}
       bodyClass="px-5 pt-4 pb-6 gap-3"
     >
       <If when={!narrowWindow()}>{factsLine()}</If>
-      <If
-        when={detail()}
-        else={
-          <Text role="text" testID="subagent-note" class="text-[13px] text-ink-muted">
-            {failed() ? t().project.taskReadFailed : t().project.taskLoading}
-          </Text>
-        }
-      >
+      <If when={detail()} else={centred(note(() => (failed() ? t().project.taskReadFailed : t().project.taskLoading)))}>
         {(read: () => AgentTaskDetail) => (
-          <>
+          <If
+            when={read().prompt || blocks().length > 0}
+            else={centred(
+              <If when={going()} else={note(() => t().project.taskStepsGone)}>
+                <View role="text" testID="subagent-foot" class="items-center gap-2 max-w-full">
+                  <View class="flex-row items-center gap-2 min-w-0 max-w-full">
+                    {pulseDot()}
+                    <Text testID="subagent-step" class="shrink min-w-0 text-[13px] font-medium text-brand line-clamp-1">
+                      {step()}
+                    </Text>
+                  </View>
+                  {elapsed()}
+                </View>
+              </If>,
+            )}
+          >
             <If when={read().prompt}>
               {/* What it was asked sits where a line you send does: it was sent this. All of it, flat. */}
               <View
@@ -138,24 +166,17 @@ export function ProjectSubagentDialog(props: {
                 ),
               )
             }
-            <If when={blocks().length === 0 && !going()}>
-              <Text role="text" testID="subagent-note" class="text-[13px] text-ink-muted">
-                {t().project.taskStepsGone}
-              </Text>
-            </If>
+            <If when={blocks().length === 0 && !going()}>{note(() => t().project.taskStepsGone)}</If>
             <If when={going()}>
               <View role="text" testID="subagent-foot" class="flex-row items-center gap-[6px] min-w-0">
-                <View class="shrink-0 w-[7px] h-[7px] rounded-full bg-brand" style={{ opacity: pulse.opacity }} accessible={false} />
+                {pulseDot()}
                 <Text testID="subagent-step" class="shrink min-w-0 text-[12px] font-medium text-brand line-clamp-1">
-                  {onCall() ?? props.task.activity ?? (blocks().length === 0 ? t().project.taskNoSteps : t().sidebar.statusRunning)}
+                  {step()}
                 </Text>
-                <View class="flex-row items-center gap-[6px] shrink-0 ml-auto pl-2">
-                  <Icon name="clock" size={12} class="tint-ink-muted" />
-                  <Text class="text-[12px] text-ink-muted">{formatLiveDuration(props.task.started_at, nowMs(), t().chat.spanPart)}</Text>
-                </View>
+                <View class="shrink-0 ml-auto pl-2">{elapsed()}</View>
               </View>
             </If>
-          </>
+          </If>
         )}
       </If>
     </Modal>

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A subagent's popup keeps its size, and an empty one is no longer a thin strip
+
+- In the native (NSH) desktop build, the popup that opens a project session's subagent took the height of what it had to show. A subagent that had done nothing yet, or whose record could not be read, opened as a wide, flat strip with "It has not done anything yet" at one end and its time at the other, and a popup that was being read grew in jumps as the subagent's steps came in. The popup is now as tall as in the Tauri app whatever it holds, and while there is nothing to show, where the subagent is and how long it has run (or "Reading…", "Could not read it", "Its record can no longer be read") sit in its middle. On a phone it is the whole page, as before.
+
 ### Search no longer freezes the window
 
 - In the native (NSH) desktop build, ⌘K search froze the window as soon as a query found many messages: the first letter typed finds most of a long history (1 687 messages for "a", 2 315 for "的" on this computer), every one of them got a row at once, and each row asked of every hit whether it can be opened, so each step of the work took longer than two seconds and the window stopped answering. The search now shows the first 50 hits and adds 50 more as you scroll near the end or as the arrows go past the last one; those two queries show their first rows in about a tenth and a fifth of a second. The count above the list is still the full count.
