@@ -6,7 +6,8 @@
  * Where there is material the shell's ground covers it only in part (`bg-ground-glass`: light 30%,
  * dark 20%), so the sidebar and the gutters between the cards show the glass. Dark glass is lighter
  * than the dark cards, and glass that clear takes the colour of whatever is behind each part, so
- * there a docked pane's tab strip is drawn as the card's solid head (`WorkbenchLeaf`).
+ * there a docked pane's tab strip is drawn as the card's solid head (`WorkbenchLeaf`), and its active
+ * tab paints no ground on that head (`leaf-strip.tsx`).
  *
  * Glass content (ADR 0106, the behaviour `content_glass`; `content-glass.css`) goes one step on: a
  * docked pane's card lets the glass through too, and what lies on the card paints no ground of its
@@ -50,11 +51,12 @@ export function contentGlassShare(): number | null {
 }
 
 /**
- * The hairline round a glass card and its active tab: `--shadow-pane`'s 0.5 pt ring, drawn as a
- * border. Under a ground that is not opaque NSH 0.4.0 masks an outer shadow to outside the box, and
- * at the corners that mask is stepped: the ring showed through as a hard bright arc on every rounded
- * corner. A border is the layer's own and follows its corners. The shadow's soft drop goes through
- * the same mask, so a glass card goes without it.
+ * The hairline round a glass card and its active tab (not on dark's card head, where the active tab
+ * has neither ground nor ring): `--shadow-pane`'s 0.5 pt ring, drawn as a border. Under a ground
+ * that is not opaque NSH 0.4.0 masks an outer shadow to outside the box, and at the corners that mask
+ * is stepped: the ring showed through as a hard bright arc on every rounded corner. A border is the
+ * layer's own and follows its corners. The shadow's soft drop goes through the same mask, so a glass
+ * card goes without it.
  */
 export const GLASS_EDGE = "border-[0.5px] border-ink/14 dark:border-ink/11";
 

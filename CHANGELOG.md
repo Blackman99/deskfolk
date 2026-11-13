@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The active tab has no ground of its own in dark
+
+- In the native (NSH) desktop app in dark mode, on the Mac's window glass, the active tab in each pane's tab strip was a dark pill ringed in a hairline that stood out on the strip; in light the active tab is the card's colour on a lighter ground and reads as having no ground at all. Dark now does the same: the active tab paints no ground, ring or shadow, and is told from the others by its brighter label and its ⋯ and ×. Light mode, the phone and floating panes are unchanged.
+
 ### Antigravity Bots can use Deskfolk's tools
 
 - Antigravity Bots ran on `agy`'s print mode, which could not be given the app's tools: they spoke only through their closing reply, leaving hand-overs, passes and questions in it for you, a segment ended after its second bounce, insert-now could not cut them short, and pictures never reached them. They now run on `agy acp` (the Agent Client Protocol) and, like Grok and OpenCode, get the app's tools through an MCP server named deskfolk: they can end a turn, hand in work, delegate and ask you with `ask_user`; insert-now and Stop cut the step they are on; pictures reach them. They still run on your own sign-in and plan.

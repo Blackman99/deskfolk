@@ -87,7 +87,8 @@ export function WorkbenchLeaf(props: WorkbenchLeafProps) {
    * Dark on the window's material the ground lets most of the glass through, and glass that clear
    * takes the colour of whatever is behind each part: two panes' tab rows came out one blue and one
    * orange. So there the strip is the card's head, a solid band joined to the body, 4 points off the
-   * ground above it too, and only the gutters show the glass (`glass.ts`).
+   * ground above it too, and only the gutters show the glass (`glass.ts`). The active tab lies on the
+   * band with no ground of its own (`LeafStrip`), as light's reads.
    */
   const head = () => darkGlass() && !props.floating && !narrow() && !empty();
   /** A docked card lets the glass through when glass content is asked for (`glass.ts`); a floating one lies over other content and stays solid. */

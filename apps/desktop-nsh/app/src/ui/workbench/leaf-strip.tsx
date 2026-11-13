@@ -70,7 +70,10 @@ export type StripProps = {
   /** Beside the phone layout the tabs are pills on the window's ground; on a phone they sit on a band. */
   narrow: () => boolean;
   floating: boolean;
-  /** Dark on the window's material the strip is the card's head (`WorkbenchLeaf` draws the band): 4 points in from the leaf's edges. */
+  /**
+   * Dark on the window's material the strip is the card's head (`WorkbenchLeaf` draws the band): 4
+   * points in from the leaf's edges, and its active tab is drawn on the band with no ground of its own.
+   */
   head?: () => boolean;
   /** Another pane is the current one: this one steps back, its strip half faded. */
   dimmed: () => boolean;
@@ -106,6 +109,12 @@ export function LeafStrip(props: StripProps) {
   const tabHeight = () => (props.narrow() ? 28 : 28);
   /** The active tab is the card's own top, so on a glass card it lets the same glass through (`glass.ts`). */
   const glassShare = () => (props.floating || props.narrow() ? null : contentGlassShare());
+  /**
+   * On the card's head the active tab paints nothing: no ground, ring or shadow, only its full ink
+   * tells it from the others. A pill of the card's colour on the band, ringed in a hairline, stood
+   * out in dark where light's tab, the card's colour on a lighter ground, reads as no ground at all.
+   */
+  const bare = () => Boolean(props.head?.());
 
   /** The tab row's own state: how far it is scrolled, how wide it shows, how wide each tab is. */
   const scroll = signal(0);
@@ -267,12 +276,12 @@ export function LeafStrip(props: StripProps) {
         onMouseEnter={() => hovered.set(tabId)}
         onMouseLeave={() => hovered() === tabId && hovered.set(null)}
         onContextMenu={(e) => props.onPaneMenu?.({ leafId: leaf().id, tabId, x: e.pagePosition.x, y: e.pagePosition.y })}
-        class={`flex-none flex-row items-center pl-2 pr-[2px] ${props.narrow() ? "rounded-t-(--radius-md)" : "rounded-(--radius-sm)"} ${active() ? (glassShare() === null ? "bg-pane" : GLASS_EDGE) : hovered() === tabId ? "bg-row-hover" : ""}`}
+        class={`flex-none flex-row items-center pl-2 pr-[2px] ${props.narrow() ? "rounded-t-(--radius-md)" : "rounded-(--radius-sm)"} ${active() ? (bare() ? "" : glassShare() === null ? "bg-pane" : GLASS_EDGE) : hovered() === tabId ? "bg-row-hover" : ""}`}
         style={{
           height: tabHeight(),
           opacity: dragged() ? 0.45 : 1,
-          boxShadow: active() && !props.narrow() && glassShare() === null ? shadow("pane") : undefined,
-          backgroundColor: active() && glassShare() !== null ? glassOf("pane", glassShare()!) : undefined,
+          boxShadow: active() && !bare() && !props.narrow() && glassShare() === null ? shadow("pane") : undefined,
+          backgroundColor: active() && !bare() && glassShare() !== null ? glassOf("pane", glassShare()!) : undefined,
         }}
       >
         <View
