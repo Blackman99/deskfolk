@@ -50,7 +50,7 @@ export function ReplyingIndicator(props: {
     const face = (
       <BotFace id={entry.bot_id} name={bot()?.name ?? deleted()} avatar={bot()?.avatar} size={single ? 20 : 18} motion="running" letterSize={10} />
     );
-    const name = <Text class={`max-w-[140px] text-[12px] ${single ? "font-semibold" : "font-medium"} text-ink line-clamp-1`}>{bot()?.name ?? deleted()}</Text>;
+    const name = <Text class={`shrink min-w-0 max-w-[140px] text-[12px] ${single ? "font-semibold" : "font-medium"} text-ink line-clamp-1`}>{bot()?.name ?? deleted()}</Text>;
     const frame = single ? "" : "pl-[3px] pr-[8px] py-[2.5px] bg-bg border border-line rounded-full";
     return (
       <If

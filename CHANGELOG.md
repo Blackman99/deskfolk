@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A long name no longer leaves a gap at the end of its chip
+
+- In the native (NSH) desktop build, a chip whose name was too long for it, such as a subagent under a project session's line ("Wait until main checkout finishes its me…"), a Bot↔Bot direct under the line that opened it, or a Bot in "replying", cut its name short but stayed as wide as the whole name, leaving a blank after the "…" and its dot or note. The chip now ends where the cut name and its dot or note do, as in the Tauri app; short names are unchanged.
+
 ### A project session's preview always has the project's file tree
 
 - In the native (NSH) desktop build, a file a project session's reply names from outside its project directory, such as a PDF it left in `~/Downloads/` or a file under `/tmp/`, opened with no file tree beside it when the reply named only that file, and beside the few files the reply named otherwise. It now opens with the project directory's tree beside it, as a file inside the project does, listed from its top; the file itself has no row in that tree, and pressing a file there opens it in the same preview. Whether such a file can be saved or annotated is unchanged.

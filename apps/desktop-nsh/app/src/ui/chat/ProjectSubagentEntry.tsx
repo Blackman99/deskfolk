@@ -34,7 +34,7 @@ export function ProjectSubagentEntry(props: { tasks: readonly AgentRunTask[]; on
       }`}
     >
       <Icon name="bot" size={16} class="shrink-0 tint-ink-muted" />
-      <Text class={`min-w-0 max-w-[240px] text-[12px] font-medium line-clamp-1 ${single ? "text-ink group-hover:text-brand" : "text-ink"}`}>{nameOf(task)}</Text>
+      <Text class={`shrink min-w-0 max-w-[240px] text-[12px] font-medium line-clamp-1 ${single ? "text-ink group-hover:text-brand" : "text-ink"}`}>{nameOf(task)}</Text>
       <If when={!single && task.status === "running"}>
         <Live />
       </If>

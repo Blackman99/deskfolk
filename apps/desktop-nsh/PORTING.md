@@ -103,6 +103,7 @@
 - 键名没有 `"+"`、`"-"`：写 `plus`、`minus`。
 - `flex-shrink` 不认，写 `shrink`；CSS 变量做圆角（`rounded-(--radius-bot)`）要是主题里没有就换成具体值。
 - 横排里的子项默认不收缩（照 RN，`flex-shrink` 是 0）：CSS 里会让位、折行的 `<strong>` / `<span>`，在这里按一整行的宽度排开，把后面的东西挤出框外（任务地图侧栏的名字曾把「跟随」挤出卡片）。要让位的那段文字写 `shrink min-w-0`；所在的纵列宽度由外面定（`flex-1`）时，它照常折行，行跟着长高，不会碰上后面那条说的高度问题。
+- 横排按内容定宽时（胶囊、chip），里面带 `max-w-[…]` 截断的文字（`line-clamp-1` 的名字）也要写 `shrink min-w-0`：不收缩的子项，taffy 把它的 flex-basis（一整行的宽度）当下限，`max-w` 压不住，横排照整行宽撑开，文字却只排到 `max-w`，省略号后面空出一截（子代理、Bot↔Bot 私聊、「正在回复」的胶囊曾这样）。能收缩时横排才按 `max-w` 算宽。例子：`ui/chat/ProjectSubagentEntry.tsx`。
 - `If` 的函数子节点拿到的是读取函数，别把它存下来到别处再读：在用的地方直接从原数据取。
 - **NSH 的视图收不到滚轮**（只有它自己的 `Scroll` / `List` 能滚）。要自己缩放、平移、滚动的视图（画布、看图、轨迹、地图、终端回滚）用 `src/platform/wheel` 的 `onWheel(() => ref, (e, at) => …)`：外壳把滚轮、触控板双指滚动和捏合转给应用，事件照 DOM 的 `WheelEvent`（`dy` 向下为正，捏合是 `ctrl` 加 `dy = -100·ln(倍数)`），`at` 是视图里的坐标。信使里 `onwheel` 的处理照搬过来就行。外壳转来的是窗口里每一下滚轮，不管指针底下盖着什么，所以带遮罩的弹层（`Dialog`、`Sheet`、铺满窗口的 `Overlay`）要把内容包进 `src/platform/wheel-layer.tsx` 的 `WheelLayer`：开着时只有最上层里的 `onWheel` 收得到，遮罩上的滚轮不落到底下。在组件体里自己调 `onWheel` 的弹层（看大图）拿 `openWheelLayer()` 的返回值当第三个参数。
 - **`Popover` / `Overlay` 的「点外部」在 macOS 上会漏**：按在原生输入（消息框的 `RichEditor`）和 `windowDrag` 区域（侧边栏空白）上的按下，NSH 有时根本不告诉浮层，菜单就不收起。要点外部必收的菜单，再用 `src/platform/press` 的 `onPressOutside(() => Promise.all([frameOf(面板), frameOf(触发器)]), 关闭)`：外壳把每次鼠标按下转给应用（`shell.press`，窗口坐标），落在这些框外就关；关闭要能重复调用（NSH 看到的时候两边都会关）。触发器要算在框里，不然按下就关、松开又被它打开。`Modal` 里别用（`InModal()`）：那里量出来的是对话框里的坐标，不是窗口的。例子：`ui/chat/TunePicker.tsx`。

@@ -54,7 +54,7 @@ export function BotDmEntry(props: {
       }`}
     >
       <SessionAvatar session={session} bots={props.botsById} size="sm" />
-      <Text class="max-w-[180px] text-[12px] font-medium text-ink line-clamp-1">{titleOf(session)}</Text>
+      <Text class="shrink min-w-0 max-w-[180px] text-[12px] font-medium text-ink line-clamp-1">{titleOf(session)}</Text>
       <If when={!plain && statusOf(session).isBusy}>
         <Dot />
       </If>

@@ -93,7 +93,11 @@ const TASKS = [
   { id: "t1", kind: "subagent", status: "running", description: "查周报数据来源", agent_type: "Explore", run_id: "r" },
   { id: "t2", kind: "subagent", status: "failed", description: "校对图表", agent_type: "general-purpose", run_id: "r" },
   { id: "t3", kind: "subagent", status: "completed", description: "汇总", agent_type: null, run_id: "r" },
+  // Past the name's cap: the chip ends where the cut name, its note or its dot does.
+  { id: "t4", kind: "subagent", status: "stopped", description: "Launch check host window in background and wait for its first frame", agent_type: "general-purpose", run_id: "r" },
+  { id: "t5", kind: "subagent", status: "running", description: "Wait until main checkout finishes its merge, then rebuild the host", agent_type: "general-purpose", run_id: "r" },
 ] as unknown as AgentRunTask[];
+const LONG_NAME = "A name far longer than any chip it sits in";
 
 const HEAD = (over: Partial<InterfaceRevisionHead> = {}): InterfaceRevisionHead =>
   ({ id: "r1", revision: 1, op: "edit", actor: "bot", bot_id: "b1", turn_id: "turn-1", approval_id: null, message_id: null, reason: null, app_version: null, created_at: "", changes: ["专注模式 开", "第二处"], undoable: true, ...over }) as InterfaceRevisionHead;
@@ -125,6 +129,8 @@ export default function ChatHeaderStory() {
   const lookup = () => buildMessageLookup([quoted, reply]);
   const bots = () => new Map<string, Bot>(runtime.snapshot.bots.map((b) => [b.id, b] as const));
   const replyEntries = () => [...runtime.snapshot.bots].slice(0, 2).map((b, i) => ({ bot_id: b.id, created_at: "", judgement_id: `j${i}` }));
+  const longBots = () => new Map<string, Bot>(runtime.snapshot.bots.map((b, i) => [b.id, i === 0 ? { ...b, name: LONG_NAME } : b] as const));
+  const longGroup = () => ({ ...groupSession()!, id: "group-long", name: LONG_NAME }) as SessionSummary;
 
   return (
     <Scroll class="flex-1 bg-bg">
@@ -271,6 +277,19 @@ export default function ChatHeaderStory() {
               </View>
               <View testID="subagent-one"><ProjectSubagentEntry tasks={[TASKS[0]!]} onOpen={(task) => say(`subagent:${task.id}`)} /></View>
               <View testID="subagent-many"><ProjectSubagentEntry tasks={TASKS} onOpen={(task) => say(`subagent:${task.id}`)} /></View>
+              <View testID="subagent-one-long"><ProjectSubagentEntry tasks={[TASKS[4]!]} onOpen={(task) => say(`subagent:${task.id}`)} /></View>
+              <View testID="replying-long"><ReplyingIndicator entries={replyEntries()} botsById={longBots()} thinkingText={copy().sidebar.statusRunning} /></View>
+              <View testID="dm-long" class="self-stretch">
+                <BotDmEntry
+                  sessions={[longGroup(), directSession()!]}
+                  botsById={bots()}
+                  turns={runtime.snapshot.turns}
+                  statusLabels={statusLabelsOf(copy())}
+                  rosterLabels={rosterLabelsOf(copy())}
+                  openedText={copy().chat.botDmOpened}
+                  onOpen={(id) => say(`open:${id}`)}
+                />
+              </View>
             </View>
           </Section>
 
