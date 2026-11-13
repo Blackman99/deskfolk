@@ -17,6 +17,7 @@ import type { TranscriptStage } from "../../m/chat/transcript-stage.ts";
 import { copy, runtime } from "../../runtime";
 import { Icon } from "../Icon";
 import { MarkdownBody } from "../MarkdownBody";
+import { workspaceFiles } from "../file-on-disk";
 import { tip } from "../tip";
 import { CommandActivity } from "./CommandActivity";
 import { pulseMotion } from "./labels";
@@ -84,6 +85,7 @@ export function StreamingReply(props: { turn: Turn; bot: Bot | undefined; stage:
           copyLabel={t().chat.copyCode}
           copiedLabel={t().chat.copied}
           onOpenArtifact={(path) => stage().onOpenArtifact(path)}
+          files={workspaceFiles()}
           onOpenImage={(path, from) => stage().openInlineImage(null, path, from as never)}
           onOpenProfile={stage().onOpenProfile}
         >

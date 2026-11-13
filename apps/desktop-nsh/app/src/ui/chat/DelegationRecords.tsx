@@ -7,6 +7,7 @@ import type { Bot, DelegationView } from "@real-bot/protocol";
 import { formatFullTimestamp, formatMessageTime } from "../../m/chat/chat-view.ts";
 import { copy } from "../../runtime";
 import { MarkdownBody } from "../MarkdownBody";
+import { workspaceFiles } from "../file-on-disk";
 import { narrowWindow } from "../Modal";
 import { tip } from "../tip";
 
@@ -56,6 +57,7 @@ export function DelegationRecords(props: {
                           copyLabel={t().chat.copyCode}
                           copiedLabel={t().chat.copied}
                           onOpenArtifact={(path) => props.onOpenArtifact(path, row().result_message_id ?? undefined)}
+                          files={workspaceFiles()}
                         />
                       </View>
                       <Time at={reply().created_at} class="mt-[4px] text-[10px] text-ink-muted" />

@@ -1,7 +1,9 @@
 /**
  * The pieces every area shares: Markdown with file and Bot chips, file icons, the modal frame, the
  * confirmation. The picture's chip opens the enlargement as a conversation does, growing out of the
- * chip's thumbnail; `opened` says what the chip handed over and where the frame grows from.
+ * chip's thumbnail; `opened` says what the chip handed over and where the frame grows from. A right
+ * click on a file's chip opens its menu: the files are under `/ws` here, and `opened` says what the
+ * system was asked to do with which path.
  */
 import { signal, Text, View } from "nsh";
 import { Button } from "../src/ui/Button";
@@ -69,6 +71,13 @@ export default function Shared() {
             }}
             onOpenProfile={(id) => opened.set(`profile:${id}`)}
             loadArtifactImage={async () => new Blob([PIXEL], { type: "image/png" })}
+            files={{
+              locate: async (path) => `/ws/${path}`,
+              open: async (abs, reveal) => {
+                opened.set(`${reveal ? "reveal" : "open"}:${abs}`);
+                return true;
+              },
+            }}
           />
         </View>
         <View class="p-4 rounded-(--radius-md) bg-brand self-end max-w-[420px]">

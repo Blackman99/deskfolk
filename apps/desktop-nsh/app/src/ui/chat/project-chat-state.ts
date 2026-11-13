@@ -28,6 +28,7 @@ import { loadClaudeModels } from "../../m/claude-models.svelte.ts";
 import { isLiveRun, projectAgentOf } from "../../m/sidebar/project-groups.ts";
 import { showToast } from "../../m/toast.svelte.ts";
 import { copy, runtime } from "../../runtime";
+import { citedOnDisk, onThisComputer, type FileOnDisk } from "../file-on-disk";
 
 export type LineKind = "you" | "agent" | "app";
 
@@ -231,6 +232,22 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
       else showToast(answer.matches > 1 ? t().project.citedAmbiguous(path, answer.matches) : t().project.citedMissing(path), { tone: "info" });
     });
   }
+  /**
+   * Where a path the agent cites is on this computer, for its chip's menu: placed as `openCited`
+   * places it. A lookup that failed answers the path as written, which says nowhere on its own.
+   */
+  async function locateCited(path: string): Promise<string | null> {
+    const answer = (await citedPaths.resolve(selected().id, path)) ?? { path };
+    const abs = answer.path === null ? null : await citedOnDisk(answer.path);
+    if (abs === null) {
+      const several = answer.path === null && answer.matches > 1;
+      showToast(several ? t().project.citedAmbiguous(path, answer.matches) : t().project.citedMissing(path), { tone: "info" });
+    }
+    return abs;
+  }
+  const citedFiles: FileOnDisk = { locate: locateCited };
+  /** The files the agent's lines name, where this window can open them (`MarkdownBody`'s `files`). */
+  const files = (): FileOnDisk | undefined => (onThisComputer() ? citedFiles : undefined);
 
   // --- annotations: a batch you sent is a line of yours with its cards, as in a Bot's conversation ---
   const annotationIndex = computed(() => annotationsByMessage(snapshot().annotations));
@@ -291,6 +308,7 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
     answer,
     stop,
     openCited,
+    files,
     annotationsOf,
     cardErrors,
     toggleAnnotation,

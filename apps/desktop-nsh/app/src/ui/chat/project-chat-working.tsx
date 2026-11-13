@@ -108,6 +108,7 @@ export function ProjectWorking(props: { state: ProjectState }) {
                 copyLabel={t().chat.copyCode}
                 copiedLabel={t().chat.copied}
                 onOpenArtifact={(path) => s().openCited(path)}
+                files={s().files()}
               >
                 <Cursor />
               </MarkdownBody>
@@ -171,7 +172,7 @@ export function ProjectWorking(props: { state: ProjectState }) {
                 }
               >
                 {/* The plan it asks you to approve: approved, it gets to work; a line you send is what to change. */}
-                <ProjectPlanCard approval={approval()} disabled={s().answering() || !s().connected()} onAnswer={(allow) => void s().answer(allow)} onOpenPath={(path) => s().openCited(path)} />
+                <ProjectPlanCard approval={approval()} disabled={s().answering() || !s().connected()} onAnswer={(allow) => void s().answer(allow)} onOpenPath={(path) => s().openCited(path)} files={s().files()} />
               </If>
             )}
           </If>

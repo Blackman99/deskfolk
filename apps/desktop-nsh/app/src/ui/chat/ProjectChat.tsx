@@ -200,6 +200,7 @@ export function ProjectChat(props: {
               state.subagentOpen.set(null);
               state.openCited(path);
             }}
+            files={state.files()}
           />
         )}
       </If>

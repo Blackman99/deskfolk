@@ -84,6 +84,8 @@ export const zh = {
   artifactOpenTerminal: "在此位置打开终端",
   artifactCopyPath: "复制工作区路径",
   artifactCopyAbsPath: "复制绝对路径",
+  /** A file a line names that this computer cannot find, or could not open (its chip's menu). */
+  artifactNotOnDisk: (path: string) => `这台电脑上找不到 ${path}`,
   artifactTrash: `移到${zhTrashWord}`,
   artifactTrashCount: (count: number) => `将 ${count} 项移到${zhTrashWord}`,
   artifactTrashTitle: (name: string, count: number) => (count > 1 ? `将 ${count} 项移到${zhTrashWord}？` : `将“${name}”移到${zhTrashWord}？`),
@@ -344,6 +346,7 @@ export const en: CopyShape<typeof zh> = {
   artifactOpenTerminal: "Open terminal here",
   artifactCopyPath: "Copy workspace path",
   artifactCopyAbsPath: "Copy absolute path",
+  artifactNotOnDisk: (path: string) => `${path} was not found on this computer`,
   artifactTrash: `Move to ${enTrashWord}`,
   artifactTrashCount: (count: number) => `Move ${count} items to ${enTrashWord}`,
   artifactTrashTitle: (name: string, count: number) => (count > 1 ? `Move ${count} items to the ${enTrashWord}?` : `Move “${name}” to the ${enTrashWord}?`),

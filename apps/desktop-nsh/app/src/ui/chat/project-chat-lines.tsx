@@ -121,7 +121,7 @@ export function ProjectLine(props: {
           {/* The whole line wide, as a wrapping paragraph is in the messenger. Left to fit its text, NSH
               narrowed it to its widest line yet kept the heights measured at the full width: a paragraph
               that wrapped once more than measured ran under what followed it, and its last line was cut. */}
-          <MarkdownBody class="self-stretch" selectable={false} source={msg().body} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={(path) => s().openCited(path, msg().id)} />
+          <MarkdownBody class="self-stretch" selectable={false} source={msg().body} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={(path) => s().openCited(path, msg().id)} files={s().files()} />
           {/* The time at the right end: of its own line, or of the command card's. */}
           <If
             when={kept().length > 0}

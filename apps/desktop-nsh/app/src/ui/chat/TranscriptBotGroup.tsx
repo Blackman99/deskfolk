@@ -23,6 +23,7 @@ import { copy, runtime } from "../../runtime";
 import { AnnotationCards } from "../annotations/AnnotationCards";
 import { Icon } from "../Icon";
 import { MarkdownBody } from "../MarkdownBody";
+import { workspaceFiles } from "../file-on-disk";
 import { tip } from "../tip";
 import { BotDmEntry } from "./BotDmEntry";
 import { CommandActivity } from "./CommandActivity";
@@ -220,6 +221,7 @@ function Reply(props: { item: MessageItem; last: boolean; stage: TranscriptStage
           copyLabel={t().chat.copyCode}
           copiedLabel={t().chat.copied}
           onOpenArtifact={(path) => stage.onOpenArtifact(path, undefined, msg().id)}
+          files={workspaceFiles()}
           onOpenImage={(path, from) => stage.openBodyImage(msg(), path, from as never)}
           loadArtifactImage={stage.loadBodyImage}
           onOpenProfile={stage.onOpenProfile}

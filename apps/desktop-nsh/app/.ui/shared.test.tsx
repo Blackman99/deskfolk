@@ -35,6 +35,28 @@ test("Markdown names a file, a picture and Bots as chips that open them", async 
   await app.waitFor("id:msg-image-lightbox", { state: "gone" });
 });
 
+test("a right click on a file's chip opens its menu, which shows the file in Finder or opens it", async () => {
+  const app = await openStory("shared");
+  await app.waitFor("id:md", { timeout: 10_000 });
+  await app.waitFor("text:weekly.md");
+  await app.rightClick("id:md >> text:weekly.md");
+  await app.waitFor("id:artifact-tree-menu");
+  for (const id of ["open", "reveal", "copy-abs-path"]) expect(app.shows(`id:artifact-tree-menu-${id}`)).toBe(true);
+  // Only what applies to a file a line names: no terminal, no workspace path, no Trash.
+  for (const id of ["open-terminal", "copy-path", "trash"]) expect(app.shows(`id:artifact-tree-menu-${id}`)).toBe(false);
+  await app.press("id:artifact-tree-menu-reveal");
+  await app.waitUntil(() => app.texts().includes("reveal:/ws/notes/weekly.md"));
+  expect(app.shows("id:artifact-tree-menu")).toBe(false);
+  // The picture's card has the same menu.
+  await app.waitUntil(() => app.texts().includes("trend.png"));
+  await app.rightClick("id:md-artifact-image");
+  await app.press("id:artifact-tree-menu-open");
+  await app.waitUntil(() => app.texts().includes("open:/ws/charts/trend.png"));
+  // Text that says nowhere on this computer leaves the right click to what is around it.
+  await app.rightClick("id:md-inverted >> text:weekly.md");
+  expect(app.shows("id:artifact-tree-menu")).toBe(false);
+});
+
 test("a modal closes by its ✕ and by its action", async () => {
   const app = await openStory("shared");
   await app.waitFor("id:open-modal", { timeout: 10_000 });

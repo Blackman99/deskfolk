@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A file a message names opens in Finder from a right click
+
+- In the native (NSH) desktop build, a right click on a file a Bot or a project session's agent names in a message (its inline chip, or a picture's card) opened whatever menu was around it (the message's, a project session's pane menu, or "Copy / Select All"). Now it opens the file's own menu, the one the file tree has: "Open with default app", "Show in Finder" and "Copy absolute path". A Bot's path is looked up in the workspace; a project session's in the directory the agent worked in, as a left click opens it, with a short notice when it is not found or found in several places. A file that has been moved or deleted since gets a notice too.
+- Only the window on this Mac offers it: on a phone, in a browser or in a remote window the file is on another computer, and the Windows and Linux builds cannot open files yet, so there a right click still opens the message's menu.
+
 ### A long name no longer leaves a gap at the end of its chip
 
 - In the native (NSH) desktop build, a chip whose name was too long for it, such as a subagent under a project session's line ("Wait until main checkout finishes its me…"), a Bot↔Bot direct under the line that opened it, or a Bot in "replying", cut its name short but stayed as wide as the whole name, leaving a blank after the "…" and its dot or note. The chip now ends where the cut name and its dot or note do, as in the Tauri app; short names are unchanged.

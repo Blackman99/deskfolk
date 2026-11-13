@@ -5,6 +5,8 @@
  * picture a card with its thumbnail once it is fetched — and a Bot it names is a chip with its
  * letter; pressing one opens the file, the picture or the profile. Other links open outside. A
  * picture's chip has the magnifier and hands its thumbnail to the enlargement, which grows out of it.
+ * Where the text says where its files are on this computer (`files`), a right click on a file's chip
+ * opens its menu (`FileChipMenu`: open it, show it in Finder, copy its path) instead of the line's.
  *
  * `inverted` is your own bubble: light text on the accent.
  *
@@ -12,7 +14,7 @@
  * view colours them natively, in GitHub's light and dark or the code theme your interface chose,
  * which also brings its surface. Your own bubble keeps its code white on its wash, as before.
  */
-import { cleanup, computed, Image, openUrl, signal, Text, View, type JSX, type ViewRef } from "nsh";
+import { cleanup, computed, Image, openUrl, signal, Text, View, type JSX, type Point, type ViewRef } from "nsh";
 import { TextView } from "nsh/base";
 import { CodeColors } from "deskfolk/native";
 import { artifactKind, svgDisplayBlob } from "../m/overlays/artifacts.ts";
@@ -21,6 +23,8 @@ import { botAvatarColor } from "../m/avatar.ts";
 import { rosterLetter } from "../m/sidebar/roster-letter.ts";
 import { codeColorsAvailable, codeSurface, codeThemes } from "./code-colors";
 import { blobDataUrl } from "./data-url";
+import { FileChipMenu } from "./FileChipMenu";
+import type { FileOnDisk } from "./file-on-disk";
 import type { PressedPicture } from "./chat/image-origin";
 import { linkTarget, prepareMarkdown, unresolvedToken, type RenderMarkdownOptions } from "./markdown";
 import { FileIcon } from "./overlays/FileIcon";
@@ -56,6 +60,12 @@ export function MarkdownBody(props: {
   hideStandaloneArtifactLinks?: string[];
   onOpenProfile?: (botId: string) => void;
   /**
+   * Where the files the text names are on this computer (`file-on-disk.ts`): a right click on a
+   * file's chip opens its menu. None where the files are on another machine (the phone's page, a
+   * remote window): the right click is then the line's.
+   */
+  files?: FileOnDisk;
+  /**
    * Text can be selected and copied (default true): the text is a selection area of its own. False
    * inside an outer `<View selectable>` still selects, as part of that area, and leaves a right click
    * to the area's `onContextMenu` rather than NSH's Copy menu (`workbench/pane-menu.ts`).
@@ -67,6 +77,9 @@ export function MarkdownBody(props: {
   const markdown = () => prepareMarkdown(props.source, props.options ?? {}, props.hideStandaloneArtifactLinks ?? []);
   const loads = new AbortController();
   cleanup(() => loads.abort());
+  /** The file whose menu is open, and where (window coordinates). Here, not on the chip: a streamed rerun makes the chips again. */
+  const fileMenu = signal<{ path: string; at: Point } | null>(null);
+  const openFileMenu = (path: string, at: Point) => fileMenu.set({ path, at });
 
   function openArtifact(path: string, from?: PressedPicture): void {
     if (props.onOpenImage && isPicture(path)) props.onOpenImage(path, from);
@@ -108,6 +121,7 @@ export function MarkdownBody(props: {
             load={props.loadArtifactImage}
             signal={loads.signal}
             onPress={openArtifact}
+            onMenu={props.files ? openFileMenu : undefined}
           />
         ) : node.name === "mention" ? (
           <MentionChip
@@ -158,6 +172,17 @@ export function MarkdownBody(props: {
         view()
       )}
       {props.children}
+      <If when={props.files && fileMenu()}>
+        {() => (
+          <FileChipMenu
+            files={props.files!}
+            path={fileMenu()?.path ?? ""}
+            x={fileMenu()?.at.x ?? 0}
+            y={fileMenu()?.at.y ?? 0}
+            onClose={() => fileMenu.set(null)}
+          />
+        )}
+      </If>
     </View>
   );
 }
@@ -170,7 +195,12 @@ function ArtifactChip(props: {
   load?: (relpath: string, signal: AbortSignal) => Promise<Blob>;
   signal: AbortSignal;
   onPress: (path: string, from?: PressedPicture) => void;
+  /** A right click: the file's menu at `at` (window coordinates). */
+  onMenu?: (path: string, at: Point) => void;
 }) {
+  // On every view the pointer can land on, not only the chip: the nearest selectable text would
+  // otherwise answer a right click first with its own Copy menu (NSH's `context_menu`).
+  const onContextMenu = props.onMenu ? (e: { pagePosition: Point }) => props.onMenu!(props.path, e.pagePosition) : undefined;
   const picture = () => Boolean(props.load) && isPicture(props.path);
   /** The thumbnail: `null` loading, a URL loaded, `false` failed (a plain chip then). */
   const thumb = signal<string | null | false>(null);
@@ -196,11 +226,12 @@ function ArtifactChip(props: {
           accessibilityLabel={props.path}
           tooltip={tip(props.path)}
           onPress={() => props.onPress(props.path)}
+          onContextMenu={onContextMenu}
           style={{ verticalAlign: "middle" }}
           class={`cursor-pointer flex-row items-center gap-1 px-[7px] py-[2px] mx-[1px] rounded-(--radius-sm) border ${props.inverted ? "bg-white/18 border-white/35 hover:bg-white/28" : "bg-brand/7 border-brand/17 hover:bg-accent-tint hover:border-accent-border"}`}
         >
           <FileIcon icon={fileIconFor(props.path)} size={12} />
-          <Text class={`cursor-pointer text-[13px] ${props.inverted ? "text-white" : "text-accent-hover"}`}>{name()}</Text>
+          <Text onContextMenu={onContextMenu} class={`cursor-pointer text-[13px] ${props.inverted ? "text-white" : "text-accent-hover"}`}>{name()}</Text>
         </View>
       }
     >
@@ -210,13 +241,14 @@ function ArtifactChip(props: {
         accessibilityLabel={props.path}
         tooltip={tip(props.path)}
         onPress={() => props.onPress(props.path, pressed())}
+        onContextMenu={onContextMenu}
         style={{ verticalAlign: "middle" }}
         class={`cursor-zoom-in flex-row items-center gap-2 max-w-[240px] p-[5px] my-[2px] rounded-(--radius-md) border ${props.inverted ? "bg-white/14 border-white/30 hover:border-white/70" : "bg-pane border-line hover:border-brand"}`}
       >
         <If when={thumb()} else={<View ref={(n: ViewRef) => (picView = n)} class="w-[72px] h-[54px] rounded-[6px] bg-line-subtle shrink-0" />}>
           {(url: () => string | null | false) => <Image ref={(n: ViewRef) => (picView = n)} src={url() as string} class="w-[72px] h-[54px] rounded-[6px] shrink-0" style={{ objectFit: "cover" }} accessibilityLabel={name()} />}
         </If>
-        <Text class={`cursor-zoom-in min-w-0 shrink text-[13px] line-clamp-1 ${props.inverted ? "text-white" : "text-ink-secondary"}`}>{name()}</Text>
+        <Text onContextMenu={onContextMenu} class={`cursor-zoom-in min-w-0 shrink text-[13px] line-clamp-1 ${props.inverted ? "text-white" : "text-ink-secondary"}`}>{name()}</Text>
       </View>
     </If>
   );

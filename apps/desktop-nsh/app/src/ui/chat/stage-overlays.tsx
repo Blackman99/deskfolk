@@ -12,6 +12,7 @@ import { formatMessageTime, isAppLine } from "../../m/chat/chat-view.ts";
 import { showToast } from "../../m/toast.svelte.ts";
 import { copy, runtime } from "../../runtime";
 import { MarkdownBody } from "../MarkdownBody";
+import { workspaceFiles } from "../file-on-disk";
 import { MessageContextMenu } from "./MessageContextMenu";
 import { MessageFileOverlay } from "./MessageFileOverlay";
 import { MessageImageLightbox } from "./MessageImageLightbox";
@@ -97,6 +98,7 @@ export function StageOverlays(props: {
                   a().textSheetId.set(null);
                   props.onOpenArtifact(path, undefined, shown().id);
                 }}
+                files={workspaceFiles()}
                 onOpenImage={(path, from) => a().openBodyImage(shown(), path, from)}
                 loadArtifactImage={a().loadBodyImage}
                 onOpenProfile={(id) => {

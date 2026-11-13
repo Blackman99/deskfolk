@@ -16,6 +16,7 @@ import { Button } from "../Button";
 import { Icon } from "../Icon";
 import { IconButton } from "../IconButton";
 import { MarkdownBody } from "../MarkdownBody";
+import type { FileOnDisk } from "../file-on-disk";
 import { shadow } from "../styles";
 import { WheelLayer } from "../../platform/wheel-layer";
 
@@ -26,6 +27,8 @@ export function ProjectPlanCard(props: {
   disabled: boolean;
   onAnswer: (allow: boolean) => void;
   onOpenPath: (path: string) => void;
+  /** Where the files the plan names are on this computer: a right click on one opens its menu. */
+  files?: FileOnDisk;
 }) {
   const t = () => copy();
   const full = signal(false);
@@ -90,7 +93,7 @@ export function ProjectPlanCard(props: {
               <If when={hasPlan()} else={<Text testID="plan-empty" class="text-[13px] text-ink-muted">{t().project.planEmpty}</Text>}>
                 {/* In the conversation it is part of the transcript's selection, which leaves a right click
                     to the pane's menu (`pane-menu.ts`); over the whole window it is an area of its own. */}
-                <MarkdownBody testID="plan-body" selectable={isFull} source={props.approval.summary} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={openPath} />
+                <MarkdownBody testID="plan-body" selectable={isFull} source={props.approval.summary} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={openPath} files={props.files} />
               </If>
             </View>
           </View>

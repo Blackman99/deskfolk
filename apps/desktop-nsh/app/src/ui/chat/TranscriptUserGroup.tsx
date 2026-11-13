@@ -19,6 +19,7 @@ import type { TranscriptStage } from "../../m/chat/transcript-stage.ts";
 import { copy, runtime } from "../../runtime";
 import { AnnotationCards } from "../annotations/AnnotationCards";
 import { MarkdownBody } from "../MarkdownBody";
+import { workspaceFiles } from "../file-on-disk";
 import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";
 import { BotDmEntry } from "./BotDmEntry";
@@ -149,6 +150,7 @@ function Segment(props: {
                   copiedLabel={t().chat.copied}
                   inverted
                   onOpenArtifact={(path) => stage.onOpenArtifact(path, undefined, msg().id)}
+                  files={workspaceFiles()}
                   onOpenImage={(path, from) => stage.openBodyImage(msg(), path, from as never)}
                   loadArtifactImage={stage.loadBodyImage}
                   onOpenProfile={stage.onOpenProfile}

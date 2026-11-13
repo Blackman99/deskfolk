@@ -19,6 +19,7 @@ import { runningCall, trailBlocks } from "../../m/chat/project-tasks.ts";
 import { copy, runtime } from "../../runtime";
 import { Icon } from "../Icon";
 import { MarkdownBody } from "../MarkdownBody";
+import type { FileOnDisk } from "../file-on-disk";
 import { Modal, narrowWindow } from "../Modal";
 import { pulseMotion } from "./labels";
 import { CommandActivity } from "./CommandActivity";
@@ -29,6 +30,8 @@ export function ProjectSubagentDialog(props: {
   task: AgentRunTask;
   onClose: () => void;
   onOpenPath: (path: string) => void;
+  /** Where the files its lines name are on this computer: a right click on one opens its menu. */
+  files?: FileOnDisk;
 }) {
   const t = () => copy();
   const going = () => props.task.status === "running";
@@ -159,7 +162,7 @@ export function ProjectSubagentDialog(props: {
               blocks().map((block) =>
                 block.kind === "say" ? (
                   <View testID="subagent-say" class="min-w-0">
-                    <MarkdownBody source={block.text} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={props.onOpenPath} />
+                    <MarkdownBody source={block.text} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={props.onOpenPath} files={props.files} />
                   </View>
                 ) : (
                   <CommandActivity rows={block.rows} countLabel={t().project.taskCalls} />
