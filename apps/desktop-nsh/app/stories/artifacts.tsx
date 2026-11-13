@@ -9,7 +9,9 @@
  * `story-make-project` makes a project session (named "artifacts", so `story-clean` takes it away) on
  * the directory the tests seed (`host.params.projectDir`) and opens its `src/main.py`;
  * `story-read-project` reads that file back; `story-project-target` hangs it on an agent line, as
- * a project session's reply would (ADR 0095 decision 28), to show the annotation gate open.
+ * a project session's reply would (ADR 0095 decision 28), to show the annotation gate open;
+ * `story-project-elsewhere` opens a file from outside the project (`host.params.elsewhere`) in
+ * that preview instead, which keeps the project's tree beside it (decision 29).
  */
 import { cleanup, host, Scroll, signal, Text, View, type ViewRef } from "nsh";
 import type { Attachment } from "@real-bot/protocol";
@@ -133,6 +135,10 @@ export default function Artifacts() {
   /** The project session's file the tests seed, outside the workspace. */
   const projectDir = String((host.params as { projectDir?: string }).projectDir ?? "");
   const projectFile = projectDir ? `${projectDir}/src/main.py` : "";
+  /** A file in neither the workspace nor the project, as an agent may cite from `~/Downloads`. */
+  const elsewhere = String((host.params as { elsewhere?: string }).elsewhere ?? "");
+  /** What the project's preview shows: its own file, or the one from elsewhere. */
+  const projectShown = signal("");
   const makeProject = async () => {
     const client = runtime.client;
     if (!client || !projectDir) return;
@@ -170,6 +176,10 @@ export default function Artifacts() {
         {button("story-read", "read", () => void read())}
         {button("story-make-project", "make project", () => void makeProject())}
         {button("story-read-project", "read project", () => void readProject())}
+        {button("story-project-elsewhere", "elsewhere", () => {
+          projectShown.set(elsewhere);
+          part.set("project");
+        })}
         {button("story-project-target", "agent line", () => projectTarget.set({ messageId: "agent-line", sessionId: "project", turnId: null, botId: null }))}
         {button("story-sheet", "sheet", () => sheet.set(!sheet()))}
         {button("story-no-tree", "no tree", () => noTree.set(!noTree()))}
@@ -211,14 +221,17 @@ export default function Artifacts() {
       <If when={part() === "project"}>
         <View class="flex-1 min-h-0">
           <ArtifactPreview
-            relpath={projectFile}
+            relpath={projectShown() || projectFile}
             projectDir={projectDir}
             target={projectTarget()}
             api={runtime.client}
             workspacePath={runtime.snapshot.settings.workspace_path ?? null}
             sheet
             onClose={() => logLine("project-close")}
-            onSelect={(next) => logLine(`project-select:${next.workspace_relpath}`)}
+            onSelect={(next) => {
+              logLine(`project-select:${next.workspace_relpath}`);
+              projectShown.set(next.workspace_relpath);
+            }}
             onOpenTerminal={(dir) => logLine(`terminal:${dir}`)}
           />
         </View>

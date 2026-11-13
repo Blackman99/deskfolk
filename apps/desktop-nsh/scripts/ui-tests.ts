@@ -93,6 +93,11 @@ try {
   const projectDir = join(dataDir, "project");
   mkdirSync(join(projectDir, "src"), { recursive: true });
   writeFileSync(join(projectDir, "src", "main.py"), "def main():\n    return 1\n");
+  // A file an agent might cite from elsewhere on the Mac (`~/Downloads/…`): in neither the
+  // workspace nor the project, it still opens beside the project's tree (decision 29).
+  const elsewhere = join(dataDir, "elsewhere", "notes.md");
+  mkdirSync(join(dataDir, "elsewhere"), { recursive: true });
+  writeFileSync(elsewhere, "# Elsewhere\n\nA file from outside the project.\n");
 
   const fixture = {
     origin: handle.origin,
@@ -102,6 +107,7 @@ try {
     group: group.id,
     workspace,
     projectDir,
+    elsewhere,
     pty: hasPtyHelper(),
   };
   writeFileSync(join(root, "app", ".ui", ".fixture.json"), JSON.stringify(fixture), { mode: 0o600 });

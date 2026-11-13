@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A project session's preview always has the project's file tree
+
+- In the native (NSH) desktop build, a file a project session's reply names from outside its project directory, such as a PDF it left in `~/Downloads/` or a file under `/tmp/`, opened with no file tree beside it when the reply named only that file, and beside the few files the reply named otherwise. It now opens with the project directory's tree beside it, as a file inside the project does, listed from its top; the file itself has no row in that tree, and pressing a file there opens it in the same preview. Whether such a file can be saved or annotated is unchanged.
+
 ### The active tab has no ground of its own in dark
 
 - In the native (NSH) desktop app in dark mode, on the Mac's window glass, the active tab in each pane's tab strip was a dark pill ringed in a hairline that stood out on the strip; in light the active tab is the card's colour on a lighter ground and reads as having no ground at all. Dark now does the same: the active tab paints no ground, ring or shadow, and is told from the others by its brighter label and its ⋯ and ×. Light mode, the phone and floating panes are unchanged.

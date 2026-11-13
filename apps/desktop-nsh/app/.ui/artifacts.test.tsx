@@ -184,6 +184,39 @@ test("a project session's file takes annotations once there is an agent line to 
   expect(app.texts()).not.toContain(t.annotationNoAgentLine);
 });
 
+test("a file from elsewhere opened in a project session has the project's tree beside it", async () => {
+  const t = copyFor("zh").stream;
+  const params = { projectDir: seeded.projectDir, elsewhere: seeded.elsewhere };
+  const app = await openStory("artifacts", {}, params);
+  await app.waitFor("id:artifacts", { timeout: 15_000 });
+  await app.press("id:story-project-elsewhere");
+  await app.waitUntil(() => has(app, "Elsewhere"), { timeout: LOAD_MS });
+  // One file, and not the project's: the tree is the project's all the same, listed from its top.
+  await app.waitFor("id:artifact-tree-column");
+  const src = `${seeded.projectDir}/src`;
+  await app.waitFor(`id:artifact-tree-row:${src}`, { timeout: LOAD_MS });
+  expect(app.shows(`id:artifact-tree-row:${seeded.elsewhere}`)).toBe(false);
+  // It is not saved or annotated as the project's: a note on it reaches nobody.
+  expect(app.shows("id:annotation-toggle")).toBe(false);
+  expect(app.texts()).not.toContain(t.annotationNoAgentLine);
+  // A row of the tree opens the project's file in its place, now found in the tree and editable.
+  await app.press(`id:artifact-tree-row:${src}`);
+  const main = `${src}/main.py`;
+  await app.waitFor(`id:artifact-tree-row:${main}`, { timeout: LOAD_MS });
+  await app.press(`id:artifact-tree-row:${main}`);
+  await app.waitUntil(() => log(app).includes(`project-select:${main}`));
+  await app.waitFor("id:artifact-code-editor", { timeout: LOAD_MS });
+  await app.waitUntil(() => app.texts().includes(t.annotationNoAgentLine), { timeout: LOAD_MS });
+
+  // A narrow window has it too, behind the picker.
+  const phone = await openStory("artifacts", { width: 420, height: 760 }, params);
+  await phone.waitFor("id:artifacts", { timeout: 15_000 });
+  await phone.press("id:story-project-elsewhere");
+  await phone.waitFor("id:artifact-picker", { timeout: LOAD_MS });
+  await phone.press("id:artifact-picker");
+  await phone.waitFor(`id:artifact-tree-row:${src}`, { timeout: LOAD_MS });
+});
+
 test("the phone's list opens as a sheet and a picked file closes it", async () => {
   const app = await openStory("artifacts", { width: 420, height: 760 });
   await app.waitFor("id:artifacts", { timeout: 15_000 });

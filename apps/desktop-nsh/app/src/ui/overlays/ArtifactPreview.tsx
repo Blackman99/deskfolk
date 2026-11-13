@@ -246,14 +246,14 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
    * workspace file is (the daemon writes inside a project's directory too), and takes notes for
    * the session's agent (decision 28). The Svelte kept such a file read-only.
    */
-  const writable = () => inWorkspace() || treeSrc.projectRoot !== null;
+  const writable = () => inWorkspace() || treeSrc.inProject;
   const canSave = () =>
     Boolean(api() && relpath() && writable() && canShowSource() && loader.text !== null && loader.textEncoding === "utf-8" && (sourceMode() || loader.text !== loader.diskText));
   /** Unsaved: the editor's buffer in the source view, the text the rendered view shows otherwise. */
   const dirty = computed(() => (sourceMode() && editor() ? editorDirty() : loader.text !== null && loader.diskText !== null && loader.text !== loader.diskText));
   dirtyOf = dirty;
   const gate = computed(() =>
-    annotateGate({ target: mode() === "workspace" ? null : (props.target ?? null), kind: kind(), sourceMode: sourceMode(), dirty: dirty(), outside: !inWorkspace(), inProject: treeSrc.projectRoot !== null }),
+    annotateGate({ target: mode() === "workspace" ? null : (props.target ?? null), kind: kind(), sourceMode: sourceMode(), dirty: dirty(), outside: !inWorkspace(), inProject: treeSrc.inProject }),
   );
   gateOf = gate;
   const viewAdapter = () => adapterFor(kind(), sourceMode());

@@ -108,17 +108,26 @@ export class ArtifactTreeSource {
 	get citedTree() { return this.#citedTree$s.get(); }
 
   /**
-   * Opened from a project session (ADR 0095), a file inside its directory is shown in that
-   * directory's tree, as in the agent's own app. Null for the explorer, a job's files and a file
-   * from anywhere else (a picture you pasted, `/tmp/…`), which keep the tree they had.
+   * Opened from a project session (ADR 0095), the tree is that session's directory, as in the
+   * agent's own app, whatever file is on screen: one it cites from elsewhere (`~/Downloads/…`,
+   * `/tmp/…`, a picture you pasted) opens beside the project's tree too, with no row of its own
+   * in it (decision 29). Null for the explorer, a job's files and anything outside a project session.
    */
   #projectRoot$s = derived(() => {
     if (this.#h.mode() === "workspace" || this.#h.taskId()) return null;
-    const dir = dirKey(this.#h.projectDir() ?? "");
-    const relpath = dirKey(this.#h.relpath());
-    return dir && (relpath === dir || holds(dir, relpath)) ? dir : null;
+    return dirKey(this.#h.projectDir() ?? "") || null;
   });
 	get projectRoot() { return this.#projectRoot$s.get(); }
+  /**
+   * Whether the file on screen is inside the project's directory: such a file is found in the tree,
+   * saved where it is and annotated (decisions 14 and 28); one from elsewhere only sits beside it.
+   */
+  #inProject$s = derived(() => {
+    const dir = this.projectRoot;
+    const relpath = dirKey(this.#h.relpath());
+    return dir !== null && (relpath === dir || holds(dir, relpath));
+  });
+	get inProject() { return this.#inProject$s.get(); }
   /** The tree is a folder read a level at a time, as you open it: the workspace's, or the project's. */
   #lazy$s = derived(() => this.#h.mode() === "workspace" || this.projectRoot !== null);
 	get lazy() { return this.#lazy$s.get(); }
@@ -128,7 +137,7 @@ export class ArtifactTreeSource {
    */
   #revealDirs$s = derived(() => {
     const root = this.projectRoot;
-    if (root === null) return [];
+    if (root === null || !this.inProject) return [];
     const relpath = dirKey(this.#h.relpath());
     const names = relpath.slice(root.length + 1).split(/[\\/]/).filter(Boolean);
     if (!this.isDir(relpath)) names.pop();
@@ -339,7 +348,7 @@ export class ArtifactTreeSource {
       const client = this.#h.api();
       const workspaceMode = this.#h.mode() === "workspace";
       const root = this.#h.workspacePath();
-      // Walking from file to file inside the project keeps its listing; leaving it lets go.
+      // Walking from file to file keeps the project's listing, out to a file from elsewhere and back too.
       const project = this.projectRoot;
       const key = !client ? null : workspaceMode ? (root ?? "") : project !== null ? `project\u0000${project}` : null;
       if (key === this.loadedWorkspaceKey && client === this.loadedWorkspaceClient) return;
