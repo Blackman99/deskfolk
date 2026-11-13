@@ -1,28 +1,33 @@
 /**
  * The small pieces every step of the wizard is made of (the scoped CSS of `Onboarding.svelte`): a
- * step's heading, its footer and the two buttons in it, and the segmented switch that chooses a way
- * (how setup reaches a model; how the last step starts; the way of working). The Svelte wizard
- * still draws those as cards with every description shown (`.connect-modes`).
+ * step's heading, the buttons it puts in the card's footer, and the segmented switch that chooses a
+ * way (how setup reaches a model; how the last step starts; the way of working). The Svelte wizard
+ * still draws the ways as cards with every description shown (`.connect-modes`).
+ *
+ * What a heading or a way is for is a "?" beside it (`HelpTip`), not a paragraph under it: the
+ * paragraphs ran the longer steps past the window, and one that came and went with a choice moved
+ * everything under it.
  */
 import { Text, View, type JSX } from "nsh";
 import { narrowWindow } from "../Modal";
+import { HelpTip } from "../settings/HelpTip";
 import { shadow } from "../styles";
 
-/** `.step-pane-header`: the step's title and what it is for. */
-export function StepHead(props: { title: string; desc?: string; testID?: string }) {
+/** `.step-pane-header`: the step's title, and what it is for as the "?" beside it (`tipTestID`). */
+export function StepHead(props: { title: string; desc?: string; testID?: string; tipTestID?: string }) {
   return (
-    <View class="flex-col gap-1">
-      <Text role="header" testID={props.testID} class="text-[16px] font-semibold text-ink">
+    <View class="flex-row items-center gap-2">
+      <Text role="header" testID={props.testID} class="shrink min-w-0 text-[16px] font-semibold text-ink">
         {props.title}
       </Text>
       <If when={props.desc}>
-        <Text class="text-[13px] leading-[1.45] text-ink-muted">{props.desc}</Text>
+        <HelpTip text={props.desc} label={props.title} testID={props.tipTestID} />
       </If>
     </View>
   );
 }
 
-/** `.step-pane-desc` and `.field-hint` lines. */
+/** `.step-pane-desc` and `.field-hint` lines: what a step still says in the open, such as a check not passed. */
 export function Desc(props: { testID?: string; children: string }) {
   return (
     <Text testID={props.testID} class="text-[13px] leading-[1.45] text-ink-muted">
@@ -31,9 +36,9 @@ export function Desc(props: { testID?: string; children: string }) {
   );
 }
 
-/** `.step-nav-footer`: back on the left, on on the right, under a hairline. */
+/** `.step-nav-footer`: a step's buttons, back (or skip) then on, at the end of the card's footer. */
 export function StepFooter(props: { children?: JSX.Element }) {
-  return <View class="flex-row items-center justify-between mt-[6px] pt-[14px] border-t border-line-subtle">{props.children}</View>;
+  return <View class="flex-row items-center justify-end gap-[10px] shrink-0">{props.children}</View>;
 }
 
 /** `.btn-step-primary`. */
@@ -71,10 +76,11 @@ export function StepSecondary(props: { label: string; testID?: string; disabled?
 }
 
 /**
- * A choice of a few ways as one segmented row, with only the chosen way's line under it: the
- * cards' every description at once made the last step longer than the window. The options are
- * radios (`<idPrefix>-<value>`), as the cards' were; the whole explanation stays in reach as the
- * group's accessibility hint.
+ * A choice of a few ways as one segmented row, and a "?" after it (`<idPrefix>-tip`) with each
+ * way's name over its line, the chosen one in the accent, under `intro` when there is one. The
+ * cards' every description at once made the last step longer than the window, and the chosen
+ * way's line under the row, one line or two by the way, moved what came after. The options are
+ * radios (`<idPrefix>-<value>`), as the cards' were; `hint` is the group's accessibility hint.
  */
 export function WaySwitch<T extends string>(props: {
   label: string;
@@ -82,17 +88,17 @@ export function WaySwitch<T extends string>(props: {
   options: readonly (readonly [T, string, string])[];
   idPrefix: string;
   hint?: string;
+  intro?: string;
   disabled?: boolean;
   onPick: (value: T) => void;
 }) {
-  const chosen = () => props.options.find((option) => option[0] === props.value);
   return (
-    <View class="flex-col gap-[6px]">
+    <View class="flex-row items-center gap-2 max-w-full">
       <View
         role="radiogroup"
         accessibilityLabel={props.label}
         accessibilityHint={props.hint}
-        class="flex-row items-center self-start max-w-full p-[3px] gap-[2px] bg-chip border border-chip-line rounded-(--radius-md)"
+        class={`flex-row items-center min-w-0 p-[3px] gap-[2px] bg-chip border border-chip-line rounded-(--radius-md) ${narrowWindow() ? "flex-1" : "shrink"}`}
       >
         <Each of={props.options.slice()} key={(option) => option[0]}>
           {(option) => {
@@ -115,9 +121,19 @@ export function WaySwitch<T extends string>(props: {
           }}
         </Each>
       </View>
-      <If when={chosen()}>
-        {(option) => <Text class="text-[12px] leading-[1.45] text-ink-muted">{option()[2]}</Text>}
-      </If>
+      <HelpTip label={props.label} testID={`${props.idPrefix}-tip`}>
+        <If when={props.intro}>
+          <Text class="text-[12px] font-[450] leading-[1.5] text-ink">{props.intro}</Text>
+        </If>
+        <Each of={props.options.slice()} key={(option) => option[0]}>
+          {(option) => (
+            <View class="flex-col gap-[2px]">
+              <Text class={`text-[12px] font-semibold ${props.value === option()[0] ? "text-brand" : "text-ink"}`}>{option()[1]}</Text>
+              <Text class="text-[12px] leading-[1.5] text-ink-secondary">{option()[2]}</Text>
+            </View>
+          )}
+        </Each>
+      </HelpTip>
     </View>
   );
 }

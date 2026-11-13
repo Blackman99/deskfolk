@@ -56,14 +56,23 @@ test("a preset fills the endpoint form, the format and the name; the other way a
     await app.press("id:preset-ollama");
     await app.waitUntil(() => app.value("id:onboarding-endpoint") === "http://localhost:11434/v1");
     expect(app.value("id:onboarding-provider-name")).toBe("Ollama");
-    expect(app.shows(`text:${t.onboarding.localPresetHint}`)).toBe(true);
+    // What a local server needs is a "?" at the end of the presets, not a paragraph pushing the form down.
+    expect(app.shows(`text:${t.onboarding.localPresetHint}`)).toBe(false);
+    await app.press("id:onboarding-local-tip");
+    await app.waitFor(`text:${t.onboarding.localPresetHint}`);
+    await app.press("id:onboarding-local-tip");
+    await app.waitFor("id:onboarding-local-tip-text", { state: "gone" });
+    // No key for it either: the key's "?" says so.
+    expect(app.shows("id:onboarding-key-tip")).toBe(true);
     // A model server on this computer needs no key: Next is open without one.
     expect(app.enabled("id:onboarding-next-2")).toBe(true);
 
     await app.press("id:preset-anthropic");
     await app.waitUntil(() => app.value("id:onboarding-endpoint") === "https://api.anthropic.com");
-    expect(app.shows(`text:${t.settings.apiFormatAnthropicHint}`)).toBe(true);
-    expect(app.shows(`text:${t.onboarding.localPresetHint}`)).toBe(false);
+    // The Anthropic address's note is the endpoint's "?"; the local server's goes with it.
+    expect(app.shows("id:onboarding-endpoint-tip")).toBe(true);
+    expect(app.shows(`text:${t.settings.apiFormatAnthropicHint}`)).toBe(false);
+    expect(app.shows("id:onboarding-local-tip")).toBe(false);
 
     // An emptied name is refused on Next, with its reason under the field.
     await app.clear("id:onboarding-provider-name");
@@ -74,10 +83,17 @@ test("a preset fills the endpoint form, the format and the name; the other way a
     await app.type("id:onboarding-provider-name", "Mine");
     expect(app.shows(`text:${t.settings.providerNameEmpty}`)).toBe(false);
 
-    // Claude Code instead of an endpoint: the endpoint's fields go, its check card comes.
+    // Claude Code instead of an endpoint: the endpoint's fields go, its check card comes, and the
+    // heading's "?" says how it is found and signed in.
     await app.press("id:connect-mode-claude");
-    await app.waitFor("text:" + t.onboarding.claudeCheckDesc);
+    await app.waitFor("id:claude-agent");
     expect(app.shows("id:onboarding-endpoint")).toBe(false);
+    await app.hover("id:onboarding-tip-2");
+    await app.waitFor("text:" + t.onboarding.claudeCheckDesc);
+    // Each way's line is the switch's "?".
+    await app.hover("id:connect-mode-tip");
+    await app.waitFor("text:" + t.onboarding.connectClaudeDesc);
+    expect(app.shows("text:" + t.onboarding.connectEndpointDesc)).toBe(true);
     await app.press("id:connect-mode-endpoint");
     await app.waitFor("id:onboarding-endpoint");
   } finally {

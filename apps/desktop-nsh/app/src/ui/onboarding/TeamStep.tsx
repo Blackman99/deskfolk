@@ -7,6 +7,8 @@
  *
  * The Svelte one's `bind:count`, `bind:ready` and `bind:busy` are `onCountChange`, `onReadyChange`
  * and `onBusyChange`; its exported `create()` is handed to `onApi` once, for the footer's button.
+ * What an engine is and what each way does are the switch's "?"; what the team is, and `note`
+ * after it, the "?" beside the team's heading (`team-tip`).
  */
 import { BUILTIN_PLAYBOOK_IDS, type BuiltinPlaybookId } from "@real-bot/protocol";
 import { effect, signal, Text, View, type JSX } from "nsh";
@@ -17,6 +19,7 @@ import { botAvatarColor } from "../../m/avatar.ts";
 import { templatesFor, type BotTemplateId } from "../../m/bot-templates.ts";
 import { botNameErrorCopy, mapCreateBotError, planCreateBot, type CreateBotDraft, type CreateBotFieldErrors } from "../../m/panels/create-form.ts";
 import { rosterLetter } from "../../m/sidebar/roster-letter.ts";
+import { HelpTip } from "../settings/HelpTip";
 import { cssColor } from "../styles";
 import { WaySwitch } from "./parts";
 
@@ -31,6 +34,8 @@ const FIELD =
 export function TeamStep(props: {
   /** What every Bot made here runs on: set up on Claude Code or another agent, its runner. */
   base: Partial<CreateBotDraft>;
+  /** A line after what the team is, in its "?": the wizard says there which model the Bots run on. */
+  note?: string;
   /** Everything is made, and the conversation to land in is open. */
   onDone: () => void;
   /** How many Bots are ticked; the footer's button says it. */
@@ -150,8 +155,8 @@ export function TeamStep(props: {
 
   return (
     <View testID="team-step" class="flex-col gap-[18px]">
-      {/* A segmented row with the chosen way's line under it; what an engine is (`pickHint`) is the
-          group's hint. Four cards of descriptions ran the step past the window. */}
+      {/* A segmented row; what an engine is (`pickHint`) and each way's line are its "?". Four cards
+          of descriptions ran the step past the window. */}
       <View class="flex-col gap-2">
         <Text role="header" class="text-[14px] font-semibold text-ink">{c().pick}</Text>
         <WaySwitch
@@ -159,6 +164,7 @@ export function TeamStep(props: {
           value={playbook()}
           idPrefix="team-way"
           hint={c().pickHint}
+          intro={c().pickHint}
           disabled={busy() || started()}
           options={BUILTIN_PLAYBOOK_IDS.map((id) => [id, copy().playbooks.builtin[id], copy().playbooks.builtinHint[id]] as const)}
           onPick={(id) => pickWay(id)}
@@ -166,8 +172,10 @@ export function TeamStep(props: {
       </View>
 
       <View class="flex-col gap-2">
-        <Text role="header" class="text-[14px] font-semibold text-ink">{c().team}</Text>
-        <Text class="text-[12px] leading-[1.45] text-ink-muted">{c().teamHint}</Text>
+        <View class="flex-row items-center gap-[6px]">
+          <Text role="header" class="shrink min-w-0 text-[14px] font-semibold text-ink">{c().team}</Text>
+          <HelpTip text={props.note ? `${c().teamHint}\n\n${props.note}` : c().teamHint} label={c().team} testID="team-tip" />
+        </View>
         <View class="flex-col gap-2">
           <Each of={picks().slice()} key={(pick) => pick.id}>
             {(item) => {

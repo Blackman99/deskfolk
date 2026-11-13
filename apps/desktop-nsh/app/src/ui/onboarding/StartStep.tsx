@@ -7,20 +7,28 @@ import { View } from "nsh";
 import { copy } from "../../runtime";
 import { runtime } from "../../runtime";
 import { ProjectDirPicker } from "../sidebar/ProjectDirPicker";
-import { Desc, StepFooter, StepHead, StepPrimary, StepSecondary, WaySwitch } from "./parts";
+import { StepFooter, StepHead, StepPrimary, StepSecondary, WaySwitch } from "./parts";
 import { TeamStep } from "./TeamStep";
 import type { Wizard } from "./wizard";
 
 export function StartStep(props: { w: Wizard }) {
   const w = props.w;
   const t = () => copy();
+  // What the Bots run on, a line that was under them: the first Bots' "?" says it now.
+  const modelNote = () =>
+    w.teamBase().runner
+      ? w.teamBase().runner === "claude_code"
+        ? t().onboarding.botClaudeHint
+        : t().onboarding.botAgentHint.replace("{agent}", w.pickedLabel())
+      : t().onboarding.botModelHint;
   return (
     <View testID="onboarding-step-4" class="flex-col gap-[14px]">
       {/* The step's long explanation is the screen reader's (and the choice's hint), not a
-          paragraph over everything: each way says its own line once it is chosen. */}
+          paragraph over everything: each way says its own line in the switch's "?". */}
       <StepHead
         title={w.carryOffered() ? t().onboarding.stepStart : t().onboarding.stepBot}
         desc={w.carryOffered() ? undefined : t().onboarding.startTeamDesc}
+        tipTestID="onboarding-tip-4"
       />
 
       <If when={w.carryOffered()}>
@@ -41,29 +49,31 @@ export function StartStep(props: { w: Wizard }) {
       <View class="flex-col gap-[14px]" style={{ display: w.startWay() === "team" ? "flex" : "none" }}>
         <TeamStep
           base={w.teamBase()}
+          note={modelNote()}
           onDone={() => w.hold(false)}
           onCountChange={(n) => w.teamCount.set(n)}
           onReadyChange={(ready) => w.teamReady.set(ready)}
           onBusyChange={(busy) => w.teamBusy.set(busy)}
           onApi={(api) => (w.team.api = api)}
         />
-        <If
-          when={w.teamBase().runner}
-          else={<Desc>{t().onboarding.botModelHint}</Desc>}
-        >
-          <Desc>{w.teamBase().runner === "claude_code" ? t().onboarding.botClaudeHint : t().onboarding.botAgentHint.replace("{agent}", w.pickedLabel())}</Desc>
-        </If>
       </View>
       <If when={w.startWay() === "carry"}>
         <ProjectDirPicker agent="claude_code" mode="import" items={w.terminalSessions()} sessions={runtime.snapshot.sessions} onDone={() => w.hold(false)} />
       </If>
-
-      <StepFooter>
-        <StepSecondary testID="onboarding-skip-start" label={w.startWay() === "carry" ? t().onboarding.skipStart : t().onboarding.skipBot} onPress={() => w.hold(false)} />
-        <If when={w.startWay() === "team"}>
-          <StepPrimary testID="team-create" disabled={w.teamBusy() || !w.teamReady()} label={`${t().templates.create(w.teamCount())} ✓`} onPress={() => void w.team.api?.create()} />
-        </If>
-      </StepFooter>
     </View>
+  );
+}
+
+/** Step 4's buttons, in the card's footer: skip it, and (making Bots) make them. */
+export function StartNav(props: { w: Wizard }) {
+  const w = props.w;
+  const t = () => copy();
+  return (
+    <StepFooter>
+      <StepSecondary testID="onboarding-skip-start" label={w.startWay() === "carry" ? t().onboarding.skipStart : t().onboarding.skipBot} onPress={() => w.hold(false)} />
+      <If when={w.startWay() === "team"}>
+        <StepPrimary testID="team-create" disabled={w.teamBusy() || !w.teamReady()} label={`${t().templates.create(w.teamCount())} ✓`} onPress={() => void w.team.api?.create()} />
+      </If>
+    </StepFooter>
   );
 }

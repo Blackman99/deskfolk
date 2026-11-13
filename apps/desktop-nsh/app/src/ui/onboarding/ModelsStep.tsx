@@ -9,7 +9,7 @@ import { copy, runtime } from "../../runtime";
 import { Select } from "../Select";
 import { ModelPicker } from "../ModelPicker";
 import { Chip, Field, FieldError, FieldHint, TextAction, TextField, XsButton, fieldClass } from "../settings/provider-fields";
-import { Desc, StepFooter, StepHead, StepPrimary, StepSecondary } from "./parts";
+import { StepFooter, StepHead, StepPrimary, StepSecondary } from "./parts";
 import { fieldCopy, type Wizard } from "./wizard";
 
 export function ModelsStep(props: { w: Wizard }) {
@@ -17,11 +17,17 @@ export function ModelsStep(props: { w: Wizard }) {
   const t = () => copy();
   const other = () => w.pickedOther();
   const claude = () => w.connectMode() === "claude";
+  // The heading's "?": what the model is for and, on an agent alone, what waits for an endpoint
+  // (the line that was under the picker).
   const desc = () =>
-    claude() ? (other() ? t().onboarding.agentModelsDesc.replace("{agent}", w.pickedLabel()) : t().onboarding.claudeModelsDesc) : t().onboarding.stepModelsDesc;
+    claude()
+      ? other()
+        ? `${t().onboarding.agentModelsDesc.replace("{agent}", w.pickedLabel())}\n\n${t().onboarding.agentLimits.replace("{agent}", w.pickedLabel())}`
+        : `${t().onboarding.claudeModelsDesc}\n\n${t().onboarding.claudeLimits}`
+      : t().onboarding.stepModelsDesc;
   return (
     <View testID="onboarding-step-3" class="flex-col gap-[14px]">
-      <StepHead title={t().onboarding.step3Title} desc={desc()} />
+      <StepHead title={t().onboarding.step3Title} desc={desc()} tipTestID="onboarding-tip-3" />
 
       <If when={claude()} else={<EndpointModels w={w} />}>
         <If
@@ -42,7 +48,6 @@ export function ModelsStep(props: { w: Wizard }) {
                   <Select testID="onboarding-claude-account" value={w.claudeConfigDir()} options={w.claudeAccounts()} onChange={(value) => w.claudeConfigDir.set(value)} />
                 </Field>
               </If>
-              <Desc>{t().onboarding.claudeLimits}</Desc>
             </>
           }
         >
@@ -56,20 +61,26 @@ export function ModelsStep(props: { w: Wizard }) {
               onChange={(value) => w.agentModel.set(value)}
             />
           </Field>
-          <Desc>{t().onboarding.agentLimits.replace("{agent}", w.pickedLabel())}</Desc>
         </If>
       </If>
-
-      <StepFooter>
-        <StepSecondary testID="onboarding-back-3" label={`← ${t().onboarding.prevStep}`} onPress={() => w.step.set(2)} />
-        <StepPrimary
-          testID="onboarding-next-3"
-          disabled={!w.canCompleteSetup()}
-          label={w.rosterEmpty() ? `${w.carryOffered() ? t().onboarding.step3NextStart : t().onboarding.step3Next} →` : `${t().onboarding.submit} ✓`}
-          onPress={() => void w.handleComplete()}
-        />
-      </StepFooter>
     </View>
+  );
+}
+
+/** Step 3's buttons, in the card's footer. */
+export function ModelsNav(props: { w: Wizard }) {
+  const w = props.w;
+  const t = () => copy();
+  return (
+    <StepFooter>
+      <StepSecondary testID="onboarding-back-3" label={`← ${t().onboarding.prevStep}`} onPress={() => w.step.set(2)} />
+      <StepPrimary
+        testID="onboarding-next-3"
+        disabled={!w.canCompleteSetup()}
+        label={w.rosterEmpty() ? `${w.carryOffered() ? t().onboarding.step3NextStart : t().onboarding.step3Next} →` : `${t().onboarding.submit} ✓`}
+        onPress={() => void w.handleComplete()}
+      />
+    </StepFooter>
   );
 }
 

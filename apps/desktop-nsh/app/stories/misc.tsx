@@ -119,8 +119,11 @@ export default function Misc() {
       <If when={part() === "locale"}>
         <View class="p-6">
           <View testID="story-card" class="w-[420px] h-[160px] p-6 bg-pane border border-line rounded-(--radius-lg)">
-            <LocaleSwitch locale={locale()} />
-            <Text class="text-[14px] text-ink">{copy().onboarding.welcome}</Text>
+            {/* The welcome's row, as the wizard's card starts. */}
+            <View class="flex-row items-center gap-[10px]">
+              <Text class="flex-1 min-w-0 text-[14px] text-ink">{copy().onboarding.welcome}</Text>
+              <LocaleSwitch locale={locale()} />
+            </View>
           </View>
           <Btn id="story-restore-locale" label="restore zh" onPress={() => void restoreLocale()} />
         </View>
