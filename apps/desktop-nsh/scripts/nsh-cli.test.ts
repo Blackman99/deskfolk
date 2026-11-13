@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { nshCliPath, nshRev } from "./nsh-cli";
+import { keepOnlyCli, nshCliPath, nshRev } from "./nsh-cli";
 
 const root = resolve(import.meta.dir, "..");
 
@@ -42,5 +43,26 @@ describe("the NSH the shell and the CLI come from", () => {
 
   test("the CLI is looked for in the cache under that commit", () => {
     expect(nshCliPath("abc123")).toContain(join("abc123", "source", "target", "release"));
+  });
+
+  test("after the build, the checkout's target keeps the CLI alone", () => {
+    const source = mkdtempSync(join(tmpdir(), "nsh-cli-"));
+    try {
+      const target = join(source, "target");
+      for (const dir of ["release/deps", "release/build/x", "release/.fingerprint", "release/incremental", "debug"]) {
+        mkdirSync(join(target, dir), { recursive: true });
+      }
+      for (const name of ["nsh", "nsh.exe", "nsh.pdb", "nsh.d", ".cargo-lock", "deps/libnsh_core-0123.rlib"]) {
+        writeFileSync(join(target, "release", name), "x");
+      }
+      writeFileSync(join(target, "CACHEDIR.TAG"), "x");
+      writeFileSync(join(source, "Cargo.toml"), "x");
+      keepOnlyCli(source);
+      expect(readdirSync(target)).toEqual(["release"]);
+      expect(readdirSync(join(target, "release")).sort()).toEqual(["nsh", "nsh.exe", "nsh.pdb"]);
+      expect(readdirSync(source).sort()).toEqual(["Cargo.toml", "target"]);
+    } finally {
+      rmSync(source, { recursive: true, force: true });
+    }
   });
 });

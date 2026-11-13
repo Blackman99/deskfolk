@@ -12,13 +12,18 @@
  * 2. Over `DESKFOLK_TARGET_CAP_GB` (default 20; 0 turns this off), all of `incremental/` goes, then,
  *    still over, the whole directory: the next build starts from nothing (several minutes).
  *
+ * Then the NSH CLI cache (`nsh-cli.ts`, one directory per NSH commit, shared by every checkout):
+ * a commit other than this checkout's that no script has run for `DESKFOLK_NSH_CACHE_DAYS`
+ * (default 7) goes; a checkout still on it builds it again (several minutes).
+ *
  * Nothing is removed while cargo, rustc or the shell runs: on Windows the shell's executable is
  * locked, and a build would be left half-deleted. Removing a whole directory, never single
  * artifacts, means cargo can't be left with a fingerprint whose output is gone.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { nshCacheRoot, nshRev } from "./nsh-cli";
 
 const root = resolve(import.meta.dir, "..");
 const DAY = 24 * 60 * 60 * 1000;
@@ -101,6 +106,66 @@ export function trimTarget(target: string, options: TrimOptions): number {
   return 0;
 }
 
+export interface NshCacheOptions {
+  /** The commit this checkout is on, kept whenever it was last used. */
+  keep: string;
+  unusedMs: number;
+  now?: number;
+  dryRun?: boolean;
+  log?: (line: string) => void;
+}
+
+const REMOVING = ".removing";
+
+/** When `<rev>`'s CLI was last run: its stamp, else (a cache from before stamps) the directory's. */
+function lastUsed(dir: string): number {
+  try {
+    return statSync(join(dir, "last-used")).mtimeMs;
+  } catch {
+    return statSync(dir).mtimeMs;
+  }
+}
+
+/**
+ * Removes the NSH commits under `root` other than `keep` that nothing has used for `unusedMs`.
+ * Each is renamed before it is removed: on Windows a running CLI locks its directory, so the
+ * rename fails and it stays whole, instead of a removal stopping half-way through a checkout that
+ * `nsh-cli.ts` would then take for built. What a removal left (`<rev>.removing`) goes next time.
+ */
+export function trimNshCache(root: string, options: NshCacheOptions): void {
+  const log = options.log ?? console.log;
+  const now = options.now ?? Date.now();
+  if (!existsSync(root)) return;
+  const entries = readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+  for (const entry of entries) {
+    if (!entry.name.endsWith(REMOVING) || options.dryRun) continue;
+    try {
+      rmSync(join(root, entry.name), { recursive: true, force: true });
+    } catch {
+      // Still locked; next time.
+    }
+  }
+  for (const entry of entries) {
+    if (!/^[0-9a-f]{7,40}$/.test(entry.name) || entry.name === options.keep) continue;
+    const dir = join(root, entry.name);
+    const unused = now - lastUsed(dir);
+    if (unused < options.unusedMs) continue;
+    log(`trim-target: ${dir}: the CLI of NSH ${entry.name.slice(0, 12)}, unused for ${Math.floor(unused / DAY)} days (${gb(sizeOf(dir))})`);
+    if (options.dryRun) continue;
+    try {
+      renameSync(dir, dir + REMOVING);
+    } catch {
+      log(`trim-target: ${dir} is in use; not removing it now`);
+      continue;
+    }
+    try {
+      rmSync(dir + REMOVING, { recursive: true, force: true });
+    } catch {
+      // Finished next time.
+    }
+  }
+}
+
 /** Whether cargo, rustc or the shell runs now (any of them, from any checkout). */
 export function rustBusy(): boolean {
   const names = ["cargo", "rustc", "deskfolk-nsh"];
@@ -131,6 +196,11 @@ export function trimTargets(options: { dryRun?: boolean } = {}): void {
     const capBytes = envNumber("DESKFOLK_TARGET_CAP_GB", 20) * GB;
     const incrementalAgeMs = envNumber("DESKFOLK_TARGET_INCREMENTAL_DAYS", 2) * DAY;
     for (const target of TARGET_DIRS) trimTarget(target, { capBytes, incrementalAgeMs, dryRun: options.dryRun });
+    trimNshCache(nshCacheRoot(), {
+      keep: nshRev(),
+      unusedMs: envNumber("DESKFOLK_NSH_CACHE_DAYS", 7) * DAY,
+      dryRun: options.dryRun,
+    });
   } catch (error) {
     console.warn(`trim-target: skipped (${error instanceof Error ? error.message : String(error)})`);
   }
@@ -138,6 +208,6 @@ export function trimTargets(options: { dryRun?: boolean } = {}): void {
 
 if (import.meta.main) {
   const dryRun = process.argv.includes("--dry-run");
-  if (dryRun) for (const target of TARGET_DIRS) console.log(`${target}: ${gb(sizeOf(target))}`);
+  if (dryRun) for (const target of [...TARGET_DIRS, nshCacheRoot()]) console.log(`${target}: ${gb(sizeOf(target))}`);
   trimTargets({ dryRun });
 }

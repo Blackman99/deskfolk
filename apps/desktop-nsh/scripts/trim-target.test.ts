@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { sizeOf, trimTarget } from "./trim-target";
+import { sizeOf, trimNshCache, trimTarget } from "./trim-target";
 
 const DAY = 24 * 60 * 60 * 1000;
 const dirs: string[] = [];
@@ -68,5 +68,57 @@ describe("trimTarget", () => {
     age(join(t, "debug", "incremental", "old"), 5);
     trimTarget(t, { capBytes: 500, incrementalAgeMs: 2 * DAY, dryRun: true, log: () => {} });
     expect(sizeOf(t)).toBe(1000);
+  });
+});
+
+describe("trimNshCache", () => {
+  const KEEP = "a".repeat(40);
+  const OLD = "b".repeat(40);
+  const RECENT = "c".repeat(40);
+
+  /** A cache with this checkout's commit, one unused for 30 days, one used yesterday, Ghostty's. */
+  function cache(): string {
+    const root = join(target(), "..", "cache");
+    for (const [rev, days] of [[KEEP, 30], [OLD, 30], [RECENT, 1]] as const) {
+      file(join(root, rev, "source", "target", "release", "nsh"), 100);
+      file(join(root, rev, "last-used"), 0, days);
+    }
+    file(join(root, "ghostty", "0123abc", "src.tar"), 100);
+    age(join(root, "ghostty"), 30);
+    return root;
+  }
+
+  test("removes the commits other than this checkout's that nothing used lately", () => {
+    const root = cache();
+    trimNshCache(root, { keep: KEEP, unusedMs: 7 * DAY, log: () => {} });
+    expect(existsSync(join(root, KEEP))).toBe(true);
+    expect(existsSync(join(root, OLD))).toBe(false);
+    expect(existsSync(join(root, OLD + ".removing"))).toBe(false);
+    expect(existsSync(join(root, RECENT))).toBe(true);
+    expect(existsSync(join(root, "ghostty"))).toBe(true);
+  });
+
+  test("a commit without a stamp goes by its directory's age", () => {
+    const root = cache();
+    rmSync(join(root, OLD, "last-used"));
+    age(join(root, OLD), 30);
+    trimNshCache(root, { keep: KEEP, unusedMs: 7 * DAY, log: () => {} });
+    expect(existsSync(join(root, OLD))).toBe(false);
+  });
+
+  test("finishes what an earlier removal left", () => {
+    const root = cache();
+    file(join(root, OLD + ".removing", "source", "half.rs"), 100);
+    trimNshCache(root, { keep: KEEP, unusedMs: 365 * DAY, log: () => {} });
+    expect(existsSync(join(root, OLD + ".removing"))).toBe(false);
+    expect(existsSync(join(root, OLD))).toBe(true);
+  });
+
+  test("a dry run removes nothing", () => {
+    const root = cache();
+    const lines: string[] = [];
+    trimNshCache(root, { keep: KEEP, unusedMs: 7 * DAY, dryRun: true, log: (line) => lines.push(line) });
+    expect(existsSync(join(root, OLD))).toBe(true);
+    expect(lines.join("\n")).toContain(OLD.slice(0, 12));
   });
 });

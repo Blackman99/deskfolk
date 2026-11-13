@@ -9,10 +9,13 @@
  * nsh-cli` in it, as NSH's own `install.sh --source` does, but never linked into `~/.local/bin`,
  * which other checkouts and the released CLI use. `NSH=<path>` still overrides it.
  *
+ * Once built, `source/target` keeps the CLI alone (see `keepOnlyCli`), and each use stamps
+ * `<rev>/last-used`, by which `trim-target.ts` removes the commits nothing has run for a while.
+ *
  *   bun apps/desktop-nsh/scripts/nsh-cli.ts           builds it if missing, prints its path
  *   bun apps/desktop-nsh/scripts/nsh-cli.ts --check   prints its path, fails if it is not built
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -29,13 +32,44 @@ export function nshRev(manifest = join(root, "Cargo.toml")): string {
   return rev;
 }
 
+/** The cache every NSH commit's CLI is built in, one directory per commit. */
+export function nshCacheRoot(): string {
+  return process.env.DESKFOLK_NSH_CACHE ?? join(homedir(), ".cache", "deskfolk-nsh");
+}
+
 function cacheDir(rev: string): string {
-  return join(process.env.DESKFOLK_NSH_CACHE ?? join(homedir(), ".cache", "deskfolk-nsh"), rev);
+  return join(nshCacheRoot(), rev);
 }
 
 /** Where the CLI for `rev` is once built. */
 export function nshCliPath(rev = nshRev()): string {
   return join(cacheDir(rev), "source", "target", "release", process.platform === "win32" ? "nsh.exe" : "nsh");
+}
+
+/** Stamps `rev`'s CLI as used now; `trim-target.ts` keeps the commits used lately. */
+function markUsed(rev: string): void {
+  try {
+    writeFileSync(join(cacheDir(rev), "last-used"), "");
+  } catch {
+    // A read-only cache still runs.
+  }
+}
+
+/**
+ * Removes all of `source/target` but the CLI and its symbols: the rest (about 2 GB a commit) is
+ * what cargo compiled to link it, and nothing reads it afterwards. The desktop app's hosts and web
+ * runtime build in the app's own workspace (`app/target`), not here; a command that does build in
+ * this checkout has cargo compile what it needs again. CI saves this directory as its cache, too.
+ */
+export function keepOnlyCli(source: string): void {
+  const target = join(source, "target");
+  const release = join(target, "release");
+  for (const entry of readdirSync(target)) {
+    if (entry !== "release") rmSync(join(target, entry), { recursive: true, force: true });
+  }
+  for (const entry of readdirSync(release)) {
+    if (!/^nsh(\.exe|\.pdb)?$/.test(entry)) rmSync(join(release, entry), { recursive: true, force: true });
+  }
 }
 
 function run(command: string, args: string[], cwd?: string): void {
@@ -46,7 +80,10 @@ function run(command: string, args: string[], cwd?: string): void {
 /** Clones `rev` (shallow) and builds its CLI, unless it is there already. */
 export function buildNshCli(rev = nshRev()): string {
   const bin = nshCliPath(rev);
-  if (existsSync(bin)) return bin;
+  if (existsSync(bin)) {
+    markUsed(rev);
+    return bin;
+  }
   const dir = cacheDir(rev);
   const source = join(dir, "source");
   if (!existsSync(join(source, ".git"))) {
@@ -71,6 +108,8 @@ export function buildNshCli(rev = nshRev()): string {
   });
   if (result.status !== 0) throw new Error(`building nsh-cli at ${rev} failed`);
   if (!existsSync(bin)) throw new Error(`no CLI at ${bin} after the build`);
+  keepOnlyCli(source);
+  markUsed(rev);
   return bin;
 }
 
@@ -80,9 +119,13 @@ export function buildNshCli(rev = nshRev()): string {
  */
 export function nshCli(options: { build?: boolean } = {}): string {
   if (process.env.NSH) return process.env.NSH;
-  const bin = nshCliPath();
-  if (existsSync(bin)) return bin;
-  if (options.build) return buildNshCli();
+  const rev = nshRev();
+  const bin = nshCliPath(rev);
+  if (existsSync(bin)) {
+    markUsed(rev);
+    return bin;
+  }
+  if (options.build) return buildNshCli(rev);
   throw new Error(`no nsh CLI for NSH ${nshRev().slice(0, 12)}: run \`bun apps/desktop-nsh/scripts/nsh-cli.ts\` (or set NSH)`);
 }
 
