@@ -10,6 +10,7 @@ import { classifySession, isFileDropSession, youBotPeer } from "../../m/sidebar/
 import { botWorkStatus, sidebarStatus } from "../../m/sidebar/session-status";
 import { sessionPresence } from "../../m/sidebar/session-title";
 import { copy, runtime } from "../../runtime";
+import { idleTabInk } from "../glass";
 import { Icon } from "../Icon";
 import { SessionAvatar } from "../SessionAvatar";
 import { AgentLogo } from "../settings/AgentLogo";
@@ -49,6 +50,7 @@ export function ChatTabLabel(props: {
     return sessionPresence(session, botsById(), t().common.you, prefix, rosterLabelsOf(t()));
   };
   const ring = () => props.ringColor ?? token("pane");
+  const ink = idleTabInk();
   const dot = pulseMotion(() => true, 1000);
   const Dot = () => (
     <View
@@ -98,8 +100,8 @@ export function ChatTabLabel(props: {
           </View>
         </If>
       </View>
-      {/* The idle ink a tab that is not shown reads in (`.wb-tab-button`); the shown tab's in full ink, as `PaneTabLabel`'s. */}
-      <Text testID="chat-tab-name" class="min-w-0 shrink line-clamp-1 text-[12px] text-tab-idle-ink group-selected:text-ink">
+      {/* The idle ink a tab that is not shown reads in (`.wb-tab-button`, raised on dark glass: `idleTabInk`); the shown tab's in full ink, as `PaneTabLabel`'s. */}
+      <Text testID="chat-tab-name" class={`min-w-0 shrink line-clamp-1 text-[12px] ${ink()}`}>
         {props.title}
       </Text>
     </View>

@@ -18,7 +18,7 @@ import { copy } from "../../runtime";
 import { onWheel } from "../../platform/wheel";
 import type { LeafNode } from "../../m/workbench/layout-types.ts";
 import { WB_DRAG_THRESHOLD_PX } from "../../m/workbench/drop-zones.ts";
-import { contentGlassShare, GLASS_EDGE, glassOf } from "../glass";
+import { contentGlassShare, GLASS_EDGE, glassOf, InDockedStrip } from "../glass";
 import { Icon } from "../Icon";
 import { shadow } from "../styles";
 import { tip } from "../tip";
@@ -70,11 +70,6 @@ export type StripProps = {
   /** Beside the phone layout the tabs are pills on the window's ground; on a phone they sit on a band. */
   narrow: () => boolean;
   floating: boolean;
-  /**
-   * Dark on the window's material the strip is the card's head (`WorkbenchLeaf` draws the band): 4
-   * points in from the leaf's edges, and its active tab is drawn on the band with no ground of its own.
-   */
-  head?: () => boolean;
   /** Another pane is the current one: this one steps back, its strip half faded. */
   dimmed: () => boolean;
   /** A floating pane's tabs leave this much of the bar bare, to take hold of. */
@@ -109,12 +104,8 @@ export function LeafStrip(props: StripProps) {
   const tabHeight = () => (props.narrow() ? 28 : 28);
   /** The active tab is the card's own top, so on a glass card it lets the same glass through (`glass.ts`). */
   const glassShare = () => (props.floating || props.narrow() ? null : contentGlassShare());
-  /**
-   * On the card's head the active tab paints nothing: no ground, ring or shadow, only its full ink
-   * tells it from the others. A pill of the card's colour on the band, ringed in a hairline, stood
-   * out in dark where light's tab, the card's colour on a lighter ground, reads as no ground at all.
-   */
-  const bare = () => Boolean(props.head?.());
+  /** A docked pane's strip lies on the window's ground, the glass where there is material; its tab names say so (`idleTabInk`). */
+  const docked = () => !props.floating && !props.narrow();
 
   /** The tab row's own state: how far it is scrolled, how wide it shows, how wide each tab is. */
   const scroll = signal(0);
@@ -276,12 +267,12 @@ export function LeafStrip(props: StripProps) {
         onMouseEnter={() => hovered.set(tabId)}
         onMouseLeave={() => hovered() === tabId && hovered.set(null)}
         onContextMenu={(e) => props.onPaneMenu?.({ leafId: leaf().id, tabId, x: e.pagePosition.x, y: e.pagePosition.y })}
-        class={`flex-none flex-row items-center pl-2 pr-[2px] ${props.narrow() ? "rounded-t-(--radius-md)" : "rounded-(--radius-sm)"} ${active() ? (bare() ? "" : glassShare() === null ? "bg-pane" : GLASS_EDGE) : hovered() === tabId ? "bg-row-hover" : ""}`}
+        class={`flex-none flex-row items-center pl-2 pr-[2px] ${props.narrow() ? "rounded-t-(--radius-md)" : "rounded-(--radius-sm)"} ${active() ? (glassShare() === null ? "bg-pane" : GLASS_EDGE) : hovered() === tabId ? "bg-row-hover" : ""}`}
         style={{
           height: tabHeight(),
           opacity: dragged() ? 0.45 : 1,
-          boxShadow: active() && !bare() && !props.narrow() && glassShare() === null ? shadow("pane") : undefined,
-          backgroundColor: active() && !bare() && glassShare() !== null ? glassOf("pane", glassShare()!) : undefined,
+          boxShadow: active() && !props.narrow() && glassShare() === null ? shadow("pane") : undefined,
+          backgroundColor: active() && glassShare() !== null ? glassOf("pane", glassShare()!) : undefined,
         }}
       >
         <View
@@ -360,7 +351,7 @@ export function LeafStrip(props: StripProps) {
       ref={(node) => (stripRef = node)}
       onLayout={measurePlace}
       focusable={false}
-      class={`flex-row items-center ${bg()} ${leaf().tabs.length === 0 && !props.floating ? "absolute top-1 right-1 pr-1 z-10" : props.head?.() ? "self-stretch mt-1 mx-1" : "w-full"}`}
+      class={`flex-row items-center ${bg()} ${leaf().tabs.length === 0 && !props.floating ? "absolute top-1 right-1 pr-1 z-10" : "w-full"}`}
       style={{ height: leaf().tabs.length === 0 && !props.floating ? 32 : height(), cursor: props.floating ? "grab" : undefined, opacity: props.dimmed() ? 0.5 : 1, paddingRight: controlsRoom() || undefined }}
       {...stripHandlers}
     >
@@ -375,9 +366,11 @@ export function LeafStrip(props: StripProps) {
           contentClass="flex-row items-center"
           style={{ flexShrink: 1, flexGrow: 0 }}
         >
-          <Each of={leaf().tabs} key={(tab) => tab.id}>
-            {(tab) => tabView(tab().id)}
-          </Each>
+          <InDockedStrip.Provider value={docked}>
+            <Each of={leaf().tabs} key={(tab) => tab.id}>
+              {(tab) => tabView(tab().id)}
+            </Each>
+          </InDockedStrip.Provider>
         </Scroll>
         <If when={moreStart()}>
           <View

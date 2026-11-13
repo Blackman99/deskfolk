@@ -4,6 +4,7 @@
  * usage, the workspace button's folder, the header's flow board.
  */
 import { Text, View } from "nsh";
+import { idleTabInk } from "../glass";
 import type { IconName } from "../Icon";
 import { Icon } from "../Icon";
 import { tip } from "../tip";
@@ -30,6 +31,7 @@ export function PaneTabLabel(props: {
   kind: PaneKind | null;
   title: string;
 }) {
+  const ink = idleTabInk();
   return (
     <View testID="pane-tab" tooltip={tip(props.title)} class="flex-row items-center gap-[6px] min-w-0 max-w-full">
       <If when={props.kind}>
@@ -39,7 +41,7 @@ export function PaneTabLabel(props: {
           </View>
         )}
       </If>
-      <Text testID="pane-tab-name" class="min-w-0 shrink line-clamp-1 text-[12px] text-tab-idle-ink group-selected:text-ink">
+      <Text testID="pane-tab-name" class={`min-w-0 shrink line-clamp-1 text-[12px] ${ink()}`}>
         {props.title}
       </Text>
     </View>

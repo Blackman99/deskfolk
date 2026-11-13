@@ -4,10 +4,10 @@
  * (`host/src/window.rs`) and says so in `host.params.material`; every other target has none.
  *
  * Where there is material the shell's ground covers it only in part (`bg-ground-glass`: light 30%,
- * dark 20%), so the sidebar and the gutters between the cards show the glass. Dark glass is lighter
- * than the dark cards, and glass that clear takes the colour of whatever is behind each part, so
- * there a docked pane's tab strip is drawn as the card's solid head (`WorkbenchLeaf`), and its active
- * tab paints no ground on that head (`leaf-strip.tsx`).
+ * dark 20%), so the sidebar, the gutters between the cards and each docked pane's tab strip show the
+ * glass. Dark glass is lighter than the dark cards and takes the colour of whatever is behind each
+ * part, so two panes' strips can differ in tint. Dark drew the strip as the card's solid head until
+ * you asked for it to lie on the glass as light's does (ADR 0107, addendum 36).
  *
  * Glass content (ADR 0106, the behaviour `content_glass`; `content-glass.css`) goes one step on: a
  * docked pane's card lets the glass through too, and what lies on the card paints no ground of its
@@ -21,11 +21,6 @@ import { interfaceBehaviour } from "../m/interface/behaviour.svelte.ts";
 
 /** The window has the system's material behind the app. */
 export const windowGlass: boolean = glass;
-
-/** Dark on the material: a docked pane's strip is the card's head, not left on the glass. Reactive. */
-export function darkGlass(): boolean {
-  return windowGlass && colorScheme() === "dark";
-}
 
 /**
  * The sidebar's quiet grey (previews, times, its icons). On the material it is `ink-muted-glass`,
@@ -51,12 +46,11 @@ export function contentGlassShare(): number | null {
 }
 
 /**
- * The hairline round a glass card and its active tab (not on dark's card head, where the active tab
- * has neither ground nor ring): `--shadow-pane`'s 0.5 pt ring, drawn as a border. Under a ground
- * that is not opaque NSH 0.4.0 masks an outer shadow to outside the box, and at the corners that mask
- * is stepped: the ring showed through as a hard bright arc on every rounded corner. A border is the
- * layer's own and follows its corners. The shadow's soft drop goes through the same mask, so a glass
- * card goes without it.
+ * The hairline round a glass card and its active tab: `--shadow-pane`'s 0.5 pt ring, drawn as a
+ * border. Under a ground that is not opaque NSH 0.4.0 masks an outer shadow to outside the box, and
+ * at the corners that mask is stepped: the ring showed through as a hard bright arc on every rounded
+ * corner. A border is the layer's own and follows its corners. The shadow's soft drop goes through
+ * the same mask, so a glass card goes without it.
  */
 export const GLASS_EDGE = "border-[0.5px] border-ink/14 dark:border-ink/11";
 
@@ -87,4 +81,20 @@ export const InPaneBody = context(false);
 export function onGlassCard(): () => boolean {
   const inBody = InPaneBody();
   return () => inBody && contentGlassShare() !== null;
+}
+
+/** Inside a docked pane's tab strip, which lies on the window's ground (`LeafStrip` provides it): see `idleTabInk`. */
+export const InDockedStrip = context<() => boolean>(() => false);
+
+/**
+ * The ink of a tab name that is not shown, with the shown tab's full ink on `group-selected`. On the
+ * material, dark raises it to `ink-muted-glass` as the sidebar's quiet grey is raised: there the
+ * strip lies on glass lighter than the dark ground, and `tab-idle-ink` came out at 2.9–3.5:1 over a
+ * light or a warm backdrop (light's own reads about 4.5:1). Light, floating panes and the phone keep
+ * `tab-idle-ink`. Call in a component's setup.
+ */
+export function idleTabInk(): () => string {
+  const docked = InDockedStrip();
+  return () =>
+    windowGlass && docked() && colorScheme() === "dark" ? "text-ink-muted-glass group-selected:text-ink" : "text-tab-idle-ink group-selected:text-ink";
 }

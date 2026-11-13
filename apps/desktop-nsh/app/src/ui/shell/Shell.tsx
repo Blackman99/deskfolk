@@ -70,7 +70,7 @@ import { bindShellKeys } from "./shell-keys";
 import { createSessionDrag } from "./session-drag";
 import { createShellState, type ShellState } from "./shell-state";
 import { WINDOW_CHROME } from "../../m/window-chrome";
-import { darkGlass, windowGlass } from "../glass";
+import { windowGlass } from "../glass";
 
 export function Shell() {
   const s = createShellState();
@@ -117,8 +117,8 @@ function ShellBody(props: { s: ShellState }) {
    * window with material only part of it covers the glass, so the glass shows through (`glass.ts`).
    */
   const ground = () => (s.narrow() ? "bg-sidebar-bg" : windowGlass ? "bg-ground-glass" : "bg-ground");
-  /** Beside the workbench the column is ground, each pane its own card; on macOS the tabs' centre line meets the lights' (26 pt), and the dark heads keep 4 pt above them. */
-  const mainTop = () => (WINDOW_CHROME !== "mac" ? 0 : darkGlass() ? 2 : 6);
+  /** Beside the workbench the column is ground, each pane its own card; on macOS the tabs' centre line meets the lights' (26 pt). */
+  const mainTop = () => (WINDOW_CHROME !== "mac" ? 0 : 6);
 
   return (
     <View
