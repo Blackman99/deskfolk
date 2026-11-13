@@ -8,7 +8,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ### The Bot settings' cards run edge to edge
 
-- In the native (NSH) desktop build, the Bot settings, in the drawer or beside a conversation, set every tab's cards inside a wide margin, about 36 pt on each side and 32 pt above, so the narrow drawer gave a good part of its width to blank ground. The cards now run from edge to edge under the tab strip, with no side borders or rounded corners, and the fields keep their own inset; the schedule tab, which has no card, keeps a small margin. Phones and the group settings are unchanged.
+- In the native (NSH) desktop build, the Bot settings, in the drawer or beside a conversation, set every tab's cards inside a wide margin, about 36 pt on each side and 32 pt above, so the narrow drawer gave a good part of its width to blank ground. The cards now run from edge to edge under the tab strip, with no side borders or rounded corners, and the fields keep their own inset; the schedule tab, which has no card, keeps a small margin. The danger zone under the actions stays a card of its own, set in from the sides, so its red band reads as a warning and not as a stripe across the drawer. Phones and the group settings are unchanged.
 
 ### A file a message names opens in Finder from a right click
 

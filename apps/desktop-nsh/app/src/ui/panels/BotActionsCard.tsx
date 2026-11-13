@@ -96,8 +96,9 @@ export function BotActionsCard(props: {
         </View>
       </View>
 
-      <View testID="bot-danger-zone" class={`bg-pane border-danger-line min-w-0 ${props.flush ? "border-y" : "border rounded-(--radius-lg)"}`}>
-        <View class={`flex-row items-center justify-between px-4 py-3 border-b border-danger-line bg-danger-bg ${props.flush ? "" : "rounded-t-(--radius-lg)"}`}>
+      {/* A card even where the sections run edge to edge: set off from the sides, so the red band reads as a warning, not a divider. */}
+      <View testID="bot-danger-zone" class={`bg-pane border border-danger-line rounded-(--radius-lg) min-w-0 ${props.flush ? "mx-4 mb-4" : ""}`}>
+        <View class="flex-row items-center justify-between px-4 py-3 border-b border-danger-line bg-danger-bg rounded-t-(--radius-lg)">
           <Text class="text-[12px] font-semibold text-danger-text">{t().detail.dangerZone}</Text>
         </View>
         <View class={`${PANEL_CARD_BODY} gap-6`}>
