@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The onboarding's earlier steps open again from its last step
+
+- In the native (NSH) desktop build, once setup was saved and the onboarding moved on to its last step (the way of working and the first Bots), the steps above it could no longer be pressed: changing the workspace, the model service or the model meant skipping the onboarding. They open again now until the first Bots are being made, and the last step's own tab leads back to it, saving setup again on the way, as the models step's button does. Setup saved on a local agent and then again on an endpoint sends the built-in calls back to the endpoint's default model. A finished step shows the app's check icon instead of the font's thin "✓". The Tauri app is unchanged.
+
 ### A right click on a message opens its menu again
 
 - In the native (NSH) desktop build, a right click on a Bot's reply (its words, its code, the blank beside a short line), on your own bubble, on an app's note or on a Bot's question showed only "Copy / Select All", and the message's menu (reactions, reply, copy, the job's flow, copy the message ID) never opened; only the line under a reply did. Now a right click anywhere on a message opens its menu, as in the Tauri app. With part of a message selected, the menu's 复制内容 copies that part, and the selection stays.
