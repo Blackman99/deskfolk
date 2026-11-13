@@ -7,6 +7,7 @@
 import { Text, View, type JSX } from "nsh";
 import { Input } from "nsh/base";
 import { narrowWindow } from "../Modal";
+import { HelpTip } from "./HelpTip";
 
 /** The class of a text field in a settings editor: 14px on a desktop, 48px tall and 16px on a phone. */
 export function fieldClass(mono = false, compact = false): string {
@@ -14,14 +15,22 @@ export function fieldClass(mono = false, compact = false): string {
   return `w-full text-ink bg-input-bg border border-line rounded-(--radius-md) focus:border-field-focus-border ${size} ${mono ? "font-mono" : ""}`;
 }
 
-/** One labelled field of an editor (`.modal-section`): label (and what sits at its end), the control, then notes. */
-export function Field(props: { label: string; labelID?: string; end?: JSX.Element; children?: JSX.Element }) {
+/**
+ * One labelled field of an editor (`.modal-section`): label (and what sits at its end), the control, then notes.
+ * `tip` is a note that would otherwise sit under the control, as a "?" beside the label (`tipTestID` its id).
+ */
+export function Field(props: { label: string; labelID?: string; tip?: string; tipTestID?: string; end?: JSX.Element; children?: JSX.Element }) {
   return (
     <View class="flex-col gap-1">
       <View class="flex-row items-center justify-between mb-[2px]">
-        <Text testID={props.labelID} class={`${narrowWindow() ? "text-[14px]" : "text-[13px]"} font-semibold text-ink-secondary`}>
-          {props.label}
-        </Text>
+        <View class="flex-row items-center gap-[6px] shrink min-w-0">
+          <Text testID={props.labelID} class={`${narrowWindow() ? "text-[14px]" : "text-[13px]"} font-semibold text-ink-secondary`}>
+            {props.label}
+          </Text>
+          <If when={props.tip}>
+            <HelpTip text={props.tip} label={props.label} testID={props.tipTestID} />
+          </If>
+        </View>
         {props.end}
       </View>
       {props.children}
