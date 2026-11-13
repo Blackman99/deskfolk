@@ -32,9 +32,14 @@ export function Onboarding(props: { onDismiss?: () => void; holding?: boolean; o
 
   return (
     <View class="flex-1 min-h-0">
-    <Scroll testID="onboarding-screen" class="flex-1 min-h-0 bg-bg" contentClass={`grow justify-center items-center ${phone() ? "" : "p-10"}`}>
+    <Scroll testID="onboarding-screen" class="flex-1 min-h-0 bg-bg" contentClass="grow">
+      {/* The room round the card moves the window, as the messenger's whole shell is a drag region
+          behind it (no title bar on Windows and Linux). Marked inside the content: a mark on the
+          Scroll itself is lost under its native scroller. The card is not. */}
+      <View testID="onboarding-backdrop" desktop={{ windowDrag: true }} class={`grow justify-center items-center ${phone() ? "" : "p-10"}`}>
       <View
         testID="onboarding-card"
+        desktop={{ windowDrag: false }}
         class={`flex-col gap-4 bg-pane ${phone() ? "w-full grow px-4 py-5" : "w-[620px] max-w-full px-8 py-7 border border-line rounded-(--radius-xl)"}`}
         style={{ ...(phone() ? { paddingTop: 20 + safeArea().top, paddingBottom: 20 + safeArea().bottom } : { boxShadow: shadow("lg") }) }}
       >
@@ -90,9 +95,10 @@ export function Onboarding(props: { onDismiss?: () => void; holding?: boolean; o
           </View>
         </If>
       </View>
+      </View>
     </Scroll>
-    {/* The title bar's room, held to move the window: on Windows there is no system title bar and a
-        mark on the Scroll is lost under its native scroller. Clear of the caption buttons
+    {/* The title bar's room, held to move the window: on Windows there is no system title bar, and on a
+        phone-narrow window the card fills the room round it. Clear of the caption buttons
         (`titleBar().right`); 0 tall on macOS, whose transparent title bar AppKit drags by itself. */}
     <View
       testID="onboarding-drag"

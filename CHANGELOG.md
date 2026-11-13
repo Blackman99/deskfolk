@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The blank round the onboarding card moves the window
+
+- In the native (NSH) desktop build, only a band along the top of the onboarding moved the window: pressing the blank round the card did nothing, and the connecting / unreachable screen before the app could not be moved at all, which on Windows and Linux, with no title bar, left nothing to hold. The blank round the card and the whole connecting screen now move the window; the card with its fields and buttons, and Retry, are pressed as before, and the wheel still scrolls the onboarding.
+
 ### The onboarding's earlier steps open again from its last step
 
 - In the native (NSH) desktop build, once setup was saved and the onboarding moved on to its last step (the way of working and the first Bots), the steps above it could no longer be pressed: changing the workspace, the model service or the model meant skipping the onboarding. They open again now until the first Bots are being made, and the last step's own tab leads back to it, saving setup again on the way, as the models step's button does. Setup saved on a local agent and then again on an endpoint sends the built-in calls back to the endpoint's default model. A finished step shows the app's check icon instead of the font's thin "✓". The Tauri app is unchanged.
