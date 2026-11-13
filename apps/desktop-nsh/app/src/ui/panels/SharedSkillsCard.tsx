@@ -7,7 +7,7 @@ import { Scroll, Text, View, effect, signal } from "nsh";
 import type { SharedSkill, Skill } from "@real-bot/protocol";
 import { copy } from "../../runtime";
 import { tip } from "../tip";
-import { FIELD_ERROR, PANEL_CARD, PANEL_CARD_BODY, PANEL_CARD_HEAD, PANEL_CARD_TITLE } from "./panel-card";
+import { FIELD_ERROR, PANEL_CARD, PANEL_CARD_BODY, PANEL_CARD_HEAD, PANEL_CARD_TITLE, PANEL_SECTION } from "./panel-card";
 
 /** The slice of the API this card uses (ADR 0052). */
 export type SharedSkillsApi = {
@@ -32,7 +32,14 @@ function Pill(props: { testID?: string; primary?: boolean; disabled?: boolean; o
   );
 }
 
-export function SharedSkillsCard(props: { api: SharedSkillsApi | null; botId: string; /** This Bot's own skills. */ skills: readonly Skill[] }) {
+export function SharedSkillsCard(props: {
+  api: SharedSkillsApi | null;
+  botId: string;
+  /** This Bot's own skills. */
+  skills: readonly Skill[];
+  /** Edge to edge under the skills list (ProfilePane on a wider window). */
+  flush?: boolean;
+}) {
   const shared = signal<SharedSkill[]>([]);
   const available = signal(false);
   const busy = signal<string | null>(null);
@@ -82,7 +89,7 @@ export function SharedSkillsCard(props: { api: SharedSkillsApi | null; botId: st
 
   return (
     <If when={available()}>
-      <View testID="shared-skills-card" class={PANEL_CARD}>
+      <View testID="shared-skills-card" class={props.flush ? `${PANEL_SECTION} border-t` : PANEL_CARD}>
         <View class={PANEL_CARD_HEAD}>
           <Text class={PANEL_CARD_TITLE}>{t().title}</Text>
         </View>

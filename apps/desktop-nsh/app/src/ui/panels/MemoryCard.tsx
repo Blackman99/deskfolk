@@ -32,7 +32,7 @@ import { EditorOwnerBadge } from "./EditorOwnerBadge";
 import { EditorSwitchRow } from "./EditorSwitchRow";
 import { RequiredStar } from "./RequiredStar";
 import { SettingsSubject } from "./SettingsSubject";
-import { FIELD, FIELD_ERROR, PANEL_CARD, PANEL_CARD_BODY, PANEL_CARD_HEAD, PANEL_CARD_TITLE, PANEL_COUNTER } from "./panel-card";
+import { FIELD, FIELD_ERROR, PANEL_CARD, PANEL_CARD_BODY, PANEL_CARD_HEAD, PANEL_CARD_TITLE, PANEL_COUNTER, PANEL_SECTION } from "./panel-card";
 
 /** Rows shown before the list folds. The cap is 20, so this only hides a tail. */
 const VISIBLE = 5;
@@ -63,6 +63,8 @@ export function MemoryCard(props: {
   openDangerConfirm: (kind: "skill" | "memory", run: DangerAction) => void;
   clearDanger: (kind: "memory") => void;
   onApi?: (api: MemoryCardApi) => void;
+  /** Edge to edge, with no gutter round it (ProfilePane on a wider window). */
+  flush?: boolean;
 }) {
   const t = () => copy();
   const phone = () => narrowWindow();
@@ -151,7 +153,7 @@ export function MemoryCard(props: {
 
   return (
     <>
-      <View testID="memory-card" class={phone() ? "" : PANEL_CARD}>
+      <View testID="memory-card" class={phone() ? "" : props.flush ? PANEL_SECTION : PANEL_CARD}>
         <If when={!phone()}>
           <View class={PANEL_CARD_HEAD}>
             <View class="flex-row items-center gap-2">

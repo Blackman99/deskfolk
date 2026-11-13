@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The Bot settings' cards run edge to edge
+
+- In the native (NSH) desktop build, the Bot settings, in the drawer or beside a conversation, set every tab's cards inside a wide margin, about 36 pt on each side and 32 pt above, so the narrow drawer gave a good part of its width to blank ground. The cards now run from edge to edge under the tab strip, with no side borders or rounded corners, and the fields keep their own inset; the schedule tab, which has no card, keeps a small margin. Phones and the group settings are unchanged.
+
 ### A file a message names opens in Finder from a right click
 
 - In the native (NSH) desktop build, a right click on a file a Bot or a project session's agent names in a message (its inline chip, or a picture's card) opened whatever menu was around it (the message's, a project session's pane menu, or "Copy / Select All"). Now it opens the file's own menu, the one the file tree has: "Open with default app", "Show in Finder" and "Copy absolute path". A Bot's path is looked up in the workspace; a project session's in the directory the agent worked in, as a left click opens it, with a short notice when it is not found or found in several places. A file that has been moved or deleted since gets a notice too.

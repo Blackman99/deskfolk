@@ -28,7 +28,7 @@ import { copy, runtime } from "../../runtime";
 import { AvatarEditor } from "../AvatarEditor";
 import { ModelPicker } from "../ModelPicker";
 import { Select } from "../Select";
-import { FIELD, FIELD_ERROR, PANEL_CARD, PANEL_CARD_BODY, PANEL_CARD_HEAD, PANEL_CARD_TITLE } from "./panel-card";
+import { FIELD, FIELD_ERROR, PANEL_CARD, PANEL_CARD_BODY, PANEL_CARD_HEAD, PANEL_CARD_TITLE, PANEL_SECTION } from "./panel-card";
 
 /** A form row: its label, the control, the hints under it. */
 function Group(props: { testID?: string; children: JSX.Element }) {
@@ -80,6 +80,8 @@ export function ProfileBasics(props: {
   agentsUnavailable?: boolean;
   onProfileInput: () => void;
   onProfilePick: () => void;
+  /** Edge to edge, with no gutter round it (ProfilePane on a wider window). */
+  flush?: boolean;
 }) {
   const t = () => copy();
   const draft = () => props.profileDraft;
@@ -273,7 +275,7 @@ export function ProfileBasics(props: {
   };
 
   return (
-    <View testID="profile-basics" class={PANEL_CARD}>
+    <View testID="profile-basics" class={props.flush ? PANEL_SECTION : PANEL_CARD}>
       <View class={PANEL_CARD_HEAD}>
         <Text class={PANEL_CARD_TITLE}>{t().detail.botBasics}</Text>
         <Text testID="profile-save-state" role="text" class={`text-[12px] ${props.profileFailed ? "text-danger-text" : "text-ink-muted"}`}>

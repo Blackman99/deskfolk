@@ -499,10 +499,11 @@ export function ProfilePane(props: {
             </View>
           </If>
 
+          {/* A wider window runs the cards edge to edge (`flush`), with no gutter round them; what is no card keeps an inset. */}
           <Scroll class="flex-1 min-h-0">
-            <View class={`flex-col gap-8 ${phone() ? "pt-4 px-3 pb-7" : "pt-8 px-9 pb-12"}`}>
+            <View class={`flex-col gap-8 ${phone() ? "pt-4 px-3 pb-7" : ""}`}>
               <If when={props.profileFailed}>
-                <View role="alert" testID="profile-failed" class="flex-row items-center gap-2 px-[14px] py-[10px] rounded-(--radius-md) bg-danger-bg border border-danger-line">
+                <View role="alert" testID="profile-failed" class={`flex-row items-center gap-2 px-[14px] py-[10px] rounded-(--radius-md) bg-danger-bg border border-danger-line ${phone() ? "" : "mx-4 mt-4"}`}>
                   <Icon name="alert-circle" class="tint-danger-text" />
                   <Text class="text-[13px] font-medium text-danger-text">{t().sidebar.saveFailed}</Text>
                 </View>
@@ -524,6 +525,7 @@ export function ProfilePane(props: {
                   agentsUnavailable={agentsUnavailable()}
                   onProfileInput={onProfileInput}
                   onProfilePick={onProfilePick}
+                  flush={!phone()}
                 />
               </If>
               <If when={activeTab() === "skills"}>
@@ -535,14 +537,17 @@ export function ProfilePane(props: {
                   openEditSkill={openEditSkill}
                   toggleSkillEnabled={toggleSkillEnabled}
                   openDeleteSkillConfirm={openDeleteSkillConfirm}
+                  flush={!phone()}
                 />
-                <SharedSkillsCard api={runtime.client} botId={botId} skills={profileSkills()} />
+                <SharedSkillsCard api={runtime.client} botId={botId} skills={profileSkills()} flush={!phone()} />
               </If>
               <If when={activeTab() === "routines"}>
-                <RoutineCard bot={props.bot} onApi={(api) => routineCard.set(api)} />
+                <View class={phone() ? "" : "p-4"}>
+                  <RoutineCard bot={props.bot} onApi={(api) => routineCard.set(api)} />
+                </View>
               </If>
               <If when={activeTab() === "memory"}>
-                <MemoryCard bot={props.bot} openDangerConfirm={props.openDangerConfirm} clearDanger={props.clearDanger} onApi={(api) => (memoryCard = api)} />
+                <MemoryCard bot={props.bot} openDangerConfirm={props.openDangerConfirm} clearDanger={props.clearDanger} onApi={(api) => (memoryCard = api)} flush={!phone()} />
               </If>
               <If when={activeTab() === "actions"}>
                 <BotActionsCard
@@ -552,6 +557,7 @@ export function ProfilePane(props: {
                   restoreProfile={restoreProfile}
                   onDeleteBot={props.onDeleteBot}
                   onClearHistory={props.onClearHistory}
+                  flush={!phone()}
                 />
               </If>
             </View>

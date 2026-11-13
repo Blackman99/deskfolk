@@ -12,7 +12,7 @@ import { Icon } from "../Icon";
 import { narrowWindow } from "../Modal";
 import { Switch } from "../Switch";
 import { tip } from "../tip";
-import { FIELD_ERROR, PANEL_CARD, PANEL_CARD_BODY, PANEL_CARD_HEAD, PANEL_CARD_TITLE, PANEL_COUNTER } from "./panel-card";
+import { FIELD_ERROR, PANEL_CARD, PANEL_CARD_BODY, PANEL_CARD_HEAD, PANEL_CARD_TITLE, PANEL_COUNTER, PANEL_SECTION } from "./panel-card";
 
 export function SkillsCard(props: {
   profileSkills: readonly Skill[];
@@ -22,10 +22,12 @@ export function SkillsCard(props: {
   openEditSkill: (id: string) => void;
   toggleSkillEnabled: (id: string, enabled: boolean) => Promise<void>;
   openDeleteSkillConfirm: (id: string) => void;
+  /** Edge to edge, with no gutter round it (ProfilePane on a wider window). */
+  flush?: boolean;
 }) {
   const phone = () => narrowWindow();
   return (
-    <View testID="skills-card" class={phone() ? "" : PANEL_CARD}>
+    <View testID="skills-card" class={phone() ? "" : props.flush ? PANEL_SECTION : PANEL_CARD}>
       <If when={!phone()}>
         <View class={PANEL_CARD_HEAD}>
           <View class="flex-row items-center gap-2">

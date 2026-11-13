@@ -8,7 +8,7 @@ import { copy, runtime } from "../../runtime";
 import { Icon, type IconName } from "../Icon";
 import { PlaybookPicker } from "./PlaybookPicker";
 import { SessionMuteRow } from "./SessionMuteRow";
-import { PANEL_CARD, PANEL_CARD_BODY, PANEL_CARD_HEAD, PANEL_CARD_TITLE } from "./panel-card";
+import { PANEL_CARD, PANEL_CARD_BODY, PANEL_CARD_HEAD, PANEL_CARD_TITLE, PANEL_SECTION } from "./panel-card";
 
 /** `.action-btn`: a small button beside what it does; `deny` is the red one. */
 function ActionButton(props: { testID: string; icon: IconName; deny?: boolean; onPress: () => void; children: string }) {
@@ -50,11 +50,13 @@ export function BotActionsCard(props: {
   restoreProfile: () => Promise<void>;
   onDeleteBot: () => void;
   onClearHistory: () => void;
+  /** Edge to edge, with no gutter round it (ProfilePane on a wider window). */
+  flush?: boolean;
 }) {
   const t = () => copy();
   return (
     <>
-      <View testID="bot-actions-card" class={PANEL_CARD}>
+      <View testID="bot-actions-card" class={props.flush ? PANEL_SECTION : PANEL_CARD}>
         <View class={PANEL_CARD_HEAD}>
           <Text class={PANEL_CARD_TITLE}>{t().detail.sessionActions}</Text>
         </View>
@@ -94,8 +96,8 @@ export function BotActionsCard(props: {
         </View>
       </View>
 
-      <View testID="bot-danger-zone" class="bg-pane border border-danger-line rounded-(--radius-lg) min-w-0">
-        <View class="flex-row items-center justify-between px-4 py-3 border-b border-danger-line bg-danger-bg rounded-t-(--radius-lg)">
+      <View testID="bot-danger-zone" class={`bg-pane border-danger-line min-w-0 ${props.flush ? "border-y" : "border rounded-(--radius-lg)"}`}>
+        <View class={`flex-row items-center justify-between px-4 py-3 border-b border-danger-line bg-danger-bg ${props.flush ? "" : "rounded-t-(--radius-lg)"}`}>
           <Text class="text-[12px] font-semibold text-danger-text">{t().detail.dangerZone}</Text>
         </View>
         <View class={`${PANEL_CARD_BODY} gap-6`}>
