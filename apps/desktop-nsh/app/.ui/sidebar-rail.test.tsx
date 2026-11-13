@@ -165,14 +165,20 @@ test("the rail's tools open a menu out to the side that closes on Escape, a pres
   await app.waitFor("id:sidebar-tools-menu");
   await app.press("id:story-pin");
   await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
+  // Each opening waits for the menu, as the first two do: right after a close it can show a few
+  // frames after the press settles (on Windows' runners it was not there yet).
   await app.press("id:rail-tools");
+  await app.waitFor("id:sidebar-tools-menu");
   await app.press("id:tools-spend");
   await app.waitUntil(() => log(app).includes("rail-spend"));
   await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
   await app.press("id:rail-tools");
+  await app.waitFor("id:sidebar-tools-menu");
   await app.press("id:tools-terminal");
   await app.waitUntil(() => log(app).includes("rail-terminal"));
+  await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
   await app.press("id:rail-tools");
+  await app.waitFor("id:sidebar-tools-menu");
   await app.press("id:tools-archived");
   await app.waitUntil(() => log(app).includes("rail-archived"));
 });

@@ -7,7 +7,7 @@ import { ConnectorLogo } from "../settings/AgentLogo";
 import { WorkspaceField } from "../settings/WorkspaceField";
 import { Chip, FetchTip, Field, FieldError, FieldHint, TextAction, TextField } from "../settings/provider-fields";
 import { AgentStep } from "./AgentStep";
-import { ModeCards, StepFooter, StepHead, StepPrimary, StepSecondary } from "./parts";
+import { StepFooter, StepHead, StepPrimary, StepSecondary, WaySwitch } from "./parts";
 import { fieldCopy, type Wizard } from "./wizard";
 import { LOCAL_PRESETS, PRESETS } from "./presets";
 
@@ -21,7 +21,7 @@ export function ProviderStep(props: { w: Wizard }) {
       <If when={w.workspaceReadOnly()}>
         <FieldHint>{t().settings.workspaceHostOnly}</FieldHint>
       </If>
-      <ModeCards
+      <WaySwitch
         label={t().onboarding.step2Title}
         value={w.connectMode()}
         idPrefix="connect-mode"

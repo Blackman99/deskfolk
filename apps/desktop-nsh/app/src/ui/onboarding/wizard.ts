@@ -57,8 +57,10 @@ export function createWizard(props: WizardProps) {
   const step = signal<Step>(1);
   /** Nobody on the roster yet: saving setup leads on to the first Bot instead of into the app. */
   const rosterEmpty = () => runtime.snapshot.bots.every((bot) => bot.archived_at);
-  /** Setup is saved and behind the user; its steps no longer open. */
+  /** On the last step: setup is saved behind it. */
   const setupSaved = () => step() === 4;
+  /** Setup was saved and the last step reached once; its tab leads back to it, saving again. */
+  const botStepReached = signal(false);
   const showBotStep = () => rosterEmpty() || setupSaved();
   effect(() => {
     if (workspaceReadOnly() && step() === 1) step.set(2);
@@ -313,8 +315,9 @@ export function createWizard(props: WizardProps) {
     if (availableDiscoveredModels().length <= 6 && runtime.endpointUrl && (runtime.endpointKey || keyless())) void fetchModels();
   }
 
-  function goToStep(target: 1 | 2 | 3): void {
-    if (setupSaved()) return;
+  function goToStep(target: Step): void {
+    if (setupLocked()) return;
+    if (target === 4 && !botStepReached()) return;
     if (workspaceReadOnly() && target === 1) target = 2;
     if (target <= step()) {
       step.set(target);
@@ -326,7 +329,9 @@ export function createWizard(props: WizardProps) {
       advanceFromStep1();
       if (fieldErrors().workspace) return;
     }
-    if (target === 3) advanceFromStep2();
+    if (target >= 3) advanceFromStep2();
+    // The last step's tab is step 3's button: setup is saved again on the way.
+    if (target === 4 && step() === 3) void handleComplete();
   }
 
   function clearResolvedModelErrors(): void {
@@ -371,6 +376,12 @@ export function createWizard(props: WizardProps) {
   const teamCount = signal(0);
   const teamReady = signal(false);
   const teamBusy = signal(false);
+  /**
+   * The first Bots are being made, or one is: setup's steps no longer open (saved again, setup would
+   * let the wizard go, the roster no longer empty). Until then the last step's earlier steps open
+   * again for a second look, unlike the messenger's wizard, which closes them once setup is saved.
+   */
+  const setupLocked = () => setupSaved() && (teamBusy() || !rosterEmpty());
 
   /**
    * Your Claude Code sessions from a terminal (ADR 0095), asked for once while the roster is empty:
@@ -400,7 +411,21 @@ export function createWizard(props: WizardProps) {
           : { runner: "claude_code", agentConfigDir: claudeConfigDir() }
         : {},
     );
+    botStepReached.set(true);
     step.set(4);
+  }
+
+  /** Setup was saved on an agent (Claude Code or another) by an earlier pass; an endpoint's save sends the built-in calls back to its default. */
+  let savedOnAgent = false;
+  async function leaveAgent(): Promise<boolean> {
+    if (!savedOnAgent) return true;
+    const error = await runtime.patchSettings({ builtin_models: Object.fromEntries(BUILTIN_MODEL_ROLES.map((role) => [role, null])) });
+    if (error) {
+      saveFailed.set(true);
+      return false;
+    }
+    savedOnAgent = false;
+    return true;
   }
 
   async function handleComplete(): Promise<void> {
@@ -450,7 +475,7 @@ export function createWizard(props: WizardProps) {
     // Either save below can complete setup, and the wizard comes down with it unless held.
     const holding = rosterEmpty();
     hold(holding);
-    if (!(await saveSetup(workspace, providerPlan.body))) {
+    if (!(await saveSetup(workspace, providerPlan.body)) || !(await leaveAgent())) {
       hold(false);
       return;
     }
@@ -483,6 +508,7 @@ export function createWizard(props: WizardProps) {
       saveFailed.set(true);
       return;
     }
+    savedOnAgent = true;
     if (holding) enterBotStep();
   }
 
@@ -529,7 +555,7 @@ export function createWizard(props: WizardProps) {
   }
 
   return {
-    t, step, rosterEmpty, setupSaved, showBotStep, workspaceReadOnly,
+    t, step, rosterEmpty, setupSaved, botStepReached, setupLocked, showBotStep, workspaceReadOnly,
     connectMode, claudeStatus, claudeModel, claudeConfigDir, agentPick, otherAgents, agentModel,
     picked, pickedOther, pickedStatus, pickedLabel, readyAgents, claudeOk,
     claudeModelData, agentModelData, claudeAccounts,

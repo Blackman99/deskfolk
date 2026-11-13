@@ -177,6 +177,9 @@ export default function TaskMapStory() {
           )}
         </Each>
         <Button testID="taskmap-live-call" variant="secondary" size="sm" onPress={land}>live call</Button>
+        {/* The map forgets its live calls when the runtime connects (TaskMap: a reconnect may have
+            missed frames), and the story's map draws before that: a live call wants it connected. */}
+        <Text testID="taskmap-conn" class="text-[11px] text-ink-muted">{`conn:${runtime.connection}`}</Text>
         <Scroll horizontal class="shrink min-w-0">
           <Text testID="taskmap-log" class="text-[11px] text-ink-muted">{log().join(" ")}</Text>
         </Scroll>

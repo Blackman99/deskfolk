@@ -36,6 +36,7 @@ import {
 } from "./dev-instance";
 import { ghosttyEnv } from "./ghostty";
 import { nshCli } from "./nsh-cli";
+import { trimTargets } from "./trim-target";
 
 const root = resolve(import.meta.dir, "..");
 const repo = resolve(root, "../..");
@@ -43,7 +44,12 @@ const build = join(root, "build");
 const story = process.env.DESKFOLK_STORY;
 const appBuild = join(build, story ? "story" : "app");
 const bundleApp = join(build, `${DEV_APP_NAME}.app`);
-const executable = join(bundleApp, "Contents", "MacOS", "deskfolk-nsh");
+const mac = process.platform === "darwin";
+// Only macOS wraps the shell in a .app (icon, Info.plist, notifications); elsewhere it runs as built.
+const executable = mac
+  ? join(bundleApp, "Contents", "MacOS", "deskfolk-nsh")
+  : join(root, "target", "debug", process.platform === "win32" ? "deskfolk-nsh.exe" : "deskfolk-nsh");
+trimTargets();
 const nsh = nshCli({ build: true });
 const cargo = process.env.CARGO ?? join(homedir(), ".cargo", "bin", "cargo");
 const stable = process.argv.includes(STABLE_INSTANCE_FLAG);
@@ -71,6 +77,11 @@ function ptyHelper(): string | undefined {
   if (process.env.REAL_BOT_PTY_HELPER) return process.env.REAL_BOT_PTY_HELPER;
   for (const dir of [repo, join(homedir(), "my-projects", "real-bot")]) {
     for (const config of ["release", "debug"]) {
+      if (!mac) {
+        const path = join(dir, "apps/conpty-helper/target", config, process.platform === "win32" ? "real-bot-pty.exe" : "real-bot-pty");
+        if (existsSync(path)) return path;
+        continue;
+      }
       for (const triple of ["", "arm64-apple-macosx"]) {
         const path = join(dir, "apps/runtime-helper/.build", triple, config, "real-bot-pty");
         if (existsSync(path)) return path;
@@ -91,7 +102,7 @@ async function startRuntime(): Promise<void> {
   const env: Record<string, string | undefined> = { ...process.env, FORCE_COLOR: "" };
   const helper = ptyHelper();
   if (helper) env.REAL_BOT_PTY_HELPER = helper;
-  else console.warn("no real-bot-pty build found; terminals will not open (swift build in apps/runtime-helper)");
+  else console.warn(`no real-bot-pty build found; terminals will not open (${mac ? "swift build in apps/runtime-helper" : "cargo build --manifest-path apps/conpty-helper/Cargo.toml"})`);
   const child = spawn(process.execPath, args, { cwd: repo, stdio: "inherit", env });
   children.push(child);
   // A database a release behind migrates first (seconds on a large one).
@@ -106,6 +117,7 @@ function buildShell(): void {
   if ("missing" in ghostty) console.log(`the NSH terminal runs on NSH's own emulator: ${ghostty.missing}`);
   const features = "env" in ghostty ? ["--features", "ghostty"] : [];
   run(cargo, ["build", "-p", "deskfolk-nsh", ...features], root, "env" in ghostty ? ghostty.env : undefined);
+  if (!mac) return;
   mkdirSync(dirname(executable), { recursive: true });
   copyFileSync(join(root, "target", "debug", "deskfolk-nsh"), executable);
   const iconChanged = placeAppIcon(bundleApp);

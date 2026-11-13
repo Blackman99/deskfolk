@@ -7,7 +7,7 @@ import { View } from "nsh";
 import { copy } from "../../runtime";
 import { runtime } from "../../runtime";
 import { ProjectDirPicker } from "../sidebar/ProjectDirPicker";
-import { Desc, ModeCards, StepFooter, StepHead, StepPrimary, StepSecondary } from "./parts";
+import { Desc, StepFooter, StepHead, StepPrimary, StepSecondary, WaySwitch } from "./parts";
 import { TeamStep } from "./TeamStep";
 import type { Wizard } from "./wizard";
 
@@ -16,16 +16,19 @@ export function StartStep(props: { w: Wizard }) {
   const t = () => copy();
   return (
     <View testID="onboarding-step-4" class="flex-col gap-[14px]">
+      {/* The step's long explanation is the screen reader's (and the choice's hint), not a
+          paragraph over everything: each way says its own line once it is chosen. */}
       <StepHead
         title={w.carryOffered() ? t().onboarding.stepStart : t().onboarding.stepBot}
-        desc={w.startWay() === "carry" ? t().onboarding.carryDesc : t().onboarding.botDesc}
+        desc={w.carryOffered() ? undefined : t().onboarding.startTeamDesc}
       />
 
       <If when={w.carryOffered()}>
-        <ModeCards
+        <WaySwitch
           label={t().onboarding.step4StartTitle}
           value={w.startWay()}
           idPrefix="start-way"
+          hint={w.startWay() === "carry" ? t().onboarding.carryDesc : t().onboarding.botDesc}
           disabled={w.teamBusy()}
           options={[
             ["team", t().onboarding.startTeam, t().onboarding.startTeamDesc],

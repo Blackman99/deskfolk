@@ -15,12 +15,12 @@ publish = false
 # move to a newer NSH, change the `rev` of all of them at once and rebuild. The CLI reads the app's
 # crate's declared Git dependency to build its tests against the same checkout, which a
 # `[patch.crates-io]` table would hide from it.
-nsh-platform-macos = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3" }
-nsh-platform-windows = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3" }
-nsh-platform-linux = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3" }
-nsh-engine = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3", default-features = false }
-nsh-core = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3" }
-nsh-base = { git = "https://github.com/longbridge/nsh", rev = "7a2c11e07ff1bf155ac0dd6d5a7650dfa0c711b3", default-features = false }
+nsh-platform-macos = { git = "https://github.com/longbridge/nsh", rev = "c1a73bfaef4c88d50488a679ac6bf19840977ebe" }
+nsh-platform-windows = { git = "https://github.com/longbridge/nsh", rev = "c1a73bfaef4c88d50488a679ac6bf19840977ebe" }
+nsh-platform-linux = { git = "https://github.com/longbridge/nsh", rev = "c1a73bfaef4c88d50488a679ac6bf19840977ebe" }
+nsh-engine = { git = "https://github.com/longbridge/nsh", rev = "c1a73bfaef4c88d50488a679ac6bf19840977ebe", default-features = false }
+nsh-core = { git = "https://github.com/longbridge/nsh", rev = "c1a73bfaef4c88d50488a679ac6bf19840977ebe" }
+nsh-base = { git = "https://github.com/longbridge/nsh", rev = "c1a73bfaef4c88d50488a679ac6bf19840977ebe", default-features = false }
 # NSH's own objc2 line; Cargo unifies the features. In a debug build objc2 looks every message's
 # method up and checks its encoding before sending it (`class_getInstanceMethod` on each send):
 # the top of the main thread's samples during a live resize. The feature turns the check off (a

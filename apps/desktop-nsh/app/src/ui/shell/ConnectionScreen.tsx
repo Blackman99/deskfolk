@@ -20,8 +20,10 @@ export function ConnectionScreen() {
   const host = () => runtime.hostUnreachable === "host";
   const connecting = () => runtime.connection === "connecting";
   return (
+    // The whole screen moves the window (no title bar on Windows and Linux); Retry keeps its press.
     <View
       testID={connecting() ? "connecting" : "unreachable"}
+      desktop={{ windowDrag: true }}
       class="flex-1 flex-col items-center justify-center gap-[12px] bg-bg px-6"
     >
       <BrandMark size={48} />

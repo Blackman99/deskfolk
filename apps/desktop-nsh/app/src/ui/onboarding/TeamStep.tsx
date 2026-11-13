@@ -17,8 +17,8 @@ import { botAvatarColor } from "../../m/avatar.ts";
 import { templatesFor, type BotTemplateId } from "../../m/bot-templates.ts";
 import { botNameErrorCopy, mapCreateBotError, planCreateBot, type CreateBotDraft, type CreateBotFieldErrors } from "../../m/panels/create-form.ts";
 import { rosterLetter } from "../../m/sidebar/roster-letter.ts";
-import { cssColor, shadow } from "../styles";
-import { widthAtMost } from "../../platform/viewport";
+import { cssColor } from "../styles";
+import { WaySwitch } from "./parts";
 
 type Pick = { id: BotTemplateId; on: boolean; lead: boolean; name: string; duties: string; boundaries: string; made: TeamMember["made"] };
 type Problem = { id: BotTemplateId; errors: CreateBotFieldErrors; top: boolean };
@@ -148,32 +148,21 @@ export function TeamStep(props: {
   }
   props.onApi?.({ create });
 
-  const narrow = () => widthAtMost(520);
-
   return (
     <View testID="team-step" class="flex-col gap-[18px]">
+      {/* A segmented row with the chosen way's line under it; what an engine is (`pickHint`) is the
+          group's hint. Four cards of descriptions ran the step past the window. */}
       <View class="flex-col gap-2">
         <Text role="header" class="text-[14px] font-semibold text-ink">{c().pick}</Text>
-        <Text class="text-[12px] leading-[1.45] text-ink-muted">{c().pickHint}</Text>
-        <View role="radiogroup" accessibilityLabel={c().pick} class={`gap-[10px] ${narrow() ? "flex-col" : "flex-row"}`}>
-          <Each of={BUILTIN_PLAYBOOK_IDS.slice()} key={(id) => id}>
-            {(id) => (
-              <View
-                role="radio"
-                testID={`team-way-${id()}`}
-                accessibilityLabel={copy().playbooks.builtin[id()]}
-                accessibilityState={{ checked: playbook() === id(), disabled: busy() || started() }}
-                disabled={busy() || started()}
-                onPress={() => pickWay(id())}
-                class={`cursor-pointer select-none disabled:cursor-default flex-1 min-w-0 gap-1 px-[14px] py-3 rounded-(--radius-lg) border bg-pane hover:border-line-hover disabled:opacity-[0.7] ${playbook() === id() ? "border-brand" : "border-line"}`}
-                style={{ boxShadow: playbook() === id() ? undefined : shadow("xs") }}
-              >
-                <Text class="text-[14px] font-semibold text-ink">{copy().playbooks.builtin[id()]}</Text>
-                <Text class="text-[12px] leading-[1.45] text-ink-muted">{copy().playbooks.builtinHint[id()]}</Text>
-              </View>
-            )}
-          </Each>
-        </View>
+        <WaySwitch
+          label={c().pick}
+          value={playbook()}
+          idPrefix="team-way"
+          hint={c().pickHint}
+          disabled={busy() || started()}
+          options={BUILTIN_PLAYBOOK_IDS.map((id) => [id, copy().playbooks.builtin[id], copy().playbooks.builtinHint[id]] as const)}
+          onPick={(id) => pickWay(id)}
+        />
       </View>
 
       <View class="flex-col gap-2">

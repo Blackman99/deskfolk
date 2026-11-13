@@ -1,0 +1,17 @@
+# Read by every cargo run whose working directory is under apps/desktop-nsh: the shell's workspace
+# and the one `nsh` generates for the app's crate (app/.nsh/rust, building into app/target), whose
+# Cargo.toml it rewrites and so can't carry this.
+#
+# Dependencies keep only line tables: backtraces still name files and lines, but a debugger can't
+# show their locals. Full debug info made NSH's rlibs most of their size (several hundred MB each,
+# one per feature set), and the target directories grew by gigabytes with every NSH bump. The app's
+# own crates keep full debug info. Per-package overrides in a Cargo.toml (`libghostty-vt-sys`'s
+# `debug = false`) are more specific and still win.
+#
+# And no incremental caches for them. Cargo keeps one for every path dependency, and the app's
+# workspace takes NSH's crates by path (from cargo's git checkout), so `app/target/*/incremental`
+# held gigabytes of NSH, a fresh set with every NSH bump, for crates nobody edits here. The app's
+# own crates keep theirs.
+[profile.dev.package."*"]
+debug = "line-tables-only"
+incremental = false
