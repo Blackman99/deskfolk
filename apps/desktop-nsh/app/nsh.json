@@ -15,6 +15,7 @@
     },
     "clipboard": true,
     "statusBar": true,
+    "application": true,
     "picker": true,
     "fs": {
       "read": [
