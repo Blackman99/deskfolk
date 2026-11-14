@@ -7,14 +7,15 @@
  * Not carried over: the Svelte closed the bubble on any scroll of the page; NSH reports no scroll
  * of an ancestor to a popup, so a pinned tip stays until a press elsewhere or Escape.
  *
- * Props: `text` (what the tip says); `label` (the button's accessible name, e.g. "About Claude
- * Agent"); `testID` (the button's; the bubble is `${testID}-text`, default `help-tip`).
+ * Props: `text` (what the tip says); `children` (in place of `text`, a tip with more than one
+ * paragraph's shape, e.g. a name over each line); `label` (the button's accessible name, e.g.
+ * "About Claude Agent"); `testID` (the button's; the bubble is `${testID}-text`, default `help-tip`).
  */
-import { platform, signal, Text, View } from "nsh";
+import { platform, signal, Text, View, type JSX } from "nsh";
 import { HoverCard } from "nsh/base";
 import { shadow } from "../styles";
 
-export function HelpTip(props: { text: string; label: string; testID?: string }) {
+export function HelpTip(props: { text?: string; label: string; testID?: string; children?: JSX.Element }) {
   const id = () => props.testID ?? "help-tip";
   const pinned = signal(false);
   const hovering = signal(false);
@@ -59,9 +60,18 @@ export function HelpTip(props: { text: string; label: string; testID?: string })
         </View>
       }
     >
-      <Text testID={`${id()}-text`} class="text-[12px] font-[450] leading-[1.5] text-ink text-left">
-        {props.text}
-      </Text>
+      <If
+        when={props.children}
+        else={
+          <Text testID={`${id()}-text`} class="text-[12px] font-[450] leading-[1.5] text-ink text-left">
+            {props.text ?? ""}
+          </Text>
+        }
+      >
+        <View testID={`${id()}-text`} class="flex-col gap-2">
+          {props.children}
+        </View>
+      </If>
     </HoverCard>
   );
 }

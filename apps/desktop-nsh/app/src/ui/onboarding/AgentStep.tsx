@@ -1,4 +1,8 @@
-/** Step 2 on Claude Code or another local agent (ADR 0078, 0079): which agent, and whether it is found and signed in. */
+/**
+ * Step 2 on Claude Code or another local agent (ADR 0078, 0079): which agent, and whether it is
+ * found and signed in. How it is found and signed in is the step heading's "?" (`ProviderStep`);
+ * that it is not yet stays said under its card.
+ */
 import { Text, View } from "nsh";
 import type { BotRunner } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
@@ -19,7 +23,7 @@ export function AgentStep(props: { w: Wizard }) {
   return (
     <View class="flex-col gap-[14px]">
       <If when={w.readyAgents().length > 0}>
-        <View testID="agent-picks" role="radiogroup" accessibilityLabel={t().agentPick} class="flex-row flex-wrap gap-2 mt-1 mb-3">
+        <View testID="agent-picks" role="radiogroup" accessibilityLabel={t().agentPick} class="flex-row flex-wrap gap-2">
           <Each of={options()} key={(option) => option.value}>
             {(option) => (
               <View
@@ -46,7 +50,6 @@ export function AgentStep(props: { w: Wizard }) {
         when={w.pickedOther() && w.pickedStatus()}
         else={
           <>
-            <Desc>{t().claudeCheckDesc}</Desc>
             <ClaudeAgentCard api={runtime.client} onstatus={(status) => w.claudeStatus.set(status)} />
             <If when={w.claudeStatus() && !w.claudeOk()}>
               <Desc testID="claude-not-ready">{t().claudeNotReady}</Desc>
@@ -54,7 +57,6 @@ export function AgentStep(props: { w: Wizard }) {
           </>
         }
       >
-        <Desc>{t().agentCheckDesc.replace("{agent}", w.pickedLabel())}</Desc>
         <AgentCard
           status={w.pickedStatus()!}
           api={runtime.client as never}
