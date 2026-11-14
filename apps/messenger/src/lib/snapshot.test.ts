@@ -267,6 +267,31 @@ test("session.removed drops the session and related messages/turns", () => {
   expect(removed.messages).toHaveLength(0);
 });
 
+test("session.removed for a session the snapshot never held hands back every key as it was", () => {
+  const run = { id: "run-1", session_id: "s1" };
+  const base = applyEvent(
+    { ...emptySnapshot(), agentRuns: { s1: run } } as unknown as ReturnType<typeof emptySnapshot>,
+    {
+      event: "session.upsert",
+      occurred_at: "t",
+      id: "s1",
+      kind: "group",
+      name: "Work",
+      created_at: "t",
+      updated_at: "t",
+      participants: [{ member: "user", joined_at: "t", left_at: null }],
+    },
+  );
+  // A Bot's change names every hidden session at once; none of them is here.
+  const after = applyEvent(base, { event: "session.removed", occurred_at: "t2", id: "hidden-direct" });
+  for (const key of Object.keys(base) as (keyof typeof base)[]) expect(after[key]).toBe(base[key]);
+  // The one it holds still goes, with its run.
+  const removed = applyEvent(base, { event: "session.removed", occurred_at: "t2", id: "s1" });
+  expect(removed.sessions).toHaveLength(0);
+  expect(removed.agentRuns).toEqual({});
+  expect(removed.messages).toBe(base.messages);
+});
+
 test("session.cleared clears messages and turns but keeps the session", () => {
   let s = applyEvent(emptySnapshot(), {
     event: "session.upsert",

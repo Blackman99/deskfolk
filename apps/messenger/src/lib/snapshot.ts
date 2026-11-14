@@ -202,16 +202,23 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
       };
     }
     case "session.removed": {
-      const { [event.id]: _run, ...agentRuns } = snapshot.agentRuns;
+      // A removal may name a session this snapshot never held: an older runtime names every hidden one
+      // on any change of a Bot, a hundred and more at once. Only what held the session changes, so such
+      // a removal runs no reader; on the NSH app each one ran them all, ~20 ms apiece.
+      let agentRuns = snapshot.agentRuns;
+      if (Object.prototype.hasOwnProperty.call(agentRuns, event.id)) {
+        const { [event.id]: _run, ...rest } = agentRuns;
+        agentRuns = rest;
+      }
       return {
         ...snapshot,
         agentRuns,
-        sessions: snapshot.sessions.filter((s) => s.id !== event.id),
-        annotations: snapshot.annotations.filter((a) => a.session_id !== event.id && a.target_session_id !== event.id),
-        messages: snapshot.messages.filter((m) => m.session_id !== event.id),
-        turns: snapshot.turns.filter((t) => t.session_id !== event.id),
-        judgements: snapshot.judgements.filter((j) => j.session_id !== event.id),
-        pendingJudgements: snapshot.pendingJudgements.filter((j) => j.session_id !== event.id),
+        sessions: filterChanged(snapshot.sessions, (s) => s.id !== event.id),
+        annotations: filterChanged(snapshot.annotations, (a) => a.session_id !== event.id && a.target_session_id !== event.id),
+        messages: filterChanged(snapshot.messages, (m) => m.session_id !== event.id),
+        turns: filterChanged(snapshot.turns, (t) => t.session_id !== event.id),
+        judgements: filterChanged(snapshot.judgements, (j) => j.session_id !== event.id),
+        pendingJudgements: filterChanged(snapshot.pendingJudgements, (j) => j.session_id !== event.id),
       };
     }
     case "session.cleared": {
@@ -477,6 +484,11 @@ function mapChanged<T>(list: T[], fn: (item: T) => T): T[] {
     }
   }
   return out ?? list;
+}
+
+/** `list.filter(keep)`, or `list` itself when it keeps every item, as {@link mapChanged}. */
+function filterChanged<T>(list: T[], keep: (item: T) => boolean): T[] {
+  return list.every(keep) ? list : list.filter(keep);
 }
 
 function upsert<T extends { id: string }>(list: T[], item: T): T[] {
