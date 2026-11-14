@@ -378,11 +378,21 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
   if (changes.some((change) => change.entity === "settings" || change.entity === "providers")) {
     out.push({ event: "settings.changed", occurred_at, ...settingsCached(ctx) });
   }
-  // Deleting a Bot hides its directs even though the session rows remain.
-  if (changes.some((c) => c.entity === "bots")) {
+  // Deleting a Bot hides its directs, its Bot↔Bot ones too, even though the session rows remain
+  // (`listSessions`). Nothing else a Bot's row says hides a session, so only the sessions of a Bot
+  // deleted in this change go: naming every hidden one sent the directs of each Bot ever deleted,
+  // 151 on a long-used Mac, with every pick of a model.
+  const changedBots = [...new Set(changes.filter((c) => c.entity === "bots").map((c) => c.id))];
+  if (changedBots.length) {
+    const marks = changedBots.map(() => "?").join(", ");
+    const rows = ctx.db
+      .query<{ session_id: string }, string[]>(
+        `SELECT DISTINCT p.session_id FROM session_participants p JOIN bots b ON b.id = p.member
+         WHERE b.deleted_at IS NOT NULL AND b.id IN (${marks})`,
+      )
+      .all(...changedBots);
     const visible = new Set(sessions.map((s) => s.id));
-    const rows = ctx.db.query<{ id: string }, []>("SELECT id FROM sessions").all();
-    for (const { id } of rows) if (!visible.has(id)) out.push({ event: "session.removed", occurred_at, id });
+    for (const { session_id: id } of rows) if (!visible.has(id)) out.push({ event: "session.removed", occurred_at, id });
   }
   // A message insert may share its timestamp with the previous write, so touchSession can be a no-op.
   for (const session of sessions) {

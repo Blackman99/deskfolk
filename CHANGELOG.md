@@ -9,6 +9,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### Changing a Bot no longer holds the window up for seconds
 
 - In the native (NSH) desktop build, picking a Bot's model or thinking level, in its direct's tool row or in its settings, held the window for about three seconds before the pick showed as done, and nothing else answered meanwhile. Any change to a Bot did the same: its name, picture, duties, what runs it, archiving or restoring it, or a Bot editing its own profile. With every change of a Bot the runtime also said "removed" for each conversation already out of sight (the directs of deleted Bots, about 150 on a long-used Mac), and the app redid everything it shows for each one, about 20 ms apiece, though it held none of them. Now a removal of a conversation the app does not hold changes nothing, and a pick shows as done in about a tenth of a second.
+- The runtime no longer sends those removals at all: a change of a Bot names only the conversations it took out of sight, which only deleting it does (its direct and its Bot↔Bot directs). A phone or a browser connected through the relay is spared the same burst on every change of a Bot.
 
 ### The Bot settings' cards run edge to edge
 
