@@ -12,8 +12,11 @@
 //! 11, its rounded corners (square while maximized, as the system draws them). The app is told
 //! whether the material is there (`host.params.material`, `window_material`) and lets it through
 //! (`ui/glass.ts`).
+//!
+//! The executable cargo builds has no icon of its own, so the window gets the app's from a file
+//! (`app_icon`): without it the taskbar, Alt+Tab and the toasts show the system's blank one.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use nsh_platform_windows::{AppOptions, AppSource, AssetBase, Bundle, Limits, set_ui_sets};
 use serde_json::json;
@@ -23,6 +26,10 @@ use crate::config::Config;
 /// The first Windows build with `DWMWA_SYSTEMBACKDROP_TYPE` (Windows 11 22H2), where NSH maps
 /// `backdrop` to Mica; before it the attribute is refused and the window stays solid.
 const SYSTEM_BACKDROP_BUILD: u32 = 22621;
+
+/// The app's icon, the one every build wears (`apps/desktop/scripts/app-icon` makes it; the Tauri
+/// app embeds the same file).
+const APP_ICON: &[u8] = include_bytes!("../../../desktop/src-tauri/icons/icon.ico");
 
 pub fn run(config: Config) -> std::process::ExitCode {
     // Once, before the first view: what the app's TSX may import, NSH's and the app's own crate.
@@ -38,12 +45,14 @@ pub fn run(config: Config) -> std::process::ExitCode {
     let host = crate::launch::channel(&config, 1);
     // The wheel for the views that zoom or scroll themselves (`win_wheel.rs`).
     crate::win_wheel::install(host.clone());
+    let nsh_dir = config.data_dir.join("nsh");
     let options = AppOptions {
         app_id: config.bundle_id.clone(),
         title: config.app_name.clone(),
+        icon: app_icon(&nsh_dir),
         size: (1100, 760),
         limits: Limits::standalone(),
-        data_dir: Some(config.data_dir.join("nsh")),
+        data_dir: Some(nsh_dir),
         asset_base: config.bundle.parent().map(|dir| AssetBase::Directory(dir.join("assets"))),
         host,
         fps: config.fps,
@@ -72,6 +81,21 @@ pub fn has_material() -> bool {
                 && hardware_adapter()
         }
     })
+}
+
+/// The app's icon as a file in `dir`, for NSH to give the window (taskbar, Alt+Tab, title bar)
+/// and its toasts: NSH loads it only from a file, and only when the executable has none of its
+/// own. Written when missing or different, so a changed icon follows the build. `None` when it
+/// cannot be written: the window then shows the system's.
+fn app_icon(dir: &Path) -> Option<PathBuf> {
+    let path = dir.join("icon.ico");
+    if std::fs::read(&path).ok().as_deref() != Some(APP_ICON) {
+        if let Err(why) = std::fs::create_dir_all(dir).and_then(|()| std::fs::write(&path, APP_ICON)) {
+            log::warn!("the app's icon {}: {why}", path.display());
+            return None;
+        }
+    }
+    Some(path)
 }
 
 fn read_bundle(path: &Path) -> Result<Bundle, String> {
@@ -168,6 +192,31 @@ mod tests {
     fn the_launch_options_are_ones_nsh_reads() {
         for material in [true, false] {
             assert!(nsh_core::desktop::MainWindowOptions::from_json(&main_window(material)).is_ok());
+        }
+    }
+
+    #[test]
+    fn the_app_icon_is_written_once_and_put_back_when_it_differs() {
+        let dir = std::env::temp_dir().join(format!("deskfolk-nsh-icon-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = app_icon(&dir).expect("written");
+        assert_eq!(path, dir.join("icon.ico"));
+        assert_eq!(std::fs::read(&path).unwrap(), APP_ICON);
+        std::fs::write(&path, b"stale").unwrap();
+        assert_eq!(app_icon(&dir), Some(path.clone()));
+        assert_eq!(std::fs::read(&path).unwrap(), APP_ICON);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_app_icon_is_an_ico_with_the_taskbar_sizes() {
+        // ICONDIR: reserved 0, type 1 (icon), then the entries; 0 in a width byte is 256.
+        assert_eq!(&APP_ICON[..4], &[0, 0, 1, 0]);
+        let count = u16::from_le_bytes([APP_ICON[4], APP_ICON[5]]) as usize;
+        let sides: Vec<u32> =
+            (0..count).map(|i| match APP_ICON[6 + 16 * i] { 0 => 256, side => side.into() }).collect();
+        for side in [16, 32, 48, 256] {
+            assert!(sides.contains(&side), "no {side}px icon in {sides:?}");
         }
     }
 
