@@ -138,6 +138,8 @@ export function TunePicker(props: {
     const more = () => !rowProps.leaf && tune.opensMore(rowProps.level, rowProps.row.value);
     const focused = () => rowProps.at < tune.shown().length - 1 && rowProps.row.value === tune.focusOf(rowProps.level);
     const keyed = () => tune.keyed() && tune.active() === rowProps.level && rowProps.row.value === tune.focusOf(rowProps.level);
+    // The keys' ring is a 2 pt border every row has, clear but under the keys, so the rows and the
+    // columns lined up on them (`columnShifts`) stay put as the keys walk (as `ModelRow`).
     return (
       <View
         role="button"
@@ -149,7 +151,7 @@ export function TunePicker(props: {
         onMouseEnter={() => tune.hover(rowProps.level, rowProps.row)}
         onPress={() => tune.press(rowProps.level, rowProps.row)}
         onLayout={(e) => measure(rowProps.level, (box) => ({ ...box, rows: { ...box.rows, [rowProps.row.value]: e.bounds.origin.y } }))}
-        class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[6px] px-2 py-[6px] rounded-(--radius-sm) disabled:opacity-[0.45] ${focused() ? "bg-line-subtle" : "hover:bg-line-subtle"} ${keyed() ? "border-2 border-accent-border" : ""}`}
+        class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[6px] px-[6px] py-[4px] rounded-(--radius-sm) border-2 disabled:opacity-[0.45] ${focused() ? "bg-line-subtle" : "hover:bg-line-subtle"} ${keyed() ? "border-accent-border" : "border-transparent"}`}
       >
         <View class="flex-1 min-w-0">
           <Text class={`text-[13px] line-clamp-1 ${checked() ? "font-semibold text-brand" : "font-medium text-ink"}`}>{rowProps.row.label}</Text>

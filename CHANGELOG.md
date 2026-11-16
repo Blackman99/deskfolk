@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The model picker's list holds still under the pointer
+
+- In the native (NSH) desktop build, the model picker's list (a Bot's model, an agent's model in Settings, the model service's default) shook as the pointer moved over it: the chosen model's row gained a ring when pointed at or reached with the arrow keys, and the ring made that row 2 pt taller, so every row under it and the list's foot moved up and down as the pointer came and went. Every row now keeps the room for the ring, and only its colour changes. The same held for the sources on the left and for the conversation's model and thinking picker above the message box when walked with the arrow keys. The rows are the size they were.
+
 ### A pane's tabs stand apart
 
 - In the native (NSH) desktop build, a pane's tabs sat edge to edge, so a tab under the pointer ran straight into the active one beside it and the two read as one block. Tabs now keep 4 pt between them, on the desktop and on a phone. The first tab and the + stay where they were, and a dragged tab let go over the gap still lands between the two tabs on either side of it.

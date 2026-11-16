@@ -20,6 +20,12 @@ export function ModelRow(props: {
   onLayout?: (bounds: { y: number; height: number }) => void;
 }) {
   const mark = () => props.from?.mark ?? props.row.mark ?? null;
+  /**
+   * The chosen row under the keys or the pointer is ringed (the messenger's inset ring). Every row
+   * keeps its 1 pt border, clear elsewhere, its padding 1 pt less: a border on that row alone made
+   * it 2 pt taller as the pointer came and went, and moved every row under it and the panel's foot.
+   */
+  const ring = () => (props.selected && props.active ? "border-accent-border" : "border-transparent");
   return (
     <View
       role="button"
@@ -30,9 +36,9 @@ export function ModelRow(props: {
       onPress={() => props.onPick(props.row)}
       onMouseEnter={() => props.onHover?.()}
       onLayout={(e) => props.onLayout?.({ y: e.bounds.origin.y, height: e.bounds.size.height })}
-      class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[8px] rounded-(--radius-sm) disabled:opacity-[0.45] ${
-        props.phone ? "min-h-[48px] px-[12px] py-[8px]" : "px-[10px] py-[6px]"
-      } ${props.selected ? `bg-accent-tint ${props.active ? "border border-accent-border" : ""}` : props.active ? "bg-line-subtle" : "hover:bg-line-subtle active:bg-line-subtle"}`}
+      class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[8px] rounded-(--radius-sm) border disabled:opacity-[0.45] ${
+        props.phone ? "min-h-[48px] px-[11px] py-[7px]" : "px-[9px] py-[5px]"
+      } ${ring()} ${props.selected ? "bg-accent-tint" : props.active ? "bg-line-subtle" : "hover:bg-line-subtle active:bg-line-subtle"}`}
     >
       <If when={mark()}>{(m) => <ModelSourceMark source={m()} />}</If>
       <View class="flex-1 min-w-0">

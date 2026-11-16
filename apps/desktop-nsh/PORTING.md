@@ -54,6 +54,7 @@
 - 图标：`<Icon name="plus" size={16} class="tint-ink-muted" />`（`src/ui/Icon`），颜色只用 `tint-*` 类，悬停跟随用 `group-hover:tint-ink`。名字照 `src/m/icons.ts`。
 - 现成的组件先找 `src/ui/`（见下面「已经移植的共享组件」）。没有的、几个区域都要用的，报告里说，不要各写一份。
 - `transition-*`（`transition-all` 也一样）只动颜色、透明度、transform、阴影、圆角，**不动位置和尺寸**：Svelte 里 `transition: top/left/width/height` 的地方照搬过来会直接跳。要动框的位置、大小，在改它的那一次提交之前调 `LayoutAnimation.configureNext({ duration, update: { type: "easeInEaseOut" } })`（只给 `update`，新插入的不跟着动）。它管的是整次提交，同一次里别处的布局变化也会一起动；窗口缩放时别调。例子：`ui/chat/MessageImageLightbox.tsx` 的 `frameBox` 那个 effect。**旁边有大段文字的框改宽度时别用它**：文字当场按终点宽度折好，行里嵌的视图（回复里的路径芯片）各自从旧位置滑过去、压在字上，整段回复也上下跳。这种情况逐帧改宽度，每帧真正重排一次（`requestAnimationFrame`，和拖分隔条一样）；曲线每帧的步子别太大，长回复旁一步 50–100 pt 要重排约 40 ms，十几 pt 跟得上一帧。例子：侧边栏收起展开（`ui/shell/shell-state.ts` 的 `foldSidebar`、`sidebar-fold.ts`）。
+- 信使里不占位置的描边（`outline`、`box-shadow: inset 0 0 0 1px`，键盘或悬停的高亮环）在 NSH 里写成 `border` 是占位置的：只在高亮时加 `border`，那一行就高出两倍边框宽，下面的行和弹层的底边跟着指针一进一出上下跳。每一行都写同宽的 `border` 加 `border-transparent`，内边距减去边框宽，高亮时只换 `border-accent-border` 的颜色。例子：`ui/model-picker/Rows.tsx` 的 `ring`。
 - 盖在别的视图上的透明层（标注层这类）不会把按压让给下面的兄弟视图：Svelte 里 `pointer-events: none` 的层，这里要写 `pointerEvents: "box-none"`（自己不接，子视图照接），否则下面的 `onPress` 永远收不到。`app.press(selector)` 直接按指定的视图，测不出这种遮挡。
 - `List` 的单元格按创建的先后叠放，core 从不给它们重排，行里的 `z-*` 也出不了自己的单元格：伸出本行、要压在相邻行上的东西（消息的悬停操作条），倒序列表里常被上一行盖住。这种东西放进 `<Overlay anchor={本行的视图} placement=… />`，它画在所有行之上、跟着滚动，但不受列表裁切，要自己在离开列表可视范围时藏起来。例子：`ui/chat/message-pill.tsx`。悬停计数改动要用 `batch` 一次落定，否则中间那一刻「不显示」会让浮层重建，指针下的新浮层收不到进入事件。测试里 `A >> B` 不穿过 Overlay，按它自己的 testID 找。
 

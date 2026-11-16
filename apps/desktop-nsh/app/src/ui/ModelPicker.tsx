@@ -157,6 +157,8 @@ export function ModelPicker(props: {
                     <Each of={picker.sources()} key={(source) => source.key}>
                       {(source) => {
                         const active = () => source().key === picker.activeSource()?.key;
+                        // The keys' ring is a 2 pt border every source has, clear but on the one the
+                        // keys are on, so walking the sources with ←↑↓ moves no row (as `ModelRow`).
                         return (
                           <View
                             role="button"
@@ -168,9 +170,9 @@ export function ModelPicker(props: {
                               picker.activate(source());
                               picker.column.set("rows");
                             }}
-                            class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[8px] w-full px-[8px] py-[7px] rounded-(--radius-sm) disabled:opacity-[0.5] ${
+                            class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[8px] w-full px-[6px] py-[5px] rounded-(--radius-sm) border-2 disabled:opacity-[0.5] ${
                               active() ? "bg-pane" : ""
-                            } ${picker.column() === "sources" && active() ? "border-2 border-accent-border" : ""}`}
+                            } ${picker.column() === "sources" && active() ? "border-accent-border" : "border-transparent"}`}
                             style={active() ? { boxShadow: shadow("xs") } : undefined}
                           >
                             <If when={source().mark}>{(mark) => <ModelSourceMark source={mark()} tile />}</If>
