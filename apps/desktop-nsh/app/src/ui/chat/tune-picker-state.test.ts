@@ -1,6 +1,20 @@
 /** Where the cascading picker's columns stand: the first on the trigger's edge, each next one beside the row it came from. */
 import { expect, test } from "nsh/test";
-import { columnHeight, columnShifts, type ColumnFrame } from "./tune-picker-state";
+import { COLUMN_FIT_MIN, columnFit, columnHeight, columnShifts, type ColumnFrame } from "./tune-picker-state";
+
+test("the columns keep their widths while the widest path fits the window, and narrow alike when it does not", () => {
+  // A Bot's runner, endpoint, model and level: 870 pt and three gaps.
+  const bot = [200, 240, 290, 140];
+  expect(columnFit(bot, 1100)).toBe(1);
+  expect(columnFit(bot, 898)).toBe(1);
+  const fit = columnFit(bot, 720);
+  expect(fit).toBeLessThan(1);
+  // Narrowed, the four and their gaps fit within the popover's margins.
+  expect(bot.reduce((sum, width) => sum + Math.floor(width * fit), 0) + 12 + 16).toBeLessThanOrEqual(720);
+  // Never past the floor, however narrow.
+  expect(columnFit(bot, 300)).toBe(COLUMN_FIT_MIN);
+  expect(columnFit([], 300)).toBe(1);
+});
 
 const frame = (height: number, rows: string[], scroll = 0): ColumnFrame => ({
   height,

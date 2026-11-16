@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A Bot's model picker in its direct starts at what runs the Bot
+
+- In the native (NSH) build, the picker on a Bot's direct composer opened on the models of whatever already ran the Bot: the endpoints for a Bot on the app's own loop, the agent's models for one on a local agent. It now opens on what runs the Bot, the same choices as the Bot panel's Runs on: Endpoints, Claude Agent and your other local agents, each with its logo (one not installed or signed out is listed but cannot be picked, with the reason). Endpoints opens Automatic and your endpoints, then a model and its thinking level; an agent opens its models and effort (Claude's accounts first when there is more than one).
+- A pick under another runner moves the Bot onto it in one change, with the model and level picked; the model, effort and account of the agent it leaves are cleared, as the Bot panel does. A pick under the runner it is on changes only the model and level, as before.
+- When the window is too narrow for every column side by side, the columns narrow alike instead of the last one running off the window's edge.
+
 ### The model picker's list holds still under the pointer
 
 - In the native (NSH) desktop build, the model picker's list (a Bot's model, an agent's model in Settings, the model service's default) shook as the pointer moved over it: the chosen model's row gained a ring when pointed at or reached with the arrow keys, and the ring made that row 2 pt taller, so every row under it and the list's foot moved up and down as the pointer came and went. Every row now keeps the room for the ring, and only its colour changes. The same held for the sources on the left and for the conversation's model and thinking picker above the message box when walked with the arrow keys. The rows are the size they were.

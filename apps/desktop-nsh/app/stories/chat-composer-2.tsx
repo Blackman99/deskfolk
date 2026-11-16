@@ -9,7 +9,7 @@
  * for every test after).
  */
 import { Scroll, signal, Text, View } from "nsh";
-import { FILE_DROP_SESSION_ID, type Bot, type SessionSummary, type Turn } from "@real-bot/protocol";
+import { FILE_DROP_SESSION_ID, type Bot, type PatchBotRequest, type SessionSummary, type Turn } from "@real-bot/protocol";
 import type { Recording, RecorderHooks } from "../src/m/chat/voice-recorder";
 import { classifySession, youBotPeer } from "../src/m/sidebar/session-groups";
 import { runtime } from "../src/runtime";
@@ -56,6 +56,8 @@ Object.defineProperty(runtime, "snapshot", {
 
 const sessions = (): SessionSummary[] => real.call(runtime).sessions;
 const writerBot = () => real.call(runtime).bots.find((b: Bot) => b.name === "Writer");
+/** What runs Writer before a test moves it with the Bot's picker; `story-writer-reset` puts it back for the tests after. */
+let writerBefore: PatchBotRequest | null = null;
 const direct = () => sessions().find((s) => classifySession(s) === "you-bot" && youBotPeer(s) === writerBot()?.id);
 const group = () => sessions().find((s) => classifySession(s) === "group" && s.id !== scratchId());
 
@@ -184,7 +186,26 @@ export default function ChatComposer2Story() {
           {button("story-scratch", "scratch group", () => void makeScratch())}
           {button("story-read", "read back", () => void read())}
           {button("story-cleanup", "clean up", () => void cleanup())}
+          {button("story-writer-keep", "keep Writer", () => {
+            const w = writerBot() as Bot | undefined;
+            if (w) {
+              writerBefore = {
+                runner: w.runner ?? null,
+                model: w.model ?? null,
+                provider_id: w.provider_id ?? null,
+                thinking_level: w.thinking_level ?? null,
+                agent_model: w.agent_model ?? null,
+                agent_effort: w.agent_effort ?? null,
+                ...(w.agent_config_dir !== undefined ? { agent_config_dir: w.agent_config_dir } : {}),
+              };
+            }
+          })}
+          {button("story-writer-reset", "reset Writer", () => {
+            const w = writerBot() as Bot | undefined;
+            if (w && writerBefore) void runtime.patchBot(w.id, writerBefore);
+          })}
         </View>
+        <Text testID="story-writer" class="text-[12px] text-ink-muted">{`writer:${writerBot()?.runner ?? "app"}|${writerBot()?.model ?? ""}|${writerBot()?.agent_model ?? ""}`}</Text>
         <Text testID="story-session" class="text-[12px] text-ink-muted">{`session:${which()}`}</Text>
         <Text testID="story-draft" class="text-[12px] text-ink-muted">{`draft:${view()?.draft ?? ""}`}</Text>
         <Text testID="story-staged" class="text-[12px] text-ink-muted">{`staged:${(view()?.stagedAttachments ?? []).map((a) => a.name).join(",")}`}</Text>

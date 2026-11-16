@@ -1,4 +1,5 @@
 import type { Choice } from "../claude-models.svelte.ts";
+import type { ModelSource } from "../model-source.ts";
 
 /**
  * What a cascading picker in a composer (`TunePicker.svelte`) lists: what a conversation's runs go
@@ -7,8 +8,11 @@ import type { Choice } from "../claude-models.svelte.ts";
  * what is under each row; the picker opens, places and walks the columns the same for both.
  */
 
-/** A picker row: a choice, what is said of it under its name, and whether it can be taken now. */
-export type TuneRow = Choice & { detail?: string; disabled?: boolean };
+/**
+ * A picker row: a choice, what is said of it under its name, and whether it can be taken now; a
+ * row for what runs a Bot (the NSH composer's) wears that agent's logo.
+ */
+export type TuneRow = Choice & { detail?: string; disabled?: boolean; mark?: ModelSource | null };
 
 /** The row in focus at each level, by the level's key: the path the columns follow. */
 export type TuneFocus = Record<string, string>;

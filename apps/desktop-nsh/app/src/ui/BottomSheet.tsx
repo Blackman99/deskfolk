@@ -76,6 +76,8 @@ export function SheetItem(props: {
   onPress?: () => void;
   testID?: string;
   role?: "button" | "menuitem" | "option";
+  /** Drawn where `icon` would be, when the row wears something other than an icon (an agent's logo). */
+  leading?: JSX.Element;
   trailing?: JSX.Element;
 }) {
   const ink = () => (props.danger ? "text-danger-text" : props.active ? "text-brand font-semibold" : "text-ink");
@@ -91,6 +93,7 @@ export function SheetItem(props: {
       class="cursor-pointer select-none disabled:cursor-default flex-row items-center gap-3 w-full min-h-[48px] px-3 py-[10px] rounded-(--radius-md) active:bg-line-subtle disabled:opacity-[0.45]"
     >
       <If when={props.icon}>{(name) => <Icon name={name()} size={20} class={tint()} />}</If>
+      {props.leading}
       <View class="flex-1 min-w-0">
         <Text class={`text-[15px] line-clamp-1 ${ink()}`}>{props.label}</Text>
         <If when={props.detail}>{(d) => <Text class="text-[12px] text-ink-muted line-clamp-1">{d()}</Text>}</If>

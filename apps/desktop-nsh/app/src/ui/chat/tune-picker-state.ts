@@ -219,6 +219,26 @@ export function columnHeight(room: number | null): number {
   return room === null ? COLUMN_HEIGHT : Math.max(COLUMN_MIN, Math.min(COLUMN_MAX, room));
 }
 
+/** How far the popover keeps off the window's edges, each side. */
+export const POPOVER_MARGIN = 8;
+/** The gap between two columns (`gap-1`). */
+export const COLUMN_GAP = 4;
+/** The narrowest the columns get, as a share of their own widths: past it the last one is cut, not every name. */
+export const COLUMN_FIT_MIN = 0.6;
+
+/**
+ * How much every column narrows so the widest path a picker can open (`widths`, its columns' own
+ * widths) fits a window `windowWidth` wide, side by side within the popover's margins: 1 when it
+ * fits as it is. On a desktop window near the phone layout's width, a Bot's four levels (runner,
+ * endpoint, model, level) are wider than the window, and the level column was out of it.
+ */
+export function columnFit(widths: readonly number[], windowWidth: number): number {
+  const need = widths.reduce((sum, width) => sum + width, 0);
+  const room = windowWidth - 2 * POPOVER_MARGIN - COLUMN_GAP * Math.max(0, widths.length - 1);
+  if (need <= 0 || need <= room) return 1;
+  return Math.max(COLUMN_FIT_MIN, room / need);
+}
+
 /**
  * How far each column stands off the trigger's edge (`lineUp()` in the Svelte one, which measured
  * the DOM). The first sits on the edge, so a column opening or closing never moves it; each next

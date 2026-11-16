@@ -1,7 +1,8 @@
 /**
- * What a conversation's runs go on (an account, a model, a thinking level) in one picker that
- * cascades a level at a time (`TunePicker.svelte`, `tune-picker.ts`). It opens on the first level
- * alone; a row opens what is under it beside it (an account its models, a model the levels it takes)
+ * What a conversation's runs go on (for a Bot first what runs it, then an account, a model, a
+ * thinking level) in one picker that cascades a level at a time (`TunePicker.svelte`,
+ * `tune-picker.ts`). It opens on the first level alone; a row opens what is under it beside it (a
+ * runner its endpoints or its agent's models, an account its models, a model the levels it takes)
  * when it is pointed at or pressed; only a row with nothing under it is a pick, which takes the path
  * up to it and closes. ↑↓ walk a column, → goes into a row, ← back a column, Enter picks, Esc closes.
  * On a phone a sheet from the bottom that goes into a row the same way, Back going up one. What each
@@ -21,7 +22,7 @@
  * land outside its columns and its trigger. Not in a modal (the Bot↔Bot direct's): a frame measured
  * there is the dialog's, not the window's, and a press on a row would read as outside.
  */
-import { Scroll, Text, View, effect, keymap, signal, type ViewRef } from "nsh";
+import { Scroll, Text, View, effect, keymap, signal, untracked, windowSize, type ViewRef } from "nsh";
 import { Popover } from "nsh/base";
 import { frameOf, onPressOutside } from "../../platform/press";
 import type { ModelSource } from "../../m/model-source";
@@ -33,7 +34,7 @@ import { ModelSourceMark } from "../ModelSourceMark";
 import { shadow } from "../styles";
 import { tip } from "../tip";
 import { InModal, narrowWindow as phoneSheet } from "../Modal";
-import { columnHeight, columnShifts, createTune, type ColumnFrame } from "./tune-picker-state";
+import { POPOVER_MARGIN, columnFit, columnHeight, columnShifts, createTune, type ColumnFrame } from "./tune-picker-state";
 
 export function TunePicker(props: {
   tree: TuneTree;
@@ -76,6 +77,16 @@ export function TunePicker(props: {
       room(),
     );
   const height = () => columnHeight(room());
+  /**
+   * How much every column narrows so the widest path the picker can open fits the window side by
+   * side (a Bot's goes runner, endpoint, model, level: some 880 pt). Read once at each open, the
+   * window's width untracked, so a column never changes width while the picker is open.
+   */
+  const fit = signal(1);
+  effect(() => {
+    if (!tune.open() || phone()) return;
+    untracked(() => fit.set(columnFit(props.tree.room(tune.focus()).map((level) => level.width), windowSize().width)));
+  });
 
   // The keys the picker keeps while its columns are open.
   effect(() => {
@@ -153,6 +164,7 @@ export function TunePicker(props: {
         onLayout={(e) => measure(rowProps.level, (box) => ({ ...box, rows: { ...box.rows, [rowProps.row.value]: e.bounds.origin.y } }))}
         class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[6px] px-[6px] py-[4px] rounded-(--radius-sm) border-2 disabled:opacity-[0.45] ${focused() ? "bg-line-subtle" : "hover:bg-line-subtle"} ${keyed() ? "border-accent-border" : "border-transparent"}`}
       >
+        <If when={rowProps.row.mark}>{(mark) => <ModelSourceMark source={mark()} tile />}</If>
         <View class="flex-1 min-w-0">
           <Text class={`text-[13px] line-clamp-1 ${checked() ? "font-semibold text-brand" : "font-medium text-ink"}`}>{rowProps.row.label}</Text>
           <If when={rowProps.row.detail && rowProps.details}>
@@ -182,7 +194,7 @@ export function TunePicker(props: {
               onLayout={(e) => measure(level().key, (frame) => ({ ...frame, height: e.bounds.size.height }))}
               class="p-1 bg-pane border border-line rounded-(--radius-md)"
               style={{
-                width: level().width,
+                width: Math.floor(level().width * fit()),
                 maxHeight: height(),
                 marginBottom: side() === "top" ? shift() : 0,
                 marginTop: side() === "bottom" ? shift() : 0,
@@ -222,7 +234,7 @@ export function TunePicker(props: {
           placement="top"
           align="start"
           offset={4}
-          margin={8}
+          margin={POPOVER_MARGIN}
           onPosition={(e) => {
             if (e.placement === "top" || e.placement === "bottom") side.set(e.placement);
             room.set(Math.floor(e.available.height));
@@ -263,6 +275,7 @@ export function TunePicker(props: {
                       active={checked()}
                       disabled={row().disabled}
                       onPress={() => tune.press(level().key, row())}
+                      leading={row().mark ? <ModelSourceMark source={row().mark!} tile size={20} /> : undefined}
                       trailing={
                         <>
                           <If when={checked()}>

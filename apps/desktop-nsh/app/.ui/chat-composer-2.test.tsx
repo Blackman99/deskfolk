@@ -149,6 +149,47 @@ test("narrow, the ✎ row docks: ✨ steps aside once there is text, and Send st
   expect(app.shows("id:suggest-button")).toBe(false);
 });
 
+test("the Bot's picker moves it onto Claude Agent and back onto its endpoint, through the runtime", async () => {
+  const app = await open();
+  await app.waitUntil(() => app.texts().some((t) => t.startsWith("writer:app|")), { timeout: 10_000 });
+  const before = app.texts().find((t) => t.startsWith("writer:"))!;
+  await app.press("id:story-writer-keep");
+  try {
+    await app.press("id:bot-tune");
+    await app.waitFor("id:tune-column-runner");
+    await app.press("id:tune-row-runner-claude_code");
+    await app.waitFor("id:tune-column-model");
+    // Claude Code's own default model; its levels when it lists them, Claude Code's default level.
+    await app.press("id:tune-row-model-default");
+    await app.waitUntil(() => app.shows("id:tune-column-effort") || !app.shows("id:tune-panel"));
+    if (app.shows("id:tune-column-effort")) await app.press("id:tune-row-effort-default");
+    // The daemon took the move: Claude Agent, its own model, the endpoint pin kept for later.
+    await app.waitUntil(() => app.texts().some((t) => t.startsWith("writer:claude_code|") && t.endsWith("|")), { timeout: 10_000 });
+    await app.waitFor("id:model-source-claude-agent");
+    expect(app.shows("id:composer-refused")).toBe(false);
+
+    // Back onto the app's own loop: the endpoints open on the pin it kept, then its model.
+    await app.press("id:bot-tune");
+    await app.waitFor("id:tune-column-runner");
+    await app.press("id:tune-row-runner-default");
+    await app.waitFor("id:tune-column-endpoint");
+    await app.keyboard.press("right");
+    await app.keyboard.press("right");
+    await app.waitFor("id:tune-column-model");
+    await app.press("id:tune-row-model-fixture");
+    await app.waitUntil(() => app.shows("id:tune-column-thinking") || !app.shows("id:tune-panel"));
+    if (app.shows("id:tune-column-thinking")) {
+      await app.keyboard.press("right");
+      await app.keyboard.press("enter");
+    }
+    await app.waitUntil(() => app.texts().includes(before), { timeout: 10_000 });
+    expect(app.shows("id:composer-refused")).toBe(false);
+  } finally {
+    await app.press("id:story-writer-reset");
+    await app.waitUntil(() => app.texts().includes(before), { timeout: 10_000 });
+  }
+});
+
 test("the editor's description says which key sends", async () => {
   const app = await open();
   await app.waitFor("id:composer-hint");

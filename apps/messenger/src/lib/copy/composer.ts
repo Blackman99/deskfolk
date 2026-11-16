@@ -44,6 +44,10 @@ export const zh = {
   /** A Bot on the app's own loop: the endpoints its model can come from, the first level of the picker. */
   tuneEndpoint: "端点",
   tuneAutomaticHint: "每条消息由应用挑模型",
+  /** The NSH picker's first level, what runs the Bot (the panel's 运行方式): the app on your endpoints, or one of your local agents. */
+  tuneRunnerApp: "端点",
+  tuneRunnerAppHint: "应用用你配的端点跑",
+  tuneRunnerAgent: "本机 Agent",
   tuneFailed: "模型没换成，再试一次。",
 };
 
@@ -79,5 +83,8 @@ export const en: CopyShape<typeof zh> = {
   tuneLabel: "The Bot's model and thinking level",
   tuneEndpoint: "Endpoint",
   tuneAutomaticHint: "The app picks a model per message",
+  tuneRunnerApp: "Endpoints",
+  tuneRunnerAppHint: "The app runs it on your endpoints",
+  tuneRunnerAgent: "Local agent",
   tuneFailed: "The model did not change; try again.",
 };

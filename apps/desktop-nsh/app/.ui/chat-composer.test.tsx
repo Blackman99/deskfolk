@@ -202,12 +202,41 @@ test("the agent picker cascades: a model with levels opens them, a pick commits"
   await app.waitUntil(() => app.texts().some((t) => t.startsWith("picked:") && t.includes("gpt-5.6-mini")));
 });
 
+test("a direct's Bot picker opens on what runs the Bot; a pick under another runner moves the Bot there", async () => {
+  const app = await open();
+  await app.press("id:bot-tune");
+  await app.waitFor("id:tune-column-runner");
+  // The first level alone: the app on your endpoints (the Bot's) and the local agents.
+  expect(app.shows("id:tune-row-runner-default")).toBe(true);
+  expect(app.shows("id:tune-column-endpoint")).toBe(false);
+  await app.press("id:tune-row-runner-default");
+  await app.waitFor("id:tune-column-endpoint");
+  await app.press("id:tune-row-runner-claude_code");
+  await app.waitFor("id:tune-column-model");
+  expect(app.shows("id:tune-column-endpoint")).toBe(false);
+  // Claude Code's own default model; its levels when it lists them, Claude Code's default level.
+  await app.press("id:tune-row-model-default");
+  await app.waitUntil(() => app.shows("id:tune-column-effort") || !app.shows("id:tune-panel"));
+  if (app.shows("id:tune-column-effort")) await app.press("id:tune-row-effort-default");
+  await app.waitFor("id:tune-panel", { state: "gone" });
+  await app.waitUntil(() => app.texts().some((t) => t.startsWith("picked:") && t.includes('"runner":"claude_code"') && t.includes('"agent_model":null')));
+});
+
 test("on a phone the picker and the stop menu open as sheets", async () => {
   const app = await openStory("chat-composer", { width: 420, height: 800 });
   await app.waitFor("id:agent-tune", { timeout: 10_000 });
   await app.press("id:agent-tune");
   await app.waitFor("id:tune-sheet");
   await app.press("id:tune-row-model-gpt-5.6-mini");
+  await app.waitFor("id:tune-sheet", { state: "gone" });
+  // The Bot's picker goes in a level at a time from what runs it; Back goes up one.
+  await app.press("id:bot-tune");
+  await app.waitFor("id:tune-list-runner");
+  await app.press("id:tune-row-runner-claude_code");
+  await app.waitFor("id:tune-list-model");
+  await app.press("id:bottom-sheet-back");
+  await app.waitFor("id:tune-list-runner");
+  await app.press("id:bottom-sheet-close");
   await app.waitFor("id:tune-sheet", { state: "gone" });
   await app.press("id:stop-menu");
   await app.waitFor("id:stop-item-bot");

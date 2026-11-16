@@ -24,7 +24,8 @@ import type { TuneLevel, TuneRow, TuneTree } from "./tune-picker.ts";
  * level, the ones its profile sets, so a pick holds wherever the Bot works. A Bot on the app's own
  * loop picks an endpoint, one of its models and a level (`endpointTuneTree`); a Bot on a local
  * agent picks as a project session does (`AgentTune.svelte`), the agent's names put back into the
- * Bot's fields (`agentBotPatch`).
+ * Bot's fields (`agentBotPatch`). In the NSH composer both sit under what runs the Bot, picked
+ * first (`ui/chat/bot-tune-tree.ts`).
  */
 
 type Endpoint = Pick<Provider, "id" | "name" | "models" | "model_catalog">;
@@ -138,6 +139,23 @@ export function endpointPatch(
   const thinking =
     picked.thinking ?? (same ? (bot.thinking_level ?? "") : applyModelPin(modelSelectValue(picked.endpoint, picked.model), bot.thinking_level ?? "", providers).thinkingLevel);
   if (same && thinking === (bot.thinking_level ?? "")) return null;
+  return { model: picked.model, provider_id: picked.endpoint, thinking_level: isThinkingLevel(thinking) ? thinking : null };
+}
+
+/**
+ * The whole pin a pick on the app's own loop comes to, every field named: what a Bot moved onto
+ * that loop from a local agent takes (`botTuneTree`), where "the same as now" is no reason to send
+ * nothing. No endpoint is automatic; a model picked without a level takes the one it would run at.
+ */
+export function endpointPin(
+  bot: Pick<Bot, "model" | "provider_id" | "thinking_level">,
+  providers: readonly Endpoint[],
+  picked: { endpoint: string; model: string; thinking?: string },
+): Pick<PatchBotRequest, "model" | "provider_id" | "thinking_level"> {
+  if (!picked.endpoint || !picked.model) return { model: null, provider_id: null, thinking_level: null };
+  const same = picked.endpoint === pinnedEndpoint(bot, providers) && picked.model === bot.model;
+  const thinking =
+    picked.thinking ?? (same ? (bot.thinking_level ?? "") : applyModelPin(modelSelectValue(picked.endpoint, picked.model), bot.thinking_level ?? "", providers).thinkingLevel);
   return { model: picked.model, provider_id: picked.endpoint, thinking_level: isThinkingLevel(thinking) ? thinking : null };
 }
 
