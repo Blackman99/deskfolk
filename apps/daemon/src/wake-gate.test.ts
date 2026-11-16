@@ -391,6 +391,9 @@ describe("legacy phase 0–2 holds turn every old wake away, and say so in the w
     const stop = hold(h, "bot", reviewer.id);
     go.resolve();
     await h.waitIdle();
+    // The thread's report back waits on a real quiet timer; on a slow machine (the macOS release
+    // runner) waitIdle came back before it had fired and been held.
+    await h.waitFor(() => suppressed(h, director).length >= 2, { what: "the held mention and report back" });
 
     expect(h.turns(director).filter((turn) => turn.session_id !== room || turn.trigger_message_id !== kickoff.id)).toEqual([]);
     expect(h.store.listPendingCheckBacks(room)).toEqual([]);
