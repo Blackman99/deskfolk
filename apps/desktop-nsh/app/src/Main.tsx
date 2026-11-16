@@ -28,12 +28,18 @@ export function Main() {
   runtime.start();
   // The code colours' grammars and themes, read while the runtime connects.
   warmCodeColors();
-  // What start-up checks wait for (scripts/ci-smoke.ts, package.ts --measure): the first snapshot.
+  // What start-up checks wait for (scripts/ci-smoke.ts, package.ts --measure): the first snapshot;
+  // and every later connection after a lost one (package.ts --smoke: a runtime started again comes
+  // with a new token, which the window has to pick up).
   let announced = false;
+  let connected = false;
   effect(() => {
-    if (announced || runtime.connection !== "connected") return;
-    announced = true;
-    console.log(`ready: ${runtime.snapshot.sessions.length} conversations`);
+    const now = runtime.connection === "connected";
+    if (now && !connected) {
+      console.log(announced ? "reconnected" : `ready: ${runtime.snapshot.sessions.length} conversations`);
+      announced = true;
+    }
+    connected = now;
   });
   const wanted = initialSession;
   if (wanted) {

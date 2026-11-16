@@ -235,7 +235,14 @@ function packageRelease() {
   if (notarize) notarizeAndStaple(dmg, notarize, out);
 
   const gatekeeper = spawnSync("spctl", ["-a", "-vv", "-t", "exec", app], { encoding: "utf8" });
-  console.log(`gatekeeper: ${(gatekeeper.stdout + gatekeeper.stderr).trim().replace(/\n/g, " | ")}`);
+  const verdict = (gatekeeper.stdout + gatekeeper.stderr).trim().replace(/\n/g, " | ");
+  console.log(`gatekeeper: ${verdict}`);
+  if (notarize) {
+    // A notarized release opens with a double-click: Gatekeeper must say so, and both tickets hold.
+    if (gatekeeper.status !== 0 || !verdict.includes("source=Notarized Developer ID")) throw new Error(`Gatekeeper does not accept ${app}: ${verdict}`);
+    console.log(run("xcrun", ["stapler", "validate", app]).trim());
+    console.log(run("xcrun", ["stapler", "validate", dmg]).trim());
+  }
   console.log(`app ${size(app)}, ${dmg} ${size(dmg)}`);
   if (process.env.GITHUB_OUTPUT) writeFileSync(process.env.GITHUB_OUTPUT, `dmg=${dmg}\napp=${app}\n`, { flag: "a" });
   return { app, dmg };
@@ -355,6 +362,9 @@ async function smoke(app: string) {
   }
   if (!again) throw new Error("smoke: the daemon was not started again after it died");
   console.log(`smoke: started again as pid ${again}`);
+  // Its token is new (each start mints one); the window reads the endpoint again and reconnects.
+  if (!(await log.until(/reconnected/, 60_000))) throw new Error("smoke: the window did not reconnect to the daemon started again");
+  console.log("smoke: the window reconnected");
 
   // The menu's Quit: applicationWillTerminate stops the daemon it supervises.
   mkdirSync(checks, { recursive: true });
