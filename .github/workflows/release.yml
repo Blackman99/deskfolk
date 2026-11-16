@@ -5,7 +5,7 @@ name: Release
 # and `Deskfolk_<version>_x64.dmg`, the names the update check of every Deskfolk since 0.1 looks for,
 # with the bundle id and version its installer verifies, so a Mac on the Tauri app updates in place.
 # The release is created only once every check has passed and both images are built, notarized and
-# (on Apple silicon) launched once on the runner with their own daemon.
+# launched once on the runner with their own daemon.
 #
 # Windows and Linux get no package from this workflow for now: their update check finds no asset
 # of theirs in the release and stays on the version they have (the Tauri packaging jobs, last used
@@ -150,13 +150,14 @@ jobs:
       fail-fast: true
       matrix:
         include:
+          # Both are launched once on the runner (--smoke); it is Apple silicon, so the Intel one runs
+          # under Rosetta.
           - triple: aarch64-apple-darwin
             arch: aarch64
-            # The runner is Apple silicon: this image is the one launched for the smoke check.
             smoke: '--smoke'
           - triple: x86_64-apple-darwin
             arch: x64
-            smoke: ''
+            smoke: '--smoke'
     runs-on: macos-latest
     timeout-minutes: 120
     steps:
