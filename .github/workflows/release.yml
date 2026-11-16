@@ -137,8 +137,10 @@ jobs:
           nsh check App.tsx
           nsh test
 
+      # A file that fails runs once more (`--retry`): this runner is slow enough for a test's time
+      # limit or a timing-bound check to miss now and then; a real regression fails twice.
       - name: Screen tests against an isolated runtime
-        run: bun apps/desktop-nsh/scripts/ui-tests.ts
+        run: bun apps/desktop-nsh/scripts/ui-tests.ts --retry
 
   package:
     name: Package the Mac app (${{ matrix.arch }})

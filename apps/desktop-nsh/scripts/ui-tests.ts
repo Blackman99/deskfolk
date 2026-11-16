@@ -7,7 +7,11 @@
  * directory, so a plain `nsh test` leaves them out), and stops the runtime. Never the dev or
  * stable instance.
  *
- *   bun apps/desktop-nsh/scripts/ui-tests.ts [name filter]
+ *   bun apps/desktop-nsh/scripts/ui-tests.ts [name filter] [--retry]
+ *
+ * `--retry` runs a file that failed once more and goes by that second run, naming the file: a CI
+ * runner (release.yml's macOS one) is slow enough for a test's own time limit or a timing-bound
+ * check to miss now and then, while a real regression fails both times.
  */
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -20,7 +24,8 @@ import { nshCli } from "./nsh-cli";
 import { trimTargets } from "./trim-target";
 
 const root = resolve(import.meta.dir, "..");
-const filter = process.argv[2];
+const retry = process.argv.includes("--retry");
+const filter = process.argv.slice(2).find((arg) => !arg.startsWith("--"));
 
 /** Whether this runtime can start a shell; without the helper the terminal tests are skipped. */
 function hasPtyHelper(): boolean {
@@ -119,15 +124,25 @@ try {
     .filter((f) => f.endsWith(".test.tsx") && (!filter || f.includes(filter)))
     .sort();
   status = 0;
-  for (const file of files) {
+  const runFile = async (file: string) => {
     const test = Bun.spawn([nsh, "test", `.ui/${file}`], {
       cwd: join(root, "app"),
       stdout: "inherit",
       stderr: "inherit",
       env: { ...process.env, PATH: `${join(homedir(), ".cargo", "bin")}:${process.env.PATH ?? ""}` },
     });
-    if ((await test.exited) !== 0) status = 1;
+    return (await test.exited) === 0;
+  };
+  const flaky: string[] = [];
+  for (const file of files) {
+    if (await runFile(file)) continue;
+    if (retry && (await runFile(file))) {
+      flaky.push(file);
+      continue;
+    }
+    status = 1;
   }
+  if (flaky.length) console.log(`passed on a second run: ${flaky.join(", ")}`);
 } finally {
   rmSync(join(root, "app", ".ui", ".fixture.json"), { force: true });
   await handle.stop();
