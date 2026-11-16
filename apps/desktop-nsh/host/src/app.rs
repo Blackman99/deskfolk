@@ -11,7 +11,7 @@ use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, ProtocolObject, Sel}
 use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2::{AllocAnyThread, Message};
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSControlStateValueOn, NSEventModifierFlags,
+    NSAlert, NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSControlStateValueOn, NSEventModifierFlags,
     NSImage, NSMenu, NSMenuItem, NSStatusBar, NSStatusItem, NSWorkspace,
 };
 use objc2_foundation::{NSBundle, NSNotification, NSString, NSURL};
@@ -36,7 +36,10 @@ define_class!(
         #[unsafe(method(applicationDidFinishLaunching:))]
         fn did_finish_launching(&self, _notification: &NSNotification) {
             let mtm = self.mtm();
-            new_window(mtm);
+            // A login launch (`--hidden`) keeps to the menu bar until the Dock or the menu asks.
+            if !CONFIG.with(|c| c.get().is_some_and(|config| config.hidden)) {
+                new_window(mtm);
+            }
             crate::wheel::install(mtm);
             crate::press::install(mtm);
             crate::notify::setup(|click_ref| {
@@ -52,6 +55,10 @@ define_class!(
             });
             if let Some(endpoint) = CONFIG.with(|c| c.get().map(|config| config.endpoint.clone())) {
                 crate::notification_loop::start(endpoint);
+            }
+            // A release looks after the daemon inside it from here on (a dev build's does nothing).
+            if let Some(data_dir) = CONFIG.with(|c| c.get().map(|config| config.data_dir.clone())) {
+                crate::runtime::supervise(data_dir);
             }
         }
 
@@ -161,6 +168,19 @@ pub fn run(config: Config) -> std::process::ExitCode {
     std::process::ExitCode::SUCCESS
 }
 
+/// A release that cannot start says why in a dialog of its own: opened from Finder, nothing else
+/// would show it.
+pub fn alert(title: &str, text: &str) {
+    let Some(mtm) = MainThreadMarker::new() else { return };
+    let app = NSApplication::sharedApplication(mtm);
+    app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+    app.activate();
+    let alert = NSAlert::new(mtm);
+    alert.setMessageText(&NSString::from_str(title));
+    alert.setInformativeText(&NSString::from_str(text));
+    alert.runModal();
+}
+
 pub fn new_window(mtm: MainThreadMarker) {
     CONFIG.with(|c| {
         if let Some(config) = c.get() {
@@ -238,10 +258,11 @@ fn main_menu(mtm: MainThreadMarker, delegate: &Delegate) -> Retained<NSMenu> {
     let bar = NSMenu::new(mtm);
     let redo = item(mtm, "Redo", Some(sel!(redo:)), "z");
     redo.setKeyEquivalentModifierMask(NSEventModifierFlags::Command | NSEventModifierFlags::Shift);
-    submenu(mtm, &bar, "Deskfolk Dev", &[
-        item(mtm, "Hide Deskfolk Dev", Some(sel!(hide:)), "h"),
+    let name = crate::config::APP_NAME;
+    submenu(mtm, &bar, name, &[
+        item(mtm, &format!("Hide {name}"), Some(sel!(hide:)), "h"),
         NSMenuItem::separatorItem(mtm),
-        item(mtm, "Quit Deskfolk Dev", Some(sel!(terminate:)), "q"),
+        item(mtm, &format!("Quit {name}"), Some(sel!(terminate:)), "q"),
     ]);
     submenu(mtm, &bar, "File", &[targeted(mtm, "New Window", sel!(newWindow:), "n", delegate)]);
     submenu(mtm, &bar, "Edit", &[
@@ -269,17 +290,18 @@ fn tray(mtm: MainThreadMarker, delegate: &Delegate, data_dir: Option<PathBuf>) -
         match crate::usage_tray::image_of(crate::usage_tray::MARK, crate::usage_tray::MARK_PX, crate::usage_tray::MARK_PT) {
             Some(image) => {
                 image.setTemplate(true);
-                image.setAccessibilityDescription(Some(&NSString::from_str("Deskfolk Dev")));
+                image.setAccessibilityDescription(Some(&NSString::from_str(crate::config::APP_NAME)));
                 button.setImage(Some(&image));
             }
             None => button.setTitle(&NSString::from_str("DF")),
         }
     }
     let menu = NSMenu::new(mtm);
-    menu.addItem(&targeted(mtm, "Show Deskfolk Dev", sel!(showWindow:), "", delegate));
+    let name = crate::config::APP_NAME;
+    menu.addItem(&targeted(mtm, &format!("Show {name}"), sel!(showWindow:), "", delegate));
     menu.addItem(&targeted(mtm, "New Window", sel!(newWindow:), "", delegate));
     menu.addItem(&NSMenuItem::separatorItem(mtm));
-    menu.addItem(&item(mtm, "Quit Deskfolk Dev", Some(sel!(terminate:)), ""));
+    menu.addItem(&item(mtm, &format!("Quit {name}"), Some(sel!(terminate:)), ""));
     status.setMenu(Some(&menu));
     if let Some(data_dir) = data_dir {
         let target: Retained<NSObject> = Retained::into_super(delegate.retain());
@@ -340,7 +362,7 @@ fn watch_bundle(path: PathBuf) {
 /// Development checks: `<dir>/request` asks the shell for something, by its first line: empty for
 /// a picture of every window, `new-window`, `badge <label>` (empty clears), `notify <text>`,
 /// `wheel <x> <y> <dy> [ctrl]`, `resize <w> <h> [steps] [ms]`, `drag <x0> <y0> <x1> <y1> [steps] [ms]`,
-/// `keys <text>`, `chord <keystroke>`, `compose [text]`, `commit <text>`, `tray [title]`.
+/// `keys <text>`, `chord <keystroke>`, `compose [text]`, `commit <text>`, `tray [title]`, `quit`.
 fn watch_snapshot_requests(dir: PathBuf) {
     let _ = std::fs::create_dir_all(&dir);
     std::thread::spawn(move || {
@@ -367,8 +389,11 @@ fn watch_snapshot_requests(dir: PathBuf) {
                     ("compose", text) => crate::window::compose_first(text, false),
                     ("commit", text) => crate::window::compose_first(text, true),
                     ("tray", title) => tray_request(mtm, title),
+                    // Quits as the menu's Quit does, so `applicationWillTerminate` stops the runtime
+                    // (`scripts/package.ts --smoke`).
+                    ("quit", _) => NSApplication::sharedApplication(mtm).terminate(None),
                     ("notify", body) => {
-                        if let Err(why) = crate::notify::post("dev-check", "Deskfolk Dev", body) {
+                        if let Err(why) = crate::notify::post("dev-check", crate::config::APP_NAME, body) {
                             log::warn!("notify: {why}");
                         }
                     }

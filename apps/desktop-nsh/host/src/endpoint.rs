@@ -102,6 +102,24 @@ pub fn read(data_dir: &Path) -> Result<Endpoint, EndpointError> {
     parse(&text, instance())
 }
 
+static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Set once from the arguments: the data directory whose descriptor names the runtime.
+pub fn remember_data_dir(dir: &Path) {
+    let _ = DATA_DIR.set(dir.to_path_buf());
+}
+
+pub fn data_dir() -> Option<PathBuf> {
+    DATA_DIR.get().cloned()
+}
+
+/// Where the runtime listens now, by its descriptor, or `fallback` while there is none to read. A
+/// runtime that started again mints a new token (`mintLocalToken`), so the address a window was
+/// opened with goes stale; the Tauri app re-reads it on every tick for the same reason.
+pub fn fresh(fallback: &Endpoint) -> Endpoint {
+    DATA_DIR.get().and_then(|dir| read(dir).ok()).unwrap_or_else(|| fallback.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

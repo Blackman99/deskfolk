@@ -138,10 +138,12 @@ describe("the dev app wears the app's icon", () => {
 
   test("is the icns every build wears, named in both bundles' Info.plist", () => {
     expect(readFileSync(APP_ICON).subarray(0, 4).toString("latin1")).toBe("icns");
-    for (const script of ["dev.ts", "package.ts"]) {
-      const source = readFileSync(join(import.meta.dir, script), "utf8");
-      expect(source).toContain("<key>CFBundleIconFile</key><string>${APP_ICON_FILE}</string>");
-      expect(source).toContain("placeAppIcon(");
-    }
+    const dev = readFileSync(join(import.meta.dir, "dev.ts"), "utf8");
+    expect(dev).toContain("<key>CFBundleIconFile</key><string>${APP_ICON_FILE}</string>");
+    expect(dev).toContain("placeAppIcon(");
+    // package.ts writes both bundles' Info.plist with `infoPlist` (package.test.ts reads it back).
+    const packaging = readFileSync(join(import.meta.dir, "package.ts"), "utf8");
+    expect(packaging).toContain(`entry("CFBundleIconFile", APP_ICON_FILE)`);
+    expect(packaging.match(/placeAppIcon\(app\)/g)?.length).toBe(2);
   });
 });

@@ -1,5 +1,19 @@
 name: Release
 
+# A `v*` tag publishes Deskfolk. Since 0.5.0 the Mac app is the native one (`apps/desktop-nsh`,
+# ADR 0107): `apps/desktop-nsh/scripts/package.ts --release` builds `Deskfolk_<version>_aarch64.dmg`
+# and `Deskfolk_<version>_x64.dmg`, the names the update check of every Deskfolk since 0.1 looks for,
+# with the bundle id and version its installer verifies, so a Mac on the Tauri app updates in place.
+# The release is created only once every check has passed and both images are built, notarized and
+# (on Apple silicon) launched once on the runner with their own daemon.
+#
+# Windows and Linux get no package from this workflow for now: their update check finds no asset
+# of theirs in the release and stays on the version they have (the Tauri packaging jobs, last used
+# for 0.4.0, are in git history).
+#
+# Run by hand (Actions → Release → Run workflow), it does everything but publish and keeps the
+# images as the run's artifacts.
+
 on:
   push:
     tags: ['v*']
@@ -7,6 +21,12 @@ on:
 
 permissions:
   contents: write
+
+# The `nsh` CLI comes from the NSH commit `apps/desktop-nsh/Cargo.toml` pins its crates to, built by
+# `scripts/nsh-cli.ts` (bundle format and engine must match), cached by that commit as in
+# nsh-desktop.yml.
+env:
+  DESKFOLK_NSH_CACHE: ${{ github.workspace }}/../nsh-cli-cache
 
 jobs:
   verify:
@@ -54,33 +74,88 @@ jobs:
       - name: Build messenger
         run: pnpm --filter @real-bot/messenger build
 
-  # The Windows half of the verification: windows.yml's unit checks, without its own installer.
-  verify-windows:
-    name: Verify on Windows
-    uses: ./.github/workflows/windows.yml
-    with:
-      skip-bundle: true
+  # The native app's own checks on macOS (nsh-desktop.yml runs them on Windows and Linux).
+  verify-nsh:
+    name: Verify the native app on macOS
+    runs-on: macos-latest
+    # A cache miss builds the nsh CLI first (~30 minutes).
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
 
-  # The Linux half: linux.yml's crate and script checks on Ubuntu 22.04, without its own packages.
-  verify-linux:
-    name: Verify on Linux
-    uses: ./.github/workflows/linux.yml
-    with:
-      skip-bundle: true
+      - uses: pnpm/action-setup@v6
 
-  publish:
-    name: Package macOS snapshot
-    needs: verify
-    permissions:
-      contents: write
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop-nsh -> target
+
+      - name: The pinned NSH commit
+        id: nsh
+        run: echo "rev=$(grep -m1 '^nsh-core' apps/desktop-nsh/Cargo.toml | sed -E 's/.*rev = "([0-9a-f]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nsh CLI of that commit
+        id: nsh-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.DESKFOLK_NSH_CACHE }}
+          key: nsh-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.nsh.outputs.rev }}
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build nsh at the pinned commit
+        run: |
+          nsh="$(bun apps/desktop-nsh/scripts/nsh-cli.ts | tail -1)"
+          dirname "$nsh" >> "$GITHUB_PATH"
+
+      - name: Save the nsh CLI of that commit
+        if: steps.nsh-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.DESKFOLK_NSH_CACHE }}
+          key: nsh-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.nsh.outputs.rev }}
+
+      - name: Rust tests (shell, components, the app's crate)
+        working-directory: apps/desktop-nsh
+        run: cargo test --workspace
+
+      - name: Type-check and headless UI tests
+        working-directory: apps/desktop-nsh/app
+        run: |
+          nsh check App.tsx
+          nsh test
+
+      - name: Screen tests against an isolated runtime
+        run: bun apps/desktop-nsh/scripts/ui-tests.ts
+
+  package:
+    name: Package the Mac app (${{ matrix.arch }})
+    needs: [verify, verify-nsh]
     strategy:
-      fail-fast: false
+      # A release carries both images or none: Intel Macs would otherwise see no update at all.
+      fail-fast: true
       matrix:
         include:
           - triple: aarch64-apple-darwin
+            arch: aarch64
+            # The runner is Apple silicon: this image is the one launched for the smoke check.
+            smoke: '--smoke'
           - triple: x86_64-apple-darwin
+            arch: x64
+            smoke: ''
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
 
@@ -101,16 +176,27 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri -> target
+          workspaces: apps/desktop-nsh -> target
+          key: ${{ matrix.triple }}
+
+      - name: The pinned NSH commit
+        id: nsh
+        run: echo "rev=$(grep -m1 '^nsh-core' apps/desktop-nsh/Cargo.toml | sed -E 's/.*rev = "([0-9a-f]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nsh CLI of that commit
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.DESKFOLK_NSH_CACHE }}
+          key: nsh-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.nsh.outputs.rev }}
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
       # Developer ID signing and notarization turn on once the repository has these secrets; without
       # them the build stays ad-hoc signed and nothing below is exported (an empty
-      # APPLE_SIGNING_IDENTITY or APPLE_ID would make Tauri sign with "" or notarize an ad-hoc app).
-      # The certificate goes into a throwaway keychain before the build because build-native signs the
-      # bundled daemon, pty and helper before Tauri would import it. See docs/notarization.md.
+      # APPLE_SIGNING_IDENTITY or APPLE_ID would sign with "" or notarize an ad-hoc app). The
+      # certificate goes into a throwaway keychain: build-native signs the daemon and its helpers,
+      # then package.ts the app and the dmg, with no prompt. See docs/notarization.md.
       - name: Developer ID signing (when configured)
         env:
           SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -146,197 +232,53 @@ jobs:
             echo "::warning::Signing with Developer ID but not notarizing: APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID are not all set."
           fi
 
+      - name: Package, sign, notarize
+        run: |
+          sign=adhoc
+          notarize=()
+          [ -n "${APPLE_SIGNING_IDENTITY:-}" ] && sign=developer-id
+          [ -n "${APPLE_ID:-}" ] && notarize=(--notarize env)
+          bun apps/desktop-nsh/scripts/package.ts --release --target ${{ matrix.triple }} --sign "$sign" "${notarize[@]}" ${{ matrix.smoke }} --out "$RUNNER_TEMP/deskfolk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deskfolk-macos-${{ matrix.arch }}
+          path: ${{ runner.temp }}/deskfolk/*.dmg
+          if-no-files-found: error
+
+  # One step, once both images exist: no half release for anyone's update check to find.
+  publish:
+    name: Publish the release
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: deskfolk-macos-*
+          merge-multiple: true
+          path: dist
+
       # The body is this version's CHANGELOG section: the app renders it in the About card when it
       # finds an update, so it has to say what changed rather than point at the file.
-      # MACOS_NOTARIZED picks the signing note under it; the Windows job computes the same value.
+      # MACOS_NOTARIZED picks the signing note under it.
       - name: Release notes from CHANGELOG
-        id: notes
         env:
           MACOS_NOTARIZED: ${{ secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+        run: bun apps/desktop/scripts/release-notes.ts > "$RUNNER_TEMP/notes.md"
+
+      - name: Create the release with both images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          {
-            echo 'body<<RELEASE_NOTES_EOF'
-            bun apps/desktop/scripts/release-notes.ts
-            echo
-            echo RELEASE_NOTES_EOF
-          } >> "$GITHUB_OUTPUT"
-
-      - uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: apps/desktop
-          tauriScript: pnpm tauri
-          tagName: v__VERSION__
-          releaseName: Deskfolk v__VERSION__
-          releaseBody: ${{ steps.notes.outputs.body }}
-          releaseDraft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          generateReleaseNotes: false
-          uploadUpdaterJson: false
-          args: --target ${{ matrix.triple }}
-
-  # Same release, same tag: tauri-action finds the one the macOS jobs create (or creates it first)
-  # and adds Deskfolk_<version>_x64-setup.exe, the asset the Windows update check looks for. A
-  # release without it is no update for Windows at all, so a failed Windows job only holds back
-  # Windows users; it never points them at a page with nothing to install.
-  publish-windows:
-    name: Package Windows installer
-    needs: [verify, verify-windows]
-    permissions:
-      contents: write
-    runs-on: windows-latest
-    timeout-minutes: 60
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            apps/conpty-helper -> target
-            apps/desktop/src-tauri -> target
-            apps/rtc-helper -> target
-
-      - name: Install JavaScript dependencies
-        run: pnpm install --frozen-lockfile
-
-      # Code signing turns on once WINDOWS_SIGN_COMMAND is set: a command in the form of Tauri's
-      # `bundle.windows.signCommand` string, `%1` standing for the file. Tauri signs the app and
-      # the installer with it; build-native signs the daemon, the pty helper and the WebRTC helper
-      # with the same value. Without it the installer stays unsigned, and SmartScreen warns on first run.
-      # trusted-signing-cli (Azure Trusted Signing) is installed when the command names it, and
-      # reads its credentials from the AZURE_* secrets passed to the build below.
-      - name: Windows signing (when configured)
-        env:
-          SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
-        run: |
-          if [ -z "$SIGN_COMMAND" ]; then
-            echo "No WINDOWS_SIGN_COMMAND secret: this installer stays unsigned."
-            exit 0
-          fi
-          case "$SIGN_COMMAND" in
-            trusted-signing-cli\ *) cargo install trusted-signing-cli --locked ;;
-          esac
-          # Forward slashes (cygpath -m): tauri-action splits `args` itself and backslashes would not survive.
-          export CONFIG="$(cygpath -m "$RUNNER_TEMP/tauri-windows-signing.json")"
-          bun -e 'await Bun.write(process.env.CONFIG, JSON.stringify({ bundle: { windows: { signCommand: process.env.SIGN_COMMAND } } }))'
-          {
-            echo "REAL_BOT_WINDOWS_SIGN_COMMAND=$SIGN_COMMAND"
-            echo "TAURI_SIGNING_ARGS=--config $CONFIG"
-          } >> "$GITHUB_ENV"
-
-      - name: Release notes from CHANGELOG
-        id: notes
-        env:
-          MACOS_NOTARIZED: ${{ secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
-        run: |
-          {
-            echo 'body<<RELEASE_NOTES_EOF'
-            bun apps/desktop/scripts/release-notes.ts
-            echo
-            echo RELEASE_NOTES_EOF
-          } >> "$GITHUB_OUTPUT"
-
-      - uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        with:
-          projectPath: apps/desktop
-          tauriScript: pnpm tauri
-          tagName: v__VERSION__
-          releaseName: Deskfolk v__VERSION__
-          releaseBody: ${{ steps.notes.outputs.body }}
-          releaseDraft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          generateReleaseNotes: false
-          uploadUpdaterJson: false
-          args: --bundles nsis ${{ env.TAURI_SIGNING_ARGS }}
-
-  # Same release, same tag again: Deskfolk_<version>_amd64.AppImage and Deskfolk_<version>_amd64.deb,
-  # the assets the Linux update check looks for (the AppImage for a copy running as one, the deb
-  # otherwise). Ubuntu 22.04, so the AppImage runs on that glibc and newer. Unsigned: there is no
-  # Linux signing to configure. A failed job only holds back Linux users, as with Windows.
-  publish-linux:
-    name: Package Linux deb and AppImage
-    needs: [verify, verify-linux]
-    permissions:
-      contents: write
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            apps/conpty-helper -> target
-            apps/desktop/src-tauri -> target
-
-      - name: Install system libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential curl file patchelf libssl-dev libxdo-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
-
-      - name: Install JavaScript dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Release notes from CHANGELOG
-        id: notes
-        env:
-          MACOS_NOTARIZED: ${{ secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
-        run: |
-          {
-            echo 'body<<RELEASE_NOTES_EOF'
-            bun apps/desktop/scripts/release-notes.ts
-            echo
-            echo RELEASE_NOTES_EOF
-          } >> "$GITHUB_OUTPUT"
-
-      # linuxdeploy is itself an AppImage; extracting it instead of mounting it needs no FUSE.
-      - uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPIMAGE_EXTRACT_AND_RUN: 1
-        with:
-          projectPath: apps/desktop
-          tauriScript: pnpm tauri
-          tagName: v__VERSION__
-          releaseName: Deskfolk v__VERSION__
-          releaseBody: ${{ steps.notes.outputs.body }}
-          releaseDraft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          generateReleaseNotes: false
-          uploadUpdaterJson: false
-          args: --bundles deb,appimage
+          ls -la dist
+          prerelease=()
+          case "$GITHUB_REF_NAME" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg --verify-tag --title "Deskfolk $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" "${prerelease[@]}"

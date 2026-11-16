@@ -87,9 +87,9 @@ pub fn state() -> &'static Arc<NotificationState> {
 
 static ENDPOINT: OnceLock<Endpoint> = OnceLock::new();
 
-/// Where the runtime listens, once the loop has started.
+/// Where the runtime listens now (`endpoint::fresh`), once the loop has started.
 pub fn endpoint() -> Option<Endpoint> {
-    ENDPOINT.get().cloned()
+    ENDPOINT.get().map(crate::endpoint::fresh)
 }
 
 /// Starts the loop for the process, once, against the runtime at `endpoint`.
@@ -202,7 +202,8 @@ pub fn poll_cycle(state: &NotificationState, endpoint: &Endpoint) {
     }
 }
 
-/// The loop's thread: every 2 s, until `stop`. `endpoint` is where the runtime listens.
+/// The loop's thread: every 2 s, until `stop`. `endpoint` is where the runtime listened when the
+/// loop started; each pass reads it again (`endpoint::fresh`: a restarted runtime has a new token).
 pub fn spawn_loop(state: Arc<NotificationState>, endpoint: Endpoint) {
     let _ = std::thread::Builder::new().name("notifications".into()).spawn(move || {
         while !state.quitting.load(Ordering::SeqCst) {
@@ -210,7 +211,7 @@ pub fn spawn_loop(state: Arc<NotificationState>, endpoint: Endpoint) {
             if state.quitting.load(Ordering::SeqCst) {
                 break;
             }
-            poll_cycle(&state, &endpoint);
+            poll_cycle(&state, &crate::endpoint::fresh(&endpoint));
         }
     });
 }

@@ -10,7 +10,7 @@
  * picks. The languages are marked off with HTML comments: invisible wherever the body is
  * rendered as Markdown, so the release page just shows the sections stacked.
  *
- * `release.yml` runs this before `tauri-action` and hands the output to `releaseBody`.
+ * `release.yml` runs this in its publish job and creates the release with the output as its body.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -19,14 +19,17 @@ import { fileURLToPath } from "node:url";
 /**
  * Said only when release.yml really notarizes: it sets `MACOS_NOTARIZED=true` when the repository
  * has the Developer ID certificate and all three notary secrets, and a notarization that fails
- * fails the macOS job, so no un-notarized `.dmg` ships under this note. The Windows and Linux jobs
- * set the same value, so whichever job creates the release writes the same body.
+ * fails the packaging job, so no un-notarized `.dmg` ships under this note.
+ *
+ * Since 0.5.0 the Mac app is the native one (ADR 0107), on NSH's own floor of macOS 14, and
+ * release.yml packages nothing for Windows or Linux: the note says so, because an install there finds
+ * no update and someone reading the release page should know why.
  */
 const NOTARIZED_NOTE = `---
 
-The macOS \`.dmg\` builds are signed with Developer ID and notarized by Apple: they open with a double-click.
+The macOS \`.dmg\` builds are signed with Developer ID and notarized by Apple: they open with a double-click. The Mac app is the native one (no web view) and needs macOS 14 or later.
 
-The Windows installer is not signed yet: SmartScreen warns about an unknown publisher (More info → Run anyway). The Linux AppImage and deb are an experimental preview (docs/linux.md). See CHANGELOG.md and ROADMAP.md.`;
+This release has no Windows or Linux package: installs there keep the version they have, and the last installers for them are on the 0.4.0 release. See CHANGELOG.md and ROADMAP.md.`;
 
 const UNSIGNED_NOTE = `---
 
@@ -39,7 +42,7 @@ pnpm install
 pnpm dev
 \`\`\`
 
-The Windows installer and the Linux AppImage and deb are experimental previews (docs/windows.md, docs/linux.md). See CHANGELOG.md and ROADMAP.md.`;
+This release has no Windows or Linux package. See CHANGELOG.md and ROADMAP.md.`;
 
 /**
  * The lines under `## <version>`, up to the next `## `. The heading itself stays out: the release

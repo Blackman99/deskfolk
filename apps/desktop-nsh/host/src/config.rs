@@ -4,6 +4,27 @@ use std::path::PathBuf;
 
 use crate::endpoint::Endpoint;
 
+/// Whether this binary is the released app: `scripts/package.ts --release` builds it with
+/// `DESKFOLK_RELEASE` set. Only that build is Deskfolk itself (`com.real-bot.desktop`, the standard
+/// data directory, 17890) and starts the daemon that ships inside its `.app`; every other build is
+/// the dev build beside it.
+pub const RELEASE: bool = option_env!("DESKFOLK_RELEASE").is_some();
+
+/// What the app is called and its bundle id: the Tauri app's in a release, the dev build's otherwise.
+pub const APP_NAME: &str = if RELEASE { "Deskfolk" } else { "Deskfolk Dev" };
+pub const BUNDLE_ID: &str = if RELEASE { "com.real-bot.desktop" } else { "com.real-bot.desktop.nsh-dev" };
+
+/// `--identity`: what this build calls itself, and whether a dev runtime command is baked into it.
+pub fn identity() -> String {
+    serde_json::json!({
+        "name": APP_NAME,
+        "id": BUNDLE_ID,
+        "release": RELEASE,
+        "devRuntime": crate::runtime::has_dev_command(),
+    })
+    .to_string()
+}
+
 pub struct Config {
     pub bundle: PathBuf,
     pub data_dir: PathBuf,
@@ -29,9 +50,12 @@ pub struct Config {
     pub terminal: Option<String>,
     /// Development: the bundle is `Story.tsx`'s and this names the screen it opens.
     pub story: Option<String>,
+    /// Started without a window (`--hidden`, the Tauri app's login launch): the menu bar item and
+    /// the runtime run, and the first window opens from the Dock or the menu.
+    pub hidden: bool,
 }
 
-pub const USAGE: &str = "deskfolk-nsh [--bundle <bundle.js|bundle.nshc>] [--data-dir <runtime data dir>] [--watch] [--background] [--snapshots <dir>] [--open-session <id>] [--pane chat|terminal|pdf] [--pdf <path>] [--fps] [--scroll-probe] [--terminal canvas|native] [--story <name>] [--stable-instance]";
+pub const USAGE: &str = "deskfolk-nsh [--bundle <bundle.js|bundle.nshc>] [--data-dir <runtime data dir>] [--watch] [--background] [--hidden] [--snapshots <dir>] [--open-session <id>] [--pane chat|terminal|pdf] [--pdf <path>] [--fps] [--scroll-probe] [--terminal canvas|native] [--story <name>] [--stable-instance]";
 
 pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
     let mut bundle = None;
@@ -46,7 +70,9 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
     let mut scroll_probe = false;
     let mut terminal = None;
     let mut story = None;
-    let mut stable = false;
+    // The released app is the stable instance, always.
+    let mut stable = RELEASE;
+    let mut hidden = false;
     let mut args = args.skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -54,6 +80,7 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
             "--data-dir" => data_dir = args.next().map(PathBuf::from),
             "--watch" => watch = true,
             "--background" => background = true,
+            "--hidden" => hidden = true,
             "--snapshots" => snapshots = args.next().map(PathBuf::from),
             "--open-session" => open_session = args.next(),
             "--pane" => pane = args.next(),
@@ -75,15 +102,20 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
     let bundle = bundle.or_else(packaged_bundle).ok_or_else(|| format!("--bundle is required outside the .app\nusage: {USAGE}"))?;
     let instance = if stable { crate::endpoint::Instance::Stable } else { crate::endpoint::Instance::Dev };
     crate::endpoint::choose(instance);
-    let data_dir = data_dir.unwrap_or_else(|| if stable { stable_data_dir() } else { dev_data_dir() });
+    // A release honours `REAL_BOT_DATA_DIR` as the Tauri app and its daemon do (`local_api::data_dir`).
+    let data_dir = data_dir
+        .or_else(|| RELEASE.then(|| std::env::var_os("REAL_BOT_DATA_DIR").filter(|dir| !dir.is_empty()).map(PathBuf::from)).flatten())
+        .unwrap_or_else(|| if stable { stable_data_dir() } else { dev_data_dir() });
+    crate::endpoint::remember_data_dir(&data_dir);
     crate::runtime::ensure(&data_dir)?;
     let endpoint = crate::endpoint::read(&data_dir).map_err(|e| e.to_string())?;
     Ok(Config {
         bundle,
         data_dir,
         endpoint,
-        app_name: "Deskfolk Dev".into(),
-        bundle_id: "com.real-bot.desktop.nsh-dev".into(),
+        app_name: APP_NAME.into(),
+        bundle_id: BUNDLE_ID.into(),
+        hidden,
         watch,
         background,
         snapshots,

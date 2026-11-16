@@ -21,8 +21,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::dev_build::Identity;
 
-/// Stable app: `com.real-bot.runtime`. This shell's agent would be its own job.
-pub const LABEL: &str = "com.real-bot.runtime.nsh-dev";
+/// The Tauri app's `com.real-bot.runtime` in a release; the dev build's agent would be its own job.
+pub const LABEL: &str = if crate::config::RELEASE { "com.real-bot.runtime" } else { "com.real-bot.runtime.nsh-dev" };
 pub const MARKER_NAME: &str = "runtime.independent";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -124,6 +124,12 @@ pub struct Supervision {
 }
 
 static SUPERVISION: Mutex<Supervision> = Mutex::new(Supervision { supervising: true, bootstrapped: false });
+
+/// Whether the window looks after the runtime (`runtime::supervise`, `runtime::stop`): always, until
+/// an independent runtime can be adopted.
+pub fn supervising() -> bool {
+    SUPERVISION.lock().map(|s| s.supervising).unwrap_or(true)
+}
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]

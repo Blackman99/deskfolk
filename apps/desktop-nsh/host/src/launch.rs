@@ -47,13 +47,19 @@ fn material() -> &'static str {
 pub fn channel(config: &Config, window_id: u32) -> HostChannel {
     let host = HostChannel::new();
     host.set_params(params(config, window_id));
-    let endpoint = json!({ "origin": config.endpoint.origin, "token": config.endpoint.token });
+    // Read again on every ask: a runtime that started again has a new token, and the messenger asks
+    // for the endpoint each time it connects (`local-discovery.ts`).
+    let opened_with = config.endpoint.clone();
+    let endpoint = move || {
+        let now = crate::endpoint::fresh(&opened_with);
+        json!({ "origin": now.origin, "token": now.token })
+    };
     {
         let endpoint = endpoint.clone();
-        host.handle("runtime.endpoint", move |call: HostCall| call.resolve(endpoint.clone()));
+        host.handle("runtime.endpoint", move |call: HostCall| call.resolve(endpoint()));
     }
     // The messenger's Tauri commands (`app/src/platform/tauri-bridge.ts`), by their Tauri names.
-    host.handle("tauri.local_api_endpoint", move |call: HostCall| call.resolve(endpoint.clone()));
+    host.handle("tauri.local_api_endpoint", move |call: HostCall| call.resolve(endpoint()));
     host.handle("tauri.app_version", |call: HostCall| call.resolve(json!(crate::config::product_version())));
     host.handle("tauri.window_material", |call: HostCall| call.resolve(json!(material())));
     install_portable(&host);
@@ -160,6 +166,7 @@ mod tests {
             scroll_probe: false,
             terminal: None,
             story: None,
+            hidden: false,
         }
     }
 

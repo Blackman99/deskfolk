@@ -78,11 +78,11 @@ test("the body carries the section first and the unsigned note after it", () => 
 });
 
 /** The notarized note is said only when release.yml really notarizes (MACOS_NOTARIZED). */
-test("a notarized release says so instead of the unsigned note, and still names the unsigned Windows installer", () => {
+test("a notarized release says so instead of the unsigned note, and that Windows and Linux have no package in it", () => {
   const body = releaseBody(CHANGELOG, null, "0.2.0", true);
   expect(body).toContain("notarized by Apple");
-  expect(body).toContain("SmartScreen");
-  expect(body).toContain("Linux AppImage and deb");
+  expect(body).toContain("needs macOS 14 or later");
+  expect(body).toContain("no Windows or Linux package");
   expect(body).not.toContain("Unsigned macOS snapshot");
   expect(body.indexOf("- 新的一条。")).toBeLessThan(body.indexOf("notarized by Apple"));
   expect(releaseBody(CHANGELOG, null, "0.2.0")).not.toContain("notarized by Apple");

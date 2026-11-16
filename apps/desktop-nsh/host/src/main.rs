@@ -1,4 +1,5 @@
-//! Deskfolk's native shell (NSH dev build). See `apps/desktop-nsh/README.md`.
+//! Deskfolk's native shell: the released app (`config::RELEASE`) or the dev build beside it. See
+//! `apps/desktop-nsh/README.md`.
 
 #[cfg(target_os = "macos")]
 mod app;
@@ -84,10 +85,20 @@ static LOGGER: Logger = Logger;
 
 fn main() -> std::process::ExitCode {
     let _ = log::set_logger(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Info));
+    // What this build is, for `scripts/package.ts` to check before it signs anything.
+    if std::env::args().any(|arg| arg == "--identity") {
+        println!("{}", config::identity());
+        return std::process::ExitCode::SUCCESS;
+    }
     let config = match config::from_args(std::env::args()) {
         Ok(config) => config,
         Err(why) => {
             eprintln!("deskfolk-nsh: {why}");
+            // Opened from Finder there is no terminal to read that line in.
+            #[cfg(target_os = "macos")]
+            if config::RELEASE {
+                app::alert("Deskfolk could not start", &why);
+            }
             return std::process::ExitCode::FAILURE;
         }
     };

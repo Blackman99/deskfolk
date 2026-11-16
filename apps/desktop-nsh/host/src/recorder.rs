@@ -123,7 +123,7 @@ pub fn start(mtm: MainThreadMarker, answer: impl FnOnce(Result<(), String>) + 's
             // SAFETY: as above; the block lives as long as AVFoundation needs it.
             unsafe { AVCaptureDevice::requestAccessForMediaType_completionHandler(audio, &asked) };
         }
-        _ => answer(Err(dom_error("NotAllowedError", "the microphone is not allowed for Deskfolk Dev"))),
+        _ => answer(Err(dom_error("NotAllowedError", &format!("the microphone is not allowed for {}", crate::config::APP_NAME)))),
     }
 }
 
