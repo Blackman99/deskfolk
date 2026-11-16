@@ -9,9 +9,9 @@
  *
  *   bun apps/desktop-nsh/scripts/ui-tests.ts [name filter] [--retry]
  *
- * `--retry` runs a file that failed once more and goes by that second run, naming the file: a CI
- * runner (release.yml's macOS one) is slow enough for a test's own time limit or a timing-bound
- * check to miss now and then, while a real regression fails both times.
+ * `--retry` runs a file that failed once more and goes by that second run, naming the file: a slow
+ * CI runner can miss a test's own time limit or a timing-bound check now and then, while a real
+ * regression fails both times.
  */
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";

@@ -137,13 +137,9 @@ jobs:
           nsh check App.tsx
           nsh test
 
-      # Reported, not a gate. A file that fails runs once more (`--retry`), and two tests still
-      # miss on this runner alone (misc-search's thousands of hits run past its 30 s limit;
-      # remote-screen's trackpad slide is read as a press): they pass on nsh-desktop.yml's Linux
-      # runner, which runs them on every push to main, and on a Mac.
-      - name: Screen tests against an isolated runtime
-        continue-on-error: true
-        run: bun apps/desktop-nsh/scripts/ui-tests.ts --retry
+      # The screen tests (`scripts/ui-tests.ts`) are not run here: nsh-desktop.yml runs them on Linux
+      # on every push to main, and on this runner two of them miss on its speed alone while the job
+      # would run past its time limit on a tag, which builds the nsh CLI afresh.
 
   package:
     name: Package the Mac app (${{ matrix.arch }})
@@ -230,6 +226,13 @@ jobs:
           security find-identity -v -p codesigning "$keychain"
           echo "APPLE_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
           if [ -n "$NOTARY_APPLE_ID" ] && [ -n "$NOTARY_PASSWORD" ] && [ -n "$NOTARY_TEAM_ID" ]; then
+            # Asked before the half-hour build: Apple refuses every submission (403) while the account
+            # has an agreement left to accept, and that should fail here, in seconds.
+            if ! xcrun notarytool history --apple-id "$NOTARY_APPLE_ID" --password "$NOTARY_PASSWORD" --team-id "$NOTARY_TEAM_ID" > "$RUNNER_TEMP/notary-history.txt" 2>&1; then
+              cat "$RUNNER_TEMP/notary-history.txt"
+              echo "::error::Apple's notary service refuses this account (an agreement to accept at developer.apple.com?)"
+              exit 1
+            fi
             {
               echo "APPLE_ID=$NOTARY_APPLE_ID"
               echo "APPLE_PASSWORD=$NOTARY_PASSWORD"
