@@ -6,7 +6,7 @@ Windows 版是刚起步的实验性预览：能装、能跑，但有几样功能
 
 ## 安装
 
-1. 从[最新 Release](https://github.com/Blackman99/deskfolk/releases/latest)下载 `Deskfolk_<版本>_x64-setup.exe`（只有 x64 安装包）。
+1. 从 [0.4.0 Release](https://github.com/Blackman99/deskfolk/releases/tag/v0.4.0) 下载 `Deskfolk_<版本>_x64-setup.exe`（只有 x64 安装包；第一个原生版 0.5.0 还没有 Windows 安装包）。
 2. 运行它。安装包按当前用户安装，不要管理员权限。
 3. 安装包没有签名，SmartScreen 会提示未知发布者：点「更多信息」→「仍要运行」。
 

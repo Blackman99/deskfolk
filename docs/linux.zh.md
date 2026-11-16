@@ -8,7 +8,7 @@ Linux 版是刚起步的实验性预览：能装、能跑，终端、文件和�
 
 只有 x86_64 的包，两种任选：
 
-- **AppImage**：从[最新 Release](https://github.com/Blackman99/deskfolk/releases/latest)下载 `Deskfolk_<版本>_amd64.AppImage`，`chmod +x` 之后直接运行。要能挂 FUSE（大多数桌面发行版自带 `libfuse2`）；没有时可以 `--appimage-extract-and-run`。
+- **AppImage**：从 [0.4.0 Release](https://github.com/Blackman99/deskfolk/releases/tag/v0.4.0) 下载 `Deskfolk_<版本>_amd64.AppImage`（第一个原生版 0.5.0 还没有 Linux 安装包），`chmod +x` 之后直接运行。要能挂 FUSE（大多数桌面发行版自带 `libfuse2`）；没有时可以 `--appimage-extract-and-run`。
 - **deb**（Debian、Ubuntu 及其衍生版）：下载 `Deskfolk_<版本>_amd64.deb`，`sudo apt install ./Deskfolk_<版本>_amd64.deb`。依赖（WebKitGTK 4.1、GTK 3、托盘用的 AppIndicator）由 apt 一起装上。
 
 两个包都在 Ubuntu 22.04 上构建，glibc 2.35 及更新的发行版能跑。包没有签名。

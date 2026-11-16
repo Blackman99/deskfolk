@@ -1,6 +1,6 @@
-# apps/desktop-nsh：NSH 原生客户端（预览）
+# apps/desktop-nsh：NSH 原生客户端
 
-> **预览，在主分支上，还不在正式发布里。** 用 longbridge 的 [Native Shell（NSH）](https://nsh.dev) 重写客户端（跟上游 `main` 的一个提交，见下面「NSH 的版本」）：一份 TSX 界面，跑在 macOS、Windows、Linux 的原生窗口里，也编成 web 包给手机和平板；NSH 没有的东西在它上面补，不用 WebView。结论和数字见 [ADR 0107](../../docs/adr/0107-spike-native-desktop-on-nsh.md)。
+> **0.5.0 起是 Mac 上的正式版**（`scripts/package.ts --release`，见下面「正式版」）；Windows 和 Linux 的宿主还是骨架，还没有发布。用 longbridge 的 [Native Shell（NSH）](https://nsh.dev) 重写客户端（跟上游 `main` 的一个提交，见下面「NSH 的版本」）：一份 TSX 界面，跑在 macOS、Windows、Linux 的原生窗口里，也编成 web 包给手机和平板；NSH 没有的东西在它上面补，不用 WebView。结论和数字见 [ADR 0107](../../docs/adr/0107-spike-native-desktop-on-nsh.md)。
 
 ## 结构
 
@@ -49,6 +49,16 @@
 
 它是顶替，不是并存：装好的稳定版开着时（`local-api.json` 里的进程跑在某个 `.app` 里）两个脚本都拒绝启动，先退出稳定版；稳定版要是登录时自动启动，也会先占住 17890。数据库第一次被这一版的守护进程打开时补上这一版的迁移（几秒）。窗口自己的偏好（工作台布局、侧栏宽度、置顶）存在 `<数据目录>/nsh/com.real-bot.desktop.nsh-dev/storage.json`，和 Tauri 窗口的 WebKit localStorage 是两份。`dev-runtime.ts --stable-instance` 可以单独起运行时，关窗口不影响它；由 `dev.ts` 顺带起的，关窗口时一起停。
 
+## 正式版（macOS）
+
+`bun apps/desktop-nsh/scripts/package.ts --release [--target aarch64-apple-darwin|x86_64-apple-darwin] [--sign developer-id] [--notarize env|<钥匙串配置名>] [--smoke]` 打出 `build/release-<aarch64|x64>/Deskfolk.app` 和 `Deskfolk_<版本>_<aarch64|x64>.dmg`，`release.yml` 发版时就跑它。
+
+- 宿主带 `DESKFOLK_RELEASE` 编（`host/src/config.rs` 的 `RELEASE`）：它就是 Deskfolk 本身，名字、bundle id、数据目录、钥匙串服务、端口都和 Tauri 版一样（Deskfolk、`com.real-bot.desktop`、标准数据目录、`com.real-bot.daemon`、17890），所以装着 Tauri 版的 Mac 在「关于」里就地更新成它，对话、设置和已配对的手机照旧。`REAL_BOT_DATA_DIR` 照样能改数据目录。
+- 守护进程是 `.app` 里的 `Contents/Resources/native/real-bot-daemon`，连同 pty、运行时和 WebRTC 助手、凭据库，由 Tauri 版的 `apps/desktop/scripts/build-native.ts` 编好、签好，放在 Tauri 版放的同一个位置（`--native-from <目录>` 直接拷一份已签名的，本机打包时省掉编译）。宿主启动时没有运行时就起它，带上远程配对通道（`remote_setup.rs`）；之后每秒看一次，没了、也没有别的持有者时再起一个（`runtime.rs`）；菜单的「退出」或应用内更新退出时停掉它。运行时每次启动发一个新令牌，所以宿主每次被问到都重读 `local-api.json`。起不来时弹窗说明原因和 `daemon.log` 的位置。
+- 打包时先问一遍编出来的宿主 `deskfolk-nsh --identity`，确认是正式版、没有烤进开发运行时的命令；`Info.plist` 的 `LSMinimumSystemVersion` 是 14.0（NSH 自己的下限）。
+- `--sign developer-id` 用 `APPLE_SIGNING_IDENTITY`（没有就找钥匙串里的 Developer ID Application；本机会弹钥匙串授权，CI 用临时钥匙串不弹）；`--notarize env` 读 `APPLE_ID`、`APPLE_PASSWORD`、`APPLE_TEAM_ID`，先公证应用、再公证 dmg，两个都装订。
+- `--smoke` 只能在 17890 上没有运行时的机器上跑（CI 的 runner）：起包里的应用，等第一份快照，确认运行时是包里那个守护进程且带配对通道，杀掉它看宿主把它重新拉起，最后经 `--snapshots` 目录的 `quit` 请求退出，确认守护进程跟着停了。这台 Mac 上你自己的运行时占着 17890，正式版只会连上它、不起自己的。
+
 ## 命令
 
 需要：Rust、Bun、Xcode 命令行工具（`nsh` 命令行由脚本自己从源码编，见下面「NSH 的版本」）；web 包还要 `rustup target add wasm32-unknown-unknown` 和 `rustup component add llvm-tools`（`llvm-ar`）；终端要一份 pty helper（macOS `apps/runtime-helper` 的 `swift build`，Linux 和 Windows `apps/conpty-helper`）。跑 `nsh test` / `nsh check` 时 `cargo` 要在 PATH 上（它们会编 `app/native`）。
@@ -64,7 +74,8 @@ bun apps/desktop-nsh/scripts/dev.ts --seed-from-stable   # 空数据目录时从
 bun apps/desktop-nsh/scripts/dev.ts --stable-instance    # 当日常用的版本：顶替稳定版，用你自己的对话、设置和远程控制（见上面）
 bun apps/desktop-nsh/scripts/web-dev.ts        # 编 web 包（app/native 编成 wasm）并在 http://127.0.0.1:17991/ 提供，连开发运行时
 cd apps/desktop-nsh/app && nsh package Hosted.tsx --target web --out ../build/phone   # 手机版（托管）的 web 包，由中继的来源提供
-bun apps/desktop-nsh/scripts/package.ts --sign developer-id [--notarize <notarytool profile>] [--measure 3]
+bun apps/desktop-nsh/scripts/package.ts --sign developer-id [--notarize <notarytool profile>] [--measure 3]   # 开发版的 .app（Deskfolk Dev）
+bun apps/desktop-nsh/scripts/package.ts --release --sign developer-id --notarize env [--smoke]          # 正式版，见上面「正式版」
 ```
 
 测试：

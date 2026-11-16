@@ -8,7 +8,7 @@ The Linux build is a fresh, experimental preview: it installs and runs, and term
 
 x86_64 only, in either of two forms:
 
-- **AppImage**: download `Deskfolk_<version>_amd64.AppImage` from the [latest release](https://github.com/Blackman99/deskfolk/releases/latest), `chmod +x` it and run it. It needs FUSE to mount itself (most desktop distributions ship `libfuse2`); without it, run it with `--appimage-extract-and-run`.
+- **AppImage**: download `Deskfolk_<version>_amd64.AppImage` from the [0.4.0 release](https://github.com/Blackman99/deskfolk/releases/tag/v0.4.0) (0.5.0, the first native release, has no Linux package yet), `chmod +x` it and run it. It needs FUSE to mount itself (most desktop distributions ship `libfuse2`); without it, run it with `--appimage-extract-and-run`.
 - **deb** (Debian, Ubuntu and their derivatives): download `Deskfolk_<version>_amd64.deb` and run `sudo apt install ./Deskfolk_<version>_amd64.deb`. apt installs what it needs with it (WebKitGTK 4.1, GTK 3, AppIndicator for the tray).
 
 Both are built on Ubuntu 22.04 and run on distributions with glibc 2.35 or newer. Neither is signed.

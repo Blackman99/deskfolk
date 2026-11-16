@@ -6,7 +6,7 @@ The Windows build is a fresh, experimental preview: it installs and runs, but a 
 
 ## Install
 
-1. Download `Deskfolk_<version>_x64-setup.exe` from the [latest release](https://github.com/Blackman99/deskfolk/releases/latest) (x64 only).
+1. Download `Deskfolk_<version>_x64-setup.exe` from the [0.4.0 release](https://github.com/Blackman99/deskfolk/releases/tag/v0.4.0) (x64 only; 0.5.0, the first native release, has no Windows installer yet).
 2. Run it. It installs for the current user and needs no administrator rights.
 3. The installer is not signed, so SmartScreen warns about an unknown publisher: choose **More info** → **Run anyway**.
 

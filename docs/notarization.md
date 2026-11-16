@@ -12,11 +12,12 @@ Ship macOS `.dmg` builds signed with **Developer ID Application** and **notarize
 1. Apple Developer Program membership (paid).
 2. Developer ID Application certificate in Keychain (or CI secret).
 3. App-specific password or API key for `notarytool`.
-4. Team ID and bundle ID aligned with `apps/desktop` / Tauri config.
+4. Team ID and bundle ID aligned with `apps/desktop` / Tauri config (`com.real-bot.desktop`, which the native app's release build keeps: `apps/desktop-nsh/scripts/package.ts`).
 
 ## Build / CI checklist
 
-- [x] CI imports the Developer ID certificate from repository secrets into a throwaway keychain before the build (`release.yml`, step "Developer ID signing (when configured)"). It has to come before the build: `build-native.ts` signs the bundled daemon, pty and helper before Tauri would import a certificate itself.
+- [x] CI imports the Developer ID certificate from repository secrets into a throwaway keychain before the build (`release.yml`, step "Developer ID signing (when configured)"). It has to come before the build: `build-native.ts` signs the bundled daemon, pty and helper before the app is signed.
+- [x] From 0.5.0 the Mac app is the native one: `apps/desktop-nsh/scripts/package.ts --release --sign developer-id --notarize env` runs `build-native.ts`, signs `Deskfolk.app` with the hardened runtime and `Entitlements.plist`, has the app (zipped) and then the `.dmg` notarized with `xcrun notarytool` (`APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`) and staples both. The Tauri steps below describe 0.4.0 and earlier.
 - [x] `APPLE_SIGNING_IDENTITY` is exported only when the secret exists; Tauri reads it ahead of `signingIdentity: "-"` in `tauri.conf.json`, and `build-native.ts` signs the nested binaries with it plus `--timestamp` (notarization rejects Developer ID signatures without a secure timestamp).
 - [x] Notarize and staple: Tauri does both for the `.app` when `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` are exported. With the certificate but without all three, the run signs, skips notarization and leaves a warning.
 - [x] Add the repository secrets below (maintainer, 2026-10-10).
