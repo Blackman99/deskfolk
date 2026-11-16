@@ -27,6 +27,8 @@ import type { DragPhase, DragPoint, MeasuredRow, RowRegistry, TabAction, TabLabe
 
 /** One flare of an active tab on a phone, and the room a tab scrolled into view keeps around it. */
 const FLARE = 8;
+/** Between two tabs, so each reads as a tab of its own. */
+const TAB_GAP = 4;
 
 /**
  * A pan that starts where the press went down and reports where the finger is, in the window. The
@@ -254,73 +256,80 @@ export function LeafStrip(props: StripProps) {
     // The strip outlives the tabs it shows: a tab that goes takes its ref with it (a ref kept here kept its views).
     cleanup(() => tabRefs.delete(tabId));
     return (
+      // The tab's slot: the tab and half the gap on either side of it. The slots meet edge to edge, so the
+      // drop zones (`drop-zones.ts`, which add up widths) part two tabs in the middle of the gap between them.
       <View
-        testID={`wb-tab-${tabId}`}
         ref={(node) => tabRefs.set(tabId, node)}
-        // The whole tab is the tab's, its padding and the room round ⋯ and × too: not the strip's window drag.
-        desktop={{ windowDrag: false }}
         onLayout={(e) => {
           const w = e.bounds.size.width;
           // Only the tabs still shown keep a width (dropped here, not as a tab goes: no write while it is torn down).
           if (widths()[tabId] !== w) widths.set({ ...widthsOfShown(), [tabId]: w });
         }}
-        onMouseEnter={() => hovered.set(tabId)}
-        onMouseLeave={() => hovered() === tabId && hovered.set(null)}
-        onContextMenu={(e) => props.onPaneMenu?.({ leafId: leaf().id, tabId, x: e.pagePosition.x, y: e.pagePosition.y })}
-        class={`flex-none flex-row items-center pl-2 pr-[2px] ${props.narrow() ? "rounded-t-(--radius-md)" : "rounded-(--radius-sm)"} ${active() ? (glassShare() === null ? "bg-pane" : GLASS_EDGE) : hovered() === tabId ? "bg-row-hover" : ""}`}
-        style={{
-          height: tabHeight(),
-          opacity: dragged() ? 0.45 : 1,
-          boxShadow: active() && !props.narrow() && glassShare() === null ? shadow("pane") : undefined,
-          backgroundColor: active() && glassShare() !== null ? glassOf("pane", glassShare()!) : undefined,
-        }}
+        class="flex-none"
+        style={{ paddingHorizontal: TAB_GAP / 2 }}
       >
         <View
-          role="tab"
-          testID={`wb-tab-button-${tabId}`}
-          accessibilityState={{ selected: active() }}
-          onPressDown={() => props.onFocus(leaf().id)}
-          onPress={() => {
-            if (Date.now() < swallowUntil) return;
-            props.onActivate(leaf().id, tabId);
+          testID={`wb-tab-${tabId}`}
+          // The whole tab is the tab's, its padding and the room round ⋯ and × too: not the strip's window drag.
+          desktop={{ windowDrag: false }}
+          onMouseEnter={() => hovered.set(tabId)}
+          onMouseLeave={() => hovered() === tabId && hovered.set(null)}
+          onContextMenu={(e) => props.onPaneMenu?.({ leafId: leaf().id, tabId, x: e.pagePosition.x, y: e.pagePosition.y })}
+          class={`flex-none flex-row items-center pl-2 pr-[2px] ${props.narrow() ? "rounded-t-(--radius-md)" : "rounded-(--radius-sm)"} ${active() ? (glassShare() === null ? "bg-pane" : GLASS_EDGE) : hovered() === tabId ? "bg-row-hover" : ""}`}
+          style={{
+            height: tabHeight(),
+            opacity: dragged() ? 0.45 : 1,
+            boxShadow: active() && !props.narrow() && glassShare() === null ? shadow("pane") : undefined,
+            backgroundColor: active() && glassShare() !== null ? glassOf("pane", glassShare()!) : undefined,
           }}
-          class="cursor-pointer select-none group max-w-[180px] h-full pr-1 justify-center"
-          {...pan.panHandlers}
         >
-          {props.tabLabel(liveTab(leaf, tabId))}
-        </View>
-        <If when={actions().length > 0}>
+          <View
+            role="tab"
+            testID={`wb-tab-button-${tabId}`}
+            accessibilityState={{ selected: active() }}
+            onPressDown={() => props.onFocus(leaf().id)}
+            onPress={() => {
+              if (Date.now() < swallowUntil) return;
+              props.onActivate(leaf().id, tabId);
+            }}
+            class="cursor-pointer select-none group max-w-[180px] h-full pr-1 justify-center"
+            {...pan.panHandlers}
+          >
+            {props.tabLabel(liveTab(leaf, tabId))}
+          </View>
+          <If when={actions().length > 0}>
+            <View
+              role="button"
+              testID={`wb-tab-more-${tabId}`}
+              accessibilityLabel={t().tabActions}
+              accessibilityState={{ expanded: open() }}
+              focusable={false}
+              tooltip={tip(t().tabActions)}
+              ref={(node) => (moreRef = node)}
+              onPress={() => {
+                props.onFocus(leaf().id);
+                if (moreRef) props.onToggleMore(tabId, moreRef);
+              }}
+              {...ownTouch}
+              class={`cursor-pointer select-none w-[18px] h-[18px] shrink-0 rounded-full items-center justify-center hover:bg-row-hover ${open() ? "bg-row-hover" : ""}`}
+              style={{ opacity: shown() || open() ? 1 : 0 }}
+            >
+              <Icon name="more" size={12} class="tint-ink-muted" />
+            </View>
+          </If>
           <View
             role="button"
-            testID={`wb-tab-more-${tabId}`}
-            accessibilityLabel={t().tabActions}
-            accessibilityState={{ expanded: open() }}
+            testID={`wb-tab-close-${tabId}`}
+            accessibilityLabel={t().closeTab}
             focusable={false}
-            tooltip={tip(t().tabActions)}
-            ref={(node) => (moreRef = node)}
-            onPress={() => {
-              props.onFocus(leaf().id);
-              if (moreRef) props.onToggleMore(tabId, moreRef);
-            }}
+            tooltip={tip(t().closeTab)}
+            onPress={() => props.onCloseTab(leaf().id, tabId)}
             {...ownTouch}
-            class={`cursor-pointer select-none w-[18px] h-[18px] shrink-0 rounded-full items-center justify-center hover:bg-row-hover ${open() ? "bg-row-hover" : ""}`}
-            style={{ opacity: shown() || open() ? 1 : 0 }}
+            class="cursor-pointer select-none w-[18px] h-[18px] mr-[2px] shrink-0 rounded-full items-center justify-center hover:bg-row-hover"
+            style={{ opacity: shown() ? 1 : 0 }}
           >
-            <Icon name="more" size={12} class="tint-ink-muted" />
+            <Icon name="x" size={12} class="tint-ink-muted" />
           </View>
-        </If>
-        <View
-          role="button"
-          testID={`wb-tab-close-${tabId}`}
-          accessibilityLabel={t().closeTab}
-          focusable={false}
-          tooltip={tip(t().closeTab)}
-          onPress={() => props.onCloseTab(leaf().id, tabId)}
-          {...ownTouch}
-          class="cursor-pointer select-none w-[18px] h-[18px] mr-[2px] shrink-0 rounded-full items-center justify-center hover:bg-row-hover"
-          style={{ opacity: shown() ? 1 : 0 }}
-        >
-          <Icon name="x" size={12} class="tint-ink-muted" />
         </View>
       </View>
     );
@@ -355,7 +364,7 @@ export function LeafStrip(props: StripProps) {
       style={{ height: leaf().tabs.length === 0 && !props.floating ? 32 : height(), cursor: props.floating ? "grab" : undefined, opacity: props.dimmed() ? 0.5 : 1, paddingRight: controlsRoom() || undefined }}
       {...stripHandlers}
     >
-      <View class="flex-row self-stretch min-w-0 shrink ml-1 relative" style={{ maxWidth: props.maxTabsWidth?.() }}>
+      <View class="flex-row self-stretch min-w-0 shrink ml-[2px] relative" style={{ maxWidth: props.maxTabsWidth?.() }}>
         <Scroll
           horizontal
           scrollbar={false}
@@ -404,7 +413,7 @@ export function LeafStrip(props: StripProps) {
         </If>
       </View>
       <If when={props.canOpen && leaf().tabs.length > 0}>
-        <View ref={props.setNewTabButton} class="ml-1">
+        <View ref={props.setNewTabButton} class="ml-[2px]">
           {button("wb-new-tab", t().newTab, "plus", () => props.onToggleNewTab(), { accessibilityState: { expanded: props.newTabOpen() } })}
         </View>
       </If>
