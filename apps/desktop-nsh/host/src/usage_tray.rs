@@ -13,6 +13,9 @@
 //! came along); only the menu calls differ: AppKit's own, on the main thread. The agents' marks
 //! and the menu bar's mark are read from the Tauri tree, where `apps/desktop/scripts/app-icon`
 //! makes them, so there is one copy of each.
+//!
+//! On Windows the same lines and icons head the menu of the icon in the notification area
+//! (`win_tray.rs`), which makes its own menu: the menu calls here are macOS's only.
 
 #[cfg(target_os = "macos")]
 use std::cell::RefCell;

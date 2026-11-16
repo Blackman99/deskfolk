@@ -1,8 +1,9 @@
 //! The Windows shell: NSH's own standalone window (`run_app`), running the same bundle and the same
 //! launch parameters as on macOS. NSH makes the window, so the app hides its title bar and has the
 //! caption buttons drawn over it, as the traffic lights are on macOS; a view embedded in a window of
-//! ours could not. Closing the window ends the run. The tray, toast notifications and the installer
-//! come after this skeleton.
+//! ours could not. Closing the window ends the run. The icon in the notification area, with what is
+//! used of your plans, is `win_tray.rs`; toast notifications and the installer come after this
+//! skeleton.
 //!
 //! The window's look is set before it is made (`with_main_window`, what `nsh.json` `"window"` would
 //! say, for Windows only): the title bar hidden, and on Windows 11 22H2 and later Mica behind the
@@ -20,6 +21,7 @@ use std::path::{Path, PathBuf};
 
 use nsh_platform_windows::{AppOptions, AppSource, AssetBase, Bundle, Limits, set_ui_sets};
 use serde_json::json;
+use windows::Win32::Foundation::{HWND, LPARAM};
 
 use crate::config::Config;
 
@@ -46,10 +48,13 @@ pub fn run(config: Config) -> std::process::ExitCode {
     // The wheel for the views that zoom or scroll themselves (`win_wheel.rs`).
     crate::win_wheel::install(host.clone());
     let nsh_dir = config.data_dir.join("nsh");
+    let icon = app_icon(&nsh_dir);
+    // The icon in the notification area, with what is used of your plans (`win_tray.rs`).
+    crate::win_tray::install(config.app_name.clone(), icon.clone(), host.clone(), config.data_dir.clone());
     let options = AppOptions {
         app_id: config.bundle_id.clone(),
         title: config.app_name.clone(),
-        icon: app_icon(&nsh_dir),
+        icon,
         size: (1100, 760),
         limits: Limits::standalone(),
         data_dir: Some(nsh_dir),
@@ -82,6 +87,43 @@ pub fn has_material() -> bool {
         }
     })
 }
+
+/// NSH's window: the top-level window of this process with NSH's window class (`NshWindow`, its
+/// `window.rs`) and no owner. `None` before NSH has made it and after it is gone. The process has
+/// other top-level windows (the IME's, OLE's, the notification area icon's on its own thread), so
+/// whatever looks for NSH's window or its UI thread asks this (`win_wheel.rs`, `win_tray.rs`).
+pub fn nsh_window() -> Option<HWND> {
+    use windows::Win32::System::Threading::GetCurrentProcessId;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GW_OWNER, GetClassNameW, GetWindow, GetWindowThreadProcessId,
+    };
+    use windows::core::BOOL;
+    unsafe extern "system" fn each(window: HWND, found: LPARAM) -> BOOL {
+        let mut pid = 0;
+        let mut class = [0u16; 16];
+        // SAFETY: plain queries; `found` is the `Option<HWND>` below, alive for the enumeration.
+        unsafe {
+            GetWindowThreadProcessId(window, Some(&mut pid));
+            if pid != GetCurrentProcessId() || GetWindow(window, GW_OWNER).is_ok() {
+                return BOOL(1);
+            }
+            let length = GetClassNameW(window, &mut class).max(0) as usize;
+            if class[..length] == *NSH_WINDOW_CLASS.as_wide() {
+                *(found.0 as *mut Option<HWND>) = Some(window);
+                return BOOL(0);
+            }
+        }
+        BOOL(1)
+    }
+    let mut found: Option<HWND> = None;
+    // SAFETY: the callback only writes `found`, which outlives the call. Stopping early reads as an
+    // error, so the result says nothing.
+    let _ = unsafe { EnumWindows(Some(each), LPARAM(&mut found as *mut Option<HWND> as isize)) };
+    found
+}
+
+/// The class NSH registers its windows under (`nsh-platform-windows`'s `window.rs`).
+const NSH_WINDOW_CLASS: windows::core::PCWSTR = windows::core::w!("NshWindow");
 
 /// The app's icon as a file in `dir`, for NSH to give the window (taskbar, Alt+Tab, title bar)
 /// and its toasts: NSH loads it only from a file, and only when the executable has none of its
@@ -193,6 +235,49 @@ mod tests {
         for material in [true, false] {
             assert!(nsh_core::desktop::MainWindowOptions::from_json(&main_window(material)).is_ok());
         }
+    }
+
+    #[test]
+    fn nsh_s_window_is_the_unowned_one_of_its_class() {
+        use windows::Win32::Foundation::{LRESULT, WPARAM};
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DefWindowProcW, DestroyWindow, RegisterClassExW, WINDOW_EX_STYLE, WNDCLASSEXW, WS_POPUP,
+        };
+        unsafe extern "system" fn plain(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+            // SAFETY: Windows' own handling of every message.
+            unsafe { DefWindowProcW(window, message, wparam, lparam) }
+        }
+        let other_class = windows::core::w!("DeskfolkTestOther");
+        // SAFETY: windows of this test's thread, never shown, destroyed at its end.
+        unsafe {
+            let instance = GetModuleHandleW(None).unwrap();
+            for class in [NSH_WINDOW_CLASS, other_class] {
+                RegisterClassExW(&WNDCLASSEXW {
+                    cbSize: size_of::<WNDCLASSEXW>() as u32,
+                    lpfnWndProc: Some(plain),
+                    hInstance: instance.into(),
+                    lpszClassName: class,
+                    ..Default::default()
+                });
+            }
+            let make = |class, owner| {
+                let instance = Some(instance.into());
+                let style = WS_POPUP;
+                CreateWindowExW(WINDOW_EX_STYLE(0), class, None, style, 0, 0, 0, 0, owner, None, instance, None).unwrap()
+            };
+            // A top-level window of another class (the tray's, the IME's) is not it.
+            let other = make(other_class, None);
+            assert_eq!(nsh_window(), None);
+            // Nor one of NSH's class with an owner, made after and so found first.
+            let nsh = make(NSH_WINDOW_CLASS, None);
+            let owned = make(NSH_WINDOW_CLASS, Some(nsh));
+            assert_eq!(nsh_window(), Some(nsh));
+            for window in [owned, nsh, other] {
+                DestroyWindow(window).unwrap();
+            }
+        }
+        assert_eq!(nsh_window(), None);
     }
 
     #[test]

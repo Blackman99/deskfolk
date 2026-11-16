@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### What is used of your plans, from the Windows notification area
+
+- The native (NSH) desktop build on Windows now has an icon in the notification area, as the Mac's menu bar has one and the installed app's tray has on Windows. Right-click it for what is used of your plans, the lines the Mac's menu shows: one per account, its agent's mark in a ring as full as its tightest window and coloured as the sidebar colours it, with the 5-hour and 7-day numbers, a note for an account signed out or not read, and "查看全部用量…", which brings the window forward on the usage tab. They are read once a minute. Below them, "Show Deskfolk Dev" and "Quit Deskfolk Dev", which closes the window; a click on the icon brings the window forward. The icon goes when the app ends.
+
 ### The app icon shows on the Windows taskbar
 
 - In the native (NSH) desktop build on Windows, the taskbar button, Alt+Tab and the window showed the system's blank window icon, not the app's. They now show the Deskfolk icon, the one the installed app wears.
