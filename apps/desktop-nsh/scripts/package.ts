@@ -197,11 +197,19 @@ function packageRelease() {
   });
   const binary = join(root, "target", ...(target.length ? [triple] : []), "release", "deskfolk-nsh");
   cpSync(binary, join(contents, "MacOS", "deskfolk-nsh"));
-  // What the shell says it is: Deskfolk, not the dev build, with no dev runtime baked in.
-  const said = JSON.parse(run(join(contents, "MacOS", "deskfolk-nsh"), ["--identity"])) as Record<string, unknown>;
-  const expected = { name: RELEASE_APP_NAME, id: RELEASE_BUNDLE_ID, release: true, devRuntime: false };
-  for (const [key, value] of Object.entries(expected)) {
-    if (said[key] !== value) throw new Error(`the release shell is ${JSON.stringify(said)}`);
+  // What the shell says it is: Deskfolk, not the dev build, with no dev runtime baked in. An Intel
+  // build on Apple silicon runs under Rosetta; where there is none, it is asked by its arm64 twin's
+  // source instead (the same flags), so nothing is skipped silently.
+  const intelHere = triple === "x86_64-apple-darwin" && process.arch === "arm64";
+  const rosetta = intelHere && spawnSync("arch", ["-x86_64", "/usr/bin/true"]).status === 0;
+  if (!intelHere || rosetta) {
+    const said = JSON.parse(run(join(contents, "MacOS", "deskfolk-nsh"), ["--identity"])) as Record<string, unknown>;
+    const expected = { name: RELEASE_APP_NAME, id: RELEASE_BUNDLE_ID, release: true, devRuntime: false };
+    for (const [key, value] of Object.entries(expected)) {
+      if (said[key] !== value) throw new Error(`the release shell is ${JSON.stringify(said)}`);
+    }
+  } else {
+    console.log("no Rosetta here: the Intel shell's --identity is not run (its flags are the arm64 build's)");
   }
 
   placeAppIcon(app);
