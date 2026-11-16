@@ -6,11 +6,11 @@ The Windows build is a fresh, experimental preview: it installs and runs, but a 
 
 ## Install
 
-1. Download `Deskfolk_<version>_x64-setup.exe` from the [0.4.0 release](https://github.com/Blackman99/deskfolk/releases/tag/v0.4.0) (x64 only; 0.5.0, the first native release, has no Windows installer yet).
+1. Download `Deskfolk_<version>_x64-setup.exe` from the [latest release](https://github.com/Blackman99/deskfolk/releases/latest) (x64 only).
 2. Run it. It installs for the current user and needs no administrator rights.
 3. The installer is not signed, so SmartScreen warns about an unknown publisher: choose **More info** → **Run anyway**.
 
-It also needs the WebView2 runtime: Windows 11 ships with it; on Windows 10, install it first if it is missing.
+From 0.5.0 the app is the native one ([ADR 0107](adr/0107-spike-native-desktop-on-nsh.md)): no web view, so it no longer needs the WebView2 runtime. Its installer goes over an earlier Deskfolk in the same folder (`%LOCALAPPDATA%\Deskfolk`), keeping its Start menu and desktop shortcuts, and leaves the data folder alone.
 
 To upgrade, run the newer installer. When About finds a new version it only opens the download in the browser; installing from inside the app is not there yet. The installer closes an open window first, and the daemon and the terminals it started end with it; if only a daemon from an earlier run is left, the installer stops that too, since a running file cannot be overwritten.
 
@@ -44,6 +44,7 @@ The other local agents ([how they work](behavior.en.md#local-agents)) can be pic
 - Desktop notifications and the icon badge.
 - Frosted glass on Windows 10: the window's material is Windows 11's Mica, and on Windows 10 the window has a solid ground.
 - Image thumbnails. Images sent to a model are not affected.
+- Pairing a new device from the Windows app (from 0.5.0, the native app): devices paired before keep working.
 
 ## Running from source
 

@@ -24,7 +24,7 @@
 ## 适合谁
 
 - **适合**：已经在用 Claude Code、Codex 这类本机 Agent，或会自己配模型端点和 API key 的独立开发者、技术型个人和小工作室，手上有多天、多步、要返工、人又不能一直盯着的活，比如多集 AI 视频（镜头、渲染、审片、返工）、每天定点出的新闻简报、一套发布物料。内置的视频引擎就是按这类活的真实记录调的；代码引擎背后的记录还少，它的数还是原来的默认。一个 Bot 单干也行，几个 Bot 分工留给真要分工的活。
-- **暂不适合**：一次问答、半小时就能做完的小活（一个 Bot 就够，也有更轻的工具）；几个人共用一套、要 Mac 睡眠时也接着干活（插电时有活在跑，应用不让 Mac 因为闲置睡着；合上盖子、用电池时它还是会睡），或者既没有本机 Agent、也不想自己接模型端点。Windows 和 Linux 各有一条刚起步的实验性预览：0.4.0 是最近一个带未签名 Windows 安装包和 Linux AppImage、deb 的版本（从 0.5.0 起应用换成原生版，那两边的原生版还没做完），有些功能还没有——见下方「获取」。
+- **暂不适合**：一次问答、半小时就能做完的小活（一个 Bot 就够，也有更轻的工具）；几个人共用一套、要 Mac 睡眠时也接着干活（插电时有活在跑，应用不让 Mac 因为闲置睡着；合上盖子、用电池时它还是会睡），或者既没有本机 Agent、也不想自己接模型端点。Windows 和 Linux 各有一条刚起步的实验性预览：每个 Release 都带未签名的 Windows 安装包（从 0.5.0 起是原生版），0.4.0 是最近一个带 Linux AppImage、deb 的版本（Linux 的原生版还没做完），有些功能还没有——见下方「获取」。
 
 ## 它做什么
 
@@ -52,7 +52,7 @@ macOS 13（Ventura）或更新版本，支持 Apple 芯片与 Intel。Windows x6
   - **本机 Agent，不用 API key**：这台电脑上装好并登录的 Claude Code、Codex、Grok、OpenCode、Antigravity、ZCode（经社区的 `zcode-acp` 桥），或你在设置里加的任何讲 ACP 的程序。向导第 2 步列出找到且已登录的那些，选一个，Bot 就用你自己的登录和订阅跑（[ADR 0078](adr/0078-setup-on-claude-code.md)、[ADR 0079](adr/0079-local-agents.md)）。
   - **模型端点**：内置 Anthropic、小米 MiMo、千问（阿里云百炼）、DeepSeek，贴上 key 应用自己认出套餐；另有 OpenAI、OpenRouter 预设，或任意 OpenAI 兼容、Anthropic 兼容的地址。
   - **本机模型服务**：Ollama、LM Studio、llama.cpp 的 `llama-server`，不用 key（见[用本地模型](#用本地模型)）。
-- **下载**：[Releases](https://github.com/Blackman99/deskfolk/releases/latest) 提供 `.dmg`，不用另装别的。从 0.1.0-rc.16 起用 Developer ID 签名并经 Apple 公证，双击即可打开（旧版本见 [Gatekeeper FAQ](gatekeeper.zh.md)）。从 0.5.0 起 Mac 上是原生版（[ADR 0107](adr/0107-spike-native-desktop-on-nsh.md)），需要 macOS 14 或更新；macOS 13 请留在 [0.4.0](https://github.com/Blackman99/deskfolk/releases/tag/v0.4.0)。Windows 上运行 [0.4.0 Release](https://github.com/Blackman99/deskfolk/releases/tag/v0.4.0) 里的 `Deskfolk_<版本>_x64-setup.exe`（最近一个带 Windows 安装包的版本）：按当前用户安装，不要管理员权限；安装包没签名，SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」。
+- **下载**：[Releases](https://github.com/Blackman99/deskfolk/releases/latest) 提供 `.dmg`，不用另装别的。从 0.1.0-rc.16 起用 Developer ID 签名并经 Apple 公证，双击即可打开（旧版本见 [Gatekeeper FAQ](gatekeeper.zh.md)）。从 0.5.0 起 Mac 上是原生版（[ADR 0107](adr/0107-spike-native-desktop-on-nsh.md)），需要 macOS 14 或更新；macOS 13 请留在 [0.4.0](https://github.com/Blackman99/deskfolk/releases/tag/v0.4.0)。Windows 上运行同一个 Release 里的 `Deskfolk_<版本>_x64-setup.exe`（从 0.5.0 起也是原生版）：按当前用户安装，不要管理员权限；安装包没签名，SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」。
 - **更新**：有新版本时，桌面侧栏底部带文字的「设置」上出现小红点，在 设置 → 关于 里下载并安装（Windows 和 Linux 上暂时是「关于」跳到浏览器下载）。外观在 设置 → 通用 → 外观。
 - **在 macOS 上从源码启动**（Node 22+、pnpm 12.3.4、Bun 1.2+、Rust、Xcode Command Line Tools）：
 

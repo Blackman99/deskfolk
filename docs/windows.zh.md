@@ -6,11 +6,11 @@ Windows 版是刚起步的实验性预览：能装、能跑，但有几样功能
 
 ## 安装
 
-1. 从 [0.4.0 Release](https://github.com/Blackman99/deskfolk/releases/tag/v0.4.0) 下载 `Deskfolk_<版本>_x64-setup.exe`（只有 x64 安装包；第一个原生版 0.5.0 还没有 Windows 安装包）。
+1. 从[最新 Release](https://github.com/Blackman99/deskfolk/releases/latest)下载 `Deskfolk_<版本>_x64-setup.exe`（只有 x64 安装包）。
 2. 运行它。安装包按当前用户安装，不要管理员权限。
 3. 安装包没有签名，SmartScreen 会提示未知发布者：点「更多信息」→「仍要运行」。
 
-还需要 WebView2 运行时：Windows 11 预装；Windows 10 若没有，要先单独装上。
+从 0.5.0 起是原生版（[ADR 0107](adr/0107-spike-native-desktop-on-nsh.md)）：没有网页视图，不再需要 WebView2 运行时。安装包装在之前的 Deskfolk 所在的同一个文件夹（`%LOCALAPPDATA%\Deskfolk`）上，开始菜单和桌面的快捷方式照旧，数据目录不动。
 
 升级也是运行新版安装包。「关于」里发现新版时只会打开浏览器去下载，还不能在应用里直接安装。安装程序会先关掉开着的窗口，守护进程和它起的终端随之一起结束；只剩上次留下的守护进程时，安装程序也会先把它停掉，否则占着的文件覆盖不了。
 
@@ -44,6 +44,7 @@ Claude Agent（[怎么用](behavior.md#claude-agent)）在 Windows 上也能选�
 - 桌面通知与图标角标。
 - Windows 10 上没有毛玻璃：窗的材质是 Windows 11 的 Mica，Windows 10 的窗是实色底。
 - 图片缩略图。发给模型的图片不受影响。
+- 在 Windows 应用里配对新设备（从 0.5.0 的原生版起）：之前配对过的设备照常能用。
 
 ## 从源码运行
 

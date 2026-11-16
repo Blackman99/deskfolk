@@ -1,6 +1,6 @@
 # apps/desktop-nsh：NSH 原生客户端
 
-> **0.5.0 起是 Mac 上的正式版**（`scripts/package.ts --release`，见下面「正式版」）；Windows 和 Linux 的宿主还是骨架，还没有发布。用 longbridge 的 [Native Shell（NSH）](https://nsh.dev) 重写客户端（跟上游 `main` 的一个提交，见下面「NSH 的版本」）：一份 TSX 界面，跑在 macOS、Windows、Linux 的原生窗口里，也编成 web 包给手机和平板；NSH 没有的东西在它上面补，不用 WebView。结论和数字见 [ADR 0107](../../docs/adr/0107-spike-native-desktop-on-nsh.md)。
+> **0.5.0 起是 Mac 和 Windows 上的正式版**（`scripts/package.ts --release`，见下面「正式版」）；Linux 的宿主还是骨架，还没有发布。用 longbridge 的 [Native Shell（NSH）](https://nsh.dev) 重写客户端（跟上游 `main` 的一个提交，见下面「NSH 的版本」）：一份 TSX 界面，跑在 macOS、Windows、Linux 的原生窗口里，也编成 web 包给手机和平板；NSH 没有的东西在它上面补，不用 WebView。结论和数字见 [ADR 0107](../../docs/adr/0107-spike-native-desktop-on-nsh.md)。
 
 ## 结构
 
@@ -49,7 +49,7 @@
 
 它是顶替，不是并存：装好的稳定版开着时（`local-api.json` 里的进程跑在某个 `.app` 里）两个脚本都拒绝启动，先退出稳定版；稳定版要是登录时自动启动，也会先占住 17890。数据库第一次被这一版的守护进程打开时补上这一版的迁移（几秒）。窗口自己的偏好（工作台布局、侧栏宽度、置顶）存在 `<数据目录>/nsh/com.real-bot.desktop.nsh-dev/storage.json`，和 Tauri 窗口的 WebKit localStorage 是两份。`dev-runtime.ts --stable-instance` 可以单独起运行时，关窗口不影响它；由 `dev.ts` 顺带起的，关窗口时一起停。
 
-## 正式版（macOS）
+## 正式版（macOS、Windows）
 
 `bun apps/desktop-nsh/scripts/package.ts --release [--target aarch64-apple-darwin|x86_64-apple-darwin] [--sign developer-id] [--notarize env|<钥匙串配置名>] [--smoke]` 打出 `build/release-<aarch64|x64>/Deskfolk.app` 和 `Deskfolk_<版本>_<aarch64|x64>.dmg`，`release.yml` 发版时就跑它。
 
@@ -57,6 +57,7 @@
 - 守护进程是 `.app` 里的 `Contents/Resources/native/real-bot-daemon`，连同 pty、运行时和 WebRTC 助手、凭据库，由 Tauri 版的 `apps/desktop/scripts/build-native.ts` 编好、签好，放在 Tauri 版放的同一个位置（`--native-from <目录>` 直接拷一份已签名的，本机打包时省掉编译）。宿主启动时没有运行时就起它，带上远程配对通道（`remote_setup.rs`）；之后每秒看一次，没了、也没有别的持有者时再起一个（`runtime.rs`）；菜单的「退出」或应用内更新退出时停掉它。运行时每次启动发一个新令牌，所以宿主每次被问到都重读 `local-api.json`。起不来时弹窗说明原因和 `daemon.log` 的位置。
 - 打包时先问一遍编出来的宿主 `deskfolk-nsh --identity`，确认是正式版、没有烤进开发运行时的命令；`Info.plist` 的 `LSMinimumSystemVersion` 是 14.0（NSH 自己的下限）。
 - `--sign developer-id` 用 `APPLE_SIGNING_IDENTITY`（没有就找钥匙串里的 Developer ID Application；本机会弹钥匙串授权，CI 用临时钥匙串不弹）；`--notarize env` 读 `APPLE_ID`、`APPLE_PASSWORD`、`APPLE_TEAM_ID`，先公证应用、再公证 dmg，两个都装订。
+- **Windows**：同一条命令在 Windows 上打 `build/release-windows/Deskfolk_<版本>_x64-setup.exe`（`scripts/installer.nsi`，要 NSIS 的 `makensis`）。安装包按当前用户装进 `%LOCALAPPDATA%\Deskfolk`，也就是 Tauri 版的文件夹，写同一个卸载项；主程序用卸载项记下的名字（Tauri 版装过就沿用它的，否则 `Deskfolk.exe`），所以开始菜单、桌面快捷方式、任务栏固定和开机启动都还指着它；装之前先关窗口、再停掉守护进程和助手；数据目录不动。宿主在安装目录里找 `app\bundle.nshc` 和 `native\real-bot-daemon.exe`，起守护进程时不开控制台，退出时先经 API 请它退出；release 构建是窗口程序，没有控制台。Windows 还没有配对通道，在这台电脑上配对新设备答 `disabled`，配对过的设备照常。`--smoke` 在 runner 上静默安装、起已安装的应用、等第一份快照、杀掉守护进程看它被重新拉起并重连、关窗口（`taskkill` 不带 `/F`）看守护进程跟着停、再静默卸载，确认程序和卸载项没了、数据目录还在。安装包不签名。
 - `--smoke` 只能在 17890 上没有运行时的机器上跑（CI 的 runner）：起包里的应用，等第一份快照，确认运行时是包里那个守护进程且带配对通道，杀掉它看宿主把它重新拉起，最后经 `--snapshots` 目录的 `quit` 请求退出，确认守护进程跟着停了。这台 Mac 上你自己的运行时占着 17890，正式版只会连上它、不起自己的。
 
 ## 命令
