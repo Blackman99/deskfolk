@@ -260,6 +260,9 @@ export function LeafStrip(props: StripProps) {
       // drop zones (`drop-zones.ts`, which add up widths) part two tabs in the middle of the gap between them.
       <View
         ref={(node) => tabRefs.set(tabId, node)}
+        // The whole slot is the tab row's, the tab's padding, the room round ⋯ and × and the gap too: not the
+        // strip's window drag, which a slip off a tab into the gap would turn into moving the window.
+        desktop={{ windowDrag: false }}
         onLayout={(e) => {
           const w = e.bounds.size.width;
           // Only the tabs still shown keep a width (dropped here, not as a tab goes: no write while it is torn down).
@@ -270,8 +273,6 @@ export function LeafStrip(props: StripProps) {
       >
         <View
           testID={`wb-tab-${tabId}`}
-          // The whole tab is the tab's, its padding and the room round ⋯ and × too: not the strip's window drag.
-          desktop={{ windowDrag: false }}
           onMouseEnter={() => hovered.set(tabId)}
           onMouseLeave={() => hovered() === tabId && hovered.set(null)}
           onContextMenu={(e) => props.onPaneMenu?.({ leafId: leaf().id, tabId, x: e.pagePosition.x, y: e.pagePosition.y })}

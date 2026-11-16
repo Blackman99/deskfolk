@@ -1015,3 +1015,25 @@ Checks: a background check copy (its own bundle id) on an isolated runtime, two 
 - Dark, with glass content on and off: the strip's ground is the gaps' and follows the backdrop (blue (32,41,67), grey (62,62,61), dark (33,33,32); it stayed near (11,14,19) before). The card's top edge (y 92/93 in 2x pixels) and the tab row sit on the same rows as in light. Names of tabs not shown read 5.0–7.5:1, the same as the sidebar's times; in the dimmed pane 2.4–3.0:1 (about 2.45 before, 1.91 in light). The active name reads 13.8–14.5:1.
 - Light: over the same backdrops the whole window is pixel-identical before and after, apart from three small spots of avatar drawing that already differ between two runs of the old build.
 - `nsh check`, `tsc`, `bun test scripts` (39), `port-messenger --check`, `theme-from-tokens --check` and `nsh test` (194 passed, 1 skipped) pass, and all 88 screen test files pass (711 tests, 0 failed).
+
+## 补记 2026-11-16（三十七）：窗格的标签之间留出间距 / Addendum 2026-11-16 (37): a pane's tabs keep a gap between them
+
+你说 tab 与 tab 之间要留一点间距。以前标签一个挨一个：鼠标停在一个标签上，它的底色直接贴着旁边选中的那个，看上去连成一块。信使的标签也是挨着的，中间画一条细分隔线；NSH 版没有这条线，固定窗格的标签又是标题栏地面上的圆角块，挨在一起更显眼。
+
+现在（`leaf-strip.tsx`）：
+- 每个标签放在一个格子里，格子左右各留半个间距（`TAB_GAP` 4 pt 的一半），两个标签之间就是 4 pt。桌面和手机（窄屏的标签带）都一样。
+- 格子之间仍首尾相接，标签宽度量的是格子。`drop-zones.ts` 按宽度累加算拖放落点，这样分界正好在间距中间，落点和指示条不用改，滚动到可见、两端箭头的计算也不用改。
+- 标签行起点和 + 前面的边距从 4 pt 改成 2 pt，第一个标签和 + 都不挪位置。
+- 间距算标签行的，不算标题栏：`windowDrag: false` 从标签外框移到格子上。否则在平铺窗格里，从标签上滑出一点按在间距里，就会拖走整个窗口，双击还会缩放窗口（补记二十二）。右键在间距里照旧冒泡到标签栏，是窗格菜单。
+
+检查：后台检查副本（自己的 bundle id，只回健康检查的假运行时）跑 `workbench` 故事。一个临时 bundle 让所有标签都画悬停底色，在 2x 截图上沿标签中线量：三个标签在 8–203、212–371、380–539 px，两两之间都是 8 px，即 4 pt。第一个标签离窗格左边 4 pt，和以前一样。窄到 600 pt（手机布局）时，选中的标签仍在 8–203 px，上圆角、和下面的卡片连着。间距里按下不拖窗口这一点没在实机上看：系统拖窗口跟的是真鼠标，检查不动你的鼠标。`nsh check App.tsx`、`bun test scripts`（39 个）通过；全部 88 个界面测试文件 706 个通过，`settings-routing-modal` 的「awaiting a retry」失败 1 次，单独重跑通过（它本来就偶尔失败）。
+
+You said tabs should keep a little gap between them. They sat edge to edge: a tab under the pointer ran straight into the active one beside it, and the two read as one block. The messenger's tabs touch too, with a hairline between them; the NSH build has no hairline, and a docked pane's tabs are rounded blocks on the title bar's ground, where touching shows more.
+
+Now (`leaf-strip.tsx`):
+- Each tab sits in a slot with half a gap on either side (half of `TAB_GAP`, 4 pt), so two tabs are 4 pt apart, on the desktop and on a phone's narrow band alike.
+- The slots still meet edge to edge, and a tab's measured width is its slot's. `drop-zones.ts` adds widths up to find where a drop lands, so the boundary falls in the middle of the gap: the drop target and its bar need no change, nor does scrolling a tab into view or the row's end arrows.
+- The margin before the row and before the + goes from 4 pt to 2 pt, so the first tab and the + stay where they were.
+- The gap belongs to the tab row, not the title bar: `windowDrag: false` moves from the tab's frame to its slot. Otherwise, in a tiled pane, a press that slipped off a tab into the gap would move the whole window, and a double press would zoom it (addendum 22). A right click in the gap still bubbles to the strip and opens the pane's menu.
+
+Checks: a background check copy (its own bundle id, on a fake runtime that answers only the health probe) on the `workbench` story. A throwaway bundle painted every tab with its hover ground, and a scan along the tabs' middle line in the 2x snapshot found the three tabs at 8–203, 212–371 and 380–539 px: 8 px, or 4 pt, between each pair. The first tab is 4 pt from the pane's left edge, as before. At 600 pt wide (the phone layout) the active tab is still at 8–203 px, rounded at the top and joined to the card. That a press in the gap does not move the window was not seen on a real window: the system's window drag follows the real pointer, and the check never moves yours. `nsh check App.tsx` and `bun test scripts` (39) pass; all 88 screen test files ran with 706 passed and one failure, `settings-routing-modal`'s "awaiting a retry", which flakes now and then and passed when run again alone.

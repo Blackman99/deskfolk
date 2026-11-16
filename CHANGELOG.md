@@ -12,7 +12,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ### A pane's tabs stand apart
 
-- In the native (NSH) desktop build, a pane's tabs sat edge to edge, so a tab under the pointer ran straight into the active one beside it and the two read as one block. Tabs now keep 4 pt between them, on the desktop and on a phone. The first tab and the + stay where they were, and a dragged tab let go over the gap still lands between the two tabs on either side of it.
+- In the native (NSH) desktop build, a pane's tabs sat edge to edge, so a tab under the pointer ran straight into the active one beside it and the two read as one block. Tabs now keep 4 pt between them, on the desktop and on a phone. The first tab and the + stay where they were, and a dragged tab let go over the gap still lands between the two tabs on either side of it. A press in the gap does not move the window, as a press on a tab does not.
 
 ### Changing a Bot no longer holds the window up for seconds
 
