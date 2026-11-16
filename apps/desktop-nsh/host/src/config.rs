@@ -129,11 +129,21 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
     })
 }
 
-/// `Contents/Resources/app/bundle.nshc` beside the executable in `Contents/MacOS`.
+/// The bundle a packaged app carries: `Contents/Resources/app/bundle.nshc` beside the executable
+/// in `Contents/MacOS` on macOS; `app\bundle.nshc` in the executable's own folder on Windows (the
+/// install directory, `scripts/package.ts`).
 fn packaged_bundle() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
-    let bundle = exe.parent()?.parent()?.join("Resources").join("app").join("bundle.nshc");
+    let bundle = packaged_bundle_for(&exe, std::env::consts::OS)?;
     bundle.exists().then_some(bundle)
+}
+
+pub fn packaged_bundle_for(exe: &std::path::Path, os: &str) -> Option<PathBuf> {
+    let dir = exe.parent()?;
+    Some(match os {
+        "windows" => dir.join("app").join("bundle.nshc"),
+        _ => dir.parent()?.join("Resources").join("app").join("bundle.nshc"),
+    })
 }
 
 /// The dev instance's data directory (`scripts/dev-instance.ts`): beside the stable one, never it.
@@ -210,6 +220,19 @@ mod tests {
     fn the_stable_instance_is_the_standard_directory() {
         let env = |name: &str| (name == "HOME").then(|| "/Users/a".to_string());
         assert_eq!(data_dir_named("macos", &env, "real-bot"), PathBuf::from("/Users/a/Library/Application Support/real-bot"));
+    }
+
+    #[test]
+    fn a_packaged_bundle_sits_where_each_package_puts_it() {
+        use super::packaged_bundle_for;
+        assert_eq!(
+            packaged_bundle_for(std::path::Path::new("/Applications/Deskfolk.app/Contents/MacOS/deskfolk-nsh"), "macos"),
+            Some(PathBuf::from("/Applications/Deskfolk.app/Contents/Resources/app/bundle.nshc"))
+        );
+        assert_eq!(
+            packaged_bundle_for(std::path::Path::new("/Users/a/AppData/Local/Deskfolk/Deskfolk.exe"), "windows"),
+            Some(PathBuf::from("/Users/a/AppData/Local/Deskfolk/app/bundle.nshc"))
+        );
     }
 
     #[test]

@@ -4,12 +4,14 @@ name: Release
 # ADR 0107): `apps/desktop-nsh/scripts/package.ts --release` builds `Deskfolk_<version>_aarch64.dmg`
 # and `Deskfolk_<version>_x64.dmg`, the names the update check of every Deskfolk since 0.1 looks for,
 # with the bundle id and version its installer verifies, so a Mac on the Tauri app updates in place.
-# The release is created only once every check has passed and both images are built, notarized and
-# launched once on the runner with their own daemon.
+# The release is created only once every check has passed and the two images and the installer are
+# built (the images notarized) and launched once on a runner with their own daemon.
 #
-# Windows and Linux get no package from this workflow for now: their update check finds no asset
-# of theirs in the release and stays on the version they have (the Tauri packaging jobs, last used
-# for 0.4.0, are in git history).
+# Windows gets the native app too: `Deskfolk_<version>_x64-setup.exe` (`package.ts --release` on
+# Windows, `scripts/installer.nsi`), the name the Windows update check looks for, installing over
+# the Tauri app's folder and uninstall entry. Linux gets no package for now: its update check
+# finds no asset of its own in the release and stays on the version it has (the Tauri packaging
+# jobs, last used for 0.4.0, are in git history).
 #
 # Run by hand (Actions → Release → Run workflow), it does everything but publish and keeps the
 # images as the run's artifacts.
@@ -109,7 +111,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
-          key: nsh-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.nsh.outputs.rev }}
+          key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
@@ -125,7 +127,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
-          key: nsh-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.nsh.outputs.rev }}
+          key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
 
       - name: Rust tests (shell, components, the app's crate)
         working-directory: apps/desktop-nsh
@@ -190,7 +192,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
-          key: nsh-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.nsh.outputs.rev }}
+          key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
@@ -256,10 +258,74 @@ jobs:
           path: ${{ runner.temp }}/deskfolk/*.dmg
           if-no-files-found: error
 
-  # One step, once both images exist: no half release for anyone's update check to find.
+  # The Windows installer, built and checked on Windows: NSH builds each desktop on its own OS. It is
+  # not signed (no WINDOWS_SIGN_COMMAND is configured), as the Tauri app's installers were not:
+  # SmartScreen warns about an unknown publisher.
+  package-windows:
+    name: Package the Windows installer
+    needs: [verify]
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/desktop-nsh -> target
+            apps/conpty-helper -> target
+            apps/rtc-helper -> target
+
+      - name: The pinned NSH commit
+        id: nsh
+        run: echo "rev=$(grep -m1 '^nsh-core' apps/desktop-nsh/Cargo.toml | sed -E 's/.*rev = "([0-9a-f]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      # The key nsh-desktop.yml saves under on main, where a tag can read it.
+      - name: Restore the nsh CLI of that commit
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.DESKFOLK_NSH_CACHE }}
+          key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: NSIS
+        run: |
+          if ! command -v makensis >/dev/null && [ ! -x "/c/Program Files (x86)/NSIS/makensis.exe" ]; then
+            choco install nsis -y --no-progress
+          fi
+
+      # Installed silently, launched with its own daemon, closed, uninstalled (`--smoke`).
+      - name: Package and check the installer
+        run: bun apps/desktop-nsh/scripts/package.ts --release --smoke --out "$RUNNER_TEMP/deskfolk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deskfolk-windows-x64
+          path: ${{ runner.temp }}/deskfolk/*-setup.exe
+          if-no-files-found: error
+
+  # One step, once the images and the installer exist: no half release for anyone's update check.
   publish:
     name: Publish the release
-    needs: package
+    needs: [package, package-windows]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -272,7 +338,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: deskfolk-macos-*
+          pattern: deskfolk-*
           merge-multiple: true
           path: dist
 
@@ -284,11 +350,11 @@ jobs:
           MACOS_NOTARIZED: ${{ secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
         run: bun apps/desktop/scripts/release-notes.ts > "$RUNNER_TEMP/notes.md"
 
-      - name: Create the release with both images
+      - name: Create the release with the images and the installer
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ls -la dist
           prerelease=()
           case "$GITHUB_REF_NAME" in *-*) prerelease=(--prerelease) ;; esac
-          gh release create "$GITHUB_REF_NAME" dist/*.dmg --verify-tag --title "Deskfolk $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" "${prerelease[@]}"
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/*-setup.exe --verify-tag --title "Deskfolk $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" "${prerelease[@]}"

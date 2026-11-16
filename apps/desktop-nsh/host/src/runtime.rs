@@ -60,16 +60,24 @@ pub fn has_dev_command() -> bool {
     baked_command().is_some()
 }
 
-/// The daemon inside the `.app`: `Contents/Resources/native/real-bot-daemon`, beside the pty, WebRTC
-/// and credential helpers it finds next to itself.
+/// The daemon a package carries, beside the pty, WebRTC and credential helpers it finds next to
+/// itself, where the Tauri app kept them: `Contents/Resources/native/real-bot-daemon` in the
+/// `.app`; `native\real-bot-daemon.exe` in the install directory on Windows.
 pub fn bundled_daemon() -> Option<PathBuf> {
     bundled_daemon_for(&std::env::current_exe().ok()?)
 }
 
 fn bundled_daemon_for(exe: &Path) -> Option<PathBuf> {
-    let contents = exe.parent()?.parent()?;
-    let daemon = contents.join("Resources").join("native").join("real-bot-daemon");
+    let daemon = daemon_path_for(exe, std::env::consts::OS)?;
     daemon.is_file().then_some(daemon)
+}
+
+fn daemon_path_for(exe: &Path, os: &str) -> Option<PathBuf> {
+    let dir = exe.parent()?;
+    Some(match os {
+        "windows" => dir.join("native").join("real-bot-daemon.exe"),
+        _ => dir.parent()?.join("Resources").join("native").join("real-bot-daemon"),
+    })
 }
 
 /// Makes sure a runtime answers for `data_dir`, starting one if this build may.
@@ -160,6 +168,15 @@ fn spawn_bundled() -> Result<(), String> {
         .stderr(Stdio::inherit());
     #[cfg(target_os = "macos")]
     let channel = crate::remote_setup::prepare_channel(&mut command);
+    // No console window of its own (the Tauri app's `suppress_console_window`). Windows has no
+    // setup channel yet (the Tauri app's stdin/stdout one was not carried over): phones paired
+    // before keep working, pairing a new one from this computer answers `disabled`.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
     let child = command.spawn().map_err(|e| format!("cannot start Deskfolk's runtime: {e}"))?;
     #[cfg(target_os = "macos")]
     if let Some(channel) = channel {
@@ -194,7 +211,24 @@ fn pid_alive(pid: i32) -> bool {
     pid > 0 && unsafe { libc_kill(pid, 0) } == 0
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn pid_alive(pid: i32) -> bool {
+    use windows::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+    use windows::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    if pid <= 0 {
+        return false;
+    }
+    // SAFETY: a handle opened here is only read and then closed.
+    unsafe {
+        let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid as u32) else { return false };
+        let mut code = 0u32;
+        let alive = GetExitCodeProcess(process, &mut code).is_ok() && code == STILL_ACTIVE.0 as u32;
+        let _ = CloseHandle(process);
+        alive
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 fn pid_alive(_pid: i32) -> bool {
     false
 }
@@ -260,13 +294,18 @@ pub fn stop() {
     }
     if let Some(mut child) = child {
         // SIGTERM lets it close its database; the runtime stops on it. Windows has no signal to
-        // send: the process is ended.
+        // send: a release asks the runtime to quit over its API (as the Tauri app's window did) and
+        // ends the process only if that does not take; a dev build ends it.
         #[cfg(unix)]
         unsafe {
             libc_kill(child.id() as i32, 15)
         };
         #[cfg(not(unix))]
-        let _ = child.kill();
+        if crate::config::RELEASE {
+            post_quit();
+        } else {
+            let _ = child.kill();
+        }
         if crate::config::RELEASE {
             // Its turns are told to stop and its database closed; give it the few seconds that
             // takes before the process goes.
@@ -324,6 +363,19 @@ mod tests {
         assert!(!super::healthy_as(17990, super::Instance::Stable));
     }
 
+    #[test]
+    fn the_daemon_sits_where_the_tauri_app_kept_it_on_each_desktop() {
+        assert_eq!(
+            daemon_path_for(Path::new("/Applications/Deskfolk.app/Contents/MacOS/deskfolk-nsh"), "macos"),
+            Some(PathBuf::from("/Applications/Deskfolk.app/Contents/Resources/native/real-bot-daemon"))
+        );
+        assert_eq!(
+            daemon_path_for(Path::new("/Users/a/AppData/Local/Deskfolk/Deskfolk.exe"), "windows"),
+            Some(PathBuf::from("/Users/a/AppData/Local/Deskfolk/native/real-bot-daemon.exe"))
+        );
+    }
+
+    #[cfg(target_os = "macos")]
     #[test]
     fn the_daemon_lives_in_the_apps_native_folder() {
         let root = std::env::temp_dir().join(format!("deskfolk-nsh-bundled-{}", std::process::id()));

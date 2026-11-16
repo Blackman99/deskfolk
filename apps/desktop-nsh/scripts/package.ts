@@ -52,6 +52,17 @@ export function dmgName(version: string, triple: string): string {
   return `Deskfolk_${version}_${archTag(triple)}.dmg`;
 }
 
+/** The Windows installer's name, the one the update check matches (`updates.rs` `pick_windows_installer`). */
+export function setupName(version: string): string {
+  return `Deskfolk_${version}_x64-setup.exe`;
+}
+
+/** An installer's four-part version (`VIProductVersion`): the release's numbers, a pre-release tag dropped. */
+export function windowsFileVersion(version: string): string {
+  const [major = "0", minor = "0", patch = "0"] = version.split(/[-+]/)[0]!.split(".");
+  return `${major}.${minor}.${patch}.0`;
+}
+
 /** The release's version: the Tauri app's `tauri.conf.json`, one of the release's version lines. */
 export function productVersion(repo: string): string {
   const conf = JSON.parse(readFileSync(join(repo, "apps/desktop/src-tauri/tauri.conf.json"), "utf8")) as { version?: string };
@@ -203,11 +214,7 @@ function packageRelease() {
   const intelHere = triple === "x86_64-apple-darwin" && process.arch === "arm64";
   const rosetta = intelHere && spawnSync("arch", ["-x86_64", "/usr/bin/true"]).status === 0;
   if (!intelHere || rosetta) {
-    const said = JSON.parse(run(join(contents, "MacOS", "deskfolk-nsh"), ["--identity"])) as Record<string, unknown>;
-    const expected = { name: RELEASE_APP_NAME, id: RELEASE_BUNDLE_ID, release: true, devRuntime: false };
-    for (const [key, value] of Object.entries(expected)) {
-      if (said[key] !== value) throw new Error(`the release shell is ${JSON.stringify(said)}`);
-    }
+    checkIdentity(join(contents, "MacOS", "deskfolk-nsh"));
   } else {
     console.log("no Rosetta here: the Intel shell's --identity is not run (its flags are the arm64 build's)");
   }
@@ -246,6 +253,72 @@ function packageRelease() {
   console.log(`app ${size(app)}, ${dmg} ${size(dmg)}`);
   if (process.env.GITHUB_OUTPUT) writeFileSync(process.env.GITHUB_OUTPUT, `dmg=${dmg}\napp=${app}\n`, { flag: "a" });
   return { app, dmg };
+}
+
+/** The release's identity check: the shell must say it is Deskfolk, with no dev runtime baked in. */
+function checkIdentity(shell: string) {
+  const said = JSON.parse(run(shell, ["--identity"])) as Record<string, unknown>;
+  const expected = { name: RELEASE_APP_NAME, id: RELEASE_BUNDLE_ID, release: true, devRuntime: false };
+  for (const [key, value] of Object.entries(expected)) {
+    if (said[key] !== value) throw new Error(`the release shell is ${JSON.stringify(said)}`);
+  }
+}
+
+function makensis(): string {
+  for (const candidate of [process.env.MAKENSIS, "C:\\Program Files (x86)\\NSIS\\makensis.exe", "C:\\Program Files\\NSIS\\makensis.exe"]) {
+    if (candidate && existsSync(candidate)) return candidate;
+  }
+  if (spawnSync("makensis", ["-VERSION"]).status === 0) return "makensis";
+  throw new Error("no makensis: install NSIS (choco install nsis) or set MAKENSIS");
+}
+
+/**
+ * Windows: `Deskfolk_<version>_x64-setup.exe` (scripts/installer.nsi), installing the shell as the
+ * Tauri app's main program, the bundle in `app\` and the daemon with its helpers in `native\`.
+ */
+function packageReleaseWindows() {
+  const triple = "x86_64-pc-windows-msvc";
+  const version = productVersion(repo);
+  const out = resolve(arg("--out") ?? join(root, "build", "release-windows"));
+  const stage = join(out, "stage");
+  const nsh = nshCli({ build: true });
+  const cargo = cargoPath();
+  console.log(`Deskfolk ${version} for ${triple}`);
+  rmSync(out, { recursive: true, force: true });
+  mkdirSync(stage, { recursive: true });
+
+  step("the app's bundle (nsh build --release)");
+  run(nsh, ["build", "app/App.tsx", "--release", "--out", join(out, "app")]);
+  cpSync(join(out, "app"), join(stage, "app"), { recursive: true, filter: (p) => !p.endsWith(".js.map") });
+  if (!existsSync(join(stage, "app", "bundle.nshc"))) throw new Error("nsh build left no bundle.nshc");
+
+  step("the daemon and its helpers");
+  const built = join(repo, "apps/desktop/src-tauri/native");
+  rmSync(built, { recursive: true, force: true });
+  run(process.execPath, ["apps/desktop/scripts/build-native.ts"], { TAURI_ENV_TARGET_TRIPLE: triple }, repo);
+  cpSync(built, join(stage, "native"), { recursive: true, filter: (p) => !p.endsWith(".gitkeep") });
+  for (const name of ["real-bot-daemon.exe", "real-bot-pty.exe", "real-bot-rtc.exe"]) {
+    if (!existsSync(join(stage, "native", name))) throw new Error(`native\\${name} is missing`);
+  }
+
+  step("the shell (cargo build --release, DESKFOLK_RELEASE)");
+  run(cargo, ["build", "--release", "--locked", "-p", "deskfolk-nsh"], { DESKFOLK_RELEASE: "1" });
+  cpSync(join(root, "target", "release", "deskfolk-nsh.exe"), join(stage, "Deskfolk.exe"));
+  checkIdentity(join(stage, "Deskfolk.exe"));
+  cpSync(join(repo, "apps/desktop/src-tauri/icons/icon.ico"), join(stage, "icon.ico"));
+
+  step("the installer (makensis)");
+  const setup = join(out, setupName(version));
+  run(makensis(), [
+    `/DVERSION=${version}`,
+    `/DFILEVERSION=${windowsFileVersion(version)}`,
+    `/DSTAGE=${stage}`,
+    `/DOUTFILE=${setup}`,
+    join(root, "scripts", "installer.nsi"),
+  ]);
+  console.log(`${setup} ${size(setup)}`);
+  if (process.env.GITHUB_OUTPUT) writeFileSync(process.env.GITHUB_OUTPUT, `setup=${setup}\n`, { flag: "a" });
+  return { setup, version };
 }
 
 function packageDev() {
@@ -379,6 +452,102 @@ async function smoke(app: string) {
   console.log("smoke: quit stopped the daemon");
 }
 
+function windowsProcessPath(pid: number): string {
+  const ps = spawnSync("powershell", ["-NoProfile", "-Command", `(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).Path`], { encoding: "utf8" });
+  return ps.stdout.trim();
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function healthyAt17890(): Promise<boolean> {
+  return fetch("http://127.0.0.1:17890/v1/health", { signal: AbortSignal.timeout(500) }).then(
+    (r) => r.ok,
+    () => false,
+  );
+}
+
+/**
+ * Windows, on a machine where no runtime answers yet (a CI runner): the installer run silently,
+ * the installed app's own daemon up from `native\`, the first snapshot, the daemon killed and
+ * started again with the window reconnecting, a close that stops it, and a silent uninstall that
+ * takes the program and its entry away and leaves the data folder.
+ */
+async function smokeWindows(setup: string) {
+  if (await healthyAt17890()) throw new Error("--smoke needs a machine where nothing answers on 17890");
+  const local = process.env.LOCALAPPDATA;
+  if (!local) throw new Error("no LOCALAPPDATA");
+  const installDir = join(local, "Deskfolk");
+  const dataDir = join(local, "real-bot");
+  const installed = spawnSync(setup, ["/S"], { encoding: "utf8" });
+  if (installed.status !== 0) throw new Error(`smoke: the installer exited ${installed.status}`);
+  const exe = join(installDir, "Deskfolk.exe");
+  for (const path of [exe, join(installDir, "app", "bundle.nshc"), join(installDir, "native", "real-bot-daemon.exe"), join(installDir, "uninstall.exe")]) {
+    if (!existsSync(path)) throw new Error(`smoke: the install has no ${path}`);
+  }
+  const entry = spawnSync("reg", ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskfolk", "/v", "DisplayVersion"], { encoding: "utf8" });
+  console.log(`smoke: installed; ${entry.stdout.trim().split("\n").pop()}`);
+
+  const shell = Bun.spawn([exe], {
+    stdout: "pipe",
+    stderr: "pipe",
+    env: Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(BUN_|NODE_OPTIONS|REAL_BOT_)/.test(k))) as Record<string, string>,
+  });
+  const log = drain(shell.stderr, true);
+  if (!(await log.until(/ready: \d+ conversations/, 240_000))) {
+    shell.kill();
+    throw new Error("smoke: no first snapshot within 240 s");
+  }
+  const descriptor = JSON.parse(readFileSync(join(dataDir, "local-api.json"), "utf8")) as { pid: number };
+  const daemon = windowsProcessPath(descriptor.pid);
+  console.log(`smoke: the runtime is pid ${descriptor.pid}: ${daemon}`);
+  if (daemon.toLowerCase() !== join(installDir, "native", "real-bot-daemon.exe").toLowerCase()) {
+    throw new Error("smoke: the runtime is not the daemon the installer put in native\\");
+  }
+
+  process.kill(descriptor.pid);
+  let again = 0;
+  for (let i = 0; i < 90 && !again; i++) {
+    await Bun.sleep(500);
+    try {
+      const next = JSON.parse(readFileSync(join(dataDir, "local-api.json"), "utf8")) as { pid: number };
+      if (next.pid !== descriptor.pid && (await healthyAt17890())) again = next.pid;
+    } catch {
+      // Not written yet.
+    }
+  }
+  if (!again) throw new Error("smoke: the daemon was not started again after it died");
+  console.log(`smoke: started again as pid ${again}`);
+  if (!(await log.until(/reconnected/, 60_000))) throw new Error("smoke: the window did not reconnect to the daemon started again");
+  console.log("smoke: the window reconnected");
+
+  // Closing the window (taskkill without /F sends it WM_CLOSE) ends the run, and the shell stops
+  // the daemon on its way out.
+  spawnSync("taskkill", ["/PID", String(shell.pid)]);
+  const exited = await Promise.race([shell.exited.then(() => true), Bun.sleep(30_000).then(() => false)]);
+  if (!exited) {
+    shell.kill();
+    throw new Error("smoke: the window did not close");
+  }
+  for (let i = 0; i < 20 && alive(again); i++) await Bun.sleep(500);
+  if (alive(again)) throw new Error(`smoke: the daemon (pid ${again}) outlived the window`);
+  console.log("smoke: closing the window stopped the daemon");
+
+  const removed = spawnSync(join(installDir, "uninstall.exe"), ["/S", `_?=${installDir}`], { encoding: "utf8" });
+  if (removed.status !== 0) throw new Error(`smoke: the uninstaller exited ${removed.status}`);
+  if (existsSync(exe) || existsSync(join(installDir, "native"))) throw new Error("smoke: the uninstaller left the program behind");
+  const gone = spawnSync("reg", ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskfolk"]);
+  if (gone.status === 0) throw new Error("smoke: the uninstall entry is still there");
+  if (!existsSync(join(dataDir, "local-api.json")) && !existsSync(dataDir)) throw new Error("smoke: the uninstaller took the data folder");
+  console.log("smoke: uninstalled; the data folder stays");
+}
+
 async function measure(app: string, runs: number) {
   for (let i = 1; i <= runs; i++) {
     const started = performance.now();
@@ -396,8 +565,13 @@ async function measure(app: string, runs: number) {
 
 if (import.meta.main) {
   const release = process.argv.includes("--release");
-  const { app } = release ? packageRelease() : packageDev();
-  if (release && process.argv.includes("--smoke")) await smoke(app);
-  const runs = Number(arg("--measure") ?? 0);
-  if (runs > 0) await measure(app, runs);
+  if (release && process.platform === "win32") {
+    const { setup } = packageReleaseWindows();
+    if (process.argv.includes("--smoke")) await smokeWindows(setup);
+  } else {
+    const { app } = release ? packageRelease() : packageDev();
+    if (release && process.argv.includes("--smoke")) await smoke(app);
+    const runs = Number(arg("--measure") ?? 0);
+    if (runs > 0) await measure(app, runs);
+  }
 }

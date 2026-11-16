@@ -45,6 +45,8 @@ pub fn run(config: Config) -> std::process::ExitCode {
         }
     };
     let host = crate::launch::channel(&config, 1);
+    // A release looks after the daemon inside it from here on (a dev build's does nothing).
+    crate::runtime::supervise(config.data_dir.clone());
     // The wheel for the views that zoom or scroll themselves (`win_wheel.rs`).
     crate::win_wheel::install(host.clone());
     let nsh_dir = config.data_dir.join("nsh");
@@ -67,6 +69,17 @@ pub fn run(config: Config) -> std::process::ExitCode {
     let code = nsh_platform_windows::run_app(AppSource::Bundle(bundle), options);
     crate::runtime::stop();
     code
+}
+
+/// A release that cannot start says why in a box of its own: started from the Start menu, nothing
+/// else would show it.
+pub fn alert(title: &str, text: &str) {
+    use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
+    use windows::core::HSTRING;
+    // SAFETY: two owned wide strings that outlive the call; no owner window.
+    unsafe {
+        MessageBoxW(None, &HSTRING::from(text), &HSTRING::from(title), MB_OK | MB_ICONERROR);
+    }
 }
 
 /// Whether the window gets Mica behind the app: Windows 11 22H2 or later, with transparency

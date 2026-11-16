@@ -21,15 +21,17 @@ import { fileURLToPath } from "node:url";
  * has the Developer ID certificate and all three notary secrets, and a notarization that fails
  * fails the packaging job, so no un-notarized `.dmg` ships under this note.
  *
- * Since 0.5.0 the Mac app is the native one (ADR 0107), on NSH's own floor of macOS 14, and
- * release.yml packages nothing for Windows or Linux: the note says so, because an install there finds
- * no update and someone reading the release page should know why.
+ * Since 0.5.0 the app is the native one (ADR 0107): on the Mac on NSH's own floor of macOS 14, and
+ * on Windows from an installer that is still unsigned. release.yml packages nothing for Linux: the
+ * note says so, because an install there finds no update and someone reading the page should know why.
  */
 const NOTARIZED_NOTE = `---
 
-The macOS \`.dmg\` builds are signed with Developer ID and notarized by Apple: they open with a double-click. The Mac app is the native one (no web view) and needs macOS 14 or later.
+The macOS \`.dmg\` builds are signed with Developer ID and notarized by Apple: they open with a double-click. The app is the native one (no web view); on the Mac it needs macOS 14 or later.
 
-This release has no Windows or Linux package: installs there keep the version they have, and the last installers for them are on the 0.4.0 release. See CHANGELOG.md and ROADMAP.md.`;
+The Windows installer is not signed yet: SmartScreen warns about an unknown publisher (More info → Run anyway). It installs over an earlier Deskfolk, conversations and settings included.
+
+This release has no Linux package: installs there keep the version they have, and the last Linux packages are on the 0.4.0 release. See CHANGELOG.md and ROADMAP.md.`;
 
 const UNSIGNED_NOTE = `---
 
@@ -42,7 +44,7 @@ pnpm install
 pnpm dev
 \`\`\`
 
-This release has no Windows or Linux package. See CHANGELOG.md and ROADMAP.md.`;
+The Windows installer is not signed either. This release has no Linux package. See CHANGELOG.md and ROADMAP.md.`;
 
 /**
  * The lines under `## <version>`, up to the next `## `. The heading itself stays out: the release

@@ -1,6 +1,10 @@
 //! Deskfolk's native shell: the released app (`config::RELEASE`) or the dev build beside it. See
 //! `apps/desktop-nsh/README.md`.
 
+// A release build on Windows is a windowed program: no console opens beside it (as the Tauri app's
+// `main.rs`). Its log still reaches a parent that hands it pipes (`scripts/package.ts --smoke`).
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 #[cfg(target_os = "macos")]
 mod app;
 mod config;
@@ -98,6 +102,10 @@ fn main() -> std::process::ExitCode {
             #[cfg(target_os = "macos")]
             if config::RELEASE {
                 app::alert("Deskfolk could not start", &why);
+            }
+            #[cfg(windows)]
+            if config::RELEASE {
+                win::alert("Deskfolk could not start", &why);
             }
             return std::process::ExitCode::FAILURE;
         }
