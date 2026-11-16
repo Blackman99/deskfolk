@@ -26,7 +26,7 @@ permissions:
 # `scripts/nsh-cli.ts` (bundle format and engine must match), cached by that commit as in
 # nsh-desktop.yml.
 env:
-  DESKFOLK_NSH_CACHE: ${{ github.workspace }}/../nsh-cli-cache
+  DESKFOLK_NSH_CACHE: ${{ github.workspace }}/.nsh-cli-cache
 
 jobs:
   verify:
@@ -116,6 +116,7 @@ jobs:
 
       - name: Build nsh at the pinned commit
         run: |
+          set -o pipefail
           nsh="$(bun apps/desktop-nsh/scripts/nsh-cli.ts | tail -1)"
           dirname "$nsh" >> "$GITHUB_PATH"
 

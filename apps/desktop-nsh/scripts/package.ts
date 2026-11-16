@@ -34,7 +34,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, write
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { APP_ICON_FILE, DEV_APP_NAME, DEV_BUNDLE_ID, placeAppIcon } from "./dev-instance";
-import { nshCli } from "./nsh-cli";
+import { cargoPath, nshCli } from "./nsh-cli";
 
 /** NSH's own floor (`nsh-cli` `MACOS_MINIMUM`: an `NSView` API new in macOS 14). */
 export const MACOS_MINIMUM = "14.0";
@@ -160,7 +160,7 @@ function packageRelease() {
   const app = join(out, `${RELEASE_APP_NAME}.app`);
   const contents = join(app, "Contents");
   const nsh = nshCli({ build: true });
-  const cargo = process.env.CARGO ?? join(homedir(), ".cargo", "bin", "cargo");
+  const cargo = cargoPath();
   console.log(`Deskfolk ${version} for ${triple}, signed ${identity === "-" ? "ad hoc" : identity}${notarize ? ", notarized" : ""}`);
 
   rmSync(out, { recursive: true, force: true });
@@ -238,7 +238,7 @@ function packageDev() {
   const app = join(out, `${DEV_APP_NAME}.app`);
   const dmg = join(out, "Deskfolk-Dev.dmg");
   const nsh = nshCli({ build: true });
-  const cargo = process.env.CARGO ?? join(homedir(), ".cargo", "bin", "cargo");
+  const cargo = cargoPath();
   const sign = arg("--sign") ?? "adhoc";
   const notarize = arg("--notarize");
   rmSync(out, { recursive: true, force: true });

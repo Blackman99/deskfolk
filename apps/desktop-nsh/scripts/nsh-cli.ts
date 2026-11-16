@@ -72,6 +72,16 @@ export function keepOnlyCli(source: string): void {
   }
 }
 
+/**
+ * `CARGO` when set, else rustup's `~/.cargo/bin/cargo` (this Mac's shells do not have it on PATH),
+ * else whichever `cargo` is on PATH (a CI runner whose toolchain lives elsewhere).
+ */
+export function cargoPath(env: Record<string, string | undefined> = process.env, home = homedir()): string {
+  if (env.CARGO) return env.CARGO;
+  const rustup = join(home, ".cargo", "bin", process.platform === "win32" ? "cargo.exe" : "cargo");
+  return existsSync(rustup) ? rustup : "cargo";
+}
+
 function run(command: string, args: string[], cwd?: string): void {
   const result = spawnSync(command, args, { cwd, stdio: "inherit" });
   if (result.status !== 0) throw new Error(`${command} ${args.join(" ")} failed (${result.status ?? result.signal})`);
@@ -99,14 +109,14 @@ export function buildNshCli(rev = nshRev()): string {
     renameSync(scratch, source);
   }
   console.log(`nsh: building the CLI of ${rev.slice(0, 12)} in ${source} (once per NSH commit; several minutes)`);
-  const cargo = process.env.CARGO ?? join(homedir(), ".cargo", "bin", "cargo");
+  const cargo = cargoPath();
   // Its own target directory, whatever the caller's CARGO_TARGET_DIR says: the path above is where it is looked for.
   const result = spawnSync(cargo, ["build", "--release", "--locked", "-p", "nsh-cli"], {
     cwd: source,
     stdio: "inherit",
     env: { ...process.env, CARGO_TARGET_DIR: join(source, "target") },
   });
-  if (result.status !== 0) throw new Error(`building nsh-cli at ${rev} failed`);
+  if (result.status !== 0) throw new Error(`building nsh-cli at ${rev} with ${cargo} failed: ${result.error?.message ?? `exit ${result.status ?? result.signal}`}`);
   if (!existsSync(bin)) throw new Error(`no CLI at ${bin} after the build`);
   keepOnlyCli(source);
   markUsed(rev);

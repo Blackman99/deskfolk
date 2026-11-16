@@ -229,10 +229,15 @@ test("a turn Codex's plan limit stopped, with its reset said, picks up by itself
 });
 
 test("a line sent while a turn is going is steered into it", async () => {
-  const h = start([{ turns: [[{ sleep: 400 }, { say: "两句都答了" }]] }]);
+  const h = start([{ turns: [[{ sleep: 1500 }, { say: "两句都答了" }]] }]);
   const id = await h.open();
   await h.say(id, "第一句");
   await h.until(() => h.sent(0, "turn/start").length === 1);
+  // The runner steers only once it holds the turn's id, from Codex's answer to `turn/start`; a line
+  // that comes before that answer is read waits as the next turn. Nothing outside the runner shows
+  // when it has read it, so the second line comes well inside the turn rather than at its first
+  // moment: on a slow machine (the macOS release runner) that answer was still unread.
+  await Bun.sleep(300);
   await h.say(id, "第二句");
   await h.settled(id);
   expect(h.sent(0, "turn/start")).toHaveLength(1);
