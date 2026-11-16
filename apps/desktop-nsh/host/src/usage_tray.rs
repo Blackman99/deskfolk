@@ -13,40 +13,56 @@
 //! came along); only the menu calls differ: AppKit's own, on the main thread. The agents' marks
 //! and the menu bar's mark are read from the Tauri tree, where `apps/desktop/scripts/app-icon`
 //! makes them, so there is one copy of each.
+//!
+//! On Windows the same lines and icons head the menu of the icon in the notification area
+//! (`win_tray.rs`), which makes its own menu: the menu calls here are macOS's only.
 
+#[cfg(target_os = "macos")]
 use std::cell::RefCell;
 use std::f64::consts::TAU;
+#[cfg(target_os = "macos")]
 use std::path::PathBuf;
 use std::time::Duration;
 
+#[cfg(target_os = "macos")]
 use dispatch2::DispatchQueue;
+#[cfg(target_os = "macos")]
 use objc2::rc::Retained;
+#[cfg(target_os = "macos")]
 use objc2::runtime::NSObject;
+#[cfg(target_os = "macos")]
 use objc2::{AllocAnyThread, MainThreadMarker, MainThreadOnly, sel};
+#[cfg(target_os = "macos")]
 use objc2_app_kit::{NSControlStateValueOff, NSControlStateValueOn, NSImage, NSMenu, NSMenuItem};
+#[cfg(target_os = "macos")]
 use objc2_core_graphics::{
     CGBitmapContextCreate, CGBitmapContextCreateImage, CGBitmapContextGetBytesPerRow, CGBitmapContextGetData,
     CGColorSpace, CGImageAlphaInfo,
 };
+#[cfg(target_os = "macos")]
 use objc2_foundation::{NSSize, NSString};
 use serde::Deserialize;
 
 use crate::endpoint::Endpoint;
 
-const POLL: Duration = Duration::from_secs(60);
+pub const POLL: Duration = Duration::from_secs(60);
 /// Starting `claude` and its answer from claude.ai can take a while; the daemon gives up at 30 s.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(40);
 /// Lines for accounts and today's records, before "查看全部用量…".
 const MAX_LINES: usize = 8;
 
 /// Menu icons are drawn at 18 pt; these are 36 px, for a Retina screen.
-const ICON_PX: usize = 36;
+pub const ICON_PX: usize = 36;
+#[cfg(target_os = "macos")]
 const ICON_PT: f64 = 18.0;
 
 /// The menu bar's mark in one ink (`apps/desktop/scripts/app-icon/tray.py`), 44 px for 22 pt: a
 /// template image, so the menu bar tints it like its own items.
+#[cfg(target_os = "macos")]
 pub const MARK_PX: usize = 44;
+#[cfg(target_os = "macos")]
 pub const MARK_PT: f64 = 22.0;
+#[cfg(target_os = "macos")]
 pub const MARK: &[u8] = include_bytes!("../../../desktop/src-tauri/src/tray-template.rgba");
 
 /// `GET /v1/usage` (ADR 0080): each agent something runs on, with its accounts.
@@ -118,6 +134,7 @@ pub enum Level {
 }
 
 /// The menu the lines go into, what answers their clicks, and what is in it now.
+#[cfg(target_os = "macos")]
 struct Shown {
     menu: Retained<NSMenu>,
     target: Retained<NSObject>,
@@ -126,6 +143,7 @@ struct Shown {
     placed: usize,
 }
 
+#[cfg(target_os = "macos")]
 thread_local! {
     // Main thread only: every menu call is made there.
     static SHOWN: RefCell<Option<Shown>> = const { RefCell::new(None) };
@@ -134,6 +152,7 @@ thread_local! {
 /// Puts the lines at the top of `menu` from now on; a line's click goes to `target`'s
 /// `showWindow:`, "查看全部用量…" to its `showUsage:`. Then asks the runtime whose descriptor is
 /// in `data_dir`, now and once a minute. Main thread.
+#[cfg(target_os = "macos")]
 pub fn start(menu: Retained<NSMenu>, target: Retained<NSObject>, data_dir: PathBuf) {
     SHOWN.with_borrow_mut(|shown| *shown = Some(Shown { menu, target, entries: Vec::new(), placed: 0 }));
     std::thread::spawn(move || loop {
@@ -154,7 +173,7 @@ pub fn start(menu: Retained<NSMenu>, target: Retained<NSObject>, data_dir: PathB
     });
 }
 
-fn fetch(endpoint: &Endpoint) -> Option<UsageResponse> {
+pub fn fetch(endpoint: &Endpoint) -> Option<UsageResponse> {
     ureq::AgentBuilder::new()
         .timeout(FETCH_TIMEOUT)
         .build()
@@ -166,7 +185,7 @@ fn fetch(endpoint: &Endpoint) -> Option<UsageResponse> {
         .ok()
 }
 
-fn text_of(entry: &Entry) -> &str {
+pub fn text_of(entry: &Entry) -> &str {
     match entry {
         Entry::Line { text, .. } | Entry::AgentNote { text, .. } | Entry::Note(text) => text,
         Entry::All => "查看全部用量…",
@@ -176,6 +195,7 @@ fn text_of(entry: &Entry) -> &str {
 /// Puts `entries` at the top of the menu with a separator under them: changed in place when they
 /// have the same shape as before (so an open menu does not jump), rebuilt otherwise, nothing at
 /// all when there are none.
+#[cfg(target_os = "macos")]
 fn show(mtm: MainThreadMarker, entries: Vec<Entry>) {
     SHOWN.with_borrow_mut(|shown| {
         let Some(shown) = shown else { return };
@@ -225,6 +245,7 @@ fn show(mtm: MainThreadMarker, entries: Vec<Entry>) {
 
 /// macOS 27 draws no menu item's image, but it still draws the state column's: a line's icon goes
 /// there, as the image of an "on" state (the Tauri shell's `mark_lines`).
+#[cfg(target_os = "macos")]
 fn mark(item: &NSMenuItem, entry: &Entry) {
     match icon_rgba(entry).and_then(|rgba| image_of(&rgba, ICON_PX, ICON_PT)) {
         Some(image) => {
@@ -241,6 +262,7 @@ fn mark(item: &NSMenuItem, entry: &Entry) {
 }
 
 /// Square straight-alpha RGBA, `px` on a side, as an image `points` on a side.
+#[cfg(target_os = "macos")]
 pub fn image_of(rgba: &[u8], px: usize, points: f64) -> Option<Retained<NSImage>> {
     if rgba.len() != px * px * 4 {
         return None;
@@ -273,7 +295,7 @@ pub fn image_of(rgba: &[u8], px: usize, points: f64) -> Option<Retained<NSImage>
 }
 
 /// A line's icon as raw RGBA, `ICON_PX` square: its agent's mark in a ring, the mark alone, or none.
-fn icon_rgba(entry: &Entry) -> Option<Vec<u8>> {
+pub fn icon_rgba(entry: &Entry) -> Option<Vec<u8>> {
     match entry {
         Entry::Line { used, level, runner, .. } => Some(match logo_of(runner) {
             Some(logo) => logo_in_ring_rgba(Some((*used, *level)), logo),
@@ -705,6 +727,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn icons_and_the_menu_bar_mark_become_images_of_their_size() {
         let ring = icon_rgba(&Entry::Line { text: String::new(), used: 40.0, level: Level::Warn, runner: "codex".into() })
             .unwrap();

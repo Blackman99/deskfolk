@@ -47,10 +47,12 @@ mod traffic_lights;
 #[cfg(target_os = "macos")]
 mod update_commands;
 mod updates;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 mod usage_tray;
 #[cfg(windows)]
 mod win;
+#[cfg(windows)]
+mod win_tray;
 #[cfg(windows)]
 mod win_wheel;
 #[cfg(target_os = "macos")]

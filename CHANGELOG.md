@@ -17,6 +17,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - A pick under another runner moves the Bot onto it in one change, with the model and level picked; the model, effort and account of the agent it leaves are cleared, as the Bot panel does. A pick under the runner it is on changes only the model and level, as before.
 - When the window is too narrow for every column side by side, the columns narrow alike instead of the last one running off the window's edge.
 
+### What is used of your plans, from the Windows notification area
+
+- The native (NSH) desktop build on Windows now has an icon in the notification area, as the Mac's menu bar has one and the installed app's tray has on Windows. Right-click it for what is used of your plans, the lines the Mac's menu shows: one per account, its agent's mark in a ring as full as its tightest window and coloured as the sidebar colours it, with the 5-hour and 7-day numbers, a note for an account signed out or not read, and "查看全部用量…", which brings the window forward on the usage tab. They are read once a minute. Below them, "Show Deskfolk Dev" and "Quit Deskfolk Dev", which closes the window; a click on the icon brings the window forward. The icon goes when the app ends.
+
 ### The model picker's list holds still under the pointer
 
 - In the native (NSH) desktop build, the model picker's list (a Bot's model, an agent's model in Settings, the model service's default) shook as the pointer moved over it: the chosen model's row gained a ring when pointed at or reached with the arrow keys, and the ring made that row 2 pt taller, so every row under it and the list's foot moved up and down as the pointer came and went. Every row now keeps the room for the ring, and only its colour changes. The same held for the sources on the left and for the conversation's model and thinking picker above the message box when walked with the arrow keys. The rows are the size they were.
@@ -24,6 +28,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### A pane's tabs stand apart
 
 - In the native (NSH) desktop build, a pane's tabs sat edge to edge, so a tab under the pointer ran straight into the active one beside it and the two read as one block. Tabs now keep 4 pt between them, on the desktop and on a phone. The first tab and the + stay where they were, and a dragged tab let go over the gap still lands between the two tabs on either side of it. A press in the gap does not move the window, as a press on a tab does not.
+
+### The app icon shows on the Windows taskbar
+
+- In the native (NSH) desktop build on Windows, the taskbar button, Alt+Tab and the window showed the system's blank window icon, not the app's. They now show the Deskfolk icon, the one the installed app wears.
 
 ### Changing a Bot no longer holds the window up for seconds
 

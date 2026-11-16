@@ -5,8 +5,8 @@
 //!
 //! NSH makes the window and runs its message loop on a UI thread of its own, so the wheel is read
 //! where every message of that thread passes: a `WH_GETMESSAGE` hook on it, which sees a message as
-//! the loop takes it and leaves it to NSH untouched. The thread is known once its first window is
-//! made: a thread of ours waits for that window and hooks the thread it belongs to (a hook on a
+//! the loop takes it and leaves it to NSH untouched. The thread is known once its window is made
+//! (`win::nsh_window`): a thread of ours waits for that window and hooks the thread it belongs to (a hook on a
 //! thread of the same process needs no module), then stays, as the hook lives as long as it does. The event has the macOS shell's shape: `x`, `y` in the window's points from
 //! its top left (`ViewRef.measure()`'s page coordinates), `dx`, `dy` in points with positive
 //! meaning down and right. A notch is `LINE` points as there; a precision touchpad sends parts of
@@ -18,16 +18,14 @@ use std::time::{Duration, Instant};
 
 use nsh_engine::HostChannel;
 use serde_json::{Value, json};
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
-use windows::Win32::System::Threading::GetCurrentProcessId;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_MENU};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, EnumWindows, GA_ROOT, GWL_STYLE, GetAncestor, GetWindowLongW, GetWindowThreadProcessId, MSG,
-    PM_REMOVE, SetWindowsHookExW, WH_GETMESSAGE, WM_MOUSEHWHEEL, WM_MOUSEWHEEL, WS_POPUP,
+    CallNextHookEx, GA_ROOT, GWL_STYLE, GetAncestor, GetWindowLongW, GetWindowThreadProcessId, MSG, PM_REMOVE,
+    SetWindowsHookExW, WH_GETMESSAGE, WM_MOUSEHWHEEL, WM_MOUSEWHEEL, WS_POPUP,
 };
-use windows::core::BOOL;
 
 /// Points a wheel notch scrolls (WebKit's `pixelsPerLineStep`, as the macOS shell's `LINE`).
 const LINE: f64 = 40.0;
@@ -74,25 +72,13 @@ pub fn install(host: HostChannel) {
     }
 }
 
-/// The thread of the first top-level window of this process: NSH's UI thread.
+/// The thread of NSH's window: its UI thread. Not just any top-level window's: the notification
+/// area icon has one of its own, on a thread of its own (`win_tray.rs`).
 fn ui_thread() -> Option<u32> {
-    unsafe extern "system" fn each(window: HWND, found: LPARAM) -> BOOL {
-        let mut pid = 0;
-        // SAFETY: plain queries; `found` is the `Option<u32>` below, alive for the enumeration.
-        unsafe {
-            let thread = GetWindowThreadProcessId(window, Some(&mut pid));
-            if pid == GetCurrentProcessId() && thread != 0 {
-                *(found.0 as *mut Option<u32>) = Some(thread);
-                return BOOL(0);
-            }
-        }
-        BOOL(1)
-    }
-    let mut found: Option<u32> = None;
-    // SAFETY: the callback only writes `found`, which outlives the call. Stopping early reads as an
-    // error, so the result says nothing.
-    let _ = unsafe { EnumWindows(Some(each), LPARAM(&mut found as *mut Option<u32> as isize)) };
-    found
+    let window = crate::win::nsh_window()?;
+    // SAFETY: a plain query.
+    let thread = unsafe { GetWindowThreadProcessId(window, None) };
+    (thread != 0).then_some(thread)
 }
 
 unsafe extern "system" fn get_message(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {

@@ -1,8 +1,9 @@
 //! The Windows shell: NSH's own standalone window (`run_app`), running the same bundle and the same
 //! launch parameters as on macOS. NSH makes the window, so the app hides its title bar and has the
 //! caption buttons drawn over it, as the traffic lights are on macOS; a view embedded in a window of
-//! ours could not. Closing the window ends the run. The tray, toast notifications and the installer
-//! come after this skeleton.
+//! ours could not. Closing the window ends the run. The icon in the notification area, with what is
+//! used of your plans, is `win_tray.rs`; toast notifications and the installer come after this
+//! skeleton.
 //!
 //! The window's look is set before it is made (`with_main_window`, what `nsh.json` `"window"` would
 //! say, for Windows only): the title bar hidden, and on Windows 11 22H2 and later Mica behind the
@@ -12,17 +13,25 @@
 //! 11, its rounded corners (square while maximized, as the system draws them). The app is told
 //! whether the material is there (`host.params.material`, `window_material`) and lets it through
 //! (`ui/glass.ts`).
+//!
+//! The executable cargo builds has no icon of its own, so the window gets the app's from a file
+//! (`app_icon`): without it the taskbar, Alt+Tab and the toasts show the system's blank one.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use nsh_platform_windows::{AppOptions, AppSource, AssetBase, Bundle, Limits, set_ui_sets};
 use serde_json::json;
+use windows::Win32::Foundation::{HWND, LPARAM};
 
 use crate::config::Config;
 
 /// The first Windows build with `DWMWA_SYSTEMBACKDROP_TYPE` (Windows 11 22H2), where NSH maps
 /// `backdrop` to Mica; before it the attribute is refused and the window stays solid.
 const SYSTEM_BACKDROP_BUILD: u32 = 22621;
+
+/// The app's icon, the one every build wears (`apps/desktop/scripts/app-icon` makes it; the Tauri
+/// app embeds the same file).
+const APP_ICON: &[u8] = include_bytes!("../../../desktop/src-tauri/icons/icon.ico");
 
 pub fn run(config: Config) -> std::process::ExitCode {
     // Once, before the first view: what the app's TSX may import, NSH's and the app's own crate.
@@ -38,12 +47,17 @@ pub fn run(config: Config) -> std::process::ExitCode {
     let host = crate::launch::channel(&config, 1);
     // The wheel for the views that zoom or scroll themselves (`win_wheel.rs`).
     crate::win_wheel::install(host.clone());
+    let nsh_dir = config.data_dir.join("nsh");
+    let icon = app_icon(&nsh_dir);
+    // The icon in the notification area, with what is used of your plans (`win_tray.rs`).
+    crate::win_tray::install(config.app_name.clone(), icon.clone(), host.clone(), config.data_dir.clone());
     let options = AppOptions {
         app_id: config.bundle_id.clone(),
         title: config.app_name.clone(),
+        icon,
         size: (1100, 760),
         limits: Limits::standalone(),
-        data_dir: Some(config.data_dir.join("nsh")),
+        data_dir: Some(nsh_dir),
         asset_base: config.bundle.parent().map(|dir| AssetBase::Directory(dir.join("assets"))),
         host,
         fps: config.fps,
@@ -72,6 +86,58 @@ pub fn has_material() -> bool {
                 && hardware_adapter()
         }
     })
+}
+
+/// NSH's window: the top-level window of this process with NSH's window class (`NshWindow`, its
+/// `window.rs`) and no owner. `None` before NSH has made it and after it is gone. The process has
+/// other top-level windows (the IME's, OLE's, the notification area icon's on its own thread), so
+/// whatever looks for NSH's window or its UI thread asks this (`win_wheel.rs`, `win_tray.rs`).
+pub fn nsh_window() -> Option<HWND> {
+    use windows::Win32::System::Threading::GetCurrentProcessId;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GW_OWNER, GetClassNameW, GetWindow, GetWindowThreadProcessId,
+    };
+    use windows::core::BOOL;
+    unsafe extern "system" fn each(window: HWND, found: LPARAM) -> BOOL {
+        let mut pid = 0;
+        let mut class = [0u16; 16];
+        // SAFETY: plain queries; `found` is the `Option<HWND>` below, alive for the enumeration.
+        unsafe {
+            GetWindowThreadProcessId(window, Some(&mut pid));
+            if pid != GetCurrentProcessId() || GetWindow(window, GW_OWNER).is_ok() {
+                return BOOL(1);
+            }
+            let length = GetClassNameW(window, &mut class).max(0) as usize;
+            if class[..length] == *NSH_WINDOW_CLASS.as_wide() {
+                *(found.0 as *mut Option<HWND>) = Some(window);
+                return BOOL(0);
+            }
+        }
+        BOOL(1)
+    }
+    let mut found: Option<HWND> = None;
+    // SAFETY: the callback only writes `found`, which outlives the call. Stopping early reads as an
+    // error, so the result says nothing.
+    let _ = unsafe { EnumWindows(Some(each), LPARAM(&mut found as *mut Option<HWND> as isize)) };
+    found
+}
+
+/// The class NSH registers its windows under (`nsh-platform-windows`'s `window.rs`).
+const NSH_WINDOW_CLASS: windows::core::PCWSTR = windows::core::w!("NshWindow");
+
+/// The app's icon as a file in `dir`, for NSH to give the window (taskbar, Alt+Tab, title bar)
+/// and its toasts: NSH loads it only from a file, and only when the executable has none of its
+/// own. Written when missing or different, so a changed icon follows the build. `None` when it
+/// cannot be written: the window then shows the system's.
+fn app_icon(dir: &Path) -> Option<PathBuf> {
+    let path = dir.join("icon.ico");
+    if std::fs::read(&path).ok().as_deref() != Some(APP_ICON) {
+        if let Err(why) = std::fs::create_dir_all(dir).and_then(|()| std::fs::write(&path, APP_ICON)) {
+            log::warn!("the app's icon {}: {why}", path.display());
+            return None;
+        }
+    }
+    Some(path)
 }
 
 fn read_bundle(path: &Path) -> Result<Bundle, String> {
@@ -168,6 +234,74 @@ mod tests {
     fn the_launch_options_are_ones_nsh_reads() {
         for material in [true, false] {
             assert!(nsh_core::desktop::MainWindowOptions::from_json(&main_window(material)).is_ok());
+        }
+    }
+
+    #[test]
+    fn nsh_s_window_is_the_unowned_one_of_its_class() {
+        use windows::Win32::Foundation::{LRESULT, WPARAM};
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DefWindowProcW, DestroyWindow, RegisterClassExW, WINDOW_EX_STYLE, WNDCLASSEXW, WS_POPUP,
+        };
+        unsafe extern "system" fn plain(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+            // SAFETY: Windows' own handling of every message.
+            unsafe { DefWindowProcW(window, message, wparam, lparam) }
+        }
+        let other_class = windows::core::w!("DeskfolkTestOther");
+        // SAFETY: windows of this test's thread, never shown, destroyed at its end.
+        unsafe {
+            let instance = GetModuleHandleW(None).unwrap();
+            for class in [NSH_WINDOW_CLASS, other_class] {
+                RegisterClassExW(&WNDCLASSEXW {
+                    cbSize: size_of::<WNDCLASSEXW>() as u32,
+                    lpfnWndProc: Some(plain),
+                    hInstance: instance.into(),
+                    lpszClassName: class,
+                    ..Default::default()
+                });
+            }
+            let make = |class, owner| {
+                let instance = Some(instance.into());
+                let style = WS_POPUP;
+                CreateWindowExW(WINDOW_EX_STYLE(0), class, None, style, 0, 0, 0, 0, owner, None, instance, None).unwrap()
+            };
+            // A top-level window of another class (the tray's, the IME's) is not it.
+            let other = make(other_class, None);
+            assert_eq!(nsh_window(), None);
+            // Nor one of NSH's class with an owner, made after and so found first.
+            let nsh = make(NSH_WINDOW_CLASS, None);
+            let owned = make(NSH_WINDOW_CLASS, Some(nsh));
+            assert_eq!(nsh_window(), Some(nsh));
+            for window in [owned, nsh, other] {
+                DestroyWindow(window).unwrap();
+            }
+        }
+        assert_eq!(nsh_window(), None);
+    }
+
+    #[test]
+    fn the_app_icon_is_written_once_and_put_back_when_it_differs() {
+        let dir = std::env::temp_dir().join(format!("deskfolk-nsh-icon-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = app_icon(&dir).expect("written");
+        assert_eq!(path, dir.join("icon.ico"));
+        assert_eq!(std::fs::read(&path).unwrap(), APP_ICON);
+        std::fs::write(&path, b"stale").unwrap();
+        assert_eq!(app_icon(&dir), Some(path.clone()));
+        assert_eq!(std::fs::read(&path).unwrap(), APP_ICON);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_app_icon_is_an_ico_with_the_taskbar_sizes() {
+        // ICONDIR: reserved 0, type 1 (icon), then the entries; 0 in a width byte is 256.
+        assert_eq!(&APP_ICON[..4], &[0, 0, 1, 0]);
+        let count = u16::from_le_bytes([APP_ICON[4], APP_ICON[5]]) as usize;
+        let sides: Vec<u32> =
+            (0..count).map(|i| match APP_ICON[6 + 16 * i] { 0 => 256, side => side.into() }).collect();
+        for side in [16, 32, 48, 256] {
+            assert!(sides.contains(&side), "no {side}px icon in {sides:?}");
         }
     }
 
