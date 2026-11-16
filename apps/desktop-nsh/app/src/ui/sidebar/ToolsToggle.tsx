@@ -9,6 +9,7 @@ import { Icon } from "../Icon";
 import { shadow } from "../styles";
 import { tip } from "../tip";
 import { footActionClass, footActionInk } from "./foot-action";
+import { foldMotion } from "./fold-motion";
 
 export function ToolsToggle(props: {
   phone: boolean;
@@ -23,6 +24,7 @@ export function ToolsToggle(props: {
   /** The button's width as laid out, for the footer's measure of whether its words fit. */
   onWidth?: (width: number) => void;
 }) {
+  const fold = foldMotion();
   const open = () => props.open === true;
   const focused = signal(false);
   const ink = () => footActionInk(open());
@@ -64,7 +66,7 @@ export function ToolsToggle(props: {
     >
       <Icon name="grid" class={props.phone ? (open() ? "tint-ink" : "tint-ink-secondary") : ink().tint} />
       <If when={!props.phone && !props.iconsOnly}>
-        <Text class={`text-[12px] font-medium ${ink().text}`}>{copy().sidebar.tools}</Text>
+        <Text class={`text-[12px] font-medium ${ink().text}`} style={fold?.text}>{copy().sidebar.tools}</Text>
         <If when={!props.tight}>
           <Icon name="chevron-up" size={12} class={`${ink().tint} opacity-[0.65]`} />
         </If>

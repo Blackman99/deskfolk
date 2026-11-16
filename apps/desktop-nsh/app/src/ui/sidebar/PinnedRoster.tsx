@@ -21,6 +21,7 @@ import { tip } from "../tip";
 import { AgentAvatar } from "./AgentAvatar";
 import type { MenuAt } from "./SessionRow";
 import { SIDE_MUTED_TINT } from "../glass";
+import { foldMotion } from "./fold-motion";
 
 function PinnedItem(props: {
   session: SessionSummary;
@@ -34,6 +35,7 @@ function PinnedItem(props: {
   archivedSuffix: string;
   onDragSession?: SessionDragHandler;
 }) {
+  const fold = foldMotion();
   const t = () => copy();
   const active = () => runtime.selectedId === props.session.id;
   const run = () => props.status.isBusy;
@@ -112,7 +114,7 @@ function PinnedItem(props: {
           )}
         </If>
       </View>
-      <Text class={`w-full text-[11px] leading-[13px] text-center line-clamp-1 ${active() ? "text-brand font-semibold" : "text-ink font-medium"}`}>{props.title}</Text>
+      <Text class={`w-full text-[11px] leading-[13px] text-center line-clamp-1 ${active() ? "text-brand font-semibold" : "text-ink font-medium"}`} style={fold?.text}>{props.title}</Text>
     </View>
   );
 }
@@ -131,6 +133,7 @@ export function PinnedRoster(props: {
   /** A press on a pin that may become a drag into the workbench: only where there is one. */
   onDragSession?: SessionDragHandler;
 }) {
+  const fold = foldMotion();
   const expanded = signal(false);
   const items = () =>
     props.pinnedSessions.map((s) => {
@@ -172,7 +175,7 @@ export function PinnedRoster(props: {
           tooltip={tip(expanded() ? copy().sidebar.collapse : copy().sidebar.expand)}
           onPress={() => expanded.set(!expanded())}
           class="cursor-pointer select-none group w-[28px] h-[28px] mr-[10px] shrink-0 items-center justify-center rounded-(--radius-sm) border border-line bg-btn-secondary-bg hover:border-line-hover hover:bg-line-subtle"
-          style={{ boxShadow: shadow("xs") }}
+          style={{ boxShadow: shadow("xs"), ...fold?.text }}
         >
           <Icon name={expanded() ? "chevron-up" : "chevron-down"} size={12} class={`${SIDE_MUTED_TINT} group-hover:tint-ink`} />
         </View>

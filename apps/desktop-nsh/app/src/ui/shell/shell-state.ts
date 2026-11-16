@@ -45,7 +45,8 @@ import { setLook } from "../../platform/appearance";
 import { widthAtMost } from "../../platform/viewport";
 import { wireInterfaceHere } from "../interface/look";
 import { reduceMotion } from "../interface/motion";
-import { sidebarFoldAt } from "./sidebar-fold";
+import { createFoldMotion } from "../sidebar/fold-motion";
+import { foldOpenness, sidebarFoldAt, sidebarFoldMs } from "./sidebar-fold";
 
 /** What a pane hosting a file answers the shell (the preview column, the workspace page). */
 export type PaneHandle = {
@@ -129,21 +130,35 @@ export function createShellState() {
   let sidebarHandle: { showArchived(): void } | null = null;
   /**
    * Folding moves the column's edge between the sidebar's width and the rail's a frame at a time,
-   * over the quarter second of the Svelte shell's grid transition, and what is beside it is laid out
-   * afresh at each frame, as a drag of the split lays it out. Closing, the sidebar stays and the edge
-   * closes over it; the rail takes its place once the edge has come to rest. Opening, the sidebar is
-   * there at once and the edge uncovers it. `null` at rest.
+   * and what is beside it is laid out afresh at each frame, as a drag of the split lays it out. Both
+   * the sidebar and the rail are in the frame while it moves, the rail over the sidebar's left edge;
+   * at each frame the shell also sets how open the column is (`foldMotion.openness`), and the words,
+   * the sidebar's icons and the rail's icons each follow it their own way (`sidebar-fold.ts`). `null`
+   * at rest, when the frame holds only the one it ends on.
    *
    * Not NSH's `LayoutAnimation`: it laid the panes out at their end width at once and eased each of
    * their views there on its own, so a reply jumped up or down and its path chips slid across its
    * text. Not with reduced motion, not across the phone layout, not for a drag of the split.
    */
   const sidebarFoldWidth = signal<number | null>(null);
+  /** This shell's own, handed to its sidebar and rail (`FoldMotionHere`), so each window folds alone. */
+  const foldMotion = createFoldMotion();
   let foldFrame = 0;
   /** The width of the sidebar's frame where it is a column. */
   const sidebarFrameWidth = () => sidebarFoldWidth() ?? (sidebarHidden() ? railWidth : sidebarWidth());
-  /** Whether the frame holds the rail: folded, and the fold at rest. */
-  const sidebarRail = () => sidebarHidden() && sidebarFoldWidth() === null;
+  const sidebarFolding = computed(() => sidebarFoldWidth() !== null);
+  /** Whether the frame holds the rail: folded, or folding either way. */
+  const sidebarRailShown = () => sidebarHidden() || sidebarFolding();
+  /** Whether the frame holds the open sidebar: open (a phone's roster too), or folding either way. */
+  const sidebarListShown = () => !sidebarHidden() || sidebarFolding();
+  /** While both are in the frame, only the one the fold goes to takes presses. */
+  const sidebarLeaving = () => sidebarFolding() && sidebarHidden();
+  const railLeaving = () => sidebarFolding() && !sidebarHidden();
+  // At rest the views are exactly as they would be without the fold: open wherever the sidebar shows.
+  effect(() => {
+    const open = !sidebarHidden();
+    if (!sidebarFolding()) untracked(() => foldMotion.openness.set(open ? 1 : 0));
+  });
   function foldSidebar(from: number): void {
     cancelAnimationFrame(foldFrame);
     const to = sidebarHidden() ? railWidth : sidebarWidth();
@@ -151,12 +166,17 @@ export function createShellState() {
       sidebarFoldWidth.set(null);
       return;
     }
+    const full = sidebarWidth();
+    const duration = sidebarFoldMs(to - from);
+    // Before the frame mounts the one it did not hold, so that one comes in where the fold starts.
+    foldMotion.openness.set(foldOpenness(from, railWidth, full));
     sidebarFoldWidth.set(from);
-    // The clock starts at the first frame drawn after the fold, so mounting the sidebar takes none of it.
+    // The clock starts at the first frame drawn after the fold, so mounting the sidebar or the rail takes none of it.
     let start = -1;
     const step = (now: number) => {
       if (start < 0) start = now;
-      const width = sidebarFoldAt(from, to, now - start);
+      const width = sidebarFoldAt(from, to, now - start, duration);
+      if (width !== null) foldMotion.openness.set(foldOpenness(width, railWidth, full));
       sidebarFoldWidth.set(width);
       if (width !== null) foldFrame = requestAnimationFrame(step);
     };
@@ -680,7 +700,12 @@ export function createShellState() {
     sidebarWidth,
     sidebarCollapsed,
     sidebarFrameWidth,
-    sidebarRail,
+    sidebarRailShown,
+    sidebarListShown,
+    sidebarLeaving,
+    railLeaving,
+    sidebarFolding,
+    foldMotion,
     sidebarColumn,
     sidebarHidden,
     railWidth,

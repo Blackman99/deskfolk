@@ -11,6 +11,7 @@ import { copy } from "../../runtime";
 import { Icon } from "../Icon";
 import { tip } from "../tip";
 import { SIDE_MUTED_TEXT } from "../glass";
+import { foldMotion } from "./fold-motion";
 
 export function HoldsBar(props: {
   holds: readonly Hold[];
@@ -19,6 +20,7 @@ export function HoldsBar(props: {
   /** Resolves to a refusal to show on its row (an `ApiError`), or nothing. */
   onLift: (hold: Hold) => Promise<unknown> | void;
 }) {
+  const fold = foldMotion();
   const lifting = signal<string | null>(null);
   /** The stop whose lift was refused, said on its row until you try again. */
   const liftFailed = signal<string | null>(null);
@@ -38,7 +40,7 @@ export function HoldsBar(props: {
 
   return (
     <If when={props.holds.length > 0}>
-      <View testID="holds-bar" role="region" accessibilityLabel={copy().control.holdsTitle} class="mt-1 mx-2 mb-[6px] px-2 py-[6px] border border-line rounded-(--radius-md) bg-line-subtle">
+      <View testID="holds-bar" role="region" accessibilityLabel={copy().control.holdsTitle} class="mt-1 mx-2 mb-[6px] px-2 py-[6px] border border-line rounded-(--radius-md) bg-line-subtle" style={fold?.text}>
         <View class="flex-row items-center gap-[6px]">
           <Icon name="pause" size={12} class="tint-ink-secondary" />
           <Text class="text-[12px] font-semibold text-ink-secondary">{copy().control.holdsTitle}</Text>

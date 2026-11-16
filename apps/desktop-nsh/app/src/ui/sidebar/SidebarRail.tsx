@@ -8,7 +8,7 @@
  * are the app's (`runtime`, `copy()`).
  */
 import type { SessionSummary } from "@real-bot/protocol";
-import { computed, Scroll, signal, Text, token, View, type ContextMenuEvent, type ViewRef } from "nsh";
+import { cleanup, computed, effect, Scroll, signal, Text, token, untracked, View, windowSize, type ContextMenuEvent, type JSX, type ViewRef } from "nsh";
 import type { SessionDragHandler } from "./session-drag";
 import { copy, runtime } from "../../runtime";
 import { formatShortcut } from "../../m/keymap";
@@ -33,6 +33,8 @@ import { settingsEntryColours } from "./foot-action";
 import { ToolsMenu } from "./ToolsMenu";
 import { previewIndex, statusMessages } from "./sidebar-previews";
 import { SIDE_MUTED_TINT } from "../glass";
+import { foldMotion } from "./fold-motion";
+import { RAIL_STAGGER_CAP } from "../shell/sidebar-fold";
 
 export function SidebarRail(props: {
   pinnedSessionIds: string[];
@@ -57,10 +59,13 @@ export function SidebarRail(props: {
   onOpenSearch: () => void;
   /** A press on an avatar that may become a drag into the workbench: only where there is one. */
   onDragSession?: SessionDragHandler;
+  /** While the list folds to the rail or back: only the conversations in view are made then. */
+  folding?: boolean;
 }) {
   const snapshot = () => runtime.snapshot;
-  const botsById = () => new Map(snapshot().bots.map((b) => [b.id, b] as const));
-  const aliveBotIds = () => new Set(snapshot().bots.map((b) => b.id));
+  // Kept until the Bots change, as the open sidebar keeps them: every avatar asks several times.
+  const botsById = computed(() => new Map(snapshot().bots.map((b) => [b.id, b] as const)));
+  const aliveBotIds = computed(() => new Set(snapshot().bots.map((b) => b.id)));
   const rosterLabels = () => ({ deleted: copy().top.deleted, archived: copy().top.archived, fileDrop: copy().sidebar.fileDrop, projectUntitled: copy().project.untitled });
   const statusLabels = () => ({
     running: copy().sidebar.statusRunning,
@@ -94,11 +99,85 @@ export function SidebarRail(props: {
     return [l.pinned, l.fileDrop ? [l.fileDrop] : [], l.bots, l.project].filter((section) => section.length > 0);
   };
 
+  /**
+   * How many conversations are made. Each avatar takes some 4 ms to make and the rail holds every
+   * conversation, while the fold waits for what it mounts before it moves: with 150 of them the
+   * edge stood still for 0.7 s. So the rail starts with those that fit in the window, and once no
+   * fold is moving it makes the rest a few a frame, below the fold of its list.
+   */
+  const IN_VIEW_PT = 52;
+  const PER_FRAME = 8;
+  const made = signal(Math.ceil(untracked(() => windowSize()).height / IN_VIEW_PT) + 2);
+  const sessionCount = () => sections().reduce((sum, section) => sum + section.length, 0);
+  const shownSections = computed(() => {
+    let left = made();
+    const out: SessionSummary[][] = [];
+    for (const section of sections()) {
+      if (left <= 0) break;
+      out.push(section.length <= left ? section : section.slice(0, left));
+      left -= section.length;
+    }
+    return out;
+  });
+  let makeFrame = 0;
+  effect(() => {
+    const total = sessionCount();
+    const now = made();
+    cancelAnimationFrame(makeFrame);
+    if (props.folding || now >= total) return;
+    makeFrame = requestAnimationFrame(() => made.set(Math.min(total, now + PER_FRAME)));
+  });
+  cleanup(() => cancelAnimationFrame(makeFrame));
+
+  /**
+   * Where each icon comes in when the list folds to the rail (`FoldMotion.railIcon`): top first, the
+   * mark (where the rail shows it) and the three actions before the conversations, the foot last.
+   */
+  const firstAction = () => (mac() ? 0 : 1);
+  const firstSession = () => firstAction() + 3;
+  const sessionOrder = computed(() => {
+    const order = new Map<string, number>();
+    for (const section of sections()) for (const session of section) order.set(session.id, order.size);
+    return order;
+  });
+  const orderOf = (id: string) => firstSession() + (sessionOrder().get(id) ?? 0);
+  /** An icon of the rail, growing into place with the fold at its `order`. */
+  const fold = foldMotion();
+  const pop = (order: () => number, child: JSX.Element) => <View style={fold?.railIcon(order())}>{child}</View>;
+  const footScale = fold?.railScale(RAIL_STAGGER_CAP);
+
   /** Each conversation's newest message, from one pass over the messages (each rail item read them all). */
   const index = computed(() => previewIndex(snapshot().messages, snapshot().turns));
   const statusOf = (session: SessionSummary) =>
     sidebarStatus(session, snapshot().turns, snapshot().approvals, statusLabels(), snapshot().pendingJudgements, statusMessages(index(), session));
-  const botStatusOf = (botId: string) => botWorkStatus(botId, snapshot().turns, snapshot().approvals, statusLabels(), snapshot().pendingJudgements);
+  /**
+   * Answers kept until what they read changes, as the open sidebar keeps them (`Sidebar.tsx`): each
+   * avatar asks for its Bot's work status many times, and where a Bot works scans every conversation.
+   * Without them an avatar took some 20 ms to make with 150 conversations.
+   */
+  const workMemo = computed(() => {
+    void snapshot().turns;
+    void snapshot().approvals;
+    void snapshot().pendingJudgements;
+    void snapshot().sessions;
+    void botsById();
+    void copy();
+    return { elsewhere: new Map<string, string | null>(), bots: new Map<string, ReturnType<typeof botWorkStatus>>() };
+  });
+  const botStatusOf = (botId: string) => {
+    const memo = workMemo().bots;
+    let status = memo.get(botId);
+    if (!status) {
+      status = botWorkStatus(botId, snapshot().turns, snapshot().approvals, statusLabels(), snapshot().pendingJudgements);
+      memo.set(botId, status);
+    }
+    return status;
+  };
+  const elsewhereOf = (session: SessionSummary): string | null => {
+    const memo = workMemo().elsewhere;
+    if (!memo.has(session.id)) memo.set(session.id, directElsewhere(session, false, snapshot(), botsById(), statusLabels(), rosterLabels(), copy().sidebar.elsewhere));
+    return memo.get(session.id)!;
+  };
 
   const archivedCount = () => snapshot().sessions.filter((session) => isSessionArchived(session, botsById())).length;
   const toolsAnchor = signal<ViewRef | null>(null);
@@ -119,7 +198,7 @@ export function SidebarRail(props: {
       lines.push(status.label);
     } else {
       // Your direct, quiet here while its Bot's face says it is busy: where it is.
-      const elsewhere = directElsewhere(session, false, snapshot(), botsById(), statusLabels(), rosterLabels(), copy().sidebar.elsewhere);
+      const elsewhere = elsewhereOf(session);
       if (elsewhere) lines.push(elsewhere);
     }
     const run = snapshot().agentRuns[session.id];
@@ -148,7 +227,8 @@ export function SidebarRail(props: {
     const unread = () => sessionUnreadCount(session);
     const on = () => runtime.selectedId === session.id;
     const lit = () => on() || props.contextMenuSessionId === session.id;
-    return (
+    return pop(
+      () => orderOf(session.id),
       <RailTooltip
         testID={`rail-session-${session.id}`}
         class={`group w-[48px] h-[48px] items-center justify-center border border-transparent rounded-(--radius-md) ${lit() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
@@ -193,7 +273,7 @@ export function SidebarRail(props: {
             <Text class="text-[10px] font-bold text-on-warn">{String(status().count)}</Text>
           </View>
         </If>
-      </RailTooltip>
+      </RailTooltip>,
     );
   };
 
@@ -209,34 +289,43 @@ export function SidebarRail(props: {
       >
         {/* The mark heads the folded list too, where the full one shows it beside the name. */}
         <If when={!mac()}>
-          <View accessible={false} class="w-[64px] items-center pt-3 shrink-0">
+          <View accessible={false} class="w-[64px] items-center pt-3 shrink-0" style={fold?.railIcon(0)}>
             <BrandMark size={26} />
           </View>
         </If>
-        <RailTooltip
-          testID="rail-expand"
-          class={`${action(false)} mt-2 mb-1`}
-          label={shortcutTip(copy().sidebar.show, formatShortcut(["mod", "B"]))}
-          describedBy="rail-tip-expand"
-          expanded={false}
-          onPress={props.onExpand}
-        >
-          {glyph("sidebar-open", false)}
-        </RailTooltip>
-        <RailTooltip testID="rail-search" class={action(false)} label={shortcutTip(copy().sidebar.searchShort, searchShortcutLabel())} describedBy="rail-tip-search" onPress={props.onOpenSearch}>
-          {glyph("search", false)}
-        </RailTooltip>
-        <RailTooltip
-          testID="rail-working"
-          class={action(workingOnly())}
-          label={[workingOnly() ? copy().sidebar.workingOnlyOff : copy().sidebar.workingOnly]}
-          name={copy().sidebar.workingOnly}
-          describedBy="rail-tip-working"
-          pressed={workingOnly()}
-          onPress={toggleWorkingOnly}
-        >
-          {glyph("activity", workingOnly())}
-        </RailTooltip>
+        {pop(
+          () => firstAction(),
+          <RailTooltip
+            testID="rail-expand"
+            class={`${action(false)} mt-2 mb-1`}
+            label={shortcutTip(copy().sidebar.show, formatShortcut(["mod", "B"]))}
+            describedBy="rail-tip-expand"
+            expanded={false}
+            onPress={props.onExpand}
+          >
+            {glyph("sidebar-open", false)}
+          </RailTooltip>,
+        )}
+        {pop(
+          () => firstAction() + 1,
+          <RailTooltip testID="rail-search" class={action(false)} label={shortcutTip(copy().sidebar.searchShort, searchShortcutLabel())} describedBy="rail-tip-search" onPress={props.onOpenSearch}>
+            {glyph("search", false)}
+          </RailTooltip>,
+        )}
+        {pop(
+          () => firstAction() + 2,
+          <RailTooltip
+            testID="rail-working"
+            class={action(workingOnly())}
+            label={[workingOnly() ? copy().sidebar.workingOnlyOff : copy().sidebar.workingOnly]}
+            name={copy().sidebar.workingOnly}
+            describedBy="rail-tip-working"
+            pressed={workingOnly()}
+            onPress={toggleWorkingOnly}
+          >
+            {glyph("activity", workingOnly())}
+          </RailTooltip>,
+        )}
         {/* It fills the rail below the actions, so its empty space is what moves the window. */}
         <Scroll
           testID="rail-list"
@@ -246,59 +335,66 @@ export function SidebarRail(props: {
           contentClass="items-center gap-1 pt-1 pb-2"
           onScroll={dismissRailTips}
         >
-          <Each of={sections()} key={(section) => section[0]!.id}>
+          <Each of={shownSections()} key={(section) => section[0]!.id}>
             {(section, index) => (
               <>
                 <If when={index() > 0}>
-                  <View role="none" testID="rail-divider" class="w-[28px] h-[1px] my-[3px] bg-line shrink-0" />
+                  <View role="none" testID="rail-divider" class="w-[28px] h-[1px] my-[3px] bg-line shrink-0" style={fold?.railFade(orderOf(section()[0]!.id))} />
                 </If>
                 <Each of={section()} key={(session) => session.id}>{(session) => item(session())}</Each>
               </>
             )}
           </Each>
         </Scroll>
-        <View testID="rail-foot" class="w-[64px] items-center gap-[2px] pt-[6px] pb-2 border-t border-line shrink-0">
-          <RailTooltip
-            testID="rail-workspace"
-            class={action(props.workspaceOpen, "")}
-            label={workspaceSet() ? shortcutTip(copy().sidebar.workspace, formatShortcut(["mod", "O"])) : [copy().sidebar.workspace, copy().sidebar.workspaceUnset]}
-            name={copy().sidebar.workspace}
-            describedBy="rail-tip-workspace"
-            enabled={workspaceSet()}
-            expanded={props.workspaceOpen}
-            onPress={props.onToggleWorkspace}
-          >
-            {glyph("folder", props.workspaceOpen)}
-          </RailTooltip>
-          <RailTooltip
-            testID="rail-tools"
-            class={action(props.toolsMenuOpen, "")}
-            label={[copy().sidebar.tools]}
-            describedBy="rail-tip-tools"
-            expanded={props.toolsMenuOpen === true}
-            onAnchor={(node) => toolsAnchor.set(node)}
-            onArrow={(key) => {
-              toolsFocusLast.set(key === "up");
-              props.onToolsMenuOpenChange(true);
-            }}
-            onPress={() => props.onToolsMenuOpenChange(!props.toolsMenuOpen)}
-          >
-            {glyph("grid", props.toolsMenuOpen)}
-          </RailTooltip>
-          <RailTooltip
-            testID="rail-settings"
-            onAnchor={settingsFloor}
-            class={`relative ${action(runtime.settingsOpen, "")}`}
-            label={[settingsTip()]}
-            describedBy="rail-tip-settings"
-            onPress={props.onOpenSettings}
-          >
-            {glyph("settings", runtime.settingsOpen)}
-            {/* An update is news, not an error: the same dot as the full sidebar's. */}
-            <If when={updateChecker.updateVisible}>
-              <View testID="rail-update-dot" accessible={false} class="absolute top-[5px] right-[7px] w-[8px] h-[8px] rounded-full bg-brand" />
-            </If>
-          </RailTooltip>
+        {/* The foot comes in last, its rule fading in with its icons as they grow. */}
+        <View testID="rail-foot" class="w-[64px] items-center gap-[2px] pt-[6px] pb-2 border-t border-line shrink-0" style={fold?.railFade(RAIL_STAGGER_CAP)}>
+          <View style={footScale}>
+            <RailTooltip
+              testID="rail-workspace"
+              class={action(props.workspaceOpen, "")}
+              label={workspaceSet() ? shortcutTip(copy().sidebar.workspace, formatShortcut(["mod", "O"])) : [copy().sidebar.workspace, copy().sidebar.workspaceUnset]}
+              name={copy().sidebar.workspace}
+              describedBy="rail-tip-workspace"
+              enabled={workspaceSet()}
+              expanded={props.workspaceOpen}
+              onPress={props.onToggleWorkspace}
+            >
+              {glyph("folder", props.workspaceOpen)}
+            </RailTooltip>
+          </View>
+          <View style={footScale}>
+            <RailTooltip
+              testID="rail-tools"
+              class={action(props.toolsMenuOpen, "")}
+              label={[copy().sidebar.tools]}
+              describedBy="rail-tip-tools"
+              expanded={props.toolsMenuOpen === true}
+              onAnchor={(node) => toolsAnchor.set(node)}
+              onArrow={(key) => {
+                toolsFocusLast.set(key === "up");
+                props.onToolsMenuOpenChange(true);
+              }}
+              onPress={() => props.onToolsMenuOpenChange(!props.toolsMenuOpen)}
+            >
+              {glyph("grid", props.toolsMenuOpen)}
+            </RailTooltip>
+          </View>
+          <View style={footScale}>
+            <RailTooltip
+              testID="rail-settings"
+              onAnchor={settingsFloor}
+              class={`relative ${action(runtime.settingsOpen, "")}`}
+              label={[settingsTip()]}
+              describedBy="rail-tip-settings"
+              onPress={props.onOpenSettings}
+            >
+              {glyph("settings", runtime.settingsOpen)}
+              {/* An update is news, not an error: the same dot as the full sidebar's. */}
+              <If when={updateChecker.updateVisible}>
+                <View testID="rail-update-dot" accessible={false} class="absolute top-[5px] right-[7px] w-[8px] h-[8px] rounded-full bg-brand" />
+              </If>
+            </RailTooltip>
+          </View>
         </View>
       </View>
       <ToolsMenu

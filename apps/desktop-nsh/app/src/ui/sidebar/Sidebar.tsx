@@ -56,6 +56,7 @@ import { createListRowKeeper, listRows } from "./sidebar-list-model";
 import { previewIndex, previewOf as lineOf, statusMessages } from "./sidebar-previews";
 import type { SessionDragHandler } from "./session-drag";
 import { SIDE_MUTED_LIGHT_TINT, SIDE_MUTED_TEXT, SIDE_MUTED_TINT } from "../glass";
+import { foldMotion } from "./fold-motion";
 
 /** What the shell can call on the list from outside it (the Svelte component's exported `showArchived`). */
 export type SidebarHandle = { showArchived: () => void };
@@ -101,6 +102,7 @@ export function Sidebar(props: {
   /** Called once with the handle (`showArchived`). */
   onHandle?: (handle: SidebarHandle) => void;
 }) {
+  const fold = foldMotion();
   const t = () => copy();
   const phone = () => narrowWindow();
   const snapshot = () => runtime.snapshot;
@@ -400,7 +402,7 @@ export function Sidebar(props: {
             desktop={{ windowDrag: true }}
             onLayout={(e) => brandWidth.set(e.bounds.size.width)}
             class="flex-row items-center gap-1 h-[46px] pt-[6px] pr-[10px] shrink-0"
-            style={{ paddingLeft: mac() ? 84 : 16 }}
+            style={{ paddingLeft: mac() ? 84 : 16, ...fold?.text }}
           >
             <If when={!markHidden()}>
               <BrandMark size={22} />
@@ -486,9 +488,9 @@ export function Sidebar(props: {
                               <View accessible={false} class={`absolute top-0 bottom-0 items-center justify-center ${phone() ? "left-3" : "left-[10px]"}`}>
                                 <Icon name="search" class={SIDE_MUTED_LIGHT_TINT} />
                               </View>
-                              <Text class={`${SIDE_MUTED_TEXT} ${phone() ? "text-[14px]" : "text-[13px]"}`}>{t().sidebar.searchShort}</Text>
+                              <Text class={`${SIDE_MUTED_TEXT} ${phone() ? "text-[14px]" : "text-[13px]"}`} style={fold?.text}>{t().sidebar.searchShort}</Text>
                               <If when={!kbdHidden()}>
-                                <View accessible={false} class="shrink-0 px-1 py-[1px] border border-line rounded-(--radius-xs)">
+                                <View accessible={false} class="shrink-0 px-1 py-[1px] border border-line rounded-(--radius-xs)" style={fold?.text}>
                                   <Text class={`text-[10px] ${SIDE_MUTED_TEXT}`}>{searchShortcutLabel()}</Text>
                                 </View>
                               </If>

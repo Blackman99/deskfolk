@@ -14,6 +14,7 @@ import { tip } from "../tip";
 import { floor } from "../interface/floor";
 import { FOOT_ICONS_ONLY, FOOT_TIGHT, footActionClass, footActionInk, settingsEntryColours } from "./foot-action";
 import { ToolsToggle } from "./ToolsToggle";
+import { foldMotion } from "./fold-motion";
 
 const PADDING = 16;
 const GAP = 4;
@@ -28,6 +29,7 @@ export function SidebarFoot(props: {
   onToolsFocusLast?: (last: boolean) => void;
   onToolsAnchor?: (node: ViewRef) => void;
 }) {
+  const fold = foldMotion();
   const room = signal(0);
   const workspaceWidth = signal(0);
   const toolsWidth = signal(0);
@@ -80,7 +82,7 @@ export function SidebarFoot(props: {
       >
         <Icon name="folder" class={workspaceInk().tint} />
         <If when={!iconsOnly()}>
-          <Text class={`text-[12px] font-medium ${workspaceInk().text}`}>{copy().sidebar.workspace}</Text>
+          <Text class={`text-[12px] font-medium ${workspaceInk().text}`} style={fold?.text}>{copy().sidebar.workspace}</Text>
         </If>
       </View>
       <ToolsToggle
@@ -107,7 +109,7 @@ export function SidebarFoot(props: {
       >
         <Icon name="settings" class={settingsInk().tint} />
         <If when={!iconsOnly()}>
-          <Text class={`text-[12px] font-medium ${settingsInk().text}`}>{copy().sidebar.settings}</Text>
+          <Text class={`text-[12px] font-medium ${settingsInk().text}`} style={fold?.text}>{copy().sidebar.settings}</Text>
         </If>
         <If when={updateChecker.updateVisible}>
           <View testID="foot-update-dot" accessible={false} class="absolute top-[3px] right-[3px] w-[8px] h-[8px] rounded-full bg-brand border-[1.5px] border-sidebar-bg" />

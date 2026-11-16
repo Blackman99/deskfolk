@@ -26,6 +26,7 @@ import { shadow } from "../styles";
 import { tip } from "../tip";
 import { AgentAvatar, rowAvatarEdge } from "./AgentAvatar";
 import { SIDE_MUTED_TEXT, SIDE_MUTED_TINT } from "../glass";
+import { foldMotion } from "./fold-motion";
 
 export type MenuAt = { x: number; y: number };
 
@@ -93,6 +94,7 @@ export function SessionRow(props: {
   pinned?: boolean;
   onTogglePin?: () => void;
 }) {
+  const fold = foldMotion();
   const t = () => copy();
   const phone = () => narrowWindow();
   const hovered = signal(false);
@@ -143,7 +145,7 @@ export function SessionRow(props: {
             {(agent) => <AgentAvatar agent={agent()} title={t().project.agentNames[agent()]} status={props.status} ringColor={ring()} />}
           </If>
         </If>
-        <View class="flex-1 min-w-0">
+        <View class="flex-1 min-w-0" style={fold?.text}>
           <View class="flex-row items-center gap-[10px]">
             <Text
               testID="row-title"
@@ -187,12 +189,15 @@ export function SessionRow(props: {
           </View>
         </View>
         <If when={unreadOn()}>
-          <View
-            testID="unread-dot"
-            tooltip={tip(t().sidebar.unread)}
-            class={`items-center justify-center rounded-full bg-mustard ${phone() ? "min-w-[18px] h-[18px] px-[5px]" : "min-w-[16px] h-[16px] px-[4px]"} ${showActions() ? "opacity-0" : ""}`}
-          >
-            <Text class={`font-bold text-on-mustard ${phone() ? "text-[11px]" : "text-[10px]"}`}>{unreadBadge(props.unread)}</Text>
+          {/* Its own opacity says when the pointer's actions cover it, so the fold moves a box around it. */}
+          <View style={fold?.text}>
+            <View
+              testID="unread-dot"
+              tooltip={tip(t().sidebar.unread)}
+              class={`items-center justify-center rounded-full bg-mustard ${phone() ? "min-w-[18px] h-[18px] px-[5px]" : "min-w-[16px] h-[16px] px-[4px]"} ${showActions() ? "opacity-0" : ""}`}
+            >
+              <Text class={`font-bold text-on-mustard ${phone() ? "text-[11px]" : "text-[10px]"}`}>{unreadBadge(props.unread)}</Text>
+            </View>
           </View>
         </If>
       </View>

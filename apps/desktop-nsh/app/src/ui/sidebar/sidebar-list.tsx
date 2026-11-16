@@ -23,6 +23,7 @@ import { ProjectSessionRow } from "./ProjectSessionRow";
 import { SessionRow, type MenuAt } from "./SessionRow";
 import type { ListRow } from "./sidebar-list-model";
 import { SIDE_MUTED_TEXT, SIDE_MUTED_TINT } from "../glass";
+import { foldMotion } from "./fold-motion";
 
 /** What the list asks the sidebar: how to word a session and what its rows do. */
 export type SidebarListEnv = {
@@ -67,6 +68,7 @@ function rowOf<K extends ListRow["kind"]>(row: ListRow, kind: K): Extract<ListRo
 }
 
 export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
+  const fold = foldMotion();
   const t = () => copy();
   const env = () => props.env;
   const phone = () => props.env.phone;
@@ -144,6 +146,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
       <View
         testID="project-dir"
         class="group flex-row items-center"
+        style={fold?.text}
         onContextMenu={(ev) => e.onDirMenu(group(), head, { x: ev.pagePosition.x, y: ev.pagePosition.y })}
       >
         <View
@@ -188,7 +191,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
     let plus: ViewRef | null = null;
     const section = () => p.row.add;
     return (
-      <View testID={p.row.key} class={`flex-row items-center justify-between ${phone() ? "px-[14px] pb-1" : "px-[10px] pb-1"} ${p.row.first ? "pt-[6px]" : phone() ? "pt-3" : "pt-[14px]"}`}>
+      <View testID={p.row.key} class={`flex-row items-center justify-between ${phone() ? "px-[14px] pb-1" : "px-[10px] pb-1"} ${p.row.first ? "pt-[6px]" : phone() ? "pt-3" : "pt-[14px]"}`} style={fold?.text}>
         <Text class={`text-[12px] font-semibold ${SIDE_MUTED_TEXT}`}>{p.row.title}</Text>
         <If when={section()}>
           {(which) => (
@@ -214,7 +217,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
 
   function Note(p: { text: string; testID?: string }) {
     return (
-      <Text testID={p.testID} class={`text-center ${SIDE_MUTED_TEXT} px-5 py-9 ${phone() ? "text-[13px]" : "text-[12px]"}`}>
+      <Text testID={p.testID} class={`text-center ${SIDE_MUTED_TEXT} px-5 py-9 ${phone() ? "text-[13px]" : "text-[12px]"}`} style={fold?.text}>
         {p.text}
       </Text>
     );
@@ -224,7 +227,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
     <>
       <If when={rowOf(item(), "ghead")}>{(row) => <Heading row={row()} />}</If>
       <If when={rowOf(item(), "archived-ghead")}>
-        <View testID="archived-ghead" class="flex-row items-center justify-between px-[10px] pt-[6px] pb-1">
+        <View testID="archived-ghead" class="flex-row items-center justify-between px-[10px] pt-[6px] pb-1" style={fold?.text}>
           <Text class={`text-[12px] font-semibold ${SIDE_MUTED_TEXT}`}>{t().sidebar.archivedSessions}</Text>
           <View
             role="button"
@@ -245,20 +248,24 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
       <If when={rowOf(item(), "project")}>{(row) => <Project row={row()} />}</If>
       <If when={rowOf(item(), "hint")}>{(row) => <Note testID="working-empty" text={row().text} />}</If>
       <If when={rowOf(item(), "roster-empty")}>
-        <EmptyState size="inline" level={3} title={t().sidebar.rosterEmpty} hint={t().sidebar.rosterEmptyHint}>
-          <Button testID="roster-empty-add-bot" variant="primary" onPress={() => env().onCreateBot()}>{t().sidebar.addBot}</Button>
-          <Button testID="roster-empty-add-group" variant="secondary" onPress={() => env().onCreateGroup()}>{t().sidebar.addGroup}</Button>
-        </EmptyState>
+        <View style={fold?.text}>
+          <EmptyState size="inline" level={3} title={t().sidebar.rosterEmpty} hint={t().sidebar.rosterEmptyHint}>
+            <Button testID="roster-empty-add-bot" variant="primary" onPress={() => env().onCreateBot()}>{t().sidebar.addBot}</Button>
+            <Button testID="roster-empty-add-group" variant="secondary" onPress={() => env().onCreateGroup()}>{t().sidebar.addGroup}</Button>
+          </EmptyState>
+        </View>
       </If>
       <If when={rowOf(item(), "projects-empty")}>
-        <EmptyState size="inline" level={3} title={t().project.emptyList} hint={t().project.emptyListHint}>
-          {PROJECT_AGENTS.map((agent, index) => (
-            <Button testID={`projects-empty-new-${agent}`} variant={index === 0 ? "primary" : "secondary"} onPress={() => env().onNewProject(agent)}>
-              {`${t().project.newWith(t().project.agentNames[agent])}…`}
-            </Button>
-          ))}
-          <Button testID="projects-empty-import" variant="secondary" onPress={() => env().onImportProject()}>{t().project.importSession}</Button>
-        </EmptyState>
+        <View style={fold?.text}>
+          <EmptyState size="inline" level={3} title={t().project.emptyList} hint={t().project.emptyListHint}>
+            {PROJECT_AGENTS.map((agent, index) => (
+              <Button testID={`projects-empty-new-${agent}`} variant={index === 0 ? "primary" : "secondary"} onPress={() => env().onNewProject(agent)}>
+                {`${t().project.newWith(t().project.agentNames[agent])}…`}
+              </Button>
+            ))}
+            <Button testID="projects-empty-import" variant="secondary" onPress={() => env().onImportProject()}>{t().project.importSession}</Button>
+          </EmptyState>
+        </View>
       </If>
     </>
   );
