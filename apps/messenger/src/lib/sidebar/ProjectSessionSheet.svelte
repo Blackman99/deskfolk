@@ -53,9 +53,13 @@
 				continue;
 			}
 			loadAgentSessions(client, each, 120).then(
-				(listed) => (lists[each] = listed),
+				(listed) => {
+					lists[each] = listed;
+				},
 				// The phone, or a daemon older than this agent's list: it has none to give.
-				() => (failed[each] = true)
+				() => {
+					failed[each] = true;
+				}
 			);
 		}
 	});
