@@ -9,9 +9,12 @@ name: Release
 #
 # Windows gets the native app too: `Deskfolk_<version>_x64-setup.exe` (`package.ts --release` on
 # Windows, `scripts/installer.nsi`), the name the Windows update check looks for, installing over
-# the Tauri app's folder and uninstall entry. Linux gets no package for now: its update check
-# finds no asset of its own in the release and stays on the version it has (the Tauri packaging
-# jobs, last used for 0.4.0, are in git history).
+# the Tauri app's folder and uninstall entry.
+#
+# Linux (x86_64) gets it as well: `Deskfolk_<version>_amd64.deb` and `Deskfolk_<version>_amd64.AppImage`
+# (`package.ts --release` on Linux), the names the Linux update check looks for. The deb upgrades the
+# Tauri preview of 0.4.0 in place (same package name, files and program name); both are launched
+# once under a virtual display (`--smoke`).
 #
 # Run by hand (Actions → Release → Run workflow), it does everything but publish and keeps the
 # images as the run's artifacts.
@@ -339,10 +342,101 @@ jobs:
           path: ${{ runner.temp }}/deskfolk/*-setup.exe
           if-no-files-found: error
 
-  # One step, once the images and the installer exist: no half release for anyone's update check.
+  # The Linux packages, built and checked on Linux (x86_64): the deb is installed over 0.4.0's, the
+  # Tauri preview, with that running, then the app is launched with its own daemon and removed; the
+  # AppImage is launched and quit.
+  package-linux:
+    name: Package the Linux deb and AppImage
+    needs: [verify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/desktop-nsh -> target
+            apps/rtc-helper -> target
+
+      - name: The pinned NSH commit
+        id: nsh
+        run: echo "rev=$(grep -m1 '^nsh-core' apps/desktop-nsh/Cargo.toml | sed -E 's/.*rev = "([0-9a-f]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      # The key nsh-desktop.yml saves under on main (its Linux leg), where a tag can read it.
+      - name: Restore the nsh CLI of that commit
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.DESKFOLK_NSH_CACHE }}
+          key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
+
+      - name: Install system libraries
+        run: >-
+          sudo apt-get update && sudo apt-get install -y libgtk-4-dev clang pkg-config
+          libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+          libwebkitgtk-6.0-dev libsecret-1-dev libasound2-dev dpkg-dev xvfb dbus-x11 xauth
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Pinned releases; they run extracted (no FUSE on a runner). The GTK plugin is a script.
+      - name: AppImage tools
+        run: |
+          tools="$RUNNER_TEMP/appimage-tools"
+          mkdir -p "$tools"
+          curl -fsSL -o "$tools/linuxdeploy" https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20250213-2/linuxdeploy-x86_64.AppImage
+          curl -fsSL -o "$tools/appimagetool" https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
+          curl -fsSL -o "$tools/linuxdeploy-plugin-gtk.sh" https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
+          chmod +x "$tools"/*
+          {
+            echo "LINUXDEPLOY=$tools/linuxdeploy"
+            echo "APPIMAGETOOL=$tools/appimagetool"
+            echo "LINUXDEPLOY_PLUGIN_GTK=$tools/linuxdeploy-plugin-gtk.sh"
+            echo "APPIMAGE_EXTRACT_AND_RUN=1"
+          } >> "$GITHUB_ENV"
+
+      # 0.4.0's deb, the last Tauri preview: the smoke installs and starts it, then goes over it.
+      - name: Earlier deb
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/previous"
+          gh release download v0.4.0 --repo "$GITHUB_REPOSITORY" --pattern '*_amd64.deb' --dir "$RUNNER_TEMP/previous" || true
+          ls -la "$RUNNER_TEMP/previous"
+
+      - name: Package and check the deb and the AppImage
+        run: |
+          upgrade=()
+          for previous in "$RUNNER_TEMP"/previous/*_amd64.deb; do
+            [ -f "$previous" ] && upgrade+=(--upgrade-from "$previous")
+          done
+          dbus-run-session -- xvfb-run -a bun apps/desktop-nsh/scripts/package.ts --release --smoke "${upgrade[@]}" --out "$RUNNER_TEMP/deskfolk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deskfolk-linux-x64
+          path: |
+            ${{ runner.temp }}/deskfolk/*_amd64.deb
+            ${{ runner.temp }}/deskfolk/*_amd64.AppImage
+          if-no-files-found: error
+
+  # One step, once the images and the installers exist: no half release for anyone's update check.
   publish:
     name: Publish the release
-    needs: [package, package-windows]
+    needs: [package, package-windows, package-linux]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -367,11 +461,11 @@ jobs:
           MACOS_NOTARIZED: ${{ secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
         run: bun apps/desktop/scripts/release-notes.ts > "$RUNNER_TEMP/notes.md"
 
-      - name: Create the release with the images and the installer
+      - name: Create the release with the images and the installers
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ls -la dist
           prerelease=()
           case "$GITHUB_REF_NAME" in *-*) prerelease=(--prerelease) ;; esac
-          gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/*-setup.exe --verify-tag --title "Deskfolk $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" "${prerelease[@]}"
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/*-setup.exe dist/*_amd64.deb dist/*_amd64.AppImage --verify-tag --title "Deskfolk $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" "${prerelease[@]}"

@@ -145,7 +145,9 @@ fn packaged_bundle() -> Option<PathBuf> {
 pub fn packaged_bundle_for(exe: &std::path::Path, os: &str) -> Option<PathBuf> {
     let dir = exe.parent()?;
     Some(match os {
-        "windows" => dir.join("app").join("bundle.nshc"),
+        // Beside the shell: the install directory on Windows, `/usr/lib/Deskfolk` (or the AppImage's
+        // `usr/lib/Deskfolk`) on Linux, where `/usr/bin/real-bot-desktop` links to the shell.
+        "windows" | "linux" => dir.join("app").join("bundle.nshc"),
         _ => dir.parent()?.join("Resources").join("app").join("bundle.nshc"),
     })
 }
@@ -252,6 +254,10 @@ mod tests {
         assert_eq!(
             packaged_bundle_for(std::path::Path::new("/Users/a/AppData/Local/Deskfolk/Deskfolk.exe"), "windows"),
             Some(PathBuf::from("/Users/a/AppData/Local/Deskfolk/app/bundle.nshc"))
+        );
+        assert_eq!(
+            packaged_bundle_for(std::path::Path::new("/usr/lib/Deskfolk/real-bot-desktop"), "linux"),
+            Some(PathBuf::from("/usr/lib/Deskfolk/app/bundle.nshc"))
         );
     }
 

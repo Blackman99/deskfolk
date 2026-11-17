@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Deskfolk
+Comment=A desk for you and your Bots
+Exec=real-bot-desktop
+Icon=com.real-bot.desktop
+StartupWMClass=com.real-bot.desktop
+Terminal=false
+Categories=Utility;Development;

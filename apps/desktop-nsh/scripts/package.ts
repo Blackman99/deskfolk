@@ -29,11 +29,15 @@
  * first snapshot, the daemon inside the app with its setup channel, a quit that stops it. On Windows
  * it installs the installer silently first (over each `--upgrade-from <earlier setup.exe>` in turn,
  * installed before it in a folder of its own, when given) and uninstalls it at the end.
+ * On Linux (x86_64) `--release` makes `Deskfolk_<version>_amd64.deb` and `Deskfolk_<version>_amd64.AppImage`
+ * (the names `updates.rs` `pick_linux_package` matches) and `--smoke` installs the deb (over each
+ * `--upgrade-from <earlier .deb>` first, started, when given), runs it, and removes it; run it under
+ * `dbus-run-session -- xvfb-run -a` (release.yml).
  * `--measure` launches the packaged app that many times (in the background, never activated) and
  * prints the time from launch to its first snapshot and its memory footprint.
  */
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { APP_ICON_FILE, DEV_APP_NAME, DEV_BUNDLE_ID, placeAppIcon } from "./dev-instance";
@@ -64,6 +68,129 @@ export function setupName(version: string): string {
 export function windowsFileVersion(version: string): string {
   const [major = "0", minor = "0", patch = "0"] = version.split(/[-+]/)[0]!.split(".");
   return `${major}.${minor}.${patch}.0`;
+}
+
+/** The Linux packages' names, the ones the update check matches (`updates.rs` `pick_linux_package`). */
+export function debName(version: string): string {
+  return `Deskfolk_${version}_amd64.deb`;
+}
+
+export function appImageName(version: string): string {
+  return `Deskfolk_${version}_amd64.AppImage`;
+}
+
+/** dpkg's spelling of a version: a pre-release tag sorts before the release, which `~` does and `-` does not. */
+export function debianVersion(version: string): string {
+  return version.replace("-", "~");
+}
+
+/** The shell's file name, which the Tauri app's package used too: the 0.4.0 deb upgrades in place. */
+export const LINUX_MAIN = "real-bot-desktop";
+/** Where the package keeps the program: the shell, `app/` and `native/` side by side (`config.rs`, `runtime.rs`). */
+export const LINUX_LIB = "usr/lib/Deskfolk";
+export const LINUX_NATIVE = ["real-bot-daemon", "real-bot-pty", "real-bot-rtc"];
+/** The desktop entry's name is the app id: NSH's notifications name it as their desktop entry. */
+export const LINUX_DESKTOP_ENTRY = `${RELEASE_BUNDLE_ID}.desktop`;
+export const LINUX_POLICY = `${RELEASE_BUNDLE_ID}.policy`;
+
+/** The hicolor icon sizes and the file each is made from (`assets/linux/icons`). */
+export function linuxIcons(): { size: number; from: string; to: string }[] {
+  return [32, 64, 128, 256, 512].map((size) => ({
+    size,
+    from: `${size}x${size}.png`,
+    to: `usr/share/icons/hicolor/${size}x${size}/apps/${RELEASE_BUNDLE_ID}.png`,
+  }));
+}
+
+/** What the deb needs besides what `dpkg-shlibdeps` finds: libraries the shell opens at run time. */
+export const DEB_DEPENDS = [
+  "libgtk-4-1 (>= 4.14)",
+  "libsecret-1-0",
+  "libwebkitgtk-6.0-4",
+  "gstreamer1.0-plugins-base",
+  "libasound2t64 | libasound2",
+  "polkitd | policykit-1",
+];
+export const DEB_RECOMMENDS = [
+  "gnome-keyring | kwalletmanager",
+  "xdg-desktop-portal-gtk | xdg-desktop-portal-gnome | xdg-desktop-portal-kde",
+  "gstreamer1.0-plugins-good",
+];
+export const DEB_SUGGESTS = ["gnome-shell-extension-appindicator", "x11vnc", "fonts-noto-cjk"];
+
+/**
+ * The two dependency lists joined, one entry per package: where both name a package, the second
+ * list's wins (it is the stricter, written by hand: `libgtk-4-1 (>= 4.14)` over what the linker saw).
+ */
+export function mergeDepends(found: string, wanted: string[]): string {
+  const key = (entry: string) => entry.replace(/\s*\(.*?\)/g, "").replace(/\s+/g, "");
+  const kept = new Map<string, string>();
+  for (const entry of found.split(",").map((e) => e.trim()).filter(Boolean)) kept.set(key(entry), entry);
+  for (const entry of wanted) kept.set(key(entry), entry);
+  return [...kept.values()].join(", ");
+}
+
+export function controlFile(p: { version: string; depends: string; installedSizeKb?: number }): string {
+  return (
+    [
+      "Package: deskfolk",
+      `Version: ${debianVersion(p.version)}`,
+      "Architecture: amd64",
+      "Section: utils",
+      "Priority: optional",
+      "Maintainer: Deskfolk contributors <noreply@deskfolk.invalid>",
+      ...(p.installedSizeKb ? [`Installed-Size: ${p.installedSizeKb}`] : []),
+      `Depends: ${p.depends}`,
+      `Recommends: ${DEB_RECOMMENDS.join(", ")}`,
+      `Suggests: ${DEB_SUGGESTS.join(", ")}`,
+      "Description: A desk for you and your Bots",
+      " Deskfolk runs your Bots, their conversations and their terminals on your computer,",
+      " and lets a paired phone reach them.",
+    ].join("\n") + "\n"
+  );
+}
+
+/**
+ * Stops a running Deskfolk before its files are replaced, as the Windows installer's STOP_DESKFOLK
+ * does: the app is asked to quit first (it stops its daemon on the way out), then whatever is left
+ * is killed. The shell's name is longer than the 15 characters `pkill -x` compares (it would match
+ * nothing), so it is found by the start of its command line instead; this also finds the Tauri
+ * app's process of 0.4.0, which had the same name. Never fails the install.
+ */
+export function preinstScript(): string {
+  const shell = "^([^ ]*/)?real-bot-desktop( |$)";
+  const helpers = ["real-bot-daemon", "real-bot-pty", "real-bot-rtc"];
+  return `#!/bin/sh
+set -e
+case "$1" in
+  install|upgrade)
+    pkill -TERM -f '${shell}' || true
+    i=0
+    while [ "$i" -lt 10 ]; do
+      pgrep -f '${shell}' >/dev/null 2>&1 || pgrep -x real-bot-daemon >/dev/null 2>&1 || break
+      sleep 0.5
+      i=$((i + 1))
+    done
+    pkill -KILL -f '${shell}' || true
+${helpers.map((name) => `    pkill -KILL -x ${name} || true`).join("\n")}
+    ;;
+esac
+exit 0
+`;
+}
+
+/** The AppImage's entry point: the AppDir's hooks (linuxdeploy-plugin-gtk's environment), then the shell. */
+export function appRunScript(): string {
+  return `#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+APPDIR="\${APPDIR:-$HERE}"
+export APPDIR
+for hook in "$APPDIR"/apprun-hooks/*.sh; do
+  [ -f "$hook" ] && . "$hook"
+done
+export LD_LIBRARY_PATH="$APPDIR/usr/lib\${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$APPDIR/${LINUX_LIB}/${LINUX_MAIN}" "$@"
+`;
 }
 
 /** The release's version: the Tauri app's `tauri.conf.json`, one of the release's version lines. */
@@ -323,6 +450,150 @@ function packageReleaseWindows() {
   console.log(`${setup} ${size(setup)}`);
   if (process.env.GITHUB_OUTPUT) writeFileSync(process.env.GITHUB_OUTPUT, `setup=${setup}\n`, { flag: "a" });
   return { setup, version };
+}
+
+/** A tool the Linux packaging needs: its path from the environment variable, or from `PATH`. */
+function linuxTool(command: string, envName: string, hint: string): string {
+  const named = process.env[envName];
+  if (named) {
+    if (!existsSync(named)) throw new Error(`${envName} is ${named}, which does not exist`);
+    return named;
+  }
+  if (spawnSync("sh", ["-c", `command -v ${command}`]).status === 0) return command;
+  throw new Error(`no ${command} on PATH (or ${envName}): ${hint}`);
+}
+
+/** The shared libraries the shell and the helpers link, as `dpkg-shlibdeps` names their packages. */
+function shlibsDepends(files: string[]): string {
+  const scratch = join(root, "build", "shlibdeps");
+  rmSync(scratch, { recursive: true, force: true });
+  mkdirSync(join(scratch, "debian"), { recursive: true });
+  // dpkg-shlibdeps reads a source tree's debian/control; this stub is the least it accepts.
+  writeFileSync(join(scratch, "debian", "control"), "Source: deskfolk\n\nPackage: deskfolk\nArchitecture: amd64\n");
+  const said = run("dpkg-shlibdeps", ["-O", "--ignore-missing-info", ...files.map((f) => `-e${f}`)], {}, scratch);
+  const found = said.match(/^shlibs:Depends=(.*)$/m)?.[1];
+  if (found === undefined) throw new Error(`dpkg-shlibdeps named no dependencies:\n${said}`);
+  rmSync(scratch, { recursive: true, force: true });
+  return found;
+}
+
+/**
+ * Linux (x86_64): `Deskfolk_<version>_amd64.deb` and `Deskfolk_<version>_amd64.AppImage`, one `usr/`
+ * tree in both. The shell is `usr/lib/Deskfolk/real-bot-desktop` with `app/` and `native/` beside it
+ * (`config.rs` `packaged_bundle_for`, `runtime.rs` `daemon_path_for`); `usr/bin/real-bot-desktop`
+ * links to it. The deb upgrades the Tauri app's 0.4.0 one in place (same package and file names).
+ */
+function packageReleaseLinux() {
+  const triple = "x86_64-unknown-linux-gnu";
+  const version = productVersion(repo);
+  const out = resolve(arg("--out") ?? join(root, "build", "release-linux"));
+  const stage = join(out, "stage");
+  const lib = join(stage, LINUX_LIB);
+  const nsh = nshCli({ build: true });
+  const cargo = cargoPath();
+  console.log(`Deskfolk ${version} for ${triple}`);
+  rmSync(out, { recursive: true, force: true });
+  mkdirSync(lib, { recursive: true });
+
+  step("the app's bundle (nsh build --release)");
+  run(nsh, ["build", "app/App.tsx", "--release", "--out", join(out, "app")]);
+  cpSync(join(out, "app"), join(lib, "app"), { recursive: true, filter: (p) => !p.endsWith(".js.map") });
+  if (!existsSync(join(lib, "app", "bundle.nshc"))) throw new Error("nsh build left no bundle.nshc");
+
+  step("the daemon and its helpers");
+  const built = join(repo, "apps/desktop/src-tauri/native");
+  rmSync(built, { recursive: true, force: true });
+  run(process.execPath, ["apps/desktop/scripts/build-native.ts"], { TAURI_ENV_TARGET_TRIPLE: triple }, repo);
+  cpSync(built, join(lib, "native"), { recursive: true, filter: (p) => !p.endsWith(".gitkeep") });
+  for (const name of LINUX_NATIVE) {
+    if (!existsSync(join(lib, "native", name))) throw new Error(`native/${name} is missing`);
+    chmodSync(join(lib, "native", name), 0o755);
+  }
+
+  step("the shell (cargo build --release, DESKFOLK_RELEASE)");
+  run(cargo, ["build", "--release", "--locked", "-p", "deskfolk-nsh"], { DESKFOLK_RELEASE: "1" });
+  cpSync(join(root, "target", "release", "deskfolk-nsh"), join(lib, LINUX_MAIN));
+  chmodSync(join(lib, LINUX_MAIN), 0o755);
+  checkIdentity(join(lib, LINUX_MAIN));
+
+  step("the files around it (launcher, entry, icons, polkit policy)");
+  mkdirSync(join(stage, "usr", "bin"), { recursive: true });
+  symlinkSync(`../lib/Deskfolk/${LINUX_MAIN}`, join(stage, "usr", "bin", LINUX_MAIN));
+  const assets = join(root, "assets", "linux");
+  mkdirSync(join(stage, "usr/share/applications"), { recursive: true });
+  cpSync(join(assets, LINUX_DESKTOP_ENTRY), join(stage, "usr/share/applications", LINUX_DESKTOP_ENTRY));
+  for (const icon of linuxIcons()) {
+    mkdirSync(join(stage, icon.to, ".."), { recursive: true });
+    cpSync(join(assets, "icons", icon.from), join(stage, icon.to));
+  }
+  mkdirSync(join(stage, "usr/share/polkit-1/actions"), { recursive: true });
+  cpSync(join(assets, LINUX_POLICY), join(stage, "usr/share/polkit-1/actions", LINUX_POLICY));
+
+  step("the deb (dpkg-deb)");
+  const deb = join(out, debName(version));
+  const debRoot = join(out, "deb");
+  cpSync(stage, debRoot, { recursive: true, verbatimSymlinks: true });
+  mkdirSync(join(debRoot, "DEBIAN"), { recursive: true });
+  const depends = mergeDepends(
+    shlibsDepends([join(lib, LINUX_MAIN), ...LINUX_NATIVE.map((name) => join(lib, "native", name))]),
+    DEB_DEPENDS,
+  );
+  const installedSize = Number(spawnSync("du", ["-sk", stage], { encoding: "utf8" }).stdout.split("\t")[0]) || undefined;
+  writeFileSync(join(debRoot, "DEBIAN", "control"), controlFile({ version, depends, installedSizeKb: installedSize }));
+  writeFileSync(join(debRoot, "DEBIAN", "preinst"), preinstScript(), { mode: 0o755 });
+  chmodSync(join(debRoot, "DEBIAN", "preinst"), 0o755);
+  run("dpkg-deb", ["--root-owner-group", "--build", debRoot, deb]);
+  rmSync(debRoot, { recursive: true, force: true });
+  console.log(run("dpkg-deb", ["--info", deb]).trim());
+
+  step("the AppImage (linuxdeploy, appimagetool)");
+  const appImage = join(out, appImageName(version));
+  buildAppImage(stage, out, appImage);
+
+  console.log(`${deb} ${size(deb)}, ${appImage} ${size(appImage)}`);
+  if (process.env.GITHUB_OUTPUT) writeFileSync(process.env.GITHUB_OUTPUT, `deb=${deb}\nappimage=${appImage}\n`, { flag: "a" });
+  return { deb, appImage, version };
+}
+
+/**
+ * An AppDir of the same `usr/` tree with the GTK 4 libraries bundled by linuxdeploy's GTK plugin
+ * (`DEPLOY_GTK_VERSION=4`), made into an AppImage by appimagetool. Both tools are downloaded and
+ * pinned by release.yml; run inside a container without FUSE, they need `APPIMAGE_EXTRACT_AND_RUN=1`.
+ * An AppImage cannot install the polkit policy (`assets/linux/com.real-bot.desktop.policy` belongs
+ * in `/usr/share/polkit-1/actions`), so pairing a phone there answers `confirm_not_configured`
+ * until the policy is installed by hand.
+ */
+function buildAppImage(stage: string, out: string, appImage: string) {
+  const linuxdeploy = linuxTool("linuxdeploy", "LINUXDEPLOY", "download linuxdeploy-x86_64.AppImage (github.com/linuxdeploy/linuxdeploy) and make it executable");
+  const appimagetool = linuxTool("appimagetool", "APPIMAGETOOL", "download appimagetool-x86_64.AppImage (github.com/AppImage/appimagetool) and make it executable");
+  // linuxdeploy finds its GTK plugin as `linuxdeploy-plugin-gtk` (or `.sh`) on PATH.
+  const plugin = process.env.LINUXDEPLOY_PLUGIN_GTK;
+  const onPath = spawnSync("sh", ["-c", "command -v linuxdeploy-plugin-gtk || command -v linuxdeploy-plugin-gtk.sh"]).status === 0;
+  if (!plugin && !onPath) throw new Error("no linuxdeploy-plugin-gtk on PATH (or LINUXDEPLOY_PLUGIN_GTK): get linuxdeploy-plugin-gtk.sh from github.com/linuxdeploy/linuxdeploy-plugin-gtk");
+  const pluginPath: Record<string, string> = plugin ? { PATH: `${resolve(plugin, "..")}:${process.env.PATH ?? ""}` } : {};
+  const appDir = join(out, "AppDir");
+  cpSync(stage, appDir, { recursive: true, verbatimSymlinks: true });
+  const env = { APPIMAGE_EXTRACT_AND_RUN: "1", DEPLOY_GTK_VERSION: "4", ARCH: "x86_64", ...pluginPath };
+  const lib = join(appDir, LINUX_LIB);
+  run(linuxdeploy, [
+    "--appdir", appDir,
+    "--plugin", "gtk",
+    "--executable", join(lib, LINUX_MAIN),
+    "--desktop-file", join(appDir, "usr/share/applications", LINUX_DESKTOP_ENTRY),
+    "--icon-file", join(appDir, "usr/share/icons/hicolor/512x512/apps", `${RELEASE_BUNDLE_ID}.png`),
+  ], env);
+  // The entry and icon at the top, as an AppImage wants them (linuxdeploy links them there).
+  cpSync(join(appDir, "usr/share/applications", LINUX_DESKTOP_ENTRY), join(appDir, LINUX_DESKTOP_ENTRY));
+  cpSync(join(appDir, "usr/share/icons/hicolor/512x512/apps", `${RELEASE_BUNDLE_ID}.png`), join(appDir, `${RELEASE_BUNDLE_ID}.png`));
+  // linuxdeploy may have copied the shell into usr/bin; the launcher there is the link, as in the deb.
+  rmSync(join(appDir, "usr", "bin", LINUX_MAIN), { force: true });
+  symlinkSync(`../lib/Deskfolk/${LINUX_MAIN}`, join(appDir, "usr", "bin", LINUX_MAIN));
+  // Ours, after linuxdeploy's: it runs the plugin's environment hooks, then the shell.
+  rmSync(join(appDir, "AppRun"), { force: true });
+  writeFileSync(join(appDir, "AppRun"), appRunScript(), { mode: 0o755 });
+  chmodSync(join(appDir, "AppRun"), 0o755);
+  run(appimagetool, [appDir, appImage], env);
+  chmodSync(appImage, 0o755);
 }
 
 function packageDev() {
@@ -680,6 +951,158 @@ async function smokeWindows(setup: string, upgradeFrom?: string) {
   console.log("smoke: uninstalled; the data folder stays");
 }
 
+/** Pids whose command line starts with the shell's path (`pkill -x` stops at 15 characters, the name is 16). */
+function shellPids(): number[] {
+  const found = spawnSync("pgrep", ["-f", "^([^ ]*/)?real-bot-desktop( |$)"], { encoding: "utf8" });
+  return found.stdout.split("\n").map(Number).filter((pid) => Number.isInteger(pid) && pid > 0);
+}
+
+function helperPids(name: string): number[] {
+  return spawnSync("pgrep", ["-x", name], { encoding: "utf8" }).stdout.split("\n").map(Number).filter((pid) => Number.isInteger(pid) && pid > 0);
+}
+
+/** Runs `command` as root (the runner's user is not; apt and dpkg need it). */
+function asRoot(command: string, args: string[]): string {
+  return process.getuid?.() === 0 ? run(command, args) : run("sudo", [command, ...args]);
+}
+
+function linuxCommandLine(pid: number): string {
+  try {
+    return readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").join(" ").trim();
+  } catch {
+    return "";
+  }
+}
+
+function linuxExe(pid: number): string {
+  return spawnSync("readlink", ["-f", `/proc/${pid}/exe`], { encoding: "utf8" }).stdout.trim();
+}
+
+/**
+ * Linux, on a machine where no runtime answers yet (a CI runner, under `dbus-run-session -- xvfb-run
+ * -a`): an earlier deb installed and started, then the new deb installed over the running copy; the
+ * installed files; the app started hidden with its own daemon and its remote setup channel; a second
+ * launch that hands itself over; the daemon killed and started again; `--quit` ending app and daemon;
+ * the package removed with the data directory left; then the AppImage started and quit.
+ */
+async function smokeLinux(deb: string, appImage: string, upgradeFrom?: string) {
+  if (await healthyAt17890()) throw new Error("--smoke needs a machine where nothing answers on 17890");
+  const dataDir = join(process.env.XDG_DATA_HOME?.startsWith("/") ? process.env.XDG_DATA_HOME : join(homedir(), ".local", "share"), "real-bot");
+  const exe = `/usr/lib/Deskfolk/${LINUX_MAIN}`;
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(BUN_|NODE_OPTIONS|REAL_BOT_)/.test(k))) as Record<string, string>;
+  const gone = (pid: number) => !alive(pid);
+
+  // An earlier deb (0.4.0's, the Tauri app) running: the upgrade has to stop it first (`preinst`).
+  let earlier: ReturnType<typeof Bun.spawn> | undefined;
+  if (upgradeFrom) {
+    asRoot("apt-get", ["install", "-y", resolve(upgradeFrom)]);
+    earlier = Bun.spawn([LINUX_MAIN, "--hidden"], { stdout: "ignore", stderr: "ignore", env });
+    await Bun.sleep(8000);
+    console.log(`smoke: ${upgradeFrom} installed and started (pid ${earlier.pid}${alive(earlier.pid) ? "" : ", already gone"})`);
+  }
+  const running = [...shellPids(), ...["real-bot-daemon", "real-bot-pty", "real-bot-rtc"].flatMap(helperPids)];
+  asRoot("apt-get", ["install", "-y", resolve(deb)]);
+  if (running.some((pid) => alive(pid))) {
+    // A zombie the test itself has not reaped does not count: it holds no file.
+    const left = running.filter((pid) => alive(pid) && !/^Z/.test(spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).stdout.trim()));
+    if (left.length) throw new Error(`smoke: the upgrade left ${left.join(", ")} of the earlier copy running`);
+  }
+  if (running.length) console.log(`smoke: the upgrade stopped the running copy (${running.join(", ")})`);
+
+  const version = debianVersion(productVersion(repo));
+  const status = run("dpkg", ["-s", "deskfolk"]);
+  if (!status.includes(`Version: ${version}`)) throw new Error(`smoke: dpkg reports another version than ${version}:\n${status}`);
+  if (existsSync("/usr/share/applications/Deskfolk.desktop")) throw new Error("smoke: the Tauri app's Deskfolk.desktop is still there");
+  for (const path of [`/usr/share/applications/${LINUX_DESKTOP_ENTRY}`, `/usr/share/polkit-1/actions/${LINUX_POLICY}`, "/usr/lib/Deskfolk/app/bundle.nshc", "/usr/bin/real-bot-desktop"]) {
+    if (!existsSync(path)) throw new Error(`smoke: the install has no ${path}`);
+  }
+  for (const name of [LINUX_MAIN, ...LINUX_NATIVE.map((n) => `native/${n}`)]) {
+    const path = `/usr/lib/Deskfolk/${name}`;
+    if (!existsSync(path) || (spawnSync("test", ["-x", path]).status !== 0)) throw new Error(`smoke: ${path} is missing or not executable`);
+  }
+  checkIdentity(exe);
+  console.log(`smoke: installed ${version}; the entry, the policy and the program are there`);
+
+  // The login launch: `--hidden`.
+  const shell = Bun.spawn([exe, "--hidden"], { stdout: "pipe", stderr: "pipe", env });
+  const log = drain(shell.stderr, true);
+  if (!(await log.until(/ready: \d+ conversations/, 240_000))) {
+    shell.kill();
+    throw new Error("smoke: no first snapshot within 240 s");
+  }
+  const descriptor = JSON.parse(readFileSync(join(dataDir, "local-api.json"), "utf8")) as { pid: number };
+  console.log(`smoke: the runtime is pid ${descriptor.pid}: ${linuxExe(descriptor.pid)}`);
+  if (linuxExe(descriptor.pid) !== "/usr/lib/Deskfolk/native/real-bot-daemon") throw new Error("smoke: the runtime is not the daemon the package put in native/");
+  if (!linuxCommandLine(descriptor.pid).includes("--desktop-remote-channel")) throw new Error("smoke: the runtime was started without the remote setup channel");
+  const supervised = await runtimeInfo(dataDir);
+  if (supervised.mode !== "window" || supervised.restart !== "available") {
+    throw new Error(`smoke: the runtime reports ${JSON.stringify(supervised)}, not a window-supervised one a phone can restart`);
+  }
+  console.log("smoke: the runtime has its setup channel and can be restarted from a phone");
+
+  // A second launch (the launcher) hands itself to the running copy and ends; the runtime stays.
+  const second = Bun.spawn([exe], { stdout: "ignore", stderr: "ignore", env });
+  const handedOver = await Promise.race([second.exited.then(() => true), Bun.sleep(30_000).then(() => false)]);
+  if (!handedOver) {
+    second.kill();
+    throw new Error("smoke: a second launch did not hand itself to the running copy");
+  }
+  await Bun.sleep(2000);
+  if (!alive(descriptor.pid) || !(await healthyAt17890())) throw new Error("smoke: the second launch stopped the runtime");
+  console.log("smoke: a second launch handed over and left the runtime running");
+
+  process.kill(descriptor.pid, "SIGKILL");
+  let again = 0;
+  for (let i = 0; i < 90 && !again; i++) {
+    await Bun.sleep(500);
+    try {
+      const next = JSON.parse(readFileSync(join(dataDir, "local-api.json"), "utf8")) as { pid: number };
+      if (next.pid !== descriptor.pid && (await healthyAt17890())) again = next.pid;
+    } catch {
+      // Not written yet.
+    }
+  }
+  if (!again) throw new Error("smoke: the daemon was not started again after it died");
+  console.log(`smoke: started again as pid ${again}`);
+  if (!(await log.until(/reconnected/, 60_000))) throw new Error("smoke: the window did not reconnect to the daemon started again");
+  console.log("smoke: the window reconnected");
+
+  const quit = Bun.spawn([exe, "--quit"], { stdout: "ignore", stderr: "ignore", env });
+  await Promise.race([quit.exited, Bun.sleep(30_000)]);
+  const exited = await Promise.race([shell.exited.then(() => true), Bun.sleep(30_000).then(() => false)]);
+  if (!exited) {
+    shell.kill();
+    throw new Error("smoke: --quit did not end the running copy");
+  }
+  for (let i = 0; i < 20 && !gone(again); i++) await Bun.sleep(500);
+  if (!gone(again)) throw new Error(`smoke: the daemon (pid ${again}) outlived the app`);
+  console.log("smoke: --quit ended the app and stopped the daemon");
+
+  asRoot("apt-get", ["remove", "-y", "deskfolk"]);
+  if (existsSync(exe) || existsSync(`/usr/share/applications/${LINUX_DESKTOP_ENTRY}`)) throw new Error("smoke: the removal left the program behind");
+  if (!existsSync(dataDir)) throw new Error("smoke: the removal took the data directory");
+  console.log("smoke: removed; the data directory stays");
+
+  // The AppImage, extracted and run (no FUSE on a runner).
+  chmodSync(appImage, 0o755);
+  const image = Bun.spawn([appImage, "--appimage-extract-and-run", "--hidden"], { stdout: "pipe", stderr: "pipe", env });
+  const imageLog = drain(image.stderr, true);
+  if (!(await imageLog.until(/ready: \d+ conversations/, 240_000))) {
+    image.kill();
+    throw new Error("smoke: the AppImage reached no first snapshot within 240 s");
+  }
+  const imageDaemon = (JSON.parse(readFileSync(join(dataDir, "local-api.json"), "utf8")) as { pid: number }).pid;
+  const imageQuit = Bun.spawn([appImage, "--appimage-extract-and-run", "--quit"], { stdout: "ignore", stderr: "ignore", env });
+  await Promise.race([imageQuit.exited, Bun.sleep(30_000)]);
+  if (!(await Promise.race([image.exited.then(() => true), Bun.sleep(30_000).then(() => false)]))) {
+    image.kill();
+    throw new Error("smoke: --quit did not end the AppImage");
+  }
+  for (let i = 0; i < 20 && !gone(imageDaemon); i++) await Bun.sleep(500);
+  if (!gone(imageDaemon)) throw new Error(`smoke: the AppImage's daemon (pid ${imageDaemon}) outlived it`);
+  console.log("smoke: the AppImage ran and quit");
+}
+
 async function measure(app: string, runs: number) {
   for (let i = 1; i <= runs; i++) {
     const started = performance.now();
@@ -704,6 +1127,14 @@ if (import.meta.main) {
       // once on a machine with none.
       const earlier = process.argv.flatMap((a, i) => (a === "--upgrade-from" && process.argv[i + 1] ? [process.argv[i + 1]!] : []));
       for (const from of earlier.length ? earlier : [undefined]) await smokeWindows(setup, from);
+    }
+  } else if (release && process.platform === "linux") {
+    const { deb, appImage } = packageReleaseLinux();
+    if (process.argv.includes("--smoke")) {
+      // Once over each earlier deb named (0.4.0's, the last Tauri app), or once on a machine with none.
+      const earlier = process.argv.flatMap((a, i) => (a === "--upgrade-from" && process.argv[i + 1] ? [process.argv[i + 1]!] : []));
+      if (earlier.length > 1) throw new Error("--upgrade-from: one deb on Linux (the smoke removes the package at its end)");
+      await smokeLinux(deb, appImage, earlier[0]);
     }
   } else {
     const { app } = release ? packageRelease() : packageDev();
