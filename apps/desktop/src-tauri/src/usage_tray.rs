@@ -486,13 +486,13 @@ const LOGO_PX: usize = 26;
 
 fn logo_of(runner: &str) -> Option<&'static [u8]> {
     Some(match runner {
-        "claude_code" => include_bytes!("agent-logos/claude_code.rgba"),
-        "codex" => include_bytes!("agent-logos/codex.rgba"),
-        "grok" => include_bytes!("agent-logos/grok.rgba"),
-        "opencode" => include_bytes!("agent-logos/opencode.rgba"),
-        "antigravity" => include_bytes!("agent-logos/antigravity.rgba"),
-        "zcode" => include_bytes!("agent-logos/zcode.rgba"),
-        "custom" => include_bytes!("agent-logos/custom.rgba"),
+        "claude_code" => include_bytes!("../../../desktop-nsh/assets/agent-logos/claude_code.rgba"),
+        "codex" => include_bytes!("../../../desktop-nsh/assets/agent-logos/codex.rgba"),
+        "grok" => include_bytes!("../../../desktop-nsh/assets/agent-logos/grok.rgba"),
+        "opencode" => include_bytes!("../../../desktop-nsh/assets/agent-logos/opencode.rgba"),
+        "antigravity" => include_bytes!("../../../desktop-nsh/assets/agent-logos/antigravity.rgba"),
+        "zcode" => include_bytes!("../../../desktop-nsh/assets/agent-logos/zcode.rgba"),
+        "custom" => include_bytes!("../../../desktop-nsh/assets/agent-logos/custom.rgba"),
         _ => return None,
     })
 }

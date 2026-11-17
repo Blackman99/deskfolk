@@ -182,12 +182,12 @@ fn data_dir_named(os: &str, env: &dyn Fn(&str) -> Option<String>, name: &str) ->
     }
 }
 
-/// The product's version, the one the Tauri app ships under (its `tauri.conf.json`, one of the
-/// release's version lines): the crate's own is the workspace's `0.0.0`, against which every
+/// The product's version, the one the app ships under (`apps/desktop-nsh/package.json`, the single
+/// place the release's version is kept): the crate's own is the workspace's `0.0.0`, against which every
 /// release would read as an update.
 pub fn product_version() -> &'static str {
     static VERSION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-        version_of(include_str!("../../../desktop/src-tauri/tauri.conf.json")).unwrap_or_else(|| "0.0.0".into())
+        version_of(include_str!("../../package.json")).unwrap_or_else(|| "0.0.0".into())
     });
     &VERSION
 }
@@ -208,8 +208,8 @@ fn nsh_app_id(manifest: &str) -> Option<String> {
     Some(value.get("id")?.as_str()?.to_owned())
 }
 
-fn version_of(conf: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(conf).ok()?;
+fn version_of(manifest: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(manifest).ok()?;
     Some(value.get("version")?.as_str()?.to_owned())
 }
 

@@ -284,15 +284,18 @@ export function editionSource(doc: keyof typeof EDITIONS, lang: Lang): string {
   return fs.existsSync(path.join(findRepoRoot(), file)) ? file : EDITIONS[doc].zh;
 }
 
-/** Version of the desktop app as declared in tauri.conf.json (the release tag source of truth). */
+/**
+ * Version of the desktop app as declared in `apps/desktop-nsh/package.json` (the release tag source
+ * of truth). A missing file or version throws: the site would otherwise ship a download page that
+ * says 0.0.0.
+ */
 export function getAppVersion(): string {
-  const conf = path.join(findRepoRoot(), 'apps', 'desktop', 'src-tauri', 'tauri.conf.json');
-  try {
-    const parsed = JSON.parse(fs.readFileSync(conf, 'utf-8')) as { version?: string };
-    return parsed.version ?? '0.0.0';
-  } catch {
-    return '0.0.0';
+  const manifest = path.join(findRepoRoot(), 'apps', 'desktop-nsh', 'package.json');
+  const parsed = JSON.parse(fs.readFileSync(manifest, 'utf-8')) as { version?: unknown };
+  if (typeof parsed.version !== 'string' || parsed.version.length === 0) {
+    throw new Error(`${manifest} has no version`);
   }
+  return parsed.version;
 }
 
 function loadContext(lang: Lang): { preamble: string; terms: ParsedTerm[] } {

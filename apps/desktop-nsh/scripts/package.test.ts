@@ -49,7 +49,7 @@ test("the release's Info.plist carries the Tauri app's id and the release's vers
   expect(plist).toContain("<key>CFBundleIconFile</key><string>icon.icns</string>");
 });
 
-test("the version is the release's, from tauri.conf.json", () => {
+test("the version is the release's, from this package's package.json", () => {
   expect(productVersion(resolve(import.meta.dir, "../../.."))).toMatch(/^\d+\.\d+\.\d+/);
 });
 

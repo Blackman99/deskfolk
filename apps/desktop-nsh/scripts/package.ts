@@ -6,9 +6,9 @@
  * version its installer verifies (`installer.rs` `verify_bundle`), so a Mac on the Tauri app updates
  * to this one in place. The shell is built with `DESKFOLK_RELEASE` (`host/src/config.rs`): it is
  * Deskfolk itself (`com.real-bot.desktop`, the standard data directory, 17890) and starts the daemon
- * compiled into `Contents/Resources/native/` with the Tauri app's `build-native.ts` (the daemon, the
- * pty, runtime and WebRTC helpers and the credentials library, each signed there), where the Tauri
- * app kept them. The version is the release's, `tauri.conf.json`'s.
+ * compiled into `Contents/Resources/native/` with `build-native.ts` (the daemon, the pty, runtime
+ * and WebRTC helpers and the credentials library, each signed there), where the Tauri app kept
+ * them. The version is the release's, this package's `package.json` (`productVersion`).
  *
  * **Dev build** (default): `build/release/Deskfolk Dev.app` and a dmg, beside the installed stable
  * Deskfolk: its own bundle id, data directory and port (dev-instance.ts). It starts its own dev
@@ -41,10 +41,11 @@ import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlink
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { APP_ICON_FILE, DEV_APP_NAME, DEV_BUNDLE_ID, placeAppIcon } from "./dev-instance";
+import { minimumMacOS } from "./native-package";
 import { cargoPath, nshCli } from "./nsh-cli";
 
-/** NSH's own floor (`nsh-cli` `MACOS_MINIMUM`: an `NSView` API new in macOS 14). */
-export const MACOS_MINIMUM = "14.0";
+/** NSH's own floor (`nsh-cli` `MACOS_MINIMUM`: an `NSView` API new in macOS 14), kept in `native-package.ts` beside the native helpers' check. */
+export const MACOS_MINIMUM = minimumMacOS;
 export const RELEASE_APP_NAME = "Deskfolk";
 export const RELEASE_BUNDLE_ID = "com.real-bot.desktop";
 
@@ -193,10 +194,10 @@ exec "$APPDIR/${LINUX_LIB}/${LINUX_MAIN}" "$@"
 `;
 }
 
-/** The release's version: the Tauri app's `tauri.conf.json`, one of the release's version lines. */
+/** The release's version: this package's `package.json`, the one place it is kept (the host reads the same file). */
 export function productVersion(repo: string): string {
-  const conf = JSON.parse(readFileSync(join(repo, "apps/desktop/src-tauri/tauri.conf.json"), "utf8")) as { version?: string };
-  if (!conf.version) throw new Error("tauri.conf.json has no version");
+  const conf = JSON.parse(readFileSync(join(repo, "apps/desktop-nsh/package.json"), "utf8")) as { version?: string };
+  if (!conf.version) throw new Error("apps/desktop-nsh/package.json has no version");
   return conf.version;
 }
 
@@ -322,9 +323,9 @@ function packageRelease() {
   } else {
     // build-native.ts signs each one itself, with APPLE_SIGNING_IDENTITY (or ad hoc without it).
     const signing: Record<string, string> = identity === "-" ? {} : { APPLE_SIGNING_IDENTITY: identity };
-    const built = join(repo, "apps/desktop/src-tauri/native");
+    const built = join(repo, "apps/desktop-nsh/build/native");
     rmSync(built, { recursive: true, force: true });
-    run(process.execPath, ["apps/desktop/scripts/build-native.ts"], { TAURI_ENV_TARGET_TRIPLE: triple, ...signing }, repo);
+    run(process.execPath, ["apps/desktop-nsh/scripts/build-native.ts", "--target", triple], { ...signing }, repo);
     cpSync(built, native, { recursive: true, filter: (p) => !p.endsWith(".gitkeep") });
   }
   for (const name of ["real-bot-daemon", "real-bot-pty", "real-bot-runtime-helper", "real-bot-rtc", "libRemoteCredentials.dylib"]) {
@@ -355,7 +356,7 @@ function packageRelease() {
   writeFileSync(join(contents, "PkgInfo"), "APPL????");
 
   step("signing");
-  const signArgs = ["--force", "--options", "runtime", "--entitlements", join(repo, "apps/desktop/src-tauri/Entitlements.plist"), "--sign", identity];
+  const signArgs = ["--force", "--options", "runtime", "--entitlements", join(repo, "apps/desktop-nsh/assets/Entitlements.plist"), "--sign", identity];
   if (identity !== "-") signArgs.push("--timestamp");
   run("codesign", [...signArgs, app]);
   console.log(run("codesign", ["--verify", "--deep", "--strict", "--verbose=2", app]).trim());
@@ -424,9 +425,9 @@ function packageReleaseWindows() {
   if (!existsSync(join(stage, "app", "bundle.nshc"))) throw new Error("nsh build left no bundle.nshc");
 
   step("the daemon and its helpers");
-  const built = join(repo, "apps/desktop/src-tauri/native");
+  const built = join(repo, "apps/desktop-nsh/build/native");
   rmSync(built, { recursive: true, force: true });
-  run(process.execPath, ["apps/desktop/scripts/build-native.ts"], { TAURI_ENV_TARGET_TRIPLE: triple }, repo);
+  run(process.execPath, ["apps/desktop-nsh/scripts/build-native.ts", "--target", triple], {}, repo);
   cpSync(built, join(stage, "native"), { recursive: true, filter: (p) => !p.endsWith(".gitkeep") });
   for (const name of ["real-bot-daemon.exe", "real-bot-pty.exe", "real-bot-rtc.exe"]) {
     if (!existsSync(join(stage, "native", name))) throw new Error(`native\\${name} is missing`);
@@ -436,7 +437,7 @@ function packageReleaseWindows() {
   run(cargo, ["build", "--release", "--locked", "-p", "deskfolk-nsh"], { DESKFOLK_RELEASE: "1" });
   cpSync(join(root, "target", "release", "deskfolk-nsh.exe"), join(stage, "Deskfolk.exe"));
   checkIdentity(join(stage, "Deskfolk.exe"));
-  cpSync(join(repo, "apps/desktop/src-tauri/icons/icon.ico"), join(stage, "icon.ico"));
+  cpSync(join(repo, "apps/desktop-nsh/assets/icons/icon.ico"), join(stage, "icon.ico"));
 
   step("the installer (makensis)");
   const setup = join(out, setupName(version));
@@ -501,9 +502,9 @@ function packageReleaseLinux() {
   if (!existsSync(join(lib, "app", "bundle.nshc"))) throw new Error("nsh build left no bundle.nshc");
 
   step("the daemon and its helpers");
-  const built = join(repo, "apps/desktop/src-tauri/native");
+  const built = join(repo, "apps/desktop-nsh/build/native");
   rmSync(built, { recursive: true, force: true });
-  run(process.execPath, ["apps/desktop/scripts/build-native.ts"], { TAURI_ENV_TARGET_TRIPLE: triple }, repo);
+  run(process.execPath, ["apps/desktop-nsh/scripts/build-native.ts", "--target", triple], {}, repo);
   cpSync(built, join(lib, "native"), { recursive: true, filter: (p) => !p.endsWith(".gitkeep") });
   for (const name of LINUX_NATIVE) {
     if (!existsSync(join(lib, "native", name))) throw new Error(`native/${name} is missing`);

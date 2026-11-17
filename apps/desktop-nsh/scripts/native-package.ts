@@ -1,14 +1,18 @@
 import { join } from "node:path";
-import config from "../src-tauri/tauri.conf.json";
 
-export const minimumMacOS = config.bundle.macOS.minimumSystemVersion;
+/**
+ * The macOS the app and everything in `native/` is built for: NSH's own floor (an `NSView` API new
+ * in macOS 14). `package.ts` writes it into the bundle's Info.plist and `build-native.ts` hands it
+ * to Swift and Cargo, so there is one place to raise it.
+ */
+export const minimumMacOS = "14.0";
 
 /**
  * What `build-native.ts` ships into `native/`, per OS. macOS carries the Swift
  * runtime helper, pty helper and credentials library alongside the daemon, and the remote screen's
  * WebRTC helper; Windows has no equivalent of the Swift pieces, so it ships the daemon, the ConPTY
  * helper and the WebRTC helper. Linux ships the daemon, the forkpty build of that pty helper and
- * the WebRTC helper. `build.rs` checks the same lists.
+ * the WebRTC helper. `package.ts` checks the same lists when it packages.
  */
 export function nativeFilesFor(platform: string): string[] {
   if (platform === "win32") return ["real-bot-daemon.exe", "real-bot-pty.exe", "real-bot-rtc.exe"];
@@ -53,15 +57,4 @@ export async function verifyNativeMinimum(directory: string, advertised = minimu
     const output = await readCommand(["/usr/bin/otool", "-l", join(directory, file)]);
     for (const version of machOMinimums(output)) assertMinimum(advertised, version);
   }
-}
-
-if (import.meta.main) {
-  const bundle = process.argv[2];
-  if (!bundle?.endsWith(".app")) throw new Error("Pass the built .app path");
-  const minimum = await readCommand(["/usr/libexec/PlistBuddy", "-c", "Print :LSMinimumSystemVersion", join(bundle, "Contents/Info.plist")]);
-  if (minimum !== minimumMacOS) throw new Error("Bundle minimum differs from published configuration");
-  await verifyNativeMinimum(join(bundle, "Contents/Resources/native"), minimum);
-  const desktop = await readCommand(["/usr/bin/otool", "-l", join(bundle, "Contents/MacOS/real-bot-desktop")]);
-  for (const version of machOMinimums(desktop)) assertMinimum(minimum, version);
-  console.log(`Bundle and mandatory native resources support advertised macOS ${minimum}+.`);
 }

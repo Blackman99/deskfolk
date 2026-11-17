@@ -17,10 +17,10 @@ const MARKER: &str = "REAL_BOT_DEV_BUNDLE";
 /// Tauri only sets the Dock's icon at runtime in dev; Stage Manager reads the
 /// bundle's own, so without this one the window showed a blank app there.
 const ICON_FILE: &str = "icon.icns";
-const ICON: &[u8] = include_bytes!("../icons/icon.icns");
+const ICON: &[u8] = include_bytes!("../../../desktop-nsh/assets/icons/icon.icns");
 /// The app's own entitlements: the dev app is signed with the hardened runtime too, which keeps
 /// the microphone shut without them (the composer's voice input, ADR 0073).
-const ENTITLEMENTS: &str = include_str!("../Entitlements.plist");
+const ENTITLEMENTS: &str = include_str!("../../../desktop-nsh/assets/Entitlements.plist");
 /// Same words as `Info.plist`, which only the release bundle gets; macOS refuses the microphone to
 /// an app that does not say why it wants it.
 const MICROPHONE_USAGE: &str =
@@ -211,7 +211,7 @@ mod tests {
         assert!(write_icon(&app).unwrap());
         assert!(!write_icon(&app).unwrap(), "an unchanged icon is not written again");
         let written = fs::read(app.join("Contents").join("Resources").join(ICON_FILE)).unwrap();
-        assert_eq!(written, include_bytes!("../icons/icon.icns"));
+        assert_eq!(written, include_bytes!("../../../desktop-nsh/assets/icons/icon.icns"));
         assert!(info_plist("real-bot-desktop")
             .contains(&format!("<key>CFBundleIconFile</key>\n  <string>{ICON_FILE}</string>")));
 

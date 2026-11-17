@@ -652,7 +652,7 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     // shows the window icon.
     #[cfg(target_os = "macos")]
     let (icon, template) = (
-        tauri::image::Image::new_owned(include_bytes!("tray-template.rgba").to_vec(), 44, 44),
+        tauri::image::Image::new_owned(include_bytes!("../../../desktop-nsh/assets/tray/tray-template.rgba").to_vec(), 44, 44),
         true,
     );
     #[cfg(not(target_os = "macos"))]

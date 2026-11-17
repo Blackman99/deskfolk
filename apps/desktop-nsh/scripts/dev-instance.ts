@@ -31,10 +31,10 @@ export const DEV_BUNDLE_ID = "com.real-bot.desktop.nsh-dev";
 export const DEV_APP_NAME = "Deskfolk Dev";
 
 /**
- * The app's icon, the one every build wears (`apps/desktop/scripts/app-icon` makes it), and its
+ * The app's icon, the one every build wears (`scripts/app-icon` makes it), and its
  * name in a bundle's Resources (`CFBundleIconFile`; the shell also sets it on the Dock from there).
  */
-export const APP_ICON = resolve(import.meta.dir, "../../desktop/src-tauri/icons/icon.icns");
+export const APP_ICON = resolve(import.meta.dir, "../assets/icons/icon.icns");
 export const APP_ICON_FILE = "icon.icns";
 
 /** Puts the app icon in `app`'s Resources; true when it was missing or different. */

@@ -2,7 +2,8 @@
 to tint like its own status items. The bubble is solid, the white teammate is cut out of it, and the
 mustard one is a solid disc inside a cut ring, as the mark draws it.
 
-Writes raw RGBA (44 x 44, the menu bar's 22pt at 2x) for lib.rs to include.
+Writes raw RGBA (44 x 44, the menu bar's 22pt at 2x) for the usage tray (`host/src/usage_tray.rs`) to include.
+The file is `assets/tray/tray-template.rgba`.
 Run: python3 tray.py OUT.rgba [PREVIEW.png]   (needs Pillow)
 """
 import sys

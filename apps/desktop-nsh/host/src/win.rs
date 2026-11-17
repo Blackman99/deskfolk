@@ -29,9 +29,8 @@ use crate::config::Config;
 /// `backdrop` to Mica; before it the attribute is refused and the window stays solid.
 const SYSTEM_BACKDROP_BUILD: u32 = 22621;
 
-/// The app's icon, the one every build wears (`apps/desktop/scripts/app-icon` makes it; the Tauri
-/// app embeds the same file).
-const APP_ICON: &[u8] = include_bytes!("../../../desktop/src-tauri/icons/icon.ico");
+/// The app's icon, the one every build wears (`scripts/app-icon` makes it).
+const APP_ICON: &[u8] = include_bytes!("../../assets/icons/icon.ico");
 
 pub fn run(config: Config) -> std::process::ExitCode {
     // Once, before the first view: what the app's TSX may import, NSH's and the app's own crate.

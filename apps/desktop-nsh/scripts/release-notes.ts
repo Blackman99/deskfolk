@@ -22,8 +22,9 @@ import { fileURLToPath } from "node:url";
  * fails the packaging job, so no un-notarized `.dmg` ships under this note.
  *
  * Since 0.5.0 the app is the native one (ADR 0107): on the Mac on NSH's own floor of macOS 14, and
- * on Windows from an installer that is still unsigned. release.yml packages nothing for Linux: the
- * note says so, because an install there finds no update and someone reading the page should know why.
+ * on Windows from an installer that is still unsigned, and on Linux (x86_64) as a deb and an
+ * AppImage. The note says what ships where, because someone on another platform (Linux on ARM,
+ * say) finds no package and should know why.
  */
 const NOTARIZED_NOTE = `---
 
@@ -31,20 +32,20 @@ The macOS \`.dmg\` builds are signed with Developer ID and notarized by Apple: t
 
 The Windows installer is not signed yet: SmartScreen warns about an unknown publisher (More info → Run anyway). It installs over an earlier Deskfolk, conversations and settings included.
 
-This release has no Linux package: installs there keep the version they have, and the last Linux packages are on the 0.4.0 release. See CHANGELOG.md and ROADMAP.md.`;
+Linux (x86_64) gets a \`.deb\` and an \`.AppImage\`. There is no package for other platforms. See CHANGELOG.md and ROADMAP.md.`;
 
 const UNSIGNED_NOTE = `---
 
 Unsigned macOS snapshot. This is not a supported signed installer.
 
-Gatekeeper may block ad-hoc signed builds (\`signingIdentity: "-"\`). Prefer running from source:
+These builds are signed ad hoc (\`package.ts --sign adhoc\`, no Developer ID), so Gatekeeper may block them. Prefer running from source:
 
 \`\`\`
 pnpm install
-pnpm dev
+pnpm --filter @real-bot/desktop-nsh dev
 \`\`\`
 
-The Windows installer is not signed either. This release has no Linux package. See CHANGELOG.md and ROADMAP.md.`;
+The Windows installer is not signed either. Linux (x86_64) gets a \`.deb\` and an \`.AppImage\`. There is no package for other platforms. See CHANGELOG.md and ROADMAP.md.`;
 
 /**
  * The lines under `## <version>`, up to the next `## `. The heading itself stays out: the release
@@ -139,12 +140,13 @@ export function repoRoot(): string {
   return join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 }
 
+/** The release's version, from the app's own `package.json` (the one place it is kept). */
 export function configuredVersion(root: string = repoRoot()): string {
   const config = JSON.parse(
-    readFileSync(join(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"),
+    readFileSync(join(root, "apps/desktop-nsh/package.json"), "utf8"),
   ) as { version?: unknown };
   if (typeof config.version !== "string" || config.version.length === 0) {
-    throw new Error("tauri.conf.json has no version");
+    throw new Error("apps/desktop-nsh/package.json has no version");
   }
   return config.version;
 }

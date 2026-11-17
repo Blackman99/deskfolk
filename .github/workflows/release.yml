@@ -459,7 +459,7 @@ jobs:
       - name: Release notes from CHANGELOG
         env:
           MACOS_NOTARIZED: ${{ secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
-        run: bun apps/desktop/scripts/release-notes.ts > "$RUNNER_TEMP/notes.md"
+        run: bun apps/desktop-nsh/scripts/release-notes.ts > "$RUNNER_TEMP/notes.md"
 
       - name: Create the release with the images and the installers
         env:

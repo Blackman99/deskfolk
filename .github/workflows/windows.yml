@@ -80,7 +80,7 @@ jobs:
 
       - name: Typecheck desktop
         if: success() || failure()
-        run: pnpm --filter @real-bot/desktop typecheck
+        run: pnpm --filter @real-bot/desktop-nsh typecheck
 
       - name: Messenger tests
         if: success() || failure()
@@ -88,7 +88,7 @@ jobs:
 
       - name: Desktop script tests
         if: success() || failure()
-        run: pnpm --filter @real-bot/desktop test
+        run: pnpm --filter @real-bot/desktop-nsh test
 
       - name: ConPTY helper crate tests
         if: success() || failure()

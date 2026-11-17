@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  BUN_TARGETS,
   SIDECAR_NAME,
   bunTargetFor,
   fallbackHostTriple,
@@ -70,23 +69,4 @@ test("the bundle ships the daemon through the native resources, not as a sidecar
   expect(conf.build.beforeBuildCommand).toContain("@real-bot/desktop build:native");
   const rust = readFileSync(join(import.meta.dir, "../../desktop/src-tauri/src/daemon.rs"), "utf8");
   expect(rust).toContain(`const SIDECAR_NAME_STEM: &str = "${SIDECAR_NAME}"`);
-});
-
-test("the release matrix packages every macOS triple the build script knows", () => {
-  const workflow = readFileSync(join(import.meta.dir, "../../../.github/workflows/release.yml"), "utf8");
-  // This matrix packages the Mac app, the native one since 0.5.0 (`apps/desktop-nsh/scripts/package.ts
-  // --release`), signed and notarized when the secrets are set. package.ts builds the daemon and its
-  // helpers through `build:native`'s script (apps/desktop/scripts/build-native.ts).
-  const macTriples = Object.keys(BUN_TARGETS).filter((triple) => triple.endsWith("-apple-darwin"));
-  expect(macTriples).toEqual(["aarch64-apple-darwin", "x86_64-apple-darwin"]);
-  for (const triple of macTriples) {
-    expect(workflow).toContain(`- triple: ${triple}`);
-  }
-  // The daemon is compiled for the target being packaged, not for whatever the runner happens to
-  // be: package.ts hands the matrix's triple to build-native.ts the way Tauri's build hook did.
-  expect(workflow).toContain("package.ts --release --target ${{ matrix.triple }}");
-  const packaging = readFileSync(join(import.meta.dir, "../../desktop-nsh/scripts/package.ts"), "utf8");
-  expect(packaging).toContain("TAURI_ENV_TARGET_TRIPLE: triple");
-  const native = readFileSync(join(import.meta.dir, "../../desktop/scripts/build-native.ts"), "utf8");
-  expect(native).toContain("TAURI_ENV_TARGET_TRIPLE");
 });

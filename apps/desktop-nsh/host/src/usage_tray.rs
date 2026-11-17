@@ -11,8 +11,8 @@
 //!
 //! The words, their order and the icons are the Tauri shell's, function for function (the tests
 //! came along); only the menu calls differ: AppKit's own, on the main thread. The agents' marks
-//! and the menu bar's mark are read from the Tauri tree, where `apps/desktop/scripts/app-icon`
-//! makes them, so there is one copy of each.
+//! and the menu bar's mark are `assets/agent-logos` and `assets/tray` (`scripts/app-icon/tray.py`
+//! makes the mark), so there is one copy of each.
 //!
 //! On Windows the same lines and icons head the menu of the icon in the notification area
 //! (`win_tray.rs`), which makes its own menu: the menu calls here are macOS's only.
@@ -56,14 +56,14 @@ pub const ICON_PX: usize = 36;
 #[cfg(target_os = "macos")]
 const ICON_PT: f64 = 18.0;
 
-/// The menu bar's mark in one ink (`apps/desktop/scripts/app-icon/tray.py`), 44 px for 22 pt: a
+/// The menu bar's mark in one ink (`scripts/app-icon/tray.py`), 44 px for 22 pt: a
 /// template image, so the menu bar tints it like its own items.
 #[cfg(target_os = "macos")]
 pub const MARK_PX: usize = 44;
 #[cfg(target_os = "macos")]
 pub const MARK_PT: f64 = 22.0;
 #[cfg(target_os = "macos")]
-pub const MARK: &[u8] = include_bytes!("../../../desktop/src-tauri/src/tray-template.rgba");
+pub const MARK: &[u8] = include_bytes!("../../assets/tray/tray-template.rgba");
 
 /// `GET /v1/usage` (ADR 0080): each agent something runs on, with its accounts.
 #[derive(Debug, Default, Deserialize)]
@@ -433,13 +433,13 @@ const LOGO_PX: usize = 26;
 
 fn logo_of(runner: &str) -> Option<&'static [u8]> {
     Some(match runner {
-        "claude_code" => include_bytes!("../../../desktop/src-tauri/src/agent-logos/claude_code.rgba"),
-        "codex" => include_bytes!("../../../desktop/src-tauri/src/agent-logos/codex.rgba"),
-        "grok" => include_bytes!("../../../desktop/src-tauri/src/agent-logos/grok.rgba"),
-        "opencode" => include_bytes!("../../../desktop/src-tauri/src/agent-logos/opencode.rgba"),
-        "antigravity" => include_bytes!("../../../desktop/src-tauri/src/agent-logos/antigravity.rgba"),
-        "zcode" => include_bytes!("../../../desktop/src-tauri/src/agent-logos/zcode.rgba"),
-        "custom" => include_bytes!("../../../desktop/src-tauri/src/agent-logos/custom.rgba"),
+        "claude_code" => include_bytes!("../../assets/agent-logos/claude_code.rgba"),
+        "codex" => include_bytes!("../../assets/agent-logos/codex.rgba"),
+        "grok" => include_bytes!("../../assets/agent-logos/grok.rgba"),
+        "opencode" => include_bytes!("../../assets/agent-logos/opencode.rgba"),
+        "antigravity" => include_bytes!("../../assets/agent-logos/antigravity.rgba"),
+        "zcode" => include_bytes!("../../assets/agent-logos/zcode.rgba"),
+        "custom" => include_bytes!("../../assets/agent-logos/custom.rgba"),
         _ => return None,
     })
 }

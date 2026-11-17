@@ -33,7 +33,7 @@ test("every Worker the daemon starts is an entrypoint wherever the daemon is com
   expect(workers).toContain("acceptance-match-worker.ts");
   const compile = (JSON.parse(readFileSync(join(import.meta.dir, "../package.json"), "utf8")) as { scripts: { compile: string } }).scripts.compile;
   const sidecar = readFileSync(join(import.meta.dir, "../scripts/build-sidecar.ts"), "utf8");
-  const native = readFileSync(join(import.meta.dir, "../../desktop/scripts/build-native.ts"), "utf8");
+  const native = readFileSync(join(import.meta.dir, "../../desktop-nsh/scripts/build-native.ts"), "utf8");
   for (const worker of workers) {
     expect(compile).toContain(` src/${worker} `);
     expect(sidecar).toContain(`"src/${worker}"`);
@@ -61,7 +61,7 @@ test.skipIf(process.platform === "win32")("a regex check runs in a compiled exec
   }
 }, 60_000);
 
-// The shipped daemon is `bun build --compile` output (see apps/desktop/scripts/build-native.ts):
+// The shipped daemon is `bun build --compile` output (see apps/desktop-nsh/scripts/build-native.ts):
 // its modules live under `/$bunfs/root`, so anything read from a path beside the source is missing.
 // rc.6–rc.9 shipped a daemon that threw on `/package.json` before listening; a dev daemon already
 // holding the port hid it, since a window that finds a runtime never starts its own. macOS and Linux

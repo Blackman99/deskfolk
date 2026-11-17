@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   conptyBuildPlan,
@@ -9,8 +10,8 @@ import {
   windowsSignArgv,
 } from "./build-native.ts";
 
-test("a Windows sign command is read the way Tauri's signCommand string is: spaces, and %1 for the file", () => {
-  const file = "C:\\repo\\apps\\desktop\\src-tauri\\native\\real-bot-daemon.exe";
+test("a Windows sign command is read as a command string: spaces, and %1 for the file", () => {
+  const file = "C:\\repo\\apps\\desktop-nsh\\build\\native\\real-bot-daemon.exe";
   expect(windowsSignArgv("trusted-signing-cli -e https://eus.codesigning.azure.net -a acct -c profile -d Deskfolk %1", file)).toEqual([
     "trusted-signing-cli", "-e", "https://eus.codesigning.azure.net", "-a", "acct", "-c", "profile", "-d", "Deskfolk", file,
   ]);
@@ -19,7 +20,7 @@ test("a Windows sign command is read the way Tauri's signCommand string is: spac
   expect(() => windowsSignArgv("   ", file)).toThrow();
 });
 
-const nativeDir = "/repo/apps/desktop/src-tauri/native";
+const nativeDir = "/repo/apps/desktop-nsh/build/native";
 
 test("familyFor recognizes the macOS, Windows and Linux (glibc) triples this project ships, and nothing else", () => {
   expect(familyFor("aarch64-apple-darwin")).toBe("darwin");
@@ -32,10 +33,14 @@ test("familyFor recognizes the macOS, Windows and Linux (glibc) triples this pro
   expect(() => familyFor("armv7-linux-androideabi")).toThrow();
 });
 
-test("resolveTriple: an explicit TAURI_ENV_TARGET_TRIPLE always wins", () => {
-  expect(resolveTriple({ TAURI_ENV_TARGET_TRIPLE: "aarch64-pc-windows-msvc" }, "darwin", "arm64")).toBe(
+test("resolveTriple: --target wins over DESKFOLK_TARGET_TRIPLE, which wins over the host", () => {
+  expect(resolveTriple({ DESKFOLK_TARGET_TRIPLE: "aarch64-pc-windows-msvc" }, "darwin", "arm64")).toBe(
     "aarch64-pc-windows-msvc",
   );
+  expect(resolveTriple({ DESKFOLK_TARGET_TRIPLE: "aarch64-pc-windows-msvc" }, "darwin", "arm64", ["--target", "x86_64-apple-darwin"])).toBe(
+    "x86_64-apple-darwin",
+  );
+  expect(() => resolveTriple({}, "darwin", "arm64", ["--target"])).toThrow();
 });
 
 test("resolveTriple falls back to this host's own OS and architecture, Windows included", () => {
@@ -91,7 +96,7 @@ test("the Windows daemon compile targets bun-windows-*, stamps executable metada
   expect(args).toContain("--target=bun-windows-x64");
   expect(args).toContain("--windows-title=Deskfolk Daemon");
   expect(args).toContain("--windows-description=Deskfolk background daemon");
-  expect(args).toContain("--windows-icon=apps/desktop/src-tauri/icons/icon.ico");
+  expect(args).toContain("--windows-icon=apps/desktop-nsh/assets/icons/icon.ico");
   expect(args).not.toContain("--windows-hide-console");
   expect(outfile).toBe(resolve(nativeDir, "real-bot-daemon.exe"));
 
@@ -117,7 +122,7 @@ test("the ConPTY helper is built for the requested triple and copied beside the 
 });
 
 test("the remote screen's helper is built by Cargo for the macOS triple, at the advertised minimum", () => {
-  const plan = rtcBuildPlan("aarch64-apple-darwin", nativeDir, "13.0");
+  const plan = rtcBuildPlan("aarch64-apple-darwin", nativeDir, "14.0");
   expect(plan.args).toEqual([
     "cargo",
     "build",
@@ -130,7 +135,7 @@ test("the remote screen's helper is built by Cargo for the macOS triple, at the 
   ]);
   expect(plan.builtPath).toBe("apps/rtc-helper/target/aarch64-apple-darwin/release/real-bot-rtc");
   expect(plan.destPath).toBe(resolve(nativeDir, "real-bot-rtc"));
-  expect(plan.env).toEqual({ MACOSX_DEPLOYMENT_TARGET: "13.0" });
+  expect(plan.env).toEqual({ MACOSX_DEPLOYMENT_TARGET: "14.0" });
 });
 
 test("on Windows the remote screen's helper is an .exe beside the daemon, with no macOS minimum", () => {
@@ -139,4 +144,19 @@ test("on Windows the remote screen's helper is an .exe beside the daemon, with n
   expect(plan.builtPath).toBe("apps/rtc-helper/target/x86_64-pc-windows-msvc/release/real-bot-rtc.exe");
   expect(plan.destPath).toBe(resolve(nativeDir, "real-bot-rtc.exe"));
   expect(plan.env).toEqual({});
+});
+
+test("the release matrix packages every macOS triple the build script knows", () => {
+  const workflow = readFileSync(resolve(import.meta.dir, "../../../.github/workflows/release.yml"), "utf8");
+  const macTriples = [...workflow.matchAll(/- triple: (\S+-apple-darwin)/g)].map((match) => match[1]!).sort();
+  expect(macTriples).toEqual(["aarch64-apple-darwin", "x86_64-apple-darwin"]);
+  for (const triple of macTriples) {
+    expect(familyFor(triple)).toBe("darwin");
+    expect(daemonBuildPlan(triple, nativeDir).args.some((arg) => arg.startsWith("--target=bun-darwin-"))).toBe(true);
+  }
+  // The daemon is compiled for the target being packaged, not for whatever the runner happens to
+  // be: package.ts hands the matrix's triple to build-native.ts.
+  expect(workflow).toContain("package.ts --release --target ${{ matrix.triple }}");
+  const packaging = readFileSync(resolve(import.meta.dir, "package.ts"), "utf8");
+  expect(packaging).toContain('"--target", triple');
 });

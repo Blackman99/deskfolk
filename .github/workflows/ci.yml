@@ -105,8 +105,10 @@ jobs:
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
+      # The native app's scripts on macOS (the native helpers' build plan, release notes, and the
+      # darwin-only check that a compiled Bun signed with the daemon's entitlements still works).
       - name: Desktop script tests and typecheck
-        run: pnpm --filter @real-bot/desktop test && pnpm --filter @real-bot/desktop typecheck
+        run: pnpm --filter @real-bot/desktop-nsh test && pnpm --filter @real-bot/desktop-nsh typecheck
 
       - name: Native credential fixtures (no Keychain or prompts)
         run: swift run --package-path apps/runtime-helper RemoteCoreTests

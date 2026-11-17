@@ -28,7 +28,7 @@ test.skipIf(process.platform !== "darwin")("stock compiled Bun remains unqualifi
     await run([process.execPath, "build", "--compile", "--no-compile-autoload-dotenv", "--no-compile-autoload-bunfig",
       "--no-compile-autoload-tsconfig", "--no-compile-autoload-package-json", entry, "--outfile", binary]);
     await run(["/usr/bin/codesign", "--force", "--sign", "-", "--options", "runtime", "--entitlements",
-      resolve(import.meta.dir, "../src-tauri/daemon-entitlements.plist"), binary]);
+      resolve(import.meta.dir, "../assets/daemon-entitlements.plist"), binary]);
     expect(await run([binary])).toBe("FIXTURE_ENTRY absent\n");
     for (const options of [`--preload ${preload}`, `--config ${config}`]) {
       expect(await run([binary], { BUN_OPTIONS: options })).toContain("EXTERNAL_PRELOAD");

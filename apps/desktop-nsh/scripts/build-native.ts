@@ -1,6 +1,7 @@
 /**
- * Compiles this platform's native resources into `apps/desktop/src-tauri/native/`, the directory
- * `tauri.conf.json`'s `bundle.resources` copies into the app bundle whole.
+ * Compiles this platform's native resources into `apps/desktop-nsh/build/native/`, the directory
+ * `package.ts` copies into the app's bundle (or installer, or package) whole. The target is
+ * `--target <triple>` (or `DESKFOLK_TARGET_TRIPLE`), this host's own when neither is given.
  *
  * macOS: the Swift runtime helper, pty helper and credentials library (built by `swift build`),
  * the remote screen's WebRTC helper (`apps/rtc-helper`, built by Cargo), plus the daemon
@@ -20,7 +21,7 @@
  * spawns anything.
  */
 import { copyFile, mkdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { minimumMacOS, verifyNativeMinimum } from "./native-package";
 
 export type Family = "darwin" | "windows" | "linux";
@@ -33,15 +34,19 @@ export function familyFor(triple: string): Family {
 }
 
 /**
- * `TAURI_ENV_TARGET_TRIPLE` wins (Tauri sets it for every build hook); otherwise this host's
+ * A `--target <triple>` argument wins, then `DESKFOLK_TARGET_TRIPLE`; otherwise this host's
  * default triple for its own OS and CPU architecture: macOS, Windows or Linux.
  */
 export function resolveTriple(
   env: Record<string, string | undefined>,
   platform: string,
   arch: string,
+  argv: string[] = [],
 ): string {
-  const explicit = env.TAURI_ENV_TARGET_TRIPLE?.trim();
+  const flag = argv.indexOf("--target");
+  const fromArgs = flag === -1 ? undefined : argv[flag + 1]?.trim();
+  if (flag !== -1 && !fromArgs) throw new Error("--target needs a triple");
+  const explicit = fromArgs || env.DESKFOLK_TARGET_TRIPLE?.trim();
   if (explicit) return explicit;
   if (platform === "win32") {
     return arch === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
@@ -89,7 +94,7 @@ export function daemonBuildPlan(triple: string, nativeDir: string): DaemonBuildP
       ? [
           "--windows-title=Deskfolk Daemon",
           "--windows-description=Deskfolk background daemon",
-          "--windows-icon=apps/desktop/src-tauri/icons/icon.ico",
+          "--windows-icon=apps/desktop-nsh/assets/icons/icon.ico",
         ]
       : []),
     "apps/daemon/src/main.ts",
@@ -147,8 +152,8 @@ export function conptyBuildPlan(triple: string, nativeDir: string): ConptyBuildP
   return {
     manifestPath,
     args: ["cargo", "build", "--release", "--manifest-path", manifestPath, "--target", triple],
-    // Left relative on purpose: `resolve` here would anchor it to the cwd pnpm runs this script
-    // in (`apps/desktop`), not the repo root the caller joins it onto.
+    // Left relative on purpose: `resolve` here would anchor it to the cwd this script runs in
+    // (wherever it was started), not the repo root the caller joins it onto.
     builtPath: `apps/conpty-helper/target/${triple}/release/${name}`,
     destPath: resolve(nativeDir, name),
   };
@@ -201,18 +206,18 @@ async function buildDarwin(root: string, triple: string, output: string): Promis
     const args = ["codesign", "--force", "--sign", identity, "--identifier", id!, "--options", "runtime"];
     // Notarization rejects a Developer ID signature without a secure timestamp; ad-hoc cannot carry one.
     if (identity !== "-") args.push("--timestamp");
-    if (file === "real-bot-daemon") args.push("--entitlements", resolve(import.meta.dir, "../src-tauri/daemon-entitlements.plist"));
+    if (file === "real-bot-daemon") args.push("--entitlements", resolve(import.meta.dir, "../assets/daemon-entitlements.plist"));
     args.push(resolve(output, file!));
     await run(root, args);
   }
-  console.log(`Native resources built in ${dirname(output)}/native; remote credentials remain disabled (G-pack not verified).`);
+  console.log(`Native resources built in ${output}; remote credentials remain disabled (G-pack not verified).`);
 }
 
 /**
- * The argv that signs one Windows binary with `command`, spelled the way Tauri's own
- * `bundle.windows.signCommand` string is: split on single spaces, `%1` standing for the file. One
- * value then signs everything — Tauri the app exe and the installer, this script the daemon, the
- * pty helper and the WebRTC helper, which Tauri ships as plain resources and never signs itself.
+ * The argv that signs one Windows binary with `command`, spelled the way the
+ * release's sign command string is written: split on single spaces, `%1` standing for the file. One
+ * value then signs everything — `package.ts` the app exe and the installer, this script the daemon,
+ * the pty helper and the WebRTC helper.
  */
 export function windowsSignArgv(command: string, file: string): string[] {
   const argv = command.split(" ").filter(Boolean).map((arg) => arg.replaceAll("%1", file));
@@ -238,9 +243,9 @@ async function buildWindows(root: string, triple: string, output: string): Promi
   const sign = process.env.REAL_BOT_WINDOWS_SIGN_COMMAND?.trim();
   if (sign) {
     for (const file of [daemon, conpty.destPath, rtc.destPath]) await run(root, windowsSignArgv(sign, file));
-    console.log(`Native resources built and signed in ${dirname(output)}/native.`);
+    console.log(`Native resources built and signed in ${output}.`);
   } else {
-    console.log(`Native resources built in ${dirname(output)}/native (unsigned: no REAL_BOT_WINDOWS_SIGN_COMMAND).`);
+    console.log(`Native resources built in ${output} (unsigned: no REAL_BOT_WINDOWS_SIGN_COMMAND).`);
   }
 }
 
@@ -255,13 +260,13 @@ async function buildLinux(root: string, triple: string, output: string): Promise
   const rtc = rtcBuildPlan(triple, output);
   await run(root, rtc.args);
   await copyFile(resolve(root, rtc.builtPath), rtc.destPath);
-  console.log(`Native resources built in ${dirname(output)}/native.`);
+  console.log(`Native resources built in ${output}.`);
 }
 
 if (import.meta.main) {
   const root = resolve(import.meta.dir, "../../..");
-  const triple = resolveTriple(process.env, process.platform, process.arch);
-  const output = resolve(root, "apps/desktop/src-tauri/native");
+  const triple = resolveTriple(process.env, process.platform, process.arch, process.argv.slice(2));
+  const output = resolve(root, "apps/desktop-nsh/build/native");
   await mkdir(output, { recursive: true });
 
   const family = familyFor(triple);
