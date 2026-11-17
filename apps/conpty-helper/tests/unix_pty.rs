@@ -102,12 +102,14 @@ impl Session {
 
 #[test]
 fn the_shell_has_a_controlling_terminal_and_is_in_the_foreground() {
-    let mut session = start("/", &["/bin/sh", "-c", "tty; ps -o stat= -p $$; echo end-of-check"]);
+    // Each answer on a line of its own, labelled: Ubuntu 26.04's `tty` (uutils) ends its line with
+    // no newline, which ran it into the next.
+    let mut session = start("/", &["/bin/sh", "-c", "echo \"tty=$(tty)\"; echo \"stat=$(ps -o stat= -p $$)\"; echo end-of-check"]);
     let out = session.wait_for("end-of-check");
-    assert!(out.contains("/dev/"), "tty names a device: {out:?}");
+    let line = |label: &str| out.lines().find_map(|line| line.strip_prefix(label)).unwrap_or_default().trim().to_string();
+    assert!(line("tty=").starts_with("/dev/"), "tty names a device: {out:?}");
     assert!(!out.contains("not a tty"), "{out:?}");
-    let stat = out.lines().nth(1).unwrap_or_default();
-    assert!(stat.contains('+'), "ps marks the foreground process group: {out:?}");
+    assert!(line("stat=").contains('+'), "ps marks the foreground process group: {out:?}");
     assert_eq!(session.exit_code(), 0);
 }
 
