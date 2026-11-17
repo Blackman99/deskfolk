@@ -42,8 +42,10 @@ test("every Worker the daemon starts is an entrypoint wherever the daemon is com
 });
 
 // Shipped builds until this test read every `matches` pattern as one that "does not compile": the
-// regex Worker was not an entrypoint, so the compiled daemon could not start it.
-test.skipIf(process.platform !== "darwin")("a regex check runs in a compiled executable", async () => {
+// regex Worker was not an entrypoint, so the compiled daemon could not start it. Not on Windows,
+// where a compiled executable is an `.exe` and the window's channel is the daemon's stdin and stdout
+// (`remote/window-setup.test.ts`).
+test.skipIf(process.platform === "win32")("a regex check runs in a compiled executable", async () => {
   const directory = mkdtempSync(join(tmpdir(), "compiled-regex-"));
   const binary = join(directory, "regex-probe");
   try {
@@ -62,8 +64,9 @@ test.skipIf(process.platform !== "darwin")("a regex check runs in a compiled exe
 // The shipped daemon is `bun build --compile` output (see apps/desktop/scripts/build-native.ts):
 // its modules live under `/$bunfs/root`, so anything read from a path beside the source is missing.
 // rc.6–rc.9 shipped a daemon that threw on `/package.json` before listening; a dev daemon already
-// holding the port hid it, since a window that finds a runtime never starts its own.
-test.skipIf(process.platform !== "darwin")("the compiled daemon starts outside the source tree and answers its window", async () => {
+// holding the port hid it, since a window that finds a runtime never starts its own. macOS and Linux
+// both start it this way (the window's FD 3).
+test.skipIf(process.platform === "win32")("the compiled daemon starts outside the source tree and answers its window", async () => {
   const directory = mkdtempSync(join(tmpdir(), "compiled-daemon-"));
   // The local API port is fixed, and a dev instance may be on it; this copy listens elsewhere.
   const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
