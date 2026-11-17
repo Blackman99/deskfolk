@@ -9,7 +9,7 @@ import { ulid } from "../ids";
 import { PresenceManager } from "../notifications";
 import { PUSH_ALLOWED_HOSTS, PUSH_PLAINTEXT, endpointHash, isAllowedPushHost, parsePushEndpoint, parseSubscribeV2, validateP256Point } from "./push-endpoint";
 import { PushService, SEND_SLOT_INTERVAL_MS } from "./push";
-import { createSafePushFetch, isPrivateOrForbiddenIp } from "./push-net";
+import { createSafePushFetch, isPrivateOrForbiddenIp, isProxyFakeIp } from "./push-net";
 import { deletePushSubs, livePushSubs, pushSub, upsertPushSub } from "./push-subs";
 import { encryptPush, vapidPublic, vapidFingerprint, vapidJwt } from "./push-crypto";
 
@@ -989,6 +989,104 @@ describe("anti-SSRF and IP validation", () => {
       expect(sni).toBe("fcm.googleapis.com");
       await expect(fetchFn("https://web.push.apple.com/v1/push/fixture", { method: "POST", redirect: "error" })).rejects.toThrow(/anti_ssrf/);
       expect(connects).toEqual(["1.1.1.1:443"]);
+    } finally {
+      dns.lookup = originalLookup;
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      proxy.close();
+    }
+  });
+
+  test("a proxy app's fake IP (198.18.0.0/15) is still refused as an address, but not for a push host", () => {
+    expect(isProxyFakeIp("198.18.1.56")).toBe(true);
+    expect(isProxyFakeIp("198.18.0.0")).toBe(true);
+    expect(isProxyFakeIp("198.19.255.255")).toBe(true);
+    expect(isProxyFakeIp("198.17.255.255")).toBe(false);
+    expect(isProxyFakeIp("198.20.0.1")).toBe(false);
+    expect(isProxyFakeIp("10.0.0.1")).toBe(false);
+    expect(isProxyFakeIp("::ffff:198.18.0.1")).toBe(false);
+    expect(isProxyFakeIp("not an ip")).toBe(false);
+    expect(isPrivateOrForbiddenIp("198.18.1.56")).toBe(true);
+  });
+
+  test("createSafePushFetch goes to a push host behind a fake-IP proxy, direct or through HTTPS_PROXY", async () => {
+    const net = await import("node:net");
+    const dns = (await import("node:dns")).default;
+    const connects: string[] = [];
+    let sni = null as string | null;
+    const proxy = net.createServer((socket) => {
+      let buf = Buffer.alloc(0);
+      let tunnelled = false;
+      socket.on("data", (chunk: Buffer) => {
+        buf = Buffer.concat([buf, chunk]);
+        if (!tunnelled) {
+          const split = buf.indexOf("\r\n\r\n");
+          if (split < 0) return;
+          const target = /^CONNECT (\S+) HTTP\/1\.[01]/i.exec(buf.subarray(0, split).toString("latin1"))?.[1] ?? "";
+          connects.push(target);
+          if (target !== "198.18.0.7:443") {
+            socket.end("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n");
+            return;
+          }
+          tunnelled = true;
+          buf = buf.subarray(split + 4);
+          socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+        }
+        if (buf.length >= 5 && buf.length >= 5 + buf.readUInt16BE(3)) {
+          sni = clientHelloServerName(buf);
+          socket.destroy();
+        }
+      });
+      socket.on("error", () => undefined);
+    });
+    await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+    const address = proxy.address();
+    if (!address || typeof address === "string") throw new Error("proxy did not bind");
+    const previous = {
+      HTTP_PROXY: process.env.HTTP_PROXY,
+      HTTPS_PROXY: process.env.HTTPS_PROXY,
+      ALL_PROXY: process.env.ALL_PROXY,
+      NO_PROXY: process.env.NO_PROXY,
+      http_proxy: process.env.http_proxy,
+      https_proxy: process.env.https_proxy,
+      all_proxy: process.env.all_proxy,
+      no_proxy: process.env.no_proxy,
+    };
+    const answers: Record<string, string> = { "fcm.googleapis.com": "198.18.0.7", "web.push.apple.com": "10.0.0.1" };
+    const originalLookup = dns.lookup.bind(dns);
+    dns.lookup = ((hostname: string, options: unknown, callback?: unknown) => {
+      const cb = typeof options === "function" ? options : callback;
+      const answer = answers[hostname];
+      if (typeof cb !== "function" || !answer) return originalLookup(hostname as never, options as never, callback as never);
+      if (options && typeof options === "object" && (options as { all?: boolean }).all) {
+        (cb as (err: null, addresses: Array<{ address: string; family: number }>) => void)(null, [{ address: answer, family: 4 }]);
+      } else {
+        (cb as (err: null, address: string, family: number) => void)(null, answer, 4);
+      }
+    }) as typeof dns.lookup;
+    for (const key of Object.keys(previous) as Array<keyof typeof previous>) delete process.env[key];
+    try {
+      // Direct: the pinned lookup lets the fake IP through, so whatever ends the request (nothing
+      // answers on 198.18.0.7 here; the short timeout) is not the anti-SSRF guard.
+      const direct = createSafePushFetch();
+      const failure = await direct("https://fcm.googleapis.com/fcm/send/fixture", {
+        method: "POST",
+        signal: AbortSignal.timeout(300),
+      }).then(() => null, (error: unknown) => error);
+      expect(String((failure as Error | null)?.message ?? "")).not.toMatch(/anti_ssrf/);
+      await expect(direct("https://web.push.apple.com/v1/push/fixture", { method: "POST" })).rejects.toThrow(/anti_ssrf_forbidden_ip: 10\.0\.0\.1/);
+
+      // Through HTTPS_PROXY: the tunnel goes to the pinned fake IP and TLS still names the push host.
+      process.env.HTTPS_PROXY = `http://127.0.0.1:${address.port}`;
+      process.env.NO_PROXY = "localhost,127.0.0.1";
+      const proxied = createSafePushFetch();
+      await expect(proxied("https://fcm.googleapis.com/fcm/send/fixture", { method: "POST" })).rejects.toThrow();
+      expect(connects).toEqual(["198.18.0.7:443"]);
+      expect(sni).toBe("fcm.googleapis.com");
+      await expect(proxied("https://web.push.apple.com/v1/push/fixture", { method: "POST" })).rejects.toThrow(/anti_ssrf/);
+      expect(connects).toEqual(["198.18.0.7:443"]);
     } finally {
       dns.lookup = originalLookup;
       for (const [key, value] of Object.entries(previous)) {

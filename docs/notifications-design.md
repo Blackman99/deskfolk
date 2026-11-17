@@ -469,6 +469,7 @@ sequenceDiagram
 - PushService 当前订阅事件接线早于 `start()` 激活判定。实施时必须显式传入准入能力，发送前要求原生激活、host/trust 一致；单纯 relay 暂时断线并不阻止 Mac 出站 Push，off / activation_gated / native_unavailable / trust_mismatch 则禁止发送。不可通过通知代码绕过 G-pack。
 - endpoint 的 HTTPS、无 userinfo / 非默认端口 / fragment / IP literal、长度≤2048、精确主机允许名单与 `redirect:'error'` 保留。默认端口只接受规范 443；所有 3xx 都按失败，不跟随 Location。
 - 增加 DNS / socket 层 anti-SSRF：拒绝解析至 loopback、RFC1918、link-local、ULA、multicast、unspecified、IPv4-mapped 私网和元数据地址；每次连接使用校验过且固定的解析结果，TLS SNI / 证书校验仍针对原 hostname。可用 `node:https` 的受控 lookup 适配器实现，须在实际 Bun 版本验证解析固定与 TLS 行为；做不到则 fail closed，不使用“先 resolve 再普通 fetch”的竞态方案。不走可改变目的地的隐式代理。
+  - 2026-11-17 补记：198.18.0.0/15（RFC 2544 基准测试段）仍算禁止的地址，但解析到它的若是允许名单里的推送主机，照常发送。Clash / mihomo、Surge、sing-box、Stash 的 TUN / 增强模式用这一段做 fake IP：DNS 答这一段的地址，连接到达时代理再换回域名，所以在这类代理后面，推送服务全都解析到这里。名字已限定在允许名单，TLS 仍校验该服务的证书。此前每次推送都以 `anti_ssrf_forbidden_ip` 失败、记成 `network_error`，手机收不到任何推送（`isProxyFakeIp`，`apps/daemon/src/remote/push-net.ts`）。
 - 订阅 p256dh 不仅校验 65 字节 / 0x04，还验证 P-256 点；auth 必须规范 16 字节。请求无任意 headers、payload、收件人或测试 URL，设备无法把该接口变成任意出站代理。
 - 读取 VAPID、DNS 等 await 后以及请求发出前重新核对 device active、trust generation、保留在 device 的 push_generation、订阅行 generation、enabled 和当前通知资格。全部异步结果写入按 `(device_id,push_generation,trust_generation)` CAS；404/410 旧响应不能删新订阅，旧 success 也不能覆盖新诊断。吊销立即 abort；已发出的网络字节和供应商已接收通知不能追回。
 

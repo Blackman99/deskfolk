@@ -1,4 +1,7 @@
-/** Sending a push only to public addresses: the resolved IPs are checked and pinned before the request goes out. */
+/**
+ * Sending a push only to public addresses: the resolved IPs are checked and pinned before the
+ * request goes out. A proxy app's fake IP counts as public for a push host (`isProxyFakeIp`).
+ */
 import { HttpsProxyAgent, type HttpsProxyAgentOptions } from "https-proxy-agent";
 import { default as dns } from "node:dns";
 import { default as https } from "node:https";
@@ -126,12 +129,28 @@ export function isPrivateOrForbiddenIp(ip: string): boolean {
   return true;
 }
 
+/**
+ * An address a proxy app hands out for a name it routes itself: 198.18.0.0/15, the benchmarking
+ * range (RFC 2544), is where Clash / mihomo, Surge, sing-box and Stash put their "fake IPs" in TUN
+ * or enhanced mode. Their DNS answers one of these and the proxy maps it back to the name when the
+ * connection arrives, so behind such a proxy every push service resolves into this range. It is
+ * still refused as an address in general (`isPrivateOrForbiddenIp`); a push may go there only
+ * because the name is already one of the allowlisted push services (`parsePushEndpoint`,
+ * `isAllowedPushHost`) and TLS still checks that service's certificate.
+ */
+export function isProxyFakeIp(ip: string): boolean {
+  const parts = net.isIP(ip.trim()) === 4 ? ipv4Octets(ip.trim()) : null;
+  return parts !== null && parts[0] === 198 && (parts[1] === 18 || parts[1] === 19);
+}
+
 type LookupOptions = { all?: boolean };
 
 function assertPublicAddresses(addresses: readonly dns.LookupAddress[]): dns.LookupAddress {
   if (addresses.length === 0) throw new Error("anti_ssrf_dns_empty");
   for (const item of addresses) {
-    if (isPrivateOrForbiddenIp(item.address)) throw new Error(`anti_ssrf_forbidden_ip: ${item.address}`);
+    if (isPrivateOrForbiddenIp(item.address) && !isProxyFakeIp(item.address)) {
+      throw new Error(`anti_ssrf_forbidden_ip: ${item.address}`);
+    }
   }
   return addresses[0]!;
 }
