@@ -32,11 +32,15 @@ pub struct Config {
     pub app_name: String,
     pub bundle_id: String,
     /// Load the bundle again whenever its file changes (`scripts/dev.ts` rebuilds it on save).
+    /// This and the next two are read by the macOS shell only (`app.rs`, `window.rs`).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub watch: bool,
     /// Show windows without activating the app or taking the keyboard (checks run beside the
     /// person's own work).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub background: bool,
     /// Development only: where windows draw themselves on request (`snapshot.rs`).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub snapshots: Option<PathBuf>,
     /// Development checks: the conversation and pane the first window opens on.
     pub open_session: Option<String>,
