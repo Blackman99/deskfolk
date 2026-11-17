@@ -23,7 +23,7 @@
 	import { describeStep, stepRow, type StepRow } from './turn-activity.ts';
 	import { ComposerVoice, spacedHeard } from './composer-voice.svelte.ts';
 	import { loadClaudeModels } from '../claude-models.svelte.ts';
-	import { accountChoices, claudeStatus, codexModels, loadAgentsStatus, loadClaudeStatus } from './project-agent-options.svelte.ts';
+	import { accountChoices, agentModels, claudeStatus, loadAgentsStatus, loadClaudeStatus } from './project-agent-options.svelte.ts';
 	import AgentTune from './AgentTune.svelte';
 	import ProjectCommandMenu from './ProjectCommandMenu.svelte';
 	import ProjectPlanCard from './ProjectPlanCard.svelte';
@@ -120,17 +120,18 @@
 	 */
 	const account = $derived(selected.project_config_dir ?? '');
 	/**
-	 * Whose session it is (ADR 0099): a Codex session has no account to pick and no plan mode, its `/`
-	 * lists what the app carries out for Codex and its skills, and its models are the ones Codex lists.
+	 * Whose session it is (ADR 0099): what it has beyond a conversation is in `PROJECT_AGENT_CAPS`;
+	 * Claude Code's models and accounts are its own lists, every other agent's models the ones it lists.
 	 */
 	const agent = $derived(projectAgentOf(selected));
 	const caps = $derived(PROJECT_AGENT_CAPS[agent]);
 	const agentName = $derived(t.project.agentNames[agent]);
+	const claudeSession = $derived(agent === 'claude_code');
 	// Asked once each; untracked, so what the asking writes does not ask again.
 	$effect(() => {
 		const api = runtime.client;
-		const codex = agent === 'codex';
-		untrack(() => (codex ? loadAgentsStatus(api) : loadClaudeStatus(api)));
+		const claude = claudeSession;
+		untrack(() => (claude ? loadClaudeStatus(api) : loadAgentsStatus(api)));
 	});
 	$effect(() => {
 		const api = runtime.client;
@@ -914,7 +915,7 @@
 						{t}
 						{agent}
 						{agentName}
-						models={agent === 'codex' ? codexModels() : undefined}
+						models={claudeSession ? undefined : agentModels(agent)}
 						tune={{ account, model, effort }}
 						accounts={accountShown ? accountOptions : null}
 						accountLocked={live}

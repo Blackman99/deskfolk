@@ -15,6 +15,11 @@ import type { RouteCtx } from "../route-ctx";
 /** As much of a finished task's output as its row in the list keeps, the size a Bot's kept command has. */
 const KEPT_OUTPUT = 4000;
 
+/** Every agent is handled by name: one a switch here does not know is a gap in this file, never another agent's. */
+function unknownAgent(agent: never): never {
+  throw new HttpError(500, "internal", `no route handles project sessions of ${String(agent)}`);
+}
+
 /** Local API routes: project sessions (ADR 0095) and their agent's runs. */
 export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response> | null {
   const { input, store, publish, projects, method, path, url, options } = ctx;
@@ -28,8 +33,8 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
     const agent = body.agent ?? "claude_code";
     if (!isProjectAgent(agent)) throw new HttpError(422, "invalid_args", `agent must be one of ${PROJECT_AGENTS.join(", ")}`);
     const caps = PROJECT_AGENT_CAPS[agent];
-    if (body.import && !caps.importable) throw new HttpError(422, "invalid_args", "only a Claude Code session can be carried on from a terminal for now");
-    if (body.config_dir != null && !caps.accounts) throw new HttpError(422, "invalid_args", "only a Claude Code session picks an account");
+    if (body.import && !caps.importable) throw new HttpError(422, "invalid_args", `a ${agent} session cannot be carried on from a terminal`);
+    if (body.config_dir != null && !caps.accounts) throw new HttpError(422, "invalid_args", `a ${agent} session picks no account`);
     const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
     const locale = store.settingsCached().locale;
     let created;
@@ -101,8 +106,14 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
     if (!project) throw new HttpError(404, "not_found", "not a project session");
     const none = () => jsonResponse({ commands: [], checked_at: new Date().toISOString(), error: null }, 200, null);
     if (!PROJECT_AGENT_CAPS[project.agent].commands) return none();
-    if (project.agent === "codex") return options.codexCommands ? options.codexCommands.list(project.dir).then((list) => jsonResponse(list, 200, null)) : none();
-    return options.claudeCommands ? options.claudeCommands.list(project.configDir, project.dir).then((list) => jsonResponse(list, 200, null)) : none();
+    switch (project.agent) {
+      case "codex":
+        return options.codexCommands ? options.codexCommands.list(project.dir).then((list) => jsonResponse(list, 200, null)) : none();
+      case "claude_code":
+        return options.claudeCommands ? options.claudeCommands.list(project.configDir, project.dir).then((list) => jsonResponse(list, 200, null)) : none();
+      default:
+        return unknownAgent(project.agent);
+    }
   }
 
   // Where a path the agent cites is: its words are relative to wherever it was working, so a path
@@ -142,12 +153,12 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
       change.effort = body.effort;
     }
     if (body.mode !== undefined) {
-      if (!caps.plan) throw new HttpError(422, "invalid_args", "only a Claude Code session has plan mode");
+      if (!caps.plan) throw new HttpError(422, "invalid_args", `a ${project.agent} session has no plan mode`);
       if (body.mode !== null && !isProjectAgentMode(body.mode)) throw new HttpError(422, "invalid_args", "mode must be plan or null");
       change.mode = body.mode;
     }
     if (body.config_dir !== undefined) {
-      if (!caps.accounts) throw new HttpError(422, "invalid_args", "only a Claude Code session picks an account");
+      if (!caps.accounts) throw new HttpError(422, "invalid_args", `a ${project.agent} session picks no account`);
       const configDir = body.config_dir;
       const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
       const to = roots.find((root) => root.configDir === configDir);

@@ -67,15 +67,16 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
 
   // --- whose session it is, and its tuning ---
   const account = () => selected().project_config_dir ?? "";
-  /** A Codex session has no account to pick and no plan mode (ADR 0099). */
+  /** What it has beyond a conversation is in `PROJECT_AGENT_CAPS`; Claude Code's models and accounts are its own lists (ADR 0099). */
   const agent = () => projectAgentOf(selected());
   const caps = () => PROJECT_AGENT_CAPS[agent()];
   const agentName = () => t().project.agentNames[agent()];
+  const claudeSession = () => agent() === "claude_code";
   // Asked once each; untracked, so what the asking writes does not ask again.
   effect(() => {
     const api = runtime.client;
-    const codex = agent() === "codex";
-    untracked(() => void (codex ? loadAgentsStatus(api) : loadClaudeStatus(api)));
+    const claude = claudeSession();
+    untracked(() => void (claude ? loadClaudeStatus(api) : loadAgentsStatus(api)));
   });
   effect(() => {
     const api = runtime.client;
@@ -280,6 +281,7 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
     lines,
     account,
     agent,
+    claudeSession,
     caps,
     agentName,
     accountOptions,

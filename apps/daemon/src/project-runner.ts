@@ -779,8 +779,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     for (const due of store.projectResumes()) {
       if (due.at > now.getTime()) break;
       const project = store.projectOf(due.session_id);
-      // Codex's own runner takes its sessions' (project-runner-codex.ts).
-      if (project?.agent === "codex") continue;
+      // Every other agent's runner takes its own sessions' (project-runner-codex.ts and the rest).
+      if (project && project.agent !== "claude_code") continue;
       store.dropProjectResume(due.session_id);
       if (!project) continue;
       // You spoke since, or stopped it, or a run is going: the session has moved on.

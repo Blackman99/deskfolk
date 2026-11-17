@@ -29,7 +29,7 @@ import { SendButton } from "./SendButton";
 import { StopMenu } from "./StopMenu";
 import { VoiceButton } from "./VoiceButton";
 import { VoiceStatus } from "./VoiceStatus";
-import { codexModels } from "../../m/chat/project-agent-options.svelte";
+import { agentModels } from "../../m/chat/project-agent-options.svelte";
 import type { ProjectState } from "./project-chat-state";
 import { settled } from "../workbench/drag-settle";
 
@@ -213,7 +213,7 @@ export function ProjectComposer(props: {
                 testID="project-tune"
                 agent={s().agent()}
                 agentName={s().agentName()}
-                models={s().agent() === "codex" ? codexModels() : undefined}
+                models={s().claudeSession() ? undefined : agentModels(s().agent())}
                 tune={{ account: s().account(), model: props.selected.project_model ?? "", effort: props.selected.project_effort ?? "" }}
                 accounts={s().accountShown() ? s().accountOptions() : null}
                 accountLocked={s().live()}

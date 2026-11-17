@@ -1,7 +1,7 @@
 // Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 311604faf0779877
+// Source: 6b60dbb5237902c7
 import { deep } from "../../lib/reactive";
-import { isClaudeEffort, type AgentsStatusResponse, type ClaudeCodeModel, type ClaudeCodeStatus } from "@real-bot/protocol";
+import { isClaudeEffort, type AgentsStatusResponse, type BotRunner, type ClaudeCodeModel, type ClaudeCodeStatus } from "@real-bot/protocol";
 import type { MessengerApi } from "../messenger-api.ts";
 import { forgetClaudeModels, type Choice } from "../claude-models.svelte.ts";
 import { agentStatusOf } from "../runner-choice.ts";
@@ -68,11 +68,12 @@ export function agentsStatus(): AgentsStatusResponse | null {
 }
 
 /**
- * Codex's models as the composer's picker reads them: each with the levels it takes. Empty until
- * they came, or when Codex lists none: the picker then offers only what your Codex settings say.
+ * An agent's own models as the composer's picker reads them (Codex, ADR 0099, and every agent but
+ * Claude Code, whose list is its own): each with the levels it takes. Empty until they came, or
+ * when the agent lists none: the picker then offers only what your settings for it say.
  */
-export function codexModels(): ClaudeCodeModel[] {
-  return (agentStatusOf(agents.list, "codex")?.models ?? []).map((model) => ({
+export function agentModels(runner: BotRunner): ClaudeCodeModel[] {
+  return (agentStatusOf(agents.list, runner)?.models ?? []).map((model) => ({
     value: model.id, display_name: model.name, description: "", resolved_model: null, efforts: model.efforts.filter(isClaudeEffort),
   }));
 }
