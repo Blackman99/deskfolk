@@ -40,8 +40,11 @@ windows = { version = "0.62", features = [
 ] }
 # Hello's asynchronous calls (`IAsyncOperation`, `join`), the line `windows` 0.62 uses.
 windows-future = "0.3"
-# Voice input's recording (`recorder_portable.rs`): WASAPI's default input.
+# Voice input's recording (`recorder_portable.rs`): WASAPI's default input, encoded as Opus in
+# Ogg (`recorder_ogg.rs`; the opus crate builds libopus from source with cmake).
 cpal = "0.18"
+opus = "0.4"
+ogg = "0.9"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # `webview`: the HTML preview and annotator (WebKitGTK 6.0), the one web view the app has, as on
@@ -52,7 +55,7 @@ libc = "0.2"
 # Voice input's recording (`recorder_portable.rs`): ALSA's default input, which PulseAudio and
 # PipeWire both answer. Builds against `libasound2-dev`.
 cpal = "0.18"
-# Opus and Ogg, as on Windows.
+# Opus and Ogg (`recorder_ogg.rs`), as on Windows.
 opus = "0.4"
 ogg = "0.9"
 
