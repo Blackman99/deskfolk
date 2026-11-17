@@ -6,6 +6,22 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Pairing a phone works from a Windows PC, with Windows Hello
+
+- In the native Windows app, pairing a phone, removing one and the other remote access changes are confirmed with Windows Hello (your face, a fingerprint or the PIN), as in the old app. Without Hello set up, the card says so and keeps its button. Before, pairing there failed, with a message that blamed the relay's address.
+- A paired phone can restart the runtime again, and the runtime ends with the app when the app crashes or is ended from Task Manager.
+
+### The Windows and Linux apps stay in the tray, and open files themselves
+
+- The close button puts the window away: the app stays in the notification area (the tray on Linux) and the Bots keep working, as in the old app. Quit in the tray's menu ends it. Version 0.5 closed the app and stopped the runtime.
+- Ctrl+W closes the tab in front of you, and puts the window away once no tab is left.
+- The window opens at the size and place it was left, maximized if it was. It goes down to 640 × 480 points.
+- Opening a file with its app, showing it in its folder, and choosing a workspace folder work on Windows and Linux too. A file that would run when opened (a program, a script, a shortcut) is shown in its folder instead.
+
+### Voice input on Windows and Linux
+
+- The microphone button records on Windows and Linux again, as it did in the old app. A take lasts up to about 30 seconds there for now (the Mac's up to three minutes).
+
 ### The native Mac app keeps its window's size, and its menus are whole again
 
 - A window opens at the size the last one had, maximized if it was; the first time, at the size the old app last had. It goes down to 640 × 480 points.

@@ -62,7 +62,9 @@ pub fn has_dev_command() -> bool {
 
 /// The daemon a package carries, beside the pty, WebRTC and credential helpers it finds next to
 /// itself, where the Tauri app kept them: `Contents/Resources/native/real-bot-daemon` in the
-/// `.app`; `native\real-bot-daemon.exe` in the install directory on Windows.
+/// `.app`; `native\real-bot-daemon.exe` in the install directory on Windows;
+/// `/usr/lib/Deskfolk/native/real-bot-daemon` beside the shell on Linux (`/usr/bin/real-bot-desktop`
+/// is a link to it, which `current_exe` resolves).
 pub fn bundled_daemon() -> Option<PathBuf> {
     bundled_daemon_for(&std::env::current_exe().ok()?)
 }
@@ -76,6 +78,7 @@ fn daemon_path_for(exe: &Path, os: &str) -> Option<PathBuf> {
     let dir = exe.parent()?;
     Some(match os {
         "windows" => dir.join("native").join("real-bot-daemon.exe"),
+        "linux" => dir.join("native").join("real-bot-daemon"),
         _ => dir.parent()?.join("Resources").join("native").join("real-bot-daemon"),
     })
 }
@@ -153,8 +156,9 @@ fn ensure_bundled(data_dir: &Path) -> Result<(), String> {
     ))
 }
 
-/// Starts the bundled daemon with the remote setup channel (pairing on this Mac goes over it,
-/// `remote_setup.rs`), as the Tauri app's `daemon::spawn` does in a release.
+/// Starts the bundled daemon with the remote setup channel (pairing on this computer goes over it,
+/// `remote_setup.rs`), as the Tauri app's `daemon::spawn` does in a release. Passing the channel
+/// also makes the daemon window-supervised, so a paired phone can restart it.
 fn spawn_bundled() -> Result<(), String> {
     let daemon = bundled_daemon().ok_or("this copy of Deskfolk has no runtime inside it")?;
     log::info!("starting the runtime: {}", daemon.display());
@@ -166,24 +170,77 @@ fn spawn_bundled() -> Result<(), String> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::inherit());
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     let channel = crate::remote_setup::prepare_channel(&mut command);
-    // No console window of its own (the Tauri app's `suppress_console_window`). Windows has no
-    // setup channel yet (the Tauri app's stdin/stdout one was not carried over): phones paired
-    // before keep working, pairing a new one from this computer answers `disabled`.
+    // The daemon's stdin and stdout are the channel on Windows (after the `null`s above, which it
+    // replaces); no console window of its own (the Tauri app's `suppress_console_window`).
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        crate::remote_setup::prepare_channel(&mut command);
         command.creation_flags(CREATE_NO_WINDOW);
     }
-    let child = command.spawn().map_err(|e| format!("cannot start Deskfolk's runtime: {e}"))?;
-    #[cfg(target_os = "macos")]
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut child = command.spawn().map_err(|e| format!("cannot start Deskfolk's runtime: {e}"))?;
+    #[cfg(unix)]
     if let Some(channel) = channel {
         crate::remote_setup::adopt_channel(channel);
     }
+    #[cfg(windows)]
+    {
+        crate::remote_setup::adopt_channel(&mut child);
+        end_with_this_process(&child);
+    }
     *CHILD.lock().unwrap_or_else(|p| p.into_inner()) = Some(child);
     Ok(())
+}
+
+/// Puts the daemon in a job that ends with this process, however it ends (the Tauri app's
+/// `daemon.rs`): a shell that crashes or is ended in Task Manager takes the daemon, its pty helper
+/// and its terminals' programs with it, rather than leaving them running without a window (the next
+/// launch would find a runtime with no setup channel to it). The job's handle is never closed: it
+/// closes with the process.
+#[cfg(windows)]
+fn end_with_this_process(child: &Child) {
+    use std::os::windows::io::AsRawHandle;
+    use std::sync::OnceLock;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JobObjectExtendedLimitInformation, SetInformationJobObject,
+    };
+    use windows::core::PCWSTR;
+
+    struct Job(HANDLE);
+    // SAFETY: a job handle may be used from any thread; this one is only ever passed to the system.
+    unsafe impl Send for Job {}
+    unsafe impl Sync for Job {}
+    static JOB: OnceLock<Option<Job>> = OnceLock::new();
+    let job = JOB.get_or_init(|| {
+        // SAFETY: plain calls; the structure outlives the call that reads it.
+        unsafe {
+            let job = CreateJobObjectW(None, PCWSTR::null()).ok()?;
+            let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                (&raw const limits).cast(),
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+            .ok()?;
+            Some(Job(job))
+        }
+    });
+    match job {
+        // SAFETY: the child's handle is alive while `child` is.
+        Some(job) => match unsafe { AssignProcessToJobObject(job.0, HANDLE(child.as_raw_handle())) } {
+            Ok(()) => log::info!("the runtime ends with this window"),
+            Err(why) => log::warn!("the runtime would outlive this window: {why}"),
+        },
+        None => log::warn!("no job to end the runtime with this window"),
+    }
 }
 
 fn child_alive() -> bool {
@@ -291,6 +348,20 @@ fn clear_stop_latch(data_dir: &std::path::Path) {
 }
 
 const STOP_LATCH: &str = "runtime.stop";
+
+/// Whether a window of the app ran in this process: its app asked for the runtime's address
+/// (`launch::channel`). A Linux launch that only handed itself to the copy already running never
+/// does, and leaves that copy's runtime alone (`gtk.rs`).
+static WINDOW_RAN: AtomicBool = AtomicBool::new(false);
+
+pub fn mark_window_ran() {
+    WINDOW_RAN.store(true, Ordering::SeqCst);
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn window_ran() -> bool {
+    WINDOW_RAN.load(Ordering::SeqCst)
+}
 
 fn supervising() -> bool {
     #[cfg(target_os = "macos")]

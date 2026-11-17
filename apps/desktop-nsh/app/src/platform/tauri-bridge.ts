@@ -8,13 +8,15 @@
  * the clipboard's text comes from `Clipboard`, the window theme is the app's colour scheme
  * (`setLook`, which on macOS also tells the shell's window) (`APP_COMMANDS`). On Windows and Linux,
  * where the shell posts no banners, the app answers the notification commands too (`app-banners.ts`
- * `bannerCommands`). The rest go to the shell.
+ * `bannerCommands`), and the folder dialog, the file manager and hiding the window
+ * (`desktop-commands.ts`). The rest go to the shell.
  *
  * Installed only where a shell hosts the app (`host.available()`, not the web).
  */
 import { Clipboard, host, openUrl, platform } from "nsh";
 import { setLook } from "./appearance";
 import { appBanners, bannerCommands } from "./app-banners";
+import { answersDesktopCommands, DESKTOP_COMMANDS } from "./desktop-commands";
 
 type Callback = (payload: unknown) => void;
 
@@ -59,6 +61,8 @@ export const APP_COMMANDS: Record<string, (args: Record<string, unknown>) => Pro
 };
 
 let banners: Record<string, (args: Record<string, unknown>) => Promise<unknown>> | null = null;
+/** The folder dialog, the file manager and hiding the window, where the shell leaves them to the app. */
+let desktop: Record<string, (args: Record<string, unknown>) => Promise<unknown>> | null = null;
 
 function windowId(): number {
   return Number((host.params as { windowId?: number }).windowId ?? 0);
@@ -88,7 +92,7 @@ function invoke(command: string, args?: Record<string, unknown>): Promise<unknow
 }
 
 function answer(command: string, args?: Record<string, unknown>): Promise<unknown> {
-  const own = APP_COMMANDS[command] ?? banners?.[command];
+  const own = APP_COMMANDS[command] ?? banners?.[command] ?? desktop?.[command];
   if (own) return own(args ?? {});
   if (command === "plugin:event|listen") {
     const event = String(args?.event ?? "");
@@ -121,5 +125,6 @@ export function installTauriBridge(): void {
   if (g.__TAURI_INTERNALS__) return;
   const loop = appBanners();
   if (loop) banners = bannerCommands(loop, (command, args) => host.call(hostName(command), args), windowId);
+  if (answersDesktopCommands(platform.os)) desktop = DESKTOP_COMMANDS;
   g.__TAURI_INTERNALS__ = { invoke, transformCallback };
 }

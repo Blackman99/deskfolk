@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!--
+  Deskfolk's owner check for remote access on Linux (host/src/local_confirm.rs), as Touch ID is on
+  macOS and Windows Hello on Windows: pairing or removing a phone, renewing its verification,
+  resetting remote trust or identity, changing the relay or the workspace. The person at this
+  computer's own session approves with their own password (auth_self, asked every time); nobody
+  outside an active local session can.
+-->
+<policyconfig>
+  <vendor>Deskfolk</vendor>
+  <vendor_url>https://github.com/Blackman99/deskfolk</vendor_url>
+  <action id="com.real-bot.desktop.remote-confirm">
+    <description>Approve a change to Deskfolk's remote access</description>
+    <description xml:lang="zh_CN">批准 Deskfolk 远程访问的更改</description>
+    <message>Deskfolk wants to change who can reach this computer remotely: pair or remove a phone, or change its relay. Deskfolk's window says which.</message>
+    <message xml:lang="zh_CN">Deskfolk 要更改谁能远程访问这台电脑：配对或移除手机，或者更换中继。具体是哪一项，Deskfolk 的窗口里有写。</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

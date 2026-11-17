@@ -21,6 +21,7 @@
  * views of the newest open layer hear the wheel; with none open, the window's own views do.
  */
 import { cleanup, context, host, type ViewRef } from "nsh";
+import type { PinchEvent, WheelEvent } from "nsh/types";
 
 export type ShellWheel = {
   x: number;
@@ -116,6 +117,57 @@ async function dispatch(event: ShellWheel): Promise<void> {
   if (!region?.rect) return;
   region.handler(event, { x: event.x - region.rect.x, y: event.y - region.rect.y });
 }
+
+/** Points a wheel notch scrolls, where the system reports notches (`deltaMode: "lines"`). */
+const LINE_POINTS = 40;
+
+/**
+ * Linux: NSH's own wheel event, on the window's outermost view (`linuxWheelProps`), as the macOS
+ * and Windows shells forward theirs: in the window's points, `ctrl` and the rest from its keys.
+ */
+export function fromNativeWheel(e: WheelEvent): ShellWheel {
+  const unit = e.deltaMode === "lines" ? LINE_POINTS : 1;
+  return {
+    x: e.pagePosition.x,
+    y: e.pagePosition.y,
+    dx: e.delta.x * unit,
+    dy: e.delta.y * unit,
+    ctrl: e.modifiers.control,
+    meta: e.modifiers.platform,
+    shift: e.modifiers.shift,
+    alt: e.modifiers.alt,
+    pinch: false,
+    phase: null,
+    momentum: null,
+  };
+}
+
+/** Linux: a touchpad pinch, as the macOS shell sends one: `ctrl` with `dy = -100·ln(scale)`. */
+export function fromNativePinch(e: PinchEvent): ShellWheel {
+  return {
+    x: e.pagePosition.x,
+    y: e.pagePosition.y,
+    dx: 0,
+    dy: -100 * Math.log(1 + e.delta),
+    ctrl: true,
+    meta: false,
+    shift: e.modifiers.shift,
+    alt: e.modifiers.alt,
+    pinch: true,
+    phase: e.phase === "start" ? "began" : e.phase === "end" ? "ended" : "changed",
+    momentum: null,
+  };
+}
+
+/**
+ * The Linux shell forwards no wheel: the window's outermost view hears NSH's own instead and
+ * hands it on as the shells' (a listener this far out only observes, so a `Scroll` or `List` under
+ * the pointer still scrolls by itself, as it does under the forwarding shells).
+ */
+export const linuxWheelProps = {
+  onWheel: (e: WheelEvent) => void dispatch(fromNativeWheel(e)),
+  onPinch: (e: PinchEvent) => void dispatch(fromNativePinch(e)),
+};
 
 /** Listens for the shell's wheel events; once, outside any component, so no unmount stops it. */
 export function installWheel(): void {

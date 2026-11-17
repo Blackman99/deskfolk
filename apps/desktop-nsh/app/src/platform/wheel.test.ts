@@ -1,6 +1,6 @@
 import { effect, signal } from "nsh";
 import { expect, test } from "nsh/test";
-import { openWheelLayer, regionAt, topWheelLayer } from "./wheel";
+import { fromNativePinch, fromNativeWheel, openWheelLayer, regionAt, topWheelLayer } from "./wheel";
 
 test("the wheel goes to the innermost view under the pointer", () => {
   const board = { name: "board", rect: { x: 0, y: 0, width: 800, height: 600 } };
@@ -48,4 +48,15 @@ test("the newest open popup is the one on top, until it closes", () => {
   expect(topWheelLayer()).toBe(confirmLayer);
   confirm.set(false);
   expect(topWheelLayer()).toBe(0);
+});
+
+test("Linux's own wheel and pinch read as the shells' forwarded ones", () => {
+  const notch = fromNativeWheel({ position: { x: 1, y: 2 }, pagePosition: { x: 10, y: 20 }, delta: { x: 0, y: 1 }, deltaMode: "lines", modifiers: { control: true, alt: false, shift: false, platform: false } });
+  expect(notch).toMatchObject({ x: 10, y: 20, dx: 0, dy: 40, ctrl: true, pinch: false });
+  const pad = fromNativeWheel({ position: { x: 0, y: 0 }, pagePosition: { x: 0, y: 0 }, delta: { x: 3, y: -5 }, deltaMode: "points", modifiers: { control: false, alt: false, shift: true, platform: false } });
+  expect(pad).toMatchObject({ dx: 3, dy: -5, shift: true });
+  const pinch = fromNativePinch({ position: { x: 0, y: 0 }, pagePosition: { x: 5, y: 6 }, delta: 0.1, phase: "move", modifiers: { control: false, alt: false, shift: false, platform: false } });
+  expect(pinch.ctrl).toBe(true);
+  expect(pinch.pinch).toBe(true);
+  expect(Math.round(pinch.dy * 100) / 100).toBe(-9.53);
 });

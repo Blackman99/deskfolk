@@ -22,7 +22,8 @@ mod independent;
 #[cfg(target_os = "macos")]
 mod installer;
 mod launch;
-#[cfg(target_os = "macos")]
+#[cfg(target_os = "linux")]
+mod linux_login;
 mod local_confirm;
 #[cfg(target_os = "macos")]
 mod login_item;
@@ -38,9 +39,12 @@ mod notify;
 mod press;
 #[cfg(target_os = "macos")]
 mod recorder;
+#[cfg(any(test, windows, target_os = "linux"))]
+mod recorder_pcm;
+#[cfg(any(windows, target_os = "linux"))]
+mod recorder_portable;
 #[cfg(target_os = "macos")]
 mod remote_native;
-#[cfg(target_os = "macos")]
 mod remote_setup;
 mod runtime;
 #[cfg(target_os = "macos")]
@@ -53,7 +57,6 @@ mod traffic_lights;
 #[cfg(target_os = "macos")]
 mod update_commands;
 mod updates;
-#[cfg(any(target_os = "macos", windows))]
 mod usage_tray;
 #[cfg(windows)]
 mod win;

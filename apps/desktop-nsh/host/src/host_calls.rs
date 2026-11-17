@@ -179,7 +179,7 @@ fn install_system(host: &HostChannel, identity: &Identity) {
     let id = identity.clone();
     host.handle("tauri.remote_local_setup", move |call: HostCall| {
         let id = id.clone();
-        std::thread::spawn(move || match crate::remote_setup::local_setup(&id, call.data()["request"].clone()) {
+        std::thread::spawn(move || match crate::remote_setup::local_setup(id.is_dev(), call.data()["request"].clone()) {
             Ok(reply) => call.resolve(reply),
             Err(why) => call.reject(why),
         });

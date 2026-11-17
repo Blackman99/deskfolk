@@ -2,7 +2,10 @@
  * `navigator.mediaDevices.getUserMedia` and `MediaRecorder` on a desktop, over the shell's
  * recording (`host/src/recorder.rs`), so the messenger's voice input (`chat/voice-recorder.ts`)
  * runs unchanged: `getUserMedia` asks for the microphone and starts recording, the recorder hands
- * the whole recording over as one `dataavailable` when it stops, `audio/mp4` like Safari's.
+ * the whole recording over as one `dataavailable` when it stops: `audio/mp4` like Safari's on the
+ * Mac, `audio/wav` on Windows and Linux (`recorder_portable.rs`), whose `shell.record.start` says
+ * so and says how long the recording may run (`maxSeconds`, which the messenger's recorder reads
+ * off the recorder, because an uncompressed recording outgrows what the daemon transcribes).
  *
  * Only what the messenger uses: one audio track, `start`/`stop`, `ondataavailable`, `onstop`,
  * `onerror`, `state`, `mimeType`, `isTypeSupported`. The web keeps the browser's own.
@@ -12,6 +15,19 @@ import { host } from "nsh";
 export const RECORDING_TYPE = "audio/mp4";
 
 type Answer = { data: string; mime: string; seconds: number };
+/** What `shell.record.start` answers where the recording is not the Mac's AAC; null there. */
+type Format = { mime?: string; maxSeconds?: number };
+
+/** The format of the recording `getUserMedia` last started: the Mac's until the shell says otherwise. */
+let format: { mime: string; maxSeconds: number | undefined } = { mime: RECORDING_TYPE, maxSeconds: undefined };
+
+/** Reads what `shell.record.start` answered into the format of the recording that began. */
+export function formatOf(answer: unknown): { mime: string; maxSeconds: number | undefined } {
+  const given = answer && typeof answer === "object" ? (answer as Format) : {};
+  const mime = typeof given.mime === "string" && given.mime ? given.mime : RECORDING_TYPE;
+  const seconds = given.maxSeconds;
+  return { mime, maxSeconds: typeof seconds === "number" && seconds > 0 ? seconds : undefined };
+}
 
 /** `NotAllowedError: …` from the shell, as the DOMException `getUserMedia` would throw. */
 export function domErrorOf(error: unknown): Error {
@@ -54,10 +70,12 @@ type DataEvent = { data: Blob };
 
 export class ShellMediaRecorder {
   static isTypeSupported(type: string): boolean {
-    return type.split(";")[0]!.trim() === RECORDING_TYPE;
+    return type.split(";")[0]!.trim() === format.mime;
   }
 
-  readonly mimeType = RECORDING_TYPE;
+  readonly mimeType = format.mime;
+  /** How long the shell lets this recording run; the messenger stops it there. Unset where it is unlimited. */
+  readonly maxSeconds = format.maxSeconds;
   state: "inactive" | "recording" = "inactive";
   ondataavailable: ((event: DataEvent) => void) | null = null;
   onstop: ((event: Event) => void) | null = null;
@@ -78,7 +96,7 @@ export class ShellMediaRecorder {
     host
       .call<Answer>("shell.record.stop")
       .then((answer) => {
-        this.ondataavailable?.({ data: new Blob([base64Bytes(answer.data)], { type: answer.mime || RECORDING_TYPE }) });
+        this.ondataavailable?.({ data: new Blob([base64Bytes(answer.data)], { type: answer.mime || this.mimeType }) });
         this.onstop?.(new Event("stop"));
       })
       .catch((error) => {
@@ -98,7 +116,7 @@ export function installMedia(): void {
     async getUserMedia(constraints?: { audio?: unknown }): Promise<ShellStream> {
       if (!constraints?.audio) throw domErrorOf(new Error("NotSupportedError: only audio can be recorded here"));
       try {
-        await host.call("shell.record.start", null, { timeout: 0 });
+        format = formatOf(await host.call("shell.record.start", null, { timeout: 0 }));
       } catch (error) {
         throw domErrorOf(error);
       }

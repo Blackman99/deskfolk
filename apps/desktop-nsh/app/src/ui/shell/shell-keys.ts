@@ -6,9 +6,10 @@
  * The order the Svelte decided by listening on the window after every child, NSH decides by age:
  * the newest binding of a key wins, so a layer that binds Escape while it is open answers it first,
  * and this one is what is left. Typing keeps its keys (`when` default) except Escape, ⌘K and ⌘B,
- * which the Svelte took from inputs too. ⌘W is the native menu's on the Mac, as before.
+ * which the Svelte took from inputs too. ⌘W is the native menu's on the Mac, as before; Ctrl+W is
+ * bound here on Windows and Linux.
  */
-import { keymap } from "nsh";
+import { keymap, platform } from "nsh";
 import { WB_KEY_RESIZE_PX, type WorkbenchCommand } from "../../m/workbench/workbench-commands.ts";
 import type { ShellState } from "./shell-state";
 
@@ -46,4 +47,11 @@ export function bindShellKeys(s: ShellState): void {
     bind(`mod+alt+shift+${dir}`, workbenchKey({ kind: "resize", dir, px: WB_KEY_RESIZE_PX }), { when: "notEditing" });
   }
   bind("mod+alt+0", workbenchKey({ kind: "equalise" }), { when: "notEditing" });
+  // Ctrl+W closes the tab in front of you on Windows and Linux, and puts the window away once none
+  // is left, as the Tauri app's menu did there (`matchesCloseTab`); the Mac's Window menu has ⌘W.
+  if (platform.os === "windows" || platform.os === "linux") {
+    bind("mod+w", () => {
+      if (s.wide()) s.workbench.runMenuCommand("pane-close-tab");
+    }, { when: "always" });
+  }
 }

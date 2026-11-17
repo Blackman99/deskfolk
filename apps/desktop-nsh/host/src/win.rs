@@ -182,11 +182,16 @@ fn launch_window(material: bool, hidden: bool) -> serde_json::Value {
     window
 }
 
-/// The main window's launch options on Windows (`nsh.json` `"window"`'s shape).
+/// The main window's launch options on Windows (`nsh.json` `"window"`'s shape): it comes back at
+/// the size and place it was last left, maximized if it was (NSH keeps its placement in the app's
+/// storage), and goes no smaller than the Tauri window did. Its close button is the app's to answer
+/// (`app/src/platform/window-life.ts`: it puts the window away, as the Tauri app's did).
 fn main_window(material: bool) -> serde_json::Value {
     json!({
         "titleBar": { "style": "hidden" },
         "backdrop": if material { "window" } else { "none" },
+        "restoreBounds": true,
+        "minSize": { "width": 640, "height": 480 },
     })
 }
 
@@ -261,9 +266,12 @@ mod tests {
 
     #[test]
     fn the_window_hides_its_title_bar_and_asks_for_mica_only_where_there_is_some() {
-        assert_eq!(main_window(true), json!({ "titleBar": { "style": "hidden" }, "backdrop": "window" }));
+        assert_eq!(main_window(true)["backdrop"], "window");
         assert_eq!(main_window(false)["backdrop"], "none");
         assert_eq!(main_window(false)["titleBar"]["style"], "hidden");
+        // The size it was left at comes back, and it goes no smaller than the Tauri window.
+        assert_eq!(main_window(true)["restoreBounds"], true);
+        assert_eq!(main_window(true)["minSize"], json!({ "width": 640, "height": 480 }));
     }
 
     #[test]

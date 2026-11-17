@@ -10,9 +10,8 @@
  *
  * Only a window on this computer offers the menu (`onThisComputer`): through the phone's page or a
  * remote window the files are on another machine, and a right click on a chip stays the line's menu.
- * So far only the Mac's shell opens files (`host/src/system.rs`); the Windows and Linux shells do
- * not answer `open_workspace_path` yet (`launch.rs`), so their windows leave the right click to the
- * line too.
+ * The Mac's shell opens files itself (`host/src/system.rs`); on Windows and Linux the app does,
+ * through NSH (`platform/desktop-commands.ts`).
  */
 import { platform } from "nsh";
 import { absWorkspacePath } from "../m/overlays/artifacts.ts";
@@ -30,7 +29,8 @@ export type FileOnDisk = {
 
 /** This window runs on the computer the files are on, with a shell that opens them. */
 export function onThisComputer(): boolean {
-  return platform.os === "macos" && runtime.client?.kind !== "remote" && isTauri();
+  const desktop = platform.os === "macos" || platform.os === "windows" || platform.os === "linux";
+  return desktop && runtime.client?.kind !== "remote" && isTauri();
 }
 
 const fromHome = (path: string) => /^~[\\/]/.test(path);

@@ -456,6 +456,28 @@ async function smoke(app: string) {
   console.log("smoke: quit stopped the daemon");
 }
 
+/** A process's command line, as Windows has it, or "" when it is gone. */
+function windowsCommandLine(pid: number): string {
+  const ps = spawnSync("powershell", ["-NoProfile", "-Command", `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`], { encoding: "utf8" });
+  return ps.stdout.trim();
+}
+
+/** What the runtime says of itself (`GET /v1/runtime`), with the token its descriptor names. */
+async function runtimeInfo(dataDir: string): Promise<{ mode?: string; restart?: string; stopped?: boolean }> {
+  const { token } = JSON.parse(readFileSync(join(dataDir, "local-api.json"), "utf8")) as { token: string };
+  const answer = await fetch("http://127.0.0.1:17890/v1/runtime", { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(3000) });
+  return (await answer.json()) as { mode?: string; restart?: string; stopped?: boolean };
+}
+
+/** The pids of the processes named `image` (`real-bot-pty.exe`), as `tasklist` lists them. */
+function windowsPids(image: string): number[] {
+  const list = spawnSync("tasklist", ["/FI", `IMAGENAME eq ${image}`, "/FO", "CSV", "/NH"], { encoding: "utf8" });
+  return list.stdout
+    .split("\n")
+    .map((line) => Number(line.split(",")[1]?.replace(/"/g, "")))
+    .filter((pid) => Number.isInteger(pid) && pid > 0);
+}
+
 function windowsProcessPath(pid: number): string {
   const ps = spawnSync("powershell", ["-NoProfile", "-Command", `(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).Path`], { encoding: "utf8" });
   return ps.stdout.trim();
@@ -492,9 +514,11 @@ async function healthyAt17890(): Promise<boolean> {
 
 /**
  * Windows, on a machine where no runtime answers yet (a CI runner): the installer run silently,
- * the installed app's own daemon up from `native\`, the first snapshot, the daemon killed and
- * started again with the window reconnecting, a close that stops it, and a silent uninstall that
- * takes the program and its entry away and leaves the data folder.
+ * the installed app's own daemon up from `native\` with its remote setup channel, the first
+ * snapshot, the daemon killed and started again with the window reconnecting, a close that puts
+ * the window away, `--quit` that ends the app and its daemon, an app ended outright taking its
+ * daemon with it, and a silent uninstall that takes the program and its entry away and leaves the
+ * data folder.
  */
 const UNINSTALL_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskfolk";
 
@@ -552,6 +576,16 @@ async function smokeWindows(setup: string, upgradeFrom?: string) {
   }
   if (windowsMainWindow(shell.pid) !== 0) throw new Error("smoke: --hidden showed the window");
   console.log("smoke: started hidden");
+  // The runtime holds the remote setup channel (its stdin and stdout, `remote_setup.rs`), which
+  // makes it window-supervised: pairing a phone from this computer works, and a phone can restart it.
+  if (!windowsCommandLine(descriptor.pid).includes("--desktop-remote-channel")) {
+    throw new Error("smoke: the runtime was started without the remote setup channel");
+  }
+  const supervised = await runtimeInfo(dataDir);
+  if (supervised.mode !== "window" || supervised.restart !== "available") {
+    throw new Error(`smoke: the runtime reports ${JSON.stringify(supervised)}, not a window-supervised one a phone can restart`);
+  }
+  console.log("smoke: the runtime has its setup channel and can be restarted from a phone");
   const expectedRun = `"${exe}" --hidden`;
   let run = "";
   for (let i = 0; i < 40 && run !== expectedRun; i++) {
@@ -593,18 +627,48 @@ async function smokeWindows(setup: string, upgradeFrom?: string) {
   console.log(`smoke: started again as pid ${again}`);
   if (!(await log.until(/reconnected/, 60_000))) throw new Error("smoke: the window did not reconnect to the daemon started again");
   console.log("smoke: the window reconnected");
+  if (!windowsCommandLine(again).includes("--desktop-remote-channel") || (await runtimeInfo(dataDir)).mode !== "window") {
+    throw new Error("smoke: the runtime started again has no setup channel");
+  }
+  console.log("smoke: the runtime started again has its setup channel");
 
-  // Closing the window (taskkill without /F sends it WM_CLOSE) ends the run, and the shell stops
-  // the daemon on its way out.
+  // The close button puts the window away, as the Tauri app's did (taskkill without /F sends the
+  // window WM_CLOSE): the app stays in the notification area, the runtime with it.
   spawnSync("taskkill", ["/PID", String(shell.pid)]);
+  await Bun.sleep(3000);
+  if (!alive(shell.pid)) throw new Error("smoke: closing the window ended the app; it should stay in the notification area");
+  if (windowsMainWindow(shell.pid) !== 0) throw new Error("smoke: the window still shows after its close button");
+  if (!alive(again) || !(await healthyAt17890())) throw new Error("smoke: closing the window stopped the runtime");
+  console.log("smoke: closing the window put it away; the runtime runs on");
+
+  // `--quit` asks the running copy to quit, as the tray's Quit does: the run ends, and the daemon
+  // with it.
+  const quit = Bun.spawn([exe, "--quit"], { stdout: "ignore", stderr: "ignore", env });
+  await Promise.race([quit.exited, Bun.sleep(30_000)]);
   const exited = await Promise.race([shell.exited.then(() => true), Bun.sleep(30_000).then(() => false)]);
   if (!exited) {
     shell.kill();
-    throw new Error("smoke: the window did not close");
+    throw new Error("smoke: --quit did not end the running copy");
   }
   for (let i = 0; i < 20 && alive(again); i++) await Bun.sleep(500);
-  if (alive(again)) throw new Error(`smoke: the daemon (pid ${again}) outlived the window`);
-  console.log("smoke: closing the window stopped the daemon");
+  if (alive(again)) throw new Error(`smoke: the daemon (pid ${again}) outlived the app`);
+  console.log("smoke: --quit ended the app and stopped the daemon");
+
+  // An app that is ended outright (a crash, Task Manager) takes its runtime with it: the daemon is
+  // in a job that ends with the app (`runtime.rs`), and the pty helper it started with it.
+  const crashed = Bun.spawn([exe, "--hidden"], { stdout: "pipe", stderr: "pipe", env });
+  if (!(await drain(crashed.stderr, true).until(/ready: \d+ conversations/, 240_000))) {
+    crashed.kill();
+    throw new Error("smoke: no first snapshot on the start after --quit");
+  }
+  const third = (JSON.parse(readFileSync(join(dataDir, "local-api.json"), "utf8")) as { pid: number }).pid;
+  spawnSync("taskkill", ["/F", "/PID", String(crashed.pid)]);
+  await crashed.exited;
+  for (let i = 0; i < 20 && alive(third); i++) await Bun.sleep(500);
+  if (alive(third)) throw new Error(`smoke: the daemon (pid ${third}) outlived an app that was ended outright`);
+  const ptys = windowsPids("real-bot-pty.exe");
+  if (ptys.length > 0) throw new Error(`smoke: pty helpers ${ptys.join(", ")} outlived the app`);
+  console.log("smoke: an app ended outright took its runtime with it");
 
   const removed = spawnSync(join(installDir, "uninstall.exe"), ["/S", `_?=${installDir}`], { encoding: "utf8" });
   if (removed.status !== 0) throw new Error(`smoke: the uninstaller exited ${removed.status}`);

@@ -13,6 +13,10 @@ pub fn params(config: &Config, window_id: u32) -> Map<String, Value> {
     params.insert("token".into(), config.endpoint.token.clone().into());
     params.insert("windowId".into(), window_id.into());
     params.insert("material".into(), material().into());
+    // Whether a tray shows the app's icon (`window-life.ts`: the close button hides the window only
+    // where something can bring it back). Windows and macOS always have one.
+    #[cfg(target_os = "linux")]
+    params.insert("trayShown".into(), crate::gtk::tray_shown().into());
     if window_id == 1 {
         let mut set = |name: &str, value: Option<&String>| {
             if let Some(value) = value {
@@ -56,10 +60,17 @@ pub fn channel(config: &Config, window_id: u32) -> HostChannel {
     };
     {
         let endpoint = endpoint.clone();
-        host.handle("runtime.endpoint", move |call: HostCall| call.resolve(endpoint()));
+        host.handle("runtime.endpoint", move |call: HostCall| {
+            crate::runtime::mark_window_ran();
+            call.resolve(endpoint())
+        });
     }
-    // The messenger's Tauri commands (`app/src/platform/tauri-bridge.ts`), by their Tauri names.
-    host.handle("tauri.local_api_endpoint", move |call: HostCall| call.resolve(endpoint()));
+    // The messenger's Tauri commands (`app/src/platform/tauri-bridge.ts`), by their Tauri names. The
+    // app asks for the runtime's address as it starts: a window ran in this process (`gtk.rs`).
+    host.handle("tauri.local_api_endpoint", move |call: HostCall| {
+        crate::runtime::mark_window_ran();
+        call.resolve(endpoint())
+    });
     host.handle("tauri.app_version", |call: HostCall| call.resolve(json!(crate::config::product_version())));
     host.handle("tauri.window_material", |call: HostCall| call.resolve(json!(material())));
     install_portable(&host);
@@ -68,9 +79,10 @@ pub fn channel(config: &Config, window_id: u32) -> HostChannel {
 
 /// The update check answers the same on every desktop (`updates::check`, on a thread of its own:
 /// it waits on the network). The rest of the update and system commands are the macOS shell's
-/// (`host_calls.rs`); the other desktops answer what the Tauri app answers for a copy that cannot
-/// install or register anything: launch-at-login off, no in-app install, no independent runtime
-/// and no remote pairing.
+/// (`host_calls.rs`); the other desktops answer what the Tauri app answered there: no in-app
+/// install and no independent runtime, launch at login through their own login entry, and remote
+/// pairing over the setup channel with the system's owner check (`remote_setup.rs`,
+/// `local_confirm.rs`).
 fn install_portable(host: &HostChannel) {
     host.handle("tauri.check_for_update", |call: HostCall| {
         let force = call.data()["force"].as_bool().unwrap_or(false);
@@ -88,17 +100,64 @@ fn install_portable(host: &HostChannel) {
             Err(why) => call.reject(why),
         }
     });
+    // Linux: the Tauri app's autostart entry (`linux_login.rs`).
+    #[cfg(target_os = "linux")]
+    host.handle("tauri.set_launch_at_login", |call: HostCall| {
+        let enabled = call.data()["enabled"].as_bool().unwrap_or(false);
+        match crate::linux_login::set(enabled) {
+            Ok(now) => call.resolve(json!(now)),
+            Err(why) => call.reject(why),
+        }
+    });
+    // Linux: the tray is the app's (`app/src/platform/linux-tray.ts`, NSH's StatusNotifierItem);
+    // the shell gives it the usage lines the macOS and Windows trays show, and Stop Everything.
+    #[cfg(target_os = "linux")]
+    {
+        host.handle("shell.trayLines", |call: HostCall| {
+            std::thread::spawn(move || {
+                let lines = crate::endpoint::data_dir()
+                    .and_then(|dir| crate::endpoint::read(&dir).ok())
+                    .and_then(|found| crate::usage_tray::fetch(&found))
+                    .map(|usage| crate::usage_tray::usage_entries(&usage))
+                    .unwrap_or_default();
+                let texts: Vec<_> = lines
+                    .iter()
+                    .map(|entry| json!({ "text": crate::usage_tray::text_of(entry), "all": matches!(entry, crate::usage_tray::Entry::All) }))
+                    .collect();
+                call.resolve(json!(texts));
+            });
+        });
+        host.handle("shell.stopAll", |call: HostCall| {
+            crate::stop_all::request();
+            call.resolve(Value::Null);
+        });
+        host.handle("shell.stopAllAvailable", |call: HostCall| call.resolve(json!(crate::stop_all::available())));
+    }
     #[cfg(not(target_os = "macos"))]
     {
-        #[cfg(not(windows))]
-        host.handle("tauri.set_launch_at_login", |call: HostCall| call.resolve(json!(false)));
         host.handle("tauri.can_install_update", |call: HostCall| call.resolve(json!(false)));
         host.handle("tauri.update_install_state", |call: HostCall| call.resolve(idle_install_state()));
         host.handle("tauri.cancel_update_install", |call: HostCall| call.resolve(idle_install_state()));
         host.handle("tauri.start_update_install", |call: HostCall| call.reject("not-installed"));
-        for name in ["independent_runtime", "remote_local_setup", "remote_native_confirmation"] {
-            host.handle(format!("tauri.{name}"), |call: HostCall| call.reject("disabled"));
-        }
+        host.handle("tauri.independent_runtime", |call: HostCall| call.reject("disabled"));
+        // Pairing waits on the daemon and on the person: each on a thread of its own.
+        host.handle("tauri.remote_local_setup", |call: HostCall| {
+            std::thread::spawn(move || match crate::remote_setup::local_setup(!crate::config::RELEASE, call.data()["request"].clone()) {
+                Ok(reply) => call.resolve(reply),
+                Err(why) => call.reject(why),
+            });
+        });
+        host.handle("tauri.remote_native_confirmation", |call: HostCall| {
+            std::thread::spawn(move || {
+                let data = call.data();
+                let operation = data["operation"].as_str().unwrap_or_default().to_owned();
+                let challenge = data["challenge"].as_str().map(str::to_owned);
+                match crate::local_confirm::confirmation(!crate::config::RELEASE, &operation, challenge.as_deref()) {
+                    Ok(done) => call.resolve(json!(done)),
+                    Err(why) => call.reject(why),
+                }
+            });
+        });
         host.handle("tauri.independent_runtime_status", |call: HostCall| {
             call.resolve(json!({
                 "enabled": false, "available": false, "diagnostic": "dev_does_not_install_agent",
@@ -108,7 +167,36 @@ fn install_portable(host: &HostChannel) {
             }))
         });
         install_notification_commands(host);
+        #[cfg(any(windows, target_os = "linux"))]
+        install_recording(host);
     }
+}
+
+/// Voice input's recording (`recorder_portable.rs`), under `app/src/platform/media.ts`. Opening the
+/// microphone waits on the system and stopping waits on the stream, so those answer from threads of
+/// their own; the level is one atomic read.
+#[cfg(any(windows, target_os = "linux"))]
+fn install_recording(host: &HostChannel) {
+    use crate::recorder_portable as recorder;
+    host.handle("shell.record.start", |call: HostCall| {
+        std::thread::spawn(move || match recorder::start() {
+            Ok(format) => call.resolve(format),
+            Err(why) => call.reject(why),
+        });
+    });
+    host.handle("shell.record.level", |call: HostCall| call.resolve(json!(recorder::level())));
+    host.handle("shell.record.stop", |call: HostCall| {
+        std::thread::spawn(move || match recorder::stop() {
+            Ok(value) => call.resolve(value),
+            Err(why) => call.reject(why),
+        });
+    });
+    host.handle("shell.record.cancel", |call: HostCall| {
+        std::thread::spawn(move || {
+            recorder::cancel();
+            call.resolve(Value::Null);
+        });
+    });
 }
 
 /// The notification commands where the shell posts no banners (Windows, Linux): the macOS shell's

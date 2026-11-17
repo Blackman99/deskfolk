@@ -117,11 +117,15 @@ export class VoiceRecorder {
 			if (this.bytes >= SPEECH_RAW_BYTES_MAX * 0.9) this.limit(hooks);
 		};
 		this.startedAt = Date.now();
+		// The desktop shell's recorder (an uncompressed WAV on Windows and Linux) says how long it can
+		// run before the recording is more than one transcription takes; a browser's has no such field.
+		const shellLimit = (this.recorder as { maxSeconds?: unknown }).maxSeconds;
+		const maxSeconds = typeof shellLimit === 'number' && shellLimit > 0 ? Math.min(SPEECH_MAX_SECONDS, shellLimit) : SPEECH_MAX_SECONDS;
 		this.recorder.start(1000);
 		this.ticker = setInterval(() => {
 			const seconds = (Date.now() - this.startedAt) / 1000;
 			hooks.onTick?.(seconds);
-			if (seconds >= SPEECH_MAX_SECONDS) this.limit(hooks);
+			if (seconds >= maxSeconds) this.limit(hooks);
 		}, 250);
 		this.meter(hooks);
 	}

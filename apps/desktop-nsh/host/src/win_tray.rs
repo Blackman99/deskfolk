@@ -4,8 +4,10 @@
 //! plans, the macOS menu's lines word for word and icon for icon (`usage_tray.rs`, asked of the
 //! runtime once a minute), then "Show Deskfolk Dev" and "Quit Deskfolk Dev". A line's click brings
 //! the window forward; "查看全部用量…" opens the usage tab too (the messenger's `pane-command`
-//! `view-usage`, as on macOS). Quitting closes the window, which ends the run here (`win.rs`); the
-//! Windows shell has one window, so there is no "New Window".
+//! `view-usage`, as on macOS). "Stop Everything" stops the Bots' work (`stop_all.rs`). Quit asks the
+//! app to quit, which closes the window and ends the run here (`win.rs`): the window's close button
+//! only puts it away, as the Tauri app's did. The Windows shell has one window, so there is no "New
+//! Window".
 //!
 //! NSH runs its window and message loop on a UI thread of its own, so the icon has a thread of its
 //! own too, with a hidden window: it takes the icon's messages, hears `TaskbarCreated` (Explorer
@@ -48,7 +50,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     MSG, PostMessageW, RegisterClassExW, RegisterWindowMessageW, SM_CXSMICON, SM_MENUDROPALIGNMENT, SW_RESTORE,
     SW_SHOW, SetForegroundWindow, SetMenuItemInfoW, SetTimer, SetWindowsHookExW, ShowWindowAsync, TPM_BOTTOMALIGN,
     TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTALIGN, TPM_RIGHTBUTTON, TrackPopupMenuEx, TranslateMessage, WH_CALLWNDPROC,
-    WM_APP, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY, WM_NULL, WM_TIMER, WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_POPUP,
+    WM_APP, WM_CONTEXTMENU, WM_DESTROY, WM_NULL, WM_TIMER, WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 use windows::core::{HSTRING, PCWSTR, w};
 
@@ -346,12 +348,22 @@ fn show_usage() {
     }
 }
 
-/// Closes NSH's window as its close button does, which ends the run.
+/// Quits the app: its close button only puts the window away now (`app/src/platform/window-life.ts`),
+/// so the app is asked to quit (`Application.quit`), which closes the window and ends the run
+/// (the runtime stops as the window is destroyed, `hook`). An app that does not answer within a few
+/// seconds (its engine stuck) is ended here, after stopping the runtime, as the run would have.
 fn quit() {
-    if let Some(main) = crate::win::nsh_window() {
-        // SAFETY: a posted message to a window of this process.
-        let _ = unsafe { PostMessageW(Some(main), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+    if let Some(setup) = SETUP.get() {
+        let _ = setup.host.send("shell.quit", json!(null));
     }
+    std::thread::spawn(|| {
+        // The run normally ends well before this (its runtime given up to five seconds to stop).
+        std::thread::sleep(std::time::Duration::from_secs(12));
+        log::warn!(target: LOG, "the app did not quit when asked; ending it");
+        remove_icon();
+        crate::runtime::stop();
+        std::process::exit(0);
+    });
 }
 
 /// The menu, opened at `at` (the icon) until something is chosen or it is dismissed.

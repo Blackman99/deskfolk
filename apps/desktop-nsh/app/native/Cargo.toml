@@ -42,6 +42,10 @@ zip = { version = "9", default-features = false, features = ["deflate"] }
 # Ghostty's terminal emulator, behind the `ghostty` feature below. MIT OR Apache-2.0; Ghostty MIT.
 libghostty-vt = { version = "=0.2.2", optional = true }
 
+# `AssocIsDangerous` (`src/files.rs`): a file Windows rates dangerous to open is shown instead.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_UI_Shell"] }
+
 [features]
 # Ghostty's terminal emulator for `RuntimeTerminals` on the desktops (`src/ghostty.rs`), in place of
 # NSH's own `VtEmulator`. It builds from Ghostty's Zig sources and needs Zig 0.15 (see

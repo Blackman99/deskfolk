@@ -1,30 +1,44 @@
-//! Copied from the Tauri app (`apps/desktop/src-tauri/src/remote_setup.rs`), macOS only: the
-//! Windows pipe channel is not carried over, and the command is a plain function (`local_setup`).
+//! The remote setup channel, as the Tauri app's `remote_setup.rs` had it. Pairing on this computer
+//! talks to the daemon over a channel the shell hands it at spawn, not over the local HTTP API
+//! (ADR 0033, ADR 0059): an inherited socket pair on fd 3 on macOS and Linux; on Windows, where a
+//! child gets no handle past the standard three that Bun would pick up, the daemon's own stdin and
+//! stdout, two pipes only this shell holds the other ends of. Either way it carries the same
+//! length-prefixed JSON frames.
 //!
-//! Pairing on this Mac talks to the daemon over a channel the window hands it at spawn (an
-//! inherited socket pair, `prepare_channel` / `adopt_channel`), not over the local HTTP API. This
-//! shell starts the dev runtime without one (`runtime::ensure`), and a dev build refuses the
-//! command anyway, so nothing adopts a channel yet: a packaged non-dev build must spawn the daemon
-//! with `prepare_channel` for pairing to work. Until then the command answers
+//! A release spawns its daemon with the channel (`runtime::spawn_bundled`); a development build
+//! starts its dev runtime without one and refuses the command (`disabled`), so the dev settings
+//! panel confirms with the stand-in. Without a channel the command answers
 //! `desktop_channel_unavailable`, as the Tauri app does when its channel is gone.
-#![allow(dead_code)]
 
 use serde_json::Value;
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::fd::AsRawFd;
+#[cfg(unix)]
 use std::os::unix::{net::UnixStream, process::CommandExt};
 use std::sync::Mutex;
 use std::time::Duration;
-
-use crate::dev_build::Identity;
 
 /// How long a reply may take: a confirmation waits on the person, and its challenge lasts 120 s.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(130);
 /// Both ways, a frame is at most this long; anything else means the channel is not what it was.
 const MAX_FRAME: usize = 8192;
 
+#[cfg(unix)]
 static CHANNEL: Mutex<Option<UnixStream>> = Mutex::new(None);
 
+#[cfg(windows)]
+struct PipeChannel {
+    input: std::process::ChildStdin,
+    /// Each reply frame the daemon wrote, read off its stdout by a thread of its own: a pipe on
+    /// Windows has no read timeout, and a daemon that stops answering must not hold the lock.
+    replies: std::sync::mpsc::Receiver<Vec<u8>>,
+}
+
+#[cfg(windows)]
+static CHANNEL: Mutex<Option<PipeChannel>> = Mutex::new(None);
+
+#[cfg(unix)]
 pub fn prepare_channel(command: &mut std::process::Command) -> Option<UnixStream> {
     let (parent, child) = UnixStream::pair().ok()?;
     parent.set_read_timeout(Some(REPLY_TIMEOUT)).ok()?;
@@ -44,9 +58,39 @@ pub fn prepare_channel(command: &mut std::process::Command) -> Option<UnixStream
     Some(parent)
 }
 
+#[cfg(unix)]
 pub fn adopt_channel(channel: UnixStream) {
     if let Ok(mut guard) = CHANNEL.lock() {
         *guard = Some(channel);
+    }
+}
+
+/// The daemon's stdin and stdout become the channel; nothing else of it is published either. Called
+/// after the command's own `stdin` / `stdout`, which it replaces.
+#[cfg(windows)]
+pub fn prepare_channel(command: &mut std::process::Command) {
+    use std::process::Stdio;
+    command.arg("--desktop-remote-channel");
+    command.stdin(Stdio::piped()).stdout(Stdio::piped());
+}
+
+/// Takes the spawned daemon's pipes as the channel, replacing the last daemon's.
+#[cfg(windows)]
+pub fn adopt_channel(child: &mut std::process::Child) {
+    let (Some(input), Some(mut output)) = (child.stdin.take(), child.stdout.take()) else {
+        return;
+    };
+    let (sender, replies) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        // Ends when the daemon's stdout does, or garbles; the receiver then sees it gone.
+        while let Ok(frame) = read_frame(&mut output) {
+            if sender.send(frame).is_err() {
+                return;
+            }
+        }
+    });
+    if let Ok(mut guard) = CHANNEL.lock() {
+        *guard = Some(PipeChannel { input, replies });
     }
 }
 
@@ -89,9 +133,12 @@ fn validate(input: &Value) -> Result<(), String> {
 }
 
 /// `remote_local_setup({ request })`. Blocks on the daemon, so the caller runs it off the engine
-/// thread.
-pub fn local_setup(id: &Identity, request: Value) -> Result<Value, String> {
-    crate::remote_native::authorize(id)?;
+/// thread. `dev`: a development build, which refuses it before reading it (the Tauri app's
+/// `BundledNativeCaller` rule).
+pub fn local_setup(dev: bool, request: Value) -> Result<Value, String> {
+    if dev {
+        return Err("disabled".into());
+    }
     validate(&request)?;
     let bytes = serde_json::to_vec(&request).map_err(|_| "malformed")?;
     if bytes.is_empty() || bytes.len() > MAX_FRAME {
@@ -110,12 +157,30 @@ pub(crate) fn exchange(request: &Value) -> Result<Value, String> {
     exchange_bytes(&bytes)
 }
 
+#[cfg(unix)]
 fn exchange_bytes(bytes: &[u8]) -> Result<Value, String> {
     let mut guard = CHANNEL.lock().map_err(|_| "unavailable")?;
     let stream = guard.as_mut().ok_or("desktop_channel_unavailable")?;
     let result = (|| {
         write_frame(stream, bytes)?;
         let body = read_frame(stream)?;
+        serde_json::from_slice(&body).map_err(std::io::Error::other)
+    })();
+    if result.is_err() {
+        *guard = None;
+    }
+    result.map_err(|_| "desktop_channel_unavailable".to_string())
+}
+
+#[cfg(windows)]
+fn exchange_bytes(bytes: &[u8]) -> Result<Value, String> {
+    let mut guard = CHANNEL.lock().map_err(|_| "unavailable")?;
+    let channel = guard.as_mut().ok_or("desktop_channel_unavailable")?;
+    let result = (|| {
+        write_frame(&mut channel.input, bytes)?;
+        // A reply that comes after this gave up would answer the next request, so a timeout drops
+        // the channel like any other failure.
+        let body = channel.replies.recv_timeout(REPLY_TIMEOUT).map_err(std::io::Error::other)?;
         serde_json::from_slice(&body).map_err(std::io::Error::other)
     })();
     if result.is_err() {
@@ -152,9 +217,21 @@ mod tests {
 
     #[test]
     fn a_development_build_refuses_the_setup_before_reading_it() {
-        let dev = Identity { bundle_id: "com.real-bot.desktop.nsh-dev".into(), data_dir: "/tmp/dev".into(), port: 17990, version: "0.4.0" };
-        assert_eq!(local_setup(&dev, json!({"operation":"status"})).unwrap_err(), "disabled");
-        assert_eq!(local_setup(&dev, json!("not an object")).unwrap_err(), "disabled");
+        assert_eq!(local_setup(true, json!({"operation":"status"})).unwrap_err(), "disabled");
+        assert_eq!(local_setup(true, json!("not an object")).unwrap_err(), "disabled");
+        assert_eq!(local_setup(false, json!("not an object")).unwrap_err(), "malformed");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_pipe_carries_frames_both_ways() {
+        // The reader thread's side: frames written back to back come off one at a time.
+        let mut wire = Vec::new();
+        write_frame(&mut wire, br#"{"ok":true}"#).unwrap();
+        write_frame(&mut wire, br#"{"ok":false}"#).unwrap();
+        let mut reader = wire.as_slice();
+        assert_eq!(read_frame(&mut reader).unwrap(), br#"{"ok":true}"#);
+        assert_eq!(read_frame(&mut reader).unwrap(), br#"{"ok":false}"#);
     }
 
     #[test]

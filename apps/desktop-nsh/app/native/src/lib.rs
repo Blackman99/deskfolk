@@ -24,6 +24,7 @@ mod office;
 // Ghostty's emulator for `RuntimeTerminals` (`nsh_terminal.rs`), with the `ghostty` feature.
 #[cfg(all(feature = "ghostty", not(target_arch = "wasm32")))]
 mod ghostty;
+mod files;
 mod highlight;
 mod markdown;
 mod nsh_terminal;
@@ -31,6 +32,7 @@ mod palette;
 mod pdf;
 mod rfb;
 
+pub use files::Files;
 pub use highlight::{CodeColors, CodeColorsElement, CodeColorsProps, Highlight, code_colors};
 pub use markdown::Markdown;
 pub use nsh_terminal::{RuntimeEmulator, RuntimeTerminals, RuntimeTerminalsElement, RuntimeTerminalsProps, runtime_terminals};
@@ -41,5 +43,5 @@ pub use rfb::Screens;
 /// What TSX may import from `deskfolk/native`.
 #[native_module("deskfolk/native")]
 fn native(registry: &mut Registry) {
-    registry.register::<RuntimeTerminals>().register::<CodeColors>().module::<Documents>().module::<Markdown>().module::<Highlight>().module::<Office>().module::<Screens>();
+    registry.register::<RuntimeTerminals>().register::<CodeColors>().module::<Documents>().module::<Markdown>().module::<Highlight>().module::<Office>().module::<Screens>().module::<Files>();
 }

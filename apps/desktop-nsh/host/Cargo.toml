@@ -35,10 +35,23 @@ windows = { version = "0.62", features = [
     "Win32_Foundation", "Win32_Graphics_Dxgi", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_Ole",
     "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging",
+    # The daemon's job (`runtime.rs`) and Windows Hello for remote pairing (`local_confirm.rs`).
+    "Win32_System_JobObjects", "Win32_Security", "Security_Credentials_UI", "Win32_System_WinRT",
 ] }
+# Hello's asynchronous calls (`IAsyncOperation`, `join`), the line `windows` 0.62 uses.
+windows-future = "0.3"
+# Voice input's recording (`recorder_portable.rs`): WASAPI's default input.
+cpal = "0.18"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-nsh-platform-linux.workspace = true
+# `webview`: the HTML preview and annotator (WebKitGTK 6.0), the one web view the app has, as on
+# macOS and Windows.
+nsh-platform-linux = { workspace = true, features = ["webview"] }
+# dup2 and fcntl: the daemon's setup channel on fd 3 (`remote_setup.rs`).
+libc = "0.2"
+# Voice input's recording (`recorder_portable.rs`): ALSA's default input, which PulseAudio and
+# PipeWire both answer. Builds against `libasound2-dev`.
+cpal = "0.18"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 nsh-platform-macos.workspace = true

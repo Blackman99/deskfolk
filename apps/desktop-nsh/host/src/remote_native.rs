@@ -9,7 +9,7 @@
 //! answers only the app bundle it was started with; the helper's process is a static; and the
 //! resources folder is `Contents/Resources` next to the executable.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -38,15 +38,7 @@ pub enum Operation {
     Confirm,
 }
 
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct LocalConfirmation {
-    pub ok: bool,
-    pub enabled: bool,
-    pub diagnostic: String,
-    pub proof: Option<String>,
-    pub expires_in: Option<u64>,
-}
+pub use crate::local_confirm::LocalConfirmation;
 
 /// The rule the Tauri `BundledNativeCaller` applies to a development build.
 pub fn authorize(id: &Identity) -> Result<(), String> {

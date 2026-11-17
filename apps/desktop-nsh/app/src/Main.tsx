@@ -12,9 +12,12 @@
  * `scripts/terminal-probe.ts` and the frame-rate probe, `--pane pdf` with `--pdf <path>`), until
  * the terminal moves to NSH's own and the probes follow it.
  */
-import { effect, signal } from "nsh";
+import { effect, platform, signal, View } from "nsh";
 import { initialPane, initialSession, windowId } from "./launch";
 import { appBanners } from "./platform/app-banners";
+import { installLinuxTray } from "./platform/linux-tray";
+import { linuxWheelProps } from "./platform/wheel";
+import { installWindowLife } from "./platform/window-life";
 import { runtime } from "./runtime";
 import { PdfPane, TerminalPane } from "./Tools";
 import { PairingScreen } from "./ui/remote/PairingScreen";
@@ -35,6 +38,11 @@ export function Main() {
     banners.onPressed(() => void runtime.pollDesktopNativeState());
     banners.start();
   }
+  // Windows and Linux: the close button puts the window away, the tray's Quit ends the app
+  // (`platform/window-life.ts`), as in the Tauri app.
+  if (windowId <= 1) installWindowLife();
+  // Linux: the tray is the app's (`platform/linux-tray.ts`).
+  if (windowId <= 1) installLinuxTray();
   // The code colours' grammars and themes, read while the runtime connects.
   warmCodeColors();
   // What start-up checks wait for (scripts/ci-smoke.ts, package.ts --measure): the first snapshot;
@@ -66,11 +74,13 @@ export function Main() {
   effect(() => {
     if (runtime.connection === "connected") shellShown.set(true);
   });
-  const shell = (
+  const shown = (
     <If when={shellShown()} else={<ConnectionScreen />}>
       <Shell />
     </If>
   );
+  // Linux: the wheel the shell does not forward, heard here (`platform/wheel.ts`).
+  const shell = platform.os === "linux" ? <View class="flex-1" {...linuxWheelProps}>{shown}</View> : shown;
   if (runtime.hosted) {
     // Not enrolled is not a connection problem: this device has nothing to connect with yet.
     const pairing = () => runtime.connection !== "connected" && !runtime.enrolled;
