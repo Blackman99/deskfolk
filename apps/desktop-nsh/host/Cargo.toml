@@ -52,6 +52,9 @@ libc = "0.2"
 # Voice input's recording (`recorder_portable.rs`): ALSA's default input, which PulseAudio and
 # PipeWire both answer. Builds against `libasound2-dev`.
 cpal = "0.18"
+# Opus and Ogg, as on Windows.
+opus = "0.4"
+ogg = "0.9"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 nsh-platform-macos.workspace = true

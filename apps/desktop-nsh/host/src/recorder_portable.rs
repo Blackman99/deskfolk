@@ -5,15 +5,15 @@
 //! - `shell.record.start`: opens the default input and records. Rejects with `NotFoundError` when
 //!   there is no input, `NotAllowedError` when the system refuses it (Windows' microphone privacy
 //!   switch, Linux's audio group), `NotReadableError` for the rest. Answers `{ mime, maxSeconds }`:
-//!   the format the recording will be (`audio/wav`, see `recorder_pcm.rs` for why) and how long the
-//!   caller may let it run before it outgrows what the daemon transcribes.
+//!   the format the recording will be (Ogg/Opus, see `recorder_ogg.rs` for why) and how long the
+//!   caller may let it run: the three minutes a take lasts on the Mac and in a browser.
 //! - `shell.record.level`: the input level now, 0 to 1.
-//! - `shell.record.stop`: stops, answers `{ data: base64, mime, seconds }`.
+//! - `shell.record.stop`: stops, encodes, answers `{ data: base64, mime, seconds }`.
 //! - `shell.record.cancel`: stops and drops it.
 //!
 //! One recording at a time. A `cpal` stream may not leave the thread that made it (WASAPI's does
 //! not), so each recording has a thread of its own that opens the stream, keeps it, and drops it
-//! when told to stop; the samples wait in memory (half a minute at most) and become a WAV on stop.
+//! when told to stop; the samples wait in memory (three minutes at 16 kHz is under 6 MB) and become Ogg/Opus on stop.
 //! A device that fails in the middle ends the stream; the recording so far is still what `stop`
 //! answers, and only an empty one answers the failure.
 
@@ -29,7 +29,8 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{ErrorKind, FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig};
 use serde_json::{Value, json};
 
-use crate::recorder_pcm::{LevelMeter, MIME, Resampler, TARGET_RATE, dom_error, max_samples, max_seconds, to_pcm16, wav_bytes};
+use crate::recorder_ogg::{MAX_SECONDS, MIME, encode, max_samples, opus_rate};
+use crate::recorder_pcm::{LevelMeter, Resampler, dom_error, to_pcm16};
 
 /// What the input thread and the calls share.
 #[derive(Default)]
@@ -72,16 +73,18 @@ fn failure(error: &cpal::Error) -> String {
 struct Sink {
     shared: Arc<Shared>,
     channels: usize,
+    /// Most samples the recording keeps.
+    room: usize,
     resampler: Resampler,
     meter: LevelMeter,
     batch: Vec<i16>,
 }
 
 impl Sink {
-    fn new(shared: Arc<Shared>, channels: usize, in_rate: u32) -> Self {
-        let resampler = Resampler::new(in_rate, TARGET_RATE);
+    fn new(shared: Arc<Shared>, channels: usize, in_rate: u32, out_rate: u32) -> Self {
+        let resampler = Resampler::new(in_rate, out_rate);
         let meter = LevelMeter::new(resampler.out_rate());
-        Self { shared, channels, resampler, meter, batch: Vec::new() }
+        Self { shared, channels, room: max_samples(resampler.out_rate()), resampler, meter, batch: Vec::new() }
     }
 
     fn feed<T>(&mut self, data: &[T])
@@ -98,9 +101,9 @@ impl Sink {
             }
             self.batch.push(to_pcm16(out));
         }
-        // Past the most a transcription takes the rest is dropped; the caller has been told to stop.
+        // Past the most a recording lasts the rest is dropped; the caller has been told to stop.
         let mut samples = locked(&self.shared.samples);
-        let room = max_samples().saturating_sub(samples.len());
+        let room = self.room.saturating_sub(samples.len());
         samples.extend(self.batch.iter().take(room));
     }
 }
@@ -130,7 +133,10 @@ fn open(shared: &Arc<Shared>) -> Result<(Stream, u32), String> {
     let device = cpal::default_host().default_input_device().ok_or_else(|| dom_error("NotFoundError", "no microphone was found"))?;
     let supported = device.default_input_config().map_err(|e| failure(&e))?;
     let channels = usize::from(supported.channels().max(1));
-    let sink = Sink::new(shared.clone(), channels, supported.sample_rate());
+    // A device under 8 kHz has nothing Opus takes; none is met in practice.
+    let out_rate = opus_rate(supported.sample_rate())
+        .ok_or_else(|| dom_error("NotReadableError", &format!("the microphone records at {} Hz, too slow for speech", supported.sample_rate())))?;
+    let sink = Sink::new(shared.clone(), channels, supported.sample_rate(), out_rate);
     let rate = sink.resampler.out_rate();
     let format = supported.sample_format();
     let config: StreamConfig = supported.into();
@@ -194,7 +200,7 @@ pub fn start() -> Result<Value, String> {
     match ready_rx.recv_timeout(Duration::from_secs(20)) {
         Ok(Ok(rate)) => {
             *current = Some(Session { stop: stop_tx, thread, shared, rate });
-            Ok(json!({ "mime": MIME, "maxSeconds": max_seconds(rate) }))
+            Ok(json!({ "mime": MIME, "maxSeconds": MAX_SECONDS }))
         }
         Ok(Err(why)) => {
             let _ = thread.join();
@@ -213,7 +219,8 @@ pub fn level() -> f64 {
     f64::from(f32::from_bits(LEVEL.load(Ordering::Relaxed)))
 }
 
-/// `shell.record.stop`: the recording as a WAV, base64.
+/// `shell.record.stop`: the recording as Ogg/Opus, base64. Encoding three minutes takes a fraction
+/// of a second.
 pub fn stop() -> Result<Value, String> {
     let Some(session) = locked(&CURRENT).take() else {
         return Err(dom_error("InvalidStateError", "not recording"));
@@ -227,7 +234,8 @@ pub fn stop() -> Result<Value, String> {
         }
     }
     let seconds = samples.len() as f64 / f64::from(rate);
-    Ok(json!({ "data": B64.encode(wav_bytes(&samples, rate)), "mime": MIME, "seconds": seconds }))
+    let file = encode(&samples, rate).map_err(|why| dom_error("NotReadableError", &why))?;
+    Ok(json!({ "data": B64.encode(file), "mime": MIME, "seconds": seconds }))
 }
 
 /// `shell.record.cancel`: nothing kept. Quietly nothing when not recording.

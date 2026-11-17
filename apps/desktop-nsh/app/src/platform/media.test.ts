@@ -14,8 +14,8 @@ test("the shell's refusals read as getUserMedia's DOMExceptions", () => {
   expect(domErrorOf("boom").name).toBe("UnknownError");
 });
 
-test("a shell that records WAV says so, and how long it may run", () => {
+test("a shell that records Ogg/Opus says so, and how long it may run", () => {
   expect(formatOf(null)).toEqual({ mime: "audio/mp4", maxSeconds: undefined });
-  expect(formatOf({ mime: "audio/wav", maxSeconds: 31 })).toEqual({ mime: "audio/wav", maxSeconds: 31 });
+  expect(formatOf({ mime: "audio/ogg;codecs=opus", maxSeconds: 180 })).toEqual({ mime: "audio/ogg;codecs=opus", maxSeconds: 180 });
   expect(formatOf({ mime: "", maxSeconds: -1 })).toEqual({ mime: "audio/mp4", maxSeconds: undefined });
 });

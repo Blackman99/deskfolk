@@ -3,9 +3,9 @@
  * recording (`host/src/recorder.rs`), so the messenger's voice input (`chat/voice-recorder.ts`)
  * runs unchanged: `getUserMedia` asks for the microphone and starts recording, the recorder hands
  * the whole recording over as one `dataavailable` when it stops: `audio/mp4` like Safari's on the
- * Mac, `audio/wav` on Windows and Linux (`recorder_portable.rs`), whose `shell.record.start` says
- * so and says how long the recording may run (`maxSeconds`, which the messenger's recorder reads
- * off the recorder, because an uncompressed recording outgrows what the daemon transcribes).
+ * Mac, `audio/ogg;codecs=opus` on Windows and Linux (`recorder_portable.rs`), whose
+ * `shell.record.start` says so and says how long the recording may run (`maxSeconds`, which the
+ * messenger's recorder reads off the recorder: the shell's own limit, three minutes as on the Mac).
  *
  * Only what the messenger uses: one audio track, `start`/`stop`, `ondataavailable`, `onstop`,
  * `onerror`, `state`, `mimeType`, `isTypeSupported`. The web keeps the browser's own.
