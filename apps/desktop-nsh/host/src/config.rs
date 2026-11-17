@@ -50,7 +50,7 @@ pub struct Config {
     pub fps: bool,
     /// Development checks: the open conversation scrolls itself end to end (with `fps`).
     pub scroll_probe: bool,
-    /// Development comparison: `native` runs the macOS NSView terminal instead of the canvas one.
+    /// Development comparison: `native` runs the macOS NSView terminal instead of NSH's own.
     pub terminal: Option<String>,
     /// Development: the bundle is `Story.tsx`'s and this names the screen it opens.
     pub story: Option<String>,
@@ -59,7 +59,7 @@ pub struct Config {
     pub hidden: bool,
 }
 
-pub const USAGE: &str = "deskfolk-nsh [--bundle <bundle.js|bundle.nshc>] [--data-dir <runtime data dir>] [--watch] [--background] [--hidden] [--snapshots <dir>] [--open-session <id>] [--pane chat|terminal|pdf] [--pdf <path>] [--fps] [--scroll-probe] [--terminal canvas|native] [--story <name>] [--stable-instance]";
+pub const USAGE: &str = "deskfolk-nsh [--bundle <bundle.js|bundle.nshc>] [--data-dir <runtime data dir>] [--watch] [--background] [--hidden] [--snapshots <dir>] [--open-session <id>] [--pane chat|terminal|pdf] [--pdf <path>] [--fps] [--scroll-probe] [--terminal native] [--story <name>] [--stable-instance]";
 
 pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
     let mut bundle = None;

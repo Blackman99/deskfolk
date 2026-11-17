@@ -5,9 +5,9 @@
 //!   runtime's screen (`apps/daemon/src/terminal-screen.ts`) answers those for every pane at once,
 //!   and a pane that answered too would type a second answer into the program; `Terminal` sends its
 //!   emulator's answers through `onData`, with the keys, where TSX cannot tell them apart.
-//! - Its colours are the app's (`palette.rs`, as the canvas terminal draws them): the sixteen ANSI
-//!   colours, the default text and an inverse cell's default ground, in the appearance the
-//!   terminal is shown in. `Terminal` itself has VS Code's sixteen and the theme's foreground.
+//! - Its colours are the app's (`palette.rs`): the sixteen ANSI colours, the default text and an
+//!   inverse cell's default ground, in the appearance the terminal is shown in. `Terminal` itself
+//!   has VS Code's sixteen and the theme's foreground.
 //!
 //! TSX puts the terminal inside [`RuntimeTerminals`], which hands this emulator to the terminals
 //! below it and lays the palette's ground under them.
@@ -42,7 +42,7 @@ fn rgb_of((r, g, b): Rgb) -> TerminalColor {
 /// no ground on the palette's ground, so that swapped it reads as the palette's ink.
 pub fn recolour(style: TerminalStyle, palette: &Palette) -> TerminalStyle {
     let ansi = |color: Option<TerminalColor>| match color {
-        Some(TerminalColor::Indexed(index)) if index < 16 => Some(rgb_of(palette.indexed(index))),
+        Some(TerminalColor::Indexed(index)) if index < 16 => Some(rgb_of(palette.ansi(index))),
         other => other,
     };
     let mut out = style;

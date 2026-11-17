@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The terminal is NSH's own
+
+- Terminal tabs now use NSH's own terminal in place of the one the app drew itself. Drag across lines to select text and copy it; a paste reaches a program that asks for bracketed pastes as one paste; the history scrolls the way the app's other lists do. Typing, ⌘⌫ / ⌘← / ⌘→ and the ⌥ word keys, Ctrl keys, an input method's composition at the cursor with its candidates there, Chinese characters on their two cells and the app's colours in either appearance work as before.
+- From source, `--terminal nsh` is gone, since that is now the default; `--terminal native` still shows the macOS NSView terminal for comparison. The released app runs NSH's own emulator; a source build runs Ghostty's when Zig 0.15 and its sources are at hand.
+
 ### A Codex project session has plan mode, subagents and background commands
 
 - The Plan switch and Shift+Tab work for Codex. A plan turn only reads and asks to run read commands, changes no file, and ends with a plan card to approve; approving turns plan mode off and tells Codex to carry the plan out, not approving keeps planning, and a line you send while the card waits is what to change. This relies on Codex's collaboration modes, which Codex still marks experimental; the app waited on that before and now builds it for parity with Claude Code sessions.

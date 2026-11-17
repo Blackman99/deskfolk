@@ -1,28 +1,22 @@
 /**
  * A terminal tab: a head saying where the shell is and how it is, with Stop and 结束会话 (the
- * workbench head of `TerminalView.svelte`), over the spike's terminal (`src/Terminal.tsx` on a
- * canvas; NSH's own `Terminal` under `--terminal nsh`, the macOS native view under
- * `--terminal native`) on the runtime's pty. The
- * tab's own session when it names one, else a new shell in the workspace, which the tab then
- * remembers (`onBind`).
+ * workbench head of `TerminalView.svelte`), over NSH's own `Terminal` (`src/NshTerminal.tsx`; the
+ * macOS native view under `--terminal native`) on the runtime's pty. The tab's own session when it
+ * names one, else a new shell in the workspace, which the tab then remembers (`onBind`).
  *
  * The tab's × only takes the shell off the screen; 结束会话 is what stops it, behind a second
  * press while it is running. A shell that exits keeps its tab, its last screen and how it ended
  * showing, until 结束会话 forgets it. Once the runtime drops the session the workbench drops the tab.
  *
- * The canvas terminal below the head stands in until NSH's own `Terminal` (`nsh/base`,
- * longbridge/nsh#1111, in the pinned NSH but behind `--terminal nsh`: `src/NshTerminal.tsx` says
- * what it lacks) can take its place; that swap keeps the head. No tab row of sessions, no search,
- * no copy menu here.
+ * No tab row of sessions and no search here; selecting and copying are the terminal's own.
  */
 import { colorScheme, effect, signal, Text, untracked, View } from "nsh";
 import type { Terminal as TerminalRow } from "@real-bot/protocol";
-import { nativeTerminal, nshTerminal } from "../../launch";
+import { nativeTerminal } from "../../launch";
 import { statusLabel } from "../../m/overlays/terminals.ts";
 import { Terminal } from "../../native";
 import { NshTerminal } from "../../NshTerminal";
 import { copy, runtime } from "../../runtime";
-import { CanvasTerminal } from "../../Terminal";
 import { Button } from "../Button";
 import { tip } from "../tip";
 
@@ -146,10 +140,8 @@ export function PaneTerminal(props: { terminalId: string | null; onBind: (id: st
               onError={(e: { message: string }) => error.set(e.message)}
               style={{ flex: 1 }}
             />
-          ) : nshTerminal ? (
-            <NshTerminal id={id()} onExit={exited} />
           ) : (
-            <CanvasTerminal id={id()} onExit={exited} />
+            <NshTerminal id={id()} onExit={exited} />
           )
         }
       </If>

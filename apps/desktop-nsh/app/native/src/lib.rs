@@ -30,7 +30,6 @@ mod nsh_terminal;
 mod palette;
 mod pdf;
 mod rfb;
-mod terminal;
 
 pub use highlight::{CodeColors, CodeColorsElement, CodeColorsProps, Highlight, code_colors};
 pub use markdown::Markdown;
@@ -38,10 +37,9 @@ pub use nsh_terminal::{RuntimeEmulator, RuntimeTerminals, RuntimeTerminalsElemen
 pub use office::Office;
 pub use pdf::Documents;
 pub use rfb::Screens;
-pub use terminal::{TerminalGrid, TerminalGridElement, TerminalGridEvent, TerminalGridProps, Terminals, terminal_grid};
 
 /// What TSX may import from `deskfolk/native`.
 #[native_module("deskfolk/native")]
 fn native(registry: &mut Registry) {
-    registry.register::<TerminalGrid>().register::<RuntimeTerminals>().register::<CodeColors>().module::<Terminals>().module::<Documents>().module::<Markdown>().module::<Highlight>().module::<Office>().module::<Screens>();
+    registry.register::<RuntimeTerminals>().register::<CodeColors>().module::<Documents>().module::<Markdown>().module::<Highlight>().module::<Office>().module::<Screens>();
 }

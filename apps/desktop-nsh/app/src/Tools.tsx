@@ -3,11 +3,10 @@ import { colorScheme, computed, effect, Image, List, signal, Text, View } from "
 import { Documents } from "deskfolk/native";
 import { Input } from "nsh/base";
 import type { Terminal as TerminalInfo } from "@real-bot/protocol";
-import { initialPdf, nativeTerminal, nshTerminal } from "./launch";
+import { initialPdf, nativeTerminal } from "./launch";
 import { Terminal } from "./native";
 import { NshTerminal } from "./NshTerminal";
 import { runtime } from "./runtime";
-import { CanvasTerminal } from "./Terminal";
 
 const workspacePath = () => runtime.snapshot.settings.workspace_path;
 
@@ -43,10 +42,8 @@ export function TerminalPane() {
               onError={(e) => error.set(e.message)}
               style={{ flex: 1 }}
             />
-          ) : nshTerminal ? (
-            <NshTerminal id={id()} onExit={() => terminalId.set(null)} />
           ) : (
-            <CanvasTerminal id={id()} onExit={() => terminalId.set(null)} />
+            <NshTerminal id={id()} onExit={() => terminalId.set(null)} />
           )
         }
       </If>

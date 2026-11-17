@@ -1,6 +1,6 @@
 /**
  * NSH's own `Terminal` on the runtime's emulator (`RuntimeTerminals`, `deskfolk/native`), fed a
- * few colours and no program: what `--terminal nsh` draws in the app's palette, in either
+ * few colours and no program: what a terminal tab draws in the app's palette, in either
  * appearance.
  */
 import { colorScheme, View } from "nsh";

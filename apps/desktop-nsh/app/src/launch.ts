@@ -25,7 +25,5 @@ export const initialSession: string | null = params.openSession ?? null;
 export const initialPane: string | null = params.pane ?? null;
 export const initialPdf: string = params.pdfPath ?? "";
 export const scrollProbe: boolean = params.scrollProbe === true;
-/** Development comparison: the macOS NSView terminal (`--terminal native`) instead of the canvas. */
+/** Development comparison: the macOS NSView terminal (`--terminal native`) instead of NSH's own. */
 export const nativeTerminal: boolean = params.terminal === "native";
-/** Development comparison: NSH's own `Terminal` (`--terminal nsh`, `NshTerminal.tsx`) instead of the canvas. */
-export const nshTerminal: boolean = params.terminal === "nsh";

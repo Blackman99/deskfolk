@@ -1,6 +1,12 @@
-/** How `NshTerminal` takes the runtime's stream: base64 frames, skipped where already shown, decoded as one text. */
+/** How `NshTerminal` talks to the runtime: typed text out as base64, the stream's base64 frames in, skipped where already shown, decoded as one text. */
 import { expect, test } from "nsh/test";
-import { bytesOf, unseen } from "./src/NshTerminal";
+import { bytesOf, encode, unseen } from "./src/NshTerminal";
+
+test("text goes to the pty as UTF-8 in base64", () => {
+  expect(encode("ls\r")).toBe("bHMN");
+  expect(encode("中")).toBe("5Lit");
+  expect(encode("")).toBe("");
+});
 
 test("a frame's base64 is its bytes", () => {
   expect([...bytesOf("5Lit")]).toEqual([0xe4, 0xb8, 0xad]);

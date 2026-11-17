@@ -1107,3 +1107,73 @@ The native Windows app showed no notifications at all (nor did the Tauri app on 
 - **The delivery loop is in the app.** `app/src/platform/app-banners.ts` is the macOS shell's `notification_loop.rs` pass in TS, the same routes and bodies: every two seconds the attention count goes on the badge (0 while the device's preference turns it off), stale banners are closed when the cleanup revision moves, and one notification is claimed, revalidated, shown with `Notifications.show` and reported. It runs in the first window only, and only on Windows and Linux. A banner's NSH id is "the runtime's identifier|click_ref": a newer banner for the same conversation closes the one before it (on macOS the identifier replaces it), a press hands back the click_ref, and a press that starts the app waits in NSH until the app listens.
 - **The bridge answers the commands.** On these platforms `tauri-bridge.ts` answers `notification_permission_state`, `request_notification_permission` and `take_notification_intent` before the shell does (the permission is NSH's; while it is `unavailable` it says there is no delivery, as before); `report_notification_view` still asks the shell for the window's facts, then tells the runtime where the reader is itself (there is no macOS presence queue there). A permission that never answers counts as `unavailable` after five seconds: the messenger's state poll waits on it, and a poll that stopped would leave every conversation unread again (what 5b37220a fixed). `nsh.json` gains the `notifications` capability, which only lets the JS call it; macOS does not.
 - **Checks, and what is not walked.** Nine unit tests (a fake runtime, a fake `Notifications`); on macOS `appShowsBanners` is false and the screen tests are as they were. This Mac cannot build the Windows host, and no toast has been shown or pressed on Windows yet, so this stays on a branch until it has been seen there.
+
+## 补记 2026-11-17（四十二）：终端换成 NSH 自己的 `Terminal` / Addendum 2026-11-17 (42): the terminal is NSH's own `Terminal`
+
+补记（十八）把 NSH 的 `Terminal` 接在 `--terminal nsh` 后面，默认仍是画布终端，等上游补齐四处：⌘ 键（longbridge/nsh#1633）、正好 80×24 时的第一次尺寸（#1638）、组字画在光标处（#1648）、宽字符对格（#1649）。四个都已合并，都在现在钉的 93df449 里。你说「终端换掉」，于是：
+
+- **默认换成它。** 工作台的终端标签（`PaneTerminal`）和 `--pane terminal`（`Tools.tsx`）都用 `NshTerminal`。`--terminal nsh` 没了；`--terminal native`（Phase 0 的 NSView 终端）留作对照。
+- **画布终端删掉。** 删的是 `app/src/Terminal.tsx`（`CanvasTerminal` 和它自己的键表）、`app/native/src/terminal.rs`（`TerminalGrid`、`Terminals`）和 `vt100` 依赖。`palette.rs` 只留 `RuntimeEmulator` 用的十六色和底色。`encode`、`terminalSender` 搬进 `NshTerminal.tsx`。
+- **兜底也删掉。** 80×24 的兜底（#1630）不要了：有了 #1638，第一次布局总会报尺寸。`RuntimeTerminals` 改成具名导入：补记（十八）以后编的宿主都有它，正式版也有。
+- **滚轮。** 画布终端靠外壳转来的滚轮（`onWheel`）翻历史。NSH 的 `Terminal` 是虚拟列表，历史和对话列表一样走原生滚动。Windows 的 `win_wheel` 不再为终端转发，看图、地图等还用它。
+- **新得到的：** 拖选文字和复制（NSH 的选择区）。程序打开 bracketed paste 时，粘贴的内容整段包起来发。
+- **打包仍不带 Ghostty。** 正式版用 NSH 的 `VtEmulator`，外加我们的配色和不答查询。它会丢掉零宽字符，也不重排。开发版有 Zig 0.15 和源码缓存时用 Ghostty。画布终端的 `vt100` 留着组合字符，所以正式版在这一点上少了一样。要不要把 Ghostty 带进正式版（Zig 进发版流程和 CI，Windows 上还没编过）另外决定。
+
+**验证。**
+
+- 自动测试：
+  - `cargo test --workspace`，其中 `app/native` 83 过。
+  - `nsh check`（App、Hosted、Story）。
+  - `nsh test`：216 过、1 跳过。
+  - desktop-nsh 的脚本测试 45 过。`press-cursor.test.ts` 的白名单去掉了画布那项。
+  - `tsc -p apps/desktop-nsh`。
+  - `nsh package Hosted.tsx --target web` 编过。
+- 界面测试：`terminal-pane` 三项、`terminal-palette` 一项在真 shell 上过。退出码那项现在经 `label:Terminal` 打字，用键盘的回车提交。新加的一项粘贴 `exit 7` 再回车（测试的粘贴不碰本机剪贴板）。
+- 真窗口：检查用的 .app 副本，隔离的运行时，后台窗口，只经宿主的请求文件驱动。
+  - 两种宿主（VtEmulator、Ghostty）都跑过：
+    - 打字回车；⌘⌫、⌥⌫、⌘←、⌥← 加 ⌘→、Ctrl+C。
+    - 候选框在光标所在的格子（80,38）。上屏后马上回车没问题；取消组字什么都不发；组字时方向键归输入法。
+    - 拉丁、纯中文、中英混排、反显四行的 `|` 都在第 40 格。
+  - 只在 VtEmulator 上跑的：拼音画在光标处、带下划线（截图）；按 Esc 后焦点还在。
+  - 只在 Ghostty 上跑的：拖选三行。
+  - 程序的查询只答一次：VtEmulator 在你的 zsh 里测，Ghostty 在 `zsh -f` 里测。Ghostty 在你的 zsh 里多读到一段输入，`zsh -f` 里没有，所以多出来的东西来自 zsh 配置。两种模拟器都不回答查询（`RuntimeEmulator` 丢掉回答，`ghostty.rs` 不接 `on_pty_write`）。
+- 没测到：
+  - 滚轮翻历史：开发用的 `wheel` 请求只到 JS 的 `onWheel`，到不了 NSH 的原生滚动。
+  - ⌘C 复制：没碰本机剪贴板。
+  - 真鼠标的点击：检查用的 `drag` 请求绕过外壳的 `press.rs`。按代码看，终端 1pt 宽的隐藏输入算 sink，和画布终端透明的隐藏输入走的是同一条分支。
+  - 手机的 web 页面，以及 Windows、Linux 上的真窗口。
+- **钉住的 93df449 里还没有 longbridge/nsh#2095。** 没有它，iOS 和 web 上的输入框会把组字中的文字放进值里，NSH 的 `Terminal` 于是在确认前就把拼音发出去。画布终端是自己挡住的。macOS 把上屏的文字单独报，所以不受影响，上面的检查也是这么看到的。手机页面要等升到包含 #2095 的 NSH 之后再发版。
+
+Addendum (18) put NSH's `Terminal` behind `--terminal nsh` and kept the canvas terminal as the default until upstream filled four gaps: the ⌘ keys (longbridge/nsh#1633), the first size when it is exactly 80 × 24 (#1638), the composition drawn at the cursor (#1648), and wide characters kept on their cells (#1649). All four are merged, and all are in the pinned 93df449. You said 「终端换掉」 (replace the terminal), so:
+
+- **It is the default.** The workbench's terminal tabs (`PaneTerminal`) and `--pane terminal` (`Tools.tsx`) use `NshTerminal`. `--terminal nsh` is gone; `--terminal native` (Phase 0's NSView terminal) stays for comparison.
+- **The canvas terminal is deleted.** That is `app/src/Terminal.tsx` (`CanvasTerminal` and its own key table), `app/native/src/terminal.rs` (`TerminalGrid`, `Terminals`) and the `vt100` dependency. `palette.rs` keeps only the sixteen colours and the ground that `RuntimeEmulator` uses. `encode` and `terminalSender` move into `NshTerminal.tsx`.
+- **The fallbacks go too.** The 80 × 24 fallback (#1630) is gone: since #1638 the first layout always reports a size. `RuntimeTerminals` becomes a named import, because every shell built since addendum (18) has it, the released app included.
+- **The wheel.** The canvas terminal moved through its history by the wheel the shell forwards (`onWheel`). NSH's `Terminal` is a virtual list, so its history scrolls natively, as the conversation lists do. Windows' `win_wheel` no longer forwards for the terminal; the picture viewer, the maps and the rest still use it.
+- **New:** selecting text by dragging, and copying it (NSH's selection area). A paste reaches a program that turned on bracketed paste as one wrapped paste.
+- **Packaging still leaves Ghostty out.** The released app runs NSH's `VtEmulator`, with our palette and no answers to queries. It drops zero-width characters and does not reflow. The source build uses Ghostty when Zig 0.15 and the source cache are there. The canvas terminal's `vt100` kept combining characters, so here the released app does one thing less. Whether Ghostty goes into releases (Zig in the release flow and CI, never built on Windows yet) is a separate decision.
+
+**Checks.**
+
+- Automated:
+  - `cargo test --workspace`, with 83 passing in `app/native`.
+  - `nsh check` (App, Hosted, Story).
+  - `nsh test`: 216 passed, 1 skipped.
+  - desktop-nsh's script tests: 45 passed. `press-cursor.test.ts`'s plain list loses the canvas entry.
+  - `tsc -p apps/desktop-nsh`.
+  - `nsh package Hosted.tsx --target web` builds.
+- Screen tests: `terminal-pane` (3) and `terminal-palette` (1) pass on a real shell. The exit-code test now types through `label:Terminal` and submits with the keyboard's Return. A new one pastes `exit 7` and presses Return; a test's paste leaves the machine's clipboard alone.
+- Real window: a check copy of the .app, an isolated runtime and a background window, driven only through the shell's request file.
+  - On both shells (VtEmulator and Ghostty):
+    - Typing and Return; ⌘⌫, ⌥⌫, ⌘←, ⌥← with ⌘→, and Ctrl+C.
+    - The candidates open on the cursor's cell (80,38). Return right after a commit works. A cancelled composition sends nothing. Arrows during a composition go to the input method.
+    - In the Latin, pure CJK, mixed and inverse lines, every `|` sits on cell 40.
+  - On VtEmulator only: the pinyin drawn underlined at the cursor (a snapshot), and focus staying in the terminal after Esc.
+  - On Ghostty only: a drag selecting three lines.
+  - A query answered once: on VtEmulator in your zsh, on Ghostty in `zsh -f`. On Ghostty your zsh left an extra input that `zsh -f` does not, so the extra comes from the zsh configuration. Neither emulator answers queries (`RuntimeEmulator` drops replies; `ghostty.rs` wires no `on_pty_write`).
+- Not checked:
+  - The wheel through the history: the development `wheel` request reaches only JS `onWheel`, not NSH's native scrolling.
+  - Copying with ⌘C: the machine's clipboard was left alone.
+  - A real mouse click: the check's `drag` request goes around the shell's `press.rs`. By the code, the terminal's 1 pt hidden input counts as a sink, the same branch the canvas terminal's transparent hidden input took.
+  - The phone's web page, and real windows on Windows and Linux.
+- **The pinned 93df449 does not have longbridge/nsh#2095.** Without it, iOS and web fields put the composing text in their value, so NSH's `Terminal` sends the pinyin before it is confirmed. The canvas terminal held that back itself. macOS reports the committed text on its own, so it is not affected, which is what the checks above saw. The phone's page should not ship until the pin moves to an NSH with #2095.

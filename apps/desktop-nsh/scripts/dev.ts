@@ -111,10 +111,10 @@ async function startRuntime(): Promise<void> {
 }
 
 function buildShell(): void {
-  // The NSH terminal (`--terminal nsh`) on Ghostty's emulator when Zig 0.15 and Ghostty's sources
-  // are at hand (scripts/ghostty.ts), always with the same env; else on NSH's own.
+  // The terminal on Ghostty's emulator when Zig 0.15 and Ghostty's sources are at hand
+  // (scripts/ghostty.ts), always with the same env; else on NSH's own.
   const ghostty = ghosttyEnv();
-  if ("missing" in ghostty) console.log(`the NSH terminal runs on NSH's own emulator: ${ghostty.missing}`);
+  if ("missing" in ghostty) console.log(`the terminal runs on NSH's own emulator: ${ghostty.missing}`);
   const features = "env" in ghostty ? ["--features", "ghostty"] : [];
   run(cargo, ["build", "-p", "deskfolk-nsh", ...features], root, "env" in ghostty ? ghostty.env : undefined);
   if (!mac) return;

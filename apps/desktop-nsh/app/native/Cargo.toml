@@ -1,6 +1,6 @@
 [package]
 name = "deskfolk-app-native"
-description = "The Deskfolk app's own Rust for every NSH target (macOS, Windows, Linux, web): the terminal (vt100 + canvas), PDF pages (hayro), Office files (calamine, zip, quick-xml), the remote screen (an RFB client) and code colours (giallo)."
+description = "The Deskfolk app's own Rust for every NSH target (macOS, Windows, Linux, web): the terminal's emulator and colours for NSH's `Terminal`, PDF pages (hayro), Office files (calamine, zip, quick-xml), the remote screen (an RFB client) and code colours (giallo)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,6 @@ publish.workspace = true
 nsh-core.workspace = true
 # `term`: NSH's own `Terminal` and its emulator, which `RuntimeTerminals` hands its terminals.
 nsh-base = { workspace = true, features = ["term"] }
-vt100 = "0.16"
 base64 = "0.22"
 hayro = { version = "0.9", features = ["embed-fonts"] }
 # The top-level blocks of a Markdown file (`src/markdown/blocks.rs`): the parser NSH's `TextView` uses.

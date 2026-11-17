@@ -1,23 +1,35 @@
 /**
- * A runtime terminal on NSH's own `Terminal` (`nsh/base`, longbridge/nsh#1111), behind
- * `--terminal nsh` until it can stand in for the canvas terminal (`Terminal.tsx`). ADR 0107,
- * addendum 18, lists what it still lacks, all of it NSH's to change: an input method's composition
- * drawn at the cursor and its candidates opened there (longbridge/nsh#1626), macOS's ⌘ line editing
- * keys (#1627), and wide characters kept on their cells (#1628).
+ * A runtime terminal on NSH's own `Terminal` (`nsh/base`), on every target: the workbench's
+ * terminal tabs and `--pane terminal`. `Terminal` draws the lines, scrolls the history, selects and
+ * copies, takes the keys (⌘ line editing on Apple platforms, bracketed pastes) and an input
+ * method's composition at the cursor; this file attaches it to the runtime the way the messenger's
+ * `TerminalView.svelte` does.
  *
- * Attached the way the canvas one is: the screen's replay, then `watch` from its offset, frames
- * already on the screen skipped. The replay is asked for once the terminal has laid out and the
- * pty has taken that size, so the runtime draws it for these rows and columns (`Terminal` sizes
- * itself; it takes no size from the app). `RuntimeTerminals` (`deskfolk/native`) gives it an
- * emulator that never answers the program (the runtime's screen does that for every pane) and draws
- * in the app's palette, as the canvas terminal does.
+ * Attached once the terminal has laid out and the pty has taken that size: the screen's replay, so
+ * the runtime draws it for these rows and columns (`Terminal` sizes itself; it takes no size from
+ * the app), then `watch` from its offset, frames already on the screen skipped. `RuntimeTerminals`
+ * (`deskfolk/native`) gives it an emulator that never answers the program (the runtime's screen
+ * does that for every pane) and draws in the app's palette.
  */
-import { cleanup, colorScheme, Text } from "nsh";
+import { cleanup, colorScheme } from "nsh";
 import { Terminal, type TerminalRef } from "nsh/base";
-import * as native from "deskfolk/native";
+import { RuntimeTerminals } from "deskfolk/native";
 import type { StreamFrame } from "@real-bot/protocol";
 import { runtime } from "./runtime";
-import { terminalSender } from "./Terminal";
+
+/** Text as the runtime's terminal input takes it: UTF-8 in base64. */
+export function encode(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  const table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const [a, b, c] = [bytes[i]!, bytes[i + 1], bytes[i + 2]];
+    out += table[a >> 2]! + table[((a & 3) << 4) | ((b ?? 0) >> 4)]!;
+    out += b === undefined ? "=" : table[((b & 15) << 2) | ((c ?? 0) >> 6)]!;
+    out += c === undefined ? "=" : table[c & 63]!;
+  }
+  return out;
+}
 
 /** Base64 as bytes. */
 export function bytesOf(base64: string): Uint8Array {
@@ -37,16 +49,34 @@ export function unseen(next: number, offset: number, bytes: Uint8Array): Uint8Ar
   return offset >= next ? bytes : bytes.subarray(next - offset);
 }
 
-// Looked up rather than imported by name: a host built before `RuntimeTerminals` has none, and a
-// named import of it would fail the whole bundle there (`dev.ts --watch` publishes TSX ahead of the
-// host's rebuild).
-const RuntimeTerminals = (native as Partial<typeof native>).RuntimeTerminals;
+/**
+ * What sends text to terminal `id`'s pty: one request at a time, what was typed meanwhile sent
+ * together after it. A request per key, all in flight at once, reached the shell out of order:
+ * `exit 3⏎` typed quickly ran as `xi3⏎`.
+ */
+export function terminalSender(id: string): (text: string) => void {
+  let unsent = "";
+  let sending = false;
+  return (text: string) => {
+    if (!text) return;
+    unsent += text;
+    if (sending) return;
+    sending = true;
+    void (async () => {
+      while (unsent) {
+        const chunk = unsent;
+        unsent = "";
+        const client = runtime.client;
+        if (!client) break;
+        await client.terminalInput(id, encode(chunk)).catch((e) => console.error("terminal input", String(e)));
+      }
+      unsent = "";
+      sending = false;
+    })();
+  };
+}
 
 export function NshTerminal(props: { id: string; onExit?: () => void }) {
-  if (!RuntimeTerminals) {
-    return <Text class="m-auto p-6 text-[13px] text-ink-muted text-center">This shell was built before RuntimeTerminals: rebuild it (restart pnpm dev) to use --terminal nsh.</Text>;
-  }
-  const Emulators = RuntimeTerminals;
   const id = props.id;
   const send = terminalSender(id);
   let term: TerminalRef | undefined;
@@ -83,6 +113,7 @@ export function NshTerminal(props: { id: string; onExit?: () => void }) {
     await client.watchTerminal(id, screen.offset);
   };
 
+  // `Terminal` reports its size once it is laid out, then on every change.
   const resized = (cols: number, rows: number) => {
     void (async () => {
       await runtime.client?.terminalResize(id, rows, cols);
@@ -92,20 +123,8 @@ export function NshTerminal(props: { id: string; onExit?: () => void }) {
     })().catch((e) => console.error("terminal attach", String(e)));
   };
 
-  // `Terminal` reports a size only when it differs from the 80 × 24 it starts at, so laid out at
-  // exactly that size it says nothing (`Term::resize`, longbridge/nsh#1630). Once it has been laid
-  // out, a terminal that heard no size by then attaches at that one.
-  let laidOut = false;
-  const firstLayout = () => {
-    if (laidOut) return;
-    laidOut = true;
-    setTimeout(() => {
-      if (!attaching) resized(80, 24);
-    }, 100);
-  };
-
   return (
-    <Emulators dark={colorScheme() === "dark"}>
+    <RuntimeTerminals dark={colorScheme() === "dark"}>
       <Terminal
         ref={(r) => (term = r)}
         testID="terminal"
@@ -117,8 +136,7 @@ export function NshTerminal(props: { id: string; onExit?: () => void }) {
         class="flex-1 min-h-0 p-2"
         onData={(e) => send(e.data)}
         onResize={(e) => resized(e.cols, e.rows)}
-        onLayout={firstLayout}
       />
-    </Emulators>
+    </RuntimeTerminals>
   );
 }

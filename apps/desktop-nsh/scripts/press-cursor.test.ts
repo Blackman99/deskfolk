@@ -36,7 +36,6 @@ const PLAIN = new Map<string, string>([
   ["src/ui/panels/SessionSettingsDrawer.tsx profile-backdrop", "the backdrop"],
   ["src/ui/workbench/PaneContentHost.tsx pane-side-scrim", "the scrim beside a side pane"],
   ["src/ui/workbench/leaf-strip.tsx wb-strip-", "the strip behind the tabs (its tabs have the hand)"],
-  ["src/Terminal.tsx terminal", "puts the keyboard focus in the terminal"],
   // Its style comes from `gripStyle`, which gives each grip its resize cursor.
   ["src/ui/workbench/WorkbenchFloat.tsx wb-grip-", "a resize grip"],
 ]);

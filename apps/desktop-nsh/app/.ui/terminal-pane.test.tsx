@@ -52,12 +52,26 @@ shellTest("a running shell's tab says where it is; 结束会话 asks once more, 
 shellTest("a shell that exits keeps its tab and says how it ended; 结束会话 then forgets it at once", async () => {
   const app = await newTerminal();
   await app.press("id:terminal");
-  await app.type("id:terminal-keys", "exit 3\n");
+  // NSH's `Terminal` takes typed text in its hidden input, labelled as the terminal, and Return
+  // from the keymap, as a keyboard's.
+  await app.type("label:Terminal", "exit 3");
+  await app.keyboard.press("enter");
   await app.waitFor("text:已结束 · 退出码 3", { timeout: 15_000 });
   expect(app.shows("id:terminal-stop")).toBe(false);
   expect(app.count("id:pane-tab-icon-terminal")).toBe(1);
   // Nothing is running, so there is nothing to ask about.
   await app.press("id:terminal-end");
   expect(app.shows("id:terminal-end-note")).toBe(false);
+  await forgotten(app);
+});
+
+shellTest("a paste reaches the shell as the program asks for it, and Return runs it", async () => {
+  const app = await newTerminal();
+  await app.press("id:terminal");
+  // Through the terminal's `onPaste`: wrapped as a bracketed paste when the shell asks for one.
+  await app.paste("label:Terminal", { text: "exit 7" });
+  await app.keyboard.press("enter");
+  await app.waitFor("text:已结束 · 退出码 7", { timeout: 15_000 });
+  await app.press("id:terminal-end");
   await forgotten(app);
 });

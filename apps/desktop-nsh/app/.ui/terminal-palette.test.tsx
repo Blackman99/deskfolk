@@ -1,11 +1,11 @@
 /**
- * The NSH terminal (`--terminal nsh`) draws in the app's palette (`palette.rs`), as the canvas
- * terminal does, and recolours when the appearance changes.
+ * The terminal draws in the app's palette (`palette.rs`) and recolours when the appearance
+ * changes.
  */
 import { expect, test } from "nsh/test";
 import { openStory } from "./fixture";
 
-test("the NSH terminal draws in the app's palette and follows the appearance", async () => {
+test("the terminal draws in the app's palette and follows the appearance", async () => {
   const app = await openStory("terminal-palette", { colorScheme: "light" });
   await app.waitFor("text:red");
   expect(app.spanStyle("text:red").color).toBe("#c62828ff");

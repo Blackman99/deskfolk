@@ -7,9 +7,8 @@
  * params read fresh; every tab has its own host (the leaf keys bodies by tab id), which is what
  * the Svelte's `{#key tab.id}` around the board was for.
  *
- * Differences from the Svelte: the terminal is the stop-gap `PaneTerminal` until NSH's own
- * terminal lands; the settings' scrim is a pressable strip beside the drawer rather than a
- * click-outside test.
+ * Differences from the Svelte: the terminal is NSH's own (`PaneTerminal`), not xterm.js; the
+ * settings' scrim is a pressable strip beside the drawer rather than a click-outside test.
  */
 import type { Attachment } from "@real-bot/protocol";
 import { cleanup, computed, effect, signal, Text, untracked, View, type JSX } from "nsh";
