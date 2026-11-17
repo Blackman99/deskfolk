@@ -282,7 +282,7 @@ export function RemoteTab(props: {
                               </Text>
                               <Text class="text-[12px] text-ink-secondary">{t().remote.hostPairCompare}</Text>
                               <If when={confirmNote(t(), arrived()?.note)}>
-                                <FieldError testID="pairing-needs-hello">{confirmNote(t(), arrived()?.note)}</FieldError>
+                                <FieldError testID="pairing-needs-hello">{confirmNote(t(), arrived()?.note) ?? ""}</FieldError>
                               </If>
                               <View class="flex-row flex-wrap items-center gap-2 mt-[2px]">
                                 <Button variant="primary" testID="pairing-confirm" disabled={runtime.hostPairingBusy} onPress={() => void runtime.confirmHostPairing()}>
