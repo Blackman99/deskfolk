@@ -4,7 +4,7 @@ import { copyFor } from "../src/m/copy.ts";
 import { openStory } from "./fixture";
 
 const t = copyFor("zh");
-const said = (app: any): string => app.texts().find((x: string) => /^(sent:|tune:|answer:|stop|profile:|artifact:|annotation:|create-bot|cleaned|—)/.test(x)) ?? "";
+const said = (app: any): string => app.texts().find((x: string) => /^(sent:|tune:|answer:|ask:|stop|profile:|artifact:|annotation:|create-bot|cleaned|—)/.test(x)) ?? "";
 
 async function project() {
   const app = await openStory("chat-stage");
@@ -123,4 +123,30 @@ test("a Bot↔Bot direct opens in a popup with its lines and delegation records,
   expect(app.texts()).toContain(t.sidebar.botBotSource("Writer"));
   await app.press("id:modal-close");
   await app.waitUntil(() => !app.shows("id:bot-dm-dialog"), { timeout: 5_000 });
+});
+
+test("a question the agent asks in a project session is answered from its card, and the foot says it waits", async () => {
+  const app = await project();
+  await app.press("id:story-ask");
+  await app.waitFor("id:project-working", { timeout: 10_000 });
+  await app.waitFor("text:要改哪一份 README？", { timeout: 10_000 });
+  expect(app.texts()).toContain("根目录");
+  expect(app.texts()).toContain("docs 目录");
+  expect(app.texts()).toContain(t.project.waitingAnswer(t.project.agentNames.claude_code));
+  expect(app.shows("id:project-approval")).toBe(false);
+  await app.press("id:project-line-pj-ask-open >> label:docs 目录");
+  await app.press("id:project-line-pj-ask-open >> id:ask-send");
+  await app.waitUntil(() => said(app) === "ask:pj-ask-open:docs 目录|", { timeout: 10_000 });
+  // The card keeps the answer and the run goes on.
+  await app.waitUntil(() => !app.shows("id:project-line-pj-ask-open >> id:ask-input"), { timeout: 10_000 });
+  expect(app.texts().some((x: string) => x.startsWith(`${t.stream.askAnswered} · `))).toBe(true);
+});
+
+test("a question the run no longer waits on is read-only", async () => {
+  const app = await project();
+  await app.press("id:story-ask");
+  await app.waitFor("text:测试跑哪一组？", { timeout: 10_000 });
+  expect(app.shows("id:project-line-pj-ask-ended >> id:ask-input")).toBe(false);
+  await expect(app.press("id:project-line-pj-ask-ended >> label:根目录")).rejects.toMatchObject({ code: "ERR_NSH_TEST_DISABLED" });
+  expect(app.shows("id:project-line-pj-ask-open >> id:ask-input")).toBe(true);
 });

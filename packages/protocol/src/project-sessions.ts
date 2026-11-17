@@ -91,7 +91,18 @@ export type AgentRun = {
   tasks?: AgentTask[];
   /** Its reply is done and it is still `running` only for its background tasks: the agent itself is not at work. */
   idle?: boolean;
+  /**
+   * The questions it waits on you to answer (ADR 0095 addendum 2026-11-17): ids of the session's
+   * `ask` lines, each a Bot's question card. While any is open the run is `waiting_approval`. Absent
+   * from a daemon older than these; emptied once the run ends.
+   */
+  asks?: string[];
 };
+
+/** Whether `askId` is a question the session's run waits on now: its card takes an answer. */
+export function runAwaitsAsk(run: AgentRun | null | undefined, askId: string): boolean {
+  return !!run && (run.status === "running" || run.status === "waiting_approval") && (run.asks ?? []).includes(askId);
+}
 
 /**
  * What a project session's Claude Code runs beside its reply (ADR 0095, 25): a shell command in the

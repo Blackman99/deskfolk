@@ -309,6 +309,8 @@ test("a project session's run reads as a Bot's turn would: at work, replying onc
   expect(agentRunStatus(anAgentRun({ status: "running", partial: "  " }), labels)?.kind).toBe("running");
   expect(agentRunStatus(anAgentRun({ status: "running", partial: "看过了" }), labels)).toEqual({ kind: "replying", label: "回复中", isBusy: true });
   expect(agentRunStatus(anAgentRun({ status: "waiting_approval" }), labels)).toEqual({ kind: "waiting_approval", label: "待审批", isBusy: false });
+  // Its questions for you wait on an answer, not an approval.
+  expect(agentRunStatus(anAgentRun({ status: "waiting_approval", approval: null, asks: ["ask-1"] }), labels)).toEqual({ kind: "waiting_ask", label: "待回复", isBusy: false });
 });
 
 /** How a run ended reaches a window only if it was open to see it, so the row leaves that to the transcript. */

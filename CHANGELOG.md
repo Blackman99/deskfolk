@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A project session's agent can ask you questions, on cards you answer
+
+- Codex (in plan mode), Claude Code and Antigravity can stop to ask you questions with options. Each question is now a card in the conversation, the one a Bot asks with: pick an option (or several, where it allows), add words of your own, or type a reply below, which answers every card still open. The agent waits for all its questions, then goes on with your answers. Before, Codex's questions were turned away without your seeing them, and it replied as if you had ("choose one of the three options above"); Claude Code's and Antigravity's were not offered at all.
+- A question Codex marks secret gets no card: the conversation keeps no secrets, so a line says it asked. Stopping the run leaves its cards unanswerable.
+
 ### A subagent's opened calls stay open, in the native app
 
 - In a running subagent's popup, a group of tool calls you open (and the one call whose output you opened) no longer folds itself again a moment later. The popup reads the subagent again every 1.5 s while it runs, and each read used to build its groups anew. An open list of calls, there and in a conversation, also goes back to its end only when a call is added, not on every read.

@@ -95,3 +95,25 @@ test("the next send starts with the refusal cleared, and goes when the Mac takes
   expect(await s.actions.send({ attachments: pictures.slice(0, 2) })).toBe(true);
   expect(s.view.sendRefused).toBeNull();
 });
+
+/** A question's answer, with the run (or none) the snapshot holds. */
+function answering(runs: Record<string, unknown>) {
+  const view = new SessionView("proj-1");
+  const answered: unknown[][] = [];
+  const api = { answerAsk: async (...args: unknown[]) => { answered.push(args); return null; } } as unknown as MessengerApi;
+  const host = {
+    api, connection: "connected", selectedId: "proj-1", notificationCapabilities: { pending_ask_v1: true },
+    snapshot: { turns: [], agentRuns: runs },
+    viewFor: () => view,
+  } as unknown as ChatActionsHost;
+  return { actions: new ChatActions(host), answered };
+}
+
+test("a project session's question is pending while its run waits on it, and stale otherwise", async () => {
+  const waiting = answering({ "proj-1": { id: "run-1", session_id: "proj-1", status: "waiting_approval", asks: ["ask-1"] } });
+  expect((await waiting.actions.sendAsk("ask-1", { selected: ["A"] }, "proj-1")).status).toBe("accepted");
+  expect(waiting.answered).toHaveLength(1);
+  const over = answering({ "proj-1": { id: "run-1", session_id: "proj-1", status: "completed", asks: ["ask-1"] } });
+  expect(await over.actions.sendAsk("ask-1", { selected: ["A"] }, "proj-1")).toEqual({ status: "not_submitted", reason: "stale_ask" });
+  expect(over.answered).toHaveLength(0);
+});

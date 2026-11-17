@@ -284,3 +284,48 @@ test("/compact goes to agy as it is and says it ran", async () => {
   // A command names no session.
   expect((await h.call<SessionDetail>("GET", `/v1/sessions/${id}`)).body.name).toBeNull();
 });
+
+test("agy's questions (ask_question) are cards: answered by an option, several, or your words, agy reads them from its form", async () => {
+  const h = start([{ prompts: [[
+    { question: [{ question: "Which color?", options: ["red", "green", "blue"] }, { question: "Which sizes?", options: ["small", "medium", "large"], multi: true }] },
+    { say: "Noted." },
+  ]] }]);
+  const id = await h.open();
+  await h.say(id, "ask me");
+  await h.until(async () => ((await h.run(id))?.asks ?? []).length === 2);
+  // Forms are offered at the handshake, so agy sends its questions as one.
+  expect(h.sent(0, "initialize")[0]).toMatchObject({ clientCapabilities: { elicitation: { form: {} } } });
+  const asks = (await h.call<{ items: Array<{ id: string; kind: string; body: string; ask?: { options: Array<{ label: string }>; multi_select: boolean } | null }> }>("GET", `/v1/sessions/${id}/messages`)).body.items.filter((line) => line.kind === "ask").reverse();
+  expect(asks.map((ask) => [ask.body, ask.ask?.options.map((option) => option.label), ask.ask?.multi_select])).toEqual([
+    ["Which color?", ["red", "green", "blue"], false],
+    ["Which sizes?", ["small", "medium", "large"], true],
+  ]);
+  expect((await h.call("POST", `/v1/messages/${asks[0]!.id}/answer`, { selected: ["green"], custom: "or teal" })).status).toBe(200);
+  expect((await h.call("POST", `/v1/messages/${asks[1]!.id}/answer`, { selected: ["small", "large"] })).status).toBe(200);
+  await h.settled(id);
+  expect(h.log(0).find((entry) => "question" in entry)?.answer as unknown).toEqual({ action: "accept", content: { q1: "2", q1_other: "or teal", q2: ["1", "3"] } });
+  // The question is its card: no step of its own on the record.
+  expect(h.frames.some((frame) => frame.name.includes("ask_question"))).toBe(false);
+  expect(h.lines(id).at(-1)).toMatchObject({ kind: "bot", body: "Noted." });
+});
+
+test("a line typed while agy's question waits answers it in your words; Stop instead cancels the form", async () => {
+  const h = start([
+    { prompts: [[{ question: [{ question: "Which color?", options: ["red", "green"] }] }, { say: "ok" }]] },
+    { prompts: [[{ question: [{ question: "Again?", options: ["yes", "no"] }] }, { say: "never" }]] },
+  ]);
+  const id = await h.open();
+  await h.say(id, "ask me");
+  await h.until(async () => ((await h.run(id))?.asks ?? []).length === 1);
+  await h.say(id, "purple, really");
+  await h.settled(id);
+  expect(h.log(0).find((entry) => "question" in entry)?.answer as unknown).toEqual({ action: "accept", content: { q1_other: "purple, really" } });
+  expect(h.sent(0, "session/prompt")).toHaveLength(1);
+
+  await h.say(id, "again");
+  await h.until(async () => ((await h.run(id))?.asks ?? []).length === 1);
+  const stopped = await h.call<AgentRun>("POST", `/v1/agent-runs/${(await h.run(id))!.id}/stop`);
+  expect(stopped.body).toMatchObject({ status: "stopped", asks: [] });
+  await h.api.projects.idle();
+  expect(h.log(1).find((entry) => "question" in entry)?.answer as unknown).toEqual({ action: "cancel" });
+});

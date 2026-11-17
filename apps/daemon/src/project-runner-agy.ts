@@ -29,9 +29,11 @@ import { agyFailure, agyVersionText } from "./engine/agent/drivers/agy";
 import { rpcPeer, type RpcPeer } from "./engine/agent/jsonrpc";
 import { absoluteFrom, decideAction, type AppAction, type AppActionName } from "./engine/agent/policy";
 import { agentTrace } from "./engine/agent/trace";
+import { HttpError } from "./errors";
 import { recordLiveProc } from "./live-procs";
 import { nodePathHost } from "./workspace-paths";
 import { pictureMime } from "./loop-pictures";
+import { questionDesk, type AgentAnswer, type AgentQuestion, type QuestionDesk } from "./project-asks";
 import { clip, COMPACTING, firstLine, slashCommandOf, targetText, type ProjectRunner } from "./project-runner";
 import type { Store } from "./store";
 import { visionImage } from "./vision-image";
@@ -100,6 +102,8 @@ type Live = {
   configOptions: Array<Record<string, unknown>>;
   models: string[];
   mode: "default" | "plan";
+  /** What `agy` asks you (`ask_question`, sent as `elicitation/create`): question cards it waits on. */
+  questions: QuestionDesk;
 };
 
 const ACTIVITY_MAX = 160;
@@ -213,6 +217,61 @@ function frameOf(action: AppAction): { name: string; place: { tool: string; inpu
   return { name: action.vendorTool, place: { tool: action.vendorTool, input: {} } };
 }
 
+/** One question of an `elicitation/create` form: its field, the field for words of your own, and each option's value. */
+type FormQuestion = { key: string; other: string | null; multi: boolean; values: Map<string, string>; question: AgentQuestion };
+
+/**
+ * `agy`'s questions (`ask_question`) as it sends them, a form (`elicitation/create`, measured on
+ * 1.5.10): per question a field `qN`, one choice (a string, `oneOf` of `{const, title}`) or several
+ * (an array, `items.anyOf`), and beside it `qN_other` for words of your own. A field with no choices
+ * is a question in words. Null for a form this cannot show as questions (a number, a yes/no).
+ */
+export function agyQuestionsOf(schema: unknown): FormQuestion[] | null {
+  const properties = (schema as { properties?: unknown } | null)?.properties;
+  if (!properties || typeof properties !== "object") return null;
+  const fields = properties as Record<string, Record<string, unknown>>;
+  const choicesOf = (field: Record<string, unknown> | undefined): Array<{ value: string; label: string }> => {
+    if (!field) return [];
+    const listed = (field.oneOf ?? field.anyOf) as Array<{ const?: unknown; title?: unknown }> | undefined;
+    if (Array.isArray(listed)) return listed.flatMap((choice) => (choice.const === undefined ? [] : [{ value: String(choice.const), label: typeof choice.title === "string" && choice.title ? choice.title : String(choice.const) }]));
+    if (Array.isArray(field.enum)) return (field.enum as unknown[]).map((value) => ({ value: String(value), label: String(value) }));
+    return [];
+  };
+  const out: FormQuestion[] = [];
+  for (const [key, field] of Object.entries(fields)) {
+    if (!field || typeof field !== "object") return null;
+    // The words-of-your-own field of the question it names.
+    if (key.endsWith("_other") && fields[key.slice(0, -"_other".length)]) continue;
+    const multi = field.type === "array";
+    if (!multi && field.type !== "string") return null;
+    const choices = choicesOf(multi ? (field.items as Record<string, unknown> | undefined) : field);
+    const words = typeof field.title === "string" && field.title ? field.title : typeof field.description === "string" && field.description ? field.description : key;
+    out.push({
+      key, other: fields[`${key}_other`] ? `${key}_other` : null, multi,
+      values: new Map(choices.map((choice) => [choice.label, choice.value])),
+      question: { question: words, options: choices.map((choice) => ({ label: choice.label })), multiSelect: multi },
+    });
+  }
+  return out.length > 0 ? out : null;
+}
+
+/** Your answers as the form's content: each pick by its value, your words in the question's own field for them. */
+export function agyContentOf(questions: FormQuestion[], answers: AgentAnswer[]): Record<string, unknown> {
+  const content: Record<string, unknown> = {};
+  questions.forEach((question, index) => {
+    const answer = answers[index];
+    if (!answer) return;
+    const picked = answer.selected.map((label) => question.values.get(label) ?? label);
+    if (question.values.size === 0) {
+      if (answer.custom) content[question.key] = question.multi ? [answer.custom] : answer.custom;
+      return;
+    }
+    if (picked.length > 0) content[question.key] = question.multi ? picked : picked[0];
+    if (answer.custom && question.other) content[question.other] = answer.custom;
+  });
+  return content;
+}
+
 /** The plan `agy` writes in plan mode for you to review: a note in its own folder that asks for feedback. */
 function planOf(tool: Tool): { path: string; content: string } | null {
   const meta = tool.rawInput.ArtifactMetadata as { RequestFeedback?: unknown } | undefined;
@@ -274,6 +333,9 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
     const sessionId = message.session_id;
     if (!store.projectOf(sessionId)) return;
     const command = slashCommandOf(message.body);
+    // `agy` waits on its questions: your words are the answer to each (a command still goes as one).
+    const live = lives.get(sessionId);
+    if (!command && live && !live.stopped && live.questions.takeLine(message)) return;
     if (!command) store.nameProjectSessionIfUnnamed(sessionId, message.body);
     startRun(sessionId, () => ({ blocks: lineBlocks(store, message, locale() === "en"), command, messageId: message.id }));
   }
@@ -300,6 +362,9 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
       runId: run.id, sessionId, queue: [lineOf()], waiting: [], said: "", stopped: false, closing: false,
       done: new Promise<void>((resolve) => { finish = resolve; }), abort: new AbortController(), rpc: null, acpSession: null,
       prompting: false, wake: null, tasks: new Map(), outputs: new Map(), idle: false, configOptions: [], models: [], mode: "default",
+      questions: questionDesk(store, sessionId, (open) => {
+        if (!fresh.stopped) update(run.id, { asks: open, status: open.length > 0 || fresh.waiting.length > 0 ? "waiting_approval" : "running" });
+      }),
     };
     lives.set(sessionId, fresh);
     const running = runSession(fresh).catch((error) => {
@@ -307,6 +372,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
       if (!fresh.stopped) fail(fresh, firstLine(String(error)) ?? "error");
     }).finally(() => {
       fresh.closing = true;
+      fresh.questions.close();
       fresh.abort.abort();
       if (lives.get(sessionId) === fresh) lives.delete(sessionId);
       finish();
@@ -352,7 +418,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
     });
     if (live.stopped) return "deny";
     const next = live.waiting[0];
-    update(live.runId, next ? { status: "waiting_approval", approval: next.approval } : { status: "running", approval: null });
+    update(live.runId, next ? { status: "waiting_approval", approval: next.approval } : { status: live.questions.open().length > 0 ? "waiting_approval" : "running", approval: null });
     return answer;
   }
 
@@ -471,6 +537,8 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
 
     const onToolUpdate = (u: Record<string, unknown>) => {
       const tool = noteTool(u);
+      // Its question is the card it asks with: no step of its own on the record.
+      if (tool.name === "ask_question") return;
       if (!tool.frame && !live.tasks.has(tool.id) && tool.status !== "completed" && tool.status !== "failed") {
         const action = agyActionOf(tool, project.dir);
         const frame = frameOf(action);
@@ -544,7 +612,14 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
     });
 
     rpc.onRequest(async (method, params) => {
-      const p = (params ?? {}) as { toolCall?: Record<string, unknown>; options?: Array<{ optionId?: string; kind?: string }> };
+      const p = (params ?? {}) as { toolCall?: Record<string, unknown>; options?: Array<{ optionId?: string; kind?: string }>; requestedSchema?: unknown; mode?: unknown };
+      // Its questions for you (`ask_question`): a card each, and `agy` waits for every answer.
+      if (method === "elicitation/create") {
+        const questions = p.mode === "form" || p.mode === undefined ? agyQuestionsOf(p.requestedSchema) : null;
+        if (!questions) return { action: "decline" };
+        const answers = await live.questions.ask(questions.map((question) => question.question));
+        return answers ? { action: "accept", content: agyContentOf(questions, answers) } : { action: "cancel" };
+      }
       if (method !== "session/request_permission") throw new Error(`${method} is not offered by Deskfolk`);
       const tool = noteTool(p.toolCall ?? {});
       tool.asked = true;
@@ -759,6 +834,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
     live.stopped = true;
     keepSaid(live);
     for (const asking of live.waiting.splice(0)) asking.resolve("deny");
+    live.questions.close();
     live.wake?.();
     const { rpc, acpSession } = live;
     // The prompt is told to stop first, so `agy` keeps a session it can resume; then its process goes.
@@ -770,6 +846,11 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
     heard,
     resumeAfterLimits() {
       // `agy` says no reset time: a run its plan's limit stopped says so and waits for you.
+    },
+    answerAsk(sessionId, askId, input) {
+      const live = lives.get(sessionId);
+      if (!live || live.stopped) throw new HttpError(422, "invalid_args", "ask is no longer pending");
+      return live.questions.answer(askId, input);
     },
     answer(runId, allow) {
       const run = store.getAgentRun(runId);

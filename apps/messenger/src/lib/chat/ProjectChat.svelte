@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { isHiddenTranscriptKind, PLAN_APPROVAL_KIND, PROJECT_AGENT_CAPS, type AgentRunTask, type ClaudeCodeCommand, type PatchProjectSessionRequest, speechReady, USER_MEMBER, type Attachment, type Message, type SessionSummary } from '@real-bot/protocol';
+	import { isHiddenTranscriptKind, PLAN_APPROVAL_KIND, PROJECT_AGENT_CAPS, runAwaitsAsk, type AgentRunTask, type ClaudeCodeCommand, type PatchProjectSessionRequest, speechReady, USER_MEMBER, type Attachment, type Message, type SessionSummary } from '@real-bot/protocol';
+	import AskCard from './AskCard.svelte';
 	import Button from '../Button.svelte';
 	import Icon from '../Icon.svelte';
 	import MarkdownBody from '../MarkdownBody.svelte';
@@ -96,6 +97,8 @@
 	const run = $derived(snapshot.agentRuns[selected.id] ?? null);
 	const live = $derived(isLiveRun(run));
 	const waiting = $derived(run?.status === 'waiting_approval' && run.approval ? run.approval : null);
+	/** Questions it waits on you for: the foot says so, and each has its card in the transcript. */
+	const asking = $derived((run?.asks ?? []).length > 0);
 	const planWaiting = $derived(waiting?.kind_key === PLAN_APPROVAL_KIND);
 
 	/** Oldest first; what the app keeps out of a transcript stays out. */
@@ -333,7 +336,8 @@
 	const taskCalls = $derived(new Set(tasks.flatMap((task) => (task.tool_use_id ? [task.tool_use_id] : []))));
 	const liveTasks = $derived(run && live ? tasks.filter((task) => task.run_id === run.id) : []);
 	const goingTasks = $derived(liveTasks.filter((task) => task.status === 'running'));
-	const agentLines = $derived(lines.filter((message) => lineOf(message) === 'agent'));
+	// A question's line holds its card, not what the run did: tasks go under the agent's replies.
+	const agentLines = $derived(lines.filter((message) => lineOf(message) === 'agent' && message.kind !== 'ask'));
 	const placed = $derived(placeTasks(tasks, agentLines, live ? (run?.id ?? null) : null, view.hasOlderMessages ? (lines[0]?.created_at ?? null) : null));
 
 	function keptRow(task: AgentRunTask) {
@@ -589,6 +593,26 @@
 		answerFailed = failure !== null;
 	}
 
+	/** Your answer to one of the agent's questions: what you ticked and wrote, as a Bot's card sends it. */
+	async function replyAsk(askId: string): Promise<void> {
+		const record = runtime.getAskDraft(askId);
+		const body = (record?.body ?? '').trim();
+		const picks = record?.selected ?? [];
+		if (!body && picks.length === 0) return;
+		const submittedVersion = record?.version ?? 1;
+		stuck = true;
+		const res = await runtime.sendAsk(askId, { selected: picks, custom: body }, selected.id);
+		if (res.status === 'accepted') {
+			runtime.clearAskDraft(askId, submittedVersion);
+			toBottom();
+		} else if (res.status === 'rejected') {
+			// The run no longer waits on it (it ended, or the line you typed answered it): said on the card.
+			runtime.setAskError(askId, runAwaitsAsk(run, askId) ? (res.error?.message || t.notifications.executionFailed) : t.notifications.askEnded);
+		} else if (res.status === 'unknown') {
+			runtime.setAskError(askId, res.error?.message || t.disconnected.host);
+		}
+	}
+
 	async function stop(): Promise<void> {
 		if (!run) return;
 		answerFailed = (await runtime.stopAgentRun(run.id)) !== null;
@@ -673,6 +697,22 @@
 				{/if}
 				{#if who === 'app'}
 					<div class="line is-app" data-line="app" data-message-id={message.id}>{message.body}</div>
+				{:else if message.kind === 'ask'}
+					<!-- The agent's question, as a Bot's: its card under the words, answerable while the run waits on it. -->
+					<div class="line is-agent" data-line="ask" data-message-id={message.id}>
+						<MarkdownBody source={message.body} copyLabel={t.chat.copyCode} copiedLabel={t.chat.copied} onOpenArtifact={(path) => openCited(path, message.id)} />
+						<AskCard
+							{message}
+							answerable={runAwaitsAsk(run, message.id) && connected}
+							draft={runtime.getAskDraft(message.id)}
+							sending={view.sending}
+							{t}
+							onDraft={(body) => runtime.setAskDraft(message.id, body)}
+							onSelect={(picks) => runtime.setAskSelection(message.id, picks)}
+							onSubmit={() => void replyAsk(message.id)}
+						/>
+						<span class="time">{formatMessageTime(message.created_at)}</span>
+					</div>
 				{:else if who === 'you'}
 					<div class="line is-you" data-line="you" data-message-id={message.id}>
 						<div class="bubble">
@@ -747,6 +787,8 @@
 						{/snippet}
 						{#if waiting}
 							<span class="stream-step">{planWaiting ? t.project.waitingPlan(agentName) : t.project.waiting(agentName)}</span>
+						{:else if asking}
+							<span class="stream-step">{t.project.waitingAnswer(agentName)}</span>
 						{:else if !focusMode.on && stepLine}
 							{@render step(stepLine.text, stepLine.full)}
 							{#if stepLine.elapsed}<span class="stream-step-elapsed mono" aria-hidden="true">{stepLine.elapsed}</span>{/if}
@@ -1107,6 +1149,12 @@
 	.line.is-agent :global(.command-activity) {
 		align-self: stretch;
 		margin-top: 8px;
+	}
+
+	/* A question's card is a form: one steady width, as under a Bot's question. */
+	.line.is-agent :global(.ask-card) {
+		align-self: stretch;
+		max-width: 440px;
 	}
 
 	.line.is-agent :global(.command-beside) {

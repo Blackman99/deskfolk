@@ -12,14 +12,17 @@
  * Steps: `{ say }` a chunk of the reply; `{ tool }` a call it makes without asking — reported under
  * way at once, then done after `holdMs` (or, with `background: ms`, left under way past the reply
  * and ended that long after it); `{ ask }` a call it asks permission for first (`allow_once`,
- * `reject_once`), then runs when allowed; `{ wait: ms }`; `{ hang: true }` until `session/cancel`.
+ * `reject_once`), then runs when allowed; `{ wait: ms }`; `{ hang: true }` until `session/cancel`;
+ * `{ question }` its `ask_question`: the call under way, then the form `agy` sends for it
+ * (`elicitation/create`, as 1.5.10 builds it) when the client offered forms, logged with the answer.
  * Each prompt answers `end_turn` (or `cancelled`) with `usage`.
  */
 import { appendFileSync } from "node:fs";
 import { rpcPeer, RpcError } from "../../engine/agent/jsonrpc";
 
 type Call = { id?: string; name?: string; kind: string; title?: string; rawInput?: Record<string, unknown>; locations?: Array<{ path: string }>; holdMs?: number; failed?: boolean; output?: string; background?: number };
-type Step = { say: string } | { tool: Call } | { ask: Call } | { wait: number } | { hang: true };
+type Question = { question: string; options: string[]; multi?: boolean };
+type Step = { say: string } | { tool: Call } | { ask: Call } | { wait: number } | { hang: true } | { question: Question[] };
 type Kept = { sessionId: string; cwd: string; title: string; updatedAt: string; history: Array<{ user?: string; agent?: string; tool?: Call }> };
 type Script = {
   caps?: { resume?: boolean; load?: boolean; list?: boolean };
@@ -47,6 +50,8 @@ let promptIndex = 0;
 let cancelled = false;
 let seq = 0;
 let opened: string | null = null;
+/** The client offered forms (`elicitation.form`): `ask_question` is sent as one. */
+let forms = false;
 const models = script.models ?? ["gemini-3.8-flash-high", "gemini-3.8-flash-low"];
 const update = (u: Record<string, unknown>) => rpc.notify("session/update", { sessionId: opened, update: u });
 const configOptions = () => [
@@ -97,6 +102,21 @@ async function prompt(steps: Step[]): Promise<string> {
       });
       log({ asked: step.ask.title ?? step.ask.kind, answer });
       if (answer?.outcome?.optionId === "yes" || answer?.outcome?.optionId === "always") await run({ ...step.ask, id });
+    } else if ("question" in step) {
+      const id = `call_${++seq}`;
+      const args = { questions: step.question.map((q) => ({ is_multi_select: q.multi ?? false, options: q.options, question: q.question })) };
+      update({ sessionUpdate: "tool_call", toolCallId: id, name: "ask_question", args, status: "in_progress", kind: "other", title: "Run ask_question", rawInput: args });
+      const properties: Record<string, unknown> = {};
+      step.question.forEach((q, index) => {
+        const choices = q.options.map((label, at) => ({ const: String(at + 1), title: label }));
+        properties[`q${index + 1}`] = q.multi ? { type: "array", title: q.question, items: { anyOf: choices } } : { type: "string", title: q.question, oneOf: choices };
+        properties[`q${index + 1}_other`] = { type: "string", title: "Other", description: `Optional free-form answer to: ${q.question}` };
+      });
+      const answer = forms
+        ? await rpc.request("elicitation/create", { sessionId: opened, toolCallId: id, mode: "form", message: `The agent has ${step.question.length} questions.`, requestedSchema: { type: "object", properties } }).catch((error: unknown) => ({ error: String(error) }))
+        : { offered: false };
+      log({ question: step.question.map((q) => q.question), answer });
+      update({ sessionUpdate: "tool_call_update", toolCallId: id, name: "ask_question", status: "completed", kind: "other", title: "Run ask_question" });
     } else if ("wait" in step) await sleep(step.wait);
     else if ("hang" in step) while (!cancelled) await sleep(10);
     await sleep(3);
@@ -110,6 +130,7 @@ rpc.onRequest(async (method, params) => {
   const caps = script.caps ?? {};
   switch (method) {
     case "initialize": {
+      forms = Boolean((params as { clientCapabilities?: { elicitation?: { form?: unknown } } } | undefined)?.clientCapabilities?.elicitation?.form);
       const session: Record<string, unknown> = { close: {}, additionalDirectories: {} };
       if (caps.resume !== false) session.resume = {};
       if (caps.load !== false) session.load = {};

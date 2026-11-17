@@ -16,12 +16,13 @@ export type AgyCapabilities = { list: boolean; load: boolean; resume: boolean; i
 
 /**
  * The protocol's handshake. The client offers no file system and no terminal: `agy` uses its own
- * tools, as in its terminal, and the app checks each call it reports (`project-runner-agy.ts`).
+ * tools, as in its terminal, and the app checks each call it reports (`project-runner-agy.ts`). It
+ * offers forms (`elicitation`): `agy` then asks its questions (`ask_question`) as one, a card each.
  */
 export async function initializeAgy(rpc: RpcPeer, timeoutMs = AGY_ASK_TIMEOUT_MS): Promise<AgyCapabilities> {
   const answer = await rpc.request<{ agentCapabilities?: { loadSession?: boolean; sessionCapabilities?: Record<string, unknown>; promptCapabilities?: { image?: boolean } } }>("initialize", {
     protocolVersion: 1,
-    clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+    clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, elicitation: { form: {} } },
     clientInfo: { name: "deskfolk", title: "Deskfolk", version: typeof daemonPackage.version === "string" ? daemonPackage.version : "dev" },
   }, timeoutMs);
   const caps = answer?.agentCapabilities ?? {};

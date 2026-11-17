@@ -31,6 +31,8 @@ type Step = (ctx: { line: string; options: Options; useTool: UseTool }) => Promi
 type Seen = {
   options: Options[]; lines: string[]; closed: number; models: Array<string | null>; efforts: Array<string | null>; modes: string[];
   verdicts: Array<{ name: string; behavior: string; message?: string; updatedPermissions?: unknown }>;
+  /** What each `AskUserQuestion` was answered with (`updatedInput.answers`). */
+  answers: unknown[];
 };
 
 function scripted(seen: Seen, step: Step, ownSession = "own-1", preface: (line: string) => SDKMessage[] = () => []): ProjectQuery {
@@ -54,6 +56,7 @@ function scripted(seen: Seen, step: Step, ownSession = "own-1", preface: (line: 
       if (decision === "ask") {
         const verdict = await options.canUseTool!(name, input, { signal: new AbortController().signal, toolUseID: id, requestId: id } as never);
         if (verdict) seen.verdicts.push({ name, behavior: verdict.behavior, ...(verdict.behavior === "deny" ? { message: verdict.message } : { updatedPermissions: verdict.updatedPermissions }) });
+        if (verdict?.behavior === "allow" && name === "AskUserQuestion") seen.answers.push((verdict.updatedInput as { answers?: unknown } | undefined)?.answers);
         if (!verdict || verdict.behavior === "deny") return false;
       }
       await runHook("PostToolUse", { tool_name: name, tool_input: input, tool_response: "ok", tool_use_id: id, ...agent }, id);
@@ -87,7 +90,7 @@ function scripted(seen: Seen, step: Step, ownSession = "own-1", preface: (line: 
 function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[]; claudeModels?: ClaudeModelList; claudeCommands?: ClaudeCommandList; query?: ProjectQuery; status?: ClaudeCodeStatus } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "project-session-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
-  const seen: Seen = { options: [], lines: [], closed: 0, models: [], efforts: [], modes: [], verdicts: [] };
+  const seen: Seen = { options: [], lines: [], closed: 0, models: [], efforts: [], modes: [], verdicts: [], answers: [] };
   const claudeCode: ClaudeCodeProbe = opts.status ? { last: () => opts.status!, current: async () => opts.status!, detect: async () => opts.status! } : probe;
   const api = createLocalApi({ store, token: "project-test", schedule: false, claudeCode, projectQuery: opts.query ?? scripted(seen, step, opts.ownSession, opts.preface),
     ...(opts.claudeModels ? { claudeModels: opts.claudeModels } : {}), ...(opts.claudeCommands ? { claudeCommands: opts.claudeCommands } : {}) });
@@ -131,7 +134,9 @@ test("a new project session: Claude Code runs in its directory as in the termina
   expect(first.resume).toBeUndefined();
   expect(first.settingSources).toEqual(["user", "project", "local"]);
   expect(first.systemPrompt).toEqual({ type: "preset", preset: "claude_code" });
-  expect(first.disallowedTools).toContain("AskUserQuestion");
+  // Its own questions are cards of yours (ADR 0095 addendum 2026-11-17).
+  expect(first.tools).toContain("AskUserQuestion");
+  expect(first.disallowedTools ?? []).not.toContain("AskUserQuestion");
   expect(h.lines(id)).toEqual([
     { kind: "user", author: "user", body: "看看这个项目的结构" },
     { kind: "bot", author: "agent", body: "答：看看这个项目的结构" },
@@ -1162,4 +1167,50 @@ test("a run's spend goes in the ledger as a project session's: what grew past wh
   // The day's cap counts it as it counts a Bot's.
   h.store.patchSettingsSync({ spend_cap_usd: 0.5 });
   expect(h.store.spendCapDue()?.spentUsd).toBeCloseTo(0.53, 6);
+});
+
+const LAYOUT = {
+  questions: [
+    { question: "Which layout?", header: "Layout", options: [{ label: "Tabs (Recommended)", description: "One pane at a time" }, { label: "Split", description: "Side by side" }], multiSelect: false },
+    { question: "Which parts?", header: "Parts", options: [{ label: "A", description: "a" }, { label: "B", description: "b" }, { label: "C", description: "c" }], multiSelect: true },
+  ],
+};
+
+test("Claude Code's questions (AskUserQuestion) are cards, in plan mode too: it reads each answer by its question", async () => {
+  const h = start(async ({ useTool }) => {
+    const answered = await useTool("AskUserQuestion", LAYOUT, { mode: "plan" });
+    return answered ? "按你选的来" : "没问成";
+  });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.call("PATCH", `/v1/project-sessions/${id}`, { mode: "plan" });
+  await h.say(id, "先问我");
+  await h.until(async () => ((await h.run(id))?.asks ?? []).length === 2);
+  expect((await h.run(id))).toMatchObject({ status: "waiting_approval", approval: null });
+  const asks = (await h.call<{ items: Array<{ id: string; kind: string; body: string; ask?: { multi_select: boolean } | null }> }>("GET", `/v1/sessions/${id}/messages`)).body.items.filter((line) => line.kind === "ask").reverse();
+  expect(asks.map((ask) => [ask.body, ask.ask?.multi_select])).toEqual([["Which layout?", false], ["Which parts?", true]]);
+  expect((await h.call("POST", `/v1/messages/${asks[0]!.id}/answer`, { selected: ["Tabs (Recommended)"] })).status).toBe(200);
+  expect((await h.call("POST", `/v1/messages/${asks[1]!.id}/answer`, { selected: ["A", "C"], custom: "and D" })).status).toBe(200);
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(h.seen.answers).toEqual([{ "Which layout?": "Tabs (Recommended)", "Which parts?": "A, C, and D" }]);
+  expect(h.lines(id).at(-1)).toMatchObject({ kind: "bot", body: "按你选的来" });
+  expect((await h.run(id))?.asks).toEqual([]);
+});
+
+test("Stop while Claude Code's questions wait refuses them; a typed line instead answers each in your words", async () => {
+  const h = start(async ({ line, useTool }) => (line === "第二次" || line === "第一次" ? ((await useTool("AskUserQuestion", LAYOUT)) ? "答了" : "停了") : "收到"));
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(id, "第一次");
+  await h.until(async () => ((await h.run(id))?.asks ?? []).length === 2);
+  await h.say(id, "都随你");
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(h.seen.answers).toEqual([{ "Which layout?": "都随你", "Which parts?": "都随你" }]);
+  // The line was the answer, not a line of its own for Claude Code.
+  expect(h.seen.lines).toEqual(["第一次"]);
+
+  await h.say(id, "第二次");
+  await h.until(async () => ((await h.run(id))?.asks ?? []).length === 2);
+  const stopped = await h.call<AgentRun>("POST", `/v1/agent-runs/${(await h.run(id))!.id}/stop`);
+  expect(stopped.body).toMatchObject({ status: "stopped", asks: [] });
+  await h.until(() => h.seen.verdicts.filter((verdict) => verdict.name === "AskUserQuestion").length === 2);
+  expect(h.seen.verdicts.filter((verdict) => verdict.name === "AskUserQuestion").map((verdict) => verdict.behavior)).toEqual(["allow", "deny"]);
 });

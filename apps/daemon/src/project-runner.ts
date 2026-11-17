@@ -20,6 +20,7 @@ import { changeVerdict } from "./permission-gate";
 import { agentAnnotations } from "./annotation-context";
 import { accountOf, claudeChildEnv } from "./claude-code/status";
 import { AGENT_BACKGROUND_TOOLS, AGENT_WORK_TOOLS, decideAgentCall } from "./claude-code/policy";
+import { answerText, questionDesk, type AgentQuestion, type QuestionDesk } from "./project-asks";
 import { backgroundTaskOf, createTaskBoard, type TaskBoard, type TaskCall } from "./claude-code/task-board";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
 import { withSystemProxy } from "./claude-code/proxy";
@@ -34,6 +35,7 @@ import { LIMIT_GUESS_MS, resetMs, RESUME_MARGIN_MS } from "./engine/agent/accoun
 import { lineTime, pickUpDetail } from "./prompts/transcript-copy";
 import { continueNote, EXIT_WAIT_MS, moveProjectAccount, outOfUsageLine, switchedLine } from "./project-limits";
 import { recordLiveProc } from "./live-procs";
+import { HttpError } from "./errors";
 import { pictureMime } from "./loop-pictures";
 import type { Store } from "./store";
 import { visionImage } from "./vision-image";
@@ -79,6 +81,11 @@ export type ProjectRunner = {
   heard(message: Message): void;
   /** Your answer on the run's approval card. */
   answer(runId: string, allow: boolean): AgentRun;
+  /**
+   * Your answer on one of the agent's question cards (ADR 0095 addendum 2026-11-17), as for a Bot's
+   * question: options by label, words of your own. Refused once the run no longer waits on it.
+   */
+  answerAsk(sessionId: string, askId: string, input: { selected?: unknown; custom?: unknown }): Message;
   stop(runId: string): AgentRun;
   /** Stops the session's live run, if any: its history is being cleared or the session deleted. */
   stopSession(sessionId: string): void;
@@ -139,6 +146,8 @@ type Live = {
   idle: boolean;
   /** Whether this Claude Code has said which lines a result answers. */
   lists: boolean;
+  /** What Claude Code asks you (`AskUserQuestion`): question cards it waits on. */
+  questions: QuestionDesk;
 };
 
 const STDERR_KEEP = 8 * 1024;
@@ -316,6 +325,9 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
   function heard(message: Message): void {
     const sessionId = message.session_id;
     if (!store.projectOf(sessionId)) return;
+    // Claude Code waits on its questions: your words are the answer to each (a command still goes as one).
+    const live = lives.get(sessionId);
+    if (!commandOf(message.body) && live && !live.stopped && live.questions.takeLine(message)) return;
     // A command names nothing: the session takes its name from the first thing you ask.
     if (!commandOf(message.body)) store.nameProjectSessionIfUnnamed(sessionId, message.body);
     startRun(sessionId, () => lineContent(store, message, locale() === "en"), message.id);
@@ -351,6 +363,9 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       runId: run.id, sessionId, input, abort: new AbortController(), sent: [], waiting: [], asked: new Map(), said: "", stopped: false, closing: false, query: null,
       done: new Promise<void>((resolve) => { finish = resolve; }), mode: project.mode === "plan" ? "plan" : "default",
       board: createTaskBoard((id) => (id ? taskCalls.get(id) : undefined)), idle: false, lists: false,
+      questions: questionDesk(store, sessionId, (open) => {
+        if (!fresh.stopped) update(run.id, { asks: open, status: open.length > 0 || fresh.waiting.length > 0 ? "waiting_approval" : "running" });
+      }),
     };
     lives.set(sessionId, fresh);
     send(fresh, contentOf(), messageId);
@@ -358,6 +373,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       console.error(`[project ${sessionId}] run failed`, error);
       if (!fresh.stopped) fail(fresh, firstLine(String(error)) ?? "error");
     }).finally(() => {
+      fresh.questions.close();
       if (lives.get(sessionId) === fresh) lives.delete(sessionId);
       finish();
     });
@@ -448,7 +464,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       const planning = (raw.permission_mode ?? live.mode) === "plan";
       const decision = decideAgentCall({
         tool: raw.tool_name, input: toolInput, cwd: raw.cwd || project.dir, agentId: raw.agent_id ?? null,
-        mode: "work", workspace: project.dir, configDirs, memoryDirs, plan: { on: planning, dirs: planDirs }, background: true, permission,
+        mode: "work", workspace: project.dir, configDirs, memoryDirs, plan: { on: planning, dirs: planDirs }, background: true, questions: true, permission,
       });
       if (decision.kind === "deny") return deny(decision.reason);
       if (TASK_TOOLS.has(raw.tool_name)) taskCalls.set(id, { tool: raw.tool_name, input: toolInput });
@@ -485,7 +501,32 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
         ...(call.command ? { command: call.command, target: call.command, exit_code: ok ? 0 : 1 } : { target: targetText(call.info.place) }),
         duration_ms: Date.now() - call.at, agent_run: { ...call.info, at: new Date().toISOString(), ok } });
     };
+    /**
+     * Claude Code's questions (`AskUserQuestion`): a card each, and it waits for every answer. It
+     * reads them by question, what you picked joined with ", " and your words after.
+     */
+    const answerQuestions = async (toolInput: Record<string, unknown>): Promise<PermissionResult> => {
+      const raw = Array.isArray(toolInput.questions) ? (toolInput.questions as Array<Record<string, unknown>>) : [];
+      const questions: AgentQuestion[] = raw.map((q) => ({
+        question: typeof q.question === "string" ? q.question : "",
+        header: typeof q.header === "string" ? q.header : null,
+        options: Array.isArray(q.options) ? (q.options as Array<Record<string, unknown>>).map((option) => ({ label: String(option.label ?? ""), description: typeof option.description === "string" ? option.description : null })) : [],
+        multiSelect: q.multiSelect === true,
+      }));
+      const answers = await live.questions.ask(questions);
+      if (!answers || live.stopped) return { behavior: "deny", message: en ? "stopped" : "已停止", interrupt: true };
+      const answered: Record<string, string> = {};
+      raw.forEach((q, index) => {
+        const text = answers[index] ? answerText(answers[index]!) : "";
+        if (typeof q.question === "string" && text) answered[q.question] = text;
+      });
+      return { behavior: "allow", updatedInput: { ...toolInput, answers: answered } };
+    };
     const canUseTool: CanUseTool = async (toolName, toolInput, options): Promise<PermissionResult> => {
+      if (toolName === "AskUserQuestion") {
+        live.asked.delete(options.toolUseID);
+        return answerQuestions(toolInput);
+      }
       const asked = live.asked.get(options.toolUseID);
       // Claude Code asking on its own while it plans: nothing changes before the plan is approved.
       if (!asked && live.mode === "plan") return { behavior: "deny", message: en ? PLAN_MODE_DENIED.en : PLAN_MODE_DENIED.zh };
@@ -503,9 +544,9 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       });
       live.asked.delete(options.toolUseID);
       if (live.stopped) return { behavior: "deny", message: en ? "stopped" : "已停止", interrupt: true };
-      // The next call still asking is the card now; with none, the run is at work again.
+      // The next call still asking is the card now; with none, the run is at work again, or waits on its questions.
       const next = live.waiting[0];
-      update(live.runId, next ? { status: "waiting_approval", approval: next.approval } : { status: "running", approval: null });
+      update(live.runId, next ? { status: "waiting_approval", approval: next.approval } : { status: live.questions.open().length > 0 ? "waiting_approval" : "running", approval: null });
       if (answer !== "allow") ended(options.toolUseID, false);
       if (approval.kind_key === PLAN_APPROVAL_KIND) {
         if (answer !== "allow") return { behavior: "deny", message: (answer === "revise" ? PLAN_REVISE : PLAN_KEEP)[en ? "en" : "zh"] };
@@ -554,8 +595,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       // The session's own: plan mode carries from run to run until a plan is approved or you turn it off.
       permissionMode: live.mode,
       // Always offered, so plan mode turned on mid-run has a way out.
-      tools: [...AGENT_WORK_TOOLS, "ExitPlanMode", ...AGENT_BACKGROUND_TOOLS],
-      disallowedTools: ["AskUserQuestion"],
+      // Its own questions too, on cards of yours (ADR 0095 addendum 2026-11-17).
+      tools: [...AGENT_WORK_TOOLS, "ExitPlanMode", "AskUserQuestion", ...AGENT_BACKGROUND_TOOLS],
       systemPrompt: { type: "preset", preset: "claude_code" },
       hooks,
       canUseTool,
@@ -826,6 +867,11 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
   return {
     heard,
     resumeAfterLimits,
+    answerAsk(sessionId, askId, input) {
+      const live = lives.get(sessionId);
+      if (!live || live.stopped) throw new HttpError(422, "invalid_args", "ask is no longer pending");
+      return live.questions.answer(askId, input);
+    },
     answer(runId, allow) {
       const run = store.getAgentRun(runId);
       let live: Live;
@@ -851,6 +897,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       // Before the run reads as stopped, and so before a line you send next.
       keepSaid(live);
       for (const asking of live.waiting.splice(0)) asking.resolve("deny");
+      live.questions.close();
       live.input.close();
       live.abort.abort();
       return update(runId, { status: "stopped", activity: null, partial: null, approval: null });
@@ -901,6 +948,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
         live.stopped = true;
         keepSaid(live);
         for (const asking of live.waiting.splice(0)) asking.resolve("deny");
+        live.questions.close();
         live.input.close();
         live.abort.abort();
       }

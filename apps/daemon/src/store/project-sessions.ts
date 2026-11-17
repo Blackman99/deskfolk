@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { isProjectAgent, isProjectAgentMode, PROJECT_AGENT_AUTHOR, USER_MEMBER, type AgentRun, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
+import { isProjectAgent, isProjectAgentMode, PROJECT_AGENT_AUTHOR, USER_MEMBER, type AgentRun, type AskAnswer, type AskSpec, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
 import type { ImportedSession } from "../agents/agent-sessions";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
@@ -59,6 +59,8 @@ export function migrateProjectSessions(db: Database): void {
   const runs = db.query<{ name: string }, []>(`PRAGMA table_info(agent_runs)`).all().map((row) => row.name);
   if (runs.length > 0 && !runs.includes("tasks")) db.run(`ALTER TABLE agent_runs ADD COLUMN tasks TEXT`);
   if (runs.length > 0 && !runs.includes("idle")) db.run(`ALTER TABLE agent_runs ADD COLUMN idle INTEGER NOT NULL DEFAULT 0`);
+  // The questions a run waits on you to answer (ADR 0095 addendum 2026-11-17).
+  if (runs.length > 0 && !runs.includes("asks")) db.run(`ALTER TABLE agent_runs ADD COLUMN asks TEXT`);
 }
 
 export type ProjectOf = {
@@ -211,7 +213,38 @@ export function insertAgentLine(ctx: StoreContext, sessionId: string, input: { k
   return getMessage(ctx, id);
 }
 
-type AgentRunRow = Omit<AgentRun, "approval" | "tasks" | "idle"> & { approval: string | null; tasks: string | null; idle: number };
+/**
+ * A question the session's agent asks you (ADR 0095 addendum 2026-11-17): an `ask` line, the card
+ * a Bot's `ask_user` makes, with no turn (a project session has runs). Like the agent's other lines
+ * it is no Bot's to read.
+ */
+export function insertAgentAsk(ctx: StoreContext, sessionId: string, input: { question: string; spec: AskSpec | null }): Message {
+  sessionRow(ctx, sessionId);
+  const id = ulid();
+  const now = isoNow();
+  ctx.db.run(
+    `INSERT INTO messages (id, session_id, kind, author, body, ask_spec, hidden_from_bots, created_at) VALUES (?, ?, 'ask', ?, ?, ?, 1, ?)`,
+    [id, sessionId, AGENT_AUTHOR, input.question, input.spec ? JSON.stringify(input.spec) : null, now],
+  );
+  ctx.db.run(`UPDATE sessions SET updated_at = ? WHERE id = ?`, [now, sessionId]);
+  return getMessage(ctx, id);
+}
+
+/**
+ * Your answer, written on the agent's question. Unlike a Bot's (`recordAskAnswer`) it is quoted
+ * nowhere: a project session is no Bot's and belongs to no plan.
+ */
+export function recordAgentAskAnswer(ctx: StoreContext, askId: string, answer: AskAnswer): Message {
+  const row = ctx.db.query<{ kind: string; session_id: string; ask_answer: string | null }, [string]>(`SELECT kind, session_id, ask_answer FROM messages WHERE id = ?`).get(askId);
+  if (!row) throw new HttpError(404, "not_found", "message not found");
+  if (row.kind !== "ask") throw new HttpError(422, "invalid_args", "only a question takes an answer");
+  if (row.ask_answer) throw new HttpError(422, "invalid_args", "ask is no longer pending");
+  ctx.db.run(`UPDATE messages SET ask_answer = ? WHERE id = ?`, [JSON.stringify(answer), askId]);
+  ctx.db.run(`UPDATE sessions SET updated_at = ? WHERE id = ?`, [answer.answered_at, row.session_id]);
+  return getMessage(ctx, askId);
+}
+
+type AgentRunRow = Omit<AgentRun, "approval" | "tasks" | "idle" | "asks"> & { approval: string | null; tasks: string | null; idle: number; asks?: string | null };
 
 /**
  * A task cannot outlive its run: Stop, a failure or a restart ended whatever was still going, so
@@ -230,7 +263,9 @@ function toAgentRun(row: AgentRunRow): AgentRun {
   } catch {
     approval = null;
   }
-  return { ...row, approval, tasks: tasksOfRow(row), idle: row.idle === 1 && row.status === "running" };
+  const live = row.status === "running" || row.status === "waiting_approval";
+  const asks = live ? jsonColumnOr<string[]>(row.asks ?? null, []).filter((id) => typeof id === "string") : [];
+  return { ...row, approval, tasks: tasksOfRow(row), idle: row.idle === 1 && row.status === "running", asks };
 }
 
 export function createAgentRun(ctx: StoreContext, sessionId: string): AgentRun {
@@ -276,7 +311,7 @@ export function listLiveAgentRuns(ctx: StoreContext): AgentRun[] {
 export function updateAgentRun(
   ctx: StoreContext,
   id: string,
-  patch: { status?: AgentRunStatus; activity?: string | null; partial?: string | null; approval?: AgentRunApproval | null; error?: string | null; tasks?: AgentTask[]; idle?: boolean },
+  patch: { status?: AgentRunStatus; activity?: string | null; partial?: string | null; approval?: AgentRunApproval | null; error?: string | null; tasks?: AgentTask[]; idle?: boolean; asks?: string[] },
 ): AgentRun {
   const sets: string[] = [];
   const values: Array<string | number | null> = [];
@@ -298,6 +333,12 @@ export function updateAgentRun(
     sets.push(`idle = ?`);
     values.push(patch.idle ? 1 : 0);
   }
+  // A run that ended waits on nothing: whatever it asked can no longer be answered.
+  const ended = patch.status !== undefined && patch.status !== "running" && patch.status !== "waiting_approval";
+  if (patch.asks !== undefined || ended) {
+    sets.push(`asks = ?`);
+    values.push(!ended && patch.asks && patch.asks.length > 0 ? JSON.stringify(patch.asks) : null);
+  }
   sets.push(`updated_at = ?`);
   values.push(isoNow());
   ctx.db.run(`UPDATE agent_runs SET ${sets.join(", ")} WHERE id = ?`, [...values, id]);
@@ -307,7 +348,7 @@ export function updateAgentRun(
 /** At boot nothing runs yet: a run still marked live was cut by the last shutdown. */
 export function interruptLiveAgentRuns(ctx: StoreContext): number {
   return ctx.db.run(
-    `UPDATE agent_runs SET status = 'interrupted', activity = NULL, approval = NULL, updated_at = ? WHERE status IN ('running', 'waiting_approval')`,
+    `UPDATE agent_runs SET status = 'interrupted', activity = NULL, approval = NULL, asks = NULL, updated_at = ? WHERE status IN ('running', 'waiting_approval')`,
     [isoNow()],
   ).changes;
 }

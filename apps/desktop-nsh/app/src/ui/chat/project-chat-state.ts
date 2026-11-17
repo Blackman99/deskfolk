@@ -11,6 +11,7 @@ import {
   isHiddenTranscriptKind,
   PLAN_APPROVAL_KIND,
   PROJECT_AGENT_CAPS,
+  runAwaitsAsk,
   USER_MEMBER,
   type AgentRunTask,
   type Annotation,
@@ -51,6 +52,9 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
     const r = run();
     return r?.status === "waiting_approval" && r.approval ? r.approval : null;
   };
+  /** The questions the run waits on: its status says it waits, with no approval to show. */
+  const asking = () => (run()?.asks ?? []).filter((id) => runAwaitsAsk(run(), id));
+  const awaitsAsk = (id: string) => runAwaitsAsk(run(), id);
   const planWaiting = () => waiting()?.kind_key === PLAN_APPROVAL_KIND;
 
   /** Oldest first; what the app keeps out of a transcript stays out. */
@@ -139,7 +143,8 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
     return r && live() ? tasks().filter((task) => task.run_id === r.id) : [];
   });
   const goingTasks = computed(() => liveTasks().filter((task) => task.status === "running"));
-  const agentLines = computed(() => lines().filter((message) => lineOf(message) === "agent"));
+  // A question's line holds its card, not what the run did: tasks go under the agent's replies.
+  const agentLines = computed(() => lines().filter((message) => lineOf(message) === "agent" && message.kind !== "ask"));
   const placed = computed(() => placeTasks(tasks(), agentLines(), live() ? (run()?.id ?? null) : null, view().hasOlderMessages ? (lines()[0]?.created_at ?? null) : null));
   const keptRow = (task: AgentRunTask) => taskCommandRow(task, t().project.taskStatus.stopped);
   /** A run over: what a line hosts of its commands, in its card. */
@@ -280,6 +285,8 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
     run,
     live,
     waiting,
+    asking,
+    awaitsAsk,
     planWaiting,
     lines,
     account,

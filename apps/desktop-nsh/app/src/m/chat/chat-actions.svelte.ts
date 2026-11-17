@@ -1,7 +1,7 @@
 // Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
 // Source: ecc5a37504ea2ad5
 import { state } from "../../lib/reactive";
-import { USER_MEMBER, type ControlActionResult, type ControlOffer, type ResolveApprovalRequest } from "@real-bot/protocol";
+import { runAwaitsAsk, USER_MEMBER, type ControlActionResult, type ControlOffer, type ResolveApprovalRequest } from "@real-bot/protocol";
 import { ApiError } from "../api.ts";
 import type { FileProgress } from "../file-progress.ts";
 import type { MessengerApi } from "../messenger-api.ts";
@@ -173,7 +173,9 @@ export class ChatActions {
     const existingDraft = this.askDrafts.get(askId);
     const turn = this.host.snapshot.turns.find((t) => t.pending_ask_id === askId);
     if (this.host.notificationCapabilities.pending_ask_v1) {
-      const pendingId = turn ? (turn.pending_ask_id ?? null) : null;
+      // A project session's question has no turn: its run waits on it.
+      const runWaits = Object.values(this.host.snapshot.agentRuns ?? {}).some((run) => runAwaitsAsk(run, askId));
+      const pendingId = turn ? (turn.pending_ask_id ?? null) : runWaits ? askId : null;
       const notAllowed = askSubmitAllowed(
         this.host.connection === "connected",
         sending,

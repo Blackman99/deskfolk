@@ -35,9 +35,11 @@ import { readThread } from "./agents/codex-sessions";
 import { rpcPeer, type RpcPeer } from "./engine/agent/jsonrpc";
 import { absoluteFrom, decideAction, unwrapShell, type AppAction } from "./engine/agent/policy";
 import { agentTrace } from "./engine/agent/trace";
+import { HttpError } from "./errors";
 import { recordLiveProc } from "./live-procs";
 import { pictureMime } from "./loop-pictures";
 import { changeVerdict } from "./permission-gate";
+import { questionDesk, type AgentQuestion, type QuestionDesk } from "./project-asks";
 import { clip, COMPACTING, firstLine, slashCommandOf, targetText, type ProjectRunner } from "./project-runner";
 import type { Store } from "./store";
 
@@ -90,6 +92,8 @@ type Live = {
   idle: boolean;
   /** Wakes the run waiting on its background commands: a new line, or a command's end. */
   wake: (() => void) | null;
+  /** What Codex asks you (`request_user_input`, plan mode): question cards it waits on. */
+  questions: QuestionDesk;
 };
 
 const INIT_TIMEOUT_MS = 60_000;
@@ -282,6 +286,9 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     const sessionId = message.session_id;
     if (!store.projectOf(sessionId)) return;
     const command = slashCommandOf(message.body);
+    // Codex waits on its questions: your words are the answer to each (a command still goes as one).
+    const live = lives.get(sessionId);
+    if (!command && live && !live.stopped && live.questions.takeLine(message)) return;
     // A command names nothing: the session takes its name from the first thing you ask.
     if (!command) store.nameProjectSessionIfUnnamed(sessionId, message.body);
     startRun(sessionId, () => ({
@@ -316,6 +323,9 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     const fresh: Live = {
       runId: run.id, sessionId, queue: [line], steering: new Set(), waiting: [], said: "", stopped: false, closing: false,
       done: new Promise<void>((resolve) => { finish = resolve; }), abort: new AbortController(), rpc: null, threadId: null, turnId: null, inTurn: [], tasks: new Map(), outputs: new Map(), idle: false, wake: null,
+      questions: questionDesk(store, sessionId, (open) => {
+        if (!fresh.stopped) update(run.id, { asks: open, status: open.length > 0 || fresh.waiting.length > 0 ? "waiting_approval" : "running" });
+      }),
     };
     lives.set(sessionId, fresh);
     const running = runSession(fresh).catch((error) => {
@@ -323,6 +333,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       if (!fresh.stopped) fail(fresh, firstLine(String(error)) ?? "error");
     }).finally(() => {
       fresh.closing = true;
+      fresh.questions.close();
       fresh.abort.abort();
       if (lives.get(sessionId) === fresh) lives.delete(sessionId);
       finish();
@@ -446,9 +457,9 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         if (live.waiting.length === 1) update(live.runId, { status: "waiting_approval", approval });
       });
       if (live.stopped) return false;
-      // The next call still asking is the card now; with none, the run is at work again.
+      // The next call still asking is the card now; with none, the run is at work again, or waits on its questions.
       const next = live.waiting[0];
-      update(live.runId, next ? { status: "waiting_approval", approval: next.approval } : { status: "running", approval: null });
+      update(live.runId, next ? { status: "waiting_approval", approval: next.approval } : { status: live.questions.open().length > 0 ? "waiting_approval" : "running", approval: null });
       return allow;
     };
 
@@ -486,12 +497,45 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
           return { decision: { denied: { rejection: en ? "Deskfolk answers approvals through its own rules" : "Deskfolk 按自己的规则批准" } } };
         case "mcpServer/elicitation/request":
           return { action: "decline", content: null, _meta: null };
+        // Its questions for you (plan mode): a card each, and Codex waits for every answer. A refusal
+        // here would reach it as `{"answers":{}}` — no answers, as if you had been shown nothing.
         case "item/tool/requestUserInput":
-          throw new Error(en ? "ask the user in your reply" : "在回复里问用户");
+          return askedOf(p);
         default:
           throw new Error(`${method} is not supported by Deskfolk`);
       }
     });
+
+    /**
+     * Codex's questions as cards, its answers as it takes them: per question id what you picked,
+     * then your words. A question it marks secret gets no card: the conversation keeps no secrets,
+     * so it is told none came, and you see that it asked.
+     */
+    const askedOf = async (p: Record<string, unknown>): Promise<{ answers: Record<string, { answers: string[] }> }> => {
+      const raw = Array.isArray(p.questions) ? (p.questions as Array<Record<string, unknown>>) : [];
+      const asked: Array<{ id: string; question: AgentQuestion }> = [];
+      for (const q of raw) {
+        const id = typeof q.id === "string" ? q.id : "";
+        const text = typeof q.question === "string" ? q.question : "";
+        const header = typeof q.header === "string" ? q.header : null;
+        if (!id) continue;
+        if (q.isSecret === true) {
+          postLine(live.sessionId, "system", en
+            ? `Codex asked for something secret (${header || text}): the conversation keeps no secrets, so it was not answered here`
+            : `Codex 问了一项需要保密的内容（${header || text}）：对话里不收密码和密钥，这一项没有在这里回答`);
+          continue;
+        }
+        const options = Array.isArray(q.options) ? (q.options as Array<Record<string, unknown>>).map((option) => ({ label: String(option.label ?? ""), description: typeof option.description === "string" ? option.description : null })) : [];
+        asked.push({ id, question: { question: text, header, options, multiSelect: false } });
+      }
+      const answers = await live.questions.ask(asked.map((one) => one.question));
+      const out: Record<string, { answers: string[] }> = {};
+      asked.forEach((one, index) => {
+        const answer = answers?.[index];
+        if (answer) out[one.id] = { answers: [...answer.selected, ...(answer.custom ? [answer.custom] : [])] };
+      });
+      return { answers: out };
+    };
 
     const setTask = (task: AgentTask) => {
       live.tasks.set(task.id, task);
@@ -1025,6 +1069,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     // Before the run reads as stopped, and so before a line you send next.
     keepSaid(live);
     for (const asking of live.waiting.splice(0)) asking.resolve(false);
+    live.questions.close();
     live.wake?.();
     const { rpc, threadId, turnId } = live;
     // The turn is told to stop first, so Codex keeps a thread it can resume; then its process goes.
@@ -1045,6 +1090,11 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         if (lives.has(due.session_id) || store.latestAgentRun(due.session_id)?.id !== due.run_id) continue;
         startRun(due.session_id, () => ({ input: [{ type: "text", text: continueNote(locale(), "reset", messagesOf(due.lines), "Codex"), text_elements: [] }], command: null, messageIds: [] }));
       }
+    },
+    answerAsk(sessionId, askId, input) {
+      const live = lives.get(sessionId);
+      if (!live || live.stopped) throw new HttpError(422, "invalid_args", "ask is no longer pending");
+      return live.questions.answer(askId, input);
     },
     answer(runId, allow) {
       const run = store.getAgentRun(runId);

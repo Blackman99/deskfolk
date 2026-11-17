@@ -71,6 +71,9 @@ export function ProjectWorking(props: { state: ProjectState }) {
       const text = s().planWaiting() ? t().project.waitingPlan(s().agentName()) : t().project.waiting(s().agentName());
       return <Text testID="project-step" class="shrink min-w-0 text-[12px] font-medium text-brand line-clamp-1">{text}</Text>;
     }
+    if (s().asking().length > 0) {
+      return <Text testID="project-step" class="shrink min-w-0 text-[12px] font-medium text-brand line-clamp-1">{t().project.waitingAnswer(s().agentName())}</Text>;
+    }
     const line = !focusMode.on ? s().stepLine() : null;
     if (line) {
       return (

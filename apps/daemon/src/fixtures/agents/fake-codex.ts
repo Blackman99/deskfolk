@@ -27,7 +27,9 @@
  * and the last call's when they differ (after a compaction the totals start over);
  * `{ sleep: ms }` the turn goes on that long, so a line can be steered into it;
  * `{ fail: { message, codexErrorInfo, errorNotice? } }` the turn fails (with an `error`
- * notification first when `errorNotice`); `{ hang: true }` until `turn/interrupt`.
+ * notification first when `errorNotice`); `{ hang: true }` until `turn/interrupt`;
+ * `{ questions }` its questions for you (`item/tool/requestUserInput`), logged as `questions` with the
+ * answers it got.
  */
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -50,7 +52,9 @@ type Step =
   /** A subagent it sends: `spawnAgent`, the subagent's thread (its turn, a command, its answer), then `wait`. */
   | { spawn: { prompt: string; model?: string; nickname?: string; says: string; command?: string } }
   /** A command it leaves running past the turn, ending `ms` after the turn with `output`. */
-  | { background: { command: string; ms: number; output?: string } };
+  | { background: { command: string; ms: number; output?: string } }
+  /** Its questions for you (`request_user_input`), as Codex sends them. */
+  | { questions: Array<{ id: string; header?: string; question: string; isSecret?: boolean; options: Array<{ label: string; description?: string }> | null }> };
 
 type Script = {
   signedOut?: boolean;
@@ -191,6 +195,10 @@ async function play(steps: Step[], turnId: string, review = false): Promise<void
       return;
     } else if ("sleep" in step) {
       await sleep(step.sleep);
+    } else if ("questions" in step) {
+      const questions = step.questions.map((q) => ({ id: q.id, header: q.header ?? "", question: q.question, isOther: true, isSecret: q.isSecret ?? false, options: q.options?.map((o) => ({ label: o.label, description: o.description ?? "" })) ?? null }));
+      const answer = await rpc.request("item/tool/requestUserInput", { threadId: THREAD_ID, turnId, itemId: nextId("ask"), questions, isBlocking: true, autoResolutionMs: null }).catch((error: unknown) => ({ error: String(error) }));
+      log({ questions: questions.map((q) => q.id), answer });
     } else if ("plan" in step) {
       notify("item/started", { threadId: THREAD_ID, turnId, item: { type: "plan", id: `${turnId}-plan`, text: "" } });
       notify("item/completed", { threadId: THREAD_ID, turnId, item: { type: "plan", id: `${turnId}-plan`, text: step.plan } });

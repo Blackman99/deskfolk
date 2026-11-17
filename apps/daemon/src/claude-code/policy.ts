@@ -20,6 +20,9 @@ import { asksKeychainForSecret, isKeychainPath } from "../keychains";
 import { recursiveSearchGuard, searchGuardMessage } from "../search-guard";
 import { classifyPath, classifyShell, isAbsoluteHostPath, isWithinPath, nodePathHost, workspaceRelative, type PathHost } from "../workspace-paths";
 
+/** The kind of a call that is Claude Code's question for you: answered on its cards, not on an approval card. */
+export const QUESTION_KIND = "question";
+
 /** The Claude Code tools a work turn is offered; anything else is refused. */
 export const AGENT_WORK_TOOLS = ["Read", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "Bash", "WebFetch", "WebSearch", "Agent", "TodoWrite"] as const;
 /** What a project session's Claude Code has on top, to watch and to end what it runs in the background (ADR 0095, 25). */
@@ -74,6 +77,11 @@ export type AgentCall = {
    * may watch, as in the terminal. A Bot never does: its turn ends with its reply.
    */
   background?: boolean;
+  /**
+   * A project session's (ADR 0095 addendum 2026-11-17): Claude Code's own questions
+   * (`AskUserQuestion`) are cards for you. A Bot asks with `ask_user` instead.
+   */
+  questions?: boolean;
   /** The Bot's permission mode (ADR 0092): whether a write or a command runs, asks or is refused. */
   permission: PermissionMode;
   /** Whether a path exists; the disk's own when absent. */
@@ -109,8 +117,11 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   const home = call.home ?? host.homedir();
   const appName = appToolName(call.tool);
   const known = (AGENT_WORK_TOOLS as readonly string[]).includes(call.tool) || call.tool === "MultiEdit" || (call.plan !== undefined && call.tool === "ExitPlanMode")
-    || (call.background === true && (AGENT_BACKGROUND_TOOLS as readonly string[]).includes(call.tool));
+    || (call.background === true && (AGENT_BACKGROUND_TOOLS as readonly string[]).includes(call.tool))
+    || (call.questions === true && call.tool === "AskUserQuestion");
   if (!known) return { kind: "deny", reason: `${call.tool} is not available in a Deskfolk turn` };
+  // Its questions wait on you whatever the mode: they change nothing, and only you can answer them.
+  if (call.tool === "AskUserQuestion") return { kind: "ask", effect: false, appName, approval: { kind_key: QUESTION_KIND, target: "", summary: "" } };
   // The plan it presents is yours to approve, whatever the mode: approving is what ends planning.
   if (call.tool === "ExitPlanMode") return { kind: "ask", effect: false, appName, approval: planApproval(call.input) };
   if (call.mode === "readonly" && !(AGENT_READONLY_TOOLS as readonly string[]).includes(call.tool)) {

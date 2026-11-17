@@ -125,6 +125,7 @@ export function botAndSessionRoutes(ctx: RouteCtx): Response | Promise<Response>
       if (fileInputs.length > 0 || paths.length > 0) throw new HttpError(422, "invalid_args", "an answer carries no files");
       // Clients from before `POST /v1/messages/:id/answer` still answer this way. The text is
       // written onto the question as your own answer, and no message of yours is posted.
+      if (store.projectOf(sessionId) !== null) return jsonResponse(projects.answerAsk(sessionId, askId, { custom: bodyText }), 201, null);
       const answered = store.transaction(() => engine.replyAsk(askId, sessionId, { custom: bodyText }));
       return jsonResponse(answered, 201, null);
     }

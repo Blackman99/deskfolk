@@ -16,10 +16,12 @@ import { Text, View } from "nsh";
 import type { Annotation, Message } from "@real-bot/protocol";
 import { focusMode } from "../../m/chat/focus-mode.svelte.ts";
 import { formatDateDivider, formatMessageTime } from "../../m/chat/chat-view.ts";
+import { snapshot } from "../../lib/reactive";
 import { copy, runtime } from "../../runtime";
 import { AnnotationCards } from "../annotations/AnnotationCards";
 import { CommandActivity } from "./CommandActivity";
 import { SEAM_LINE } from "../glass";
+import { AskCard } from "./AskCard";
 import { MarkdownBody } from "../MarkdownBody";
 import { MessageAttachments } from "./MessageAttachments";
 import { ProjectSubagentEntry } from "./ProjectSubagentEntry";
@@ -75,6 +77,18 @@ export function ProjectLine(props: {
       {formatMessageTime(msg().created_at)}
     </Text>
   );
+  /** The card's answer goes to the daemon; the draft goes once it took it. */
+  async function answerAsk(): Promise<void> {
+    const id = msg().id;
+    const record = runtime.getAskDraft(id);
+    const custom = (record?.body ?? "").trim();
+    const selected = record?.selected ?? [];
+    if (!custom && selected.length === 0) return;
+    const res = await runtime.sendAsk(id, { selected, custom }, s().sessionId());
+    if (res.status === "accepted") runtime.clearAskDraft(id, record?.version ?? 1);
+    else if (res.status === "rejected") runtime.setAskError(id, res.error?.message || t().notifications.executionFailed);
+    else if (res.status === "unknown") runtime.setAskError(id, res.error?.message || t().disconnected.host);
+  }
   return (
     <View testID={`project-line-${msg().id}`} class="w-full gap-[14px]">
       <If when={props.date}>{(at: () => string) => <DayLine at={at()} locale={s().locale()} />}</If>
@@ -122,6 +136,21 @@ export function ProjectLine(props: {
               narrowed it to its widest line yet kept the heights measured at the full width: a paragraph
               that wrapped once more than measured ran under what followed it, and its last line was cut. */}
           <MarkdownBody class="self-stretch" selectable={false} source={msg().body} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={(path) => s().openCited(path, msg().id)} files={s().files()} />
+          {/* A question for you (`kind: "ask"`): its card answers it while the run waits on it, and keeps the answer after. */}
+          <If when={msg().kind === "ask"}>
+            <View testID="project-line-ask" class="self-stretch mt-[8px] max-w-[440px]">
+              {/* A plain copy: the store's deep proxy arrays draw nothing in the card's `Each` (PORTING.md). */}
+              <AskCard
+                message={snapshot(msg())}
+                answerable={s().awaitsAsk(msg().id) && s().connected()}
+                draft={runtime.getAskDraft(msg().id)}
+                sending={s().view().sending}
+                onDraft={(body) => runtime.setAskDraft(msg().id, body)}
+                onSelect={(picks) => runtime.setAskSelection(msg().id, picks)}
+                onSubmit={() => void answerAsk()}
+              />
+            </View>
+          </If>
           {/* The time at the right end: of its own line, or of the command card's. */}
           <If
             when={kept().length > 0}

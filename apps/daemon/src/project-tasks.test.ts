@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,6 +15,7 @@ import { createLocalApi } from "./local-api";
 import { validateBusiness } from "./remote/routes";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
+import { migrateProjectSessions } from "./store/project-sessions";
 
 const closes: Array<() => Promise<void> | void> = [];
 afterEach(async () => { while (closes.length) await closes.pop()!(); });
@@ -413,5 +415,30 @@ test("a table from before these gets the columns", () => {
   const store = new Store({ endpointKey: memoryKeyStore() });
   closes.push(() => store.close());
   const names = store.db.query<{ name: string }, []>(`PRAGMA table_info(agent_runs)`).all().map((row) => row.name);
-  expect(names).toEqual(expect.arrayContaining(["tasks", "idle"]));
+  expect(names).toEqual(expect.arrayContaining(["tasks", "idle", "asks"]));
+});
+
+test("an agent_runs table from before its questions gets the column; a run read back lists none once it ended", () => {
+  const db = new Database(":memory:");
+  db.run(`CREATE TABLE sessions (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('direct', 'group', 'project')), name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`);
+  db.run(`CREATE TABLE agent_runs (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, status TEXT NOT NULL, activity TEXT, partial TEXT, approval TEXT, error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`);
+  migrateProjectSessions(db);
+  migrateProjectSessions(db);
+  const names = db.query<{ name: string }, []>(`PRAGMA table_info(agent_runs)`).all().map((row) => row.name);
+  expect(names).toEqual(expect.arrayContaining(["tasks", "idle", "asks"]));
+
+  const store = new Store({ endpointKey: memoryKeyStore() });
+  closes.push(() => store.close());
+  const session = store.createProjectSession({ dir: tmpdir(), agent: "codex", configDir: null, locale: "zh" });
+  const run = store.createAgentRun(session.id);
+  const ask = store.insertAgentAsk(session.id, { question: "Which?", spec: { options: [{ label: "a" }, { label: "b" }], multi_select: false } });
+  expect(store.updateAgentRun(run.id, { status: "waiting_approval", asks: [ask.id] }).asks).toEqual([ask.id]);
+  // Ended, it waits on nothing: the card no longer takes an answer.
+  expect(store.updateAgentRun(run.id, { status: "stopped" }).asks).toEqual([]);
+  expect(store.db.query<{ asks: string | null }, [string]>(`SELECT asks FROM agent_runs WHERE id = ?`).get(run.id)?.asks).toBeNull();
+  const again = store.createAgentRun(session.id);
+  store.updateAgentRun(again.id, { status: "waiting_approval", asks: [ask.id] });
+  // At boot nothing runs: a run cut by the last shutdown waits on nothing either.
+  store.interruptLiveAgentRuns();
+  expect(store.getAgentRun(again.id)).toMatchObject({ status: "interrupted", asks: [] });
 });

@@ -38,6 +38,7 @@ export function createProjectRunners(deps: ProjectRunnersDeps): ProjectRunner {
   return {
     heard: (message) => of(message.session_id).heard(message),
     answer: (runId, allow) => ofRun(runId).answer(runId, allow),
+    answerAsk: (sessionId, askId, input) => of(sessionId).answerAsk(sessionId, askId, input),
     stop: (runId) => ofRun(runId).stop(runId),
     stopSession: (sessionId) => of(sessionId).stopSession(sessionId),
     stopTask: (runId, taskId) => ofRun(runId).stopTask(runId, taskId),

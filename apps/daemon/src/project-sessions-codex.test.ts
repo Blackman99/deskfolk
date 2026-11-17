@@ -740,3 +740,89 @@ test("each Codex call's usage goes in the ledger as a project session's, once; a
   ]);
   expect(h.store.db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM spend WHERE estimated_cost_usd_ticks IS NULL OR estimated_cost_usd_ticks <= 0`).get()?.n).toBe(0);
 });
+
+/** Codex's `request_user_input` as the fake sends it: two questions, options with descriptions. */
+const QUESTIONS = [
+  { id: "tier", header: "交付级别", question: "这次要达到哪个门槛？", options: [{ label: "可发布预览版 (Recommended)", description: "AppImage 和 deb" }, { label: "正式支持", description: "有承诺" }] },
+  { id: "target", header: "目标平台", question: "首批哪个平台？", options: [{ label: "Ubuntu 24.04" }, { label: "Ubuntu 22.04" }] },
+];
+type AskLine = { id: string; kind: string; body: string; ask?: { options: Array<{ label: string; description?: string | null }>; multi_select: boolean } | null; ask_answer?: { selected: string[]; custom: string | null } | null; taken_as?: string | null };
+const asksOf = async (h: ReturnType<typeof start>, id: string) =>
+  (await h.call<{ items: AskLine[] }>("GET", `/v1/sessions/${id}/messages`)).body.items.filter((line) => line.kind === "ask").reverse();
+
+test("Codex's questions are cards: each answered on its card, by an option or in your words, and Codex goes on with them", async () => {
+  const h = start([{ turns: [[{ questions: QUESTIONS }, { say: "好，按这个做计划。" }]] }]);
+  const id = await h.open();
+  await h.say(id, "Linux 版要支持该怎么做");
+  await h.until(async () => ((await h.run(id))?.asks ?? []).length === 2);
+  const waiting = (await h.run(id))!;
+  expect(waiting.status).toBe("waiting_approval");
+  expect(waiting.approval).toBeNull();
+  const [tier, target] = await asksOf(h, id);
+  expect(tier).toMatchObject({ body: "这次要达到哪个门槛？", ask: { options: [{ label: "可发布预览版 (Recommended)", description: "AppImage 和 deb" }, { label: "正式支持", description: "有承诺" }], multi_select: false } });
+  expect(waiting.asks).toEqual([tier!.id, target!.id]);
+
+  const first = await h.call<AskLine>("POST", `/v1/messages/${tier!.id}/answer`, { selected: ["可发布预览版 (Recommended)"] });
+  expect(first.status).toBe(200);
+  expect(first.body.ask_answer).toMatchObject({ selected: ["可发布预览版 (Recommended)"], custom: null });
+  // One still open: the run waits on it, and Codex has heard nothing yet.
+  expect((await h.run(id))).toMatchObject({ status: "waiting_approval", asks: [target!.id] });
+  expect(h.log(0).some((entry) => "questions" in entry)).toBe(false);
+
+  expect((await h.call("POST", `/v1/messages/${target!.id}/answer`, { custom: "两个都要" })).status).toBe(200);
+  await h.settled(id);
+  expect(h.log(0).find((entry) => "questions" in entry)?.answer as unknown).toEqual({ answers: { tier: { answers: ["可发布预览版 (Recommended)"] }, target: { answers: ["两个都要"] } } });
+  expect((await h.run(id))).toMatchObject({ status: "completed", asks: [] });
+  expect(h.lines(id).at(-1)).toMatchObject({ kind: "bot", body: "好，按这个做计划。" });
+  // A card answered once takes no second answer.
+  expect((await h.call("POST", `/v1/messages/${tier!.id}/answer`, { selected: ["正式支持"] })).status).toBe(422);
+});
+
+test("a line you type while Codex's questions wait answers each of them in your words, and is no turn of its own", async () => {
+  const h = start([{ turns: [[{ questions: QUESTIONS }, { say: "收到。" }]] }]);
+  const id = await h.open();
+  await h.say(id, "怎么做");
+  await h.until(async () => ((await h.run(id))?.asks ?? []).length === 2);
+  const typed = await h.say(id, "都选推荐的");
+  await h.settled(id);
+  expect(h.log(0).find((entry) => "questions" in entry)?.answer as unknown).toEqual({ answers: { tier: { answers: ["都选推荐的"] }, target: { answers: ["都选推荐的"] } } });
+  expect((await asksOf(h, id)).map((ask) => ask.ask_answer?.custom)).toEqual(["都选推荐的", "都选推荐的"]);
+  expect(h.store.getMessage(typed.body.id).taken_as).toBe("answer");
+  expect(h.sent(0, "turn/start")).toHaveLength(1);
+  expect(h.sent(0, "turn/steer")).toHaveLength(0);
+});
+
+test("Stop while Codex's questions wait leaves cards that take no answer; the run waits on nothing", async () => {
+  const h = start([{ turns: [[{ questions: QUESTIONS }, { say: "不该到这" }]] }]);
+  const id = await h.open();
+  await h.say(id, "怎么做");
+  await h.until(async () => ((await h.run(id))?.asks ?? []).length === 2);
+  const stopped = await h.call<AgentRun>("POST", `/v1/agent-runs/${(await h.run(id))!.id}/stop`);
+  expect(stopped.body).toMatchObject({ status: "stopped", asks: [] });
+  await h.api.projects.idle();
+  const [tier] = await asksOf(h, id);
+  expect((await h.call("POST", `/v1/messages/${tier!.id}/answer`, { selected: ["正式支持"] })).status).toBe(422);
+  expect(tier!.ask_answer ?? null).toBeNull();
+  expect(h.lines(id).some((line) => line.body === "不该到这")).toBe(false);
+});
+
+test("a question Codex marks secret gets no card, only a line saying it asked; options a card cannot hold are trimmed", async () => {
+  const many = Array.from({ length: 10 }, (_, index) => ({ label: index === 1 ? "选项 0" : `选项 ${index}` }));
+  const h = start([{ turns: [[{ questions: [
+    { id: "token", header: "Token", question: "你的 API key？", isSecret: true, options: null },
+    { id: "one", question: "只有一个选项？", options: [{ label: "唯一" }] },
+    { id: "many", question: "选一个", options: [{ label: "选项 0" }, ...many] },
+  ] }, { say: "好" }]] }]);
+  const id = await h.open();
+  await h.say(id, "开始");
+  await h.until(async () => ((await h.run(id))?.asks ?? []).length === 2);
+  expect(h.lines(id).some((line) => line.kind === "system" && line.body.includes("Token"))).toBe(true);
+  const [one, many8] = await asksOf(h, id);
+  // One option is no choice: a question for your words.
+  expect(one!.ask ?? null).toBeNull();
+  expect(many8!.ask?.options.map((option) => option.label)).toEqual(["选项 0", "选项 2", "选项 3", "选项 4", "选项 5", "选项 6", "选项 7", "选项 8"]);
+  expect((await h.call("POST", `/v1/messages/${one!.id}/answer`, { custom: "随便" })).status).toBe(200);
+  expect((await h.call("POST", `/v1/messages/${many8!.id}/answer`, { selected: ["选项 3"] })).status).toBe(200);
+  await h.settled(id);
+  expect(h.log(0).find((entry) => "questions" in entry)?.answer as unknown).toEqual({ answers: { one: { answers: ["随便"] }, many: { answers: ["选项 3"] } } });
+});

@@ -14,6 +14,7 @@ import { computed, Scroll, signal, Text, View } from "nsh";
 import { USER_MEMBER, type AgentRun, type Annotation, type Bot, type ClaudeCodeCommand, type DelegationView, type Message, type SessionSummary } from "@real-bot/protocol";
 import { classifySession, youBotPeer } from "../src/m/sidebar/session-groups";
 import { ApiBase } from "../src/m/api-base.ts";
+import { deep } from "../src/lib/reactive";
 import { runtime } from "../src/runtime";
 import { BotDmDialog } from "../src/ui/chat/BotDmDialog";
 import { ChatStage } from "../src/ui/chat/ChatStage";
@@ -27,7 +28,10 @@ const busy = signal(false);
 /** How many lines the story has posted into its scratch group so far. */
 const posted = signal(0);
 const popup = signal(false);
-const runOn = signal<"" | "running" | "approval" | "plan">("");
+const runOn = signal<"" | "running" | "approval" | "plan" | "asking">("");
+/** The agent's questions in the project session (`story-ask`): one its run waits on, one it no longer does; what you answered. */
+const asked = signal(false);
+const askAnswers = signal<Record<string, { selected: string[]; custom: string | null }>>({});
 const planMode = signal(false);
 const projectLines = signal<Message[]>([]);
 /** The batch of annotations in the project session (ADR 0095 decision 28), and each card's status. */
@@ -122,6 +126,21 @@ const DELEGATION = (): DelegationView[] => {
     : [];
 };
 
+/** As the runtime's store holds it: a deep proxy, whose arrays a component must copy before its `Each` draws them. */
+function askLine(id: string, body: string, at: string): Message {
+  const answer = askAnswers()[id];
+  return deep(line({
+    id,
+    session_id: PROJECT_ID,
+    kind: "ask",
+    author: "claude-code",
+    body,
+    created_at: at,
+    ask: { options: [{ label: "根目录" }, { label: "docs 目录", description: "docs/README.md" }], multi_select: false },
+    ask_answer: answer ? { ...answer, answered_at: D2 } : null,
+  }));
+}
+
 function projectBase(): Message[] {
   return [
     line({ id: "pj-1", session_id: PROJECT_ID, body: "把 README 的安装一节改短", created_at: D1 }),
@@ -129,6 +148,12 @@ function projectBase(): Message[] {
     line({ id: "pj-3", session_id: PROJECT_ID, kind: "system", author: "app", body: "已切到新的一天", created_at: D2 }),
     line({ id: "pj-4", session_id: PROJECT_ID, body: "再看一下测试", created_at: "2026-10-20T09:31:00.000Z" }),
     ...(annotated() ? [line({ id: "pj-5", session_id: PROJECT_ID, body: "按这两条改", created_at: "2026-10-20T09:33:00.000Z" })] : []),
+    ...(asked()
+      ? [
+          askLine("pj-ask-open", "要改哪一份 README？", "2026-10-20T09:34:00.000Z"),
+          askLine("pj-ask-ended", "测试跑哪一组？", "2026-10-20T09:32:30.000Z"),
+        ]
+      : []),
     ...projectLines(),
   ];
 }
@@ -170,6 +195,7 @@ function projectRun(): AgentRun | null {
     id: "run-story",
     session_id: PROJECT_ID,
     status: mode === "running" ? "running" : "waiting_approval",
+    asks: mode === "asking" ? ["pj-ask-open"] : undefined,
     activity: mode === "running" ? "Bash npm test" : null,
     partial: mode === "running" ? "我先跑一遍测试，看哪些用例挂了" : null,
     approval: mode === "approval" ? { kind_key: "bash", target: "npm test", summary: "Bash: rm -rf dist && npm test" } : mode === "plan" ? { kind_key: "plan", target: "plan.md", summary: "## 计划\n\n1. 合并安装三段\n2. 跑测试" } : null,
@@ -263,6 +289,16 @@ const PROJECT_COMMANDS: ClaudeCodeCommand[] = [
   { name: "review", description: "Review a pull request", argument_hint: "<pr>", aliases: [] },
 ];
 const api = ApiBase.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
+// A project question's answer goes to the daemon's answer endpoint, as a Bot's does; it comes back on the question.
+const realAnswerAsk = api.answerAsk!;
+api.answerAsk = function (this: unknown, ...args: unknown[]) {
+  const [id, answer] = args as [string, { selected: string[]; custom: string | null }];
+  if (!id.startsWith("pj-ask-")) return realAnswerAsk.apply(this, args);
+  said.set(`ask:${id}:${answer.selected.join(",")}|${answer.custom ?? ""}`);
+  askAnswers.set({ ...askAnswers(), [id]: answer });
+  runOn.set("running");
+  return Promise.resolve(askLine(id, "", D2));
+};
 const realCommands = api.projectCommands!;
 api.projectCommands = function (this: unknown, ...args: unknown[]) {
   if (args[0] !== PROJECT_ID) return realCommands.apply(this, args);
@@ -360,6 +396,10 @@ export default function ChatStageStory() {
             {button("show-project", "project", () => which.set("project"))}
             {button("story-run", "run", () => runOn.set("running"))}
             {button("story-approval", "approval", () => runOn.set("approval"))}
+            {button("story-ask", "ask", () => {
+              asked.set(true);
+              runOn.set("asking");
+            })}
             {button("story-plan", "plan card", () => runOn.set("plan"))}
             {button("story-annotated", "annotated", () => annotated.set(true))}
             {button("show-popup", "popup", () => popup.set(true))}

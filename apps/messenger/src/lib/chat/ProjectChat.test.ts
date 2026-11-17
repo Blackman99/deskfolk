@@ -830,3 +830,69 @@ test("a press on the index scrolls to that line and marks it; what comes in next
   expect(host.querySelector('[aria-current="location"]')?.getAttribute("data-index-id")).toBe("m15");
   close();
 });
+
+/** A project session whose agent asked a question, with the run waiting on it or not. */
+function asked(run: ReturnType<typeof anAgentRun> | null, stubs: Record<string, unknown> = {}) {
+  const session = aProjectSession();
+  const runtime = fakeRuntime(
+    {
+      sessions: [session],
+      messages: [
+        aMessage({
+          id: "ask-1",
+          session_id: "proj-1",
+          kind: "ask",
+          author: "agent",
+          body: "用哪个数据库？",
+          ask: { options: [{ label: "SQLite", description: "本地文件" }, { label: "Postgres" }], multi_select: false },
+          created_at: "2026-09-19T02:00:05.000Z",
+        }),
+      ],
+      agentRuns: run ? { "proj-1": run } : {},
+    },
+    stubs,
+  );
+  const view = render(ProjectChat, { runtime, t, selected: session, onOpenArtifact: () => {} });
+  return { ...view, runtime };
+}
+
+test("a question the run waits on is a card under its words, and its answer goes to the question", async () => {
+  const draft = { askId: "ask-1", body: "", selected: ["SQLite"], version: 1, error: null, ended: false };
+  const { host, runtime, close } = asked(anAgentRun({ status: "waiting_approval", asks: ["ask-1"] }), { getAskDraft: () => draft });
+  const line = host.querySelector('[data-line="ask"]');
+  expect(line?.getAttribute("data-message-id")).toBe("ask-1");
+  expect(line?.textContent).toContain("用哪个数据库？");
+  const labels = [...host.querySelectorAll(".ask-option-label")].map((el) => el.textContent);
+  expect(labels).toEqual(["SQLite", "Postgres"]);
+  expect(host.querySelector("[data-agent-approval]")).toBeNull();
+  const send = host.querySelector<HTMLButtonElement>(".ask-send");
+  expect(send?.disabled).toBe(false);
+  click(send);
+  await settle();
+  expect(runtime.calls.find((c) => c.name === "sendAsk")?.args).toEqual(["ask-1", { selected: ["SQLite"], custom: "" }, "proj-1"]);
+  close();
+});
+
+test("choosing an option on the card takes it into the draft", () => {
+  const { host, runtime, close } = asked(anAgentRun({ status: "waiting_approval", asks: ["ask-1"] }));
+  click(host.querySelectorAll<HTMLButtonElement>(".ask-option")[1]);
+  expect(runtime.calls.find((c) => c.name === "setAskSelection")?.args).toEqual(["ask-1", ["Postgres"]]);
+  close();
+});
+
+test("a question the run no longer waits on is read-only", () => {
+  const draft = { askId: "ask-1", body: "", selected: ["SQLite"], version: 1, error: null, ended: false };
+  for (const run of [null, anAgentRun({ status: "running", asks: [] }), anAgentRun({ status: "completed", asks: ["ask-1"] })]) {
+    const { host, close } = asked(run, { getAskDraft: () => draft });
+    expect(host.querySelector('[data-line="ask"] .ask-card')).not.toBeNull();
+    expect(host.querySelector(".ask-send")).toBeNull();
+    expect([...host.querySelectorAll<HTMLButtonElement>(".ask-option")].every((b) => b.disabled)).toBe(true);
+    close();
+  }
+});
+
+test("while questions are open the foot says the agent waits for your answer", () => {
+  const { host, close } = asked(anAgentRun({ status: "waiting_approval", asks: ["ask-1"] }));
+  expect(host.querySelector('[data-line="working"] .stream-step')?.textContent).toBe(t.project.waitingAnswer("Claude Code"));
+  close();
+});

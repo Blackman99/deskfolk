@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import type { PathHost } from "../workspace-paths";
-import { appToolName, decideAgentCall, isClaudeCredentialPath, touchesClaudeCredentials, type AgentCall } from "./policy";
+import { appToolName, decideAgentCall, isClaudeCredentialPath, QUESTION_KIND, touchesClaudeCredentials, type AgentCall } from "./policy";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-policy-")));
 // Outside the workspace, already a real path (macOS's /etc is a link to /private/etc).
@@ -400,4 +400,13 @@ test("the plan it presents is a card of its own in every mode; a Bot is never of
   }
   expect(decideAgentCall({ ...base, tool: "ExitPlanMode", input: { plan: "x" } }).kind).toBe("deny");
   expect(decideAgentCall({ ...base, plan, tool: "EnterPlanMode", input: {} }).kind).toBe("deny");
+});
+
+test("its own questions are a project session's cards in every mode, read-only too; a Bot asks with ask_user instead", () => {
+  const input = { questions: [{ question: "Which?", header: "Which", options: [{ label: "a", description: "" }, { label: "b", description: "" }], multiSelect: false }] };
+  for (const permission of ["read_only", "auto", "allow_all"] as const) {
+    expect(decideAgentCall({ ...base, permission, questions: true, tool: "AskUserQuestion", input }))
+      .toEqual({ kind: "ask", effect: false, appName: "AskUserQuestion", approval: { kind_key: QUESTION_KIND, target: "", summary: "" } });
+  }
+  expect(decideAgentCall({ ...base, tool: "AskUserQuestion", input }).kind).toBe("deny");
 });

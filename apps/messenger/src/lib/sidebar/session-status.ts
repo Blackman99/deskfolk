@@ -122,6 +122,8 @@ export function sidebarStatus(
  * window only if it was there to see it, so how one ended is left to the transcript, as for a Bot.
  */
 export function agentRunStatus(run: AgentRun | null | undefined, labels: StatusLabels): SessionStatusResult | null {
+  // Its questions for you are answers it waits on, not an approval (ADR 0095 addendum 2026-11-17).
+  if (run?.status === "waiting_approval" && !run.approval && (run.asks ?? []).length > 0) return { kind: "waiting_ask", label: labels.waitingAsk, isBusy: false };
   if (run?.status === "waiting_approval") return { kind: "waiting_approval", label: labels.waitingApproval, isBusy: false };
   if (run?.status !== "running") return null;
   if (run.idle) return { kind: "running", label: labels.background ?? labels.running, isBusy: true };

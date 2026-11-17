@@ -143,6 +143,11 @@ export function messageRoutes(ctx: RouteCtx): Response | Promise<Response> | nul
   if (params && method === "POST") {
     const body = input.body as { selected?: unknown; custom?: unknown };
     const ask = store.getMessage(params.id!);
+    // A project session's agent asked it (ADR 0095 addendum 2026-11-17): its run takes the answer.
+    if (store.projectOf(ask.session_id) !== null) {
+      store.assertUserMayPost(ask.session_id);
+      return jsonResponse(projects.answerAsk(ask.session_id, ask.id, { selected: body.selected, custom: body.custom }), 200, null);
+    }
     const answered = store.transaction(() => engine.replyAsk(ask.id, ask.session_id, { selected: body.selected, custom: body.custom }));
     return jsonResponse(answered, 200, null);
   }
