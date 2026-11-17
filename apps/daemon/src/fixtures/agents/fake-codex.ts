@@ -250,6 +250,12 @@ rpc.onRequest(async (method, params) => {
       return { thread: { id: THREAD_ID, cwd, forkedFromId: from.id, turns: from.turns }, model: script.model ?? "fake-codex-model", modelProvider: "openai", cwd, approvalPolicy: p.approvalPolicy ?? "untrusted", sandbox: { type: "readOnly" } };
     }
     case "thread/resume": {
+      // A thread made anew from a conversation (`history`), as another account's thread is carried over: a thread of its own.
+      if (Array.isArray(p.history)) {
+        THREAD_ID = `thread-${++threads}`;
+        cwd = String(p.cwd ?? process.cwd());
+        return { thread: { id: THREAD_ID, cwd }, model: script.model ?? "fake-codex-model", modelProvider: "openai", cwd, approvalPolicy: p.approvalPolicy ?? "untrusted", sandbox: { type: "readOnly" } };
+      }
       if (typeof p.threadId !== "string" || p.threadId !== (script.resumable ?? p.threadId)) throw new RpcError(-32600, `no rollout found for thread id ${String(p.threadId)}`);
       THREAD_ID = p.threadId;
       // A thread started after it is the next one.

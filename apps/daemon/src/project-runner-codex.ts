@@ -24,9 +24,13 @@ import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
 import { placeOfCall } from "./claude-code/tool-place";
 import { claudeLaunch, killsTree } from "./claude-code/spawn";
 import { classifyCodexError } from "./engine/agent/drivers/codex";
-import { resetMs, RESUME_MARGIN_MS } from "./engine/agent/account-switch";
+import { LIMIT_GUESS_MS, resetMs, RESUME_MARGIN_MS } from "./engine/agent/account-switch";
 import { lineTime, pickUpDetail } from "./prompts/transcript-copy";
-import { continueNote, outOfUsageLine } from "./project-limits";
+import { continueNote, outOfUsageLine, switchedLine } from "./project-limits";
+import { tildeDir } from "./claude-code/account";
+import { withCodexAppServer } from "./agents/codex-app-server";
+import { historyOf, rebuildThread } from "./agents/codex-history";
+import { readThread } from "./agents/codex-sessions";
 import { rpcPeer, type RpcPeer } from "./engine/agent/jsonrpc";
 import { absoluteFrom, decideAction, unwrapShell, type AppAction } from "./engine/agent/policy";
 import { agentTrace } from "./engine/agent/trace";
@@ -39,7 +43,7 @@ import type { Store } from "./store";
 export type CodexProjectDeps = {
   store: Store;
   /** The Codex a run starts, found as a Bot's is; a test brings its stand-in. */
-  resolve?: () => Promise<ResolvedAgent>;
+  resolve?: (configDir: string | null) => Promise<ResolvedAgent>;
   /** Each call starting and ending, with where it works, for the task map (ADR 0095): never stored. */
   onTool?: (frame: ToolFrame) => void;
 };
@@ -50,7 +54,7 @@ type Item = Record<string, unknown> & { id: string; type: string };
 type TurnEnd = { status?: string; error?: { message?: string; codexErrorInfo?: unknown } | null };
 
 /** A line Codex has not been sent yet: what it says, and the command it starts with (`/compact`, a skill's `/pdf:pdf`), if any. */
-type Queued = { input: CodexInput[]; command: { name: string; rest: string } | null };
+type Queued = { input: CodexInput[]; command: { name: string; rest: string } | null; messageIds: string[] };
 
 type Live = {
   runId: string;
@@ -75,6 +79,8 @@ type Live = {
   threadId: string | null;
   /** The turn going now; null between turns. */
   turnId: string | null;
+  /** Your lines the turn going now carries: one its plan's limit turned away is still unanswered (ADR 0110). */
+  inTurn: string[];
 };
 
 const INIT_TIMEOUT_MS = 60_000;
@@ -190,7 +196,7 @@ function takeNext(queue: Queued[]): Queued | null {
   if (first.command) return queue.shift()!;
   const command = queue.findIndex((line) => line.command);
   const words = queue.splice(0, command === -1 ? queue.length : command);
-  return { input: words.flatMap((line) => line.input), command: null };
+  return { input: words.flatMap((line) => line.input), command: null, messageIds: words.flatMap((line) => line.messageIds) };
 }
 
 /** The line with its leading `/name` written as `word` instead: `$name` for a skill, as Codex's own `$` writes it. */
@@ -213,9 +219,17 @@ function commandRan(command: CodexBuiltin, typed: string, en: boolean): string {
   return en ? `Ran /${typed}` : `已执行 /${typed}`;
 }
 
-/** The Codex a project session starts, found as a Bot's is: the path you set in Settings, or the one on this computer. */
-export function projectCodexOf(store: Store): () => Promise<ResolvedAgent> {
-  return () => resolveAgent({ runner: "codex", custom: null, setting: store.agentPath("codex"), configDir: null });
+/**
+ * The Codex a project session starts, found as a Bot's is — the path you set in Settings, or the
+ * one on this computer — on one of your Codex accounts (`CODEX_HOME`; null: the daemon's own).
+ */
+export function projectCodexOf(store: Store): (configDir?: string | null) => Promise<ResolvedAgent> {
+  return (configDir = null) => resolveAgent({ runner: "codex", custom: null, setting: store.agentPath("codex"), configDir });
+}
+
+/** The Codex home an account runs in: its own directory, or the daemon's (`CODEX_HOME`, else the one under your home folder). */
+export function codexHome(configDir: string | null): string {
+  return configDir ?? (process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"));
 }
 
 export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner {
@@ -259,6 +273,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     if (!command) store.nameProjectSessionIfUnnamed(sessionId, message.body);
     startRun(sessionId, () => ({
       input: lineInput(store, message, locale() === "en"),
+      messageIds: [message.id],
       command: command ? { name: command, rest: message.body.trim().slice(command.length + 1).trim() } : null,
     }));
   }
@@ -276,7 +291,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     if (live) {
       // A turn going now takes words at its next step, as Codex's own steer does. A command, and
       // anything sent after one still waiting, waits for the turn's end: it is a turn of its own.
-      if (!line.command && live.queue.length === 0 && live.rpc && live.threadId && live.turnId) steer(live, live.rpc, live.threadId, live.turnId, line.input);
+      if (!line.command && live.queue.length === 0 && live.rpc && live.threadId && live.turnId) steer(live, live.rpc, live.threadId, live.turnId, line.input, line.messageIds);
       else live.queue.push(line);
       return;
     }
@@ -284,7 +299,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     let finish!: () => void;
     const fresh: Live = {
       runId: run.id, sessionId, queue: [line], steering: new Set(), waiting: [], said: "", stopped: false, closing: false,
-      done: new Promise<void>((resolve) => { finish = resolve; }), abort: new AbortController(), rpc: null, threadId: null, turnId: null,
+      done: new Promise<void>((resolve) => { finish = resolve; }), abort: new AbortController(), rpc: null, threadId: null, turnId: null, inTurn: [],
     };
     lives.set(sessionId, fresh);
     const running = runSession(fresh).catch((error) => {
@@ -300,13 +315,15 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     void running.finally(() => settling.delete(running));
   }
 
-  function steer(live: Live, rpc: RpcPeer, threadId: string, turnId: string, input: CodexInput[]): void {
+  function steer(live: Live, rpc: RpcPeer, threadId: string, turnId: string, input: CodexInput[], ids: string[]): void {
     const going = rpc.request("turn/steer", { threadId, expectedTurnId: turnId, input }, STEER_TIMEOUT_MS).then(
-      () => {},
+      () => {
+        live.inTurn.push(...ids);
+      },
       // The turn ended first: the line starts the next one, ahead of a command sent after it.
       () => {
         const command = live.queue.findIndex((line) => line.command);
-        live.queue.splice(command === -1 ? live.queue.length : command, 0, { input, command: null });
+        live.queue.splice(command === -1 ? live.queue.length : command, 0, { input, command: null, messageIds: ids });
       },
     );
     live.steering.add(going);
@@ -338,7 +355,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     const en = locale() === "en";
     const project = store.projectOf(live.sessionId);
     if (!project) return;
-    const resolved = await resolve();
+    const resolved = await resolve(project.configDir);
     if (!resolved.ok) return fail(live, en ? `Codex was not found on this computer (${resolved.error})` : `这台电脑上没找到 Codex（${resolved.error}）`);
     if (!existsSync(project.dir)) return fail(live, en ? `${project.dir} is no longer there` : `${project.dir} 已经不在了`);
     if (live.stopped) return;
@@ -603,6 +620,30 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         store.recordProjectAgentSession(live.sessionId, id);
         model = opened?.model ?? model;
       };
+      /**
+       * The session's thread from another of your Codex accounts (ADR 0099 addendum 2026-11-17):
+       * each keeps its own threads, so the conversation is read there and opened here anew from its
+       * history (`agents/codex-history.ts`); what was said comes along, earlier tool calls do not.
+       */
+      const carry = async (threadId: string): Promise<boolean> => {
+        for (const home of [null, ...store.agentConfigDirs("codex")]) {
+          if (home === project.configDir) continue;
+          const other = await resolve(home).catch(() => null);
+          if (!other?.ok) continue;
+          const thread = await withCodexAppServer(other, project.dir, (peer) => readThread(peer, threadId)).catch(() => null);
+          if (!thread) continue;
+          const rebuilt = await rebuildThread(rpc, historyOf(thread), asks(), INIT_TIMEOUT_MS);
+          if (!rebuilt) return false;
+          live.threadId = rebuilt.id;
+          store.recordProjectAgentSession(live.sessionId, rebuilt.id);
+          model = rebuilt.model ?? model;
+          postLine(live.sessionId, "system", en
+            ? "The conversation came over from your other Codex account: everything said is here; earlier tool calls did not come along"
+            : "这段对话从你的另一个 Codex 账号接了过来：说过的话都在，之前的工具调用没有带过来");
+          return true;
+        }
+        return false;
+      };
       // The first run starts a thread Codex keeps, or branches the one carried on; every later one resumes its own.
       if (project.agentSession) {
         try {
@@ -610,9 +651,13 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
           live.threadId = opened?.thread?.id ?? project.agentSession;
           model = opened?.model ?? model;
         } catch (error) {
-          // A branch whose first turn never ran was never kept: branch the terminal thread again.
-          if (!project.source || !/no rollout found/i.test(error instanceof Error ? error.message : String(error))) throw error;
-          await fork(project.source);
+          if (!/no rollout found/i.test(error instanceof Error ? error.message : String(error))) throw error;
+          // Moved to another of your accounts since, which does not keep it: carried over from the one that does.
+          if (!(await carry(project.agentSession))) {
+            // A branch whose first turn never ran was never kept: branch the terminal thread again.
+            if (!project.source) throw error;
+            await fork(project.source);
+          }
         }
       } else if (project.source) await fork(project.source);
       else await thread();
@@ -712,7 +757,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
             store.recordProjectAgentSession(live.sessionId, null, true);
             postLine(live.sessionId, "system", commandRan("new", name, en));
             const after = withCommandWord(line.input, name, "");
-            if (after.length > 0) live.queue.unshift({ input: after, command: null });
+            if (after.length > 0) live.queue.unshift({ input: after, command: null, messageIds: line.messageIds });
             return true;
           }
         } catch (error) {
@@ -734,7 +779,9 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         while (live.steering.size > 0) await Promise.all([...live.steering]);
         const next = takeNext(live.queue);
         if (!next || next.input.length === 0 || live.stopped) break;
+        live.inTurn = next.messageIds;
         const going = next.command ? await command({ ...next, command: next.command }) : await words(next.input);
+        if (going) live.inTurn = [];
         if (!going) break;
       }
     } catch (error) {
@@ -747,15 +794,53 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       live.abort.abort();
     }
     if (live.stopped) return;
-    // Out of usage with a reset Codex said (ADR 0110): the line says when it picks up, and it does then.
-    if (failure && limitHit && resetsAt !== null && resetsAt > Date.now()) {
-      const en = locale() === "en";
-      fail(live, outOfUsageLine(locale(), pickUpDetail(locale(), en ? `resets ${lineTime(resetsAt, "en")}` : `${lineTime(resetsAt, "zh")} 重置`, resetsAt), "Codex"));
-      store.addProjectResume({ session_id: live.sessionId, run_id: live.runId, at: resetsAt + RESUME_MARGIN_MS, lines: [] });
-      return;
-    }
+    if (failure && limitHit) return outOfUsage(live, project.configDir, failure, resetsAt);
     if (failure) return fail(live, failure);
     update(live.runId, { status: "completed", activity: null, partial: null, approval: null });
+  }
+
+  /** An account by the name a line gives it. */
+  function accountName(dir: string | null, en: boolean): string {
+    return dir ? tildeDir(dir) : en ? "the default account" : "默认账号";
+  }
+
+  /**
+   * The run's turn was turned away by its account's plan limit (ADR 0110): the account is noted out;
+   * with another of your Codex accounts not out, the session moves there and goes on, told what was
+   * left unanswered; with none, and a reset Codex said, the line says when it picks up, and it does
+   * then. With neither, it stops as any failure does.
+   */
+  function outOfUsage(live: Live, from: string | null, detail: string, resetsAt: number | null): void {
+    const en = locale() === "en";
+    const known = resetsAt !== null && resetsAt > Date.now();
+    store.markAccountOut({ runner: "codex", dir: codexHome(from), email: null, until: known ? resetsAt! : Date.now() + LIMIT_GUESS_MS, known });
+    const unanswered = [...live.inTurn, ...live.queue.flatMap((line) => line.messageIds)];
+    const outs = new Set(store.accountsOut().filter((row) => row.runner === "codex").map((row) => row.dir));
+    const next = [null, ...store.agentConfigDirs("codex")].find((dir) => dir !== from && !outs.has(codexHome(dir)));
+    const reset = known ? (en ? `resets ${lineTime(resetsAt!, "en")}` : `${lineTime(resetsAt!, "zh")} 重置`) : null;
+    if (next !== undefined) {
+      keepSaid(live);
+      update(live.runId, { status: "failed", activity: null, partial: null, approval: null, error: detail });
+      store.tuneProjectSession(live.sessionId, { configDir: next });
+      postLine(live.sessionId, "system", switchedLine(locale(), accountName(from, en), accountName(next, en), reset));
+      // Once this run is gone: the next starts on the account moved to, and carries the thread over.
+      startRun(live.sessionId, () => ({ input: [{ type: "text", text: continueNote(locale(), "switched", messagesOf(unanswered), "Codex"), text_elements: [] }], command: null, messageIds: [] }));
+      return;
+    }
+    if (!known) return fail(live, detail);
+    fail(live, outOfUsageLine(locale(), pickUpDetail(locale(), reset, resetsAt!), "Codex"));
+    store.addProjectResume({ session_id: live.sessionId, run_id: live.runId, at: resetsAt! + RESUME_MARGIN_MS, lines: unanswered });
+  }
+
+  /** Your lines by id, those still there. */
+  function messagesOf(ids: readonly string[]): Message[] {
+    return ids.flatMap((id) => {
+      try {
+        return [store.getMessage(id)];
+      } catch {
+        return [];
+      }
+    });
   }
 
   function liveRun(runId: string): Live | null {
@@ -785,7 +870,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         store.dropProjectResume(due.session_id);
         // You spoke since, or a run is going: the session has moved on.
         if (lives.has(due.session_id) || store.latestAgentRun(due.session_id)?.id !== due.run_id) continue;
-        startRun(due.session_id, () => ({ input: [{ type: "text", text: continueNote(locale(), "reset", [], "Codex"), text_elements: [] }], command: null }));
+        startRun(due.session_id, () => ({ input: [{ type: "text", text: continueNote(locale(), "reset", messagesOf(due.lines), "Codex"), text_elements: [] }], command: null, messageIds: [] }));
       }
     },
     answer(runId, allow) {

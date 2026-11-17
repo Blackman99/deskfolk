@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A Codex project session picks its account, and moves to another when one runs out
+
+- The composer's picker lists your Codex accounts (the `CODEX_HOME`s listed in Settings › Agents) as it lists Claude accounts. Codex keeps a thread under one account only, so after a move the next run reads the conversation through your other account's Codex and opens it anew there: everything said comes along, earlier tool calls do not.
+- When a Codex turn hits its plan's limit, the session moves to another Codex account of yours that is not out and goes on, quoting what you had not had an answer to. With every account out, it picks up at the reset Codex named, quoting those lines too.
+
 ### Project sessions can start and carry on Antigravity (agy)
 
 - Pick Antigravity in the New session sheet, or carry on an agy session from your terminal (the import sheet and the first-launch wizard list them). Each run is your local `agy acp --sandbox` in the project directory; your agy's own configuration, skills and MCP apply as they are.

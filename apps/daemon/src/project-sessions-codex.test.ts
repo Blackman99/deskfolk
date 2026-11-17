@@ -224,7 +224,52 @@ test("a turn Codex's plan limit stopped, with its reset said, picks up by itself
   h.api.projects.resumeAfterLimits!(new Date(resetsAt * 1000 + 61_000));
   await h.until(() => h.lines(id).some((row) => row.body === "额度回来了，接着做完了"));
   const asked = h.sent(1, "turn/start").map((params) => JSON.stringify(params.input));
-  expect(asked.some((input) => input.includes("现在额度恢复了"))).toBe(true);
+  expect(asked.some((input) => input.includes("现在额度恢复了") && input.includes("跑一遍测试"))).toBe(true);
+  expect(h.store.projectResumes()).toEqual([]);
+});
+
+test("moved to another Codex account, the next run carries the thread over from the one that has it", async () => {
+  const other = realpathSync(mkdtempSync(join(tmpdir(), "codex-home-b-")));
+  closes.push(() => rmSync(other, { recursive: true, force: true }));
+  const stored = [{ id: "thread-1", cwd: "/x", preview: "hi", source: "vscode", updatedAt: 1, turns: [
+    { id: "t1", status: "completed", startedAt: 1, completedAt: 2, items: [{ type: "userMessage", id: "u", content: [{ type: "text", text: "Remember HERON" }] }, { type: "agentMessage", id: "a", text: "ok", phase: "final_answer" }] },
+  ] }];
+  // Run 1 on the default account; run 2 on the other, which does not have the thread; then the default account's app-server is asked for it.
+  const h = start([{ turns: [[{ say: "ok" }]] }, { resumable: "none-here", turns: [[{ say: "HERON" }]] }, { stored, turns: [] }]);
+  h.store.setAgentConfigDirs("codex", [other]);
+  const id = await h.open();
+  await h.say(id, "Remember HERON");
+  await h.settled(id);
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { config_dir: other })).status).toBe(200);
+  await h.say(id, "Which word?");
+  await h.until(async () => (await h.run(id))?.status === "completed" && h.lines(id).at(-1)?.body === "HERON");
+  // Made anew there from the conversation read under the default account.
+  expect(h.sent(2, "thread/read")).toEqual([expect.objectContaining({ threadId: "thread-1", includeTurns: true })]);
+  const rebuilt = h.sent(1, "thread/resume").find((params) => Array.isArray(params.history));
+  expect(rebuilt?.history).toEqual([
+    { type: "message", role: "user", content: [{ type: "input_text", text: "Remember HERON" }] },
+    { type: "message", role: "assistant", content: [{ type: "output_text", text: "ok" }], phase: "final_answer" },
+  ]);
+  expect(h.store.projectOf(id)?.configDir).toBe(other);
+  expect(h.lines(id).some((line) => line.kind === "system" && line.body.includes("从你的另一个 Codex 账号接了过来"))).toBe(true);
+});
+
+test("out of usage, a Codex session moves to another account of yours and goes on, quoting what it had not answered", async () => {
+  const other = realpathSync(mkdtempSync(join(tmpdir(), "codex-home-b-")));
+  closes.push(() => rmSync(other, { recursive: true, force: true }));
+  const resetsAt = Math.floor(Date.now() / 1000) + 7200;
+  const h = start([
+    { turns: [[{ limits: { resetsAt } }, { fail: { message: "You've hit your usage limit", codexErrorInfo: "usageLimitExceeded", errorNotice: true } }]] },
+    { turns: [[{ say: "换了账号，接着做完了" }]] },
+  ]);
+  h.store.setAgentConfigDirs("codex", [other]);
+  const id = await h.open();
+  await h.say(id, "跑一遍测试");
+  await h.until(() => h.lines(id).some((row) => row.body === "换了账号，接着做完了"));
+  expect(h.store.projectOf(id)?.configDir).toBe(other);
+  expect(h.store.accountsOut().map((row) => [row.runner, row.known])).toEqual([["codex", true]]);
+  const asked = h.sent(1, "turn/start").map((params) => JSON.stringify(params.input));
+  expect(asked.some((input) => input.includes("现在会话换到了用户的另一个账号") && input.includes("跑一遍测试"))).toBe(true);
   expect(h.store.projectResumes()).toEqual([]);
 });
 
@@ -332,7 +377,9 @@ test("a Codex session's model and level reach its next turn; what it has not got
   expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { model: "gpt-5.6-luna", effort: "high" })).status).toBe(200);
   expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { effort: "ultra" })).status).toBe(422);
   expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { mode: "plan" })).status).toBe(422);
-  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { config_dir: null })).status).toBe(422);
+  // Codex's accounts are its homes (ADR 0099 addendum): one not listed is refused.
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { config_dir: null })).status).toBe(200);
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { config_dir: "/not/listed" })).status).toBe(422);
   await h.say(id, "你好");
   await h.settled(id);
   expect(h.sent(0, "thread/start")[0]).toMatchObject({ model: "gpt-5.6-luna" });

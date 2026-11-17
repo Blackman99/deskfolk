@@ -23,7 +23,8 @@
 	import { describeStep, stepRow, type StepRow } from './turn-activity.ts';
 	import { ComposerVoice, spacedHeard } from './composer-voice.svelte.ts';
 	import { loadClaudeModels } from '../claude-models.svelte.ts';
-	import { accountChoices, agentModels, claudeStatus, loadAgentsStatus, loadClaudeStatus } from './project-agent-options.svelte.ts';
+	import { accountChoices, agentModels, agentsStatus, claudeStatus, loadAgentsStatus, loadClaudeStatus } from './project-agent-options.svelte.ts';
+	import { agentAccountOptions, agentStatusOf } from '../runner-choice.ts';
 	import AgentTune from './AgentTune.svelte';
 	import ProjectCommandMenu from './ProjectCommandMenu.svelte';
 	import ProjectPlanCard from './ProjectPlanCard.svelte';
@@ -138,7 +139,8 @@
 		const dir = account || null;
 		if (agent === 'claude_code') untrack(() => loadClaudeModels(api, dir));
 	});
-	const accountOptions = $derived(accountChoices(claudeStatus(), account, t.project.defaultAccount));
+	/** Claude Code's accounts by the email each signs in with; another agent's (Codex's homes) as Settings lists them. */
+	const accountOptions = $derived(claudeSession ? accountChoices(claudeStatus(), account, t.project.defaultAccount) : agentAccountOptions(agentStatusOf(agentsStatus(), agent), account, t));
 	/** Picked only with a second account to pick, or the session already on one. */
 	const accountShown = $derived(caps.accounts && accountOptions.length > 1);
 	const model = $derived(selected.project_model ?? '');

@@ -41,11 +41,15 @@ export function createAgentSessions(deps: { store: Store; codex: CodexSessions; 
           return { items, error: null };
         }
         case "codex": {
-          try {
-            return { items: await deps.codex.list(null, limit, store.knownAgentSessions(agent)), error: null };
-          } catch (error) {
-            return { items: [], error: message(error) };
-          }
+          // Each of your Codex accounts keeps its own threads: every one is asked, newest first across them.
+          const known = store.knownAgentSessions(agent);
+          const errors: string[] = [];
+          const lists = await Promise.all([null, ...store.agentConfigDirs("codex")].map((home) => deps.codex.list(home, limit, known).catch((error) => {
+            errors.push(message(error));
+            return [];
+          })));
+          const items = lists.flat().sort((a, b) => b.modified_at.localeCompare(a.modified_at)).slice(0, limit);
+          return { items, error: errors[0] ?? null };
         }
         case "antigravity": {
           try {
@@ -66,7 +70,7 @@ export function createAgentSessions(deps: { store: Store; codex: CodexSessions; 
           return readClaudeSession(file, sessionId);
         }
         case "codex": {
-          if (configDir !== null) throw new HttpError(422, "invalid_args", "config_dir is not one of your Codex accounts");
+          if (configDir !== null && !store.agentConfigDirs("codex").includes(configDir)) throw new HttpError(422, "invalid_args", "config_dir is not one of your Codex accounts");
           const read = await deps.codex.read(configDir, sessionId).catch((error) => {
             throw new HttpError(502, "agent_unavailable", `Codex could not be asked: ${message(error)}`);
           });

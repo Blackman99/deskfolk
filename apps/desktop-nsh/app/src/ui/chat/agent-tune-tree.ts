@@ -30,7 +30,7 @@ export type AgentTuneSource = {
 export function agentTuneTree(source: AgentTuneSource): TuneTree {
   const p = () => source.t.project;
   /** Each column's width, so the field can keep room for every column that may open beside the first. */
-  const account = (): TuneLevel => ({ key: "account", heading: p().accountLabel, width: 264, note: source.accountLocked ? p().accountBusy : null });
+  const account = (): TuneLevel => ({ key: "account", heading: source.models ? p().accountLabelOf(source.agentName) : p().accountLabel, width: 264, note: source.accountLocked ? p().accountBusy : null });
   const model = (): TuneLevel => ({ key: "model", heading: p().modelLabel, width: 290, details: true });
   const effort = (): TuneLevel => ({ key: "effort", heading: p().effortLabel, width: 140, leaf: true });
 
@@ -68,7 +68,8 @@ export function agentTuneTree(source: AgentTuneSource): TuneTree {
     focusAt: (level, value, focus) => {
       if (level === "account") {
         if (value === focus.account) return focus;
-        loadClaudeModels(source.client, value || null);
+        // Claude Code's models are each account's own; another agent lists one set.
+        if (!source.models) loadClaudeModels(source.client, value || null);
         return { account: value, model: source.tune.model, effort: source.tune.effort };
       }
       if (level === "model") return { ...focus, model: value, effort: keptOn(listOf(focus.account), value) };

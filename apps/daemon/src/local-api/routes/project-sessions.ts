@@ -1,4 +1,4 @@
-import { AGENT_KINDS, isAgentEffort, isAgentModelName, isProjectAgent, isProjectAgentMode, PROJECT_AGENT_CAPS, PROJECT_AGENTS, type AgentReplay, type AgentTaskDetail, type CreateProjectSessionRequest, type ProjectAgentMode } from "@real-bot/protocol";
+import { AGENT_KINDS, isAgentEffort, isAgentModelName, isProjectAgent, isProjectAgentMode, PROJECT_AGENT_CAPS, PROJECT_AGENTS, type AgentReplay, type AgentTaskDetail, type CreateProjectSessionRequest, type ProjectAgent, type ProjectAgentMode } from "@real-bot/protocol";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -40,6 +40,10 @@ function unknownAgent(agent: never): never {
 export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response> | null {
   const { input, store, publish, projects, method, path, url, options } = ctx;
   let params: ReturnType<typeof matchPath>;
+  /** Your accounts of an agent besides the daemon's own: Claude's account directories, Codex's homes (ADR 0099). */
+  const accountsOf = (agent: ProjectAgent): string[] => (agent === "claude_code"
+    ? claudeSessionRoots(store.claudeCodeConfigDirs()).flatMap((root) => (root.configDir ? [root.configDir] : []))
+    : store.agentConfigDirs(agent));
 
   // A new session in a directory, or one carrying a terminal session on, read through the agent's
   // own door (`agents/agent-sessions.ts`): only an account the listing reads is looked in, and the
@@ -69,8 +73,8 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
     const dir = typeof body.dir === "string" ? body.dir.trim() : "";
     if (!dir.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(dir)) throw new HttpError(422, "invalid_args", "dir must be an absolute path");
     const configDir = body.config_dir ?? null;
-    if (configDir !== null && !claudeSessionRoots(store.claudeCodeConfigDirs()).some((entry) => entry.configDir === configDir)) {
-      throw new HttpError(422, "invalid_args", "config_dir is not one of your Claude accounts");
+    if (configDir !== null && !accountsOf(agent).includes(configDir)) {
+      throw new HttpError(422, "invalid_args", `config_dir is not one of your ${agent === "claude_code" ? "Claude" : agent} accounts`);
     }
     return done(store.createProjectSession({ dir: dir.replace(/[\\/]+$/, "") || dir, agent, configDir, locale }));
   }
@@ -178,16 +182,22 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
     if (body.config_dir !== undefined) {
       if (!caps.accounts) throw new HttpError(422, "invalid_args", `a ${project.agent} session picks no account`);
       const configDir = body.config_dir;
-      const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
-      const to = roots.find((root) => root.configDir === configDir);
-      if (configDir !== null && (typeof configDir !== "string" || !to)) throw new HttpError(422, "invalid_args", "config_dir is not one of your Claude accounts");
+      if (configDir !== null && (typeof configDir !== "string" || !accountsOf(project.agent).includes(configDir))) {
+        throw new HttpError(422, "invalid_args", `config_dir is not one of your ${project.agent === "claude_code" ? "Claude" : project.agent} accounts`);
+      }
       if (configDir !== project.configDir) {
         const latest = store.latestAgentRun(params.id!);
         if (latest && (latest.status === "running" || latest.status === "waiting_approval")) {
           throw new HttpError(409, "conflict", "the account changes once the run going now has ended");
         }
-        const from = roots.find((root) => root.configDir === project.configDir) ?? roots[0]!;
-        for (const id of [project.agentSession, project.source]) if (id) carryClaudeSession(from, to ?? roots[0]!, id);
+        // Claude Code finds a session only under its account's own directory: it is copied there now.
+        // Codex's thread is carried over by the next run (`project-runner-codex.ts`), asked of Codex.
+        if (project.agent === "claude_code") {
+          const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
+          const to = roots.find((root) => root.configDir === configDir) ?? roots[0]!;
+          const from = roots.find((root) => root.configDir === project.configDir) ?? roots[0]!;
+          for (const id of [project.agentSession, project.source]) if (id) carryClaudeSession(from, to, id);
+        }
       }
       change.configDir = configDir;
     }

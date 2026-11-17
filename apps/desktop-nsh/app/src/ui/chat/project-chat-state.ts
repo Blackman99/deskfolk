@@ -21,7 +21,8 @@ import {
 } from "@real-bot/protocol";
 import { annotationsByMessage } from "../../m/annotations/model.ts";
 import { ProjectCitedPaths } from "../../m/chat/project-cited-path.ts";
-import { accountChoices, claudeStatus, loadAgentsStatus, loadClaudeStatus } from "../../m/chat/project-agent-options.svelte.ts";
+import { accountChoices, agentsStatus, claudeStatus, loadAgentsStatus, loadClaudeStatus } from "../../m/chat/project-agent-options.svelte.ts";
+import { agentAccountOptions, agentStatusOf } from "../../m/runner-choice";
 import { isCommandTask, placeTasks, sessionTasks, taskCommandRow, taskStepRow, type TaskStopItem } from "../../m/chat/project-tasks.ts";
 import { describeStep, stepRow, type StepRow } from "../../m/chat/turn-activity.ts";
 import { loadClaudeModels } from "../../m/claude-models.svelte.ts";
@@ -83,7 +84,8 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
     const dir = account() || null;
     if (agent() === "claude_code") untracked(() => void loadClaudeModels(api, dir));
   });
-  const accountOptions = () => accountChoices(claudeStatus(), account(), t().project.defaultAccount);
+  /** Claude Code's accounts by the email each signs in with; another agent's (Codex's homes) as Settings lists them. */
+  const accountOptions = () => (claudeSession() ? accountChoices(claudeStatus(), account(), t().project.defaultAccount) : agentAccountOptions(agentStatusOf(agentsStatus(), agent()), account(), t()));
   /** Picked only with a second account to pick, or the session already on one. */
   const accountShown = () => caps().accounts && accountOptions().length > 1;
   const tuneFailed = signal(false);

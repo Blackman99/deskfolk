@@ -36,7 +36,7 @@
 	let { t, agent, agentName, tune, models: ownModels, accounts, accountLocked, disabled, client, onpick, ...attrs }: Props = $props();
 
 	/** Each column's width, so the field can keep room for every column that may open beside the first. */
-	const ACCOUNT: TuneLevel = $derived({ key: 'account', heading: t.project.accountLabel, width: 264, note: accountLocked ? t.project.accountBusy : null });
+	const ACCOUNT: TuneLevel = $derived({ key: 'account', heading: ownModels ? t.project.accountLabelOf(agentName) : t.project.accountLabel, width: 264, note: accountLocked ? t.project.accountBusy : null });
 	const MODEL: TuneLevel = $derived({ key: 'model', heading: t.project.modelLabel, width: 290, details: true });
 	const EFFORT: TuneLevel = $derived({ key: 'effort', heading: t.project.effortLabel, width: 140, leaf: true });
 
@@ -73,7 +73,8 @@
 		focusAt: (level, value, focus) => {
 			if (level === 'account') {
 				if (value === focus.account) return focus;
-				loadClaudeModels(client, value || null);
+				// Claude Code's models are each account's own; another agent lists one set.
+				if (!ownModels) loadClaudeModels(client, value || null);
 				return { account: value, model: tune.model, effort: tune.effort };
 			}
 			if (level === 'model') return { ...focus, model: value, effort: keptOn(listOf(focus.account), value) };
