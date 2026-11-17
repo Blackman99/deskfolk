@@ -6,6 +6,21 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+(none)
+
+## 0.5.0 — 2026-11-17
+
+Deskfolk is the native app now, with no web view: on the Mac (macOS 14 or later) it updates from the Tauri app in place, and the Windows installer goes over it. Out of Claude usage, work goes on on your other account; videos and audio play in the file preview; a Bot's avatar is one of the task map's characters. Signed and notarized for macOS, an unsigned Windows installer; no Linux package in this release.
+
+### Deskfolk is the native app now, on the Mac (macOS 14 or later) and on Windows
+
+- The app is now the one rewritten on Native Shell (NSH): native windows with no web view, one interface for the desktop and, through its web build, the phone ([ADR 0107](docs/adr/0107-spike-native-desktop-on-nsh.md)). It takes the Tauri app's place with the same name, bundle id, data folder, Keychain item and port, so your conversations, settings, Bots and paired phones carry on, and "Download and install" in About replaces the Tauri app with it like any other update. The daemon inside it is the same as before.
+- It needs macOS 14 or later; the Tauri app ran on 13.
+- The window reconnects when its runtime starts again: each start gives the runtime a new token, and the window used to keep the one it opened with and stay disconnected. This also mends restarting the source runtime under `--stable-instance`.
+- On Windows the installer is the native app too, still unsigned: it goes into the Tauri app's folder under its uninstall entry, closing the running app first and keeping its main program's name, so the Start menu and desktop shortcuts, a taskbar pin and the launch at login still point at it; the data folder is left alone. It no longer needs WebView2. Setting up remote access from the Windows app (pairing a device, the device list, the relay) is not there yet; phones paired before keep connecting.
+- This release has no Linux package: the native Linux build is not finished. Installs there stay on 0.4.0, whose packages are on the 0.4.0 release page.
+- From source: `bun apps/desktop-nsh/scripts/dev.ts` runs it beside the installed app (a port, data folder and Keychain item of its own), `--stable-instance` in its place; `bun apps/desktop-nsh/scripts/package.ts --release` builds `Deskfolk.app` and its `.dmg` on a Mac, the installer on Windows.
+
 ### The sidebar folds and unfolds with words and icons moving each their own way
 
 - In the native (NSH) desktop build, folding the sidebar to its rail (⌘B) and back moved everything as one: the column's edge eased out over a quarter second and simply cut across names, last lines and avatars alike, and once it stopped the rail replaced the list in a single frame. With many conversations that took a while: with 150 of them the cut-off list stood for about 0.7 s before the rail appeared, as the rail made every avatar at once. Now the edge starts softly, is quickest early on and settles slowly, and the words and the icons move differently. Folding, the names, last lines, times and headings fade and draw in towards the avatars before the edge reaches them, while the avatars and buttons hold still; near the rail they hand over to it, and the rail's icons grow into place one after another from the top, a touch past their size and back. Unfolding plays the other way: the rail's icons shrink away, the list's avatars come in, and the words arrive last, sliding out from the avatars once there is room for them. Turning a fold back halfway goes back from where it is. A wider sidebar takes a little longer (up to about 0.4 s), so no frame moves the edge too far for the conversation beside it to keep up. With reduced motion the sidebar still switches at once, and the phone layout is unchanged.
@@ -185,10 +200,6 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### Setup and Settings keep the models you are picking
 
 - Any change to the saved settings, even one about something else (the theme, launch at login, setup's own save of the workspace a moment earlier), put the saved workspace, endpoint, models and default model back into setup and the settings, wiping what you had picked and not yet saved. A field now follows the saved settings only when its saved value changed.
-
-### A native desktop build joins the main branch (preview, from source)
-
-- The desktop app rewritten on Native Shell (NSH) is now on the main branch as `apps/desktop-nsh`: native windows with no web view, one interface for the desktop and, through its web build, the phone ([ADR 0107](docs/adr/0107-spike-native-desktop-on-nsh.md)). It runs on macOS; Windows and Linux are still skeletons. It is not in the releases: run it from source with `bun apps/desktop-nsh/scripts/dev.ts`, beside the installed app on a port, data folder and Keychain item of its own, or with `--stable-instance` in the installed app's place, on your own conversations, settings and remote access. The installed app stays the release until the native build matches it.
 
 ### The native build's light look on a Mac in Dark Mode
 
