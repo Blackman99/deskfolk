@@ -32,6 +32,8 @@ const runOn = signal<"" | "running" | "approval" | "plan" | "asking">("");
 /** The agent's questions in the project session (`story-ask`): one its run waits on, one it no longer does; what you answered. */
 const asked = signal(false);
 const askAnswers = signal<Record<string, { selected: string[]; custom: string | null }>>({});
+/** The running run's first subagent has ended. */
+const subagentDone = signal(false);
 const planMode = signal(false);
 const projectLines = signal<Message[]>([]);
 /** The batch of annotations in the project session (ADR 0095 decision 28), and each card's status. */
@@ -188,10 +190,23 @@ function projectAnnotations(): Annotation[] {
   return [row("pa-1", "这里改成 let", 2), row("pa-2", "第二行也看看", 3)];
 }
 
+/** What the running run has going, after the agent's last line: two subagents, and two commands of its own. */
+function runTasks(): AgentRun["tasks"] {
+  const task = (id: string, kind: string, status: string, description: string, at: string) =>
+    ({ id, kind, status, description, agent_type: kind === "subagent" ? "Explore" : null, tool_use_id: `toolu-${id}`, command: kind === "shell" ? description : null, summary: null, output_file: null, tool_uses: null, tokens: null, activity: null, started_at: at, ended_at: status === "running" ? null : at });
+  return [
+    task("sub-a", "subagent", subagentDone() ? "completed" : "running", "查登录测试", "2026-10-20T09:32:10.000Z"),
+    task("sub-b", "subagent", "running", "读 CHANGELOG", "2026-10-20T09:32:11.000Z"),
+    task("cmd-a", "shell", "completed", "bun test src/login.test.ts", "2026-10-20T09:32:12.000Z"),
+    task("cmd-b", "shell", "running", "pnpm dev", "2026-10-20T09:32:13.000Z"),
+  ] as unknown as AgentRun["tasks"];
+}
+
 function projectRun(): AgentRun | null {
   const mode = runOn();
   if (!mode) return null;
   return {
+    ...(mode === "running" ? { tasks: runTasks() } : {}),
     id: "run-story",
     session_id: PROJECT_ID,
     status: mode === "running" ? "running" : "waiting_approval",
@@ -395,6 +410,7 @@ export default function ChatStageStory() {
             {button("show-none", "none", () => which.set("none"))}
             {button("show-project", "project", () => which.set("project"))}
             {button("story-run", "run", () => runOn.set("running"))}
+            {button("story-subagent-done", "subagent done", () => subagentDone.set(true))}
             {button("story-approval", "approval", () => runOn.set("approval"))}
             {button("story-ask", "ask", () => {
               asked.set(true);

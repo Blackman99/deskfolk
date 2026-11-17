@@ -120,7 +120,8 @@ export function ProjectWorking(props: { state: ProjectState }) {
               <View class="self-stretch mt-[8px]">
                 <CommandActivity rows={s().commandRows()} />
               </View>
-              <ProjectSubagentEntry tasks={s().placed().bubble} onOpen={(task) => s().subagentOpen.set(task.id)} />
+              {/* Subagents only, as under a line: the bubble's commands are the rows above and its last line. */}
+              <ProjectSubagentEntry tasks={s().placed().bubble.filter((task) => task.kind === "subagent")} onOpen={(task) => s().subagentOpen.set(task.id)} />
             </If>
             <View testID="project-foot" class="flex-row self-stretch items-center gap-[6px] min-w-0 mt-[8px]">
               <View accessible={false} class="shrink-0 w-[7px] h-[7px] rounded-full bg-brand" style={{ opacity: pulse.opacity }} />

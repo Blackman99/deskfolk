@@ -76,6 +76,18 @@ test("the working bubble reads the run's tool frames: its commands folded above 
   close();
 });
 
+test("the working bubble's subagent card holds its subagents only, not the run's own commands", () => {
+  const task = (id: string, kind: string, status: string, description: string) =>
+    ({ id, kind, status, description, agent_type: null, tool_use_id: `toolu-${id}`, command: kind === "shell" ? description : null, summary: null, output_file: null, tool_uses: null, tokens: null, activity: null, started_at: "2026-09-19T02:00:10.000Z", ended_at: null });
+  const run = anAgentRun({
+    tasks: [task("sub-a", "subagent", "running", "查登录测试"), task("sub-b", "subagent", "running", "读 CHANGELOG"), task("cmd-a", "shell", "completed", "bun test"), task("cmd-b", "shell", "running", "pnpm dev")],
+  } as never);
+  const { host, close } = open(run);
+  const bubble = host.querySelector('[data-line="working"]');
+  expect([...(bubble?.querySelectorAll<HTMLElement>("[data-subagent]") ?? [])].map((chip) => chip.dataset.subagent)).toEqual(["sub-a", "sub-b"]);
+  close();
+});
+
 test("a run waiting on you shows the approval card and answers it", async () => {
   const { host, runtime, close } = open(
     anAgentRun({ status: "waiting_approval", approval: { kind_key: "bash", target: "rm -rf dist", summary: "Bash: rm -rf dist" } }),

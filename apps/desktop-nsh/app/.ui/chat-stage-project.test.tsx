@@ -87,6 +87,21 @@ test("a run in flight is a working bubble; an approval waiting is answered from 
   await app.waitUntil(() => !app.shows("id:project-approval"));
 });
 
+test("the working bubble's subagent card holds its subagents only, and a chip's dot goes when its subagent ends", async () => {
+  const app = await project();
+  await app.press("id:story-run");
+  await app.waitFor("id:project-working >> id:subagent-entry", { timeout: 10_000 });
+  expect(app.shows("id:project-working >> id:subagent-sub-a")).toBe(true);
+  expect(app.shows("id:project-working >> id:subagent-sub-b")).toBe(true);
+  // The run's own commands are not subagents: no chip opens one as a subagent with no record.
+  expect(app.shows("id:subagent-cmd-a")).toBe(false);
+  expect(app.shows("id:subagent-cmd-b")).toBe(false);
+  expect(app.shows("id:subagent-sub-a >> id:subagent-live")).toBe(true);
+  await app.press("id:story-subagent-done");
+  await app.waitUntil(() => !app.shows("id:subagent-sub-a >> id:subagent-live"), { timeout: 5_000 });
+  expect(app.shows("id:subagent-sub-b >> id:subagent-live")).toBe(true);
+});
+
 test("the plan switch in the box tunes the session's mode", async () => {
   const app = await project();
   expect(app.texts()).toContain("plan-mode:off");

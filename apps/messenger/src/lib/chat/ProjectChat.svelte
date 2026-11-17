@@ -766,7 +766,8 @@
 					{/if}
 					{#if !focusMode.on}
 						<CommandActivity rows={commandRows} {t} />
-						<ProjectSubagentEntry {t} tasks={placed.bubble} onOpen={(task) => (subagentOpen = task.id)} />
+						<!-- Subagents only, as under a line: the bubble's commands are the rows above and its last line. -->
+						<ProjectSubagentEntry {t} tasks={placed.bubble.filter((task) => task.kind === 'subagent')} onOpen={(task) => (subagentOpen = task.id)} />
 					{/if}
 					<div class="stream-foot" role="status" aria-live="polite">
 						<span class="pulse" aria-hidden="true"></span>

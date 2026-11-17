@@ -20,25 +20,27 @@ export function ProjectSubagentEntry(props: { tasks: readonly AgentRunTask[]; on
   const enter = enterMotion();
   const live = pulseMotion(() => true, 1800);
 
-  const Live = () => <View class="shrink-0 w-[5px] h-[5px] rounded-full bg-brand" style={{ opacity: live.opacity }} accessible={false} />;
+  const Live = () => <View testID="subagent-live" class="shrink-0 w-[5px] h-[5px] rounded-full bg-brand" style={{ opacity: live.opacity }} accessible={false} />;
 
-  const chip = (task: AgentRunTask, single: boolean) => (
+  /** `task` is read where it shows: a kept chip follows its task as it goes on and ends, where the
+   *  object it was made from would keep its dot after the task was done. */
+  const chip = (task: () => AgentRunTask, single: boolean) => (
     <View
       role="button"
-      testID={`subagent-${task.id}`}
-      accessibilityLabel={nameOf(task)}
-      tooltip={tip(nameOf(task))}
-      onPress={() => props.onOpen(task)}
+      testID={`subagent-${task().id}`}
+      accessibilityLabel={nameOf(task())}
+      tooltip={tip(nameOf(task()))}
+      onPress={() => props.onOpen(task())}
       class={`cursor-pointer select-none group flex-row items-center gap-[5px] min-w-0 max-w-full ${
         single ? "" : "pl-[5px] pr-[8px] py-[2.5px] border border-line rounded-full bg-bg hover:bg-line-hover hover:border-muted-light"
       }`}
     >
       <Icon name="bot" size={16} class="shrink-0 tint-ink-muted" />
-      <Text class={`shrink min-w-0 max-w-[240px] text-[12px] font-medium line-clamp-1 ${single ? "text-ink group-hover:text-brand" : "text-ink"}`}>{nameOf(task)}</Text>
-      <If when={!single && task.status === "running"}>
+      <Text class={`shrink min-w-0 max-w-[240px] text-[12px] font-medium line-clamp-1 ${single ? "text-ink group-hover:text-brand" : "text-ink"}`}>{nameOf(task())}</Text>
+      <If when={!single && task().status === "running"}>
         <Live />
       </If>
-      <If when={!single && noteOf(task)}>{(note) => <Text class="shrink-0 text-[12px] text-ink-muted">{note()}</Text>}</If>
+      <If when={!single && noteOf(task())}>{(note) => <Text class="shrink-0 text-[12px] text-ink-muted">{note()}</Text>}</If>
     </View>
   );
 
@@ -60,7 +62,7 @@ export function ProjectSubagentEntry(props: { tasks: readonly AgentRunTask[]; on
                 </View>
               </View>
               <View class="flex-row flex-wrap items-center gap-[5px]">
-                <Each of={props.tasks} key={(task) => task.id}>{(task) => chip(task(), false)}</Each>
+                <Each of={props.tasks} key={(task) => task.id}>{(task) => chip(task, false)}</Each>
               </View>
             </View>
           }
@@ -70,7 +72,7 @@ export function ProjectSubagentEntry(props: { tasks: readonly AgentRunTask[]; on
               class="flex-row items-center gap-[6px] min-w-0 max-w-full pl-[6px] pr-[10px] py-[3px] bg-pane border border-line rounded-full"
               style={{ boxShadow: shadow("xs"), opacity: enter.opacity, transform: [...enter.transform] }}
             >
-              {chip(task(), true)}
+              {chip(task, true)}
               <If
                 when={task().status === "running"}
                 else={<If when={noteOf(task())}>{(note) => <Text class="shrink-0 text-[12px] text-ink-muted">{note()}</Text>}</If>}

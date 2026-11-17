@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The working bubble lists only subagents as subagents
+
+- While a project session runs, the card of subagents in its working bubble also listed the run's background commands, which opened as a subagent whose record could not be read. It now holds its subagents only, as the card under a finished line does; the commands are the rows above it.
+- In the native app, a chip in that card now follows its task: a subagent that has ended loses its dot, and one that ended badly shows how, where it used to keep the dot it had when the card first showed it.
+
 ### A project session's agent can ask you questions, on cards you answer
 
 - Codex (in plan mode), Claude Code and Antigravity can stop to ask you questions with options. Each question is now a card in the conversation, the one a Bot asks with: pick an option (or several, where it allows), add words of your own, or type a reply below, which answers every card still open. The agent waits for all its questions, then goes on with your answers. Before, Codex's questions were turned away without your seeing them, and it replied as if you had ("choose one of the three options above"); Claude Code's and Antigravity's were not offered at all.
