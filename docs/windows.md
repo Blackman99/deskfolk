@@ -36,12 +36,15 @@ Claude Agent ([how it works](behavior.en.md#claude-agent)) can be picked on Wind
 
 The other local agents ([how they work](behavior.en.md#local-agents)) can be picked on Windows too, but none of them has been run on a Windows PC yet. npm installs (such as Codex) are `codex.cmd` and the like under `%APPDATA%\npm` and run through `cmd.exe`, as `claude.cmd` does; for one installed elsewhere, give its full path in Settings › Agents.
 
+## Notifications
+
+Deskfolk's notifications show as Windows toasts (up to 0.5.1 there were none), under its name and icon, and the count of what waits on you shows on its taskbar button. Pressing a toast opens its conversation. Settings › Notifications turns them on for this computer; Windows has no prompt, so if nothing shows, check that Deskfolk is allowed under Windows Settings → System → Notifications. A conversation you are looking at gets no toast.
+
 ## Not there yet
 
 - The optional independent runtime (off by default on the Mac too).
 - Holding off idle sleep while work runs (the Mac does it on power).
 - Downloading and installing an update inside the app: a new version still means a manual download in the browser.
-- Desktop notifications and the icon badge.
 - Frosted glass on Windows 10: the window's material is Windows 11's Mica, and on Windows 10 the window has a solid ground.
 - Image thumbnails. Images sent to a model are not affected.
 - Setting up remote access from the Windows app (from 0.5.0, the native app): pairing a device, the device list and the relay in Settings answer that it is not available. Phones paired before keep connecting.

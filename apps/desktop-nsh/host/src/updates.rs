@@ -297,14 +297,21 @@ pub fn proxy_for(
 }
 
 /// The proxy the system itself would use for `host`: `scutil --proxy` on
-/// macOS. `None` elsewhere (the Tauri app also reads Windows' Internet Settings; this host does not yet), or
+/// macOS, Internet Settings in the registry on Windows. `None` elsewhere, or
 /// when nothing is set.
 fn system_proxy_for(host: &str) -> Option<String> {
     #[cfg(target_os = "macos")]
     {
         system_proxy_dump().and_then(|dump| proxy_from_scutil(host, &dump))
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        let enabled = internet_settings::dword("ProxyEnable")? != 0;
+        let server = internet_settings::string("ProxyServer")?;
+        let overrides = internet_settings::string("ProxyOverride").unwrap_or_default();
+        proxy_from_windows_settings(host, enabled, &server, &overrides)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = host;
         None
@@ -389,6 +396,69 @@ fn glob_matches(pattern: &str, text: &str) -> bool {
         }
     }
     true
+}
+
+/// `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, read
+/// value by value (the Tauri app's, on the `windows` crate as `win_login.rs`).
+#[cfg(windows)]
+mod internet_settings {
+    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW};
+    use windows::core::{PCWSTR, w};
+
+    const KEY: PCWSTR = w!(r"Software\Microsoft\Windows\CurrentVersion\Internet Settings");
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    pub fn dword(name: &str) -> Option<u32> {
+        let value = wide(name);
+        let mut data = 0u32;
+        let mut size = std::mem::size_of::<u32>() as u32;
+        // SAFETY: a NUL-terminated UTF-16 value name, and a u32 buffer whose
+        // size is passed alongside it, both alive for the call.
+        let status = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                KEY,
+                PCWSTR(value.as_ptr()),
+                RRF_RT_REG_DWORD,
+                None,
+                Some((&mut data as *mut u32).cast()),
+                Some(&mut size),
+            )
+        };
+        status.is_ok().then_some(data)
+    }
+
+    pub fn string(name: &str) -> Option<String> {
+        let value = wide(name);
+        let mut size = 0u32;
+        // SAFETY: as above; no buffer asks only for the size in bytes.
+        let status =
+            unsafe { RegGetValueW(HKEY_CURRENT_USER, KEY, PCWSTR(value.as_ptr()), RRF_RT_REG_SZ, None, None, Some(&mut size)) };
+        if !status.is_ok() || size == 0 {
+            return None;
+        }
+        let mut buf = vec![0u16; (size as usize).div_ceil(2)];
+        // SAFETY: `buf` holds `size` bytes; RRF_RT_REG_SZ NUL-terminates it.
+        let status = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                KEY,
+                PCWSTR(value.as_ptr()),
+                RRF_RT_REG_SZ,
+                None,
+                Some(buf.as_mut_ptr().cast()),
+                Some(&mut size),
+            )
+        };
+        if !status.is_ok() {
+            return None;
+        }
+        let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        Some(String::from_utf16_lossy(&buf[..len]))
+    }
 }
 
 /// The proxy macOS would use for `host`, read from `scutil --proxy`: the

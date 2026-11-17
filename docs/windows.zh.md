@@ -36,12 +36,15 @@ Claude Agent（[怎么用](behavior.md#claude-agent)）在 Windows 上也能选�
 
 其他本机 Agent（[怎么用](behavior.md#本机-agent)）在 Windows 上也能选，但还都没在 Windows 电脑上跑过。npm 装的（比如 Codex）是 `%APPDATA%\npm` 下的 `codex.cmd`，和 `claude.cmd` 一样经 `cmd.exe` 跑；装在别处的在 设置 › Agent 里填完整路径。
 
+## 通知
+
+Deskfolk 的通知是 Windows 的通知（toast；0.5.1 及以前没有），带它的名字和图标；等着你的事有几件，任务栏按钮上就显示几。点一条通知会打开它的会话。在 设置 › 通知 里给这台电脑打开；Windows 不会弹窗问，什么都不出来时，到 Windows 设置 → 系统 → 通知 里看 Deskfolk 有没有被允许。你正在看的会话不弹通知。
+
 ## 还没有的
 
 - 可选的独立运行时（Mac 上也默认关闭）。
 - 有活在跑时挡住空闲睡眠（Mac 上插电时有）。
 - 在应用里下载并安装更新：发现新版仍要去浏览器手动下载。
-- 桌面通知与图标角标。
 - Windows 10 上没有毛玻璃：窗的材质是 Windows 11 的 Mica，Windows 10 的窗是实色底。
 - 图片缩略图。发给模型的图片不受影响。
 - 在 Windows 应用里设置远程访问（从 0.5.0 的原生版起）：设置里的配对设备、设备列表、中继都答不可用。之前配对过的手机照常能连。
