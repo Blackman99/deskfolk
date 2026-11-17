@@ -9,7 +9,7 @@
  * itself inside the window; Escape and a press outside close it, Escape handing the keyboard back to
  * `anchor`. Arrow keys, Home and End walk the rows that are not dimmed; Tab closes.
  */
-import { Image, Overlay, Text, View, type JSX, type ViewRef } from "nsh";
+import { Image, Overlay, platform, Text, View, type JSX, type ViewRef } from "nsh";
 import type { Axis, TabCloseScope } from "../../m/workbench/layout-types.ts";
 import type { Direction } from "../../m/workbench/layout-geometry.ts";
 import { SPLIT_TOWARDS } from "../../m/workbench/workbench-commands.ts";
@@ -19,6 +19,7 @@ import { Icon, type IconName } from "../Icon";
 import { rovingMenu } from "../sidebar/menu-roving";
 import { shadow } from "../styles";
 import { tip } from "../tip";
+import { layoutCommandsInPaneMenu, runMenuCommand } from "./menu-commands";
 import type { TabAction, TabClosing } from "./types";
 
 /**
@@ -184,6 +185,13 @@ export function PaneContextMenu(props: {
     if (props.floating && dock) group([{ key: "dock", testID: "wb-dock", label: t().dock, icon: { name: "panel-arrow-down" }, run: dock }]);
     const float = props.onFloat;
     if (float) group([{ key: "float-tab", testID: "wb-float-tab", label: t().floatTab, icon: { name: "panel-inset" }, run: float }]);
+    // Windows and Linux: the layout commands the Tauri app's window menu bar had (`menu-commands.ts`).
+    if (layoutCommandsInPaneMenu(platform.os)) {
+      group([
+        { key: "equalise", testID: "wb-equalise", label: t().equalise, icon: { name: "grid" }, run: () => runMenuCommand("pane-equalise") },
+        { key: "reset", testID: "wb-reset-layout", label: t().reset, icon: { name: "layout" }, run: () => runMenuCommand("pane-reset") },
+      ]);
+    }
     const closePane = props.onClosePane;
     if (closePane) group([{ key: "close-pane", testID: "wb-close-pane", label: t().close, icon: { name: "x" }, run: closePane }]);
     return out;

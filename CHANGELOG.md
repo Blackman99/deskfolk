@@ -15,6 +15,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - The close button puts the window away: the app stays in the notification area (the tray on Linux) and the Bots keep working, as in the old app. Quit in the tray's menu ends it. Version 0.5 closed the app and stopped the runtime.
 - Ctrl+W closes the tab in front of you, and puts the window away once no tab is left.
+- On Windows and Linux, a pane's right-click menu has Equalise and Reset Layout, which the old app had in its window's menu bar.
 - The window opens at the size and place it was left, maximized if it was. It goes down to 640 × 480 points.
 - Opening a file with its app, showing it in its folder, and choosing a workspace folder work on Windows and Linux too. A file that would run when opened (a program, a script, a shortcut) is shown in its folder instead.
 

@@ -24,6 +24,7 @@ import { isSessionPinned } from "../../m/sidebar/pinned-sessions.ts";
 import { spendCopyFor } from "../../m/spend/spend-copy.ts";
 import { updateChecker } from "../../m/update-checker.svelte.ts";
 import { activateTab, focusLeaf, replaceTabParams } from "../../m/workbench/layout-tree.ts";
+import { provideMenuCommands } from "../workbench/menu-commands";
 import type { WorkbenchTab } from "../../m/workbench/layout-types.ts";
 import { contentOfTab, contentToParams } from "../../m/workbench/pane-content.ts";
 import { paneMin } from "../../m/workbench/pane-mins.ts";
@@ -93,6 +94,8 @@ function ShellBody(props: { s: ShellState }) {
   const snapshot = () => s.snapshot();
   const artifact = s.artifact;
   const workbench = s.workbench;
+  // The pane menu's layout commands on Windows and Linux (`workbench/menu-commands.ts`).
+  provideMenuCommands(workbench.runMenuCommand);
   /** A conversation pulled out of the roster onto the workbench: only where the workbench is. */
   const sessionDrag = createSessionDrag({ source: workbench.sessionDragSource, titleOf: s.titleOf });
   /** A page covers the roster on a phone while one is open. */
