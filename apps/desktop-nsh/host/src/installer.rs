@@ -1,4 +1,4 @@
-//! Copied from the Tauri app (`apps/desktop/src-tauri/src/installer.rs`), unchanged but for
+//! Copied from the Tauri app (`v0.5.1:apps/desktop/src-tauri/src/installer.rs`), unchanged but for
 //! this line; `update_commands.rs` drives it.
 //!
 //! Download a release `.dmg` inside the app and swap the running bundle with
@@ -609,9 +609,9 @@ mod tests {
             bundle_root(Path::new("/Applications/Deskfolk.app/Contents/MacOS/Deskfolk")),
             Some(PathBuf::from("/Applications/Deskfolk.app"))
         );
-        // A `cargo run` / `tauri dev` binary is not in a bundle.
+        // A `cargo run` binary is not in a bundle.
         assert_eq!(
-            bundle_root(Path::new("/repo/apps/desktop/src-tauri/target/debug/real-bot-desktop")),
+            bundle_root(Path::new("/repo/apps/desktop-nsh/target/debug/deskfolk-nsh")),
             None
         );
         assert_eq!(bundle_root(Path::new("/usr/local/bin/real-bot")), None);

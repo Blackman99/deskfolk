@@ -1,5 +1,7 @@
 # 用量收到一处：一个接口、一个悬浮挂件 / Usage in one place: one route, one floating widget
 
+部分被 [ADR 0113](0113-the-tauri-shell-is-removed.md) 取代（2026-11-18）：Tauri 外壳已删除，这里描述的窗口一侧现在是原生应用的宿主（`apps/desktop-nsh/host/src`），见 [ADR 0107](0107-spike-native-desktop-on-nsh.md)。 / Superseded in part by [ADR 0113](0113-the-tauri-shell-is-removed.md) (2026-11-18): the Tauri shell is gone; the window side described here is now the native app's host (`apps/desktop-nsh/host/src`), see [ADR 0107](0107-spike-native-desktop-on-nsh.md).
+
 Status: implemented 2026-10-10. Replaces the sidebar meters of [ADR 0061](0061-claude-agent-runner.md) (the plan usage meter addendum) and [ADR 0079](0079-local-agents.md) (decision 10); what is asked of each agent, and how, is unchanged.
 
 ## 背景 / Context
@@ -55,7 +57,7 @@ You found the pill too big and hard to read with many accounts: a ball by defaul
 
 ## 补充：菜单栏也带上各家的标 / Addendum: the menu bar wears each agent's mark（2026-10-11）
 
-你说：「菜单里也要加上 LOGO。」决定 7 里「Claude 还是 Spark 标，别家照旧只写名字」改成：每个账号那一行的图标是它那家 Agent 的标（和挂件里同一套，`AgentLogo.svelte` 按 2 倍渲染一次、裁成圆形，存成 `src-tauri/src/agent-logos/<runner>.rgba`，菜单图标只收像素），外面一圈细环按最紧的窗口剩多少画、颜色同前；没登录、没查到的账号只有标没有环；不报套餐的那一行合在一起，仍没有图标。标只用来指明是哪家，和 ADR 0061、0072、0079 的商标说明一样。
+你说：「菜单里也要加上 LOGO。」决定 7 里「Claude 还是 Spark 标，别家照旧只写名字」改成：每个账号那一行的图标是它那家 Agent 的标（和挂件里同一套，`AgentLogo.svelte` 按 2 倍渲染一次、裁成圆形，存成 `src-tauri/src/agent-logos/<runner>.rgba`（2026-11-18 起在 `apps/desktop-nsh/assets/agent-logos/`），菜单图标只收像素），外面一圈细环按最紧的窗口剩多少画、颜色同前；没登录、没查到的账号只有标没有环；不报套餐的那一行合在一起，仍没有图标。标只用来指明是哪家，和 ADR 0061、0072、0079 的商标说明一样。
 
 You asked for the marks in the menu too. Decision 7's "the Spark for Claude, names only for the others" becomes: each account's line wears its agent's mark (the widget's own, rendered once from `AgentLogo.svelte` at twice its size, cut round, kept as raw RGBA since menu icons take pixels) inside a thin ring as full as what is left of its tightest window; a signed-out or unreadable account shows the mark alone; the shared line for agents with no plan still has no icon. Marks only name the agent, as ADRs 0061, 0072 and 0079 say.
 

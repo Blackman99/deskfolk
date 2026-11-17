@@ -623,7 +623,7 @@ sequenceDiagram
 
 ### 16.3 实施时仓库检查与隔离要求
 
-每个实现 PR 在声明完成前运行 `pnpm test`、`pnpm typecheck`；构建 `pnpm --filter @real-bot/messenger build` 与 `build:hosted`，涉及远程时补 remote / relay 构建和 edge 测试。原生变更执行 `pnpm --filter @real-bot/desktop build:native`、`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml` 及相关 Swift fixture；schema 变更执行 `pnpm --filter @real-bot/daemon check:db`。按 CI / 当前脚本复核依赖：CONTRIBUTING 中旧 sidecar 说明与当前 `externalBin: []` 已有差异，实施以 `docs/development.md` 和实际构建脚本为准并同步相关说明。
+每个实现 PR 在声明完成前运行 `pnpm test`、`pnpm typecheck`；构建 `pnpm --filter @real-bot/messenger build` 与 `build:hosted`，涉及远程时补 remote / relay 构建和 edge 测试。原生变更执行 `bun apps/desktop-nsh/scripts/build-native.ts`、`cargo test --workspace --manifest-path apps/desktop-nsh/Cargo.toml` 及相关 Swift fixture（本文写成时桌面壳还是 Tauri，当时的命令是 `build:native` 和 `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`）；schema 变更执行 `pnpm --filter @real-bot/daemon check:db`。按 CI / 当前脚本复核依赖，实施以 `docs/development.md` 和实际构建脚本为准并同步相关说明。
 
 布局变更先保存基线再运行 `pnpm --filter @real-bot/messenger test:visual`；构建 / 类型检查不得破坏正在运行的真实开发服务，必要时使用隔离工作树。测试使用临时数据、内存 Keychain、假模型和假 Push fetch；仅设 `REAL_BOT_DATA_DIR` 不足以隔离钥匙串。真机发送必须在明确授权的隔离订阅上进行，不自动接触个人设备、发布应用或部署公网。
 
@@ -649,7 +649,7 @@ sequenceDiagram
 - [Store 提交](../apps/daemon/src/store/transactions.ts)、[journal 映射](../apps/daemon/src/store/events.ts)、[会话已读](../apps/daemon/src/store/sessions.ts)、[消息](../apps/daemon/src/store/messages.ts)、[批准](../apps/daemon/src/store/approvals.ts)、[轮次恢复](../apps/daemon/src/store/turns.ts)、[日程领取](../apps/daemon/src/store/routines.ts)、[引擎失败 / 提问 / 日程](../apps/daemon/src/engine/)、[退出顺序](../apps/daemon/src/runtime.ts)、[信号入口](../apps/daemon/src/main.ts)。
 - [信使 runtime](../apps/messenger/src/lib/runtime.svelte.ts)、[未读](../apps/messenger/src/lib/sidebar/unread.ts)、[转录滚动](../apps/messenger/src/lib/chat/ChatStage.svelte)、[URL](../apps/messenger/src/lib/session-url.ts)、[设置](../apps/messenger/src/lib/settings/SettingsModal.svelte)。
 - [PWA Push 注册](../apps/messenger/src/lib/remote/push.ts)、[SW](../apps/messenger/static/sw.js)、[Manifest](../apps/messenger/static/manifest.webmanifest)、[远程隔离测试](../apps/messenger/src/lib/remote/isolation.test.ts)。
-- [Tauri 生命周期](../apps/desktop/src-tauri/src/lib.rs)、[本机 descriptor](../apps/desktop/src-tauri/src/local_api.rs)、[桌面依赖](../apps/desktop/src-tauri/Cargo.toml)、[平台最低版本](../apps/desktop/src-tauri/tauri.conf.json)、[中继单设备 route](../apps/relay/src/server.ts)。
+- [Tauri 生命周期](https://github.com/Blackman99/deskfolk/blob/v0.5.1/apps/desktop/src-tauri/src/lib.rs)、[本机 descriptor](https://github.com/Blackman99/deskfolk/blob/v0.5.1/apps/desktop/src-tauri/src/local_api.rs)、[桌面依赖](https://github.com/Blackman99/deskfolk/blob/v0.5.1/apps/desktop/src-tauri/Cargo.toml)、[平台最低版本](https://github.com/Blackman99/deskfolk/blob/v0.5.1/apps/desktop/src-tauri/tauri.conf.json)（Tauri 壳已删除，链到 v0.5.1 标签上的文件）、[中继单设备 route](../apps/relay/src/server.ts)。
 
 ### 平台与标准（查阅于 2026-09-21）
 

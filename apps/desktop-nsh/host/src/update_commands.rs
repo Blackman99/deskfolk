@@ -1,5 +1,5 @@
 //! The update commands the About card calls, answered as the Tauri app does
-//! (`apps/desktop/src-tauri/src/lib.rs`: `can_install_update`, `update_install_state`,
+//! (`v0.5.1:apps/desktop/src-tauri/src/lib.rs`: `can_install_update`, `update_install_state`,
 //! `cancel_update_install`, `start_update_install`, `install_update`, `stage_from_mount`). The feed
 //! check (`check_for_update`) is `updates::check`, registered for every desktop in `launch.rs`.
 //!

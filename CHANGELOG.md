@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The old Tauri app is gone from the source
+
+- From source, `pnpm dev` starts the native app's development build, beside the copy you installed; `pnpm dev:steady` is gone. Nothing installed changes: the app you download has been the native one since 0.5.0.
+- The Tauri app's code stays in the history, at tag `v0.5.1`.
+
 ### Pairing a phone works from a Windows PC, with Windows Hello
 
 - In the native Windows app, pairing a phone, removing one and the other remote access changes are confirmed with Windows Hello (your face, a fingerprint or the PIN), as in the old app. Without Hello set up, the card says so and keeps its button. Before, pairing there failed, with a message that blamed the relay's address.

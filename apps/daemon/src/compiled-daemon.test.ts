@@ -32,11 +32,9 @@ test("every Worker the daemon starts is an entrypoint wherever the daemon is com
   const workers = workerEntries();
   expect(workers).toContain("acceptance-match-worker.ts");
   const compile = (JSON.parse(readFileSync(join(import.meta.dir, "../package.json"), "utf8")) as { scripts: { compile: string } }).scripts.compile;
-  const sidecar = readFileSync(join(import.meta.dir, "../scripts/build-sidecar.ts"), "utf8");
   const native = readFileSync(join(import.meta.dir, "../../desktop-nsh/scripts/build-native.ts"), "utf8");
   for (const worker of workers) {
     expect(compile).toContain(` src/${worker} `);
-    expect(sidecar).toContain(`"src/${worker}"`);
     expect(native).toContain(`"apps/daemon/src/${worker}"`);
   }
 });

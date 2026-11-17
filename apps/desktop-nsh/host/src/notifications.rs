@@ -1,4 +1,4 @@
-//! The runtime's notification API, as the Tauri shell speaks it (`apps/desktop/src-tauri/src/
+//! The runtime's notification API, as the Tauri shell speaks it (`v0.5.1:apps/desktop/src-tauri/src/
 //! notifications.rs`): the DTOs, the HTTP calls and the presence queue. The loop that uses them is
 //! in `notification_loop.rs`. Names and JSON shapes are the Tauri shell's, so the runtime and the
 //! messenger see no difference between the two shells.

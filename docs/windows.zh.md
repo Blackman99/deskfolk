@@ -51,4 +51,4 @@ Deskfolk 的通知是 Windows 的通知（toast；0.5.1 及以前没有），带
 
 ## 从源码运行
 
-和 Mac 一样是 `pnpm install`、`pnpm dev`，另要 Rust 的 MSVC 工具链、Visual Studio Build Tools（勾选「使用 C++ 的桌面开发」），并先编一次终端 helper。前置条件和打包步骤见[开发说明](development.md#windows实验性)（中文）。
+和 Mac 一样是 `pnpm install`、`pnpm dev`（打开的是原生应用的开发版），另要 Rust 的 MSVC 工具链、Visual Studio Build Tools（勾选「使用 C++ 的桌面开发」）、cmake，并先编一次终端 helper。前置条件和打包步骤见[开发说明](development.md#windows实验性)（中文）。

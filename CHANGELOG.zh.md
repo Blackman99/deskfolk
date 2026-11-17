@@ -6,6 +6,11 @@
 
 ## Unreleased
 
+### 旧的 Tauri 应用从源码里删掉了
+
+- 从源码运行时，`pnpm dev` 启动的是原生应用的开发版，和你装好的版本并存；`pnpm dev:steady` 去掉了。装好的应用没有变化：从 0.5.0 起下载到的就是原生应用。
+- Tauri 应用的代码留在历史里，在 tag `v0.5.1`。
+
 ### 在 Windows 电脑上也能配对手机了，用 Windows Hello 确认
 
 - 原生 Windows 版里，配对手机、移除手机和其他远程访问的更改，都用 Windows Hello 确认（刷脸、指纹或 PIN），和旧版一样。没设置 Hello 时，卡片会说明，按钮保留。以前在 Windows 上配对会失败，提示的却是中继地址有问题。

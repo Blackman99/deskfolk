@@ -18,7 +18,7 @@ Record actual results; explain any check that was not run.
 
 - [ ] `pnpm test`
 - [ ] `pnpm typecheck`
-- [ ] `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`
+- [ ] `cargo test --workspace` in `apps/desktop-nsh` (and `nsh check App.tsx && nsh test` in its `app/`) when the native app changes
 - [ ] `pnpm --filter @real-bot/messenger build`
 - [ ] `pnpm --filter @real-bot/landing build` when landing-page files change, or not applicable / 改落地页时已构建，或不适用
 - [ ] UI changes exercised end to end, including shared state and edge cases, or not applicable / 已完成 UI 端到端、共享状态与边界验证，或不适用

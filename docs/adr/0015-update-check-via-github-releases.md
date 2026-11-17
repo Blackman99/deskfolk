@@ -1,5 +1,7 @@
 # 检查更新在浏览器打开下载，不做应用内安装
 
+部分被 [ADR 0113](0113-the-tauri-shell-is-removed.md) 取代（2026-11-18）：Tauri 外壳已删除，这里描述的窗口一侧现在是原生应用的宿主（`apps/desktop-nsh/host/src`），见 [ADR 0107](0107-spike-native-desktop-on-nsh.md)。
+
 构建目前是 ad-hoc 签名（`signingIdentity: "-"`），没有 minisign 密钥，`release.yml` 也没开 `uploadUpdaterJson`，`tauri-plugin-updater` 需要的签名与 `latest.json` 都不具备，用它只会在安装环节引入一个不可信的静默替换。因此决策是「检查 + 在系统浏览器打开下载」：桌面端定时问 GitHub 有没有新 release，有就把对应的 `.dmg` 或发布页交给系统浏览器，用户仍走一次手动打开、Gatekeeper 放行的安装流程，和现在下载新版本的路径一致，只是不用自己去仓库翻。
 
 查询与打开外链都放在窗口进程（Rust）一侧，而不是信使 webview：webview 的 CSP 把 `connect-src` 钉在回环地址，这是刻意的——聊天内容和工具输出最终会渲染进这个 webview，不应该让它顺带拿到访问任意外网的权限，哪怕只是为了读 GitHub。把请求放进 Rust 侧的 `updates.rs`，webview 只通过 Tauri 命令拿到结构化结果，CSP 不用为这一个功能开口子。同样，打开链接的新命令 `open_external_url` 只放行 `https://github.com/Blackman99/deskfolk/` 前缀：Tauri v2 里 `<a target="_blank">` 不会自动交给系统浏览器，必须有自定义命令，而只要这个命令存在，webview 里任何能拼字符串的内容（将来的富文本渲染、甚至恶意工具输出）理论上都可能调用它——白名单把它限制成「只能打开这个仓库的发布相关地址」，不是一个通用的开链接接口。

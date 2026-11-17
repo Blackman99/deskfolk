@@ -1,5 +1,5 @@
 //! The independent runtime's status and operations, answered as the Tauri app does today
-//! (`apps/desktop/src-tauri/src/lib.rs` `independent_runtime_status`, `independent_runtime`,
+//! (`v0.5.1:apps/desktop/src-tauri/src/lib.rs` `independent_runtime_status`, `independent_runtime`,
 //! `snapshot_independent_status`, `independent_runtime_op`, `recover_stale_independent_marker`,
 //! `restore_window_supervision_unless_adopted`; `handoff.rs` `status`; `launchd.rs`
 //! `IndependentPolicy`, `adopt_independent_marker`, `agent_loaded_in_gui_domain`).

@@ -56,4 +56,4 @@ Claude Agent（[怎么用](behavior.md#claude-agent)）在 Linux 上也能选：
 
 ## 从源码运行
 
-和 Mac 一样是 `pnpm install`、`pnpm dev`，另要 WebKitGTK 等系统开发包，并先编一次终端 helper（`cargo build --manifest-path apps/conpty-helper/Cargo.toml`）。前置条件和打包步骤见[开发说明](development.md#linux实验性)（中文）。
+和 Mac 一样是 `pnpm install`、`pnpm dev`（打开的是原生应用的开发版），另要 GTK 4、WebKitGTK 6.0、GStreamer、ALSA、libsecret 的开发包和 cmake，并先编一次终端 helper（`cargo build --manifest-path apps/conpty-helper/Cargo.toml`）。前置条件和打包步骤见[开发说明](development.md#linux实验性)（中文）。

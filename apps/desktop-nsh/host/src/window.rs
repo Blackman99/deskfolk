@@ -1,5 +1,5 @@
 //! The shell's windows: each an AppKit window with the system's sidebar material behind one NSH
-//! `AppView`, the same look the Tauri window had (`tauri.macos.conf.json`: sidebar effect, hidden
+//! `AppView`, the same look the Tauri window had (`v0.5.1:apps/desktop/src-tauri/tauri.macos.conf.json`: sidebar effect, hidden
 //! title, the content under the title bar). Every window runs its own engine and talks to the
 //! runtime itself, as every Tauri window ran its own page; nothing is shared in memory.
 

@@ -5,7 +5,7 @@ import type { ResolvedTheme } from "./theme.ts";
 
 /**
  * How the desktop window frames the page. On macOS the window has no title bar of its own
- * (`tauri.macos.conf.json`: overlay title bar, traffic lights inset, the sidebar material behind a
+ * (`v0.5.1:apps/desktop/src-tauri/tauri.macos.conf.json`: overlay title bar, traffic lights inset, the sidebar material behind a
  * transparent webview), so the page draws the frame: the lights sit at the start of the sidebar's
  * top row, the empty parts of the top rows drag the window, and the content is a card on the
  * material. Everywhere else (Windows, the browser, the phone) the system frames the window and

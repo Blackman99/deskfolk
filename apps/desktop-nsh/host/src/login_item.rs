@@ -1,5 +1,5 @@
 //! Launch at login, as `set_launch_at_login` and `register_login_item` do in the Tauri app
-//! (`apps/desktop/src-tauri/src/lib.rs`, which goes through `tauri_plugin_autostart`'s AppleScript
+//! (`v0.5.1:apps/desktop/src-tauri/src/lib.rs`, which goes through `tauri_plugin_autostart`'s AppleScript
 //! login item). Here it is the system's own `SMAppService.mainAppService`: the running `.app`
 //! registered as a login item (macOS 13+). A dev build answers `false` and changes nothing.
 //!

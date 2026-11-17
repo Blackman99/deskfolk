@@ -1,6 +1,5 @@
 node_modules
 .build/
-/apps/desktop/src-tauri/native/
 .DS_Store
 dist
 build
@@ -15,7 +14,6 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 # Compiled daemon sidecars for the desktop bundle
-apps/desktop/src-tauri/binaries/
 
 # Local planning, agent sessions, and verification artifacts
 .scratch/

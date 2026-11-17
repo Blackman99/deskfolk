@@ -1,5 +1,7 @@
 # 应用内下载更新并就地替换，浏览器下载降级保留
 
+部分被 [ADR 0113](0113-the-tauri-shell-is-removed.md) 取代（2026-11-18）：Tauri 外壳已删除，这里描述的窗口一侧现在是原生应用的宿主（`apps/desktop-nsh/host/src`），见 [ADR 0107](0107-spike-native-desktop-on-nsh.md)。
+
 [ADR 0015](0015-update-check-via-github-releases.md) 把「装」留给了用户：检查到新版就把 `.dmg` 丢给系统浏览器，下载、打开、拖进 `/Applications`、再过一次 Gatekeeper。那一步在未签名期间是对的，但它每次都要用户走完五个动作，而真正缺的东西——minisign 密钥和 `uploadUpdaterJson`——到现在也还没有。这条决策不是去等密钥，而是把「下载 + 替换」自己做掉：应用内下载带进度条，下载完校验包里的 app，替换当前这份 `.app`，然后自动重启。浏览器下载仍在，只是降级成按钮之一。
 
 仍然不用 `tauri-plugin-updater`：它要的是 `latest.json` 加 minisign 签名，没有密钥就只能关掉验签用它，那是拿一个「看起来有验签」的通道换一个实际没有的保证。自己这一条路把信任锚点写明白：下载 URL 必须是 `https://github.com/Blackman99/deskfolk/releases/download/` 前缀下的 `.dmg`（不含空白、控制字符和 `..`），走 TLS 到 github.com；挂载后读包里的 `Info.plist`（`plutil -convert json`，二进制或 XML 都能读），`CFBundleIdentifier` 必须是本应用的 identifier，`CFBundleShortVersionString` 必须正好是这次检查给出的那个版本号——资产被改名、指到别的版本、或者 release 里塞了别的 app，都停在这一步，不会走到替换。这套保证和用户自己点那个链接下载完全等价，少的只是 Finder 那几下。附带一个后果要写明：`ureq` 下载不会打 `com.apple.quarantine`，所以替换进去的那份不再被 Gatekeeper 拦——这正是白名单必须严格的原因，它是唯一决定「谁的字节能进 `/Applications`」的东西。

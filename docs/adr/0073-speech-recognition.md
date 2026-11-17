@@ -1,5 +1,7 @@
 # 语音识别 / Speech recognition
 
+部分被 [ADR 0113](0113-the-tauri-shell-is-removed.md) 取代（2026-11-18）：Tauri 外壳已删除，这里描述的窗口一侧现在是原生应用的宿主（`apps/desktop-nsh/host/src`），见 [ADR 0107](0107-spike-native-desktop-on-nsh.md)。 / Superseded in part by [ADR 0113](0113-the-tauri-shell-is-removed.md) (2026-11-18): the Tauri shell is gone; the window side described here is now the native app's host (`apps/desktop-nsh/host/src`), see [ADR 0107](0107-spike-native-desktop-on-nsh.md).
+
 Status: implemented 2026-10-09, at no engine level. Adds a speech endpoint beside the model endpoints of [ADR 0066](0066-anthropic-format-endpoints.md) and [ADR 0067](0067-local-model-servers.md); it is not one of them.
 
 你说的是（2026-10-09）：「让应用支持语音识别，支持接入常见的端点以及自定义端点。」在这之前，输入框只能打字。手机上打长句费劲；电脑上有系统听写，但它不知道你在跟哪个 Bot 说话，也接不了你自己选的服务。

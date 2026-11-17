@@ -42,7 +42,7 @@ The installed app registers the Mac from **Settings → Remote access**: relay a
 
 ### Development pairing loop (source only)
 
-The Tauri setup/confirmation commands refuse a development origin, and a source-run daemon without the switch uses the sealed provider, which answers `g_pack_not_verified`. To exercise the protocol from source, start the daemon with `REAL_BOT_DEV_REMOTE=1`. It uses the same file credential store and opens the window's setup dispatcher on `dev-remote/setup.sock` (0600; a long data directory falls back to `$TMPDIR/real-bot-dev-remote-<hash>.sock`). Framing, operations and the 120-second one-shot challenge window are the production ones; two extra operations stand in for the Touch ID sheet.
+The native shell's setup/confirmation commands refuse a development build, and a source-run daemon without the switch uses the sealed provider, which answers `g_pack_not_verified`. To exercise the protocol from source, start the daemon with `REAL_BOT_DEV_REMOTE=1`. It uses the same file credential store and opens the window's setup dispatcher on `dev-remote/setup.sock` (0600; a long data directory falls back to `$TMPDIR/real-bot-dev-remote-<hash>.sock`). Framing, operations and the 120-second one-shot challenge window are the production ones; two extra operations stand in for the Touch ID sheet.
 
 ```sh
 REAL_BOT_DEV_REMOTE=1 bun apps/daemon/src/main.ts

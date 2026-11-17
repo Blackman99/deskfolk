@@ -13,7 +13,11 @@ updates:
     open-pull-requests-limit: 10
 
   - package-ecosystem: cargo
-    directory: /apps/desktop/src-tauri
+    directory: /apps/desktop-nsh
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # NSH's crates are pinned to one commit together with the CLI that builds the bundles
+    # (`apps/desktop-nsh/Cargo.toml`); they move by hand, all at once.
+    ignore:
+      - dependency-name: "nsh-*"

@@ -1,4 +1,4 @@
-//! The traffic lights where the Tauri window had them (`tauri.macos.conf.json`'s
+//! The traffic lights where the Tauri window had them (`v0.5.1:apps/desktop/src-tauri/tauri.macos.conf.json`'s
 //! `trafficLightPosition`, x 18, y 28): the close button 18 points in, the three centred on the
 //! sidebar's brand row, 26 points down. The page's mac chrome (`window-chrome.ts`) leaves them that
 //! room: the brand row starts 84 points in, the folded rail 40 points down. Left where AppKit puts

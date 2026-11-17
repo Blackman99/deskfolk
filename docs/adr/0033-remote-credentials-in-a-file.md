@@ -1,5 +1,7 @@
 # 发布包的远控凭据存在文件里，确认由窗自己弹触控 ID
 
+部分被 [ADR 0113](0113-the-tauri-shell-is-removed.md) 取代（2026-11-18）：Tauri 外壳已删除，这里描述的窗口一侧现在是原生应用的宿主（`apps/desktop-nsh/host/src`），见 [ADR 0107](0107-spike-native-desktop-on-nsh.md)。
+
 [ADR 0022](0022-native-gated-remote-daemon.md) 把远控的长期密钥放进钥匙串的专用访问组，只放行签名 helper 和「封好口」的编译态守护进程，并且在打包门（G-pack）通过前让发布包一律回 `g_pack_not_verified`。这条路今天走不通，而且不只是差一个开关：
 
 - 访问组要正式签名和描述文件授权，而发布包是 ad-hoc 签名，没有 Team ID。

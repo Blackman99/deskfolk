@@ -1,5 +1,5 @@
 //! The bundled native helper's confirmation, answered as the Tauri app's
-//! `remote_native_confirmation` does (`apps/desktop/src-tauri/src/remote_native.rs`): the sealed
+//! `remote_native_confirmation` does (`v0.5.1:apps/desktop/src-tauri/src/remote_native.rs`): the sealed
 //! `libRemoteCredentials.dylib` in `Contents/Resources/native/` and the runtime helper beside it,
 //! and, for the shipped daemon, the owner check on a Touch ID sheet (`local_confirm.rs`).
 //!

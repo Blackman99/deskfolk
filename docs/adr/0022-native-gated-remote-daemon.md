@@ -1,5 +1,7 @@
 # ADR 0022: Native-gated outbound remote daemon and shared draining
 
+Superseded in part by [ADR 0113](0113-the-tauri-shell-is-removed.md) (2026-11-18): the Tauri shell is gone; the window side described here is now the native app's host (`apps/desktop-nsh/host/src`), see [ADR 0107](0107-spike-native-desktop-on-nsh.md).
+
 Status: experimental implementation; production activation blocked. Date: 2026-09-20. Superseded in part by [ADR 0033](0033-remote-credentials-in-a-file.md) (2026-09-28): the shipped app keeps remote credentials in a file and confirms in its window; the sealed native path below stays unshipped.
 
 ## Decision

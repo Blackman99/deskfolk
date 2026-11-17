@@ -1,8 +1,8 @@
 # 试做：桌面端换成 NSH 原生界面 / Spike: a native desktop on NSH
 
-Status: proposed 2026-11-06。Phase 0 试做在 `nsh-spike` 分支完成，自动能验的都验了；剩下几项要你亲手看（见「还没验的」），之后定「换」还是「暂不换」。代码在 [`apps/desktop-nsh`](../../apps/desktop-nsh/README.md)。
+Status: accepted（2026-11-11 换到主分支，0.5.0 起发布的就是它；Tauri 外壳 2026-11-18 删除，见 [ADR 0113](0113-the-tauri-shell-is-removed.md)）。原记录：proposed 2026-11-06。Phase 0 试做在 `nsh-spike` 分支完成，自动能验的都验了；剩下几项要你亲手看（见「还没验的」），之后定「换」还是「暂不换」。代码在 [`apps/desktop-nsh`](../../apps/desktop-nsh/README.md)。
 
-Status: proposed 2026-11-06. Phase 0 is done on the `nsh-spike` branch and everything that can be checked without you has been; a few things need your own eyes and hands (see "Not yet checked") before the call is go or not yet. The code is in `apps/desktop-nsh`.
+Status: accepted (on the main branch since 2026-11-11 and the released app since 0.5.0; the Tauri shell removed 2026-11-18, ADR 0113). As first written: proposed 2026-11-06. Phase 0 is done on the `nsh-spike` branch and everything that can be checked without you has been; a few things need your own eyes and hands (see "Not yet checked") before the call is go or not yet. The code is in `apps/desktop-nsh`.
 
 ## 背景 / Background
 

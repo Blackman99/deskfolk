@@ -118,6 +118,6 @@
 
 ## 和正在跑的 `pnpm dev` 共处
 
-- `bun --watch` 一看到 `apps/daemon` 或 `packages/` 下的文件被保存就会重启，正在跑的轮次会被打断。所以改 daemon 要在 worktree 里改，合入前确认没有活轮（`turns.status` 是 `running` / `waiting_approval` / `waiting_ask`），也避开整点前后（日程多设在整点，正好撞上重启就会被打断）。
-- 几个文件一起写进主工作区时，要连着一次写完，每个中间状态都得能启动。只要中间隔了几秒，就可能连续重启好几次。
+- `pnpm dev` 的开发运行时没有 watch 模式，保存 `apps/daemon` 或 `packages/` 下的文件不会重启它；但它一重启（你重启它，或别的会话、脚本重启它），正在跑的轮次就被打断，而且它每次启动读到的就是主工作区当时的文件。所以改 daemon 要在 worktree 里改，合入前确认没有活轮（`turns.status` 是 `running` / `waiting_approval` / `waiting_ask`），也避开整点前后（日程多设在整点，正好撞上重启就会被打断）。
+- 几个文件一起写进主工作区时，要连着一次写完，每个中间状态都得能启动，因为随时可能有一次重启（或信使的 Vite 热更新）读到它。
 - 夹具 daemon 加 `scripts/fake-openai.ts` 时，假模型在 127.0.0.1 上会被当成本地模型服务。它默认报的输入 token 数又太小，结果每一轮都按「超出上下文窗口」失败。要走正常路径，用一份把 `prompt_tokens` 改大的副本。比较两个版本的事件流时，给假模型加点延迟（`REAL_BOT_FAKE_STREAM_DELAY_MS`）：秒回的话，后台调用和下一跳谁先落地，取决于代码里有几层 `await`。

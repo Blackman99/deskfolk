@@ -13,6 +13,11 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # The nsh CLI the native app is checked with, built from the NSH commit its crates pin
+  # (`apps/desktop-nsh/scripts/nsh-cli.ts`) and cached by that commit, as in release.yml.
+  DESKFOLK_NSH_CACHE: ${{ github.workspace }}/.nsh-cli-cache
+
 jobs:
   test:
     name: Test and typecheck
@@ -39,6 +44,7 @@ jobs:
           workspaces: |
             packages/remote/test/snow -> target
             apps/conpty-helper -> target
+            apps/rtc-helper -> target
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
@@ -47,6 +53,13 @@ jobs:
       # on Linux that is apps/conpty-helper's forkpty backend.
       - name: Build the pty helper
         run: cargo build --manifest-path apps/conpty-helper/Cargo.toml
+
+      # Linux ships the pty helper's forkpty backend and the remote screen helper (its
+      # stay-awake holds the screensaver and logind inhibitors there).
+      - name: Pty helper and remote screen helper tests (Linux)
+        run: |
+          cargo test --manifest-path apps/conpty-helper/Cargo.toml
+          cargo test --locked --manifest-path apps/rtc-helper/Cargo.toml
 
       # Pictures sent to a model shrink through ImageMagick on Linux; its tests skip without it,
       # and the runner image does not ship it.
@@ -72,8 +85,10 @@ jobs:
       - name: Build shared remote package and browser fixture
         run: pnpm --filter @real-bot/remote build && pnpm --filter @real-bot/remote build:browser
 
+      # The messenger's page as the relay serves it to phones (the only build of it anything
+      # ships now).
       - name: Build messenger
-        run: pnpm --filter @real-bot/messenger build
+        run: pnpm --filter @real-bot/messenger build:hosted
 
       - name: Build landing
         run: pnpm --filter @real-bot/landing build
@@ -81,7 +96,8 @@ jobs:
   desktop:
     name: Desktop unit tests
     runs-on: macos-latest
-    timeout-minutes: 30
+    # A cache miss builds the nsh CLI first (~30 minutes).
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
 
@@ -100,10 +116,37 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri -> target
+          workspaces: |
+            apps/desktop-nsh -> target
+            apps/conpty-helper -> target
+            apps/rtc-helper -> target
+
+      - name: The pinned NSH commit
+        id: nsh
+        run: echo "rev=$(grep -m1 '^nsh-core' apps/desktop-nsh/Cargo.toml | sed -E 's/.*rev = "([0-9a-f]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nsh CLI of that commit
+        id: nsh-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.DESKFOLK_NSH_CACHE }}
+          key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build nsh at the pinned commit
+        run: |
+          set -o pipefail
+          nsh="$(bun apps/desktop-nsh/scripts/nsh-cli.ts | tail -1)"
+          dirname "$nsh" >> "$GITHUB_PATH"
+
+      - name: Save the nsh CLI of that commit
+        if: steps.nsh-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.DESKFOLK_NSH_CACHE }}
+          key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
 
       # The native app's scripts on macOS (the native helpers' build plan, release notes, and the
       # darwin-only check that a compiled Bun signed with the daemon's entitlements still works).
@@ -113,8 +156,17 @@ jobs:
       - name: Native credential fixtures (no Keychain or prompts)
         run: swift run --package-path apps/runtime-helper RemoteCoreTests
 
-      - name: Cargo test
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+      # The native app's macOS shell (the menu bar, the window's size, the Touch ID and setup
+      # channel paths), its components and its app crate, then its type check and headless tests.
+      - name: Native app Rust tests
+        working-directory: apps/desktop-nsh
+        run: cargo test --workspace
+
+      - name: Native app type check and headless tests
+        working-directory: apps/desktop-nsh/app
+        run: |
+          nsh check App.tsx
+          nsh test
 
       # Linux ships this crate's forkpty backend; its tests drive real shells on macOS too.
       - name: Pty helper crate tests

@@ -6,7 +6,7 @@
  * daemon started from a terminal carries the variables; the one the app starts from Finder, the
  * Start menu or at login carries none, and on a network that reaches Anthropic only through a proxy
  * the setting the browser follows is the only one there is — the desktop updater falls back the
- * same way (`apps/desktop/src-tauri/src/updates.rs`, whose parsers these are). Only `HTTPS_PROXY`
+ * same way (`v0.5.1:apps/desktop/src-tauri/src/updates.rs`, whose parsers these are). Only `HTTPS_PROXY`
  * is set: a Bot's own `curl http://localhost:…` keeps going straight.
  */
 import type { ClaudeCodeStatus } from "@real-bot/protocol";

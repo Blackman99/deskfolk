@@ -20,7 +20,7 @@ Deskfolk 处于 **WIP** 阶段。欢迎中文或英文的问题报告、兼容�
 
 ## 开发环境
 
-准备 Node.js `>=22`、pnpm `12.3.4`、Bun `>=1.2`、Rust / Cargo；macOS 上另装 [Tauri macOS 前置依赖](https://v2.tauri.app/start/prerequisites/#macos)。Windows 目前是刚起步的实验性预览：装 Rust 的 MSVC 工具链和 [Tauri Windows 前置依赖](https://v2.tauri.app/start/prerequisites/#windows)（Visual Studio Build Tools 勾 "Desktop development with C++"、WebView2 运行时），再先跑一次 `cargo build --manifest-path apps/conpty-helper/Cargo.toml` 编终端 helper。Linux 同样是实验性预览：装 [Tauri Linux 前置依赖](https://v2.tauri.app/start/prerequisites/#linux)（WebKitGTK 4.1 等开发包），终端 helper 也是这同一个 crate 的 `cargo build`。已知限制见[开发说明](docs/development.md)。在仓库根目录执行：
+准备 Node.js `>=22`、pnpm `12.3.4`、Bun `1.4.2`、Rust stable；macOS 上另装 Xcode 命令行工具；Windows 装 MSVC 工具链（Visual Studio Build Tools 勾 "Desktop development with C++"）和 cmake；Linux 装 GTK 4（≥ 4.14）、WebKitGTK 6.0、GStreamer、ALSA、libsecret 的开发包和 cmake（包清单见 `.github/workflows/nsh-desktop.yml` 里 Linux 的 apt 列表）。原生桌面应用（`apps/desktop-nsh`）用 [NSH](https://nsh.dev) 编，不需要 WebView 运行时。已知限制见[开发说明](docs/development.md)。在仓库根目录执行：
 
 ```bash
 pnpm install
@@ -38,13 +38,13 @@ pnpm dev
 ```bash
 pnpm test
 pnpm typecheck
-cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+cargo test --workspace --manifest-path apps/desktop-nsh/Cargo.toml
 pnpm --filter @real-bot/messenger build
 ```
 
-守护进程和终端 helper 不是 sidecar（`externalBin` 为空）：它们由 `build:native` 编进应用资源目录 `native/`，`src-tauri/build.rs` 只在 release profile 才校验这些文件存在（Windows 要 `real-bot-daemon.exe` / `real-bot-pty.exe` / `real-bot-rtc.exe`，Linux 要 `real-bot-daemon` / `real-bot-pty`，macOS 另加 Swift helper、凭据库和 `real-bot-rtc`）；debug profile（包括单独跑 `cargo test`）没有 `native/` 就自动建一个空目录，不需要先手动编。
+原生应用的界面测试在 `apps/desktop-nsh/app` 里跑 `nsh check App.tsx && nsh test`（`nsh` 命令行由 `bun apps/desktop-nsh/scripts/nsh-cli.ts` 按锁定的 NSH 提交编出，不要用 `~/.local/bin/nsh`）。守护进程和终端 helper 由 `apps/desktop-nsh/scripts/build-native.ts --target <triple>` 编进 `apps/desktop-nsh/build/native`，正式版打包（`scripts/package.ts --release`）把它们放进应用；开发版（`pnpm dev`）用从源码起的运行时，不需要先手动编。
 
-改信使样式时另跑 `pnpm --filter @real-bot/messenger test:visual`（本机视觉基线，见[开发说明](docs/development.md)）。改落地页时另跑 `pnpm --filter @real-bot/landing build`。GitHub Actions 的 CI 工作流会在 PR 与 `main` 上跑上述检查（含落地页 build 与 macOS `cargo test`），不能代替本机 UI 或原生桌面验证。`windows.yml` 也在 PR 与 `main` 上跑，在 `windows-latest` 上做 Windows 的单元检查并打一个未签名安装包；其中 daemon 测试在 Windows 上只做参考，不让任务变红。`linux.yml` 同样在 PR 与 `main` 上跑，在 Ubuntu 22.04 上跑各 Rust crate 的测试并打 deb 与 AppImage。快照发布与 Pages 见[开发说明](docs/development.md#ci落地页与快照发布)。
+改信使样式时另跑 `pnpm --filter @real-bot/messenger test:visual`（本机视觉基线，见[开发说明](docs/development.md)）。改落地页时另跑 `pnpm --filter @real-bot/landing build`。GitHub Actions 的 CI 工作流会在 PR 与 `main` 上跑上述检查（含落地页 build，以及 macOS 上原生应用的脚本测试、`cargo test` 和 `nsh check` / `nsh test`），不能代替本机 UI 或原生桌面验证。`windows.yml` 也在 PR 与 `main` 上跑，在 `windows-latest` 上跑协议、守护进程和信使的测试、helper crate 和守护进程的 stdio 配置通道测试；其中 daemon 测试在 Windows 上只做参考，不让任务变红。原生应用在 Ubuntu 和 Windows 上的构建由 `nsh-desktop.yml` 在推到 `main` 时跑；打 tag 时 `release.yml` 验证并打 Mac、Windows、Linux 的安装包。快照发布与 Pages 见[开发说明](docs/development.md#ci落地页与快照发布)。
 
 - 为行为变更增加相应测试；避免测试依赖个人凭据或付费真实服务。信使的组件也能测，和纯函数同一个 `pnpm test`，写法见[开发说明·信使组件测试](docs/development.md)。
 - 修改 UI、客户端状态或页面数据时，在运行中的应用或浏览器中完成实际点击、输入、提交和导航验证，覆盖共享该状态的其他界面、错误态和边界情况。

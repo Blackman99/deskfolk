@@ -51,4 +51,4 @@ Deskfolk's notifications show as Windows toasts (up to 0.5.1 there were none), u
 
 ## Running from source
 
-The same `pnpm install` and `pnpm dev` as on the Mac, plus Rust's MSVC toolchain and Visual Studio Build Tools ("Desktop development with C++"), and a one-time build of the terminal helper. Prerequisites and packaging steps are in the [development guide](development.md#windows实验性) (in Chinese).
+The same `pnpm install` and `pnpm dev` as on the Mac (it opens the native app's development build), plus Rust's MSVC toolchain, Visual Studio Build Tools ("Desktop development with C++"), cmake, and a one-time build of the terminal helper. Prerequisites and packaging steps are in the [development guide](development.md#windows实验性) (in Chinese).

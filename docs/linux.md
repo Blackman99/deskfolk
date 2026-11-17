@@ -56,4 +56,4 @@ Claude Agent ([how it works](behavior.en.md#claude-agent)) can be picked on Linu
 
 ## Running from source
 
-The same `pnpm install` and `pnpm dev` as on the Mac, plus WebKitGTK and the other system development packages, and a one-time build of the terminal helper (`cargo build --manifest-path apps/conpty-helper/Cargo.toml`). Prerequisites and packaging steps are in the [development guide](development.md#linux实验性) (in Chinese).
+The same `pnpm install` and `pnpm dev` as on the Mac (it opens the native app's development build), plus the GTK 4, WebKitGTK 6.0, GStreamer, ALSA and libsecret development packages, cmake, and a one-time build of the terminal helper (`cargo build --manifest-path apps/conpty-helper/Cargo.toml`). Prerequisites and packaging steps are in the [development guide](development.md#linux实验性) (in Chinese).

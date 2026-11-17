@@ -165,7 +165,7 @@ limitations under the License.
 
 ## Package dependencies
 
-JavaScript and Rust dependencies are recorded in `pnpm-lock.yaml` and `apps/desktop/src-tauri/Cargo.lock`. Their licenses remain applicable independently of Deskfolk's license. This file records incorporated third-party source; it is not an exhaustive license inventory for a packaged binary. Before distributing binaries, review the exact bundled dependency versions and include their required notices.
+JavaScript and Rust dependencies are recorded in `pnpm-lock.yaml` and the Cargo lockfiles (`apps/desktop-nsh/Cargo.lock`, `apps/conpty-helper/Cargo.lock`, `apps/rtc-helper/Cargo.lock`). Their licenses remain applicable independently of Deskfolk's license. This file records incorporated third-party source; it is not an exhaustive license inventory for a packaged binary. Before distributing binaries, review the exact bundled dependency versions and include their required notices.
 
 ## Web Push proxy dependencies
 

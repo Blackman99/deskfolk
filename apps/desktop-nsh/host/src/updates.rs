@@ -1,6 +1,6 @@
 //! Check GitHub Releases for a newer Deskfolk build and cache the result.
 //!
-//! Copied from the Tauri app (`apps/desktop/src-tauri/src/updates.rs`) with two changes: the
+//! Copied from the Tauri app (`v0.5.1:apps/desktop/src-tauri/src/updates.rs`) with two changes: the
 //! Windows registry proxy reader (`internet_settings`) is left out (the host has no
 //! `windows-sys`), and the cache is a process-wide static (`check`) instead of Tauri state.
 //!

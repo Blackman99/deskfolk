@@ -1,5 +1,7 @@
 # 每种窗口在哪打开 / Where each kind of window opens
 
+部分被 [ADR 0113](0113-the-tauri-shell-is-removed.md) 取代（2026-11-18）：Tauri 外壳已删除，这里描述的窗口一侧现在是原生应用的宿主（`apps/desktop-nsh/host/src`），见 [ADR 0107](0107-spike-native-desktop-on-nsh.md)。 / Superseded in part by [ADR 0113](0113-the-tauri-shell-is-removed.md) (2026-11-18): the Tauri shell is gone; the window side described here is now the native app's host (`apps/desktop-nsh/host/src`), see [ADR 0107](0107-spike-native-desktop-on-nsh.md).
+
 Status: implemented 2026-10-10, desktop workbench only. Amends one rule of [ADR 0025](0025-desktop-pane-workbench.md): opening something used to only add or replace a tab in the pane the keyboard is in, never split or float; now a new tab goes where its kind's choice says, and that choice can split or float.
 
 2026-11-04（[ADR 0106](0106-the-interface-is-yours-too.md)）：这些选择从每个窗口自己的存储搬进了界面方案，桌面各窗口共用，Bot 能照你说的改；第一个连上的窗口把它原来的选择带进去一次。浮窗上次的位置仍只存本机。 / 2026-11-04 (ADR 0106): these choices moved from each window's own storage into the interface profile, shared by every desktop window and changeable by a Bot when you ask; the first window to connect carries its old choices in once. Where a float was last left stays on the machine.
