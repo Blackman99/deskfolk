@@ -418,9 +418,11 @@ describe("legacy phase 0–2 holds turn every old wake away, and say so in the w
     const stop = hold(h, "bot", director.id);
     go.resolve();
     await h.waitIdle();
+    const kept = () => h.store.db.query<{ id: string; suspended_at: string | null; fired_turn_id: string | null }, []>(`SELECT id, suspended_at, fired_turn_id FROM check_backs WHERE cause = 'delegation'`).all();
+    // As in 9: the report back waits on a real quiet timer that a slow machine reaches after waitIdle.
+    await h.waitFor(() => kept().length > 0 && suppressed(h, director).length >= 2, { what: "the kept report back" });
 
     expect(h.turns(director)).toHaveLength(1);
-    const kept = () => h.store.db.query<{ id: string; suspended_at: string | null; fired_turn_id: string | null }, []>(`SELECT id, suspended_at, fired_turn_id FROM check_backs WHERE cause = 'delegation'`).all();
     expect(kept()).toEqual([{ id: expect.any(String), suspended_at: expect.any(String), fired_turn_id: null }]);
     expect(suppressed(h, director)).toEqual([
       { cause: "mention", holds: [stop.id] },
