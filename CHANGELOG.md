@@ -14,7 +14,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - The native app never told the runtime which conversation was in front of you, so a reply or a question there got a banner although you were reading it. It does now, as the Tauri app did, and it keeps saying you are at the newest line while you stay there: the Tauri app's five-second beat said you were not, so it held the banner back for a few seconds at most.
 
-### The sidebar's edge shows where to drag, in the native Mac app
+### The sidebar's edge shows where to drag, in the native app
 
 - Pointing at the edge between the sidebar and the content showed only the resize pointer; nothing on screen said where the edge was. A thin line in the accent colour now lights on the content's edge while you point at it or drag it, as in the Tauri app, and the grip sits on that edge instead of half inside the sidebar.
 
