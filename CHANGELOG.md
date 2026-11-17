@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### macOS 15 asks before the remote screen's direct connection
+
+- The native Mac app now says why it reaches the local network, as the old app did: the remote screen connects a paired phone straight to the Mac when both are on the same network, and macOS 15 asks first.
+
 ### The routine calendar's head is one line, in the native app
 
 - As a workbench pane the calendar had a Back button that did nothing; it is gone, and the pane's tab closes it. A calendar shown as a page (a phone, a narrow window) keeps its Back.

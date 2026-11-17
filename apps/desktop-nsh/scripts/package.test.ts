@@ -24,6 +24,8 @@ test("the release's Info.plist carries the Tauri app's id and the release's vers
   expect(plist).toContain("<key>CFBundleExecutable</key><string>deskfolk-nsh</string>");
   expect(plist).toContain("<key>LSMinimumSystemVersion</key><string>14.0</string>");
   expect(plist).toContain("NSMicrophoneUsageDescription");
+  // macOS 15 asks before an app reaches the local network: the remote screen's direct connection does.
+  expect(plist).toContain("NSLocalNetworkUsageDescription");
   expect(plist).toContain("<key>CFBundleIconFile</key><string>icon.icns</string>");
 });
 

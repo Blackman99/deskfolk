@@ -95,6 +95,7 @@ export function infoPlist(p: { id: string; name: string; version: string; minimu
     entry("LSApplicationCategoryType", "public.app-category.productivity") +
     `  <key>NSHighResolutionCapable</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>Voice input records what you say for the speech service you chose.</string>
+  <key>NSLocalNetworkUsageDescription</key><string>Deskfolk connects your paired phone straight to this Mac's screen when both are on the same network.</string>
 </dict>
 </plist>
 `
