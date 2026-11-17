@@ -73,6 +73,9 @@ import { createShellState, type ShellState } from "./shell-state";
 import { WINDOW_CHROME } from "../../m/window-chrome";
 import { windowGlass } from "../glass";
 
+/** The sidebar's grip: 3 points either side of its edge's first column, so the edge can be aimed at. */
+const SPLIT_GRIP = 7;
+
 export function Shell() {
   const s = createShellState();
   // Bound before any child mounts: a layer's own Escape, bound later, wins while it is open.
@@ -120,6 +123,8 @@ function ShellBody(props: { s: ShellState }) {
   const ground = () => (s.narrow() ? "bg-sidebar-bg" : windowGlass ? "bg-ground-glass" : "bg-ground");
   /** Beside the workbench the column is ground, each pane its own card; on macOS the tabs' centre line meets the lights' (26 pt). */
   const mainTop = () => (WINDOW_CHROME !== "mac" ? 0 : 6);
+  /** How far past the sidebar's frame the content's edge is: a docked pane's card stands 4 points in (its `mx-1`). */
+  const sidebarSeam = () => (s.wide() ? 4 : 0);
 
   return (
     <View
@@ -215,13 +220,25 @@ function ShellBody(props: { s: ShellState }) {
           </FoldMotionHere.Provider>
         </View>
         <If when={!s.sidebarHidden() && s.sidebarColumn()}>
+          {/*
+            * The sidebar has no edge of its own: where it meets the content is the card's edge. The
+            * grip lies on that edge and takes no room in the row; pointed at or in hand it draws a
+            * 2-point line in the brand across the edge, short of either end (Tauri's
+            * `.split-handle.is-gutter`). Held, it stays lit while the pointer runs off the grip.
+            */}
           <View
             testID="sidebar-split"
             accessibilityLabel={t().sidebar.resize}
-            class="w-[6px] h-full ml-[-3px] mr-[-3px] cursor-col-resize"
-            style={{ zIndex: 5 }}
+            class="h-full cursor-col-resize group"
+            style={{ width: SPLIT_GRIP, marginLeft: sidebarSeam() - 3, marginRight: 3 - sidebarSeam() - SPLIT_GRIP, zIndex: 5 }}
             {...sidebarPan.panHandlers}
-          />
+          >
+            <View
+              accessible={false}
+              class={`absolute rounded-[1px] ${s.sidebarDragging() ? "bg-brand" : "bg-transparent group-hover:bg-brand"}`}
+              style={{ left: 2, width: 2, top: 12, bottom: 12, pointerEvents: "none" }}
+            />
+          </View>
         </If>
         {/* The main column: the workbench on a desktop; one page at a time elsewhere. */}
         <If when={s.sidebarColumn() || pageOpen()}>
