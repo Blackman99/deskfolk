@@ -35,7 +35,7 @@ export type ControllerOptions = {
   keepaliveMs?: number;
   answerMs?: number;
   remember?: RememberedSignIn;
-  host: "mac" | "windows";
+  host: "mac" | "windows" | "linux";
 };
 
 export const WHOLE: ZoomView = { zoom: 1, pan: { x: 0, y: 0 } };
@@ -106,7 +106,7 @@ export class ScreenController {
     return this.options.words();
   }
 
-  get host(): "mac" | "windows" {
+  get host(): "mac" | "windows" | "linux" {
     return this.options.host;
   }
 

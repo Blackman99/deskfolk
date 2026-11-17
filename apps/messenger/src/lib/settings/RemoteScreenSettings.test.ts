@@ -46,7 +46,7 @@ test("on Windows, with no VNC server answering, the card says how to set TightVN
   const internals = { invoke: async (command: string, args: unknown) => { opened.push([command, args]); } };
   (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = internals;
   const status = { enabled: true, iceServers: [], sharing: false, direct: true, sessions: [] };
-  const mount = (windows: boolean) => render(RemoteScreenSettings as never, { api: { remoteScreen: async () => status }, t, pollMs: 60_000, windows });
+  const mount = (windows: boolean, linux = false) => render(RemoteScreenSettings as never, { api: { remoteScreen: async () => status }, t, pollMs: 60_000, windows, linux });
   try {
     const pc = mount(true);
     await new Promise((resolve) => setTimeout(resolve, 5));
@@ -62,6 +62,13 @@ test("on Windows, with no VNC server answering, the card says how to set TightVN
     flushSync();
     expect(mac.host.querySelector('[data-testid="remote-screen-vnc"]')).toBeNull();
     mac.close();
+    // Linux: the steps for x11vnc and wayvnc, and no button, since there is no page to open.
+    const desktop = mount(false, true);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    flushSync();
+    expect(desktop.host.querySelector('[data-testid="remote-screen-vnc"]')?.textContent).toContain("x11vnc");
+    expect([...desktop.host.querySelectorAll("button")].some((button) => button.textContent?.trim() === t.screen.macSharingSettings)).toBe(false);
+    desktop.close();
   } finally {
     delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
   }

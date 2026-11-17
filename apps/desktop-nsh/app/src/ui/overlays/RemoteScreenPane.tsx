@@ -12,7 +12,7 @@ import { RemoteScreenView } from "./RemoteScreenView.tsx";
 
 export function RemoteScreenPane(props: {
   /** The remote link's API: `kind` is "remote" for a paired phone, which is the only one with a screen. */
-  api: ScreenViewApi & { kind: string; screenHost?: "mac" | "windows"; enrollment?: Pick<StoredEnrollment, "hostId" | "deviceId"> };
+  api: ScreenViewApi & { kind: string; screenHost?: "mac" | "windows" | "linux"; enrollment?: Pick<StoredEnrollment, "hostId" | "deviceId"> };
   onClose: () => void;
 }) {
   return (

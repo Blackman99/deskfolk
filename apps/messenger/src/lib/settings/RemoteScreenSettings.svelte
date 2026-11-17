@@ -35,6 +35,8 @@
 	 * and who is connected now. Reachable only from this window: no paired device can change it.
 	 * On Windows the server is a VNC server the person installs (ADR 0059): while none answers, the
 	 * card says how to set TightVNC up and links its download page instead of macOS's Sharing pane.
+	 * On Linux it is a VNC server too (x11vnc, wayvnc), with no page to open: the card lists the
+	 * ways to start one for the session the person runs.
 	 */
 	interface Props {
 		api: LocalApi;
@@ -43,9 +45,10 @@
 		pollMs?: number;
 		/** The OS this window runs on; read from the webview unless a test says. */
 		windows?: boolean;
+		linux?: boolean;
 	}
 
-	let { api, t, pollMs = 5000, windows = desktopPlatform() === 'windows' }: Props = $props();
+	let { api, t, pollMs = 5000, windows = desktopPlatform() === 'windows', linux = desktopPlatform() === 'linux' }: Props = $props();
 
 	let status = $state<RemoteScreenStatus | null>(null);
 	let busy = $state(false);
@@ -149,12 +152,14 @@
 			<span class={status.sharing ? 'muted' : 'field-error'} data-testid="remote-screen-sharing">
 				{status.sharing ? t.screen.macSharingOn : t.screen.macSharingOff}
 			</span>
-			{#if !status.sharing}
+			{#if !status.sharing && !linux}
 				<button type="button" class="btn-xs" onclick={() => void openSharing()}>{t.screen.macSharingSettings}</button>
 			{/if}
 		</div>
 		{#if windows && !status.sharing}
 			<p class="settings-row-desc remote-screen-vnc" data-testid="remote-screen-vnc">{t.screen.macVncSteps}</p>
+		{:else if linux && !status.sharing}
+			<p class="settings-row-desc remote-screen-vnc" data-testid="remote-screen-vnc">{t.screen.macVncStepsLinux}</p>
 		{/if}
 		{#each status.sessions as session (session.deviceId)}
 			<div class="remote-screen-active" role="status">

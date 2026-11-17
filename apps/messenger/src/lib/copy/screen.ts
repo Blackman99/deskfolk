@@ -1,4 +1,4 @@
-import { enHost, isWindows, zhHost } from "./platform-words.ts";
+import { enHost, isLinux, isWindows, zhHost } from "./platform-words.ts";
 import type { CopyShape } from "./shape.ts";
 
 export const zh = {
@@ -42,13 +42,16 @@ export const zh = {
   macLowered: (to: string, from: string) => `为了手机上的画面流畅，屏幕临时从 ${from} 降到 ${to}，手机断开后恢复`,
   modifier: (name: string) => `${name}：作用于下一个键`,
   macToggle: `允许看和操作这台${zhHost}的屏幕`,
-  macToggleDesc: isWindows
+  macToggleDesc: isLinux
+    ? "已配对的设备可以在「工具 → 电脑屏幕」里看到并操作这台电脑，锁屏时也能输密码解锁。画面和输入来自你自己启动的 VNC 服务（x11vnc 或 wayvnc），连接时还要输它的 VNC 密码。默认关闭。"
+    : isWindows
     ? "已配对的设备可以在「工具 → 电脑屏幕」里看到并操作这台电脑，锁屏时也能输密码解锁。画面和输入来自你装的 VNC 服务（推荐 TightVNC），连接时还要输它的 VNC 密码。默认关闭。"
     : "已配对的设备可以在「工具 → Mac 屏幕」里看到并操作这台 Mac，锁屏时也能输密码解锁。画面和输入来自 macOS 自带的「屏幕共享」，连接时还要输这台 Mac 的账户密码。默认关闭。",
-  macSharingOn: isWindows ? "VNC 服务已就绪" : "屏幕共享已打开",
-  macSharingOff: isWindows ? "没找到 VNC 服务：手机连不上" : "屏幕共享没开：手机连不上",
+  macSharingOn: isWindows || isLinux ? "VNC 服务已就绪" : "屏幕共享已打开",
+  macSharingOff: isWindows || isLinux ? "没找到 VNC 服务：手机连不上" : "屏幕共享没开：手机连不上",
   macSharingSettings: isWindows ? "下载 TightVNC" : "打开共享设置",
   macVncSteps: "Windows 没有自带的屏幕共享，要装一个 VNC 服务：装 TightVNC 时选上 TightVNC Server，并让它注册成系统服务（这样锁屏和 UAC 弹窗也能操作）；设一个主密码（VNC 密码只认前 8 位）；在 TightVNC 服务的配置 → Access Control 里勾上「Allow loopback connections」，再勾「Loopback connections only」，5900 端口就只对本机开放。",
+  macVncStepsLinux: "Linux 没有自带的屏幕共享，要自己起一个只听本机 5900 端口的 VNC 服务。X11 会话：装 x11vnc，先运行 x11vnc -storepasswd 设密码，再运行 x11vnc -localhost -rfbport 5900 -rfbauth ~/.vnc/passwd -forever -shared。Sway、Hyprland 等 wlroots 桌面：用 wayvnc，监听 127.0.0.1:5900，用密码登录要按它的文档开 enable_auth 和 relax_encryption。新一点的发行版可能带 TigerVNC 的 w0vncserver。GNOME 的 Wayland 会话没有能用的 VNC 服务：登录时选「Ubuntu on Xorg」（或你发行版的 Xorg 会话）。",
   macIceServers: "STUN / TURN 服务器",
   macIceServersDesc: `每行一个 stun: 或 turn: 地址，用来让手机直连${zhHost.trimEnd()}；留空时只在同一网络或 IPv6 下直连，连不上就经中继。turn: 地址写成 turn:主机:端口 用户名 密码。`,
   macIceSave: "保存",
@@ -102,13 +105,16 @@ export const en: CopyShape<typeof zh> = {
   macLowered: (to: string, from: string) => `For a smooth picture on the phone, the screen is at ${to} instead of ${from} until it disconnects`,
   modifier: (name: string) => `${name} for the next key`,
   macToggle: `Allow viewing and controlling this ${enHost}'s screen`,
-  macToggleDesc: isWindows
+  macToggleDesc: isLinux
+    ? "Paired devices can see and operate this computer under Tools → Computer screen, and type the password at the lock screen. The picture and input come from a VNC server you start yourself (x11vnc or wayvnc), which asks for its VNC password on each connection. Off by default."
+    : isWindows
     ? "Paired devices can see and operate this computer under Tools → Computer screen, and type the password at the lock screen. The picture and input come from a VNC server you install (TightVNC is the one to use), which asks for its VNC password on each connection. Off by default."
     : "Paired devices can see and operate this Mac under Tools → Mac screen, and type the password at the lock screen. The picture and input come from macOS's own Screen Sharing, which also asks for this Mac's account password on each connection. Off by default.",
-  macSharingOn: isWindows ? "The VNC server is ready" : "Screen Sharing is on",
-  macSharingOff: isWindows ? "No VNC server found: the phone cannot connect" : "Screen Sharing is off: the phone cannot connect",
+  macSharingOn: isWindows || isLinux ? "The VNC server is ready" : "Screen Sharing is on",
+  macSharingOff: isWindows || isLinux ? "No VNC server found: the phone cannot connect" : "Screen Sharing is off: the phone cannot connect",
   macSharingSettings: isWindows ? "Download TightVNC" : "Open Sharing settings",
   macVncSteps: "Windows has no screen sharing of its own, so install a VNC server: when installing TightVNC, choose TightVNC Server and let it register as a system service (so the lock screen and UAC prompts can be operated too); set a primary password (VNC uses only its first 8 characters); in the TightVNC service's configuration → Access Control, tick \"Allow loopback connections\", then \"Loopback connections only\", so port 5900 is open to this computer alone.",
+  macVncStepsLinux: "Linux has no screen sharing of its own, so start a VNC server that listens on port 5900 of this computer only. On an X11 session: install x11vnc, run x11vnc -storepasswd once to set a password, then x11vnc -localhost -rfbport 5900 -rfbauth ~/.vnc/passwd -forever -shared. On wlroots desktops (Sway, Hyprland): use wayvnc, listening on 127.0.0.1:5900; password sign-in needs enable_auth and relax_encryption as its documentation describes. Recent distributions may ship TigerVNC's w0vncserver. GNOME's Wayland session has no usable VNC server: log in with \"Ubuntu on Xorg\" (or your distribution's Xorg session).",
   macIceServers: "STUN / TURN servers",
   macIceServersDesc: `One stun: or turn: address per line, for the phone to reach the ${enHost} directly. Left empty, a direct connection is tried only on the same network or over IPv6, and the relay carries it otherwise. Write a turn: address as turn:host:port username password.`,
   macIceSave: "Save",

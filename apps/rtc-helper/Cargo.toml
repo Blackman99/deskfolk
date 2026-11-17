@@ -1,7 +1,7 @@
 [package]
 name = "real-bot-rtc"
 version = "0.1.0"
-description = "WebRTC data-channel bridge from a paired phone to macOS Screen Sharing or a Windows VNC server, for Deskfolk's remote screen"
+description = "WebRTC data-channel bridge from a paired phone to macOS Screen Sharing or a Windows or Linux VNC server, for Deskfolk's remote screen"
 license = "MIT"
 authors = ["Deskfolk contributors"]
 edition = "2024"
@@ -24,6 +24,10 @@ serde_json = "1"
 [target.'cfg(windows)'.dependencies]
 # Already in the lock through tokio; only `SetThreadExecutionState` is used (awake.rs).
 windows-sys = { version = "0.61", features = ["Win32_System_Power"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Pure Rust, blocking API only: the screensaver and logind inhibitors of awake.rs.
+zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
 
 # rtc-sctp 0.21.0 with a 200 ms floor on the retransmission timeout instead of one second:
 # see vendor/rtc-sctp/README.md.

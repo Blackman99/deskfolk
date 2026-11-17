@@ -90,7 +90,7 @@ test("an offer passes only with one data channel section", () => {
   expect(onlyDataChannel("v=0\r\n")).toBe(false);
 });
 
-test("the helper is the packaged one, a source build, or none; an .exe on Windows, nothing elsewhere", () => {
+test("the helper is the packaged one, a source build, or none; an .exe on Windows, nothing on other systems", () => {
   expect(rtcHelperPath({ REAL_BOT_RTC_HELPER: "/x/real-bot-rtc" }, "darwin", () => false)).toBe("/x/real-bot-rtc");
   expect(rtcHelperPath({}, "win32", (path) => path.endsWith("real-bot-rtc.exe"), join("/app", "native", "real-bot-daemon.exe")))
     .toBe(join("/app", "native", "real-bot-rtc.exe"));
@@ -98,7 +98,8 @@ test("the helper is the packaged one, a source build, or none; an .exe on Window
   expect(rtcHelperPath({}, "win32", (path) => slashed(path).endsWith("target/debug/real-bot-rtc.exe"), "/nowhere/bun.exe"))
     .toMatch(/apps[\\/]rtc-helper[\\/]target[\\/]debug[\\/]real-bot-rtc\.exe$/);
   expect(rtcHelperPath({}, "win32", (path) => !path.endsWith(".exe"))).toBeNull();
-  expect(rtcHelperPath({}, "linux", () => true)).toBeNull();
+  expect(rtcHelperPath({}, "linux", (path) => path.endsWith("real-bot-rtc"), join("/opt/app", "real-bot-daemon"))).toBe(join("/opt/app", "real-bot-rtc"));
+  expect(rtcHelperPath({}, "freebsd", () => true)).toBeNull();
   expect(rtcHelperPath({}, "darwin", () => false)).toBeNull();
   expect(rtcHelperPath({}, "darwin", (path) => path.endsWith("target/release/real-bot-rtc"))).toMatch(/apps\/rtc-helper\/target\/release\/real-bot-rtc$/);
 });
@@ -257,9 +258,10 @@ test("display-hold: lowered, told to stop, restored", async () => {
   expect(helper.told).toEqual(["frame 2", "end"]);
 });
 
-test("a phone learns whether it is looking at a Mac or a Windows PC", () => {
+test("a phone learns whether it is looking at a Mac, a Windows PC or a Linux desktop", () => {
   expect(screenHost("darwin")).toBe("mac");
   expect(screenHost("win32")).toBe("windows");
+  expect(screenHost("linux")).toBe("linux");
 });
 
 test("stay-awake: started with its subcommand, let go by closing its stdin", async () => {

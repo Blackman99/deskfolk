@@ -51,8 +51,8 @@
 		onOpenScreen?: (() => void) | null;
 		/** The workspace, as a page among the tools on a phone, whose bottom bar no longer has it; null elsewhere. */
 		onOpenWorkspace?: (() => void) | null;
-		/** Whose screen that is, for its name: a Mac's, or a Windows PC's. */
-		screenHost?: 'mac' | 'windows';
+		/** Whose screen that is, for its name: a Mac's, a Windows PC's or a Linux desktop's. */
+		screenHost?: 'mac' | 'windows' | 'linux';
 		onOpenArchived: () => void;
 	};
 

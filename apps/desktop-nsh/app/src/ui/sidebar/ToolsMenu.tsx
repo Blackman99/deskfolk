@@ -52,7 +52,7 @@ export function ToolsMenu(props: {
   /** The workspace, as a page among the tools on a phone, whose bottom bar no longer has it; null elsewhere. */
   onOpenWorkspace?: (() => void) | null;
   /** Whose screen that is, for its name: a Mac's, or a Windows PC's. */
-  screenHost?: "mac" | "windows";
+  screenHost?: "mac" | "windows" | "linux";
   onOpenArchived: () => void;
 }) {
   const current = (): ToolsCurrent => props.current ?? {};

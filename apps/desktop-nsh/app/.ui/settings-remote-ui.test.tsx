@@ -175,6 +175,16 @@ test("on Windows with no VNC server answering, the card says how to set TightVNC
   await app.waitUntil(() => app.openedUrls().includes("https://www.tightvnc.com/download.php"));
 });
 
+test("on Linux with no VNC server answering, the card lists the x11vnc and wayvnc steps and has no page to open", async () => {
+  const app = await remote();
+  await app.press("id:page-screen");
+  await app.waitFor("id:remote-screen-sharing");
+  await app.press("id:mock-linux");
+  await app.waitFor("id:remote-screen-vnc");
+  expect(app.texts()).toContain(t.screen.macVncStepsLinux);
+  expect(app.shows("id:remote-screen-sharing-open")).toBe(false);
+});
+
 test("the remote session page shows the runtime's maintenance and asks twice before a forced restart or a stop", async () => {
   const app = await remote();
   await app.press("id:page-session");

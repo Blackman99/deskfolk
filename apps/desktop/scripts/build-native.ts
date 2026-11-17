@@ -251,6 +251,10 @@ async function buildLinux(root: string, triple: string, output: string): Promise
   const pty = conptyBuildPlan(triple, output);
   await run(root, pty.args);
   await copyFile(resolve(root, pty.builtPath), pty.destPath);
+
+  const rtc = rtcBuildPlan(triple, output);
+  await run(root, rtc.args);
+  await copyFile(resolve(root, rtc.builtPath), rtc.destPath);
   console.log(`Native resources built in ${dirname(output)}/native.`);
 }
 

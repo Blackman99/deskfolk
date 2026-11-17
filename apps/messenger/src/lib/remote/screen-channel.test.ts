@@ -184,10 +184,11 @@ test("falls back to the relay when the direct channel never opens, or the Mac ca
   expect(noHelper.calls).toEqual(["start", "tunnel"]);
 });
 
-test("the page learns from the link's features whether the Mac offers its screen, and whether it is a Windows PC", async () => {
+test("the page learns from the link's features whether the Mac offers its screen, and whether it is a Windows PC or a Linux desktop", async () => {
   for (const [features, offered, host] of [
     [{ screen: "rfb-v1", host: "mac" }, true, "mac"],
     [{ screen: "rfb-v1", host: "windows" }, true, "windows"],
+    [{ screen: "rfb-v1", host: "linux" }, true, "linux"],
     // A daemon from before Windows had a screen says nothing about it, and was a Mac.
     [{ screen: "rfb-v1" }, true, "mac"],
     [{}, false, "mac"],

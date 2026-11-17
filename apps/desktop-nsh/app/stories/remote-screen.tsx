@@ -187,7 +187,7 @@ const remembered: RememberedSignIn = {
 };
 
 export default function RemoteScreenStory() {
-  const scenario = signal<"none" | "ard" | "silent" | "off" | "windows" | "remembered" | null>(null);
+  const scenario = signal<"none" | "ard" | "silent" | "off" | "windows" | "linux" | "remembered" | null>(null);
   const stops = signal(0);
   const api = {
     screenStart: async () => {
@@ -209,7 +209,7 @@ export default function RemoteScreenStory() {
     const channel = new FakeChannel(which === "ard" || which === "remembered" ? "ard" : which === "silent" ? "silent" : "none");
     return { sessionId: "S1", mode: "direct", channel };
   };
-  const pick = (next: "none" | "ard" | "silent" | "off" | "windows" | "remembered") => () => {
+  const pick = (next: "none" | "ard" | "silent" | "off" | "windows" | "linux" | "remembered") => () => {
     log.set([]);
     scenario.set(next);
   };
@@ -221,16 +221,17 @@ export default function RemoteScreenStory() {
         <Button testID="story-off" onPress={pick("off")}>Off</Button>
         <Button testID="story-silent" onPress={pick("silent")}>Silent</Button>
         <Button testID="story-windows" onPress={pick("windows")}>Windows</Button>
+        <Button testID="story-linux" onPress={pick("linux")}>Linux</Button>
         <Button testID="story-remembered" onPress={pick("remembered")}>Remembered</Button>
         <Text testID="story-log" class="text-[12px] text-ink-muted">{`log:${log().join(" ")}`}</Text>
         <Text testID="story-stops" class="text-[12px] text-ink-muted">{`stops:${stops()}`}</Text>
       </View>
       <View class="flex-1 min-h-0">
         <If when={scenario()}>
-          {(which: () => "none" | "ard" | "silent" | "off" | "windows" | "remembered") => (
+          {(which: () => "none" | "ard" | "silent" | "off" | "windows" | "linux" | "remembered") => (
             <RemoteScreenView
               api={api}
-              host={which() === "windows" ? "windows" : "mac"}
+              host={which() === "windows" || which() === "linux" ? (which() as "windows" | "linux") : "mac"}
               connect={connect as never}
               onClose={() => scenario.set(null)}
               answerMs={which() === "silent" ? 400 : 20_000}

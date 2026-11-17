@@ -13,7 +13,7 @@ fn main() {
         let files: &[&str] = if os == "windows" {
             &["real-bot-daemon.exe", "real-bot-pty.exe", "real-bot-rtc.exe"]
         } else if os == "linux" {
-            &["real-bot-daemon", "real-bot-pty"]
+            &["real-bot-daemon", "real-bot-pty", "real-bot-rtc"]
         } else {
             &[
                 "real-bot-daemon",

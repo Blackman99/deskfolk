@@ -14,6 +14,7 @@ import * as paneText from "./copy/pane.ts";
 import * as openPlacementText from "./copy/open-placement.ts";
 import * as terminalText from "./copy/terminal.ts";
 import * as screenText from "./copy/screen.ts";
+import * as screenLinuxText from "./copy/screen-linux.ts";
 import * as screenWindowsText from "./copy/screen-windows.ts";
 import * as streamText from "./copy/stream.ts";
 import * as composerText from "./copy/composer.ts";
@@ -69,6 +70,7 @@ const zh = {
   terminal: terminalText.zh,
   screen: screenText.zh,
   screenWindows: screenWindowsText.zh,
+  screenLinux: screenLinuxText.zh,
   stream: streamText.zh,
   composer: composerText.zh,
   chat: chatText.zh,
@@ -118,6 +120,7 @@ const en: CopyShape<typeof zh> = {
   terminal: terminalText.en,
   screen: screenText.en,
   screenWindows: screenWindowsText.en,
+  screenLinux: screenLinuxText.en,
   stream: streamText.en,
   composer: composerText.en,
   chat: chatText.en,
@@ -156,11 +159,26 @@ export const COPY = { zh, en };
 export type Copy = CopyShape<typeof zh>;
 
 /**
- * The remote screen's words on a phone, for the computer it reached: a Mac's Screen Sharing by
- * default, a Windows PC's VNC server when its link said `host: "windows"` (`/remote/features`).
+ * What the local confirmation said when it could not ask yet, for the note beside the approve
+ * button: Windows without Hello, or Linux without a polkit agent or policy file. Null for any other
+ * code, which is not a note but a failure (or, for a cancelled sheet, nothing).
  */
-export function screenCopy(t: Copy, host: "mac" | "windows"): Copy["screen"] {
-  return host === "windows" ? { ...t.screen, ...t.screenWindows } : t.screen;
+export function confirmNote(t: Copy, code: string | null | undefined): string | null {
+  if (code === "hello_not_configured") return t.remote.confirmNeedsHello;
+  if (code === "confirm_agent_missing") return t.remote.confirmNoAgent;
+  if (code === "confirm_not_configured") return t.remote.confirmNotConfigured;
+  return null;
+}
+
+/**
+ * The remote screen's words on a phone, for the computer it reached: a Mac's Screen Sharing by
+ * default, a Windows PC's or Linux desktop's VNC server when its link said `host: "windows"` or
+ * `"linux"` (`/remote/features`).
+ */
+export function screenCopy(t: Copy, host: "mac" | "windows" | "linux"): Copy["screen"] {
+  if (host === "windows") return { ...t.screen, ...t.screenWindows };
+  if (host === "linux") return { ...t.screen, ...t.screenLinux };
+  return t.screen;
 }
 
 /**
