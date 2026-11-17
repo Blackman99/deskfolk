@@ -39,13 +39,14 @@ async function openOther(app: App) {
   await app.waitFor("id:project-dir");
 }
 
-test("the project sheet offers both agents, Claude Code first and chosen", async () => {
+test("the project sheet offers all three agents, Claude Code first and chosen", async () => {
   const { app } = await story();
   await app.press("id:story-open-project");
   await app.waitFor("id:project-session-sheet");
   expect(app.texts()).toContain("新开项目会话");
   await app.waitFor("id:project-agent-claude_code");
   expect(app.shows("id:project-agent-codex")).toBe(true);
+  expect(app.shows("id:project-agent-antigravity")).toBe(true);
   await app.waitFor("id:project-dirs");
   // The typed directory can always be started from.
   await openOther(app);
@@ -61,6 +62,19 @@ test("it opens on the agent whose new session was chosen", async () => {
   // Codex's hint, not Claude Code's.
   await app.press("id:project-agent-claude_code");
   await app.waitFor("id:project-dirs");
+});
+
+test("an agent that cannot ask first says so under the directory field, and Claude Code does not", async () => {
+  const { app } = await story();
+  await app.press("id:story-open-antigravity");
+  await app.waitFor("id:project-agent-antigravity");
+  await app.waitFor("id:project-dirs");
+  await openOther(app);
+  await app.waitFor("id:asks-after");
+  await app.press("id:project-agent-claude_code");
+  await app.waitFor("id:project-dirs");
+  await openOther(app);
+  expect(app.count("id:asks-after")).toBe(0);
 });
 
 test("a typed directory starts a session there; a relative one is refused on the spot", async () => {
@@ -99,8 +113,9 @@ test("carrying a terminal session on: both agents, directories that have session
   await app.waitFor("id:project-session-sheet");
   expect(app.texts()).toContain("导入终端会话");
   await app.waitFor("id:project-agent-claude_code");
-  // Codex's terminal sessions can be carried on too.
+  // Codex's and Antigravity's terminal sessions can be carried on too.
   expect(app.shows("id:project-agent-codex")).toBe(true);
+  expect(app.shows("id:project-agent-antigravity")).toBe(true);
   await app.waitFor("id:project-dirs");
   // No typed directory in this errand.
   expect(app.shows("id:picker-other")).toBe(false);

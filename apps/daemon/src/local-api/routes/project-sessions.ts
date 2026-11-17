@@ -60,7 +60,7 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
       const configDir = body.import.config_dir ?? null;
       const make = (read: ImportedSession) => {
         if (!read.cwd) throw new HttpError(422, "invalid_args", "the session does not say which directory it ran in");
-        return done(store.createProjectSession({ dir: read.cwd, agent, configDir, imported: read, locale }));
+        return done(store.createProjectSession({ dir: read.cwd, agent, configDir, imported: read, continues: !caps.branches, locale }));
       };
       // Read before the write when the request came through receipts; asked here otherwise.
       if (input.imported) return make(input.imported);
@@ -126,6 +126,9 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
         return options.codexCommands ? options.codexCommands.list(project.dir).then((list) => jsonResponse(list, 200, null)) : none();
       case "claude_code":
         return options.claudeCommands ? options.claudeCommands.list(project.configDir, project.dir).then((list) => jsonResponse(list, 200, null)) : none();
+      case "antigravity":
+        // What `agy` offered the last run in this directory: none before its first.
+        return jsonResponse({ commands: options.agyCommands?.get(project.dir) ?? [], checked_at: new Date().toISOString(), error: null }, 200, null);
       default:
         return unknownAgent(project.agent);
     }

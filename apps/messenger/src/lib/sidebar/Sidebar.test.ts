@@ -257,7 +257,7 @@ test("an empty projects page says how to start one", () => {
   withPhone(() => {
     const { host, close } = open([aBotDirect()], null, true, [], [], false, { phoneList: "projects" });
     expect(host.textContent).toContain(t.project.emptyList);
-    expect([...host.querySelectorAll('.roster-empty-btn[data-project-add="new"]')].map((b) => b.textContent?.trim())).toEqual([`${t.project.newWith("Claude Code")}…`, `${t.project.newWith("Codex")}…`]);
+    expect([...host.querySelectorAll('.roster-empty-btn[data-project-add="new"]')].map((b) => b.textContent?.trim())).toEqual([`${t.project.newWith("Claude Code")}…`, `${t.project.newWith("Codex")}…`, `${t.project.newWith("Antigravity")}…`]);
     close();
   });
 });

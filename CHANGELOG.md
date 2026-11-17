@@ -6,6 +6,15 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Project sessions can start and carry on Antigravity (agy)
+
+- Pick Antigravity in the New session sheet, or carry on an agy session from your terminal (the import sheet and the first-launch wizard list them). Each run is your local `agy acp --sandbox` in the project directory; your agy's own configuration, skills and MCP apply as they are.
+- Permissions have a limit worth knowing: agy's ACP takes no settings, so the app cannot make it ask first. What it asks about follows your permission mode; what it does without asking is checked as it reports it, and a call the mode does not allow stops the turn with a line saying what it did. That step may have run already, and the new-session sheet says so. Sign-in files stay off limits, except agy's own notes folder for the session.
+- Plan mode works (the Plan switch, Shift+Tab, a plan card to approve), and so do `/` commands such as `/compact`, pictures and files, and a model and thinking level to pick.
+- A command agy sends to the background shows as a running task; Stop ends all of them (one cannot be stopped alone).
+- Carrying on a terminal agy session goes on in that same session, as agy cannot branch one: what you say here shows in the terminal too, so do not talk on both sides at once, and a session carried on once cannot be carried on again.
+- Plan-mode lines, the plan card and the task map now name the session's agent instead of Claude Code. Spend is counted in tokens, without a price yet. More that Claude Code sessions have and Codex lacks is coming in the next changes.
+
 ### A project session can carry on a Codex session from your terminal
 
 - Import a terminal session… now offers Codex next to Claude Code, as tiles. Its sessions are asked of Codex itself (its terminal, its editor extension and `codex exec`); the app's own threads are not listed.

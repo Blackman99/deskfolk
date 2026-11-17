@@ -133,7 +133,7 @@ export function knownAgentSessions(ctx: StoreContext, agent: ProjectAgent): Set<
 }
 
 /** Each agent's name in the app's own lines about it. */
-const AGENT_NAMES: Record<ProjectAgent, string> = { claude_code: "Claude Code", codex: "Codex" };
+const AGENT_NAMES: Record<ProjectAgent, string> = { claude_code: "Claude Code", codex: "Codex", antigravity: "Antigravity" };
 
 /**
  * The line under a carried-in conversation: where it came from, what is not shown, and what

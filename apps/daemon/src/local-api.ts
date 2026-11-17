@@ -9,6 +9,8 @@ import { createClaudeUsageProbe } from "./claude-code/usage";
 import { createCodexCommandList } from "./agents/codex-commands";
 import { createAgentSessions } from "./agents/agent-sessions";
 import { createCodexSessions } from "./agents/codex-sessions";
+import { createAgySessions } from "./agents/agy-sessions";
+import { createAgyCommandMemory, projectAgyOf } from "./project-runner-agy";
 import { createClaudeCommandList } from "./claude-code/commands";
 import { createClaudeModelList } from "./claude-code/models";
 import { HttpError } from "./errors";
@@ -73,9 +75,11 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   options.claudeModels ??= createClaudeModelList({ claudeCode });
   options.claudeCommands ??= createClaudeCommandList({ claudeCode });
   options.codexCommands ??= createCodexCommandList({ resolve: projectCodexOf(options.store) });
+  options.agyCommands ??= createAgyCommandMemory();
   options.agentSessions ??= createAgentSessions({
     store: options.store,
     codex: createCodexSessions({ resolve: options.projectCodex ?? projectCodexOf(options.store) }),
+    agy: createAgySessions({ resolve: options.projectAgy ?? projectAgyOf(options.store) }),
   });
   options.claudeUsage ??= createClaudeUsageProbe({
     claudeCode,
@@ -274,7 +278,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   // A project session's run (ADR 0095) does not outlive the daemon: one still marked live was cut.
   options.store.interruptLiveAgentRuns();
   const projects = createProjectRunners({ store: options.store, claudeCode, query: options.projectQuery, settleMs: options.projectSettleMs, onTool: publishTool,
-    ...(options.projectCodex ? { resolveCodex: options.projectCodex } : {}) });
+    ...(options.projectCodex ? { resolveCodex: options.projectCodex } : {}),
+    ...(options.projectAgy ? { resolveAgy: options.projectAgy } : {}),
+    ...(options.projectAgyVersion ? { agyVersion: options.projectAgyVersion } : {}),
+    agyCommands: options.agyCommands });
 
   options.beforeScheduler?.(engine);
   const scheduler =

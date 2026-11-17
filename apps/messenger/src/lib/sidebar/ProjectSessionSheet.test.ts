@@ -29,8 +29,21 @@ test("to start one: the agent first, then each directory once, newest first, one
   await settle();
   expect(host.querySelector("h2")?.textContent).toBe(t.project.newTitle);
   const agents = [...host.querySelectorAll("[data-project-agent]")];
-  expect(agents.map((a) => a.getAttribute("data-project-agent"))).toEqual(["claude_code", "codex"]);
-  expect(agents.map((a) => a.textContent?.trim())).toEqual(["Claude Code", "Codex"]);
+  expect(agents.map((a) => a.getAttribute("data-project-agent"))).toEqual(["claude_code", "codex", "antigravity"]);
+  expect(agents.map((a) => a.textContent?.trim())).toEqual(["Claude Code", "Codex", "Antigravity"]);
+  // Only an agent that cannot ask before it acts says so, under the own-directory field.
+  const openOther = () => { if (!host.querySelector("[data-project-new]")) click(host.querySelector("[data-picker-other] .picker-head")); };
+  openOther();
+  expect(host.querySelector("[data-asks-after]")).toBeNull();
+  click(host.querySelector('[data-project-agent="antigravity"]'));
+  await settle();
+  openOther();
+  expect(host.querySelector("[data-asks-after]")?.textContent).toBe(t.project.asksAfter("Antigravity"));
+  click(host.querySelector('[data-project-agent="claude_code"]'));
+  await settle();
+  openOther();
+  expect(host.querySelector("[data-asks-after]")).toBeNull();
+  click(host.querySelector("[data-picker-other] .picker-head"));
   expect(agents[0]?.getAttribute("aria-checked")).toBe("true");
   expect(agents[0]?.querySelector("[data-agent-logo]")).not.toBeNull();
   expect(dirNames(host)).toEqual(["proj", "other", "app-only"]);
@@ -74,7 +87,7 @@ test("to carry one on: only directories with terminal sessions, each opening to 
   await settle();
   expect(host.querySelector("h2")?.textContent).toBe(t.project.importTitle);
   // The agents whose terminal sessions can be carried on.
-  expect([...host.querySelectorAll("[data-project-agent]")].map((a) => a.getAttribute("data-project-agent"))).toEqual(["claude_code", "codex"]);
+  expect([...host.querySelectorAll("[data-project-agent]")].map((a) => a.getAttribute("data-project-agent"))).toEqual(["claude_code", "codex", "antigravity"]);
   // The app-only directory has nothing to carry on; there is no directory of your own to type.
   expect(dirNames(host)).toEqual(["proj", "other"]);
   expect(host.querySelector("[data-picker-other]")).toBeNull();
@@ -214,12 +227,12 @@ test("Codex's terminal threads come from its own list, under the Codex tile, and
     claudeCodeSessions: async () => [listing("c1", "/Users/a/proj", 1)],
     agentSessions: async (agent: string) => {
       asked.push(agent);
-      return { items: agent === "codex" ? [{ ...listing("x1", "/Users/a/proj", 5, null as unknown as string), agent: "codex" }] : [{ ...listing("c1", "/Users/a/proj", 1), agent: "claude_code" }], error: null };
+      return { items: agent === "antigravity" ? [] : agent === "codex" ? [{ ...listing("x1", "/Users/a/proj", 5, null as unknown as string), agent: "codex" }] : [{ ...listing("c1", "/Users/a/proj", 1), agent: "claude_code" }], error: null };
     },
   };
   const { host, close } = render(ProjectSessionSheet, { runtime, t, mode: "import", onClose: () => {} });
   await settle();
-  expect(asked.sort()).toEqual(["claude_code", "codex"]);
+  expect(asked.sort()).toEqual(["antigravity", "claude_code", "codex"]);
   click(head(host, "/Users/a/proj"));
   expect([...host.querySelectorAll("[data-claude-session]")].map((r) => r.getAttribute("data-claude-session"))).toEqual(["c1"]);
   click(host.querySelector('[data-project-agent="codex"]'));

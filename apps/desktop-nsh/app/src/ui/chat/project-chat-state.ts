@@ -176,7 +176,8 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
 
   /** Stop stays in the composer. With tasks going it is a menu: everything, or one of them. */
   const stopItems = (): TaskStopItem[] => {
-    if (goingTasks().length === 0) return [];
+    // An agent that cannot end one alone has Stop for the whole run only.
+    if (goingTasks().length === 0 || !caps().stopsTask) return [];
     return [
       { key: "run", label: t().project.stopAll, task: null },
       ...goingTasks().map((task) => ({ key: `task:${task.id}`, label: t().project.stopTask(task.description || (task.command ?? task.id)), task })),

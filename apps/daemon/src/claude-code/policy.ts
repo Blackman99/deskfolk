@@ -219,7 +219,7 @@ function offLimits(call: Pick<AgentCall, "readableMemoryRoot">): string {
  * Whether a file tool's path is in one of the memory folders: as named, and, as far as it exists,
  * where its links lead (a link there to `~/.claude.json` is that file). A dangling link is not.
  */
-function inMemoryDir(path: string, dirs: string[], host: PathHost): boolean {
+export function inMemoryDir(path: string, dirs: string[], host: PathHost): boolean {
   const dir = dirs.find((candidate) => isWithinPath(candidate, path, host.platform));
   if (dir === undefined) return false;
   const realDir = throughLinks(dir, host);

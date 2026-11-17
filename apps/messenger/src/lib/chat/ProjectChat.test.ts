@@ -618,7 +618,7 @@ test("plan mode is a switch in the composer, and Shift+Tab flips it as in the te
   const on = fakeRuntime({ sessions: [session] });
   const view = render(ProjectChat, { runtime: on, t, selected: session, onOpenArtifact: () => {} });
   expect(view.host.querySelector("[data-project-plan]")?.getAttribute("aria-pressed")).toBe("true");
-  expect(view.host.querySelector("textarea")?.getAttribute("placeholder")).toBe(t.project.composerPlaceholderPlan);
+  expect(view.host.querySelector("textarea")?.getAttribute("placeholder")).toBe(t.project.composerPlaceholderPlan("Claude Code"));
   click(view.host.querySelector("[data-project-plan]"));
   expect(tunes(on)).toEqual([["proj-1", { mode: null }]]);
   view.close();
@@ -632,7 +632,7 @@ test("the plan it asks you to approve is a card of its own: the plan as written,
   expect(card?.querySelector("h2")?.textContent).toBe("计划");
   expect(card?.querySelector("strong")?.textContent).toBe("登录");
   expect(card?.querySelector("pre")).toBeNull();
-  expect(host.querySelector('[data-line="working"] .stream-step')?.textContent).toBe(t.project.waitingPlan);
+  expect(host.querySelector('[data-line="working"] .stream-step')?.textContent).toBe(t.project.waitingPlan("Claude Code"));
   const byText = (text: string) => [...(card?.querySelectorAll("button") ?? [])].find((b) => b.textContent?.trim() === text);
   click(byText(t.project.planApprove));
   await settle();

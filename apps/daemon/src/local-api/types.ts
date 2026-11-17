@@ -98,6 +98,11 @@ export type LocalApiOptions = {
   codexCommands?: import("../agents/codex-commands").CodexCommandList;
   /** Your terminal sessions of each agent, listed and read for carrying on (ADR 0095); one is made when absent. */
   agentSessions?: import("../agents/agent-sessions").AgentSessions;
+  /** The commands `agy` offered in each directory, as its project sessions' runs heard them (ADR 0111). */
+  agyCommands?: import("../project-runner-agy").AgyCommandMemory;
+  /** Project sessions' `agy` (ADR 0111) and its `--version`; a test's stand-ins. */
+  projectAgy?: () => Promise<import("../agents/runtime").ResolvedAgent>;
+  projectAgyVersion?: (executable: string, env: Record<string, string>) => Promise<string>;
   /** Stands in for the Agent SDK's `query` in tests, so no Claude Code is started. */
   agentQuery?: AgentQuery;
   /** Project sessions' Claude Code (ADR 0095); a test's stand-in for the SDK's query. */

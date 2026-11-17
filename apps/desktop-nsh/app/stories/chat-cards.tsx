@@ -447,6 +447,7 @@ export default function ChatCards() {
         <If when={section() === "plan"}>
           <If when={plan()}>
             <ProjectPlanCard
+              agentName="Claude Code"
               approval={PLAN}
               disabled={false}
               onAnswer={(allow) => {
@@ -456,7 +457,7 @@ export default function ChatCards() {
               onOpenPath={(path) => answered.set(`path:${path}`)}
             />
           </If>
-          <ProjectPlanCard approval={{ ...PLAN, summary: "" }} disabled onAnswer={() => undefined} onOpenPath={() => undefined} />
+          <ProjectPlanCard agentName="Claude Code" approval={{ ...PLAN, summary: "" }} disabled onAnswer={() => undefined} onOpenPath={() => undefined} />
           <Text testID="plan-said" class="text-[12px] text-ink-muted">{answered() ?? "—"}</Text>
         </If>
       </Scroll>

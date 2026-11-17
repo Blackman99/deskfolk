@@ -68,7 +68,7 @@ export function ProjectWorking(props: { state: ProjectState }) {
   const foot = () => {
     const r = run();
     if (s().waiting()) {
-      const text = s().planWaiting() ? t().project.waitingPlan : t().project.waiting(s().agentName());
+      const text = s().planWaiting() ? t().project.waitingPlan(s().agentName()) : t().project.waiting(s().agentName());
       return <Text testID="project-step" class="shrink min-w-0 text-[12px] font-medium text-brand line-clamp-1">{text}</Text>;
     }
     const line = !focusMode.on ? s().stepLine() : null;
@@ -172,7 +172,7 @@ export function ProjectWorking(props: { state: ProjectState }) {
                 }
               >
                 {/* The plan it asks you to approve: approved, it gets to work; a line you send is what to change. */}
-                <ProjectPlanCard approval={approval()} disabled={s().answering() || !s().connected()} onAnswer={(allow) => void s().answer(allow)} onOpenPath={(path) => s().openCited(path)} files={s().files()} />
+                <ProjectPlanCard agentName={s().agentName()} approval={approval()} disabled={s().answering() || !s().connected()} onAnswer={(allow) => void s().answer(allow)} onOpenPath={(path) => s().openCited(path)} files={s().files()} />
               </If>
             )}
           </If>

@@ -5,8 +5,8 @@
  */
 import type { ClaudeCodeSessionListing, ClaudeEffort } from "./bots.ts";
 
-/** The agents a project session can run, in the order a new session offers them (ADR 0095, ADR 0099). */
-export const PROJECT_AGENTS = ["claude_code", "codex"] as const;
+/** The agents a project session can run, in the order a new session offers them (ADR 0095, ADR 0099, ADR 0111). */
+export const PROJECT_AGENTS = ["claude_code", "codex", "antigravity"] as const;
 export type ProjectAgent = (typeof PROJECT_AGENTS)[number];
 
 /** Who a project session's agent lines are by: no Bot, the session's agent. */
@@ -22,12 +22,20 @@ export function isProjectAgent(value: unknown): value is ProjectAgent {
  * accounts, carrying on a terminal session, and a replay for the task map. What one lacks the
  * windows leave out and the routes refuse (422). `branches`: carrying a terminal session on
  * branches it, leaving yours as it was; an agent that cannot goes on in that same session.
+ * `tasks`: what it runs in the background (and its subagents) shows and opens (ADR 0095, 25);
+ * `stopsTask`: one of them can be ended alone, not only with the run. `asksFirst`: the agent asks
+ * before each call it makes, so ask first and read-only hold before anything runs; one that
+ * cannot be made to (`agy`, ADR 0111) is checked as it reports each call, and stopped after.
  */
-export type ProjectAgentCaps = { plan: boolean; commands: boolean; accounts: boolean; importable: boolean; branches: boolean; replay: boolean };
+export type ProjectAgentCaps = {
+  plan: boolean; commands: boolean; accounts: boolean; importable: boolean; branches: boolean; replay: boolean;
+  tasks: boolean; stopsTask: boolean; asksFirst: boolean;
+};
 
 export const PROJECT_AGENT_CAPS: Record<ProjectAgent, ProjectAgentCaps> = {
-  claude_code: { plan: true, commands: true, accounts: true, importable: true, branches: true, replay: true },
-  codex: { plan: false, commands: true, accounts: false, importable: true, branches: true, replay: false },
+  claude_code: { plan: true, commands: true, accounts: true, importable: true, branches: true, replay: true, tasks: true, stopsTask: true, asksFirst: true },
+  codex: { plan: false, commands: true, accounts: false, importable: true, branches: true, replay: false, tasks: false, stopsTask: false, asksFirst: true },
+  antigravity: { plan: true, commands: true, accounts: false, importable: true, branches: false, replay: false, tasks: true, stopsTask: false, asksFirst: false },
 };
 
 /**

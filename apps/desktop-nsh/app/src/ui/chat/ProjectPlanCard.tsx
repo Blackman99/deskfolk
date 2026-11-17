@@ -23,6 +23,8 @@ import { WheelLayer } from "../../platform/wheel-layer";
 const READING_WIDTH = 760;
 
 export function ProjectPlanCard(props: {
+  /** Whose plan it is: the session's agent. */
+  agentName: string;
   approval: AgentRunApproval;
   disabled: boolean;
   onAnswer: (allow: boolean) => void;
@@ -73,7 +75,7 @@ export function ProjectPlanCard(props: {
         >
           <Icon name="list" size={12} class="tint-brand" />
           <Text class="text-[12px] font-semibold text-brand">{t().project.planHead}</Text>
-          <Text class="text-[12px] font-medium text-ink-secondary">{`· ${t().project.agentNames.claude_code}`}</Text>
+          <Text class="text-[12px] font-medium text-ink-secondary">{`· ${props.agentName}`}</Text>
           <If when={hasPlan()}>
             <View class={isFull ? "ml-auto" : "ml-auto -my-[4px] -mr-[8px]"}>
               <IconButton
@@ -90,7 +92,7 @@ export function ProjectPlanCard(props: {
         <Scroll class={isFull ? "flex-1 min-h-0" : "max-h-[420px]"}>
           <View class={isFull ? "p-[24px]" : "px-[16px] py-[12px]"}>
             <View style={isFull ? { maxWidth: READING_WIDTH, width: "100%", alignSelf: "center" } : undefined}>
-              <If when={hasPlan()} else={<Text testID="plan-empty" class="text-[13px] text-ink-muted">{t().project.planEmpty}</Text>}>
+              <If when={hasPlan()} else={<Text testID="plan-empty" class="text-[13px] text-ink-muted">{t().project.planEmpty(props.agentName)}</Text>}>
                 {/* In the conversation it is part of the transcript's selection, which leaves a right click
                     to the pane's menu (`pane-menu.ts`); over the whole window it is an area of its own. */}
                 <MarkdownBody testID="plan-body" selectable={isFull} source={props.approval.summary} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={openPath} files={props.files} />

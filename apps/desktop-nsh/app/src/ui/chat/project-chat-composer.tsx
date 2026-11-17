@@ -172,7 +172,7 @@ export function ProjectComposer(props: {
               view().draft = text;
               sendFailed.set(false);
             }}
-            placeholder={s().planning() ? t().project.composerPlaceholderPlan : t().project.composerPlaceholder(s().agentName())}
+            placeholder={s().planning() ? t().project.composerPlaceholderPlan(s().agentName()) : t().project.composerPlaceholder(s().agentName())}
             editable
             commands={s().caps().commands ? { agentName: s().agentName(), sessionId: props.selected.id } : null}
             onSend={() => void send()}
@@ -196,7 +196,7 @@ export function ProjectComposer(props: {
               <View
                 role="button"
                 testID="project-plan"
-                tooltip={tip(s().planning() ? t().project.planOnHint : t().project.planOffHint)}
+                tooltip={tip(s().planning() ? t().project.planOnHint(s().agentName()) : t().project.planOffHint(s().agentName()))}
                 accessibilityLabel={t().project.plan}
                 accessibilityState={{ selected: s().planning(), disabled: !connected() }}
                 disabled={!connected()}

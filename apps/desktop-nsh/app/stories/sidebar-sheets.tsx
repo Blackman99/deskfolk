@@ -39,7 +39,7 @@ function fakeAgentSessions() {
   });
   Object.defineProperty(api, "agentSessions", {
     configurable: true,
-    value: async (agent: string) => ({ items: [agent === "codex" ? listing("x1", "codex", "Codex thread") : listing("c1", "claude_code", "Claude thread")], error: null }),
+    value: async (agent: string) => ({ items: agent === "antigravity" ? [] : [agent === "codex" ? listing("x1", "codex", "Codex thread") : listing("c1", "claude_code", "Claude thread")], error: null }),
   });
 }
 
@@ -74,6 +74,7 @@ export default function SidebarSheets() {
         <StoryButton id="story-open-group" label="new group" onPress={() => (runtime.createGroupOpen = true)} />
         <StoryButton id="story-open-project" label="new project" onPress={() => runtime.openCreateProject("new", "claude_code")} />
         <StoryButton id="story-open-codex" label="new codex project" onPress={() => runtime.openCreateProject("new", "codex")} />
+        <StoryButton id="story-open-antigravity" label="new antigravity project" onPress={() => runtime.openCreateProject("new", "antigravity")} />
         <StoryButton id="story-open-import" label="carry on" onPress={() => (fakeAgentSessions(), runtime.openCreateProject("import", "claude_code"))} />
         <StoryButton id="story-read" label="read" onPress={() => void refresh()} />
         <Text testID="story-open" class="text-[12px] text-ink-muted">

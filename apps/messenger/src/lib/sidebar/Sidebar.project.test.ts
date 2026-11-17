@@ -82,7 +82,7 @@ test("the section's + offers a new session of each agent in a folder, or a termi
   await settle();
   expect(add?.getAttribute("aria-expanded")).toBe("true");
   const items = [...document.querySelectorAll("[data-project-add-menu] [role=menuitem]")];
-  expect(items.map((item) => item.textContent?.trim())).toEqual([`${t.project.newWith("Claude Code")}…`, `${t.project.newWith("Codex")}…`, t.project.importSession]);
+  expect(items.map((item) => item.textContent?.trim())).toEqual([`${t.project.newWith("Claude Code")}…`, `${t.project.newWith("Codex")}…`, `${t.project.newWith("Antigravity")}…`, t.project.importSession]);
   click(document.querySelector('[data-project-add-menu] [data-project-add="import"]'));
   await settle();
   expect(runtime.calls.filter((c) => c.name === "openCreateProject").map((c) => c.args)).toEqual([["import"]]);
@@ -111,7 +111,7 @@ test("each directory row starts a new session of the agent you pick right there"
   const menu = document.querySelector("[data-project-add-menu]");
   expect(menu?.getAttribute("aria-label")).toBe(t.project.newHere("other"));
   // The directory is already picked: no ellipsis, and nothing to import here; a terminal starts in it.
-  expect([...(menu?.querySelectorAll("[role=menuitem]") ?? [])].map((item) => item.textContent?.trim())).toEqual([t.project.newWith("Claude Code"), t.project.newWith("Codex"), t.project.openTerminal]);
+  expect([...(menu?.querySelectorAll("[role=menuitem]") ?? [])].map((item) => item.textContent?.trim())).toEqual([t.project.newWith("Claude Code"), t.project.newWith("Codex"), t.project.newWith("Antigravity"), t.project.openTerminal]);
   click(menu?.querySelector('[data-project-agent="codex"]'));
   await settle();
   expect(runtime.calls.find((c) => c.name === "createProjectSession")?.args).toEqual([{ agent: "codex", dir: "/Users/a/other" }]);
@@ -128,7 +128,7 @@ test("a directory's + also opens the directory, by the session open in it or els
   click(add);
   await settle();
   const menu = document.querySelector("[data-project-add-menu]");
-  expect([...(menu?.querySelectorAll("[role=menuitem]") ?? [])].map((item) => item.textContent?.trim())).toEqual([t.project.newWith("Claude Code"), t.project.newWith("Codex"), t.project.openDir, t.project.openTerminal]);
+  expect([...(menu?.querySelectorAll("[role=menuitem]") ?? [])].map((item) => item.textContent?.trim())).toEqual([t.project.newWith("Claude Code"), t.project.newWith("Codex"), t.project.newWith("Antigravity"), t.project.openDir, t.project.openTerminal]);
   click(menu?.querySelector("[data-project-open-dir]"));
   await settle();
   expect(document.querySelector("[data-project-add-menu]")).toBeNull();
@@ -158,7 +158,7 @@ test("a right-click on a directory row opens the same menu where the pointer is"
   expect(menu?.style.top).toBe("60px");
   // The + it did not come from does not read as open.
   expect(host.querySelector('[data-project-dir="/Users/a/other"] [data-project-dir-add]')?.getAttribute("aria-expanded")).toBe("false");
-  expect([...(menu?.querySelectorAll("[role=menuitem]") ?? [])].map((item) => item.textContent?.trim())).toEqual([t.project.newWith("Claude Code"), t.project.newWith("Codex"), t.project.openDir, t.project.openTerminal]);
+  expect([...(menu?.querySelectorAll("[role=menuitem]") ?? [])].map((item) => item.textContent?.trim())).toEqual([t.project.newWith("Claude Code"), t.project.newWith("Codex"), t.project.newWith("Antigravity"), t.project.openDir, t.project.openTerminal]);
   click(menu?.querySelector("[data-project-open-dir]"));
   await settle();
   expect(openedDirs).toEqual(["p3"]);

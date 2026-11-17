@@ -118,6 +118,42 @@ export function namesDir(command: string, dir: string, home: string, platform: N
   return new RegExp(`(?:${prefixes.join("|")})(?![A-Za-z0-9._-])`, win ? "i" : "").test(command);
 }
 
+/**
+ * The command with every path it names inside one of `openDirs` taken out: an agent's own memory,
+ * skills or plans, open to it as a folder outside the workspace is (ADR 0111). Null when the
+ * command could leave such a folder by itself — it changes directory, climbs with `..`, or builds a
+ * path the rules cannot read (`$(…)`, backquotes, a variable other than the home folder) — or when a
+ * path it names there leads out through a link (`stays` says no). What is left is checked as any
+ * command is, so naming anything else of an agent's still shuts it out.
+ */
+export function withoutOpenDirs(command: string, openDirs: string[], home: string, platform: NodeJS.Platform, stays: (abs: string) => boolean): string | null {
+  if (openDirs.length === 0) return command;
+  if (/(?:^|[\s;&|(])(?:cd|pushd|chdir)(?=\s|$)/.test(command) || /(?:^|[\\/\s'"=])\.\.(?:[\\/\s'"]|$)/.test(command)) return null;
+  if (/\$\(|`/.test(command) || /\$\{?(?!HOME\b)[A-Za-z_]/.test(command)) return null;
+  const win = platform === "win32";
+  const sep = win ? "[\\\\/]+" : "/+";
+  const spelled = (path: string) => path.split(win ? /[\\/]+/ : /\/+/).filter(Boolean).map(escapeRegExp).join(sep);
+  let out = command;
+  for (const dir of openDirs) {
+    const patterns = [win ? spelled(dir) : `/${spelled(dir)}`];
+    if (dir.length > home.length && isWithinPath(home, dir, platform)) {
+      for (const lead of win ? ["~", "%USERPROFILE%"] : ["~", "\\$HOME", "\\$\\{HOME\\}"]) patterns.push(`${lead}${sep}${spelled(dir.slice(home.length))}`);
+    }
+    for (const pattern of patterns) {
+      const found = new RegExp(`${pattern}((?:${sep}[^\\s'"\`;|&<>()]*)?)(?![A-Za-z0-9._-])`, win ? "gi" : "g");
+      let leaves = false;
+      out = out.replace(found, (_match, rest: string) => {
+        const inner = rest.replace(/^[\\/]+/, "");
+        const abs = inner ? (win ? `${dir.replace(/[\\/]+$/, "")}\\${inner}` : posix.join(dir, inner)) : dir;
+        if (!stays(abs)) leaves = true;
+        return "OPEN_DIR";
+      });
+      if (leaves) return null;
+    }
+  }
+  return out;
+}
+
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

@@ -11,9 +11,9 @@ import { posix } from "node:path";
 import { recursiveSearchGuard, searchGuardMessage } from "../../search-guard";
 import { classifyPath, classifyShell, nodePathHost, type PathHost } from "../../workspace-paths";
 import type { PermissionMode } from "@real-bot/protocol";
-import { anchorAt, expandHome, gateChange, gitBashToWindows, type AgentDecision } from "../../claude-code/policy";
+import { anchorAt, expandHome, gateChange, gitBashToWindows, inMemoryDir, type AgentDecision } from "../../claude-code/policy";
 import { FILE_WRITE_KIND, SHELL_KIND } from "../../permission-gate";
-import { isAgentCredentialPath, touchesAgentCredentials } from "./credentials";
+import { isAgentCredentialPath, touchesAgentCredentials, withoutOpenDirs } from "./credentials";
 
 /** What a call of an agent's own does, as the app counts it. */
 export type AppActionName = "shell" | "write_file" | "read_file" | "list_dir" | "web" | "other";
@@ -41,6 +41,13 @@ export type ActionContext = {
   permission: PermissionMode;
   exists?: (path: string) => boolean;
   host?: PathHost;
+  /**
+   * Folders of the agent's own that this session may use as any folder outside the workspace (ADR
+   * 0111): its memory, its skills, the plans and notes it writes for itself. A path in one — and,
+   * as far as it exists, where its links lead — is no credential; a write there still goes by the
+   * permission mode. A command may name them only where it cannot leave them (`withoutOpenDirs`).
+   */
+  openDirs?: string[];
 };
 
 /** What to do with one call. `effect` calls also pass the app's effect gate before they run. */
@@ -57,7 +64,10 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
   if (appName === "shell") {
     const command = action.command ?? "";
     if (touchesAgentCredentials(command, home, platform, configDirs)) {
-      return { kind: "deny", reason: "your local agents' own settings and credentials are off limits" };
+      const rest = withoutOpenDirs(command, ctx.openDirs ?? [], home, platform, (abs) => inMemoryDir(abs, ctx.openDirs ?? [], host));
+      if (rest === null || touchesAgentCredentials(rest, home, platform, configDirs)) {
+        return { kind: "deny", reason: "your local agents' own settings and credentials are off limits" };
+      }
     }
     const hit = recursiveSearchGuard(ctx.workspace, command, action.cwd, host);
     if (hit) return { kind: "deny", reason: searchGuardMessage(hit) };
@@ -73,7 +83,8 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
   for (const raw of named) {
     const abs = anchorAt(action.cwd, expandHome(raw, home, platform), platform);
     const spellings = [abs, ...(platform === "win32" ? [gitBashToWindows(raw)].filter((path): path is string => path !== null) : [])];
-    if (spellings.some((path) => isAgentCredentialPath(path, home, platform, configDirs))) {
+    const open = spellings.every((path) => inMemoryDir(path, ctx.openDirs ?? [], host));
+    if (!open && spellings.some((path) => isAgentCredentialPath(path, home, platform, configDirs))) {
       return { kind: "deny", reason: "your local agents' own settings and credentials are off limits" };
     }
     if (platform === "win32" && /^[\\/](?![\\/])/.test(raw)) {

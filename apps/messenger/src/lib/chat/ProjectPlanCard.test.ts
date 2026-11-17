@@ -12,6 +12,7 @@ function open(summary = "## 计划\n1. 改 **登录**，见 [文件](src/login.t
   const paths: string[] = [];
   const view = render(ProjectPlanCard, {
     t,
+    agentName: "Claude Code",
     approval: { kind_key: "plan", target: "/Users/a/.claude/plans/p.md", summary },
     disabled: false,
     onAnswer: (allow: boolean) => answers.push(allow),
@@ -137,6 +138,12 @@ test("it goes into the top layer, out of any pane's transform, and comes back ou
 test("a plan with nothing in it has nothing to enlarge", () => {
   const { card, toggle, close } = open("  ");
   expect(toggle()).toBeNull();
-  expect(card().querySelector(".plan-empty")?.textContent).toBe(t.project.planEmpty);
+  expect(card().querySelector(".plan-empty")?.textContent).toBe(t.project.planEmpty("Claude Code"));
+  close();
+});
+
+test("the card names the agent whose plan it is", () => {
+  const { card, close } = open("  ");
+  expect(card().querySelector(".plan-who")?.textContent).toBe("Claude Code");
   close();
 });

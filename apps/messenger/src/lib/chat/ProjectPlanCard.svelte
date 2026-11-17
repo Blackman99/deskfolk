@@ -16,13 +16,15 @@
 	 */
 	type Props = {
 		t: Copy;
+		/** Whose plan it is: the session's agent. */
+		agentName: string;
 		approval: AgentRunApproval;
 		disabled: boolean;
 		onAnswer: (allow: boolean) => void;
 		onOpenPath: (path: string) => void;
 	};
 
-	let { t, approval, disabled, onAnswer, onOpenPath }: Props = $props();
+	let { t, agentName, approval, disabled, onAnswer, onOpenPath }: Props = $props();
 
 	let card = $state<HTMLElement | null>(null);
 	let body = $state<HTMLElement | null>(null);
@@ -82,7 +84,7 @@
 	<div class="plan-head" data-tauri-drag-region={full ? dragRegion : undefined}>
 		<Icon name="list" size={12} />
 		<span>{t.project.planHead}</span>
-		<span class="plan-who">{t.project.agentNames.claude_code}</span>
+		<span class="plan-who">{agentName}</span>
 		{#if approval.summary.trim()}
 			<IconButton
 				class="plan-full-toggle"
@@ -99,7 +101,7 @@
 		{#if approval.summary.trim()}
 			<MarkdownBody source={approval.summary} copyLabel={t.chat.copyCode} copiedLabel={t.chat.copied} onOpenArtifact={openPath} />
 		{:else}
-			<p class="plan-empty">{t.project.planEmpty}</p>
+			<p class="plan-empty">{t.project.planEmpty(agentName)}</p>
 		{/if}
 	</div>
 	<div class="plan-foot">

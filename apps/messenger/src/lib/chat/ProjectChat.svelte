@@ -362,9 +362,10 @@
 	/**
 	 * Stop stays in the composer. With tasks going it is a menu, as in a group: everything, or one of
 	 * them, since a background task keeps the run open and ending the agent with it cannot be the only way.
+	 * An agent that cannot end one alone (`stopsTask`) has Stop for the whole run only.
 	 */
 	const stopItems = $derived.by<TaskStopItem[]>(() => {
-		if (goingTasks.length === 0) return [];
+		if (goingTasks.length === 0 || !caps.stopsTask) return [];
 		return [{ key: 'run', label: t.project.stopAll, task: null }, ...goingTasks.map((task) => ({ key: `task:${task.id}`, label: t.project.stopTask(task.description || (task.command ?? task.id)), task }))];
 	});
 
@@ -743,7 +744,7 @@
 							{/if}
 						{/snippet}
 						{#if waiting}
-							<span class="stream-step">{planWaiting ? t.project.waitingPlan : t.project.waiting(agentName)}</span>
+							<span class="stream-step">{planWaiting ? t.project.waitingPlan(agentName) : t.project.waiting(agentName)}</span>
 						{:else if !focusMode.on && stepLine}
 							{@render step(stepLine.text, stepLine.full)}
 							{#if stepLine.elapsed}<span class="stream-step-elapsed mono" aria-hidden="true">{stepLine.elapsed}</span>{/if}
@@ -776,7 +777,7 @@
 				</div>
 				{#if waiting && planWaiting}
 					<!-- The plan it asks you to approve: approved, it gets to work; a line you send is what to change. -->
-					<ProjectPlanCard {t} approval={waiting} disabled={answering || !connected} onAnswer={(allow) => void answer(allow)} onOpenPath={(path) => openCited(path)} />
+					<ProjectPlanCard {t} {agentName} approval={waiting} disabled={answering || !connected} onAnswer={(allow) => void answer(allow)} onOpenPath={(path) => openCited(path)} />
 				{:else if waiting}
 					<!-- What it waits on you for, as a Bot's approval card. -->
 					<article class="approval-card" data-agent-approval>
@@ -858,7 +859,7 @@
 					bind:this={field}
 					rows="1"
 					aria-label={t.project.composerLabel(agentName)}
-					placeholder={planning ? t.project.composerPlaceholderPlan : t.project.composerPlaceholder(agentName)}
+					placeholder={planning ? t.project.composerPlaceholderPlan(agentName) : t.project.composerPlaceholder(agentName)}
 					aria-autocomplete="list"
 					aria-controls={commandsListed ? commandMenuId : undefined}
 					aria-activedescendant={commandsListed ? `${commandMenuId}-${commandActive}` : undefined}
@@ -901,7 +902,7 @@
 							class="plan-toggle"
 							class:is-on={planning}
 							aria-pressed={planning}
-							title={planning ? t.project.planOnHint : t.project.planOffHint}
+							title={planning ? t.project.planOnHint(agentName) : t.project.planOffHint(agentName)}
 							disabled={!connected}
 							onclick={togglePlan}
 							data-project-plan

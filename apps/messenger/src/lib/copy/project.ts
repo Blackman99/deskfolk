@@ -2,8 +2,7 @@ import type { CopyShape } from "./shape.ts";
 
 /**
  * Project sessions (ADR 0095, ADR 0099): the sidebar's 项目 section, the sheet that starts one, and
- * its chat. A line shown in any session names its agent (`agentNames`); plan mode and the `/` list
- * are Claude Code's only, so theirs name it.
+ * its chat. A line shown in any session names its agent (`agentNames`), plan mode's lines too.
  */
 export const zh = {
   section: "项目",
@@ -17,7 +16,7 @@ export const zh = {
   importTitle: "导入终端会话",
   newHere: (dir: string) => `在 ${dir} 下新开`,
   untitled: "新会话",
-  agentNames: { claude_code: "Claude Code", codex: "Codex" },
+  agentNames: { claude_code: "Claude Code", codex: "Codex", antigravity: "Antigravity" },
   toggleDir: (label: string) => `展开或收起 ${label}`,
   agentHead: "Agent",
   dirsHead: "目录",
@@ -30,7 +29,9 @@ export const zh = {
   dirHints: {
     claude_code: "Claude Code 在这个目录里工作，读它的 CLAUDE.md 和设置。",
     codex: "Codex 在这个目录里工作，读它的 AGENTS.md 和你的 Codex 设置。",
+    antigravity: "Antigravity 在这个目录里工作，照你的 agy 设置、规则和 skill。",
   },
+  asksAfter: (agent: string) => `${agent} 动手前不会先问：应用在它报出每一步时按权限模式检查，越界就停下这一轮，但那一步可能已经执行了。`,
   pick: "选择文件夹…",
   pickTitle: "选择项目目录",
   browse: "浏览电脑上的文件夹…",
@@ -75,9 +76,9 @@ export const zh = {
   citedMissing: (path: string) => `在项目目录里没找到 ${path}`,
   citedAmbiguous: (path: string, n: number) => `项目目录里有 ${n} 处 ${path}，没法确定是哪一个`,
   plan: "计划",
-  planOffHint: "计划模式：Claude Code 先看、出一份计划，你批准后才动手（Shift+Tab）",
-  planOnHint: "计划模式开着：你批准计划之前，Claude Code 只看不改。点一下或按 Shift+Tab 关掉",
-  composerPlaceholderPlan: "说要做什么，Claude Code 先出一份计划给你批准…",
+  planOffHint: (agent: string) => `计划模式：${agent} 先看、出一份计划，你批准后才动手（Shift+Tab）`,
+  planOnHint: (agent: string) => `计划模式开着：你批准计划之前，${agent} 只看不改。点一下或按 Shift+Tab 关掉`,
+  composerPlaceholderPlan: (agent: string) => `说要做什么，${agent} 先出一份计划给你批准…`,
   planHead: "计划等你批准",
   planApprove: "批准，开始做",
   planKeep: "接着改",
@@ -98,8 +99,8 @@ export const zh = {
   taskTokens: (n: number) => `${n} tokens`,
   planFullscreen: "全屏查看",
   planExitFullscreen: "退出全屏（Esc）",
-  planEmpty: "（Claude Code 没写出计划的内容）",
-  waitingPlan: "Claude Code 在等你批准计划",
+  planEmpty: (agent: string) => `（${agent} 没写出计划的内容）`,
+  waitingPlan: (agent: string) => `${agent} 在等你批准计划`,
   commandsLabel: (agent: string) => `${agent} 的命令`,
   commandsLoading: "正在读取命令…",
   commandsFailed: (agent: string) => `读不到命令列表；直接输入的命令照样发给 ${agent}。`,
@@ -120,7 +121,7 @@ export const en: CopyShape<typeof zh> = {
   importTitle: "Import a terminal session",
   newHere: (dir: string) => `New session in ${dir}`,
   untitled: "New session",
-  agentNames: { claude_code: "Claude Code", codex: "Codex" },
+  agentNames: { claude_code: "Claude Code", codex: "Codex", antigravity: "Antigravity" },
   toggleDir: (label: string) => `Expand or collapse ${label}`,
   agentHead: "Agent",
   dirsHead: "Directory",
@@ -133,7 +134,9 @@ export const en: CopyShape<typeof zh> = {
   dirHints: {
     claude_code: "Claude Code works in this directory and reads its CLAUDE.md and settings.",
     codex: "Codex works in this directory and reads its AGENTS.md and your Codex settings.",
+    antigravity: "Antigravity works in this directory, with your agy settings, rules and skills.",
   },
+  asksAfter: (agent: string) => `${agent} does not ask before it acts: the app checks each step as it reports it, by the permission mode, and stops the turn at one that oversteps, though that step may have run already.`,
   pick: "Choose folder…",
   pickTitle: "Choose the project directory",
   browse: "Browse the computer's folders…",
@@ -178,9 +181,9 @@ export const en: CopyShape<typeof zh> = {
   citedMissing: (path: string) => `${path} is not in the project directory`,
   citedAmbiguous: (path: string, n: number) => `${n} places in the project directory end in ${path}; cannot tell which one`,
   plan: "Plan",
-  planOffHint: "Plan mode: Claude Code looks around and writes a plan, and changes nothing until you approve it (Shift+Tab)",
-  planOnHint: "Plan mode is on: until you approve a plan, Claude Code looks and changes nothing. Click or press Shift+Tab to turn it off",
-  composerPlaceholderPlan: "Say what to do; Claude Code writes a plan for you to approve first…",
+  planOffHint: (agent: string) => `Plan mode: ${agent} looks around and writes a plan, and changes nothing until you approve it (Shift+Tab)`,
+  planOnHint: (agent: string) => `Plan mode is on: until you approve a plan, ${agent} looks and changes nothing. Click or press Shift+Tab to turn it off`,
+  composerPlaceholderPlan: (agent: string) => `Say what to do; ${agent} writes a plan for you to approve first…`,
   planHead: "A plan for you to approve",
   planApprove: "Approve and start",
   planKeep: "Keep planning",
@@ -201,8 +204,8 @@ export const en: CopyShape<typeof zh> = {
   taskTokens: (n: number) => `${n} tokens`,
   planFullscreen: "View full screen",
   planExitFullscreen: "Exit full screen (Esc)",
-  planEmpty: "(Claude Code wrote nothing in the plan)",
-  waitingPlan: "Claude Code is waiting for you to approve its plan",
+  planEmpty: (agent: string) => `(${agent} wrote nothing in the plan)`,
+  waitingPlan: (agent: string) => `${agent} is waiting for you to approve its plan`,
   commandsLabel: (agent: string) => `${agent}'s commands`,
   commandsLoading: "Reading the commands…",
   commandsFailed: (agent: string) => `Could not read the commands; a command you type still goes to ${agent}.`,

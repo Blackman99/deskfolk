@@ -13,6 +13,7 @@ import { defaultJob, planTitle } from "../../m/overlays/plan-board";
 import { characterLooks, conversationLabel } from "../../m/taskmap/characters";
 import { buildDistricts, type DistrictKind, type DistrictMap } from "../../m/taskmap/districts";
 import { buildFrame, placeName, timeAt, verbOf, type WalkState } from "../../m/taskmap/frame";
+import { projectAgentOf } from "../../m/sidebar/project-groups";
 import { placeDetail, tripsByPlace } from "../../m/taskmap/inspect";
 import type { AgentCallLog } from "../../m/taskmap/live.svelte";
 import { fromAgentReplay, fromPlanReplay, fromSessionReplay, mergeLive, type LiveCall, type MapCall, type MapData } from "../../m/taskmap/map-data";
@@ -72,7 +73,7 @@ export function TaskMap(props: {
         }
       : m;
   });
-  const agent = computed(() => session().project_agent ?? "claude_code");
+  const agent = computed(() => projectAgentOf(session()));
   const projectDir = computed(() => session().project_dir ?? null);
   const agentName = () => t().project.agentNames[agent()];
 
@@ -530,7 +531,7 @@ export function TaskMap(props: {
     return source?.kind === "plan" ? source : null;
   };
   const regionLabels = computed(() => ({
-    ext: islandLabel("ext", bots() ? `${tm().places.service} · ${tm().places.outside}` : `${tm().places.outside} · ${tm().places.claude_home}`),
+    ext: islandLabel("ext", bots() ? `${tm().places.service} · ${tm().places.outside}` : `${tm().places.outside}${agent() === "claude_code" ? ` · ${tm().places.claude_home}` : ""}`),
     ws: islandLabel("ws", `${tm().places.git} · ${tm().places.other}`),
     town: `${((planSource()?.dir ?? (bots() ? runtime.snapshot.settings.workspace_path : projectDir())) ?? "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? ""}/`,
   }));

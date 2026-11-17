@@ -593,7 +593,7 @@ function failureError(error: unknown): AgentStartError {
   return new AgentStartError(classified.failKind, classified.detail);
 }
 
-function textOfContent(content: unknown): string | null {
+export function textOfContent(content: unknown): string | null {
   if (!Array.isArray(content)) return null;
   const texts = content.flatMap((entry) => {
     const inner = (entry as { content?: { type?: string; text?: string } }).content;
@@ -605,7 +605,7 @@ function textOfContent(content: unknown): string | null {
   return texts.length > 0 ? texts.join("\n") : null;
 }
 
-function textOfRaw(raw: unknown): string | null {
+export function textOfRaw(raw: unknown): string | null {
   if (typeof raw === "string") return raw;
   if (raw && typeof raw === "object") {
     const out = raw as { output?: unknown; stdout?: unknown };
@@ -615,7 +615,7 @@ function textOfRaw(raw: unknown): string | null {
   return null;
 }
 
-function pathsOf(raw: Record<string, unknown>): string[] {
+export function pathsOf(raw: Record<string, unknown>): string[] {
   const keys = ["path", "file_path", "filePath", "target_file", "AbsolutePath", "TargetFile", "file", "Path", "File", "DirectoryPath", "SearchPath"];
   const out: string[] = [];
   for (const key of keys) if (typeof raw[key] === "string" && raw[key]) out.push(raw[key] as string);

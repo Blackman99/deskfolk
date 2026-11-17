@@ -287,6 +287,9 @@ export function ProjectDirPicker(props: {
                 />
               </If>
               <FieldHint>{t().project.dirHints[props.agent]}</FieldHint>
+              <If when={!PROJECT_AGENT_CAPS[props.agent].asksFirst}>
+                <FieldHint testID="asks-after">{t().project.asksAfter(agentName())}</FieldHint>
+              </If>
               {startFailure()}
               <View class="flex-row">
                 <Button variant="primary" testID="project-start" disabled={pending() || !typed().trim()} onPress={() => void start(typed())}>

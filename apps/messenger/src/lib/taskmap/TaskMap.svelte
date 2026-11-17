@@ -6,6 +6,7 @@
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { characterLooks, conversationLabel } from './characters.ts';
+	import { projectAgentOf } from '../sidebar/project-groups.ts';
 	import { buildDistricts, type DistrictKind, type DistrictMap } from './districts.ts';
 	import { buildFrame, placeName, timeAt, verbOf, type WalkState } from './frame.ts';
 	import { placeDetail, tripsByPlace } from './inspect.ts';
@@ -53,7 +54,7 @@
 				}
 			: t.taskmap
 	);
-	const agent = $derived(session.project_agent ?? 'claude_code');
+	const agent = $derived(projectAgentOf(session));
 	const agentName = $derived(t.project.agentNames[agent]);
 	/** The agent first, then each subagent; the agent wears the app's accent. */
 	const COLORS = ['#146a7c', '#3b5bdb', '#9c36b5', '#2b8a3e', '#c0623a', '#b45309'];
@@ -441,7 +442,7 @@
 		return names.length ? names.join(' · ') : empty;
 	};
 	const regionLabels = $derived({
-		ext: islandLabel('ext', bots ? `${tm.places.service} · ${tm.places.outside}` : `${tm.places.outside} · ${tm.places.claude_home}`),
+		ext: islandLabel('ext', bots ? `${tm.places.service} · ${tm.places.outside}` : `${tm.places.outside}${agent === 'claude_code' ? ` · ${tm.places.claude_home}` : ''}`),
 		ws: islandLabel('ws', `${tm.places.git} · ${tm.places.other}`),
 		town: `${((data?.source.kind === 'plan' ? data.source.dir : bots ? runtime.snapshot.settings.workspace_path : session.project_dir) ?? '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''}/`
 	});

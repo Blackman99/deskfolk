@@ -242,6 +242,9 @@
 				</div>
 				{/if}
 				<p class="muted field-hint">{t.project.dirHints[agent]}</p>
+				{#if !PROJECT_AGENT_CAPS[agent].asksFirst}
+					<p class="muted field-hint" data-asks-after>{t.project.asksAfter(agentName)}</p>
+				{/if}
 				{@render startFailure()}
 				<div>
 					<Button variant="primary" disabled={pending || !typed.trim()} onclick={() => void start(typed)}>{t.project.start}</Button>

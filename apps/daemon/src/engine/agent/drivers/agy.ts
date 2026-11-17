@@ -46,14 +46,14 @@ export function agyDriver(deps: AgyDeps = {}): AgentDriver {
   return {
     ...inner,
     async start(host, first) {
-      const text = await (deps.version ?? versionOf)(host.executable, host.env);
+      const text = await (deps.version ?? agyVersionText)(host.executable, host.env);
       if (!agyServesAcp(text)) throw new AgentStartError("agent_outdated", agyTooOld(text, host.locale));
       return inner.start(host, first);
     },
   };
 }
 
-async function versionOf(executable: string, env: Record<string, string>): Promise<string> {
+export async function agyVersionText(executable: string, env: Record<string, string>): Promise<string> {
   let stamp = "";
   try {
     const stat = statSync(executable);

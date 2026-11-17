@@ -7,6 +7,7 @@ import type { AgentSessionList, ProjectAgent } from "@real-bot/protocol";
 import { claudeSessionRoots, findClaudeSessionFile, listClaudeSessions, readClaudeSession } from "../claude-code/sessions";
 import { HttpError } from "../errors";
 import type { Store } from "../store";
+import type { AgySessions } from "./agy-sessions";
 import type { CodexSessions } from "./codex-sessions";
 
 /** A line of a conversation carried in: what you said or what the agent answered, at its own time. */
@@ -30,7 +31,7 @@ export type AgentSessions = {
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-export function createAgentSessions(deps: { store: Store; codex: CodexSessions }): AgentSessions {
+export function createAgentSessions(deps: { store: Store; codex: CodexSessions; agy: AgySessions }): AgentSessions {
   const { store } = deps;
   return {
     async list(agent, limit) {
@@ -42,6 +43,13 @@ export function createAgentSessions(deps: { store: Store; codex: CodexSessions }
         case "codex": {
           try {
             return { items: await deps.codex.list(null, limit, store.knownAgentSessions(agent)), error: null };
+          } catch (error) {
+            return { items: [], error: message(error) };
+          }
+        }
+        case "antigravity": {
+          try {
+            return { items: await deps.agy.list(limit, store.knownAgentSessions(agent), store.workspacePath()), error: null };
           } catch (error) {
             return { items: [], error: message(error) };
           }
@@ -63,6 +71,16 @@ export function createAgentSessions(deps: { store: Store; codex: CodexSessions }
             throw new HttpError(502, "agent_unavailable", `Codex could not be asked: ${message(error)}`);
           });
           if (!read) throw new HttpError(404, "not_found", "no such Codex thread");
+          return read;
+        }
+        case "antigravity": {
+          if (configDir !== null) throw new HttpError(422, "invalid_args", "Antigravity sessions are on no account of yours the app lists");
+          // Carried on twice, two sessions here would write the one `agy` session.
+          if (store.knownAgentSessions(agent).has(sessionId)) throw new HttpError(409, "conflict", "this Antigravity session is carried on here already");
+          const read = await deps.agy.read(sessionId).catch((error) => {
+            throw new HttpError(502, "agent_unavailable", `agy could not be asked: ${message(error)}`);
+          });
+          if (!read) throw new HttpError(404, "not_found", "no such Antigravity session");
           return read;
         }
       }
