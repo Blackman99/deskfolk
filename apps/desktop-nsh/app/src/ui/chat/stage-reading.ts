@@ -4,8 +4,8 @@
  * `visibilityState`; NSH tells the app how it is in use: `active` is a focused window, `inactive`
  * a visible one without the focus, `background` a hidden or minimized one.
  *
- * `report`: a window gaining or losing the focus tells the shell where the reader is
- * (`runtime.reportDesktopNotificationView`), as ChatStage does.
+ * `report`: the pane tells the runtime where the reader is (`runtime.noteConversationView`), so no
+ * banner comes for the conversation you are looking at, as ChatStage does.
  */
 import { cleanup, effect, untracked } from "nsh";
 import { desktopReadingMode, transcriptReadingReady, TRANSCRIPT_VISIBLE_MS } from "../../m/notifications/reading.ts";
@@ -35,11 +35,21 @@ export function trackReading(opts: {
       return;
     }
     if (state !== "active") clear();
-    if (!opts.report || !runtime.isDesktopShell) return;
-    untracked(() => {
-      if (state === "active") void runtime.pollDesktopNativeState();
-      void runtime.reportDesktopNotificationView(state === "active" && opts.atLatest());
-    });
+    if (!opts.report || !runtime.isDesktopShell || state !== "active") return;
+    untracked(() => void runtime.pollDesktopNativeState());
+  });
+
+  // Where the reader is, for the runtime to hold back a banner for the conversation in front of
+  // you: told as the window gains or loses the focus, the reader reaches or leaves the newest line,
+  // or another conversation is picked. Only the selected conversation's pane tells it, since the
+  // report names the selected conversation; the five-second beat repeats what it last said.
+  effect(() => {
+    if (!opts.report) return;
+    const id = opts.sessionId();
+    const state = lifecycle();
+    const atLatest = opts.atLatest();
+    if (!id || id !== runtime.selectedId) return;
+    untracked(() => runtime.noteConversationView(id, state === "active" && atLatest));
   });
 
   effect(() => {
@@ -63,9 +73,9 @@ export function trackReading(opts: {
     const mode = desktopReadingMode(runtime.isDesktopShell, runtime.nativeCapabilities);
     // Not `runtime.nativeFocusFacts`: the messenger asks the shell whether its window is key because
     // the page's `document.hasFocus()` can say yes to a window that is not. Here `lifecycle()` is
-    // the shell's own word, and the facts only move when a report reaches the shell (a window event
-    // of the page's, which NSH has none of): they stay at "nothing visible, nothing focused" and,
-    // read as a gate, kept every conversation unread.
+    // the shell's own word, and the facts only move when a report reaches the shell: before
+    // reports read `lifecycle()` they never did, the facts stayed at "nothing visible, nothing
+    // focused" and, read as a gate, kept every conversation unread. They lag the window by a report.
     if (!transcriptReadingReady(facts, mode, null) || !atLatest) return;
     timer = setTimeout(() => {
       timer = null;

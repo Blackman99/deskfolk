@@ -10,6 +10,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - Behind a proxy app in TUN or enhanced mode (Clash / mihomo, Surge, sing-box, Stash), the push services resolve to the proxy's fake IPs in 198.18.0.0/15. Deskfolk took that range for a private address and refused every push, recorded only as a network error, so a paired phone got no notifications at all. A push to one of the allowed push services now goes through such an address; any other private address is still refused.
 
+### No banner for the conversation you are looking at, in the native Mac app
+
+- The native app never told the runtime which conversation was in front of you, so a reply or a question there got a banner although you were reading it. It does now, as the Tauri app did, and it keeps saying you are at the newest line while you stay there: the Tauri app's five-second beat said you were not, so it held the banner back for a few seconds at most.
+
 ## 0.5.1 — 2026-11-17
 
 On Windows, the installer updates Deskfolk in the folder it is installed in, and launch at login starts it hidden in the notification area again, switched by Settings; opening it while it runs shows the running window. Nothing changes on the Mac.

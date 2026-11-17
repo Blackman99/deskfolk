@@ -47,6 +47,18 @@ import {
   type PushStateV2,
   type PushTransport,
 } from "./types.ts";
+import { lifecycle } from "../../platform/lifecycle";
+
+/**
+ * Whether the window is shown and has the focus, as the shell says it (`lifecycle()`). The
+ * messenger read `document.visibilityState` and `document.hasFocus()`; NSH has no `document`, so
+ * every report threw inside its `try`, the runtime never heard which conversation you were looking
+ * at, and a banner came for it too (PORTING.md). On the web `lifecycle()` reads the page.
+ */
+function windowUse(): { visible: boolean; focused: boolean } {
+  const phase = lifecycle();
+  return { visible: phase !== "background", focused: phase === "active" };
+}
 
 /**
  * What this sub-store reaches back into the runtime for, read at call time rather than cached: the
@@ -555,15 +567,35 @@ export class NotificationCenter {
     }
   }
 
+  /**
+   * The conversation in front of you and whether it shows its newest line, as its pane last said
+   * (`ui/chat/stage-reading.ts`). The five-second beat repeats it: the runtime keeps one report per
+   * window, and a beat that always said "not at the newest line" (the messenger's) took it back
+   * within five seconds.
+   */
+  #conversationView: { sessionId: string; atLatest: boolean } | null = null;
+
+  /** The selected conversation's pane says where its reader is; the runtime hears it at once. */
+  noteConversationView(sessionId: string, atLatest: boolean): void {
+    this.#conversationView = { sessionId, atLatest };
+    void this.sendPresenceHeartbeat();
+  }
+
+  private viewAtLatest(): boolean {
+    const view = this.#conversationView;
+    return Boolean(view && view.sessionId === this.host.selectedId && view.atLatest);
+  }
+
   async reportDesktopNotificationView(atLatest: boolean): Promise<NativeFocusFacts | null> {
     const internals = readTauriInternals();
     if (!internals?.invoke) return null;
     try {
+      const use = windowUse();
       const report: NotificationViewReport = {
         sessionId: this.host.selectedId,
         atLatest,
-        visible: document.visibilityState === "visible",
-        focused: document.hasFocus(),
+        visible: use.visible,
+        focused: use.focused,
       };
       const facts = (await internals.invoke("report_notification_view", { report })) as NativeFocusFacts;
       if (facts) {
@@ -598,9 +630,10 @@ export class NotificationCenter {
     }
   }
 
-  async sendPresenceHeartbeat(atLatest: boolean = false): Promise<void> {
+  async sendPresenceHeartbeat(atLatest: boolean = this.viewAtLatest()): Promise<void> {
     const api = this.host.api;
-    if (!api || this.host.connection !== "connected" || typeof document === "undefined" || document.visibilityState !== "visible") return;
+    const use = windowUse();
+    if (!api || this.host.connection !== "connected" || !use.visible) return;
     if (this.host.isDesktopShell) {
       await this.reportDesktopNotificationView(atLatest);
       return;
@@ -608,8 +641,8 @@ export class NotificationCenter {
     try {
       await api.postNotificationPresence({
         instance_id: this.instanceId,
-        visible: document.visibilityState === "visible",
-        focused: document.hasFocus(),
+        visible: use.visible,
+        focused: use.focused,
         session_id: this.host.selectedId,
         at_latest: atLatest,
       });

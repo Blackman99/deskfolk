@@ -1079,8 +1079,13 @@ export class MessengerRuntime {
     return this.notificationCenter.requestDesktopNotificationPermission();
   }
 
-  async sendPresenceHeartbeat(atLatest: boolean = false): Promise<void> {
+  /** Left out, `atLatest` is what the selected conversation's pane last said (`noteConversationView`). */
+  async sendPresenceHeartbeat(atLatest?: boolean): Promise<void> {
     return this.notificationCenter.sendPresenceHeartbeat(atLatest);
+  }
+
+  noteConversationView(sessionId: string, atLatest: boolean): void {
+    this.notificationCenter.noteConversationView(sessionId, atLatest);
   }
 
   async loadPushState(): Promise<void> {
