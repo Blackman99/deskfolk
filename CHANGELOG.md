@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+(none)
+
+## 0.5.1 — 2026-11-17
+
+On Windows, the installer updates Deskfolk in the folder it is installed in, and launch at login starts it hidden in the notification area again, switched by Settings; opening it while it runs shows the running window. Nothing changes on the Mac.
+
 ### On Windows, an update goes where Deskfolk is installed
 
 - 0.5.0's installer always went to `%LOCALAPPDATA%\Deskfolk`. A Deskfolk 0.4.0 installed in a folder of your own choosing got a second copy beside it, and its shortcuts went on opening 0.4.0, which then offered the update again. The installer now goes into the folder the earlier install is in.
