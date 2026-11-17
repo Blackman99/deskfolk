@@ -39,7 +39,7 @@ windows = { version = "0.62", features = [
     "Win32_System_JobObjects", "Win32_Security", "Security_Credentials_UI", "Win32_System_WinRT",
 ] }
 # Hello's asynchronous calls (`IAsyncOperation`, `join`), the line `windows` 0.62 uses.
-windows-future = "0.3"
+windows-future = "0.100"
 # Voice input's recording (`recorder_portable.rs`): WASAPI's default input, encoded as Opus in
 # Ogg (`recorder_ogg.rs`; the opus crate builds libopus from source with cmake).
 cpal = "0.18"
