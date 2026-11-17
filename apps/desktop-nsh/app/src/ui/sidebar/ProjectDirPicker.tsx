@@ -14,8 +14,8 @@
  */
 import { signal, Text, View } from "nsh";
 import { Input } from "nsh/base";
-import type { ClaudeCodeSessionListing, ProjectAgent, SessionSummary } from "@real-bot/protocol";
-import { importRequest, importSubtitle, newProjectRequest, tildePath } from "../../m/sidebar/import-claude-session";
+import { PROJECT_AGENT_CAPS, type ProjectAgent, type SessionSummary } from "@real-bot/protocol";
+import { importRequest, importSubtitle, newProjectRequest, tildePath, type ImportListing } from "../../m/sidebar/import-claude-session";
 import { dirDisplay, isAbsoluteDir, listingSpansAccounts, pickerDirs } from "../../m/sidebar/project-groups";
 import { pickWorkspaceFolder, workspacePickerAvailable } from "../../m/settings/pick-workspace";
 import { copy, runtime } from "../../runtime";
@@ -34,19 +34,20 @@ const FIRST = 8;
 export function ProjectDirPicker(props: {
   agent: ProjectAgent;
   mode: "new" | "import";
-  items: ClaudeCodeSessionListing[] | null;
+  items: ImportListing[] | null;
   sessions: readonly SessionSummary[];
   onDone?: () => void;
 }) {
   const t = () => copy();
   const dirs = () => pickerDirs(props.items ?? [], props.sessions, props.agent).filter((entry) => props.mode === "new" || entry.listings.length > 0);
-  const accounts = () => listingSpansAccounts(props.items ?? []);
+  const accounts = () => listingSpansAccounts(props.items ?? [], props.agent);
+  const agentName = () => t().project.agentNames[props.agent];
   const open = signal<string | null>(null);
   /** With nothing to list, the typed directory is all there is: open it. */
   const shown = () => open() ?? (props.mode === "new" && dirs().length === 0 ? OTHER : null);
 
   const allShown = signal(false);
-  const picked = signal<ClaudeCodeSessionListing | null>(null);
+  const picked = signal<ImportListing | null>(null);
   const typed = signal("");
   const pending = signal(false);
   const startError = signal<"invalid" | "failed" | null>(null);
@@ -64,7 +65,7 @@ export function ProjectDirPicker(props: {
     importError.set(null);
   }
 
-  function accountOf(listing: ClaudeCodeSessionListing): string | null {
+  function accountOf(listing: ImportListing): string | null {
     if (!accounts()) return null;
     return listing.config_dir ? tildePath(listing.config_dir) : t().project.defaultAccount;
   }
@@ -125,7 +126,7 @@ export function ProjectDirPicker(props: {
     <View testID="project-dirs" class="flex-col gap-[2px]">
       <If when={props.mode === "new" && shown() !== OTHER}>{startFailure()}</If>
       <If when={props.mode === "import" && props.items && dirs().length === 0}>
-        <FieldHint testID="import-empty">{t().sidebar.importClaudeEmpty}</FieldHint>
+        <FieldHint testID="import-empty">{t().project.importEmpty(agentName())}</FieldHint>
       </If>
       <Each of={dirs()} key={(entry) => entry.dir}>
         {(entry) => (
@@ -154,7 +155,7 @@ export function ProjectDirPicker(props: {
                 <If when={shown() === entry().dir && entry().listings.length > 0}>
                   <View class={`flex-col gap-2 pt-[2px] pr-[10px] pb-3 ${phone() ? "pl-[14px]" : "pl-[30px]"}`}>
                     <Text class="text-[12px] text-ink-muted">{t().project.carryHead}</Text>
-                    <View role="list" accessibilityLabel={t().sidebar.importClaudeList} class="flex-col gap-[2px] -mx-[10px]">
+                    <View role="list" accessibilityLabel={t().project.importList(agentName())} class="flex-col gap-[2px] -mx-[10px]">
                       <Each of={allShown() ? entry().listings : entry().listings.slice(0, FIRST)} key={(session) => session.session_id}>
                         {(session) => (
                           <View
@@ -183,7 +184,7 @@ export function ProjectDirPicker(props: {
                     </If>
                     <If when={picked()}>
                       <View testID="import-form" class={`flex-col gap-2 pt-3 -mx-[10px] px-[10px] border-t border-line`}>
-                        <FieldHint>{t().sidebar.importClaudeHint}</FieldHint>
+                        <FieldHint>{t().project.importHint(agentName(), PROJECT_AGENT_CAPS[props.agent].branches)}</FieldHint>
                         <If when={importError()}>
                           {(error) => <FieldError testID="import-error">{error() === "missing" ? t().sidebar.importClaudeMissing : t().sidebar.saveFailed}</FieldError>}
                         </If>

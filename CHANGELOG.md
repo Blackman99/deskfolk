@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A project session can carry on a Codex session from your terminal
+
+- Import a terminal session… now offers Codex next to Claude Code, as tiles. Its sessions are asked of Codex itself (its terminal, its editor extension and `codex exec`); the app's own threads are not listed.
+- What you said and Codex's final answers come in at their own times, with a line at the bottom saying how many tool calls were left out. Codex remembers all of it.
+- The first run branches your Codex session, so the one in your terminal stays as it was. `/new` in the carried-on session starts a fresh thread, not another branch.
+- The first-launch wizard's "Carry on a terminal session" now lists Codex sessions too, with tiles above the list to pick whose when both have some. The lines that said Claude Code now name the agent you picked.
+- The phone can list an agent's terminal sessions through `GET /v1/runtime/agents/:agent/sessions`; the old Claude Code route stays for older windows.
+
 ### Checking for updates on Windows goes through the system proxy
 
 - The native Windows app read no system proxy: it followed only variables such as `HTTPS_PROXY`, which an app opened from the Start menu, a shortcut or at login does not have, so on a computer that reaches GitHub only through a proxy, checking for updates always failed. It now reads the proxy server set in Windows Settings → Network & internet → Proxy, as the Tauri app did (it is what a proxy app turns on as its "system proxy"), bypass list included. A PAC script or a SOCKS-only setup is still not followed.

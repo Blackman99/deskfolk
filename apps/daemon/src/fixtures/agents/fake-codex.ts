@@ -58,6 +58,12 @@ type Script = {
   skills?: Array<{ name: string; description: string; path: string; enabled?: boolean }>;
   /** How long a compaction takes; 30 ms when left out. */
   compactMs?: number;
+  /**
+   * Threads Codex keeps from before (a terminal's): what `thread/list` lists by their `source`, what
+   * `thread/read` reads, what `thread/fork` branches into a new thread (`thread-N`) and
+   * `thread/resume` finds besides `resumable`.
+   */
+  stored?: Array<{ id: string; cwd: string; preview: string; name?: string | null; source: string; updatedAt: number; gitInfo?: { branch: string | null } | null; parentThreadId?: string | null; turns: unknown[] }>;
   turns: Step[][];
 };
 
@@ -219,6 +225,29 @@ rpc.onRequest(async (method, params) => {
       cwd = String(p.cwd ?? process.cwd());
       script.turns = JSON.parse(JSON.stringify(script.turns).replaceAll("@CWD", cwd)) as Step[][];
       return { thread: { id: THREAD_ID, cwd }, model: script.model ?? "fake-codex-model", modelProvider: "openai", cwd, approvalPolicy: p.approvalPolicy ?? "untrusted", sandbox: { type: "readOnly" } };
+    }
+    case "thread/list": {
+      const kinds = Array.isArray(p.sourceKinds) ? (p.sourceKinds as string[]) : ["cli", "vscode"];
+      const limit = typeof p.limit === "number" ? p.limit : 50;
+      const listed = (script.stored ?? []).filter((thread) => kinds.includes(thread.source)).sort((a, b) => b.updatedAt - a.updatedAt);
+      // Two to a page, so a caller that wants more has to follow the cursor.
+      const from = typeof p.cursor === "string" ? Number(p.cursor) : 0;
+      const page = listed.slice(from, from + Math.min(2, limit));
+      const next = from + page.length < listed.length ? String(from + page.length) : null;
+      return { data: page.map(({ turns: _turns, ...thread }) => ({ ...thread, createdAt: thread.updatedAt, turns: [] })), nextCursor: next, backwardsCursor: null };
+    }
+    case "thread/read": {
+      const thread = (script.stored ?? []).find((one) => one.id === p.threadId);
+      if (!thread) throw new RpcError(-32600, `thread not found: ${String(p.threadId)}`);
+      return { thread: { ...thread, createdAt: thread.updatedAt, turns: p.includeTurns ? thread.turns : [] } };
+    }
+    case "thread/fork": {
+      const from = (script.stored ?? []).find((one) => one.id === p.threadId);
+      if (!from) throw new RpcError(-32600, `no rollout found for thread id ${String(p.threadId)}`);
+      THREAD_ID = `thread-${++threads}`;
+      cwd = String(p.cwd ?? from.cwd);
+      script.turns = JSON.parse(JSON.stringify(script.turns).replaceAll("@CWD", cwd)) as Step[][];
+      return { thread: { id: THREAD_ID, cwd, forkedFromId: from.id, turns: from.turns }, model: script.model ?? "fake-codex-model", modelProvider: "openai", cwd, approvalPolicy: p.approvalPolicy ?? "untrusted", sandbox: { type: "readOnly" } };
     }
     case "thread/resume": {
       if (typeof p.threadId !== "string" || p.threadId !== (script.resumable ?? p.threadId)) throw new RpcError(-32600, `no rollout found for thread id ${String(p.threadId)}`);

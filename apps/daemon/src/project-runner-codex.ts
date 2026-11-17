@@ -6,11 +6,11 @@
  * it: the thread runs with a read-only sandbox and approval `untrusted`, as a Bot's Codex does
  * (`engine/agent/drivers/codex.ts`), and the app's permission mode answers (`decideAction`), with
  * a card under ask first. Stop ends the run and what it started. Each run is an app-server of its
- * own: the first starts a thread Codex keeps, every later one resumes it, so a run is sent only
- * your new line. Codex's app-server runs no slash command, so the app carries out the few it can
- * (`agents/codex-commands.ts`): `/compact`, `/review`, `/new`, and a skill by its name. Plan mode,
- * accounts, carrying on a terminal session and the replay are Claude Code's only
- * (`PROJECT_AGENT_CAPS`).
+ * own: the first starts a thread Codex keeps — or branches the terminal thread the session carries
+ * on (`agents/codex-sessions.ts`) — and every later one resumes it, so a run is sent only your new
+ * line. Codex's app-server runs no slash command, so the app carries out the few it can
+ * (`agents/codex-commands.ts`): `/compact`, `/review`, `/new`, and a skill by its name. What else a
+ * session has is `PROJECT_AGENT_CAPS`'s to say.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -591,12 +591,31 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         model = opened?.model ?? model;
         return id;
       };
-      // The first run starts a thread Codex keeps; every later one resumes it.
-      if (project.agentSession) {
-        const opened = await rpc.request<{ thread?: { id?: string }; model?: string }>("thread/resume", { threadId: project.agentSession, ...asks(), excludeTurns: true }, INIT_TIMEOUT_MS);
-        live.threadId = opened?.thread?.id ?? project.agentSession;
+      /**
+       * A branch of the terminal thread the session carries on (ADR 0099 addendum 2026-11-17), as
+       * Claude Code's first run branches its session: yours stays as it was, this one goes on.
+       */
+      const fork = async (source: string): Promise<void> => {
+        const opened = await rpc.request<{ thread?: { id?: string }; model?: string }>("thread/fork", { threadId: source, ...asks() }, INIT_TIMEOUT_MS);
+        const id = opened?.thread?.id;
+        if (!id) throw new Error(en ? "Codex could not branch the thread" : "Codex 没能从那个会话分出来");
+        live.threadId = id;
+        store.recordProjectAgentSession(live.sessionId, id);
         model = opened?.model ?? model;
-      } else await thread();
+      };
+      // The first run starts a thread Codex keeps, or branches the one carried on; every later one resumes its own.
+      if (project.agentSession) {
+        try {
+          const opened = await rpc.request<{ thread?: { id?: string }; model?: string }>("thread/resume", { threadId: project.agentSession, ...asks(), excludeTurns: true }, INIT_TIMEOUT_MS);
+          live.threadId = opened?.thread?.id ?? project.agentSession;
+          model = opened?.model ?? model;
+        } catch (error) {
+          // A branch whose first turn never ran was never kept: branch the terminal thread again.
+          if (!project.source || !/no rollout found/i.test(error instanceof Error ? error.message : String(error))) throw error;
+          await fork(project.source);
+        }
+      } else if (project.source) await fork(project.source);
+      else await thread();
 
       /**
        * One turn of Codex's: `start` asks for it and gives its id when the answer names one (a
@@ -689,7 +708,8 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
             // had a turn, so one opened now and left unused could not be resumed. What you wrote
             // after it is that thread's first line.
             live.threadId = null;
-            store.recordProjectAgentSession(live.sessionId, null);
+            // A new thread, not another branch of the terminal thread the session carried on.
+            store.recordProjectAgentSession(live.sessionId, null, true);
             postLine(live.sessionId, "system", commandRan("new", name, en));
             const after = withCommandWord(line.input, name, "");
             if (after.length > 0) live.queue.unshift({ input: after, command: null });

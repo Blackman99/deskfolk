@@ -7,6 +7,8 @@ import { warmDisplayAvatar } from "./avatar-display";
 import { createClaudeCodeProbe } from "./claude-code/probe";
 import { createClaudeUsageProbe } from "./claude-code/usage";
 import { createCodexCommandList } from "./agents/codex-commands";
+import { createAgentSessions } from "./agents/agent-sessions";
+import { createCodexSessions } from "./agents/codex-sessions";
 import { createClaudeCommandList } from "./claude-code/commands";
 import { createClaudeModelList } from "./claude-code/models";
 import { HttpError } from "./errors";
@@ -22,7 +24,7 @@ import { notificationRoutes } from "./local-api/routes/notifications";
 import { planRoutes } from "./local-api/routes/plans";
 import { playbookRoutes } from "./local-api/routes/playbooks";
 import { interfaceRoutes } from "./local-api/routes/interface";
-import { projectSessionRoutes } from "./local-api/routes/project-sessions";
+import { projectSessionRoutes, readImportOf } from "./local-api/routes/project-sessions";
 import { qualityAndPromptRoutes } from "./local-api/routes/quality-and-prompts";
 import { speechRoutes } from "./local-api/routes/speech";
 import { systemRoutes } from "./local-api/routes/system";
@@ -71,6 +73,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   options.claudeModels ??= createClaudeModelList({ claudeCode });
   options.claudeCommands ??= createClaudeCommandList({ claudeCode });
   options.codexCommands ??= createCodexCommandList({ resolve: projectCodexOf(options.store) });
+  options.agentSessions ??= createAgentSessions({
+    store: options.store,
+    codex: createCodexSessions({ resolve: options.projectCodex ?? projectCodexOf(options.store) }),
+  });
   options.claudeUsage ??= createClaudeUsageProbe({
     claudeCode,
     // Bots, Claude rungs of the model ladder (ADR 0076) and built-in calls alike, and every account
@@ -356,6 +362,8 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         const posting = request.method === "POST" && parsed.files.length ? matchPath(url.pathname, "/v1/sessions/:id/messages") : null;
         if (posting) options.store.assertUserMayPost(posting.id!);
         if (parsed.files.some((file) => !file.staged)) options.store.prepareAttachments(parsed.files);
+        // Carrying a terminal session on asks its agent first; the write itself stays synchronous.
+        if (request.method === "POST" && url.pathname === "/v1/project-sessions") parsed.imported = await readImportOf(options.agentSessions!, parsed.body);
         if (request.method === "PUT" && url.pathname === "/v1/workspace/file" && typeof parsed.body.path === "string" && typeof parsed.body.content === "string" && Buffer.byteLength(parsed.body.content) <= 1_000_000) {
           const target = writableTarget(options.store.workspacePath(), options.store.projectDirs(), parsed.body.path);
           const located = locateWorkspaceFile(target.root, target.rel);

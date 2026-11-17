@@ -1,5 +1,5 @@
-import { PROJECT_AGENT_CAPS, PROJECT_AGENTS, type AgentRun, type ClaudeCodeSessionListing, type ProjectAgent, type SessionSummary } from "@real-bot/protocol";
-import { tildePath } from "./import-claude-session.ts";
+import { PROJECT_AGENT_CAPS, PROJECT_AGENTS, type AgentRun, type ProjectAgent, type SessionSummary } from "@real-bot/protocol";
+import { listingAgent, tildePath, type ImportListing } from "./import-claude-session.ts";
 
 /** The agents a project session can run, in the order the sheet offers them (ADR 0095: Claude Code first, ADR 0099: then Codex). */
 export { PROJECT_AGENTS };
@@ -95,21 +95,21 @@ export function liveRunSessionIds(runs: Readonly<Record<string, AgentRun>>): str
 export type PickerDir = {
   dir: string;
   label: string;
-  /** The terminal sessions that ran in it, newest first. */
-  listings: ClaudeCodeSessionListing[];
+  /** The agent's terminal sessions that ran in it, newest first. */
+  listings: ImportListing[];
   /** When anything last happened in it, a terminal session or one of the app's. */
   latest: string;
 };
 
 /**
- * The directories the sheet offers for an agent, newest first: where the terminal's sessions ran
- * and where the app's project sessions did, each once. Only an agent whose terminal sessions can be
- * carried on (Claude Code) lists them under their directory; for another (Codex, ADR 0099) they
- * only say which folders you worked in lately, as its own sessions and the other agent's do. A
- * terminal session with no directory is left out.
+ * The directories the sheet offers for an agent, newest first: where the terminal's sessions of any
+ * agent ran and where the app's project sessions did, each once. Under its directory each lists
+ * only the picked agent's terminal sessions, and only for an agent whose sessions can be carried
+ * on (`PROJECT_AGENT_CAPS`); the rest only say which folders you worked in lately. A terminal
+ * session with no directory is left out.
  */
 export function pickerDirs(
-  listings: readonly ClaudeCodeSessionListing[],
+  listings: readonly ImportListing[],
   sessions: readonly SessionSummary[],
   agent: ProjectAgent,
 ): PickerDir[] {
@@ -126,7 +126,7 @@ export function pickerDirs(
   for (const listing of listings) {
     if (!listing.cwd) continue;
     const entry = at(listing.cwd, listing.modified_at);
-    if (carries) entry.listings.push(listing);
+    if (carries && listingAgent(listing) === agent) entry.listings.push(listing);
   }
   for (const session of sessions) {
     if (session.kind === "project" && session.project_dir) at(session.project_dir, session.updated_at);
@@ -136,9 +136,9 @@ export function pickerDirs(
   return dirs.sort((a, b) => (a.latest < b.latest ? 1 : a.latest > b.latest ? -1 : 0));
 }
 
-/** Whether the listing comes from more than one Claude account, so each row says which. */
-export function listingSpansAccounts(listings: readonly ClaudeCodeSessionListing[]): boolean {
-  return new Set(listings.map((listing) => listing.config_dir ?? "")).size > 1;
+/** Whether an agent's listing comes from more than one of your accounts, so each row says which. */
+export function listingSpansAccounts(listings: readonly ImportListing[], agent: ProjectAgent = "claude_code"): boolean {
+  return new Set(listings.filter((listing) => listingAgent(listing) === agent).map((listing) => listing.config_dir ?? "")).size > 1;
 }
 
 /** Longer than this, a header line shows only a directory's last two names. */

@@ -58,6 +58,8 @@ add("PUT", "runtime/claude-code/accounts", { config_dirs: list(string) }, ["conf
 // Project sessions (ADR 0095): your terminal Claude Code sessions to carry on, a new or imported
 // session, its newest run, where a path its agent cites is, and your answer or Stop on a run.
 get("runtime/claude-code/sessions", { limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) });
+// Any agent's terminal sessions to carry on (Codex, ADR 0099 addendum).
+get(`runtime/agents/(${PROJECT_AGENTS.join("|")})/sessions`, { limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) });
 add("POST", "project-sessions", { agent: one(...PROJECT_AGENTS), dir: string, config_dir: nullable(string),
   import: object({ session_id: string, config_dir: nullable(string) }, ["session_id"]) });
 get("project-sessions/:id/(run|replay|commands|tasks)");

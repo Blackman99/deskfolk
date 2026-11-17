@@ -1,21 +1,22 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import { PROJECT_AGENT_CAPS, type ClaudeCodeSessionListing, type ProjectAgent } from '@real-bot/protocol';
+	import { PROJECT_AGENT_CAPS, type ProjectAgent } from '@real-bot/protocol';
 	import Icon from '../Icon.svelte';
-	import AgentLogo from '../settings/AgentLogo.svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import { modalOut } from '../modal-motion.ts';
+	import ProjectAgentTiles from './ProjectAgentTiles.svelte';
 	import ProjectDirPicker from './ProjectDirPicker.svelte';
+	import { loadAgentSessions, type ImportListing } from './import-claude-session.ts';
 	import { PROJECT_AGENTS } from './project-groups.ts';
 
 	/**
 	 * A project session (ADR 0095), in one of two errands: `new` picks the agent, then a directory
 	 * to start in; `import` picks the agent, then a terminal session to carry on, by the directory
-	 * it ran in. Only Claude Code's terminal sessions can be carried on so far (ADR 0099): the import
-	 * sheet offers the agents that can. Mounted only while open, so a fresh mount is the reset.
+	 * it ran in. The import sheet offers the agents whose terminal sessions can be carried on
+	 * (`PROJECT_AGENT_CAPS`). Mounted only while open, so a fresh mount is the reset.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -32,24 +33,31 @@
 
 	const agents = $derived(PROJECT_AGENTS.filter((each) => mode === 'new' || PROJECT_AGENT_CAPS[each].importable));
 	let agent = $state<ProjectAgent>(untrack(() => (agents.includes(openedOn) ? openedOn : agents[0]!)));
-	/** The terminal sessions, read once; enough of them that a directory from last week still shows. */
-	let items = $state<ClaudeCodeSessionListing[] | null>(null);
-	let loadFailed = $state(false);
+	/**
+	 * Each agent's terminal sessions, read once and side by side (another agent's are asked of the
+	 * agent itself, which takes a moment); enough of them that a directory from last week still
+	 * shows. Every agent's place the folders; the picked agent's are listed under them.
+	 */
+	const importable = PROJECT_AGENTS.filter((each) => PROJECT_AGENT_CAPS[each].importable);
+	let lists = $state<Partial<Record<ProjectAgent, ImportListing[]>>>({});
+	let failed = $state<Partial<Record<ProjectAgent, boolean>>>({});
+	/** Held until the picked agent's list is in (or could not be had); the others join as they come. */
+	const items = $derived(lists[agent] || failed[agent] || !importable.includes(agent) ? Object.values(lists).flat() : null);
+	const loadFailed = $derived(failed[agent] === true);
 
 	onMount(() => {
 		const client = runtime.client;
-		if (!client) {
-			loadFailed = true;
-			return;
-		}
-		void (async () => {
-			try {
-				items = await client.claudeCodeSessions(120);
-			} catch {
-				// The phone, or a daemon older than ADR 0095: it has no list to give.
-				loadFailed = true;
+		for (const each of importable) {
+			if (!client) {
+				failed[each] = true;
+				continue;
 			}
-		})();
+			loadAgentSessions(client, each, 120).then(
+				(listed) => (lists[each] = listed),
+				// The phone, or a daemon older than this agent's list: it has none to give.
+				() => (failed[each] = true)
+			);
+		}
 	});
 </script>
 
@@ -80,22 +88,7 @@
 		<div class="modal-body">
 			<div class="modal-section" data-project-agents>
 				<span class="field-head">{t.project.agentHead}</span>
-				<div class="agent-tiles" role="radiogroup" aria-label={t.project.agentHead}>
-					{#each agents as each (each)}
-						<button
-							type="button"
-							class="agent-tile"
-							class:active={agent === each}
-							role="radio"
-							aria-checked={agent === each}
-							data-project-agent={each}
-							onclick={() => (agent = each)}
-						>
-							<AgentLogo runner={each} size={20} />
-							<span>{t.project.agentNames[each]}</span>
-						</button>
-					{/each}
-				</div>
+				<ProjectAgentTiles {t} {agents} {agent} onpick={(each) => (agent = each)} />
 			</div>
 			<div class="modal-section dirs">
 				<span class="field-head">{t.project.dirsHead}</span>
@@ -122,43 +115,8 @@
 		max-height: 88vh;
 	}
 
-	.agent-tiles {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-	}
-
-	.agent-tile {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		min-height: 40px;
-		padding: 6px 14px 6px 8px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		background: var(--pane);
-		color: var(--ink);
-		font-size: 13px;
-		font-weight: 600;
-	}
-
-	.agent-tile:hover {
-		background: var(--row-hover);
-	}
-
-	.agent-tile.active {
-		border-color: var(--accent);
-		background: var(--accent-tint);
-	}
-
 	.dirs {
 		padding-top: 14px;
 		border-top: 1px solid var(--line);
-	}
-
-	@media (max-width: 680px) {
-		.agent-tile {
-			min-height: 44px;
-		}
 	}
 </style>

@@ -3,7 +3,7 @@ import { openStory, seeded } from "./fixture";
 
 type App = Awaited<ReturnType<typeof openStory>>;
 
-async function story(picked?: string | null) {
+async function story(picked?: string | null, extra: Record<string, unknown> = {}) {
   const endpoint = { origin: seeded.origin, token: seeded.token };
   const asked: unknown[] = [];
   const app = await open("../Story.tsx", {
@@ -13,7 +13,7 @@ async function story(picked?: string | null) {
     locale: "zh-CN",
     network: "live",
     host: {
-      params: { ...endpoint, windowId: 1, material: "none", story: "sidebar-sheets" },
+      params: { ...endpoint, windowId: 1, material: "none", story: "sidebar-sheets", ...extra },
       handlers: {
         "tauri.local_api_endpoint": endpoint,
         "tauri.app_version": "0.0.0",
@@ -93,18 +93,37 @@ test("the folder dialog's answer lands in the field", async () => {
   expect(app.enabled("id:project-start")).toBe(true);
 });
 
-test("carrying a terminal session on: Claude Code only, directories that have sessions", async () => {
+test("carrying a terminal session on: both agents, directories that have sessions", async () => {
   const { app } = await story();
   await app.press("id:story-open-import");
   await app.waitFor("id:project-session-sheet");
   expect(app.texts()).toContain("导入终端会话");
   await app.waitFor("id:project-agent-claude_code");
-  // Codex cannot carry a terminal session on.
-  expect(app.shows("id:project-agent-codex")).toBe(false);
+  // Codex's terminal sessions can be carried on too.
+  expect(app.shows("id:project-agent-codex")).toBe(true);
   await app.waitFor("id:project-dirs");
   // No typed directory in this errand.
   expect(app.shows("id:picker-other")).toBe(false);
   expect(app.shows("id:project-new")).toBe(false);
   // Whatever the terminal holds, the sheet lists directories or says there is nothing.
   await app.waitUntil(() => app.texts().includes("没找到可以接着聊的 Claude Code 会话。") || app.texts().some(() => false) || app.count("id:project-dirs") > 0);
+});
+
+test("the import sheet lists both agents; each lists its own terminal sessions", async () => {
+  const { app } = await story(undefined, { fakeSessions: true });
+  await app.press("id:story-open-import");
+  await app.waitFor("id:project-agent-claude_code");
+  expect(app.shows("id:project-agent-codex")).toBe(true);
+  // Claude Code's tile is picked: its session is under the directory, Codex's is not.
+  await app.waitFor("id:picker-head-/Users/a/proj");
+  await app.press("id:picker-head-/Users/a/proj");
+  await app.waitFor("id:import-row-c1");
+  expect(app.shows("id:import-row-x1")).toBe(false);
+  await app.press("id:project-agent-codex");
+  await app.waitFor("id:picker-head-/Users/a/proj");
+  await app.press("id:picker-head-/Users/a/proj");
+  await app.waitFor("id:import-row-x1");
+  expect(app.shows("id:import-row-c1")).toBe(false);
+  await app.press("id:import-row-x1");
+  await app.waitFor("id:import-form");
 });

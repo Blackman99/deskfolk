@@ -7,7 +7,7 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentReplay, AgentRun, ClaudeCodeCommandList, ClientEvent, SessionDetail, ToolFrame } from "@real-bot/protocol";
+import type { AgentReplay, AgentRun, AgentSessionList, ClaudeCodeCommandList, ClientEvent, SessionDetail, ToolFrame } from "@real-bot/protocol";
 import { CODEX_BUILTIN_COMMANDS, type CodexCommandList } from "./agents/codex-commands";
 import type { ClaudeCommandList } from "./claude-code/commands";
 import { ulid } from "./ids";
@@ -24,7 +24,7 @@ afterEach(async () => { while (closes.length) await closes.pop()!(); });
 
 type Step = Record<string, unknown>;
 /** One app-server's script: each run of a session starts an app-server of its own. */
-type Script = { signedOut?: boolean; model?: string; resumable?: string; resumedUsage?: { input: number; output: number; cached: number; turnId: string }; skills?: Array<{ name: string; description: string; path: string }>; compactMs?: number; turns: Step[][] };
+type Script = { signedOut?: boolean; model?: string; resumable?: string; resumedUsage?: { input: number; output: number; cached: number; turnId: string }; skills?: Array<{ name: string; description: string; path: string }>; compactMs?: number; stored?: unknown[]; turns: Step[][] };
 type Entry = Record<string, unknown> & { method?: string; params?: Record<string, unknown>; asked?: string; answer?: { decision?: string } };
 
 function start(scripts: Script[], opts: { claudeCommands?: ClaudeCommandList; codexCommands?: CodexCommandList } = {}) {
@@ -344,11 +344,98 @@ test("a Codex session's model and level reach its next turn; what it has not got
   expect(commands.body).toEqual(listed);
   expect(asked).toEqual([h.dir]);
 
-  expect((await h.call("POST", "/v1/project-sessions", { agent: "codex", import: { session_id: "x" } })).status).toBe(422);
+  // A thread Codex does not have cannot be carried on.
+  expect((await h.call("POST", "/v1/project-sessions", { agent: "codex", import: { session_id: "x" } })).status).toBe(404);
   expect((await h.call("POST", "/v1/project-sessions", { agent: "codex", dir: h.dir, config_dir: "/somewhere" })).status).toBe(422);
   expect((await h.call("POST", "/v1/project-sessions", { agent: "grok", dir: h.dir })).status).toBe(422);
   // The phone reaches the same route.
   expect(() => validateBusiness({ v: 1, id: ulid(), method: "POST", path: "/v1/project-sessions", body: { agent: "codex", dir: "/tmp/x" } })).not.toThrow();
+});
+
+test("a terminal Codex thread is listed, carried on with its lines, and branched on the first run; yours stays as it was", async () => {
+  const at = Math.floor(Date.parse("2026-11-17T08:00:00Z") / 1000);
+  const turn = (id: string, said: string, answer: string, start: number) => ({
+    id, status: "completed", startedAt: start, completedAt: start + 9,
+    items: [
+      { type: "userMessage", id: `${id}-u`, content: [{ type: "text", text: said }] },
+      { type: "agentMessage", id: `${id}-c`, text: "Looking.", phase: "commentary" },
+      { type: "commandExecution", id: `${id}-x`, command: "ls", status: "completed" },
+      { type: "agentMessage", id: `${id}-a`, text: answer, phase: "final_answer" },
+    ],
+  });
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "codex-import-")));
+  closes.push(() => rmSync(dir, { recursive: true, force: true }));
+  const stored = [
+    { id: "term-1", cwd: dir, preview: "Remember the word HERON\nplease", name: null, source: "cli", updatedAt: at, gitInfo: { branch: "main" }, turns: [turn("t1", "Remember the word HERON", "ok", at - 60), turn("t2", "And GULL", "ok too", at - 30)] },
+    { id: "term-2", cwd: "/elsewhere", preview: "x", name: "Named in Codex", source: "vscode", updatedAt: at - 100, turns: [] },
+    { id: "app-1", cwd: dir, preview: "the app's own", source: "appServer", updatedAt: at + 50, turns: [] },
+    { id: "sub-1", cwd: dir, preview: "a subagent", source: "exec", parentThreadId: "term-1", updatedAt: at + 40, turns: [] },
+    { id: "exec-1", cwd: dir, preview: "from codex exec", source: "exec", updatedAt: at - 200, turns: [] },
+  ];
+  // Each ask starts an app-server of its own: the list, the read, then each run.
+  const h = start([{ stored, turns: [] }, { stored, turns: [] }, { stored, turns: [[{ say: "HERON and GULL" }]] }, { turns: [[{ say: "again" }]] }]);
+
+  const listed = await h.call<AgentSessionList>("GET", "/v1/runtime/agents/codex/sessions?limit=10");
+  expect(listed.status).toBe(200);
+  expect(listed.body.error).toBeNull();
+  // Yours from Codex's terminal, its extension and `codex exec`, newest first, through every page; no subagent, nothing of the app's.
+  expect(listed.body.items.map((item) => [item.session_id, item.title, item.agent, item.config_dir])).toEqual([
+    ["term-1", "Remember the word HERON", "codex", null],
+    ["term-2", "Named in Codex", "codex", null],
+    ["exec-1", "from codex exec", "codex", null],
+  ]);
+  expect(listed.body.items[0]).toMatchObject({ cwd: dir, git_branch: "main", modified_at: new Date(at * 1000).toISOString() });
+  expect(h.sent(0, "thread/list")[0]).toMatchObject({ sourceKinds: ["cli", "vscode", "exec"], archived: false });
+
+  const made = await h.call<SessionDetail>("POST", "/v1/project-sessions", { agent: "codex", import: { session_id: "term-1" } });
+  expect(made.status).toBe(201);
+  expect(made.body).toMatchObject({ project_agent: "codex", project_dir: dir, name: "Remember the word HERON" });
+  const id = made.body.id;
+  expect(h.lines(id).map((line) => [line.kind, line.body])).toEqual([
+    ["user", "Remember the word HERON"],
+    ["bot", "ok"],
+    ["user", "And GULL"],
+    ["bot", "ok too"],
+    ["system", "从 Codex 会话「Remember the word HERON」接过来：上面 4 条，2 次工具调用没有列出。Codex 记得这些全部内容；终端里的原会话不受影响。"],
+  ]);
+  // Carried on now, so the next list leaves it out.
+  const again = await h.call<AgentSessionList>("GET", "/v1/runtime/agents/codex/sessions?limit=10");
+  expect(again.body.items.map((item) => item.session_id)).toEqual(["term-2", "exec-1"]);
+
+  await h.say(id, "Which words?");
+  await h.settled(id);
+  // The first run branches your thread rather than opening a new one.
+  expect(h.sent(2, "thread/fork")).toEqual([expect.objectContaining({ threadId: "term-1", cwd: dir, approvalPolicy: "untrusted", sandbox: "read-only" })]);
+  expect(h.sent(2, "thread/start")).toEqual([]);
+  expect(h.sent(2, "turn/start")[0]).toMatchObject({ threadId: "thread-1" });
+  expect(h.lines(id).at(-1)).toMatchObject({ kind: "bot", body: "HERON and GULL" });
+  expect(h.store.projectOf(id)).toMatchObject({ agentSession: "thread-1", source: "term-1" });
+
+  // Later runs resume the branch.
+  await h.say(id, "Again?");
+  await h.until(async () => (await h.run(id))?.status === "completed" && h.lines(id).at(-1)?.body === "again");
+  expect(h.sent(3, "thread/resume")).toEqual([expect.objectContaining({ threadId: "thread-1" })]);
+  expect(h.sent(3, "thread/fork")).toEqual([]);
+  // The phone reaches the list too.
+  expect(() => validateBusiness({ v: 1, id: ulid(), method: "GET", path: "/v1/runtime/agents/codex/sessions", query: { limit: "40" } })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id: ulid(), method: "GET", path: "/v1/runtime/agents/grok/sessions" })).toThrow();
+});
+
+test("/new in a carried-on Codex session starts a thread of its own, not another branch of yours", async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "codex-import-new-")));
+  closes.push(() => rmSync(dir, { recursive: true, force: true }));
+  const stored = [{ id: "term-1", cwd: dir, preview: "hi", source: "cli", updatedAt: 1_794_900_000, turns: [{ id: "t1", status: "completed", startedAt: 1_794_900_000, completedAt: 1_794_900_005, items: [{ type: "userMessage", id: "u", content: [{ type: "text", text: "hi" }] }, { type: "agentMessage", id: "a", text: "hello", phase: "final_answer" }] }] }];
+  const h = start([{ stored, turns: [] }, { stored, turns: [] }, { turns: [[{ say: "new one" }]] }]);
+  const made = await h.call<SessionDetail>("POST", "/v1/project-sessions", { agent: "codex", import: { session_id: "term-1" } });
+  expect(made.status).toBe(201);
+  const id = made.body.id;
+  await h.say(id, "/new");
+  await h.settled(id);
+  expect(h.store.projectOf(id)).toMatchObject({ agentSession: null, source: null });
+  await h.say(id, "fresh start");
+  await h.until(async () => (await h.run(id))?.status === "completed" && h.lines(id).at(-1)?.body === "new one");
+  expect(h.sent(2, "thread/fork")).toEqual([]);
+  expect(h.sent(2, "thread/start")).toHaveLength(1);
 });
 
 test("/compact compacts Codex's thread in a turn of its own and says it ran; a command names no session", async () => {

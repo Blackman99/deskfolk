@@ -1,5 +1,6 @@
 /** Reading a mutation's body and checking the revision it was made against. */
 
+import type { ImportedSession } from "../agents/agent-sessions";
 import { HttpError } from "../errors";
 import { matchPath, readJson } from "../http";
 import { normalizeFiles, type NormalizedFile } from "../request-digest";
@@ -10,6 +11,8 @@ import type { RequestScope } from "../store/receipts";
 export type ParsedMutation = {
   body: Record<string, unknown>; files: AttachmentInput[]; multipart: boolean; stagedWrite?: FileCommit;
   normalizedFiles?: NormalizedFile<AttachmentInput>[]; digestBody?: Record<string, unknown>;
+  /** A terminal session a new project session carries on, read before the write (an agent is asked, which takes a while). */
+  imported?: ImportedSession;
 };
 
 export async function parseMutation(request: Request, staged?: AttachmentInput[]): Promise<ParsedMutation> {

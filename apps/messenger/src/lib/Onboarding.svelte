@@ -28,18 +28,22 @@
 	import type { CreateBotDraft } from './panels/create-form.ts';
 	import TeamStep from './onboarding/TeamStep.svelte';
 	import LocaleSwitch from './onboarding/LocaleSwitch.svelte';
+	import ProjectAgentTiles from './sidebar/ProjectAgentTiles.svelte';
 	import ProjectDirPicker from './sidebar/ProjectDirPicker.svelte';
+	import { loadAgentSessions, type ImportListing } from './sidebar/import-claude-session.ts';
+	import { PROJECT_AGENTS } from './sidebar/project-groups.ts';
 	import {
 		BUILTIN_MODEL_ROLES,
 		connectorById,
 		connectorFor,
 		isLocalEndpoint,
+		PROJECT_AGENT_CAPS,
 		type ApiFormat,
 		type BotRunner,
-		type ClaudeCodeSessionListing,
 		type ClaudeCodeStatus,
 		type CreateProviderRequest,
-		type ProbedModel
+		type ProbedModel,
+		type ProjectAgent
 	} from '@real-bot/protocol';
 	import { endpointSource } from './model-source.ts';
 	import { groupModels, type PickerData } from './model-picker.ts';
@@ -655,20 +659,28 @@
 	let teamBusy = $state(false);
 
 	/**
-	 * Your Claude Code sessions from a terminal (ADR 0095), asked for once while the roster is empty:
-	 * with any, the last step offers carrying one on as a project session instead of making Bots.
-	 * Setup is saved by then, so landing in that session is the end of the wizard too.
+	 * Your terminal sessions of each agent that can carry one on (ADR 0095; Codex, ADR 0099), asked
+	 * for once while the roster is empty: with any, the last step offers carrying one on as a project
+	 * session instead of making Bots. Setup is saved by then, so landing in that session is the end
+	 * of the wizard too.
 	 */
-	let terminalSessions = $state<ClaudeCodeSessionListing[]>([]);
+	let terminalLists = $state<Partial<Record<ProjectAgent, ImportListing[]>>>({});
 	let terminalAsked = false;
 	$effect(() => {
-		const client = runtime.client as { claudeCodeSessions?: (limit?: number) => Promise<ClaudeCodeSessionListing[]> } | null;
+		const client = runtime.client as Parameters<typeof loadAgentSessions>[0] | null;
 		if (terminalAsked || !client?.claudeCodeSessions || !rosterEmpty) return;
 		terminalAsked = true;
-		// Enough of them that a directory from last week still shows, as in the import sheet.
-		void client.claudeCodeSessions(120).then((items) => (terminalSessions = items), () => undefined);
+		for (const agent of PROJECT_AGENTS.filter((each) => PROJECT_AGENT_CAPS[each].importable)) {
+			// Enough of them that a directory from last week still shows, as in the import sheet.
+			void loadAgentSessions(client, agent, 120).then((items) => (terminalLists[agent] = items), () => undefined);
+		}
 	});
-	const carryOffered = $derived(terminalSessions.length > 0);
+	/** The agents with sessions to carry on, in the sheet's order; the first is picked until you pick another. */
+	const carryAgents = $derived(PROJECT_AGENTS.filter((agent) => (terminalLists[agent]?.length ?? 0) > 0));
+	let carryPicked = $state<ProjectAgent | null>(null);
+	const carryAgent = $derived(carryPicked && carryAgents.includes(carryPicked) ? carryPicked : (carryAgents[0] ?? 'claude_code'));
+	const terminalSessions = $derived(Object.values(terminalLists).flat());
+	const carryOffered = $derived(carryAgents.length > 0);
 	let startWay = $state<'team' | 'carry'>('team');
 
 	/**
@@ -1228,7 +1240,12 @@
 						{/if}
 					</div>
 					{#if startWay === 'carry'}
-						<ProjectDirPicker {runtime} {t} agent="claude_code" mode="import" items={terminalSessions} sessions={snapshot.sessions} ondone={() => (holding = false)} />
+						{#if carryAgents.length > 1}
+							<ProjectAgentTiles {t} agents={carryAgents} agent={carryAgent} onpick={(agent) => (carryPicked = agent)} />
+						{/if}
+						{#key carryAgent}
+							<ProjectDirPicker {runtime} {t} agent={carryAgent} mode="import" items={terminalSessions} sessions={snapshot.sessions} ondone={() => (holding = false)} />
+						{/key}
 					{/if}
 
 					<div class="step-nav-footer">

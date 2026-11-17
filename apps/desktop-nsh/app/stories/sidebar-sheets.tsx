@@ -25,6 +25,24 @@ if (slowCreate > 0) {
   });
 }
 
+/**
+ * `host.params.fakeSessions`: both agents' terminal sessions are made up, so the import sheet has
+ * something to list (the isolated runtime has no terminal sessions of its own). Claude Code's `c1`
+ * and Codex's `x1` ran in the same directory.
+ */
+const fakeSessions = Boolean((host.params as { fakeSessions?: boolean }).fakeSessions);
+function fakeAgentSessions() {
+  const api = runtime.client;
+  if (!fakeSessions || !api) return;
+  const listing = (id: string, agent: string, title: string) => ({
+    session_id: id, config_dir: null, title, cwd: "/Users/a/proj", git_branch: null, modified_at: "2026-11-01T10:00:00.000Z", size: 10, agent,
+  });
+  Object.defineProperty(api, "agentSessions", {
+    configurable: true,
+    value: async (agent: string) => ({ items: [agent === "codex" ? listing("x1", "codex", "Codex thread") : listing("c1", "claude_code", "Claude thread")], error: null }),
+  });
+}
+
 function StoryButton(props: { id: string; label: string; onPress: () => void }) {
   return (
     <View role="button" testID={props.id} onPress={props.onPress} class="px-2 py-1 border border-line rounded-(--radius-sm)">
@@ -56,7 +74,7 @@ export default function SidebarSheets() {
         <StoryButton id="story-open-group" label="new group" onPress={() => (runtime.createGroupOpen = true)} />
         <StoryButton id="story-open-project" label="new project" onPress={() => runtime.openCreateProject("new", "claude_code")} />
         <StoryButton id="story-open-codex" label="new codex project" onPress={() => runtime.openCreateProject("new", "codex")} />
-        <StoryButton id="story-open-import" label="carry on" onPress={() => runtime.openCreateProject("import", "claude_code")} />
+        <StoryButton id="story-open-import" label="carry on" onPress={() => (fakeAgentSessions(), runtime.openCreateProject("import", "claude_code"))} />
         <StoryButton id="story-read" label="read" onPress={() => void refresh()} />
         <Text testID="story-open" class="text-[12px] text-ink-muted">
           {`open:${runtime.createBotOpen ? "bot," : ""}${runtime.createGroupOpen ? "group," : ""}${runtime.createProjectOpen ? "project" : ""}`}

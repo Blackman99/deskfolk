@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { isProjectAgent, isProjectAgentMode, PROJECT_AGENT_AUTHOR, USER_MEMBER, type AgentRun, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
-import type { ClaudeSessionRead } from "../claude-code/sessions";
+import type { ImportedSession } from "../agents/agent-sessions";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { getMessage } from "./messages";
@@ -110,9 +110,50 @@ export function tuneProjectSession(ctx: StoreContext, sessionId: string, change:
   return getSession(ctx, sessionId);
 }
 
-/** The agent's own session id, once a run has one: every later run resumes it. Null starts the next run on a new one. */
-export function recordProjectAgentSession(ctx: StoreContext, sessionId: string, agentSession: string | null): void {
-  ctx.db.run(`UPDATE sessions SET project_agent_session = ? WHERE id = ? AND kind = 'project'`, [agentSession, sessionId]);
+/**
+ * The agent's own session id, once a run has one: every later run resumes it. Null starts the next
+ * run on a new one; with `startOver` on a new one rather than a branch of the terminal session it
+ * carried on (Codex's `/new`), as clearing the history does.
+ */
+export function recordProjectAgentSession(ctx: StoreContext, sessionId: string, agentSession: string | null, startOver = false): void {
+  ctx.db.run(`UPDATE sessions SET project_agent_session = ?${startOver ? ", project_source = NULL" : ""} WHERE id = ? AND kind = 'project'`, [agentSession, sessionId]);
+}
+
+/**
+ * The agent's sessions the app itself holds, which a list of your terminal sessions leaves out:
+ * every project session's own, and the terminal sessions already carried on.
+ */
+export function knownAgentSessions(ctx: StoreContext, agent: ProjectAgent): Set<string> {
+  const rows = ctx.db
+    .query<{ project_agent_session: string | null; project_source: string | null }, [string]>(
+      `SELECT project_agent_session, project_source FROM sessions WHERE kind = 'project' AND project_agent = ?`,
+    )
+    .all(agent);
+  return new Set(rows.flatMap((row) => [row.project_agent_session, row.project_source].filter((id): id is string => typeof id === "string" && id.length > 0)));
+}
+
+/** Each agent's name in the app's own lines about it. */
+const AGENT_NAMES: Record<ProjectAgent, string> = { claude_code: "Claude Code", codex: "Codex" };
+
+/**
+ * The line under a carried-in conversation: where it came from, what is not shown, and what
+ * happened to your terminal's session — branched off and left as it was, unless the agent
+ * cannot branch one (`continues`), when this session goes on in that same one.
+ */
+function importNote(agent: ProjectAgent, imported: ImportedSession, en: boolean, continues: boolean): string {
+  const name = AGENT_NAMES[agent];
+  const count = imported.lines.length;
+  const tools = imported.tool_calls;
+  if (en) {
+    const left = continues
+      ? `This is the same ${name} session as your terminal's: what is said here shows there too, so talk in one place at a time.`
+      : `${name} remembers all of it; your terminal's session is left as it was.`;
+    return `Carried on from the ${name} session "${imported.title}": ${count} lines above${tools > 0 ? `, ${tools} tool calls not shown` : ""}. ${left}`;
+  }
+  const left = continues
+    ? `接着的是终端里同一个 ${name} 会话：这里说的话在终端里也看得到，别在两边同时说。`
+    : `${name} 记得这些全部内容；终端里的原会话不受影响。`;
+  return `从 ${name} 会话「${imported.title}」接过来：上面 ${count} 条${tools > 0 ? `，${tools} 次工具调用没有列出` : ""}。${left}`;
 }
 
 /** A new session's name is your first line, until something names it otherwise. */
@@ -123,13 +164,14 @@ export function nameProjectSessionIfUnnamed(ctx: StoreContext, sessionId: string
 }
 
 /**
- * A project session in `dir`, or one carrying a terminal session on: what you said and Claude's
- * text land at their own times, then a line saying where it came from. Everything in it is read:
- * the history is yours already.
+ * A project session in `dir`, or one carrying a terminal session on: what you said and the agent's
+ * answers land at their own times, then a line saying where it came from. Everything in it is
+ * read: the history is yours already. An agent that cannot branch a session (`continues`) goes on
+ * in the terminal's own: it is the session's from the start.
  */
 export function createProjectSession(
   ctx: StoreContext,
-  input: { dir: string; agent: ProjectAgent; configDir: string | null; imported?: ClaudeSessionRead | null; locale: "zh" | "en" },
+  input: { dir: string; agent: ProjectAgent; configDir: string | null; imported?: ImportedSession | null; continues?: boolean; locale: "zh" | "en" },
 ): SessionDetail {
   if (!input.dir.trim()) throw new HttpError(422, "invalid_args", "dir is required");
   const imported = input.imported ?? null;
@@ -139,9 +181,9 @@ export function createProjectSession(
   const id = ulid();
   ctx.db.transaction(() => {
     ctx.db.run(
-      `INSERT INTO sessions (id, kind, name, last_read_at, project_dir, project_agent, project_config_dir, project_source, created_at, updated_at)
-       VALUES (?, 'project', ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, imported?.title ?? null, now, input.dir, input.agent, input.configDir, imported?.session_id ?? null, now, now],
+      `INSERT INTO sessions (id, kind, name, last_read_at, project_dir, project_agent, project_config_dir, project_source, project_agent_session, created_at, updated_at)
+       VALUES (?, 'project', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, imported?.title ?? null, now, input.dir, input.agent, input.configDir, imported?.session_id ?? null, imported && input.continues ? imported.session_id : null, now, now],
     );
     ctx.db.run(`INSERT INTO session_participants (session_id, member, joined_at, left_at) VALUES (?, ?, ?, NULL)`, [id, USER_MEMBER, now]);
     if (!imported) return;
@@ -149,10 +191,7 @@ export function createProjectSession(
     for (const line of imported.lines) {
       insert.run(ulid(), id, line.role === "user" ? "user" : "bot", line.role === "user" ? USER_MEMBER : AGENT_AUTHOR, line.text, line.at);
     }
-    const note = en
-      ? `Carried on from the Claude Code session "${imported.title}": ${imported.lines.length} lines above${imported.tool_calls > 0 ? `, ${imported.tool_calls} tool calls not shown` : ""}. Claude Code remembers all of it; your terminal's session is left as it was.`
-      : `从 Claude Code 会话「${imported.title}」接过来：上面 ${imported.lines.length} 条${imported.tool_calls > 0 ? `，${imported.tool_calls} 次工具调用没有列出` : ""}。Claude Code 记得这些全部内容；终端里的原会话不受影响。`;
-    insert.run(ulid(), id, "system", "app", note, now);
+    insert.run(ulid(), id, "system", "app", importNote(input.agent, imported, en, input.continues === true), now);
     const maxSeq = ctx.db.query<{ seq: number | null }, [string]>(`SELECT MAX(message_seq) AS seq FROM messages WHERE session_id = ?`).get(id)?.seq ?? 0;
     ctx.db.run(`UPDATE sessions SET read_through_seq = ? WHERE id = ?`, [maxSeq, id]);
   })();

@@ -6,6 +6,7 @@
 import { View } from "nsh";
 import { copy } from "../../runtime";
 import { runtime } from "../../runtime";
+import { ProjectAgentTiles } from "../sidebar/ProjectAgentTiles";
 import { ProjectDirPicker } from "../sidebar/ProjectDirPicker";
 import { StepFooter, StepHead, StepPrimary, StepSecondary, WaySwitch } from "./parts";
 import { TeamStep } from "./TeamStep";
@@ -58,7 +59,13 @@ export function StartStep(props: { w: Wizard }) {
         />
       </View>
       <If when={w.startWay() === "carry"}>
-        <ProjectDirPicker agent="claude_code" mode="import" items={w.terminalSessions()} sessions={runtime.snapshot.sessions} onDone={() => w.hold(false)} />
+        <If when={w.carryAgents().length > 1}>
+          <ProjectAgentTiles agents={w.carryAgents()} agent={w.carryAgent()} onPick={(agent) => w.carryPicked.set(agent)} />
+        </If>
+        {/* Keyed on the agent: another agent is a fresh picker. */}
+        <Each of={[w.carryAgent()]} key={(each) => each}>
+          {(each) => <ProjectDirPicker agent={each()} mode="import" items={w.terminalSessions()} sessions={runtime.snapshot.sessions} onDone={() => w.hold(false)} />}
+        </Each>
       </If>
     </View>
   );

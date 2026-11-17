@@ -13,12 +13,15 @@ import {
   isLocalEndpoint,
   type AgentsStatusResponse,
   type ApiFormat,
-  type ClaudeCodeSessionListing,
   type ClaudeCodeStatus,
   type CreateProviderRequest,
+  PROJECT_AGENT_CAPS,
   type ProbedModel,
+  type ProjectAgent,
 } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
+import { loadAgentSessions, type ImportListing } from "../../m/sidebar/import-claude-session";
+import { PROJECT_AGENTS } from "../../m/sidebar/project-groups";
 import { claudeModelOptions, claudeModelsOf, loadClaudeModels } from "../../m/claude-models.svelte.ts";
 import { groupModels, type PickerData } from "../../m/model-picker.ts";
 import { agentPickerSources, claudePickerSource } from "../../m/model-picker-sources.ts";
@@ -384,19 +387,31 @@ export function createWizard(props: WizardProps) {
   const setupLocked = () => setupSaved() && (teamBusy() || !rosterEmpty());
 
   /**
-   * Your Claude Code sessions from a terminal (ADR 0095), asked for once while the roster is empty:
-   * with any, the last step offers carrying one on as a project session instead of making Bots.
+   * Your terminal sessions of each agent that can carry one on (ADR 0095; Codex, ADR 0099), asked
+   * for once while the roster is empty: with any, the last step offers carrying one on as a project
+   * session instead of making Bots. Setup is saved by then, so landing in that session is the end
+   * of the wizard too.
    */
-  const terminalSessions = signal<ClaudeCodeSessionListing[]>([]);
+  const terminalLists = signal<Partial<Record<ProjectAgent, ImportListing[]>>>({});
   let terminalAsked = false;
   effect(() => {
-    const client = runtime.client as { claudeCodeSessions?: (limit?: number) => Promise<ClaudeCodeSessionListing[]> } | null;
+    const client = runtime.client as Parameters<typeof loadAgentSessions>[0] | null;
     if (terminalAsked || !client?.claudeCodeSessions || !rosterEmpty()) return;
     terminalAsked = true;
-    // Enough of them that a directory from last week still shows, as in the import sheet.
-    void client.claudeCodeSessions(120).then((items) => terminalSessions.set(items), () => undefined);
+    for (const agent of PROJECT_AGENTS.filter((each) => PROJECT_AGENT_CAPS[each].importable)) {
+      // Enough of them that a directory from last week still shows, as in the import sheet.
+      void loadAgentSessions(client, agent, 120).then((items) => terminalLists.set({ ...untracked(terminalLists), [agent]: items }), () => undefined);
+    }
   });
-  const carryOffered = () => terminalSessions().length > 0;
+  /** The agents with sessions to carry on, in the sheet's order; the first is picked until you pick another. */
+  const carryAgents = () => PROJECT_AGENTS.filter((agent) => (terminalLists()[agent]?.length ?? 0) > 0);
+  const carryPicked = signal<ProjectAgent | null>(null);
+  const carryAgent = (): ProjectAgent => {
+    const picked = carryPicked();
+    return picked && carryAgents().includes(picked) ? picked : (carryAgents()[0] ?? "claude_code");
+  };
+  const terminalSessions = () => Object.values(terminalLists()).flat();
+  const carryOffered = () => carryAgents().length > 0;
   const startWay = signal<"team" | "carry">("team");
 
   const hold = (value: boolean) => props.onHoldingChange?.(value);
@@ -565,7 +580,7 @@ export function createWizard(props: WizardProps) {
     allKnownModels, filteredModels, keyless,
     applyPreset, onEndpointOrKeyInput, fetchModels, advanceFromStep1, advanceFromStep2, goToStep,
     clearResolvedModelErrors, toggleModelSelection, selectAllModels, deselectAllModels, addCustomModel,
-    teamBase, team, teamCount, teamReady, teamBusy, terminalSessions, carryOffered, startWay, hold, handleComplete,
+    teamBase, team, teamCount, teamReady, teamBusy, terminalSessions, carryAgents, carryPicked, carryAgent, carryOffered, startWay, hold, handleComplete,
   };
 }
 

@@ -8,7 +8,7 @@ import type { CopyShape } from "./shape.ts";
 export const zh = {
   section: "项目",
   emptyList: "还没有项目会话",
-  emptyListHint: "在电脑上的一个文件夹里和 Claude Code 或 Codex 对话，或者接着终端里开过的 Claude Code 会话。",
+  emptyListHint: "在电脑上的一个文件夹里和 Claude Code、Codex 这些 Agent 对话，或者接着终端里开过的会话。",
   add: "新开或导入项目会话",
   newInFolder: "在文件夹中新开…",
   newWith: (agent: string) => `新开 ${agent} 会话`,
@@ -40,6 +40,11 @@ export const zh = {
   start: "开始",
   dirInvalid: "这个目录用不了：填电脑上已有目录的完整路径（以 / 开头）。",
   carryHead: "接着终端里的会话",
+  importEmpty: (agent: string) => `没找到可以接着聊的 ${agent} 会话。`,
+  importList: (agent: string) => `${agent} 会话`,
+  importHint: (agent: string, branches: boolean) => (branches
+    ? "在原目录里开一个项目会话接着这段对话；终端里的会话不受影响。"
+    : `在原目录里开一个项目会话接着这段对话；接着的是同一个 ${agent} 会话，这里说的话终端里也看得到。`),
   waiting: (agent: string) => `${agent} 在等你批准`,
   allow: "允许",
   deny: "拒绝",
@@ -65,7 +70,7 @@ export const zh = {
   renameLabel: "会话名",
   renameFailed: "没能改名，再试一次。",
   deleteTitle: "删除项目会话",
-  deleteBody: "删除后，这个会话和里面的消息都去掉，Claude Code 或 Codex 自己的会话记录还在。正在跑的那一轮会 Stop。目录里的文件不受影响。",
+  deleteBody: "删除后，这个会话和里面的消息都去掉，Agent 自己的会话记录还在。正在跑的那一轮会 Stop。目录里的文件不受影响。",
   confirmDelete: "确认删除",
   citedMissing: (path: string) => `在项目目录里没找到 ${path}`,
   citedAmbiguous: (path: string, n: number) => `项目目录里有 ${n} 处 ${path}，没法确定是哪一个`,
@@ -106,7 +111,7 @@ export const zh = {
 export const en: CopyShape<typeof zh> = {
   section: "Projects",
   emptyList: "No project sessions yet",
-  emptyListHint: "Talk to Claude Code or Codex in a folder on the computer, or carry on a Claude Code session you had in a terminal.",
+  emptyListHint: "Talk to an agent such as Claude Code or Codex in a folder on the computer, or carry on a session you had in a terminal.",
   add: "New or import a project session",
   newInFolder: "New in a folder…",
   newWith: (agent: string) => `New ${agent} session`,
@@ -138,6 +143,11 @@ export const en: CopyShape<typeof zh> = {
   start: "Start",
   dirInvalid: "That directory cannot be used: enter the full path (starting with /) of one that exists on the computer.",
   carryHead: "Carry on a terminal session",
+  importEmpty: (agent: string) => `No ${agent} session to carry on was found.`,
+  importList: (agent: string) => `${agent} sessions`,
+  importHint: (agent: string, branches: boolean) => (branches
+    ? "Opens a project session that carries the conversation on in its directory; your terminal's session is left as it was."
+    : `Opens a project session that carries the conversation on in its directory; it is the same ${agent} session, so what is said here shows in the terminal too.`),
   waiting: (agent: string) => `${agent} is waiting for your approval`,
   allow: "Allow",
   deny: "Deny",
@@ -163,7 +173,7 @@ export const en: CopyShape<typeof zh> = {
   renameLabel: "Session name",
   renameFailed: "Could not rename it; try again.",
   deleteTitle: "Delete project session",
-  deleteBody: "This removes the session and its messages; Claude Code's or Codex's own record of it stays. A run still going is stopped. Nothing in the directory is touched.",
+  deleteBody: "This removes the session and its messages; the agent's own record of it stays. A run still going is stopped. Nothing in the directory is touched.",
   confirmDelete: "Confirm delete",
   citedMissing: (path: string) => `${path} is not in the project directory`,
   citedAmbiguous: (path: string, n: number) => `${n} places in the project directory end in ${path}; cannot tell which one`,

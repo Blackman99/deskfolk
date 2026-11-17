@@ -1,4 +1,4 @@
-import { isBotRunner, isLocalEndpoint, LOCAL_API_BIND, type ApiFormat, type CreateProviderRequest, type PatchProviderRequest, type RuntimeResponse } from "@real-bot/protocol";
+import { isBotRunner, isLocalEndpoint, isProjectAgent, LOCAL_API_BIND, PROJECT_AGENT_CAPS, PROJECT_AGENTS, type AgentSessionList, type ApiFormat, type CreateProviderRequest, type PatchProviderRequest, type RuntimeResponse } from "@real-bot/protocol";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { CLAUDE_USAGE_REFRESH_MIN_MS } from "../../claude-code/usage";
@@ -65,6 +65,16 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
   if (path === "/v1/runtime/claude-code/sessions" && method === "GET") {
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 40, 1), 200);
     return jsonResponse({ items: listClaudeSessions(claudeSessionRoots(store.claudeCodeConfigDirs()), { limit }) }, 200, null);
+  }
+  // Any agent's sessions that could be carried on here (ADR 0095; Codex, ADR 0099 addendum), each
+  // agent's asked of itself; the app's own sessions left out. An agent that carries none on lists none.
+  const sessionsOf = matchPath(path, "/v1/runtime/agents/:agent/sessions");
+  if (sessionsOf && method === "GET") {
+    const agent = sessionsOf.agent!;
+    if (!isProjectAgent(agent)) throw new HttpError(422, "invalid_args", `agent must be one of ${PROJECT_AGENTS.join(", ")}`);
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 40, 1), 200);
+    if (!PROJECT_AGENT_CAPS[agent].importable) return jsonResponse({ items: [], error: null } satisfies AgentSessionList, 200, null);
+    return options.agentSessions!.list(agent, limit).then((list) => jsonResponse(list, 200, null));
   }
   // The models one of your Claude accounts offers, as its `/model` lists them (ADR 0095): asked of
   // Claude Code without a prompt and kept a while. Only an account listed here is asked.

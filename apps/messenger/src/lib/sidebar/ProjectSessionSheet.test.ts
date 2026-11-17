@@ -62,10 +62,10 @@ test("the sheet opens on the agent whose new session you chose", async () => {
   expect(host.querySelector('[data-project-agent="codex"]')?.getAttribute("aria-checked")).toBe("true");
   expect(host.textContent).toContain(t.project.dirHints.codex);
   close();
-  // Importing has only Claude Code to carry on, whatever was chosen before.
+  // Codex's terminal sessions can be carried on too: importing opens on it as well.
   const again = render(ProjectSessionSheet, { runtime, t, mode: "import", agent: "codex", onClose: () => {} });
   await settle();
-  expect(again.host.querySelector('[data-project-agent="claude_code"]')?.getAttribute("aria-checked")).toBe("true");
+  expect(again.host.querySelector('[data-project-agent="codex"]')?.getAttribute("aria-checked")).toBe("true");
   again.close();
 });
 
@@ -73,8 +73,8 @@ test("to carry one on: only directories with terminal sessions, each opening to 
   const { host, close } = open({}, undefined, "import");
   await settle();
   expect(host.querySelector("h2")?.textContent).toBe(t.project.importTitle);
-  // Only Claude Code's terminal sessions can be carried on so far.
-  expect([...host.querySelectorAll("[data-project-agent]")].map((a) => a.getAttribute("data-project-agent"))).toEqual(["claude_code"]);
+  // The agents whose terminal sessions can be carried on.
+  expect([...host.querySelectorAll("[data-project-agent]")].map((a) => a.getAttribute("data-project-agent"))).toEqual(["claude_code", "codex"]);
   // The app-only directory has nothing to carry on; there is no directory of your own to type.
   expect(dirNames(host)).toEqual(["proj", "other"]);
   expect(host.querySelector("[data-picker-other]")).toBeNull();
@@ -124,7 +124,7 @@ test("nothing in the terminal to carry on says so", async () => {
   const { host, close } = open({}, [], "import");
   await settle();
   expect(host.querySelectorAll("[data-picker-dir]")).toHaveLength(0);
-  expect(host.textContent).toContain(t.sidebar.importClaudeEmpty);
+  expect(host.textContent).toContain(t.project.importEmpty("Claude Code"));
   close();
 });
 
@@ -204,5 +204,31 @@ test("from a phone, another directory is browsed on the computer's disk and star
   expect(host.querySelector("button#project-dir")?.getAttribute("title")).toBe("/Users/a/work");
   click(buttonIn(host.querySelector("[data-picker-other]"), t.project.start));
   expect(runtime.calls.find((c) => c.name === "createProjectSession")?.args).toEqual([{ agent: "claude_code", dir: "/Users/a/work" }]);
+  close();
+});
+
+test("Codex's terminal threads come from its own list, under the Codex tile, and carry on as Codex sessions", async () => {
+  const runtime = fakeRuntime({ sessions: [] });
+  const asked: string[] = [];
+  (runtime as unknown as { client: unknown }).client = {
+    claudeCodeSessions: async () => [listing("c1", "/Users/a/proj", 1)],
+    agentSessions: async (agent: string) => {
+      asked.push(agent);
+      return { items: agent === "codex" ? [{ ...listing("x1", "/Users/a/proj", 5, null as unknown as string), agent: "codex" }] : [{ ...listing("c1", "/Users/a/proj", 1), agent: "claude_code" }], error: null };
+    },
+  };
+  const { host, close } = render(ProjectSessionSheet, { runtime, t, mode: "import", onClose: () => {} });
+  await settle();
+  expect(asked.sort()).toEqual(["claude_code", "codex"]);
+  click(head(host, "/Users/a/proj"));
+  expect([...host.querySelectorAll("[data-claude-session]")].map((r) => r.getAttribute("data-claude-session"))).toEqual(["c1"]);
+  click(host.querySelector('[data-project-agent="codex"]'));
+  await settle();
+  click(head(host, "/Users/a/proj"));
+  expect([...host.querySelectorAll("[data-claude-session]")].map((r) => r.getAttribute("data-claude-session"))).toEqual(["x1"]);
+  click(host.querySelector('[data-claude-session="x1"]'));
+  expect(host.querySelector("[data-import-form]")?.textContent).toContain(t.project.importHint("Codex", true));
+  click(buttonIn(host.querySelector("[data-import-form]"), t.sidebar.importClaudeSubmit));
+  expect(runtime.calls.find((c) => c.name === "createProjectSession")?.args).toEqual([{ agent: "codex", import: { session_id: "x1", config_dir: null } }]);
   close();
 });

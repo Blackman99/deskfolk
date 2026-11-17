@@ -15,6 +15,8 @@ import type {
   CreateBotResponse,
   ClaudeCodeModelList,
   ClaudeCodeSessionListing,
+  AgentSessionList,
+  ProjectAgent,
   CreateGroupRequest,
   CreateProjectSessionRequest,
   PatchProjectSessionRequest,
@@ -252,6 +254,11 @@ export abstract class ApiBase<Row extends PendingRow> {
   async claudeCodeSessions(limit = 40): Promise<ClaudeCodeSessionListing[]> {
     const page = await this.get<{ items: ClaudeCodeSessionListing[] }>(`/v1/runtime/claude-code/sessions?limit=${limit}`);
     return page.items;
+  }
+
+  /** An agent's terminal sessions the Mac could carry on, newest first (ADR 0095; Codex, ADR 0099). */
+  async agentSessions(agent: ProjectAgent, limit = 40): Promise<AgentSessionList> {
+    return this.get<AgentSessionList>(`/v1/runtime/agents/${agent}/sessions?limit=${limit}`);
   }
 
   /** A project session (ADR 0095): new in a directory, or carrying a terminal session on. */

@@ -3,7 +3,7 @@
  * apps, with no Bot. The app keeps permissions, the model, the thinking level and Stop; each run
  * of the agent is an `AgentRun`.
  */
-import type { ClaudeEffort } from "./bots.ts";
+import type { ClaudeCodeSessionListing, ClaudeEffort } from "./bots.ts";
 
 /** The agents a project session can run, in the order a new session offers them (ADR 0095, ADR 0099). */
 export const PROJECT_AGENTS = ["claude_code", "codex"] as const;
@@ -20,14 +20,25 @@ export function isProjectAgent(value: unknown): value is ProjectAgent {
  * What each agent's project sessions have beyond a conversation in a directory with permissions
  * and Stop (ADR 0099): plan mode (ADR 0098), the `/` list of its commands, a choice of your
  * accounts, carrying on a terminal session, and a replay for the task map. What one lacks the
- * windows leave out and the routes refuse (422).
+ * windows leave out and the routes refuse (422). `branches`: carrying a terminal session on
+ * branches it, leaving yours as it was; an agent that cannot goes on in that same session.
  */
-export type ProjectAgentCaps = { plan: boolean; commands: boolean; accounts: boolean; importable: boolean; replay: boolean };
+export type ProjectAgentCaps = { plan: boolean; commands: boolean; accounts: boolean; importable: boolean; branches: boolean; replay: boolean };
 
 export const PROJECT_AGENT_CAPS: Record<ProjectAgent, ProjectAgentCaps> = {
-  claude_code: { plan: true, commands: true, accounts: true, importable: true, replay: true },
-  codex: { plan: false, commands: true, accounts: false, importable: false, replay: false },
+  claude_code: { plan: true, commands: true, accounts: true, importable: true, branches: true, replay: true },
+  codex: { plan: false, commands: true, accounts: false, importable: true, branches: true, replay: false },
 };
+
+/**
+ * One of your terminal sessions of an agent, to carry on as a project session (ADR 0095; Codex,
+ * ADR 0099 addendum): `GET /v1/runtime/agents/:agent/sessions`, newest first. Each agent's are
+ * asked of the agent itself, Claude Code's read from its session files.
+ */
+export type AgentSessionListing = ClaudeCodeSessionListing & { agent: ProjectAgent };
+
+/** `GET /v1/runtime/agents/:agent/sessions`: `error` says why the agent could not be asked, with what it could list still in `items`. */
+export type AgentSessionList = { items: AgentSessionListing[]; error: string | null };
 
 export type AgentRunStatus = "running" | "waiting_approval" | "completed" | "failed" | "stopped" | "interrupted";
 
@@ -173,7 +184,10 @@ export type CreateProjectSessionRequest = {
   dir?: string;
   /** The Claude account directory; omitted or null is the daemon's own environment. Claude Code only. */
   config_dir?: string | null;
-  /** A terminal session to carry on: Claude Code only (`PROJECT_AGENT_CAPS`). */
+  /**
+   * A terminal session of the agent to carry on (`PROJECT_AGENT_CAPS[agent].importable`), as its
+   * listing names it: the session's id and the account it was found under.
+   */
   import?: { session_id: string; config_dir?: string | null };
 };
 

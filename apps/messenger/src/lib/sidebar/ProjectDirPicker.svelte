@@ -1,12 +1,12 @@
 <script lang="ts">
-	import type { ClaudeCodeSessionListing, ProjectAgent, SessionSummary } from '@real-bot/protocol';
+	import { PROJECT_AGENT_CAPS, type ProjectAgent, type SessionSummary } from '@real-bot/protocol';
 	import Icon from '../Icon.svelte';
 	import Button from '../Button.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { pickWorkspaceFolder, workspacePickerAvailable } from '../settings/pick-workspace.ts';
 	import WorkspacePicker from '../settings/WorkspacePicker.svelte';
-	import { importRequest, importSubtitle, newProjectRequest, tildePath } from './import-claude-session.ts';
+	import { importRequest, importSubtitle, newProjectRequest, tildePath, type ImportListing } from './import-claude-session.ts';
 	import { dirDisplay, isAbsoluteDir, listingSpansAccounts, pickerDirs } from './project-groups.ts';
 
 	/**
@@ -22,7 +22,7 @@
 		agent: ProjectAgent;
 		mode: 'new' | 'import';
 		/** The terminal sessions the sheet read once; null while they are on the way. */
-		items: ClaudeCodeSessionListing[] | null;
+		items: ImportListing[] | null;
 		/** The app's own sessions, for the directories you have only used here. */
 		sessions: readonly SessionSummary[];
 		/** The session is made and open: the first-launch wizard comes down on it. */
@@ -34,7 +34,8 @@
 	/** The open directory, or `OTHER` for the typed one. */
 	const OTHER = '\u0000other';
 	const dirs = $derived(pickerDirs(items ?? [], sessions, agent).filter((entry) => mode === 'new' || entry.listings.length > 0));
-	const accounts = $derived(listingSpansAccounts(items ?? []));
+	const accounts = $derived(listingSpansAccounts(items ?? [], agent));
+	const agentName = $derived(t.project.agentNames[agent]);
 	let open = $state<string | null>(null);
 	/** With nothing to list, the typed directory is all there is: open it. */
 	const shown = $derived(open ?? (mode === 'new' && dirs.length === 0 ? OTHER : null));
@@ -42,7 +43,7 @@
 	/** How many of a directory's sessions show before you ask for the rest. */
 	const FIRST = 8;
 	let allShown = $state(false);
-	let picked = $state<ClaudeCodeSessionListing | null>(null);
+	let picked = $state<ImportListing | null>(null);
 	let typed = $state('');
 	let pending = $state(false);
 	let startError = $state<'invalid' | 'failed' | null>(null);
@@ -59,7 +60,7 @@
 		importError = null;
 	}
 
-	function accountOf(listing: ClaudeCodeSessionListing): string | null {
+	function accountOf(listing: ImportListing): string | null {
 		if (!accounts) return null;
 		return listing.config_dir ? tildePath(listing.config_dir) : t.project.defaultAccount;
 	}
@@ -113,7 +114,7 @@
 		{@render startFailure()}
 	{/if}
 	{#if mode === 'import' && items && dirs.length === 0}
-		<p class="muted field-hint">{t.sidebar.importClaudeEmpty}</p>
+		<p class="muted field-hint">{t.project.importEmpty(agentName)}</p>
 	{/if}
 	{#each dirs as entry (entry.dir)}
 		{@const isOpen = shown === entry.dir}
@@ -146,7 +147,7 @@
 				<div class="picker-body">
 					{#if entry.listings.length > 0}
 						<span class="muted field-hint">{t.project.carryHead}</span>
-						<div class="import-list" role="listbox" aria-label={t.sidebar.importClaudeList}>
+						<div class="import-list" role="listbox" aria-label={t.project.importList(agentName)}>
 							{#each allShown ? entry.listings : entry.listings.slice(0, FIRST) as session (session.session_id)}
 								<button
 									type="button"
@@ -173,7 +174,7 @@
 						{#if picked}
 							<!-- Kept in view at the bottom of the body, however far down the list you picked. -->
 							<div class="import-form" data-import-form>
-								<p class="muted field-hint">{t.sidebar.importClaudeHint}</p>
+								<p class="muted field-hint">{t.project.importHint(agentName, PROJECT_AGENT_CAPS[agent].branches)}</p>
 								{#if importError}
 									<p class="field-error">{importError === 'missing' ? t.sidebar.importClaudeMissing : t.sidebar.saveFailed}</p>
 								{/if}

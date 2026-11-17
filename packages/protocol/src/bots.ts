@@ -398,7 +398,6 @@ export type ProfileRevision = {
   created_at: string;
 };
 
-/** One of your terminal Claude Code sessions, to carry on as a project session (ADR 0095, `GET /v1/runtime/claude-code/sessions`). */
 /** One model your Claude Code offers, as its own `/model` lists it (ADR 0095). */
 export type ClaudeCodeModel = {
   /** What a run asks for: an alias such as `opus`, or `default` for Claude Code's own pick. */
@@ -419,6 +418,10 @@ export type ClaudeCodeModelList = {
   error: string | null;
 };
 
+/**
+ * One of your terminal Claude Code sessions, to carry on as a project session (ADR 0095, `GET
+ * /v1/runtime/claude-code/sessions`); every agent's are `AgentSessionListing`.
+ */
 export type ClaudeCodeSessionListing = {
   session_id: string;
   /** The account directory it was found under; null is the daemon's own environment. */

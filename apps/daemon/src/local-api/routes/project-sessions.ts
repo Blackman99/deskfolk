@@ -2,9 +2,10 @@ import { AGENT_KINDS, isAgentEffort, isAgentModelName, isProjectAgent, isProject
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { AgentSessions, ImportedSession } from "../../agents/agent-sessions";
 import { readAgentReplay } from "../../claude-code/replay";
 import { readOutputTail, readSubagentTrail } from "../../claude-code/task-detail";
-import { carryClaudeSession, claudeSessionRoots, findClaudeSessionFile, readClaudeSession } from "../../claude-code/sessions";
+import { carryClaudeSession, claudeSessionRoots, findClaudeSessionFile } from "../../claude-code/sessions";
 import { HttpError } from "../../errors";
 import { jsonResponse, matchPath } from "../../http";
 import { sessionUpsertFields } from "../../session-events";
@@ -14,6 +15,21 @@ import type { RouteCtx } from "../route-ctx";
 
 /** As much of a finished task's output as its row in the list keeps, the size a Bot's kept command has. */
 const KEPT_OUTPUT = 4000;
+
+/**
+ * The terminal session a `POST /v1/project-sessions` carries on, read through its agent
+ * (`agents/agent-sessions.ts`) — which may ask the agent itself, so before the write; undefined
+ * for a new session. What is wrong with the request is said the same way the route says it.
+ */
+export async function readImportOf(sessions: AgentSessions, body: Record<string, unknown>): Promise<ImportedSession | undefined> {
+  const request = body as CreateProjectSessionRequest;
+  if (!request.import) return undefined;
+  const agent = request.agent ?? "claude_code";
+  if (!isProjectAgent(agent)) throw new HttpError(422, "invalid_args", `agent must be one of ${PROJECT_AGENTS.join(", ")}`);
+  if (!PROJECT_AGENT_CAPS[agent].importable) throw new HttpError(422, "invalid_args", `a ${agent} session cannot be carried on from a terminal`);
+  if (typeof request.import !== "object" || typeof request.import.session_id !== "string") throw new HttpError(422, "invalid_args", "import.session_id is required");
+  return sessions.read(agent, request.import.session_id, request.import.config_dir ?? null);
+}
 
 /** Every agent is handled by name: one a switch here does not know is a gap in this file, never another agent's. */
 function unknownAgent(agent: never): never {
@@ -25,9 +41,9 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
   const { input, store, publish, projects, method, path, url, options } = ctx;
   let params: ReturnType<typeof matchPath>;
 
-  // A new session in a directory, or one carrying a terminal session on: only an account directory
-  // the listing reads is looked in, and the session must be there. Codex sessions (ADR 0099) are
-  // only started here, on the daemon's own Codex account.
+  // A new session in a directory, or one carrying a terminal session on, read through the agent's
+  // own door (`agents/agent-sessions.ts`): only an account the listing reads is looked in, and the
+  // session must be there. A new session's account must be one of yours for that agent.
   if (method === "POST" && path === "/v1/project-sessions") {
     const body = (input.body ?? {}) as CreateProjectSessionRequest;
     const agent = body.agent ?? "claude_code";
@@ -35,29 +51,28 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
     const caps = PROJECT_AGENT_CAPS[agent];
     if (body.import && !caps.importable) throw new HttpError(422, "invalid_args", `a ${agent} session cannot be carried on from a terminal`);
     if (body.config_dir != null && !caps.accounts) throw new HttpError(422, "invalid_args", `a ${agent} session picks no account`);
-    const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
     const locale = store.settingsCached().locale;
-    let created;
+    const done = (created: ReturnType<typeof store.createProjectSession>) => {
+      publish({ event: "session.upsert", occurred_at: occurred(), ...sessionUpsertFields(created) });
+      return jsonResponse(created, 201, null);
+    };
     if (body.import) {
-      if (typeof body.import.session_id !== "string") throw new HttpError(422, "invalid_args", "import.session_id is required");
-      const root = roots.find((entry) => entry.configDir === (body.import!.config_dir ?? null));
-      if (!root) throw new HttpError(422, "invalid_args", "config_dir is not one of your Claude accounts");
-      const file = findClaudeSessionFile(root, body.import.session_id);
-      if (!file) throw new HttpError(404, "not_found", "no such Claude Code session");
-      const read = readClaudeSession(file, body.import.session_id);
-      if (!read.cwd) throw new HttpError(422, "invalid_args", "the session does not say which directory it ran in");
-      created = store.createProjectSession({ dir: read.cwd, agent, configDir: root.configDir, imported: read, locale });
-    } else {
-      const dir = typeof body.dir === "string" ? body.dir.trim() : "";
-      if (!dir.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(dir)) throw new HttpError(422, "invalid_args", "dir must be an absolute path");
-      const configDir = body.config_dir ?? null;
-      if (configDir !== null && !roots.some((entry) => entry.configDir === configDir)) {
-        throw new HttpError(422, "invalid_args", "config_dir is not one of your Claude accounts");
-      }
-      created = store.createProjectSession({ dir: dir.replace(/[\\/]+$/, "") || dir, agent, configDir, locale });
+      const configDir = body.import.config_dir ?? null;
+      const make = (read: ImportedSession) => {
+        if (!read.cwd) throw new HttpError(422, "invalid_args", "the session does not say which directory it ran in");
+        return done(store.createProjectSession({ dir: read.cwd, agent, configDir, imported: read, locale }));
+      };
+      // Read before the write when the request came through receipts; asked here otherwise.
+      if (input.imported) return make(input.imported);
+      return readImportOf(options.agentSessions!, body as Record<string, unknown>).then((read) => make(read!));
     }
-    publish({ event: "session.upsert", occurred_at: occurred(), ...sessionUpsertFields(created) });
-    return jsonResponse(created, 201, null);
+    const dir = typeof body.dir === "string" ? body.dir.trim() : "";
+    if (!dir.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(dir)) throw new HttpError(422, "invalid_args", "dir must be an absolute path");
+    const configDir = body.config_dir ?? null;
+    if (configDir !== null && !claudeSessionRoots(store.claudeCodeConfigDirs()).some((entry) => entry.configDir === configDir)) {
+      throw new HttpError(422, "invalid_args", "config_dir is not one of your Claude accounts");
+    }
+    return done(store.createProjectSession({ dir: dir.replace(/[\\/]+$/, "") || dir, agent, configDir, locale }));
   }
 
   // Everything its runs have sent to the background and every subagent, newest run first (ADR 0095, 25).
