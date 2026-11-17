@@ -35,7 +35,8 @@ const APP_ICON: &[u8] = include_bytes!("../../assets/icons/icon.ico");
 pub fn run(config: Config) -> std::process::ExitCode {
     // Once, before the first view: what the app's TSX may import, NSH's and the app's own crate.
     set_ui_sets(vec![nsh_base::registry(), deskfolk_app_native::registry()]);
-    let bundle = match read_bundle(&config.bundle, config.hidden) {
+    // `--quit` shows no window: it hands itself to the running copy, or ends at once (`window-life.ts`).
+    let bundle = match read_bundle(&config.bundle, config.hidden || config.quit) {
         Ok(bundle) => bundle,
         Err(why) => {
             eprintln!("deskfolk-nsh: {why}");
@@ -46,15 +47,19 @@ pub fn run(config: Config) -> std::process::ExitCode {
     let host = crate::launch::channel(&config, 1);
     // A release looks after the daemon inside it from here on, and launches at login as the
     // settings say (a dev build's do nothing).
-    crate::runtime::supervise(config.data_dir.clone());
-    crate::win_login::sync(config.endpoint.clone());
+    if !config.quit {
+        crate::runtime::supervise(config.data_dir.clone());
+        crate::win_login::sync(config.endpoint.clone());
+    }
     // The wheel for the views that zoom or scroll themselves (`win_wheel.rs`).
     crate::win_wheel::install(host.clone());
     let nsh_dir = config.data_dir.join("nsh");
     let icon = app_icon(&nsh_dir);
     // The icon in the notification area, with what is used of your plans (`win_tray.rs`).
-    crate::stop_all::watch();
-    crate::win_tray::install(config.app_name.clone(), icon.clone(), host.clone(), config.data_dir.clone());
+    if !config.quit {
+        crate::stop_all::watch();
+        crate::win_tray::install(config.app_name.clone(), icon.clone(), host.clone(), config.data_dir.clone());
+    }
     let options = AppOptions {
         app_id: config.bundle_id.clone(),
         title: config.app_name.clone(),

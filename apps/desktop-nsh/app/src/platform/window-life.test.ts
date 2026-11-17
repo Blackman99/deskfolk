@@ -1,5 +1,5 @@
 import { expect, test } from "nsh/test";
-import { asksToQuit, closeAction } from "./window-life";
+import { asksToQuit, closeAction, launchedToQuit } from "./window-life";
 
 test("the close button puts the window away on Windows and Linux, as 0.4.0 did", () => {
   expect(closeAction("windows", true, "closeButton")).toBe("hide");
@@ -16,4 +16,10 @@ test("a later launch with --quit ends the running copy", () => {
   expect(asksToQuit(["--quit"])).toBe(true);
   expect(asksToQuit(["--hidden"])).toBe(false);
   expect(asksToQuit([])).toBe(false);
+});
+
+test("a --quit that found no copy running ends at once", () => {
+  expect(launchedToQuit({ quit: true })).toBe(true);
+  expect(launchedToQuit({})).toBe(false);
+  expect(launchedToQuit({ quit: "true" })).toBe(false);
 });

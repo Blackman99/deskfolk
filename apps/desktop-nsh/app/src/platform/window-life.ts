@@ -25,10 +25,23 @@ export function asksToQuit(args: readonly string[]): boolean {
   return args.includes("--quit");
 }
 
+/**
+ * Whether this copy was launched only to end the running one (`--quit`, `host/src/launch.rs`) and
+ * found none: it has nothing to show or keep and ends as it starts.
+ */
+export function launchedToQuit(params: { quit?: unknown }): boolean {
+  return params.quit === true;
+}
+
 export function installWindowLife(): void {
   if (platform.os !== "windows" && platform.os !== "linux") return;
   if (!host.available()) return;
-  const params = host.params as { trayShown?: boolean };
+  const params = host.params as { trayShown?: boolean; quit?: unknown };
+  if (launchedToQuit(params)) {
+    // After this first render: the run ends from the loop, not from inside it.
+    setTimeout(() => Application.quit(), 0);
+    return;
+  }
   const trayShown = platform.os === "windows" || params.trayShown === true;
   const window = currentWindow();
   keepDesktopWindow(window);

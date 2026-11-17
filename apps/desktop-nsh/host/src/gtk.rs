@@ -20,7 +20,8 @@ use crate::config::Config;
 pub fn run(config: Config) -> std::process::ExitCode {
     // Once, before the first view: what the app's TSX may import, NSH's and the app's own crate.
     set_ui_sets(vec![nsh_base::registry(), deskfolk_app_native::registry()]);
-    let bundle = match read_bundle(&config.bundle, config.hidden) {
+    // `--quit` shows no window: it hands itself to the running copy, or ends at once (`window-life.ts`).
+    let bundle = match read_bundle(&config.bundle, config.hidden || config.quit) {
         Ok(bundle) => bundle,
         Err(why) => {
             eprintln!("deskfolk-nsh: {why}");
@@ -31,9 +32,11 @@ pub fn run(config: Config) -> std::process::ExitCode {
     let host = crate::launch::channel(&config, 1);
     // A release looks after the daemon inside it from here on, and launches at login as the
     // settings say (a dev build's do nothing).
-    crate::runtime::supervise(config.data_dir.clone());
-    crate::linux_login::sync(config.endpoint.clone());
-    crate::stop_all::watch();
+    if !config.quit {
+        crate::runtime::supervise(config.data_dir.clone());
+        crate::linux_login::sync(config.endpoint.clone());
+        crate::stop_all::watch();
+    }
     // The window's icon where the desktop has none from the entry (X11 without a matching
     // `StartupWMClass`, a dev build): the installed icon, by the app's id.
     if gtk::init().is_ok() {

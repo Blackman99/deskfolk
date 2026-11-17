@@ -57,9 +57,14 @@ pub struct Config {
     /// Started without a window (`--hidden`, the 0.4.0 app's login launch): the menu bar item and
     /// the runtime run, and the first window opens from the Dock or the menu.
     pub hidden: bool,
+    /// `--quit` (Windows and Linux): asks the copy already running to end, as the tray's Quit does
+    /// (`window-life.ts`), and starts nothing itself: no runtime, tray or login item, and no window
+    /// shows. A copy that finds none running ends at once.
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    pub quit: bool,
 }
 
-pub const USAGE: &str = "deskfolk-nsh [--bundle <bundle.js|bundle.nshc>] [--data-dir <runtime data dir>] [--watch] [--background] [--hidden] [--snapshots <dir>] [--open-session <id>] [--pane chat|terminal|pdf] [--pdf <path>] [--fps] [--scroll-probe] [--terminal native] [--story <name>] [--stable-instance]";
+pub const USAGE: &str = "deskfolk-nsh [--bundle <bundle.js|bundle.nshc>] [--data-dir <runtime data dir>] [--watch] [--background] [--hidden] [--snapshots <dir>] [--open-session <id>] [--pane chat|terminal|pdf] [--pdf <path>] [--fps] [--scroll-probe] [--terminal native] [--story <name>] [--stable-instance] [--quit]";
 
 pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
     let mut bundle = None;
@@ -77,6 +82,7 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
     // The released app is the stable instance, always.
     let mut stable = RELEASE;
     let mut hidden = false;
+    let mut quit = false;
     let mut args = args.skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -85,6 +91,7 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
             "--watch" => watch = true,
             "--background" => background = true,
             "--hidden" => hidden = true,
+            "--quit" => quit = true,
             "--snapshots" => snapshots = args.next().map(PathBuf::from),
             "--open-session" => open_session = args.next(),
             "--pane" => pane = args.next(),
@@ -111,8 +118,14 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
         .or_else(|| RELEASE.then(|| std::env::var_os("REAL_BOT_DATA_DIR").filter(|dir| !dir.is_empty()).map(PathBuf::from)).flatten())
         .unwrap_or_else(|| if stable { stable_data_dir() } else { dev_data_dir() });
     crate::endpoint::remember_data_dir(&data_dir);
-    crate::runtime::ensure(&data_dir)?;
-    let endpoint = crate::endpoint::read(&data_dir).map_err(|e| e.to_string())?;
+    // `--quit` only asks the running copy to end: it must not start a runtime to ask it with.
+    let endpoint = if quit {
+        crate::endpoint::read(&data_dir)
+            .unwrap_or(crate::endpoint::Endpoint { origin: String::new(), port: 0, token: String::new() })
+    } else {
+        crate::runtime::ensure(&data_dir)?;
+        crate::endpoint::read(&data_dir).map_err(|e| e.to_string())?
+    };
     Ok(Config {
         bundle,
         data_dir,
@@ -120,6 +133,7 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
         app_name: APP_NAME.into(),
         bundle_id: BUNDLE_ID.into(),
         hidden,
+        quit,
         watch,
         background,
         snapshots,

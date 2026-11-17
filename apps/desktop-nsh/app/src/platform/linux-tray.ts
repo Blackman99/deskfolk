@@ -28,6 +28,8 @@ export function trayMenu(lines: readonly Line[], connected: boolean, actions: { 
 
 export function installLinuxTray(): void {
   if (platform.os !== "linux" || !host.available()) return;
+  // A `--quit` that found no copy running ends at once (`window-life.ts`): no icon for that moment.
+  if ((host.params as { quit?: unknown }).quit === true) return;
   const lines = signal<Line[]>([]);
   const read = () =>
     void host

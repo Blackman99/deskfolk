@@ -122,6 +122,11 @@ fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    // macOS ends a running app itself (the menu's Quit, `osascript`); `--quit` is for the others.
+    #[cfg(target_os = "macos")]
+    if std::env::args().any(|arg| arg == "--quit") {
+        return std::process::ExitCode::SUCCESS;
+    }
     #[cfg(target_os = "macos")]
     return app::run(config);
     #[cfg(windows)]

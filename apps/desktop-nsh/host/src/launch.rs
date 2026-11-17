@@ -31,6 +31,11 @@ pub fn params(config: &Config, window_id: u32) -> Map<String, Value> {
         if config.scroll_probe {
             params.insert("scrollProbe".into(), true.into());
         }
+        // `--quit` that found no copy running: the app ends at once (`window-life.ts`).
+        #[cfg(not(target_os = "macos"))]
+        if config.quit {
+            params.insert("quit".into(), true.into());
+        }
     }
     params
 }
@@ -266,7 +271,16 @@ mod tests {
             terminal: None,
             story: None,
             hidden: false,
+            quit: false,
         }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn a_launch_to_quit_tells_the_app_to_end() {
+        assert!(params(&config(), 1).get("quit").is_none());
+        let quit = Config { quit: true, ..config() };
+        assert_eq!(params(&quit, 1)["quit"], true);
     }
 
     #[test]
