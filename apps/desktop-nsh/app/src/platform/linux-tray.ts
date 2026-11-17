@@ -36,7 +36,9 @@ export function installLinuxTray(): void {
       .catch(() => undefined);
   read();
   setInterval(read, 60_000);
-  const show = () => currentWindow().focus();
+  // Taken now, while the window renders: NSH reads `currentWindow()` only then, not in a menu's handler.
+  const window = currentWindow();
+  const show = () => window.focus();
   effect(() => {
     Tray.set({
       tooltip: "Deskfolk",

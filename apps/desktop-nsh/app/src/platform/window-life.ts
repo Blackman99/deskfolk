@@ -11,6 +11,7 @@
  */
 import { host, platform } from "nsh";
 import { Application, currentWindow } from "nsh/desktop";
+import { keepDesktopWindow } from "./desktop-commands";
 
 /** What the close button does here (`installWindowLife`). */
 export function closeAction(os: string, trayShown: boolean, reason: string): "quit" | "hide" | "minimize" | "close" {
@@ -30,6 +31,7 @@ export function installWindowLife(): void {
   const params = host.params as { trayShown?: boolean };
   const trayShown = platform.os === "windows" || params.trayShown === true;
   const window = currentWindow();
+  keepDesktopWindow(window);
   window.set({ closeOnPress: false });
   window.on("closePress", ({ reason }) => {
     switch (closeAction(platform.os, trayShown, reason)) {

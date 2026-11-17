@@ -8,8 +8,19 @@
  *   manager (`Files.openPath`); a file that would run is shown, as in the Tauri app.
  * - `hide_main_window`: puts the window away (⌘W / Ctrl+W once no tab is left to close).
  */
-import { currentWindow } from "nsh/desktop";
+import type { WindowRef } from "nsh/desktop";
 import { Files } from "deskfolk/native";
+
+/**
+ * The window `hide_main_window` puts away. NSH reads `currentWindow()` only while a component
+ * renders, and these commands come later, through the bridge; the window is kept as it first
+ * renders (`window-life.ts`).
+ */
+let mainWindow: WindowRef | null = null;
+
+export function keepDesktopWindow(window: WindowRef): void {
+  mainWindow = window;
+}
 
 export const DESKTOP_COMMANDS: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
   pick_workspace_folder: async (args) => {
@@ -23,7 +34,7 @@ export const DESKTOP_COMMANDS: Record<string, (args: Record<string, unknown>) =>
     return null;
   },
   hide_main_window: async () => {
-    currentWindow().hide();
+    mainWindow?.hide();
     return null;
   },
 };
