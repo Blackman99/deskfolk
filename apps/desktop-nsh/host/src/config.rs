@@ -190,6 +190,22 @@ pub fn product_version() -> &'static str {
     &VERSION
 }
 
+/// Where NSH keeps the app's own data (its storage, `process.dataDir`): `nsh/<app id>` in our data
+/// directory, the `id` of `app/nsh.json` (the same in every build). NSH appended the id itself until
+/// it took the directory as given (upstream #2232), so the shells name the same directory it did, and
+/// the window's preferences stay where they were.
+pub fn nsh_data_dir(data_dir: &std::path::Path) -> PathBuf {
+    static APP_ID: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        nsh_app_id(include_str!("../../app/nsh.json")).expect("app/nsh.json names the app's id")
+    });
+    data_dir.join("nsh").join(nsh_engine::app_dir_name(Some(APP_ID.as_str())))
+}
+
+fn nsh_app_id(manifest: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(manifest).ok()?;
+    Some(value.get("id")?.as_str()?.to_owned())
+}
+
 fn version_of(conf: &str) -> Option<String> {
     let value: serde_json::Value = serde_json::from_str(conf).ok()?;
     Some(value.get("version")?.as_str()?.to_owned())
@@ -197,7 +213,7 @@ fn version_of(conf: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{data_dir_named, dev_data_dir_for, product_version, version_of};
+    use super::{data_dir_named, dev_data_dir_for, nsh_app_id, nsh_data_dir, product_version, version_of};
     use std::path::PathBuf;
 
     #[test]
@@ -244,5 +260,15 @@ mod tests {
         assert_eq!(version_of(r#"{"productName":"x","version":"1.2.3"}"#).as_deref(), Some("1.2.3"));
         assert_eq!(version_of("{}"), None);
         assert_ne!(product_version(), "0.0.0");
+    }
+
+    #[test]
+    fn nsh_keeps_the_apps_data_where_it_always_has() {
+        assert_eq!(
+            nsh_data_dir(std::path::Path::new("/Users/a/Library/Application Support/real-bot")),
+            PathBuf::from("/Users/a/Library/Application Support/real-bot/nsh/com.real-bot.desktop.nsh-dev")
+        );
+        assert_eq!(nsh_app_id(r#"{"id":"x.y"}"#).as_deref(), Some("x.y"));
+        assert_eq!(nsh_app_id("{}"), None);
     }
 }

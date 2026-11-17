@@ -183,7 +183,7 @@ fn make_view(mtm: MainThreadMarker, config: &Config, id: u32) -> (Rc<AppView>, H
             title: config.app_name.clone(),
             size: (1100, 760),
             limits: Limits::standalone(),
-            data_dir: Some(config.data_dir.join("nsh")),
+            data_dir: Some(crate::config::nsh_data_dir(&config.data_dir)),
             asset_base: config.bundle.parent().map(|dir| AssetBase::Directory(dir.join("assets"))),
             host,
             fps: config.fps,
