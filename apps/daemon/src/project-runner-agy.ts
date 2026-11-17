@@ -485,13 +485,20 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
       if (!tool.asked && !tool.checked && tool.status && tool.status !== "pending") {
         tool.checked = true;
         const { action, decision } = decide(tool);
-        if (decision.kind !== "allow" && !overstep && live.prompting) {
+        // Outside a prompt too: after a background command ended, agy may go on by itself.
+        if (decision.kind !== "allow" && !overstep) {
           const what = action.appName === "shell" ? (action.command ?? tool.title) : `${tool.title || action.vendorTool}`;
           const why = decision.kind === "deny" ? decision.reason : (en ? "the permission mode asks first" : "权限模式要求先问你");
           overstep = en
             ? `Antigravity went ahead with ${what} without asking (${why}); the turn was stopped there, and that step may have run already`
             : `Antigravity 没先问就做了「${what}」（${why}），这一轮停在这里；那一步可能已经执行了`;
           live.rpc?.notify("session/cancel", { sessionId: live.acpSession });
+          // Between prompts nothing else will end the run: it ends here, with that line.
+          if (!live.prompting) {
+            failure = overstep;
+            overstepped = true;
+            live.wake?.();
+          }
         }
       }
       if (live.mode === "plan" && tool.kind === "edit") plan = planOf(tool) ?? plan;
@@ -716,6 +723,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
           if (live.queue.length > 0 || (running() === 0 && !selfTimer)) resolve();
         });
         live.wake = null;
+        if (overstepped) break;
         // A last word may follow a command's end: give it the quiet before closing.
         if (running() === 0 && !selfTimer && live.queue.length === 0 && !selfText) {
           await new Promise<void>((resolve) => setTimeout(resolve, deps.settleMs ?? SETTLE_MS));

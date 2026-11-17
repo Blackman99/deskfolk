@@ -27,6 +27,8 @@ type Script = {
   commands?: Array<{ name: string; description: string }>;
   models?: string[];
   afterSay?: string;
+  /** A call it makes by itself, without asking, once a background command ended. */
+  afterTool?: Call;
   /** Sessions it no longer has: resuming one fails as `agy` says (any other id resumes, as agy keeps its sessions on disk). */
   gone?: string[];
   usage?: Record<string, number>;
@@ -72,6 +74,7 @@ async function run(call: Call): Promise<void> {
     setTimeout(() => {
       toolUpdate(call, id, "completed", { rawOutput: { output: call.output ?? "done", exit_code: 0 } });
       if (script.afterSay) setTimeout(() => update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: script.afterSay } }), 10);
+      if (script.afterTool) setTimeout(() => void run(script.afterTool!), 20);
     }, call.background);
     return;
   }

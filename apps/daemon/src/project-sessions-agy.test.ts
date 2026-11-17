@@ -202,6 +202,17 @@ test("a command sent to the background keeps the run open as a task; its end and
   expect(tasks.body.tasks[0]?.output).toContain("done-sleeping");
 });
 
+test("a call agy makes by itself after a background command ended is checked too: one the mode refuses ends the run", async () => {
+  const h = start([{ afterTool: { kind: "edit", title: "settings", rawInput: { Path: join(homedir(), ".claude", "zz-agy-test.json"), Content: "{}" } },
+    prompts: [[{ tool: { kind: "execute", title: "sleep", rawInput: { CommandLine: "sleep 1" }, background: 100 } }, { say: "Started." }]] }]);
+  const id = await h.open();
+  await h.say(id, "start it");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("failed");
+  expect(h.lines(id).at(-1)?.body).toStartWith("Antigravity 没先问就做了「settings」");
+  expect(h.log(0).some((entry) => entry.notification === "session/cancel")).toBe(true);
+});
+
 test("a terminal agy session is listed without the app's own, carried on in that same session, and only once", async () => {
   const ws = realpathSync(mkdtempSync(join(tmpdir(), "agy-ws-")));
   const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), "agy-term-")));

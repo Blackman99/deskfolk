@@ -254,6 +254,8 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
   };
   const locale = () => store.settingsCached().locale;
   const resolve = deps.resolve ?? projectCodexOf(store);
+  /** Sessions whose thread was last told plan mode, with the thinking level it had before (to go back to it). */
+  const planned = new Map<string, string | null>();
 
   /** Codex's app-server, in a process group of its own and on the record, so Stop and a crashed daemon's next boot can end it. */
   function spawnRecorded(live: Live, executable: string, args: string[], cwd: string, env: Record<string, string>): ChildProcess {
@@ -418,6 +420,8 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     let reviewText: string | null = null;
     /** The plan a plan-mode turn closed with (an item of its own, `plan`): a card for you. */
     let planText: string | null = null;
+    /** The thinking level the thread runs at, as Codex last said it (the answer opening it, then its settings updates). */
+    let threadEffort: string | null = null;
     /** Each subagent thread's model and what it said last, by thread id. */
     const subagents = new Map<string, { model: string | null; last: string | null }>();
     let failure: string | null = null;
@@ -652,6 +656,11 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         live.outputs.set(p.itemId, `${live.outputs.get(p.itemId) ?? ""}${p.delta}`.slice(-64_000));
         return;
       }
+      if (method === "thread/settings/updated" && !agentOf(p)) {
+        const settings = (p.threadSettings ?? {}) as { effort?: string | null; collaborationMode?: { mode?: string } };
+        if (settings.collaborationMode?.mode !== "plan") threadEffort = settings.effort ?? threadEffort;
+        return;
+      }
       if (method === "thread/started") {
         // A subagent's thread says its model and the name Codex gave it.
         const thread = (p.thread ?? {}) as { id?: string; model?: string | null; agentNickname?: string | null; parentThreadId?: string | null };
@@ -714,7 +723,8 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       /** The thread a turn goes on: the one open, or else a new one Codex keeps, recorded so every later run resumes it. */
       const thread = async (): Promise<string> => {
         if (live.threadId) return live.threadId;
-        const opened = await rpc.request<{ thread?: { id?: string }; model?: string }>("thread/start", { ...asks(), ephemeral: false, serviceName: "deskfolk" }, INIT_TIMEOUT_MS);
+        const opened = await rpc.request<{ thread?: { id?: string }; model?: string; reasoningEffort?: string | null }>("thread/start", { ...asks(), ephemeral: false, serviceName: "deskfolk" }, INIT_TIMEOUT_MS);
+        threadEffort = opened?.reasoningEffort ?? threadEffort;
         const id = opened?.thread?.id;
         if (!id) throw new Error(en ? "Codex opened no thread" : "Codex 没有开出会话");
         live.threadId = id;
@@ -761,7 +771,8 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       // The first run starts a thread Codex keeps, or branches the one carried on; every later one resumes its own.
       if (project.agentSession) {
         try {
-          const opened = await rpc.request<{ thread?: { id?: string }; model?: string }>("thread/resume", { threadId: project.agentSession, ...asks(), excludeTurns: true }, INIT_TIMEOUT_MS);
+          const opened = await rpc.request<{ thread?: { id?: string }; model?: string; reasoningEffort?: string | null }>("thread/resume", { threadId: project.agentSession, ...asks(), excludeTurns: true }, INIT_TIMEOUT_MS);
+          threadEffort = opened?.reasoningEffort ?? threadEffort;
           live.threadId = opened?.thread?.id ?? project.agentSession;
           model = opened?.model ?? model;
         } catch (error) {
@@ -843,11 +854,19 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       const words = (input: CodexInput[]) => turn(async () => {
         const now = store.projectOf(live.sessionId) ?? project;
         const threadId = await thread();
-        // Plan mode is Codex's collaboration mode, said on every turn: the thread keeps the last one asked.
+        // Plan mode is Codex's collaboration mode, which the thread keeps once said, effort and all
+        // (measured: default with no effort clears your config's level). So it is said while plan
+        // mode is on, and default once after, with the level the thread had before it planned.
         const settingsModel = now.model ?? model;
-        const collaborationMode = settingsModel
-          ? { mode: now.mode === "plan" ? "plan" : "default", settings: { model: settingsModel, reasoning_effort: now.effort && isAgentEffort("codex", now.effort) ? now.effort : now.mode === "plan" ? "medium" : null, developer_instructions: null } }
-          : null;
+        const ownEffort = now.effort && isAgentEffort("codex", now.effort) ? now.effort : null;
+        let collaborationMode: Record<string, unknown> | null = null;
+        if (settingsModel && now.mode === "plan") {
+          if (!planned.has(live.sessionId)) planned.set(live.sessionId, threadEffort);
+          collaborationMode = { mode: "plan", settings: { model: settingsModel, reasoning_effort: ownEffort ?? "medium", developer_instructions: null } };
+        } else if (settingsModel && planned.has(live.sessionId)) {
+          collaborationMode = { mode: "default", settings: { model: settingsModel, reasoning_effort: ownEffort ?? planned.get(live.sessionId) ?? null, developer_instructions: null } };
+          planned.delete(live.sessionId);
+        }
         const started = await rpc.request<{ turn?: { id?: string } }>("turn/start", {
           threadId, input,
           ...(now.model ? { model: now.model } : {}),
