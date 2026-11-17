@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A runtime a phone stopped can be restarted from the phone again
+
+- After a paired phone stopped the runtime, the Mac's app started it again but left its stop mark in place, so the runtime reported itself stopped and the phone could no longer restart it. The app clears the mark while it looks after the runtime, as the old app did.
+
 ### macOS 15 asks before the remote screen's direct connection
 
 - The native Mac app now says why it reaches the local network, as the old app did: the remote screen connects a paired phone straight to the Mac when both are on the same network, and macOS 15 asks first.

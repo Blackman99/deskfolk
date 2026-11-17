@@ -256,6 +256,9 @@ pub fn supervise(data_dir: PathBuf) {
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(Duration::from_secs(1));
+            if supervising() {
+                clear_stop_latch(&data_dir);
+            }
             let tick = decide(
                 QUITTING.load(Ordering::SeqCst),
                 supervising(),
@@ -273,6 +276,21 @@ pub fn supervise(data_dir: PathBuf) {
         }
     });
 }
+
+/// The latch a runtime writes when a paired phone stops it (`lifecycle.ts`, `runtime.stop`): it
+/// keeps an independent runtime from being started again by launchd. A window that supervises
+/// starts it again anyway, and a runtime that found the latch still there would report itself
+/// stopped and its restart unavailable (`remote/maint.ts`), so the window clears it while it
+/// supervises, as the Tauri app's `tick` did.
+fn clear_stop_latch(data_dir: &std::path::Path) {
+    match std::fs::remove_file(data_dir.join(STOP_LATCH)) {
+        Ok(()) => log::info!("cleared the runtime's stop latch: this window supervises it"),
+        Err(why) if why.kind() == std::io::ErrorKind::NotFound => {}
+        Err(why) => log::warn!("cannot clear the runtime's stop latch: {why}"),
+    }
+}
+
+const STOP_LATCH: &str = "runtime.stop";
 
 fn supervising() -> bool {
     #[cfg(target_os = "macos")]
@@ -416,6 +434,18 @@ mod tests {
         assert!(holder_alive(&dir));
         std::fs::write(dir.join("local-api.json"), r#"{"pid":0,"port":17890,"token":"t"}"#).unwrap();
         assert!(!holder_alive(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_supervising_window_clears_the_stop_latch() {
+        let dir = std::env::temp_dir().join(format!("deskfolk-latch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("runtime.stop"), "stopped\n").unwrap();
+        super::clear_stop_latch(&dir);
+        assert!(!dir.join("runtime.stop").exists());
+        // Nothing to clear is fine too.
+        super::clear_stop_latch(&dir);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
