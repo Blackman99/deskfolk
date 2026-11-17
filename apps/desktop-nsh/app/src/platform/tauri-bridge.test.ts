@@ -1,5 +1,5 @@
 import { expect, test } from "nsh/test";
-import { APP_COMMANDS, allowedExternalUrl, hostName } from "./tauri-bridge";
+import { APP_COMMANDS, UNTIMED_COMMANDS, allowedExternalUrl, hostName, tauriRejection } from "./tauri-bridge";
 
 test("a Tauri command goes to the shell under a name the host channel takes", () => {
   expect(hostName("pick_workspace_folder")).toBe("tauri.pick_workspace_folder");
@@ -23,4 +23,14 @@ test("the links that may open outside are the Tauri shell's", () => {
   expect(allowedExternalUrl(" https://example.com")).toBe(false);
   expect(allowedExternalUrl("https://example.com\nevil")).toBe(false);
   expect(allowedExternalUrl("https://example.com evil")).toBe(false);
+});
+
+test("a command rejects with the shell's words, as the Tauri shell's did", () => {
+  // `pairing-host.ts` compares the string, `updates.ts` reads it.
+  expect(tauriRejection(new Error("desktop_channel_unavailable"))).toBe("desktop_channel_unavailable");
+  expect(tauriRejection("not-installed")).toBe("not-installed");
+});
+
+test("a dialog, an owner check and pairing wait as long as they take", () => {
+  expect([...UNTIMED_COMMANDS].sort()).toEqual(["pick_workspace_folder", "remote_local_setup", "remote_native_confirmation"]);
 });

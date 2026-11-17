@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Pairing a phone and choosing a folder wait as long as you need, in the native app
+
+- Pairing or removing a phone, its Touch ID check and the folder picker stopped waiting after 30 seconds and reported a failure while you were still looking. They now wait as the old app did.
+- When the window lost its pairing channel to the runtime, the card said only that pairing failed; it now says the channel is gone.
+
 ### A runtime a phone stopped can be restarted from the phone again
 
 - After a paired phone stopped the runtime, the Mac's app started it again but left its stop mark in place, so the runtime reported itself stopped and the phone could no longer restart it. The app clears the mark while it looks after the runtime, as the old app did.

@@ -64,7 +64,30 @@ function windowId(): number {
   return Number((host.params as { windowId?: number }).windowId ?? 0);
 }
 
+/**
+ * The commands that wait on a person or on a long exchange, with no time limit, as in the Tauri
+ * shell: a folder dialog stays open as long as you look, the Touch ID or Windows Hello sheet waits
+ * up to 110 s and pairing's setup channel up to 130 s (the shell times those out itself). The host
+ * channel's own default would give up on them after 30 s.
+ */
+export const UNTIMED_COMMANDS: ReadonlySet<string> = new Set(["pick_workspace_folder", "remote_local_setup", "remote_native_confirmation"]);
+
+/**
+ * What a command rejects with, as the Tauri shell rejected it: the shell's own words, a string
+ * (`desktop_channel_unavailable`, `not-installed`, …), which is what the messenger compares. NSH
+ * rejects with an `Error` that carries them as its message.
+ */
+export function tauriRejection(error: unknown): unknown {
+  return error instanceof Error ? error.message : error;
+}
+
 function invoke(command: string, args?: Record<string, unknown>): Promise<unknown> {
+  return answer(command, args).catch((error: unknown) => {
+    throw tauriRejection(error);
+  });
+}
+
+function answer(command: string, args?: Record<string, unknown>): Promise<unknown> {
   const own = APP_COMMANDS[command] ?? banners?.[command];
   if (own) return own(args ?? {});
   if (command === "plugin:event|listen") {
@@ -80,7 +103,7 @@ function invoke(command: string, args?: Record<string, unknown>): Promise<unknow
     listeners.delete(id);
     return Promise.resolve(null);
   }
-  return host.call(hostName(command), args ?? null);
+  return host.call(hostName(command), args ?? null, UNTIMED_COMMANDS.has(command) ? { timeout: 0 } : undefined);
 }
 
 function transformCallback(callback: Callback, once = false): number {
