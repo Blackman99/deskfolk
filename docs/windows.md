@@ -27,7 +27,7 @@ A Bot's `shell` tool runs commands in Git Bash when it finds one, and in PowerSh
 
 ## Remote access and the remote screen
 
-Remote access works as on the Mac ([remote access](remote-access.md)), with two differences. Approving a device uses Windows Hello — face, fingerprint or PIN — so set a PIN under Windows Settings → Accounts → Sign-in options first. And the remote screen needs a VNC server, since Windows has no screen sharing of its own: install TightVNC as a system service, set its password, and allow loopback connections only; the steps are in [remote access](remote-access.md#on-windows), and the card in Settings lists them while no VNC server answers. Neither has been tried on a real Windows PC yet ([ADR 0059](adr/0059-windows-remote-access-and-screen.md)).
+From 0.5.0 (the native app), remote access cannot be set up from the Windows app yet: pairing a device, the device list and the relay in Settings answer that it is not available, while phones paired before keep connecting. What follows is how the Tauri app (0.4.0 and earlier) did it. Remote access works as on the Mac ([remote access](remote-access.md)), with two differences. Approving a device uses Windows Hello — face, fingerprint or PIN — so set a PIN under Windows Settings → Accounts → Sign-in options first. And the remote screen needs a VNC server, since Windows has no screen sharing of its own: install TightVNC as a system service, set its password, and allow loopback connections only; the steps are in [remote access](remote-access.md#on-windows), and the card in Settings lists them while no VNC server answers. Neither has been tried on a real Windows PC yet ([ADR 0059](adr/0059-windows-remote-access-and-screen.md)).
 
 ## Letting your own Claude Code run a Bot
 

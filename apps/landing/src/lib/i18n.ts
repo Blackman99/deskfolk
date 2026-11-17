@@ -260,7 +260,7 @@ const zh: Dict = {
       remote: {
         title: '远程访问',
         blurb: '自托管中继、配对手机、Web Push。',
-        intro: '从手机或另一台电脑连到你 Mac 上的 Deskfolk：自己部署中继、让 Mac 连上它、配对设备。默认关闭，目前在 macOS 和 Windows 上可用，Linux 暂无。'
+        intro: '从手机或另一台电脑连到你 Mac 上的 Deskfolk：自己部署中继、让 Mac 连上它、配对设备。默认关闭，目前在 macOS 上可用；Windows 原生版还不能在应用里设置，Linux 暂无。'
       },
       manifesto: {
         title: '全部术语',
@@ -458,7 +458,7 @@ const en: Dict = {
       remote: {
         title: 'Remote access',
         blurb: 'Self-hosted relay, pairing a phone, Web Push.',
-        intro: 'Reach Deskfolk on your Mac from a phone or another computer: deploy your own relay, point the Mac at it, pair a device. Off by default, and available on macOS and Windows for now, not Linux.'
+        intro: 'Reach Deskfolk on your Mac from a phone or another computer: deploy your own relay, point the Mac at it, pair a device. Off by default, and available on macOS for now: the native Windows app cannot set it up yet, and Linux has none.'
       },
       manifesto: {
         title: 'All terms',

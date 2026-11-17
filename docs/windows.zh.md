@@ -27,7 +27,7 @@ Bot 的 `shell` 工具找得到 Git Bash 时用它跑命令，找不到才退到
 
 ## 远程访问和远程屏幕
 
-远程访问和 Mac 上一样（[远程访问](remote-access.zh.md)），差两处。批准设备用 Windows Hello——人脸、指纹或 PIN，所以先在 Windows 设置 → 账户 → 登录选项 里设一个 PIN。远程屏幕要一个 VNC 服务，因为 Windows 没有自带的屏幕共享：把 TightVNC 装成系统服务，设好密码，只允许本机回环连接；步骤见[远程访问](remote-access.zh.md#windows-上)，没有 VNC 服务应答时设置里的卡片也会列出来。这两样都还没在真的 Windows 电脑上试过（[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）。
+从 0.5.0 的原生版起，Windows 应用里还不能设置远程访问：设置里的配对设备、设备列表、中继都答不可用，之前配对过的手机照常能连。下面说的是 Tauri 版（0.4.0 及以前）的做法。远程访问和 Mac 上一样（[远程访问](remote-access.zh.md)），差两处。批准设备用 Windows Hello——人脸、指纹或 PIN，所以先在 Windows 设置 → 账户 → 登录选项 里设一个 PIN。远程屏幕要一个 VNC 服务，因为 Windows 没有自带的屏幕共享：把 TightVNC 装成系统服务，设好密码，只允许本机回环连接；步骤见[远程访问](remote-access.zh.md#windows-上)，没有 VNC 服务应答时设置里的卡片也会列出来。这两样都还没在真的 Windows 电脑上试过（[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）。
 
 ## 让你自己的 Claude Code 跑 Bot
 
