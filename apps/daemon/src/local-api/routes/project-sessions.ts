@@ -3,7 +3,14 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentSessions, ImportedSession } from "../../agents/agent-sessions";
+import { withCodexAppServer } from "../../agents/codex-app-server";
+import { readThread } from "../../agents/codex-sessions";
+import { codexSubagentTrail } from "../../agents/codex-task-detail";
+import { projectCodexOf } from "../../project-runner-codex";
+import { readAgyReplay } from "../../agents/agy-replay";
+import { readCodexReplay } from "../../agents/codex-replay";
 import { readAgentReplay } from "../../claude-code/replay";
+import { projectAgyOf } from "../../project-runner-agy";
 import { readOutputTail, readSubagentTrail } from "../../claude-code/task-detail";
 import { carryClaudeSession, claudeSessionRoots, findClaudeSessionFile } from "../../claude-code/sessions";
 import { HttpError } from "../../errors";
@@ -102,10 +109,20 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
   if (params && method === "GET") {
     const project = store.projectOf(params.id!);
     if (!project) throw new HttpError(404, "not_found", "not a project session");
-    // An agent with no replay yet (Codex, ADR 0099) has nothing read back: the map draws its runs live.
-    if (!PROJECT_AGENT_CAPS[project.agent].replay) {
-      const empty: AgentReplay = { session_id: params.id!, agent_session: project.agentSession, source_session: null, calls: [], subagents: [], said: [] };
-      return jsonResponse(empty, 200, null);
+    const empty: AgentReplay = { session_id: params.id!, agent_session: project.agentSession, source_session: null, calls: [], subagents: [], said: [] };
+    // An agent with no replay (a cap off) has nothing read back: the map draws its runs live.
+    if (!PROJECT_AGENT_CAPS[project.agent].replay) return jsonResponse(empty, 200, null);
+    // Codex and Antigravity are asked, never read from their files (ADR 0111 addendum): a failure to ask answers empty.
+    if (project.agent === "codex") {
+      const resolve = options.projectCodex ?? projectCodexOf(store);
+      return readCodexReplay(resolve, { configDir: project.configDir }, { sessionId: params.id!, agentSession: project.agentSession, projectDir: project.dir, configDirs: store.agentConfigDirs("codex") })
+        .catch(() => empty).then((replay) => jsonResponse(replay, 200, null));
+    }
+    if (project.agent === "antigravity") {
+      const resolve = options.projectAgy ?? projectAgyOf(store);
+      const lines = store.db.query<{ kind: string; body: string; created_at: string }, [string]>(`SELECT kind, body, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC, rowid ASC`).all(params.id!);
+      return readAgyReplay(resolve, lines, { sessionId: params.id!, agentSession: project.agentSession, projectDir: project.dir })
+        .catch(() => empty).then((replay) => jsonResponse(replay, 200, null));
     }
     const configDirs = store.claudeCodeConfigDirs();
     const root = claudeSessionRoots(configDirs).find((entry) => entry.configDir === project.configDir) ?? claudeSessionRoots(configDirs)[0]!;
@@ -219,6 +236,17 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
     if (!task) throw new HttpError(404, "not_found", "no such task");
     if (task.kind === "subagent") {
       const project = store.projectOf(run.session_id);
+      // A Codex subagent is a thread of its own, read through Codex's app-server (ADR 0099 addendum).
+      if (project?.agent === "codex") {
+        const resolve = options.projectCodex ?? projectCodexOf(store);
+        return (async () => {
+          const codex = await resolve(project.configDir).catch(() => null);
+          const thread = codex?.ok ? await withCodexAppServer(codex, project.dir, (rpc) => readThread(rpc, task.id)).catch(() => null) : null;
+          const trail = thread ? codexSubagentTrail(thread) : { prompt: null, model: null, steps: [] };
+          const detail: AgentTaskDetail = { task, output: null, output_bytes: null, ...trail };
+          return jsonResponse(detail, 200, null);
+        })();
+      }
       const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
       const root = roots.find((entry) => entry.configDir === project?.configDir) ?? roots[0]!;
       const session = project?.agentSession ? findClaudeSessionFile(root, project.agentSession) : null;

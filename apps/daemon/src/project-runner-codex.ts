@@ -16,9 +16,10 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { isAgentEffort, type AgentRunApproval, type AgentRunToolInfo, type Message, type ToolFrame } from "@real-bot/protocol";
+import { isAgentEffort, PLAN_APPROVAL_KIND, type AgentRunApproval, type AgentRunToolInfo, type AgentTask, type Message, type ToolFrame } from "@real-bot/protocol";
 import daemonPackage from "../package.json";
 import { askSkills, codexBuiltinOf, type CodexBuiltin, type CodexSkill } from "./agents/codex-commands";
+import { estimateAgentCost } from "./agents/agent-prices";
 import { agentAnnotations, type AnnotationCropBytes } from "./annotation-context";
 import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
 import { placeOfCall } from "./claude-code/tool-place";
@@ -81,6 +82,14 @@ type Live = {
   turnId: string | null;
   /** Your lines the turn going now carries: one its plan's limit turned away is still unanswered (ADR 0110). */
   inTurn: string[];
+  /** Its subagents and the commands it left running in the background, by id (ADR 0095, 25). */
+  tasks: Map<string, AgentTask>;
+  /** What each background command has printed so far. */
+  outputs: Map<string, string>;
+  /** Its turn is over and only its background commands keep the run open. */
+  idle: boolean;
+  /** Wakes the run waiting on its background commands: a new line, or a command's end. */
+  wake: (() => void) | null;
 };
 
 const INIT_TIMEOUT_MS = 60_000;
@@ -89,6 +98,8 @@ const INTERRUPT_TIMEOUT_MS = 3_000;
 const STDERR_KEEP = 8 * 1024;
 const ACTIVITY_MAX = 160;
 const PARTIAL_MAX = 4000;
+/** The words a plan's approval goes on with: Codex takes the next turn in its default mode. */
+const PLAN_GO = { en: "The plan is approved. Implement it now.", zh: "计划已批准，现在按计划去做。" };
 
 /**
  * Where an annotation's crop goes for Codex, which takes a picture by its path only: written out
@@ -289,17 +300,20 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     }
     const line = lineOf();
     if (live) {
+      // A plan waiting on you is not approved by what you say next: it is what to change.
+      if (live.waiting[0]?.approval.kind_key === PLAN_APPROVAL_KIND) live.waiting.shift()!.resolve(false);
       // A turn going now takes words at its next step, as Codex's own steer does. A command, and
       // anything sent after one still waiting, waits for the turn's end: it is a turn of its own.
       if (!line.command && live.queue.length === 0 && live.rpc && live.threadId && live.turnId) steer(live, live.rpc, live.threadId, live.turnId, line.input, line.messageIds);
       else live.queue.push(line);
+      live.wake?.();
       return;
     }
     const run = store.createAgentRun(sessionId);
     let finish!: () => void;
     const fresh: Live = {
       runId: run.id, sessionId, queue: [line], steering: new Set(), waiting: [], said: "", stopped: false, closing: false,
-      done: new Promise<void>((resolve) => { finish = resolve; }), abort: new AbortController(), rpc: null, threadId: null, turnId: null, inTurn: [],
+      done: new Promise<void>((resolve) => { finish = resolve; }), abort: new AbortController(), rpc: null, threadId: null, turnId: null, inTurn: [], tasks: new Map(), outputs: new Map(), idle: false, wake: null,
     };
     lives.set(sessionId, fresh);
     const running = runSession(fresh).catch((error) => {
@@ -328,6 +342,12 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     );
     live.steering.add(going);
     void going.finally(() => live.steering.delete(going));
+  }
+
+  function setIdle(live: Live, idle: boolean): void {
+    if (live.idle === idle) return;
+    live.idle = idle;
+    update(live.runId, { idle });
   }
 
   /** What it said in a turn that ends before its end (Stop, a failure, the daemon going down) stays on the record, as the bubble showed it. */
@@ -377,6 +397,12 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
 
     const permission = store.appPermissionMode();
     const configDirs = store.allAgentConfigDirs();
+    /**
+     * Codex's own folders it works with (ADR 0099 addendum 2026-11-17): the memories it writes itself,
+     * the skills and plugins it reads by command. As any folder outside, by the permission mode; its
+     * sign-in beside them stays shut.
+     */
+    const ownDirs = ["memories", "skills", "plugins"].map((name) => join(codexHome(project.configDir), name));
     const home = homedir();
     const items = new Map<string, Item>();
     /** The calls under way, by item id: when each started and what it was, for its exited frame. */
@@ -390,6 +416,10 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     let lastText = "";
     /** What a review found, as Codex closes it (`exitedReviewMode`): the reply to `/review`. */
     let reviewText: string | null = null;
+    /** The plan a plan-mode turn closed with (an item of its own, `plan`): a card for you. */
+    let planText: string | null = null;
+    /** Each subagent thread's model and what it said last, by thread id. */
+    const subagents = new Map<string, { model: string | null; last: string | null }>();
     let failure: string | null = null;
     /** Its plan's limit stopped the turn (ADR 0110), and when it resets, when Codex said. */
     let limitHit = false;
@@ -421,7 +451,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     /** The app's rules for one command or file change: allowed, refused, or a card that waits on you. */
     const gate = async (action: AppAction): Promise<boolean> => {
       if (live.stopped) return false;
-      const decision = decideAction(action, { mode: "work", workspace: project.dir, configDirs, permission });
+      const decision = decideAction(action, { mode: "work", workspace: project.dir, configDirs, permission, openDirs: ownDirs });
       if (decision.kind === "deny") return false;
       if (decision.kind === "allow") return true;
       return askYou(decision.approval);
@@ -459,6 +489,45 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       }
     });
 
+    const setTask = (task: AgentTask) => {
+      live.tasks.set(task.id, task);
+      update(live.runId, { tasks: [...live.tasks.values()] });
+    };
+    const countCall = (agentId: string) => {
+      const task = live.tasks.get(agentId);
+      if (task) setTask({ ...task, tool_uses: (task.tool_uses ?? 0) + 1 });
+    };
+    /** A `spawnAgent` call: each thread it sends is a subagent task; its model is the one asked for. */
+    const noteSubagents = (item: Item, completed: boolean) => {
+      if (item.tool !== "spawnAgent" || !completed) return;
+      const ids = Array.isArray(item.receiverThreadIds) ? (item.receiverThreadIds as unknown[]).filter((id): id is string => typeof id === "string") : [];
+      const prompt = typeof item.prompt === "string" ? item.prompt : "";
+      for (const id of ids) {
+        if (live.tasks.has(id)) continue;
+        subagents.set(id, { model: typeof item.model === "string" && item.model ? item.model : subagents.get(id)?.model ?? null, last: null });
+        setTask({
+          id, tool_use_id: item.id, kind: "subagent", status: "running", description: clip(firstLine(prompt) ?? "subagent", 120), command: null, agent_type: null,
+          activity: null, summary: null, tool_uses: 0, tokens: null, started_at: new Date().toISOString(), ended_at: null, output_file: null,
+        });
+      }
+    };
+    /** A background command's end: its task ends, what it printed kept where the tasks list reads it. */
+    const backgroundEnded = (id: string, ok: boolean, output: string, exitCode: number | null) => {
+      const task = live.tasks.get(id);
+      if (!task) return;
+      let outputFile: string | null = null;
+      try {
+        const dir = join(tmpdir(), "deskfolk-codex-tasks");
+        mkdirSync(dir, { recursive: true });
+        outputFile = join(dir, `${live.runId}-${id}.log`);
+        writeFileSync(outputFile, output);
+      } catch {
+        outputFile = null;
+      }
+      setTask({ ...task, status: ok ? "completed" : "failed", ended_at: new Date().toISOString(), output_file: outputFile, summary: exitCode !== null ? `exit ${exitCode}` : task.summary });
+      live.wake?.();
+    };
+
     /** A call that started is over: it ran (or failed), or it was refused. */
     const ended = (id: string, ok: boolean, exitCode?: number | null) => {
       const call = started.get(id);
@@ -490,7 +559,9 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         store.insertSpend({
           kind: "turn", purpose: "project", sessionId: live.sessionId, botId: null, turnId: live.runId, providerId: "", providerName: "Codex",
           model, thinkingLevel: null, inputTokens: input, outputTokens: output, totalTokens: input + output, cachedTokens: usage.last.cachedInputTokens ?? 0,
-          reasoningTokens: usage.last.reasoningOutputTokens ?? null, costUsdTicks: null, estimatedCostUsdTicks: null, missingReason: null,
+          // Codex reports no price: an estimate from the model's public API price, when the table has it.
+          reasoningTokens: usage.last.reasoningOutputTokens ?? null, costUsdTicks: null,
+          estimatedCostUsdTicks: estimateAgentCost(model, { inputTokens: input, outputTokens: output, cachedTokens: usage.last.cachedInputTokens ?? 0 }), missingReason: null,
         });
       } catch (error) {
         console.error(`[project ${live.sessionId}] could not record spend`, error);
@@ -525,6 +596,20 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
           }
           return;
         }
+        if (item.type === "plan") {
+          if (method === "item/completed" && !agentId && typeof item.text === "string" && item.text.trim()) planText = item.text;
+          return;
+        }
+        // A subagent it sends (`spawnAgent`): a task on the run, under its own thread.
+        if (item.type === "collabAgentToolCall") {
+          noteSubagents(item, method === "item/completed");
+          return;
+        }
+        if (item.type === "agentMessage" && agentId) {
+          const sub = subagents.get(agentId);
+          if (sub && method === "item/completed" && typeof item.text === "string" && item.text.trim()) sub.last = item.text.trim();
+          return;
+        }
         if (item.type === "agentMessage") {
           if (method !== "item/completed" || agentId) return;
           const text = typeof item.text === "string" ? item.text : "";
@@ -546,7 +631,9 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         if (!call) return;
         if (method === "item/started" && !started.has(item.id)) {
           const { place, action } = placeOfCall(call.place.tool, call.place.input, { projectDir: project.dir, cwd: typeof item.cwd === "string" && item.cwd ? item.cwd : project.dir, home, configDirs });
-          const info: AgentRunToolInfo = { session_id: live.sessionId, agent_id: agentId, place, ...(action ? { action } : {}), model, at: new Date().toISOString() };
+          // A subagent's call is made by its own model.
+          const info: AgentRunToolInfo = { session_id: live.sessionId, agent_id: agentId, place, ...(action ? { action } : {}), model: (agentId ? subagents.get(agentId)?.model : null) ?? model, at: new Date().toISOString() };
+          if (agentId) countCall(agentId);
           started.set(item.id, { at: Date.now(), name: call.name, info, ...(call.command ? { command: call.command } : {}), ...(call.target ? { target: call.target } : {}), ...(call.mcp ? { mcp: call.mcp } : {}) });
           if (!agentId) update(live.runId, { activity: clip(call.activity, ACTIVITY_MAX) });
           deps.onTool?.({ type: "tool", turn_id: live.runId, id: item.id, name: call.name, phase: "started",
@@ -554,8 +641,35 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
             ...(call.mcp ? { mcp_server: call.mcp.server, mcp_tool: call.mcp.tool } : {}), agent_run: info });
         } else if (method === "item/completed") {
           const exitCode = typeof item.exitCode === "number" ? item.exitCode : null;
-          ended(item.id, item.status === "completed" && (exitCode === null || exitCode === 0), exitCode);
+          const ok = item.status === "completed" && (exitCode === null || exitCode === 0);
+          // A command it left running past its turn: its end ends its task.
+          if (live.tasks.get(item.id)?.status === "running") backgroundEnded(item.id, ok, typeof item.aggregatedOutput === "string" ? item.aggregatedOutput : live.outputs.get(item.id) ?? "", exitCode);
+          ended(item.id, ok, exitCode);
         }
+        return;
+      }
+      if (method === "item/commandExecution/outputDelta" && typeof p.itemId === "string" && typeof p.delta === "string" && live.tasks.has(p.itemId)) {
+        live.outputs.set(p.itemId, `${live.outputs.get(p.itemId) ?? ""}${p.delta}`.slice(-64_000));
+        return;
+      }
+      if (method === "thread/started") {
+        // A subagent's thread says its model and the name Codex gave it.
+        const thread = (p.thread ?? {}) as { id?: string; model?: string | null; agentNickname?: string | null; parentThreadId?: string | null };
+        if (typeof thread.id === "string" && thread.parentThreadId) {
+          const sub = subagents.get(thread.id) ?? { model: null, last: null };
+          sub.model = thread.model ?? sub.model;
+          subagents.set(thread.id, sub);
+          const task = live.tasks.get(thread.id);
+          if (task && thread.agentNickname) setTask({ ...task, agent_type: thread.agentNickname });
+        }
+        return;
+      }
+      if (method === "turn/completed" && agentOf(p)) {
+        // A subagent's turn over: its task ends with what it said last.
+        const agentId = agentOf(p)!;
+        const task = live.tasks.get(agentId);
+        const turnEnd = (p.turn ?? {}) as TurnEnd;
+        if (task?.status === "running") setTask({ ...task, status: turnEnd.status === "completed" ? "completed" : "failed", ended_at: new Date().toISOString(), summary: subagents.get(agentId)?.last ?? task.summary });
         return;
       }
       if (method === "error") {
@@ -672,6 +786,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         finalText = "";
         lastText = "";
         reviewText = null;
+        planText = null;
         const finished = new Promise<TurnEnd>((resolve) => { turnDone = resolve; });
         try {
           const id = await start();
@@ -696,22 +811,48 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
           if (end.error && classifyCodexError(end.error).failKind === "agent_limit") limitHit = true;
           return false;
         }
-        const reply = (reviewText ?? (finalText || lastText)).trim();
+        // Commands it left running past its turn are tasks the run stays open for (ADR 0095, 25).
+        for (const [id, call] of started) {
+          if (call.command === undefined || call.info.agent_id || live.tasks.has(id)) continue;
+          setTask({
+            id, tool_use_id: id, kind: "shell", status: "running", description: clip(call.command, 120), command: clip(call.command, 300), agent_type: null,
+            activity: null, summary: null, tool_uses: null, tokens: null, started_at: new Date(call.at).toISOString(), ended_at: null, output_file: null,
+          });
+        }
+        // A plan closes a plan-mode turn: its words beside the work are not the reply, the plan is.
+        const plan = (planText as string | null)?.trim() || null;
+        const reply = (reviewText ?? (finalText || (plan ? "" : lastText))).trim();
         if (reply) postLine(live.sessionId, "bot", reply);
         else if (ran) postLine(live.sessionId, "system", ran);
         partial = "";
         live.said = "";
         update(live.runId, { partial: null, activity: null });
+        if (plan) {
+          // The same card as Claude Code's plan: approved, plan mode goes off and Codex carries it out.
+          const approved = await askYou({ kind_key: PLAN_APPROVAL_KIND, target: project.dir, summary: plan });
+          if (live.stopped) return false;
+          if (approved) {
+            store.tuneProjectSession(live.sessionId, { mode: null });
+            live.queue.unshift({ input: [{ type: "text", text: PLAN_GO[en ? "en" : "zh"], text_elements: [] }], command: null, messageIds: [] });
+          }
+        }
         return true;
       };
 
       /** A turn on your words, with the session's model and level as they are now: a change reaches the next turn. */
       const words = (input: CodexInput[]) => turn(async () => {
         const now = store.projectOf(live.sessionId) ?? project;
+        const threadId = await thread();
+        // Plan mode is Codex's collaboration mode, said on every turn: the thread keeps the last one asked.
+        const settingsModel = now.model ?? model;
+        const collaborationMode = settingsModel
+          ? { mode: now.mode === "plan" ? "plan" : "default", settings: { model: settingsModel, reasoning_effort: now.effort && isAgentEffort("codex", now.effort) ? now.effort : now.mode === "plan" ? "medium" : null, developer_instructions: null } }
+          : null;
         const started = await rpc.request<{ turn?: { id?: string } }>("turn/start", {
-          threadId: await thread(), input,
+          threadId, input,
           ...(now.model ? { model: now.model } : {}),
           ...(now.effort && isAgentEffort("codex", now.effort) ? { effort: now.effort } : {}),
+          ...(collaborationMode ? { collaborationMode } : {}),
         }, INIT_TIMEOUT_MS);
         if (now.model) model = now.model;
         return started?.turn?.id;
@@ -778,7 +919,19 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
         // Lines being added to the turn that just ended either made it in or wait in the queue now.
         while (live.steering.size > 0) await Promise.all([...live.steering]);
         const next = takeNext(live.queue);
-        if (!next || next.input.length === 0 || live.stopped) break;
+        if (live.stopped) break;
+        if (!next || next.input.length === 0) {
+          // Only its background commands keep it open: a line you send is answered at once.
+          if (![...live.tasks.values()].some((task) => task.status === "running" && task.kind === "shell")) break;
+          setIdle(live, true);
+          await new Promise<void>((resolve) => {
+            live.wake = resolve;
+            if (live.queue.length > 0 || ![...live.tasks.values()].some((task) => task.status === "running" && task.kind === "shell")) resolve();
+          });
+          live.wake = null;
+          setIdle(live, false);
+          continue;
+        }
         live.inTurn = next.messageIds;
         const going = next.command ? await command({ ...next, command: next.command }) : await words(next.input);
         if (going) live.inTurn = [];
@@ -853,6 +1006,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     // Before the run reads as stopped, and so before a line you send next.
     keepSaid(live);
     for (const asking of live.waiting.splice(0)) asking.resolve(false);
+    live.wake?.();
     const { rpc, threadId, turnId } = live;
     // The turn is told to stop first, so Codex keeps a thread it can resume; then its process goes.
     if (rpc && !rpc.closed && threadId && turnId) {
@@ -894,12 +1048,15 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     },
     // The model and level are read again at each turn's start; plan mode is Claude Code's only.
     tune() {},
-    // Codex's runs list no background tasks (ADR 0095, 25): there is nothing to end or read here.
+    // Codex offers no way to end one subagent or command alone: Stop ends them all with the run.
     stopTask(runId) {
       return store.getAgentRun(runId);
     },
-    async taskOutput() {
-      return null;
+    async taskOutput(runId, taskId) {
+      const live = liveRun(runId);
+      if (!live?.tasks.has(taskId)) return null;
+      const output = live.outputs.get(taskId) ?? "";
+      return { output, total_bytes: Buffer.byteLength(output) };
     },
     async idle() {
       while (settling.size > 0) await Promise.all([...settling]);

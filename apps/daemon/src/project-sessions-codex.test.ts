@@ -273,6 +273,85 @@ test("out of usage, a Codex session moves to another account of yours and goes o
   expect(h.store.projectResumes()).toEqual([]);
 });
 
+test("in plan mode a Codex turn closes with its plan on a card: approved, plan mode goes off and Codex carries it out", async () => {
+  const h = start([{ model: "gpt-5.6-luna", turns: [[{ commentary: "Looking around." }, { plan: "# Plan\n\n1. Do it" }], [{ say: "Done." }]] }]);
+  const id = await h.open();
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { mode: "plan" })).status).toBe(200);
+  await h.say(id, "plan it");
+  await h.until(async () => (await h.run(id))?.status === "waiting_approval");
+  const card = (await h.run(id))!;
+  expect(card.approval).toEqual({ kind_key: "plan", target: h.dir, summary: "# Plan\n\n1. Do it" });
+  expect(h.sent(0, "turn/start")[0]).toMatchObject({ collaborationMode: { mode: "plan", settings: { model: "gpt-5.6-luna", reasoning_effort: "medium", developer_instructions: null } } });
+  // Its words beside the work are not the reply: the plan is.
+  expect(h.lines(id).some((line) => line.body === "Looking around.")).toBe(false);
+  expect((await h.call("POST", `/v1/agent-runs/${card.id}/approve`)).status).toBe(200);
+  await h.settled(id);
+  expect(h.store.projectOf(id)?.mode).toBeNull();
+  expect(h.sent(0, "turn/start")[1]).toMatchObject({ input: [{ type: "text", text: "计划已批准，现在按计划去做。" }], collaborationMode: { mode: "default" } });
+  expect(h.lines(id).at(-1)?.body).toBe("Done.");
+});
+
+test("a subagent Codex sends is a task with its own model; opened, it reads its own thread", async () => {
+  const sub = [{ id: "sub-1", cwd: "/x", preview: "Count", source: "subAgent", updatedAt: 1, model: "gpt-5.6-luna", turns: [
+    { id: "s1", status: "completed", startedAt: 10, completedAt: 12, items: [
+      { type: "userMessage", id: "u", content: [{ type: "text", text: "Count the files" }] },
+      { type: "commandExecution", id: "c", command: "/bin/zsh -lc 'ls'", status: "completed", exitCode: 0, aggregatedOutput: "a\nb", durationMs: 40 },
+      { type: "agentMessage", id: "a", text: "2 files", phase: "final_answer" },
+    ] },
+  ] }];
+  const h = start([{ model: "gpt-5.6-terra", turns: [[{ spawn: { prompt: "Count the files", model: "gpt-5.6-luna", nickname: "Feynman", says: "2 files", command: "ls" } }, { say: "It found 2 files." }]] }, { stored: sub, turns: [] }]);
+  const frames: ToolFrame[] = [];
+  h.api.subscribeTools((frame) => frames.push(frame));
+  const id = await h.open();
+  await h.say(id, "count with a subagent");
+  await h.settled(id);
+  const run = (await h.run(id))!;
+  expect(run.tasks).toEqual([expect.objectContaining({ id: "sub-1", kind: "subagent", status: "completed", description: "Count the files", agent_type: "Feynman", summary: "2 files", tool_uses: 1 })]);
+  // The subagent's call is made by its own model, under its thread.
+  expect(frames.find((frame) => frame.phase === "started")?.agent_run).toMatchObject({ agent_id: "sub-1", model: "gpt-5.6-luna" });
+  const detail = await h.call<{ prompt: string; model: string; steps: Array<{ kind: string; tool?: string; text?: string; output?: string }> }>("GET", `/v1/agent-runs/${run.id}/tasks/sub-1`);
+  expect(detail.body).toMatchObject({ prompt: "Count the files", model: "gpt-5.6-luna" });
+  expect(detail.body.steps.map((step) => [step.kind, step.tool ?? step.text])).toEqual([["call", "shell"], ["say", "2 files"]]);
+});
+
+test("a command Codex leaves running past its turn is a task the run stays open for, idle, until it ends", async () => {
+  const h = start([{ turns: [[{ background: { command: "sleep 1 && echo done", ms: 200, output: "done-sleeping" } }, { say: "Started it." }]] }]);
+  const id = await h.open();
+  await h.say(id, "start it in the background");
+  await h.until(async () => (await h.run(id))?.idle === true);
+  const going = (await h.run(id))!;
+  expect(going.status).toBe("running");
+  expect(going.tasks).toEqual([expect.objectContaining({ kind: "shell", status: "running", command: "sleep 1 && echo done" })]);
+  expect(h.lines(id).at(-1)?.body).toBe("Started it.");
+  await h.settled(id);
+  const over = (await h.run(id))!;
+  expect(over.status).toBe("completed");
+  expect(over.tasks?.[0]).toMatchObject({ status: "completed", summary: "exit 0" });
+  const tasks = await h.call<{ tasks: Array<{ output?: string | null }> }>("GET", `/v1/project-sessions/${id}/tasks`);
+  expect(tasks.body.tasks[0]?.output).toContain("done-sleeping");
+});
+
+test("Codex's own memories and skills are folders it may use by the mode; its sign-in beside them stays shut", async () => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "codex-home-own-")));
+  closes.push(() => rmSync(home, { recursive: true, force: true }));
+  const previous = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = home;
+  closes.push(() => { if (previous === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = previous; });
+  const h = start([{ turns: [[{ command: `cat ${home}/memories/notes.md` }, { command: `sed -n 1,20p ${home}/skills/pdf/SKILL.md` }, { command: `cat ${home}/auth.json` }, { say: "read" }]] }]);
+  h.store.patchSettings({ permission_mode: "auto" });
+  // Listed as one of your Codex accounts, as the default one under your home folder is known: its sign-in is a credential.
+  h.store.setAgentConfigDirs("codex", [home]);
+  const id = await h.open();
+  await h.say(id, "look at your notes");
+  await h.settled(id);
+  const answers = h.log(0).filter((entry) => entry.asked).map((entry) => [entry.asked, entry.answer?.decision]);
+  expect(answers).toEqual([
+    [`cat ${home}/memories/notes.md`, "accept"],
+    [`sed -n 1,20p ${home}/skills/pdf/SKILL.md`, "accept"],
+    [`cat ${home}/auth.json`, "decline"],
+  ]);
+});
+
 test("a line sent while a turn is going is steered into it", async () => {
   const h = start([{ turns: [[{ sleep: 1500 }, { say: "两句都答了" }]] }]);
   const id = await h.open();
@@ -376,7 +455,9 @@ test("a Codex session's model and level reach its next turn; what it has not got
   const id = await h.open();
   expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { model: "gpt-5.6-luna", effort: "high" })).status).toBe(200);
   expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { effort: "ultra" })).status).toBe(422);
-  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { mode: "plan" })).status).toBe(422);
+  // Plan mode is Codex's collaboration mode (ADR 0099 addendum 2026-11-17).
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { mode: "plan" })).status).toBe(200);
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { mode: null })).status).toBe(200);
   // Codex's accounts are its homes (ADR 0099 addendum): one not listed is refused.
   expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { config_dir: null })).status).toBe(200);
   expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { config_dir: "/not/listed" })).status).toBe(422);
@@ -579,7 +660,7 @@ test("/new opens a new Codex thread: what follows it, and every later line, go t
   await h.settled(id);
   expect(h.sent(1, "thread/resume")[0]).toMatchObject({ threadId: "thread-1" });
   expect(h.sent(1, "thread/start")[0]).toMatchObject({ cwd: h.dir, approvalPolicy: "untrusted", sandbox: "read-only", ephemeral: false });
-  expect(h.sent(1, "turn/start")).toEqual([{ threadId: "thread-2", input: [{ type: "text", text: "从头来", text_elements: [] }] }]);
+  expect(h.sent(1, "turn/start").map(({ collaborationMode: _mode, ...rest }) => rest)).toEqual([{ threadId: "thread-2", input: [{ type: "text", text: "从头来", text_elements: [] }] }]);
   expect(h.store.projectOf(id)?.agentSession).toBe("thread-2");
   expect(h.lines(id).slice(2).map((line) => [line.kind, line.body])).toEqual([
     ["user", "/new 从头来"], ["system", "已执行 /new：Codex 开了一个新会话，从空的上下文重新开始，这里的记录还在"], ["bot", "新的"],
@@ -614,7 +695,7 @@ test("a skill named after `/` goes as Codex's own `$` sends one; a command sent 
   await h.until(() => h.lines(id).length === 4);
   await h.settled(id);
   expect(h.sent(0, "skills/list")).toEqual([{ cwds: [h.dir] }]);
-  expect(h.sent(0, "turn/start")).toEqual([
+  expect(h.sent(0, "turn/start").map(({ collaborationMode: _mode, ...rest }) => rest)).toEqual([
     { threadId: "thread-1", input: [{ type: "text", text: "$hello 打个招呼", text_elements: [] }, { type: "skill", name: "hello", path }] },
     { threadId: "thread-1", input: [{ type: "text", text: "/status", text_elements: [] }] },
   ]);
@@ -653,8 +734,9 @@ test("each Codex call's usage goes in the ledger as a project session's, once; a
     { run: 1, input: 1500, output: 30, cached: 0 },
     { run: 2, input: 400, output: 20, cached: 300 },
   ]);
-  // No Bot, named after the session; Codex reports no price, so there is no estimate and the cap does not count it.
-  expect(h.store.db.query(`SELECT DISTINCT kind, purpose, bot_id, session_name, provider_name, model, cost_usd_ticks, estimated_cost_usd_ticks FROM spend`).all()).toEqual([
-    { kind: "turn", purpose: "project", bot_id: null, session_name: "看看", provider_name: "Codex", model: "gpt-5.6-luna", cost_usd_ticks: null, estimated_cost_usd_ticks: null },
+  // No Bot, named after the session. Codex reports no price: each row is estimated from the model's public API price (agents/agent-prices.ts), so the cap counts it.
+  expect(h.store.db.query(`SELECT DISTINCT kind, purpose, bot_id, session_name, provider_name, model, cost_usd_ticks FROM spend`).all()).toEqual([
+    { kind: "turn", purpose: "project", bot_id: null, session_name: "看看", provider_name: "Codex", model: "gpt-5.6-luna", cost_usd_ticks: null },
   ]);
+  expect(h.store.db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM spend WHERE estimated_cost_usd_ticks IS NULL OR estimated_cost_usd_ticks <= 0`).get()?.n).toBe(0);
 });

@@ -34,8 +34,8 @@ export type ProjectAgentCaps = {
 
 export const PROJECT_AGENT_CAPS: Record<ProjectAgent, ProjectAgentCaps> = {
   claude_code: { plan: true, commands: true, accounts: true, importable: true, branches: true, replay: true, tasks: true, stopsTask: true, asksFirst: true },
-  codex: { plan: false, commands: true, accounts: true, importable: true, branches: true, replay: false, tasks: false, stopsTask: false, asksFirst: true },
-  antigravity: { plan: true, commands: true, accounts: false, importable: true, branches: false, replay: false, tasks: true, stopsTask: false, asksFirst: false },
+  codex: { plan: true, commands: true, accounts: true, importable: true, branches: true, replay: true, tasks: true, stopsTask: false, asksFirst: true },
+  antigravity: { plan: true, commands: true, accounts: false, importable: true, branches: false, replay: true, tasks: true, stopsTask: false, asksFirst: false },
 };
 
 /**

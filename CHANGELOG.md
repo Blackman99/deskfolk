@@ -6,6 +6,25 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A Codex project session has plan mode, subagents and background commands
+
+- The Plan switch and Shift+Tab work for Codex. A plan turn only reads and asks to run read commands, changes no file, and ends with a plan card to approve; approving turns plan mode off and tells Codex to carry the plan out, not approving keeps planning, and a line you send while the card waits is what to change. This relies on Codex's collaboration modes, which Codex still marks experimental; the app waited on that before and now builds it for parity with Claude Code sessions.
+- A subagent Codex starts shows as a task in the conversation, with what it was asked, its model and nickname, and what it said last; open it to read its prompt and steps. Its calls on the task map carry its model.
+- A command Codex leaves running in the background shows as a running task, the run staying open until it ends. Stop ends everything; one command cannot be stopped alone.
+
+### Codex and Antigravity project sessions get a price estimate
+
+- Their spend now carries an estimated price from a built-in table of public API prices (gpt-5.6-terra, gpt-5.6-luna, gpt-6-astra, gemini-3.8-flash, claude-sonnet-4-6, claude-opus-4-6), so it counts toward the daily cap as Claude Code's does; a model not in the table still records tokens only. The table was read on 2026-11-17, and Google's gemini-3.8-flash rate doubles on 2027-01-01, so it will need an update then. Bots' Codex and Antigravity turns are not estimated.
+
+### Codex's own memory and skills folders are open to a project session
+
+- Codex writes its memories itself and reads its skills by command. Its `memories`, `skills` and `plugins` folders under the session account's `CODEX_HOME` now follow the permission mode like any folder outside the project; its sign-in file beside them stays shut.
+
+### The task map replays Codex and Antigravity project sessions too
+
+- The task map draws what a Codex or Antigravity session did before, not only its live calls. Codex's calls are timed from each turn's start by how long each took, and its subagents get rows of their own; Antigravity gives no times, so its calls are spread between your line and the reply that followed it, a command's own start and end used when it wrote them.
+- Neither records permission decisions, so those are left out of the map.
+
 ### A Codex project session picks its account, and moves to another when one runs out
 
 - The composer's picker lists your Codex accounts (the `CODEX_HOME`s listed in Settings › Agents) as it lists Claude accounts. Codex keeps a thread under one account only, so after a move the next run reads the conversation through your other account's Codex and opens it anew there: everything said comes along, earlier tool calls do not.
@@ -18,7 +37,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - Plan mode works (the Plan switch, Shift+Tab, a plan card to approve), and so do `/` commands such as `/compact`, pictures and files, and a model and thinking level to pick.
 - A command agy sends to the background shows as a running task; Stop ends all of them (one cannot be stopped alone).
 - Carrying on a terminal agy session goes on in that same session, as agy cannot branch one: what you say here shows in the terminal too, so do not talk on both sides at once, and a session carried on once cannot be carried on again.
-- Plan-mode lines, the plan card and the task map now name the session's agent instead of Claude Code. Spend is counted in tokens, without a price yet. More that Claude Code sessions have and Codex lacks is coming in the next changes.
+- Plan-mode lines, the plan card and the task map now name the session's agent instead of Claude Code. Spend is counted in tokens, and priced by an estimate where the model is known (see the Codex and Antigravity spend entry above). More that Claude Code sessions have and Codex lacks is coming in the next changes.
 
 ### A project session can carry on a Codex session from your terminal
 

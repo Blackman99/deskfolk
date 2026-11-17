@@ -44,7 +44,13 @@ type Step =
   | { usage: { input: number; output: number; cached: number; last?: { input: number; output: number; cached: number } } }
   | { fail: { message: string; codexErrorInfo?: unknown; errorNotice?: boolean } }
   | { hang: true }
-  | { sleep: number };
+  | { sleep: number }
+  /** A plan-mode turn's plan, as an item of its own. */
+  | { plan: string }
+  /** A subagent it sends: `spawnAgent`, the subagent's thread (its turn, a command, its answer), then `wait`. */
+  | { spawn: { prompt: string; model?: string; nickname?: string; says: string; command?: string } }
+  /** A command it leaves running past the turn, ending `ms` after the turn with `output`. */
+  | { background: { command: string; ms: number; output?: string } };
 
 type Script = {
   signedOut?: boolean;
@@ -185,6 +191,29 @@ async function play(steps: Step[], turnId: string, review = false): Promise<void
       return;
     } else if ("sleep" in step) {
       await sleep(step.sleep);
+    } else if ("plan" in step) {
+      notify("item/started", { threadId: THREAD_ID, turnId, item: { type: "plan", id: `${turnId}-plan`, text: "" } });
+      notify("item/completed", { threadId: THREAD_ID, turnId, item: { type: "plan", id: `${turnId}-plan`, text: step.plan } });
+    } else if ("spawn" in step) {
+      const sub = `sub-${++seq}`;
+      const spawnId = nextId("spawn");
+      notify("item/completed", { threadId: THREAD_ID, turnId, item: { type: "collabAgentToolCall", id: spawnId, tool: "spawnAgent", status: "completed", senderThreadId: THREAD_ID, receiverThreadIds: [sub], prompt: step.spawn.prompt, model: step.spawn.model ?? null, reasoningEffort: null, agentsStates: { [sub]: { status: "pendingInit", message: null } } } });
+      notify("thread/started", { thread: { id: sub, parentThreadId: THREAD_ID, model: step.spawn.model ?? null, agentNickname: step.spawn.nickname ?? null } });
+      const subTurn = `${sub}-turn`;
+      notify("turn/started", { threadId: sub, turn: { id: subTurn, status: "inProgress", items: [], error: null } });
+      if (step.spawn.command) {
+        const cmd = { type: "commandExecution", id: nextId("cmd"), command: `/bin/zsh -lc '${step.spawn.command}'`, cwd, status: "inProgress", aggregatedOutput: null, exitCode: null };
+        notify("item/started", { threadId: sub, turnId: subTurn, item: cmd });
+        notify("item/completed", { threadId: sub, turnId: subTurn, item: { ...cmd, status: "completed", aggregatedOutput: "1", exitCode: 0 } });
+      }
+      notify("item/completed", { threadId: sub, turnId: subTurn, item: { type: "agentMessage", id: nextId("msg"), text: step.spawn.says, phase: "final_answer" } });
+      notify("turn/completed", { threadId: sub, turn: { id: subTurn, status: "completed", error: null } });
+      notify("item/completed", { threadId: THREAD_ID, turnId, item: { type: "collabAgentToolCall", id: nextId("wait"), tool: "wait", status: "completed", senderThreadId: THREAD_ID, receiverThreadIds: [sub], agentsStates: { [sub]: { status: "completed", message: step.spawn.says } } } });
+    } else if ("background" in step) {
+      const item = { type: "commandExecution", id: nextId("bg"), command: `/bin/zsh -lc '${step.background.command}'`, cwd, status: "inProgress", aggregatedOutput: null, exitCode: null };
+      notify("item/started", { threadId: THREAD_ID, turnId, item });
+      const { ms, output } = step.background;
+      setTimeout(() => notify("item/completed", { threadId: THREAD_ID, turnId, item: { ...item, status: "completed", aggregatedOutput: output ?? "done", exitCode: 0 } }), ms);
     } else if ("hang" in step) {
       while (!interrupted) await sleep(20);
       complete("interrupted");

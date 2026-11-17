@@ -17,6 +17,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { PLAN_APPROVAL_KIND, type AgentRunApproval, type AgentRunToolInfo, type AgentTask, type ClaudeCodeCommand, type Message, type ToolFrame } from "@real-bot/protocol";
 import { agyServesAcp, agyTooOld } from "./agents/agy-version";
+import { estimateAgentCost } from "./agents/agent-prices";
 import { initializeAgy } from "./agents/agy-acp";
 import { agentAnnotations } from "./annotation-context";
 import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
@@ -682,7 +683,9 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
           store.insertSpend({
             kind: "turn", purpose: "project", sessionId: live.sessionId, botId: null, turnId: live.runId, providerId: "", providerName: "Antigravity",
             model, thinkingLevel: null, inputTokens: used.input, outputTokens: used.output, totalTokens: used.input + used.output, cachedTokens: used.cached,
-            reasoningTokens: null, costUsdTicks: null, estimatedCostUsdTicks: null, missingReason: null,
+            // agy reports no price: an estimate from the model's public API price, when the table has it.
+            reasoningTokens: null, costUsdTicks: null,
+            estimatedCostUsdTicks: estimateAgentCost(model, { inputTokens: used.input, outputTokens: used.output, cachedTokens: used.cached }), missingReason: null,
           });
         } catch (error) {
           console.error(`[project ${live.sessionId}] could not record spend`, error);

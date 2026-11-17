@@ -575,10 +575,10 @@ test("a Codex session names Codex, has no plan mode or account, lists Codex's co
   expect(field.getAttribute("placeholder")).toBe(t.project.composerPlaceholder("Codex"));
   expect(host.querySelector('[data-line="working"] .stream-step')?.textContent).toBe(t.project.waiting("Codex"));
   expect(host.querySelector("[data-agent-approval] .approval-who")?.textContent).toBe("Codex");
-  expect(host.querySelector("[data-project-plan]")).toBeNull();
-  // Shift+Tab is Codex's plain key here: no plan mode to flip.
+  // Codex has plan mode too (its collaboration mode, ADR 0099 addendum): the switch, and Shift+Tab flips it.
+  expect(host.querySelector("[data-project-plan]")).not.toBeNull();
   press(field, "Tab", { shiftKey: true });
-  expect(tunes(runtime)).toEqual([]);
+  expect(tunes(runtime)).toEqual([["proj-codex", { mode: "plan" }]]);
   // `/` lists the commands the app carries out for Codex and its skills, named as Codex's.
   fill(field, "/");
   await settle();
@@ -599,7 +599,7 @@ test("a Codex session names Codex, has no plan mode or account, lists Codex's co
   expect(tuneLabels(host, "effort")).toEqual([t.project.effortDefault, "低", "中", "高", "极高", "最大"]);
   click(tuneRow(host, "effort", t.project.effortDefault));
   await settle();
-  expect(tunes(runtime)).toEqual([["proj-codex", { model: "gpt-5.6-terra" }]]);
+  expect(tunes(runtime)).toEqual([["proj-codex", { mode: "plan" }], ["proj-codex", { model: "gpt-5.6-terra" }]]);
   close();
   forgetClaudeOptions();
 });
