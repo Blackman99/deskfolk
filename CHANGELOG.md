@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Notifications on Windows
+
+- The native Windows app showed no notifications at all, as the Tauri app before it. They show as Windows toasts now, under Deskfolk's name and icon, and the count of what waits on you is on the taskbar button; pressing one opens its conversation. Settings › Notifications turns them on, and the conversation you are looking at gets none.
+
 ### Notifications reach your phone behind a fake-IP proxy
 
 - Behind a proxy app in TUN or enhanced mode (Clash / mihomo, Surge, sing-box, Stash), the push services resolve to the proxy's fake IPs in 198.18.0.0/15. Deskfolk took that range for a private address and refused every push, recorded only as a network error, so a paired phone got no notifications at all. A push to one of the allowed push services now goes through such an address; any other private address is still refused.

@@ -13,7 +13,8 @@
  * the terminal moves to NSH's own and the probes follow it.
  */
 import { effect, signal } from "nsh";
-import { initialPane, initialSession } from "./launch";
+import { initialPane, initialSession, windowId } from "./launch";
+import { appBanners } from "./platform/app-banners";
 import { runtime } from "./runtime";
 import { PdfPane, TerminalPane } from "./Tools";
 import { PairingScreen } from "./ui/remote/PairingScreen";
@@ -26,6 +27,14 @@ export function Main() {
   // caption buttons drawn over the top right (`titleBar().right`), the top rows' empty space dragging.
   // The shell opens the window that way (`host/src/win.rs`), with Mica behind it where there is some.
   runtime.start();
+  // Windows and Linux: the app shows the banners (`platform/app-banners.ts`), in the first window
+  // only, as the macOS shell runs one loop for the process; a press opens its conversation now.
+  const banners = windowId <= 1 ? appBanners() : null;
+  if (banners) {
+    // Listening first: a press that started the app comes as the loop starts listening to NSH.
+    banners.onPressed(() => void runtime.pollDesktopNativeState());
+    banners.start();
+  }
   // The code colours' grammars and themes, read while the runtime connects.
   warmCodeColors();
   // What start-up checks wait for (scripts/ci-smoke.ts, package.ts --measure): the first snapshot;

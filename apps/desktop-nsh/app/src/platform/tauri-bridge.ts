@@ -6,12 +6,15 @@
  *
  * A few commands need no shell, because NSH does them on every target: links open with `openUrl`,
  * the clipboard's text comes from `Clipboard`, the window theme is the app's colour scheme
- * (`setLook`, which on macOS also tells the shell's window) (`APP_COMMANDS`). The rest go to the shell.
+ * (`setLook`, which on macOS also tells the shell's window) (`APP_COMMANDS`). On Windows and Linux,
+ * where the shell posts no banners, the app answers the notification commands too (`app-banners.ts`
+ * `bannerCommands`). The rest go to the shell.
  *
  * Installed only where a shell hosts the app (`host.available()`, not the web).
  */
 import { Clipboard, host, openUrl, platform } from "nsh";
 import { setLook } from "./appearance";
+import { appBanners, bannerCommands } from "./app-banners";
 
 type Callback = (payload: unknown) => void;
 
@@ -55,8 +58,14 @@ export const APP_COMMANDS: Record<string, (args: Record<string, unknown>) => Pro
   },
 };
 
+let banners: Record<string, (args: Record<string, unknown>) => Promise<unknown>> | null = null;
+
+function windowId(): number {
+  return Number((host.params as { windowId?: number }).windowId ?? 0);
+}
+
 function invoke(command: string, args?: Record<string, unknown>): Promise<unknown> {
-  const own = APP_COMMANDS[command];
+  const own = APP_COMMANDS[command] ?? banners?.[command];
   if (own) return own(args ?? {});
   if (command === "plugin:event|listen") {
     const event = String(args?.event ?? "");
@@ -87,5 +96,7 @@ export function installTauriBridge(): void {
   if (platform.os === "web" || !host.available()) return;
   const g = globalThis as Record<string, unknown>;
   if (g.__TAURI_INTERNALS__) return;
+  const loop = appBanners();
+  if (loop) banners = bannerCommands(loop, (command, args) => host.call(hostName(command), args), windowId);
   g.__TAURI_INTERNALS__ = { invoke, transformCallback };
 }

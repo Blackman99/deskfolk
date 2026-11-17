@@ -111,13 +111,15 @@ fn install_portable(host: &HostChannel) {
     }
 }
 
-/// The notification commands where the shell has no system notifications yet (Windows, Linux):
-/// the macOS shell's names and JSON shapes (`notification_loop.rs`), answering a shell that knows
-/// its window's focus (`nativeReadingV1`: the app reads it from NSH's `lifecycle()`) but posts no
-/// banners (`nativeDeliveryV1` off, permission `default`, no clicked banner). Without an answer to
+/// The notification commands where the shell posts no banners (Windows, Linux): the macOS shell's
+/// names and JSON shapes (`notification_loop.rs`), answering a shell that knows its window's focus
+/// (`nativeReadingV1`: the app reads it from NSH's `lifecycle()`) but posts no banners
+/// (`nativeDeliveryV1` off, permission `default`, no clicked banner). Without an answer to
 /// `notification_permission_state` the messenger took the shell for one that cannot tell whether
 /// its window is read (`desktopReadingMode` → `explicit_only`), and no conversation was ever marked
-/// read on its own.
+/// read on its own. The app now shows the banners there itself, through NSH's `Notifications`
+/// (`app/src/platform/app-banners.ts`), and answers these commands before they reach the shell;
+/// `report_notification_view` still comes here for the window's facts.
 #[cfg(not(target_os = "macos"))]
 fn install_notification_commands(host: &HostChannel) {
     host.handle("tauri.notification_permission_state", |call: HostCall| call.resolve(permission_state()));
