@@ -39,6 +39,8 @@ use hayro::vello_cpu::color::palette::css::WHITE;
 use hayro::{PixmapSettings, RenderCache, RenderSettings, render};
 use nsh_core::platform::HttpRequest;
 use nsh_core::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use crate::blocking;
 
 /// An open document and what has been read from it so far (per page, as JSON).
 pub(crate) struct Doc {

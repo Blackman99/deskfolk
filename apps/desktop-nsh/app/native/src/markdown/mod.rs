@@ -24,6 +24,8 @@ mod tests;
 use std::collections::HashSet;
 
 use nsh_core::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use crate::blocking;
 use serde_json::Value;
 
 use js::{is_line_terminator, replace_placeholders, trim};
