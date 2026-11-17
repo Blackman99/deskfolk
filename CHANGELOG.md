@@ -14,6 +14,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - The native app never told the runtime which conversation was in front of you, so a reply or a question there got a banner although you were reading it. It does now, as the Tauri app did, and it keeps saying you are at the newest line while you stay there: the Tauri app's five-second beat said you were not, so it held the banner back for a few seconds at most.
 
+### No banner for an old failure when notifications come back
+
+- When the Mac app starts again, or is first allowed to notify, it brings back the banners for what still waits on you: an approval, a question, an interrupted turn. It also rang for failures weeks old that nobody had acknowledged (the first banner after allowing notifications could be a plan that stopped in September). A failure now stays in the app; a new one still gets its banner.
+
 ## 0.5.1 — 2026-11-17
 
 On Windows, the installer updates Deskfolk in the folder it is installed in, and launch at login starts it hidden in the notification area again, switched by Settings; opening it while it runs shows the running window. Nothing changes on the Mac.

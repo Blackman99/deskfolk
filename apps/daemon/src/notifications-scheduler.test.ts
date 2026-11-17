@@ -719,6 +719,59 @@ describe("desktop delivery watermark, recovery, and slot release", () => {
     }
   });
 
+  it("a recovery behind the watermark brings back an open approval, never an old open failure", () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    try {
+      const bot = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      enableDesktop(store);
+      const t0 = Date.now();
+      // Two left behind the watermark without a banner, as on a Mac where the shell had no
+      // permission for weeks: a stalled-plan failure nobody acknowledged, and an approval.
+      const failure = store.createNotification({
+        semantic_key: "supervisor:stalled-weeks-ago",
+        kind: "failure",
+        session_id: bot.direct_session.id,
+        action_state: "open",
+        fail_kind: "stalled_plan",
+        created_at: new Date(t0 - 49 * 86_400_000).toISOString(),
+      });
+      const approval = store.createNotification({
+        semantic_key: "approval:still-waiting",
+        kind: "approval",
+        session_id: bot.direct_session.id,
+        created_at: new Date(t0 - 8 * 86_400_000).toISOString(),
+      });
+      store.db.run("UPDATE notification_devices SET planned_ordinal = ? WHERE receiver_id = 'desktop'", [approval.ordinal]);
+
+      const claim = new NotificationDeliveryScheduler(store, new PresenceManager()).claimDesktop(GRANT, t0);
+      expect(claim).toBeTruthy();
+      expect(attachedOrdinals(store, claim!.delivery_id)).toEqual([approval.ordinal]);
+      expect(store.getNotificationBySemanticKey("supervisor:stalled-weeks-ago")?.action_state).toBe("open");
+
+      // With only the failure behind it, a restart rings for nothing.
+      store.db.run("UPDATE notification_deliveries SET state = 'accepted' WHERE delivery_id = ?", [claim!.delivery_id]);
+      store.db.run("UPDATE notifications SET action_state = 'resolved', terminal_at = ? WHERE id = ?", [new Date(t0).toISOString(), approval.id]);
+      clearSendSlot(store);
+      expect(new NotificationDeliveryScheduler(store, new PresenceManager()).claimDesktop(GRANT, t0 + 31_000)).toBeNull();
+      expect(failure.ordinal).toBeLessThan(approval.ordinal);
+
+      // A new failure past the watermark still gets its banner.
+      const fresh = store.createNotification({
+        semantic_key: "failure:just-now",
+        kind: "failure",
+        session_id: bot.direct_session.id,
+        action_state: "open",
+        created_at: new Date(t0 + 31_000).toISOString(),
+      });
+      clearSendSlot(store);
+      const next = new NotificationDeliveryScheduler(store, new PresenceManager()).claimDesktop(GRANT, t0 + 62_000);
+      expect(next).toBeTruthy();
+      expect(attachedOrdinals(store, next!.delivery_id)).toEqual([fresh.ordinal]);
+    } finally {
+      store.close();
+    }
+  });
+
   it("releases send-slot retry_later to retry_wait without an attempt penalty", () => {
     const store = new Store({ endpointKey: memoryKeyStore() });
     try {

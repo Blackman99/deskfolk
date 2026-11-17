@@ -204,6 +204,9 @@ const TEST_DESKTOP_COPY = {
   identifier: "test",
 };
 
+/** The kinds a desktop recovery brings back from behind the watermark: they still wait on you. */
+const RECOVERED_KINDS: ReadonlySet<NotificationItem["kind"]> = new Set(["approval", "ask", "interrupted"]);
+
 type AttentionScanRow = {
   id: string;
   ordinal: number;
@@ -303,8 +306,14 @@ export class NotificationDeliveryScheduler {
     now: number,
     policy: NotificationPolicy,
     allowRecovery: boolean,
+    recovering: boolean,
   ): "skip" | "defer" | "ready" {
     if (!policy.categories[row.kind]) return "skip";
+    // Behind the watermark only what still waits on you comes back (design §6.2): an open approval
+    // or question, an interruption. A failure there is left in the app; its banner came then or
+    // never will. Without this, the first claim after a restart, or once the shell has permission,
+    // rang for failures weeks old that nobody had acknowledged.
+    if (recovering && !RECOVERED_KINDS.has(row.kind)) return "skip";
 
     if ((row.kind === "reply" || row.kind === "routine_result") && row.session_id) {
       const pref = this.store.getSessionNotificationPreference(row.session_id);
@@ -525,7 +534,7 @@ export class NotificationDeliveryScheduler {
         this.recoveryFloor !== null &&
         row.ordinal >= this.recoveryFloor &&
         row.ordinal <= this.recoveryCeiling;
-      const verdict = this.classifyDesktopCandidate(row, now, policy, allowRecovery);
+      const verdict = this.classifyDesktopCandidate(row, now, policy, allowRecovery, row.ordinal <= plannedOrdinal);
       if (verdict === "defer") {
         if (allowRecovery) recoveryDeferred = true;
         minDeferredOrdinal = Math.min(minDeferredOrdinal, row.ordinal);
