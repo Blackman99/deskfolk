@@ -772,6 +772,32 @@ describe("desktop delivery watermark, recovery, and slot release", () => {
     }
   });
 
+  it("a failure left days without a banner, past the watermark, does not ring once the shell may notify", () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    try {
+      const bot = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      enableDesktop(store);
+      const t0 = Date.now();
+      // The shell had no permission for days: claims returned before scanning, the watermark
+      // stayed where it was, and this failure sits past it.
+      const old = store.createNotification({
+        semantic_key: "failure:while-not-allowed",
+        kind: "failure",
+        session_id: bot.direct_session.id,
+        action_state: "open",
+        created_at: new Date(t0 - 3 * 86_400_000).toISOString(),
+      });
+      expect(old.ordinal).toBeGreaterThan(plannedOrdinal(store));
+      const scheduler = new NotificationDeliveryScheduler(store, new PresenceManager());
+      expect(scheduler.claimDesktop({ ...GRANT, permission: "denied" as never }, t0)).toBeNull();
+      expect(scheduler.claimDesktop(GRANT, t0 + 1_000)).toBeNull();
+      expect(plannedOrdinal(store)).toBe(old.ordinal);
+      expect(store.getNotificationBySemanticKey("failure:while-not-allowed")?.action_state).toBe("open");
+    } finally {
+      store.close();
+    }
+  });
+
   it("releases send-slot retry_later to retry_wait without an attempt penalty", () => {
     const store = new Store({ endpointKey: memoryKeyStore() });
     try {

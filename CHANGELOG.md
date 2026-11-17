@@ -16,7 +16,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ### No banner for an old failure when notifications come back
 
-- When the Mac app starts again, or is first allowed to notify, it brings back the banners for what still waits on you: an approval, a question, an interrupted turn. It also rang for failures weeks old that nobody had acknowledged (the first banner after allowing notifications could be a plan that stopped in September). A failure now stays in the app; a new one still gets its banner.
+- When the Mac app starts again, or is first allowed to notify, it brings back the banners for what still waits on you: an approval, a question, an interrupted turn. It also rang for failures weeks old that nobody had acknowledged (the first banner after allowing notifications could be a plan that stopped in September). A failure now stays in the app, as does one more than a day old that never got a banner (say, while notifications were not allowed); a new one still gets its banner.
 
 ## 0.5.1 — 2026-11-17
 

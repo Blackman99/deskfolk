@@ -23,6 +23,11 @@ export const BATCHING_WINDOW_MS = 2_000;
 export const SEND_SLOT_INTERVAL_MS = 30_000;
 export const CLAIM_LEASE_MS = 10_000;
 export const DELIVERY_ABSOLUTE_DEADLINE_MS = 120_000;
+/**
+ * A failure's banner is news: past a day (the shell had no permission, the app was not running)
+ * it stays in the app. An open approval or question has no such limit, since it still waits on you.
+ */
+export const FAILURE_BANNER_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export const MAX_DELIVERY_ATTEMPTS = 3;
 export const PRESENCE_LEASE_MS = 10_000;
 export const TEST_RATE_LIMIT_MS = 60_000;
@@ -331,6 +336,9 @@ export class NotificationDeliveryScheduler {
     if (row.action_state === "none" && now - createdMs > DELIVERY_ABSOLUTE_DEADLINE_MS) {
       return "skip";
     }
+    // Past the watermark too: while the shell had no permission no claim scanned, the watermark
+    // stayed put, and every failure of those days would ring at once when it came.
+    if (row.kind === "failure" && now - createdMs > FAILURE_BANNER_MAX_AGE_MS) return "skip";
 
     const disposition = this.itemDisposition(row.id);
     if (disposition.live || disposition.accepted) return "skip";
