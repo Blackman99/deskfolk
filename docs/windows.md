@@ -44,7 +44,7 @@ The other local agents ([how they work](behavior.en.md#local-agents)) can be pic
 - Desktop notifications and the icon badge.
 - Frosted glass on Windows 10: the window's material is Windows 11's Mica, and on Windows 10 the window has a solid ground.
 - Image thumbnails. Images sent to a model are not affected.
-- Pairing a new device from the Windows app (from 0.5.0, the native app): devices paired before keep working.
+- Setting up remote access from the Windows app (from 0.5.0, the native app): pairing a device, the device list and the relay in Settings answer that it is not available. Phones paired before keep connecting.
 
 ## Running from source
 
