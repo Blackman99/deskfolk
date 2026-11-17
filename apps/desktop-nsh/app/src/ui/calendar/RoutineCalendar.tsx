@@ -4,6 +4,9 @@
  * (`projectRoutines`), not a record of a run, and nothing here writes: a press on a block opens
  * the routine read-only. The Svelte one drew its grid with `svelte5plus-calendar`; here the
  * toolbar, `WeekGrid`, `MonthGrid` and `Agenda` are NSH views, and the date maths is `calendar-dates`.
+ *
+ * The head is one line: the title, the roster filter and the rules. Only a calendar that is a page
+ * of its own (a phone, a narrow window) has a Back in it; as a workbench pane its tab closes it.
  */
 import { signal, Text, View } from "nsh";
 import { copy, runtime } from "../../runtime";
@@ -11,6 +14,7 @@ import { projectRoutines } from "../../m/calendar/project-routines.ts";
 import { Icon } from "../Icon";
 import { IconButton } from "../IconButton";
 import { narrowWindow } from "../Modal";
+import { settled } from "../workbench/drag-settle";
 import { Agenda } from "./Agenda";
 import { MonthGrid } from "./MonthGrid";
 import { RosterFilter } from "./RosterFilter";
@@ -18,7 +22,15 @@ import { RoutineDetail } from "./RoutineDetail";
 import { WeekGrid } from "./WeekGrid";
 import { navigate, TOOLBAR, viewRange, viewTitle, visibleDays, VIEWS, type CalEvent, type CalLocale, type CalSource, type CalView } from "./calendar-dates";
 
-export function RoutineCalendar() {
+/** Narrower than this (a phone), the roster filter has a line of its own under the head. */
+const FILTER_IN_HEAD_AT = 480;
+/** Narrower than this, the head leaves out how many Bots and routines there are. */
+const STAT_AT = 640;
+
+export function RoutineCalendar(props: {
+  /** Back to the page it was opened from. Only a calendar shown as a page has one. */
+  onClose?: () => void;
+}) {
   const t = () => copy();
   const date = signal(new Date());
   const view = signal<CalView>("week");
@@ -26,6 +38,10 @@ export function RoutineCalendar() {
   const showInfo = signal(false);
   const openRoutineId = signal<string | null>(null);
   const openWasDue = signal(false);
+  /** The width the calendar is given; until it is measured, the window's. */
+  const width = signal<number | null>(null);
+  const filterInHead = settled(() => (width() == null ? !narrowWindow() : width()! >= FILTER_IN_HEAD_AT));
+  const statShown = settled(() => (width() == null ? !narrowWindow() : width()! >= STAT_AT));
 
   const locale = (): CalLocale => (runtime.snapshot.settings.locale === "en" ? "en" : "zh-CN");
   const words = () => TOOLBAR[locale()];
@@ -77,36 +93,50 @@ export function RoutineCalendar() {
     </>
   );
 
+  const filter = () => (
+    <RosterFilter sources={sources()} bots={botsById()} hidden={hidden()} onToggle={toggleSource} onShowAll={() => hidden.set(new Set())} />
+  );
+
   return (
-    <View testID="routine-calendar" role="region" accessibilityLabel={t().calendar.title} class="flex-1 min-w-0 min-h-0 bg-pane">
-      <View class={`flex-row items-center justify-between gap-3 border-b border-line bg-pane h-[52px] px-4`}>
-        <View class="flex-row items-center gap-3 min-w-0 shrink">
-          <View
-            role="button"
-            testID="calendar-back"
-            accessibilityLabel={t().common.back}
-            onPress={() => runtime.closeRoutines()}
-            class="cursor-pointer select-none flex-row items-center gap-[6px] px-[10px] py-[6px] border border-line rounded-(--radius-sm) bg-btn-secondary-bg hover:bg-line-subtle active:scale-[0.98]"
-          >
-            <Icon name="chevron-left" size={16} class="tint-ink" />
+    <View
+      testID="routine-calendar"
+      role="region"
+      accessibilityLabel={t().calendar.title}
+      class="flex-1 min-w-0 min-h-0 bg-pane"
+      onLayout={(e) => width.set(e.bounds.size.width)}
+    >
+      <View testID="calendar-head" class="flex-row items-center gap-3 border-b border-line bg-pane h-[52px] px-4">
+        <If when={props.onClose}>
+          <>
+            <View
+              role="button"
+              testID="calendar-back"
+              accessibilityLabel={t().common.back}
+              onPress={() => props.onClose?.()}
+              class="cursor-pointer select-none flex-row items-center gap-[6px] px-[10px] py-[6px] border border-line rounded-(--radius-sm) bg-btn-secondary-bg hover:bg-line-subtle active:scale-[0.98]"
+            >
+              <Icon name="chevron-left" size={16} class="tint-ink" />
+              <If when={!narrowWindow()}>
+                <Text class="text-[13px] font-medium text-ink">{t().common.back}</Text>
+              </If>
+            </View>
             <If when={!narrowWindow()}>
-              <Text class="text-[13px] font-medium text-ink">{t().common.back}</Text>
+              <View class="w-[1px] h-[18px] bg-line" accessible={false} />
             </If>
-          </View>
-          <If when={!narrowWindow()}>
-            <View class="w-[1px] h-[18px] bg-line" accessible={false} />
+          </>
+        </If>
+        <View class="flex-row items-center gap-[10px] min-w-0 shrink">
+          <Text role="header" class="shrink min-w-0 text-[15px] font-semibold text-ink line-clamp-1">{t().calendar.title}</Text>
+          <If when={sources().length > 0 && statShown()}>
+            <View class="px-2 py-[2px] rounded-full bg-line-subtle border border-line">
+              <Text testID="calendar-stat" class="text-[11px] font-medium text-ink-muted">
+                {`${sources().length} Bot · ${events().length} ${en() ? "routines" : "日程"}`}
+              </Text>
+            </View>
           </If>
-          <View class="flex-row items-center gap-[10px] min-w-0 shrink">
-            <Text role="header" class="text-[15px] font-semibold text-ink line-clamp-1">{t().calendar.title}</Text>
-            <If when={sources().length > 0 && !narrowWindow()}>
-              <View class="px-2 py-[2px] rounded-full bg-line-subtle border border-line">
-                <Text testID="calendar-stat" class="text-[11px] font-medium text-ink-muted">
-                  {`${sources().length} Bot · ${events().length} ${en() ? "routines" : "日程"}`}
-                </Text>
-              </View>
-            </If>
-          </View>
         </View>
+        <If when={sources().length > 0 && filterInHead()}>{filter()}</If>
+        <View class="flex-1" />
         <View
           role="button"
           testID="calendar-info-toggle"
@@ -136,17 +166,17 @@ export function RoutineCalendar() {
       <If
         when={sources().length > 0}
         else={
-          <View class="px-4 py-3">
+          <View class="px-4 pt-3">
             <Text testID="calendar-empty" class="text-[13px] text-ink-muted">{t().calendar.empty}</Text>
           </View>
         }
       >
-        <View class="flex-row items-center px-4 py-2">
-          <RosterFilter sources={sources()} bots={botsById()} hidden={hidden()} onToggle={toggleSource} onShowAll={() => hidden.set(new Set())} />
-        </View>
+        <If when={!filterInHead()}>
+          <View class="flex-row items-center px-4 pt-2">{filter()}</View>
+        </If>
       </If>
 
-      <View class={`flex-row items-center gap-2 px-4 pb-2 ${narrowWindow() ? "flex-wrap" : ""}`}>
+      <View class={`flex-row items-center gap-2 px-4 py-2 ${narrowWindow() ? "flex-wrap" : ""}`}>
         <View
           role="button"
           testID="calendar-today"

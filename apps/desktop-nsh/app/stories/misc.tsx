@@ -34,6 +34,9 @@ export default function Misc() {
   const done = signal(0);
   const picked = signal("");
   const searchOpen = signal(false);
+  const calendarPage = signal(false);
+  const calendarClosed = signal(0);
+  const calendarNarrow = signal(false);
   let team: TeamStepApi | null = null;
   const locale = () => (runtime.snapshot.settings.locale === "en" ? "en" : "zh");
 
@@ -156,8 +159,16 @@ export default function Misc() {
           <View class="flex-row items-center gap-2 p-2">
             <Btn id="story-add-routine" label="add routine" onPress={() => void addRoutine()} />
             <Btn id="story-del-routine" label="delete routines" onPress={() => void delRoutines()} />
+            <Btn id="story-calendar-page" label={calendarPage() ? "as a pane" : "as a page"} onPress={() => calendarPage.set(!calendarPage())} />
+            <Btn id="story-calendar-narrow" label={calendarNarrow() ? "full width" : "520 wide"} onPress={() => calendarNarrow.set(!calendarNarrow())} />
+            <Text testID="story-calendar-closed" class="text-[12px] text-ink-muted">{`closed:${calendarClosed()}`}</Text>
           </View>
-          <RoutineCalendar />
+          {/* A page (a phone, a narrow window) passes Back; a workbench pane does not. 520 is the narrowest a routines pane gets (`PANE_MINS`). */}
+          <View class="flex-1 min-h-0" style={calendarNarrow() ? { width: 520 } : undefined}>
+            <If when={calendarPage()} else={<RoutineCalendar />}>
+              <RoutineCalendar onClose={() => calendarClosed.set(calendarClosed() + 1)} />
+            </If>
+          </View>
         </View>
       </If>
 

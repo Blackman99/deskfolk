@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The routine calendar's head is one line, in the native app
+
+- As a workbench pane the calendar had a Back button that did nothing; it is gone, and the pane's tab closes it. A calendar shown as a page (a phone, a narrow window) keeps its Back.
+- The roster filter now sits in the head beside the title, instead of on a line of its own under it. A calendar narrower than 640 points leaves out the count of Bots and routines, and on a phone the filter keeps its own line.
+
 ### The working bubble lists only subagents as subagents
 
 - While a project session runs, the card of subagents in its working bubble also listed the run's background commands, which opened as a subagent whose record could not be read. It now holds its subagents only, as the card under a finished line does; the commands are the rows above it.

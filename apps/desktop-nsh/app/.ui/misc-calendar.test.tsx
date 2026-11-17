@@ -111,12 +111,92 @@ test("the roster filter searches names and duties, hides a Bot's blocks and rese
 }, 60_000);
 
 
-test("on a phone the roster filter is a sheet from the bottom and the back button is just the chevron", async () => {
+/** Hides Writer in the roster filter, so its Reset shows too, and closes the popover. */
+const hideWriter = async (app: App) => {
+  const writer = JSON.parse(app.texts().find((text) => text.startsWith("{") && text.includes('"writer"')) ?? "{}").writer as string;
+  await app.press("id:roster-filter-trigger");
+  await app.waitFor(`id:roster-filter-option-${writer}`);
+  await app.press(`id:roster-filter-option-${writer}`);
+  await app.waitFor("text:0/1");
+  await app.keyboard.press("escape");
+  await app.waitFor("id:roster-filter-search", { state: "gone" });
+};
+
+test("as a pane the head is one line, the roster filter in it and no Back; a page's Back closes it", async () => {
+  const app = await open();
+  try {
+    await app.press("id:story-add-routine");
+    await app.waitFor("id:roster-filter-trigger", { timeout: 15_000 });
+    expect(app.shows("id:calendar-back")).toBe(false);
+    expect(app.shows("id:calendar-head >> id:roster-filter-trigger")).toBe(true);
+    expect(app.shows("id:calendar-head >> id:calendar-info-toggle")).toBe(true);
+    expect(app.shows("id:calendar-stat")).toBe(true);
+
+    // The narrowest a routines pane gets, with Reset showing: everything in the head can still be pressed.
+    await app.press("id:story-calendar-narrow");
+    await hideWriter(app);
+    expect(app.shows("id:calendar-head >> id:roster-filter-reset")).toBe(true);
+    expect(app.shows("id:calendar-stat")).toBe(false);
+    await app.press("id:calendar-info-toggle");
+    await app.waitFor("id:calendar-info");
+    await app.press("id:calendar-info-close");
+    await app.waitFor("id:calendar-info", { state: "gone" });
+    await app.press("id:roster-filter-reset");
+    await app.waitFor("text:Morning brief");
+    await app.press("id:story-calendar-narrow");
+
+    // As a page (a narrow window) Back is there, before the title, and closes it.
+    await app.press("id:story-calendar-page");
+    await app.waitFor("id:calendar-back");
+    expect(app.shows("id:calendar-head >> id:roster-filter-trigger")).toBe(true);
+    await app.press("id:calendar-back");
+    await app.waitFor("text:closed:1");
+    await app.press("id:story-calendar-page");
+    await app.waitFor("id:calendar-back", { state: "gone" });
+  } finally {
+    await app.press("id:story-del-routine");
+    await app.waitUntil(() => routines(app)?.length === 0, { timeout: 15_000 });
+  }
+}, 60_000);
+
+test("in English the narrowest pane's head still holds the filter, its Reset and the rules", async () => {
+  const app = await openStory("misc");
+  await app.waitFor("id:story-show-locale", { timeout: 10_000 });
+  await app.press("id:story-show-locale");
+  await app.press("id:locale-en");
+  await app.waitUntil(() => app.texts().includes("locale:en"));
+  try {
+    await app.press("id:story-show-calendar");
+    await app.waitFor("id:routine-calendar");
+    await app.press("id:story-add-routine");
+    await app.waitFor("id:roster-filter-trigger", { timeout: 15_000 });
+    await app.press("id:story-calendar-narrow");
+    await hideWriter(app);
+    await app.press("id:calendar-info-toggle");
+    await app.waitFor("id:calendar-info");
+    await app.press("id:calendar-info-toggle");
+    await app.waitFor("id:calendar-info", { state: "gone" });
+    await app.press("id:roster-filter-reset");
+    await app.waitFor("text:Morning brief");
+  } finally {
+    await app.press("id:story-del-routine");
+    await app.waitUntil(() => routines(app)?.length === 0, { timeout: 15_000 });
+    await app.press("id:story-show-locale");
+    await app.press("id:story-restore-locale");
+    await app.waitUntil(() => app.texts().includes("locale:zh"));
+  }
+}, 60_000);
+
+test("on a phone the page's Back is just the chevron, the roster filter has its own line and opens as a sheet", async () => {
   const app = await open();
   try {
     await app.setViewport(390, 800);
+    await app.press("id:story-calendar-page");
     await app.press("id:story-add-routine");
     await app.waitFor("id:roster-filter-trigger", { timeout: 15_000 });
+    await app.waitFor("id:calendar-back");
+    expect(app.shows("id:calendar-back >> text:返回")).toBe(false);
+    expect(app.shows("id:calendar-head >> id:roster-filter-trigger")).toBe(false);
     await app.press("id:roster-filter-trigger");
     await app.waitFor("id:roster-filter-sheet");
     await app.waitFor("id:roster-filter-search");

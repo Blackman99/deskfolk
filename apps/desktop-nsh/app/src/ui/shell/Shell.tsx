@@ -305,7 +305,7 @@ function MainPages(props: { s: ShellState }) {
   return (
     <View class="flex-1 min-h-0 min-w-0">
       <If when={page() === "routines"}>
-        <RoutineCalendar />
+        <RoutineCalendar onClose={() => runtime.closeRoutines()} />
       </If>
       <If when={page() === "spend"}>
         <SpendOverlay backLabel={t().common.back} />
