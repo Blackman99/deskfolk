@@ -13,9 +13,9 @@ async function storyWithPicker(picked: string | null) {
     host: {
       params: { ...endpoint, windowId: 1, material: "none", story: "settings-base" },
       handlers: {
-        "tauri.local_api_endpoint": endpoint,
-        "tauri.app_version": "0.0.0",
-        "tauri.pick_workspace_folder": (args: unknown) => (asked.push(args), picked),
+        "shell.local_api_endpoint": endpoint,
+        "shell.app_version": "0.0.0",
+        "shell.pick_workspace_folder": (args: unknown) => (asked.push(args), picked),
       },
     },
   });

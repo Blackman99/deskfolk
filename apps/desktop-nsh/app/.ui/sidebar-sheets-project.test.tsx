@@ -15,9 +15,9 @@ async function story(picked?: string | null, extra: Record<string, unknown> = {}
     host: {
       params: { ...endpoint, windowId: 1, material: "none", story: "sidebar-sheets", ...extra },
       handlers: {
-        "tauri.local_api_endpoint": endpoint,
-        "tauri.app_version": "0.0.0",
-        "tauri.pick_workspace_folder": (args: unknown) => (asked.push(args), picked ?? null),
+        "shell.local_api_endpoint": endpoint,
+        "shell.app_version": "0.0.0",
+        "shell.pick_workspace_folder": (args: unknown) => (asked.push(args), picked ?? null),
       },
     },
   });

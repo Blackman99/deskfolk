@@ -1,8 +1,9 @@
 /**
- * The messenger's desktop integration speaks Tauri (`__TAURI_INTERNALS__.invoke("local_api_endpoint")`,
- * `invoke("open_external_url")`, menu events through `plugin:event|listen`). On an NSH desktop the
- * same calls go to the shell through the host channel, named `tauri.<command>`, so that logic runs
- * unchanged and the shell answers the commands the Tauri shell did, with the same arguments.
+ * The shell bridge: the messenger's desktop integration calls `__DESKFOLK_SHELL__.invoke("local_api_endpoint")`,
+ * `invoke("open_external_url")`, and hears menu events through `event.listen`. On an NSH desktop the
+ * same calls go to the shell through the host channel, named `shell.<command>` (events arrive as
+ * `shell.event.<name>`), so that logic runs unchanged. The command names and arguments are the ones
+ * the old Tauri app's shell had, kept so the messenger's logic needed no change.
  *
  * One command needs no shell, because NSH does it on every target: links open with `openUrl`
  * (`APP_COMMANDS`). On Windows and Linux,
@@ -23,12 +24,11 @@ const listeners = new Map<number, () => void>();
 let nextCallback = 1;
 let nextListener = 1;
 
-/** The host function a Tauri command goes to: `[A-Za-z0-9_.:-]` only, as the host channel allows. */
+/** The host function a command goes to: `[A-Za-z0-9_.:-]` only, as the host channel allows. */
 export function hostName(command: string): string {
-  return `tauri.${command.replace(/[^A-Za-z0-9_.:-]/g, ".")}`;
+  return `shell.${command.replace(/[^A-Za-z0-9_.:-]/g, ".")}`;
 }
 
-/** The Tauri commands the app answers itself, with NSH, by their Tauri names. */
 /** System Settings' Sharing pane, where Screen Sharing is turned on for the remote screen: the one
  * settings address the app may open (`system_open.rs` `SHARING_SETTINGS_URL`). */
 export const SHARING_SETTINGS_URL = "x-apple.systempreferences:com.apple.Sharing-Settings.extension";
@@ -71,27 +71,27 @@ export const UNTIMED_COMMANDS: ReadonlySet<string> = new Set(["pick_workspace_fo
  * (`desktop_channel_unavailable`, `not-installed`, …), which is what the messenger compares. NSH
  * rejects with an `Error` that carries them as its message.
  */
-export function tauriRejection(error: unknown): unknown {
+export function shellRejection(error: unknown): unknown {
   return error instanceof Error ? error.message : error;
 }
 
 function invoke(command: string, args?: Record<string, unknown>): Promise<unknown> {
   return answer(command, args).catch((error: unknown) => {
-    throw tauriRejection(error);
+    throw shellRejection(error);
   });
 }
 
 function answer(command: string, args?: Record<string, unknown>): Promise<unknown> {
   const own = APP_COMMANDS[command] ?? banners?.[command] ?? desktop?.[command];
   if (own) return own(args ?? {});
-  if (command === "plugin:event|listen") {
+  if (command === "event.listen") {
     const event = String(args?.event ?? "");
     const handler = callbacks.get(Number(args?.handler));
     const id = nextListener++;
-    if (handler) listeners.set(id, host.on(`tauri.event.${event}`, (payload) => handler({ event, payload })));
+    if (handler) listeners.set(id, host.on(`shell.event.${event}`, (payload) => handler({ event, payload })));
     return Promise.resolve(id);
   }
-  if (command === "plugin:event|unlisten") {
+  if (command === "event.unlisten") {
     const id = Number(args?.eventId);
     listeners.get(id)?.();
     listeners.delete(id);
@@ -109,12 +109,12 @@ function transformCallback(callback: Callback, once = false): number {
   return id;
 }
 
-export function installTauriBridge(): void {
+export function installShellBridge(): void {
   if (platform.os === "web" || !host.available()) return;
   const g = globalThis as Record<string, unknown>;
-  if (g.__TAURI_INTERNALS__) return;
+  if (g.__DESKFOLK_SHELL__) return;
   const loop = appBanners();
   if (loop) banners = bannerCommands(loop, (command, args) => host.call(hostName(command), args), windowId);
   if (answersDesktopCommands(platform.os)) desktop = DESKTOP_COMMANDS;
-  g.__TAURI_INTERNALS__ = { invoke, transformCallback };
+  g.__DESKFOLK_SHELL__ = { invoke, transformCallback };
 }

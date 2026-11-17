@@ -1,5 +1,5 @@
 import { desktopPlatform } from "./platform.ts";
-import { isTauri } from "./tauri.ts";
+import { inDesktopShell } from "./desktop-shell.ts";
 
 /**
  * How the desktop window frames the page. On macOS the window has no title bar of its own
@@ -11,8 +11,8 @@ import { isTauri } from "./tauri.ts";
  */
 export type WindowChrome = "mac" | "system";
 
-export function windowChrome(tauri = isTauri(), platform = desktopPlatform()): WindowChrome {
-  return tauri && platform === "mac" ? "mac" : "system";
+export function windowChrome(shell = inDesktopShell(), platform = desktopPlatform()): WindowChrome {
+  return shell && platform === "mac" ? "mac" : "system";
 }
 
 /** Read once at startup: the window's frame does not change while the page lives. */

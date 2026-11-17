@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { TauriInternals } from "../tauri.ts";
+import type { ShellBridge } from "../desktop-shell.ts";
 import {
   parsePickedWorkspacePath,
   pickWorkspaceFolder,
@@ -8,7 +8,7 @@ import {
 
 function fakeInternals(
   handler: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>,
-): TauriInternals & { calls: Array<{ cmd: string; args?: Record<string, unknown> }> } {
+): ShellBridge & { calls: Array<{ cmd: string; args?: Record<string, unknown> }> } {
   const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
   return {
     calls,
@@ -49,7 +49,7 @@ test("pickWorkspaceFolder sends null current when the draft is blank", async () 
   ]);
 });
 
-test("pickWorkspaceFolder returns null without tauri internals", async () => {
+test("pickWorkspaceFolder returns null without the shell bridge", async () => {
   await expect(pickWorkspaceFolder("/tmp", "Choose folder", undefined)).resolves.toBeNull();
   await expect(pickWorkspaceFolder("/tmp", "Choose folder", {})).resolves.toBeNull();
 });

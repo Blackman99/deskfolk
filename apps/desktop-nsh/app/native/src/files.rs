@@ -2,7 +2,7 @@
 //! Linux; the macOS shell has `host/src/system.rs`): the Tauri app's `pick_workspace_folder` and
 //! `open_workspace_path`, through NSH's own `pick_paths`, `open_path` and `reveal_path` (the shell's
 //! `IFileOpenDialog`, `ShellExecuteW` and `SHOpenFolderAndSelectItems` on Windows; GTK's file dialog
-//! and file launcher on Linux). `app/src/platform/tauri-bridge.ts` answers the two commands with
+//! and file launcher on Linux). `app/src/platform/shell-bridge.ts` answers the two commands with
 //! them, so the messenger's calls stay as they were.
 //!
 //! As in the Tauri app, a file that would run rather than open is shown in the file manager

@@ -185,7 +185,7 @@ define_class!(
         #[unsafe(method(showUsage:))]
         fn show_usage_action(&self, _sender: Option<&AnyObject>) {
             show(self.mtm());
-            crate::window::send_to_newest("tauri.event.pane-command", serde_json::json!("view-usage"));
+            crate::window::send_to_newest("shell.event.pane-command", serde_json::json!("view-usage"));
         }
     }
 );
@@ -451,14 +451,14 @@ fn run_pane_command(mtm: MainThreadMarker, id: &str) {
     let key = NSApplication::sharedApplication(mtm).keyWindow();
     match key {
         Some(window) if crate::window::is_ours(&window) => {
-            crate::window::send_event(&window, "tauri.event.pane-command", serde_json::json!(id));
+            crate::window::send_event(&window, "shell.event.pane-command", serde_json::json!(id));
         }
         Some(window) if id == "pane-close-tab" => window.performClose(None),
-        _ if crate::window::any_open() => crate::window::send_to_newest("tauri.event.pane-command", serde_json::json!(id)),
+        _ if crate::window::any_open() => crate::window::send_to_newest("shell.event.pane-command", serde_json::json!(id)),
         _ if id == "pane-close-tab" => {}
         _ => {
             show(mtm);
-            crate::window::send_to_newest("tauri.event.pane-command", serde_json::json!(id));
+            crate::window::send_to_newest("shell.event.pane-command", serde_json::json!(id));
         }
     }
 }

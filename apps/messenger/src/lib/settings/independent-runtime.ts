@@ -1,4 +1,4 @@
-import { readTauriInternals, type TauriInternals } from "../tauri.ts";
+import { readShellBridge, type ShellBridge } from "../desktop-shell.ts";
 
 export type IndependentWriter = "window" | "agent" | "down";
 
@@ -79,7 +79,7 @@ export function parseIndependentStatus(body: unknown): IndependentStatus | null 
 
 export async function invokeIndependentRuntime(
   operation: "status" | "enable" | "wait" | "force" | "cancel" | "disable",
-  internals: TauriInternals | undefined = readTauriInternals(),
+  internals: ShellBridge | undefined = readShellBridge(),
 ): Promise<IndependentStatus> {
   if (!internals?.invoke) return gatedIndependentStatus("browser_cannot_install_agent");
   try {
@@ -95,7 +95,7 @@ export async function invokeIndependentRuntime(
 
 export async function setLaunchAtLogin(
   enabled: boolean,
-  internals: TauriInternals | undefined = readTauriInternals(),
+  internals: ShellBridge | undefined = readShellBridge(),
 ): Promise<boolean> {
   if (!internals?.invoke) return false;
   try {

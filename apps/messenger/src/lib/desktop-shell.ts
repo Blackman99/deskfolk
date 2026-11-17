@@ -1,16 +1,16 @@
-export type TauriInternals = {
+export type ShellBridge = {
   invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
   /** Registers a function and hands back the id the host calls it by. */
   transformCallback?: (callback: (payload: unknown) => void, once?: boolean) => number;
 };
 
-export function readTauriInternals(): TauriInternals | undefined {
+export function readShellBridge(): ShellBridge | undefined {
   if (typeof globalThis === "undefined") return undefined;
-  const w = globalThis as { __TAURI_INTERNALS__?: TauriInternals };
-  return w.__TAURI_INTERNALS__;
+  const w = globalThis as { __DESKFOLK_SHELL__?: ShellBridge };
+  return w.__DESKFOLK_SHELL__;
 }
 
-export function isTauri(internals: TauriInternals | undefined = readTauriInternals()): boolean {
+export function inDesktopShell(internals: ShellBridge | undefined = readShellBridge()): boolean {
   return Boolean(internals?.invoke);
 }
 
@@ -19,7 +19,7 @@ export function isTauri(internals: TauriInternals | undefined = readTauriInterna
  *
  * Used for the menu: the native menu bar owns the accelerators, so a command picked there has to
  * be handed to the page rather than guessed at by it. Written against the internals directly
- * because this app does not carry the Tauri JavaScript package.
+ * because the shell bridge is all the page has.
  *
  * Returns a function that stops listening. Outside the desktop window it does nothing at all.
  */
@@ -27,7 +27,7 @@ export function listenToWindow(
   event: string,
   handler: (payload: unknown) => void,
 ): () => void {
-  const internals = readTauriInternals();
+  const internals = readShellBridge();
   if (!internals?.invoke || !internals.transformCallback) return () => {};
   const callbackId = internals.transformCallback((message) => {
     const wrapped = message as { payload?: unknown } | null;
@@ -36,24 +36,24 @@ export function listenToWindow(
   let eventId: number | null = null;
   let stopped = false;
   void internals
-    .invoke("plugin:event|listen", { event, target: { kind: "Any" }, handler: callbackId })
+    .invoke("event.listen", { event, target: { kind: "Any" }, handler: callbackId })
     .then((id) => {
       eventId = typeof id === "number" ? id : null;
       // Asked to stop before the registration landed: undo it now that there is something to undo.
-      if (stopped && eventId !== null) void internals.invoke?.("plugin:event|unlisten", { event, eventId });
+      if (stopped && eventId !== null) void internals.invoke?.("event.unlisten", { event, eventId });
     })
     .catch(() => {
       // A window whose permissions do not include events simply never hears any.
     });
   return () => {
     stopped = true;
-    if (eventId !== null) void internals.invoke?.("plugin:event|unlisten", { event, eventId });
+    if (eventId !== null) void internals.invoke?.("event.unlisten", { event, eventId });
   };
 }
 
 /** Put the window away. What ⌘W does once there is no tab left to close. */
 export async function hideDesktopWindow(): Promise<void> {
-  const internals = readTauriInternals();
+  const internals = readShellBridge();
   if (!internals?.invoke) return;
   try {
     await internals.invoke("hide_main_window");

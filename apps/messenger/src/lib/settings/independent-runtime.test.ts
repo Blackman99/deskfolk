@@ -5,7 +5,7 @@ import { fakeRuntime } from "../test-fixtures.ts";
 import { click, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import SettingsModal from "./SettingsModal.svelte";
-import type { TauriInternals } from "../tauri.ts";
+import type { ShellBridge } from "../desktop-shell.ts";
 import {
   gatedIndependentStatus,
   invokeIndependentRuntime,
@@ -15,7 +15,7 @@ import {
 
 function fakeInternals(
   handler: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>,
-): TauriInternals & { calls: Array<{ cmd: string; args?: Record<string, unknown> }> } {
+): ShellBridge & { calls: Array<{ cmd: string; args?: Record<string, unknown> }> } {
   const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
   return {
     calls,
@@ -50,7 +50,7 @@ test("parseIndependentStatus rejects PathExists-style or extra writers", () => {
   expect(parseIndependentStatus(null)).toBeNull();
 });
 
-test("invokeIndependentRuntime never claims production is available without Tauri", async () => {
+test("invokeIndependentRuntime never claims production is available without the desktop shell", async () => {
   await expect(invokeIndependentRuntime("enable", undefined)).resolves.toEqual(
     gatedIndependentStatus("browser_cannot_install_agent"),
   );

@@ -7,8 +7,8 @@
  * preference says; when the cleanup revision moves, banners the runtime no longer wants are
  * closed; and one notification is claimed, revalidated, shown and reported.
  *
- * The messenger asks the shell about notifications by the Tauri commands; on these desktops the app
- * answers four of them (`BANNER_COMMANDS`, through `tauri-bridge.ts`): the permission is NSH's, a
+ * The messenger asks the shell about notifications by shell commands; on these desktops the app
+ * answers four of them (`BANNER_COMMANDS`, through `shell-bridge.ts`): the permission is NSH's, a
  * pressed banner's click reference is the intent `take_notification_intent` hands over, and
  * `report_notification_view` also tells the runtime which conversation is in front of you, which
  * the macOS shell's presence queue does there.
@@ -292,7 +292,7 @@ export function appBanners(): AppBanners | null {
   return banners;
 }
 
-/** The Tauri commands the app answers on these desktops, by their Tauri names; `shell` asks the shell. */
+/** The shell commands the app answers on these desktops; `shell` asks the shell. */
 export function bannerCommands(
   loop: AppBanners,
   shell: (command: string, args: Record<string, unknown>) => Promise<unknown>,

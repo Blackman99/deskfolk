@@ -19,7 +19,7 @@ import { Input } from "nsh/base";
 import type { RemoteScreenStatus } from "@real-bot/protocol";
 import { copy } from "../../runtime";
 import type { LocalApi } from "../../m/local-api.ts";
-import { isTauri, readTauriInternals } from "../../m/tauri.ts";
+import { inDesktopShell, readShellBridge } from "../../m/desktop-shell.ts";
 import { Button } from "../Button";
 import { Switch } from "../Switch";
 import { iceLines, parseIceLines } from "./remote-screen-ice";
@@ -79,8 +79,8 @@ export function RemoteScreenSettings(props: { api: LocalApi; pollMs?: number; wi
 
   /** The system's Sharing pane, or on Windows TightVNC's download page. */
   async function openSharing(): Promise<void> {
-    const internals = readTauriInternals();
-    if (!isTauri(internals) || !internals?.invoke) return;
+    const internals = readShellBridge();
+    if (!inDesktopShell(internals) || !internals?.invoke) return;
     const url = windows() ? "https://www.tightvnc.com/download.php" : "x-apple.systempreferences:com.apple.Sharing-Settings.extension";
     try {
       await internals.invoke("open_external_url", { url });

@@ -39,9 +39,9 @@ async function openGeneral(handlers: Record<string, unknown> = {}, width = 1100)
     host: {
       params: { ...endpoint, windowId: 1, material: "none", story: "settings-general" },
       handlers: {
-        "tauri.local_api_endpoint": endpoint,
-        "tauri.app_version": "0.0.0",
-        "tauri.set_launch_at_login": true,
+        "shell.local_api_endpoint": endpoint,
+        "shell.app_version": "0.0.0",
+        "shell.set_launch_at_login": true,
         ...handlers,
       },
     },
@@ -124,7 +124,7 @@ test("on a phone the navigation is the whole page: a grouped list, and ✕ close
 });
 
 test("the About tab shows a dot while an update is waiting", async () => {
-  const { app } = await session({ "tauri.check_for_update": () => UPDATE });
+  const { app } = await session({ "shell.check_for_update": () => UPDATE });
   await app.press("id:story-show-nav");
   await app.waitFor("id:settings-nav");
   expect(app.shows("id:settings-tab-about-dot")).toBe(false);
@@ -156,7 +156,7 @@ test("about: a check the shell cannot answer says so, and the button comes back"
 });
 
 test("about: up to date says so", async () => {
-  const { app } = await session({ "tauri.check_for_update": () => ({ ...UPDATE, latest: "0.0.0", updateAvailable: false }) });
+  const { app } = await session({ "shell.check_for_update": () => ({ ...UPDATE, latest: "0.0.0", updateAvailable: false }) });
   await app.press("id:story-show-about");
   await app.press("id:about-check-update");
   await app.waitFor("id:about-up-to-date");
@@ -165,7 +165,7 @@ test("about: up to date says so", async () => {
 });
 
 test("about: an update lists what changed and offers download, notes and ignore", async () => {
-  const { app } = await session({ "tauri.check_for_update": () => UPDATE });
+  const { app } = await session({ "shell.check_for_update": () => UPDATE });
   await app.press("id:story-show-about");
   await app.press("id:about-check-update");
   await app.waitFor("id:about-update-banner");
@@ -186,14 +186,14 @@ test("about: where the shell can install in place, the install shows its progres
   let started = false;
   let cancelled = false;
   const { app } = await session({
-    "tauri.check_for_update": () => UPDATE,
-    "tauri.can_install_update": true,
-    "tauri.update_install_state": () => (started && !cancelled ? { phase: "downloading", downloaded: 1048576, total: 4194304, version: "9.9.9", error: null, detail: null } : { phase: "idle" }),
-    "tauri.start_update_install": () => {
+    "shell.check_for_update": () => UPDATE,
+    "shell.can_install_update": true,
+    "shell.update_install_state": () => (started && !cancelled ? { phase: "downloading", downloaded: 1048576, total: 4194304, version: "9.9.9", error: null, detail: null } : { phase: "idle" }),
+    "shell.start_update_install": () => {
       started = true;
       return { phase: "downloading", downloaded: 1048576, total: 4194304, version: "9.9.9", error: null, detail: null };
     },
-    "tauri.cancel_update_install": () => {
+    "shell.cancel_update_install": () => {
       cancelled = true;
       return { phase: "idle" };
     },
@@ -214,9 +214,9 @@ test("about: where the shell can install in place, the install shows its progres
 
 test("about: a failed install says why and offers a retry", async () => {
   const { app } = await session({
-    "tauri.check_for_update": () => UPDATE,
-    "tauri.can_install_update": true,
-    "tauri.start_update_install": () => {
+    "shell.check_for_update": () => UPDATE,
+    "shell.can_install_update": true,
+    "shell.start_update_install": () => {
       throw new Error("read-only");
     },
   });

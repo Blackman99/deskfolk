@@ -10,7 +10,7 @@
  */
 import { encodePairingCode, type PairingQr } from "@real-bot/remote";
 import { ApiError } from "../api.ts";
-import { readTauriInternals } from "../tauri.ts";
+import { readShellBridge } from "../desktop-shell.ts";
 import type { LocalApi } from "../local-api.ts";
 import { hostSigningFingerprint } from "./fingerprint.ts";
 import { ulid } from "./ids.ts";
@@ -33,7 +33,7 @@ function refused(code: string): ApiError {
  * the packaged window answers, it answers for good: its daemon has no loopback route to retry on.
  */
 async function setup(api: LocalApi, request: Record<string, unknown>): Promise<unknown> {
-  const internals = readTauriInternals();
+  const internals = readShellBridge();
   if (internals?.invoke) {
     let reply: { ok?: boolean; value?: unknown; error?: string } | undefined;
     try {
@@ -121,7 +121,7 @@ export async function readPairing(api: LocalApi, pairingId: string): Promise<Pai
  * sheet the person dismissed throws `cancelled`, and nothing was spent: approving again works.
  */
 async function nativeProof(challenge: string): Promise<string | null> {
-  const internals = readTauriInternals();
+  const internals = readShellBridge();
   if (!internals?.invoke) return null;
   let confirmation: { ok?: boolean; proof?: string; diagnostic?: string } | undefined;
   try {

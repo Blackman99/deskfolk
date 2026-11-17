@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { loopbackOrigin, parseDiscovery, parseTauriEndpoint } from "./discovery.ts";
+import { loopbackOrigin, parseDiscovery, parseShellEndpoint } from "./discovery.ts";
 
 test("dev discovery is port plus token, origin is loopback", () => {
   expect(parseDiscovery({ port: 17890, token: "abc" })).toEqual({
@@ -27,12 +27,12 @@ test("missing or empty token is not a discovery", () => {
   expect(parseDiscovery(null)).toBeNull();
 });
 
-test("Tauri command returns origin plus token", () => {
-  expect(parseTauriEndpoint({ origin: "http://127.0.0.1:17890", token: "t" })).toEqual({
+test("shell command returns origin plus token", () => {
+  expect(parseShellEndpoint({ origin: "http://127.0.0.1:17890", token: "t" })).toEqual({
     origin: "http://127.0.0.1:17890",
     token: "t",
   });
-  expect(parseTauriEndpoint(null)).toBeNull();
+  expect(parseShellEndpoint(null)).toBeNull();
 });
 
 test("browser discovery uses the Vite path, not Application Support", async () => {
@@ -53,17 +53,17 @@ test("browser discovery uses the Vite path, not Application Support", async () =
   });
 });
 
-test("Tauri discovery does not fall through to Vite", async () => {
+test("shell discovery does not fall through to Vite", async () => {
   const { discoverEndpoint } = await import("./local-discovery.ts");
   const fetchFn = (async () => {
-    throw new Error("browser discovery must not run in Tauri");
+    throw new Error("browser discovery must not run in the desktop shell");
   }) as typeof fetch;
   await expect(
     discoverEndpoint(fetchFn, {
-      invoke: async () => ({ origin: "http://127.0.0.1:17890", token: "from-tauri" }),
+      invoke: async () => ({ origin: "http://127.0.0.1:17890", token: "from-shell" }),
     }),
   ).resolves.toEqual({
     origin: "http://127.0.0.1:17890",
-    token: "from-tauri",
+    token: "from-shell",
   });
 });

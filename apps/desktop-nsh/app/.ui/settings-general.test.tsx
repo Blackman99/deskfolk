@@ -39,9 +39,9 @@ async function openGeneral(handlers: Record<string, unknown> = {}, width = 1100)
     host: {
       params: { ...endpoint, windowId: 1, material: "none", story: "settings-general" },
       handlers: {
-        "tauri.local_api_endpoint": endpoint,
-        "tauri.app_version": "0.0.0",
-        "tauri.set_launch_at_login": true,
+        "shell.local_api_endpoint": endpoint,
+        "shell.app_version": "0.0.0",
+        "shell.set_launch_at_login": true,
         ...handlers,
       },
     },
@@ -74,7 +74,7 @@ async function session(handlers: Record<string, unknown> = {}, width = 1100) {
 
 test("the workspace card shows the folder as set, with the role note, and a chosen folder is saved", async () => {
   const target = "/tmp";
-  const { app, read, until, restore } = await session({ "tauri.pick_workspace_folder": target });
+  const { app, read, until, restore } = await session({ "shell.pick_workspace_folder": target });
   try {
     const before = await read();
     expect(app.shows("text:已配置")).toBe(true);
@@ -83,7 +83,7 @@ test("the workspace card shows the folder as set, with the role note, and a chos
     await app.press("id:workspace-choose");
     await until((api) => api.workspace.endsWith(target), "workspace saved");
     await app.waitUntil(() => app.texts().some((text) => text.endsWith(target)));
-    expect(app.host.calls().some((call) => call.name === "tauri.pick_workspace_folder")).toBe(true);
+    expect(app.host.calls().some((call) => call.name === "shell.pick_workspace_folder")).toBe(true);
   } finally {
     await restore();
   }
@@ -124,7 +124,7 @@ test("focus mode is kept in this browser, and launch at login saves and asks the
 
     await app.press("id:launch-at-login-toggle");
     await until((api) => api.launch === !before.launch, "launch flipped");
-    await app.waitUntil(() => app.host.calls().some((call) => call.name === "tauri.set_launch_at_login"));
+    await app.waitUntil(() => app.host.calls().some((call) => call.name === "shell.set_launch_at_login"));
   } finally {
     await restore();
   }

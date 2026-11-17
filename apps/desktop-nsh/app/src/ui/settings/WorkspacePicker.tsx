@@ -2,9 +2,9 @@
  * The workspace folder field (`settings/WorkspacePicker.svelte`): a button that shows the chosen
  * folder (the whole path is its tooltip) and a second that chooses or changes it.
  *
- * On this computer a press asks the shell's folder dialog through the Tauri bridge
+ * On this computer a press asks the shell's folder dialog through the shell bridge
  * (`pickWorkspaceFolder` of `m/settings/pick-workspace.ts`: the host command
- * `tauri.pick_workspace_folder` with `{ current, title }`). Where the Mac is reached remotely
+ * `shell.pick_workspace_folder` with `{ current, title }`). Where the Mac is reached remotely
  * (`remote`) there is no dialog, so a panel under the field browses the host's folders through
  * `api.hostTree`: Up, Use this folder, Cancel, and each sub-folder to open.
  *

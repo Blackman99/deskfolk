@@ -65,13 +65,13 @@ pub fn channel(config: &Config, window_id: u32) -> HostChannel {
             call.resolve(endpoint())
         });
     }
-    // The messenger's Tauri commands (`app/src/platform/tauri-bridge.ts`), by their Tauri names. The
+    // The messenger's shell commands (`app/src/platform/shell-bridge.ts`). The
     // app asks for the runtime's address as it starts: a window ran in this process (`gtk.rs`).
-    host.handle("tauri.local_api_endpoint", move |call: HostCall| {
+    host.handle("shell.local_api_endpoint", move |call: HostCall| {
         crate::runtime::mark_window_ran();
         call.resolve(endpoint())
     });
-    host.handle("tauri.app_version", |call: HostCall| call.resolve(json!(crate::config::product_version())));
+    host.handle("shell.app_version", |call: HostCall| call.resolve(json!(crate::config::product_version())));
     install_portable(&host);
     host
 }
@@ -83,7 +83,7 @@ pub fn channel(config: &Config, window_id: u32) -> HostChannel {
 /// pairing over the setup channel with the system's owner check (`remote_setup.rs`,
 /// `local_confirm.rs`).
 fn install_portable(host: &HostChannel) {
-    host.handle("tauri.check_for_update", |call: HostCall| {
+    host.handle("shell.check_for_update", |call: HostCall| {
         let force = call.data()["force"].as_bool().unwrap_or(false);
         std::thread::spawn(move || match crate::updates::check(crate::config::product_version(), force) {
             Ok(check) => call.resolve(json!(check)),
@@ -92,7 +92,7 @@ fn install_portable(host: &HostChannel) {
     });
     // Windows: the `Run` value the Tauri app's autostart wrote (`win_login.rs`).
     #[cfg(windows)]
-    host.handle("tauri.set_launch_at_login", |call: HostCall| {
+    host.handle("shell.set_launch_at_login", |call: HostCall| {
         let enabled = call.data()["enabled"].as_bool().unwrap_or(false);
         match crate::win_login::set(enabled) {
             Ok(now) => call.resolve(json!(now)),
@@ -101,7 +101,7 @@ fn install_portable(host: &HostChannel) {
     });
     // Linux: the Tauri app's autostart entry (`linux_login.rs`).
     #[cfg(target_os = "linux")]
-    host.handle("tauri.set_launch_at_login", |call: HostCall| {
+    host.handle("shell.set_launch_at_login", |call: HostCall| {
         let enabled = call.data()["enabled"].as_bool().unwrap_or(false);
         match crate::linux_login::set(enabled) {
             Ok(now) => call.resolve(json!(now)),
@@ -134,19 +134,19 @@ fn install_portable(host: &HostChannel) {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        host.handle("tauri.can_install_update", |call: HostCall| call.resolve(json!(false)));
-        host.handle("tauri.update_install_state", |call: HostCall| call.resolve(idle_install_state()));
-        host.handle("tauri.cancel_update_install", |call: HostCall| call.resolve(idle_install_state()));
-        host.handle("tauri.start_update_install", |call: HostCall| call.reject("not-installed"));
-        host.handle("tauri.independent_runtime", |call: HostCall| call.reject("disabled"));
+        host.handle("shell.can_install_update", |call: HostCall| call.resolve(json!(false)));
+        host.handle("shell.update_install_state", |call: HostCall| call.resolve(idle_install_state()));
+        host.handle("shell.cancel_update_install", |call: HostCall| call.resolve(idle_install_state()));
+        host.handle("shell.start_update_install", |call: HostCall| call.reject("not-installed"));
+        host.handle("shell.independent_runtime", |call: HostCall| call.reject("disabled"));
         // Pairing waits on the daemon and on the person: each on a thread of its own.
-        host.handle("tauri.remote_local_setup", |call: HostCall| {
+        host.handle("shell.remote_local_setup", |call: HostCall| {
             std::thread::spawn(move || match crate::remote_setup::local_setup(!crate::config::RELEASE, call.data()["request"].clone()) {
                 Ok(reply) => call.resolve(reply),
                 Err(why) => call.reject(why),
             });
         });
-        host.handle("tauri.remote_native_confirmation", |call: HostCall| {
+        host.handle("shell.remote_native_confirmation", |call: HostCall| {
             std::thread::spawn(move || {
                 let data = call.data();
                 let operation = data["operation"].as_str().unwrap_or_default().to_owned();
@@ -157,7 +157,7 @@ fn install_portable(host: &HostChannel) {
                 }
             });
         });
-        host.handle("tauri.independent_runtime_status", |call: HostCall| {
+        host.handle("shell.independent_runtime_status", |call: HostCall| {
             call.resolve(json!({
                 "enabled": false, "available": false, "diagnostic": "dev_does_not_install_agent",
                 "supervising": true, "writer": "down",
@@ -209,10 +209,10 @@ fn install_recording(host: &HostChannel) {
 /// `report_notification_view` still comes here for the window's facts.
 #[cfg(not(target_os = "macos"))]
 fn install_notification_commands(host: &HostChannel) {
-    host.handle("tauri.notification_permission_state", |call: HostCall| call.resolve(permission_state()));
-    host.handle("tauri.request_notification_permission", |call: HostCall| call.resolve(permission_state()));
-    host.handle("tauri.take_notification_intent", |call: HostCall| call.resolve(Value::Null));
-    host.handle("tauri.report_notification_view", |call: HostCall| {
+    host.handle("shell.notification_permission_state", |call: HostCall| call.resolve(permission_state()));
+    host.handle("shell.request_notification_permission", |call: HostCall| call.resolve(permission_state()));
+    host.handle("shell.take_notification_intent", |call: HostCall| call.resolve(Value::Null));
+    host.handle("shell.report_notification_view", |call: HostCall| {
         let facts = view_facts(&call.data()["report"]);
         call.resolve(facts)
     });

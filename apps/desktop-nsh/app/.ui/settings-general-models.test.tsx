@@ -39,9 +39,9 @@ async function openGeneral(handlers: Record<string, unknown> = {}, width = 1100)
     host: {
       params: { ...endpoint, windowId: 1, material: "none", story: "settings-general" },
       handlers: {
-        "tauri.local_api_endpoint": endpoint,
-        "tauri.app_version": "0.0.0",
-        "tauri.set_launch_at_login": true,
+        "shell.local_api_endpoint": endpoint,
+        "shell.app_version": "0.0.0",
+        "shell.set_launch_at_login": true,
         ...handlers,
       },
     },

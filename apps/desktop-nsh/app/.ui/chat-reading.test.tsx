@@ -12,14 +12,14 @@ test("a conversation opened in a focused window is read once it has been on scre
     host: {
       handlers: {
         // What the shell answers the messenger's first questions (`notification_loop.rs`).
-        "tauri.notification_permission_state": {
+        "shell.notification_permission_state": {
           permission: "default",
           nativeReadingV1: true,
           nativeDeliveryV1: false,
           operational: true,
           attentionCount: 0,
         },
-        "tauri.take_notification_intent": null,
+        "shell.take_notification_intent": null,
       },
     },
   });
@@ -43,17 +43,17 @@ test("the shell hears which conversation you are looking at, and the beat keeps 
   const app = await openApp({
     host: {
       handlers: {
-        "tauri.notification_permission_state": {
+        "shell.notification_permission_state": {
           permission: "granted",
           nativeReadingV1: true,
           nativeDeliveryV1: true,
           operational: true,
           attentionCount: 0,
         },
-        "tauri.take_notification_intent": null,
+        "shell.take_notification_intent": null,
         // What the macOS shell does with it: tells the runtime, which holds back a banner for the
         // conversation in front of you (`notification_loop.rs` `report_view`).
-        "tauri.report_notification_view": (args: unknown) => {
+        "shell.report_notification_view": (args: unknown) => {
           reports.push((args as { report: Report }).report);
           return { visible: true, focused: true, minimized: false, effectiveFocused: true };
         },

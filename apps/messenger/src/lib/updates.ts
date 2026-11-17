@@ -1,5 +1,5 @@
 import { localStore } from "./storage.ts";
-import { readTauriInternals, type TauriInternals } from "./tauri.ts";
+import { readShellBridge, type ShellBridge } from "./desktop-shell.ts";
 
 export type UpdateCheck = {
   current: string;
@@ -47,7 +47,7 @@ export function parseUpdateCheck(body: unknown): UpdateCheck | null {
 }
 
 export async function fetchAppVersion(
-  internals: TauriInternals | undefined = readTauriInternals(),
+  internals: ShellBridge | undefined = readShellBridge(),
 ): Promise<string | null> {
   if (!internals?.invoke) return null;
   try {
@@ -60,9 +60,9 @@ export async function fetchAppVersion(
 
 export async function checkForUpdate(
   force: boolean,
-  internals: TauriInternals | undefined = readTauriInternals(),
+  internals: ShellBridge | undefined = readShellBridge(),
 ): Promise<UpdateCheck> {
-  if (!internals?.invoke) throw new Error("tauri unavailable");
+  if (!internals?.invoke) throw new Error("desktop shell unavailable");
   const body = await internals.invoke("check_for_update", { force });
   const parsed = parseUpdateCheck(body);
   if (!parsed) throw new Error("bad update payload");
@@ -71,7 +71,7 @@ export async function checkForUpdate(
 
 export async function openExternalUrl(
   url: string,
-  internals: TauriInternals | undefined = readTauriInternals(),
+  internals: ShellBridge | undefined = readShellBridge(),
 ): Promise<boolean> {
   if (!internals?.invoke) return false;
   try {
@@ -227,7 +227,7 @@ export function installErrorCode(error: unknown): string {
  * owns, and the browser — the card then offers the browser download.
  */
 export async function canInstallUpdate(
-  internals: TauriInternals | undefined = readTauriInternals(),
+  internals: ShellBridge | undefined = readShellBridge(),
 ): Promise<boolean> {
   if (!internals?.invoke) return false;
   try {
@@ -241,9 +241,9 @@ export async function canInstallUpdate(
 export async function startUpdateInstall(
   url: string,
   version: string,
-  internals: TauriInternals | undefined = readTauriInternals(),
+  internals: ShellBridge | undefined = readShellBridge(),
 ): Promise<UpdateInstallState> {
-  if (!internals?.invoke) throw new Error("tauri unavailable");
+  if (!internals?.invoke) throw new Error("desktop shell unavailable");
   const body = await internals.invoke("start_update_install", { url, version });
   return parseUpdateInstallState(body) ?? {
     ...IDLE_INSTALL,
@@ -253,7 +253,7 @@ export async function startUpdateInstall(
 }
 
 export async function readUpdateInstall(
-  internals: TauriInternals | undefined = readTauriInternals(),
+  internals: ShellBridge | undefined = readShellBridge(),
 ): Promise<UpdateInstallState | null> {
   if (!internals?.invoke) return null;
   try {
@@ -265,7 +265,7 @@ export async function readUpdateInstall(
 
 /** Cancel a running download, or clear a failed one. */
 export async function cancelUpdateInstall(
-  internals: TauriInternals | undefined = readTauriInternals(),
+  internals: ShellBridge | undefined = readShellBridge(),
 ): Promise<UpdateInstallState> {
   if (!internals?.invoke) return IDLE_INSTALL;
   try {

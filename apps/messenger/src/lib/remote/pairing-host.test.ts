@@ -5,8 +5,8 @@ import { confirmPairing, initializeHost, parseHostRelay } from "./pairing-host.t
 import { RemoteAdmin, type RemoteAdminHost } from "./remote-admin.svelte.ts";
 
 type Invoke = (command: string, args: Record<string, unknown>) => Promise<unknown>;
-const globals = globalThis as { __TAURI_INTERNALS__?: { invoke: Invoke } };
-afterEach(() => { delete globals.__TAURI_INTERNALS__; });
+const globals = globalThis as { __DESKFOLK_SHELL__?: { invoke: Invoke } };
+afterEach(() => { delete globals.__DESKFOLK_SHELL__; });
 
 /** The loopback route a source run answers setup on; the packaged daemon has none. */
 function loopback(answer: (request: Record<string, unknown>) => unknown = () => ({})) {
@@ -16,7 +16,7 @@ function loopback(answer: (request: Record<string, unknown>) => unknown = () => 
 }
 function window(invoke: Invoke): Array<{ command: string; args: Record<string, unknown> }> {
   const calls: Array<{ command: string; args: Record<string, unknown> }> = [];
-  globals.__TAURI_INTERNALS__ = { invoke: async (command, args) => { calls.push({ command, args }); return invoke(command, args); } };
+  globals.__DESKFOLK_SHELL__ = { invoke: async (command, args) => { calls.push({ command, args }); return invoke(command, args); } };
   return calls;
 }
 const relay = { origin: "https://relay.example.com", relayId: "home", bootstrap: "A".repeat(43) };

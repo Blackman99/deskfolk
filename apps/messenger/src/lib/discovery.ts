@@ -28,7 +28,7 @@ export function parseDiscovery(body: unknown, pageOrigin?: string): LocalEndpoin
   return { origin: loopbackOrigin(record.port, pageOrigin), token: record.token };
 }
 
-export function parseTauriEndpoint(body: unknown): LocalEndpoint | null {
+export function parseShellEndpoint(body: unknown): LocalEndpoint | null {
   if (!body || typeof body !== "object") return null;
   const record = body as { origin?: unknown; token?: unknown };
   if (typeof record.origin !== "string" || record.origin.length === 0) return null;

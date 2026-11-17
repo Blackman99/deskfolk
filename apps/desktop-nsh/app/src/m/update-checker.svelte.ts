@@ -1,7 +1,7 @@
 // Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 231e562fc22b0c64
+// Source: 8efb1e7916720125
 import { state } from "../lib/reactive";
-import { isTauri } from "./tauri.ts";
+import { inDesktopShell } from "./desktop-shell.ts";
 import {
   AUTO_CHECK_DELAY_MS,
   AUTO_CHECK_INTERVAL_MS,
@@ -53,7 +53,7 @@ export class UpdateChecker {
   private started = false;
 
   get available(): boolean {
-    return isTauri();
+    return inDesktopShell();
   }
 
   get updateVisible(): boolean {

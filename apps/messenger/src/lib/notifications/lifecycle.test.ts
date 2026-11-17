@@ -315,7 +315,7 @@ describe("Notifications Production Lifecycle", () => {
     runtime.connection = "connected";
 
     const invoked: { cmd: string; args?: any }[] = [];
-    (globalThis as any).__TAURI_INTERNALS__ = {
+    (globalThis as any).__DESKFOLK_SHELL__ = {
       invoke: async (cmd: string, args?: any) => {
         invoked.push({ cmd, args });
         if (cmd === "notification_permission_state") {
@@ -391,7 +391,7 @@ describe("Notifications Production Lifecycle", () => {
       expect(sent).toEqual({ ok: true, status: "queued" });
       expect(invoked.some((i) => i.cmd === "desktop_test_api")).toBe(true);
     } finally {
-      delete (globalThis as any).__TAURI_INTERNALS__;
+      delete (globalThis as any).__DESKFOLK_SHELL__;
     }
   });
 

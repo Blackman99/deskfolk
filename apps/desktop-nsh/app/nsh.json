@@ -35,8 +35,7 @@
     "webview": {},
     "host": [
       "shell.*",
-      "runtime.*",
-      "tauri.*"
+      "runtime.*"
     ]
   },
   "resolve": {

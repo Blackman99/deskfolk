@@ -59,25 +59,25 @@ pub fn install(host: &HostChannel, window_id: u32, identity: &Identity) {
         call.resolve(json!({ "id": window_id, "notifications": crate::notify::available() }));
     });
 
-    // The messenger's Tauri commands the shell answers (`app/src/platform/tauri-bridge.ts`).
-    host.handle("tauri.pick_workspace_folder", |call: HostCall| {
+    // The messenger's shell commands (`app/src/platform/shell-bridge.ts`).
+    host.handle("shell.pick_workspace_folder", |call: HostCall| {
         on_main(move |mtm| crate::system::pick_folder(mtm, call));
     });
-    host.handle("tauri.open_workspace_path", crate::system::open_path);
-    host.handle("tauri.hide_main_window", move |call: HostCall| {
+    host.handle("shell.open_workspace_path", crate::system::open_path);
+    host.handle("shell.hide_main_window", move |call: HostCall| {
         call.resolve(Value::Null);
         on_main(move |_| crate::window::hide(window_id));
     });
 
     // The notification commands (`notification_loop.rs`). Those that wait on Notification Center
     // answer from a thread of their own, so an engine thread never sits on the system's prompt.
-    host.handle("tauri.notification_permission_state", |call: HostCall| {
+    host.handle("shell.notification_permission_state", |call: HostCall| {
         std::thread::spawn(move || {
             let dto = crate::notification_loop::permission_state(crate::notification_loop::state());
             call.resolve(json!(dto));
         });
     });
-    host.handle("tauri.request_notification_permission", |call: HostCall| {
+    host.handle("shell.request_notification_permission", |call: HostCall| {
         std::thread::spawn(move || {
             match crate::notification_loop::request_permission(crate::notification_loop::state()) {
                 Ok(dto) => call.resolve(json!(dto)),
@@ -85,13 +85,13 @@ pub fn install(host: &HostChannel, window_id: u32, identity: &Identity) {
             }
         });
     });
-    host.handle("tauri.take_notification_intent", |call: HostCall| {
+    host.handle("shell.take_notification_intent", |call: HostCall| {
         match crate::notification_loop::take_intent(crate::notification_loop::state()) {
             Ok(intent) => call.resolve(json!(intent)),
             Err(why) => call.reject(why),
         }
     });
-    host.handle("tauri.report_notification_view", move |call: HostCall| {
+    host.handle("shell.report_notification_view", move |call: HostCall| {
         let report = serde_json::from_value(call.data()["report"].clone()).unwrap_or_default();
         on_main(move |_| {
             let facts = crate::notification_loop::report_view(
@@ -150,7 +150,7 @@ pub fn install(host: &HostChannel, window_id: u32, identity: &Identity) {
 /// system, a daemon or the network answer from a thread of their own.
 fn install_system(host: &HostChannel, identity: &Identity) {
     let id = identity.clone();
-    host.handle("tauri.set_launch_at_login", move |call: HostCall| {
+    host.handle("shell.set_launch_at_login", move |call: HostCall| {
         let enabled = call.data()["enabled"].as_bool().unwrap_or(false);
         let id = id.clone();
         on_main(move |_| match crate::login_item::set(&id, enabled) {
@@ -160,12 +160,12 @@ fn install_system(host: &HostChannel, identity: &Identity) {
     });
 
     let id = identity.clone();
-    host.handle("tauri.independent_runtime_status", move |call: HostCall| {
+    host.handle("shell.independent_runtime_status", move |call: HostCall| {
         let id = id.clone();
         std::thread::spawn(move || call.resolve(json!(crate::independent::status(&id))));
     });
     let id = identity.clone();
-    host.handle("tauri.independent_runtime", move |call: HostCall| {
+    host.handle("shell.independent_runtime", move |call: HostCall| {
         let id = id.clone();
         std::thread::spawn(move || {
             let request = serde_json::from_value::<crate::independent::Request>(call.data()["request"].clone());
@@ -177,7 +177,7 @@ fn install_system(host: &HostChannel, identity: &Identity) {
     });
 
     let id = identity.clone();
-    host.handle("tauri.remote_local_setup", move |call: HostCall| {
+    host.handle("shell.remote_local_setup", move |call: HostCall| {
         let id = id.clone();
         std::thread::spawn(move || match crate::remote_setup::local_setup(id.is_dev(), call.data()["request"].clone()) {
             Ok(reply) => call.resolve(reply),
@@ -185,7 +185,7 @@ fn install_system(host: &HostChannel, identity: &Identity) {
         });
     });
     let id = identity.clone();
-    host.handle("tauri.remote_native_confirmation", move |call: HostCall| {
+    host.handle("shell.remote_native_confirmation", move |call: HostCall| {
         let id = id.clone();
         std::thread::spawn(move || {
             let data = call.data();
@@ -199,14 +199,14 @@ fn install_system(host: &HostChannel, identity: &Identity) {
     });
 
     let id = identity.clone();
-    host.handle("tauri.can_install_update", move |call: HostCall| {
+    host.handle("shell.can_install_update", move |call: HostCall| {
         let id = id.clone();
         std::thread::spawn(move || call.resolve(json!(crate::update_commands::can_install(&id))));
     });
-    host.handle("tauri.update_install_state", |call: HostCall| call.resolve(json!(crate::update_commands::state())));
-    host.handle("tauri.cancel_update_install", |call: HostCall| call.resolve(json!(crate::update_commands::cancel())));
+    host.handle("shell.update_install_state", |call: HostCall| call.resolve(json!(crate::update_commands::state())));
+    host.handle("shell.cancel_update_install", |call: HostCall| call.resolve(json!(crate::update_commands::cancel())));
     let id = identity.clone();
-    host.handle("tauri.start_update_install", move |call: HostCall| {
+    host.handle("shell.start_update_install", move |call: HostCall| {
         let data = call.data();
         let (url, version) = (data["url"].as_str().unwrap_or_default().to_owned(), data["version"].as_str().unwrap_or_default().to_owned());
         let id = id.clone();

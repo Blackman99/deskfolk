@@ -8,7 +8,7 @@ import { disablePush, enablePush, pushPermission, refreshPush, type DisablePushR
 import type { Snapshot } from "../snapshot.ts";
 import type { NotificationOpenIntent } from "./tab-ownership.svelte.ts";
 import type { Connection } from "../runtime.svelte.ts";
-import { readTauriInternals } from "../tauri.ts";
+import { readShellBridge } from "../desktop-shell.ts";
 import {
   acceptFirstPage,
   acceptMore,
@@ -470,7 +470,7 @@ export class NotificationCenter {
   }
 
   async pollDesktopNativeState(): Promise<void> {
-    const internals = readTauriInternals();
+    const internals = readShellBridge();
     if (!internals?.invoke) return;
     try {
       const stateDto = (await internals.invoke("notification_permission_state")) as NotificationPermissionStateDto;
@@ -519,7 +519,7 @@ export class NotificationCenter {
   }
 
   async reportDesktopNotificationView(atLatest: boolean): Promise<NativeFocusFacts | null> {
-    const internals = readTauriInternals();
+    const internals = readShellBridge();
     if (!internals?.invoke) return null;
     try {
       const report: NotificationViewReport = {
@@ -540,7 +540,7 @@ export class NotificationCenter {
   }
 
   async requestDesktopNotificationPermission(): Promise<void> {
-    const internals = readTauriInternals();
+    const internals = readShellBridge();
     if (!internals?.invoke) return;
     try {
       const stateDto = (await internals.invoke("request_notification_permission")) as NotificationPermissionStateDto;

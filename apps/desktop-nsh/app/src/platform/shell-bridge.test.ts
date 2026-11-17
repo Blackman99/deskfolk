@@ -1,9 +1,9 @@
 import { expect, test } from "nsh/test";
-import { APP_COMMANDS, UNTIMED_COMMANDS, allowedExternalUrl, hostName, tauriRejection } from "./tauri-bridge";
+import { APP_COMMANDS, UNTIMED_COMMANDS, allowedExternalUrl, hostName, shellRejection } from "./shell-bridge";
 
-test("a Tauri command goes to the shell under a name the host channel takes", () => {
-  expect(hostName("pick_workspace_folder")).toBe("tauri.pick_workspace_folder");
-  expect(hostName("plugin:window|set_theme")).toBe("tauri.plugin:window.set_theme");
+test("a command goes to the shell under a name the host channel takes", () => {
+  expect(hostName("pick_workspace_folder")).toBe("shell.pick_workspace_folder");
+  expect(hostName("plugin:window|set_theme")).toBe("shell.plugin:window.set_theme");
 });
 
 test("the app answers links itself, on every target", async () => {
@@ -27,8 +27,8 @@ test("the links that may open outside are the Tauri shell's", () => {
 
 test("a command rejects with the shell's words, as the Tauri shell's did", () => {
   // `pairing-host.ts` compares the string, `updates.ts` reads it.
-  expect(tauriRejection(new Error("desktop_channel_unavailable"))).toBe("desktop_channel_unavailable");
-  expect(tauriRejection("not-installed")).toBe("not-installed");
+  expect(shellRejection(new Error("desktop_channel_unavailable"))).toBe("desktop_channel_unavailable");
+  expect(shellRejection("not-installed")).toBe("not-installed");
 });
 
 test("a dialog, an owner check and pairing wait as long as they take", () => {

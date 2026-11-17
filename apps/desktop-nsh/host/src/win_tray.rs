@@ -344,7 +344,7 @@ fn show_window() {
 fn show_usage() {
     show_window();
     if let Some(setup) = SETUP.get() {
-        let _ = setup.host.send("tauri.event.pane-command", json!("view-usage"));
+        let _ = setup.host.send("shell.event.pane-command", json!("view-usage"));
     }
 }
 

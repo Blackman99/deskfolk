@@ -1,6 +1,6 @@
 import { LOCAL_API_DISCOVERY_PATH } from "@real-bot/protocol/local-discovery";
-import { parseDiscovery, parseTauriEndpoint, type LocalEndpoint } from "./discovery.ts";
-import { readTauriInternals, type TauriInternals } from "./tauri.ts";
+import { parseDiscovery, parseShellEndpoint, type LocalEndpoint } from "./discovery.ts";
+import { readShellBridge, type ShellBridge } from "./desktop-shell.ts";
 
 function pageOriginFromWindow(): string | undefined {
   if (typeof location === "undefined") return undefined;
@@ -9,13 +9,13 @@ function pageOriginFromWindow(): string | undefined {
 
 export async function discoverEndpoint(
   fetchFn: typeof fetch = fetch,
-  internals: TauriInternals | undefined = readTauriInternals(),
+  internals: ShellBridge | undefined = readShellBridge(),
   pageOrigin: string | undefined = pageOriginFromWindow(),
 ): Promise<LocalEndpoint | null> {
   if (internals?.invoke) {
     try {
       const ep = await internals.invoke("local_api_endpoint");
-      return parseTauriEndpoint(ep);
+      return parseShellEndpoint(ep);
     } catch {
       return null;
     }

@@ -327,11 +327,11 @@ test("http links open in a new browsing context", () => {
   }
 });
 
-test("external links in Tauri invoke open_external_url", async () => {
+test("external links in the desktop shell invoke open_external_url", async () => {
   const invoked: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
-  const win = window as unknown as { __TAURI_INTERNALS__?: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } };
-  const prevInternals = win.__TAURI_INTERNALS__;
-  win.__TAURI_INTERNALS__ = {
+  const win = window as unknown as { __DESKFOLK_SHELL__?: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } };
+  const prevInternals = win.__DESKFOLK_SHELL__;
+  win.__DESKFOLK_SHELL__ = {
     invoke: async (cmd, args) => {
       invoked.push({ cmd, args });
       return null;
@@ -351,7 +351,7 @@ test("external links in Tauri invoke open_external_url", async () => {
     ]);
     close();
   } finally {
-    win.__TAURI_INTERNALS__ = prevInternals;
+    win.__DESKFOLK_SHELL__ = prevInternals;
   }
 });
 

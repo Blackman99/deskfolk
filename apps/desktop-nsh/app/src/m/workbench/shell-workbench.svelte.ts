@@ -1,5 +1,5 @@
 // Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 1fc4e13e3d57b311
+// Source: fb0d7b990c710b09
 import { derived, effect, state } from "../../lib/reactive";
 /**
  * The desktop workbench cluster: the layout itself, its localStorage persistence, the effects
@@ -19,7 +19,7 @@ import { projectDirLabel } from "../sidebar/project-groups.ts";
 import { projectDirOf } from "../overlays/artifact-lookup.ts";
 import { spendCopyFor } from "../spend/spend-copy.ts";
 import { orderTerminals, statusLabel, terminalNames } from "../overlays/terminals.ts";
-import { hideDesktopWindow, listenToWindow } from "../tauri.ts";
+import { hideDesktopWindow, listenToWindow } from "../desktop-shell.ts";
 import {
   activateTab,
   allLeaves,

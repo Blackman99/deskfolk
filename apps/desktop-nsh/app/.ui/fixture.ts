@@ -1,6 +1,6 @@
 /**
  * What `scripts/ui-tests.ts` seeded and how to open the app on its runtime: a desktop window whose
- * shell answers the Tauri commands the runtime asks first.
+ * shell answers the commands the runtime asks first.
  */
 import { open, type OpenOptions } from "nsh/test";
 import fixture from "./.fixture.json";
@@ -44,8 +44,8 @@ function openEntry(entry: string, params: Record<string, unknown>, options: Part
     host: {
       params: { ...endpoint, windowId: 1, material: "none", ...params },
       handlers: {
-        "tauri.local_api_endpoint": endpoint,
-        "tauri.app_version": "0.0.0",
+        "shell.local_api_endpoint": endpoint,
+        "shell.app_version": "0.0.0",
         ...extra?.handlers,
       },
     },

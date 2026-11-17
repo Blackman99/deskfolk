@@ -1,4 +1,4 @@
-import { isTauri, readTauriInternals, type TauriInternals } from "../tauri.ts";
+import { inDesktopShell, readShellBridge, type ShellBridge } from "../desktop-shell.ts";
 
 export function parsePickedWorkspacePath(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -9,7 +9,7 @@ export function parsePickedWorkspacePath(value: unknown): string | null {
 export async function pickWorkspaceFolder(
   current: string,
   title: string,
-  internals: TauriInternals | undefined = readTauriInternals(),
+  internals: ShellBridge | undefined = readShellBridge(),
 ): Promise<string | null> {
   if (!internals?.invoke) return null;
   const picked = await internals.invoke("pick_workspace_folder", {
@@ -20,9 +20,9 @@ export async function pickWorkspaceFolder(
 }
 
 export function workspacePickerAvailable(
-  internals: TauriInternals | undefined = readTauriInternals(),
+  internals: ShellBridge | undefined = readShellBridge(),
 ): boolean {
-  return isTauri(internals);
+  return inDesktopShell(internals);
 }
 
 export type HostTreePage = {

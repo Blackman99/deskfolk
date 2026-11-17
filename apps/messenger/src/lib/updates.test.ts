@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { TauriInternals } from "./tauri.ts";
+import type { ShellBridge } from "./desktop-shell.ts";
 import {
   IDLE_INSTALL,
   cancelUpdateInstall,
@@ -76,7 +76,7 @@ test("parseUpdateCheck turns non-string optional fields into null", () => {
 
 function fakeInternals(
   handler: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>,
-): TauriInternals & { calls: Array<{ cmd: string; args?: Record<string, unknown> }> } {
+): ShellBridge & { calls: Array<{ cmd: string; args?: Record<string, unknown> }> } {
   const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
   return {
     calls,
@@ -106,8 +106,8 @@ test("checkForUpdate rejects when the payload is invalid", async () => {
 });
 
 test("checkForUpdate rejects with no internals or undefined invoke", async () => {
-  await expect(checkForUpdate(false, undefined)).rejects.toThrow("tauri unavailable");
-  await expect(checkForUpdate(false, {})).rejects.toThrow("tauri unavailable");
+  await expect(checkForUpdate(false, undefined)).rejects.toThrow("desktop shell unavailable");
+  await expect(checkForUpdate(false, {})).rejects.toThrow("desktop shell unavailable");
 });
 
 test("fetchAppVersion returns the invoked string", async () => {

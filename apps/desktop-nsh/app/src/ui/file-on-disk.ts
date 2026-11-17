@@ -16,7 +16,7 @@
 import { platform } from "nsh";
 import { absWorkspacePath } from "../m/overlays/artifacts.ts";
 import { sanitizeCitedPreviewPath } from "../m/session-url.ts";
-import { isTauri } from "../m/tauri.ts";
+import { inDesktopShell } from "../m/desktop-shell.ts";
 import { showToast } from "../m/toast.svelte.ts";
 import { copy, runtime } from "../runtime";
 
@@ -30,7 +30,7 @@ export type FileOnDisk = {
 /** This window runs on the computer the files are on, with a shell that opens them. */
 export function onThisComputer(): boolean {
   const desktop = platform.os === "macos" || platform.os === "windows" || platform.os === "linux";
-  return desktop && runtime.client?.kind !== "remote" && isTauri();
+  return desktop && runtime.client?.kind !== "remote" && inDesktopShell();
 }
 
 const fromHome = (path: string) => /^~[\\/]/.test(path);

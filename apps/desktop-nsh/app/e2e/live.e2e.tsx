@@ -18,7 +18,7 @@ test("the dev runtime's conversations list and open", async () => {
     network: "live",
     host: {
       params: { origin: params.origin, token: params.token, windowId: 1, material: "glass" },
-      handlers: { "tauri.local_api_endpoint": { origin: params.origin, token: params.token }, "tauri.app_version": "0.0.0" },
+      handlers: { "shell.local_api_endpoint": { origin: params.origin, token: params.token }, "shell.app_version": "0.0.0" },
     },
   });
   await app.waitFor(`id:session-${params.session}`, { timeout: 10_000 });

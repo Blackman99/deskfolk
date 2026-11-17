@@ -509,7 +509,7 @@ export class MessengerRuntime {
   get remoteGated(): boolean { return this.notificationCenter.remoteGated; }
   set remoteGated(value: boolean) { this.notificationCenter.remoteGated = value; }
   get isDesktopShell(): boolean {
-    return !HOSTED_MESSENGER && typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+    return !HOSTED_MESSENGER && typeof window !== "undefined" && "__DESKFOLK_SHELL__" in window;
   }
   get instanceId(): string { return this.notificationCenter.instanceId; }
   // --- Forwarded to `tabOwnership`. ---

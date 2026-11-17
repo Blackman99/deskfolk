@@ -1,20 +1,20 @@
-import { isTauri, readTauriInternals, type TauriInternals } from "./tauri.ts";
+import { inDesktopShell, readShellBridge, type ShellBridge } from "./desktop-shell.ts";
 
 /**
  * Open an external link (http:, https:, mailto:) safely.
- * In desktop Tauri, invokes `open_external_url` to open via system handler.
- * In browser or if Tauri invoke fails, opens via `window.open(..., '_blank')`.
+ * In the desktop shell, invokes `open_external_url` to open via system handler.
+ * In browser or if the shell invoke fails, opens via `window.open(..., '_blank')`.
  */
 export async function openExternalLink(
   href: string,
-  internals: TauriInternals | undefined = readTauriInternals(),
+  internals: ShellBridge | undefined = readShellBridge(),
 ): Promise<boolean> {
   const trimmed = href.trim();
   if (!trimmed.startsWith("https:") && !trimmed.startsWith("http:") && !trimmed.startsWith("mailto:")) {
     return false;
   }
 
-  if (isTauri(internals) && internals?.invoke) {
+  if (inDesktopShell(internals) && internals?.invoke) {
     try {
       await internals.invoke("open_external_url", { url: trimmed });
       return true;

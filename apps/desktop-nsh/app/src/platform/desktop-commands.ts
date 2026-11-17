@@ -1,5 +1,5 @@
 /**
- * The Tauri commands the Windows and Linux shells leave to the app, answered with NSH (the macOS
+ * The shell commands the Windows and Linux shells leave to the app, answered with NSH (the macOS
  * shell answers them itself, `host/src/host_calls.rs`):
  *
  * - `pick_workspace_folder({ current, title })`: the system's folder dialog (`Files.pickFolder`,

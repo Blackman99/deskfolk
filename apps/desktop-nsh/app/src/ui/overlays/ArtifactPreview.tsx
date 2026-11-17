@@ -11,7 +11,7 @@
  *
  * Not the Svelte's: the tree split is a PanResponder; the pane's width comes from `onLayout`; Escape
  * (list open) and the save shortcut are `keymap`; opening a file with the system or in Finder is the
- * Tauri command `open_workspace_path` the shell bridges (`openWorkspacePath`).
+ * shell command `open_workspace_path` the shell bridges (`openWorkspacePath`).
  */
 import { cleanup, colorScheme, computed, Clipboard, effect, keymap, PanResponder, platform, signal, Text, untracked, View, windowSize } from "nsh";
 import type { Annotation, Attachment, CreateAnnotationRequest, PatchAnnotationRequest, SessionSummary } from "@real-bot/protocol";
@@ -27,7 +27,7 @@ import type { ArtifactTreeNode } from "../../m/overlays/artifact-tree.ts";
 import { absWorkspacePath, artifactByteSource, artifactKind, citedInWorkspace, isInAppPreviewKind, isOfficeKind, tooLargeToRender, type ArtifactKind } from "../../m/overlays/artifacts.ts";
 import { openWorkspacePath } from "../../m/overlays/open-workspace.ts";
 import { baseName } from "../../m/paths.ts";
-import { isTauri } from "../../m/tauri.ts";
+import { inDesktopShell } from "../../m/desktop-shell.ts";
 import { copy, runtime } from "../../runtime";
 import { AnnotationSendBar } from "../annotations/AnnotationSendBar";
 import { BottomSheet } from "../BottomSheet";
@@ -235,7 +235,7 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
   byteSourceOf = byteSource;
   const remoteClient = () => api()?.kind === "remote";
   /** A file shown only by name: the desktop window opens it with the system, anywhere else it downloads. */
-  const opensOnDisk = () => !remoteClient() && isTauri();
+  const opensOnDisk = () => !remoteClient() && inDesktopShell();
   const canDownload = () =>
     remoteClient() && Boolean(relpath()) && kind() !== "directory" && isInAppPreviewKind(kind()) && attachment()?.exists !== false && !loader.missing;
   const downloadKey = () => `${byteSource()}:${attachment()?.id ?? ""}:${relpath()}`;

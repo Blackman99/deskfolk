@@ -5,7 +5,7 @@
  * stays exactly what it has always been: one screen at a time, with a back stack.
  *
  * The gate is `!HOSTED_MESSENGER && !narrow`, not `isDesktopShell && !narrow`. Contributing asks
- * for UI to be checked in a running browser, and `isDesktopShell` — which looks for Tauri's
+ * for UI to be checked in a running browser, and `isDesktopShell` — which looks for the shell bridge
  * globals — would put the dev browser on the phone path, so the feature could not be verified the
  * way the repository says to verify it. A paired phone keeps today's shell verbatim, and so does
  * the hosted messenger at a phone's width. At a tablet's width it keeps the columns without the

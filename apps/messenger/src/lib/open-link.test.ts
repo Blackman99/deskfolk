@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { openExternalLink } from "./open-link.ts";
-import type { TauriInternals } from "./tauri.ts";
+import type { ShellBridge } from "./desktop-shell.ts";
 
 test("openExternalLink rejects non-web/non-mailto schemes", async () => {
   expect(await openExternalLink("javascript:alert(1)")).toBe(false);
@@ -28,23 +28,23 @@ test("openExternalLink in browser mode opens via window.open", async () => {
   }
 });
 
-test("openExternalLink in Tauri mode invokes open_external_url", async () => {
-  const tauriCalls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
-  const internals: TauriInternals = {
+test("openExternalLink in the desktop shell invokes open_external_url", async () => {
+  const shellCalls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+  const internals: ShellBridge = {
     invoke: async (cmd, args) => {
-      tauriCalls.push({ cmd, args });
+      shellCalls.push({ cmd, args });
       return null;
     },
   };
 
   const ok = await openExternalLink("https://github.com/real-bot/real-bot", internals);
   expect(ok).toBe(true);
-  expect(tauriCalls).toEqual([
+  expect(shellCalls).toEqual([
     { cmd: "open_external_url", args: { url: "https://github.com/real-bot/real-bot" } },
   ]);
 });
 
-test("openExternalLink in Tauri mode falls back to window.open if invoke rejects", async () => {
+test("openExternalLink in the desktop shell falls back to window.open if invoke rejects", async () => {
   const windowCalls: string[] = [];
   const original = window.open;
   window.open = ((url?: string | URL) => {
@@ -52,9 +52,9 @@ test("openExternalLink in Tauri mode falls back to window.open if invoke rejects
     return null;
   }) as typeof window.open;
 
-  const internals: TauriInternals = {
+  const internals: ShellBridge = {
     invoke: async () => {
-      throw new Error("tauri error");
+      throw new Error("shell error");
     },
   };
 

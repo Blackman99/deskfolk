@@ -41,7 +41,7 @@ test("a runtime that cannot be reached is said so, with a Retry, and the onboard
     network: "live",
     host: {
       params: { ...dead, windowId: 1, material: "none" },
-      handlers: { "tauri.local_api_endpoint": dead, "tauri.app_version": "0.0.0" },
+      handlers: { "shell.local_api_endpoint": dead, "shell.app_version": "0.0.0" },
     },
   });
   const seen = await onboardingSeenUntil(app, () => app.shows("id:unreachable"), 15_000);

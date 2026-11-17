@@ -1,5 +1,5 @@
 // Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 36d9e7be679b9136
+// Source: 0de827e000f4fe86
 import { reconciledState, state } from "../lib/reactive";
 import type {
   ApiFormat,
@@ -539,8 +539,8 @@ export class MessengerRuntime {
   get remoteGated(): boolean { return this.notificationCenter.remoteGated; }
   set remoteGated(value: boolean) { this.notificationCenter.remoteGated = value; }
   get isDesktopShell(): boolean {
-    // NSH has no `window`: the Tauri bridge (`src/platform/tauri-bridge.ts`) sits on globalThis.
-    return !HOSTED_MESSENGER && "__TAURI_INTERNALS__" in globalThis;
+    // NSH has no `window`: the shell bridge (`src/platform/shell-bridge.ts`) sits on globalThis.
+    return !HOSTED_MESSENGER && "__DESKFOLK_SHELL__" in globalThis;
   }
   get instanceId(): string { return this.notificationCenter.instanceId; }
   // --- Forwarded to `tabOwnership`. ---

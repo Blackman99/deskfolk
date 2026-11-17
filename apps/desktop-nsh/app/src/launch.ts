@@ -1,6 +1,6 @@
 /**
  * What a desktop shell started this window with (`host.params`): the runtime's address and token
- * (also answered as the Tauri command `local_api_endpoint`) and the first window's development
+ * (also answered as the shell command `local_api_endpoint`) and the first window's development
  * checks (`--open-session`, `--pane`, `--pdf`, `--scroll-probe`, `--terminal`).
  */
 import { host } from "nsh";
