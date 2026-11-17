@@ -138,7 +138,7 @@ const DETAIL = {
   model: "claude-sonnet",
   steps: [
     { kind: "say", text: "先看一下 **notes** 目录。" },
-    { kind: "call", id: "c1", tool: "Read", label: "读取 notes/weekly.md", ok: true, duration_ms: 40, output: null },
+    { kind: "call", id: "c1", tool: "Read", label: "读取 notes/weekly.md", ok: true, duration_ms: 40, output: "# 周报\n来源：notes/sales.csv" },
     { kind: "call", id: "c2", tool: "Bash", label: "pnpm build", ok: null, duration_ms: 0, output: null },
   ],
 } as unknown as AgentTaskDetail;
@@ -274,6 +274,7 @@ export default function ChatTranscript() {
   const show = (task: AgentRunTask) => {
     const client = runtime.client as unknown as { agentTaskDetail: (run: string, id: string) => Promise<AgentTaskDetail> } | null;
     let lateReads = 0;
+    let reads = 0;
     if (client) {
       client.agentTaskDetail = async (_run, id) => {
         if (id === TASK_LOST.id) throw new Error("gone");
@@ -281,7 +282,16 @@ export default function ChatTranscript() {
         const empty = { ...DETAIL, task, prompt: null, model: null, steps: [] } as AgentTaskDetail;
         if (id === TASK_EMPTY.id) return empty;
         if (id === TASK_LATE.id) return (lateReads += 1) === 1 ? empty : { ...DETAIL, task };
-        return DETAIL;
+        // Every read is a new answer, as the daemon's is, even when nothing in it changed. On the
+        // second, the conversation's row for the task changes too, as it does with each call it makes
+        // (the popup then reads again at once); from the third on, `pnpm build` has ended.
+        reads += 1;
+        if (reads === 2) open.set({ ...task, tool_uses: 3 } as AgentRunTask);
+        const ended = reads >= 3;
+        const steps = DETAIL.steps.map((step) =>
+          ended && step.kind === "call" && step.id === "c2" ? { ...step, ok: true, duration_ms: 1200, output: "built" } : { ...step },
+        );
+        return { ...DETAIL, steps } as AgentTaskDetail;
       };
     }
     open.set(task);

@@ -11,11 +11,11 @@
  * height (`fill`), so it does not jump as the trail is read again; until there is a trail to read,
  * where it is and for how long sit in its middle.
  */
-import { cleanup, effect, signal, Text, View, type JSX } from "nsh";
+import { cleanup, computed, effect, signal, Text, View, type JSX } from "nsh";
 import type { AgentRunTask, AgentTaskDetail } from "@real-bot/protocol";
 import { formatLiveDuration } from "../../m/chat/chat-view.ts";
 import { holdBack } from "../../m/chat/message-text-pages.ts";
-import { runningCall, trailBlocks } from "../../m/chat/project-tasks.ts";
+import { runningCall, trailBlocks, type TrailBlock } from "../../m/chat/project-tasks.ts";
 import { copy, runtime } from "../../runtime";
 import { Icon } from "../Icon";
 import { MarkdownBody } from "../MarkdownBody";
@@ -25,6 +25,9 @@ import { pulseMotion } from "./labels";
 import { CommandActivity } from "./CommandActivity";
 
 const POLL_MS = 1500;
+
+const sayText = (block: TrailBlock) => (block.kind === "say" ? block.text : "");
+const callRows = (block: TrailBlock) => (block.kind === "calls" ? block.rows : []);
 
 export function ProjectSubagentDialog(props: {
   task: AgentRunTask;
@@ -75,7 +78,7 @@ export function ProjectSubagentDialog(props: {
   // A phone's Back closes it first, rather than leaving the conversation under it.
   cleanup(holdBack(() => props.onClose()));
 
-  const blocks = () => trailBlocks(detail()?.steps ?? []);
+  const blocks = computed(() => trailBlocks(detail()?.steps ?? []));
   const onCall = () => (detail() ? runningCall(detail()!.steps) : null);
   const facts = () =>
     [
@@ -157,18 +160,17 @@ export function ProjectSubagentDialog(props: {
                 <Text class="text-[14px] leading-[1.5] text-ink">{read().prompt}</Text>
               </View>
             </If>
-            {/* The Svelte rows are keyed; a list inside a dialog is a function child (PORTING.md). */}
-            {() =>
-              blocks().map((block) =>
-                block.kind === "say" ? (
+            {/* Kept by key, as the Svelte rows are. Every read is a new answer, and a list rebuilt from
+                each one folded the calls you had opened again (every 1.5 s while it runs). */}
+            <Each of={blocks()} key={(block) => block.key}>
+              {(block) => (
+                <If when={block().kind === "say"} else={<CommandActivity rows={callRows(block())} countLabel={t().project.taskCalls} />}>
                   <View testID="subagent-say" class="min-w-0">
-                    <MarkdownBody source={block.text} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={props.onOpenPath} files={props.files} />
+                    <MarkdownBody source={sayText(block())} copyLabel={t().chat.copyCode} copiedLabel={t().chat.copied} onOpenArtifact={props.onOpenPath} files={props.files} />
                   </View>
-                ) : (
-                  <CommandActivity rows={block.rows} countLabel={t().project.taskCalls} />
-                ),
-              )
-            }
+                </If>
+              )}
+            </Each>
             <If when={blocks().length === 0 && !going()}>{note(() => t().project.taskStepsGone)}</If>
             <If when={going()}>
               <View role="text" testID="subagent-foot" class="flex-row items-center gap-[6px] min-w-0">

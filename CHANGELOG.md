@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A subagent's opened calls stay open, in the native app
+
+- In a running subagent's popup, a group of tool calls you open (and the one call whose output you opened) no longer folds itself again a moment later. The popup reads the subagent again every 1.5 s while it runs, and each read used to build its groups anew. An open list of calls, there and in a conversation, also goes back to its end only when a call is added, not on every read.
+
 ### The terminal is NSH's own
 
 - Terminal tabs now use NSH's own terminal in place of the one the app drew itself. Drag across lines to select text and copy it; a paste reaches a program that asks for bracketed pastes as one paste; the history scrolls the way the app's other lists do. Typing, ⌘⌫ / ⌘← / ⌘→ and the ⌥ word keys, Ctrl keys, an input method's composition at the cursor with its candidates there, Chinese characters on their two cells and the app's colours in either appearance work as before.

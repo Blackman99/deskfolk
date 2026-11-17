@@ -100,8 +100,12 @@ export function CommandActivity(props: {
   // From the list's mount to its first layout (the Scroll's `onLayout`).
   let placing = false;
   const toEnd = () => list?.scrollTo({ y: 1_000_000, animated: false });
+  // By the count, as the messenger's `use:follow={done.length}`: the rows come as a new array on every
+  // read of a subagent (1.5 s) and every event of a turn, and following the array sent the list back
+  // to its end each time, past an output you had opened at its foot.
+  const count = computed(() => done().length);
   effect(() => {
-    void done().length;
+    void count();
     if (atEnd) setTimeout(toEnd, 0);
   });
 

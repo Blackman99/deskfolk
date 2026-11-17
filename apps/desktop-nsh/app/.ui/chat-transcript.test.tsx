@@ -208,6 +208,25 @@ test("the subagent popup shows what it was asked, what it said, its calls and wh
   await app.waitUntil(() => !app.shows("id:subagent-foot"));
 });
 
+test("a running subagent's opened calls stay open while it is read again", async () => {
+  const app = await open("dialog");
+  await app.press("id:open-running");
+  await app.waitFor("id:subagent-prompt", { timeout: 10_000 });
+  await app.press("id:command-summary");
+  await app.waitFor("id:command-card");
+  await app.press("id:command-line");
+  await app.waitFor("id:command-output");
+  expect(app.texts()).toContain(t.project.taskCalls(1));
+  // Each read is a new answer (every 1.5 s while it runs). By the second, the task's own row has changed
+  // too (its facts count 3 calls); by the third, `pnpm build` has ended and joins the open list.
+  await app.waitUntil(() => app.texts().includes(t.project.taskCalls(2)), { timeout: 8_000 });
+  expect(app.texts().some((line) => line.includes(t.project.taskCalls(3)))).toBe(true);
+  expect(app.count("id:command-row")).toBe(2);
+  expect(app.shows("id:command-card")).toBe(true);
+  expect(app.shows("id:command-output")).toBe(true);
+  expect(app.texts().some((line) => line.includes("notes/sales.csv"))).toBe(true);
+});
+
 test("a subagent that is done keeps no foot, and one that cannot be read says so", async () => {
   const app = await open("dialog");
   await app.press("id:open-done");
