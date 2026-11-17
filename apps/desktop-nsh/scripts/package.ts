@@ -39,7 +39,7 @@
 import { spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { APP_ICON_FILE, DEV_APP_NAME, DEV_BUNDLE_ID, placeAppIcon } from "./dev-instance";
 import { minimumMacOS } from "./native-package";
 import { cargoPath, nshCli } from "./nsh-cli";
@@ -261,6 +261,19 @@ function ptyHelper(): string {
   return "";
 }
 
+/**
+ * A compressed disk image of `source`, sized from what it holds. Left to size itself from
+ * `-srcfolder`, hdiutil made the volume too small on a release runner (macos-26-arm64, 2026-11-17:
+ * "No space left on device" copying the daemon in), though the same build had fit that morning.
+ * The free space is printed first, so a runner whose own disk is full shows as that.
+ */
+function createDmg(volume: string, source: string, dmg: string): void {
+  const kb = Number(spawnSync("du", ["-sk", source], { encoding: "utf8" }).stdout.split("\t")[0]) || 0;
+  const mb = Math.ceil((kb * 1.25) / 1024) + 64;
+  console.log(`disk image: ${Math.round(kb / 1024)} MB in a ${mb} MB volume; ${spawnSync("df", ["-h", dirname(dmg)], { encoding: "utf8" }).stdout.trim().split("\n").pop()}`);
+  run("hdiutil", ["create", "-volname", volume, "-srcfolder", source, "-size", `${mb}m`, "-ov", "-format", "UDZO", dmg]);
+}
+
 /** The Developer ID identity to sign with: the environment's (release.yml), or this keychain's. */
 function developerIdentity(): string {
   if (process.env.APPLE_SIGNING_IDENTITY) return process.env.APPLE_SIGNING_IDENTITY;
@@ -368,7 +381,7 @@ function packageRelease() {
   run("ditto", [app, join(stage, `${RELEASE_APP_NAME}.app`)]);
   symlinkSync("/Applications", join(stage, "Applications"));
   const dmg = join(out, dmgName(version, triple));
-  run("hdiutil", ["create", "-volname", RELEASE_APP_NAME, "-srcfolder", stage, "-ov", "-format", "UDZO", dmg]);
+  createDmg(RELEASE_APP_NAME, stage, dmg);
   rmSync(stage, { recursive: true, force: true });
   if (identity !== "-") run("codesign", ["--force", "--sign", identity, "--timestamp", dmg]);
   if (notarize) notarizeAndStaple(dmg, notarize, out);
@@ -625,7 +638,7 @@ function packageDev() {
   if (identity !== "-") signArgs.push("--timestamp");
   run("codesign", [...signArgs, app]);
   console.log(run("codesign", ["--verify", "--strict", "--verbose=2", app]).trim());
-  run("hdiutil", ["create", "-volname", DEV_APP_NAME, "-srcfolder", app, "-ov", "-format", "UDZO", dmg]);
+  createDmg(DEV_APP_NAME, app, dmg);
   if (identity !== "-") run("codesign", ["--force", "--sign", identity, "--timestamp", dmg]);
   if (notarize) notarizeAndStaple(dmg, notarize, out);
   const gatekeeper = spawnSync("spctl", ["-a", "-vv", "-t", "exec", app], { encoding: "utf8" });
