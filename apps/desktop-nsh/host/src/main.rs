@@ -39,6 +39,10 @@ mod notify;
 mod press;
 #[cfg(target_os = "macos")]
 mod recorder;
+// Opus builds libopus from source (cmake): only where it records, Windows and Linux, so a Mac needs
+// no cmake for the shell; its tests run there (CI's Linux and Windows legs).
+#[cfg(any(windows, target_os = "linux"))]
+mod recorder_ogg;
 #[cfg(any(test, windows, target_os = "linux"))]
 mod recorder_pcm;
 #[cfg(any(windows, target_os = "linux"))]

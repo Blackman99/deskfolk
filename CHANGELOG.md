@@ -21,7 +21,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ### Voice input on Windows and Linux
 
-- The microphone button records on Windows and Linux again, as it did in the old app. A take lasts up to about 30 seconds there for now (the Mac's up to three minutes).
+- The microphone button records on Windows and Linux again, as it did in the old app. A take lasts up to three minutes there, as on the Mac.
 
 ### The native Mac app keeps its window's size, and its menus are whole again
 
