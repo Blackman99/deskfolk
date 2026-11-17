@@ -44,7 +44,7 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CWPSTRUCT, CallNextHookEx, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
     DispatchMessageW, GetMessageW, GetSystemMetrics, GetWindowThreadProcessId, HICON, IDI_APPLICATION, IMAGE_ICON,
-    IsIconic, KillTimer, LR_LOADFROMFILE, LoadIconW, LoadImageW, MENUITEMINFOW, MF_SEPARATOR, MF_STRING, MIIM_BITMAP,
+    IsIconic, KillTimer, LR_LOADFROMFILE, LoadIconW, LoadImageW, MENUITEMINFOW, MF_GRAYED, MF_SEPARATOR, MF_STRING, MIIM_BITMAP,
     MSG, PostMessageW, RegisterClassExW, RegisterWindowMessageW, SM_CXSMICON, SM_MENUDROPALIGNMENT, SW_RESTORE,
     SW_SHOW, SetForegroundWindow, SetMenuItemInfoW, SetTimer, SetWindowsHookExW, ShowWindowAsync, TPM_BOTTOMALIGN,
     TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTALIGN, TPM_RIGHTBUTTON, TrackPopupMenuEx, TranslateMessage, WH_CALLWNDPROC,
@@ -70,6 +70,7 @@ const LOOK_EVERY_MS: u32 = 100;
 const SHOW: usize = 1;
 const ALL_USAGE: usize = 2;
 const QUIT: usize = 3;
+const STOP_ALL: usize = 4;
 
 /// What the icon needs from the shell, set once before its thread starts.
 struct Setup {
@@ -389,6 +390,10 @@ fn open_menu(window: HWND, at: POINT) {
         separator();
     }
     item(SHOW, &format!("Show {name}"));
+    // "Stop Everything" (`stop_all.rs`), greyed while the runtime does not answer, as in the Tauri tray.
+    let stop_flags = if crate::stop_all::available() { MF_STRING } else { MF_STRING | MF_GRAYED };
+    // SAFETY: as above; the text is copied.
+    let _ = unsafe { AppendMenuW(menu, stop_flags, STOP_ALL, &HSTRING::from("Stop Everything")) };
     separator();
     item(QUIT, &format!("Quit {name}"));
     // SAFETY: a plain query.
@@ -410,6 +415,7 @@ fn open_menu(window: HWND, at: POINT) {
         SHOW => show_window(),
         ALL_USAGE => show_usage(),
         QUIT => quit(),
+        STOP_ALL => crate::stop_all::request(),
         _ => {}
     }
 }

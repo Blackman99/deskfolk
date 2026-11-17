@@ -71,17 +71,9 @@ pub fn sync(endpoint: crate::endpoint::Endpoint) {
         return;
     }
     std::thread::spawn(move || {
-        let now = crate::endpoint::fresh(&endpoint);
-        let read = ureq::get(&format!("{}/v1/settings", now.origin))
-            .set("Authorization", &format!("Bearer {}", now.token))
-            .timeout(std::time::Duration::from_secs(10))
-            .call();
-        let wanted = match read.ok().and_then(|answer| answer.into_json::<serde_json::Value>().ok()) {
-            Some(settings) => settings["launch_at_login"].as_bool().unwrap_or(true),
-            None => {
-                log::warn!("launch at login left as it is: the settings did not answer");
-                return;
-            }
+        let Some(wanted) = crate::endpoint::launch_at_login_setting(&endpoint) else {
+            log::warn!("launch at login left as it is: the settings did not answer");
+            return;
         };
         match set(wanted) {
             Ok(now) => log::info!("launch at login {}", if now { "on" } else { "off" }),

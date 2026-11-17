@@ -11,8 +11,8 @@ use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, ProtocolObject, Sel}
 use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2::{AllocAnyThread, Message};
 use objc2_app_kit::{
-    NSAlert, NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSControlStateValueOn, NSEventModifierFlags,
-    NSImage, NSMenu, NSMenuItem, NSStatusBar, NSStatusItem, NSWorkspace,
+    NSAlert, NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSControlStateValueOn, NSEventMask,
+    NSEventModifierFlags, NSEventType, NSImage, NSMenu, NSMenuItem, NSStatusBar, NSStatusItem, NSWorkspace,
 };
 use objc2_foundation::{NSBundle, NSNotification, NSString, NSURL};
 
@@ -22,6 +22,44 @@ thread_local! {
     static CONFIG: OnceCell<Config> = const { OnceCell::new() };
     static DELEGATE: OnceCell<Retained<Delegate>> = const { OnceCell::new() };
     static TRAY: OnceCell<Retained<NSStatusItem>> = const { OnceCell::new() };
+    /// The menu bar extra's menu: opened by a right click (or a control-click), a left click
+    /// showing the window instead, as in the Tauri tray.
+    static TRAY_MENU: OnceCell<Retained<NSMenu>> = const { OnceCell::new() };
+}
+
+/// The menu bar's workbench commands, by the ids the app runs them by (`workbench-commands.ts`
+/// `MENU_COMMANDS`, `shell-workbench`'s `runMenuCommand`); an item's tag is its index here. They go
+/// to the window in front, as the Tauri menu's did.
+const PANE_COMMANDS: &[&str] = &["view-spend", "pane-split-right", "pane-split-down", "pane-close", "pane-equalise", "pane-reset", "pane-close-tab"];
+
+fn pane_command_tag(id: &str) -> isize {
+    PANE_COMMANDS.iter().position(|c| *c == id).expect("a known pane command") as isize
+}
+
+/// Whether the Apple event being handled is the system's at login: a login item's open (`oapp`),
+/// or its reopen (`rapp`) of a copy already running, carries `keyAELaunchedAsLogInItem` (`'lgit'`)
+/// as its `keyAEPropData`. `SMAppService` cannot pass the Tauri app's `--hidden`, so this is how a
+/// login launch keeps to the menu bar here.
+fn launched_at_login() -> bool {
+    const OPEN_APPLICATION: u32 = u32::from_be_bytes(*b"oapp");
+    const REOPEN_APPLICATION: u32 = u32::from_be_bytes(*b"rapp");
+    const PROP_DATA: u32 = u32::from_be_bytes(*b"prdt");
+    const LAUNCHED_AS_LOGIN_ITEM: u32 = u32::from_be_bytes(*b"lgit");
+    let manager = objc2_foundation::NSAppleEventManager::sharedAppleEventManager();
+    let Some(event) = manager.currentAppleEvent() else { return false };
+    // SAFETY: plain getters of a descriptor AppKit handed out; the codes are FourCharCodes (u32).
+    // (Sent by name: objc2-foundation types these through CoreServices, which this crate leaves out.)
+    unsafe {
+        let id: u32 = msg_send![&*event, eventID];
+        if id != OPEN_APPLICATION && id != REOPEN_APPLICATION {
+            return false;
+        }
+        let param: Option<Retained<objc2_foundation::NSAppleEventDescriptor>> = msg_send![&*event, paramDescriptorForKeyword: PROP_DATA];
+        param.is_some_and(|param| {
+            let code: u32 = msg_send![&*param, enumCodeValue];
+            code == LAUNCHED_AS_LOGIN_ITEM
+        })
+    }
 }
 
 define_class!(
@@ -36,8 +74,13 @@ define_class!(
         #[unsafe(method(applicationDidFinishLaunching:))]
         fn did_finish_launching(&self, _notification: &NSNotification) {
             let mtm = self.mtm();
-            // A login launch (`--hidden`) keeps to the menu bar until the Dock or the menu asks.
-            if !CONFIG.with(|c| c.get().is_some_and(|config| config.hidden)) {
+            // A login launch (`--hidden`, or the system's login item) keeps to the menu bar until
+            // the Dock or the menu asks.
+            let at_login = launched_at_login();
+            if at_login {
+                log::info!("launched at login: keeping to the menu bar");
+            }
+            if !at_login && !CONFIG.with(|c| c.get().is_some_and(|config| config.hidden)) {
                 new_window(mtm);
             }
             crate::wheel::install(mtm);
@@ -69,7 +112,9 @@ define_class!(
 
         #[unsafe(method(applicationShouldHandleReopen:hasVisibleWindows:))]
         fn reopen(&self, _app: &NSApplication, visible: bool) -> bool {
-            if !visible {
+            // A second login item (the Tauri app's, if it is still among the login items) reaches
+            // a running copy as a reopen: that one keeps to the menu bar too.
+            if !visible && !launched_at_login() {
                 show(self.mtm());
             }
             true
@@ -78,6 +123,7 @@ define_class!(
         #[unsafe(method(applicationWillTerminate:))]
         fn will_terminate(&self, _notification: &NSNotification) {
             crate::notification_loop::state().stop();
+            crate::window::remember_newest_size();
             crate::window::stop_all();
             crate::remote_native::stop_helper();
             crate::runtime::stop();
@@ -93,6 +139,45 @@ define_class!(
         #[unsafe(method(showWindow:))]
         fn show_window_action(&self, _sender: Option<&AnyObject>) {
             show(self.mtm());
+        }
+
+        /// The menu bar menu's "Stop Everything" (`stop_all.rs`).
+        #[unsafe(method(stopAll:))]
+        fn stop_all_action(&self, _sender: Option<&AnyObject>) {
+            crate::stop_all::request();
+        }
+
+        /// The menu bar's workbench commands (`PANE_COMMANDS`, by the item's tag), to the window in
+        /// front. Close Tab (⌘W) closes the tab in front of you, and once there is none left the app
+        /// hides the window; a window that is not the app's (the About panel) just closes.
+        #[unsafe(method(paneCommand:))]
+        fn pane_command_action(&self, sender: Option<&AnyObject>) {
+            let tag = sender.and_then(|s| s.downcast_ref::<NSMenuItem>()).map(|item| item.tag());
+            let Some(id) = tag.and_then(|t| usize::try_from(t).ok()).and_then(|t| PANE_COMMANDS.get(t)) else { return };
+            run_pane_command(self.mtm(), id);
+        }
+
+        /// The menu bar extra: a left click shows the window, a right click (or a control-click)
+        /// opens the menu, as the Tauri tray did.
+        #[unsafe(method(trayClicked:))]
+        fn tray_clicked(&self, _sender: Option<&AnyObject>) {
+            let mtm = self.mtm();
+            let event = NSApplication::sharedApplication(mtm).currentEvent();
+            let wants_menu = event.is_some_and(|event| {
+                event.r#type() == NSEventType::RightMouseUp || event.modifierFlags().contains(NSEventModifierFlags::Control)
+            });
+            if wants_menu {
+                open_tray_menu(mtm);
+            } else {
+                show(mtm);
+            }
+        }
+
+        /// "Stop Everything" can be chosen while the runtime answers, as in the Tauri tray.
+        #[unsafe(method(validateMenuItem:))]
+        fn validate_menu_item(&self, item: &NSMenuItem) -> objc2::runtime::Bool {
+            let enabled = item.action() != Some(sel!(stopAll:)) || crate::stop_all::available();
+            objc2::runtime::Bool::new(enabled)
         }
 
         /// The menu bar menu's "查看全部用量…": a window forward, and its usage tab open. The app
@@ -128,8 +213,8 @@ pub fn run(config: Config) -> std::process::ExitCode {
     text_like_the_messenger();
     let watch = config.watch.then(|| config.bundle.clone());
     let snapshots = config.snapshots.clone();
-    // A packaged build joins the login items on launch (`register_login_item`); a dev build never.
-    crate::login_item::register_on_launch(&crate::dev_build::Identity::from_config(&config));
+    // A packaged build's login item follows the setting (`login_item.rs`); a dev build's never.
+    crate::login_item::sync_on_launch(&crate::dev_build::Identity::from_config(&config), config.endpoint.clone());
     CONFIG.with(|c| {
         let _ = c.set(config);
     });
@@ -149,6 +234,7 @@ pub fn run(config: Config) -> std::process::ExitCode {
     app.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
     app.setMainMenu(Some(&main_menu(mtm, &delegate)));
     let data_dir = CONFIG.with(|c| c.get().map(|config| config.data_dir.clone()));
+    crate::stop_all::watch();
     TRAY.with(|t| {
         let _ = t.set(tray(mtm, &delegate, data_dir));
     });
@@ -161,9 +247,8 @@ pub fn run(config: Config) -> std::process::ExitCode {
     if let Some(dir) = snapshots {
         watch_snapshot_requests(dir);
     }
-    if !background() {
-        app.activate();
-    }
+    // A login launch stays in the background (`applicationDidFinishLaunching` tells); a window
+    // that opens activates the app itself (`new_window`).
     app.run();
     std::process::ExitCode::SUCCESS
 }
@@ -259,8 +344,13 @@ fn main_menu(mtm: MainThreadMarker, delegate: &Delegate) -> Retained<NSMenu> {
     let redo = item(mtm, "Redo", Some(sel!(redo:)), "z");
     redo.setKeyEquivalentModifierMask(NSEventModifierFlags::Command | NSEventModifierFlags::Shift);
     let name = crate::config::APP_NAME;
+    let hide_others = item(mtm, "Hide Others", Some(sel!(hideOtherApplications:)), "h");
+    hide_others.setKeyEquivalentModifierMask(NSEventModifierFlags::Command | NSEventModifierFlags::Option);
     submenu(mtm, &bar, name, &[
+        item(mtm, &format!("About {name}"), Some(sel!(orderFrontStandardAboutPanel:)), ""),
+        NSMenuItem::separatorItem(mtm),
         item(mtm, &format!("Hide {name}"), Some(sel!(hide:)), "h"),
+        hide_others,
         NSMenuItem::separatorItem(mtm),
         item(mtm, &format!("Quit {name}"), Some(sel!(terminate:)), "q"),
     ]);
@@ -274,9 +364,30 @@ fn main_menu(mtm: MainThreadMarker, delegate: &Delegate) -> Retained<NSMenu> {
         item(mtm, "Paste", Some(sel!(paste:)), "v"),
         item(mtm, "Select All", Some(sel!(selectAll:)), "a"),
     ]);
+    // The Tauri app's View menu: the workbench's commands, with ⌘\ and ⌘⇧\ for the splits.
+    let command = |title: &str, id: &str, key: &str| {
+        let it = targeted(mtm, title, sel!(paneCommand:), key, delegate);
+        it.setTag(pane_command_tag(id));
+        it
+    };
+    let split_down = command("Split Down", "pane-split-down", "\\");
+    split_down.setKeyEquivalentModifierMask(NSEventModifierFlags::Command | NSEventModifierFlags::Shift);
+    submenu(mtm, &bar, "View", &[
+        command("Spend", "view-spend", ""),
+        NSMenuItem::separatorItem(mtm),
+        command("Split Right", "pane-split-right", "\\"),
+        split_down,
+        NSMenuItem::separatorItem(mtm),
+        command("Close Pane", "pane-close", ""),
+        command("Equalise", "pane-equalise", ""),
+        command("Reset Layout", "pane-reset", ""),
+    ]);
+    // ⌘W closes the tab in front of you; the window hides once there is none left (the app asks,
+    // `hide_main_window`), as in the Tauri app. Closing the whole window is its close button.
     submenu(mtm, &bar, "Window", &[
         item(mtm, "Minimize", Some(sel!(performMiniaturize:)), "m"),
-        item(mtm, "Close", Some(sel!(performClose:)), "w"),
+        NSMenuItem::separatorItem(mtm),
+        command("Close Tab", "pane-close-tab", "w"),
     ]);
     bar
 }
@@ -300,9 +411,21 @@ fn tray(mtm: MainThreadMarker, delegate: &Delegate, data_dir: Option<PathBuf>) -
     let name = crate::config::APP_NAME;
     menu.addItem(&targeted(mtm, &format!("Show {name}"), sel!(showWindow:), "", delegate));
     menu.addItem(&targeted(mtm, "New Window", sel!(newWindow:), "", delegate));
+    menu.addItem(&targeted(mtm, "Stop Everything", sel!(stopAll:), "", delegate));
     menu.addItem(&NSMenuItem::separatorItem(mtm));
     menu.addItem(&item(mtm, &format!("Quit {name}"), Some(sel!(terminate:)), ""));
-    status.setMenu(Some(&menu));
+    // No menu on the item itself: a left click shows the window, a right click opens this one
+    // (`trayClicked:`).
+    if let Some(button) = status.button(mtm) {
+        unsafe {
+            button.setTarget(Some(delegate));
+            button.setAction(Some(sel!(trayClicked:)));
+        }
+        button.sendActionOn(NSEventMask::LeftMouseUp | NSEventMask::RightMouseUp);
+    }
+    TRAY_MENU.with(|m| {
+        let _ = m.set(menu.clone());
+    });
     if let Some(data_dir) = data_dir {
         let target: Retained<NSObject> = Retained::into_super(delegate.retain());
         crate::usage_tray::start(menu.clone(), target, data_dir);
@@ -320,9 +443,61 @@ fn tray(mtm: MainThreadMarker, delegate: &Delegate, data_dir: Option<PathBuf>) -
 /// Development checks: `tray` logs the menu bar menu's items, each with whether it wears an icon;
 /// `tray <title>` then picks the first item whose title starts with `title`, as a click would. The
 /// menu is never opened on the screen.
-fn tray_request(mtm: MainThreadMarker, title: &str) {
+/// Menu command `id` to the window in front: the key window when it is the app's; a panel in front
+/// (the About window) is closed by Close Tab and leaves the rest to the newest window; with no
+/// window of the app's open, one comes forward for any command but Close Tab (the app keeps an
+/// event until it listens, so a window opened just now gets it).
+fn run_pane_command(mtm: MainThreadMarker, id: &str) {
+    let key = NSApplication::sharedApplication(mtm).keyWindow();
+    match key {
+        Some(window) if crate::window::is_ours(&window) => {
+            crate::window::send_event(&window, "tauri.event.pane-command", serde_json::json!(id));
+        }
+        Some(window) if id == "pane-close-tab" => window.performClose(None),
+        _ if crate::window::any_open() => crate::window::send_to_newest("tauri.event.pane-command", serde_json::json!(id)),
+        _ if id == "pane-close-tab" => {}
+        _ => {
+            show(mtm);
+            crate::window::send_to_newest("tauri.event.pane-command", serde_json::json!(id));
+        }
+    }
+}
+
+/// Development checks: `menu <title>` picks the menu bar item whose title starts with `title`, in
+/// any of its menus, as a click would (`tray` does the same for the menu bar extra).
+fn menu_request(mtm: MainThreadMarker, title: &str) {
+    let Some(bar) = NSApplication::sharedApplication(mtm).mainMenu() else { return };
+    for top in bar.itemArray().iter() {
+        let Some(menu) = top.submenu() else { continue };
+        let items = menu.itemArray();
+        if let Some(index) = items.iter().position(|item| !title.is_empty() && item.title().to_string().starts_with(title)) {
+            log::info!("menu: {} › {}", top.title(), items.objectAtIndex(index).title());
+            menu.performActionForItemAtIndex(index as isize);
+            return;
+        }
+    }
+    log::warn!("menu: no item starts with {title}");
+}
+
+/// Opens the menu bar extra's menu under its item, as a click on an item with a menu would.
+fn open_tray_menu(mtm: MainThreadMarker) {
     TRAY.with(|t| {
-        let Some(menu) = t.get().and_then(|status| status.menu(mtm)) else {
+        let Some(status) = t.get() else { return };
+        let Some(menu) = TRAY_MENU.with(|m| m.get().cloned()) else { return };
+        // The documented way to open a status item's menu from its action: lend it the menu for
+        // the click, then take it back so the next left click is the item's own again.
+        status.setMenu(Some(&menu));
+        if let Some(button) = status.button(mtm) {
+            // SAFETY: the item's own button, on the main thread.
+            unsafe { button.performClick(None) };
+        }
+        status.setMenu(None);
+    });
+}
+
+fn tray_request(_mtm: MainThreadMarker, title: &str) {
+    TRAY.with(|_| {
+        let Some(menu) = TRAY_MENU.with(|m| m.get().cloned()) else {
             log::warn!("tray: no menu");
             return;
         };
@@ -362,7 +537,8 @@ fn watch_bundle(path: PathBuf) {
 /// Development checks: `<dir>/request` asks the shell for something, by its first line: empty for
 /// a picture of every window, `new-window`, `badge <label>` (empty clears), `notify <text>`,
 /// `wheel <x> <y> <dy> [ctrl]`, `resize <w> <h> [steps] [ms]`, `drag <x0> <y0> <x1> <y1> [steps] [ms]`,
-/// `keys <text>`, `chord <keystroke>`, `compose [text]`, `commit <text>`, `tray [title]`, `quit`.
+/// `keys <text>`, `chord <keystroke>`, `compose [text]`, `commit <text>`, `tray [title]`, `menu <title>`,
+/// `quit`.
 fn watch_snapshot_requests(dir: PathBuf) {
     let _ = std::fs::create_dir_all(&dir);
     std::thread::spawn(move || {
@@ -389,6 +565,7 @@ fn watch_snapshot_requests(dir: PathBuf) {
                     ("compose", text) => crate::window::compose_first(text, false),
                     ("commit", text) => crate::window::compose_first(text, true),
                     ("tray", title) => tray_request(mtm, title),
+                    ("menu", title) => menu_request(mtm, title),
                     // Quits as the menu's Quit does, so `applicationWillTerminate` stops the runtime
                     // (`scripts/package.ts --smoke`).
                     ("quit", _) => NSApplication::sharedApplication(mtm).terminate(None),

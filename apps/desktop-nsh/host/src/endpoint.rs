@@ -120,6 +120,28 @@ pub fn fresh(fallback: &Endpoint) -> Endpoint {
     DATA_DIR.get().and_then(|dir| read(dir).ok()).unwrap_or_else(|| fallback.clone())
 }
 
+/// The `launch_at_login` setting (on unless turned off), read from the runtime once it answers:
+/// a release's start makes launch at login follow it (`win_login.rs`, `login_item.rs`). It tries for
+/// a minute, the runtime starting meanwhile; `None` when it never answered.
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
+pub fn launch_at_login_setting(fallback: &Endpoint) -> Option<bool> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    loop {
+        let now = fresh(fallback);
+        let read = ureq::get(&format!("{}/v1/settings", now.origin))
+            .set("Authorization", &format!("Bearer {}", now.token))
+            .timeout(std::time::Duration::from_secs(10))
+            .call();
+        if let Some(settings) = read.ok().and_then(|answer| answer.into_json::<serde_json::Value>().ok()) {
+            return Some(settings["launch_at_login"].as_bool().unwrap_or(true));
+        }
+        if std::time::Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

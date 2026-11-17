@@ -3,8 +3,12 @@
 //! login item). Here it is the system's own `SMAppService.mainAppService`: the running `.app`
 //! registered as a login item (macOS 13+). A dev build answers `false` and changes nothing.
 //!
-//! `SMAppService` cannot pass arguments, so a login launch opens the window; the Tauri app's
-//! `--hidden` start-to-tray has no counterpart here yet.
+//! `SMAppService` cannot pass arguments: a login launch knows itself by its Apple event instead
+//! (`app.rs`, `launched_at_login`) and keeps to the menu bar, as the Tauri app's `--hidden` did.
+//!
+//! A release's start makes the item follow the `launch_at_login` setting (on unless turned off),
+//! as the Windows shell does (`win_login.rs`): registering on every launch would bring back an item
+//! you had turned off in the settings.
 
 use objc2::msg_send;
 use objc2::rc::Retained;
@@ -74,12 +78,22 @@ pub fn set_with(dev: bool, enabled: bool, item: &dyn LoginItem) -> Result<bool, 
     Ok(item.enabled())
 }
 
-/// The first launch of a packaged build puts the app among the login items (`register_login_item`).
-pub fn register_on_launch(id: &Identity) {
+/// A packaged build's start: the login item follows the setting, read from the runtime once it
+/// answers. On a thread of its own: it waits on the network.
+pub fn sync_on_launch(id: &Identity, endpoint: crate::endpoint::Endpoint) {
     if id.is_dev() {
         return;
     }
-    let _ = MainApp.register();
+    std::thread::spawn(move || {
+        let Some(wanted) = crate::endpoint::launch_at_login_setting(&endpoint) else {
+            log::warn!("launch at login left as it is: the settings did not answer");
+            return;
+        };
+        match set_with(false, wanted, &MainApp) {
+            Ok(now) => log::info!("launch at login {}", if now { "on" } else { "off" }),
+            Err(why) => log::warn!("launch at login: {why}"),
+        }
+    });
 }
 
 #[cfg(test)]

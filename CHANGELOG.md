@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The native Mac app keeps its window's size, and its menus are whole again
+
+- A window opens at the size the last one had, maximized if it was; the first time, at the size the old app last had. It goes down to 640 × 480 points.
+- ⌘W closes the tab in front of you, as it did in the old app, and puts the window away once no tab is left. It used to close the whole window.
+- The View menu is back: Spend, Split Right (`⌘\`), Split Down (`⌘⇧\`), Close Pane, Equalise and Reset Layout. The app menu has About and Hide Others again.
+- A click on the menu bar icon shows the window; a right click opens its menu. The menu has Stop Everything again, as the old app's did: it pauses every plan and ends the turns that are running, and your next line to a Bot lets that Bot go on. It can be chosen while the runtime answers. The Windows tray menu has it too.
+- Started at login, the app stays in the menu bar instead of opening a window. Launch at login now follows its setting: an app you had taken off the login items is no longer put back at every start.
+
 ### Pairing a phone and choosing a folder wait as long as you need, in the native app
 
 - Pairing or removing a phone, its Touch ID check and the folder picker stopped waiting after 30 seconds and reported a failure while you were still looking. They now wait as the old app did.

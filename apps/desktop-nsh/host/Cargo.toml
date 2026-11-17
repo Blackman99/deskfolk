@@ -50,6 +50,7 @@ dispatch2.workspace = true
 objc2-foundation = { workspace = true, features = [
     "NSString", "NSArray", "NSDictionary", "NSError", "NSBundle", "NSNotification", "NSGeometry",
     "NSObject", "NSURL", "NSProcessInfo", "NSRunLoop", "NSDate", "NSTimer", "NSData",
+    "NSAppleEventManager", "NSAppleEventDescriptor",
 ] }
 objc2-app-kit = { workspace = true, features = [
     "NSApplication", "NSWindow", "NSView", "NSResponder", "NSVisualEffectView", "NSMenu",

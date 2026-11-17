@@ -45,6 +45,7 @@ mod remote_setup;
 mod runtime;
 #[cfg(target_os = "macos")]
 mod snapshot;
+mod stop_all;
 #[cfg(target_os = "macos")]
 mod system;
 #[cfg(target_os = "macos")]
@@ -66,6 +67,8 @@ mod win_wheel;
 mod wheel;
 #[cfg(target_os = "macos")]
 mod window;
+#[cfg(target_os = "macos")]
+mod window_state;
 
 struct Logger;
 

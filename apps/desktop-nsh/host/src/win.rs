@@ -54,6 +54,7 @@ pub fn run(config: Config) -> std::process::ExitCode {
     let nsh_dir = config.data_dir.join("nsh");
     let icon = app_icon(&nsh_dir);
     // The icon in the notification area, with what is used of your plans (`win_tray.rs`).
+    crate::stop_all::watch();
     crate::win_tray::install(config.app_name.clone(), icon.clone(), host.clone(), config.data_dir.clone());
     let options = AppOptions {
         app_id: config.bundle_id.clone(),

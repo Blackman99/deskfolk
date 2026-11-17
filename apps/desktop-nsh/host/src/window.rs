@@ -4,7 +4,7 @@
 //! runtime itself, as every Tauri window ran its own page; nothing is shared in memory.
 
 use std::cell::{Cell, RefCell};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use nsh_engine::HostChannel;
@@ -33,6 +33,8 @@ thread_local! {
     static WINDOWS: RefCell<Vec<Entry>> = const { RefCell::new(Vec::new()) };
     static NEXT_ID: Cell<u32> = const { Cell::new(1) };
     static DELEGATE: RefCell<Option<Retained<Delegate>>> = const { RefCell::new(None) };
+    /// Where the windows' last size is kept (`window_state.rs`): set as the first window opens.
+    static SIZE_DIR: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
 
 define_class!(
@@ -53,6 +55,7 @@ define_class!(
                 Some(windows.remove(at))
             });
             if let Some(entry) = gone {
+                remember_size(&entry.window, true);
                 crate::traffic_lights::release(MainThreadMarker::from(self), &entry.window);
                 entry.view.stop();
                 log::info!("window {} closed", entry.id);
@@ -63,6 +66,23 @@ define_class!(
         fn window_did_resize(&self, notification: &NSNotification) {
             if let Some(window) = notification.object().and_then(|o| o.downcast::<NSWindow>().ok()) {
                 crate::traffic_lights::place(&window);
+                // Mid-drag AppKit cannot be asked whether the window is zoomed: answering it moves
+                // the window off the pointer. The drag's end asks.
+                remember_size(&window, !window.inLiveResize());
+            }
+        }
+
+        #[unsafe(method(windowDidEndLiveResize:))]
+        fn window_did_end_live_resize(&self, notification: &NSNotification) {
+            if let Some(window) = notification.object().and_then(|o| o.downcast::<NSWindow>().ok()) {
+                remember_size(&window, true);
+            }
+        }
+
+        #[unsafe(method(windowDidEnterFullScreen:))]
+        fn window_did_enter_full_screen(&self, notification: &NSNotification) {
+            if let Some(window) = notification.object().and_then(|o| o.downcast::<NSWindow>().ok()) {
+                remember_size(&window, true);
             }
         }
 
@@ -71,10 +91,44 @@ define_class!(
         fn window_did_exit_full_screen(&self, notification: &NSNotification) {
             if let Some(window) = notification.object().and_then(|o| o.downcast::<NSWindow>().ok()) {
                 crate::traffic_lights::keep(MainThreadMarker::from(self), &window);
+                remember_size(&window, true);
             }
         }
     }
 );
+
+/// Keeps `window`'s size for the next window (`window_state.rs`), unless it is in the Dock. `ask` is
+/// false while an edge is being dragged: the maximized flag then stays what it was.
+fn remember_size(window: &NSWindow, ask: bool) {
+    if window.isMiniaturized() {
+        return;
+    }
+    let Some(dir) = SIZE_DIR.with_borrow(|d| d.clone()) else { return };
+    let content = window.contentRectForFrameRect(window.frame()).size;
+    let zoomed = ask.then(|| window.isZoomed() || window.styleMask().contains(NSWindowStyleMask::FullScreen));
+    let previous = crate::window_state::load(&dir);
+    let size = crate::window_state::snapshot(content.width, content.height, zoomed, &previous);
+    if size != previous {
+        if let Err(why) = crate::window_state::save(&dir, &size) {
+            log::warn!("cannot keep the window's size: {why}");
+        }
+    }
+}
+
+/// Keeps the newest window's size: the app is quitting, and its windows close without telling.
+pub fn remember_newest_size() {
+    WINDOWS.with_borrow(|windows| {
+        if let Some(entry) = windows.last() {
+            remember_size(&entry.window, true);
+        }
+    });
+}
+
+/// The Tauri app's app data directory, where its `window-size.json` is (`window_state.rs`).
+fn tauri_size_dir(config: &Config) -> Option<PathBuf> {
+    let home = std::env::var_os("HOME").filter(|h| !h.is_empty())?;
+    Some(PathBuf::from(home).join("Library").join("Application Support").join(&config.bundle_id))
+}
 
 impl Delegate {
     fn shared(mtm: MainThreadMarker) -> Retained<Delegate> {
@@ -95,7 +149,11 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
         n.set(id + 1);
         id
     });
-    let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1100.0, 760.0));
+    // The last window's size, the Tauri app's before there is one of ours (`window_state.rs`).
+    let size_dir = crate::config::nsh_data_dir(&config.data_dir);
+    let size = crate::window_state::load_or_import(&size_dir, tauri_size_dir(config).as_deref());
+    SIZE_DIR.with_borrow_mut(|d| *d = Some(size_dir));
+    let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(size.width, size.height));
     let style = NSWindowStyleMask::Titled
         | NSWindowStyleMask::Closable
         | NSWindowStyleMask::Miniaturizable
@@ -114,7 +172,7 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
     window.setTitle(&NSString::from_str(&config.app_name));
     window.setTitleVisibility(NSWindowTitleVisibility::Hidden);
     window.setTitlebarAppearsTransparent(true);
-    window.setMinSize(NSSize::new(720.0, 480.0));
+    window.setContentMinSize(NSSize::new(crate::window_state::MIN_WIDTH, crate::window_state::MIN_HEIGHT));
 
     let (view, host) = make_view(mtm, config, id);
     let content = view.view();
@@ -166,6 +224,10 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
         window.orderFrontRegardless();
     } else {
         window.makeKeyAndOrderFront(None);
+    }
+    // A window that was maximized comes back zoomed (one in full screen too, as in the Tauri app).
+    if size.maximized && !window.isZoomed() {
+        window.zoom(None);
     }
     WINDOWS.with_borrow_mut(|w| w.push(Entry { id, window, view, host }));
     Some(id)
@@ -274,6 +336,16 @@ pub fn send_to_newest(name: &str, data: serde_json::Value) {
             let _ = entry.host.send(name, data);
         }
     });
+}
+
+/// Whether a window of the app's is open.
+pub fn any_open() -> bool {
+    WINDOWS.with_borrow(|windows| !windows.is_empty())
+}
+
+/// Whether `window` is one of the app's (not a panel, an alert or the About window).
+pub fn is_ours(window: &NSWindow) -> bool {
+    WINDOWS.with_borrow(|windows| windows.iter().any(|e| std::ptr::eq(&*e.window, window)))
 }
 
 /// Sends event `name` to the app in `window` (`host.on(name)`), if it is one of ours.
@@ -551,6 +623,7 @@ pub fn hide(id: u32) {
     WINDOWS.with_borrow(|windows| {
         if let Some(entry) = windows.iter().find(|e| e.id == id) {
             entry.window.orderOut(None);
+            log::info!("window {id} hidden: no tab left to close");
         }
     });
 }
