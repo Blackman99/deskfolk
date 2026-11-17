@@ -12,7 +12,7 @@ The Windows build is a fresh, experimental preview: it installs and runs, but a 
 
 From 0.5.0 the app is the native one ([ADR 0107](adr/0107-spike-native-desktop-on-nsh.md)): no web view, so it no longer needs the WebView2 runtime. Its installer goes over an earlier Deskfolk in the same folder (`%LOCALAPPDATA%\Deskfolk`), keeping its Start menu and desktop shortcuts, and leaves the data folder alone.
 
-To upgrade, run the newer installer. When About finds a new version it only opens the download in the browser; installing from inside the app is not there yet. The installer closes an open window first, and the daemon and the terminals it started end with it; if only a daemon from an earlier run is left, the installer stops that too, since a running file cannot be overwritten.
+To upgrade, run the newer installer; it goes into the folder Deskfolk is installed in. Launch at login (Settings › General) starts Deskfolk with its window hidden and its icon in the notification area; opening it again shows the window. When About finds a new version it only opens the download in the browser; installing from inside the app is not there yet. The installer closes an open window first, and the daemon and the terminals it started end with it; if only a daemon from an earlier run is left, the installer stops that too, since a running file cannot be overwritten.
 
 ## Where data and keys live
 

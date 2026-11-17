@@ -1,9 +1,10 @@
 ; The Windows installer of the native app (`scripts/package.ts --release` on Windows builds it with
-; makensis). It takes the Tauri app's place the way the Mac's dmg does: the same per-user folder
-; (%LOCALAPPDATA%\Deskfolk), the same uninstall entry (HKCU ...\Uninstall\Deskfolk, the key Tauri's
-; template writes), and the main program under the name that entry records (`MainBinaryName`), so
-; the Start menu and desktop shortcuts, a taskbar pin and the launch at login keep pointing at a
-; program that is there. The data folder (%LOCALAPPDATA%\real-bot) is never touched: conversations,
+; makensis). It takes the Tauri app's place the way the Mac's dmg does: the folder the uninstall
+; entry records (`InstallLocation`: the Tauri app let you pick one; %LOCALAPPDATA%\Deskfolk
+; otherwise), the same uninstall entry (HKCU ...\Uninstall\Deskfolk, the key Tauri's template
+; writes), and the main program under the name that entry records (`MainBinaryName`), so the Start
+; menu and desktop shortcuts, a taskbar pin and the launch at login keep pointing at a program that
+; is there. The data folder (%LOCALAPPDATA%\real-bot) is never touched: conversations,
 ; settings and keys carry on.
 ;
 ; makensis /DVERSION=<x.y.z> /DSTAGE=<folder with Deskfolk.exe, app\, native\> /DOUTFILE=<setup.exe>
@@ -71,6 +72,20 @@ Function .onInit
   ${If} $MainName == ""
     StrCpy $MainName "${DEFAULT_MAIN}"
   ${EndIf}
+  ; Where the earlier install is, unless /D named a folder: both Tauri's template and this one write
+  ; it in quotes.
+  ${If} $INSTDIR == "$LOCALAPPDATA\${PRODUCTNAME}"
+    ReadRegStr $0 HKCU "${UNINSTKEY}" "InstallLocation"
+    StrCpy $1 $0 1
+    ${If} $1 == '"'
+      StrCpy $0 $0 "" 1
+      StrCpy $0 $0 -1
+    ${EndIf}
+    ${If} $0 != ""
+    ${AndIf} ${FileExists} "$0\$MainName"
+      StrCpy $INSTDIR $0
+    ${EndIf}
+  ${EndIf}
 FunctionEnd
 
 Section "Install"
@@ -122,5 +137,7 @@ Section "Uninstall"
   RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\${PRODUCTNAME}.lnk"
   Delete "$DESKTOP\${PRODUCTNAME}.lnk"
+  ; Launch at login (`win_login.rs`; the Tauri app's autostart wrote the same value).
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
   DeleteRegKey HKCU "${UNINSTKEY}"
 SectionEnd

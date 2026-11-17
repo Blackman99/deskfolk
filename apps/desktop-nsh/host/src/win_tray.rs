@@ -242,6 +242,10 @@ fn add() {
 }
 
 /// Takes the icon off the notification area, once. Any thread.
+pub fn remove_icon() {
+    remove();
+}
+
 fn remove() {
     if ADDED.swap(false, Ordering::SeqCst) {
         notify(NIM_DELETE, &data());

@@ -312,22 +312,25 @@ jobs:
             choco install nsis -y --no-progress
           fi
 
-      # The installer of the latest release, for the smoke to install first and go over: what
-      # every Windows install will meet (for 0.5.0, the Tauri app's).
-      - name: The latest release's installer
+      # The installers the smoke installs first and goes over: the latest release's, and 0.4.0's,
+      # the last Tauri app, which installs that never took 0.5.0 still have.
+      - name: Earlier installers
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p "$RUNNER_TEMP/previous"
-          gh release download --repo "$GITHUB_REPOSITORY" --pattern '*_x64-setup.exe' --dir "$RUNNER_TEMP/previous" || true
-          ls -la "$RUNNER_TEMP/previous"
+          mkdir -p "$RUNNER_TEMP/previous/latest" "$RUNNER_TEMP/previous/tauri"
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern '*_x64-setup.exe' --dir "$RUNNER_TEMP/previous/latest" || true
+          gh release download v0.4.0 --repo "$GITHUB_REPOSITORY" --pattern '*_x64-setup.exe' --dir "$RUNNER_TEMP/previous/tauri" || true
+          ls -la "$RUNNER_TEMP"/previous/*
 
-      # Installed silently over that one, launched with its own daemon, closed, uninstalled (`--smoke`).
+      # Installed silently over each of them in turn (each in a folder of its own choosing), launched
+      # at login's way with its own daemon, launched again, closed, uninstalled (`--smoke`).
       - name: Package and check the installer
         run: |
-          previous=("$RUNNER_TEMP"/previous/*_x64-setup.exe)
           upgrade=()
-          [ -f "${previous[0]}" ] && upgrade=(--upgrade-from "${previous[0]}")
+          for previous in "$RUNNER_TEMP"/previous/*/*_x64-setup.exe; do
+            [ -f "$previous" ] && upgrade+=(--upgrade-from "$previous")
+          done
           bun apps/desktop-nsh/scripts/package.ts --release --smoke "${upgrade[@]}" --out "$RUNNER_TEMP/deskfolk"
 
       - uses: actions/upload-artifact@v4

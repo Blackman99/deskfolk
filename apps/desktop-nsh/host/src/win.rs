@@ -36,17 +36,19 @@ const APP_ICON: &[u8] = include_bytes!("../../../desktop/src-tauri/icons/icon.ic
 pub fn run(config: Config) -> std::process::ExitCode {
     // Once, before the first view: what the app's TSX may import, NSH's and the app's own crate.
     set_ui_sets(vec![nsh_base::registry(), deskfolk_app_native::registry()]);
-    let bundle = match read_bundle(&config.bundle) {
+    let bundle = match read_bundle(&config.bundle, config.hidden) {
         Ok(bundle) => bundle,
         Err(why) => {
             eprintln!("deskfolk-nsh: {why}");
-            crate::runtime::stop();
+            crate::runtime::stop_started();
             return std::process::ExitCode::FAILURE;
         }
     };
     let host = crate::launch::channel(&config, 1);
-    // A release looks after the daemon inside it from here on (a dev build's does nothing).
+    // A release looks after the daemon inside it from here on, and launches at login as the
+    // settings say (a dev build's do nothing).
     crate::runtime::supervise(config.data_dir.clone());
+    crate::win_login::sync(config.endpoint.clone());
     // The wheel for the views that zoom or scroll themselves (`win_wheel.rs`).
     crate::win_wheel::install(host.clone());
     let nsh_dir = config.data_dir.join("nsh");
@@ -63,13 +65,20 @@ pub fn run(config: Config) -> std::process::ExitCode {
         asset_base: config.bundle.parent().map(|dir| AssetBase::Directory(dir.join("assets"))),
         host,
         fps: config.fps,
+        // One copy of the release at a time, as the Tauri app was: a later launch (the Start menu
+        // while the login launch waits in the notification area) shows that one's window and ends.
+        single_instance: crate::config::RELEASE,
         ..AppOptions::default()
     };
     // NSH's runner: DPI awareness, OLE, the window made with the options above, its message loop.
     // It ends the process itself when the window goes and does not return here: the runtime is
-    // stopped as the window is destroyed (`win_tray.rs`), and the line after it is a fallback.
+    // stopped as the window is destroyed (`win_tray.rs`). It returns only when this launch handed
+    // itself to the copy already running (`single_instance`), whose runtime this one must leave
+    // alone: only one this process started is stopped, and the notification area icon it put up
+    // is taken down.
     let code = nsh_platform_windows::run_app(AppSource::Bundle(bundle), options);
-    crate::runtime::stop();
+    crate::win_tray::remove_icon();
+    crate::runtime::stop_started();
     code
 }
 
@@ -155,10 +164,21 @@ fn app_icon(dir: &Path) -> Option<PathBuf> {
     Some(path)
 }
 
-fn read_bundle(path: &Path) -> Result<Bundle, String> {
+fn read_bundle(path: &Path, hidden: bool) -> Result<Bundle, String> {
     // SAFETY: the bundle is this app's own build output (`nsh build`), named on our command line.
     let bundle = unsafe { Bundle::read_trusted(path) }.map_err(|e| format!("cannot read bundle {}: {e}", path.display()))?;
-    Ok(bundle.with_main_window(Some(&main_window(has_material()).to_string())))
+    Ok(bundle.with_main_window(Some(&launch_window(has_material(), hidden).to_string())))
+}
+
+/// [`main_window`], made at the login launch (`--hidden`) with the window unseen: it is made and the
+/// app runs in it until the notification area icon, the Start menu or a second launch shows it
+/// (`nsh.json` `window.defaultVisible: false`, NSH's tray apps).
+fn launch_window(material: bool, hidden: bool) -> serde_json::Value {
+    let mut window = main_window(material);
+    if hidden {
+        window["defaultVisible"] = json!(false);
+    }
+    window
 }
 
 /// The main window's launch options on Windows (`nsh.json` `"window"`'s shape).
@@ -250,6 +270,16 @@ mod tests {
         for material in [true, false] {
             assert!(nsh_core::desktop::MainWindowOptions::from_json(&main_window(material)).is_ok());
         }
+    }
+
+    #[test]
+    fn the_login_launch_makes_the_window_unseen() {
+        let hidden = launch_window(true, true);
+        assert_eq!(hidden["defaultVisible"], false);
+        let options = nsh_core::desktop::MainWindowOptions::from_json(&hidden).expect("NSH reads it");
+        assert!(!options.visible_at_launch());
+        let shown = nsh_core::desktop::MainWindowOptions::from_json(&launch_window(true, false)).expect("NSH reads it");
+        assert!(shown.visible_at_launch());
     }
 
     #[test]

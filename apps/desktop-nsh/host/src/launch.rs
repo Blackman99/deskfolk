@@ -79,8 +79,18 @@ fn install_portable(host: &HostChannel) {
             Err(why) => call.reject(why),
         });
     });
+    // Windows: the `Run` value the Tauri app's autostart wrote (`win_login.rs`).
+    #[cfg(windows)]
+    host.handle("tauri.set_launch_at_login", |call: HostCall| {
+        let enabled = call.data()["enabled"].as_bool().unwrap_or(false);
+        match crate::win_login::set(enabled) {
+            Ok(now) => call.resolve(json!(now)),
+            Err(why) => call.reject(why),
+        }
+    });
     #[cfg(not(target_os = "macos"))]
     {
+        #[cfg(not(windows))]
         host.handle("tauri.set_launch_at_login", |call: HostCall| call.resolve(json!(false)));
         host.handle("tauri.can_install_update", |call: HostCall| call.resolve(json!(false)));
         host.handle("tauri.update_install_state", |call: HostCall| call.resolve(idle_install_state()));

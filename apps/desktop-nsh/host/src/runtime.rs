@@ -322,6 +322,14 @@ pub fn stop() {
     }
 }
 
+/// Stops only a runtime this process started, and leaves one another copy of the app runs (a launch
+/// that handed itself to the copy already running, `win.rs`).
+pub fn stop_started() {
+    if CHILD.lock().unwrap_or_else(|p| p.into_inner()).is_some() {
+        stop();
+    }
+}
+
 /// `POST /v1/runtime/quit` to the runtime of this shell's data directory, if one of ours answers.
 fn post_quit() {
     let Some(data_dir) = endpoint::data_dir() else { return };

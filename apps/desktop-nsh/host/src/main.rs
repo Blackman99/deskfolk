@@ -57,6 +57,8 @@ mod usage_tray;
 #[cfg(windows)]
 mod win;
 #[cfg(windows)]
+mod win_login;
+#[cfg(windows)]
 mod win_tray;
 #[cfg(windows)]
 mod win_wheel;

@@ -27,8 +27,8 @@
  * signed `native/` folder instead of building one (a quick local package). `--smoke` launches the
  * packaged release with its own daemon on a machine where no runtime answers yet (a CI runner): the
  * first snapshot, the daemon inside the app with its setup channel, a quit that stops it. On Windows
- * it installs the installer silently first (over `--upgrade-from <earlier setup.exe>`, installed
- * before it, when given) and uninstalls it at the end.
+ * it installs the installer silently first (over each `--upgrade-from <earlier setup.exe>` in turn,
+ * installed before it in a folder of its own, when given) and uninstalls it at the end.
  * `--measure` launches the packaged app that many times (in the background, never activated) and
  * prints the time from launch to its first snapshot and its memory footprint.
  */
@@ -469,6 +469,19 @@ function alive(pid: number): boolean {
   }
 }
 
+/** The window handle Windows gives a process as its main one: 0 while it has no visible window. */
+function windowsMainWindow(pid: number): number {
+  const ps = spawnSync("powershell", ["-NoProfile", "-Command", `(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).MainWindowHandle`], { encoding: "utf8" });
+  return Number(ps.stdout.trim() || "0");
+}
+
+/** The launch-at-login value (`win_login.rs`), or "" when there is none. */
+function runValue(): string {
+  const query = spawnSync("reg", ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "Deskfolk"], { encoding: "utf8" });
+  const line = query.stdout.split("\n").find((l) => l.includes("Deskfolk")) ?? "";
+  return line.split(/REG_\w+/)[1]?.trim() ?? "";
+}
+
 async function healthyAt17890(): Promise<boolean> {
   return fetch("http://127.0.0.1:17890/v1/health", { signal: AbortSignal.timeout(500) }).then(
     (r) => r.ok,
@@ -495,19 +508,23 @@ async function smokeWindows(setup: string, upgradeFrom?: string) {
   if (await healthyAt17890()) throw new Error("--smoke needs a machine where nothing answers on 17890");
   const local = process.env.LOCALAPPDATA;
   if (!local) throw new Error("no LOCALAPPDATA");
-  const installDir = join(local, "Deskfolk");
+  const defaultDir = join(local, "Deskfolk");
   const dataDir = join(local, "real-bot");
-  // An earlier Deskfolk first (the Tauri app's installer, for 0.5.0): the new one must go over it.
+  // An earlier Deskfolk first, in a folder of its own choosing (the Tauri app let you pick one; for
+  // 0.5.0 it is the Tauri app's installer): the new one must go over it, in that folder.
+  let installDir = defaultDir;
   let mainName = "Deskfolk.exe";
   if (upgradeFrom) {
-    const before = spawnSync(resolve(upgradeFrom), ["/S"], { encoding: "utf8" });
+    installDir = join(local, "Programs", "DeskfolkElsewhere");
+    const before = spawnSync(resolve(upgradeFrom), ["/S", `/D=${installDir}`], { encoding: "utf8" });
     if (before.status !== 0) throw new Error(`smoke: the earlier installer exited ${before.status}`);
     mainName = uninstallValue("MainBinaryName") || mainName;
-    console.log(`smoke: ${upgradeFrom} installed ${uninstallValue("DisplayVersion")} as ${mainName}`);
+    console.log(`smoke: ${upgradeFrom} installed ${uninstallValue("DisplayVersion")} as ${mainName} in ${installDir}`);
     if (!existsSync(join(installDir, mainName))) throw new Error(`smoke: the earlier install has no ${mainName}`);
   }
   const installed = spawnSync(setup, ["/S"], { encoding: "utf8" });
   if (installed.status !== 0) throw new Error(`smoke: the installer exited ${installed.status}`);
+  if (upgradeFrom && existsSync(join(defaultDir, mainName))) throw new Error(`smoke: the installer made a second copy in ${defaultDir}`);
   const exe = join(installDir, mainName);
   for (const path of [exe, join(installDir, "app", "bundle.nshc"), join(installDir, "native", "real-bot-daemon.exe"), join(installDir, "uninstall.exe")]) {
     if (!existsSync(path)) throw new Error(`smoke: the install has no ${path}`);
@@ -518,11 +535,9 @@ async function smokeWindows(setup: string, upgradeFrom?: string) {
   if (!existsSync(shortcut)) throw new Error(`smoke: no Start menu shortcut at ${shortcut}`);
   console.log(`smoke: installed ${uninstallValue("DisplayVersion")} as ${mainName}; the Start menu shortcut is there`);
 
-  const shell = Bun.spawn([exe], {
-    stdout: "pipe",
-    stderr: "pipe",
-    env: Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(BUN_|NODE_OPTIONS|REAL_BOT_)/.test(k))) as Record<string, string>,
-  });
+  // The login launch: `--hidden`, as the `Run` value starts it.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(BUN_|NODE_OPTIONS|REAL_BOT_)/.test(k))) as Record<string, string>;
+  const shell = Bun.spawn([exe, "--hidden"], { stdout: "pipe", stderr: "pipe", env });
   const log = drain(shell.stderr, true);
   if (!(await log.until(/ready: \d+ conversations/, 240_000))) {
     shell.kill();
@@ -534,6 +549,33 @@ async function smokeWindows(setup: string, upgradeFrom?: string) {
   if (daemon.toLowerCase() !== join(installDir, "native", "real-bot-daemon.exe").toLowerCase()) {
     throw new Error("smoke: the runtime is not the daemon the installer put in native\\");
   }
+  if (windowsMainWindow(shell.pid) !== 0) throw new Error("smoke: --hidden showed the window");
+  console.log("smoke: started hidden");
+  const expectedRun = `"${exe}" --hidden`;
+  let run = "";
+  for (let i = 0; i < 40 && run !== expectedRun; i++) {
+    run = runValue();
+    if (run !== expectedRun) await Bun.sleep(500);
+  }
+  if (run !== expectedRun) throw new Error(`smoke: launch at login reads ${JSON.stringify(run)}, not ${JSON.stringify(expectedRun)}`);
+  console.log(`smoke: launch at login: ${run}`);
+
+  // A second launch (the Start menu) shows the running copy's window and ends; the runtime stays.
+  const second = Bun.spawn([exe], { stdout: "ignore", stderr: "ignore", env });
+  const handedOver = await Promise.race([second.exited.then(() => true), Bun.sleep(30_000).then(() => false)]);
+  if (!handedOver) {
+    second.kill();
+    throw new Error("smoke: a second launch did not hand itself to the running copy");
+  }
+  let shown = false;
+  for (let i = 0; i < 40 && !shown; i++) {
+    shown = windowsMainWindow(shell.pid) !== 0;
+    if (!shown) await Bun.sleep(250);
+  }
+  if (!shown) throw new Error("smoke: the second launch did not show the running copy's window");
+  await Bun.sleep(2000);
+  if (!alive(descriptor.pid) || !(await healthyAt17890())) throw new Error("smoke: the second launch stopped the runtime");
+  console.log("smoke: a second launch showed the window and left the runtime running");
 
   process.kill(descriptor.pid);
   let again = 0;
@@ -568,6 +610,7 @@ async function smokeWindows(setup: string, upgradeFrom?: string) {
   if (existsSync(exe) || existsSync(join(installDir, "native"))) throw new Error("smoke: the uninstaller left the program behind");
   const gone = spawnSync("reg", ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskfolk"]);
   if (gone.status === 0) throw new Error("smoke: the uninstall entry is still there");
+  if (runValue()) throw new Error("smoke: the uninstaller left launch at login behind");
   if (!existsSync(join(dataDir, "local-api.json")) && !existsSync(dataDir)) throw new Error("smoke: the uninstaller took the data folder");
   console.log("smoke: uninstalled; the data folder stays");
 }
@@ -591,7 +634,12 @@ if (import.meta.main) {
   const release = process.argv.includes("--release");
   if (release && process.platform === "win32") {
     const { setup } = packageReleaseWindows();
-    if (process.argv.includes("--smoke")) await smokeWindows(setup, arg("--upgrade-from"));
+    if (process.argv.includes("--smoke")) {
+      // Once over each earlier installer named (the latest release's, the last Tauri app's), or
+      // once on a machine with none.
+      const earlier = process.argv.flatMap((a, i) => (a === "--upgrade-from" && process.argv[i + 1] ? [process.argv[i + 1]!] : []));
+      for (const from of earlier.length ? earlier : [undefined]) await smokeWindows(setup, from);
+    }
   } else {
     const { app } = release ? packageRelease() : packageDev();
     if (release && process.argv.includes("--smoke")) await smoke(app);

@@ -6,7 +6,14 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
-(none)
+### On Windows, an update goes where Deskfolk is installed
+
+- 0.5.0's installer always went to `%LOCALAPPDATA%\Deskfolk`. A Deskfolk 0.4.0 installed in a folder of your own choosing got a second copy beside it, and its shortcuts went on opening 0.4.0, which then offered the update again. The installer now goes into the folder the earlier install is in.
+
+### On Windows, launch at login waits in the notification area, and Settings turns it on and off
+
+- After 0.5.0 replaced the Tauri app on Windows, the window opened at every login: the login entry the Tauri app left asks for a hidden start, which the native app did not do, and Settings › General › Launch at login changed nothing on Windows. Now a launch at login keeps the window hidden, with the app in the notification area; the setting adds or removes the login entry, and the app keeps the entry in line with the setting each time it starts. Uninstalling removes it.
+- Opening Deskfolk while it already runs (from the Start menu, say) shows the running window instead of starting a second copy, as the Tauri app did.
 
 ## 0.5.0 — 2026-11-17
 
