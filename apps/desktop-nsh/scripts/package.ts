@@ -770,6 +770,24 @@ function windowsMainWindow(pid: number): number {
   return Number(ps.stdout.trim() || "0");
 }
 
+/**
+ * Closes the process's main window as a person does: `SC_CLOSE` with no pointer, the window menu's
+ * Close (NSH reports it as `menu`, and the app puts the window away). A bare `WM_CLOSE`, as
+ * `taskkill` without `/F` sends, comes from outside the window: NSH reports it as `system`, the
+ * way a log-off closes, and the app quits for that.
+ */
+function windowsPressClose(pid: number): void {
+  const script = [
+    `$sig = '[DllImport("user32.dll")] public static extern bool PostMessage(System.IntPtr h, uint m, System.IntPtr w, System.IntPtr l);'`,
+    `$user32 = Add-Type -MemberDefinition $sig -Name User32 -Namespace Smoke -PassThru`,
+    `$window = (Get-Process -Id ${pid}).MainWindowHandle`,
+    // WM_SYSCOMMAND, SC_CLOSE.
+    `[void]$user32::PostMessage($window, 0x0112, [System.IntPtr]0xF060, [System.IntPtr]0)`,
+  ].join("; ");
+  const ps = spawnSync("powershell", ["-NoProfile", "-Command", script], { encoding: "utf8" });
+  if (ps.status !== 0) throw new Error(`smoke: could not close the window: ${ps.stderr}`);
+}
+
 /** The launch-at-login value (`win_login.rs`), or "" when there is none. */
 function runValue(): string {
   const query = spawnSync("reg", ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "Deskfolk"], { encoding: "utf8" });
@@ -904,9 +922,9 @@ async function smokeWindows(setup: string, upgradeFrom?: string) {
   }
   console.log("smoke: the runtime started again has its setup channel");
 
-  // The close button puts the window away, as 0.4.0's did (taskkill without /F sends the
-  // window WM_CLOSE): the app stays in the notification area, the runtime with it.
-  spawnSync("taskkill", ["/PID", String(shell.pid)]);
+  // Closing the window puts it away, as 0.4.0's did: the app stays in the notification area, the
+  // runtime with it.
+  windowsPressClose(shell.pid);
   await Bun.sleep(3000);
   if (!alive(shell.pid)) throw new Error("smoke: closing the window ended the app; it should stay in the notification area");
   if (windowsMainWindow(shell.pid) !== 0) throw new Error("smoke: the window still shows after its close button");
