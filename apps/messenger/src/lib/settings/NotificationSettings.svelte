@@ -26,7 +26,7 @@
 	const locale = $derived(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh');
 
 	onMount(() => {
-		if (runtime.connection === 'connected' && !runtime.isDesktopShell) {
+		if (runtime.connection === 'connected') {
 			if (typeof runtime.prefetchPushState === 'function') {
 				void runtime.prefetchPushState();
 			}
@@ -107,15 +107,6 @@
 		const input = event?.currentTarget as HTMLInputElement | undefined;
 		if (input) input.checked = device?.enabled ?? false;
 		disableFeedback = null;
-		if (runtime.isDesktopShell) {
-			if (device?.enabled) {
-				await runtime.patchNotificationDevice({ enabled: false });
-			} else {
-				await runtime.requestDesktopNotificationPermission();
-			}
-			return;
-		}
-
 		deviceLoading = true;
 		try {
 			if (device?.enabled) {
@@ -148,7 +139,7 @@
 		}
 	}
 
-	const usesNativeTestGate = $derived(runtime.isDesktopShell || !runtime.remote);
+	const usesNativeTestGate = $derived(!runtime.remote);
 	const canSendDesktopTest = $derived(
 		Boolean(
 			usesNativeTestGate &&
@@ -434,20 +425,55 @@
 		</div>
 
 		<div class="device-body">
-			{#if runtime.isDesktopShell}
-				{#if runtime.pushPermission === 'denied'}
-					<div class="health-notice is-danger" role="alert">
-						<Icon name="alert-circle" class="notice-icon" />
-						<span>{t.notifications.permissionDenied}</span>
+			{#if pushHealth === 'unsupported'}
+				<div class="health-notice is-muted">
+					<Icon name="alert-circle" class="notice-icon" />
+					<span>{t.notifications.pushUnsupported}</span>
+				</div>
+			{:else if pushHealth === 'install_required'}
+				<div class="health-notice is-info">
+					<Icon name="upload" class="notice-icon" />
+					<span>{t.notifications.iosInstallRequired}</span>
+				</div>
+			{:else if pushHealth === 'denied'}
+				<div class="health-notice is-danger" role="alert">
+					<Icon name="alert-circle" class="notice-icon" />
+					<span>{t.notifications.permissionDenied}</span>
+				</div>
+			{:else if pushHealth === 'gated'}
+				<div class="health-notice is-warn">
+					<Icon name="alert-triangle" class="notice-icon" />
+					<span>{t.notifications.remoteGated}</span>
+				</div>
+			{:else if pushHealth === 'paused_upgrade'}
+				<div class="health-notice is-muted">
+					<Icon name="clock" class="notice-icon" />
+					<span>{t.notifications.pushUpgrading}</span>
+				</div>
+			{:else if pushHealth === 'needs_repair'}
+				<div class="health-notice is-repair">
+					<div class="notice-main">
+						<Icon name="alert-triangle" class="notice-icon text-warning" />
+						<span class="text-13 text-warning font-medium">{t.notifications.needsRepair}</span>
 					</div>
-				{/if}
-
+					<button
+						type="button"
+						class="btn-repair"
+						disabled={deviceLoading || runtime.pushBusy}
+						onclick={() => void handleRepair()}
+					>
+						{t.notifications.repairButton}
+					</button>
+				</div>
+			{:else}
 				<div class="settings-rows">
 					<label class="settings-row device-master-row">
 						<div class="settings-row-info">
 							<span class="settings-row-title">{t.notifications.deviceEnable}</span>
 							<span class="settings-row-desc">
-								{device?.enabled ? t.notifications.deviceEnabledDesktopNote : t.notifications.deviceDisabled}
+								{device?.enabled
+									? (locale === 'en' ? 'Web Push delivery is active for this device' : '通过 Web Push 推送在当前设备接收通知')
+									: t.notifications.deviceDisabled}
 							</span>
 						</div>
 						<div class="settings-row-action">
@@ -462,85 +488,20 @@
 						</div>
 					</label>
 				</div>
-			{:else}
-				{#if pushHealth === 'unsupported'}
-					<div class="health-notice is-muted">
-						<Icon name="alert-circle" class="notice-icon" />
-						<span>{t.notifications.pushUnsupported}</span>
-					</div>
-				{:else if pushHealth === 'install_required'}
-					<div class="health-notice is-info">
-						<Icon name="upload" class="notice-icon" />
-						<span>{t.notifications.iosInstallRequired}</span>
-					</div>
-				{:else if pushHealth === 'denied'}
-					<div class="health-notice is-danger" role="alert">
-						<Icon name="alert-circle" class="notice-icon" />
-						<span>{t.notifications.permissionDenied}</span>
-					</div>
-				{:else if pushHealth === 'gated'}
-					<div class="health-notice is-warn">
-						<Icon name="alert-triangle" class="notice-icon" />
-						<span>{t.notifications.remoteGated}</span>
-					</div>
-				{:else if pushHealth === 'paused_upgrade'}
-					<div class="health-notice is-muted">
-						<Icon name="clock" class="notice-icon" />
-						<span>{t.notifications.pushUpgrading}</span>
-					</div>
-				{:else if pushHealth === 'needs_repair'}
-					<div class="health-notice is-repair">
-						<div class="notice-main">
-							<Icon name="alert-triangle" class="notice-icon text-warning" />
-							<span class="text-13 text-warning font-medium">{t.notifications.needsRepair}</span>
-						</div>
-						<button
-							type="button"
-							class="btn-repair"
-							disabled={deviceLoading || runtime.pushBusy}
-							onclick={() => void handleRepair()}
-						>
-							{t.notifications.repairButton}
-						</button>
-					</div>
-				{:else}
-					<div class="settings-rows">
-						<label class="settings-row device-master-row">
-							<div class="settings-row-info">
-								<span class="settings-row-title">{t.notifications.deviceEnable}</span>
-								<span class="settings-row-desc">
-									{device?.enabled
-										? (locale === 'en' ? 'Web Push delivery is active for this device' : '通过 Web Push 推送在当前设备接收通知')
-										: t.notifications.deviceDisabled}
-								</span>
-							</div>
-							<div class="settings-row-action">
-								<Switch tag="span" disabled={deviceLoading}>
-									<input
-										type="checkbox"
-										checked={device?.enabled ?? false}
-										disabled={deviceLoading}
-										onchange={(event) => void handleDeviceToggle(event)}
-									/>
-								</Switch>
-							</div>
-						</label>
-					</div>
-				{/if}
+			{/if}
 
-				{#if runtime.pushError === 'failed'}
-					<p class="health-notice is-danger" role="alert">
-						{t.remote.pushFailed}
-						{#if runtime.pushErrorCode}<code>{runtime.pushErrorCode}</code>{/if}
-					</p>
-				{/if}
+			{#if runtime.pushError === 'failed'}
+				<p class="health-notice is-danger" role="alert">
+					{t.remote.pushFailed}
+					{#if runtime.pushErrorCode}<code>{runtime.pushErrorCode}</code>{/if}
+				</p>
+			{/if}
 
-				{#if disableFeedback}
-					<div class="health-notice is-warn feedback-msg">
-						<Icon name="alert-triangle" class="notice-icon" />
-						<span>{disableFeedback}</span>
-					</div>
-				{/if}
+			{#if disableFeedback}
+				<div class="health-notice is-warn feedback-msg">
+					<Icon name="alert-triangle" class="notice-icon" />
+					<span>{disableFeedback}</span>
+				</div>
 			{/if}
 
 			{#if device?.enabled}

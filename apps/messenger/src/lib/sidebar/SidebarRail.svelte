@@ -4,7 +4,6 @@
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import AgentLogo from '../settings/AgentLogo.svelte';
 	import BrandMark from '../BrandMark.svelte';
-	import { dragRegion } from '../window-chrome.ts';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { formatShortcut } from '../keymap.ts';
@@ -183,7 +182,7 @@
 	);
 </script>
 
-<nav class="rail" data-ui="sidebar-rail" aria-label={t.sidebar.sessions} data-tauri-drag-region={dragRegion}>
+<nav class="rail" data-ui="sidebar-rail" aria-label={t.sidebar.sessions}>
 	<span class="rail-brand"><BrandMark size={26} /></span>
 	<RailTooltip
 		class="rail-action rail-expand"
@@ -213,7 +212,7 @@
 		<Icon name="activity" />
 	</RailTooltip>
 	<!-- It fills the rail below the actions, so its empty space is what moves the window. -->
-	<div class="rail-list" data-tauri-drag-region={dragRegion}>
+	<div class="rail-list">
 		{#each sections as section, index (index)}
 			{#if index > 0}
 				<div class="rail-divider" role="separator"></div>
@@ -349,18 +348,6 @@
 			background: transparent;
 			border-right: 0;
 		}
-	}
-
-	/*
-	 * On macOS the traffic lights sit at the top of the rail (`window-chrome.ts`), which is 20px
-	 * wider there to hold them (Shell); the mark gives them its place, and the list stays centred.
-	 */
-	:global(:root[data-chrome='mac']) .rail {
-		padding: 40px 0 0 10px;
-	}
-
-	:global(:root[data-chrome='mac']) .rail-brand {
-		display: none;
 	}
 
 	.rail-list {

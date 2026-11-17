@@ -546,7 +546,7 @@
 						{connectRelay}
 					/>
 				{:else if activeSettingsTab === 'about'}
-					<AboutTab {t} {locale} />
+					<AboutTab {t} />
 				{/if}
 			</div>
 			</section>

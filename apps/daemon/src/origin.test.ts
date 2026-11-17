@@ -12,21 +12,10 @@ test("loopback http origins are allowed, including IPv6", () => {
   expect(originDecision("http://[::1]")).toBe("allowed");
 });
 
-test("tauri localhost origin is allowed", () => {
-  expect(originDecision("tauri://localhost")).toBe("allowed");
-});
-
-test("WebView2's http(s)://tauri.localhost is allowed, but only with no port", () => {
-  expect(originDecision("http://tauri.localhost")).toBe("allowed");
-  expect(originDecision("https://tauri.localhost")).toBe("allowed");
-  expect(originDecision("http://tauri.localhost:5173")).toBe("forbidden");
-  expect(originDecision("https://tauri.localhost:8443")).toBe("forbidden");
-});
-
-test("tauri.localhost with a different scheme or a lookalike host is still forbidden", () => {
-  expect(originDecision("ftp://tauri.localhost")).toBe("forbidden");
-  expect(originDecision("http://evil-tauri.localhost")).toBe("forbidden");
-  expect(originDecision("http://tauri.localhost.evil.example")).toBe("forbidden");
+test("the Tauri app's origins are refused now that the app is gone", () => {
+  expect(originDecision("tauri://localhost")).toBe("forbidden");
+  expect(originDecision("http://tauri.localhost")).toBe("forbidden");
+  expect(originDecision("https://tauri.localhost")).toBe("forbidden");
 });
 
 test("non-loopback and non-http origins are forbidden", () => {

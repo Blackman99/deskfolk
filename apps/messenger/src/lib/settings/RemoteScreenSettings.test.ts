@@ -36,40 +36,31 @@ test("the card says when a phone's smooth mode has the screen lowered, and to wh
   view.close();
 });
 
-test("on Windows, with no VNC server answering, the card says how to set TightVNC up and links its download", async () => {
+test("on Windows, with no VNC server answering, the card says how to set TightVNC up", async () => {
   const { flushSync } = await import("svelte");
-  const { render, click } = await import("../test-render.ts");
+  const { render } = await import("../test-render.ts");
   const { copyFor } = await import("../copy.ts");
   const { default: RemoteScreenSettings } = await import("./RemoteScreenSettings.svelte");
   const t = copyFor("zh");
-  const opened: unknown[] = [];
-  const internals = { invoke: async (command: string, args: unknown) => { opened.push([command, args]); } };
-  (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = internals;
   const status = { enabled: true, iceServers: [], sharing: false, direct: true, sessions: [] };
   const mount = (windows: boolean, linux = false) => render(RemoteScreenSettings as never, { api: { remoteScreen: async () => status }, t, pollMs: 60_000, windows, linux });
-  try {
-    const pc = mount(true);
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    flushSync();
-    expect(pc.host.querySelector('[data-testid="remote-screen-vnc"]')?.textContent).toContain("TightVNC");
-    click([...pc.host.querySelectorAll("button")].find((button) => button.textContent?.trim() === t.screen.macSharingSettings));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(opened).toEqual([["open_external_url", { url: "https://www.tightvnc.com/download.php" }]]);
-    pc.close();
-    // A Mac has its own Screen Sharing: no install steps, and the button opens its Sharing pane.
-    const mac = mount(false);
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    flushSync();
-    expect(mac.host.querySelector('[data-testid="remote-screen-vnc"]')).toBeNull();
-    mac.close();
-    // Linux: the steps for x11vnc and wayvnc, and no button, since there is no page to open.
-    const desktop = mount(false, true);
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    flushSync();
-    expect(desktop.host.querySelector('[data-testid="remote-screen-vnc"]')?.textContent).toContain("x11vnc");
-    expect([...desktop.host.querySelectorAll("button")].some((button) => button.textContent?.trim() === t.screen.macSharingSettings)).toBe(false);
-    desktop.close();
-  } finally {
-    delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
-  }
+  const pc = mount(true);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  flushSync();
+  expect(pc.host.querySelector('[data-testid="remote-screen-vnc"]')?.textContent).toContain("TightVNC");
+  expect([...pc.host.querySelectorAll("button")].some((button) => button.textContent?.trim() === t.screen.macSharingSettings)).toBe(false);
+  pc.close();
+  // A Mac has its own Screen Sharing: no install steps.
+  const mac = mount(false);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  flushSync();
+  expect(mac.host.querySelector('[data-testid="remote-screen-vnc"]')).toBeNull();
+  mac.close();
+  // Linux: the steps for x11vnc and wayvnc, and no button.
+  const desktop = mount(false, true);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  flushSync();
+  expect(desktop.host.querySelector('[data-testid="remote-screen-vnc"]')?.textContent).toContain("x11vnc");
+  expect([...desktop.host.querySelectorAll("button")].some((button) => button.textContent?.trim() === t.screen.macSharingSettings)).toBe(false);
+  desktop.close();
 });

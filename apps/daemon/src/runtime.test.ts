@@ -164,7 +164,7 @@ describe("local API runtime", () => {
     expect(await stand.json()).toMatchObject({ mode: "standalone", restart: "available" });
   });
 
-  test("rejects a disallowed Origin and allows tauri and localhost", async () => {
+  test("rejects a disallowed Origin (the Tauri app's included) and allows localhost", async () => {
     const rt = await start();
     const forbidden = await fetch(`${rt.origin}/v1/runtime`, {
       headers: {
@@ -183,7 +183,7 @@ describe("local API runtime", () => {
         Origin: "tauri://localhost",
       },
     });
-    expect(tauri.status).toBe(200);
+    expect(tauri.status).toBe(403);
 
     const vite = await fetch(`${rt.origin}/v1/runtime`, {
       headers: {

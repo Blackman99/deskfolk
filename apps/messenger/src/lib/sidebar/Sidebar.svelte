@@ -2,8 +2,7 @@
 	import Icon from '../Icon.svelte';
 	import type { Hold, SessionSummary } from '@real-bot/protocol';
 	import BrandMark from '../BrandMark.svelte';
-	import { dragRegion, scrollbarIsNotDrag } from '../window-chrome.ts';
-	import EmptyState from '../EmptyState.svelte';
+		import EmptyState from '../EmptyState.svelte';
 	import { isOutside } from '../click-outside.ts';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -362,7 +361,7 @@
 <aside class="side" data-ui="sidebar">
 	<!-- The mark heads the list on a wider window; a phone's top bar is the page title instead. -->
 	{#if !phone}
-		<div class="brand-row" data-tauri-drag-region={dragRegion}>
+		<div class="brand-row">
 			<BrandMark size={22} />
 			{#if !viewingArchived}<WorkingFilter {t} {workingOnly} {toggleWorkingOnly} />{/if}
 			<FocusToggle {t} />
@@ -409,7 +408,7 @@
 		<HoldsBar holds={myHolds} label={labelOf} {t} disabled={runtime.connection !== 'connected'} onLift={(hold) => runtime.liftHold(hold.id)} />
 	{/if}
 	<!-- The list's empty space moves the window, as the brand row does; its rows keep their clicks. -->
-	<div class="groups" data-ui="session-list" data-tauri-drag-region={dragRegion} use:scrollbarIsNotDrag>
+	<div class="groups" data-ui="session-list">
 		{#if viewingArchived}
 			<div class="ghead archived-ghead flex items-center justify-between">
 				<span>{t.sidebar.archivedSessions}</span>
@@ -743,27 +742,9 @@
 		container: brand-row / inline-size;
 	}
 
-	/* On macOS the window's traffic lights take the start of the row (`window-chrome.ts`). */
-	:global(:root[data-chrome='mac']) .brand-row {
-		padding-left: 84px;
-	}
-
-	/*
-	 * The first switch takes the row's slack, which pushes them all to the far end and leaves the
-	 * gap as the row itself, so it still moves the window. It holds with the mark hidden below.
-	 */
+	/* The first switch takes the row's slack, which pushes them all to the far end. */
 	.brand-row > :global(.brand-mark + *) {
 		margin-left: auto;
-	}
-
-	/*
-	 * Behind the traffic lights, a list dragged near its narrowest has no room for the mark and its
-	 * three buttons (22 + 3 × (4 + 30) = 124px past the lights' padding), so the mark goes.
-	 */
-	@container brand-row (max-width: 123px) {
-		:global(:root[data-chrome='mac']) .brand-row > :global(.brand-mark) {
-			display: none;
-		}
 	}
 
 	.search-wrap {
@@ -870,18 +851,6 @@
 		.side {
 			background: transparent;
 		}
-	}
-
-	/*
-	 * Dark on a window with material (macOS, Windows 11) the ground lets most of the glass through
-	 * (`--ground-tint` 20%), and the glass is lighter than the dark ground was: on macOS from about
-	 * (33,40,49) to (70,76,80) when a light window is behind; Mica takes the desktop's colour. The
-	 * quiet greys go up a step so a preview line keeps 4:1 at the bright end and the search icon
-	 * stays legible.
-	 */
-	:global(:root[data-material='glass'][data-theme='dark']) .side {
-		--muted: #a8b3b8;
-		--muted-light: #8b989e;
 	}
 
 	.search-icon-badge {

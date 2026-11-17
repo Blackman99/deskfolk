@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import Icon from '../Icon.svelte';
-	import { pickWorkspaceFolder, workspacePickerAvailable, type HostTreePage } from './pick-workspace.ts';
+	import type { HostTreePage } from './pick-workspace.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 
 	interface Props {
@@ -54,7 +54,7 @@
 	let page = $state<HostTreePage | null>(null);
 	let browseError = $state('');
 	let panel = $state<HTMLElement | null>(null);
-	const canPick = $derived(remote || workspacePickerAvailable());
+	const canPick = $derived(remote);
 	const display = $derived(path.trim());
 	const actionLabel = $derived(display ? changeLabel : chooseLabel);
 
@@ -90,20 +90,8 @@
 			await load(path.trim() || '');
 			return;
 		}
-		if (!canPick) {
-			failed = true;
-			return;
-		}
-		busy = true;
-		failed = false;
-		try {
-			const picked = await pickWorkspaceFolder(path, dialogTitle);
-			if (picked) onChange(picked);
-		} catch {
-			failed = true;
-		} finally {
-			busy = false;
-		}
+		// No folder dialog outside the native app: only a paired client browses the host's disk.
+		failed = true;
 	}
 
 	function useCurrent(): void {

@@ -40,7 +40,6 @@
 	import MessageImageLightbox, { type ImageOrigin } from '../chat/MessageImageLightbox.svelte';
 	import { openWorkspacePath } from './open-workspace.ts';
 	import FileDownload from './FileDownload.svelte';
-	import { isTauri } from '../tauri.ts';
 	import { copyText } from '../clipboard.ts';
 	import {
 		clampArtifactTreeWidth,
@@ -285,8 +284,6 @@
 	let sourceMode = $derived(kind === 'text' || (canShowSource && (showSource || renderTooLarge)));
 	let byteSource = $derived(artifactByteSource({ mode, relpath, attachment }));
 	let remoteClient = $derived(api?.kind === 'remote');
-	/** A file shown only by name: the desktop window opens it with the system, anywhere else it downloads. */
-	let opensOnDisk = $derived(!remoteClient && isTauri());
 	/**
 	 * Remotely every file shown can be downloaded, from the phone's bar and from the wide layout's.
 	 * A file shown only by name has its own button in the middle instead.
@@ -703,7 +700,7 @@
 				onpointerdown={startTreeResize}
 			></button>
 		{/if}
-		<ArtifactBody {t} {locale} {bots} {api} {relpath} {attachment} {mode} {kind} {sourceMode} {gate} {wrap} {resolvedTheme} {loadMonaco} {byteSource} {titleName} {opensOnDisk} {drawnRows} {viewAnnotations} {annot} {loader} {treeSrc} dirEntries={kind === 'directory' && mode !== 'workspace' ? treeSrc.listingOf(relpath) : null} onOpenEntry={selectNode} bind:editor bind:pdfViewer onEditorDirty={(next) => (editorDirty = next)} {enlarge} {openMarkdownPath} {openOnDisk} {inWorkspace} />
+		<ArtifactBody {t} {locale} {bots} {api} {relpath} {attachment} {mode} {kind} {sourceMode} {gate} {wrap} {resolvedTheme} {loadMonaco} {byteSource} {titleName} {drawnRows} {viewAnnotations} {annot} {loader} {treeSrc} dirEntries={kind === 'directory' && mode !== 'workspace' ? treeSrc.listingOf(relpath) : null} onOpenEntry={selectNode} bind:editor bind:pdfViewer onEditorDirty={(next) => (editorDirty = next)} {enlarge} {openMarkdownPath} {inWorkspace} />
 	</div>
 	{#if mode !== 'workspace'}
 		{#each annot.annotDrafts as group (group.sessionId)}

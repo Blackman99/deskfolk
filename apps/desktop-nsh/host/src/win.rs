@@ -11,7 +11,7 @@
 //! redirection bitmap), which is chosen when the window is made, so Mica cannot be turned on later
 //! from the TSX. The window keeps its system frame: its shadow, its resize borders and, on Windows
 //! 11, its rounded corners (square while maximized, as the system draws them). The app is told
-//! whether the material is there (`host.params.material`, `window_material`) and lets it through
+//! whether the material is there (`host.params.material`) and lets it through
 //! (`ui/glass.ts`).
 //!
 //! The executable cargo builds has no icon of its own, so the window gets the app's from a file

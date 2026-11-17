@@ -50,7 +50,6 @@
 	import MessageIndex from './MessageIndex.svelte';
 	import {
 		transcriptReadingReady,
-		desktopReadingMode,
 		TRANSCRIPT_VISIBLE_MS
 	} from '../notifications/reading.ts';
 	import { copyText } from '../clipboard.ts';
@@ -392,10 +391,6 @@
 	onMount(() => {
 		const onFocus = () => {
 			windowFocused = true;
-			if (runtime.isDesktopShell) {
-				void runtime.pollDesktopNativeState();
-				void runtime.reportDesktopNotificationView(scroll.stickToBottom);
-			}
 		};
 		const onBlur = () => {
 			windowFocused = false;
@@ -403,7 +398,6 @@
 				clearTimeout(readTimer);
 				readTimer = null;
 			}
-			if (runtime.isDesktopShell) void runtime.reportDesktopNotificationView(false);
 		};
 		const onVisibility = () => {
 			windowVisible = document.visibilityState === 'visible';
@@ -411,7 +405,6 @@
 				clearTimeout(readTimer);
 				readTimer = null;
 			}
-			if (runtime.isDesktopShell) void runtime.reportDesktopNotificationView(windowVisible && scroll.stickToBottom);
 		};
 		window.addEventListener('focus', onFocus);
 		window.addEventListener('blur', onBlur);
@@ -444,9 +437,7 @@
 			snapshotReady: true,
 			overlayBlocksTranscript: runtime.settingsOpen || runtime.workspaceOpen
 		};
-		const mode = desktopReadingMode(runtime.isDesktopShell, runtime.nativeCapabilities);
-		const nativeFacts = runtime.isDesktopShell ? runtime.nativeFocusFacts : null;
-		const ready = transcriptReadingReady(facts, mode, nativeFacts);
+		const ready = transcriptReadingReady(facts, 'auto');
 		if (!ready || !scroll.stickToBottom) {
 			if (readTimer) {
 				clearTimeout(readTimer);

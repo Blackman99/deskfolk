@@ -6,7 +6,6 @@
 	import MarkdownBody from '../MarkdownBody.svelte';
 	import type { Copy } from '../copy.ts';
 	import { holdFullscreenPreview } from '../overlays/fullscreen-preview.ts';
-	import { dragRegion } from '../window-chrome.ts';
 
 	/**
 	 * The plan Claude Code asks you to approve in plan mode (ADR 0098), where a run's approval card
@@ -81,7 +80,7 @@
 </script>
 
 <article bind:this={card} class="plan-card" class:is-full={full} data-agent-approval data-plan-card>
-	<div class="plan-head" data-tauri-drag-region={full ? dragRegion : undefined}>
+	<div class="plan-head">
 		<Icon name="list" size={12} />
 		<span>{t.project.planHead}</span>
 		<span class="plan-who">{agentName}</span>
@@ -221,11 +220,6 @@
 		/* Level with the traffic lights, whose centre line is at 26pt. */
 		min-height: 52px;
 		padding-top: max(9px, env(safe-area-inset-top));
-	}
-
-	/* On macOS the window's traffic lights take the start of the row (`window-chrome.ts`). */
-	:global(:root[data-chrome='mac']) .plan-card.is-full .plan-head {
-		padding-left: 84px;
 	}
 
 	/* This head is tall enough for it, and the window's edge needs the margin the card's did not. */

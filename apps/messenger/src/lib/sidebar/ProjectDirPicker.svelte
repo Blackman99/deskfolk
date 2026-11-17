@@ -4,7 +4,6 @@
 	import Button from '../Button.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { pickWorkspaceFolder, workspacePickerAvailable } from '../settings/pick-workspace.ts';
 	import WorkspacePicker from '../settings/WorkspacePicker.svelte';
 	import { importRequest, importSubtitle, newProjectRequest, tildePath, type ImportListing } from './import-claude-session.ts';
 	import { dirDisplay, isAbsoluteDir, listingSpansAccounts, pickerDirs } from './project-groups.ts';
@@ -50,7 +49,6 @@
 	let importError = $state<'missing' | 'failed' | null>(null);
 	const locale = $derived(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh');
 	const now = Date.now();
-	const canPick = workspacePickerAvailable();
 
 	function toggle(key: string): void {
 		open = shown === key ? null : key;
@@ -88,18 +86,6 @@
 		// A session file that went away since the list was read.
 		if (failure) importError = failure.status === 404 ? 'missing' : 'failed';
 		else ondone?.();
-	}
-
-	async function pickFolder(): Promise<void> {
-		try {
-			const folder = await pickWorkspaceFolder(typed, t.project.pickTitle);
-			if (folder) {
-				typed = folder;
-				startError = null;
-			}
-		} catch {
-			startError = 'failed';
-		}
 	}
 </script>
 
@@ -236,9 +222,6 @@
 							if (e.key === 'Enter' && !e.isComposing) void start(typed);
 						}}
 					/>
-					{#if canPick}
-						<Button icon="folder" onclick={() => void pickFolder()}>{t.project.pick}</Button>
-					{/if}
 				</div>
 				{/if}
 				<p class="muted field-hint">{t.project.dirHints[agent]}</p>

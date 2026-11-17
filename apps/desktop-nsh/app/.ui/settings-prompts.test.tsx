@@ -214,7 +214,6 @@ test("notifications: with the shell granting permission the device turns on; sou
       handlers: {
         "tauri.local_api_endpoint": endpoint,
         "tauri.app_version": "0.0.0",
-        "tauri.window_material": "none",
         "tauri.notification_permission_state": () => (asked.push("state"), { ...grant, permission: "default" }),
         "tauri.request_notification_permission": () => (asked.push("request"), grant),
       },

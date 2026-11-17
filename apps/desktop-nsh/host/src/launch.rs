@@ -72,7 +72,6 @@ pub fn channel(config: &Config, window_id: u32) -> HostChannel {
         call.resolve(endpoint())
     });
     host.handle("tauri.app_version", |call: HostCall| call.resolve(json!(crate::config::product_version())));
-    host.handle("tauri.window_material", |call: HostCall| call.resolve(json!(material())));
     install_portable(&host);
     host
 }

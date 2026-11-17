@@ -244,20 +244,12 @@ test("the desktop preview has no toolbar, and the phone keeps a back bar", () =>
   viewport.setViewport({ width: 1280, height: 800 });
 });
 
-test("markdown source is a switch in the annotation row, and a tree row opens Finder from its menu", async () => {
+test("markdown source is a switch in the annotation row", async () => {
   const note = anAttachment({
     original_filename: "brief.md",
     workspace_relpath: "docs/brief.md",
     mime: "text/markdown",
   });
-  const calls: { path: string; reveal: boolean }[] = [];
-  const holder = globalThis as { __TAURI_INTERNALS__?: unknown };
-  const previous = holder.__TAURI_INTERNALS__;
-  holder.__TAURI_INTERNALS__ = {
-    invoke: async (cmd: string, args: { path: string; reveal: boolean }) => {
-      if (cmd === "open_workspace_path") calls.push({ path: args.path, reveal: args.reveal });
-    },
-  };
   const { host, close } = render(ArtifactPreview, {
     attachment: note,
     relpath: "docs/brief.md",
@@ -285,21 +277,7 @@ test("markdown source is a switch in the annotation row, and a tree row opens Fi
     expect(host.querySelector(".artifact-source-toggle")?.textContent?.trim()).toBe(t.stream.artifactRendered);
     expect(host.querySelector(".artifact-source-toggle")?.getAttribute("aria-pressed")).toBe("true");
 
-    const row = [...host.querySelectorAll<HTMLButtonElement>(".artifact-tree-row")].find((button) =>
-      button.textContent?.includes("brief.md"),
-    )!;
-    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
-    flushSync();
-    const menu = document.querySelector("[data-testid='artifact-tree-menu']");
-    expect(menu?.textContent).toContain("在 Finder 中打开");
-    expect(menu?.textContent).toContain("用系统默认应用打开");
-    (menu?.querySelector("[data-reveal]") as HTMLButtonElement).click();
-    flushSync();
-    await Promise.resolve();
-    expect(calls).toEqual([{ path: "/Users/you/work/docs/brief.md", reveal: true }]);
-    expect(document.querySelector("[data-testid='artifact-tree-menu']")).toBeNull();
   } finally {
-    holder.__TAURI_INTERNALS__ = previous;
     close();
   }
 });

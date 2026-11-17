@@ -1,4 +1,3 @@
-import { isTauri, readTauriInternals, type TauriInternals } from "./tauri.ts";
 
 /**
  * Pixels of one rendered picture as PNG. A PNG blob is kept; GIF, WebP, JPEG, BMP and SVG are
@@ -74,22 +73,8 @@ export function copyText(text: string): void {
   }
 }
 
-/**
- * The clipboard's text, for a Paste picked from a menu of ours rather than the Edit menu.
- *
- * In the desktop window it comes from the pasteboard itself: WebKit's `readText` stops for a
- * second confirming click, and a terminal's Paste never asks twice. Elsewhere that reader is all
- * there is. Resolves to "" when nothing readable is there.
- */
-export async function readClipboardText(internals: TauriInternals | undefined = readTauriInternals()): Promise<string> {
-  if (isTauri(internals) && internals?.invoke) {
-    try {
-      const text = await internals.invoke("read_clipboard_text");
-      return typeof text === "string" ? text : "";
-    } catch {
-      // An older window without the command falls through to the page's reader.
-    }
-  }
+/** The clipboard's text, for a Paste picked from a menu of ours. Resolves to "" when nothing readable is there. */
+export async function readClipboardText(): Promise<string> {
   try {
     return (await navigator.clipboard?.readText?.()) ?? "";
   } catch {

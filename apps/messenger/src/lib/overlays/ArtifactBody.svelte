@@ -57,7 +57,6 @@
 		loadMonaco?: ComponentProps<typeof ArtifactCodeEditor>['loadMonaco'];
 		byteSource: ReturnType<typeof artifactByteSource>;
 		titleName: string;
-		opensOnDisk: boolean;
 		drawnRows: Annotation[];
 		viewAnnotations: Annotation[];
 		annot: ArtifactAnnotations;
@@ -68,7 +67,6 @@
 		onEditorDirty: (next: boolean) => void;
 		enlarge: (image: string, own: boolean, picture: Element | null | undefined) => void;
 		openMarkdownPath: (path: string) => void;
-		openOnDisk: (path: string, reveal: boolean) => Promise<void>;
 		/** A cited folder's entries, once the Mac listed it; the folder's page lists them. */
 		dirEntries?: ArtifactTreeNode[] | null;
 		onOpenEntry?: (node: ArtifactTreeNode) => void;
@@ -92,7 +90,6 @@
 		loadMonaco,
 		byteSource,
 		titleName,
-		opensOnDisk,
 		drawnRows,
 		viewAnnotations,
 		annot,
@@ -103,7 +100,6 @@
 		onEditorDirty,
 		enlarge,
 		openMarkdownPath,
-		openOnDisk,
 		dirEntries = null,
 		onOpenEntry,
 		inWorkspace = true
@@ -310,10 +306,6 @@
 					<p class="muted">{attachment?.exists === false ? t.stream.artifactMissing : t.stream.artifactUnsupported}</p>
 					{#if attachment?.exists === false}
 						<!-- Nothing to hand over. -->
-					{:else if opensOnDisk}
-						<button type="button" class="artifact-unsupported-open" onclick={() => void openOnDisk(relpath, false)}>
-							{t.stream.artifactOpenSystem}
-						</button>
 					{:else}
 						{#key `${byteSource}:${attachment?.id ?? ''}:${relpath}`}
 							<FileDownload
@@ -545,28 +537,6 @@
 		font-weight: 600;
 		color: var(--ink);
 		overflow-wrap: anywhere;
-	}
-
-	.artifact-unsupported-open {
-		margin-top: 6px;
-		height: 32px;
-		padding: 0 16px;
-		border: 1px solid var(--accent-border);
-		border-radius: var(--radius-full);
-		background: var(--accent-tint);
-		color: var(--accent);
-		font-size: 13px;
-		font-weight: 600;
-		cursor: pointer;
-	}
-
-	.artifact-unsupported-open:hover {
-		border-color: var(--accent);
-	}
-
-	.artifact-unsupported-open:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
 	}
 
 	.artifact-loading {

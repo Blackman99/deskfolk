@@ -43,7 +43,6 @@
 	import SessionContextMenu from './sidebar/SessionContextMenu.svelte';
 	import WorkspaceExplorer from './overlays/WorkspaceExplorer.svelte';
 	import ShellPreview from './overlays/ShellPreview.svelte';
-	import { dragRegion, WINDOW_CHROME } from './window-chrome.ts';
 	import {
 		clampSidebarWidth,
 		loadSidebarCollapsed,
@@ -83,8 +82,7 @@
 	import { paneMin } from './workbench/pane-mins.ts';
 	import { contentOfTab, contentToParams } from './workbench/pane-content.ts';
 	import { closeChatSide, settingsSide, toggleChatSide } from './workbench/pane-open.ts';
-	import { isTypingTarget, matchesCloseTab, matchesSidebarToggle, matchWorkbenchKey } from './workbench/workbench-commands.ts';
-	import { isTauri } from './tauri.ts';
+	import { isTypingTarget, matchesSidebarToggle, matchWorkbenchKey } from './workbench/workbench-commands.ts';
 	import { activateTab, focusLeaf, replaceTabParams } from './workbench/layout-tree.ts';
 	import type { TabAction, WorkbenchTab } from './workbench/layout-types.ts';
 	import { ShellWorkbench } from './workbench/shell-workbench.svelte.ts';
@@ -143,15 +141,6 @@
 				runtime.applyNotificationIntent(intent);
 			});
 		});
-		if (runtime.isDesktopShell) {
-			void runtime.pollDesktopNativeState();
-			const onFocus = () => void runtime.pollDesktopNativeState();
-			window.addEventListener('focus', onFocus);
-			return () => {
-				runtime.setNotificationIntentHandler(null);
-				window.removeEventListener('focus', onFocus);
-			};
-		}
 		return () => runtime.setNotificationIntentHandler(null);
 	});
 
@@ -529,12 +518,7 @@
 	let narrow = $state(false);
 	$effect(() => watchNarrow((value) => (narrow = value)));
 	const wide = $derived(isWorkbenchSurface(narrow));
-	/*
-	 * On macOS the window's traffic lights sit at the top of the rail. Inset 18px, they end 78px in
-	 * on current macOS (14px buttons 23px apart; 72px on older ones, 20px apart), so the rail gives
-	 * them 84px, 6px past the last one as the open list gives its mark; the card's edge is 4px on.
-	 */
-	const railWidth = WINDOW_CHROME === 'mac' ? SIDEBAR_RAIL + 20 : SIDEBAR_RAIL;
+	const railWidth = SIDEBAR_RAIL;
 	/**
 	 * The session list folded down to a rail of avatars. Anywhere the list is a column of the shell
 	 * it can fold: the desktop workbench, and the paired client on a tablet, which keeps the columns
@@ -1031,12 +1015,6 @@
 			toggleSidebar();
 			return;
 		}
-		// Off the Mac the window's menu never sees Ctrl+W while the page has focus; see matchesCloseTab.
-		if (wide && isTauri() && matchesCloseTab(e)) {
-			e.preventDefault();
-			workbench.runMenuCommand('pane-close-tab');
-			return;
-		}
 		// After the Escape chain and ⌘O, so neither can be taken out from under them.
 		if (wide) {
 			const command = matchWorkbenchKey(e);
@@ -1137,7 +1115,6 @@
 	bind:this={shellEl}
 	style:--preview-width="{artifact.previewWidth}px"
 	style:--sidebar-width="{sidebarHidden ? railWidth : sidebarWidth}px"
-	data-tauri-drag-region={dragRegion}
 	style:--sidebar-split={sidebarHidden ? '0px' : undefined}
 >
 	{#if sidebarHidden}
@@ -1545,8 +1522,7 @@
 	/*
 	 * Beside the phone layout the content is a card on the window's ground: the sidebar and the
 	 * gutter around the card share one colour, and the pane lies on it as a sheet instead of a
-	 * column ruled off by a line. On macOS that ground is the window's sidebar material, lightly
-	 * tinted, behind a transparent page (`window-chrome.ts`); the gutter also drags the window.
+	 * column ruled off by a line.
 	 */
 	@media (min-width: 681px) {
 		.shell {
@@ -1574,16 +1550,6 @@
 			box-shadow: none;
 		}
 
-		/* On macOS the tabs' centre line meets the traffic lights' (the sidebar's top row, 26pt). */
-		:global(:root[data-chrome='mac']) .shell:not(.is-layered) .main {
-			margin-top: 6px;
-		}
-
-		/* Dark, the panes' tab heads keep 4px above them (WorkbenchLeaf); the lights stay level. */
-		:global(:root[data-chrome='mac'][data-theme='dark']) .shell:not(.is-layered) .main {
-			margin-top: 2px;
-		}
-
 		/* The card's edge is the line now; the handle stays, unseen until it is hovered. */
 		.sidebar-split {
 			background: transparent;
@@ -1602,9 +1568,6 @@
 			left: 5px;
 		}
 
-		:global(:root[data-material='glass']) .shell {
-			background: color-mix(in srgb, var(--ground) var(--ground-tint), transparent);
-		}
 	}
 
 	/* The rail has its own edge and nothing to drag. */

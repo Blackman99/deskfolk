@@ -63,22 +63,12 @@ test("copy rejects when the picture cannot be read and still hands the promise t
   );
 });
 
-test("in the desktop window a menu's Paste reads the pasteboard natively, with no second click", async () => {
-  const calls: string[] = [];
-  const internals = { invoke: async (cmd: string) => { calls.push(cmd); return "ls -la\n"; } };
-  expect(await readClipboardText(internals)).toBe("ls -la\n");
-  expect(calls).toEqual(["read_clipboard_text"]);
-  // An empty pasteboard is nothing to paste, not an error.
-  expect(await readClipboardText({ invoke: async () => null })).toBe("");
-});
-
-test("outside the window, or if the command fails, the page's own reader is asked", async () => {
+test("a menu's Paste asks the page's own reader", async () => {
   const clipboard = navigator.clipboard as { readText?: () => Promise<string> } | undefined;
   const original = clipboard?.readText;
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { ...clipboard, readText: async () => "from page" } });
   try {
-    expect(await readClipboardText(undefined)).toBe("from page");
-    expect(await readClipboardText({ invoke: async () => { throw new Error("no such command"); } })).toBe("from page");
+    expect(await readClipboardText()).toBe("from page");
   } finally {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { ...clipboard, readText: original } });
   }

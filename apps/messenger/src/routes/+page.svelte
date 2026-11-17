@@ -21,7 +21,6 @@
 	import { armBackFloor } from '$lib/back-floor';
 	import { keptFocus } from '$lib/kept-focus';
 	import PairingScreen from '$lib/remote/PairingScreen.svelte';
-	import { updateChecker } from '$lib/update-checker.svelte';
 	import Shell from '$lib/Shell.svelte';
 
 	let shell = $state<Shell>();
@@ -84,13 +83,11 @@ const runtime = new MessengerRuntime();
 
 	onMount(() => {
 		runtime.start();
-		updateChecker.start();
 		// A phone's Back always has somewhere to go in the app before it leaves it; see back-floor.ts.
 		const disarm = HOSTED_MESSENGER ? armBackFloor(() => shell?.backFromFloor() ?? false) : () => {};
 		return () => {
 			disarm();
 			runtime.destroy();
-			updateChecker.stop();
 		};
 	});
 

@@ -27,16 +27,15 @@
 	import Switch from '../Switch.svelte';
 	import type { LocalApi } from '../local-api.ts';
 	import { desktopPlatform } from '../platform.ts';
-	import { isTauri, readTauriInternals } from '../tauri.ts';
 
 	/**
 	 * The Mac's half of the remote screen: whether paired devices may view and control it, whether
 	 * macOS Screen Sharing is there to serve them, which ICE servers a direct connection may use,
 	 * and who is connected now. Reachable only from this window: no paired device can change it.
 	 * On Windows the server is a VNC server the person installs (ADR 0059): while none answers, the
-	 * card says how to set TightVNC up and links its download page instead of macOS's Sharing pane.
-	 * On Linux it is a VNC server too (x11vnc, wayvnc), with no page to open: the card lists the
-	 * ways to start one for the session the person runs.
+	 * card says how to set TightVNC up instead of pointing at macOS's Sharing pane.
+	 * On Linux it is a VNC server too (x11vnc, wayvnc): the card lists the ways to start one for the
+	 * session the person runs. A browser cannot open the system's pages, so the card has no button.
 	 */
 	interface Props {
 		api: LocalApi;
@@ -99,21 +98,6 @@
 		}
 	}
 
-	/**
-	 * System Settings' Sharing pane (the window's opener allows this one settings address and no
-	 * other), or on Windows TightVNC's download page.
-	 */
-	async function openSharing(): Promise<void> {
-		const internals = readTauriInternals();
-		if (!isTauri(internals) || !internals?.invoke) return;
-		const url = windows ? 'https://www.tightvnc.com/download.php' : 'x-apple.systempreferences:com.apple.Sharing-Settings.extension';
-		try {
-			await internals.invoke('open_external_url', { url });
-		} catch {
-			// Nothing to fall back to: the description already names where the switch is.
-		}
-	}
-
 	$effect(() => {
 		void load();
 		const timer = setInterval(() => void load(), pollMs);
@@ -152,9 +136,6 @@
 			<span class={status.sharing ? 'muted' : 'field-error'} data-testid="remote-screen-sharing">
 				{status.sharing ? t.screen.macSharingOn : t.screen.macSharingOff}
 			</span>
-			{#if !status.sharing && !linux}
-				<button type="button" class="btn-xs" onclick={() => void openSharing()}>{t.screen.macSharingSettings}</button>
-			{/if}
 		</div>
 		{#if windows && !status.sharing}
 			<p class="settings-row-desc remote-screen-vnc" data-testid="remote-screen-vnc">{t.screen.macVncSteps}</p>

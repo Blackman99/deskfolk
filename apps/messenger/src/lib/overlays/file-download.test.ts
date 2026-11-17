@@ -10,14 +10,11 @@ const { default: ArtifactPreview } = await import("./ArtifactPreview.svelte");
 const t = copyFor("zh");
 
 const realClick = HTMLAnchorElement.prototype.click;
-const win = window as unknown as { __TAURI_INTERNALS__?: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> } };
-const realInternals = win.__TAURI_INTERNALS__;
 const realShare = Object.getOwnPropertyDescriptor(navigator, "share");
 const realCanShare = Object.getOwnPropertyDescriptor(navigator, "canShare");
 const realMatchMedia = window.matchMedia;
 afterEach(() => {
   HTMLAnchorElement.prototype.click = realClick;
-  win.__TAURI_INTERNALS__ = realInternals;
   if (realShare) Object.defineProperty(navigator, "share", realShare);
   else delete (navigator as { share?: unknown }).share;
   if (realCanShare) Object.defineProperty(navigator, "canShare", realCanShare);
@@ -88,23 +85,6 @@ test("a download that fails says so and can be tried again", async () => {
   downloadButton(view.host)!.click();
   await settle(); await settle();
   expect(view.host.textContent).not.toContain(t.stream.artifactDownloadFailed);
-  view.close();
-});
-
-test("in the desktop window the file opens with the system instead", async () => {
-  const invoked: Array<Record<string, unknown> | undefined> = [];
-  win.__TAURI_INTERNALS__ = { invoke: async (_cmd, args) => { invoked.push(args); return null; } };
-  const view = render(ArtifactPreview, { attachment: null, relpath: "subs.srt", siblings: [], workspacePath: "/Users/me/ws", t,
-    api: { kind: "local" } as never,
-    onClose: () => {}, onSelect: () => {},
-  });
-  await settle();
-  expect(view.host.textContent).toContain(t.stream.artifactUnsupported);
-  expect(downloadButton(view.host)).toBeUndefined();
-  const open = [...view.host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.trim() === t.stream.artifactOpenSystem)!;
-  open.click();
-  await settle();
-  expect(invoked).toEqual([{ path: "/Users/me/ws/subs.srt", reveal: false }]);
   view.close();
 });
 
@@ -270,4 +250,3 @@ test("the local window and a folder offer no download", async () => {
   expect(headDownload(workspace.host)).toBeNull();
   workspace.close();
 });
-

@@ -7,7 +7,7 @@
 	import MarkdownBody from '../MarkdownBody.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import { desktopReadingMode, transcriptReadingReady, TRANSCRIPT_VISIBLE_MS } from '../notifications/reading.ts';
+	import { transcriptReadingReady, TRANSCRIPT_VISIBLE_MS } from '../notifications/reading.ts';
 	import { isLiveRun, projectAgentOf } from '../sidebar/project-groups.ts';
 	import {
 		composerImeKeyAction,
@@ -569,8 +569,7 @@
 				snapshotReady: true,
 				overlayBlocksTranscript: runtime.settingsOpen || runtime.workspaceOpen
 			},
-			desktopReadingMode(runtime.isDesktopShell, runtime.nativeCapabilities),
-			runtime.isDesktopShell ? runtime.nativeFocusFacts : null
+			'auto'
 		);
 		if (!ready || !stuck) return;
 		readTimer = setTimeout(() => {

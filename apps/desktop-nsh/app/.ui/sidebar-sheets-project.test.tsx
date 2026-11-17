@@ -17,7 +17,6 @@ async function story(picked?: string | null, extra: Record<string, unknown> = {}
       handlers: {
         "tauri.local_api_endpoint": endpoint,
         "tauri.app_version": "0.0.0",
-        "tauri.window_material": "none",
         "tauri.pick_workspace_folder": (args: unknown) => (asked.push(args), picked ?? null),
       },
     },

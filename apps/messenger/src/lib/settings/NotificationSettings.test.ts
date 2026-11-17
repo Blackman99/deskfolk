@@ -99,14 +99,6 @@ test("device toggle calls enableDeviceNotifications and refreshes notification d
   close();
 });
 
-test("desktop test stays disabled when native delivery is unqualified even if the device is enabled", () => {
-  const { host, close } = mountSettings({ deviceEnabled: true, isDesktopShell: true, nativeDelivery: false });
-  const testBtn = host.querySelector(".test-row button") as HTMLButtonElement;
-  expect(testBtn.disabled).toBe(true);
-  expect(host.textContent).toContain(t.notifications.nativeTestDisabled);
-  close();
-});
-
 test("local browser test stays disabled when native delivery is unqualified even if the device is enabled", () => {
   const { host, close } = mountSettings({ deviceEnabled: true, isDesktopShell: false, remote: false, nativeDelivery: false });
   const testBtn = host.querySelector(".test-row button") as HTMLButtonElement;

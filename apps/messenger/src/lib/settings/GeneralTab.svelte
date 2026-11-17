@@ -13,7 +13,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { Snapshot } from '../snapshot.ts';
 	import type { FieldErrorKind, SettingsFieldErrors } from './wizard-save.ts';
-	import { setLaunchAtLogin, type IndependentStatus } from './independent-runtime.ts';
+	import type { IndependentStatus } from './independent-runtime.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -61,8 +61,7 @@
 	}
 
 	async function onLaunchAtLogin(checked: boolean): Promise<void> {
-		if (!(await patchImmediate({ launch_at_login: checked }))) return;
-		await setLaunchAtLogin(checked);
+		await patchImmediate({ launch_at_login: checked });
 	}
 </script>
 

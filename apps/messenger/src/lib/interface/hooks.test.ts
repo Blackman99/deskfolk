@@ -39,15 +39,13 @@ test("every data-ui hook is still in the markup", () => {
 });
 
 test("the hooks the app's own stylesheets select are in the markup", () => {
-  // Glass content (`content-glass.css`) reaches what lies on a card by its hooks: one that left
-  // the markup would leave that layer solid with nothing failing.
+  // A stylesheet that reaches a component by its hook would go quiet if the hook left the markup.
   const styles = join(SRC, "lib", "styles");
   const selected = new Set<string>();
   for (const entry of readdirSync(styles)) {
     if (!entry.endsWith(".css")) continue;
     for (const match of readFileSync(join(styles, entry), "utf8").matchAll(/data-ui="([^"]+)"/g)) selected.add(match[1]);
   }
-  expect(selected.has("chat-header")).toBe(true);
   for (const name of selected) {
     const found = SOURCES.some((source) => source.includes(`data-ui="${name}"`));
     expect({ hook: name, found }).toEqual({ hook: name, found: true });

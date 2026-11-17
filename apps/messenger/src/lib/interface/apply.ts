@@ -125,7 +125,7 @@ export function trackSurface(doc: Document = document, onChange?: (surface: Inte
   return () => query.removeEventListener("change", update);
 }
 
-/** Glass content cards (`styles/content-glass.css`), where the window has a material to show. */
+/** Glass content cards (`data-content-glass`), where the window has a material to show; the native app reads it as `glass.ts`. */
 export function applyContentGlass(glass: "solid" | "frosted" | "clear" | undefined, doc: Document = document): void {
   if (glass === "frosted" || glass === "clear") doc.documentElement.dataset.contentGlass = glass;
   else delete doc.documentElement.dataset.contentGlass;

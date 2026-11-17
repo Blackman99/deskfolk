@@ -46,7 +46,6 @@ function openEntry(entry: string, params: Record<string, unknown>, options: Part
       handlers: {
         "tauri.local_api_endpoint": endpoint,
         "tauri.app_version": "0.0.0",
-        "tauri.window_material": "none",
         ...extra?.handlers,
       },
     },
