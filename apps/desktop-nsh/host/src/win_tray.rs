@@ -17,7 +17,8 @@
 //! NSH ends the process as soon as its window is gone (`run_app` exits), and an icon whose process
 //! ended without taking it off stays in the notification area until the pointer passes over it. So
 //! the icon goes with the window: a `WH_CALLWNDPROC` hook on NSH's UI thread (which `win_wheel.rs`
-//! hooks for the wheel too) sees the window's `WM_DESTROY` and takes it off then.
+//! hooks for the wheel too) sees the window's `WM_DESTROY` and takes it off then. The same moment
+//! stops the runtime the shell looks after, as NSH ends the process right after it.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
@@ -307,6 +308,10 @@ unsafe extern "system" fn call_window_proc(code: i32, wparam: WPARAM, lparam: LP
         let sent = unsafe { &*(lparam.0 as *const CWPSTRUCT) };
         if sent.message == WM_DESTROY && sent.hwnd.0 as isize == MAIN.load(Ordering::SeqCst) {
             remove();
+            // NSH's `run_app` ends the process itself once the window is gone and never returns to
+            // `win::run`, so this is the last moment the shell has: the runtime it looks after is
+            // stopped here, on the way out (`runtime::stop`).
+            crate::runtime::stop();
         }
     }
     // SAFETY: the next hook gets what this one was given.

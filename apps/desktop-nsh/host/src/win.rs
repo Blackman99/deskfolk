@@ -66,6 +66,8 @@ pub fn run(config: Config) -> std::process::ExitCode {
         ..AppOptions::default()
     };
     // NSH's runner: DPI awareness, OLE, the window made with the options above, its message loop.
+    // It ends the process itself when the window goes and does not return here: the runtime is
+    // stopped as the window is destroyed (`win_tray.rs`), and the line after it is a fallback.
     let code = nsh_platform_windows::run_app(AppSource::Bundle(bundle), options);
     crate::runtime::stop();
     code
