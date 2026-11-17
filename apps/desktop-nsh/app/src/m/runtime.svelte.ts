@@ -1,5 +1,5 @@
 // Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: ca42a8aeec56a2a0
+// Source: 36d9e7be679b9136
 import { reconciledState, state } from "../lib/reactive";
 import type {
   ApiFormat,
@@ -984,8 +984,8 @@ export class MessengerRuntime {
     return api?.kind === "remote" && api.screenOffered;
   }
 
-  /** Whether that screen is a Mac's or a Windows PC's, for its words and its key row. */
-  get screenHost(): "mac" | "windows" {
+  /** Whether that screen is a Mac's, a Windows PC's or a Linux desktop's, for its words and its key row. */
+  get screenHost(): "mac" | "windows" | "linux" {
     void this.connection;
     const api = this.api;
     return api?.kind === "remote" ? api.screenHost : "mac";

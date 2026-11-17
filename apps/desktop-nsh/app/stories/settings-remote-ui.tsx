@@ -59,6 +59,7 @@ export default function SettingsRemoteUi() {
     },
   } as unknown as LocalApi;
   const windows = signal(false);
+  const linux = signal(false);
 
   // The interface profile through the runtime, for tests to seed and read back (the daemon keeps one per run).
   const profileText = signal("");
@@ -135,6 +136,7 @@ export default function SettingsRemoteUi() {
         <Chip id="mock-paired" label="paired" onPress={pairing({ phase: "paired", deviceId: "dev1" })} />
         <Chip id="mock-failed" label="failed" onPress={pairing({ phase: "failed", error: "expired" })} />
         <Chip id="mock-windows" label="windows" onPress={() => windows.set(!windows())} />
+        <Chip id="mock-linux" label="linux" onPress={() => linux.set(!linux())} />
         <Chip id="seed-reset" label="reset" onPress={edit({ reset: ["tokens", "behaviour", "css", "copy"], enabled: true })} />
         <Chip id="seed-copy" label="copy" onPress={edit({ copy: { zh: { "composer.send": "发出去" } } })} />
         <Chip id="seed-motion" label="motion" onPress={edit({ behaviour: { motion: "reduce" }, tokens: { light: { "--accent": "red" } } })} />
@@ -172,7 +174,7 @@ export default function SettingsRemoteUi() {
       </If>
       <If when={page() === "screen"}>
         <Scroll class="flex-1 px-4 py-2">
-          <RemoteScreenSettings api={screenApi} pollMs={400} windows={windows()} />
+          <RemoteScreenSettings api={screenApi} pollMs={400} windows={windows()} linux={linux()} />
         </Scroll>
       </If>
       <If when={page() === "interface"}>

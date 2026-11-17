@@ -98,6 +98,15 @@ test("the card keeps the approve step after a dismissed sheet, and fails on anyt
   await remote.confirmHostPairing();
   expect(remote.hostPairing).toEqual({ ...confirm, note: "hello_not_configured" });
 
+  // Linux without a polkit agent, or without the policy file: the same, with its own note.
+  for (const code of ["confirm_agent_missing", "confirm_not_configured"]) {
+    remote.hostPairing = confirm;
+    window(async () => ({ ok: false, diagnostic: code }));
+    await remote.confirmHostPairing();
+    expect(remote.hostPairing).toEqual({ ...confirm, note: code });
+  }
+  remote.hostPairing = confirm;
+
   window(async () => ({ ok: false, diagnostic: "expired" }));
   await remote.confirmHostPairing();
   expect(remote.hostPairing).toEqual({ phase: "failed", error: "expired" });

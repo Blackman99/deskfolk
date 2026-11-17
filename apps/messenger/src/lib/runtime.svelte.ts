@@ -953,8 +953,8 @@ export class MessengerRuntime {
     return api?.kind === "remote" && api.screenOffered;
   }
 
-  /** Whether that screen is a Mac's or a Windows PC's, for its words and its key row. */
-  get screenHost(): "mac" | "windows" {
+  /** Whether that screen is a Mac's, a Windows PC's or a Linux desktop's, for its words and its key row. */
+  get screenHost(): "mac" | "windows" | "linux" {
     void this.connection;
     const api = this.api;
     return api?.kind === "remote" ? api.screenHost : "mac";

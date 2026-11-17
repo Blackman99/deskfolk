@@ -19,7 +19,7 @@
 	let { api, t, onClose }: Props = $props();
 
 	let above = $state<{ top: number; height: number } | null>(null);
-	/** A Mac's Screen Sharing or a Windows PC's VNC server: the page's words and key row follow it. */
+	/** A Mac's Screen Sharing or a Windows PC's or Linux desktop's VNC server: the page's words and key row follow it. */
 	const host = $derived(api.kind === 'remote' ? api.screenHost : 'mac');
 	const screenT = $derived({ ...t, screen: screenCopy(t, host) });
 

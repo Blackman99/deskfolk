@@ -47,6 +47,8 @@
 	 *
 	 * A Windows PC (`host`) is the same page over its VNC server: its key row reads Ctrl, Alt, Win,
 	 * and the header has Ctrl+Alt+Del where a Mac's smooth mode (which lowers its resolution) is.
+	 * A Linux desktop's key row reads Ctrl, Alt, Super, and its header has neither: no Ctrl+Alt+Del
+	 * to send there, and no smooth mode.
 	 */
 	interface Props {
 		api: ScreenApi & {
@@ -64,8 +66,8 @@
 		answerMs?: number;
 		/** The Mac account kept on this phone after it once got in; absent, it is asked every time. */
 		remember?: RememberedSignIn;
-		/** Whose screen: a Mac's Screen Sharing, or a Windows PC's VNC server. */
-		host?: 'mac' | 'windows';
+		/** Whose screen: a Mac's Screen Sharing, or a Windows PC's or Linux desktop's VNC server. */
+		host?: 'mac' | 'windows' | 'linux';
 	}
 
 	let { api, t, onClose, loadRfb, connect = connectScreen, keepaliveMs = 15_000, answerMs = 20_000, remember, host = 'mac' }: Props = $props();
@@ -618,7 +620,7 @@
 					title={t.screen.smoothTitle}
 					onclick={toggleSmooth}
 				>{t.screen.smooth}</button>
-			{:else}
+			{:else if host === 'windows'}
 				<!--
 					Where a Mac's smooth mode is: the key row has no room left for it on a phone. Two short
 					lines ("Ctrl+Alt" over "Del") so the title keeps its room.

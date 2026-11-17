@@ -30,8 +30,8 @@ export function RemoteScreenView(props: {
   onClose: () => void;
   /** The Mac account kept on this phone after it once got in; absent, it is asked every time. */
   remember?: RememberedSignIn;
-  /** Whose screen: a Mac's Screen Sharing, or a Windows PC's VNC server. */
-  host?: "mac" | "windows";
+  /** Whose screen: a Mac's Screen Sharing, or a Windows PC's or Linux desktop's VNC server. */
+  host?: "mac" | "windows" | "linux";
   /** Tests hand in a stand-in. */
   connect?: typeof connectScreen;
   /** How often the page tells the Mac it is still here. */
@@ -84,6 +84,7 @@ export function RemoteScreenView(props: {
           <If
             when={host === "mac"}
             else={
+              <If when={host === "windows"}>
               <TextButton
                 testID="screen-ctrl-alt-del"
                 label={words().ctrlAltDelLabel}
@@ -98,6 +99,7 @@ export function RemoteScreenView(props: {
                   <Text class="text-[11px] leading-[1.15] text-ink">{words().ctrlAltDel.replace(/\+(?=[^+]*$)/, "\n").split("\n")[1] ?? ""}</Text>
                 </View>
               </TextButton>
+              </If>
             }
           >
             <TextButton testID="screen-smooth" pressed={screen.smooth()} tooltip={words().smoothTitle} onPress={() => screen.toggleSmooth()}>

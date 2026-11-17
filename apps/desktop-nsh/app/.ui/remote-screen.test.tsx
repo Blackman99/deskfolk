@@ -144,6 +144,15 @@ test("a Windows PC has its own words and keys: Ctrl first, Ctrl+Alt+Del, no smoo
   await app.waitUntil(() => logged(app).includes("key:ffe3:down key:ffe9:down key:ffff:down key:ffff:up key:ffe9:up key:ffe3:up"));
 });
 
+test("a Linux desktop has Ctrl, Alt and Super, and neither Ctrl+Alt+Del nor smooth", async () => {
+  const app = await connected("linux");
+  expect(app.texts()).toContain("电脑屏幕");
+  expect(app.shows("id:screen-smooth")).toBe(false);
+  expect(app.shows("id:screen-ctrl-alt-del")).toBe(false);
+  expect(app.texts()).toContain("Ctrl");
+  expect(app.texts()).toContain("Super");
+});
+
 test("the back button leaves the page and lets the Mac go", async () => {
   const app = await connected("none");
   await app.press("id:screen-back");

@@ -37,8 +37,16 @@ export const WINDOWS_MODIFIERS: ReadonlyArray<{ id: Modifier; label: string; nam
   { id: "shift", label: "⇧", name: "Shift" },
 ];
 
-export function modifiersFor(host: "mac" | "windows"): ReadonlyArray<{ id: Modifier; label: string; name: string }> {
-  return host === "windows" ? WINDOWS_MODIFIERS : MODIFIERS;
+/** A Linux desktop's: the same order, with Super where Windows has Win (the keysym sent is X11's Super_L). */
+export const LINUX_MODIFIERS: ReadonlyArray<{ id: Modifier; label: string; name: string }> = [
+  { id: "control", label: "Ctrl", name: "Ctrl" },
+  { id: "alt", label: "Alt", name: "Alt" },
+  { id: "command", label: "Super", name: "Super" },
+  { id: "shift", label: "⇧", name: "Shift" },
+];
+
+export function modifiersFor(host: "mac" | "windows" | "linux"): ReadonlyArray<{ id: Modifier; label: string; name: string }> {
+  return host === "windows" ? WINDOWS_MODIFIERS : host === "linux" ? LINUX_MODIFIERS : MODIFIERS;
 }
 
 export type ScreenKey = { id: string; label: string; keysym: number };

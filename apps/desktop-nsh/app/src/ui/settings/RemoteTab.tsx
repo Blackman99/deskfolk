@@ -15,6 +15,7 @@
 import { Clipboard, Text, View, type JSX } from "nsh";
 import { Input } from "nsh/base";
 import { copy, runtime } from "../../runtime";
+import { confirmNote } from "../../m/copy";
 import { formatFingerprint } from "../../m/remote/fingerprint.ts";
 import type { HostRelayField } from "../../m/remote/pairing-host.ts";
 import { Button } from "../Button";
@@ -280,8 +281,8 @@ export function RemoteTab(props: {
                                 {formatFingerprint(arrived()?.deviceFingerprint ?? "")}
                               </Text>
                               <Text class="text-[12px] text-ink-secondary">{t().remote.hostPairCompare}</Text>
-                              <If when={arrived()?.note === "hello_not_configured"}>
-                                <FieldError testID="pairing-needs-hello">{t().remote.confirmNeedsHello}</FieldError>
+                              <If when={confirmNote(t(), arrived()?.note)}>
+                                <FieldError testID="pairing-needs-hello">{confirmNote(t(), arrived()?.note)}</FieldError>
                               </If>
                               <View class="flex-row flex-wrap items-center gap-2 mt-[2px]">
                                 <Button variant="primary" testID="pairing-confirm" disabled={runtime.hostPairingBusy} onPress={() => void runtime.confirmHostPairing()}>
@@ -341,7 +342,7 @@ export function RemoteTab(props: {
             </View>
             <If when={runtime.hostDevicesError}>
               <FieldError testID="host-devices-error">
-                {runtime.hostDevicesError === "hello_not_configured" ? t().remote.confirmNeedsHello : t().remote.deviceActionFailed}
+                {confirmNote(t(), runtime.hostDevicesError) ?? t().remote.deviceActionFailed}
               </FieldError>
             </If>
             <If

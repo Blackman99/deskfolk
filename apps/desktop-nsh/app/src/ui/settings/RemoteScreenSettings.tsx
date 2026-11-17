@@ -4,13 +4,15 @@
  * ICE servers a direct connection may use, and who is connected now. Reachable only from this
  * window: no paired device can change it. On Windows the server is a VNC server the person installs
  * (ADR 0059): while none answers, the card says how to set TightVNC up and links its download page.
+ * On Linux it is a VNC server too (x11vnc, wayvnc), with no page to open: the card lists the ways to
+ * start one.
  *
  * Needs from the shell: `open_external_url` with `x-apple.systempreferences:com.apple.Sharing-Settings.extension`
  * (the app's own `open_external_url` answers http(s) and mailto only, so the macOS Sharing pane does
  * not open until it also allows that one address).
  *
- * Props: `api` (the local API); `pollMs` (how often the card looks again, default 5000); `windows`
- * (the OS; default from `platform.os`). `parseIceLines` and `iceLines` are in `remote-screen-ice.ts`.
+ * Props: `api` (the local API); `pollMs` (how often the card looks again, default 5000); `windows` and
+ * `linux` (the OS; default from `platform.os`). `parseIceLines` and `iceLines` are in `remote-screen-ice.ts`.
  */
 import { cleanup, platform, signal, Text, View } from "nsh";
 import { Input } from "nsh/base";
@@ -22,9 +24,10 @@ import { Button } from "../Button";
 import { Switch } from "../Switch";
 import { iceLines, parseIceLines } from "./remote-screen-ice";
 
-export function RemoteScreenSettings(props: { api: LocalApi; pollMs?: number; windows?: boolean }) {
+export function RemoteScreenSettings(props: { api: LocalApi; pollMs?: number; windows?: boolean; linux?: boolean }) {
   const t = () => copy();
   const windows = () => props.windows ?? platform.os === "windows";
+  const linux = () => props.linux ?? platform.os === "linux";
   const status = signal<RemoteScreenStatus | null>(null);
   const busy = signal(false);
   const failed = signal(false);
@@ -113,12 +116,15 @@ export function RemoteScreenSettings(props: { api: LocalApi; pollMs?: number; wi
           <Text testID="remote-screen-sharing" class={`text-[13px] ${status()?.sharing ? "text-ink-muted" : "text-danger-text"}`}>
             {status()?.sharing ? t().screen.macSharingOn : t().screen.macSharingOff}
           </Text>
-          <If when={!status()?.sharing}>
+          <If when={!status()?.sharing && !linux()}>
             <Button size="sm" testID="remote-screen-sharing-open" onPress={() => void openSharing()}>{t().screen.macSharingSettings}</Button>
           </If>
         </View>
         <If when={windows() && !status()?.sharing}>
           <Text testID="remote-screen-vnc" class="text-[12px] text-ink-muted leading-[1.35]">{t().screen.macVncSteps}</Text>
+        </If>
+        <If when={linux() && !status()?.sharing}>
+          <Text testID="remote-screen-vnc" class="text-[12px] text-ink-muted leading-[1.35]">{t().screen.macVncStepsLinux}</Text>
         </If>
         <Each of={status()?.sessions ?? []} key={(session) => session.deviceId}>
           {(session) => (

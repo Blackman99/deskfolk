@@ -328,9 +328,10 @@ export class RemoteApi extends ApiBase<PendingRemote> {
   get screenOffered(): boolean {
     return this.features.screen === "rfb-v1";
   }
-  /** Which computer that screen is: a Windows PC behind a VNC server, or (what older daemons are) a Mac. */
-  get screenHost(): "mac" | "windows" {
-    return this.features.host === "windows" ? "windows" : "mac";
+  /** Which computer that screen is: a Windows PC or a Linux desktop behind a VNC server, or (what older daemons are) a Mac. */
+  get screenHost(): "mac" | "windows" | "linux" {
+    const host = this.features.host;
+    return host === "windows" || host === "linux" ? host : "mac";
   }
   async screenStart(options: { smooth?: boolean } = {}): ReturnType<ScreenApi["screenStart"]> {
     return this.screenCall("/remote/screen/start", options.smooth ? { smooth: true } : {});

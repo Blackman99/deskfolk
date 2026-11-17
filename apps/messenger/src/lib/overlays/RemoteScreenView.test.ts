@@ -53,7 +53,7 @@ const settle = async () => {
   flushSync();
 };
 
-function mountView(options: { connect?: (api: unknown, options?: { smooth?: boolean }) => Promise<ScreenConnection>; status?: () => Promise<{ mode: string }>; keepaliveMs?: number; answerMs?: number; remember?: RememberedSignIn; host?: "mac" | "windows" } = {}) {
+function mountView(options: { connect?: (api: unknown, options?: { smooth?: boolean }) => Promise<ScreenConnection>; status?: () => Promise<{ mode: string }>; keepaliveMs?: number; answerMs?: number; remember?: RememberedSignIn; host?: "mac" | "windows" | "linux" } = {}) {
   FakeRfb.made = [];
   const calls: string[] = [];
   const closedChannels: number[] = [];
@@ -140,6 +140,32 @@ test("a Windows PC gets its own key row and words, Ctrl+Alt+Del, and no smooth m
   click(view.host.querySelector('[data-key="ctrl-alt-del"]'));
   expect(rfb.ctrlAltDel).toBe(1);
   expect(view.host.querySelector('[data-key="control"]')?.getAttribute("aria-pressed")).toBe("false");
+});
+
+test("a Linux desktop gets Ctrl, Alt, Super, its own words, and neither Ctrl+Alt+Del nor smooth mode", async () => {
+  closers.push(() => saveScreenFlag("smooth", false));
+  saveScreenFlag("smooth", true);
+  const asked: boolean[] = [];
+  const view = mountView({
+    host: "linux",
+    connect: async (_api, options) => {
+      asked.push(options?.smooth ?? false);
+      return { sessionId: "S1", mode: "direct" as const, channel: { close() {} } as never };
+    },
+  });
+  await settle();
+  expect(asked).toEqual([false]);
+  expect(view.host.textContent).toContain(screenCopy(t, "linux").waitingMac);
+  const rfb = FakeRfb.made[0]!;
+  rfb.fire("connect");
+  expect(view.host.querySelector(".screen-smooth")).toBeNull();
+  expect(view.host.querySelector('[data-key="ctrl-alt-del"]')).toBeNull();
+  const labels = [...view.host.querySelectorAll<HTMLElement>(".screen-key[data-key]")].map((key) => key.textContent?.trim());
+  expect(labels.slice(0, 4)).toEqual(["Ctrl", "Alt", "Super", "⇧"]);
+  // Super is the keysym a Mac's ⌘ is: X11's Super_L.
+  click(view.host.querySelector('[data-key="command"]'));
+  click(view.host.querySelector('[data-key="escape"]'));
+  expect(rfb.keys).toEqual([[KEYSYM.command, true], [KEYSYM.escape, true], [KEYSYM.escape, false], [KEYSYM.command, false]]);
 });
 
 test("a Mac's key row has no Ctrl+Alt+Del", async () => {

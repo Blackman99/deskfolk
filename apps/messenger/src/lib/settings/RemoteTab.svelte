@@ -2,7 +2,7 @@
 	import SettingsCard from './SettingsCard.svelte';
 	import SettingsCardHeader from './SettingsCardHeader.svelte';
 	import { localeTag } from '../locale-tag.ts';
-	import type { Copy } from '../copy.ts';
+	import { confirmNote, type Copy } from '../copy.ts';
 	import { copyText } from '../clipboard.ts';
 	import { formatFingerprint } from '../remote/fingerprint.ts';
 	import type { HostRelayField } from '../remote/pairing-host.ts';
@@ -209,8 +209,8 @@
 								<p class="pairing-step-text">{t.remote.hostPairArrived(runtime.hostPairing.name)}</p>
 								<p class="pairing-fingerprint mono">{formatFingerprint(runtime.hostPairing.deviceFingerprint)}</p>
 								<p class="pairing-step-note">{t.remote.hostPairCompare}</p>
-								{#if runtime.hostPairing.note === 'hello_not_configured'}
-									<p class="field-error" data-testid="pairing-needs-hello">{t.remote.confirmNeedsHello}</p>
+								{#if confirmNote(t, runtime.hostPairing.note)}
+									<p class="field-error" data-testid="pairing-needs-hello">{confirmNote(t, runtime.hostPairing.note)}</p>
 								{/if}
 								<div class="pairing-decide">
 									<button
@@ -262,7 +262,7 @@
 				</div>
 				{#if runtime.hostDevicesError}
 					<p class="field-error">
-						{runtime.hostDevicesError === 'hello_not_configured' ? t.remote.confirmNeedsHello : t.remote.deviceActionFailed}
+						{confirmNote(t, runtime.hostDevicesError) ?? t.remote.deviceActionFailed}
 					</p>
 				{/if}
 				{#if runtime.hostDevices.length === 0}
