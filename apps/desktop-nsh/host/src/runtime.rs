@@ -412,7 +412,8 @@ pub fn stop() {
 }
 
 /// Stops only a runtime this process started, and leaves one another copy of the app runs (a launch
-/// that handed itself to the copy already running, `win.rs`).
+/// that handed itself to the copy already running, `win.rs`, `gtk.rs`). The Mac has no such launch.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn stop_started() {
     if CHILD.lock().unwrap_or_else(|p| p.into_inner()).is_some() {
         stop();
