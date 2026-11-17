@@ -19,7 +19,7 @@ export function rtcHelperPath(
 ): string | null {
   const override = env.REAL_BOT_RTC_HELPER;
   if (override) return override;
-  if (platform !== "darwin" && platform !== "win32") return null;
+  if (platform !== "darwin" && platform !== "win32" && platform !== "linux") return null;
   const name = platform === "win32" ? "real-bot-rtc.exe" : "real-bot-rtc";
   const packaged = join(dirname(execPath), name);
   if (exists(packaged)) return packaged;

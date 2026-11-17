@@ -10,7 +10,7 @@
 //!
 //! The binary has two other jobs, each its own subcommand: `display-hold`, the Mac's display at a
 //! lower resolution while a phone has the remote screen in smooth mode (see display.rs), and
-//! `stay-awake`, a Windows PC's display and sleep held off while a phone is connected (awake.rs).
+//! `stay-awake`, a Windows PC's or Linux desktop's display and sleep held off while a phone is connected (awake.rs).
 
 mod awake;
 mod display;

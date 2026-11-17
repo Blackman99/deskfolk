@@ -13,10 +13,10 @@ import type { TunnelMux, TunnelSocket } from "./tunnel";
  */
 export const SCREEN_SHARING_PORT = 5900;
 
-/** Which computer a phone is looking at, for its words and its key row: a Mac, or a Windows PC. */
-export type ScreenHost = "mac" | "windows";
+/** Which computer a phone is looking at, for its words and its key row: a Mac, a Windows PC, or a Linux desktop. */
+export type ScreenHost = "mac" | "windows" | "linux";
 export function screenHost(platform: string = process.platform): ScreenHost {
-  return platform === "win32" ? "windows" : "mac";
+  return platform === "win32" ? "windows" : platform === "linux" ? "linux" : "mac";
 }
 /** The phone pings while its page is open; a session that stops hearing from it ends. */
 const KEEPALIVE_TIMEOUT_MS = 45_000;
@@ -70,7 +70,7 @@ export type ScreenServiceOptions = {
  * the last session lets go.
  */
 function caffeinate(helperPath: () => string | null): { stop(): void } {
-  if (process.platform === "win32") return stayAwake(helperPath());
+  if (process.platform === "win32" || process.platform === "linux") return stayAwake(helperPath());
   if (process.platform !== "darwin") return { stop() {} };
   try {
     const child = Bun.spawn(["/usr/bin/caffeinate", "-d", "-u", "-t", "86400"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
@@ -81,8 +81,8 @@ function caffeinate(helperPath: () => string | null): { stop(): void } {
 }
 
 /**
- * Windows has no `caffeinate`: the helper holds `SetThreadExecutionState` for the display and the
- * system until its stdin closes, so a PC left idle does not sleep under a phone that is watching
+ * Windows and Linux have no `caffeinate`: the helper holds `SetThreadExecutionState` (Windows) or the
+ * screensaver and logind inhibitors (Linux) for the display and the system until its stdin closes, so a PC left idle does not sleep under a phone that is watching
  * it. Without a helper (a source checkout that never built it) nothing holds them.
  */
 function stayAwake(path: string | null): { stop(): void } {
