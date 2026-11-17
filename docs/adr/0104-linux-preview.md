@@ -1,6 +1,6 @@
 # Linux 预览版：XDG 数据目录、Rust pty helper 的 forkpty 后端、AppImage 加 deb，远控先关 / A Linux preview: XDG data folder, a forkpty backend for the Rust pty helper, AppImage and deb, remote access off for now
 
-Status: implemented 2026-11-03（第一轮）。Windows 预览版（674ce839、[ADR 0059](0059-windows-remote-access-and-screen.md)）走过的路，Linux 照着走一遍：先能编、能跑、能打包，缺的如实列出。
+Status: implemented 2026-11-03（第一轮）；第 3、7、8、9、10 条被 [ADR 0112](0112-native-app-catches-up-with-tauri.md) 取代（Linux 换上原生应用、远控打开）/ decisions 3, 7, 8, 9 and 10 superseded by ADR 0112 (Linux ships native, with remote access)。Windows 预览版（674ce839、[ADR 0059](0059-windows-remote-access-and-screen.md)）走过的路，Linux 照着走一遍：先能编、能跑、能打包，缺的如实列出。
 
 ## 背景
 
