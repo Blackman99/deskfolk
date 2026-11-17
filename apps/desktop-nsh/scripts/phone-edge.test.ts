@@ -20,6 +20,7 @@ beforeAll(async () => {
   origin = `https://127.0.0.1:${port}`;
   relay = await fixture({ origin }, { origin, ca });
   writeFileSync(join(dir, "index.html"), "<!doctype html><title>phone</title>");
+  writeFileSync(join(dir, "nsh-page.1.css"), "html { margin: 0 }");
   edge = startEdge({ port, relayPort: relay.port, site: dir, tls });
 });
 
@@ -47,6 +48,11 @@ test("the page and the relay share one TLS origin, as on the deployed relay", as
   expect((await fetch(`${origin}/healthz`, { tls: { ca } })).status).toBe(404);
   // The host's bootstrap, over HTTPS through the edge.
   expect((await relay.enroll()).status).toBe(201);
+});
+
+test("the page's stylesheet goes out as CSS: a browser in strict mode refuses it otherwise", async () => {
+  const style = await fetch(`${origin}/nsh-page.1.css`, { tls: { ca } });
+  expect(style.headers.get("content-type")).toStartWith("text/css");
 });
 
 test("WebSocket links carry the relay's text handshake and binary frames both ways", async () => {

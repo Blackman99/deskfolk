@@ -14,6 +14,9 @@ export const RELAY_ROUTES: ReadonlySet<string> = new Set(["/v1/relay/host", "/v1
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  // NSH's page style (`nsh-page.<hash>.css`, since NSH 48559f8): a browser in strict mode refuses
+  // a stylesheet served as anything else, and the page is left without its layout.
+  ".css": "text/css; charset=utf-8",
   ".wasm": "application/wasm",
   ".json": "application/json",
   ".webmanifest": "application/manifest+json",
