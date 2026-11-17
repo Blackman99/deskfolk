@@ -17,7 +17,8 @@
  *
  *   bun apps/desktop-nsh/scripts/package.ts [--release] [--target aarch64-apple-darwin|x86_64-apple-darwin]
  *                                           [--sign developer-id|adhoc] [--notarize <keychain profile>|env]
- *                                           [--native-from <dir>] [--out <dir>] [--smoke] [--measure <runs>]
+ *                                           [--native-from <dir>] [--out <dir>] [--smoke] [--upgrade-from <setup.exe>]
+ *                                           [--measure <runs>]
  *
  * `--sign developer-id` signs with `APPLE_SIGNING_IDENTITY`, or this keychain's "Developer ID
  * Application" identity. `--notarize` sends the app, then the dmg, to Apple's notary service with
@@ -25,7 +26,9 @@
  * `APPLE_PASSWORD` and `APPLE_TEAM_ID` (release.yml). `--native-from` copies an already built and
  * signed `native/` folder instead of building one (a quick local package). `--smoke` launches the
  * packaged release with its own daemon on a machine where no runtime answers yet (a CI runner): the
- * first snapshot, the daemon inside the app with its setup channel, a quit that stops it.
+ * first snapshot, the daemon inside the app with its setup channel, a quit that stops it. On Windows
+ * it installs the installer silently first (over `--upgrade-from <earlier setup.exe>`, installed
+ * before it, when given) and uninstalls it at the end.
  * `--measure` launches the packaged app that many times (in the background, never activated) and
  * prints the time from launch to its first snapshot and its memory footprint.
  */
@@ -479,20 +482,41 @@ async function healthyAt17890(): Promise<boolean> {
  * started again with the window reconnecting, a close that stops it, and a silent uninstall that
  * takes the program and its entry away and leaves the data folder.
  */
-async function smokeWindows(setup: string) {
+const UNINSTALL_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskfolk";
+
+/** A value of the uninstall entry, or "" when there is none. */
+function uninstallValue(name: string): string {
+  const query = spawnSync("reg", ["query", UNINSTALL_KEY, "/v", name], { encoding: "utf8" });
+  const line = query.stdout.split("\n").find((l) => l.includes(name)) ?? "";
+  return line.split(/REG_\w+/)[1]?.trim() ?? "";
+}
+
+async function smokeWindows(setup: string, upgradeFrom?: string) {
   if (await healthyAt17890()) throw new Error("--smoke needs a machine where nothing answers on 17890");
   const local = process.env.LOCALAPPDATA;
   if (!local) throw new Error("no LOCALAPPDATA");
   const installDir = join(local, "Deskfolk");
   const dataDir = join(local, "real-bot");
+  // An earlier Deskfolk first (the Tauri app's installer, for 0.5.0): the new one must go over it.
+  let mainName = "Deskfolk.exe";
+  if (upgradeFrom) {
+    const before = spawnSync(resolve(upgradeFrom), ["/S"], { encoding: "utf8" });
+    if (before.status !== 0) throw new Error(`smoke: the earlier installer exited ${before.status}`);
+    mainName = uninstallValue("MainBinaryName") || mainName;
+    console.log(`smoke: ${upgradeFrom} installed ${uninstallValue("DisplayVersion")} as ${mainName}`);
+    if (!existsSync(join(installDir, mainName))) throw new Error(`smoke: the earlier install has no ${mainName}`);
+  }
   const installed = spawnSync(setup, ["/S"], { encoding: "utf8" });
   if (installed.status !== 0) throw new Error(`smoke: the installer exited ${installed.status}`);
-  const exe = join(installDir, "Deskfolk.exe");
+  const exe = join(installDir, mainName);
   for (const path of [exe, join(installDir, "app", "bundle.nshc"), join(installDir, "native", "real-bot-daemon.exe"), join(installDir, "uninstall.exe")]) {
     if (!existsSync(path)) throw new Error(`smoke: the install has no ${path}`);
   }
-  const entry = spawnSync("reg", ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Deskfolk", "/v", "DisplayVersion"], { encoding: "utf8" });
-  console.log(`smoke: installed; ${entry.stdout.trim().split("\n").pop()}`);
+  if (uninstallValue("MainBinaryName") !== mainName) throw new Error(`smoke: the entry names ${uninstallValue("MainBinaryName")}, not ${mainName}`);
+  checkIdentity(exe);
+  const shortcut = join(process.env.APPDATA ?? "", "Microsoft", "Windows", "Start Menu", "Programs", "Deskfolk.lnk");
+  if (!existsSync(shortcut)) throw new Error(`smoke: no Start menu shortcut at ${shortcut}`);
+  console.log(`smoke: installed ${uninstallValue("DisplayVersion")} as ${mainName}; the Start menu shortcut is there`);
 
   const shell = Bun.spawn([exe], {
     stdout: "pipe",
@@ -567,7 +591,7 @@ if (import.meta.main) {
   const release = process.argv.includes("--release");
   if (release && process.platform === "win32") {
     const { setup } = packageReleaseWindows();
-    if (process.argv.includes("--smoke")) await smokeWindows(setup);
+    if (process.argv.includes("--smoke")) await smokeWindows(setup, arg("--upgrade-from"));
   } else {
     const { app } = release ? packageRelease() : packageDev();
     if (release && process.argv.includes("--smoke")) await smoke(app);

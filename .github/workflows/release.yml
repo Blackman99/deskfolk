@@ -312,9 +312,23 @@ jobs:
             choco install nsis -y --no-progress
           fi
 
-      # Installed silently, launched with its own daemon, closed, uninstalled (`--smoke`).
+      # The installer of the latest release, for the smoke to install first and go over: what
+      # every Windows install will meet (for 0.5.0, the Tauri app's).
+      - name: The latest release's installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/previous"
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern '*_x64-setup.exe' --dir "$RUNNER_TEMP/previous" || true
+          ls -la "$RUNNER_TEMP/previous"
+
+      # Installed silently over that one, launched with its own daemon, closed, uninstalled (`--smoke`).
       - name: Package and check the installer
-        run: bun apps/desktop-nsh/scripts/package.ts --release --smoke --out "$RUNNER_TEMP/deskfolk"
+        run: |
+          previous=("$RUNNER_TEMP"/previous/*_x64-setup.exe)
+          upgrade=()
+          [ -f "${previous[0]}" ] && upgrade=(--upgrade-from "${previous[0]}")
+          bun apps/desktop-nsh/scripts/package.ts --release --smoke "${upgrade[@]}" --out "$RUNNER_TEMP/deskfolk"
 
       - uses: actions/upload-artifact@v4
         with:
