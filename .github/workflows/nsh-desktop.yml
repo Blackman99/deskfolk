@@ -148,7 +148,8 @@ jobs:
           $dumpbin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "Hostx64\\x64" } | Select-Object -First 1
           & $dumpbin.FullName /dependents apps\desktop-nsh\target\debug\deskfolk-nsh.exe
 
-      - name: Linux binary libraries (no web view)
+      # The HTML preview's web view (WebKitGTK 6) is linked on Linux; Windows has none.
+      - name: Linux binary libraries
         if: runner.os == 'Linux'
         run: ldd apps/desktop-nsh/target/debug/deskfolk-nsh | grep -iE "webkit|gtk|javascriptcore" || true
 
@@ -159,3 +160,15 @@ jobs:
       - name: Smoke (Windows)
         if: runner.os == 'Windows'
         run: bun apps/desktop-nsh/scripts/ci-smoke.ts apps/desktop-nsh/target/debug/deskfolk-nsh.exe apps/desktop-nsh/build/app/bundle.js --timeout 180
+
+      # The phone's page against a relay and a runtime of its own on this runner: a Linux runtime's
+      # remote access end to end (its file credential store, registering, pairing, the roster and a
+      # conversation over the relay, a reload still enrolled). The page is NSH's web package, built
+      # for wasm32 with clang and llvm-ar.
+      - name: Phone page end to end (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          rustup target add wasm32-unknown-unknown
+          sudo apt-get install -y llvm
+          pnpm --filter @real-bot/messenger exec playwright install --with-deps chromium
+          AR_wasm32_unknown_unknown="$(command -v llvm-ar)" bun apps/desktop-nsh/scripts/phone-web-e2e.ts --browser chromium --shots "$RUNNER_TEMP/phone-shots"
