@@ -1,7 +1,7 @@
 //! The shell's windows: each an AppKit window with the system's sidebar material behind one NSH
 //! `AppView`, the same look the Tauri window had (`v0.5.1:apps/desktop/src-tauri/tauri.macos.conf.json`: sidebar effect, hidden
 //! title, the content under the title bar). Every window runs its own engine and talks to the
-//! runtime itself, as every Tauri window ran its own page; nothing is shared in memory.
+//! runtime itself, as every 0.4.0 window ran its own page; nothing is shared in memory.
 
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
@@ -149,7 +149,7 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
         n.set(id + 1);
         id
     });
-    // The last window's size, the Tauri app's before there is one of ours (`window_state.rs`).
+    // The last window's size, the 0.4.0 app's before there is one of ours (`window_state.rs`).
     let size_dir = crate::config::nsh_data_dir(&config.data_dir);
     let size = crate::window_state::load_or_import(&size_dir, tauri_size_dir(config).as_deref());
     SIZE_DIR.with_borrow_mut(|d| *d = Some(size_dir));
@@ -179,7 +179,7 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
     content.setFrame(frame);
     window.setContentView(Some(&content));
 
-    // The material: what the Tauri window got from `windowEffects: ["sidebar"]`. It lies inside
+    // The material: what the 0.4.0 window got from `windowEffects: ["sidebar"]`. It lies inside
     // the view that holds the app, under the app, not behind that view: NSH 0.4.0 paints that
     // view's layer opaque (black or white by the scheme) wherever the app's top view is not
     // opaque itself (`follow_background`), and the shell's ground over the glass is not. Upstream
@@ -198,7 +198,7 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
     }
 
     window.setDelegate(Some(ProtocolObject::from_ref(&*Delegate::shared(mtm))));
-    // Where the Tauri window had them, beside the sidebar's mark (`traffic_lights.rs`).
+    // Where the 0.4.0 window had them, beside the sidebar's mark (`traffic_lights.rs`).
     crate::traffic_lights::keep(mtm, &window);
     // Cascade from the newest window, like any document app.
     let newest = WINDOWS.with_borrow(|w| w.last().map(|e| e.window.frame().origin));
@@ -225,7 +225,7 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
     } else {
         window.makeKeyAndOrderFront(None);
     }
-    // A window that was maximized comes back zoomed (one in full screen too, as in the Tauri app).
+    // A window that was maximized comes back zoomed (one in full screen too, as in the 0.4.0 app).
     if size.maximized && !window.isZoomed() {
         window.zoom(None);
     }

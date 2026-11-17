@@ -1,14 +1,14 @@
 //! The runtime the shell talks to: found by its descriptor and a health probe.
 //!
 //! - **Dev build:** in a packaged dev build the shell starts the dev runtime itself when nothing
-//!   answers (the command is baked in at build time, the way the Tauri shell's debug build runs the
+//!   answers (the command is baked in at build time, the way the 0.4.0 shell's debug build runs the
 //!   daemon from source). It never starts or reaches the stable instance: the port comes from the
 //!   dev data directory and 17890 is refused.
 //! - **`--stable-instance`:** 17890 only, and never started by the shell
 //!   (`scripts/dev-runtime.ts --stable-instance` runs it, in place of the installed app's).
 //! - **Release** (`config::RELEASE`): the daemon compiled into the `.app`
-//!   (`Contents/Resources/native/real-bot-daemon`, where the Tauri app kept it), started with the
-//!   remote setup channel and watched the way the Tauri app's window does (`supervisor.rs`, `tick`):
+//!   (`Contents/Resources/native/real-bot-daemon`, where the 0.4.0 app kept it), started with the
+//!   remote setup channel and watched the way the 0.4.0 app's window does (`supervisor.rs`, `tick`):
 //!   when it is down, nothing else holds the data directory and the shell is not quitting, it is
 //!   started again. On quit the shell stops the daemon it supervises.
 
@@ -61,7 +61,7 @@ pub fn has_dev_command() -> bool {
 }
 
 /// The daemon a package carries, beside the pty, WebRTC and credential helpers it finds next to
-/// itself, where the Tauri app kept them: `Contents/Resources/native/real-bot-daemon` in the
+/// itself, where the 0.4.0 app kept them: `Contents/Resources/native/real-bot-daemon` in the
 /// `.app`; `native\real-bot-daemon.exe` in the install directory on Windows;
 /// `/usr/lib/Deskfolk/native/real-bot-daemon` beside the shell on Linux (`/usr/bin/real-bot-desktop`
 /// is a link to it, which `current_exe` resolves).
@@ -157,7 +157,7 @@ fn ensure_bundled(data_dir: &Path) -> Result<(), String> {
 }
 
 /// Starts the bundled daemon with the remote setup channel (pairing on this computer goes over it,
-/// `remote_setup.rs`), as the Tauri app's `daemon::spawn` does in a release. Passing the channel
+/// `remote_setup.rs`), as the 0.4.0 app's `daemon::spawn` does in a release. Passing the channel
 /// also makes the daemon window-supervised, so a paired phone can restart it.
 fn spawn_bundled() -> Result<(), String> {
     let daemon = bundled_daemon().ok_or("this copy of Deskfolk has no runtime inside it")?;
@@ -173,7 +173,7 @@ fn spawn_bundled() -> Result<(), String> {
     #[cfg(unix)]
     let channel = crate::remote_setup::prepare_channel(&mut command);
     // The daemon's stdin and stdout are the channel on Windows (after the `null`s above, which it
-    // replaces); no console window of its own (the Tauri app's `suppress_console_window`).
+    // replaces); no console window of its own (the 0.4.0 app's `suppress_console_window`).
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -196,7 +196,7 @@ fn spawn_bundled() -> Result<(), String> {
     Ok(())
 }
 
-/// Puts the daemon in a job that ends with this process, however it ends (the Tauri app's
+/// Puts the daemon in a job that ends with this process, however it ends (the 0.4.0 app's
 /// `daemon.rs`): a shell that crashes or is ended in Task Manager takes the daemon, its pty helper
 /// and its terminals' programs with it, rather than leaving them running without a window (the next
 /// launch would find a runtime with no setup channel to it). The job's handle is never closed: it
@@ -297,7 +297,7 @@ enum Tick {
     Spawn,
 }
 
-/// The Tauri app's `Supervisor::on_probe` and `tick`, for a window that always supervises (the
+/// The 0.4.0 app's `Supervisor::on_probe` and `tick`, for a window that always supervises (the
 /// independent runtime stays fail-closed, `independent.rs`): start the daemon again only when
 /// nothing of ours answers, nothing holds the data directory and the daemon this shell started is
 /// not still alive.
@@ -338,7 +338,7 @@ pub fn supervise(data_dir: PathBuf) {
 /// keeps an independent runtime from being started again by launchd. A window that supervises
 /// starts it again anyway, and a runtime that found the latch still there would report itself
 /// stopped and its restart unavailable (`remote/maint.ts`), so the window clears it while it
-/// supervises, as the Tauri app's `tick` did.
+/// supervises, as the 0.4.0 app's `tick` did.
 fn clear_stop_latch(data_dir: &std::path::Path) {
     match std::fs::remove_file(data_dir.join(STOP_LATCH)) {
         Ok(()) => log::info!("cleared the runtime's stop latch: this window supervises it"),
@@ -373,7 +373,7 @@ fn supervising() -> bool {
 /// Stops the runtime this shell is responsible for. A dev build stops the dev runtime it started,
 /// and only that one. A release that supervises stops its daemon however it came up (the copy an
 /// update replaced may have started it): the one it started by a signal, any other through the
-/// authenticated `/v1/runtime/quit` (the Tauri app's `begin_quit`).
+/// authenticated `/v1/runtime/quit` (the 0.4.0 app's `begin_quit`).
 pub fn stop() {
     QUITTING.store(true, Ordering::SeqCst);
     let child = CHILD.lock().unwrap_or_else(|p| p.into_inner()).take();
@@ -383,7 +383,7 @@ pub fn stop() {
     }
     if let Some(mut child) = child {
         // SIGTERM lets it close its database; the runtime stops on it. Windows has no signal to
-        // send: a release asks the runtime to quit over its API (as the Tauri app's window did) and
+        // send: a release asks the runtime to quit over its API (as the 0.4.0 app's window did) and
         // ends the process only if that does not take; a dev build ends it.
         #[cfg(unix)]
         unsafe {
@@ -461,7 +461,7 @@ mod tests {
     }
 
     #[test]
-    fn the_daemon_sits_where_the_tauri_app_kept_it_on_each_desktop() {
+    fn the_daemon_sits_where_0_4_0_kept_it_on_each_desktop() {
         assert_eq!(
             daemon_path_for(Path::new("/Applications/Deskfolk.app/Contents/MacOS/deskfolk-nsh"), "macos"),
             Some(PathBuf::from("/Applications/Deskfolk.app/Contents/Resources/native/real-bot-daemon"))

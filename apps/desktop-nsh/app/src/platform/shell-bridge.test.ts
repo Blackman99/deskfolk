@@ -13,7 +13,7 @@ test("the app answers links itself, on every target", async () => {
   expect(refused).toContain("url not allowed");
 });
 
-test("the links that may open outside are the Tauri shell's", () => {
+test("only the listed kinds of link may open outside", () => {
   expect(allowedExternalUrl("https://example.com")).toBe(true);
   expect(allowedExternalUrl("mailto:dev@real-bot.local")).toBe(true);
   expect(allowedExternalUrl("x-apple.systempreferences:com.apple.Sharing-Settings.extension")).toBe(true);
@@ -25,7 +25,7 @@ test("the links that may open outside are the Tauri shell's", () => {
   expect(allowedExternalUrl("https://example.com evil")).toBe(false);
 });
 
-test("a command rejects with the shell's words, as the Tauri shell's did", () => {
+test("a command rejects with the shell's own words", () => {
   // `pairing-host.ts` compares the string, `updates.ts` reads it.
   expect(shellRejection(new Error("desktop_channel_unavailable"))).toBe("desktop_channel_unavailable");
   expect(shellRejection("not-installed")).toBe("not-installed");

@@ -115,7 +115,7 @@ pub fn data_dir() -> Option<PathBuf> {
 
 /// Where the runtime listens now, by its descriptor, or `fallback` while there is none to read. A
 /// runtime that started again mints a new token (`mintLocalToken`), so the address a window was
-/// opened with goes stale; the Tauri app re-reads it on every tick for the same reason.
+/// opened with goes stale; the 0.4.0 app re-reads it on every tick for the same reason.
 pub fn fresh(fallback: &Endpoint) -> Endpoint {
     DATA_DIR.get().and_then(|dir| read(dir).ok()).unwrap_or_else(|| fallback.clone())
 }

@@ -1,5 +1,5 @@
 //! The application: its delegate, the menu bar, the menu bar extra (tray) and the dev loop's
-//! bundle watcher. A tray app: closing the last window keeps it running, like the Tauri shell.
+//! bundle watcher. A tray app: closing the last window keeps it running, like the 0.4.0 shell.
 
 use std::cell::OnceCell;
 use std::path::PathBuf;
@@ -23,13 +23,13 @@ thread_local! {
     static DELEGATE: OnceCell<Retained<Delegate>> = const { OnceCell::new() };
     static TRAY: OnceCell<Retained<NSStatusItem>> = const { OnceCell::new() };
     /// The menu bar extra's menu: opened by a right click (or a control-click), a left click
-    /// showing the window instead, as in the Tauri tray.
+    /// showing the window instead, as in the 0.4.0 tray.
     static TRAY_MENU: OnceCell<Retained<NSMenu>> = const { OnceCell::new() };
 }
 
 /// The menu bar's workbench commands, by the ids the app runs them by (`workbench-commands.ts`
 /// `MENU_COMMANDS`, `shell-workbench`'s `runMenuCommand`); an item's tag is its index here. They go
-/// to the window in front, as the Tauri menu's did.
+/// to the window in front, as the 0.4.0 menu's did.
 const PANE_COMMANDS: &[&str] = &["view-spend", "pane-split-right", "pane-split-down", "pane-close", "pane-equalise", "pane-reset", "pane-close-tab"];
 
 fn pane_command_tag(id: &str) -> isize {
@@ -38,7 +38,7 @@ fn pane_command_tag(id: &str) -> isize {
 
 /// Whether the Apple event being handled is the system's at login: a login item's open (`oapp`),
 /// or its reopen (`rapp`) of a copy already running, carries `keyAELaunchedAsLogInItem` (`'lgit'`)
-/// as its `keyAEPropData`. `SMAppService` cannot pass the Tauri app's `--hidden`, so this is how a
+/// as its `keyAEPropData`. `SMAppService` cannot pass the 0.4.0 app's `--hidden`, so this is how a
 /// login launch keeps to the menu bar here.
 fn launched_at_login() -> bool {
     const OPEN_APPLICATION: u32 = u32::from_be_bytes(*b"oapp");
@@ -112,7 +112,7 @@ define_class!(
 
         #[unsafe(method(applicationShouldHandleReopen:hasVisibleWindows:))]
         fn reopen(&self, _app: &NSApplication, visible: bool) -> bool {
-            // A second login item (the Tauri app's, if it is still among the login items) reaches
+            // A second login item (the 0.4.0 app's, if it is still among the login items) reaches
             // a running copy as a reopen: that one keeps to the menu bar too.
             if !visible && !launched_at_login() {
                 show(self.mtm());
@@ -158,7 +158,7 @@ define_class!(
         }
 
         /// The menu bar extra: a left click shows the window, a right click (or a control-click)
-        /// opens the menu, as the Tauri tray did.
+        /// opens the menu, as the 0.4.0 tray did.
         #[unsafe(method(trayClicked:))]
         fn tray_clicked(&self, _sender: Option<&AnyObject>) {
             let mtm = self.mtm();
@@ -173,7 +173,7 @@ define_class!(
             }
         }
 
-        /// "Stop Everything" can be chosen while the runtime answers, as in the Tauri tray.
+        /// "Stop Everything" can be chosen while the runtime answers, as in the 0.4.0 tray.
         #[unsafe(method(validateMenuItem:))]
         fn validate_menu_item(&self, item: &NSMenuItem) -> objc2::runtime::Bool {
             let enabled = item.action() != Some(sel!(stopAll:)) || crate::stop_all::available();
@@ -364,7 +364,7 @@ fn main_menu(mtm: MainThreadMarker, delegate: &Delegate) -> Retained<NSMenu> {
         item(mtm, "Paste", Some(sel!(paste:)), "v"),
         item(mtm, "Select All", Some(sel!(selectAll:)), "a"),
     ]);
-    // The Tauri app's View menu: the workbench's commands, with ⌘\ and ⌘⇧\ for the splits.
+    // The View menu, as 0.4.0 had it: the workbench's commands, with ⌘\ and ⌘⇧\ for the splits.
     let command = |title: &str, id: &str, key: &str| {
         let it = targeted(mtm, title, sel!(paneCommand:), key, delegate);
         it.setTag(pane_command_tag(id));
@@ -383,7 +383,7 @@ fn main_menu(mtm: MainThreadMarker, delegate: &Delegate) -> Retained<NSMenu> {
         command("Reset Layout", "pane-reset", ""),
     ]);
     // ⌘W closes the tab in front of you; the window hides once there is none left (the app asks,
-    // `hide_main_window`), as in the Tauri app. Closing the whole window is its close button.
+    // `hide_main_window`), as in the 0.4.0 app. Closing the whole window is its close button.
     submenu(mtm, &bar, "Window", &[
         item(mtm, "Minimize", Some(sel!(performMiniaturize:)), "m"),
         NSMenuItem::separatorItem(mtm),
@@ -393,7 +393,7 @@ fn main_menu(mtm: MainThreadMarker, delegate: &Delegate) -> Retained<NSMenu> {
 }
 
 /// The menu bar extra: what is used of your plans (`usage_tray.rs`), show, a new window, quit.
-/// It wears the Tauri app's mark, tinted by the menu bar like its own items.
+/// It wears the 0.4.0 app's mark, tinted by the menu bar like its own items.
 fn tray(mtm: MainThreadMarker, delegate: &Delegate, data_dir: Option<PathBuf>) -> Retained<NSStatusItem> {
     // NSVariableStatusItemLength.
     let status = NSStatusBar::systemStatusBar().statusItemWithLength(-1.0);

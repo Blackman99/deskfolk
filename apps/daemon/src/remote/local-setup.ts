@@ -64,7 +64,7 @@ function reason(error: unknown): string {
 /**
  * The packaged window's dispatcher over the file credential store: setup, plus the two steps of a
  * confirmation. The window shows `challenge_display` on its LocalAuthentication sheet and asks for
- * `challenge_proof` only after the person passed it. Its webview cannot send either: Tauri's
+ * `challenge_proof` only after the person passed it. The page cannot send either: the host's
  * `remote_local_setup` forwards setup operations only.
  */
 export function windowDispatch(native: FileRemoteNative): (controller: RemoteController, input: unknown) => Promise<unknown> {

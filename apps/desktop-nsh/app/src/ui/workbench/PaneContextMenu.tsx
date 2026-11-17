@@ -185,7 +185,7 @@ export function PaneContextMenu(props: {
     if (props.floating && dock) group([{ key: "dock", testID: "wb-dock", label: t().dock, icon: { name: "panel-arrow-down" }, run: dock }]);
     const float = props.onFloat;
     if (float) group([{ key: "float-tab", testID: "wb-float-tab", label: t().floatTab, icon: { name: "panel-inset" }, run: float }]);
-    // Windows and Linux: the layout commands the Tauri app's window menu bar had (`menu-commands.ts`).
+    // Windows and Linux: the layout commands 0.4.0's window menu bar had (`menu-commands.ts`).
     if (layoutCommandsInPaneMenu(platform.os)) {
       group([
         { key: "equalise", testID: "wb-equalise", label: t().equalise, icon: { name: "grid" }, run: () => runMenuCommand("pane-equalise") },

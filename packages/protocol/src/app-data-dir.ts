@@ -1,7 +1,7 @@
 /**
  * Where the daemon's data directory lives by default, before `REAL_BOT_DATA_DIR` overrides it.
  * Pure: no I/O, no `node:*` imports — this package also runs in the messenger's browser bundle
- * (the Tauri dev-server plugin resolves the same default on the Vite/Node side). Callers own
+ * (the Vite/Node side resolves the same default). Callers own
  * reading `REAL_BOT_DATA_DIR`; this only computes the fallback.
  */
 import { APP_SUPPORT_DIRNAME } from "./constants.ts";

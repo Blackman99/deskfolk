@@ -1,5 +1,5 @@
 //! System notifications and the Dock badge. NSH 0.4 has neither for an embedding app, so the shell
-//! posts them itself, the way the Tauri shell's `notifications_macos.rs` does: Notification Center
+//! posts them itself, the way the 0.4.0 shell's `notifications_macos.rs` does: Notification Center
 //! needs a bundle identity, which the dev build gets from its `.app` wrapper (scripts/dev.ts).
 
 use std::ptr::NonNull;
@@ -22,7 +22,7 @@ use objc2_user_notifications::{
 
 use crate::notification_loop::NotificationAdapter;
 
-/// The key a banner's `userInfo` keeps the messenger's click reference under (the Tauri shell's).
+/// The key a banner's `userInfo` keeps the messenger's click reference under (the 0.4.0 shell's).
 const CLICK_REF_KEY: &str = "click_ref";
 
 type OnClick = Box<dyn Fn(String) + Send + Sync>;

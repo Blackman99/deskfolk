@@ -1,4 +1,4 @@
-//! The remote setup channel, as the Tauri app's `remote_setup.rs` had it. Pairing on this computer
+//! The remote setup channel, as the 0.4.0 app's `remote_setup.rs` had it. Pairing on this computer
 //! talks to the daemon over a channel the shell hands it at spawn, not over the local HTTP API
 //! (ADR 0033, ADR 0059): an inherited socket pair on fd 3 on macOS and Linux; on Windows, where a
 //! child gets no handle past the standard three that Bun would pick up, the daemon's own stdin and
@@ -8,7 +8,7 @@
 //! A release spawns its daemon with the channel (`runtime::spawn_bundled`); a development build
 //! starts its dev runtime without one and refuses the command (`disabled`), so the dev settings
 //! panel confirms with the stand-in. Without a channel the command answers
-//! `desktop_channel_unavailable`, as the Tauri app does when its channel is gone.
+//! `desktop_channel_unavailable`, as the 0.4.0 app does when its channel is gone.
 
 use serde_json::Value;
 use std::io::{Read, Write};
@@ -133,7 +133,7 @@ fn validate(input: &Value) -> Result<(), String> {
 }
 
 /// `remote_local_setup({ request })`. Blocks on the daemon, so the caller runs it off the engine
-/// thread. `dev`: a development build, which refuses it before reading it (the Tauri app's
+/// thread. `dev`: a development build, which refuses it before reading it (the 0.4.0 app's
 /// `BundledNativeCaller` rule).
 pub fn local_setup(dev: bool, request: Value) -> Result<Value, String> {
     if dev {

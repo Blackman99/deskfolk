@@ -1,7 +1,7 @@
 /**
  * Dragging workspace paths out of a file tree and onto a composer.
  *
- * Pointer events, never HTML5 drag and drop: in the macOS window Tauri's own drop handler claims
+ * Pointer events, never HTML5 drag and drop: a desktop WebView's own drop handler can claim
  * every native drag before the page sees it, so `dragover` and `drop` never fire there (the tab
  * drag avoids it too, see `workbench/tab-drag.ts`). A tree row hands a press to
  * `pressWorkspacePaths`; a composer registers with `workspaceDropTarget`; on release, the target

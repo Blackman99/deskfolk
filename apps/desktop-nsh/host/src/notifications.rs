@@ -1,6 +1,6 @@
 //! The runtime's notification API, as the Tauri shell speaks it (`v0.5.1:apps/desktop/src-tauri/src/
 //! notifications.rs`): the DTOs, the HTTP calls and the presence queue. The loop that uses them is
-//! in `notification_loop.rs`. Names and JSON shapes are the Tauri shell's, so the runtime and the
+//! in `notification_loop.rs`. Names and JSON shapes are the 0.4.0 shell's, so the runtime and the
 //! messenger see no difference between the two shells.
 
 use std::time::Duration;
@@ -344,7 +344,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dto_json_shapes_match_the_tauri_shell() {
+    fn dto_json_shapes_match_0_4_0() {
         let dto = NotificationPermissionStateDto {
             permission: "granted".into(),
             native_reading_v1: true,

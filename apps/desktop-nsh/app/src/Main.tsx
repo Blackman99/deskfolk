@@ -39,7 +39,7 @@ export function Main() {
     banners.start();
   }
   // Windows and Linux: the close button puts the window away, the tray's Quit ends the app
-  // (`platform/window-life.ts`), as in the Tauri app.
+  // (`platform/window-life.ts`), as in 0.4.0.
   if (windowId <= 1) installWindowLife();
   // Linux: the tray is the app's (`platform/linux-tray.ts`).
   if (windowId <= 1) installLinuxTray();

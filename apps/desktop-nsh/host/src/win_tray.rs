@@ -1,12 +1,12 @@
 //! The app's icon in the notification area: on Windows what the menu bar extra is on macOS
-//! (`app.rs`'s `tray`), where the Tauri app's tray is too. It wears the app's icon and its name on
+//! (`app.rs`'s `tray`), where the 0.4.0 app's tray is too. It wears the app's icon and its name on
 //! hover; a click brings the window forward, a right click opens its menu: what is used of your
 //! plans, the macOS menu's lines word for word and icon for icon (`usage_tray.rs`, asked of the
 //! runtime once a minute), then "Show Deskfolk Dev" and "Quit Deskfolk Dev". A line's click brings
 //! the window forward; "查看全部用量…" opens the usage tab too (the messenger's `pane-command`
 //! `view-usage`, as on macOS). "Stop Everything" stops the Bots' work (`stop_all.rs`). Quit asks the
 //! app to quit, which closes the window and ends the run here (`win.rs`): the window's close button
-//! only puts it away, as the Tauri app's did. The Windows shell has one window, so there is no "New
+//! only puts it away, as the 0.4.0 app's did. The Windows shell has one window, so there is no "New
 //! Window".
 //!
 //! NSH runs its window and message loop on a UI thread of its own, so the icon has a thread of its
@@ -402,7 +402,7 @@ fn open_menu(window: HWND, at: POINT) {
         separator();
     }
     item(SHOW, &format!("Show {name}"));
-    // "Stop Everything" (`stop_all.rs`), greyed while the runtime does not answer, as in the Tauri tray.
+    // "Stop Everything" (`stop_all.rs`), greyed while the runtime does not answer, as in the 0.4.0 tray.
     let stop_flags = if crate::stop_all::available() { MF_STRING } else { MF_STRING | MF_GRAYED };
     // SAFETY: as above; the text is copied.
     let _ = unsafe { AppendMenuW(menu, stop_flags, STOP_ALL, &HSTRING::from("Stop Everything")) };

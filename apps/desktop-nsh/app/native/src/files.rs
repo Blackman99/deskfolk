@@ -1,11 +1,11 @@
 //! The folder dialog and the file manager where the shell does not answer them itself (Windows,
-//! Linux; the macOS shell has `host/src/system.rs`): the Tauri app's `pick_workspace_folder` and
-//! `open_workspace_path`, through NSH's own `pick_paths`, `open_path` and `reveal_path` (the shell's
+//! Linux; the macOS shell has `host/src/system.rs`): the messenger's `pick_workspace_folder` and
+//! `open_workspace_path` commands, through NSH's own `pick_paths`, `open_path` and `reveal_path` (the shell's
 //! `IFileOpenDialog`, `ShellExecuteW` and `SHOpenFolderAndSelectItems` on Windows; GTK's file dialog
 //! and file launcher on Linux). `app/src/platform/shell-bridge.ts` answers the two commands with
 //! them, so the messenger's calls stay as they were.
 //!
-//! As in the Tauri app, a file that would run rather than open is shown in the file manager
+//! As in 0.4.0, a file that would run rather than open is shown in the file manager
 //! instead: one Windows rates dangerous to open (`AssocIsDangerous`: programs, scripts, shortcuts,
 //! installers), and on Linux one with its execute bit set or a launcher's, a script's or a
 //! program's extension. A file a Bot wrote carries no mark of where it came from; running it is the
@@ -53,7 +53,7 @@ impl Files {
 }
 
 /// `~`, `~/…` (and on Windows `~\…`) as the home folder; the folder itself when it is there, else
-/// its parent when that is; nothing for an empty value. The Tauri app's `starting_directory`.
+/// its parent when that is; nothing for an empty value.
 fn starting_directory(raw: &str) -> Option<PathBuf> {
     let raw = raw.trim();
     if raw.is_empty() {

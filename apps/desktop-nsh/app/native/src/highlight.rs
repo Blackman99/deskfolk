@@ -1,6 +1,6 @@
 //! Code in the colours the messenger's Shiki paints it: VS Code's TextMate grammars and themes,
 //! through giallo, which carries Shiki's own grammars and themes and tokenizes as VS Code does.
-//! The editor, chat's code blocks and a command's output read as they did in the Tauri build, in
+//! The editor, chat's code blocks and a command's output read as they did in 0.4.0, in
 //! the app's code colours or in the ones your interface chose (ADR 0106).
 //!
 //! NSH's own highlighting (syntect with bat's Sublime syntaxes) folds every scope into eight kinds

@@ -369,8 +369,8 @@ export function Sidebar(props: {
     onImportProject: () => runtime.openCreateProject("import"),
   };
 
-  // The macOS traffic lights take the start of the brand row: the host places them where the Tauri
-  // window had them (\`window.rs\`, from \`tauri.macos.conf.json\`), whether or not they show (full screen).
+  // The macOS traffic lights take the start of the brand row: the host places them where 0.4.0's
+  // window had them (\`window.rs\`, \`traffic_lights.rs\`), whether or not they show (full screen).
   const mac = () => WINDOW_CHROME === "mac";
   const brandWidth = signal(0);
   const searchWidth = signal(0);

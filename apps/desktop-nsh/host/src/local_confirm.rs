@@ -1,5 +1,5 @@
-//! Local confirmation for remote access on the file credential store (ADR 0033), as the Tauri
-//! app's `local_confirm.rs` does it.
+//! Local confirmation for remote access on the file credential store (ADR 0033), as the 0.4.0
+//! app did it (`local_confirm.rs`).
 //!
 //! The daemon prepares every action and holds its challenge. The shell asks it over the remote
 //! setup channel (`remote_setup.rs`) what the action is, shows that on the system's owner check
@@ -97,7 +97,7 @@ fn reason(value: &Value) -> Result<String, &'static str> {
 }
 
 /// `remote_native_confirmation({ operation, challenge })` where there is no sealed helper (Windows,
-/// Linux), as the Tauri app answered it there: `confirm` goes to the owner check for a challenge the
+/// Linux), as the 0.4.0 app answered it there: `confirm` goes to the owner check for a challenge the
 /// file store holds, and everything else (and a development build) answers `disabled`. Blocks on
 /// the daemon and the person, so the caller runs it off the engine thread.
 #[cfg(not(target_os = "macos"))]

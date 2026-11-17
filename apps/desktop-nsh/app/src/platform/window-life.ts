@@ -1,5 +1,5 @@
 /**
- * The window's close button on Windows and Linux, as the Tauri app had it: it puts the window away
+ * The window's close button on Windows and Linux, as 0.4.0 had it: it puts the window away
  * and the app keeps running in the notification area (the tray on Linux), the runtime and the
  * Bots' work with it. The tray's Quit and a later launch with `--quit` end the app (on Linux Ctrl+Q
  * too). A close the system asks for (logging out, shutting down) still closes. On the Mac the app

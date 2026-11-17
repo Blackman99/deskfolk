@@ -145,8 +145,8 @@ pub fn install(host: &HostChannel, window_id: u32, identity: &Identity) {
 }
 
 /// Launch at login, the independent runtime, remote pairing on this Mac and the in-app update
-/// install: the Tauri app's `lib.rs`, `remote_native.rs` and `remote_setup.rs` commands. A dev
-/// build (`dev_build.rs`) answers each as the Tauri dev build does. The calls that wait on the
+/// install: the 0.4.0 app's `lib.rs`, `remote_native.rs` and `remote_setup.rs` commands. A dev
+/// build (`dev_build.rs`) answers each as 0.4.0's dev build did. The calls that wait on the
 /// system, a daemon or the network answer from a thread of their own.
 fn install_system(host: &HostChannel, identity: &Identity) {
     let id = identity.clone();

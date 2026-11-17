@@ -5,7 +5,7 @@
  * - `pick_workspace_folder({ current, title })`: the system's folder dialog (`Files.pickFolder`,
  *   `app/native/src/files.rs`), the folder picked or null when cancelled.
  * - `open_workspace_path({ path, reveal })`: opens a file with its app or shows it in the file
- *   manager (`Files.openPath`); a file that would run is shown, as in the Tauri app.
+ *   manager (`Files.openPath`); a file that would run is shown, as in 0.4.0.
  * - `hide_main_window`: puts the window away (⌘W / Ctrl+W once no tab is left to close).
  */
 import type { WindowRef } from "nsh/desktop";

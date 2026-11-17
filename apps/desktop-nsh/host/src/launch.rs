@@ -78,7 +78,7 @@ pub fn channel(config: &Config, window_id: u32) -> HostChannel {
 
 /// The update check answers the same on every desktop (`updates::check`, on a thread of its own:
 /// it waits on the network). The rest of the update and system commands are the macOS shell's
-/// (`host_calls.rs`); the other desktops answer what the Tauri app answered there: no in-app
+/// (`host_calls.rs`); the other desktops answer what the 0.4.0 app answered there: no in-app
 /// install and no independent runtime, launch at login through their own login entry, and remote
 /// pairing over the setup channel with the system's owner check (`remote_setup.rs`,
 /// `local_confirm.rs`).
@@ -90,7 +90,7 @@ fn install_portable(host: &HostChannel) {
             Err(why) => call.reject(why),
         });
     });
-    // Windows: the `Run` value the Tauri app's autostart wrote (`win_login.rs`).
+    // Windows: the `Run` value the 0.4.0 app's autostart wrote (`win_login.rs`).
     #[cfg(windows)]
     host.handle("shell.set_launch_at_login", |call: HostCall| {
         let enabled = call.data()["enabled"].as_bool().unwrap_or(false);
@@ -99,7 +99,7 @@ fn install_portable(host: &HostChannel) {
             Err(why) => call.reject(why),
         }
     });
-    // Linux: the Tauri app's autostart entry (`linux_login.rs`).
+    // Linux: the 0.4.0 app's autostart entry (`linux_login.rs`).
     #[cfg(target_os = "linux")]
     host.handle("shell.set_launch_at_login", |call: HostCall| {
         let enabled = call.data()["enabled"].as_bool().unwrap_or(false);

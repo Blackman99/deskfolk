@@ -4,7 +4,7 @@
 //! room: the brand row starts 84 points in, the folded rail 40 points down. Left where AppKit puts
 //! them (about 9 points in, 16 down) they sat on the mark, apart from the row they head.
 //!
-//! Placed as tao places them for Tauri (`inset_traffic_lights`): the strip they sit in made
+//! Placed as 0.4.0's window library placed them (`inset_traffic_lights`): the strip they sit in made
 //! `y` + a button's height tall, each button moved along at AppKit's own pitch. AppKit lays the
 //! title bar out again on its own (a resize, leaving full screen), so every move of a button or of
 //! the strip puts them back (`NSViewFrameDidChangeNotification`, posted inside that layout, before
@@ -22,7 +22,7 @@ use objc2_foundation::{NSNotification, NSNotificationCenter, NSPoint, NSRect, NS
 /// the strip they sit in is made.
 const X: f64 = 18.0;
 const Y: f64 = 28.0;
-/// Where that put the buttons' middle on this macOS (measured on the Tauri window: a 14-point
+/// Where that put the buttons' middle on this macOS (measured on the 0.4.0 window: a 14-point
 /// button 19 points down), the middle of the 46-point brand row that starts 6 points down.
 const CENTRE: f64 = 26.0;
 
@@ -88,7 +88,7 @@ fn watched(window: &NSWindow) -> Vec<Retained<NSView>> {
     views
 }
 
-/// Puts window `window`'s lights where the Tauri window had them; nothing in full screen.
+/// Puts window `window`'s lights where the 0.4.0 window had them; nothing in full screen.
 pub fn place(window: &NSWindow) {
     if PLACING.get() || window.styleMask().contains(NSWindowStyleMask::FullScreen) {
         return;
@@ -111,7 +111,7 @@ pub fn place(window: &NSWindow) {
     if frame.size.height != height || frame.origin.y != window_height - height {
         strip.setFrame(NSRect::new(NSPoint::new(frame.origin.x, window_height - height), NSSize::new(frame.size.width, height)));
     }
-    // Each button where the Tauri window's was, set in the window's coordinates (from its bottom
+    // Each button where the 0.4.0 window's was, set in the window's coordinates (from its bottom
     // left) and taken into its superview's: tao's taller strip alone held them down only until
     // AppKit laid the bar out again (a resize), which centres them in a bar of its own height.
     let width = close.frame().size.width;

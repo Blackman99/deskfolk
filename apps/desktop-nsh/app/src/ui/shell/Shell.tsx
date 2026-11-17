@@ -226,8 +226,7 @@ function ShellBody(props: { s: ShellState }) {
           {/*
             * The sidebar has no edge of its own: where it meets the content is the card's edge. The
             * grip lies on that edge and takes no room in the row; pointed at or in hand it draws a
-            * 2-point line in the brand across the edge, short of either end (Tauri's
-            * `.split-handle.is-gutter`). Held, it stays lit while the pointer runs off the grip.
+            * 2-point line in the brand across the edge, short of either end. Held, it stays lit while the pointer runs off the grip.
             */}
           <View
             testID="sidebar-split"

@@ -211,7 +211,7 @@ export function SidebarRail(props: {
   const settingsTip = () => (updateChecker.updateVisible ? `${copy().sidebar.settings} · ${copy().sidebar.updateAvailable}` : copy().sidebar.settings);
   /**
    * Where the window hides its title bar and the traffic lights sit over the rail's top (macOS: the host
-   * places them as the Tauri window did), the rail makes room for them and the mark gives them its place.
+   * places them as 0.4.0's window did), the rail makes room for them and the mark gives them its place.
    */
   const mac = () => WINDOW_CHROME === "mac";
 

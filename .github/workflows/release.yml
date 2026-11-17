@@ -259,7 +259,7 @@ jobs:
           if-no-files-found: error
 
   # The Windows installer, built and checked on Windows: NSH builds each desktop on its own OS. It is
-  # not signed (no WINDOWS_SIGN_COMMAND is configured), as the Tauri app's installers were not:
+  # not signed (no WINDOWS_SIGN_COMMAND is configured), as 0.4.0's installers were not:
   # SmartScreen warns about an unknown publisher.
   package-windows:
     name: Package the Windows installer

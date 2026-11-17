@@ -1,11 +1,11 @@
 // Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 78edeebaf6f5976d
+// Source: bac21ea10e0a6424
 /**
  * Dragging workspace paths out of a file tree and onto a composer.
  *
- * Pointer events, never HTML5 dragBox.get() and drop: in the macOS window Tauri's own drop handler claims
- * every native dragBox.get() before the page sees it, so `dragover` and `drop` never fire there (the tab
- * dragBox.get() avoids it too, see `workbench/tab-dragBox.get().ts`). A tree row hands a press to
+ * Pointer events, never HTML5 drag and drop: a desktop WebView's own drop handler can claim
+ * every native drag before the page sees it, so `dragover` and `drop` never fire there (the tab
+ * drag avoids it too, see `workbench/tab-drag.ts`). A tree row hands a press to
  * `pressWorkspacePaths`; a composer registers with `workspaceDropTarget`; on release, the target
  * under the pointer gets what was dragged, if it takes it right then.
  */
@@ -33,7 +33,7 @@ export type WorkspaceDrag = {
 };
 
 /**
- * Further than a click's wobble. Past it the press is a dragBox.get(), and the click the release would
+ * Further than a click's wobble. Past it the press is a drag, and the click the release would
  * fire is swallowed, so the row does not also open.
  */
 export const WORKSPACE_DRAG_THRESHOLD_PX = 6;
@@ -73,7 +73,7 @@ export function dropTargetAt(x: number, y: number): Element | null {
 
 /**
  * A primary-button press on a tree row. Nothing happens until the pointer has travelled far
- * enough to mean a dragBox.get(), so a click still opens the row. `items` is read at that moment, so rows
+ * enough to mean a drag, so a click still opens the row. `items` is read at that moment, so rows
  * picked with ⌘ or Shift just before go along. Touch is left alone: there the finger scrolls the
  * tree, and the tree covers the conversation anyway.
  */

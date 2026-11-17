@@ -48,7 +48,7 @@ async function packagedHost() {
     api.terminals.shutdown(); controller.stop(); api.quiesce.close(); await api.engine.close(); await relay.stop(); store.close();
     rmSync(root, { recursive: true, force: true });
   });
-  /** One framed request at a time, the way Tauri's `remote_local_setup` sends them. */
+  /** One framed request at a time, the way the host's `remote_local_setup` sends them. */
   const call = (request: unknown) => new Promise<Reply>(resolve => {
     const payload = Buffer.from(JSON.stringify(request)), prefix = Buffer.alloc(4);
     prefix.writeUInt32BE(payload.length);

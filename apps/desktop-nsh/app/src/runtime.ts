@@ -1,6 +1,5 @@
 /**
- * This window's runtime: the messenger's own (`src/m/runtime.svelte.ts`), one per window as each
- * Tauri window had one. Its connection loop finds the runtime through the shell bridge on a
+ * This window's runtime: the messenger's own (`src/m/runtime.svelte.ts`), one per window. Its connection loop finds the runtime through the shell bridge on a
  * desktop and through the page on the web, then keeps the snapshot current; screens read
  * `runtime.snapshot` and call its actions.
  */

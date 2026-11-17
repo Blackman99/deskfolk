@@ -27,8 +27,7 @@ function refused(code: string): ApiError {
 }
 
 /**
- * A development window is still a Tauri window, and `remote_local_setup` refuses one: the command
- * only answers the packaged main document. So the window channel is attempted and that refusal
+ * A development window's host refuses `remote_local_setup` (it only answers a packaged build). So the window channel is attempted and that refusal
  * falls through to the development route rather than surfacing as "pairing is broken". Anything
  * the packaged window answers, it answers for good: its daemon has no loopback route to retry on.
  */

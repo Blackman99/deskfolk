@@ -10,7 +10,7 @@ use crate::endpoint::Endpoint;
 /// the dev build beside it.
 pub const RELEASE: bool = option_env!("DESKFOLK_RELEASE").is_some();
 
-/// What the app is called and its bundle id: the Tauri app's in a release, the dev build's otherwise.
+/// What the app is called and its bundle id: the 0.4.0 app's in a release, the dev build's otherwise.
 pub const APP_NAME: &str = if RELEASE { "Deskfolk" } else { "Deskfolk Dev" };
 pub const BUNDLE_ID: &str = if RELEASE { "com.real-bot.desktop" } else { "com.real-bot.desktop.nsh-dev" };
 
@@ -54,7 +54,7 @@ pub struct Config {
     pub terminal: Option<String>,
     /// Development: the bundle is `Story.tsx`'s and this names the screen it opens.
     pub story: Option<String>,
-    /// Started without a window (`--hidden`, the Tauri app's login launch): the menu bar item and
+    /// Started without a window (`--hidden`, the 0.4.0 app's login launch): the menu bar item and
     /// the runtime run, and the first window opens from the Dock or the menu.
     pub hidden: bool,
 }
@@ -106,7 +106,7 @@ pub fn from_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
     let bundle = bundle.or_else(packaged_bundle).ok_or_else(|| format!("--bundle is required outside the .app\nusage: {USAGE}"))?;
     let instance = if stable { crate::endpoint::Instance::Stable } else { crate::endpoint::Instance::Dev };
     crate::endpoint::choose(instance);
-    // A release honours `REAL_BOT_DATA_DIR` as the Tauri app and its daemon do (`local_api::data_dir`).
+    // A release honours `REAL_BOT_DATA_DIR` as the 0.4.0 app and its daemon do (`local_api::data_dir`).
     let data_dir = data_dir
         .or_else(|| RELEASE.then(|| std::env::var_os("REAL_BOT_DATA_DIR").filter(|dir| !dir.is_empty()).map(PathBuf::from)).flatten())
         .unwrap_or_else(|| if stable { stable_data_dir() } else { dev_data_dir() });

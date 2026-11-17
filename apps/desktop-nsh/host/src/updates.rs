@@ -2,7 +2,7 @@
 //!
 //! Copied from the Tauri app (`v0.5.1:apps/desktop/src-tauri/src/updates.rs`) with two changes: the
 //! Windows registry proxy reader (`internet_settings`) is left out (the host has no
-//! `windows-sys`), and the cache is a process-wide static (`check`) instead of Tauri state.
+//! `windows-sys`), and the cache is a process-wide static (`check`) instead of the 0.4.0 app's managed state.
 //!
 //! All network access happens here, off the webview (the CSP `connect-src`
 //! only allows the loopback local API). `fetch_releases` does the HTTP call;
@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 pub const GITHUB_RELEASES_URL: &str =
     "https://api.github.com/repos/Blackman99/deskfolk/releases?per_page=10";
-#[cfg_attr(not(test), allow(dead_code))] // the Tauri app opens release pages through it; this shell opens links with NSH
+#[cfg_attr(not(test), allow(dead_code))] // the 0.4.0 app opened release pages through it; this shell opens links with NSH
 pub const RELEASE_URL_PREFIX: &str = "https://github.com/Blackman99/deskfolk/";
 pub const FEED_ENV: &str = "REAL_BOT_UPDATE_FEED";
 pub const CACHE_TTL: Duration = Duration::from_secs(30 * 60);
@@ -399,7 +399,7 @@ fn glob_matches(pattern: &str, text: &str) -> bool {
 }
 
 /// `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, read
-/// value by value (the Tauri app's, on the `windows` crate as `win_login.rs`).
+/// value by value (the 0.4.0 app's, on the `windows` crate as `win_login.rs`).
 #[cfg(windows)]
 mod internet_settings {
     use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW};
@@ -614,7 +614,7 @@ static CACHE: std::sync::Mutex<UpdateCache> = std::sync::Mutex::new(UpdateCache 
 
 /// `check_for_update { force }`: the cached answer if it is under `CACHE_TTL` old (and `force` is
 /// off), else the feed's. `current` is the host's own version; the feed sees
-/// `real-bot-desktop/<version>` as the Tauri app sends it.
+/// `real-bot-desktop/<version>` as the 0.4.0 app sends it.
 pub fn check(current: &str, force: bool) -> Result<UpdateCheck, String> {
     if !force {
         let cache = CACHE.lock().map_err(|_| "update cache poisoned".to_string())?;

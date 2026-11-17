@@ -12,14 +12,14 @@ Ship macOS `.dmg` builds signed with **Developer ID Application** and **notarize
 1. Apple Developer Program membership (paid).
 2. Developer ID Application certificate in Keychain (or CI secret).
 3. App-specific password or API key for `notarytool`.
-4. Team ID and bundle ID aligned with the app's release build (`com.real-bot.desktop`, kept from the Tauri app: `apps/desktop-nsh/scripts/package.ts`).
+4. Team ID and bundle ID aligned with the app's release build (`com.real-bot.desktop`, kept from 0.4.0, the Tauri app: `apps/desktop-nsh/scripts/package.ts`).
 
 ## Build / CI checklist
 
 - [x] CI imports the Developer ID certificate from repository secrets into a throwaway keychain before the build (`release.yml`, step "Developer ID signing (when configured)"). It has to come before the build: `build-native.ts` signs the bundled daemon, pty and helper before the app is signed.
-- [x] From 0.5.0 the Mac app is the native one: `apps/desktop-nsh/scripts/package.ts --release --sign developer-id --notarize env` runs `build-native.ts`, signs `Deskfolk.app` with the hardened runtime and `Entitlements.plist`, has the app (zipped) and then the `.dmg` notarized with `xcrun notarytool` (`APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`) and staples both. The next two items describe how the Tauri app (0.4.0 and earlier) did it.
-- [x] `APPLE_SIGNING_IDENTITY` is exported only when the secret exists; from 0.5.0 `package.ts --sign developer-id` and `build-native.ts` read it (the Tauri app read it ahead of `signingIdentity: "-"` in `tauri.conf.json`), and `build-native.ts` signs the nested binaries with it plus `--timestamp` (notarization rejects Developer ID signatures without a secure timestamp).
-- [x] Notarize and staple: (0.4.0 and earlier) Tauri did both for the `.app` when `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` are exported. With the certificate but without all three, the run signs, skips notarization and leaves a warning.
+- [x] From 0.5.0 the Mac app is the native one: `apps/desktop-nsh/scripts/package.ts --release --sign developer-id --notarize env` runs `build-native.ts`, signs `Deskfolk.app` with the hardened runtime and `Entitlements.plist`, has the app (zipped) and then the `.dmg` notarized with `xcrun notarytool` (`APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`) and staples both. The next two items describe how 0.4.0 (the Tauri app) did it.
+- [x] `APPLE_SIGNING_IDENTITY` is exported only when the secret exists; from 0.5.0 `package.ts --sign developer-id` and `build-native.ts` read it, and `build-native.ts` signs the nested binaries with it plus `--timestamp` (notarization rejects Developer ID signatures without a secure timestamp).
+- [x] Notarize and staple: (0.4.0 and earlier) the app's build did both for the `.app` when `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` are exported. With the certificate but without all three, the run signs, skips notarization and leaves a warning.
 - [x] Add the repository secrets below (maintainer, 2026-10-10).
 - [x] A local Developer ID build was notarized (`Accepted` on the first submission) and stapled on 2026-10-10; `spctl -a -vv` says `source=Notarized Developer ID` for the `.dmg`, the `.app`, and the `.app` mounted from a quarantined copy of the `.dmg`.
 - [ ] Verify the CI-built release on a clean Mac: double-click opens without Gatekeeper bypass.

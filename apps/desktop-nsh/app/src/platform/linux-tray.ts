@@ -1,6 +1,6 @@
 /**
  * The tray on Linux (a StatusNotifierItem, NSH's `Tray`; GNOME shows it with the AppIndicator
- * extension), with what the Tauri app's Linux tray had and the macOS and Windows trays have: what
+ * extension), with what the macOS and Windows trays have: what
  * is used of your plans (the shell's `shell.trayLines`, the same lines as `usage_tray.rs` makes,
  * text only: Linux panels draw no icons in a tray's menu), then Show, Stop Everything (while the
  * runtime answers) and Quit. A click on the icon shows the window.

@@ -1,17 +1,17 @@
-//! The independent runtime's status and operations, answered as the Tauri app does today
+//! The independent runtime's status and operations, answered as 0.4.0 answered them
 //! (`v0.5.1:apps/desktop/src-tauri/src/lib.rs` `independent_runtime_status`, `independent_runtime`,
 //! `snapshot_independent_status`, `independent_runtime_op`, `recover_stale_independent_marker`,
 //! `restore_window_supervision_unless_adopted`; `handoff.rs` `status`; `launchd.rs`
 //! `IndependentPolicy`, `adopt_independent_marker`, `agent_loaded_in_gui_domain`).
 //!
-//! The policy is fail-closed in the Tauri app and stays so: `enable`, `wait` and `force` are
+//! The policy was fail-closed in 0.4.0 and stays so: `enable`, `wait` and `force` are
 //! refused with a reason, so the mutating half of `handoff.rs` (drain, plist, `launchctl
-//! bootstrap`) has no caller there and is not copied. What differs from Tauri is whose files it
+//! bootstrap`) has no caller there and is not copied. What differs from 0.4.0 is whose files it
 //! names: this shell's own data directory (`real-bot-nsh-dev`), its runtime's port (17990, probed
 //! with `runtime::healthy`, which refuses 17890 unless the shell runs with `--stable-instance`) and
 //! its own launchd label, never the stable app's `com.real-bot.runtime`.
 //!
-//! `independent_runtime` (the operations) takes the Tauri app's `BundledNativeCaller`, which
+//! `independent_runtime` (the operations) keeps 0.4.0's `BundledNativeCaller` guard, which
 //! refuses a development build with `disabled`; `independent_runtime_status` has no such guard.
 
 use std::path::Path;
@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::dev_build::Identity;
 
-/// The Tauri app's `com.real-bot.runtime` in a release; the dev build's agent would be its own job.
+/// 0.4.0's launchd label, `com.real-bot.runtime`, in a release; the dev build's agent would be its own job.
 pub const LABEL: &str = if crate::config::RELEASE { "com.real-bot.runtime" } else { "com.real-bot.runtime.nsh-dev" };
 pub const MARKER_NAME: &str = "runtime.independent";
 
@@ -116,7 +116,7 @@ fn agent_loaded_in_gui_domain() -> bool {
     }
 }
 
-/// The window-supervision half of the Tauri `AppState`.
+/// Whether the window supervises the runtime (half of 0.4.0's `AppState`).
 #[derive(Debug)]
 pub struct Supervision {
     supervising: bool,
@@ -248,7 +248,7 @@ pub fn status(id: &Identity) -> StatusDto {
 }
 
 /// `independent_runtime { request }`: refused as `disabled` in a development build, like every
-/// command the Tauri app guards with `BundledNativeCaller`.
+/// command 0.4.0 guarded with `BundledNativeCaller`.
 pub fn run(id: &Identity, request: &Request) -> Result<StatusDto, String> {
     if id.is_dev() {
         return Err("disabled".into());
@@ -288,7 +288,7 @@ mod tests {
     }
 
     #[test]
-    fn the_status_reaches_the_card_in_the_shape_tauri_sends() {
+    fn the_status_reaches_the_card_in_the_shape_it_reads() {
         let dir = temp("shape");
         let value = serde_json::to_value(snapshot(&world(&dir, true, true), None, None)).unwrap();
         assert_eq!(

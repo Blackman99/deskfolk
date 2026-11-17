@@ -1,6 +1,6 @@
 /**
  * Code in the colours the messenger's Shiki paints it (ADR 0106), from `deskfolk/native`: giallo
- * reads VS Code's grammars with Shiki's themes, so a token has the colour it had in the Tauri build.
+ * reads VS Code's grammars with Shiki's themes, so a token has the colour it had in 0.4.0.
  * Chat's code blocks and a command's output take GitHub's colours, the file editor Vitesse's; a code
  * theme your interface chose (`behaviour.code_theme`) takes all of them, and brings its own surface
  * (`codeSurface`), as `--code-surface` did. Where there is no native highlighter (the web) code keeps

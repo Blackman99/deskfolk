@@ -7,7 +7,7 @@
 //!
 //! The window's look is set before it is made (`with_main_window`, what `nsh.json` `"window"` would
 //! say, for Windows only): the title bar hidden, and on Windows 11 22H2 and later Mica behind the
-//! app, as the Tauri window had. A window with a system backdrop is drawn by a composition (no
+//! app, as the 0.4.0 window had. A window with a system backdrop is drawn by a composition (no
 //! redirection bitmap), which is chosen when the window is made, so Mica cannot be turned on later
 //! from the TSX. The window keeps its system frame: its shadow, its resize borders and, on Windows
 //! 11, its rounded corners (square while maximized, as the system draws them). The app is told
@@ -65,7 +65,7 @@ pub fn run(config: Config) -> std::process::ExitCode {
         asset_base: config.bundle.parent().map(|dir| AssetBase::Directory(dir.join("assets"))),
         host,
         fps: config.fps,
-        // One copy of the release at a time, as the Tauri app was: a later launch (the Start menu
+        // One copy of the release at a time, as the 0.4.0 app was: a later launch (the Start menu
         // while the login launch waits in the notification area) shows that one's window and ends.
         single_instance: crate::config::RELEASE,
         ..AppOptions::default()
@@ -183,8 +183,8 @@ fn launch_window(material: bool, hidden: bool) -> serde_json::Value {
 
 /// The main window's launch options on Windows (`nsh.json` `"window"`'s shape): it comes back at
 /// the size and place it was last left, maximized if it was (NSH keeps its placement in the app's
-/// storage), and goes no smaller than the Tauri window did. Its close button is the app's to answer
-/// (`app/src/platform/window-life.ts`: it puts the window away, as the Tauri app's did).
+/// storage), and goes no smaller than the 0.4.0 window did. Its close button is the app's to answer
+/// (`app/src/platform/window-life.ts`: it puts the window away, as the 0.4.0 app's did).
 fn main_window(material: bool) -> serde_json::Value {
     json!({
         "titleBar": { "style": "hidden" },
@@ -268,7 +268,7 @@ mod tests {
         assert_eq!(main_window(true)["backdrop"], "window");
         assert_eq!(main_window(false)["backdrop"], "none");
         assert_eq!(main_window(false)["titleBar"]["style"], "hidden");
-        // The size it was left at comes back, and it goes no smaller than the Tauri window.
+        // The size it was left at comes back, and it goes no smaller than the 0.4.0 window.
         assert_eq!(main_window(true)["restoreBounds"], true);
         assert_eq!(main_window(true)["minSize"], json!({ "width": 640, "height": 480 }));
     }

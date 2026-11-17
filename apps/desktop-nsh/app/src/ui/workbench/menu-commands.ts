@@ -1,6 +1,6 @@
 /**
  * The workbench's window-menu commands for views the workbench is not handed to: the pane menu's
- * Equalise and Reset Layout on Windows and Linux, where the Tauri app had them in its window's own
+ * Equalise and Reset Layout on Windows and Linux, where 0.4.0 had them in its window's own
  * menu bar (the native app draws no menu bar there; on the Mac the View menu has them). The shell
  * provides its workbench's `runMenuCommand` as it mounts.
  */

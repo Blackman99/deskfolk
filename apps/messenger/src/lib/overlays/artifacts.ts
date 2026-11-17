@@ -140,7 +140,7 @@ export function injectHtmlPreviewColorScheme(source: string, scheme: "light" | "
   return out;
 }
 
-/** Nonce from the messenger document, if Tauri injected one into CSP. */
+/** Nonce from the messenger document, if the host injected one into CSP. */
 export function pageCspNonce(doc: Document | null | undefined = typeof document === "undefined" ? null : document): string | null {
   if (!doc) return null;
   for (const el of doc.querySelectorAll("script, style")) {
@@ -151,8 +151,8 @@ export function pageCspNonce(doc: Document | null | undefined = typeof document 
 }
 
 /**
- * Blob documents inherit the parent CSP. Tauri puts a nonce on script-src /
- * style-src, which disables `'unsafe-inline'`, so preview HTML must carry
+ * Blob documents inherit the parent CSP. A host may put a nonce on script-src /
+ * style-src, which disables `'unsafe-inline'`; then preview HTML must carry
  * the same nonce on its own script and style tags.
  */
 export function injectHtmlPreviewNonce(source: string, nonce: string | null | undefined): string {

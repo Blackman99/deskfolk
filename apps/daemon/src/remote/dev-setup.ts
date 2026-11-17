@@ -13,8 +13,8 @@ import { deny } from "./trust";
  * Dev-only replacement for the window's setup channel.
  *
  * The packaged window reaches the controller over the socketpair it spawned the
- * daemon with, and `remote_local_setup` in the Tauri side refuses a dev origin
- * outright. During development there is no such window, so
+ * daemon with, and the desktop host's `remote_local_setup` refuses a development
+ * build outright. During development there is no such window, so
  * `REAL_BOT_DEV_REMOTE=1` opens the same dispatcher on a 0600 unix socket beside
  * the database (a named pipe on win32, which has no such thing as a filesystem
  * socket or file permission bits), plus two operations that stand in for the

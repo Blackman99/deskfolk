@@ -1,4 +1,4 @@
-//! The update commands the About card calls, answered as the Tauri app does
+//! The update commands the About card calls, answered as the 0.4.0 app does
 //! (`v0.5.1:apps/desktop/src-tauri/src/lib.rs`: `can_install_update`, `update_install_state`,
 //! `cancel_update_install`, `start_update_install`, `install_update`, `stage_from_mount`). The feed
 //! check (`check_for_update`) is `updates::check`, registered for every desktop in `launch.rs`.
@@ -61,7 +61,7 @@ pub fn start(
     Ok(INSTALLER.snapshot())
 }
 
-/// `~/Library/Caches/<bundle id>`, where Tauri's `app_cache_dir` puts it.
+/// `~/Library/Caches/<bundle id>`, where the 0.4.0 app kept it.
 fn staging_dir(id: &Identity) -> PathBuf {
     std::env::var_os("HOME")
         .map(|home| PathBuf::from(home).join("Library").join("Caches").join(&id.bundle_id))

@@ -1,10 +1,10 @@
-//! The bundled native helper's confirmation, answered as the Tauri app's
+//! The bundled native helper's confirmation, answered as the 0.4.0 app's
 //! `remote_native_confirmation` does (`v0.5.1:apps/desktop/src-tauri/src/remote_native.rs`): the sealed
 //! `libRemoteCredentials.dylib` in `Contents/Resources/native/` and the runtime helper beside it,
 //! and, for the shipped daemon, the owner check on a Touch ID sheet (`local_confirm.rs`).
 //!
-//! Differences from the Tauri file: the command is a plain function over the JSON the TSX sends;
-//! `BundledNativeCaller` (a Tauri ACL and document-origin check) becomes `authorize`, which keeps
+//! Differences from the 0.4.0 file: the command is a plain function over the JSON the TSX sends;
+//! `BundledNativeCaller` (0.4.0's window-permission and document-origin check) becomes `authorize`, which keeps
 //! its development rule (`disabled`) and has no frame to check, because the shell's host channel
 //! answers only the app bundle it was started with; the helper's process is a static; and the
 //! resources folder is `Contents/Resources` next to the executable.
@@ -40,7 +40,7 @@ pub enum Operation {
 
 pub use crate::local_confirm::LocalConfirmation;
 
-/// The rule the Tauri `BundledNativeCaller` applies to a development build.
+/// The rule 0.4.0's `BundledNativeCaller` applies to a development build.
 pub fn authorize(id: &Identity) -> Result<(), String> {
     if id.is_dev() {
         return Err("disabled".into());
@@ -321,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn the_operation_names_are_the_tauri_ones() {
+    fn the_operation_names_are_0_4_0s() {
         for name in ["capability", "ready", "create", "confirm"] {
             assert!(serde_json::from_value::<Operation>(json!(name)).is_ok());
         }

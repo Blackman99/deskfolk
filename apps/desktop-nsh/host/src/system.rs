@@ -1,4 +1,4 @@
-//! The messenger's system commands the macOS shell answers as the Tauri shell did
+//! The messenger's system commands the macOS shell answers as the 0.4.0 shell did
 //! (`v0.5.1:apps/desktop/src-tauri/src/lib.rs` `pick_workspace_folder`, `system_open.rs`
 //! `open_workspace_path`): a folder picked in the system's panel, a workspace path opened with its
 //! app or shown in Finder. Links and the clipboard need no shell: the app's bridge answers them

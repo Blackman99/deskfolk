@@ -1,10 +1,10 @@
-//! Launch at login, as `set_launch_at_login` and `register_login_item` do in the Tauri app
-//! (`v0.5.1:apps/desktop/src-tauri/src/lib.rs`, which goes through `tauri_plugin_autostart`'s AppleScript
+//! Launch at login, as `set_launch_at_login` and `register_login_item` did in 0.4.0
+//! (`v0.5.1:apps/desktop/src-tauri/src/lib.rs`, which went through `tauri_plugin_autostart`'s AppleScript
 //! login item). Here it is the system's own `SMAppService.mainAppService`: the running `.app`
 //! registered as a login item (macOS 13+). A dev build answers `false` and changes nothing.
 //!
 //! `SMAppService` cannot pass arguments: a login launch knows itself by its Apple event instead
-//! (`app.rs`, `launched_at_login`) and keeps to the menu bar, as the Tauri app's `--hidden` did.
+//! (`app.rs`, `launched_at_login`) and keeps to the menu bar, as 0.4.0's `--hidden` did.
 //!
 //! A release's start makes the item follow the `launch_at_login` setting (on unless turned off),
 //! as the Windows shell does (`win_login.rs`): registering on every launch would bring back an item

@@ -1,5 +1,5 @@
-//! Whether this copy of the shell is a development build, and what it is called. The Tauri app
-//! asks `tauri::is_dev()`; the NSH shell has no such flag, so a copy is a dev build when its
+//! Whether this copy of the shell is a development build, and what it is called. The 0.4.0 app
+//! had its framework's `is_dev()`; the NSH shell has no such flag, so a copy is a dev build when its
 //! bundle id ends in `.nsh-dev` (every packaged build today: `scripts/package.ts`) or when the
 //! binary does not run out of an `.app` at all (`cargo run`, `scripts/dev.ts`).
 //!

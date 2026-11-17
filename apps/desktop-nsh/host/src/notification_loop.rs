@@ -1,11 +1,11 @@
-//! The delivery loop and the commands' logic, transplanted from the Tauri shell's
-//! `notifications.rs` with the Tauri types taken out: every 2 s the runtime is polled for the
+//! The delivery loop and the commands' logic, transplanted from the 0.4.0 shell's
+//! `notifications.rs` with the framework types taken out: every 2 s the runtime is polled for the
 //! attention count (the Dock badge), the delivered banners are reconciled when the cleanup
 //! revision moves, and one notification is claimed, revalidated, posted and reported. A click
 //! stores an intent (`clickRef`) the messenger takes. The window's own facts come from
 //! `window.rs`; the runtime's address from `Config.endpoint`.
 //!
-//! Left out on purpose: the Tauri shell's `TrustedNotificationCaller` document check and its cold
+//! Left out on purpose: the 0.4.0 shell's `TrustedNotificationCaller` document check and its cold
 //! click qualification. Both guard a WebView document that may be a dev server or a bundled page;
 //! here every caller is an NSH app of ours, granted by `nsh.json` `capabilities.host`.
 
@@ -222,7 +222,7 @@ fn permission_dto(state: &NotificationState, permission: String) -> Notification
         permission,
         native_reading_v1: true,
         native_delivery_v1: operational,
-        // The Tauri shell's cold-click check does not exist here (see the module note).
+        // The 0.4.0 shell's cold-click check does not exist here (see the module note).
         cold_click_qualified: false,
         operational,
         gated_reason: state.adapter.gated_reason(),
@@ -545,7 +545,7 @@ mod tests {
     }
 
     #[test]
-    fn claim_actions_are_reported_the_way_the_tauri_shell_does() {
+    fn claim_actions_are_reported_the_way_0_4_0_does() {
         let (adapter, reports) = report_for("deliver", false);
         assert!(adapter.posted.lock().unwrap().is_empty());
         assert_eq!((reports[0]["result"].as_str(), reports[0]["code"].as_str()), (Some("failed"), Some("delivery_gated")));

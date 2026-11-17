@@ -1,7 +1,7 @@
 import { expect, test } from "nsh/test";
 import { asksToQuit, closeAction } from "./window-life";
 
-test("the close button puts the window away on Windows and Linux, as the Tauri app's did", () => {
+test("the close button puts the window away on Windows and Linux, as 0.4.0 did", () => {
   expect(closeAction("windows", true, "closeButton")).toBe("hide");
   expect(closeAction("linux", true, "shortcut")).toBe("hide");
   // Logging out or shutting down closes, or the system would wait on the app.

@@ -48,7 +48,7 @@ export function bindShellKeys(s: ShellState): void {
   }
   bind("mod+alt+0", workbenchKey({ kind: "equalise" }), { when: "notEditing" });
   // Ctrl+W closes the tab in front of you on Windows and Linux, and puts the window away once none
-  // is left, as the Tauri app's menu did there (`matchesCloseTab`); the Mac's Window menu has ⌘W.
+  // is left, as 0.4.0's menu did there (`matchesCloseTab`); the Mac's Window menu has ⌘W.
   if (platform.os === "windows" || platform.os === "linux") {
     bind("mod+w", () => {
       if (s.wide()) s.workbench.runMenuCommand("pane-close-tab");

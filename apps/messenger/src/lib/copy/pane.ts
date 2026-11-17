@@ -1,7 +1,7 @@
 import type { CopyShape } from "./shape.ts";
 
 export const zh = {
-  /** The word for one content area inside the desktop window. Not 窗口, which is the Tauri window. */
+  /** The word for one content area inside the desktop window. Not 窗口, which is the operating system's window. */
   title: "窗格",
   splitUp: "向上分割",
   splitDown: "向下分割",

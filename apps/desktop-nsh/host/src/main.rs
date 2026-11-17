@@ -1,7 +1,7 @@
 //! Deskfolk's native shell: the released app (`config::RELEASE`) or the dev build beside it. See
 //! `apps/desktop-nsh/README.md`.
 
-// A release build on Windows is a windowed program: no console opens beside it (as the Tauri app's
+// A release build on Windows is a windowed program: no console opens beside it (as the 0.4.0 app's
 // `main.rs`). Its log still reaches a parent that hands it pipes (`scripts/package.ts --smoke`).
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 

@@ -55,7 +55,7 @@ export function placeAppIcon(app: string, icon: string = APP_ICON): boolean {
 /**
  * Launch Services and the icon cache keep what they read when they first saw a bundle, and the
  * icon cache goes by the bundle directory's own mtime, which writing files inside it never moves:
- * a dev app first seen without an icon stayed blank (the Tauri shell's `dev_bundle.rs` met this).
+ * a dev app first seen without an icon stayed blank (the 0.4.0 shell's `dev_bundle.rs` met this).
  * So the directory's time moves, then the bundle is registered again.
  */
 export function registerAppIcon(app: string, now: Date = new Date()): void {

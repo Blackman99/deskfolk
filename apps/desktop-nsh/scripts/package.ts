@@ -12,7 +12,7 @@
  *
  * **Dev build** (default): `build/release/Deskfolk Dev.app` and a dmg, beside the installed stable
  * Deskfolk: its own bundle id, data directory and port (dev-instance.ts). It starts its own dev
- * runtime when none answers (the command is baked into the binary, as the Tauri shell's debug build
+ * runtime when none answers (the command is baked into the binary, as 0.4.0's debug build
  * runs the daemon from source), so it runs on this Mac only.
  *
  *   bun apps/desktop-nsh/scripts/package.ts [--release] [--target aarch64-apple-darwin|x86_64-apple-darwin]
@@ -904,7 +904,7 @@ async function smokeWindows(setup: string, upgradeFrom?: string) {
   }
   console.log("smoke: the runtime started again has its setup channel");
 
-  // The close button puts the window away, as the Tauri app's did (taskkill without /F sends the
+  // The close button puts the window away, as 0.4.0's did (taskkill without /F sends the
   // window WM_CLOSE): the app stays in the notification area, the runtime with it.
   spawnSync("taskkill", ["/PID", String(shell.pid)]);
   await Bun.sleep(3000);

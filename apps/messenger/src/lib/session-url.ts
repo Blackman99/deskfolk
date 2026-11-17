@@ -1,8 +1,8 @@
 /**
  * The open session lives in the URL as `?s=<id>`. The open artifact preview is `?p=<relpath>`.
  * Settings, the session drawer and the workspace overlay share `?o=`. Queries rather than paths
- * because the Tauri window serves a static build over the asset protocol, which has no SPA
- * fallback: `/s/<id>` would 404 the moment the window reloaded, while
+ * because a static build served as files has no SPA fallback: `/s/<id>` would 404 the moment
+ * the window reloaded, while
  * `index.html?s=<id>&p=<relpath>&o=settings` is always the file on disk.
  */
 import { isAbsoluteHostPath } from "./paths.ts";

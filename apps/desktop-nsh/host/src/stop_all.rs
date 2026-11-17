@@ -1,7 +1,7 @@
-//! The tray's "Stop Everything", the Tauri app's 全部停下 (`local_api::post_stop`): a global hold,
+//! The tray's "Stop Everything", the 0.4.0 app's 全部停下 (`local_api::post_stop`): a global hold,
 //! which pauses every plan and ends the live turns it covers ("stop for now": your next line to a
 //! Bot lifts it for that Bot), and where holds are not available yet, a stop of the latest turn.
-//! The item can be chosen only while this shell's runtime answers, as in the Tauri tray.
+//! The item can be chosen only while this shell's runtime answers, as in the 0.4.0 tray.
 
 // The Linux shell has no tray yet (it gets one with the rest of the Linux shell).
 #![cfg_attr(target_os = "linux", allow(dead_code))]

@@ -1,5 +1,5 @@
 //! What is used of your plans at the top of the menu bar extra's menu (ADR 0061, ADR 0079,
-//! ADR 0080), transplanted from the Tauri shell's `usage_tray.rs`: one line per account, read from
+//! ADR 0080), transplanted from the 0.4.0 shell's `usage_tray.rs`: one line per account, read from
 //! the one `GET /v1/usage` the usage widget reads, asked once a minute. The daemon keeps each
 //! answer for five minutes, so this starts at most one `claude` per five minutes, and none at all
 //! until something runs on Claude Agent. An account with plan windows gets its agent's mark inside
@@ -7,9 +7,9 @@
 //! its name; one signed out, or one that could not be read, says so beside its mark; agents that
 //! only report today's records share one line. At most eight lines, then "查看全部用量…", which
 //! shows a window and opens the usage tab (the messenger's `pane-command` `view-usage`, as the
-//! Tauri tray sent it). The lines go away when the runtime's descriptor is gone.
+//! 0.4.0 tray sent it). The lines go away when the runtime's descriptor is gone.
 //!
-//! The words, their order and the icons are the Tauri shell's, function for function (the tests
+//! The words, their order and the icons are the 0.4.0 shell's, function for function (the tests
 //! came along); only the menu calls differ: AppKit's own, on the main thread. The agents' marks
 //! and the menu bar's mark are `assets/agent-logos` and `assets/tray` (`scripts/app-icon/tray.py`
 //! makes the mark), so there is one copy of each.
@@ -244,7 +244,7 @@ fn show(mtm: MainThreadMarker, entries: Vec<Entry>) {
 }
 
 /// macOS 27 draws no menu item's image, but it still draws the state column's: a line's icon goes
-/// there, as the image of an "on" state (the Tauri shell's `mark_lines`).
+/// there, as the image of an "on" state (the 0.4.0 shell's `mark_lines`).
 #[cfg(target_os = "macos")]
 fn mark(item: &NSMenuItem, entry: &Entry) {
     match icon_rgba(entry).and_then(|rgba| image_of(&rgba, ICON_PX, ICON_PT)) {

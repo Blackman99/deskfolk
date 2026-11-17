@@ -13,7 +13,7 @@ import { join } from "node:path/posix";
 import type { SharedInstall } from "./store/schema-gate";
 
 /**
- * The bundle names the desktop build has shipped under (tauri.conf.json `productName`): Deskfolk
+ * The bundle names the desktop build has shipped under (the 0.4.0 Tauri app's `productName`): Deskfolk
  * since v0.1.0-rc.6, "Real Bot" before. Both have the same bundle id and data folder, and a copy
  * from before the rename cannot update itself into the new name, so it may well still be there.
  */

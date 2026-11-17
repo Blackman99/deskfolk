@@ -3,7 +3,7 @@
  * `invoke("open_external_url")`, and hears menu events through `event.listen`. On an NSH desktop the
  * same calls go to the shell through the host channel, named `shell.<command>` (events arrive as
  * `shell.event.<name>`), so that logic runs unchanged. The command names and arguments are the ones
- * the old Tauri app's shell had, kept so the messenger's logic needed no change.
+ * the messenger already uses (the 0.4.0 Tauri app's), so its logic needed no change.
  *
  * One command needs no shell, because NSH does it on every target: links open with `openUrl`
  * (`APP_COMMANDS`). On Windows and Linux,
@@ -59,15 +59,14 @@ function windowId(): number {
 }
 
 /**
- * The commands that wait on a person or on a long exchange, with no time limit, as in the Tauri
- * shell: a folder dialog stays open as long as you look, the Touch ID or Windows Hello sheet waits
- * up to 110 s and pairing's setup channel up to 130 s (the shell times those out itself). The host
- * channel's own default would give up on them after 30 s.
+ * The commands that wait on a person or on a long exchange, with no time limit: a folder dialog stays open as long as you look, the Touch ID or Windows
+ * Hello sheet waits up to 110 s and pairing's setup channel up to 130 s (the shell times those out
+ * itself). The host channel's own default would give up on them after 30 s.
  */
 export const UNTIMED_COMMANDS: ReadonlySet<string> = new Set(["pick_workspace_folder", "remote_local_setup", "remote_native_confirmation"]);
 
 /**
- * What a command rejects with, as the Tauri shell rejected it: the shell's own words, a string
+ * What a command rejects with, the shell's own words, a string
  * (`desktop_channel_unavailable`, `not-installed`, …), which is what the messenger compares. NSH
  * rejects with an `Error` that carries them as its message.
  */

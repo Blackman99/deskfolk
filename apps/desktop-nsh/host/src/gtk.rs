@@ -1,13 +1,13 @@
 //! The Linux shell: NSH's own runner (`run_app`), as on Windows (`win.rs`), so the window has what
-//! the Tauri app's Linux build had: one copy of the release at a time (a later launch hands itself
+//! the 0.4.0 app's Linux build had: one copy of the release at a time (a later launch hands itself
 //! to the running one and ends), a start at login without a window (`--hidden`), the size it was
 //! left at (`restoreBounds`), its notifications and its keys (Ctrl+Q). The rest is the app's and
 //! this shell's own: the tray (`app/src/platform/linux-tray.ts`, NSH's StatusNotifierItem), the
 //! close button that puts the window away while there is a tray to bring it back from
-//! (`window-life.ts`), launch at login through the Tauri app's autostart entry (`linux_login.rs`),
+//! (`window-life.ts`), launch at login through the 0.4.0 app's autostart entry (`linux_login.rs`),
 //! and the daemon it starts and watches (`runtime.rs`).
 //!
-//! A release is installed as the Tauri app's Linux build was (`scripts/package.ts`): this program
+//! A release is installed as the 0.4.0 app's Linux build was (`scripts/package.ts`): this program
 //! at `/usr/lib/Deskfolk/real-bot-desktop` (`/usr/bin/real-bot-desktop` links to it), its app and
 //! its daemon beside it (`app/`, `native/`), the icon and the desktop entry under the app's id.
 
@@ -48,7 +48,7 @@ pub fn run(config: Config) -> std::process::ExitCode {
         asset_base: config.bundle.parent().map(|dir| AssetBase::Directory(dir.join("assets"))),
         host,
         fps: config.fps,
-        // One copy of the release at a time, as the Tauri app was: a later launch (the
+        // One copy of the release at a time, as the 0.4.0 app was: a later launch (the
         // applications menu while the login launch waits in the tray) brings that one's window
         // forward and ends.
         single_instance: crate::config::RELEASE,
@@ -75,7 +75,7 @@ fn read_bundle(path: &std::path::Path, hidden: bool) -> Result<Bundle, String> {
 
 /// The main window's launch options (`nsh.json` `"window"`'s shape): the app draws its own title
 /// bar, as on macOS and Windows; it comes back at the size it was left at, maximized if it was; it
-/// goes no smaller than the Tauri window; a login launch (`--hidden`) keeps it unseen until the tray
+/// goes no smaller than the 0.4.0 window; a login launch (`--hidden`) keeps it unseen until the tray
 /// or a later launch shows it.
 fn launch_window(hidden: bool) -> serde_json::Value {
     let mut window = json!({
