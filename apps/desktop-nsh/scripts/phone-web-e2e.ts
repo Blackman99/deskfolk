@@ -7,7 +7,8 @@
  * browser: paste the code, compare the fingerprint, submit; approve on the Mac (the development
  * stand-in for Touch ID); then the app's shell on a phone's width: the roster, a conversation over
  * it, a line sent from the phone (read back from the Mac's database), a line written on the Mac
- * arriving live, Back to the roster, a reload that is still enrolled; and the same page at a
+ * arriving live, Back to the roster, a reload that is still enrolled and under the service worker
+ * (`/sw.js`, which the app's realm reaches as its own); and the same page at a
  * tablet's width (the roster's column beside one page, no workbench). Screenshots go to `--shots`,
  * named after the browser. Stops everything it started. Never the stable or the dev instance,
  * never a remote host.
@@ -29,6 +30,7 @@ import { ulid } from "../../daemon/src/ids";
 import { hostSigningFingerprint } from "../../messenger/src/lib/remote/fingerprint.ts";
 import { base64url, encodePairingCode, randomBytes, type PairingQr } from "../../../packages/remote/src/index.ts";
 import { certificate, RELAY_ROUTES, startEdge } from "./phone-edge";
+import { addPhoneStatic } from "./phone-package";
 import { FORBIDDEN_PORTS, freePort } from "./phone-runtime";
 import { nshCli } from "./nsh-cli";
 
@@ -74,6 +76,7 @@ function build(): void {
     CC_wasm32_unknown_unknown: process.env.CC_wasm32_unknown_unknown ?? "/usr/bin/clang",
     AR_wasm32_unknown_unknown: process.env.AR_wasm32_unknown_unknown ?? llvmAr ?? "llvm-ar",
   });
+  addPhoneStatic(site);
 }
 
 /** Lines of a child's stdout, kept for when something fails, and a way to wait for one. */
@@ -267,7 +270,9 @@ try {
 
   // @ts-expect-error -- a JavaScript entry without types of its own (they are `playwright-core`'s, above).
   const { chromium, webkit } = (await import("../../messenger/node_modules/@playwright/test/index.mjs")) as { chromium: BrowserType; webkit: BrowserType };
-  browser = await (engine === "webkit" ? webkit : chromium).launch({ headless: true });
+  // The edge's certificate is made for the run: Chromium fetches a service worker's script only from
+  // an origin whose certificate it trusts, whatever the context ignores.
+  browser = await (engine === "webkit" ? webkit : chromium).launch({ headless: true, args: engine === "webkit" ? [] : ["--ignore-certificate-errors"] });
   const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: "zh-CN" });
   const page = await context.newPage();
   const problems: string[] = [];
@@ -371,6 +376,34 @@ try {
   await testid(page, "top-back").click();
   await until("the conversation put down", 10_000, async () => (await testid(page, "conversation").count()) === 0);
   step("the conversation's whole history came back over the new link");
+
+  // The service worker web push and remote media go through: the page is under it after the
+  // reload, and the app's realm (the hidden frame) gets it from `navigator.serviceWorker`.
+  const pageWorker = await until("the page under /sw.js", 15_000, () =>
+    page.evaluate(() => navigator.serviceWorker.controller?.scriptURL ?? null),
+  ).catch(async (error: Error) => {
+    const why = await page.evaluate(async () => {
+      const registrations = (await navigator.serviceWorker.getRegistrations()).map((r) => `${r.scope} ${r.active?.state ?? r.installing?.state ?? r.waiting?.state ?? "none"}`);
+      const attempt = await navigator.serviceWorker.register("/sw.js").then((r) => `registered ${r.scope}`, (e: Error) => `refused: ${e.message}`);
+      return { registrations, attempt };
+    });
+    throw new Error(`${error.message}: ${JSON.stringify(why)}`);
+  });
+  if (!pageWorker.endsWith("/sw.js")) throw new Error(`the page is under ${pageWorker}, not /sw.js`);
+  const appRealm = page.frames().find((frame) => frame !== page.mainFrame());
+  if (!appRealm) throw new Error("no app frame in the page");
+  const appWorker = await appRealm.evaluate(async () => {
+    const ready = await Promise.race([navigator.serviceWorker.ready, new Promise<null>((done) => setTimeout(() => done(null), 10_000))]);
+    return { ready: ready?.active?.scriptURL ?? null, controller: navigator.serviceWorker.controller?.scriptURL ?? null, push: "pushManager" in (ready ?? {}) };
+  });
+  if (!appWorker.ready?.endsWith("/sw.js") || appWorker.controller !== pageWorker || !appWorker.push) {
+    throw new Error(`the app's realm does not reach the page's worker: ${JSON.stringify(appWorker)}`);
+  }
+  for (const file of ["sw.js", "media-stream.js", "icon-192.png", "notification-badge.png", "apple-touch-icon.png"]) {
+    const status = await page.evaluate(async (path) => (await fetch(path, { cache: "no-store" })).status, `/${file}`);
+    if (status !== 200) throw new Error(`/${file} answers ${status}`);
+  }
+  step("the page is under /sw.js, and the app's realm has it ready, with push");
 
   // A tablet's width, the same page (a new context would be a new device store, unpaired): the
   // hosted shell keeps the roster as a column beside one page, and never the desktop's workbench.

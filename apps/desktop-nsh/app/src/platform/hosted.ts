@@ -8,4 +8,8 @@
  * Imported for its effect, first, by `Hosted.tsx` only: the desktop and the local web build enter
  * through `App.tsx` and never set it. ADR 0107, Phase 1c.
  */
+import { pageServiceWorker } from "./page-service-worker";
+
 (globalThis as { __REAL_BOT_HOSTED__?: boolean }).__REAL_BOT_HOSTED__ = true;
+
+pageServiceWorker();
