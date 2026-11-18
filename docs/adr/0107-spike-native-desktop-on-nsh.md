@@ -1254,3 +1254,73 @@ The user said that on the phone page, going into settings, then one of its items
   - Settings opened by a link (`/?o=settings` as the first screen) step out the same way, and the last Back lands on the roster.
   - `.ui`'s `settings-routing-modal` gains two tests that use the headless driver's `app.back()`. Both fail on the old code. A third presses Escape in a narrow window and sees it step out one level at a time.
   - `page-route.test.ts` gains one: a Back settings took as a step leaves the address on the entry NSH pushed back, adding none.
+
+## 补记 2026-11-18（四十七）：手机上的动画为什么卡 / Addendum 2026-11-18 (47): why animations stuttered on the phone
+
+用户说远程手机端（安卓 Chrome，装到主屏幕的 PWA）的动画很卡，旧的 Svelte 页没有这种感觉，比如打开底部弹出的选项。
+
+- **机制不同。**
+  - Svelte 的 `BottomSheet` 是 240 ms 的 CSS keyframes（`cubic-bezier(0.16,1,0.3,1)`），浏览器的合成线程跑，主线程再忙也照走。
+  - NSH 的 `Sheet`（`nsh-base` `SheetMotion`）是动画图里 280 ms 的 timing（`cubic-bezier(0,0,0.58,1)`）。在网页上，它每一帧由主线程的 `requestAnimationFrame` 走一步，再写成行内样式，主线程上的任何长任务都会让它丢帧。
+  - 曲线本身也不同：100 ms 时 Svelte 进来了 95%，NSH 是 52%。
+- **怎么量的。** 用 phone-web-e2e 的配对流程（本机中继和隔离的 Mac），在无头 Chromium 和 WebKit 里以 390×844@3x 打开手机页，Chromium 用 CDP 把 CPU 降到四分之一或六分之一。对话里的「更多」面板开五次，每帧用 `MutationObserver` 记面板行内的 `transform`，再看长帧（LoAF）和 CPU profile。对照是一个只有一个按钮和同样 `Sheet` 的 NSH 页面。脚本是临时的，不在仓库里。
+- **NSH 自己的问题。**
+  1. 动画的起点取第一个 rAF 回调拿到的帧时间，也就是帧开始的时刻。打开面板的那次按下如果跑得久，这个时间早于动画被要的时刻，于是第一步就走到了半路。对照页降到六分之一时首次打开，面板一帧从 224 跳到 26.6 px。上游的 issue 是 longbridge/nsh#2389，修复是 #2390：回调晚于帧时间 16 ms 以上时，按回调运行的时刻走，并且不早于上一帧；修后这次打开是 18 步，每步不超过 20 px。
+  2. 每一帧把应用里所有绑着的动画值都发一遍，`op_a` 再逐个读 `getPropertyValue` 比较，所以成本跟着绑定的数量走，而不是跟着动的那些走。上游的 issue 是 #2391，修复是 #2407：帧、手势和滚动时只发变了的值，批次之后照旧全发。在同一个提交（dcf37282）的手机包上量，四分之一速下每帧的回调从约 7 ms 降到 1.4–2.8 ms。
+  3. 首次打开时 NSH 的冷启动，对照页四分之一速时要 110 ms。第一次给代码着色时，`nsh-syntaxes.bin` 在主线程上同步解析，四分之一速时要 1.2 s。这两条没有报。
+- **我们这边把它放大了。**
+  - 每行消息的 `arriveMotion` 一直绑着，历史消息也绑。200 行时，带绑定的视图从 53 个变成 147 个，四分之一速下每帧的回调从 1.2 ms 变成 7 ms，面板滑入只画出 18 步里的 11 到 14 步。
+  - `FolkAvatar` 空闲时也绑着约 10 个部件，眨眼又是无限循环，所以动画图一直在动，页面空闲时也每帧走一遍。打开 reduce motion 后，空闲帧变成零。
+  - 手机上，会话列表一直挂在对话页下面。
+  - Bot 回复时，中继消息的处理让主线程忙。四分之一速下一条要 88 到 343 ms，大部分在 NSH 的 JS↔wasm 桥里，这些帧也跟着丢。
+- **改了什么。**
+  - `arriveMotion` 只在刚到的行播放时给出动画值，播完就不给了，历史行一直不给。
+  - `FolkAvatar` 的部件只在各自的动作播放时绑定。眨眼改成计时器触发的一次 208 ms 动画，两次之间什么都不动。
+  - `LoopsHeld`（`ui/interface/motion.ts`）在手机会话列表被页面盖住时为真，头像的循环和 `SessionAvatar`、`AgentAvatar` 的工作脉冲都在它下面停。
+  - 在网页上，对话列表带一个 `perspective` 变换，单独成一层。NSH 不认 `will-change`，恒等的变换又会被丢掉，所以用它。
+- **为什么要那一层。** 原先每行的 motion 变换里都有 `rotateX(0deg) rotateY(0deg)`，浏览器给每行一个合成层（229 个）。去掉行上的绑定以后，WebKit 每一步都重画整段对话，面板滑入从 20 步掉到 13 步。只给面板和背景加 `will-change` 没有用，给对话列表一层就好了。
+- **结果。** 测的是 200 行的对话、热状态打开，基于 dcf37282 的手机包：
+
+| | 改前 | 改后 | 改后加 #2390 |
+| --- | --- | --- | --- |
+| Chromium 四分之一速：滑入步数，满分 18 | 11–14 | 14–15 | 15–18 |
+| Chromium 四分之一速：每帧回调 | 7 ms | 1.7 ms | 1.7 ms |
+| WebKit：滑入步数 | 20 | 21–22 | — |
+| WebKit：最大一步 | 40–48 px | 18–27 px | — |
+
+- **没验证的。** 真机。用户的安卓手机还没看过，线上页面也没换。
+- **检查。** `.ui` 的 kit-identity、chat-transcript、chat-stage、sidebar、shell、phone-web、chat-header 都过了。`nsh check App.tsx` 只报 `page-route.test.ts` 两处既有的错误。`sidebar-rail` 的提示测试改成能看到 200 ms 的等待：之前头像无尽的眨眼让页面一直忙，无头驱动 hover 时顺带把手动时钟走过了这段等待。这个文件从 64 s 变成 11 s。
+
+The user said animations on the remote phone page (Chrome on Android, installed as a PWA) stuttered where the old Svelte page hadn't, opening a sheet of options for one.
+
+- **Different mechanisms.**
+  - Svelte's `BottomSheet` was 240 ms CSS keyframes (`cubic-bezier(0.16,1,0.3,1)`), which the browser's compositor runs however busy the main thread is.
+  - NSH's `Sheet` (`nsh-base` `SheetMotion`) is a 280 ms timing in the animation graph (`cubic-bezier(0,0,0.58,1)`). On the web it steps once a frame from a `requestAnimationFrame` on the main thread and is written as inline style, so any long task on the main thread drops its frames.
+  - The curves differ too: at 100 ms Svelte's is 95% in and NSH's 52%.
+- **How it was measured.** The phone page ran through phone-web-e2e's pairing (a local relay and an isolated Mac) in headless Chromium and WebKit at 390×844@3x, with Chromium's CPU throttled 4× or 6× through CDP. A conversation's "more" sheet was opened five times. A `MutationObserver` recorded the panel's inline `transform` each frame, beside long animation frames (LoAF) and CPU profiles. The control was an NSH page with one button and the same `Sheet`. The scripts were throwaway and are not in the repo.
+- **NSH's own problems.**
+  1. An animation starts at the time the first rAF callback gets, which is when the frame began. When the press that opened the sheet ran long, that time is before the animation was asked for, so its first step is already halfway. The control's first open at 6× jumped from 224 to 26.6 px in one frame. Upstream this is longbridge/nsh#2389, with the fix in #2390: a callback more than 16 ms after its frame's time steps at the time it runs, never earlier than the frame before. With the fix that open draws 18 steps of 20 px or less.
+  2. Every frame sends every bound animated value in the app, and `op_a` reads `getPropertyValue` for each, so the cost follows how many values are bound, not how many move. Upstream this is #2391, with the fix in #2407: frames, gestures and scrolls send only the values that changed, and a batch still sends them all. Measured on the phone package of one commit (dcf37282) at 4×, the frame callback fell from about 7 ms to 1.4–2.8 ms.
+  3. Two cold costs were not filed: NSH's first-open start-up, 110 ms on the control at 4×, and the first code colouring, which parses `nsh-syntaxes.bin` on the main thread in 1.2 s at 4×.
+- **What our side added.**
+  - Every message row kept its `arriveMotion` bound, history included. With 200 lines, views with bindings went from 53 to 147, the frame callback at 4× from 1.2 to 7 ms, and the sheet's entrance drew 11 to 14 of its 18 steps.
+  - `FolkAvatar` bound about ten parts while idle and blinked from an endless loop, so the graph never rested and an idle page stepped it every frame. With reduce motion the idle frames went to zero.
+  - On the phone the roster stays mounted under the conversation page.
+  - While Bots reply, handling relay messages keeps the main thread busy. One message took 88 to 343 ms at 4×, most of it in NSH's JS↔wasm bridge, and those frames drop too.
+- **What changed.**
+  - `arriveMotion` gives its values only while a row that just arrived rises, then none. History rows never get them.
+  - `FolkAvatar`'s parts bind their motions only while those play. A blink is one 208 ms animation started from a timer, with nothing moving in between.
+  - `LoopsHeld` (`ui/interface/motion.ts`) is true in the phone's roster while a page covers it. The avatars' loops and `SessionAvatar`'s and `AgentAvatar`'s working pulses stop under it.
+  - On the web the transcript list carries a `perspective` transform, which gives it a layer of its own. NSH takes no `will-change` and drops identity transforms, so this is the way to get one.
+- **Why the layer.** Each row's motion transform had included `rotateX(0deg) rotateY(0deg)`, which gave every row a compositing layer (229 of them). Once the rows lost their bindings, WebKit repainted the whole transcript on every step, and the sheet's entrance fell from 20 steps to 13. `will-change` on the panel and backdrop didn't help; a layer for the transcript did.
+- **Results.** A 200-line conversation, warm opens, phone package built on dcf37282:
+
+| | Before | After | After, with #2390 |
+| --- | --- | --- | --- |
+| Chromium at 4×: entrance steps, of 18 | 11–14 | 14–15 | 15–18 |
+| Chromium at 4×: frame callback | 7 ms | 1.7 ms | 1.7 ms |
+| WebKit: entrance steps | 20 | 21–22 | — |
+| WebKit: largest step | 40–48 px | 18–27 px | — |
+
+- **Not verified.** Real phones. The user's Android phone hasn't been checked, and the live page hasn't been replaced.
+- **Checks.** `.ui`'s kit-identity, chat-transcript, chat-stage, sidebar, shell, phone-web and chat-header pass. `nsh check App.tsx` reports only the two existing errors in `page-route.test.ts`. `sidebar-rail`'s tip test now sees the tip's 200 ms wait. The folks' endless blinks had kept the page busy, so a headless hover ran the manual clock past that wait before it resolved. That file went from 64 s to 11 s.

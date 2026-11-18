@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Animations on the phone run smoother
+
+- On the phone's page, home-screen app included, a sheet of options sliding up or a dialog fading in stuttered in long conversations, more so while a Bot was replying. Every message kept the values of its arrival animation, and idle Bot avatars kept a blinking loop running. NSH's web runtime writes every such value again on every frame, so the longer the conversation, the slower each frame. Now a message carries its animation only while it arrives, and history carries none. An avatar blinks now and then and is still in between. Avatars in the roster stop while a page covers it. In a browser the transcript draws as a layer of its own, so a sheet sliding over it doesn't repaint it. With Chromium's CPU slowed to a quarter, a frame over a 200-line conversation went from about 7 ms to about 1.7 ms. In WebKit a sheet's entrance draws 21 to 22 steps instead of 20.
+- With reduced motion, an idle avatar's eyes are open. The closed-eyes layer had stayed opaque.
+
 ### The old Svelte messenger is gone from the source
 
 - The desktop app has been native since 0.5.0 and the phone's page has been the native app's web build since November 18, so nothing built the Svelte messenger any more. Its code is removed, and the logic both use lives in the native app (`apps/desktop-nsh/app/src/m`). Nothing you run changes.
