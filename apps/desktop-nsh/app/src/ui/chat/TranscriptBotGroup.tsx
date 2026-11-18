@@ -103,7 +103,7 @@ function Part(props: { item: TranscriptItem; last: boolean; multi: boolean; bot:
             return runtime.snapshot.turns.find((candidate) => candidate.id === id) ?? live().turn;
           };
           return (
-            <View testID={`bot-part-${live().turn.id}`} class="w-full" style={{ opacity: arrive.opacity, transform: [...arrive.transform] }}>
+            <View testID={`bot-part-${live().turn.id}`} class="w-full" style={arrive()}>
               <StreamingReply turn={turn()} bot={props.bot} stage={props.stage} />
             </View>
           );
@@ -204,7 +204,7 @@ function Reply(props: { item: MessageItem; last: boolean; stage: TranscriptStage
       {...hover.message}
       onContextMenu={(e) => props.onContextMenu?.(msg(), e.pagePosition)}
       class={`relative w-full transition-colors duration-[120ms] ${ringed() ? "rounded-[16px]" : ""} ${grounded() ? "bg-row-hover" : ""}`}
-      style={{ ...ringStyle(ringed()), opacity: arrive.opacity, transform: [...arrive.transform] }}
+      style={{ ...ringStyle(ringed()), ...arrive() }}
     >
       {/* An overlay on this part's top edge (`message-pill`), above the rows around it. */}
       <If when={hover.shown() && toolbarWanted() && self() !== null}>

@@ -9,7 +9,7 @@
  * (`message-pill.tsx`) so it never moves the layout and no row above covers it. On a phone (window
  * 680 wide or less) it has no job: the long press opens the menu.
  */
-import { createMotion, Text, token, View, type JSX, type Point, type ViewStyle } from "nsh";
+import { createMotion, signal, Text, token, View, type JSX, type Point, type ViewStyle } from "nsh";
 import { reduceMotion } from "../interface/motion";
 import type { Bot, Message } from "@real-bot/protocol";
 import { avatarSrc, botAvatarColor } from "../../m/avatar.ts";
@@ -140,14 +140,22 @@ export function ringStyle(on: boolean): ViewStyle | undefined {
   return on ? { backgroundColor: token("accent-tint"), boxShadow: `0 0 0 2px ${token("accent-border")}` } : undefined;
 }
 
+const STILL: ViewStyle = {};
+
 /**
  * A row that has just arrived rises into place (`msg-arrive`); history and a reply replacing its
- * working bubble do not. `on` is read once, when the row mounts.
+ * working bubble do not. `on` is read once, when the row mounts. Spread what it gives into the
+ * row's style: the rise's animated values while it plays, nothing before or after. On the web NSH
+ * writes every bound animated value on every animation frame of the page, so a transcript whose rows
+ * all kept theirs made every sheet, fade and blink cost a frame's worth per row.
  */
-export function arriveMotion(on: () => boolean) {
+export function arriveMotion(on: () => boolean): () => ViewStyle {
+  if (!on() || reduceMotion()) return () => STILL;
   const m = createMotion();
-  if (on() && !reduceMotion()) void m.play({ duration: 260, keyframes: { opacity: [0, 1], translateY: [8, 0] } });
-  return m;
+  const rising = signal(true);
+  const style: ViewStyle = { opacity: m.opacity, transform: [...m.transform] };
+  void m.play({ duration: 260, keyframes: { opacity: [0, 1], translateY: [8, 0] } }).then(() => rising.set(false));
+  return () => (rising() ? style : STILL);
 }
 
 const PILL_BUTTON = "min-w-[24px] h-[24px] px-[5px] rounded-[7px] flex-row items-center justify-center gap-[4px] hover:bg-row-hover active:scale-[0.92]";

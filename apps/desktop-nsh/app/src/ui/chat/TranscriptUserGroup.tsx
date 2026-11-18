@@ -99,7 +99,7 @@ function Segment(props: {
         class={`relative items-end ${editing() ? "w-full" : narrowWindow() ? "max-w-full" : "max-w-[80%]"} ${ringed() ? "rounded-[16px]" : ""} ${
           grouped() ? "mt-[4px] pt-[8px] border-t border-line-subtle" : ""
         }`}
-        style={{ ...ringStyle(ringed()), opacity: arrive.opacity, transform: [...arrive.transform] }}
+        style={{ ...ringStyle(ringed()), ...arrive() }}
       >
         <If
           when={!msg().withdrawn_at}

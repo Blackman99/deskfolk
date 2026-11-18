@@ -82,7 +82,7 @@ function Row(props: {
       testID={`system-row-${msg().id}`}
       onContextMenu={(e) => props.onContextMenu?.(msg(), e.pagePosition)}
       class={`flex-row items-start gap-[10px] self-start w-full ${narrowWindow() ? "" : "max-w-[84%]"} ${ringed() ? "rounded-(--radius-md)" : ""}`}
-      style={{ ...ringStyle(ringed()), opacity: arrive.opacity, transform: [...arrive.transform] }}
+      style={{ ...ringStyle(ringed()), ...arrive() }}
     >
       <If when={appLine() || !stage.sidesSayWho}>
         <If
