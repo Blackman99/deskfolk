@@ -2,6 +2,7 @@ import { derived, effect, state } from "../../lib/reactive";
 import { untrack } from "../../lib/reactive";
 import type { Attachment, TaskArtifacts } from "@real-bot/protocol";
 import type { Copy } from "../copy.ts";
+import { ApiError } from "../api.ts";
 import type { MessengerApi } from "../messenger-api.ts";
 import { baseName, hostSeparator } from "../paths.ts";
 import { showToast } from "../toast.svelte.ts";
@@ -11,6 +12,7 @@ import {
   buildTaskArtifactTree,
   graftDirListings,
   isUnderAny,
+  markPathsFresh,
   mergeWorkspaceChildren,
   relistWorkspaceChildren,
   removeTreePaths,
@@ -84,6 +86,22 @@ export class ArtifactTreeSource {
 	set home(value: string | null) { this.#home$s.set(value); }
   #homeClient: MessengerApi | null = null;
 
+  /**
+   * Copies dropped from Finder on a tree of what a message or a job names (`importDropped`), as
+   * that tree spells them, with the message or job they were dropped on: they are rows of that
+   * tree, not of the next one this pane shows. `virtual-` rows (a link opened, the file walked to)
+   * come and go as you open files, so they do not count.
+   */
+  #imported$s = state<{ key: string; paths: string[] }>({ key: "", paths: [] });
+  #importKey$s = derived(() =>
+    `${this.#h.taskId() ?? ""}|${this.#h.siblings().filter((row) => !row.id.startsWith("virtual-")).map((row) => row.id).sort().join(",")}`);
+  /** The copies dropped on this tree, less what was trashed since. */
+  #importedPaths$s = derived(() => {
+    const imported = this.#imported$s.get();
+    return imported.key === this.#importKey$s.get() ? imported.paths.filter((path) => !isUnderAny(path, this.trashedPaths)) : [];
+  });
+	get importedPaths() { return this.#importedPaths$s.get(); }
+
   /** What this entry handed over, less what the Mac already knows is deleted: the tree is for opening files. */
   #ownPaths$s = derived(() =>
     this.#h.siblings()
@@ -95,16 +113,21 @@ export class ArtifactTreeSource {
    * chart, which names a job, the job's files anchored at its work dir with this step's own
    * marked — falling back to this step's alone when the pull failed.
    */
-  #citedTree$s = derived(() => (graftDirListings(
+  #citedTree$s = derived(() => {
+    // Copies dropped on the tree are rows of it, marked as just arrived.
+    const imported = this.importedPaths;
+    const tree = graftDirListings(
       this.taskArtifacts
         ? buildTaskArtifactTree(
             this.taskArtifacts.dir,
             this.taskArtifacts.items.map((row) => row.path),
-            this.ownPaths
+            [...this.ownPaths, ...imported]
           )
-        : buildCitedPathTree(this.ownPaths),
+        : buildCitedPathTree([...this.ownPaths, ...imported]),
       this.citedListings
-    )));
+    );
+    return markPathsFresh(tree, new Set(imported.map(dirKey)));
+  });
 	get citedTree() { return this.#citedTree$s.get(); }
 
   /**
@@ -192,11 +215,11 @@ export class ArtifactTreeSource {
   #treeMenuCanTrash$s = derived(() => this.canTrash && this.treeMenuInWorkspace);
 	get treeMenuCanTrash() { return this.#treeMenuCanTrash$s.get(); }
   /**
-   * Files from Finder can be dropped on the tree when it is a folder read a level at a time (the
-   * workspace's, or a project's) and the client has the call. Only a desktop hears drops from
-   * Finder; through the relay the Mac refuses the call, and the toast says so.
+   * Files from Finder can be dropped on any tree here, the workspace's, a project's, or the files a
+   * message or a job names, when the client has the call. Only a desktop hears drops from Finder;
+   * through the relay the Mac refuses the call, and the toast says so.
    */
-  #canImport$s = derived(() => this.lazy && typeof this.#h.api()?.importIntoWorkspace === "function");
+  #canImport$s = derived(() => typeof this.#h.api()?.importIntoWorkspace === "function");
 	get canImport() { return this.#canImport$s.get(); }
 
   #trashCopy$s = derived(() => {
@@ -283,6 +306,8 @@ export class ArtifactTreeSource {
         const path = dirKey(row.workspace_relpath);
         if (row.is_dir || (relpath && holds(path, dirKey(relpath)))) candidates.add(path);
       }
+      // A copy dropped on the tree may be a folder: asked like a cited one, and again after a reconnect.
+      for (const path of this.importedPaths) candidates.add(dirKey(path));
       const own = relpath ? this.#h.siblings().find((row) => dirKey(row.workspace_relpath) === dirKey(relpath)) : undefined;
       const aFile = own !== undefined && !own.is_dir && !own.id.startsWith("virtual-");
       if (relpath && !aFile && artifactKind(relpath) === "file") candidates.add(dirKey(relpath));
@@ -448,49 +473,87 @@ export class ArtifactTreeSource {
 
   /**
    * Files dropped on the tree from Finder (absolute paths on the Mac), copied into `dir`: the
-   * folder they landed on, or `null` for the tree's top (the workspace, or the project's folder).
-   * The folder is listed again where it is, the copies marked as just arrived, and a toast says
-   * what went in and what did not. A runtime too old to copy, or a drop refused whole, says why.
+   * folder they landed on, as the tree spells it, or `null` for the tree's top (the workspace, or
+   * the project's folder). A folder read a level at a time is listed again where it is; on a tree
+   * of what a message or a job names, the copies become rows of it (and a cited folder that was
+   * listed is listed again). Either way the copies are marked as just arrived, and a toast says
+   * what went in and what did not. Only the workspace and project folders take copies, and a
+   * runtime too old to copy says so.
    */
   async importDropped(dir: string | null, sources: string[]): Promise<void> {
     const client = this.#h.api();
     if (!client?.importIntoWorkspace || sources.length === 0) return;
     const t = this.#h.t();
+    const lazy = this.lazy;
     const project = this.projectRoot;
-    const into = dir ?? project ?? "";
+    const into = dir ?? (lazy ? project : null) ?? "";
     const generation = this.treeGeneration;
+    const key = this.#importKey$s.get();
     let result: Awaited<ReturnType<MessengerApi["importIntoWorkspace"]>>;
     try {
       result = await client.importIntoWorkspace(into, sources);
     } catch (error) {
-      showToast(t.stream.workspaceImportRefused(error instanceof Error && error.message ? error.message : String(error)), { tone: "error" });
+      showToast(this.#importRefusal(error), { tone: "error" });
       return;
     }
-    const at = dir ?? ".";
-    const sep = dir === null ? (project === null ? "/" : hostSeparator(project)) : hostSeparator(dir);
-    const base = dir ?? project;
-    const fresh = new Set(result.imported.map((row) => (base ? `${base}${sep}${row.name}` : row.name)));
-    // A folder dropped on opens and is listed for the first time meanwhile; that listing may have
-    // been read before the copies were there, so this one waits for it and lists again.
-    if (this.loadingDirs.has(at)) await this.#listing.get(at);
-    if (generation === this.treeGeneration && (at === "." || this.loadedDirs.has(at))) {
-      try {
-        const { children, truncated } = await this.#readDir(client, at);
-        if (generation === this.treeGeneration) {
-          this.workspaceTree = relistWorkspaceChildren(this.workspaceTree, at, children, truncated, fresh);
-          if (truncated) this.truncatedHint = true;
-        }
-      } catch {
-        // The rows stay as they were; the folder's next listing shows the copies.
-      }
-    }
+    const sep = into === "" ? "/" : hostSeparator(into);
+    const copies = result.imported.map((row) => (into ? `${into.replace(/[\\/]+$/, "")}${sep}${row.name}` : row.name));
+    if (lazy) await this.#relistAfterImport(client, dir === null ? "." : dir, generation, new Set(copies));
+    else this.#addImported(client, key, into, copies);
     // One notice: a second one would take the first one's place.
-    const label = dir === null ? (project === null ? "" : baseName(project)) : baseName(dir);
+    const label = into === "" ? "" : baseName(into);
     const said = [
       result.imported.length > 0 ? t.stream.workspaceImported(result.imported.map((row) => row.name), label) : "",
       result.failed.length > 0 ? t.stream.workspaceImportFailed(result.failed.map((row) => ({ name: baseName(row.source), code: row.code, message: row.message }))) : "",
     ].filter(Boolean);
     if (said.length > 0) showToast(said.join(t.stream.workspaceImportJoin), result.failed.length > 0 ? { tone: "error" } : undefined);
+  }
+
+  /** A folder read a level at a time, listed again where it is after the copies went in. */
+  async #relistAfterImport(client: MessengerApi, at: string, generation: number, fresh: ReadonlySet<string>): Promise<void> {
+    // A folder dropped on opens and is listed for the first time meanwhile; that listing may have
+    // been read before the copies were there, so this one waits for it and lists again.
+    if (this.loadingDirs.has(at)) await this.#listing.get(at);
+    if (generation !== this.treeGeneration || (at !== "." && !this.loadedDirs.has(at))) return;
+    try {
+      const { children, truncated } = await this.#readDir(client, at);
+      if (generation === this.treeGeneration) {
+        this.workspaceTree = relistWorkspaceChildren(this.workspaceTree, at, children, truncated, fresh);
+        if (truncated) this.truncatedHint = true;
+      }
+    } catch {
+      // The rows stay as they were; the folder's next listing shows the copies.
+    }
+  }
+
+  /**
+   * The copies become rows of the tree they were dropped on (the probe effect asks whether each is
+   * a folder); a cited folder that was listed is listed again, so its listing has them too.
+   */
+  #addImported(client: MessengerApi, key: string, into: string, copies: string[]): void {
+    if (copies.length > 0) {
+      const was = this.#imported$s.get();
+      const kept = was.key === key ? was.paths : [];
+      this.#imported$s.set({ key, paths: [...kept, ...copies.filter((path) => !kept.includes(path))] });
+    }
+    const folder = dirKey(into);
+    if (folder && this.citedListings.has(folder)) {
+      const probe = new Map(this.dirProbe);
+      probe.delete(folder);
+      const listings = new Map(this.citedListings);
+      listings.delete(folder);
+      this.dirProbe = probe;
+      this.citedListings = listings;
+      void this.probeDir(client, folder);
+    }
+  }
+
+  /** What a refused drop says: in words for a folder the runtime does not write to, or a runtime too old to copy. */
+  #importRefusal(error: unknown): string {
+    const t = this.#h.t();
+    if (error instanceof ApiError && error.status === 404 && error.message === "unknown route") return t.stream.workspaceImportNeedsRestart;
+    if (error instanceof ApiError && error.status === 422 && /outside the workspace/.test(error.message)) return t.stream.workspaceImportOutside;
+    return t.stream.workspaceImportRefused(error instanceof Error && error.message ? error.message : String(error));
   }
 
   openTreeMenu = (node: ArtifactTreeNode, event: MouseEvent, targets: ArtifactTreeNode[]): void => {

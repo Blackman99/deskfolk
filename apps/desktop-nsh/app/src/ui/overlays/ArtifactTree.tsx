@@ -6,9 +6,10 @@
  * ⌘⌫ / Ctrl+⌫ or Delete on a focused row asks to trash them; dragging rows (when `dragLabel` is
  * given) carries their paths to a composer (`workspace-drag.ts`). Files dragged in from Finder
  * (when `onDropFiles` is given) go into the folder under the pointer: a folder row is that
- * folder, a file row its folder, the space around the rows the tree's top; that folder lights up
- * while they are over it, and a folder dropped on opens. Loading, failed and empty states are
- * lines in the tree, a folder's own below its row.
+ * folder, a file row its folder (on a tree of what a message names, the folder its path says,
+ * a row or not), the space around the rows the tree's top. That folder's row lights up while
+ * they are over it (the whole tree is outlined when it has no row), and a folder dropped on
+ * opens. Loading, failed and empty states are lines in the tree, a folder's own below its row.
  *
  * On nsh/base's `Tree`, which makes only the rows in view, scrolls them natively and keeps the
  * keys of a tree (arrows, Home and End, typeahead; Return opens a file or a folder). What a row
@@ -31,7 +32,7 @@ import { Tree, type TreeItem, type TreeRef } from "nsh/base";
 import type { ArtifactTreeNode } from "../../m/overlays/artifact-tree.ts";
 import { fileIconFor } from "../../m/overlays/file-icon.ts";
 import { FileIcon } from "./FileIcon";
-import { treeRange, visibleTreePaths } from "../../m/overlays/artifact-tree.ts";
+import { folderOfPath, treeRange, visibleTreePaths } from "../../m/overlays/artifact-tree.ts";
 import { pressWorkspacePaths } from "../workspace-drag";
 import { pathOfFileUri } from "../chat/composer-state";
 import { tip } from "../tip";
@@ -255,13 +256,18 @@ export function ArtifactTree(props: {
 
   /** Where a Finder drag over the tree would go (`null`: the tree's top), and which view heard it last. */
   const dropAt = signal<{ by: string; dir: string | null } | null>(null);
-  /** The folder a drop on this row goes into: the row itself, or a file's folder when that is a row. */
+  /**
+   * The folder a drop on this row goes into: the row itself, or a file's folder. A folder read a
+   * level at a time has a row for each folder down to the file, so one that is no row is the top
+   * (`null`); on a tree of what a message names it is the folder the path says (`~/Downloads` for
+   * a file cited from there), and the workspace itself is the top.
+   */
   const dropDirOf = (path: string): string | null => {
     const map = byPath();
     if (map.get(path)?.kind === "dir") return path;
-    const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-    const parent = cut > 0 ? path.slice(0, cut) : "";
-    return map.get(parent)?.kind === "dir" ? parent : null;
+    const parent = folderOfPath(path);
+    if (props.lazyDirs) return parent !== null && map.get(parent)?.kind === "dir" ? parent : null;
+    return parent === "" ? null : parent;
   };
   const dropOver = (by: string, dir: string | null) => dropAt.set({ by, dir });
   /** The next view's enter may come before this one's leave: only the view that set the target clears it. */
@@ -271,14 +277,20 @@ export function ArtifactTree(props: {
     const paths = uris.map(pathOfFileUri).filter((path): path is string => Boolean(path));
     if (paths.length === 0 || !props.onDropFiles) return;
     // A folder dropped on opens, so what went in shows.
-    if (dir !== null && !isOpen(dir)) {
-      const node = byPath().get(dir);
-      if (node) onNode(node);
+    const node = dir === null ? undefined : byPath().get(dir);
+    if (node?.kind === "dir" && !isOpen(node.path)) {
+      if (props.lazyDirs) onNode(node);
+      else setCollapsed(new Set([...collapsed()].filter((path) => path !== node.path)));
     }
     props.onDropFiles(dir, paths);
   };
-  const takesFiles = () => Boolean(props.onDropFiles && props.lazyDirs);
+  const takesFiles = () => Boolean(props.onDropFiles);
   const dropLit = (path: string) => dropAt() !== null && dropAt()!.dir === path;
+  /** The folder a drag would go into has no row in view here: the whole tree says it takes them. */
+  const dropAround = () => {
+    const at = dropAt();
+    return at !== null && (at.dir === null || byPath().get(at.dir)?.kind !== "dir");
+  };
 
   /** A press that may become a drag: of everything highlighted when this row is, else of this row. */
   const dragFor = (path: string) =>
@@ -426,7 +438,7 @@ export function ArtifactTree(props: {
         renderItem={(entry) => rowFor(entry.id, entry.depth)}
       />
       {/* Over the rows: the whole tree is where a drop around them goes. */}
-      <If when={dropAt()?.dir === null}>
+      <If when={dropAround()}>
         <View testID="workspace-tree-drop" accessible={false} class="absolute left-0 top-0 right-0 bottom-0 border-2 border-dashed border-brand bg-brand/6" style={{ pointerEvents: "none" }} />
       </If>
     </View>

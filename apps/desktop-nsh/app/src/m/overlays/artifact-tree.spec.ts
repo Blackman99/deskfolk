@@ -8,7 +8,9 @@ import {
   collectTreePaths,
   countCitedFiles,
   expandedDirsForSelection,
+  folderOfPath,
   isUnderAny,
+  markPathsFresh,
   mergeWorkspaceChildren,
   relistWorkspaceChildren,
   removeTreePaths,
@@ -45,6 +47,30 @@ test("a folder listed again after a drop keeps the folders open under it, and ma
   // A mark stays through the next listing, and the rest of the tree is untouched.
   expect(deeper[3]!.fresh).toBe(true);
   expect(deeper[0]).toEqual(top[0]!);
+});
+
+test("a dropped file goes into the folder its row sits in, spelled as the row is", () => {
+  expect(folderOfPath("docs/a.md")).toBe("docs");
+  expect(folderOfPath("docs/sub/a.md")).toBe("docs/sub");
+  expect(folderOfPath("a.md")).toBe("");
+  expect(folderOfPath("output/")).toBe("");
+  expect(folderOfPath("~/Downloads/a.pdf")).toBe("~/Downloads");
+  expect(folderOfPath("~/a.pdf")).toBe("~");
+  expect(folderOfPath("/Users/me/a.pdf")).toBe("/Users/me");
+  expect(folderOfPath("/a.pdf")).toBe("/");
+  expect(folderOfPath("C:\\x\\a.md")).toBe("C:\\x");
+  expect(folderOfPath("C:\\a.md")).toBe("C:\\");
+  for (const root of ["/", "~", "C:\\", ""]) expect(folderOfPath(root)).toBe(null);
+});
+
+test("rows dropped in are marked as just arrived, folders as well as files", () => {
+  const tree = buildCitedPathTree(["inbox/a.md", "inbox/photos/b.jpg", "brief.md"]);
+  const marked = markPathsFresh(tree, new Set(["inbox/photos", "brief.md"]));
+  const inbox = marked.find((node) => node.path === "inbox")!;
+  expect(Boolean(inbox.fresh)).toBe(false);
+  expect(inbox.children?.map((node) => [node.path, Boolean(node.fresh)])).toEqual([["inbox/photos", true], ["inbox/a.md", false]]);
+  expect(marked.find((node) => node.path === "brief.md")?.fresh).toBe(true);
+  expect(markPathsFresh(tree, new Set())).toBe(tree);
 });
 
 test("buildCitedPathTree nests workspace-relative paths and sorts dirs first", () => {

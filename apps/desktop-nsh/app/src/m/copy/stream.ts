@@ -138,6 +138,10 @@ export const zh = {
   workspaceImportRefused: (reason: string) => `没能拷入：${reason}`,
   /** Between what went in and what did not, in one notice. */
   workspaceImportJoin: "；",
+  /** A drop on a folder outside the workspace and every project's folder: the runtime writes only there. */
+  workspaceImportOutside: "只能拷进工作区或项目目录里的文件夹，这个文件夹在它们外面。",
+  /** A runtime that predates copying dropped files (`POST /v1/workspace/import`). */
+  workspaceImportNeedsRestart: "运行时还是旧版本，不会拷文件。重启运行时后再拖进来。",
   workspacePickFile: "从左侧打开一个文件。",
   artifactSave: "保存",
   artifactSaving: "保存中",
@@ -405,6 +409,8 @@ export const en: CopyShape<typeof zh> = {
       .join("; ")}.`,
   workspaceImportRefused: (reason: string) => `Could not copy: ${reason}`,
   workspaceImportJoin: ". ",
+  workspaceImportOutside: "Files can only be copied into folders in the workspace or a project's folder; this one is outside them.",
+  workspaceImportNeedsRestart: "The runtime is an older version that can't copy files. Restart the runtime, then drop them again.",
   workspacePickFile: "Open a file from the left.",
   artifactSave: "Save",
   artifactSaving: "Saving",

@@ -72,6 +72,31 @@ export function relistWorkspaceChildren(
 }
 
 /**
+ * The folder a path sits in, spelled as the path is: `docs` for `docs/a.md`, `""` (the workspace
+ * itself) for `a.md`, `~/Downloads` for `~/Downloads/a.pdf`, `C:\x` for `C:\x\a.md`. A root
+ * (`/`, `~`, `C:\`) has none: `null`.
+ */
+export function folderOfPath(path: string): string | null {
+  const trimmed = path.trim().replace(/(?<=[^\\/:])[\\/]+$/, "");
+  const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  if (cut < 0) return trimmed === "" || trimmed === "~" || /^[A-Za-z]:$/.test(trimmed) ? null : "";
+  if (cut === trimmed.length - 1) return null;
+  const parent = trimmed.slice(0, cut);
+  // `/x` is in `/`, `C:\x` in `C:\`: the separator is the root's own.
+  return parent === "" || /^[A-Za-z]:$/.test(parent) ? trimmed.slice(0, cut + 1) : parent;
+}
+
+/** Marks the rows at these paths, files and folders, as just arrived (`fresh`, the row's dot). */
+export function markPathsFresh(nodes: readonly ArtifactTreeNode[], paths: ReadonlySet<string>): ArtifactTreeNode[] {
+  if (paths.size === 0) return nodes as ArtifactTreeNode[];
+  return nodes.map((node) => {
+    const children = node.children ? markPathsFresh(node.children, paths) : undefined;
+    const marked = paths.has(node.path) ? { ...node, fresh: true } : node;
+    return children ? { ...marked, children } : marked;
+  });
+}
+
+/**
  * Puts each listed folder's entries under its node. A cited path is a leaf until the Mac says it is
  * a folder (a message can name `voice_samples/ja/`); listed, it turns into a folder holding what is
  * in it, alongside any deeper paths the message cited under it, which keep their own subtrees.
