@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import type { ClaudeCodeStatus } from "@real-bot/protocol";
-import { CLAUDE_MODELS_MAX_AGE_MS, createClaudeModelList, readModels, type ModelAnswer } from "./models";
+import { CLAUDE_MODELS_MAX_AGE_MS, createClaudeModelList, readModels, signedInAs, type ModelAnswer } from "./models";
 
 const status = { path: "/usr/local/bin/claude", accounts: [] } as unknown as ClaudeCodeStatus;
-const probe = { current: async () => status } as never;
+const probe = { current: async () => status, last: () => status } as never;
 const official: ModelAnswer = [
   { value: "default", displayName: "Default (recommended)", description: "Opus 5.5 · Best for everyday, complex tasks", resolvedModel: "claude-opus-5-5", supportsEffort: true, supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"] },
   { value: "haiku", displayName: "Haiku 5.5", description: "Fastest", resolvedModel: "claude-haiku-5-5", supportsEffort: false },
@@ -52,6 +52,33 @@ test("a failed ask says so, and keeps serving the list it had", async () => {
   const again = await list.list(null);
   expect(again.models).toHaveLength(2);
   expect(again.error).toBe("claude gave no models");
-  const none = createClaudeModelList({ claudeCode: { current: async () => ({ ...status, path: null }) } as never, env: {}, ask: async () => official });
+  const none = createClaudeModelList({ claudeCode: { current: async () => ({ ...status, path: null }), last: () => null } as never, env: {}, ask: async () => official });
   expect(await none.list(null)).toMatchObject({ models: [], error: "claude_not_found" });
+});
+
+test("another sign-in under a directory is asked again at once; a probe that cannot say who keeps the list", async () => {
+  let seen = { path: "/usr/local/bin/claude", email: "old@a.com", accounts: [{ config_dir: null, email: "old@a.com", auth_method: "claude.ai", subscription_type: "max" }] } as unknown as ClaudeCodeStatus;
+  let asks = 0;
+  const list = createClaudeModelList({
+    claudeCode: { current: async () => seen, last: () => seen, detect: async () => seen },
+    env: {},
+    now: () => 1_000,
+    ask: async () => (asks++, official),
+  });
+  await list.list(null);
+  await list.list(null);
+  expect(asks).toBe(1);
+  // Claude Code now says someone else signs in here, or the same one on another plan.
+  seen = { ...seen, email: "new@a.com", accounts: [{ ...seen.accounts![0]!, email: "new@a.com" }] };
+  await list.list(null);
+  await list.list(null);
+  expect(asks).toBe(2);
+  seen = { ...seen, accounts: [{ ...seen.accounts![0]!, subscription_type: "pro" }] };
+  await list.list(null);
+  expect(asks).toBe(3);
+  // An answer that says no one (it could not ask) is no reason to ask again.
+  seen = { ...seen, email: null, accounts: [{ ...seen.accounts![0]!, email: null }] } as unknown as ClaudeCodeStatus;
+  await list.list(null);
+  expect(asks).toBe(3);
+  expect(signedInAs(null, null)).toBeNull();
 });

@@ -3,13 +3,14 @@
  * session started without a prompt answers the Agent SDK's `supportedModels` and is closed again,
  * as the usage probe does (`usage.ts`) — nothing goes to a model. The list is the account's (a plan
  * offers what it offers), so each account is asked on its own and the answer kept for a while: a
- * project session's composer opening asks at most once per `CLAUDE_MODELS_MAX_AGE_MS`.
+ * project session's composer opening asks at most once per `CLAUDE_MODELS_MAX_AGE_MS`, or sooner
+ * once Claude Code says another account signed in under that directory.
  */
 import { tmpdir } from "node:os";
-import { isClaudeEffort, type ClaudeCodeModel, type ClaudeCodeModelList } from "@real-bot/protocol";
+import { isClaudeEffort, type ClaudeCodeModel, type ClaudeCodeModelList, type ClaudeCodeStatus } from "@real-bot/protocol";
 import type { ClaudeCodeProbe } from "./probe";
 import { withSystemProxy } from "./proxy";
-import { claudeChildEnv } from "./status";
+import { accountOf, claudeChildEnv } from "./status";
 import { spawnClaude } from "./usage";
 
 /** How long an account's list is kept before the next ask starts `claude` again. */
@@ -50,6 +51,18 @@ export function readModels(answer: ModelAnswer): ClaudeCodeModel[] {
   return models;
 }
 
+/**
+ * Who is signed in under a directory as Claude Code last said: the same directory signed in as
+ * someone else, or on another plan, may offer other models. Null when it does not say who (an API
+ * key, an account it could not ask).
+ */
+export function signedInAs(status: ClaudeCodeStatus | null, configDir: string | null): string | null {
+  if (!status) return null;
+  const account = accountOf(status, configDir);
+  const email = account?.email ?? (configDir === null ? (status.email ?? null) : null);
+  return email ? JSON.stringify([email, account?.auth_method ?? null, account?.subscription_type ?? null]) : null;
+}
+
 export function createClaudeModelList(deps: {
   claudeCode: ClaudeCodeProbe;
   ask?: AskModels;
@@ -58,7 +71,7 @@ export function createClaudeModelList(deps: {
 }): ClaudeModelList {
   const now = deps.now ?? Date.now;
   const ask = deps.ask ?? askWithSdk;
-  const kept = new Map<string, { list: ClaudeCodeModelList; at: number }>();
+  const kept = new Map<string, { list: ClaudeCodeModelList; at: number; who: string | null }>();
   const inFlight = new Map<string, Promise<ClaudeCodeModelList>>();
 
   async function fresh(configDir: string | null, key: string): Promise<ClaudeCodeModelList> {
@@ -69,7 +82,7 @@ export function createClaudeModelList(deps: {
       const env = withSystemProxy(claudeChildEnv(deps.env ?? process.env, configDir), status);
       const models = readModels(await ask({ executable: status.path, env, cwd: tmpdir() }));
       const list = { config_dir: configDir, models, checked_at: checkedAt(), error: models.length ? null : "no_models" };
-      if (models.length) kept.set(key, { list, at: now() });
+      if (models.length) kept.set(key, { list, at: now(), who: signedInAs(status, configDir) });
       return list;
     } catch (error) {
       // A list asked for before still serves, with what went wrong this time.
@@ -83,7 +96,9 @@ export function createClaudeModelList(deps: {
     list(configDir) {
       const key = configDir ?? "";
       const old = kept.get(key);
-      if (old && now() - old.at < CLAUDE_MODELS_MAX_AGE_MS) return Promise.resolve(old.list);
+      const who = signedInAs(deps.claudeCode.last(), configDir);
+      const sameAccount = who === null || old?.who === null || who === old?.who;
+      if (old && now() - old.at < CLAUDE_MODELS_MAX_AGE_MS && sameAccount) return Promise.resolve(old.list);
       const pending = inFlight.get(key);
       if (pending) return pending;
       const asking = fresh(configDir, key).finally(() => inFlight.delete(key));
