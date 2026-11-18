@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Terminal } from "@real-bot/protocol";
-import { accept, decodeBase64, encodeBase64, InputQueue, TERMINAL_KEY_ROWS, orderTerminals, pickActive, startCursor, statusLabel, terminalNames, tildePath } from "./terminals.ts";
+import { accept, decodeBase64, encodeBase64, InputQueue, TERMINAL_KEY_ROWS, orderTerminals, pageTerminal, pickActive, startCursor, statusLabel, terminalNames, tildePath } from "./terminals.ts";
 import { COPY } from "../copy.ts";
 
 const bytes = (text: string) => new TextEncoder().encode(text);
@@ -62,6 +62,21 @@ test("a live session is preferred over a finished one when the active one disapp
   const dead = row({ id: "DEAD", status: "exited", created_at: "2026-09-22T12:00:00.000Z" });
   const live = row({ id: "LIVE", created_at: "2026-09-22T09:00:00.000Z" });
   expect(pickActive([dead, live], null)).toBe("LIVE");
+});
+
+test("the phone's page reattaches to the shell it showed, else the newest running one, never a finished one", () => {
+  const old = row({ id: "OLD", created_at: "2026-09-22T09:00:00.000Z" });
+  const fresh = row({ id: "NEW", created_at: "2026-09-22T11:00:00.000Z" });
+  const dead = row({ id: "DEAD", status: "exited", exit_code: 3, created_at: "2026-09-22T12:00:00.000Z" });
+  expect(pageTerminal([old, fresh, dead], null)).toBe("NEW");
+  expect(pageTerminal([old, fresh, dead], "OLD")).toBe("OLD");
+  // One it was showing when it ended stays, so you read how it ended.
+  expect(pageTerminal([old, dead], "DEAD")).toBe("DEAD");
+  // Gone from the daemon (closed on the desktop): the newest running one.
+  expect(pageTerminal([old, fresh], "GONE")).toBe("NEW");
+  // Nothing running: none to reattach to, so the page starts one.
+  expect(pageTerminal([dead], null)).toBeNull();
+  expect(pageTerminal([], "OLD")).toBeNull();
 });
 
 test("a finished session says how it finished", () => {

@@ -290,7 +290,7 @@ export class MessengerRuntime {
       get profileBotId() { return runtime.profileBotId; },
       get workspacePath() { return runtime.workspacePath; },
       closeSessionSettings: () => runtime.closeSessionSettings(),
-      refreshTerminals: () => runtime.refreshTerminals(),
+      refreshTerminals: async () => void (await runtime.refreshTerminals()),
       closeSheets: () => runtime.closeSheets(),
       selectSession: (id, opts) => runtime.selectSession(id, opts),
       sessionView: (id) => runtime.sessionView(id),
@@ -653,8 +653,11 @@ export class MessengerRuntime {
   get terminalsLoaded(): boolean { return this.terminalList.terminalsLoaded; }
   set terminalsLoaded(value: boolean) { this.terminalList.terminalsLoaded = value; }
   startTerminal(cwd?: string): Promise<Terminal | null> { return this.terminalList.startTerminal(cwd); }
+  get pageTerminalId(): string | null { return this.terminalList.pageTerminalId; }
+  set pageTerminalId(value: string | null) { this.terminalList.pageTerminalId = value; }
   openTerminalAt(cwd: string): Promise<void> { return this.terminalList.openTerminalAt(cwd); }
-  refreshTerminals(): Promise<void> { return this.terminalList.refreshTerminals(); }
+  refreshTerminals(): Promise<boolean> { return this.terminalList.refreshTerminals(); }
+  endTerminal(id: string): Promise<void> { return this.terminalList.endTerminal(id); }
 
   // --- Forwarded to `connectionLoop` (the loop that keeps the link). ---
   retryConnection(): void { this.connectionLoop.retryConnection(); }
@@ -1255,12 +1258,9 @@ export class MessengerRuntime {
     if (frame) this.api?.observeCredentialFrame(frame);
     if (event.event === "terminal.upsert") {
       const { event: _event, occurred_at: _at, ...row } = event;
-      const rest = this.terminals.filter((existing) => existing.id !== row.id);
-      this.terminals = [...rest, row];
+      this.terminalList.upsertTerminal(row);
     }
-    if (event.event === "terminal.removed") {
-      this.terminals = this.terminals.filter((existing) => existing.id !== event.id);
-    }
+    if (event.event === "terminal.removed") this.terminalList.dropTerminal(event.id);
     if (this.api) this.reconcilePendingMutation(this.api);
     if (event.event === "session.cleared" || event.event === "session.removed") {
       // Late message-write receipts cannot resurrect history erased by a newer event.

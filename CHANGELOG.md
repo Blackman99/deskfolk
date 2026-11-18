@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Closing a terminal tab on the desktop ends it; the phone's terminal reattaches to the one already running
+
+- On the desktop a terminal tab is its shell: closing the tab ends it, as closing a Terminal.app window does, without asking, and the tab's head no longer has End session. Closing a whole pane, or Close Others and the like, does the same; dragging a tab to another pane or floating it is not closing. Reset Layout ends nothing: those terminals keep running under Reattach in + and the empty pane. On Windows and Linux, with a terminal in front, Ctrl+W is the shell's delete-a-word (it used to close the tab), and Ctrl+Shift+W closes the tab from anywhere.
+- On the phone (and in a window too narrow for panes), Tools → Terminal opened a blank page; it is now the terminal page. Opening it reattaches to a terminal already running: the one this page showed last while it is still there, else the newest one running, the desktop's included. Only when none is running does it start one in the workspace. Leaving the page ends nothing. The name at the top lists every session, to switch to one or end it (a running one after a second press); + starts another. Under the terminal are two rows of the keys a soft keyboard lacks: Esc, ^C, ^D, ^V, Paste, the arrows, Return, Ctrl, Tab, ⇧Tab and the keyboard toggle. Ctrl applies to the next key only, letters typed on the soft keyboard included. With the soft keyboard up, the page sits above it, the keys right on top of it.
+- Fixed: a terminal just ended sometimes came back under Reattach as "Finished · exit 1", and ending it again said it could not be found.
+
 ### Files open on the phone again
 
 - On the phone's page, a file pressed in a message, a project's "Open folder" or an artifact in the flow seemed to do nothing: it opened under the conversation. It now covers the screen, and Back puts it away and leaves the conversation where it was. The same holds in a desktop window narrower than the phone layout's breakpoint.

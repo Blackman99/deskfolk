@@ -101,3 +101,34 @@ export function arrowBytes(arrow: Arrow, mode: { application: boolean; ctrl?: bo
   if (mode.ctrl) return `\x1b[1;5${final}`;
   return `${mode.application ? "\x1bO" : "\x1b["}${final}`;
 }
+
+/**
+ * Whether DEC private mode `mode` is on once `text` (the program's output) is on the screen, from
+ * `current` before it: set (`ESC [ ? 1 h`, alone or among others, `ESC [ ? 1 ; 1049 h`) or reset,
+ * and a full reset (`ESC c`) turns it off. The phone's key bar reads it, since NSH's `Terminal`
+ * keeps its modes to itself. A sequence split across two writes is missed, which leaves the mode as
+ * it was; programs send it whole.
+ */
+export function privateMode(text: string, mode: string, current: boolean): boolean {
+  let on = current;
+  for (const match of text.matchAll(/\x1b(?:\[\?([0-9;]*)([hl])|c)/g)) {
+    if (match[2] === undefined) on = false;
+    else if (match[1]!.split(";").includes(mode)) on = match[2] === "h";
+  }
+  return on;
+}
+
+/** Application cursor keys (mode 1): what the phone's arrows send (`arrowBytes`). */
+export function cursorKeysMode(text: string, current: boolean): boolean {
+  return privateMode(text, "1", current);
+}
+
+/** Bracketed paste (mode 2004): whether the phone's Paste wraps what it sends. */
+export function bracketedPasteMode(text: string, current: boolean): boolean {
+  return privateMode(text, "2004", current);
+}
+
+/** Text pasted from the phone's bar, wrapped when the program asked for bracketed pastes. */
+export function pasteBytes(text: string, bracketed: boolean): string {
+  return bracketed ? `\x1b[200~${text}\x1b[201~` : text;
+}

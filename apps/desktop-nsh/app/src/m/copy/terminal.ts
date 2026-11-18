@@ -3,6 +3,8 @@ import type { CopyShape } from "./shape.ts";
 export const zh = {
   title: "终端",
   open: "打开终端",
+  opening: "正在打开终端…",
+  startFailed: "没能开出新的终端。",
   newSession: "新建",
   newTab: "新建终端",
   reattach: (name: string) => `接回 · ${name}`,
@@ -41,6 +43,8 @@ export const zh = {
 export const en: CopyShape<typeof zh> = {
   title: "Terminal",
   open: "Open terminal",
+  opening: "Opening the terminal…",
+  startFailed: "Couldn't start a new terminal.",
   newSession: "New",
   newTab: "New terminal",
   reattach: (name: string) => `Reattach · ${name}`,

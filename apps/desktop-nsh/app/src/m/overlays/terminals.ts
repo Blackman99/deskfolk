@@ -61,6 +61,16 @@ export function pickActive(items: Terminal[], current: string | null): string | 
 }
 
 /**
+ * The session the phone's terminal page reattaches to: the one it showed last while the daemon
+ * still has it (a shell that exited there stays, saying how it ended), else the newest one still
+ * running. Null when none runs: the page then starts one.
+ */
+export function pageTerminal(items: readonly Terminal[], kept: string | null): string | null {
+  if (kept && items.some((row) => row.id === kept)) return kept;
+  return orderTerminals([...items]).filter((row) => row.status === "live").at(-1)?.id ?? null;
+}
+
+/**
  * What to call each session. The daemon titles a shell after its folder, so every one opened in
  * the workspace comes back with the same title; the second and later of a title get a number,
  * oldest first. Computed over the whole list, so a desktop tab and the phone's strip call the

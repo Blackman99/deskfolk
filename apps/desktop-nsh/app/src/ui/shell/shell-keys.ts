@@ -9,12 +9,12 @@
  * which the Svelte took from inputs too. ⌘W is the native menu's on the Mac, as before; Ctrl+W is
  * bound here on Windows and Linux.
  */
-import { keymap, platform } from "nsh";
+import { keymap, platform, type KeyBindingOptions } from "nsh";
 import { WB_KEY_RESIZE_PX, type WorkbenchCommand } from "../../m/workbench/workbench-commands.ts";
 import type { ShellState } from "./shell-state";
 
 /** A keystroke the platform keeps or does not know is skipped, not fatal: the rest still bind. */
-function bind(keys: string, run: () => void, options?: { when?: "always" | "notEditing" }): void {
+function bind(keys: string, run: () => void, options?: Pick<KeyBindingOptions, "when" | "passThrough">): void {
   try {
     keymap.bind(keys, () => run(), options);
   } catch (error) {
@@ -48,9 +48,16 @@ export function bindShellKeys(s: ShellState): void {
   }
   bind("mod+alt+0", workbenchKey({ kind: "equalise" }), { when: "notEditing" });
   // Ctrl+W closes the tab in front of you on Windows and Linux, and puts the window away once none
-  // is left, as 0.4.0's menu did there (`matchesCloseTab`); the Mac's Window menu has ⌘W.
+  // is left, as 0.4.0's menu did there (`matchesCloseTab`); the Mac's Window menu has ⌘W. A
+  // terminal keeps Ctrl+W (readline's delete a word back): with one in front of the focused pane
+  // the key goes on to it, since closing its tab would end the shell. Ctrl+Shift+W closes the tab
+  // from anywhere, as in Windows Terminal. The keymap has no focus scope, so "in front of the pane
+  // the keyboard is in" stands for "has the keyboard".
   if (platform.os === "windows" || platform.os === "linux") {
     bind("mod+w", () => {
+      if (s.wide() && !s.workbench.terminalInFront()) s.workbench.runMenuCommand("pane-close-tab");
+    }, { when: "always", passThrough: true });
+    bind("mod+shift+w", () => {
       if (s.wide()) s.workbench.runMenuCommand("pane-close-tab");
     }, { when: "always" });
   }

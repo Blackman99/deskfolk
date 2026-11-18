@@ -1,5 +1,14 @@
 import { expect, test } from "bun:test";
-import { arrowBytes, controlByte, macEditingBytes, terminalShortcut, windowsTerminalShortcut } from "./terminal-keys.ts";
+import {
+  arrowBytes,
+  bracketedPasteMode,
+  controlByte,
+  cursorKeysMode,
+  macEditingBytes,
+  pasteBytes,
+  terminalShortcut,
+  windowsTerminalShortcut,
+} from "./terminal-keys.ts";
 
 const key = (k: string, mods: Partial<Record<"metaKey" | "ctrlKey" | "altKey" | "shiftKey", boolean>> = {}) => ({
   key: k, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods,
@@ -87,4 +96,29 @@ test("an arrow goes the way the program on screen asked for it", () => {
   // Ctrl's form is the same in either mode.
   expect(arrowBytes("left", { application: true, ctrl: true })).toBe("\x1b[1;5D");
   expect(arrowBytes("up", { application: false, ctrl: true })).toBe("\x1b[1;5A");
+});
+
+test("the program's output says which arrows it wants: mode 1 alone or among others, and a reset", () => {
+  // zsh's line editor and vim: `smkx` is `ESC [ ? 1 h ESC =`, `rmkx` the same with `l`.
+  expect(cursorKeysMode("\x1b[?1h\x1b=", false)).toBe(true);
+  expect(cursorKeysMode("prompt\x1b[?1l\x1b>", true)).toBe(false);
+  expect(cursorKeysMode("\x1b[?1;1049h", false)).toBe(true);
+  // Another private mode leaves it as it was; the last word wins.
+  expect(cursorKeysMode("\x1b[?1049h\x1b[?25l", true)).toBe(true);
+  expect(cursorKeysMode("\x1b[?12h", false)).toBe(false);
+  expect(cursorKeysMode("\x1b[?1h then \x1b[?1l", false)).toBe(false);
+  expect(cursorKeysMode("\x1bc", true)).toBe(false);
+  expect(cursorKeysMode("plain text", true)).toBe(true);
+});
+
+test("a paste from the bar is bracketed only once the program asked for it", () => {
+  // zsh turns 2004 on at each prompt and off before running the line.
+  const prompt = bracketedPasteMode("\x1b[?2004h% ", false);
+  expect(prompt).toBe(true);
+  expect(pasteBytes("ls\nrm x", prompt)).toBe("\x1b[200~ls\nrm x\x1b[201~");
+  expect(bracketedPasteMode("\x1b[?2004l\r\n", prompt)).toBe(false);
+  expect(pasteBytes("ls", false)).toBe("ls");
+  // Mode 1 and 2004 are told apart.
+  expect(bracketedPasteMode("\x1b[?1h", false)).toBe(false);
+  expect(cursorKeysMode("\x1b[?2004h", false)).toBe(false);
 });

@@ -47,6 +47,7 @@ import {
   type PlaceContext,
 } from "./pane-open.ts";
 import { canSplit, computeGeometry, neighbourLeaf } from "./layout-geometry.ts";
+import { closedTerminals } from "./terminal-tabs.ts";
 import { clampFrame, frameForOpen, stepPastFloats } from "./float-frame.ts";
 import { loadFloatFrames, openKindOf, rememberFloatFrame } from "./open-placement.ts";
 import { openPlacements } from "./open-placement-store.svelte.ts";
@@ -161,7 +162,7 @@ export class ShellWorkbench {
           ),
           this.freshPaneId,
         );
-        if (healed !== this.layout) this.commitLayout(healed);
+        if (healed !== this.layout) this.commitLayout(healed, { keepShells: true });
       });
     });
 
@@ -267,11 +268,31 @@ export class ShellWorkbench {
 
   freshPaneId = (): string => `wb-${Date.now().toString(36)}-${++this.paneSeq}`;
 
-  commitLayout = (next: WorkbenchLayout): void => {
+  /**
+   * Every change to the arrangement comes through here, and so does the end of a terminal: a tab
+   * is its shell, so a session the new layout no longer shows is ended (`closedTerminals`), however
+   * its tab went. `keepShells` is for the two commits that are not a close: healing, which drops
+   * tabs whose session has already gone, and Reset Layout, which leaves the shells running under
+   * 接回 rather than stopping a `pnpm dev` for tidying the panes.
+   */
+  commitLayout = (next: WorkbenchLayout, opts?: { keepShells?: boolean }): void => {
     if (next === this.layout) return;
+    const before = this.layout;
     this.layout = next;
     saveWorkbenchLayout(next);
+    if (!opts?.keepShells) this.endClosedTerminals(before, next);
   };
+
+  private endClosedTerminals(before: WorkbenchLayout, after: WorkbenchLayout): void {
+    const closed = closedTerminals(before, after);
+    if (closed.length === 0) return;
+    untrack(() => {
+      const runtime = this.getRuntime();
+      // Once the list has been read, a session missing from it has already gone: nothing to end.
+      const known = runtime.terminalsLoaded ? new Set(runtime.terminals.map((row) => row.id)) : null;
+      for (const id of closed) if (!known || known.has(id)) void runtime.endTerminal(id);
+    });
+  }
 
   /** What a tab is called. The layout carries ids; the names come from what they point at. */
   paneTitle = (tab: WorkbenchTab): string => {
@@ -429,6 +450,12 @@ export class ShellWorkbench {
     else this.commitLayout(openContent(this.layout, content, this.openOptions(content)));
   };
 
+  /** Whether the tab in front of the focused pane, the one the keyboard is in, is a terminal. */
+  terminalInFront = (): boolean => {
+    const leaf = leafById(this.layout, this.layout.focus.leafId);
+    return leaf?.tabs.find((tab) => tab.id === leaf.activeTabId)?.kind === "terminal";
+  };
+
   /** Reopen the nearest terminal tab, creating a shell when none is open. */
   showTerminal = async (): Promise<void> => {
     const open = findKind(this.layout, "terminal");
@@ -440,8 +467,9 @@ export class ShellWorkbench {
   };
 
   /**
-   * Sessions no tab shows. Closing a terminal tab never stops its shell, and a phone can start one,
-   * so what is still there has to be reachable from where you open things.
+   * Sessions no tab shows: one the phone started, or one Reset Layout left running. Closing a tab
+   * ends its shell, so these are the only ones without a tab, and they have to be reachable from
+   * where you open things — to carry on with, or to close.
    */
   #untabbedTerminals$s = derived<Terminal[]>(() => {
     const shown = new Set(
@@ -484,7 +512,7 @@ export class ShellWorkbench {
    */
   runMenuCommand = (id: string): void => {
     if (id === "pane-reset") {
-      this.commitLayout(freshLayout(this.freshPaneId()));
+      this.commitLayout(freshLayout(this.freshPaneId()), { keepShells: true });
       return;
     }
     if (id === "view-spend") {

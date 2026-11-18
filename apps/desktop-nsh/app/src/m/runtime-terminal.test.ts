@@ -61,6 +61,32 @@ test("without a workbench the phone's terminal page opens over the workspace, sh
   expect(rt.terminalOpen).toBe(true);
   expect(rt.workspaceOpen).toBe(false);
   expect(snapshot(rt.terminals.map((row) => row.cwd))).toEqual(["/Users/me/ws/out"]);
+  // The page shows that shell, not an older one it would otherwise reattach to.
+  expect(rt.pageTerminalId).toBe("term-1");
+});
+
+test("a session ended here, or removed by the daemon, stays out when its shell's exit arrives after", async () => {
+  const { rt } = fixture();
+  const ingest = (event: Record<string, unknown>) =>
+    (rt as unknown as { ingest(event: unknown): void }).ingest({ occurred_at: "2026-09-27T00:00:01.000Z", ...event });
+  const closed: string[] = [];
+  (rt as unknown as { api: MessengerApi }).api = {
+    terminals: async () => rt.terminals.filter((row) => !closed.includes(row.id)),
+    closeTerminal: async (id: string) => void closed.push(id),
+  } as unknown as MessengerApi;
+  ingest({ event: "terminal.upsert", ...shell("/Users/me/ws"), id: "term-a" });
+  ingest({ event: "terminal.upsert", ...shell("/Users/me/ws"), id: "term-b" });
+  await rt.endTerminal("term-a");
+  expect(closed).toEqual(["term-a"]);
+  ingest({ event: "terminal.removed", id: "term-b" });
+  // A daemon from before the fix: the hung-up shells' exits, as upserts, after the removal.
+  ingest({ event: "terminal.upsert", ...shell("/Users/me/ws"), id: "term-a", status: "exited", exit_code: 1 });
+  ingest({ event: "terminal.upsert", ...shell("/Users/me/ws"), id: "term-b", status: "exited", exit_code: 1 });
+  expect(snapshot(rt.terminals.map((row) => row.id))).toEqual([]);
+  // A session the daemon still has keeps taking its changes.
+  ingest({ event: "terminal.upsert", ...shell("/Users/me/ws"), id: "term-c" });
+  ingest({ event: "terminal.upsert", ...shell("/Users/me/ws"), id: "term-c", status: "exited", exit_code: 0 });
+  expect(snapshot(rt.terminals.map((row) => `${row.id}:${row.status}`))).toEqual(["term-c:exited"]);
 });
 
 test("a shell the daemon will not start opens nothing, and a plain new terminal still starts at the root", async () => {

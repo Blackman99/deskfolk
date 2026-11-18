@@ -1,12 +1,12 @@
 /**
- * A terminal tab: a head saying where the shell is and how it is, with Stop and 结束会话 (the
- * workbench head of `TerminalView.svelte`), over NSH's own `Terminal` (`src/NshTerminal.tsx`; the
- * macOS native view under `--terminal native`) on the runtime's pty. The tab's own session when it
- * names one, else a new shell in the workspace, which the tab then remembers (`onBind`).
+ * A terminal tab: a head saying where the shell is and how it is, with Stop, over NSH's own
+ * `Terminal` (`src/NshTerminal.tsx`; the macOS native view under `--terminal native`) on the
+ * runtime's pty. The tab's own session when it names one, else a new shell in the workspace, which
+ * the tab then remembers (`onBind`).
  *
- * The tab's × only takes the shell off the screen; 结束会话 is what stops it, behind a second
- * press while it is running. A shell that exits keeps its tab, its last screen and how it ended
- * showing, until 结束会话 forgets it. Once the runtime drops the session the workbench drops the tab.
+ * The tab is the shell: closing it ends the session (`ShellWorkbench.commitLayout`), so there is no
+ * 结束会话 here. A shell that exits keeps its tab, its last screen and how it ended showing, until
+ * the tab is closed.
  *
  * No tab row of sessions and no search here; selecting and copying are the terminal's own.
  */
@@ -23,8 +23,6 @@ import { tip } from "../tip";
 export function PaneTerminal(props: { terminalId: string | null; onBind: (id: string | null) => void }) {
   const error = signal<string | null>(null);
   const opening = signal(false);
-  /** The session whose 结束会话 was pressed once while it ran; the second press ends it. */
-  const arming = signal<string | null>(null);
   const workspace = () => runtime.snapshot.settings.workspace_path;
   const row = (): TerminalRow | null => {
     const id = props.terminalId;
@@ -54,65 +52,22 @@ export function PaneTerminal(props: { terminalId: string | null; onBind: (id: st
     void runtime.client?.terminalSignal(id, "SIGINT").catch((e: unknown) => error.set(String(e)));
   };
 
-  const end = async (id: string) => {
-    arming.set(null);
-    const client = runtime.client;
-    if (!client) return;
-    try {
-      await client.closeTerminal(id);
-      await runtime.refreshTerminals();
-    } catch (e) {
-      error.set(String(e));
-    }
-  };
-
-  const head = (r: () => TerminalRow) => {
-    const t = () => copy().terminal;
-    return (
-      <View testID="terminal-head" class="flex-row items-center gap-2 px-2 py-[6px] border-b border-line">
-        {/* Where the shell is. The tab above names it; the path is what tells two apart. */}
-        <View class="flex-1 shrink min-w-0 flex-row items-center gap-2">
-          <Text testID="terminal-cwd" tooltip={tip(r().cwd)} class="shrink min-w-0 line-clamp-1 font-mono text-[12px] text-ink-muted">
-            {r().cwd}
-          </Text>
-          <If when={statusLabel(r(), copy())}>{(label) => <Text testID="terminal-status" class="shrink-0 text-[11px] text-ink-muted opacity-75">{label()}</Text>}</If>
-        </View>
-        <View class="shrink-0 flex-row items-center gap-[6px]">
-          <If when={r().status === "live"}>
-            <Button size="sm" variant="secondary" testID="terminal-stop" onPress={() => stop(r().id)}>
-              {t().stop}
-            </Button>
-          </If>
-          <If
-            when={arming() === r().id}
-            else={
-              <Button
-                size="sm"
-                variant="secondary"
-                testID="terminal-end"
-                onPress={() => {
-                  if (r().status === "live") arming.set(r().id);
-                  else void end(r().id);
-                }}
-              >
-                {t().end}
-              </Button>
-            }
-          >
-            <Text testID="terminal-end-note" class="shrink-0 text-[12px] text-ink-muted">
-              {t().endConfirm}
-            </Text>
-            <Button size="sm" variant="danger-soft" testID="terminal-end-confirm" onPress={() => void end(r().id)}>
-              {t().end}
-            </Button>
-            <Button size="sm" variant="secondary" testID="terminal-end-cancel" onPress={() => arming.set(null)}>
-              {copy().detail.cancel}
-            </Button>
-          </If>
-        </View>
+  const head = (r: () => TerminalRow) => (
+    <View testID="terminal-head" class="flex-row items-center gap-2 px-2 py-[6px] border-b border-line">
+      {/* Where the shell is. The tab above names it; the path is what tells two apart. */}
+      <View class="flex-1 shrink min-w-0 flex-row items-center gap-2">
+        <Text testID="terminal-cwd" tooltip={tip(r().cwd)} class="shrink min-w-0 line-clamp-1 font-mono text-[12px] text-ink-muted">
+          {r().cwd}
+        </Text>
+        <If when={statusLabel(r(), copy())}>{(label) => <Text testID="terminal-status" class="shrink-0 text-[11px] text-ink-muted opacity-75">{label()}</Text>}</If>
       </View>
-    );
-  };
+      <If when={r().status === "live"}>
+        <Button size="sm" variant="secondary" testID="terminal-stop" onPress={() => stop(r().id)}>
+          {copy().terminal.stop}
+        </Button>
+      </If>
+    </View>
+  );
 
   return (
     <View class="flex-1 min-h-0 bg-pane">

@@ -13,11 +13,14 @@
  * it, its code block and table scrolling sideways while a vertical swipe on them still scrolls the
  * conversation, its code and a command's output in GitHub's colours, a line sent from the phone (read back from the Mac's database), a line written on the Mac
  * arriving live, a file pressed in a message covering the conversation (and Back putting only the
- * file away), Back to the roster, the workspace with a file picked in it that stays while the Mac
+ * file away), Back to the roster, the terminal page reattaching to a shell the Mac already holds
+ * (none started beside it; the key bar's Return reaches it; Back leaves it running), the workspace with a file picked in it that stays while the Mac
  * moves on, a project's folder over its conversation, a reload that is still enrolled and under the service worker
  * (`/sw.js`, which the app's realm reaches as its own), a project session read back past its first
  * page that keeps the reader's place when a line comes into another conversation and when the relay
- * goes out of reach and the link comes back to the snapshot; and the same page at a tablet's width (the roster's column beside one page, no workbench). Screenshots go to `--shots`,
+ * goes out of reach and the link comes back to the snapshot; a reload on the terminal page's address
+ * finding the same shell (late, so its loads come after the steps that count them); and the same
+ * page at a tablet's width (the roster's column beside one page, no workbench). Screenshots go to `--shots`,
  * named after the browser. Stops everything it started. Never the stable or the dev instance,
  * never a remote host.
  *
@@ -702,6 +705,50 @@ try {
   await row.waitFor({ timeout: 10_000 });
   step("a project's folder from its row's menu covers its conversation; Back puts the folder away, then the conversation");
 
+  // The terminal page reattaches to the shell the Mac already holds (as a desktop tab would), with
+  // its screen read back over the relay; it starts none beside it, the bar's Return reaches it, and
+  // leaving the page leaves it running. Skipped where the Mac cannot start a shell. The shell stays
+  // for the reload check near the end, kept there so its loads come after the steps that count them.
+  const shells = () => mac.api<{ items: Array<{ id: string; status: string }> }>("GET", "/v1/terminals");
+  const said = async (id: string, text: string) => {
+    const read = await mac.api<{ data: string }>("GET", `/v1/terminals/${id}/scrollback?from=0`);
+    return Buffer.from(read.data, "base64").toString("utf8").includes(text);
+  };
+  const openTerminalPage = async () => {
+    await page.locator('[data-testid="tools-toggle"]:visible').first().tap();
+    await testid(page, "tools-terminal").first().click();
+    await testid(page, "terminal-page").waitFor({ timeout: 10_000 });
+  };
+  const leaveTerminalPage = async () => {
+    await testid(page, "terminal-back").click();
+    await until("the terminal page put down", 10_000, async () => (await testid(page, "terminal-page").count()) === 0);
+    // Closed over a reload's floor, the address steps back onto it and then up to the roster's.
+    await until("the address left the terminal page", 10_000, () => {
+      const at = new URL(page.url());
+      return !at.searchParams.has("o") && at.hash !== "#floor";
+    });
+  };
+  const macShell = await mac
+    .api<{ id: string }>("POST", "/v1/terminals", { cwd: join(mac.dataDir, "workspace"), rows: 24, cols: 80 })
+    .catch(() => null);
+  if (macShell) {
+    await mac.api("POST", `/v1/terminals/${macShell.id}/input`, { data: Buffer.from("echo mac-$((6*7))\r").toString("base64") });
+    await until("the Mac's shell ran its line", 15_000, () => said(macShell.id, "mac-42"));
+    await openTerminalPage();
+    await until("the Mac's shell on the phone's terminal page", 20_000, () => shownIn(page, "terminal-page", "mac-42"));
+    if ((await shells()).items.length !== 1) throw new Error("the terminal page started a shell beside the one the Mac had");
+    await testid(page, "terminal").first().click();
+    await page.keyboard.type("echo phone-$((2+3))");
+    await testid(page, "terminal-key-enter").click();
+    await until("the line typed on the phone ran on the Mac", 15_000, () => said(macShell.id, "phone-5"));
+    await page.screenshot({ path: shot("3b-terminal") });
+    await leaveTerminalPage();
+    const after = (await shells()).items;
+    if (after.length !== 1 || after[0]!.status !== "live") throw new Error(`leaving the page ended the shell: ${JSON.stringify(after)}`);
+    step("the terminal page reattached to the Mac's shell (its screen over the relay, none started beside it), ran a line, and left it running");
+  } else {
+    step("the terminal page: skipped, the Mac has no pty helper");
+  }
 
   // The device store: a reload keeps the enrollment (IndexedDB) and links again, no pairing.
   await page.reload();
@@ -1312,6 +1359,23 @@ try {
     await until("the project session put down", 10_000, async () => (await testid(page, "conversation").count()) === 0);
     await testid(page, "nav-sessions").click();
     await row.waitFor({ timeout: 10_000 });
+  }
+
+  // A reload is a new link and a page with nothing remembered: the terminal page's address opens it
+  // again, and it finds the same shell once the list has been read, starting none.
+  if (macShell) {
+    await openTerminalPage();
+    await until("the Mac's shell on the terminal page again", 20_000, () => shownIn(page, "terminal-page", "phone-5"));
+    if (!new URL(page.url()).searchParams.has("o")) throw new Error(`the terminal page is not in the address: ${page.url()}`);
+    await page.reload();
+    await testid(page, "terminal-page").waitFor({ timeout: 40_000 });
+    await until("the same shell after a reload", 20_000, () => shownIn(page, "terminal-page", "phone-5"));
+    if ((await shells()).items.length !== 1) throw new Error("the reloaded terminal page started a shell beside the Mac's");
+    await leaveTerminalPage();
+    if ((await shells()).items.length !== 1) throw new Error("leaving the reloaded terminal page ended the shell");
+    await mac.api("DELETE", `/v1/terminals/${macShell.id}`);
+    await row.waitFor({ timeout: 10_000 });
+    step("reloaded on the terminal page's address: the same shell, none started beside it, and Back leaves it running");
   }
 
   // A tablet's width, the same page (a new context would be a new device store, unpaired): the

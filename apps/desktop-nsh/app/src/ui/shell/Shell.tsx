@@ -44,6 +44,7 @@ import { Onboarding } from "../Onboarding";
 import { ArtifactPreview } from "../overlays/ArtifactPreview";
 import { DangerDialog } from "../overlays/DangerDialog";
 import { RemoteScreenPane } from "../overlays/RemoteScreenPane";
+import { TerminalPage } from "../overlays/TerminalPage";
 import { ShellPreview } from "../overlays/ShellPreview";
 import { TaskTrace } from "../overlays/TaskTrace";
 import { WorkspaceExplorer } from "../overlays/WorkspaceExplorer";
@@ -311,8 +312,19 @@ function ShellBody(props: { s: ShellState }) {
 function MainPages(props: { s: ShellState }) {
   const s = props.s;
   const t = () => s.t();
+  // The terminal before the conversation: opening it leaves the conversation selected underneath.
   const page = () =>
-    runtime.routinesOpen ? "routines" : runtime.spendOpen ? "spend" : runtime.screenOpen && runtime.client?.kind === "remote" ? "screen" : s.selected() ? "chat" : null;
+    runtime.routinesOpen
+      ? "routines"
+      : runtime.spendOpen
+        ? "spend"
+        : runtime.terminalOpen
+          ? "terminal"
+          : runtime.screenOpen && runtime.client?.kind === "remote"
+            ? "screen"
+            : s.selected()
+              ? "chat"
+              : null;
   return (
     <View class="flex-1 min-h-0 min-w-0">
       <If when={page() === "routines"}>
@@ -320,6 +332,9 @@ function MainPages(props: { s: ShellState }) {
       </If>
       <If when={page() === "spend"}>
         <SpendOverlay backLabel={t().common.back} />
+      </If>
+      <If when={page() === "terminal"}>
+        <TerminalPage />
       </If>
       <If when={page() === "screen" ? runtime.client : null}>
         {(api) => <RemoteScreenPane api={api() as unknown as Parameters<typeof RemoteScreenPane>[0]["api"]} onClose={() => runtime.closeRemoteScreen()} />}

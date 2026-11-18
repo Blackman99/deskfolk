@@ -1,6 +1,7 @@
 /**
  * A runtime terminal on NSH's own `Terminal` (`nsh/base`), on every target: the workbench's
- * terminal tabs and `--pane terminal`. `Terminal` draws the lines, scrolls the history, selects and
+ * terminal tabs, the phone's terminal page (`ui/overlays/TerminalPage.tsx`, whose key bar reaches
+ * in through `onHandle`) and `--pane terminal`. `Terminal` draws the lines, scrolls the history, selects and
  * copies, takes the keys (⌘ line editing on Apple platforms, bracketed pastes) and an input
  * method's composition at the cursor; this file attaches it to the runtime the way the messenger's
  * `TerminalView.svelte` does.
@@ -9,12 +10,13 @@
  * the runtime draws it for these rows and columns (`Terminal` sizes itself; it takes no size from
  * the app), then `watch` from its offset, frames already on the screen skipped. `RuntimeTerminals`
  * (`deskfolk/native`) gives it an emulator that never answers the program (the runtime's screen
- * does that for every pane) and draws in the app's palette.
+ * does that for every pane) and draws in the app's palette. Taken off the screen it stops watching.
  */
 import { cleanup, colorScheme } from "nsh";
 import { Terminal, type TerminalRef } from "nsh/base";
 import { RuntimeTerminals } from "deskfolk/native";
 import type { StreamFrame } from "@real-bot/protocol";
+import { bracketedPasteMode, cursorKeysMode } from "./m/overlays/terminal-keys.ts";
 import { runtime } from "./runtime";
 
 /** Text as the runtime's terminal input takes it: UTF-8 in base64. */
@@ -76,7 +78,24 @@ export function terminalSender(id: string): (text: string) => void {
   };
 }
 
-export function NshTerminal(props: { id: string; onExit?: () => void }) {
+/**
+ * What the phone's key bar reaches the terminal through: text for the pty in the order typing goes,
+ * the keyboard, and whether the program on screen asked for application cursor keys.
+ */
+export type TerminalHandle = {
+  send(text: string): void;
+  focus(): void;
+  applicationCursorKeys(): boolean;
+  bracketedPaste(): boolean;
+};
+
+export function NshTerminal(props: {
+  id: string;
+  onExit?: () => void;
+  onHandle?: (handle: TerminalHandle) => void;
+  /** What typed text becomes before it goes (the phone's Ctrl, latched for the next key). */
+  typed?: (data: string) => string;
+}) {
   const id = props.id;
   const send = terminalSender(id);
   let term: TerminalRef | undefined;
@@ -85,14 +104,22 @@ export function NshTerminal(props: { id: string; onExit?: () => void }) {
   let next = 0;
   let attached = false;
   let attaching = false;
+  let application = false;
+  let bracketed = false;
   const early: StreamFrame[] = [];
+
+  const write = (text: string) => {
+    application = cursorKeysMode(text, application);
+    bracketed = bracketedPasteMode(text, bracketed);
+    term?.write(text);
+  };
 
   const show = (frame: StreamFrame) => {
     const bytes = bytesOf(frame.data);
     const fresh = unseen(next, frame.offset, bytes);
     if (!fresh) return;
     next = frame.offset + bytes.length;
-    term?.write(decoder.decode(fresh, { stream: true }));
+    write(decoder.decode(fresh, { stream: true }));
   };
 
   const stop = runtime.onStream(id, (frame) => {
@@ -101,12 +128,18 @@ export function NshTerminal(props: { id: string; onExit?: () => void }) {
     if (frame.closed) props.onExit?.();
   });
   cleanup(stop);
+  // Off the screen, the bytes stop coming: over the relay they would cost a phone's data for
+  // nothing. The next mount reads the screen again and watches from there.
+  cleanup(() => {
+    if (attached) void runtime.client?.unwatchTerminal(id).catch(() => undefined);
+  });
+  props.onHandle?.({ send, focus: () => term?.focus(), applicationCursorKeys: () => application, bracketedPaste: () => bracketed });
 
   const attach = async () => {
     const client = runtime.client;
     if (!client) throw new Error("not connected");
     const screen = await client.terminalScreen(id);
-    term?.write(new TextDecoder().decode(bytesOf(screen.data)));
+    write(new TextDecoder().decode(bytesOf(screen.data)));
     next = screen.offset;
     attached = true;
     for (const frame of early.splice(0)) show(frame);
@@ -134,7 +167,7 @@ export function NshTerminal(props: { id: string; onExit?: () => void }) {
         lineHeight={17}
         cursorClass="bg-brand/55"
         class="flex-1 min-h-0 p-2"
-        onData={(e) => send(e.data)}
+        onData={(e) => send(props.typed ? props.typed(e.data) : e.data)}
         onResize={(e) => resized(e.cols, e.rows)}
       />
     </RuntimeTerminals>
