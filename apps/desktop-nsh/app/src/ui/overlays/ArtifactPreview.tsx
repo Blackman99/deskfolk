@@ -14,6 +14,7 @@
  * shell command `open_workspace_path` the shell bridges (`openWorkspacePath`).
  */
 import { cleanup, colorScheme, computed, Clipboard, effect, keymap, PanResponder, platform, signal, Text, untracked, View, windowSize } from "nsh";
+import { workspaceDrag } from "../workspace-drag";
 import type { Annotation, Attachment, CreateAnnotationRequest, PatchAnnotationRequest, SessionSummary } from "@real-bot/protocol";
 import { ANNOTATION_BATCH_MAX } from "@real-bot/protocol";
 import { ApiError } from "../../m/api.ts";
@@ -198,7 +199,15 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
     t,
     onOpenTerminal: () => props.onOpenTerminal,
     showGone: () => loader.showGone(),
+    // The file on screen moved with the rows dragged: it shows from where it is now.
+    followMove: (_from, to) => commitSelect({ name: to.split(/[\\/]/).pop() ?? to, path: to, kind: "file" }),
     projectDir: () => props.projectDir ?? null,
+  });
+
+  // A press held still opens a row's menu (the long press, for a finger, which cannot be told from
+  // a mouse here); a mouse's drag that follows takes the rows away instead, so the menu goes.
+  effect(() => {
+    if (workspaceDrag.current && untracked(() => treeSrc.treeMenu)) treeSrc.treeMenu = null;
   });
 
   // A new listing starts the folders opened in the sheet over.
@@ -503,6 +512,7 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
           onTrash={treeSrc.canTrash ? treeSrc.askTrash : undefined}
           dragLabel={t().stream.dragItems}
           onDropFiles={treeSrc.canImport ? (dir, paths) => void treeSrc.importDropped(dir, paths) : undefined}
+          onMoveItems={treeSrc.canMove ? (dir, items) => void treeSrc.moveItems(dir, items) : undefined}
           lazyDirs={treeSrc.lazy}
           loadedDirs={treeSrc.loadedDirs}
           onExpandDir={(path) => void treeSrc.loadWorkspaceDir(path)}

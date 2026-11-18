@@ -140,8 +140,21 @@ export const zh = {
   workspaceImportJoin: "；",
   /** A drop on a folder outside the workspace and every project's folder: the runtime writes only there. */
   workspaceImportOutside: "只能拷进工作区或项目目录里的文件夹，这个文件夹在它们外面。",
-  /** A runtime that predates copying dropped files (`POST /v1/workspace/import`). */
-  workspaceImportNeedsRestart: "运行时还是旧版本，不会拷文件。重启运行时后再拖进来。",
+  /** A runtime that predates copying dropped files or moving rows (`POST /v1/workspace/import`, `/move`). */
+  workspaceImportNeedsRestart: "运行时还是旧版本，还不能这样拖放。重启运行时后再试。",
+  /** Rows dragged in the file tree, moved into `dir` (`""`: the top). */
+  workspaceMoved: (names: string[], dir: string) => `已移到${dir ? `“${dir}”` : "最上层"}：${zhNames(names, "项")}`,
+  /** Not moved, each with why; nothing is overwritten. */
+  workspaceMoveFailed: (left: Array<{ name: string; code: "missing" | "outside" | "into_itself" | "exists" | "move_failed"; message: string }>) =>
+    left
+      .map((row) =>
+        row.code === "exists" ? `那里已经有“${row.name}”` : row.code === "missing" ? `“${row.name}”找不到了` : row.code === "into_itself" ? `“${row.name}”不能移进它自己里面` : row.code === "outside" ? `“${row.name}”不在工作区或项目目录里` : `“${row.name}”：${row.message}`,
+      )
+      .join("；") + "，没有移动。",
+  /** The moved rows go back where they were. */
+  workspaceMoveUndo: "撤销",
+  /** The file on screen has edits not saved, and it is among the rows dragged. */
+  workspaceMoveUnsaved: "正在编辑的文件还有没保存的修改，先保存再移动。",
   workspacePickFile: "从左侧打开一个文件。",
   artifactSave: "保存",
   artifactSaving: "保存中",
@@ -410,7 +423,16 @@ export const en: CopyShape<typeof zh> = {
   workspaceImportRefused: (reason: string) => `Could not copy: ${reason}`,
   workspaceImportJoin: ". ",
   workspaceImportOutside: "Files can only be copied into folders in the workspace or a project's folder; this one is outside them.",
-  workspaceImportNeedsRestart: "The runtime is an older version that can't copy files. Restart the runtime, then drop them again.",
+  workspaceImportNeedsRestart: "The runtime is an older version that can't take this drop yet. Restart the runtime, then try again.",
+  workspaceMoved: (names: string[], dir: string) => `Moved into ${dir ? `“${dir}”` : "the top"}: ${enNames(names)}`,
+  workspaceMoveFailed: (left: Array<{ name: string; code: "missing" | "outside" | "into_itself" | "exists" | "move_failed"; message: string }>) =>
+    `Not moved: ${left
+      .map((row) =>
+        row.code === "exists" ? `“${row.name}” is already there` : row.code === "missing" ? `“${row.name}” is gone` : row.code === "into_itself" ? `“${row.name}” can't go inside itself` : row.code === "outside" ? `“${row.name}” isn't in the workspace or a project` : `“${row.name}” (${row.message})`,
+      )
+      .join("; ")}.`,
+  workspaceMoveUndo: "Undo",
+  workspaceMoveUnsaved: "The file you are editing has unsaved changes; save it before moving it.",
   workspacePickFile: "Open a file from the left.",
   artifactSave: "Save",
   artifactSaving: "Saving",

@@ -5,9 +5,11 @@
  * (its `panHandlers` go on the row); a composer registers its view with `workspaceDropTarget`; on
  * release the registered view whose frame holds the pointer gets what was dragged, if it takes it
  * right then. Frames are measured (`ViewRef.measure`) while the pointer moves, so `over` follows
- * a move or two behind.
- *
- * Nothing registers yet: the composer's port must call `workspaceDropTarget(() => ref, { accepts, drop })`.
+ * a move or two behind. Where frames nest (a tree inside a pane that also takes drops), the
+ * smallest one under the pointer is the target. A target that takes drops at one place in it (a
+ * file tree, `ArtifactTree`: which folder) hears where the pointer is (`hover`), that it left
+ * (`leave`), and where the drag was let go (`drop`'s `at`). The composers register (`ChatStage`,
+ * `ProjectChat`), and so does every file tree.
  */
 import { PanResponder, signal, keymap, type PanResponderInstance, type ViewRef } from "nsh";
 import {
@@ -46,9 +48,10 @@ export function workspaceDropTarget(ref: () => ViewRef | null | undefined, targe
   return () => void targets.delete(id);
 }
 
-/** The registered target whose frame holds the point, when it would take a drop now. */
+/** The registered target whose frame holds the point, when it would take a drop now: the smallest, where frames nest. */
 export async function dropTargetAt(x: number, y: number): Promise<WorkspaceDropTarget | null> {
   let hit: WorkspaceDropTarget | null = null;
+  let area = Infinity;
   await Promise.all(
     [...targets.values()].map(async ({ ref, target }) => {
       const box = await ref()?.measure();
@@ -56,7 +59,11 @@ export async function dropTargetAt(x: number, y: number): Promise<WorkspaceDropT
       const { size } = box.bounds;
       const left = box.pagePosition.x;
       const top = box.pagePosition.y;
-      if (x >= left && x <= left + size.width && y >= top && y <= top + size.height && target.accepts()) hit = target;
+      const inside = x >= left && x <= left + size.width && y >= top && y <= top + size.height;
+      if (inside && size.width * size.height < area && target.accepts()) {
+        hit = target;
+        area = size.width * size.height;
+      }
     }),
   );
   return hit;
@@ -82,11 +89,18 @@ export function pressWorkspacePaths(
   let cancelled = false;
   let off: (() => void) | null = null;
   let seq = 0;
+  /** The target last told the pointer is over it, so it hears when the pointer leaves. */
+  let heard: WorkspaceDropTarget | null = null;
+  const leaveHeard = () => {
+    heard?.leave?.();
+    heard = null;
+  };
 
   const end = () => {
     started = false;
     off?.();
     off = null;
+    leaveHeard();
     drag.set(null);
   };
   const track = (x: number, y: number) => {
@@ -96,7 +110,11 @@ export function pressWorkspacePaths(
     drag.set({ ...current, x, y });
     void dropTargetAt(x, y).then((over) => {
       const now = drag();
-      if (mine === seq && now) drag.set({ ...now, over });
+      if (mine !== seq || !now) return;
+      drag.set({ ...now, over });
+      if (over !== heard) leaveHeard();
+      heard = over;
+      over?.hover?.(now.items, { x, y });
     });
   };
 
@@ -116,6 +134,7 @@ export function pressWorkspacePaths(
         "escape",
         () => {
           cancelled = true;
+          leaveHeard();
           drag.set(null);
         },
         { when: "always" },
@@ -131,7 +150,7 @@ export function pressWorkspacePaths(
       end();
       if (!was || !carried) return;
       // Where the pointer last was: the release itself may report no position.
-      void dropTargetAt(carried.x, carried.y).then((over) => over?.drop(carried.items));
+      void dropTargetAt(carried.x, carried.y).then((over) => over?.drop(carried.items, { x: carried.x, y: carried.y }));
     },
     onPanResponderTerminate: () => end(),
   });

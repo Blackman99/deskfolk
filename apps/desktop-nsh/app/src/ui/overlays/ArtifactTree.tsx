@@ -4,12 +4,15 @@
  * a file selects. Rows are picked with ⌘/Ctrl (one more) or Shift (a range from the last row
  * clicked); a right click or long press reports the row with every row it acts on (`picked`);
  * ⌘⌫ / Ctrl+⌫ or Delete on a focused row asks to trash them; dragging rows (when `dragLabel` is
- * given) carries their paths to a composer (`workspace-drag.ts`). Files dragged in from Finder
+ * given) carries their paths to a composer (`workspace-drag.ts`), or to a folder of a tree (this
+ * one or another, when `onMoveItems` is given), which moves them there. Files dragged in from Finder
  * (when `onDropFiles` is given) go into the folder under the pointer: a folder row is that
  * folder, a file row its folder (on a tree of what a message names, the folder its path says,
  * a row or not), the space around the rows the tree's top. That folder's row lights up while
- * they are over it (the whole tree is outlined when it has no row), and a folder dropped on
- * opens. Loading, failed and empty states are lines in the tree, a folder's own below its row.
+ * they are over it, with the rows inside it tinted (the whole tree is outlined when it has no
+ * row); a folder a drag rests on opens after a moment, and one dropped on opens, so a drop can
+ * reach a folder deep down, as in VS Code's explorer. Loading, failed and empty states are lines
+ * in the tree, a folder's own below its row.
  *
  * On nsh/base's `Tree`, which makes only the rows in view, scrolls them natively and keeps the
  * keys of a tree (arrows, Home and End, typeahead; Return opens a file or a folder). What a row
@@ -27,13 +30,13 @@
  * Rows' test ids: `artifact-tree-row:<path>` (only the rows in view are made); the retry button's
  * `artifact-tree-retry`. Not carried over: the loading ring does not spin.
  */
-import { computed, effect, keymap, signal, Text, token, untracked, View, type JSX } from "nsh";
+import { cleanup, computed, effect, keymap, signal, Text, token, untracked, View, type JSX, type ViewRef } from "nsh";
 import { Tree, type TreeItem, type TreeRef } from "nsh/base";
 import type { ArtifactTreeNode } from "../../m/overlays/artifact-tree.ts";
 import { fileIconFor } from "../../m/overlays/file-icon.ts";
 import { FileIcon } from "./FileIcon";
 import { folderOfPath, treeRange, visibleTreePaths } from "../../m/overlays/artifact-tree.ts";
-import { pressWorkspacePaths } from "../workspace-drag";
+import { pressWorkspacePaths, workspaceDropTarget, type WorkspaceDragItem } from "../workspace-drag";
 import { pathOfFileUri } from "../chat/composer-state";
 import { tip } from "../tip";
 import { onGlassCard } from "../glass";
@@ -41,8 +44,11 @@ import { onGlassCard } from "../glass";
 /** The lines that are not files: ids no path can be. */
 const STATE = "\u0000state:";
 const NOTE = "\u0000note:";
-/** Who heard the Finder drag last: a row's path, or the tree around the rows. */
+/** Who heard the Finder drag last: a row's path, or the tree around the rows; or a drag of rows (`PAN`). */
 const AROUND = "\u0000around";
+const PAN = "\u0000pan";
+/** How long a drag rests on a closed folder before it opens, as in VS Code's explorer. */
+const SPRING_MS = 600;
 
 type Extra = { type: "state"; busy: boolean; error: boolean; retry?: () => void } | { type: "note"; text: string };
 
@@ -61,6 +67,8 @@ export function ArtifactTree(props: {
   dragLabel?: (count: number) => string;
   /** Files dropped from Finder, as absolute paths: into the folder `dir` (a row's path), or `null` for the tree's top. */
   onDropFiles?: (dir: string | null, paths: string[]) => void;
+  /** Rows dragged onto a folder of this tree (from it, or another tree): moved into `dir` (a row's path), or `null` for the tree's top. */
+  onMoveItems?: (dir: string | null, items: WorkspaceDragItem[]) => void;
   lazyDirs?: boolean;
   loadedDirs?: ReadonlySet<string>;
   onExpandDir?: (path: string) => void;
@@ -272,20 +280,107 @@ export function ArtifactTree(props: {
   const dropOver = (by: string, dir: string | null) => dropAt.set({ by, dir });
   /** The next view's enter may come before this one's leave: only the view that set the target clears it. */
   const dropLeave = (by: string) => dropAt()?.by === by && dropAt.set(null);
+  /** Opens a folder's row that is shut, so what goes in shows; a file's row, or one open, stays. */
+  const openFolder = (dir: string | null) => {
+    const node = dir === null ? undefined : byPath().get(dir);
+    if (node?.kind !== "dir" || isOpen(node.path)) return;
+    if (props.lazyDirs) onNode(node);
+    else setCollapsed(new Set([...collapsed()].filter((path) => path !== node.path)));
+  };
   const dropInto = (dir: string | null, uris: string[]) => {
     dropAt.set(null);
+    springOff();
     const paths = uris.map(pathOfFileUri).filter((path): path is string => Boolean(path));
     if (paths.length === 0 || !props.onDropFiles) return;
     // A folder dropped on opens, so what went in shows.
-    const node = dir === null ? undefined : byPath().get(dir);
-    if (node?.kind === "dir" && !isOpen(node.path)) {
-      if (props.lazyDirs) onNode(node);
-      else setCollapsed(new Set([...collapsed()].filter((path) => path !== node.path)));
-    }
+    openFolder(dir);
     props.onDropFiles(dir, paths);
   };
   const takesFiles = () => Boolean(props.onDropFiles);
   const dropLit = (path: string) => dropAt() !== null && dropAt()!.dir === path;
+  /** A row inside the folder a drag would go into: tinted, so the whole folder reads as the target. */
+  const dropInside = (path: string) => {
+    const dir = dropAt()?.dir;
+    return Boolean(dir) && (path.startsWith(`${dir}/`) || path.startsWith(`${dir}\\`));
+  };
+
+  // --- a drag resting on a shut folder opens it ---
+  let spring: { path: string; timer: ReturnType<typeof setTimeout> } | null = null;
+  const springOff = () => {
+    if (spring) clearTimeout(spring.timer);
+    spring = null;
+  };
+  /** The drag is over this row now: a shut folder's opens once it rests there long enough. */
+  const springOn = (path: string | null) => {
+    if (spring?.path === path) return;
+    springOff();
+    const node = path === null ? undefined : byPath().get(path);
+    if (!node || node.kind !== "dir" || isOpen(node.path)) return;
+    spring = { path: node.path, timer: setTimeout(() => {
+      spring = null;
+      openFolder(node.path);
+    }, SPRING_MS) };
+  };
+  cleanup(springOff);
+
+  // --- rows dragged onto this tree move into the folder under the pointer ---
+  /** Each row in view, to find the one under the pointer; a row the tree takes away forgets itself. */
+  const rowViews = new Map<string, ViewRef>();
+  let treeView: ViewRef | null = null;
+  /** The row under a point in the window, from the frames of the rows in view. */
+  const rowAt = async (at: { x: number; y: number }): Promise<string | null> => {
+    const hits = await Promise.all([...rowViews].map(async ([path, view]) => {
+      const box = await view.measure().catch(() => null);
+      if (!box) return null;
+      const { x, y } = box.pagePosition;
+      const { width, height } = box.bounds.size;
+      return at.x >= x && at.x <= x + width && at.y >= y && at.y < y + height ? path : null;
+    }));
+    return hits.find((path): path is string => Boolean(path)) ?? null;
+  };
+  /** The folder a row's path sits in, as `dropDirOf` names folders (`null`: the tree's top). */
+  const folderOfRow = (path: string): string | null => {
+    const parent = folderOfPath(path);
+    if (props.lazyDirs) return parent !== null && byPath().get(parent)?.kind === "dir" ? parent : null;
+    return parent === "" ? null : parent;
+  };
+  /** Where dragged rows would go from a row (or the space around them), or `undefined` when nowhere: into themselves, or where they all are already. */
+  const moveTarget = (row: string | null, items: readonly WorkspaceDragItem[]): string | null | undefined => {
+    const dir = row === null ? null : dropDirOf(row);
+    const inside = (path: string) => dir !== null && (dir === path || dir.startsWith(`${path}/`) || dir.startsWith(`${path}\\`));
+    if (items.some((item) => inside(item.path))) return undefined;
+    if (items.every((item) => folderOfRow(item.path) === dir)) return undefined;
+    return dir;
+  };
+  cleanup(
+    workspaceDropTarget(() => treeView, {
+      accepts: () => Boolean(props.onMoveItems),
+      hover: (items, at) => {
+        void rowAt(at).then((row) => {
+          const dir = moveTarget(row, items);
+          if (dir === undefined) {
+            if (dropAt()?.by === PAN) dropAt.set(null);
+          } else dropOver(PAN, dir);
+          springOn(row);
+        });
+      },
+      leave: () => {
+        dropLeave(PAN);
+        springOff();
+      },
+      drop: (items, at) => {
+        springOff();
+        if (!at || !props.onMoveItems) return;
+        void rowAt(at).then((row) => {
+          dropLeave(PAN);
+          const dir = moveTarget(row, items);
+          if (dir === undefined) return;
+          openFolder(dir);
+          props.onMoveItems?.(dir, items);
+        });
+      },
+    }),
+  );
   /** The folder a drag would go into has no row in view here: the whole tree says it takes them. */
   const dropAround = () => {
     const at = dropAt();
@@ -350,8 +445,16 @@ export function ArtifactTree(props: {
     const isDir = () => node()?.kind === "dir";
     const pan = props.dragLabel ? dragFor(path) : null;
     const lit = () => highlighted().has(path);
+    let mine: ViewRef | null = null;
+    cleanup(() => {
+      if (mine && rowViews.get(path) === mine) rowViews.delete(path);
+    });
     return (
       <View
+        ref={(view: ViewRef | null) => {
+          mine = view;
+          if (view) rowViews.set(path, view);
+        }}
         role="button"
         testID={`artifact-tree-row:${path}`}
         accessibilityLabel={node()?.name ?? path}
@@ -374,12 +477,18 @@ export function ArtifactTree(props: {
         {...(pan ? pan.panHandlers : {})}
         {...(takesFiles()
           ? {
-              onFileDragEnter: () => dropOver(path, dropDirOf(path)),
-              onFileDragLeave: () => dropLeave(path),
+              onFileDragEnter: () => {
+                dropOver(path, dropDirOf(path));
+                springOn(path);
+              },
+              onFileDragLeave: () => {
+                dropLeave(path);
+                if (spring?.path === path) springOff();
+              },
               onFileDrop: (e: { uris: string[] }) => dropInto(dropDirOf(path), e.uris),
             }
           : {})}
-        class={`cursor-pointer select-none flex-row items-center gap-1 w-full py-1 pr-[10px] ${dropLit(path) ? "bg-brand/14" : lit() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
+        class={`cursor-pointer select-none flex-row items-center gap-1 w-full py-1 pr-[10px] ${dropLit(path) ? "bg-brand/14" : dropInside(path) ? "bg-brand/6" : lit() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
         style={{ paddingLeft: 8 + depth * 12 }}
       >
         <If when={isDir()}>
@@ -409,6 +518,9 @@ export function ArtifactTree(props: {
   return (
     <View
       testID="workspace-tree"
+      ref={(view: ViewRef | null) => {
+        treeView = view;
+      }}
       class={`min-w-0 flex-1 ${glassCard() ? "" : "bg-sidebar-bg"} border-r border-line`}
       {...(takesFiles()
         ? {

@@ -19,15 +19,24 @@ import type { Attachment } from "@real-bot/protocol";
 import { ShellArtifact } from "../src/m/overlays/shell-artifact.svelte.ts";
 import { runtime } from "../src/runtime";
 import { WorkspaceDragGhost } from "../src/ui/WorkspaceDragGhost";
-import { workspaceDropTarget } from "../src/ui/workspace-drag";
+import { dropTargetAt, workspaceDropTarget, type WorkspaceDragItem } from "../src/ui/workspace-drag";
 import { ArtifactDirtyDialog } from "../src/ui/overlays/ArtifactDirtyDialog";
 import { ArtifactPreview } from "../src/ui/overlays/ArtifactPreview";
 import { ArtifactTreeMenu } from "../src/ui/overlays/ArtifactTreeMenu";
+import { ArtifactTree } from "../src/ui/overlays/ArtifactTree";
+import type { ArtifactTreeNode } from "../src/m/overlays/artifact-tree.ts";
 import { ShellPreview } from "../src/ui/overlays/ShellPreview";
 import { WorkspaceView } from "../src/ui/overlays/WorkspaceView";
 import { samplePdf } from "./files-pdf";
 
-const PARTS = ["preview", "workspace", "parts", "shell", "host", "project"] as const;
+const PARTS = ["preview", "workspace", "parts", "shell", "host", "project", "tree"] as const;
+
+/** The `tree` part's rows, fixed: a folder open with a file, a folder shut with a file, a file at the top. */
+const TREE: ArtifactTreeNode[] = [
+  { name: "docs", path: "docs", kind: "dir", children: [{ name: "plan.md", path: "docs/plan.md", kind: "file" }] },
+  { name: "assets", path: "assets", kind: "dir", children: [{ name: "logo.txt", path: "assets/logo.txt", kind: "file" }] },
+  { name: "readme.md", path: "readme.md", kind: "file" },
+];
 type Part = (typeof PARTS)[number];
 
 /** A one-pixel PNG. */
@@ -49,6 +58,25 @@ export default function Artifacts() {
   const state = signal("idle");
   const log = signal<string[]>([]);
   const logLine = (line: string) => log.set([...log(), line]);
+  /** The `tree` part's shut folders: `assets` until a drag rests on it. */
+  const treeCollapsed = signal(new Set(["assets"]));
+  /**
+   * What the end of a mouse's drag of rows does, at the middle of the tree's row `index` (8 points
+   * of the list's padding, then rows of 24): the target there hears the pointer, or the release.
+   * The screen tests' drags are a finger, and a finger drags no row (`workspace-drag.ts`).
+   */
+  let treeBox: ViewRef | null = null;
+  const treeAct = async (act: "hover" | "drop" | "leave", index: number, items: WorkspaceDragItem[]) => {
+    const box = await treeBox?.measure();
+    if (!box) return;
+    const at = { x: box.pagePosition.x + 60, y: box.pagePosition.y + 8 + 24 * index + 12 };
+    const target = await dropTargetAt(at.x, at.y);
+    if (act === "hover") target?.hover?.(items, at);
+    else if (act === "leave") target?.leave?.();
+    else target?.drop(items, at);
+    logLine(`${act}:${target ? "tree" : "none"}`);
+  };
+  const readme: WorkspaceDragItem[] = [{ path: "readme.md", isDir: false }];
   const files = signal<Attachment[]>([]);
   const current = signal<Attachment | null>(null);
   const sheet = signal(false);
@@ -266,6 +294,36 @@ export default function Artifacts() {
             onClose={() => logLine("workspace-close")}
             onSelectWorkspacePath={(path) => logLine(`workspace-select:${path}`)}
             onOpenTerminal={(dir) => logLine(`terminal:${dir}`)}
+          />
+        </View>
+      </If>
+      {/* A tree of fixed rows: what a drag of rows or of files from Finder asks for, in the log (`move:` / `files:`). */}
+      <If when={part() === "tree"}>
+        <View class="flex-row flex-wrap gap-1 p-1">
+          {button("story-tree-readme-docs", "readme → docs", () => void treeAct("drop", 0, readme))}
+          {button("story-tree-plan-readme", "plan → readme", () => void treeAct("drop", 3, [{ path: "docs/plan.md", isDir: false }]))}
+          {button("story-tree-hover-plan-readme", "hover plan → readme", () => void treeAct("hover", 3, [{ path: "docs/plan.md", isDir: false }]))}
+          {button("story-tree-hover-readme-assets", "hover readme → assets", () => void treeAct("hover", 2, readme))}
+          {button("story-tree-readme-assets", "readme → assets", () => void treeAct("drop", 2, readme))}
+          {button("story-tree-docs-plan", "docs → plan", () => void treeAct("drop", 1, [{ path: "docs", isDir: true }]))}
+          {button("story-tree-plan-docs", "plan → docs", () => void treeAct("drop", 0, [{ path: "docs/plan.md", isDir: false }]))}
+          {button("story-tree-leave", "leave", () => void treeAct("leave", 0, readme))}
+        </View>
+        <View testID="story-tree" ref={(view: ViewRef | null) => (treeBox = view)} class="w-[320px] h-[400px]">
+          <ArtifactTree
+            nodes={TREE}
+            selected=""
+            label="tree"
+            onSelect={(node) => logLine(`select:${node.path}`)}
+            dragLabel={(count) => `${count} items`}
+            onMoveItems={(dir, items) => logLine(`move:${dir ?? "top"}:${items.map((item) => item.path).join(",")}`)}
+            onDropFiles={(dir, paths) => logLine(`files:${dir ?? "top"}:${paths.length}`)}
+            collapsed={treeCollapsed()}
+            onCollapsedChange={(next) => treeCollapsed.set(next)}
+            loadingLabel="loading"
+            failedLabel="failed"
+            emptyLabel="empty"
+            retryLabel="retry"
           />
         </View>
       </If>

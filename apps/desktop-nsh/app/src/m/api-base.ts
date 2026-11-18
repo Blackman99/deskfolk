@@ -92,6 +92,7 @@ import type {
   WorkAnswerResult,
   WorkspaceFileStat,
   WorkspaceImportResult,
+  WorkspaceMoveResult,
   WorkspaceTrashResult,
   WorkspaceTreePage,
 } from "@real-bot/protocol";
@@ -661,6 +662,10 @@ export abstract class ApiBase<Row extends PendingRow> {
    */
   async importIntoWorkspace(dir: string, sources: string[]): Promise<WorkspaceImportResult> {
     return this.post<WorkspaceImportResult>("/v1/workspace/import", { dir, sources });
+  }
+  /** Rows dragged inside a file tree, moved into `dir`; each written as the tree writes it. The Mac's own window only. */
+  async moveInWorkspace(dir: string, sources: string[]): Promise<WorkspaceMoveResult> {
+    return this.post<WorkspaceMoveResult>("/v1/workspace/move", { dir, sources });
   }
 
   async stop(turnId?: string): Promise<void> {

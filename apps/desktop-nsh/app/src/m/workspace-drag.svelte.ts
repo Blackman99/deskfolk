@@ -17,7 +17,12 @@ export type WorkspaceDragItem = { path: string; isDir: boolean };
 export type WorkspaceDropTarget = {
   /** Whether a drop would be taken now: a locked composer, or one already sending, says no. */
   accepts: () => boolean;
-  drop: (items: WorkspaceDragItem[]) => void;
+  /** Where the release was, in the window, for a target that takes a drop at one place in it (a tree's folder). */
+  drop: (items: WorkspaceDragItem[], at?: { x: number; y: number }) => void;
+  /** The pointer moved over it while dragging, in the window: a tree shows which folder would take them. */
+  hover?: (items: WorkspaceDragItem[], at: { x: number; y: number }) => void;
+  /** The pointer left it, or the drag ended. */
+  leave?: () => void;
 };
 
 export type WorkspaceDrag = {

@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Move files by dragging them in the file tree, and drop into a folder at any depth
+
+- Drag a file or folder in a file tree onto another folder's row to move it there; onto a file's row, into that file's folder; onto the space around the rows, to the top. Every tree does it: the workspace's, a project's folder, a Bot's artifact panel and the tree beside an opened file, and a drag can go from one tree to another. Rows picked with ⌘ or Shift go together. Nothing is overwritten: a name already taken leaves that item where it is, and a notice says so; a folder can't go inside itself. The notice after a move has Undo, which puts them back. The file on screen goes along and stays shown; if it has unsaved edits, the drag moves nothing until it is saved. A moved file is no longer where links and annotations in messages point, as with the Trash.
+- A drag resting on a closed folder opens it after a moment, so you can go on down, as in VS Code's explorer; files dragged in from Finder do the same. The folder they would go into lights up, and so, faintly, do the rows inside it. A row held still before the drag opens its menu, which now closes as the drag starts.
+- A project session's box takes files dragged from a file tree too; only a Bot's conversation did. A file in the workspace goes out as a file, as in a Bot's conversation; one in the project's folder (outside the workspace) goes out as its full path in the line, which the agent reads.
+- Moving needs the runtime restarted onto this version; until then the notice says the runtime is too old.
+
 ### The workspace's file list scrolls on the phone again
 
 - On the phone, the list a file preview's workspace or folder picker opens could not be scrolled with a finger: swiping up or down a row was taken for dragging that file towards a conversation's message box, which is never on screen beside the list there, so the list stood still. A finger now scrolls the list on the phone's page (phone or tablet) and leaves the rows alone, as the earlier phone page did; on the desktop the mouse still drags rows onto a message box.

@@ -8,6 +8,7 @@ import { baseName, hostSeparator } from "../paths.ts";
 import { showToast } from "../toast.svelte.ts";
 import { absWorkspacePath, artifactKind, citedInWorkspace, isHostCitedPath, terminalDirFor } from "./artifacts.ts";
 import {
+  folderOfPath,
   buildCitedPathTree,
   buildTaskArtifactTree,
   graftDirListings,
@@ -33,6 +34,8 @@ export interface ArtifactTreeSourceHost {
   onOpenTerminal: () => ((dir: string) => void) | undefined;
   /** The file on screen went to the Trash. */
   showGone: () => void;
+  /** Rows moved in the tree took the file on screen with them: it shows from `to` now. */
+  followMove?: (from: string, to: string) => void;
   /** The project session's directory (ADR 0095) when the preview is one of its conversation's. */
   projectDir: () => string | null;
 }
@@ -98,14 +101,19 @@ export class ArtifactTreeSource {
   /** The copies dropped on this tree, less what was trashed since. */
   #importedPaths$s = derived(() => {
     const imported = this.#imported$s.get();
-    return imported.key === this.#importKey$s.get() ? imported.paths.filter((path) => !isUnderAny(path, this.trashedPaths)) : [];
+    return imported.key === this.#importKey$s.get() ? imported.paths.filter((path) => !isUnderAny(path, this.#goneFromHere())) : [];
   });
 	get importedPaths() { return this.#importedPaths$s.get(); }
+
+  /** Moved elsewhere from this tree: like a trashed row, no longer here (their new places are `importedPaths`). */
+  #movedAway$s = state<string[]>([]);
+  /** Rows no longer where the message or the job names them: trashed, or moved from here. */
+  #goneFromHere = (): string[] => [...this.trashedPaths, ...this.#movedAway$s.get()];
 
   /** What this entry handed over, less what the Mac already knows is deleted: the tree is for opening files. */
   #ownPaths$s = derived(() =>
     this.#h.siblings()
-      .filter((row) => row.exists !== false && !isUnderAny(row.workspace_relpath, this.trashedPaths))
+      .filter((row) => row.exists !== false && !isUnderAny(row.workspace_relpath, this.#goneFromHere()))
       .map((row) => row.workspace_relpath));
 	get ownPaths() { return this.#ownPaths$s.get(); }
   /**
@@ -205,6 +213,9 @@ export class ArtifactTreeSource {
   /** Anything that reaches the Mac can move files to its Trash; a stand-in client without the call cannot. */
   #canTrash$s = derived(() => typeof this.#h.api()?.trashWorkspacePaths === "function");
 	get canTrash() { return this.#canTrash$s.get(); }
+  /** Rows can be dragged onto a folder to move them there, on any tree here, when the client has the call. */
+  #canMove$s = derived(() => typeof this.#h.api()?.moveInWorkspace === "function");
+	get canMove() { return this.#canMove$s.get(); }
   /**
    * Whether every row the menu acts on is the workspace's. A file opened from elsewhere on the Mac
    * has no workspace path to copy, and the Trash takes workspace files only.
@@ -546,6 +557,119 @@ export class ArtifactTreeSource {
       this.citedListings = listings;
       void this.probeDir(client, folder);
     }
+  }
+
+  /**
+   * Rows dragged onto a folder of the tree (`dir`, as the tree spells it; `null` for its top),
+   * moved there. The file on screen goes along if it is among them, unless it has edits not saved
+   * yet, which keeps every row where it is. A folder read a level at a time lists the folders
+   * they left and the one they went to again; a tree of what a message or a job names hides them
+   * where they were and shows them where they are now. The toast says what moved and offers to
+   * move them back (`undo` is that move back, which offers nothing more).
+   */
+  async moveItems(dir: string | null, items: readonly { path: string; isDir: boolean }[], undo = false): Promise<void> {
+    const client = this.#h.api();
+    if (!client?.moveInWorkspace || items.length === 0) return;
+    const t = this.#h.t();
+    const relpath = dirKey(this.#h.relpath());
+    if (this.#h.dirty() && items.some((item) => relpath === dirKey(item.path) || holds(dirKey(item.path), relpath))) {
+      showToast(t.stream.workspaceMoveUnsaved, { tone: "error" });
+      return;
+    }
+    const lazy = this.lazy;
+    const project = this.projectRoot;
+    const into = dir ?? (lazy ? project : null) ?? "";
+    const generation = this.treeGeneration;
+    const key = this.#importKey$s.get();
+    let result: Awaited<ReturnType<MessengerApi["moveInWorkspace"]>>;
+    try {
+      result = await client.moveInWorkspace(into, items.map((item) => item.path));
+    } catch (error) {
+      showToast(this.#importRefusal(error), { tone: "error" });
+      return;
+    }
+    const sep = into === "" ? "/" : hostSeparator(into);
+    const base = into.replace(/[\\/]+$/, "");
+    const moves = result.moved
+      .map((row) => ({ from: dirKey(row.source), to: base ? `${base}${sep}${row.name}` : row.name }))
+      .filter((move) => move.from !== move.to);
+    if (moves.length > 0) {
+      if (lazy) {
+        // The folders they left, and the one they went to, listed again where they are.
+        const folders = new Set([dir ?? ".", ...moves.map((move) => this.#treeFolderOf(move.from))]);
+        const gone = moves.map((move) => move.from);
+        const keep = (dirs: Set<string>) => new Set([...dirs].filter((path) => !isUnderAny(path, gone)));
+        this.loadedDirs = keep(this.loadedDirs);
+        this.failedDirs = keep(this.failedDirs);
+        for (const folder of folders) await this.#relistAfterImport(client, folder, generation, new Set(moves.map((move) => move.to)));
+      } else {
+        // A row comes back where it was hidden (an undo), or is added; one added earlier goes, a cited one hides.
+        let away = this.#movedAway$s.get().slice();
+        const added: string[] = [];
+        for (const move of moves) {
+          if (away.includes(move.to)) away = away.filter((path) => path !== move.to);
+          else added.push(move.to);
+          if (!this.#dropImported(key, move.from)) away.push(move.from);
+        }
+        this.#movedAway$s.set(away);
+        this.#addImported(client, key, into, added);
+        for (const move of moves) this.#relistCited(client, folderOfPath(move.from) ?? "");
+      }
+      const follow = moves.find((move) => relpath === move.from || holds(move.from, relpath));
+      if (follow) this.#h.followMove?.(relpath, `${follow.to}${relpath.slice(follow.from.length)}`);
+    }
+    const label = into === "" ? "" : baseName(into);
+    const said = [
+      result.moved.length > 0 ? t.stream.workspaceMoved(result.moved.map((row) => row.name), label) : "",
+      result.failed.length > 0 ? t.stream.workspaceMoveFailed(result.failed.map((row) => ({ name: baseName(row.source), code: row.code, message: row.message }))) : "",
+    ].filter(Boolean);
+    if (said.length === 0) return;
+    const back = !undo && moves.length > 0
+      ? { label: t.stream.workspaceMoveUndo, run: () => void this.#moveBack(moves, items) }
+      : undefined;
+    showToast(said.join(t.stream.workspaceImportJoin), { ...(result.failed.length > 0 ? { tone: "error" as const } : {}), ...(back ? { action: back } : {}) });
+  }
+
+  /** Takes a row dropped or moved onto this tree out of it again (it moved on); false when it was not one. */
+  #dropImported(key: string, path: string): boolean {
+    const imported = this.#imported$s.get();
+    if (imported.key !== key || !imported.paths.includes(path)) return false;
+    this.#imported$s.set({ key, paths: imported.paths.filter((row) => row !== path) });
+    return true;
+  }
+
+  /** Undo: each moved row back into the folder it came from. */
+  async #moveBack(moves: readonly { from: string; to: string }[], items: readonly { path: string; isDir: boolean }[]): Promise<void> {
+    const byFolder = new Map<string, { path: string; isDir: boolean }[]>();
+    for (const move of moves) {
+      const folder = folderOfPath(move.from) ?? "";
+      const isDir = items.find((item) => dirKey(item.path) === move.from)?.isDir ?? false;
+      byFolder.set(folder, [...(byFolder.get(folder) ?? []), { path: move.to, isDir }]);
+    }
+    for (const [folder, back] of byFolder) await this.moveItems(this.#treeFolder(folder), back, true);
+  }
+
+  /** A folder as this tree keys it for listing: `"."` for its top (the workspace, or the project's folder). */
+  #treeFolderOf(path: string): string {
+    const folder = this.#treeFolder(folderOfPath(path) ?? "");
+    return folder ?? ".";
+  }
+  #treeFolder(folder: string): string | null {
+    const project = this.projectRoot;
+    return folder === "" || (project !== null && dirKey(folder) === project) ? null : folder;
+  }
+
+  /** A cited folder that was listed, listed again: what moved into it or out of it shows as it is now. */
+  #relistCited(client: MessengerApi, folder: string): void {
+    const key = dirKey(folder);
+    if (!key || !this.citedListings.has(key)) return;
+    const probe = new Map(this.dirProbe);
+    probe.delete(key);
+    const listings = new Map(this.citedListings);
+    listings.delete(key);
+    this.dirProbe = probe;
+    this.citedListings = listings;
+    void this.probeDir(client, key);
   }
 
   /** What a refused drop says: in words for a folder the runtime does not write to, or a runtime too old to copy. */

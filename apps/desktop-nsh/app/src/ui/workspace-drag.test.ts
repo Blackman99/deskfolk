@@ -52,6 +52,40 @@ test("the mouse drags a row once it passes the threshold, and letting go over a 
   }
 });
 
+test("where frames nest, the smallest under the pointer takes the drag: it hears where the pointer is, that it left, and where it was let go", async () => {
+  const frame = (x: number, y: number, width: number, height: number) =>
+    ({ measure: async () => ({ bounds: { origin: { x: 0, y: 0 }, size: { width, height } }, pagePosition: { x, y } }) }) as unknown as ViewRef;
+  const heard: string[] = [];
+  const pane = workspaceDropTarget(() => frame(0, 0, 800, 800), { accepts: () => true, drop: () => void heard.push("pane:drop") });
+  const tree = workspaceDropTarget(() => frame(400, 0, 200, 400), {
+    accepts: () => true,
+    hover: (taken, at) => void heard.push(`tree:hover:${taken.length}@${at.x},${at.y}`),
+    leave: () => void heard.push("tree:leave"),
+    drop: (taken, at) => void heard.push(`tree:drop:${taken[0]!.path}@${at?.x},${at?.y}`),
+  });
+  const tick = () => new Promise((done) => setTimeout(done, 0));
+  try {
+    const r = row();
+    r.down(at(20, 20, "mouse"));
+    expect(r.moves(at(40, 22, "mouse"))).toBe(true);
+    r.grant(at(40, 22, "mouse"));
+    await tick();
+    r.move(at(450, 100, "mouse"));
+    await tick();
+    r.move(at(700, 100, "mouse"));
+    await tick();
+    r.move(at(460, 120, "mouse"));
+    await tick();
+    r.release(at(460, 120, "mouse"));
+    await tick();
+    // In the tree it hears the pointer; out over the pane only, it hears the pointer left; back, it takes the drop where it was let go.
+    expect(heard).toEqual(["tree:hover:1@450,100", "tree:leave", "tree:hover:1@460,120", "tree:leave", "tree:drop:docs/notes.md@460,120"]);
+  } finally {
+    pane();
+    tree();
+  }
+});
+
 test("a pen drags a row as the mouse does", () => {
   const r = row();
   r.down(at(20, 20, "pen"));
