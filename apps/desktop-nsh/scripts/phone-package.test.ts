@@ -124,12 +124,12 @@ describe("the phone's package", () => {
     }
   });
 
-  test("a sideways-only scroll view hands a vertical swipe on: the page's own rule, last in the head, once", () => {
+  test("a scroll view inside another hands on a swipe it cannot take: the page's own rule, last in the head, once", () => {
     const dir = site();
     try {
       addPhoneStatic(dir);
       const index = read(dir, "index.html");
-      expect(PAGE_STYLE).toContain(".nsh-scroll.nsh-ox.nsh-ox { overscroll-behavior-y: auto; }");
+      expect(PAGE_STYLE).toContain(".nsh-scroll .nsh-scroll { overscroll-behavior: auto; }");
       expect(index).toContain(`${PAGE_STYLE}\n</head>`);
       // After what NSH put in the head.
       expect(index.indexOf("<style></style>")).toBeLessThan(index.indexOf(PAGE_STYLE));

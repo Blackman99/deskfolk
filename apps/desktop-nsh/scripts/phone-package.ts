@@ -16,8 +16,9 @@
  * - The build's version, one digest of what the package serves: in `_app/version.json`, which an
  *   open page polls (`BuildUpdateNotice`), and in the page's params (`#nsh-params`,
  *   `host.params.build`), so the page knows which build it is.
- * - A rule of the page's own over the NSH runtime's sheet (`PAGE_STYLE`): a scroll view that only
- *   scrolls sideways passes a vertical swipe on to the conversation around it.
+ * - A rule of the page's own over the NSH runtime's sheet (`PAGE_STYLE`): a scroll view inside
+ *   another (a code block, a table, a command's output in a reply) passes a swipe it cannot take on
+ *   to the conversation around it.
  * - The code colours' grammars and themes (`addCodeColours`): giallo's dump, which the desktop app
  *   carries in its binary and the web build leaves out. The page fetches it as the runtime's data
  *   `giallo` (`app/native/src/highlight.rs`), named by its content as NSH names its own files.
@@ -59,13 +60,14 @@ const TOUCH_ICON = '<link rel="apple-touch-icon" href="apple-touch-icon.png">';
 
 /**
  * The page's own rule over the NSH runtime's sheet. NSH gives every scroll view `overscroll-behavior:
- * contain` on both axes, so one that only scrolls sideways (a code block, a table in a reply) keeps a
- * vertical swipe too: Chrome latches the swipe on it, it cannot move that way, and the conversation
- * around it stays put. Its vertical axis goes back to `auto`, so the swipe passes on to the
- * conversation; sideways it still keeps its own. Three classes, over the runtime's one, wherever its
- * sheet sits in the cascade.
+ * contain` on both axes, so a scroll view inside the conversation keeps a swipe it cannot take: a code
+ * block or a table, which scroll only sideways, a vertical one; a command's output or its card, short
+ * enough to have nothing to scroll, any. Chrome latches the swipe on it, it cannot move, and the
+ * conversation around it stays put. A scroll view inside another goes back to `auto`, so what it
+ * cannot take passes on to the one around it; the outermost keeps `contain`, so nothing reaches the
+ * page. Two classes, over the runtime's one, wherever its sheet sits in the cascade.
  */
-export const PAGE_STYLE = '<style id="deskfolk-page">.nsh-scroll.nsh-ox.nsh-ox { overscroll-behavior-y: auto; }</style>';
+export const PAGE_STYLE = '<style id="deskfolk-page">.nsh-scroll .nsh-scroll { overscroll-behavior: auto; }</style>';
 const PAGE_STYLE_TAG = /<style id="deskfolk-page">[^<]*<\/style>\n?/;
 const PARAMS = /\n?<script type="application\/json" id="nsh-params">[^<]*<\/script>/;
 const APP_CONFIG = /<script type="application\/json" id="nsh-app">([^<]*)<\/script>/;

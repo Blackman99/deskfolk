@@ -498,6 +498,42 @@ try {
   await inGitHubColours("the command's output", "export", '[data-testid="command-output"]');
   step("code in GitHub's colours, as on the Mac: the reply's code block and a command's output (`cat src/summary.ts`)");
 
+  // The command's card and its opened output are vertical scroll views inside the conversation,
+  // short enough here to have nothing to scroll: a vertical swipe on either scrolls the conversation
+  // too (`PAGE_STYLE`; NSH's `contain` kept it on them).
+  const heldOn = await page.evaluate(() =>
+    ["command-output", "command-line"].map((id) => {
+      const view = document.querySelector(`[data-testid="${id}"]`)?.closest(".nsh-scroll");
+      return view ? getComputedStyle(view).overscrollBehaviorY : "missing";
+    }),
+  );
+  if (heldOn.some((v) => v !== "auto")) throw new Error(`the command's card or output keeps vertical swipes (overscroll-behavior-y ${heldOn.join(", ")})`);
+  if (engine === "chromium") {
+    const cdp = await context.newCDPSession(page);
+    const conversationTop = () =>
+      page.evaluate(() => {
+        const list = [...document.querySelectorAll('[data-testid="conversation"] .nsh-scroll.nsh-oy')].find((el) => el.scrollHeight > el.clientHeight + 4 && el.clientHeight > 300);
+        return list ? list.scrollTop : null;
+      });
+    for (const id of ["command-output", "command-line"]) {
+      // A third of the way down the conversation, clear of the composer.
+      await page.evaluate((tid) => {
+        const el = document.querySelector(`[data-testid="${tid}"]`)!;
+        const list = [...document.querySelectorAll('[data-testid="conversation"] .nsh-scroll.nsh-oy')].find((x) => x.scrollHeight > x.clientHeight + 4 && x.clientHeight > 300)!;
+        list.scrollTop += el.getBoundingClientRect().top - (list.getBoundingClientRect().top + list.clientHeight / 3);
+      }, id);
+      await Bun.sleep(400);
+      const box = (await testid(page, id).first().boundingBox())!;
+      const before = (await conversationTop())!;
+      await cdp.send("Input.synthesizeScrollGesture", { x: box.x + box.width / 2, y: box.y + Math.min(box.height / 2, 20), yDistance: 200, gestureSourceType: "touch", speed: 800 });
+      await Bun.sleep(400);
+      const moved = (await conversationTop())! - before;
+      if (Math.abs(moved) < 100) throw new Error(`a vertical swipe on the ${id} moved the conversation ${Math.round(moved)} px`);
+    }
+    await cdp.detach();
+  }
+  step(`a vertical swipe on the command's card and its opened output scrolls the conversation too${engine === "chromium" ? " (touch swipes)" : " (the page's rule)"}`);
+
   const stamp = Date.now().toString(36);
   const fromPhone = `phone-${stamp}`;
   const composer = await field(page, "composer-input");
