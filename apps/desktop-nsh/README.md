@@ -94,7 +94,7 @@ cd apps/desktop-nsh/app && nsh check App.tsx && nsh test # 类型检查（不含
 bun apps/desktop-nsh/scripts/ui-tests.ts [名字] [--retry] # 界面测试（--retry：失败的文件再跑一次，按第二次算，并点名），连一个隔离的真运行时（不是开发实例，也不是稳定版）；终端标签的测试要起真 shell，找不到 pty helper 就跳过（REAL_BOT_PTY_HELPER 指向别处的构建）
 bun apps/desktop-nsh/scripts/ci-smoke.ts <宿主可执行文件> apps/desktop-nsh/build/app/bundle.js   # 宿主打开、界面跑起来、拿到开发运行时的第一份快照
 bun apps/desktop-nsh/scripts/e2e-live.ts                # 无头连真实开发运行时：列表、打开、实时事件
-bun apps/desktop-nsh/scripts/phone-web-e2e.ts [--no-build] [--browser chromium|webkit] [--shots <目录>]   # 手机版全程，全在本机：自己的中继（TLS 边缘同源提供页面）、隔离的 Mac（REAL_BOT_DEV_REMOTE=1）、无头浏览器配对，再在外壳里走手机宽度的名单、项目页（图片都画得出来，含 Claude 的标志）、打开（回复里的代码块和表格左右滚动，在它们、命令卡片和展开的命令输出上上下滑动滚的是会话；Chromium 用触摸手势。回复里的代码和命令输出是 GitHub 的配色）、发送、实时更新、项目会话往上翻过第一页后，别的会话来一行、中继断开再连回来拿快照，读者都停在原处（Chromium 的触摸手势）、返回（设置和 Bot 的设置里逐层退，中间什么都不按地连按返回页面也一直在；设置列表下面的底栏和用它离开。Chromium 的返回是浏览器自己的，经一个调 `chrome.tabs.goBack` 的扩展，要完整的 Chromium：`pnpm --filter @real-bot/desktop-nsh exec playwright install chromium`）、重载仍登记，和平板宽度的一栏加一页；截图按浏览器命名
+bun apps/desktop-nsh/scripts/phone-web-e2e.ts [--no-build] [--browser chromium|webkit] [--shots <目录>]   # 手机版全程，全在本机：自己的中继（TLS 边缘同源提供页面）、隔离的 Mac（REAL_BOT_DEV_REMOTE=1）、无头浏览器配对，再在外壳里走手机宽度的名单、项目页（图片都画得出来，含 Claude 的标志）、打开（回复里的代码块和表格左右滚动，在它们、命令卡片和展开的命令输出上上下滑动滚的是会话；Chromium 用触摸手势。回复里的代码和命令输出是 GitHub 的配色）、发送、实时更新、消息里的文件盖住会话（返回只收起文件）、工具里的工作区（点开的文件在 Mac 有变化后还在）、项目目录盖住项目会话、项目会话往上翻过第一页后，别的会话来一行、中继断开再连回来拿快照，读者都停在原处（Chromium 的触摸手势）、返回（设置和 Bot 的设置里逐层退，中间什么都不按地连按返回页面也一直在；设置列表下面的底栏和用它离开。Chromium 的返回是浏览器自己的，经一个调 `chrome.tabs.goBack` 的扩展，要完整的 Chromium：`pnpm --filter @real-bot/desktop-nsh exec playwright install chromium`）、重载仍登记，和平板宽度的一栏加一页；截图按浏览器命名
 bun apps/desktop-nsh/scripts/terminal-probe.ts          # 终端：颜色、宽字符、吞吐、vim、top（要开发版开着终端面板和截图）
 ```
 

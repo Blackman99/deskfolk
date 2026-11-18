@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Files open on the phone again
+
+- On the phone's page, a file pressed in a message, a project's "Open folder" or an artifact in the flow seemed to do nothing: it opened under the conversation. It now covers the screen, and Back puts it away and leaves the conversation where it was. The same holds in a desktop window narrower than the phone layout's breakpoint.
+- A file opened in the workspace on the phone no longer goes back to "open a file" a moment later while Bots are at work on the Mac. The workspace also fills the screen down to its foot, with no empty strip where the bottom bar was.
+
 ### On the phone, a project session you read back in stays put while other conversations move
 
 - Scrolled back in a project session on the phone, the view often jumped towards the newest line, all the way down in a short conversation, with no lost link to explain it. A new line anywhere, in another conversation too, or an agent at work made the session's rows anew, many times over for one change, and the phone page's list measured every row again: the transcript's height fell to rough estimates and came back within a frame, and the browser, which cannot scroll above the top, kept only part of the way there and back. The rows now stay the same while they show the same, as in a Bot's conversation, so you stay where you were reading. This also takes away the shift of a line or a few that was left when the link drops.
