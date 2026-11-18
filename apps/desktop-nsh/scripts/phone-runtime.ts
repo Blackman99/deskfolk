@@ -110,6 +110,12 @@ if (import.meta.main) {
     const group = (await api("POST", "/v1/sessions", { name: "周报小组", members: [writer.bot.id, editor.bot.id] })) as { id: string };
     // A Claude Code project session, so the projects tab draws Claude's logo; it never starts a turn.
     const claudeProject = store.createProjectSession({ dir: workspace, agent: "claude_code", configDir: null, locale: "zh" });
+    // Its conversation runs to three of a phone's pages (20 lines each), with replies taller than a
+    // line: reading back in it pages older lines in.
+    for (let n = 1; n <= 30; n++) {
+      store.postMessage(claudeProject.id, { body: `项目第 ${n} 问：看一下第 ${n} 个模块` });
+      store.insertAgentLine(claudeProject.id, { kind: "bot", body: `项目第 ${n} 答：\n\n${"- 一条较长的说明，写满一行还要折到下一行，好让这一行有些高度\n".repeat(3)}` });
+    }
     console.log(
       JSON.stringify({
         origin: handle.origin,

@@ -39,6 +39,9 @@ export type StagedWorkspacePath = {
  * never those forwards: on the workbench several are on screen and only one is selected, so a
  * forward read from a second pane is the first pane's draft.
  */
+/** A read history kept over a dropped link: its cursor, and the position of its newest line then (null when none). */
+export type KeptHistory = { next: string | null; newest: { created_at: string; id: string } | null };
+
 export class SessionView {
   readonly sessionId: string;
 
@@ -143,6 +146,12 @@ export class SessionView {
   #messageNext$s = state<string | null>(null);
 	get messageNext(): string | null { return this.#messageNext$s.get(); }
 	set messageNext(value: string | null) { this.#messageNext$s.set(value); }
+  /**
+   * What this conversation's read history was when the link went (`resetConnection` clears
+   * `messageNext`): its cursor, and its newest line then. The next read of its first page keeps the
+   * older lines when the page reaches back into them, and pages on from `next` (`SessionHistory`).
+   */
+  kept: KeptHistory | undefined = undefined;
   /** Whether the full history has been read, as opposed to the summary row the roster carries. */
   #detailLoaded$s = state(false);
 	get detailLoaded() { return this.#detailLoaded$s.get(); }
@@ -174,6 +183,7 @@ export class SessionView {
    */
   resetHistory(): void {
     this.messageNext = null;
+    this.kept = undefined;
     this.detailLoaded = false;
     this.historyLoading = false;
     this.olderLoading = false;

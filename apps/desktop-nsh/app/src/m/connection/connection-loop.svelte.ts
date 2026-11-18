@@ -2,6 +2,7 @@ import type {
   CatchupResponse,
   ClientEvent,
   EventCursor,
+  Message,
   RuntimeSnapshot,
   SearchHit,
   SequencedEvent,
@@ -29,7 +30,7 @@ import { loadEnrollment, type StoredEnrollment } from "../remote/idb.ts";
 import { HOSTED_MESSENGER } from "../remote/mode.ts";
 import type { Connection, HostUnreachable } from "../runtime.svelte.ts";
 import type { SessionView } from "../session-view.svelte.ts";
-import { fromRuntimeSnapshot, type Snapshot } from "../snapshot.ts";
+import { fromRuntimeSnapshot, keepSessionLines, type Snapshot } from "../snapshot.ts";
 
 const RETRY_MS = 1000;
 /**
@@ -263,7 +264,12 @@ export class ConnectionLoop {
     this.host.delegationLoadError = {};
     this.host.delegationUnsupported = {};
     this.host.messageSnapshotRevision++;
-    this.host.snapshot = fromRuntimeSnapshot(snapshot);
+    // The conversation on screen keeps its lines until it is read again, below.
+    const fresh = fromRuntimeSnapshot(snapshot);
+    const open = this.host.selectedId && fresh.sessions.some((s) => s.id === this.host.selectedId) ? this.host.selectedId : null;
+    this.host.snapshot = open ? keepSessionLines(fresh, this.host.snapshot, open) : fresh;
+    // The others are down to their last line: nothing they read before follows on from it.
+    for (const view of this.host.views.values()) if (view.sessionId !== open) view.kept = undefined;
     this.host.remoteStatus = snapshot.remoteStatus ?? null;
     if (snapshot.notificationCapabilities) {
       this.host.notificationCapabilities = parseNotificationCapabilities(snapshot.notificationCapabilities);
@@ -379,6 +385,7 @@ export class ConnectionLoop {
       if (this.host.views.get(view.sessionId) !== view) continue;
       view.detailLoaded = kept.detailLoaded;
       view.messageNext = kept.messageNext;
+      view.kept = undefined;
     }
     // A new link is a new client: it learns the revisions edits carry from what is on screen.
     api.observeSnapshot(this.host.snapshot);
@@ -493,7 +500,9 @@ export class ConnectionLoop {
     this.host.searchLoading = false;
     this.host.searchError = false;
     // Every open conversation reads its history again from the next connection, not only the selected one.
+    // What it had read is kept for that read (a link that drops twice keeps the first one's).
     for (const view of this.host.views.values()) {
+      if (view.detailLoaded) view.kept = { next: view.messageNext, newest: newestLine(this.host.snapshot.messages, view.sessionId) };
       view.detailLoaded = false;
       view.messageNext = null;
     }
@@ -557,6 +566,16 @@ export class ConnectionLoop {
         this.ticking = false;
       });
   }
+}
+
+/** The position of a conversation's newest line held (`created_at`, then `id`, as the Mac orders them). */
+function newestLine(messages: readonly Message[], sessionId: string): { created_at: string; id: string } | null {
+  let newest: Message | null = null;
+  for (const message of messages) {
+    if (message.session_id !== sessionId) continue;
+    if (!newest || message.created_at > newest.created_at || (message.created_at === newest.created_at && message.id > newest.id)) newest = message;
+  }
+  return newest ? { created_at: newest.created_at, id: newest.id } : null;
 }
 
 function sameEndpoint(a: LocalEndpoint, b: LocalEndpoint): boolean {

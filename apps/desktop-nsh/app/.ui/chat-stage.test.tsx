@@ -83,11 +83,13 @@ test("a long conversation opens at its newest line, pages older ones in, and the
   await app.press("id:story-bulk");
   await app.waitUntil(() => app.texts().includes("session:bulk"), { timeout: 100_000 });
   try {
-    // The conversation opens with its newest 100 lines; the event stream had only the last one before.
+    // The conversation opens with its newest lines. Lines that came as events before it was opened
+    // may be held already (the index strip reads them all, so `numbered` counts them, not what the
+    // view shows); it used to pass on a link that dropped while the lines were posted, which cut the
+    // conversation to its last line.
     await app.waitUntil(() => lineCount(app) >= 100, { timeout: 20_000 });
     await app.waitUntil(() => numbered(app).includes(130), { timeout: 10_000 });
-    // Opened at the foot: the newest is on screen, the oldest is not, and nothing offers a jump down.
-    expect(numbered(app)).not.toContain(1);
+    // Opened at the foot: the newest is there, and nothing offers a jump down.
     expect(app.enabled("id:scroll-bottom")).toBe(false);
     // Scrolling back brings the button; near the oldest line the next page comes in (the host's list may
     // ask for it as soon as it opens: either way every line ends up loaded and nothing older is offered).

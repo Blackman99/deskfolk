@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Reading back on the phone stays where you are when the link comes back
+
+- On the phone, scrolled back in a conversation, a project session above all, the view often jumped to the newest line by itself. The phone's link to the Mac drops and comes back often, and when the Mac cannot replay what was missed, the page takes the Mac's snapshot again, which holds each conversation's last line only. The open conversation shrank to that line until its history was read again, and the lines you had scrolled back to were dropped. Now the conversation on screen keeps its lines through it, and the history read again joins what is already there, so you stay where you were and scrolling back carries on from there. Bot conversations get it too, and so does the desktop app when its runtime restarts.
+
 ### Drag files into a conversation or onto the file tree
 
 - Files dragged from Finder onto a conversation (the composer, or anywhere in the conversation) are added to the composer as attachments, of any type: a PDF, a spreadsheet, an archive, a video. Before, only the session for sending files took dropped files. Project sessions take them too. While they are over it, the composer says "Drop to attach".

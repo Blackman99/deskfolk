@@ -3,6 +3,7 @@ import {
   FILE_DROP_SESSION_ID,
   type AnnotationFilter,
   type ClientEvent,
+  type Message,
   type SequencedEvent,
   type SessionDetail,
   type SessionSummary,
@@ -11,7 +12,7 @@ import { ApiError } from "../api.ts";
 import type { EventSync } from "../event-sync.ts";
 import type { MessengerApi } from "../messenger-api.ts";
 import type { NotificationCapabilities } from "../notifications/types.ts";
-import type { SessionView } from "../session-view.svelte.ts";
+import type { KeptHistory, SessionView } from "../session-view.svelte.ts";
 import { collectUntilMessage } from "../sidebar/search-jump.ts";
 import { classifySession } from "../sidebar/session-groups.ts";
 import type { Snapshot } from "../snapshot.ts";
@@ -144,6 +145,7 @@ export class SessionHistory {
     }
     this.host.selectedId = id;
     const current = !messageId && view.detailLoaded && this.readIn.get(id) === connection && Boolean(api && sync);
+    const held = this.heldHistory(view, connection);
     if (!current) {
       this.sessionDetailId = null;
       this.sessionMessageNext = null;
@@ -188,7 +190,7 @@ export class SessionHistory {
         for (const frame of frames) this.host.ingest(frame.payload, frame);
         if (selection !== view.loadSeq || this.host.connectionSeq !== connection) return;
         const unread = this.host.notificationCapabilities.bounded_read_v1 ? detail.session.unread_count : 0;
-        this.applySessionDetail(id, { ...detail.session, unread_count: unread }, detail.judgements);
+        this.applySessionDetail(id, { ...detail.session, unread_count: unread }, detail.judgements, undefined, held);
         // Pulled, not in the snapshot: what was sent here, and what hangs on this conversation's
         // deliveries (drafts on a Bot↔Bot artifact live in your direct but belong to this view).
         // The file drop has no Bot, so nothing there can be annotated or annotated from.
@@ -267,6 +269,7 @@ export class SessionHistory {
     const connection = this.host.connectionSeq;
     const selection = ++view.loadSeq;
     const messageId = opts?.messageId;
+    const held = this.heldHistory(view, connection);
     this.host.setHighlightedMessage(messageId ?? null, id);
     if (!api || !sync) return;
     view.historyLoading = true;
@@ -287,7 +290,7 @@ export class SessionHistory {
         if (!frames) throw new Error("event gap");
         for (const frame of frames) this.host.ingest(frame.payload, frame);
         if (stale()) return;
-        this.applySessionDetail(id, detail.session, detail.judgements, view);
+        this.applySessionDetail(id, detail.session, detail.judgements, view, held);
         void this.host.loadAnnotations({ session_id: id });
         void this.host.loadAnnotations({ target_session_id: id });
         for (const frame of frames) {
@@ -394,20 +397,37 @@ export class SessionHistory {
     this.host.snapshot = { ...this.host.snapshot, messages: [...current.values()] };
   }
 
-  /** With `detached`, for a popup's conversation: its own view takes the cursor, not the selection's. */
+  /**
+   * What a read of the first page goes over: the history kept over a dropped link, or the one read
+   * in this connection; none for a conversation not read yet, whose lines (its last one, what came
+   * since) have nothing paged behind them.
+   */
+  private heldHistory(view: SessionView, connection: number): KeptHistory | undefined {
+    if (view.kept) return view.kept;
+    return view.detailLoaded && this.readIn.get(view.sessionId) === connection ? { next: view.messageNext, newest: null } : undefined;
+  }
+
+  /**
+   * With `detached`, for a popup's conversation: its own view takes the cursor, not the selection's.
+   * `held` is the history read before this one (`firstPageOver`).
+   */
   private applySessionDetail(
     id: string,
     detail: SessionDetail,
     judgements: Snapshot["judgements"],
     detached?: SessionView,
+    held?: KeptHistory,
   ): void {
     this.readIn.set(id, this.host.connectionSeq);
+    const page = firstPageOver(this.host.snapshot.messages, id, detail.messages.items, detail.messages.next ?? null, held);
+    const view = detached ?? this.host.sessionView(id);
+    view.kept = undefined;
     if (detached) {
       detached.detailLoaded = true;
-      detached.messageNext = detail.messages.next ?? null;
+      detached.messageNext = page.next;
     } else {
       this.sessionDetailId = id;
-      this.sessionMessageNext = detail.messages.next ?? null;
+      this.sessionMessageNext = page.next;
     }
     const current = this.host.snapshot;
     const fresh = {
@@ -457,12 +477,42 @@ export class SessionHistory {
     this.host.snapshot = {
       ...current,
       sessions: keepSame(current.sessions, fresh.sessions),
-      messages: mergeSessionRows(current.messages, id, detail.messages.items),
+      messages: mergeSessionRows(current.messages, id, page.items),
       turns: mergeSessionRows(current.turns, id, detail.turns),
       judgements: mergeSessionRows(current.judgements, id, judgements),
       pendingJudgements: mergeSessionRows(current.pendingJudgements, id, detail.pending_judgements ?? []),
     };
   }
+}
+
+/**
+ * A conversation's first page read again (a link that came back, a link to a line) over the history
+ * read before it. When the page reaches back into that history (its oldest line is one of it, and
+ * there is more behind it), the held lines older than the page stay and paging goes on from the
+ * cursor they were paged with: a reader scrolled back keeps their place. Otherwise the page is the
+ * history, as on a first read: more than a page arrived meanwhile, or the history was cleared, and
+ * nothing older is known to follow on. A line that came with the link's snapshot is no part of what
+ * was read before (`held.newest`). Lines held inside the page's span that it lacks are gone.
+ */
+function firstPageOver(
+  current: readonly Message[],
+  sessionId: string,
+  page: readonly Message[],
+  next: string | null,
+  held: KeptHistory | undefined,
+): { items: readonly Message[]; next: string | null } {
+  // The page is newest first, as the Mac pages (`created_at`, then `id`, descending).
+  const oldest = page.at(-1);
+  if (next === null || !held || !oldest) return { items: page, next };
+  if (held.newest && before(held.newest, oldest)) return { items: page, next };
+  const lines = current.filter((message) => message.session_id === sessionId);
+  if (!lines.some((message) => message.id === oldest.id)) return { items: page, next };
+  const older = lines.filter((message) => before(message, oldest));
+  return older.length > 0 ? { items: [...page, ...older], next: held.next } : { items: page, next };
+}
+
+function before(a: { created_at: string; id: string }, b: { created_at: string; id: string }): boolean {
+  return a.created_at < b.created_at || (a.created_at === b.created_at && a.id < b.id);
 }
 
 /** `next`, with each item that says the same as the one at its index in `current` kept, and `current` itself when all do. */

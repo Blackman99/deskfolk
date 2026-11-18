@@ -13,8 +13,9 @@
  * it, its code block and table scrolling sideways while a vertical swipe on them still scrolls the
  * conversation, its code and a command's output in GitHub's colours, a line sent from the phone (read back from the Mac's database), a line written on the Mac
  * arriving live, Back to the roster, a reload that is still enrolled and under the service worker
- * (`/sw.js`, which the app's realm reaches as its own); and the same page at a
- * tablet's width (the roster's column beside one page, no workbench). Screenshots go to `--shots`,
+ * (`/sw.js`, which the app's realm reaches as its own), a project session read back past its first
+ * page that keeps the reader's place when the relay goes out of reach and the link comes back to
+ * the snapshot; and the same page at a tablet's width (the roster's column beside one page, no workbench). Screenshots go to `--shots`,
  * named after the browser. Stops everything it started. Never the stable or the dev instance,
  * never a remote host.
  *
@@ -1132,6 +1133,76 @@ try {
       return (await testid(page, "connecting").count()) + (await testid(page, "unreachable").count()) === 0;
     });
     step("the relay out of reach: the shell stays under the banner, which goes once the link is back");
+  }
+
+  // Reading back in a project session survives a link that comes back to the snapshot: the relay out
+  // of reach while the Mac moves on by more events than a link replays (`RESUME_MAX_EVENTS`), so the
+  // page takes the snapshot again (each conversation's last line only) and reads the open one's
+  // history again. The conversation used to shrink to its last line meanwhile, and the reader
+  // landed at the newest line. Chromium swipes by touch; WebKit here has none to drive.
+  if (engine === "chromium" && bounceEdge) {
+    await testid(page, "nav-projects").click();
+    const projectRow = testid(page, `session-${mac.claudeProject}`).filter({ visible: true }).first();
+    await projectRow.waitFor({ timeout: 15_000 });
+    await projectRow.click();
+    await until("the project session's newest line", 15_000, () => shownIn(page, "conversation", "项目第 30 答"));
+    /** The project's transcript: how far it is from its newest line, its first line in view, and whether a line of its second page is in. */
+    const reading = () =>
+      page.evaluate(() => {
+        const list = [...document.querySelectorAll('[data-testid="project-transcript"]')].find((el) => el.clientHeight > 100);
+        if (!list) return null;
+        const box = list.getBoundingClientRect();
+        const leaves = [...list.querySelectorAll("*")].filter((el) => el.childElementCount === 0 && /^项目第 \d+ [问答]/.test((el.textContent ?? "").trim()));
+        const shown = leaves
+          .map((el) => ({ line: (el.textContent ?? "").trim().slice(0, 8), top: Math.round(el.getBoundingClientRect().top) }))
+          .filter((at) => at.top >= box.top && at.top < box.bottom)
+          .sort((a, b) => a.top - b.top);
+        const number = (line: string) => Number(/第 (\d+)/.exec(line)?.[1] ?? 0);
+        return { fromEnd: Math.round(list.scrollHeight - list.clientHeight - list.scrollTop), first: shown[0] ?? null, paged: leaves.some((el) => number((el.textContent ?? "").trim()) <= 20) };
+      });
+    const lineNumber = (line: string | undefined) => Number(/第 (\d+)/.exec(line ?? "")?.[1] ?? 0);
+    const cdp = await context.newCDPSession(page);
+    const box = (await page.locator('[data-testid="project-transcript"]').filter({ visible: true }).first().boundingBox())!;
+    // Back past the first page, into the lines the second one brought.
+    const before = await until("a line of the second page at the top of the view", 60_000, async () => {
+      const now = await reading();
+      if (now?.paged && now.first && lineNumber(now.first.line) <= 20 && now.fromEnd > 1500) return now;
+      await cdp.send("Input.synthesizeScrollGesture", { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 3), yDistance: 300, gestureSourceType: "touch", speed: 1200 });
+      await Bun.sleep(500);
+      return null;
+    });
+    await Bun.sleep(1000);
+    const settledBefore = (await reading())!;
+    const writerBot = (await mac.api<{ items: Array<{ id: string; name: string }> }>("GET", "/v1/bots")).items.find((bot) => bot.name === "Writer")!;
+    await bounceEdge(async () => {
+      await until("the lost link said over the conversation", 30_000, async () => (await testid(page, "connecting").count()) + (await testid(page, "unreachable").count()) > 0);
+      for (let i = 0; i < 320; i += 20) {
+        await Promise.all(Array.from({ length: 20 }, (_, k) => mac.api("PATCH", `/v1/bots/${writerBot.id}`, { duties: `写东西、改东西 ${i + k}` })));
+      }
+    });
+    // Retry once a try has failed, and seldom: each try is two handshakes of the relay's 10 a minute here.
+    let pressedAt = 0;
+    await until("the link back", 120_000, async () => {
+      const retry = testid(page, "retry-connection");
+      if (Date.now() - pressedAt > 20_000 && (await retry.count())) {
+        pressedAt = Date.now();
+        await retry.first().click().catch(() => {});
+      }
+      return (await testid(page, "connecting").count()) + (await testid(page, "unreachable").count()) === 0;
+    });
+    await Bun.sleep(4000);
+    const after = (await reading())!;
+    await cdp.detach();
+    // Still as far from the newest line, among the lines the second page brought.
+    if (!after.paged || !after.first || lineNumber(after.first.line) > 20 || Math.abs(after.fromEnd - settledBefore.fromEnd) > 60) {
+      throw new Error(`the reader lost their place when the link came back: ${JSON.stringify(settledBefore)} → ${JSON.stringify(after)} (first reached ${JSON.stringify(before)})`);
+    }
+    await page.screenshot({ path: shot("3a-project-read-back") });
+    step(`reading back in a project session survives a link that came back to the snapshot: ${settledBefore.fromEnd} px from its newest line before, ${after.fromEnd} after, \`${after.first.line}\` at the top`);
+    await testid(page, "top-back").click();
+    await until("the project session put down", 10_000, async () => (await testid(page, "conversation").count()) === 0);
+    await testid(page, "nav-sessions").click();
+    await row.waitFor({ timeout: 10_000 });
   }
 
   // A tablet's width, the same page (a new context would be a new device store, unpaired): the

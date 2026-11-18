@@ -1,7 +1,7 @@
 import "../../platform/install";
 import { afterEach, expect, test } from "nsh/test";
 import { snapshot } from "../../lib/reactive.ts";
-import type { RuntimeSnapshot } from "@real-bot/protocol";
+import type { Message, RuntimeSnapshot } from "@real-bot/protocol";
 import { base64url, generateIdentity, identityPublic, type RemoteRequest, type RemoteResponse } from "@real-bot/remote";
 import { ApiError } from "../api.ts";
 import { MessengerRuntime, nextRemoteRetry } from "../runtime.svelte.ts";
@@ -388,6 +388,84 @@ test("a Mac that restarted is read again from its snapshot", async () => {
   expect(second).not.toContain("/v1/events/catchup");
   // The restarted Mac's snapshot is the truth now, not what the page held before.
   expect(snapshot(runtime.snapshot.bots)).toEqual([]);
+});
+
+/**
+ * A phone's link drops often, and a Mac it cannot resume from sends its snapshot again, which holds
+ * each conversation's last line only. The conversation on screen shrank to that line until its
+ * history was read again, and a reader scrolled back was dropped at the newest line. It keeps its
+ * lines, those paged back included, and goes on paging from where it was.
+ */
+function linesOver(link: (n: number) => { page: Message[]; next: string | null }) {
+  const lines = Array.from({ length: 9 }, (_, i) => aMessage({ id: `m${i + 1}`, session_id: "proj-1", body: `line ${i + 1}`, created_at: `2026-09-19T02:0${i + 1}:00.000Z` }));
+  const other = "b".repeat(32);
+  const heldAtRead: string[][] = [];
+  let runtime: MessengerRuntime | null = null;
+  const remote: ReturnType<typeof serveRemote> = serveRemote({
+    ready: (n) => ({ event_instance_id: n === 0 ? INSTANCE : other, watermark_seq: 0 }),
+    answer: (request) => {
+      const n = remote.sockets.length - 1;
+      const instance = n === 0 ? INSTANCE : other;
+      const ok = (body: unknown): RemoteResponse => ({ v: 1, id: request.id, status: 200, body: body as never });
+      if (request.path === "/v1/snapshot") {
+        // The roster's row carries the newest line, which a Mac's first page starts with.
+        return ok({ ...(snapshotAt(request, instance, 0).body as RuntimeSnapshot), sessions: [aProjectSession({ id: "proj-1", last_message: n === 0 ? lines[5] : link(n).page[0] })] });
+      }
+      if (request.path === "/v1/sessions/proj-1/snapshot") {
+        heldAtRead.push(runtime!.snapshot.messages.filter((m) => m.session_id === "proj-1").map((m) => m.id).sort());
+        const first = n === 0 ? { page: [lines[5]!, lines[4]!, lines[3]!], next: "c4" } : link(n);
+        return ok({ session: { ...aProjectSession({ id: "proj-1" }), messages: { items: first.page, next: first.next }, turns: [] }, judgements: [], event_instance_id: instance, watermark_seq: 0 });
+      }
+      if (request.path === "/v1/sessions/proj-1/messages" && request.query?.cursor === "c4") return ok({ items: [lines[2]!, lines[1]!], next: "c2" });
+      return hostAnswers(request);
+    },
+  });
+  restores.push(remote.restore);
+  useEnrollmentDriver({ get: () => Promise.resolve(liveEnrollment), set: () => Promise.resolve() });
+  runtime = new MessengerRuntime();
+  runtimes.push(runtime);
+  return { lines, heldAtRead, remote, runtime };
+}
+
+async function settled(probe: () => boolean): Promise<void> {
+  for (let i = 0; i < 200 && !probe(); i++) await new Promise((done) => setTimeout(done, 5));
+}
+
+const heldIds = (runtime: MessengerRuntime) => snapshot(runtime.snapshot.messages).filter((m) => m.session_id === "proj-1").map((m) => m.id).sort();
+
+test("a link that comes back to a snapshot keeps the conversation on screen, lines paged back included", async () => {
+  // Back on a restarted Mac: one line came meanwhile, and the first page reaches into what is held.
+  const { lines, heldAtRead, remote, runtime } = linesOver(() => ({ page: [lines[6]!, lines[5]!, lines[4]!], next: "c5" }));
+  const internals = runtime as unknown as { tickRemote(): Promise<void> };
+  await internals.tickRemote();
+  await runtime.selectSession("proj-1");
+  await runtime.loadOlderMessages("proj-1");
+  expect(heldIds(runtime)).toEqual(["m2", "m3", "m4", "m5", "m6"]);
+  expect(runtime.sessionView("proj-1").messageNext).toBe("c2");
+
+  remote.sockets[0]!.drop();
+  await internals.tickRemote();
+  await settled(() => heldAtRead.length === 2 && !runtime.sessionView("proj-1").historyLoading);
+  expect(runtime.connection).toBe("connected");
+  // While its history is read again, the conversation still holds what it showed.
+  expect(heldAtRead[1]).toEqual(["m2", "m3", "m4", "m5", "m6"]);
+  expect(heldIds(runtime)).toEqual(["m2", "m3", "m4", "m5", "m6", "m7"]);
+  expect(runtime.sessionView("proj-1").messageNext).toBe("c2");
+  expect(runtime.sessionView("proj-1").kept).toBe(undefined);
+});
+
+test("a first page that does not reach what is held after a link comes back replaces it", async () => {
+  // More than a page came meanwhile: nothing held is known to follow on from it.
+  const { lines, remote, runtime } = linesOver(() => ({ page: [lines[8]!, lines[7]!, lines[6]!], next: "c7" }));
+  const internals = runtime as unknown as { tickRemote(): Promise<void> };
+  await internals.tickRemote();
+  await runtime.selectSession("proj-1");
+  await runtime.loadOlderMessages("proj-1");
+  remote.sockets[0]!.drop();
+  await internals.tickRemote();
+  await settled(() => heldIds(runtime).includes("m9") && !runtime.sessionView("proj-1").historyLoading);
+  expect(heldIds(runtime)).toEqual(["m7", "m8", "m9"]);
+  expect(runtime.sessionView("proj-1").messageNext).toBe("c7");
 });
 
 /**

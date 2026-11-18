@@ -136,6 +136,18 @@ export function fromRuntimeSnapshot(snapshot: RuntimeSnapshot): Snapshot {
   };
 }
 
+/**
+ * A snapshot installed over a link that came back holds each conversation's last line only, and
+ * the conversation on screen would shrink to it until its history is read again a moment later:
+ * a reader scrolled back was dropped at the newest line. Its lines stay instead, as they were. The
+ * snapshot's last line may have come after a gap, and beside them it would leave the lines in
+ * between missing; the read that follows the install says what is current.
+ */
+export function keepSessionLines(fresh: Snapshot, held: Snapshot, sessionId: string): Snapshot {
+  const kept = held.messages.filter((message) => message.session_id === sessionId);
+  return kept.length > 0 ? { ...fresh, messages: [...fresh.messages.filter((message) => message.session_id !== sessionId), ...kept] } : fresh;
+}
+
 export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
   switch (event.event) {
     case "credential_operations.changed": return { ...snapshot, credentialOperations: event.items };
