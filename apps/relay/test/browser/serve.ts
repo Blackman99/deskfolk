@@ -14,7 +14,7 @@ const server = Bun.serve({
       'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
       'content-security-policy': csp,
     };
-    const idQuery = /^(?:(?:s|o|b|a)=[0-9A-Za-z._-]+)(?:&(?:s|o|b|a)=[0-9A-Za-z._-]+)*$/;
+    const idQuery = /^(?:(?:s|o|b|a|k)=[0-9A-Za-z._-]+)(?:&(?:s|o|b|a|k)=[0-9A-Za-z._-]+)*$/;
     if ((url.search && !idQuery.test(url.search.slice(1))) || url.pathname.startsWith('/__local-api') || url.pathname.startsWith('/v1/') || url.pathname.startsWith('/@vite/') || url.pathname.startsWith('/src/')) {
       return new Response(null, { status: 404, headers });
     }

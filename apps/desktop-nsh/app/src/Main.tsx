@@ -7,7 +7,7 @@
  * As there too, the shell waits for the first connection behind `ConnectionScreen` (connecting, or
  * unreachable with a Retry): before it the snapshot is the empty one, whose settings say the
  * first-run onboarding is not done, and every start showed the onboarding for a moment. Once the
- * shell has been up it stays through a lost connection, faded under `OfflineBanner`.
+ * shell has been up it stays through a lost connection; hosted, faded under `OfflineBanner`.
  *
  * Hosted, the page's address follows what is open and Back walks it (`platform/page-route.ts`),
  * and another tab of the page holding the device's link puts this one on `TabStandbyScreen`.
@@ -90,7 +90,10 @@ export function Main() {
     <If when={shellShown()} else={<ConnectionScreen />}>
       <View class="flex-1">
         <Shell />
-        <OfflineBanner />
+        {/* The phone's page for now: the desktop window's veil would also cover its drag region. */}
+        <If when={runtime.hosted}>
+          <OfflineBanner />
+        </If>
       </View>
     </If>
   );

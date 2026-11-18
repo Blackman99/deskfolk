@@ -107,6 +107,8 @@ test('HTTP rejects query canaries before a query-free HTTPS redirect; HTTPS also
 test('HTTPS allows session/overlay/attachment ids and still forbids file-path queries', async () => {
   const session = await request('/?s=01ARZ3NDEKTSV4RRFFQ69G5FAV&o=settings');
   expect(session.status).toBe(200);
+  // The flow page with its job (`session-url.ts`'s TRACE_PARAM), as the page writes it.
+  expect((await request('/?s=01ARZ3NDEKTSV4RRFFQ69G5FAV&o=trace&k=01ARZ3NDEKTSV4RRFFQ69G5FAX')).status).toBe(200);
   expect(await session.text()).toBe(html);
   for (const search of ['?p=out/a.html', '?w=inbox/a.md', '?s=abc&p=secret.txt', '?secret=review-canary-private-material']) {
     const response = await request(`/${search}`);

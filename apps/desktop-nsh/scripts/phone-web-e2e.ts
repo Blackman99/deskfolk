@@ -40,7 +40,7 @@ import { ulid } from "../../daemon/src/ids";
 import { hostSigningFingerprint } from "../../messenger/src/lib/remote/fingerprint.ts";
 import { base64url, encodePairingCode, randomBytes, type PairingQr } from "../../../packages/remote/src/index.ts";
 import { RELEASE_APP_NAME } from "./package";
-import { certificate, RELAY_ROUTES, startCaddyEdge, startEdge } from "./phone-edge";
+import { ALLOWED_QUERY, certificate, RELAY_ROUTES, startCaddyEdge, startEdge } from "./phone-edge";
 import { buildPhoneSite, LOCAL_ONLY_CHUNKS, PHONE_OUT, VERSION_FILE } from "./phone-package";
 import { FORBIDDEN_PORTS, freePort } from "./phone-runtime";
 
@@ -317,6 +317,12 @@ try {
     problems.push(`[${m.type()}] ${m.text()}`);
   });
   page.on("pageerror", (e) => problems.push(`[pageerror] ${e.message}`));
+  // Every address the page goes to, the app's own included: each must pass the edge's query rule,
+  // or a reload there is a 400 from the relay.
+  const addresses = new Set<string>();
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) addresses.add(new URL(frame.url()).search);
+  });
   const relayCalls: string[] = [];
   page.on("response", (r) => {
     if (RELAY_ROUTES.has(new URL(r.url()).pathname)) relayCalls.push(`${r.request().method()} ${new URL(r.url()).pathname} → ${r.status()}`);
@@ -565,13 +571,22 @@ try {
   await testid(page, "mobile-trace").click();
   await showing("trace-pane");
   await until("the flow page's address", 10_000, () => new URL(page.url()).searchParams.get("o") === "trace");
+  // The job it settles on goes into the address (`k`): a reload there comes back to it, through the edge.
+  await Bun.sleep(1500);
+  const flowAt = here();
+  const withJob = new URL(page.url()).searchParams.has("k");
+  if (withJob) {
+    await page.reload();
+    await showingAfterLoad("trace-pane");
+    await expectAt("the reloaded flow page", flowAt);
+  }
   await page.goBack();
   await putAway("trace-pane");
   await expectAt("Back from the flow page", writerAt);
   await page.goBack();
   await putAway("conversation");
   await expectAt("Back to the roster", "/");
-  step("the flow page has its address: Back to the conversation, then to the roster");
+  step(`the flow page has its address${withJob ? " with its job, which a reload comes back to" : ""}: Back to the conversation, then to the roster`);
 
   await testid(page, "nav-settings").click();
   await showing("settings-modal");
@@ -651,7 +666,9 @@ try {
   const refused = problems.filter((line) => /CSP violation|Content Security Policy|Refused to (?:load|execute|compile|connect|apply|frame|create)/i.test(line));
   if (refused.length) throw new Error(`the page broke the production policy:\n  ${refused.slice(0, 20).join("\n  ")}`);
   if (localOnly.length) throw new Error(`the page asked for what only a local window runs: ${localOnly.join(", ")}`);
-  step("no policy violation, no request for the local endpoint's code");
+  const refusedQueries = [...addresses].filter((search) => search !== "" && !ALLOWED_QUERY.test(search.slice(1)));
+  if (refusedQueries.length) throw new Error(`the page wrote addresses the edge refuses on a reload: ${refusedQueries.join(", ")}`);
+  step(`no policy violation, no request for the local endpoint's code; ${addresses.size} addresses, each one the edge lets through`);
 
   console.log(`relay links from the page: ${links.opened} opened; ${links.text} text frames (the relay's handshake), ${links.binarySent} binary sent, ${links.binaryReceived} binary received`);
   const worrying = problems.filter((line) => /^\[(error|warning|pageerror)\]/.test(line));
