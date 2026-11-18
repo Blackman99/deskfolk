@@ -11,6 +11,9 @@ export const zh = {
   deleting: "正在删除…",
   creating: "正在创建…",
   clearing: "正在清空…",
+  viewLoadFailed: "这部分没能加载出来。",
+  viewLoadReload: "重新载入页面",
+  viewLoadRetry: "重试",
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -24,4 +27,7 @@ export const en: CopyShape<typeof zh> = {
   deleting: "Deleting…",
   creating: "Creating…",
   clearing: "Clearing…",
+  viewLoadFailed: "This part didn’t load.",
+  viewLoadReload: "Reload the page",
+  viewLoadRetry: "Try again",
 };
