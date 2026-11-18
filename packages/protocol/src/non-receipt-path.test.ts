@@ -20,6 +20,12 @@ test("moving workspace files to the Trash carries no receipt", () => {
   expect(isNonReceiptPath("/v1/workspace/trashcan")).toBe(false);
 });
 
+/** Copying dropped files may take a while, longer than a receipt's synchronous write may hold the daemon. */
+test("copying dropped files into the workspace carries no receipt", () => {
+  expect(isNonReceiptPath("/v1/workspace/import")).toBe(true);
+  expect(isNonReceiptPath("/v1/workspace/imports")).toBe(false);
+});
+
 /** A transcription stores nothing (ADR 0073); setting the speech endpoint up does. */
 test("a transcription carries no receipt", () => {
   expect(isNonReceiptPath("/v1/speech/transcribe")).toBe(true);

@@ -130,6 +130,9 @@ export type SequencedEvent = {
  * value, so a repeat sets the same thing again. A step of your own tried on a sample (ADR 0105) may
  * run a command or a model for a while and stores nothing; a repeat only tries it again. What a
  * window found after applying your interface (ADR 0106) is kept in memory only; a repeat says it again.
+ * Files dropped on the file tree are copied while the request waits, which for a big folder takes
+ * longer than a receipt's synchronous write may hold the daemon; a repeat copies them again, under
+ * the next free names, as dropping them twice does.
  */
 export function isNonReceiptPath(path: string): boolean {
   const withoutQuery = path.split("?")[0] ?? "";
@@ -139,6 +142,7 @@ export function isNonReceiptPath(path: string): boolean {
     || /^\/v1\/playbooks\/[^/]+\/custom-steps\/try$/.test(withoutQuery)
     || withoutQuery === "/v1/interface/window"
     || withoutQuery === "/v1/workspace/trash"
+    || withoutQuery === "/v1/workspace/import"
     || withoutQuery === "/v1/notification-presence"
     || withoutQuery.startsWith("/v1/runtime/claude-code/")
     || withoutQuery.startsWith("/v1/runtime/agents/")

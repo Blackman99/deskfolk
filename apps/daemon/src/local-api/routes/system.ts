@@ -14,6 +14,7 @@ import { readLocalModels } from "../../local-model";
 import { probeEndpointModels, withLocalFacts } from "../../probe-models";
 import { resolveApiFormat, resolveWorkspaceId } from "../../store/shared";
 import { listCitedDir, locateCitedFile, writableTarget, writeWorkspaceFile } from "../../workspace-browse";
+import { importIntoWorkspace } from "../../workspace-import";
 import { trashWorkspacePaths } from "../../workspace-trash";
 import { fileResponse, occurred, publishBotModelChanges } from "../helpers";
 import type { RouteCtx } from "../route-ctx";
@@ -228,6 +229,16 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
     if (!root) throw new HttpError(422, "invalid_args", "workspace is not set");
     const body = (input.body) as { paths?: unknown };
     return trashWorkspacePaths(root, body.paths, options.trash).then((result) => jsonResponse(result, 200, null));
+  }
+
+  // Files dropped on the file tree from Finder, copied into the folder they landed on. The Mac reads
+  // them where they are, so only its own window may ask: a paired device would copy anything on the
+  // Mac into the workspace (the relay's list of routes leaves it out too). No receipt (see
+  // isNonReceiptPath): a big folder takes a while to copy.
+  if (method === "POST" && path === "/v1/workspace/import") {
+    if (url.hostname === "remote.invalid") throw new HttpError(404, "not_found", "import is local-only");
+    const body = (input.body) as { dir?: unknown; sources?: unknown };
+    return importIntoWorkspace(store.workspacePath(), store.projectDirs(), body).then((result) => jsonResponse(result, 200, null));
   }
 
   if (method === "POST" && path === "/v1/models/probe") {

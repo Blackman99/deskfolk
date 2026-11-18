@@ -27,6 +27,26 @@ export type WorkspaceTrashRequest = {
   paths: string[];
 };
 
+/**
+ * Files and folders elsewhere on this computer (absolute paths, as Finder drops them) to copy into
+ * `dir`: a workspace folder (`""` is the workspace itself), or a folder in a project session's
+ * directory written absolute. Only this computer's own window asks; a paired device cannot.
+ */
+export type WorkspaceImportRequest = {
+  dir: string;
+  sources: string[];
+};
+
+export type WorkspaceImportResult = {
+  /** Copied, each under the name it has in `dir` now (`report-1.pdf` when `report.pdf` was taken). */
+  imported: Array<{ source: string; name: string }>;
+  /**
+   * Not copied: `missing` (gone, or not readable), `into_itself` (a folder dropped into itself or
+   * one inside it), `copy_failed` (the copy stopped partway and was taken away; `message` says why).
+   */
+  failed: Array<{ source: string; code: "missing" | "into_itself" | "copy_failed"; message: string }>;
+};
+
 export type WorkspaceTrashResult = {
   /** In the Trash now, or already gone when asked — either way no longer in the workspace. */
   trashed: string[];
