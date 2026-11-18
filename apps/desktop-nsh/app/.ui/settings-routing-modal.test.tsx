@@ -170,6 +170,25 @@ test("on a phone the system's Back steps out one level at a time too: a section,
   }
 });
 
+test("on a phone Escape steps out one level at a time as Back does", async () => {
+  const app = await openModal(400, 800);
+  try {
+    await app.press("id:settings-tab-models");
+    await app.press("id:section-endpoints");
+    await app.waitFor("id:models-panel");
+    await app.keyboard.press("escape");
+    await app.waitFor("id:section-endpoints");
+    expect(settings(app)).toBe("open:detail:ok");
+    await app.keyboard.press("escape");
+    await app.waitFor("id:settings-nav");
+    expect(settings(app)).toBe("open:list:ok");
+    await app.keyboard.press("escape");
+    await app.waitUntil(() => settings(app).startsWith("closed"));
+  } finally {
+    await restore(app);
+  }
+});
+
 test("on a phone the system's Back steps out of the endpoint editor's form to its tiles, then closes the editor", async () => {
   const app = await openModal(400, 800);
   try {

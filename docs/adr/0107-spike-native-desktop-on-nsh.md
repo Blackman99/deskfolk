@@ -1239,7 +1239,7 @@ On the day of addendum 43 the user said the phone's routing was a mess, and the 
 - **端点编辑器。** `Modal` 加了 `stepsBack`：为真时返回和 Esc 只交给 `onClose`（同样等一轮），对话框不自己关。编辑器在窄窗口里打开它。
 - **Bot 的设置** 量过，本来就逐层退，没改；端到端里留一步守着。
 - **代价。** 宽度在 720 以下的窗口里，设置的某一页上按 Esc 也是退一层，不再直接关。
-- **检查。** `phone-web-e2e.ts`：设置 › 模型 › 端点 › 添加端点 › 自定义，然后一路按返回：表单→连接方式→编辑器关→端点这一节→模型→列表→设置关，网址一直是 `/?o=settings`，历史条数不变；再加 Bot 的设置一节一节退。旧代码上 WebKit 第一次返回就回到了名单；改后 WebKit 和 Chromium 都过。`.ui` 的 `settings-routing-modal` 加两条用无头驱动的 `app.back()` 的测试，旧代码上两条都失败。`page-route.test.ts` 加一条：设置当一步处理的返回，地址落在 NSH 推回的条目上，不多一条。
+- **检查。** `phone-web-e2e.ts`：设置 › 模型 › 端点 › 添加端点 › 自定义，然后一路按返回：表单→连接方式→编辑器关→端点这一节→模型→列表→设置关，网址一直是 `/?o=settings`，历史条数不变；再加 Bot 的设置一节一节退。旧代码上 WebKit 第一次返回就回到了名单；改后 WebKit 和 Chromium 都过。设置从链接直接打开（`/?o=settings` 作第一屏）也照样逐层退，最后一次返回落在名单上。`.ui` 的 `settings-routing-modal` 加两条用无头驱动的 `app.back()` 的测试，旧代码上两条都失败；再加一条窄窗口里按 Esc 逐层退的。`page-route.test.ts` 加一条：设置当一步处理的返回，地址落在 NSH 推回的条目上，不多一条。
 
 The user said that on the phone page, going into settings, then one of its items, then a page under that, Back should step out one level at a time. In fact one press of the phone's or the browser's Back on any page of settings closed all of it, and one from a connector's form in the endpoint editor closed the whole editor. The page's own ‹ had always stepped out one level (`backWithinSettings`); only the system's Back was wrong.
 
@@ -1251,5 +1251,6 @@ The user said that on the phone page, going into settings, then one of its items
 - **The cost.** In a window 720 wide or less, Escape on a page of settings steps out one level too, instead of closing settings.
 - **Checks.**
   - `phone-web-e2e.ts` goes Settings › Models › Endpoints › Add endpoint › Custom, then Back all the way: the form, the connector tiles, the editor closed, the Endpoints section, Models, the list, settings closed. The address stays `/?o=settings` and the history keeps its length. Then a Bot's settings, a section at a time. On the old code, WebKit's first Back landed on the roster; with the fix it passes in WebKit and Chromium.
-  - `.ui`'s `settings-routing-modal` gains two tests that use the headless driver's `app.back()`. Both fail on the old code.
+  - Settings opened by a link (`/?o=settings` as the first screen) step out the same way, and the last Back lands on the roster.
+  - `.ui`'s `settings-routing-modal` gains two tests that use the headless driver's `app.back()`. Both fail on the old code. A third presses Escape in a narrow window and sees it step out one level at a time.
   - `page-route.test.ts` gains one: a Back settings took as a step leaves the address on the entry NSH pushed back, adding none.

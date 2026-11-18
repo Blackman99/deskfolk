@@ -693,6 +693,30 @@ try {
   await expectAt("Back to the roster", "/");
   step("a Bot's settings step back one level at a time too: a section, the settings, then the conversation");
 
+  // Settings as the page's first screen (a link, a bookmark): the floor and the dialog's entry
+  // are laid out otherwise, and no Back may go dead on the way out.
+  await page.goto(`${origin}/?o=settings`);
+  await showingAfterLoad("settings-nav");
+  await sheetEntry();
+  await testid(page, "settings-tab-models").click();
+  await showing("section-endpoints");
+  await testid(page, "section-endpoints").click();
+  await showing("models-panel");
+  await page.goBack();
+  await putAway("models-panel");
+  await showing("section-endpoints");
+  await expectAt("Back from a section of settings opened by a link", "/?o=settings");
+  await sheetEntry();
+  await page.goBack();
+  await putAway("settings-models");
+  await showing("settings-nav");
+  await sheetEntry();
+  await page.goBack();
+  await putAway("settings-modal");
+  await row.waitFor({ timeout: 10_000 });
+  await expectAt("Back off settings opened by a link", "/");
+  step("settings opened by a link step back the same way, and the last Back lands on the roster");
+
   // Another conversation than the Writer's, whose rows the steps above went through.
   const editorRow = testid(page, `session-${mac.editorDirect}`);
   const editorAt = `/?s=${mac.editorDirect}`;
