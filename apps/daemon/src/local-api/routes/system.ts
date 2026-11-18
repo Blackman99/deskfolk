@@ -6,6 +6,7 @@ import { claudeSessionRoots, listClaudeSessions } from "../../claude-code/sessio
 import type { OtherRunner } from "../../agents/status";
 import { AGENT_USAGE_REFRESH_MIN_MS } from "../../agents/usage";
 import { HttpError } from "../../errors";
+import { fileStat } from "../../file-stat";
 import { listHostDir } from "../../host-paths";
 import { emptyResponse, jsonResponse, matchPath } from "../../http";
 import { parseImageVariant } from "../../image-variant";
@@ -192,6 +193,12 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
       throw new HttpError(404, "not_found", "path not found");
     }
     return fileResponse(located.abs, located.mime, located.name, variant, url.searchParams.get("range") ?? request.headers.get("Range"));
+  }
+
+  // The same file as the GET above, without its bytes: what an open preview polls.
+  if (method === "GET" && path === "/v1/workspace/stat") {
+    const located = locateCitedFile(store.workspacePath(), url.searchParams.get("path") ?? "");
+    return jsonResponse(fileStat(located.abs), 200, null);
   }
 
   if (method === "PUT" && path === "/v1/workspace/file") {

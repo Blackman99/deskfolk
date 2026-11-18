@@ -9,10 +9,13 @@
  * (`value` set again from `onChange`) lost typing: the value comes back to the editor a frame
  * late, as an edit of its own, over the keys typed since.
  *
- * Text from outside (the file read again with nothing unsaved, a discard) makes a new Editor rather
- * than `setValue`, and so does another file, even one with the same text. The Editor's `setValue`
- * is an edit undo takes back, so after a switch ⌘Z would bring the last file's text into this one,
- * and a save would write it there. Monaco's `setValue` began a new history.
+ * Text from outside (a discard) makes a new Editor rather than `setValue`, and so does another
+ * file, even one with the same text. The Editor's `setValue` is an edit undo takes back, so after a
+ * switch ⌘Z would bring the last file's text into this one, and a save would write it there.
+ * Monaco's `setValue` began a new history. The same file read again after it changed on disk, with
+ * nothing unsaved, goes into this Editor as one edit of the span that changed (`changedSpan`): it
+ * keeps where it is scrolled to, and ⌘Z takes the change back, as an editor does with a file
+ * changed under it.
  *
  * What is on disk follows `baseline` whenever it changes. The loader sets the text and then the
  * disk text, and in between the buffer looked unsaved. It stayed so, and the next switch asked
@@ -43,6 +46,7 @@ import { shadow } from "../styles";
 import {
   annotationDecorations,
   annotationStartingOn,
+  changedSpan,
   foldLineEndings,
   selectionRange,
   toNshRange,
@@ -177,6 +181,18 @@ export function ArtifactCodeEditor(props: {
   };
   /** The file the Editor's history belongs to. */
   let historyPath = props.path;
+  /** Puts `folded` (this file as it is on disk now) into the Editor as one edit. Whether it went in. */
+  const patch = (folded: string): boolean => {
+    if (!editor) return false;
+    const edit = changedSpan(text(), folded);
+    loaded = folded;
+    if (!edit) return false;
+    text.set(folded);
+    editor.edit([edit]);
+    if (colorTimer) clearTimeout(colorTimer);
+    colorSource.set({ text: folded, path: historyPath });
+    return true;
+  };
 
   const handle: ArtifactEditorHandle = {
     getValue: () => text(),
@@ -217,7 +233,7 @@ export function ArtifactCodeEditor(props: {
     untracked(() => {
       let made = false;
       if (doc !== loaded) {
-        if (text() === loaded) made = replace(doc, path);
+        if (text() === loaded) made = (path === historyPath && patch(doc)) || replace(doc, path);
         else loaded = doc;
       }
       if (path !== historyPath) {

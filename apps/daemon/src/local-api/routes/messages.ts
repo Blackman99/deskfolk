@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { attachmentMime } from "../../artifact-mime";
 import { HttpError } from "../../errors";
 import { fileEtag } from "../../file-integrity";
+import { fileStat } from "../../file-stat";
 import { emptyResponse, jsonResponse, matchPath } from "../../http";
 import { ulid } from "../../ids";
 import { parseImageVariant } from "../../image-variant";
@@ -249,6 +250,16 @@ export function messageRoutes(ctx: RouteCtx): Response | Promise<Response> | nul
     const variant = parseImageVariant(url.searchParams.get("size"));
     const mime = attachmentMime(att.original_filename, att.workspace_relpath);
     return fileResponse(located.abs, mime, att.original_filename, variant, url.searchParams.get("range") ?? request.headers.get("Range"));
+  }
+
+  // The file the content GET above reads, without its bytes: what an open preview polls.
+  params = matchPath(path, "/v1/attachments/:id/stat");
+  if (params && method === "GET") {
+    const att = store.getAttachment(params.id!);
+    const located = store.resolveAttachmentLocation(att.workspace_relpath);
+    if (!located) throw new HttpError(404, "not_found", "attachment file not found on disk");
+    if (located.isDir) throw new HttpError(422, "invalid_args", "attachment is a directory");
+    return jsonResponse(fileStat(located.abs), 200, null);
   }
 
   params = matchPath(path, "/v1/attachments/:id");

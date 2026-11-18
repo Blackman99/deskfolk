@@ -379,6 +379,15 @@ test("size names a picture variant on the file GETs and nothing else", () => {
   expect(get("/v1/workspace/tree", { path: "", size: "thumb" })).toThrow();
 });
 
+test("a device can poll a file's stat, by path or by attachment, and nothing more", () => {
+  const get = (path: string, query: Record<string, string> = {}) => () => validateBusiness({ v: 1, id: ulid(), method: "GET", path, query });
+  expect(get("/v1/workspace/stat", { path: "notes.md" })).not.toThrow();
+  expect(get("/v1/workspace/stat")).toThrow();
+  expect(get("/v1/workspace/stat", { path: "notes.md", size: "thumb" })).toThrow();
+  expect(get(`/v1/attachments/${ulid()}/stat`)).not.toThrow();
+  expect(get(`/v1/attachments/${ulid()}/stat`, { range: "bytes=0-1" })).toThrow();
+});
+
 test("a paired device can ask for a spend summary and a filtered page", () => {
   const get = (path: string, query: Record<string, string>) => () => validateBusiness({ v: 1, id: ulid(), method: "GET", path, query });
   const id = ulid();

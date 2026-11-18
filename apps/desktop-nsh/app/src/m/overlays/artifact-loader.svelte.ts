@@ -42,6 +42,8 @@ export interface ArtifactLoaderHost {
    * (`pdfSourceOf`, `officeSourceOf`), so the loader reads no bytes for it.
    */
   viewerFetches?: (path: string, kind: ArtifactKind, source: ReturnType<typeof artifactByteSource>, att: Attachment | null) => boolean;
+  /** Whether the pane holds an edit not yet saved: a file that changes on disk meanwhile is not read again over it. */
+  dirty?: () => boolean;
 }
 
 /**
@@ -49,6 +51,22 @@ export interface ArtifactLoaderHost {
  * answers one file GET at a time, and the viewer's is the one the reader is waiting on.
  */
 const HASH_AFTER_VIEWER_MS = 300;
+
+/**
+ * How often the file on screen is asked about (`fileStat`), to show it again once it changes on
+ * disk: a Bot writing it, another editor, a `git checkout`. The runtime answers from the file's
+ * stat and a hash it keeps, so asking reads none of the file while it stays the same. Through the
+ * relay every ask is a round trip, so less often there.
+ */
+export const WATCH_LOCAL_MS = 1000;
+export const WATCH_REMOTE_MS = 3000;
+
+/**
+ * NSH's image view keeps a picture decoded under its path for the life of the app, whatever happens
+ * to the file afterwards; a pane made later shows the old one. Each picture shown by its path,
+ * with the hash it had then; once the file's hash is another, it is shown from its bytes.
+ */
+const decodedByPath = new Map<string, string>();
 
 /** The bytes of the file on screen: what is loading, what has arrived, and the object URLs and hash that go with them. */
 export class ArtifactLoader {
@@ -185,6 +203,30 @@ export class ArtifactLoader {
 	set svgRaw(value: string | null) { this.#svgRaw$s.set(value); }
   #contentSha$s = derived(() => (this.hashFresh ? contentShaFromEtag(this.loadedEtag) : null));
 	get contentSha() { return this.#contentSha$s.get(); }
+  /**
+   * NSH: bumped each time the file on screen is read again for a viewer that reads the file itself
+   * (a player by its path, the PDF and Office viewers): the pane makes that viewer again.
+   */
+  #version$s = state(0);
+	get version() { return this.#version$s.get(); }
+	set version(value) { this.#version$s.set(value); }
+  /** Which file is being watched (`watchFile`), and through which client. */
+  #watchKey: string | null = null;
+  #watchClient: MessengerApi | null = null;
+  #watchGen = 0;
+  #watchTimer: ReturnType<typeof setTimeout> | null = null;
+  #watchAbort: AbortController | null = null;
+  /** The file's hash when the bytes on screen carry none of their own (a scaled copy, a streamed clip). */
+  #baseline: string | null = null;
+  /** The last read after a change failed (the file was between an editor's write and rename): read again on the next ask. */
+  #againFailed = false;
+  /**
+   * The hash the watcher last read the file again for, and how often. A file that will not show
+   * (a clip the player refuses, a read that keeps failing) is tried twice per version, not every
+   * second: each try remakes the viewer and has the runtime read the whole file.
+   */
+  #tried: string | null = null;
+  #tries = 0;
 
   constructor(host: ArtifactLoaderHost) {
     this.#h = host;
@@ -237,9 +279,118 @@ export class ArtifactLoader {
     });
   }
 
+  /**
+   * NSH: asks every second or so (`WATCH_LOCAL_MS`, `WATCH_REMOTE_MS`) whether the file on screen
+   * changed on disk, and shows it again when it did, in place: the text keeps where it is scrolled
+   * to, a player or a document viewer is made again. An edit not yet saved stays as it is; saving
+   * it meets the runtime's "changed since" answer, as before. Called after `watchLoad`.
+   */
+  watchFile(): void {
+    effect(() => {
+      const client = this.#h.api();
+      const path = this.#h.relpath();
+      const kind = this.#h.kind();
+      const source = this.#h.byteSource();
+      const attachmentId = this.#h.attachment()?.id ?? null;
+      const target =
+        !client || !path || !source || kind === "directory" || !isInAppPreviewKind(kind)
+          ? null
+          : source === "attachment" && attachmentId
+            ? { attachmentId }
+            : { path };
+      const key = target ? `${kind}\u0000${JSON.stringify(target)}` : null;
+      if (key === this.#watchKey && client === this.#watchClient) return;
+      this.#watchKey = key;
+      this.#watchClient = client;
+      untrack(() => this.#watch(client, target));
+    });
+  }
+
+  #stopWatch(): void {
+    this.#watchGen += 1;
+    if (this.#watchTimer) clearTimeout(this.#watchTimer);
+    this.#watchTimer = null;
+    this.#watchAbort?.abort();
+    this.#watchAbort = null;
+  }
+
+  #watch(client: MessengerApi | null, target: { path: string } | { attachmentId: string } | null): void {
+    this.#stopWatch();
+    this.#baseline = null;
+    this.#againFailed = false;
+    this.#tried = null;
+    this.#tries = 0;
+    if (!client || !target) return;
+    const gen = this.#watchGen;
+    const every = client.kind === "local" ? WATCH_LOCAL_MS : WATCH_REMOTE_MS;
+    const tick = async () => {
+      this.#watchTimer = null;
+      if (gen !== this.#watchGen) return;
+      try {
+        await this.#poll(client, target, gen);
+      } finally {
+        if (gen === this.#watchGen) this.#watchTimer = setTimeout(() => void tick(), every);
+      }
+    };
+    this.#watchTimer = setTimeout(() => void tick(), every);
+  }
+
+  /** One ask: the file's hash now against the one on screen, and a read when they differ. */
+  async #poll(client: MessengerApi, target: { path: string } | { attachmentId: string }, gen: number): Promise<void> {
+    if (this.loading) return;
+    const abort = new AbortController();
+    this.#watchAbort = abort;
+    let now: string;
+    try {
+      now = (await client.fileStat(target, abort.signal)).etag;
+    } catch {
+      // Gone for a moment (an editor writes a new file and renames it over the old one), a large
+      // file still being written (`file_changing`), or a runtime too old to answer: what is on
+      // screen stays.
+      return;
+    }
+    if (gen !== this.#watchGen || this.loading || client !== this.#h.api()) return;
+    // The hash of the bytes on screen, when they are the whole file as it was read.
+    const shown = this.hashFresh && this.reducedFrom === null && !this.streamed ? this.loadedEtag : null;
+    const failing = this.missing || this.#againFailed;
+    if (failing) {
+      if (now === this.#tried && this.#tries >= 2) return;
+    } else {
+      const known = shown ?? this.#baseline;
+      if (known === null) {
+        this.#baseline = now;
+        return;
+      }
+      if (now === known) return;
+    }
+    if (untrack(() => this.#h.dirty?.() ?? false)) return;
+    if (now !== this.#tried) {
+      this.#tried = now;
+      this.#tries = 0;
+    }
+    this.#tries += 1;
+    this.#baseline = now;
+    await this.#readAgain(now);
+  }
+
+  /** The file on screen changed on disk (to hash `etag`): read it again, keeping what is shown until the new bytes are here. */
+  async #readAgain(etag: string): Promise<void> {
+    const path = untrack(() => this.#h.relpath());
+    const kind = untrack(() => this.#h.kind());
+    const source = untrack(() => this.#h.byteSource());
+    const att = untrack(() => this.#h.attachment());
+    await this.loadPreview(path, kind, source, att, { again: true, etag });
+  }
+
+  /** NSH: a read after a change on disk lands over an edit made meanwhile: it is dropped, and the edit stays. */
+  #editedMeanwhile(again: boolean): boolean {
+    return again && untrack(() => this.#h.dirty?.() ?? false);
+  }
+
   /** The pane is going away: whatever is still in flight belongs to a file that is gone. */
   destroy(): void {
     this.loadGen += 1;
+    this.#stopWatch();
     this.#endSlow();
     this.revoke();
     this.loadAbort?.abort();
@@ -262,23 +413,34 @@ export class ArtifactLoader {
     previewKind: ArtifactKind,
     source: ReturnType<typeof artifactByteSource>,
     att: Attachment | null,
+    /**
+     * NSH: `again`, the file on screen read again after it changed on disk (`watchFile`): what is
+     * shown stays, with no loading veil and no progress, until the new bytes are here, and a read
+     * that fails leaves it as it was, to be tried on the next ask. `etag` is the hash the watcher
+     * was just told: a viewer that reads the file itself needs no second whole-file read for it.
+     */
+    opts: { again?: boolean; etag?: string } = {},
   ): Promise<void> {
+    const again = opts.again === true;
     const api = this.#h.api();
     const gen = ++this.loadGen;
     if (this.mediaSource) this.revoke();
     this.loadAbort?.abort();
     this.loadAbort = null;
-    this.missing = false;
-    this.openHint = false;
-    this.original = null;
-    this.downloadNote = null;
-    this.progress = null;
-    // The last file's hash is not this one's. A clip streamed in pieces never gets one, and a
-    // spot picked on it must not be saved against the file shown before it.
-    this.hashFresh = false;
-    this.streamed = false;
-    this.reducedFrom = null;
-    this.originalProgress = null;
+    this.#againFailed = false;
+    if (!again) {
+      this.missing = false;
+      this.openHint = false;
+      this.original = null;
+      this.downloadNote = null;
+      this.progress = null;
+      // The last file's hash is not this one's. A clip streamed in pieces never gets one, and a
+      // spot picked on it must not be saved against the file shown before it.
+      this.hashFresh = false;
+      this.streamed = false;
+      this.reducedFrom = null;
+      this.originalProgress = null;
+    }
     if (!source || !api || previewKind === "directory" || !isInAppPreviewKind(previewKind)) {
       if (gen !== this.loadGen) return;
       this.#endSlow();
@@ -287,16 +449,21 @@ export class ArtifactLoader {
       this.#setText(null, null);
       return;
     }
-    this.loading = true;
-    this.#startSlow(gen);
+    if (!again) {
+      this.loading = true;
+      this.#startSlow(gen);
+    }
     const abort = new AbortController();
     this.loadAbort = abort;
     const size = previewKind === "image" && api.kind === "remote" ? ("preview" as const) : undefined;
-    this.progress = {
-      loaded: 0,
-      // The attachment's size is the original's, which is not what a copy will weigh.
-      total: !size && typeof att?.size === "number" && att.size > 0 ? att.size : null,
-    };
+    if (!again) {
+      this.progress = {
+        loaded: 0,
+        // The attachment's size is the original's, which is not what a copy will weigh.
+        total: !size && typeof att?.size === "number" && att.size > 0 ? att.size : null,
+      };
+    }
+    const target = source === "attachment" && att ? { attachmentId: att.id } : { path };
     try {
       const onProgress = (next: FileProgress) => {
         if (gen !== this.loadGen) return;
@@ -316,6 +483,7 @@ export class ArtifactLoader {
           this.revoke();
           this.mediaSource = stream;
           this.streamed = true;
+          this.missing = false;
           this.blobUrl = stream.url;
           this.blobPath = path;
           this.#setText(null, null);
@@ -328,10 +496,16 @@ export class ArtifactLoader {
       // while it was turned into a `data:` URL. The hash an annotation is saved against still comes,
       // after the file is up.
       const local = api.kind === "local" && this.#bytesFor !== path;
-      const onDisk =
+      let onDisk =
         local && (previewKind === "audio" || previewKind === "video" || previewKind === "image")
           ? untrack(() => this.#h.localFile?.(path) ?? null)
           : null;
+      // A picture the image view decoded by its path before it changed shows from its bytes, and so
+      // does one read again because it changed.
+      if (onDisk && previewKind === "image" && (again || !(await stillDecoded(api, onDisk, target, abort.signal)))) {
+        if (gen !== this.loadGen) return;
+        onDisk = null;
+      }
       const byViewer = local && !onDisk && untrack(() => this.#h.viewerFetches?.(path, previewKind, source, att) ?? false);
       if ((onDisk || byViewer) && api.kind === "local") {
         this.revoke();
@@ -341,19 +515,33 @@ export class ArtifactLoader {
           this.blobPath = path;
           this.progress = null;
           this.loading = false;
+          this.missing = false;
+          if (again) {
+            // The viewer reads the file itself: made again, it reads what is there now, whose hash
+            // the watcher was just told.
+            this.version += 1;
+            this.loadedEtag = opts.etag ?? this.loadedEtag;
+            this.hashFresh = opts.etag !== undefined;
+          }
         });
         this.#endSlow();
         this.#setText(null, null);
+        if (again && opts.etag !== undefined) return;
         if (byViewer) await new Promise((done) => setTimeout(done, HASH_AFTER_VIEWER_MS));
         if (gen !== this.loadGen) return;
-        const head = await localFileHead(api, source === "attachment" && att ? { attachmentId: att.id } : { path }, abort.signal);
+        const head = await localFileHead(api, target, abort.signal);
         if (gen !== this.loadGen) return;
         if (head.gone) {
+          if (again) {
+            this.#againFailed = true;
+            return;
+          }
           this.loadedKey = null;
           this.missing = true;
           return;
         }
         if (head.etag === null) return;
+        if (onDisk && previewKind === "image" && !decodedByPath.has(onDisk)) decodedByPath.set(onDisk, head.etag);
         batch(() => {
           this.loadedEtag = head.etag;
           this.hashFresh = true;
@@ -363,12 +551,22 @@ export class ArtifactLoader {
       // NSH: on this computer the bytes come in one read (`response.blob()`): following each chunk
       // for the progress bar copied every byte through the JS twice more, three seconds and
       // gigabytes for a 100 MB file, for a load that takes a moment.
-      const progress = api.kind === "local" ? undefined : onProgress;
+      const progress = api.kind === "local" || again ? undefined : onProgress;
       const blob =
         source === "attachment" && att
           ? await this.#h.api()!.getAttachmentBlob(att.id, progress, { signal: abort.signal, size })
           : await this.#h.api()!.getWorkspaceFileBlob(path, progress, { signal: abort.signal, size });
-      if (gen !== this.loadGen) return;
+      if (gen !== this.loadGen || this.#editedMeanwhile(again)) return;
+      // What the text on screen was read with: kept when an edit lands while the new text is decoded,
+      // so saving that edit still meets the runtime's "changed since".
+      const before = { etag: this.loadedEtag, original: this.original };
+      const keepEdit = () => {
+        if (!this.#editedMeanwhile(again)) return false;
+        this.loadedEtag = before.etag;
+        this.original = before.original;
+        return true;
+      };
+      this.missing = false;
       this.loadedEtag = etagForBlob(blob);
       this.hashFresh = true;
       this.reducedFrom = size ? originalSizeForBlob(blob) : null;
@@ -377,7 +575,7 @@ export class ArtifactLoader {
       if (previewKind === "text" || previewKind === "markdown" || previewKind === "svg") {
         const read = previewKind === "svg" ? { text: await blob.text(), encoding: "utf-8" as const } : decodeFileText(new Uint8Array(await blob.arrayBuffer()));
         const raw = read.text;
-        if (gen !== this.loadGen) return;
+        if (gen !== this.loadGen || keepEdit()) return;
         this.textEncoding = read.encoding;
         if (previewKind === "svg") {
           this.svgRaw = raw;
@@ -395,7 +593,7 @@ export class ArtifactLoader {
       }
       if (previewKind === "html") {
         const { text: raw, encoding } = decodeFileText(new Uint8Array(await blob.arrayBuffer()));
-        if (gen !== this.loadGen) return;
+        if (gen !== this.loadGen || keepEdit()) return;
         this.textEncoding = encoding;
         // The HTML view builds its own sandboxed blob from the text (and a picker, in annotate mode).
         this.#setText(raw, path);
@@ -411,8 +609,14 @@ export class ArtifactLoader {
       this.officeBlob = isOfficeKind(previewKind) ? blob : null;
       this.blobPath = path;
       this.#setText(null, null);
+      // A picture shows its new bytes as they come; a player or a document viewer is made again.
+      if (again && previewKind !== "image") this.version += 1;
     } catch {
       if (gen !== this.loadGen) return;
+      if (again) {
+        this.#againFailed = true;
+        return;
+      }
       this.loadedKey = null;
       this.missing = true;
     } finally {
@@ -491,6 +695,31 @@ export class ArtifactLoader {
     this.loadedKey = null;
     this.missing = true;
   }
+}
+
+/**
+ * NSH: whether the picture the image view may hold decoded under `abs` is still the file there:
+ * never shown by its path, or shown with the hash it has now. A runtime too old to say reads as no,
+ * and the picture is shown from its bytes.
+ */
+async function stillDecoded(
+  api: MessengerApi,
+  abs: string,
+  target: { path: string } | { attachmentId: string },
+  signal: AbortSignal,
+): Promise<boolean> {
+  const was = decodedByPath.get(abs);
+  if (was === undefined) return true;
+  try {
+    return (await api.fileStat(target, signal)).etag === was;
+  } catch {
+    return false;
+  }
+}
+
+/** Tests: forget which pictures were shown by their paths. */
+export function forgetDecodedPictures(): void {
+  decodedByPath.clear();
 }
 
 /**

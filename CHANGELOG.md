@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### An open preview follows its file
+
+- After a Bot, another editor or `git` changed a file, opening it again still showed the old content: pressing the same file in the same preview did not read it again, and a picture the app window shows by its path stayed as it first opened for as long as the app ran. An open preview now asks about every second whether its file changed (about every three on a phone) and shows the new content when it did, with no loading notice. The source view stays where it was scrolled to and takes the change as one edit that ⌘Z undoes; a player, a PDF or an Office file opens again; a changed picture is shown from the file's content.
+- A large file still being written (an exported video, a growing log) is shown again once it has been quiet for about two seconds. With unsaved changes or a note being drawn the preview keeps what it shows, and saving says the file changed elsewhere, as before.
+
 ### The file tree lists folders and files whose names start with a dot
 
 - The workspace's and a project directory's file trees now list folders and files whose names start with a dot, such as `.git`, `.scratch` and `.env`, leaving out only `node_modules` and the Finder's `.DS_Store`. Picking a workspace folder on a phone still leaves them out, and a Bot's own listings and file lookups still skip them.

@@ -4,7 +4,8 @@
  * overwrites), so the files are message attachments of a session of this story's own (the way
  * `files-pdf` does), and the preview is the caller: `story-make-<kind>` uploads one and opens it,
  * the others join `siblings`, so the tree lists them. An attachment's copy sits in the workspace
- * (`inbox/`), so saving an edit really overwrites it; `story-read` reads that file back.
+ * (`inbox/`), so saving an edit really overwrites it; `story-read` reads that file back, and
+ * `story-rewrite` changes it on disk behind the preview's back, as a Bot's edit would.
  * `story-clean` takes the session away again. One part shows at a time (`story-show-<part>`): preview, workspace, parts.
  * `story-make-project` makes a project session (named "artifacts", so `story-clean` takes it away) on
  * the directory the tests seed (`host.params.projectDir`) and opens its `src/main.py`;
@@ -132,6 +133,23 @@ export default function Artifacts() {
     }
   };
 
+  /**
+   * The file on screen changed on disk behind the preview's back, as a Bot's edit would: its
+   * heading renamed (`# Notes` → `# Rewritten`) and a line added at its end.
+   */
+  const rewrite = async () => {
+    const att = current();
+    const client = runtime.client;
+    if (!att || !client) return;
+    try {
+      const text = await (await client.getWorkspaceFileBlob(att.workspace_relpath)).text();
+      await client.putWorkspaceFile(att.workspace_relpath, `${text.replace("# Notes", "# Rewritten")}// changed on disk\n`);
+      state.set("rewritten");
+    } catch (e) {
+      state.set(`rewrite-error:${String(e)}`);
+    }
+  };
+
   /** The project session's file the tests seed, outside the workspace. */
   const projectDir = String((host.params as { projectDir?: string }).projectDir ?? "");
   const projectFile = projectDir ? `${projectDir}/src/main.py` : "";
@@ -174,6 +192,7 @@ export default function Artifacts() {
         {(Object.keys(SAMPLES) as Sample[]).map((which) => button(`story-make-${which}`, which, () => void upload(which)))}
         {button("story-clean", "clean", () => void clean())}
         {button("story-read", "read", () => void read())}
+        {button("story-rewrite", "rewrite", () => void rewrite())}
         {button("story-make-project", "make project", () => void makeProject())}
         {button("story-read-project", "read project", () => void readProject())}
         {button("story-project-elsewhere", "elsewhere", () => {

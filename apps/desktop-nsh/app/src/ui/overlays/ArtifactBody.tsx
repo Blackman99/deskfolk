@@ -301,6 +301,8 @@ export function ArtifactBody(props: {
       );
     }
     if ((props.kind === "audio" || props.kind === "video") && loader().shownBlob) {
+      // The file changed on disk (`version`): a new player opens it as it is now.
+      void loader().version;
       return (
         <MediaAnnotator
           src={mediaSource({
@@ -329,6 +331,8 @@ export function ArtifactBody(props: {
       );
     }
     if (isOfficeKind(props.kind)) {
+      // As the player: a new viewer reads the changed file.
+      void loader().version;
       return (
         <If when={(loader().shownOffice || loader().shownByViewer) && !loader().loading && (officeSource() || officeBase64() !== null)}>
           <OfficeViewer
@@ -340,6 +344,8 @@ export function ArtifactBody(props: {
       );
     }
     if (props.kind === "pdf" && loader().shownPdf) {
+      // As the player: a new viewer reads the changed file.
+      void loader().version;
       return (
         <PdfViewer
           source={pdfSource()}

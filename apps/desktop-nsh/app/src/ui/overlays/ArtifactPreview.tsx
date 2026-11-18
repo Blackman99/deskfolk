@@ -163,8 +163,10 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
       kind === "pdf"
         ? pdfSourceOf({ relpath: path, byteSource: source, attachment: att }) !== null
         : isOfficeKind(kind) && officeSourceOf({ relpath: path, byteSource: source, attachmentId: att?.id, local: api()?.kind === "local" }) !== null,
+    // An unsaved edit, or a note being drawn: a region drawn on the file as shown belongs to it.
+    dirty: () => dirtyOf() || annot.pendingDraft !== null,
   });
-  const annot = new ArtifactAnnotations({
+  const annot: ArtifactAnnotations = new ArtifactAnnotations({
     relpath,
     mode,
     target: () => props.target ?? null,
@@ -292,6 +294,8 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
   };
 
   loader.watchLoad();
+  // The file on screen follows the disk: a Bot or another editor changing it shows here.
+  loader.watchFile();
   treeSrc.watchWorkspace();
   cleanup(() => {
     loader.destroy();

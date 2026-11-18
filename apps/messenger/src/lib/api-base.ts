@@ -90,6 +90,7 @@ import type {
   Ticket,
   Turn,
   WorkAnswerResult,
+  WorkspaceFileStat,
   WorkspaceTrashResult,
   WorkspaceTreePage,
 } from "@real-bot/protocol";
@@ -635,6 +636,14 @@ export abstract class ApiBase<Row extends PendingRow> {
   async workspaceTree(path = ""): Promise<WorkspaceTreePage> {
     const query = path ? `?path=${encodeURIComponent(path)}` : "";
     return this.get<WorkspaceTreePage>(`/v1/workspace/tree${query}`);
+  }
+
+  /** What a file is now, without its bytes: an open preview polls it to see whether the file changed. */
+  async fileStat(target: { path: string } | { attachmentId: string }, signal?: AbortSignal): Promise<WorkspaceFileStat> {
+    return this.get<WorkspaceFileStat>(
+      "attachmentId" in target ? `/v1/attachments/${target.attachmentId}/stat` : `/v1/workspace/stat?path=${encodeURIComponent(target.path)}`,
+      signal,
+    );
   }
 
   async putWorkspaceFile(path: string, content: string, ifMatch?: string | null): Promise<string | null> {

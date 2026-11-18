@@ -195,6 +195,7 @@ All routes reject unknown body/query fields and wrong types **before** effects/r
 | attachments `/:id/content` | GET | optional size `thumb`\|`preview` |
 | sessions `/:id/messages` | GET | query cursor exact `ISO-UTC-millisecond|ULID` from the shared history response, limit decimal1..200 |
 | workspace/tree; workspace/file | GET | query path string (required for file; workspace-relative, or an absolute / `~` host path read where it is); file also optional size `thumb`\|`preview` or range string. The tree lists names starting with a dot (`.git`, `.env`) and leaves out `node_modules` and `.DS_Store` |
+| workspace/stat; attachments `/:id/stat` | GET | stat: query path string (required, read as workspace/file reads it); attachments: no query. JSON `{etag, size, modified_at}`: the file's hash as the file GET's ETag, without its bytes (kept by size, times and inode, so polling an unchanged file reads none of it). A file over 8 MB modified less than 2 s ago answers 409 `file_changing` instead of being hashed on every poll; it is hashed once it is quiet. An open preview polls it (every 3 s through the relay) and reads the file again when the ETag moves |
 | host/tree | GET | query path string (absolute host directory; remote-only); leaves out names starting with a dot |
 | events/catchup | GET | required event_instance_id32hex and after_seq nonnegative safe decimal |
 | approvals; search | GET | status=`pending`; required q string, respectively |
