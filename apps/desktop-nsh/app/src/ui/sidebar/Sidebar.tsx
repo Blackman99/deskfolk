@@ -92,7 +92,7 @@ export function Sidebar(props: {
   /** Whether the workbench is on screen, so the tools open as its tabs (a tablet on a remote connection has none). */
   workbench: boolean;
   onNewTerminal: () => void;
-  /** The running terminals no tab shows, for the tools' 接回 rows (`ToolsMenu`). */
+  /** The running terminals no tab shows, for the tools' 可接回 rows under 终端 (`ToolsTerminalMenu`). */
   reattachTerminals?: TerminalToReattach[];
   onReattachTerminal?: (id: string) => void;
   onOpenSettings: () => void;

@@ -52,6 +52,7 @@ shellTest("the page reattaches to the shell the desktop has open, and leaving it
   await desk.waitFor(`id:session-${seeded.writerDirect}`, { timeout: 15_000 });
   await desk.press("id:tools-toggle");
   await desk.press("id:tools-terminal");
+  await desk.press("id:tools-terminal-new");
   await desk.waitFor("id:terminal-head", { timeout: 10_000 });
   await run(desk, "echo desk-$((40+2))");
   await desk.waitFor("text:desk-42", { timeout: 10_000 });

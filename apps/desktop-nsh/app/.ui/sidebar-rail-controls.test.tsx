@@ -135,8 +135,9 @@ test("a phone's tools are a sheet whose pages include the workspace and the scre
   expect(app.shows("id:tools-workspace")).toBe(true);
   expect(app.shows("id:tools-screen")).toBe(true);
   expect(app.shows(`id:tools-routines >> text:${t.calendar.open}`)).toBe(true);
-  // The terminal page reattaches by itself, so the sheet lists no 接回 rows.
-  expect(app.texts().some((text) => text.startsWith("接回 · "))).toBe(false);
+  // The terminal page reattaches by itself, so 终端 has no level of its own here.
+  expect(app.shows(`id:tools-terminal >> text:${t.terminal.title}`)).toBe(true);
+  expect(app.count("id:tools-reattach")).toBe(0);
   await app.press("id:tools-screen");
   await app.waitUntil(() => log(app).includes("screen"));
   await app.waitFor("id:sidebar-tools-menu", { state: "gone" });

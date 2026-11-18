@@ -69,10 +69,10 @@ const HOLDS = [
 const log = signal<string[]>([]);
 const say = (line: string) => log.set([...log(), line]);
 
-/** Running terminals no tab shows: the tools list them under the new terminal, on the workbench only. */
+/** Running terminals no tab shows: the tools list them under 可接回 in 终端's level, on the workbench only. */
 const reattach = signal([
-  { id: "term-a", name: "workspace" },
-  { id: "term-b", name: "real-bot · 已结束" },
+  { id: "term-a", name: "workspace", cwd: "/Users/dev/workspace" },
+  { id: "term-b", name: "real-bot · 已结束", cwd: "/Users/dev/my-projects/real-bot" },
 ]);
 
 export default function SidebarRailStory() {

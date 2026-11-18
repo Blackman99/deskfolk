@@ -52,7 +52,7 @@ export function SidebarRail(props: {
   /** Whether the workbench is on screen; a tablet on a remote connection folds its list without one. */
   workbench: boolean;
   onNewTerminal: () => void;
-  /** The running terminals no tab shows, for the tools' 接回 rows (`ToolsMenu`). */
+  /** The running terminals no tab shows, for the tools' 可接回 rows under 终端 (`ToolsTerminalMenu`). */
   reattachTerminals?: TerminalToReattach[];
   onReattachTerminal?: (id: string) => void;
   /** The archived list is a view of the full list; this opens the list already on it. */

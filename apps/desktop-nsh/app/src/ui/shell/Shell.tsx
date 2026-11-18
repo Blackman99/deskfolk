@@ -104,10 +104,10 @@ function ShellBody(props: { s: ShellState }) {
   /** A conversation pulled out of the roster onto the workbench: only where the workbench is. */
   const sessionDrag = createSessionDrag({ source: workbench.sessionDragSource, titleOf: s.titleOf });
   /**
-   * The tools' 接回 rows: the running terminals no tab shows, named as their tabs would be. Read
-   * by the menu only while it is open; the list changes with every layout commit.
+   * The tools' 可接回 rows under 终端: the running terminals no tab shows, named as their tabs would
+   * be. Read only while that level is open; the list changes with every layout commit.
    */
-  const reattachTerminals = () => workbench.untabbedTerminals.map((row) => ({ id: row.id, name: workbench.terminalName(row) }));
+  const reattachTerminals = () => workbench.untabbedTerminals.map((row) => ({ id: row.id, name: workbench.terminalName(row), cwd: row.cwd }));
   /** A page covers the roster on a phone while one is open. */
   const pageOpen = () => Boolean(runtime.routinesOpen || runtime.spendOpen || runtime.terminalOpen || runtime.screenOpen || s.selected());
   /** A phone's page covers the roster: its avatars' loops hold still under it (`LoopsHeld`). */

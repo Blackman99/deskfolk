@@ -14,13 +14,14 @@ const shellTest = seeded.pty ? test : test.skip;
 /** A tab's ×, by its name (`pane.closeTab`). */
 const CLOSE_TAB = "label:关闭标签页";
 
-/** A new terminal tab from the tools, as you would open one. */
+/** A new terminal tab from the tools (工具 › 终端 › 新建终端), as you would open one. */
 async function newTerminal(app?: App): Promise<App> {
   const opened = app ?? (await openApp());
   const before = opened.count("id:pane-tab-icon-terminal");
   await opened.waitFor(`id:session-${seeded.writerDirect}`, { timeout: 15_000 });
   await opened.press("id:tools-toggle");
   await opened.press("id:tools-terminal");
+  await opened.press("id:tools-terminal-new");
   // A second one opens as a tab beside the first, so it is the tabs that count up.
   await opened.waitUntil(() => opened.count("id:pane-tab-icon-terminal") === before + 1, { timeout: 10_000 });
   await opened.waitFor("id:terminal-head", { timeout: 10_000 });
@@ -88,13 +89,13 @@ shellTest("the tools offer a shell no tab shows, never a tab's own, and reattach
   await phone.keyboard.press("enter");
   await phone.waitFor("text:phone-42", { timeout: 10_000 });
 
-  // The desktop's own tab is a second shell; only the phone's is offered.
+  // The desktop's own tab is a second shell; only the phone's is offered, under 终端.
   const app = await newTerminal();
-  const offered = () => app.texts().filter((text) => text.startsWith("接回 · "));
   await app.press("id:tools-toggle");
-  await app.waitFor("id:sidebar-tools-menu");
-  await app.waitUntil(() => offered().length === 1, { timeout: 10_000 });
-  await app.press(`id:sidebar-tools-menu >> text:${offered()[0]}`);
+  await app.press("id:tools-terminal");
+  await app.waitFor("id:tools-terminal-menu");
+  await app.waitUntil(() => app.count("id:tools-reattach") === 1, { timeout: 10_000 });
+  await app.press("id:tools-reattach");
   await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
   // A tab of its own, with the phone's screen read back; no shell was started for it.
   await app.waitUntil(() => app.count("id:pane-tab-icon-terminal") === 2, { timeout: 10_000 });
@@ -102,9 +103,11 @@ shellTest("the tools offer a shell no tab shows, never a tab's own, and reattach
 
   // Both have tabs now, so the tools offer neither.
   await app.press("id:tools-toggle");
-  await app.waitFor("id:sidebar-tools-menu");
-  expect(app.shows(`id:tools-terminal >> text:新建终端`)).toBe(true);
-  expect(offered()).toEqual([]);
+  await app.press("id:tools-terminal");
+  await app.waitFor("id:tools-terminal-none");
+  expect(app.count("id:tools-reattach")).toBe(0);
+  await app.keyboard.press("escape");
+  await app.waitFor("id:tools-terminal-menu", { state: "gone" });
   await app.keyboard.press("escape");
   await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
 

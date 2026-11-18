@@ -1,14 +1,19 @@
 /**
- * The 工具 popover (`ToolsMenu.svelte`): routines, spend, usage, a terminal (on the desktop's
- * workbench a new one, then 接回 for each running session no tab shows), the Mac's screen on a
+ * The 工具 popover (`ToolsMenu.svelte`): routines, spend, usage, a terminal, the Mac's screen on a
  * phone that can reach it, and — after a line — the archived sessions. One menu for every button
  * that opens it: the list's footer, the phone's search row, and the rail the list folds into. The
  * button stays with its owner (`anchor` is its ref); this hangs off it, walks with the arrow keys,
  * closes on Escape, Tab or a press elsewhere, and hands focus back to the button. On a phone
  * (`phone`) it is a sheet from the bottom (`BottomSheet`) instead; the desktop's folded rail keeps
  * its flyout, however narrow the window.
+ *
+ * On the desktop's workbench 终端 is a level of its own (`ToolsTerminalMenu`): a new terminal, and
+ * the running ones no tab shows to reattach to. It opens beside the row a level at a time, as the
+ * app's other cascades do: pointed at for a moment (`HOVER_INTENT`), pressed, or → on the row; a
+ * row pointed at for as long closes it again. Only its rows act. A page (`pages`) has no such
+ * level: its 终端 opens the terminal page, which reattaches by itself.
  */
-import { effect, Overlay, Text, View, type JSX, type ViewRef } from "nsh";
+import { effect, keymap, Overlay, signal, Text, View, type JSX, type ViewRef } from "nsh";
 import { copy } from "../../runtime";
 import { screenCopy } from "../../m/copy";
 import { spendCopyFor } from "../../m/spend/spend-copy";
@@ -17,10 +22,12 @@ import { Icon, type IconName } from "../Icon";
 import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";
 import { rovingMenu } from "./menu-roving";
+import { ToolsTerminalMenu, type TerminalToReattach } from "./ToolsTerminalMenu";
 
+export type { TerminalToReattach };
 export type ToolsCurrent = { routines?: boolean; spend?: boolean; usage?: boolean; roles?: boolean; terminal?: boolean; screen?: boolean; workspace?: boolean; archived?: boolean };
-/** A running terminal session to reattach to: its id, and its name as its tab would have it. */
-export type TerminalToReattach = { id: string; name: string };
+/** How long the pointer rests on a row before the 终端 level opens or closes for it. */
+const HOVER_INTENT = 90;
 
 export function ToolsMenu(props: {
   locale: "zh" | "en";
@@ -52,8 +59,9 @@ export function ToolsMenu(props: {
   onOpenTerminal: () => void;
   /**
    * The sessions no workbench tab shows — one the phone started, one Reset Layout left — listed
-   * under the new terminal as 接回 rows; a tab's own shell is never one of them. Only on the
-   * desktop's workbench (`pages` false): a page reattaches by itself.
+   * under 可接回 in the 终端 level; a tab's own shell is never one of them. With
+   * `onReattachTerminal`, and only on the desktop's workbench (`pages` false), 终端 is that level;
+   * a page reattaches by itself.
    */
   reattachTerminals?: TerminalToReattach[];
   onReattachTerminal?: ((id: string) => void) | null;
@@ -66,20 +74,51 @@ export function ToolsMenu(props: {
   onOpenArchived: () => void;
 }) {
   const current = (): ToolsCurrent => props.current ?? {};
-  /** The 接回 rows: the desktop's workbench only, and read only while the menu is open. */
-  const reattachable = (): TerminalToReattach[] => (props.open && !props.pages && props.onReattachTerminal ? props.reattachTerminals ?? [] : []);
+  /** 终端 is a level of its own: the desktop's workbench, with somewhere to reattach to. */
+  const cascade = () => !props.phone && !props.pages && Boolean(props.onReattachTerminal);
+  /** The 终端 level: shut, opened by the pointer (the keyboard stays on this menu), or holding the keyboard. */
+  const sub = signal<null | "pointer" | "keys">(null);
+  const terminalRow = signal<ViewRef | null>(null);
+  /** The row the keyboard is on, for →. */
+  let focusedKey: string | null = null;
+  let intent: ReturnType<typeof setTimeout> | undefined;
+  const settle = (then: (() => void) | null) => {
+    clearTimeout(intent);
+    intent = then ? setTimeout(then, HOVER_INTENT) : undefined;
+  };
   const keys = () => [
     ...(props.onOpenWorkspace ? ["workspace"] : []),
     "routines",
     "spend",
     ...(props.onOpenUsage ? ["usage"] : []),
     "terminal",
-    ...reattachable().map((row) => `reattach-${row.id}`),
     ...(props.onOpenScreen ? ["screen"] : []),
     ...(props.onOpenRoles ? ["roles"] : []),
     "archived",
   ];
-  const roving = rovingMenu({ open: () => props.open && !props.phone, keys, onTab: () => close() });
+  const roving = rovingMenu({ open: () => props.open && !props.phone && sub() !== "keys", keys, onTab: () => close() });
+
+  // Shut with the menu, and nothing left to fire after it.
+  effect(() => {
+    if (props.open) return;
+    settle(null);
+    sub.set(null);
+  });
+
+  // → on 终端 goes into its level.
+  effect(() => {
+    if (!props.open || !cascade() || sub() === "keys") return;
+    return keymap.bind("right", () => {
+      if (focusedKey === "terminal") sub.set("keys");
+    }, { when: "always" });
+  });
+
+  /** Out of the 终端 level, the keyboard back on its row. */
+  function back(): void {
+    settle(null);
+    sub.set(null);
+    terminalRow()?.focus();
+  }
 
   function close(): void {
     props.onOpenChange(false);
@@ -105,19 +144,31 @@ export function ToolsMenu(props: {
   const big = () => props.phone || narrowWindow();
 
   /** One entry: a sheet row on a phone, a menu row over the button elsewhere. */
-  const entry = (key: string, icon: IconName, label: () => string, on: () => boolean | undefined, action: () => void, extra?: () => JSX.Element) =>
+  const entry = (key: string, icon: IconName, label: () => string, on: () => boolean | undefined, action: () => void, extra?: () => JSX.Element, parent?: boolean) =>
     props.phone ? (
       <SheetItem role="menuitem" testID={`tools-${key}`} icon={icon} label={label()} active={on()} onPress={() => choose(action)} trailing={extra?.()} />
     ) : (
       <View
         role="menuitem"
         testID={`tools-${key}`}
-        ref={roving.ref(key)}
+        ref={(node: ViewRef) => {
+          roving.ref(key)(node);
+          if (key === "terminal") terminalRow.set(node);
+        }}
         accessibilityLabel={label()}
-        accessibilityState={{ selected: on() === true }}
-        onFocus={() => roving.focused(key)}
-        onBlur={() => roving.blurred(key)}
-        onPress={() => choose(action)}
+        accessibilityState={parent ? { hasPopup: true, expanded: sub() !== null } : { selected: on() === true }}
+        onFocus={() => {
+          focusedKey = key;
+          roving.focused(key);
+        }}
+        onBlur={() => {
+          if (focusedKey === key) focusedKey = null;
+          roving.blurred(key);
+        }}
+        // Resting on a row opens 终端's level for 终端 and closes it for any other.
+        onMouseEnter={() => (cascade() ? settle(parent ? () => sub.set(sub() ?? "pointer") : () => sub.set(null)) : undefined)}
+        onMouseLeave={() => settle(null)}
+        onPress={() => (parent ? sub.set("keys") : choose(action))}
         class={`cursor-pointer select-none flex-row items-center gap-[10px] shrink-0 px-[10px] rounded-(--radius-sm) hover:bg-line-subtle focus:bg-line-subtle ${big() ? "min-h-[44px]" : "min-h-[38px]"}`}
       >
         <Icon name={icon} class="tint-ink-muted shrink-0" />
@@ -136,15 +187,20 @@ export function ToolsMenu(props: {
       <If when={props.onOpenUsage}>
         {(open) => entry("usage", "gauge", () => copy().usage.open, () => current().usage, () => open()())}
       </If>
-      {entry("terminal", "terminal", () => (props.pages ? copy().terminal.title : copy().terminal.newTab), () => current().terminal, props.onOpenTerminal)}
-      <Each of={reattachable()} key={(row) => row.id}>
-        {(row) => {
-          // The row's key: it stays the same for the row's life, and the press runs after the
-          // menu has closed and taken the row away.
-          const id = row().id;
-          return entry(`reattach-${id}`, "terminal", () => copy().terminal.reattach(row().name), () => false, () => props.onReattachTerminal?.(id));
-        }}
-      </Each>
+      <If
+        when={cascade()}
+        else={entry("terminal", "terminal", () => (props.pages ? copy().terminal.title : copy().terminal.newTab), () => current().terminal, props.onOpenTerminal)}
+      >
+        {entry(
+          "terminal",
+          "terminal",
+          () => copy().terminal.title,
+          () => sub() !== null,
+          props.onOpenTerminal,
+          () => <Icon name="chevron-right" size={12} class="tint-ink-muted shrink-0" />,
+          true,
+        )}
+      </If>
       <If when={props.onOpenScreen}>
         {(open) => entry("screen", "monitor", () => screenCopy(copy(), props.screenHost ?? "mac").title, () => current().screen, () => open()())}
       </If>
@@ -197,6 +253,21 @@ export function ToolsMenu(props: {
               style={{ boxShadow: shadow("lg") }}
             >
               {entries()}
+              <If when={sub() !== null && cascade() ? terminalRow() : null}>
+                {(row) => (
+                  <ToolsTerminalMenu
+                    anchor={row()}
+                    big={big()}
+                    keys={sub() === "keys"}
+                    terminals={props.reattachTerminals ?? []}
+                    onNew={() => choose(props.onOpenTerminal)}
+                    onReattach={(id) => choose(() => props.onReattachTerminal?.(id))}
+                    onBack={back}
+                    onTab={close}
+                    onMouseEnter={() => settle(null)}
+                  />
+                )}
+              </If>
             </View>
           </Overlay>
         )}

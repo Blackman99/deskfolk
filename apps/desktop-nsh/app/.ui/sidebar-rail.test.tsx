@@ -177,7 +177,11 @@ test("the rail's tools open a menu out to the side that closes on Escape, a pres
   await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
   await app.press("id:rail-tools");
   await app.waitFor("id:sidebar-tools-menu");
+  // 终端 is a level of its own: its press opens it, and only its rows act.
   await app.press("id:tools-terminal");
+  await app.waitFor("id:tools-terminal-menu");
+  expect(log(app)).not.toContain("rail-terminal");
+  await app.press("id:tools-terminal-new");
   await app.waitUntil(() => log(app).includes("rail-terminal"));
   await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
   await app.press("id:rail-tools");
@@ -186,27 +190,48 @@ test("the rail's tools open a menu out to the side that closes on Escape, a pres
   await app.waitUntil(() => log(app).includes("rail-archived"));
 });
 
-test("on the workbench the tools offer the terminals no tab shows under a new one; one picked leaves the list", async () => {
+test("on the workbench 终端 opens a level beside it: a new terminal, then the ones no tab shows to reattach", async () => {
   const app = await open();
   await app.press("id:rail-tools");
   await app.waitFor("id:sidebar-tools-menu");
-  expect(app.shows(`id:tools-terminal >> text:${t.terminal.newTab}`)).toBe(true);
-  expect(app.shows(`id:tools-reattach-term-a >> text:${t.terminal.reattach("workspace")}`)).toBe(true);
-  expect(app.shows(`id:tools-reattach-term-b >> text:${t.terminal.reattach("real-bot · 已结束")}`)).toBe(true);
-  await app.press("id:tools-reattach-term-a");
+  expect(app.shows(`id:tools-terminal >> text:${t.terminal.title}`)).toBe(true);
+  expect(app.shows("id:tools-terminal-menu")).toBe(false);
+  // Pointed at, it opens; pointing at another row closes it again, the menu staying.
+  await app.hover("id:tools-terminal");
+  await app.waitFor("id:tools-terminal-menu");
+  expect(app.shows(`id:tools-terminal-new >> text:${t.terminal.newTab}`)).toBe(true);
+  expect(app.texts()).toContain(t.pane.runningTerminals);
+  expect(app.count("id:tools-reattach")).toBe(2);
+  expect(app.shows("id:tools-reattach >> text:workspace")).toBe(true);
+  expect(app.shows("id:tools-reattach >> text:real-bot · 已结束")).toBe(true);
+  await app.hover("id:tools-spend");
+  await app.waitFor("id:tools-terminal-menu", { state: "gone" });
+  expect(app.shows("id:sidebar-tools-menu")).toBe(true);
+  // Escape closes the level first, then the menu.
+  await app.press("id:tools-terminal");
+  await app.waitFor("id:tools-terminal-menu");
+  await app.keyboard.press("escape");
+  await app.waitFor("id:tools-terminal-menu", { state: "gone" });
+  expect(app.shows("id:sidebar-tools-menu")).toBe(true);
+  // A row reattaches and closes it all; that one has a tab now, so it is no longer offered.
+  await app.press("id:tools-terminal");
+  await app.press("id:tools-reattach >> text:workspace");
   await app.waitUntil(() => log(app).includes("rail-reattach:term-a"));
   await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
-  // Reattached, it has a tab, so the tools no longer offer it; the other one is still there.
   await app.press("id:rail-tools");
   await app.waitFor("id:sidebar-tools-menu");
-  expect(app.shows("id:tools-reattach-term-a")).toBe(false);
-  expect(app.shows("id:tools-reattach-term-b")).toBe(true);
-  await app.press("id:tools-reattach-term-b");
+  await app.press("id:tools-terminal");
+  await app.waitFor("id:tools-terminal-menu");
+  expect(app.count("id:tools-reattach")).toBe(1);
+  await app.press("id:tools-reattach");
   await app.waitUntil(() => log(app).includes("rail-reattach:term-b"));
-  await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
+  // None left: the level says so, under its new terminal.
   await app.press("id:rail-tools");
   await app.waitFor("id:sidebar-tools-menu");
-  expect(app.texts().some((text) => text.startsWith("接回 · "))).toBe(false);
+  await app.press("id:tools-terminal");
+  await app.waitFor("id:tools-terminal-none");
+  expect(app.count("id:tools-reattach")).toBe(0);
+  expect(app.shows("id:tools-terminal-new")).toBe(true);
 });
 
 test("without a workbench the tools name pages and a new terminal is the runtime's own", async () => {
@@ -217,9 +242,9 @@ test("without a workbench the tools name pages and a new terminal is the runtime
   await app.waitFor("id:sidebar-tools-menu");
   expect(app.shows(`id:tools-terminal >> text:${t.terminal.title}`)).toBe(true);
   expect(app.shows(`id:tools-routines >> text:${t.calendar.open}`)).toBe(true);
-  // A page reattaches by itself: no 接回 rows here.
-  expect(app.texts().some((text) => text.startsWith("接回 · "))).toBe(false);
+  // A page reattaches by itself: 终端 opens it, with no level of its own.
   await app.press("id:tools-terminal");
+  expect(app.shows("id:tools-terminal-menu")).toBe(false);
   await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
   expect(log(app)).not.toContain("rail-terminal");
 });
