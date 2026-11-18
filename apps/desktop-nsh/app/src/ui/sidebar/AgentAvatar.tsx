@@ -4,7 +4,7 @@
  * run's status dot on its corner where a Bot's avatar carries its own. The box is the avatar's full
  * size, so the text and the row's height stay a Bot's.
  */
-import { computed, createMotion, effect, token, View } from "nsh";
+import { cleanup, computed, createMotion, effect, token, View } from "nsh";
 import type { ProjectAgent } from "@real-bot/protocol";
 import type { SessionStatusResult } from "../../m/sidebar/session-status";
 import { LoopsHeld } from "../interface/motion";
@@ -48,8 +48,9 @@ export function AgentAvatar(props: {
 
   const pulse = createMotion();
   effect(() => {
-    if (pulsing()) void pulse.play({ duration: 1000, iterations: "infinite", keyframes: { opacity: [0.35, 1, 0.35], scale: [0.85, 1.15, 0.85] } });
-    else pulse.reset();
+    if (!pulsing()) return void pulse.reset();
+    void pulse.play({ duration: 1000, iterations: "infinite", keyframes: { opacity: [0.35, 1, 0.35], scale: [0.85, 1.15, 0.85] } });
+    cleanup(() => pulse.reset());
   });
 
   return (

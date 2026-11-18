@@ -3,7 +3,7 @@
  * own and acts out the Bot's status), you a circle, and a group's members overlap as heads, up to
  * three and a "+N" for the rest. A status dot sits at the corner when the Bot has something to say.
  */
-import { Image, Text, View, createMotion, effect, signal, token, type ViewStyle } from "nsh";
+import { Image, Text, View, cleanup, createMotion, effect, signal, token, type ViewStyle } from "nsh";
 import type { Bot, SessionSummary } from "@real-bot/protocol";
 import { botAvatarColor, compositeAvatarLayout, isFolkAvatar, sessionAvatars } from "../m/avatar";
 import { folkMotion } from "../m/folk-motion";
@@ -108,6 +108,7 @@ export function SessionAvatar(props: {
     const s = status();
     if (!held() && (s?.isBusy || s?.kind === "running" || s?.kind === "replying")) {
       void pulse.play({ duration: 1000, iterations: "infinite", keyframes: { opacity: [0.35, 1, 0.35], scale: [0.85, 1.15, 0.85] } });
+      cleanup(() => pulse.reset());
     } else pulse.reset();
   });
 

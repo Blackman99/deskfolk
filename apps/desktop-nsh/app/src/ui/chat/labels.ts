@@ -1,5 +1,5 @@
 /** The words and colours the chat headers and chips share: roster and status labels from the copy, status inks. */
-import { createMotion, effect, token, type Motion } from "nsh";
+import { cleanup, createMotion, effect, token, type Motion } from "nsh";
 import { reduceMotion } from "../interface/motion";
 import type { StatusLabels } from "../../m/sidebar/session-status";
 import type { RosterLabels } from "../../m/sidebar/session-title";
@@ -72,12 +72,18 @@ export function statusColor(kind: string): string {
   }
 }
 
-/** A motion that breathes (opacity 1 to `low` and back) while `on()` holds; still with reduced motion. */
+/**
+ * A motion that breathes (opacity 1 to `low` and back) while `on()` holds and its component is
+ * there; still with reduced motion. Make it where the view it moves is made, or give `on` the
+ * condition that view shows under: a loop no view binds still steps the animation graph every
+ * frame, and kept the page drawing frames while nothing moved.
+ */
 export function pulseMotion(on: () => boolean, duration = 1800, low = 0.35): Motion {
   const m = createMotion();
   effect(() => {
-    if (on() && !reduceMotion()) void m.play({ duration, iterations: "infinite", direction: "alternate", keyframes: { opacity: [1, low] } });
-    else m.reset();
+    if (!on() || reduceMotion()) return void m.reset();
+    void m.play({ duration, iterations: "infinite", direction: "alternate", keyframes: { opacity: [1, low] } });
+    cleanup(() => m.reset());
   });
   return m;
 }

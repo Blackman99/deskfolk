@@ -73,8 +73,11 @@ export function PaneChatBar(props: {
   const width = signal(1000);
   const roomy = settled(() => width() > 560);
   const wide = settled(() => width() > 420);
-  const pulse = pulseMotion(() => true, 1800);
-  const Pulse = (p: { fill: string }) => <View accessible={false} class={`w-[6px] h-[6px] rounded-full ${p.fill}`} style={{ opacity: pulse.opacity }} />;
+  /** Breathes while it shows, and stops with it. */
+  const Pulse = (p: { fill: string }) => {
+    const pulse = pulseMotion(() => true, 1800);
+    return <View accessible={false} class={`w-[6px] h-[6px] rounded-full ${p.fill}`} style={{ opacity: pulse.opacity }} />;
+  };
 
   const pill = (id: "approval" | "ask", icon: IconName, label: string, to: string) => (
     <View

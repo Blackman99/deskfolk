@@ -82,7 +82,8 @@ export function ChatHeader(props: {
     mobileActionsOpen.set(false);
     action();
   };
-  const pulse = pulseMotion(() => true, 1000);
+  // Its dots breathe only while one that does shows: this conversation's work, or its Bot's.
+  const pulse = pulseMotion(() => Boolean(work()?.isBusy || directStatus()?.isBusy || (kind() === "you-bot" && peerBot() && botStatusOf(peerBot()!.id).isBusy)), 1000);
   const elsewhere = elsewhereState(() => peerBot()?.id ?? "", () => props.selected!);
   const hasElsewhere = () => Boolean(props.selected && kind() === "you-bot" && peerBot() && elsewhere.line());
 

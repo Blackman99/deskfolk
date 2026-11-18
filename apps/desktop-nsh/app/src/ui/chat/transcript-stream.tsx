@@ -7,7 +7,7 @@
  * Like a finished reply it sits on the page flat, no bubble: the cues that it is working are the
  * portrait's glow (the group's), the pulse, the cursor and the last line.
  */
-import { createMotion, effect, Text, View } from "nsh";
+import { cleanup, createMotion, effect, Text, View } from "nsh";
 import { reduceMotion } from "../interface/motion";
 import type { Bot, Turn } from "@real-bot/protocol";
 import { formatLiveDuration } from "../../m/chat/chat-view.ts";
@@ -27,8 +27,9 @@ import { TurnStepList } from "./TurnStepList";
 function Cursor() {
   const m = createMotion();
   effect(() => {
-    if (!reduceMotion()) void m.play({ duration: 800, iterations: "infinite", direction: "alternate", keyframes: { opacity: [1, 0] } });
-    else m.reset();
+    if (reduceMotion()) return void m.reset();
+    void m.play({ duration: 800, iterations: "infinite", direction: "alternate", keyframes: { opacity: [1, 0] } });
+    cleanup(() => m.reset());
   });
   return <View testID="streaming-cursor" class="w-[7px] h-[14px] ml-[3px] bg-brand" style={{ opacity: m.opacity, verticalAlign: "middle" }} accessible={false} />;
 }

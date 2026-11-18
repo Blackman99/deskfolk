@@ -36,11 +36,12 @@ export function BotDmEntry(props: {
   const statusOf = (session: SessionSummary) =>
     sidebarStatus(session, props.turns, props.approvals ?? [], props.statusLabels, props.pendingJudgements ?? []);
   const enter = enterMotion();
-  const live = pulseMotion(() => true, 1800);
 
-  const Dot = () => (
-    <View class="shrink-0 w-[5px] h-[5px] rounded-full bg-brand" style={{ opacity: live.opacity }} accessible={false} />
-  );
+  /** Breathes while it shows, and stops with it. */
+  const Dot = () => {
+    const live = pulseMotion(() => true, 1800);
+    return <View class="shrink-0 w-[5px] h-[5px] rounded-full bg-brand" style={{ opacity: live.opacity }} accessible={false} />;
+  };
 
   const chip = (session: SessionSummary, plain: boolean) => (
     <View

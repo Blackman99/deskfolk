@@ -25,8 +25,10 @@ function loop(m: Motion, on: () => boolean, spec: () => MotionSpec | null): () =
   const playing = computed(() => on() && !reduceMotion() && spec() !== null);
   effect(() => {
     const s = playing() ? spec() : null;
-    if (s) void m.play({ ...s, iterations: "infinite" });
-    else m.reset();
+    if (!s) return void m.reset();
+    void m.play({ ...s, iterations: "infinite" });
+    // Ended with the folk too: a loop outlives its view otherwise, stepped every frame.
+    cleanup(() => m.reset());
   });
   return playing;
 }

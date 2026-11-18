@@ -51,15 +51,18 @@ export function ChatTabLabel(props: {
   };
   const ring = () => props.ringColor ?? token("pane");
   const ink = idleTabInk();
-  const dot = pulseMotion(() => true, 1000);
-  const Dot = () => (
-    <View
-      testID="tab-status-dot"
-      accessible={false}
-      class="absolute rounded-full bg-brand"
-      style={{ right: 0, bottom: 0, width: 7, height: 7, borderWidth: 1.5, borderColor: ring(), opacity: dot.opacity, zIndex: 5 }}
-    />
-  );
+  /** Breathes while it shows, and stops with it. */
+  const Dot = () => {
+    const dot = pulseMotion(() => true, 1000);
+    return (
+      <View
+        testID="tab-status-dot"
+        accessible={false}
+        class="absolute rounded-full bg-brand"
+        style={{ right: 0, bottom: 0, width: 7, height: 7, borderWidth: 1.5, borderColor: ring(), opacity: dot.opacity, zIndex: 5 }}
+      />
+    );
+  };
 
   return (
     <View testID="chat-tab" tooltip={tip(`${props.title}${archived()}\n${detail()}`)} class="flex-row items-center gap-[6px] min-w-0 max-w-full">

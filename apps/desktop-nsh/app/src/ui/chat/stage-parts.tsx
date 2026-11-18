@@ -4,7 +4,7 @@
  * transcript shows while it comes over the relay, the date line, the "New" line, the line above
  * the first message while an earlier page is on its way, and the row that draws one group.
  */
-import { createMotion, effect, Text, View } from "nsh";
+import { cleanup, createMotion, effect, Text, View } from "nsh";
 import { reduceMotion } from "../interface/motion";
 import type { SessionSummary } from "@real-bot/protocol";
 import { formatDateDivider } from "../../m/chat/chat-view.ts";
@@ -57,8 +57,9 @@ export function DelegationBlock(props: {
 export function HistoryLoading() {
   const shimmer = createMotion();
   effect(() => {
-    if (!reduceMotion()) void shimmer.play({ duration: 1400, iterations: "infinite", direction: "alternate", keyframes: { opacity: [1, 0.45] } });
-    else shimmer.reset();
+    if (reduceMotion()) return void shimmer.reset();
+    void shimmer.play({ duration: 1400, iterations: "infinite", direction: "alternate", keyframes: { opacity: [1, 0.45] } });
+    cleanup(() => shimmer.reset());
   });
   const bar = (width: number | string, height = 10) => (
     <View class="rounded-(--radius-sm) bg-line" style={{ width: width as never, height, opacity: shimmer.opacity }} />

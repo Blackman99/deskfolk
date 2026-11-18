@@ -4,7 +4,7 @@
  * end: this row only says who is thinking about it. "Thinking" is the mark's two teammates taking
  * turns: two overlapping circles, one swelling as the other shrinks.
  */
-import { createMotion, effect, Text, View } from "nsh";
+import { cleanup, createMotion, effect, Text, View } from "nsh";
 import { reduceMotion } from "../interface/motion";
 import type { Bot } from "@real-bot/protocol";
 import type { ReplyingEntry } from "../../m/chat/transcript";
@@ -28,6 +28,10 @@ export function ReplyingIndicator(props: {
     if (props.entries.length > 0 && !reduceMotion()) {
       void a.play({ duration: 1200, iterations: "infinite", direction: "alternate", keyframes: { scale: [1, 0.62] } });
       void b.play({ duration: 1200, delay: -600, iterations: "infinite", direction: "alternate", keyframes: { scale: [1, 0.62] } });
+      cleanup(() => {
+        a.reset();
+        b.reset();
+      });
     } else {
       a.reset();
       b.reset();

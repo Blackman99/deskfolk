@@ -18,9 +18,12 @@ export function ProjectSubagentEntry(props: { tasks: readonly AgentRunTask[]; on
   /** How it went, when that is worth a word: a chip that says nothing finished as it should. */
   const noteOf = (task: AgentRunTask) => (task.status === "running" || task.status === "completed" ? null : t().project.taskStatus[task.status]);
   const enter = enterMotion();
-  const live = pulseMotion(() => true, 1800);
 
-  const Live = () => <View testID="subagent-live" class="shrink-0 w-[5px] h-[5px] rounded-full bg-brand" style={{ opacity: live.opacity }} accessible={false} />;
+  /** Breathes while it shows, and stops with it. */
+  const Live = () => {
+    const live = pulseMotion(() => true, 1800);
+    return <View testID="subagent-live" class="shrink-0 w-[5px] h-[5px] rounded-full bg-brand" style={{ opacity: live.opacity }} accessible={false} />;
+  };
 
   /** `task` is read where it shows: a kept chip follows its task as it goes on and ends, where the
    *  object it was made from would keep its dot after the task was done. */
