@@ -45,6 +45,9 @@ export function glyphUri(key: string, color: string, size: number): string {
     // HTML takes attribute values without quotes (`id=connector-qwen`); an SVG document does not.
     .replace(/(\s[\w:-]+)=([^\s"'>]+)/g, '$1="$2"')
     .replace(/currentColor/g, color)
+    // The spark's markup carries its own `xmlns`. WebKit refuses an SVG that repeats an attribute,
+    // so on the phone page in Safari the image stayed blank (Chromium let it pass).
+    .replace(/(<svg\b[^>]*?)\s+xmlns="[^"]*"/, "$1")
     .replace("<svg ", `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" `);
   const uri = `data:image/svg+xml,${encodeURIComponent(svg)}`;
   cache.set(cacheKey, uri);

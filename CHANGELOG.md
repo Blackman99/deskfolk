@@ -34,6 +34,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - The page your relay serves to phones is now the native app built for the web, the same screens as on the Mac, in place of the separate Svelte page. A phone paired before stays paired: the page keeps the same address, the same device store and the same notifications, and a phone that added it to the home screen keeps the same app.
 - A page left open notices a newer one on the relay and offers a reload, as before; the old page offers the reload into this one too.
 - The address says what is open, as on the old page: Back closes a conversation, a sheet, settings or the flow page and goes back to where you were; a reload or a link lands where it pointed; Back on the first screen goes to the conversation list before it leaves the page. The page open in a second tab waits there and can take over. A lost connection fades the screen under a line that says so, with Retry.
+- Claude's logo shows in Safari and on an iPhone. Its picture named its XML namespace twice, which WebKit refuses, so the spot stayed blank there.
 - The first visit downloads more, about 8 MB compressed against 0.65 MB; after that the browser keeps the files, and a new version downloads only the parts that changed.
 - Self-hosted relays: the page is built with `bun apps/desktop-nsh/scripts/phone-package.ts --build` (Rust with the WebAssembly target), and its Content-Security-Policy allows `'wasm-unsafe-eval'`. The Docker image builds it. See the deploy guide.
 

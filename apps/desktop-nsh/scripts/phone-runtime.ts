@@ -92,6 +92,8 @@ if (import.meta.main) {
     });
     store.setTurnStatus(turn.id, "completed");
     const group = (await api("POST", "/v1/sessions", { name: "周报小组", members: [writer.bot.id, editor.bot.id] })) as { id: string };
+    // A Claude Code project session, so the projects tab draws Claude's logo; it never starts a turn.
+    const claudeProject = store.createProjectSession({ dir: workspace, agent: "claude_code", configDir: null, locale: "zh" });
     console.log(
       JSON.stringify({
         origin: handle.origin,
@@ -100,6 +102,7 @@ if (import.meta.main) {
         writerDirect: writer.direct_session.id,
         editorDirect: editor.direct_session.id,
         group: group.id,
+        claudeProject: claudeProject.id,
       }),
     );
   } catch (error) {

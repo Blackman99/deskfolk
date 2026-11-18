@@ -5,7 +5,8 @@
  * hosted page — and an isolated Mac (`phone-runtime.ts`) on the development remote channel. It
  * registers the Mac with the relay and opens a pairing window, then drives the page in a headless
  * browser: paste the code, compare the fingerprint, submit; approve on the Mac (the development
- * stand-in for Touch ID); then the app's shell on a phone's width: the roster, a conversation over
+ * stand-in for Touch ID); then the app's shell on a phone's width: the roster, the projects tab
+ * with every picture drawn (Claude's logo among them, which WebKit once refused), a conversation over
  * it, a line sent from the phone (read back from the Mac's database), a line written on the Mac
  * arriving live, Back to the roster, a reload that is still enrolled and under the service worker
  * (`/sw.js`, which the app's realm reaches as its own); and the same page at a
@@ -163,7 +164,7 @@ async function startMac(certPath: string) {
   });
   const out = lines(child.stdout);
   const line = await out.next((l) => l.startsWith("{") && l.includes('"origin"'), 30_000);
-  const mac = JSON.parse(line) as { origin: string; token: string; dataDir: string; writerDirect: string; editorDirect: string; group: string };
+  const mac = JSON.parse(line) as { origin: string; token: string; dataDir: string; writerDirect: string; editorDirect: string; group: string; claudeProject: string };
   if (FORBIDDEN_PORTS.has(Number(new URL(mac.origin).port))) throw new Error("the Mac took a reserved port");
   const api = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
     const res = await fetch(`${mac.origin}${path}`, {
@@ -403,6 +404,28 @@ try {
   if (await testid(page, "sidebar-split").count()) throw new Error("a phone's roster is a column with a split");
   await page.screenshot({ path: shot("2-roster") });
   step("paired: the shell's roster came over the relay");
+
+  // Every picture on the page decodes. The logos are SVG (`glyphUri`, handed to the page as blobs):
+  // WebKit draws nothing for one that repeats an attribute, as Claude's did (its own `xmlns` beside
+  // the one `glyphUri` adds), where Chromium let it pass. The Claude Code session is on the projects
+  // tab, which is not in the address.
+  await testid(page, "nav-projects").click();
+  await page.locator('[data-testid="agent-logo-claude_code"]:visible').first().waitFor({ timeout: 10_000 });
+  const pictures = () =>
+    page.evaluate(() =>
+      [...document.images].map((img) => ({ drawn: img.complete && img.naturalWidth > 0, claude: !!img.closest('[data-testid="agent-logo-claude_code"]'), at: img.parentElement?.parentElement?.outerHTML.slice(0, 240) ?? img.src })),
+    );
+  const drawn = await until("the pictures decoded, Claude's logo among them", 10_000, async () => {
+    const seen = await pictures();
+    return seen.some((img) => img.claude) && seen.every((img) => img.drawn) ? seen : undefined;
+  }).catch(async (error: Error) => {
+    const seen = await pictures();
+    throw new Error(`${error.message}: ${seen.filter((img) => img.claude).length} in Claude's logos; not drawn: ${seen.filter((img) => !img.drawn).map((img) => img.at).join(" | ")}`);
+  });
+  await page.screenshot({ path: shot("2b-projects") });
+  step(`the projects tab: all ${drawn.length} pictures are drawn, Claude's logo among them`);
+  await testid(page, "nav-sessions").click();
+  await row.waitFor({ timeout: 10_000 });
 
   await row.click();
   await testid(page, "conversation").waitFor({ timeout: 10_000 });
