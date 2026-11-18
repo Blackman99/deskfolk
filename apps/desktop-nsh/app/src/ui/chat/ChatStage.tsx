@@ -18,7 +18,7 @@
  * press is `onContextMenu` of the groups, and the menu's selected text is what the line's selection
  * last reported (`lineSelection`); the file overlay has no preview inside (see `stage-overlays`).
  */
-import { cleanup, computed, List, Scroll, signal, View, type ViewRef } from "nsh";
+import { cleanup, computed, List, platform, Scroll, signal, View, type ViewRef, type ViewStyle } from "nsh";
 import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
 import { Button } from "../Button";
@@ -39,6 +39,15 @@ import { TranscriptClip } from "./message-pill";
 import { createStageScroll } from "./stage-scroll";
 import { settled } from "../workbench/drag-settle";
 import { onGlassCard } from "../glass";
+
+/**
+ * On the web the transcript draws as a layer of its own: a perspective, which moves nothing flat but
+ * makes the browser give it one (NSH takes no `will-change`, and drops a transform that is the
+ * identity). A sheet or dialog slides and fades over it on the page's main thread, one step a frame,
+ * and without a layer WebKit painted the whole transcript again for every step: with 200 lines a
+ * sheet's entrance drew 13 steps in place of 21. The native platforms keep their own layers.
+ */
+const LAYER: ViewStyle | undefined = platform.os === "web" ? { transform: [{ perspective: 1000 }] } : undefined;
 
 export function ChatStage(props: {
   selected: SessionSummary | null;
@@ -161,6 +170,7 @@ export function ChatStage(props: {
                     inverted
                     keyExtractor={(row) => row.id}
                     class={`flex-1 ${glassCard() ? "" : "bg-pane"}`}
+                    style={LAYER}
                     contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20, paddingBottom: phone() ? 14 : 20, gap: 16 }}
                     estimatedItemSize={96}
                     onScroll={scroll.onScroll}
