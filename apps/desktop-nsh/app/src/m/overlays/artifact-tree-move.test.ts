@@ -64,6 +64,12 @@ test("a row moved in a message's tree shows where it went, the preview goes with
   expect(toasts.current?.action ?? null).toBeNull();
 });
 
+test("a folder picked with a row inside it goes once: what is inside goes with it", async () => {
+  const { tree, asked } = panel();
+  await tree.moveItems("docs", [{ path: "inbox", isDir: true }, { path: "inbox/sum.ts", isDir: false }]);
+  expect(asked).toEqual([{ dir: "docs", sources: ["inbox"] }]);
+});
+
 test("the file on screen with edits not saved is not moved, and nothing else in the drag is either", async () => {
   const { tree, asked } = panel({ dirty: true });
   await tree.moveItems("docs", [{ path: "inbox/sum.ts", isDir: false }, { path: "inbox/notes.md", isDir: false }]);

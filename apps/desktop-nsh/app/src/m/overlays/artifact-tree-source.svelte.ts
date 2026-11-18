@@ -581,9 +581,11 @@ export class ArtifactTreeSource {
     const into = dir ?? (lazy ? project : null) ?? "";
     const generation = this.treeGeneration;
     const key = this.#importKey$s.get();
+    // A folder takes what is in it, so a row picked inside a picked folder is not asked for again (as the Trash does).
+    const outermost = items.filter((item) => !items.some((other) => other !== item && holds(dirKey(other.path), dirKey(item.path))));
     let result: Awaited<ReturnType<MessengerApi["moveInWorkspace"]>>;
     try {
-      result = await client.moveInWorkspace(into, items.map((item) => item.path));
+      result = await client.moveInWorkspace(into, outermost.map((item) => item.path));
     } catch (error) {
       showToast(this.#importRefusal(error), { tone: "error" });
       return;

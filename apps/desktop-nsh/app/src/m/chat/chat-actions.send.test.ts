@@ -23,6 +23,21 @@ function sending(answer: () => Promise<unknown>, keepsUnknown = false) {
 
 const pictures = [new File(["a"], "a.jpg"), new File(["b"], "b.jpg"), new File(["c"], "c.jpg")];
 
+test("paths a project session sends in the line go after the draft, one a line", async () => {
+  const bodies: string[] = [];
+  const s = sending(async () => ({ id: "m1" }));
+  (s.actions as unknown as { host: { api: { postMessage: (id: string, body: string) => Promise<unknown> } } }).host.api.postMessage = async (_id, body) => {
+    bodies.push(body);
+    return { id: "m1" };
+  };
+  expect(await s.actions.send({ lines: ["/code/app/src/main.ts", "/code/app/README.md"] })).toBe(true);
+  expect(bodies).toEqual(["三张图\n\n/code/app/src/main.ts\n/code/app/README.md"]);
+  // With no words of its own, the paths are the line.
+  s.view.draft = "";
+  expect(await s.actions.send({ lines: ["/code/app/src/main.ts"] })).toBe(true);
+  expect(bodies[1]).toBe("/code/app/src/main.ts");
+});
+
 test("a send the Mac refuses is a refusal, not a lost link: it says why, and nothing reconnects", async () => {
   const s = sending(async () => { throw new ApiError(429, "stream_limit", "file stream limit", "01ARZ3NDEKTSV4RRFFQ69G5FB0"); });
   expect(await s.actions.send({ attachments: pictures })).toBe(false);
