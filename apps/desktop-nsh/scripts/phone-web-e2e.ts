@@ -298,6 +298,16 @@ try {
   // A phone's screen: touches, which NSH's web runtime scrolls natively (without them its lists
   // scroll as a desktop browser's do).
   const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: "zh-CN", hasTouch: true });
+  // A fetch of a `blob:` address breaks the policy (`connect-src` names none) and was seen twice in
+  // 2026-11-18's runs without its caller: say who asked, beside the refusal.
+  await context.addInitScript(() => {
+    const real = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.startsWith("blob:")) console.log(`blob fetch in ${location.href.slice(0, 60)}: ${(new Error().stack ?? "").split("\n").slice(1, 7).map((l) => l.trim().slice(0, 90)).join(" < ")}`);
+      return real(input, init);
+    }) as typeof fetch;
+  });
   // Every frame says what the policy refused: the browsers' own console lines differ, this does not.
   await context.addInitScript(() => {
     document.addEventListener("securitypolicyviolation", (e) => console.error(`CSP violation: ${e.effectiveDirective} ${e.blockedURI}`));
@@ -676,6 +686,29 @@ try {
   await row.waitFor({ timeout: 5_000 });
   step("settings has its address: one Back closes it, and the page stays");
 
+  // Settings is one of the bottom bar's places: no head over its list, the bar under it, and the
+  // bar leaves it for another place, after which Back still stays on the page.
+  await testid(page, "nav-settings").click();
+  await showing("settings-nav");
+  await expectAt("settings from the bar", "/?o=settings");
+  await sheetEntry();
+  if (await testid(page, "settings-root-close").count()) throw new Error("settings' list on a phone still has its head");
+  await showing("mobile-nav");
+  if ((await testid(page, "mobile-nav").count()) !== 1) throw new Error("two bottom bars under settings' list");
+  await page.screenshot({ path: shot("3d-settings-list") });
+  await testid(page, "nav-projects").click();
+  await putAway("settings-modal");
+  await expectAt("the bar out of settings", "/");
+  await testid(page, "nav-sessions").click();
+  await row.waitFor({ timeout: 5_000 });
+  await row.click();
+  await showing("conversation");
+  await page.goBack();
+  await putAway("conversation");
+  await row.waitFor({ timeout: 5_000 });
+  await expectAt("Back after leaving settings by the bar", "/");
+  step("settings is one of the bottom bar's places: no head over its list, the bar under it; the bar leaves it, and Back stays on the page");
+
   // Settings on a phone drills down: the list of tabs, a tab, a section of it. The browser's Back
   // steps out one level at a time, as the page's own ‹ does, and only off the list closes settings.
   await testid(page, "nav-settings").click();
@@ -742,6 +775,15 @@ try {
   await putAway("session-settings-drawer");
   await showing("conversation");
   await expectAt("Back out of a Bot's settings", writerAt);
+  // Closed by its own ✕ instead: the address goes back to the conversation, and Back still walks.
+  await testid(page, "top-more").click();
+  await showing("mobile-actions-menu");
+  await testid(page, "mobile-settings").click();
+  await showing("bot-nav");
+  await sheetEntry();
+  await testid(page, "sheet-close").click();
+  await putAway("session-settings-drawer");
+  await expectAt("a Bot's settings closed by its ✕", writerAt);
   await page.goBack();
   await putAway("conversation");
   await expectAt("Back to the roster", "/");
@@ -836,7 +878,7 @@ try {
   await page.screenshot({ path: shot("4-tablet") });
   step(`a tablet's width: the roster's column (${Math.round(column)} wide) beside the conversation, no Back, no workbench`);
 
-  const refused = problems.filter((line) => /CSP violation|Content Security Policy|Refused to (?:load|execute|compile|connect|apply|frame|create)/i.test(line));
+  const refused = problems.filter((line) => /CSP violation|Content Security Policy|Refused to (?:load|execute|compile|connect|apply|frame|create)|blob fetch in /i.test(line));
   if (refused.length) throw new Error(`the page broke the production policy:\n  ${refused.slice(0, 20).join("\n  ")}`);
   if (localOnly.length) throw new Error(`the page asked for what only a local window runs: ${localOnly.join(", ")}`);
   const refusedQueries = [...addresses].filter((search) => search !== "" && !ALLOWED_QUERY.test(search.slice(1)));

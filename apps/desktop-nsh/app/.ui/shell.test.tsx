@@ -75,3 +75,24 @@ test("narrow: the roster fills the window with the bottom bar; a conversation co
   await app.waitUntil(() => app.count("id:conversation") === 0);
   expect(app.shows("id:mobile-nav")).toBe(true);
 });
+
+test("narrow: settings is one of the bottom bar's places: its list has no head and the bar stays under it", async () => {
+  const app = await open({ width: 420 });
+  await app.press("id:nav-settings");
+  await app.waitFor("id:settings-nav", { timeout: 10_000 });
+  expect(app.shows("id:settings-root-close")).toBe(false);
+  expect(app.count("id:mobile-nav")).toBe(1);
+  expect(app.shows("id:mobile-nav")).toBe(true);
+  // A tab is a page one level deeper: its head with the way back, and no bar.
+  await app.press("id:settings-tab-general");
+  await app.waitFor("id:settings-main");
+  await app.waitUntil(() => app.count("id:mobile-nav") === 0);
+  await app.press("id:settings-mobile-back");
+  await app.waitFor("id:settings-nav");
+  expect(app.count("id:mobile-nav")).toBe(1);
+  // The bar leaves settings for another of its places.
+  await app.press("id:nav-projects");
+  await app.waitUntil(() => has(app, "settings:0"));
+  await app.waitUntil(() => app.count("id:settings-nav") === 0);
+  expect(app.count("id:mobile-nav")).toBe(1);
+});

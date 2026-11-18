@@ -1255,6 +1255,39 @@ The user said that on the phone page, going into settings, then one of its items
   - `.ui`'s `settings-routing-modal` gains two tests that use the headless driver's `app.back()`. Both fail on the old code. A third presses Escape in a narrow window and sees it step out one level at a time.
   - `page-route.test.ts` gains one: a Back settings took as a step leaves the address on the entry NSH pushed back, adding none.
 
+## 补记 2026-11-18（四十六）：手机上设置的列表没有顶栏，底栏留在下面 / Addendum 2026-11-18 (46): on a phone settings' list has no head, and the bottom bar stays under it
+
+用户说「手机端的设置页，不要顶栏，保留主底栏」。设置本来就是手机底栏的三个去处之一（`mobileDestination`），外壳的 `mobileNavigationVisible` 也说在设置列表上要显示底栏；可设置是铺满窗口的 NSH 对话框，把外壳的底栏盖住了，而且对话框下面的东西点不到（`inert`）。Svelte 页上设置列表也有顶栏（标题和 ✕）。
+
+- **底栏画在对话框里。** 外壳把底栏要的三样（当前去处、更新的点、`navigateMobile`）作为 `mobileNavigation` 交给 `SettingsModal`，条件和外壳自己的底栏一样（窄窗口、`mobileNavigationVisible`）；设置开着时外壳自己的那条不画，同一时间只有一条。有它时列表没有顶栏（`SettingsNav` 的 `head={false}`，「设置未完成」挪到列表上面，列表顶上留出安全区），底栏在列表下面，对话框进出不淡入淡出（`animation="none"`），切过去和点底栏换页一样。某一项、某个编辑器还是带 ‹ 的页头，不显示底栏。没有底栏的窄窗口（681 到 720 宽）还是有顶栏和 ✕，否则没有出口。
+- **`mobileNavigation` 不跟着 `settingsOpen`。** 跟着的话，点底栏离开时它先变空，对话框会淡出、顶栏冒出来一下。
+- **顺带修的：应用自己关掉对话框时的网址。** 点底栏离开设置时网址停在 `/?o=settings`。量下来：`page-route` 的 `write` 自己 `history.back()` 了一次，正好用掉对话框的条目；popstate 到时对话框已经没了，NSH 当它是一次被应用拒绝的返回，用 `replaceState` 把 `/?o=settings` 写回了下面那条；我们的 `selfBack` 一直等不到 `change`。✕ 关设置走的是同一条路，线上一直如此。现在网址里带着的对话框（设置、会话的设置）由应用关掉时，`write` 不再后退，只 `setUrl(replace)`：NSH 自己 `history.go` 退过对话框的条目，再把这一轮设的地址放到落地的那条上。
+- **检查。** `phone-web-e2e.ts`：从底栏进设置，列表没有顶栏、只有一条底栏，点「项目」离开、网址回到 `/`，之后打开会话再返回仍在页面里；Bot 的设置用它自己的 ✕ 关掉，网址回到会话。WebKit 和 Chromium 都过。`.ui` 的 `shell.test` 加一条 420 宽的：列表没有顶栏、底栏一条，某一项里没有底栏，返回列表又有，点「项目」离开设置。`page-route.test.ts` 加两条：设置由应用关掉、群设置里打开的 Bot 由应用关掉，网址都落在 NSH 退到的那条上。
+- **没解释的一次。** 18 日 15 点多的两次 WebKit 运行里，页面去 `fetch` 了几个 `blob:` 地址，被 `connect-src` 拒绝；之后带改动的六次、不带改动的三次都没有；其中装了记录器的三次，一次 `blob:` 请求都没有。端到端现在给每个 frame 装一个记录器，再出现时失败信息里带着调用栈。
+
+The user said that on a phone, settings should have no head and keep the main bottom bar. Settings was already one of the phone bar's three places (`mobileDestination`), and the shell's `mobileNavigationVisible` already called for the bar on settings' list. But settings is an NSH dialog that fills the window: it covered the shell's bar, and what is under a dialog takes no presses (`inert`). The Svelte page's settings list had a head too, with the title and ✕.
+
+- **The bar is drawn in the dialog.**
+  - The shell hands `SettingsModal` what the bar needs as `mobileNavigation`: the place it is at, the update dot and `navigateMobile`. The conditions are the shell's own bar's: a narrow window and `mobileNavigationVisible`.
+  - While settings is open the shell does not draw its own bar, so there is one bar at a time.
+  - With it, the list has no head: `SettingsNav` gets `head={false}`. The "setup not done" badge moves above the list, and the list keeps clear of the top inset.
+  - The bar sits under the list. The dialog comes and goes without a fade (`animation="none"`), as a press on the bar changes places.
+  - A section or an editor keeps its head with ‹, and no bar.
+  - A narrow window without the bar (681 to 720 wide) keeps the head and its ✕, or it would have no way out.
+- **`mobileNavigation` does not follow `settingsOpen`.** If it did, it would go empty as the bar left settings, and the dialog would fade out with its head back for a moment.
+- **Fixed on the way: the address when the app closes a dialog.**
+  - Leaving settings through the bar left the address at `/?o=settings`. Measured: `page-route`'s `write` called `history.back()` itself, using up the dialog's entry.
+  - When the popstate landed the dialog was gone, so NSH took it for a Back the app had refused and wrote `/?o=settings` back onto the entry under it with `replaceState`. Our `selfBack` waited for a `change` that never came.
+  - Closing settings with ✕ takes the same path, and it always had this bug on the live page.
+  - Now, when the app closes a dialog the address carries (settings, a conversation's settings), `write` no longer goes back. It only calls `setUrl(replace)`: NSH goes back over the dialog's entry itself with `history.go`, then puts the address set that turn on the entry it lands on.
+- **Checks.**
+  - `phone-web-e2e.ts`: settings from the bar shows a list with no head and one bar. Pressing Projects leaves settings and the address goes back to `/`; opening a conversation and pressing Back still stays on the page. A Bot's settings closed by their own ✕ put the address back on the conversation. It passes in WebKit and Chromium.
+  - `.ui`'s `shell.test` gains a case at 420 wide: the list has no head and one bar, a tab has no bar, the list has it again, and Projects leaves settings.
+  - `page-route.test.ts` gains two cases: settings closed by the app, and a Bot opened from a group's settings closed by the app. In both the address lands on the entry NSH went back to.
+- **One thing left unexplained.**
+  - In two WebKit runs around 15:30 on the 18th, the page fetched a few `blob:` addresses, which `connect-src` refused. Six later runs with the change and three without showed none, and the three of them that ran the logger saw no `blob:` fetch at all.
+  - The e2e now puts a logger in every frame, so if it happens again the failure carries the caller's stack.
+
 ## 补记 2026-11-18（四十七）：手机上的动画为什么卡 / Addendum 2026-11-18 (47): why animations stuttered on the phone
 
 用户说远程手机端（安卓 Chrome，装到主屏幕的 PWA）的动画很卡，旧的 Svelte 页没有这种感觉，比如打开底部弹出的选项。

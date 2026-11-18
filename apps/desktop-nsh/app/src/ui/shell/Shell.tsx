@@ -297,8 +297,9 @@ function ShellBody(props: { s: ShellState }) {
           )}
         </ShellPreview>
       </View>
-      {/* The phone's bottom bar: narrow windows only (the Svelte hid it above 680 points by CSS). */}
-      <If when={s.narrow() && s.mobileNavigationVisible()}>
+      {/* The phone's bottom bar: narrow windows only (the Svelte hid it above 680 points by CSS).
+          Under settings' list the settings dialog draws it, as this one is under the dialog. */}
+      <If when={s.narrow() && s.mobileNavigationVisible() && !runtime.settingsOpen}>
         <MobileNavigation active={s.mobileDestination()} updateAvailable={updateChecker.updateVisible} onNavigate={s.navigateMobile} />
       </If>
       <ShellLayers s={s} />
@@ -653,6 +654,13 @@ function ShellLayers(props: { s: ShellState }) {
           closeSettings={s.closeSettings}
           workbench={s.wide()}
           onHandle={(handle) => s.setSettingsHandle(handle)}
+          // Not tied to `settingsOpen`: leaving settings through the bar, the dialog goes as it came
+          // (no head, no fade) instead of fading out with its head back for a moment.
+          mobileNavigation={
+            s.narrow() && s.mobileNavigationVisible()
+              ? { active: s.mobileDestination(), updateAvailable: updateChecker.updateVisible, onNavigate: s.navigateMobile }
+              : null
+          }
         />
       </If>
       <If when={runtime.createBotOpen}>

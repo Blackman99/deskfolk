@@ -1,20 +1,23 @@
 /**
  * The settings dialog's navigation (`settings/SettingsNav.svelte`): a 220-wide sidebar on a wide
  * window, the dialog's whole first page on a phone (a grouped list; a row opens that tab one level
- * deeper, and ✕ closes the dialog).
+ * deeper, and ✕ closes the dialog). On the phone's page, where the bottom bar is under the list
+ * (`head={false}`), there is no head: settings is one of the bar's destinations, as the roster is,
+ * and the bar is the way to the others.
  *
  * Props, as `SettingsModal` passes them (`t` and `snapshot` are the window's own: `copy()`,
  * `runtime.snapshot`): `activeSettingsTab`; `openSettingsTab(tab)`; `generalHasError`;
  * `modelsHasError`; `promptCounts`; `lessonsTabVisible`; `remoteTabVisible`; `behaviorTabVisible`
  * (only with the desktop workbench); `interfaceTabVisible` (the daemon keeps an interface profile,
- * ADR 0106); `closeSettings`. Test ids: `settings-nav`, `settings-tab-<tab>` (the Svelte
+ * ADR 0106); `closeSettings`; `head` (false: no head on a phone). Test ids: `settings-nav`, `settings-tab-<tab>` (the Svelte
  * `data-settings-tab`), `settings-tab-<tab>-count`, `settings-tab-<tab>-error`, `settings-tab-about-dot`,
- * `settings-wizard-badge`, `settings-root-close` (phone only).
+ * `settings-wizard-badge`, `settings-root-close` (phone, with its head).
  *
  * Not carried over: the slide of the sidebar over the dialog on a phone (the dialog's page
- * transition), and the safe-area padding (NSH's window already keeps clear of it).
+ * transition), and the head's safe-area padding (NSH's window already keeps clear of it; the
+ * head-less list leaves the top inset clear itself).
  */
-import { Scroll, Text, View } from "nsh";
+import { safeArea, Scroll, Text, View } from "nsh";
 import { copy, runtime } from "../../runtime";
 import { updateChecker } from "../../m/update-checker.svelte.ts";
 import { Icon } from "../Icon";
@@ -35,10 +38,18 @@ export function SettingsNav(props: {
   behaviorTabVisible: boolean;
   interfaceTabVisible?: boolean;
   closeSettings: () => void;
+  /** On a phone, the head with the title and ✕ (default). False where the bottom bar is the way out. */
+  head?: boolean;
 }) {
   const t = () => copy();
   const snapshot = () => runtime.snapshot;
   const phone = () => widthAtMost(720);
+  const headless = () => phone() && props.head === false;
+  const wizardBadge = () => (
+    <View testID="settings-wizard-badge" class="shrink-0 px-2 py-[2px] rounded-full bg-warn-bg border border-warn-line">
+      <Text class="text-[11px] font-medium text-warn-text">{t().settings.wizardIncomplete}</Text>
+    </View>
+  );
   const tabs = () =>
     navTabs(t(), {
       providers: snapshot().providers.length,
@@ -118,37 +129,38 @@ export function SettingsNav(props: {
 
   return (
     <View testID="settings-nav" role="navigation" accessibilityLabel={t().settings.title} class={`flex-col bg-sidebar-bg ${phone() ? "w-full flex-1 min-h-0" : "w-[220px] shrink-0 border-r border-line"}`}>
-      <View class={`flex-row items-center justify-between gap-2 h-14 shrink-0 border-b border-line ${phone() ? "pl-[18px] pr-3 bg-pane" : "px-[18px]"}`}>
-        <View class="flex-row items-center gap-[9px] min-w-0">
-          <If when={!phone()}>
-            <Icon name="settings" size={20} class="tint-ink-muted" />
-          </If>
-          <Text role="header" class={`font-bold text-ink whitespace-nowrap ${phone() ? "text-[18px]" : "text-[16px]"}`}>
-            {t().settings.title}
-          </Text>
+      <If when={!headless()}>
+        <View class={`flex-row items-center justify-between gap-2 h-14 shrink-0 border-b border-line ${phone() ? "pl-[18px] pr-3 bg-pane" : "px-[18px]"}`}>
+          <View class="flex-row items-center gap-[9px] min-w-0">
+            <If when={!phone()}>
+              <Icon name="settings" size={20} class="tint-ink-muted" />
+            </If>
+            <Text role="header" class={`font-bold text-ink whitespace-nowrap ${phone() ? "text-[18px]" : "text-[16px]"}`}>
+              {t().settings.title}
+            </Text>
+          </View>
+          <View class="flex-row items-center gap-2">
+            <If when={!snapshot().settings.wizard_complete}>{wizardBadge()}</If>
+            <If when={phone()}>
+              <View
+                role="button"
+                testID="settings-root-close"
+                accessibilityLabel={t().common.close}
+                tooltip={tip(t().common.close)}
+                onPress={() => props.closeSettings()}
+                class="cursor-pointer select-none w-9 h-9 items-center justify-center rounded-(--radius-md) active:bg-row-hover"
+              >
+                <Text class="text-[16px] text-ink-muted">✕</Text>
+              </View>
+            </If>
+          </View>
         </View>
-        <View class="flex-row items-center gap-2">
-          <If when={!snapshot().settings.wizard_complete}>
-            <View testID="settings-wizard-badge" class="shrink-0 px-2 py-[2px] rounded-full bg-warn-bg border border-warn-line">
-              <Text class="text-[11px] font-medium text-warn-text">{t().settings.wizardIncomplete}</Text>
-            </View>
-          </If>
-          <If when={phone()}>
-            <View
-              role="button"
-              testID="settings-root-close"
-              accessibilityLabel={t().common.close}
-              tooltip={tip(t().common.close)}
-              onPress={() => props.closeSettings()}
-              class="cursor-pointer select-none w-9 h-9 items-center justify-center rounded-(--radius-md) active:bg-row-hover"
-            >
-              <Text class="text-[16px] text-ink-muted">✕</Text>
-            </View>
-          </If>
-        </View>
-      </View>
+      </If>
       <Scroll class="flex-1 min-h-0">
-        <View class={`flex-col ${phone() ? "px-3 pt-5 pb-8" : "gap-1 px-[10px] py-3"}`}>
+        <View class={`flex-col ${phone() ? "px-3 pt-5 pb-8" : "gap-1 px-[10px] py-3"}`} style={headless() ? { paddingTop: 20 + safeArea().top } : undefined}>
+          <If when={headless() && !snapshot().settings.wizard_complete}>
+            <View class="flex-row px-[6px] mb-3">{wizardBadge()}</View>
+          </If>
           <Each of={tabs()} key={(tab) => tab.id}>
             {(tab, index) => row(tab, index)}
           </Each>

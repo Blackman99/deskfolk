@@ -9,7 +9,9 @@
  * fit): 880 by 640 on a desktop, the whole window on a phone (720 wide or less, where `SettingsNav` is
  * the first page). Escape, the scrim and ✕ close it unless the endpoint editor or a confirmation is up;
  * on a phone, below the list, Back and Escape (the dialog's `onCancel`, which the browser's and the
- * phone's Back reach first) and ✕ step out one level instead, as ‹ does.
+ * phone's Back reach first) and ✕ step out one level instead, as ‹ does. Where the shell has its
+ * bottom bar (`mobileNavigation`), the list is a destination of that bar: no head, the bar under it
+ * (the shell's own is under the dialog, so this one is drawn in it), and no fade in or out.
  *
  * What the Svelte took with `bind:` the shell owns and passes as a value and `on…Change`:
  * `mobileSettingsDetail`, `saveFailed`, `providerEditor`, `confirmingIndependent`. What it exported
@@ -40,6 +42,7 @@ import { promptsTabItems } from "../../m/settings/routing-map.ts";
 import { mapSettingsError, planWorkspaceSave, type SettingsFieldErrors } from "../../m/settings/wizard-save.ts";
 import { parseHostRelay, type HostRelayField } from "../../m/remote/pairing-host.ts";
 import { IconButton } from "../IconButton";
+import { MobileNavigation, type Destination } from "../MobileNavigation";
 import { AboutTab } from "./AboutTab";
 import { AgentsTab, type AgentsTabController } from "./AgentsTab";
 import { AutosaveState } from "./AutosaveState";
@@ -90,6 +93,8 @@ export function SettingsModal(props: {
   closeSettings: () => void;
   workbench?: boolean;
   onHandle?: (handle: SettingsModalHandle) => void;
+  /** The shell's bottom bar, where it shows one under settings' list (a phone). */
+  mobileNavigation?: { active: Destination; updateAvailable?: boolean; onNavigate: (destination: Destination) => void } | null;
 }) {
   const t = () => copy();
   const snapshot = () => runtime.snapshot;
@@ -591,6 +596,7 @@ export function SettingsModal(props: {
       behaviorTabVisible={behaviorTabVisible()}
       interfaceTabVisible={interfaceTabVisible()}
       closeSettings={props.closeSettings}
+      head={!props.mobileNavigation}
     />
   );
 
@@ -616,7 +622,7 @@ export function SettingsModal(props: {
       <If when={runtime.settingsOpen}>
         <Dialog
           open
-          animation="fade"
+          animation={props.mobileNavigation ? "none" : "fade"}
           closeOnEscape={closable() && !backStepsWithin()}
           closeOnBackdropPress={closable()}
           onCancel={cancel}
@@ -634,7 +640,17 @@ export function SettingsModal(props: {
           <WheelLayer>
             <View testID="settings-modal" role="group" accessibilityLabel={t().settings.title} class="flex-1 min-h-0 flex-row">
               <If when={phone()} else={<>{nav()}{main()}</>}>
-                <If when={mobileDetail()} else={nav()}>
+                <If
+                  when={mobileDetail()}
+                  else={
+                    <View class="flex-1 min-h-0 flex-col">
+                      {nav()}
+                      <If when={props.mobileNavigation}>
+                        {(bar) => <MobileNavigation active={bar().active} updateAvailable={bar().updateAvailable} onNavigate={bar().onNavigate} />}
+                      </If>
+                    </View>
+                  }
+                >
                   {main()}
                 </If>
               </If>

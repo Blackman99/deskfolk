@@ -16,7 +16,7 @@ function fakePage(start = `${ORIGIN}/`, navigation = "navigate") {
   let index = 0;
   const later: Array<() => void> = [];
   let listener: ((url: string, move: AddressMove) => void) | null = null;
-  const page: PageHistory & { entries: string[]; at(): number; flush(): void; press(): void; forward(): void; reload(): void } = {
+  const page: PageHistory & { entries: string[]; at(): number; go(delta: number): void; flush(): void; press(): void; forward(): void; reload(): void } = {
     entries,
     at: () => index,
     href: () => entries[index]!,
@@ -42,6 +42,10 @@ function fakePage(start = `${ORIGIN}/`, navigation = "navigate") {
     onAddress(next) {
       listener = next;
       return () => (listener = null);
+    },
+    /** NSH's own `history.go`: its pop is ignored, so the app hears nothing. */
+    go(delta) {
+      index += delta;
     },
     flush() {
       while (later.length) later.shift()!();
@@ -193,6 +197,58 @@ test("a Back settings took as a step keeps its address on the entry NSH gave bac
   page.press();
   expect(path(route.address())).toBe("/");
   expect(page.at()).toBe(1);
+});
+
+test("settings closed by the app (✕, the bottom bar) leaves the going back to NSH, and the address lands where it goes", () => {
+  const { page, rt, route, write } = setup();
+  rt.settingsOpen = true;
+  write();
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", "/?o=settings"]);
+  rt.settingsOpen = false;
+  write();
+  // NSH takes the dialog's entry away (a `history.go(-1)` whose pop it ignores) and puts the
+  // address the app set meanwhile on the entry it lands on.
+  const waiting = page.href();
+  page.entries[page.at()] = `${ORIGIN}/?o=settings`;
+  page.entries[page.at() - 1] = waiting;
+  page.go(-1);
+  expect(page.at()).toBe(1);
+  expect(path(page.href())).toBe("/");
+  expect(route.stack).toEqual([""]);
+  expect(path(route.address())).toBe("/");
+  // Nothing of ours is left waiting: a conversation opened and Back off it walk as ever.
+  rt.selectedId = A;
+  write();
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", `/?s=${A}`]);
+  page.press();
+  expect(rt.selectedId).toBe(null);
+  expect(path(route.address())).toBe("/");
+});
+
+test("a group's settings, a Bot opened from them, then the Bot's closed by the app: the address lands on the conversation", () => {
+  const { page, rt, route, write } = setup();
+  rt.selectedId = A;
+  write();
+  rt.sessionSettingsOpen = true;
+  write();
+  const groupAt = path(page.href());
+  // The Bot takes the group settings' place (a swap): one dialog entry still.
+  rt.profileBotId = B;
+  write();
+  expect(page.entries.length).toBe(4);
+  expect(path(page.href())).not.toBe(groupAt);
+  rt.sessionSettingsOpen = false;
+  rt.profileBotId = null;
+  write();
+  const waiting = page.href();
+  page.entries[page.at() - 1] = waiting;
+  page.go(-1);
+  expect(path(page.href())).toBe(`/?s=${A}`);
+  expect(route.stack).toEqual(["", `?s=${A}`]);
+  // Back off the conversation is the roster's, as ever.
+  page.press();
+  expect(rt.selectedId).toBe(null);
+  expect(path(route.address())).toBe("/");
 });
 
 test("Back on the floor closes the screen showing and goes up again; with nothing open it leaves the page", () => {

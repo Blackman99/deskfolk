@@ -101,6 +101,9 @@ function sameQuery(a: URL, b: URL): boolean {
   return a.pathname === b.pathname && entries(a) === entries(b);
 }
 
+/** The overlays that are NSH dialogs, each with a history entry of NSH's own. */
+const DIALOG_OVERLAYS = new Set(["settings", "session", "bot"]);
+
 /** The overlays that need nothing from the snapshot to be applied (`+page.svelte`). */
 const PLAIN_OVERLAYS = new Set(["none", "routines", "spend", "terminal", "screen", "usage", "archived"]);
 
@@ -263,6 +266,18 @@ export class PageRoute {
       return;
     }
     const from = viewFromUrl(current, true);
+    // A dialog the address carries (settings, a conversation's settings) closed by the app (its ✕
+    // or ‹, the bottom bar), not by Back. NSH takes the dialog's entry away itself, going back over
+    // it (`history.go`), and puts an address set meanwhile on the entry it lands on. A back of ours
+    // as well landed after the dialog was gone: NSH took it for a Back the app refused and put the
+    // dialog's address back, and our `selfBack` waited for a `change` that never came.
+    if (DIALOG_OVERLAYS.has(from.overlay.kind) && !DIALOG_OVERLAYS.has(wanted.overlay.kind)) {
+      this.page.setUrl(next.href, "replace");
+      const under = this.stack.slice(0, -1);
+      this.stack = under.length > 0 ? stackAfter(under, next.search, true) : [next.search];
+      this.address.set(next.href);
+      return;
+    }
     const step = routeStep(from, wanted);
     // A Bot opened from a group's settings takes that page's place: the entry under it is the conversation.
     if (step === "swap" && from.overlay.kind === "session" && wanted.overlay.kind === "bot" && this.stack.length > 0) {
