@@ -127,7 +127,8 @@ describe("empty roster and settings", () => {
       items: Array<{ name: string; path: string; kind: string }>;
     };
     expect(tree.path).toBe(".");
-    expect(tree.items.map((row) => row.path)).toEqual(["src", "brief.md"]);
+    // A name starting with a dot is listed like any other.
+    expect(tree.items.map((row) => row.path)).toEqual(["src", ".hidden", "brief.md"]);
 
     const nested = await fetch(`${h.origin}/v1/workspace/tree?path=${encodeURIComponent("src")}`, {
       headers: auth(h),

@@ -76,7 +76,12 @@ export function locateHostFile(input: string, fs: HostFs = {}): string {
   return resolved;
 }
 
-export function listHostDir(input: string, fs: HostFs = {}): HostTreePage {
+/**
+ * A folder on this machine. The folder picker (`GET /v1/host/tree`) leaves out names starting with
+ * a dot; the file tree (`dotted`, a project's folder or one cited from elsewhere) lists them, all
+ * but the Finder's `.DS_Store`.
+ */
+export function listHostDir(input: string, fs: HostFs = {}, opts: { dotted?: boolean } = {}): HostTreePage {
   const platform = platformOf(fs);
   const resolved = assertHostReadable(resolveHostPath(input, fs), fs);
   let names: string[];
@@ -85,7 +90,7 @@ export function listHostDir(input: string, fs: HostFs = {}): HostTreePage {
   } catch (error) {
     throw hostFsError(error, platform);
   }
-  const kept = names.filter((name) => !skipName(name));
+  const kept = names.filter((name) => !skipName(name, opts.dotted === true));
   kept.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   const truncated = kept.length > HOST_LIST_LIMIT;
   const slice = truncated ? kept.slice(0, HOST_LIST_LIMIT) : kept;
@@ -143,9 +148,9 @@ function isForeignWindowsProfile(abs: string, home: string): boolean {
   return name.toLowerCase() !== win32.basename(profile).toLowerCase();
 }
 
-function skipName(name: string): boolean {
-  if (name === "." || name === "..") return true;
-  if (name.startsWith(".")) return true;
+function skipName(name: string, dotted: boolean): boolean {
+  if (name === "." || name === ".." || name === ".DS_Store") return true;
+  if (!dotted && name.startsWith(".")) return true;
   return SKIP_NAMES.has(name);
 }
 

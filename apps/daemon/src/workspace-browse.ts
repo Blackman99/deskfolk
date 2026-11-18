@@ -48,7 +48,7 @@ function outsideAbsolute(root: string | null, input: string, fs: HostFs): string
 export function listCitedDir(root: string | null, input: string, fs: HostFs = {}): WorkspaceTreePage {
   const outside = outsideAbsolute(root, input, fs);
   if (outside) {
-    const page = listHostDir(outside, fs);
+    const page = listHostDir(outside, fs, { dotted: true });
     return { path: page.path, truncated: page.truncated, items: page.items };
   }
   if (!root) throw new HttpError(422, "invalid_args", "workspace is not set");
@@ -85,7 +85,7 @@ export function listWorkspaceDir(root: string, relInput: string): WorkspaceTreeP
   } catch {
     throw new HttpError(422, "invalid_args", "could not list directory");
   }
-  const kept = names.filter((name) => !skipName(name));
+  const kept = names.filter((name) => !hiddenFromTree(name));
   kept.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   const truncated = kept.length > WORKSPACE_LIST_LIMIT;
   const slice = truncated ? kept.slice(0, WORKSPACE_LIST_LIMIT) : kept;
@@ -176,10 +176,20 @@ export function writeWorkspaceFile(root: string, relInput: string, content: stri
   return { rel: located.rel, etag };
 }
 
+/** What the Bots' own listings and lookups leave out: names starting with a dot, and `node_modules`. */
 export function skipName(name: string): boolean {
   if (name === "." || name === "..") return true;
   if (name.startsWith(".")) return true;
   return SKIP_NAMES.has(name);
+}
+
+/**
+ * What the file tree leaves out (`GET /v1/workspace/tree`): `node_modules`, and the Finder's
+ * `.DS_Store`. Other names starting with a dot (`.git`, `.scratch`, `.env`) are listed like any
+ * other, as the folder holds them.
+ */
+export function hiddenFromTree(name: string): boolean {
+  return name === "." || name === ".." || name === ".DS_Store" || SKIP_NAMES.has(name);
 }
 
 function classifyWorkspaceRel(root: string, relInput: string): { abs: string; rel: string } {

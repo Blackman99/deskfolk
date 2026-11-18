@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The file tree lists folders and files whose names start with a dot
+
+- The workspace's and a project directory's file trees now list folders and files whose names start with a dot, such as `.git`, `.scratch` and `.env`, leaving out only `node_modules` and the Finder's `.DS_Store`. Picking a workspace folder on a phone still leaves them out, and a Bot's own listings and file lookups still skip them.
+
 ### The model picker follows a Claude account you sign in with
 
 - The model picker in a Bot's and a project session's composer listed the Claude accounts as the app first saw them after it started. Once you signed in with another account in a terminal, it kept the old email, and the old account's models, until the app was restarted, while the usage widget already showed the new account. The picker now asks again as it opens, when the last answer is more than half a minute old. An account that changed has its models asked again; the old list stays shown until the new one arrives.

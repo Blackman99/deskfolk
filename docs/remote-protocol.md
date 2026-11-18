@@ -194,8 +194,8 @@ All routes reject unknown body/query fields and wrong types **before** effects/r
 | turns `/:id/commands` | GET | No body/query; the turn's shell commands, oldest first (`{items}`: id, command, exit_code, ok, duration_ms, output tail, created_at), for the card under its reply; 404 once the turn is gone |
 | attachments `/:id/content` | GET | optional size `thumb`\|`preview` |
 | sessions `/:id/messages` | GET | query cursor exact `ISO-UTC-millisecond|ULID` from the shared history response, limit decimal1..200 |
-| workspace/tree; workspace/file | GET | query path string (required for file; workspace-relative, or an absolute / `~` host path read where it is); file also optional size `thumb`\|`preview` or range string |
-| host/tree | GET | query path string (absolute host directory; remote-only) |
+| workspace/tree; workspace/file | GET | query path string (required for file; workspace-relative, or an absolute / `~` host path read where it is); file also optional size `thumb`\|`preview` or range string. The tree lists names starting with a dot (`.git`, `.env`) and leaves out `node_modules` and `.DS_Store` |
+| host/tree | GET | query path string (absolute host directory; remote-only); leaves out names starting with a dot |
 | events/catchup | GET | required event_instance_id32hex and after_seq nonnegative safe decimal |
 | approvals; search | GET | status=`pending`; required q string, respectively |
 | spend/summary | GET | from/to ISO timestamps, group_by model/session/bot/kind/day, tz IANA zone, comma-separated kind (at most 11, each a kind or a purpose `scribe`/`vision`/`reflect`: a purpose selects its own rows, a kind its rows without a purpose), bot_id/session_id/provider_id/turn_id ULIDs, model string; empty bot_id/model selects null |

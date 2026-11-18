@@ -30,6 +30,17 @@ test("listHostDir lists a directory and skips dotfiles", () => {
   expect(page.items.map((row) => `${row.kind}:${row.name}`)).toEqual(["dir:src", "file:brief.md"]);
 });
 
+test("listHostDir lists dot names for the file tree (dotted), never node_modules or .DS_Store", () => {
+  const root = tmp();
+  mkdirSync(join(root, "src"));
+  mkdirSync(join(root, ".git"));
+  mkdirSync(join(root, "node_modules"));
+  writeFileSync(join(root, ".env"), "secret");
+  writeFileSync(join(root, ".DS_Store"), "x");
+  const page = listHostDir(root, { home: root }, { dotted: true });
+  expect(page.items.map((row) => `${row.kind}:${row.name}`)).toEqual(["dir:.git", "dir:src", "file:.env"]);
+});
+
 test("listHostDir follows a symlink then uses the resolved realpath boundary", () => {
   const root = tmp();
   const elsewhere = tmp();

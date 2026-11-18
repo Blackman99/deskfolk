@@ -20,18 +20,23 @@ afterEach(() => {
   }
 });
 
-test("listWorkspaceDir lists the workspace root and skips dotfiles and node_modules", () => {
+test("listWorkspaceDir lists the workspace root, dot names too, and skips node_modules and .DS_Store", () => {
   const root = ws();
   mkdirSync(join(root, "src"));
   mkdirSync(join(root, "node_modules"));
   mkdirSync(join(root, ".git"));
   writeFileSync(join(root, "brief.md"), "# hi\n");
   writeFileSync(join(root, ".env"), "SECRET=1\n");
+  writeFileSync(join(root, ".DS_Store"), "x");
   writeFileSync(join(root, "node_modules", "pkg.js"), "x");
   const page = listWorkspaceDir(root, "");
   expect(page.path).toBe(".");
   expect(page.truncated).toBe(false);
-  expect(page.items.map((row) => `${row.kind}:${row.path}`)).toEqual(["dir:src", "file:brief.md"]);
+  expect(page.items.map((row) => `${row.kind}:${row.path}`)).toEqual(["dir:.git", "dir:src", "file:.env", "file:brief.md"]);
+  // Inside a dot folder too, and its files open like any other.
+  writeFileSync(join(root, ".git", "HEAD"), "ref: refs/heads/main\n");
+  expect(listWorkspaceDir(root, ".git").items.map((row) => row.path)).toEqual([".git/HEAD"]);
+  expect(locateWorkspaceFile(root, ".git/HEAD").rel).toBe(".git/HEAD");
 });
 
 test("listWorkspaceDir lists one directory and rejects outside paths", () => {
@@ -123,11 +128,19 @@ test("a folder elsewhere on the Mac lists by its absolute path, with absolute en
   mkdirSync(join(outside, "site"));
   writeFileSync(join(outside, "index.html"), "<p>hi</p>");
   writeFileSync(join(outside, ".env"), "SECRET=1");
+  writeFileSync(join(outside, ".DS_Store"), "x");
+  mkdirSync(join(outside, ".scratch"));
   const page = listCitedDir(root, outside);
   expect(page.path).toBe(outside);
-  expect(page.items.map((row) => `${row.kind}:${row.path}`)).toEqual([`dir:${join(outside, "site")}`, `file:${join(outside, "index.html")}`]);
+  // A project's folder lists its dot folders and files (`.scratch`, `.env`), not the Finder's `.DS_Store`.
+  expect(page.items.map((row) => `${row.kind}:${row.path}`)).toEqual([
+    `dir:${join(outside, ".scratch")}`,
+    `dir:${join(outside, "site")}`,
+    `file:${join(outside, ".env")}`,
+    `file:${join(outside, "index.html")}`,
+  ]);
   // Without a workspace too: the path says where it is.
-  expect(listCitedDir(null, outside).items).toHaveLength(2);
+  expect(listCitedDir(null, outside).items).toHaveLength(4);
   // Written relative, a path is the workspace's, and leaving it is still an escape.
   expect(statusOf(() => listCitedDir(root, "../x"))).toBe(422);
   expect(statusOf(() => listCitedDir(null, "src"))).toBe(422);
@@ -140,7 +153,8 @@ test("an absolute path into the workspace keeps the workspace's rules", () => {
   mkdirSync(join(root, "src"));
   writeFileSync(join(root, "src", "app.ts"), "export {}\n");
   writeFileSync(join(root, "src", ".hidden"), "x");
-  expect(listCitedDir(root, join(root, "src")).items.map((row) => row.path)).toEqual([join(root, "src", "app.ts")]);
+  mkdirSync(join(root, "src", "node_modules"));
+  expect(listCitedDir(root, join(root, "src")).items.map((row) => row.path)).toEqual([join(root, "src", ".hidden"), join(root, "src", "app.ts")]);
   expect(locateCitedFile(root, join(root, "src", "app.ts"))).toMatchObject({ abs: join(root, "src", "app.ts"), name: "app.ts" });
 });
 
