@@ -64,12 +64,13 @@ export class ChatActions {
    * a pane always names its own: the selected conversation is whichever pane has the keyboard.
    * True once the Mac has the message; the composer keeps what it staged until then.
    */
-  async send(opts?: { attachments?: File[]; paths?: string[]; sessionId?: string }): Promise<boolean> {
+  /** `lines` go after the draft, one a line: paths a project session's agent reads as they are. */
+  async send(opts?: { attachments?: File[]; paths?: string[]; lines?: string[]; sessionId?: string }): Promise<boolean> {
     const api = this.host.api;
     const id = opts?.sessionId ?? this.host.selectedId;
     const view = this.host.viewFor(id);
     if (!view) return false;
-    const body = view.draft.trim();
+    const body = [view.draft.trim(), (opts?.lines ?? []).join("\n")].filter(Boolean).join("\n\n");
     const hasAttachments = Boolean(opts?.attachments && opts.attachments.length > 0);
     const hasPaths = Boolean(opts?.paths && opts.paths.length > 0);
     if (!api || !id || (!body && !hasAttachments && !hasPaths) || view.sending) return false;

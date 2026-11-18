@@ -841,7 +841,7 @@ export class MessengerRuntime {
   // --- Forwarded to `chatActions` (send, ask drafts and answers, reactions, stops, interrupts, approvals). ---
   get askDrafts(): Map<string, AskDraftRecord> { return this.chatActions.askDrafts; }
   set askDrafts(value: Map<string, AskDraftRecord>) { this.chatActions.askDrafts = value; }
-  send(opts?: { attachments?: File[]; paths?: string[]; sessionId?: string }): Promise<boolean> { return this.chatActions.send(opts); }
+  send(opts?: { attachments?: File[]; paths?: string[]; lines?: string[]; sessionId?: string }): Promise<boolean> { return this.chatActions.send(opts); }
   getAskDraft(askId: string): AskDraftRecord | undefined { return this.chatActions.getAskDraft(askId); }
   setAskDraft(askId: string, body: string): void { this.chatActions.setAskDraft(askId, body); }
   setAskSelection(askId: string, selected: readonly string[]): void { this.chatActions.setAskSelection(askId, selected); }

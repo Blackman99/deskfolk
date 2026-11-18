@@ -15,7 +15,7 @@
  * Differences from the Svelte one are `ChatStage`'s: the composer sits under the list, the active
  * tick is read from the rows viewable.
  */
-import { computed, List, signal, Text, View } from "nsh";
+import { cleanup, computed, List, signal, Text, View, type ViewRef } from "nsh";
 import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import { isDifferentDay } from "../../m/chat/chat-view.ts";
 import { focusMode } from "../../m/chat/focus-mode.svelte.ts";
@@ -28,7 +28,8 @@ import { MessageImageLightbox, type ImageOrigin } from "./MessageImageLightbox";
 import { MessageIndex } from "./MessageIndex";
 import { ProjectSubagentDialog } from "./ProjectSubagentDialog";
 import { EarlierLine, ProjectLine, ProjectTasksEnd, type ProjectRow } from "./project-chat-lines";
-import { ProjectComposer } from "./project-chat-composer";
+import { ProjectComposer, type ProjectComposerHandle } from "./project-chat-composer";
+import { workspaceDropTarget } from "../workspace-drag";
 import type { ReadUris } from "./composer-drop";
 import { createProjectState } from "./project-chat-state";
 import { createProjectRowKeeper, sameRows } from "./project-rows";
@@ -57,8 +58,16 @@ export function ProjectChat(props: {
   const width = signal(0);
   const stageHeight = signal(0);
   /** Files from Finder dropped anywhere on the conversation go to the composer, as on a Bot's stage. */
-  let composer: { takesFiles(): boolean; stageFiles(uris: string[], mimeTypes?: string[]): void } | null = null;
+  let composer: ProjectComposerHandle | null = null;
   const fileOver = signal(false);
+  // Rows dragged from a file tree land on the box, as on a Bot's stage (`ChatStage`).
+  let composerBox: ViewRef | null = null;
+  cleanup(
+    workspaceDropTarget(() => composerBox, {
+      accepts: () => composer?.takesWorkspaceItems() ?? false,
+      drop: (items) => composer?.stageWorkspaceItems(items),
+    }),
+  );
   const image = signal<{ sessionId: string; attachment: Attachment; origin: ImageOrigin | null; placeholder: string | null } | null>(null);
 
   const hasOlder = () => Boolean(view().hasOlderMessages);
@@ -205,14 +214,16 @@ export function ProjectChat(props: {
           </Each>
         </If>
       </View>
-      <ProjectComposer
-        selected={selected()}
-        state={state}
-        onSent={() => scroll.scrollToBottom(false)}
-        fileDragOver={fileOver()}
-        readFiles={props.readFiles}
-        onHandle={(handle) => (composer = handle)}
-      />
+      <View ref={(node: ViewRef | null) => (composerBox = node)} testID="project-composer-drop">
+        <ProjectComposer
+          selected={selected()}
+          state={state}
+          onSent={() => scroll.scrollToBottom(false)}
+          fileDragOver={fileOver()}
+          readFiles={props.readFiles}
+          onHandle={(handle) => (composer = handle)}
+        />
+      </View>
       <If when={state.subagentShown()}>
         {(task: () => NonNullable<ReturnType<typeof state.subagentShown>>) => (
           <ProjectSubagentDialog

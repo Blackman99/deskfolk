@@ -3,7 +3,9 @@
  * mode, the account / model / thinking picker, the microphone, Stop and Send under it, as in the
  * agents' own apps. Pictures and files of any type go with a line as in a Bot's composer: pasted
  * (a Finder copy too), dropped from Finder on the conversation, or picked with the clip, staged on
- * the conversation and kept there until the Mac has them (`composer-drop.tsx`). Typing `/` at the
+ * the conversation and kept there until the Mac has them (`composer-drop.tsx`); rows dragged from a
+ * file tree wait as chips too, and go out as a Bot's composer sends them when they are in the
+ * workspace, else as their paths in the line (`splitDraggedPaths`). Typing `/` at the
  * start lists the agent's commands (the box, `ComposerEditor`, owns that list and its keys);
  * Shift+Tab switches plan mode as in the terminal, where the agent has one.
  *
@@ -16,6 +18,8 @@ import { cleanup, keymap, signal, Text, View } from "nsh";
 import type { PasteEvent } from "nsh/types";
 import { speechReady, type SessionSummary } from "@real-bot/protocol";
 import { ComposerAttachments as StagedFiles, uploadedShare } from "../../m/chat/composer-attachments.svelte";
+import { splitDraggedPaths } from "../../m/chat/attachments";
+import type { WorkspaceDragItem } from "../../m/workspace-drag.svelte";
 import { ComposerVoice, insertHeardAt, spacedHeard, type Caret } from "../../m/chat/composer-voice.svelte";
 import { VoiceRecorder } from "../../m/chat/voice-recorder";
 import { copy, runtime } from "../../runtime";
@@ -34,6 +38,14 @@ import { agentModels } from "../../m/chat/project-agent-options.svelte";
 import type { ProjectState } from "./project-chat-state";
 import { settled } from "../workbench/drag-settle";
 
+/** How the conversation hands this box files dropped elsewhere on it, and rows dragged from a file tree. */
+export type ProjectComposerHandle = {
+  takesFiles(): boolean;
+  stageFiles(uris: string[], mimeTypes?: string[]): void;
+  takesWorkspaceItems(): boolean;
+  stageWorkspaceItems(items: WorkspaceDragItem[]): void;
+};
+
 export function ProjectComposer(props: {
   selected: SessionSummary;
   state: ProjectState;
@@ -46,7 +58,7 @@ export function ProjectComposer(props: {
   /** Files from Finder are being dragged over the conversation, outside the card. */
   fileDragOver?: boolean;
   /** How the conversation hands files dropped elsewhere on it to this box. */
-  onHandle?: (handle: { takesFiles(): boolean; stageFiles(uris: string[], mimeTypes?: string[]): void } | null) => void;
+  onHandle?: (handle: ProjectComposerHandle | null) => void;
 }) {
   const t = () => copy();
   const s = () => props.state;
@@ -67,7 +79,8 @@ export function ProjectComposer(props: {
     editorEl: () => ({ focus: () => editor?.focus() }) as unknown as HTMLDivElement,
   });
   const staged = () => files.pendingAttachments;
-  const sendable = () => Boolean(view().draft.trim()) || staged().length > 0;
+  const stagedPaths = () => files.pendingPaths;
+  const sendable = () => Boolean(view().draft.trim()) || staged().length > 0 || stagedPaths().length > 0;
 
   const canStage = () => connected() && !view().sending;
   async function pickFiles(): Promise<void> {
@@ -85,7 +98,12 @@ export function ProjectComposer(props: {
     fileOver.set(false);
     if (canStage()) void stageUris(files, uris, mimeTypes, props.readFiles);
   }
-  props.onHandle?.({ takesFiles: canStage, stageFiles: onFileDrop });
+  props.onHandle?.({
+    takesFiles: canStage,
+    stageFiles: onFileDrop,
+    takesWorkspaceItems: () => files.takesWorkspaceItems(),
+    stageWorkspaceItems: (items) => files.stageWorkspaceItems(items),
+  });
   cleanup(() => props.onHandle?.(null));
 
   async function send(): Promise<void> {
@@ -93,12 +111,20 @@ export function ProjectComposer(props: {
     sendFailed.set(false);
     const target = view();
     const rows = [...staged()];
-    const sent = await runtime.send({ sessionId: props.selected.id, attachments: rows.length > 0 ? rows.map((row) => row.file) : undefined });
+    const pathRows = [...stagedPaths()];
+    const { attach, mention } = splitDraggedPaths(pathRows.map((row) => row.path), s().snapshot().settings.workspace_path ?? null);
+    const sent = await runtime.send({
+      sessionId: props.selected.id,
+      attachments: rows.length > 0 ? rows.map((row) => row.file) : undefined,
+      ...(attach.length > 0 ? { paths: attach } : {}),
+      ...(mention.length > 0 ? { lines: mention } : {}),
+    });
     sendFailed.set(!sent);
     if (!sent) return;
     // What was staged goes once the Mac has it, as in a Bot's composer.
-    const gone = new Set(rows.map((row) => row.id));
+    const gone = new Set([...rows, ...pathRows].map((row) => row.id));
     target.stagedAttachments = target.stagedAttachments.filter((row) => !gone.has(row.id));
+    target.stagedPaths = target.stagedPaths.filter((row) => !gone.has(row.id));
     editor?.focus();
     props.onSent();
   }
@@ -169,15 +195,15 @@ export function ProjectComposer(props: {
             )}
           </If>
           <VoiceStatus voice={voice} />
-          <If when={staged().length > 0}>
+          <If when={staged().length > 0 || stagedPaths().length > 0}>
             <ComposerAttachments
               api={runtime.client}
               pendingAttachments={staged().slice()}
-              pendingPaths={[]}
+              pendingPaths={stagedPaths().slice()}
               sending={view().sending}
               uploadedPercent={(file) => uploadedShare(view().upload, file)}
               onRemoveAttachment={files.removePendingAttachment}
-              onRemovePath={() => {}}
+              onRemovePath={files.removePendingPath}
             />
           </If>
           <ComposerEditor
