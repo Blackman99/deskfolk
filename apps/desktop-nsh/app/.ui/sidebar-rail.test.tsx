@@ -79,8 +79,11 @@ test("a tip shows for the pointer, stays while it rests on the tip, and goes whe
   const app = await open({ height: 900, clock: {} });
   const tip = `id:rail-tip-${seeded.group}`;
   await app.hover(rail(seeded.group));
-  // (A headless hover settles the 200ms wait before it resolves, so the delay itself is not observable here.)
+  // The tip waits 200 ms for the pointer to rest. (Once a hover settled that wait before it resolved:
+  // the folks' endless blinks kept the page busy, and the driver ran the clock while it waited.)
   await app.clock!.runFor(120);
+  expect(app.shows(tip)).toBe(false);
+  await app.clock!.runFor(100);
   expect(app.shows(tip)).toBe(true);
   // The title, then what the avatar shows: the approvals waiting.
   expect(app.shows(`${tip} >> text:周报小组`)).toBe(true);

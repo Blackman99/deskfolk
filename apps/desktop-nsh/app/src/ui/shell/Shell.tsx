@@ -58,6 +58,7 @@ import { SessionContextMenu } from "../sidebar/SessionContextMenu";
 import type { MenuAt } from "../sidebar/SessionRow";
 import { Sidebar } from "../sidebar/Sidebar";
 import { SidebarRail } from "../sidebar/SidebarRail";
+import { LoopsHeld } from "../interface/motion";
 import { FoldMotionHere } from "../sidebar/fold-motion";
 import { SpendOverlay } from "../spend/SpendOverlay";
 import { ToastHost } from "../ToastHost";
@@ -103,6 +104,8 @@ function ShellBody(props: { s: ShellState }) {
   const sessionDrag = createSessionDrag({ source: workbench.sessionDragSource, titleOf: s.titleOf });
   /** A page covers the roster on a phone while one is open. */
   const pageOpen = () => Boolean(runtime.routinesOpen || runtime.spendOpen || runtime.terminalOpen || runtime.screenOpen || s.selected());
+  /** A phone's page covers the roster: its avatars' loops hold still under it (`LoopsHeld`). */
+  const rosterCovered = () => !s.sidebarColumn() && pageOpen();
 
   const openMenuAt = (at: MenuAt, session: SessionSummary) => {
     const fake = { preventDefault() {}, stopPropagation() {}, clientX: at.x, clientY: at.y } as unknown as MouseEvent;
@@ -159,42 +162,44 @@ function ShellBody(props: { s: ShellState }) {
         >
           <FoldMotionHere.Provider value={s.foldMotion}>
             <If when={s.sidebarListShown()}>
-              <View
-                testID="shell-sidebar"
-                class="h-full min-h-0"
-                classList={{ "flex-1": !s.sidebarColumn() }}
-                style={s.sidebarColumn() ? { width: s.sidebarWidth(), ...s.foldMotion.sidebar, pointerEvents: s.sidebarLeaving() ? "none" : "auto" } : undefined}
-              >
-                <Sidebar
-                  selected={s.selected()}
-                  pinnedSessionIds={s.pinnedSessionIds()}
-                  searchOpen={s.searchOpen()}
-                  onOpenSearch={s.openGlobalSearch}
-                  createMenuOpen={s.createMenuOpen()}
-                  onCreateMenuOpenChange={(open) => s.createMenuOpen.set(open)}
-                  toolsMenuOpen={s.toolsMenuOpen()}
-                  onToolsMenuOpenChange={(open) => s.toolsMenuOpen.set(open)}
-                  workspaceOpen={runtime.workspaceOpen}
-                  contextMenuSessionId={s.sessionMenu.contextMenu?.session.id ?? null}
-                  renamingSessionId={s.sessionMenu.renamingSessionId}
-                  phoneList={s.phoneList()}
-                  onRenameSession={s.sessionMenu.finishRename}
-                  onOpenContextMenu={openMenuAt}
-                  onTogglePin={s.sessionMenu.handleMenuTogglePin}
-                  onOpenProjectDir={(session) => void s.sessionMenu.handleMenuOpenProjectDir(session)}
-                  onToggleWorkspace={artifact.toggleWorkspaceExplorer}
-                  onOpenRoutines={artifact.openRoutinesFromUi}
-                  onOpenSpend={artifact.openSpendFromUi}
-                  workbench={s.wide()}
-                  onNewTerminal={() => void workbench.openNewTerminal(null)}
-                  onOpenSettings={() => runtime.openSettings()}
-                  onCreateBot={s.openCreateBot}
-                  onCreateGroup={s.openCreateGroup}
-                  onCollapse={s.sidebarColumn() ? s.toggleSidebar : undefined}
-                  onHandle={(handle) => s.setSidebarHandle(handle)}
-                  onDragSession={s.wide() ? sessionDrag.drag : undefined}
-                />
-              </View>
+              <LoopsHeld.Provider value={rosterCovered}>
+                <View
+                  testID="shell-sidebar"
+                  class="h-full min-h-0"
+                  classList={{ "flex-1": !s.sidebarColumn() }}
+                  style={s.sidebarColumn() ? { width: s.sidebarWidth(), ...s.foldMotion.sidebar, pointerEvents: s.sidebarLeaving() ? "none" : "auto" } : undefined}
+                >
+                  <Sidebar
+                    selected={s.selected()}
+                    pinnedSessionIds={s.pinnedSessionIds()}
+                    searchOpen={s.searchOpen()}
+                    onOpenSearch={s.openGlobalSearch}
+                    createMenuOpen={s.createMenuOpen()}
+                    onCreateMenuOpenChange={(open) => s.createMenuOpen.set(open)}
+                    toolsMenuOpen={s.toolsMenuOpen()}
+                    onToolsMenuOpenChange={(open) => s.toolsMenuOpen.set(open)}
+                    workspaceOpen={runtime.workspaceOpen}
+                    contextMenuSessionId={s.sessionMenu.contextMenu?.session.id ?? null}
+                    renamingSessionId={s.sessionMenu.renamingSessionId}
+                    phoneList={s.phoneList()}
+                    onRenameSession={s.sessionMenu.finishRename}
+                    onOpenContextMenu={openMenuAt}
+                    onTogglePin={s.sessionMenu.handleMenuTogglePin}
+                    onOpenProjectDir={(session) => void s.sessionMenu.handleMenuOpenProjectDir(session)}
+                    onToggleWorkspace={artifact.toggleWorkspaceExplorer}
+                    onOpenRoutines={artifact.openRoutinesFromUi}
+                    onOpenSpend={artifact.openSpendFromUi}
+                    workbench={s.wide()}
+                    onNewTerminal={() => void workbench.openNewTerminal(null)}
+                    onOpenSettings={() => runtime.openSettings()}
+                    onCreateBot={s.openCreateBot}
+                    onCreateGroup={s.openCreateGroup}
+                    onCollapse={s.sidebarColumn() ? s.toggleSidebar : undefined}
+                    onHandle={(handle) => s.setSidebarHandle(handle)}
+                    onDragSession={s.wide() ? sessionDrag.drag : undefined}
+                  />
+                </View>
+              </LoopsHeld.Provider>
             </If>
             <If when={s.sidebarRailShown()}>
               <View

@@ -7,6 +7,7 @@
 import { computed, createMotion, effect, token, View } from "nsh";
 import type { ProjectAgent } from "@real-bot/protocol";
 import type { SessionStatusResult } from "../../m/sidebar/session-status";
+import { LoopsHeld } from "../interface/motion";
 import { AgentLogo } from "../settings/AgentLogo";
 import { narrowWindow } from "../Modal";
 import { tip } from "../tip";
@@ -39,9 +40,10 @@ export function AgentAvatar(props: {
   const shown = () => (props.status && props.status.kind !== "idle" ? props.status : null);
   // A boolean of its own: the status is a new object with every streamed token, and the effect below
   // restarted the animation each time (eight avatars, half a millisecond each, per token).
+  const held = LoopsHeld();
   const pulsing = computed(() => {
     const s = shown();
-    return Boolean(s && (s.isBusy || s.kind === "running" || s.kind === "replying"));
+    return !held() && Boolean(s && (s.isBusy || s.kind === "running" || s.kind === "replying"));
   });
 
   const pulse = createMotion();

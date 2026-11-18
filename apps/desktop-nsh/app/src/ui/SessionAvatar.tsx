@@ -12,6 +12,7 @@ import { youBotPeer } from "../m/sidebar/session-groups";
 import type { SessionStatusResult } from "../m/sidebar/session-status";
 import { FolkAvatar } from "./FolkAvatar";
 import { Icon } from "./Icon";
+import { LoopsHeld } from "./interface/motion";
 import { shadow } from "./styles";
 import { tip } from "./tip";
 
@@ -101,10 +102,11 @@ export function SessionAvatar(props: {
   const single = () => plan().layout === "single";
   const ring = () => props.ringColor ?? token("sidebar-bg");
 
+  const held = LoopsHeld();
   const pulse = createMotion();
   effect(() => {
     const s = status();
-    if (s?.isBusy || s?.kind === "running" || s?.kind === "replying") {
+    if (!held() && (s?.isBusy || s?.kind === "running" || s?.kind === "replying")) {
       void pulse.play({ duration: 1000, iterations: "infinite", keyframes: { opacity: [0.35, 1, 0.35], scale: [0.85, 1.15, 0.85] } });
     } else pulse.reset();
   });
@@ -215,8 +217,8 @@ export function SessionAvatar(props: {
                 borderWidth: DOT[size()].border,
                 borderColor: ring(),
                 backgroundColor: s().isBusy ? token("brand") : token((DOT_COLOR[s().kind] ?? "ok") as never),
-                opacity: s().isBusy || s().kind === "running" || s().kind === "replying" ? pulse.opacity : 1,
-                transform: s().isBusy || s().kind === "running" || s().kind === "replying" ? [...pulse.transform] : [],
+                opacity: !held() && (s().isBusy || s().kind === "running" || s().kind === "replying") ? pulse.opacity : 1,
+                transform: !held() && (s().isBusy || s().kind === "running" || s().kind === "replying") ? [...pulse.transform] : [],
               }}
             />
           )}
