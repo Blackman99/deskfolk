@@ -352,10 +352,7 @@ export class ArtifactLoader {
     if (gen !== this.#watchGen || this.loading || client !== this.#h.api()) return;
     // The hash of the bytes on screen, when they are the whole file as it was read.
     const shown = this.hashFresh && this.reducedFrom === null && !this.streamed ? this.loadedEtag : null;
-    const failing = this.missing || this.#againFailed;
-    if (failing) {
-      if (now === this.#tried && this.#tries >= 2) return;
-    } else {
+    if (!this.missing && !this.#againFailed) {
       const known = shown ?? this.#baseline;
       if (known === null) {
         this.#baseline = now;
@@ -363,6 +360,9 @@ export class ArtifactLoader {
       }
       if (now === known) return;
     }
+    // Twice per version of the file, whatever kept it from showing: a viewer that refuses it, a read
+    // that fails, or one that lands with a hash other than the one asked about.
+    if (now === this.#tried && this.#tries >= 2) return;
     if (untrack(() => this.#h.dirty?.() ?? false)) return;
     if (now !== this.#tried) {
       this.#tried = now;

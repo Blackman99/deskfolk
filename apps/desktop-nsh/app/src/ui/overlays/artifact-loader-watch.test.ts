@@ -13,8 +13,11 @@ import type { ArtifactKind } from "../../m/overlays/artifacts.ts";
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
 const POLL = WATCH_LOCAL_MS + 400;
 
-/** A local client whose file is `disk()` (null: the runtime says there is none). */
-function client(disk: () => { text: string; etag: string } | null) {
+/**
+ * A local client whose file is `disk()` (null: the runtime says there is none). `readEtag` is the
+ * hash a read comes back with, when it is not the one the stat names.
+ */
+function client(disk: () => { text: string; etag: string } | null, readEtag?: (etag: string) => string) {
   const calls = { stat: 0, read: 0 };
   const api = {
     kind: "local",
@@ -30,7 +33,7 @@ function client(disk: () => { text: string; etag: string } | null) {
       const file = disk();
       if (!file) throw new Error("not_found");
       const blob = new Blob([file.text]);
-      rememberBlobEtag(blob, file.etag);
+      rememberBlobEtag(blob, readEtag ? readEtag(file.etag) : file.etag);
       return blob;
     },
   } as unknown as MessengerApi;
@@ -78,6 +81,27 @@ test("a text file follows the disk, and an unsaved edit is never read over", asy
     loader.destroy();
   }
 }, 20_000);
+
+test("a read whose hash never matches the one asked about is made twice per version, not every second", async () => {
+  const disk = signal({ text: "one\n", etag: '"a"' });
+  // The bytes come back named another way than the stat names them (unquoted).
+  const { api, calls } = client(() => disk(), (etag) => etag.replaceAll('"', ""));
+  const loader = watched(api, "text");
+  try {
+    await wait(200);
+    const first = calls.read;
+    await wait(POLL * 4);
+    expect(calls.read - first).toBe(2);
+    expect(loader.text).toBe("one\n");
+    // A new version is read, again at most twice.
+    disk.set({ text: "two\n", etag: '"b"' });
+    await wait(POLL * 3);
+    expect(loader.text).toBe("two\n");
+    expect(calls.read - first).toBe(4);
+  } finally {
+    loader.destroy();
+  }
+}, 30_000);
 
 test("a clip the player refuses is made again twice per version of the file, not every second", async () => {
   const disk = signal({ text: "not a clip", etag: '"x1"' });
