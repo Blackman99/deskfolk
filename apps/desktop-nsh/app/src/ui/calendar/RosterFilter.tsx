@@ -204,7 +204,7 @@ export function RosterFilter(props: {
         </View>
       </If>
       <If when={phone() && open()}>
-        <BottomSheet title={t().filter} closeLabel={copy().common.close} onClose={close} testID="roster-filter-sheet">
+        <BottomSheet title={t().filter} closeLabel={copy().common.close} onClose={close} holdsText testID="roster-filter-sheet">
           {body()}
         </BottomSheet>
       </If>

@@ -1,20 +1,26 @@
 /**
  * What a dropdown opens as on a phone (`BottomSheet.svelte`): a sheet from the bottom of the
  * window, rows sized for a thumb, over a scrim. Mount it while it is open (`<If when={open}>`), as
- * the Svelte one: it is `Sheet` (nsh/base) underneath, so the backdrop, Escape and the phone's Back
- * are NSH's. The backdrop and ✕ close it with `onClose`; Back and Escape do `onBack ?? onClose`, one
- * level up in a sheet that goes down a level at a time.
+ * the Svelte one. The backdrop and ✕ close it with `onClose`; Back and Escape do `onBack ?? onClose`,
+ * one level up in a sheet that goes down a level at a time.
+ *
+ * It comes in by a style transition, as the Svelte sheet's CSS did: on the web the browser moves it
+ * on its compositor, so the page's main thread being busy (the sheet's own content mounting, a Bot's
+ * reply arriving) doesn't stop it. `Sheet` (nsh/base) steps its motion on the main thread every
+ * frame, and a phone dropped most of them. A sheet that `holdsText` stays on `Sheet`, which lifts it
+ * above the keyboard.
  *
  * `SheetItem` and `SheetSeparator` are the rows every sheet's list is made of.
  */
-import { safeArea, Scroll, Text, View, type JSX } from "nsh";
-import { Sheet } from "nsh/base";
+import { cleanup, safeArea, Scroll, signal, Text, View, type JSX, type ViewStyle } from "nsh";
+import { Dialog, Sheet } from "nsh/base";
 import { Icon, type IconName } from "./Icon";
 import { IconButton } from "./IconButton";
+import { reduceMotion } from "./interface/motion";
 import { shadow } from "./styles";
 import { WheelLayer } from "../platform/wheel-layer";
 
-export function BottomSheet(props: {
+type BottomSheetProps = {
   /** The heading, and the sheet's name for a screen reader. None: just the grip. */
   title?: string | null;
   /** The sheet's name for a screen reader when it has no heading (a picture's one-line menu). */
@@ -27,9 +33,79 @@ export function BottomSheet(props: {
   backLabel?: string;
   /** Classes for the panel itself. */
   class?: string;
+  /** It has a text field: it rises above the keyboard (`Sheet`), at the cost of a stepped entrance. */
+  holdsText?: boolean;
   testID?: string;
   children?: JSX.Element;
-}) {
+};
+
+export function BottomSheet(props: BottomSheetProps) {
+  return (
+    <If when={props.holdsText} else={<SlidingSheet p={props} />}>
+      <LiftingSheet p={props} />
+    </If>
+  );
+}
+
+/** The Svelte sheet's entrance: 240 ms on a curve that covers most of the way in the first frames. */
+const SLIDE: ViewStyle = { transitionProperty: "transform", transitionDuration: 240, transitionTimingFunction: "cubic-bezier(0.16, 1, 0.3, 1)" };
+const FADE: ViewStyle = { transitionProperty: "opacity", transitionDuration: 180, transitionTimingFunction: "ease" };
+
+/**
+ * A dialog of its own drawing: the scrim and the panel, which start away and come in once the
+ * dialog is shown (`onOpen`, so the browser has drawn where they start). Until then they carry no
+ * transition: a view made with one moved from the style's default to where it starts, so the panel
+ * showed in place for a frame and then jumped. Until then the whole stays unseen too. The scrim is
+ * ours, not the dialog's: the dialog's would also report a press on it as a cancel, and a sheet with
+ * levels would take that for Back.
+ */
+function SlidingSheet(props: { p: BottomSheetProps }) {
+  const p = props.p;
+  const still = reduceMotion();
+  const shown = signal(still);
+  const show = () => shown.set(true);
+  // Should the dialog never say it is shown, the panel still comes in.
+  const late = setTimeout(show, 400);
+  cleanup(() => clearTimeout(late));
+  return (
+    <Dialog
+      open
+      animation="none"
+      accessibilityLabel={p.title ?? p.label ?? undefined}
+      closeOnEscape={!p.onBack}
+      closeOnBackdropPress={false}
+      onOpen={show}
+      // One level up, a turn later: the dialog reads `closeOnEscape` as soon as this returns.
+      onCancel={() => {
+        if (p.onBack) queueMicrotask(() => p.onBack?.());
+      }}
+      onOpenChange={(e) => {
+        if (!e.open) p.onClose();
+      }}
+      class="absolute inset-0"
+      style={{ opacity: shown() ? 1 : 0 }}
+    >
+      <View
+        testID="bottom-sheet-backdrop"
+        accessibilityLabel={p.closeLabel}
+        class="absolute inset-0 bg-modal-backdrop"
+        style={shown() ? { opacity: 1, ...(still ? {} : FADE) } : { opacity: 0 }}
+        onPress={() => p.onClose()}
+      />
+      <View
+        testID="bottom-sheet-panel"
+        class={`absolute left-0 right-0 bottom-0 bg-pane rounded-t-[16px] max-h-[86%] ${p.class ?? ""}`}
+        style={{ boxShadow: shadow("lg"), paddingBottom: safeArea().bottom, ...(shown() ? { translate: "0 0", ...(still ? {} : SLIDE) } : { translate: "0 100%" }) }}
+      >
+        <SheetBody p={p} />
+      </View>
+    </Dialog>
+  );
+}
+
+/** On `Sheet` (nsh/base): it rises above the keyboard, and swipes down to close. */
+function LiftingSheet(props: { p: BottomSheetProps }) {
+  const p = props.p;
   return (
     <Sheet
       open
@@ -37,31 +113,38 @@ export function BottomSheet(props: {
       closeOnSwipe
       onOpenChange={(e) => {
         if (e.open) return;
-        if (e.reason === "cancel") (props.onBack ?? props.onClose)();
-        else props.onClose();
+        if (e.reason === "cancel") (p.onBack ?? p.onClose)();
+        else p.onClose();
       }}
       backdropClass="bg-modal-backdrop"
-      popupClass={`bg-pane rounded-t-[16px] max-h-[86%] ${props.class ?? ""}`}
+      popupClass={`bg-pane rounded-t-[16px] max-h-[86%] ${p.class ?? ""}`}
       popupStyle={{ boxShadow: shadow("lg"), paddingBottom: safeArea().bottom }}
     >
-      <WheelLayer>
-        <View testID={props.testID} accessibilityLabel={props.title ?? props.label ?? undefined} class="shrink min-h-0">
-          <View class="w-[36px] h-[4px] rounded-full bg-line self-center mt-[8px] mb-[4px]" accessible={false} />
-          <If when={props.title}>
-            {(title) => (
-              <View class={`flex-row items-center gap-2 pt-[2px] pb-[6px] pr-2 ${props.onBack ? "pl-1" : "pl-5"}`}>
-                <If when={props.onBack}>
-                  <IconButton icon="chevron-left" size="lg" testID="bottom-sheet-back" label={props.backLabel ?? ""} class="rounded-full" onPress={() => props.onBack?.()} />
-                </If>
-                <Text role="header" class="flex-1 min-w-0 text-[16px] font-semibold text-ink line-clamp-1">{title()}</Text>
-                <IconButton icon="x" size="lg" label={props.closeLabel} testID="bottom-sheet-close" class="rounded-full" onPress={() => props.onClose()} />
-              </View>
-            )}
-          </If>
-          <Scroll class="shrink min-h-0 px-2 pt-1 pb-3">{props.children}</Scroll>
-        </View>
-      </WheelLayer>
+      <SheetBody p={p} />
     </Sheet>
+  );
+}
+
+function SheetBody(props: { p: BottomSheetProps }) {
+  const p = props.p;
+  return (
+    <WheelLayer>
+      <View testID={p.testID} accessibilityLabel={p.title ?? p.label ?? undefined} class="shrink min-h-0">
+        <View class="w-[36px] h-[4px] rounded-full bg-line self-center mt-[8px] mb-[4px]" accessible={false} />
+        <If when={p.title}>
+          {(title) => (
+            <View class={`flex-row items-center gap-2 pt-[2px] pb-[6px] pr-2 ${p.onBack ? "pl-1" : "pl-5"}`}>
+              <If when={p.onBack}>
+                <IconButton icon="chevron-left" size="lg" testID="bottom-sheet-back" label={p.backLabel ?? ""} class="rounded-full" onPress={() => p.onBack?.()} />
+              </If>
+              <Text role="header" class="flex-1 min-w-0 text-[16px] font-semibold text-ink line-clamp-1">{title()}</Text>
+              <IconButton icon="x" size="lg" label={p.closeLabel} testID="bottom-sheet-close" class="rounded-full" onPress={() => p.onClose()} />
+            </View>
+          )}
+        </If>
+        <Scroll class="shrink min-h-0 px-2 pt-1 pb-3">{p.children}</Scroll>
+      </View>
+    </WheelLayer>
   );
 }
 
