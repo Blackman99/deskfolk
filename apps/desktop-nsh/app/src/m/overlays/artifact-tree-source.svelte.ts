@@ -587,7 +587,7 @@ export class ArtifactTreeSource {
     try {
       result = await client.moveInWorkspace(into, outermost.map((item) => item.path));
     } catch (error) {
-      showToast(this.#importRefusal(error), { tone: "error" });
+      showToast(this.#importRefusal(error, "move"), { tone: "error" });
       return;
     }
     const sep = into === "" ? "/" : hostSeparator(into);
@@ -674,12 +674,19 @@ export class ArtifactTreeSource {
     void this.probeDir(client, key);
   }
 
-  /** What a refused drop says: in words for a folder the runtime does not write to, or a runtime too old to copy. */
-  #importRefusal(error: unknown): string {
+  /**
+   * What a refused drop or move says: in words for a folder the runtime does not write to, or a
+   * runtime too old to have the route. A route the runtime does not know answers 404 "not found"
+   * (the dispatch's last word) or "unknown route"; a folder gone answers 404 "folder not found".
+   */
+  #importRefusal(error: unknown, kind: "import" | "move" = "import"): string {
     const t = this.#h.t();
-    if (error instanceof ApiError && error.status === 404 && error.message === "unknown route") return t.stream.workspaceImportNeedsRestart;
-    if (error instanceof ApiError && error.status === 422 && /outside the workspace/.test(error.message)) return t.stream.workspaceImportOutside;
-    return t.stream.workspaceImportRefused(error instanceof Error && error.message ? error.message : String(error));
+    if (error instanceof ApiError && error.status === 404 && (error.message === "not found" || error.message === "unknown route")) return t.stream.workspaceImportNeedsRestart;
+    if (error instanceof ApiError && error.status === 422 && /outside the workspace/.test(error.message)) {
+      return kind === "move" ? t.stream.workspaceMoveOutside : t.stream.workspaceImportOutside;
+    }
+    const reason = error instanceof Error && error.message ? error.message : String(error);
+    return kind === "move" ? t.stream.workspaceMoveRefused(reason) : t.stream.workspaceImportRefused(reason);
   }
 
   openTreeMenu = (node: ArtifactTreeNode, event: MouseEvent, targets: ArtifactTreeNode[]): void => {

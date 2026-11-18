@@ -153,6 +153,10 @@ export const zh = {
       .join("；") + "，没有移动。",
   /** The moved rows go back where they were. */
   workspaceMoveUndo: "撤销",
+  /** A move refused whole (a folder gone, the link lost). */
+  workspaceMoveRefused: (reason: string) => `没能移动：${reason}`,
+  /** A move into a folder outside the workspace and every project's folder. */
+  workspaceMoveOutside: "只能移进工作区或项目目录里的文件夹，这个文件夹在它们外面。",
   /** The file on screen has edits not saved, and it is among the rows dragged. */
   workspaceMoveUnsaved: "正在编辑的文件还有没保存的修改，先保存再移动。",
   workspacePickFile: "从左侧打开一个文件。",
@@ -432,6 +436,8 @@ export const en: CopyShape<typeof zh> = {
       )
       .join("; ")}.`,
   workspaceMoveUndo: "Undo",
+  workspaceMoveRefused: (reason: string) => `Could not move: ${reason}`,
+  workspaceMoveOutside: "Files can only be moved into folders in the workspace or a project's folder; this one is outside them.",
   workspaceMoveUnsaved: "The file you are editing has unsaved changes; save it before moving it.",
   workspacePickFile: "Open a file from the left.",
   artifactSave: "Save",

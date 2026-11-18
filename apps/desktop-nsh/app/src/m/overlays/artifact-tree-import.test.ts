@@ -65,7 +65,8 @@ test("copies dropped on a message's files are rows of that tree, marked, until a
 });
 
 test("a drop the runtime refuses is said in words: a runtime too old to copy, a folder outside where it writes", async () => {
-  let refusal: Error = new ApiError(404, "not_found", "unknown route");
+  // A runtime that does not know the route answers as its dispatch ends: 404 "not found".
+  let refusal: Error = new ApiError(404, "not_found", "not found");
   const { tree } = cited(() => Promise.reject(refusal));
   await tree.importDropped("inbox", ["/Users/me/Desktop/brief.pdf"]);
   expect(toasts.current?.text).toBe(t.stream.workspaceImportNeedsRestart);

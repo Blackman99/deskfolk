@@ -87,3 +87,16 @@ test("what the runtime would not move stays, said in words", async () => {
   expect(toasts.current?.text).toBe(t.stream.workspaceMoveFailed([{ name: "sum.ts", code: "exists", message: "taken" }]));
   expect(toasts.current?.action ?? null).toBeNull();
 });
+
+test("a move the runtime refuses whole is said as a move: a runtime too old to move, as its unknown route answers", async () => {
+  let refusal: Error = new ApiError(404, "not_found", "not found");
+  const { tree } = panel({ answer: () => Promise.reject(refusal) });
+  await tree.moveItems("docs", [{ path: "inbox/sum.ts", isDir: false }]);
+  expect(toasts.current?.text).toBe(t.stream.workspaceImportNeedsRestart);
+  refusal = new ApiError(404, "not_found", "folder not found");
+  await tree.moveItems("docs", [{ path: "inbox/sum.ts", isDir: false }]);
+  expect(toasts.current?.text).toBe(t.stream.workspaceMoveRefused("folder not found"));
+  refusal = new ApiError(422, "invalid_args", "dir is outside the workspace");
+  await tree.moveItems("~/Downloads", [{ path: "inbox/sum.ts", isDir: false }]);
+  expect(toasts.current?.text).toBe(t.stream.workspaceMoveOutside);
+});
