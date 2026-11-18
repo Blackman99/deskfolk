@@ -37,10 +37,12 @@ test("an empty conversation is the welcome; a line sent from the composer replac
     const line = `stage ${Date.now()}`;
     await app.type("id:composer-input", line);
     await app.keyboard.press("enter");
-    await app.waitFor(`text:${line}`, { timeout: 15_000 });
+    // The composer keeps the line until the Mac has it, so the line's text on screen is no sign it
+    // was sent: on a slow runner it is still the draft. Wait for the transcript instead.
+    await app.waitUntil(() => app.shows("id:transcript"), { timeout: 15_000 });
     expect(app.shows("id:chat-welcome")).toBe(false);
-    expect(app.shows("id:transcript")).toBe(true);
     expect(lineCount(app)).toBe(1);
+    expect(app.texts()).toContain(line);
   } finally {
     await app.press("id:story-cleanup");
     await app.waitUntil(() => app.texts().includes("cleaned"), { timeout: 15_000 });
