@@ -230,6 +230,9 @@ export class Terminals {
       this.scheduleRemember(entry);
     });
     void pty.exited.then((code) => {
+      // Ended by `remove`: the hang-up's exit comes after `terminal.removed`, and an upsert now
+      // would put the session back in every client's list, as finished, after it was forgotten.
+      if (this.entries.get(id) !== entry) return;
       entry.row = { ...entry.row, status: "exited", exit_code: code };
       this.options.streams.close(entry.row.id);
       // Stopping keeps the row: the process died with the daemon, and the next one starts it again.

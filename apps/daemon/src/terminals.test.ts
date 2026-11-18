@@ -320,6 +320,26 @@ test("OSC 7 output moves the cwd and title, and only publishes on an actual chan
   expect(terminals.get(created.id).cwd).toBe("/Users/x/projects/real-bot");
 });
 
+test("a removed session stays gone: its hang-up's exit publishes nothing after terminal.removed", async () => {
+  const events: Array<{ event: string; id?: string; status?: string }> = [];
+  const store = fakeStore();
+  const pty = fakePty();
+  const terminals = new Terminals({
+    streams: new StreamHub(),
+    store,
+    publish: (event) => events.push(event as typeof events[number]),
+    spawn: () => pty as unknown as Pty,
+  });
+  const created = terminals.open({ cwd: "/Users/x" });
+  events.length = 0;
+  terminals.remove(created.id); // kills the fake pty, which settles its exit
+  await pty.exited;
+  await Promise.resolve();
+  expect(events.map((e) => e.event)).toEqual(["terminal.removed"]);
+  expect(terminals.list()).toEqual([]);
+  expect(store.rows.has(created.id)).toBe(false);
+});
+
 test("a restart's replayed scrollback does not move the cwd", () => {
   const store = fakeStore();
   store.rows.set("01J0000000000000000000000A", {
