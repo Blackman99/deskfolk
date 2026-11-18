@@ -1505,3 +1505,39 @@ On 11-18 the user said that on the phone, scrolled up in a project session, the 
   - A slide remains at the moment the link drops, on main as well: with the relay out of reach, the rows below the view that are not drawn take estimated heights (about 94 px against 211 measured), and the reader moves towards older lines by a few hundred px (330–656 px measured, two or three lines). It comes before the reconnect; its cause is not found yet. Tried once: with the open conversation keeping its cursor through the drop and the read (so the "earlier" row and the index strip do not flip), that run moved about 219 px (one line); one sample, and it changes more state paths, so it is not in.
   - The Bot↔Bot popup (`peekSession`) goes through the same `heldHistory` with no test of its own; a read again within one connection, for a link to a line, has one.
   - Other open views (another pane on the desktop, the Bot↔Bot popup) are still cut to their last line on a reconnect until read again.
+
+## 补记 2026-11-18（五十二）：底部面板由浏览器自己滑上来 / Addendum 2026-11-18 (52): the bottom sheet slides on the browser's compositor
+
+第四十七条的改动上线以后，用户说手机上的动画还是卡，也不是手机慢：nginx 日志里，用户那台 Android（Chrome 157）19:04 已经加载了含那些改动的构建。用户另做的一个单页底部面板，在同一台手机上很流畅。那个面板每帧用 JS 写 `translate3d`，但带 `will-change`，页面的主线程也几乎闲着。
+
+- **卡在哪。** `Sheet`（nsh-base）的入场每一步都要等主线程。对照页面在 CPU 降到六分之一时，入场开始后用 400 ms 的死循环占住主线程，用 CDP screencast 数合成器画出的帧：`Sheet` 在那 400 ms 里只画出 0–1 帧，面板停住；同样的面板改成样式过渡（`transitionProperty: "transform"`，web 上就是 CSS transition）是 9 帧，一路滑完。手机页面上（四分之一速、200 行的对话）线上版本是 0–1 帧，改后 14 帧。
+- **怎么改。** `BottomSheet` 不再用 `Sheet`，而用 `Dialog`（`animation="none"`），里面放我们自己的遮罩和面板。面板从 `translate: "0 100%"` 出发，遮罩从 opacity 0 出发，对话框 `onOpen` 之后（另有 400 ms 兜底）面板以 240 ms `cubic-bezier(0.16,1,0.3,1)` 滑到 0，遮罩用 180 ms 淡入，和 Svelte 的面板一样。减少动态效果时直接停在终点。
+- **一个坑：** 视图一建出来就带着过渡属性时，浏览器会从样式的默认值（位移 0）过渡到出发点，于是面板先在终点露一帧，再跳到半路滑回来；百分比和像素一样。所以出发前不带任何过渡属性，整个对话框也先是 opacity 0，到 `onOpen` 才一起换上。改后两个浏览器逐帧量过：第一帧就在屏幕外 224 px，然后 141、86、52、32……到 0。
+- **遮罩是我们自己的。** `Dialog` 的遮罩被点时也会先调 `onCancel`，分级的面板会把它当成返回上一级。现在返回和 Esc 走 `onCancel`：有 `onBack` 时 `closeOnEscape` 为假，在 microtask 里上一级；没有时由对话框自己关，`onOpenChange` 里调 `onClose`。点遮罩直接调 `onClose`。
+- **没改的。** 带输入框的面板（日历的成员筛选 `RosterFilter`）加 `holdsText`，仍用 `Sheet`，因为 `Sheet` 会把面板抬到键盘上面。`ModelPicker` 自己的 `Sheet`、nsh/base 的 `Select` 和菜单在手机上弹出的面板，还是走动画图。面板不再能下滑关掉，Svelte 的面板也不能。
+- **检查。** 手机页面的端到端测试（`phone-web-e2e`）在 Chromium 和 WebKit 里都过了，包括返回先关面板、再关对话。`.ui` 里用到面板的文件都过了。面板落在底部，满宽，高 224 pt，和 `Sheet` 时一样。
+
+After addendum 47 went live, the user said animations on the phone were still janky, and that the phone is not slow. The relay's nginx log shows the user's Android (Chrome 157) loaded the build with those changes at 19:04. A one-page bottom sheet the user made separately runs smoothly on the same phone. It writes `translate3d` from JS every frame, but it has `will-change`, and its main thread is mostly idle.
+
+- **Where it stuck.** Every step of `Sheet`'s (nsh-base) entrance waits for the main thread.
+  - On the control page at 6× CPU throttle, the main thread was blocked for 400 ms by a busy loop once the entrance started, and the compositor's frames were counted from a CDP screencast. `Sheet` drew 0–1 frames in those 400 ms: the panel stood still. The same panel with a style transition (`transitionProperty: "transform"`, a CSS transition on the web) drew 9 and slid all the way.
+  - On the phone page at 4× with a 200-line conversation, the live build drew 0–1 frames and the new one 14.
+- **What changed.**
+  - `BottomSheet` no longer uses `Sheet`. It is a `Dialog` (`animation="none"`) holding a scrim and a panel of our own.
+  - The panel starts at `translate: "0 100%"` and the scrim at opacity 0. After the dialog's `onOpen` (or a 400 ms fallback), the panel slides to 0 over 240 ms on `cubic-bezier(0.16,1,0.3,1)` and the scrim fades in over 180 ms, as the Svelte sheet did.
+  - With reduced motion it is already where it ends.
+- **A trap.**
+  - A view made with transition properties already set transitions from the style's default (no offset) to where it starts. The panel then showed in place for a frame, jumped halfway and slid back. A percentage and a pixel offset both did this.
+  - So nothing carries a transition before the start, and the dialog stays at opacity 0 too; both change at `onOpen`.
+  - Measured frame by frame in both browsers after the change: the first frame is 224 px below the screen, then 141, 86, 52, 32 … 0.
+- **The scrim is ours.** `Dialog`'s scrim calls `onCancel` on a press too, and a sheet with levels would take that for Back.
+  - Back and Escape go through `onCancel`. With `onBack`, `closeOnEscape` is false and the sheet steps up a level in a microtask. Without it, the dialog closes itself and `onOpenChange` calls `onClose`.
+  - A press on the scrim calls `onClose` directly.
+- **Unchanged.**
+  - A sheet with a text field (the calendar's member filter, `RosterFilter`) takes `holdsText` and stays on `Sheet`, which lifts it above the keyboard.
+  - `ModelPicker`'s own `Sheet`, and the sheets that nsh/base's `Select` and menus open on a phone, still run on the animation graph.
+  - A sheet no longer closes by swiping it down. The Svelte one didn't either.
+- **Checks.**
+  - `phone-web-e2e` passes in Chromium and WebKit, including Back closing the sheet first and then the conversation.
+  - The `.ui` files that open sheets pass.
+  - The panel sits at the bottom, full width, 224 pt tall, as it did on `Sheet`.
