@@ -35,6 +35,11 @@ type BottomSheetProps = {
   class?: string;
   /** It has a text field: it rises above the keyboard (`Sheet`), at the cost of a stepped entrance. */
   holdsText?: boolean;
+  /**
+   * What it holds scrolls itself (a tree, a list that makes only the rows in view): no scroll view of
+   * the sheet's goes around it. Around one, the two showed two bars, and the outer one took swipes.
+   */
+  scrollsItself?: boolean;
   testID?: string;
   children?: JSX.Element;
 };
@@ -142,7 +147,9 @@ function SheetBody(props: { p: BottomSheetProps }) {
             </View>
           )}
         </If>
-        <Scroll class="shrink min-h-0 px-2 pt-1 pb-3">{p.children}</Scroll>
+        <If when={p.scrollsItself} else={<Scroll class="shrink min-h-0 px-2 pt-1 pb-3">{p.children}</Scroll>}>
+          <View class="shrink min-h-0 px-2 pt-1 pb-3">{p.children}</View>
+        </If>
       </View>
     </WheelLayer>
   );

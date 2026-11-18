@@ -15,6 +15,7 @@ import {
   type WorkspaceDragItem,
   type WorkspaceDropTarget,
 } from "../m/workspace-drag.svelte.ts";
+import { HOSTED_MESSENGER } from "../m/remote/mode.ts";
 
 export { WORKSPACE_DRAG_THRESHOLD_PX, type WorkspaceDragItem, type WorkspaceDropTarget };
 
@@ -64,12 +65,19 @@ export async function dropTargetAt(x: number, y: number): Promise<WorkspaceDropT
 /**
  * A press on a tree row. Nothing happens until the pointer has travelled far enough to mean a
  * drag, so a press still opens the row. `items` is read at that moment, so rows picked with ⌘ or
- * Shift just before go along.
+ * Shift just before go along. A finger is left alone, as in the messenger: there it scrolls the
+ * tree (taken for a drag, it held the list still on a phone), and the tree covers the conversation
+ * anyway. A mouse or a pen drags. On the phone's page (`hosted`) nothing drags: no composer is ever
+ * beside a tree there (no workbench at any width), and NSH's web runtime gives a touch no
+ * `pointerType` to tell a finger by.
  */
-export function pressWorkspacePaths(source: {
-  items: () => WorkspaceDragItem[];
-  label: (items: WorkspaceDragItem[]) => string;
-}): PanResponderInstance {
+export function pressWorkspacePaths(
+  source: {
+    items: () => WorkspaceDragItem[];
+    label: (items: WorkspaceDragItem[]) => string;
+  },
+  hosted = HOSTED_MESSENGER,
+): PanResponderInstance {
   let started = false;
   let cancelled = false;
   let off: (() => void) | null = null;
@@ -94,8 +102,8 @@ export function pressWorkspacePaths(source: {
 
   return PanResponder.create({
     onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_e, g) =>
-      Math.hypot(g.dx, g.dy) >= WORKSPACE_DRAG_THRESHOLD_PX && source.items().length > 0,
+    onMoveShouldSetPanResponder: (e, g) =>
+      !hosted && e.pointerType !== "touch" && Math.hypot(g.dx, g.dy) >= WORKSPACE_DRAG_THRESHOLD_PX && source.items().length > 0,
     onPanResponderTerminationRequest: () => false,
     onPanResponderGrant: (_e, g) => {
       const items = source.items();

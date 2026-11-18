@@ -48,19 +48,20 @@ test("a press on the previewed picture enlarges it over the app, showing the pre
   expect(app.shows("id:image-annotator-picture")).toBe(true);
 });
 
-test("dragging a tree row shows a chip with its name, and letting go on a drop target hands the path over", async () => {
+test("a finger dragging a tree row carries nothing: it is left to scroll the tree", async () => {
+  // `dragAndHold` is a finger. The mouse's drag onto a target is `src/ui/workspace-drag.test.ts`.
   const app = await story();
   await app.press("id:story-make-ts");
   await app.waitFor("id:artifact-code-editor", { timeout: LOAD_MS });
   const file = path(app);
   await app.waitFor(`id:artifact-tree-row:${file}`);
-  expect(app.shows("id:workspace-drag-ghost")).toBe(false);
-  // The story's drop target is the whole preview: drag the row across into the file.
+  // The story's drop target is the whole preview: across into the file, a mouse would drop there.
   await app.dragAndHold(`id:artifact-tree-row:${file}`, { x: 300, y: 40 });
-  await app.waitFor("id:workspace-drag-ghost");
+  expect(app.shows("id:workspace-drag-ghost")).toBe(false);
   await app.drop();
-  await app.waitUntil(() => log(app).includes(`drop:${file}`), { timeout: LOAD_MS });
-  await app.waitUntil(() => !app.shows("id:workspace-drag-ghost"));
+  await app.wait(300);
+  expect(log(app)).not.toContain("drop:");
+  expect(app.shows("id:workspace-drag-ghost")).toBe(false);
 });
 
 test("a drag that never leaves the row is a press, not a drag", async () => {

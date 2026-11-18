@@ -633,8 +633,8 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
           </View>
         </View>
         <If when={treeOpen()}>
-          <BottomSheet title={treeLabel()} closeLabel={t().common.close} onClose={() => treeOpen.set(false)}>
-            {/* The tree scrolls itself and makes the rows in view, so it needs a height: most of the screen. */}
+          <BottomSheet title={treeLabel()} closeLabel={t().common.close} onClose={() => treeOpen.set(false)} scrollsItself>
+            {/* The tree scrolls itself and makes the rows in view, so it needs a height: most of the screen, less where the sheet stops. */}
             <View class="shrink min-h-0" style={{ height: Math.round(windowSize().height * 0.6) }}>
               {treeView()}
             </View>
