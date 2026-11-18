@@ -8,7 +8,7 @@
 	import { characterLooks, conversationLabel } from './characters.ts';
 	import { projectAgentOf } from '../sidebar/project-groups.ts';
 	import { buildDistricts, type DistrictKind, type DistrictMap } from './districts.ts';
-	import { buildFrame, placeName, timeAt, verbOf, type WalkState } from './frame.ts';
+	import { buildFrame, placeName, timeAt, verbOf, walkMsAt, type WalkState } from './frame.ts';
 	import { placeDetail, tripsByPlace } from './inspect.ts';
 	import { fromAgentReplay, fromPlanReplay, fromSessionReplay, mergeLive, type LiveCall, type MapCall, type MapData } from './map-data.ts';
 	import { MOMENT_COLOR, momentText } from './moment-text.ts';
@@ -388,7 +388,7 @@
 			? buildFrame({ data, map: districts, tl, v: shown, rest, phi, zoom: cam.k, now: performance.now(), speed, light, cache, walk, hover, sel, t: tm, names: bots ? looks.map((l) => l.name) : undefined, tops: figures.map((f) => f.top) })
 			: null
 	);
-	const walkMs = $derived(turning ? 0 : speed >= 16 ? 220 : 480);
+	const walkMs = $derived(turning ? 0 : walkMsAt(speed));
 
 	// A followed character keeps the camera on it, gliding as long as its own hop.
 	$effect(() => {

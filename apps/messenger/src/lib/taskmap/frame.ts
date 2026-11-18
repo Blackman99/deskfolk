@@ -244,6 +244,9 @@ export function skyBody(body: SkyBody, dir: readonly number[], phi: number, warm
   };
 }
 
+/** How long a character's hop between places takes at the replay's `speed`, in milliseconds. */
+export const walkMsAt = (speed: number): number => (speed >= 16 ? 220 : 480);
+
 const MOTION: Readonly<Record<CharacterStatus, FolkMotion>> = {
   work: "running", walk: "running", idle: "idle", fail: "failed", back: "idle", none: "idle",
 };
@@ -258,7 +261,7 @@ export function buildFrame(input: FrameInput): Frame {
   const calls = data.calls;
   const D = map.districts;
   const ax = axes(phi);
-  const walkMs = speed >= 16 ? 220 : 480;
+  const walkMs = walkMsAt(speed);
   const idx = lastLE(tl.v, v, (x) => x);
   const at = Math.max(timeAt(data, tl, v), input.rest ?? 0);
 

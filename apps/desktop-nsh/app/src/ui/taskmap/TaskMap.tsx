@@ -12,7 +12,7 @@ import type { MessengerApi } from "../../m/messenger-api";
 import { defaultJob, planTitle } from "../../m/overlays/plan-board";
 import { characterLooks, conversationLabel } from "../../m/taskmap/characters";
 import { buildDistricts, type DistrictKind, type DistrictMap } from "../../m/taskmap/districts";
-import { buildFrame, placeName, timeAt, verbOf, type WalkState } from "../../m/taskmap/frame";
+import { buildFrame, placeName, timeAt, verbOf, walkMsAt, type WalkState } from "../../m/taskmap/frame";
 import { projectAgentOf } from "../../m/sidebar/project-groups";
 import { placeDetail, tripsByPlace } from "../../m/taskmap/inspect";
 import type { AgentCallLog } from "../../m/taskmap/live.svelte";
@@ -455,7 +455,7 @@ export function TaskMap(props: {
         })
       : null,
   );
-  const walkMs = () => (turning() ? 0 : speed() >= 16 ? 220 : 480);
+  const walkMs = () => (turning() ? 0 : walkMsAt(speed()));
 
   // A followed character keeps the camera on it, gliding as long as its own hop.
   effect(() => {
