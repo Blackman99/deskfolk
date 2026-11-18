@@ -67,7 +67,8 @@ test("chat and markdown SVG thumbs use the same sanitizer as artifact preview", 
 test("production CSP has no script unsafe-inline or eval", () => {
   const csp = productionCsp('<script src="/_app/immutable/entry.js"></script>');
   expect(csp).not.toMatch(/script-src[^;]*unsafe-inline/);
-  expect(csp).not.toContain("unsafe-eval");
+  // `'wasm-unsafe-eval'` compiles WebAssembly only (the NSH page's engine); no eval of script.
+  expect(csp).not.toContain("'unsafe-eval'");
   expect(csp).toContain("script-src-attr 'none'");
   expect(csp).toContain("frame-src blob:");
   expect(csp).toContain("manifest-src 'self'");
