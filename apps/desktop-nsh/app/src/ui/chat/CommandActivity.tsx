@@ -11,7 +11,7 @@
 import { computed, effect, Scroll, signal, Text, View, type JSX, type ScrollRef } from "nsh";
 import { formatDuration, type CommandRow } from "../../m/chat/command-activity.ts";
 import { outputLang } from "../../m/chat/command-output.ts";
-import { codeColorsAvailable, codeSurface, codeTheme, colorSpans, highlightCode } from "../code-colors";
+import { codeColorsAvailable, codeSurface, codeTheme, colorSpans, highlightCode, wantCodeColors } from "../code-colors";
 import { commandLine, splitProgram } from "../../m/chat/command-line.ts";
 import { copy } from "../../runtime";
 import { Icon } from "../Icon";
@@ -23,6 +23,7 @@ const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
 
 /** A finished command's output, in the colours of how it reads. */
 function OutputText(props: { text: string; command: string | null }) {
+  wantCodeColors();
   const runs = computed(() => {
     if (!codeColorsAvailable()) return null;
     const lang = outputLang(props.command, props.text);

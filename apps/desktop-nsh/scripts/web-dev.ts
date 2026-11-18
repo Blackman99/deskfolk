@@ -1,7 +1,8 @@
 /**
  * The app's web build on this Mac, against the dev runtime: packages it (`nsh package --target
  * web`, the app's Rust crate compiled to wasm) and serves it on 127.0.0.1:17991 with one more path
- * the page's host module asks, `/__deskfolk/endpoint` (the dev runtime's address and token).
+ * the page's host module asks, `/__deskfolk/endpoint` (the dev runtime's address and token). The
+ * code colours' grammars and themes go beside it, as on the phone's page (`addCodeColours`).
  * Loopback only; never the stable runtime.
  *
  *   bun apps/desktop-nsh/scripts/web-dev.ts [--no-build]
@@ -12,6 +13,7 @@ import { homedir } from "node:os";
 import { extname, join, normalize, resolve } from "node:path";
 import { assertApartFromStable, DEV_APP_NAME, devInstance } from "./dev-instance";
 import { nshCli } from "./nsh-cli";
+import { addCodeColours } from "./phone-package";
 import { trimTargets } from "./trim-target";
 
 export const WEB_DEV_PORT = 17991;
@@ -38,6 +40,7 @@ if (!process.argv.includes("--no-build")) {
   };
   const built = spawnSync(nsh, ["package", "App.tsx", "--target", "web", "--out", out], { cwd: join(root, "app"), env, stdio: "inherit" });
   if (built.status !== 0) process.exit(built.status ?? 1);
+  addCodeColours(site);
 }
 
 const types: Record<string, string> = {

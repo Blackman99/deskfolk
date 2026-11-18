@@ -39,7 +39,7 @@ import type { Annotation } from "@real-bot/protocol";
 import { wholeLineRange, type EditorRange } from "../../m/annotations/text-range.ts";
 import { baseName } from "../../m/paths.ts";
 import { copy } from "../../runtime";
-import { codeColorsAvailable, codeSurface, codeTheme, colorDecorations, highlightCode } from "../code-colors";
+import { codeColorsAvailable, codeSurface, codeTheme, colorDecorations, highlightCode, wantCodeColors } from "../code-colors";
 import { IconButton } from "../IconButton";
 import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";
@@ -131,6 +131,7 @@ export function ArtifactCodeEditor(props: {
       colorSource.set({ text: value, path: historyPath });
     }, 150);
   };
+  wantCodeColors();
   const runs = computed(() => {
     const source = colorSource();
     return codeColorsAvailable() ? highlightCode(source.text, baseName(source.path), codeTheme("editor"), false) : null;

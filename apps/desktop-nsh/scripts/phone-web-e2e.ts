@@ -9,7 +9,7 @@
  * with every picture drawn (Claude's logo among them, which WebKit once refused), Back stepping out
  * of settings and a Bot's settings one level at a time, a conversation over
  * it, its code block and table scrolling sideways while a vertical swipe on them still scrolls the
- * conversation, a line sent from the phone (read back from the Mac's database), a line written on the Mac
+ * conversation, its code and a command's output in GitHub's colours, a line sent from the phone (read back from the Mac's database), a line written on the Mac
  * arriving live, Back to the roster, a reload that is still enrolled and under the service worker
  * (`/sw.js`, which the app's realm reaches as its own); and the same page at a
  * tablet's width (the roster's column beside one page, no workbench). Screenshots go to `--shots`,
@@ -458,6 +458,35 @@ try {
     await cdp.detach();
   }
   step(`the reply's code block and table scroll sideways; a vertical swipe on them scrolls the conversation${engine === "chromium" ? " (touch swipes)" : " (the page's rule; no touch swipes in WebKit here)"}`);
+
+  // Code in GitHub's colours, as on the Mac: the page fetches giallo's grammars and themes from the
+  // relay (`nsh-giallo.<hash>.bin`, the runtime's data `giallo`) once the app has started, and what
+  // shows code draws it again. Before, the web had none: the reply's code took NSH's own colours and
+  // a command's output none. The reply's code block, then the output of the command its turn ran.
+  const keyword = "rgb(215, 58, 73)"; // GitHub light's keyword red, #D73A49
+  const colourOf = (word: string, within: string) =>
+    page.evaluate(
+      ([w, sel]) => {
+        // A run of one colour may hold several words (`export const`).
+        const leaf = [...(document.querySelector(sel!)?.querySelectorAll("*") ?? [])].find((e) => e.childElementCount === 0 && (e.textContent ?? "").trim().split(/\s+/).includes(w!));
+        return leaf ? getComputedStyle(leaf).color : null;
+      },
+      [word, within],
+    );
+  const inGitHubColours = async (what: string, word: string, within: string) =>
+    until(`${what} in GitHub's colours`, 15_000, async () => (await colourOf(word, within)) === keyword).catch(async (error: Error) => {
+      const shown = await page.evaluate(
+        (sel) => [...(document.querySelector(sel)?.querySelectorAll("*") ?? [])].filter((e) => e.childElementCount === 0).slice(0, 8).map((e) => `${JSON.stringify(e.textContent?.slice(0, 24))} ${getComputedStyle(e).color}`),
+        within,
+      );
+      throw new Error(`${error.message}: \`${word}\` is ${(await colourOf(word, within)) ?? "not there"}; it shows ${shown.join(" | ")}`);
+    });
+  await inGitHubColours("the reply's code block", "const", '[data-testid="conversation"]');
+  await testid(page, "command-summary").first().click();
+  await testid(page, "command-line").first().click();
+  await testid(page, "command-output").first().waitFor({ timeout: 10_000 });
+  await inGitHubColours("the command's output", "export", '[data-testid="command-output"]');
+  step("code in GitHub's colours, as on the Mac: the reply's code block and a command's output (`cat src/summary.ts`)");
 
   const stamp = Date.now().toString(36);
   const fromPhone = `phone-${stamp}`;

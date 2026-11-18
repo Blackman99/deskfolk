@@ -28,15 +28,17 @@ md-5 = { version = "0.11.0", default-features = false }
 num-bigint = { version = "0.5.1", default-features = false }
 miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"] }
 jpeg-decoder = { version = "0.3.2", default-features = false }
+# Code colours (`src/highlight.rs`): VS Code's TextMate grammars with Shiki's themes, as the
+# messenger's Shiki paints code. EUPL-1.2. Its grammars and themes are a zstd dump (`dump`). zstd is
+# C: the web build compiles it with the wasm32 clang its scripts name (`CC_wasm32_unknown_unknown`).
+# The desktops carry the dump in the binary; the web build leaves it out and fetches the page's copy
+# (`scripts/phone-package.ts`).
+giallo = { version = "=0.6.0", features = ["dump"] }
 
 # Office previews (`src/office`), off the web for now: on wasm32 `zip` 9 (which `calamine` 0.38
 # requires) turns on `getrandom` 0.4's `wasm_js`, and under the `getrandom_backend="custom"` cfg
 # NSH adds to every web build `getrandom` 0.4 does not compile. The web gets `src/office_web.rs`.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# Code colours (`src/highlight.rs`): VS Code's TextMate grammars with Shiki's themes, as the
-# messenger's Shiki paints code. Its built-in grammars and themes come as a zstd dump (C), so not on
-# the web for now. EUPL-1.2.
-giallo = { version = "=0.6.0", features = ["dump"] }
 calamine = { version = "0.38", features = ["dates"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
 # Ghostty's terminal emulator, behind the `ghostty` feature below. MIT OR Apache-2.0; Ghostty MIT.

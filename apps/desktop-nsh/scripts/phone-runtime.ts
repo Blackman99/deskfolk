@@ -95,6 +95,17 @@ if (import.meta.main) {
         "好的，这是摘要：\n\n- 第一点\n- **第二点**\n\n```ts\nconst x = 1;\nexport function summarize(items: string[], options: { limit: number; separator: string }): string { return items.slice(0, options.limit).join(options.separator); }\n```\n\n" +
         "| 项目 | 负责人 | 开始 | 结束 | 状态 | 备注 |\n|---|---|---|---|---|---|\n| 周报整理 | Writer | 11-01 | 11-07 | 完成 | 第一版已经交给审稿 |\n| 摘要改写 | Editor | 11-08 | 11-14 | 进行中 | 等第二轮意见回来再合并 |\n\n收尾一行。",
     });
+    // A command the turn ran, with a file's code as its output: the card under the reply paints it.
+    store.recordTurnRun({
+      turnId: turn.id,
+      tool: "shell",
+      command: "cat src/summary.ts",
+      exitCode: 0,
+      ok: true,
+      toolCallId: "call-summary",
+      durationMs: 40,
+      output: 'export const limit = 3;\nexport function join(items: string[]): string {\n  return items.slice(0, limit).join(", ");\n}\n',
+    });
     store.setTurnStatus(turn.id, "completed");
     const group = (await api("POST", "/v1/sessions", { name: "周报小组", members: [writer.bot.id, editor.bot.id] })) as { id: string };
     // A Claude Code project session, so the projects tab draws Claude's logo; it never starts a turn.

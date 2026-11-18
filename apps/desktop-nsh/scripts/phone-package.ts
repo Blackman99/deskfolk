@@ -18,6 +18,9 @@
  *   `host.params.build`), so the page knows which build it is.
  * - A rule of the page's own over the NSH runtime's sheet (`PAGE_STYLE`): a scroll view that only
  *   scrolls sideways passes a vertical swipe on to the conversation around it.
+ * - The code colours' grammars and themes (`addCodeColours`): giallo's dump, which the desktop app
+ *   carries in its binary and the web build leaves out. The page fetches it as the runtime's data
+ *   `giallo` (`app/native/src/highlight.rs`), named by its content as NSH names its own files.
  *
  * NSH writes a `.br` / `.gz` beside each file for a server that sends them precompressed (Caddy's
  * `precompressed`, nginx's `gzip_static`), so the files changed here get theirs again.
@@ -30,7 +33,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { nshCli } from "./nsh-cli";
 import { RELEASE_APP_NAME, RELEASE_BUNDLE_ID } from "./package";
 
@@ -89,6 +92,46 @@ function phoneManifest(written: Record<string, unknown>, from: string): Record<s
   return { ...written, id: installed.id, name: installed.name, short_name: installed.short_name, description: installed.description, icons: ICONS };
 }
 
+/** The runtime data the page fetches for the code colours (`nsh_core::runtime_data`, `highlight.rs`). */
+export const CODE_COLOURS_DATA = "giallo";
+const CODE_COLOURS_FILE = /^nsh-giallo\.[0-9a-f]{10}\.bin$/;
+
+/** giallo's dump of its grammars and themes (`builtin.zst`), from the crate the app's workspace resolves. */
+export function gialloDump(): string {
+  const root = resolve(import.meta.dir, "..");
+  const meta = spawnSync("cargo", ["metadata", "--format-version", "1", "--manifest-path", join(root, "Cargo.toml")], {
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+    env: { ...process.env, PATH: `${join(homedir(), ".cargo", "bin")}:${process.env.PATH ?? ""}` },
+  });
+  if (meta.status !== 0) throw new Error(`cargo metadata failed (${meta.status}): ${meta.stderr}`);
+  const giallo = (JSON.parse(meta.stdout) as { packages: Array<{ name: string; manifest_path: string }> }).packages.find((p) => p.name === "giallo");
+  if (!giallo) throw new Error("the app's workspace has no giallo: the code colours have nothing to fetch");
+  const dump = join(dirname(giallo.manifest_path), "builtin.zst");
+  if (!existsSync(dump)) throw new Error(`no ${dump}: giallo ${giallo.manifest_path} carries no dump`);
+  return dump;
+}
+
+/**
+ * Puts the code colours' grammars and themes (`dump`, giallo's `builtin.zst`) into the packaged site
+ * at `site` as `nsh-giallo.<10 hex of its content>.bin`, the pattern the edges cache for good, and
+ * names it in the page's `nsh-app` config as the runtime's data `giallo`. It is zstd already: no
+ * compressed copies. Run again, it leaves one.
+ */
+export function addCodeColours(site: string, dump: string = gialloDump()): void {
+  const bytes = readFileSync(dump);
+  const name = `nsh-giallo.${createHash("sha256").update(bytes).digest("hex").slice(0, 10)}.bin`;
+  for (const file of readdirSync(site)) if (CODE_COLOURS_FILE.test(file) && file !== name) rmSync(join(site, file));
+  writeFileSync(join(site, name), bytes);
+  const indexPath = join(site, "index.html");
+  const index = readFileSync(indexPath, "utf8");
+  const config = APP_CONFIG.exec(index);
+  if (!config) throw new Error(`no nsh-app config in ${indexPath}: nsh package wrote another page than this expects`);
+  const app = JSON.parse(config[1]!) as { data?: Record<string, string> };
+  app.data = { ...app.data, [CODE_COLOURS_DATA]: name };
+  rewrite(indexPath, index.replace(config[0], `<script type="application/json" id="nsh-app">${JSON.stringify(app)}</script>`));
+}
+
 /** Takes the local-only chunks out of the package and out of the page's map of chunks. */
 function dropLocalOnly(site: string, index: string): string {
   const config = APP_CONFIG.exec(index);
@@ -113,9 +156,13 @@ export function siteVersion(site: string): string {
   return hash.digest("hex").slice(0, 16);
 }
 
-/** Adds the worker, its files and the icons to the packaged site at `site`. Run again, it changes nothing more. */
-export function addPhoneStatic(site: string, from: string = PHONE_ASSETS): void {
+/**
+ * Adds the worker, its files, the icons, the page's rule and the code colours (`dump`) to the
+ * packaged site at `site`. Run again, it changes nothing more.
+ */
+export function addPhoneStatic(site: string, from: string = PHONE_ASSETS, dump: string = gialloDump()): void {
   for (const name of PHONE_STATIC) copyFileSync(join(from, name), join(site, name));
+  addCodeColours(site, dump);
 
   const manifestPath = join(site, "manifest.webmanifest");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;

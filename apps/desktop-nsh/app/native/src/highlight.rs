@@ -8,15 +8,17 @@
 //! characters depending on the language, and a 16 KB TSX file took 435 ms. giallo agrees on all of
 //! them in TSX, Python, Rust and JSON, and takes 1–6 ms on the same files once warm.
 //!
-//! The registry (about 220 grammars and 60 themes, 1.1 MiB compressed) is read once, about 20 ms,
-//! on a thread of its own when the app asks (`warm`); a call before then waits for it. The web
-//! build has none (giallo's dump is zstd, which is C): there `available` is false and the app keeps
-//! NSH's colours.
+//! The registry (about 220 grammars and 60 themes, 1.4 MiB compressed) is read once. On the
+//! desktops it is in the binary and is read, about 20 ms, on a thread of its own when the app asks
+//! (`warm`); a call before then waits for it. The web build leaves it out: the page fetches it
+//! (`nsh-giallo.<hash>.bin`, which `scripts/phone-package.ts` puts beside the runtime's files) and
+//! reads it, after the frame that shows the code, the first time the app asks (`ready`). Until then
+//! `available` is false there and code keeps NSH's colours; without the file it stays so.
 
 use nsh_core::prelude::*;
 
-#[cfg(not(target_arch = "wasm32"))]
 mod engine {
+    use std::cell::RefCell;
     use std::fmt::Write as _;
     use std::sync::OnceLock;
 
@@ -25,6 +27,8 @@ mod engine {
 
     static REGISTRY: OnceLock<Option<Registry>> = OnceLock::new();
 
+    /// The grammars and themes, read on the first call (which waits for them).
+    #[cfg(not(target_arch = "wasm32"))]
     pub(super) fn registry() -> Option<&'static Registry> {
         REGISTRY
             .get_or_init(|| {
@@ -35,12 +39,64 @@ mod engine {
             .as_ref()
     }
 
+    /// The grammars and themes once [`ready`] has read the page's copy; none before.
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn registry() -> Option<&'static Registry> {
+        REGISTRY.get().and_then(Option::as_ref)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub(super) fn warm() {
         if REGISTRY.get().is_none() {
             std::thread::spawn(|| {
                 registry();
             });
         }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn warm() {}
+
+    /// Whether code is coloured now: always on the desktops (a call waits for the registry), on
+    /// the web once [`ready`] has read it.
+    pub(super) fn usable() -> bool {
+        cfg!(not(target_arch = "wasm32")) || registry().is_some()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) async fn ready() -> Result<(), String> {
+        warm();
+        Ok(())
+    }
+
+    /// Fetches the page's copy of the registry (the runtime's data `giallo`) and reads it, once.
+    #[cfg(target_arch = "wasm32")]
+    pub(super) async fn ready() -> Result<(), String> {
+        if let Some(read) = REGISTRY.get() {
+            return read.as_ref().map(|_| ()).ok_or_else(|| "the page's code colours could not be read".to_owned());
+        }
+        // Reading it holds the page for a moment: not in the frame that shows the code.
+        nsh_core::prelude::next_frame().await;
+        let Some(bytes) = nsh_core::runtime_data::load("giallo").await else {
+            let _ = REGISTRY.set(None);
+            return Err("the page has no code colours (nsh-giallo.bin)".to_owned());
+        };
+        if REGISTRY.get().is_none() {
+            let read = Registry::load(&bytes).map(|mut registry| {
+                registry.link_grammars();
+                registry
+            });
+            match read {
+                Ok(registry) => {
+                    let _ = REGISTRY.set(Some(registry));
+                }
+                Err(err) => {
+                    let _ = REGISTRY.set(None);
+                    return Err(format!("the page's code colours could not be read: {err}"));
+                }
+            }
+        }
+        registry().map(|_| ()).ok_or_else(|| "the page's code colours could not be read".to_owned())
     }
 
     /// A token's style as bits: 1 bold, 2 underline, 4 italic, 8 strikethrough.
@@ -191,10 +247,47 @@ mod engine {
         if digits.len() == 8 { value } else { (value << 8) | 0xff }
     }
 
+    type BlockStyles = Vec<(std::ops::Range<usize>, StyleRefinement)>;
+
+    /// How many blocks' styles are kept: more than a long reply has.
+    const KEPT: usize = 32;
+
+    thread_local! {
+        /// The blocks coloured last, by language, themes and code: a reply's text view draws its
+        /// blocks again for every word streamed into it, and on the web that is the page's thread.
+        static BLOCKS: RefCell<Vec<((String, String, String, String), BlockStyles)>> = const { RefCell::new(Vec::new()) };
+    }
+
+    /// [`block_styles`] once per block: the styles kept from the last time it was coloured.
+    pub(super) fn block_styles_kept(code: &str, language: &str, light_theme: &str, dark_theme: &str) -> BlockStyles {
+        let key = (language.to_owned(), light_theme.to_owned(), dark_theme.to_owned(), code.to_owned());
+        let kept = BLOCKS.with_borrow_mut(|blocks| {
+            let at = blocks.iter().position(|(k, _)| *k == key)?;
+            let entry = blocks.remove(at);
+            let styles = entry.1.clone();
+            blocks.push(entry);
+            Some(styles)
+        });
+        if let Some(styles) = kept {
+            return styles;
+        }
+        let styles = block_styles(code, language, light_theme, dark_theme);
+        // Nothing yet (no registry, no such language) is not kept: the registry may come later.
+        if !styles.is_empty() {
+            BLOCKS.with_borrow_mut(|blocks| {
+                if blocks.len() >= KEPT {
+                    blocks.remove(0);
+                }
+                blocks.push((key, styles.clone()));
+            });
+        }
+        styles
+    }
+
     /// The styles of `code`'s byte ranges as `language` reads, in `light` and `dark` at once (each
     /// a Shiki theme): what `CodeColors` gives a text view's code block. Every token is coloured,
     /// the theme's own text colour too, as Shiki colours every span.
-    pub(super) fn block_styles(code: &str, language: &str, light_theme: &str, dark_theme: &str) -> Vec<(std::ops::Range<usize>, StyleRefinement)> {
+    pub(super) fn block_styles(code: &str, language: &str, light_theme: &str, dark_theme: &str) -> BlockStyles {
         use nsh_core::prelude::{AdaptiveColor, FontWeight, Styled as _, rgba};
         let Some(registry) = registry() else { return Vec::new() };
         if !registry.contains_theme(light_theme) || !registry.contains_theme(dark_theme) {
@@ -252,17 +345,6 @@ mod engine {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
-mod engine {
-    pub(super) fn warm() {}
-    pub(super) fn highlight(_code: &str, _language: &str, _theme: &str) -> String {
-        String::new()
-    }
-    pub(super) fn surface(_theme: &str) -> String {
-        String::new()
-    }
-}
-
 /// The props of [`CodeColors`].
 #[derive(Debug, Clone, PartialEq, Props)]
 pub struct CodeColorsProps {
@@ -277,16 +359,19 @@ pub struct CodeColorsProps {
 
 /// The code blocks of the text views in it, coloured as the messenger's Shiki colours them in
 /// `light` and `dark`, following the appearance (NSH's `CodeHighlighter`, given to the views below).
-/// The themes are read as it is made: for others, make it again. Where there are no colours (the
-/// web) the blocks keep NSH's.
+/// The themes are read as it is made: for others, make it again. Made before there are colours (the
+/// web, before `Highlight.ready`) the blocks are plain: NSH's own colours would read syntaxes of their
+/// own (another download, and at a language's first block a freeze of seconds on a slow phone) only to
+/// be replaced a moment later. Where the colours never come, leave this out and NSH's apply.
 #[component]
 pub fn CodeColors(props: CodeColorsProps, _cx: Scope<NoEvent>) -> impl IntoElement {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let light = props.light.get_untracked().to_string();
-        let dark = props.dark.get_untracked().to_string();
-        engine::warm();
-        provide_context(nsh_base::CodeHighlighter::new(move |block| engine::block_styles(&block.code, block.language.as_deref().unwrap_or(""), &light, &dark)));
+    let light = props.light.get_untracked().to_string();
+    let dark = props.dark.get_untracked().to_string();
+    engine::warm();
+    if engine::usable() {
+        provide_context(nsh_base::CodeHighlighter::new(move |block| engine::block_styles_kept(&block.code, block.language.as_deref().unwrap_or(""), &light, &dark)));
+    } else {
+        provide_context(nsh_base::CodeHighlighter::new(|_| Vec::new()));
     }
     view().child(props.children)
 }
@@ -297,14 +382,23 @@ pub struct Highlight;
 
 #[module]
 impl Highlight {
-    /// Whether code can be coloured here (not on the web yet).
+    /// Whether code can be coloured now: on the desktops always, on the web once `ready` has
+    /// resolved.
     pub fn available() -> bool {
-        cfg!(not(target_arch = "wasm32"))
+        engine::usable()
     }
 
     /// Reads the grammars and themes on a thread of its own, so the first code shown does not wait.
+    /// Nothing on the web: `ready` reads them there.
     pub fn warm() {
         engine::warm();
+    }
+
+    /// Resolves once code can be coloured. On the web it fetches the page's copy of the grammars
+    /// and themes and reads it, the first time; it rejects when the page has none or it cannot be
+    /// read (code then keeps NSH's colours). On the desktops it resolves at once.
+    pub async fn ready() -> Result<(), String> {
+        engine::ready().await
     }
 
     /// `code` read as `language` (a name, an alias, a fence's info string, a file name or a path)
@@ -367,6 +461,20 @@ mod tests {
         assert_eq!(engine::highlight("x", "ts", "no-such-theme"), "");
         assert_eq!(engine::surface("no-such-theme"), "");
         assert_eq!(engine::surface("github-dark"), "#24292E #E1E4E8");
+    }
+
+    #[test]
+    fn a_block_coloured_again_gets_the_styles_it_had() {
+        let code = "const a = 1;\nconst b = 2;";
+        let fresh = engine::block_styles(code, "ts", "github-light", "github-dark");
+        let first = engine::block_styles_kept(code, "ts", "github-light", "github-dark");
+        let again = engine::block_styles_kept(code, "ts", "github-light", "github-dark");
+        let ranges = |styles: &[(std::ops::Range<usize>, nsh_core::element::StyleRefinement)]| styles.iter().map(|(range, _)| range.clone()).collect::<Vec<_>>();
+        assert!(!fresh.is_empty());
+        assert_eq!(ranges(&first), ranges(&fresh));
+        assert_eq!(ranges(&again), ranges(&fresh));
+        // Another language is another block.
+        assert!(engine::block_styles_kept(code, "notes.unknownext", "github-light", "github-dark").is_empty());
     }
 
     #[test]

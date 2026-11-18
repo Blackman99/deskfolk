@@ -12,16 +12,17 @@
  *
  * Code blocks take the messenger's Shiki colours (`code-colors.tsx`): a `CodeColors` around the
  * view colours them natively, in GitHub's light and dark or the code theme your interface chose,
- * which also brings its surface. Your own bubble keeps its code white on its wash, as before.
+ * which also brings its surface. On the web they are plain until the colours are read, and in NSH's
+ * own colours if they never are. Your own bubble keeps its code white on its wash, as before.
  */
-import { cleanup, computed, Image, openUrl, signal, Text, View, type JSX, type Point, type ViewRef } from "nsh";
+import { cleanup, computed, effect, Image, openUrl, signal, Text, View, type JSX, type Point, type ViewRef } from "nsh";
 import { TextView } from "nsh/base";
 import { CodeColors } from "deskfolk/native";
 import { artifactKind, svgDisplayBlob } from "../m/overlays/artifacts.ts";
 import { fileIconFor } from "../m/overlays/file-icon.ts";
 import { botAvatarColor } from "../m/avatar.ts";
 import { rosterLetter } from "../m/sidebar/roster-letter.ts";
-import { codeColorsAvailable, codeSurface, codeThemes } from "./code-colors";
+import { codeColorsAvailable, codeColorsComing, codeSurface, codeThemes, wantCodeColors } from "./code-colors";
 import { blobDataUrl } from "./data-url";
 import { FileChipMenu } from "./FileChipMenu";
 import type { FileOnDisk } from "./file-on-disk";
@@ -37,6 +38,9 @@ const EXTENSIONS = [
   { name: "artifact", tag: "artifact" },
   { name: "mention", tag: "mention" },
 ];
+
+/** A fenced code block's opening line (CommonMark: up to three spaces, then three backticks or tildes). */
+const FENCE = /(^|\n) {0,3}(```|~~~)/;
 
 const isPicture = (path: string) => ["image", "svg"].includes(artifactKind(path));
 const baseName = (path: string) => path.split("/").pop() || path;
@@ -103,6 +107,15 @@ export function MarkdownBody(props: {
   /** The code colours in force: a new pair makes the view again, which reads them as it is made. */
   const themes = computed(() => codeThemes("chat"), { equals: (a, b) => a.light === b.light && a.dark === b.dark });
   const surface = () => (inv() ? null : codeSurface());
+  /**
+   * Whether the text has a fenced code block, the only kind the colours paint. Only such a text asks
+   * for them on the web; a text without one reads nothing of them, so it is not made again (its chips
+   * and pictures with it) when they arrive.
+   */
+  const fenced = () => FENCE.test(props.source);
+  effect(() => {
+    if (fenced() && !inv()) wantCodeColors();
+  });
 
   const view = () => (
     <TextView
@@ -160,8 +173,9 @@ export function MarkdownBody(props: {
 
   return (
     <View testID={props.testID} class={`min-w-0 ${props.class ?? ""}`}>
-      {codeColorsAvailable() && !inv() ? (
-        <Each of={[themes()]} key={(pair) => `${pair.light} ${pair.dark}`}>
+      {fenced() && !inv() && codeColorsComing() ? (
+        // Made again once the colours are read (the key), as `CodeColors` reads them as it is made.
+        <Each of={[themes()]} key={(pair) => `${pair.light} ${pair.dark} ${codeColorsAvailable()}`}>
           {(pair) => (
             <CodeColors class="min-w-0" light={pair().light} dark={pair().dark}>
               {view()}

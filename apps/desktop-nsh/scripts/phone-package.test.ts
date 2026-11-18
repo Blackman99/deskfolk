@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brotliCompressSync, brotliDecompressSync, gunzipSync, gzipSync } from "node:zlib";
-import { addPhoneStatic, PAGE_STYLE, PHONE_ASSETS, PHONE_STATIC, siteVersion, VERSION_FILE } from "./phone-package";
+import { addPhoneStatic as addWith, CODE_COLOURS_DATA, PAGE_STYLE, PHONE_ASSETS, PHONE_STATIC, siteVersion, VERSION_FILE } from "./phone-package";
 
 const CONFIG = { id: "com.real-bot.desktop", code: "app.0123456789.js", chunks: { "Main.js": "Main.0123456789.js", "local-api.js": "local-api.1111111111.js", "local-discovery.js": "local-discovery.2222222222.js" } };
 
@@ -27,7 +27,13 @@ function site(): string {
   return dir;
 }
 
+/** A stand-in for giallo's dump: the real one comes from `cargo metadata`, which the build runs. */
+const DUMP = join(mkdtempSync(join(tmpdir(), "phone-package-dump-")), "builtin.zst");
+writeFileSync(DUMP, "a zstd dump of grammars and themes");
+const addPhoneStatic = (dir: string) => addWith(dir, PHONE_ASSETS, DUMP);
+
 const read = (dir: string, name: string) => readFileSync(join(dir, name), "utf8");
+const appConfig = (index: string) => JSON.parse(/<script type="application\/json" id="nsh-app">([^<]*)<\/script>/.exec(index)![1]!) as { data?: Record<string, string>; chunks?: Record<string, string> };
 const params = (index: string) => JSON.parse(/<script type="application\/json" id="nsh-params">([^<]*)<\/script>/.exec(index)![1]!) as { build: string };
 
 describe("the phone's package", () => {
@@ -80,7 +86,7 @@ describe("the phone's package", () => {
       for (const file of ["local-api.1111111111.js", "local-discovery.2222222222.js"]) {
         for (const suffix of ["", ".br", ".gz"]) expect(existsSync(join(dir, `${file}${suffix}`))).toBe(false);
       }
-      const config = JSON.parse(/<script type="application\/json" id="nsh-app">([^<]*)<\/script>/.exec(read(dir, "index.html"))![1]!);
+      const config = appConfig(read(dir, "index.html"));
       expect(config.chunks).toEqual({ "Main.js": "Main.0123456789.js" });
 
       writeFileSync(join(dir, "Main.0123456789.js"), 'fetch("/__local-api")');
@@ -132,6 +138,35 @@ describe("the phone's package", () => {
       addPhoneStatic(dir);
       expect(read(dir, "index.html").match(/id="deskfolk-page"/g)).toHaveLength(1);
       expect(read(dir, "index.html")).toContain(`${PAGE_STYLE}\n</head>`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("carries the code colours' grammars and themes, named by their content, as the page's data", () => {
+    const dir = site();
+    try {
+      addPhoneStatic(dir);
+      const name = appConfig(read(dir, "index.html")).data?.[CODE_COLOURS_DATA];
+      expect(name).toMatch(/^nsh-giallo\.[0-9a-f]{10}\.bin$/);
+      expect(readFileSync(join(dir, name!))).toEqual(readFileSync(DUMP));
+      // zstd already: no compressed copies beside it.
+      expect(existsSync(join(dir, `${name}.br`)) || existsSync(join(dir, `${name}.gz`))).toBe(false);
+      expect(gunzipSync(readFileSync(join(dir, "index.html.gz"))).toString()).toBe(read(dir, "index.html"));
+
+      // Another dump replaces it: one file, the page names the new one, and the build is another.
+      const first = params(read(dir, "index.html")).build;
+      writeFileSync(DUMP, "another dump");
+      try {
+        addPhoneStatic(dir);
+      } finally {
+        writeFileSync(DUMP, "a zstd dump of grammars and themes");
+      }
+      const files = readdirSync(dir).filter((f) => f.startsWith("nsh-giallo."));
+      expect(files).toHaveLength(1);
+      expect(appConfig(read(dir, "index.html")).data?.[CODE_COLOURS_DATA]).toBe(files[0]);
+      expect(files[0]).not.toBe(name);
+      expect(params(read(dir, "index.html")).build).not.toBe(first);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
