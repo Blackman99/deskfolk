@@ -1,6 +1,7 @@
 /** Where the cascading picker's columns stand: the first on the trigger's edge, each next one beside the row it came from. */
 import { expect, test } from "nsh/test";
-import { COLUMN_FIT_MIN, columnFit, columnHeight, columnShifts, type ColumnFrame } from "./tune-picker-state";
+import type { TuneTree } from "../../m/chat/tune-picker";
+import { COLUMN_FIT_MIN, columnFit, columnHeight, columnShifts, createTune, type ColumnFrame } from "./tune-picker-state";
 
 test("the columns keep their widths while the widest path fits the window, and narrow alike when it does not", () => {
   // A Bot's runner, endpoint, model and level: 870 pt and three gaps.
@@ -70,4 +71,32 @@ test("a column is as tall as the room, within bounds", () => {
   expect(columnHeight(100)).toBe(220);
   expect(columnHeight(500)).toBe(500);
   expect(columnHeight(1000)).toBe(640);
+});
+
+test("opening the picker says so once, so what it lists can be asked for again; a disabled or open picker says nothing", () => {
+  const level = { key: "account", heading: "账号", width: 200, leaf: true };
+  const tree: TuneTree = {
+    start: () => ({}),
+    levels: () => [level],
+    room: () => [level],
+    rows: () => [{ value: "", label: "me@a.com" }],
+    checked: () => "",
+    opensMore: () => false,
+    focusAt: (_level, _value, focus) => focus,
+    commit: () => {},
+  };
+  let disabled = true;
+  let opened = 0;
+  const tune = createTune({ tree: () => tree, disabled: () => disabled, phone: () => false, sheetTitle: () => "Claude Code", onOpen: () => opened++ });
+  tune.openPicker();
+  expect(opened).toBe(0);
+  disabled = false;
+  tune.openPicker();
+  tune.openPicker();
+  expect(tune.open()).toBe(true);
+  expect(opened).toBe(1);
+  tune.close();
+  tune.openPicker();
+  expect(opened).toBe(2);
+  tune.stop();
 });

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import { copyFor } from "../copy.ts";
 import type { ProjectPathLookup } from "@real-bot/protocol";
 import { setInterfaceBehaviour } from "../interface/behaviour.svelte.ts";
@@ -294,6 +294,52 @@ test("a file the agent cites opens where the Mac finds it under the project; one
   } finally {
     toasts.current = null;
     close();
+  }
+});
+
+test("the picker opening asks for your accounts again once the answer has aged: a sign-in made meanwhile in a terminal shows", async () => {
+  const { forgetClaudeOptions, OPTIONS_FRESH_MS } = await import("./project-agent-options.svelte.ts");
+  forgetClaudeOptions();
+  const session = aProjectSession();
+  const runtime = fakeRuntime({ sessions: [session] });
+  let email = "old@a.com";
+  let statusAsks = 0;
+  (runtime as unknown as { client: unknown }).client = {
+    claudeCode: async () => (statusAsks++, { email, accounts: [{ config_dir: null, email }, { config_dir: "/b", email: "b@b.com" }] }),
+    claudeCodeModels: async (dir: string | null) => ({ config_dir: dir, checked_at: "t", error: null, models: [
+      { value: "default", display_name: "Default (recommended)", description: "", resolved_model: null, efforts: [] },
+    ] }),
+  };
+  const { host, close } = render(ProjectChat, { runtime, t, selected: session });
+  try {
+    setSystemTime(new Date("2026-11-18T10:00:00Z"));
+    await settle();
+    await settle();
+    const trigger = tuneTrigger(host);
+    expect(trigger?.textContent).toContain("old@a.com");
+    click(trigger);
+    expect(tuneLabels(host, "account")).toEqual(["old@a.com", "b@b.com"]);
+    click(trigger);
+    // Opened again a moment later: nothing is asked.
+    click(trigger);
+    click(trigger);
+    await settle();
+    expect(statusAsks).toBe(1);
+
+    email = "new@a.com";
+    setSystemTime(new Date(Date.now() + OPTIONS_FRESH_MS));
+    click(trigger);
+    // The old answer stays listed while the new one comes.
+    expect(tuneLabels(host, "account")).toEqual(["old@a.com", "b@b.com"]);
+    await settle();
+    flushSync();
+    expect(statusAsks).toBe(2);
+    expect(tuneLabels(host, "account")).toEqual(["new@a.com", "b@b.com"]);
+    expect(trigger?.textContent).toContain("new@a.com");
+  } finally {
+    close();
+    setSystemTime();
+    forgetClaudeOptions();
   }
 });
 

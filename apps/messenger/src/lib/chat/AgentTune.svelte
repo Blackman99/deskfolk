@@ -31,9 +31,11 @@
 		disabled: boolean;
 		client: Pick<MessengerApi, 'claudeCodeModels'> | null;
 		onpick: (change: PatchProjectSessionRequest) => void;
+		/** Called as the picker opens, to ask again for the accounts and models it lists. */
+		onopen?: () => void;
 	};
 
-	let { t, agent, agentName, tune, models: ownModels, accounts, accountLocked, disabled, client, onpick, ...attrs }: Props = $props();
+	let { t, agent, agentName, tune, models: ownModels, accounts, accountLocked, disabled, client, onpick, onopen, ...attrs }: Props = $props();
 
 	/** Each column's width, so the field can keep room for every column that may open beside the first. */
 	const ACCOUNT: TuneLevel = $derived({ key: 'account', heading: ownModels ? t.project.accountLabelOf(agentName) : t.project.accountLabel, width: 264, note: accountLocked ? t.project.accountBusy : null });
@@ -111,5 +113,6 @@
 	title={triggerTitle}
 	sheetTitle={agentName}
 	{disabled}
+	{onopen}
 	{...attrs}
 />

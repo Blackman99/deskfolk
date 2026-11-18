@@ -18,17 +18,23 @@ export function BotTune(props: { bot: Bot; disabled: boolean; onPick: (change: P
   const runner = () => (props.bot.runner && isBotRunner(props.bot.runner) ? props.bot.runner : null);
   const account = () => props.bot.agent_config_dir ?? "";
 
-  // Asked once each a page; untracked, so what the asking writes does not ask again. The first
-  // column lists every agent, and Claude's accounts sit under Claude Agent, whatever runs the Bot.
-  effect(() => {
+  /**
+   * What the picker lists, asked for unless it was had a moment ago: the first column lists every
+   * agent, and Claude's accounts sit under Claude Agent, whatever runs the Bot.
+   */
+  function askOptions(): void {
     const api = runtime.client;
-    const on = runner();
-    const dir = account() || null;
-    untracked(() => {
-      loadAgentsStatus(api);
-      loadClaudeStatus(api);
-      if (on === "claude_code") loadClaudeModels(api, dir);
-    });
+    loadAgentsStatus(api);
+    loadClaudeStatus(api);
+    if (runner() === "claude_code") loadClaudeModels(api, account() || null);
+  }
+  // Asked as the composer shows and again as the picker opens; untracked, so what the asking
+  // writes does not ask again.
+  effect(() => {
+    void runtime.client;
+    void runner();
+    void account();
+    untracked(askOptions);
   });
 
   const source: BotTuneSource = {
@@ -66,6 +72,7 @@ export function BotTune(props: { bot: Bot; disabled: boolean; onPick: (change: P
       title={shown().title}
       sheetTitle={props.bot.name}
       disabled={props.disabled}
+      onOpen={() => untracked(askOptions)}
       testID="bot-tune"
     />
   );

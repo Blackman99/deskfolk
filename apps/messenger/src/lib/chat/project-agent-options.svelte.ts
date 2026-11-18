@@ -1,29 +1,66 @@
 import { isClaudeEffort, type AgentsStatusResponse, type BotRunner, type ClaudeCodeModel, type ClaudeCodeStatus } from "@real-bot/protocol";
 import type { MessengerApi } from "../messenger-api.ts";
-import { forgetClaudeModels, type Choice } from "../claude-models.svelte.ts";
+import { forgetClaudeModels, reloadClaudeModels, type Choice } from "../claude-models.svelte.ts";
 import { agentStatusOf } from "../runner-choice.ts";
 
 /**
  * What a composer's model picker offers besides Claude Code's models (`claude-models.svelte.ts`,
  * ADR 0095): your Claude accounts, and your other local agents with the models each lists — a Codex
- * session's (ADR 0099), a Bot's on one of them — each asked for once a page.
+ * session's (ADR 0099), a Bot's on one of them. Each is asked for when a composer first needs it,
+ * and again when a picker opens or a composer shows after the answer has aged (`OPTIONS_FRESH_MS`):
+ * you may have signed in with another account meanwhile, in a terminal.
  */
-const claude = $state<{ status: ClaudeCodeStatus | null; asked: boolean }>({ status: null, asked: false });
-const agents = $state<{ list: AgentsStatusResponse | null; asked: boolean }>({ list: null, asked: false });
+/** How old an answer may be before the next picker or composer asks again; the daemon keeps its own a minute too. */
+export const OPTIONS_FRESH_MS = 30_000;
 
-/** Asks for your Claude Code's accounts, once. */
+const claude = $state<{ status: ClaudeCodeStatus | null }>({ status: null });
+const agents = $state<{ list: AgentsStatusResponse | null }>({ list: null });
+/** When each was last answered (or failed), whether an ask is out, and the forgetting it belongs to. */
+type Asked = { at: number | null; out: boolean };
+const asks: { claude: Asked; agents: Asked; generation: number } = { claude: { at: null, out: false }, agents: { at: null, out: false }, generation: 0 };
+
+/** Never asked, or answered long enough ago, and no ask out. */
+function due(asked: Asked): boolean {
+  return !asked.out && (asked.at === null || Date.now() - asked.at >= OPTIONS_FRESH_MS);
+}
+
+/**
+ * Asks for your Claude Code's accounts, unless they were had a moment ago. What was had stays shown
+ * while asking, and when the ask fails; a Mac that never says leaves the account picker out. A
+ * directory signed in as another account has its models asked for again.
+ */
 export function loadClaudeStatus(api: MessengerApi | null): void {
-  if (!api || claude.asked) return;
-  claude.asked = true;
+  if (!api || !due(asks.claude)) return;
+  asks.claude.out = true;
+  const generation = asks.generation;
   Promise.resolve()
     .then(() => api.claudeCode())
-    // Once a page, answered or not: a Mac that cannot say leaves the account picker out.
     .then(
       (status) => {
+        if (generation !== asks.generation) return;
+        const before = claude.status;
         claude.status = status;
+        for (const dir of changedAccounts(before, status)) reloadClaudeModels(api, dir);
       },
       () => {},
-    );
+    )
+    .finally(() => {
+      if (generation === asks.generation) asks.claude = { at: Date.now(), out: false };
+    });
+}
+
+/** Who an account is: the same directory signed in as someone else, or on another plan, is another account. */
+function accountKey(status: ClaudeCodeStatus, dir: string | null): string {
+  const account = status.accounts?.find((entry) => entry.config_dir === dir);
+  const email = account?.email ?? (dir === null ? (status.email ?? null) : null);
+  return JSON.stringify([account?.logged_in ?? null, account?.auth_method ?? null, account?.subscription_type ?? null, email]);
+}
+
+/** The account directories (null: this computer's own) signed in as another account than before; none on the first answer. */
+export function changedAccounts(before: ClaudeCodeStatus | null, after: ClaudeCodeStatus): Array<string | null> {
+  if (!before) return [];
+  const dirs = new Set<string | null>([null, ...(after.accounts ?? []).map((account) => account.config_dir)]);
+  return [...dirs].filter((dir) => accountKey(before, dir) !== accountKey(after, dir));
 }
 
 export function claudeStatus(): ClaudeCodeStatus | null {
@@ -44,19 +81,26 @@ export function accountChoices(status: ClaudeCodeStatus | null, current: string,
   return choices;
 }
 
-/** Asks for your local agents as the daemon last saw them, with the models each lists (`GET /v1/runtime/agents`), once. */
+/**
+ * Asks for your local agents as the daemon last saw them, with the models each lists
+ * (`GET /v1/runtime/agents`), unless they were had a moment ago. What was had stays shown while
+ * asking, and when the ask fails; a Mac that never says offers only each agent's own default.
+ */
 export function loadAgentsStatus(api: Pick<MessengerApi, "agents"> | null): void {
-  if (!api || agents.asked) return;
-  agents.asked = true;
+  if (!api || !due(asks.agents)) return;
+  asks.agents.out = true;
+  const generation = asks.generation;
   Promise.resolve()
     .then(() => api.agents())
-    // Once a page, answered or not: a Mac that cannot say offers only each agent's own default.
     .then(
       (list) => {
-        agents.list = list;
+        if (generation === asks.generation) agents.list = list;
       },
       () => {},
-    );
+    )
+    .finally(() => {
+      if (generation === asks.generation) asks.agents = { at: Date.now(), out: false };
+    });
 }
 
 /** Your local agents once they came; null while asking, or when they could not be had. */
@@ -79,7 +123,8 @@ export function agentModels(runner: BotRunner): ClaudeCodeModel[] {
 export function forgetClaudeOptions(): void {
   forgetClaudeModels();
   claude.status = null;
-  claude.asked = false;
   agents.list = null;
-  agents.asked = false;
+  asks.claude = { at: null, out: false };
+  asks.agents = { at: null, out: false };
+  asks.generation++;
 }

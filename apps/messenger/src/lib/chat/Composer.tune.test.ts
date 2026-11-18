@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import { FILE_DROP_SESSION_ID, type AgentStatus, type Bot } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { settle } from "../test-async.ts";
@@ -6,7 +6,8 @@ import { aBot, aBotDirect, aDirect, aGroup, aProvider, fakeRuntime } from "../te
 import { reactive } from "../test-reactive.svelte.ts";
 import { click, render } from "../test-render.ts";
 import Composer from "./Composer.svelte";
-import { forgetClaudeOptions } from "./project-agent-options.svelte.ts";
+import { flushSync } from "svelte";
+import { OPTIONS_FRESH_MS, forgetClaudeOptions } from "./project-agent-options.svelte.ts";
 
 /**
  * A Bot's direct picks the Bot's model in its composer, as a project session's does: the endpoint,
@@ -121,6 +122,37 @@ test("a Bot on Claude Code picks its account, model and effort as a project sess
   click(row(host, "effort", "高"));
   expect(patches(runtime)).toEqual([["bot-1", { agent_config_dir: "/Users/a/.claude-b", agent_model: null, agent_effort: "high" }]]);
   close();
+});
+
+test("a Bot on Claude Code: the picker opening asks for your accounts again once the answer has aged, and lists who signs in now", async () => {
+  let email = "old@a.com";
+  let statusAsks = 0;
+  const client = {
+    claudeCode: async () => (statusAsks++, { email, accounts: [{ config_dir: null, email }, { config_dir: "/Users/a/.claude-b", email: "team@b.com" }] }),
+    claudeCodeModels: async (dir: string | null) => ({ config_dir: dir, checked_at: "t", error: null, models: [
+      { value: "default", display_name: "Default (recommended)", description: "", resolved_model: null, efforts: [] },
+    ] }),
+  };
+  const { host, close } = open({ runner: "claude_code", agent_model: null, agent_effort: null, agent_config_dir: null }, { client });
+  try {
+    setSystemTime(new Date("2026-11-18T10:00:00Z"));
+    await settle();
+    await settle();
+    click(trigger(host));
+    expect(labels(host, "account")).toEqual(["old@a.com", "team@b.com"]);
+    click(trigger(host));
+    email = "new@a.com";
+    setSystemTime(new Date(Date.now() + OPTIONS_FRESH_MS));
+    click(trigger(host));
+    await settle();
+    flushSync();
+    expect(statusAsks).toBe(2);
+    expect(labels(host, "account")).toEqual(["new@a.com", "team@b.com"]);
+  } finally {
+    close();
+    setSystemTime();
+    forgetClaudeOptions();
+  }
 });
 
 test("a Bot on another agent picks among what it lists, with the levels that agent takes", async () => {

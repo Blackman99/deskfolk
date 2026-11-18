@@ -4,12 +4,15 @@ import type { MessengerApi } from "./messenger-api.ts";
 /**
  * The models your Claude Code lists for an account, as its own `/model` does (ADR 0095), and the
  * thinking levels each takes: what every picker of a Claude model offers — a project session's, a
- * Bot's, the setup's, Settings' and a ticket's. The lists are asked for once a page per account; the
- * daemon keeps its answers too.
+ * Bot's, the setup's, Settings' and a ticket's. The lists are asked for once a page per account, and
+ * again when another account signs in under its directory (`reloadClaudeModels`); the daemon keeps
+ * its answers too.
  */
 type ModelsState = ClaudeCodeModelList | "loading" | "failed";
 
 const models = $state<Record<string, ModelsState>>({});
+/** Moves on at each forgetting, so an answer to an ask from before it is dropped. */
+let generation = 0;
 
 /** Asks for an account's models, once. */
 export function loadClaudeModels(api: Pick<MessengerApi, "claudeCodeModels"> | null, configDir: string | null): void {
@@ -75,5 +78,25 @@ export function effortChoices(list: ClaudeCodeModel[] | null, model: string): re
 
 /** Forgets every list asked for: another Mac, or a test starting clean. */
 export function forgetClaudeModels(): void {
+  generation++;
   for (const key of Object.keys(models)) delete models[key];
+}
+
+/**
+ * Asks for an account's models again: another account signed in under its directory, and its plan
+ * may offer others. The list had stays until the new one comes, and stays when the ask fails. An
+ * account nothing has asked about yet is left for the first picker that does.
+ */
+export function reloadClaudeModels(api: Pick<MessengerApi, "claudeCodeModels"> | null, configDir: string | null): void {
+  const key = configDir ?? "";
+  if (!api || !models[key] || models[key] === "loading") return;
+  const asked = generation;
+  Promise.resolve()
+    .then(() => api.claudeCodeModels(configDir))
+    .then(
+      (list) => {
+        if (asked === generation && Array.isArray(list?.models) && list.models.length) models[key] = list;
+      },
+      () => {},
+    );
 }

@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The model picker follows a Claude account you sign in with
+
+- The model picker in a Bot's and a project session's composer listed the Claude accounts as the app first saw them after it started. Once you signed in with another account in a terminal, it kept the old email, and the old account's models, until the app was restarted, while the usage widget already showed the new account. The picker now asks again as it opens, when the last answer is more than half a minute old. An account that changed has its models asked again; the old list stays shown until the new one arrives.
+- The runtime no longer serves a directory's model list from before another account signed in there. It used to keep that list for up to 10 minutes.
+
 ### The phone's page is the desktop app's own
 
 - The page your relay serves to phones is now the native app built for the web, the same screens as on the Mac, in place of the separate Svelte page. A phone paired before stays paired: the page keeps the same address, the same device store and the same notifications, and a phone that added it to the home screen keeps the same app.

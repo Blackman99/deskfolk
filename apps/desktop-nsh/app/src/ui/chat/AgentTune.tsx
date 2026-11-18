@@ -29,6 +29,8 @@ export function AgentTune(props: {
   disabled: boolean;
   client: Pick<MessengerApi, "claudeCodeModels"> | null;
   onPick: (change: PatchProjectSessionRequest) => void;
+  /** Called as the picker opens, to ask again for the accounts and models it lists. */
+  onOpen?: () => void;
   testID?: string;
 }) {
   const source: AgentTuneSource = {
@@ -69,6 +71,7 @@ export function AgentTune(props: {
       title={shown().title}
       sheetTitle={props.agentName}
       disabled={props.disabled}
+      onOpen={props.onOpen}
       testID={props.testID ?? "agent-tune"}
     />
   );

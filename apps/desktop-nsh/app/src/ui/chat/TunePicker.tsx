@@ -50,9 +50,11 @@ export function TunePicker(props: {
   /** The phone sheet's heading at its top level. */
   sheetTitle: string;
   disabled: boolean;
+  /** Called as the picker opens: what it lists may have changed since (another sign-in). */
+  onOpen?: () => void;
   testID?: string;
 }) {
-  const tune = createTune({ tree: () => props.tree, disabled: () => props.disabled, phone: phoneSheet, sheetTitle: () => props.sheetTitle });
+  const tune = createTune({ tree: () => props.tree, disabled: () => props.disabled, phone: phoneSheet, sheetTitle: () => props.sheetTitle, onOpen: () => props.onOpen?.() });
   const phone = phoneSheet;
   const frames = signal<Record<string, ColumnFrame | undefined>>({});
   /** Where the popover went and the room it has there (`onPosition`); the room is null until it says. */

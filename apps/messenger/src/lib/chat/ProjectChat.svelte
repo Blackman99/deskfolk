@@ -131,11 +131,16 @@
 	const caps = $derived(PROJECT_AGENT_CAPS[agent]);
 	const agentName = $derived(t.project.agentNames[agent]);
 	const claudeSession = $derived(agent === 'claude_code');
-	// Asked once each; untracked, so what the asking writes does not ask again.
+	/** Your accounts (or the agent's), asked for unless they were had a moment ago: as the composer shows, and as its picker opens. */
+	function askOptions(api: MessengerRuntime['client'], claude: boolean): void {
+		if (claude) loadClaudeStatus(api);
+		else loadAgentsStatus(api);
+	}
+	// Untracked, so what the asking writes does not ask again.
 	$effect(() => {
 		const api = runtime.client;
 		const claude = claudeSession;
-		untrack(() => (claude ? loadClaudeStatus(api) : loadAgentsStatus(api)));
+		untrack(() => askOptions(api, claude));
 	});
 	$effect(() => {
 		const api = runtime.client;
@@ -967,6 +972,7 @@
 						disabled={!connected}
 						client={runtime.client}
 						onpick={(change) => void tune(change)}
+						onopen={() => askOptions(runtime.client, claudeSession)}
 						data-project-tune=""
 					/>
 					<span class="tools-gap"></span>

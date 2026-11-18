@@ -220,6 +220,7 @@ export function ProjectComposer(props: {
                 disabled={!connected()}
                 client={runtime.client}
                 onPick={(change) => void s().tune(change)}
+                onOpen={s().askOptions}
               />
             </View>
             <View class="flex-1" />

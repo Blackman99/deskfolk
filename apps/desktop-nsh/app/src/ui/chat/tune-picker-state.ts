@@ -10,7 +10,14 @@ import type { TuneFocus, TuneLevel, TuneRow, TuneTree } from "../../m/chat/tune-
 /** Pointing opens what is under a row after a moment, so a slanting path to the column beside it does not open every row it crosses. */
 export const HOVER_INTENT_MS = 90;
 
-export function createTune(options: { tree: () => TuneTree; disabled: () => boolean; phone: () => boolean; sheetTitle: () => string }) {
+export function createTune(options: {
+  tree: () => TuneTree;
+  disabled: () => boolean;
+  phone: () => boolean;
+  sheetTitle: () => string;
+  /** Called as the picker opens: what it lists may have changed since (another sign-in). */
+  onOpen?: () => void;
+}) {
   const tree = options.tree;
   const open = signal(false);
   /** The path in focus: what each column's highlighted row is, and so what the next column lists. */
@@ -77,6 +84,7 @@ export function createTune(options: { tree: () => TuneTree; disabled: () => bool
     keyed.set(false);
     sheetStep.set("forward");
     open.set(true);
+    options.onOpen?.();
   }
 
   function close(): void {

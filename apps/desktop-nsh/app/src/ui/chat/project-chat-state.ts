@@ -77,11 +77,17 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
   const caps = () => PROJECT_AGENT_CAPS[agent()];
   const agentName = () => t().project.agentNames[agent()];
   const claudeSession = () => agent() === "claude_code";
-  // Asked once each; untracked, so what the asking writes does not ask again.
-  effect(() => {
+  /** Your accounts (or the agent's), asked for unless they were had a moment ago: as the composer shows, and as its picker opens. */
+  function askOptions(): void {
     const api = runtime.client;
-    const claude = claudeSession();
-    untracked(() => void (claude ? loadClaudeStatus(api) : loadAgentsStatus(api)));
+    if (claudeSession()) loadClaudeStatus(api);
+    else loadAgentsStatus(api);
+  }
+  // Untracked, so what the asking writes does not ask again.
+  effect(() => {
+    void runtime.client;
+    void claudeSession();
+    untracked(askOptions);
   });
   effect(() => {
     const api = runtime.client;
@@ -296,6 +302,7 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
     agentName,
     accountOptions,
     accountShown,
+    askOptions: () => untracked(askOptions),
     tuneFailed,
     accountRefused,
     tune,

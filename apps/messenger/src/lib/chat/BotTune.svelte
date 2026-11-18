@@ -31,19 +31,22 @@
 	const customId = $derived(bot.agent_custom_id ?? null);
 	const account = $derived(bot.agent_config_dir ?? '');
 
-	// Asked once each a page; untracked, so what the asking writes does not ask again.
+	/** What the picker lists for the agent the Bot is on, asked for unless it was had a moment ago. */
+	function askOptions(api: MessengerRuntime['client'], on: typeof runner, dir: string | null): void {
+		if (on === 'claude_code') {
+			loadClaudeStatus(api);
+			loadClaudeModels(api, dir);
+		} else if (on) {
+			loadAgentsStatus(api);
+		}
+	}
+
+	// Asked as the composer shows and again as the picker opens; untracked, so what the asking writes does not ask again.
 	$effect(() => {
 		const api = runtime.client;
 		const on = runner;
 		const dir = account || null;
-		untrack(() => {
-			if (on === 'claude_code') {
-				loadClaudeStatus(api);
-				loadClaudeModels(api, dir);
-			} else if (on) {
-				loadAgentsStatus(api);
-			}
-		});
+		untrack(() => askOptions(api, on, dir));
 	});
 
 	const accountOptions = $derived(accountChoices(claudeStatus(), account, t.project.defaultAccount));
@@ -83,6 +86,7 @@
 		{disabled}
 		client={runtime.client}
 		onpick={(change) => onpick(agentBotPatch(change))}
+		onopen={() => askOptions(runtime.client, runner, account || null)}
 		data-bot-tune=""
 	/>
 {:else}

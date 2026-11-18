@@ -37,9 +37,11 @@
 		/** The phone sheet's heading at its top level. */
 		sheetTitle: string;
 		disabled: boolean;
+		/** Called as the picker opens: what it lists may have changed since (another sign-in). */
+		onopen?: () => void;
 	};
 
-	let { t, tree, label, mark = null, value, level: valueLevel = null, aside = null, title, sheetTitle: topTitle, disabled, ...attrs }: Props = $props();
+	let { t, tree, label, mark = null, value, level: valueLevel = null, aside = null, title, sheetTitle: topTitle, disabled, onopen, ...attrs }: Props = $props();
 
 	const phone = new MediaQuery(PHONE_SHEET_QUERY);
 	const uid = $props.id();
@@ -138,6 +140,7 @@
 			triggerEl.focus({ preventScroll: true });
 		}
 		open = true;
+		onopen?.();
 	}
 
 	function close(focusTrigger = true): void {
