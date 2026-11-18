@@ -6,6 +6,10 @@
 
 ## Unreleased
 
+### 首启向导不再只说能接着 Claude Code 会话
+
+- 向导「接着终端里的会话」那一步列的是每个 Agent 的终端会话，说明却只写了 Claude Code。现在写全了 Agent，也说明哪些从原会话开分支（Claude Code、Codex、Grok）、哪个在同一个会话里接着（Antigravity）。
+
 ### 项目会话能跑 Grok 了，新开或接着终端里的会话
 
 - 在新开面板、「＋」菜单或目录行的「＋」里选 Grok，就在那个文件夹里和你本机的 Grok Build 对话，和在它自己的终端里一样：每一轮在那里起一个 `grok agent --no-leader stdio`，用你的 Grok 设置、AGENTS.md、skill 和 MCP 服务器，应用什么都不加。之后的话接着它的会话。

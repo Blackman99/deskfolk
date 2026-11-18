@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The first-launch wizard no longer says only Claude Code sessions can be carried on
+
+- The wizard's "Carry on a terminal session" step lists every agent's terminal sessions, but its words named Claude Code only. They now name the agents, and say which branch a session (Claude Code, Codex, Grok) and which goes on in the same one (Antigravity).
+
 ### Project sessions can run Grok, new or carried on from a terminal
 
 - Pick Grok in the New sheet, the + menu or a directory's + to talk to your own Grok Build in that folder, as in its terminal: each run starts `grok agent --no-leader stdio` there, with your Grok settings, AGENTS.md, skills and MCP servers, and nothing added by the app. Later lines resume its session.

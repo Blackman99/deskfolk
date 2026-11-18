@@ -57,8 +57,8 @@ export const zh = {
   startTeam: "建 Bot 一起干活",
   startTeamDesc: "选一种工作方式，从模板里勾几个 Bot，和它们私聊、交代工作。",
   startCarry: "接着终端里的会话",
-  startCarryDesc: "这台电脑上有你在终端里用过的 Claude Code 会话；挑一个在应用里接着聊，不用建 Bot。",
-  carryDesc: "按目录列出你在终端里开过的 Claude Code 会话。选一个，就在它原来的目录里开一个项目会话接着聊：Claude Code 记得之前的对话，终端里的原会话不变。Bot 之后随时能在侧栏里建。",
+  startCarryDesc: "这台电脑上有你在终端里用过的 Agent 会话（Claude Code、Codex、Antigravity、Grok）；挑一个在应用里接着聊，不用建 Bot。",
+  carryDesc: "按目录列出你在终端里开过的 Agent 会话。选一个，就在它原来的目录里开一个项目会话接着聊：Agent 记得之前的对话；Claude Code、Codex 和 Grok 从原会话开分支，终端里的原会话不变，Antigravity 在同一个会话里接着。Bot 之后随时能在侧栏里建。",
   skipStart: "跳过，直接进入应用",
   reopenGuide: "基础设置未完成，点击打开引导页",
 };
@@ -119,8 +119,8 @@ export const en: CopyShape<typeof zh> = {
   startTeam: "Make bots to work with",
   startTeamDesc: "Pick a way of working, tick bots from its templates, then message them and hand them work.",
   startCarry: "Carry on a terminal session",
-  startCarryDesc: "You have Claude Code sessions from a terminal on this computer; pick one to carry on here, no bot needed.",
-  carryDesc: "Your Claude Code sessions from a terminal, by directory. Pick one and a project session carries it on in its directory: Claude Code remembers the conversation so far, and the terminal's session is left as it was. You can make bots from the sidebar any time later.",
+  startCarryDesc: "You have agent sessions from a terminal on this computer (Claude Code, Codex, Antigravity, Grok); pick one to carry on here, no bot needed.",
+  carryDesc: "Your agent sessions from a terminal, by directory. Pick one and a project session carries it on in its directory: the agent remembers the conversation so far. Claude Code, Codex and Grok branch it, leaving the terminal's session as it was; Antigravity goes on in that same session. You can make bots from the sidebar any time later.",
   skipStart: "Skip, enter the app",
   reopenGuide: "Setup incomplete, click to open setup guide",
 };
