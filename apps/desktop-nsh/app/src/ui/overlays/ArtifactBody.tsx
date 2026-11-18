@@ -14,7 +14,9 @@
  *   there as a `data:` URL (the loader's object URL is nothing `Image` shows): the file's own
  *   picture, or a picture's chip in the Markdown, whose thumbnail the enlargement starts from.
  * - The PDF is fetched by the native module from `pdfSourceFor(relpath)` (a workspace file) or the
- *   attachment's content URL, both on the local runtime; a remote runtime gives no source.
+ *   attachment's content URL, both on the local runtime; on a remote one (the phone's page) it is
+ *   handed the loader's bytes as Base64, as an Office file is. Until 2026-11-18 it was handed
+ *   nothing there, and a PDF on the phone stayed at "opening" for good.
  * - An Office file is read by path (a local workspace file) or from the loader's bytes as Base64.
  * - The composer sits at the top of the pane: `annot.composerTop` is measured from a DOM element
  *   (`bodyEl`) NSH does not have, so it is not followed.
@@ -168,8 +170,31 @@ export function ArtifactBody(props: {
     });
   });
 
-  /** Where the native PDF module reads from: the workspace file, or the attachment's content. */
-  const pdfSource = (): PdfSource | null => pdfSourceOf({ relpath: props.relpath, byteSource: props.byteSource, attachment: props.attachment });
+  /** A PDF's bytes as Base64, when the native module cannot fetch it from the runtime itself (a remote one). */
+  const pdfBase64 = signal<string | null>(null);
+  let pdfGen = 0;
+  const pdfFetched = () => pdfSourceOf({ relpath: props.relpath, byteSource: props.byteSource, attachment: props.attachment });
+  effect(() => {
+    const blob = loader().shownPdf ? loader().pdfBlob : null;
+    const mine = ++pdfGen;
+    if (!blob || pdfFetched()) {
+      pdfBase64.set(null);
+      return;
+    }
+    void blob.arrayBuffer().then((bytes) => {
+      if (mine === pdfGen) pdfBase64.set(base64(new Uint8Array(bytes)));
+    });
+  });
+  /**
+   * Where the native PDF module reads from: the workspace file or the attachment's content, else the
+   * loader's bytes. One object per change: a new source opens a new document.
+   */
+  const pdfSource = computed((): PdfSource | null => {
+    const fetched = pdfFetched();
+    if (fetched) return fetched;
+    const bytes = pdfBase64();
+    return bytes === null ? null : { base64: bytes };
+  });
 
   cleanup(() => {
     props.onEditor?.(null);

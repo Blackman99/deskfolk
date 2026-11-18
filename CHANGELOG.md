@@ -14,6 +14,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - **History (Git Graph)**: virtualised commit graph with per-row Canvas lane rendering, branch/tag/HEAD/worktree badges, pagination, search, and a commit detail + per-file diff inspector.
 - **GitHub**: read-only via your local `gh` CLI (no tokens stored by Deskfolk), showing the current branch's PR (with CI checks, review decision, and closing issues), issues/PRs referenced in branch commits or conversation links, repository PR/Issue filters, Markdown detail view, "Quote to composer", and graceful degradation when offline, signed out, or non-GitHub.
 
+### A PDF opens on the phone
+
+- On the phone's page a PDF pressed in a message or picked in the workspace stayed at "Opening the PDF…" and never showed: the viewer was only ever told where to fetch the file on this computer. It now opens from the file's bytes, as a Word, Excel or PowerPoint file does there.
+
 ### On the phone, the PDF viewer is downloaded only when a PDF opens
 
 - The app's own code for PDFs is a module of its own now, downloaded the first time a PDF opens: opening a conversation downloads 1.3 MB less than it would have. Before the first screen the page now downloads about 2.8 MB as the relay sends it (5.4 MB before), the first conversation about 1.1 MB more, the first PDF about 1.3 MB.

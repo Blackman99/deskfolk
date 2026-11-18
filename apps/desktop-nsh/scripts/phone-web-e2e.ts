@@ -14,7 +14,8 @@
  * under a back swipe), its code block and table scrolling sideways while a vertical swipe on them still scrolls the
  * conversation, its code and a command's output in GitHub's colours, a line sent from the phone (read back from the Mac's database), a line written on the Mac
  * arriving live, a file pressed in a message covering the conversation (and Back putting only the
- * file away), Back to the roster, the terminal page reattaching to a shell the Mac already holds
+ * file away), a PDF pressed in one opening on its page with its module (`deskfolk/pdf`) fetched only
+ * then, Back to the roster, the terminal page reattaching to a shell the Mac already holds
  * (none started beside it; the key bar's Return reaches it; Back leaves it running), the workspace with a file picked in it that stays while the Mac
  * moves on, a project's folder over its conversation (from its row's menu, and from its directory's +, a sheet from the
  * bottom that Back puts away first), a project session's composer and its + (the row fitting the phone, plan mode and the
@@ -81,6 +82,28 @@ const step = (line: string) => {
 function run(args: string[], cwd: string, env: Record<string, string | undefined> = process.env): void {
   const done = spawnSync(args[0]!, args.slice(1), { cwd, env, stdio: "inherit" });
   if (done.status !== 0) throw new Error(`${args.slice(0, 3).join(" ")} failed (${done.status})`);
+}
+
+/** A one-page PDF saying `text` in Helvetica (one of the standard 14, which hayro carries). */
+function tinyPdf(text: string): Buffer {
+  const content = `BT /F1 18 Tf 30 100 Td (${text}) Tj ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let out = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  objects.forEach((body, i) => {
+    offsets.push(out.length);
+    out += `${i + 1} 0 obj\n${body}\nendobj\n`;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, "latin1");
 }
 
 async function until<T>(what: string, ms: number, probe: () => Promise<T | undefined | null | false> | T | undefined | null | false): Promise<T> {
@@ -450,8 +473,13 @@ try {
   };
   const problems: string[] = [];
   const localOnly: string[] = [];
+  // The app's own Rust the page asked for, by module (`app-deskfolk-native`, `app-deskfolk-pdf`): a
+  // side module each, fetched only once something that uses it shows (ADR 0107 addenda 62, 63).
+  const appModules: string[] = [];
   page.on("request", (r) => {
     if (LOCAL_ONLY_CHUNKS.some((id) => new URL(r.url()).pathname.includes(id.replace(/\.js$/, ""))) || new URL(r.url()).pathname.startsWith("/__local-api")) localOnly.push(r.url());
+    const module = /^\/nsh-(app-deskfolk-[a-z]+)\.[0-9a-f]{10}\.wasm$/.exec(new URL(r.url()).pathname)?.[1];
+    if (module) appModules.push(module);
   });
   // The route's fallbacks (`page-route.ts` `late`): each is an entry pictured with the page over it,
   // the picture a phone's back swipe shows. Counted over the run, after the step that ran last.
@@ -813,6 +841,28 @@ try {
     await testid(page, "conversation").waitFor({ timeout: 10_000 });
   }
   step(`a picture in a message enlarges with an entry of its own: Back puts it away and the conversation stays${walkedPicture ? ", and the next Back the conversation, the page staying" : ""}`);
+
+  // A PDF: its pages are the app's own Rust apart from the rest (`deskfolk/pdf`), which the page
+  // fetches only now, the first time a PDF opens; a conversation's text took `deskfolk/native` only.
+  if (appModules.includes("app-deskfolk-pdf")) throw new Error(`the page fetched the PDF pages before any PDF opened: ${appModules.join(", ")}`);
+  writeFileSync(join(workspace, "out", "page.pdf"), tinyPdf("Deskfolk PDF page"));
+  await mac.api("POST", `/v1/sessions/${mac.writerDirect}/messages`, { body: "再看这个 [page.pdf](out/page.pdf)" });
+  // The conversation opened again above sits mid-history with its jump button (so did the page
+  // before 2026-11-18's split: not this step's to fix); the newest line is under it.
+  await until("the PDF's link on the phone", 20_000, async () => {
+    if (await testid(page, "scroll-bottom").isVisible().catch(() => false)) await testid(page, "scroll-bottom").tap().catch(() => {});
+    return shownIn(page, "conversation", "再看这个");
+  });
+  // The conversation reopened by the picture step above leaves a hidden copy of its rows: the
+  // link pressed is the one shown.
+  await page.getByText("page.pdf", { exact: true }).filter({ visible: true }).last().tap();
+  await until("the PDF over the conversation", 15_000, () => onTop(page, "preview-sheet"));
+  await until("the PDF's first page", 30_000, async () => (await testid(page, "pdf-error").count()) === 0 && (await testid(page, "pdf-page-1").count()) > 0);
+  if (!appModules.includes("app-deskfolk-pdf")) throw new Error(`the PDF opened, but the page never fetched its module: ${appModules.join(", ") || "(none)"}`);
+  await page.screenshot({ path: shot("3c-pdf") });
+  await back();
+  await until("the PDF put away, the conversation still there", 10_000, async () => (await testid(page, "preview-sheet").count()) === 0 && (await testid(page, "conversation").count()) > 0);
+  step(`a PDF pressed in a message opens on its page, its module (deskfolk/pdf) fetched only then (the page's app modules: ${appModules.join(", ")}); Back puts it away`);
 
   await testid(page, "top-back").click();
   await until("the conversation put down", 10_000, async () => (await testid(page, "conversation").count()) === 0);
