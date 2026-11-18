@@ -572,7 +572,7 @@ export function createShellState() {
         runtime.createGroupOpen = false;
         return true;
       case "provider-editor":
-        settingsHandle?.backFromProviderEditor();
+        // A dialog over settings that hears Back itself too (`Modal`'s `stepsBack`).
         return true;
       case "independent-confirm":
         return true;
@@ -582,7 +582,9 @@ export function createShellState() {
         runtime.closeBotDm();
         return true;
       case "settings":
-        return settingsHandle?.backWithinSettings() ?? false;
+        // The settings dialog hears Back itself, before this: its `onCancel` steps out of a tab's
+        // page on a phone, or it closes. Stepping here as well went two levels for one Back.
+        return true;
       case "session-settings":
         if (profilePane?.backFromEditor()) return true;
         if (paneMobileDetail()) {

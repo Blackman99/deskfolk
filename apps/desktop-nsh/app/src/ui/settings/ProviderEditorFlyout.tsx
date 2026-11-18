@@ -101,6 +101,7 @@ export function ProviderEditorFlyout(props: {
         width={580}
         maxHeight={0.88}
         pageOnPhone
+        stepsBack={narrowWindow()}
         onClose={() => (narrowWindow() ? props.backFromProviderEditor() : props.closeProviderEditor())}
         headExtra={
           <If when={!narrowWindow()}>

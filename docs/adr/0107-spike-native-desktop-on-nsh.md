@@ -1228,3 +1228,28 @@ On the day of addendum 43 the user said the phone's routing was a mess, and the 
 - **Two things that belong to the test, not the app.**
   - NSH writes a modal's entry on a `setTimeout(0)`, which a headless browser can hold back for most of a second, so the test waits for the entry before pressing Back.
   - The relay allows an address 10 handshakes a minute. Here the page and the Mac share loopback, at two handshakes a load, and back-to-back loads reach the limit. The test presses Retry and says so. On a phone the page and the Mac are two addresses.
+
+## 补记 2026-11-18（四十五）：设置里按返回逐层退 / Addendum 2026-11-18 (45): Back steps out of settings one level at a time
+
+用户说手机页上「进入设置页，再进入某一项设置，再进入某个细化页，应该是逐层返回」。实际是在设置的任何一页按一次手机或浏览器的返回，整个设置就关了；端点编辑器里从某个连接方式的表单按返回，整个编辑器就关了。页面自己的 ‹ 一直是逐层退的（`backWithinSettings`），坏的只是系统的返回。
+
+- **原因。** NSH 把返回先交给最上面的对话框（`defaultBack` → `requestClose` → `onCancel`），`closeOnEscape` 为真时随后自己关掉它。设置的 `onCancel` 直接 `closeSettings()`；`Modal` 的 `onCancel` 调 `onClose`，端点编辑器在窄窗口里那是退一层，可对话框接着又自己关了。`page-route.ts` 原来以为返回会先到 `backMobileLayer`，那是 Svelte 页的路子。
+- **设置。** 手机上在列表以下（`mobileDetail`），对话框的 `closeOnEscape` 为假，`onCancel` 退一层，和 ‹ 一样；在列表上照旧关。退一层要等一轮（`queueMicrotask`）：NSH 在 `onCancel` 返回后马上读 `closeOnEscape`，当场退到列表会让它变真，又关掉。
+- **只退一次。** 设置在网址里，对话框条目下面那条是别的网址，NSH 在对话框没关时把它的条目重新推上（地址是下面那条的），随后还发一个 `change(back)`。外壳的 `backMobileLayer` 原来在这里再退一层，一次返回退两级；现在 `settings` 和 `provider-editor` 两种情形只答「已处理」，退的事归对话框。`page-route.ts` 这时把地址 replace 到 NSH 推回的那条上，不再 push：多推的一条会吃掉下一次返回。
+- **端点编辑器。** `Modal` 加了 `stepsBack`：为真时返回和 Esc 只交给 `onClose`（同样等一轮），对话框不自己关。编辑器在窄窗口里打开它。
+- **Bot 的设置** 量过，本来就逐层退，没改；端到端里留一步守着。
+- **代价。** 宽度在 720 以下的窗口里，设置的某一页上按 Esc 也是退一层，不再直接关。
+- **检查。** `phone-web-e2e.ts`：设置 › 模型 › 端点 › 添加端点 › 自定义，然后一路按返回：表单→连接方式→编辑器关→端点这一节→模型→列表→设置关，网址一直是 `/?o=settings`，历史条数不变；再加 Bot 的设置一节一节退。旧代码上 WebKit 第一次返回就回到了名单；改后 WebKit 和 Chromium 都过。`.ui` 的 `settings-routing-modal` 加两条用无头驱动的 `app.back()` 的测试，旧代码上两条都失败。`page-route.test.ts` 加一条：设置当一步处理的返回，地址落在 NSH 推回的条目上，不多一条。
+
+The user said that on the phone page, going into settings, then one of its items, then a page under that, Back should step out one level at a time. In fact one press of the phone's or the browser's Back on any page of settings closed all of it, and one from a connector's form in the endpoint editor closed the whole editor. The page's own ‹ had always stepped out one level (`backWithinSettings`); only the system's Back was wrong.
+
+- **Why.** NSH hands Back to the topmost dialog first (`defaultBack` → `requestClose` → `onCancel`), and when `closeOnEscape` is true it then closes the dialog itself. Settings' `onCancel` called `closeSettings()`. `Modal`'s `onCancel` calls `onClose`, which for the endpoint editor in a narrow window steps out one level, and then the dialog closed itself anyway. `page-route.ts` assumed Back reached `backMobileLayer` first, which is how the Svelte page worked.
+- **Settings.** On a phone, below the list (`mobileDetail`), the dialog's `closeOnEscape` is false and `onCancel` steps out one level, as ‹ does. On the list it closes, as before. The step waits a turn (`queueMicrotask`): NSH reads `closeOnEscape` right after `onCancel` returns, and stepping out to the list there and then would make it true and close the dialog after all.
+- **One step, not two.** Settings is in the address, so the entry under the dialog's has another address. With the dialog still open, NSH pushes the dialog's entry again, at the address under it, and then also sends a `change(back)`. The shell's `backMobileLayer` used to step out once more there, so one Back went two levels. Its `settings` and `provider-editor` cases now only answer "handled"; the dialog does the stepping. `page-route.ts` then replaces the address onto the entry NSH pushed back, instead of pushing: an extra entry would swallow the next Back.
+- **The endpoint editor.** `Modal` gains `stepsBack`. When it is true, Back and Escape only go to `onClose` (also a turn later), and the dialog does not close itself. The editor turns it on in a narrow window.
+- **A Bot's settings** were measured and already stepped out one level at a time, so they are unchanged. The e2e keeps a step to guard them.
+- **The cost.** In a window 720 wide or less, Escape on a page of settings steps out one level too, instead of closing settings.
+- **Checks.**
+  - `phone-web-e2e.ts` goes Settings › Models › Endpoints › Add endpoint › Custom, then Back all the way: the form, the connector tiles, the editor closed, the Endpoints section, Models, the list, settings closed. The address stays `/?o=settings` and the history keeps its length. Then a Bot's settings, a section at a time. On the old code, WebKit's first Back landed on the roster; with the fix it passes in WebKit and Chromium.
+  - `.ui`'s `settings-routing-modal` gains two tests that use the headless driver's `app.back()`. Both fail on the old code.
+  - `page-route.test.ts` gains one: a Back settings took as a step leaves the address on the entry NSH pushed back, adding none.

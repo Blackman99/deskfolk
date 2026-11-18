@@ -150,6 +150,47 @@ test("on a phone Models lists its sections, a section opens under its name, and 
   }
 });
 
+test("on a phone the system's Back steps out one level at a time too: a section, its tab, then settings", async () => {
+  // The browser's and the phone's Back reach the settings dialog itself, not the shell's chain.
+  const app = await openModal(400, 800);
+  try {
+    await app.press("id:settings-tab-models");
+    await app.press("id:section-endpoints");
+    await app.waitFor("id:models-panel");
+    await app.back();
+    await app.waitFor("id:section-endpoints");
+    expect(settings(app)).toBe("open:detail:ok");
+    await app.back();
+    await app.waitFor("id:settings-nav");
+    expect(settings(app)).toBe("open:list:ok");
+    await app.back();
+    await app.waitUntil(() => settings(app).startsWith("closed"));
+  } finally {
+    await restore(app);
+  }
+});
+
+test("on a phone the system's Back steps out of the endpoint editor's form to its tiles, then closes the editor", async () => {
+  const app = await openModal(400, 800);
+  try {
+    await app.press("id:settings-tab-models");
+    await app.press("id:section-endpoints");
+    await app.waitFor("id:provider-add");
+    await app.press("id:provider-add");
+    await app.waitFor("id:connector-pick-custom");
+    await app.press("id:connector-pick-custom");
+    await app.waitFor("id:connector-pick-custom", { state: "gone" });
+    await app.back();
+    await app.waitFor("id:connector-pick-custom");
+    expect(app.shows("id:provider-editor")).toBe(true);
+    await app.back();
+    await app.waitFor("id:provider-editor", { state: "gone", timeout: 15_000 });
+    expect(app.shows("id:models-panel")).toBe(true);
+  } finally {
+    await restore(app);
+  }
+});
+
 test("on a phone ✕ on a deep page steps out of it, not out of settings", async () => {
   const app = await openModal(400, 800);
   try {

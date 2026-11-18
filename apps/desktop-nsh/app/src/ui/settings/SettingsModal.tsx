@@ -7,7 +7,9 @@
  *
  * It is `nsh/base`'s `Dialog` (the card is a row, the nav beside the page, so `Modal`'s head does not
  * fit): 880 by 640 on a desktop, the whole window on a phone (720 wide or less, where `SettingsNav` is
- * the first page). Escape, the scrim and ✕ close it unless the endpoint editor or a confirmation is up.
+ * the first page). Escape, the scrim and ✕ close it unless the endpoint editor or a confirmation is up;
+ * on a phone, below the list, Back and Escape (the dialog's `onCancel`, which the browser's and the
+ * phone's Back reach first) and ✕ step out one level instead, as ‹ does.
  *
  * What the Svelte took with `bind:` the shell owns and passes as a value and `on…Change`:
  * `mobileSettingsDetail`, `saveFailed`, `providerEditor`, `confirmingIndependent`. What it exported
@@ -594,6 +596,18 @@ export function SettingsModal(props: {
 
   /** Neither backdrop closes while the endpoint editor or a confirmation is up over the window. */
   const closable = () => !providerEditor() && !props.confirmingProvider && !props.confirmingIndependent;
+  /**
+   * On a phone, a tab's page (and whatever it opened) is above the list: Back (the browser's, the
+   * phone's, Escape) steps out of it as ‹ does instead of closing settings. The dialog reads its
+   * `closeOnEscape` right after `onCancel` returns, so the step waits a turn, or stepping out of a
+   * tab to the list would turn that into a close.
+   */
+  const backStepsWithin = () => phone() && mobileDetail();
+  function cancel(): void {
+    if (!closable()) return;
+    if (backStepsWithin()) queueMicrotask(() => void backWithinSettings());
+    else props.closeSettings();
+  }
   const width = () => (phone() ? windowSize().width : Math.min(880, Math.round(windowSize().width * 0.94)));
   const height = () => (phone() ? windowSize().height : Math.min(640, Math.round(windowSize().height * 0.88)));
 
@@ -603,11 +617,9 @@ export function SettingsModal(props: {
         <Dialog
           open
           animation="fade"
-          closeOnEscape={closable()}
+          closeOnEscape={closable() && !backStepsWithin()}
           closeOnBackdropPress={closable()}
-          onCancel={() => {
-            if (closable()) props.closeSettings();
-          }}
+          onCancel={cancel}
           onOpenChange={(e) => {
             if (!e.open && closable()) props.closeSettings();
           }}

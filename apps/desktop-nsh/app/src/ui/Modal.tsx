@@ -41,6 +41,12 @@ export function Modal(props: {
   alert?: boolean;
   /** While true nothing closes it (an action is running). */
   busy?: boolean;
+  /**
+   * Its `onClose` steps out of a page of its own before it closes (the endpoint editor on a phone):
+   * Back and Escape leave it to `onClose`, a turn later, and the dialog does not close itself, or
+   * one Back would step out and close it too.
+   */
+  stepsBack?: boolean;
   /** The card's width on a desktop (px); a phone's is the window's. */
   width?: number;
   /** Its height cap on a desktop, as a share of the window (default 0.86). */
@@ -79,9 +85,13 @@ export function Modal(props: {
     <Dialog
       open
       animation="fade"
-      closeOnEscape={!props.busy}
+      closeOnEscape={!props.busy && !props.stepsBack}
       closeOnBackdropPress={!props.busy}
-      onCancel={close}
+      onCancel={() => {
+        // The dialog reads `closeOnEscape` as soon as this returns: a step now could make it true.
+        if (props.stepsBack) queueMicrotask(close);
+        else close();
+      }}
       onOpenChange={(e) => {
         if (!e.open) close();
       }}

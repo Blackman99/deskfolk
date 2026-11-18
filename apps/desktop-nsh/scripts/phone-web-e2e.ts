@@ -6,7 +6,8 @@
  * registers the Mac with the relay and opens a pairing window, then drives the page in a headless
  * browser: paste the code, compare the fingerprint, submit; approve on the Mac (the development
  * stand-in for Touch ID); then the app's shell on a phone's width: the roster, the projects tab
- * with every picture drawn (Claude's logo among them, which WebKit once refused), a conversation over
+ * with every picture drawn (Claude's logo among them, which WebKit once refused), Back stepping out
+ * of settings and a Bot's settings one level at a time, a conversation over
  * it, a line sent from the phone (read back from the Mac's database), a line written on the Mac
  * arriving live, Back to the roster, a reload that is still enrolled and under the service worker
  * (`/sw.js`, which the app's realm reaches as its own); and the same page at a
@@ -620,6 +621,77 @@ try {
   await expectAt("Back from settings", "/");
   await row.waitFor({ timeout: 5_000 });
   step("settings has its address: one Back closes it, and the page stays");
+
+  // Settings on a phone drills down: the list of tabs, a tab, a section of it. The browser's Back
+  // steps out one level at a time, as the page's own ‹ does, and only off the list closes settings.
+  await testid(page, "nav-settings").click();
+  await showing("settings-modal");
+  await expectAt("settings", "/?o=settings");
+  await sheetEntry();
+  await testid(page, "settings-tab-models").click();
+  await showing("section-endpoints");
+  await testid(page, "section-endpoints").click();
+  await showing("models-panel");
+  // The endpoint editor is a page over it with pages of its own: the connector tiles, a
+  // connector's form. Back steps out of the form to the tiles, then closes the editor.
+  const depth = (at: number) => until(`history at depth ${at}`, 5_000, () => page.evaluate((n) => ((history.state as { nsh?: number } | null)?.nsh ?? 0) === n, at));
+  const deep = await page.evaluate(() => history.length);
+  await testid(page, "provider-add").click();
+  await showing("connector-pick-custom");
+  await depth(2);
+  await testid(page, "connector-pick-custom").click();
+  await putAway("connector-pick-custom");
+  await page.goBack();
+  await showing("connector-pick-custom");
+  await depth(2);
+  await page.goBack();
+  await putAway("provider-editor");
+  await showing("models-panel");
+  await expectAt("Back out of the endpoint editor", "/?o=settings");
+  await depth(1);
+  await page.goBack();
+  await putAway("models-panel");
+  await showing("section-endpoints");
+  await expectAt("Back from a section", "/?o=settings");
+  await sheetEntry();
+  await page.goBack();
+  await putAway("settings-models");
+  await showing("settings-nav");
+  await expectAt("Back from a tab", "/?o=settings");
+  await sheetEntry();
+  // Each Back the dialog took as a step gets its entry again, and leaves no more behind.
+  const after = await page.evaluate(() => history.length);
+  if (after !== deep) throw new Error(`stepping back in settings left history at ${after} entries, from ${deep}`);
+  await page.goBack();
+  await putAway("settings-modal");
+  await expectAt("Back off the list of tabs", "/");
+  await row.waitFor({ timeout: 5_000 });
+  step("settings steps back one level at a time: the endpoint editor's form, the editor, a section, its tab, then settings itself");
+
+  // A Bot's settings drill down the same way: its sections, one of them; then the conversation.
+  await row.click();
+  await showing("conversation");
+  await testid(page, "top-more").click();
+  await showing("mobile-actions-menu");
+  await testid(page, "mobile-settings").click();
+  await showing("bot-nav");
+  const botSettingsAt = here();
+  await sheetEntry();
+  await testid(page, "bot-tab-basics").click();
+  await showing("bot-detail");
+  await page.goBack();
+  await putAway("bot-detail");
+  await showing("bot-nav");
+  await expectAt("Back from a Bot's section", botSettingsAt);
+  await sheetEntry();
+  await page.goBack();
+  await putAway("session-settings-drawer");
+  await showing("conversation");
+  await expectAt("Back out of a Bot's settings", writerAt);
+  await page.goBack();
+  await putAway("conversation");
+  await expectAt("Back to the roster", "/");
+  step("a Bot's settings step back one level at a time too: a section, the settings, then the conversation");
 
   // Another conversation than the Writer's, whose rows the steps above went through.
   const editorRow = testid(page, `session-${mac.editorDirect}`);

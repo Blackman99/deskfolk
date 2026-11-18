@@ -178,9 +178,12 @@ export class PageRoute {
       this.land(url);
       return;
     }
-    // A layer the address does not carry closes first; the entry Back left goes up again.
+    // A layer the address does not carry closes first; the entry Back left goes up again. Settings
+    // is a dialog the address carries: Back reached its `onCancel` first, it stepped out of a tab's
+    // page and stayed, and NSH has given its entry back already, at the address under it; the
+    // address goes onto that entry, as another would be one Back too many.
     if (move === "back" && this.chainOf()?.backMobileLayer()) {
-      this.page.setUrl(this.address(), "push");
+      this.page.setUrl(this.address(), this.rt.settingsOpen ? "replace" : "push");
       return;
     }
     if (move === "open") this.stack = [new URL(url).search];

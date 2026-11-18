@@ -172,6 +172,29 @@ test("Back closes a layer the address does not carry first, and the conversation
   expect(rt.selectedId).toBe(null);
 });
 
+test("a Back settings took as a step keeps its address on the entry NSH gave back, adding none", () => {
+  let ctx: ReturnType<typeof setup>;
+  ctx = setup(`${ORIGIN}/`, "navigate", { backMobileLayer: () => ctx.rt.settingsOpen });
+  const { page, rt, route, write } = ctx;
+  rt.settingsOpen = true;
+  write();
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", "/?o=settings"]);
+  // The browser's Back reaches the dialog first: it steps out of a tab's page and stays, and NSH
+  // pushes its entry again, at the address under it, before the `change` comes.
+  page.back();
+  page.setUrl(page.href(), "push");
+  page.flush();
+  expect(rt.settingsOpen).toBe(true);
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", "/?o=settings"]);
+  expect(page.at()).toBe(2);
+  expect(path(route.address())).toBe("/?o=settings");
+  // Off the list of tabs the dialog closes itself: the Back lands on the roster's entry.
+  rt.settingsOpen = false;
+  page.press();
+  expect(path(route.address())).toBe("/");
+  expect(page.at()).toBe(1);
+});
+
 test("Back on the floor closes the screen showing and goes up again; with nothing open it leaves the page", () => {
   const rt0 = { closed: 0 };
   let ctx: ReturnType<typeof setup>;
