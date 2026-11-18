@@ -132,7 +132,8 @@ export type SequencedEvent = {
  * window found after applying your interface (ADR 0106) is kept in memory only; a repeat says it again.
  * Files dropped on the file tree are copied while the request waits, which for a big folder takes
  * longer than a receipt's synchronous write may hold the daemon; a repeat copies them again, under
- * the next free names, as dropping them twice does.
+ * the next free names, as dropping them twice does. Moving rows in a file tree is files too, like
+ * the Trash: a repeat finds the sources gone and moves nothing twice.
  */
 export function isNonReceiptPath(path: string): boolean {
   const withoutQuery = path.split("?")[0] ?? "";
@@ -143,6 +144,7 @@ export function isNonReceiptPath(path: string): boolean {
     || withoutQuery === "/v1/interface/window"
     || withoutQuery === "/v1/workspace/trash"
     || withoutQuery === "/v1/workspace/import"
+    || withoutQuery === "/v1/workspace/move"
     || withoutQuery === "/v1/notification-presence"
     || withoutQuery.startsWith("/v1/runtime/claude-code/")
     || withoutQuery.startsWith("/v1/runtime/agents/")

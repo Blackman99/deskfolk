@@ -47,6 +47,26 @@ export type WorkspaceImportResult = {
   failed: Array<{ source: string; code: "missing" | "into_itself" | "copy_failed"; message: string }>;
 };
 
+/**
+ * Rows dragged inside a file tree: `sources` moved into the folder `dir`, each written as the tree
+ * writes it (a workspace path, or one in a project session's directory written absolute).
+ */
+export type WorkspaceMoveRequest = {
+  dir: string;
+  sources: string[];
+};
+
+export type WorkspaceMoveResult = {
+  /** In `dir` now under their own name (one already there is answered as moved, unchanged). */
+  moved: Array<{ source: string; name: string }>;
+  /**
+   * Not moved: `missing` (gone), `outside` (not in the workspace or a project), `into_itself` (a
+   * folder into itself or one inside it), `exists` (that name is taken in `dir`; nothing is
+   * overwritten), `move_failed` (the system refused; `message` says why).
+   */
+  failed: Array<{ source: string; code: "missing" | "outside" | "into_itself" | "exists" | "move_failed"; message: string }>;
+};
+
 export type WorkspaceTrashResult = {
   /** In the Trash now, or already gone when asked — either way no longer in the workspace. */
   trashed: string[];

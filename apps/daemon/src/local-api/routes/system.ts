@@ -15,6 +15,7 @@ import { probeEndpointModels, withLocalFacts } from "../../probe-models";
 import { resolveApiFormat, resolveWorkspaceId } from "../../store/shared";
 import { listCitedDir, locateCitedFile, writableTarget, writeWorkspaceFile } from "../../workspace-browse";
 import { importIntoWorkspace } from "../../workspace-import";
+import { moveInWorkspace } from "../../workspace-move";
 import { trashWorkspacePaths } from "../../workspace-trash";
 import { fileResponse, occurred, publishBotModelChanges } from "../helpers";
 import type { RouteCtx } from "../route-ctx";
@@ -239,6 +240,15 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
     if (url.hostname === "remote.invalid") throw new HttpError(404, "not_found", "import is local-only");
     const body = (input.body) as { dir?: unknown; sources?: unknown };
     return importIntoWorkspace(store.workspacePath(), store.projectDirs(), body).then((result) => jsonResponse(result, 200, null));
+  }
+
+  // Rows dragged inside a file tree, moved into the folder they were let go on. The window's own
+  // gesture: the relay's list of routes leaves it out, as it does the import. No receipt (see
+  // isNonReceiptPath): a repeat finds the sources gone.
+  if (method === "POST" && path === "/v1/workspace/move") {
+    if (url.hostname === "remote.invalid") throw new HttpError(404, "not_found", "move is local-only");
+    const body = (input.body) as { dir?: unknown; sources?: unknown };
+    return moveInWorkspace(store.workspacePath(), store.projectDirs(), body).then((result) => jsonResponse(result, 200, null));
   }
 
   if (method === "POST" && path === "/v1/models/probe") {
