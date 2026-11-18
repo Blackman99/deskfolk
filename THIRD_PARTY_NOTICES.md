@@ -2,62 +2,6 @@
 
 Deskfolk's own code is licensed under the [MIT License](LICENSE). Third-party components retain their respective licenses.
 
-## xterm.js
-
-The terminal in `apps/messenger` renders with [@xterm/xterm](https://github.com/xtermjs/xterm.js) 5.5.0 and its fit addon [@xterm/addon-fit](https://github.com/xtermjs/xterm.js/tree/master/addons/addon-fit) 0.10.0, both released under the MIT license:
-
-```text
-Copyright (c) 2017-2019, The xterm.js authors (https://github.com/xtermjs/xterm.js)
-Copyright (c) 2014-2016, SourceLair Private Company (https://www.sourcelair.com)
-Copyright (c) 2012-2013, Christopher Jeffrey (https://github.com/chjj/)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-## svelte5plus-calendar
-
-The roster routine calendar in `apps/messenger` uses [svelte5plus-calendar](https://github.com/Blackman99/svelte5plus-calendar) 0.6.0, which is released under the MIT license:
-
-```text
-MIT License
-
-Copyright (c) 2026 svelte5plus-calendar contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
 ## Boring Avatars
 
 The avatar generator in `packages/protocol/src/boring-avatars.ts` adapts algorithms and SVG designs from [Boring Avatars](https://github.com/boringdesigners/boring-avatars), including its utilities and avatar variants, into a TypeScript SVG-string implementation. The upstream [MIT license](https://github.com/boringdesigners/boring-avatars/blob/master/LICENSE) is reproduced below.
@@ -142,26 +86,6 @@ DEALINGS IN THE SOFTWARE.
 ```
 
 Only JSON formatting/filtering was changed; vector values are unmodified. Their private keys are published test material, not application credentials. The independent Rust harness links `snow` 0.10.0 (Apache-2.0 OR MIT) and `ed25519-dalek` 2.2.0 (BSD-3-Clause); its exact transitive versions are locked in `packages/remote/test/snow/Cargo.lock`. Runtime Noble dependencies retain their MIT licenses; cborg 4.3.2 is Apache-2.0. Dependency audit history is not an audit of this integration; see [the security prototype contract](docs/remote-protocol.md).
-
-## PDF.js
-
-The PDF preview in `apps/messenger` renders with [pdfjs-dist](https://github.com/mozilla/pdf.js) 6.3.289 (the library and its bundled worker, loaded only when a PDF opens), released under the Apache License 2.0:
-
-```text
-Copyright 2024 Mozilla Foundation
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
 
 ## Package dependencies
 
@@ -299,15 +223,15 @@ SOFTWARE.
 
 ## Claude Spark mark
 
-The Claude Agent card in Settings › Agents shows the Claude Spark next to the words "Claude Agent" (`apps/messenger/src/lib/settings/ClaudeSpark.svelte`): Anthropic's mark for Claude, taken unaltered — same path and colour, only sized — from Anthropic's press kit (https://anthropic.com/press-kit, "Claude Spark - Clay.svg"). It is a trademark of Anthropic PBC and is not covered by this repository's MIT license; Anthropic's trademark guidelines govern its use (https://www.anthropic.com/legal/trademark-guidelines).
+The Claude Agent card in Settings › Agents shows the Claude Spark next to the words "Claude Agent" (`apps/desktop-nsh/app/src/ui/settings/ClaudeSpark.tsx`): Anthropic's mark for Claude, taken unaltered — same path and colour, only sized — from Anthropic's press kit (https://anthropic.com/press-kit, "Claude Spark - Clay.svg"). It is a trademark of Anthropic PBC and is not covered by this repository's MIT license; Anthropic's trademark guidelines govern its use (https://www.anthropic.com/legal/trademark-guidelines).
 
 ## Connector logos
 
-The built-in connectors' marks and the speech services' (`apps/messenger/src/lib/settings/ConnectorLogo.svelte`) — Anthropic's, Xiaomi MiMo's, Qwen's, DeepSeek's, OpenAI's, Groq's, SiliconFlow's and ElevenLabs' — use the SVG paths of [lobe-icons](https://github.com/lobehub/lobe-icons) (`@lobehub/icons-static-svg` 1.90.0: `anthropic.svg`, `xiaomimimo.svg`, `qwen-color.svg`, `openai.svg`, `groq.svg`, `siliconcloud-color.svg`, `elevenlabs.svg`; 1.95.1: `deepseek-color.svg`), unaltered and placed on each brand's colour. Deepgram's uses the SVG path of [Simple Icons](https://simpleicons.org) (`simple-icons` 16.34.0: `deepgram.svg`, released under CC0 1.0 Universal), unaltered and drawn in its listed colour `#13EF93`. The marks themselves are trademarks of Anthropic PBC, Xiaomi Corporation, Alibaba Group, DeepSeek, OpenAI, Groq, SiliconFlow, ElevenLabs and Deepgram respectively, shown only to name the service a connector or a speech service reaches; they are not covered by this repository's MIT license. The lobe-icons drawings are released under the MIT license:
+The built-in connectors' marks and the speech services' (`apps/desktop-nsh/app/src/ui/settings/ConnectorLogo.tsx`) — Anthropic's, Xiaomi MiMo's, Qwen's, DeepSeek's, OpenAI's, Groq's, SiliconFlow's and ElevenLabs' — use the SVG paths of [lobe-icons](https://github.com/lobehub/lobe-icons) (`@lobehub/icons-static-svg` 1.90.0: `anthropic.svg`, `xiaomimimo.svg`, `qwen-color.svg`, `openai.svg`, `groq.svg`, `siliconcloud-color.svg`, `elevenlabs.svg`; 1.95.1: `deepseek-color.svg`), unaltered and placed on each brand's colour. Deepgram's uses the SVG path of [Simple Icons](https://simpleicons.org) (`simple-icons` 16.34.0: `deepgram.svg`, released under CC0 1.0 Universal), unaltered and drawn in its listed colour `#13EF93`. The marks themselves are trademarks of Anthropic PBC, Xiaomi Corporation, Alibaba Group, DeepSeek, OpenAI, Groq, SiliconFlow, ElevenLabs and Deepgram respectively, shown only to name the service a connector or a speech service reaches; they are not covered by this repository's MIT license. The lobe-icons drawings are released under the MIT license:
 
-The local agents' marks (`apps/messenger/src/lib/settings/AgentLogo.svelte`) — Codex's, Grok's, OpenCode's, Antigravity's and Z.ai's (for ZCode, Zhipu's) — use the SVG paths of [lobe-icons](https://github.com/lobehub/lobe-icons) (`@lobehub/icons-static-svg` 1.95.1: `codex-color.svg`, `grok.svg`, `opencode.svg`, `antigravity-color.svg`, `zai.svg`), unaltered but for unique gradient, mask and filter ids, and placed on a tile. The marks are trademarks of OpenAI, xAI, the OpenCode project (SST), Google and Zhipu AI respectively, shown only to name the agent a Bot or a model runs on; they are not covered by this repository's MIT license. The lobe-icons drawings are released under the MIT license reproduced below.
+The local agents' marks (`apps/desktop-nsh/app/src/ui/settings/AgentLogo.tsx`) — Codex's, Grok's, OpenCode's, Antigravity's and Z.ai's (for ZCode, Zhipu's) — use the SVG paths of [lobe-icons](https://github.com/lobehub/lobe-icons) (`@lobehub/icons-static-svg` 1.95.1: `codex-color.svg`, `grok.svg`, `opencode.svg`, `antigravity-color.svg`, `zai.svg`), unaltered but for unique gradient, mask and filter ids, and placed on a tile. The marks are trademarks of OpenAI, xAI, the OpenCode project (SST), Google and Zhipu AI respectively, shown only to name the agent a Bot or a model runs on; they are not covered by this repository's MIT license. The lobe-icons drawings are released under the MIT license reproduced below.
 
-The website's home page (`apps/landing/static/logos/`, written by `apps/landing/scripts/logos/build.py`) shows the same agent and connector marks, taken from those two components and the Claude Spark (`ClaudeSpark.svelte`) unaltered and placed on the same tiles, to name what each socket of its models scene connects to. It adds OpenRouter's and Ollama's marks, the SVG paths of lobe-icons (`@lobehub/icons-static-svg` 1.95.1: `openrouter.svg`, `ollama.svg`, kept as published in `apps/landing/scripts/logos/lobe/`), unaltered and drawn on OpenRouter's indigo and on white; those marks are trademarks of OpenRouter, Inc. and Ollama respectively and are not covered by this repository's MIT license.
+The website's home page (`apps/landing/static/logos/`, written by `apps/landing/scripts/logos/build.py`) shows the same agent and connector marks, taken from those two components and the Claude Spark (`ClaudeSpark.tsx`) unaltered and placed on the same tiles, to name what each socket of its models scene connects to. It adds OpenRouter's and Ollama's marks, the SVG paths of lobe-icons (`@lobehub/icons-static-svg` 1.95.1: `openrouter.svg`, `ollama.svg`, kept as published in `apps/landing/scripts/logos/lobe/`), unaltered and drawn on OpenRouter's indigo and on white; those marks are trademarks of OpenRouter, Inc. and Ollama respectively and are not covered by this repository's MIT license.
 
 ```text
 MIT License
@@ -331,53 +255,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
-
-## Office previews
-
-Office previews in `apps/messenger` use these dynamically loaded packages:
-
-- [docx-preview](https://github.com/VolodymyrBaydalka/docxjs) 0.4.1 — Apache-2.0, copyright Volodymyr Baydalka.
-- [@aiden0z/pptx-renderer](https://github.com/aiden0z/pptx-renderer) 1.3.0 — Apache-2.0; its bundled third-party notices remain in the package.
-- [ExcelJS](https://github.com/exceljs/exceljs) 4.4.0 — MIT, copyright (c) 2014–2019 Guyon Roche.
-
-The Apache-2.0 license text is available at <https://www.apache.org/licenses/LICENSE-2.0> and in the packages' `LICENSE` files. ExcelJS's license follows:
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2014-2019 Guyon Roche
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-```
-
-## noVNC
-
-The remote screen page in `apps/messenger` draws the Mac's Screen Sharing with [@novnc/novnc](https://github.com/novnc/noVNC) 1.7.0, used unmodified and loaded only on that page. noVNC is licensed under the [Mozilla Public License 2.0](https://www.mozilla.org/en-US/MPL/2.0/); its source, including the files bundled into the hosted messenger, is available at <https://github.com/novnc/noVNC/tree/v1.7.0>. Its bundled components keep their own licenses as listed in that repository's `LICENSE.txt`.
-
-```text
-noVNC is Copyright (C) 2022 The noVNC authors (see AUTHORS)
-
-This Source Code Form is subject to the terms of the Mozilla Public
-License, v. 2.0. If a copy of the MPL was not distributed with this
-file, You can obtain one at https://mozilla.org/MPL/2.0/.
 ```
 
 ## webrtc-rs
