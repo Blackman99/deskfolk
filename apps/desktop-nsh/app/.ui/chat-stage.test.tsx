@@ -47,6 +47,27 @@ test("an empty conversation is the welcome; a line sent from the composer replac
   }
 });
 
+test("a draft changed as the conversation switches stays with its own conversation, and the editor that went says nothing", async () => {
+  const app = await open();
+  await app.press("id:show-empty");
+  await app.waitUntil(() => app.texts().includes("session:empty"), { timeout: 20_000 });
+  await app.waitFor("id:chat-welcome", { timeout: 15_000 });
+  try {
+    // The editor that goes is handed the group's draft on its way out; its change came after it
+    // was disposed and threw (`RichEditorSession is disposed`), which fails the test here.
+    await app.press("id:story-draft-switch");
+    await app.waitUntil(() => app.texts().includes("session:group"), { timeout: 15_000 });
+    await app.waitFor("text:周报小组", { timeout: 15_000 });
+    expect(app.texts()).not.toContain("story draft");
+    await app.press("id:show-empty");
+    await app.waitUntil(() => app.texts().includes("session:empty"), { timeout: 15_000 });
+    await app.waitUntil(() => app.texts().includes("story draft"), { timeout: 15_000 });
+  } finally {
+    await app.press("id:story-cleanup");
+    await app.waitUntil(() => app.texts().includes("cleaned"), { timeout: 15_000 });
+  }
+});
+
 test("a long conversation opens at its newest line, pages older ones in, and the button comes back down", async () => {
   const app = await open();
   await app.press("id:story-bulk");

@@ -7,6 +7,7 @@
  * runtime's snapshot like `chat-composer-2` does, and what would go to the daemon for them
  * (`send`, `tuneProjectSession`, the run's answer and stop, a project card's status) is answered here and
  * logged under `said`, and its agent's `/` list (`projectCommands`) a moment after it is asked; `story-annotated` adds a batch of annotations you sent in the project session.
+ * `story-draft-switch` changes the open conversation's draft and opens the group in the same turn.
  * Lines go in through `runtime.client` into the scratch group only: one posted into the fixture's
  * Writer direct would start a turn there and leave it unfinished for every later test.
  */
@@ -380,6 +381,19 @@ async function show(kind: "direct" | "group"): Promise<void> {
   if (s) await runtime.selectSession(s.id);
 }
 
+/**
+ * The draft of the conversation open now changes and the group opens in the same turn, as a quote
+ * or a suggestion followed at once by another conversation: the editor that goes is handed the
+ * next one's draft on its way out, and must not answer it once it is gone.
+ */
+function draftAndSwitch(): void {
+  const here = currentC();
+  if (here) runtime.sessionView(here.id).draft = "story draft";
+  which.set("group");
+  const group = currentC();
+  if (group) void runtime.selectSession(group.id);
+}
+
 async function cleanup(): Promise<void> {
   const ids = scratch();
   which.set("direct");
@@ -420,6 +434,7 @@ export default function ChatStageStory() {
             {button("story-annotated", "annotated", () => annotated.set(true))}
             {button("show-popup", "popup", () => popup.set(true))}
             {button("story-cleanup", "clean up", () => void cleanup())}
+            {button("story-draft-switch", "draft and switch", () => draftAndSwitch())}
           </View>
           <Text testID="said" class="text-[12px] text-ink-muted">{said()}</Text>
           <Text testID="story-session" class="text-[12px] text-ink-muted">{`session:${which()}`}</Text>

@@ -109,7 +109,14 @@ export function ComposerEditor(props: {
     plugins: [history(), editorKeymap({ "Shift-Enter": command("splitBlock") }), ...Object.values(keyPlugins).map((k) => k.plugin), baseKeymap()],
     editable: props.editable,
   });
+  /**
+   * The editor's listeners are called in JS's next turn, and one already on its way still comes
+   * after the editor went: a switch of conversations that also changed the draft (the old editor
+   * takes the new one's draft before it goes) left `getText` throwing on a disposed session.
+   */
+  let disposed = false;
   cleanup(() => {
+    disposed = true;
     session.dispose();
     // A captured key's handler sits in a table of the engine's own, which lets it go only with its
     // plugin, and the handler reaches the plugin back (and, through this component, the whole
@@ -172,11 +179,16 @@ export function ComposerEditor(props: {
     }
   };
   session.on("revision", () => {
+    if (disposed) return;
     changed();
     follow();
   });
-  session.on("selectionUpdate", follow);
-  session.on("transaction", follow);
+  session.on("selectionUpdate", () => {
+    if (!disposed) follow();
+  });
+  session.on("transaction", () => {
+    if (!disposed) follow();
+  });
 
   // The owner to the editor: a draft the editor did not make (a quote, a suggestion, a send that cleared it) replaces the document.
   effect(() => {
@@ -317,6 +329,7 @@ export function ComposerEditor(props: {
   /** The caret after the text the owner has just set (the editor takes the draft in its next turn). */
   function place(position: number): void {
     setTimeout(() => {
+      if (disposed) return;
       session.focus();
       const doc = docOf();
       session.run(setTextSelection(offsetToPos(doc, position)));
