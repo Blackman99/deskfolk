@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Drag files into a conversation or onto the file tree
+
+- Files dragged from Finder onto a conversation (the composer, or anywhere in the conversation) are added to the composer as attachments, of any type: a PDF, a spreadsheet, an archive, a video. Before, only the session for sending files took dropped files. Project sessions take them too. While they are over it, the composer says "Drop to attach".
+- In a project session, files copied in Finder and pasted into the composer are now attached too, as in a Bot's conversation.
+- On a desktop the paperclip opens the system's file picker, which takes a file of any type; it picked only images before. On a phone it is still the photo picker.
+- What can't be added is no longer dropped without a word: a folder, a file over 512 MB, or a file the app can't read (outside your home folder and external drives) is named in a notice at the top right, with the reason. A folder can be dropped on the file tree to copy it into the workspace.
+- Files or folders dragged from Finder onto the file tree are copied into the workspace (in a project session, the project's folder): onto a folder's row into that folder, which opens; onto a file's row into its folder; onto the space around the rows into the top. While they are over it, the folder they would go into lights up. Nothing is overwritten: a taken name gets `-1`, `-2` before its extension, and a file dropped onto the folder it is already in is not copied again. The folder is listed again in place, so open folders stay open, the new files carry a dot, and a notice says where they went and what was not copied. Only the computer's own window can copy this way, not a remote connection. The runtime needs a restart onto this version for it; until then the notice says the copy failed.
+
 ### Back in settings on the phone no longer leaves the app
 
 - On the phone's page, home-screen app included, pressing Back again and again inside settings (Models and its endpoints, Prompts, Interface) stepped out once and then left the page or closed the app. Each Back that stepped out of a page wrote a history entry with nothing pressed, and Chrome's Back skips every entry of a page that does that. Now each page of settings gets its own history entry when you open it. Back moves between those entries and writes none: from a connector's form to the connector tiles, then out of the endpoint editor, the section, the tab and the list, and then onto the roster. The page's own ‹ goes back over its page's entry, so the Back after it lands one level further up.

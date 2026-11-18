@@ -91,6 +91,7 @@ import type {
   Turn,
   WorkAnswerResult,
   WorkspaceFileStat,
+  WorkspaceImportResult,
   WorkspaceTrashResult,
   WorkspaceTreePage,
 } from "@real-bot/protocol";
@@ -652,6 +653,14 @@ export abstract class ApiBase<Row extends PendingRow> {
   /** Into the Mac's Trash; a path already gone comes back as trashed. */
   async trashWorkspacePaths(paths: string[]): Promise<WorkspaceTrashResult> {
     return this.post<WorkspaceTrashResult>("/v1/workspace/trash", { paths });
+  }
+  /**
+   * Files dropped on the file tree from Finder (absolute paths on the Mac), copied into `dir`: a
+   * workspace folder (`""` for the workspace itself) or a project's folder written absolute. Only
+   * the Mac's own window can: through the relay the Mac has no such route.
+   */
+  async importIntoWorkspace(dir: string, sources: string[]): Promise<WorkspaceImportResult> {
+    return this.post<WorkspaceImportResult>("/v1/workspace/import", { dir, sources });
   }
 
   async stop(turnId?: string): Promise<void> {

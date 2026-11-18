@@ -3,7 +3,8 @@ import { untrack } from "../../lib/reactive";
 import type { Attachment, TaskArtifacts } from "@real-bot/protocol";
 import type { Copy } from "../copy.ts";
 import type { MessengerApi } from "../messenger-api.ts";
-import { hostSeparator } from "../paths.ts";
+import { baseName, hostSeparator } from "../paths.ts";
+import { showToast } from "../toast.svelte.ts";
 import { absWorkspacePath, artifactKind, citedInWorkspace, isHostCitedPath, terminalDirFor } from "./artifacts.ts";
 import {
   buildCitedPathTree,
@@ -11,6 +12,7 @@ import {
   graftDirListings,
   isUnderAny,
   mergeWorkspaceChildren,
+  relistWorkspaceChildren,
   removeTreePaths,
   workspaceEntriesToNodes,
   type ArtifactTreeNode,
@@ -189,6 +191,13 @@ export class ArtifactTreeSource {
 	get treeMenuInWorkspace() { return this.#treeMenuInWorkspace$s.get(); }
   #treeMenuCanTrash$s = derived(() => this.canTrash && this.treeMenuInWorkspace);
 	get treeMenuCanTrash() { return this.#treeMenuCanTrash$s.get(); }
+  /**
+   * Files from Finder can be dropped on the tree when it is a folder read a level at a time (the
+   * workspace's, or a project's) and the client has the call. Only a desktop hears drops from
+   * Finder; through the relay the Mac refuses the call, and the toast says so.
+   */
+  #canImport$s = derived(() => this.lazy && typeof this.#h.api()?.importIntoWorkspace === "function");
+	get canImport() { return this.#canImport$s.get(); }
 
   #trashCopy$s = derived(() => {
     if (!this.trashAsk) return null;
@@ -402,27 +411,32 @@ export class ArtifactTreeSource {
     return listing;
   }
 
+  /** A folder's entries as the tree keys them (`"."`: the top of the workspace, or of the project). */
+  async #readDir(client: MessengerApi, path: string): Promise<{ children: ArtifactTreeNode[]; truncated: boolean }> {
+    const project = this.projectRoot;
+    const dir = path === "." ? project : path;
+    const page = await client.workspaceTree(dir ?? "");
+    // The Mac spells a folder's entries from where it really is; the project's keep the spelling
+    // the agent's paths have, so the file on screen is the row it opened from.
+    const items = dir !== null && project !== null
+      ? page.items.map((row) => ({ ...row, path: `${dir}${hostSeparator(dir)}${row.name}` }))
+      : page.items;
+    return { children: workspaceEntriesToNodes(items), truncated: page.truncated };
+  }
+
   async #listDir(path: string): Promise<void> {
     const client = this.#h.api();
     if (!client || this.loadingDirs.has(path) || this.loadedDirs.has(path)) return;
     const generation = this.treeGeneration;
-    const project = this.projectRoot;
     this.loadingDirs = new Set(this.loadingDirs).add(path);
     this.failedDirs = new Set([...this.failedDirs].filter((dir) => dir !== path));
     try {
-      const dir = path === "." ? project : path;
-      const page = await client.workspaceTree(dir ?? "");
+      const { children, truncated } = await this.#readDir(client, path);
       if (generation !== this.treeGeneration) return;
-      // The Mac spells a folder's entries from where it really is; the project's keep the spelling
-      // the agent's paths have, so the file on screen is the row it opened from.
-      const items = dir !== null && project !== null
-        ? page.items.map((row) => ({ ...row, path: `${dir}${hostSeparator(dir)}${row.name}` }))
-        : page.items;
-      const children = workspaceEntriesToNodes(items);
       if (path === ".") this.workspaceTree = children;
-      else this.workspaceTree = mergeWorkspaceChildren(this.workspaceTree, path, children, page.truncated);
+      else this.workspaceTree = mergeWorkspaceChildren(this.workspaceTree, path, children, truncated);
       this.loadedDirs = new Set(this.loadedDirs).add(path);
-      if (page.truncated) this.truncatedHint = true;
+      if (truncated) this.truncatedHint = true;
     } catch {
       if (generation === this.treeGeneration) this.failedDirs = new Set(this.failedDirs).add(path);
     } finally {
@@ -430,6 +444,53 @@ export class ArtifactTreeSource {
         this.loadingDirs = new Set([...this.loadingDirs].filter((dir) => dir !== path));
       }
     }
+  }
+
+  /**
+   * Files dropped on the tree from Finder (absolute paths on the Mac), copied into `dir`: the
+   * folder they landed on, or `null` for the tree's top (the workspace, or the project's folder).
+   * The folder is listed again where it is, the copies marked as just arrived, and a toast says
+   * what went in and what did not. A runtime too old to copy, or a drop refused whole, says why.
+   */
+  async importDropped(dir: string | null, sources: string[]): Promise<void> {
+    const client = this.#h.api();
+    if (!client?.importIntoWorkspace || sources.length === 0) return;
+    const t = this.#h.t();
+    const project = this.projectRoot;
+    const into = dir ?? project ?? "";
+    const generation = this.treeGeneration;
+    let result: Awaited<ReturnType<MessengerApi["importIntoWorkspace"]>>;
+    try {
+      result = await client.importIntoWorkspace(into, sources);
+    } catch (error) {
+      showToast(t.stream.workspaceImportRefused(error instanceof Error && error.message ? error.message : String(error)), { tone: "error" });
+      return;
+    }
+    const at = dir ?? ".";
+    const sep = dir === null ? (project === null ? "/" : hostSeparator(project)) : hostSeparator(dir);
+    const base = dir ?? project;
+    const fresh = new Set(result.imported.map((row) => (base ? `${base}${sep}${row.name}` : row.name)));
+    // A folder dropped on opens and is listed for the first time meanwhile; that listing may have
+    // been read before the copies were there, so this one waits for it and lists again.
+    if (this.loadingDirs.has(at)) await this.#listing.get(at);
+    if (generation === this.treeGeneration && (at === "." || this.loadedDirs.has(at))) {
+      try {
+        const { children, truncated } = await this.#readDir(client, at);
+        if (generation === this.treeGeneration) {
+          this.workspaceTree = relistWorkspaceChildren(this.workspaceTree, at, children, truncated, fresh);
+          if (truncated) this.truncatedHint = true;
+        }
+      } catch {
+        // The rows stay as they were; the folder's next listing shows the copies.
+      }
+    }
+    // One notice: a second one would take the first one's place.
+    const label = dir === null ? (project === null ? "" : baseName(project)) : baseName(dir);
+    const said = [
+      result.imported.length > 0 ? t.stream.workspaceImported(result.imported.map((row) => row.name), label) : "",
+      result.failed.length > 0 ? t.stream.workspaceImportFailed(result.failed.map((row) => ({ name: baseName(row.source), code: row.code, message: row.message }))) : "",
+    ].filter(Boolean);
+    if (said.length > 0) showToast(said.join(t.stream.workspaceImportJoin), result.failed.length > 0 ? { tone: "error" } : undefined);
   }
 
   openTreeMenu = (node: ArtifactTreeNode, event: MouseEvent, targets: ArtifactTreeNode[]): void => {

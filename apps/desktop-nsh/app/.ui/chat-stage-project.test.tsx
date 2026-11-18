@@ -24,6 +24,15 @@ test("a project session shows its lines, the day, and a Bot's reply drawn as Mar
   expect(app.shows("id:project-working")).toBe(false);
 });
 
+test("files from Finder, dropped anywhere on the conversation or copied and pasted, wait in the box", async () => {
+  const app = await project();
+  await app.dropFiles("id:project-chat", ["file:///tmp/data.csv"]);
+  await app.waitFor("id:composer-attachment", { timeout: 10_000 });
+  expect(app.texts()).toContain("data.csv");
+  await app.paste("id:project-input", { uris: ["file:///tmp/spec.docx"] });
+  await app.waitUntil(() => app.texts().includes("spec.docx"), { timeout: 10_000 });
+});
+
 test("a line typed in the box goes to the daemon's send and joins the lines", async () => {
   const app = await project();
   await app.type("id:project-input", "再跑一遍");

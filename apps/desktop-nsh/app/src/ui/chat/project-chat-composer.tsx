@@ -1,18 +1,18 @@
 /**
  * A project session's composer (the box of `ProjectChat.svelte`): the line on top, the clip, Plan
  * mode, the account / model / thinking picker, the microphone, Stop and Send under it, as in the
- * agents' own apps. Pictures and files go with a line as in a Bot's composer: pasted, or picked with
- * the clip, staged on the conversation and kept there until the Mac has them. Typing `/` at the start
- * lists the agent's commands (the box, `ComposerEditor`, owns that list and its keys); Shift+Tab
- * switches plan mode as in the terminal, where the agent has one.
+ * agents' own apps. Pictures and files of any type go with a line as in a Bot's composer: pasted
+ * (a Finder copy too), dropped from Finder on the conversation, or picked with the clip, staged on
+ * the conversation and kept there until the Mac has them (`composer-drop.tsx`). Typing `/` at the
+ * start lists the agent's commands (the box, `ComposerEditor`, owns that list and its keys);
+ * Shift+Tab switches plan mode as in the terminal, where the agent has one.
  *
  * Differences from the Svelte box, from the platform: the line is the shared `ComposerEditor` (an
- * `Input`; no textarea, no `selectionStart`); files come from the system's image picker or a paste;
- * the card sits under the transcript in the column rather than floating over it (see `ChatStage`);
- * Shift+Tab is a window key while the conversation is mounted, as NSH tells an input nothing of a
- * key it does not take.
+ * `Input`; no textarea, no `selectionStart`); the card sits under the transcript in the column
+ * rather than floating over it (see `ChatStage`); Shift+Tab is a window key while the conversation
+ * is mounted, as NSH tells an input nothing of a key it does not take.
  */
-import { cleanup, keymap, Picker, signal, Text, View } from "nsh";
+import { cleanup, keymap, signal, Text, View } from "nsh";
 import type { PasteEvent } from "nsh/types";
 import { speechReady, type SessionSummary } from "@real-bot/protocol";
 import { ComposerAttachments as StagedFiles, uploadedShare } from "../../m/chat/composer-attachments.svelte";
@@ -24,6 +24,7 @@ import { shadow } from "../styles";
 import { tip } from "../tip";
 import { AgentTune } from "./AgentTune";
 import { ComposerAttachments } from "./ComposerAttachments";
+import { DropVeil, pickInto, stageUris, type ReadUris } from "./composer-drop";
 import { ComposerEditor, type ComposerEditorHandle } from "./ComposerEditor";
 import { SendButton } from "./SendButton";
 import { StopMenu } from "./StopMenu";
@@ -40,6 +41,12 @@ export function ProjectComposer(props: {
   onSent: () => void;
   /** The microphone's recording, unless a test brings its own. */
   makeRecorder?: () => VoiceRecorder;
+  /** Reads the local files a drop or a Finder copy names; by default through `fs`. */
+  readFiles?: ReadUris;
+  /** Files from Finder are being dragged over the conversation, outside the card. */
+  fileDragOver?: boolean;
+  /** How the conversation hands files dropped elsewhere on it to this box. */
+  onHandle?: (handle: { takesFiles(): boolean; stageFiles(uris: string[], mimeTypes?: string[]): void } | null) => void;
 }) {
   const t = () => copy();
   const s = () => props.state;
@@ -62,19 +69,24 @@ export function ProjectComposer(props: {
   const staged = () => files.pendingAttachments;
   const sendable = () => Boolean(view().draft.trim()) || staged().length > 0;
 
+  const canStage = () => connected() && !view().sending;
   async function pickFiles(): Promise<void> {
-    if (!connected() || view().sending) return;
-    try {
-      const picked = await Picker.pickImages({ multiple: true });
-      if (picked.length > 0) files.addFiles(picked.map((row) => row.file));
-    } catch {
-      // The picker was refused or is not here: nothing to stage.
-    }
+    if (canStage()) await pickInto(files);
   }
-  /** A paste with files stages them; words paste as the box pastes them. */
+  /** A paste with files (or a Finder copy's) stages them; words paste as the box pastes them. */
   function onPaste(event: PasteEvent): void {
     if (event.files.length > 0) files.addFiles(event.files);
+    else if (event.uris.length > 0) void stageUris(files, event.uris, undefined, props.readFiles);
   }
+  /** Files from Finder over the card itself. */
+  const fileOver = signal(false);
+  const dropShown = () => (fileOver() || props.fileDragOver === true) && canStage();
+  function onFileDrop(uris: string[], mimeTypes?: string[]): void {
+    fileOver.set(false);
+    if (canStage()) void stageUris(files, uris, mimeTypes, props.readFiles);
+  }
+  props.onHandle?.({ takesFiles: canStage, stageFiles: onFileDrop });
+  cleanup(() => props.onHandle?.(null));
 
   async function send(): Promise<void> {
     if (!sendable() || view().sending) return;
@@ -143,6 +155,9 @@ export function ProjectComposer(props: {
         {/* Focused, it keeps its focus border under the pointer, as a Bot's composer does (`Composer`). */}
         <View
           testID="project-composer-card"
+          onFileDragEnter={() => fileOver.set(true)}
+          onFileDragLeave={() => fileOver.set(false)}
+          onFileDrop={(e) => onFileDrop(e.uris, e.mimeTypes)}
           class={`w-full min-w-0 border bg-input-bg px-2 py-[6px] ${docked() ? "border-0" : "rounded-[18px] border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"}`}
           style={docked() ? undefined : { boxShadow: shadow("raised") }}
         >
@@ -242,6 +257,7 @@ export function ProjectComposer(props: {
               onSend={() => void send()}
             />
           </View>
+          <DropVeil shown={dropShown()} testID="project-drop-veil" />
         </View>
       </View>
     </View>

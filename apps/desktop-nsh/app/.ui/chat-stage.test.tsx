@@ -27,6 +27,14 @@ test("Writer's direct shows its seeded lines over the composer, Markdown drawn",
   expect(app.enabled("id:scroll-bottom")).toBe(false);
 });
 
+test("files dropped from Finder on the transcript go to the composer, as on its card", async () => {
+  const app = await open();
+  await app.waitFor("text:好的，这是摘要：", { timeout: 15_000 });
+  await app.dropFiles("id:transcript", ["file:///tmp/archive.zip"]);
+  await app.waitFor("id:composer-attachment", { timeout: 10_000 });
+  expect(app.texts()).toContain("archive.zip");
+});
+
 test("an empty conversation is the welcome; a line sent from the composer replaces it", async () => {
   const app = await open();
   await app.press("id:show-empty");

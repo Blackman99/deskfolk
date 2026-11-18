@@ -20,6 +20,7 @@ import { runtime } from "../src/runtime";
 import { BotDmDialog } from "../src/ui/chat/BotDmDialog";
 import { ChatStage } from "../src/ui/chat/ChatStage";
 import { ProjectChat } from "../src/ui/chat/ProjectChat";
+import { fakeReadFiles } from "./fake-files";
 
 type Which = "direct" | "group" | "empty" | "bulk" | "project" | "none";
 const which = signal<Which>("direct");
@@ -450,9 +451,10 @@ export default function ChatStageStory() {
           onOpenProfile={(id) => said.set(`profile:${id}`)}
           onOpenArtifact={(path) => said.set(`artifact:${path}`)}
           onCreateBot={() => said.set("create-bot")}
+          readFiles={fakeReadFiles}
         />
       }>
-        {(session: () => SessionSummary) => <ProjectChat selected={session()} onOpenArtifact={(path) => said.set(`artifact:${path}`)} />}
+        {(session: () => SessionSummary) => <ProjectChat selected={session()} onOpenArtifact={(path) => said.set(`artifact:${path}`)} readFiles={fakeReadFiles} />}
       </If>
       <If when={popup() ? (runtime.snapshot.sessions as SessionSummary[]).find((s) => s.id === BOTDM_ID) : null}>
         {(session: () => SessionSummary) => (

@@ -6,16 +6,16 @@
  * is the wiring: drafts, sending (the stage's `onSend` goes through here), attachments, the locked
  * state, stop, voice.
  *
- * Differences from the Svelte one, all from the platform: the box is an `Input` (a mention is
- * `@Name ` text, not a chip; `ComposerEditor` owns the @ list, the keys and the input method);
- * files come from the system's image picker (the attach button), a paste (`PasteEvent.files` or a
- * Finder copy's `file:` URLs) and, in the file conversation, a drop (`onFileDrop`); the frosted ring
- * (no backdrop blur) and the file tree's drag-in (the tree is not ported) are left out; the stage
- * places it and reserves its height (`onHeight`). One row up to 480 wide, two rows above, the
- * floating card's margin 12 up to 680, as the container queries say; at 480 and under it is a bar
- * across the bottom rather than a card.
+ * Files of any type come from the attach button (the open dialog on a desktop, the photo picker
+ * on a phone), a paste (`PasteEvent.files`, or a Finder copy's `file:` URLs), a drop from Finder
+ * on the card or anywhere on the conversation (the stage hands those over through the handle), and
+ * the file tree (`stageWorkspaceItems`, sent as their paths); `composer-drop.tsx` stages them and
+ * says what it could not. The frosted ring (no backdrop blur) is left out; the stage places it and
+ * reserves its height (`onHeight`). One row up to 480 wide, two rows above, the floating card's
+ * margin 12 up to 680, as the container queries say; at 480 and under it is a bar across the
+ * bottom rather than a card.
  */
-import { cleanup, computed, effect, Picker, platform, signal, Text, View } from "nsh";
+import { cleanup, computed, effect, platform, signal, Text, View } from "nsh";
 import type { PasteEvent } from "nsh/types";
 import { speechReady, type PatchBotRequest, type SessionSummary } from "@real-bot/protocol";
 import { interfaceBehaviour } from "../../m/interface/behaviour.svelte";
@@ -32,6 +32,7 @@ import { tip } from "../tip";
 import { shadow } from "../styles";
 import { BotTune } from "./BotTune";
 import { ComposerAttachments } from "./ComposerAttachments";
+import { DropVeil, pickInto, stageUris, type ReadUris } from "./composer-drop";
 import { ComposerEditor, type ComposerEditorHandle } from "./ComposerEditor";
 import { ComposerQuote } from "./ComposerQuote";
 import { ComposerSuggestions } from "./ComposerSuggestions";
@@ -41,15 +42,22 @@ import { StopMenu } from "./StopMenu";
 import { VoiceButton } from "./VoiceButton";
 import { VoiceStatus } from "./VoiceStatus";
 import { WaitingJump } from "./WaitingJump";
-import { deriveComposer, composerHintOf, filesFromUris, lockedNoticeOf, mentionBotsOf, placeholderOf, suggestTitleOf } from "./composer-state";
+import { deriveComposer, composerHintOf, lockedNoticeOf, mentionBotsOf, placeholderOf, suggestTitleOf } from "./composer-state";
 import type { HiddenWaiting } from "./waiting-jump";
 import { settled } from "../workbench/drag-settle";
 
-/** What the owner can do to the composer from outside: a quote reply or a starter chip lands the caret here; the file tree stages what is dragged out of it. */
+/**
+ * What the owner can do to the composer from outside: a quote reply or a starter chip lands the
+ * caret here; the file tree stages what is dragged out of it; files dropped from Finder elsewhere
+ * on the conversation are staged here too.
+ */
 export type ComposerHandle = {
   focus(): void;
   takesWorkspaceItems(): boolean;
   stageWorkspaceItems(items: WorkspaceDragItem[]): void;
+  /** Whether files from Finder would be staged now: a conversation you can write in, and nothing on its way out. */
+  takesFiles(): boolean;
+  stageFiles(uris: string[], mimeTypes?: string[]): void;
 };
 
 /** The conversation's width, up to which the composer is a docked bar (480) and a card with a 12 margin (680). */
@@ -77,8 +85,10 @@ export function Composer(props: {
   onHeight?: (height: number) => void;
   /** Where the microphone's recording comes from (the recorder, unless a test brings its own). */
   makeRecorder?: () => VoiceRecorder;
-  /** Reads the local files a drop or a Finder copy names (`file:` URLs) into `File`s; by default `fetch`, which a host that lets the app read local files makes work. */
-  readFiles?: (uris: readonly string[]) => Promise<File[]>;
+  /** Reads the local files a drop or a Finder copy names (`file:` URLs) into `File`s; by default through `fs`. */
+  readFiles?: ReadUris;
+  /** Files from Finder are being dragged over the conversation, outside the card: the card says where they go. */
+  fileDragOver?: boolean;
 }) {
   const MOD_ENTER = formatShortcut(["mod", "Enter"]);
   const snapshot = () => runtime.snapshot;
@@ -122,28 +132,23 @@ export function Composer(props: {
   const canStage = () => Boolean(props.selected) && !d().locked && connected() && !view()?.sending;
 
   async function pickFiles(): Promise<void> {
-    if (!canStage()) return;
-    try {
-      const picked = await Picker.pickImages({ multiple: true });
-      if (picked.length > 0) files.addFiles(picked.map((row) => row.file));
-    } catch {
-      // The picker was refused or is not here: nothing to stage.
-    }
+    if (canStage()) await pickInto(files);
   }
-
-  const readFiles = (uris: readonly string[]) => (props.readFiles ?? filesFromUris)(uris);
 
   /** Files a paste carries; the text goes into the box by the input itself. */
   function onPaste(event: PasteEvent): void {
     if (d().locked || !props.selected) return;
     if (event.files.length > 0) files.addFiles(event.files);
-    else if (event.uris.length > 0) void readFiles(event.uris).then((read) => read.length > 0 && files.addFiles(read));
+    else if (event.uris.length > 0) void stageUris(files, event.uris, undefined, props.readFiles);
   }
 
-  /** The file conversation takes files dropped on it from the desktop; no other does. */
-  function onFileDrop(uris: string[]): void {
-    if (!d().fileDrop || !canStage() || uris.length === 0) return;
-    void readFiles(uris).then((read) => read.length > 0 && files.addFiles(read));
+  /** Files from Finder over the card itself. */
+  const fileOver = signal(false);
+  const dropShown = () => (fileOver() || props.fileDragOver === true) && canStage();
+  /** Files dropped from Finder, of any type, in any conversation you can write in. */
+  function onFileDrop(uris: string[], mimeTypes?: string[]): void {
+    fileOver.set(false);
+    if (canStage()) void stageUris(files, uris, mimeTypes, props.readFiles);
   }
 
   // --- the microphone (ADR 0073): what is heard goes in where the caret was, in the conversation it was recorded for ---
@@ -263,6 +268,8 @@ export function Composer(props: {
     focus: () => editor?.focus(),
     takesWorkspaceItems: () => files.takesWorkspaceItems(),
     stageWorkspaceItems: (items) => files.stageWorkspaceItems(items),
+    takesFiles: () => canStage(),
+    stageFiles: (uris, mimeTypes) => onFileDrop(uris, mimeTypes),
   });
   cleanup(() => props.onHandle?.(null));
 
@@ -360,7 +367,9 @@ export function Composer(props: {
               `hover:` above `focus-within:`, so a click into the box showed the hover border until the pointer left. */}
           <View
             testID="composer-card"
-            onFileDrop={(e) => onFileDrop(e.uris)}
+            onFileDragEnter={() => fileOver.set(true)}
+            onFileDragLeave={() => fileOver.set(false)}
+            onFileDrop={(e) => onFileDrop(e.uris, e.mimeTypes)}
             class={`w-full min-w-0 border bg-input-bg ${d().locked ? "bg-sidebar-bg border-dashed px-[14px] py-[10px]" : docked() ? "px-2 py-[6px]" : "px-2 py-[6px]"} ${docked() ? "border-0" : d().locked ? "rounded-[18px] border-line" : "rounded-[18px] border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"}`}
             style={docked() ? undefined : { boxShadow: shadow("raised") }}
           >
@@ -445,6 +454,7 @@ export function Composer(props: {
                 />
               </View>
             </If>
+            <DropVeil shown={dropShown()} testID="composer-drop-veil" />
           </View>
           <ScrollBottomButton shown={props.showScrollBottom === true} onScrollToBottom={props.onScrollToBottom} />
         </View>

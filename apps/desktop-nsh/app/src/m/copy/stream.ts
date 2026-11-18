@@ -1,4 +1,5 @@
 import { enTrashOwner, enTrashWord, isLinux, isMacHost, isWindows, zhTrashWord } from "./platform-words.ts";
+import { enNames, zhNames } from "./name-list.ts";
 import type { CopyShape } from "./shape.ts";
 
 export const zh = {
@@ -126,6 +127,17 @@ export const zh = {
   workspaceExplorer: "工作区",
   workspaceTruncated: "这一层文件太多，只列出前一部分。",
   workspaceEmpty: "这个文件夹是空的。",
+  /** Files dropped on the file tree from Finder, copied into `dir` (`""`: the workspace itself, else the folder's path). */
+  workspaceImported: (names: string[], dir: string) => `已拷入${dir ? `“${dir}”` : "工作区"}：${zhNames(names, "项")}`,
+  /** Not copied, each with why: gone or unreadable, a folder dropped into itself, or the copy stopped (the system's words). */
+  workspaceImportFailed: (left: Array<{ name: string; code: "missing" | "into_itself" | "copy_failed"; message: string }>) =>
+    left
+      .map((row) => (row.code === "missing" ? `“${row.name}”找不到或读不了` : row.code === "into_itself" ? `“${row.name}”不能拷进它自己里面` : `“${row.name}”没拷完：${row.message}`))
+      .join("；") + "，没有拷入。",
+  /** The whole drop was refused (no workspace, a folder gone, a runtime too old to copy). */
+  workspaceImportRefused: (reason: string) => `没能拷入：${reason}`,
+  /** Between what went in and what did not, in one notice. */
+  workspaceImportJoin: "；",
   workspacePickFile: "从左侧打开一个文件。",
   artifactSave: "保存",
   artifactSaving: "保存中",
@@ -386,6 +398,13 @@ export const en: CopyShape<typeof zh> = {
   workspaceExplorer: "Workspace",
   workspaceTruncated: "This folder has too many entries; only the first part is listed.",
   workspaceEmpty: "This folder is empty.",
+  workspaceImported: (names: string[], dir: string) => `Copied into ${dir ? `“${dir}”` : "the workspace"}: ${enNames(names)}`,
+  workspaceImportFailed: (left: Array<{ name: string; code: "missing" | "into_itself" | "copy_failed"; message: string }>) =>
+    `Not copied: ${left
+      .map((row) => (row.code === "missing" ? `“${row.name}” is gone or can't be read` : row.code === "into_itself" ? `“${row.name}” can't go inside itself` : `“${row.name}” stopped partway (${row.message})`))
+      .join("; ")}.`,
+  workspaceImportRefused: (reason: string) => `Could not copy: ${reason}`,
+  workspaceImportJoin: ". ",
   workspacePickFile: "Open a file from the left.",
   artifactSave: "Save",
   artifactSaving: "Saving",

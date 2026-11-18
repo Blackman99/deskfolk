@@ -27,6 +27,7 @@ import { narrowWindow } from "../Modal";
 import { workspaceDropTarget } from "../workspace-drag";
 import { ChatWelcome } from "./ChatWelcome";
 import { Composer, type ComposerHandle } from "./Composer";
+import type { ReadUris } from "./composer-drop";
 import { MessageIndex } from "./MessageIndex";
 import { buildStage } from "./stage-object";
 import { createStageActions } from "./stage-actions";
@@ -54,6 +55,8 @@ export function ChatStage(props: {
   onOpenProfile: (botId: string) => void;
   onOpenArtifact: (relpath: string, att?: Attachment, messageId?: string, forceTree?: boolean) => void;
   onCreateBot: () => void;
+  /** Reads what files dropped from Finder name; by default through `fs` (a story brings its own). */
+  readFiles?: ReadUris;
 }) {
   const t = () => copy();
   /** On a glass card (`glass.ts`) this leaves its ground to the card, as `content-glass.css` does. */
@@ -75,6 +78,8 @@ export function ChatStage(props: {
   );
   const width = signal(0);
   const stageHeight = signal(0);
+  /** Files from Finder over the conversation (the card itself hears its own): they go to the composer, which says so. */
+  const fileOver = signal(false);
 
   const hasOlder = () => Boolean(view()?.hasOlderMessages);
   const rows = () => stageRows(ctx.groups(), { earlier: hasOlder(), delegations: ctx.delegationsShown(), newMarkId: ctx.newMarkId() });
@@ -130,6 +135,12 @@ export function ChatStage(props: {
       onLayout={(e) => {
         width.set(e.bounds.size.width);
         stageHeight.set(e.bounds.size.height);
+      }}
+      onFileDragEnter={() => fileOver.set(composer?.takesFiles() ?? false)}
+      onFileDragLeave={() => fileOver.set(false)}
+      onFileDrop={(e) => {
+        fileOver.set(false);
+        composer?.stageFiles(e.uris, e.mimeTypes);
       }}
     >
       <View class="flex-1 min-h-0">
@@ -225,6 +236,8 @@ export function ChatStage(props: {
           hiddenWaiting={hidden()}
           onJumpWaiting={(id) => scroll.jumpToIndexMark({ id })}
           onHandle={(handle) => (composer = handle)}
+          fileDragOver={fileOver()}
+          readFiles={props.readFiles}
         />
       </View>
       <StageOverlays ctx={ctx} actions={actions} selected={selected()} onOpenProfile={props.onOpenProfile} onOpenArtifact={props.onOpenArtifact} />

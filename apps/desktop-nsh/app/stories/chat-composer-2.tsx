@@ -14,6 +14,8 @@ import type { Recording, RecorderHooks } from "../src/m/chat/voice-recorder";
 import { classifySession, youBotPeer } from "../src/m/sidebar/session-groups";
 import { runtime } from "../src/runtime";
 import { Composer } from "../src/ui/chat/Composer";
+import { ToastHost } from "../src/ui/ToastHost";
+import { fakeReadFiles } from "./fake-files";
 import type { HiddenWaiting } from "../src/ui/chat/waiting-jump";
 
 const which = signal<"direct" | "group" | "file-drop" | "locked" | "scratch">("direct");
@@ -227,11 +229,13 @@ export default function ChatComposer2Story() {
               jumped.set(id);
               waiting.set(false);
             }}
-            readFiles={async (uris) => uris.map((uri) => new File([new Uint8Array([104, 105])], decodeURIComponent(uri.split("/").pop() ?? "file"), { type: "text/plain" }))}
+            readFiles={fakeReadFiles}
             makeRecorder={fakeMic() ? () => new FakeRecorder() as never : undefined}
           />
         </View>
       </View>
+      {/* What a drop or a paste could not stage is said here. */}
+      <ToastHost />
     </Scroll>
   );
 }

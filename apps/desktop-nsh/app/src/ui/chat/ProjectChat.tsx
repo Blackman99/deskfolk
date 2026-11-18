@@ -29,6 +29,7 @@ import { MessageIndex } from "./MessageIndex";
 import { ProjectSubagentDialog } from "./ProjectSubagentDialog";
 import { EarlierLine, ProjectLine, ProjectTasksEnd, type ProjectRow } from "./project-chat-lines";
 import { ProjectComposer } from "./project-chat-composer";
+import type { ReadUris } from "./composer-drop";
 import { createProjectState } from "./project-chat-state";
 import { ProjectWorking } from "./project-chat-working";
 import { trackReading } from "./stage-reading";
@@ -41,6 +42,8 @@ export function ProjectChat(props: {
   selected: SessionSummary;
   /** Opens a file the agent cites, as a Bot conversation's do; given the absolute path the Mac found. */
   onOpenArtifact: (relpath: string, att?: Attachment, messageId?: string) => void;
+  /** Reads what files dropped from Finder name; by default through `fs` (a story brings its own). */
+  readFiles?: ReadUris;
 }) {
   const t = () => copy();
   /** On a glass card (`glass.ts`) this leaves its ground to the card, as `content-glass.css` does. */
@@ -52,6 +55,9 @@ export function ProjectChat(props: {
   const view = state.view;
   const width = signal(0);
   const stageHeight = signal(0);
+  /** Files from Finder dropped anywhere on the conversation go to the composer, as on a Bot's stage. */
+  let composer: { takesFiles(): boolean; stageFiles(uris: string[], mimeTypes?: string[]): void } | null = null;
+  const fileOver = signal(false);
   const image = signal<{ sessionId: string; attachment: Attachment; origin: ImageOrigin | null; placeholder: string | null } | null>(null);
 
   const hasOlder = () => Boolean(view().hasOlderMessages);
@@ -116,6 +122,12 @@ export function ProjectChat(props: {
       onLayout={(e) => {
         width.set(e.bounds.size.width);
         stageHeight.set(e.bounds.size.height);
+      }}
+      onFileDragEnter={() => fileOver.set(composer?.takesFiles() ?? false)}
+      onFileDragLeave={() => fileOver.set(false)}
+      onFileDrop={(e) => {
+        fileOver.set(false);
+        composer?.stageFiles(e.uris, e.mimeTypes);
       }}
     >
       {/* One selection across the lines, as the messenger's page is: a drag runs from one line into the
@@ -190,7 +202,14 @@ export function ProjectChat(props: {
           </Each>
         </If>
       </View>
-      <ProjectComposer selected={selected()} state={state} onSent={() => scroll.scrollToBottom(false)} />
+      <ProjectComposer
+        selected={selected()}
+        state={state}
+        onSent={() => scroll.scrollToBottom(false)}
+        fileDragOver={fileOver()}
+        readFiles={props.readFiles}
+        onHandle={(handle) => (composer = handle)}
+      />
       <If when={state.subagentShown()}>
         {(task: () => NonNullable<ReturnType<typeof state.subagentShown>>) => (
           <ProjectSubagentDialog

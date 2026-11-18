@@ -42,6 +42,36 @@ export function mergeWorkspaceChildren(
 }
 
 /**
+ * A folder listed again where it is (`"."`: the tree's top), after files were copied into it: its
+ * entries as listed now, each folder among them keeping what was listed under it before, so the
+ * folders you had open stay open with their rows. `fresh` names the entries to mark as just
+ * arrived. `mergeWorkspaceChildren` is for a folder's first listing, which has nothing to keep.
+ */
+export function relistWorkspaceChildren(
+  nodes: readonly ArtifactTreeNode[],
+  dirPath: string,
+  children: readonly ArtifactTreeNode[],
+  truncated: boolean,
+  fresh: ReadonlySet<string> = new Set(),
+): ArtifactTreeNode[] {
+  const keep = (before: readonly ArtifactTreeNode[] | undefined): ArtifactTreeNode[] => {
+    const was = new Map((before ?? []).map((node) => [node.path, node] as const));
+    return children.map((node) => {
+      const old = was.get(node.path);
+      const kept: ArtifactTreeNode = node.kind === "dir" && old?.kind === "dir" ? { ...node, children: old.children, truncated: old.truncated } : { ...node };
+      if (fresh.has(node.path) || old?.fresh) kept.fresh = true;
+      return kept;
+    });
+  };
+  if (dirPath === ".") return keep(nodes);
+  return nodes.map((node) => {
+    if (node.path === dirPath && node.kind === "dir") return { ...node, children: keep(node.children), truncated };
+    if (node.children) return { ...node, children: relistWorkspaceChildren(node.children, dirPath, children, truncated, fresh) };
+    return node;
+  });
+}
+
+/**
  * Puts each listed folder's entries under its node. A cited path is a leaf until the Mac says it is
  * a folder (a message can name `voice_samples/ja/`); listed, it turns into a folder holding what is
  * in it, alongside any deeper paths the message cited under it, which keep their own subtrees.

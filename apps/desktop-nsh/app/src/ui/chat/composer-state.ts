@@ -4,7 +4,7 @@
  * what to type, what the editor's description says, whether Send is the main button, and what the
  * ✨ button does. `Composer.tsx` calls them inside its reactive reads.
  */
-import { readFile } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import type { Bot, SessionSummary } from "@real-bot/protocol";
 import type { Copy } from "../../m/copy";
 import { composerAction, lockedReason, type ComposerAction } from "../../m/chat/composer-mode";
@@ -183,22 +183,42 @@ export function pathOfFileUri(uri: string): string | null {
   }
 }
 
+/** The largest file a drop or a Finder copy reads into an attachment: what the system's picker reads at most. */
+export const DROPPED_FILE_MAX = 512 * 1024 * 1024;
+
+/** What a drop or a Finder copy brought: the files read, and by name what was left out and why. */
+export type UriFiles = { files: File[]; folders: string[]; tooLarge: string[]; unreadable: string[] };
+
 /**
- * Reads the local files a drop or a Finder copy names (`file:` URLs) into `File`s; one that cannot
- * be read (a folder, a file that went away, one outside what nsh.json lets the app read) is left
- * out. `fetch` takes no `file:` URL, so a desktop reads through `fs` (`capabilities.fs.read`).
+ * Reads the local files a drop or a Finder copy names (`file:` URLs) into `File`s, of any type.
+ * Left out, by name: a folder (an attachment is a file), a file over {@link DROPPED_FILE_MAX}
+ * (its bytes would all go through the app), and one that cannot be read (gone, or outside what
+ * nsh.json lets the app read). The type is the one the drop names (`mimeTypes`, by the file's
+ * name), else the extension's. `fetch` takes no `file:` URL, so a desktop reads through `fs`
+ * (`capabilities.fs.read`).
  */
-export async function filesFromUris(uris: readonly string[]): Promise<File[]> {
-  const files: File[] = [];
-  for (const uri of uris) {
+export async function filesFromUris(uris: readonly string[], mimeTypes: readonly string[] = []): Promise<UriFiles> {
+  const read: UriFiles = { files: [], folders: [], tooLarge: [], unreadable: [] };
+  for (const [index, uri] of uris.entries()) {
     const name = nameOfUri(uri);
     try {
       const path = pathOfFileUri(uri);
+      if (path) {
+        const info = await stat(path);
+        if (info.isDirectory()) {
+          read.folders.push(name);
+          continue;
+        }
+        if (info.size > DROPPED_FILE_MAX) {
+          read.tooLarge.push(name);
+          continue;
+        }
+      }
       const bytes = path ? await readFile(path) : new Uint8Array(await (await fetch(uri)).arrayBuffer());
-      files.push(new File([bytes as Uint8Array<ArrayBuffer>], name, { type: mimeOfName(name) }));
+      read.files.push(new File([bytes as Uint8Array<ArrayBuffer>], name, { type: mimeTypes[index] || mimeOfName(name) }));
     } catch {
-      // Not readable here: nothing to stage.
+      read.unreadable.push(name);
     }
   }
-  return files;
+  return read;
 }

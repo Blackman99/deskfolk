@@ -10,11 +10,42 @@ import {
   expandedDirsForSelection,
   isUnderAny,
   mergeWorkspaceChildren,
+  relistWorkspaceChildren,
   removeTreePaths,
   treeRange,
   visibleTreePaths,
   workspaceEntriesToNodes,
 } from "./artifact-tree.ts";
+
+test("a folder listed again after a drop keeps the folders open under it, and marks what arrived", () => {
+  const before = [
+    { name: "docs", path: "docs", kind: "dir" as const, children: [{ name: "old.md", path: "docs/old.md", kind: "file" as const }] },
+    { name: "src", path: "src", kind: "dir" as const, children: [
+      { name: "ui", path: "src/ui", kind: "dir" as const, children: [{ name: "a.ts", path: "src/ui/a.ts", kind: "file" as const }] },
+    ] },
+    { name: "gone.txt", path: "gone.txt", kind: "file" as const },
+  ];
+  const top = relistWorkspaceChildren(before, ".", workspaceEntriesToNodes([
+    { name: "docs", path: "docs", kind: "dir" },
+    { name: "photos", path: "photos", kind: "dir" },
+    { name: "src", path: "src", kind: "dir" },
+    { name: "report.pdf", path: "report.pdf", kind: "file" },
+  ]), false, new Set(["photos", "report.pdf"]));
+  expect(top.map((node) => [node.path, Boolean(node.fresh)])).toEqual([["docs", false], ["photos", true], ["src", false], ["report.pdf", true]]);
+  // What was listed under the folders already there stays; the new folder is not listed yet.
+  expect(top[0]!.children?.map((node) => node.path)).toEqual(["docs/old.md"]);
+  expect(top[2]!.children?.[0]?.children?.map((node) => node.path)).toEqual(["src/ui/a.ts"]);
+  expect(top[1]!.children).toEqual([]);
+
+  const deeper = relistWorkspaceChildren(top, "src/ui", workspaceEntriesToNodes([
+    { name: "a.ts", path: "src/ui/a.ts", kind: "file" },
+    { name: "b.ts", path: "src/ui/b.ts", kind: "file" },
+  ]), false, new Set(["src/ui/b.ts"]));
+  expect(deeper[2]!.children?.[0]?.children?.map((node) => [node.path, Boolean(node.fresh)])).toEqual([["src/ui/a.ts", false], ["src/ui/b.ts", true]]);
+  // A mark stays through the next listing, and the rest of the tree is untouched.
+  expect(deeper[3]!.fresh).toBe(true);
+  expect(deeper[0]).toEqual(top[0]!);
+});
 
 test("buildCitedPathTree nests workspace-relative paths and sorts dirs first", () => {
   const tree = buildCitedPathTree([

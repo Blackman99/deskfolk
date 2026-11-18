@@ -502,6 +502,7 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
           onContextMenu={(node, at, picked) => treeSrc.openTreeMenu(node, { clientX: at.x, clientY: at.y } as MouseEvent, picked)}
           onTrash={treeSrc.canTrash ? treeSrc.askTrash : undefined}
           dragLabel={t().stream.dragItems}
+          onDropFiles={treeSrc.canImport ? (dir, paths) => void treeSrc.importDropped(dir, paths) : undefined}
           lazyDirs={treeSrc.lazy}
           loadedDirs={treeSrc.loadedDirs}
           onExpandDir={(path) => void treeSrc.loadWorkspaceDir(path)}

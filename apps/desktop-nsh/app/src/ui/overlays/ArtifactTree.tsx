@@ -4,8 +4,11 @@
  * a file selects. Rows are picked with ⌘/Ctrl (one more) or Shift (a range from the last row
  * clicked); a right click or long press reports the row with every row it acts on (`picked`);
  * ⌘⌫ / Ctrl+⌫ or Delete on a focused row asks to trash them; dragging rows (when `dragLabel` is
- * given) carries their paths to a composer (`workspace-drag.ts`). Loading, failed and empty
- * states are lines in the tree, a folder's own below its row.
+ * given) carries their paths to a composer (`workspace-drag.ts`). Files dragged in from Finder
+ * (when `onDropFiles` is given) go into the folder under the pointer: a folder row is that
+ * folder, a file row its folder, the space around the rows the tree's top; that folder lights up
+ * while they are over it, and a folder dropped on opens. Loading, failed and empty states are
+ * lines in the tree, a folder's own below its row.
  *
  * On nsh/base's `Tree`, which makes only the rows in view, scrolls them natively and keeps the
  * keys of a tree (arrows, Home and End, typeahead; Return opens a file or a folder). What a row
@@ -30,12 +33,15 @@ import { fileIconFor } from "../../m/overlays/file-icon.ts";
 import { FileIcon } from "./FileIcon";
 import { treeRange, visibleTreePaths } from "../../m/overlays/artifact-tree.ts";
 import { pressWorkspacePaths } from "../workspace-drag";
+import { pathOfFileUri } from "../chat/composer-state";
 import { tip } from "../tip";
 import { onGlassCard } from "../glass";
 
 /** The lines that are not files: ids no path can be. */
 const STATE = "\u0000state:";
 const NOTE = "\u0000note:";
+/** Who heard the Finder drag last: a row's path, or the tree around the rows. */
+const AROUND = "\u0000around";
 
 type Extra = { type: "state"; busy: boolean; error: boolean; retry?: () => void } | { type: "note"; text: string };
 
@@ -52,6 +58,8 @@ export function ArtifactTree(props: {
   onTrash?: (picked: ArtifactTreeNode[]) => void;
   /** Rows can be dragged onto a composer; what the chip says for more than one row. */
   dragLabel?: (count: number) => string;
+  /** Files dropped from Finder, as absolute paths: into the folder `dir` (a row's path), or `null` for the tree's top. */
+  onDropFiles?: (dir: string | null, paths: string[]) => void;
   lazyDirs?: boolean;
   loadedDirs?: ReadonlySet<string>;
   onExpandDir?: (path: string) => void;
@@ -245,6 +253,33 @@ export function ArtifactTree(props: {
     props.onContextMenu(node, at, targets);
   };
 
+  /** Where a Finder drag over the tree would go (`null`: the tree's top), and which view heard it last. */
+  const dropAt = signal<{ by: string; dir: string | null } | null>(null);
+  /** The folder a drop on this row goes into: the row itself, or a file's folder when that is a row. */
+  const dropDirOf = (path: string): string | null => {
+    const map = byPath();
+    if (map.get(path)?.kind === "dir") return path;
+    const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+    const parent = cut > 0 ? path.slice(0, cut) : "";
+    return map.get(parent)?.kind === "dir" ? parent : null;
+  };
+  const dropOver = (by: string, dir: string | null) => dropAt.set({ by, dir });
+  /** The next view's enter may come before this one's leave: only the view that set the target clears it. */
+  const dropLeave = (by: string) => dropAt()?.by === by && dropAt.set(null);
+  const dropInto = (dir: string | null, uris: string[]) => {
+    dropAt.set(null);
+    const paths = uris.map(pathOfFileUri).filter((path): path is string => Boolean(path));
+    if (paths.length === 0 || !props.onDropFiles) return;
+    // A folder dropped on opens, so what went in shows.
+    if (dir !== null && !isOpen(dir)) {
+      const node = byPath().get(dir);
+      if (node) onNode(node);
+    }
+    props.onDropFiles(dir, paths);
+  };
+  const takesFiles = () => Boolean(props.onDropFiles && props.lazyDirs);
+  const dropLit = (path: string) => dropAt() !== null && dropAt()!.dir === path;
+
   /** A press that may become a drag: of everything highlighted when this row is, else of this row. */
   const dragFor = (path: string) =>
     pressWorkspacePaths({
@@ -325,7 +360,14 @@ export function ArtifactTree(props: {
           if (n) onRowMenu(n, e.pagePosition);
         }}
         {...(pan ? pan.panHandlers : {})}
-        class={`cursor-pointer select-none flex-row items-center gap-1 w-full py-1 pr-[10px] ${lit() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
+        {...(takesFiles()
+          ? {
+              onFileDragEnter: () => dropOver(path, dropDirOf(path)),
+              onFileDragLeave: () => dropLeave(path),
+              onFileDrop: (e: { uris: string[] }) => dropInto(dropDirOf(path), e.uris),
+            }
+          : {})}
+        class={`cursor-pointer select-none flex-row items-center gap-1 w-full py-1 pr-[10px] ${dropLit(path) ? "bg-brand/14" : lit() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
         style={{ paddingLeft: 8 + depth * 12 }}
       >
         <If when={isDir()}>
@@ -353,7 +395,17 @@ export function ArtifactTree(props: {
     });
 
   return (
-    <View testID="workspace-tree" class={`min-w-0 flex-1 ${glassCard() ? "" : "bg-sidebar-bg"} border-r border-line`}>
+    <View
+      testID="workspace-tree"
+      class={`min-w-0 flex-1 ${glassCard() ? "" : "bg-sidebar-bg"} border-r border-line`}
+      {...(takesFiles()
+        ? {
+            onFileDragEnter: () => dropOver(AROUND, null),
+            onFileDragLeave: () => dropLeave(AROUND),
+            onFileDrop: (e: { uris: string[] }) => dropInto(null, e.uris),
+          }
+        : {})}
+    >
       <Tree
         ref={(ref: TreeRef) => {
           tree = ref;
@@ -373,6 +425,10 @@ export function ArtifactTree(props: {
         }}
         renderItem={(entry) => rowFor(entry.id, entry.depth)}
       />
+      {/* Over the rows: the whole tree is where a drop around them goes. */}
+      <If when={dropAt()?.dir === null}>
+        <View testID="workspace-tree-drop" accessible={false} class="absolute left-0 top-0 right-0 bottom-0 border-2 border-dashed border-brand bg-brand/6" style={{ pointerEvents: "none" }} />
+      </If>
     </View>
   );
 }

@@ -18,6 +18,9 @@ test("the attach button picks files, they wait as chips, and ✕ takes one back"
   await app.press("id:attach-button");
   // `nsh.json` has no `picker` capability yet (see the report): without it the press asks nothing.
   if (app.picks().length === 0) return;
+  // On a desktop the open dialog, which takes a file of any type, not the photo picker.
+  expect(app.picks()[0]?.kind).toBe("files");
+  expect(app.picks()[0]?.filters).toEqual([]);
   await app.waitFor("id:composer-attachment");
   expect(app.texts()).toContain("notes.txt");
   expect(app.texts()).toContain("staged:notes.txt");
@@ -61,17 +64,25 @@ test("files staged in one conversation wait there while the composer shows anoth
   await app.waitFor("id:composer-attachment");
 });
 
-test("only the file conversation takes files dropped on it", async () => {
+test("files dropped from Finder are staged in any conversation, whatever their type", async () => {
   const app = await open();
-  const uri = "file:///tmp/dropped.txt";
-  await app.dropFiles("id:composer-card", [uri]);
-  await app.wait(300);
-  expect(app.shows("id:composer-attachment")).toBe(false);
+  await app.dropFiles("id:composer-card", ["file:///tmp/report.pdf", "file:///tmp/data.xlsx"]);
+  await app.waitFor("id:composer-attachment", { timeout: 10_000 });
+  await app.waitUntil(() => app.texts().includes("staged:report.pdf,data.xlsx"));
+  expect(app.shows("id:composer-drop-veil")).toBe(false);
+  // The file conversation takes them as it always did.
   await app.press("id:story-file-drop");
   await app.waitUntil(() => app.texts().includes("session:file-drop"));
-  await app.dropFiles("id:composer-card", [uri]);
-  await app.waitFor("id:composer-attachment", { timeout: 10_000 });
-  expect(app.texts()).toContain("staged:dropped.txt");
+  await app.dropFiles("id:composer-card", ["file:///tmp/dropped.txt"]);
+  await app.waitUntil(() => app.texts().includes("staged:dropped.txt"), { timeout: 10_000 });
+});
+
+test("a folder dropped from Finder is not staged, and a toast says why", async () => {
+  const app = await open();
+  await app.dropFiles("id:composer-card", ["file:///tmp/photos/", "file:///tmp/keep.md"]);
+  await app.waitFor("id:toast", { timeout: 10_000 });
+  expect(app.texts().some((text) => text.includes("文件夹不能直接作为附件") && text.includes("“photos”"))).toBe(true);
+  await app.waitUntil(() => app.texts().includes("staged:keep.md"));
 });
 
 test("a send with a staged file goes out with it and the chip goes after", async () => {

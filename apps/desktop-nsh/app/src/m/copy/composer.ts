@@ -1,4 +1,8 @@
+import { enNames, zhNames } from "./name-list.ts";
 import type { CopyShape } from "./shape.ts";
+
+/** What a drop, a Finder copy or the picker brought that was not staged, by why. */
+type LeftOut = { folders: string[]; tooLarge: string[]; unreadable: string[] };
 
 export const zh = {
   idle: "没有进行中的轮。",
@@ -27,6 +31,15 @@ export const zh = {
   workspaceRef: "工作区里的原文件，发出时不复制",
   /** Over the composer while files from the tree are dragged onto it. */
   dropWorkspaceItems: "松开即附上 · 不复制",
+  /** Over the composer while files from Finder are dragged onto the conversation. */
+  dropFiles: "松开即添加为附件",
+  /** Said after a drop, a paste or a pick that left some out; empty when nothing was. */
+  notAttached: (left: LeftOut) =>
+    [
+      left.folders.length ? `文件夹不能直接作为附件：${zhNames(left.folders, "个")}。可以把它拖到文件树上，拷进工作区。` : "",
+      left.tooLarge.length ? `超过 512 MB 的文件没有添加：${zhNames(left.tooLarge, "个")}。` : "",
+      left.unreadable.length ? `读不到这些文件，没有添加：${zhNames(left.unreadable, "个")}。` : "",
+    ].join(""),
   tooManyFiles: "文件太多，这次没有发出去。去掉一些再发。",
   sendRefused: "没有发出去，再试一次。",
   removeMention: "移除提及",
@@ -70,6 +83,13 @@ export const en: CopyShape<typeof zh> = {
   removeAttachment: "Remove attachment",
   workspaceRef: "The file in the workspace itself; nothing is copied",
   dropWorkspaceItems: "Drop to attach · nothing is copied",
+  dropFiles: "Drop to attach",
+  notAttached: (left: LeftOut) =>
+    [
+      left.folders.length ? `A folder can't be attached as it is: ${enNames(left.folders)}. Drop it on the file tree to copy it into the workspace.` : "",
+      left.tooLarge.length ? `Files over 512 MB were not added: ${enNames(left.tooLarge)}.` : "",
+      left.unreadable.length ? `These files couldn't be read and were not added: ${enNames(left.unreadable)}.` : "",
+    ].filter(Boolean).join(" "),
   tooManyFiles: "Too many files; this did not go out. Remove some and send again.",
   sendRefused: "This did not go out; try again.",
   removeMention: "Remove mention",
