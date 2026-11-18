@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A command's output reads in light mode
+
+- In light mode a command's output under a reply, and a step's output in a working bubble, sat on a dark ground in dark text, so most of it could not be read. It sits on a light ground again, as in the old app; in dark mode on its dark one.
+
 ### Animations on the phone run smoother
 
 - On the phone's page, home-screen app included, a sheet of options sliding up or a dialog fading in stuttered in long conversations, more so while a Bot was replying. Every message kept the values of its arrival animation, and idle Bot avatars kept a blinking loop running. NSH's web runtime writes every such value again on every frame, so the longer the conversation, the slower each frame. Now a message carries its animation only while it arrives, and history carries none. An avatar blinks now and then and is still in between. Avatars in the roster stop while a page covers it. In a browser the transcript draws as a layer of its own, so a sheet sliding over it doesn't repaint it. With Chromium's CPU slowed to a quarter, a frame over a 200-line conversation went from about 7 ms to about 1.7 ms. In WebKit a sheet's entrance draws 21 to 22 steps instead of 20.

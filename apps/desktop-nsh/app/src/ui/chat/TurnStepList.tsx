@@ -62,7 +62,7 @@ export function TurnStepList(props: {
                 </View>
                 <If when={output()}>
                   {(text: () => string) => (
-                    <Scroll testID="turn-step-output" class="ml-[20px] max-h-[160px] rounded-(--radius-sm) bg-code-bg">
+                    <Scroll testID="turn-step-output" class="ml-[20px] max-h-[160px] rounded-(--radius-sm) bg-chip">
                       <Text class="px-[8px] py-[6px] text-[11px] leading-[1.45] font-mono text-ink-muted">{text()}</Text>
                     </Scroll>
                   )}

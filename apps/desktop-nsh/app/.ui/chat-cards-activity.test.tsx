@@ -30,6 +30,9 @@ test("finished commands fold to one line, count the failures, and open one outpu
   await app.press("id:card-commands >> text:pnpm build");
   await app.waitFor("id:command-output");
   expect(app.texts().some((text) => text.includes("128 modules transformed"))).toBe(true);
+  // On the chip ground, as the Svelte messenger had it (`var(--code-surface, var(--chip))`): light in light,
+  // under code in the light theme's dark colours. The code ground (`bg-code-bg`) is dark in both.
+  expect(app.viewStyle("id:command-output")?.backgroundColor).toBe("#eff3f4ff");
   // Colour codes are dropped from the output.
   expect(app.texts().some((text) => text.includes("\u001b"))).toBe(false);
   // Opening another closes the first.
@@ -54,6 +57,7 @@ test("a working bubble's steps are listed whole with a running command's output;
   expect(app.count("id:card-steps >> id:turn-step")).toBe(3);
   expect(app.texts()).toContain("读取 notes/weekly.md");
   expect(app.texts().some((text) => text.startsWith("building…"))).toBe(true);
+  expect(app.viewStyle("id:card-steps >> id:turn-step-output")?.backgroundColor).toBe("#eff3f4ff");
   // Only a step with somewhere to go is a button.
   expect(app.count("id:card-steps >> id:turn-step-open")).toBe(1);
   expect(app.texts()).toContain("steps:open");

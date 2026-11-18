@@ -184,7 +184,7 @@ export function CommandActivity(props: {
                       <If when={open()}>
                         <Scroll
                           testID="command-output"
-                          class="max-h-[230px] border-t border-line-subtle bg-code-bg"
+                          class="max-h-[230px] border-t border-line-subtle bg-chip"
                           style={codeSurface() ? { backgroundColor: codeSurface()!.bg } : undefined}
                         >
                           <OutputText text={row().text} command={row().command ?? null} />
