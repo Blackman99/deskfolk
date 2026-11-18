@@ -425,14 +425,15 @@ test("in plan mode nothing changes but its plan: a write, a writing command and 
 
 test("read-only refuses every change and command; a tool the app cannot tell is a change: asked first, refused read-only", async () => {
   const h = start([
-    { prompts: [[{ tool: { name: "write", input: { file_path: "a.txt", content: "x" } } }, { tool: { name: "read_file", input: { target_file: "a.txt" } } }, { tool: { name: "mcp__notes__save", input: { text: "hi" } } }, { say: "ok" }]] },
-    { prompts: [[{ tool: { name: "mcp__notes__save", input: { text: "hi" } } }, { tool: { name: "use_skill", input: { name: "pdf" } } }, { say: "ok" }]] },
+    // An MCP server's tool as Grok 1.0.89 reaches it: looked up with search_tool, then the hook names it `<server>__<tool>`, its input wrapped.
+    { prompts: [[{ tool: { name: "write", input: { file_path: "a.txt", content: "x" } } }, { tool: { name: "read_file", input: { target_file: "a.txt" } } }, { tool: { name: "search_tool", input: { query: "notes save" } } }, { tool: { name: "notes__save", input: { tool_name: "notes__save", tool_input: { text: "hi" } } } }, { say: "ok" }]] },
+    { prompts: [[{ tool: { name: "notes__save", input: { tool_name: "notes__save", tool_input: { text: "hi" } } } }, { tool: { name: "use_skill", input: { name: "pdf" } } }, { say: "ok" }]] },
   ]);
   h.store.patchSettings({ permission_mode: "read_only" });
   const id = await h.open();
   await h.say(id, "go");
   await h.settled(id);
-  expect(h.hooks(0).map((entry) => [entry.hook, entry.answer?.decision])).toEqual([["write", "deny"], ["read_file", "continue"], ["mcp__notes__save", "deny"]]);
+  expect(h.hooks(0).map((entry) => [entry.hook, entry.answer?.decision])).toEqual([["write", "deny"], ["read_file", "continue"], ["search_tool", "continue"], ["notes__save", "deny"]]);
   expect(String(h.hooks(0)[0]?.answer?.reason)).toContain("read-only");
   h.store.patchSettings({ permission_mode: "ask_first" });
   await h.say(id, "again");
@@ -442,7 +443,7 @@ test("read-only refuses every change and command; a tool the app cannot tell is 
   expect((await h.call("POST", `/v1/agent-runs/${card.id}/approve`)).status).toBe(200);
   await h.settled(id);
   // A skill changes nothing by being invoked.
-  expect(h.hooks(1).map((entry) => [entry.hook, entry.answer?.decision])).toEqual([["mcp__notes__save", "continue"], ["use_skill", "continue"]]);
+  expect(h.hooks(1).map((entry) => [entry.hook, entry.answer?.decision])).toEqual([["notes__save", "continue"], ["use_skill", "continue"]]);
 });
 
 test("a permission Grok asks for by its own settings is answered allow-once, never an option it would keep", async () => {

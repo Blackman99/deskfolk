@@ -19,6 +19,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - `/` lists the commands Grok offers in the directory; `/always-approve`, `/loop`, `/goal` and `/workflow` are not sent, since a project session's Grok ends with its run.
 - Carry on a session from a terminal through the import sheet or the wizard: it is branched, and your terminal's session is left as it was. Its lines come in at the times they were said.
 - A session runs on one of your Grok accounts (`GROK_HOME`), picked in the box. When the plan is used up it moves to another account and goes on there, told the conversation so far; with none left it picks up when the billing period ends.
+- An MCP server's tool Grok calls is held as a change: a card under ask first, refused under read-only and while planning.
 - Each turn's spend is the price Grok reports, under "Grok", counted toward the daily cap; a turn it gives no price for is estimated from xAI's public prices. The task map replays Grok sessions at their real times.
 
 ### Grok can have several accounts

@@ -401,7 +401,7 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
         return { decision: "continue" };
       }
       if (decision.kind === "deny") return { decision: "deny", reason: decision.reason };
-      const key = grokActionKey(action);
+      const key = grokActionKey(action, input);
       const late = live.approvedLate.get(key) ?? 0;
       if (late > 0) {
         if (late === 1) live.approvedLate.delete(key);

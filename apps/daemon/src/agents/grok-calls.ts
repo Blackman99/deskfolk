@@ -4,8 +4,10 @@
  * `rawInput` at first, `_meta["x.ai/tool"].name`): `read_file {target_file}`, `list_dir
  * {target_directory}`, `run_terminal_command {command}`, `write {file_path, content}`,
  * `search_replace {file_path, …}`, `monitor {command}`, `spawn_subagent {description, prompt}`
- * (measured on 1.0.89, 2026-11-18). A tool not named here is told by what it names: a path it would
- * change is a write, any other path a read, else nothing to check.
+ * (measured on 1.0.89, 2026-11-18). An MCP server's tool is looked up with `search_tool` and called
+ * with `use_tool {tool_name: "<server>__<tool>", tool_input}`; the hook names the inner tool, with
+ * the same wrapped input (measured 2026-11-18). A tool not named here is told by what it names: a
+ * path it would change is a write, any other path a read, else nothing to check.
  */
 import { pathsOf } from "../engine/agent/drivers/acp";
 import { absoluteFrom, unwrapShell, type AppAction, type AppActionName } from "../engine/agent/policy";
@@ -21,7 +23,7 @@ const WEB_TOOLS = new Set(["web_search", "web_fetch", "x_keyword_search", "x_sem
  * plan (cards), its to-do list, reading or ending what it runs in the background, starting a
  * subagent (whose own calls each come through the hook).
  */
-const OWN_TOOLS = new Set(["ask_user_question", "exit_plan_mode", "enter_plan_mode", "todo_write", "get_command_or_subagent_output", "kill_command_or_subagent", "wait_commands_or_subagents", "spawn_subagent", "task"]);
+const OWN_TOOLS = new Set(["ask_user_question", "exit_plan_mode", "enter_plan_mode", "todo_write", "get_command_or_subagent_output", "kill_command_or_subagent", "wait_commands_or_subagents", "spawn_subagent", "task", "search_tool"]);
 /**
  * Work Grok schedules to go on after its reply, by itself (ADR 0115): a run's Grok ends with the
  * run, so it would stop without a word. Refused, with the reason told to Grok.
@@ -49,8 +51,30 @@ export function isOwnTool(name: string): boolean {
   return OWN_TOOLS.has(name) || /(^|_)skills?($|_)/.test(name);
 }
 
+/**
+ * The call itself: an MCP tool reached through `use_tool` (or named by the hook with its input still
+ * wrapped) is that tool with its own input; anything else as it came.
+ */
+export function grokInnerCall(name: string, input: Record<string, unknown>): { name: string; input: Record<string, unknown> } {
+  const inner = stringOf(input.tool_name);
+  if (inner && (name === "use_tool" || name === inner)) {
+    return { name: inner, input: input.tool_input && typeof input.tool_input === "object" ? input.tool_input as Record<string, unknown> : {} };
+  }
+  return { name, input };
+}
+
+/** An MCP server's tool as Grok names it (`<server>__<tool>`): the app's name for it, `mcp__<server>__<tool>`; null for any other. */
+function mcpName(name: string): string | null {
+  if (name.startsWith("mcp__")) return name;
+  return /^[A-Za-z0-9_.-]+?__[A-Za-z0-9_.-]+$/.test(name) ? `mcp__${name}` : null;
+}
+
 /** One of Grok's calls as the app's rules count it, from its tool's name and input. */
-export function grokActionOf(name: string, input: Record<string, unknown>, cwd: string): AppAction {
+export function grokActionOf(rawName: string, rawInput: Record<string, unknown>, cwd: string): AppAction {
+  const { name, input } = grokInnerCall(rawName, rawInput);
+  // An MCP server's tool may do anything, wherever: the app cannot tell, so nothing is read from its input.
+  const mcp = mcpName(name);
+  if (mcp) return { appName: "other", vendorTool: mcp, paths: [], cwd };
   const where = stringOf(input.cwd) ?? stringOf(input.working_directory) ?? cwd;
   const named = PATH_KEYS.flatMap((key) => (stringOf(input[key]) ? [input[key] as string] : []));
   const paths = named.length > 0 ? named : pathsOf(input);
@@ -78,7 +102,18 @@ export function grokCallText(action: AppAction): string {
   return action.paths.length > 0 ? `${action.vendorTool} ${action.paths.join(", ")}` : action.vendorTool;
 }
 
-/** What one approval covers once Grok asks again (a refused call comes back with a new id): the call's kind and what it names. */
-export function grokActionKey(action: AppAction): string {
-  return `${action.appName}\u0000${action.appName === "shell" ? action.command ?? "" : action.paths.join("\u0000")}`;
+/**
+ * What one approval covers once Grok asks again (a refused call comes back with a new id): the tool,
+ * the call's kind and what it names; for a tool the app cannot read, its whole input.
+ */
+export function grokActionKey(action: AppAction, input: Record<string, unknown>): string {
+  const named = action.appName === "shell" ? action.command ?? "" : action.appName === "other" ? stableJson(grokInnerCall(action.vendorTool.replace(/^mcp__/, ""), input).input) : action.paths.join("\u0000");
+  return `${action.appName}\u0000${action.vendorTool}\u0000${named}`;
+}
+
+/** JSON with its keys in order, so one input reads the same whichever way it was built. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") return `{${Object.keys(value as object).sort().map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`).join(",")}}`;
+  return JSON.stringify(value) ?? "null";
 }
