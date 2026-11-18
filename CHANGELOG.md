@@ -6,9 +6,9 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
-### Reading back on the phone stays where you are when the link comes back
+### Reading back on the phone no longer jumps to the newest line when the link comes back
 
-- On the phone, scrolled back in a conversation, a project session above all, the view often jumped to the newest line by itself. The phone's link to the Mac drops and comes back often, and when the Mac cannot replay what was missed, the page takes the Mac's snapshot again, which holds each conversation's last line only. The open conversation shrank to that line until its history was read again, and the lines you had scrolled back to were dropped. Now the conversation on screen keeps its lines through it, and the history read again joins what is already there, so you stay where you were and scrolling back carries on from there. Bot conversations get it too, and so does the desktop app when its runtime restarts.
+- On the phone, scrolled back in a conversation, a project session above all, the view often jumped to the newest line by itself. The phone's link to the Mac drops and comes back often, and when the Mac cannot replay what was missed, the page takes the Mac's snapshot again, which holds each conversation's last line only. The open conversation shrank to that line until its history was read again, and the lines you had scrolled back to were dropped. Now the conversation on screen keeps its lines through it, and the history read again joins what is already there: you stay among the lines you were reading, and scrolling back carries on from there. The view can still shift by a line or a few as the link drops; that is not fixed yet. Bot conversations get it too, and so does the desktop app when its runtime restarts.
 
 ### Drag files into a conversation or onto the file tree
 
