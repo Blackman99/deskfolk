@@ -10,7 +10,8 @@ import { createCodexCommandList } from "./agents/codex-commands";
 import { createAgentSessions } from "./agents/agent-sessions";
 import { createCodexSessions } from "./agents/codex-sessions";
 import { createAgySessions } from "./agents/agy-sessions";
-import { createAgyCommandMemory, projectAgyOf } from "./project-runner-agy";
+import { createCommandMemory } from "./project-acp";
+import { projectAgyOf } from "./project-runner-agy";
 import { createClaudeCommandList } from "./claude-code/commands";
 import { createClaudeModelList } from "./claude-code/models";
 import { HttpError } from "./errors";
@@ -75,7 +76,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   options.claudeModels ??= createClaudeModelList({ claudeCode });
   options.claudeCommands ??= createClaudeCommandList({ claudeCode });
   options.codexCommands ??= createCodexCommandList({ resolve: projectCodexOf(options.store) });
-  options.agyCommands ??= createAgyCommandMemory();
+  options.agyCommands ??= createCommandMemory();
   options.agentSessions ??= createAgentSessions({
     store: options.store,
     codex: createCodexSessions({ resolve: options.projectCodex ?? projectCodexOf(options.store) }),

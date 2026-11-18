@@ -99,7 +99,7 @@ export type LocalApiOptions = {
   /** Your terminal sessions of each agent, listed and read for carrying on (ADR 0095); one is made when absent. */
   agentSessions?: import("../agents/agent-sessions").AgentSessions;
   /** The commands `agy` offered in each directory, as its project sessions' runs heard them (ADR 0111). */
-  agyCommands?: import("../project-runner-agy").AgyCommandMemory;
+  agyCommands?: import("../project-acp").CommandMemory;
   /** Project sessions' `agy` (ADR 0111) and its `--version`; a test's stand-ins. */
   projectAgy?: () => Promise<import("../agents/runtime").ResolvedAgent>;
   projectAgyVersion?: (executable: string, env: Record<string, string>) => Promise<string>;

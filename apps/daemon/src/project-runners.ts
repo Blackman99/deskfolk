@@ -7,7 +7,8 @@
  */
 import type { ProjectAgent } from "@real-bot/protocol";
 import type { ResolvedAgent } from "./agents/runtime";
-import { createAgyProjectRunner, type AgyCommandMemory } from "./project-runner-agy";
+import type { CommandMemory } from "./project-acp";
+import { createAgyProjectRunner } from "./project-runner-agy";
 import { createCodexProjectRunner } from "./project-runner-codex";
 import { createProjectRunner, type ProjectRunner, type ProjectRunnerDeps } from "./project-runner";
 
@@ -18,7 +19,7 @@ export type ProjectRunnersDeps = ProjectRunnerDeps & {
   resolveAgy?: () => Promise<ResolvedAgent>;
   agyVersion?: (executable: string, env: Record<string, string>) => Promise<string>;
   /** The commands `agy` offered in each directory, kept for the `/` list. */
-  agyCommands?: AgyCommandMemory;
+  agyCommands?: CommandMemory;
 };
 
 export function createProjectRunners(deps: ProjectRunnersDeps): ProjectRunner {

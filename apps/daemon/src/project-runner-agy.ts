@@ -11,32 +11,27 @@
  * A command it sends to the background keeps the run open, as Claude Code's do (ADR 0095, 25):
  * `agy` reports the command's end when it comes and may go on to say something about it.
  */
-import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { PLAN_APPROVAL_KIND, type AgentRunApproval, type AgentRunToolInfo, type AgentTask, type ClaudeCodeCommand, type Message, type ToolFrame } from "@real-bot/protocol";
+import { PLAN_APPROVAL_KIND, type AgentRunApproval, type AgentRunToolInfo, type AgentTask, type Message, type ToolFrame } from "@real-bot/protocol";
 import { agyServesAcp, agyTooOld } from "./agents/agy-version";
 import { estimateAgentCost } from "./agents/agent-prices";
 import { initializeAgy } from "./agents/agy-acp";
-import { agentAnnotations } from "./annotation-context";
 import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
 import { inMemoryDir } from "./claude-code/policy";
 import { placeOfCall } from "./claude-code/tool-place";
-import { claudeLaunch, killsTree } from "./claude-code/spawn";
 import { classifyAcpError, offers, pathsOf, textOfContent, textOfRaw, usageOf } from "./engine/agent/drivers/acp";
 import { agyFailure, agyVersionText } from "./engine/agent/drivers/agy";
 import { rpcPeer, type RpcPeer } from "./engine/agent/jsonrpc";
 import { absoluteFrom, decideAction, type AppAction, type AppActionName } from "./engine/agent/policy";
 import { agentTrace } from "./engine/agent/trace";
 import { HttpError } from "./errors";
-import { recordLiveProc } from "./live-procs";
+import { acpCommandsOf, createCommandMemory, frameOf, lineBlocks, spawnRecorded, takeNext, type Block, type CommandMemory, type Queued } from "./project-acp";
 import { nodePathHost } from "./workspace-paths";
-import { pictureMime } from "./loop-pictures";
 import { questionDesk, type AgentAnswer, type AgentQuestion, type QuestionDesk } from "./project-asks";
 import { clip, COMPACTING, firstLine, slashCommandOf, targetText, type ProjectRunner } from "./project-runner";
 import type { Store } from "./store";
-import { visionImage } from "./vision-image";
 
 export type AgyProjectDeps = {
   store: Store;
@@ -49,13 +44,9 @@ export type AgyProjectDeps = {
   /** How long `agy` may go quiet after a background command ended before the run closes; a test's is short. */
   settleMs?: number;
   /** The commands `agy` offered in a directory, as its runs heard them (`GET …/commands` reads these). */
-  commands?: AgyCommandMemory;
+  commands?: CommandMemory;
 };
 
-/** One prompt block, as ACP takes it. */
-type Block = { type: "text"; text: string } | { type: "image"; mimeType: string; data: string };
-/** A line `agy` has not been sent yet: its blocks, the command it starts with, and your message. */
-type Queued = { blocks: Block[]; command: string | null; messageId: string | null };
 type Answer = "allow" | "deny" | "revise";
 
 /** One of `agy`'s calls as it reported it so far. */
@@ -111,35 +102,9 @@ const PARTIAL_MAX = 4000;
 const STDERR_KEEP = 8 * 1024;
 const SETTLE_MS = 2500;
 const REQUEST_TIMEOUT_MS = 60_000;
-const PICTURE_BYTES_MAX = 5_000_000;
 /** The words a plan's approval goes on with (ADR 0111): `agy` takes the next step in its default mode. */
 const PLAN_GO = { en: "The plan is approved. Carry it out now.", zh: "计划已批准，现在按计划去做。" };
 
-/** The commands `agy` offers in a directory, as runs there heard them (`available_commands_update`). */
-export type AgyCommandMemory = { get(dir: string): ClaudeCodeCommand[] | null; set(dir: string, commands: ClaudeCodeCommand[]): void };
-
-export function createAgyCommandMemory(maxAgeMs = 10 * 60_000, now: () => number = Date.now): AgyCommandMemory {
-  const kept = new Map<string, { commands: ClaudeCodeCommand[]; at: number }>();
-  return {
-    get: (dir) => {
-      const entry = kept.get(dir);
-      return entry && now() - entry.at < maxAgeMs ? entry.commands : null;
-    },
-    set: (dir, commands) => {
-      kept.set(dir, { commands, at: now() });
-    },
-  };
-}
-
-/** `agy`'s `available_commands_update` as the `/` list reads it, each name once. */
-export function agyCommandsOf(listed: unknown): ClaudeCodeCommand[] {
-  const out = new Map<string, ClaudeCodeCommand>();
-  for (const entry of Array.isArray(listed) ? listed as Array<{ name?: unknown; description?: unknown; input?: { hint?: unknown } | null }> : []) {
-    if (typeof entry?.name !== "string" || !entry.name.trim() || out.has(entry.name)) continue;
-    out.set(entry.name, { name: entry.name, description: typeof entry.description === "string" ? entry.description : "", argument_hint: typeof entry.input?.hint === "string" ? entry.input.hint : "", aliases: [] });
-  }
-  return [...out.values()];
-}
 
 /** The `agy` a project session starts, found as a Bot's is: the path you set in Settings, or the one on this computer. */
 export function projectAgyOf(store: Store): () => Promise<ResolvedAgent> {
@@ -151,39 +116,6 @@ export function agyBrainDir(session: string, home = homedir()): string {
   return join(home, ".gemini", "antigravity-cli", "brain", session);
 }
 
-/** A picture of a line as ACP takes one, shrunk as a Bot's are; null for anything else. */
-function pictureBlock(abs: string, name: string): Block | null {
-  const mime = pictureMime(name) ?? pictureMime(abs);
-  if (!mime) return null;
-  try {
-    const image = visionImage(abs, mime, statSync(abs));
-    if (image.bytes.byteLength > PICTURE_BYTES_MAX) return null;
-    return { type: "image", mimeType: image.mime, data: image.bytes.toString("base64") };
-  } catch {
-    return null;
-  }
-}
-
-/** Your line as `agy` reads it: its pictures first, then your words, any other file by its path; annotations spelled out after. */
-function lineBlocks(store: Store, message: Message, en: boolean): Block[] {
-  const notes = agentAnnotations(store, message.id, en ? "en" : "zh");
-  const pictures: Block[] = [];
-  const named: string[] = [];
-  for (const att of message.attachments) {
-    let abs: string;
-    try {
-      abs = store.getAttachmentFilePath(att);
-    } catch {
-      continue;
-    }
-    const picture = pictureBlock(abs, att.original_filename);
-    if (picture) pictures.push(picture);
-    else named.push(`${en ? "Attached: " : "附件："}${abs}`);
-  }
-  for (const crop of notes?.crops ?? []) pictures.push({ type: "image", mimeType: crop.mime, data: Buffer.from(crop.bytes).toString("base64") });
-  const text = [message.body.trim() ? message.body : "", ...named, notes?.text ?? ""].filter(Boolean).join("\n\n");
-  return [...pictures, ...(text || pictures.length === 0 ? [{ type: "text" as const, text: text || message.body }] : [])];
-}
 
 /** What a call does, as the app's rules count it: by its kind, the files it names and its input (`CommandLine`, `Path`, …). */
 export function agyActionOf(tool: Pick<Tool, "kind" | "title" | "rawInput" | "locations">, cwd: string): AppAction {
@@ -206,16 +138,6 @@ export function agyActionOf(tool: Pick<Tool, "kind" | "title" | "rawInput" | "lo
   };
 }
 
-/** One of `agy`'s calls as the task map and the chat name it: a command `shell`, a change `write_file`, as Codex's are. */
-function frameOf(action: AppAction): { name: string; place: { tool: string; input: Record<string, unknown> }; command?: string; target?: string } {
-  if (action.appName === "shell") return { name: "shell", place: { tool: "Bash", input: { command: action.command ?? "" } }, command: action.command ?? "" };
-  const file = action.paths[0];
-  if (action.appName === "write_file") return { name: "write_file", place: { tool: "Write", input: { file_path: file ?? action.cwd } }, ...(file ? { target: file } : {}) };
-  if (action.appName === "read_file") return { name: "Read", place: { tool: "Read", input: { file_path: file ?? action.cwd } }, ...(file ? { target: file } : {}) };
-  if (action.appName === "list_dir") return { name: "Grep", place: { tool: "Grep", input: { path: file ?? action.cwd } }, ...(file ? { target: file } : {}) };
-  if (action.appName === "web") return { name: "WebFetch", place: { tool: "WebFetch", input: {} } };
-  return { name: action.vendorTool, place: { tool: action.vendorTool, input: {} } };
-}
 
 /** One question of an `elicitation/create` form: its field, the field for words of your own, and each option's value. */
 type FormQuestion = { key: string; other: string | null; multi: boolean; values: Map<string, string>; question: AgentQuestion };
@@ -286,21 +208,12 @@ function commandRan(command: string, en: boolean): string {
   return en ? `Ran /${command}` : `已执行 /${command}`;
 }
 
-/** What the next prompt takes: a command on its own, or every line of words up to the next command, at once. */
-function takeNext(queue: Queued[]): Queued | null {
-  const first = queue[0];
-  if (!first) return null;
-  if (first.command) return queue.shift()!;
-  const at = queue.findIndex((line) => line.command);
-  const words = queue.splice(0, at === -1 ? queue.length : at);
-  return { blocks: words.flatMap((line) => line.blocks), command: null, messageId: words.at(-1)?.messageId ?? null };
-}
 
 export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
   const { store } = deps;
   const lives = new Map<string, Live>();
   const settling = new Set<Promise<void>>();
-  const commands = deps.commands ?? createAgyCommandMemory();
+  const commands = deps.commands ?? createCommandMemory();
   const resolve = deps.resolve ?? projectAgyOf(store);
   const update = (runId: string, patch: Parameters<Store["updateAgentRun"]>[1]) => store.updateAgentRun(runId, patch);
   const postLine = (sessionId: string, kind: "bot" | "system", body: string) => {
@@ -310,24 +223,6 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
   /** A live run's way to set the model, level or mode on `agy`'s session now. */
   const tuning = new Map<string, (change: { model?: string | null; effort?: string | null; mode?: "plan" | null }) => Promise<void>>();
 
-  function spawnRecorded(live: Live, executable: string, args: string[], cwd: string, env: Record<string, string>): ChildProcess {
-    const windows = process.platform === "win32";
-    const launch = claudeLaunch(executable, args, env);
-    const child = spawn(launch.command, launch.args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: !windows, windowsHide: true, windowsVerbatimArguments: launch.verbatim });
-    if (child.pid) {
-      const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-      try {
-        recordLiveProc(store, { pid: child.pid, exited }, { pgid: windows ? null : child.pid, command: `${executable} (project session)` });
-      } catch {
-        // the record is for cleanup after a crash; the run itself does not need it
-      }
-    }
-    killsTree(child);
-    const kill = () => child.kill("SIGTERM");
-    if (live.abort.signal.aborted) kill();
-    else live.abort.signal.addEventListener("abort", kill, { once: true });
-    return child;
-  }
 
   function heard(message: Message): void {
     const sessionId = message.session_id;
@@ -434,7 +329,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
     if (live.stopped) return;
 
     // Its terminal sandbox on, as a Bot's `agy` runs: the app cannot make it ask first.
-    const child = spawnRecorded(live, resolved.executable, [...resolved.args, "--sandbox"], project.dir, resolved.env);
+    const child = spawnRecorded(store, live.abort, resolved.executable, [...resolved.args, "--sandbox"], project.dir, resolved.env);
     let stderr = "";
     const exited = new Promise<void>((resolve) => {
       child.once("exit", () => resolve());
@@ -600,7 +495,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
         case "tool_call_update":
           return onToolUpdate(u);
         case "available_commands_update":
-          commands.set(project.dir, agyCommandsOf(u.availableCommands));
+          commands.set(project.dir, acpCommandsOf(u.availableCommands));
           return;
         case "current_mode_update":
           if (typeof u.currentModeId === "string") live.mode = u.currentModeId === "plan" ? "plan" : "default";
